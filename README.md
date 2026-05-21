@@ -1,7 +1,7 @@
 ## S-UI
 
 <p align="center">
-  <img width="492" height="450" alt="s-ui-x logo" src="https://github.com/user-attachments/assets/cfc9da97-f8ea-4c68-961c-2bf164932272" />
+  <img width="492" height="450" alt="s-ui-x logo" src="https://raw.githubusercontent.com/deposist/s-ui-x/refs/heads/main/docs/592996937-cfc9da97-f8ea-4c68-961c-2bf164932272.png" />
 </p>
 <p align="center">
   <a href="https://github.com/deposist/s-ui-x/releases/latest">
