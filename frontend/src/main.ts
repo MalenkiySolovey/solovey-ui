@@ -1,3 +1,5 @@
+import './uiMode/bootstrap'
+
 /**
  * main.ts
  *

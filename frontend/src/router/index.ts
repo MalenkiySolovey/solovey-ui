@@ -13,7 +13,7 @@ const routes = [
   },
   {
     path: '/',
-    component: () => import('@/layouts/default/Default.vue'),
+    component: () => import('@/layouts/AuthenticatedHost.vue'),
     meta: { requiresAuth: true },
     children: [
       {

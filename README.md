@@ -20,7 +20,7 @@
 
 Advanced Web panel built on `SagerNet/Sing-Box`.
 
-**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.3`).
+**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.4-beta1`).
 
 **This fork keeps the original project structure and updates the user-facing documentation and installation links for this repository. You can use the scripts from this repository directly, or fork and build the project yourself.**
 
@@ -38,6 +38,7 @@ Short summary of recent versions:
 
 | Version | One-line summary |
 | --- | --- |
+| `1.5.4-beta1` | Opt-in Nexus UI mode beta: adds the UI mode contract, feature gate, CSP-safe anti-FOUC bootstrap, authenticated shell resolver, Nexus shell, RTL-aware responsive sidebar/topbar and fixed Nexus Overview dashboard while preserving classic as default and keeping backend/API/CSRF/CSP/dependencies unchanged. |
 | `1.5.3` | Stable release of the 1.5.3 line: includes the 1.5.3-beta remediation aggregate, upstream parity fix for [alireza0/s-ui#1114](https://github.com/alireza0/s-ui/issues/1114), fork/release identity cleanup, CI stabilization, and a friendlier Telegram backup schedule UI over the existing `telegramBackupCron` setting. |
 | `1.5.3-beta` | Code review remediation aggregate (P0/P1/P2/P3 + P4/P5 architecture and logging cleanup) plus upstream parity bug fix for [alireza0/s-ui#1114](https://github.com/alireza0/s-ui/issues/1114): TUIC subscription/share links and Clash export now include `udp_relay_mode` (default `quic` when absent). Logging fully migrated to `slog`, deprecated `op/go-logging` dependency removed, restart manager unified, listen-address fallback audited, and globals reduced via initial DI slice. |
 | `1.5.2-beta-hotfix2` | Drops the legacy `idx_client_ips_client_ip` unique index on `(client_name, ip)`. The 3x-ui pre-import auto-backup no longer crashes with `UNIQUE constraint failed: client_ips.client_name, client_ips.ip` when a client owns multiple `client_ips` rows with empty legacy `ip`. `to1_5` is idempotent and runs again on already-upgraded panels; `ensureIndexes` drops the obsolete index at every `InitDB` so the temporary backup DB stops carrying it too. |
@@ -126,10 +127,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Run `install-windows.bat` as Administrator.
 4. Follow the installation wizard.
 
-## Install v1.5.3
+## Install v1.5.4-beta1
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.3
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.4-beta1
 ```
 
 Or from a local clone:
@@ -137,7 +138,7 @@ Or from a local clone:
 ```sh
 git clone https://github.com/deposist/s-ui-x.git
 cd s-ui-x
-sudo bash install.sh v1.5.3
+sudo bash install.sh v1.5.4-beta1
 ```
 
 The installer is fully compatible with existing installations: settings,
@@ -361,7 +362,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 Продвинутая Web-панель, построенная на базе `SagerNet/Sing-Box`.
 
-**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.3`).
+**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.4-beta1`).
 
 **Этот fork сохраняет структуру оригинального проекта и обновляет пользовательскую документацию и ссылки установки для этого репозитория. Вы можете напрямую использовать скрипты из этого репозитория или сделать fork и собрать проект самостоятельно.**
 
@@ -379,6 +380,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 | Версия | Однострочное описание |
 | --- | --- |
+| `1.5.4-beta1` | Opt-in beta Nexus UI mode: добавляет UI mode contract, feature gate, CSP-safe anti-FOUC bootstrap, authenticated shell resolver, Nexus shell, RTL-aware responsive sidebar/topbar и фиксированный Nexus Overview dashboard, при этом classic остаётся дефолтом, а backend/API/CSRF/CSP/dependencies не меняются. |
 | `1.5.3` | Стабильный релиз линейки 1.5.3: включает агрегат исправлений 1.5.3-beta, upstream-парити-фикс по [alireza0/s-ui#1114](https://github.com/alireza0/s-ui/issues/1114), cleanup идентичности форка/релизов, стабилизацию CI и более удобный UI расписания Telegram backup поверх существующего setting `telegramBackupCron`. |
 | `1.5.3-beta` | Агрегат исправлений code-review (P0/P1/P2/P3 + P4/P5 архитектурный долг и logging cleanup) и upstream-парити-фикс по [alireza0/s-ui#1114](https://github.com/alireza0/s-ui/issues/1114): TUIC subscription/share links и Clash export теперь включают `udp_relay_mode` (по умолчанию `quic`, если режим не задан). Логирование полностью переведено на `slog`, зависимость `op/go-logging` удалена, restart-manager унифицирован, поведение listen-address fallback задокументировано, globals частично вынесены в initial DI slice. |
 | `1.5.2-beta-hotfix2` | Снятие legacy unique-индекса `idx_client_ips_client_ip` на `(client_name, ip)`. Автобэкап перед миграцией с 3x-ui больше не падает с `UNIQUE constraint failed: client_ips.client_name, client_ips.ip` при наличии нескольких строк `client_ips` с пустым legacy `ip`. `to1_5` идемпотентна и повторно прогоняется на уже обновлённых панелях; `ensureIndexes` дропает устаревший индекс на каждом `InitDB`, чтобы временная backup-БД его тоже не получала. |
@@ -467,10 +469,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Запустите `install-windows.bat` от имени администратора.
 4. Следуйте инструкциям мастера установки.
 
-## Установка v1.5.3
+## Установка v1.5.4-beta1
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.3
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.4-beta1
 ```
 
 Или из локального клона:
@@ -478,7 +480,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 ```sh
 git clone https://github.com/deposist/s-ui-x.git
 cd s-ui-x
-sudo bash install.sh v1.5.3
+sudo bash install.sh v1.5.4-beta1
 ```
 
 Установщик полностью совместим с уже работающими установками: настройки,

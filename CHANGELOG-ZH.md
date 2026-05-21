@@ -6,6 +6,23 @@
 
 ## 未发布
 
+## [1.5.4-beta1] - 2026-05-21 - Nexus UI mode opt-in beta
+
+- 新增可选的 `nexus` UI mode，与现有 `classic` 界面并存。Classic 仍为默认，
+  Nexus 作为每个浏览器自己的 localStorage 偏好保存。
+- 新增 UI mode contract、`VITE_ENABLE_NEXUS` kill switch、CSP-safe pre-mount
+  anti-FOUC bootstrap、authenticated layout host、模式切换控件以及 Nexus
+  本地化字符串。
+- 新增 Nexus shell、响应式 sidebar/topbar、RTL `fa` 支持、Nexus design
+  tokens/themes，以及基于现有数据源构建的固定 Nexus Overview dashboard。
+- 保持 backend/API/CSRF/CSP surface 不变：没有新增 endpoint、没有新增
+  WebSocket flow、没有 inline script、Nexus source 中没有 external-origin
+  literal，也没有 runtime/dev dependency 变更。
+- 该 beta 已通过 `npm run test`、`npm run lint`、`npm run build`、
+  external-origin gates、supply-chain invariance，以及 LTR `en` 和 RTL `fa`
+  在 desktop、narrow desktop、tablet、mobile 宽度下的 Nexus viewport checks。
+- Release、Windows 与 Docker workflow 的默认 tag 更新为 `v1.5.4-beta1`。
+
 ## [1.5.3] - 2026-05-21 - 稳定版 + Telegram 备份频率 UX
 
 - 将发布线从 `1.5.3-beta` 提升为稳定版 `1.5.3`。

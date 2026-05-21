@@ -38,6 +38,7 @@
         </v-list-item>
       </v-list>
     </v-menu>
+    <ui-mode-control variant="quick" />
   </v-app-bar>
 </template>
 
@@ -46,6 +47,7 @@ import { useLocale, useTheme } from 'vuetify'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { languages, setI18nLocale } from '@/locales'
+import UiModeControl from '@/components/UiModeControl.vue'
 
 defineProps(['isMobile'])
 

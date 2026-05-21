@@ -26,6 +26,11 @@
     </v-row>
     <v-window v-model="tab">
       <v-window-item value="t1">
+        <v-row v-if="showNexusControls">
+          <v-col cols="12" sm="6" md="4">
+            <ui-mode-control variant="select" />
+          </v-col>
+        </v-row>
         <v-row>
           <v-col cols="12" sm="6" md="4">
             <v-text-field v-model="settings.webListen" :label="$t('setting.addr')" hide-details></v-text-field>
@@ -157,6 +162,8 @@
 </template>
 
 <script lang="ts" setup>
+import UiModeControl from '@/components/UiModeControl.vue'
+import { isNexusEnabled } from '@/uiMode/featureGate'
 import { i18n } from '@/locales'
 import { Ref, computed, inject, onMounted, ref } from 'vue'
 import HttpUtils from '@/plugins/httputil'
@@ -166,6 +173,7 @@ import SubClashExtVue from '@/components/SubClashExt.vue'
 import { normalizeSecretFields, stripSecretPlaceholders } from '@/components/settingsSecretField'
 import { push } from 'notivue'
 const tab = ref("t1")
+const showNexusControls = isNexusEnabled()
 const loading:Ref = inject('loading')?? ref(false)
 const oldSettings = ref({})
 

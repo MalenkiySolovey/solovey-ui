@@ -7,6 +7,27 @@
 
 ## Unreleased
 
+## [1.5.4-beta1] — 2026-05-21 — opt-in beta Nexus UI mode
+
+- Добавлен opt-in режим интерфейса `nexus` рядом с существующим
+  `classic`. Classic остаётся дефолтом, а Nexus хранится как
+  per-browser localStorage preference.
+- Добавлены контракт UI mode, kill switch `VITE_ENABLE_NEXUS`,
+  CSP-safe pre-mount anti-FOUC bootstrap, authenticated layout host,
+  контролы переключения режима и локализованные Nexus-строки.
+- Добавлены Nexus shell, responsive sidebar/topbar, поддержка RTL `fa`,
+  Nexus design tokens/themes и фиксированный Nexus Overview dashboard на
+  существующих источниках данных.
+- Backend/API/CSRF/CSP surface сохранён: нет новых endpoint'ов, новых
+  WebSocket-потоков, inline scripts, external-origin literals в Nexus
+  source и runtime/dev dependency changes.
+- Финальная beta проверена через `npm run test`, `npm run lint`,
+  `npm run build`, external-origin gates, supply-chain invariance и
+  Nexus viewport checks для LTR `en` и RTL `fa` на desktop, narrow
+  desktop, tablet и mobile ширинах.
+- Default tag в Release, Windows и Docker workflows обновлён до
+  `v1.5.4-beta1`.
+
 ## [1.5.3] — 2026-05-21 — стабильный релиз + удобное расписание Telegram backup
 
 - Релизная линия повышена с `1.5.3-beta` до стабильной `1.5.3`.

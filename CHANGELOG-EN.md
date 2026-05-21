@@ -7,6 +7,27 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## Unreleased
 
+## [1.5.4-beta1] - 2026-05-21 - Nexus UI mode opt-in beta
+
+- Added the opt-in `nexus` UI mode alongside the existing `classic`
+  interface. Classic remains the default and Nexus is a per-browser
+  localStorage preference.
+- Added the UI mode contract, `VITE_ENABLE_NEXUS` kill switch,
+  CSP-safe pre-mount anti-FOUC bootstrap, authenticated layout host,
+  mode controls and localized Nexus strings.
+- Added the Nexus shell, responsive sidebar/topbar behavior, RTL `fa`
+  support, Nexus design tokens/themes and the fixed Nexus Overview
+  dashboard built from existing data sources.
+- Preserved the backend/API/CSRF/CSP surface: no new endpoints, no new
+  WebSocket flow, no inline scripts, no external-origin Nexus source
+  literals and no runtime/dev dependency changes.
+- Verified the final beta with `npm run test`, `npm run lint`,
+  `npm run build`, external-origin gates, supply-chain invariance and
+  Nexus viewport checks for LTR `en` and RTL `fa` at desktop, narrow
+  desktop, tablet and mobile widths.
+- Release, Windows and Docker workflow dispatch defaults now target
+  `v1.5.4-beta1`.
+
 ## [1.5.3] - 2026-05-21 - stable release + Telegram backup schedule UX
 
 - Promoted the release line from `1.5.3-beta` to stable `1.5.3`.
