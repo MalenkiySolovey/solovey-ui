@@ -73,6 +73,7 @@ export default {
       enabled: "Telegram backup",
       passphrase: "Backup passphrase",
       passphraseHint: "This passphrase encrypts all backups sent to Telegram and optional manual backups from Backup & Restore. Remember it: without it, Telegram files cannot be restored in the panel or locally. Panel restore: upload the file in Backup & Restore and enter this passphrase. Local decrypt: use the main binary subcommand s-ui decrypt-backup.",
+      passphraseMinLength: "Use at least 12 characters.",
       cron: "Backup Cron",
       cronInvalid: "Use a 5-field cron expression; steps must be at least 1 minute.",
       schedule: {

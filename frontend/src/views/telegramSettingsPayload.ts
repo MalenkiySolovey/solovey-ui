@@ -1,3 +1,5 @@
+import { STORED_SECRET_PLACEHOLDER } from '@/components/settingsSecretField'
+
 export type TelegramSettingsMap = Record<string, string>
 
 export const telegramSettingKeys = [
@@ -25,6 +27,14 @@ const telegramSecretSettingKeys = [
   'telegramProxyPassword',
   'telegramBackupPassphrase',
 ]
+
+export const minTelegramBackupPassphraseLength = 12
+
+export const hasWeakTelegramBackupPassphrase = (value: string): boolean => {
+  return value !== ''
+    && value !== STORED_SECRET_PLACEHOLDER
+    && Array.from(value).length < minTelegramBackupPassphraseLength
+}
 
 export const pickTelegramSettings = (source: TelegramSettingsMap): TelegramSettingsMap => {
   const picked: TelegramSettingsMap = {}

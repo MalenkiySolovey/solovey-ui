@@ -117,7 +117,8 @@
               :has-secret="settings.telegramBackupPassphraseHasSecret"
               :label="$t('telegram.backup.passphrase')"
               :disabled="!telegramEnabled"
-              hide-details
+              :error-messages="telegramBackupPassphraseErrors"
+              :hide-details="telegramBackupPassphraseErrors.length === 0"
             />
             <div class="text-caption text-medium-emphasis mt-1">
               {{ $t('telegram.backup.passphraseHint') }}
@@ -199,7 +200,12 @@
       </section>
       <v-row align="center">
         <v-col cols="auto">
-          <v-btn color="primary" :loading="loading" :disabled="!stateChange || telegramBackupScheduleErrors.length > 0" @click="save">
+          <v-btn
+            color="primary"
+            :loading="loading"
+            :disabled="!stateChange || telegramBackupScheduleErrors.length > 0 || telegramBackupPassphraseErrors.length > 0"
+            @click="save"
+          >
             {{ $t('actions.save') }}
           </v-btn>
         </v-col>
@@ -234,7 +240,11 @@ import {
   type TelegramBackupScheduleMode,
   type TelegramBackupScheduleUnit,
 } from '@/views/telegramBackupSchedule'
-import { pickTelegramSettings, type TelegramSettingsMap } from '@/views/telegramSettingsPayload'
+import {
+  hasWeakTelegramBackupPassphrase,
+  pickTelegramSettings,
+  type TelegramSettingsMap,
+} from '@/views/telegramSettingsPayload'
 
 type TelegramResult = {
   success: boolean
@@ -374,6 +384,13 @@ const telegramBackupScheduleErrors = computed(() => {
     .map(error => i18n.global.t('telegram.backup.schedule.errors.' + error))
 })
 
+const telegramBackupPassphraseErrors = computed(() => {
+  if (!hasWeakTelegramBackupPassphrase(settings.value.telegramBackupPassphrase)) {
+    return []
+  }
+  return [i18n.global.t('telegram.backup.passphraseMinLength')]
+})
+
 const syncTelegramBackupScheduleFromCron = (cron: string) => {
   const schedule = parseTelegramBackupSchedule(cron)
   telegramBackupScheduleMode.value = schedule.mode
@@ -394,7 +411,7 @@ const handleTelegramBackupScheduleModeChange = () => {
 }
 
 const save = async () => {
-  if (telegramBackupScheduleErrors.value.length > 0) {
+  if (telegramBackupScheduleErrors.value.length > 0 || telegramBackupPassphraseErrors.value.length > 0) {
     return
   }
   loading.value = true

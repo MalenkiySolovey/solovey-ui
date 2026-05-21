@@ -73,6 +73,7 @@ export default {
       enabled: "Telegram 备份",
       passphrase: "备份密码短语",
       passphraseHint: "此密码短语会加密发送到 Telegram 的所有备份，也可加密 Backup & Restore 中的手动备份。请牢记它：没有它，Telegram 文件无法在面板或本地恢复。面板恢复：在 Backup & Restore 上传文件并输入此密码。 本地解密：使用主程序子命令 s-ui decrypt-backup。",
+      passphraseMinLength: "请至少输入 12 个字符。",
       cron: "备份 Cron",
       cronInvalid: "请使用 5 字段 cron 表达式；步长至少为 1 分钟。",
       schedule: {
