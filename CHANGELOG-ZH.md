@@ -6,6 +6,15 @@
 
 ## 未发布
 
+## [1.5.4-beta2] - 2026-05-21 - Nexus Overview cancel toast hotfix
+
+- 取消重复 frontend read 请求时不再显示 failed notification。Nexus Overview
+  启动时可能触发重叠 dashboard reads，共享 axios dedupe 会按设计取消较旧
+  请求；现在该正常取消不会再以 `CanceledError: canceled` toast 呈现。
+- 新增 frontend regression coverage，确保 cancel 静默处理，同时真实 request
+  error 仍会显示 failed notification。
+- Release、Windows 与 Docker workflow 的默认 tag 更新为 `v1.5.4-beta2`。
+
 ## [1.5.4-beta1] - 2026-05-21 - Nexus UI mode opt-in beta
 
 - 新增可选的 `nexus` UI mode，与现有 `classic` 界面并存。Classic 仍为默认，

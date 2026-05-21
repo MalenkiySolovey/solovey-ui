@@ -1,3 +1,4 @@
+import axios from 'axios'
 import api from './api'
 import { i18n } from '@/locales'
 import router from '@/router'
@@ -59,6 +60,9 @@ function _respToMsg(resp: any): Msg {
 }
 
 function _errorToMsg(error: any): Msg {
+  if (axios.isCancel(error) || error?.code === 'ERR_CANCELED' || error?.name === 'CanceledError') {
+    return { success: false, msg: "", obj: null }
+  }
   if (error?.response?.data) {
     return _respToMsg(error.response)
   }

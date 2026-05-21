@@ -7,6 +7,18 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## Unreleased
 
+## [1.5.4-beta2] - 2026-05-21 - Nexus overview cancel toast hotfix
+
+- Suppressed the failed notification for canceled duplicate frontend
+  reads. Nexus Overview can trigger overlapping dashboard reads during
+  startup, and the shared axios dedupe path intentionally cancels the
+  older request; this is now kept silent instead of surfacing
+  `CanceledError: canceled` as a user-visible toast.
+- Added frontend regression coverage for silent cancellations while
+  keeping failed notifications for real request errors.
+- Release, Windows and Docker workflow dispatch defaults now target
+  `v1.5.4-beta2`.
+
 ## [1.5.4-beta1] - 2026-05-21 - Nexus UI mode opt-in beta
 
 - Added the opt-in `nexus` UI mode alongside the existing `classic`

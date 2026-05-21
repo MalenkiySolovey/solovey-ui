@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v1.5.4-beta1"
+        default: "v1.5.4-beta2"
         type: string
   push:
     tags:
