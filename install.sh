@@ -307,7 +307,7 @@ install_s-ui() {
     cd /tmp/
     artifact_name="s-ui-linux-$(arch).tar.gz"
 
-    if [ $# == 0 ]; then
+    if [[ $# -eq 0 || -z "${1:-}" ]]; then
         last_version=$(curl -Ls "https://api.github.com/repos/deposist/s-ui-x/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         if [[ ! -n "$last_version" ]]; then
             echo -e "${red}$(t rate_limited)${plain}"
@@ -362,4 +362,4 @@ install_s-ui() {
 
 echo -e "${green}$(t running)${plain}"
 install_base
-install_s-ui "$1"
+install_s-ui "$@"
