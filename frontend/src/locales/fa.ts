@@ -432,6 +432,7 @@ export default {
   },
   setting: {
     interface: "نما",
+    maintenance: "Maintenance",
     sub: "سابسکریپشن",
     addr: "آدرس",
     port: "پورت",

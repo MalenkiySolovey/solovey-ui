@@ -432,6 +432,7 @@ export default {
   },
   setting: {
     interface: "Giao diện",
+    maintenance: "Maintenance",
     sub: "Đăng ký",
     addr: "Địa chỉ",
     port: "Cổng",

@@ -435,6 +435,7 @@ export default {
   },
   setting: {
     interface: "Interface",
+    maintenance: "Maintenance",
     sub: "Subscription",
     addr: "Address",
     port: "Port",

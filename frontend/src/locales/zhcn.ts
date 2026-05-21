@@ -435,6 +435,7 @@ export default {
   },
   setting: {
     interface: "界面",
+    maintenance: "Maintenance",
     sub: "订阅",
     addr: "地址",
     port: "端口",
