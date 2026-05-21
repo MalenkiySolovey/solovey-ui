@@ -55,6 +55,26 @@ VALUES
 		"EXPLAIN QUERY PLAN SELECT * FROM audit_events WHERE severity = ? ORDER BY date_time DESC LIMIT 50", "error")
 }
 
+func TestTo16CreatesAuditEventsTableForLegacy14Backups(t *testing.T) {
+	db := openMigrationTestDB(t)
+
+	if err := to1_6(db); err != nil {
+		t.Fatal(err)
+	}
+	if !db.Migrator().HasTable("audit_events") {
+		t.Fatal("audit_events table was not created")
+	}
+	for _, indexName := range []string{"idx_audit_events_event_dt", "idx_audit_events_severity_dt"} {
+		hasIndex, err := sqliteHasIndex(db, "audit_events", indexName)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !hasIndex {
+			t.Fatalf("%s was not created", indexName)
+		}
+	}
+}
+
 func sqliteHasIndex(db *gorm.DB, table string, indexName string) (bool, error) {
 	rows, err := db.Raw("PRAGMA index_list(" + table + ")").Rows()
 	if err != nil {
