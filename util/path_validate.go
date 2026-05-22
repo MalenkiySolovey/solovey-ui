@@ -52,8 +52,8 @@ func hasReservedPathPrefix(path string, prefix string) bool {
 	}
 	path = strings.ToLower(path)
 	prefix = strings.ToLower(prefix)
-	if strings.HasSuffix(prefix, "/") && path == strings.TrimSuffix(prefix, "/") {
-		return true
+	if strings.HasSuffix(prefix, "/") {
+		return path == strings.TrimSuffix(prefix, "/") || strings.HasPrefix(path, prefix)
 	}
-	return strings.HasPrefix(path, prefix)
+	return path == prefix || strings.HasPrefix(path, prefix+"/")
 }

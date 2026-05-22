@@ -7,6 +7,19 @@
 
 ## Unreleased
 
+## [1.5.4-beta5] — 2026-05-22 — hotfix reserved path prefix
+
+- Reserved path validation теперь проверяет framework path без
+  завершающего `/` по границе сегмента пути, а не по любому строковому
+  prefix match.
+- Пользовательские пути вроде `/wsub/` больше не конфликтуют с
+  зарезервированным `/ws`, при этом `/ws`, `/ws/` и дочерние пути под
+  `/ws/` остаются запрещёнными.
+- Добавлено regression coverage для `/ws` boundary behavior при
+  сохранении panel и subscription path settings.
+- Default tag в Release, Windows и Docker workflows обновлён до
+  `v1.5.4-beta5`.
+
 ## [1.5.4-beta4] — 2026-05-22 — bootstrap secretbox key в installer
 
 - Systemd-установки через `install.sh` теперь генерируют стабильный

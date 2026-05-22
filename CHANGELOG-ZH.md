@@ -6,6 +6,17 @@
 
 ## 未发布
 
+## [1.5.4-beta5] - 2026-05-22 - reserved path prefix hotfix
+
+- 对没有尾随 `/` 的 framework path，reserved path validation 现在按路径
+  segment 边界匹配，而不是按任意字符串前缀匹配。
+- `/wsub/` 这类自定义 path 不再与保留的 `/ws` 冲突；`/ws`、`/ws/`
+  以及 `/ws/` 下的子路径仍会被阻止。
+- 新增 `/ws` boundary behavior 的 regression coverage，覆盖保存 panel
+  与 subscription path settings 的校验规则。
+- Release、Windows 与 Docker workflow 的默认 tag 更新为
+  `v1.5.4-beta5`。
+
 ## [1.5.4-beta4] - 2026-05-22 - installer secretbox key bootstrap
 
 - 通过 `install.sh` 的 systemd 安装现在会在没有 installer-managed key

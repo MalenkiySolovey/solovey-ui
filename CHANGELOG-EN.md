@@ -7,6 +7,18 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## Unreleased
 
+## [1.5.4-beta5] - 2026-05-22 - reserved path prefix hotfix
+
+- Reserved path validation now matches slashless framework paths on a
+  path-segment boundary instead of rejecting every string prefix match.
+- Custom paths such as `/wsub/` no longer collide with the reserved
+  `/ws` route, while `/ws`, `/ws/` and descendants under `/ws/` remain
+  blocked.
+- Added regression coverage for the `/ws` boundary behavior used by
+  saved panel and subscription path settings.
+- Release, Windows and Docker workflow dispatch defaults now target
+  `v1.5.4-beta5`.
+
 ## [1.5.4-beta4] - 2026-05-22 - installer secretbox key bootstrap
 
 - Systemd installs through `install.sh` now generate a stable

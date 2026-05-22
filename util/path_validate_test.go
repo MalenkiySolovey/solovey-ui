@@ -15,6 +15,8 @@ func TestValidatePathRejectsUnsafeInput(t *testing.T) {
 		"/api/",
 		"/api/settings",
 		"/ws",
+		"/ws/",
+		"/ws/events/",
 		"/assets/app.js",
 	}
 	for _, path := range tests {
@@ -41,6 +43,8 @@ func TestValidatePathAcceptsSafeInput(t *testing.T) {
 		"/",
 		"/app/",
 		"/panel-v2/",
+		"/wsub/",
+		"/ws-token/",
 	}
 	for _, path := range tests {
 		t.Run(path, func(t *testing.T) {
