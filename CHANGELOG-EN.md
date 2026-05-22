@@ -7,6 +7,16 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## Unreleased
 
+## [1.5.5-beta3] - 2026-05-22 - backup config restore safety for DNS and routing
+
+- Config saves now recreate a missing `settings.config` row, and restore rejects
+  versioned S-UI database backups that already lost that sing-box config instead
+  of accepting an import without DNS and routing rules.
+- Added restore coverage that exports and reimports `settings.config` with DNS
+  servers and routing rules intact.
+- Release, Windows and Docker workflow dispatch defaults now target
+  `v1.5.5-beta3`.
+
 ## [1.5.5-beta2] - 2026-05-22 - backup restore safety for no-TLS inbounds
 
 - Kept backup exports with no-TLS inbounds foreign-key valid by explicitly

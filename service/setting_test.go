@@ -26,6 +26,31 @@ func TestDefaultSettingValueReadsCurrentVersion(t *testing.T) {
 	}
 }
 
+func TestSaveConfigCreatesMissingConfigSetting(t *testing.T) {
+	settingService := initSettingTestDB(t)
+	tx := database.GetDB().Begin()
+	if tx.Error != nil {
+		t.Fatal(tx.Error)
+	}
+
+	config := json.RawMessage(`{"dns":{"servers":[{"tag":"dns-umbrella"}]},"route":{"rules":[{"action":"sniff"}]}}`)
+	if err := settingService.SaveConfig(tx, config); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		t.Fatal(err)
+	}
+
+	var saved string
+	if err := database.GetDB().Model(&model.Setting{}).Select("value").Where("key = ?", "config").Scan(&saved).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(saved, `"dns"`) || !strings.Contains(saved, `"route"`) {
+		t.Fatalf("saved config does not contain DNS and route data: %s", saved)
+	}
+}
+
 func TestGetFinalSubURIOmitsDefaultPorts(t *testing.T) {
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
 	if err := database.InitDB("file::memory:?cache=shared"); err != nil {

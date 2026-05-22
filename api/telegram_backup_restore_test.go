@@ -18,7 +18,7 @@ import (
 )
 
 func TestRestoreEndpointAcceptsPlaintextDatabaseBackup(t *testing.T) {
-	settingService := initSessionTestDB(t)
+	settingService := initRestoreTestDB(t)
 	withNoopSighup(t)
 	if err := setRestoreMarker("plaintext-backup"); err != nil {
 		t.Fatal(err)
@@ -45,7 +45,7 @@ func TestRestoreEndpointAcceptsPlaintextDatabaseBackup(t *testing.T) {
 }
 
 func TestRestoreEndpointDecryptsTelegramBackupEnvelope(t *testing.T) {
-	settingService := initSessionTestDB(t)
+	settingService := initRestoreTestDB(t)
 	withNoopSighup(t)
 	if err := setRestoreMarker("encrypted-backup"); err != nil {
 		t.Fatal(err)
@@ -78,7 +78,7 @@ func TestRestoreEndpointDecryptsTelegramBackupEnvelope(t *testing.T) {
 }
 
 func TestRestoreEndpointRejectsBadTelegramBackupPassphraseWithoutTouchingLiveDB(t *testing.T) {
-	settingService := initSessionTestDB(t)
+	settingService := initRestoreTestDB(t)
 	withNoopSighup(t)
 	if err := setRestoreMarker("encrypted-backup"); err != nil {
 		t.Fatal(err)
@@ -119,6 +119,15 @@ func TestRestoreEndpointRejectsBadTelegramBackupPassphraseWithoutTouchingLiveDB(
 	if strings.Contains(details, "wrong horse") || strings.Contains(details, "correct horse") {
 		t.Fatalf("restore audit leaked passphrase: %s", details)
 	}
+}
+
+func initRestoreTestDB(t *testing.T) *service.SettingService {
+	t.Helper()
+	settingService := initSessionTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	return settingService
 }
 
 func newDatabaseImportRequestWithPassphrase(t *testing.T, content []byte, passphrase string) *http.Request {

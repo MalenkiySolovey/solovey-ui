@@ -7,6 +7,17 @@
 
 ## Unreleased
 
+## [1.5.5-beta3] — 2026-05-22 — безопасность restore backup config для DNS и routing
+
+- Сохранение config теперь пересоздаёт отсутствующую строку
+  `settings.config`, а restore отклоняет versioned backup S-UI, в котором
+  sing-box config уже потерян, вместо успешного импорта без DNS и routing
+  rules.
+- Добавлено restore coverage: экспорт и повторный импорт `settings.config`
+  сохраняют DNS-серверы и routing rules.
+- Default tag в Release, Windows и Docker workflows обновлён до
+  `v1.5.5-beta3`.
+
 ## [1.5.5-beta2] — 2026-05-22 — безопасность restore для no-TLS inbound
 
 - Backup export с no-TLS inbound теперь остаётся foreign-key корректным:

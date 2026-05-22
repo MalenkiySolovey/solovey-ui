@@ -6,6 +6,16 @@
 
 ## 未发布
 
+## [1.5.5-beta3] - 2026-05-22 - DNS 与路由 backup config 的恢复安全性
+
+- 保存 config 时现在会补回缺失的 `settings.config` 行；restore 会拒绝已经
+  丢失该 sing-box config 的 versioned S-UI 数据库备份，而不是成功导入一个
+  没有 DNS 和路由规则的数据库。
+- 新增 restore 回归覆盖，确认导出并重新导入 `settings.config` 后 DNS
+  服务器和路由规则仍然保留。
+- Release、Windows 与 Docker workflow 的默认 tag 更新为
+  `v1.5.5-beta3`。
+
 ## [1.5.5-beta2] - 2026-05-22 - no-TLS inbound 的备份恢复安全性
 
 - 备份导出现在会显式保留 no-TLS inbound 的 `tls(id=0)` 哨兵行，确保

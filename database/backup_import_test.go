@@ -61,6 +61,9 @@ func newLegacyBackup(t *testing.T) []byte {
 	if err := legacy.Create(&model.Setting{Key: "version", Value: "1.4.1"}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := legacy.Create(&model.Setting{Key: "config", Value: `{"dns":{},"route":{}}`}).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	if sqlDB, err := legacy.DB(); err == nil {
 		_ = sqlDB.Close()
@@ -92,6 +95,9 @@ func TestImportDBRunsResetHooks(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
+	if err := GetDB().Create(&model.Setting{Key: "config", Value: `{"dns":{},"route":{}}`}).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	prev := sendSighupHook
 	sendSighupHook = func() error { return nil }
@@ -116,6 +122,77 @@ func TestImportDBRunsResetHooks(t *testing.T) {
 	}
 	if got := calls.Load(); got != 1 {
 		t.Fatalf("reset hook calls=%d, want 1", got)
+	}
+}
+
+func TestImportDBPreservesConfigDNSAndRouteRules(t *testing.T) {
+	dbDir, err := os.MkdirTemp("", "s-ui-import-config-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	livePath := filepath.Join(dbDir, "s-ui.db")
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	t.Cleanup(func() {
+		closeMainDB(t)
+		time.Sleep(25 * time.Millisecond)
+		_ = os.RemoveAll(dbDir)
+	})
+
+	if err := InitDB(livePath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+
+	prev := sendSighupHook
+	sendSighupHook = func() error { return nil }
+	t.Cleanup(func() { sendSighupHook = prev })
+
+	const restoredConfig = `{
+  "dns": {
+    "servers": [
+      {
+        "tag": "dns-umbrella",
+        "type": "udp",
+        "server": "208.67.222.222"
+      }
+    ]
+  },
+  "route": {
+    "rules": [
+      {
+        "domain_suffix": [
+          "example.test"
+        ],
+        "action": "route",
+        "outbound": "direct"
+      }
+    ]
+  }
+}`
+	if err := GetDB().Create(&model.Setting{Key: "config", Value: restoredConfig}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	backupBytes, err := GetDb("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := GetDB().Model(&model.Setting{}).Where("key = ?", "config").Update("value", `{"dns":{},"route":{}}`).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := ImportDB(memMultipartFile{Reader: bytes.NewReader(backupBytes)}); err != nil {
+		t.Fatalf("ImportDB returned error: %v", err)
+	}
+
+	var config string
+	if err := GetDB().Model(&model.Setting{}).Select("value").Where("key = ?", "config").Scan(&config).Error; err != nil {
+		t.Fatal(err)
+	}
+	if config != restoredConfig {
+		t.Fatalf("imported config=%q, want %q", config, restoredConfig)
 	}
 }
 
@@ -231,6 +308,41 @@ func TestImportDBRejectsCorruptSQLiteBackup(t *testing.T) {
 	}
 }
 
+func TestImportDBRejectsVersionedBackupWithoutConfig(t *testing.T) {
+	dbDir := t.TempDir()
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	livePath := filepath.Join(dbDir, "s-ui.db")
+	if err := InitDB(livePath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+			_ = os.Remove(livePath + suffix)
+		}
+	})
+
+	if err := GetDB().Create(&model.Setting{Key: "restore_marker", Value: "live-before-import"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	err := ImportDB(memMultipartFile{Reader: bytes.NewReader(newVersionedBackupWithoutConfig(t))})
+	if err == nil || !strings.Contains(err.Error(), "settings.config") {
+		t.Fatalf("expected missing settings.config import failure, got %v", err)
+	}
+
+	var marker string
+	if err := GetDB().Model(&model.Setting{}).Select("value").Where("key = ?", "restore_marker").Scan(&marker).Error; err != nil {
+		t.Fatal(err)
+	}
+	if marker != "live-before-import" {
+		t.Fatalf("live db marker=%q, want live-before-import", marker)
+	}
+}
+
 func TestImportDBRollsBackForeignKeyFailureAndReopensLiveDB(t *testing.T) {
 	dbDir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", dbDir)
@@ -287,6 +399,9 @@ func newForeignKeyBrokenBackup(t *testing.T) []byte {
 	if err := broken.Create(&model.Setting{Key: "version", Value: config.GetVersion()}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := broken.Create(&model.Setting{Key: "config", Value: `{"dns":{},"route":{}}`}).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := broken.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
 		t.Fatal(err)
 	}
@@ -297,6 +412,30 @@ VALUES(?, ?, ?, ?, ?, ?)
 		t.Fatal(err)
 	}
 	if sqlDB, err := broken.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
+}
+
+func newVersionedBackupWithoutConfig(t *testing.T) []byte {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "missing-config.db")
+	backup, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := backup.AutoMigrate(&model.Setting{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := backup.Create(&model.Setting{Key: "version", Value: config.GetVersion()}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if sqlDB, err := backup.DB(); err == nil {
 		_ = sqlDB.Close()
 	}
 	data, err := os.ReadFile(path)

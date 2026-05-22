@@ -117,6 +117,9 @@ func initRestoreEndpointTestDB(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
+	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
 	database.SetSendSighupHook(func() error { return nil })
 	t.Cleanup(func() { database.SetSendSighupHook(nil) })
 	t.Cleanup(func() {

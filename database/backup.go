@@ -372,6 +372,32 @@ func validateSQLiteBackup(path string) error {
 	if result != "ok" {
 		return common.NewErrorf("Invalid db integrity: %s", result)
 	}
+	if err := validateVersionedBackupConfig(probe); err != nil {
+		return err
+	}
+	return nil
+}
+
+func validateVersionedBackupConfig(probe *gorm.DB) error {
+	if !probe.Migrator().HasTable(&model.Setting{}) {
+		return nil
+	}
+
+	var version string
+	if err := probe.Model(&model.Setting{}).Select("value").Where("key = ?", "version").Scan(&version).Error; err != nil {
+		return common.NewErrorf("Error checking db settings: %v", err)
+	}
+	if strings.TrimSpace(version) == "" {
+		return nil
+	}
+
+	var configRows int64
+	if err := probe.Model(&model.Setting{}).Where("key = ?", "config").Count(&configRows).Error; err != nil {
+		return common.NewErrorf("Error checking db config: %v", err)
+	}
+	if configRows == 0 {
+		return common.NewError("Invalid db backup: versioned S-UI database is missing settings.config")
+	}
 	return nil
 }
 
