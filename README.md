@@ -138,10 +138,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Run `install-windows.bat` as Administrator.
 4. Follow the installation wizard.
 
-## Install v1.5.4
+## Install v1.5.5-beta2 Prerelease
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.4
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.5-beta2
 ```
 
 Or from a local clone:
@@ -149,7 +149,7 @@ Or from a local clone:
 ```sh
 git clone https://github.com/deposist/s-ui-x.git
 cd s-ui-x
-sudo bash install.sh v1.5.4
+sudo bash install.sh v1.5.5-beta2
 ```
 
 The installer is fully compatible with existing installations: settings,
@@ -492,10 +492,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Запустите `install-windows.bat` от имени администратора.
 4. Следуйте инструкциям мастера установки.
 
-## Установка v1.5.4
+## Установка prerelease v1.5.5-beta2
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.4
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.5-beta2
 ```
 
 Или из локального клона:
@@ -503,7 +503,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 ```sh
 git clone https://github.com/deposist/s-ui-x.git
 cd s-ui-x
-sudo bash install.sh v1.5.4
+sudo bash install.sh v1.5.5-beta2
 ```
 
 Установщик полностью совместим с уже работающими установками: настройки,
