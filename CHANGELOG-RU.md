@@ -7,6 +7,27 @@
 
 ## Unreleased
 
+## [1.5.5-beta1] — 2026-05-22 — корректность subscription для общего VLESS UUID и Clash WS Host
+
+- Из не-TCP транспортов снимается VLESS-флаг `xtls-rprx-vision`, когда
+  один UUID шарится между несколькими inbound. Затрагивает panel
+  sing-box config (`fetchUsersByCondition`), JSON-подписку
+  (`sub/jsonService.go`) и shareable-ссылки (`vlessLink`). Соответствует
+  TCP-only-контракту Xray-core, чтобы TCP+REALITY inbound и gRPC+TLS
+  (или WS) inbound могли обслуживать один UUID без поломки не-TCP
+  стороны (alireza0/s-ui#1127).
+- В Clash `ws-opts.headers` снова попадает WebSocket `Host`. Прежний
+  cast в `[]interface{}` молча отбрасывал map-структуру header, из-за
+  чего у Mihomo handshake падал за строгими CDN / Nginx. Также добавлен
+  fallback на TLS `server_name`, если явный Host не задан, чтобы
+  upstream всегда видел Host, совпадающий с SNI
+  (alireza0/s-ui#1126).
+- Добавлено regression coverage в `service/inbounds_vless_flow_test.go`,
+  `util/genLink_vless_flow_test.go` и
+  `sub/clashService_ws_host_test.go`.
+- Default tag в Release, Windows и Docker workflows обновлён до
+  `v1.5.5-beta1`.
+
 ## [1.5.4] — 2026-05-22 — stable Nexus UI + localization cleanup
 
 - Линейка `1.5.4-beta1` — `1.5.4-beta5` повышена до стабильной `1.5.4`.

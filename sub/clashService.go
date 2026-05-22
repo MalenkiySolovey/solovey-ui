@@ -303,8 +303,37 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 				if path, ok := transport["path"].(string); ok {
 					wsOpts["path"] = path
 				}
-				if headers, ok := transport["headers"].([]interface{}); ok {
-					wsOpts["headers"] = headers
+				// `transport.headers` is a map of header name to value
+				// (mirrors the sing-box outbound shape produced elsewhere
+				// in this codebase, e.g. util/linkToJson.go). The previous
+				// `[]interface{}` cast always failed silently and dropped
+				// the Host header, which broke Mihomo through strict CDNs
+				// that require Host on the WS handshake (issue #1126).
+				headersMap := make(map[string]interface{})
+				if headers, ok := transport["headers"].(map[string]interface{}); ok {
+					for k, v := range headers {
+						if s, ok := v.(string); ok {
+							headersMap[k] = s
+						} else if arr, ok := v.([]interface{}); ok && len(arr) > 0 {
+							if s, ok := arr[0].(string); ok {
+								headersMap[k] = s
+							}
+						}
+					}
+				}
+				// Backfill Host from TLS server_name when the inbound
+				// did not set an explicit Host header. Strict reverse
+				// proxies / CDNs match the upstream by Host, and falling
+				// back to the SNI is what other Clash exporters do.
+				if _, hasHost := headersMap["Host"]; !hasHost {
+					if tlsBlock, ok := obMap["tls"].(map[string]interface{}); ok {
+						if sni, ok := tlsBlock["server_name"].(string); ok && sni != "" {
+							headersMap["Host"] = sni
+						}
+					}
+				}
+				if len(headersMap) > 0 {
+					wsOpts["headers"] = headersMap
 				}
 				if ed, ok := transport["early_data_header_name"].(string); ok {
 					wsOpts["early-data-header-name"] = ed

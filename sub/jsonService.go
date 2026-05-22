@@ -161,9 +161,25 @@ func (j *JsonService) getOutbounds(clientConfig json.RawMessage, inbounds []*mod
 			userPass = append(userPass, pass)
 			outbound["password"] = strings.Join(userPass, ":")
 		} else { // Other protocols
+			// Drop user-level `flow` when the inbound transport is not
+			// plain TCP. Xray-core only accepts `xtls-rprx-vision` over
+			// TCP and rejects the connection on any other transport
+			// (issue #1127). Detect transport type from the merged
+			// outbound JSON so the same UUID can be reused across vless
+			// inbounds with different transports.
+			stripFlow := false
+			if protocol == "vless" {
+				if inData.TlsId == 0 {
+					stripFlow = true
+				} else if tr, ok := outbound["transport"].(map[string]interface{}); ok {
+					if tt, _ := tr["type"].(string); tt != "" && tt != "tcp" {
+						stripFlow = true
+					}
+				}
+			}
 			config, _ := configs[protocol].(map[string]interface{})
 			for key, value := range config {
-				if key == "name" || key == "alterId" || (key == "flow" && inData.TlsId == 0) {
+				if key == "name" || key == "alterId" || (key == "flow" && (inData.TlsId == 0 || stripFlow)) {
 					continue
 				}
 				outbound[key] = value

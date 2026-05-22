@@ -7,6 +7,27 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## Unreleased
 
+## [1.5.5-beta1] - 2026-05-22 - subscription correctness for shared VLESS UUID and Clash WS Host
+
+- Stripped `xtls-rprx-vision` flow from non-TCP transports when the same
+  client UUID is shared across multiple VLESS inbounds. Affects panel
+  sing-box config (`fetchUsersByCondition`), JSON subscription
+  (`sub/jsonService.go`) and shareable links (`vlessLink`). Aligns with
+  Xray-core's TCP-only flow contract so a TCP+REALITY inbound and a
+  gRPC+TLS (or WS) inbound can serve the same UUID without breaking the
+  non-TCP one (alireza0/s-ui#1127).
+- Fixed Clash `ws-opts.headers` so the WebSocket `Host` header is
+  emitted again. The previous `[]interface{}` cast against a
+  map-shaped header silently dropped it, causing Mihomo handshake
+  failures through strict CDN / Nginx upstreams. The exporter also
+  falls back to TLS `server_name` when no explicit Host is set so the
+  upstream always sees a Host that matches the SNI
+  (alireza0/s-ui#1126).
+- Added regression coverage in `service/inbounds_vless_flow_test.go`,
+  `util/genLink_vless_flow_test.go` and `sub/clashService_ws_host_test.go`.
+- Release, Windows and Docker workflow dispatch defaults now target
+  `v1.5.5-beta1`.
+
 ## [1.5.4] - 2026-05-22 - stable Nexus UI line + localization cleanup
 
 - Promoted `1.5.4-beta1` through `1.5.4-beta5` to stable `1.5.4`.

@@ -6,6 +6,26 @@
 
 ## 未发布
 
+## [1.5.5-beta1] - 2026-05-22 - 共享 VLESS UUID 与 Clash WS Host 的订阅正确性
+
+- 当同一个 client UUID 被多个 VLESS inbound 共用时，将
+  `xtls-rprx-vision` flow 从非 TCP 传输中剥离。涉及面板 sing-box
+  config（`fetchUsersByCondition`）、JSON 订阅
+  （`sub/jsonService.go`）以及可分享链接（`vlessLink`）。与
+  Xray-core 仅允许在 TCP 上使用该 flow 的契约一致，因此 TCP+REALITY
+  inbound 与 gRPC+TLS（或 WS）inbound 可以共用同一个 UUID，不再破坏
+  非 TCP 一侧（alireza0/s-ui#1127）。
+- 修复 Clash `ws-opts.headers` 不再丢失 WebSocket `Host`。之前对 map
+  结构的 header 使用 `[]interface{}` 类型断言会静默丢弃 header，导致
+  Mihomo 经过严格 CDN / Nginx 上游时握手失败。当未显式设置 Host 时，
+  导出器现在会回退到 TLS `server_name`，确保上游看到的 Host 与 SNI
+  匹配（alireza0/s-ui#1126）。
+- 在 `service/inbounds_vless_flow_test.go`、
+  `util/genLink_vless_flow_test.go` 与
+  `sub/clashService_ws_host_test.go` 中新增 regression coverage。
+- Release、Windows 与 Docker workflow 的默认 tag 更新为
+  `v1.5.5-beta1`。
+
 ## [1.5.4] - 2026-05-22 - stable Nexus UI line + localization cleanup
 
 - 将 `1.5.4-beta1` 到 `1.5.4-beta5` 提升为稳定版 `1.5.4`。

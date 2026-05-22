@@ -415,12 +415,23 @@ func vlessLink(
 	baseParams := getTransportParams(inbound["transport"])
 	var links []string
 
+	// `xtls-rprx-vision` is strictly TCP. Emitting it on a vless link
+	// whose transport is grpc / ws / http / httpupgrade makes Xray-core
+	// reject the connection on the client side (issue #1127). Decide
+	// once per inbound so we never produce a self-broken link.
+	transportType := "tcp"
+	if tr, ok := inbound["transport"].(map[string]interface{}); ok {
+		if tt, _ := tr["type"].(string); tt != "" {
+			transportType = tt
+		}
+	}
+
 	for _, addr := range addrs {
 		params := make([]LinkParam, len(baseParams))
 		copy(params, baseParams)
 		if tls, ok := addr["tls"].(map[string]interface{}); ok && tls["enabled"].(bool) {
 			getTlsParams(&params, tls, "allowInsecure")
-			if flow, ok := userConfig["flow"].(string); ok {
+			if flow, ok := userConfig["flow"].(string); ok && flow != "" && transportType == "tcp" {
 				params = append(params, LinkParam{"flow", flow})
 			}
 		}

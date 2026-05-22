@@ -390,9 +390,25 @@ func (s *InboundService) fetchUsersByCondition(db *gorm.DB, inboundType string, 
 	if err != nil {
 		return nil, err
 	}
+	// `xtls-rprx-vision` is strictly TCP. Xray-core rejects any vless
+	// inbound that advertises the flow over a non-TCP transport (grpc,
+	// ws, http, httpupgrade, ...) or without TLS. Strip the flow string
+	// here so a single client UUID can be reused across multiple vless
+	// inbounds with different transports without breaking the non-TCP
+	// inbound (issue #1127).
+	stripVisionFlow := false
+	if inboundType == "vless" {
+		if inbound["tls"] == nil {
+			stripVisionFlow = true
+		} else if transport, ok := inbound["transport"].(map[string]interface{}); ok {
+			if tt, _ := transport["type"].(string); tt != "" && tt != "tcp" {
+				stripVisionFlow = true
+			}
+		}
+	}
 	var usersJson []json.RawMessage
 	for _, user := range users {
-		if inboundType == "vless" && inbound["tls"] == nil {
+		if stripVisionFlow {
 			user = strings.Replace(user, "xtls-rprx-vision", "", -1)
 		}
 		usersJson = append(usersJson, json.RawMessage(user))
