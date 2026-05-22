@@ -24,7 +24,7 @@
 
 Advanced Web panel built on `SagerNet/Sing-Box`.
 
-**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.4`).
+**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.5-beta1`).
 
 **This fork keeps the original project structure and updates the user-facing documentation and installation links for this repository. You can use the scripts from this repository directly, or fork and build the project yourself.**
 
@@ -42,6 +42,7 @@ Short summary of recent versions:
 
 | Version | One-line summary |
 | --- | --- |
+| `1.5.5-beta1` | Subscription correctness prerelease: strips VLESS `xtls-rprx-vision` flow from non-TCP transports when a UUID is shared across inbounds and restores Clash WebSocket `Host` headers with TLS `server_name` fallback. |
 | `1.5.4` | Stable release of the 1.5.4 line: promotes the Nexus UI beta line, installer secretbox bootstrap and reserved-path hotfixes, and finishes the Persian, Vietnamese, Chinese and Russian localization pass. |
 | `1.5.4-beta5` | Reserved-path hotfix: custom paths such as `/wsub/` no longer false-collide with the reserved `/ws` route, while real `/ws/` descendants stay blocked. |
 | `1.5.4-beta4` | Systemd installer bootstrap for encrypted settings: `install.sh` generates a stable root-only `SUI_SECRETBOX_KEY`, shows the generated value once, loads it through a drop-in and preserves it on upgrade. |
@@ -376,7 +377,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 Продвинутая Web-панель, построенная на базе `SagerNet/Sing-Box`.
 
-**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.4`).
+**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.5-beta1`).
 
 **Этот fork сохраняет структуру оригинального проекта и обновляет пользовательскую документацию и ссылки установки для этого репозитория. Вы можете напрямую использовать скрипты из этого репозитория или сделать fork и собрать проект самостоятельно.**
 
@@ -394,6 +395,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 | Версия | Однострочное описание |
 | --- | --- |
+| `1.5.5-beta1` | Prerelease корректности subscription: снимает VLESS `xtls-rprx-vision` flow с не-TCP транспортов при общем UUID на нескольких inbound и возвращает Clash WebSocket `Host` headers с fallback на TLS `server_name`. |
 | `1.5.4` | Стабильный релиз линейки 1.5.4: повышает Nexus UI beta-линию, bootstrap secretbox key в installer и reserved-path hotfixes, а также завершает проход по Persian, Vietnamese, Chinese и Russian локализациям. |
 | `1.5.4-beta5` | Hotfix reserved paths: пользовательские пути вроде `/wsub/` больше не получают ложный конфликт с зарезервированным `/ws`, а настоящие дочерние `/ws/` пути всё ещё блокируются. |
 | `1.5.4-beta4` | Bootstrap зашифрованных настроек в systemd installer: `install.sh` генерирует стабильный root-only `SUI_SECRETBOX_KEY`, один раз показывает значение, подключает его через drop-in и сохраняет при обновлении. |
