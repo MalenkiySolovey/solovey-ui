@@ -6,6 +6,21 @@
 
 ## 未发布
 
+## [1.5.5-beta2] - 2026-05-22 - no-TLS inbound 的备份恢复安全性
+
+- 备份导出现在会显式保留 no-TLS inbound 的 `tls(id=0)` 哨兵行，确保
+  `tls_id=0` 的 foreign key 在备份中仍然有效。
+- Restore 会在 migration foreign-key check 之前补回该 no-TLS parent，
+  因此这个 prerelease 之前生成的备份不再应因
+  `Foreign key check failed: inbounds=1` 被拒绝。
+- 当数据库导入失败时，rollback 后会重新打开 live DB，而不是让运行中的
+  panel 持有已关闭的 DB handle；SQLite sessions 在 swap 后跟随当前 DB，
+  settings 在 DB 短暂不可用时也会返回错误而不是 panic。
+- 新增 regression coverage，覆盖 no-TLS backup foreign key、migration
+  sentinel repair，以及 restore 被拒绝后的 rollback/reopen。
+- Release、Windows 与 Docker workflow 的默认 tag 更新为
+  `v1.5.5-beta2`。
+
 ## [1.5.5-beta1] - 2026-05-22 - 共享 VLESS UUID 与 Clash WS Host 的订阅正确性
 
 - 当同一个 client UUID 被多个 VLESS inbound 共用时，将

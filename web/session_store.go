@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/deposist/s-ui-x/database"
 	ginsessions "github.com/gin-contrib/sessions"
 	"github.com/gorilla/securecookie"
 	gsessions "github.com/gorilla/sessions"
@@ -114,7 +115,7 @@ func (s *SQLiteSessionStore) Save(_ *http.Request, w http.ResponseWriter, sessio
 }
 
 func (s *SQLiteSessionStore) ensureSchema() error {
-	if err := s.db.Exec(`
+	if err := s.liveDB().Exec(`
 CREATE TABLE IF NOT EXISTS sessions (
 	id TEXT PRIMARY KEY,
 	data BLOB NOT NULL,
@@ -122,7 +123,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 )`).Error; err != nil {
 		return err
 	}
-	return s.db.Exec("CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)").Error
+	return s.liveDB().Exec("CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)").Error
 }
 
 func (s *SQLiteSessionStore) save(session *gsessions.Session) error {
@@ -134,7 +135,7 @@ func (s *SQLiteSessionStore) save(session *gsessions.Session) error {
 	if session.Options.MaxAge > 0 {
 		expiresAt = s.now().Add(time.Duration(session.Options.MaxAge) * time.Second).Unix()
 	}
-	return s.db.Exec(`
+	return s.liveDB().Exec(`
 INSERT INTO sessions(id, data, expires_at)
 VALUES(?, ?, ?)
 ON CONFLICT(id) DO UPDATE SET data = excluded.data, expires_at = excluded.expires_at
@@ -143,7 +144,7 @@ ON CONFLICT(id) DO UPDATE SET data = excluded.data, expires_at = excluded.expire
 
 func (s *SQLiteSessionStore) load(session *gsessions.Session) (bool, error) {
 	var row sqliteSessionRow
-	err := s.db.Table("sessions").Where("id = ?", session.ID).First(&row).Error
+	err := s.liveDB().Table("sessions").Where("id = ?", session.ID).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return false, nil
 	}
@@ -163,7 +164,14 @@ func (s *SQLiteSessionStore) load(session *gsessions.Session) (bool, error) {
 }
 
 func (s *SQLiteSessionStore) erase(id string) error {
-	return s.db.Exec("DELETE FROM sessions WHERE id = ?", id).Error
+	return s.liveDB().Exec("DELETE FROM sessions WHERE id = ?", id).Error
+}
+
+func (s *SQLiteSessionStore) liveDB() *gorm.DB {
+	if live := database.GetDB(); live != nil {
+		return live
+	}
+	return s.db
 }
 
 func (s *SQLiteSessionStore) currentOptions() *gsessions.Options {

@@ -75,6 +75,52 @@ func TestVerifyForeignKeysFailsFastWithoutRepair(t *testing.T) {
 	}
 }
 
+func TestEnsureNoTLSForeignKeyParentRepairsNoTLSInbound(t *testing.T) {
+	db := openForeignKeyTestDB(t)
+	if err := db.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`
+CREATE TABLE tls(
+	id integer PRIMARY KEY AUTOINCREMENT,
+	name text,
+	server blob,
+	client blob
+)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`
+CREATE TABLE inbounds(
+	id integer PRIMARY KEY AUTOINCREMENT,
+	tag text,
+	tls_id integer,
+	FOREIGN KEY(tls_id) REFERENCES tls(id)
+)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("INSERT INTO inbounds(tag, tls_id) VALUES(?, ?)", "no-tls", 0).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	before, err := foreignKeyViolations(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(before) != 1 || before[0].Table != "inbounds" {
+		t.Fatalf("expected one no-TLS inbound violation before repair, got %#v", before)
+	}
+	if err := ensureNoTLSForeignKeyParent(db); err != nil {
+		t.Fatal(err)
+	}
+	after, err := foreignKeyViolations(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(after) != 0 {
+		t.Fatalf("foreign-key violations remained after no-TLS parent repair: %#v", after)
+	}
+}
+
 func openForeignKeyTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
 	name := strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())

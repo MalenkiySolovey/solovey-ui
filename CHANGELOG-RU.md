@@ -7,6 +7,23 @@
 
 ## Unreleased
 
+## [1.5.5-beta2] — 2026-05-22 — безопасность restore для no-TLS inbound
+
+- Backup export с no-TLS inbound теперь остаётся foreign-key корректным:
+  служебная строка `tls(id=0)`, на которую ссылаются `tls_id=0`, сохраняется
+  явно.
+- Restore восстанавливает этого no-TLS foreign-key parent до migration check,
+  поэтому backup, созданный до этого prerelease, больше не должен падать с
+  `Foreign key check failed: inbounds=1`.
+- При отказе импорта live DB после rollback переоткрывается вместо того,
+  чтобы оставить работающую панель с закрытым DB handle; SQLite sessions
+  берут актуальную БД после swap, а чтение settings штатно возвращает ошибку,
+  если БД кратко недоступна.
+- Добавлено regression coverage для FK-valid no-TLS backup, repair no-TLS
+  migration sentinel и rollback/reopen после отклонённого restore.
+- Default tag в Release, Windows и Docker workflows обновлён до
+  `v1.5.5-beta2`.
+
 ## [1.5.5-beta1] — 2026-05-22 — корректность subscription для общего VLESS UUID и Clash WS Host
 
 - Из не-TCP транспортов снимается VLESS-флаг `xtls-rprx-vision`, когда

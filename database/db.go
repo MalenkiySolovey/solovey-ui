@@ -184,7 +184,14 @@ func ensureDefaultOutbound(store defaultOutboundStore) error {
 }
 
 func ensureNoTLSRow() error {
-	return db.Exec("INSERT OR IGNORE INTO tls(id, name, server, client) VALUES(0, ?, ?, ?)", "__none__", []byte("{}"), []byte("{}")).Error
+	return ensureNoTLSRowOn(db)
+}
+
+func ensureNoTLSRowOn(target *gorm.DB) error {
+	if target == nil {
+		return nil
+	}
+	return target.Exec("INSERT OR IGNORE INTO tls(id, name, server, client) VALUES(0, ?, ?, ?)", "__none__", []byte("{}"), []byte("{}")).Error
 }
 
 func ensureIndexes() error {

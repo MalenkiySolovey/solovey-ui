@@ -47,6 +47,9 @@ func MigrateDbWithOptions(options Options) error {
 	}
 	defer sqlDB.Close()
 
+	if err := ensureNoTLSForeignKeyParent(db); err != nil {
+		return err
+	}
 	if err := verifyForeignKeysBeforeMigration(db, options); err != nil {
 		return err
 	}
@@ -209,6 +212,18 @@ func verifyForeignKeysBeforeMigration(db *gorm.DB, options Options) error {
 	fmt.Printf("Foreign key repair deleted %d safe token orphan(s)\n", repaired)
 	if err := recordForeignKeyAudit(db, violations, true); err != nil {
 		fmt.Println("Warning: foreign-key repair audit event skipped:", err)
+	}
+	return nil
+}
+
+func ensureNoTLSForeignKeyParent(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&model.Tls{}) ||
+		!db.Migrator().HasColumn(&model.Tls{}, "server") ||
+		!db.Migrator().HasColumn(&model.Tls{}, "client") {
+		return nil
+	}
+	if err := db.Exec("INSERT OR IGNORE INTO tls(id, name, server, client) VALUES(0, ?, ?, ?)", "__none__", []byte("{}"), []byte("{}")).Error; err != nil {
+		return fmt.Errorf("ensure no-tls foreign key parent: %w", err)
 	}
 	return nil
 }

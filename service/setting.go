@@ -167,6 +167,9 @@ func (s *SettingService) ResetSettings() error {
 
 func (s *SettingService) getSetting(key string) (*model.Setting, error) {
 	db := database.GetDB()
+	if db == nil {
+		return nil, common.NewError("database is not initialized")
+	}
 	setting := &model.Setting{}
 	err := db.Model(model.Setting{}).Where("key = ?", key).First(setting).Error
 	if err != nil {

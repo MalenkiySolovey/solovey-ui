@@ -99,6 +99,66 @@ func TestGetDbIncludesServicesAndTokens(t *testing.T) {
 	}
 }
 
+func TestGetDbPreservesNoTLSForeignKeySentinel(t *testing.T) {
+	dbDir := t.TempDir()
+	dbPath := filepath.Join(dbDir, "s-ui.db")
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	if err := InitDB(dbPath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		cleanupBackupSidecars(dbPath)
+	})
+
+	if err := GetDB().Create(&model.Inbound{
+		Type:    "http",
+		Tag:     "backup-no-tls",
+		Addrs:   []byte("[]"),
+		OutJson: []byte("{}"),
+		Options: []byte("{}"),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	backup, err := GetDb("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	backupPath := filepath.Join(t.TempDir(), "backup.db")
+	if err := os.WriteFile(backupPath, backup, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	backupDB, err := gorm.Open(sqlite.Open(backupPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if sqlDB, err := backupDB.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+		cleanupBackupSidecars(backupPath)
+	})
+
+	var noTLSRows int64
+	if err := backupDB.Table("tls").Where("id = ?", 0).Count(&noTLSRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if noTLSRows != 1 {
+		t.Fatalf("backup tls.id=0 rows=%d, want 1", noTLSRows)
+	}
+	var violations int64
+	if err := backupDB.Raw("SELECT COUNT(*) FROM pragma_foreign_key_check").Scan(&violations).Error; err != nil {
+		t.Fatal(err)
+	}
+	if violations != 0 {
+		t.Fatalf("backup foreign key violations=%d, want 0", violations)
+	}
+}
+
 func TestGetDbUsesRandomTempPathAndRemovesIt(t *testing.T) {
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
 	if err := InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {

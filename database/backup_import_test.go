@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/deposist/s-ui-x/config"
 	"github.com/deposist/s-ui-x/database/model"
 	"github.com/deposist/s-ui-x/util/common"
 
@@ -228,6 +229,81 @@ func TestImportDBRejectsCorruptSQLiteBackup(t *testing.T) {
 	if err := ImportDB(memMultipartFile{Reader: bytes.NewReader(corrupt)}); err == nil {
 		t.Fatal("corrupt sqlite backup should be rejected")
 	}
+}
+
+func TestImportDBRollsBackForeignKeyFailureAndReopensLiveDB(t *testing.T) {
+	dbDir := t.TempDir()
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	livePath := filepath.Join(dbDir, "s-ui.db")
+	if err := InitDB(livePath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		for _, suffix := range []string{"", "-wal", "-shm", "-journal"} {
+			_ = os.Remove(livePath + suffix)
+		}
+	})
+
+	if err := GetDB().Create(&model.Setting{Key: "restore_marker", Value: "live-before-import"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	err := ImportDB(memMultipartFile{Reader: bytes.NewReader(newForeignKeyBrokenBackup(t))})
+	if err == nil || !strings.Contains(err.Error(), "foreign key check failed") {
+		t.Fatalf("expected foreign key import failure, got %v", err)
+	}
+	if GetDB() == nil {
+		t.Fatal("GetDB returned nil after failed import rollback")
+	}
+	if sqlDB, dbErr := GetDB().DB(); dbErr != nil {
+		t.Fatalf("live db handle after rollback: %v", dbErr)
+	} else if pingErr := sqlDB.Ping(); pingErr != nil {
+		t.Fatalf("live db was not reopened after rollback: %v", pingErr)
+	}
+	var marker string
+	if err := GetDB().Model(&model.Setting{}).Select("value").Where("key = ?", "restore_marker").Scan(&marker).Error; err != nil {
+		t.Fatal(err)
+	}
+	if marker != "live-before-import" {
+		t.Fatalf("rollback marker=%q, want live-before-import", marker)
+	}
+}
+
+func newForeignKeyBrokenBackup(t *testing.T) []byte {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "broken-fk.db")
+	broken, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := broken.AutoMigrate(&model.Setting{}, &model.Tls{}, &model.Inbound{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := broken.Create(&model.Setting{Key: "version", Value: config.GetVersion()}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := broken.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := broken.Exec(`
+INSERT INTO inbounds(type, tag, tls_id, addrs, out_json, options)
+VALUES(?, ?, ?, ?, ?, ?)
+`, "http", "broken-fk", 99, []byte("[]"), []byte("{}"), []byte("{}")).Error; err != nil {
+		t.Fatal(err)
+	}
+	if sqlDB, err := broken.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }
 
 // _ keeps io referenced when nothing else uses it.

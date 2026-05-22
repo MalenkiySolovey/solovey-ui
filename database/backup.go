@@ -96,6 +96,12 @@ func GetDb(exclude string) ([]byte, error) {
 			return nil, err
 		}
 	}
+	// A no-TLS inbound points at tls.id=0. GORM treats a zero primary key as
+	// unset during row copies, so the sentinel must be restored explicitly in
+	// the backup or PRAGMA foreign_key_check will reject the restore.
+	if err := ensureNoTLSRowOn(backupDb); err != nil {
+		return nil, err
+	}
 
 	// Update WAL
 	err = backupDb.Exec("PRAGMA wal_checkpoint(TRUNCATE);").Error
@@ -236,12 +242,7 @@ func ImportDB(file multipart.File) error {
 	// busy. Without this, on Windows the rename below fails outright; on
 	// Linux it succeeds but stale WAL/SHM files attached to the old fd may
 	// be replayed against the new database.
-	if db != nil {
-		if sqlDB, e := db.DB(); e == nil {
-			_ = sqlDB.Close()
-		}
-		db = nil
-	}
+	closeLiveDB()
 
 	// Move the live DB aside as a fallback. Move the WAL/SHM sidecars too,
 	// otherwise SQLite would replay them on top of the imported database
@@ -249,18 +250,20 @@ func ImportDB(file multipart.File) error {
 	// restore" bug). After the rename, also nuke any sidecars that were
 	// left behind (rename does not move them, since they are separate
 	// files in WAL mode).
+	fallbackReady := false
 	if _, statErr := os.Stat(dbPath); statErr == nil {
 		if err := os.Rename(dbPath, fallbackPath); err != nil {
-			return common.NewErrorf("Error backing up live db file: %v", err)
+			return reopenLiveDBAfterImportError(dbPath, "backing up live db file", err)
 		}
+		fallbackReady = true
+	} else if !os.IsNotExist(statErr) {
+		return reopenLiveDBAfterImportError(dbPath, "checking live db file", statErr)
 	}
 	cleanupSidecars(dbPath)
 
 	// Move the staged file into place.
 	if err := os.Rename(tempPath, dbPath); err != nil {
-		// Restore fallback before returning.
-		_ = os.Rename(fallbackPath, dbPath)
-		return common.NewErrorf("Error installing imported db file: %v", err)
+		return rollbackImportedDB(dbPath, fallbackPath, fallbackReady, "installing imported db file", err)
 	}
 	cleanupSidecars(dbPath) // imported file may have brought its own .db-wal/.db-shm if user uploaded a hot copy
 
@@ -268,12 +271,7 @@ func ImportDB(file multipart.File) error {
 	// the panel keeps running on the previous data set instead of dying
 	// without a database.
 	rollback := func(stage string, cause error) error {
-		_ = os.Remove(dbPath)
-		cleanupSidecars(dbPath)
-		if rerr := os.Rename(fallbackPath, dbPath); rerr != nil {
-			return common.NewErrorf("Error %s (%v) and restoring fallback failed: %v", stage, cause, rerr)
-		}
-		return common.NewErrorf("Error %s: %v", stage, cause)
+		return rollbackImportedDB(dbPath, fallbackPath, fallbackReady, stage, cause)
 	}
 
 	// Schema migrations + post-migration adapter for legacy backups.
@@ -299,6 +297,37 @@ func ImportDB(file multipart.File) error {
 		return common.NewErrorf("Error restarting app: %v", err)
 	}
 	return nil
+}
+
+func closeLiveDB() {
+	current := db
+	db = nil
+	if current == nil {
+		return
+	}
+	if sqlDB, err := current.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+}
+
+func rollbackImportedDB(dbPath string, fallbackPath string, fallbackReady bool, stage string, cause error) error {
+	closeLiveDB()
+	_ = os.Remove(dbPath)
+	cleanupBackupSidecars(dbPath)
+	if !fallbackReady {
+		return common.NewErrorf("Error %s: %v", stage, cause)
+	}
+	if err := os.Rename(fallbackPath, dbPath); err != nil {
+		return common.NewErrorf("Error %s (%v) and restoring fallback failed: %v", stage, cause, err)
+	}
+	return reopenLiveDBAfterImportError(dbPath, stage, cause)
+}
+
+func reopenLiveDBAfterImportError(dbPath string, stage string, cause error) error {
+	if err := InitDB(dbPath); err != nil {
+		return common.NewErrorf("Error %s (%v) and reopening live db failed: %v", stage, cause, err)
+	}
+	return common.NewErrorf("Error %s: %v", stage, cause)
 }
 
 // stageBackupToFile writes the uploaded multipart body to dst, fsyncs and

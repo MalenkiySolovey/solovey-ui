@@ -7,6 +7,22 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## Unreleased
 
+## [1.5.5-beta2] - 2026-05-22 - backup restore safety for no-TLS inbounds
+
+- Kept backup exports with no-TLS inbounds foreign-key valid by explicitly
+  preserving the `tls(id=0)` sentinel that their `tls_id=0` rows reference.
+- Restore now recreates that no-TLS foreign-key parent before migration checks,
+  so backups produced before this prerelease can restore instead of failing
+  with `Foreign key check failed: inbounds=1`.
+- Failed database imports reopen the rolled-back live database instead of
+  leaving the running panel with a closed DB handle; SQLite sessions follow
+  the live DB after swap and settings reads fail cleanly if the DB is
+  temporarily unavailable.
+- Added regression coverage for no-TLS backup FK validity, no-TLS migration
+  repair and rollback/reopen after a rejected restore.
+- Release, Windows and Docker workflow dispatch defaults now target
+  `v1.5.5-beta2`.
+
 ## [1.5.5-beta1] - 2026-05-22 - subscription correctness for shared VLESS UUID and Clash WS Host
 
 - Stripped `xtls-rprx-vision` flow from non-TCP transports when the same
