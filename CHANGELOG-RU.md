@@ -7,6 +7,19 @@
 
 ## Unreleased
 
+## [1.5.4] — 2026-05-22 — stable Nexus UI + localization cleanup
+
+- Линейка `1.5.4-beta1` — `1.5.4-beta5` повышена до стабильной `1.5.4`.
+- В stable вошли opt-in Nexus UI mode, hotfix скрытия toast для отменённых
+  frontend-read запросов, более плотный Nexus Overview, bootstrap secretbox key
+  в systemd installer и исправление границы reserved path `/ws` из beta-линейки.
+- Завершён релизный проход по локализациям: Persian Telegram/Audit/maintenance,
+  backup и IP-limit строки; чистка машинного перевода во Vietnamese для
+  Telegram, Audit, settings, networking, DNS, TLS, rules и stats; оставшиеся
+  Simplified/Traditional Chinese maintenance path строки; финальная
+  терминологическая полировка русского.
+- Default tag в Release, Windows и Docker workflows обновлён до `v1.5.4`.
+
 ## [1.5.4-beta5] — 2026-05-22 — hotfix reserved path prefix
 
 - Reserved path validation теперь проверяет framework path без

@@ -6,6 +6,18 @@
 
 ## 未发布
 
+## [1.5.4] - 2026-05-22 - stable Nexus UI line + localization cleanup
+
+- 将 `1.5.4-beta1` 到 `1.5.4-beta5` 提升为稳定版 `1.5.4`。
+- 稳定版包含 beta 线中的 opt-in Nexus UI mode、取消重复 read toast 的 hotfix、
+  更紧凑的 Nexus Overview、systemd installer secretbox key bootstrap，以及
+  reserved `/ws` path segment 边界修复。
+- 完成发布前的本地化收尾：Persian Telegram、Audit、maintenance、backup 与
+  IP-limit 字符串；Vietnamese 在 Telegram、Audit、settings、networking、DNS、
+  TLS、rules 与 stats 的机器翻译清理；Simplified/Traditional Chinese 剩余的
+  maintenance path 字符串；以及 Russian 术语润色。
+- Release、Windows 与 Docker workflow 的默认 tag 更新为 `v1.5.4`。
+
 ## [1.5.4-beta5] - 2026-05-22 - reserved path prefix hotfix
 
 - 对没有尾随 `/` 的 framework path，reserved path validation 现在按路径

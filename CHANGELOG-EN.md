@@ -7,6 +7,19 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## Unreleased
 
+## [1.5.4] - 2026-05-22 - stable Nexus UI line + localization cleanup
+
+- Promoted `1.5.4-beta1` through `1.5.4-beta5` to stable `1.5.4`.
+- Includes the opt-in Nexus UI mode, canceled read toast hotfix, denser Nexus
+  Overview, systemd installer secretbox key bootstrap, and reserved `/ws` path
+  boundary fix from the beta line.
+- Finished the release localization pass: Persian Telegram, Audit, maintenance,
+  backup and IP-limit strings; Vietnamese machine-translation cleanup across
+  Telegram, Audit, settings, networking, DNS, TLS, rules and stats; remaining
+  Simplified/Traditional Chinese maintenance path strings; and final Russian
+  terminology polish.
+- Release, Windows and Docker workflow dispatch defaults now target `v1.5.4`.
+
 ## [1.5.4-beta5] - 2026-05-22 - reserved path prefix hotfix
 
 - Reserved path validation now matches slashless framework paths on a

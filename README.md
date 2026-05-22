@@ -24,7 +24,7 @@
 
 Advanced Web panel built on `SagerNet/Sing-Box`.
 
-**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.4-beta5`).
+**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.4`).
 
 **This fork keeps the original project structure and updates the user-facing documentation and installation links for this repository. You can use the scripts from this repository directly, or fork and build the project yourself.**
 
@@ -42,6 +42,7 @@ Short summary of recent versions:
 
 | Version | One-line summary |
 | --- | --- |
+| `1.5.4` | Stable release of the 1.5.4 line: promotes the Nexus UI beta line, installer secretbox bootstrap and reserved-path hotfixes, and finishes the Persian, Vietnamese, Chinese and Russian localization pass. |
 | `1.5.4-beta5` | Reserved-path hotfix: custom paths such as `/wsub/` no longer false-collide with the reserved `/ws` route, while real `/ws/` descendants stay blocked. |
 | `1.5.4-beta4` | Systemd installer bootstrap for encrypted settings: `install.sh` generates a stable root-only `SUI_SECRETBOX_KEY`, shows the generated value once, loads it through a drop-in and preserves it on upgrade. |
 | `1.5.4-beta3` | Nexus Overview refinement: deeper navy teal/violet palette, duplicate Traffic overview and Health KPI removal, denser Overview rows and compact protocol summaries while preserving frontend-only security and dependency boundaries. |
@@ -135,10 +136,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Run `install-windows.bat` as Administrator.
 4. Follow the installation wizard.
 
-## Install v1.5.4-beta5
+## Install v1.5.4
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.4-beta5
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.4
 ```
 
 Or from a local clone:
@@ -146,7 +147,7 @@ Or from a local clone:
 ```sh
 git clone https://github.com/deposist/s-ui-x.git
 cd s-ui-x
-sudo bash install.sh v1.5.4-beta5
+sudo bash install.sh v1.5.4
 ```
 
 The installer is fully compatible with existing installations: settings,
@@ -375,7 +376,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 Продвинутая Web-панель, построенная на базе `SagerNet/Sing-Box`.
 
-**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.4-beta5`).
+**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.4`).
 
 **Этот fork сохраняет структуру оригинального проекта и обновляет пользовательскую документацию и ссылки установки для этого репозитория. Вы можете напрямую использовать скрипты из этого репозитория или сделать fork и собрать проект самостоятельно.**
 
@@ -393,6 +394,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 | Версия | Однострочное описание |
 | --- | --- |
+| `1.5.4` | Стабильный релиз линейки 1.5.4: повышает Nexus UI beta-линию, bootstrap secretbox key в installer и reserved-path hotfixes, а также завершает проход по Persian, Vietnamese, Chinese и Russian локализациям. |
 | `1.5.4-beta5` | Hotfix reserved paths: пользовательские пути вроде `/wsub/` больше не получают ложный конфликт с зарезервированным `/ws`, а настоящие дочерние `/ws/` пути всё ещё блокируются. |
 | `1.5.4-beta4` | Bootstrap зашифрованных настроек в systemd installer: `install.sh` генерирует стабильный root-only `SUI_SECRETBOX_KEY`, один раз показывает значение, подключает его через drop-in и сохраняет при обновлении. |
 | `1.5.4-beta3` | Refinement Nexus Overview: более глубокая navy teal/violet palette, удаление дубликатов Traffic overview и Health KPI, плотнее Overview rows и compact protocol summaries при сохранении frontend-only security/dependency границ. |
@@ -486,10 +488,10 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Запустите `install-windows.bat` от имени администратора.
 4. Следуйте инструкциям мастера установки.
 
-## Установка v1.5.4-beta5
+## Установка v1.5.4
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.4-beta5
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.4
 ```
 
 Или из локального клона:
@@ -497,7 +499,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 ```sh
 git clone https://github.com/deposist/s-ui-x.git
 cd s-ui-x
-sudo bash install.sh v1.5.4-beta5
+sudo bash install.sh v1.5.4
 ```
 
 Установщик полностью совместим с уже работающими установками: настройки,
