@@ -16,6 +16,10 @@
   </a>
 </p>
 
+<p align="center">
+  <img width="1024" height="768" alt="s-ui-x logo" src="https://github.com/deposist/s-ui-x/blob/main/docs/screen1.png" />
+</p>
+
 ## English
 
 Advanced Web panel built on `SagerNet/Sing-Box`.
