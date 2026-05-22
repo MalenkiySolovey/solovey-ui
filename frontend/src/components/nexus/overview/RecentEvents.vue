@@ -106,9 +106,9 @@ const dateTimeValue = (timestamp: number): string | undefined => {
   font-size: 0.86rem;
   letter-spacing: 0;
   line-height: 1.4;
-  min-height: 190px;
+  min-height: auto;
   overflow-wrap: anywhere;
-  padding: var(--nexus-gap-4);
+  padding: var(--nexus-gap-3);
   text-align: center;
 }
 
@@ -139,7 +139,9 @@ const dateTimeValue = (timestamp: number): string | undefined => {
 }
 
 .nexus-recent-events__list time {
+  margin-inline-start: auto;
   text-align: end;
+  white-space: nowrap;
 }
 
 .nexus-recent-events__icon--info {
@@ -158,6 +160,33 @@ const dateTimeValue = (timestamp: number): string | undefined => {
   color: var(--nexus-status-error);
 }
 
+@media (min-width: 600px) {
+  .nexus-recent-events__copy {
+    align-items: baseline;
+    display: flex;
+    gap: var(--nexus-gap-2);
+  }
+
+  .nexus-recent-events__copy strong {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+
+  .nexus-recent-events__copy span {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .nexus-recent-events__copy span::before {
+    border-inline-start: 1px solid var(--nexus-border-strong);
+    content: '';
+    margin-inline-end: var(--nexus-gap-2);
+  }
+}
+
 @media (max-width: 600px) {
   .nexus-recent-events__list :deep(li) {
     grid-template-columns: auto minmax(0, 1fr);
@@ -165,6 +194,7 @@ const dateTimeValue = (timestamp: number): string | undefined => {
 
   .nexus-recent-events__list time {
     grid-column: 2;
+    margin-inline-start: 0;
     text-align: start;
   }
 }

@@ -349,6 +349,10 @@ export default {
       protocols: {
         title: "Сводка протоколов",
         groups: "Групп протоколов: {count}",
+        type: "Тип",
+        activeShort: "Активно",
+        totalShort: "Всего",
+        tags: "Теги",
         loading: "Загрузка входящих.",
         empty: "Входящие не настроены.",
         inboundTags: "Входящих тегов: {count}",

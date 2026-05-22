@@ -346,6 +346,10 @@ export default {
       protocols: {
         title: "Tóm tắt giao thức",
         groups: "{count} nhóm giao thức",
+        type: "Loại",
+        activeShort: "Hoạt động",
+        totalShort: "Tổng",
+        tags: "Thẻ",
         loading: "Đang tải inbound.",
         empty: "Chưa cấu hình inbound.",
         inboundTags: "{count} thẻ inbound",

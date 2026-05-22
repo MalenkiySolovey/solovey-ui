@@ -346,6 +346,10 @@ export default {
       protocols: {
         title: "خلاصه پروتکل‌ها",
         groups: "{count} گروه پروتکل",
+        type: "نوع",
+        activeShort: "فعال",
+        totalShort: "کل",
+        tags: "برچسب‌ها",
         loading: "در حال بارگذاری ورودی‌ها.",
         empty: "هیچ ورودی پیکربندی نشده است.",
         inboundTags: "{count} برچسب ورودی",

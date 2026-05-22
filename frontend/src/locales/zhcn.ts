@@ -349,6 +349,10 @@ export default {
       protocols: {
         title: "协议摘要",
         groups: "{count} 个协议组",
+        type: "类型",
+        activeShort: "活跃",
+        totalShort: "总数",
+        tags: "标签",
         loading: "正在加载入站。",
         empty: "未配置入站。",
         inboundTags: "{count} 个入站标签",

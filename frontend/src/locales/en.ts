@@ -349,6 +349,10 @@ export default {
       protocols: {
         title: "Protocol summaries",
         groups: "{count} protocol groups",
+        type: "Type",
+        activeShort: "Active",
+        totalShort: "Total",
+        tags: "Tags",
         loading: "Loading inbounds.",
         empty: "No inbounds are configured.",
         inboundTags: "{count} inbound tags",

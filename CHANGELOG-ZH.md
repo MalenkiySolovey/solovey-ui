@@ -6,6 +6,23 @@
 
 ## 未发布
 
+## [1.5.4-beta3] - 2026-05-22 - Nexus Overview density refinement
+
+- Nexus dark surface palette 改为更深的 navy 基调，并拆分 teal/violet
+  accents；classic themes 保持不变。
+- 移除 standalone Traffic overview panel 与重复的 Health KPI，同时保留
+  Live traffic KPI spark，并改用紧凑的 live status sample window。
+- Overview 改为更紧凑的三列 primary row，并压缩 Top clients、Recent
+  events 与 Protocol summaries，使 dark LTR `en` dashboard 可在
+  `1440x900` 单视口内展示。
+- 该 refinement 保持 frontend-only：没有 backend/API/CSRF/CSP drift，
+  也没有 runtime/dev dependency 变更。
+- 已通过 frontend test/lint/build gates、Nexus source/build artifact
+  external-origin gates、`TestAdminSecurityHeaders`，以及 LTR `en` 与
+  RTL `fa` 在 desktop、narrow desktop、tablet、mobile 宽度下的 viewport
+  coverage。
+- Release、Windows 与 Docker workflow 的默认 tag 更新为 `v1.5.4-beta3`。
+
 ## [1.5.4-beta2] - 2026-05-21 - Nexus Overview cancel toast hotfix
 
 - 取消重复 frontend read 请求时不再显示 failed notification。Nexus Overview

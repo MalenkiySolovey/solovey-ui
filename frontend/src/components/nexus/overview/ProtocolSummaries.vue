@@ -16,40 +16,75 @@
       {{ $t('nexus.overview.protocols.empty') }}
     </div>
 
-    <div v-else class="nexus-protocol-summaries__grid">
-      <section
-        v-for="summary in summaries"
-        :key="summary.type"
-        class="nexus-protocol-summaries__item"
-      >
-        <protocol-card
-          :conn-count="summary.activeInbounds"
-          :status="summary.activeInbounds > 0 ? $t('nexus.status.online') : $t('nexus.status.idle')"
-          :status-tone="summary.activeInbounds > 0 ? 'success' : 'info'"
-          :totals="$t('nexus.overview.protocols.inboundTags', { count: summary.totalInbounds })"
-          :type="summary.type"
-        />
-
-        <div class="nexus-protocol-summaries__tags">
-          <span v-if="summary.tags.length === 0">
-            {{ $t('nexus.overview.protocols.noTag') }}
-          </span>
-          <span v-for="tag in summary.tags" :key="tag">{{ tag }}</span>
-        </div>
-      </section>
-    </div>
+    <dense-table v-else>
+      <thead>
+        <tr>
+          <th>{{ $t('nexus.overview.protocols.type') }}</th>
+          <th>{{ $t('nexus.overview.clients.state') }}</th>
+          <th>{{ $t('nexus.overview.protocols.activeShort') }}</th>
+          <th>{{ $t('nexus.overview.protocols.totalShort') }}</th>
+          <th>{{ $t('nexus.overview.protocols.tags') }}</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="summary in summaries" :key="summary.type">
+          <td>{{ summary.type }}</td>
+          <td>
+            <status-badge
+              :label="summary.activeInbounds > 0 ? $t('nexus.status.online') : $t('nexus.status.idle')"
+              :tone="summary.activeInbounds > 0 ? 'success' : 'info'"
+            />
+          </td>
+          <td>{{ summary.activeInbounds }}</td>
+          <td>{{ summary.totalInbounds }}</td>
+          <td>
+            <span class="nexus-protocol-row__tags">
+              <span v-if="summary.tags.length === 0" class="nexus-protocol-row__no-tag">
+                {{ $t('nexus.overview.protocols.noTag') }}
+              </span>
+              <template v-else>
+                <span
+                  v-for="tag in visibleTags(summary)"
+                  :key="tag"
+                  class="nexus-protocol-row__tag"
+                >
+                  {{ tag }}
+                </span>
+                <span
+                  v-if="overflowCount(summary) > 0"
+                  class="nexus-protocol-row__tag nexus-protocol-row__tag--overflow"
+                >
+                  +{{ overflowCount(summary) }}
+                </span>
+              </template>
+            </span>
+          </td>
+        </tr>
+      </tbody>
+    </dense-table>
   </article>
 </template>
 
 <script lang="ts" setup>
+import DenseTable from '@/components/nexus/primitives/DenseTable.vue'
 import PanelHeader from '@/components/nexus/primitives/PanelHeader.vue'
-import ProtocolCard from '@/components/nexus/primitives/ProtocolCard.vue'
+import StatusBadge from '@/components/nexus/primitives/StatusBadge.vue'
 import type { ProtocolSummary } from './selectors/protocolSummarySelectors'
 
 defineProps<{
   loading: boolean
   summaries: ProtocolSummary[]
 }>()
+
+const MAX_TAGS = 8
+
+const visibleTags = (summary: ProtocolSummary): string[] => {
+  return summary.tags.slice(0, MAX_TAGS)
+}
+
+const overflowCount = (summary: ProtocolSummary): number => {
+  return Math.max(0, summary.tags.length - MAX_TAGS)
+}
 </script>
 
 <style scoped>
@@ -69,27 +104,15 @@ defineProps<{
   letter-spacing: 0;
 }
 
-.nexus-protocol-summaries__grid {
-  display: grid;
-  gap: var(--nexus-gap-3);
-  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-  min-width: 0;
-}
-
-.nexus-protocol-summaries__item {
-  display: grid;
-  gap: var(--nexus-gap-2);
-  min-width: 0;
-}
-
-.nexus-protocol-summaries__tags {
+.nexus-protocol-row__tags {
   display: flex;
   flex-wrap: wrap;
   gap: var(--nexus-gap-1);
   min-width: 0;
 }
 
-.nexus-protocol-summaries__tags span {
+.nexus-protocol-row__tag,
+.nexus-protocol-row__no-tag {
   background: var(--nexus-surface-2);
   border: 1px solid var(--nexus-border);
   border-radius: var(--nexus-radius-sm);
@@ -102,6 +125,10 @@ defineProps<{
   padding: 3px 6px;
 }
 
+.nexus-protocol-row__tag--overflow {
+  border-color: var(--nexus-border-strong);
+}
+
 .nexus-protocol-summaries__state {
   align-items: center;
   background: var(--nexus-surface-2);
@@ -112,9 +139,9 @@ defineProps<{
   font-size: 0.86rem;
   letter-spacing: 0;
   line-height: 1.4;
-  min-height: 112px;
+  min-height: auto;
   overflow-wrap: anywhere;
-  padding: var(--nexus-gap-4);
+  padding: var(--nexus-gap-3);
   text-align: center;
 }
 </style>

@@ -82,10 +82,20 @@ defineProps<{
   font-size: 0.86rem;
   letter-spacing: 0;
   line-height: 1.4;
-  min-height: 190px;
+  min-height: auto;
   overflow-wrap: anywhere;
-  padding: var(--nexus-gap-4);
+  padding: var(--nexus-gap-3);
   text-align: center;
+}
+
+:deep(.nexus-dense-table td),
+:deep(.nexus-dense-table th) {
+  height: 32px;
+  padding-block: var(--nexus-gap-1);
+}
+
+:deep(.nexus-dense-table tr) {
+  line-height: 1.25;
 }
 
 @media (max-width: 600px) {

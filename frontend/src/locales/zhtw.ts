@@ -349,6 +349,10 @@ export default {
       protocols: {
         title: "協定摘要",
         groups: "{count} 個協定群組",
+        type: "類型",
+        activeShort: "作用中",
+        totalShort: "總數",
+        tags: "標籤",
         loading: "正在載入入站。",
         empty: "未設定入站。",
         inboundTags: "{count} 個入站標籤",

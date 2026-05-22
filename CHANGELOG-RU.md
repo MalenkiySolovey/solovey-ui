@@ -7,6 +7,24 @@
 
 ## Unreleased
 
+## [1.5.4-beta3] — 2026-05-22 — уплотнение Nexus Overview
+
+- Dark-палитра Nexus переведена на более глубокие navy surfaces с
+  разделением teal/violet accents; classic themes не изменялись.
+- Удалены standalone-панель Traffic overview и дублирующая Health KPI;
+  Live traffic KPI spark сохранён на компактном окне live status
+  samples.
+- Overview перестроен в более плотный трёхколоночный primary row,
+  Top clients, Recent events и Protocol summaries уплотнены так, чтобы
+  dark LTR `en` dashboard помещался в один viewport `1440x900`.
+- Refinement остался frontend-only: без backend/API/CSRF/CSP drift и
+  без изменений runtime/dev dependencies.
+- Пройдены frontend test/lint/build gates, Nexus source/build artifact
+  external-origin gates, `TestAdminSecurityHeaders` и viewport coverage
+  LTR `en` + RTL `fa` для desktop, narrow desktop, tablet и mobile.
+- Default tag в Release, Windows и Docker workflows обновлён до
+  `v1.5.4-beta3`.
+
 ## [1.5.4-beta2] — 2026-05-21 — hotfix cancel toast на Nexus Overview
 
 - Убран failed notification для отменённых дублирующихся frontend-read

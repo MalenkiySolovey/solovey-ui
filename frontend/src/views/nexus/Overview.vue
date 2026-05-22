@@ -3,18 +3,18 @@
     <kpi-row
       :loading="dashboardLoading"
       :summary="kpiSummary"
-      :traffic="trafficSeries"
+      :traffic="trafficSparkSeries"
       :ws-state="ws.state"
     />
 
     <div class="nexus-overview__primary">
-      <traffic-overview
-        :loading="trafficLoading"
+      <top-clients :clients="topClients" :loading="storeLoading" />
+      <recent-events
+        :events="auditEvents"
+        :loading="auditLoading"
         :offline="!browserOnline"
-        :series="trafficSeries"
-        :unavailable="trafficUnavailable"
+        :unavailable="auditUnavailable"
       />
-
       <system-status
         :loading="statusLoading"
         :metrics="systemMetrics"
@@ -22,16 +22,6 @@
         :status="systemStatus"
         :unavailable="statusUnavailable"
         :ws-state="ws.state"
-      />
-    </div>
-
-    <div class="nexus-overview__secondary">
-      <top-clients :clients="topClients" :loading="storeLoading" />
-      <recent-events
-        :events="auditEvents"
-        :loading="auditLoading"
-        :offline="!browserOnline"
-        :unavailable="auditUnavailable"
       />
     </div>
 
@@ -43,27 +33,24 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import KpiRow from '@/components/nexus/overview/KpiRow.vue'
 import ProtocolSummaries from '@/components/nexus/overview/ProtocolSummaries.vue'
 import RecentEvents from '@/components/nexus/overview/RecentEvents.vue'
 import SystemStatus from '@/components/nexus/overview/SystemStatus.vue'
 import TopClients from '@/components/nexus/overview/TopClients.vue'
-import TrafficOverview from '@/components/nexus/overview/TrafficOverview.vue'
 import { mapAuditDisplayItems } from '@/components/nexus/overview/selectors/auditMapper'
 import { selectKpiSummary } from '@/components/nexus/overview/selectors/kpiSelectors'
 import { selectProtocolSummaries } from '@/components/nexus/overview/selectors/protocolSummarySelectors'
 import { selectSystemStatus } from '@/components/nexus/overview/selectors/systemStatusSelectors'
 import { selectTopClients } from '@/components/nexus/overview/selectors/topClientsSelectors'
-import { selectTrafficSeries } from '@/components/nexus/overview/selectors/trafficSelectors'
+import type { TrafficSeries } from '@/components/nexus/overview/selectors/trafficSelectors'
 import {
   auditEventsFromPayload,
   networkRateFromSamples,
-  overviewInboundTags,
   overviewStatusMetrics,
   overviewStatusNetworkSample,
-  payloadItems,
   type NetworkTrafficRate,
 } from '@/components/nexus/overview/overviewPayloads'
 import HttpUtils from '@/plugins/httputil'
@@ -82,16 +69,14 @@ const statusUnavailable = ref(false)
 const auditEvents = ref(mapAuditDisplayItems())
 const auditLoading = ref(true)
 const auditUnavailable = ref(false)
-const trafficStats = ref<unknown[]>([])
-const trafficLoading = ref(false)
-const trafficUnavailable = ref(false)
 const liveTraffic = ref<NetworkTrafficRate>({
   downloadBps: 0,
   uploadBps: 0,
 })
+const SPARK_WINDOW = 24
+const sparkSamples = ref<{ download: number; upload: number; ts: number }[]>([])
 
 let statusInterval: ReturnType<typeof setInterval> | undefined
-let trafficRequestSerial = 0
 let statusRequestPending = false
 let previousNetworkSample = overviewStatusNetworkSample()
 
@@ -99,10 +84,11 @@ const storeLoading = computed(() => data.lastLoad === 0)
 const dashboardLoading = computed(() => storeLoading.value || statusLoading.value)
 const systemStatus = computed(() => selectSystemStatus(statusPayload.value, nowSec.value))
 const systemMetrics = computed(() => overviewStatusMetrics(statusPayload.value))
-const inboundTrafficTags = computed(() => overviewInboundTags(data.inbounds))
-const trafficSeries = computed(() => selectTrafficSeries({
-  range: '24h',
-  stats: trafficStats.value,
+const trafficSparkSeries = computed<TrafficSeries>(() => ({
+  range: 'realtime',
+  labels: sparkSamples.value.map((sample) => String(sample.ts)),
+  download: sparkSamples.value.map((sample) => sample.download),
+  upload: sparkSamples.value.map((sample) => sample.upload),
 }))
 const topClients = computed(() => selectTopClients({
   clients: data.clients,
@@ -139,6 +125,12 @@ const kpiSummary = computed(() => selectKpiSummary({
   health: kpiHealth.value,
 }))
 
+const pushSparkSample = (rate: NetworkTrafficRate) => {
+  const next = sparkSamples.value.slice(-SPARK_WINDOW + 1)
+  next.push({ download: rate.downloadBps, upload: rate.uploadBps, ts: Date.now() })
+  sparkSamples.value = next
+}
+
 const loadStatus = async () => {
   if (statusRequestPending) return
 
@@ -147,6 +139,7 @@ const loadStatus = async () => {
     statusUnavailable.value = true
     previousNetworkSample = undefined
     liveTraffic.value = { downloadBps: 0, uploadBps: 0 }
+    sparkSamples.value = []
     return
   }
 
@@ -166,6 +159,7 @@ const loadStatus = async () => {
     const rate = networkRateFromSamples(previousNetworkSample, networkSample)
     if (rate) {
       liveTraffic.value = rate
+      pushSparkSample(rate)
     }
     previousNetworkSample = networkSample
   } else {
@@ -199,51 +193,20 @@ const loadAuditEvents = async () => {
   auditLoading.value = false
 }
 
-const loadTrafficHistory = async (tags: string[]) => {
-  const requestSerial = ++trafficRequestSerial
-
-  if (!browserOnline.value || tags.length === 0) {
-    trafficStats.value = []
-    trafficLoading.value = false
-    trafficUnavailable.value = !browserOnline.value
-    return
-  }
-
-  trafficLoading.value = true
-  const results = await Promise.all(tags.map((tag) => HttpUtils.get('api/stats', {
-    limit: 24,
-    resource: 'inbound',
-    tag,
-  })))
-
-  if (requestSerial !== trafficRequestSerial) return
-
-  trafficStats.value = results.flatMap((result) => {
-    return result.success ? payloadItems(result.obj) : []
-  })
-  trafficUnavailable.value = !results.some((result) => result.success)
-  trafficLoading.value = false
-}
-
 const setOnline = () => {
   browserOnline.value = true
   void loadStatus()
   void loadAuditEvents()
-  void loadTrafficHistory(inboundTrafficTags.value)
 }
 
 const setOffline = () => {
   browserOnline.value = false
   statusUnavailable.value = true
   auditUnavailable.value = true
-  trafficUnavailable.value = true
   previousNetworkSample = undefined
   liveTraffic.value = { downloadBps: 0, uploadBps: 0 }
+  sparkSamples.value = []
 }
-
-watch(inboundTrafficTags, (tags) => {
-  void loadTrafficHistory(tags)
-}, { immediate: true })
 
 onMounted(() => {
   if (data.lastLoad === 0) {
@@ -273,31 +236,34 @@ onBeforeUnmount(() => {
   min-width: 0;
 }
 
-.nexus-overview__primary,
-.nexus-overview__secondary {
+.nexus-overview__primary {
   display: grid;
   gap: var(--nexus-gap-4);
   min-width: 0;
-}
-
-.nexus-overview__primary {
-  grid-template-columns: minmax(0, 2fr) minmax(320px, 1fr);
-}
-
-.nexus-overview__secondary {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns:
+    minmax(0, 1.15fr)
+    minmax(0, 1.4fr)
+    minmax(320px, 1fr);
 }
 
 @media (max-width: 1264px) {
   .nexus-overview__primary {
-    grid-template-columns: minmax(0, 1.55fr) minmax(280px, 1fr);
+    grid-auto-flow: dense;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  }
+
+  .nexus-overview__primary > :nth-child(3) {
+    grid-column: 1 / -1;
   }
 }
 
 @media (max-width: 960px) {
-  .nexus-overview__primary,
-  .nexus-overview__secondary {
+  .nexus-overview__primary {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .nexus-overview__primary > :nth-child(3) {
+    grid-column: auto;
   }
 }
 </style>

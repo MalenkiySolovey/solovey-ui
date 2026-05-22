@@ -7,6 +7,25 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## Unreleased
 
+## [1.5.4-beta3] - 2026-05-22 - Nexus Overview density refinement
+
+- Re-graded Nexus dark surfaces to a deeper navy palette with teal and
+  violet accents while keeping classic themes unchanged.
+- Removed the standalone Traffic overview panel and the duplicate Health
+  KPI, keeping the Live traffic KPI spark on a compact live status sample
+  window.
+- Reflowed the Overview into a denser three-column primary row and
+  compacted Top clients, Recent events and Protocol summaries so the
+  dark LTR `en` dashboard fits one `1440x900` viewport.
+- Kept the refinement frontend-only: no backend/API/CSRF/CSP drift and no
+  runtime or development dependency changes.
+- Verified frontend test/lint/build gates, Nexus source/build artifact
+  external-origin gates, `TestAdminSecurityHeaders`, and LTR `en` plus
+  RTL `fa` viewport coverage across desktop, narrow desktop, tablet and
+  mobile widths.
+- Release, Windows and Docker workflow dispatch defaults now target
+  `v1.5.4-beta3`.
+
 ## [1.5.4-beta2] - 2026-05-21 - Nexus overview cancel toast hotfix
 
 - Suppressed the failed notification for canceled duplicate frontend
