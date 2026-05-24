@@ -68,9 +68,11 @@
 
 16. **P1 / Audit integrity** — [`auditWriter.push()`](../../service/audit_writer.go:85) при переполнении сдвигает очередь и вытесняет самые старые события без приоритета severity (`warn`/security‑события уравнены с `info`).
     - Fix: приоритезация `warn`+ при вытеснении / отдельная очередь для security.
+    - Status 2026-05-24: closed by Cluster F; overflow eviction now drops `info` before `warn`/security and the severity-priority anchor is green.
 
 17. **P1 / Audit noise** — [`SettingService.recordSecretboxFallback()`](../../service/secret_settings.go:296) пишет audit при _успешной_ legacy‑расшифровке; первый «правильный» кандидат в [`getSecretboxCandidates()`](../../service/secret_settings.go:76) и так должен побеждать.
     - Fix: отдельный путь для legacy ключа без логирования каждого нормального decrypt.
+    - Status 2026-05-24: closed by Cluster F; direct decrypt fallback no longer writes per-decrypt audit noise and the XFAIL anchor is green.
 
 18. **P1 / DB enforcement** — [`ipmonitor.loadCacheEntry()`](../../ipmonitor/ipmonitor.go:331) на строке [`_ = db.Model(model.ClientIP{}).Select("ip, ip_hash").Where("client_name = ?", clientName).Find(&rows).Error`](../../ipmonitor/ipmonitor.go:350) глотает ошибку чтения. enforce‑mode пропустит «новый IP» при transient DB error.
     - Fix: возвращать `(allowCacheEntry{}, false)` и fail‑closed для enforce.
@@ -878,3 +880,21 @@ Govulncheck triage закрыт dependency-only изменениями без п
 - `58a3d3c` `fix(api/realtime): constant-time consumeWSToken match-and-delete (registry #33)`
 
 Примечание: старый Phase 6 placeholder `frontend/tests/e2e/ws-reconnect.spec.ts` остаётся `test.fixme`, потому что этот файл не входил в разрешённый scope Cluster D. Targeted WS chaos scenario из этого кластера снят с XFAIL и проходит green.
+
+## Post-fix Cluster F 2026-05-24
+
+### Коммиты
+
+- `50631af` — fix(service/audit-writer): prioritize warn/security on overflow eviction (registry #16)
+- `c9de793` — fix(service/secret-settings): suppress redundant secretbox fallback audit (registry #17)
+
+Cluster F закрыл audit pipeline пункты 16 и 17 двумя production-коммитами. Frontend и зависимости не затрагивались.
+
+### Дельта по реестру
+
+- П. 16 «Audit integrity» — closed by Cluster F. `auditWriter.push()` приоритизирует `warn`/security при overflow eviction; `info` дропается первым, а high-severity события удерживаются до предела `auditQueueCapacity`. Severity priority anchor `TestAuditWriterOverloadSeverityPriorityAnchorIssue16Phase5` переписан под post-fix инвариант и проходит 10/10.
+- П. 17 «Audit noise» — closed by Cluster F. `recordSecretboxFallback()` больше не пишет audit на прямом legacy decrypt path; primary candidate decrypt по-прежнему не порождает `settings_secretbox_key_fallback`. XFAIL anchor `TestLegacySecretboxFallbackDoesNotAuditAfterFix_XFAILIssue17` снят и проходит 10/10.
+
+### Команды и логи
+
+См. секцию `## Post-fix Cluster F 2026-05-24` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-cluster-F/`.
