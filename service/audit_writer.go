@@ -89,14 +89,33 @@ func (w *auditWriter) push(event model.AuditEvent) {
 		return
 	}
 	if len(w.queue) >= w.capacity {
-		copy(w.queue, w.queue[1:])
-		w.queue[len(w.queue)-1] = event
+		victim := auditOverflowVictimIndex(w.queue, event)
+		if victim >= 0 {
+			copy(w.queue[victim:], w.queue[victim+1:])
+			w.queue[len(w.queue)-1] = event
+		}
 		auditDroppedTotal.Add(1)
 		w.signalLocked()
 		return
 	}
 	w.queue = append(w.queue, event)
 	w.signalLocked()
+}
+
+func auditOverflowVictimIndex(queue []model.AuditEvent, event model.AuditEvent) int {
+	for i, queued := range queue {
+		if auditLowPriority(queued) {
+			return i
+		}
+	}
+	if auditLowPriority(event) {
+		return -1
+	}
+	return 0
+}
+
+func auditLowPriority(event model.AuditEvent) bool {
+	return event.Severity == "" || event.Severity == AuditSeverityInfo
 }
 
 func (w *auditWriter) Start() bool {
