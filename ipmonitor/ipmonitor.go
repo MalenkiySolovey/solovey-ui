@@ -347,7 +347,9 @@ func loadCacheEntry(clientName string, now time.Time) (allowCacheEntry, bool) {
 		expiresAt: now.Add(allowCacheTTL),
 	}
 	rows := make([]model.ClientIP, 0)
-	_ = db.Model(model.ClientIP{}).Select("ip, ip_hash").Where("client_name = ?", clientName).Find(&rows).Error
+	if err := db.Model(model.ClientIP{}).Select("ip, ip_hash").Where("client_name = ?", clientName).Find(&rows).Error; err != nil {
+		return allowCacheEntry{}, false
+	}
 	for _, row := range rows {
 		ipHash := row.IPHash
 		if ipHash == "" {
