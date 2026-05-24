@@ -3,8 +3,10 @@ package cronjob
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/deposist/s-ui-x/database"
@@ -14,6 +16,7 @@ import (
 	"github.com/deposist/s-ui-x/database/importxui/source/xuihttp"
 	"github.com/deposist/s-ui-x/database/model"
 	"github.com/deposist/s-ui-x/logger"
+	"github.com/deposist/s-ui-x/util/redact"
 )
 
 const xuiSyncMinInterval = 10 * time.Minute
@@ -83,7 +86,7 @@ func (j *XUISyncJob) RunProfile(ctx context.Context, profile *model.XUISyncProfi
 		}
 	}
 	_ = j.recordRun(profile, "failed", map[string]any{"error": "failed"})
-	recordSyncAudit("xui_sync_failed", profile, nil)
+	recordSyncAudit("xui_sync_failed", profile, nil, lastErr)
 	return lastErr
 }
 
@@ -182,7 +185,7 @@ func sourceFromProfile(source importxui.SyncProfileSource) (importxui.Source, er
 	}
 }
 
-func recordSyncAudit(event string, profile *model.XUISyncProfile, report *importxui.Report) {
+func recordSyncAudit(event string, profile *model.XUISyncProfile, report *importxui.Report, syncErr ...error) {
 	db := database.GetDB()
 	if db == nil {
 		return
@@ -194,6 +197,9 @@ func recordSyncAudit(event string, profile *model.XUISyncProfile, report *import
 	if report != nil {
 		details["summary"] = report.Summary
 	}
+	if len(syncErr) > 0 && syncErr[0] != nil {
+		details["errorClass"] = classifyXUISyncError(syncErr[0])
+	}
 	raw, _ := json.Marshal(details)
 	_ = db.Create(&model.AuditEvent{
 		DateTime: time.Now().Unix(),
@@ -203,4 +209,32 @@ func recordSyncAudit(event string, profile *model.XUISyncProfile, report *import
 		Severity: "info",
 		Details:  raw,
 	}).Error
+}
+
+func classifyXUISyncError(err error) string {
+	if err == nil {
+		return "success"
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return "cancelled"
+	}
+	message := strings.ToLower(redact.String(err.Error()))
+	switch {
+	case strings.Contains(message, "disabled"):
+		return "disabled"
+	case strings.Contains(message, "database"),
+		strings.Contains(message, "sqlite"),
+		strings.Contains(message, "constraint"),
+		strings.Contains(message, "no such table"):
+		return "db"
+	case strings.Contains(message, "source"),
+		strings.Contains(message, "ssh"),
+		strings.Contains(message, "http"),
+		strings.Contains(message, "no such file"),
+		strings.Contains(message, "cannot find"),
+		strings.Contains(message, "unsupported xui sync source"):
+		return "source"
+	default:
+		return "failed"
+	}
 }
