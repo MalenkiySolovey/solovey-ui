@@ -875,6 +875,6 @@ Govulncheck triage закрыт dependency-only изменениями без п
 
 Коммиты:
 - `5b1a7ac` `fix(frontend/ws): healing reconnect from degraded fallback (registry #32)`
-- `b34d63f` `fix(api/realtime): constant-time consumeWSToken match-and-delete (registry #33)`
+- `58a3d3c` `fix(api/realtime): constant-time consumeWSToken match-and-delete (registry #33)`
 
 Примечание: старый Phase 6 placeholder `frontend/tests/e2e/ws-reconnect.spec.ts` остаётся `test.fixme`, потому что этот файл не входил в разрешённый scope Cluster D. Targeted WS chaos scenario из этого кластера снят с XFAIL и проходит green.

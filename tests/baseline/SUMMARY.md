@@ -694,6 +694,11 @@ Dependency-only triage выполнен без правок production-кода,
 
 ## Post-fix Cluster D 2026-05-24
 
+### Коммиты
+
+- `5b1a7ac` — fix(frontend/ws): healing reconnect from degraded fallback (registry #32)
+- `58a3d3c` — fix(api/realtime): constant-time consumeWSToken match-and-delete (registry #33)
+
 Cluster D закрыл WS hardening пункты 32 и 33 двумя отдельными коммитами. Ручная модификация `frontend/src/layouts/modals/Endpoint.vue` не трогалась.
 
 ### Команды
