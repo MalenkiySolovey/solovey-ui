@@ -83,9 +83,11 @@
 
 20. **P2 / Concurrency** — поля [`Runtime.lastStartFailTime`](../../service/runtime.go:60) читаются/пишутся без синхронизации в [`startCooldownActive()`](../../service/runtime.go:215) и [`markCoreStartFailed()`](../../service/runtime.go:222).
     - Fix: защитить `r.mu` или хранить unixNano в `atomic.Int64`.
+    - Status 2026-05-24: closed by Cluster B; core start cooldown reads/writes are serialized with `r.mu` and the Issue20 race anchor is green.
 
 21. **P2 / Concurrency** — [`telegramHTTPClient`](../../service/telegram.go:51) обновляется под `Lock`, но проверка соответствия конфига идёт под `RLock`, затем повторно под `Lock` без double‑check.
     - Fix: атомарная замена клиента + `sync.Once` инициализация.
+    - Status 2026-05-24: closed by Cluster B; `getTelegramHTTPClient` now double-checks under `telegramHTTPClientMu` and single-flights client creation.
 
 22. **P2 / Telegram retry** — [`telegramNotifier.deliver()`](../../service/telegram.go:196) использует `telegramSleep(delay)` без `context`. Stop ждёт через [`done`](../../service/telegram.go:242), но текущая отправка всё равно проспит до конца.
     - Fix: `time.NewTimer` с select на `stopCh`.
@@ -898,3 +900,21 @@ Cluster F закрыл audit pipeline пункты 16 и 17 двумя productio
 ### Команды и логи
 
 См. секцию `## Post-fix Cluster F 2026-05-24` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-cluster-F/`.
+
+## Post-fix Cluster B 2026-05-24
+
+### Коммиты
+
+- `aae3ed5` — fix(service/runtime): serialize core start cooldown access (registry #20)
+- `3a14e46` — fix(service/telegram): single-flight telegram http client swap (registry #21)
+
+Cluster B закрыл concurrency пункты 20 и 21 двумя production-коммитами. Frontend и зависимости не затрагивались.
+
+### Дельта по реестру
+
+- П. 20 «Concurrency / Runtime core start cooldown» — closed by Cluster B. Чтения/записи `lastStartFailTime` синхронизированы через `r.mu`. Новый race-anchor с подстрокой `Issue20` в имени GREEN под `-race` 10/10.
+- П. 21 «Concurrency / Telegram HTTP client swap» — closed by Cluster B. `getTelegramHTTPClient` использует double-checked locking при подмене и создаёт новый client под `telegramHTTPClientMu`, чтобы concurrent miss возвращал один опубликованный client. `sync.Once` не добавлялся: default client остаётся eager-initialized package-level значением, совместимым с `setTelegramHTTPClient`, а риск гонки закрыт single-flight mutex path. Новый race-anchor с подстрокой `Issue21` в имени GREEN под `-race` 10/10.
+
+### Команды и логи
+
+См. секцию `## Post-fix Cluster B 2026-05-24` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-cluster-B/`.
