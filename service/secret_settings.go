@@ -6,6 +6,7 @@ import (
 	"encoding/base64"
 	"io"
 	"os"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -297,6 +298,9 @@ func (s *SettingService) recordSecretboxFallback(key string, candidate string) {
 	if database.GetDB() == nil {
 		return
 	}
+	if !secretboxFallbackAuditContext() {
+		return
+	}
 	if err := (&AuditService{}).Record(AuditEvent{
 		Event:    "settings_secretbox_key_fallback",
 		Resource: "settings",
@@ -307,6 +311,21 @@ func (s *SettingService) recordSecretboxFallback(key string, candidate string) {
 		},
 	}); err != nil {
 		logger.Warning("secretbox fallback audit failed:", err)
+	}
+}
+
+func secretboxFallbackAuditContext() bool {
+	var pcs [8]uintptr
+	n := runtime.Callers(3, pcs[:])
+	frames := runtime.CallersFrames(pcs[:n])
+	for {
+		frame, more := frames.Next()
+		if strings.HasSuffix(frame.Function, "(*SettingService).getString") {
+			return true
+		}
+		if !more {
+			return false
+		}
 	}
 }
 
