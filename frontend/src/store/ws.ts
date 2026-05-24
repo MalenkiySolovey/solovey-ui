@@ -99,6 +99,7 @@ export class WsRuntime {
         this.setState('reconnecting')
         const retry = this.closeCount - 1
         this.reconnectTimer = this.setRuntimeTimeout(() => {
+          this.reconnectTimer = null
           void this.connect()
         }, reconnectDelayForRetry(retry))
       }
@@ -132,6 +133,8 @@ export class WsRuntime {
     if (this.fallbackTimer) return
     this.fallbackTimer = this.setRuntimeInterval(() => {
       void this.deps.loadData()
+      if (this.reconnectTimer || this.ws) return
+      void this.connect()
     }, fallbackPollMs)
   }
 
