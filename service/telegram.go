@@ -274,14 +274,21 @@ func (s *TelegramService) getTelegramHTTPClient() (*http.Client, error) {
 	}
 	telegramHTTPClientMu.RUnlock()
 
+	telegramHTTPClientMu.Lock()
+	defer telegramHTTPClientMu.Unlock()
+	if telegramHTTPOverride {
+		return telegramHTTPClient, nil
+	}
+	if telegramHTTPClient != nil && telegramHTTPConfig == cfg {
+		return telegramHTTPClient, nil
+	}
+
 	client, err := newTelegramHTTPClient(cfg)
 	if err != nil {
 		return nil, err
 	}
-	telegramHTTPClientMu.Lock()
 	telegramHTTPClient = client
 	telegramHTTPConfig = cfg
-	telegramHTTPClientMu.Unlock()
 	return client, nil
 }
 
