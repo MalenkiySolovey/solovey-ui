@@ -216,28 +216,42 @@ func (r *Runtime) startCooldownActive() bool {
 	if r == nil {
 		return false
 	}
-	return time.Since(r.lastStartFailTime) < r.coreStartCooldown
+	r.mu.RLock()
+	lastStartFailTime := r.lastStartFailTime
+	coreStartCooldown := r.coreStartCooldown
+	r.mu.RUnlock()
+	return time.Since(lastStartFailTime) < coreStartCooldown
 }
 
 func (r *Runtime) markCoreStartFailed() {
 	if r == nil {
 		return
 	}
+	r.mu.Lock()
 	r.lastStartFailTime = time.Now()
+	r.mu.Unlock()
 }
 
 func (r *Runtime) markCoreStartSucceeded() {
 	if r == nil {
 		return
 	}
+	r.mu.Lock()
 	r.lastStartFailTime = time.Time{}
+	r.mu.Unlock()
 }
 
 func (r *Runtime) coreStartCooldownDuration() time.Duration {
-	if r == nil || r.coreStartCooldown <= 0 {
+	if r == nil {
 		return defaultCoreStartCooldown
 	}
-	return r.coreStartCooldown
+	r.mu.RLock()
+	coreStartCooldown := r.coreStartCooldown
+	r.mu.RUnlock()
+	if coreStartCooldown <= 0 {
+		return defaultCoreStartCooldown
+	}
+	return coreStartCooldown
 }
 
 var (
