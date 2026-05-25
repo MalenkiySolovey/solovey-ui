@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/base64"
+	"net/netip"
 	"os"
 	"runtime"
 	"strconv"
@@ -195,10 +196,14 @@ func (s *ServerService) GetSystemInfo() map[string]interface{} {
 			addrs := netInterfaces[i].Addrs
 
 			for _, address := range addrs {
-				if strings.Contains(address.Addr, ".") {
-					ipv4 = append(ipv4, address.Addr)
-				} else if !strings.HasPrefix(strings.ToLower(address.Addr), "fe80::") {
-					ipv6 = append(ipv6, address.Addr)
+				publicAddress, ok := systemInfoPublicAddress(address.Addr)
+				if !ok {
+					continue
+				}
+				if strings.Contains(publicAddress, ".") {
+					ipv4 = append(ipv4, publicAddress)
+				} else {
+					ipv6 = append(ipv6, publicAddress)
 				}
 			}
 		}
@@ -208,6 +213,27 @@ func (s *ServerService) GetSystemInfo() map[string]interface{} {
 	info["bootTime"], _ = host.BootTime()
 
 	return info
+}
+
+func systemInfoPublicAddress(raw string) (string, bool) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return "", false
+	}
+	var addr netip.Addr
+	if prefix, err := netip.ParsePrefix(value); err == nil {
+		addr = prefix.Addr()
+	} else if parsed, err := netip.ParseAddr(value); err == nil {
+		addr = parsed
+	} else {
+		return "", false
+	}
+	if !addr.IsValid() || !addr.IsGlobalUnicast() || addr.IsPrivate() ||
+		addr.IsLoopback() || addr.IsLinkLocalUnicast() || addr.IsMulticast() ||
+		addr.IsUnspecified() {
+		return "", false
+	}
+	return value, true
 }
 
 func systemInterfaceUsable(flags []string) bool {
