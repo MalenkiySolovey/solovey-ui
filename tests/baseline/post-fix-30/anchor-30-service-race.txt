@@ -1,1 +1,1 @@
-ok  	github.com/deposist/s-ui-x/service	1.677s
+ok  	github.com/deposist/s-ui-x/service	1.843s

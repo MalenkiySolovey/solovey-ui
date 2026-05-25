@@ -120,6 +120,7 @@
 
 30. **P3 / Validation** — [`validateOptionalHTTPURL()`](../../service/setting.go:1015) запрещает `parsed.User`, но не запрещает `?fragment` или встраивание управляющих символов.
    - Status 2026-05-25: closed by singleton #30; optional HTTP URL validation now rejects fragments and control characters while preserving http/https query URLs and existing userinfo rejection.
+   - Continuation 2026-05-25: reviewer edge case closed; raw input is checked for control characters before `strings.TrimSpace`, so leading newline and trailing CRLF/tab values are rejected before any raw Save value can be persisted.
 
 31. **P3 / Endpoint warp** — порядок вызовов в [`WarpService.SetWarpLicense()`](../../service/warp.go:311) фрагильный (Authorization до setWarpHeaders).
     - Status 2026-05-25: closed by Cluster I; WARP authorized headers are centralized and covered by request-capture tests.
@@ -1127,12 +1128,14 @@ Singleton #35 закрыл route drift risk для import-xui endpoints: v1 `/ap
 ### Коммиты
 
 - `e9711e5e9a1b630e95f7dfb5a44f47f03c40233e` — fix(service/settings): reject unsafe optional URLs (registry #30)
+- `1720f6c6253ad6aa5f7203dfcf49123254b38759` — fix(service/settings): reject edge control chars in optional URLs (registry #30)
 
-Singleton #30 закрыл validation gap in `validateOptionalHTTPURL()`: optional subscription/support/profile URLs reject fragments and control characters, while ordinary http/https URLs with query strings remain accepted.
+Singleton #30 закрыл validation gap in `validateOptionalHTTPURL()`: optional subscription/support/profile URLs reject fragments and control characters, while ordinary http/https URLs with query strings remain accepted. Continuation `1720f6c6253ad6aa5f7203dfcf49123254b38759` moves the raw control-character check before trimming and adds leading newline plus trailing CRLF/tab anchors.
 
 ### Дельта по реестру
 
 - П. 30 «validateOptionalHTTPURL fragments/control chars» — closed. Issue30 anchor no longer XFAIL and covers fragments/control-character rejects plus query acceptance.
+- Reviewer continuation covered leading/trailing raw control characters that `strings.TrimSpace` could previously remove before validation.
 - Existing userinfo and non-http scheme rejects remain covered.
 - No frontend/dependency/schema changes.
 

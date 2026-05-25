@@ -1,0 +1,35 @@
+diff --git "a/tests\\baseline\\post-fix-30\\pre-fix-30-status.txt" "b/tests\\baseline\\post-fix-30\\post-fix-30-status.txt"
+index 7c975b1..ad65c7a 100644
+--- "a/tests\\baseline\\post-fix-30\\pre-fix-30-status.txt"
++++ "b/tests\\baseline\\post-fix-30\\post-fix-30-status.txt"
+@@ -2,6 +2,7 @@
+  M api/import_xui_test.go
+  M api/session_test.go
+  M api/test_helpers_test.go
++ M docs/audit/plan.md
+  M frontend/package-lock.json
+  M frontend/package.json
+  M frontend/src/layouts/modals/Endpoint.vue
+@@ -10,6 +11,14 @@
+  M go.sum
+  M service/runtime.go
+  M service/token_use_debouncer.go
++ M tests/baseline/SUMMARY.md
++ M tests/baseline/post-fix-30/anchor-30-service-race.txt
++ M tests/baseline/post-fix-30/anchor-30-service.txt
++ M tests/baseline/post-fix-30/gosec.txt
++ M tests/baseline/post-fix-30/post-fix-30-status.txt
++ M tests/baseline/post-fix-30/status-diff.txt
++ M tests/baseline/post-fix-30/test-race.txt
++ M tests/baseline/post-fix-30/test.txt
+ ?? .github/workflows/audit-chaos.yml
+ ?? .github/workflows/audit-frontend.yml
+ ?? .github/workflows/audit-go.yml
+@@ -43,7 +52,6 @@
+ ?? tests/baseline/phase7/
+ ?? tests/baseline/phase8/
+ ?? tests/baseline/phaseV/
+-?? tests/baseline/post-fix-30/
+ ?? tests/baseline/post-fix-47/
+ ?? tests/baseline/post-fix-48/
+ ?? tests/baseline/post-fix-cluster-A/
