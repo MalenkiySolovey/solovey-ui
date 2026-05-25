@@ -162,12 +162,15 @@
 42. **P2 / WS** — см. п. 32.
 
 43. **P2 / UX** — [`MigrateXui.applyPlan()`](../../frontend/src/views/MigrateXui.vue:437) при `!msg.success` возврат на step 2 без сообщения об ошибке.
+    - Status 2026-05-25: closed by Cluster H; failed apply returns to review with inline error preserving selected plan state.
 
 44. **P2 / Race** — [`MigrateXui.rollback()`](../../frontend/src/views/MigrateXui.vue:456) после успеха ждёт фиксированную 1 секунду через `setTimeout` и делает `location.reload()`.
     - Fix: ожидание health‑check эндпоинта.
+    - Status 2026-05-25: closed by Cluster H; rollback waits for api/status?r=db health before reload instead of fixed sleep.
 
 45. **P2 / Token leakage in logs** — `report.generatedAdmins` рендерится как `JSON.stringify(report.generatedAdmins, null, 2)` в [`MigrateXui.vue`](../../frontend/src/views/MigrateXui.vue:283).
     - Fix: «click to reveal» pattern, авто‑очистка по таймеру.
+    - Status 2026-05-25: closed by Cluster H; generated admin passwords are hidden until reveal and auto-cleared.
 
 46. **P3 / API contract** — `MigrateXui.adminModeItems` всегда показывает `reset_required`, даже когда backend этой семантикой не управляет.
 
@@ -987,3 +990,23 @@ Cluster I закрыл Telegram/WARP robustness пункты 22, 25 и 31 тре
 ### Команды и логи
 
 См. секцию `## Post-fix Cluster I 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-cluster-I/`.
+
+## Post-fix Cluster H 2026-05-25
+
+### Коммиты
+
+- `baba54e80b56df8cb4b749734b6dd3206c77f5e2` — fix(frontend/migrate-xui): show apply failure inline (registry #43)
+- `ebf2b39bc9e8dbd71909ec5f4ae98ec4eb018fa8` — fix(frontend/migrate-xui): wait for rollback health before reload (registry #44)
+- `e733112e0634b0f723b7e5d8ec4fa02fa0e5f4f4` — fix(frontend/migrate-xui): require reveal for generated admins (registry #45)
+
+Cluster H закрыл MigrateXui UX пункты 43, 44, 45. Backend contract, dependencies, `Endpoint.vue`, `go.mod`, `go.sum` и package manifests не затрагивались.
+
+### Дельта по реестру
+
+- П. 43 «MigrateXui apply error UX» — closed by Cluster H. Apply failure now returns to review with inline error details and preserves selected plan state. Playwright Issue43 anchor GREEN.
+- П. 44 «MigrateXui rollback reload race» — closed by Cluster H. Rollback success now polls `api/status?r=db` before reload instead of fixed 1s sleep. Playwright Issue44 anchor GREEN.
+- П. 45 «Generated admins leakage» — closed by Cluster H. Generated admin passwords are hidden until explicit reveal and auto-cleared after a timer. Playwright Issue45 anchor GREEN.
+
+### Команды и логи
+
+См. секцию `## Post-fix Cluster H 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-cluster-H/`. Targeted Cluster H Playwright GREEN; full Playwright сохранён как red exception на unrelated `frontend/tests/e2e/ws-reconnect-chaos.spec.ts` (`page.evaluate: Execution context was destroyed` during offline toggle), подтверждён отдельным singleton rerun artifact.

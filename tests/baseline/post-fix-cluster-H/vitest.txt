@@ -1,0 +1,13 @@
+
+> s-ui-frontend@1.5.5-beta3 test
+> vitest run --run
+
+
+ RUN  v4.1.6 C:/s-ui-x/frontend
+
+
+ Test Files  15 passed (15)
+      Tests  76 passed (76)
+   Start at  13:44:37
+   Duration  3.86s (transform 2.21s, setup 0ms, import 4.24s, tests 4.31s, environment 8ms)
+

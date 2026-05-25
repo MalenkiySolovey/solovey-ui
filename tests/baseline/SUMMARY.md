@@ -922,3 +922,40 @@ Cluster I закрыл Telegram/WARP robustness пункты 22, 25 и 31 тре
 ### Файлы post-fix-cluster-I
 
 `pre-cluster-I-head.txt`, `pre-cluster-I-status.txt`, `build.txt`, `vet.txt`, `anchor-22-after.txt`, `anchor-25-after.txt`, `anchor-31-after.txt`, `test-service.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`, `post-cluster-I-status.txt`, `status-diff.txt`.
+
+## Post-fix Cluster H 2026-05-25
+
+### Коммиты
+
+- `baba54e80b56df8cb4b749734b6dd3206c77f5e2` — fix(frontend/migrate-xui): show apply failure inline (registry #43)
+- `ebf2b39bc9e8dbd71909ec5f4ae98ec4eb018fa8` — fix(frontend/migrate-xui): wait for rollback health before reload (registry #44)
+- `e733112e0634b0f723b7e5d8ec4fa02fa0e5f4f4` — fix(frontend/migrate-xui): require reveal for generated admins (registry #45)
+
+Cluster H закрыл MigrateXui UX пункты 43, 44, 45. Diff ограничен `frontend/src/views/MigrateXui.vue`, `frontend/tests/e2e/migrate-xui-happy.spec.ts`, `frontend/src/locales/en.ts`, `frontend/src/locales/ru.ts`. Backend/API/schema/migrations, dependencies, `Endpoint.vue`, `go.mod`, `go.sum`, package manifests и `tests/chaos/**` не затрагивались.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `npm --prefix frontend run test -- --run` | green | 15 files / 76 tests | [`post-fix-cluster-H/vitest.txt`](post-fix-cluster-H/vitest.txt) |
+| `node_modules\.bin\playwright.cmd test tests/e2e/migrate-xui-happy.spec.ts --grep 'Issue4[345]'` (cwd `frontend`) | green | Issue43/44/45 anchors GREEN, 3/3 | [`post-fix-cluster-H/playwright-migrate-xui.txt`](post-fix-cluster-H/playwright-migrate-xui.txt) |
+| `node_modules\.bin\playwright.cmd test` (cwd `frontend`) | red exception | unrelated `ws-reconnect-chaos.spec.ts` singleton failed with `page.evaluate: Execution context was destroyed`; MigrateXui anchors passed | [`post-fix-cluster-H/playwright-full.txt`](post-fix-cluster-H/playwright-full.txt) |
+| `node_modules\.bin\playwright.cmd test tests/e2e/ws-reconnect-chaos.spec.ts` (cwd `frontend`) | red singleton | reproduced same unrelated WS chaos failure for reviewer/orchestrator triage | [`post-fix-cluster-H/playwright-ws-reconnect-chaos-rerun.txt`](post-fix-cluster-H/playwright-ws-reconnect-chaos-rerun.txt) |
+| `go build ./...` | green | без регрессии | [`post-fix-cluster-H/build.txt`](post-fix-cluster-H/build.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-cluster-H/vet.txt`](post-fix-cluster-H/vet.txt) |
+| `go test ./... -count=1 -timeout 5m` | green | без регрессии | [`post-fix-cluster-H/test.txt`](post-fix-cluster-H/test.txt) |
+| `go test -race ./... -timeout 900s` | green | без регрессии | [`post-fix-cluster-H/test-race.txt`](post-fix-cluster-H/test-race.txt) |
+| `gosec ./...` | red baseline | exactly 55 issues | [`post-fix-cluster-H/gosec.txt`](post-fix-cluster-H/gosec.txt) |
+| `govulncheck ./...` | green | `No vulnerabilities found.` | [`post-fix-cluster-H/govulncheck.txt`](post-fix-cluster-H/govulncheck.txt) |
+
+### Дельта
+
+- П. 43: `MigrateXui.applyPlan()` теперь сбрасывает stale progress, возвращает review step с inline `migrate-xui-apply-error`, показывает backend `msg` или fallback и сохраняет выбранный plan state. Anchor `Issue43` GREEN.
+- П. 44: `rollback()` больше не делает fixed 1s sleep; после успешного restore он polling'ит raw `api.get('api/status', { params: { r: 'db' } })`, reload делает только после healthy DB response, а timeout/POST failure показывает inline rollback error. Anchor `Issue44` GREEN.
+- П. 45: `generatedAdmins` больше не рендерится raw JSON до user reveal; пароли скрыты до explicit reveal, can be hidden/cleared, auto-cleared after timer, timer очищается on unmount/build-plan reset. Anchor `Issue45` GREEN.
+- Full Playwright не заявлен green: failure ограничен unrelated tracked `frontend/tests/e2e/ws-reconnect-chaos.spec.ts`, отдельно воспроизведён singleton rerun; Cluster H production/test diff не затрагивает WS chaos e2e или helpers/config.
+- П. 46 / `reset_required` остаётся открытым для Cluster E и не менялся.
+
+### Файлы post-fix-cluster-H
+
+`pre-cluster-H-head.txt`, `pre-cluster-H-status.txt`, `post-cluster-H-status.txt`, `status-diff.txt`, `vitest.txt`, `playwright-migrate-xui.txt`, `playwright-full.txt`, `playwright-ws-reconnect-chaos-rerun.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
