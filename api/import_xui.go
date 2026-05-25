@@ -41,10 +41,12 @@ const (
 )
 
 type xuiUpload struct {
-	Path   string
-	Dir    string
-	SHA256 string
-	Fields map[string]string
+	Path     string
+	Dir      string
+	SHA256   string
+	PlanPath string
+	PlanSize int64
+	Fields   map[string]string
 }
 
 type xuiAttempt struct {
@@ -213,12 +215,39 @@ func (a *ApiService) ImportXuiApply(c *gin.Context) {
 	defer os.RemoveAll(upload.Dir)
 
 	var plan importxui.MigrationPlan
-	decoder := json.NewDecoder(strings.NewReader(upload.Fields["plan"]))
-	decoder.UseNumber()
-	if err := decoder.Decode(&plan); err != nil {
-		a.recordXuiImportFailure(c, err, upload.SHA256)
-		xuiImportError(c, err)
-		return
+	if upload.PlanPath != "" {
+		// #nosec G304 -- PlanPath is created under the per-request upload temp directory.
+		file, err := os.Open(upload.PlanPath)
+		if err != nil {
+			a.recordXuiImportFailure(c, err, upload.SHA256)
+			xuiImportError(c, err)
+			return
+		}
+		decoder := json.NewDecoder(file)
+		decoder.UseNumber()
+		err = decoder.Decode(&plan)
+		closeErr := file.Close()
+		if err != nil {
+			if upload.PlanSize > maxXUIFieldBytes {
+				err = &xuiFieldTooLargeError{Field: "plan", Limit: maxXUIFieldBytes}
+			}
+			a.recordXuiImportFailure(c, err, upload.SHA256)
+			xuiImportError(c, err)
+			return
+		}
+		if closeErr != nil {
+			a.recordXuiImportFailure(c, closeErr, upload.SHA256)
+			xuiImportError(c, closeErr)
+			return
+		}
+	} else {
+		decoder := json.NewDecoder(strings.NewReader(upload.Fields["plan"]))
+		decoder.UseNumber()
+		if err := decoder.Decode(&plan); err != nil {
+			a.recordXuiImportFailure(c, err, upload.SHA256)
+			xuiImportError(c, err)
+			return
+		}
 	}
 	report, err := importxui.Apply(upload.Path, plan, importxui.ApplyOptions{
 		Context:   ctx,
@@ -372,6 +401,28 @@ func saveXUIUpload(c *gin.Context) (*xuiUpload, error) {
 			}
 			upload.Path = path
 			upload.SHA256 = hex.EncodeToString(hash.Sum(nil))
+			continue
+		}
+		if name == "plan" {
+			path := filepath.Join(dir, "plan.json")
+			// #nosec G304 -- path is constrained to the per-request upload temp directory.
+			out, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
+			if err != nil {
+				_ = os.RemoveAll(dir)
+				return nil, err
+			}
+			size, copyErr := io.Copy(out, part)
+			closeErr := out.Close()
+			if copyErr != nil {
+				_ = os.RemoveAll(dir)
+				return nil, copyErr
+			}
+			if closeErr != nil {
+				_ = os.RemoveAll(dir)
+				return nil, closeErr
+			}
+			upload.PlanPath = path
+			upload.PlanSize = size
 			continue
 		}
 		value, err := readXUIField(part, name, maxXUIFieldBytes)
