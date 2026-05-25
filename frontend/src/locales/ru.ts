@@ -224,6 +224,9 @@ export default {
     downloadJson: "Скачать JSON",
     downloadMarkdown: "Скачать Markdown",
     restore: "Восстановить прежнюю базу",
+    rollbackFailed: "Восстановление не выполнено",
+    rollbackFailedFallback: "Не удалось восстановить прежнюю базу.",
+    rollbackHealthTimeout: "Восстановление завершено, но панель не стала готова вовремя. Обновите страницу вручную после проверки сервиса.",
     generatedAdmins: "Созданные администраторы",
     passwordShownOnce: "Эти пароли показываются один раз и не сохраняются в аудит.",
     actions: {

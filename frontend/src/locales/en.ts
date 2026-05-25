@@ -224,6 +224,9 @@ export default {
     downloadJson: "Download JSON",
     downloadMarkdown: "Download Markdown",
     restore: "Restore previous database",
+    rollbackFailed: "Restore failed",
+    rollbackFailedFallback: "The previous database could not be restored.",
+    rollbackHealthTimeout: "Restore finished, but the panel did not become ready in time. Refresh manually after checking the service.",
     generatedAdmins: "Generated admins",
     passwordShownOnce: "These passwords are shown once and are not stored in audit.",
     actions: {

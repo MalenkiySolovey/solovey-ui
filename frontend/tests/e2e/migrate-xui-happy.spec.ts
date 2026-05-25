@@ -77,6 +77,66 @@ test('Issue43 shows inline apply failure on review step', async ({ page }) => {
   await expect(page.getByText('Review migration plan')).toBeVisible()
 })
 
+test('Issue44 waits for rollback database health before reload', async ({ page }) => {
+  let healthCalls = 0
+  await mockAuthenticatedShell(page)
+  await page.route('**/api/import-xui/plan', async route => route.fulfill({
+    json: {
+      success: true,
+      msg: '',
+      obj: {
+        source: { hash: 'issue44-hash' },
+        defaults: {},
+        items: [
+          {
+            kind: 'inbound',
+            srcId: '1',
+            srcTag: 'demo-inbound',
+            dstTag: 'demo-inbound',
+            action: 'create',
+            conflict: false,
+            previewJson: { tag: 'demo-inbound' },
+          },
+        ],
+      },
+    },
+  }))
+  await page.route('**/api/import-xui/apply', async route => route.fulfill({
+    json: {
+      success: true,
+      msg: '',
+      obj: {
+        backupPath: 's-ui-pre-xui-import-test.db',
+        summary: { inbounds: { created: 1 } },
+      },
+    },
+  }))
+  await page.route('**/api/import-xui/rollback', async route => route.fulfill({
+    json: { success: true, msg: '', obj: null },
+  }))
+  await page.route('**/api/status**', async route => {
+    healthCalls += 1
+    await route.fulfill({
+      json: { success: true, msg: '', obj: { db: { clients: 0 } } },
+    })
+  })
+
+  await page.goto('migrate-xui')
+  await expect(page).toHaveURL(/\/migrate-xui$/)
+  await expect(page.getByText('Migrate from 3x-ui')).toBeVisible()
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'x-ui.db',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from('SQLite format 3\0'),
+  })
+  await page.getByRole('button', { name: 'Build plan' }).click()
+  await page.getByRole('button', { name: 'Apply plan' }).click()
+  await expect(page.getByText('Migration result')).toBeVisible()
+  await page.getByRole('button', { name: 'Restore previous database' }).click()
+
+  await expect.poll(() => healthCalls).toBeGreaterThan(0)
+})
+
 // XFAIL: пункт 45 реестра; generated admin password должен быть скрыт до явного reveal.
 test.skip('generated admin password is shown once via reveal pattern, not raw JSON in DOM', async () => {})
 

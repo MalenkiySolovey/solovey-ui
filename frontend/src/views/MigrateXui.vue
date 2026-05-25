@@ -281,6 +281,16 @@
                 </v-col>
               </v-row>
             </v-col>
+            <v-col v-if="rollbackError" cols="12" md="6" offset-md="6">
+              <v-alert
+                type="error"
+                variant="tonal"
+                data-testid="migrate-xui-rollback-error"
+                :title="$t('migrateXui.rollbackFailed')"
+              >
+                {{ rollbackError }}
+              </v-alert>
+            </v-col>
             <v-col v-if="report?.warnings?.length" cols="12">
               <v-alert type="warning" variant="tonal" :title="$t('migrateXui.warnings')">
                 <ul>
@@ -305,6 +315,7 @@
 import Data from '@/store/modules/data'
 import Ws from '@/store/ws'
 import HttpUtils from '@/plugins/httputil'
+import api from '@/plugins/api'
 
 type PlanItem = {
   rowKey?: string
@@ -343,6 +354,7 @@ export default {
       report: null as any,
       progress: null as any,
       applyError: '',
+      rollbackError: '',
     }
   },
   computed: {
@@ -471,15 +483,41 @@ export default {
     },
     async rollback() {
       if (!this.report?.backupPath) return
+      this.rollbackError = ''
       this.rollbackLoading = true
-      const body = new URLSearchParams()
-      body.set('backup', this.report.backupPath)
-      const msg = await HttpUtils.post('api/import-xui/rollback', body)
-      this.rollbackLoading = false
-      if (msg.success) {
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        location.reload()
+      try {
+        const body = new URLSearchParams()
+        body.set('backup', this.report.backupPath)
+        const msg = await HttpUtils.post('api/import-xui/rollback', body)
+        if (!msg.success) {
+          this.rollbackError = msg.msg || this.$t('migrateXui.rollbackFailedFallback')
+          return
+        }
+        const ready = await this.waitForRollbackReady()
+        if (ready) {
+          location.reload()
+          return
+        }
+        this.rollbackError = this.$t('migrateXui.rollbackHealthTimeout')
+      } finally {
+        this.rollbackLoading = false
       }
+    },
+    async waitForRollbackReady(timeoutMs = 15000, intervalMs = 500): Promise<boolean> {
+      const deadline = Date.now() + timeoutMs
+      while (Date.now() < deadline) {
+        try {
+          const response = await api.get('api/status', { params: { r: 'db' } })
+          const body = response.data
+          if (body?.success && body.obj && Object.prototype.hasOwnProperty.call(body.obj, 'db') && body.obj.db !== null) {
+            return true
+          }
+        } catch {
+          // Backend may be restarting after rollback; keep polling until timeout.
+        }
+        await new Promise(resolve => setTimeout(resolve, intervalMs))
+      }
+      return false
     },
     setImport(item: PlanItem, enabled: boolean) {
       item.action = enabled ? (item.conflict ? this.strategy : 'create') : 'skip'
