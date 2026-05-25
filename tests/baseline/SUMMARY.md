@@ -1289,3 +1289,37 @@ Singleton #26 закрыл observability gap in `service/stats.go` and package-l
 ### Файлы post-fix-26
 
 `pre-fix-26-head.txt`, `pre-fix-26-status.txt`, `post-fix-26-status.txt`, `status-diff.txt`, `anchor-26-service.txt`, `anchor-26-service-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #28 2026-05-25
+
+### Коммиты
+
+- `322095ae7497976e792cd78eff77954c1adab7d9` — fix(service/tokens): add token-use flush circuit breaker (registry #28)
+
+Singleton #28 закрыл resilience gap in `service/token_use_debouncer.go` and package-local anchors in `service/token_test.go`. Timer flush write failures now requeue failed updates by token id, open a `failureBackoff` circuit, invalidate concurrent normal timers through epoch bump/stop, and retry after cooldown; newer per-token pending usage wins by timestamp. Manual `Flush(ctx)` can bypass an open circuit and successful manual/timer flush closes it. Force flush from stop/reset returns the write error without requeueing, opening the circuit, or scheduling a retry timer.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./service -run "Issue28|TokenUseDebouncer|RecordTokenUseFlushesBatchedUpdate" -count=10` | green | Issue28 anchors GREEN 10/10; existing latest-value and batched flush anchors remain covered | [`post-fix-28/anchor-28-service.txt`](post-fix-28/anchor-28-service.txt) |
+| `go test ./service -race -run "Issue28|TokenUseDebouncer|RecordTokenUseFlushesBatchedUpdate" -count=5` | green | service race anchors GREEN 5/5 | [`post-fix-28/anchor-28-service-race.txt`](post-fix-28/anchor-28-service-race.txt) |
+| `go test -race -tags=chaos ./tests/chaos/... -run "TestTokenUseDebouncerRaceVs(DBReinitChaosIssue47|APITestLifecycleIssue48)" -count=3 -timeout 10m` | green | existing #47/#48 chaos race anchors GREEN 3/3 | [`post-fix-28/anchor-28-chaos-race.txt`](post-fix-28/anchor-28-chaos-race.txt) |
+| `go build ./...` | green | без регрессии | [`post-fix-28/build.txt`](post-fix-28/build.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-28/vet.txt`](post-fix-28/vet.txt) |
+| `go test ./... -count=1 -timeout 5m` | green | без регрессии | [`post-fix-28/test.txt`](post-fix-28/test.txt) |
+| `go test -race ./... -timeout 900s` | green | без регрессии | [`post-fix-28/test-race.txt`](post-fix-28/test-race.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly 55 issues; ANSI-tolerant count check used | [`post-fix-28/gosec.txt`](post-fix-28/gosec.txt) |
+| `govulncheck ./...` | green | `No vulnerabilities found.` | [`post-fix-28/govulncheck.txt`](post-fix-28/govulncheck.txt) |
+
+### Дельта
+
+- П. 28 «tokenUseDebouncer circuit breaker» — closed. Timer path write errors requeue failed batches into the bounded per-token pending map, open a cooldown circuit, invalidate any normal timer scheduled by concurrent `Record()`, and retry only after backoff.
+- Latest wins is preserved across failure: requeue merge keeps a newer pending update for the same token id by timestamp, covered by `TestTokenUseDebouncerKeepsLatestAfterTimerFailureIssue28`.
+- Manual flush bypasses the open circuit and closes it on success; force flush from stop/reset does not requeue, open the circuit, or schedule retry timers on failure, preserving #47/#48 lifecycle semantics.
+- No frontend/dependency/schema changes were made; blacklist paths (`Endpoint.vue`, `go.mod`, `go.sum`, frontend package manifests, `tests/chaos/**`, frontend files and DB schema/model/migration files) were untouched.
+- `gosec` remains known red baseline with exactly 55 issues by ANSI-tolerant count check; `govulncheck` remains green.
+
+### Файлы post-fix-28
+
+`pre-fix-28-head.txt`, `pre-fix-28-status.txt`, `post-fix-28-status.txt`, `status-diff.txt`, `anchor-28-service.txt`, `anchor-28-service-race.txt`, `anchor-28-chaos-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.

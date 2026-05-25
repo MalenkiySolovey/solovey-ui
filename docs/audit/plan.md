@@ -117,6 +117,7 @@
     - Status 2026-05-25: closed by singleton #27; legacy API token migration preserves the stored `enabled` flag while still hashing plaintext tokens and normalizing scope/prefix metadata.
 
 28. **P3 / Token use** — [`tokenUseDebouncer.flushTimer()`](../../service/token_use_debouncer.go:81) после ошибки записи продолжает по таймеру, без circuit‑breaker.
+    - Status 2026-05-25: closed by singleton #28; token-use timer flush failures now requeue pending updates, open a backoff circuit, and retry after cooldown while manual flushes can still bypass the circuit.
 
 29. **P3 / Update** — [`fetchLatestRelease()`](../../service/update.go:109) не использует `If‑None‑Match`. Ежечасный hit GitHub без кеша.
     - Status 2026-05-25: closed by singleton #29; version checks now cache GitHub ETags and send `If-None-Match` after hourly cache expiry, preserving cached release info on 304.
@@ -1198,3 +1199,21 @@ Singleton #26 закрыл observability gap in `StatsService.SaveStats()`: comm
 ### Команды и логи
 
 См. секцию `## Post-fix Singleton #26 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-26/`.
+
+## Post-fix Singleton #28 2026-05-25
+
+### Коммиты
+
+- `322095ae7497976e792cd78eff77954c1adab7d9` — fix(service/tokens): add token-use flush circuit breaker (registry #28)
+
+Singleton #28 закрыл token-use flush resilience gap: timer write failures no longer retry on the normal cadence, failed updates stay pending, and newer per-token usage wins before retry.
+
+### Дельта по реестру
+
+- П. 28 «tokenUseDebouncer circuit breaker» — closed. Issue28 anchors verify timer failure opens a circuit/backoff, blocks immediate retry, retries after cooldown, and preserves the latest update for each token id.
+- Existing token-use latest-value flush and #47/#48 race lifecycle anchors remain green.
+- No frontend/dependency/schema changes; `tests/chaos/**` was not modified.
+
+### Команды и логи
+
+См. секцию `## Post-fix Singleton #28 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-28/`.

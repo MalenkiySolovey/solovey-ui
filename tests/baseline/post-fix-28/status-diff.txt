@@ -1,0 +1,12 @@
+diff --git a/tests/baseline/post-fix-28/pre-fix-28-status.txt b/tests/baseline/post-fix-28/post-fix-28-status.txt
+index 97a6f3a..8a0bf21 100644
+--- a/tests/baseline/post-fix-28/pre-fix-28-status.txt
++++ b/tests/baseline/post-fix-28/post-fix-28-status.txt
+@@ -9,7 +9,6 @@
+  M go.mod
+  M go.sum
+  M service/runtime.go
+- M service/token_use_debouncer.go
+ ?? .github/workflows/audit-chaos.yml
+ ?? .github/workflows/audit-frontend.yml
+ ?? .github/workflows/audit-go.yml
