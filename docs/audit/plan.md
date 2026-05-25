@@ -136,6 +136,7 @@
 
 34. **P2 / Validation** — [`apiTokenFromRequest()`](../../api/apiV2Handler.go:204) принимает оба формата (Authorization Bearer и устаревший заголовок `Token`); enforcement отсутствует.
     - Fix: HARD‑disable legacy header после `Sunset` даты.
+    - Status 2026-05-25: closed by singleton #34; legacy `Token` header remains accepted only before its published Sunset and is rejected with 401 after Sunset, while Bearer precedence and generic invalid-token behavior are preserved.
 
 35. **P2 / Concurrency / route registration** — в [`api/apiV2Handler.initRouter()`](../../api/apiV2Handler.go:48) и [`api/apiHandler.registerGroupedRoutes()`](../../api/apiHandler.go:35) дублируются маршруты `/import-xui/*`. Контракт расходится тонко.
     - Fix: единый источник истины для `import-xui` маршрутов.
@@ -1082,3 +1083,21 @@ Singleton #19 закрыл startup race в `SettingService.GetAllSetting()`: def
 ### Команды и логи
 
 См. секцию `## Post-fix Singleton #19 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-19/`.
+
+## Post-fix Singleton #34 2026-05-25
+
+### Коммиты
+
+- `6c4ed85685f73d7cc3933541c879d71eea26a698` — fix(api/auth): enforce legacy token header sunset (registry #34)
+
+Singleton #34 закрыл enforcement gap для legacy API token header: `Authorization: Bearer` остаётся canonical path, legacy `Token` продолжает работать до published Sunset with warnings, and after `Sat, 15 Aug 2026 00:00:00 GMT` it is rejected with a targeted 401.
+
+### Дельта по реестру
+
+- П. 34 «apiTokenFromRequest legacy Token header» — closed. Issue34 anchors cover post-Sunset rejection and Bearer precedence after Sunset.
+- Generic invalid/expired token HTTP behavior remains unchanged outside the expired legacy header case.
+- No frontend/dependency/schema changes.
+
+### Команды и логи
+
+См. секцию `## Post-fix Singleton #34 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-34/`.

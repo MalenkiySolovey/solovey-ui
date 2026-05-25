@@ -1090,3 +1090,36 @@ Singleton #19 закрыл startup race в `SettingService.GetAllSetting()` од
 ### Файлы post-fix-19
 
 `pre-fix-19-head.txt`, `pre-fix-19-status.txt`, `post-fix-19-status.txt`, `status-diff.txt`, `anchor-19-service.txt`, `anchor-19-service-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #34 2026-05-25
+
+### Коммиты
+
+- `6c4ed85685f73d7cc3933541c879d71eea26a698` — fix(api/auth): enforce legacy token header sunset (registry #34)
+
+Singleton #34 закрыл enforcement gap в legacy API token header одним production-коммитом в `api/apiV2Handler.go`, `api/security_token_test.go` и `api/api_v2_token_test.go`. Legacy `Token` остается accepted before `Sat, 15 Aug 2026 00:00:00 GMT` with `Deprecation`/`Sunset` headers, but is rejected with a targeted 401 at/after Sunset; `Authorization: Bearer` precedence remains accepted after Sunset.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./api -run "Issue34|APIV2LegacyTokenHeader|APITokenFromRequest|SecurityAuthZAPIV2Invalid" -count=10` | green | Issue34 API anchors GREEN 10/10; generic invalid/expired token contract preserved outside expired legacy header case | [`post-fix-34/anchor-34-api.txt`](post-fix-34/anchor-34-api.txt) |
+| `go test ./api -race -run "Issue34|APIV2LegacyTokenHeader|APITokenFromRequest" -count=5` | green | race anchor GREEN 5/5 | [`post-fix-34/anchor-34-api-race.txt`](post-fix-34/anchor-34-api-race.txt) |
+| `go build ./...` | green | без регрессии | [`post-fix-34/build.txt`](post-fix-34/build.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-34/vet.txt`](post-fix-34/vet.txt) |
+| `go test ./... -count=1 -timeout 5m` | green | без регрессии | [`post-fix-34/test.txt`](post-fix-34/test.txt) |
+| `go test -race ./... -timeout 900s` | green | без регрессии | [`post-fix-34/test-race.txt`](post-fix-34/test-race.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly 55 issues; ANSI-tolerant count check used | [`post-fix-34/gosec.txt`](post-fix-34/gosec.txt) |
+| `govulncheck ./...` | green | `No vulnerabilities found.` | [`post-fix-34/govulncheck.txt`](post-fix-34/govulncheck.txt) |
+
+### Дельта
+
+- П. 34 «apiTokenFromRequest legacy Token header» — closed. `apiTokenFromRequest` keeps Bearer precedence, marks expired legacy header use after Sunset, and `checkToken` returns the targeted legacy-expired 401 while keeping generic invalid-token behavior unchanged.
+- Pre-Sunset legacy `Token` behavior is preserved: accepted valid legacy header still emits `Deprecation: true` and the published `Sunset` header.
+- Bearer path remains canonical and accepted after legacy Sunset even when both headers are present.
+- No frontend/dependency/schema changes were made; blacklist paths (`Endpoint.vue`, `go.mod`, `go.sum`, frontend package manifests, `tests/chaos/**`, frontend files and DB schema/model/migration files) were untouched.
+- `gosec` remains known red baseline with exactly 55 issues by ANSI-tolerant count check; `govulncheck` remains green.
+
+### Файлы post-fix-34
+
+`pre-fix-34-head.txt`, `pre-fix-34-status.txt`, `post-fix-34-status.txt`, `status-diff.txt`, `anchor-34-api.txt`, `anchor-34-api-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
