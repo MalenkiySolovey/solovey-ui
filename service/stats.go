@@ -9,6 +9,7 @@ import (
 	"github.com/deposist/s-ui-x/database"
 	"github.com/deposist/s-ui-x/database/model"
 	"github.com/deposist/s-ui-x/ipmonitor"
+	"github.com/deposist/s-ui-x/logger"
 	"github.com/deposist/s-ui-x/realtime"
 
 	"gorm.io/gorm"
@@ -24,6 +25,10 @@ var (
 	onlineResources   = &onlines{}
 	onlineResourcesMu sync.RWMutex
 )
+
+var commitStatsTransaction = func(tx *gorm.DB) error {
+	return tx.Commit().Error
+}
 
 type StatsService struct {
 	Runtime *Runtime
@@ -84,8 +89,19 @@ func (s *StatsService) SaveStats(enableTraffic bool) (err error) {
 	clientDeltas := map[string]clientTrafficDelta{}
 	defer func() {
 		if err == nil {
-			if commitErr := tx.Commit().Error; commitErr != nil {
+			if commitErr := commitStatsTransaction(tx); commitErr != nil {
 				err = commitErr
+				if auditErr := (&AuditService{Runtime: s.runtime()}).Record(AuditEvent{
+					Actor:    "system",
+					Event:    "stats_commit_failed",
+					Resource: "stats",
+					Severity: AuditSeverityWarn,
+					Details: map[string]any{
+						"error": commitErr.Error(),
+					},
+				}); auditErr != nil {
+					logger.Warning("stats commit failure audit failed:", auditErr)
+				}
 				realtime.Publish(realtime.TopicCoreState, map[string]any{
 					"warning": "stats_commit_failed",
 				})
