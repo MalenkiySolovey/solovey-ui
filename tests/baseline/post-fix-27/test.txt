@@ -1,0 +1,28 @@
+?   	github.com/deposist/s-ui-x	[no test files]
+ok  	github.com/deposist/s-ui-x/api	46.018s
+?   	github.com/deposist/s-ui-x/app	[no test files]
+ok  	github.com/deposist/s-ui-x/cmd	3.982s
+ok  	github.com/deposist/s-ui-x/cmd/migration	2.413s
+ok  	github.com/deposist/s-ui-x/config	0.169s
+ok  	github.com/deposist/s-ui-x/core	0.684s
+ok  	github.com/deposist/s-ui-x/cronjob	15.378s
+ok  	github.com/deposist/s-ui-x/database	9.071s
+ok  	github.com/deposist/s-ui-x/database/importxui	1.074s
+ok  	github.com/deposist/s-ui-x/database/importxui/source/file	0.206s
+ok  	github.com/deposist/s-ui-x/database/importxui/source/ssh	0.300s
+ok  	github.com/deposist/s-ui-x/database/importxui/source/xuihttp	0.357s
+ok  	github.com/deposist/s-ui-x/database/model	0.116s
+ok  	github.com/deposist/s-ui-x/ipmonitor	3.383s
+ok  	github.com/deposist/s-ui-x/logger	0.883s
+ok  	github.com/deposist/s-ui-x/middleware	0.283s
+ok  	github.com/deposist/s-ui-x/network	0.233s
+ok  	github.com/deposist/s-ui-x/realtime	0.242s
+ok  	github.com/deposist/s-ui-x/service	51.286s
+ok  	github.com/deposist/s-ui-x/sub	4.023s
+?   	github.com/deposist/s-ui-x/tests/e2e/panel-server	[no test files]
+ok  	github.com/deposist/s-ui-x/util	0.247s
+ok  	github.com/deposist/s-ui-x/util/common	0.629s
+ok  	github.com/deposist/s-ui-x/util/redact	0.115s
+ok  	github.com/deposist/s-ui-x/util/secretbox	0.179s
+ok  	github.com/deposist/s-ui-x/util/ssrf	0.120s
+ok  	github.com/deposist/s-ui-x/web	0.910s

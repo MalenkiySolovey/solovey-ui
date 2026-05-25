@@ -113,6 +113,7 @@
 26. **P3 / Logging** — [`StatsService.SaveStats()`](../../service/stats.go:51) при `commitErr` шлёт `realtime.Publish` с предупреждением, но не пишет audit и не возвращает ошибку наружу.
 
 27. **P3 / Token migration** — [`UserService.migrateLegacyTokens()`](../../service/user.go:286) перезаписывает `enabled=true` для всех старых токенов независимо от исходного состояния.
+    - Status 2026-05-25: closed by singleton #27; legacy API token migration preserves the stored `enabled` flag while still hashing plaintext tokens and normalizing scope/prefix metadata.
 
 28. **P3 / Token use** — [`tokenUseDebouncer.flushTimer()`](../../service/token_use_debouncer.go:81) после ошибки записи продолжает по таймеру, без circuit‑breaker.
 
@@ -1161,3 +1162,21 @@ Singleton #29 закрыл update-check cache gap: after the existing hourly cac
 ### Команды и логи
 
 См. секцию `## Post-fix Singleton #29 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-29/`.
+
+## Post-fix Singleton #27 2026-05-25
+
+### Коммиты
+
+- `4904b5a52fbf57c50cdb6cb22fa018d69c5c7cad` — fix(service/tokens): preserve legacy token enabled state (registry #27)
+
+Singleton #27 закрыл token migration regression: plaintext legacy API token migration no longer force-enables rows and instead preserves the stored `enabled` flag.
+
+### Дельта по реестру
+
+- П. 27 «legacy token enabled state» — closed. Issue27 anchor verifies a disabled plaintext legacy token remains disabled while hash/prefix/scope metadata are populated.
+- Existing enabled legacy migration behavior remains covered by `TestLoadTokensMigratesLegacyPlaintextToken`.
+- No frontend/dependency/schema changes.
+
+### Команды и логи
+
+См. секцию `## Post-fix Singleton #27 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-27/`.

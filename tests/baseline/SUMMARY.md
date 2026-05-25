@@ -1224,3 +1224,36 @@ Singleton #29 закрыл update-check cache gap в `service/update.go` и pack
 ### Файлы post-fix-29
 
 `pre-fix-29-head.txt`, `pre-fix-29-status.txt`, `post-fix-29-status.txt`, `status-diff.txt`, `anchor-29-service.txt`, `anchor-29-service-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #27 2026-05-25
+
+### Коммиты
+
+- `4904b5a52fbf57c50cdb6cb22fa018d69c5c7cad` — fix(service/tokens): preserve legacy token enabled state (registry #27)
+
+Singleton #27 закрыл regression в `service/user.go`: `UserService.migrateLegacyTokens()` no longer force-enables plaintext legacy API token rows, while still clearing plaintext token material and populating hash/prefix/scope/update metadata. Package-local anchors live in `service/user_extra_test.go` and `service/token_test.go`.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./service -run "Issue27|LoadTokensMigratesLegacyPlaintextToken" -count=10` | green | Issue27 disabled legacy migration anchor GREEN 10/10; enabled/default legacy migration anchor remains GREEN | [`post-fix-27/anchor-27-service.txt`](post-fix-27/anchor-27-service.txt) |
+| `go test ./service -race -run "Issue27|LoadTokensMigratesLegacyPlaintextToken" -count=5` | green | race anchors GREEN 5/5 | [`post-fix-27/anchor-27-service-race.txt`](post-fix-27/anchor-27-service-race.txt) |
+| `go build ./...` | green | без регрессии | [`post-fix-27/build.txt`](post-fix-27/build.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-27/vet.txt`](post-fix-27/vet.txt) |
+| `go test ./... -count=1 -timeout 5m` | green | без регрессии | [`post-fix-27/test.txt`](post-fix-27/test.txt) |
+| `go test -race ./... -timeout 900s` | green | без регрессии | [`post-fix-27/test-race.txt`](post-fix-27/test-race.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly 55 issues; ANSI-tolerant count check used | [`post-fix-27/gosec.txt`](post-fix-27/gosec.txt) |
+| `govulncheck ./...` | green | `No vulnerabilities found.` | [`post-fix-27/govulncheck.txt`](post-fix-27/govulncheck.txt) |
+
+### Дельта
+
+- П. 27 «legacy token enabled state» — closed. `migrateLegacyTokens()` now preserves the stored `enabled` value because the migration update no longer writes `enabled=true`.
+- Disabled plaintext legacy tokens remain disabled after migration; `TestUserServiceMigrateLegacyTokensKeepsDisabledIssue27` asserts the fixture is disabled before migration and verifies plaintext clearing plus hash/prefix/default scope population after migration.
+- Enabled/default legacy migration remains covered by `TestLoadTokensMigratesLegacyPlaintextToken`, with the fixture explicitly enabled and the existing enabled assertion preserved.
+- No frontend/dependency/schema changes were made; blacklist paths (`Endpoint.vue`, `go.mod`, `go.sum`, frontend package manifests, `tests/chaos/**`, frontend files and DB schema/model/migration files) were untouched.
+- `gosec` remains known red baseline with exactly 55 issues by ANSI-tolerant count check; `govulncheck` remains green.
+
+### Файлы post-fix-27
+
+`pre-fix-27-head.txt`, `pre-fix-27-status.txt`, `post-fix-27-status.txt`, `status-diff.txt`, `anchor-27-service.txt`, `anchor-27-service-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
