@@ -51,12 +51,15 @@
 
 10. **P2 / Reliability** — таймаут SIGHUP захардкожен в [`SendSighup()`](../../database/backup.go:438) на 3 секунды через [`time.AfterFunc(3*time.Second, ...)`](../../database/backup.go:449). На медленной машине процесс может не успеть завершить пишущую операцию.
     - Fix: вынести в конфиг и согласовать с graceful‑shutdown.
+    - Status 2026-05-25: closed by Cluster G; SIGHUP timeout configurable via SUI_SIGHUP_TIMEOUT_SECONDS env var (1–60s, fallback 3s). Settings UI deferred to Кластер E.
 
 11. **P2 / Backup robustness** — [`copyBackupTable()`](../../database/backup.go:158) копирует данные в одной транзакции; ошибка `WAL checkpoint` через [`PRAGMA wal_checkpoint(TRUNCATE)`](../../database/backup.go:107) фатальна и роняет весь бэкап.
     - Fix: retry / fallback на не‑truncate checkpoint, продолжать при не‑критичной ошибке checkpoint.
+    - Status 2026-05-25: closed by Cluster G; WAL checkpoint TRUNCATE→FULL→warning fallback in GetDb.
 
 12. **P2 / Backup**: [`validateVersionedBackupConfig()`](../../database/backup.go:381) считает «версионным» любой бэкап с непустым `version` и требует наличие `settings.config`.
     - Fix: сделать проверку конфигурируемой/мягче либо логировать предупреждение вместо отказа.
+    - Status 2026-05-25: closed by Cluster G; missing settings.config in versioned backup logged as warning, restore continues.
 
 13. **P3 / Schema** — [`type User`](../../database/model/model.go:18) не имеет поля `force_password_reset` или эквивалента; нельзя реализовать AdminModeResetRequired без доработки схемы (связано с п. 2).
 
@@ -941,3 +944,23 @@ Cluster C закрыл cron observability пункты 4, 40 и 41 тремя pr
 ### Команды и логи
 
 См. секцию `## Post-fix Cluster C 2026-05-24` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-cluster-C/`.
+
+## Post-fix Cluster G 2026-05-25
+
+### Коммиты
+
+- `1976a4f` — fix(database/backup): make sighup timeout configurable via env (registry #10)
+- `8c7cd3b` — fix(database/backup): fallback to full WAL checkpoint on truncate failure (registry #11)
+- `223c082` — fix(database/backup): warn on missing settings.config in versioned backup (registry #12)
+
+Cluster G закрыл backup safety пункты 10, 11, 12 тремя production-коммитами в `database/backup.go`. Frontend и зависимости не затрагивались.
+
+### Дельта по реестру
+
+- П. 10 «Reliability / SIGHUP timeout» — closed by Cluster G. Timeout теперь конфигурируется через `SUI_SIGHUP_TIMEOUT_SECONDS` env var (1–60s, fallback 3s). Anchor `TestSendSighupRespectsConfiguredTimeoutIssue10` GREEN 10/10.
+- П. 11 «Backup robustness / WAL checkpoint» — closed by Cluster G. `GetDb` теперь делает TRUNCATE → FULL → warning fallback вместо фатальной ошибки на TRUNCATE. Anchor `TestWALCheckpointFallback*Issue11` GREEN 10/10.
+- П. 12 «Backup / versioned config validation» — closed by Cluster G. `validateVersionedBackupConfig` логирует warning и продолжает при отсутствии `settings.config` вместо отказа. Pre-fix anchor `TestImportDBRejectsVersionedBackupWithoutConfig` переименован в `TestImportDBAcceptsVersionedBackupWithoutConfigIssue12` и переписан под post-fix контракт. Anchor `TestValidateVersionedBackupConfigSoftensMissingConfigIssue12` GREEN 10/10.
+
+### Команды и логи
+
+См. секцию `## Post-fix Cluster G 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-cluster-G/`.

@@ -847,3 +847,41 @@ Cluster C закрыл cron observability пункты 4, 40 и 41 тремя о
 ### Файлы post-fix-cluster-C
 
 `pre-cluster-C-head.txt`, `pre-cluster-C-status.txt`, `post-cluster-C-status.txt`, `build.txt`, `vet.txt`, `anchor-4-after.txt`, `anchor-40-after.txt`, `anchor-41-after.txt`, `test-cronjob.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Cluster G 2026-05-25
+
+### Коммиты
+
+- `1976a4f` — fix(database/backup): make sighup timeout configurable via env (registry #10)
+- `8c7cd3b` — fix(database/backup): fallback to full WAL checkpoint on truncate failure (registry #11)
+- `223c082` — fix(database/backup): warn on missing settings.config in versioned backup (registry #12)
+
+Cluster G закрыл backup safety пункты 10, 11, 12 тремя production-коммитами в одном файле `database/backup.go` (плюс новые/обновлённые anchor-файлы). Frontend и зависимости не затрагивались. SIGHUP timeout вынесен в ENV-config (`SUI_SIGHUP_TIMEOUT_SECONDS`), без settings UI / API contract / migration — полная contract-fix отложена до Кластера E.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go build ./...` | green | без регрессии | [`post-fix-cluster-G/build.txt`](post-fix-cluster-G/build.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-cluster-G/vet.txt`](post-fix-cluster-G/vet.txt) |
+| anchor #10: `go test -run Issue10 ./database/... -count=10` | green | sighup timeout anchor GREEN, 10/10 | [`post-fix-cluster-G/anchor-10-after.txt`](post-fix-cluster-G/anchor-10-after.txt) |
+| anchor #11: `go test -run Issue11 ./database/... -count=10` | green | WAL fallback anchor GREEN, 10/10 | [`post-fix-cluster-G/anchor-11-after.txt`](post-fix-cluster-G/anchor-11-after.txt) |
+| anchor #12: `go test -run "Issue12\|TestImportDBAcceptsVersionedBackupWithoutConfig" ./database/... -count=10` | green | versioned config soft-validate anchor GREEN, 10/10 | [`post-fix-cluster-G/anchor-12-after.txt`](post-fix-cluster-G/anchor-12-after.txt) |
+| `go test ./database/... -count=1` | green | без регрессии | [`post-fix-cluster-G/test-database.txt`](post-fix-cluster-G/test-database.txt) |
+| `go test ./... -count=1` | green | без регрессии | [`post-fix-cluster-G/test.txt`](post-fix-cluster-G/test.txt) |
+| `go test -race ./... -timeout 900s` | green | Cluster C race-baseline сохранён | [`post-fix-cluster-G/test-race.txt`](post-fix-cluster-G/test-race.txt) |
+| `gosec ./...` | red baseline | 55 -> 55 issues | [`post-fix-cluster-G/gosec.txt`](post-fix-cluster-G/gosec.txt) |
+| `govulncheck ./...` | green | No vulnerabilities found. | [`post-fix-cluster-G/govulncheck.txt`](post-fix-cluster-G/govulncheck.txt) |
+
+### Дельта
+
+- П. 10: SIGHUP timeout теперь читается из `SUI_SIGHUP_TIMEOUT_SECONDS` (диапазон 1–60 секунд), при отсутствии или невалидном значении fallback на 3s. Helper `resolvedSighupTimeout()` через `sync.Once` для idempotency. Test-only override `SetSighupTimeoutForTest` рядом с уже существующим `SetSendSighupHook`. Settings UI / migration / API contract не трогались — полная contract-fix отложена до Кластера E.
+- П. 11: `GetDb` WAL checkpoint теперь использует `walCheckpointWithFallback`: TRUNCATE → FULL → log warning + continue. Бэкап без checkpoint всё равно валиден.
+- П. 12: `validateVersionedBackupConfig` при отсутствии `settings.config` теперь логирует warning и возвращает `nil` вместо отказа. Pre-fix anchor `TestImportDBRejectsVersionedBackupWithoutConfig` переписан в `TestImportDBAcceptsVersionedBackupWithoutConfigIssue12` под post-fix контракт. Версионные старые бэкапы (до появления `settings.config`) теперь восстановимы.
+- `gosec` остался known red baseline; не ухудшился.
+- `govulncheck` остался green.
+- Frontend не затрагивался.
+
+### Файлы post-fix-cluster-G
+
+`pre-cluster-G-head.txt`, `pre-cluster-G-status.txt`, `post-cluster-G-status.txt`, `status-diff.txt`, `build.txt`, `vet.txt`, `anchor-10-after.txt`, `anchor-11-after.txt`, `anchor-12-after.txt`, `test-database.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
