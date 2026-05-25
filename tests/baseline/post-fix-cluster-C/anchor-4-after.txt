@@ -1,0 +1,1 @@
+ok  	github.com/deposist/s-ui-x/cronjob	25.949s

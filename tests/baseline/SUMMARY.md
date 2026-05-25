@@ -807,3 +807,43 @@ Cluster B закрыл concurrency пункты 20 и 21 двумя отдель
 ### Файлы post-fix-cluster-B
 
 `pre-cluster-B-head.txt`, `pre-cluster-B-status.txt`, `post-cluster-B-status.txt`, `build.txt`, `vet.txt`, `anchor-20-after.txt`, `anchor-21-after.txt`, `test-race.txt`, `test-race-anchors.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Cluster C 2026-05-24
+
+### Коммиты
+
+- `0464e17` — fix(cronjob/xui-sync): record sanitized lastErr in failed sync summary (registry #4)
+- `c5d45bf` — fix(cronjob/xui-sync): exponential backoff between sync retries (registry #40)
+- `d468daa` — fix(cronjob/xui-sync): treat success persist failure as warn-only (registry #41)
+
+Cluster C закрыл cron observability пункты 4, 40 и 41 тремя отдельными production-коммитами в одном файле `cronjob/xuiSyncJob.go`. Ручная модификация `frontend/src/layouts/modals/Endpoint.vue` не трогалась; frontend не затрагивался фиксом — Vitest и Playwright пропущены как нерелевантные scope.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go build ./...` | green | без регрессии | [`post-fix-cluster-C/build.txt`](post-fix-cluster-C/build.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-cluster-C/vet.txt`](post-fix-cluster-C/vet.txt) |
+| anchor п. 4: `go test -run "FailureSummary\|IncludesLastErrIssue4" ./cronjob/... -count=10` | green | failed-summary anchor’ы стали GREEN, 10/10 | [`post-fix-cluster-C/anchor-4-after.txt`](post-fix-cluster-C/anchor-4-after.txt) |
+| anchor п. 40: `go test -run "Issue40" ./cronjob/... -count=10` | green | exponential backoff anchor стал GREEN, 10/10 | [`post-fix-cluster-C/anchor-40-after.txt`](post-fix-cluster-C/anchor-40-after.txt) |
+| anchor п. 41: `go test -run "Issue41" ./cronjob/... -count=10` | green | success-persist-failure anchor GREEN, 10/10 | [`post-fix-cluster-C/anchor-41-after.txt`](post-fix-cluster-C/anchor-41-after.txt) |
+| `go test ./cronjob/... -count=1 -timeout 5m` | green | без регрессии | [`post-fix-cluster-C/test-cronjob.txt`](post-fix-cluster-C/test-cronjob.txt) |
+| `go test ./... -count=1 -timeout 5m` | green | без регрессии | [`post-fix-cluster-C/test.txt`](post-fix-cluster-C/test.txt) |
+| `go test -race -timeout 900s ./...` | green | Cluster B race-baseline сохранён | [`post-fix-cluster-C/test-race.txt`](post-fix-cluster-C/test-race.txt) |
+| `gosec ./...` | red baseline | 55 -> 55 issues | [`post-fix-cluster-C/gosec.txt`](post-fix-cluster-C/gosec.txt) |
+| `govulncheck ./...` | green | `No vulnerabilities found.` сохранено | [`post-fix-cluster-C/govulncheck.txt`](post-fix-cluster-C/govulncheck.txt) |
+
+### Дельта
+
+- П. 4: `RunProfile` теперь записывает в `last_run_summary` sanitized `lastErr.Error()` (через `redact.String`) и `errorClass` (через `classifyXUISyncError`); generic `{"error":"failed"}` больше не пишется. XFAIL-anchor `TestXUISyncJobExtraFailureSummaryIncludesLastErr_XFAILIssue4` снят и переименован в `TestXUISyncJobExtraFailureSummaryIncludesLastErrIssue4`; ригидный anchor `TestXUISyncJobExtraRunProfileFailureRecordsFailedSummary` обновлён под post-fix контракт (sanitized error + source errorClass). Дополнительно коммит #4 впервые добавил в HEAD lost Phase 3 anchor `cronjob/integration_xui_sync_test.go` (был untracked) и переписал его ассерцию в под-тесте `failure` под тот же post-fix контракт.
+- П. 40: между retry-попытками `RunProfile` теперь использует экспоненциальное расписание `200ms → 1s` вместо линейного `100ms → 200ms`. Anchor `TestXUISyncJobLostNetworkBackoffAnchorIssue40Phase5` обновлён на двухграничный диапазон `>=1100ms && <=2000ms`; benchmark `BenchmarkXUISyncJobLostNetworkBackoff` теперь докладывает `expected_backoff_ms=1200`. Дополнительный anchor `TestXUISyncJobExponentialBackoffScheduleIssue40` закрепляет тот же total-backoff контракт без production hook’ов.
+- П. 41: success-ветка `RunProfile` больше не пробрасывает наружу ошибку `recordRun` — она логируется как warn, а `RunProfile` возвращает `nil`. Новый anchor `TestXUISyncJobSuccessReturnsNilOnPersistFailureIssue41` GREEN 10/10.
+- `go test -race -timeout 900s ./...` остался green; Cluster B race-anchors не регрессировали.
+- `gosec ./...` остался known red baseline; не ухудшился (55 -> 55).
+- `govulncheck ./...` остался green: `No vulnerabilities found.`
+- Побочных новых пунктов реестра не добавлено.
+- Frontend не затрагивался: Vitest и Playwright пропущены как нерелевантные scope.
+
+### Файлы post-fix-cluster-C
+
+`pre-cluster-C-head.txt`, `pre-cluster-C-status.txt`, `post-cluster-C-status.txt`, `build.txt`, `vet.txt`, `anchor-4-after.txt`, `anchor-40-after.txt`, `anchor-41-after.txt`, `test-cronjob.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
