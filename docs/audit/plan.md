@@ -154,6 +154,7 @@
 
 37. **P2 / API contract** — [`ImportXuiApply()`](../../api/import_xui.go:166) принимает план как `Fields["plan"]` (строка JSON в форме). Размер ограничен `maxXUIFieldBytes=8MiB`.
     - Fix: chunked endpoint или stream‑декодирование plan через body.
+    - Status 2026-05-26: closed by singleton #37; import-xui apply streams the multipart `plan` part to temp storage so valid plans larger than 8MiB can be decoded under the aggregate request cap while other form fields keep the 8MiB limit.
 
 38. **P3 / API** — [`saveXUIUpload()`](../../api/import_xui.go:289) пишет временный файл в `os.TempDir()`, не имеет фоновой чистки остатков.
     - Status 2026-05-25: closed by singleton #38; import-xui upload handling now opportunistically removes stale `xui-import-*` temp directories older than 24h while preserving active uploads and fail-soft request behavior.
@@ -1254,3 +1255,22 @@ Singleton #39 закрыл rollback realtime gap in `ImportXuiRollback()`: succe
 ### Команды и логи
 
 См. секцию `## Post-fix Singleton #39 2026-05-26` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-39/`.
+
+## Post-fix Singleton #37 2026-05-26
+
+### Коммиты
+
+- `a4127632509083c98cd32250663bd6484df682d9` — fix(api/import-xui): stream large apply plans (registry #37)
+
+Singleton #37 закрыл apply-plan size contract gap in `ImportXuiApply()`: multipart `plan` parts are streamed to per-request temp storage and decoded from file, while the existing 200MiB aggregate import cap and 8MiB limit for other text fields remain in force.
+
+### Дельта по реестру
+
+- П. 37 «ImportXuiApply streamed plan» — closed. Issue37 anchor verifies a valid plan larger than 8MiB is accepted through the existing multipart `plan` field and applied successfully.
+- Existing compatibility behavior remains covered: malformed 9MiB plan fields still return 413 `payload_too_large`, and stale plans still return the existing bad-request path.
+- New anchor lives in `api/import_xui_plan_stream_test.go`; pre-existing dirty `api/import_xui_test.go` lifecycle diff was intentionally not edited, staged, or committed.
+- No frontend/dependency/schema/route changes.
+
+### Команды и логи
+
+См. секцию `## Post-fix Singleton #37 2026-05-26` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-37/`.

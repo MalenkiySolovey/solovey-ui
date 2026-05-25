@@ -1390,3 +1390,37 @@ Singleton #39 закрыл backend realtime gap in `api/import_xui.go`: successf
 ### Файлы post-fix-39
 
 `pre-head.txt`, `pre-status.txt`, `post-head.txt`, `post-status.txt`, `status-diff.txt`, `test-api-issue39.txt`, `test-api-issue39-race.txt`, `build-all.txt`, `vet-all.txt`, `test-all.txt`, `test-race-all.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #37 2026-05-26
+
+### Коммиты
+
+- `a4127632509083c98cd32250663bd6484df682d9` — fix(api/import-xui): stream large apply plans (registry #37)
+
+Singleton #37 закрыл import-xui apply-plan size gap in `api/import_xui.go`: multipart `plan` parts now stream to temp storage and decode from file, so valid plans larger than 8MiB can be applied without loading the entire plan field into memory. Other multipart text fields keep the 8MiB limit, the aggregate request cap remains 200MiB, and routes/response shape/frontend/schema/dependencies were not changed.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./api -run "Issue37|ImportXuiApply(AcceptsSevenMiBPlanField|RejectsNineMiBPlanFieldWith413|RejectsStalePlan|AcceptsLargePlan)" -count=10` | green | Issue37 valid >8MiB streamed plan anchor GREEN 10/10; existing 7MiB/9MiB/stale anchors remain covered | [`post-fix-37/test-api-issue37.txt`](post-fix-37/test-api-issue37.txt) |
+| `go test ./api -race -run "Issue37|ImportXuiApply(AcceptsLargePlan|RejectsNineMiBPlanFieldWith413)" -count=5` | green | API race anchors GREEN 5/5 | [`post-fix-37/test-api-issue37-race.txt`](post-fix-37/test-api-issue37-race.txt) |
+| `go build ./...` | green | без регрессии | [`post-fix-37/build-all.txt`](post-fix-37/build-all.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-37/vet-all.txt`](post-fix-37/vet-all.txt) |
+| `go test ./...` | green | без регрессии | [`post-fix-37/test-all.txt`](post-fix-37/test-all.txt) |
+| `go test -race ./... -timeout 900s` | green | без регрессии | [`post-fix-37/test-race-all.txt`](post-fix-37/test-race-all.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly 55 issues; new temp plan path has targeted `#nosec G304` after review | [`post-fix-37/gosec.txt`](post-fix-37/gosec.txt) |
+| `govulncheck ./...` | green | `No vulnerabilities found.` | [`post-fix-37/govulncheck.txt`](post-fix-37/govulncheck.txt) |
+
+### Дельта
+
+- П. 37 «ImportXuiApply streamed plan» — closed. `saveXUIUpload()` writes the `plan` multipart part to `plan.json` inside the per-request upload temp dir and records its size; `ImportXuiApply()` decodes from that file with `json.Decoder`.
+- Valid plans larger than 8MiB are accepted under the existing 200MiB aggregate request cap. The new Issue37 anchor builds a real plan, pads `Warnings` past 8MiB, applies it, and verifies the renamed inbound was imported.
+- Malformed streamed plans larger than 8MiB preserve the previous 413 `payload_too_large` behavior, keeping `TestImportXuiApplyRejectsNineMiBPlanFieldWith413` green without editing `api/import_xui_test.go`.
+- New anchor file avoids the pre-existing dirty `api/import_xui_test.go` lifecycle diff; that file was not edited, staged, or committed by #37.
+- No frontend/dependency/schema/route changes were made; blacklist paths (`Endpoint.vue`, `go.mod`, `go.sum`, frontend package manifests, `tests/chaos/**`, frontend files and DB schema/model/migration files) were untouched.
+- `gosec` remains known red baseline with exactly 55 issues by ANSI-tolerant count check; `govulncheck` remains green.
+
+### Файлы post-fix-37
+
+`pre-head.txt`, `pre-status.txt`, `post-head.txt`, `post-status.txt`, `status-diff.txt`, `test-api-issue37.txt`, `test-api-issue37-race.txt`, `build-all.txt`, `vet-all.txt`, `test-all.txt`, `test-race-all.txt`, `gosec.txt`, `govulncheck.txt`.
