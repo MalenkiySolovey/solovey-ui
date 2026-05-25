@@ -1356,3 +1356,37 @@ Singleton #38 закрыл stale upload temp lifecycle gap in `api/import_xui.go
 ### Файлы post-fix-38
 
 `pre-fix-38-head.txt`, `pre-fix-38-status.txt`, `post-fix-38-status.txt`, `status-diff.txt`, `anchor-38-api.txt`, `anchor-38-api-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #39 2026-05-26
+
+### Коммиты
+
+- `c409532b2d198acbe52f6b96f1c963ea295149fa` — fix(api/import-xui): publish rollback realtime event (registry #39)
+
+Singleton #39 закрыл backend realtime gap in `api/import_xui.go`: successful `ImportXuiRollback()` now records the existing warn audit and publishes `config_invalidated` before the unchanged success response. Failure paths, rollback path validation, routes, frontend, schema and dependencies were not changed.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./api -run "Issue39|ImportXuiRollbackRestoresBackup|ImportXuiReports" -count=10` | green | Issue39 rollback realtime/audit/no-event anchors GREEN 10/10; existing rollback restore anchor remains covered | [`post-fix-39/test-api-issue39.txt`](post-fix-39/test-api-issue39.txt) |
+| `go test ./api -race -run "Issue39|ImportXuiRollbackRestoresBackup" -count=5` | green | API race anchors GREEN 5/5 | [`post-fix-39/test-api-issue39-race.txt`](post-fix-39/test-api-issue39-race.txt) |
+| `go build ./...` | green | без регрессии | [`post-fix-39/build-all.txt`](post-fix-39/build-all.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-39/vet-all.txt`](post-fix-39/vet-all.txt) |
+| `go test ./...` | green | без регрессии | [`post-fix-39/test-all.txt`](post-fix-39/test-all.txt) |
+| `go test -race ./... -timeout 900s` | green | без регрессии | [`post-fix-39/test-race-all.txt`](post-fix-39/test-race-all.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly 55 issues; ANSI-tolerant count check used | [`post-fix-39/gosec.txt`](post-fix-39/gosec.txt) |
+| `govulncheck ./...` | green | `No vulnerabilities found.` | [`post-fix-39/govulncheck.txt`](post-fix-39/govulncheck.txt) |
+
+### Дельта
+
+- П. 39 «ImportXuiRollback realtime event» — closed. Successful rollback now emits `realtime.TopicConfigInvalidated` after DB restore and rollback audit.
+- `TestImportXuiRollbackPublishesConfigInvalidatedIssue39` asserts the 200 response, the `config_invalidated` event, and the persisted `xui_import_rollback` warn audit with backup basename.
+- `TestImportXuiRollbackInvalidBackupDoesNotPublishIssue39` asserts invalid rollback input returns 400 without publishing realtime.
+- New anchor file avoids the pre-existing dirty `api/import_xui_test.go` lifecycle diff; that file was not edited, staged, or committed by #39.
+- No frontend/dependency/schema/route changes were made; blacklist paths (`Endpoint.vue`, `go.mod`, `go.sum`, frontend package manifests, `tests/chaos/**`, frontend files and DB schema/model/migration files) were untouched.
+- `gosec` remains known red baseline with exactly 55 issues by ANSI-tolerant count check; `govulncheck` remains green.
+
+### Файлы post-fix-39
+
+`pre-head.txt`, `pre-status.txt`, `post-head.txt`, `post-status.txt`, `status-diff.txt`, `test-api-issue39.txt`, `test-api-issue39-race.txt`, `build-all.txt`, `vet-all.txt`, `test-all.txt`, `test-race-all.txt`, `gosec.txt`, `govulncheck.txt`.

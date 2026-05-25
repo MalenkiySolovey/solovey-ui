@@ -159,6 +159,7 @@
     - Status 2026-05-25: closed by singleton #38; import-xui upload handling now opportunistically removes stale `xui-import-*` temp directories older than 24h while preserving active uploads and fail-soft request behavior.
 
 39. **P3 / API** — [`ImportXuiRollback()`](../../api/import_xui.go:204) логирует только audit, не публикует realtime событие.
+    - Status 2026-05-26: closed by singleton #39; successful import-xui rollback now publishes `config_invalidated` realtime after restoring the backup and recording rollback audit.
 
 ### 1.5. Cronjob и фон
 
@@ -1235,3 +1236,21 @@ Singleton #38 закрыл temp lifecycle gap in `saveXUIUpload()`: old leftover
 ### Команды и логи
 
 См. секцию `## Post-fix Singleton #38 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-38/`.
+
+## Post-fix Singleton #39 2026-05-26
+
+### Коммиты
+
+- `c409532b2d198acbe52f6b96f1c963ea295149fa` — fix(api/import-xui): publish rollback realtime event (registry #39)
+
+Singleton #39 закрыл rollback realtime gap in `ImportXuiRollback()`: successful rollback now preserves the existing `xui_import_rollback` audit record and publishes `config_invalidated` before returning the unchanged `import-xui` success response.
+
+### Дельта по реестру
+
+- П. 39 «ImportXuiRollback realtime event» — closed. Issue39 anchors verify successful rollback emits `config_invalidated`, keeps the warn audit with backup basename, and invalid backup failure does not publish a realtime event.
+- New anchor lives in `api/import_xui_rollback_realtime_test.go`; pre-existing dirty `api/import_xui_test.go` lifecycle diff was intentionally not edited, staged, or committed.
+- No frontend/dependency/schema/route changes.
+
+### Команды и логи
+
+См. секцию `## Post-fix Singleton #39 2026-05-26` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-39/`.
