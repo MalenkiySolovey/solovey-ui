@@ -41,10 +41,48 @@ func TestValidateOptionalHTTPURLRejectsUserInfo(t *testing.T) {
 	}
 }
 
-func TestValidateOptionalHTTPURLRejectsFragment_XFAILIssue30(t *testing.T) {
-	t.Skip("XFAIL: issue 30; validateOptionalHTTPURL currently accepts URL fragments")
+func TestValidateOptionalHTTPURLRejectsUnsafePartsIssue30(t *testing.T) {
+	tests := []struct {
+		name    string
+		value   string
+		wantErr bool
+	}{
+		{
+			name:    "reject fragment",
+			value:   "https://example.com/profile#token",
+			wantErr: true,
+		},
+		{
+			name:    "reject raw newline",
+			value:   "https://example.com/profile\nX-Test: value",
+			wantErr: true,
+		},
+		{
+			name:    "reject raw tab in path",
+			value:   "https://example.com/pro\tfile",
+			wantErr: true,
+		},
+		{
+			name:    "reject encoded newline in path",
+			value:   "https://example.com/%0a",
+			wantErr: true,
+		},
+		{
+			name:    "accept query string",
+			value:   "https://example.com/profile?from=sub",
+			wantErr: false,
+		},
+	}
 
-	if err := validateOptionalHTTPURL("https://example.com/profile#token"); err == nil {
-		t.Fatal("URL fragment should be rejected")
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := validateOptionalHTTPURL(tt.value)
+			if tt.wantErr && err == nil {
+				t.Fatal("expected URL setting to be rejected")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("expected URL setting to be accepted: %v", err)
+			}
+		})
 	}
 }
