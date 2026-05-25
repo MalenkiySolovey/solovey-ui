@@ -119,6 +119,7 @@
 29. **P3 / Update** — [`fetchLatestRelease()`](../../service/update.go:109) не использует `If‑None‑Match`. Ежечасный hit GitHub без кеша.
 
 30. **P3 / Validation** — [`validateOptionalHTTPURL()`](../../service/setting.go:1015) запрещает `parsed.User`, но не запрещает `?fragment` или встраивание управляющих символов.
+   - Status 2026-05-25: closed by singleton #30; optional HTTP URL validation now rejects fragments and control characters while preserving http/https query URLs and existing userinfo rejection.
 
 31. **P3 / Endpoint warp** — порядок вызовов в [`WarpService.SetWarpLicense()`](../../service/warp.go:311) фрагильный (Authorization до setWarpHeaders).
     - Status 2026-05-25: closed by Cluster I; WARP authorized headers are centralized and covered by request-capture tests.
@@ -1120,3 +1121,21 @@ Singleton #35 закрыл route drift risk для import-xui endpoints: v1 `/ap
 ### Команды и логи
 
 См. секцию `## Post-fix Singleton #35 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-35/`.
+
+## Post-fix Singleton #30 2026-05-25
+
+### Коммиты
+
+- `e9711e5e9a1b630e95f7dfb5a44f47f03c40233e` — fix(service/settings): reject unsafe optional URLs (registry #30)
+
+Singleton #30 закрыл validation gap in `validateOptionalHTTPURL()`: optional subscription/support/profile URLs reject fragments and control characters, while ordinary http/https URLs with query strings remain accepted.
+
+### Дельта по реестру
+
+- П. 30 «validateOptionalHTTPURL fragments/control chars» — closed. Issue30 anchor no longer XFAIL and covers fragments/control-character rejects plus query acceptance.
+- Existing userinfo and non-http scheme rejects remain covered.
+- No frontend/dependency/schema changes.
+
+### Команды и логи
+
+См. секцию `## Post-fix Singleton #30 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-30/`.

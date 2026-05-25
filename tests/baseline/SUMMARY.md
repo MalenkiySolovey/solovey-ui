@@ -1156,3 +1156,36 @@ Singleton #35 закрыл route drift risk для import-xui endpoints одни
 ### Файлы post-fix-35
 
 `pre-fix-35-head.txt`, `pre-fix-35-status.txt`, `post-fix-35-status.txt`, `status-diff.txt`, `anchor-35-api.txt`, `anchor-35-api-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #30 2026-05-25
+
+### Коммиты
+
+- `e9711e5e9a1b630e95f7dfb5a44f47f03c40233e` — fix(service/settings): reject unsafe optional URLs (registry #30)
+
+Singleton #30 закрыл validation gap in `validateOptionalHTTPURL()` одним production-коммитом в `service/setting.go` и package-local anchor `service/setting_extra_test.go`. Optional subscription/support/profile URLs now reject fragments plus raw/decoded control characters, while ordinary `http`/`https` URLs with query strings remain accepted.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./service -run "Issue30|ValidateOptionalHTTPURL|SubscriptionSettingsDefaultsAndValidation" -count=10` | green | Issue30 helper anchor GREEN 10/10; existing optional URL/default validation remains covered | [`post-fix-30/anchor-30-service.txt`](post-fix-30/anchor-30-service.txt) |
+| `go test ./service -race -run "Issue30|ValidateOptionalHTTPURL" -count=5` | green | race anchor GREEN 5/5 | [`post-fix-30/anchor-30-service-race.txt`](post-fix-30/anchor-30-service-race.txt) |
+| `go build ./...` | green | без регрессии | [`post-fix-30/build.txt`](post-fix-30/build.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-30/vet.txt`](post-fix-30/vet.txt) |
+| `go test ./... -count=1 -timeout 5m` | green | без регрессии | [`post-fix-30/test.txt`](post-fix-30/test.txt) |
+| `go test -race ./... -timeout 900s` | green | без регрессии | [`post-fix-30/test-race.txt`](post-fix-30/test-race.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly 55 issues; ANSI-tolerant count check used | [`post-fix-30/gosec.txt`](post-fix-30/gosec.txt) |
+| `govulncheck ./...` | green | `No vulnerabilities found.` | [`post-fix-30/govulncheck.txt`](post-fix-30/govulncheck.txt) |
+
+### Дельта
+
+- П. 30 «validateOptionalHTTPURL fragments/control chars» — closed. `validateOptionalHTTPURL` now rejects URL fragments, raw control characters, decoded path controls, raw query controls, and decoded query controls.
+- Query URLs remain accepted: `https://example.com/profile?from=sub` is covered by the Issue30 anchor.
+- Existing `http`/`https` scheme restriction, required host behavior, non-http rejection and userinfo rejection remain covered.
+- No frontend/dependency/schema changes were made; blacklist paths (`Endpoint.vue`, `go.mod`, `go.sum`, frontend package manifests, `tests/chaos/**`, frontend files and DB schema/model/migration files) were untouched.
+- `gosec` remains known red baseline with exactly 55 issues by ANSI-tolerant count check; `govulncheck` remains green.
+
+### Файлы post-fix-30
+
+`pre-fix-30-head.txt`, `pre-fix-30-status.txt`, `post-fix-30-status.txt`, `status-diff.txt`, `anchor-30-service.txt`, `anchor-30-service-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
