@@ -99,6 +99,7 @@
 
 23. **P2 / Crash risk** — в [`ServerService.GetSystemInfo()`](../../service/server.go:168) код полагается на `netInterfaces[i].Flags[0]`, `Flags[1]`, и `address.Addr[0:6]` без проверок длины.
     - Fix: безопасное сравнение по содержанию слайса; `len(address.Addr) >= 6`.
+    - Status 2026-05-25: closed by singleton #23; GetSystemInfo now uses content-based interface flag checks and safe IPv6 prefix handling with package-local DI anchor.
 
 24. **P2 / Confidentiality** — [`ServerService.GetSystemInfo()`](../../service/server.go:168) возвращает все IPv4/IPv6 интерфейсов без фильтрации, в том числе приватные/линк‑локальные.
     - Fix: фильтр или явный токеновый scope для системной инфы.
@@ -1010,3 +1011,20 @@ Cluster H закрыл MigrateXui UX пункты 43, 44, 45. Backend contract, 
 ### Команды и логи
 
 См. секцию `## Post-fix Cluster H 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-cluster-H/`. Targeted Cluster H Playwright GREEN; full Playwright сохранён как red exception на unrelated `frontend/tests/e2e/ws-reconnect-chaos.spec.ts` (`page.evaluate: Execution context was destroyed` during offline toggle), подтверждён отдельным singleton rerun artifact.
+
+## Post-fix Singleton #23 2026-05-25
+
+### Коммиты
+
+- `5bcef1ac4658bfa27986e9aec27771030739507e` — fix(service/server): harden system info interface parsing (registry #23)
+
+Singleton #23 закрыл crash-risk в `ServerService.GetSystemInfo()` при коротких flags/address данных. #24 confidentiality filtering не менялся и остаётся open.
+
+### Дельта по реестру
+
+- П. 23 «GetSystemInfo IPv6-only crash» — closed. Interface flags теперь проверяются по содержимому, а не по позициям; короткие/пустые addresses больше не panic'ят. Package-local Issue23 anchor GREEN 10/10.
+- П. 24 «GetSystemInfo confidentiality» — unchanged/open; private address filtering не входил в singleton #23.
+
+### Команды и логи
+
+См. секцию `## Post-fix Singleton #23 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-23/`.
