@@ -21,6 +21,11 @@ import (
 
 const xuiSyncMinInterval = 10 * time.Minute
 
+// xuiSyncBackoff is the schedule of sleeps between sync retry attempts.
+// Index 0 is sleep after attempt 1, index 1 is sleep after attempt 2.
+// Attempt 3 is the final attempt, so no sleep is needed afterwards.
+var xuiSyncBackoff = []time.Duration{200 * time.Millisecond, time.Second}
+
 type XUISyncJob struct {
 	now func() time.Time
 }
@@ -74,7 +79,8 @@ func (j *XUISyncJob) RunProfile(ctx context.Context, profile *model.XUISyncProfi
 		}
 		lastErr = err
 		if attempt < 3 {
-			timer := time.NewTimer(time.Duration(attempt) * 100 * time.Millisecond)
+			delay := xuiSyncBackoff[attempt-1]
+			timer := time.NewTimer(delay)
 			select {
 			case <-ctx.Done():
 				if !timer.Stop() {
