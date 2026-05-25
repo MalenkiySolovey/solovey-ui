@@ -140,6 +140,17 @@
             </v-col>
           </v-row>
 
+          <v-alert
+            v-if="applyError"
+            class="mt-3"
+            type="error"
+            variant="tonal"
+            data-testid="migrate-xui-apply-error"
+            :title="$t('migrateXui.applyFailed')"
+          >
+            {{ applyError }}
+          </v-alert>
+
           <v-data-table-virtual
             class="mt-3"
             fixed-header
@@ -331,6 +342,7 @@ export default {
       plan: null as MigrationPlan | null,
       report: null as any,
       progress: null as any,
+      applyError: '',
     }
   },
   computed: {
@@ -413,6 +425,7 @@ export default {
     async buildPlan() {
       if (!this.selectedFile) return
       this.loading = true
+      this.applyError = ''
       const formData = new FormData()
       formData.append('db', this.selectedFile)
       formData.append('strategy', this.strategy)
@@ -436,6 +449,7 @@ export default {
     },
     async applyPlan() {
       if (!this.selectedFile || !this.plan) return
+      this.applyError = ''
       this.progress = { step: 'queued', current: 0, total: Math.max(this.selectedCount, 1), percent: 0 }
       this.maxStep = Math.max(this.maxStep, 3)
       this.step = 3
@@ -445,6 +459,8 @@ export default {
       const msg = await HttpUtils.post('api/import-xui/apply', formData)
       if (!msg.success) {
         this.step = 2
+        this.progress = null
+        this.applyError = msg.msg || this.$t('migrateXui.applyFailedFallback')
         return
       }
       this.report = msg.obj

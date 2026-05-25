@@ -215,6 +215,8 @@ export default {
     warnings: "Warnings",
     back: "Back",
     apply: "Apply plan",
+    applyFailed: "Import failed",
+    applyFailedFallback: "The migration could not be applied.",
     progressTitle: "Applying migration",
     current: "Current",
     resultTitle: "Migration result",

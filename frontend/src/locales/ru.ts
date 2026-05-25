@@ -215,6 +215,8 @@ export default {
     warnings: "Предупреждения",
     back: "Назад",
     apply: "Применить план",
+    applyFailed: "Импорт не выполнен",
+    applyFailedFallback: "Не удалось применить миграцию.",
     progressTitle: "Применение миграции",
     current: "Текущий",
     resultTitle: "Результат миграции",
