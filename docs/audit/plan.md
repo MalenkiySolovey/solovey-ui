@@ -117,6 +117,7 @@
 28. **P3 / Token use** — [`tokenUseDebouncer.flushTimer()`](../../service/token_use_debouncer.go:81) после ошибки записи продолжает по таймеру, без circuit‑breaker.
 
 29. **P3 / Update** — [`fetchLatestRelease()`](../../service/update.go:109) не использует `If‑None‑Match`. Ежечасный hit GitHub без кеша.
+    - Status 2026-05-25: closed by singleton #29; version checks now cache GitHub ETags and send `If-None-Match` after hourly cache expiry, preserving cached release info on 304.
 
 30. **P3 / Validation** — [`validateOptionalHTTPURL()`](../../service/setting.go:1015) запрещает `parsed.User`, но не запрещает `?fragment` или встраивание управляющих символов.
    - Status 2026-05-25: closed by singleton #30; optional HTTP URL validation now rejects fragments and control characters while preserving http/https query URLs and existing userinfo rejection.
@@ -1142,3 +1143,21 @@ Singleton #30 закрыл validation gap in `validateOptionalHTTPURL()`: option
 ### Команды и логи
 
 См. секцию `## Post-fix Singleton #30 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-30/`.
+
+## Post-fix Singleton #29 2026-05-25
+
+### Коммиты
+
+- `4067f4989156cc0ac402e6f0225b306832d48bd8` — fix(service/update): use etag for release checks (registry #29)
+
+Singleton #29 закрыл update-check cache gap: after the existing hourly cache expires, release checks send `If-None-Match` when an ETag is known and preserve cached release metadata on `304 Not Modified`.
+
+### Дельта по реестру
+
+- П. 29 «fetchLatestRelease ETag» — closed. Issue29 anchor verifies first 200 response stores ETag, next expired-cache request sends `If-None-Match`, and 304 keeps previous latest/releaseURL without an extra full fetch.
+- Existing fail-soft and in-memory hourly cache behavior remains covered.
+- No frontend/dependency/schema changes.
+
+### Команды и логи
+
+См. секцию `## Post-fix Singleton #29 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-29/`.

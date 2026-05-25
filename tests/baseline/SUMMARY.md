@@ -1191,3 +1191,36 @@ Singleton #30 закрыл validation gap in `validateOptionalHTTPURL()` в `ser
 ### Файлы post-fix-30
 
 `pre-fix-30-head.txt`, `pre-fix-30-status.txt`, `post-fix-30-status.txt`, `status-diff.txt`, `anchor-30-service.txt`, `anchor-30-service-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #29 2026-05-25
+
+### Коммиты
+
+- `4067f4989156cc0ac402e6f0225b306832d48bd8` — fix(service/update): use etag for release checks (registry #29)
+
+Singleton #29 закрыл update-check cache gap в `service/update.go` и package-local anchor `service/update_test.go`. Version checks now store the GitHub release ETag in memory, send `If-None-Match` after hourly cache expiry, and preserve cached release metadata when GitHub returns `304 Not Modified`.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./service -run "Issue29|VersionInfo|VersionIsNewer" -count=10` | green | Issue29 ETag anchor GREEN 10/10; existing VersionInfo and version comparison anchors remain covered | [`post-fix-29/anchor-29-service.txt`](post-fix-29/anchor-29-service.txt) |
+| `go test ./service -race -run "Issue29|VersionInfo" -count=5` | green | race anchor GREEN 5/5 | [`post-fix-29/anchor-29-service-race.txt`](post-fix-29/anchor-29-service-race.txt) |
+| `go build ./...` | green | без регрессии | [`post-fix-29/build.txt`](post-fix-29/build.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-29/vet.txt`](post-fix-29/vet.txt) |
+| `go test ./... -count=1 -timeout 5m` | green | без регрессии | [`post-fix-29/test.txt`](post-fix-29/test.txt) |
+| `go test -race ./... -timeout 900s` | green | без регрессии | [`post-fix-29/test-race.txt`](post-fix-29/test-race.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly 55 issues; ANSI-tolerant count check used | [`post-fix-29/gosec.txt`](post-fix-29/gosec.txt) |
+| `govulncheck ./...` | green | `No vulnerabilities found.` | [`post-fix-29/govulncheck.txt`](post-fix-29/govulncheck.txt) |
+
+### Дельта
+
+- П. 29 «fetchLatestRelease ETag» — closed. `latestReleaseCached` keeps an in-memory ETag, passes it to `fetchLatestRelease`, and refreshes `checkedAt` on both 200 and 304 responses.
+- Issue29 anchor verifies first fetch sends no validator, stores `ETag: "release-v1"`, sends `If-None-Match` after hourly cache expiry, and keeps the prior latest/releaseURL on 304 without a third request while the cache is fresh.
+- Existing fail-soft behavior remains covered: network/server/decode failures do not break callers and still cache the failure interval.
+- No frontend/dependency/schema changes were made; blacklist paths (`Endpoint.vue`, `go.mod`, `go.sum`, frontend package manifests, `tests/chaos/**`, frontend files and DB schema/model/migration files) were untouched.
+- `gosec` remains known red baseline with exactly 55 issues by ANSI-tolerant count check; `govulncheck` remains green.
+
+### Файлы post-fix-29
+
+`pre-fix-29-head.txt`, `pre-fix-29-status.txt`, `post-fix-29-status.txt`, `status-diff.txt`, `anchor-29-service.txt`, `anchor-29-service-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
