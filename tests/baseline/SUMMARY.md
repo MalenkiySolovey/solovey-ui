@@ -1257,3 +1257,35 @@ Singleton #27 закрыл regression в `service/user.go`: `UserService.migrate
 ### Файлы post-fix-27
 
 `pre-fix-27-head.txt`, `pre-fix-27-status.txt`, `post-fix-27-status.txt`, `status-diff.txt`, `anchor-27-service.txt`, `anchor-27-service-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #26 2026-05-25
+
+### Коммиты
+
+- `c8794a8d8fab38eeb8109b6332152786cf1cc11a` — fix(service/stats): audit stats commit failures (registry #26)
+
+Singleton #26 закрыл observability gap in `service/stats.go` and package-local anchor `service/stats_extra_test.go`. `StatsService.SaveStats()` now returns the original transaction commit error, records a `stats_commit_failed` audit event, publishes the existing `core_state` warning, and does not emit normal stats realtime events on the failed commit path.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./service -run "Issue26|StatsServiceSaveStatsWithEmptyStats|AuditRecord" -count=10` | green | Issue26 commit-failure audit anchor GREEN 10/10; empty-stats and audit record anchors remain covered | [`post-fix-26/anchor-26-service.txt`](post-fix-26/anchor-26-service.txt) |
+| `go test ./service -race -run "Issue26|StatsServiceSaveStatsWithEmptyStats" -count=5` | green | race anchors GREEN 5/5 | [`post-fix-26/anchor-26-service-race.txt`](post-fix-26/anchor-26-service-race.txt) |
+| `go build ./...` | green | без регрессии | [`post-fix-26/build.txt`](post-fix-26/build.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-26/vet.txt`](post-fix-26/vet.txt) |
+| `go test ./... -count=1 -timeout 5m` | green | без регрессии | [`post-fix-26/test.txt`](post-fix-26/test.txt) |
+| `go test -race ./... -timeout 900s` | green | без регрессии | [`post-fix-26/test-race.txt`](post-fix-26/test-race.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly 55 issues; ANSI-tolerant count check used | [`post-fix-26/gosec.txt`](post-fix-26/gosec.txt) |
+| `govulncheck ./...` | green | no vulnerabilities reported | [`post-fix-26/govulncheck.txt`](post-fix-26/govulncheck.txt) |
+
+### Дельта
+
+- П. 26 «StatsService commit failure observability» — closed. Package-local Issue26 anchor verifies returned sentinel commit error, persisted `stats_commit_failed` audit row, existing warning realtime event, no `onlines`/`traffic_delta` events, and zero committed stats rows after rollback.
+- Audit recording failure is logged and cannot mask the original commit error; the normal post-commit realtime publishing remains gated behind successful commit.
+- No frontend/dependency/schema changes were made; blacklist paths (`Endpoint.vue`, `go.mod`, `go.sum`, frontend package manifests, `tests/chaos/**`, frontend files and DB schema/model/migration files) were untouched.
+- `gosec` remains known red baseline with exactly 55 issues by ANSI-tolerant count check; `govulncheck` remains green.
+
+### Файлы post-fix-26
+
+`pre-fix-26-head.txt`, `pre-fix-26-status.txt`, `post-fix-26-status.txt`, `status-diff.txt`, `anchor-26-service.txt`, `anchor-26-service-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.

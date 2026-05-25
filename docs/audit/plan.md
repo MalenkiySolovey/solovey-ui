@@ -111,6 +111,7 @@
     - Status 2026-05-25: closed by Cluster I; Telegram backup payload/passphrase zeroization uses explicit secret-bag ownership.
 
 26. **P3 / Logging** — [`StatsService.SaveStats()`](../../service/stats.go:51) при `commitErr` шлёт `realtime.Publish` с предупреждением, но не пишет audit и не возвращает ошибку наружу.
+    - Status 2026-05-25: closed by singleton #26; stats transaction commit failures now return the commit error, publish the existing warning event, and write a `stats_commit_failed` audit event without emitting normal stats realtime updates.
 
 27. **P3 / Token migration** — [`UserService.migrateLegacyTokens()`](../../service/user.go:286) перезаписывает `enabled=true` для всех старых токенов независимо от исходного состояния.
     - Status 2026-05-25: closed by singleton #27; legacy API token migration preserves the stored `enabled` flag while still hashing plaintext tokens and normalizing scope/prefix metadata.
@@ -1180,3 +1181,20 @@ Singleton #27 закрыл token migration regression: plaintext legacy API toke
 ### Команды и логи
 
 См. секцию `## Post-fix Singleton #27 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-27/`.
+
+## Post-fix Singleton #26 2026-05-25
+
+### Коммиты
+
+- `c8794a8d8fab38eeb8109b6332152786cf1cc11a` — fix(service/stats): audit stats commit failures (registry #26)
+
+Singleton #26 закрыл observability gap in `StatsService.SaveStats()`: commit failures now create an audit record while preserving the existing returned error and realtime warning behavior.
+
+### Дельта по реестру
+
+- П. 26 «StatsService commit failure observability» — closed. Issue26 anchor verifies returned commit error, `stats_commit_failed` audit event, existing `core_state` warning realtime event, no normal stats realtime events, and no committed stats rows on failed commit.
+- No frontend/dependency/schema changes.
+
+### Команды и логи
+
+См. секцию `## Post-fix Singleton #26 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-26/`.
