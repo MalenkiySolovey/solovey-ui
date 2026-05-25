@@ -10,7 +10,9 @@ import (
 	"path/filepath"
 	"reflect"
 	"runtime"
+	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -431,8 +433,46 @@ func IsSQLiteDB(file io.Reader) (bool, error) {
 // which makes SendSighup execute its normal signal logic.
 var sendSighupHook func() error
 
+// sighupTimeout is the delay between SendSighup invocation and the
+// actual signal delivery. Tests override this via the package-level
+// helper SetSighupTimeoutForTest. Production reads SUI_SIGHUP_TIMEOUT_SECONDS
+// from the environment on first call; if unset or invalid, falls back
+// to the historical 3s default.
+var (
+	sighupTimeout     time.Duration
+	sighupTimeoutOnce sync.Once
+)
+
 func SetSendSighupHook(hook func() error) {
 	sendSighupHook = hook
+}
+
+func resolvedSighupTimeout() time.Duration {
+	sighupTimeoutOnce.Do(func() {
+		sighupTimeout = parseSighupTimeoutEnv()
+	})
+	return sighupTimeout
+}
+
+func parseSighupTimeoutEnv() time.Duration {
+	const defaultTimeout = 3 * time.Second
+	raw := strings.TrimSpace(os.Getenv("SUI_SIGHUP_TIMEOUT_SECONDS"))
+	if raw == "" {
+		return defaultTimeout
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || parsed < 1 || parsed > 60 {
+		logger.Warning("invalid SUI_SIGHUP_TIMEOUT_SECONDS=", raw, ", falling back to 3s")
+		return defaultTimeout
+	}
+	return time.Duration(parsed) * time.Second
+}
+
+// SetSighupTimeoutForTest overrides the resolved timeout. Test helpers
+// call this in t.Cleanup-bracketed pairs. Production must not call it.
+func SetSighupTimeoutForTest(d time.Duration) {
+	sighupTimeout = d
+	sighupTimeoutOnce.Do(func() {})
 }
 
 func SendSighup() error {
@@ -445,8 +485,8 @@ func SendSighup() error {
 		return err
 	}
 
-	// Send SIGHUP to the current process
-	time.AfterFunc(3*time.Second, func() {
+	// Send SIGHUP after the configured delay (SUI_SIGHUP_TIMEOUT_SECONDS, default 3s).
+	time.AfterFunc(resolvedSighupTimeout(), func() {
 		var signalErr error
 		if runtime.GOOS == "windows" {
 			signalErr = process.Kill()
