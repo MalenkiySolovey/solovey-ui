@@ -1,0 +1,20 @@
+diff --git a/tests/baseline/post-fix-42/pre-status.txt b/tests/baseline/post-fix-42/post-status.txt
+index 6fb774a..17fd3d4 100644
+--- a/tests/baseline/post-fix-42/pre-status.txt
++++ b/tests/baseline/post-fix-42/post-status.txt
+@@ -2,6 +2,7 @@
+  M api/import_xui_test.go
+  M api/session_test.go
+  M api/test_helpers_test.go
++ M docs/audit/plan.md
+  M frontend/package-lock.json
+  M frontend/package.json
+  M frontend/src/layouts/modals/Endpoint.vue
+@@ -9,6 +10,7 @@
+  M go.mod
+  M go.sum
+  M service/runtime.go
++ M tests/baseline/SUMMARY.md
+ ?? .github/workflows/audit-chaos.yml
+ ?? .github/workflows/audit-frontend.yml
+ ?? .github/workflows/audit-go.yml

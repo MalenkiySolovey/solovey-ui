@@ -1526,3 +1526,28 @@ Singleton #15 закрыл configurability gap in `database.OpenDB()`: SQLite po
 ### Файлы post-fix-15
 
 `pre-head.txt`, `pre-status.txt`, `post-head.txt`, `post-status.txt`, `status-diff.txt`, `test-database-issue15.txt`, `test-database-issue15-race.txt`, `build-all.txt`, `vet-all.txt`, `test-all.txt`, `test-race-all.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #42 2026-05-26
+
+### Коммиты
+
+- docs-only registry cleanup; no production commit needed.
+
+Singleton #42 was a duplicate frontend WS registry pointer to #32. Cluster D already closed #32 with healing reconnect from degraded fallback and green WS anchors, so #42 is now marked closed without code changes.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| Cluster D WS validation | passed | #32 healing reconnect anchors already green; #42 is duplicate pointer | [`post-fix-cluster-D/`](post-fix-cluster-D/) |
+| docs-only cleanup note | recorded | no production/frontend/dependency/test changes | [`post-fix-42/cluster-d-reference.txt`](post-fix-42/cluster-d-reference.txt) |
+
+### Дельта
+
+- П. 42 «WS — см. п. 32» — closed by reference to Cluster D / #32.
+- No production code, frontend code, dependencies, `tests/chaos/**`, DB schema/model/migration files or dirty API lifecycle tests were modified.
+- Remaining open registry work is Cluster E contract work: #2, #3, #7, #8, #46, plus related #13 and #9.
+
+### Файлы post-fix-42
+
+`pre-head.txt`, `pre-status.txt`, `cluster-d-reference.txt`.

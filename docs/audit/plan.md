@@ -178,6 +178,7 @@
 ### 1.6. Frontend
 
 42. **P2 / WS** — см. п. 32.
+    - Status 2026-05-26: closed by docs-only registry cleanup; duplicate of #32, which was closed by Cluster D with healing reconnect and green WS anchors.
 
 43. **P2 / UX** — [`MigrateXui.applyPlan()`](../../frontend/src/views/MigrateXui.vue:437) при `!msg.success` возврат на step 2 без сообщения об ошибке.
     - Status 2026-05-25: closed by Cluster H; failed apply returns to review with inline error preserving selected plan state.
@@ -1339,3 +1340,21 @@ Singleton #15 закрыл DB pool configurability gap in `database.OpenDB()`: S
 ### Команды и логи
 
 См. секцию `## Post-fix Singleton #15 2026-05-26` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-15/`.
+
+## Post-fix Singleton #42 2026-05-26
+
+### Коммиты
+
+- docs-only registry cleanup; no production commit needed.
+
+Singleton #42 был duplicate pointer to #32 in the frontend WS registry section. Cluster D already closed #32 with healing reconnect from degraded fallback and green Vitest/Playwright WS anchors, so #42 is now marked closed without code changes.
+
+### Дельта по реестру
+
+- П. 42 «WS — см. п. 32» — closed by reference to Cluster D / #32.
+- Production code, frontend code, dependencies, `tests/chaos/**`, DB schema/model/migration files and dirty API lifecycle files were not modified for this cleanup.
+- Remaining open registry items are Cluster E contract work: #2, #3, #7, #8, #46, with related schema/test coverage items #13 and #9 requiring the same approval path.
+
+### Команды и логи
+
+См. Cluster D validation in `tests/baseline/post-fix-cluster-D/` and the docs-only note in `tests/baseline/post-fix-42/`.
