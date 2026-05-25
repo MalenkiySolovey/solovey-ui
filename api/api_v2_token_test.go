@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/deposist/s-ui-x/database"
 	"github.com/deposist/s-ui-x/database/model"
@@ -57,6 +59,7 @@ func TestAPIV2AcceptsBearerTokenAfterHashMigration(t *testing.T) {
 }
 
 func TestAPIV2LegacyTokenHeaderEmitsSunset(t *testing.T) {
+	withAPITokenNow(t, legacyTokenHeaderSunsetAt.Add(-time.Second))
 	router := newAPIV2TokenTestRouter(t)
 
 	recorder := performAPIV2TokenRequest(router, "Token", "legacy-token")
@@ -75,5 +78,54 @@ func TestAPIV2LegacyTokenHeaderEmitsSunset(t *testing.T) {
 	}
 	if recorder.Header().Get("Sunset") != legacyTokenHeaderSunset {
 		t.Fatalf("unexpected Sunset header: %q", recorder.Header().Get("Sunset"))
+	}
+}
+
+func TestAPIV2LegacyTokenHeaderRejectedAfterSunsetIssue34(t *testing.T) {
+	withAPITokenNow(t, legacyTokenHeaderSunsetAt.Add(time.Second))
+	router := newAPIV2TokenTestRouter(t)
+
+	recorder := performAPIV2TokenRequest(router, "Token", "legacy-token")
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("unexpected status %d, want %d", recorder.Code, http.StatusUnauthorized)
+	}
+	if recorder.Header().Get("Deprecation") != "true" {
+		t.Fatal("expired legacy token request did not emit Deprecation header")
+	}
+	if recorder.Header().Get("Sunset") != legacyTokenHeaderSunset {
+		t.Fatalf("unexpected Sunset header: %q", recorder.Header().Get("Sunset"))
+	}
+	var msg Msg
+	if err := json.Unmarshal(recorder.Body.Bytes(), &msg); err != nil {
+		t.Fatal(err)
+	}
+	if msg.Success {
+		t.Fatal("expired legacy token request should fail")
+	}
+	if !strings.Contains(msg.Msg, "legacy token header expired") {
+		t.Fatalf("unexpected expired legacy token message: %q", msg.Msg)
+	}
+}
+
+func TestAPIV2BearerTokenAcceptedAfterLegacySunsetIssue34(t *testing.T) {
+	withAPITokenNow(t, legacyTokenHeaderSunsetAt.Add(time.Second))
+	router := newAPIV2TokenTestRouter(t)
+
+	recorder := performAPIV2TokenRequest(router, "Authorization", "Bearer legacy-token")
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("unexpected status %d", recorder.Code)
+	}
+	if recorder.Header().Get("Deprecation") != "" {
+		t.Fatal("bearer token request should not emit legacy Deprecation header")
+	}
+	if recorder.Header().Get("Sunset") != "" {
+		t.Fatal("bearer token request should not emit legacy Sunset header")
+	}
+	var msg Msg
+	if err := json.Unmarshal(recorder.Body.Bytes(), &msg); err != nil {
+		t.Fatal(err)
+	}
+	if !msg.Success {
+		t.Fatalf("bearer token request failed after legacy sunset: %s", msg.Msg)
 	}
 }

@@ -11,6 +11,8 @@ import (
 )
 
 func TestSecurityAPITokenFromRequestBearerAndLegacyHeader(t *testing.T) {
+	withAPITokenNow(t, legacyTokenHeaderSunsetAt.Add(-time.Second))
+
 	tests := []struct {
 		name       string
 		auth       string
@@ -41,6 +43,46 @@ func TestSecurityAPITokenFromRequestBearerAndLegacyHeader(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestSecurityAPITokenFromRequestLegacySunsetIssue34(t *testing.T) {
+	withAPITokenNow(t, legacyTokenHeaderSunsetAt)
+
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	req := httptest.NewRequest(http.MethodGet, "/apiv2/settings", nil)
+	req.Header.Set("Token", "legacy-token")
+	c.Request = req
+
+	got, legacy := apiTokenFromRequest(c)
+	if got != "" || !legacy {
+		t.Fatalf("expired legacy apiTokenFromRequest()=(%q,%v), want empty token and legacy=true", got, legacy)
+	}
+	if !c.GetBool(legacyTokenHeaderExpiredKey) {
+		t.Fatal("expired legacy token header did not set expired marker")
+	}
+
+	recorder = httptest.NewRecorder()
+	c, _ = gin.CreateTestContext(recorder)
+	req = httptest.NewRequest(http.MethodGet, "/apiv2/settings", nil)
+	req.Header.Set("Authorization", "Bearer bearer-token")
+	req.Header.Set("Token", "legacy-token")
+	c.Request = req
+
+	got, legacy = apiTokenFromRequest(c)
+	if got != "bearer-token" || legacy {
+		t.Fatalf("bearer with expired legacy header apiTokenFromRequest()=(%q,%v), want bearer token and legacy=false", got, legacy)
+	}
+	if c.GetBool(legacyTokenHeaderExpiredKey) {
+		t.Fatal("bearer token path should not set expired legacy marker")
+	}
+}
+
+func withAPITokenNow(t *testing.T, now time.Time) {
+	t.Helper()
+	previous := apiTokenNow
+	apiTokenNow = func() time.Time { return now }
+	t.Cleanup(func() { apiTokenNow = previous })
 }
 
 func TestSecurityConsumeWSTokenDoubleSpendExpiredAndCapacity(t *testing.T) {

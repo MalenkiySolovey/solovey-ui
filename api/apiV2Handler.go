@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
@@ -30,9 +31,15 @@ type APIv2Handler struct {
 }
 
 const (
-	apiUsernameKey          = "apiUsername"
-	apiTokenScopeKey        = "apiTokenScope"
-	legacyTokenHeaderSunset = "Sat, 15 Aug 2026 00:00:00 GMT"
+	apiUsernameKey              = "apiUsername"
+	apiTokenScopeKey            = "apiTokenScope"
+	legacyTokenHeaderExpiredKey = "legacyTokenHeaderExpired"
+	legacyTokenHeaderSunset     = "Sat, 15 Aug 2026 00:00:00 GMT"
+)
+
+var (
+	apiTokenNow               = time.Now
+	legacyTokenHeaderSunsetAt = time.Date(2026, time.August, 15, 0, 0, 0, 0, time.UTC)
 )
 
 func NewAPIv2Handler(g *gin.RouterGroup, options ...Option) *APIv2Handler {
@@ -175,6 +182,16 @@ func (a *APIv2Handler) checkToken(c *gin.Context) {
 		c.Next()
 		return
 	}
+	if c.GetBool(legacyTokenHeaderExpiredKey) {
+		c.Header("Deprecation", "true")
+		c.Header("Sunset", legacyTokenHeaderSunset)
+		c.JSON(http.StatusUnauthorized, Msg{
+			Success: false,
+			Msg:     "legacy token header expired",
+		})
+		c.Abort()
+		return
+	}
 	jsonMsg(c, "", common.NewError("invalid token"))
 	c.Abort()
 }
@@ -210,5 +227,13 @@ func apiTokenFromRequest(c *gin.Context) (string, bool) {
 	if token == "" {
 		return "", false
 	}
+	if legacyTokenHeaderExpired(apiTokenNow()) {
+		c.Set(legacyTokenHeaderExpiredKey, true)
+		return "", true
+	}
 	return token, true
+}
+
+func legacyTokenHeaderExpired(now time.Time) bool {
+	return !now.Before(legacyTokenHeaderSunsetAt)
 }
