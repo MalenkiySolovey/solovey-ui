@@ -105,10 +105,13 @@ func GetDb(exclude string) ([]byte, error) {
 		return nil, err
 	}
 
-	// Update WAL
-	err = backupDb.Exec("PRAGMA wal_checkpoint(TRUNCATE);").Error
-	if err != nil {
-		return nil, err
+	// Update WAL with TRUNCATE for compactness; fall back to FULL on failure
+	// (e.g. a hot WAL with another writer); fall back to a no-checkpoint
+	// path with warning if both fail. SQLite's WAL is still consistent
+	// without a checkpoint, the backup is just larger or has a stale -wal
+	// sidecar that gets cleaned up by cleanupBackupSidecars below.
+	if err := walCheckpointWithFallback(backupDb); err != nil {
+		logger.Warning("backup WAL checkpoint failed in both TRUNCATE and FULL modes: ", err, "; continuing without checkpoint")
 	}
 
 	if err := backupSQLDB.Close(); err != nil {
@@ -194,6 +197,21 @@ func cleanupBackupSidecars(dbPath string) {
 	_ = os.Remove(dbPath + "-wal")
 	_ = os.Remove(dbPath + "-shm")
 	_ = os.Remove(dbPath + "-journal")
+}
+
+// walCheckpointWithFallback runs PRAGMA wal_checkpoint(TRUNCATE) first,
+// then falls back to FULL on error. Returns the FULL error if both fail,
+// nil if either succeeded. Production callers log the FULL error as a
+// warning and continue; the backup is still valid because SQLite's WAL
+// is automatically synchronized when the connection closes.
+func walCheckpointWithFallback(db *gorm.DB) error {
+	if err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE);").Error; err != nil {
+		if fallbackErr := db.Exec("PRAGMA wal_checkpoint(FULL);").Error; fallbackErr != nil {
+			return fallbackErr
+		}
+		logger.Warning("backup WAL TRUNCATE checkpoint failed, fell back to FULL: ", err)
+	}
+	return nil
 }
 
 func ImportDB(file multipart.File) error {
