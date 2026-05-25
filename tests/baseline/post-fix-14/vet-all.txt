@@ -1,0 +1,7 @@
+# Command: go vet ./...
+# WorkingDirectory: .
+# Status: passed
+# ExitCode: 0
+# Started: 2026-05-26T01:19:34.3477308+07:00
+# Finished: 2026-05-26T01:19:45.0283089+07:00
+

@@ -1424,3 +1424,37 @@ Singleton #37 закрыл import-xui apply-plan size gap in `api/import_xui.go`
 ### Файлы post-fix-37
 
 `pre-head.txt`, `pre-status.txt`, `post-head.txt`, `post-status.txt`, `status-diff.txt`, `test-api-issue37.txt`, `test-api-issue37-race.txt`, `build-all.txt`, `vet-all.txt`, `test-all.txt`, `test-race-all.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #14 2026-05-26
+
+### Коммиты
+
+- `6d09a9d1d6088a4a543056cf591cd57e782c0693` — fix(database): fail startup on adapt errors (registry #14)
+
+Singleton #14 закрыл startup safety gap in `database/db.go`: `InitDB()` now treats post-migration adapt as critical startup work. If adapt fails, startup returns a wrapped `post-migration adapt failed` error instead of continuing after warning-only logging.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./database -run "Issue14|InitDBReturnsAdaptError|Adapt|InitDBDropsObsoleteClientIPUniqueIndex|OpenDB" -count=10` | passed | Issue14 fail-fast anchor passed 10/10; existing adapt idempotency/password/version/index/OpenDB anchors remain covered | [`post-fix-14/test-database-issue14.txt`](post-fix-14/test-database-issue14.txt) |
+| `go test ./database -race -run "Issue14|InitDBReturnsAdaptError|Adapt" -count=5` | passed | issue14/adapt race anchors passed 5/5 | [`post-fix-14/test-database-issue14-race.txt`](post-fix-14/test-database-issue14-race.txt) |
+| `go build ./...` | passed | без регрессии | [`post-fix-14/build-all.txt`](post-fix-14/build-all.txt) |
+| `go vet ./...` | passed | без регрессии | [`post-fix-14/vet-all.txt`](post-fix-14/vet-all.txt) |
+| `go test ./...` | passed | без регрессии | [`post-fix-14/test-all.txt`](post-fix-14/test-all.txt) |
+| `go test -race ./... -timeout 900s` | passed | без регрессии | [`post-fix-14/test-race-all.txt`](post-fix-14/test-race-all.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly `Issues : 55`; command exit code remained 1 | [`post-fix-14/gosec.txt`](post-fix-14/gosec.txt) |
+| `govulncheck ./...` | passed | `No vulnerabilities found.` | [`post-fix-14/govulncheck.txt`](post-fix-14/govulncheck.txt) |
+
+### Дельта
+
+- П. 14 «fatal post-migration adapt errors» — closed. `InitDB()` now calls the package-local `adaptToCurrentVersion` hook and returns `fmt.Errorf("post-migration adapt failed: %w", err)` when adapt fails.
+- The Issue14 anchor overrides the hook with a sentinel error and asserts both `errors.Is` and the `post-migration adapt failed` context, then closes the DB handle and sidecars.
+- Existing adapt idempotency, password rehash, version pointer and index cleanup anchors remain covered by the focused database test command.
+- No schema/model/migration/frontend/dependency changes were made; blacklist paths (`Endpoint.vue`, `go.mod`, `go.sum`, frontend package manifests, `tests/chaos/**`, frontend files, dirty API lifecycle files and DB schema/model/migration files) were untouched.
+- Blacklist diff result from `pre-head.txt` to `post-head.txt`: only `database/db.go` and `database/db_test.go` changed in the fix commit.
+- `gosec` remains the known red baseline with exactly 55 issues; `govulncheck` reports no vulnerabilities.
+
+### Файлы post-fix-14
+
+`pre-head.txt`, `pre-status.txt`, `post-head.txt`, `post-status.txt`, `status-diff.txt`, `test-database-issue14.txt`, `test-database-issue14-race.txt`, `build-all.txt`, `vet-all.txt`, `test-all.txt`, `test-race-all.txt`, `gosec.txt`, `govulncheck.txt`.

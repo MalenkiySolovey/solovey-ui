@@ -1,0 +1,8 @@
+# Command: go test ./database -race -run "Issue14|InitDBReturnsAdaptError|Adapt" -count=5
+# WorkingDirectory: .
+# Status: passed
+# ExitCode: 0
+# Started: 2026-05-26T01:18:03.1424860+07:00
+# Finished: 2026-05-26T01:18:48.0885291+07:00
+ok  	github.com/deposist/s-ui-x/database	36.649s
+

@@ -65,6 +65,7 @@
 
 14. **P3 / Migrations** — [`AdaptToCurrentVersion()`](../../database/adapt.go:28) вызывается всегда; ошибки логируются как warning в [`db.go`](../../database/db.go:144).
     - Fix: эскалировать ошибку adapt в начале запуска до явного отказа, если индекс/настройки критичны.
+    - Status 2026-05-26: closed by singleton #14; `InitDB` now returns a wrapped error when post-migration adapt fails, so startup does not continue with missing indexes, unhashed legacy passwords, or a stale version pointer.
 
 15. **P3 / DB pool** — [`OpenDB()`](../../database/db.go:53) фиксированно ставит `SetMaxOpenConns(8)`/`SetMaxIdleConns(4)`. Не настраивается.
 
@@ -1274,3 +1275,23 @@ Singleton #37 закрыл apply-plan size contract gap in `ImportXuiApply()`: m
 ### Команды и логи
 
 См. секцию `## Post-fix Singleton #37 2026-05-26` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-37/`.
+
+## Post-fix Singleton #14 2026-05-26
+
+### Коммиты
+
+- `6d09a9d1d6088a4a543056cf591cd57e782c0693` — fix(database): fail startup on adapt errors (registry #14)
+
+Singleton #14 закрыл fatal post-migration adapt gap in `database.InitDB()`: failure from the post-migration adapt phase now returns `post-migration adapt failed: %w` and prevents startup instead of warning-only logging.
+
+### Дельта по реестру
+
+- П. 14 «fatal post-migration adapt errors» — closed. `InitDB` calls the package-local `adaptToCurrentVersion` hook and returns the wrapped adapt error, so startup does not proceed with missing indexes, unhashed legacy passwords, or a stale `settings.version` pointer.
+- Existing adapt idempotency, password rehash, version pointer, index cleanup and OpenDB anchors remain covered by the post-fix database checks.
+- No schema/model/migration/frontend/dependency changes were made; blacklist paths (`Endpoint.vue`, `go.mod`, `go.sum`, frontend package manifests, `tests/chaos/**`, frontend files, dirty API lifecycle files and DB schema/model/migration files) were not edited, staged, or committed.
+- Blacklist diff result for baseline `b29b2aeea01991517ea6077889c5eb7f7fe973cd` to the fix commit contains only `database/db.go` and `database/db_test.go`; docs/artifacts commit adds only the whitelisted audit files.
+- `gosec ./...` remains the known red baseline with exactly `Issues : 55`; `govulncheck ./...` reports `No vulnerabilities found.`
+
+### Команды и логи
+
+См. секцию `## Post-fix Singleton #14 2026-05-26` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-14/`.
