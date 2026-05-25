@@ -1323,3 +1323,36 @@ Singleton #28 закрыл resilience gap in `service/token_use_debouncer.go` an
 ### Файлы post-fix-28
 
 `pre-fix-28-head.txt`, `pre-fix-28-status.txt`, `post-fix-28-status.txt`, `status-diff.txt`, `anchor-28-service.txt`, `anchor-28-service-race.txt`, `anchor-28-chaos-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.
+
+## Post-fix Singleton #38 2026-05-25
+
+### Коммиты
+
+- `fb760200ce68c00ae3357ddc1515fa1346897f0e` — fix(api/import-xui): clean stale upload temp dirs (registry #38)
+
+Singleton #38 закрыл stale upload temp lifecycle gap in `api/import_xui.go`: `saveXUIUpload()` now runs throttled, fail-soft cleanup before staging a new upload and removes only top-level `xui-import-*` temp directories strictly older than 24h. Fresh/active upload dirs, boundary-age dirs, unrelated dirs/files, nested dirs and symlinks are preserved; request/response JSON, routes, rollback validation, frontend and dependencies were not changed.
+
+### Команды
+
+| Команда | Статус | Сравнение с baseline | Лог |
+|---|---:|---|---|
+| `go test ./api -run "Issue38|ImportXui(CorruptFileAuditsFailure|DryRunReturnsReportWithoutMutation|ApplyRejectsNineMiBPlanFieldWith413)" -count=10` | green | Issue38 cleanup/upload anchors GREEN 10/10; existing import-xui failure/dry-run/413 anchors remain covered | [`post-fix-38/anchor-38-api.txt`](post-fix-38/anchor-38-api.txt) |
+| `go test ./api -race -run "Issue38|ImportXui(CorruptFileAuditsFailure|DryRunReturnsReportWithoutMutation)" -count=5` | green | race anchors GREEN 5/5 | [`post-fix-38/anchor-38-api-race.txt`](post-fix-38/anchor-38-api-race.txt) |
+| `go build ./...` | green | без регрессии | [`post-fix-38/build.txt`](post-fix-38/build.txt) |
+| `go vet ./...` | green | без регрессии | [`post-fix-38/vet.txt`](post-fix-38/vet.txt) |
+| `go test ./... -count=1 -timeout 5m` | green | без регрессии | [`post-fix-38/test.txt`](post-fix-38/test.txt) |
+| `go test -race ./... -timeout 900s` | green | без регрессии | [`post-fix-38/test-race.txt`](post-fix-38/test-race.txt) |
+| `gosec ./...` | red baseline | expected baseline exactly 55 issues; ANSI-tolerant count check used | [`post-fix-38/gosec.txt`](post-fix-38/gosec.txt) |
+| `govulncheck ./...` | green | `No vulnerabilities found.` | [`post-fix-38/govulncheck.txt`](post-fix-38/govulncheck.txt) |
+
+### Дельта
+
+- П. 38 «x-ui upload temp cleanup» — closed. `maybeCleanupStaleXUIUploads()` throttles scans to once per hour, reads only the configured temp root and delegates deletion to `cleanupStaleXUIUploads()`.
+- Cleanup removes only top-level directories with the `xui-import-` prefix whose mtime is strictly older than 24h; it re-Lstats before `RemoveAll` and skips non-directories and symlinks.
+- Cleanup errors are logged as warnings and remain fail-soft; `saveXUIUpload()` continues to accept a valid SQLite-signature multipart upload if cleanup returns an error.
+- No frontend/dependency/schema/route changes were made; blacklist paths (`Endpoint.vue`, `go.mod`, `go.sum`, frontend package manifests, `tests/chaos/**`, frontend files and DB schema/model/migration files) were untouched.
+- `gosec` remains known red baseline with exactly 55 issues by ANSI-tolerant count check; `govulncheck` remains green.
+
+### Файлы post-fix-38
+
+`pre-fix-38-head.txt`, `pre-fix-38-status.txt`, `post-fix-38-status.txt`, `status-diff.txt`, `anchor-38-api.txt`, `anchor-38-api-race.txt`, `build.txt`, `vet.txt`, `test.txt`, `test-race.txt`, `gosec.txt`, `govulncheck.txt`.

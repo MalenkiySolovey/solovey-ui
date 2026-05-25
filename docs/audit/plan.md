@@ -156,6 +156,7 @@
     - Fix: chunked endpoint или stream‑декодирование plan через body.
 
 38. **P3 / API** — [`saveXUIUpload()`](../../api/import_xui.go:289) пишет временный файл в `os.TempDir()`, не имеет фоновой чистки остатков.
+    - Status 2026-05-25: closed by singleton #38; import-xui upload handling now opportunistically removes stale `xui-import-*` temp directories older than 24h while preserving active uploads and fail-soft request behavior.
 
 39. **P3 / API** — [`ImportXuiRollback()`](../../api/import_xui.go:204) логирует только audit, не публикует realtime событие.
 
@@ -1217,3 +1218,20 @@ Singleton #28 закрыл token-use flush resilience gap: timer write failures 
 ### Команды и логи
 
 См. секцию `## Post-fix Singleton #28 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-28/`.
+
+## Post-fix Singleton #38 2026-05-25
+
+### Коммиты
+
+- `fb760200ce68c00ae3357ddc1515fa1346897f0e` — fix(api/import-xui): clean stale upload temp dirs (registry #38)
+
+Singleton #38 закрыл temp lifecycle gap in `saveXUIUpload()`: old leftover `xui-import-*` directories are cleaned from the temp root before new upload staging, while fresh/active uploads and unrelated temp entries are preserved.
+
+### Дельта по реестру
+
+- П. 38 «x-ui upload temp cleanup» — closed. Issue38 anchors verify stale import upload dirs are removed, fresh/import-unrelated entries are preserved, and `saveXUIUpload()` triggers cleanup while still accepting a valid SQLite upload.
+- No frontend/dependency/schema/route changes.
+
+### Команды и логи
+
+См. секцию `## Post-fix Singleton #38 2026-05-25` в `tests/baseline/SUMMARY.md` и артефакты в `tests/baseline/post-fix-38/`.
