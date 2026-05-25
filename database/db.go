@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,6 +20,26 @@ import (
 
 var db *gorm.DB
 var adaptToCurrentVersion = AdaptToCurrentVersion
+
+const (
+	dbMaxOpenConnsEnv        = "SUI_DB_MAX_OPEN_CONNS"
+	dbMaxIdleConnsEnv        = "SUI_DB_MAX_IDLE_CONNS"
+	defaultDBMaxOpenConns    = 8
+	defaultDBMaxIdleConns    = 4
+	defaultDBConnMaxLifetime = time.Hour
+)
+
+type dbPoolConfig struct {
+	maxOpenConns    int
+	maxIdleConns    int
+	connMaxLifetime time.Duration
+}
+
+type dbPoolSetter interface {
+	SetMaxOpenConns(int)
+	SetMaxIdleConns(int)
+	SetConnMaxLifetime(time.Duration)
+}
 
 func initUser(dbPath string) error {
 	var count int64
@@ -87,14 +108,47 @@ func OpenDB(dbPath string) error {
 	// connections only spreads writers across them and produces SQLITE_BUSY
 	// errors during stats inserts. Keep a small read pool plus one effective
 	// writer driven through `_busy_timeout` to serialize gracefully.
-	sqlDB.SetMaxOpenConns(8)
-	sqlDB.SetMaxIdleConns(4)
-	sqlDB.SetConnMaxLifetime(time.Hour)
+	applyDBPoolConfig(sqlDB, resolvedDBPoolConfig())
 
 	if config.IsDebug() {
 		db = db.Debug()
 	}
 	return nil
+}
+
+func resolvedDBPoolConfig() dbPoolConfig {
+	maxOpen := parseDBPoolLimitEnv(dbMaxOpenConnsEnv, defaultDBMaxOpenConns, func(value int) bool {
+		return value > 0
+	})
+	maxIdle := parseDBPoolLimitEnv(dbMaxIdleConnsEnv, defaultDBMaxIdleConns, func(value int) bool {
+		return value >= 0
+	})
+	if maxIdle > maxOpen {
+		maxIdle = maxOpen
+	}
+	return dbPoolConfig{
+		maxOpenConns:    maxOpen,
+		maxIdleConns:    maxIdle,
+		connMaxLifetime: defaultDBConnMaxLifetime,
+	}
+}
+
+func parseDBPoolLimitEnv(key string, fallback int, valid func(int) bool) int {
+	raw := strings.TrimSpace(os.Getenv(key))
+	if raw == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(raw)
+	if err != nil || !valid(parsed) {
+		return fallback
+	}
+	return parsed
+}
+
+func applyDBPoolConfig(pool dbPoolSetter, cfg dbPoolConfig) {
+	pool.SetMaxOpenConns(cfg.maxOpenConns)
+	pool.SetMaxIdleConns(cfg.maxIdleConns)
+	pool.SetConnMaxLifetime(cfg.connMaxLifetime)
 }
 
 func InitDB(dbPath string) error {
