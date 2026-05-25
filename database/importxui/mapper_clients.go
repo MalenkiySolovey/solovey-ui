@@ -233,6 +233,7 @@ func summaryDetails(summary Summary) map[string]any {
 		},
 		"endpoints": map[string]any{
 			"imported": summary.Endpoints.Imported,
+			"skipped":  summary.Endpoints.Skipped,
 		},
 		"tls": map[string]any{
 			"created": summary.TLS.Created,
@@ -273,12 +274,13 @@ func formatImportSummary(report *Report) string {
 		return ""
 	}
 	return fmt.Sprintf(
-		"inbounds: %d/%d imported, %d skipped, %d conflicts; endpoints: %d; tls: %d created, %d reused; clients: %d unique, %d created, %d merged",
+		"inbounds: %d/%d imported, %d skipped, %d conflicts; endpoints: %d imported, %d skipped; tls: %d created, %d reused; clients: %d unique, %d created, %d merged",
 		report.Summary.Inbounds.Imported,
 		report.Summary.Inbounds.Total,
 		report.Summary.Inbounds.Skipped,
 		report.Summary.Inbounds.Conflicts,
 		report.Summary.Endpoints.Imported,
+		report.Summary.Endpoints.Skipped,
 		report.Summary.TLS.Created,
 		report.Summary.TLS.Reused,
 		report.Summary.Clients.UniqueEmails,

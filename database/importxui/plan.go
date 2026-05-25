@@ -540,7 +540,7 @@ func (s *applyState) applyInboundsEndpoints(ctx context.Context, tx *gorm.DB, sr
 			s.report.warnAll(warnings)
 			item := s.item(KindEndpoint, row.ID)
 			if endpoint == nil || item.Action == ActionSkip {
-				s.report.Summary.Inbounds.Skipped++
+				s.report.Summary.Endpoints.Skipped++
 				return nil
 			}
 			if item.DstTag != "" {

@@ -194,7 +194,7 @@ func (s *importState) importInboundsAndEndpoints(tx *gorm.DB, src *sourceDB, str
 			}
 			s.report.warnAll(warnings)
 			if endpoint == nil {
-				s.report.Summary.Inbounds.Skipped++
+				s.report.Summary.Endpoints.Skipped++
 				return nil
 			}
 			imported, err := applyEndpoint(tx, endpoint, strategy, s.report)

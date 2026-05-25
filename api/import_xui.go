@@ -632,6 +632,7 @@ func summaryDetailsForAPI(summary importxui.Summary) map[string]any {
 		},
 		"endpoints": map[string]any{
 			"imported": summary.Endpoints.Imported,
+			"skipped":  summary.Endpoints.Skipped,
 		},
 		"tls": map[string]any{
 			"created": summary.TLS.Created,

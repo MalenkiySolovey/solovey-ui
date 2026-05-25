@@ -45,7 +45,7 @@ func TestApplyExtraReturnsErrBusyWhenApplyLockHeld(t *testing.T) {
 	}
 }
 
-func TestApplyExtraWireguardNoPeersSkipCurrentSummary_XFAILIssue6(t *testing.T) {
+func TestIssue6ApplyWireguardNoPeersCountsEndpointSkip(t *testing.T) {
 	initPlanExtraMainDB(t)
 	src := createPlanExtraSource(t, []planExtraInbound{{
 		id:       1,
@@ -63,13 +63,45 @@ func TestApplyExtraWireguardNoPeersSkipCurrentSummary_XFAILIssue6(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	// XFAIL: issue 6. Endpoint skips are currently counted as inbound skips
-	// because Report.Summary.Endpoints has no Skipped field yet.
-	if report.Summary.Inbounds.Skipped != 1 {
-		t.Fatalf("current baseline should count wireguard endpoint skip as inbound skip: %#v", report.Summary)
+	if report.Summary.Inbounds.Skipped != 0 {
+		t.Fatalf("wireguard endpoint skip should not count as inbound skip: %#v", report.Summary)
 	}
 	if report.Summary.Endpoints.Imported != 0 {
 		t.Fatalf("wireguard endpoint with no peers should not be imported: %#v", report.Summary.Endpoints)
+	}
+	if report.Summary.Endpoints.Skipped != 1 {
+		t.Fatalf("wireguard endpoint with no peers should count as endpoint skip: %#v", report.Summary.Endpoints)
+	}
+	if !containsWarning(report.Warnings, "wireguard has no peers") {
+		t.Fatalf("expected no-peers warning, got %v", report.Warnings)
+	}
+}
+
+func TestIssue6ImportWireguardNoPeersCountsEndpointSkip(t *testing.T) {
+	initPlanExtraMainDB(t)
+	src := createPlanExtraSource(t, []planExtraInbound{{
+		id:       1,
+		port:     51820,
+		protocol: "wireguard",
+		tag:      "wg-empty",
+		settings: `{"mtu":1280,"secretKey":"private-key","peers":[]}`,
+	}})
+	report, err := Import(src, Options{DryRun: true, Strategy: StrategyMerge})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if report.Summary.Inbounds.Skipped != 0 {
+		t.Fatalf("wireguard endpoint skip should not count as inbound skip: %#v", report.Summary)
+	}
+	if report.Summary.Endpoints.Imported != 0 {
+		t.Fatalf("wireguard endpoint with no peers should not be imported: %#v", report.Summary.Endpoints)
+	}
+	if report.Summary.Endpoints.Skipped != 1 {
+		t.Fatalf("wireguard endpoint with no peers should count as endpoint skip: %#v", report.Summary.Endpoints)
+	}
+	if !containsWarning(report.Warnings, "wireguard has no peers") {
+		t.Fatalf("expected no-peers warning, got %v", report.Warnings)
 	}
 }
 
@@ -156,4 +188,13 @@ func createPlanExtraSource(t *testing.T, inbounds []planExtraInbound) string {
 		}
 	}
 	return path
+}
+
+func containsWarning(warnings []string, needle string) bool {
+	for _, warning := range warnings {
+		if strings.Contains(warning, needle) {
+			return true
+		}
+	}
+	return false
 }

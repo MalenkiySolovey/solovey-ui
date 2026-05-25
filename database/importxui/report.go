@@ -26,6 +26,7 @@ type CountSummary struct {
 
 type EndpointSummary struct {
 	Imported int `json:"imported"`
+	Skipped  int `json:"skipped"`
 }
 
 type TLSSummary struct {
