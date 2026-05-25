@@ -76,6 +76,13 @@ func setWarpHeaders(req *http.Request) {
 	}
 }
 
+func setWarpAuthorizedHeaders(req *http.Request, accessToken string) {
+	setWarpHeaders(req)
+	if accessToken != "" {
+		req.Header.Set("Authorization", "Bearer "+accessToken)
+	}
+}
+
 // doWarpAttempt performs a single HTTP attempt with proper body cloning so
 // retries can replay POSTs / PUTs.
 func doWarpAttempt(req *http.Request, body []byte) (*http.Response, error) {
@@ -136,8 +143,7 @@ func (s *WarpService) getWarpInfo(version, deviceId, accessToken string) ([]byte
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Authorization", "Bearer "+accessToken)
-	setWarpHeaders(req)
+	setWarpAuthorizedHeaders(req, accessToken)
 	resp, err := doWarpAttempt(req, nil)
 	if err != nil {
 		return nil, err
@@ -308,6 +314,26 @@ func (s *WarpService) getReserved(clientID string) []int {
 	return reserved
 }
 
+func uniqueWarpAPIVersions(preferred string) []string {
+	versions := make([]string, 0, len(warpAPIVersions)+1)
+	seen := make(map[string]struct{}, len(warpAPIVersions)+1)
+	add := func(version string) {
+		if version == "" {
+			return
+		}
+		if _, ok := seen[version]; ok {
+			return
+		}
+		seen[version] = struct{}{}
+		versions = append(versions, version)
+	}
+	add(preferred)
+	for _, version := range warpAPIVersions {
+		add(version)
+	}
+	return versions
+}
+
 func (s *WarpService) SetWarpLicense(old_license string, ep *model.Endpoint) error {
 	var warpData map[string]string
 	if err := json.Unmarshal(ep.Ext, &warpData); err != nil {
@@ -325,10 +351,7 @@ func (s *WarpService) SetWarpLicense(old_license string, ep *model.Endpoint) err
 
 	// Prefer the API version captured during registration; fall back to
 	// trying every version if it is missing or stops working.
-	versions := warpAPIVersions
-	if v := warpData["api_version"]; v != "" {
-		versions = append([]string{v}, warpAPIVersions...)
-	}
+	versions := uniqueWarpAPIVersions(warpData["api_version"])
 
 	var resp *http.Response
 	var lastErr error
@@ -339,8 +362,7 @@ attempt:
 		if err != nil {
 			return err
 		}
-		req.Header.Set("Authorization", "Bearer "+warpData["access_token"])
-		setWarpHeaders(req)
+		setWarpAuthorizedHeaders(req, warpData["access_token"])
 		r, err := doWarpAttempt(req, dataBytes)
 		if err != nil {
 			lastErr = err
