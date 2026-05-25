@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"reflect"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -23,6 +24,88 @@ func TestDefaultSettingValueReadsCurrentVersion(t *testing.T) {
 	}
 	if got != config.GetVersion() {
 		t.Fatalf("default version = %q, want %q", got, config.GetVersion())
+	}
+}
+
+func TestGetAllSettingConcurrentDefaultInitializationIssue19(t *testing.T) {
+	initSettingTestDB(t)
+	db := database.GetDB()
+	if err := db.Where("1 = 1").Delete(&model.Setting{}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	const workers = 16
+	start := make(chan struct{})
+	errCh := make(chan error, workers)
+	resultCh := make(chan map[string]string, workers)
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func() {
+			defer wg.Done()
+			<-start
+			settings, err := (&SettingService{}).GetAllSetting()
+			if err != nil {
+				errCh <- err
+				return
+			}
+			resultCh <- *settings
+		}()
+	}
+
+	close(start)
+	wg.Wait()
+	close(errCh)
+	close(resultCh)
+
+	for err := range errCh {
+		if err != nil {
+			t.Errorf("GetAllSetting returned error: %v", err)
+		}
+	}
+	if t.Failed() {
+		return
+	}
+
+	var rowCount int64
+	if err := db.Model(&model.Setting{}).Count(&rowCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if rowCount != int64(len(defaultValueMap)) {
+		t.Fatalf("settings row count = %d, want %d", rowCount, len(defaultValueMap))
+	}
+
+	var duplicates []struct {
+		Key   string
+		Count int64 `gorm:"column:count"`
+	}
+	if err := db.Model(&model.Setting{}).
+		Select("key, COUNT(*) AS count").
+		Group("key").
+		Having("COUNT(*) > 1").
+		Scan(&duplicates).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(duplicates) != 0 {
+		t.Fatalf("duplicate default settings: %#v", duplicates)
+	}
+
+	var returned map[string]string
+	for settings := range resultCh {
+		if returned == nil {
+			returned = settings
+		}
+	}
+	if returned == nil {
+		t.Fatal("no successful GetAllSetting result")
+	}
+	for _, key := range []string{"secret", "installSalt", "sessionGeneration", "config", "version"} {
+		if _, ok := returned[key]; ok {
+			t.Fatalf("returned settings should omit %q", key)
+		}
+	}
+	if got, ok := returned["webPort"]; !ok || got != defaultValueMap["webPort"] {
+		t.Fatalf("returned settings webPort = %q, present=%v", got, ok)
 	}
 }
 

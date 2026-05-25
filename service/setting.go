@@ -118,36 +118,23 @@ type SettingService struct {
 
 func (s *SettingService) GetAllSetting() (*map[string]string, error) {
 	db := database.GetDB()
+	if err := s.ensureDefaultSettings(db); err != nil {
+		return nil, err
+	}
+
 	settings := make([]*model.Setting, 0)
 	err := db.Model(model.Setting{}).Find(&settings).Error
 	if err != nil {
 		return nil, err
 	}
 	allSetting := map[string]string{}
-	existingKeys := map[string]bool{}
 
 	for _, setting := range settings {
-		existingKeys[setting.Key] = true
 		if isEncryptedSettingKey(setting.Key) {
 			writeSecretSettingMarker(allSetting, setting.Key, setting.Value)
 			continue
 		}
 		allSetting[setting.Key] = setting.Value
-	}
-
-	for key := range defaultValueMap {
-		if !existingKeys[key] {
-			defaultValue, _ := defaultSettingValue(key)
-			err = s.saveSetting(key, defaultValue)
-			if err != nil {
-				return nil, err
-			}
-			if isEncryptedSettingKey(key) {
-				writeSecretSettingMarker(allSetting, key, defaultValue)
-			} else {
-				allSetting[key] = defaultValue
-			}
-		}
 	}
 
 	// Due to security principles
@@ -158,6 +145,36 @@ func (s *SettingService) GetAllSetting() (*map[string]string, error) {
 	delete(allSetting, "version")
 
 	return &allSetting, nil
+}
+
+func (s *SettingService) ensureDefaultSettings(db *gorm.DB) error {
+	return db.Transaction(func(tx *gorm.DB) error {
+		for _, key := range defaultSettingKeys() {
+			value, _ := defaultSettingValue(key)
+			if err := insertSettingIfMissing(tx, key, value); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func defaultSettingKeys() []string {
+	keys := make([]string, 0, len(defaultValueMap))
+	for key := range defaultValueMap {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+func insertSettingIfMissing(tx *gorm.DB, key string, value string) error {
+	return tx.Exec(
+		`INSERT INTO settings ("key", value)
+		 SELECT ?, ?
+		 WHERE NOT EXISTS (SELECT 1 FROM settings WHERE "key" = ?)`,
+		key, value, key,
+	).Error
 }
 
 func (s *SettingService) ResetSettings() error {
