@@ -300,7 +300,6 @@ func (s *UserService) migrateLegacyTokens() error {
 			"token_hash":   tokenHash,
 			"token_prefix": tokenPrefix(token.Token),
 			"scope":        normalizeTokenScope(token.Scope),
-			"enabled":      true,
 			"updated_at":   now,
 		}
 		if token.CreatedAt == 0 {

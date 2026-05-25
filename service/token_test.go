@@ -15,10 +15,11 @@ func TestLoadTokensMigratesLegacyPlaintextToken(t *testing.T) {
 	userService := &UserService{}
 
 	if err := database.GetDB().Create(&model.Tokens{
-		Desc:   "legacy",
-		Token:  "legacy-token",
-		Expiry: 0,
-		UserId: 1,
+		Desc:    "legacy",
+		Token:   "legacy-token",
+		Enabled: true,
+		Expiry:  0,
+		UserId:  1,
 	}).Error; err != nil {
 		t.Fatal(err)
 	}

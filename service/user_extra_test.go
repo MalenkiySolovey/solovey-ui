@@ -104,27 +104,44 @@ func TestUserServiceHashAPITokenDeterministicWithStableInstallSalt(t *testing.T)
 	}
 }
 
-func TestUserServiceMigrateLegacyTokensKeepsDisabled_XFAILIssue27(t *testing.T) {
-	t.Skip("XFAIL: issue 27; migrateLegacyTokens currently rewrites legacy tokens with enabled=true")
-
+func TestUserServiceMigrateLegacyTokensKeepsDisabledIssue27(t *testing.T) {
 	initSettingTestDB(t)
 	userService := &UserService{}
-	if err := database.GetDB().Create(&model.Tokens{
-		Desc:    "disabled legacy",
-		Token:   "legacy-disabled-token",
-		Enabled: false,
-		UserId:  1,
-	}).Error; err != nil {
+	legacy := model.Tokens{
+		Desc:   "disabled legacy",
+		Token:  "legacy-disabled-token",
+		UserId: 1,
+	}
+	if err := database.GetDB().Create(&legacy).Error; err != nil {
 		t.Fatal(err)
+	}
+	if err := database.GetDB().Model(&model.Tokens{}).Where("id = ?", legacy.Id).Update("enabled", false).Error; err != nil {
+		t.Fatal(err)
+	}
+	var before model.Tokens
+	if err := database.GetDB().Where("id = ?", legacy.Id).First(&before).Error; err != nil {
+		t.Fatal(err)
+	}
+	if before.Enabled {
+		t.Fatalf("disabled fixture was not disabled before migration: %#v", before)
 	}
 	if err := userService.migrateLegacyTokens(); err != nil {
 		t.Fatal(err)
 	}
 	var stored model.Tokens
-	if err := database.GetDB().Where("desc = ?", "disabled legacy").First(&stored).Error; err != nil {
+	if err := database.GetDB().Where("id = ?", legacy.Id).First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
 	if stored.Enabled {
 		t.Fatalf("disabled legacy token was re-enabled: %#v", stored)
+	}
+	if stored.Token != "" {
+		t.Fatalf("legacy plaintext token was not cleared: %q", stored.Token)
+	}
+	if stored.TokenHash == "" || stored.TokenPrefix == "" {
+		t.Fatalf("legacy token hash/prefix not populated: %#v", stored)
+	}
+	if stored.Scope != defaultAPITokenScope {
+		t.Fatalf("legacy token scope not normalized: %#v", stored)
 	}
 }
