@@ -1,2 +1,0 @@
-ok  	github.com/deposist/s-ui-x/database/importxui	90.070s
-ok  	github.com/deposist/s-ui-x/service	77.897s

@@ -1,6 +1,0 @@
-
-InputObject                           SideIndicator
------------                           -------------
-?? tests/baseline/post-fix-cluster-I/ =>
-
-

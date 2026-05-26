@@ -64,7 +64,7 @@ func TestIntegrationBackupEnvelopeRestorePreservesBackupTableCounts(t *testing.T
 	after := integrationBackupTableCounts(t)
 	if !reflect.DeepEqual(before, after) {
 		if onlyIntegrationTLSCountChanged(before, after) {
-			t.Skipf("XFAIL Phase3: restore changes tls row count from %d to %d via no-TLS sentinel handling; backupTables count consistency requires production fix, см. docs/audit/plan.md реестр п. 11", before["tls"], after["tls"])
+			t.Skipf("XFAIL Phase3: restore changes tls row count from %d to %d via no-TLS sentinel handling; backupTables count consistency requires production fix", before["tls"], after["tls"])
 		}
 		t.Fatalf("backup table counts changed after restore:\nbefore=%v\nafter=%v", before, after)
 	}

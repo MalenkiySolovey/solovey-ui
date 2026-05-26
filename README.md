@@ -38,31 +38,9 @@ The full per-release notes live in the language-specific changelog files:
 - Русский: [`CHANGELOG-RU.md`](CHANGELOG-RU.md)
 - 简体中文: [`CHANGELOG-ZH.md`](CHANGELOG-ZH.md)
 
-Short summary of recent versions:
-
-| Version | One-line summary |
-| --- | --- |
-| `1.5.5-beta4` | Audit hardening prerelease: closes the 48-item audit registry, including import-xui contract fixes, cron/profile policy persistence, backup and realtime safety, token/Telegram/WARP robustness, API hardening and release CI cleanup. |
-| `1.5.5-beta3` | Backup config restore prerelease: preserves DNS and routing rules stored in `settings.config`, recreates the config row on save when missing, and rejects versioned S-UI backups that already lost it before swapping the live DB. |
-| `1.5.5-beta2` | Restore safety prerelease: keeps no-TLS inbounds foreign-key valid across backup export/restore and reopens the live database after rejected imports so sessions and cron jobs do not crash the panel. |
-| `1.5.5-beta1` | Subscription correctness prerelease: strips VLESS `xtls-rprx-vision` flow from non-TCP transports when a UUID is shared across inbounds and restores Clash WebSocket `Host` headers with TLS `server_name` fallback. |
-| `1.5.4` | Stable release of the 1.5.4 line: promotes the Nexus UI beta line, installer secretbox bootstrap and reserved-path hotfixes, and finishes the Persian, Vietnamese, Chinese and Russian localization pass. |
-| `1.5.4-beta5` | Reserved-path hotfix: custom paths such as `/wsub/` no longer false-collide with the reserved `/ws` route, while real `/ws/` descendants stay blocked. |
-| `1.5.4-beta4` | Systemd installer bootstrap for encrypted settings: `install.sh` generates a stable root-only `SUI_SECRETBOX_KEY`, shows the generated value once, loads it through a drop-in and preserves it on upgrade. |
-| `1.5.4-beta3` | Nexus Overview refinement: deeper navy teal/violet palette, duplicate Traffic overview and Health KPI removal, denser Overview rows and compact protocol summaries while preserving frontend-only security and dependency boundaries. |
-| `1.5.4-beta2` | Nexus UI beta hotfix: canceled duplicate dashboard reads stay silent instead of showing `CanceledError: canceled` as a failed notification; real HTTP failures still notify. |
-| `1.5.4-beta1` | Opt-in Nexus UI mode beta: adds the UI mode contract, feature gate, CSP-safe anti-FOUC bootstrap, authenticated shell resolver, Nexus shell, RTL-aware responsive sidebar/topbar and fixed Nexus Overview dashboard while preserving classic as default and keeping backend/API/CSRF/CSP/dependencies unchanged. |
-| `1.5.3` | Stable release of the 1.5.3 line: includes the 1.5.3-beta remediation aggregate, upstream parity fix for [alireza0/s-ui#1114](https://github.com/alireza0/s-ui/issues/1114), fork/release identity cleanup, CI stabilization, and a friendlier Telegram backup schedule UI over the existing `telegramBackupCron` setting. |
-| `1.5.3-beta` | Code review remediation aggregate (P0/P1/P2/P3 + P4/P5 architecture and logging cleanup) plus upstream parity bug fix for [alireza0/s-ui#1114](https://github.com/alireza0/s-ui/issues/1114): TUIC subscription/share links and Clash export now include `udp_relay_mode` (default `quic` when absent). Logging fully migrated to `slog`, deprecated `op/go-logging` dependency removed, restart manager unified, listen-address fallback audited, and globals reduced via initial DI slice. |
-| `1.5.2-beta-hotfix2` | Drops the legacy `idx_client_ips_client_ip` unique index on `(client_name, ip)`. The 3x-ui pre-import auto-backup no longer crashes with `UNIQUE constraint failed: client_ips.client_name, client_ips.ip` when a client owns multiple `client_ips` rows with empty legacy `ip`. `to1_5` is idempotent and runs again on already-upgraded panels; `ensureIndexes` drops the obsolete index at every `InitDB` so the temporary backup DB stops carrying it too. |
-| `1.5.2-beta-hotfix` | Backup chunking and SPA upgrade safety: `database/bulk.go` keeps every backup INSERT under SQLite's variable budget, fixing `too many SQL variables` on installs with large `stats`/`client_ips`/`clients`/`changes` tables and unblocking the 3x-ui pre-import auto-backup. `web/web.go` returns 404 for missing `/<base>/assets/*` instead of HTML, `index.html` is no-cache, and `vite:preloadError` triggers one guarded reload so the Clients tab stops breaking after upgrades. |
-| `1.5.2-beta` | 3x-ui migration suite: `s-ui import-xui` CLI, `POST /api/import-xui` HTTP API, "Migrate from 3x-ui" section in Backup & Restore, full wizard at `/migrate-xui` (plan/apply/rollback, WS progress, JSON/Markdown report), remote SSH and `xuihttp` sources, `xuiSyncJob` cron with encrypted `xui_sync_profiles`, `/migrate-xui/schedule` UI, best-effort historical traffic and Xray routing rules import, new `xui_remote` token scope. |
-| `1.5.1-beta` | Remediation hardening: async Telegram queue, redacted payloads, hardened realtime WS handshake, scoped audit endpoint, hashed/retained client IPs, Telegram proxy egress with normalized error classes, bucketed observability, frontend completion. |
-| `1.5.0` | Security foundation and realtime platform: secretbox for sensitive settings, `audit_events` + `/api/security/audit`, CSRF for browser API, hashed/scoped API tokens, Bearer auth (legacy `Token` header deprecated), per-client subscription secrets, `/api/realtime/ws*`, IP monitor (monitor-only by default). |
-| `1.4.3` | sing-box runtime update from `v1.13.4` to `v1.13.11`. No DB or UI changes. |
-| `1.4.2-beta` | Security and reliability hardening: bcrypt password storage with lazy migration, login rate limiter, hardened cookies, SSRF-resistant subscription fetcher, parameterized SQL, race-free runtime, automatic legacy backup adaptation, bilingual installer. Module renamed to `github.com/deposist/s-ui-x`. |
-
-For full changes, breaking notes, upgrade guide, and rollback steps, open the changelog in your preferred language.
+The README keeps installation and project overview short. For full release
+history, breaking notes, upgrade guidance, and rollback notes, open the
+changelog in your preferred language.
 
 ## Key differences vs `alireza0/s-ui`
 
@@ -263,7 +241,11 @@ docker build -t s-ui .
 
 ## How to read CI status
 
-The audit pipeline separates merge gates from known baseline debt. Required checks are `build`, `vet`, `test-go`, `fe-lint`, `fe-build`, and `fe-vitest`; soft checks such as race detector, gosec, govulncheck, staticcheck/golangci-lint, chaos, perf and flaky e2e are reported but should not block merge yet. Details: [`docs/audit/ci/required-checks.md`](docs/audit/ci/required-checks.md).
+Required checks are `build`, `vet`, `test-go`, `fe-lint`, `fe-build`, and
+`fe-vitest`. Additional diagnostic jobs such as race detector, gosec,
+govulncheck, staticcheck/golangci-lint, chaos, perf and flaky e2e can be useful
+for maintainers, but are treated as advisory unless branch protection says
+otherwise.
 
 ## Manual Run for Development and Contributions
 
@@ -398,31 +380,9 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 - Русский: [`CHANGELOG-RU.md`](CHANGELOG-RU.md)
 - 简体中文: [`CHANGELOG-ZH.md`](CHANGELOG-ZH.md)
 
-Краткая сводка по последним версиям:
-
-| Версия | Однострочное описание |
-| --- | --- |
-| `1.5.5-beta4` | Audit hardening prerelease: закрывает реестр аудита из 48 пунктов, включая import-xui contract fixes, cron/profile policy persistence, backup/realtime safety, token/Telegram/WARP robustness, API hardening и release CI cleanup. |
-| `1.5.5-beta3` | Prerelease восстановления backup config: сохраняет DNS и routing rules из `settings.config`, пересоздаёт config row при сохранении, если она исчезла, и отклоняет versioned S-UI backup без неё до swap live DB. |
-| `1.5.5-beta2` | Prerelease безопасности restore: сохраняет foreign-key корректность no-TLS inbound при backup export/restore и переоткрывает live DB после отклонённого импорта, чтобы sessions и cron jobs не роняли панель. |
-| `1.5.5-beta1` | Prerelease корректности subscription: снимает VLESS `xtls-rprx-vision` flow с не-TCP транспортов при общем UUID на нескольких inbound и возвращает Clash WebSocket `Host` headers с fallback на TLS `server_name`. |
-| `1.5.4` | Стабильный релиз линейки 1.5.4: повышает Nexus UI beta-линию, bootstrap secretbox key в installer и reserved-path hotfixes, а также завершает проход по Persian, Vietnamese, Chinese и Russian локализациям. |
-| `1.5.4-beta5` | Hotfix reserved paths: пользовательские пути вроде `/wsub/` больше не получают ложный конфликт с зарезервированным `/ws`, а настоящие дочерние `/ws/` пути всё ещё блокируются. |
-| `1.5.4-beta4` | Bootstrap зашифрованных настроек в systemd installer: `install.sh` генерирует стабильный root-only `SUI_SECRETBOX_KEY`, один раз показывает значение, подключает его через drop-in и сохраняет при обновлении. |
-| `1.5.4-beta3` | Refinement Nexus Overview: более глубокая navy teal/violet palette, удаление дубликатов Traffic overview и Health KPI, плотнее Overview rows и compact protocol summaries при сохранении frontend-only security/dependency границ. |
-| `1.5.4-beta2` | Hotfix Nexus UI beta: штатные отмены duplicate dashboard reads больше не показываются как failed notification `CanceledError: canceled`, а настоящие HTTP-ошибки продолжают уведомлять. |
-| `1.5.4-beta1` | Opt-in beta Nexus UI mode: добавляет UI mode contract, feature gate, CSP-safe anti-FOUC bootstrap, authenticated shell resolver, Nexus shell, RTL-aware responsive sidebar/topbar и фиксированный Nexus Overview dashboard, при этом classic остаётся дефолтом, а backend/API/CSRF/CSP/dependencies не меняются. |
-| `1.5.3` | Стабильный релиз линейки 1.5.3: включает агрегат исправлений 1.5.3-beta, upstream-парити-фикс по [alireza0/s-ui#1114](https://github.com/alireza0/s-ui/issues/1114), cleanup идентичности форка/релизов, стабилизацию CI и более удобный UI расписания Telegram backup поверх существующего setting `telegramBackupCron`. |
-| `1.5.3-beta` | Агрегат исправлений code-review (P0/P1/P2/P3 + P4/P5 архитектурный долг и logging cleanup) и upstream-парити-фикс по [alireza0/s-ui#1114](https://github.com/alireza0/s-ui/issues/1114): TUIC subscription/share links и Clash export теперь включают `udp_relay_mode` (по умолчанию `quic`, если режим не задан). Логирование полностью переведено на `slog`, зависимость `op/go-logging` удалена, restart-manager унифицирован, поведение listen-address fallback задокументировано, globals частично вынесены в initial DI slice. |
-| `1.5.2-beta-hotfix2` | Снятие legacy unique-индекса `idx_client_ips_client_ip` на `(client_name, ip)`. Автобэкап перед миграцией с 3x-ui больше не падает с `UNIQUE constraint failed: client_ips.client_name, client_ips.ip` при наличии нескольких строк `client_ips` с пустым legacy `ip`. `to1_5` идемпотентна и повторно прогоняется на уже обновлённых панелях; `ensureIndexes` дропает устаревший индекс на каждом `InitDB`, чтобы временная backup-БД его тоже не получала. |
-| `1.5.2-beta-hotfix` | Чанки в бэкапе и безопасность SPA при апгрейде: `database/bulk.go` держит каждый INSERT бэкапа в пределах бюджета переменных SQLite, что чинит `too many SQL variables` на инсталлах с большими `stats`/`client_ips`/`clients`/`changes` и разблокирует автобэкап перед миграцией с 3x-ui. `web/web.go` возвращает 404 для отсутствующих `/<base>/assets/*` вместо HTML, `index.html` отдаётся с no-cache, а `vite:preloadError` делает одну защищённую перезагрузку — вкладка Clients больше не ломается после апгрейда. |
-| `1.5.2-beta` | Пакет миграции из 3x-ui: CLI `s-ui import-xui`, HTTP-API `POST /api/import-xui`, секция «Migrate from 3x-ui» в Backup & Restore, полный мастер на `/migrate-xui` (plan/apply/rollback, прогресс по WS, отчёт JSON/Markdown), удалённые источники SSH и `xuihttp`, cron-job `xuiSyncJob` с зашифрованными `xui_sync_profiles`, страница `/migrate-xui/schedule`, best-effort импорт исторического трафика и Xray routing-правил, новый scope токена `xui_remote`. |
-| `1.5.1-beta` | Закрытие техдолга и UI: асинхронная очередь Telegram, redaction payload'ов, hardened realtime WS handshake, scoped audit endpoint, hashed/retained client IPs, Telegram через прокси с нормализованными errorClass, бакетированная observability, готовый фронт. |
-| `1.5.0` | Фундамент безопасности и realtime: secretbox для секретов, `audit_events` + `/api/security/audit`, CSRF для browser API, hashed/scoped API tokens, Bearer auth (legacy `Token` deprecated), per-client subscription secrets, `/api/realtime/ws*`, IP monitor (monitor-only по умолчанию). |
-| `1.4.3` | Обновление sing-box runtime с `v1.13.4` до `v1.13.11`. БД и UI без изменений. |
-| `1.4.2-beta` | Хардеринг безопасности и надёжности: bcrypt с ленивой миграцией, login rate limiter, защищённые cookie, SSRF-защищённый загрузчик подписок, параметризованный SQL, race-free runtime, авто-адаптация легаси-бэкапов, двуязычный установщик. Модуль переименован в `github.com/deposist/s-ui-x`. |
-
-Полный список изменений, breaking-заметки, гайд по обновлению и инструкции по откату — в выбранном вами changelog.
+README оставляет только установку и общий обзор проекта. Полная история
+релизов, breaking-заметки, гайд по обновлению и инструкции по откату находятся
+в changelog на выбранном языке.
 
 ## Ключевые отличия от `alireza0/s-ui`
 
@@ -623,7 +583,11 @@ docker build -t s-ui .
 
 ## Как читать CI status
 
-Audit-pipeline разделяет merge gates и известный baseline debt. Required checks: `build`, `vet`, `test-go`, `fe-lint`, `fe-build`, `fe-vitest`; soft checks вроде race detector, gosec, govulncheck, staticcheck/golangci-lint, chaos, perf и flaky e2e показываются в PR, но пока не должны блокировать merge. Подробнее: [`docs/audit/ci/required-checks.md`](docs/audit/ci/required-checks.md).
+Обязательные проверки: `build`, `vet`, `test-go`, `fe-lint`, `fe-build` и
+`fe-vitest`. Дополнительные diagnostic jobs вроде race detector, gosec,
+govulncheck, staticcheck/golangci-lint, chaos, perf и flaky e2e полезны для
+maintainer-проверки, но считаются advisory, если branch protection не требует
+обратного.
 
 ## Ручной запуск для разработки и участия в проекте
 

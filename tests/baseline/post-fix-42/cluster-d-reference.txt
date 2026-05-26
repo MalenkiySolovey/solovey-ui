@@ -1,4 +1,0 @@
-Registry cleanup only: item #42 is a duplicate frontend WS registry entry that points to #32.
-Cluster D already closed #32 with healing reconnect from degraded fallback and green WS anchors.
-No production code, frontend code, dependencies, tests/chaos, or DB files were modified for this cleanup.
-Referenced artifacts: tests/baseline/post-fix-cluster-D/.

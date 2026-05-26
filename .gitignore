@@ -33,8 +33,8 @@ test-results/
 verify-*.txt
 dc42e16-files.txt
 docs/audit/
-tests/baseline/phase*/
-tests/baseline/phaseV/
+tests/baseline/*
+!tests/baseline/run-command.ps1
 
 # Editor directories and files
 .idea

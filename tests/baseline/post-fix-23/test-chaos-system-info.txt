@@ -1,1 +1,0 @@
-ok  	github.com/deposist/s-ui-x/tests/chaos	0.602s

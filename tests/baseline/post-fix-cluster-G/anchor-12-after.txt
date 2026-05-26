@@ -1,6 +1,0 @@
-ok  	github.com/deposist/s-ui-x/database	2.291s
-ok  	github.com/deposist/s-ui-x/database/importxui	0.160s [no tests to run]
-ok  	github.com/deposist/s-ui-x/database/importxui/source/file	0.158s [no tests to run]
-ok  	github.com/deposist/s-ui-x/database/importxui/source/ssh	0.173s [no tests to run]
-ok  	github.com/deposist/s-ui-x/database/importxui/source/xuihttp	0.188s [no tests to run]
-ok  	github.com/deposist/s-ui-x/database/model	0.047s [no tests to run]

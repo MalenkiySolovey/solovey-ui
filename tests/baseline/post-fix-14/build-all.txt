@@ -1,7 +1,0 @@
-# Command: go build ./...
-# WorkingDirectory: .
-# Status: passed
-# ExitCode: 0
-# Started: 2026-05-26T01:18:58.7660662+07:00
-# Finished: 2026-05-26T01:19:25.2207733+07:00
-

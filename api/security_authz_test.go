@@ -163,7 +163,7 @@ func assertAPIV2TokenFailureCurrentStatus(t *testing.T, router *gin.Engine, req 
 }
 
 func TestSecurityAuthZAPIV2HTTPAuthStatus_XFAILPhase4(t *testing.T) {
-	t.Skip("XFAIL Phase4: APIv2 invalid/expired token currently returns HTTP 200 success=false; desired contract is 401/403, see docs/audit/security/authz-matrix.md")
+	t.Skip("XFAIL Phase4: APIv2 invalid/expired token currently returns HTTP 200 success=false; desired contract is 401/403")
 }
 
 func TestSecurityAuthZImportXUISharedRegistryPreservesAuthSurfacesIssue35(t *testing.T) {

@@ -1,6 +1,0 @@
-
-Running 1 test using 1 worker
-
-  x  1 frontend\tests\e2e\ws-reconnect-chaos.spec.ts:4:5 › websocket survives repeated offline/online chaos and returns to connected (419ms)
-
-  1 passed (2.4s)

@@ -1,1 +1,0 @@
-ok  	github.com/deposist/s-ui-x/service	8.530s

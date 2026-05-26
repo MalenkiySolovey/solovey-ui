@@ -1,8 +1,0 @@
-# Command: govulncheck ./...
-# WorkingDirectory: .
-# Status: passed
-# ExitCode: 0
-# Started: 2026-05-26T01:30:00.6097146+07:00
-# Finished: 2026-05-26T01:30:14.0740348+07:00
-No vulnerabilities found.
-

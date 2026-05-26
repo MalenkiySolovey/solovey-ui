@@ -1,8 +1,0 @@
-# Command: go test ./database -run "Issue14|InitDBReturnsAdaptError|Adapt|InitDBDropsObsoleteClientIPUniqueIndex|OpenDB" -count=10
-# WorkingDirectory: .
-# Status: passed
-# ExitCode: 0
-# Started: 2026-05-26T01:17:36.3347124+07:00
-# Finished: 2026-05-26T01:17:51.3216998+07:00
-ok  	github.com/deposist/s-ui-x/database	7.156s
-

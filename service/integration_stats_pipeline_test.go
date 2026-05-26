@@ -19,5 +19,5 @@ func TestIntegrationStatsPipelineNilCoreSmoke(t *testing.T) {
 }
 
 func TestIntegrationStatsPipelineRealtimeWithTestCore_XFAILPhase3(t *testing.T) {
-	t.Skip("XFAIL Phase3: требуется test-core или hook для подмены core.Core/Box.StatsTracker без запуска sing-box; см. docs/audit/plan.md Фаза 3 Stats pipeline")
+	t.Skip("XFAIL Phase3: требуется test-core или hook для подмены core.Core/Box.StatsTracker без запуска sing-box")
 }

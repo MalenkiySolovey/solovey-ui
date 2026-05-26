@@ -1,5 +1,0 @@
-ok  	github.com/deposist/s-ui-x/database/importxui	0.312s [no tests to run]
-ok  	github.com/deposist/s-ui-x/cronjob	90.016s
-ok  	github.com/deposist/s-ui-x/api	4.425s
-ok  	github.com/deposist/s-ui-x/cmd/migration	0.655s
-ok  	github.com/deposist/s-ui-x/cmd	0.333s

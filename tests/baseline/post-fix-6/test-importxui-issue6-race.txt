@@ -1,1 +1,0 @@
-ok  	github.com/deposist/s-ui-x/database/importxui	11.650s

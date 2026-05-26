@@ -1,1 +1,0 @@
-ok  	github.com/deposist/s-ui-x/api	0.380s

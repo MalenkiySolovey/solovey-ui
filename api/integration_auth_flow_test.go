@@ -115,7 +115,7 @@ func TestIntegrationAuthFlowLoginCSRFSaveSettingsPublishesRealtime(t *testing.T)
 }
 
 func TestIntegrationAuthFlowSettingsSaveSuccessAudit_XFAILPhase3(t *testing.T) {
-	t.Skip("XFAIL Phase3: успешный settings save пока не пишет settings_save_* audit event; требуется production-фикс/контракт для audit success, см. docs/audit/plan.md реестр п. 26 и системный паттерн observability")
+	t.Skip("XFAIL Phase3: успешный settings save пока не пишет settings_save_* audit event; требуется production-контракт для audit success")
 }
 
 type integrationCookieJar struct {

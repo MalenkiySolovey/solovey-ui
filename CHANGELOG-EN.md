@@ -7,99 +7,122 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## Unreleased
 
-## [1.5.5-beta4] - 2026-05-26 - stability, security and import hardening
+## [1.5.5-beta4] - 2026-05-26 - problem-fix and technical-debt report
 
-### 1. System Stability And Race Protection
+### 1. Security, Authentication And Audit
 
-- Thread synchronization and race fixes (Items 20, 21, 22, 28, 47, 48):
-  Telegram HTTP client refresh, notifier retry timers, core restart cooldowns
-  and background token-use flushing are now synchronized across database
-  reinitialization and API test lifecycle boundaries.
-  Impact: the panel is less likely to panic or corrupt runtime state during
-  parallel requests, heavy load or core restarts.
-- Idempotent startup and configurable SQLite pressure (Items 14, 15, 19):
-  default settings are inserted safely at the database level, post-migration
-  adapt failures stop startup, and SQLite pool limits can be tuned through
-  environment variables.
-  Impact: concurrent first-start paths no longer create duplicate settings,
-  and migration problems are not hidden as warning-only log lines.
+- **Forced password reset during import.**
+  Problem: the UI offered `reset_required` when migrating administrators from
+  x-ui, but the backend did not have a durable state for mandatory password
+  reset and fell back to the generated-password scenario.
+  Impact: users now have `force_password_reset` state, the API contract matches
+  the UI, and this import mode no longer generates or exposes a temporary
+  password in the import report.
+- **Token attack resistance and legacy header sunset.**
+  Problem: WebSocket token checks had measurable timing differences, the legacy
+  `Token` authorization header had no enforced cutoff date, and legacy API token
+  migration could re-enable previously disabled tokens.
+  Impact: WebSocket token consumption uses a safer match-and-delete path, the
+  legacy `Token` header is rejected after Sunset, and token migration preserves
+  the original enabled/disabled state.
+- **System-data leak reduction.**
+  Problem: system information could expose private and link-local server
+  addresses, Telegram backup secrets needed clearer memory ownership, and
+  generated administrator passwords in MigrateXui were too easy to reveal on
+  screen.
+  Impact: internal addresses are filtered from system info, Telegram backup
+  payloads and passphrases are zeroed after use, and generated administrator
+  passwords stay hidden until explicit reveal and are cleared automatically.
+- **Audit priority and signal quality.**
+  Problem: under audit queue pressure, warn/security events could be evicted by
+  ordinary `info` events; successful legacy secret decrypts created noisy audit
+  records; stats commit failures lacked a durable trail; and optional URL
+  settings accepted control characters.
+  Impact: the audit writer preserves warning/security priority, redundant
+  secretbox fallback noise is removed, stats commit failures are recorded, and
+  optional URL settings reject control characters and unsafe input shapes.
 
-### 2. Security And Confidentiality
+### 2. X-UI Import, Sync And Admin UI
 
-- Token and authorization hardening (Items 33, 34): WebSocket tokens are
-  consumed without a measurable timing leak, and the legacy `Token` HTTP
-  header now has an enforced Sunset date.
-  Impact: timing-attack surface is reduced and API clients are moved toward
-  `Authorization: Bearer`.
-- Secret and network-data isolation (Items 23, 24, 25, 30, 31): system
-  information no longer returns private or link-local interface addresses,
-  Telegram backup secrets are zeroed in memory, optional URL settings reject
-  unsafe/control input, and WARP requests share one safe authorized-header path.
-  Impact: the backend exposes less internal topology and is less likely to keep
-  sensitive data or unsafe URLs around.
-- Import-xui DoS protection (Item 36): the rate-limit cache is bounded and
-  prunes expired buckets.
-  Impact: a stream of requests from unique IPs can no longer grow the in-memory
-  rate map without limit.
+- **Respecting saved import policy.**
+  Problem: background X-UI sync used hard-coded behavior and could ignore saved
+  profile fields such as `OnlyNew`, settings/history/routing import and
+  administrator handling mode.
+  Impact: the scheduler now passes the saved import policy into planning and
+  apply, so cron sync follows the administrator's profile settings.
+- **Large import handling.**
+  Problem: migration plans were read as ordinary multipart fields with an 8 MiB
+  limit, which blocked larger panels from using the same apply contract, and
+  interrupted uploads could leave temporary directories behind.
+  Impact: the multipart `plan` field streams through temporary storage under
+  the 200 MiB request cap, and stale `xui-import-*` temporary directories are
+  cleaned up by a safe age-based rule.
+- **Import isolation and report accuracy.**
+  Problem: TLS delete errors in replace mode could be ignored before creating
+  replacement records, and skipped WireGuard endpoints were counted as skipped
+  inbounds.
+  Impact: TLS delete errors abort the transaction and roll back safely, while
+  import reports now count skipped endpoints separately.
+- **Rollback and recovery UX.**
+  Problem: apply errors could send the user back a step without useful context,
+  rollback waited a fixed one-second delay before reload, and other active
+  sessions were not notified about restored configuration state.
+  Impact: MigrateXui shows apply errors inline, rollback waits for a health
+  check before reload, and the backend publishes `config_invalidated` after a
+  successful rollback.
 
-### 3. Data Integrity And Resilience
+### 3. Database, Backup And Resilience
 
-- Silent-error paths now fail visibly or safely (Items 1, 16, 17, 18, 26):
-  TLS delete errors, `client_ips` read failures and stats commit failures are
-  handled explicitly; the audit writer preserves warn/security priority, and
-  redundant legacy secretbox decrypt noise was removed.
-  Impact: transient database failures no longer silently lose configuration,
-  statistics or security events.
-- Backup reliability (Items 10, 11, 12): SIGHUP timeout is configurable, WAL
-  checkpoint now falls back from `TRUNCATE` to `FULL`, and restore of versioned
-  backups with missing `settings.config` continues with a warning.
-  Impact: backup and restore are more tolerant of slow disks and older unusual
-  databases.
+- **Backup and migration safety.**
+  Problem: SIGHUP timeout was fixed at three seconds, WAL checkpoint failures
+  could abort backup on a locked SQLite database, missing `settings.config`
+  blocked versioned restore, and post-migration adapt failures were only logged
+  as warnings.
+  Impact: timeout is environment-configurable, WAL checkpoint falls back from
+  `TRUNCATE` to `FULL`, backups without `settings.config` restore with a
+  warning, and broken post-migration adapt now stops startup.
+- **Database scaling and first-start races.**
+  Problem: SQLite pool limits were fixed, and concurrent first-start paths could
+  create duplicate default settings.
+  Impact: SQLite pool limits can be tuned through environment variables, and
+  default settings are created through a database-level idempotent insert path.
+- **IP monitor fail-closed behavior.**
+  Problem: a transient database read error in the IP-monitor path could allow an
+  unknown address in enforce mode.
+  Impact: failed `client_ips` reads mark the cache entry as unreliable and move
+  enforcement to fail-closed behavior.
 
-### 4. 3x-ui Import, Cron Sync And API Contracts
+### 4. Network, Data Races And Core Stability
 
-- Correct `reset_required` semantics (Items 2, 8, 13, 46): admin imports now
-  persist `force_password_reset` without generating or exposing a new password,
-  and the UI uses the same contract as the backend.
-  Impact: admins can be imported with mandatory password change behavior
-  without leaking temporary credentials in the report.
-- Sync policies are persisted and executed (Items 3, 7): `OnlyNew`, include
-  settings/history/routing and `adminMode` now flow from cron sync profiles into
-  plan and apply.
-  Impact: scheduled sync no longer ignores the administrator's selected import
-  policy.
-- Import-xui is sturdier for large and long-lived operations (Items 6, 35, 37,
-  38, 39): v1/v2 routes are registered from one source, large apply plans are
-  streamed from temp storage, old temp directories are cleaned up, rollback
-  publishes realtime invalidation, and WireGuard endpoint skips are counted in
-  the right summary bucket.
-  Impact: API versions drift less, temp cleanup needs less manual attention,
-  and the UI sees correct state after rollback.
-- Cron sync is easier to diagnose and gentler on transient failures (Items 4,
-  5, 40, 41): failures include sanitized detail and error class, retries use
-  exponential backoff, and a failed success-summary write no longer turns an
-  already-applied import into a hard failure.
-  Impact: operators see the real failure reason without false errors after a
-  successful apply.
-
-### 5. Frontend UX And Realtime Behavior
-
-- Realtime fallback now attempts to heal the WebSocket connection by itself
-  (Items 32, 42). Impact: the UI can leave polling mode after a short network
-  outage without a manual page reload.
-- MigrateXui shows apply failures inline, waits for rollback health before
-  reload, and requires an explicit reveal for generated admin passwords (Items
-  43, 44, 45). Impact: operators are less likely to miss a critical message or
-  reveal credentials accidentally.
-- Endpoint save is guarded against double-submit and still clears loading state
-  on failure. Impact: repeated Save clicks no longer launch competing saves.
-
-### 6. Release Packaging
-
-- Version metadata and workflow defaults now target `v1.5.5-beta4` for Release,
-  Windows and Docker builds.
-- Public release notes and changelog entries now describe user-facing changes
-  instead of internal work logs.
+- **OOM protection and realtime self-healing.**
+  Problem: import-xui rate-limit state could grow without a hard bound under a
+  stream of unique IPs, and the frontend could remain in degraded polling mode
+  after a short network outage.
+  Impact: the rate-limit cache now uses bounded eviction and expired-bucket
+  cleanup, while the WebSocket runtime attempts healing reconnects from
+  fallback mode.
+- **Data race fixes.**
+  Problem: concurrent access to core restart timers, the Telegram HTTP client
+  and token-use flushing could trigger race detector failures, panics or writes
+  through an outdated database handle.
+  Impact: critical paths are protected with mutex, single-flight and barrier
+  mechanisms, and token-use flush lifecycle is synchronized with database reset
+  and API test lifecycle.
+- **Smarter retries and storm protection.**
+  Problem: cron sync retried too aggressively, token-use write failures lacked a
+  backoff circuit, update checks called GitHub without ETag caching, sync error
+  reasons were flattened, and WARP authorization headers were spread across
+  fragile code paths.
+  Impact: retry policies use exponential backoff, token-use flushing has a
+  circuit breaker, release checks use `If-None-Match`, sync-failure summaries
+  include sanitized error class/detail, and WARP authorized headers are
+  centralized.
+- **IPv6-safe system info and shared API route registry.**
+  Problem: system info could panic on short interface flag/address data,
+  including unusual IPv6-only environments, and import-xui routes could drift
+  between v1 and v2 API registration.
+  Impact: network interfaces are checked by content and length, and import-xui
+  endpoints are registered from one route spec for `/api` and `/apiv2`.
 
 ## [1.5.5-beta3] - 2026-05-22 - backup config restore safety for DNS and routing
 

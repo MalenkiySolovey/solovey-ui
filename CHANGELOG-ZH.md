@@ -6,83 +6,99 @@
 
 ## 未发布
 
-## [1.5.5-beta4] - 2026-05-26 - 稳定性、安全性与导入加固
+## [1.5.5-beta4] - 2026-05-26 - 问题修复与技术债清理报告
 
-### 1. 系统稳定性与竞态保护
+### 1. 安全、认证与审计
 
-- 线程同步与 data race 修复（条目 20、21、22、28、47、48）：Telegram
-  HTTP client 刷新、notifier retry timer、core restart cooldown，以及后台
-  token-use flush 现在都会在数据库重新初始化和 API 测试生命周期边界上正确
-  同步。
-  影响：在并发请求、高负载或 core 重启时，panel 更不容易 panic，也更不容易
-  损坏运行时状态。
-- 幂等启动与可调 SQLite 压力（条目 14、15、19）：默认 settings 现在在
-  数据库层安全插入，post-migration adapt 失败会阻止启动，SQLite pool 限制
-  可通过环境变量调整。
-  影响：并发首次启动不会创建重复 settings，迁移问题也不会只以 warning 形式
-  被掩盖。
+- **导入时强制重置密码。**
+  问题：从 x-ui 迁移管理员时，UI 提供 `reset_required` 模式，但 backend
+  没有可持久化的强制改密状态，实际会落回生成新密码的场景。
+  影响：用户模型新增 `force_password_reset` 状态，API 契约与 UI 对齐；该导入
+  模式不再生成或暴露临时密码。
+- **Token 抗攻击与旧 header Sunset。**
+  问题：WebSocket token 检查存在可测量的 timing 差异，旧版 `Token` 授权
+  header 没有强制停用日期，legacy API token 迁移也可能重新启用已禁用 token。
+  影响：WebSocket token 消费路径改为更安全的 match-and-delete，legacy
+  `Token` header 在 Sunset 后会被拒绝，token 迁移会保留原有 enabled/disabled
+  状态。
+- **减少系统数据泄露。**
+  问题：system info 可能暴露 private/link-local server address，Telegram backup
+  secret 需要更清晰的内存所有权，MigrateXui 中生成的管理员密码也太容易在屏幕上
+  被看到。
+  影响：system info 会过滤内部地址，Telegram backup payload/passphrase 使用后
+  会清零，生成的管理员密码默认隐藏，只有显式 reveal 后才显示，并会自动清理。
+- **审计优先级与信号质量。**
+  问题：audit queue 压力较大时，warn/security 事件可能被普通 `info` 事件挤出；
+  成功的 legacy secret decrypt 会产生噪声；stats commit 失败缺少持久记录；
+  optional URL settings 也接受控制字符。
+  影响：audit writer 会保留 warning/security 优先级，移除多余的 secretbox
+  fallback 噪声，记录 stats commit failure，并拒绝 optional URL 中的控制字符和
+  不安全输入形态。
 
-### 2. 安全性与敏感信息保护
+### 2. X-UI 导入、同步与管理界面
 
-- Token 与授权加固（条目 33、34）：WebSocket token 消费路径不再泄露可测量的
-  timing 差异，旧版 `Token` HTTP header 现在有强制 Sunset 日期。
-  影响：降低 timing attack surface，并推动 API client 迁移到
-  `Authorization: Bearer`。
-- Secret 与网络信息隔离（条目 23、24、25、30、31）：system info 不再返回
-  private/link-local interface address，Telegram backup secret 会在内存中清零，
-  optional URL setting 会拒绝 unsafe/control input，WARP 请求也统一使用安全的
-  authorized-header 路径。
-  影响：backend 更少暴露内部网络拓扑，也更不容易保留敏感数据或危险 URL。
-- Import-xui DoS 防护（条目 36）：rate-limit cache 现在有大小上限，并会清理
-  过期 bucket。
-  影响：来自大量唯一 IP 的请求不能再无限扩大进程内存中的 rate map。
+- **尊重已保存的导入策略。**
+  问题：后台 X-UI sync 使用硬编码行为，可能忽略 profile 中保存的 `OnlyNew`、
+  settings/history/routing 导入以及管理员处理模式。
+  影响：scheduler 会把保存的 import policy 传递给 plan/apply，因此 cron sync
+  会按管理员选择的 profile 设置执行。
+- **大型导入处理。**
+  问题：迁移计划以前按普通 multipart field 读取，受 8 MiB 限制，较大的 panel
+  不能通过同一 apply contract 导入；中断的上传也可能留下临时目录。
+  影响：multipart `plan` 字段现在通过临时存储流式读取，并受 200 MiB 请求总限制；
+  旧的 `xui-import-*` 临时目录会按安全的年龄规则清理。
+- **导入隔离与报告准确性。**
+  问题：replace 模式下的 TLS 删除错误可能在创建替换记录前被忽略，跳过的
+  WireGuard endpoint 也会计入 skipped inbound。
+  影响：TLS 删除错误会中止事务并安全回滚；导入报告现在单独统计 skipped endpoint。
+- **Rollback 与恢复 UX。**
+  问题：apply error 可能只把用户送回上一步而没有上下文，rollback 使用固定 1 秒
+  delay 后 reload，其他在线会话也收不到配置已恢复的实时通知。
+  影响：MigrateXui 会 inline 显示 apply error，rollback reload 前会等待
+  health check，backend 在成功 rollback 后发布 `config_invalidated`。
 
-### 3. 数据完整性与故障恢复
+### 3. 数据库、备份与恢复能力
 
-- 静默错误现在会显式失败或安全失败（条目 1、16、17、18、26）：TLS 删除错误、
-  `client_ips` 读取失败和 stats commit 失败都会被显式处理；audit writer 会保留
-  warn/security 事件优先级，同时移除了多余的 legacy secretbox decrypt 噪声。
-  影响：短暂数据库故障不会再静默丢失配置、统计或安全事件。
-- 备份可靠性（条目 10、11、12）：SIGHUP timeout 可配置，WAL checkpoint 会从
-  `TRUNCATE` fallback 到 `FULL`，缺少 `settings.config` 的 versioned backup
-  restore 会以 warning 继续。
-  影响：backup/restore 对慢磁盘和较旧的非常规数据库更宽容。
+- **备份与迁移安全。**
+  问题：SIGHUP timeout 固定为 3 秒，WAL checkpoint 在 SQLite DB 被锁时可能中止
+  backup，缺少 `settings.config` 会阻塞 versioned restore，post-migration adapt
+  失败也只记录 warning。
+  影响：timeout 可通过环境变量配置，WAL checkpoint 会从 `TRUNCATE` fallback 到
+  `FULL`，缺少 `settings.config` 的 backup 会以 warning 恢复，post-migration
+  adapt 损坏会阻止启动。
+- **数据库扩展性与首次启动竞态。**
+  问题：SQLite pool limits 固定，并发首次启动可能创建重复默认 settings。
+  影响：SQLite pool limits 可通过环境变量调整，默认 settings 通过数据库层面的
+  幂等 insert path 创建。
+- **IP monitor fail-closed 行为。**
+  问题：IP-monitor 路径中的短暂数据库读取错误可能在 enforce mode 下放行未知地址。
+  影响：`client_ips` 读取失败会让 cache entry 被视为不可信，并切换到 fail-closed
+  enforcement。
 
-### 4. 3x-ui 导入、Cron Sync 与 API 契约
+### 4. 网络、数据竞态与核心稳定性
 
-- 正确的 `reset_required` 语义（条目 2、8、13、46）：管理员导入现在会持久化
-  `force_password_reset`，不会生成或暴露新密码，UI 与 backend 使用同一契约。
-  影响：可以导入需要强制改密的管理员，同时不会在报告中泄露临时 credential。
-- 同步策略会被保存并执行（条目 3、7）：`OnlyNew`、include
-  settings/history/routing 与 `adminMode` 现在会从 cron sync profile 传递到
-  plan/apply。
-  影响：计划同步不再忽略管理员选择的导入策略。
-- Import-xui 对大型和长生命周期操作更稳健（条目 6、35、37、38、39）：v1/v2
-  routes 从同一来源注册，大型 apply plan 从 temp storage 流式读取，旧 temp
-  目录会被清理，rollback 会发布 realtime invalidation，WireGuard endpoint skip
-  也会计入正确的 summary bucket。
-  影响：API 版本之间更不容易漂移，temp cleanup 更少需要人工处理，rollback 后
-  UI 能看到正确状态。
-- Cron sync 更容易诊断，也更温和地处理临时故障（条目 4、5、40、41）：失败会
-  记录 sanitized detail 和 error class，retry 使用指数 backoff，success-summary
-  写入失败不会把已经 apply 成功的导入变成 hard failure。
-  影响：operator 能看到真实失败原因，并避免成功 apply 后的误报错误。
-
-### 5. Frontend UX 与 Realtime 行为
-
-- Realtime fallback 现在会主动尝试恢复 WebSocket 连接（条目 32、42）。
-  影响：短暂网络故障后，UI 可以不刷新页面就离开 polling mode。
-- MigrateXui 会 inline 显示 apply 失败，rollback 后等待 health 再 reload，并要求
-  用户显式 reveal 生成的管理员密码（条目 43、44、45）。
-  影响：operator 更不容易错过关键消息，也更不容易意外暴露 credential。
-- Endpoint 保存会阻止重复提交，并在失败时正确清理 loading state。
-  影响：重复点击 Save 不会启动互相竞争的保存操作。
-
-### 6. 发布打包
-
-- Version metadata 以及 Release、Windows、Docker workflow 默认值已更新到
-  `v1.5.5-beta4`。
-- 公共 release notes 和 changelog 现在描述用户可见的变更，而不是内部工作日志。
+- **OOM 防护与 realtime 自恢复。**
+  问题：import-xui rate-limit state 在大量唯一 IP 请求下可能无限增长，frontend
+  在短暂网络故障后也可能停留在 degraded polling mode。
+  影响：rate-limit cache 使用 bounded eviction 与 expired-bucket cleanup，WebSocket
+  runtime 会在 fallback mode 中主动尝试 healing reconnect。
+- **Data race 修复。**
+  问题：core restart timer、Telegram HTTP client 与 token-use flush 的并发访问
+  可能触发 race detector failure、panic，或通过过期 DB handle 写入。
+  影响：关键路径使用 mutex、single-flight 与 barrier 机制保护，token-use flush
+  lifecycle 与 database reset 和 API test lifecycle 同步。
+- **更智能的重试与风暴保护。**
+  问题：cron sync retry 过于激进，token-use write failure 缺少 backoff circuit，
+  update check 没有 ETag cache，sync error reason 被压平，WARP authorization
+  headers 分散在脆弱路径中。
+  影响：retry policy 使用 exponential backoff，token-use flush 有 circuit breaker，
+  release checks 使用 `If-None-Match`，sync-failure summary 包含 sanitized error
+  class/detail，WARP authorized headers 已集中处理。
+- **IPv6-safe system info 与共享 API route registry。**
+  问题：system info 在短 interface flag/address 数据上可能 panic，包括特殊的
+  IPv6-only 环境；import-xui routes 也可能在 v1/v2 API 注册之间漂移。
+  影响：网络接口按内容和长度检查，import-xui endpoints 从同一个 route spec 注册到
+  `/api` 与 `/apiv2`。
 
 ## [1.5.5-beta3] - 2026-05-22 - DNS 与路由 backup config 的恢复安全性
 
