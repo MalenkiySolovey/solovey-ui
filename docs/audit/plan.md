@@ -14,199 +14,200 @@
 ## 1. Реестр найденных проблем
 
 Каждая запись: severity / категория / точная ссылка на код / impact / repro / fix.
+✅ означает, что пункт закрыт и имеет explicit closed status line.
 
 ### 1.1. Импорт 3x-ui и связанная логика
 
-1. **P1 / Data integrity** — игнор ошибки удаления TLS в replace‑ветке: [`applyState.applyTLS()`](../../database/importxui/plan.go:477) на строке [`_ = tx.Delete(&existing).Error`](../../database/importxui/plan.go:516). Если delete упадёт (FK / DB ошибка), последующий `Create` может выполниться поверх несогласованного состояния.
+✅ 1. **P1 / Data integrity** — игнор ошибки удаления TLS в replace‑ветке: [`applyState.applyTLS()`](../../database/importxui/plan.go:477) на строке [`_ = tx.Delete(&existing).Error`](../../database/importxui/plan.go:516). Если delete упадёт (FK / DB ошибка), последующий `Create` может выполниться поверх несогласованного состояния.
    - Repro: эмулировать ошибку удаления TLS с действием `replace`.
    - Fix: проверять и возвращать ошибку до Create, прерывать транзакцию.
    - Status 2026-05-24: closed by Cluster A; `Apply` now returns the delete error and transaction rollback path is covered by `TestApplyState_TLSReplaceDeleteError`.
 
-2. **P1 / Security+Contract** — режим [`AdminModeResetRequired`](../../database/importxui/options.go:89) объявлен и выбирается в UI [`adminModeItems`](../../frontend/src/views/MigrateXui.vue:355), но в [`applyState.applyAdmins()`](../../database/importxui/plan.go:663) и [`upsertUser()`](../../database/importxui/plan.go:922) нет отдельной ветки: `new_password` и `reset_required` всегда генерируют новый пароль и кладут его в [`Report.GeneratedAdmins`](../../database/importxui/report.go:8).
+✅ 2. **P1 / Security+Contract** — режим [`AdminModeResetRequired`](../../database/importxui/options.go:89) объявлен и выбирается в UI [`adminModeItems`](../../frontend/src/views/MigrateXui.vue:355), но в [`applyState.applyAdmins()`](../../database/importxui/plan.go:663) и [`upsertUser()`](../../database/importxui/plan.go:922) нет отдельной ветки: `new_password` и `reset_required` всегда генерируют новый пароль и кладут его в [`Report.GeneratedAdmins`](../../database/importxui/report.go:8).
    - Repro: построить план с `reset_required`, выполнить apply — пароль придёт в отчёте.
    - Fix: либо ввести семантику (поле `force_password_reset` на `User`), либо удалить `reset_required` из контракта.
    - Status 2026-05-26: closed by Cluster E; `reset_required` now persists `users.force_password_reset`, applies the source password hash without generated password leakage, and clears the flag on password changes.
 
-3. **P2 / Functional correctness** — игнорируется поле [`XUISyncProfile.OnlyNew`](../../database/model/model.go:118) в cron‑синке: в [`xuiSyncJob.runProfileOnce()`](../../cronjob/xuiSyncJob.go:90) жёстко прошиты `OnlyNew: true` для [`Plan(...)`](../../cronjob/xuiSyncJob.go:110) и [`Apply(...)`](../../cronjob/xuiSyncJob.go:118).
+✅ 3. **P2 / Functional correctness** — игнорируется поле [`XUISyncProfile.OnlyNew`](../../database/model/model.go:118) в cron‑синке: в [`xuiSyncJob.runProfileOnce()`](../../cronjob/xuiSyncJob.go:90) жёстко прошиты `OnlyNew: true` для [`Plan(...)`](../../cronjob/xuiSyncJob.go:110) и [`Apply(...)`](../../cronjob/xuiSyncJob.go:118).
    - Fix: пробросить `profile.OnlyNew` в обе опции.
    - Status 2026-05-26: closed by Cluster E; cron sync passes `profile.OnlyNew` to both `Plan` and `Apply`, preserving explicit `false` from sync profiles.
 
-4. **P2 / Observability** — обобщённый summary при ошибке sync: [`recordRun(profile, "failed", map[string]any{"error":"failed"})`](../../cronjob/xuiSyncJob.go:85) теряет реальный `lastErr`.
+✅ 4. **P2 / Observability** — обобщённый summary при ошибке sync: [`recordRun(profile, "failed", map[string]any{"error":"failed"})`](../../cronjob/xuiSyncJob.go:85) теряет реальный `lastErr`.
    - Fix: положить sanitized `lastErr.Error()` и класс ошибки.
    - Status 2026-05-24: closed by Cluster C; failed sync summary now records sanitized lastErr and errorClass.
 
-5. **P2 / Audit trail** — [`recordSyncAudit("xui_sync_failed", profile, nil)`](../../cronjob/xuiSyncJob.go:86) пишет audit без error details (`report=nil` → нет summary).
+✅ 5. **P2 / Audit trail** — [`recordSyncAudit("xui_sync_failed", profile, nil)`](../../cronjob/xuiSyncJob.go:86) пишет audit без error details (`report=nil` → нет summary).
    - Fix: добавить error class в details.
    - Status 2026-05-24: closed by Cluster A; `xui_sync_failed` audit details now include sanitized `errorClass`.
 
-6. **P3 / Reporting correctness** — wireguard endpoint skip учтён как inbound‑skip в [`applyState.applyInboundsEndpoints()`](../../database/importxui/plan.go:528) на строке [`s.report.Summary.Inbounds.Skipped++`](../../database/importxui/plan.go:541).
+✅ 6. **P3 / Reporting correctness** — wireguard endpoint skip учтён как inbound‑skip в [`applyState.applyInboundsEndpoints()`](../../database/importxui/plan.go:528) на строке [`s.report.Summary.Inbounds.Skipped++`](../../database/importxui/plan.go:541).
    - Fix: отдельный счётчик endpoint skipped.
    - Status 2026-05-26: closed by singleton #6; wireguard endpoint skips are now counted under `summary.endpoints.skipped` instead of `summary.inbounds.skipped`, including API/audit summary details.
 
-7. **P3 / Profile config drift** — `IncludeSettings/IncludeHistory/IncludeRouting/AdminMode` нельзя задать из профиля в cron‑синке: cron собирает `PlanOptions` без них в [`xuiSyncJob.runProfileOnce()`](../../cronjob/xuiSyncJob.go:90), хотя UI и API их поддерживают.
+✅ 7. **P3 / Profile config drift** — `IncludeSettings/IncludeHistory/IncludeRouting/AdminMode` нельзя задать из профиля в cron‑синке: cron собирает `PlanOptions` без них в [`xuiSyncJob.runProfileOnce()`](../../cronjob/xuiSyncJob.go:90), хотя UI и API их поддерживают.
    - Fix: расширить модель профиля и пробросить флаги в Plan/Apply.
    - Status 2026-05-26: closed by Cluster E; sync profiles persist include settings/history/routing plus `adminMode`, and cron passes them into import planning/apply.
 
-8. **P3 / API/UI contract** — `adminMode` пробрасывается из [`MigrateXui.buildPlan()`](../../frontend/src/views/MigrateXui.vue:413) в [`ImportXuiPlan()`](../../api/import_xui.go:125), но в plan‑item этот режим не закодирован как исполнимое правило для apply (см. п. 2).
+✅ 8. **P3 / API/UI contract** — `adminMode` пробрасывается из [`MigrateXui.buildPlan()`](../../frontend/src/views/MigrateXui.vue:413) в [`ImportXuiPlan()`](../../api/import_xui.go:125), но в plan‑item этот режим не закодирован как исполнимое правило для apply (см. п. 2).
    - Status 2026-05-26: closed by Cluster E; `adminMode` is encoded on admin plan items and executed by the `new_password` / `reset_required` apply branches.
 
-9. **P3 / Test coverage gap** — в [`plan_test.go`](../../database/importxui/plan_test.go:1) есть тест только на `new_password` ([`TestApply_ImportsSettingsAndNewPasswordAdmins()`](../../database/importxui/plan_test.go:137)); ветка `reset_required`, ошибка delete в TLS replace и sync‑fail запись не покрыты.
+✅ 9. **P3 / Test coverage gap** — в [`plan_test.go`](../../database/importxui/plan_test.go:1) есть тест только на `new_password` ([`TestApply_ImportsSettingsAndNewPasswordAdmins()`](../../database/importxui/plan_test.go:137)); ветка `reset_required`, ошибка delete в TLS replace и sync‑fail запись не покрыты.
    - Status 2026-05-26: closed by Cluster E plus earlier Cluster A/C; reset_required coverage added, while TLS delete and sync-fail coverage were already green.
 
 ### 1.2. Слой данных, бэкап, миграции
 
-10. **P2 / Reliability** — таймаут SIGHUP захардкожен в [`SendSighup()`](../../database/backup.go:438) на 3 секунды через [`time.AfterFunc(3*time.Second, ...)`](../../database/backup.go:449). На медленной машине процесс может не успеть завершить пишущую операцию.
+✅ 10. **P2 / Reliability** — таймаут SIGHUP захардкожен в [`SendSighup()`](../../database/backup.go:438) на 3 секунды через [`time.AfterFunc(3*time.Second, ...)`](../../database/backup.go:449). На медленной машине процесс может не успеть завершить пишущую операцию.
     - Fix: вынести в конфиг и согласовать с graceful‑shutdown.
     - Status 2026-05-25: closed by Cluster G; SIGHUP timeout configurable via SUI_SIGHUP_TIMEOUT_SECONDS env var (1–60s, fallback 3s). Settings UI deferred to Кластер E.
 
-11. **P2 / Backup robustness** — [`copyBackupTable()`](../../database/backup.go:158) копирует данные в одной транзакции; ошибка `WAL checkpoint` через [`PRAGMA wal_checkpoint(TRUNCATE)`](../../database/backup.go:107) фатальна и роняет весь бэкап.
+✅ 11. **P2 / Backup robustness** — [`copyBackupTable()`](../../database/backup.go:158) копирует данные в одной транзакции; ошибка `WAL checkpoint` через [`PRAGMA wal_checkpoint(TRUNCATE)`](../../database/backup.go:107) фатальна и роняет весь бэкап.
     - Fix: retry / fallback на не‑truncate checkpoint, продолжать при не‑критичной ошибке checkpoint.
     - Status 2026-05-25: closed by Cluster G; WAL checkpoint TRUNCATE→FULL→warning fallback in GetDb.
 
-12. **P2 / Backup**: [`validateVersionedBackupConfig()`](../../database/backup.go:381) считает «версионным» любой бэкап с непустым `version` и требует наличие `settings.config`.
+✅ 12. **P2 / Backup**: [`validateVersionedBackupConfig()`](../../database/backup.go:381) считает «версионным» любой бэкап с непустым `version` и требует наличие `settings.config`.
     - Fix: сделать проверку конфигурируемой/мягче либо логировать предупреждение вместо отказа.
     - Status 2026-05-25: closed by Cluster G; missing settings.config in versioned backup logged as warning, restore continues.
 
-13. **P3 / Schema** — [`type User`](../../database/model/model.go:18) не имеет поля `force_password_reset` или эквивалента; нельзя реализовать AdminModeResetRequired без доработки схемы (связано с п. 2).
+✅ 13. **P3 / Schema** — [`type User`](../../database/model/model.go:18) не имеет поля `force_password_reset` или эквивалента; нельзя реализовать AdminModeResetRequired без доработки схемы (связано с п. 2).
    - Status 2026-05-26: closed by Cluster E; `User.force_password_reset` schema field exists with default-false startup coverage.
 
-14. **P3 / Migrations** — [`AdaptToCurrentVersion()`](../../database/adapt.go:28) вызывается всегда; ошибки логируются как warning в [`db.go`](../../database/db.go:144).
+✅ 14. **P3 / Migrations** — [`AdaptToCurrentVersion()`](../../database/adapt.go:28) вызывается всегда; ошибки логируются как warning в [`db.go`](../../database/db.go:144).
     - Fix: эскалировать ошибку adapt в начале запуска до явного отказа, если индекс/настройки критичны.
     - Status 2026-05-26: closed by singleton #14; `InitDB` now returns a wrapped error when post-migration adapt fails, so startup does not continue with missing indexes, unhashed legacy passwords, or a stale version pointer.
 
-15. **P3 / DB pool** — [`OpenDB()`](../../database/db.go:53) фиксированно ставит `SetMaxOpenConns(8)`/`SetMaxIdleConns(4)`. Не настраивается.
+✅ 15. **P3 / DB pool** — [`OpenDB()`](../../database/db.go:53) фиксированно ставит `SetMaxOpenConns(8)`/`SetMaxIdleConns(4)`. Не настраивается.
     - Status 2026-05-26: closed by singleton #15; SQLite pool limits now default to the historical 8/4 values but can be overridden with `SUI_DB_MAX_OPEN_CONNS` and `SUI_DB_MAX_IDLE_CONNS`.
 
 ### 1.3. Сервисный слой
 
-16. **P1 / Audit integrity** — [`auditWriter.push()`](../../service/audit_writer.go:85) при переполнении сдвигает очередь и вытесняет самые старые события без приоритета severity (`warn`/security‑события уравнены с `info`).
+✅ 16. **P1 / Audit integrity** — [`auditWriter.push()`](../../service/audit_writer.go:85) при переполнении сдвигает очередь и вытесняет самые старые события без приоритета severity (`warn`/security‑события уравнены с `info`).
     - Fix: приоритезация `warn`+ при вытеснении / отдельная очередь для security.
     - Status 2026-05-24: closed by Cluster F; overflow eviction now drops `info` before `warn`/security and the severity-priority anchor is green.
 
-17. **P1 / Audit noise** — [`SettingService.recordSecretboxFallback()`](../../service/secret_settings.go:296) пишет audit при _успешной_ legacy‑расшифровке; первый «правильный» кандидат в [`getSecretboxCandidates()`](../../service/secret_settings.go:76) и так должен побеждать.
+✅ 17. **P1 / Audit noise** — [`SettingService.recordSecretboxFallback()`](../../service/secret_settings.go:296) пишет audit при _успешной_ legacy‑расшифровке; первый «правильный» кандидат в [`getSecretboxCandidates()`](../../service/secret_settings.go:76) и так должен побеждать.
     - Fix: отдельный путь для legacy ключа без логирования каждого нормального decrypt.
     - Status 2026-05-24: closed by Cluster F; direct decrypt fallback no longer writes per-decrypt audit noise and the XFAIL anchor is green.
 
-18. **P1 / DB enforcement** — [`ipmonitor.loadCacheEntry()`](../../ipmonitor/ipmonitor.go:331) на строке [`_ = db.Model(model.ClientIP{}).Select("ip, ip_hash").Where("client_name = ?", clientName).Find(&rows).Error`](../../ipmonitor/ipmonitor.go:350) глотает ошибку чтения. enforce‑mode пропустит «новый IP» при transient DB error.
+✅ 18. **P1 / DB enforcement** — [`ipmonitor.loadCacheEntry()`](../../ipmonitor/ipmonitor.go:331) на строке [`_ = db.Model(model.ClientIP{}).Select("ip, ip_hash").Where("client_name = ?", clientName).Find(&rows).Error`](../../ipmonitor/ipmonitor.go:350) глотает ошибку чтения. enforce‑mode пропустит «новый IP» при transient DB error.
     - Fix: возвращать `(allowCacheEntry{}, false)` и fail‑closed для enforce.
     - Status 2026-05-24: closed by Cluster A; `loadCacheEntry` now returns `ok=false` on `client_ips` read error and refresh does not cache an incomplete entry.
 
-19. **P2 / Startup race** — [`SettingService.GetAllSetting()`](../../service/setting.go:119) при первом запуске вставляет дефолты без транзакции; параллельный старт двух процессов на одной БД может породить дубликаты до срабатывания UNIQUE.
+✅ 19. **P2 / Startup race** — [`SettingService.GetAllSetting()`](../../service/setting.go:119) при первом запуске вставляет дефолты без транзакции; параллельный старт двух процессов на одной БД может породить дубликаты до срабатывания UNIQUE.
     - Fix: транзакция + ON CONFLICT; либо явный single‑initializer.
     - Status 2026-05-25: closed by singleton #19; GetAllSetting now initializes defaults through DB-level idempotent inserts before reading settings, preventing duplicate rows during concurrent first-start calls.
 
-20. **P2 / Concurrency** — поля [`Runtime.lastStartFailTime`](../../service/runtime.go:60) читаются/пишутся без синхронизации в [`startCooldownActive()`](../../service/runtime.go:215) и [`markCoreStartFailed()`](../../service/runtime.go:222).
+✅ 20. **P2 / Concurrency** — поля [`Runtime.lastStartFailTime`](../../service/runtime.go:60) читаются/пишутся без синхронизации в [`startCooldownActive()`](../../service/runtime.go:215) и [`markCoreStartFailed()`](../../service/runtime.go:222).
     - Fix: защитить `r.mu` или хранить unixNano в `atomic.Int64`.
     - Status 2026-05-24: closed by Cluster B; core start cooldown reads/writes are serialized with `r.mu` and the Issue20 race anchor is green.
 
-21. **P2 / Concurrency** — [`telegramHTTPClient`](../../service/telegram.go:51) обновляется под `Lock`, но проверка соответствия конфига идёт под `RLock`, затем повторно под `Lock` без double‑check.
+✅ 21. **P2 / Concurrency** — [`telegramHTTPClient`](../../service/telegram.go:51) обновляется под `Lock`, но проверка соответствия конфига идёт под `RLock`, затем повторно под `Lock` без double‑check.
     - Fix: атомарная замена клиента + `sync.Once` инициализация.
     - Status 2026-05-24: closed by Cluster B; `getTelegramHTTPClient` now double-checks under `telegramHTTPClientMu` and single-flights client creation.
 
-22. **P2 / Telegram retry** — [`telegramNotifier.deliver()`](../../service/telegram.go:196) использует `telegramSleep(delay)` без `context`. Stop ждёт через [`done`](../../service/telegram.go:242), но текущая отправка всё равно проспит до конца.
+✅ 22. **P2 / Telegram retry** — [`telegramNotifier.deliver()`](../../service/telegram.go:196) использует `telegramSleep(delay)` без `context`. Stop ждёт через [`done`](../../service/telegram.go:242), но текущая отправка всё равно проспит до конца.
     - Fix: `time.NewTimer` с select на `stopCh`.
     - Status 2026-05-25: closed by Cluster I; notifier retry backoff is stop-aware and `Stop` cancels pending retry sleeps.
 
-23. **P2 / Crash risk** — в [`ServerService.GetSystemInfo()`](../../service/server.go:168) код полагается на `netInterfaces[i].Flags[0]`, `Flags[1]`, и `address.Addr[0:6]` без проверок длины.
+✅ 23. **P2 / Crash risk** — в [`ServerService.GetSystemInfo()`](../../service/server.go:168) код полагается на `netInterfaces[i].Flags[0]`, `Flags[1]`, и `address.Addr[0:6]` без проверок длины.
     - Fix: безопасное сравнение по содержанию слайса; `len(address.Addr) >= 6`.
     - Status 2026-05-25: closed by singleton #23; GetSystemInfo now uses content-based interface flag checks and safe IPv6 prefix handling with package-local DI anchor.
 
-24. **P2 / Confidentiality** — [`ServerService.GetSystemInfo()`](../../service/server.go:168) возвращает все IPv4/IPv6 интерфейсов без фильтрации, в том числе приватные/линк‑локальные.
+✅ 24. **P2 / Confidentiality** — [`ServerService.GetSystemInfo()`](../../service/server.go:168) возвращает все IPv4/IPv6 интерфейсов без фильтрации, в том числе приватные/линк‑локальные.
     - Fix: фильтр или явный токеновый scope для системной инфы.
     - Status 2026-05-25: closed by singleton #24; GetSystemInfo now filters non-public/private/link-local interface addresses while preserving ipv4/ipv6 response shape.
 
-25. **P2 / Backup leak risk** — [`telegram_backup.RunOnce()`](../../service/telegram_backup.go:46) после ошибки шифрования `defer zeroBytes(payload)` корректен, но при ошибке загрузки passphrase (строки 123‑127) логика хрупкая.
+✅ 25. **P2 / Backup leak risk** — [`telegram_backup.RunOnce()`](../../service/telegram_backup.go:46) после ошибки шифрования `defer zeroBytes(payload)` корректен, но при ошибке загрузки passphrase (строки 123‑127) логика хрупкая.
     - Fix: явный pattern «secret bag» вокруг payload.
     - Status 2026-05-25: closed by Cluster I; Telegram backup payload/passphrase zeroization uses explicit secret-bag ownership.
 
-26. **P3 / Logging** — [`StatsService.SaveStats()`](../../service/stats.go:51) при `commitErr` шлёт `realtime.Publish` с предупреждением, но не пишет audit и не возвращает ошибку наружу.
+✅ 26. **P3 / Logging** — [`StatsService.SaveStats()`](../../service/stats.go:51) при `commitErr` шлёт `realtime.Publish` с предупреждением, но не пишет audit и не возвращает ошибку наружу.
     - Status 2026-05-25: closed by singleton #26; stats transaction commit failures now return the commit error, publish the existing warning event, and write a `stats_commit_failed` audit event without emitting normal stats realtime updates.
 
-27. **P3 / Token migration** — [`UserService.migrateLegacyTokens()`](../../service/user.go:286) перезаписывает `enabled=true` для всех старых токенов независимо от исходного состояния.
+✅ 27. **P3 / Token migration** — [`UserService.migrateLegacyTokens()`](../../service/user.go:286) перезаписывает `enabled=true` для всех старых токенов независимо от исходного состояния.
     - Status 2026-05-25: closed by singleton #27; legacy API token migration preserves the stored `enabled` flag while still hashing plaintext tokens and normalizing scope/prefix metadata.
 
-28. **P3 / Token use** — [`tokenUseDebouncer.flushTimer()`](../../service/token_use_debouncer.go:81) после ошибки записи продолжает по таймеру, без circuit‑breaker.
+✅ 28. **P3 / Token use** — [`tokenUseDebouncer.flushTimer()`](../../service/token_use_debouncer.go:81) после ошибки записи продолжает по таймеру, без circuit‑breaker.
     - Status 2026-05-25: closed by singleton #28; token-use timer flush failures now requeue pending updates, open a backoff circuit, and retry after cooldown while manual flushes can still bypass the circuit.
 
-29. **P3 / Update** — [`fetchLatestRelease()`](../../service/update.go:109) не использует `If‑None‑Match`. Ежечасный hit GitHub без кеша.
+✅ 29. **P3 / Update** — [`fetchLatestRelease()`](../../service/update.go:109) не использует `If‑None‑Match`. Ежечасный hit GitHub без кеша.
     - Status 2026-05-25: closed by singleton #29; version checks now cache GitHub ETags and send `If-None-Match` after hourly cache expiry, preserving cached release info on 304.
 
-30. **P3 / Validation** — [`validateOptionalHTTPURL()`](../../service/setting.go:1015) запрещает `parsed.User`, но не запрещает `?fragment` или встраивание управляющих символов.
+✅ 30. **P3 / Validation** — [`validateOptionalHTTPURL()`](../../service/setting.go:1015) запрещает `parsed.User`, но не запрещает `?fragment` или встраивание управляющих символов.
    - Status 2026-05-25: closed by singleton #30; optional HTTP URL validation now rejects fragments and control characters while preserving http/https query URLs and existing userinfo rejection.
    - Continuation 2026-05-25: reviewer edge case closed; raw input is checked for control characters before `strings.TrimSpace`, so leading newline and trailing CRLF/tab values are rejected before any raw Save value can be persisted.
 
-31. **P3 / Endpoint warp** — порядок вызовов в [`WarpService.SetWarpLicense()`](../../service/warp.go:311) фрагильный (Authorization до setWarpHeaders).
+✅ 31. **P3 / Endpoint warp** — порядок вызовов в [`WarpService.SetWarpLicense()`](../../service/warp.go:311) фрагильный (Authorization до setWarpHeaders).
     - Status 2026-05-25: closed by Cluster I; WARP authorized headers are centralized and covered by request-capture tests.
 
 ### 1.4. API / handlers / realtime
 
-32. **P1 / WS reliability** — [`WsRuntime.startFallback()`](../../frontend/src/store/ws.ts:129) переводит UI в `degraded` и НИКОГДА сам не пробует повторное `connect()`.
+✅ 32. **P1 / WS reliability** — [`WsRuntime.startFallback()`](../../frontend/src/store/ws.ts:129) переводит UI в `degraded` и НИКОГДА сам не пробует повторное `connect()`.
     - Repro: сеть моргнула 3 раза подряд → realtime висит в polling до перезагрузки страницы.
     - Fix: периодический «healing» reconnect внутри fallback‑таймера.
     - Status 2026-05-24: closed by Cluster D; fallback polling now attempts a cooldown-bounded healing `connect()` and the WS chaos anchor is green.
 
-33. **P1 / Realtime token** — [`consumeWSToken()`](../../api/realtime.go:404) делает constant‑time только частично; цикл проходит по всем токенам, но `delete` выполняется внутри вычисления, временная разница detectable.
+✅ 33. **P1 / Realtime token** — [`consumeWSToken()`](../../api/realtime.go:404) делает constant‑time только частично; цикл проходит по всем токенам, но `delete` выполняется внутри вычисления, временная разница detectable.
     - Fix: завершать после уверенного match‑and‑delete, не переписывать matchedKey по последнему совпадению.
     - Status 2026-05-24: closed by Cluster D; token scan uses sorted full iteration, constant-time key/data selection, and one post-loop delete.
 
-34. **P2 / Validation** — [`apiTokenFromRequest()`](../../api/apiV2Handler.go:204) принимает оба формата (Authorization Bearer и устаревший заголовок `Token`); enforcement отсутствует.
+✅ 34. **P2 / Validation** — [`apiTokenFromRequest()`](../../api/apiV2Handler.go:204) принимает оба формата (Authorization Bearer и устаревший заголовок `Token`); enforcement отсутствует.
     - Fix: HARD‑disable legacy header после `Sunset` даты.
     - Status 2026-05-25: closed by singleton #34; legacy `Token` header remains accepted only before its published Sunset and is rejected with 401 after Sunset, while Bearer precedence and generic invalid-token behavior are preserved.
 
-35. **P2 / Concurrency / route registration** — в [`api/apiV2Handler.initRouter()`](../../api/apiV2Handler.go:48) и [`api/apiHandler.registerGroupedRoutes()`](../../api/apiHandler.go:35) дублируются маршруты `/import-xui/*`. Контракт расходится тонко.
+✅ 35. **P2 / Concurrency / route registration** — в [`api/apiV2Handler.initRouter()`](../../api/apiV2Handler.go:48) и [`api/apiHandler.registerGroupedRoutes()`](../../api/apiHandler.go:35) дублируются маршруты `/import-xui/*`. Контракт расходится тонко.
     - Fix: единый источник истины для `import-xui` маршрутов.
     - Status 2026-05-25: closed by singleton #35; `/api` and `/apiv2` import-xui routes now register from a shared route spec, including explicit `POST /apiv2/import-xui`, while preserving distinct session/CSRF vs token auth surfaces.
 
-36. **P2 / DoS** — [`enforceXUIRateLimit()`](../../api/import_xui.go:266) держит rate‑state в `xuiRates` map; ключ под анонимом — IP, нет верхней границы на размер мапы.
+✅ 36. **P2 / DoS** — [`enforceXUIRateLimit()`](../../api/import_xui.go:266) держит rate‑state в `xuiRates` map; ключ под анонимом — IP, нет верхней границы на размер мапы.
     - Fix: bounded map (LRU).
     - Status 2026-05-25: closed by singleton #36; xui rate-limit cache now prunes expired buckets and evicts oldest entries to keep the in-memory map bounded while preserving per-actor quota behavior.
 
-37. **P2 / API contract** — [`ImportXuiApply()`](../../api/import_xui.go:166) принимает план как `Fields["plan"]` (строка JSON в форме). Размер ограничен `maxXUIFieldBytes=8MiB`.
+✅ 37. **P2 / API contract** — [`ImportXuiApply()`](../../api/import_xui.go:166) принимает план как `Fields["plan"]` (строка JSON в форме). Размер ограничен `maxXUIFieldBytes=8MiB`.
     - Fix: chunked endpoint или stream‑декодирование plan через body.
     - Status 2026-05-26: closed by singleton #37; import-xui apply streams the multipart `plan` part to temp storage so valid plans larger than 8MiB can be decoded under the aggregate request cap while other form fields keep the 8MiB limit.
 
-38. **P3 / API** — [`saveXUIUpload()`](../../api/import_xui.go:289) пишет временный файл в `os.TempDir()`, не имеет фоновой чистки остатков.
+✅ 38. **P3 / API** — [`saveXUIUpload()`](../../api/import_xui.go:289) пишет временный файл в `os.TempDir()`, не имеет фоновой чистки остатков.
     - Status 2026-05-25: closed by singleton #38; import-xui upload handling now opportunistically removes stale `xui-import-*` temp directories older than 24h while preserving active uploads and fail-soft request behavior.
 
-39. **P3 / API** — [`ImportXuiRollback()`](../../api/import_xui.go:204) логирует только audit, не публикует realtime событие.
+✅ 39. **P3 / API** — [`ImportXuiRollback()`](../../api/import_xui.go:204) логирует только audit, не публикует realtime событие.
     - Status 2026-05-26: closed by singleton #39; successful import-xui rollback now publishes `config_invalidated` realtime after restoring the backup and recording rollback audit.
 
 ### 1.5. Cronjob и фон
 
-40. **P2 / Cron policy** — [`xuiSyncJob.RunProfile()`](../../cronjob/xuiSyncJob.go:55) использует короткий backoff `attempt * 100ms`, до 3 попыток.
+✅ 40. **P2 / Cron policy** — [`xuiSyncJob.RunProfile()`](../../cronjob/xuiSyncJob.go:55) использует короткий backoff `attempt * 100ms`, до 3 попыток.
    - Fix: экспоненциальный backoff `200ms → 1s → 5s` или из конфига.
    - Status 2026-05-24: closed by Cluster C; sync retry backoff is exponential 200ms→1s via xuiSyncBackoff table.
 
-41. **P3 / Cron audit** — [`recordRun(profile, "success", report)`](../../cronjob/xuiSyncJob.go:70) возвращает ошибку наружу, импорт уже выполнен; функция вернёт error, хотя данные на месте.
+✅ 41. **P3 / Cron audit** — [`recordRun(profile, "success", report)`](../../cronjob/xuiSyncJob.go:70) возвращает ошибку наружу, импорт уже выполнен; функция вернёт error, хотя данные на месте.
    - Fix: успех всегда возвращать `nil`, ошибку persist писать как warn.
    - Status 2026-05-24: closed by Cluster C; RunProfile returns nil on success even when recordRun persist fails.
 
 ### 1.6. Frontend
 
-42. **P2 / WS** — см. п. 32.
+✅ 42. **P2 / WS** — см. п. 32.
     - Status 2026-05-26: closed by docs-only registry cleanup; duplicate of #32, which was closed by Cluster D with healing reconnect and green WS anchors.
 
-43. **P2 / UX** — [`MigrateXui.applyPlan()`](../../frontend/src/views/MigrateXui.vue:437) при `!msg.success` возврат на step 2 без сообщения об ошибке.
+✅ 43. **P2 / UX** — [`MigrateXui.applyPlan()`](../../frontend/src/views/MigrateXui.vue:437) при `!msg.success` возврат на step 2 без сообщения об ошибке.
     - Status 2026-05-25: closed by Cluster H; failed apply returns to review with inline error preserving selected plan state.
 
-44. **P2 / Race** — [`MigrateXui.rollback()`](../../frontend/src/views/MigrateXui.vue:456) после успеха ждёт фиксированную 1 секунду через `setTimeout` и делает `location.reload()`.
+✅ 44. **P2 / Race** — [`MigrateXui.rollback()`](../../frontend/src/views/MigrateXui.vue:456) после успеха ждёт фиксированную 1 секунду через `setTimeout` и делает `location.reload()`.
     - Fix: ожидание health‑check эндпоинта.
     - Status 2026-05-25: closed by Cluster H; rollback waits for api/status?r=db health before reload instead of fixed sleep.
 
-45. **P2 / Token leakage in logs** — `report.generatedAdmins` рендерится как `JSON.stringify(report.generatedAdmins, null, 2)` в [`MigrateXui.vue`](../../frontend/src/views/MigrateXui.vue:283).
+✅ 45. **P2 / Token leakage in logs** — `report.generatedAdmins` рендерится как `JSON.stringify(report.generatedAdmins, null, 2)` в [`MigrateXui.vue`](../../frontend/src/views/MigrateXui.vue:283).
     - Fix: «click to reveal» pattern, авто‑очистка по таймеру.
     - Status 2026-05-25: closed by Cluster H; generated admin passwords are hidden until reveal and auto-cleared.
 
-46. **P3 / API contract** — `MigrateXui.adminModeItems` всегда показывает `reset_required`, даже когда backend этой семантикой не управляет.
+✅ 46. **P3 / API contract** — `MigrateXui.adminModeItems` всегда показывает `reset_required`, даже когда backend этой семантикой не управляет.
    - Status 2026-05-26: closed by Cluster E; frontend `reset_required` option now matches backend semantics and schedule UI exposes sync policy controls.
 
-47. **Closed / P2 / Concurrency / Phase 3 race finding** — full-suite race detector показал гонку между фоновым [`tokenUseDebouncer.flushTimer()`](../../service/token_use_debouncer.go:81) / batch flush через [`flushTokenUseBatch()`](../../service/token_use_debouncer.go:163) и переинициализацией тестовой БД через [`api.initSessionTestDB()`](../../api/session_test.go:28), вызванной из [`TestSaveSettingsRejectsProtectedKeyAndAudits()`](../../api/settings_save_test.go:111).
+✅ 47. **Closed / P2 / Concurrency / Phase 3 race finding** — full-suite race detector показал гонку между фоновым [`tokenUseDebouncer.flushTimer()`](../../service/token_use_debouncer.go:81) / batch flush через [`flushTokenUseBatch()`](../../service/token_use_debouncer.go:163) и переинициализацией тестовой БД через [`api.initSessionTestDB()`](../../api/session_test.go:28), вызванной из [`TestSaveSettingsRejectsProtectedKeyAndAudits()`](../../api/settings_save_test.go:111).
     - Impact: потенциальный partial write через `UPDATE tokens` во время drop/recreate/InitDB; в тестовом full-suite это проявляется как `no such table: tokens`, в production-паттерне риск похож на запись в устаревший/пересоздаваемый handle.
     - Repro: `go test ./... -race -count=1 -timeout 15m`.
     - Fix: синхронизировать debouncer с `InitDB` / reset DB lifecycle или выполнять явный `Flush`/`StopTokenUseDebouncer` перед reset.
     - Status 2026-05-24: закрыт reset hook + token-use flush gate; regression anchor `go test -race -tags=chaos -run TestTokenUseDebouncerRaceVsDBReinitChaosIssue47 ./tests/chaos/... -count=10` green.
 
-48. **Closed / P2 / Concurrency / Post-fix Cluster A race signal** — full-suite `go test ./... -race -count=1 -timeout 15m` после Cluster A снова воспроизвёл семейство п. 47: `service.tokenUseDebouncer.flushTimer()` / `flushTokenUseBatch()` читает текущий GORM handle одновременно с `database.InitDB()` в API test lifecycle.
+✅ 48. **Closed / P2 / Concurrency / Post-fix Cluster A race signal** — full-suite `go test ./... -race -count=1 -timeout 15m` после Cluster A снова воспроизвёл семейство п. 47: `service.tokenUseDebouncer.flushTimer()` / `flushTokenUseBatch()` читает текущий GORM handle одновременно с `database.InitDB()` в API test lifecycle.
     - Repro: [`tests/baseline/post-fix-cluster-A/test-race.txt`](../../tests/baseline/post-fix-cluster-A/test-race.txt) падает в `TestIssueWSTokenExtraRateLimit`; rerun [`test-race-rerun-1.txt`](../../tests/baseline/post-fix-cluster-A/test-race-rerun-1.txt) падает в `TestRealtimeWSCapacityAnchorPhase5/max_per_ip`.
     - Scope: не связан с файлами Cluster A (`database/importxui/plan.go`, `cronjob/xuiSyncJob.go`, `ipmonitor/ipmonitor.go`); закрыт отдельным API test lifecycle hardening.
     - Fix: переоткрыть/расширить singleton п. 47 для perf/API realtime test lifecycle или синхронизировать `InitDB` с timer flush в этих сценариях.
@@ -434,37 +435,37 @@
 
 ### Кластеры
 
-- **Кластер A. «Silent error suppression»** (P1). Пункты: **1, 5, 18**. Один паттерн `_ = ...Error` в трёх разных файлах: [`database/importxui/plan.go:516`](../../database/importxui/plan.go:516), [`cronjob/xuiSyncJob.go:85`](../../cronjob/xuiSyncJob.go:85), [`ipmonitor/ipmonitor.go:350`](../../ipmonitor/ipmonitor.go:350). Anchor’ы: XFAIL в plan_extra_test, xuiSyncJob_extra_test, ipmonitor_extra_test.
-- **Кластер B. «Concurrency hardening»** (P1/P2). Пункты: **20, 21**. (П. 47 уже закрыт singleton-диалогом.) [`service/runtime.go:60`](../../service/runtime.go:60), [`service/telegram.go:51`](../../service/telegram.go:51). Anchor’ы: race-стресс‑тесты в Phase 5/7.
-- **Кластер C. «Cron observability»** (P2/P3). Пункты: **4, 5, 40, 41**. Один файл [`cronjob/xuiSyncJob.go`](../../cronjob/xuiSyncJob.go:1). Anchor’ы: xuiSyncJob_extra_test.go (Phase 2), integration_xui_sync_test.go (Phase 3), xuiSyncJob_bench_test.go (Phase 5).
-- **Кластер D. «WS hardening»** (P1). Пункты: **32, 33**. [`frontend/src/store/ws.ts`](../../frontend/src/store/ws.ts:1) и [`api/realtime.go:404`](../../api/realtime.go:404). Anchor’ы: Vitest ws.spec.ts, Playwright ws-reconnect-chaos.spec.ts (XFAIL), TestConsumeWSTokenTimingRegressionAnchor_XFAILIssue33.
-- **Кластер E. «xui-import contract drift»** (P1/P3, **требует подтверждения**). Пункты: **2, 3, 7, 8, 46**. Меняет контракт adminMode и onlyNew. Затрагивает [`database/importxui/plan.go`](../../database/importxui/plan.go:1), [`database/importxui/options.go`](../../database/importxui/options.go:1), [`cronjob/xuiSyncJob.go`](../../cronjob/xuiSyncJob.go:1), [`api/import_xui.go`](../../api/import_xui.go:1), [`frontend/src/views/MigrateXui.vue`](../../frontend/src/views/MigrateXui.vue:1), [`database/model/model.go`](../../database/model/model.go:1) (поле `force_password_reset`).
-- **Кластер F. «Audit pipeline»** (P1/P2). Пункты: **16, 17**. [`service/audit_writer.go`](../../service/audit_writer.go:1), [`service/secret_settings.go`](../../service/secret_settings.go:1). Anchor’ы: audit_writer_extra_test.go, secret_settings_extra_test.go.
-- **Кластер G. «Backup safety»** (P2). Пункты: **10, 11, 12**. Один файл [`database/backup.go`](../../database/backup.go:1). Anchor’ы: integration_backup_restore_test.go, security_rollback_path_test.go, sqlite_locked_test.go (chaos).
-- **Кластер H. «MigrateXui UX»** (P2/P3). Пункты: **43, 44, 45**. Один файл [`frontend/src/views/MigrateXui.vue`](../../frontend/src/views/MigrateXui.vue:1). Anchor’ы: Playwright migrate-xui-happy.spec.ts (XFAIL), a11y-spec.
-- **Кластер I. «Telegram/WARP robustness»** (P2/P3). Пункты: **22, 25, 31**. [`service/telegram.go`](../../service/telegram.go:1), [`service/telegram_backup.go`](../../service/telegram_backup.go:1), [`service/warp.go`](../../service/warp.go:1). Anchor’ы: chaos/telegram_down_test.go, chaos/warp_down_test.go.
+- ✅ **Кластер A. «Silent error suppression»** (P1). Пункты: **1, 5, 18**. Один паттерн `_ = ...Error` в трёх разных файлах: [`database/importxui/plan.go:516`](../../database/importxui/plan.go:516), [`cronjob/xuiSyncJob.go:85`](../../cronjob/xuiSyncJob.go:85), [`ipmonitor/ipmonitor.go:350`](../../ipmonitor/ipmonitor.go:350). Anchor’ы: XFAIL в plan_extra_test, xuiSyncJob_extra_test, ipmonitor_extra_test.
+- ✅ **Кластер B. «Concurrency hardening»** (P1/P2). Пункты: **20, 21**. (П. 47 уже закрыт singleton-диалогом.) [`service/runtime.go:60`](../../service/runtime.go:60), [`service/telegram.go:51`](../../service/telegram.go:51). Anchor’ы: race-стресс‑тесты в Phase 5/7.
+- ✅ **Кластер C. «Cron observability»** (P2/P3). Пункты: **4, 5, 40, 41**. Один файл [`cronjob/xuiSyncJob.go`](../../cronjob/xuiSyncJob.go:1). Anchor’ы: xuiSyncJob_extra_test.go (Phase 2), integration_xui_sync_test.go (Phase 3), xuiSyncJob_bench_test.go (Phase 5).
+- ✅ **Кластер D. «WS hardening»** (P1). Пункты: **32, 33**. [`frontend/src/store/ws.ts`](../../frontend/src/store/ws.ts:1) и [`api/realtime.go:404`](../../api/realtime.go:404). Anchor’ы: Vitest ws.spec.ts, Playwright ws-reconnect-chaos.spec.ts (XFAIL), TestConsumeWSTokenTimingRegressionAnchor_XFAILIssue33.
+- ✅ **Кластер E. «xui-import contract drift»** (P1/P3, закрыт после подтверждения пользователя). Пункты: **2, 3, 7, 8, 46**. Меняет контракт adminMode и onlyNew. Затрагивает [`database/importxui/plan.go`](../../database/importxui/plan.go:1), [`database/importxui/options.go`](../../database/importxui/options.go:1), [`cronjob/xuiSyncJob.go`](../../cronjob/xuiSyncJob.go:1), [`api/import_xui.go`](../../api/import_xui.go:1), [`frontend/src/views/MigrateXui.vue`](../../frontend/src/views/MigrateXui.vue:1), [`database/model/model.go`](../../database/model/model.go:1) (поле `force_password_reset`).
+- ✅ **Кластер F. «Audit pipeline»** (P1/P2). Пункты: **16, 17**. [`service/audit_writer.go`](../../service/audit_writer.go:1), [`service/secret_settings.go`](../../service/secret_settings.go:1). Anchor’ы: audit_writer_extra_test.go, secret_settings_extra_test.go.
+- ✅ **Кластер G. «Backup safety»** (P2). Пункты: **10, 11, 12**. Один файл [`database/backup.go`](../../database/backup.go:1). Anchor’ы: integration_backup_restore_test.go, security_rollback_path_test.go, sqlite_locked_test.go (chaos).
+- ✅ **Кластер H. «MigrateXui UX»** (P2/P3). Пункты: **43, 44, 45**. Один файл [`frontend/src/views/MigrateXui.vue`](../../frontend/src/views/MigrateXui.vue:1). Anchor’ы: Playwright migrate-xui-happy.spec.ts (XFAIL), a11y-spec.
+- ✅ **Кластер I. «Telegram/WARP robustness»** (P2/P3). Пункты: **22, 25, 31**. [`service/telegram.go`](../../service/telegram.go:1), [`service/telegram_backup.go`](../../service/telegram_backup.go:1), [`service/warp.go`](../../service/warp.go:1). Anchor’ы: chaos/telegram_down_test.go, chaos/warp_down_test.go.
 
 ### Singletons (вне кластеров)
 
-- **П. 47** «token_use_debouncer race vs DB reinit» — закрыт отдельно как первый production-фикс.
-- **П. 23** «GetSystemInfo IPv6-only crash» — singleton, нужен DI net.Interfaces (требует продакшен-hook).
-- **П. 36** «xui rate-limit map unbounded» — singleton, может стать частью Кластера C при желании.
-- **П. 14, 19** — singleton’ы про адаптеры миграции и стартап-гонки, отдельный риск.
-- **П. 26, 27, 28, 29, 30, 34, 35, 37, 38, 39** — singletons по UX/observability/contract; решаются точечно.
+- ✅ **П. 47** «token_use_debouncer race vs DB reinit» — закрыт отдельно как первый production-фикс.
+- ✅ **П. 23** «GetSystemInfo IPv6-only crash» — закрыт singleton-фиксом с package-local DI anchor.
+- ✅ **П. 36** «xui rate-limit map unbounded» — закрыт singleton-фиксом с bounded rate-limit cache.
+- ✅ **П. 14, 19** — закрыты singleton-фиксами про post-migration adapt и startup race.
+- ✅ **П. 26, 27, 28, 29, 30, 34, 35, 37, 38, 39** — закрыты точечными singleton-фиксами по UX/observability/contract.
 
 ### Порядок прохождения кластеров (предлагаемый)
 
-1. **Кластер A** «Silent error suppression» — самый изолированный P1, эффективная разминка.
-2. **Кластер D** «WS hardening» — критично для realtime UX.
-3. **Кластер F** «Audit pipeline» — критично для security observability.
-4. **Кластер B** «Concurrency hardening» — race-detector clean‑up.
-5. **Кластер G** «Backup safety» — стабильность хранилища.
-6. **Кластер C** «Cron observability» — диагностика sync.
-7. **Кластер E** «xui-import contract drift» — контрактные правки, отдельное согласование.
-8. **Кластер H** «MigrateXui UX» — frontend domain.
-9. **Кластер I** «Telegram/WARP robustness».
-10. Singletons по убыванию severity.
-11. Финальный диалог «Recheck audit baseline»: повторить все 8 фаз, пересчитать дельту, обновить top‑10 risks.
+✅ 1. **Кластер A** «Silent error suppression» — самый изолированный P1, эффективная разминка.
+✅ 2. **Кластер D** «WS hardening» — критично для realtime UX.
+✅ 3. **Кластер F** «Audit pipeline» — критично для security observability.
+✅ 4. **Кластер B** «Concurrency hardening» — race-detector clean‑up.
+✅ 5. **Кластер G** «Backup safety» — стабильность хранилища.
+✅ 6. **Кластер C** «Cron observability» — диагностика sync.
+✅ 7. **Кластер E** «xui-import contract drift» — контрактные правки, отдельное согласование.
+✅ 8. **Кластер H** «MigrateXui UX» — frontend domain.
+✅ 9. **Кластер I** «Telegram/WARP robustness».
+✅ 10. Singletons по убыванию severity.
+✅ 11. Финальный диалог «Recheck audit baseline»: закрыт Final Audit Closure; release notes/changelog приведены к публичному виду.
 
 ---
 
