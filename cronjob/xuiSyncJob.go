@@ -127,7 +127,7 @@ func (j *XUISyncJob) runProfileOnce(ctx context.Context, profile *model.XUISyncP
 	plan, err := importxui.Plan(localPath, importxui.PlanOptions{
 		Context:  ctx,
 		Strategy: strategy,
-		OnlyNew:  true,
+		OnlyNew:  profile.OnlyNew,
 	})
 	if err != nil {
 		return nil, err
@@ -135,7 +135,7 @@ func (j *XUISyncJob) runProfileOnce(ctx context.Context, profile *model.XUISyncP
 	report, err := importxui.Apply(localPath, *plan, importxui.ApplyOptions{
 		Context:   ctx,
 		SkipAudit: true,
-		OnlyNew:   true,
+		OnlyNew:   profile.OnlyNew,
 	})
 	if err != nil {
 		return nil, err

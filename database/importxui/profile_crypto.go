@@ -37,13 +37,44 @@ type SyncProfileSource struct {
 }
 
 type SyncProfileInput struct {
-	Name       string            `json:"name"`
-	SourceType string            `json:"sourceType"`
-	Source     SyncProfileSource `json:"source"`
-	Strategy   Strategy          `json:"strategy"`
-	OnlyNew    bool              `json:"onlyNew"`
-	Enabled    bool              `json:"enabled"`
-	Schedule   string            `json:"schedule"`
+	Name            string            `json:"name"`
+	SourceType      string            `json:"sourceType"`
+	Source          SyncProfileSource `json:"source"`
+	Strategy        Strategy          `json:"strategy"`
+	OnlyNew         bool              `json:"onlyNew"`
+	OnlyNewProvided bool              `json:"-"`
+	Enabled         bool              `json:"enabled"`
+	EnabledProvided bool              `json:"-"`
+	Schedule        string            `json:"schedule"`
+}
+
+func (input *SyncProfileInput) UnmarshalJSON(data []byte) error {
+	var raw struct {
+		Name       string            `json:"name"`
+		SourceType string            `json:"sourceType"`
+		Source     SyncProfileSource `json:"source"`
+		Strategy   Strategy          `json:"strategy"`
+		OnlyNew    *bool             `json:"onlyNew"`
+		Enabled    *bool             `json:"enabled"`
+		Schedule   string            `json:"schedule"`
+	}
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	input.Name = raw.Name
+	input.SourceType = raw.SourceType
+	input.Source = raw.Source
+	input.Strategy = raw.Strategy
+	input.Schedule = raw.Schedule
+	if raw.OnlyNew != nil {
+		input.OnlyNew = *raw.OnlyNew
+		input.OnlyNewProvided = true
+	}
+	if raw.Enabled != nil {
+		input.Enabled = *raw.Enabled
+		input.EnabledProvided = true
+	}
+	return nil
 }
 
 func SaveSyncProfile(input SyncProfileInput) (*model.XUISyncProfile, error) {
@@ -68,14 +99,22 @@ func SaveSyncProfile(input SyncProfileInput) (*model.XUISyncProfile, error) {
 		return nil, err
 	}
 	now := time.Now().Unix()
+	onlyNew := true
+	if input.OnlyNew || input.OnlyNewProvided {
+		onlyNew = input.OnlyNew
+	}
+	enabled := true
+	if input.Enabled || input.EnabledProvided {
+		enabled = input.Enabled
+	}
 	profile := &model.XUISyncProfile{
 		Name:       input.Name,
 		SourceType: input.SourceType,
 		SourceJSON: ciphertext,
 		SourceSalt: salt,
 		Strategy:   string(input.Strategy),
-		OnlyNew:    input.OnlyNew,
-		Enabled:    input.Enabled,
+		OnlyNew:    onlyNew,
+		Enabled:    enabled,
 		Schedule:   input.Schedule,
 		CreatedAt:  now,
 		UpdatedAt:  now,
@@ -89,14 +128,35 @@ func SaveSyncProfile(input SyncProfileInput) (*model.XUISyncProfile, error) {
 		if err == nil {
 			profile.Id = existing.Id
 			profile.CreatedAt = existing.CreatedAt
-			return profile, db.Save(profile).Error
+			return profile, db.Model(&existing).Updates(syncProfileConfigValues(profile)).Error
 		}
 		if err != nil && !database.IsNotFound(err) {
 			return nil, err
 		}
-		return profile, db.Create(profile).Error
+		if err := db.Model(&model.XUISyncProfile{}).Create(syncProfileConfigValues(profile)).Error; err != nil {
+			return nil, err
+		}
+		if err := db.Where("name = ?", profile.Name).First(profile).Error; err != nil {
+			return nil, err
+		}
+		return profile, nil
 	}
 	return nil, fmt.Errorf("destination database is not initialized")
+}
+
+func syncProfileConfigValues(profile *model.XUISyncProfile) map[string]any {
+	return map[string]any{
+		"name":        profile.Name,
+		"source_type": profile.SourceType,
+		"source_json": profile.SourceJSON,
+		"source_salt": profile.SourceSalt,
+		"strategy":    profile.Strategy,
+		"only_new":    profile.OnlyNew,
+		"enabled":     profile.Enabled,
+		"schedule":    profile.Schedule,
+		"created_at":  profile.CreatedAt,
+		"updated_at":  profile.UpdatedAt,
+	}
 }
 
 func LoadSyncProfileSource(profile model.XUISyncProfile) (SyncProfileSource, error) {

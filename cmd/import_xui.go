@@ -89,13 +89,15 @@ func runImportXui(args []string, out io.Writer) int {
 			profile = defaultXUISyncProfileName(profileSource)
 		}
 		saved, err := importxui.SaveSyncProfile(importxui.SyncProfileInput{
-			Name:       profile,
-			SourceType: profileSource.Type,
-			Source:     profileSource,
-			Strategy:   importStrategy,
-			OnlyNew:    true,
-			Enabled:    true,
-			Schedule:   schedule,
+			Name:            profile,
+			SourceType:      profileSource.Type,
+			Source:          profileSource,
+			Strategy:        importStrategy,
+			OnlyNew:         true,
+			OnlyNewProvided: true,
+			Enabled:         true,
+			EnabledProvided: true,
+			Schedule:        schedule,
 		})
 		if err != nil {
 			fmt.Fprintln(out, "import-xui:", err)
