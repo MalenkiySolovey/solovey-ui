@@ -5,8 +5,6 @@
 Это русскоязычный changelog. Английская версия — в `CHANGELOG-EN.md`,
 китайская — в `CHANGELOG-ZH.md`.
 
-## Unreleased
-
 ## [1.5.5-beta4-hotfix2] — 2026-05-26 — hotfix экспорта backup для TLS sentinel
 
 - **Экспорт backup при наличии реальных TLS-записей.**

@@ -4,8 +4,6 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
-## 未发布
-
 ## [1.5.5-beta4-hotfix2] - 2026-05-26 - TLS sentinel 备份导出 hotfix
 
 - **包含真实 TLS 行时的 backup 导出。**

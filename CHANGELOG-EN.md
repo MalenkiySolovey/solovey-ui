@@ -5,8 +5,6 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
-## Unreleased
-
 ## [1.5.5-beta4-hotfix2] - 2026-05-26 - backup export TLS sentinel hotfix
 
 - **Backup export with real TLS rows.**
