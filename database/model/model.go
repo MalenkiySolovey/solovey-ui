@@ -110,20 +110,24 @@ type Tokens struct {
 }
 
 type XUISyncProfile struct {
-	Id             uint            `json:"id" gorm:"primaryKey;autoIncrement"`
-	Name           string          `json:"name" gorm:"uniqueIndex"`
-	SourceType     string          `json:"sourceType" gorm:"index"`
-	SourceJSON     []byte          `json:"-" gorm:"column:source_json"`
-	SourceSalt     []byte          `json:"-" gorm:"column:source_salt"`
-	Strategy       string          `json:"strategy"`
-	OnlyNew        bool            `json:"onlyNew" gorm:"default:true;not null"`
-	Enabled        bool            `json:"enabled" gorm:"default:true;not null"`
-	Schedule       string          `json:"schedule"`
-	LastRunAt      int64           `json:"lastRunAt"`
-	LastRunStatus  string          `json:"lastRunStatus"`
-	LastRunSummary json.RawMessage `json:"lastRunSummary"`
-	CreatedAt      int64           `json:"createdAt"`
-	UpdatedAt      int64           `json:"updatedAt"`
+	Id              uint            `json:"id" gorm:"primaryKey;autoIncrement"`
+	Name            string          `json:"name" gorm:"uniqueIndex"`
+	SourceType      string          `json:"sourceType" gorm:"index"`
+	SourceJSON      []byte          `json:"-" gorm:"column:source_json"`
+	SourceSalt      []byte          `json:"-" gorm:"column:source_salt"`
+	Strategy        string          `json:"strategy"`
+	OnlyNew         bool            `json:"onlyNew" gorm:"default:true;not null"`
+	IncludeSettings bool            `json:"includeSettings" gorm:"default:false;not null"`
+	IncludeHistory  bool            `json:"includeHistory" gorm:"default:false;not null"`
+	IncludeRouting  bool            `json:"includeRouting" gorm:"default:false;not null"`
+	AdminMode       string          `json:"adminMode" gorm:"default:skip;not null"`
+	Enabled         bool            `json:"enabled" gorm:"default:true;not null"`
+	Schedule        string          `json:"schedule"`
+	LastRunAt       int64           `json:"lastRunAt"`
+	LastRunStatus   string          `json:"lastRunStatus"`
+	LastRunSummary  json.RawMessage `json:"lastRunSummary"`
+	CreatedAt       int64           `json:"createdAt"`
+	UpdatedAt       int64           `json:"updatedAt"`
 }
 
 func (XUISyncProfile) TableName() string {

@@ -124,10 +124,18 @@ func (j *XUISyncJob) runProfileOnce(ctx context.Context, profile *model.XUISyncP
 	if strategy == "" {
 		strategy = importxui.StrategyMerge
 	}
+	adminMode := importxui.AdminMode(profile.AdminMode)
+	if adminMode == "" {
+		adminMode = importxui.AdminModeSkip
+	}
 	plan, err := importxui.Plan(localPath, importxui.PlanOptions{
-		Context:  ctx,
-		Strategy: strategy,
-		OnlyNew:  profile.OnlyNew,
+		Context:         ctx,
+		Strategy:        strategy,
+		OnlyNew:         profile.OnlyNew,
+		IncludeSettings: profile.IncludeSettings,
+		IncludeHistory:  profile.IncludeHistory,
+		IncludeRouting:  profile.IncludeRouting,
+		AdminMode:       adminMode,
 	})
 	if err != nil {
 		return nil, err

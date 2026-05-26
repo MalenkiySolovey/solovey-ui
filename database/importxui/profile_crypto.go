@@ -43,6 +43,10 @@ type SyncProfileInput struct {
 	Strategy        Strategy          `json:"strategy"`
 	OnlyNew         bool              `json:"onlyNew"`
 	OnlyNewProvided bool              `json:"-"`
+	IncludeSettings bool              `json:"includeSettings"`
+	IncludeHistory  bool              `json:"includeHistory"`
+	IncludeRouting  bool              `json:"includeRouting"`
+	AdminMode       string            `json:"adminMode"`
 	Enabled         bool              `json:"enabled"`
 	EnabledProvided bool              `json:"-"`
 	Schedule        string            `json:"schedule"`
@@ -50,13 +54,17 @@ type SyncProfileInput struct {
 
 func (input *SyncProfileInput) UnmarshalJSON(data []byte) error {
 	var raw struct {
-		Name       string            `json:"name"`
-		SourceType string            `json:"sourceType"`
-		Source     SyncProfileSource `json:"source"`
-		Strategy   Strategy          `json:"strategy"`
-		OnlyNew    *bool             `json:"onlyNew"`
-		Enabled    *bool             `json:"enabled"`
-		Schedule   string            `json:"schedule"`
+		Name            string            `json:"name"`
+		SourceType      string            `json:"sourceType"`
+		Source          SyncProfileSource `json:"source"`
+		Strategy        Strategy          `json:"strategy"`
+		OnlyNew         *bool             `json:"onlyNew"`
+		IncludeSettings bool              `json:"includeSettings"`
+		IncludeHistory  bool              `json:"includeHistory"`
+		IncludeRouting  bool              `json:"includeRouting"`
+		AdminMode       string            `json:"adminMode"`
+		Enabled         *bool             `json:"enabled"`
+		Schedule        string            `json:"schedule"`
 	}
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return err
@@ -65,6 +73,10 @@ func (input *SyncProfileInput) UnmarshalJSON(data []byte) error {
 	input.SourceType = raw.SourceType
 	input.Source = raw.Source
 	input.Strategy = raw.Strategy
+	input.IncludeSettings = raw.IncludeSettings
+	input.IncludeHistory = raw.IncludeHistory
+	input.IncludeRouting = raw.IncludeRouting
+	input.AdminMode = raw.AdminMode
 	input.Schedule = raw.Schedule
 	if raw.OnlyNew != nil {
 		input.OnlyNew = *raw.OnlyNew
@@ -90,6 +102,13 @@ func SaveSyncProfile(input SyncProfileInput) (*model.XUISyncProfile, error) {
 	if err := input.Strategy.Validate(); err != nil {
 		return nil, err
 	}
+	adminMode := AdminMode(input.AdminMode)
+	if adminMode == "" {
+		adminMode = AdminModeSkip
+	}
+	if err := adminMode.Validate(); err != nil {
+		return nil, err
+	}
 	raw, err := json.Marshal(input.Source)
 	if err != nil {
 		return nil, err
@@ -108,16 +127,20 @@ func SaveSyncProfile(input SyncProfileInput) (*model.XUISyncProfile, error) {
 		enabled = input.Enabled
 	}
 	profile := &model.XUISyncProfile{
-		Name:       input.Name,
-		SourceType: input.SourceType,
-		SourceJSON: ciphertext,
-		SourceSalt: salt,
-		Strategy:   string(input.Strategy),
-		OnlyNew:    onlyNew,
-		Enabled:    enabled,
-		Schedule:   input.Schedule,
-		CreatedAt:  now,
-		UpdatedAt:  now,
+		Name:            input.Name,
+		SourceType:      input.SourceType,
+		SourceJSON:      ciphertext,
+		SourceSalt:      salt,
+		Strategy:        string(input.Strategy),
+		OnlyNew:         onlyNew,
+		IncludeSettings: input.IncludeSettings,
+		IncludeHistory:  input.IncludeHistory,
+		IncludeRouting:  input.IncludeRouting,
+		AdminMode:       string(adminMode),
+		Enabled:         enabled,
+		Schedule:        input.Schedule,
+		CreatedAt:       now,
+		UpdatedAt:       now,
 	}
 	if profile.Schedule == "" {
 		profile.Schedule = "0 */6 * * *"
@@ -146,16 +169,20 @@ func SaveSyncProfile(input SyncProfileInput) (*model.XUISyncProfile, error) {
 
 func syncProfileConfigValues(profile *model.XUISyncProfile) map[string]any {
 	return map[string]any{
-		"name":        profile.Name,
-		"source_type": profile.SourceType,
-		"source_json": profile.SourceJSON,
-		"source_salt": profile.SourceSalt,
-		"strategy":    profile.Strategy,
-		"only_new":    profile.OnlyNew,
-		"enabled":     profile.Enabled,
-		"schedule":    profile.Schedule,
-		"created_at":  profile.CreatedAt,
-		"updated_at":  profile.UpdatedAt,
+		"name":             profile.Name,
+		"source_type":      profile.SourceType,
+		"source_json":      profile.SourceJSON,
+		"source_salt":      profile.SourceSalt,
+		"strategy":         profile.Strategy,
+		"only_new":         profile.OnlyNew,
+		"include_settings": profile.IncludeSettings,
+		"include_history":  profile.IncludeHistory,
+		"include_routing":  profile.IncludeRouting,
+		"admin_mode":       profile.AdminMode,
+		"enabled":          profile.Enabled,
+		"schedule":         profile.Schedule,
+		"created_at":       profile.CreatedAt,
+		"updated_at":       profile.UpdatedAt,
 	}
 }
 

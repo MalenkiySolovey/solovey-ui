@@ -117,6 +117,102 @@ func TestIssue3XUISyncHonorsOnlyNewFalse(t *testing.T) {
 	}
 }
 
+func TestIssue7SaveSyncProfilePersistsImportPolicy(t *testing.T) {
+	initCronJobTestDB(t)
+	sourcePath := createXUISyncSourceDB(t)
+
+	profile, err := importxui.SaveSyncProfile(importxui.SyncProfileInput{
+		Name:       "issue7-policy",
+		SourceType: "file",
+		Source: importxui.SyncProfileSource{
+			Type: "file",
+			URL:  sourcePath,
+		},
+		Strategy:        importxui.StrategyMerge,
+		OnlyNew:         true,
+		OnlyNewProvided: true,
+		IncludeSettings: true,
+		IncludeHistory:  true,
+		IncludeRouting:  true,
+		AdminMode:       string(importxui.AdminModeResetRequired),
+		Enabled:         true,
+		EnabledProvided: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	var stored model.XUISyncProfile
+	if err := database.GetDB().First(&stored, profile.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !stored.IncludeSettings || !stored.IncludeHistory || !stored.IncludeRouting {
+		t.Fatalf("include policy fields were not persisted: %#v", stored)
+	}
+	if stored.AdminMode != string(importxui.AdminModeResetRequired) {
+		t.Fatalf("adminMode=%q, want %q", stored.AdminMode, importxui.AdminModeResetRequired)
+	}
+}
+
+func TestIssue7XUISyncPassesProfileImportPolicy(t *testing.T) {
+	initCronJobTestDB(t)
+	sourcePath := createXUISyncSourceDBWithPolicy(t)
+	profile, err := importxui.SaveSyncProfile(importxui.SyncProfileInput{
+		Name:       "issue7-cron-policy",
+		SourceType: "file",
+		Source: importxui.SyncProfileSource{
+			Type: "file",
+			URL:  sourcePath,
+		},
+		Strategy:        importxui.StrategyMerge,
+		OnlyNew:         false,
+		OnlyNewProvided: true,
+		IncludeSettings: true,
+		IncludeHistory:  true,
+		IncludeRouting:  true,
+		AdminMode:       string(importxui.AdminModeResetRequired),
+		Enabled:         true,
+		EnabledProvided: true,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	job := &XUISyncJob{now: func() time.Time { return time.Unix(1700000600, 0) }}
+	if err := job.RunProfile(context.Background(), profile); err != nil {
+		t.Fatal(err)
+	}
+
+	var webPort model.Setting
+	if err := database.GetDB().Where("key = ?", "webPort").First(&webPort).Error; err != nil {
+		t.Fatal(err)
+	}
+	if webPort.Value != "2095" {
+		t.Fatalf("includeSettings did not import webPort: %#v", webPort)
+	}
+	var statsCount int64
+	if err := database.GetDB().Model(&model.Stats{}).Count(&statsCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if statsCount == 0 {
+		t.Fatal("includeHistory did not import any stats")
+	}
+	var routing model.Setting
+	if err := database.GetDB().Where("key = ?", "singboxConfig").First(&routing).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(routing.Value) == 0 {
+		t.Fatal("includeRouting imported an empty singboxConfig")
+	}
+	var admin model.User
+	if err := database.GetDB().Where("username = ?", "xui-admin").First(&admin).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !admin.ForcePasswordReset {
+		t.Fatalf("profile adminMode reset_required was not applied: %#v", admin)
+	}
+}
+
 func createXUISyncSourceDBWithInbound(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "x-ui.db")
@@ -174,6 +270,57 @@ func createXUISyncSourceDBWithInbound(t *testing.T) string {
 		0, '', 0, '0.0.0.0',
 		443, 'trojan', '{}', '{}', 'sync-inbound', '{}'
 	)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	return path
+}
+
+func createXUISyncSourceDBWithPolicy(t *testing.T) string {
+	t.Helper()
+	path := createXUISyncSourceDBWithInbound(t)
+	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err == nil {
+		defer sqlDB.Close()
+	}
+	if err := db.Exec(`CREATE TABLE settings (
+		id integer primary key,
+		key text,
+		value text
+	)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`INSERT INTO settings(id, key, value) VALUES
+		(1, 'webPort', '2095'),
+		(2, 'xrayConfig', '{"routing":{"rules":[{"outboundTag":"direct","domain":["geosite:google"]}]}}')
+	`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`CREATE TABLE users (
+		id integer primary key,
+		username text,
+		password text
+	)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("INSERT INTO users(id, username, password) VALUES(1, 'xui-admin', 'source-secret')").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec(`CREATE TABLE outbound_traffics (
+		id integer primary key,
+		tag text,
+		up integer,
+		down integer
+	)`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("INSERT INTO outbound_traffics(id, tag, up, down) VALUES(1, 'direct', 10, 20)").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Exec("INSERT INTO client_traffics(id, inbound_id, enable, email, up, down, all_time, expiry_time, total, reset, last_online) VALUES(1, 1, 1, 'alice', 30, 40, 0, 0, 0, 0, 0)").Error; err != nil {
 		t.Fatal(err)
 	}
 	return path
