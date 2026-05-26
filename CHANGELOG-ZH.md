@@ -6,18 +6,83 @@
 
 ## 未发布
 
-## [1.5.5-beta4] - 2026-05-26 - 审计加固与发布清理
+## [1.5.5-beta4] - 2026-05-26 - 稳定性、安全性与导入加固
 
-- 关闭 48 项审计登记表，覆盖 import-xui、cron sync、backup safety、
-  realtime、token flushing、Telegram/WARP、server-info filtering、API
-  validation 与 MigrateXui UX。
-- `reset_required` 现在通过 `users.force_password_reset` 持久化；
-  sync profiles 会保存 import policy fields，frontend schedule/profile
-  payloads 也与 backend contract 对齐。
-- Endpoint 保存现在会阻止重复提交，并在保存失败时正确清理 loading
-  state。
-- 新增最终 audit closure note，并清理本地 scratch artifacts；Release、
-  Windows 与 Docker workflow 的默认 tag 更新为 `v1.5.5-beta4`。
+### 1. 系统稳定性与竞态保护
+
+- 线程同步与 data race 修复（条目 20、21、22、28、47、48）：Telegram
+  HTTP client 刷新、notifier retry timer、core restart cooldown，以及后台
+  token-use flush 现在都会在数据库重新初始化和 API 测试生命周期边界上正确
+  同步。
+  影响：在并发请求、高负载或 core 重启时，panel 更不容易 panic，也更不容易
+  损坏运行时状态。
+- 幂等启动与可调 SQLite 压力（条目 14、15、19）：默认 settings 现在在
+  数据库层安全插入，post-migration adapt 失败会阻止启动，SQLite pool 限制
+  可通过环境变量调整。
+  影响：并发首次启动不会创建重复 settings，迁移问题也不会只以 warning 形式
+  被掩盖。
+
+### 2. 安全性与敏感信息保护
+
+- Token 与授权加固（条目 33、34）：WebSocket token 消费路径不再泄露可测量的
+  timing 差异，旧版 `Token` HTTP header 现在有强制 Sunset 日期。
+  影响：降低 timing attack surface，并推动 API client 迁移到
+  `Authorization: Bearer`。
+- Secret 与网络信息隔离（条目 23、24、25、30、31）：system info 不再返回
+  private/link-local interface address，Telegram backup secret 会在内存中清零，
+  optional URL setting 会拒绝 unsafe/control input，WARP 请求也统一使用安全的
+  authorized-header 路径。
+  影响：backend 更少暴露内部网络拓扑，也更不容易保留敏感数据或危险 URL。
+- Import-xui DoS 防护（条目 36）：rate-limit cache 现在有大小上限，并会清理
+  过期 bucket。
+  影响：来自大量唯一 IP 的请求不能再无限扩大进程内存中的 rate map。
+
+### 3. 数据完整性与故障恢复
+
+- 静默错误现在会显式失败或安全失败（条目 1、16、17、18、26）：TLS 删除错误、
+  `client_ips` 读取失败和 stats commit 失败都会被显式处理；audit writer 会保留
+  warn/security 事件优先级，同时移除了多余的 legacy secretbox decrypt 噪声。
+  影响：短暂数据库故障不会再静默丢失配置、统计或安全事件。
+- 备份可靠性（条目 10、11、12）：SIGHUP timeout 可配置，WAL checkpoint 会从
+  `TRUNCATE` fallback 到 `FULL`，缺少 `settings.config` 的 versioned backup
+  restore 会以 warning 继续。
+  影响：backup/restore 对慢磁盘和较旧的非常规数据库更宽容。
+
+### 4. 3x-ui 导入、Cron Sync 与 API 契约
+
+- 正确的 `reset_required` 语义（条目 2、8、13、46）：管理员导入现在会持久化
+  `force_password_reset`，不会生成或暴露新密码，UI 与 backend 使用同一契约。
+  影响：可以导入需要强制改密的管理员，同时不会在报告中泄露临时 credential。
+- 同步策略会被保存并执行（条目 3、7）：`OnlyNew`、include
+  settings/history/routing 与 `adminMode` 现在会从 cron sync profile 传递到
+  plan/apply。
+  影响：计划同步不再忽略管理员选择的导入策略。
+- Import-xui 对大型和长生命周期操作更稳健（条目 6、35、37、38、39）：v1/v2
+  routes 从同一来源注册，大型 apply plan 从 temp storage 流式读取，旧 temp
+  目录会被清理，rollback 会发布 realtime invalidation，WireGuard endpoint skip
+  也会计入正确的 summary bucket。
+  影响：API 版本之间更不容易漂移，temp cleanup 更少需要人工处理，rollback 后
+  UI 能看到正确状态。
+- Cron sync 更容易诊断，也更温和地处理临时故障（条目 4、5、40、41）：失败会
+  记录 sanitized detail 和 error class，retry 使用指数 backoff，success-summary
+  写入失败不会把已经 apply 成功的导入变成 hard failure。
+  影响：operator 能看到真实失败原因，并避免成功 apply 后的误报错误。
+
+### 5. Frontend UX 与 Realtime 行为
+
+- Realtime fallback 现在会主动尝试恢复 WebSocket 连接（条目 32、42）。
+  影响：短暂网络故障后，UI 可以不刷新页面就离开 polling mode。
+- MigrateXui 会 inline 显示 apply 失败，rollback 后等待 health 再 reload，并要求
+  用户显式 reveal 生成的管理员密码（条目 43、44、45）。
+  影响：operator 更不容易错过关键消息，也更不容易意外暴露 credential。
+- Endpoint 保存会阻止重复提交，并在失败时正确清理 loading state。
+  影响：重复点击 Save 不会启动互相竞争的保存操作。
+
+### 6. 发布打包
+
+- Version metadata 以及 Release、Windows、Docker workflow 默认值已更新到
+  `v1.5.5-beta4`。
+- 公共 release notes 和 changelog 现在描述用户可见的变更，而不是内部工作日志。
 
 ## [1.5.5-beta3] - 2026-05-22 - DNS 与路由 backup config 的恢复安全性
 
