@@ -2,7 +2,7 @@
 
 Validated dependency:
 
-- `github.com/sagernet/sing-box v1.13.11`
+- `github.com/sagernet/sing-box v1.13.12`
 
 The local `ConnTracker` and `StatsTracker` wrap sing-box routed TCP and packet
 connections. Any bump of `github.com/sagernet/sing-box` must revalidate this

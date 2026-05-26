@@ -4,6 +4,29 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [1.5.5] - 2026-05-26 - 1.5.5 稳定版
+
+- 将 `v1.5.5-beta1` 到 `v1.5.5-beta4-hotfix2` 提升为稳定版 `v1.5.5`。
+- 修复共享 VLESS UUID 与 Clash WebSocket Host 的订阅正确性：
+  `xtls-rprx-vision` 不再导出到非 TCP 传输，Clash/Mihomo 导出会保留可用的
+  `ws-opts.headers.Host`。
+- 加强 backup export、restore 与 import rollback：no-TLS sentinel
+  `tls.id=0` 会被安全保留，失败的 import 会重新打开 live DB，
+  `settings.config` 对 DNS/routing restore 有覆盖，backup export 也不会再让
+  sentinel 与真实 TLS 行冲突。
+- 纳入 beta4 的 security/reliability hardening：导入管理员强制改密、更安全的
+  token 处理、audit 优先级、大型 X-UI import plan 流式处理、rollback 后的
+  realtime invalidation、可配置 SQLite pool、IP-monitor fail-closed 读取、
+  bounded rate-limit state、realtime self-healing、retry/backoff 以及 data
+  race 修复。
+- 纳入 frontend hotfixes：npm lockfile、Playwright/Vite e2e 稳定性、
+  reconnect chaos tests 以及 accessibility baseline timeout。
+- Go 更新到 `1.26.3`，`github.com/sagernet/sing-box` 更新到 `v1.13.12`，
+  release/Docker builds 使用的 cronet-go source pin 已同步。
+- 验证：本地通过 `go vet ./...`、`go test -race -timeout=10m ./...`、
+  release-tag `go build` 和 `git diff --check`。本地 workspace 没有 Docker；
+  GitHub 会在 tag push 后运行 release/Docker workflows。
+
 ## [1.5.5-beta4-hotfix2] - 2026-05-26 - TLS sentinel 备份导出 hotfix
 
 - **包含真实 TLS 行时的 backup 导出。**

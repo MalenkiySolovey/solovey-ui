@@ -5,6 +5,29 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.5] - 2026-05-26 - stable 1.5.5 release
+
+- Promotes `v1.5.5-beta1` through `v1.5.5-beta4-hotfix2` to stable `v1.5.5`.
+- Fixes subscription correctness for shared VLESS UUIDs and Clash WebSocket
+  Host headers: `xtls-rprx-vision` is stripped from non-TCP transports, and
+  Clash/Mihomo exports keep a usable `ws-opts.headers.Host`.
+- Hardens backup export, restore and import rollback. The no-TLS `tls.id=0`
+  sentinel is preserved safely, failed imports reopen the live DB,
+  `settings.config` carries DNS/routing restore coverage, and backup export no
+  longer lets the sentinel collide with real TLS rows.
+- Carries the beta4 security/reliability work: forced password reset for
+  imported administrators, safer token handling, audit prioritization, streamed
+  large X-UI import plans, rollback realtime invalidation, configurable SQLite
+  pools, fail-closed IP-monitor reads, bounded rate-limit state, realtime
+  self-healing, retry/backoff improvements and data-race fixes.
+- Includes frontend hotfixes for the npm lockfile, Playwright/Vite e2e
+  stability, reconnect chaos tests and accessibility baseline timeout.
+- Updates Go to `1.26.3`, `github.com/sagernet/sing-box` to `v1.13.12`, and
+  synchronizes the cronet-go source pin used by release/Docker builds.
+- Validation: `go vet ./...`, `go test -race -timeout=10m ./...`, release-tag
+  `go build`, and `git diff --check` passed locally. Docker was not available
+  in the local workspace; GitHub release/Docker workflows run on tag push.
+
 ## [1.5.5-beta4-hotfix2] - 2026-05-26 - backup export TLS sentinel hotfix
 
 - **Backup export with real TLS rows.**

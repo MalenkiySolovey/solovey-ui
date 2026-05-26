@@ -5,6 +5,31 @@
 Это русскоязычный changelog. Английская версия — в `CHANGELOG-EN.md`,
 китайская — в `CHANGELOG-ZH.md`.
 
+## [1.5.5] — 2026-05-26 — стабильный релиз 1.5.5
+
+- `v1.5.5-beta1` - `v1.5.5-beta4-hotfix2` повышены до стабильной `v1.5.5`.
+- Исправлена корректность подписок для общего VLESS UUID и Clash WebSocket
+  Host: `xtls-rprx-vision` снимается с не-TCP транспортов, а Clash/Mihomo
+  export сохраняет рабочий `ws-opts.headers.Host`.
+- Усилены backup export, restore и import rollback. No-TLS sentinel `tls.id=0`
+  сохраняется безопасно, failed imports переоткрывают live DB,
+  `settings.config` покрыт restore-тестами для DNS/routing, а backup export
+  больше не сталкивает sentinel с реальными TLS-записями.
+- Включён beta4 security/reliability hardening: forced password reset для
+  импортированных администраторов, более безопасные токены, приоритет audit,
+  потоковые большие X-UI import plans, realtime invalidation после rollback,
+  настраиваемые SQLite pools, fail-closed IP-monitor reads, bounded
+  rate-limit state, self-healing realtime, retry/backoff и исправления data
+  races.
+- Включены frontend hotfixes для npm lockfile, стабильности Playwright/Vite
+  e2e, reconnect chaos tests и timeout accessibility baseline.
+- Go обновлён до `1.26.3`, `github.com/sagernet/sing-box` до `v1.13.12`, а
+  cronet-go source pin синхронизирован для release/Docker builds.
+- Валидация: локально прошли `go vet ./...`, `go test -race -timeout=10m
+  ./...`, release-tag `go build` и `git diff --check`. Docker недоступен в
+  локальном workspace; release/Docker workflows запускаются на GitHub после
+  push тега.
+
 ## [1.5.5-beta4-hotfix2] — 2026-05-26 — hotfix экспорта backup для TLS sentinel
 
 - **Экспорт backup при наличии реальных TLS-записей.**
