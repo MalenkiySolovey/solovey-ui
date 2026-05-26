@@ -446,7 +446,9 @@ export default {
       return JSON.stringify(this.report?.summary ?? {}, null, 2)
     },
     generatedAdmins(): any[] {
-      return Array.isArray(this.report?.generatedAdmins) ? this.report.generatedAdmins : []
+      if (Array.isArray(this.report?.generatedAdmins)) return this.report.generatedAdmins
+      if (Array.isArray(this.report?.generated_admins)) return this.report.generated_admins
+      return []
     },
     hasGeneratedAdmins(): boolean {
       return this.generatedAdmins.length > 0

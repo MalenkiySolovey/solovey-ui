@@ -195,7 +195,7 @@ export default {
     adminModes: {
       skip: "Skip admins",
       new_password: "Create with new password",
-      reset_required: "Reset required",
+      reset_required: "Require password reset",
     },
     buildPlan: "Build plan",
     reviewTitle: "Review migration plan",

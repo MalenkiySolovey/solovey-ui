@@ -195,7 +195,7 @@ export default {
     adminModes: {
       skip: "Пропустить администраторов",
       new_password: "Создать с новым паролем",
-      reset_required: "Требуется сброс",
+      reset_required: "Требовать сброс пароля",
     },
     buildPlan: "Построить план",
     reviewTitle: "Проверка плана миграции",

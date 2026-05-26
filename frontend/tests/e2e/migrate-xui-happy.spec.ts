@@ -204,5 +204,87 @@ test('Issue45 hides generated admin passwords until reveal and auto-clears them'
   await expect(page.getByTestId('migrate-xui-generated-admins')).toBeHidden()
 })
 
-// XFAIL: пункт 46 реестра; reset_required пока не имеет backend force-reset semantics.
-test.skip('adminMode reset_required is disabled or warns until backend contract exists', async () => {})
+test('Issue46 sends reset_required adminMode when building a plan', async ({ page }) => {
+  let planRequestBody = ''
+  await mockAuthenticatedShell(page)
+  await page.route('**/api/import-xui/plan', async route => {
+    planRequestBody = route.request().postData() ?? ''
+    await route.fulfill({
+      json: {
+        success: true,
+        msg: '',
+        obj: {
+          source: { hash: 'issue46-hash' },
+          defaults: { adminMode: 'reset_required' },
+          items: [
+            {
+              kind: 'admin',
+              srcId: '1',
+              srcTag: 'migrated-admin',
+              dstTag: 'migrated-admin',
+              action: 'create',
+              conflict: false,
+              adminMode: 'reset_required',
+              previewJson: { username: 'migrated-admin', mode: 'reset_required' },
+            },
+          ],
+        },
+      },
+    })
+  })
+
+  await page.goto('migrate-xui')
+  await expect(page).toHaveURL(/\/migrate-xui$/)
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'x-ui.db',
+    mimeType: 'application/octet-stream',
+    buffer: Buffer.from('SQLite format 3\0'),
+  })
+  await page.getByLabel('Admin import').click({ force: true })
+  await page.getByRole('option', { name: 'Require password reset' }).click()
+  await page.getByRole('button', { name: 'Build plan' }).click()
+
+  await expect.poll(() => planRequestBody).toContain('adminMode')
+  expect(planRequestBody).toContain('reset_required')
+})
+
+test('sync profile payload includes import policy fields', async ({ page }) => {
+  let savePayload: any
+  await mockAuthenticatedShell(page)
+  await page.route('**/api/import-xui/remote/status', async route => route.fulfill({
+    json: { success: true, msg: '', obj: { disabled: false } },
+  }))
+  await page.route('**/api/import-xui/sync/profiles', async route => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: { success: true, msg: '', obj: [] } })
+      return
+    }
+    savePayload = JSON.parse(route.request().postData() ?? '{}')
+    await route.fulfill({
+      json: {
+        success: true,
+        msg: '',
+        obj: { id: 7, ...savePayload },
+      },
+    })
+  })
+
+  await page.goto('migrate-xui/schedule')
+  await expect(page).toHaveURL(/\/migrate-xui\/schedule$/)
+  await page.getByLabel('Profile name').fill('nightly-sync')
+  await page.getByLabel('SSH URL').fill('ssh://user@example.com:/etc/x-ui/x-ui.db')
+  await page.getByLabel('Only new objects').uncheck()
+  await page.getByLabel('Import panel settings').check()
+  await page.getByLabel('Import historical traffic').check()
+  await page.getByLabel('Import routing rules').check()
+  await page.getByLabel('Admin import').click({ force: true })
+  await page.getByRole('option', { name: 'Require password reset' }).click()
+  await page.getByRole('button', { name: 'Save' }).click()
+
+  await expect.poll(() => savePayload?.name).toBe('nightly-sync')
+  expect(savePayload.onlyNew).toBe(false)
+  expect(savePayload.includeSettings).toBe(true)
+  expect(savePayload.includeHistory).toBe(true)
+  expect(savePayload.includeRouting).toBe(true)
+  expect(savePayload.adminMode).toBe('reset_required')
+})

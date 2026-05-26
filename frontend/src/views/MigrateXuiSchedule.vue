@@ -66,6 +66,18 @@
               <v-checkbox v-model="form.onlyNew" :label="$t('migrateXui.schedule.onlyNew')" hide-details></v-checkbox>
             </v-col>
             <v-col cols="12" sm="6">
+              <v-select v-model="form.adminMode" :items="adminModeItems" :label="$t('migrateXui.adminMode')" hide-details></v-select>
+            </v-col>
+            <v-col cols="12" sm="4">
+              <v-checkbox v-model="form.includeSettings" :label="$t('migrateXui.includeSettings')" hide-details></v-checkbox>
+            </v-col>
+            <v-col cols="12" sm="4">
+              <v-checkbox v-model="form.includeHistory" :label="$t('migrateXui.includeHistory')" hide-details></v-checkbox>
+            </v-col>
+            <v-col cols="12" sm="4">
+              <v-checkbox v-model="form.includeRouting" :label="$t('migrateXui.includeRouting')" hide-details></v-checkbox>
+            </v-col>
+            <v-col cols="12" sm="6">
               <v-checkbox v-model="form.enabled" :label="$t('enable')" hide-details></v-checkbox>
             </v-col>
             <v-col cols="12">
@@ -90,6 +102,14 @@
               <v-chip size="small" :color="rowItem(item).enabled ? 'success' : undefined" variant="tonal">
                 {{ rowItem(item).enabled ? $t('enable') : $t('disable') }}
               </v-chip>
+            </template>
+            <template #item.onlyNew="{ item }">
+              <v-chip size="small" :color="rowItem(item).onlyNew ? 'primary' : undefined" variant="tonal">
+                {{ rowItem(item).onlyNew ? $t('yes') : $t('no') }}
+              </v-chip>
+            </template>
+            <template #item.adminMode="{ item }">
+              {{ adminModeTitle(rowItem(item).adminMode || 'skip') }}
             </template>
             <template #item.lastRunAt="{ item }">
               {{ formatDate(rowItem(item).lastRunAt) }}
@@ -133,6 +153,10 @@ export default {
         sourceType: 'ssh',
         strategy: 'merge',
         onlyNew: true,
+        includeSettings: false,
+        includeHistory: false,
+        includeRouting: false,
+        adminMode: 'skip',
         enabled: true,
         schedule: '0 */6 * * *',
         source: {
@@ -156,6 +180,9 @@ export default {
     strategyItems(): any[] {
       return ['merge', 'replace', 'skip'].map(value => ({ value, title: this.$t(`migrateXui.actions.${value}`) }))
     },
+    adminModeItems(): any[] {
+      return ['skip', 'new_password', 'reset_required'].map(value => ({ value, title: this.adminModeTitle(value) }))
+    },
     sourceURLLabel(): string {
       return this.form.source.type === 'ssh'
         ? this.$t('migrateXui.schedule.sshUrl') as string
@@ -167,6 +194,8 @@ export default {
         { title: this.$t('migrateXui.schedule.profileName'), key: 'name' },
         { title: this.$t('migrateXui.schedule.sourceType'), key: 'sourceType' },
         { title: this.$t('migrateXui.strategy'), key: 'strategy' },
+        { title: this.$t('migrateXui.schedule.onlyNew'), key: 'onlyNew', width: 120 },
+        { title: this.$t('migrateXui.adminMode'), key: 'adminMode', width: 180 },
         { title: this.$t('enable'), key: 'enabled', width: 120 },
         { title: this.$t('migrateXui.schedule.lastRun'), key: 'lastRunAt' },
         { title: this.$t('migrateXui.schedule.status'), key: 'lastRunStatus' },
@@ -208,7 +237,9 @@ export default {
           baseUrl: this.form.source.type === 'xuihttp' ? this.form.source.url : this.form.source.baseUrl,
         },
       }
-      const msg = await HttpUtils.post('api/import-xui/sync/profiles', payload)
+      const msg = await HttpUtils.post('api/import-xui/sync/profiles', payload, {
+        headers: { 'Content-Type': 'application/json' },
+      })
       this.saving = false
       if (msg.success) {
         this.form.name = ''
@@ -235,6 +266,9 @@ export default {
     formatDate(value: number): string {
       if (!value) return '-'
       return new Date(value * 1000).toLocaleString()
+    },
+    adminModeTitle(value: string): string {
+      return this.$t(`migrateXui.adminModes.${value}`) as string
     },
   },
 }
