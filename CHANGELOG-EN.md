@@ -7,6 +7,21 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## Unreleased
 
+## [1.5.5-beta4-hotfix2] - 2026-05-26 - backup export TLS sentinel hotfix
+
+- **Backup export with real TLS rows.**
+  Problem: the no-TLS sentinel row `tls.id=0` was copied through GORM's normal
+  auto-increment create path. When a database also had a real TLS row, SQLite
+  could assign the sentinel a generated id and the next real row copy failed
+  with `UNIQUE constraint failed: tls.id`.
+  Impact: backup export now skips `tls.id=0` during the generic table copy and
+  restores that sentinel explicitly with `INSERT OR IGNORE`, so no-TLS inbounds
+  keep a valid parent row without colliding with real TLS configs.
+- Added regression coverage for a database that contains both `tls.id=0` and a
+  regular TLS row.
+- Updated release metadata, README install examples and manual workflow default
+  tags to `v1.5.5-beta4-hotfix2`.
+
 ## [1.5.5-beta4] - 2026-05-26 - problem-fix and technical-debt report
 
 ### 1. Security, Authentication And Audit

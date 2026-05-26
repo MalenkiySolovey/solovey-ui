@@ -6,6 +6,19 @@
 
 ## 未发布
 
+## [1.5.5-beta4-hotfix2] - 2026-05-26 - TLS sentinel 备份导出 hotfix
+
+- **包含真实 TLS 行时的 backup 导出。**
+  问题：no-TLS 哨兵行 `tls.id=0` 通过 GORM 普通 auto-increment create
+  路径复制。若数据库中同时存在真实 TLS 行，SQLite 可能给哨兵行分配新的 id，
+  随后复制真实行时触发 `UNIQUE constraint failed: tls.id`。
+  影响：backup 导出现在会在通用表复制中跳过 `tls.id=0`，并通过
+  `INSERT OR IGNORE` 显式恢复该哨兵行；no-TLS inbounds 仍保留有效父行，
+  且不会与真实 TLS 配置冲突。
+- 新增 regression coverage，覆盖同时包含 `tls.id=0` 和普通 TLS 行的数据库。
+- 将 release metadata、README 安装示例以及手动 workflow 默认 tag 更新到
+  `v1.5.5-beta4-hotfix2`。
+
 ## [1.5.5-beta4] - 2026-05-26 - 问题修复与技术债清理报告
 
 ### 1. 安全、认证与审计

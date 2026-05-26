@@ -159,6 +159,70 @@ func TestGetDbPreservesNoTLSForeignKeySentinel(t *testing.T) {
 	}
 }
 
+func TestGetDbCopiesTLSRowsWhenNoTLSSentinelExists(t *testing.T) {
+	dbDir := t.TempDir()
+	dbPath := filepath.Join(dbDir, "s-ui.db")
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	if err := InitDB(dbPath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		cleanupBackupSidecars(dbPath)
+	})
+
+	mainDB := GetDB()
+	tlsRow := model.Tls{
+		Name:   "real-tls",
+		Server: []byte("{}"),
+		Client: []byte("{}"),
+	}
+	if err := mainDB.Create(&tlsRow).Error; err != nil {
+		t.Fatal(err)
+	}
+	if tlsRow.Id == 0 {
+		t.Fatal("expected real TLS row to receive a non-zero id")
+	}
+
+	backup, err := GetDb("")
+	if err != nil {
+		t.Fatalf("GetDb failed with tls.id=0 sentinel and real TLS row: %v", err)
+	}
+	backupPath := filepath.Join(t.TempDir(), "backup.db")
+	if err := os.WriteFile(backupPath, backup, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	backupDB, err := gorm.Open(sqlite.Open(backupPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if sqlDB, err := backupDB.DB(); err == nil {
+			_ = sqlDB.Close()
+		}
+		cleanupBackupSidecars(backupPath)
+	})
+
+	var sentinelRows int64
+	if err := backupDB.Table("tls").Where("id = ?", 0).Count(&sentinelRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if sentinelRows != 1 {
+		t.Fatalf("backup tls.id=0 rows=%d, want 1", sentinelRows)
+	}
+
+	var copiedRows int64
+	if err := backupDB.Model(&model.Tls{}).Where("id = ? AND name = ?", tlsRow.Id, "real-tls").Count(&copiedRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if copiedRows != 1 {
+		t.Fatalf("real TLS row id=%d was not copied exactly once", tlsRow.Id)
+	}
+}
+
 func TestGetDbUsesRandomTempPathAndRemovesIt(t *testing.T) {
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
 	if err := InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {

@@ -94,7 +94,15 @@ func GetDb(exclude string) ([]byte, error) {
 		if excludedTables[table.name] {
 			continue
 		}
-		if err := copyBackupTable(db, backupDb, table.model); err != nil {
+		sourceDB := db
+		if table.name == "tls" {
+			// The no-TLS sentinel uses id=0, which GORM treats as an unset
+			// auto-increment key during Create. Copy it explicitly below so it
+			// cannot be reinserted with a generated id that collides with real
+			// TLS rows.
+			sourceDB = db.Where("id <> ?", 0)
+		}
+		if err := copyBackupTable(sourceDB, backupDb, table.model); err != nil {
 			return nil, err
 		}
 	}
