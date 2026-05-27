@@ -6,6 +6,8 @@
 
 ## [1.5.6-beta1] - 2026-05-27 - sing-box 1.13 UI parity beta
 
+- 将 `v1.5.6-beta1` 发布为完整 GitHub pre-release，并包含独立 release
+  notes、README 安装命令以及 release/Docker/Windows workflow 默认 tag。
 - 为 sing-box 1.13 TLS advanced 选项补齐一等 UI 支持，包括 curve
   preferences、client authentication/certificates、certificate public key pins
   以及 outbound kTLS controls。

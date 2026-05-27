@@ -7,6 +7,9 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## [1.5.6-beta1] - 2026-05-27 - sing-box 1.13 UI parity beta
 
+- Publishes `v1.5.6-beta1` as a full GitHub pre-release with dedicated release
+  notes, README installation commands and release/Docker/Windows workflow
+  defaults.
 - Adds first-class UI coverage for sing-box 1.13 TLS advanced options,
   including curve preferences, client authentication/certificates,
   certificate public key pins and outbound kTLS controls.

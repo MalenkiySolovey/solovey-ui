@@ -7,6 +7,9 @@
 
 ## [1.5.6-beta1] — 2026-05-27 — beta UI-паритета sing-box 1.13
 
+- `v1.5.6-beta1` публикуется как полноценный GitHub pre-release с отдельными
+  release notes, командами установки в README и default tag в
+  release/Docker/Windows workflows.
 - Добавлено first-class UI-покрытие advanced TLS-полей sing-box 1.13:
   curve preferences, client authentication/certificates, public key pins
   сертификатов и outbound kTLS controls.
