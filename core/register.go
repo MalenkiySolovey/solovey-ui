@@ -36,6 +36,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/wireguard"
 	"github.com/sagernet/sing-box/service/ccm"
 	"github.com/sagernet/sing-box/service/ocm"
+	"github.com/sagernet/sing-box/service/oomkiller"
 	"github.com/sagernet/sing-box/service/resolved"
 	"github.com/sagernet/sing-box/service/ssmapi"
 	_ "github.com/sagernet/sing-box/transport/v2rayquic"
@@ -134,6 +135,7 @@ func ServiceRegistry() *service.Registry {
 	registerDERPService(registry)
 	ccm.RegisterService(registry)
 	ocm.RegisterService(registry)
+	oomkiller.RegisterService(registry)
 
 	return registry
 }

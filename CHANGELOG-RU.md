@@ -5,6 +5,25 @@
 Это русскоязычный changelog. Английская версия — в `CHANGELOG-EN.md`,
 китайская — в `CHANGELOG-ZH.md`.
 
+## [1.5.6-beta1] — 2026-05-27 — beta UI-паритета sing-box 1.13
+
+- Добавлено first-class UI-покрытие advanced TLS-полей sing-box 1.13:
+  curve preferences, client authentication/certificates, public key pins
+  сертификатов и outbound kTLS controls.
+- Исправлены wire shapes для `interface_address` в route/DNS rules и добавлены
+  network/Wi-Fi state matchers для route rules, DNS rules и inline/source
+  headless rule-set rules.
+- Добавлены inline rule-set editor, сериализация route `bypass`, route reject
+  `reply`, Naive receive windows/UoT version selector, TUN reset mark/NFQUEUE,
+  Tailscale advertise tags, OCM/CCM headers и UI/backend-регистрация сервиса
+  `oom-killer`.
+- Добавлены representative sing-box 1.13 option-unmarshal тест и regression
+  test на регистрацию OOM service.
+- Проверки: `npm --prefix frontend run build`, `npm --prefix frontend run
+  test`, `npm --prefix frontend run lint` и `go test -tags
+  "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,with_tailscale"
+  ./...` прошли локально.
+
 ## [1.5.5] — 2026-05-26 — стабильный релиз 1.5.5
 
 - `v1.5.5-beta1` - `v1.5.5-beta4-hotfix2` повышены до стабильной `v1.5.5`.

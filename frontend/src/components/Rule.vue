@@ -226,27 +226,8 @@
         ></v-combobox>
       </v-col>
     </v-row>
-    <v-row v-if="optionInterface">
-      <v-col cols="12" sm="6" md="4">
-        <v-select
-          hide-details
-          :items="interfaceKeys"
-          @update:model-value="updateInterfaceOption($event)"
-          v-model="interfaceOption">
-        </v-select>
-      </v-col>
-      <v-col cols="12" sm="6" v-if="rule.interface_address != undefined || rule.network_interface_address != undefined || rule.default_interface_address != undefined">
-        <v-textarea :label="$t('rule.interfaceAddr')"
-          hide-details
-          v-model="interface_addr"
-          rows="5"
-          no-resize
-          density="compact"
-          append-icon="mdi-arrow-expand"
-          @click:append="openExpTextarea($t('rule.interfaceAddr'), 'interface_address')"
-        />
-      </v-col>
-    </v-row>
+    <RuleNetworkState v-if="optionNetworkState" :rule="rule" />
+    <RuleInterfaceAddress v-if="optionInterface" :rule="rule" />
     <v-row v-if="optionRuleSet">
       <v-col cols="12" sm="6">
         <v-combobox
@@ -301,6 +282,9 @@
               <v-switch v-model="optionPreferredBy" color="primary" :label="$t('rule.preferredBy')" hide-details></v-switch>
             </v-list-item>
             <v-list-item>
+              <v-switch v-model="optionNetworkState" color="primary" :label="$t('rule.networkState')" hide-details></v-switch>
+            </v-list-item>
+            <v-list-item>
               <v-switch v-model="optionInterface" color="primary" :label="$t('rule.interfaceAddr')" hide-details></v-switch>
             </v-list-item>
             <v-list-item>
@@ -315,19 +299,19 @@
 
 <script lang="ts">
 import ExpTextarea from '@/components/ExpTextarea.vue'
+import RuleInterfaceAddress from '@/components/RuleInterfaceAddress.vue'
+import RuleNetworkState from '@/components/RuleNetworkState.vue'
 export default {
-  components: { ExpTextarea },
+  components: { ExpTextarea, RuleInterfaceAddress, RuleNetworkState },
   props: ['rule', 'clients', 'inTags', 'outTags', 'rsTags', 'deleteable'],
   data() {
     return {
       menu: false,
       domainKeys: ['domain', 'domain_suffix', 'domain_keyword', 'domain_regex', 'ip_cidr', 'ip_is_private'],
-      interfaceKeys: ['interface_address', 'network_interface_address', 'default_interface_address'],
       portKeys: ['port', 'port_range'],
       srcIPKeys: ['source_ip_cidr', 'source_ip_is_private'],
       srcPortKeys: ['source_port', 'source_port_range'],
       domainOption: 'domain',
-      interfaceOption: 'interface_address',
       portOption: 'port',
       srcIPOption: 'source_ip_cidr',
       srcPortOption: 'source_port',
@@ -366,10 +350,6 @@ export default {
     },
     updateSrcPortOption(option:string) {
       this.srcPortKeys.forEach(k => delete this.$props.rule[k])
-      this.$props.rule[option] = []
-    },
-    updateInterfaceOption(option:string) {
-      this.interfaceKeys.forEach(k => delete this.$props.rule[k])
       this.$props.rule[option] = []
     },
     openExpTextarea(title:string, object:string) {
@@ -453,15 +433,38 @@ export default {
       get() { return this.$props.rule.preferred_by != undefined },
       set(v:boolean) { this.$props.rule.preferred_by = v ? [] : undefined }
     },
-    optionInterface: {
-      get() { return this.interfaceKeys.some(k => this.$props.rule[k] != undefined) },
+    optionNetworkState: {
+      get() {
+        return this.$props.rule.network_type != undefined ||
+               this.$props.rule.network_is_expensive != undefined ||
+               this.$props.rule.network_is_constrained != undefined ||
+               this.$props.rule.wifi_ssid != undefined ||
+               this.$props.rule.wifi_bssid != undefined
+      },
       set(v:boolean) {
         if (v) {
-          this.$props.rule.interface_address = []
+          this.$props.rule.network_type = []
+          this.$props.rule.network_is_expensive = false
+          this.$props.rule.network_is_constrained = false
+          this.$props.rule.wifi_ssid = []
+          this.$props.rule.wifi_bssid = []
         } else {
-          this.interfaceKeys.forEach(k => delete this.$props.rule[k])
+          delete this.$props.rule.network_type
+          delete this.$props.rule.network_is_expensive
+          delete this.$props.rule.network_is_constrained
+          delete this.$props.rule.wifi_ssid
+          delete this.$props.rule.wifi_bssid
         }
-        this.interfaceOption = 'interface_address'
+      }
+    },
+    optionInterface: {
+      get() { return ['interface_address', 'network_interface_address', 'default_interface_address'].some(k => this.$props.rule[k] != undefined) },
+      set(v:boolean) {
+        if (v) {
+          this.$props.rule.interface_address = {}
+        } else {
+          ;['interface_address', 'network_interface_address', 'default_interface_address'].forEach(k => delete this.$props.rule[k])
+        }
       }
     },
     optionRuleSet: {
@@ -530,16 +533,6 @@ export default {
       get() { return this.$props.rule.source_port_range?.join('\n') ?? '' },
       set(v:string) { this.$props.rule.source_port_range = v.length > 0 ? v.split('\n').map((s:string) => s.trim()).filter((s:string) => s.length > 0) : [] }
     },
-    interface_addr: {
-      get() {
-        const k = this.interfaceKeys.find(k => this.$props.rule[k] != undefined)
-        return k ? this.$props.rule[k]?.join('\n') ?? '' : ''
-      },
-      set(v:string) {
-        const k = this.interfaceKeys.find(k => this.$props.rule[k] != undefined)
-        if (k) this.$props.rule[k] = v.length > 0 ? v.split('\n').map((s:string) => s.trim()).filter((s:string) => s.length > 0) : []
-      }
-    },
   },
   mounted() {
     const ruleKeys = Object.keys(this.$props.rule)
@@ -558,10 +551,6 @@ export default {
     if (this.optionSrcPort) {
       const enabledOption = this.srcPortKeys.filter(k => ruleKeys.includes(k))
       this.srcPortOption = enabledOption.length>0 ? enabledOption[0] : 'source_port'
-    }
-    if (this.optionInterface) {
-      const enabledOption = this.interfaceKeys.filter(k => ruleKeys.includes(k))
-      this.interfaceOption = enabledOption.length>0 ? enabledOption[0] : 'interface_address'
     }
   }
 }

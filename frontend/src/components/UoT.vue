@@ -21,7 +21,12 @@ export default {
   },
   computed: {
     udp_over_tcp: {
-      get():number { return this.$props.data.udp_over_tcp?.version?? 0 },
+      get():number {
+        const value = this.$props.data.udp_over_tcp
+        if (value === true) return 2
+        if (!value) return 0
+        return value.version ?? 2
+      },
       set(v:number) { this.$props.data.udp_over_tcp = v > 0 ? { enabled: true, version: v } : undefined }
     }
   }

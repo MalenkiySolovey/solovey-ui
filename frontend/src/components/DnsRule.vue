@@ -29,6 +29,26 @@
           v-model.number="rule.ip_version">
         </v-select>
       </v-col>
+      <v-col cols="12" sm="6" md="4" v-if="optionQueryType">
+        <v-combobox
+          v-model="rule.query_type"
+          :items="queryTypes"
+          :label="$t('dns.rule.queryType')"
+          multiple
+          chips
+          hide-details>
+        </v-combobox>
+      </v-col>
+      <v-col cols="12" sm="6" md="4" v-if="optionNetwork">
+        <v-select
+          hide-details
+          multiple
+          chips
+          :label="$t('network')"
+          :items="['tcp','udp']"
+          v-model="rule.network">
+        </v-select>
+      </v-col>
       <v-col cols="12" sm="6" v-if="optionProtocol">
         <v-combobox
           v-model="rule.protocol"
@@ -73,6 +93,18 @@
         hide-details
         v-model="domain_regex"></v-text-field>
       </v-col>
+      <v-col cols="12" sm="6" v-if="rule.ip_cidr != undefined">
+        <v-text-field
+        :label="$t('rule.ip') + ' ' + $t('commaSeparated')"
+        hide-details
+        v-model="ip_cidr"></v-text-field>
+      </v-col>
+      <v-col cols="12" sm="6" v-if="rule.ip_is_private != undefined">
+        <v-switch v-model="rule.ip_is_private" color="primary" :label="$t('rule.privateIp')" hide-details></v-switch>
+      </v-col>
+      <v-col cols="12" sm="6" v-if="rule.ip_accept_any != undefined">
+        <v-switch v-model="rule.ip_accept_any" color="primary" :label="$t('dns.rule.ipAcceptAny')" hide-details></v-switch>
+      </v-col>
     </v-row>
     <v-row v-if="optionPort">
       <v-col cols="12" sm="6" md="4">
@@ -104,6 +136,15 @@
           @update:model-value="updateSrcIPOption($event)"
           v-model="srcIPOption">
         </v-select>
+      </v-col>
+      <v-col cols="12" sm="6" v-if="rule.source_ip_cidr != undefined">
+        <v-text-field
+        :label="$t('rule.srcCidr') + ' ' + $t('commaSeparated')"
+        hide-details
+        v-model="source_ip_cidr"></v-text-field>
+      </v-col>
+      <v-col cols="12" sm="6" v-if="rule.source_ip_is_private != undefined">
+        <v-switch v-model="rule.source_ip_is_private" color="primary" :label="$t('rule.srcPrivateIp')" hide-details></v-switch>
       </v-col>
     </v-row>
     <v-row v-if="optionSrcPort">
@@ -139,7 +180,15 @@
           hide-details
         ></v-combobox>
       </v-col>
+      <v-col cols="12" sm="6">
+        <v-switch v-model="rule.rule_set_ip_cidr_match_source" color="primary" :label="$t('rule.rulesetMatchSrc')" hide-details></v-switch>
+      </v-col>
+      <v-col cols="12" sm="6">
+        <v-switch v-model="rule.rule_set_ip_cidr_accept_empty" color="primary" :label="$t('dns.rule.rulesetAcceptEmpty')" hide-details></v-switch>
+      </v-col>
     </v-row>
+    <RuleNetworkState v-if="optionNetworkState" :rule="rule" />
+    <RuleInterfaceAddress v-if="optionInterface" :rule="rule" />
     <v-card-actions>
       <v-spacer></v-spacer>
       <v-menu v-model="menu" :close-on-content-click="false" location="start">
@@ -158,6 +207,12 @@
               <v-switch v-model="optionIPver" color="primary" :label="$t('rule.ipVer')" hide-details></v-switch>
             </v-list-item>
             <v-list-item>
+              <v-switch v-model="optionQueryType" color="primary" :label="$t('dns.rule.queryType')" hide-details></v-switch>
+            </v-list-item>
+            <v-list-item>
+              <v-switch v-model="optionNetwork" color="primary" :label="$t('network')" hide-details></v-switch>
+            </v-list-item>
+            <v-list-item>
               <v-switch v-model="optionProtocol" color="primary" :label="$t('protocol')" hide-details></v-switch>
             </v-list-item>
             <v-list-item>
@@ -173,6 +228,12 @@
               <v-switch v-model="optionSrcPort" color="primary" :label="$t('rule.srcPortRules')" hide-details></v-switch>
             </v-list-item>
             <v-list-item>
+              <v-switch v-model="optionNetworkState" color="primary" :label="$t('rule.networkState')" hide-details></v-switch>
+            </v-list-item>
+            <v-list-item>
+              <v-switch v-model="optionInterface" color="primary" :label="$t('rule.interfaceAddr')" hide-details></v-switch>
+            </v-list-item>
+            <v-list-item>
               <v-switch v-model="optionRuleSet" color="primary" :label="$t('rule.ruleset')" hide-details></v-switch>
             </v-list-item>
           </v-list>
@@ -183,12 +244,16 @@
 </template>
 
 <script lang="ts">
+import RuleInterfaceAddress from '@/components/RuleInterfaceAddress.vue'
+import RuleNetworkState from '@/components/RuleNetworkState.vue'
+
 export default {
+  components: { RuleInterfaceAddress, RuleNetworkState },
   props: ['rule', 'clients', 'inTags', 'rsTags', 'deleteable', 'ruleSets'],
   data() {
     return {
       menu: false,
-      domainKeys: ['domain', 'domain_suffix', 'domain_keyword', 'domain_regex'],
+      domainKeys: ['domain', 'domain_suffix', 'domain_keyword', 'domain_regex', 'ip_cidr', 'ip_is_private', 'ip_accept_any'],
       portKeys: ['port', 'port_range'],
       srcIPKeys: ['source_ip_cidr', 'source_ip_is_private'],
       srcPortKeys: ['source_port', 'source_port_range'],
@@ -196,12 +261,13 @@ export default {
       portOption: 'port',
       srcIPOption: 'source_ip_cidr',
       srcPortOption: 'source_port',
+      queryTypes: ['A', 'AAAA', 'CNAME', 'MX', 'NS', 'PTR', 'HTTPS', 'SVCB', 'TXT'],
     }
   },
   methods: {
     updateDomainOption(option:string) {
       this.domainKeys.forEach(k => delete this.$props.rule[k])
-      this.$props.rule[option] = []
+      this.$props.rule[option] = ['ip_is_private', 'ip_accept_any'].includes(option) ? false : []
     },
     updatePortOption(option:string) {
       this.portKeys.forEach(k => delete this.$props.rule[k])
@@ -228,6 +294,14 @@ export default {
     optionIPver: {
       get() { return this.$props.rule.ip_version != undefined },
       set(v:boolean) { this.$props.rule.ip_version = v ? 4 : undefined }
+    },
+    optionQueryType: {
+      get() { return this.$props.rule.query_type != undefined },
+      set(v:boolean) { this.$props.rule.query_type = v ? [] : undefined }
+    },
+    optionNetwork: {
+      get() { return this.$props.rule.network != undefined },
+      set(v:boolean) { this.$props.rule.network = v ? [] : undefined }
     },
     optionProtocol: {
       get() { return this.$props.rule.protocol != undefined },
@@ -282,8 +356,46 @@ export default {
       set(v:boolean) { 
         if (v) {
           this.$props.rule.rule_set = []
+          this.$props.rule.rule_set_ip_cidr_match_source = false
+          this.$props.rule.rule_set_ip_cidr_accept_empty = false
         } else {
           delete this.$props.rule.rule_set
+          delete this.$props.rule.rule_set_ip_cidr_match_source
+          delete this.$props.rule.rule_set_ip_cidr_accept_empty
+        }
+      }
+    },
+    optionNetworkState: {
+      get() {
+        return this.$props.rule.network_type != undefined ||
+               this.$props.rule.network_is_expensive != undefined ||
+               this.$props.rule.network_is_constrained != undefined ||
+               this.$props.rule.wifi_ssid != undefined ||
+               this.$props.rule.wifi_bssid != undefined
+      },
+      set(v:boolean) {
+        if (v) {
+          this.$props.rule.network_type = []
+          this.$props.rule.network_is_expensive = false
+          this.$props.rule.network_is_constrained = false
+          this.$props.rule.wifi_ssid = []
+          this.$props.rule.wifi_bssid = []
+        } else {
+          delete this.$props.rule.network_type
+          delete this.$props.rule.network_is_expensive
+          delete this.$props.rule.network_is_constrained
+          delete this.$props.rule.wifi_ssid
+          delete this.$props.rule.wifi_bssid
+        }
+      }
+    },
+    optionInterface: {
+      get() { return ['interface_address', 'network_interface_address', 'default_interface_address'].some(k => this.$props.rule[k] != undefined) },
+      set(v:boolean) {
+        if (v) {
+          this.$props.rule.interface_address = {}
+        } else {
+          ;['interface_address', 'network_interface_address', 'default_interface_address'].forEach(k => delete this.$props.rule[k])
         }
       }
     },

@@ -28,6 +28,7 @@
       {{ $t('types.ocm.users') }}
       <v-chip color="primary" density="compact" variant="elevated" @click="addUser"><v-icon icon="mdi-plus" /></v-chip>
     </v-card-title>
+    <Headers :data="data" />
     <v-card v-for="(user, index) in (data.users || [])" :key="index" class="border" style="margin: 4px; padding: 8px;" rounded="xl">
       <v-row>
         <v-col cols="auto" align-self="center">
@@ -46,9 +47,11 @@
 
 <script lang="ts">
 import Data from '@/store/modules/data'
+import Headers from '@/components/Headers.vue'
 
 export default {
   props: ['data'],
+  components: { Headers },
   computed: {
     outTags() {
       return [...Data().outbounds?.map((o: any) => o.tag) ?? [], ...Data().endpoints?.map((e: any) => e.tag) ?? []]

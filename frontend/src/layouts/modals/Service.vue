@@ -21,11 +21,12 @@
           </v-col>
         </v-row>
 
-        <Listen :data="srv" :inTags="inTags" />
+        <Listen v-if="!NoListen.includes(srv.type)" :data="srv" :inTags="inTags" />
         <Derp v-if="srv.type == srvTypes.DERP" :data="srv" :inTags="inTags" :tsTags="tsTags" />
         <SSMapi v-if="srv.type == srvTypes.SSMAPI" :data="srv" :ssTags="ssTags" />
         <Ocm v-if="srv.type == srvTypes.OCM" :data="srv" />
         <Ccm v-if="srv.type == srvTypes.CCM" :data="srv" />
+        <OomKiller v-if="srv.type == srvTypes.OOMKiller" :data="srv" />
         <InTLS v-if="HasTls.includes(srv.type)"  :inbound="srv" :tlsConfigs="tlsConfigs" :tls_id="srv.tls_id" />
       </v-card-text>
       <v-card-actions>
@@ -57,6 +58,7 @@ import Listen from '@/components/Listen.vue'
 import Derp from '@/components/services/Derp.vue'
 import Ocm from '@/components/services/Ocm.vue'
 import Ccm from '@/components/services/Ccm.vue'
+import OomKiller from '@/components/services/OomKiller.vue'
 import InTLS from '@/components/tls/InTLS.vue'
 import SSMapi from '@/components/services/SSMAPI.vue'
 import Data from '@/store/modules/data'
@@ -71,6 +73,7 @@ export default {
       loading: false,
       srvTypes: SrvTypes,
       HasTls: [SrvTypes.DERP, SrvTypes.SSMAPI, SrvTypes.OCM, SrvTypes.CCM],
+      NoListen: [SrvTypes.OOMKiller],
     }
   },
   methods: {
@@ -95,7 +98,9 @@ export default {
       // Tag change only in add service
       const tag = this.$props.id > 0 ? this.srv.tag : this.srv.type + "-" + RandomUtil.randomSeq(3)
       // Use previous data
-      const prevConfig = { id: this.srv.id, tag: tag, listen: this.srv.listen, listen_port: this.srv.listen_port }
+      const prevConfig = this.srv.type == SrvTypes.OOMKiller
+        ? { id: this.srv.id, tag: tag }
+        : { id: this.srv.id, tag: tag, listen: this.srv.listen, listen_port: this.srv.listen_port }
       this.srv = createSrv(this.srv.type, prevConfig)
     },
     closeModal() {
@@ -123,6 +128,6 @@ export default {
       }
     },
   },
-  components: { Listen, InTLS, Derp, Ocm, Ccm, SSMapi },
+  components: { Listen, InTLS, Derp, Ocm, Ccm, OomKiller, SSMapi },
 }
 </script>

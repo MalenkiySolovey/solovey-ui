@@ -4,6 +4,25 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [1.5.6-beta1] - 2026-05-27 - sing-box 1.13 UI parity beta
+
+- 为 sing-box 1.13 TLS advanced 选项补齐一等 UI 支持，包括 curve
+  preferences、client authentication/certificates、certificate public key pins
+  以及 outbound kTLS controls。
+- 修正 route/DNS rules 的 `interface_address` wire shape，并在 route rules、
+  DNS rules 与 inline/source headless rule-set rules 中加入 network/Wi-Fi
+  state matchers。
+- 新增 inline rule-set editor、route `bypass` 序列化、route reject
+  `reply`、Naive receive windows/UoT version selector、TUN reset mark/NFQUEUE、
+  Tailscale advertise tags、OCM/CCM headers，以及 `oom-killer` service 的
+  UI/backend 注册。
+- 新增 representative sing-box 1.13 option-unmarshal 测试和 OOM service
+  registry 回归测试。
+- 验证：`npm --prefix frontend run build`、`npm --prefix frontend run test`、
+  `npm --prefix frontend run lint` 和 `go test -tags
+  "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,with_tailscale"
+  ./...` 已在本地通过。
+
 ## [1.5.5] - 2026-05-26 - 1.5.5 稳定版
 
 - 将 `v1.5.5-beta1` 到 `v1.5.5-beta4-hotfix2` 提升为稳定版 `v1.5.5`。

@@ -98,6 +98,65 @@
           </v-select>
         </v-col>
       </v-row>
+      <v-row v-if="tls.curve_preferences != undefined">
+        <v-col cols="12" md="8">
+          <v-select
+            hide-details
+            :label="$t('tls.curves')"
+            multiple
+            chips
+            :items="curvePreferences"
+            v-model="tls.curve_preferences">
+          </v-select>
+        </v-col>
+      </v-row>
+      <v-row v-if="tls.certificate_public_key_sha256 != undefined">
+        <v-col cols="12">
+          <v-textarea
+            :label="$t('tls.certPubKeySha256')"
+            rows="2"
+            no-resize
+            hide-details
+            v-model="certificatePublicKeySha256">
+          </v-textarea>
+        </v-col>
+      </v-row>
+      <template v-if="optionClientCert">
+        <v-row>
+          <v-col cols="12" sm="6">
+            <v-text-field
+              :label="$t('tls.clientCertPath')"
+              hide-details
+              v-model="tls.client_certificate_path">
+            </v-text-field>
+          </v-col>
+          <v-col cols="12" sm="6">
+            <v-text-field
+              :label="$t('tls.clientKeyPath')"
+              hide-details
+              v-model="tls.client_key_path">
+            </v-text-field>
+          </v-col>
+          <v-col cols="12" sm="6">
+            <v-textarea
+              :label="$t('tls.clientCert')"
+              rows="3"
+              no-resize
+              hide-details
+              v-model="clientCertificateText">
+            </v-textarea>
+          </v-col>
+          <v-col cols="12" sm="6">
+            <v-textarea
+              :label="$t('tls.clientKey')"
+              rows="3"
+              no-resize
+              hide-details
+              v-model="clientKeyText">
+            </v-textarea>
+          </v-col>
+        </v-row>
+      </template>
       <v-row v-if="tls.utls != undefined">
         <v-col cols="12" md="6">
           <v-select
@@ -198,6 +257,14 @@
           </v-text-field>
         </v-col>
       </v-row>
+      <v-row v-if="optionKtls">
+        <v-col cols="12" sm="6" md="4">
+          <v-switch color="primary" :label="$t('tls.kernelTx')" v-model="tls.kernel_tx" hide-details></v-switch>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <v-switch color="primary" :label="$t('tls.kernelRx')" v-model="tls.kernel_rx" hide-details></v-switch>
+        </v-col>
+      </v-row>
     </template>
     <v-card-actions v-if="tls.enabled">
       <v-spacer></v-spacer>
@@ -226,6 +293,15 @@
                 <v-switch v-model="optionCS" color="primary" :label="$t('tls.cs')" hide-details></v-switch>
               </v-list-item>
               <v-list-item>
+                <v-switch v-model="optionCurve" color="primary" :label="$t('tls.curves')" hide-details></v-switch>
+              </v-list-item>
+              <v-list-item>
+                <v-switch v-model="optionCertPin" color="primary" :label="$t('tls.certPubKeySha256')" hide-details></v-switch>
+              </v-list-item>
+              <v-list-item>
+                <v-switch v-model="optionClientCert" color="primary" :label="$t('tls.clientCertificate')" hide-details></v-switch>
+              </v-list-item>
+              <v-list-item>
                 <v-switch v-model="optionFP" color="primary" label="UTLS" hide-details></v-switch>
               </v-list-item>
               <v-list-item>
@@ -236,6 +312,9 @@
               </v-list-item>
               <v-list-item>
                 <v-switch v-model="optionFragment" color="primary" :label="$t('tls.fragment')" hide-details></v-switch>
+              </v-list-item>
+              <v-list-item>
+                <v-switch v-model="optionKtls" color="primary" :label="$t('tls.ktls')" hide-details></v-switch>
               </v-list-item>
             </v-list>
           </v-card>
@@ -260,6 +339,7 @@ export default {
         { title: "Http/1.1", value: 'http/1.1' },
       ],
       tlsVersions: [ '1.0', '1.1', '1.2', '1.3' ],
+      curvePreferences: ['P256', 'P384', 'P521', 'X25519', 'X25519MLKEM768'],
       cipher_suites: [
         { title: "RSA-AES128-CBC-SHA", value: "TLS_RSA_WITH_AES_128_CBC_SHA" },
         { title: "RSA-AES256-CBC-SHA", value: "TLS_RSA_WITH_AES_256_CBC_SHA" },
@@ -348,6 +428,35 @@ export default {
       get(): boolean { return this.tls.cipher_suites != undefined },
       set(v:boolean) { this.$props.outbound.tls.cipher_suites = v ? defaultOutTls.cipher_suites : undefined }
     },
+    optionCurve: {
+      get(): boolean { return this.tls.curve_preferences != undefined },
+      set(v:boolean) { this.$props.outbound.tls.curve_preferences = v ? [] : undefined }
+    },
+    optionCertPin: {
+      get(): boolean { return this.tls.certificate_public_key_sha256 != undefined },
+      set(v:boolean) { this.$props.outbound.tls.certificate_public_key_sha256 = v ? [] : undefined }
+    },
+    optionClientCert: {
+      get(): boolean {
+        return this.tls.client_certificate != undefined ||
+               this.tls.client_certificate_path != undefined ||
+               this.tls.client_key != undefined ||
+               this.tls.client_key_path != undefined
+      },
+      set(v:boolean) {
+        if (v) {
+          this.$props.outbound.tls.client_certificate = []
+          this.$props.outbound.tls.client_certificate_path = ''
+          this.$props.outbound.tls.client_key = []
+          this.$props.outbound.tls.client_key_path = ''
+        } else {
+          delete this.$props.outbound.tls.client_certificate
+          delete this.$props.outbound.tls.client_certificate_path
+          delete this.$props.outbound.tls.client_key
+          delete this.$props.outbound.tls.client_key_path
+        }
+      }
+    },
     optionFP: {
       get(): boolean { return this.tls.utls != undefined },
       set(v:boolean) { this.$props.outbound.tls.utls = v ? defaultOutTls.utls : undefined }
@@ -371,6 +480,30 @@ export default {
           delete this.$props.outbound.tls.record_fragment
         }
       }
+    },
+    optionKtls: {
+      get(): boolean { return this.tls.kernel_tx != undefined || this.tls.kernel_rx != undefined },
+      set(v:boolean) {
+        if (v) {
+          this.$props.outbound.tls.kernel_tx = false
+          this.$props.outbound.tls.kernel_rx = false
+        } else {
+          delete this.$props.outbound.tls.kernel_tx
+          delete this.$props.outbound.tls.kernel_rx
+        }
+      }
+    },
+    certificatePublicKeySha256: {
+      get(): string { return this.tls.certificate_public_key_sha256?.join('\n') ?? '' },
+      set(v:string) { this.$props.outbound.tls.certificate_public_key_sha256 = v.split(/[\n,]/).map((s:string) => s.trim()).filter((s:string) => s.length > 0) }
+    },
+    clientCertificateText: {
+      get(): string { return this.tls.client_certificate ? this.tls.client_certificate.join('\n') : '' },
+      set(v:string) { this.$props.outbound.tls.client_certificate = v.length > 0 ? v.split('\n') : [] }
+    },
+    clientKeyText: {
+      get(): string { return this.tls.client_key ? this.tls.client_key.join('\n') : '' },
+      set(v:string) { this.$props.outbound.tls.client_key = v.length > 0 ? v.split('\n') : [] }
     },
     fragmentFallbackDelay: {
       get(): number { return parseInt(this.tls.fragment_fallback_delay?.replace('ms','')?? '500')?? 500 },

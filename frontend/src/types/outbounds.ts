@@ -113,8 +113,10 @@ export interface Naive extends OutboundBasics, Dial {
   insecure_concurrency?: number
   extra_headers?: { [key: string]: string }
   udp_over_tcp?: false | { enabled?: boolean; version?: number }
+  stream_receive_window?: string | number
   quic?: boolean
   quic_congestion_control?: "" | "bbr" | "bbr2" | "cubic" | "reno"
+  quic_session_receive_window?: string | number
   tls: oTls
 }
 

@@ -49,7 +49,23 @@
           </v-text-field>
         </v-col>
         <v-col cols="12" sm="6" md="4">
-          <v-switch v-model="udpOverTcp" color="primary" :label="$t('types.naive.udpOverTcp')" hide-details></v-switch>
+          <UoT :data="data" />
+        </v-col>
+      </v-row>
+      <v-row>
+        <v-col cols="12" sm="6" md="4">
+          <v-text-field
+            :label="$t('types.naive.streamReceiveWindow')"
+            hide-details
+            v-model="data.stream_receive_window">
+          </v-text-field>
+        </v-col>
+        <v-col cols="12" sm="6" md="4">
+          <v-text-field
+            :label="$t('types.naive.quicSessionReceiveWindow')"
+            hide-details
+            v-model="data.quic_session_receive_window">
+          </v-text-field>
         </v-col>
       </v-row>
       <v-row v-if="direction === 'out'">
@@ -75,6 +91,7 @@
 <script lang="ts">
 import Network from '@/components/Network.vue'
 import Headers from '@/components/Headers.vue'
+import UoT from '@/components/UoT.vue'
 
 export default {
   props: ['data', 'direction'],
@@ -97,19 +114,6 @@ export default {
     }
   },
   computed: {
-    udpOverTcp: {
-      get(): boolean {
-        const d = this.$props.data
-        return d?.udp_over_tcp === true || (d?.udp_over_tcp && (d.udp_over_tcp as any)?.enabled)
-      },
-      set(v: boolean) {
-        if (v) {
-          this.$props.data.udp_over_tcp = { enabled: true }
-        } else {
-          this.$props.data.udp_over_tcp = false
-        }
-      }
-    },
     insecure_concurrency: {
       get(): number { return this.$props.data?.insecure_concurrency ?? 0 },
       set(v: number) {
@@ -133,6 +137,6 @@ export default {
       })
     },
   },
-  components: { Network, Headers }
+  components: { Network, Headers, UoT }
 }
 </script>

@@ -62,6 +62,15 @@
       <v-col cols="12" sm="8">
         <v-text-field v-model="advertise_routes" :label="$t('types.ts.advRoutes') + ' ' + $t('commaSeparated')"></v-text-field>
       </v-col>
+      <v-col cols="12" sm="8">
+        <v-combobox
+          v-model="data.advertise_tags"
+          :label="$t('types.ts.advTags')"
+          multiple
+          chips
+          hide-details>
+        </v-combobox>
+      </v-col>
       <v-col cols="12" sm="6" md="4">
         <v-switch color="primary" v-model="data.advertise_exit_node" :label="$t('types.ts.advExitNode')"></v-switch>
       </v-col>
@@ -149,8 +158,10 @@ export default {
       set(v: boolean) { 
         if (v) {
           this.$props.data.advertise_routes = []
+          this.$props.data.advertise_tags = []
         } else {
           delete this.$props.data.advertise_routes
+          delete this.$props.data.advertise_tags
           delete this.$props.data.advertise_exit_node
         }
       }

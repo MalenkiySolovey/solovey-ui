@@ -49,6 +49,7 @@ export interface Tailscale extends EndpointBasics, Dial {
   exit_node?: string
   exit_node_allow_lan_access?: boolean
   advertise_routes?: string[]
+  advertise_tags?: string[]
   advertise_exit_node?: boolean
   relay_server_port?: number
   relay_server_static_endpoints?: string[]

@@ -159,6 +159,8 @@ export interface Tun extends InboundBasics {
   strict_route?: boolean
   auto_redirect?: boolean
   exclude_mptcp?: boolean
+  auto_redirect_reset_mark?: string | number
+  auto_redirect_nfqueue?: number
   auto_redirect_iproute2_fallback_rule_index?: number
   // auto_redirect_input_mark?: string
   // auto_redirect_output_mark?: string

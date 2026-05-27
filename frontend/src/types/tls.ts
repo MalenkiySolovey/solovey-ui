@@ -97,6 +97,8 @@ export interface oTls {
   fragment?: boolean
   fragment_fallback_delay?: string
   record_fragment?: boolean
+  kernel_tx?: boolean
+  kernel_rx?: boolean
   ech?: {
     enabled: boolean
     pq_signature_schemes_enabled?: boolean

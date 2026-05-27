@@ -24,7 +24,7 @@
 
 Advanced Web panel built on `SagerNet/Sing-Box`.
 
-**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.5`).
+**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.6-beta1`).
 
 **This fork keeps the original project structure and updates the user-facing documentation and installation links for this repository. You can use the scripts from this repository directly, or fork and build the project yourself.**
 
@@ -366,7 +366,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 Продвинутая Web-панель, построенная на базе `SagerNet/Sing-Box`.
 
-**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.5`).
+**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.6-beta1`).
 
 **Этот fork сохраняет структуру оригинального проекта и обновляет пользовательскую документацию и ссылки установки для этого репозитория. Вы можете напрямую использовать скрипты из этого репозитория или сделать fork и собрать проект самостоятельно.**
 

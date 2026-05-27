@@ -97,7 +97,7 @@ export interface logicalDnsRule extends generalDnsRule {
 export interface dnsRule extends generalDnsRule {
   inbound?: string[]
   ip_version?: 4 | 6
-  query_type?: string
+  query_type?: string[]
   network?: string[]
   auth_user?: string[]
   protocol?: string[]
@@ -108,8 +108,8 @@ export interface dnsRule extends generalDnsRule {
   source_ip_cidr?: string[]
   source_ip_is_private?: boolean
   ip_cidr?: string[]
-  ip_is_private: boolean
-  ip_accept_any: boolean
+  ip_is_private?: boolean
+  ip_accept_any?: boolean
   source_port?: number[]
   source_port_range?: string[]
   port?: number[]
@@ -124,4 +124,12 @@ export interface dnsRule extends generalDnsRule {
   rule_set?: string[]
   rule_set_ip_cidr_match_source?: boolean
   rule_set_ip_cidr_accept_empty?: boolean
+  network_type?: ('wifi' | 'cellular' | 'ethernet' | 'other')[]
+  network_is_expensive?: boolean
+  network_is_constrained?: boolean
+  wifi_ssid?: string[]
+  wifi_bssid?: string[]
+  interface_address?: { [interfaceName: string]: string[] }
+  network_interface_address?: { wifi?: string[]; cellular?: string[]; ethernet?: string[]; other?: string[] }
+  default_interface_address?: string[]
 }

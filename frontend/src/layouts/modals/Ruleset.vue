@@ -11,7 +11,7 @@
             <v-select
               hide-details
               :label="$t('type')"
-              :items="[{title: $t('ruleset.local'), value: 'local'},{ title: $t('ruleset.remote'), value: 'remote'}]"
+              :items="[{title: $t('ruleset.inline'), value: 'inline'}, {title: $t('ruleset.local'), value: 'local'},{ title: $t('ruleset.remote'), value: 'remote'}]"
               @update:model-value="updateType($event)"
               v-model="rule_set.type">
             </v-select>
@@ -19,7 +19,7 @@
           <v-col cols="12" sm="6" md="4">
             <v-text-field v-model="rule_set.tag" :label="$t('objects.tag')" hide-details></v-text-field>
           </v-col>
-          <v-col cols="12" sm="6" md="4">
+          <v-col cols="12" sm="6" md="4" v-if="rule_set.type != 'inline'">
             <v-select
               hide-details
               :label="$t('ruleset.format')"
@@ -51,6 +51,20 @@
             <v-text-field v-model.number="update_intervals" :suffix="$t('date.d')" type="number" min="0" :label="$t('ruleset.interval')" hide-details></v-text-field>
           </v-col>
         </v-row>
+        <template v-if="rule_set.type == 'inline'">
+          <v-row>
+            <v-col cols="12" align="end">
+              <v-btn color="primary" variant="tonal" @click="addRule">{{ $t('actions.add') + ' ' + $t('objects.rule') }}</v-btn>
+            </v-col>
+          </v-row>
+          <HeadlessRule
+            v-for="(rule, index) in rule_set.rules"
+            :key="index"
+            :rule="rule"
+            deleteable
+            @delete="rule_set.rules?.splice(index, 1)"
+          />
+        </template>
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
@@ -77,6 +91,7 @@
 <script lang="ts">
 import RandomUtil from '@/plugins/randomUtil'
 import { ruleset } from '@/types/rules'
+import HeadlessRule from '@/components/HeadlessRule.vue'
 export default {
   props: ['visible', 'data', 'index', 'outTags'],
   emits: ['close', 'save'],
@@ -92,6 +107,8 @@ export default {
       if (this.$props.index != -1) {
         this.title = "edit"
         this.rule_set = <ruleset>JSON.parse(this.$props.data)
+        if (!this.rule_set.type) this.rule_set.type = 'inline'
+        if (this.rule_set.type == 'inline' && !this.rule_set.rules) this.rule_set.rules = []
       }
       else {
         this.title = "add"
@@ -99,20 +116,43 @@ export default {
       }
     },
     updateType(t:string) {
-      if (t == 'local') {
+      if (t == 'inline') {
+        delete this.rule_set.format
+        delete this.rule_set.path
         delete this.rule_set.url
         delete this.rule_set.download_detour
         delete this.rule_set.update_interval
+        if (!this.rule_set.rules) this.rule_set.rules = []
+      } else if (t == 'local') {
+        if (!this.rule_set.format) this.rule_set.format = 'binary'
+        delete this.rule_set.url
+        delete this.rule_set.download_detour
+        delete this.rule_set.update_interval
+        delete this.rule_set.rules
       } else {
+        if (!this.rule_set.format) this.rule_set.format = 'binary'
         delete this.rule_set.path
+        delete this.rule_set.rules
       }
+    },
+    addRule() {
+      if (!this.rule_set.rules) this.rule_set.rules = []
+      this.rule_set.rules.push({})
     },
     closeModal() {
       this.$emit('close')
     },
     saveChanges() {
       this.loading = true
-      this.$emit('save', this.rule_set)
+      const savedRuleSet = { ...this.rule_set }
+      if (savedRuleSet.type == 'inline') {
+        delete savedRuleSet.format
+        delete savedRuleSet.path
+        delete savedRuleSet.url
+        delete savedRuleSet.download_detour
+        delete savedRuleSet.update_interval
+      }
+      this.$emit('save', savedRuleSet)
       this.loading = false
     }
   },
@@ -129,5 +169,6 @@ export default {
       }
     },
   },
+  components: { HeadlessRule },
 }
 </script>

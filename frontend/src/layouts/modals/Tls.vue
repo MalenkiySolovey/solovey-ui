@@ -71,6 +71,16 @@
                   v-model="inTls.cipher_suites">
                 </v-select>
               </v-col>
+              <v-col cols="12" md="8" v-if="inTls.curve_preferences != undefined">
+                <v-select
+                  hide-details
+                  :label="$t('tls.curves')"
+                  multiple
+                  chips
+                  :items="curvePreferences"
+                  v-model="inTls.curve_preferences">
+                </v-select>
+              </v-col>
             </template>
           </v-row>
           <template v-if="tlsType == 0">
@@ -145,6 +155,43 @@
                 <v-switch color="primary" :label="$t('tls.insecure')" v-model="insecure" hide-details></v-switch>
               </v-col>
             </v-row>
+            <template v-if="optionClientAuth">
+              <v-row>
+                <v-col cols="12" sm="6" md="4">
+                  <v-select
+                    hide-details
+                    :label="$t('tls.clientAuthentication')"
+                    :items="clientAuthTypes"
+                    v-model="inTls.client_authentication">
+                  </v-select>
+                </v-col>
+                <v-col cols="12" sm="6">
+                  <v-textarea
+                    :label="$t('tls.clientCertPubKeySha256')"
+                    rows="2"
+                    no-resize
+                    hide-details
+                    v-model="clientCertificatePublicKeySha256">
+                  </v-textarea>
+                </v-col>
+                <v-col cols="12" sm="6">
+                  <v-text-field
+                    :label="$t('tls.clientCertPath')"
+                    hide-details
+                    v-model="clientCertificatePath">
+                  </v-text-field>
+                </v-col>
+                <v-col cols="12">
+                  <v-textarea
+                    :label="$t('tls.clientCert')"
+                    rows="3"
+                    no-resize
+                    hide-details
+                    v-model="clientCertificateText">
+                  </v-textarea>
+                </v-col>
+              </v-row>
+            </template>
           </template>
           <template v-if="outTls.reality && inTls.reality">
             <v-row>
@@ -268,6 +315,12 @@
                       <v-switch v-model="optionCS" color="primary" :label="$t('tls.cs')" hide-details></v-switch>
                     </v-list-item>
                     <v-list-item>
+                      <v-switch v-model="optionCurve" color="primary" :label="$t('tls.curves')" hide-details></v-switch>
+                    </v-list-item>
+                    <v-list-item>
+                      <v-switch v-model="optionClientAuth" color="primary" :label="$t('tls.clientAuthentication')" hide-details></v-switch>
+                    </v-list-item>
+                    <v-list-item>
                       <v-switch v-model="optionFP" color="primary" label="UTLS" hide-details></v-switch>
                     </v-list-item>
                     <v-list-item>
@@ -355,6 +408,14 @@ export default {
         { title: "ECDHE-RSA-AES256-GCM-SHA384", value: "TLS_ECDHE_RSA_WITH_AES_256_GCM_SHA384" },
         { title: "ECDHE-ECDSA-CHACHA20-POLY1305-SHA256", value: "TLS_ECDHE_ECDSA_WITH_CHACHA20_POLY1305_SHA256" },
         { title: "ECDHE-RSA-CHACHA20-POLY1305-SHA256", value: "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256" }
+      ],
+      curvePreferences: ['P256', 'P384', 'P521', 'X25519', 'X25519MLKEM768'],
+      clientAuthTypes: [
+        { title: 'No client certificate', value: 'no' },
+        { title: 'Request client certificate', value: 'request' },
+        { title: 'Require any client certificate', value: 'require-any' },
+        { title: 'Verify if given', value: 'verify-if-given' },
+        { title: 'Require and verify', value: 'require-and-verify' },
       ],
       storeItems: [
         { title: "Mozilla", value: "mozilla" },
@@ -551,6 +612,31 @@ export default {
       get(): boolean { return this.inTls.cipher_suites != undefined },
       set(v:boolean) { this.inTls.cipher_suites = v ? defaultInTls.cipher_suites : undefined }
     },
+    optionCurve: {
+      get(): boolean { return this.inTls.curve_preferences != undefined },
+      set(v:boolean) { this.inTls.curve_preferences = v ? [] : undefined }
+    },
+    optionClientAuth: {
+      get(): boolean {
+        return this.inTls.client_authentication != undefined ||
+               this.inTls.client_certificate != undefined ||
+               this.inTls.client_certificate_path != undefined ||
+               this.inTls.client_certificate_public_key_sha256 != undefined
+      },
+      set(v:boolean) {
+        if (v) {
+          this.inTls.client_authentication = 'no'
+          this.inTls.client_certificate = []
+          this.inTls.client_certificate_path = []
+          this.inTls.client_certificate_public_key_sha256 = []
+        } else {
+          delete this.inTls.client_authentication
+          delete this.inTls.client_certificate
+          delete this.inTls.client_certificate_path
+          delete this.inTls.client_certificate_public_key_sha256
+        }
+      }
+    },
     optionFP: {
       get(): boolean { return this.outTls.utls != undefined },
       set(v:boolean) { this.outTls.utls = v ? defaultOutTls.utls : undefined }
@@ -578,6 +664,18 @@ export default {
     optionTime: {
       get(): boolean { return this.inTls?.reality?.max_time_difference != undefined },
       set(v:boolean) { if (this.inTls.reality) this.inTls.reality.max_time_difference = v ? "1m" : undefined }
+    },
+    clientCertificateText: {
+      get(): string { return this.inTls.client_certificate ? this.inTls.client_certificate.join('\n') : '' },
+      set(v:string) { this.inTls.client_certificate = v.length > 0 ? v.split('\n') : [] }
+    },
+    clientCertificatePath: {
+      get(): string { return this.inTls.client_certificate_path?.join('\n') ?? '' },
+      set(v:string) { this.inTls.client_certificate_path = v.split(/[\n,]/).map((s:string) => s.trim()).filter((s:string) => s.length > 0) }
+    },
+    clientCertificatePublicKeySha256: {
+      get(): string { return this.inTls.client_certificate_public_key_sha256?.join('\n') ?? '' },
+      set(v:string) { this.inTls.client_certificate_public_key_sha256 = v.split(/[\n,]/).map((s:string) => s.trim()).filter((s:string) => s.length > 0) }
     }
   },
   watch: {

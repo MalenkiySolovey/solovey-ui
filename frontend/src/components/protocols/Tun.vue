@@ -58,6 +58,23 @@
           hide-details>
         </v-text-field>
       </v-col>
+      <v-col cols="12" sm="6" md="4" v-if="autoRoute && data.auto_redirect">
+        <v-text-field
+          v-model="data.auto_redirect_reset_mark"
+          :label="$t('types.tun.resetMark')"
+          placeholder="0x2024"
+          hide-details>
+        </v-text-field>
+      </v-col>
+      <v-col cols="12" sm="6" md="4" v-if="autoRoute && data.auto_redirect">
+        <v-text-field
+          type="number"
+          v-model.number="nfqueue"
+          :label="$t('types.tun.nfqueue')"
+          min="0"
+          hide-details>
+        </v-text-field>
+      </v-col>
     </v-row>
   </v-card>
 </template>
@@ -86,6 +103,11 @@ export default {
         this.$props.data.auto_route = v
         this.$props.data.auto_redirect = v ? false : undefined
         this.$props.data.strict_route = v ? false : undefined
+        if (!v) {
+          delete this.$props.data.auto_redirect_reset_mark
+          delete this.$props.data.auto_redirect_nfqueue
+          delete this.$props.data.auto_redirect_iproute2_fallback_rule_index
+        }
       }
     },
     fallbackRuleIndex: {
@@ -93,6 +115,12 @@ export default {
       set(v: number) {
         const val = typeof v === 'number' && !isNaN(v) && v >= 0 ? v : undefined
         this.$props.data.auto_redirect_iproute2_fallback_rule_index = val
+      }
+    },
+    nfqueue: {
+      get() { return this.$props.data.auto_redirect_nfqueue ?? 0 },
+      set(v: number) {
+        this.$props.data.auto_redirect_nfqueue = typeof v === 'number' && !isNaN(v) && v > 0 ? v : undefined
       }
     }
   }

@@ -56,19 +56,21 @@
             <v-switch color="primary" v-model="ruleData.invert" :label="$t('rule.invert')" hide-details></v-switch>
           </v-col>
         </v-row>
-        <v-card subtitle="Route" v-if="ruleData.action == 'route'">
+        <v-card :subtitle="ruleData.action == 'bypass' ? 'Bypass' : 'Route'" v-if="['route', 'bypass'].includes(ruleData.action)">
           <v-row>
             <v-col cols="12" sm="6" md="4">
               <v-select
                 v-model="ruleData.outbound"
                 :items="outTags"
                 :label="$t('objects.outbound')"
+                :clearable="ruleData.action == 'bypass'"
+                @click:clear="delete ruleData.outbound"
                 hide-details
               ></v-select>
             </v-col>
           </v-row>
         </v-card>
-        <v-card subtitle="Route Option" v-if="ruleData.action == 'route-options'">
+        <v-card subtitle="Route Option" v-if="['route-options', 'bypass'].includes(ruleData.action)">
           <v-row>
             <v-col cols="12" sm="6" md="4">
               <v-text-field v-model="ruleData.override_address" :label="$t('types.direct.overrideAddr')" hide-details></v-text-field>
@@ -92,6 +94,26 @@
             <v-col cols="12" sm="6" md="4">
               <v-text-field v-model="ruleData.udp_timeout" :label="$t('rule.udpTimeout')" hide-details></v-text-field>
             </v-col>
+            <v-col cols="12" sm="6" md="4">
+              <v-select
+                v-model="ruleData.network_strategy"
+                :items="networkStrategies"
+                :label="$t('rule.strategy')"
+                clearable
+                @click:clear="delete ruleData.network_strategy"
+                hide-details>
+              </v-select>
+            </v-col>
+            <v-col cols="12" sm="6" md="4">
+              <v-text-field
+                v-model.number="ruleData.fallback_delay"
+                :label="$t('rule.fallbackDelay')"
+                type="number"
+                min="0"
+                :suffix="$t('date.ms')"
+                hide-details>
+              </v-text-field>
+            </v-col>
           </v-row>
         </v-card>
         <v-card subtitle="Reject" v-if="ruleData.action == 'reject'">
@@ -99,7 +121,7 @@
             <v-col cols="12" sm="6" md="4">
               <v-select
                 v-model="ruleData.method"
-                :items="[{ title: 'Default', value: 'default' },{ title: 'Drop', value: 'drop'}]"
+                :items="[{ title: 'Default', value: 'default' },{ title: 'Drop', value: 'drop'}, { title: 'Reply', value: 'reply' }]"
                 :label="$t('rule.method')"
                 clearable
                 @click:clear="delete ruleData.method"
@@ -133,7 +155,7 @@
             <v-col cols="12" sm="6" md="4">
               <v-select
                 v-model="ruleData.strategy"
-                :items="strategies"
+                :items="domainStrategies"
                 :label="$t('rule.strategy')"
                 clearable
                 @click:clear="delete ruleData.strategy"
@@ -207,12 +229,17 @@ export default {
         { title: 'RDP', value: 'rdp' },
         { title: 'NTP', value: 'ntp' },
       ],
-      strategies: [
+      domainStrategies: [
         { title: 'Prefer IPv4', value: 'prefer_ipv4' },
         { title: 'Prefer IPv6', value: 'prefer_ipv6' },
         { title: 'IPv4 Only', value: 'ipv4_only' },
         { title: 'IPv6 Only', value: 'ipv6_only' },
-      ]
+      ],
+      networkStrategies: [
+        { title: 'Default', value: 'default' },
+        { title: 'Fallback', value: 'fallback' },
+        { title: 'Hybrid', value: 'hybrid' },
+      ],
     }
   },
   methods: {
@@ -265,11 +292,21 @@ export default {
         case 'route':
           newRule.outbound = this.ruleData.outbound
           break
+        case 'bypass':
+          newRule.outbound = this.ruleData.outbound?.length > 0 ? this.ruleData.outbound : undefined
+          newRule.override_address = this.ruleData.override_address?.length > 0 ? this.ruleData.override_address : undefined
+          newRule.override_port = this.ruleData?.override_port > 0 ? this.ruleData.override_port : undefined
+          newRule.network_strategy = this.ruleData.network_strategy?.length > 0 ? this.ruleData.network_strategy : undefined
+          newRule.fallback_delay = this.ruleData.fallback_delay > 0 ? this.ruleData.fallback_delay : undefined
+          newRule.udp_disable_domain_unmapping = this.ruleData.udp_disable_domain_unmapping? true : undefined
+          newRule.udp_connect = this.ruleData.udp_connect? true : undefined
+          newRule.udp_timeout = this.ruleData.udp_timeout?.length > 0 ? this.ruleData.udp_timeout : undefined
+          break
         case 'route-options':
           newRule.override_address = this.ruleData.override_address?.length > 0 ? this.ruleData.override_address : undefined
           newRule.override_port = this.ruleData?.override_port > 0 ? this.ruleData.override_port : undefined
           newRule.network_strategy = this.ruleData.network_strategy?.length > 0 ? this.ruleData.network_strategy : undefined
-          newRule.fallback_delay = this.ruleData.fallback_delay?.length > 0 ? this.ruleData.fallback_delay : undefined
+          newRule.fallback_delay = this.ruleData.fallback_delay > 0 ? this.ruleData.fallback_delay : undefined
           newRule.udp_disable_domain_unmapping = this.ruleData.udp_disable_domain_unmapping? true : undefined
           newRule.udp_connect = this.ruleData.udp_connect? true : undefined
           newRule.udp_timeout = this.ruleData.udp_timeout?.length > 0 ? this.ruleData.udp_timeout : undefined
