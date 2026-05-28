@@ -66,25 +66,41 @@ func (s *ConfigService) GetConfig(data string) (*[]byte, error) {
 			return nil, err
 		}
 	}
-	singboxConfig := SingBoxConfig{}
+	var singboxConfig map[string]json.RawMessage
 	err = json.Unmarshal([]byte(data), &singboxConfig)
 	if err != nil {
 		return nil, err
 	}
 
-	singboxConfig.Inbounds, err = s.InboundService.GetAllConfig(database.GetDB())
+	inbounds, err := s.InboundService.GetAllConfig(database.GetDB())
 	if err != nil {
 		return nil, err
 	}
-	singboxConfig.Outbounds, err = s.OutboundService.GetAllConfig(database.GetDB())
+	singboxConfig["inbounds"], err = json.Marshal(inbounds)
 	if err != nil {
 		return nil, err
 	}
-	singboxConfig.Services, err = s.ServicesService.GetAllConfig(database.GetDB())
+	outbounds, err := s.OutboundService.GetAllConfig(database.GetDB())
 	if err != nil {
 		return nil, err
 	}
-	singboxConfig.Endpoints, err = s.EndpointService.GetAllConfig(database.GetDB())
+	singboxConfig["outbounds"], err = json.Marshal(outbounds)
+	if err != nil {
+		return nil, err
+	}
+	services, err := s.ServicesService.GetAllConfig(database.GetDB())
+	if err != nil {
+		return nil, err
+	}
+	singboxConfig["services"], err = json.Marshal(services)
+	if err != nil {
+		return nil, err
+	}
+	endpoints, err := s.EndpointService.GetAllConfig(database.GetDB())
+	if err != nil {
+		return nil, err
+	}
+	singboxConfig["endpoints"], err = json.Marshal(endpoints)
 	if err != nil {
 		return nil, err
 	}

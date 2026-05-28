@@ -52,7 +52,7 @@
               <Http v-if="outbound.type == outTypes.HTTP" :data="outbound" />
               <Shadowsocks v-if="outbound.type == outTypes.Shadowsocks" direction="out" :data="outbound" />
               <Vmess v-if="outbound.type == outTypes.VMess" :data="outbound" />
-              <Trojan v-if="outbound.type == outTypes.Trojan" :data="outbound" />
+              <Trojan v-if="outbound.type == outTypes.Trojan" direction="out" :data="outbound" />
               <Hysteria v-if="outbound.type == outTypes.Hysteria" direction="out" :data="outbound" />
               <Naive v-if="outbound.type == outTypes.Naive" direction="out" :data="outbound" />
               <ShadowTls v-if="outbound.type == outTypes.ShadowTLS" :data="outbound" />

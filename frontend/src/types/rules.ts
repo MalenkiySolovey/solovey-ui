@@ -9,6 +9,9 @@ interface generalRule {
   udp_disable_domain_unmapping?: boolean
   udp_connect?: boolean
   udp_timeout?: string
+  tls_fragment?: boolean
+  tls_fragment_fallback_delay?: string
+  tls_record_fragment?: boolean
   method?: string
   no_drop?: boolean
   sniffer: string[]
@@ -28,6 +31,9 @@ export const actionKeys = [
   'udp_disable_domain_unmapping',
   'udp_connect',
   'udp_timeout',
+  'tls_fragment',
+  'tls_fragment_fallback_delay',
+  'tls_record_fragment',
   'method',
   'no_drop',
   'sniffer',
@@ -47,6 +53,7 @@ export interface rule extends generalRule {
   network?: string[]
   auth_user?: string[]
   protocol?: string[]
+  client?: ('chromium' | 'safari' | 'firefox' | 'quic-go' | 'unknown')[]
   domain?: string[]
   domain_suffix?: string[]
   domain_keyword?: string[]

@@ -37,6 +37,10 @@ export interface Addr {
 export interface Listen {
   listen: string
   listen_port: number
+  bind_interface?: string
+  routing_mark?: number | string
+  reuse_addr?: boolean
+  netns?: string
   tcp_fast_open?: boolean
   tcp_multi_path?: boolean
   udp_fragment?: boolean
@@ -66,9 +70,13 @@ export interface Direct extends InboundBasics {
   override_address?: string
   override_port?: number
 }
-export interface Mixed extends InboundBasics {}
+export interface Mixed extends InboundBasics {
+  set_system_proxy?: boolean
+}
 export interface SOCKS extends InboundBasics {}
-export interface HTTP extends InboundBasics {}
+export interface HTTP extends InboundBasics {
+  set_system_proxy?: boolean
+}
 export interface Shadowsocks extends InboundBasics {
   method: string
   password: string
@@ -86,6 +94,12 @@ export interface Trojan extends InboundBasics {
   fallback?: {
     server: string
     server_port: number
+  }
+  fallback_for_alpn?: {
+    [alpn: string]: {
+      server: string
+      server_port: number
+    }
   }
   multiplex?: iMultiplex
   transport?: Transport
@@ -162,19 +176,33 @@ export interface Tun extends InboundBasics {
   auto_redirect_reset_mark?: string | number
   auto_redirect_nfqueue?: number
   auto_redirect_iproute2_fallback_rule_index?: number
-  // auto_redirect_input_mark?: string
-  // auto_redirect_output_mark?: string
-  // route_address?: string[]
-  // route_exclude_address?: string[]
-  // include_interface?: string[]
-  // exclude_interface?: string[]
-  // include_uid?: string[]
-  // include_uid_range?: string[]
-  // exclude_uid?: number[]
-  // exclude_uid_range?: string[]
-  // include_android_user?: number[]
-  // include_package?: string[]
-  // exclude_package?: string[]
+  auto_redirect_input_mark?: string | number
+  auto_redirect_output_mark?: string | number
+  iproute2_table_index?: number
+  iproute2_rule_index?: number
+  loopback_address?: string[]
+  route_address?: string[]
+  route_exclude_address?: string[]
+  route_address_set?: string[]
+  route_exclude_address_set?: string[]
+  include_interface?: string[]
+  exclude_interface?: string[]
+  include_uid?: number[]
+  include_uid_range?: string[]
+  exclude_uid?: number[]
+  exclude_uid_range?: string[]
+  include_android_user?: number[]
+  include_package?: string[]
+  exclude_package?: string[]
+  platform?: {
+    http_proxy?: {
+      enabled?: boolean
+      server?: string
+      server_port?: number
+      bypass_domain?: string[]
+      match_domain?: string[]
+    }
+  }
 }
 export interface Redirect extends InboundBasics {}
 export interface TProxy extends InboundBasics {
@@ -186,7 +214,7 @@ type InterfaceMap = {
   direct: Direct
   mixed: Mixed
   socks: SOCKS
-  http: SOCKS
+  http: HTTP
   shadowsocks: Shadowsocks
   vmess: VMess
   trojan: Trojan

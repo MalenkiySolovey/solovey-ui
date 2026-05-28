@@ -32,18 +32,29 @@
       <v-col cols="12" sm="6" md="4" v-if="optionBindNoPort">
         <v-switch v-model="dial.bind_address_no_port" color="primary" :label="$t('dial.bindNoPort')" hide-details></v-switch>
       </v-col>
+      <v-col cols="12" sm="6" md="4" v-if="optionProtect">
+        <v-text-field
+        :label="$t('singbox.protectPath')"
+        hide-details
+        v-model="dial.protect_path"></v-text-field>
+      </v-col>
     </v-row>
     <v-row>
       <v-col cols="12" sm="6" md="4" v-if="optionRM">
         <v-text-field
-        label="Linux Routing Mark"
+        :label="$t('singbox.linuxRoutingMark')"
         hide-details
-        type="number"
-        min="0"
-        v-model.number="routingMark"></v-text-field>
+        placeholder="0x2024"
+        v-model="routingMark"></v-text-field>
       </v-col>
       <v-col cols="12" sm="6" md="4" v-if="optionRA">
         <v-switch v-model="dial.reuse_addr" color="primary" :label="$t('dial.reuseAddr')" hide-details></v-switch>
+      </v-col>
+      <v-col cols="12" sm="6" md="4" v-if="optionNetns">
+        <v-text-field
+        :label="$t('singbox.networkNamespace')"
+        hide-details
+        v-model="dial.netns"></v-text-field>
       </v-col>
     </v-row>
     <v-row v-if="optionTCP">
@@ -79,14 +90,48 @@
         v-model.number="connectTimeout"></v-text-field>
       </v-col>
     </v-row>
-    <v-row v-if="optionDR">
+    <DomainResolver v-if="optionDR" :data="dial" field="domain_resolver" />
+    <v-row v-if="optionNetworkStrategy">
       <v-col cols="12" sm="6" md="4">
         <v-select
           hide-details
-          :label="$t('dial.domainResolver')"
-          :items="dnsTags"
-          v-model="dial.domain_resolver">
+          :label="$t('singbox.networkStrategy')"
+          clearable
+          @click:clear="networkStrategy = undefined"
+          :items="networkStrategies"
+          v-model="networkStrategy">
         </v-select>
+      </v-col>
+      <v-col cols="12" sm="6" md="4" v-if="dial.network_strategy != undefined">
+        <v-select
+          hide-details multiple chips closable-chips
+          :label="$t('singbox.networkType')"
+          :items="networkTypes"
+          v-model="dial.network_type">
+        </v-select>
+      </v-col>
+      <v-col cols="12" sm="6" md="4" v-if="dial.network_strategy == 'fallback'">
+        <v-select
+          hide-details multiple chips closable-chips
+          :label="$t('singbox.fallbackNetworkType')"
+          :items="networkTypes"
+          v-model="dial.fallback_network_type">
+        </v-select>
+      </v-col>
+      <v-col cols="12" sm="6" md="4" v-if="dial.network_strategy && dial.network_strategy != 'default'">
+        <v-text-field
+          v-model="fallbackDelayMs"
+          hide-details
+          type="number"
+          min="1"
+          suffix="ms"
+          :label="$t('rule.fallbackDelay')">
+        </v-text-field>
+      </v-col>
+      <v-col cols="12" v-if="networkConflict">
+        <v-alert density="compact" type="warning" variant="tonal">
+          {{ $t('singbox.networkStrategyConflict') }}
+        </v-alert>
       </v-col>
     </v-row>
     <v-card-actions class="pt-0">
@@ -113,10 +158,16 @@
               <v-switch v-model="optionBindNoPort" color="primary" :label="$t('dial.bindNoPort')" hide-details></v-switch>
             </v-list-item>
             <v-list-item v-if="mode != 'client'">
-              <v-switch v-model="optionRM" color="primary" label="Routing Mark" hide-details></v-switch>
+              <v-switch v-model="optionProtect" color="primary" :label="$t('singbox.protectPath')" hide-details></v-switch>
+            </v-list-item>
+            <v-list-item v-if="mode != 'client'">
+              <v-switch v-model="optionRM" color="primary" :label="$t('singbox.routingMark')" hide-details></v-switch>
             </v-list-item>
             <v-list-item v-if="mode != 'client'">
               <v-switch v-model="optionRA" color="primary" :label="$t('dial.reuseAddr')" hide-details></v-switch>
+            </v-list-item>
+            <v-list-item v-if="mode != 'client'">
+              <v-switch v-model="optionNetns" color="primary" :label="$t('singbox.networkNamespace')" hide-details></v-switch>
             </v-list-item>
             <v-list-item>
               <v-switch v-model="optionTCP" color="primary" :label="$t('listen.tcpOptions')" hide-details></v-switch>
@@ -133,6 +184,9 @@
             <v-list-item v-if="mode != 'client'">
               <v-switch v-model="optionDR" color="primary" :label="$t('dial.domainResolver')" hide-details></v-switch>
             </v-list-item>
+            <v-list-item v-if="mode != 'client'">
+              <v-switch v-model="optionNetworkStrategy" color="primary" :label="$t('singbox.networkStrategy')" hide-details></v-switch>
+            </v-list-item>
           </v-list>
         </v-card>
       </v-menu>
@@ -142,6 +196,7 @@
 
 <script lang="ts">
 import Data from '@/store/modules/data'
+import DomainResolver from '@/components/DomainResolver.vue'
 
 export default {
   props: ['dial', 'mode'],
@@ -152,13 +207,56 @@ export default {
   },
   computed: {
     outTags() { return [...Data().outbounds?.map((o:any) => o.tag), ...Data().endpoints?.map((e:any) => e.tag)] },
+    networkTypes() { return ['wifi', 'cellular', 'ethernet', 'other'] },
+    networkStrategies() { return ['fallback', 'hybrid'] },
+    networkConflict(): boolean {
+      return this.$props.dial.network_strategy != undefined &&
+        (this.$props.dial.bind_interface != undefined ||
+         this.$props.dial.inet4_bind_address != undefined ||
+         this.$props.dial.inet6_bind_address != undefined ||
+         this.$props.dial.tcp_fast_open === true)
+    },
+    networkStrategy: {
+      get(): string | undefined {
+        return this.$props.dial.network_strategy
+      },
+      set(v:string | undefined) {
+        if (v == undefined || v.length == 0) {
+          delete this.$props.dial.network_strategy
+          delete this.$props.dial.network_type
+          delete this.$props.dial.fallback_network_type
+          delete this.$props.dial.fallback_delay
+          return
+        }
+        this.$props.dial.network_strategy = v
+        if (v != 'fallback') {
+          delete this.$props.dial.fallback_network_type
+        }
+      }
+    },
     connectTimeout: {
       get() { return this.$props.dial.connect_timeout ? parseInt(this.$props.dial.connect_timeout.replace('s','')) : 5 },
       set(newValue:number) { this.$props.dial.connect_timeout = newValue > 0 ? newValue + 's' : '5s' }
     },
     routingMark: {
-      get() { return this.$props.dial.routing_mark?? 0 },
-      set(newValue:number) { this.$props.dial.routing_mark = newValue > 0 ? newValue : 0 }
+      get() { return this.$props.dial.routing_mark?.toString() ?? '' },
+      set(newValue:string) {
+        const trimmed = (newValue ?? '').toString().trim()
+        if (trimmed.length == 0 || trimmed == '0' || trimmed == '0x0') delete this.$props.dial.routing_mark
+        else if (trimmed.startsWith('0x')) this.$props.dial.routing_mark = trimmed
+        else {
+          const parsed = Number(trimmed)
+          if (Number.isFinite(parsed) && parsed > 0) this.$props.dial.routing_mark = parsed
+          else delete this.$props.dial.routing_mark
+        }
+      }
+    },
+    fallbackDelayMs: {
+      get() { return this.$props.dial.fallback_delay ? parseInt(this.$props.dial.fallback_delay.replace('ms','')) : undefined },
+      set(newValue:number | undefined) {
+        if (typeof newValue == 'number' && !isNaN(newValue) && newValue > 0 && newValue != 300) this.$props.dial.fallback_delay = `${newValue}ms`
+        else delete this.$props.dial.fallback_delay
+      }
     },
     optionDetour: {
       get(): boolean { return this.$props.dial.detour != undefined },
@@ -180,6 +278,10 @@ export default {
       get(): boolean { return this.$props.dial.bind_address_no_port != undefined },
       set(v:boolean) { v ? this.$props.dial.bind_address_no_port = true : delete this.$props.dial.bind_address_no_port }
     },
+    optionProtect: {
+      get(): boolean { return this.$props.dial.protect_path != undefined },
+      set(v:boolean) { v ? this.$props.dial.protect_path = '' : delete this.$props.dial.protect_path }
+    },
     optionTcpKeepAlive: {
       get(): boolean {
         return this.$props.dial.disable_tcp_keep_alive != undefined ||
@@ -199,11 +301,15 @@ export default {
     },
     optionRM: {
       get(): boolean { return this.$props.dial.routing_mark != undefined },
-      set(v:boolean) { v ? this.$props.dial.routing_mark = 0 : delete this.$props.dial.routing_mark }
+      set(v:boolean) { v ? this.$props.dial.routing_mark = '' : delete this.$props.dial.routing_mark }
     },
     optionRA: {
       get(): boolean { return this.$props.dial.reuse_addr != undefined },
       set(v:boolean) { v ? this.$props.dial.reuse_addr = true : delete this.$props.dial.reuse_addr }
+    },
+    optionNetns: {
+      get(): boolean { return this.$props.dial.netns != undefined },
+      set(v:boolean) { v ? this.$props.dial.netns = '' : delete this.$props.dial.netns }
     },
     optionTCP: {
       get(): boolean { 
@@ -230,9 +336,28 @@ export default {
     },
     optionDR: {
       get(): boolean { return this.$props.dial.domain_resolver != undefined },
-      set(v:boolean) { this.$props.dial.domain_resolver = v ? this.dnsTags[0]?? '' : undefined }
+      set(v:boolean) { v ? (this.dnsTags.length > 0 ? this.$props.dial.domain_resolver = this.dnsTags[0] : delete this.$props.dial.domain_resolver) : delete this.$props.dial.domain_resolver }
+    },
+    optionNetworkStrategy: {
+      get(): boolean {
+        return this.$props.dial.network_strategy != undefined ||
+               this.$props.dial.network_type != undefined ||
+               this.$props.dial.fallback_network_type != undefined ||
+               this.$props.dial.fallback_delay != undefined
+      },
+      set(v:boolean) {
+        if (v) {
+          this.$props.dial.network_strategy = 'fallback'
+        } else {
+          delete this.$props.dial.network_strategy
+          delete this.$props.dial.network_type
+          delete this.$props.dial.fallback_network_type
+          delete this.$props.dial.fallback_delay
+        }
+      }
     },
     dnsTags() {return Data().config.dns?.servers?.map((d:any) => d.tag) ?? []}
-  }
+  },
+  components: { DomainResolver }
 }
 </script>

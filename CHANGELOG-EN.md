@@ -5,6 +5,26 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.6-beta2] - 2026-05-28 - sing-box 1.13.12 settings coverage beta
+
+- Extends sing-box 1.13.12 settings coverage across Classic and Nexus UI by
+  sharing the advanced editor surfaces for basics, rules, DNS, TLS, inbounds,
+  outbounds, endpoints and services.
+- Adds `DomainResolveOptions` editing, route network presets, Dial/Listen/TUN
+  advanced fields, top-level certificate trust presets, rule route-options TLS
+  fragmentation controls, rule `client` matcher support, HTTP/Mixed system
+  proxy controls and protocol-specific advanced options.
+- Preserves top-level `certificate` and unknown top-level sing-box config fields
+  through backend round-trips, so runtime config generation no longer drops
+  certificate trust settings.
+- Keeps default/no-op JSON clean: `Off` removes fields, default delays and
+  zero marks are not written, empty app/package selections are rejected, and
+  `tls_record_fragment` stays mutually exclusive with `tls_fragment`.
+- Validation: `npm run build`, `npm run test`, `npm run lint`,
+  `go test ./...`, and `go test -tags
+  "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,with_tailscale"
+  ./core` passed locally.
+
 ## [1.5.6-beta1] - 2026-05-27 - sing-box 1.13 UI parity beta
 
 - Adds first-class UI coverage for sing-box 1.13 TLS advanced options,

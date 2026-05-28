@@ -85,6 +85,69 @@
         <v-col cols="12" sm="6" md="3" lg="2">
           <v-switch v-model="route.auto_detect_interface" color="primary" :label="$t('basic.routing.autoBind')" hide-details></v-switch>
         </v-col>
+        <v-col cols="12" sm="6" md="3" lg="2">
+          <v-select v-model="routePreset" hide-details :label="$t('singbox.routePreset')" :items="routePresets"></v-select>
+        </v-col>
+        <v-col cols="12" sm="6" md="3" lg="2">
+          <v-switch v-model="findProcess" color="primary" :label="$t('singbox.findProcess')" hide-details></v-switch>
+        </v-col>
+        <v-col cols="12" sm="6" md="3" lg="2">
+          <v-switch v-model="overrideAndroidVpn" color="primary" :label="$t('singbox.overrideAndroidVpn')" hide-details></v-switch>
+        </v-col>
+        <v-col cols="12" v-if="route.override_android_vpn">
+          <v-alert density="compact" type="warning" variant="tonal">
+            {{ $t('singbox.overrideAndroidVpnWarning') }}
+          </v-alert>
+        </v-col>
+        <v-col cols="12" v-if="route.default_network_strategy && !route.auto_detect_interface">
+          <v-alert density="compact" type="warning" variant="tonal">
+            {{ $t('singbox.defaultNetworkStrategyRequired') }}
+          </v-alert>
+        </v-col>
+        <v-col cols="12" v-if="route.default_network_strategy && route.default_interface">
+          <v-alert density="compact" type="warning" variant="tonal">
+            {{ $t('singbox.defaultNetworkStrategyConflict') }}
+          </v-alert>
+        </v-col>
+      </v-row>
+      <DomainResolver :data="route" field="default_domain_resolver" :label="$t('singbox.defaultDomainResolver')" />
+      <v-row v-if="route.default_network_strategy">
+        <v-col cols="12" sm="6" md="3" lg="2">
+          <v-select
+            v-model="routeDefaultNetworkStrategy"
+            hide-details
+            clearable
+            @click:clear="routeDefaultNetworkStrategy = undefined"
+            :label="$t('singbox.defaultNetworkStrategy')"
+            :items="['fallback', 'hybrid']">
+          </v-select>
+        </v-col>
+        <v-col cols="12" sm="6" md="3" lg="2">
+          <v-select
+            v-model="route.default_network_type"
+            hide-details multiple chips closable-chips
+            :label="$t('singbox.defaultNetworkType')"
+            :items="networkTypes">
+          </v-select>
+        </v-col>
+        <v-col cols="12" sm="6" md="3" lg="2" v-if="route.default_network_strategy == 'fallback'">
+          <v-select
+            v-model="route.default_fallback_network_type"
+            hide-details multiple chips closable-chips
+            :label="$t('singbox.defaultFallbackNetworkType')"
+            :items="networkTypes">
+          </v-select>
+        </v-col>
+        <v-col cols="12" sm="6" md="3" lg="2">
+          <v-text-field
+            v-model="defaultFallbackDelayMs"
+            hide-details
+            type="number"
+            min="1"
+            suffix="ms"
+            :label="$t('singbox.defaultFallbackDelay')">
+          </v-text-field>
+        </v-col>
       </v-row>
     </v-col>
   </v-row>
@@ -168,9 +231,11 @@ import RuleVue from '@/layouts/modals/Rule.vue'
 import RulesetVue from '@/layouts/modals/Ruleset.vue'
 import RulesetImport from '@/layouts/modals/RulesetImport.vue'
 import RuleImport from '@/layouts/modals/RuleImport.vue'
+import DomainResolver from '@/components/DomainResolver.vue'
 import { Config } from '@/types/config'
 import { actionKeys, ruleset } from '@/types/rules'
 import { FindDiff } from '@/plugins/utils'
+import { i18n } from '@/locales'
 
 const oldConfig = ref({})
 const loading = ref(false)
@@ -191,6 +256,84 @@ onBeforeMount(async () => {
 const routeMark = computed({
   get() { return route.value.default_mark ?? 0 },
   set(v:number) { v>0 ? route.value.default_mark = v : delete appConfig.value.route.default_mark }
+})
+
+const routePresets = [
+  { title: i18n.global.t('singbox.defaultPreset'), value: 'default' },
+  { title: i18n.global.t('singbox.mobileStable'), value: 'mobile' },
+  { title: i18n.global.t('singbox.preferWifi'), value: 'wifi' },
+  { title: i18n.global.t('singbox.processRules'), value: 'process' },
+]
+
+const networkTypes = ['wifi', 'cellular', 'ethernet', 'other']
+
+const clearRouteNetworkDefaults = () => {
+  delete route.value.default_network_strategy
+  delete route.value.default_network_type
+  delete route.value.default_fallback_network_type
+  delete route.value.default_fallback_delay
+}
+
+const routePreset = computed({
+  get(): string {
+    if (route.value.default_network_strategy == 'fallback' &&
+      JSON.stringify(route.value.default_network_type ?? []) == JSON.stringify(['wifi']) &&
+      JSON.stringify(route.value.default_fallback_network_type ?? []) == JSON.stringify(['cellular'])) return 'wifi'
+    if (route.value.default_network_strategy == 'fallback') return 'mobile'
+    if (route.value.find_process) return 'process'
+    return 'default'
+  },
+  set(v:string) {
+    if (v == 'default') {
+      clearRouteNetworkDefaults()
+      delete route.value.find_process
+    } else if (v == 'mobile') {
+      delete route.value.default_interface
+      route.value.auto_detect_interface = true
+      route.value.default_network_strategy = 'fallback'
+      delete route.value.default_network_type
+      delete route.value.default_fallback_network_type
+      delete route.value.default_fallback_delay
+    } else if (v == 'wifi') {
+      delete route.value.default_interface
+      route.value.auto_detect_interface = true
+      route.value.default_network_strategy = 'fallback'
+      route.value.default_network_type = ['wifi']
+      route.value.default_fallback_network_type = ['cellular']
+      delete route.value.default_fallback_delay
+    } else if (v == 'process') {
+      route.value.find_process = true
+    }
+  }
+})
+
+const defaultFallbackDelayMs = computed({
+  get(): number | undefined { return route.value.default_fallback_delay ? parseInt(route.value.default_fallback_delay.replace('ms', '')) : undefined },
+  set(v:number | undefined) {
+    if (typeof v == 'number' && !isNaN(v) && v > 0 && v != 300) route.value.default_fallback_delay = `${v}ms`
+    else delete route.value.default_fallback_delay
+  }
+})
+const routeDefaultNetworkStrategy = computed({
+  get(): string | undefined { return route.value.default_network_strategy },
+  set(v:string | undefined) {
+    if (!v) {
+      clearRouteNetworkDefaults()
+      return
+    }
+    route.value.default_network_strategy = v
+    if (v != 'fallback') {
+      delete route.value.default_fallback_network_type
+    }
+  }
+})
+const findProcess = computed({
+  get(): boolean { return route.value.find_process === true },
+  set(v:boolean) { v ? route.value.find_process = true : delete route.value.find_process }
+})
+const overrideAndroidVpn = computed({
+  get(): boolean { return route.value.override_android_vpn === true },
+  set(v:boolean) { v ? route.value.override_android_vpn = true : delete route.value.override_android_vpn }
 })
 
 const stateChange = computed(() => FindDiff.deepCompare(appConfig.value, oldConfig.value))

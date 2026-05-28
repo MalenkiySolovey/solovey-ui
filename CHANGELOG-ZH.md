@@ -4,6 +4,26 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [1.5.6-beta2] - 2026-05-28 - sing-box 1.13.12 settings coverage beta
+
+- 扩展 Classic 与 Nexus UI 中的 sing-box 1.13.12 设置覆盖；basics、rules、
+  DNS、TLS、inbounds、outbounds、endpoints 和 services 复用同一组 advanced
+  editor surfaces。
+- 新增 `DomainResolveOptions` 编辑、route network presets、Dial/Listen/TUN
+  advanced 字段、top-level certificate trust presets、rule route-options 的
+  TLS fragmentation 控制、rule `client` matcher、HTTP/Mixed system proxy
+  controls 以及 protocol-specific advanced options。
+- Backend round-trip 会保留 top-level `certificate` 和未知 top-level
+  sing-box config 字段，因此 runtime config 生成不再丢失 certificate trust
+  设置。
+- 保持 JSON 中不写入 default/no-op 值：`Off` 会删除字段，不写入 default
+  delays 与 zero marks，拒绝空的 app/package selections，并保持
+  `tls_record_fragment` 与 `tls_fragment` 互斥。
+- 验证：本地通过 `npm run build`、`npm run test`、`npm run lint`、
+  `go test ./...` 和 `go test -tags
+  "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,with_tailscale"
+  ./core`。
+
 ## [1.5.6-beta1] - 2026-05-27 - sing-box 1.13 UI parity beta
 
 - 为 sing-box 1.13 TLS advanced 选项补齐一等 UI 支持，包括 curve

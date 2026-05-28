@@ -3,6 +3,16 @@
     <v-card-subtitle>Shadowsocks API
       <v-chip color="primary" density="compact" variant="elevated" @click="add_server"><v-icon icon="mdi-plus" /></v-chip>
     </v-card-subtitle>
+    <v-row>
+      <v-col cols="12" sm="8">
+        <v-text-field
+          v-model="cachePath"
+          :label="$t('singbox.cachePath')"
+          placeholder="/var/lib/sing-box/ssm-api.cache"
+          hide-details>
+        </v-text-field>
+      </v-col>
+    </v-row>
     <v-row v-for="(server, index) in servers">
       <v-col cols="auto" align-self="center" justify-self="center">
         <v-icon @click="del_server(index)" color="error" icon="mdi-delete" />
@@ -60,6 +70,18 @@ export default {
     },
   },
   computed: {
+    cachePath: {
+      get(): string {
+        return this.$props.data.cache_path ?? ''
+      },
+      set(v:string) {
+        if (v.length > 0) {
+          this.$props.data.cache_path = v
+        } else {
+          delete this.$props.data.cache_path
+        }
+      }
+    },
     servers: {
       get() :Server[] {
         let servers: Server[] = []

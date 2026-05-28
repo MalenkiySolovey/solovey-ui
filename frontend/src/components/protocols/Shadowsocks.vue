@@ -36,6 +36,25 @@
         </v-text-field>
       </v-col>
     </v-row>
+    <v-row v-if="direction == 'out'">
+      <v-col cols="12" sm="6" md="4">
+        <v-select
+          v-model="plugin"
+          :label="$t('singbox.plugin')"
+          :items="pluginPresets"
+          clearable
+          hide-details>
+        </v-select>
+      </v-col>
+      <v-col cols="12" sm="6" md="8">
+        <v-text-field
+          v-model="pluginOptions"
+          :label="$t('singbox.pluginOptions')"
+          placeholder="obfs=http;obfs-host=example.com"
+          hide-details>
+        </v-text-field>
+      </v-col>
+    </v-row>
   </v-card>
 </template>
 
@@ -48,6 +67,10 @@ export default {
   props: ['direction','data'],
   data() {
     return {
+      pluginPresets: [
+        'obfs-local',
+        'v2ray-plugin'
+      ],
       ssMethods: [
         "none",
         "aes-128-gcm",
@@ -59,6 +82,33 @@ export default {
         "2022-blake3-aes-256-gcm",
         "2022-blake3-chacha20-poly1305"
       ]
+    }
+  },
+  computed: {
+    plugin: {
+      get(): string {
+        return this.$props.data.plugin ?? ''
+      },
+      set(v:string | null) {
+        if (v && v.length > 0) {
+          this.$props.data.plugin = v
+        } else {
+          delete this.$props.data.plugin
+          delete this.$props.data.plugin_opts
+        }
+      }
+    },
+    pluginOptions: {
+      get(): string {
+        return this.$props.data.plugin_opts ?? ''
+      },
+      set(v:string) {
+        if (v.length > 0) {
+          this.$props.data.plugin_opts = v
+        } else {
+          delete this.$props.data.plugin_opts
+        }
+      }
     }
   },
   methods: {

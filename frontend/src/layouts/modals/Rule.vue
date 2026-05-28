@@ -70,7 +70,7 @@
             </v-col>
           </v-row>
         </v-card>
-        <v-card subtitle="Route Option" v-if="['route-options', 'bypass'].includes(ruleData.action)">
+        <v-card subtitle="Route Option" v-if="['route', 'route-options', 'bypass'].includes(ruleData.action)">
           <v-row>
             <v-col cols="12" sm="6" md="4">
               <v-text-field v-model="ruleData.override_address" :label="$t('types.direct.overrideAddr')" hide-details></v-text-field>
@@ -111,6 +111,20 @@
                 type="number"
                 min="0"
                 :suffix="$t('date.ms')"
+                hide-details>
+              </v-text-field>
+            </v-col>
+            <v-col cols="12" sm="6" md="4">
+              <v-switch v-model="tlsRecordFragment" :label="$t('singbox.tlsRecordFragment')" hide-details></v-switch>
+            </v-col>
+            <v-col cols="12" sm="6" md="4">
+              <v-switch v-model="tlsFragment" :label="$t('singbox.tlsFragment')" hide-details></v-switch>
+            </v-col>
+            <v-col cols="12" sm="6" md="4" v-if="ruleData.tls_fragment">
+              <v-text-field
+                v-model="ruleData.tls_fragment_fallback_delay"
+                :label="$t('singbox.tlsFragmentFallbackDelay')"
+                placeholder="500ms"
                 hide-details>
               </v-text-field>
             </v-col>
@@ -236,7 +250,6 @@ export default {
         { title: 'IPv6 Only', value: 'ipv6_only' },
       ],
       networkStrategies: [
-        { title: 'Default', value: 'default' },
         { title: 'Fallback', value: 'fallback' },
         { title: 'Hybrid', value: 'hybrid' },
       ],
@@ -291,25 +304,14 @@ export default {
       switch (newRule.action){
         case 'route':
           newRule.outbound = this.ruleData.outbound
+          this.applyRouteOptions(newRule)
           break
         case 'bypass':
           newRule.outbound = this.ruleData.outbound?.length > 0 ? this.ruleData.outbound : undefined
-          newRule.override_address = this.ruleData.override_address?.length > 0 ? this.ruleData.override_address : undefined
-          newRule.override_port = this.ruleData?.override_port > 0 ? this.ruleData.override_port : undefined
-          newRule.network_strategy = this.ruleData.network_strategy?.length > 0 ? this.ruleData.network_strategy : undefined
-          newRule.fallback_delay = this.ruleData.fallback_delay > 0 ? this.ruleData.fallback_delay : undefined
-          newRule.udp_disable_domain_unmapping = this.ruleData.udp_disable_domain_unmapping? true : undefined
-          newRule.udp_connect = this.ruleData.udp_connect? true : undefined
-          newRule.udp_timeout = this.ruleData.udp_timeout?.length > 0 ? this.ruleData.udp_timeout : undefined
+          this.applyRouteOptions(newRule)
           break
         case 'route-options':
-          newRule.override_address = this.ruleData.override_address?.length > 0 ? this.ruleData.override_address : undefined
-          newRule.override_port = this.ruleData?.override_port > 0 ? this.ruleData.override_port : undefined
-          newRule.network_strategy = this.ruleData.network_strategy?.length > 0 ? this.ruleData.network_strategy : undefined
-          newRule.fallback_delay = this.ruleData.fallback_delay > 0 ? this.ruleData.fallback_delay : undefined
-          newRule.udp_disable_domain_unmapping = this.ruleData.udp_disable_domain_unmapping? true : undefined
-          newRule.udp_connect = this.ruleData.udp_connect? true : undefined
-          newRule.udp_timeout = this.ruleData.udp_timeout?.length > 0 ? this.ruleData.udp_timeout : undefined
+          this.applyRouteOptions(newRule)
           break
         case 'reject':
           newRule.method = this.ruleData.method?.length > 0 ? this.ruleData.method : undefined
@@ -338,6 +340,18 @@ export default {
     },
     deleteRule(index:number) {
       this.ruleData.rules.splice(index,1)
+    },
+    applyRouteOptions(newRule:any) {
+      newRule.override_address = this.ruleData.override_address?.length > 0 ? this.ruleData.override_address : undefined
+      newRule.override_port = this.ruleData?.override_port > 0 ? this.ruleData.override_port : undefined
+      newRule.network_strategy = this.ruleData.network_strategy?.length > 0 ? this.ruleData.network_strategy : undefined
+      newRule.fallback_delay = this.ruleData.fallback_delay > 0 ? this.ruleData.fallback_delay : undefined
+      newRule.udp_disable_domain_unmapping = this.ruleData.udp_disable_domain_unmapping? true : undefined
+      newRule.udp_connect = this.ruleData.udp_connect? true : undefined
+      newRule.udp_timeout = this.ruleData.udp_timeout?.length > 0 ? this.ruleData.udp_timeout : undefined
+      newRule.tls_record_fragment = this.ruleData.tls_record_fragment ? true : undefined
+      newRule.tls_fragment = this.ruleData.tls_fragment && !this.ruleData.tls_record_fragment ? true : undefined
+      newRule.tls_fragment_fallback_delay = newRule.tls_fragment && this.ruleData.tls_fragment_fallback_delay?.length > 0 ? this.ruleData.tls_fragment_fallback_delay : undefined
     }
   },
   computed: {
@@ -345,6 +359,24 @@ export default {
       get() { return this.ruleData.type == 'logical' },
       set(v:boolean) {
         this.ruleData.type = v? 'logical' : 'simple'
+      }
+    },
+    tlsRecordFragment: {
+      get() { return this.ruleData.tls_record_fragment ?? false },
+      set(v:boolean) {
+        this.ruleData.tls_record_fragment = v ? true : undefined
+        if (v) {
+          delete this.ruleData.tls_fragment
+          delete this.ruleData.tls_fragment_fallback_delay
+        }
+      }
+    },
+    tlsFragment: {
+      get() { return this.ruleData.tls_fragment ?? false },
+      set(v:boolean) {
+        this.ruleData.tls_fragment = v ? true : undefined
+        if (v) delete this.ruleData.tls_record_fragment
+        else delete this.ruleData.tls_fragment_fallback_delay
       }
     }
   },

@@ -1,7 +1,7 @@
 import { Inbound } from './inbounds'
 import { Outbound } from './outbounds'
 import { Dns } from './dns'
-import { Dial } from './dial'
+import { Dial, DomainResolveOptions } from './dial'
 
 interface Log {
   disabled?: boolean
@@ -15,16 +15,23 @@ export interface Ntp extends Dial{
   server: string
   server_port?: number
   interval?: string
+  write_to_system?: boolean
 }
 
 interface Route {
   rules: RouteRule[] | RouteRuleLogical[]
   rule_set: RouteRuleSet[]
   final?: string,
+  find_process?: boolean
   auto_detect_interface?: boolean
+  override_android_vpn?: boolean
   default_interface?: string
   default_mark?: number
-  default_domain_resolver: string
+  default_domain_resolver?: DomainResolveOptions
+  default_network_strategy?: 'default' | 'fallback' | 'hybrid'
+  default_network_type?: ('wifi' | 'cellular' | 'ethernet' | 'other')[]
+  default_fallback_network_type?: ('wifi' | 'cellular' | 'ethernet' | 'other')[]
+  default_fallback_delay?: string
 }
 
 interface RouteRule       {
@@ -73,6 +80,7 @@ interface Experimental {
   cache_file?: CacheFile
   clash_api?: ClashApi
   v2ray_api?: V2rayApi
+  debug?: Debug
 }
 
 interface CacheFile {
@@ -80,6 +88,18 @@ interface CacheFile {
   path?: string
   cache_id?: string
   store_fakeip?: boolean
+  store_rdrc?: boolean
+  rdrc_timeout?: string
+}
+
+interface Debug {
+  listen?: string
+  gc_percent?: number
+  memory_limit?: string | number
+  max_stack?: number
+  max_threads?: number
+  panic_on_fault?: boolean
+  trace_back?: string
 }
 
 interface V2rayApi {
@@ -109,8 +129,16 @@ export interface Config {
   log: Log
   dns: Dns
   ntp?: Ntp
+  certificate?: Certificate
   inbounds: Inbound[]
   outbounds: Outbound[]
   route: Route
   experimental: Experimental
+}
+
+export interface Certificate {
+  store?: 'system' | 'mozilla' | 'chrome' | 'none'
+  certificate?: string[]
+  certificate_path?: string[]
+  certificate_directory_path?: string[]
 }

@@ -57,6 +57,16 @@
           hide-details
         ></v-select>
       </v-col>
+      <v-col cols="12" sm="6" v-if="optionSniffClient">
+        <v-select
+          v-model="rule.client"
+          :items="sniffClients"
+          label="Client fingerprint"
+          multiple
+          chips
+          hide-details
+        ></v-select>
+      </v-col>
     </v-row>
     <v-row v-if="optionDomain">
       <v-col cols="12" sm="6" md="4">
@@ -267,6 +277,9 @@
               <v-switch v-model="optionProtocol" color="primary" :label="$t('protocol')" hide-details></v-switch>
             </v-list-item>
             <v-list-item>
+              <v-switch v-model="optionSniffClient" color="primary" label="Client fingerprint" hide-details></v-switch>
+            </v-list-item>
+            <v-list-item>
               <v-switch v-model="optionDomain" color="primary" :label="$t('rule.domainRules')" hide-details></v-switch>
             </v-list-item>
             <v-list-item>
@@ -327,6 +340,7 @@ export default {
         { title: 'RDP', value: 'rdp' },
         { title: 'NTP', value: 'ntp' },
       ],
+      sniffClients: ['chromium', 'safari', 'firefox', 'quic-go', 'unknown'],
       expTextarea: {
         visible: false,
         title: '',
@@ -384,6 +398,10 @@ export default {
     optionProtocol: {
       get() { return this.$props.rule.protocol != undefined },
       set(v:boolean) { this.$props.rule.protocol = v ? ['http'] : undefined }
+    },
+    optionSniffClient: {
+      get() { return this.$props.rule.client != undefined },
+      set(v:boolean) { this.$props.rule.client = v ? [] : undefined }
     },
     optionDomain: {
       get() { return Object.keys(this.$props.rule).some(r => this.domainKeys.includes(r)) },

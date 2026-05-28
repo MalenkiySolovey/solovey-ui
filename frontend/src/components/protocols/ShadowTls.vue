@@ -20,6 +20,14 @@
       <v-col cols="12" sm="6" md="4" v-if="Inbound.wildcard_sni != undefined">
         <v-select label="Wildcard SNI" :items="['off', 'authed', 'all']" clearable v-model="Inbound.wildcard_sni"></v-select>
       </v-col>
+      <v-col cols="12" sm="6" md="4">
+        <v-switch
+          v-model="strictMode"
+          color="primary"
+          :label="$t('singbox.strictMode')"
+          hide-details>
+        </v-switch>
+      </v-col>
     </v-row>
     <v-row>
       <v-col cols="12" sm="6" md="4">
@@ -101,7 +109,7 @@ import { ShadowTLS } from '@/types/inbounds'
 import Dial from '../Dial.vue'
 
 export default {
-  props: ['data'],
+  props: ['direction', 'data'],
   data() {
     return {
       handshake_server: ''
@@ -154,6 +162,18 @@ export default {
     },
     Inbound(): ShadowTLS {
       return <ShadowTLS>this.$props.data
+    },
+    strictMode: {
+      get(): boolean {
+        return this.Inbound.strict_mode === true
+      },
+      set(v:boolean) {
+        if (v) {
+          this.Inbound.strict_mode = true
+        } else {
+          delete this.Inbound.strict_mode
+        }
+      }
     },
     server_port: {
       get() { return this.Inbound.handshake.server_port ? this.Inbound.handshake.server_port : 443 },

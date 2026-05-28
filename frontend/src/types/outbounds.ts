@@ -72,6 +72,8 @@ export interface Shadowsocks extends OutboundBasics, Dial {
   server_port: number
   method: string
   password: string
+  plugin?: string
+  plugin_opts?: string
   network?: "udp" | "tcp"
   udp_over_tcp?: false | {
     enabled: true
@@ -123,6 +125,10 @@ export interface Naive extends OutboundBasics, Dial {
 export interface Hysteria extends OutboundBasics, Dial {
   server: string
   server_port: number
+  server_ports?: string[]
+  hop_interval?: string
+  up?: string
+  down?: string
   up_mbps: number
   down_mbps: number
   obfs?: string

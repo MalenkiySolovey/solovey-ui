@@ -69,14 +69,56 @@
               :label="$t('ruleset.interval')"
             ></v-text-field>
           </v-col>
+          <v-col cols="12" sm="6" md="3" lg="2" v-if="appConfig.ntp?.enabled">
+            <v-switch v-model="appConfig.ntp.write_to_system" color="primary" :label="$t('singbox.writeSystemClock')" hide-details></v-switch>
+          </v-col>
+          <v-col cols="12" v-if="appConfig.ntp?.write_to_system">
+            <v-alert density="compact" type="warning" variant="tonal">
+              {{ $t('singbox.writeSystemClockWarning') }}
+            </v-alert>
+          </v-col>
         </v-row>
         <Dial :dial="appConfig.ntp" v-if="appConfig.ntp?.enabled" />
+      </v-expansion-panel-text>
+    </v-expansion-panel>
+    <v-expansion-panel :title="$t('singbox.certificateTrust')">
+      <v-expansion-panel-text>
+        <v-row>
+          <v-col cols="12" sm="6" md="3" lg="2">
+            <v-select v-model="certificateMode" hide-details :label="$t('singbox.preset')" :items="certificateModes"></v-select>
+          </v-col>
+          <v-col cols="12" sm="6" md="3" lg="2" v-if="appConfig.certificate">
+            <v-select
+              v-model="appConfig.certificate.store"
+              hide-details
+              clearable
+              @click:clear="delete appConfig.certificate?.store"
+              :label="$t('tls.store')"
+              :items="certificateStores">
+            </v-select>
+          </v-col>
+        </v-row>
+        <v-row v-if="appConfig.certificate && (certificateMode == 'file' || certificateMode == 'custom')">
+          <v-col cols="12" sm="8">
+            <v-textarea v-model="certificatePathText" rows="2" auto-grow hide-details :label="$t('singbox.caFilePaths')"></v-textarea>
+          </v-col>
+        </v-row>
+        <v-row v-if="appConfig.certificate && (certificateMode == 'directory' || certificateMode == 'custom')">
+          <v-col cols="12" sm="8">
+            <v-textarea v-model="certificateDirectoryText" rows="2" auto-grow hide-details :label="$t('singbox.caDirectoryPaths')"></v-textarea>
+          </v-col>
+        </v-row>
+        <v-row v-if="appConfig.certificate && (certificateMode == 'pem' || certificateMode == 'custom')">
+          <v-col cols="12">
+            <v-textarea v-model="certificateText" rows="5" auto-grow hide-details :label="$t('singbox.pemCertificates')"></v-textarea>
+          </v-col>
+        </v-row>
       </v-expansion-panel-text>
     </v-expansion-panel>
     <v-expansion-panel title="Experimental">
       <v-expansion-panel-text>
         <v-row>
-          <v-col class="v-card-subtitle">Cache File</v-col>
+          <v-col class="v-card-subtitle">{{ $t('singbox.cacheFile') }}</v-col>
         </v-row>
         <v-row>
           <v-col cols="12" sm="6" md="3" lg="2">
@@ -93,7 +135,7 @@
             <v-text-field
               v-model="appConfig.experimental.cache_file.cache_id"
               hide-details
-              label="Cache ID"
+              :label="$t('singbox.cacheId')"
             ></v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="3" lg="2" v-if="appConfig.experimental.cache_file">
@@ -102,6 +144,57 @@
               :label="$t('basic.exp.storeFakeIp')"
               hide-details></v-switch>
           </v-col>
+          <v-col cols="12" sm="6" md="3" lg="2" v-if="appConfig.experimental.cache_file">
+            <v-switch v-model="appConfig.experimental.cache_file.store_rdrc"
+              color="primary"
+              :label="$t('singbox.storeRdrc')"
+              hide-details></v-switch>
+          </v-col>
+          <v-col cols="12" sm="6" md="3" lg="2" v-if="appConfig.experimental.cache_file?.store_rdrc">
+            <v-text-field
+              v-model="appConfig.experimental.cache_file.rdrc_timeout"
+              hide-details
+              placeholder="7d"
+              :label="$t('singbox.rdrcTimeout')">
+            </v-text-field>
+          </v-col>
+        </v-row>
+        <v-row>
+          <v-col class="v-card-subtitle">{{ $t('singbox.debug') }}</v-col>
+        </v-row>
+        <v-row>
+          <v-col cols="12" sm="6" md="3" lg="2">
+            <v-switch v-model="enableDebug" color="primary" :label="$t('enable')" hide-details></v-switch>
+          </v-col>
+          <template v-if="appConfig.experimental.debug">
+            <v-col cols="12" sm="6" md="3" lg="2">
+              <v-text-field v-model="appConfig.experimental.debug.listen" hide-details :label="$t('objects.listen')"></v-text-field>
+            </v-col>
+            <v-col cols="12" sm="6" md="3" lg="2">
+              <v-text-field v-model.number="appConfig.experimental.debug.gc_percent" type="number" hide-details :label="$t('singbox.gcPercent')"></v-text-field>
+            </v-col>
+            <v-col cols="12" sm="6" md="3" lg="2">
+              <v-text-field v-model="appConfig.experimental.debug.memory_limit" hide-details :label="$t('singbox.memoryLimit')"></v-text-field>
+            </v-col>
+            <v-col cols="12" sm="6" md="3" lg="2">
+              <v-text-field v-model.number="appConfig.experimental.debug.max_stack" type="number" hide-details :label="$t('singbox.maxStack')"></v-text-field>
+            </v-col>
+            <v-col cols="12" sm="6" md="3" lg="2">
+              <v-text-field v-model.number="appConfig.experimental.debug.max_threads" type="number" hide-details :label="$t('singbox.maxThreads')"></v-text-field>
+            </v-col>
+            <v-col cols="12" sm="6" md="3" lg="2">
+              <v-switch v-model="appConfig.experimental.debug.panic_on_fault" color="primary" :label="$t('singbox.panicOnFault')" hide-details></v-switch>
+            </v-col>
+            <v-col cols="12" sm="6" md="3" lg="2">
+              <v-select
+                v-model="appConfig.experimental.debug.trace_back"
+                hide-details clearable
+                @click:clear="delete appConfig.experimental.debug?.trace_back"
+                :label="$t('singbox.traceback')"
+                :items="['none','single','all','system','crash']">
+              </v-select>
+            </v-col>
+          </template>
         </v-row>
         <v-row>
           <v-col class="v-card-subtitle">Clash API</v-col>
@@ -233,6 +326,7 @@
 import Data from '@/store/modules/data'
 import Dial from '@/components/Dial.vue'
 import { computed, ref, onBeforeMount } from 'vue'
+import { i18n } from '@/locales'
 import { Config, Ntp } from '@/types/config'
 import { FindDiff } from '@/plugins/utils'
 
@@ -279,13 +373,29 @@ const outboundTags = computed((): string[] => {
 })
 
 const levels = ["trace", "debug", "info", "warn", "error", "fatal", "panic"]
+const certificateModes = [
+  { title: i18n.global.t('singbox.off'), value: 'off' },
+  { title: 'System', value: 'system' },
+  { title: 'Mozilla', value: 'mozilla' },
+  { title: 'Chrome', value: 'chrome' },
+  { title: i18n.global.t('singbox.customCaFile'), value: 'file' },
+  { title: i18n.global.t('singbox.customCaDirectory'), value: 'directory' },
+  { title: i18n.global.t('singbox.pastePem'), value: 'pem' },
+  { title: i18n.global.t('singbox.advanced'), value: 'custom' },
+]
+const certificateStores = ['system', 'mozilla', 'chrome', 'none']
+
+function textToList(value: string): string[] | undefined {
+  const items = value.split('\n').map(item => item.trim()).filter(item => item.length > 0)
+  return items.length > 0 ? items : undefined
+}
 
 const enableNtp = computed({
   get() { return appConfig.value.ntp?.enabled?? false },
   set(v:boolean) { 
     if (v){
       appConfig.value.ntp = <Ntp>{ enabled: true, server: 'time.apple.com', server_port: 123, interval: '30m'}
-    } else { appConfig.value.ntp = <Ntp>{}  }
+    } else { delete appConfig.value.ntp }
   }
 })
 
@@ -300,6 +410,67 @@ const enableCacheFile = computed({
     if (v){
       appConfig.value.experimental.cache_file = { enabled: true }
     } else { delete appConfig.value.experimental.cache_file  }
+  }
+})
+
+const enableDebug = computed({
+  get() { return appConfig.value.experimental.debug != undefined },
+  set(v:boolean) { v ? appConfig.value.experimental.debug = {} : delete appConfig.value.experimental.debug }
+})
+
+const certificateMode = computed({
+  get(): string {
+    const cert = appConfig.value.certificate
+    if (!cert) return 'off'
+    if (cert.certificate && cert.certificate.length > 0) return 'pem'
+    if (cert.certificate_path && cert.certificate_path.length > 0) return 'file'
+    if (cert.certificate_directory_path && cert.certificate_directory_path.length > 0) return 'directory'
+    return cert.store || 'system'
+  },
+  set(v:string) {
+    if (v == 'off') {
+      delete appConfig.value.certificate
+      return
+    }
+    appConfig.value.certificate = {}
+    if (['system', 'mozilla', 'chrome'].includes(v)) {
+      appConfig.value.certificate.store = v as 'system' | 'mozilla' | 'chrome'
+    } else if (v == 'file') {
+      appConfig.value.certificate.certificate_path = []
+    } else if (v == 'directory') {
+      appConfig.value.certificate.certificate_directory_path = []
+    } else if (v == 'pem') {
+      appConfig.value.certificate.certificate = []
+    } else if (v == 'custom') {
+      appConfig.value.certificate.store = 'none'
+    }
+  }
+})
+
+const certificateText = computed({
+  get(): string { return appConfig.value.certificate?.certificate?.join('\n') ?? '' },
+  set(v:string) {
+    if (!appConfig.value.certificate) appConfig.value.certificate = {}
+    const values = textToList(v)
+    values ? appConfig.value.certificate.certificate = values : delete appConfig.value.certificate.certificate
+  }
+})
+
+const certificatePathText = computed({
+  get(): string { return appConfig.value.certificate?.certificate_path?.join('\n') ?? '' },
+  set(v:string) {
+    if (!appConfig.value.certificate) appConfig.value.certificate = {}
+    const values = textToList(v)
+    values ? appConfig.value.certificate.certificate_path = values : delete appConfig.value.certificate.certificate_path
+  }
+})
+
+const certificateDirectoryText = computed({
+  get(): string { return appConfig.value.certificate?.certificate_directory_path?.join('\n') ?? '' },
+  set(v:string) {
+    if (!appConfig.value.certificate) appConfig.value.certificate = {}
+    const values = textToList(v)
+    values ? appConfig.value.certificate.certificate_directory_path = values : delete appConfig.value.certificate.certificate_directory_path
   }
 })
 

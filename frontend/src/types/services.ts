@@ -35,6 +35,7 @@ export interface Resolved extends SrvBasics {}
 
 export interface SSMAPI extends SrvBasics {
   servers: any
+  cache_path?: string
   tls?: iTls
 }
 

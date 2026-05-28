@@ -29,6 +29,18 @@
         v-model="data.detour">
         </v-select>
       </v-col>
+      <v-col cols="12" sm="6" md="4" v-if="optionBind">
+        <v-text-field v-model="data.bind_interface" hide-details :label="$t('dial.bindIf')"></v-text-field>
+      </v-col>
+      <v-col cols="12" sm="6" md="4" v-if="optionRoutingMark">
+        <v-text-field v-model="routingMark" hide-details :label="$t('singbox.linuxRoutingMark')" placeholder="0x2024"></v-text-field>
+      </v-col>
+      <v-col cols="12" sm="6" md="4" v-if="optionReuseAddr">
+        <v-switch v-model="data.reuse_addr" color="primary" :label="$t('dial.reuseAddr')" hide-details></v-switch>
+      </v-col>
+      <v-col cols="12" sm="6" md="4" v-if="optionNetns">
+        <v-text-field v-model="data.netns" hide-details :label="$t('singbox.networkNamespace')"></v-text-field>
+      </v-col>
     </v-row>
     <v-row v-if="optionTCP">
       <v-col cols="12" sm="6" md="4">
@@ -75,6 +87,18 @@
               <v-switch v-model="optionDetour" color="primary" :label="$t('listen.detour')" hide-details></v-switch>
             </v-list-item>
             <v-list-item>
+              <v-switch v-model="optionBind" color="primary" :label="$t('dial.bindIf')" hide-details></v-switch>
+            </v-list-item>
+            <v-list-item>
+              <v-switch v-model="optionRoutingMark" color="primary" :label="$t('singbox.routingMark')" hide-details></v-switch>
+            </v-list-item>
+            <v-list-item>
+              <v-switch v-model="optionReuseAddr" color="primary" :label="$t('dial.reuseAddr')" hide-details></v-switch>
+            </v-list-item>
+            <v-list-item>
+              <v-switch v-model="optionNetns" color="primary" :label="$t('singbox.networkNamespace')" hide-details></v-switch>
+            </v-list-item>
+            <v-list-item>
               <v-switch v-model="optionTCP" color="primary" :label="$t('listen.tcpOptions')" hide-details></v-switch>
             </v-list-item>
             <v-list-item>
@@ -103,6 +127,19 @@ export default {
       get() { return this.$props.data.udp_timeout ? parseInt(this.$props.data.udp_timeout.replace('m','')) : 5 },
       set(newValue:number) { this.$props.data.udp_timeout = newValue > 0 ? newValue + 'm' : '5m' }
     },
+    routingMark: {
+      get() { return this.$props.data.routing_mark?.toString() ?? '' },
+      set(newValue:string) {
+        const trimmed = (newValue ?? '').toString().trim()
+        if (trimmed.length == 0 || trimmed == '0' || trimmed == '0x0') delete this.$props.data.routing_mark
+        else if (trimmed.startsWith('0x')) this.$props.data.routing_mark = trimmed
+        else {
+          const parsed = Number(trimmed)
+          if (Number.isFinite(parsed) && parsed > 0) this.$props.data.routing_mark = parsed
+          else delete this.$props.data.routing_mark
+        }
+      }
+    },
     optionTCP: {
       get(): boolean { 
         return this.$props.data.tcp_fast_open != undefined && 
@@ -126,6 +163,22 @@ export default {
     optionDetour: {
       get(): boolean { return this.$props.data.detour != undefined },
       set(v:boolean) { this.$props.data.detour = v ? this.inTags[0]?? '' : undefined }
+    },
+    optionBind: {
+      get(): boolean { return this.$props.data.bind_interface != undefined },
+      set(v:boolean) { v ? this.$props.data.bind_interface = '' : delete this.$props.data.bind_interface }
+    },
+    optionRoutingMark: {
+      get(): boolean { return this.$props.data.routing_mark != undefined },
+      set(v:boolean) { v ? this.$props.data.routing_mark = '' : delete this.$props.data.routing_mark }
+    },
+    optionReuseAddr: {
+      get(): boolean { return this.$props.data.reuse_addr != undefined },
+      set(v:boolean) { v ? this.$props.data.reuse_addr = true : delete this.$props.data.reuse_addr }
+    },
+    optionNetns: {
+      get(): boolean { return this.$props.data.netns != undefined },
+      set(v:boolean) { v ? this.$props.data.netns = '' : delete this.$props.data.netns }
     },
     optionTcpKeepAlive: {
       get(): boolean {

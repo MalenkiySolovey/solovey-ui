@@ -149,6 +149,9 @@
                 <v-switch v-model="optionMPort" color="primary" :label="$t('rule.portRange')" hide-details></v-switch>
               </v-list-item>
             </template>
+            <v-list-item>
+              <v-switch v-model="brutalDebug" color="primary" :label="$t('singbox.brutalDebug')" hide-details></v-switch>
+            </v-list-item>
           </v-list>
         </v-card>
       </v-menu>
@@ -184,8 +187,8 @@ export default {
       set(v:number) { this.$props.data.up_mbps = v>0 ? v : undefined }
     },
     server_ports: {
-      get() { return this.$props.data.server_ports?.join(',')?? [] },
-      set(v:string) { this.$props.data.server_ports = v.length > 0 ? v.split(',') : undefined }
+      get(): string { return this.$props.data.server_ports?.join(',')?? '' },
+      set(v:string) { this.$props.data.server_ports = v.length > 0 ? v.split(',').map((item:string) => item.trim()).filter((item:string) => item.length > 0) : undefined }
     },
     masqueradeType: {
       get() { return typeof this.$props.data.masquerade === 'object' ? this.$props.data.masquerade.type?? '' : '' },
@@ -212,6 +215,16 @@ export default {
     optionMPort: {
       get(): boolean { return this.$props.data.server_ports != undefined },
       set(v:boolean) { this.$props.data.server_ports = v ? [] : undefined }
+    },
+    brutalDebug: {
+      get(): boolean { return this.$props.data.brutal_debug === true },
+      set(v:boolean) {
+        if (v) {
+          this.$props.data.brutal_debug = true
+        } else {
+          delete this.$props.data.brutal_debug
+        }
+      }
     }
   },
   components: { Network, Headers }

@@ -27,6 +27,35 @@
               <v-text-field v-model="inbound.tag" :label="$t('objects.tag')" hide-details></v-text-field>
             </v-col>
           </v-row>
+          <v-card
+            v-if="[inTypes.HTTP, inTypes.Mixed].includes(inbound.type)"
+            border
+            density="compact"
+            color="background"
+            style="margin-bottom: 8px;">
+            <v-card-text>
+              <v-row>
+                <v-col cols="12" sm="6" md="4">
+                  <v-switch
+                    v-model="setSystemProxy"
+                    color="primary"
+                    :label="$t('singbox.setSystemProxy')"
+                    hide-details>
+                  </v-switch>
+                </v-col>
+                <v-col cols="12" v-if="setSystemProxy">
+                  <v-alert type="warning" variant="tonal" density="compact">
+                    {{ $t('singbox.setSystemProxyWarning') }}
+                  </v-alert>
+                </v-col>
+              </v-row>
+            </v-card-text>
+          </v-card>
+          <DomainResolver
+            v-if="[inTypes.SOCKS, inTypes.HTTP, inTypes.Mixed].includes(inbound.type)"
+            :data="inbound"
+            field="domain_resolver"
+            :label="$t('singbox.inboundDomainResolver')" />
           <v-tabs
             v-if="HasInData.includes(inbound.type)"
             v-model="side"
@@ -45,6 +74,7 @@
               <Hysteria v-if="inbound.type == inTypes.Hysteria" direction="in" :data="inbound" />
               <Hysteria2 v-if="inbound.type == inTypes.Hysteria2" direction="in" :data="inbound" />
               <Naive v-if="inbound.type == inTypes.Naive" direction="in" :data="inbound" />
+              <Trojan v-if="inbound.type == inTypes.Trojan" direction="in" :data="inbound" />
               <ShadowTls v-if="inbound.type == inTypes.ShadowTLS" direction="in" :data="inbound" />
               <Tuic v-if="inbound.type == inTypes.TUIC" direction="in" :data="inbound" />
               <Tun v-if="inbound.type == inTypes.Tun" :data="inbound" />
@@ -101,6 +131,7 @@
 import { InTypes, createInbound, Addr, ShadowTLS } from '@/types/inbounds'
 import RandomUtil from '@/plugins/randomUtil'
 import Dial from '@/components/Dial.vue'
+import DomainResolver from '@/components/DomainResolver.vue'
 import Listen from '@/components/Listen.vue'
 import Direct from '@/components/protocols/Direct.vue'
 import Users from '@/components/Users.vue'
@@ -111,6 +142,7 @@ import Naive from '@/components/protocols/Naive.vue'
 import ShadowTls from '@/components/protocols/ShadowTls.vue'
 import Tuic from '@/components/protocols/Tuic.vue'
 import Tun from '@/components/protocols/Tun.vue'
+import Trojan from '@/components/protocols/Trojan.vue'
 import AnyTls from '@/components/protocols/AnyTls.vue'
 import InTls from '@/components/tls/InTLS.vue'
 import TProxy from '@/components/protocols/TProxy.vue'
@@ -270,6 +302,18 @@ export default {
       if ((<any>this.inbound).managed) return false
       return true
     },
+    setSystemProxy: {
+      get(): boolean {
+        return (<any>this.inbound).set_system_proxy === true
+      },
+      set(v:boolean) {
+        if (v) {
+          (<any>this.inbound).set_system_proxy = true
+        } else {
+          delete (<any>this.inbound).set_system_proxy
+        }
+      }
+    },
   },
   watch: {
     visible(newValue) {
@@ -281,7 +325,7 @@ export default {
   components: {
     Listen, InTls, Hysteria2, Naive, Direct, Shadowsocks,
     Users, Hysteria, ShadowTls, TProxy, Multiplex, Tuic, Tun,
-    AnyTls, Transport, AddrVue, OutJsonVue, Dial
+    Trojan, AnyTls, Transport, AddrVue, OutJsonVue, Dial, DomainResolver
   }
 }
 </script>
