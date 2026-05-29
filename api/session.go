@@ -56,7 +56,19 @@ func GetLoginUser(c *gin.Context) string {
 	if !sessionGenerationValid(s) {
 		return ""
 	}
+	if !sessionUserExists(objStr) {
+		return ""
+	}
 	return objStr
+}
+
+func sessionUserExists(username string) bool {
+	exists, err := (&service.UserService{}).UserExists(username)
+	if err != nil {
+		logger.Warning("unable to validate session user:", err)
+		return false
+	}
+	return exists
 }
 
 func sessionGenerationValid(s sessions.Session) bool {

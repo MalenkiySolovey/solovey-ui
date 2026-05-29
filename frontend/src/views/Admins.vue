@@ -6,6 +6,19 @@
     @close="closeEditModal"
     @save="saveEditModal"
   />
+  <AdminAddModal
+    v-model="addModal.visible"
+    :visible="addModal.visible"
+    @close="closeAddModal"
+    @save="saveAddModal"
+  />
+  <AdminDeleteModal
+    v-model="deleteModal.visible"
+    :visible="deleteModal.visible"
+    :user="deleteModal.user"
+    @close="closeDeleteModal"
+    @delete="deleteAdmin"
+  />
   <ChangeModal 
     v-model="changesModal.visible"
     :visible="changesModal.visible"
@@ -20,6 +33,7 @@
   />
   <v-row>
     <v-col cols="12" justify="center" align="center">
+      <v-btn color="primary" prepend-icon="mdi-account-plus" @click="showAddModal()" style="margin: 0 5px;">{{ $t('admin.addAdmin') }}</v-btn>
       <v-btn color="primary" @click="showChangesModal('')" style="margin: 0 5px;">{{ $t('admin.changes') }}</v-btn>
       <v-btn color="primary" @click="showTokenModal()" style="margin: 0 5px;">{{ $t('admin.api.token') }}</v-btn>
       <v-menu v-model="logoutAllMenu" :close-on-content-click="false" location="bottom center">
@@ -42,7 +56,7 @@
     </v-col>
   </v-row>
   <v-row>
-    <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>users" :key="item.id">
+    <v-col cols="12" sm="4" md="3" lg="2" v-for="item in users" :key="item.id">
       <v-card rounded="xl" elevation="5" min-width="200" :title="item.username">
         <v-card-subtitle style="margin-top: -15px;">
           {{ $t('admin.lastLogin') }}
@@ -77,6 +91,10 @@
             <v-icon />
             <v-tooltip activator="parent" location="top" :text="$t('admin.changes')"></v-tooltip>
           </v-btn>
+          <v-btn v-if="!item.isCurrent" icon="mdi-delete" color="error" @click="showDeleteModal(item)">
+            <v-icon />
+            <v-tooltip activator="parent" location="top" :text="$t('admin.deleteAdmin')"></v-tooltip>
+          </v-btn>
         </v-card-actions>
       </v-card>
     </v-col>
@@ -85,6 +103,8 @@
 
 <script lang="ts" setup>
 import AdminModal from '@/layouts/modals/Admin.vue'
+import AdminAddModal from '@/layouts/modals/AdminAdd.vue'
+import AdminDeleteModal from '@/layouts/modals/AdminDelete.vue'
 import ChangeModal  from '@/layouts/modals/Changes.vue'
 import TokenModal from '@/layouts/modals/Token.vue'
 import { i18n } from '@/locales'
@@ -95,7 +115,25 @@ import router from '@/router'
 
 const loading:Ref = inject('loading')?? ref(false)
 
-const users = ref(<any[]>[])
+interface AdminListItem {
+  id: number
+  username: string
+  loginDate: string
+  loginTime: string
+  ip: string
+  isCurrent: boolean
+}
+
+const emptyAdmin: AdminListItem = {
+  id: 0,
+  username: '',
+  loginDate: '-',
+  loginTime: '-',
+  ip: '-',
+  isCurrent: false,
+}
+
+const users = ref<AdminListItem[]>([])
 
 onMounted(async () => {
   loading.value = true
@@ -107,17 +145,20 @@ const loadData = async () => {
   loading.value = true
   const msg = await HttpUtils.get('api/users')
   loading.value = false
+  users.value = []
   if (msg.success) {
-    msg.obj.forEach((u:any) => {
-      const lastLogin = u.lastLogin.split(" ")
+    const payload = Array.isArray(msg.obj) ? msg.obj : []
+    payload.forEach((u:any) => {
+      const lastLogin = String(u.lastLogin ?? '').split(" ")
       const localLastLogin = lastLogin.length > 2 ? dateFormatted(Date.parse(lastLogin[0] + " " + lastLogin[1])) : "- -"
       const loginDateTime = localLastLogin.split(" ")
       users.value.push({
-        id: u.id,
-        username: u.username,
+        id: Number(u.id),
+        username: String(u.username ?? ''),
         loginDate: loginDateTime[0],
         loginTime: loginDateTime[1],
         ip: lastLogin[2]?? "-",
+        isCurrent: Boolean(u.isCurrent),
       })
     })
   }
@@ -153,6 +194,48 @@ const saveEditModal = async (data:any) => {
   } else {
     loading.value=false
   }
+}
+
+const addModal = ref({
+  visible: false,
+})
+const showAddModal = () => {
+  addModal.value.visible = true
+}
+const closeAddModal = () => {
+  addModal.value.visible = false
+}
+const saveAddModal = async (data:any) => {
+  loading.value = true
+  const response = await HttpUtils.post('api/addAdmin', data)
+  if (response.success) {
+    addModal.value.visible = false
+    await loadData()
+  }
+  loading.value = false
+}
+
+const deleteModal = ref({
+  visible: false,
+  user: { ...emptyAdmin },
+})
+const showDeleteModal = (user: AdminListItem) => {
+  if (user.isCurrent) return
+  deleteModal.value.user = user
+  deleteModal.value.visible = true
+}
+const closeDeleteModal = () => {
+  deleteModal.value.visible = false
+  deleteModal.value.user = { ...emptyAdmin }
+}
+const deleteAdmin = async (data:any) => {
+  loading.value = true
+  const response = await HttpUtils.post('api/deleteAdmin', data)
+  if (response.success) {
+    closeDeleteModal()
+    await loadData()
+  }
+  loading.value = false
 }
 
 const changesModal = ref({

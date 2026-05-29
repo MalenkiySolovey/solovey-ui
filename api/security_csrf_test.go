@@ -18,6 +18,8 @@ import (
 func securityCSRFPostRoutes() []string {
 	return []string{
 		"/api/changePass",
+		"/api/addAdmin",
+		"/api/deleteAdmin",
 		"/api/save",
 		"/api/restartApp",
 		"/api/restartSb",

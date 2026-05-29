@@ -8,6 +8,8 @@ export const auditDisplayIcons = [
   'mdi-account-lock-outline',
   'mdi-logout',
   'mdi-logout-variant',
+  'mdi-account-plus-outline',
+  'mdi-account-remove-outline',
   'mdi-account-key-outline',
   'mdi-key-plus',
   'mdi-key-minus',
@@ -65,6 +67,16 @@ const knownAuditEvents = {
     icon: 'mdi-account-key-outline',
     tone: 'warning',
     text: 'Admin credentials changed',
+  },
+  admin_created: {
+    icon: 'mdi-account-plus-outline',
+    tone: 'warning',
+    text: 'Admin created',
+  },
+  admin_deleted: {
+    icon: 'mdi-account-remove-outline',
+    tone: 'warning',
+    text: 'Admin deleted',
   },
   api_token_created: {
     icon: 'mdi-key-plus',

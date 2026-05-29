@@ -402,7 +402,7 @@ export default {
     overview: {
       kpi: {
         liveTraffic: "Текущий трафик",
-        liveTrafficDelta: "вниз + вверх",
+        liveTrafficDelta: "загрузка + отправка",
         trafficTrend: "Тренд истории трафика",
         onlineClients: "Клиенты онлайн",
         clientSignal: "Текущий сигнал присутствия клиентов.",
@@ -520,10 +520,18 @@ export default {
     logout: "Выйти",
   },
   admin: {
+    addAdmin: "Добавить администратора",
+    deleteAdmin: "Удалить администратора",
     changeCred: "Изменить учетные данные",
     oldPass: "Текущий пароль",
     newUname: "Новое имя пользователя",
     newPass: "Новый пароль",
+    confirmPass: "Подтвердите пароль",
+    addValidation: "Заполните текущий пароль, имя пользователя и оба поля нового пароля.",
+    deleteValidation: "Текущий пароль обязателен.",
+    passwordMismatch: "Пароли не совпадают.",
+    deleteConfirm: "Этот администратор и его API-токены будут удалены. Продолжить?",
+    deleteSelfDisabled: "Нельзя удалить собственную учетную запись администратора.",
     lastLogin: "Последний вход",
     date: "Дата",
     time: "Время",

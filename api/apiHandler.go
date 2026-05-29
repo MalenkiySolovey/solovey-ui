@@ -35,6 +35,8 @@ func (a *APIHandler) initRouter(g *gin.RouterGroup) {
 func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	g.POST("/login", a.ApiService.Login)
 	g.POST("/changePass", a.ApiService.ChangePass)
+	g.POST("/addAdmin", a.ApiService.AddAdmin)
+	g.POST("/deleteAdmin", a.reloadTokensAfter(a.ApiService.DeleteAdmin))
 	g.POST("/save", a.save)
 	g.POST("/restartApp", a.ApiService.RestartApp)
 	g.POST("/restartSb", a.ApiService.RestartSb)

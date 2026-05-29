@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"encoding/hex"
 	"encoding/json"
+	"strconv"
 	"strings"
 	"time"
 
@@ -12,10 +13,17 @@ import (
 	"github.com/deposist/s-ui-x/database/model"
 	"github.com/deposist/s-ui-x/logger"
 	"github.com/deposist/s-ui-x/util/common"
+
+	"gorm.io/gorm"
 )
 
 type UserService struct {
 	Runtime *Runtime
+}
+
+type DeleteUserResult struct {
+	User              model.User
+	DeletedTokenCount int64
 }
 
 func (s *UserService) runtime() *Runtime {
@@ -132,6 +140,84 @@ func (s *UserService) GetUsers() (*[]model.User, error) {
 	return &users, nil
 }
 
+func (s *UserService) UserExists(username string) (bool, error) {
+	if username == "" {
+		return false, nil
+	}
+	var count int64
+	err := database.GetDB().Model(model.User{}).Where("username = ?", username).Count(&count).Error
+	return count > 0, err
+}
+
+func (s *UserService) AddUser(actorUsername string, currentPass string, newUsername string, newPassword string) (*model.User, error) {
+	newUsername = strings.TrimSpace(newUsername)
+	if newUsername == "" {
+		return nil, common.NewError("username can not be empty")
+	}
+	if newPassword == "" {
+		return nil, common.NewError("password can not be empty")
+	}
+
+	var created model.User
+	err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		if _, err := s.checkUserPassword(tx, actorUsername, currentPass); err != nil {
+			return err
+		}
+		var count int64
+		if err := tx.Model(model.User{}).Where("username = ?", newUsername).Count(&count).Error; err != nil {
+			return err
+		}
+		if count > 0 {
+			return common.NewError("user already exists")
+		}
+		passwordHash, err := common.HashPassword(newPassword)
+		if err != nil {
+			return err
+		}
+		created = model.User{
+			Username:           newUsername,
+			Password:           passwordHash,
+			ForcePasswordReset: false,
+		}
+		return tx.Create(&created).Error
+	})
+	if err != nil {
+		return nil, err
+	}
+	return &created, nil
+}
+
+func (s *UserService) DeleteUser(actorUsername string, currentPass string, targetID string) (DeleteUserResult, error) {
+	var result DeleteUserResult
+	id, err := parseUserID(targetID)
+	if err != nil {
+		return result, err
+	}
+	err = database.GetDB().Transaction(func(tx *gorm.DB) error {
+		if _, err := s.checkUserPassword(tx, actorUsername, currentPass); err != nil {
+			return err
+		}
+		var target model.User
+		if err := tx.Model(model.User{}).Where("id = ?", id).First(&target).Error; err != nil {
+			return err
+		}
+		if target.Username == actorUsername {
+			return common.NewError("current admin can not be deleted")
+		}
+		tokenDelete := tx.Where("user_id = ?", target.Id).Delete(&model.Tokens{})
+		if tokenDelete.Error != nil {
+			return tokenDelete.Error
+		}
+		if err := tx.Delete(&target).Error; err != nil {
+			return err
+		}
+		result.User = target
+		result.DeletedTokenCount = tokenDelete.RowsAffected
+		return nil
+	})
+	return result, err
+}
+
 func (s *UserService) ChangePass(id string, oldPass string, newUser string, newPass string) error {
 	db := database.GetDB()
 	user := &model.User{}
@@ -151,6 +237,36 @@ func (s *UserService) ChangePass(id string, oldPass string, newUser string, newP
 	user.Password = passwordHash
 	user.ForcePasswordReset = false
 	return db.Save(user).Error
+}
+
+func (s *UserService) checkUserPassword(tx *gorm.DB, username string, password string) (*model.User, error) {
+	if username == "" || password == "" {
+		return nil, common.NewError("wrong user or password")
+	}
+	user := &model.User{}
+	err := tx.Model(model.User{}).Where("username = ?", username).First(user).Error
+	if database.IsNotFound(err) {
+		return nil, common.NewError("wrong user or password")
+	} else if err != nil {
+		return nil, err
+	}
+	ok, _ := common.CheckPassword(user.Password, password)
+	if !ok {
+		return nil, common.NewError("wrong user or password")
+	}
+	return user, nil
+}
+
+func parseUserID(raw string) (uint, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, common.NewError("user id can not be empty")
+	}
+	id, err := strconv.ParseUint(raw, 10, 64)
+	if err != nil || id == 0 {
+		return 0, common.NewError("invalid user id")
+	}
+	return uint(id), nil
 }
 
 func (s *UserService) updatePasswordHash(user *model.User, password string) error {

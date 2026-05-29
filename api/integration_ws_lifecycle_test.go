@@ -12,7 +12,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/database/model"
 	"github.com/deposist/s-ui-x/realtime"
+	"github.com/deposist/s-ui-x/util/common"
 
 	"github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"
@@ -152,6 +155,10 @@ func newIntegrationWSRouter(t *testing.T) *gin.Engine {
 	router := gin.New()
 	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
 	router.GET("/login/:user", func(c *gin.Context) {
+		if !ensureIntegrationWSSessionUser(t, c.Param("user")) {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
 		generation, err := settingService.GetSessionGeneration()
 		if err != nil {
 			c.Status(http.StatusInternalServerError)
@@ -166,6 +173,28 @@ func newIntegrationWSRouter(t *testing.T) *gin.Engine {
 	router.GET("/api/realtime/ws-token", (&ApiService{}).IssueWSToken)
 	router.GET("/api/realtime/ws", (&ApiService{}).RealtimeWSWithOptions(WithPingInterval(time.Second), WithPingTimeout(time.Second)))
 	return router
+}
+
+func ensureIntegrationWSSessionUser(t *testing.T, username string) bool {
+	t.Helper()
+	var count int64
+	if err := database.GetDB().Model(model.User{}).Where("username = ?", username).Count(&count).Error; err != nil {
+		t.Logf("count session user %q failed: %v", username, err)
+		return false
+	}
+	if count > 0 {
+		return true
+	}
+	passwordHash, err := common.HashPassword("integration-ws-password")
+	if err != nil {
+		t.Logf("hash session user password failed: %v", err)
+		return false
+	}
+	if err := database.GetDB().Create(&model.User{Username: username, Password: passwordHash}).Error; err != nil {
+		t.Logf("create session user %q failed: %v", username, err)
+		return false
+	}
+	return true
 }
 
 func loginIntegrationWSUser(t *testing.T, router *gin.Engine, user string) []*http.Cookie {

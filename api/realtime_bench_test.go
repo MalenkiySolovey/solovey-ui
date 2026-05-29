@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/database/model"
 	"github.com/deposist/s-ui-x/realtime"
 	"github.com/deposist/s-ui-x/service"
+	"github.com/deposist/s-ui-x/util/common"
 
 	"github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"
@@ -139,6 +141,10 @@ func newRealtimePerfRouter(tb testing.TB, users int) (*gin.Engine, map[string][]
 	router := gin.New()
 	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
 	router.GET("/login/:user", func(c *gin.Context) {
+		if !ensureRealtimePerfSessionUser(tb, c.Param("user")) {
+			c.Status(http.StatusInternalServerError)
+			return
+		}
 		generation, err := settingService.GetSessionGeneration()
 		if err != nil {
 			c.Status(http.StatusInternalServerError)
@@ -152,6 +158,28 @@ func newRealtimePerfRouter(tb testing.TB, users int) (*gin.Engine, map[string][]
 	})
 	router.GET("/api/realtime/ws", (&ApiService{}).RealtimeWSWithOptions(WithPingInterval(time.Hour), WithPingTimeout(time.Second)))
 	return router, make(map[string][]*http.Cookie, users)
+}
+
+func ensureRealtimePerfSessionUser(tb testing.TB, username string) bool {
+	tb.Helper()
+	var count int64
+	if err := database.GetDB().Model(model.User{}).Where("username = ?", username).Count(&count).Error; err != nil {
+		tb.Logf("count session user %q failed: %v", username, err)
+		return false
+	}
+	if count > 0 {
+		return true
+	}
+	passwordHash, err := common.HashPassword("realtime-perf-password")
+	if err != nil {
+		tb.Logf("hash session user password failed: %v", err)
+		return false
+	}
+	if err := database.GetDB().Create(&model.User{Username: username, Password: passwordHash}).Error; err != nil {
+		tb.Logf("create session user %q failed: %v", username, err)
+		return false
+	}
+	return true
 }
 
 func initAPIRealtimePerfDB(tb testing.TB) {

@@ -7,9 +7,11 @@ const frontendDir = path.join(repoRoot, 'frontend')
 const phaseDir = path.join(repoRoot, 'tests', 'baseline', 'phase6')
 const serverDir = path.join(phaseDir, 'e2e-server')
 const dbDir = path.join(phaseDir, 'e2e-db')
+const appDataDir = path.join(phaseDir, 'appdata')
 const statePath = path.join(serverDir, 'state.json')
 
 fs.mkdirSync(serverDir, { recursive: true })
+fs.mkdirSync(appDataDir, { recursive: true })
 fs.rmSync(dbDir, { recursive: true, force: true })
 fs.mkdirSync(dbDir, { recursive: true })
 
@@ -86,6 +88,9 @@ const main = async () => {
     SUI_FORCE_COOKIE_SECURE: 'false',
     SUI_DISABLE_CORE: '1',
     XUI_DISABLE_REMOTE: '1',
+    APPDATA: appDataDir,
+    GOTELEMETRY: 'off',
+    GOTELEMETRYDIR: path.join(serverDir, 'go-telemetry'),
   }
   spawnLogged('backend', 'go', ['run', './tests/e2e/panel-server'], { cwd: repoRoot, env: backendEnv })
 

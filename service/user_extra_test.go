@@ -245,3 +245,96 @@ func TestIssue9LoginPasswordHashMigrationClearsForcePasswordReset(t *testing.T) 
 		t.Fatalf("password was not migrated to canonical hash: %q", stored.Password)
 	}
 }
+
+func TestUserServiceAddUserRequiresCurrentPasswordAndStoresHash(t *testing.T) {
+	initSettingTestDB(t)
+	userService := &UserService{}
+	if err := userService.UpdateFirstUser("admin", "current-password"); err != nil {
+		t.Fatal(err)
+	}
+
+	created, err := userService.AddUser("admin", "current-password", " new-admin ", "new-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.Username != "new-admin" {
+		t.Fatalf("username was not normalized: %#v", created)
+	}
+	if created.Password == "new-password" || !common.IsPasswordHash(created.Password) {
+		t.Fatalf("password must be stored as hash only: %q", created.Password)
+	}
+	if ok, _ := common.CheckPassword(created.Password, "new-password"); !ok {
+		t.Fatal("stored password hash does not validate")
+	}
+	if created.ForcePasswordReset {
+		t.Fatalf("new admin should not require reset: %#v", created)
+	}
+	if _, err := userService.AddUser("admin", "wrong-password", "denied-admin", "new-password"); err == nil {
+		t.Fatal("wrong current password should be rejected")
+	}
+	exists, err := userService.UserExists("denied-admin")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exists {
+		t.Fatal("denied admin should not be created")
+	}
+	if _, err := userService.AddUser("admin", "current-password", "new-admin", "another-password"); err == nil {
+		t.Fatal("duplicate username should be rejected")
+	}
+}
+
+func TestUserServiceDeleteUserRejectsSelfAndDeletesTokens(t *testing.T) {
+	initSettingTestDB(t)
+	userService := &UserService{}
+	if err := userService.UpdateFirstUser("admin", "current-password"); err != nil {
+		t.Fatal(err)
+	}
+	target, err := userService.AddUser("admin", "current-password", "delete-me", "target-password")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := userService.AddToken("delete-me", 0, "target token", "admin"); err != nil {
+		t.Fatal(err)
+	}
+
+	var admin model.User
+	if err := database.GetDB().Where("username = ?", "admin").First(&admin).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := userService.DeleteUser("admin", "current-password", strconv.FormatUint(uint64(admin.Id), 10)); err == nil {
+		t.Fatal("current admin should not be deleted")
+	}
+	if _, err := userService.DeleteUser("admin", "wrong-password", strconv.FormatUint(uint64(target.Id), 10)); err == nil {
+		t.Fatal("wrong current password should be rejected")
+	}
+	exists, err := userService.UserExists("delete-me")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !exists {
+		t.Fatal("wrong-password delete should not remove target")
+	}
+
+	result, err := userService.DeleteUser("admin", "current-password", strconv.FormatUint(uint64(target.Id), 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.User.Username != "delete-me" || result.DeletedTokenCount != 1 {
+		t.Fatalf("unexpected delete result: %#v", result)
+	}
+	exists, err = userService.UserExists("delete-me")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exists {
+		t.Fatal("deleted admin should not exist")
+	}
+	var tokenCount int64
+	if err := database.GetDB().Model(model.Tokens{}).Where("user_id = ?", target.Id).Count(&tokenCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if tokenCount != 0 {
+		t.Fatalf("deleted admin tokens should be removed, got %d", tokenCount)
+	}
+}

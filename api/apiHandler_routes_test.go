@@ -29,6 +29,8 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 		http.MethodPost: {
 			"/api/login",
 			"/api/changePass",
+			"/api/addAdmin",
+			"/api/deleteAdmin",
 			"/api/save",
 			"/api/restartApp",
 			"/api/restartSb",

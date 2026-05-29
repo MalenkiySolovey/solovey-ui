@@ -5,6 +5,18 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.6-beta3] - 2026-05-29 - administrator management beta
+
+- Adds administrator creation and deletion to the shared Classic/Nexus
+  `/admins` page. Both actions require the current administrator password.
+- Blocks self-delete in the backend and UI. Deleting another administrator also
+  removes their API tokens, reloads the APIV2 token cache, and makes their
+  existing browser sessions invalid because session validation now checks that
+  the user still exists.
+- Adds `admin_created` and `admin_deleted` audit events, exposes `isCurrent` in
+  `/api/users`, and maps the new admin audit events in the Nexus overview.
+- Full release notes: [`docs/releases/v1.5.6-beta3.md`](docs/releases/v1.5.6-beta3.md).
+
 ## [1.5.6-beta2] - 2026-05-28 - sing-box 1.13.12 settings coverage beta
 
 - Extends sing-box 1.13.12 settings coverage across Classic and Nexus UI by

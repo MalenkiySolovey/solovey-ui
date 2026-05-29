@@ -190,6 +190,38 @@ describe('overview selectors', () => {
       detail: 'actor: admin; resource: auth',
     })
 
+    expect(mapAuditDisplayItem({
+      id: 13,
+      dateTime: 1710000030,
+      actor: 'admin',
+      event: 'admin_created',
+      resource: 'admin',
+      severity: 'warn',
+    })).toEqual({
+      id: 13,
+      timestamp: 1710000030,
+      icon: 'mdi-account-plus-outline',
+      tone: 'warning',
+      text: 'Admin created',
+      detail: 'actor: admin; resource: admin',
+    })
+
+    expect(mapAuditDisplayItem({
+      id: 14,
+      dateTime: 1710000035,
+      actor: 'admin',
+      event: 'admin_deleted',
+      resource: 'admin',
+      severity: 'warn',
+    })).toEqual({
+      id: 14,
+      timestamp: 1710000035,
+      icon: 'mdi-account-remove-outline',
+      tone: 'warning',
+      text: 'Admin deleted',
+      detail: 'actor: admin; resource: admin',
+    })
+
     const unknown = mapAuditDisplayItem({
       id: -5,
       timestamp: 1710000040,

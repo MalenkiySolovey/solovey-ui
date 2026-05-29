@@ -4,6 +4,17 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [1.5.6-beta3] - 2026-05-29 - admin management beta
+
+- 在 Classic 与 Nexus 共用的 `/admins` 页面新增管理员创建和删除；两个操作
+  都需要当前管理员密码。
+- Backend 与 UI 都禁止删除当前登录管理员。删除其他管理员时会删除其 API
+  token、重新加载 APIV2 token cache，并让被删除管理员的现有 browser session
+  失效，因为 session validation 现在会检查用户是否仍存在。
+- 新增 `admin_created` 与 `admin_deleted` audit events，`/api/users` 返回
+  `isCurrent`，Nexus overview 也会映射新的 admin audit events。
+- 完整 release notes：[`docs/releases/v1.5.6-beta3.md`](docs/releases/v1.5.6-beta3.md)。
+
 ## [1.5.6-beta2] - 2026-05-28 - sing-box 1.13.12 settings coverage beta
 
 - 扩展 Classic 与 Nexus UI 中的 sing-box 1.13.12 设置覆盖；basics、rules、

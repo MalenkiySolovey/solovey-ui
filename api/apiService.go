@@ -267,7 +267,17 @@ func (a *ApiService) GetUsers(c *gin.Context) {
 		jsonMsg(c, "", err)
 		return
 	}
-	jsonObj(c, *users, nil)
+	loginUser := GetLoginUser(c)
+	result := make([]gin.H, 0, len(*users))
+	for _, user := range *users {
+		result = append(result, gin.H{
+			"id":        user.Id,
+			"username":  user.Username,
+			"lastLogin": user.LastLogins,
+			"isCurrent": user.Username == loginUser,
+		})
+	}
+	jsonObj(c, result, nil)
 }
 
 func (a *ApiService) GetSettings(c *gin.Context) {
@@ -510,6 +520,53 @@ func (a *ApiService) ChangePass(c *gin.Context) {
 		jsonMsg(c, "save", nil)
 	} else {
 		logger.Warning("change user credentials failed:", err)
+		jsonMsg(c, "", err)
+	}
+}
+
+func (a *ApiService) AddAdmin(c *gin.Context) {
+	loginUser := GetLoginUser(c)
+	user, err := a.UserService.AddUser(
+		loginUser,
+		c.Request.FormValue("currentPass"),
+		c.Request.FormValue("username"),
+		c.Request.FormValue("password"),
+	)
+	if err == nil {
+		logger.Info("admin user created successfully")
+		a.recordAudit(c, loginUser, "admin_created", "admin", service.AuditSeverityWarn, map[string]any{
+			"targetUserId": user.Id,
+			"username":     user.Username,
+		})
+		jsonMsgObj(c, "add", gin.H{
+			"id":        user.Id,
+			"username":  user.Username,
+			"lastLogin": user.LastLogins,
+			"isCurrent": false,
+		}, nil)
+	} else {
+		logger.Warning("create admin user failed:", err)
+		jsonMsg(c, "", err)
+	}
+}
+
+func (a *ApiService) DeleteAdmin(c *gin.Context) {
+	loginUser := GetLoginUser(c)
+	result, err := a.UserService.DeleteUser(
+		loginUser,
+		c.Request.FormValue("currentPass"),
+		c.Request.FormValue("id"),
+	)
+	if err == nil {
+		logger.Info("admin user deleted successfully")
+		a.recordAudit(c, loginUser, "admin_deleted", "admin", service.AuditSeverityWarn, map[string]any{
+			"targetUserId":      result.User.Id,
+			"username":          result.User.Username,
+			"deletedTokenCount": result.DeletedTokenCount,
+		})
+		jsonMsg(c, "del", nil)
+	} else {
+		logger.Warning("delete admin user failed:", err)
 		jsonMsg(c, "", err)
 	}
 }
