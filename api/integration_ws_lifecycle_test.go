@@ -83,7 +83,7 @@ func TestIntegrationRealtimeWSMultipleClientsReceivePublish(t *testing.T) {
 func TestIntegrationRealtimeWSMaxPerUserCapacity(t *testing.T) {
 	resetRateLimitState()
 	resetRealtimeForTest()
-	router := newIntegrationWSRouter(t)
+	router := newIntegrationWSRouterWithOptions(t, WithPingInterval(time.Hour), WithPingTimeout(time.Second))
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 	cookies := loginIntegrationWSUser(t, router, "admin")
@@ -113,7 +113,7 @@ func TestIntegrationRealtimeWSMaxPerUserCapacity(t *testing.T) {
 func TestIntegrationRealtimeWSMaxPerIPCapacity(t *testing.T) {
 	resetRateLimitState()
 	resetRealtimeForTest()
-	router := newIntegrationWSRouter(t)
+	router := newIntegrationWSRouterWithOptions(t, WithPingInterval(time.Hour), WithPingTimeout(time.Second))
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 
@@ -147,6 +147,11 @@ func TestIntegrationRealtimeWSSlowClientDrop_XFAILPhase3(t *testing.T) {
 
 func newIntegrationWSRouter(t *testing.T) *gin.Engine {
 	t.Helper()
+	return newIntegrationWSRouterWithOptions(t, WithPingInterval(time.Second), WithPingTimeout(time.Second))
+}
+
+func newIntegrationWSRouterWithOptions(t *testing.T, options ...realtimeOption) *gin.Engine {
+	t.Helper()
 	settingService := initSessionTestDB(t)
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
@@ -171,7 +176,7 @@ func newIntegrationWSRouter(t *testing.T) *gin.Engine {
 		c.Status(http.StatusNoContent)
 	})
 	router.GET("/api/realtime/ws-token", (&ApiService{}).IssueWSToken)
-	router.GET("/api/realtime/ws", (&ApiService{}).RealtimeWSWithOptions(WithPingInterval(time.Second), WithPingTimeout(time.Second)))
+	router.GET("/api/realtime/ws", (&ApiService{}).RealtimeWSWithOptions(options...))
 	return router
 }
 
