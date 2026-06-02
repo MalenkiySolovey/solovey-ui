@@ -5,6 +5,31 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.6-beta8] - 2026-06-03 - 3x-ui migration: proxy outbounds (vmess/vless/trojan/…)
+
+- Proxy outbounds now migrate as s-ui outbounds: previously only WARP
+  (WireGuard), `freedom` and `blackhole` outbounds were handled, so an Xray
+  `outbounds` entry of type `vmess`/`vless`/`trojan`/`shadowsocks`/`socks`/`http`
+  was dropped silently and a chained/proxy outbound vanished from the migrated
+  panel. Each is now converted to a first-class sing-box outbound (server/port,
+  `uuid`/`password`/`method`/user-pass, VLESS `flow`, the TLS/Reality block, and
+  the `ws`/`grpc`/`http`/`httpupgrade` transport) and registered as a routing
+  target, so a rule that referenced it resolves to the migrated outbound instead
+  of "requires manual review".
+- System outbounds map to their sing-box home: `freedom`→`direct`,
+  `blackhole`→`block`, and a `dns` outbound becomes a `hijack-dns` route action
+  (sing-box has no `dns` outbound). `loopback` and any protocol Xray does not
+  emit (e.g. `hysteria`) are surfaced as a warning to recreate manually rather
+  than dropped silently.
+- No silent loss when routing import is off: proxy/WARP outbounds live in the
+  source `xrayConfig`, read only during routing import. When routing import is
+  disabled but the source contains outbounds, the plan now warns that they were
+  not migrated and how to migrate them.
+- Outbounds are created only when new (a re-import or scheduled sync does not
+  clobber an operator-edited outbound of the same tag), and the import report
+  gains an `outbounds` (imported/skipped) counter.
+- Full release notes: [`docs/releases/v1.5.6-beta8.md`](docs/releases/v1.5.6-beta8.md).
+
 ## [1.5.6-beta7] - 2026-06-02 - 3x-ui migration: subscription links, WARP & import timeout
 
 - Migrated clients now get subscription links: the importer left each client's

@@ -151,6 +151,60 @@ func createNewEndpoints(tx *gorm.DB, endpoints []model.Endpoint, report *Report)
 	return nil
 }
 
+// createNewOutbounds persists proxy outbounds (vmess/vless/trojan/shadowsocks/
+// socks/http) mapped from the source Xray outbounds, creating each only when no
+// outbound with that tag already exists. Like createNewEndpoints it never
+// overwrites an existing outbound, so re-imports and scheduled sync stay
+// idempotent and an operator-tuned (or same-tagged) outbound is left untouched;
+// the routing rule still references the tag, which exists either way.
+func createNewOutbounds(tx *gorm.DB, outbounds []model.Outbound, report *Report) error {
+	for i := range outbounds {
+		ob := &outbounds[i]
+		var existing model.Outbound
+		err := tx.Where("tag = ?", ob.Tag).First(&existing).Error
+		if err != nil && !database.IsNotFound(err) {
+			return err
+		}
+		if err == nil {
+			report.Summary.Outbounds.Skipped++
+			report.warn(fmt.Sprintf("outbound %q already exists; left unchanged", ob.Tag))
+			continue
+		}
+		if err := tx.Create(ob).Error; err != nil {
+			return err
+		}
+		report.Summary.Outbounds.Imported++
+		report.warn(fmt.Sprintf("imported %s outbound %q from xray outbound", ob.Type, ob.Tag))
+	}
+	return nil
+}
+
+// planRoutingDisabledNotice surfaces a single warning-only plan item when
+// routing import is turned off but the source Xray config still contains proxy
+// outbounds or WARP endpoints. Those live in the same xrayConfig and are only
+// migrated as part of routing import (an outbound is useless without the rules
+// that reference it), so without this notice they would vanish from the
+// migration with no plan item and no warning — the exact silent-loss the
+// operator hit before this feature existed.
+func planRoutingDisabledNotice(ctx context.Context, src *sourceDB, plan *MigrationPlan) error {
+	if err := checkContext(ctx); err != nil {
+		return err
+	}
+	xrayConfig, err := src.xrayConfig()
+	if err != nil {
+		return err
+	}
+	endpoints, outbounds, _, _ := mapXrayOutbounds(xrayConfig)
+	if len(endpoints) == 0 && len(outbounds) == 0 {
+		return nil
+	}
+	plan.Items = append(plan.Items, warningOnlyItem(
+		KindRouting, "xrayConfig", "xrayConfig.outbounds", "singboxConfig",
+		[]string{fmt.Sprintf("%d proxy outbound(s) and %d WARP endpoint(s) in the source are not migrated because routing import is disabled; enable \"Include routing\" to migrate them", len(outbounds), len(endpoints))},
+	))
+	return nil
+}
+
 func planRouting(ctx context.Context, src *sourceDB, plan *MigrationPlan) error {
 	if err := checkContext(ctx); err != nil {
 		return err
@@ -159,7 +213,7 @@ func planRouting(ctx context.Context, src *sourceDB, plan *MigrationPlan) error 
 	if err != nil {
 		return err
 	}
-	endpoints, targets, outboundWarnings := mapXrayOutbounds(xrayConfig)
+	endpoints, outbounds, targets, outboundWarnings := mapXrayOutbounds(xrayConfig)
 	mapped, warnings, mappedCount, manualCount := MapXrayRouting(xrayConfig, targets)
 	warnings = append(outboundWarnings, warnings...)
 	preview, err := marshalJSON(mapped)
@@ -167,7 +221,7 @@ func planRouting(ctx context.Context, src *sourceDB, plan *MigrationPlan) error 
 		return err
 	}
 	action := ActionCreate
-	if xrayConfig == "" || (mappedCount == 0 && manualCount == 0 && len(endpoints) == 0) {
+	if xrayConfig == "" || (mappedCount == 0 && manualCount == 0 && len(endpoints) == 0 && len(outbounds) == 0) {
 		action = ActionSkip
 	}
 	plan.Items = append(plan.Items, PlanItem{
@@ -197,16 +251,23 @@ func (s *applyState) applyRouting(ctx context.Context, tx *gorm.DB, src *sourceD
 	if err != nil {
 		return err
 	}
-	// WARP (and any wireguard outbound) becomes an s-ui endpoint; create those
-	// first so the routing rules below can target them by tag, then map the
-	// rules. blackhole/freedom outbounds resolve to block/direct.
-	endpoints, targets, outboundWarnings := mapXrayOutbounds(xrayConfig)
+	// WARP (and any wireguard outbound) becomes an s-ui endpoint and proxy
+	// outbounds become s-ui outbounds; create those first so the routing rules
+	// below can target them by tag, then map the rules. blackhole/freedom/dns
+	// outbounds resolve to block/direct/hijack-dns.
+	endpoints, outbounds, targets, outboundWarnings := mapXrayOutbounds(xrayConfig)
 	s.report.warnAll(outboundWarnings)
 	if err := createNewEndpoints(tx, endpoints, s.report); err != nil {
 		return err
 	}
 	for i := range endpoints {
 		s.progress("endpoints", endpoints[i].Tag)
+	}
+	if err := createNewOutbounds(tx, outbounds, s.report); err != nil {
+		return err
+	}
+	for i := range outbounds {
+		s.progress("outbounds", outbounds[i].Tag)
 	}
 	mapped, warnings, mappedCount, manualCount := MapXrayRouting(xrayConfig, targets)
 	raw, err := marshalJSON(mapped)
@@ -289,7 +350,13 @@ func MapXrayRouting(raw string, targets map[string]string) (map[string]any, []st
 			warnings = append(warnings, fmt.Sprintf("routing rule %d outbound %q requires manual review", index, outboundTag))
 			continue
 		}
-		next := map[string]any{"outbound": target}
+		next := map[string]any{}
+		if target == dnsHijackTarget {
+			// sing-box routes DNS via a rule action, not an outbound.
+			next["action"] = "hijack-dns"
+		} else {
+			next["outbound"] = target
+		}
 		if domains := stringList(rule["domain"]); len(domains) > 0 {
 			for _, domain := range domains {
 				if strings.HasPrefix(domain, "geosite:") {

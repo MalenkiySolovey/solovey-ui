@@ -11,6 +11,7 @@ type Report struct {
 type Summary struct {
 	Inbounds   CountSummary    `json:"inbounds"`
 	Endpoints  EndpointSummary `json:"endpoints"`
+	Outbounds  EndpointSummary `json:"outbounds"`
 	TLS        TLSSummary      `json:"tls"`
 	Clients    ClientSummary   `json:"clients"`
 	Historical CountSummary    `json:"historical,omitempty"`

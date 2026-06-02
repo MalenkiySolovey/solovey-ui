@@ -6,7 +6,7 @@ import (
 )
 
 func TestMapTransport_HTTPUpgradeAndH2(t *testing.T) {
-	httpUpgrade, warnings := mapTransport("in", xuiStreamSettings{
+	httpUpgrade, warnings := mapTransport("inbound", "in", xuiStreamSettings{
 		Network: "httpupgrade",
 		HTTPUPSettings: map[string]any{
 			"host": "example.com",
@@ -16,7 +16,7 @@ func TestMapTransport_HTTPUpgradeAndH2(t *testing.T) {
 	if len(warnings) != 0 || httpUpgrade["type"] != "httpupgrade" || httpUpgrade["host"] != "example.com" {
 		t.Fatalf("unexpected httpupgrade mapping: %#v warnings=%v", httpUpgrade, warnings)
 	}
-	h2, warnings := mapTransport("in", xuiStreamSettings{
+	h2, warnings := mapTransport("inbound", "in", xuiStreamSettings{
 		Network: "h2",
 		HTTPSettings: map[string]any{
 			"host": []any{"a.example"},
@@ -29,7 +29,7 @@ func TestMapTransport_HTTPUpgradeAndH2(t *testing.T) {
 }
 
 func TestMapTransport_SplitHTTPWarnsAndKCPQUICSkip(t *testing.T) {
-	split, warnings := mapTransport("in", xuiStreamSettings{Network: "splithttp"})
+	split, warnings := mapTransport("inbound", "in", xuiStreamSettings{Network: "splithttp"})
 	if split["type"] != "httpupgrade" || len(warnings) == 0 {
 		t.Fatalf("splithttp should map with warning, got %#v warnings=%v", split, warnings)
 	}

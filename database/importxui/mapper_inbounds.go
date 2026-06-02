@@ -87,7 +87,7 @@ func mapInbound(row xuiInboundRow, tlsID uint, reality *realitySpec, server stri
 		return &mappedInbound{Warnings: []string{fmt.Sprintf("inbound %s: http has no accounts; skipped", row.Tag)}}, nil
 	}
 
-	transport, transportWarnings := mapTransport(row.Tag, stream)
+	transport, transportWarnings := mapTransport("inbound", row.Tag, stream)
 	tlsBlock, tlsWarnings := mapOutboundTLSBlock(stream, reality)
 	warnings := append(transportWarnings, tlsWarnings...)
 	if w := listenAddressWarning(row); w != "" {
@@ -257,7 +257,11 @@ func stringifyTgID(value any) string {
 	}
 }
 
-func mapTransport(tag string, stream xuiStreamSettings) (map[string]any, []string) {
+// mapTransport maps an Xray stream's transport to the sing-box transport block.
+// It is shared by inbound and outbound mapping; entity ("inbound"/"outbound")
+// only labels the warning messages so the import report attributes them
+// correctly.
+func mapTransport(entity string, tag string, stream xuiStreamSettings) (map[string]any, []string) {
 	network := strings.ToLower(strings.TrimSpace(stream.Network))
 	switch network {
 	case "", "tcp":
@@ -305,9 +309,9 @@ func mapTransport(tag string, stream xuiStreamSettings) (map[string]any, []strin
 		if host, ok := stringFromMap(stream.HTTPUPSettings, "host"); ok && host != "" {
 			transport["host"] = host
 		}
-		return transport, []string{fmt.Sprintf("inbound %s: transport %q mapped to httpupgrade; manual review recommended", tag, network)}
+		return transport, []string{fmt.Sprintf("%s %s: transport %q mapped to httpupgrade; manual review recommended", entity, tag, network)}
 	default:
-		return nil, []string{fmt.Sprintf("inbound %s: transport %q requires manual review", tag, network)}
+		return nil, []string{fmt.Sprintf("%s %s: transport %q requires manual review", entity, tag, network)}
 	}
 }
 

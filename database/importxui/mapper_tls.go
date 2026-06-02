@@ -15,6 +15,7 @@ import (
 type xuiStreamSettings struct {
 	Network         string            `json:"network"`
 	Security        string            `json:"security"`
+	TLSSettings     xuiTLSSetting     `json:"tlsSettings"`
 	RealitySettings xuiRealitySetting `json:"realitySettings"`
 	TCPSettings     map[string]any    `json:"tcpSettings"`
 	WSSettings      map[string]any    `json:"wsSettings"`
@@ -30,6 +31,15 @@ type xuiRealitySetting struct {
 	MaxTimediff int64               `json:"maxTimediff"`
 	ShortIDs    []string            `json:"shortIds"`
 	Settings    xuiRealityClientSet `json:"settings"`
+
+	// Outbound (client) reality fields. On an Xray *outbound* the panel stores
+	// the peer's public key, single short id, server name and fingerprint at the
+	// top level of realitySettings — there is no private key. These tags do not
+	// collide with the inbound array/sub-block fields above.
+	PublicKey   string `json:"publicKey"`
+	ShortID     string `json:"shortId"`
+	ServerName  string `json:"serverName"`
+	Fingerprint string `json:"fingerprint"`
 }
 
 type xuiRealityClientSet struct {

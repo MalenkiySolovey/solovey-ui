@@ -152,6 +152,8 @@ func Plan(srcPath string, opts PlanOptions) (*MigrationPlan, error) {
 		if err := planRouting(opts.Context, src, plan); err != nil {
 			return nil, fmt.Errorf("xui-import: %w", err)
 		}
+	} else if err := planRoutingDisabledNotice(opts.Context, src, plan); err != nil {
+		return nil, fmt.Errorf("xui-import: %w", err)
 	}
 	if opts.OnlyNew {
 		markOnlyNew(plan)

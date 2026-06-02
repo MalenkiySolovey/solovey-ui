@@ -37,7 +37,7 @@ const warpXrayConfig = `{
 }`
 
 func TestMapXrayOutbounds_WARP(t *testing.T) {
-	endpoints, targets, _ := mapXrayOutbounds(warpXrayConfig)
+	endpoints, _, targets, _ := mapXrayOutbounds(warpXrayConfig)
 
 	if targets["blocked"] != "block" || targets["direct"] != "direct" || targets["warp"] != "warp" {
 		t.Fatalf("targets = %v", targets)
@@ -90,7 +90,7 @@ func TestMapXrayOutbounds_WARP(t *testing.T) {
 }
 
 func TestMapXrayRouting_WARPRuleTargetsEndpoint(t *testing.T) {
-	_, targets, _ := mapXrayOutbounds(warpXrayConfig)
+	_, _, targets, _ := mapXrayOutbounds(warpXrayConfig)
 	mapped, warnings, mappedCount, manualCount := MapXrayRouting(warpXrayConfig, targets)
 
 	if mappedCount != 2 || manualCount != 0 {
@@ -123,7 +123,7 @@ func TestCreateNewEndpoints_IdempotentNoClobber(t *testing.T) {
 	initCompatDest(t)
 	db := database.GetDB()
 
-	endpoints, _, _ := mapXrayOutbounds(warpXrayConfig)
+	endpoints, _, _, _ := mapXrayOutbounds(warpXrayConfig)
 	report := &Report{}
 	if err := createNewEndpoints(db, endpoints, report); err != nil {
 		t.Fatalf("first create: %v", err)
@@ -139,7 +139,7 @@ func TestCreateNewEndpoints_IdempotentNoClobber(t *testing.T) {
 	}
 
 	// A second import / scheduled sync must NOT overwrite the existing endpoint.
-	endpoints2, _, _ := mapXrayOutbounds(warpXrayConfig)
+	endpoints2, _, _, _ := mapXrayOutbounds(warpXrayConfig)
 	report2 := &Report{}
 	if err := createNewEndpoints(db, endpoints2, report2); err != nil {
 		t.Fatalf("second create: %v", err)
@@ -164,7 +164,7 @@ func TestCreateNewEndpoints_IdempotentNoClobber(t *testing.T) {
 
 func TestWarpEndpoint_DropsMalformedReserved(t *testing.T) {
 	cfg := `{"outbounds":[{"tag":"warp","protocol":"wireguard","settings":{"secretKey":"S","reserved":[1,2,3,4],"peers":[{"publicKey":"P","endpoint":"h:2408"}]}}]}`
-	endpoints, _, warnings := mapXrayOutbounds(cfg)
+	endpoints, _, _, warnings := mapXrayOutbounds(cfg)
 	if len(endpoints) != 1 {
 		t.Fatalf("want 1 endpoint, got %d", len(endpoints))
 	}

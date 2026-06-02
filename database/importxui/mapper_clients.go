@@ -234,6 +234,10 @@ func summaryDetails(summary Summary) map[string]any {
 			"imported": summary.Endpoints.Imported,
 			"skipped":  summary.Endpoints.Skipped,
 		},
+		"outbounds": map[string]any{
+			"imported": summary.Outbounds.Imported,
+			"skipped":  summary.Outbounds.Skipped,
+		},
 		"tls": map[string]any{
 			"created": summary.TLS.Created,
 			"reused":  summary.TLS.Reused,

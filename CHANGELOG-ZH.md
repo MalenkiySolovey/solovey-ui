@@ -4,6 +4,26 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [1.5.6-beta8] - 2026-06-03 - 3x-ui 迁移：代理出站 (vmess/vless/trojan/…)
+
+- 代理出站现在会迁移为 s-ui 出站：此前只处理 WARP（WireGuard）、`freedom` 和
+  `blackhole`，因此类型为 `vmess`/`vless`/`trojan`/`shadowsocks`/`socks`/`http`
+  的 Xray `outbounds` 条目被静默丢弃，链式/代理出站从迁移后的面板中消失。现在每个
+  这样的出站都会转换为一等的 sing-box 出站（服务器/端口、`uuid`/`password`/
+  `method`/用户名密码、VLESS 的 `flow`、TLS/Reality 块以及
+  `ws`/`grpc`/`http`/`httpupgrade` 传输），并注册为路由目标，因此引用它的规则会解析
+  到迁移后的出站，而不是被标记为“需要手动检查”。
+- 系统出站映射到其 sing-box 对应项：`freedom`→`direct`、`blackhole`→`block`，
+  而 `dns` 出站变为 `hijack-dns` 路由动作（sing-box 没有 `dns` 出站）。`loopback`
+  以及任何 Xray 不会产生的协议（例如 `hysteria`）会以警告形式提示手动重建，而不是
+  被静默丢弃。
+- 关闭路由导入时不再静默丢失：代理/WARP 出站位于源 `xrayConfig` 中，仅在路由导入
+  时读取。当路由导入被关闭但源中存在出站时，计划现在会警告它们未被迁移以及如何
+  迁移。
+- 出站仅在为新增时创建（重复导入或计划同步不会覆盖运维人员编辑过的同名出站），并且
+  导入报告新增 `outbounds`（已导入/已跳过）计数。
+- 完整发布说明：[`docs/releases/v1.5.6-beta8.md`](docs/releases/v1.5.6-beta8.md)。
+
 ## [1.5.6-beta7] - 2026-06-02 - 3x-ui 迁移：订阅链接、WARP 与导入超时
 
 - 迁移后的客户端现在会生成订阅链接：导入器把每个客户端的 `Links` 留空，而订阅只

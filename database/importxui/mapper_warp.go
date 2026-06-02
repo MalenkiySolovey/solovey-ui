@@ -12,9 +12,10 @@ import (
 
 // xrayOutbound is a single entry of the source Xray config's outbounds array.
 type xrayOutbound struct {
-	Tag      string          `json:"tag"`
-	Protocol string          `json:"protocol"`
-	Settings json.RawMessage `json:"settings"`
+	Tag            string          `json:"tag"`
+	Protocol       string          `json:"protocol"`
+	Settings       json.RawMessage `json:"settings"`
+	StreamSettings json.RawMessage `json:"streamSettings"`
 }
 
 // xrayWireguardOutbound is the settings block of an Xray wireguard outbound
@@ -39,25 +40,31 @@ type xrayWireguardOutboundPeer struct {
 
 // mapXrayOutbounds parses the source Xray outbounds and returns:
 //   - WireGuard (WARP) outbounds converted to s-ui WARP endpoints,
+//   - proxy outbounds (vmess/vless/trojan/shadowsocks/socks/http) converted to
+//     s-ui (sing-box) outbounds,
 //   - a map outboundTag -> s-ui routing target so MapXrayRouting can resolve
-//     rules (blackhole->block, freedom->direct, wireguard->the endpoint tag),
-//   - warnings for anything skipped.
+//     rules (blackhole->block, freedom->direct, dns->hijack-dns,
+//     wireguard->the endpoint tag, proxy->its own outbound tag),
+//   - warnings for anything skipped or needing review.
 //
-// In 3x-ui, WARP is a wireguard *outbound* referenced by routing rules; s-ui
-// models WARP as an *endpoint* and routes to it via Rules, so this is what lets
-// the migrated WARP rule keep working instead of being flagged for review.
-func mapXrayOutbounds(xrayConfig string) ([]model.Endpoint, map[string]string, []string) {
+// 3x-ui (Xray) stores every outbound — system ones (freedom/blackhole/dns),
+// WARP, and proxy chains — in this array. s-ui (sing-box) models system
+// outbounds as routing actions/built-ins, WARP as an *endpoint*, and proxy
+// chains as first-class *outbounds*, so each kind is mapped to its s-ui home
+// instead of being dropped.
+func mapXrayOutbounds(xrayConfig string) ([]model.Endpoint, []model.Outbound, map[string]string, []string) {
 	targets := map[string]string{}
 	if strings.TrimSpace(xrayConfig) == "" {
-		return nil, targets, nil
+		return nil, nil, targets, nil
 	}
 	var cfg struct {
 		Outbounds []xrayOutbound `json:"outbounds"`
 	}
 	if err := json.Unmarshal([]byte(xrayConfig), &cfg); err != nil {
-		return nil, targets, []string{fmt.Sprintf("routing: invalid xrayConfig outbounds: %v", err)}
+		return nil, nil, targets, []string{fmt.Sprintf("routing: invalid xrayConfig outbounds: %v", err)}
 	}
 	var endpoints []model.Endpoint
+	var outbounds []model.Outbound
 	var warnings []string
 	for _, ob := range cfg.Outbounds {
 		tag := strings.TrimSpace(ob.Tag)
@@ -69,6 +76,9 @@ func mapXrayOutbounds(xrayConfig string) ([]model.Endpoint, map[string]string, [
 			targets[tag] = "block"
 		case "freedom":
 			targets[tag] = "direct"
+		case "dns":
+			// sing-box has no dns outbound; rules to it become hijack-dns.
+			targets[tag] = dnsHijackTarget
 		case "wireguard":
 			ep, w := warpEndpointFromOutbound(tag, ob.Settings)
 			warnings = append(warnings, w...)
@@ -76,12 +86,24 @@ func mapXrayOutbounds(xrayConfig string) ([]model.Endpoint, map[string]string, [
 				endpoints = append(endpoints, *ep)
 				targets[tag] = tag // route to the endpoint by its own tag
 			}
+		case "vmess", "vless", "trojan", "shadowsocks", "socks", "http":
+			out, w := outboundFromXray(ob)
+			warnings = append(warnings, w...)
+			if out != nil {
+				outbounds = append(outbounds, *out)
+				targets[tag] = tag // route to the outbound by its own tag
+			}
+		case "loopback":
+			// Xray loopback re-injects traffic into routing; sing-box has no
+			// equivalent. Flag it instead of dropping it silently.
+			warnings = append(warnings, fmt.Sprintf("outbound %s: loopback has no s-ui equivalent; rules using it need manual review", tag))
 		default:
-			// dns/proxy/etc. outbounds have no s-ui routing-target equivalent;
-			// leave them unmapped so rules referencing them are flagged.
+			// Any other protocol (e.g. hysteria/tuic, which Xray does not emit):
+			// surface it so the operator can recreate it by hand.
+			warnings = append(warnings, fmt.Sprintf("outbound %s: protocol %q has no automatic s-ui mapping; recreate it manually", tag, strings.ToLower(strings.TrimSpace(ob.Protocol))))
 		}
 	}
-	return endpoints, targets, warnings
+	return endpoints, outbounds, targets, warnings
 }
 
 // warpEndpointFromOutbound converts an Xray wireguard outbound into an s-ui WARP
