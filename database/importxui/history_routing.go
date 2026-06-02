@@ -199,7 +199,7 @@ func planRoutingDisabledNotice(ctx context.Context, src *sourceDB, plan *Migrati
 		return nil
 	}
 	plan.Items = append(plan.Items, warningOnlyItem(
-		KindRouting, "xrayConfig", "xrayConfig.outbounds", "singboxConfig",
+		KindRouting, "xrayConfig", "xrayConfig.outbounds", "config",
 		[]string{fmt.Sprintf("%d proxy outbound(s) and %d WARP endpoint(s) in the source are not migrated because routing import is disabled; enable \"Include routing\" to migrate them", len(outbounds), len(endpoints))},
 	))
 	return nil
@@ -228,7 +228,7 @@ func planRouting(ctx context.Context, src *sourceDB, plan *MigrationPlan) error 
 		Kind:        KindRouting,
 		SrcID:       "xrayConfig",
 		SrcTag:      "xrayConfig.routing",
-		DstTag:      "singboxConfig",
+		DstTag:      "config",
 		Action:      action,
 		PreviewJSON: preview,
 		Warnings:    warnings,
@@ -270,21 +270,195 @@ func (s *applyState) applyRouting(ctx context.Context, tx *gorm.DB, src *sourceD
 		s.progress("outbounds", outbounds[i].Tag)
 	}
 	mapped, warnings, mappedCount, manualCount := MapXrayRouting(xrayConfig, targets)
-	raw, err := marshalJSON(mapped)
-	if err != nil {
+	if err := mergeRoutingIntoConfig(tx, mapped); err != nil {
 		return err
-	}
-	if mappedCount > 0 {
-		if err := upsertSetting(tx, firstNonEmpty(item.DstTag, "singboxConfig"), string(raw)); err != nil {
-			return err
-		}
 	}
 	s.report.Summary.Routing.Total = mappedCount + manualCount
 	s.report.Summary.Routing.Imported = mappedCount
 	s.report.Summary.Routing.Skipped = manualCount
 	s.report.warnAll(warnings)
-	s.progress("routing", "singboxConfig")
+	s.progress("routing", "config")
 	return nil
+}
+
+// defaultLiveConfig mirrors service.defaultConfig — the baseline sing-box config
+// the panel falls back to before any config is saved. It is duplicated here
+// (rather than importing the service layer from a database subpackage) so the
+// routing merge can seed it when no `config` row exists, keeping the default
+// sniff/hijack-dns rules. Keep the route/dns skeleton in sync with
+// service.defaultConfig; the merge only appends, so a stale copy cannot drop a
+// migrated rule.
+const defaultLiveConfig = `{
+  "log": {"level": "info"},
+  "dns": {"servers": [], "rules": []},
+  "route": {"rules": [{"action": "sniff"}, {"protocol": ["dns"], "action": "hijack-dns"}]},
+  "experimental": {}
+}`
+
+// mergeRoutingIntoConfig merges the migrated route rules / rule sets and DNS
+// servers/rules into the live sing-box config (the "config" setting that
+// ConfigService.GetConfig loads), rather than a side setting nothing reads.
+// Existing rules are preserved: migrated rules are appended after them and rule
+// sets / DNS servers are de-duplicated by tag, so a re-import stays idempotent
+// and an operator's own routing is never clobbered.
+func mergeRoutingIntoConfig(tx *gorm.DB, mapped map[string]any) error {
+	var current string
+	if err := tx.Model(model.Setting{}).Select("value").Where("key = ?", "config").Scan(&current).Error; err != nil {
+		return err
+	}
+	if strings.TrimSpace(current) == "" {
+		// The panel falls back to a default config until one is saved; that
+		// default is not stored as a row. Seed it here so writing the `config`
+		// row keeps the default sniff/hijack-dns rules and dns skeleton instead
+		// of shadowing them with a route that has only the migrated rules.
+		current = defaultLiveConfig
+	}
+	cfg := map[string]json.RawMessage{}
+	if err := json.Unmarshal([]byte(current), &cfg); err != nil {
+		return fmt.Errorf("routing: existing config is not valid JSON: %w", err)
+	}
+	changed := false
+
+	if route, ok := mapped["route"].(map[string]any); ok {
+		newRules := toAnySlice(route["rules"])
+		newRuleSets := toAnySlice(route["rule_set"])
+		if len(newRules) > 0 || len(newRuleSets) > 0 {
+			dst := decodeConfigObject(cfg["route"])
+			if len(newRules) > 0 {
+				dst["rules"] = appendUniqueRules(toAnySlice(dst["rules"]), newRules)
+			}
+			if len(newRuleSets) > 0 {
+				dst["rule_set"] = mergeByTag(toAnySlice(dst["rule_set"]), newRuleSets)
+			}
+			enc, err := json.Marshal(dst)
+			if err != nil {
+				return err
+			}
+			cfg["route"] = enc
+			changed = true
+		}
+	}
+
+	if dns, ok := mapped["dns"].(map[string]any); ok && len(dns) > 0 {
+		newServers := toAnySlice(dns["servers"])
+		newDNSRules := toAnySlice(dns["rules"])
+		if len(newServers) > 0 || len(newDNSRules) > 0 {
+			dst := decodeConfigObject(cfg["dns"])
+			if len(newServers) > 0 {
+				dst["servers"] = mergeByTag(toAnySlice(dst["servers"]), newServers)
+			}
+			if len(newDNSRules) > 0 {
+				dst["rules"] = appendUniqueRules(toAnySlice(dst["rules"]), newDNSRules)
+			}
+			// Carry top-level DNS knobs only when the live config has not set them.
+			for _, k := range []string{"strategy", "final", "client_subnet"} {
+				if v, ok := dns[k]; ok {
+					if _, exists := dst[k]; !exists {
+						dst[k] = v
+					}
+				}
+			}
+			enc, err := json.Marshal(dst)
+			if err != nil {
+				return err
+			}
+			cfg["dns"] = enc
+			changed = true
+		}
+	}
+
+	if !changed {
+		return nil
+	}
+	merged, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return err
+	}
+	return upsertSetting(tx, "config", string(merged))
+}
+
+// decodeConfigObject decodes a config sub-object (route/dns) into a map, or an
+// empty map when absent.
+func decodeConfigObject(raw json.RawMessage) map[string]any {
+	out := map[string]any{}
+	if len(raw) > 0 {
+		_ = json.Unmarshal(raw, &out)
+	}
+	return out
+}
+
+// toAnySlice coerces a value to []any (nil when it is not a slice).
+func toAnySlice(v any) []any {
+	if s, ok := v.([]any); ok {
+		return s
+	}
+	return nil
+}
+
+// appendUniqueRules appends rules to existing, skipping any whose canonical JSON
+// already appears. Route/DNS rules have no tag to key on, so without this a
+// re-import or scheduled sync would append the same migrated rules every run and
+// grow the live config without bound. Map keys marshal in sorted order, so an
+// existing rule read back from the DB and a freshly built identical rule produce
+// the same bytes.
+func appendUniqueRules(existing, additions []any) []any {
+	seen := map[string]struct{}{}
+	for _, e := range existing {
+		if key, err := json.Marshal(e); err == nil {
+			seen[string(key)] = struct{}{}
+		}
+	}
+	for _, a := range additions {
+		key, err := json.Marshal(a)
+		if err != nil {
+			existing = append(existing, a)
+			continue
+		}
+		if _, dup := seen[string(key)]; dup {
+			continue
+		}
+		seen[string(key)] = struct{}{}
+		existing = append(existing, a)
+	}
+	return existing
+}
+
+// mergeByTag appends additions to existing, skipping any whose "tag" is already
+// present, so rule sets / DNS servers stay unique across re-imports. An addition
+// without a tag is de-duplicated by canonical JSON instead, so the helper keeps
+// its idempotency contract even though current callers always tag their entries.
+func mergeByTag(existing, additions []any) []any {
+	seenTags := map[string]struct{}{}
+	seenContent := map[string]struct{}{}
+	for _, e := range existing {
+		if m, ok := e.(map[string]any); ok {
+			if tag, ok := m["tag"].(string); ok && tag != "" {
+				seenTags[tag] = struct{}{}
+			}
+		}
+		if key, err := json.Marshal(e); err == nil {
+			seenContent[string(key)] = struct{}{}
+		}
+	}
+	for _, a := range additions {
+		tag := ""
+		if m, ok := a.(map[string]any); ok {
+			tag, _ = m["tag"].(string)
+		}
+		if tag != "" {
+			if _, dup := seenTags[tag]; dup {
+				continue
+			}
+			seenTags[tag] = struct{}{}
+		} else if key, err := json.Marshal(a); err == nil {
+			if _, dup := seenContent[string(key)]; dup {
+				continue
+			}
+			seenContent[string(key)] = struct{}{}
+		}
+		existing = append(existing, a)
+	}
+	return existing
 }
 
 // resolveRoutingTarget maps an Xray outboundTag to an s-ui routing target. The

@@ -101,7 +101,8 @@ func TestMapXrayRouting(t *testing.T) {
 		t.Fatal("balancer rule should produce a warning")
 	}
 	route := mapped["route"].(map[string]any)
-	if len(route["rules"].([]any)) != 1 || len(route["rule_set"].([]any)) != 1 {
+	// domain geosite:cn -> geosite-cn rule set, ip geoip:cn -> geoip-cn rule set.
+	if len(route["rules"].([]any)) != 1 || len(route["rule_set"].([]any)) != 2 {
 		t.Fatalf("unexpected mapped route: %#v", route)
 	}
 }

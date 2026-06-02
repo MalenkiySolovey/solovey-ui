@@ -28,11 +28,18 @@ func applyRuleMatchers(index int, rule, next map[string]any, ruleSets *[]any, se
 		}
 	}
 
-	if mapIPMatchers(rule["ip"], next, "geoip", "ip_cidr") {
+	destAdded, destGeoip := mapIPMatchers(rule["ip"], next, ruleSets, seen, false)
+	srcAdded, srcGeoip := mapIPMatchers(rule["source"], next, ruleSets, seen, true)
+	if destAdded || srcAdded {
 		added = true
 	}
-	if mapIPMatchers(rule["source"], next, "source_geoip", "source_ip_cidr") {
-		added = true
+	if srcGeoip {
+		// A geoip rule set matches the destination IP by default; this flag makes
+		// the rule's IP-CIDR rule sets match the source instead.
+		next["rule_set_ip_cidr_match_source"] = true
+		if destGeoip {
+			warnings = append(warnings, fmt.Sprintf("routing rule %d mixes source and destination geoip; rule_set_ip_cidr_match_source applies to all of them — review manually", index))
+		}
 	}
 	if mapPortMatchers(rule["port"], next, "port", "port_range") {
 		added = true
@@ -69,12 +76,13 @@ func mapDomainMatchers(domains []string, dst map[string]any, ruleSets *[]any, se
 	for _, d := range domains {
 		switch {
 		case strings.HasPrefix(d, "geosite:"):
-			name := strings.ReplaceAll(d, ":", "-")
-			dst["rule_set"] = appendString(dst["rule_set"], name)
-			if _, ok := seen[name]; !ok {
-				seen[name] = struct{}{}
-				*ruleSets = append(*ruleSets, map[string]any{"tag": name, "type": "remote", "format": "binary"})
+			code := geoRuleSetCode(strings.TrimPrefix(d, "geosite:"))
+			if code == "" {
+				continue
 			}
+			tag := "geosite-" + code
+			dst["rule_set"] = appendString(dst["rule_set"], tag)
+			registerRemoteRuleSet(ruleSets, seen, tag, fmt.Sprintf(geositeRuleSetURLFmt, code))
 			added = true
 		case strings.HasPrefix(d, "full:"):
 			dst["domain"] = appendString(dst["domain"], strings.TrimPrefix(d, "full:"))
@@ -99,19 +107,69 @@ func mapDomainMatchers(domains []string, dst map[string]any, ruleSets *[]any, se
 	return added, unknown
 }
 
-// mapIPMatchers splits Xray ip/source entries into a geoip field and a CIDR
-// field on next. Returns whether anything was added.
-func mapIPMatchers(value any, next map[string]any, geoipKey, cidrKey string) bool {
-	added := false
+// Remote rule-set sources. sing-box removed the inline geoip/geosite route
+// matchers in 1.12, so a geoip/geosite match is migrated to a remote rule set
+// pointing at the MetaCubeX meta-rules-dat repository — the same source s-ui's
+// own subscription/rule-set tooling uses.
+const (
+	geositeRuleSetURLFmt = "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/%s.srs"
+	geoipRuleSetURLFmt   = "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip/%s.srs"
+)
+
+// mapIPMatchers maps Xray ip/source entries: a geoip:* becomes a remote geoip
+// rule set referenced by the rule, a bare value becomes an ip_cidr (or
+// source_ip_cidr) matcher. It returns whether anything was added and whether a
+// geoip rule set was used (so the caller can set source matching).
+func mapIPMatchers(value any, next map[string]any, ruleSets *[]any, seen map[string]struct{}, source bool) (added bool, geoipUsed bool) {
+	cidrKey := "ip_cidr"
+	if source {
+		cidrKey = "source_ip_cidr"
+	}
 	for _, ip := range stringList(value) {
 		if strings.HasPrefix(ip, "geoip:") {
-			next[geoipKey] = appendString(next[geoipKey], strings.TrimPrefix(ip, "geoip:"))
+			code := geoRuleSetCode(strings.TrimPrefix(ip, "geoip:"))
+			if code == "" {
+				continue
+			}
+			tag := "geoip-" + code
+			next["rule_set"] = appendString(next["rule_set"], tag)
+			registerRemoteRuleSet(ruleSets, seen, tag, fmt.Sprintf(geoipRuleSetURLFmt, code))
+			added = true
+			geoipUsed = true
 		} else {
 			next[cidrKey] = appendString(next[cidrKey], ip)
+			added = true
 		}
-		added = true
 	}
-	return added
+	return added, geoipUsed
+}
+
+// registerRemoteRuleSet appends a remote rule-set definition to ruleSets the
+// first time a tag is seen, so route/DNS rules can reference it. sing-box
+// requires a url and format on a remote rule set.
+func registerRemoteRuleSet(ruleSets *[]any, seen map[string]struct{}, tag, url string) {
+	if _, ok := seen[tag]; ok {
+		return
+	}
+	seen[tag] = struct{}{}
+	*ruleSets = append(*ruleSets, map[string]any{
+		"tag":             tag,
+		"type":            "remote",
+		"format":          "binary",
+		"url":             url,
+		"download_detour": "direct",
+	})
+}
+
+// geoRuleSetCode normalises an Xray geoip/geosite code into the lowercase token
+// used by the rule-set repository, dropping any "@attribute" suffix (which the
+// .srs sets do not carry).
+func geoRuleSetCode(raw string) string {
+	code := strings.ToLower(strings.TrimSpace(raw))
+	if i := strings.IndexByte(code, '@'); i >= 0 {
+		code = code[:i]
+	}
+	return strings.TrimSpace(code)
 }
 
 // mapPortMatchers splits Xray port specs (a number, an "a-b" range, or a list/

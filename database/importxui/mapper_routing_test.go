@@ -1,7 +1,16 @@
 package importxui
 
 import (
+	"encoding/json"
+	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/database/model"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
 // firstMappedRule runs MapXrayRouting over a single-rule config and returns the
@@ -51,8 +60,12 @@ func TestRoutingMatchers_SourceInboundUser(t *testing.T) {
 	if mapped != 1 || manual != 0 {
 		t.Fatalf("mapped=%d manual=%d, want 1/0", mapped, manual)
 	}
-	if sg := rule["source_geoip"].([]string); len(sg) != 1 || sg[0] != "private" {
-		t.Errorf("source_geoip = %v", rule["source_geoip"])
+	// geoip:private (source) becomes a remote geoip rule set matched on the source.
+	if rs, _ := rule["rule_set"].([]string); len(rs) != 1 || rs[0] != "geoip-private" {
+		t.Errorf("rule_set = %v, want [geoip-private]", rule["rule_set"])
+	}
+	if rule["rule_set_ip_cidr_match_source"] != true {
+		t.Errorf("rule_set_ip_cidr_match_source = %v, want true", rule["rule_set_ip_cidr_match_source"])
 	}
 	if sc := rule["source_ip_cidr"].([]string); len(sc) != 1 || sc[0] != "10.0.0.0/8" {
 		t.Errorf("source_ip_cidr = %v", rule["source_ip_cidr"])
@@ -86,6 +99,102 @@ func TestRoutingMatchers_DomainPrefixes(t *testing.T) {
 	}
 	if dr := rule["domain_regex"].([]string); len(dr) != 1 {
 		t.Errorf("domain_regex = %v", rule["domain_regex"])
+	}
+}
+
+// TestApply_RoutingMergesIntoLiveConfig drives the full Plan/Apply path and
+// verifies routing is merged into the live `config` setting (not a dead side
+// setting): the default rules are preserved, the migrated rule is appended, and
+// geosite/geoip become valid remote rule sets with a URL.
+func TestApply_RoutingMergesIntoLiveConfig(t *testing.T) {
+	initCompatDest(t)
+	dir := t.TempDir()
+	src := filepath.Join(dir, "x-ui.db")
+	buildCompatSource(t, forkVariant, src)
+
+	db, err := gorm.Open(sqlite.Open(src), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	xray := `{"outbounds":[{"tag":"direct","protocol":"freedom"},{"tag":"blocked","protocol":"blackhole"}],` +
+		`"routing":{"rules":[{"outboundTag":"direct","domain":["geosite:google"]},{"outboundTag":"blocked","ip":["geoip:cn"]}]},` +
+		`"dns":{"servers":["1.1.1.1"]}}`
+	if err := db.Exec("INSERT INTO settings(key, value) VALUES(?, ?)", "xrayConfig", xray).Error; err != nil {
+		t.Fatal(err)
+	}
+	if sqlDB, err := db.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+
+	plan, err := Plan(src, PlanOptions{Strategy: StrategyMerge, AdminMode: AdminModeSkip, IncludeRouting: true})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if _, err := Apply(src, *plan, ApplyOptions{}); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	dest := database.GetDB()
+	var cfg model.Setting
+	if err := dest.Where("key = ?", "config").First(&cfg).Error; err != nil {
+		t.Fatal(err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(cfg.Value), &parsed); err != nil {
+		t.Fatalf("merged live config is not valid JSON: %v", err)
+	}
+	route := parsed["route"].(map[string]any)
+	if rules := route["rules"].([]any); len(rules) < 4 {
+		t.Errorf("expected default rules preserved + 2 migrated (>=4), got %d: %v", len(rules), rules)
+	}
+	ruleSets := route["rule_set"].([]any)
+	var gs map[string]any
+	for _, rs := range ruleSets {
+		if m, ok := rs.(map[string]any); ok && m["tag"] == "geosite-google" {
+			gs = m
+		}
+	}
+	if gs == nil {
+		t.Fatalf("geosite-google rule set not merged into live config: %v", ruleSets)
+	}
+	if u, _ := gs["url"].(string); !strings.Contains(u, ".srs") {
+		t.Errorf("geosite rule set missing a usable url: %v", gs)
+	}
+	if gs["type"] != "remote" || gs["download_detour"] != "direct" {
+		t.Errorf("geosite rule set is not a valid remote rule set: %v", gs)
+	}
+	dns := parsed["dns"].(map[string]any)
+	if servers, _ := dns["servers"].([]any); len(servers) == 0 {
+		t.Errorf("dns server not merged into live config: %v", dns)
+	}
+
+	// Re-import must be idempotent: the scheduled sync re-applies routing every
+	// run, so applying the same plan again must not grow rules, rule sets, or DNS
+	// servers (sing-box also rejects a config with duplicate rule-set tags).
+	firstRuleCount := len(route["rules"].([]any))
+	firstRuleSetCount := len(route["rule_set"].([]any))
+	firstDNSServerCount := len(dns["servers"].([]any))
+	if _, err := Apply(src, *plan, ApplyOptions{}); err != nil {
+		t.Fatalf("second apply: %v", err)
+	}
+	var cfg2 model.Setting
+	if err := dest.Where("key = ?", "config").First(&cfg2).Error; err != nil {
+		t.Fatal(err)
+	}
+	var parsed2 map[string]any
+	if err := json.Unmarshal([]byte(cfg2.Value), &parsed2); err != nil {
+		t.Fatal(err)
+	}
+	route2 := parsed2["route"].(map[string]any)
+	dns2 := parsed2["dns"].(map[string]any)
+	if got := len(route2["rules"].([]any)); got != firstRuleCount {
+		t.Errorf("re-import grew route rules from %d to %d (not idempotent)", firstRuleCount, got)
+	}
+	if got := len(route2["rule_set"].([]any)); got != firstRuleSetCount {
+		t.Errorf("re-import grew rule_set from %d to %d (not idempotent)", firstRuleSetCount, got)
+	}
+	if got := len(dns2["servers"].([]any)); got != firstDNSServerCount {
+		t.Errorf("re-import grew dns servers from %d to %d (not idempotent)", firstDNSServerCount, got)
 	}
 }
 

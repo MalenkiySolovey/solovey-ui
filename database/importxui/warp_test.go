@@ -218,11 +218,11 @@ func TestImport_RealXUIBackup_WARP(t *testing.T) {
 	t.Logf("warp endpoint options: %s", warp.Options)
 
 	var cfg model.Setting
-	if err := db.Where("key = ?", "singboxConfig").First(&cfg).Error; err != nil {
-		t.Fatalf("singboxConfig not written: %v", err)
+	if err := db.Where("key = ?", "config").First(&cfg).Error; err != nil {
+		t.Fatalf("live config not written: %v", err)
 	}
 	if !strings.Contains(cfg.Value, `"outbound": "warp"`) && !strings.Contains(cfg.Value, `"outbound":"warp"`) {
-		t.Errorf("routing config has no rule targeting warp: %s", cfg.Value)
+		t.Errorf("live config has no rule targeting warp: %s", cfg.Value)
 	}
-	t.Logf("singboxConfig route: %s", cfg.Value)
+	t.Logf("live config route: %s", cfg.Value)
 }

@@ -22,11 +22,17 @@
   迁移。
 - 出站仅在为新增时创建（重复导入或计划同步不会覆盖运维人员编辑过的同名出站），并且
   导入报告新增 `outbounds`（已导入/已跳过）计数。
+- 迁移的路由与 DNS 现在会应用到实时配置：它们被合并进活动的 sing-box `config`
+  设置（route 规则/规则集、DNS 服务器/规则），保留已有规则并按 tag 去重。此前导入
+  会写入面板从不加载的单独设置，因此导入的路由不生效——现在生效了。
 - 路由规则现在覆盖更多匹配器，而不再标记为“需要手动检查”：`port`/`sourcePort`
   （含范围）、`network`、`protocol`、`source`、`inboundTag`（→`inbound`）、`user`
   （→`auth_user`），以及非 `geosite` 域名（`domain:`/`full:`/`keyword:`/`regexp:`/
-  裸域名 → `domain_suffix`/`domain`/`domain_keyword`/`domain_regex`）。`attrs` 与
-  `balancerTag` 仍需手动检查，因为 sing-box 没有对应项。
+  裸域名 → `domain_suffix`/`domain`/`domain_keyword`/`domain_regex`）。`geosite:`/
+  `geoip:` 匹配会变为 remote `rule_set`（MetaCubeX `meta-rules-dat`），因为 sing-box
+  1.12 移除了内联 `geoip`/`geosite` 字段；source `geoip` 会设置
+  `rule_set_ip_cidr_match_source`。`attrs` 与 `balancerTag` 仍需手动检查（sing-box
+  没有对应项）。
 - Xray 的 `dns` 块会翻译为 sing-box 格式（类型化服务器
   `udp`/`tls`/`https`/`h3`/`quic`/`tcp`/`local`，按域名限定的服务器转为 DNS 规则，
   以及 `final`、查询策略与 `client_subnet`），而不再原样复制（那会生成无效块）。

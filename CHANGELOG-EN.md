@@ -28,12 +28,19 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 - Outbounds are created only when new (a re-import or scheduled sync does not
   clobber an operator-edited outbound of the same tag), and the import report
   gains an `outbounds` (imported/skipped) counter.
+- Migrated routing and DNS now apply to the live config: they are merged into
+  the active sing-box `config` setting (route rules/rule sets, DNS servers/rules),
+  preserving existing rules and de-duplicating rule sets/servers by tag.
+  Previously the import wrote them to a separate setting the panel never loaded,
+  so imported routing had no effect — it does now.
 - Routing rules cover many more matchers instead of "manual review": `port`/
   `sourcePort` (including ranges), `network`, `protocol`, `source`, `inboundTag`
   (→`inbound`), `user` (→`auth_user`), and non-`geosite` domains
   (`domain:`/`full:`/`keyword:`/`regexp:`/bare → `domain_suffix`/`domain`/
-  `domain_keyword`/`domain_regex`). `attrs` and `balancerTag` still need manual
-  review since sing-box has no equivalent.
+  `domain_keyword`/`domain_regex`). `geosite:`/`geoip:` matches become remote
+  `rule_set`s (MetaCubeX `meta-rules-dat`), since sing-box 1.12 removed the inline
+  `geoip`/`geosite` fields; a source `geoip` uses `rule_set_ip_cidr_match_source`.
+  `attrs` and `balancerTag` still need manual review (no sing-box equivalent).
 - The Xray `dns` block is translated to sing-box's format (typed servers
   `udp`/`tls`/`https`/`h3`/`quic`/`tcp`/`local`, domain-scoped servers become DNS
   rules, plus `final`, query strategy and `client_subnet`) instead of being

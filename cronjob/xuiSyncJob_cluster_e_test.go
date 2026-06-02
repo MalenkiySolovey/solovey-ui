@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -197,12 +198,14 @@ func TestIssue7XUISyncPassesProfileImportPolicy(t *testing.T) {
 	if statsCount == 0 {
 		t.Fatal("includeHistory did not import any stats")
 	}
-	var routing model.Setting
-	if err := database.GetDB().Where("key = ?", "singboxConfig").First(&routing).Error; err != nil {
+	var liveConfig model.Setting
+	if err := database.GetDB().Where("key = ?", "config").First(&liveConfig).Error; err != nil {
 		t.Fatal(err)
 	}
-	if len(routing.Value) == 0 {
-		t.Fatal("includeRouting imported an empty singboxConfig")
+	// The source routing rule (domain geosite:google -> direct) must be merged
+	// into the live config as a geosite-google rule set.
+	if !strings.Contains(liveConfig.Value, "geosite-google") {
+		t.Fatalf("includeRouting did not merge the routing rule into the live config: %s", liveConfig.Value)
 	}
 	var admin model.User
 	if err := database.GetDB().Where("username = ?", "xui-admin").First(&admin).Error; err != nil {

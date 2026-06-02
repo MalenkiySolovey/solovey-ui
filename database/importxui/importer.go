@@ -131,7 +131,7 @@ func (s *importState) importOptionalExtras(tx *gorm.DB, src *sourceDB, opts Opti
 		items[planKey(KindHistory, "traffic")] = PlanItem{Kind: KindHistory, SrcID: "traffic", DstTag: "stats", Action: ActionCreate}
 	}
 	if opts.IncludeRouting {
-		items[planKey(KindRouting, "xrayConfig")] = PlanItem{Kind: KindRouting, SrcID: "xrayConfig", DstTag: "singboxConfig", Action: ActionCreate}
+		items[planKey(KindRouting, "xrayConfig")] = PlanItem{Kind: KindRouting, SrcID: "xrayConfig", DstTag: "config", Action: ActionCreate}
 	}
 	extra := &applyState{
 		report:     s.report,
