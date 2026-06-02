@@ -5,6 +5,34 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.6-beta5] - 2026-06-02 - 3x-ui migration fixes
+
+- Fixes a total-failure bug in the built-in 3x-ui import (`migrate-xui`): the
+  dialect hard-coded an `all_time` column (and `last_online`) that neither
+  vanilla mhsanaei 3x-ui nor current normalized forks actually have, so every
+  real-world import aborted with `no such column: all_time` before reading a
+  single row. Source reads are now column-aware (`tableColumns`/`selectColumns`,
+  case-insensitive) and default any column a fork omits. Verified end to end
+  against a real export: all inbounds, clients, WireGuard endpoints, reality TLS
+  (deduplicated), routing and history migrate.
+- Fixes setting migration that wrote 3x-ui keys s-ui ignores (`webBasePath`,
+  `tgBotEnable`, `tgBotToken`, `tgBotChatId`, `tgRunTime`, `subEnable`). Keys now
+  map to their canonical s-ui names (`webPath`, `telegram*`, …) and the mapping
+  is expanded from 9 to 34 settings (web/sub endpoints, display toggles, and the
+  Telegram bot incl. CPU threshold, backup and proxy). Source settings with no
+  s-ui equivalent are surfaced as visible, skipped plan items instead of being
+  dropped silently.
+- Makes cross-host / cross-domain migration safe: host- and domain-specific
+  settings (listen address, panel/sub domain, on-disk TLS certificate paths, and
+  the host-embedding subscription URLs) now default to skip in the plan so they
+  do not overwrite the destination server's working configuration and break it;
+  ports and paths still migrate, and the operator can re-enable any item in the
+  review step. An inbound bound to a specific source listen address now emits a
+  warning that it may not exist on the destination host.
+- The migrate-xui wizard now includes settings, routing and history by default;
+  admin import stays opt-in.
+- Full release notes: [`docs/releases/v1.5.6-beta5.md`](docs/releases/v1.5.6-beta5.md).
+
 ## [1.5.6-beta4] - 2026-06-02 - security & static-analysis hardening
 
 - Drives backend static analysis to zero findings (`staticcheck`,

@@ -4,6 +4,27 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [1.5.6-beta5] - 2026-06-02 - 3x-ui 迁移修复
+
+- 修复内置 3x-ui 导入（`migrate-xui`）完全失败的 bug：dialect 硬编码了
+  `all_time`（及 `last_online`）列，而原版 mhsanaei 3x-ui 和当前的归一化 fork
+  都没有该列，因此任何真实导入都会在读取第一行之前以 `no such column: all_time`
+  中止。现在源读取会感知实际存在的列（`tableColumns`/`selectColumns`，大小写不
+  敏感），并为 fork 缺失的列填入默认值。已针对真实导出做端到端验证：所有
+  inbound、客户端、WireGuard endpoint、reality TLS（去重）、路由与历史均可迁移。
+- 修复会写入 s-ui 不识别的 3x-ui 键（`webBasePath`、`tgBotEnable`、`tgBotToken`、
+  `tgBotChatId`、`tgRunTime`、`subEnable`）的设置迁移。现在键会映射到 s-ui 的规
+  范名称（`webPath`、`telegram*` 等），映射也从 9 个扩展到 34 个设置（web/sub
+  端点、显示开关，以及 Telegram bot 含 CPU 阈值、备份与代理）。源中没有 s-ui 对
+  应项的设置会作为可见的、被跳过的 plan 项呈现，而不再被静默丢弃。
+- 让跨主机/跨域名迁移变得安全：主机与域名相关的设置（监听地址、面板/订阅域名、
+  磁盘上的 TLS 证书路径，以及内嵌主机的订阅 URL）在 plan 中默认跳过，以免覆盖目
+  标服务器的有效配置而使其损坏；端口与路径仍会迁移，操作者可在复核步骤重新启用
+  任意项。绑定到特定源监听地址的 inbound 现在会发出警告，提示它在目标主机上可能
+  不存在。
+- migrate-xui 向导现在默认包含设置、路由与历史；管理员导入仍为可选。
+- 完整发布说明：[`docs/releases/v1.5.6-beta5.md`](docs/releases/v1.5.6-beta5.md)。
+
 ## [1.5.6-beta4] - 2026-06-02 - security & static-analysis hardening
 
 - 将 backend 静态分析做到零告警（`staticcheck`、`golangci-lint`、`gosec`），并使

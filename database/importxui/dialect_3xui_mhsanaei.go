@@ -27,13 +27,37 @@ func (Dialect3XUIMHSanaei) Detect(db *sql.DB) (bool, error) {
 }
 
 func (Dialect3XUIMHSanaei) ReadInbounds(db *sql.DB) ([]xuiInboundRow, error) {
-	rows, err := db.Query(`
-		SELECT id, user_id, up, down, total, all_time, remark, enable,
-		       expiry_time, traffic_reset, last_traffic_reset_time, listen,
-		       port, protocol, settings, stream_settings, tag, sniffing
-		FROM inbounds
-		ORDER BY id
-	`)
+	present, err := tableColumns(db, "inbounds")
+	if err != nil {
+		return nil, err
+	}
+	// Project a fixed column order, defaulting any column a given 3x-ui fork
+	// does not define. Vanilla mhsanaei lacks all_time/traffic_reset/
+	// last_traffic_reset_time; normalized forks add node_id and keep these.
+	projection := selectColumns(present, []columnSpec{
+		{"id", "0"},
+		{"user_id", "0"},
+		{"up", "0"},
+		{"down", "0"},
+		{"total", "0"},
+		{"all_time", "0"},
+		{"remark", "''"},
+		{"enable", "1"},
+		{"expiry_time", "0"},
+		{"traffic_reset", "''"},
+		{"last_traffic_reset_time", "0"},
+		{"listen", "''"},
+		{"port", "0"},
+		{"protocol", "''"},
+		{"settings", "NULL"},
+		{"stream_settings", "NULL"},
+		{"tag", "''"},
+		{"sniffing", "NULL"},
+	})
+	// #nosec G202 -- projection is assembled solely from the fixed column
+	// allow-list above (quoted via quoteIdent) and literal defaults; no
+	// external input reaches the SQL string.
+	rows, err := db.Query("SELECT " + projection + " FROM inbounds ORDER BY id")
 	if err != nil {
 		return nil, err
 	}
@@ -68,12 +92,29 @@ func (Dialect3XUIMHSanaei) ReadInbounds(db *sql.DB) ([]xuiInboundRow, error) {
 }
 
 func (Dialect3XUIMHSanaei) ReadClients(db *sql.DB) ([]xuiClientTraffic, error) {
-	rows, err := db.Query(`
-		SELECT id, inbound_id, enable, email, up, down, all_time,
-		       expiry_time, total, reset, last_online
-		FROM client_traffics
-		ORDER BY id
-	`)
+	present, err := tableColumns(db, "client_traffics")
+	if err != nil {
+		return nil, err
+	}
+	// Vanilla mhsanaei has neither all_time nor last_online; default both so
+	// the positional Scan below stays valid on every fork.
+	projection := selectColumns(present, []columnSpec{
+		{"id", "0"},
+		{"inbound_id", "0"},
+		{"enable", "1"},
+		{"email", "''"},
+		{"up", "0"},
+		{"down", "0"},
+		{"all_time", "0"},
+		{"expiry_time", "0"},
+		{"total", "0"},
+		{"reset", "0"},
+		{"last_online", "0"},
+	})
+	// #nosec G202 -- projection is assembled solely from the fixed column
+	// allow-list above (quoted via quoteIdent) and literal defaults; no
+	// external input reaches the SQL string.
+	rows, err := db.Query("SELECT " + projection + " FROM client_traffics ORDER BY id")
 	if err != nil {
 		return nil, err
 	}

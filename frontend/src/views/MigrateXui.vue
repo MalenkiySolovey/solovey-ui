@@ -363,9 +363,12 @@ export default {
       maxStep: 1,
       file: null as File | File[] | null,
       strategy: 'merge',
-      includeSettings: false,
-      includeHistory: false,
-      includeRouting: false,
+      // Default the optional categories ON so a migration carries over routes,
+      // panel settings and traffic history automatically. Admin import stays
+      // opt-in (skip) because it creates/overwrites credentials.
+      includeSettings: true,
+      includeHistory: true,
+      includeRouting: true,
       adminMode: 'skip',
       loading: false,
       rollbackLoading: false,

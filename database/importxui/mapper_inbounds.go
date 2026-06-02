@@ -90,6 +90,9 @@ func mapInbound(row xuiInboundRow, tlsID uint, reality *realitySpec, server stri
 	transport, transportWarnings := mapTransport(row.Tag, stream)
 	tlsBlock, tlsWarnings := mapOutboundTLSBlock(stream, reality)
 	warnings := append(transportWarnings, tlsWarnings...)
+	if w := listenAddressWarning(row); w != "" {
+		warnings = append(warnings, w)
+	}
 
 	options := map[string]any{
 		"listen":      listenAddress(row.Listen),
@@ -158,6 +161,19 @@ func listenAddress(value string) string {
 		return "0.0.0.0"
 	}
 	return value
+}
+
+// listenAddressWarning flags inbounds bound to a concrete source-server address.
+// Such an address (a specific NIC IP from the old host) usually does not exist
+// on the destination server, so the migrated inbound would fail to start there.
+// Wildcard binds ("", 0.0.0.0, ::) are host-independent and need no warning.
+func listenAddressWarning(row xuiInboundRow) string {
+	switch strings.TrimSpace(row.Listen) {
+	case "", "0.0.0.0", "::", "[::]":
+		return ""
+	default:
+		return fmt.Sprintf("inbound %s: binds to source listen address %q which may not exist on this host; verify or clear it, otherwise the inbound will fail to start", row.Tag, strings.TrimSpace(row.Listen))
+	}
 }
 
 func firstClientFlow(clients []xuiClientSetting) string {
