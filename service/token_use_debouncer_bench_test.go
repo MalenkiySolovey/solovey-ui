@@ -26,6 +26,7 @@ func BenchmarkTokenUseDebouncer_Record(b *testing.B) {
 			b.RunParallel(func(pb *testing.PB) {
 				for pb.Next() {
 					n := seq.Add(1)
+					// #nosec G115 -- bench sequence counter is well within int64 range.
 					debouncer.Record(uint(n%10_000)+1, "198.51.100.1", int64(n))
 				}
 			})
@@ -45,6 +46,7 @@ func BenchmarkTokenUseDebouncer_BatchFlush(b *testing.B) {
 	updates := make(map[uint]tokenUseUpdate, tokens)
 	for i := 0; i < tokens; i++ {
 		rows[i] = model.Tokens{Desc: fmt.Sprintf("phase5-token-%05d", i), TokenHash: fmt.Sprintf("hash-%05d", i), Enabled: true, UserId: 1}
+		// #nosec G115 -- bench loop index, always small and non-negative.
 		updates[uint(i+1)] = tokenUseUpdate{ip: "198.51.100.10", ts: int64(1700000000 + i)}
 	}
 	if err := database.GetDB().CreateInBatches(&rows, tokenUseBatchSize).Error; err != nil {

@@ -40,9 +40,9 @@ func TestSecurityLoginLockoutBlocksAuditsAndRecovers(t *testing.T) {
 	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
 	NewAPIHandler(router.Group("/api"), nil)
 
-	const ip = "198.51.100.77"
+	const ip = securityLockoutTestIP
 	for i := 0; i < 10; i++ {
-		recorder := performSecurityLogin(router, ip, "admin", "wrong-password")
+		recorder := performSecurityLogin(router, "wrong-password")
 		if recorder.Code != http.StatusOK {
 			t.Fatalf("wrong login %d returned status %d", i+1, recorder.Code)
 		}
@@ -56,27 +56,29 @@ func TestSecurityLoginLockoutBlocksAuditsAndRecovers(t *testing.T) {
 		t.Fatalf("unexpected login_blocked audit: %#v", blocked)
 	}
 
-	blockedLogin := performSecurityLogin(router, ip, "admin", "correct-password")
+	blockedLogin := performSecurityLogin(router, "correct-password")
 	assertSecurityLoginFailureContains(t, blockedLogin, "too many login attempts")
 
 	forceLoginWindowElapsed(ip)
-	recovered := performSecurityLogin(router, ip, "admin", "correct-password")
+	recovered := performSecurityLogin(router, "correct-password")
 	assertSecurityLoginSuccess(t, recovered)
 
 	for i := 0; i < loginRateLimitMax; i++ {
-		_ = performSecurityLogin(router, ip, "admin", "wrong-password")
+		_ = performSecurityLogin(router, "wrong-password")
 	}
 	resetLoginFailures(ip)
-	afterReset := performSecurityLogin(router, ip, "admin", "correct-password")
+	afterReset := performSecurityLogin(router, "correct-password")
 	assertSecurityLoginSuccess(t, afterReset)
 }
 
-func performSecurityLogin(router *gin.Engine, ip string, username string, password string) *httptest.ResponseRecorder {
+const securityLockoutTestIP = "198.51.100.77"
+
+func performSecurityLogin(router *gin.Engine, password string) *httptest.ResponseRecorder {
 	form := url.Values{}
-	form.Set("user", username)
+	form.Set("user", "admin")
 	form.Set("pass", password)
 	req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(form.Encode()))
-	req.RemoteAddr = ip + ":12345"
+	req.RemoteAddr = securityLockoutTestIP + ":12345"
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, req)
@@ -92,7 +94,7 @@ func assertSecurityLoginSuccess(t *testing.T, recorder *httptest.ResponseRecorde
 	if !msg.Success {
 		t.Fatalf("expected successful login, got %#v body=%s", msg, recorder.Body.String())
 	}
-	if findCookieByName(recorder.Result().Cookies(), "s-ui") == nil {
+	if findCookieByName(recorder.Result().Cookies()) == nil {
 		t.Fatal("successful login did not set session cookie")
 	}
 }

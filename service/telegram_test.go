@@ -109,7 +109,7 @@ func TestNewTelegramHTTPClientUsesHTTPProxySettings(t *testing.T) {
 	if !ok || transport.Proxy == nil {
 		t.Fatalf("expected proxy transport, got %#v", client.Transport)
 	}
-	req, err := http.NewRequest(http.MethodGet, "https://api.telegram.org", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://api.telegram.org", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -47,7 +47,7 @@ func TestIntegrationRealtimeWSIssueConnectPublishCloseReconnect(t *testing.T) {
 
 	token = issueIntegrationWSToken(t, server, cookies)
 	reconnected := dialIntegrationWS(t, server, cookies, token)
-	t.Cleanup(func() { reconnected.CloseNow() })
+	t.Cleanup(func() { _ = reconnected.CloseNow() })
 	if event := readIntegrationWSEvent(t, reconnected); event.Type != realtime.Topic("connected") {
 		t.Fatalf("expected connected event after reconnect, got %s", event.Type)
 	}
@@ -66,7 +66,7 @@ func TestIntegrationRealtimeWSMultipleClientsReceivePublish(t *testing.T) {
 		token := issueIntegrationWSToken(t, server, cookies)
 		conn := dialIntegrationWS(t, server, cookies, token)
 		conns = append(conns, conn)
-		t.Cleanup(func() { conn.CloseNow() })
+		t.Cleanup(func() { _ = conn.CloseNow() })
 		if event := readIntegrationWSEvent(t, conn); event.Type != realtime.Topic("connected") {
 			t.Fatalf("client %d expected connected event, got %s", i, event.Type)
 		}
@@ -88,12 +88,10 @@ func TestIntegrationRealtimeWSMaxPerUserCapacity(t *testing.T) {
 	t.Cleanup(server.Close)
 	cookies := loginIntegrationWSUser(t, router, "admin")
 
-	conns := make([]*websocket.Conn, 0, maxWSPerUser)
 	for i := 0; i < maxWSPerUser; i++ {
 		token := issueIntegrationWSToken(t, server, cookies)
 		conn := dialIntegrationWS(t, server, cookies, token)
-		conns = append(conns, conn)
-		t.Cleanup(func() { conn.CloseNow() })
+		t.Cleanup(func() { _ = conn.CloseNow() })
 		if event := readIntegrationWSEvent(t, conn); event.Type != realtime.Topic("connected") {
 			t.Fatalf("client %d expected connected event, got %s", i, event.Type)
 		}
@@ -101,8 +99,11 @@ func TestIntegrationRealtimeWSMaxPerUserCapacity(t *testing.T) {
 
 	token := issueIntegrationWSToken(t, server, cookies)
 	overflow, resp, err := dialIntegrationWSRaw(t, server, cookies, token)
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+	}
 	if err == nil {
-		overflow.CloseNow()
+		_ = overflow.CloseNow()
 		t.Fatal("expected maxWSPerUser overflow to reject websocket")
 	}
 	if resp == nil || resp.StatusCode != http.StatusTooManyRequests {
@@ -117,13 +118,11 @@ func TestIntegrationRealtimeWSMaxPerIPCapacity(t *testing.T) {
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 
-	conns := make([]*websocket.Conn, 0, maxWSPerIP)
 	for i := 0; i < maxWSPerIP; i++ {
 		cookies := loginIntegrationWSUser(t, router, fmt.Sprintf("user-%02d", i))
 		token := issueIntegrationWSToken(t, server, cookies)
 		conn := dialIntegrationWS(t, server, cookies, token)
-		conns = append(conns, conn)
-		t.Cleanup(func() { conn.CloseNow() })
+		t.Cleanup(func() { _ = conn.CloseNow() })
 		if event := readIntegrationWSEvent(t, conn); event.Type != realtime.Topic("connected") {
 			t.Fatalf("client %d expected connected event, got %s", i, event.Type)
 		}
@@ -132,8 +131,11 @@ func TestIntegrationRealtimeWSMaxPerIPCapacity(t *testing.T) {
 	overflowCookies := loginIntegrationWSUser(t, router, "user-overflow")
 	token := issueIntegrationWSToken(t, server, overflowCookies)
 	overflow, resp, err := dialIntegrationWSRaw(t, server, overflowCookies, token)
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+	}
 	if err == nil {
-		overflow.CloseNow()
+		_ = overflow.CloseNow()
 		t.Fatal("expected maxWSPerIP overflow to reject websocket")
 	}
 	if resp == nil || resp.StatusCode != http.StatusTooManyRequests {
@@ -219,7 +221,7 @@ func loginIntegrationWSUser(t *testing.T, router *gin.Engine, user string) []*ht
 
 func issueIntegrationWSToken(t *testing.T, server *httptest.Server, cookies []*http.Cookie) string {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/realtime/ws-token", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/api/realtime/ws-token", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,8 +257,11 @@ func issueIntegrationWSToken(t *testing.T, server *httptest.Server, cookies []*h
 func dialIntegrationWS(t *testing.T, server *httptest.Server, cookies []*http.Cookie, token string) *websocket.Conn {
 	t.Helper()
 	conn, resp, err := dialIntegrationWSRaw(t, server, cookies, token)
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
-		t.Fatalf("dial websocket failed: resp=%v err=%v", resp, err)
+		t.Fatalf("dial websocket failed: err=%v", err)
 	}
 	return conn
 }

@@ -17,7 +17,7 @@ func TestIssue37ImportXuiApplyAcceptsLargePlan(t *testing.T) {
 		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiApply))
 	})
 
-	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1", "merge"), cookies...)
+	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1"), cookies...)
 	if planRecorder.Code != http.StatusOK {
 		t.Fatalf("plan status=%d body=%s", planRecorder.Code, planRecorder.Body.String())
 	}

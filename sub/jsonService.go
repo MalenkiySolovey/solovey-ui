@@ -90,7 +90,9 @@ func (j *JsonService) GetJson(subId string, format string) (*string, []string, e
 	jsonConfig["outbounds"] = outbounds
 
 	// Add other objects from settings
-	j.addOthers(&jsonConfig)
+	if err := j.addOthers(&jsonConfig); err != nil {
+		return nil, nil, err
+	}
 
 	result, _ := json.MarshalIndent(jsonConfig, "", "  ")
 	resultStr := string(result)

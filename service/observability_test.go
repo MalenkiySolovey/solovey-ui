@@ -90,7 +90,7 @@ func TestObservabilityMemoryCapCacheRefreshesAfterTTL(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Unix(1_700_000_000, 0)
-	observabilityMemoryCapCache = newObservabilityMemoryCapCache(observabilityMemoryCapCacheTTL, func() time.Time {
+	observabilityMemoryCapCache = newObservabilityMemoryCapCache(func() time.Time {
 		return now
 	})
 
@@ -146,7 +146,7 @@ func resetObservabilityHistoryForTest(t *testing.T) {
 	oldHistory := observabilityHistory
 	oldMemoryCapCache := observabilityMemoryCapCache
 	observabilityHistory = newObservabilityStore()
-	observabilityMemoryCapCache = newObservabilityMemoryCapCache(observabilityMemoryCapCacheTTL, time.Now)
+	observabilityMemoryCapCache = newObservabilityMemoryCapCache(time.Now)
 	t.Cleanup(func() {
 		observabilityHistory = oldHistory
 		observabilityMemoryCapCache = oldMemoryCapCache
@@ -193,9 +193,11 @@ func testObservabilitySample(i int) ObservabilitySample {
 		DateTime: int64(i),
 		CPU:      float64(i),
 		Memory: map[string]interface{}{
+			// #nosec G115 -- synthetic test loop index, always small and non-negative.
 			"current": uint64(i),
 		},
 		Network: map[string]interface{}{
+			// #nosec G115 -- synthetic test loop index, always small and non-negative.
 			"sent": uint64(i),
 		},
 	}

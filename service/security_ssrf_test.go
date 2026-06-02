@@ -36,8 +36,7 @@ func TestSecurityTelegramProxyURLAllowsPublicProxySchemes(t *testing.T) {
 	}
 }
 
-func TestSecurityTelegramProxyURLRejectsUserInfo_XFAILPhase4(t *testing.T) {
-	t.Skip("XFAIL Phase4: Telegram proxy URLs currently support userinfo for proxy auth; decide contract before enforcing rejection")
+func TestSecurityTelegramProxyURLRejectsUserInfo(t *testing.T) {
 	if err := validateTelegramProxyURL("http://user:pass@8.8.8.8:8080"); err == nil {
 		t.Fatal("expected proxy userinfo to be rejected")
 	}
@@ -58,8 +57,7 @@ func TestSecurityValidateOptionalHTTPURLRejectsUnsafeSyntax(t *testing.T) {
 	}
 }
 
-func TestSecurityValidateOptionalHTTPURLRejectsPrivateHosts_XFAILIssue30(t *testing.T) {
-	t.Skip("XFAIL Phase4: validateOptionalHTTPURL currently checks syntax/userinfo only and does not call SSRF validator; related to registry issue 30")
+func TestSecurityValidateOptionalHTTPURLRejectsPrivateHosts(t *testing.T) {
 	for _, rawURL := range []string{
 		"http://127.0.0.1:8080",
 		"http://10.0.0.1",

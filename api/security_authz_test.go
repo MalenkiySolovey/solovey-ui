@@ -140,18 +140,18 @@ func TestSecurityAuthZAPIV2InvalidAndExpiredTokenCurrentStatus(t *testing.T) {
 		}
 	}
 	missing := httptest.NewRequest(http.MethodGet, "/apiv2/settings", nil)
-	assertAPIV2TokenFailureCurrentStatus(t, router, missing)
+	assertAPIV2TokenFailureStatus(t, router, missing)
 	expired := httptest.NewRequest(http.MethodGet, "/apiv2/settings?expired=1", nil)
 	expired.Header.Set("Authorization", "Bearer "+expiredPlain)
-	assertAPIV2TokenFailureCurrentStatus(t, router, expired)
+	assertAPIV2TokenFailureStatus(t, router, expired)
 }
 
-func assertAPIV2TokenFailureCurrentStatus(t *testing.T, router *gin.Engine, req *http.Request) {
+func assertAPIV2TokenFailureStatus(t *testing.T, router *gin.Engine, req *http.Request) {
 	t.Helper()
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, req)
-	if recorder.Code != http.StatusOK {
-		t.Fatalf("current invalid-token contract changed: status=%d body=%s", recorder.Code, recorder.Body.String())
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("invalid-token status=%d body=%s, want 401", recorder.Code, recorder.Body.String())
 	}
 	var msg Msg
 	if err := json.Unmarshal(recorder.Body.Bytes(), &msg); err != nil {
@@ -160,10 +160,6 @@ func assertAPIV2TokenFailureCurrentStatus(t *testing.T, router *gin.Engine, req 
 	if msg.Success {
 		t.Fatalf("invalid token unexpectedly succeeded: %#v", msg)
 	}
-}
-
-func TestSecurityAuthZAPIV2HTTPAuthStatus_XFAILPhase4(t *testing.T) {
-	t.Skip("XFAIL Phase4: APIv2 invalid/expired token currently returns HTTP 200 success=false; desired contract is 401/403")
 }
 
 func TestSecurityAuthZImportXUISharedRegistryPreservesAuthSurfacesIssue35(t *testing.T) {
@@ -182,7 +178,7 @@ func TestSecurityAuthZImportXUISharedRegistryPreservesAuthSurfacesIssue35(t *tes
 	if v1.Code != http.StatusTemporaryRedirect {
 		t.Fatalf("unexpected v1 unauthenticated session surface: status=%d body=%s", v1.Code, v1.Body.String())
 	}
-	if v2.Code != http.StatusOK || !strings.Contains(v2.Body.String(), "invalid token") {
+	if v2.Code != http.StatusUnauthorized || !strings.Contains(v2.Body.String(), "invalid token") {
 		t.Fatalf("unexpected v2 unauthenticated contract: status=%d body=%s", v2.Code, v2.Body.String())
 	}
 }

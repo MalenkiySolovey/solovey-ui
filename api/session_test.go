@@ -79,9 +79,9 @@ func performSessionRequest(router *gin.Engine, path string, cookies ...*http.Coo
 	return recorder
 }
 
-func findCookieByName(cookies []*http.Cookie, name string) *http.Cookie {
+func findCookieByName(cookies []*http.Cookie) *http.Cookie {
 	for _, c := range cookies {
-		if c.Name == name {
+		if c.Name == "s-ui" {
 			return c
 		}
 	}
@@ -97,7 +97,7 @@ func TestSessionCookieSecureForcedByEnv(t *testing.T) {
 	if login.Code != http.StatusNoContent {
 		t.Fatalf("login returned %d", login.Code)
 	}
-	cookie := findCookieByName(login.Result().Cookies(), "s-ui")
+	cookie := findCookieByName(login.Result().Cookies())
 	if cookie == nil {
 		t.Fatal("login did not set s-ui cookie")
 	}
@@ -121,7 +121,7 @@ func TestSessionCookieSecureAutoFromWebURI(t *testing.T) {
 	if login.Code != http.StatusNoContent {
 		t.Fatalf("login returned %d", login.Code)
 	}
-	cookie := findCookieByName(login.Result().Cookies(), "s-ui")
+	cookie := findCookieByName(login.Result().Cookies())
 	if cookie == nil {
 		t.Fatal("login did not set s-ui cookie")
 	}
@@ -143,7 +143,7 @@ func TestClearSessionCookieSecureForcedByEnv(t *testing.T) {
 	if logout.Code != http.StatusNoContent {
 		t.Fatalf("logout returned %d", logout.Code)
 	}
-	cookie := findCookieByName(logout.Result().Cookies(), "s-ui")
+	cookie := findCookieByName(logout.Result().Cookies())
 	if cookie == nil {
 		t.Fatal("logout did not set s-ui cookie")
 	}

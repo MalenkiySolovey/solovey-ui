@@ -53,7 +53,6 @@ var (
 	telegramHTTPClient   = &http.Client{Timeout: 10 * time.Second}
 	telegramHTTPOverride bool
 	telegramHTTPConfig   telegramProxyConfig
-	telegramSleep        = time.Sleep
 )
 
 type telegramProxyConfig struct {
@@ -112,10 +111,6 @@ func newDefaultTelegramNotifier() *telegramNotifier {
 		},
 		recordTelegramNotifierAudit,
 	)
-}
-
-func getTelegramNotifier() *telegramNotifier {
-	return DefaultRuntime().telegram()
 }
 
 func StopTelegramNotifier(ctx context.Context) error {
@@ -290,12 +285,6 @@ func (n *telegramNotifier) Stop(ctx context.Context) error {
 	}
 }
 
-func getTelegramHTTPClient() *http.Client {
-	telegramHTTPClientMu.RLock()
-	defer telegramHTTPClientMu.RUnlock()
-	return telegramHTTPClient
-}
-
 func (s *TelegramService) getTelegramHTTPClient() (*http.Client, error) {
 	cfg, err := s.telegramProxyConfig()
 	if err != nil {
@@ -409,7 +398,7 @@ func (s *TelegramService) SendTelegramDocument(filename string, data []byte, cap
 		writeErr <- bodyWriter.Close()
 	}()
 
-	req, err := http.NewRequest(http.MethodPost, "https://api.telegram.org/bot"+token+"/sendDocument", bodyReader)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://api.telegram.org/bot"+token+"/sendDocument", bodyReader)
 	if err != nil {
 		_ = bodyReader.CloseWithError(err)
 		<-writeErr
@@ -502,7 +491,7 @@ func (s *TelegramService) send(text string) TelegramResult {
 	if err != nil {
 		return TelegramResult{ErrorClass: "payload"}
 	}
-	req, err := http.NewRequest(http.MethodPost, "https://api.telegram.org/bot"+token+"/sendMessage", bytes.NewReader(payload))
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, "https://api.telegram.org/bot"+token+"/sendMessage", bytes.NewReader(payload))
 	if err != nil {
 		return TelegramResult{ErrorClass: "request"}
 	}
@@ -659,6 +648,9 @@ func newTelegramSOCKS5Transport(proxyHost string, auth *proxy.Auth) (*http.Trans
 func validateTelegramProxyURL(rawURL string) error {
 	if rawURL == "" {
 		return nil
+	}
+	if parsed, err := url.Parse(rawURL); err == nil && parsed.User != nil {
+		return common.NewError("proxy url must not contain credentials; use the username/password fields")
 	}
 	return ssrf.ValidateOutboundURL(context.Background(), rawURL, "http", "https", "socks5")
 }

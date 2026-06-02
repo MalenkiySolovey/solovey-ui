@@ -28,10 +28,12 @@ func moveJsonToDb(db *gorm.DB) error {
 		return err
 	}
 	configPath := dir + "/" + binFolderPath + "/config.json"
+	// #nosec G703 -- configPath derives from the operator-set SUI_BIN_FOLDER under the app dir.
 	if _, err := os.Stat(configPath); errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 
+	// #nosec G304 G703 -- configPath derives from the operator-set SUI_BIN_FOLDER under the app dir.
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		return err
@@ -43,8 +45,12 @@ func moveJsonToDb(db *gorm.DB) error {
 	}
 
 	oldInbounds := oldConfig["inbounds"].([]interface{})
-	db.Migrator().DropTable(&model.Inbound{})
-	db.AutoMigrate(&model.Inbound{})
+	if err := db.Migrator().DropTable(&model.Inbound{}); err != nil {
+		return err
+	}
+	if err := db.AutoMigrate(&model.Inbound{}); err != nil {
+		return err
+	}
 	for _, inbound := range oldInbounds {
 		inbObj, _ := inbound.(map[string]interface{})
 		tag, _ := inbObj["tag"].(string)
@@ -80,7 +86,11 @@ func moveJsonToDb(db *gorm.DB) error {
 		if inbData.Id > 0 {
 			inbObj["out_json"] = inbData.OutJson
 			var addrs []map[string]interface{}
-			json.Unmarshal(inbData.Addrs, &addrs)
+			if len(inbData.Addrs) > 0 {
+				if err := json.Unmarshal(inbData.Addrs, &addrs); err != nil {
+					return err
+				}
+			}
 			for index, addr := range addrs {
 				if tlsEnable, ok := addr["tls"].(bool); ok {
 					newTls := map[string]interface{}{
@@ -125,8 +135,12 @@ func moveJsonToDb(db *gorm.DB) error {
 	dnsOutboundTags := []string{}
 
 	oldOutbounds := oldConfig["outbounds"].([]interface{})
-	db.Migrator().DropTable(&model.Outbound{}, &model.Endpoint{})
-	db.AutoMigrate(&model.Outbound{}, &model.Endpoint{})
+	if err := db.Migrator().DropTable(&model.Outbound{}, &model.Endpoint{}); err != nil {
+		return err
+	}
+	if err := db.AutoMigrate(&model.Outbound{}, &model.Endpoint{}); err != nil {
+		return err
+	}
 	for _, outbound := range oldOutbounds {
 		outType, _ := outbound.(map[string]interface{})["type"].(string)
 		outboundRaw, _ := json.MarshalIndent(outbound, "", "  ")
@@ -149,10 +163,11 @@ func moveJsonToDb(db *gorm.DB) error {
 			// Delete deprecated fields
 			if newOutbound.Type == "direct" {
 				var options map[string]interface{}
-				json.Unmarshal(newOutbound.Options, &options)
-				delete(options, "override_address")
-				delete(options, "override_port")
-				newOutbound.Options, _ = json.Marshal(options)
+				if err := json.Unmarshal(newOutbound.Options, &options); err == nil {
+					delete(options, "override_address")
+					delete(options, "override_port")
+					newOutbound.Options, _ = json.Marshal(options)
+				}
 			}
 
 			switch newOutbound.Type {

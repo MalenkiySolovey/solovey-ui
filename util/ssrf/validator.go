@@ -148,6 +148,13 @@ func validateHostname(host string) error {
 	return nil
 }
 
+// IsBlockedAddr reports whether addr falls in a private, loopback, link-local,
+// multicast, or otherwise disallowed range for outbound requests. It performs
+// no DNS resolution, so callers can use it to reject IP-literal hosts cheaply.
+func IsBlockedAddr(addr netip.Addr) bool {
+	return isBlockedAddr(addr)
+}
+
 func isBlockedAddr(addr netip.Addr) bool {
 	addr = addr.Unmap()
 	if !addr.IsGlobalUnicast() || addr.IsPrivate() || addr.IsLoopback() ||

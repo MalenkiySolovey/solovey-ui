@@ -55,10 +55,6 @@ func newAuditWriter(capacity int, batchSize int, flushInterval time.Duration, wr
 	}
 }
 
-func getAuditWriter() *auditWriter {
-	return DefaultRuntime().audit()
-}
-
 func StopAuditWriter(ctx context.Context) error {
 	runtime := DefaultRuntime()
 	writer := runtime.audit()

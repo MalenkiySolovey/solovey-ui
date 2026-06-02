@@ -70,7 +70,7 @@ type observabilityStore struct {
 }
 
 var observabilityHistory = newObservabilityStore()
-var observabilityMemoryCapCache = newObservabilityMemoryCapCache(observabilityMemoryCapCacheTTL, time.Now)
+var observabilityMemoryCapCache = newObservabilityMemoryCapCache(time.Now)
 
 func init() {
 	database.RegisterResetHook("service.observability", resetObservabilityCaches)
@@ -84,12 +84,12 @@ type observabilityMemoryCapCacheState struct {
 	now               func() time.Time
 }
 
-func newObservabilityMemoryCapCache(ttl time.Duration, now func() time.Time) *observabilityMemoryCapCacheState {
+func newObservabilityMemoryCapCache(now func() time.Time) *observabilityMemoryCapCacheState {
 	if now == nil {
 		now = time.Now
 	}
 	cache := &observabilityMemoryCapCacheState{
-		ttl: ttl,
+		ttl: observabilityMemoryCapCacheTTL,
 		now: now,
 	}
 	cache.capMB.Store(observabilityDefaultMemoryCapMB)
@@ -106,7 +106,7 @@ func newObservabilityStore() *observabilityStore {
 }
 
 func resetObservabilityCaches() {
-	observabilityMemoryCapCache = newObservabilityMemoryCapCache(observabilityMemoryCapCacheTTL, time.Now)
+	observabilityMemoryCapCache = newObservabilityMemoryCapCache(time.Now)
 	observabilityHistory.mu.Lock()
 	observabilityHistory.lastMemoryWarnCapMB = 0
 	observabilityHistory.lastMemoryWarnUnix = 0

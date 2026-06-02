@@ -28,7 +28,7 @@ func TestImportXuiRequiresDatabaseScopeAndAuditsDenied(t *testing.T) {
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
 		router.POST("/api/import-xui", withTestTokenScope("reader", "read", (&ApiService{}).ImportXui))
 	})
-	recorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui", readFile(t, src), "1", "merge"), cookies...)
+	recorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui", readFile(t, src), "1"), cookies...)
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("reader scope should be forbidden, got %d", recorder.Code)
 	}
@@ -47,7 +47,7 @@ func TestImportXuiPlanAndApplyWithEditedPlan(t *testing.T) {
 		router.POST("/api/import-xui/plan", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiPlan))
 		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiApply))
 	})
-	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1", "merge"), cookies...)
+	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1"), cookies...)
 	if planRecorder.Code != http.StatusOK {
 		t.Fatalf("plan status=%d body=%s", planRecorder.Code, planRecorder.Body.String())
 	}
@@ -75,7 +75,7 @@ func TestImportXuiApplyRejectsStalePlan(t *testing.T) {
 		router.POST("/api/import-xui/plan", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiPlan))
 		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiApply))
 	})
-	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1", "merge"), cookies...)
+	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1"), cookies...)
 	plan := decodePlanResponse(t, planRecorder.Body.Bytes())
 	changed := append([]byte(nil), readFile(t, src)...)
 	changed = append(changed, []byte("changed")...)
@@ -94,7 +94,7 @@ func TestImportXuiApplyAcceptsSevenMiBPlanField(t *testing.T) {
 		router.POST("/api/import-xui/plan", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiPlan))
 		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiApply))
 	})
-	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1", "merge"), cookies...)
+	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1"), cookies...)
 	if planRecorder.Code != http.StatusOK {
 		t.Fatalf("plan status=%d body=%s", planRecorder.Code, planRecorder.Body.String())
 	}
@@ -134,7 +134,7 @@ func TestImportXuiRollbackRestoresBackup(t *testing.T) {
 		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiApply))
 		router.POST("/api/import-xui/rollback", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiRollback))
 	})
-	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1", "merge"), cookies...)
+	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1"), cookies...)
 	plan := decodePlanResponse(t, planRecorder.Body.Bytes())
 	applyRecorder := performAuthenticatedTestRequest(router, newXuiApplyRequest(t, readFile(t, src), plan), cookies...)
 	report := decodeReportResponse(t, applyRecorder.Body.Bytes())
@@ -263,7 +263,7 @@ func TestSaveXUIUploadTriggersStaleCleanupIssue38(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	c.Request = newXuiImportRequest(t, "/api/import-xui", []byte("SQLite format 3\x00"), "1", "merge")
+	c.Request = newXuiImportRequest(t, "/api/import-xui", []byte("SQLite format 3\x00"), "1")
 
 	upload, err := saveXUIUpload(c)
 	if err != nil {
@@ -308,7 +308,7 @@ func TestSaveXUIUploadCleanupIsFailSoftIssue38(t *testing.T) {
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	c.Request = newXuiImportRequest(t, "/api/import-xui", []byte("SQLite format 3\x00"), "1", "merge")
+	c.Request = newXuiImportRequest(t, "/api/import-xui", []byte("SQLite format 3\x00"), "1")
 
 	upload, err := saveXUIUpload(c)
 	if err != nil {
@@ -329,7 +329,7 @@ func TestImportXuiCorruptFileAuditsFailure(t *testing.T) {
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
 		router.POST("/api/import-xui", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXui))
 	})
-	recorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui", []byte("not sqlite"), "1", "merge"), cookies...)
+	recorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui", []byte("not sqlite"), "1"), cookies...)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("corrupt x-ui db should return 400, got %d", recorder.Code)
 	}
@@ -355,7 +355,7 @@ func TestImportXuiDryRunReturnsReportWithoutMutation(t *testing.T) {
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
 		router.POST("/api/import-xui", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXui))
 	})
-	recorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui", readFile(t, src), "1", "merge"), cookies...)
+	recorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui", readFile(t, src), "1"), cookies...)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d body=%s", recorder.Code, recorder.Body.String())
 	}
@@ -383,7 +383,7 @@ func TestImportXuiAppliesImportAndAuditsSuccess(t *testing.T) {
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
 		router.POST("/api/import-xui", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXui))
 	})
-	recorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui", readFile(t, src), "0", "merge"), cookies...)
+	recorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui", readFile(t, src), "0"), cookies...)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d body=%s", recorder.Code, recorder.Body.String())
 	}
@@ -520,7 +520,7 @@ func readFile(t *testing.T, path string) []byte {
 	return data
 }
 
-func newXuiImportRequest(t *testing.T, path string, content []byte, dryRun string, strategy string) *http.Request {
+func newXuiImportRequest(t *testing.T, path string, content []byte, dryRun string) *http.Request {
 	t.Helper()
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)
@@ -529,10 +529,8 @@ func newXuiImportRequest(t *testing.T, path string, content []byte, dryRun strin
 			t.Fatal(err)
 		}
 	}
-	if strategy != "" {
-		if err := writer.WriteField("strategy", strategy); err != nil {
-			t.Fatal(err)
-		}
+	if err := writer.WriteField("strategy", "merge"); err != nil {
+		t.Fatal(err)
 	}
 	part, err := writer.CreateFormFile("db", "x-ui.db")
 	if err != nil {

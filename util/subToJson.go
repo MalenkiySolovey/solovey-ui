@@ -104,7 +104,11 @@ func GetExternalLink(rawURL string) (string, error) {
 		return "", err
 	}
 
-	response, err := getExternalHTTPClient().Get(rawURL)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, rawURL, nil)
+	if err != nil {
+		return "", err
+	}
+	response, err := getExternalHTTPClient().Do(req)
 	if err != nil {
 		if errors.Is(err, errBlockedExternalAddress) {
 			logger.Warning("sub: external URL resolves to blocked address:", err)

@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/deposist/s-ui-x/database"
@@ -89,10 +88,10 @@ func (s *InboundService) GetAll() (*[]map[string]interface{}, error) {
 			inbData["listen"] = restFields["listen"]
 			inbData["listen_port"] = restFields["listen_port"]
 			if inbound.Type == "shadowtls" {
-				json.Unmarshal(restFields["version"], &shadowtls_version)
+				_ = json.Unmarshal(restFields["version"], &shadowtls_version)
 			}
 			if inbound.Type == "shadowsocks" {
-				json.Unmarshal(restFields["managed"], &ss_managed)
+				_ = json.Unmarshal(restFields["managed"], &ss_managed)
 			}
 		}
 		includeUsers := s.hasUser(inbound.Type) &&
@@ -319,39 +318,6 @@ func (s *InboundService) addUsers(db *gorm.DB, inboundJson []byte, inboundId uin
 
 	condition := "? IN (SELECT json_each.value FROM json_each(clients.inbounds))"
 	inbound["users"], err = s.fetchUsersByCondition(db, inboundType, condition, inbound, inboundId)
-	if err != nil {
-		return nil, err
-	}
-
-	return json.Marshal(inbound)
-}
-
-func (s *InboundService) initUsers(db *gorm.DB, inboundJson []byte, clientIds string, inboundType string) ([]byte, error) {
-	ClientIds := strings.Split(clientIds, ",")
-	if len(ClientIds) == 0 {
-		return inboundJson, nil
-	}
-
-	if !s.hasUser(inboundType) {
-		return inboundJson, nil
-	}
-
-	var inbound map[string]interface{}
-	err := json.Unmarshal(inboundJson, &inbound)
-	if err != nil {
-		return nil, err
-	}
-
-	ids := make([]uint, 0, len(ClientIds))
-	for _, clientId := range ClientIds {
-		id, err := strconv.ParseUint(strings.TrimSpace(clientId), 10, 64)
-		if err != nil {
-			return nil, err
-		}
-		ids = append(ids, uint(id))
-	}
-	condition := "id IN ?"
-	inbound["users"], err = s.fetchUsersByCondition(db, inboundType, condition, inbound, ids)
 	if err != nil {
 		return nil, err
 	}

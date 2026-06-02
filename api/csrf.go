@@ -13,6 +13,7 @@ import (
 )
 
 const (
+	// #nosec G101 -- session storage key name, not a credential.
 	csrfTokenKey   = "CSRF_TOKEN"
 	csrfExpiresKey = "CSRF_EXPIRES"
 	csrfHeader     = "X-CSRF-Token"

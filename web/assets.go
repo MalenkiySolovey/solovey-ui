@@ -9,8 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-// serveAssetsFS returns a Gin handler that serves files from assetsFS under
-// basePath while responding 404 for missing files. This is intentionally
+// serveAssetsFS returns a Gin handler that serves files from assetsFS while
+// responding 404 for missing files. This is intentionally
 // different from gin.StaticFS, which falls through to NoRoute when a file
 // is missing — and our NoRoute serves index.html. After a panel upgrade,
 // any browser tab still holding the previous index.html fetches old chunk
@@ -21,7 +21,7 @@ import (
 //
 // Returning a real 404 lets Vite's preload-error handler in the frontend
 // detect the stale chunk and reload index.html cleanly.
-func serveAssetsFS(assetsFS fs.FS, basePath string) gin.HandlerFunc {
+func serveAssetsFS(assetsFS fs.FS) gin.HandlerFunc {
 	fileServer := http.FileServer(http.FS(assetsFS))
 	return func(c *gin.Context) {
 		// Trim the configured base path + "assets/" prefix to leave only

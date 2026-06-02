@@ -161,7 +161,7 @@ func (s *ServerService) GetSingboxInfo() map[string]interface{} {
 	return map[string]interface{}{
 		"running": isRunning,
 		"stats": map[string]interface{}{
-			"NumGoroutine": uint32(runtime.NumGoroutine()),
+			"NumGoroutine": runtime.NumGoroutine(),
 			"Alloc":        rtm.Alloc,
 			"Uptime":       uptime,
 		},
@@ -174,7 +174,7 @@ func (s *ServerService) GetSystemInfo() map[string]interface{} {
 	runtime.ReadMemStats(&rtm)
 
 	info["appMem"] = rtm.Sys
-	info["appThreads"] = uint32(runtime.NumGoroutine())
+	info["appThreads"] = runtime.NumGoroutine()
 	cpuInfo, err := cpu.Info()
 	if err == nil && len(cpuInfo) > 0 {
 		info["cpuType"] = cpuInfo[0].ModelName

@@ -21,7 +21,7 @@ func TestConnTrackerResetWaitsForBlockedRead(t *testing.T) {
 		_, err := wrapped.Read(make([]byte, 1))
 		readDone <- err
 	}()
-	waitForTestChannel(t, raw.readStarted, time.Second, "read did not start")
+	waitForTestChannel(t, raw.readStarted, "read did not start")
 
 	resetDone := make(chan struct{})
 	go func() {
@@ -29,7 +29,7 @@ func TestConnTrackerResetWaitsForBlockedRead(t *testing.T) {
 		close(resetDone)
 	}()
 
-	waitForTestChannel(t, resetDone, time.Second, "Reset did not wait for blocked read to finish")
+	waitForTestChannel(t, resetDone, "Reset did not wait for blocked read to finish")
 	if err := <-readDone; !errors.Is(err, net.ErrClosed) {
 		t.Fatalf("expected closed read error, got %v", err)
 	}
@@ -106,11 +106,11 @@ type testAddr string
 func (a testAddr) Network() string { return string(a) }
 func (a testAddr) String() string  { return string(a) }
 
-func waitForTestChannel(t *testing.T, ch <-chan struct{}, timeout time.Duration, message string) {
+func waitForTestChannel(t *testing.T, ch <-chan struct{}, message string) {
 	t.Helper()
 	select {
 	case <-ch:
-	case <-time.After(timeout):
+	case <-time.After(time.Second):
 		t.Fatal(message)
 	}
 }

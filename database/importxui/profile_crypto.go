@@ -109,6 +109,7 @@ func SaveSyncProfile(input SyncProfileInput) (*model.XUISyncProfile, error) {
 	if err := adminMode.Validate(); err != nil {
 		return nil, err
 	}
+	// #nosec G117 -- serializes the import source config for encrypted storage; the password field is needed to reconnect to the remote panel and is never logged.
 	raw, err := json.Marshal(input.Source)
 	if err != nil {
 		return nil, err
@@ -153,7 +154,7 @@ func SaveSyncProfile(input SyncProfileInput) (*model.XUISyncProfile, error) {
 			profile.CreatedAt = existing.CreatedAt
 			return profile, db.Model(&existing).Updates(syncProfileConfigValues(profile)).Error
 		}
-		if err != nil && !database.IsNotFound(err) {
+		if !database.IsNotFound(err) {
 			return nil, err
 		}
 		if err := db.Model(&model.XUISyncProfile{}).Create(syncProfileConfigValues(profile)).Error; err != nil {
@@ -247,6 +248,7 @@ func DecryptProfileSource(ciphertext []byte, salt []byte) ([]byte, error) {
 
 func profileEncryptionKey(rowSalt []byte) ([]byte, error) {
 	if keyFile := strings.TrimSpace(os.Getenv("XUI_PROFILE_KEY_FILE")); keyFile != "" {
+		// #nosec G304 G703 -- keyFile path comes from the operator-set XUI_PROFILE_KEY_FILE env var.
 		raw, err := os.ReadFile(keyFile)
 		if err != nil {
 			return nil, err

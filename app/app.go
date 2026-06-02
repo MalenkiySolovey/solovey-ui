@@ -51,7 +51,9 @@ func (a *APP) Init() error {
 	}
 
 	// Init Setting
-	a.SettingService.GetAllSetting()
+	if _, err := a.SettingService.GetAllSetting(); err != nil {
+		logger.Warning("failed to initialize settings: ", err)
+	}
 	if err := ipmonitor.WarmUp(); err != nil {
 		return err
 	}
@@ -155,7 +157,9 @@ func (a *APP) initLog() {
 
 func (a *APP) RestartApp() {
 	a.Stop()
-	a.Start()
+	if err := a.Start(); err != nil {
+		logger.Warning("failed to restart app: ", err)
+	}
 }
 
 func (a *APP) GetCore() *core.Core {

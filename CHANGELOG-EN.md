@@ -5,6 +5,29 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.6-beta4] - 2026-06-02 - security & static-analysis hardening
+
+- Drives backend static analysis to zero findings (`staticcheck`,
+  `golangci-lint`, `gosec`), with `go vet` (nilness), the full `go test ./...`
+  suite including `-race`, `govulncheck`, and the frontend lint/typecheck/unit
+  suites all green. Migrates the deprecated `sing/common/atomic.Int64` to
+  `sync/atomic` and the deprecated `net.Error.Temporary()` check to a
+  timeout-based one, removes dead code, and makes previously unchecked error
+  returns explicit.
+- APIv2: an invalid or expired bearer token now returns HTTP `401 Unauthorized`
+  instead of HTTP `200` with a `success:false` body. The browser UI is
+  unaffected because it uses cookie sessions on `/api`, not bearer tokens on
+  `/apiv2`; external API consumers must now check the HTTP status.
+- Adds the opt-in `sessionSameSiteStrict` setting (default off) that issues
+  session cookies with `SameSite=Strict`; rejects embedded credentials in
+  Telegram proxy URLs and private/loopback/link-local/multicast IP literals in
+  optional HTTP URL settings; and hardens the constant-time API-token-scope
+  comparison against length-multiple-of-256 truncation.
+- Emits a `settings_save_succeeded` audit event on successful settings saves and
+  enforces backup → restore table-count consistency, including the `tls` no-TLS
+  sentinel row.
+- Full release notes: [`docs/releases/v1.5.6-beta4.md`](docs/releases/v1.5.6-beta4.md).
+
 ## [1.5.6-beta3] - 2026-05-29 - administrator management beta
 
 - Adds administrator creation and deletion to the shared Classic/Nexus

@@ -279,15 +279,15 @@ func TestGetCookieKeysDerivedFromSecretByDefault(t *testing.T) {
 
 func TestDerivedSettingKeysUseDomainSeparatedInfo(t *testing.T) {
 	master := []byte("test-master-key-material-32-bytes!!")
-	cookieKey, err := deriveHKDFKey(master, nil, cookieKeyHKDFInfo, 32)
+	cookieKey, err := deriveHKDFKey(master, nil, cookieKeyHKDFInfo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	secretboxKey, err := deriveHKDFKey(master, nil, settingsSecretboxKeyHKDFInfo, 32)
+	secretboxKey, err := deriveHKDFKey(master, nil, settingsSecretboxKeyHKDFInfo)
 	if err != nil {
 		t.Fatal(err)
 	}
-	cookieKeyAgain, err := deriveHKDFKey(master, nil, cookieKeyHKDFInfo, 32)
+	cookieKeyAgain, err := deriveHKDFKey(master, nil, cookieKeyHKDFInfo)
 	if err != nil {
 		t.Fatal(err)
 	}

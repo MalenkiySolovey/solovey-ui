@@ -4,13 +4,13 @@ import (
 	"context"
 	"net"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/deposist/s-ui-x/database/model"
 	"github.com/deposist/s-ui-x/ipmonitor"
 
 	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing/common/atomic"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
 	M "github.com/sagernet/sing/common/metadata"

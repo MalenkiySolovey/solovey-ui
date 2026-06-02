@@ -360,11 +360,11 @@ func TestRealtimeWSSendsHeartbeatPing(t *testing.T) {
 	setWSTokenForTest("ws-token", "admin")
 
 	var pings atomic.Int32
-	conn := dialRealtimeWSForTest(t, server, cookies, "ws-token", func(context.Context, []byte) bool {
+	conn := dialRealtimeWSForTest(t, server, cookies, func(context.Context, []byte) bool {
 		pings.Add(1)
 		return true
 	})
-	t.Cleanup(func() { conn.CloseNow() })
+	t.Cleanup(func() { _ = conn.CloseNow() })
 	errCh := startRealtimeReadLoop(conn)
 
 	deadline := time.After(time.Second)
@@ -392,10 +392,10 @@ func TestRealtimeWSSendsPublishedEvents(t *testing.T) {
 	resetRealtimeForTest()
 	setWSTokenForTest("ws-token", "admin")
 
-	conn := dialRealtimeWSForTest(t, server, cookies, "ws-token", func(context.Context, []byte) bool {
+	conn := dialRealtimeWSForTest(t, server, cookies, func(context.Context, []byte) bool {
 		return true
 	})
-	t.Cleanup(func() { conn.CloseNow() })
+	t.Cleanup(func() { _ = conn.CloseNow() })
 
 	connected := readRealtimeEventForTest(t, conn)
 	if connected.Type != realtime.Topic("connected") {
@@ -429,10 +429,10 @@ func TestRealtimeWSUsesTokenScopeForSecurityEvents(t *testing.T) {
 			resetRealtimeForTest()
 			setWSTokenForTest("ws-token", "admin")
 
-			conn := dialRealtimeWSForTest(t, server, cookies, "ws-token", func(context.Context, []byte) bool {
+			conn := dialRealtimeWSForTest(t, server, cookies, func(context.Context, []byte) bool {
 				return true
 			})
-			t.Cleanup(func() { conn.CloseNow() })
+			t.Cleanup(func() { _ = conn.CloseNow() })
 
 			connected := readRealtimeEventForTest(t, conn)
 			if connected.Type != realtime.Topic("connected") {
@@ -484,11 +484,11 @@ func TestRealtimeWSDeliversEventsWhileHeartbeatWaitsForPong(t *testing.T) {
 	setWSTokenForTest("ws-token", "admin")
 
 	var pings atomic.Int32
-	conn := dialRealtimeWSForTest(t, server, cookies, "ws-token", func(context.Context, []byte) bool {
+	conn := dialRealtimeWSForTest(t, server, cookies, func(context.Context, []byte) bool {
 		pings.Add(1)
 		return false
 	})
-	t.Cleanup(func() { conn.CloseNow() })
+	t.Cleanup(func() { _ = conn.CloseNow() })
 
 	connected := readRealtimeEventForTest(t, conn)
 	if connected.Type != realtime.Topic("connected") {
@@ -542,10 +542,10 @@ func TestRealtimeWSRejectsReplayToken(t *testing.T) {
 	resetRealtimeForTest()
 	setWSTokenForTest("ws-token", "admin")
 
-	conn := dialRealtimeWSForTest(t, server, cookies, "ws-token", func(context.Context, []byte) bool {
+	conn := dialRealtimeWSForTest(t, server, cookies, func(context.Context, []byte) bool {
 		return true
 	})
-	t.Cleanup(func() { conn.CloseNow() })
+	t.Cleanup(func() { _ = conn.CloseNow() })
 
 	header := http.Header{}
 	header.Set("Origin", server.URL)
@@ -555,8 +555,11 @@ func TestRealtimeWSRejectsReplayToken(t *testing.T) {
 	replayedConn, resp, err := websocket.Dial(ctx, "ws"+strings.TrimPrefix(server.URL, "http")+"/api/realtime/ws?token=ws-token", &websocket.DialOptions{
 		HTTPHeader: header,
 	})
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+	}
 	if err == nil {
-		replayedConn.CloseNow()
+		_ = replayedConn.CloseNow()
 		t.Fatal("replayed websocket token was accepted")
 	}
 	if resp == nil || resp.StatusCode != http.StatusUnauthorized {
@@ -572,10 +575,10 @@ func TestRealtimeWSClosesWhenPongMissing(t *testing.T) {
 	resetRealtimeForTest()
 	setWSTokenForTest("ws-token", "admin")
 
-	conn := dialRealtimeWSForTest(t, server, cookies, "ws-token", func(context.Context, []byte) bool {
+	conn := dialRealtimeWSForTest(t, server, cookies, func(context.Context, []byte) bool {
 		return false
 	})
-	t.Cleanup(func() { conn.CloseNow() })
+	t.Cleanup(func() { _ = conn.CloseNow() })
 	errCh := startRealtimeReadLoop(conn)
 
 	select {
@@ -638,18 +641,21 @@ func newRealtimeWSTestRouterWithScopeAndOptions(t *testing.T, scope string, opti
 	return router, loginRecorder.Result().Cookies()
 }
 
-func dialRealtimeWSForTest(t *testing.T, server *httptest.Server, cookies []*http.Cookie, token string, onPing func(context.Context, []byte) bool) *websocket.Conn {
+func dialRealtimeWSForTest(t *testing.T, server *httptest.Server, cookies []*http.Cookie, onPing func(context.Context, []byte) bool) *websocket.Conn {
 	t.Helper()
 	header := http.Header{}
 	header.Set("Origin", server.URL)
 	header.Set("Cookie", cookieHeader(cookies))
-	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/realtime/ws?token=" + token
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/realtime/ws?token=ws-token"
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
+	conn, resp, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
 		HTTPHeader:     header,
 		OnPingReceived: onPing,
 	})
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

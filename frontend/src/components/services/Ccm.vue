@@ -1,5 +1,5 @@
 <template>
-  <v-card subtitle="CCM (Claude Code Multiplexer)">
+  <v-card subtitle="CCM (Code Multiplexer)">
     <v-row>
       <v-col cols="12" sm="6">
         <v-text-field

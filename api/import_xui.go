@@ -281,6 +281,7 @@ func (a *ApiService) ImportXuiRollback(c *gin.Context) {
 		xuiImportError(c, err)
 		return
 	}
+	// #nosec G304 -- backupPath is constrained to the per-request upload temp directory.
 	file, err := os.Open(backupPath)
 	if err != nil {
 		a.recordXuiImportFailure(c, err, "")
@@ -379,6 +380,7 @@ func saveXUIUpload(c *gin.Context) (*xuiUpload, error) {
 		name := part.FormName()
 		if name == "db" {
 			path := filepath.Join(dir, "source.db")
+			// #nosec G304 -- path is a fixed name under the per-request upload temp directory.
 			out, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 			if err != nil {
 				_ = os.RemoveAll(dir)
@@ -505,6 +507,7 @@ func readXUIField(part *multipart.Part, name string, limit int64) (string, error
 }
 
 func validateSQLiteFile(path string) error {
+	// #nosec G304 -- path is constrained to the per-request upload temp directory.
 	file, err := os.Open(path)
 	if err != nil {
 		return err

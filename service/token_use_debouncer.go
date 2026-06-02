@@ -323,11 +323,11 @@ func flushTokenUseUpdates(updates map[uint]tokenUseUpdate) error {
 	if db == nil || len(updates) == 0 {
 		return nil
 	}
-	ids := make([]int, 0, len(updates))
+	ids := make([]uint, 0, len(updates))
 	for id := range updates {
-		ids = append(ids, int(id))
+		ids = append(ids, id)
 	}
-	sort.Ints(ids)
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
 	for start := 0; start < len(ids); start += tokenUseBatchSize {
 		end := start + tokenUseBatchSize
 		if end > len(ids) {
@@ -340,7 +340,7 @@ func flushTokenUseUpdates(updates map[uint]tokenUseUpdate) error {
 	return nil
 }
 
-func flushTokenUseBatch(ids []int, updates map[uint]tokenUseUpdate) error {
+func flushTokenUseBatch(ids []uint, updates map[uint]tokenUseUpdate) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -348,13 +348,13 @@ func flushTokenUseBatch(ids []int, updates map[uint]tokenUseUpdate) error {
 	args := make([]any, 0, len(ids)*5)
 	query.WriteString("UPDATE tokens SET last_used_at = CASE id")
 	for _, id := range ids {
-		update := updates[uint(id)]
+		update := updates[id]
 		query.WriteString(" WHEN ? THEN ?")
 		args = append(args, id, update.ts)
 	}
 	query.WriteString(" END, last_used_ip = CASE id")
 	for _, id := range ids {
-		update := updates[uint(id)]
+		update := updates[id]
 		query.WriteString(" WHEN ? THEN ?")
 		args = append(args, id, update.ip)
 	}

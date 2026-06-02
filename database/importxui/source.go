@@ -150,6 +150,7 @@ func (s *sourceDB) validate() error {
 }
 
 func hashSource(path string) (string, error) {
+	// #nosec G304 -- path is an operator-supplied import source file validated by the caller.
 	file, err := os.Open(path)
 	if err != nil {
 		return "", err

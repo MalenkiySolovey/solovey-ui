@@ -132,7 +132,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	// text/html". This was the root cause of the broken Clients tab in
 	// upgraded panels: the cached index.html still referenced an old
 	// chunk hash that no longer existed in the embedded FS.
-	assetsHandler := serveAssetsFS(s.assetsFS, assetsBasePath)
+	assetsHandler := serveAssetsFS(s.assetsFS)
 	engine.GET(assetsBasePath+"*filepath", assetsHandler)
 	engine.HEAD(assetsBasePath+"*filepath", assetsHandler)
 
@@ -181,7 +181,7 @@ func (s *Server) Start() (err error) {
 	//This is an anonymous function, no function name
 	defer func() {
 		if err != nil {
-			s.Stop()
+			_ = s.Stop()
 		}
 	}()
 
@@ -218,7 +218,7 @@ func (s *Server) Start() (err error) {
 	if certFile != "" || keyFile != "" {
 		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 		if err != nil {
-			listener.Close()
+			_ = listener.Close()
 			return err
 		}
 		c := &tls.Config{

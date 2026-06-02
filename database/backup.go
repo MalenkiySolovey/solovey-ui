@@ -128,6 +128,7 @@ func GetDb(exclude string) ([]byte, error) {
 	cleanupBackupSidecars(dbPath)
 
 	// Open the file for reading
+	// #nosec G304 -- dbPath is the operator-configured database path.
 	file, err := os.Open(dbPath)
 	if err != nil {
 		return nil, err
@@ -363,6 +364,7 @@ func reopenLiveDBAfterImportError(dbPath string, stage string, cause error) erro
 // that opens or renames dst would otherwise race against an open fd held by
 // this process.
 func stageBackupToFile(src io.Reader, dst string) error {
+	// #nosec G304 -- dst is an internal staging path derived from the configured DB path.
 	out, err := os.Create(dst)
 	if err != nil {
 		return common.NewErrorf("Error creating temporary db file: %v", err)

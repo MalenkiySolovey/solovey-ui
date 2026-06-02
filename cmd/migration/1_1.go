@@ -28,7 +28,9 @@ func migrateClientSchema(db *gorm.DB) error {
 			pk        int
 		)
 
-		rows.Scan(&cid, &cname, &ctype, &notnull, &dfltValue, &pk)
+		if err := rows.Scan(&cid, &cname, &ctype, &notnull, &dfltValue, &pk); err != nil {
+			return err
+		}
 		if cname == "config" || cname == "inbounds" || cname == "links" {
 			if ctype == "text" {
 				fmt.Printf("Column %s has type TEXT\n", cname)
@@ -45,11 +47,15 @@ func migrateClientSchema(db *gorm.DB) error {
 						newData, _ = json.MarshalIndent(inbounds, "", "  ")
 					case "config":
 						jsonData := map[string]interface{}{}
-						json.Unmarshal([]byte(data.Data), &jsonData)
+						if err := json.Unmarshal([]byte(data.Data), &jsonData); err != nil {
+							continue
+						}
 						newData, _ = json.MarshalIndent(jsonData, "", "  ")
 					case "links":
 						jsonData := make([]interface{}, 0)
-						json.Unmarshal([]byte(data.Data), &jsonData)
+						if err := json.Unmarshal([]byte(data.Data), &jsonData); err != nil {
+							continue
+						}
 						newData, _ = json.MarshalIndent(jsonData, "", "  ")
 					}
 					err = db.Model(model.Client{}).Where("id = ?", data.Id).UpdateColumn(cname, newData).Error

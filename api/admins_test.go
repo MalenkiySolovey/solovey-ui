@@ -39,7 +39,7 @@ func TestAdminCreateDeleteFlowRequiresCurrentPasswordAndAudits(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	router, _ := newAdminFlowRouter(t, settingService)
+	router, _ := newAdminFlowRouter(t)
 	targetJar := &integrationCookieJar{}
 	adminJar := &integrationCookieJar{}
 	loginAdminFlowUser(t, router, targetJar, "delete-me", "target-password")
@@ -121,8 +121,8 @@ func TestAdminCreateDeleteFlowRequiresCurrentPasswordAndAudits(t *testing.T) {
 	router.ServeHTTP(apiRecorder, apiReq)
 	assertAdminFlowMsgSuccess(t, apiRecorder, false)
 
-	createdAudit := assertIntegrationAuditEvent(t, "admin_created", "admin", "admin")
-	deletedAudit := assertIntegrationAuditEvent(t, "admin_deleted", "admin", "admin")
+	createdAudit := assertIntegrationAuditEvent(t, "admin_created", "admin")
+	deletedAudit := assertIntegrationAuditEvent(t, "admin_deleted", "admin")
 	for _, event := range []model.AuditEvent{createdAudit, deletedAudit} {
 		details := string(event.Details)
 		for _, secret := range []string{"current-password", "target-password", "new-secret", targetToken} {
@@ -133,7 +133,7 @@ func TestAdminCreateDeleteFlowRequiresCurrentPasswordAndAudits(t *testing.T) {
 	}
 }
 
-func newAdminFlowRouter(t *testing.T, settingService *service.SettingService) (*gin.Engine, *APIv2Handler) {
+func newAdminFlowRouter(t *testing.T) (*gin.Engine, *APIv2Handler) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

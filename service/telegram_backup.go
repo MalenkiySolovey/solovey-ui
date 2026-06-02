@@ -149,7 +149,6 @@ func (s *TelegramBackupService) RunOnce(ctx context.Context, trigger string) (re
 	}
 	var secrets telegramBackupSecretBag
 	secrets.setPayload(payload)
-	payload = nil
 	defer secrets.zero()
 	result.PayloadSizeBytes = int64(len(secrets.payload))
 
@@ -159,7 +158,6 @@ func (s *TelegramBackupService) RunOnce(ctx context.Context, trigger string) (re
 		return result
 	}
 	secrets.setPassphrase(passphrase)
-	passphrase = nil
 	if len(secrets.passphrase) == 0 {
 		result.ErrorClass = "missing_passphrase"
 		return result

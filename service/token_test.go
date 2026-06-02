@@ -145,7 +145,6 @@ func TestTokenUseDebouncerTimerFailureOpensCircuitIssue28(t *testing.T) {
 	if !debouncer.circuitUntil.After(time.Now()) {
 		t.Fatalf("circuit was not opened after timer failure: %v", debouncer.circuitUntil)
 	}
-	epoch = debouncer.epoch
 	debouncer.mu.Unlock()
 
 	debouncer.Record(8, "198.51.100.8", 300)
@@ -286,7 +285,6 @@ func TestTokenUseDebouncerTimerFailureInvalidatesConcurrentNormalTimerIssue28(t 
 		t.Fatal("expected retry timer after failed write")
 	}
 	circuitUntil := debouncer.circuitUntil
-	retryEpoch := debouncer.epoch
 	debouncer.mu.Unlock()
 	if !circuitUntil.After(time.Now()) {
 		t.Fatalf("expected open circuit after failed write: %v", circuitUntil)
@@ -302,7 +300,7 @@ func TestTokenUseDebouncerTimerFailureInvalidatesConcurrentNormalTimerIssue28(t 
 	if !debouncer.circuitUntil.Equal(circuitUntil) {
 		t.Fatalf("Record shortened or changed open circuit: before %v after %v", circuitUntil, debouncer.circuitUntil)
 	}
-	retryEpoch = debouncer.epoch
+	retryEpoch := debouncer.epoch
 	debouncer.mu.Unlock()
 
 	debouncer.flushTimer(retryEpoch)

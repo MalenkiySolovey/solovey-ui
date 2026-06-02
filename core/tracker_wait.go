@@ -33,9 +33,9 @@ func (g *trackerWaitGroup) Active() int64 {
 	return g.active.Load()
 }
 
-func waitForTrackerIdle(name string, group *trackerWaitGroup, timeout time.Duration) bool {
+func waitForTrackerIdle(name string, group *trackerWaitGroup, timeout time.Duration) {
 	if group == nil {
-		return true
+		return
 	}
 	done := make(chan struct{})
 	go func() {
@@ -44,9 +44,7 @@ func waitForTrackerIdle(name string, group *trackerWaitGroup, timeout time.Durat
 	}()
 	select {
 	case <-done:
-		return true
 	case <-time.After(timeout):
 		logger.Warningf("%s reset timed out waiting for %d active wrapped connections", name, group.Active())
-		return false
 	}
 }

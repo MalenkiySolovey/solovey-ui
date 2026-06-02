@@ -102,6 +102,20 @@ func resolveCookieSecure(c *gin.Context, settingService *service.SettingService)
 	return requestIsHTTPS(c)
 }
 
+// resolveCookieSameSite returns the SameSite mode for session cookies. It is
+// Lax by default and Strict when the sessionSameSiteStrict setting is enabled.
+func resolveCookieSameSite(settingService *service.SettingService) http.SameSite {
+	if settingService != nil {
+		strict, err := settingService.GetSessionSameSiteStrict()
+		if err != nil {
+			logger.Warning("invalid sessionSameSiteStrict setting:", err)
+		} else if strict {
+			return http.SameSiteStrictMode
+		}
+	}
+	return http.SameSiteLaxMode
+}
+
 var (
 	trustedProxiesMu     sync.Mutex
 	trustedProxiesRaw    string

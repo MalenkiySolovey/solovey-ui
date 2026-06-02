@@ -51,6 +51,7 @@ func runDecryptBackup(args []string, stdin io.Reader, stdout io.Writer, stderr i
 		return 2
 	}
 
+	// #nosec G304 -- inPath is a CLI argument supplied by the operator.
 	envelope, err := os.ReadFile(inPath)
 	if err != nil {
 		fmt.Fprintln(stderr, "decrypt-backup:", err)

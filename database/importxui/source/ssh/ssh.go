@@ -38,10 +38,7 @@ func New(rawURL string) (Source, error) {
 	if u.Scheme != "ssh" {
 		return Source{}, fmt.Errorf("unsupported remote scheme %q", u.Scheme)
 	}
-	host := u.Host
-	if strings.HasSuffix(host, ":") {
-		host = strings.TrimSuffix(host, ":")
-	}
+	host := strings.TrimSuffix(u.Host, ":")
 	if !strings.Contains(host, ":") {
 		host = net.JoinHostPort(host, "22")
 	}
@@ -105,6 +102,7 @@ func (s Source) Acquire(ctx context.Context) (string, func(), error) {
 	}
 	cleanup := func() { _ = os.RemoveAll(dir) }
 	path := filepath.Join(dir, "source.db")
+	// #nosec G304 -- path is a fixed name under a per-import temp dir created by the importer.
 	out, err := os.OpenFile(path, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o600)
 	if err != nil {
 		cleanup()
@@ -181,7 +179,7 @@ func (s Source) hostKeyCallback() xssh.HostKeyCallback {
 			}
 			return nil
 		}
-		if err != nil && !database.IsNotFound(err) {
+		if !database.IsNotFound(err) {
 			return err
 		}
 		if !s.ConfirmHostKey {

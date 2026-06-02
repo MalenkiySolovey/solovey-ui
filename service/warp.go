@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/base64"
 	"encoding/json"
@@ -139,7 +140,7 @@ func doWarpRequestVersions(mkRequest func(version string) (*http.Request, []byte
 
 func (s *WarpService) getWarpInfo(version, deviceId, accessToken string) ([]byte, error) {
 	url := fmt.Sprintf("https://api.cloudflareclient.com/%s/reg/%s", version, deviceId)
-	req, err := http.NewRequest(http.MethodGet, url, nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
@@ -175,7 +176,7 @@ func (s *WarpService) RegisterWarp(ep *model.Endpoint) error {
 
 	resp, version, err := doWarpRequestVersions(func(version string) (*http.Request, []byte, error) {
 		url := fmt.Sprintf("https://api.cloudflareclient.com/%s/reg", version)
-		req, err := http.NewRequest(http.MethodPost, url, nil)
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, url, nil)
 		if err != nil {
 			return nil, nil, err
 		}
@@ -358,7 +359,7 @@ func (s *WarpService) SetWarpLicense(old_license string, ep *model.Endpoint) err
 attempt:
 	for _, version := range versions {
 		url := fmt.Sprintf("https://api.cloudflareclient.com/%s/reg/%s/account", version, warpData["device_id"])
-		req, err := http.NewRequest(http.MethodPut, url, nil)
+		req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, url, nil)
 		if err != nil {
 			return err
 		}
@@ -395,7 +396,7 @@ attempt:
 		return err
 	}
 
-	if success, ok := response["success"].(bool); ok && success == false {
+	if success, ok := response["success"].(bool); ok && !success {
 		errorArr, _ := response["errors"].([]interface{})
 		if len(errorArr) == 0 {
 			return common.NewError("warp license update failed")

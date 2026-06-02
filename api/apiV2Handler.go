@@ -34,6 +34,7 @@ const (
 	apiUsernameKey              = "apiUsername"
 	apiTokenScopeKey            = "apiTokenScope"
 	legacyTokenHeaderExpiredKey = "legacyTokenHeaderExpired"
+	// #nosec G101 -- a sunset date string, not a credential.
 	legacyTokenHeaderSunset     = "Sat, 15 Aug 2026 00:00:00 GMT"
 )
 
@@ -180,7 +181,10 @@ func (a *APIv2Handler) checkToken(c *gin.Context) {
 		c.Abort()
 		return
 	}
-	jsonMsg(c, "", common.NewError("invalid token"))
+	c.JSON(http.StatusUnauthorized, Msg{
+		Success: false,
+		Msg:     "invalid token",
+	})
 	c.Abort()
 }
 

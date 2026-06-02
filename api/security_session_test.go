@@ -31,7 +31,7 @@ func TestSecuritySessionCookieFlagsAndMaxAge(t *testing.T) {
 	if login.Code != http.StatusNoContent {
 		t.Fatalf("login returned %d", login.Code)
 	}
-	cookie := findCookieByName(login.Result().Cookies(), "s-ui")
+	cookie := findCookieByName(login.Result().Cookies())
 	if cookie == nil {
 		t.Fatal("login did not set s-ui cookie")
 	}
@@ -96,6 +96,29 @@ func TestSecuritySessionRotationInvalidatesOldCookie(t *testing.T) {
 	}
 }
 
-func TestSecuritySessionStrictSameSite_XFAILPhase4(t *testing.T) {
-	t.Skip("XFAIL Phase4: session cookies currently hard-code SameSite=Lax; no Strict-mode setting exists")
+func TestSecuritySessionStrictSameSite(t *testing.T) {
+	settingService := initSessionTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	payload, err := json.Marshal(map[string]string{"sessionSameSiteStrict": "true"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := settingService.Save(database.GetDB(), payload); err != nil {
+		t.Fatal(err)
+	}
+	router := newSecuritySessionMaxAgeRouter(t, settingService)
+
+	login := performSessionRequest(router, "/login")
+	if login.Code != http.StatusNoContent {
+		t.Fatalf("login returned %d", login.Code)
+	}
+	cookie := findCookieByName(login.Result().Cookies())
+	if cookie == nil {
+		t.Fatal("login did not set s-ui cookie")
+	}
+	if cookie.SameSite != http.SameSiteStrictMode {
+		t.Fatalf("session cookie SameSite=%v, want Strict", cookie.SameSite)
+	}
 }

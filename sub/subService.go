@@ -58,7 +58,7 @@ func (j *SubService) getClientBySubId(subId string) (*model.Client, error) {
 	if err == nil {
 		return client, j.ensureClientSubSecret(db, client)
 	}
-	if err != nil && !database.IsNotFound(err) {
+	if !database.IsNotFound(err) {
 		return nil, err
 	}
 	required, _ := j.SettingService.GetSubSecretRequired()

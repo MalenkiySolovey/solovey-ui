@@ -18,9 +18,11 @@ func TestObservabilitySamplerAggregatesBuckets(t *testing.T) {
 			DateTime: int64(value),
 			CPU:      float64(value),
 			Memory: map[string]interface{}{
+				// #nosec G115 -- synthetic test value, always small and non-negative.
 				"current": uint64(value),
 			},
 			Network: map[string]interface{}{
+				// #nosec G115 -- synthetic test value, always small and non-negative.
 				"sent": uint64(value),
 			},
 		}

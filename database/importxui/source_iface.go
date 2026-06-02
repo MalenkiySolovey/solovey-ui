@@ -61,6 +61,7 @@ func ApplyFromSource(src Source, plan MigrationPlan, opts ApplyOptions) (*Report
 }
 
 func ValidateSQLiteSource(path string) error {
+	// #nosec G304 -- path is an operator-supplied import source file validated by the caller.
 	file, err := os.Open(path)
 	if err != nil {
 		return err

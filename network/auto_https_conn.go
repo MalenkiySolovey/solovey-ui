@@ -43,8 +43,8 @@ func (c *AutoHttpsConn) readRequest() bool {
 	resp.StatusCode = http.StatusTemporaryRedirect
 	location := fmt.Sprintf("https://%v%v", request.Host, request.RequestURI)
 	resp.Header.Set("Location", location)
-	resp.Write(c.Conn)
-	c.Close()
+	_ = resp.Write(c.Conn)
+	_ = c.Close()
 	c.firstBuf = nil
 	return true
 }

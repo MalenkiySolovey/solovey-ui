@@ -94,10 +94,10 @@ func (c *ConnTracker) CloseConnByInbound(inbound string) int {
 	for connID, connInfo := range c.connections {
 		if connInfo.Inbound == inbound {
 			if connInfo.Conn != nil {
-				connInfo.Conn.Close()
+				_ = connInfo.Conn.Close()
 			}
 			if connInfo.PacketConn != nil {
-				connInfo.PacketConn.Close()
+				_ = connInfo.PacketConn.Close()
 			}
 			delete(c.connections, connID)
 			closedCount++
@@ -133,7 +133,8 @@ func shouldUntrackIOErr(err error) bool {
 	}
 	var ne net.Error
 	if errors.As(err, &ne) {
-		return !ne.Temporary()
+		// Temporary() is deprecated; a non-timeout net error indicates the connection is done.
+		return !ne.Timeout()
 	}
 	return true
 }

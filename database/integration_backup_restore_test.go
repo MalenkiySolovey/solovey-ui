@@ -24,9 +24,7 @@ type integrationMemMultipartFile struct{ *bytes.Reader }
 func (integrationMemMultipartFile) Close() error { return nil }
 
 func TestIntegrationBackupEnvelopeRestorePreservesBackupTableCounts(t *testing.T) {
-	dbDir, livePath := initBackupRestoreIntegrationDB(t)
-	_ = dbDir
-	_ = livePath
+	initBackupRestoreIntegrationDB(t)
 	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
@@ -63,9 +61,6 @@ func TestIntegrationBackupEnvelopeRestorePreservesBackupTableCounts(t *testing.T
 	}
 	after := integrationBackupTableCounts(t)
 	if !reflect.DeepEqual(before, after) {
-		if onlyIntegrationTLSCountChanged(before, after) {
-			t.Skipf("XFAIL Phase3: restore changes tls row count from %d to %d via no-TLS sentinel handling; backupTables count consistency requires production fix", before["tls"], after["tls"])
-		}
 		t.Fatalf("backup table counts changed after restore:\nbefore=%v\nafter=%v", before, after)
 	}
 }
@@ -102,7 +97,7 @@ func TestIntegrationImportDBMigrationFailureRestoresFallback(t *testing.T) {
 	}
 }
 
-func initBackupRestoreIntegrationDB(t *testing.T) (string, string) {
+func initBackupRestoreIntegrationDB(t *testing.T) {
 	t.Helper()
 	dbDir, err := os.MkdirTemp("", "s-ui-phase3-backup-*")
 	if err != nil {
@@ -126,7 +121,6 @@ func initBackupRestoreIntegrationDB(t *testing.T) (string, string) {
 		time.Sleep(25 * time.Millisecond)
 		_ = os.RemoveAll(dbDir)
 	})
-	return dbDir, livePath
 }
 
 func closeBackupRestoreIntegrationDB() {
@@ -187,26 +181,6 @@ func integrationBackupTableNames() []string {
 		"changes",
 		"audit_events",
 	}
-}
-
-func onlyIntegrationTLSCountChanged(before map[string]int64, after map[string]int64) bool {
-	if len(before) != len(after) {
-		return false
-	}
-	changed := ""
-	for table, beforeCount := range before {
-		afterCount, ok := after[table]
-		if !ok {
-			return false
-		}
-		if beforeCount != afterCount {
-			if changed != "" {
-				return false
-			}
-			changed = table
-		}
-	}
-	return changed == "tls"
 }
 
 func newIntegrationForeignKeyBrokenBackup(t *testing.T) []byte {

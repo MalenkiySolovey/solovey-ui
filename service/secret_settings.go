@@ -33,6 +33,7 @@ var (
 	}
 )
 
+// #nosec G101 -- UI placeholder text shown in place of a stored secret, not a credential.
 const StoredSecretMarker = "••• stored •••"
 
 var (
@@ -111,7 +112,7 @@ func (s *SettingService) settingsSecretboxCandidates() ([]secretboxCandidate, er
 	if err != nil {
 		return nil, err
 	}
-	primaryKey, err := deriveHKDFKey(secret, nil, settingsSecretboxKeyHKDFInfo, 32)
+	primaryKey, err := deriveHKDFKey(secret, nil, settingsSecretboxKeyHKDFInfo)
 	if err != nil {
 		return nil, err
 	}
@@ -149,11 +150,11 @@ func (s *SettingService) GetCookieKeys() ([][]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	cookieKey, err := deriveHKDFKey(secret, nil, cookieKeyHKDFInfo, 32)
+	cookieKey, err := deriveHKDFKey(secret, nil, cookieKeyHKDFInfo)
 	if err != nil {
 		return nil, err
 	}
-	legacyCookieKey, err := deriveHKDFKey(secret, legacyCookieKeyHKDFSalt, legacyCookieKeyHKDFInfo, 32)
+	legacyCookieKey, err := deriveHKDFKey(secret, legacyCookieKeyHKDFSalt, legacyCookieKeyHKDFInfo)
 	if err != nil {
 		zeroBytes(cookieKey)
 		return nil, err
@@ -213,14 +214,15 @@ func decodeKeyMaterial(value string) ([]byte, bool) {
 	return nil, false
 }
 
-func deriveHKDFKey(masterKey []byte, salt []byte, info []byte, keyLen int) ([]byte, error) {
+// hkdfDerivedKeyLen is the byte length of every HKDF-derived key in this
+// package (secretbox and cookie keys are all 32-byte / AES-256 sized).
+const hkdfDerivedKeyLen = 32
+
+func deriveHKDFKey(masterKey []byte, salt []byte, info []byte) ([]byte, error) {
 	if len(masterKey) == 0 {
 		return nil, common.NewError("empty master key")
 	}
-	if keyLen <= 0 {
-		return nil, common.NewError("invalid derived key length")
-	}
-	key := make([]byte, keyLen)
+	key := make([]byte, hkdfDerivedKeyLen)
 	reader := hkdf.New(sha256.New, masterKey, salt, info)
 	if _, err := io.ReadFull(reader, key); err != nil {
 		return nil, err

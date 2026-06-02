@@ -5,6 +5,29 @@
 Это русскоязычный changelog. Английская версия — в `CHANGELOG-EN.md`,
 китайская — в `CHANGELOG-ZH.md`.
 
+## [1.5.6-beta4] — 2026-06-02 — усиление безопасности и статического анализа
+
+- Приводит backend static analysis к нулю findings (`staticcheck`,
+  `golangci-lint`, `gosec`), при этом `go vet` (nilness), полный набор
+  `go test ./...` включая `-race`, `govulncheck`, а также frontend
+  lint/typecheck/unit suites — все зелёные. Мигрирует устаревший
+  `sing/common/atomic.Int64` на `sync/atomic`, а устаревшую проверку
+  `net.Error.Temporary()` — на проверку по таймауту, удаляет dead code и делает
+  ранее непроверявшиеся error returns явными.
+- APIv2: невалидный или истёкший bearer token теперь возвращает HTTP `401
+  Unauthorized` вместо HTTP `200` с телом `success:false`. Браузерный UI это не
+  затрагивает, потому что он использует cookie sessions на `/api`, а не bearer
+  tokens на `/apiv2`; внешние API consumers теперь должны проверять HTTP status.
+- Добавляет opt-in setting `sessionSameSiteStrict` (по умолчанию выключен),
+  который выдаёт session cookies с `SameSite=Strict`; отклоняет embedded
+  credentials в Telegram proxy URLs и private/loopback/link-local/multicast IP
+  literals в опциональных HTTP URL settings; и усиливает constant-time
+  API-token-scope сравнение против truncation на длине, кратной 256.
+- Эмитит audit event `settings_save_succeeded` при успешном сохранении settings
+  и обеспечивает консистентность table-count при backup -> restore, включая
+  no-TLS sentinel row `tls`.
+- Полные release notes: [`docs/releases/v1.5.6-beta4.md`](docs/releases/v1.5.6-beta4.md).
+
 ## [1.5.6-beta3] — 2026-05-29 — beta управления администраторами
 
 - Добавлены создание и удаление администраторов на общей странице `/admins`

@@ -260,6 +260,7 @@ func (s *ClientService) updateLinksWithFixedInbounds(tx *gorm.DB, clients []*mod
 			}
 		}
 
+		// #nosec G602 -- index is the range index over clients; never out of range.
 		clients[index].Links, err = json.MarshalIndent(newClientLinks, "", "  ")
 		if err != nil {
 			return err
@@ -428,7 +429,6 @@ func (s *ClientService) UpdateLinksByInboundChange(tx *gorm.DB, inbounds *[]mode
 func (s *ClientService) DepleteClients() (inboundIds []uint, err error) {
 	var clients []model.Client
 	var changes []model.Changes
-	var users []string
 
 	dt := time.Now().Unix()
 	db := database.GetDB()
@@ -462,7 +462,6 @@ func (s *ClientService) DepleteClients() (inboundIds []uint, err error) {
 
 	for _, client := range clients {
 		logger.Debug("Client ", client.Name, " is going to be disabled")
-		users = append(users, client.Name)
 		userInbounds, ok := decodeClientInbounds(client.Id, client.Inbounds, "client deplete")
 		if !ok {
 			continue

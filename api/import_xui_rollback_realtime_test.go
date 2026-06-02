@@ -28,7 +28,7 @@ func TestImportXuiRollbackPublishesConfigInvalidatedIssue39(t *testing.T) {
 		router.POST("/api/import-xui/rollback", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiRollback))
 	})
 
-	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1", "merge"), cookies...)
+	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1"), cookies...)
 	if planRecorder.Code != http.StatusOK {
 		t.Fatalf("plan status=%d body=%s", planRecorder.Code, planRecorder.Body.String())
 	}

@@ -35,7 +35,7 @@ func TestIntegrationSessionRotationClosesWSInvalidatesTokensAndAudits(t *testing
 		t.Fatal("ws-token endpoint returned duplicate tokens")
 	}
 	conn := dialSessionRotationWS(t, server, cookies, connectedToken)
-	t.Cleanup(func() { conn.CloseNow() })
+	t.Cleanup(func() { _ = conn.CloseNow() })
 	if event := readSessionRotationWSEvent(t, conn); event.Type != "connected" {
 		t.Fatalf("expected connected event, got %s", event.Type)
 	}
@@ -136,7 +136,7 @@ func loginSessionRotationUser(t *testing.T, router *gin.Engine, user string) []*
 
 func issueSessionRotationWSToken(t *testing.T, server *httptest.Server, cookies []*http.Cookie) string {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, server.URL+"/api/realtime/ws-token", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/api/realtime/ws-token", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,7 +176,10 @@ func dialSessionRotationWS(t *testing.T, server *httptest.Server, cookies []*htt
 	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/realtime/ws?token=" + token
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
-	conn, _, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{HTTPHeader: header})
+	conn, resp, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{HTTPHeader: header})
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		t.Fatal(err)
 	}

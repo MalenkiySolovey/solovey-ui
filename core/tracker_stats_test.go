@@ -70,7 +70,7 @@ func TestStatsTrackerResetWaitsForInflightRead(t *testing.T) {
 		_, err := wrapped.Read(make([]byte, 1))
 		readDone <- err
 	}()
-	waitForTestChannel(t, raw.readStarted, time.Second, "read did not start")
+	waitForTestChannel(t, raw.readStarted, "read did not start")
 
 	resetDone := make(chan struct{})
 	go func() {
@@ -84,7 +84,7 @@ func TestStatsTrackerResetWaitsForInflightRead(t *testing.T) {
 	case <-time.After(20 * time.Millisecond):
 	}
 	_ = raw.Close()
-	waitForTestChannel(t, resetDone, time.Second, "Reset did not finish after read was closed")
+	waitForTestChannel(t, resetDone, "Reset did not finish after read was closed")
 	if err := <-readDone; !errors.Is(err, net.ErrClosed) {
 		t.Fatalf("expected closed read error, got %v", err)
 	}

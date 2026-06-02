@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
@@ -12,7 +13,6 @@ import (
 	"github.com/deposist/s-ui-x/core"
 	"github.com/deposist/s-ui-x/database"
 	"github.com/deposist/s-ui-x/database/model"
-	singatomic "github.com/sagernet/sing/common/atomic"
 	gormlogger "gorm.io/gorm/logger"
 )
 
@@ -110,8 +110,8 @@ func seedSyntheticUserStatsForBench(tb testing.TB, tracker *core.StatsTracker, n
 	counterType := usersField.Type().Elem()
 	for i := 0; i < n; i++ {
 		counter := reflect.New(counterType).Elem()
-		read := &singatomic.Int64{}
-		write := &singatomic.Int64{}
+		read := &atomic.Int64{}
+		write := &atomic.Int64{}
 		read.Store(int64(i + 1))
 		write.Store(int64(i + 2))
 		setUnexportedFieldForBench(counter.FieldByName("read"), reflect.ValueOf(read))

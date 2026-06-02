@@ -181,7 +181,7 @@ func (l *observableLogger) Log(ctx context.Context, level log.Level, args []any)
 	}
 	if (l.filePath != "" || l.writer != os.Stderr) && l.writer != nil {
 		message := l.formatter.Format(ctx, level, l.tag, msg, time.Now())
-		l.writer.Write([]byte(message))
+		_, _ = l.writer.Write([]byte(message))
 	}
 }
 

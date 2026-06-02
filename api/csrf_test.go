@@ -100,7 +100,7 @@ func TestCSRFCookieSecureForcedByEnv(t *testing.T) {
 	if csrf.Code != http.StatusOK {
 		t.Fatalf("csrf endpoint returned %d", csrf.Code)
 	}
-	cookie := findCookieByName(csrf.Result().Cookies(), "s-ui")
+	cookie := findCookieByName(csrf.Result().Cookies())
 	if cookie == nil {
 		t.Fatal("csrf did not set s-ui cookie")
 	}

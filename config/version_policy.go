@@ -107,7 +107,7 @@ func parseVersion(version string, allowLegacyMinor bool) (Semver, bool) {
 	}
 	var core [3]int
 	for i, field := range coreFields {
-		part, ok := parseNumericIdentifier(field, false)
+		part, ok := parseNumericIdentifier(field)
 		if !ok {
 			return Semver{}, false
 		}
@@ -175,8 +175,8 @@ func comparePrerelease(left []string, right []string) int {
 }
 
 func comparePrereleaseIdentifier(left string, right string) int {
-	leftNum, leftIsNum := parseNumericIdentifier(left, false)
-	rightNum, rightIsNum := parseNumericIdentifier(right, false)
+	leftNum, leftIsNum := parseNumericIdentifier(left)
+	rightNum, rightIsNum := parseNumericIdentifier(right)
 	switch {
 	case leftIsNum && rightIsNum:
 		if leftNum > rightNum {
@@ -195,11 +195,11 @@ func comparePrereleaseIdentifier(left string, right string) int {
 	}
 }
 
-func parseNumericIdentifier(value string, allowZeroPadded bool) (int, bool) {
+func parseNumericIdentifier(value string) (int, bool) {
 	if value == "" {
 		return 0, false
 	}
-	if !allowZeroPadded && len(value) > 1 && value[0] == '0' {
+	if len(value) > 1 && value[0] == '0' {
 		return 0, false
 	}
 	for _, r := range value {
@@ -226,7 +226,7 @@ func validIdentifierList(value string, rejectZeroPaddedNumbers bool) bool {
 			return false
 		}
 		if rejectZeroPaddedNumbers {
-			if _, ok := parseNumericIdentifier(id, false); !ok && isAllDigits(id) {
+			if _, ok := parseNumericIdentifier(id); !ok && isAllDigits(id) {
 				return false
 			}
 		}

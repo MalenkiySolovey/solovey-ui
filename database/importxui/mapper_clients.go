@@ -2,7 +2,6 @@ package importxui
 
 import (
 	"encoding/json"
-	"fmt"
 	"sort"
 	"strings"
 
@@ -259,32 +258,4 @@ func summaryDetails(summary Summary) map[string]any {
 
 func auditDetails(summary Summary) ([]byte, error) {
 	return json.Marshal(summaryDetails(summary))
-}
-
-func countClientRefsByInbound(refs []ClientRef) map[int64]int {
-	counts := map[int64]int{}
-	for _, ref := range refs {
-		counts[ref.SrcInboundID]++
-	}
-	return counts
-}
-
-func formatImportSummary(report *Report) string {
-	if report == nil {
-		return ""
-	}
-	return fmt.Sprintf(
-		"inbounds: %d/%d imported, %d skipped, %d conflicts; endpoints: %d imported, %d skipped; tls: %d created, %d reused; clients: %d unique, %d created, %d merged",
-		report.Summary.Inbounds.Imported,
-		report.Summary.Inbounds.Total,
-		report.Summary.Inbounds.Skipped,
-		report.Summary.Inbounds.Conflicts,
-		report.Summary.Endpoints.Imported,
-		report.Summary.Endpoints.Skipped,
-		report.Summary.TLS.Created,
-		report.Summary.TLS.Reused,
-		report.Summary.Clients.UniqueEmails,
-		report.Summary.Clients.Created,
-		report.Summary.Clients.Merged,
-	)
 }

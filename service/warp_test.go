@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -32,7 +33,7 @@ func (r *warpCaptureRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 }
 
 func TestSetWarpAuthorizedHeadersIssue31(t *testing.T) {
-	req, err := http.NewRequest(http.MethodPut, "https://api.cloudflareclient.test/v0a4005/reg/device/account", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, "https://api.cloudflareclient.test/v0a4005/reg/device/account", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -42,7 +43,7 @@ func TestSetWarpAuthorizedHeadersIssue31(t *testing.T) {
 		t.Fatalf("unexpected PUT Content-Type: %q", got)
 	}
 
-	customTypeReq, err := http.NewRequest(http.MethodPatch, "https://api.cloudflareclient.test/v0a4005/reg/device", nil)
+	customTypeReq, err := http.NewRequestWithContext(context.Background(), http.MethodPatch, "https://api.cloudflareclient.test/v0a4005/reg/device", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -52,7 +53,7 @@ func TestSetWarpAuthorizedHeadersIssue31(t *testing.T) {
 		t.Fatalf("custom Content-Type was overwritten: %q", got)
 	}
 
-	getReq, err := http.NewRequest(http.MethodGet, "https://api.cloudflareclient.test/v0a4005/reg/device", nil)
+	getReq, err := http.NewRequestWithContext(context.Background(), http.MethodGet, "https://api.cloudflareclient.test/v0a4005/reg/device", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

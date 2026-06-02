@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"net"
+	"net/netip"
 	"net/url"
 	"os"
 	"sort"
@@ -17,6 +18,7 @@ import (
 	"github.com/deposist/s-ui-x/realtime"
 	"github.com/deposist/s-ui-x/util"
 	"github.com/deposist/s-ui-x/util/common"
+	"github.com/deposist/s-ui-x/util/ssrf"
 
 	"gorm.io/gorm"
 )
@@ -57,6 +59,7 @@ var defaultValueMap = map[string]string{
 	"webURI":                      "",
 	"sessionMaxAge":               "0",
 	"forceCookieSecure":           "false",
+	"sessionSameSiteStrict":       "false",
 	"sessionGeneration":           "",
 	"trafficAge":                  "30",
 	"timeLocation":                "Europe/Moscow",
@@ -360,6 +363,10 @@ func (s *SettingService) GetForceCookieSecure() (bool, error) {
 		return enabled, nil
 	}
 	return s.getBool("forceCookieSecure")
+}
+
+func (s *SettingService) GetSessionSameSiteStrict() (bool, error) {
+	return s.getBool("sessionSameSiteStrict")
 }
 
 func (s *SettingService) GetSessionGeneration() (string, error) {
@@ -731,7 +738,7 @@ func (s *SettingService) validateAll(settings map[string]string) error {
 		if err := validateSubscriptionSettingInput(key, obj); err != nil {
 			return err
 		}
-		if key == "forceCookieSecure" {
+		if key == "forceCookieSecure" || key == "sessionSameSiteStrict" {
 			if _, err := strconv.ParseBool(obj); err != nil {
 				return common.NewError("invalid boolean setting: ", key)
 			}
@@ -1046,6 +1053,11 @@ func validateOptionalHTTPURL(value string) error {
 	}
 	if parsed.User != nil {
 		return common.NewError("invalid URL setting")
+	}
+	if host := parsed.Hostname(); host != "" {
+		if addr, err := netip.ParseAddr(host); err == nil && ssrf.IsBlockedAddr(addr) {
+			return common.NewError("invalid URL setting")
+		}
 	}
 	if strings.Contains(value, "#") || parsed.Fragment != "" || parsed.RawFragment != "" {
 		return common.NewError("invalid URL setting")

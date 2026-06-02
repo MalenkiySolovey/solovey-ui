@@ -160,7 +160,7 @@ func (s *UserService) AddUser(actorUsername string, currentPass string, newUsern
 
 	var created model.User
 	err := database.GetDB().Transaction(func(tx *gorm.DB) error {
-		if _, err := s.checkUserPassword(tx, actorUsername, currentPass); err != nil {
+		if err := s.checkUserPassword(tx, actorUsername, currentPass); err != nil {
 			return err
 		}
 		var count int64
@@ -194,7 +194,7 @@ func (s *UserService) DeleteUser(actorUsername string, currentPass string, targe
 		return result, err
 	}
 	err = database.GetDB().Transaction(func(tx *gorm.DB) error {
-		if _, err := s.checkUserPassword(tx, actorUsername, currentPass); err != nil {
+		if err := s.checkUserPassword(tx, actorUsername, currentPass); err != nil {
 			return err
 		}
 		var target model.User
@@ -239,22 +239,22 @@ func (s *UserService) ChangePass(id string, oldPass string, newUser string, newP
 	return db.Save(user).Error
 }
 
-func (s *UserService) checkUserPassword(tx *gorm.DB, username string, password string) (*model.User, error) {
+func (s *UserService) checkUserPassword(tx *gorm.DB, username string, password string) error {
 	if username == "" || password == "" {
-		return nil, common.NewError("wrong user or password")
+		return common.NewError("wrong user or password")
 	}
 	user := &model.User{}
 	err := tx.Model(model.User{}).Where("username = ?", username).First(user).Error
 	if database.IsNotFound(err) {
-		return nil, common.NewError("wrong user or password")
+		return common.NewError("wrong user or password")
 	} else if err != nil {
-		return nil, err
+		return err
 	}
 	ok, _ := common.CheckPassword(user.Password, password)
 	if !ok {
-		return nil, common.NewError("wrong user or password")
+		return common.NewError("wrong user or password")
 	}
-	return user, nil
+	return nil
 }
 
 func parseUserID(raw string) (uint, error) {
@@ -462,7 +462,12 @@ func apiTokenScopeAllowed(scope string) bool {
 }
 
 func constantTimeStringEqual(a string, b string, maxLen int) int {
-	diff := byte(len(a) ^ len(b))
+	// Length mismatch sets diff without truncating len() into a byte (matches
+	// the crypto/subtle convention of bailing on differing lengths).
+	var diff byte
+	if len(a) != len(b) {
+		diff = 1
+	}
 	for i := 0; i < maxLen; i++ {
 		var av byte
 		var bv byte

@@ -53,7 +53,7 @@ func BenchmarkRealtimeWSConnectDisconnect(b *testing.B) {
 					conns = append(conns, conn)
 				}
 				for _, conn := range conns {
-					conn.CloseNow()
+					_ = conn.CloseNow()
 				}
 			}
 		})
@@ -79,11 +79,14 @@ func TestRealtimeWSCapacityAnchorPhase5(t *testing.T) {
 		}
 		t.Cleanup(func() {
 			for _, conn := range conns {
-				conn.CloseNow()
+				_ = conn.CloseNow()
 			}
 		})
 		setWSTokenForTest("same-user-over", user)
 		_, resp, err := dialRealtimeWSRaw(server, cookiesByUser[user], "same-user-over")
+		if resp != nil && resp.Body != nil {
+			defer resp.Body.Close()
+		}
 		if err == nil {
 			t.Fatal("expected max per user rejection")
 		}
@@ -111,13 +114,16 @@ func TestRealtimeWSCapacityAnchorPhase5(t *testing.T) {
 		}
 		t.Cleanup(func() {
 			for _, conn := range conns {
-				conn.CloseNow()
+				_ = conn.CloseNow()
 			}
 		})
 		user := "phase5-ip-over"
 		cookiesByUser[user] = loginRealtimePerfUser(t, server, user)
 		setWSTokenForTest("ip-token-over", user)
 		_, resp, err := dialRealtimeWSRaw(server, cookiesByUser[user], "ip-token-over")
+		if resp != nil && resp.Body != nil {
+			defer resp.Body.Close()
+		}
 		if err == nil {
 			t.Fatal("expected max per ip rejection")
 		}
@@ -211,7 +217,11 @@ func initAPIRealtimePerfDB(tb testing.TB) {
 
 func loginRealtimePerfUser(tb testing.TB, server *httptest.Server, user string) []*http.Cookie {
 	tb.Helper()
-	resp, err := http.Get(server.URL + "/login/" + user)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/login/"+user, nil)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		tb.Fatal(err)
 	}
@@ -226,6 +236,9 @@ func loginRealtimePerfUser(tb testing.TB, server *httptest.Server, user string) 
 func dialRealtimeWSForBench(tb testing.TB, server *httptest.Server, cookies []*http.Cookie, token string) *websocket.Conn {
 	tb.Helper()
 	conn, resp, err := dialRealtimeWSRaw(server, cookies, token)
+	if resp != nil && resp.Body != nil {
+		defer resp.Body.Close()
+	}
 	if err != nil {
 		tb.Fatalf("websocket dial status=%v err=%v", statusCode(resp), err)
 	}
@@ -248,7 +261,7 @@ func dialRealtimeWSRaw(server *httptest.Server, cookies []*http.Cookie, token st
 	return conn, resp, err
 }
 
-func readRealtimeEventForBench(tb testing.TB, conn *websocket.Conn) realtime.Event {
+func readRealtimeEventForBench(tb testing.TB, conn *websocket.Conn) {
 	tb.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -264,7 +277,6 @@ func readRealtimeEventForBench(tb testing.TB, conn *websocket.Conn) realtime.Eve
 	if err := json.Unmarshal(body, &event); err != nil {
 		tb.Fatal(err)
 	}
-	return event
 }
 
 func statusCode(resp *http.Response) int {

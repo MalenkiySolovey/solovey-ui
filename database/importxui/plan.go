@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -258,9 +257,11 @@ func (s *importState) planInboundsEndpoints(ctx context.Context, tx *gorm.DB, sr
 		if err != nil {
 			return err
 		}
-		s.inboundIDBySrc[row.ID] = uint(row.ID)
+		// #nosec G115 -- source x-ui inbound id is a positive SQLite rowid within uint range
+		dstInboundID := uint(row.ID)
+		s.inboundIDBySrc[row.ID] = dstInboundID
 		for i := range mapped.ClientRefs {
-			mapped.ClientRefs[i].DstInboundID = uint(row.ID)
+			mapped.ClientRefs[i].DstInboundID = dstInboundID
 		}
 		s.clientRefs = append(s.clientRefs, mapped.ClientRefs...)
 		plan.Items = append(plan.Items, PlanItem{
@@ -457,7 +458,7 @@ func (s *applyState) run(ctx context.Context, tx *gorm.DB, src *sourceDB, opts A
 	if err := s.applySettings(ctx, tx, src); err != nil {
 		return err
 	}
-	if err := s.applyAdmins(ctx, tx, src, opts); err != nil {
+	if err := s.applyAdmins(ctx, tx, src); err != nil {
 		return err
 	}
 	if err := s.applyHistorical(ctx, tx, src, opts); err != nil {
@@ -663,7 +664,7 @@ func (s *applyState) applySettings(ctx context.Context, tx *gorm.DB, src *source
 	return nil
 }
 
-func (s *applyState) applyAdmins(ctx context.Context, tx *gorm.DB, src *sourceDB, opts ApplyOptions) error {
+func (s *applyState) applyAdmins(ctx context.Context, tx *gorm.DB, src *sourceDB) error {
 	if !s.hasKind(KindAdmin) {
 		return nil
 	}
@@ -757,25 +758,6 @@ func (s *applyState) hasKind(kind string) bool {
 
 func planKey(kind string, srcID any) string {
 	return kind + ":" + fmt.Sprint(srcID)
-}
-
-func srcIDInt64(value any) int64 {
-	switch v := value.(type) {
-	case int64:
-		return v
-	case int:
-		return int64(v)
-	case float64:
-		return int64(v)
-	case json.Number:
-		n, _ := v.Int64()
-		return n
-	case string:
-		n, _ := strconv.ParseInt(v, 10, 64)
-		return n
-	default:
-		return 0
-	}
 }
 
 func (s *applyState) progress(step string, name string) {
@@ -1008,13 +990,4 @@ func recordAuditWithBackup(tx *gorm.DB, report *Report, opts ApplyOptions) error
 		Severity: "info",
 		Details:  raw,
 	}).Error
-}
-
-func sortPlanItems(items []PlanItem) {
-	sort.SliceStable(items, func(i, j int) bool {
-		if items[i].Kind != items[j].Kind {
-			return items[i].Kind < items[j].Kind
-		}
-		return fmt.Sprint(items[i].SrcID) < fmt.Sprint(items[j].SrcID)
-	})
 }

@@ -104,9 +104,9 @@ func TestIntegrationAuthFlowLoginCSRFSaveSettingsPublishesRealtime(t *testing.T)
 		t.Fatalf("rejected settings save returned %d body=%s", rejectRecorder.Code, rejectRecorder.Body.String())
 	}
 
-	assertIntegrationAuditEvent(t, "login_success", "admin", "auth")
-	assertIntegrationAuditEvent(t, "sub_path_changed", "admin", "subscription")
-	assertIntegrationAuditEvent(t, "settings_save_rejected_key", "admin", "settings")
+	assertIntegrationAuditEvent(t, "login_success", "auth")
+	assertIntegrationAuditEvent(t, "sub_path_changed", "subscription")
+	assertIntegrationAuditEvent(t, "settings_save_rejected_key", "settings")
 
 	var change model.Changes
 	if err := database.GetDB().Where("actor = ? AND key = ? AND action = ?", "admin", "settings", "set").First(&change).Error; err != nil {
@@ -114,8 +114,40 @@ func TestIntegrationAuthFlowLoginCSRFSaveSettingsPublishesRealtime(t *testing.T)
 	}
 }
 
-func TestIntegrationAuthFlowSettingsSaveSuccessAudit_XFAILPhase3(t *testing.T) {
-	t.Skip("XFAIL Phase3: успешный settings save пока не пишет settings_save_* audit event; требуется production-контракт для audit success")
+func TestIntegrationAuthFlowSettingsSaveSuccessAudit(t *testing.T) {
+	settingService := initSessionTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.POST("/api/save", func(c *gin.Context) {
+			(&ApiService{}).Save(c, "admin")
+		})
+	})
+
+	payload, err := json.Marshal(map[string]string{"subJsonPath": "/json-success/"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	form := url.Values{}
+	form.Set("object", "settings")
+	form.Set("action", "set")
+	form.Set("data", string(payload))
+	req := httptest.NewRequest(http.MethodPost, "/api/save", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+
+	recorder := performAuthenticatedTestRequest(router, req, cookies...)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("settings save returned %d body=%s", recorder.Code, recorder.Body.String())
+	}
+
+	var event model.AuditEvent
+	if err := database.GetDB().Where("event = ?", "settings_save_succeeded").Order("id desc").First(&event).Error; err != nil {
+		t.Fatal(err)
+	}
+	if event.Actor != "admin" || event.Resource != "settings" || event.Severity != service.AuditSeverityInfo {
+		t.Fatalf("unexpected settings_save_succeeded audit: %#v", event)
+	}
 }
 
 type integrationCookieJar struct {
@@ -203,13 +235,13 @@ func expectIntegrationRealtimeTopic(t *testing.T, events <-chan realtime.Event, 
 	}
 }
 
-func assertIntegrationAuditEvent(t *testing.T, eventName string, actor string, resource string) model.AuditEvent {
+func assertIntegrationAuditEvent(t *testing.T, eventName string, resource string) model.AuditEvent {
 	t.Helper()
 	var event model.AuditEvent
 	if err := database.GetDB().Where("event = ?", eventName).Order("id desc").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
-	if event.Actor != actor || event.Resource != resource {
+	if event.Actor != "admin" || event.Resource != resource {
 		t.Fatalf("unexpected audit event for %s: %#v", eventName, event)
 	}
 	return event

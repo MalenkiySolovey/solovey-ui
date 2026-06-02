@@ -370,7 +370,7 @@ func (a *ApiService) GetDb(c *gin.Context) {
 	})
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Content-Disposition", "attachment; filename=s-ui_"+time.Now().Format("20060102-150405")+".db")
-	c.Writer.Write(db)
+	_, _ = c.Writer.Write(db)
 }
 
 func (a *ApiService) getEncryptedDb(c *gin.Context, exclude string) {
@@ -433,7 +433,6 @@ func (a *ApiService) getEncryptedDb(c *gin.Context, exclude string) {
 		return
 	}
 	wipeBytes(db)
-	db = nil
 
 	a.recordAudit(c, requestActor(c), "tg_backup_manual_encrypted", "database", service.AuditSeverityInfo, map[string]any{
 		"channel":           "local_download",
@@ -443,16 +442,7 @@ func (a *ApiService) getEncryptedDb(c *gin.Context, exclude string) {
 	})
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Content-Disposition", "attachment; filename=s-ui_"+time.Now().Format("20060102-150405")+".db.aes")
-	c.Writer.Write(envelope)
-}
-
-func (a *ApiService) postActions(c *gin.Context) (string, json.RawMessage, error) {
-	var data map[string]json.RawMessage
-	err := c.ShouldBind(&data)
-	if err != nil {
-		return "", nil, err
-	}
-	return string(data["action"]), data["data"], nil
+	_, _ = c.Writer.Write(envelope)
 }
 
 func (a *ApiService) Login(c *gin.Context) {
@@ -597,6 +587,11 @@ func (a *ApiService) Save(c *gin.Context, loginUser string) {
 		}
 		jsonMsg(c, "save", err)
 		return
+	}
+	if obj == "settings" {
+		a.recordAudit(c, loginUser, "settings_save_succeeded", "settings", service.AuditSeverityInfo, map[string]any{
+			"action": act,
+		})
 	}
 	a.auditSubscriptionPathChanges(c, loginUser, subscriptionPathBefore)
 	err = a.LoadPartialData(c, objs)
@@ -959,12 +954,12 @@ func (a *ApiService) GetSingboxConfig(c *gin.Context) {
 	rawConfig, err := a.ConfigService.GetConfig("")
 	if err != nil {
 		c.Status(400)
-		c.Writer.WriteString(err.Error())
+		_, _ = c.Writer.WriteString(err.Error())
 		return
 	}
 	c.Header("Content-Type", "application/json")
 	c.Header("Content-Disposition", "attachment; filename=config_"+time.Now().Format("20060102-150405")+".json")
-	c.Writer.Write(*rawConfig)
+	_, _ = c.Writer.Write(*rawConfig)
 }
 
 func (a *ApiService) GetCheckOutbound(c *gin.Context) {

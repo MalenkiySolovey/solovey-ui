@@ -415,14 +415,6 @@ func (s *ConfigService) GetChanges(actor string, chngKey string, count string) [
 	return chngs
 }
 
-func setLastUpdate(value int64) {
-	DefaultRuntime().updates().Set(value)
-}
-
-func getLastUpdate() int64 {
-	return DefaultRuntime().updates().Get()
-}
-
 func (s *ConfigService) setLastUpdate(value int64) {
 	s.runtime().updates().Set(value)
 }

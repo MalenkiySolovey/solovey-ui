@@ -2,7 +2,6 @@ package api
 
 import (
 	"encoding/gob"
-	"net/http"
 
 	"github.com/deposist/s-ui-x/database/model"
 	"github.com/deposist/s-ui-x/logger"
@@ -26,7 +25,7 @@ func SetLoginUser(c *gin.Context, userName string, maxAge int, sessionGeneration
 		Path:     "/",
 		Secure:   resolveCookieSecure(c, &service.SettingService{}),
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: resolveCookieSameSite(&service.SettingService{}),
 	}
 	if maxAge > 0 {
 		options.MaxAge = maxAge * 60
@@ -97,7 +96,9 @@ func ClearSession(c *gin.Context) {
 		MaxAge:   -1,
 		Secure:   resolveCookieSecure(c, &service.SettingService{}),
 		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
+		SameSite: resolveCookieSameSite(&service.SettingService{}),
 	})
-	s.Save()
+	if err := s.Save(); err != nil {
+		logger.Warning("failed to save cleared session: ", err)
+	}
 }

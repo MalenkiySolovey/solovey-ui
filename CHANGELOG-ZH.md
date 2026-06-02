@@ -4,6 +4,26 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [1.5.6-beta4] - 2026-06-02 - security & static-analysis hardening
+
+- 将 backend 静态分析做到零告警（`staticcheck`、`golangci-lint`、`gosec`），并使
+  `go vet`（nilness）、包含 `-race` 的完整 `go test ./...` 套件、`govulncheck`，
+  以及前端 lint/typecheck/unit 套件全部通过。将已弃用的
+  `sing/common/atomic.Int64` 迁移到 `sync/atomic`，将已弃用的
+  `net.Error.Temporary()` 检查迁移为基于超时的检查，移除死代码，并将此前未检查
+  的 error 返回值显式处理。
+- APIv2：无效或过期的 bearer token 现在返回 HTTP `401 Unauthorized`，而不再是
+  返回 HTTP `200` 并带有 `success:false` 的 body。浏览器 UI 不受影响，因为它在
+  `/api` 上使用 cookie sessions，而非在 `/apiv2` 上使用 bearer token；外部 API
+  使用方现在必须检查 HTTP status。
+- 新增可选启用的 `sessionSameSiteStrict` setting（默认关闭），启用后签发的
+  session cookies 带有 `SameSite=Strict`；拒绝 Telegram 代理 URL 中内嵌的凭据，
+  以及可选 HTTP URL settings 中的 private/loopback/link-local/multicast IP 字面
+  量；并加固恒定时间的 API-token-scope 比较，防止长度为 256 倍数时的截断。
+- 在 settings 保存成功时发出 `settings_save_succeeded` audit event，并强制 backup
+  -> restore 的表数量一致性，包括 `tls` 的 no-TLS 标记行。
+- 完整 release notes：[`docs/releases/v1.5.6-beta4.md`](docs/releases/v1.5.6-beta4.md)。
+
 ## [1.5.6-beta3] - 2026-05-29 - admin management beta
 
 - 在 Classic 与 Nexus 共用的 `/admins` 页面新增管理员创建和删除；两个操作

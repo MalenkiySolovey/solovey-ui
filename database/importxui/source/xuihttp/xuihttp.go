@@ -101,6 +101,7 @@ func (s Source) getInbounds(ctx context.Context, client *http.Client, baseURL st
 			return nil, "", err
 		}
 		for name, value := range jar {
+			// #nosec G124 -- outgoing request to the remote x-ui panel; Secure/HttpOnly/SameSite apply to response cookies, not client requests.
 			req.AddCookie(&http.Cookie{Name: name, Value: value})
 		}
 		resp, err := client.Do(req)

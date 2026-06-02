@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -132,7 +133,12 @@ func getPublicIP() string {
 		wg.Add(1)
 		go func(url string) {
 			defer wg.Done()
-			resp, err := client.Get(url)
+			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+			if err != nil {
+				ch <- result{"", err}
+				return
+			}
+			resp, err := client.Do(req)
 			if err != nil {
 				ch <- result{"", err}
 				return

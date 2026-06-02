@@ -49,6 +49,7 @@ func TestAuditWriterOverloadSeverityPriorityAnchorIssue16Phase5(t *testing.T) {
 	queueLen := len(writer.queue)
 	writer.mu.Unlock()
 
+	// #nosec G115 -- bench drop counter is well within int range.
 	dropped := int(auditDroppedTotal.Load())
 	wantKeptWarnSecurity := 5000
 	if wantKeptWarnSecurity > auditQueueCapacity {
