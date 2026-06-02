@@ -93,7 +93,7 @@ func TestProfileEncryptionHidesPlaintextAndKeyFileOverride(t *testing.T) {
 
 func TestMapXrayRouting(t *testing.T) {
 	raw := `{"routing":{"rules":[{"type":"field","domain":["geosite:cn"],"ip":["geoip:cn"],"outboundTag":"direct"},{"type":"field","balancerTag":"auto"}]}}`
-	mapped, warnings, mappedCount, manualCount := MapXrayRouting(raw)
+	mapped, warnings, mappedCount, manualCount := MapXrayRouting(raw, nil)
 	if mappedCount != 1 || manualCount != 1 {
 		t.Fatalf("unexpected routing counts: mapped=%d manual=%d", mappedCount, manualCount)
 	}

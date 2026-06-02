@@ -123,6 +123,34 @@ func (s *applyState) applyHistorical(ctx context.Context, tx *gorm.DB, src *sour
 	return nil
 }
 
+// createNewEndpoints persists WARP/wireguard-outbound endpoints, creating each
+// only when no endpoint with that tag already exists. It never overwrites an
+// existing endpoint, so re-imports and scheduled sync stay idempotent and a
+// user-tuned (or same-tagged) endpoint — including its private key — is left
+// untouched. The routing rule still references the tag, which now exists either
+// way, so there is no dangling reference.
+func createNewEndpoints(tx *gorm.DB, endpoints []model.Endpoint, report *Report) error {
+	for i := range endpoints {
+		ep := &endpoints[i]
+		var existing model.Endpoint
+		err := tx.Where("tag = ?", ep.Tag).First(&existing).Error
+		if err != nil && !database.IsNotFound(err) {
+			return err
+		}
+		if err == nil {
+			report.Summary.Endpoints.Skipped++
+			report.warn(fmt.Sprintf("endpoint %q already exists; WARP outbound left unchanged", ep.Tag))
+			continue
+		}
+		if err := tx.Create(ep).Error; err != nil {
+			return err
+		}
+		report.Summary.Endpoints.Imported++
+		report.warn(fmt.Sprintf("imported WARP endpoint %q from xray wireguard outbound", ep.Tag))
+	}
+	return nil
+}
+
 func planRouting(ctx context.Context, src *sourceDB, plan *MigrationPlan) error {
 	if err := checkContext(ctx); err != nil {
 		return err
@@ -131,13 +159,15 @@ func planRouting(ctx context.Context, src *sourceDB, plan *MigrationPlan) error 
 	if err != nil {
 		return err
 	}
-	mapped, warnings, mappedCount, manualCount := MapXrayRouting(xrayConfig)
+	endpoints, targets, outboundWarnings := mapXrayOutbounds(xrayConfig)
+	mapped, warnings, mappedCount, manualCount := MapXrayRouting(xrayConfig, targets)
+	warnings = append(outboundWarnings, warnings...)
 	preview, err := marshalJSON(mapped)
 	if err != nil {
 		return err
 	}
 	action := ActionCreate
-	if xrayConfig == "" || (mappedCount == 0 && manualCount == 0) {
+	if xrayConfig == "" || (mappedCount == 0 && manualCount == 0 && len(endpoints) == 0) {
 		action = ActionSkip
 	}
 	plan.Items = append(plan.Items, PlanItem{
@@ -167,7 +197,18 @@ func (s *applyState) applyRouting(ctx context.Context, tx *gorm.DB, src *sourceD
 	if err != nil {
 		return err
 	}
-	mapped, warnings, mappedCount, manualCount := MapXrayRouting(xrayConfig)
+	// WARP (and any wireguard outbound) becomes an s-ui endpoint; create those
+	// first so the routing rules below can target them by tag, then map the
+	// rules. blackhole/freedom outbounds resolve to block/direct.
+	endpoints, targets, outboundWarnings := mapXrayOutbounds(xrayConfig)
+	s.report.warnAll(outboundWarnings)
+	if err := createNewEndpoints(tx, endpoints, s.report); err != nil {
+		return err
+	}
+	for i := range endpoints {
+		s.progress("endpoints", endpoints[i].Tag)
+	}
+	mapped, warnings, mappedCount, manualCount := MapXrayRouting(xrayConfig, targets)
 	raw, err := marshalJSON(mapped)
 	if err != nil {
 		return err
@@ -185,7 +226,24 @@ func (s *applyState) applyRouting(ctx context.Context, tx *gorm.DB, src *sourceD
 	return nil
 }
 
-func MapXrayRouting(raw string) (map[string]any, []string, int, int) {
+// resolveRoutingTarget maps an Xray outboundTag to an s-ui routing target. The
+// targets map is built from the source outbounds (blackhole->block,
+// freedom->direct, wireguard/WARP->the endpoint tag). The fallback covers
+// configs parsed without an outbounds list.
+func resolveRoutingTarget(outboundTag string, targets map[string]string) (string, bool) {
+	if t, ok := targets[outboundTag]; ok && t != "" {
+		return t, true
+	}
+	switch strings.ToLower(outboundTag) {
+	case "block", "blocked":
+		return "block", true
+	case "direct":
+		return "direct", true
+	}
+	return "", false
+}
+
+func MapXrayRouting(raw string, targets map[string]string) (map[string]any, []string, int, int) {
 	result := map[string]any{
 		"route": map[string]any{
 			"rules":    []any{},
@@ -225,8 +283,8 @@ func MapXrayRouting(raw string) (map[string]any, []string, int, int) {
 			warnings = append(warnings, fmt.Sprintf("routing rule %d has no outboundTag; manual review required", index))
 			continue
 		}
-		target := outboundTag
-		if target != "block" && target != "direct" {
+		target, ok := resolveRoutingTarget(outboundTag, targets)
+		if !ok {
 			manual++
 			warnings = append(warnings, fmt.Sprintf("routing rule %d outbound %q requires manual review", index, outboundTag))
 			continue
