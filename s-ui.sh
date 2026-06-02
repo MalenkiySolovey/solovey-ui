@@ -970,12 +970,15 @@ generate_self_signed_cert() {
     esac
 
     LOGI "Generating self-signed certificate ($algo)..."
-    sudo openssl req -x509 -nodes -days 3650 $key_opt \
+    # The script already requires root (see the EUID check), so call openssl
+    # directly: prefixing sudo breaks on minimal root-only systems where sudo is
+    # not installed ("sudo: command not found").
+    openssl req -x509 -nodes -days 3650 $key_opt \
         -keyout "${cert_dir}/self.key" \
         -out "${cert_dir}/self.crt" \
         -subj "/CN=myserver"
     if [[ $? -eq 0 ]]; then
-        sudo chmod 600 "${cert_dir}/self."*
+        chmod 600 "${cert_dir}/self."*
         LOGI "Self-signed certificate created."
         LOGI "Path: ${cert_dir}/self.crt"
         LOGI "Key:  ${cert_dir}/self.key"
