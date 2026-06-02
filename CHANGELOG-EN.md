@@ -5,6 +5,25 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.6-beta6] - 2026-06-02 - 3x-ui migration hardening
+
+- Fixes a runaway re-import loop: importing a large 3x-ui database takes longer
+  than the web server's 30s write timeout, so the response was severed mid-import
+  — the client never saw success and resubmitted, and each retry ran a full
+  import and wrote another pre-import backup. The import endpoints now lift that
+  deadline (only after authentication; the work stays bounded by the request
+  context), so the client receives the result and stops resubmitting.
+- Caps pre-import backups: only the newest 10 `s-ui-pre-xui-import-*.db` files
+  are kept, so a slow or retried import can no longer fill the database
+  directory.
+- Restore now rejects a 3x-ui / x-ui database up front with a clear message
+  ("use Migrate from 3x-ui") instead of failing later with the cryptic
+  `no such table: changes`; schema migration also tolerates a missing `changes`
+  table so a genuinely old s-ui backup still restores.
+- Backup & Restore dialog: clarifies that Restore is for s-ui backups only and
+  distinguishes the quick 3x-ui import from the full review wizard.
+- Full release notes: [`docs/releases/v1.5.6-beta6.md`](docs/releases/v1.5.6-beta6.md).
+
 ## [1.5.6-beta5] - 2026-06-02 - 3x-ui migration fixes
 
 - Fixes a total-failure bug in the built-in 3x-ui import (`migrate-xui`): the

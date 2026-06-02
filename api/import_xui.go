@@ -113,6 +113,7 @@ func (a *ApiService) ImportXui(c *gin.Context) {
 		return
 	}
 	defer cancel()
+	extendSlowRequestDeadlines(c)
 	upload, err := saveXUIUpload(c)
 	if err != nil {
 		a.recordXuiImportFailure(c, err, "")
@@ -165,6 +166,7 @@ func (a *ApiService) ImportXuiPlan(c *gin.Context) {
 		return
 	}
 	defer cancel()
+	extendSlowRequestDeadlines(c)
 	upload, err := saveXUIUpload(c)
 	if err != nil {
 		a.recordXuiImportFailure(c, err, "")
@@ -206,6 +208,7 @@ func (a *ApiService) ImportXuiApply(c *gin.Context) {
 		return
 	}
 	defer cancel()
+	extendSlowRequestDeadlines(c)
 	upload, err := saveXUIUpload(c)
 	if err != nil {
 		a.recordXuiImportFailure(c, err, "")
@@ -327,6 +330,28 @@ func (a *ApiService) beginXUIRequest(c *gin.Context) (context.Context, context.C
 	ctx, cancel := context.WithTimeout(c.Request.Context(), xuiRequestTimeout)
 	c.Request = c.Request.WithContext(ctx)
 	return ctx, cancel, true
+}
+
+// extendSlowRequestDeadlines lifts the http.Server's 30s Read/Write timeouts
+// for a long-running request. Importing a large 3x-ui database can take well
+// over 30s; without this the server severs the connection mid-import, so the
+// client never receives the result and may resubmit — duplicating the import
+// and its pre-import backup (the runaway-backup symptom). No-ops on response
+// writers that do not support deadlines (e.g. httptest recorders).
+//
+// SECURITY: only ever call this AFTER beginXUIRequest has authenticated,
+// scope-checked and rate-limited the caller. Moving it before that auth gate
+// would let an unauthenticated client hold a connection open for the whole
+// extended window. The deadline is deliberately FINITE (not the zero/no-limit
+// value), so even an authorized admin cannot hold the connection indefinitely,
+// and the work itself stays bounded by the request context set in
+// beginXUIRequest. Unauthenticated callers never reach here: the /api group's
+// checkLogin middleware aborts them before any handler runs.
+func extendSlowRequestDeadlines(c *gin.Context) {
+	rc := http.NewResponseController(c.Writer)
+	deadline := time.Now().Add(xuiRequestTimeout + time.Minute)
+	_ = rc.SetReadDeadline(deadline)
+	_ = rc.SetWriteDeadline(deadline)
 }
 
 func (a *ApiService) enforceXUIRateLimit(c *gin.Context) bool {

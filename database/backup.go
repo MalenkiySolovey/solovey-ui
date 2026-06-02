@@ -402,10 +402,30 @@ func validateSQLiteBackup(path string) error {
 	if result != "ok" {
 		return common.NewErrorf("Invalid db integrity: %s", result)
 	}
+	if isXUIDatabase(probe) {
+		return common.NewError("this looks like a 3x-ui/x-ui database, not an s-ui backup; use \"Migrate from 3x-ui\" to import it instead of Restore")
+	}
 	if err := validateVersionedBackupConfig(probe); err != nil {
 		return err
 	}
 	return nil
+}
+
+// isXUIDatabase reports whether the probed database is a 3x-ui / x-ui (xray)
+// database rather than an s-ui backup. client_traffics and inbound_client_ips
+// are 3x-ui tables that no s-ui schema has ever carried, so their presence is a
+// definitive signal. Detecting it here lets Restore reject foreign databases
+// with a clear, actionable message instead of failing later in schema
+// migration with a cryptic "no such table: changes". The check is positive
+// (looks-like-3x-ui) rather than negative (lacks-s-ui-tables) so it never
+// false-rejects a minimal or legacy s-ui backup.
+func isXUIDatabase(probe *gorm.DB) bool {
+	for _, table := range []string{"client_traffics", "inbound_client_ips"} {
+		if probe.Migrator().HasTable(table) {
+			return true
+		}
+	}
+	return false
 }
 
 func validateVersionedBackupConfig(probe *gorm.DB) error {

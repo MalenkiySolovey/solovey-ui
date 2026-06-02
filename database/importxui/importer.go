@@ -405,7 +405,30 @@ func WritePreImportBackup(now int64) (string, error) {
 		return "", fmt.Errorf("xui-import: %w", err)
 	}
 	logger.Info("xui-import: pre-import backup saved to ", path)
+	prunePreImportBackups(dir, preImportBackupRetention)
 	return path, nil
+}
+
+// preImportBackupRetention bounds how many s-ui-pre-xui-import-*.db files are
+// kept. Every import writes one, and a slow import behind a client/proxy that
+// resubmits can produce dozens, filling the db directory. Keeping the newest N
+// preserves rollback while preventing unbounded growth.
+const preImportBackupRetention = 10
+
+// prunePreImportBackups removes all but the newest keep pre-import backups in
+// dir. The filenames embed a fixed-width unix timestamp, so a lexical sort is
+// chronological. Best-effort: failures are logged, not fatal to the import.
+func prunePreImportBackups(dir string, keep int) {
+	matches, err := filepath.Glob(filepath.Join(dir, "s-ui-pre-xui-import-*.db"))
+	if err != nil || len(matches) <= keep {
+		return
+	}
+	sort.Strings(matches)
+	for _, old := range matches[:len(matches)-keep] {
+		if err := os.Remove(old); err != nil {
+			logger.Warning("xui-import: failed to prune old pre-import backup ", old, ": ", err)
+		}
+	}
 }
 
 func sortStrings(values []string) {

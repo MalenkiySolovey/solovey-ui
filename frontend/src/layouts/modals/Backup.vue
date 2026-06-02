@@ -42,6 +42,9 @@
           <v-col cols="auto" align-self="center">
             <v-btn color="primary" @click="restore()" hide-details>{{ $t('main.backup.restore') }}</v-btn>
           </v-col>
+          <v-col cols="12">
+            <div class="text-caption text-medium-emphasis">{{ $t('main.backup.restoreHint') }}</div>
+          </v-col>
         </v-row>
         <v-row v-if="restoreIsTelegramEnvelope">
           <v-col cols="12">
@@ -64,7 +67,8 @@
         <v-row>
           <v-divider class="mb-2"></v-divider>
           <v-col cols="12">
-            <div class="text-subtitle-1 mb-2">{{ $t('main.backup.xui.title') }}</div>
+            <div class="text-subtitle-1">{{ $t('main.backup.xui.title') }}</div>
+            <div class="text-caption text-medium-emphasis mb-2">{{ $t('main.backup.xui.hint') }}</div>
           </v-col>
           <v-col cols="auto">
             <v-checkbox v-model="xuiDryRun" :label="$t('main.backup.xui.dryRun')" hide-details></v-checkbox>

@@ -4,6 +4,21 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [1.5.6-beta6] - 2026-06-02 - 3x-ui 迁移加固
+
+- 修复重复导入循环：导入较大的 3x-ui 数据库耗时超过 Web 服务器的 30 秒写超时，
+  因此响应在导入中途被切断——客户端收不到成功结果而重新提交，每次重试都会执行一
+  次完整导入并再写一个 pre-import 备份。导入端点现在会解除该截止时间（仅在通过鉴
+  权之后；实际工作仍受请求上下文限制），使客户端能收到结果，不再重复提交。
+- 限制 pre-import 备份数量：仅保留最新的 10 个 `s-ui-pre-xui-import-*.db` 文件，
+  缓慢或被重试的导入不再会塞满数据库目录。
+- 恢复（Restore）现在会在前期就以明确提示拒绝 3x-ui / x-ui 数据库（“请使用
+  Migrate from 3x-ui”），而不是稍后以晦涩的 `no such table: changes` 失败；架构迁
+  移也能容忍缺失的 `changes` 表，使确实较旧的 s-ui 备份仍可恢复。
+- “备份与恢复”对话框：明确 Restore 仅用于 s-ui 备份，并区分 3x-ui 快速导入与完整
+  的审阅向导。
+- 完整发布说明：[`docs/releases/v1.5.6-beta6.md`](docs/releases/v1.5.6-beta6.md)。
+
 ## [1.5.6-beta5] - 2026-06-02 - 3x-ui 迁移修复
 
 - 修复内置 3x-ui 导入（`migrate-xui`）完全失败的 bug：dialect 硬编码了

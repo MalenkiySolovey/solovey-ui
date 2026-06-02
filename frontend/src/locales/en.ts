@@ -249,6 +249,7 @@ export default {
       title: "Backup & Restore",
       backup: "Download Backup",
       restore: "Restore Backup",
+      restoreHint: "Restores an s-ui backup (.db). To import a 3x-ui database, use \"Migrate from 3x-ui\" below — not this.",
       exclStats: "Exclude graphs",
       exclChanges: "Exclude changes",
       encryptTelegram: "Encrypt with Telegram backup passphrase",
@@ -257,7 +258,8 @@ export default {
       sbConfig: "Download Sing-Box Config",
       xui: {
         title: "Migrate from 3x-ui",
-        button: "Choose 3x-ui database…",
+        hint: "Quick import applies immediately. The full wizard lets you preview, review conflicts and choose exactly what to migrate.",
+        button: "Quick import — choose 3x-ui .db…",
         dryRun: "Dry-run (preview only)",
         strategy: "Conflict strategy",
         merge: "Merge",
@@ -265,7 +267,7 @@ export default {
         skip: "Skip",
         summary: "Import summary",
         warnings: "Warnings",
-        openFull: "Open full migration view",
+        openFull: "Full wizard (review & select)",
       },
     },
     stats: {

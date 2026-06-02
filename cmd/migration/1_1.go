@@ -74,6 +74,12 @@ func deleteOldWebSecret(db *gorm.DB) error {
 }
 
 func changesObj(db *gorm.DB) error {
+	// A genuinely old s-ui backup can predate the `changes` table. Guard the
+	// update so migrating such a backup does not hard-fail with
+	// "no such table: changes" (AutoMigrate in InitDB creates it afterwards).
+	if !db.Migrator().HasTable("changes") {
+		return nil
+	}
 	return db.Exec("UPDATE changes SET obj = CAST('\"' || CAST(obj AS TEXT) || '\"' AS BLOB) WHERE actor = ? and obj not like ?", "DepleteJob", "\"%\"").Error
 }
 
