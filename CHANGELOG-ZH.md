@@ -4,6 +4,27 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [1.5.6-beta7] - 2026-06-02 - 3x-ui 迁移：订阅链接、WARP 与导入超时
+
+- 迁移后的客户端现在会生成订阅链接：导入器把每个客户端的 `Links` 留空，而订阅只
+  读取已保存的链接，因此导入客户端的入站从不出现在订阅或二维码/链接视图中。现在
+  在导入时用与面板正常保存客户端相同的生成器生成链接；主机名取自面板请求主机
+  （Web）、新的 CLI 标志 `--host`，或已配置的 sub/web 域名（计划同步）。重复导入
+  （merge）会保留客户端的 external/sub 链接，且现在容忍 `NULL` 的 `Links` 列，因
+  此后续编辑入站会重新生成链接而不是跳过该客户端。
+- Cloudflare WARP 作为 WireGuard endpoint 连同其路由规则一起迁移：3x-ui 把 WARP
+  存为被规则引用的 WireGuard outbound，而 s-ui 把 WARP 建模为 endpoint 并通过
+  Rules 路由。WARP outbound 现转换为 WARP endpoint（Cloudflare 对端、MTU、地址、
+  reserved），其规则改为指向该 endpoint，而不再标记“需人工审核”；源
+  blackhole/freedom outbound 按协议解析为 block/direct，因此 `blocked`/`direct`
+  规则也会迁移。endpoint 仅在新建时创建（重复导入或计划同步不再覆盖已编辑的 WARP
+  endpoint），且非恰好 3 字节的 `reserved` 会被丢弃并给出警告，使配置仍可加载。
+- 导入不再以“Network Error”失败：较大的导入可能超过 Web 服务器的 30 秒写超时并在
+  中途切断 HTTP 响应，尽管服务端已完成导入。现在在原始连接上解除截止时间——gzip
+  中间件包装了响应 writer，使 `http.NewResponseController` 无法触及它——且仅在请求
+  通过鉴权、scope 检查和限速之后，工作仍受请求上下文限制。
+- 完整发布说明：[`docs/releases/v1.5.6-beta7.md`](docs/releases/v1.5.6-beta7.md)。
+
 ## [1.5.6-beta6] - 2026-06-02 - 3x-ui 迁移加固
 
 - 修复重复导入循环：导入较大的 3x-ui 数据库耗时超过 Web 服务器的 30 秒写超时，

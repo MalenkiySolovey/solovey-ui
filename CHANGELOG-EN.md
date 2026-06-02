@@ -5,6 +5,35 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.6-beta7] - 2026-06-02 - 3x-ui migration: subscription links, WARP & import timeout
+
+- Migrated clients now get subscription links: the importer left each client's
+  `Links` empty and the subscription reads only stored links, so an imported
+  client's inbounds never appeared in the subscription or QR/Links view. Links
+  are generated during import with the same generator the panel uses on a normal
+  client save; the hostname is the panel request host (web), the new `--host`
+  CLI flag, or the configured sub/web domain (scheduled sync). A re-import merge
+  preserves a client's external/sub links, and a NULL `Links` column is now
+  tolerated so a later inbound edit regenerates links instead of skipping the
+  client.
+- Cloudflare WARP migrates as a WireGuard endpoint with its routing rule: 3x-ui
+  stores WARP as a WireGuard outbound referenced by rules, while s-ui models WARP
+  as an endpoint routed to via Rules. The WARP outbound becomes a WARP endpoint
+  (Cloudflare peer, MTU, addresses, reserved) and its rule is rewired to target
+  it instead of "requires manual review"; source blackhole/freedom outbounds
+  resolve to block/direct by protocol, so `blocked`/`direct` rules map too. The
+  endpoint is created only when new (a re-import or scheduled sync no longer
+  clobbers an edited WARP endpoint), and a `reserved` value that is not exactly
+  three bytes is dropped with a warning so the config still loads.
+- Import no longer fails with "Network Error": a large import could run past the
+  web server's 30s write timeout and sever the HTTP response mid-import even
+  though it completed server-side. The deadline is now lifted on the raw
+  connection — the gzip middleware wraps the response writer so
+  `http.NewResponseController` could not reach it — only after the request is
+  authenticated, scope-checked and rate-limited, and the work stays bounded by
+  the request context.
+- Full release notes: [`docs/releases/v1.5.6-beta7.md`](docs/releases/v1.5.6-beta7.md).
+
 ## [1.5.6-beta6] - 2026-06-02 - 3x-ui migration hardening
 
 - Fixes a runaway re-import loop: importing a large 3x-ui database takes longer

@@ -24,7 +24,7 @@
 
 Advanced Web panel built on `SagerNet/Sing-Box`.
 
-**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.6-beta6`).
+**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.6-beta7`).
 
 **This fork keeps the original project structure and updates the user-facing documentation and installation links for this repository. You can use the scripts from this repository directly, or fork and build the project yourself.**
 
@@ -37,7 +37,7 @@ The full per-release notes live in the language-specific changelog files:
 - English: [`CHANGELOG-EN.md`](CHANGELOG-EN.md)
 - Русский: [`CHANGELOG-RU.md`](CHANGELOG-RU.md)
 - 简体中文: [`CHANGELOG-ZH.md`](CHANGELOG-ZH.md)
-- Current beta release notes: [`docs/releases/v1.5.6-beta6.md`](docs/releases/v1.5.6-beta6.md)
+- Current beta release notes: [`docs/releases/v1.5.6-beta7.md`](docs/releases/v1.5.6-beta7.md)
 
 The README keeps installation and project overview short. For full release
 history, breaking notes, upgrade guidance, and rollback notes, open the
@@ -119,15 +119,17 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Run `install-windows.bat` as Administrator.
 4. Follow the installation wizard.
 
-## Install v1.5.6-beta6
+## Install v1.5.6-beta7
 
-This beta build hardens the built-in 3x-ui import (`migrate-xui`): a slow import
-no longer has its response cut by the web server's 30s timeout (which caused
-repeated re-imports), pre-import backups are capped, and restoring a 3x-ui
-database is rejected with a clear message instead of a cryptic error.
+This beta build completes the built-in 3x-ui import (`migrate-xui`): migrated
+clients now get working subscription links (previously their inbounds never
+appeared in the subscription), Cloudflare WARP is imported as a WireGuard
+endpoint with its routing rule rewired into Rules, and a slow import no longer
+has its response cut by the web server's 30s timeout (the "Import failed /
+Network Error" symptom).
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.6-beta6
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.6-beta7
 ```
 
 Or from a local clone:
@@ -135,7 +137,7 @@ Or from a local clone:
 ```sh
 git clone https://github.com/deposist/s-ui-x.git
 cd s-ui-x
-sudo bash install.sh v1.5.6-beta6
+sudo bash install.sh v1.5.6-beta7
 ```
 
 ## Install v1.5.5 Stable
@@ -386,7 +388,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 Продвинутая Web-панель, построенная на базе `SagerNet/Sing-Box`.
 
-**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.6-beta6`).
+**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.6-beta7`).
 
 **Этот fork сохраняет структуру оригинального проекта и обновляет пользовательскую документацию и ссылки установки для этого репозитория. Вы можете напрямую использовать скрипты из этого репозитория или сделать fork и собрать проект самостоятельно.**
 
@@ -399,7 +401,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 - English: [`CHANGELOG-EN.md`](CHANGELOG-EN.md)
 - Русский: [`CHANGELOG-RU.md`](CHANGELOG-RU.md)
 - 简体中文: [`CHANGELOG-ZH.md`](CHANGELOG-ZH.md)
-- Release notes текущей beta: [`docs/releases/v1.5.6-beta6.md`](docs/releases/v1.5.6-beta6.md)
+- Release notes текущей beta: [`docs/releases/v1.5.6-beta7.md`](docs/releases/v1.5.6-beta7.md)
 
 README оставляет только установку и общий обзор проекта. Полная история
 релизов, breaking-заметки, гайд по обновлению и инструкции по откату находятся
@@ -481,15 +483,17 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Запустите `install-windows.bat` от имени администратора.
 4. Следуйте инструкциям мастера установки.
 
-## Установка v1.5.6-beta6
+## Установка v1.5.6-beta7
 
-Эта beta-сборка усиливает встроенный импорт 3x-ui (`migrate-xui`): медленный
-импорт больше не обрывается 30‑секундным таймаутом веб‑сервера (из‑за чего шли
-повторные импорты), число pre‑import бэкапов ограничено, а восстановление базы
-3x-ui отклоняется понятным сообщением вместо непонятной ошибки.
+Эта beta-сборка завершает встроенный импорт 3x-ui (`migrate-xui`): у
+перенесённых клиентов теперь работают ссылки подписки (раньше их инбаунды вообще
+не попадали в подписку), Cloudflare WARP импортируется как WireGuard-endpoint с
+переносом его правила маршрутизации в Rules, а медленный импорт больше не
+обрывается 30‑секундным таймаутом веб‑сервера (симптом «Import failed / Network
+Error»).
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.6-beta6
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.6-beta7
 ```
 
 Или из локального клона:
@@ -497,7 +501,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 ```sh
 git clone https://github.com/deposist/s-ui-x.git
 cd s-ui-x
-sudo bash install.sh v1.5.6-beta6
+sudo bash install.sh v1.5.6-beta7
 ```
 
 ## Установка стабильной версии v1.5.5
