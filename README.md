@@ -24,7 +24,7 @@
 
 Advanced Web panel built on `SagerNet/Sing-Box`.
 
-**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.6-beta9`).
+**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.6`).
 
 **This fork keeps the original project structure and updates the user-facing documentation and installation links for this repository. You can use the scripts from this repository directly, or fork and build the project yourself.**
 
@@ -37,7 +37,7 @@ The full per-release notes live in the language-specific changelog files:
 - English: [`CHANGELOG-EN.md`](CHANGELOG-EN.md)
 - Русский: [`CHANGELOG-RU.md`](CHANGELOG-RU.md)
 - 简体中文: [`CHANGELOG-ZH.md`](CHANGELOG-ZH.md)
-- Current beta release notes: [`docs/releases/v1.5.6-beta9.md`](docs/releases/v1.5.6-beta9.md)
+- Current release notes: [`docs/releases/v1.5.6.md`](docs/releases/v1.5.6.md)
 
 The README keeps installation and project overview short. For full release
 history, breaking notes, upgrade guidance, and rollback notes, open the
@@ -119,17 +119,16 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Run `install-windows.bat` as Administrator.
 4. Follow the installation wizard.
 
-## Install v1.5.6-beta9
+## Install v1.5.6 Stable
 
-This beta build adds a terminal-menu item (and a `setting -clearDomain` CLI
-flag) that clears the panel domain, listen address and web URI — recovering
-panel access when a wrong domain or listen IP locks you out of the panel — and
-lets the `Get SSL` menu force-reissue an existing certificate (with a Let's
-Encrypt rate-limit warning) instead of dead-ending when a certificate already
-exists.
+This stable release ships the 3x-ui (x-ui) → s-ui-x migration: import a 3x-ui
+SQLite database — inbounds, clients, outbounds, routing, DNS and inline TLS —
+into s-ui-x. It also corrects the import of `blackhole` and DNS-only configs and
+keeps the panel-recovery terminal menu (clear domain/address, force-reissue SSL).
+See the release notes for details.
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.6-beta9
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.6
 ```
 
 Or from a local clone:
@@ -137,7 +136,7 @@ Or from a local clone:
 ```sh
 git clone https://github.com/deposist/s-ui-x.git
 cd s-ui-x
-sudo bash install.sh v1.5.6-beta9
+sudo bash install.sh v1.5.6
 ```
 
 ## Install v1.5.5 Stable
@@ -388,7 +387,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 Продвинутая Web-панель, построенная на базе `SagerNet/Sing-Box`.
 
-**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.6-beta9`).
+**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.6`).
 
 **Этот fork сохраняет структуру оригинального проекта и обновляет пользовательскую документацию и ссылки установки для этого репозитория. Вы можете напрямую использовать скрипты из этого репозитория или сделать fork и собрать проект самостоятельно.**
 
@@ -401,7 +400,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 - English: [`CHANGELOG-EN.md`](CHANGELOG-EN.md)
 - Русский: [`CHANGELOG-RU.md`](CHANGELOG-RU.md)
 - 简体中文: [`CHANGELOG-ZH.md`](CHANGELOG-ZH.md)
-- Release notes текущей beta: [`docs/releases/v1.5.6-beta9.md`](docs/releases/v1.5.6-beta9.md)
+- Release notes: [`docs/releases/v1.5.6.md`](docs/releases/v1.5.6.md)
 
 README оставляет только установку и общий обзор проекта. Полная история
 релизов, breaking-заметки, гайд по обновлению и инструкции по откату находятся
@@ -483,17 +482,16 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Запустите `install-windows.bat` от имени администратора.
 4. Следуйте инструкциям мастера установки.
 
-## Установка v1.5.6-beta9
+## Установка стабильной версии v1.5.6
 
-Эта beta-сборка добавляет пункт меню (и флаг `setting -clearDomain`), который
-очищает домен панели, адрес прослушивания и web-URI — восстановление доступа к
-панели, если неверный домен или listen-IP заблокировали вход, — и позволяет
-пункту «Получить SSL» принудительно перевыпускать уже существующий сертификат
-(с предупреждением о лимите Let's Encrypt) вместо тупика, когда сертификат уже
-существует.
+Этот стабильный релиз приносит миграцию 3x-ui (x-ui) → s-ui-x: импорт базы 3x-ui
+(SQLite) — входящие, клиенты, outbound'ы, маршрутизацию, DNS и встроенный TLS — в
+s-ui-x. Также исправлен импорт `blackhole`- и DNS-only-конфигов и сохранено
+терминальное меню восстановления панели (очистка домена/адреса, принудительный
+перевыпуск SSL). Подробности — в release notes.
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.6-beta9
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.6
 ```
 
 Или из локального клона:
@@ -501,7 +499,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 ```sh
 git clone https://github.com/deposist/s-ui-x.git
 cd s-ui-x
-sudo bash install.sh v1.5.6-beta9
+sudo bash install.sh v1.5.6
 ```
 
 ## Установка стабильной версии v1.5.5

@@ -5,6 +5,27 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.6] - 2026-06-04 - first stable 1.5.6: 3x-ui import-correctness fixes
+
+- First stable release of the 1.5.6 line, consolidating 1.5.6-beta1..beta9 — the
+  3x-ui → s-ui-x migration and the panel-recovery terminal menu. The entries below
+  are the import-correctness fixes added since beta9.
+- An Xray `blackhole` outbound now migrates to a `reject` rule action instead of a
+  dangling `outbound: "block"` reference. sing-box 1.11+ has no `block` outbound,
+  so the reference made the imported config fail at route time with "outbound not
+  found: block"; this supersedes the `blackhole`→`block` mapping shipped in
+  1.5.6-beta7/beta8.
+- A DNS-only source config (no routing rules, no proxy outbounds, no endpoints) is
+  no longer skipped during import — its DNS was being dropped silently.
+- A built-in `direct` outbound is ensured whenever migrated routing routes to it
+  (a rule, or a remote rule-set download detour), and the check now consults the
+  database so the InitDB-seeded `direct` outbound is not re-reported as a skipped
+  duplicate.
+- The reject / hijack-dns routing targets use non-colliding sentinels, so a user
+  proxy legitimately tagged `block`/`blocked`/`dns` keeps routing to itself instead
+  of being turned into an action.
+- Full release notes: [`docs/releases/v1.5.6.md`](docs/releases/v1.5.6.md).
+
 ## [1.5.6-beta9] - 2026-06-03 - panel domain/address reset menu & SSL force-reissue
 
 - New terminal-menu item *Clear panel domain and address* (also a

@@ -4,6 +4,23 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [1.5.6] - 2026-06-04 - 首个稳定版 1.5.6：3x-ui 导入正确性修复
+
+- 1.5.6 系列的首个稳定版，整合了 1.5.6-beta1..beta9——3x-ui → s-ui-x 迁移与面板恢复
+  终端菜单。以下条目是 beta9 之后新增的导入正确性修复。
+- Xray 的 `blackhole` 出站现在迁移为 `reject` 规则动作，而非悬空的
+  `outbound: "block"` 引用。sing-box 1.11+ 已无 `block` 出站，该引用会使导入的配置在
+  路由时以 “outbound not found: block” 失败；这取代了 1.5.6-beta7/beta8 中的
+  `blackhole`→`block` 映射。
+- 仅含 DNS 的源配置（无路由规则、无代理出站、无 endpoint）在导入时不再被跳过——
+  此前其 DNS 会被静默丢弃。
+- 当迁移后的路由引用 `direct`（规则或远程 rule-set 的 download detour）时，会确保存在
+  内置 `direct` 出站；检查现在会查询数据库，因此 InitDB 预置的 `direct` 出站不再被
+  报告为跳过的重复项。
+- reject / hijack-dns 路由目标使用不冲突的哨兵值，因此被用户合法命名为
+  `block`/`blocked`/`dns` 的代理会继续路由到自身，而不会被转成动作。
+- 完整发布说明：[`docs/releases/v1.5.6.md`](docs/releases/v1.5.6.md)。
+
 ## [1.5.6-beta9] - 2026-06-03 - 面板域名/地址重置菜单与 SSL 强制重签
 
 - 新增终端菜单项 *清除面板域名和地址*（同时提供 `s-ui setting -clearDomain` CLI
