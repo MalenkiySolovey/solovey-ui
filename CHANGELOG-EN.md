@@ -5,6 +5,24 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.6-beta9] - 2026-06-03 - panel domain/address reset menu & SSL force-reissue
+
+- New terminal-menu item *Clear panel domain and address* (also a
+  `s-ui setting -clearDomain` CLI flag and a `ClearWebDomainAndAddress()` service
+  method) resets the panel domain (`webDomain`), listen address (`webListen`) and
+  web URI (`webURI`) to their defaults, recovering panel access when a wrong
+  domain or an unbindable listen IP locks you out. Takes effect after a manual
+  panel restart; adding the item renumbered the later menu entries (`11..21` →
+  `12..22`) and widened the choice-range prompts to `0-22`.
+- The `Get SSL` menu can now re-issue a certificate acme.sh already holds instead
+  of dead-ending with "Certificate already exists; cannot reissue": it shows the
+  existing certificate, warns about the Let's Encrypt duplicate-certificate limit
+  (5 per week), and on confirmation runs `acme.sh --issue --force` plus
+  `--installcert` so `/root/cert/<domain>/` is rewritten too. The existence check
+  no longer inspects only the last `acme.sh --list` row, so it matches the right
+  domain when several certificates are present.
+- Full release notes: [`docs/releases/v1.5.6-beta9.md`](docs/releases/v1.5.6-beta9.md).
+
 ## [1.5.6-beta8] - 2026-06-03 - 3x-ui migration: outbounds, routing matchers, TLS certs & DNS
 
 - Proxy outbounds now migrate as s-ui outbounds: previously only WARP

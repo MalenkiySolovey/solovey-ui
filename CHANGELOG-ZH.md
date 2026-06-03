@@ -4,6 +4,21 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [1.5.6-beta9] - 2026-06-03 - 面板域名/地址重置菜单与 SSL 强制重签
+
+- 新增终端菜单项 *清除面板域名和地址*（同时提供 `s-ui setting -clearDomain` CLI
+  标志和 `ClearWebDomainAndAddress()` 服务方法），将面板域名（`webDomain`）、监听
+  地址（`webListen`）和 web URI（`webURI`）重置为默认值；当错误的域名或主机无法
+  绑定的监听 IP 把你挡在面板之外时，可借此恢复访问。需手动重启面板后生效；新增该
+  菜单项后，后续菜单项重新编号（原 `11..21` 变为 `12..22`），选择范围提示扩展为
+  `0-22`。
+- `Get SSL` 菜单现在可以对 acme.sh 已持有的证书进行重签，而不再以
+  “Certificate already exists; cannot reissue” 终止：它会显示现有证书，提示
+  Let's Encrypt 重复证书限额（每周 5 个），确认后执行 `acme.sh --issue --force`
+  及 `--installcert`，因此 `/root/cert/<域名>/` 中的文件也会被重写。存在性检查不再
+  仅检查 `acme.sh --list` 的最后一行，因此存在多个证书时也能匹配到正确的域名。
+- 完整发布说明：[`docs/releases/v1.5.6-beta9.md`](docs/releases/v1.5.6-beta9.md)。
+
 ## [1.5.6-beta8] - 2026-06-03 - 3x-ui 迁移：出站、路由匹配器、TLS 证书与 DNS
 
 - 代理出站现在会迁移为 s-ui 出站：此前只处理 WARP（WireGuard）、`freedom` 和
