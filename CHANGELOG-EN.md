@@ -55,6 +55,10 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
   multi-server outbound becomes per-server members plus a `urltest` group; Xray
   `mux` is reported rather than enabled, because sing-box multiplex is not
   wire-compatible with Xray mux and enabling it would break the outbound.
+- Web admin keeps unsaved edits during the background refresh: the Basics, DNS
+  and Routing pages bound their forms to the live store config, so the 10-second
+  config poll (and WS reload events) silently reverted in-progress edits — they
+  now edit a local copy that persists until you save.
 - Full release notes: [`docs/releases/v1.5.6-beta8.md`](docs/releases/v1.5.6-beta8.md).
 
 ## [1.5.6-beta7] - 2026-06-02 - 3x-ui migration: subscription links, WARP & import timeout
