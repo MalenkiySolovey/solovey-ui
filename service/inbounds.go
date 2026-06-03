@@ -316,6 +316,14 @@ func (s *InboundService) addUsers(db *gorm.DB, inboundJson []byte, inboundId uin
 		return nil, err
 	}
 
+	// A Trojan inbound authenticates per user; sing-box has no top-level
+	// "password" field for it (only "users") and rejects the whole config
+	// (`unknown field "password"`) if one is present. The inbound editor used to
+	// write one for inbounds, so drop any leftover before emitting.
+	if inboundType == "trojan" {
+		delete(inbound, "password")
+	}
+
 	condition := "? IN (SELECT json_each.value FROM json_each(clients.inbounds))"
 	inbound["users"], err = s.fetchUsersByCondition(db, inboundType, condition, inbound, inboundId)
 	if err != nil {

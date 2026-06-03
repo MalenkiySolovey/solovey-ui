@@ -74,6 +74,49 @@ func TestInboundGetAllLoadsUsersForManyInboundsInBatch(t *testing.T) {
 	}
 }
 
+func TestAddUsersDropsTrojanTopLevelPassword(t *testing.T) {
+	initSettingTestDB(t)
+
+	inbound := model.Inbound{
+		Type:    "trojan",
+		Tag:     "trojan-1",
+		Options: json.RawMessage(`{"listen":"0.0.0.0","listen_port":443,"password":"hello"}`),
+	}
+	if err := database.GetDB().Create(&inbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := database.GetDB().Create(&model.Client{
+		Name:     "alice",
+		Inbounds: json.RawMessage(fmt.Sprintf("[%d]", inbound.Id)),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	inboundJSON, err := json.Marshal(map[string]any{
+		"type": "trojan", "tag": "trojan-1",
+		"listen": "0.0.0.0", "listen_port": 443, "password": "hello",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := (&InboundService{}).addUsers(database.GetDB(), inboundJSON, inbound.Id, "trojan")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(out, &got); err != nil {
+		t.Fatal(err)
+	}
+	// sing-box's Trojan inbound has no top-level "password" (only "users") and
+	// rejects the whole config if one is present.
+	if _, has := got["password"]; has {
+		t.Errorf("trojan inbound must not keep a top-level password: %s", out)
+	}
+	if _, has := got["users"]; !has {
+		t.Errorf("trojan inbound should have users injected: %s", out)
+	}
+}
+
 func TestFetchUsersByConditionRejectsUnsupportedInboundTypeBeforeSQL(t *testing.T) {
 	_, err := (&InboundService{}).fetchUsersByCondition(nil, "vmess'); DROP TABLE clients; --", "1=1", map[string]interface{}{})
 	if err == nil {

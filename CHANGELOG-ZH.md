@@ -57,6 +57,9 @@
   `domain_resolver`——来自迁移的 IP 服务器，或新增的 local 引导服务器——与 s-ui 自带
   DNS 编辑器的设置方式一致；TLS/HTTP 服务器还会补上 `tls`/`headers` 块，使迁移的服务器
   与手动创建的一致。
+- Trojan 入站不再使内核崩溃：入站编辑器会写入顶层 `password`，而 sing-box 的 Trojan
+  入站会拒绝（`unknown field "password"`——它通过 `users` 按用户认证）。密码字段现在
+  仅用于出站，构建配置时会丢弃残留的顶层 `password`（因此已有入站无需编辑即可恢复）。
 - 完整发布说明：[`docs/releases/v1.5.6-beta8.md`](docs/releases/v1.5.6-beta8.md)。
 
 ## [1.5.6-beta7] - 2026-06-02 - 3x-ui 迁移：订阅链接、WARP 与导入超时

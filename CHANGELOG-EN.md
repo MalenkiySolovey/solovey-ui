@@ -73,6 +73,11 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
   local bootstrap — the same way s-ui's own DNS editor sets it; TLS/HTTP servers
   also get the `tls`/`headers` blocks so a migrated server matches a
   natively-created one.
+- A Trojan inbound no longer crashes the core: the inbound editor wrote a
+  top-level `password`, which sing-box's Trojan inbound rejects (`unknown field
+  "password"` — it authenticates per user via `users`). The password field is now
+  outbound-only, and any leftover top-level password is dropped when the config
+  is built (so existing inbounds recover without an edit).
 - Full release notes: [`docs/releases/v1.5.6-beta8.md`](docs/releases/v1.5.6-beta8.md).
 
 ## [1.5.6-beta7] - 2026-06-02 - 3x-ui migration: subscription links, WARP & import timeout
