@@ -146,6 +146,247 @@ func TestRoutingMatchers_DomainPrefixes(t *testing.T) {
 	}
 }
 
+// TestRouting_BlackholeBecomesRejectAction is a regression test: a rule routing
+// to an Xray blackhole outbound must become a reject *action*, not a dangling
+// outbound:"block" reference. The migration never creates an outbound tagged
+// "block" and sing-box no longer auto-provides one, so the reference would make
+// sing-box drop the matched connection at route time with "outbound not found:
+// block".
+func TestRouting_BlackholeBecomesRejectAction(t *testing.T) {
+	raw := `{"outbounds":[{"tag":"blocked","protocol":"blackhole"}],` +
+		`"routing":{"rules":[{"outboundTag":"blocked","domain":["full:ads.example"]}]}}`
+	_, _, targets, _ := mapXrayOutbounds(raw)
+	mapped, _, mappedCount, manualCount := MapXrayRouting(raw, targets)
+	if mappedCount != 1 || manualCount != 0 {
+		t.Fatalf("mapped=%d manual=%d", mappedCount, manualCount)
+	}
+	rule := mapped["route"].(map[string]any)["rules"].([]any)[0].(map[string]any)
+	if rule["action"] != "reject" {
+		t.Errorf("blackhole rule action = %v, want reject", rule["action"])
+	}
+	if _, has := rule["outbound"]; has {
+		t.Errorf("reject rule must not carry an outbound: %#v", rule)
+	}
+}
+
+// TestRouting_ProxyTaggedBlockKeepsRouting guards the reject sentinel against a
+// tag collision: a real proxy outbound legitimately named "block" must keep
+// routing to itself (outbound:"block"), not be turned into a reject action. This
+// fails if rejectTarget is the literal string "block".
+func TestRouting_ProxyTaggedBlockKeepsRouting(t *testing.T) {
+	raw := `{"outbounds":[{"tag":"block","protocol":"vless","settings":{"vnext":[{"address":"a.example.com","port":443,"users":[{"id":"u"}]}]}}],` +
+		`"routing":{"rules":[{"outboundTag":"block","domain":["full:x.example"]}]}}`
+	_, _, targets, _ := mapXrayOutbounds(raw)
+	mapped, _, mappedCount, manualCount := MapXrayRouting(raw, targets)
+	if mappedCount != 1 || manualCount != 0 {
+		t.Fatalf("mapped=%d manual=%d", mappedCount, manualCount)
+	}
+	rule := mapped["route"].(map[string]any)["rules"].([]any)[0].(map[string]any)
+	if rule["outbound"] != "block" {
+		t.Errorf("proxy named \"block\" must keep routing to itself, got %#v", rule)
+	}
+	if _, isAction := rule["action"]; isAction {
+		t.Errorf("a rule routing to a real proxy must not become an action: %#v", rule)
+	}
+}
+
+// TestEnsureDirectOutbound_SkipsWhenSeededInDB is a regression test: when a
+// direct outbound already exists in the DB (the s-ui default InitDB seeds), the
+// migration must NOT inject a duplicate — otherwise createNewOutbounds reports a
+// misleading "outbound \"direct\" already exists; left unchanged" skip on every
+// routing import that references direct.
+func TestEnsureDirectOutbound_SkipsWhenSeededInDB(t *testing.T) {
+	initCompatDest(t)
+	db := database.GetDB()
+	mapped := map[string]any{"route": map[string]any{"rules": []any{map[string]any{"outbound": directOutboundTag}}}}
+
+	// Seed present (the normal destination): nothing must be injected.
+	if got := ensureDirectOutbound(db, nil, mapped); len(got) != 0 {
+		t.Errorf("with a seeded direct outbound, ensureDirectOutbound must inject nothing, got %d", len(got))
+	}
+	// Seed removed: a direct outbound must be injected so the reference resolves.
+	if err := db.Where("tag = ?", directOutboundTag).Delete(&model.Outbound{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	got := ensureDirectOutbound(db, nil, mapped)
+	if len(got) != 1 || got[0].Tag != directOutboundTag || got[0].Type != directOutboundTag {
+		t.Errorf("with no direct outbound, ensureDirectOutbound must inject one, got %#v", got)
+	}
+}
+
+// TestApply_DNSOnlyConfigIsNotSkipped is a regression test for a pre-existing
+// bug: a source whose only migratable content is DNS (no routing rules, no proxy
+// outbounds, no endpoints) was marked ActionSkip and its DNS silently dropped.
+func TestApply_DNSOnlyConfigIsNotSkipped(t *testing.T) {
+	initCompatDest(t)
+	dir := t.TempDir()
+	src := filepath.Join(dir, "x-ui.db")
+	buildCompatSource(t, forkVariant, src)
+
+	db, err := gorm.Open(sqlite.Open(src), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Only freedom/blackhole system outbounds (which become routing targets, not
+	// s-ui outbounds) + a DNS block; no routing.rules, so the routing item used
+	// to be skipped and the DNS dropped.
+	xray := `{"outbounds":[{"tag":"direct","protocol":"freedom"},{"tag":"blocked","protocol":"blackhole"}],` +
+		`"dns":{"servers":["1.1.1.1"]}}`
+	if err := db.Exec("INSERT INTO settings(key, value) VALUES(?, ?)", "xrayConfig", xray).Error; err != nil {
+		t.Fatal(err)
+	}
+	if sqlDB, err := db.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+
+	plan, err := Plan(src, PlanOptions{Strategy: StrategyMerge, AdminMode: AdminModeSkip, IncludeRouting: true})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	for _, it := range plan.Items {
+		if it.Kind == KindRouting && it.Action == ActionSkip {
+			t.Fatalf("dns-only config must not be ActionSkip (its DNS would be silently dropped)")
+		}
+	}
+	if _, err := Apply(src, *plan, ApplyOptions{}); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	dest := database.GetDB()
+	var cfg model.Setting
+	if err := dest.Where("key = ?", "config").First(&cfg).Error; err != nil {
+		t.Fatal(err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(cfg.Value), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	dns, _ := parsed["dns"].(map[string]any)
+	if servers, _ := dns["servers"].([]any); len(servers) == 0 {
+		t.Errorf("dns servers were not merged into the live config: %v", dns)
+	}
+}
+
+// TestApply_BlackholeRejectAndDirectResolves is a regression test for the
+// sing-box 1.11+ migration: after a full import the live config must contain no
+// dangling outbound references. A blackhole outbound becomes a reject action
+// (never outbound:"block"), a freedom outbound yields a real direct outbound so
+// outbound:"direct" resolves, and every route rule that routes to an outbound
+// must point at an outbound/endpoint that actually exists.
+func TestApply_BlackholeRejectAndDirectResolves(t *testing.T) {
+	initCompatDest(t)
+	// InitDB seeds a {Type:"direct",Tag:"direct"} outbound; delete it so the
+	// post-import assertion that a direct outbound exists proves ensureDirectOutbound
+	// injected one, instead of passing vacuously on the seed.
+	if err := database.GetDB().Where("tag = ?", directOutboundTag).Delete(&model.Outbound{}).Error; err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	src := filepath.Join(dir, "x-ui.db")
+	buildCompatSource(t, forkVariant, src)
+
+	db, err := gorm.Open(sqlite.Open(src), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	xray := `{"outbounds":[` +
+		`{"tag":"direct","protocol":"freedom"},` +
+		`{"tag":"blocked","protocol":"blackhole"},` +
+		`{"tag":"proxy","protocol":"vless","settings":{"vnext":[{"address":"a.example.com","port":443,"users":[{"id":"u"}]}]}}` +
+		`],"routing":{"rules":[` +
+		`{"outboundTag":"blocked","ip":["geoip:cn"]},` +
+		`{"outboundTag":"direct","domain":["geosite:google"]},` +
+		`{"outboundTag":"proxy","domain":["full:netflix.com"]}` +
+		`]}}`
+	if err := db.Exec("INSERT INTO settings(key, value) VALUES(?, ?)", "xrayConfig", xray).Error; err != nil {
+		t.Fatal(err)
+	}
+	if sqlDB, err := db.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+
+	plan, err := Plan(src, PlanOptions{Strategy: StrategyMerge, AdminMode: AdminModeSkip, IncludeRouting: true})
+	if err != nil {
+		t.Fatalf("plan: %v", err)
+	}
+	if _, err := Apply(src, *plan, ApplyOptions{}); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+
+	dest := database.GetDB()
+	var cfg model.Setting
+	if err := dest.Where("key = ?", "config").First(&cfg).Error; err != nil {
+		t.Fatal(err)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(cfg.Value), &parsed); err != nil {
+		t.Fatalf("merged live config is not valid JSON: %v", err)
+	}
+	rules := parsed["route"].(map[string]any)["rules"].([]any)
+
+	var sawReject, sawDirectRule bool
+	for _, r := range rules {
+		m, ok := r.(map[string]any)
+		if !ok {
+			continue
+		}
+		if m["outbound"] == "block" {
+			t.Errorf("migrated rule still references the removed block outbound: %#v", m)
+		}
+		if m["action"] == "reject" {
+			sawReject = true
+			if _, has := m["outbound"]; has {
+				t.Errorf("reject rule must not carry an outbound: %#v", m)
+			}
+		}
+		if m["outbound"] == "direct" {
+			sawDirectRule = true
+		}
+	}
+	if !sawReject {
+		t.Errorf("blackhole rule was not migrated to a reject action: %v", rules)
+	}
+	if !sawDirectRule {
+		t.Errorf("freedom rule did not produce outbound:direct: %v", rules)
+	}
+
+	// Collect the outbound/endpoint tags that exist after import.
+	tags := map[string]bool{}
+	var obs []model.Outbound
+	if err := dest.Model(model.Outbound{}).Scan(&obs).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, o := range obs {
+		tags[o.Tag] = true
+	}
+	var eps []model.Endpoint
+	if err := dest.Model(model.Endpoint{}).Scan(&eps).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range eps {
+		tags[e.Tag] = true
+	}
+	if !tags["direct"] {
+		t.Errorf("no direct outbound was created; existing tags = %v", tags)
+	}
+
+	// No dangling references: every rule that routes to an outbound must point at
+	// an outbound/endpoint that exists.
+	for _, r := range rules {
+		m, ok := r.(map[string]any)
+		if !ok {
+			continue
+		}
+		ob, ok := m["outbound"].(string)
+		if !ok || ob == "" {
+			continue
+		}
+		if !tags[ob] {
+			t.Errorf("route rule references outbound %q with no matching outbound/endpoint; tags = %v", ob, tags)
+		}
+	}
+}
+
 // TestApply_RoutingMergesIntoLiveConfig drives the full Plan/Apply path and
 // verifies routing is merged into the live `config` setting (not a dead side
 // setting): the default rules are preserved, the migrated rule is appended, and

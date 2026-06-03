@@ -292,7 +292,7 @@ func TestMapXrayOutbounds_AllKinds(t *testing.T) {
 	if len(outbounds) != 1 || outbounds[0].Tag != "vless-out" || outbounds[0].Type != "vless" {
 		t.Fatalf("want 1 vless outbound, got %#v", outbounds)
 	}
-	if targets["direct"] != "direct" || targets["blocked"] != "block" {
+	if targets["direct"] != directOutboundTag || targets["blocked"] != rejectTarget {
 		t.Errorf("freedom/blackhole targets = %v", targets)
 	}
 	if targets["dns-out"] != dnsHijackTarget {

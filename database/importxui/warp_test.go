@@ -39,7 +39,7 @@ const warpXrayConfig = `{
 func TestMapXrayOutbounds_WARP(t *testing.T) {
 	endpoints, _, targets, _ := mapXrayOutbounds(warpXrayConfig)
 
-	if targets["blocked"] != "block" || targets["direct"] != "direct" || targets["warp"] != "warp" {
+	if targets["blocked"] != rejectTarget || targets["direct"] != directOutboundTag || targets["warp"] != "warp" {
 		t.Fatalf("targets = %v", targets)
 	}
 	if len(endpoints) != 1 {

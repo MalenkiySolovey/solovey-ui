@@ -218,7 +218,7 @@ func registerRemoteRuleSet(ruleSets *[]any, seen map[string]struct{}, tag, url s
 		"type":            "remote",
 		"format":          "binary",
 		"url":             url,
-		"download_detour": "direct",
+		"download_detour": directOutboundTag,
 	})
 }
 

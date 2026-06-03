@@ -44,7 +44,7 @@ type xrayWireguardOutboundPeer struct {
 //   - proxy outbounds (vmess/vless/trojan/shadowsocks/socks/http) converted to
 //     s-ui (sing-box) outbounds,
 //   - a map outboundTag -> s-ui routing target so MapXrayRouting can resolve
-//     rules (blackhole->block, freedom->direct, dns->hijack-dns,
+//     rules (blackhole->reject action, freedom->direct outbound, dns->hijack-dns,
 //     wireguard->the endpoint tag, proxy->its own outbound tag),
 //   - warnings for anything skipped or needing review.
 //
@@ -74,9 +74,9 @@ func mapXrayOutbounds(xrayConfig string) ([]model.Endpoint, []model.Outbound, ma
 		}
 		switch strings.ToLower(strings.TrimSpace(ob.Protocol)) {
 		case "blackhole":
-			targets[tag] = "block"
+			targets[tag] = rejectTarget
 		case "freedom":
-			targets[tag] = "direct"
+			targets[tag] = directOutboundTag
 		case "dns":
 			// sing-box has no dns outbound; rules to it become hijack-dns.
 			targets[tag] = dnsHijackTarget

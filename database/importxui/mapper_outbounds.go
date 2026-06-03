@@ -8,11 +8,27 @@ import (
 	"github.com/deposist/s-ui-x/database/model"
 )
 
-// dnsHijackTarget is the sentinel routing target for an Xray `dns` outbound.
-// sing-box has no `dns` *outbound* (s-ui's OutboundRegistry registers none);
-// the equivalent is a route rule with action "hijack-dns", which MapXrayRouting
-// emits when a rule resolves to this target.
-const dnsHijackTarget = "hijack-dns"
+// dnsHijackTarget and rejectTarget are sentinel routing targets for Xray system
+// outbounds that map to a route-rule *action* instead of a real outbound: the
+// migration creates no `dns`/`block` outbound and sing-box no longer auto-provides
+// one, so a rule that resolves to one becomes action "hijack-dns" / "reject" (see
+// MapXrayRouting). Their
+// values are deliberately NOT valid outbound tags ("__…__") so they cannot
+// collide with a user outbound: a proxy legitimately tagged "dns"/"block"/
+// "blocked" maps to its own tag in the targets map and keeps routing to itself,
+// rather than being silently turned into an action.
+const (
+	dnsHijackTarget = "__hijack_dns__"
+	rejectTarget    = "__reject__"
+)
+
+// directOutboundTag is the tag of the built-in direct outbound that freedom
+// outbounds (and remote rule-set downloads) route through. sing-box 1.11+ only
+// auto-creates a fallback direct outbound when there are zero outbounds and no
+// route.final, so a migrated config that has any other outbound must carry an
+// explicit direct outbound or it fails at route time with
+// "outbound not found: direct" (see ensureDirectOutbound).
+const directOutboundTag = "direct"
 
 // xrayProxySettings is the `settings` block of an Xray *outbound*. vmess/vless
 // use `vnext`; trojan/shadowsocks/socks/http use `servers`. Only the first

@@ -179,6 +179,67 @@ func createNewOutbounds(tx *gorm.DB, outbounds []model.Outbound, report *Report)
 	return nil
 }
 
+// ensureDirectOutbound appends a built-in direct outbound (tag "direct") to
+// outbounds when the migrated routing references "direct" — either a rule that
+// routes to it (from an Xray freedom outbound) or a remote rule set whose
+// download_detour is "direct" — but none exists yet. sing-box only auto-creates
+// a fallback direct outbound when there are zero outbounds, so a migrated config
+// that has any other outbound would otherwise fail at route time with
+// "outbound not found: direct". It is a no-op when a direct outbound already
+// exists in the slice or in the DB (the s-ui default seeded by InitDB), so a
+// normal import never makes createNewOutbounds report a misleading
+// "outbound \"direct\" already exists" skip.
+func ensureDirectOutbound(tx *gorm.DB, outbounds []model.Outbound, mapped map[string]any) []model.Outbound {
+	if !routingReferencesDirect(mapped) {
+		return outbounds
+	}
+	for i := range outbounds {
+		if outbounds[i].Tag == directOutboundTag {
+			return outbounds
+		}
+	}
+	var existing model.Outbound
+	if err := tx.Where("tag = ?", directOutboundTag).First(&existing).Error; err == nil {
+		return outbounds // already in the DB (e.g. the InitDB-seeded default)
+	}
+	return append(outbounds, model.Outbound{Type: directOutboundTag, Tag: directOutboundTag})
+}
+
+// mappedHasDNS reports whether the migrated config carries DNS servers or rules.
+// A source whose only migratable content is DNS (no routing rules, no proxy
+// outbounds, no endpoints) must not be skipped, or its DNS is silently dropped.
+func mappedHasDNS(mapped map[string]any) bool {
+	dns, ok := mapped["dns"].(map[string]any)
+	if !ok {
+		return false
+	}
+	return len(toAnySlice(dns["servers"])) > 0 || len(toAnySlice(dns["rules"])) > 0
+}
+
+// routingReferencesDirect reports whether any migrated route rule routes to the
+// direct outbound or any migrated remote rule set downloads through it.
+func routingReferencesDirect(mapped map[string]any) bool {
+	route, ok := mapped["route"].(map[string]any)
+	if !ok {
+		return false
+	}
+	for _, r := range toAnySlice(route["rules"]) {
+		if m, ok := r.(map[string]any); ok {
+			if ob, _ := m["outbound"].(string); ob == directOutboundTag {
+				return true
+			}
+		}
+	}
+	for _, rs := range toAnySlice(route["rule_set"]) {
+		if m, ok := rs.(map[string]any); ok {
+			if d, _ := m["download_detour"].(string); d == directOutboundTag {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // planRoutingDisabledNotice surfaces a single warning-only plan item when
 // routing import is turned off but the source Xray config still contains proxy
 // outbounds or WARP endpoints. Those live in the same xrayConfig and are only
@@ -221,7 +282,7 @@ func planRouting(ctx context.Context, src *sourceDB, plan *MigrationPlan) error 
 		return err
 	}
 	action := ActionCreate
-	if xrayConfig == "" || (mappedCount == 0 && manualCount == 0 && len(endpoints) == 0 && len(outbounds) == 0) {
+	if xrayConfig == "" || (mappedCount == 0 && manualCount == 0 && len(endpoints) == 0 && len(outbounds) == 0 && !mappedHasDNS(mapped)) {
 		action = ActionSkip
 	}
 	plan.Items = append(plan.Items, PlanItem{
@@ -254,9 +315,16 @@ func (s *applyState) applyRouting(ctx context.Context, tx *gorm.DB, src *sourceD
 	// WARP (and any wireguard outbound) becomes an s-ui endpoint and proxy
 	// outbounds become s-ui outbounds; create those first so the routing rules
 	// below can target them by tag, then map the rules. blackhole/freedom/dns
-	// outbounds resolve to block/direct/hijack-dns.
+	// outbounds resolve to a reject action / the direct outbound / hijack-dns.
 	endpoints, outbounds, targets, outboundWarnings := mapXrayOutbounds(xrayConfig)
 	s.report.warnAll(outboundWarnings)
+	mapped, warnings, mappedCount, manualCount := MapXrayRouting(xrayConfig, targets)
+	// A migrated rule that routes to "direct" — or a remote rule set that
+	// downloads via download_detour:"direct" — needs a real direct outbound.
+	// sing-box 1.11+ only auto-creates one when there are no outbounds and no
+	// route.final, so a config with any other outbound would otherwise fail at
+	// route time with "outbound not found: direct".
+	outbounds = ensureDirectOutbound(tx, outbounds, mapped)
 	if err := createNewEndpoints(tx, endpoints, s.report); err != nil {
 		return err
 	}
@@ -269,7 +337,6 @@ func (s *applyState) applyRouting(ctx context.Context, tx *gorm.DB, src *sourceD
 	for i := range outbounds {
 		s.progress("outbounds", outbounds[i].Tag)
 	}
-	mapped, warnings, mappedCount, manualCount := MapXrayRouting(xrayConfig, targets)
 	if err := mergeRoutingIntoConfig(tx, mapped); err != nil {
 		return err
 	}
@@ -462,18 +529,18 @@ func mergeByTag(existing, additions []any) []any {
 }
 
 // resolveRoutingTarget maps an Xray outboundTag to an s-ui routing target. The
-// targets map is built from the source outbounds (blackhole->block,
-// freedom->direct, wireguard/WARP->the endpoint tag). The fallback covers
-// configs parsed without an outbounds list.
+// targets map is built from the source outbounds (blackhole->reject action,
+// freedom->direct outbound, wireguard/WARP->the endpoint tag). The fallback
+// covers configs parsed without an outbounds list.
 func resolveRoutingTarget(outboundTag string, targets map[string]string) (string, bool) {
 	if t, ok := targets[outboundTag]; ok && t != "" {
 		return t, true
 	}
 	switch strings.ToLower(outboundTag) {
 	case "block", "blocked":
-		return "block", true
+		return rejectTarget, true
 	case "direct":
-		return "direct", true
+		return directOutboundTag, true
 	}
 	return "", false
 }
@@ -520,7 +587,8 @@ func MapXrayRouting(raw string, targets map[string]string) (map[string]any, []st
 			warnings = append(warnings, fmt.Sprintf("routing rule %d uses attrs (HTTP attribute match) which sing-box does not support; manual review required", index))
 			continue
 		}
-		outboundTag := strings.TrimSpace(fmt.Sprint(rule["outboundTag"]))
+		outboundTag, _ := rule["outboundTag"].(string)
+		outboundTag = strings.TrimSpace(outboundTag)
 		if outboundTag == "" {
 			manual++
 			warnings = append(warnings, fmt.Sprintf("routing rule %d has no outboundTag; manual review required", index))
@@ -533,10 +601,17 @@ func MapXrayRouting(raw string, targets map[string]string) (map[string]any, []st
 			continue
 		}
 		next := map[string]any{}
-		if target == dnsHijackTarget {
+		switch target {
+		case dnsHijackTarget:
 			// sing-box routes DNS via a rule action, not an outbound.
 			next["action"] = "hijack-dns"
-		} else {
+		case rejectTarget:
+			// The migration never creates an outbound tagged "block" and sing-box
+			// no longer auto-provides one, so emitting outbound:"block" would make
+			// sing-box drop the matched connection at route time with
+			// "outbound not found: block". The modern equivalent is a reject action.
+			next["action"] = "reject"
+		default:
 			next["outbound"] = target
 		}
 		matched, matcherWarnings := applyRuleMatchers(index, rule, next, &ruleSets, seenRuleSet)
