@@ -47,6 +47,10 @@
 - 网页管理后台在后台刷新期间保留未保存的修改：Basics、DNS 和路由页面此前将表单绑定到
   store 中的实时配置，因此每 10 秒的配置轮询（以及 WS 重载事件）会静默还原正在进行的
   编辑——现在它们改为编辑本地副本，直到你保存为止。
+- 路由导入不再生成 sing-box 拒绝的配置：Xray 的外部 geoip 引用（`ext:<文件>:<代码>`，
+  如 `ext:geoip_RU.dat:ru`）和裸 IP 之前被原样写入 `ip_cidr`，而 sing-box 无法解析
+  （`ipcidr: parse: no '/'`）导致内核无法启动。现在 `ext:` 映射为 geoip 规则集，裸 IP
+  补上掩码，无法解析的值则附带警告丢弃，而不会破坏整个配置。
 - 完整发布说明：[`docs/releases/v1.5.6-beta8.md`](docs/releases/v1.5.6-beta8.md)。
 
 ## [1.5.6-beta7] - 2026-06-02 - 3x-ui 迁移：订阅链接、WARP 与导入超时

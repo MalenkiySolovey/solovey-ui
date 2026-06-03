@@ -59,6 +59,12 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
   and Routing pages bound their forms to the live store config, so the 10-second
   config poll (and WS reload events) silently reverted in-progress edits — they
   now edit a local copy that persists until you save.
+- Routing import no longer produces a config sing-box rejects: an Xray external
+  geoip reference (`ext:<file>:<code>`, e.g. `ext:geoip_RU.dat:ru`) and bare IPs
+  were written into `ip_cidr` verbatim, which sing-box refuses to parse
+  (`ipcidr: parse: no '/'`) so the core would not start. `ext:` now maps to a
+  geoip rule set, a bare IP gets a host mask, and an unparseable value is dropped
+  with a warning instead of breaking the whole config.
 - Full release notes: [`docs/releases/v1.5.6-beta8.md`](docs/releases/v1.5.6-beta8.md).
 
 ## [1.5.6-beta7] - 2026-06-02 - 3x-ui migration: subscription links, WARP & import timeout

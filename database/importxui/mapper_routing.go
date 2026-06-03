@@ -2,6 +2,7 @@ package importxui
 
 import (
 	"fmt"
+	"net/netip"
 	"strconv"
 	"strings"
 )
@@ -28,8 +29,10 @@ func applyRuleMatchers(index int, rule, next map[string]any, ruleSets *[]any, se
 		}
 	}
 
-	destAdded, destGeoip := mapIPMatchers(rule["ip"], next, ruleSets, seen, false)
-	srcAdded, srcGeoip := mapIPMatchers(rule["source"], next, ruleSets, seen, true)
+	destAdded, destGeoip, destWarn := mapIPMatchers(index, rule["ip"], next, ruleSets, seen, false)
+	srcAdded, srcGeoip, srcWarn := mapIPMatchers(index, rule["source"], next, ruleSets, seen, true)
+	warnings = append(warnings, destWarn...)
+	warnings = append(warnings, srcWarn...)
 	if destAdded || srcAdded {
 		added = true
 	}
@@ -116,17 +119,25 @@ const (
 	geoipRuleSetURLFmt   = "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip/%s.srs"
 )
 
-// mapIPMatchers maps Xray ip/source entries: a geoip:* becomes a remote geoip
-// rule set referenced by the rule, a bare value becomes an ip_cidr (or
-// source_ip_cidr) matcher. It returns whether anything was added and whether a
-// geoip rule set was used (so the caller can set source matching).
-func mapIPMatchers(value any, next map[string]any, ruleSets *[]any, seen map[string]struct{}, source bool) (added bool, geoipUsed bool) {
+// mapIPMatchers maps Xray ip/source entries: a geoip:* (or an Xray external geo
+// file ext:<file>:<code>) becomes a remote geoip rule set referenced by the
+// rule; a literal IP/CIDR becomes an ip_cidr (or source_ip_cidr) matcher, with a
+// bare IP normalised to a host prefix (/32 or /128). Anything that is neither a
+// geoip code nor a parseable IP/CIDR is dropped with a warning rather than
+// written verbatim — sing-box's ip_cidr parser rejects non-prefix values, so a
+// stray value (e.g. an unrecognised ext: reference) would make the whole config
+// fail to load. Returns whether anything was added, whether a geoip rule set was
+// used (so the caller can set source matching) and warnings.
+func mapIPMatchers(index int, value any, next map[string]any, ruleSets *[]any, seen map[string]struct{}, source bool) (added bool, geoipUsed bool, warnings []string) {
 	cidrKey := "ip_cidr"
+	field := "ip"
 	if source {
 		cidrKey = "source_ip_cidr"
+		field = "source"
 	}
 	for _, ip := range stringList(value) {
-		if strings.HasPrefix(ip, "geoip:") {
+		switch {
+		case strings.HasPrefix(ip, "geoip:"):
 			code := geoRuleSetCode(strings.TrimPrefix(ip, "geoip:"))
 			if code == "" {
 				continue
@@ -136,12 +147,62 @@ func mapIPMatchers(value any, next map[string]any, ruleSets *[]any, seen map[str
 			registerRemoteRuleSet(ruleSets, seen, tag, fmt.Sprintf(geoipRuleSetURLFmt, code))
 			added = true
 			geoipUsed = true
-		} else {
-			next[cidrKey] = appendString(next[cidrKey], ip)
+		case strings.HasPrefix(ip, "ext:"), strings.HasPrefix(ip, "ext-ip:"):
+			// Xray external geo file, "ext:<file>:<code>" (e.g. ext:geoip_RU.dat:ru).
+			// Map the trailing code to the standard geoip rule set; the bundled
+			// file's categories are assumed to follow the geoip-<code> convention.
+			code := extGeoCode(ip)
+			if code == "" {
+				warnings = append(warnings, fmt.Sprintf("routing rule %d: could not map external geoip %s matcher %q — recreate manually", index, field, ip))
+				continue
+			}
+			tag := "geoip-" + code
+			next["rule_set"] = appendString(next["rule_set"], tag)
+			registerRemoteRuleSet(ruleSets, seen, tag, fmt.Sprintf(geoipRuleSetURLFmt, code))
 			added = true
+			geoipUsed = true
+			warnings = append(warnings, fmt.Sprintf("routing rule %d: external geoip %q mapped to rule set %q — verify it matches your custom file", index, ip, tag))
+		default:
+			if cidr, ok := normalizeCIDR(ip); ok {
+				next[cidrKey] = appendString(next[cidrKey], cidr)
+				added = true
+			} else {
+				warnings = append(warnings, fmt.Sprintf("routing rule %d: dropped %s matcher %q — not a geoip code or a valid IP/CIDR", index, field, ip))
+			}
 		}
 	}
-	return added, geoipUsed
+	return added, geoipUsed, warnings
+}
+
+// extGeoCode extracts the trailing category code from an Xray external geo
+// reference "ext:<file>:<code>" / "ext-ip:<file>:<code>", normalised for the
+// rule-set repository.
+func extGeoCode(raw string) string {
+	s := strings.TrimPrefix(raw, "ext-ip:")
+	s = strings.TrimPrefix(s, "ext:")
+	i := strings.LastIndexByte(s, ':')
+	if i < 0 || i+1 >= len(s) {
+		return ""
+	}
+	return geoRuleSetCode(s[i+1:])
+}
+
+// normalizeCIDR returns a sing-box-valid prefix for an Xray ip value: a CIDR is
+// returned unchanged, a bare IP gets a host mask (/32 or /128). ok is false for
+// anything that is not a valid IP/CIDR, so it is never written to ip_cidr (which
+// would otherwise make sing-box refuse to start).
+func normalizeCIDR(ip string) (string, bool) {
+	ip = strings.TrimSpace(ip)
+	if ip == "" {
+		return "", false
+	}
+	if _, err := netip.ParsePrefix(ip); err == nil {
+		return ip, true
+	}
+	if addr, err := netip.ParseAddr(ip); err == nil {
+		return fmt.Sprintf("%s/%d", addr.String(), addr.BitLen()), true
+	}
+	return "", false
 }
 
 // registerRemoteRuleSet appends a remote rule-set definition to ruleSets the

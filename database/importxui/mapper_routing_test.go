@@ -81,6 +81,50 @@ func TestRoutingMatchers_SourceInboundUser(t *testing.T) {
 	}
 }
 
+func TestRoutingMatchers_ExtGeoipAndBareIP(t *testing.T) {
+	// Regression: an Xray external geoip reference (ext:<file>:<code>) and a bare
+	// IP must never land in ip_cidr verbatim — sing-box's ParsePrefix rejects a
+	// value without a mask, which used to make the whole migrated config fail to
+	// load ("ipcidr: parse: no '/'").
+	raw := `{"routing":{"rules":[{"outboundTag":"out","ip":["ext:geoip_RU.dat:ru","8.8.8.8","1.2.3.0/24","not-an-ip"]}]}}`
+	rule, mapped, manual, warnings := firstMappedRule(t, raw)
+	if mapped != 1 || manual != 0 {
+		t.Fatalf("mapped=%d manual=%d, want 1/0", mapped, manual)
+	}
+	// ext:geoip_RU.dat:ru -> geoip-ru rule set (not ip_cidr).
+	if rs, _ := rule["rule_set"].([]string); len(rs) != 1 || rs[0] != "geoip-ru" {
+		t.Errorf("rule_set = %v, want [geoip-ru]", rule["rule_set"])
+	}
+	// bare IP normalised to /32, CIDR kept as-is, the garbage value dropped.
+	ipc, _ := rule["ip_cidr"].([]string)
+	if len(ipc) != 2 {
+		t.Fatalf("ip_cidr = %v, want exactly the two valid prefixes", ipc)
+	}
+	want := map[string]bool{"8.8.8.8/32": true, "1.2.3.0/24": true}
+	for _, c := range ipc {
+		if !strings.Contains(c, "/") {
+			t.Errorf("ip_cidr entry %q has no mask — sing-box would refuse to start", c)
+		}
+		if !want[c] {
+			t.Errorf("unexpected ip_cidr entry %q", c)
+		}
+	}
+	hasWarn := func(sub string) bool {
+		for _, w := range warnings {
+			if strings.Contains(w, sub) {
+				return true
+			}
+		}
+		return false
+	}
+	if !hasWarn("ext:geoip_RU.dat:ru") {
+		t.Errorf("warnings %v should note the external geoip mapping", warnings)
+	}
+	if !hasWarn("not-an-ip") {
+		t.Errorf("warnings %v should note the dropped non-IP value", warnings)
+	}
+}
+
 func TestRoutingMatchers_DomainPrefixes(t *testing.T) {
 	raw := `{"routing":{"rules":[{"outboundTag":"out","domain":["full:exact.com","domain:sub.com","keyword:ads","regexp:.*\\.evil\\.com","bare.com"]}]}}`
 	rule, mapped, manual, _ := firstMappedRule(t, raw)
