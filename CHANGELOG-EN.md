@@ -7,9 +7,12 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 
 ## [1.5.7-beta3] - 2026-06-04 - fix Paid Subscriptions admin writes + hardening
 
-- **Fix:** all `/api/paidsub/*` write actions (bindings, tariffs, broadcast) were
-  sent as form-urlencoded while the backend expected JSON, so every write
-  silently failed in beta2; they now send JSON and work.
+- **Fix:** the Paid Subscriptions admin page now works end-to-end. Writes
+  (`/api/paidsub/*`: bindings, tariffs, broadcast) were sent as form-urlencoded
+  while the backend parsed JSON, AND every paidsub response omitted empty
+  `msg`/`obj` keys (rejected by the frontend as "unknown data", so reads were
+  empty too). Requests now send JSON and responses always include the
+  `success`/`msg`/`obj` envelope.
 - **Fix:** `/start` only auto-registers on a genuine "not found"; a transient DB
   error no longer risks creating-and-rebinding a new client over an existing one.
 - **Fix:** connection leak in the bot poll loop (idle connections of discarded

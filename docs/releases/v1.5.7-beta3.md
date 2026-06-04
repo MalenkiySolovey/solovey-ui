@@ -9,10 +9,14 @@ not actually save in beta2), plus several robustness fixes. Feature remains
 
 ## What changed
 
-- **Fix: Paid Subscriptions admin actions now save.** All `/api/paidsub/*` write
-  requests (set/clear binding, create/edit/delete tariff, broadcast) were sent
-  as `x-www-form-urlencoded` while the backend expected JSON, so every write
-  silently failed with "invalid request". They now send JSON correctly.
+- **Fix: the Paid Subscriptions admin page now works end-to-end.** Two issues
+  made it non-functional before: (1) write requests (`/api/paidsub/*`: bindings,
+  tariffs, broadcast) were sent as `x-www-form-urlencoded` while the backend
+  parsed JSON, and (2) every paidsub response omitted empty `msg`/`obj` keys,
+  which the frontend rejected as "unknown data" — so even reads (bindings,
+  tariffs, orders) came back empty. Requests now send JSON and responses always
+  include the `success`/`msg`/`obj` envelope, so the page loads and saves
+  correctly.
 - **Fix: no spurious auto-registration on a transient DB error.** `/start` only
   auto-registers a new trial client on a genuine "not found"; a transient
   database error no longer risks creating-and-rebinding a new client over an
@@ -45,11 +49,13 @@ admin page (bindings/tariffs/broadcast) — those actions only work from beta3.
 
 ## Что изменилось
 
-- **Исправление: действия в админке «Платных подписок» теперь сохраняются.** Все
-  запросы записи `/api/paidsub/*` (привязка/отвязка, создание/правка/удаление
-  тарифа, рассылка) слались как `x-www-form-urlencoded`, тогда как бэкенд ждёт
-  JSON — каждая запись молча падала с «invalid request». Теперь шлётся корректный
-  JSON.
+- **Исправление: страница «Платные подписки» теперь работает целиком.** Раньше
+  её ломали две причины: (1) запросы записи (`/api/paidsub/*`: привязки, тарифы,
+  рассылка) слались как `x-www-form-urlencoded`, а бэкенд парсит JSON, и (2) все
+  paidsub-ответы опускали пустые ключи `msg`/`obj`, которые фронтенд отбраковывал
+  как «unknown data» — поэтому даже чтение (привязки, тарифы, заказы) возвращалось
+  пустым. Теперь запросы шлются как JSON, а ответы всегда содержат конверт
+  `success`/`msg`/`obj` — страница загружается и сохраняет корректно.
 - **Исправление: нет ложной авто-регистрации при транзиентной ошибке БД.**
   `/start` авто-регистрирует пробного клиента только при реальном «не найдено»;
   временная ошибка БД больше не приводит к созданию и перепривязке нового

@@ -73,10 +73,13 @@ func (h *apiHandlers) status(c *gin.Context) {
 	})
 }
 
+// apiMsg mirrors api.Msg exactly — all three fields MUST be present (no
+// omitempty), because the frontend's isMsg() requires the keys success, msg AND
+// obj; omitting msg/obj makes the client report "unknown data".
 type apiMsg struct {
 	Success bool        `json:"success"`
-	Msg     string      `json:"msg,omitempty"`
-	Obj     interface{} `json:"obj,omitempty"`
+	Msg     string      `json:"msg"`
+	Obj     interface{} `json:"obj"`
 }
 
 func respOK(c *gin.Context, obj interface{}) {
