@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.7-beta3] - 2026-06-04 - fix Paid Subscriptions admin writes + hardening
+
+- **Fix:** all `/api/paidsub/*` write actions (bindings, tariffs, broadcast) were
+  sent as form-urlencoded while the backend expected JSON, so every write
+  silently failed in beta2; they now send JSON and work.
+- **Fix:** `/start` only auto-registers on a genuine "not found"; a transient DB
+  error no longer risks creating-and-rebinding a new client over an existing one.
+- **Fix:** connection leak in the bot poll loop (idle connections of discarded
+  proxy/outbound transports are now closed).
+- **Hardening:** rate-limiter refuses new keys when saturated; CryptoBot invoice
+  ids URL-escaped; long link lists hard-split under Telegram's limit; custom
+  greeting defensively truncated.
+- Release notes: [`docs/releases/v1.5.7-beta3.md`](docs/releases/v1.5.7-beta3.md).
+
 ## [1.5.7-beta2] - 2026-06-04 - Telegram transport selector, broadcast & greeting
 
 - **Telegram transport selector, per module.** The Paid Subscriptions bot and

@@ -1,6 +1,9 @@
 package paidsub
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestParseCommand(t *testing.T) {
 	cases := []struct {
@@ -82,6 +85,12 @@ func TestChunkText(t *testing.T) {
 	for _, ch := range chunks {
 		if len(ch) > 9 {
 			t.Errorf("chunk too long: %q", ch)
+		}
+	}
+	// A single line longer than max must be hard-split so no chunk exceeds max.
+	for _, ch := range chunkText(strings.Repeat("x", 25), 10) {
+		if len([]rune(ch)) > 10 {
+			t.Errorf("oversized line not hard-split: %q (%d)", ch, len([]rune(ch)))
 		}
 	}
 }

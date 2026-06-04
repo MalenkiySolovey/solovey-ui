@@ -340,7 +340,9 @@ import { i18n } from '@/locales'
 
 type SMap = Record<string, string>
 
-const SECRET_KEYS = ['paidSubBotToken', 'paidSubYooKassaToken', 'paidSubStripeToken', 'paidSubCryptoBotToken']
+// The shared axios instance defaults POST bodies to x-www-form-urlencoded; the
+// paidsub endpoints parse JSON, so these POSTs must opt into a JSON body.
+const jsonPost = { headers: { 'Content-Type': 'application/json' } }
 
 const defaults: SMap = {
   paidSubEnabled: 'false',
@@ -499,11 +501,11 @@ const openAddBinding = () => {
 const saveBinding = async () => {
   if (!bindingEdit.value.clientId) return
   const tgUserId = Number(bindingEdit.value.tgUserId) || 0
-  const msg = await HttpUtils.post('api/paidsub/bindings', { clientId: bindingEdit.value.clientId, tgUserId })
+  const msg = await HttpUtils.post('api/paidsub/bindings', { clientId: bindingEdit.value.clientId, tgUserId }, jsonPost)
   if (msg.success) { bindingDialog.value = false; await loadBindings() }
 }
 const unbind = async (item: any) => {
-  const msg = await HttpUtils.post('api/paidsub/bindings', { clientId: item.clientId, tgUserId: 0 })
+  const msg = await HttpUtils.post('api/paidsub/bindings', { clientId: item.clientId, tgUserId: 0 }, jsonPost)
   if (msg.success) await loadBindings()
 }
 
@@ -517,7 +519,7 @@ const sendBroadcast = async () => {
   broadcastDialog.value = false
   broadcastLoading.value = true
   broadcastResult.value = null
-  const msg = await HttpUtils.post('api/paidsub/broadcast', { text: broadcastText.value })
+  const msg = await HttpUtils.post('api/paidsub/broadcast', { text: broadcastText.value }, jsonPost)
   if (msg.success) {
     broadcastResult.value = { sent: Number(msg.obj?.sent ?? 0), failed: Number(msg.obj?.failed ?? 0) }
     broadcastText.value = ''
@@ -575,11 +577,11 @@ const saveTariff = async () => {
   }
   const action = e.id ? 'edit' : 'new'
   if (e.id) data.id = e.id
-  const msg = await HttpUtils.post('api/paidsub/tariffs', { action, data })
+  const msg = await HttpUtils.post('api/paidsub/tariffs', { action, data }, jsonPost)
   if (msg.success) { tariffDialog.value = false; await loadTariffs() }
 }
 const deleteTariff = async (item: any) => {
-  const msg = await HttpUtils.post('api/paidsub/tariffs', { action: 'del', data: item.id })
+  const msg = await HttpUtils.post('api/paidsub/tariffs', { action: 'del', data: item.id }, jsonPost)
   if (msg.success) await loadTariffs()
 }
 

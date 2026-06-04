@@ -1,0 +1,70 @@
+# Release Notes: v1.5.7-beta3
+
+Release date: 2026-06-04
+
+Bug-fix beta for the experimental **Paid Subscriptions** module. Most
+importantly it fixes the admin write path (bindings, tariffs and broadcast did
+not actually save in beta2), plus several robustness fixes. Feature remains
+**off by default**; no core schema migration.
+
+## What changed
+
+- **Fix: Paid Subscriptions admin actions now save.** All `/api/paidsub/*` write
+  requests (set/clear binding, create/edit/delete tariff, broadcast) were sent
+  as `x-www-form-urlencoded` while the backend expected JSON, so every write
+  silently failed with "invalid request". They now send JSON correctly.
+- **Fix: no spurious auto-registration on a transient DB error.** `/start` only
+  auto-registers a new trial client on a genuine "not found"; a transient
+  database error no longer risks creating-and-rebinding a new client over an
+  existing subscription.
+- **Fix: connection leak in the bot poll loop.** The bot rebuilt its HTTP client
+  each poll cycle; discarded proxy/outbound transports now have their idle
+  connections closed, preventing a slow socket leak when a proxy or outbound is
+  configured.
+- **Hardening:** the bot command rate-limiter refuses new keys when saturated
+  (bounded memory under a burst); CryptoBot invoice ids are URL-escaped; very
+  long link lists are hard-split below Telegram's message limit; the custom
+  greeting is defensively truncated.
+
+## Upgrade
+
+No manual migration; existing data is preserved and the feature stays **disabled
+by default**. If you were on v1.5.7-beta2, upgrade to use the Paid Subscriptions
+admin page (bindings/tariffs/broadcast) — those actions only work from beta3.
+
+---
+
+# Примечания к релизу: v1.5.7-beta3
+
+Дата релиза: 2026-06-04
+
+Багфикс-бета экспериментального модуля **«Платные подписки»**. Главное —
+исправлен путь записи в админке (в beta2 привязки, тарифы и рассылка фактически
+не сохранялись), плюс несколько правок надёжности. Функция по-прежнему
+**выключена по умолчанию**; миграции схемы ядра нет.
+
+## Что изменилось
+
+- **Исправление: действия в админке «Платных подписок» теперь сохраняются.** Все
+  запросы записи `/api/paidsub/*` (привязка/отвязка, создание/правка/удаление
+  тарифа, рассылка) слались как `x-www-form-urlencoded`, тогда как бэкенд ждёт
+  JSON — каждая запись молча падала с «invalid request». Теперь шлётся корректный
+  JSON.
+- **Исправление: нет ложной авто-регистрации при транзиентной ошибке БД.**
+  `/start` авто-регистрирует пробного клиента только при реальном «не найдено»;
+  временная ошибка БД больше не приводит к созданию и перепривязке нового
+  клиента поверх существующей подписки.
+- **Исправление: утечка соединений в цикле опроса бота.** Бот пересоздавал
+  HTTP-клиент каждый цикл; у выброшенных proxy/outbound-транспортов теперь
+  закрываются idle-соединения — нет медленной утечки сокетов при настроенном
+  прокси/аутбаунде.
+- **Усиление:** rate-лимитер команд бота отказывает новым ключам при
+  переполнении (ограниченная память при всплеске); `invoice_ids` CryptoBot
+  экранируются в URL; длинные списки ссылок жёстко режутся под лимит сообщения
+  Telegram; кастомное приветствие защитно усечено.
+
+## Обновление
+
+Ручная миграция не нужна, данные сохраняются, функция **выключена по умолчанию**.
+Если вы были на v1.5.7-beta2 — обновитесь, чтобы пользоваться страницей «Платные
+подписки» (привязки/тарифы/рассылка): эти действия работают только с beta3.

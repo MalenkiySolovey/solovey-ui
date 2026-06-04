@@ -39,7 +39,12 @@ func (r *rateLimiter) allowWithMax(id int64, now int64, max int) bool {
 	if len(r.entries) > r.maxKeys {
 		r.gcLocked(now)
 	}
-	e := r.entries[id]
+	e, exists := r.entries[id]
+	if !exists && len(r.entries) >= r.maxKeys {
+		// Map is saturated with in-window keys (GC freed nothing); refuse new
+		// keys to bound memory under a burst of many distinct ids.
+		return false
+	}
 	if now-e.windowStart >= r.window {
 		e = rlEntry{windowStart: now}
 	}

@@ -4,6 +4,19 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [1.5.7-beta3] - 2026-06-04 - 修复「付费订阅」后台写入 + 加固
+
+- **修复：** 所有 `/api/paidsub/*` 写操作（绑定、套餐、群发）此前以
+  form-urlencoded 发送，而后端期望 JSON，故 beta2 中每次写入都静默失败；现已改为
+  发送 JSON，恢复正常。
+- **修复：** `/start` 仅在确实“未找到”时才自动注册；数据库瞬时错误不再可能在已有
+  订阅之上创建并重新绑定新客户。
+- **修复：** 机器人轮询循环的连接泄漏（被丢弃的 proxy/outbound 传输的空闲连接现已
+  关闭）。
+- **加固：** 限流器在饱和时拒绝新键；CryptoBot 的 invoice_ids 进行 URL 转义；过长的
+  链接列表按 Telegram 限制硬切分；自定义问候语进行防御性截断。
+- 发布说明：[`docs/releases/v1.5.7-beta3.md`](docs/releases/v1.5.7-beta3.md)。
+
 ## [1.5.7-beta2] - 2026-06-04 - Telegram 传输选择、群发与问候语
 
 - **按模块选择 Telegram 传输方式。** 付费订阅机器人与管理员 Telegram 模块（通知/备份）

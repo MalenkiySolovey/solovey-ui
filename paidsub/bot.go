@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/deposist/s-ui-x/database"
 	"github.com/deposist/s-ui-x/database/model"
 	"github.com/deposist/s-ui-x/logger"
 	"github.com/deposist/s-ui-x/service"
@@ -143,6 +144,12 @@ func (b *Bot) run(ctx context.Context, done chan struct{}) {
 			}
 			backoff = nextBackoff(backoff, maxBackoff)
 			continue
+		}
+		// Close the previous client's idle keep-alive connections before
+		// replacing it; a discarded *http.Transport (proxy/outbound mode) does
+		// not auto-close them, so rebuilding every loop would leak sockets.
+		if b.client != nil && b.client != client {
+			b.client.CloseIdleConnections()
 		}
 		b.client = client
 		b.token = token
@@ -324,9 +331,16 @@ func parsePayData(data string) (uint, string, bool) {
 // ---- commands ----
 
 func (b *Bot) cmdStart(ctx context.Context, chatID int64, from *tgUser, l lang) {
-	client, err := b.svc.ClientByTgUserId(from.ID)
+	_, err := b.svc.ClientByTgUserId(from.ID)
 	if err != nil {
-		// Auto-registration (Phase 3) hooks in here; until then: not linked.
+		// Only a genuine "not found" may lead to auto-registration. A transient
+		// DB error must NOT be treated as unbound (that would auto-create and
+		// rebind a new client, orphaning an existing subscription).
+		if !database.IsNotFound(err) {
+			logger.Warning("paidsub: client lookup failed: ", err)
+			_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+			return
+		}
 		if b.tryAutoRegister(ctx, chatID, from, l) {
 			return
 		}
@@ -335,10 +349,9 @@ func (b *Bot) cmdStart(ctx context.Context, chatID int64, from *tgUser, l lang) 
 	}
 	greeting := tr(l, "greeting")
 	if custom, _ := b.setting.GetPaidSubGreeting(); strings.TrimSpace(custom) != "" {
-		greeting = custom
+		greeting = truncateRunes(custom, 4096)
 	}
 	_ = b.sendMessage(ctx, chatID, greeting, b.menuKeyboard(l))
-	_ = client
 }
 
 func (b *Bot) cmdLinks(ctx context.Context, chatID int64, tgID int64, l lang) {
@@ -533,15 +546,26 @@ func chunkText(s string, max int) []string {
 	}
 	var chunks []string
 	var cur strings.Builder
-	for _, line := range strings.Split(s, "\n") {
-		if cur.Len()+len(line)+1 > max && cur.Len() > 0 {
+	flush := func() {
+		if cur.Len() > 0 {
 			chunks = append(chunks, strings.TrimRight(cur.String(), "\n"))
 			cur.Reset()
 		}
+	}
+	for _, line := range strings.Split(s, "\n") {
+		// Hard-split a single line longer than max (rune-safe), so no emitted
+		// chunk can exceed the limit.
+		for len([]rune(line)) > max {
+			flush()
+			r := []rune(line)
+			chunks = append(chunks, string(r[:max]))
+			line = string(r[max:])
+		}
+		if cur.Len()+len(line)+1 > max && cur.Len() > 0 {
+			flush()
+		}
 		cur.WriteString(line + "\n")
 	}
-	if cur.Len() > 0 {
-		chunks = append(chunks, strings.TrimRight(cur.String(), "\n"))
-	}
+	flush()
 	return chunks
 }

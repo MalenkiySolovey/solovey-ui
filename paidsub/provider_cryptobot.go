@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
@@ -70,7 +71,7 @@ func (p *cryptoBotProvider) Poll(ctx context.Context, pending []PaymentOrder) ([
 			Status    string      `json:"status"`
 		} `json:"items"`
 	}
-	path := "/api/getInvoices?invoice_ids=" + strings.Join(ids, ",")
+	path := "/api/getInvoices?invoice_ids=" + url.QueryEscape(strings.Join(ids, ","))
 	if err := p.call(ctx, http.MethodGet, path, nil, &out); err != nil {
 		return nil, err
 	}
