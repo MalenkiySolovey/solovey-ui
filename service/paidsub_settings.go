@@ -7,14 +7,18 @@ import (
 	"time"
 )
 
-// NewPaidSubHTTPClient builds a proxy-aware HTTP client (reusing the shared
-// telegramProxy* settings and SSRF validation) with a caller-chosen timeout.
-// The paid-subscriptions bot needs a longer timeout than the 10s default for
-// getUpdates long-polling. The proxy config is shared with the admin notifier;
-// only the bot token differs.
+// NewPaidSubHTTPClient builds the HTTP client the paid-subscriptions bot uses,
+// honoring its OWN transport config (independent from the admin notifier):
+// either its own proxy (paidSubProxy*) or a sing-box outbound (paidSubOutboundTag).
+// The longer timeout accommodates getUpdates long-polling.
 func NewPaidSubHTTPClient(timeout time.Duration) (*http.Client, error) {
-	ts := &TelegramService{}
-	cfg, err := ts.telegramProxyConfig()
+	s := &SettingService{}
+	mode, _ := s.GetPaidSubTransportMode()
+	if mode == "outbound" {
+		tag, _ := s.GetPaidSubOutboundTag()
+		return newCoreOutboundHTTPClient(tag, timeout)
+	}
+	cfg, err := s.paidSubProxyConfig()
 	if err != nil {
 		return nil, err
 	}
@@ -150,4 +154,32 @@ func (s *SettingService) GetPaidSubExternalUrlTemplate() (string, error) {
 
 func (s *SettingService) GetPaidSubOrderTTLMinutes() (int, error) {
 	return s.getInt("paidSubOrderTTLMinutes")
+}
+
+func (s *SettingService) GetPaidSubGreeting() (string, error) {
+	return s.getString("paidSubGreeting")
+}
+
+func (s *SettingService) GetPaidSubTransportMode() (string, error) {
+	return s.getString("paidSubTransportMode")
+}
+
+func (s *SettingService) GetPaidSubOutboundTag() (string, error) {
+	return s.getString("paidSubOutboundTag")
+}
+
+func (s *SettingService) paidSubProxyConfig() (telegramProxyConfig, error) {
+	proxyURL, err := s.getString("paidSubProxyURL")
+	if err != nil {
+		return telegramProxyConfig{}, err
+	}
+	username, err := s.getString("paidSubProxyUsername")
+	if err != nil {
+		return telegramProxyConfig{}, err
+	}
+	password, err := s.getString("paidSubProxyPassword")
+	if err != nil {
+		return telegramProxyConfig{}, err
+	}
+	return telegramProxyConfig{URL: proxyURL, Username: username, Password: password}, nil
 }

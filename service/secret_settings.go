@@ -34,6 +34,9 @@ var (
 		"paidSubYooKassaToken":     {},
 		"paidSubStripeToken":       {},
 		"paidSubCryptoBotToken":    {},
+		"paidSubProxyURL":          {},
+		"paidSubProxyUsername":     {},
+		"paidSubProxyPassword":     {},
 	}
 )
 

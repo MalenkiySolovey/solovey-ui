@@ -333,7 +333,11 @@ func (b *Bot) cmdStart(ctx context.Context, chatID int64, from *tgUser, l lang) 
 		_ = b.sendMessage(ctx, chatID, tr(l, "not_linked"), nil)
 		return
 	}
-	_ = b.sendMessage(ctx, chatID, tr(l, "greeting"), b.menuKeyboard(l))
+	greeting := tr(l, "greeting")
+	if custom, _ := b.setting.GetPaidSubGreeting(); strings.TrimSpace(custom) != "" {
+		greeting = custom
+	}
+	_ = b.sendMessage(ctx, chatID, greeting, b.menuKeyboard(l))
 	_ = client
 }
 

@@ -27,6 +27,7 @@
       <v-tab value="autoreg">Auto-registration</v-tab>
       <v-tab value="tariffs">Tariffs</v-tab>
       <v-tab value="payments">Payments</v-tab>
+      <v-tab value="messages">Messages</v-tab>
       <v-tab value="orders">Orders</v-tab>
     </v-tabs>
 
@@ -48,12 +49,77 @@
             />
           </v-col>
         </v-row>
+
+        <v-divider class="my-3" />
+        <div class="text-subtitle-2 mb-1">Connection / transport</div>
+        <div class="text-caption text-medium-emphasis mb-2">
+          How this bot reaches Telegram. Independent from the admin Telegram module.
+        </div>
+        <v-row>
+          <v-col cols="12" md="4">
+            <v-select
+              v-model="settings.paidSubTransportMode"
+              :items="transportModes"
+              item-title="title"
+              item-value="value"
+              label="Transport"
+            />
+          </v-col>
+          <v-col v-if="settings.paidSubTransportMode === 'outbound'" cols="12" md="8">
+            <v-select
+              v-model="settings.paidSubOutboundTag"
+              :items="outboundOptions"
+              item-title="title"
+              item-value="value"
+              label="Outbound (sing-box) — requires core running"
+              :hint="outboundOptions.length === 0 ? 'No outbounds configured' : ''"
+              persistent-hint
+            />
+          </v-col>
+          <template v-else>
+            <v-col cols="12" md="8">
+              <SettingsSecretField
+                v-model="settings.paidSubProxyURL"
+                :has-secret="settings.paidSubProxyURLHasSecret"
+                label="Proxy URL (http/https/socks5, empty = direct)"
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <SettingsSecretField
+                v-model="settings.paidSubProxyUsername"
+                :has-secret="settings.paidSubProxyUsernameHasSecret"
+                label="Proxy username (optional)"
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <SettingsSecretField
+                v-model="settings.paidSubProxyPassword"
+                :has-secret="settings.paidSubProxyPasswordHasSecret"
+                label="Proxy password (optional)"
+              />
+            </v-col>
+          </template>
+        </v-row>
+
         <v-btn color="primary" :loading="loading" @click="saveSettings">{{ $t('actions.set') ?? 'Save' }}</v-btn>
       </v-window-item>
 
       <!-- BINDINGS -->
       <v-window-item value="bindings">
-        <v-data-table :headers="bindingHeaders" :items="bindings" :loading="bindingsLoading" density="comfortable">
+        <div class="d-flex align-center mb-2">
+          <div class="text-caption text-medium-emphasis">
+            Bind a panel client to a Telegram user ID. The client then gets links/QR/stats and can pay in the bot.
+          </div>
+          <v-spacer />
+          <v-btn color="primary" :disabled="bindings.length === 0" @click="openAddBinding()">
+            <v-icon start>mdi-link-plus</v-icon>Add binding
+          </v-btn>
+        </div>
+        <v-alert v-if="!bindingsLoading && bindings.length === 0" type="info" variant="tonal" density="comfortable">
+          No clients found. Create a client on the <strong>Clients</strong> page (or enable Auto-registration),
+          then bind it to a Telegram ID here.
+        </v-alert>
+        <v-data-table v-else :headers="bindingHeaders" :items="bindings" :loading="bindingsLoading" density="comfortable">
           <template #item.enable="{ item }">
             <v-chip :color="item.enable ? 'success' : 'error'" size="small" variant="flat">
               {{ item.enable ? 'active' : 'disabled' }}
@@ -165,6 +231,30 @@
         <v-btn class="mt-2" color="primary" :loading="loading" @click="saveSettings">{{ $t('actions.set') ?? 'Save' }}</v-btn>
       </v-window-item>
 
+      <!-- MESSAGES -->
+      <v-window-item value="messages">
+        <div class="text-subtitle-2 mb-1">Greeting on /start</div>
+        <div class="text-caption text-medium-emphasis mb-2">
+          Shown to a bound client when they open the bot. Leave empty for the default greeting.
+        </div>
+        <v-textarea v-model="settings.paidSubGreeting" label="Custom greeting" rows="3" auto-grow counter="4096" />
+        <v-btn color="primary" :loading="loading" @click="saveSettings">{{ $t('actions.set') ?? 'Save' }}</v-btn>
+
+        <v-divider class="my-4" />
+
+        <div class="text-subtitle-2 mb-1">Broadcast to all clients</div>
+        <div class="text-caption text-medium-emphasis mb-2">
+          Sends a one-off announcement to every bound Telegram user ({{ recipientCount }} recipient(s)).
+        </div>
+        <v-textarea v-model="broadcastText" label="Announcement text" rows="4" auto-grow counter="4096" />
+        <v-btn color="primary" :loading="broadcastLoading" :disabled="!broadcastText.trim() || recipientCount === 0" @click="broadcastDialog = true">
+          <v-icon start>mdi-bullhorn</v-icon>Send to all
+        </v-btn>
+        <v-alert v-if="broadcastResult" type="info" variant="tonal" class="mt-3" density="comfortable">
+          Sent: {{ broadcastResult.sent }} · failed: {{ broadcastResult.failed }}
+        </v-alert>
+      </v-window-item>
+
       <!-- ORDERS -->
       <v-window-item value="orders">
         <v-data-table :headers="orderHeaders" :items="orders" :loading="ordersLoading" density="comfortable">
@@ -181,8 +271,16 @@
   <!-- Binding dialog -->
   <v-dialog v-model="bindingDialog" max-width="420">
     <v-card>
-      <v-card-title>Bind Telegram to {{ bindingEdit.name }}</v-card-title>
+      <v-card-title>{{ bindingEdit.isNew ? 'Add binding' : 'Bind Telegram to ' + bindingEdit.name }}</v-card-title>
       <v-card-text>
+        <v-select
+          v-if="bindingEdit.isNew"
+          v-model="bindingEdit.clientId"
+          :items="clientOptions"
+          item-title="title"
+          item-value="value"
+          label="Client"
+        />
         <v-text-field v-model="bindingEdit.tgUserId" type="number" label="Telegram user ID (0 = unbind)" autofocus />
       </v-card-text>
       <v-card-actions>
@@ -217,6 +315,19 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <!-- Broadcast confirm dialog -->
+  <v-dialog v-model="broadcastDialog" max-width="460">
+    <v-card>
+      <v-card-title>Send announcement?</v-card-title>
+      <v-card-text>This will message all {{ recipientCount }} bound client(s).</v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" @click="broadcastDialog = false">{{ $t('actions.cancel') ?? 'Cancel' }}</v-btn>
+        <v-btn color="primary" @click="sendBroadcast">Send</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script lang="ts" setup>
@@ -236,6 +347,14 @@ const defaults: SMap = {
   paidSubBotToken: '',
   paidSubBotTokenHasSecret: 'false',
   paidSubBotPollSeconds: '25',
+  paidSubTransportMode: 'proxy',
+  paidSubProxyURL: '',
+  paidSubProxyURLHasSecret: 'false',
+  paidSubProxyUsername: '',
+  paidSubProxyUsernameHasSecret: 'false',
+  paidSubProxyPassword: '',
+  paidSubProxyPasswordHasSecret: 'false',
+  paidSubOutboundTag: '',
   paidSubAutoRegister: 'false',
   paidSubAutoInbounds: '[]',
   paidSubTrialDays: '3',
@@ -256,6 +375,7 @@ const defaults: SMap = {
   paidSubExternalEnabled: 'false',
   paidSubExternalUrlTemplate: '',
   paidSubOrderTTLMinutes: '30',
+  paidSubGreeting: '',
 }
 
 const tab = ref('bot')
@@ -322,8 +442,24 @@ const saveSettings = async () => {
 const inboundOptions = ref<{ title: string; value: number }[]>([])
 const loadInbounds = async () => {
   const msg = await HttpUtils.get('api/inbounds')
-  if (msg.success && Array.isArray(msg.obj)) {
-    inboundOptions.value = msg.obj.map((i: any) => ({ title: `${i.tag} (${i.type})`, value: i.id }))
+  // api/inbounds returns { obj: { inbounds: [...] } } (LoadPartialData envelope).
+  const list = msg?.obj?.inbounds
+  if (msg.success && Array.isArray(list)) {
+    inboundOptions.value = list.map((i: any) => ({ title: `${i.tag} (${i.type})`, value: i.id }))
+  }
+}
+
+// ---- transport (proxy / outbound) ----
+const transportModes = [
+  { title: 'Proxy', value: 'proxy' },
+  { title: 'Outbound (sing-box)', value: 'outbound' },
+]
+const outboundOptions = ref<{ title: string; value: string }[]>([])
+const loadOutbounds = async () => {
+  const msg = await HttpUtils.get('api/outbounds')
+  const list = msg?.obj?.outbounds
+  if (msg.success && Array.isArray(list)) {
+    outboundOptions.value = list.map((o: any) => ({ title: `${o.tag} (${o.type})`, value: o.tag }))
   }
 }
 
@@ -337,7 +473,14 @@ const bindingHeaders = [
   { title: '', key: 'actions', sortable: false, align: 'end' as const },
 ]
 const bindingDialog = ref(false)
-const bindingEdit = ref<{ clientId: number; name: string; tgUserId: number | string }>({ clientId: 0, name: '', tgUserId: 0 })
+const bindingEdit = ref<{ clientId: number; name: string; tgUserId: number | string; isNew: boolean }>({ clientId: 0, name: '', tgUserId: 0, isNew: false })
+
+// Clients available for the "Add binding" selector (all clients from the
+// bindings list, which already enumerates every client in the panel).
+const clientOptions = computed(() => bindings.value.map((b: any) => ({
+  title: b.tgUserId ? `${b.name} (bound: ${b.tgUserId})` : b.name,
+  value: b.clientId,
+})))
 
 const loadBindings = async () => {
   bindingsLoading.value = true
@@ -346,10 +489,15 @@ const loadBindings = async () => {
   bindingsLoading.value = false
 }
 const openBinding = (item: any) => {
-  bindingEdit.value = { clientId: item.clientId, name: item.name, tgUserId: item.tgUserId || '' }
+  bindingEdit.value = { clientId: item.clientId, name: item.name, tgUserId: item.tgUserId || '', isNew: false }
+  bindingDialog.value = true
+}
+const openAddBinding = () => {
+  bindingEdit.value = { clientId: bindings.value[0]?.clientId ?? 0, name: '', tgUserId: '', isNew: true }
   bindingDialog.value = true
 }
 const saveBinding = async () => {
+  if (!bindingEdit.value.clientId) return
   const tgUserId = Number(bindingEdit.value.tgUserId) || 0
   const msg = await HttpUtils.post('api/paidsub/bindings', { clientId: bindingEdit.value.clientId, tgUserId })
   if (msg.success) { bindingDialog.value = false; await loadBindings() }
@@ -357,6 +505,24 @@ const saveBinding = async () => {
 const unbind = async (item: any) => {
   const msg = await HttpUtils.post('api/paidsub/bindings', { clientId: item.clientId, tgUserId: 0 })
   if (msg.success) await loadBindings()
+}
+
+// ---- messages: greeting + broadcast ----
+const recipientCount = computed(() => bindings.value.filter((b: any) => b.tgUserId).length)
+const broadcastText = ref('')
+const broadcastLoading = ref(false)
+const broadcastDialog = ref(false)
+const broadcastResult = ref<{ sent: number; failed: number } | null>(null)
+const sendBroadcast = async () => {
+  broadcastDialog.value = false
+  broadcastLoading.value = true
+  broadcastResult.value = null
+  const msg = await HttpUtils.post('api/paidsub/broadcast', { text: broadcastText.value })
+  if (msg.success) {
+    broadcastResult.value = { sent: Number(msg.obj?.sent ?? 0), failed: Number(msg.obj?.failed ?? 0) }
+    broadcastText.value = ''
+  }
+  broadcastLoading.value = false
 }
 
 // ---- tariffs ----
@@ -438,7 +604,7 @@ const orderStatusColor = (s: string) => ({ paid: 'success', pending: 'warning', 
 
 const reloadAll = async () => {
   loading.value = true
-  await Promise.all([loadSettings(), loadStatus(), loadInbounds(), loadBindings(), loadTariffs(), loadOrders()])
+  await Promise.all([loadSettings(), loadStatus(), loadInbounds(), loadOutbounds(), loadBindings(), loadTariffs(), loadOrders()])
   loading.value = false
 }
 

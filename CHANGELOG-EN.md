@@ -5,6 +5,20 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.7-beta2] - 2026-06-04 - Telegram transport selector, broadcast & greeting
+
+- **Telegram transport selector, per module.** The Paid Subscriptions bot and
+  the admin Telegram module (notifications/backups) can each egress either via a
+  **proxy** (http/https/socks5, own credentials) or via a configured **sing-box
+  outbound** (requires the core running), configured independently.
+- **Broadcast to all clients.** New *Messages* tab sends a one-off announcement
+  to every bound Telegram user (throttled, sent/failed report, confirmation).
+- **Editable /start greeting** on the *Messages* tab (empty = built-in default).
+- **Fixes (beta1 UI):** *Auto-registration* inbound dropdown now lists inbounds
+  (API response was read incorrectly); *Bindings* tab gained an explicit **Add
+  binding** action with a clear empty state.
+- Release notes: [`docs/releases/v1.5.7-beta2.md`](docs/releases/v1.5.7-beta2.md).
+
 ## [1.5.7-beta1] - 2026-06-04 - experimental Paid Subscriptions Telegram bot
 
 - New **experimental "Paid Subscriptions" module** (off by default, isolated

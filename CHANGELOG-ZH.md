@@ -4,6 +4,18 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [1.5.7-beta2] - 2026-06-04 - Telegram 传输选择、群发与问候语
+
+- **按模块选择 Telegram 传输方式。** 付费订阅机器人与管理员 Telegram 模块（通知/备份）
+  均可分别选择经由**代理**（http/https/socks5，独立凭据）或经由已配置的 **sing-box 出站**
+  （需核心运行）出网；两者独立配置。
+- **向所有客户群发。** 新的 *Messages* 标签页向每个已绑定的 Telegram 用户发送一次性公告
+  （限速、发送/失败统计、确认步骤）。
+- **可编辑 `/start` 问候语**（*Messages* 标签页；留空则用内置默认）。
+- **修复（beta1 界面）：** *Auto-registration* 的入站下拉框现在能列出入站（此前错误读取了
+  API 响应）；*Bindings* 标签页新增明确的 **Add binding** 操作及清晰的空状态。
+- 发布说明：[`docs/releases/v1.5.7-beta2.md`](docs/releases/v1.5.7-beta2.md)。
+
 ## [1.5.7-beta1] - 2026-06-04 - 实验性「付费订阅」Telegram 机器人
 
 - 新增**实验性「付费订阅」模块**（默认关闭，与核心隔离）。面向客户的 Telegram

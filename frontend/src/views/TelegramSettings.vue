@@ -43,6 +43,29 @@
       </v-row>
       <v-row>
         <v-col cols="12" sm="6" md="4">
+          <v-select
+            v-model="settings.telegramTransportMode"
+            :items="transportModes"
+            item-title="title"
+            item-value="value"
+            label="Transport"
+            hide-details
+          />
+        </v-col>
+        <v-col v-if="settings.telegramTransportMode === 'outbound'" cols="12" sm="6" md="8">
+          <v-select
+            v-model="settings.telegramOutboundTag"
+            :items="outboundOptions"
+            item-title="title"
+            item-value="value"
+            label="Outbound (sing-box) — requires core running"
+            :hint="outboundOptions.length === 0 ? 'No outbounds configured' : ''"
+            persistent-hint
+          />
+        </v-col>
+      </v-row>
+      <v-row v-if="settings.telegramTransportMode !== 'outbound'">
+        <v-col cols="12" sm="6" md="4">
           <SettingsSecretField
             v-model="settings.telegramProxyURL"
             :has-secret="settings.telegramProxyURLHasSecret"
@@ -268,6 +291,8 @@ const defaultTelegramSettings: TelegramSettingsMap = {
   telegramProxyUsernameHasSecret: 'false',
   telegramProxyPassword: '',
   telegramProxyPasswordHasSecret: 'false',
+  telegramTransportMode: 'proxy',
+  telegramOutboundTag: '',
   telegramCpuThreshold: '90',
   telegramNotifyCpu: 'false',
   telegramReport: 'false',
@@ -303,7 +328,23 @@ const loadData = async () => {
   loading.value = false
 }
 
-onMounted(loadData)
+const transportModes = [
+  { title: 'Proxy', value: 'proxy' },
+  { title: 'Outbound (sing-box)', value: 'outbound' },
+]
+const outboundOptions = ref<{ title: string; value: string }[]>([])
+const loadOutbounds = async () => {
+  const msg = await HttpUtils.get('api/outbounds')
+  const list = msg?.obj?.outbounds
+  if (msg.success && Array.isArray(list)) {
+    outboundOptions.value = list.map((o: any) => ({ title: `${o.tag} (${o.type})`, value: o.tag }))
+  }
+}
+
+onMounted(() => {
+  loadData()
+  loadOutbounds()
+})
 onUnmounted(() => {
   backupRunController.value?.abort()
 })

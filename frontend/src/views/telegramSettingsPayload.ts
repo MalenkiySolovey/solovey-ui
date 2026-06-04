@@ -9,6 +9,8 @@ export const telegramSettingKeys = [
   'telegramProxyURL',
   'telegramProxyUsername',
   'telegramProxyPassword',
+  'telegramTransportMode',
+  'telegramOutboundTag',
   'telegramCpuThreshold',
   'telegramNotifyCpu',
   'telegramReport',

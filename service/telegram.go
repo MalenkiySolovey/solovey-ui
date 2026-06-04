@@ -286,16 +286,28 @@ func (n *telegramNotifier) Stop(ctx context.Context) error {
 }
 
 func (s *TelegramService) getTelegramHTTPClient() (*http.Client, error) {
-	cfg, err := s.telegramProxyConfig()
-	if err != nil {
-		return nil, err
-	}
+	// A test override always wins (used by the test seam).
 	telegramHTTPClientMu.RLock()
 	if telegramHTTPOverride {
 		client := telegramHTTPClient
 		telegramHTTPClientMu.RUnlock()
 		return client, nil
 	}
+	telegramHTTPClientMu.RUnlock()
+
+	// Outbound transport: dial through a running sing-box outbound. Built fresh
+	// each call (depends on the live core, which changes across restarts), so it
+	// is not cached.
+	if mode, _ := s.getString("telegramTransportMode"); mode == "outbound" {
+		tag, _ := s.getString("telegramOutboundTag")
+		return newCoreOutboundHTTPClient(tag, 10*time.Second)
+	}
+
+	cfg, err := s.telegramProxyConfig()
+	if err != nil {
+		return nil, err
+	}
+	telegramHTTPClientMu.RLock()
 	if telegramHTTPClient != nil && telegramHTTPConfig == cfg {
 		client := telegramHTTPClient
 		telegramHTTPClientMu.RUnlock()

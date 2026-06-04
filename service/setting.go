@@ -103,6 +103,8 @@ var defaultValueMap = map[string]string{
 	"telegramProxyURL":            "",
 	"telegramProxyUsername":       "",
 	"telegramProxyPassword":       "",
+	"telegramTransportMode":       "proxy",
+	"telegramOutboundTag":         "",
 	"telegramCpuThreshold":        "90",
 	"telegramNotifyCpu":           "false",
 	"telegramReport":              "false",
@@ -117,6 +119,11 @@ var defaultValueMap = map[string]string{
 	"paidSubBotToken":             "",
 	"paidSubBotPollSeconds":       "25",
 	"paidSubUpdateOffset":         "0",
+	"paidSubTransportMode":        "proxy",
+	"paidSubProxyURL":             "",
+	"paidSubProxyUsername":        "",
+	"paidSubProxyPassword":        "",
+	"paidSubOutboundTag":          "",
 	"paidSubAutoRegister":         "false",
 	"paidSubAutoInbounds":         "[]",
 	"paidSubTrialDays":            "3",
@@ -134,6 +141,7 @@ var defaultValueMap = map[string]string{
 	"paidSubExternalEnabled":      "false",
 	"paidSubExternalUrlTemplate":  "",
 	"paidSubOrderTTLMinutes":      "30",
+	"paidSubGreeting":             "",
 	"config":                      defaultConfig,
 	"version":                     "",
 }
@@ -760,7 +768,7 @@ func (s *SettingService) validateAll(settings map[string]string) error {
 		if strings.HasSuffix(key, "HasSecret") {
 			continue
 		}
-		if key == "telegramProxyURL" && obj != "" {
+		if (key == "telegramProxyURL" || key == "paidSubProxyURL") && obj != "" && obj != StoredSecretMarker {
 			if err := validateTelegramProxyURL(obj); err != nil {
 				return err
 			}
@@ -1170,8 +1178,25 @@ func validateTelegramSettingInput(key string, value string) error {
 		if err != nil || limit < 1 || limit > 50 {
 			return common.NewError("invalid telegram backup max size setting")
 		}
+	case "telegramTransportMode":
+		if err := validateTransportMode(value); err != nil {
+			return err
+		}
+	case "telegramOutboundTag":
+		if len(value) > 256 {
+			return common.NewError("telegramOutboundTag is too long")
+		}
 	}
 	return nil
+}
+
+func validateTransportMode(value string) error {
+	switch value {
+	case "proxy", "outbound":
+		return nil
+	default:
+		return common.NewError("transport mode must be 'proxy' or 'outbound'")
+	}
 }
 
 func validateObservabilitySettingInput(key string, value string) error {
@@ -1240,6 +1265,18 @@ func validatePaidSubSettingInput(key string, value string) error {
 			if strings.ContainsAny(value, " \t\r\n#") {
 				return common.NewError("paidSubExternalUrlTemplate must not contain spaces or a fragment")
 			}
+		}
+	case "paidSubTransportMode":
+		if err := validateTransportMode(value); err != nil {
+			return err
+		}
+	case "paidSubOutboundTag":
+		if len(value) > 256 {
+			return common.NewError("paidSubOutboundTag is too long")
+		}
+	case "paidSubGreeting":
+		if len([]rune(value)) > 4096 {
+			return common.NewError("paidSubGreeting is too long (max 4096)")
 		}
 	}
 	return nil

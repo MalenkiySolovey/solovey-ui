@@ -47,6 +47,7 @@ func securityCSRFPostRoutes() []string {
 		"/api/ip-monitor/alice/clear",
 		"/api/paidsub/bindings",
 		"/api/paidsub/tariffs",
+		"/api/paidsub/broadcast",
 	}
 }
 

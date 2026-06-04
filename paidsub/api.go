@@ -38,6 +38,31 @@ func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
 	grp.POST("/tariffs", h.saveTariff)
 	grp.GET("/orders", h.listOrders)
 	grp.GET("/status", h.status)
+	grp.POST("/broadcast", h.broadcast)
+}
+
+type broadcastRequest struct {
+	Text string `json:"text"`
+}
+
+// broadcast sends a custom announcement to all bound Telegram users.
+func (h *apiHandlers) broadcast(c *gin.Context) {
+	var req broadcastRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respFail(c, "invalid request")
+		return
+	}
+	if strings.TrimSpace(req.Text) == "" {
+		respFail(c, "message is empty")
+		return
+	}
+	sent, failed, err := Broadcast(c.Request.Context(), req.Text)
+	if err != nil {
+		respFail(c, err.Error())
+		return
+	}
+	h.audit(c, "paidsub_broadcast", "info", map[string]any{"sent": sent, "failed": failed})
+	respOK(c, map[string]any{"sent": sent, "failed": failed})
 }
 
 // status reports module health hints for the admin UI (whether the secretbox
