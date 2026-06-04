@@ -5,6 +5,41 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## What's New in v1.5.7 (Beta) — customer-friendly summary
+
+A reader-friendly roundup of everything added since the last stable release,
+**v1.5.6**. Full per-release notes:
+[`docs/releases/whats-new-1.5.7.md`](docs/releases/whats-new-1.5.7.md).
+
+The headline of the 1.5.7 line is a brand-new **Paid Subscriptions** module:
+a self-service Telegram bot that lets your end users get their subscription,
+check usage, and pay or renew on their own. It's **experimental and off by
+default** — existing setups are completely unaffected until you switch it on.
+
+**✨ New**
+- **Paid Subscriptions client bot:** subscription & per-protocol share links,
+  **QR codes**, and live usage (used vs. limit, days left, online status, traffic).
+- **Self-service sign-up** with a configurable free trial (capped + rate-limited).
+- **Built-in payments across 6 providers** — Telegram Stars, YooKassa, Stripe,
+  CryptoBot, PayMaster, and external links — with safe, no-double-charge renewals.
+- **In-bot Payment menu** (*Buy / Renew*, *My purchases*, *Request a refund*) with
+  automatic Telegram Stars refunds; other providers route a request to the admin.
+- **Admin refund tool** with an optional per-refund claw-back of granted days/traffic.
+- **Broadcasts** to every bound client, plus an **editable /start greeting**.
+- **Flexible Telegram routing** — proxy (HTTP/HTTPS/SOCKS5) or a sing-box outbound,
+  set independently for the client bot and admin notifications.
+
+**🐛 Fixes (affects everyone)**
+- **No more accidental duplicates:** the Save button locks while saving and the
+  server rejects duplicate submissions — one action always creates one record.
+
+**🔒 Security**
+- Bot & payment tokens are **encrypted at rest** and masked in the UI; set
+  `SUI_SECRETBOX_KEY` in production. Sensitive payment identifiers never reach the
+  browser or logs.
+
+---
+
 ## [1.5.7-beta5] - 2026-06-04 - Paid Subscriptions admin UI: Bindings/Orders columns, unbind confirm, tab order
 
 - **Paid Subscriptions tabs reordered.** **Bindings** is now the first (default)
