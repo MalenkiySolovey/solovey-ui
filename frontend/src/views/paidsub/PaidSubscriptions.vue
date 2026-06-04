@@ -258,7 +258,7 @@
       <!-- ORDERS -->
       <v-window-item value="orders">
         <v-data-table :headers="orderHeaders" :items="orders" :loading="ordersLoading" density="comfortable">
-          <template #item.amount="{ item }">{{ (item.amount / 100).toFixed(2) }} {{ item.currency }}</template>
+          <template #item.amount="{ item }">{{ formatMoney(item.amount, item.currency) }}</template>
           <template #item.status="{ item }">
             <v-chip :color="orderStatusColor(item.status)" size="small" variant="flat">{{ item.status }}</v-chip>
           </template>
@@ -603,6 +603,9 @@ const loadOrders = async () => {
   ordersLoading.value = false
 }
 const orderStatusColor = (s: string) => ({ paid: 'success', pending: 'warning', failed: 'error', expired: 'grey', canceled: 'grey' } as any)[s] || 'grey'
+// Telegram Stars (XTR) are whole units; fiat amounts are stored in minor units.
+const formatMoney = (amount: number, currency: string) =>
+  currency === 'XTR' ? `${Number(amount)} ${currency}` : `${(Number(amount) / 100).toFixed(2)} ${currency}`
 
 const reloadAll = async () => {
   loading.value = true
