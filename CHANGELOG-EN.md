@@ -5,6 +5,29 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [Unreleased]
+
+- **Paid Subscriptions bot: new "Payment" section.** The flat "Buy / Renew"
+  button is replaced by a **Payment** menu that opens a submenu: **Buy / Renew**,
+  **My purchases**, **Request a refund**. The **Stats** button is renamed to
+  **My subscription** (icon 👤); the view itself is unchanged.
+- **My purchases:** a read-only list of the client's own orders (tariff, amount,
+  status, date), scoped strictly to the requesting Telegram user.
+- **Refunds.** Telegram Stars are refunded automatically via the Bot API
+  (`refundStarPayment`); other providers (YooKassa/Stripe/PayMaster/CryptoBot/
+  external) send the admin a refund request, since the Bot API has no fiat/crypto
+  refund. A new **Refund** action on the admin *Orders* tab refunds Stars or marks
+  the order refunded, with a per-refund "revoke granted days/traffic" toggle.
+- **Refund rollback policy** `paidSubRefundRevoke` (default on) governs the bot's
+  user-initiated Stars refund: a successful refund also rolls back the days and
+  traffic that order granted (anti-abuse), idempotently and without disabling the
+  client. The user never chooses this — the admin does (globally, plus per-refund
+  in the panel).
+- **Hardening:** the admin Orders API no longer exposes the Telegram charge id or
+  the invoice idempotency key; a concurrent bot/panel refund that returns "already
+  refunded" is treated as success (Stars refunds are charge-idempotent).
+- Release notes draft: [`docs/releases/Unreleased.md`](docs/releases/Unreleased.md).
+
 ## [1.5.7-beta3] - 2026-06-04 - fix Paid Subscriptions admin writes + hardening
 
 - **Fix:** the Paid Subscriptions admin page now works end-to-end. Writes

@@ -4,6 +4,24 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [Unreleased]
+
+- **「付费订阅」机器人：新增「支付」分区。** 原先扁平的「购买 / 续费」按钮被替换为
+  **「支付」**菜单，点击后展开子菜单：**购买 / 续费**、**我的购买**、**申请退款**。
+  **「统计」**按钮更名为**「我的订阅」**（图标 👤）；视图本身不变。
+- **我的购买：** 只读列出*该用户本人*的订单（套餐、金额、状态、日期），严格限定为
+  发起请求的 Telegram 用户。
+- **退款。** Telegram Stars 通过 Bot API（`refundStarPayment`）自动退款；其他支付方
+  （YooKassa/Stripe/PayMaster/CryptoBot/外部链接）则向管理员发送退款申请，因为 Bot API
+  不提供法币/加密货币退款。后台 *Orders* 标签页新增**「退款」**操作：对 Stars 执行退款
+  或将订单标记为 `refunded`，并带有逐笔的「撤销已发放的天数/流量」开关。
+- **退款回滚策略** `paidSubRefundRevoke`（默认开启）控制机器人中由用户发起的 Stars
+  退款：退款成功时一并回滚该订单发放的天数与流量（防滥用），具备幂等性且不会停用客户。
+  用户无法选择此项——由管理员决定（全局，以及面板中的逐笔开关）。
+- **加固：** 后台 Orders API 不再暴露 Telegram charge id 与发票幂等键；机器人/面板的
+  并发退款若返回 “already refunded” 视为成功（Stars 退款在 charge 级别幂等）。
+- 发布说明草稿：[`docs/releases/Unreleased.md`](docs/releases/Unreleased.md)。
+
 ## [1.5.7-beta3] - 2026-06-04 - 修复「付费订阅」后台写入 + 加固
 
 - **修复：** 「付费订阅」后台页面现已完整可用。此前有两点问题：写操作
