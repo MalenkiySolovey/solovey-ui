@@ -270,6 +270,9 @@
             <v-chip :color="orderStatusColor(item.status)" size="small" variant="flat">{{ item.status }}</v-chip>
           </template>
           <template #item.createdAt="{ item }">{{ item.createdAt ? new Date(item.createdAt * 1000).toLocaleString() : '' }}</template>
+          <template #item.actions="{ item }">
+            <v-btn v-if="item.status === 'paid'" size="small" variant="text" color="warning" @click="openRefund(item)">Refund</v-btn>
+          </template>
         </v-data-table>
       </v-window-item>
     </v-window>
@@ -332,6 +335,32 @@
         <v-spacer />
         <v-btn variant="text" @click="broadcastDialog = false">{{ $t('actions.cancel') ?? 'Cancel' }}</v-btn>
         <v-btn color="primary" @click="sendBroadcast">Send</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+
+  <!-- Refund confirm dialog -->
+  <v-dialog v-model="refundDialog" max-width="480">
+    <v-card>
+      <v-card-title>Refund order #{{ refundEdit.id }}?</v-card-title>
+      <v-card-text>
+        <div class="mb-2">{{ refundEdit.provider }} · {{ formatMoney(refundEdit.amount, refundEdit.currency) }}</div>
+        <v-alert :type="refundEdit.provider === 'stars' ? 'info' : 'warning'" variant="tonal" density="comfortable" class="mb-3">
+          {{ refundEdit.provider === 'stars'
+            ? 'Telegram Stars will be refunded automatically.'
+            : 'Marks the order refunded only — refund the money in the provider\'s dashboard.' }}
+        </v-alert>
+        <v-switch
+          v-model="refundEdit.revoke"
+          color="primary"
+          hide-details
+          label="Revoke granted days/traffic from this order"
+        />
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" @click="refundDialog = false">{{ $t('actions.cancel') ?? 'Cancel' }}</v-btn>
+        <v-btn color="warning" :loading="refundBusy" @click="doRefund">Refund</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -606,6 +635,7 @@ const orderHeaders = [
   { title: 'Amount', key: 'amount' },
   { title: 'Status', key: 'status' },
   { title: 'Created', key: 'createdAt' },
+  { title: '', key: 'actions', sortable: false },
 ]
 const loadOrders = async () => {
   ordersLoading.value = true
@@ -613,7 +643,29 @@ const loadOrders = async () => {
   if (msg.success) orders.value = msg.obj ?? []
   ordersLoading.value = false
 }
-const orderStatusColor = (s: string) => ({ paid: 'success', pending: 'warning', failed: 'error', expired: 'grey', canceled: 'grey' } as any)[s] || 'grey'
+const orderStatusColor = (s: string) =>
+  ({ paid: 'success', pending: 'warning', failed: 'error', expired: 'grey', canceled: 'grey', refunded: 'info' } as any)[s] || 'grey'
+
+// ---- refund (admin-initiated) ----
+const refundDialog = ref(false)
+const refundBusy = ref(false)
+const refundEdit = ref<{ id: number; provider: string; amount: number; currency: string; revoke: boolean }>({
+  id: 0, provider: '', amount: 0, currency: '', revoke: true,
+})
+const openRefund = (item: any) => {
+  refundEdit.value = { id: item.id, provider: item.provider, amount: item.amount, currency: item.currency, revoke: true }
+  refundDialog.value = true
+}
+const doRefund = async () => {
+  refundBusy.value = true
+  const msg = await HttpUtils.post('api/paidsub/refund', { orderId: refundEdit.value.id, revoke: refundEdit.value.revoke }, jsonPost)
+  refundBusy.value = false
+  if (msg.success) {
+    refundDialog.value = false
+    push.success({ title: i18n.global.t('success'), message: 'Refund processed', duration: 4000 })
+    await loadOrders()
+  }
+}
 // Telegram Stars (XTR) are whole units; fiat amounts are stored in minor units.
 const formatMoney = (amount: number, currency: string) =>
   currency === 'XTR' ? `${Number(amount)} ${currency}` : `${(Number(amount) / 100).toFixed(2)} ${currency}`

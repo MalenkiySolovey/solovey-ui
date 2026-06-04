@@ -137,6 +137,18 @@ func (b *Bot) sendInvoice(ctx context.Context, chatID int64, inv *Invoice) error
 	return err
 }
 
+// refundStarPayment refunds a successful Telegram Stars (XTR) payment. chargeID
+// is the raw telegram_payment_charge_id (without the stored "tg:" prefix). Only
+// Stars payments can be refunded through the Bot API; fiat/crypto refunds are
+// handled out-of-band.
+func (b *Bot) refundStarPayment(ctx context.Context, userID int64, chargeID string) error {
+	_, err := b.callJSON(ctx, "refundStarPayment", map[string]any{
+		"user_id":                    userID,
+		"telegram_payment_charge_id": chargeID,
+	})
+	return err
+}
+
 func (b *Bot) answerPreCheckout(ctx context.Context, queryID string, ok bool, errMsg string) error {
 	payload := map[string]any{
 		"pre_checkout_query_id": queryID,

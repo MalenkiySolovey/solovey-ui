@@ -31,16 +31,19 @@ func (Tariff) TableName() string { return "tariffs" }
 // or the payment update). Status transitions out of "pending" are terminal and
 // guarded so a renewal applies at most once.
 type PaymentOrder struct {
-	Id               uint   `json:"id" gorm:"primaryKey;autoIncrement"`
-	ClientId         uint   `json:"clientId" gorm:"column:client_id;index;not null"`
-	TariffId         uint   `json:"tariffId" gorm:"column:tariff_id;index;not null"`
-	Provider         string `json:"provider" gorm:"index;not null"`
-	Amount           int64  `json:"amount" gorm:"not null;default:0"`
-	Currency         string `json:"currency" gorm:"not null"`
-	Status           string `json:"status" gorm:"index;not null;default:pending"`
-	TelegramUserId   int64  `json:"telegramUserId" gorm:"column:telegram_user_id;index;not null;default:0"`
-	IdempotencyKey   string `json:"idempotencyKey" gorm:"column:idempotency_key;uniqueIndex;not null"`
-	ProviderChargeID string `json:"providerChargeId" gorm:"column:provider_charge_id;index"`
+	Id             uint   `json:"id" gorm:"primaryKey;autoIncrement"`
+	ClientId       uint   `json:"clientId" gorm:"column:client_id;index;not null"`
+	TariffId       uint   `json:"tariffId" gorm:"column:tariff_id;index;not null"`
+	Provider       string `json:"provider" gorm:"index;not null"`
+	Amount         int64  `json:"amount" gorm:"not null;default:0"`
+	Currency       string `json:"currency" gorm:"not null"`
+	Status         string `json:"status" gorm:"index;not null;default:pending"`
+	TelegramUserId int64  `json:"telegramUserId" gorm:"column:telegram_user_id;index;not null;default:0"`
+	// IdempotencyKey (the Telegram invoice payload) and ProviderChargeID are
+	// internal provider ids — never serialized to the browser (json:"-"), so the
+	// admin Orders API exposes no provider secrets/ids (mirrors ProviderPayload).
+	IdempotencyKey   string `json:"-" gorm:"column:idempotency_key;uniqueIndex;not null"`
+	ProviderChargeID string `json:"-" gorm:"column:provider_charge_id;index"`
 	ProviderPayload  []byte `json:"-" gorm:"column:provider_payload"`
 	ExternalURL      string `json:"externalUrl" gorm:"column:external_url"`
 	CreatedAt        int64  `json:"createdAt" gorm:"column:created_at;index;not null;default:0"`
@@ -71,4 +74,5 @@ const (
 	StatusFailed   = "failed"
 	StatusExpired  = "expired"
 	StatusCanceled = "canceled"
+	StatusRefunded = "refunded"
 )

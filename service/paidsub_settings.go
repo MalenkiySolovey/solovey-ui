@@ -168,6 +168,15 @@ func (s *SettingService) GetPaidSubGreeting() (string, error) {
 	return s.getString("paidSubGreeting")
 }
 
+// GetPaidSubRefundRevoke reports the admin policy for the bot's user-initiated
+// Stars auto-refund: when true (default), a successful refund also rolls back
+// the days/traffic that order granted (anti-abuse: buy → refund → keep using).
+// The user never chooses this; the panel refund button has its own per-refund
+// toggle.
+func (s *SettingService) GetPaidSubRefundRevoke() (bool, error) {
+	return s.getBool("paidSubRefundRevoke")
+}
+
 func (s *SettingService) GetPaidSubTransportMode() (string, error) {
 	return s.getString("paidSubTransportMode")
 }

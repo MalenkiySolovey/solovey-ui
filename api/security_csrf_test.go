@@ -48,6 +48,7 @@ func securityCSRFPostRoutes() []string {
 		"/api/paidsub/bindings",
 		"/api/paidsub/tariffs",
 		"/api/paidsub/broadcast",
+		"/api/paidsub/refund",
 	}
 }
 

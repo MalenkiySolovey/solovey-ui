@@ -2,6 +2,7 @@ package paidsub
 
 import (
 	"encoding/json"
+	"errors"
 	"testing"
 	"time"
 
@@ -159,4 +160,139 @@ func TestExpireStaleOrders(t *testing.T) {
 		t.Errorf("fresh order should stay pending: %s", f.Status)
 	}
 	_ = database.GetDB()
+}
+
+func TestOrdersForTgUserScoped(t *testing.T) {
+	db := openTestDB(t)
+	if err := EnsureSchema(db); err != nil {
+		t.Fatalf("EnsureSchema: %v", err)
+	}
+	db.Create(&PaymentOrder{ClientId: 1, TariffId: 1, Provider: "stars", Amount: 5, Currency: "XTR", Status: StatusPaid, TelegramUserId: 100, IdempotencyKey: "a"})
+	db.Create(&PaymentOrder{ClientId: 1, TariffId: 1, Provider: "stars", Amount: 6, Currency: "XTR", Status: StatusPending, TelegramUserId: 100, IdempotencyKey: "b"})
+	db.Create(&PaymentOrder{ClientId: 2, TariffId: 1, Provider: "stars", Amount: 7, Currency: "XTR", Status: StatusPaid, TelegramUserId: 200, IdempotencyKey: "c"})
+
+	ps := NewPaymentService()
+	got, err := ps.OrdersForTgUser(100, 20)
+	if err != nil {
+		t.Fatalf("OrdersForTgUser: %v", err)
+	}
+	if len(got) != 2 {
+		t.Fatalf("OrdersForTgUser(100) = %d orders, want 2", len(got))
+	}
+	for _, o := range got {
+		if o.TelegramUserId != 100 {
+			t.Errorf("leaked order belonging to tg %d", o.TelegramUserId)
+		}
+	}
+	// Refundable = paid only.
+	ref, err := ps.RefundableOrdersForTgUser(100, 20)
+	if err != nil {
+		t.Fatalf("RefundableOrdersForTgUser: %v", err)
+	}
+	if len(ref) != 1 || ref[0].Status != StatusPaid {
+		t.Errorf("RefundableOrdersForTgUser(100) = %+v, want exactly 1 paid", ref)
+	}
+}
+
+func TestFinalizeRefundRevokeRollsBackOnce(t *testing.T) {
+	db := openTestDB(t)
+	if err := EnsureSchema(db); err != nil {
+		t.Fatalf("EnsureSchema: %v", err)
+	}
+	now := time.Now().Unix()
+	client := model.Client{Enable: true, Name: "tg7", Inbounds: json.RawMessage("[]"), Volume: 5 << 30, Expiry: now + 40*86400}
+	db.Create(&client)
+	tariff := Tariff{Name: "M", Price: 10000, Currency: "RUB", AddDays: 30, AddTrafficBytes: 1 << 30, Enabled: true}
+	db.Create(&tariff)
+	order := PaymentOrder{ClientId: client.Id, TariffId: tariff.Id, Provider: "yookassa", Amount: 10000, Currency: "RUB", Status: StatusPaid, TelegramUserId: 7, IdempotencyKey: "r1"}
+	db.Create(&order)
+
+	ps := NewPaymentService()
+	if err := ps.finalizeRefund(order.Id, true); err != nil {
+		t.Fatalf("finalizeRefund: %v", err)
+	}
+	var o PaymentOrder
+	db.Where("id = ?", order.Id).First(&o)
+	if o.Status != StatusRefunded {
+		t.Errorf("status = %s, want refunded", o.Status)
+	}
+	var c model.Client
+	db.Where("id = ?", client.Id).First(&c)
+	wantExpiry := (now + 40*86400) - 30*86400
+	if c.Expiry < wantExpiry-2 || c.Expiry > wantExpiry+2 {
+		t.Errorf("expiry = %d, want ~%d", c.Expiry, wantExpiry)
+	}
+	if c.Volume != (5<<30)-(1<<30) {
+		t.Errorf("volume = %d, want %d", c.Volume, int64((5<<30)-(1<<30)))
+	}
+	if !c.Enable {
+		t.Error("client must not be disabled by a refund")
+	}
+
+	// Second call must be an idempotent no-op (no double roll-back).
+	if err := ps.finalizeRefund(order.Id, true); !errors.Is(err, errAlreadyApplied) {
+		t.Errorf("second finalizeRefund = %v, want errAlreadyApplied", err)
+	}
+	var c2 model.Client
+	db.Where("id = ?", client.Id).First(&c2)
+	if c2.Volume != c.Volume || c2.Expiry != c.Expiry {
+		t.Error("second refund must not change the client again")
+	}
+}
+
+func TestFinalizeRefundNoRevokeKeepsClient(t *testing.T) {
+	db := openTestDB(t)
+	if err := EnsureSchema(db); err != nil {
+		t.Fatalf("EnsureSchema: %v", err)
+	}
+	now := time.Now().Unix()
+	client := model.Client{Enable: true, Name: "tg8", Inbounds: json.RawMessage("[]"), Volume: 2 << 30, Expiry: now + 10*86400}
+	db.Create(&client)
+	tariff := Tariff{Name: "M", Price: 10000, Currency: "RUB", AddDays: 30, AddTrafficBytes: 1 << 30, Enabled: true}
+	db.Create(&tariff)
+	order := PaymentOrder{ClientId: client.Id, TariffId: tariff.Id, Provider: "yookassa", Amount: 10000, Currency: "RUB", Status: StatusPaid, TelegramUserId: 8, IdempotencyKey: "r2"}
+	db.Create(&order)
+
+	ps := NewPaymentService()
+	if err := ps.finalizeRefund(order.Id, false); err != nil {
+		t.Fatalf("finalizeRefund: %v", err)
+	}
+	var c model.Client
+	db.Where("id = ?", client.Id).First(&c)
+	if c.Volume != 2<<30 || c.Expiry != now+10*86400 {
+		t.Errorf("client changed despite revoke=false: volume=%d expiry=%d", c.Volume, c.Expiry)
+	}
+	var o PaymentOrder
+	db.Where("id = ?", order.Id).First(&o)
+	if o.Status != StatusRefunded {
+		t.Errorf("status = %s, want refunded", o.Status)
+	}
+}
+
+func TestFinalizeRefundFloorsExpiryAndVolume(t *testing.T) {
+	db := openTestDB(t)
+	if err := EnsureSchema(db); err != nil {
+		t.Fatalf("EnsureSchema: %v", err)
+	}
+	now := time.Now().Unix()
+	// addDays (365) exceeds remaining (5d) and addTraffic exceeds volume → floor.
+	client := model.Client{Enable: true, Name: "tg9", Inbounds: json.RawMessage("[]"), Volume: 1 << 20, Expiry: now + 5*86400}
+	db.Create(&client)
+	tariff := Tariff{Name: "Y", Price: 1, Currency: "RUB", AddDays: 365, AddTrafficBytes: 1 << 30, Enabled: true}
+	db.Create(&tariff)
+	order := PaymentOrder{ClientId: client.Id, TariffId: tariff.Id, Provider: "yookassa", Amount: 1, Currency: "RUB", Status: StatusPaid, TelegramUserId: 9, IdempotencyKey: "r3"}
+	db.Create(&order)
+
+	ps := NewPaymentService()
+	if err := ps.finalizeRefund(order.Id, true); err != nil {
+		t.Fatalf("finalizeRefund: %v", err)
+	}
+	var c model.Client
+	db.Where("id = ?", client.Id).First(&c)
+	if c.Expiry < now-2 || c.Expiry > now+2 {
+		t.Errorf("expiry floor = %d, want ~now %d", c.Expiry, now)
+	}
+	if c.Volume != 0 {
+		t.Errorf("volume floor = %d, want 0", c.Volume)
+	}
 }

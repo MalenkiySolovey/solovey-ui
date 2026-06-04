@@ -17,6 +17,19 @@ import (
 )
 
 var errAlreadyApplied = errors.New("order already finalized")
+var errRefundNotApplicable = errors.New("order is not refundable")
+
+// isAlreadyRefunded reports whether a refundStarPayment error means the charge
+// was already refunded (e.g. by a concurrent refund via the other path).
+// Telegram is idempotent at the charge level, so this is a success — not a
+// failure — and must not be reported to the admin/user as "refund failed".
+func isAlreadyRefunded(err error) bool {
+	var apiErr *tgAPIError
+	if errors.As(err, &apiErr) {
+		return strings.Contains(strings.ToUpper(apiErr.Description), "ALREADY_REFUNDED")
+	}
+	return false
+}
 
 // PaymentService orchestrates orders, invoices and renewals. Logic is scoped to
 // the resolved client; amounts are snapshotted server-side from the tariff.
@@ -283,6 +296,169 @@ func (p *PaymentService) ExpireStaleOrders() error {
 		Update("status", StatusExpired).Error
 }
 
+// ---- order history & refunds ----
+
+// OrdersForTgUser returns the most recent orders belonging to a Telegram user,
+// scoped strictly by telegram_user_id (never another user's orders).
+func (p *PaymentService) OrdersForTgUser(tgUserId int64, limit int) ([]PaymentOrder, error) {
+	if tgUserId <= 0 {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	db := database.GetDB()
+	var orders []PaymentOrder
+	if err := db.Where("telegram_user_id = ?", tgUserId).Order("id desc").Limit(limit).Find(&orders).Error; err != nil {
+		return nil, err
+	}
+	return orders, nil
+}
+
+// RefundableOrdersForTgUser returns a user's paid (refundable) orders.
+func (p *PaymentService) RefundableOrdersForTgUser(tgUserId int64, limit int) ([]PaymentOrder, error) {
+	if tgUserId <= 0 {
+		return nil, nil
+	}
+	if limit <= 0 {
+		limit = 20
+	}
+	db := database.GetDB()
+	var orders []PaymentOrder
+	if err := db.Where("telegram_user_id = ? AND status = ?", tgUserId, StatusPaid).
+		Order("id desc").Limit(limit).Find(&orders).Error; err != nil {
+		return nil, err
+	}
+	return orders, nil
+}
+
+// finalizeRefund marks a paid order as refunded exactly once and, when revoke is
+// true, rolls back the days/traffic that order granted. The conditional UPDATE
+// ... WHERE status='paid' (checked via RowsAffected) makes a double refund a
+// safe no-op (returns errAlreadyApplied). Affected inbounds are restarted
+// post-commit so the running core re-evaluates the reduced limits. The client is
+// never disabled by a refund.
+func (p *PaymentService) finalizeRefund(orderID uint, revoke bool) error {
+	db := database.GetDB()
+	var inboundIds []uint
+	err := db.Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&PaymentOrder{}).
+			Where("id = ? AND status = ?", orderID, StatusPaid).
+			Update("status", StatusRefunded)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected != 1 {
+			return errAlreadyApplied
+		}
+		if !revoke {
+			return nil
+		}
+		var order PaymentOrder
+		if err := tx.Where("id = ?", orderID).First(&order).Error; err != nil {
+			return err
+		}
+		var tariff Tariff
+		if err := tx.Where("id = ?", order.TariffId).First(&tariff).Error; err != nil {
+			return err
+		}
+		var client model.Client
+		if err := tx.Where("id = ?", order.ClientId).First(&client).Error; err != nil {
+			return err
+		}
+		now := nowUnix()
+		updates := map[string]any{}
+		if tariff.AddDays > 0 && client.Expiry > 0 {
+			newExpiry := client.Expiry - int64(tariff.AddDays)*86400
+			if newExpiry < now {
+				newExpiry = now
+			}
+			updates["expiry"] = newExpiry
+		}
+		if tariff.AddTrafficBytes > 0 {
+			newVolume := client.Volume - tariff.AddTrafficBytes
+			if newVolume < 0 {
+				newVolume = 0
+			}
+			updates["volume"] = newVolume
+		}
+		if len(updates) == 0 {
+			return nil
+		}
+		if err := tx.Model(&model.Client{}).Where("id = ?", client.Id).Updates(updates).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&model.Changes{
+			DateTime: now,
+			Actor:    "PaidSubBot",
+			Key:      "clients",
+			Action:   "refund",
+			Obj:      json.RawMessage(`"` + client.Name + `"`),
+		}).Error; err != nil {
+			return err
+		}
+		if len(client.Inbounds) > 0 {
+			_ = json.Unmarshal(client.Inbounds, &inboundIds)
+		}
+		return nil
+	})
+	if err != nil {
+		return err
+	}
+	if len(inboundIds) > 0 {
+		if rErr := (&service.InboundService{}).RestartInbounds(database.GetDB(), inboundIds); rErr != nil {
+			logger.Warning("paidsub: restart inbounds after refund failed: ", rErr)
+		}
+	}
+	_ = (&service.AuditService{}).Record(service.AuditEvent{
+		Actor:    "PaidSubBot",
+		Event:    "paidsub_refunded",
+		Resource: "paidsub",
+		Severity: service.AuditSeverityInfo,
+		Details:  map[string]any{"orderId": orderID, "revoke": revoke},
+	})
+	return nil
+}
+
+// RefundOrder is the admin-initiated refund (panel Orders tab). For Stars it
+// returns the money via refundStarPayment FIRST, then marks the order refunded
+// (so the admin can cleanly retry if Telegram rejects the call); for every other
+// provider the money must be refunded in the provider's own dashboard, so this
+// only marks the order refunded (status "refunded_manual"). revoke is the
+// admin's per-refund choice to roll back the granted days/traffic.
+func (p *PaymentService) RefundOrder(ctx context.Context, orderID uint, revoke bool) (string, error) {
+	order, err := p.getOrder(orderID)
+	if err != nil {
+		return "", err
+	}
+	if order.Status != StatusPaid {
+		return "", errRefundNotApplicable
+	}
+	if order.Provider == string(ProviderStars) {
+		sender, err := newSenderBot()
+		if err != nil {
+			return "", err
+		}
+		charge := strings.TrimPrefix(order.ProviderChargeID, "tg:")
+		if charge == "" {
+			return "", fmt.Errorf("order has no Stars charge id")
+		}
+		// An "already refunded" response means a concurrent refund (e.g. the bot
+		// path) returned the money first — treat it as success, not a failure.
+		if err := sender.refundStarPayment(ctx, order.TelegramUserId, charge); err != nil && !isAlreadyRefunded(err) {
+			return "", fmt.Errorf("stars refund failed")
+		}
+		if err := p.finalizeRefund(orderID, revoke); err != nil && !errors.Is(err, errAlreadyApplied) {
+			return "", err
+		}
+		return "refunded", nil
+	}
+	if err := p.finalizeRefund(orderID, revoke); err != nil && !errors.Is(err, errAlreadyApplied) {
+		return "", err
+	}
+	return "refunded_manual", nil
+}
+
 // ---- bot purchase flow ----
 
 func (b *Bot) cmdBuy(ctx context.Context, chatID int64, tgID int64, l lang) {
@@ -451,4 +627,13 @@ func tariffButtonLabel(t *Tariff) string {
 		return t.Name
 	}
 	return fmt.Sprintf("%s — %s", t.Name, price)
+}
+
+// formatOrderAmount renders an order amount: Telegram Stars (XTR) are whole
+// units; every other currency is stored in minor units (e.g. kopeks/cents).
+func formatOrderAmount(amount int64, currency string) string {
+	if currency == "XTR" {
+		return fmt.Sprintf("%d ⭐", amount)
+	}
+	return fmt.Sprintf("%.2f %s", float64(amount)/100.0, currency)
 }

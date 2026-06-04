@@ -1,6 +1,7 @@
 package paidsub
 
 import (
+	"errors"
 	"strings"
 	"testing"
 )
@@ -92,6 +93,71 @@ func TestChunkText(t *testing.T) {
 		if len([]rune(ch)) > 10 {
 			t.Errorf("oversized line not hard-split: %q (%d)", ch, len([]rune(ch)))
 		}
+	}
+}
+
+func TestFormatOrderAmount(t *testing.T) {
+	if got := formatOrderAmount(5, "XTR"); got != "5 ⭐" {
+		t.Errorf("XTR amount = %q, want %q", got, "5 ⭐")
+	}
+	if got := formatOrderAmount(10000, "RUB"); got != "100.00 RUB" {
+		t.Errorf("RUB amount = %q, want %q", got, "100.00 RUB")
+	}
+}
+
+func TestOrderStatusLabelFallback(t *testing.T) {
+	if got := orderStatusLabel("paid", langEN); got != "✅ paid" {
+		t.Errorf("paid label = %q", got)
+	}
+	if got := orderStatusLabel("weird", langEN); got != "weird" {
+		t.Errorf("unknown status should fall back to raw value, got %q", got)
+	}
+}
+
+func callbackSet(kb *inlineKeyboard) map[string]bool {
+	m := map[string]bool{}
+	for _, row := range kb.InlineKeyboard {
+		for _, b := range row {
+			if b.CallbackData != "" {
+				m[b.CallbackData] = true
+			}
+		}
+	}
+	return m
+}
+
+func TestMenuKeyboards(t *testing.T) {
+	b := &Bot{}
+	main := callbackSet(b.menuKeyboard(langEN))
+	for _, want := range []string{"links", "qr", "stats", "payment", "help"} {
+		if !main[want] {
+			t.Errorf("main menu missing callback %q", want)
+		}
+	}
+	// "buy" moved into the payment submenu; it must not be on the top level.
+	if main["buy"] {
+		t.Error("top-level menu should no longer expose 'buy'")
+	}
+	pay := callbackSet(b.paymentMenuKeyboard(langEN))
+	for _, want := range []string{"buy", "orders", "refund", "menu"} {
+		if !pay[want] {
+			t.Errorf("payment submenu missing callback %q", want)
+		}
+	}
+}
+
+func TestIsAlreadyRefunded(t *testing.T) {
+	if !isAlreadyRefunded(&tgAPIError{Code: 400, Description: "Bad Request: CHARGE_ALREADY_REFUNDED"}) {
+		t.Error("CHARGE_ALREADY_REFUNDED should be detected as already-refunded")
+	}
+	if isAlreadyRefunded(&tgAPIError{Code: 400, Description: "USER_NOT_FOUND"}) {
+		t.Error("unrelated API error must not be treated as already-refunded")
+	}
+	if isAlreadyRefunded(nil) {
+		t.Error("nil error is not already-refunded")
+	}
+	if isAlreadyRefunded(errors.New("network")) {
+		t.Error("non-API error is not already-refunded")
 	}
 }
 

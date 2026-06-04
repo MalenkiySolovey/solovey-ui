@@ -21,22 +21,24 @@ type Deps struct {
 }
 
 type apiHandlers struct {
-	svc     *PaidSubService
-	tariffs *TariffService
-	deps    Deps
+	svc      *PaidSubService
+	tariffs  *TariffService
+	payments *PaymentService
+	deps     Deps
 }
 
 // RegisterRoutes mounts the module's admin endpoints under /paidsub on an
 // ALREADY-authenticated group (session-auth + CSRF for browser routes). The
 // module never registers public/unauthenticated routes.
 func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
-	h := &apiHandlers{svc: NewService(), tariffs: NewTariffService(), deps: deps}
+	h := &apiHandlers{svc: NewService(), tariffs: NewTariffService(), payments: NewPaymentService(), deps: deps}
 	grp := g.Group("/paidsub")
 	grp.GET("/bindings", h.listBindings)
 	grp.POST("/bindings", h.setBinding)
 	grp.GET("/tariffs", h.listTariffs)
 	grp.POST("/tariffs", h.saveTariff)
 	grp.GET("/orders", h.listOrders)
+	grp.POST("/refund", h.refund)
 	grp.GET("/status", h.status)
 	grp.POST("/broadcast", h.broadcast)
 }
@@ -212,4 +214,32 @@ func (h *apiHandlers) listOrders(c *gin.Context) {
 		return
 	}
 	respOK(c, orders)
+}
+
+type refundRequest struct {
+	OrderId uint `json:"orderId"`
+	Revoke  bool `json:"revoke"`
+}
+
+// refund is the admin-initiated refund: for Telegram Stars it calls
+// refundStarPayment; for every other provider it only marks the order refunded
+// (the admin refunds the money in the provider's own dashboard). Revoke rolls
+// back the granted days/traffic (admin's per-refund choice).
+func (h *apiHandlers) refund(c *gin.Context) {
+	var req refundRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		respFail(c, "invalid request")
+		return
+	}
+	if req.OrderId == 0 {
+		respFail(c, "orderId is required")
+		return
+	}
+	status, err := h.payments.RefundOrder(c.Request.Context(), req.OrderId, req.Revoke)
+	if err != nil {
+		respFail(c, err.Error())
+		return
+	}
+	h.audit(c, "paidsub_refunded", "info", map[string]any{"orderId": req.OrderId, "revoke": req.Revoke, "status": status})
+	respOK(c, map[string]any{"status": status})
 }

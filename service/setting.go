@@ -144,6 +144,7 @@ var defaultValueMap = map[string]string{
 	"paidSubExternalUrlTemplate":  "",
 	"paidSubOrderTTLMinutes":      "30",
 	"paidSubGreeting":             "",
+	"paidSubRefundRevoke":         "true",
 	"config":                      defaultConfig,
 	"version":                     "",
 }
@@ -1216,7 +1217,7 @@ func validatePaidSubSettingInput(key string, value string) error {
 	switch key {
 	case "paidSubEnabled", "paidSubAutoRegister", "paidSubStarsEnabled",
 		"paidSubYooKassaEnabled", "paidSubStripeEnabled", "paidSubPayMasterEnabled",
-		"paidSubCryptoBotEnabled", "paidSubExternalEnabled":
+		"paidSubCryptoBotEnabled", "paidSubExternalEnabled", "paidSubRefundRevoke":
 		if _, err := strconv.ParseBool(value); err != nil {
 			return common.NewError("invalid boolean setting: ", key)
 		}
