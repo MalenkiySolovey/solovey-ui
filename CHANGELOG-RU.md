@@ -21,6 +21,10 @@
 - **Усиление:** rate-лимитер отказывает новым ключам при переполнении;
   `invoice_ids` CryptoBot экранируются; длинные списки ссылок жёстко режутся под
   лимит Telegram; кастомное приветствие защитно усечено.
+- **Оплата: добавлен провайдер PayMaster** (Telegram-инвойсы с `provider_token`
+  из @BotFather), рядом с YooKassa/Stripe/Stars/CryptoBot/внешней ссылкой.
+- **Исправление:** в Orders суммы Telegram Stars (XTR) показываются целыми
+  (заказ на 1 звезду отображался как «0.01 XTR»).
 - Release notes: [`docs/releases/v1.5.7-beta3.md`](docs/releases/v1.5.7-beta3.md).
 
 ## [1.5.7-beta2] — 2026-06-04 — выбор транспорта Telegram, рассылка и приветствие

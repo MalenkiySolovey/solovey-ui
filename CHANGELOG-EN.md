@@ -20,6 +20,10 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 - **Hardening:** rate-limiter refuses new keys when saturated; CryptoBot invoice
   ids URL-escaped; long link lists hard-split under Telegram's limit; custom
   greeting defensively truncated.
+- **Payments: PayMaster provider** added (Telegram-native invoicing with a
+  BotFather `provider_token`), alongside YooKassa/Stripe/Stars/CryptoBot/external.
+- **Fix:** Orders table shows Telegram Stars (XTR) amounts as whole units (a
+  1-Star order had shown as "0.01 XTR").
 - Release notes: [`docs/releases/v1.5.7-beta3.md`](docs/releases/v1.5.7-beta3.md).
 
 ## [1.5.7-beta2] - 2026-06-04 - Telegram transport selector, broadcast & greeting

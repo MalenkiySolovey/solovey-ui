@@ -136,6 +136,14 @@ func (s *SettingService) GetPaidSubStripeToken() (string, error) {
 	return s.getString("paidSubStripeToken")
 }
 
+func (s *SettingService) GetPaidSubPayMasterEnabled() (bool, error) {
+	return s.getBool("paidSubPayMasterEnabled")
+}
+
+func (s *SettingService) GetPaidSubPayMasterToken() (string, error) {
+	return s.getString("paidSubPayMasterToken")
+}
+
 func (s *SettingService) GetPaidSubCryptoBotEnabled() (bool, error) {
 	return s.getBool("paidSubCryptoBotEnabled")
 }

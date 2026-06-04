@@ -16,6 +16,10 @@
   关闭）。
 - **加固：** 限流器在饱和时拒绝新键；CryptoBot 的 invoice_ids 进行 URL 转义；过长的
   链接列表按 Telegram 限制硬切分；自定义问候语进行防御性截断。
+- **支付：新增 PayMaster 支付方**（Telegram 原生开票，使用 BotFather 的
+  `provider_token`），与 YooKassa/Stripe/Stars/CryptoBot/外部链接并列。
+- **修复：** 订单表中 Telegram Stars (XTR) 金额按整数显示（此前 1 星订单显示为
+  “0.01 XTR”）。
 - 发布说明：[`docs/releases/v1.5.7-beta3.md`](docs/releases/v1.5.7-beta3.md)。
 
 ## [1.5.7-beta2] - 2026-06-04 - Telegram 传输选择、群发与问候语

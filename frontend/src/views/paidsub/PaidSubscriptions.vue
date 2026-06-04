@@ -216,6 +216,13 @@
           label="Stripe provider_token (BotFather)"
         />
         <v-divider class="my-2" />
+        <v-switch v-model="paymasterEnabled" color="primary" label="PayMaster" hide-details />
+        <SettingsSecretField
+          v-model="settings.paidSubPayMasterToken"
+          :has-secret="settings.paidSubPayMasterTokenHasSecret"
+          label="PayMaster provider_token (BotFather)"
+        />
+        <v-divider class="my-2" />
         <v-switch v-model="cryptoEnabled" color="primary" label="CryptoBot" hide-details />
         <SettingsSecretField
           v-model="settings.paidSubCryptoBotToken"
@@ -371,6 +378,9 @@ const defaults: SMap = {
   paidSubStripeEnabled: 'false',
   paidSubStripeToken: '',
   paidSubStripeTokenHasSecret: 'false',
+  paidSubPayMasterEnabled: 'false',
+  paidSubPayMasterToken: '',
+  paidSubPayMasterTokenHasSecret: 'false',
   paidSubCryptoBotEnabled: 'false',
   paidSubCryptoBotToken: '',
   paidSubCryptoBotTokenHasSecret: 'false',
@@ -403,6 +413,7 @@ const autoRegister = boolSetting('paidSubAutoRegister')
 const starsEnabled = boolSetting('paidSubStarsEnabled')
 const yooEnabled = boolSetting('paidSubYooKassaEnabled')
 const stripeEnabled = boolSetting('paidSubStripeEnabled')
+const paymasterEnabled = boolSetting('paidSubPayMasterEnabled')
 const cryptoEnabled = boolSetting('paidSubCryptoBotEnabled')
 const externalEnabled = boolSetting('paidSubExternalEnabled')
 

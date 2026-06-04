@@ -48,6 +48,12 @@ func (p *PaymentService) providerByKind(kind ProviderKind) PaymentProvider {
 				return &telegramProvider{kind: ProviderStripe, token: tok}
 			}
 		}
+	case ProviderPayMaster:
+		if on, _ := s.GetPaidSubPayMasterEnabled(); on {
+			if tok, _ := s.GetPaidSubPayMasterToken(); tok != "" {
+				return &telegramProvider{kind: ProviderPayMaster, token: tok}
+			}
+		}
 	case ProviderCryptoBot:
 		if on, _ := s.GetPaidSubCryptoBotEnabled(); on {
 			if tok, _ := s.GetPaidSubCryptoBotToken(); tok != "" {
@@ -73,7 +79,7 @@ func (p *PaymentService) enabledProvidersForTariff(t *Tariff) []PaymentProvider 
 		kinds = append(kinds, ProviderStars)
 	}
 	if t.Price > 0 {
-		kinds = append(kinds, ProviderYooKassa, ProviderStripe, ProviderCryptoBot, ProviderExternal)
+		kinds = append(kinds, ProviderYooKassa, ProviderStripe, ProviderPayMaster, ProviderCryptoBot, ProviderExternal)
 	}
 	var out []PaymentProvider
 	for _, k := range kinds {

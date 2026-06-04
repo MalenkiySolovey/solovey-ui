@@ -29,6 +29,11 @@ not actually save in beta2), plus several robustness fixes. Feature remains
   (bounded memory under a burst); CryptoBot invoice ids are URL-escaped; very
   long link lists are hard-split below Telegram's message limit; the custom
   greeting is defensively truncated.
+- **Payments: PayMaster provider** added (alongside YooKassa, Stripe, Telegram
+  Stars, CryptoBot, external link). It uses Telegram-native invoicing with a
+  `provider_token` from @BotFather; configure it on the Payments tab.
+- **Fix:** the Orders table now shows Telegram Stars (XTR) amounts as whole units
+  (a 1-Star order was shown as "0.01 XTR" because every amount was divided by 100).
 
 ## Upgrade
 
@@ -68,6 +73,11 @@ admin page (bindings/tariffs/broadcast) — those actions only work from beta3.
   переполнении (ограниченная память при всплеске); `invoice_ids` CryptoBot
   экранируются в URL; длинные списки ссылок жёстко режутся под лимит сообщения
   Telegram; кастомное приветствие защитно усечено.
+- **Оплата: добавлен провайдер PayMaster** (рядом с YooKassa, Stripe, Telegram
+  Stars, CryptoBot, внешней ссылкой). Работает через Telegram-инвойсы с
+  `provider_token` из @BotFather; настраивается на вкладке «Оплата».
+- **Исправление:** в таблице Orders суммы Telegram Stars (XTR) показываются
+  целыми (заказ на 1 звезду отображался как «0.01 XTR», т.к. сумма делилась на 100).
 
 ## Обновление
 

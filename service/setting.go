@@ -136,6 +136,8 @@ var defaultValueMap = map[string]string{
 	"paidSubYooKassaToken":        "",
 	"paidSubStripeEnabled":        "false",
 	"paidSubStripeToken":          "",
+	"paidSubPayMasterEnabled":     "false",
+	"paidSubPayMasterToken":       "",
 	"paidSubCryptoBotEnabled":     "false",
 	"paidSubCryptoBotToken":       "",
 	"paidSubExternalEnabled":      "false",
@@ -1213,8 +1215,8 @@ func validateObservabilitySettingInput(key string, value string) error {
 func validatePaidSubSettingInput(key string, value string) error {
 	switch key {
 	case "paidSubEnabled", "paidSubAutoRegister", "paidSubStarsEnabled",
-		"paidSubYooKassaEnabled", "paidSubStripeEnabled", "paidSubCryptoBotEnabled",
-		"paidSubExternalEnabled":
+		"paidSubYooKassaEnabled", "paidSubStripeEnabled", "paidSubPayMasterEnabled",
+		"paidSubCryptoBotEnabled", "paidSubExternalEnabled":
 		if _, err := strconv.ParseBool(value); err != nil {
 			return common.NewError("invalid boolean setting: ", key)
 		}

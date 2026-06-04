@@ -33,6 +33,7 @@ var (
 		"paidSubBotToken":          {},
 		"paidSubYooKassaToken":     {},
 		"paidSubStripeToken":       {},
+		"paidSubPayMasterToken":    {},
 		"paidSubCryptoBotToken":    {},
 		"paidSubProxyURL":          {},
 		"paidSubProxyUsername":     {},

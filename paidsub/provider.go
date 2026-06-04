@@ -15,6 +15,7 @@ const (
 	ProviderStars     ProviderKind = "stars"
 	ProviderYooKassa  ProviderKind = "yookassa"
 	ProviderStripe    ProviderKind = "stripe"
+	ProviderPayMaster ProviderKind = "paymaster"
 	ProviderCryptoBot ProviderKind = "cryptobot"
 	ProviderExternal  ProviderKind = "external"
 )
@@ -76,6 +77,8 @@ func providerTitle(kind ProviderKind, l lang) string {
 		return "💳 YooKassa"
 	case ProviderStripe:
 		return "💳 Stripe"
+	case ProviderPayMaster:
+		return "💳 PayMaster"
 	case ProviderCryptoBot:
 		return "🪙 CryptoBot"
 	case ProviderExternal:
