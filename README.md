@@ -26,7 +26,7 @@
 
 Advanced Web panel built on `SagerNet/Sing-Box`.
 
-**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.7-beta3`).
+**Note:** this repository is based on `alireza0/s-ui` starting from `v1.4.1`, with security and reliability hardening applied on top (current build: `v1.5.7-beta4`).
 
 **This fork keeps the original project structure and updates the user-facing documentation and installation links for this repository. You can use the scripts from this repository directly, or fork and build the project yourself.**
 
@@ -39,7 +39,7 @@ The full per-release notes live in the language-specific changelog files:
 - English: [`CHANGELOG-EN.md`](CHANGELOG-EN.md)
 - Русский: [`CHANGELOG-RU.md`](CHANGELOG-RU.md)
 - 简体中文: [`CHANGELOG-ZH.md`](CHANGELOG-ZH.md)
-- Current beta release notes: [`docs/releases/v1.5.7-beta3.md`](docs/releases/v1.5.7-beta3.md)
+- Current beta release notes: [`docs/releases/v1.5.7-beta4.md`](docs/releases/v1.5.7-beta4.md)
 
 The README keeps installation and project overview short. For full release
 history, breaking notes, upgrade guidance, and rollback notes, open the
@@ -121,16 +121,17 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Run `install-windows.bat` as Administrator.
 4. Follow the installation wizard.
 
-## Install v1.5.7-beta3
+## Install v1.5.7-beta4
 
-This beta adds an experimental **Paid Subscriptions** module: a client-facing
-Telegram bot (separate token) that delivers subscription links and QR codes,
-shows usage stats, supports self-registration with a trial, and tariff-based
-payments (Telegram Stars, YooKassa, Stripe, CryptoBot, external link). It is
-**off by default** and isolated from the core. This is a beta — test first.
+This beta extends the experimental **Paid Subscriptions** bot with a structured
+**Payment** section (buy / renew, my purchases, request a refund) and self-service
+**refunds** (Telegram Stars auto-refund; other providers via an admin request),
+and fixes **duplicate creation** so a single panel action can never create two
+records. Paid Subscriptions remains **off by default** and isolated from the core.
+This is a beta — test first.
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.7-beta3
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.7-beta4
 ```
 
 Or from a local clone:
@@ -138,7 +139,7 @@ Or from a local clone:
 ```sh
 git clone https://github.com/deposist/s-ui-x.git
 cd s-ui-x
-sudo bash install.sh v1.5.7-beta3
+sudo bash install.sh v1.5.7-beta4
 ```
 
 ## Install v1.5.6 Stable
@@ -409,7 +410,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 
 Продвинутая Web-панель, построенная на базе `SagerNet/Sing-Box`.
 
-**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.7-beta3`).
+**Примечание:** этот репозиторий основан на `alireza0/s-ui`, начиная с `v1.4.1`, с применённым набором исправлений по безопасности и надёжности (текущая сборка: `v1.5.7-beta4`).
 
 **Этот fork сохраняет структуру оригинального проекта и обновляет пользовательскую документацию и ссылки установки для этого репозитория. Вы можете напрямую использовать скрипты из этого репозитория или сделать fork и собрать проект самостоятельно.**
 
@@ -422,7 +423,7 @@ certbot certonly --standalone --register-unsafely-without-email --non-interactiv
 - English: [`CHANGELOG-EN.md`](CHANGELOG-EN.md)
 - Русский: [`CHANGELOG-RU.md`](CHANGELOG-RU.md)
 - 简体中文: [`CHANGELOG-ZH.md`](CHANGELOG-ZH.md)
-- Release notes текущей beta: [`docs/releases/v1.5.7-beta3.md`](docs/releases/v1.5.7-beta3.md)
+- Release notes текущей beta: [`docs/releases/v1.5.7-beta4.md`](docs/releases/v1.5.7-beta4.md)
 
 README оставляет только установку и общий обзор проекта. Полная история
 релизов, breaking-заметки, гайд по обновлению и инструкции по откату находятся
@@ -504,16 +505,17 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 3. Запустите `install-windows.bat` от имени администратора.
 4. Следуйте инструкциям мастера установки.
 
-## Установка v1.5.7-beta3
+## Установка v1.5.7-beta4
 
-Эта бета добавляет экспериментальный модуль **Платные подписки**: клиентский
-Telegram-бот (отдельный токен), который выдаёт ссылки подписки и QR-коды,
-показывает статистику, поддерживает саморегистрацию с пробным периодом и оплату
-по тарифам (Telegram Stars, YooKassa, Stripe, CryptoBot, внешняя ссылка). Функция
+Эта бета расширяет экспериментального бота **Платные подписки** разделом
+**«Оплата»** (купить / продлить, мои покупки, оформить возврат) и
+самостоятельными **возвратами** (Telegram Stars — авто-возврат; остальные
+провайдеры — через заявку админу), а также исправляет **задвоение создания** —
+одно действие в панели больше не может создать две записи. Функция по-прежнему
 **выключена по умолчанию** и изолирована от ядра. Это бета — сначала протестируйте.
 
 ```sh
-bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.7-beta3
+bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.7-beta4
 ```
 
 Или из локального клона:
@@ -521,7 +523,7 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 ```sh
 git clone https://github.com/deposist/s-ui-x.git
 cd s-ui-x
-sudo bash install.sh v1.5.7-beta3
+sudo bash install.sh v1.5.7-beta4
 ```
 
 ## Установка стабильной версии v1.5.6

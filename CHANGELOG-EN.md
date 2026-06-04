@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
-## [Unreleased]
+## [1.5.7-beta4] - 2026-06-04 - Paid Subscriptions Payment menu & refunds; duplicate-create fix
 
 - **Paid Subscriptions bot: new "Payment" section.** The flat "Buy / Renew"
   button is replaced by a **Payment** menu that opens a submenu: **Buy / Renew**,
@@ -26,7 +26,14 @@ This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 - **Hardening:** the admin Orders API no longer exposes the Telegram charge id or
   the invoice idempotency key; a concurrent bot/panel refund that returns "already
   refunded" is treated as success (Stars refunds are charge-idempotent).
-- Release notes draft: [`docs/releases/Unreleased.md`](docs/releases/Unreleased.md).
+- **Fix: duplicate creation from double-submitted saves.** Saving an entity
+  (client/inbound/outbound/…) synchronously restarts the sing-box core before
+  responding, so a second submission during that slow window created a duplicate
+  row. The Save button is now disabled while a save is in flight (all create/edit
+  modals), and the server skips an identical create that arrives while the first
+  is still in flight or within a short window after it — so one action creates one
+  row even under a slow core restart.
+- Release notes: [`docs/releases/v1.5.7-beta4.md`](docs/releases/v1.5.7-beta4.md).
 
 ## [1.5.7-beta3] - 2026-06-04 - fix Paid Subscriptions admin writes + hardening
 
