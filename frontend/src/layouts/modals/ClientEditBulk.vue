@@ -80,7 +80,7 @@
           color="primary"
           variant="tonal"
           :loading="loading"
-          :disabled="selectedClients.values.length == 0"
+          :disabled="loading || selectedClients.values.length == 0"
           @click="saveChanges"
         >
           {{ $t('actions.save') }}
@@ -144,7 +144,10 @@ export default {
       }
     },
     async saveChanges() {
+      // Guard against double-submit (button is also :disabled while loading).
+      if (!this.$props.visible || this.loading) return
       this.loading = true
+      try {
       const targetClients = this.getTargetClients()
       switch (this.actionMode) {
         case 'change_limits':
@@ -175,12 +178,13 @@ export default {
         case 'delete_bulk':
           const success = await Data().save("clients", "delbulk", targetClients.map((c: Client) => c.id))
           if (success) this.closeModal()
-          this.loading = false
           return
       }
       const success = await Data().save("clients", 'editbulk', targetClients)
       if (success) this.closeModal()
-      this.loading = false
+      } finally {
+        this.loading = false
+      }
     },
   },
   watch: {

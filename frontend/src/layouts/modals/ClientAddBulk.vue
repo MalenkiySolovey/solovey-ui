@@ -92,6 +92,7 @@
           color="primary"
           variant="tonal"
           :loading="loading"
+          :disabled="loading"
           @click="saveChanges"
         >
           {{ $t('actions.save') }}
@@ -154,13 +155,15 @@ export default {
       this.$emit('close')
     },
     async saveChanges() {
-      if (!this.$props.visible) return
+      // Guard against double-submit (button is also :disabled while loading).
+      if (!this.$props.visible || this.loading) return
       if (this.bulkData.name.findIndex(n => typeof(n) == 'object') == -1) {
         push.error(i18n.global.t('error.dplData'))
         return
       }
       this.clients = []
       this.loading = true
+      try {
       for(let i=0;i<this.count;i++){
         const name = this.genByPattern(this.bulkData.name, i)
         this.clients.push(createClient({
@@ -185,7 +188,9 @@ export default {
       if (isDuplicateName) return
       const success = await Data().save("clients", "addbulk", this.clients)
       if (success) this.closeModal()
-      this.loading = false
+      } finally {
+        this.loading = false
+      }
     },
     genByPattern(pattern: any[], order :number){
       if (pattern.length == 0) return RandomUtil.randomSeq(8)

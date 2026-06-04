@@ -118,6 +118,7 @@
           color="primary"
           variant="tonal"
           :loading="loading"
+          :disabled="loading"
           @click="saveChanges"
         >
           {{ $t('actions.save') }}
@@ -259,29 +260,33 @@ export default {
       this.$emit('close')
     },
     async saveChanges() {
-      if (!this.$props.visible) return
+      // Guard against double-submit (button is also :disabled while loading).
+      if (!this.$props.visible || this.loading) return
       // check duplicate tag
       const isDuplicatedTag = Data().checkTag("inbound", this.inbound.id, this.inbound.tag)
       if (isDuplicatedTag) return
 
       // save data
       this.loading = true
-      let clientIds = []
-      if (this.hasUser) {
-        switch (this.initUsers.model) {
-          case 'all':
-            clientIds = this.clients.map((c:any) => c.id)
-            break
-          case 'group':
-            clientIds = this.clients.filter((c:any) => this.initUsers.values.includes(c.group)).map((c:any) => c.id)
-            break
-          case 'client':
-            clientIds = this.initUsers.values
+      try {
+        let clientIds = []
+        if (this.hasUser) {
+          switch (this.initUsers.model) {
+            case 'all':
+              clientIds = this.clients.map((c:any) => c.id)
+              break
+            case 'group':
+              clientIds = this.clients.filter((c:any) => this.initUsers.values.includes(c.group)).map((c:any) => c.id)
+              break
+            case 'client':
+              clientIds = this.initUsers.values
+          }
         }
+        const success = await Data().save("inbounds", this.$props.id == 0 ? "new" : "edit", this.inbound, clientIds)
+        if (success) this.closeModal()
+      } finally {
+        this.loading = false
       }
-      const success = await Data().save("inbounds", this.$props.id == 0 ? "new" : "edit", this.inbound, clientIds)
-      if (success) this.closeModal()
-      this.loading = false
     },
   },
   computed: {

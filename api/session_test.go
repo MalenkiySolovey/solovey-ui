@@ -20,6 +20,7 @@ import (
 
 func initSessionTestDB(t *testing.T) *service.SettingService {
 	t.Helper()
+	saveDedup.reset() // isolate the global create-dedup cache between tests
 	prevAuditSync := service.AuditSyncForTest
 	service.AuditSyncForTest = true
 	t.Cleanup(func() { service.AuditSyncForTest = prevAuditSync })

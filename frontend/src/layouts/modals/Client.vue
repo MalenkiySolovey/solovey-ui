@@ -237,6 +237,7 @@
           color="primary"
           variant="tonal"
           :loading="loading"
+          :disabled="loading"
           @click="saveChanges"
         >
           {{ $t('actions.save') }}
@@ -295,7 +296,9 @@ export default {
       this.$emit('close')
     },
     async saveChanges() {
-      if (!this.$props.visible) return
+      // Guard against double-submit: ignore re-entry while a save is in flight
+      // (the button is also :disabled while loading).
+      if (!this.$props.visible || this.loading) return
       // check duplicate name
       const isDuplicateName = Data().checkClientName(this.$props.id, this.client.name)
       if (isDuplicateName) return
@@ -305,13 +308,16 @@ export default {
 
       // save data
       this.loading = true
-      this.client.config = updateConfigs(this.clientConfig, this.client.name)
-      this.client.links = [
-                        ...this.extLinks.filter(l => l.uri != ''),
-                        ...this.subLinks.filter(l => l.uri != '')]
-      const success = await Data().save("clients", this.$props.id == 0 ? "new" : "edit", this.client)
-      if (success) this.closeModal()
-      this.loading = false
+      try {
+        this.client.config = updateConfigs(this.clientConfig, this.client.name)
+        this.client.links = [
+                          ...this.extLinks.filter(l => l.uri != ''),
+                          ...this.subLinks.filter(l => l.uri != '')]
+        const success = await Data().save("clients", this.$props.id == 0 ? "new" : "edit", this.client)
+        if (success) this.closeModal()
+      } finally {
+        this.loading = false
+      }
     },
     setDate(newDate:number){
       this.client.expiry = newDate

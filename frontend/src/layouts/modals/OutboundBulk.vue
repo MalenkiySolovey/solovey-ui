@@ -59,7 +59,7 @@
       <v-card-actions>
         <v-spacer></v-spacer>
         <v-btn color="primary" variant="outlined" @click="closeModal">{{ $t('actions.close') }}</v-btn>
-        <v-btn color="primary" variant="tonal" :loading="loading" :disabled="outbounds.length==0" @click="saveChanges">{{ $t('actions.save') }}</v-btn>
+        <v-btn color="primary" variant="tonal" :loading="loading" :disabled="loading || outbounds.length==0" @click="saveChanges">{{ $t('actions.save') }}</v-btn>
       </v-card-actions>
     </v-card>
   </v-dialog>
@@ -120,7 +120,8 @@ export default {
       this.loading = false
     },
     async saveChanges() {
-      if (!this.$props.visible) return
+      // Guard against double-submit (button is also :disabled while loading).
+      if (!this.$props.visible || this.loading) return
       // check duplicate tag
       this.outbounds.forEach((o:Outbound, index:number) => {
         const isDuplicatedTag = Data().checkTag("outbound",0, o.tag)

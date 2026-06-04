@@ -96,6 +96,7 @@
           color="primary"
           variant="tonal"
           :loading="loading"
+          :disabled="loading"
           @click="saveChanges"
         >
           {{ $t('actions.save') }}
@@ -172,16 +173,20 @@ export default {
       this.$emit('close')
     },
     async saveChanges() {
-      if (!this.$props.visible) return
+      // Guard against double-submit (button is also :disabled while loading).
+      if (!this.$props.visible || this.loading) return
       // check duplicate tag
       const isDuplicatedTag = Data().checkTag("outbound",this.$props.id, this.outbound.tag)
       if (isDuplicatedTag) return
 
       // save data
       this.loading = true
-      const success = await Data().save("outbounds", this.$props.id == 0 ? "new" : "edit", this.outbound)
-      if (success) this.closeModal()
-      this.loading = false
+      try {
+        const success = await Data().save("outbounds", this.$props.id == 0 ? "new" : "edit", this.outbound)
+        if (success) this.closeModal()
+      } finally {
+        this.loading = false
+      }
     },
     async linkConvert() {
       if (this.link.length>0){

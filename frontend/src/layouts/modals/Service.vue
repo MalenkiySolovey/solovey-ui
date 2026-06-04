@@ -42,6 +42,7 @@
           color="primary"
           variant="tonal"
           :loading="loading"
+          :disabled="loading"
           @click="saveChanges"
         >
           {{ $t('actions.save') }}
@@ -108,7 +109,8 @@ export default {
       this.$emit('close')
     },
     async saveChanges() {
-      if (!this.$props.visible) return
+      // Guard against double-submit (button is also :disabled while loading).
+      if (!this.$props.visible || this.loading) return
 
       // check duplicate tag
       const isDuplicatedTag = Data().checkTag("service",this.srv.id, this.srv.tag)
@@ -116,9 +118,12 @@ export default {
 
       // save data
       this.loading = true
-      const success = await Data().save("services", this.$props.id == 0 ? "new" : "edit", this.srv)
-      if (success) this.closeModal()
-      this.loading = false
+      try {
+        const success = await Data().save("services", this.$props.id == 0 ? "new" : "edit", this.srv)
+        if (success) this.closeModal()
+      } finally {
+        this.loading = false
+      }
     },
   },
   watch: {
