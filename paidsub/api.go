@@ -108,6 +108,8 @@ type bindingRow struct {
 	Name     string `json:"name"`
 	Enable   bool   `json:"enable"`
 	TgUserId int64  `json:"tgUserId"`
+	Desc     string `json:"desc"`
+	Expiry   int64  `json:"expiry"`
 }
 
 // listBindings returns every client with its Telegram binding (tgUserId 0 = not
@@ -116,7 +118,7 @@ func (h *apiHandlers) listBindings(c *gin.Context) {
 	db := database.GetDB()
 	var rows []bindingRow
 	err := db.Table("clients c").
-		Select("c.id as client_id, c.name as name, c.enable as enable, COALESCE(b.tg_user_id, 0) as tg_user_id").
+		Select("c.id as client_id, c.name as name, c.enable as enable, c.desc as `desc`, c.expiry as expiry, COALESCE(b.tg_user_id, 0) as tg_user_id").
 		Joins("LEFT JOIN paidsub_bindings b ON b.client_id = c.id").
 		Order("c.name").
 		Scan(&rows).Error
@@ -204,16 +206,39 @@ func (h *apiHandlers) saveTariff(c *gin.Context) {
 	respOK(c, nil)
 }
 
-// listOrders returns recent payment orders (read-only history). ProviderPayload
-// is json:"-" so provider secrets/ids are never exposed.
+// orderRow is the read-only order history projection shown in the admin UI. It
+// joins the client's name/desc and deliberately selects only display columns —
+// provider secrets (idempotency_key, provider_charge_id, provider_payload) are
+// never selected, so they cannot leak.
+type orderRow struct {
+	Id             uint   `json:"id"`
+	ClientId       uint   `json:"clientId"`
+	Provider       string `json:"provider"`
+	Amount         int64  `json:"amount"`
+	Currency       string `json:"currency"`
+	Status         string `json:"status"`
+	TelegramUserId int64  `json:"telegramUserId"`
+	CreatedAt      int64  `json:"createdAt"`
+	ClientName     string `json:"clientName"`
+	ClientDesc     string `json:"clientDesc"`
+}
+
+// listOrders returns recent payment orders (read-only history) enriched with the
+// client's name/desc via a LEFT JOIN (a deleted client yields empty name/desc).
 func (h *apiHandlers) listOrders(c *gin.Context) {
 	db := database.GetDB()
-	var orders []PaymentOrder
-	if err := db.Order("id desc").Limit(200).Find(&orders).Error; err != nil {
+	var rows []orderRow
+	err := db.Table("payment_orders o").
+		Select("o.id as id, o.client_id as client_id, o.provider as provider, o.amount as amount, o.currency as currency, o.status as status, o.telegram_user_id as telegram_user_id, o.created_at as created_at, c.name as client_name, c.desc as client_desc").
+		Joins("LEFT JOIN clients c ON c.id = o.client_id").
+		Order("o.id desc").
+		Limit(200).
+		Scan(&rows).Error
+	if err != nil {
 		respFail(c, err.Error())
 		return
 	}
-	respOK(c, orders)
+	respOK(c, rows)
 }
 
 type refundRequest struct {

@@ -4,6 +4,19 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [1.5.7-beta5] - 2026-06-04 - 「付费订阅」后台界面：Bindings/Orders 列、解绑确认、标签顺序
+
+- **「付费订阅」标签重新排序。** **Bindings** 现在是第一个（默认）标签，**Bot**
+  移到最后（在 *Orders* 之后）。
+- **Bindings 表格：** 新增 **Client ID**、**Description** 和 **Expiry** 列。Expiry
+  显示日期加剩余天数标签（绿色 = 无限期，红色 = 已过期），复用 Clients 页面的格式化器。
+- **解绑确认：** 移除客户端的 Telegram 绑定现在会弹出确认对话框，而不是首次点击即解绑；
+  仅在确认后才清除绑定（客户端本身保留在面板中）。
+- **Orders 表格：** 新增 **客户端名称**（替代数字 id）、**Telegram ID** 和 **描述** 列，
+  在服务端通过 LEFT JOIN 从客户端表联接。Orders API 仍然不会暴露 provider charge id、
+  发票幂等键或 provider payload。
+- 发布说明：[`docs/releases/v1.5.7-beta5.md`](docs/releases/v1.5.7-beta5.md)。
+
 ## [1.5.7-beta4] - 2026-06-04 - 「付费订阅」支付菜单与退款；修复重复创建
 
 - **「付费订阅」机器人：新增「支付」分区。** 原先扁平的「购买 / 续费」按钮被替换为

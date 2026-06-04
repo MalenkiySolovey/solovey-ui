@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.7-beta5] - 2026-06-04 - Paid Subscriptions admin UI: Bindings/Orders columns, unbind confirm, tab order
+
+- **Paid Subscriptions tabs reordered.** **Bindings** is now the first (default)
+  tab and **Bot** is last (after *Orders*).
+- **Bindings table:** new **Client ID**, **Description**, and **Expiry** columns.
+  Expiry shows the date plus a remaining-days chip (green = unlimited, red =
+  expired), reusing the Clients-page formatter.
+- **Unbind confirmation:** removing a client's Telegram binding now opens a
+  confirmation dialog instead of unbinding on the first click; the binding is
+  cleared only after you confirm (the client itself stays in the panel).
+- **Orders table:** new **Client name** (replacing the numeric client id),
+  **Telegram ID**, and **Description** columns, joined server-side from the
+  clients table via a LEFT JOIN. The Orders API still never exposes the provider
+  charge id, the invoice idempotency key, or the provider payload.
+- Release notes: [`docs/releases/v1.5.7-beta5.md`](docs/releases/v1.5.7-beta5.md).
+
 ## [1.5.7-beta4] - 2026-06-04 - Paid Subscriptions Payment menu & refunds; duplicate-create fix
 
 - **Paid Subscriptions bot: new "Payment" section.** The flat "Buy / Renew"

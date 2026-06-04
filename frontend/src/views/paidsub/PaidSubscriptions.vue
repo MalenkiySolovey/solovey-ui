@@ -22,88 +22,16 @@
     </v-alert>
 
     <v-tabs v-model="tab" color="primary" class="px-2">
-      <v-tab value="bot">Bot</v-tab>
       <v-tab value="bindings">Bindings</v-tab>
       <v-tab value="autoreg">Auto-registration</v-tab>
       <v-tab value="tariffs">Tariffs</v-tab>
       <v-tab value="payments">Payments</v-tab>
       <v-tab value="messages">Messages</v-tab>
       <v-tab value="orders">Orders</v-tab>
+      <v-tab value="bot">Bot</v-tab>
     </v-tabs>
 
     <v-window v-model="tab" class="pa-4">
-      <!-- BOT -->
-      <v-window-item value="bot">
-        <v-row>
-          <v-col cols="12" md="6">
-            <v-switch v-model="enabled" color="primary" label="Enable client bot" hide-details />
-          </v-col>
-          <v-col cols="12" md="6">
-            <v-text-field v-model="settings.paidSubBotPollSeconds" type="number" label="Long-poll timeout (s)" />
-          </v-col>
-          <v-col cols="12">
-            <SettingsSecretField
-              v-model="settings.paidSubBotToken"
-              :has-secret="settings.paidSubBotTokenHasSecret"
-              label="Bot token (separate from admin bot)"
-            />
-          </v-col>
-        </v-row>
-
-        <v-divider class="my-3" />
-        <div class="text-subtitle-2 mb-1">Connection / transport</div>
-        <div class="text-caption text-medium-emphasis mb-2">
-          How this bot reaches Telegram. Independent from the admin Telegram module.
-        </div>
-        <v-row>
-          <v-col cols="12" md="4">
-            <v-select
-              v-model="settings.paidSubTransportMode"
-              :items="transportModes"
-              item-title="title"
-              item-value="value"
-              label="Transport"
-            />
-          </v-col>
-          <v-col v-if="settings.paidSubTransportMode === 'outbound'" cols="12" md="8">
-            <v-select
-              v-model="settings.paidSubOutboundTag"
-              :items="outboundOptions"
-              item-title="title"
-              item-value="value"
-              label="Outbound (sing-box) — requires core running"
-              :hint="outboundOptions.length === 0 ? 'No outbounds configured' : ''"
-              persistent-hint
-            />
-          </v-col>
-          <template v-else>
-            <v-col cols="12" md="8">
-              <SettingsSecretField
-                v-model="settings.paidSubProxyURL"
-                :has-secret="settings.paidSubProxyURLHasSecret"
-                label="Proxy URL (http/https/socks5, empty = direct)"
-              />
-            </v-col>
-            <v-col cols="12" md="6">
-              <SettingsSecretField
-                v-model="settings.paidSubProxyUsername"
-                :has-secret="settings.paidSubProxyUsernameHasSecret"
-                label="Proxy username (optional)"
-              />
-            </v-col>
-            <v-col cols="12" md="6">
-              <SettingsSecretField
-                v-model="settings.paidSubProxyPassword"
-                :has-secret="settings.paidSubProxyPasswordHasSecret"
-                label="Proxy password (optional)"
-              />
-            </v-col>
-          </template>
-        </v-row>
-
-        <v-btn color="primary" :loading="loading" @click="saveSettings">{{ $t('actions.set') ?? 'Save' }}</v-btn>
-      </v-window-item>
-
       <!-- BINDINGS -->
       <v-window-item value="bindings">
         <div class="d-flex align-center mb-2">
@@ -129,9 +57,20 @@
             <span v-if="item.tgUserId">{{ item.tgUserId }}</span>
             <span v-else class="text-disabled">—</span>
           </template>
+          <template #item.desc="{ item }">
+            <span v-if="item.desc">{{ item.desc }}</span>
+            <span v-else class="text-disabled">—</span>
+          </template>
+          <template #item.expiry="{ item }">
+            <template v-if="item.expiry > 0">
+              {{ new Date(item.expiry * 1000).toLocaleString() }}
+              (<v-chip size="x-small" label :color="item.expiry <= Date.now() / 1000 ? 'error' : ''">{{ HumanReadable.remainedDays(item.expiry) }}</v-chip>)
+            </template>
+            <v-chip v-else size="small" color="success" label>{{ HumanReadable.remainedDays(item.expiry) }}</v-chip>
+          </template>
           <template #item.actions="{ item }">
             <v-btn size="small" variant="text" icon="mdi-pencil" @click="openBinding(item)" />
-            <v-btn v-if="item.tgUserId" size="small" variant="text" icon="mdi-link-off" color="error" @click="unbind(item)" />
+            <v-btn v-if="item.tgUserId" size="small" variant="text" icon="mdi-link-off" color="error" @click="openUnbindConfirm(item)" />
           </template>
         </v-data-table>
       </v-window-item>
@@ -265,6 +204,18 @@
       <!-- ORDERS -->
       <v-window-item value="orders">
         <v-data-table :headers="orderHeaders" :items="orders" :loading="ordersLoading" density="comfortable">
+          <template #item.clientName="{ item }">
+            <span v-if="item.clientName">{{ item.clientName }}</span>
+            <span v-else class="text-disabled">—</span>
+          </template>
+          <template #item.telegramUserId="{ item }">
+            <span v-if="item.telegramUserId">{{ item.telegramUserId }}</span>
+            <span v-else class="text-disabled">—</span>
+          </template>
+          <template #item.clientDesc="{ item }">
+            <span v-if="item.clientDesc">{{ item.clientDesc }}</span>
+            <span v-else class="text-disabled">—</span>
+          </template>
           <template #item.amount="{ item }">{{ formatMoney(item.amount, item.currency) }}</template>
           <template #item.status="{ item }">
             <v-chip :color="orderStatusColor(item.status)" size="small" variant="flat">{{ item.status }}</v-chip>
@@ -274,6 +225,78 @@
             <v-btn v-if="item.status === 'paid'" size="small" variant="text" color="warning" @click="openRefund(item)">Refund</v-btn>
           </template>
         </v-data-table>
+      </v-window-item>
+
+      <!-- BOT -->
+      <v-window-item value="bot">
+        <v-row>
+          <v-col cols="12" md="6">
+            <v-switch v-model="enabled" color="primary" label="Enable client bot" hide-details />
+          </v-col>
+          <v-col cols="12" md="6">
+            <v-text-field v-model="settings.paidSubBotPollSeconds" type="number" label="Long-poll timeout (s)" />
+          </v-col>
+          <v-col cols="12">
+            <SettingsSecretField
+              v-model="settings.paidSubBotToken"
+              :has-secret="settings.paidSubBotTokenHasSecret"
+              label="Bot token (separate from admin bot)"
+            />
+          </v-col>
+        </v-row>
+
+        <v-divider class="my-3" />
+        <div class="text-subtitle-2 mb-1">Connection / transport</div>
+        <div class="text-caption text-medium-emphasis mb-2">
+          How this bot reaches Telegram. Independent from the admin Telegram module.
+        </div>
+        <v-row>
+          <v-col cols="12" md="4">
+            <v-select
+              v-model="settings.paidSubTransportMode"
+              :items="transportModes"
+              item-title="title"
+              item-value="value"
+              label="Transport"
+            />
+          </v-col>
+          <v-col v-if="settings.paidSubTransportMode === 'outbound'" cols="12" md="8">
+            <v-select
+              v-model="settings.paidSubOutboundTag"
+              :items="outboundOptions"
+              item-title="title"
+              item-value="value"
+              label="Outbound (sing-box) — requires core running"
+              :hint="outboundOptions.length === 0 ? 'No outbounds configured' : ''"
+              persistent-hint
+            />
+          </v-col>
+          <template v-else>
+            <v-col cols="12" md="8">
+              <SettingsSecretField
+                v-model="settings.paidSubProxyURL"
+                :has-secret="settings.paidSubProxyURLHasSecret"
+                label="Proxy URL (http/https/socks5, empty = direct)"
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <SettingsSecretField
+                v-model="settings.paidSubProxyUsername"
+                :has-secret="settings.paidSubProxyUsernameHasSecret"
+                label="Proxy username (optional)"
+              />
+            </v-col>
+            <v-col cols="12" md="6">
+              <SettingsSecretField
+                v-model="settings.paidSubProxyPassword"
+                :has-secret="settings.paidSubProxyPasswordHasSecret"
+                label="Proxy password (optional)"
+              />
+            </v-col>
+          </template>
+        </v-row>
+
+        <v-btn color="primary" :loading="loading" @click="saveSettings">{{ $t('actions.set') ?? 'Save' }}</v-btn>
       </v-window-item>
     </v-window>
   </v-card>
@@ -364,11 +387,28 @@
       </v-card-actions>
     </v-card>
   </v-dialog>
+
+  <!-- Unbind confirm dialog -->
+  <v-dialog v-model="unbindDialog" max-width="440">
+    <v-card>
+      <v-card-title>Unbind Telegram from {{ unbindEdit.name }}?</v-card-title>
+      <v-card-text>
+        This removes the Telegram link for client #{{ unbindEdit.clientId }}
+        (Telegram ID {{ unbindEdit.tgUserId }}). The client stays in the panel; only the binding is cleared.
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" @click="unbindDialog = false">{{ $t('actions.cancel') ?? 'Cancel' }}</v-btn>
+        <v-btn color="error" :loading="unbindBusy" @click="doUnbind">Unbind</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>
 
 <script lang="ts" setup>
 import { computed, onMounted, ref } from 'vue'
 import HttpUtils from '@/plugins/httputil'
+import { HumanReadable } from '@/plugins/utils'
 import SettingsSecretField from '@/components/SettingsSecretField.vue'
 import { normalizeSecretFields, stripSecretPlaceholders } from '@/components/settingsSecretField'
 import { push } from 'notivue'
@@ -419,7 +459,7 @@ const defaults: SMap = {
   paidSubGreeting: '',
 }
 
-const tab = ref('bot')
+const tab = ref('bindings')
 const loading = ref(false)
 const settings = ref<SMap>({ ...defaults })
 const secretboxKeySet = ref(true)
@@ -510,7 +550,10 @@ const bindings = ref<any[]>([])
 const bindingsLoading = ref(false)
 const bindingHeaders = [
   { title: 'Client', key: 'name' },
+  { title: 'Client ID', key: 'clientId' },
+  { title: 'Description', key: 'desc' },
   { title: 'Telegram ID', key: 'tgUserId' },
+  { title: 'Expiry', key: 'expiry' },
   { title: 'Status', key: 'enable' },
   { title: '', key: 'actions', sortable: false, align: 'end' as const },
 ]
@@ -544,9 +587,18 @@ const saveBinding = async () => {
   const msg = await HttpUtils.post('api/paidsub/bindings', { clientId: bindingEdit.value.clientId, tgUserId }, jsonPost)
   if (msg.success) { bindingDialog.value = false; await loadBindings() }
 }
-const unbind = async (item: any) => {
-  const msg = await HttpUtils.post('api/paidsub/bindings', { clientId: item.clientId, tgUserId: 0 }, jsonPost)
-  if (msg.success) await loadBindings()
+const unbindDialog = ref(false)
+const unbindBusy = ref(false)
+const unbindEdit = ref<{ clientId: number; name: string; tgUserId: number | string }>({ clientId: 0, name: '', tgUserId: 0 })
+const openUnbindConfirm = (item: any) => {
+  unbindEdit.value = { clientId: item.clientId, name: item.name, tgUserId: item.tgUserId }
+  unbindDialog.value = true
+}
+const doUnbind = async () => {
+  unbindBusy.value = true
+  const msg = await HttpUtils.post('api/paidsub/bindings', { clientId: unbindEdit.value.clientId, tgUserId: 0 }, jsonPost)
+  unbindBusy.value = false
+  if (msg.success) { unbindDialog.value = false; await loadBindings() }
 }
 
 // ---- messages: greeting + broadcast ----
@@ -630,7 +682,9 @@ const orders = ref<any[]>([])
 const ordersLoading = ref(false)
 const orderHeaders = [
   { title: 'ID', key: 'id' },
-  { title: 'Client', key: 'clientId' },
+  { title: 'Client Name', key: 'clientName' },
+  { title: 'Telegram ID', key: 'telegramUserId' },
+  { title: 'Description', key: 'clientDesc' },
   { title: 'Provider', key: 'provider' },
   { title: 'Amount', key: 'amount' },
   { title: 'Status', key: 'status' },
