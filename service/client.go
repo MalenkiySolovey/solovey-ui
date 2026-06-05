@@ -57,6 +57,46 @@ func decodeClientLinks(clientID uint, raw json.RawMessage, operation string) ([]
 	return links, true
 }
 
+// buildLinksForInbounds generates the "local" link entries for the given
+// inbounds. The result is always a non-nil slice so an empty result marshals to
+// `[]`, never `null` (the NULL Links class of bug — see decodeClientLinks).
+func buildLinksForInbounds(config json.RawMessage, inbounds []model.Inbound, hostname string) []map[string]string {
+	links := []map[string]string{}
+	for i := range inbounds {
+		for _, uri := range util.LinkGenerator(config, &inbounds[i], hostname) {
+			links = append(links, map[string]string{
+				"remark": inbounds[i].Tag,
+				"type":   "local",
+				"uri":    uri,
+			})
+		}
+	}
+	return links
+}
+
+// rebuildClientLinks is the single implementation shared by every inbound-driven
+// link-regeneration path: regenerate the local links for inbounds, then
+// re-append the client's previously stored links that satisfy keep. The only
+// thing that differs between call sites is the keep predicate. Returns ok=false
+// (and leaves the caller to skip the client) when the stored links are invalid.
+func rebuildClientLinks(clientID uint, config, rawLinks json.RawMessage, inbounds []model.Inbound, hostname string, keep func(link map[string]string) bool, operation string) (json.RawMessage, bool, error) {
+	clientLinks, ok := decodeClientLinks(clientID, rawLinks, operation)
+	if !ok {
+		return nil, false, nil
+	}
+	newClientLinks := buildLinksForInbounds(config, inbounds, hostname)
+	for _, clientLink := range clientLinks {
+		if keep(clientLink) {
+			newClientLinks = append(newClientLinks, clientLink)
+		}
+	}
+	marshaled, err := json.MarshalIndent(newClientLinks, "", "  ")
+	if err != nil {
+		return nil, true, err
+	}
+	return marshaled, true, nil
+}
+
 func (s *ClientService) Get(id string) (*[]model.Client, error) {
 	if id == "" {
 		return s.GetAll()
@@ -242,35 +282,19 @@ func (s *ClientService) updateLinksWithFixedInbounds(tx *gorm.DB, clients []*mod
 		}
 	}
 	for index, client := range clients {
-		clientLinks, ok := decodeClientLinks(client.Id, client.Links, "fixed inbound link update")
-		if !ok {
-			continue
-		}
-
-		newClientLinks := []map[string]string{}
-		for _, inbound := range inbounds {
-			newLinks := util.LinkGenerator(client.Config, &inbound, hostname)
-			for _, newLink := range newLinks {
-				newClientLinks = append(newClientLinks, map[string]string{
-					"remark": inbound.Tag,
-					"type":   "local",
-					"uri":    newLink,
-				})
-			}
-		}
-
-		// Add non local links
-		for _, clientLink := range clientLinks {
-			if clientLink["type"] != "local" {
-				newClientLinks = append(newClientLinks, clientLink)
-			}
-		}
-
-		// #nosec G602 -- index is the range index over clients; never out of range.
-		clients[index].Links, err = json.MarshalIndent(newClientLinks, "", "  ")
+		// Keep links that aren't locally generated; regenerate the local ones
+		// for every fixed inbound.
+		links, ok, err := rebuildClientLinks(client.Id, client.Config, client.Links, inbounds, hostname, func(link map[string]string) bool {
+			return link["type"] != "local"
+		}, "fixed inbound link update")
 		if err != nil {
 			return err
 		}
+		if !ok {
+			continue
+		}
+		// #nosec G602 -- index is the range index over clients; never out of range.
+		clients[index].Links = links
 	}
 	return nil
 }
@@ -298,32 +322,18 @@ func (s *ClientService) UpdateClientsOnInboundAdd(tx *gorm.DB, initIds string, i
 		if err != nil {
 			return err
 		}
-		// Add links
-		clientLinks, ok := decodeClientLinks(client.Id, client.Links, "inbound add")
-		if !ok {
+		// Regenerate the added inbound's links; keep links for other inbounds.
+		links, decoded, lerr := rebuildClientLinks(client.Id, client.Config, client.Links, []model.Inbound{inbound}, hostname, func(link map[string]string) bool {
+			return link["remark"] != inbound.Tag
+		}, "inbound add")
+		if lerr != nil {
+			return lerr
+		}
+		if !decoded {
 			continue
 		}
-		var newClientLinks []map[string]string
-		newLinks := util.LinkGenerator(client.Config, &inbound, hostname)
-		for _, newLink := range newLinks {
-			newClientLinks = append(newClientLinks, map[string]string{
-				"remark": inbound.Tag,
-				"type":   "local",
-				"uri":    newLink,
-			})
-		}
-		for _, clientLink := range clientLinks {
-			if clientLink["remark"] != inbound.Tag {
-				newClientLinks = append(newClientLinks, clientLink)
-			}
-		}
-
-		client.Links, err = json.MarshalIndent(newClientLinks, "", "  ")
-		if err != nil {
-			return err
-		}
-		err = tx.Save(&client).Error
-		if err != nil {
+		client.Links = links
+		if err = tx.Save(&client).Error; err != nil {
 			return err
 		}
 	}
@@ -400,31 +410,19 @@ func (s *ClientService) UpdateLinksByInboundChange(tx *gorm.DB, inbounds *[]mode
 			return err
 		}
 		for _, client := range clients {
-			clientLinks, ok := decodeClientLinks(client.Id, client.Links, "inbound link update")
-			if !ok {
+			// Regenerate this inbound's links; keep non-local links and local
+			// links for other inbounds (neither the new tag nor the old tag).
+			links, decoded, lerr := rebuildClientLinks(client.Id, client.Config, client.Links, []model.Inbound{inbound}, hostname, func(link map[string]string) bool {
+				return link["type"] != "local" || (link["remark"] != inbound.Tag && link["remark"] != oldTag)
+			}, "inbound link update")
+			if lerr != nil {
+				return lerr
+			}
+			if !decoded {
 				continue
 			}
-			var newClientLinks []map[string]string
-			newLinks := util.LinkGenerator(client.Config, &inbound, hostname)
-			for _, newLink := range newLinks {
-				newClientLinks = append(newClientLinks, map[string]string{
-					"remark": inbound.Tag,
-					"type":   "local",
-					"uri":    newLink,
-				})
-			}
-			for _, clientLink := range clientLinks {
-				if clientLink["type"] != "local" || (clientLink["remark"] != inbound.Tag && clientLink["remark"] != oldTag) {
-					newClientLinks = append(newClientLinks, clientLink)
-				}
-			}
-
-			client.Links, err = json.MarshalIndent(newClientLinks, "", "  ")
-			if err != nil {
-				return err
-			}
-			err = tx.Save(&client).Error
-			if err != nil {
+			client.Links = links
+			if err = tx.Save(&client).Error; err != nil {
 				return err
 			}
 		}
