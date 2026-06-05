@@ -55,6 +55,15 @@ func (a *APP) Init() error {
 	if _, err := a.SettingService.GetAllSetting(); err != nil {
 		logger.Warning("failed to initialize settings: ", err)
 	}
+
+	// Re-seal any secret settings still encrypted under a DB-derived key once an
+	// out-of-database SUI_SECRETBOX_KEY is configured. No-op without the env key,
+	// idempotent, and fail-safe per row; a failure here must not block startup.
+	if n, err := a.SettingService.ResealSecretSettings(); err != nil {
+		logger.Warning("failed to re-seal secret settings: ", err)
+	} else if n > 0 {
+		logger.Info("re-sealed ", n, " secret setting(s) under SUI_SECRETBOX_KEY")
+	}
 	if err := ipmonitor.WarmUp(); err != nil {
 		return err
 	}

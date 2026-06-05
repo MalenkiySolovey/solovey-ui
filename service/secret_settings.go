@@ -12,6 +12,7 @@ import (
 	"sync"
 
 	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/database/model"
 	"github.com/deposist/s-ui-x/logger"
 	"github.com/deposist/s-ui-x/util/common"
 	"github.com/deposist/s-ui-x/util/secretbox"
@@ -343,4 +344,84 @@ func zeroBytes(buf []byte) {
 	for i := range buf {
 		buf[i] = 0
 	}
+}
+
+// decryptWithCandidate returns the index of the first secretbox candidate that
+// opens value, the recovered plaintext, and whether any candidate succeeded.
+func decryptWithCandidate(candidates []secretboxCandidate, key, value string) (int, string, bool) {
+	for i, candidate := range candidates {
+		if plaintext, err := candidate.box.DecryptString(value, key); err == nil {
+			return i, plaintext, true
+		}
+	}
+	return -1, "", false
+}
+
+// ResealSecretSettings re-encrypts every encrypted secret setting that still
+// opens under a non-preferred (DB-derived) box so it becomes recoverable only
+// with the out-of-database SUI_SECRETBOX_KEY. This closes the gap where a value
+// written before SUI_SECRETBOX_KEY was adopted stays decryptable from the
+// database alone (its key is derived from the plaintext settings.secret row).
+//
+// It is:
+//   - a NO-OP when SUI_SECRETBOX_KEY is unset (candidates[0] would itself be the
+//     DB-derived box, so re-sealing would not improve at-rest protection);
+//   - idempotent (a row already sealed under candidates[0] is skipped);
+//   - fail-safe per row (a row that decrypts under no candidate is left
+//     untouched, never corrupted).
+//
+// A row is only rewritten after it successfully decrypts, and it is re-sealed
+// with that exact recovered plaintext, so the round-trip cannot lose data. Once
+// re-sealed under SUI_SECRETBOX_KEY a value can no longer be recovered from the
+// database alone — that is the intended hardening. Returns the rows re-sealed.
+func (s *SettingService) ResealSecretSettings() (int, error) {
+	if strings.TrimSpace(os.Getenv("SUI_SECRETBOX_KEY")) == "" {
+		return 0, nil
+	}
+	db := database.GetDB()
+	if db == nil {
+		return 0, nil
+	}
+	candidates, err := s.getSecretboxCandidates()
+	if err != nil {
+		return 0, err
+	}
+	if len(candidates) == 0 {
+		return 0, nil
+	}
+	resealed := 0
+	for key := range encryptedSettingKeys {
+		var setting model.Setting
+		if err := db.Model(model.Setting{}).Where("key = ?", key).First(&setting).Error; err != nil {
+			if !database.IsNotFound(err) {
+				logger.Warning("reseal secret setting: read failed for", key, ":", err)
+			}
+			continue
+		}
+		if setting.Value == "" || !secretbox.IsEncrypted(setting.Value) {
+			continue
+		}
+		idx, plaintext, ok := decryptWithCandidate(candidates, key, setting.Value)
+		if !ok {
+			logger.Warning("reseal secret setting: no candidate decrypts", key, "; leaving as-is")
+			continue
+		}
+		if idx == 0 {
+			continue // already under the preferred out-of-DB box
+		}
+		sealed, err := candidates[0].box.EncryptString(plaintext, key)
+		if err != nil {
+			logger.Warning("reseal secret setting: re-encrypt failed for", key, ":", err)
+			continue
+		}
+		if err := db.Model(model.Setting{}).Where("key = ?", key).Update("value", sealed).Error; err != nil {
+			logger.Warning("reseal secret setting: persist failed for", key, ":", err)
+			continue
+		}
+		resealed++
+	}
+	if resealed > 0 {
+		logger.Info("re-sealed", resealed, "secret setting(s) under SUI_SECRETBOX_KEY")
+	}
+	return resealed, nil
 }
