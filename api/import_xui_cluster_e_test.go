@@ -22,9 +22,12 @@ func TestIssue7XUISyncProfilesAPIReturnsImportPolicyFields(t *testing.T) {
 		router.POST("/api/import-xui/sync/profiles", withTestTokenScope("remote-token", "xui_remote", (&ApiService{}).SaveXUISyncProfile))
 		router.GET("/api/import-xui/sync/profiles", withTestTokenScope("remote-token", "xui_remote", (&ApiService{}).XUISyncProfiles))
 	})
+	// A scoped xui_remote token may only save SSRF-confinable http(s) sources;
+	// file/ssh are admin-only (M3/M4). This test exercises the import-policy field
+	// round-trip over the scoped-token path, so it uses a public http source.
 	body := strings.NewReader(`{
 		"name":"issue7-api-policy",
-		"sourceType":"file",
+		"sourceType":"xuihttp",
 		"strategy":"replace",
 		"onlyNew":false,
 		"enabled":true,
@@ -33,7 +36,7 @@ func TestIssue7XUISyncProfilesAPIReturnsImportPolicyFields(t *testing.T) {
 		"includeRouting":true,
 		"adminMode":"reset_required",
 		"schedule":"0 */6 * * *",
-		"source":{"type":"file","url":"C:/tmp/x-ui.db"}
+		"source":{"type":"xuihttp","baseUrl":"http://1.1.1.1:2053","username":"admin","password":"pw"}
 	}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/import-xui/sync/profiles", body)
 	req.Header.Set("Content-Type", "application/json")

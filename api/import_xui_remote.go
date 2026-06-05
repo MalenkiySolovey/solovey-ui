@@ -126,12 +126,18 @@ func (a *ApiService) SaveXUISyncProfile(c *gin.Context) {
 		xuiImportError(c, err)
 		return
 	}
-	if a.remoteImportIsUntrusted(c) {
+	untrusted := a.remoteImportIsUntrusted(c)
+	if untrusted {
 		if err := validateRemoteSyncSourceSSRF(c.Request.Context(), input.Source); err != nil {
 			xuiImportError(c, err)
 			return
 		}
 	}
+	// Force the trust level from the auth context (never from client input) and
+	// persist it inside the encrypted source. The cron runner re-applies the
+	// SSRF/locality block-list for an untrusted-authored profile, closing the
+	// save/run DNS-rebind TOCTOU for http sources.
+	input.Source.RestrictPrivate = untrusted
 	profile, err := importxui.SaveSyncProfile(input)
 	if err == nil {
 		a.recordAudit(c, requestActor(c), "xui_sync_profile_save", "database", service.AuditSeverityInfo, map[string]any{
@@ -227,19 +233,45 @@ func (a *ApiService) remoteImportIsUntrusted(c *gin.Context) bool {
 	return hasScope && scope != "admin"
 }
 
-// validateRemoteSyncSourceSSRF rejects an http(s) sync-profile source that
-// points at a disallowed address, so an untrusted token cannot store a profile
-// the (trusted) cron job would later fetch. Non-http sources are not an SSRF
-// vector here.
+// sourceIsLocalOrSSH reports whether an import source reads a local file or makes
+// an outbound SSH connection. Neither can be confined by the SSRF/locality guard
+// (which only constrains outbound HTTP to the remote panel), so both are
+// restricted to trusted (admin) callers.
+func sourceIsLocalOrSSH(source importxui.SyncProfileSource) bool {
+	switch source.Type {
+	case "file", "ssh":
+		return true
+	case "xuihttp":
+		return false
+	default:
+		return !strings.HasPrefix(source.URL, "http://") && !strings.HasPrefix(source.URL, "https://")
+	}
+}
+
+// validateRemoteSyncSourceSSRF is the save-time guard applied to an untrusted
+// (scoped, non-admin) caller. file/ssh sources are rejected outright: the trusted
+// cron job would otherwise execute a stored profile with no locality confinement
+// (arbitrary local SQLite read / outbound SSH with attacker creds). http(s)
+// sources are validated against the SSRF block-list so a private/loopback/
+// metadata target cannot be persisted.
 func validateRemoteSyncSourceSSRF(ctx context.Context, source importxui.SyncProfileSource) error {
+	if sourceIsLocalOrSSH(source) {
+		return fmt.Errorf("file and ssh sources require an admin session, not a scoped token")
+	}
 	baseURL := firstNonEmptyString(source.BaseURL, source.URL)
-	if !strings.HasPrefix(baseURL, "http://") && !strings.HasPrefix(baseURL, "https://") {
-		return nil
+	if baseURL == "" {
+		return fmt.Errorf("missing source url")
 	}
 	return ssrf.ValidateOutboundURL(ctx, baseURL, "http", "https")
 }
 
 func apiSourceFromConfig(source importxui.SyncProfileSource, restrictPrivate bool) (importxui.Source, error) {
+	// An untrusted (scoped) caller may only use an SSRF-confinable http(s) source.
+	// file/ssh sources are admin-only; without this guard the file branch below
+	// silently dropped restrictPrivate and read any local SQLite path.
+	if restrictPrivate && sourceIsLocalOrSSH(source) {
+		return nil, fmt.Errorf("file and ssh sources require an admin session, not a scoped token")
+	}
 	switch source.Type {
 	case "file":
 		return xfile.New(source.URL), nil

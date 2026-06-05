@@ -56,6 +56,26 @@ func TestApiSourceFromConfigPropagatesRestrictPrivate(t *testing.T) {
 	}
 }
 
+// TestApiSourceFromConfigRejectsLocalSourcesForScopedToken pins M3: a scoped
+// (untrusted, restrictPrivate=true) caller cannot select a file or ssh source —
+// the file branch otherwise dropped restrictPrivate entirely and read any local
+// SQLite path. A trusted (admin, restrictPrivate=false) caller may still use them
+// for legitimate same-host/LAN migrations.
+func TestApiSourceFromConfigRejectsLocalSourcesForScopedToken(t *testing.T) {
+	local := []importxui.SyncProfileSource{
+		{Type: "file", URL: "/tmp/x-ui.db"},
+		{Type: "ssh", URL: "ssh://host/x-ui.db", Host: "host"},
+	}
+	for _, src := range local {
+		if _, err := apiSourceFromConfig(src, true); err == nil {
+			t.Fatalf("scoped token must not get a %q source", src.Type)
+		}
+		if _, err := apiSourceFromConfig(src, false); err != nil {
+			t.Fatalf("admin caller must still get a %q source: %v", src.Type, err)
+		}
+	}
+}
+
 // TestValidateRemoteSyncSourceSSRF covers the save-time guard that stops an
 // untrusted token from storing a profile the cron job would later fetch.
 func TestValidateRemoteSyncSourceSSRF(t *testing.T) {
@@ -66,8 +86,12 @@ func TestValidateRemoteSyncSourceSSRF(t *testing.T) {
 	}{
 		{"private http rejected", importxui.SyncProfileSource{Type: "xuihttp", BaseURL: "http://10.0.0.5:2053"}, true},
 		{"metadata rejected", importxui.SyncProfileSource{Type: "xuihttp", BaseURL: "http://169.254.169.254"}, true},
-		{"file source ignored", importxui.SyncProfileSource{Type: "file", URL: "/tmp/x-ui.db"}, false},
-		{"ssh source ignored", importxui.SyncProfileSource{Type: "ssh", URL: "ssh://host/x-ui.db"}, false},
+		// file/ssh sources cannot be confined by the SSRF/locality guard and the
+		// cron job would later run them with full trust, so a scoped token must
+		// not be able to save them (M3/M4).
+		{"file source rejected for scoped token", importxui.SyncProfileSource{Type: "file", URL: "/tmp/x-ui.db"}, true},
+		{"ssh source rejected for scoped token", importxui.SyncProfileSource{Type: "ssh", URL: "ssh://host/x-ui.db"}, true},
+		{"public http allowed", importxui.SyncProfileSource{Type: "xuihttp", BaseURL: "http://1.1.1.1"}, false},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {

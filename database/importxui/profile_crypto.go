@@ -41,6 +41,11 @@ type SyncProfileSource struct {
 	BaseURL            string `json:"baseUrl,omitempty"`
 	ConfirmHostKey     bool   `json:"confirmHostKey,omitempty"`
 	HostKeyFingerprint string `json:"hostKeyFingerprint,omitempty"`
+	// RestrictPrivate is forced server-side from the saver's auth context (true
+	// for an untrusted scoped token) and persists inside the encrypted source so
+	// the trusted cron runner re-applies the SSRF/locality block-list to a profile
+	// an untrusted token authored. It is never accepted from client input.
+	RestrictPrivate bool `json:"restrictPrivate,omitempty"`
 }
 
 type SyncProfileInput struct {

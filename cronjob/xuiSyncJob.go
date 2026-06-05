@@ -201,7 +201,12 @@ func sourceFromProfile(source importxui.SyncProfileSource) (importxui.Source, er
 		if baseURL == "" {
 			baseURL = source.URL
 		}
-		return xuihttp.New(baseURL, source.Username, source.Password), nil
+		// source.RestrictPrivate is true when an untrusted scoped token authored
+		// the profile; re-apply the dial-time SSRF/locality block-list so a
+		// save-time-public host re-pointed to loopback/LAN before this run is
+		// rejected. Admin-authored profiles keep RestrictPrivate=false so legit
+		// same-host/LAN migrations still work.
+		return xuihttp.New(baseURL, source.Username, source.Password).WithRestrictPrivate(source.RestrictPrivate), nil
 	default:
 		return nil, fmt.Errorf("unsupported xui sync source type %q", source.Type)
 	}

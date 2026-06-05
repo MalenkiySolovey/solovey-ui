@@ -442,7 +442,11 @@ func TestXUISyncProfileStoresEncryptedSource(t *testing.T) {
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
 		router.POST("/api/import-xui/sync/profiles", withTestTokenScope("remote-token", "xui_remote", (&ApiService{}).SaveXUISyncProfile))
 	})
-	body := strings.NewReader(`{"name":"remote-prod","sourceType":"ssh","strategy":"merge","onlyNew":true,"enabled":true,"schedule":"0 */6 * * *","source":{"type":"ssh","url":"ssh://user@example.com:/etc/x-ui/x-ui.db","username":"user","password":"plain-password","confirmHostKey":true}}`)
+	// A scoped xui_remote token may only save http(s) sources (file/ssh are
+	// admin-only, M3/M4). This test verifies the source is stored encrypted (no
+	// plaintext host/password leak), which is source-type-agnostic, so it uses a
+	// public http source carrying a password.
+	body := strings.NewReader(`{"name":"remote-prod","sourceType":"xuihttp","strategy":"merge","onlyNew":true,"enabled":true,"schedule":"0 */6 * * *","source":{"type":"xuihttp","baseUrl":"http://1.1.1.1:2053","username":"user","password":"plain-password"}}`)
 	req := httptest.NewRequest(http.MethodPost, "/api/import-xui/sync/profiles", body)
 	req.Header.Set("Content-Type", "application/json")
 	recorder := performAuthenticatedTestRequest(router, req, cookies...)
@@ -453,14 +457,14 @@ func TestXUISyncProfileStoresEncryptedSource(t *testing.T) {
 	if err := database.GetDB().Where("name = ?", "remote-prod").First(&profile).Error; err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(profile.SourceJSON), "plain-password") || strings.Contains(string(profile.SourceJSON), "example.com") {
+	if strings.Contains(string(profile.SourceJSON), "plain-password") || strings.Contains(string(profile.SourceJSON), "1.1.1.1") {
 		t.Fatalf("encrypted source leaked plaintext: %q", profile.SourceJSON)
 	}
 	source, err := importxui.LoadSyncProfileSource(profile)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if source.Password != "plain-password" || source.Type != "ssh" {
+	if source.Password != "plain-password" || source.Type != "xuihttp" {
 		t.Fatalf("decrypted source mismatch: %#v", source)
 	}
 }
