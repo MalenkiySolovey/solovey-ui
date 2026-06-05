@@ -21,6 +21,7 @@ var subUUIDV4Pattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}
 
 func initSubTestDB(t *testing.T) {
 	t.Helper()
+	resetSubDisplaySettingsCacheForTest()
 	tempDir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", tempDir)
 	closeSubTestDB(database.GetDB())
@@ -203,7 +204,8 @@ func TestSubscriptionHeadersUseConfiguredTitleAndURLs(t *testing.T) {
 		}
 	}
 
-	headers := (&SubService{}).getClientHeaders(&model.Client{Name: "alice"})
+	cfg := cachedSubDisplaySettings(&service.SettingService{}, time.Now())
+	headers := buildClientHeaders(&model.Client{Name: "alice"}, cfg)
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)

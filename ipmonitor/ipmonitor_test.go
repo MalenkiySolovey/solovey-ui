@@ -318,6 +318,84 @@ func TestRecordFlushStoresRawDisplayOnlyWhenEnabled(t *testing.T) {
 	}
 }
 
+// TestFlushBatchUpsertCountsAndPreservesFirstSeen covers the O1 batched upsert:
+// many (client, ip) pairs are written in one flush with correct per-client
+// counts/last_online, and re-recording an existing ip updates last_seen while
+// preserving first_seen and never creating a duplicate row.
+func TestFlushBatchUpsertCountsAndPreservesFirstSeen(t *testing.T) {
+	initIPMonitorTestDB(t)
+	db := database.GetDB()
+	for _, name := range []string{"alice", "bob"} {
+		if err := db.Create(&model.Client{Enable: true, Name: name, IPLimitMode: ModeMonitor, Inbounds: []byte("[]"), Links: []byte("[]")}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	Record("alice", "198.51.100.1")
+	Record("alice", "198.51.100.2")
+	Record("bob", "203.0.113.9")
+	if err := Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	clientIPCount := func(name string) int64 {
+		t.Helper()
+		var n int64
+		if err := db.Model(model.ClientIP{}).Where("client_name = ?", name).Count(&n).Error; err != nil {
+			t.Fatal(err)
+		}
+		return n
+	}
+	if got := clientIPCount("alice"); got != 2 {
+		t.Fatalf("alice client_ips rows = %d, want 2", got)
+	}
+	if got := clientIPCount("bob"); got != 1 {
+		t.Fatalf("bob client_ips rows = %d, want 1", got)
+	}
+
+	var alice model.Client
+	if err := db.Where("name = ?", "alice").First(&alice).Error; err != nil {
+		t.Fatal(err)
+	}
+	if alice.LastIPCount != 2 {
+		t.Fatalf("alice last_ip_count = %d, want 2", alice.LastIPCount)
+	}
+	if alice.LastOnline == 0 {
+		t.Fatal("alice last_online was not set by the batch update")
+	}
+
+	// Pin a known-old first_seen on one row, then re-record the SAME ip: the
+	// upsert must refresh last_seen, preserve first_seen, and not duplicate.
+	hash1, err := hashIP("198.51.100.1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	const oldFirstSeen = int64(1000)
+	if err := db.Model(model.ClientIP{}).Where("client_name = ? AND ip_hash = ?", "alice", hash1).
+		Updates(map[string]interface{}{"first_seen": oldFirstSeen, "last_seen": oldFirstSeen}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	Record("alice", "198.51.100.1")
+	if err := Flush(); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := clientIPCount("alice"); got != 2 {
+		t.Fatalf("upsert created a duplicate row: alice has %d rows, want 2", got)
+	}
+	var row model.ClientIP
+	if err := db.Where("client_name = ? AND ip_hash = ?", "alice", hash1).First(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.FirstSeen != oldFirstSeen {
+		t.Fatalf("first_seen not preserved on upsert: got %d want %d", row.FirstSeen, oldFirstSeen)
+	}
+	if row.LastSeen <= oldFirstSeen {
+		t.Fatalf("last_seen not refreshed on upsert: got %d (want > %d)", row.LastSeen, oldFirstSeen)
+	}
+}
+
 func TestWarmUpLoadsActiveEnforceClients(t *testing.T) {
 	initIPMonitorTestDB(t)
 	if err := database.GetDB().Create(&model.Client{

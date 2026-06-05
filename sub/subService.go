@@ -21,30 +21,27 @@ type SubService struct {
 }
 
 func (s *SubService) GetSubs(subId string) (*string, []string, error) {
-	var err error
-
 	client, err := s.getClientBySubId(subId)
 	if err != nil {
 		return nil, nil, err
 	}
 
+	cfg := cachedSubDisplaySettings(&s.SettingService, time.Now())
+
 	clientInfo := ""
-	subShowInfo, _ := s.SettingService.GetSubShowInfo()
-	if subShowInfo {
+	if cfg.showInfo {
 		clientInfo = s.getClientInfo(client)
 	}
-	subNameInRemark, _ := s.SettingService.GetSubNameInRemark()
-	if subNameInRemark {
+	if cfg.nameInRemark {
 		clientInfo = " " + client.Name + clientInfo
 	}
 
 	linksArray := s.LinkService.GetLinks(&client.Links, "all", clientInfo)
 	result := strings.Join(linksArray, "\n")
 
-	headers := s.getClientHeaders(client)
+	headers := buildClientHeaders(client, cfg)
 
-	subEncode, _ := s.SettingService.GetSubEncode()
-	if subEncode {
+	if cfg.encode {
 		result = base64.StdEncoding.EncodeToString([]byte(result))
 	}
 
@@ -72,16 +69,12 @@ func (j *SubService) getClientBySubId(subId string) (*model.Client, error) {
 	return client, j.ensureClientSubSecret(db, client)
 }
 
-func (s *SubService) getClientHeaders(client *model.Client) []string {
-	updateInterval, _ := s.SettingService.GetSubUpdates()
-	headers := util.GetHeaders(client, updateInterval)
-	if title, err := s.SettingService.GetSubTitle(); err == nil && title != "" {
-		headers[2] = title
+func buildClientHeaders(client *model.Client, cfg subDisplaySettings) []string {
+	headers := util.GetHeaders(client, cfg.updates)
+	if cfg.title != "" {
+		headers[2] = cfg.title
 	}
-	supportURL, _ := s.SettingService.GetSubSupportUrl()
-	profileURL, _ := s.SettingService.GetSubProfileUrl()
-	announce, _ := s.SettingService.GetSubAnnounce()
-	headers = append(headers, supportURL, profileURL, announce)
+	headers = append(headers, cfg.supportURL, cfg.profileURL, cfg.announce)
 	return headers
 }
 

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/deposist/s-ui-x/database"
 	"github.com/deposist/s-ui-x/database/model"
@@ -97,7 +98,7 @@ func (j *JsonService) GetJson(subId string, format string) (*string, []string, e
 	result, _ := json.MarshalIndent(jsonConfig, "", "  ")
 	resultStr := string(result)
 
-	headers := safeSubscriptionHeaders((&SubService{}).getClientHeaders(client))
+	headers := safeSubscriptionHeaders(buildClientHeaders(client, cachedSubDisplaySettings(&j.SettingService, time.Now())))
 
 	return &resultStr, headers, nil
 }

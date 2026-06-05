@@ -14,6 +14,7 @@ import (
 	"github.com/deposist/s-ui-x/realtime"
 	"github.com/deposist/s-ui-x/util/common"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 const (
@@ -246,44 +247,43 @@ func FlushTo(tx *gorm.DB) error {
 }
 
 func flushSnapshot(tx *gorm.DB, snapshot map[string]map[string]pendingIP) error {
+	rows := make([]model.ClientIP, 0)
+	lastSeenByClient := make(map[string]int64, len(snapshot))
 	for clientName, ips := range snapshot {
-		lastSeen := int64(0)
 		for ipHash, pendingIP := range ips {
-			if pendingIP.lastSeen > lastSeen {
-				lastSeen = pendingIP.lastSeen
+			if pendingIP.lastSeen > lastSeenByClient[clientName] {
+				lastSeenByClient[clientName] = pendingIP.lastSeen
 			}
-			var row model.ClientIP
-			err := tx.Model(model.ClientIP{}).Where("client_name = ? AND ip_hash = ?", clientName, ipHash).First(&row).Error
-			if database.IsNotFound(err) {
-				err = tx.Model(model.ClientIP{}).Where("client_name = ? AND ip = ?", clientName, ipHash).First(&row).Error
-			}
-			if database.IsNotFound(err) {
-				err = tx.Model(model.ClientIP{}).Create(map[string]interface{}{
-					"client_name": clientName,
-					"ip_hash":     ipHash,
-					"ip_display":  ipDisplayValue(pendingIP.display),
-					"first_seen":  pendingIP.lastSeen,
-					"last_seen":   pendingIP.lastSeen,
-				}).Error
-			} else if err == nil {
-				err = tx.Model(model.ClientIP{}).Where("id = ?", row.Id).Updates(map[string]interface{}{
-					"ip_hash":    ipHash,
-					"last_seen":  pendingIP.lastSeen,
-					"ip_display": ipDisplayValue(pendingIP.display),
-				}).Error
-			}
-			if err != nil {
-				return err
-			}
+			rows = append(rows, model.ClientIP{
+				ClientName: clientName,
+				IPHash:     ipHash,
+				IPDisplay:  pendingIP.display,
+				FirstSeen:  pendingIP.lastSeen,
+				LastSeen:   pendingIP.lastSeen,
+			})
 			cacheAddIP(clientName, ipHash)
 		}
-		var count int64
-		if err := tx.Model(model.ClientIP{}).Where("client_name = ?", clientName).Count(&count).Error; err != nil {
-			return err
-		}
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+	// One batched upsert replaces the former per-IP SELECT + INSERT/UPDATE (an
+	// N+1 that ran every 10s). Legacy ip-only rows were given an ip_hash by
+	// migration 1.5, so the (client_name, ip_hash) conflict target always
+	// matches; first_seen is preserved while last_seen/ip_display are refreshed.
+	batch := database.SafeSQLiteBatchSize(tx, &model.ClientIP{})
+	if err := tx.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "client_name"}, {Name: "ip_hash"}},
+		DoUpdates: clause.AssignmentColumns([]string{"last_seen", "ip_display"}),
+	}).CreateInBatches(&rows, batch).Error; err != nil {
+		return err
+	}
+	// Refresh each active client's last_online and last_ip_count; the count is
+	// folded into the same UPDATE via a correlated subquery (was a separate COUNT).
+	for clientName, lastSeen := range lastSeenByClient {
 		if err := tx.Model(model.Client{}).Where("name = ?", clientName).Updates(map[string]interface{}{
 			"last_online":   lastSeen,
-			"last_ip_count": count,
+			"last_ip_count": gorm.Expr("(SELECT COUNT(*) FROM client_ips WHERE client_name = ?)", clientName),
 		}).Error; err != nil {
 			return err
 		}
@@ -613,11 +613,4 @@ func looksLikeSHA256Hex(value string) bool {
 	}
 	_, err := hex.DecodeString(value)
 	return err == nil
-}
-
-func ipDisplayValue(display *string) interface{} {
-	if display == nil {
-		return nil
-	}
-	return *display
 }

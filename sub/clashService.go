@@ -2,6 +2,7 @@ package sub
 
 import (
 	"strings"
+	"time"
 
 	"github.com/deposist/s-ui-x/logger"
 	"github.com/deposist/s-ui-x/service"
@@ -115,7 +116,7 @@ func (s *ClashService) GetClash(subId string) (*string, []string, error) {
 		return nil, nil, err
 	}
 
-	headers := safeSubscriptionHeaders((&SubService{}).getClientHeaders(client))
+	headers := safeSubscriptionHeaders(buildClientHeaders(client, cachedSubDisplaySettings(&s.SettingService, time.Now())))
 
 	return &resultStr, headers, nil
 }

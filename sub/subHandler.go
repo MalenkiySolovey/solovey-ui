@@ -1,6 +1,8 @@
 package sub
 
 import (
+	"time"
+
 	"github.com/deposist/s-ui-x/database"
 	"github.com/deposist/s-ui-x/logger"
 	"github.com/deposist/s-ui-x/service"
@@ -96,7 +98,7 @@ func (s *SubHandler) subHeaders(c *gin.Context) {
 		return
 	}
 
-	headers := s.SubService.getClientHeaders(client)
+	headers := buildClientHeaders(client, cachedSubDisplaySettings(&s.SettingService, time.Now()))
 	s.addHeaders(c, headers)
 
 	c.Status(200)
