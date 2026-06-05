@@ -1005,6 +1005,16 @@ func (a *ApiService) GetSingboxConfig(c *gin.Context) {
 func (a *ApiService) GetCheckOutbound(c *gin.Context) {
 	tag := c.Query("tag")
 	link := c.Query("link")
+	// A user-supplied custom test target is an SSRF vector: the server fetches it
+	// through the selected outbound. Validate it exactly like the plural
+	// CheckOutbounds endpoint. An empty link means "use the core's built-in
+	// default target" (the normal UI call passes only tag) and is safe.
+	if link != "" {
+		if err := validateOutboundCheckTarget(c.Request.Context(), link); err != nil {
+			jsonMsg(c, "checkOutbound", err)
+			return
+		}
+	}
 	result := a.ConfigService.CheckOutbound(tag, link)
 	jsonObj(c, result, nil)
 }

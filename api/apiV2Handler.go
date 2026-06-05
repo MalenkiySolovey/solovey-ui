@@ -35,7 +35,7 @@ const (
 	apiTokenScopeKey            = "apiTokenScope"
 	legacyTokenHeaderExpiredKey = "legacyTokenHeaderExpired"
 	// #nosec G101 -- a sunset date string, not a credential.
-	legacyTokenHeaderSunset     = "Sat, 15 Aug 2026 00:00:00 GMT"
+	legacyTokenHeaderSunset = "Sat, 15 Aug 2026 00:00:00 GMT"
 )
 
 var (
@@ -67,9 +67,60 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 	g.GET("/:getAction", a.getHandler)
 }
 
+// apiV2ActionScopes maps each apiv2 dispatcher action to the API-token scopes
+// permitted to invoke it. "admin" is always allowed (added in enforceActionScope)
+// and is also the default token scope, so this only constrains tokens an admin
+// deliberately narrowed. Actions that enforce their own scope inside the handler
+// (getdb, importdb, rotateSubSecret) are intentionally omitted, as are the
+// separately-registered routes (telegram/*, import-xui/*, security/audit).
+// Browser sessions carry no token scope and are allowed through by
+// requireTokenScopeAny.
+var apiV2ActionScopes = map[string][]string{
+	// State mutations and active probes require write.
+	"save":          {"write"},
+	"restartApp":    {"write"},
+	"restartSb":     {"write"},
+	"checkOutbound": {"write"},
+	"linkConvert":   {"read", "write"},
+	"subConvert":    {"read", "write"},
+	// Config / identity / secret reads — observability and telegram excluded.
+	"load":      {"read", "write"},
+	"inbounds":  {"read", "write"},
+	"outbounds": {"read", "write"},
+	"endpoints": {"read", "write"},
+	"services":  {"read", "write"},
+	"tls":       {"read", "write"},
+	"clients":   {"read", "write"},
+	"config":    {"read", "write"},
+	"users":     {"read", "write"},
+	"settings":  {"read", "write"},
+	"changes":   {"read", "write"},
+	"keypairs":  {"read", "write"},
+	// Operational metrics — observability tokens may read these.
+	"stats":   {"read", "write", "observability"},
+	"status":  {"read", "write", "observability"},
+	"onlines": {"read", "write", "observability"},
+	"logs":    {"read", "write", "observability"},
+}
+
+// enforceActionScope applies the per-action scope policy for the apiv2 action
+// dispatchers. Actions absent from the policy map are allowed through (they
+// either self-gate inside the handler or are intentionally open), as are browser
+// sessions that carry no token scope. On denial it writes a 403 and returns false.
+func (a *APIv2Handler) enforceActionScope(c *gin.Context, action string) bool {
+	allowed, ok := apiV2ActionScopes[action]
+	if !ok {
+		return true
+	}
+	return a.ApiService.requireTokenScopeAny(c, action, append([]string{"admin"}, allowed...)...)
+}
+
 func (a *APIv2Handler) postHandler(c *gin.Context) {
 	username := c.GetString(apiUsernameKey)
 	action := c.Param("postAction")
+	if !a.enforceActionScope(c, action) {
+		return
+	}
 
 	switch action {
 	case "save":
@@ -93,6 +144,9 @@ func (a *APIv2Handler) postHandler(c *gin.Context) {
 
 func (a *APIv2Handler) getHandler(c *gin.Context) {
 	action := c.Param("getAction")
+	if !a.enforceActionScope(c, action) {
+		return
+	}
 
 	switch action {
 	case "load":
