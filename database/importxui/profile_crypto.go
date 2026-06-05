@@ -46,6 +46,13 @@ type SyncProfileSource struct {
 	// the trusted cron runner re-applies the SSRF/locality block-list to a profile
 	// an untrusted token authored. It is never accepted from client input.
 	RestrictPrivate bool `json:"restrictPrivate,omitempty"`
+	// SourceTrusted is forced server-side to true only when an admin (no scope /
+	// admin session) saved the profile. file/ssh sync sources — which the SSRF
+	// guard cannot confine — run in cron only when this is true. It defaults to
+	// false (omitempty) so a legacy profile persisted before trust tracking, or a
+	// scoped-token-authored one, is NOT executed as a file/ssh source by cron
+	// until an admin re-saves it. Never accepted from client input.
+	SourceTrusted bool `json:"sourceTrusted,omitempty"`
 }
 
 type SyncProfileInput struct {

@@ -94,8 +94,9 @@ func createXUISyncPerfMissingProfile(tb testing.TB) *model.XUISyncProfile {
 		Name:       "phase5-lost-network",
 		SourceType: "file",
 		Source: importxui.SyncProfileSource{
-			Type: "file",
-			URL:  filepath.Join(tb.TempDir(), "missing-x-ui.db"),
+			Type:          "file",
+			URL:           filepath.Join(tb.TempDir(), "missing-x-ui.db"),
+			SourceTrusted: true, // admin-saved file profiles are trusted (cron sourceFromProfile gate)
 		},
 		Strategy: importxui.StrategyMerge,
 		OnlyNew:  true,

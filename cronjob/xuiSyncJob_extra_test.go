@@ -167,8 +167,9 @@ func createXUISyncProfileForTest(t *testing.T, sourcePath string) *model.XUISync
 		Name:       "phase2",
 		SourceType: "file",
 		Source: importxui.SyncProfileSource{
-			Type: "file",
-			URL:  sourcePath,
+			Type:          "file",
+			URL:           sourcePath,
+			SourceTrusted: true, // admin-saved file profiles are trusted (cron sourceFromProfile gate)
 		},
 		Strategy: importxui.StrategyMerge,
 		OnlyNew:  true,

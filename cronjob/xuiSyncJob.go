@@ -161,6 +161,15 @@ func (j *XUISyncJob) recordRun(profile *model.XUISyncProfile, status string, sum
 }
 
 func sourceFromProfile(source importxui.SyncProfileSource) (importxui.Source, error) {
+	// file/ssh sources cannot be confined by the SSRF/locality guard, so the cron
+	// runner executes them only when an admin saved the profile (SourceTrusted).
+	// A legacy profile (persisted before trust tracking) or a scoped-token-authored
+	// one must be re-saved by an admin before its file/ssh source will run — this
+	// closes the non-retroactive gap where a pre-fix scoped-authored file/ssh
+	// profile would otherwise still run with full trust.
+	if (source.Type == "file" || source.Type == "ssh") && !source.SourceTrusted {
+		return nil, fmt.Errorf("file/ssh sync profile must be re-saved by an admin before it can run")
+	}
 	switch source.Type {
 	case "file":
 		return xfile.New(source.URL), nil

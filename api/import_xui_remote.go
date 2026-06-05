@@ -134,10 +134,13 @@ func (a *ApiService) SaveXUISyncProfile(c *gin.Context) {
 		}
 	}
 	// Force the trust level from the auth context (never from client input) and
-	// persist it inside the encrypted source. The cron runner re-applies the
-	// SSRF/locality block-list for an untrusted-authored profile, closing the
-	// save/run DNS-rebind TOCTOU for http sources.
+	// persist it inside the encrypted source. RestrictPrivate makes the cron
+	// runner re-apply the SSRF/locality block-list to an untrusted-authored http
+	// profile (closing the save/run DNS-rebind TOCTOU); SourceTrusted is the
+	// positive admin-authored marker the cron runner requires before executing a
+	// file/ssh source, so legacy/untrusted file/ssh profiles are not run trusted.
 	input.Source.RestrictPrivate = untrusted
+	input.Source.SourceTrusted = !untrusted
 	profile, err := importxui.SaveSyncProfile(input)
 	if err == nil {
 		a.recordAudit(c, requestActor(c), "xui_sync_profile_save", "database", service.AuditSeverityInfo, map[string]any{

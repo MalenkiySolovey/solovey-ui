@@ -22,8 +22,9 @@ func TestIssue3SaveSyncProfileDefaultsAndExplicitFalse(t *testing.T) {
 	omitted, err := importxui.SaveSyncProfile(importxui.SyncProfileInput{
 		Name: "issue3-defaults",
 		Source: importxui.SyncProfileSource{
-			Type: "file",
-			URL:  sourcePath,
+			Type:          "file",
+			URL:           sourcePath,
+			SourceTrusted: true, // admin-saved file profiles are trusted (cron sourceFromProfile gate)
 		},
 		Strategy: importxui.StrategyMerge,
 	})
@@ -91,8 +92,9 @@ func TestIssue3XUISyncHonorsOnlyNewFalse(t *testing.T) {
 		Name:       "issue3-only-new-false",
 		SourceType: "file",
 		Source: importxui.SyncProfileSource{
-			Type: "file",
-			URL:  sourcePath,
+			Type:          "file",
+			URL:           sourcePath,
+			SourceTrusted: true, // admin-saved file profiles are trusted (cron sourceFromProfile gate)
 		},
 		Strategy:        importxui.StrategyReplace,
 		OnlyNew:         false,
@@ -126,8 +128,9 @@ func TestIssue7SaveSyncProfilePersistsImportPolicy(t *testing.T) {
 		Name:       "issue7-policy",
 		SourceType: "file",
 		Source: importxui.SyncProfileSource{
-			Type: "file",
-			URL:  sourcePath,
+			Type:          "file",
+			URL:           sourcePath,
+			SourceTrusted: true, // admin-saved file profiles are trusted (cron sourceFromProfile gate)
 		},
 		Strategy:        importxui.StrategyMerge,
 		OnlyNew:         true,
@@ -162,8 +165,9 @@ func TestIssue7XUISyncPassesProfileImportPolicy(t *testing.T) {
 		Name:       "issue7-cron-policy",
 		SourceType: "file",
 		Source: importxui.SyncProfileSource{
-			Type: "file",
-			URL:  sourcePath,
+			Type:          "file",
+			URL:           sourcePath,
+			SourceTrusted: true, // admin-saved file profiles are trusted (cron sourceFromProfile gate)
 		},
 		Strategy:        importxui.StrategyMerge,
 		OnlyNew:         false,
