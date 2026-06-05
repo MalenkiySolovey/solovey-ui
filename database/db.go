@@ -258,7 +258,16 @@ func ensureIndexes() error {
 			return err
 		}
 	}
+	// settings.key must be unique, but the historical read-then-create path could
+	// race two first-start inserts into duplicate rows. Drop any duplicates
+	// (keeping the lowest id, which carries the original default) before enforcing
+	// uniqueness, so the unique index below also closes that TOCTOU gap and makes
+	// every keyed settings read an index lookup instead of a full table scan (P-a).
+	if err := db.Exec("DELETE FROM settings WHERE id NOT IN (SELECT MIN(id) FROM settings GROUP BY key)").Error; err != nil {
+		return err
+	}
 	indexes := []string{
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_key ON settings(key)",
 		"CREATE INDEX IF NOT EXISTS idx_stats_lookup ON stats(date_time, resource, tag)",
 		"CREATE INDEX IF NOT EXISTS idx_changes_lookup ON changes(date_time, actor, key)",
 		"CREATE INDEX IF NOT EXISTS idx_audit_events_lookup ON audit_events(date_time, actor, event)",
