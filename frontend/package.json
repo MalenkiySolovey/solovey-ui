@@ -11,7 +11,7 @@
     "lint": "eslint ."
   },
   "dependencies": {
-    "@mdi/font": "7.4.47",
+    "@mdi/js": "7.4.47",
     "axios": "^1.14.0",
     "chart.js": "^4.5.1",
     "clipboard": "^2.0.11",

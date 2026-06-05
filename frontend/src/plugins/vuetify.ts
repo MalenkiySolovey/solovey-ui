@@ -5,7 +5,6 @@
  */
 
 // Styles
-import '@mdi/font/css/materialdesignicons.css'
 import 'vuetify/styles/main.css'
 
 import colors from 'vuetify/util/colors'
@@ -14,8 +13,16 @@ import { fa, en, vi, zhHans, zhHant, ru } from 'vuetify/locale'
 // Composables
 import { createVuetify } from 'vuetify'
 
+// SVG icons (@mdi/js) instead of the full @mdi/font webfont — see ./mdiIcons.
+import { aliases, mdi } from './mdiIcons'
+
 // https://vuetifyjs.com/en/introduction/why-vuetify/#feature-guides
 export default createVuetify({
+  icons: {
+    defaultSet: 'mdi',
+    aliases,
+    sets: { mdi },
+  },
   defaults: {
     VRow: { density: 'compact' },
     VTextField: {

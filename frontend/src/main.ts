@@ -23,7 +23,6 @@ import { registerPlugins } from '@/plugins'
 
 // Locale
 import { i18n, loadInitialLocaleMessages } from '@/locales'
-import Vue3PersianDatetimePicker from 'vue3-persian-datetime-picker'
 
 // Notivue
 import { createNotivue } from 'notivue'
@@ -55,7 +54,6 @@ const bootstrap = async () => {
     .use(store)
     .use(i18n)
     .use(notivue)
-    .component('DatePicker', Vue3PersianDatetimePicker)
     .mount('#app')
 }
 
