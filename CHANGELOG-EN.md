@@ -40,6 +40,33 @@ default** — existing setups are completely unaffected until you switch it on.
 
 ---
 
+## [Unreleased] - Remove 3x-ui scheduled sync and remote import
+
+The 3x-ui import feature is trimmed to the **one-shot local `.db` upload**
+importer. The recurring **scheduled sync** and the **on-demand remote import**
+(pull from a running 3x-ui over SSH/HTTP) are removed, along with all of their
+machinery: the SSH/HTTP/file import sources, the SSRF-guarded remote client, the
+SSH host-key (TOFU) store, and at-rest encryption of saved sync profiles.
+
+**💥 Breaking changes**
+- **Scheduled sync is gone.** The "3x-ui Sync" schedule page, sync profiles, and
+  the background cron job no longer exist; any previously configured schedule
+  stops running after upgrade. The `xui_sync_profiles` and `xui_known_hosts`
+  tables are dropped automatically on first start — no manual step.
+- **Remote import is gone.** The `POST /api/import-xui/remote/*` and
+  `/api/import-xui/sync/*` endpoints are removed. Import is now upload-only:
+  `POST /api/import-xui[/plan|/apply|/rollback]` and `GET /api/import-xui/reports`.
+- **CLI:** the `s-ui sync-xui` command and the `import-xui --remote` / `--schedule`
+  flags are removed; `s-ui import-xui --src <x-ui.db>` (local file) remains.
+- **API tokens:** the `xui_remote` token scope is removed and is no longer valid.
+  Re-issue any such token with an appropriate scope.
+
+**✅ Kept**
+- One-shot local **`.db` upload** import — the UI wizard, the API, and
+  `import-xui --src` — including dry-run, conflict strategy, plan/apply, and rollback.
+
+No manual migration is required; the deprecated tables are dropped on startup.
+
 ## [1.5.7-beta6-hotfix1] - 2026-06-05 - Fix beta6 panel black screen (frontend build)
 
 Emergency **build** hotfix for v1.5.7-beta6. No code, config, or data changes —

@@ -36,6 +36,31 @@
 
 ---
 
+## [Unreleased] - 移除 3x-ui 定时同步与远程导入
+
+3x-ui 导入功能精简为**一次性的本地 `.db` 上传**导入。周期性的**定时同步**与
+**按需远程导入**（通过 SSH/HTTP 从运行中的 3x-ui 拉取）均已移除，连同其全部机制：
+SSH/HTTP/file 导入源、带 SSRF 防护的远程客户端、SSH host-key（TOFU）存储，以及
+已保存同步配置的静态加密。
+
+**💥 破坏性变更**
+- **定时同步已移除。**「3x-ui Sync」计划页面、同步配置以及后台 cron 任务均不再存在；
+  升级后任何此前配置的计划都将停止运行。`xui_sync_profiles` 与 `xui_known_hosts`
+  两张表会在首次启动时自动删除——无需手动操作。
+- **远程导入已移除。** `POST /api/import-xui/remote/*` 与 `/api/import-xui/sync/*`
+  端点已删除。导入现在仅支持文件上传：`POST /api/import-xui[/plan|/apply|/rollback]`
+  与 `GET /api/import-xui/reports`。
+- **CLI：** `s-ui sync-xui` 命令以及 `import-xui --remote` / `--schedule` 选项已移除；
+  `s-ui import-xui --src <x-ui.db>`（本地文件）保留。
+- **API 令牌：** `xui_remote` 令牌作用域已移除，不再有效。请使用合适的作用域重新签发
+  此类令牌。
+
+**✅ 保留**
+- 一次性的本地 **`.db` 上传**导入——UI 向导、API 以及 `import-xui --src`——包括
+  dry-run、冲突策略、plan/apply 与回滚。
+
+无需手动迁移——已弃用的表会在启动时删除。
+
 ## [1.5.7-beta6-hotfix1] - 2026-06-05 - 修复 beta6 面板黑屏（前端构建）
 
 针对 v1.5.7-beta6 的紧急**构建**热修复。无代码、配置或数据变更——仅修复 beta6
