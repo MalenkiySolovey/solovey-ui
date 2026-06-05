@@ -34,6 +34,31 @@ func TestValueRedactsSensitiveKeys(t *testing.T) {
 	}
 }
 
+// TestValueRedactsProxyKeys pins S-e: proxy-URL secret settings (which can carry
+// embedded user:pass credentials) are masked by key. "proxy" is a conservative
+// fragment — proxy config keys are redacted in logs by design.
+func TestValueRedactsProxyKeys(t *testing.T) {
+	input := map[string]any{
+		"telegramProxyURL": "socks5://user:pass@10.0.0.1:1080",
+		"paidSubProxyURL":  "http://user:pass@proxy.local:3128",
+		"proxyType":        "socks5",
+		"webPort":          2095,
+	}
+	redacted := Value(input).(map[string]any)
+	if redacted["telegramProxyURL"] != Marker {
+		t.Fatalf("telegramProxyURL was not redacted: %#v", redacted["telegramProxyURL"])
+	}
+	if redacted["paidSubProxyURL"] != Marker {
+		t.Fatalf("paidSubProxyURL was not redacted: %#v", redacted["paidSubProxyURL"])
+	}
+	if redacted["proxyType"] != Marker {
+		t.Fatalf("proxy* keys are conservatively redacted: %#v", redacted["proxyType"])
+	}
+	if redacted["webPort"] != 2095 {
+		t.Fatalf("non-secret field changed: %#v", redacted["webPort"])
+	}
+}
+
 func TestValueRedactsSensitiveStringValues(t *testing.T) {
 	botToken := "1234567890:" + strings.Repeat("A", 35)
 	base32Secret := "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567"

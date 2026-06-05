@@ -13,6 +13,7 @@ var sensitiveKeyFragments = []string{
 	"passphrase",
 	"password",
 	"private",
+	"proxy",
 	"secret",
 	"token",
 	"access_key",
