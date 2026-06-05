@@ -168,6 +168,11 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 		if err != nil {
 			return nil, err
 		}
+		if len(clients) == 0 {
+			return inboundIds, nil
+		}
+		// addbulk clients all share the same inbound set (the frontend forces an
+		// identical Inbounds array), so clients[0] is representative here.
 		err = json.Unmarshal(clients[0].Inbounds, &inboundIds)
 		if err != nil {
 			return nil, err
@@ -264,26 +269,48 @@ func (s *ClientService) Save(tx *gorm.DB, act string, data json.RawMessage, host
 	return inboundIds, nil
 }
 
-func (s *ClientService) updateLinksWithFixedInbounds(tx *gorm.DB, clients []*model.Client, hostname string) error {
-	var err error
-	var inbounds []model.Inbound
-	var inboundIds []uint
-
-	err = json.Unmarshal(clients[0].Inbounds, &inboundIds)
+// clientChangeNameJSON marshals a client name as a JSON string for the
+// Changes.Obj payload. Building it by raw concatenation ("\"" + name + "\"")
+// breaks when the name contains a quote, backslash or control character: the
+// resulting json.RawMessage is invalid and later fails json.Marshal of the
+// whole changes feed (CheckChanges then returns an empty body for all admins).
+func clientChangeNameJSON(name string) json.RawMessage {
+	b, err := json.Marshal(name)
 	if err != nil {
-		return err
+		return json.RawMessage(`""`)
 	}
+	return b
+}
 
-	// Zero inbounds means removing local links only
-	if len(inboundIds) > 0 {
-		err = tx.Model(model.Inbound{}).Preload("Tls").Where("id in ? and type in ?", inboundIds, util.InboundTypeWithLink).Find(&inbounds).Error
-		if err != nil {
+func (s *ClientService) updateLinksWithFixedInbounds(tx *gorm.DB, clients []*model.Client, hostname string) error {
+	// Each client may carry a different inbound set (notably act="editbulk", where
+	// ClientEditBulk.vue preserves per-client inbounds), so the inbound list used
+	// to regenerate a client's local links must come from THAT client's own
+	// Inbounds — not from clients[0], which would corrupt subscriptions for every
+	// client whose inbound set differs from the first one. Preloaded inbound rows
+	// are memoised by the raw Inbounds JSON so the common case of one shared set
+	// (act="addbulk", act="new"/"edit") still issues a single query.
+	inboundCache := map[string][]model.Inbound{}
+	for index, client := range clients {
+		var inboundIds []uint
+		if err := json.Unmarshal(client.Inbounds, &inboundIds); err != nil {
 			return err
 		}
-	}
-	for index, client := range clients {
-		// Keep links that aren't locally generated; regenerate the local ones
-		// for every fixed inbound.
+		cacheKey := string(client.Inbounds)
+		inbounds, cached := inboundCache[cacheKey]
+		if !cached {
+			// Zero inbounds means removing local links only.
+			if len(inboundIds) > 0 {
+				if err := tx.Model(model.Inbound{}).Preload("Tls").
+					Where("id in ? and type in ?", inboundIds, util.InboundTypeWithLink).
+					Find(&inbounds).Error; err != nil {
+					return err
+				}
+			}
+			inboundCache[cacheKey] = inbounds
+		}
+		// Keep links that aren't locally generated; regenerate the local ones for
+		// this client's own fixed inbounds.
 		links, ok, err := rebuildClientLinks(client.Id, client.Config, client.Links, inbounds, hostname, func(link map[string]string) bool {
 			return link["type"] != "local"
 		}, "fixed inbound link update")
@@ -477,7 +504,7 @@ func (s *ClientService) DepleteClients() (inboundIds []uint, err error) {
 			Actor:    "DepleteJob",
 			Key:      "clients",
 			Action:   "disable",
-			Obj:      json.RawMessage("\"" + client.Name + "\""),
+			Obj:      clientChangeNameJSON(client.Name),
 		})
 	}
 
@@ -522,7 +549,7 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 			Actor:    "ResetJob",
 			Key:      "clients",
 			Action:   "reset",
-			Obj:      json.RawMessage("\"" + client.Name + "\""),
+			Obj:      clientChangeNameJSON(client.Name),
 		})
 	}
 
@@ -547,7 +574,7 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 			Actor:    "ResetJob",
 			Key:      "clients",
 			Action:   "reset",
-			Obj:      json.RawMessage("\"" + client.Name + "\""),
+			Obj:      clientChangeNameJSON(client.Name),
 		})
 	}
 
