@@ -83,15 +83,15 @@
         </v-card-text>
         <v-divider></v-divider>
         <v-card-actions style="padding: 0;">
-          <v-btn icon="mdi-account-edit" @click="showEditModal(item)">
+          <v-btn icon="mdi-account-edit" :aria-label="$t('actions.edit')" @click="showEditModal(item)">
             <v-icon />
             <v-tooltip activator="parent" location="top" :text="$t('actions.edit')"></v-tooltip>
           </v-btn>
-          <v-btn icon="mdi-list-box-outline" @click="showChangesModal(item.username)">
+          <v-btn icon="mdi-list-box-outline" :aria-label="$t('admin.changes')" @click="showChangesModal(item.username)">
             <v-icon />
             <v-tooltip activator="parent" location="top" :text="$t('admin.changes')"></v-tooltip>
           </v-btn>
-          <v-btn v-if="!item.isCurrent" icon="mdi-delete" color="error" @click="showDeleteModal(item)">
+          <v-btn v-if="!item.isCurrent" icon="mdi-delete" color="error" :aria-label="$t('admin.deleteAdmin')" @click="showDeleteModal(item)">
             <v-icon />
             <v-tooltip activator="parent" location="top" :text="$t('admin.deleteAdmin')"></v-tooltip>
           </v-btn>

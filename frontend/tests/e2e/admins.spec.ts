@@ -61,7 +61,7 @@ const assertSelfDeleteHidden = async (page: Page) => {
   const selfCard = userCard(page, readServerState().username)
 
   await expect(selfCard).toHaveCount(1)
-  await expect(selfCard.locator('.mdi-delete')).toHaveCount(0)
+  await expect(selfCard.getByRole('button', { name: 'Delete admin' })).toHaveCount(0)
 }
 
 const submitAdd = async (page: Page, username: string, password: string, currentPass: string) => {
@@ -78,7 +78,7 @@ const addAdmin = async (page: Page, username: string, password: string, screensh
   await submitAdd(page, username, password, readServerState().password)
   await expect(page.getByRole('dialog')).toBeHidden()
   await expect(userCard(page, username)).toBeVisible()
-  await expect(userCard(page, username).locator('button:has(.mdi-delete)')).toHaveCount(1)
+  await expect(userCard(page, username).getByRole('button', { name: 'Delete admin' })).toHaveCount(1)
   await page.screenshot({ path: path.join(screenshotDir, screenshotName), fullPage: true })
 }
 
@@ -94,11 +94,11 @@ const deleteAdmin = async (page: Page, username: string, currentPass: string) =>
   const card = userCard(page, username)
 
   await expect(card).toBeVisible()
-  await expect(card.locator('button:has(.mdi-delete)')).toHaveCount(1)
-  await card.locator('button:has(.mdi-delete)').click()
+  await expect(card.getByRole('button', { name: 'Delete admin' })).toHaveCount(1)
+  await card.getByRole('button', { name: 'Delete admin' }).click()
   await expect(page.getByRole('dialog')).toContainText(`Delete admin ${username}`)
   await page.getByLabel('Current Password').fill(currentPass)
-  await page.getByRole('button', { name: 'Delete' }).click()
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
 }
 
 const deleteAdminSuccessfully = async (page: Page, username: string) => {
@@ -112,7 +112,7 @@ const assertWrongDeleteRejected = async (page: Page, username: string) => {
   await expect(page.getByRole('dialog')).toBeVisible()
   await expect(userCard(page, username)).toBeVisible()
   await page.getByLabel('Current Password').fill(readServerState().password)
-  await page.getByRole('button', { name: 'Delete' }).click()
+  await page.getByRole('button', { name: 'Delete', exact: true }).click()
   await expect(page.getByRole('dialog')).toBeHidden()
   await expect(userCard(page, username)).toHaveCount(0)
 }
