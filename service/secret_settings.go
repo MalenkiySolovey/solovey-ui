@@ -420,8 +420,6 @@ func (s *SettingService) ResealSecretSettings() (int, error) {
 		}
 		resealed++
 	}
-	if resealed > 0 {
-		logger.Info("re-sealed", resealed, "secret setting(s) under SUI_SECRETBOX_KEY")
-	}
+	// The caller (app.Init) logs the re-sealed count; avoid a duplicate line here.
 	return resealed, nil
 }
