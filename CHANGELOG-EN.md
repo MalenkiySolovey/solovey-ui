@@ -40,6 +40,100 @@ default** — existing setups are completely unaffected until you switch it on.
 
 ---
 
+## [1.5.7-beta6] - 2026-06-05 - Security & reliability hardening, performance, and accessibility
+
+A hardening release driven by a full code-quality, optimization, and security
+audit of the panel. No new features and **no manual migration** — it closes
+several security gaps, removes silent-failure and panic risks, trims the frontend
+bundle by ~60%, and fixes a few data-integrity bugs. Two items change existing
+behavior — see **Breaking changes**.
+
+### 🔒 Security
+
+- **Updated to Go 1.26.4**, closing two reachable Go standard-library
+  vulnerabilities (`GO-2026-5037` in `crypto/x509`, `GO-2026-5039` in
+  `net/textproto`).
+- **API-token scopes are now enforced.** The `apiv2` action endpoints used to run
+  every action regardless of token scope, so a `read`/`observability`/`telegram`/
+  `database` token could write config, restart the panel, or read settings. Each
+  action is now gated: writes and restarts require `write`/`admin`, config and
+  identity reads require `read`/`write`/`admin`, and metrics also allow
+  `observability`. Browser (admin-session) access is unchanged. *(Breaking.)*
+- **Remote x-ui import/sync hardened against SSRF.** Remote imports validate the
+  target URL and **re-check the resolved IP at connection time** (defeating
+  DNS-rebinding), with redirects bounded; cloud-metadata, loopback, and private
+  ranges are blocked for untrusted (scoped-token) callers. **`file` and `ssh`
+  import sources are admin-only**, and scheduled sync runs a `file`/`ssh` source
+  only from an admin-saved profile. *(Breaking.)*
+- **Secrets at rest.** With `SUI_SECRETBOX_KEY` set, stored secrets are now
+  **re-sealed once at startup** under that out-of-database key, so a value written
+  before you adopted the key is no longer recoverable from the database alone.
+  Remote-panel credential encryption derives its key from a random per-install
+  secret instead of a predictable default.
+- **Login brute-force.** Added a **per-username** login throttle on top of the
+  existing per-IP limit, so a distributed attack on a single account is also
+  slowed.
+- **Session fixation.** The session ID is now **rotated on login**, so a planted
+  pre-auth session cookie cannot survive authentication.
+- **Transport & headers.** HSTS honors `X-Forwarded-Proto` only from a trusted
+  proxy; the CSRF cookie honors a strict `SameSite` policy; `s-ui admin -reset`
+  generates a random password instead of a fixed default.
+- **Telegram payments** verify the payer's Telegram id; proxy URLs carrying
+  embedded credentials are masked in logs.
+
+### 🐛 Reliability & fixes
+
+- **No more false "running" core.** If the generated sing-box config fails to
+  parse, the core now surfaces the error instead of silently starting an empty
+  instance and reporting healthy while nothing is listening.
+- **Background jobs can't crash the panel.** Cron jobs are panic-isolated and
+  skip-if-still-running; the WAL-checkpoint job is guarded against a startup
+  nil-dereference.
+- **Sturdier subscription generation.** Malformed inbound/client configuration no
+  longer panics the link, Clash, or JSON subscription builders — they skip the bad
+  field gracefully.
+- **Change feed stays available.** A client name containing a quote or other JSON
+  metacharacter no longer corrupts the stored change log, which previously made the
+  admin **Changes** view return an empty response for everyone.
+- **Correct bulk-edit links.** Editing a group of clients with *different* inbound
+  sets now regenerates each client's subscription links from its own inbounds
+  instead of copying the first client's.
+- **Consistent API errors** with a documented success envelope and internal
+  details redacted.
+
+### ⚡ Performance
+
+- **Backend.** The IP monitor writes pending records in a single batched upsert
+  (instead of one statement per IP); the subscription hot path caches its display
+  settings (~8 fewer queries per request) and `settings` reads now use an index.
+- **Frontend bundle 6.2 MB → 2.5 MB (−60%).** `moment` and the date-picker load
+  lazily with the pages that use them, and icons moved from the full Material
+  Design webfont (~2.9 MB) to inline SVG paths.
+
+### ♿ Accessibility
+
+- The icon-only admin action buttons (edit / changes / delete) now have accessible
+  names for screen readers.
+
+### ⚠️ Breaking changes
+
+- **Scoped API tokens lose access they should not have had.** An integration using
+  a `read`, `observability`, `telegram`, or `database` token to write config,
+  restart the panel, or read settings (which only worked because of the enforcement
+  gap above) is now rejected — use an `admin` or appropriately scoped `write` token.
+- **`file`/`ssh` x-ui sync profiles must be admin-saved.** After upgrading, a
+  scheduled sync profile whose source is a local `file` or `ssh` target will not run
+  until an **admin re-saves it** (the panel can no longer prove a pre-upgrade
+  profile was admin-created). Re-saving it from an admin session restores it.
+
+### Upgrade
+
+No manual migration or config change. The `settings` table gains a unique index
+automatically on first start; if you use `SUI_SECRETBOX_KEY`, the one-time secret
+re-seal runs at startup. Review the two **Breaking changes** if you use scoped API
+tokens or `file`/`ssh` scheduled sync. Release notes:
+[`docs/releases/v1.5.7-beta6.md`](docs/releases/v1.5.7-beta6.md).
+
 ## [1.5.7-beta5] - 2026-06-04 - Paid Subscriptions admin UI: Bindings/Orders columns, unbind confirm, tab order
 
 - **Paid Subscriptions tabs reordered.** **Bindings** is now the first (default)
