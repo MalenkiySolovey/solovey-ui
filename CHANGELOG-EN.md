@@ -54,7 +54,7 @@ recurring **scheduled sync** and the **on-demand remote import** (pull from a ru
 import sources, the SSRF-guarded remote client, the SSH host-key (TOFU) store, and
 at-rest encryption of saved sync profiles.
 
-**💥 Breaking changes**
+**Breaking changes**
 - **Scheduled sync is gone.** The "3x-ui Sync" schedule page, sync profiles, and
   the background cron job no longer exist; any previously configured schedule
   stops running after upgrade. The `xui_sync_profiles` and `xui_known_hosts`
@@ -67,7 +67,7 @@ at-rest encryption of saved sync profiles.
 - **API tokens:** the `xui_remote` token scope is removed and is no longer valid.
   Re-issue any such token with an appropriate scope.
 
-### 🔒 Security & privacy (review fixes)
+### Security & privacy (review fixes)
 
 - **Login no longer reveals whether a username exists** — the not-found path performs
   the same bcrypt work as a wrong-password attempt, closing a timing oracle that
@@ -82,7 +82,7 @@ at-rest encryption of saved sync profiles.
   check still fails open but now logs the event (throttled) instead of silently
   disabling enforcement.
 
-### 🐛 Reliability & fixes (review fixes)
+### Reliability & fixes (review fixes)
 
 - **Correct traffic chart** — the per-client statistics graph summed each time bucket
   with a no-op reducer and displayed only the first sample instead of the total; it now
@@ -99,14 +99,14 @@ at-rest encryption of saved sync profiles.
 - **Clearer core-start log** — a sing-box core that fails to start is logged explicitly;
   the panel intentionally stays up so the config can be fixed from the UI.
 
-### ⚡ Performance & cleanup (review fixes)
+### Performance & cleanup (review fixes)
 
 - **Indexed order history** — `payment_orders.telegram_user_id` is now indexed, so a
   user's order / refund history no longer scans the whole table.
 - **Lighter frontend install** — removed three unused dependencies (`core-js`,
   `roboto-fontface`, `material-design-icons-iconfont`).
 
-**✅ Kept**
+**Kept**
 - One-shot local **`.db` upload** import — the UI wizard, the API, and
   `import-xui --src` — including dry-run, conflict strategy, plan/apply, and rollback.
 

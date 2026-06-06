@@ -12,7 +12,7 @@ review fixes are breaking.
 
 ## What changed
 
-### 💥 Breaking changes (3x-ui import)
+### Breaking changes (3x-ui import)
 
 - **Scheduled sync is gone.** The "3x-ui Sync" schedule page, sync profiles, and the
   background cron job no longer exist; any previously configured schedule stops
@@ -26,7 +26,7 @@ review fixes are breaking.
 - **API tokens:** the `xui_remote` token scope is removed and is no longer valid —
   re-issue any such token with an appropriate scope.
 
-### 🔒 Security & privacy
+### Security & privacy
 
 - **Login no longer reveals whether a username exists.** The "user not found" path now
   performs the same bcrypt work as a wrong-password attempt, closing a timing
@@ -43,7 +43,7 @@ review fixes are breaking.
   the database it still fails open (allows the connection), but now logs the event
   (throttled) instead of silently disabling enforcement.
 
-### 🐛 Reliability & fixes
+### Reliability & fixes
 
 - **Correct traffic chart.** The per-client statistics graph summed each time bucket
   with a no-op reducer and displayed only the first sample instead of the total; it now
@@ -61,14 +61,14 @@ review fixes are breaking.
 - **Clearer core-start log.** A sing-box core that fails to start is logged explicitly;
   the panel intentionally stays up so the config can be fixed from the UI.
 
-### ⚡ Performance & cleanup
+### Performance & cleanup
 
 - **Indexed order history.** `payment_orders.telegram_user_id` is now indexed, so a
   user's order / refund history no longer scans the whole table.
 - **Lighter frontend install.** Removed three unused dependencies (`core-js`,
   `roboto-fontface`, `material-design-icons-iconfont`).
 
-### ✅ Kept
+### Kept
 
 - One-shot local **`.db` upload** import — the UI wizard, the API, and
   `import-xui --src` — including dry-run, conflict strategy, plan/apply, and rollback.
@@ -96,7 +96,7 @@ No manual migration or config change. The deprecated `xui_sync_profiles` and
 
 ## Что изменилось
 
-### 💥 Ломающие изменения (импорт 3x-ui)
+### Ломающие изменения (импорт 3x-ui)
 
 - **Плановый синк удалён.** Страница расписания «3x-ui Sync», профили синка и фоновый
   cron-job больше не существуют; любое ранее настроенное расписание перестаёт работать
@@ -110,7 +110,7 @@ No manual migration or config change. The deprecated `xui_sync_profiles` and
 - **API-токены:** scope `xui_remote` удалён и больше не действителен — перевыпустите
   такой токен с подходящим scope.
 
-### 🔒 Безопасность и приватность
+### Безопасность и приватность
 
 - **Логин больше не выдаёт, существует ли имя пользователя.** Путь «пользователь не
   найден» теперь выполняет ту же bcrypt-работу, что и неверный пароль, закрывая
@@ -127,7 +127,7 @@ No manual migration or config change. The deprecated `xui_sync_profiles` and
   она по-прежнему fail-open (пропускает соединение), но теперь логирует событие
   (с троттлингом), а не отключает энфорсмент молча.
 
-### 🐛 Надёжность и фиксы
+### Надёжность и фиксы
 
 - **Корректный график трафика.** График статистики клиента суммировал каждый бакет
   no-op-редьюсером и показывал только первый сэмпл вместо суммы; теперь суммирует
@@ -145,14 +145,14 @@ No manual migration or config change. The deprecated `xui_sync_profiles` and
 - **Понятный лог старта ядра.** Падение запуска sing-box-ядра логируется явно; панель
   намеренно остаётся поднятой, чтобы конфиг можно было починить из UI.
 
-### ⚡ Производительность и чистка
+### Производительность и чистка
 
 - **Индекс истории заказов.** `payment_orders.telegram_user_id` теперь индексирован, и
   история заказов / возвратов пользователя больше не сканирует всю таблицу.
 - **Легче установка фронтенда.** Удалены три неиспользуемые зависимости (`core-js`,
   `roboto-fontface`, `material-design-icons-iconfont`).
 
-### ✅ Сохранено
+### Сохранено
 
 - Разовый локальный импорт через загрузку **`.db`** — мастер UI, API и
   `import-xui --src` — включая dry-run, стратегию конфликтов, plan/apply и rollback.

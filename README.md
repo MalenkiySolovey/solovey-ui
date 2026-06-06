@@ -123,13 +123,11 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 
 ## Install v1.5.7-beta7
 
-This beta is a security and reliability hardening pass from a full code-quality,
-optimization, and security audit — no new features and no manual migration. It
-enforces API-token scopes, hardens x-ui import/sync against SSRF (with `file`/`ssh`
-sources now admin-only), re-seals secrets under `SUI_SECRETBOX_KEY`, rotates the
-session ID on login, removes silent-failure/panic risks, and trims the frontend
-bundle by ~60%. Two items change existing behavior — see the release notes'
-**Breaking changes**. This is a beta — test first.
+This beta removes the **3x-ui scheduled sync and remote import** (3x-ui import is
+now a one-time local `.db` upload only) and ships a round of low-risk fixes and
+hardening from a fresh independent code-quality, optimization, and security review
+— no new features and no manual migration. The 3x-ui removal changes existing
+behavior — see the release notes' **Breaking changes**. This is a beta — test first.
 
 ```sh
 bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.7-beta7
@@ -508,13 +506,12 @@ bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.s
 
 ## Установка v1.5.7-beta7
 
-Эта бета — проход усиления безопасности и надёжности по итогам полного аудита
-качества кода, оптимизации и безопасности; новых функций нет и ручная миграция не
-нужна. Энфорсится scope API-токенов, удалённый импорт/синк x-ui усилен против SSRF
-(источники `file`/`ssh` теперь только для админа), секреты ре-шифруются под
-`SUI_SECRETBOX_KEY`, ID сессии ротируется при логине, убраны риски тихих
-отказов/паник, фронтенд-бандл урезан на ~60%. Два пункта меняют поведение — см.
-**Ломающие изменения** в release notes. Это бета — сначала протестируйте.
+Эта бета удаляет **плановый синк и удалённый импорт 3x-ui** (импорт 3x-ui теперь —
+только разовая локальная загрузка `.db`) и приносит набор малорисковых фиксов и
+hardening по итогам свежего независимого аудита качества кода, оптимизации и
+безопасности; новых функций нет и ручная миграция не нужна. Удаление 3x-ui меняет
+существующее поведение — см. **Ломающие изменения** в release notes. Это бета —
+сначала протестируйте.
 
 ```sh
 bash <(curl -Ls https://raw.githubusercontent.com/deposist/s-ui-x/main/install.sh) v1.5.7-beta7
