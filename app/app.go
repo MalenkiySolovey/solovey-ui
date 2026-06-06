@@ -121,9 +121,11 @@ func (a *APP) Start() error {
 	// it at runtime without a restart.
 	paidsub.StartBot()
 
-	err = a.configService.StartCore()
-	if err != nil {
-		logger.Error(err)
+	// A core start failure is intentionally non-fatal: the web/sub panel must
+	// stay up so the admin can fix a bad sing-box config through the UI. The
+	// failure is surfaced loudly here and reflected in the panel's core status.
+	if err = a.configService.StartCore(); err != nil {
+		logger.Error("sing-box core failed to start; panel stays up so you can fix the config: ", err)
 	}
 
 	return nil

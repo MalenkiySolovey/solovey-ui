@@ -434,6 +434,11 @@ func (p *PaymentService) RefundOrder(ctx context.Context, orderID uint, revoke b
 	if order.Status != StatusPaid {
 		return "", errRefundNotApplicable
 	}
+	// Defensive: a paid order always has Amount > 0 (CreateOrder rejects zero),
+	// so a non-positive amount means a corrupted row — never act on it.
+	if order.Amount <= 0 {
+		return "", errRefundNotApplicable
+	}
 	if order.Provider == string(ProviderStars) {
 		sender, err := newSenderBot()
 		if err != nil {

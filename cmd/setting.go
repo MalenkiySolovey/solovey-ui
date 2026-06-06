@@ -160,7 +160,7 @@ func getPublicIP() string {
 				return
 			}
 			defer resp.Body.Close()
-			body, err := io.ReadAll(resp.Body)
+			body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 			if err != nil {
 				ch <- result{"", err}
 				return

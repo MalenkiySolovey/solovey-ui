@@ -37,6 +37,11 @@ var sensitiveValuePatterns = []struct {
 		replacement: Marker,
 	},
 	{
+		// Strip inline URL credentials: scheme://user:pass@host -> scheme://[REDACTED]@host
+		pattern:     regexp.MustCompile(`([a-zA-Z][a-zA-Z0-9+.\-]*://)[^/?#\s:@]+:[^/?#\s@]+@`),
+		replacement: `${1}` + Marker + `@`,
+	},
+	{
 		pattern:     regexp.MustCompile(`(?i)(\bAuthorization\s*:\s*Bearer\s+)[^\s,;]+`),
 		replacement: `${1}` + Marker,
 	},

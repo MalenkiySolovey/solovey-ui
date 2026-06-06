@@ -40,13 +40,19 @@ default** — existing setups are completely unaffected until you switch it on.
 
 ---
 
-## [Unreleased] - Remove 3x-ui scheduled sync and remote import
+## [1.5.7-beta7] - 2026-06-06 - Independent-review hardening; 3x-ui scheduled sync & remote import removed
 
-The 3x-ui import feature is trimmed to the **one-shot local `.db` upload**
-importer. The recurring **scheduled sync** and the **on-demand remote import**
-(pull from a running 3x-ui over SSH/HTTP) are removed, along with all of their
-machinery: the SSH/HTTP/file import sources, the SSRF-guarded remote client, the
-SSH host-key (TOFU) store, and at-rest encryption of saved sync profiles.
+This beta ships the **removal of the 3x-ui scheduled sync / remote import** plus a
+round of **low-risk fixes and hardening** from a fresh independent code-quality,
+optimization, and security review of the panel. No new features and **no manual
+migration**. The 3x-ui removal changes existing behavior (Breaking changes below);
+none of the review fixes are breaking.
+
+**3x-ui import** is trimmed to the **one-shot local `.db` upload** importer. The
+recurring **scheduled sync** and the **on-demand remote import** (pull from a running
+3x-ui over SSH/HTTP) are removed, along with all of their machinery: the SSH/HTTP/file
+import sources, the SSRF-guarded remote client, the SSH host-key (TOFU) store, and
+at-rest encryption of saved sync profiles.
 
 **💥 Breaking changes**
 - **Scheduled sync is gone.** The "3x-ui Sync" schedule page, sync profiles, and
@@ -61,11 +67,50 @@ SSH host-key (TOFU) store, and at-rest encryption of saved sync profiles.
 - **API tokens:** the `xui_remote` token scope is removed and is no longer valid.
   Re-issue any such token with an appropriate scope.
 
+### 🔒 Security & privacy (review fixes)
+
+- **Login no longer reveals whether a username exists** — the not-found path performs
+  the same bcrypt work as a wrong-password attempt, closing a timing oracle that
+  enabled admin-username enumeration.
+- **URL credentials are masked in logs** — a `user:pass@host` in any logged URL is
+  redacted in free text, not only when the value sits under a secret-named setting key.
+- **Session cookies are Secure by default** in the session store (production login/CSRF
+  flows already set this explicitly).
+- **Refunds reject corrupted orders** — a paid order with a non-positive amount is never
+  processed (defense in depth).
+- **IP-limit failures are observable** — a database error during the per-client IP-limit
+  check still fails open but now logs the event (throttled) instead of silently
+  disabling enforcement.
+
+### 🐛 Reliability & fixes (review fixes)
+
+- **Correct traffic chart** — the per-client statistics graph summed each time bucket
+  with a no-op reducer and displayed only the first sample instead of the total; it now
+  sums correctly.
+- **Safer 1.3 migration** — the anytls / domain-strategy migration runs inside a
+  transaction and checks every write (it previously ignored save errors and carried a
+  dead filter clause that loaded every row).
+- **IDN panel domains work** — a Unicode panel domain (e.g. `панель.рф`) now matches the
+  punycode `Host` header browsers send instead of being rejected with `403`.
+- **Bounded public-IP probe** — the `s-ui uri` public-IP lookup caps the response body
+  (1 MiB), matching every other outbound reader.
+- **No drawer thrash** — the default layout's `isMobile` is a pure computed again; the
+  drawer's default open state follows the breakpoint through a watcher.
+- **Clearer core-start log** — a sing-box core that fails to start is logged explicitly;
+  the panel intentionally stays up so the config can be fixed from the UI.
+
+### ⚡ Performance & cleanup (review fixes)
+
+- **Indexed order history** — `payment_orders.telegram_user_id` is now indexed, so a
+  user's order / refund history no longer scans the whole table.
+- **Lighter frontend install** — removed three unused dependencies (`core-js`,
+  `roboto-fontface`, `material-design-icons-iconfont`).
+
 **✅ Kept**
 - One-shot local **`.db` upload** import — the UI wizard, the API, and
   `import-xui --src` — including dry-run, conflict strategy, plan/apply, and rollback.
 
-No manual migration is required; the deprecated tables are dropped on startup.
+No manual migration is required; the deprecated 3x-ui tables are dropped on startup.
 
 ## [1.5.7-beta6-hotfix1] - 2026-06-05 - Fix beta6 panel black screen (frontend build)
 

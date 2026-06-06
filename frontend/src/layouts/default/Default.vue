@@ -7,7 +7,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import DefaultBar from './AppBar.vue'
 import Drawer from './Drawer.vue'
 import DefaultView from './View.vue'
@@ -20,10 +20,11 @@ const toggleDrawer = () => {
   displayDrawer.value = !displayDrawer.value
 }
 
-const isMobile = computed( ():boolean =>{
-  displayDrawer.value = !smAndDown.value
-  return smAndDown.value
-})
+// isMobile is a pure derivation of the breakpoint. The drawer's default
+// open/closed state follows the breakpoint via a watcher (a computed getter must
+// not mutate state — doing so caused drawer thrash on every resize/re-render).
+const isMobile = computed( ():boolean => smAndDown.value)
+watch(smAndDown, (value) => { displayDrawer.value = !value }, { immediate: true })
 </script>
 
 <style>

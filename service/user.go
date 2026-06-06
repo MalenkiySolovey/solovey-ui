@@ -109,6 +109,9 @@ func (s *UserService) CheckUser(username string, password string, remoteIP strin
 		First(user).
 		Error
 	if database.IsNotFound(err) {
+		// Equalize timing with the wrong-password path so a missing username is
+		// not distinguishable by response latency (user enumeration).
+		common.EqualizeLoginTiming(password)
 		return nil, false
 	} else if err != nil {
 		logger.Warning("check user err:", err, " IP: ", remoteIP)

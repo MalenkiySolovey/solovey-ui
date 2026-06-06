@@ -114,6 +114,29 @@ func TestRefundOrderDoubleRefundIsNotApplicable(t *testing.T) {
 	}
 }
 
+// TestRefundOrderRejectsNonPositiveAmount pins H-14: a paid order with a
+// non-positive amount is a corrupted row; the refund path must refuse it
+// (defense in depth, since CreateOrder rejects zero-priced orders up front).
+func TestRefundOrderRejectsNonPositiveAmount(t *testing.T) {
+	db := openTestDB(t)
+	if err := EnsureSchema(db); err != nil {
+		t.Fatalf("EnsureSchema: %v", err)
+	}
+	order := PaymentOrder{ClientId: 1, TariffId: 1, Provider: "yookassa", Amount: 0, Currency: "RUB", Status: StatusPaid, TelegramUserId: 7, IdempotencyKey: "zero"}
+	db.Create(&order)
+
+	ps := NewPaymentService()
+	status, err := ps.RefundOrder(context.Background(), order.Id, true)
+	if !errors.Is(err, errRefundNotApplicable) {
+		t.Fatalf("RefundOrder on zero-amount = (%q,%v), want errRefundNotApplicable", status, err)
+	}
+	var o PaymentOrder
+	db.Where("id = ?", order.Id).First(&o)
+	if o.Status != StatusPaid {
+		t.Errorf("corrupted order must be untouched, got %s", o.Status)
+	}
+}
+
 // TestRefundOrderStarsRequiresBotToken asserts the Stars-refund branch refuses
 // to mark an order refunded when the bot is not configured (newSenderBot fails),
 // so the money path is never skipped silently. The order stays paid.

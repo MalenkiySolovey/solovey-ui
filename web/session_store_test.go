@@ -14,6 +14,24 @@ import (
 	"gorm.io/gorm"
 )
 
+// TestNewSessionStoreDefaultsToSecureCookie pins H-2: the store's default cookie
+// options are Secure (and HttpOnly) so any future session-creating path that
+// forgets to call Options() still issues a hardened cookie.
+func TestNewSessionStoreDefaultsToSecureCookie(t *testing.T) {
+	db := initSQLiteSessionTestDB(t)
+	store, err := NewSQLiteSessionStore(db, securecookie.GenerateRandomKey(32))
+	if err != nil {
+		t.Fatalf("NewSQLiteSessionStore: %v", err)
+	}
+	opts := store.currentOptions()
+	if !opts.Secure {
+		t.Fatal("default session cookie options must be Secure")
+	}
+	if !opts.HttpOnly {
+		t.Fatal("default session cookie options must be HttpOnly")
+	}
+}
+
 func TestSQLiteSessionStorePersistsServerSide(t *testing.T) {
 	db := initSQLiteSessionTestDB(t)
 	router := newSQLiteSessionTestRouter(t, db)

@@ -149,9 +149,9 @@ export default {
           let upSum:number
           let downSum:number
           const upTraffics = obj.filter(o => o.direction && o.dateTime*1000 < steps[i] && o.dateTime*1000 > steps[i-1]).map((o:any) => o.traffic)
-          upSum = upTraffics.length>0 ? upTraffics.reduce(u => u) : null
+          upSum = upTraffics.length>0 ? upTraffics.reduce((acc:number, v:number) => acc + v, 0) : null
           const downTraffics = obj.filter(o => !o.direction && o.dateTime*1000 < steps[i] && o.dateTime*1000 > steps[i-1]).map((o:any) => o.traffic)
-          downSum = downTraffics.length>0 ? downTraffics.reduce(d => d) : null
+          downSum = downTraffics.length>0 ? downTraffics.reduce((acc:number, v:number) => acc + v, 0) : null
           uplinkData.push(upSum)
           downlinkData.push(downSum)
         }

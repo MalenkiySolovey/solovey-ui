@@ -11,6 +11,7 @@ import (
 
 	"github.com/deposist/s-ui-x/database"
 	"github.com/deposist/s-ui-x/database/model"
+	"github.com/deposist/s-ui-x/logger"
 	"github.com/deposist/s-ui-x/realtime"
 	"github.com/deposist/s-ui-x/util/common"
 	"gorm.io/gorm"
@@ -328,6 +329,24 @@ func cachedClient(clientName string, now time.Time) (allowCacheEntry, bool) {
 	return allowCacheEntry{}, false
 }
 
+// loadErrLog throttles fail-open DB-error logging so a database outage cannot
+// flood the log: ip-limit checks fail open (allow) on a DB error, and without a
+// throttle every refresh during the outage would emit a line.
+var loadErrLog = struct {
+	sync.Mutex
+	last time.Time
+}{}
+
+func logLoadCacheError(context string, err error) {
+	loadErrLog.Lock()
+	defer loadErrLog.Unlock()
+	if !loadErrLog.last.IsZero() && time.Since(loadErrLog.last) < 30*time.Second {
+		return
+	}
+	loadErrLog.last = time.Now()
+	logger.Warning("ipmonitor: ip-limit ", context, " lookup failed; failing open (allowing): ", err)
+}
+
 func loadCacheEntry(clientName string, now time.Time) (allowCacheEntry, bool) {
 	db := database.GetDB()
 	if db == nil {
@@ -335,6 +354,9 @@ func loadCacheEntry(clientName string, now time.Time) (allowCacheEntry, bool) {
 	}
 	var client model.Client
 	if err := db.Model(model.Client{}).Select("enable, limit_ip, ip_limit_mode").Where("name = ?", clientName).First(&client).Error; err != nil {
+		if !database.IsNotFound(err) {
+			logLoadCacheError("client", err)
+		}
 		return allowCacheEntry{}, false
 	}
 	if !client.Enable {
@@ -348,6 +370,7 @@ func loadCacheEntry(clientName string, now time.Time) (allowCacheEntry, bool) {
 	}
 	rows := make([]model.ClientIP, 0)
 	if err := db.Model(model.ClientIP{}).Select("ip, ip_hash").Where("client_name = ?", clientName).Find(&rows).Error; err != nil {
+		logLoadCacheError("client_ips", err)
 		return allowCacheEntry{}, false
 	}
 	for _, row := range rows {

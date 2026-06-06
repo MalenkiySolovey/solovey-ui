@@ -58,6 +58,25 @@ func TestEnsureSchemaIdempotent(t *testing.T) {
 	}
 }
 
+// TestPaymentOrdersTelegramIndex pins O-1: order history is queried by
+// telegram_user_id (OrdersForTgUser / RefundableOrdersForTgUser), so the column
+// must be indexed to avoid a full-table scan.
+func TestPaymentOrdersTelegramIndex(t *testing.T) {
+	db := openTestDB(t)
+	if err := EnsureSchema(db); err != nil {
+		t.Fatalf("EnsureSchema: %v", err)
+	}
+	var count int64
+	if err := db.Raw(
+		"SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_payment_orders_telegram'",
+	).Scan(&count).Error; err != nil {
+		t.Fatalf("query index: %v", err)
+	}
+	if count != 1 {
+		t.Fatalf("idx_payment_orders_telegram missing (count=%d)", count)
+	}
+}
+
 func TestBindingUniqueness(t *testing.T) {
 	db := openTestDB(t)
 	if err := EnsureSchema(db); err != nil {

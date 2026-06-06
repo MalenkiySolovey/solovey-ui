@@ -97,20 +97,28 @@ func migrate_dns(db *gorm.DB) error {
 
 func remove_outbound_strategy(db *gorm.DB) error {
 	var outbounds []model.Outbound
-	err := db.Find(&outbounds).Where("json_extract(options, '$.domain_strategy') IS NOT NULL").Error
+	err := db.Where("json_extract(options, '$.domain_strategy') IS NOT NULL").Find(&outbounds).Error
 	if err != nil {
 		return err
 	}
-	for _, outbound := range outbounds {
-		var restFields map[string]json.RawMessage
-		if err := json.Unmarshal(outbound.Options, &restFields); err != nil {
-			return err
+	return db.Transaction(func(tx *gorm.DB) error {
+		for i := range outbounds {
+			var restFields map[string]json.RawMessage
+			if err := json.Unmarshal(outbounds[i].Options, &restFields); err != nil {
+				return err
+			}
+			delete(restFields, "domain_strategy")
+			options, err := json.MarshalIndent(restFields, "", "  ")
+			if err != nil {
+				return err
+			}
+			outbounds[i].Options = options
+			if err := tx.Save(&outbounds[i]).Error; err != nil {
+				return err
+			}
 		}
-		delete(restFields, "domain_strategy")
-		outbound.Options, _ = json.MarshalIndent(restFields, "", "  ")
-		db.Save(&outbound)
-	}
-	return nil
+		return nil
+	})
 }
 
 func anytls_user_config(db *gorm.DB) error {
@@ -119,23 +127,27 @@ func anytls_user_config(db *gorm.DB) error {
 	if err != nil {
 		return err
 	}
-	for index, client := range clients {
-		var configs map[string]json.RawMessage
-		if err := json.Unmarshal(client.Config, &configs); err != nil {
-			return err
+	return db.Transaction(func(tx *gorm.DB) error {
+		for index := range clients {
+			var configs map[string]json.RawMessage
+			if err := json.Unmarshal(clients[index].Config, &configs); err != nil {
+				return err
+			}
+			if configs["anytls"] != nil {
+				continue
+			}
+			configs["anytls"] = configs["trojan"]
+			configJson, err := json.MarshalIndent(configs, "", "  ")
+			if err != nil {
+				return err
+			}
+			clients[index].Config = configJson
+			if err := tx.Save(&clients[index]).Error; err != nil {
+				return err
+			}
 		}
-		if configs["anytls"] != nil {
-			continue
-		}
-		configs["anytls"] = configs["trojan"]
-		configJson, err := json.MarshalIndent(configs, "", "  ")
-		if err != nil {
-			return err
-		}
-		clients[index].Config = configJson
-		db.Save(&clients[index])
-	}
-	return nil
+		return nil
+	})
 }
 
 func to1_3(db *gorm.DB) error {

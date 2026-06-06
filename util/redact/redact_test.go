@@ -152,3 +152,21 @@ func TestValueRedactsExactOTPKeys(t *testing.T) {
 		t.Fatalf("non-exact otp/totp keys were redacted: %#v", redacted)
 	}
 }
+
+// TestStringRedactsURLUserinfo pins H-10: inline credentials in a URL that
+// reaches a free-text log line (not as a sensitive-keyed value) are masked,
+// keeping scheme and host so the message stays useful.
+func TestStringRedactsURLUserinfo(t *testing.T) {
+	tests := map[string]string{
+		"dial socks5://user:pass@10.0.0.1:1080 failed": "dial socks5://" + Marker + "@10.0.0.1:1080 failed",
+		"http://admin:s3cr3t@proxy.local:3128/path":    "http://" + Marker + "@proxy.local:3128/path",
+		"https://plain.example.com:8443/no-creds":      "https://plain.example.com:8443/no-creds",
+	}
+	for input, want := range tests {
+		t.Run(input, func(t *testing.T) {
+			if got := String(input); got != want {
+				t.Fatalf("unexpected redaction: %q, want %q", got, want)
+			}
+		})
+	}
+}

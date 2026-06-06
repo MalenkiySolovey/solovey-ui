@@ -47,6 +47,10 @@ func NewSQLiteSessionStore(db *gorm.DB, keyPairs ...[]byte) (*SQLiteSessionStore
 			MaxAge:   86400 * 30,
 			SameSite: http.SameSiteLaxMode,
 			HttpOnly: true,
+			// Secure-by-default so any future code path that creates a session
+			// without calling Options() still gets a Secure cookie. Production
+			// login/CSRF flows override this via resolveCookieSecure().
+			Secure: true,
 		},
 		now: time.Now,
 	}

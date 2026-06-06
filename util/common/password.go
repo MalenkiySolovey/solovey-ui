@@ -9,6 +9,19 @@ import (
 
 const passwordHashPrefix = "bcrypt:"
 
+// dummyBcryptHash is a valid bcrypt hash at bcrypt.DefaultCost. Its plaintext is
+// irrelevant — it exists only so the login "user not found" path can perform the
+// same bcrypt work as the "wrong password" path, defeating username enumeration
+// via a timing side-channel.
+const dummyBcryptHash = "$2a$10$N9qo8uLOickgx2ZMRZoMyeIjZAgcfl7p92ldGxad68LJZdL17lhWy"
+
+// EqualizeLoginTiming performs a throwaway bcrypt comparison so that an
+// unknown-username login costs roughly the same as a known-username/wrong-password
+// login. The result is intentionally discarded; call it on the not-found path.
+func EqualizeLoginTiming(password string) {
+	_ = bcrypt.CompareHashAndPassword([]byte(dummyBcryptHash), []byte(password))
+}
+
 func HashPassword(password string) (string, error) {
 	hash, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	if err != nil {
