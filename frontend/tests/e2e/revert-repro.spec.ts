@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import fs from 'node:fs'
 import path from 'node:path'
+import { readServerState } from './helpers'
 
 // REGRESSION GUARD for the "unsaved edits revert before save" fix.
 //
@@ -10,21 +11,30 @@ import path from 'node:path'
 // now SURVIVES a real server-side config change, while that change still reaches the store, and
 // that Save still works afterwards.
 
-const BASE = process.env.SUI_E2E_BASE_URL ?? 'http://127.0.0.1:3000/app/'
-const USER = process.env.SUI_E2E_USERNAME ?? 'admin'
-const PASS = process.env.SUI_E2E_PASSWORD ?? ''
 const OUT = path.join(process.cwd(), '..', 'tests', 'baseline', 'phase6', 'revert-repro')
 const xrw = { 'X-Requested-With': 'XMLHttpRequest' }
 
+// Credentials come from run-server.js's generated state.json (the per-run admin password), with a
+// fallback to SUI_E2E_* env vars for manual runs — the same source the shared helpers.ts login()
+// uses. The password is generated at backend startup, so it can never be hard-set in CI env.
+const credentials = () => {
+  const state = readServerState()
+  if (!state.password) {
+    throw new Error('E2E password unavailable; expected run-server.js state.json or SUI_E2E_PASSWORD')
+  }
+  return state
+}
+
 const login = async (page: Page) => {
+  const { username, password } = credentials()
   await page.addInitScript(() => {
     window.localStorage.setItem('locale', 'en')
     window.localStorage.setItem('sui:ui:mode', 'classic')
   })
   await page.goto('login', { waitUntil: 'domcontentloaded' })
   const inputs = page.locator('input')
-  await inputs.nth(0).fill(USER)
-  await inputs.nth(1).fill(PASS)
+  await inputs.nth(0).fill(username)
+  await inputs.nth(1).fill(password)
   await page.locator('button[type="submit"]').click()
   await expect.poll(async () => {
     const r = await page.request.get('api/settings')
@@ -35,7 +45,7 @@ const login = async (page: Page) => {
 
 test('unsaved Basics edit SURVIVES a background server-side config change (fix regression)', async ({ page, browser }) => {
   test.setTimeout(60_000)
-  if (!PASS) throw new Error('SUI_E2E_PASSWORD must be set')
+  const { baseURL, username, password } = credentials()
   fs.mkdirSync(OUT, { recursive: true })
   const summary: Record<string, unknown> = {}
 
@@ -53,9 +63,9 @@ test('unsaved Basics edit SURVIVES a background server-side config change (fix r
 
   // A second admin session changes the config on the server (the trigger that used to revert).
   const serverValue = `SERVER-CHANGED-${Date.now()}`
-  const ctxB = await browser.newContext({ baseURL: BASE })
+  const ctxB = await browser.newContext({ baseURL })
   const req = ctxB.request
-  expect((await req.post('api/login', { form: { user: USER, pass: PASS }, headers: xrw })).ok()).toBeTruthy()
+  expect((await req.post('api/login', { form: { user: username, pass: password }, headers: xrw })).ok()).toBeTruthy()
   const token = (await (await req.get('api/csrf', { headers: xrw })).json())?.obj?.token
   const cfg = (await (await req.get('api/load', { headers: xrw })).json())?.obj?.config
   cfg.log = cfg.log ?? {}
@@ -95,7 +105,6 @@ test('unsaved Basics edit SURVIVES a background server-side config change (fix r
 
 test('Basics, DNS and Rules render without errors after the local-clone refactor', async ({ page }) => {
   test.setTimeout(45_000)
-  if (!PASS) throw new Error('SUI_E2E_PASSWORD must be set')
   const errors: string[] = []
   page.on('pageerror', (e) => errors.push(String(e)))
   await login(page)
