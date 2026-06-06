@@ -5,6 +5,31 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.7-beta8] - 2026-06-07 - Internal reliability and audit-tooling hardening
+
+Internal reliability and audit hardening. There are no user-facing feature
+changes, breaking changes, manual migrations, or configuration changes.
+
+### Reliability
+
+- Synchronized publication and access to the global GORM database handle,
+  eliminating a data race when the handle is initialized or replaced.
+- Stabilized SQLite test teardown on Windows across database, import-xui,
+  cron-job, and IP-monitor tests by checkpointing WAL files, closing database
+  handles, retrying temporary-directory cleanup, and isolating asynchronous
+  audit-writer activity during database resets.
+
+### Security and quality assurance
+
+- Limited the `gosec` audit target to project Go sources by excluding local Go
+  scratch caches and `frontend/node_modules`.
+- Revalidated the full backend and frontend quality gates: Go tests (including
+  race detection), build, vet, static analysis, linters, `gosec`,
+  `govulncheck`, frontend lint, 88 frontend tests, production build, and
+  dependency audit all pass with no reported security findings.
+
+Full release notes: [`docs/releases/v1.5.7-beta8.md`](docs/releases/v1.5.7-beta8.md).
+
 ## What's New in v1.5.7 (Beta) — customer-friendly summary
 
 A reader-friendly roundup of everything added since the last stable release,

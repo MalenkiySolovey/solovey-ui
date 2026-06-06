@@ -109,7 +109,7 @@ func initIPMonitorPerfDB(tb testing.TB) {
 	ResetCaches()
 	realtime.CloseAll("phase5_reset")
 	closeIPMonitorTestDB(database.GetDB())
-	dir := tb.TempDir()
+	dir := makeIPMonitorTempDir(tb, "s-ui-ipmonitor-perf-")
 	tb.Setenv("SUI_DB_FOLDER", dir)
 	if err := database.InitDB(filepath.Join(dir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {

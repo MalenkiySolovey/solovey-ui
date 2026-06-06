@@ -343,7 +343,7 @@ func TestMapXrayRouting_DNSHijack(t *testing.T) {
 // routing import no longer silently drops proxy outbounds: a warning-only plan
 // item is surfaced so the operator knows to enable routing to migrate them.
 func TestPlanRoutingDisabledNotice_WarnsAboutOutbounds(t *testing.T) {
-	dir := t.TempDir()
+	dir := makeImportXUITempDir(t)
 	srcPath := filepath.Join(dir, "x-ui.db")
 	buildCompatSource(t, forkVariant, srcPath)
 

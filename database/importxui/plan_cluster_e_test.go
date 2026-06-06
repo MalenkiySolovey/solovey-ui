@@ -163,7 +163,7 @@ func TestIssue2NewPasswordClearsForceResetAndReturnsGeneratedAdmin(t *testing.T)
 func setupClusterEImportDB(t *testing.T, users []clusterEXUIUser) string {
 	t.Helper()
 	closeMainDBForImportTest(t)
-	dir := t.TempDir()
+	dir := makeImportXUITempDir(t)
 	t.Setenv("SUI_DB_FOLDER", dir)
 	dst := filepath.Join(dir, "s-ui.db")
 	if err := database.InitDB(dst); err != nil {

@@ -12,7 +12,7 @@ import (
 // s-ui-pre-xui-import-*.db files in the db directory. Pruning must keep only
 // the newest N and never touch unrelated files.
 func TestPrunePreImportBackups_KeepsNewest(t *testing.T) {
-	dir := t.TempDir()
+	dir := makeImportXUITempDir(t)
 	const total = 15
 	for i := 1; i <= total; i++ {
 		name := filepath.Join(dir, fmt.Sprintf("s-ui-pre-xui-import-%010d.db", 1700000000+i))
@@ -51,7 +51,7 @@ func TestPrunePreImportBackups_KeepsNewest(t *testing.T) {
 // TestPrunePreImportBackups_NoopUnderLimit verifies nothing is deleted when the
 // count is at or below the retention limit.
 func TestPrunePreImportBackups_NoopUnderLimit(t *testing.T) {
-	dir := t.TempDir()
+	dir := makeImportXUITempDir(t)
 	for i := 1; i <= 3; i++ {
 		name := filepath.Join(dir, fmt.Sprintf("s-ui-pre-xui-import-%010d.db", 1700000000+i))
 		if err := os.WriteFile(name, []byte("x"), 0o600); err != nil {

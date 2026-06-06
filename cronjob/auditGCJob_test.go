@@ -1,6 +1,7 @@
 package cronjob
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,10 +15,14 @@ import (
 
 func initCronJobTestDB(t *testing.T) {
 	t.Helper()
-	tempDir := t.TempDir()
+	tempDir, err := os.MkdirTemp("", "s-ui-cronjob-test-")
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("SUI_DB_FOLDER", tempDir)
 	closeCronJobDB(database.GetDB())
 	if err := database.InitDB(filepath.Join(tempDir, "s-ui.db")); err != nil {
+		removeCronJobTempDir(t, tempDir)
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
@@ -27,6 +32,7 @@ func initCronJobTestDB(t *testing.T) {
 	t.Cleanup(func() {
 		closeCronJobDB(testDB)
 		ipmonitor.InvalidateAllCache()
+		removeCronJobTempDir(t, tempDir)
 	})
 }
 
@@ -34,9 +40,23 @@ func closeCronJobDB(db *gorm.DB) {
 	if db == nil {
 		return
 	}
+	_ = db.Exec("PRAGMA wal_checkpoint(TRUNCATE)").Error
 	if sqlDB, err := db.DB(); err == nil {
 		_ = sqlDB.Close()
 	}
+}
+
+func removeCronJobTempDir(t *testing.T, dir string) {
+	t.Helper()
+	var err error
+	for i := 0; i < 20; i++ {
+		err = os.RemoveAll(dir)
+		if err == nil || os.IsNotExist(err) {
+			return
+		}
+		time.Sleep(time.Duration(i+1) * 10 * time.Millisecond)
+	}
+	t.Errorf("remove cronjob temp dir %q: %v", dir, err)
 }
 
 func TestCronJobTestDBIsIsolatedBetweenInitializations(t *testing.T) {

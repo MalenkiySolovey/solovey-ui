@@ -74,7 +74,7 @@ func TestEnsureDefaultOutboundSkipsExistingTable(t *testing.T) {
 }
 
 func TestInitDBDropsObsoleteClientIPUniqueIndex(t *testing.T) {
-	dbDir := t.TempDir()
+	dbDir := makeDBTempDir(t, "s-ui-db-test-")
 	dbPath := filepath.Join(dbDir, "s-ui.db")
 	legacy, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
 	if err != nil {
@@ -126,7 +126,7 @@ VALUES('alice', '', 'hash-1', 1, 1), ('alice', '', 'hash-2', 2, 2)
 }
 
 func TestIssue14InitDBReturnsAdaptError(t *testing.T) {
-	dbDir := t.TempDir()
+	dbDir := makeDBTempDir(t, "s-ui-db-test-")
 	dbPath := filepath.Join(dbDir, "s-ui.db")
 	sentinel := errors.New("issue14 adapt failure")
 
@@ -153,7 +153,7 @@ func TestIssue14InitDBReturnsAdaptError(t *testing.T) {
 }
 
 func TestIssue13InitDBCreatesForcePasswordResetDefaultFalse(t *testing.T) {
-	dbDir := t.TempDir()
+	dbDir := makeDBTempDir(t, "s-ui-db-test-")
 	dbPath := filepath.Join(dbDir, "s-ui.db")
 	if err := InitDB(dbPath); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
@@ -282,7 +282,7 @@ func TestIssue15ApplyDBPoolConfig(t *testing.T) {
 func TestIssue15OpenDBUsesConfiguredMaxOpenConns(t *testing.T) {
 	setIssue15DBPoolEnv(t, stringPtr("2"), stringPtr("1"))
 
-	dbDir := t.TempDir()
+	dbDir := makeDBTempDir(t, "s-ui-db-test-")
 	dbPath := filepath.Join(dbDir, "s-ui.db")
 	if err := OpenDB(dbPath); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
@@ -305,7 +305,7 @@ func TestIssue15OpenDBUsesConfiguredMaxOpenConns(t *testing.T) {
 }
 
 func TestOpenDBEnablesSQLiteForeignKeys(t *testing.T) {
-	dbDir := t.TempDir()
+	dbDir := makeDBTempDir(t, "s-ui-db-test-")
 	dbPath := filepath.Join(dbDir, "s-ui.db")
 	if err := OpenDB(dbPath); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
@@ -328,7 +328,7 @@ func TestOpenDBEnablesSQLiteForeignKeys(t *testing.T) {
 }
 
 func TestOpenDBUsesNormalSynchronousMode(t *testing.T) {
-	dbDir := t.TempDir()
+	dbDir := makeDBTempDir(t, "s-ui-db-test-")
 	dbPath := filepath.Join(dbDir, "s-ui.db")
 	if err := OpenDB(dbPath); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
@@ -351,7 +351,7 @@ func TestOpenDBUsesNormalSynchronousMode(t *testing.T) {
 }
 
 func TestInitDBAllowsNoTLSInboundWithForeignKeys(t *testing.T) {
-	dbDir := t.TempDir()
+	dbDir := makeDBTempDir(t, "s-ui-db-test-")
 	dbPath := filepath.Join(dbDir, "s-ui.db")
 	if err := InitDB(dbPath); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {

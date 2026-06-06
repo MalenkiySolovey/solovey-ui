@@ -95,7 +95,7 @@ func initImportXUIPerfMainDB(tb testing.TB) {
 			time.Sleep(25 * time.Millisecond)
 		}
 	}
-	dir := tb.TempDir()
+	dir := makeImportXUITempDir(tb)
 	tb.Setenv("SUI_DB_FOLDER", dir)
 	if err := database.InitDB(filepath.Join(dir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
@@ -115,7 +115,7 @@ func initImportXUIPerfMainDB(tb testing.TB) {
 
 func createImportXUIPerfSource(tb testing.TB, inbounds int) string {
 	tb.Helper()
-	path := filepath.Join(tb.TempDir(), "x-ui.db")
+	path := filepath.Join(makeImportXUITempDir(tb), "x-ui.db")
 	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{Logger: gormlogger.Discard})
 	if err != nil {
 		tb.Fatal(err)

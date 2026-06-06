@@ -205,7 +205,7 @@ func buildCompatSource(t *testing.T, variant schemaVariant, path string) {
 func initCompatDest(t *testing.T) {
 	t.Helper()
 	closeMainDBForImportTest(t)
-	dir := t.TempDir()
+	dir := makeImportXUITempDir(t)
 	t.Setenv("SUI_DB_FOLDER", dir)
 	if err := database.InitDB(filepath.Join(dir, "s-ui.db")); err != nil {
 		t.Fatalf("init destination: %v", err)
@@ -221,7 +221,7 @@ func TestImport_SchemaWithoutAllTime(t *testing.T) {
 	for _, variant := range []schemaVariant{forkVariant, vanillaVariant} {
 		t.Run(variant.name, func(t *testing.T) {
 			initCompatDest(t)
-			dir := t.TempDir()
+			dir := makeImportXUITempDir(t)
 			src := filepath.Join(dir, "x-ui.db")
 			buildCompatSource(t, variant, src)
 

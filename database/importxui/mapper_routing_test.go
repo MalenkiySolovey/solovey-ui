@@ -219,7 +219,7 @@ func TestEnsureDirectOutbound_SkipsWhenSeededInDB(t *testing.T) {
 // outbounds, no endpoints) was marked ActionSkip and its DNS silently dropped.
 func TestApply_DNSOnlyConfigIsNotSkipped(t *testing.T) {
 	initCompatDest(t)
-	dir := t.TempDir()
+	dir := makeImportXUITempDir(t)
 	src := filepath.Join(dir, "x-ui.db")
 	buildCompatSource(t, forkVariant, src)
 
@@ -281,7 +281,7 @@ func TestApply_BlackholeRejectAndDirectResolves(t *testing.T) {
 	if err := database.GetDB().Where("tag = ?", directOutboundTag).Delete(&model.Outbound{}).Error; err != nil {
 		t.Fatal(err)
 	}
-	dir := t.TempDir()
+	dir := makeImportXUITempDir(t)
 	src := filepath.Join(dir, "x-ui.db")
 	buildCompatSource(t, forkVariant, src)
 
@@ -393,7 +393,7 @@ func TestApply_BlackholeRejectAndDirectResolves(t *testing.T) {
 // geosite/geoip become valid remote rule sets with a URL.
 func TestApply_RoutingMergesIntoLiveConfig(t *testing.T) {
 	initCompatDest(t)
-	dir := t.TempDir()
+	dir := makeImportXUITempDir(t)
 	src := filepath.Join(dir, "x-ui.db")
 	buildCompatSource(t, forkVariant, src)
 

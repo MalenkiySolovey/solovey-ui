@@ -4,6 +4,27 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [1.5.7-beta8] - 2026-06-07 - 内部可靠性与审计工具加固
+
+内部可靠性与审计流程加固。没有面向用户的新功能、破坏性变更、手动迁移或配置变更。
+
+### 可靠性
+
+- 对全局 GORM 数据库句柄的发布与读取进行同步，消除了初始化或替换句柄时的数据竞争。
+- 提升 Windows 上数据库、import-xui、cron 任务和 IP monitor 的 SQLite 测试清理
+  稳定性：执行 WAL checkpoint、关闭数据库句柄、在临时锁定时重试删除临时目录，
+  并在重置测试数据库时隔离异步审计写入器。
+
+### 安全与质量保证
+
+- 将 `gosec` 审计范围限制为项目 Go 源码，排除本地 Go 临时缓存和
+  `frontend/node_modules`。
+- 重新通过全部后端与前端质量门禁：Go 测试（包括 race detector）、构建、vet、
+  静态分析、linters、`gosec`、`govulncheck`、前端 lint、88 个前端测试、
+  production 构建和依赖审计；未报告安全问题。
+
+完整发布说明：[`docs/releases/v1.5.7-beta8.md`](docs/releases/v1.5.7-beta8.md)。
+
 ## v1.5.7（Beta）更新内容 — 面向用户的摘要
 
 对上一个稳定版 **v1.5.6** 以来所有新增内容的易读汇总。完整的逐版本说明见

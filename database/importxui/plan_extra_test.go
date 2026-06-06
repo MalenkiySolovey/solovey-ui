@@ -116,7 +116,7 @@ type planExtraInbound struct {
 func initPlanExtraMainDB(t *testing.T) {
 	t.Helper()
 	closeMainDBForImportTest(t)
-	dir := t.TempDir()
+	dir := makeImportXUITempDir(t)
 	t.Setenv("SUI_DB_FOLDER", dir)
 	if err := database.InitDB(filepath.Join(dir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
@@ -131,7 +131,7 @@ func initPlanExtraMainDB(t *testing.T) {
 
 func createPlanExtraSource(t *testing.T, inbounds []planExtraInbound) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "x-ui.db")
+	path := filepath.Join(makeImportXUITempDir(t), "x-ui.db")
 	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)

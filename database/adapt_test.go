@@ -14,7 +14,7 @@ import (
 // adaptation, and asserts that the stored password is now a bcrypt hash that
 // still validates the original plaintext.
 func TestAdaptRehashesLegacyPlaintextPassword(t *testing.T) {
-	dbDir := t.TempDir()
+	dbDir := makeDBTempDir(t, "s-ui-adapt-test-")
 	t.Setenv("SUI_DB_FOLDER", dbDir)
 	if err := InitDB(filepath.Join(dbDir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
@@ -62,7 +62,7 @@ func TestAdaptRehashesLegacyPlaintextPassword(t *testing.T) {
 // TestAdaptBumpsVersionSetting asserts the settings.version row is upgraded
 // to the current build version regardless of whether it was missing or stale.
 func TestAdaptBumpsVersionSetting(t *testing.T) {
-	dbDir := t.TempDir()
+	dbDir := makeDBTempDir(t, "s-ui-adapt-test-")
 	t.Setenv("SUI_DB_FOLDER", dbDir)
 	if err := InitDB(filepath.Join(dbDir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
@@ -90,7 +90,7 @@ func TestAdaptBumpsVersionSetting(t *testing.T) {
 }
 
 func TestAdaptDoesNotDowngradeFutureVersionSetting(t *testing.T) {
-	dbDir := t.TempDir()
+	dbDir := makeDBTempDir(t, "s-ui-adapt-test-")
 	t.Setenv("SUI_DB_FOLDER", dbDir)
 	if err := InitDB(filepath.Join(dbDir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {

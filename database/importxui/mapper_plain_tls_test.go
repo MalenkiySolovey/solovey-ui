@@ -104,7 +104,7 @@ func TestExtractPlainTLS_NonTLSAndReality(t *testing.T) {
 // verifies an s-ui TLS record is created and the inbound references it.
 func TestApply_PlainTLSInlineCert_CreatesTLSRecord(t *testing.T) {
 	initCompatDest(t)
-	dir := t.TempDir()
+	dir := makeImportXUITempDir(t)
 	src := filepath.Join(dir, "x-ui.db")
 	buildCompatSource(t, forkVariant, src)
 
@@ -154,7 +154,7 @@ func TestApply_PlainTLSInlineCert_CreatesTLSRecord(t *testing.T) {
 // path must still resolve a non-zero TlsId for the second inbound).
 func TestApply_PlainTLSInlineCert_DedupSharedCert(t *testing.T) {
 	initCompatDest(t)
-	dir := t.TempDir()
+	dir := makeImportXUITempDir(t)
 	src := filepath.Join(dir, "x-ui.db")
 	buildCompatSource(t, forkVariant, src)
 

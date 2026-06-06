@@ -2,6 +2,7 @@ package ipmonitor
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -38,7 +39,7 @@ func initIPMonitorTestDB(t *testing.T) {
 	ipPrivacySettings.expiresAt = time.Time{}
 	ipPrivacySettings.Unlock()
 	realtime.CloseAll("test_reset")
-	tempDir := t.TempDir()
+	tempDir := makeIPMonitorTempDir(t, "s-ui-ipmonitor-test-")
 	t.Setenv("SUI_DB_FOLDER", tempDir)
 	closeIPMonitorTestDB(database.GetDB())
 	if err := database.InitDB(filepath.Join(tempDir, "s-ui.db")); err != nil {
@@ -58,9 +59,30 @@ func closeIPMonitorTestDB(db *gorm.DB) {
 	if db == nil {
 		return
 	}
+	_ = db.Exec("PRAGMA wal_checkpoint(TRUNCATE)").Error
 	if sqlDB, err := db.DB(); err == nil {
 		_ = sqlDB.Close()
 	}
+}
+
+func makeIPMonitorTempDir(tb testing.TB, prefix string) string {
+	tb.Helper()
+	dir, err := os.MkdirTemp("", prefix)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	tb.Cleanup(func() {
+		var removeErr error
+		for i := 0; i < 20; i++ {
+			removeErr = os.RemoveAll(dir)
+			if removeErr == nil || os.IsNotExist(removeErr) {
+				return
+			}
+			time.Sleep(time.Duration(i+1) * 10 * time.Millisecond)
+		}
+		tb.Errorf("remove ipmonitor temp dir %q: %v", dir, removeErr)
+	})
+	return dir
 }
 
 func TestRecordFlushAndClear(t *testing.T) {

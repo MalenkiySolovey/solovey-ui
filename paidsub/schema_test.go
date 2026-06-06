@@ -1,6 +1,7 @@
 package paidsub
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"strings"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/deposist/s-ui-x/database"
+	"github.com/deposist/s-ui-x/service"
 
 	"gorm.io/gorm"
 )
@@ -16,7 +18,13 @@ var testDBSeq atomic.Int64
 
 func openTestDB(t *testing.T) *gorm.DB {
 	t.Helper()
+	if err := service.StopAuditWriter(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
+	prevAuditSync := service.AuditSyncForTest
+	service.AuditSyncForTest = true
+	t.Cleanup(func() { service.AuditSyncForTest = prevAuditSync })
 	// A uniquely named shared-cache in-memory DB per test isolates each test
 	// without touching disk (avoiding Windows temp-file lock flakiness). The
 	// previous unnamed `:memory:?cache=shared` form was process-global: rows
@@ -35,6 +43,9 @@ func openTestDB(t *testing.T) *gorm.DB {
 	t.Cleanup(func() { _ = os.Remove("initial-admin.txt") })
 	db := database.GetDB()
 	t.Cleanup(func() {
+		if err := service.StopAuditWriter(context.Background()); err != nil {
+			t.Errorf("stop audit writer: %v", err)
+		}
 		if sqlDB, err := db.DB(); err == nil {
 			_ = sqlDB.Close()
 		}

@@ -38,7 +38,7 @@ func TestDialectMHSanaeiDetectsFixture(t *testing.T) {
 }
 
 func TestDialectUnknown(t *testing.T) {
-	dir := t.TempDir()
+	dir := makeImportXUITempDir(t)
 	path := filepath.Join(dir, "unknown.db")
 	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
 	if err != nil {

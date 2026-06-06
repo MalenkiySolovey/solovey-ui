@@ -25,7 +25,7 @@ audit\:cover:
 	$(RUN) -Phase phase0 -Name go-cover -CommandLine "go test ./... -coverprofile tests/baseline/phase0/coverage.out"
 
 audit\:gosec:
-	$(RUN) -Phase phase1 -Name gosec -CommandLine "gosec ./..."
+	$(RUN) -Phase phase1 -Name gosec -CommandLine "gosec -exclude-dir .gotmp -exclude-dir .gocache -exclude-dir frontend/node_modules ./..."
 
 audit\:vuln:
 	$(RUN) -Phase phase1 -Name govulncheck -CommandLine "govulncheck ./..."

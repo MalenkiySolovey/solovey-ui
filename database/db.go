@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/deposist/s-ui-x/config"
@@ -19,7 +20,10 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
-var db *gorm.DB
+var (
+	dbMu sync.RWMutex
+	db   *gorm.DB
+)
 var adaptToCurrentVersion = AdaptToCurrentVersion
 
 const (
@@ -96,12 +100,12 @@ func OpenDB(dbPath string) error {
 		sep = "&"
 	}
 	dsn := dbPath + sep + "_busy_timeout=10000&_journal_mode=WAL&_synchronous=NORMAL&_foreign_keys=on"
-	db, err = gorm.Open(sqlite.Open(dsn), c)
+	openedDB, err := gorm.Open(sqlite.Open(dsn), c)
 	if err != nil {
 		return err
 	}
 
-	sqlDB, err := db.DB()
+	sqlDB, err := openedDB.DB()
 	if err != nil {
 		return err
 	}
@@ -112,8 +116,11 @@ func OpenDB(dbPath string) error {
 	applyDBPoolConfig(sqlDB, resolvedDBPoolConfig())
 
 	if config.IsDebug() {
-		db = db.Debug()
+		openedDB = openedDB.Debug()
 	}
+	dbMu.Lock()
+	db = openedDB
+	dbMu.Unlock()
 	return nil
 }
 
@@ -307,6 +314,8 @@ func ensureIndexes() error {
 }
 
 func GetDB() *gorm.DB {
+	dbMu.RLock()
+	defer dbMu.RUnlock()
 	return db
 }
 

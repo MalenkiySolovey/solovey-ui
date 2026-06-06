@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/deposist/s-ui-x/database/model"
 
@@ -19,15 +20,19 @@ import (
 // truncates the WAL and removes any leftover -wal/-shm sidecars.
 func closeMainDB(t *testing.T) {
 	t.Helper()
-	if db == nil {
+	dbMu.Lock()
+	current := db
+	db = nil
+	dbMu.Unlock()
+	if current == nil {
 		return
 	}
 	dbPath := ""
-	if mig := db.Migrator(); mig != nil {
+	if mig := current.Migrator(); mig != nil {
 		// best-effort: extract the source path from the underlying driver
 	}
-	_ = db.Exec("PRAGMA wal_checkpoint(TRUNCATE)").Error
-	sqlDB, err := db.DB()
+	_ = current.Exec("PRAGMA wal_checkpoint(TRUNCATE)").Error
+	sqlDB, err := current.DB()
 	if err != nil {
 		t.Logf("close main db handle: %v", err)
 		return
@@ -35,11 +40,30 @@ func closeMainDB(t *testing.T) {
 	if err := sqlDB.Close(); err != nil {
 		t.Logf("close main db: %v", err)
 	}
-	db = nil
 
 	// Best-effort sidecar cleanup. We do not have the original DSN handy,
 	// so just nuke common candidates the tests use.
 	_ = dbPath
+}
+
+func makeDBTempDir(t *testing.T, prefix string) string {
+	t.Helper()
+	dir, err := os.MkdirTemp("", prefix)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		var removeErr error
+		for i := 0; i < 20; i++ {
+			removeErr = os.RemoveAll(dir)
+			if removeErr == nil || os.IsNotExist(removeErr) {
+				return
+			}
+			time.Sleep(time.Duration(i+1) * 10 * time.Millisecond)
+		}
+		t.Errorf("remove temp db dir %q: %v", dir, removeErr)
+	})
+	return dir
 }
 
 func TestGetDbIncludesServicesAndTokens(t *testing.T) {

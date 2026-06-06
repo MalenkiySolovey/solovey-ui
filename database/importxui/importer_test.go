@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"testing"
+	"time"
 
 	"github.com/deposist/s-ui-x/database"
 	"github.com/deposist/s-ui-x/database/model"
@@ -211,7 +212,7 @@ func TestImport_Clients_AllTrafficEmailsPresent(t *testing.T) {
 func setupImportTestDB(t *testing.T) (string, string) {
 	t.Helper()
 	closeMainDBForImportTest(t)
-	dir := t.TempDir()
+	dir := makeImportXUITempDir(t)
 	t.Setenv("SUI_DB_FOLDER", dir)
 	src := copyFixture(t, "x-ui.db", filepath.Join(dir, "x-ui.db"))
 	dst := copyFixture(t, "s-ui.db", filepath.Join(dir, "s-ui.db"))
@@ -256,10 +257,31 @@ func copyFixture(t *testing.T, name string, dst string) string {
 func closeMainDBForImportTest(t *testing.T) {
 	t.Helper()
 	if db := database.GetDB(); db != nil {
+		_ = db.Exec("PRAGMA wal_checkpoint(TRUNCATE)").Error
 		if sqlDB, err := db.DB(); err == nil {
 			_ = sqlDB.Close()
 		}
 	}
+}
+
+func makeImportXUITempDir(tb testing.TB) string {
+	tb.Helper()
+	dir, err := os.MkdirTemp("", "s-ui-importxui-test-")
+	if err != nil {
+		tb.Fatal(err)
+	}
+	tb.Cleanup(func() {
+		var removeErr error
+		for i := 0; i < 20; i++ {
+			removeErr = os.RemoveAll(dir)
+			if removeErr == nil || os.IsNotExist(removeErr) {
+				return
+			}
+			time.Sleep(time.Duration(i+1) * 10 * time.Millisecond)
+		}
+		tb.Errorf("remove importxui temp dir %q: %v", dir, removeErr)
+	})
+	return dir
 }
 
 func tableCounts(t *testing.T, tables ...string) map[string]int64 {
