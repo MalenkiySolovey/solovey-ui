@@ -26,11 +26,24 @@
     :actor="changesModal.actor"
     @close="closeChangesModal"
   />
-  <TokenModal 
+  <TokenModal
     v-model="tokenModal.visible"
     :visible="tokenModal.visible"
     @close="closeTokenModal"
   />
+
+  <AdminsNexusList
+    v-if="nexus"
+    :users="users"
+    @add="showAddModal"
+    @changes="showChangesModal"
+    @del="showDeleteModal"
+    @edit="showEditModal"
+    @logout-all="logoutAllAdmins"
+    @token="showTokenModal"
+  />
+
+  <template v-else>
   <v-row>
     <v-col cols="12" justify="center" align="center">
       <v-btn color="primary" prepend-icon="mdi-account-plus" @click="showAddModal()" style="margin: 0 5px;">{{ $t('admin.addAdmin') }}</v-btn>
@@ -99,9 +112,11 @@
       </v-card>
     </v-col>
   </v-row>
+  </template>
 </template>
 
 <script lang="ts" setup>
+import AdminsNexusList from '@/views/admins/AdminsNexusList.vue'
 import AdminModal from '@/layouts/modals/Admin.vue'
 import AdminAddModal from '@/layouts/modals/AdminAdd.vue'
 import AdminDeleteModal from '@/layouts/modals/AdminDelete.vue'
@@ -110,8 +125,12 @@ import TokenModal from '@/layouts/modals/Token.vue'
 import { i18n } from '@/locales'
 import HttpUtils from '@/plugins/httputil'
 import { clearCSRFToken } from '@/store/csrf'
-import { Ref, ref, inject, onMounted } from 'vue'
+import { Ref, computed, ref, inject, onMounted } from 'vue'
 import router from '@/router'
+import { useUiMode } from '@/uiMode/useUiMode'
+
+const { mode } = useUiMode()
+const nexus = computed(() => mode.value === 'nexus')
 
 const loading:Ref = inject('loading')?? ref(false)
 

@@ -37,7 +37,35 @@
     @save="saveImportRulesets"
     @close="closeImportRulesets"
   />
-  <v-row>
+  <page-header
+    v-if="nexus"
+    :search="search"
+    searchable
+    :subtitle="subtitle"
+    :title="$t('pages.rules')"
+    @update:search="search = $event"
+  />
+
+  <page-toolbar v-if="nexus" :searchable="false">
+    <template #actions>
+      <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" @click="showRuleModal(-1)">{{ $t('rule.add') }}</v-btn>
+      <v-btn prepend-icon="lucide:plus" variant="text" @click="showRulesetModal(-1)">{{ $t('ruleset.add') }}</v-btn>
+      <v-menu :close-on-content-click="false" location="bottom center">
+        <template v-slot:activator="{ props }">
+          <v-btn v-bind="props" :aria-label="$t('rule.import.title')" icon="lucide:wrench" variant="text" />
+        </template>
+        <v-list density="compact" nav>
+          <v-list-item link prepend-icon="lucide:list" :title="$t('rule.import.rulesTitle')" @click="showImportRule" />
+          <v-list-item link prepend-icon="lucide:download" :title="$t('rule.import.title')" @click="showImportRulesets" />
+        </v-list>
+      </v-menu>
+      <v-btn variant="tonal" color="warning" @click="saveConfig" :loading="loading" :disabled="stateChange">
+        {{ $t('actions.save') }}
+      </v-btn>
+    </template>
+  </page-toolbar>
+
+  <v-row v-else>
     <v-col cols="12" justify="center" align="center">
       <v-btn color="primary" @click="showRuleModal(-1)" style="margin: 0 5px;">{{ $t('rule.add') }}</v-btn>
       <v-btn color="primary" @click="showRulesetModal(-1)" style="margin: 0 5px;">{{ $t('ruleset.add') }}</v-btn>
@@ -151,7 +179,20 @@
       </v-row>
     </v-col>
   </v-row>
-  <v-row>
+  <template v-if="nexus">
+    <div class="rules-nexus__section">{{ $t('rule.ruleset') }}</div>
+    <nexus-data-table :columns="rulesetColumns" :items="rulesetRows" :row-key="(item) => item._index">
+      <template #col.tag="{ item }"><span class="rules-nexus__tag">{{ item.tag }}</span></template>
+      <template #col.type="{ item }">{{ $t('ruleset.' + item.type) }}</template>
+      <template #col.download_detour="{ item }">{{ item.download_detour ?? '-' }}</template>
+      <template #col.update_interval="{ item }">{{ item.update_interval ?? '-' }}</template>
+      <template #actions="{ item }">
+        <row-actions :actions="rulesetActions()" @action="(key) => handleRulesetAction(key, item)" />
+      </template>
+      <template #empty><empty-state compact icon="lucide:list" :title="$t('ruleset.empty')" /></template>
+    </nexus-data-table>
+  </template>
+  <v-row v-else>
     <v-col class="v-card-subtitle" cols="12">{{ $t('rule.ruleset') }}</v-col>
     <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>rulesets" :key="item.tag">
       <v-card rounded="xl" elevation="5" min-width="200" :title="item.tag">
@@ -185,7 +226,20 @@
       </v-card>
     </v-col>
   </v-row>
-  <v-row>
+  <template v-if="nexus">
+    <div class="rules-nexus__section">{{ $t('pages.rules') }}</div>
+    <nexus-data-table :columns="ruleColumns" :items="ruleRows" :row-key="(item) => item._index" :paginated="false">
+      <template #col._index="{ item }">{{ item._index + 1 }}</template>
+      <template #col.type="{ item }">{{ item.type != undefined ? $t('rule.logical') + ' (' + item.mode + ')' : $t('rule.simple') }}</template>
+      <template #col.outbound="{ item }">{{ item.outbound ?? '-' }}</template>
+      <template #col.invert="{ item }">{{ $t((item.invert ?? false) ? 'yes' : 'no') }}</template>
+      <template #actions="{ item }">
+        <row-actions :actions="ruleActions(item)" @action="(key) => handleRuleAction(key, item)" />
+      </template>
+      <template #empty><empty-state compact icon="lucide:list" :title="$t('rule.empty')" /></template>
+    </nexus-data-table>
+  </template>
+  <v-row v-else>
     <v-col class="v-card-subtitle" cols="12">{{ $t('pages.rules') }}</v-col>
     <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>rules"
         :key="item.id" :draggable="true"
@@ -236,10 +290,25 @@ import { Config } from '@/types/config'
 import { actionKeys, ruleset } from '@/types/rules'
 import { FindDiff } from '@/plugins/utils'
 import { i18n } from '@/locales'
+import type { Column } from '@/components/nexus/data/dataTableColumns'
+import NexusDataTable from '@/components/nexus/data/NexusDataTable.vue'
+import RowActions from '@/components/nexus/data/RowActions.vue'
+import type { RowAction } from '@/components/nexus/data/rowActions'
+import EmptyState from '@/components/nexus/primitives/EmptyState.vue'
+import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
+import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
+import { useConfirm } from '@/components/nexus/primitives/useConfirm'
+import { useUiMode } from '@/uiMode/useUiMode'
+
+const { confirm } = useConfirm()
+const { mode } = useUiMode()
+const nexus = computed(() => mode.value === 'nexus')
+const tt = (key: string) => i18n.global.t(key)
 
 const oldConfig = ref(<any>{})
 const loading = ref(false)
 const actionMenu = ref(false)
+const search = ref('')
 // Edit a LOCAL clone of the store config. A background reload (data.ts setNewData
 // replaces Data().config wholesale, driven by the 10s poll / WS events) must not wipe
 // unsaved edits, so the form binds to this clone instead of the live store object.
@@ -383,6 +452,87 @@ const inboundTags = computed((): string[] => [
   ...Data().endpoints?.filter((e:any) => e.listen_port > 0).map((e:any) => e.tag)
 ])
 
+// ---- Nexus table projections (read-only; actions carry the array index) ----
+// _index keeps the ORIGINAL array index (move/edit/delete operate by index), so
+// filter AFTER mapping. Search matches tag/type/format (rulesets) and
+// action/outbound (rules).
+const matchesSearch = (text: string): boolean => {
+  const q = search.value.trim().toLowerCase()
+  return !q || text.toLowerCase().includes(q)
+}
+
+const rulesetRows = computed(() =>
+  rulesets.value
+    .map((rs: any, i: number) => ({ ...rs, _index: i }))
+    .filter((rs: any) => matchesSearch(`${rs.tag ?? ''} ${rs.type ?? ''} ${rs.format ?? ''}`)))
+
+const ruleRows = computed(() =>
+  rules.value
+    .map((r: any, i: number) => ({
+      ...r,
+      _index: i,
+      _rulesCount: r.rules ? r.rules.length : Object.keys(r).filter((k: string) => !actionKeys.includes(k)).length,
+    }))
+    .filter((r: any) => matchesSearch(`${r.action ?? ''} ${r.outbound ?? ''}`)))
+
+const rulesetColumns: Column<any>[] = [
+  { key: 'tag', labelKey: 'objects.tag', sortable: true },
+  { key: 'type', labelKey: 'type', sortable: true },
+  { key: 'format', labelKey: 'ruleset.format' },
+  { key: 'download_detour', labelKey: 'objects.outbound' },
+  { key: 'update_interval', labelKey: 'actions.update' },
+]
+
+const ruleColumns: Column<any>[] = [
+  { key: '_index', labelKey: '#' },
+  { key: 'type', labelKey: 'type' },
+  { key: 'action', labelKey: 'admin.action' },
+  { key: 'outbound', labelKey: 'objects.outbound' },
+  { key: '_rulesCount', labelKey: 'pages.rules' },
+  { key: 'invert', labelKey: 'rule.invert' },
+]
+
+const subtitle = computed(() =>
+  i18n.global.t('nexus.summary.rules', { rulesets: rulesets.value.length, rules: rules.value.length }))
+
+const rulesetActions = (): RowAction[] => [
+  { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
+  { key: 'del', labelKey: 'actions.del', icon: 'lucide:trash-2', tone: 'error', inline: true },
+]
+
+const ruleActions = (item: any): RowAction[] => [
+  { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, hidden: item._index === 0 },
+  { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, hidden: item._index === rules.value.length - 1 },
+  { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
+  { key: 'del', labelKey: 'actions.del', icon: 'lucide:trash-2', tone: 'error', inline: true },
+]
+
+const handleRulesetAction = async (key: string, item: any) => {
+  if (key === 'edit') { showRulesetModal(item._index); return }
+  if (key === 'del') {
+    const ok = await confirm({ title: `${tt('actions.del')} ${tt('objects.ruleset')}`, message: item.tag, confirmLabel: tt('actions.del'), tone: 'error' })
+    if (ok) delRuleset(item._index)
+  }
+}
+
+const moveRule = (index: number, dir: number) => {
+  const target = index + dir
+  if (target < 0 || target >= rules.value.length) return
+  const arr = rules.value
+  const [moved] = arr.splice(index, 1)
+  arr.splice(target, 0, moved)
+}
+
+const handleRuleAction = async (key: string, item: any) => {
+  if (key === 'edit') { showRuleModal(item._index); return }
+  if (key === 'up') { moveRule(item._index, -1); return }
+  if (key === 'down') { moveRule(item._index, 1); return }
+  if (key === 'del') {
+    const ok = await confirm({ title: `${tt('actions.del')} ${tt('pages.rules')}`, message: String(item._index + 1), confirmLabel: tt('actions.del'), tone: 'error' })
+    if (ok) delRule(item._index)
+  }
+}
+
 let delRuleOverlay = ref(new Array<boolean>)
 let delRulesetOverlay = ref(new Array<boolean>)
 
@@ -467,3 +617,19 @@ function saveImportRulesets(items: any[]) {
   importRulesetsModal.value.visible = false
 }
 </script>
+
+<style scoped>
+.rules-nexus__section {
+  color: var(--nexus-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.4px;
+  margin-block: var(--nexus-gap-4) var(--nexus-gap-2);
+  text-transform: uppercase;
+}
+
+.rules-nexus__tag {
+  color: var(--nexus-text-primary);
+  font-weight: 600;
+}
+</style>

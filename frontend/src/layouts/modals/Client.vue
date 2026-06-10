@@ -1,17 +1,10 @@
 <template>
-  <v-dialog transition="dialog-bottom-transition" width="800">
-    <v-card class="rounded-lg" :loading="loading">
-      <v-card-title>
-        {{ $t('actions.' + title) + " " + $t('objects.client') }}
-      </v-card-title>
-      <v-divider></v-divider>
-      <v-skeleton-loader
-          class="mx-auto border"
-          width="95%"
-          type="card, text, divider, list-item-two-line"
-          v-if="loading"
-        ></v-skeleton-loader>
-      <v-card-text style="padding: 0 16px; overflow-y: scroll;">
+  <form-shell
+    :loading="loading"
+    :title="$t('actions.' + title) + ' ' + $t('objects.client')"
+    @close="closeModal"
+    @save="saveChanges"
+  >
         <v-container style="padding: 0;" :hidden="loading">
           <v-tabs
             v-model="tab"
@@ -223,28 +216,7 @@
             </v-window-item>
           </v-window>
         </v-container>
-      </v-card-text>
-      <v-card-actions>
-        <v-spacer></v-spacer>
-        <v-btn
-          color="primary"
-          variant="outlined"
-          @click="closeModal"
-        >
-          {{ $t('actions.close') }}
-        </v-btn>
-        <v-btn
-          color="primary"
-          variant="tonal"
-          :loading="loading"
-          :disabled="loading"
-          @click="saveChanges"
-        >
-          {{ $t('actions.save') }}
-        </v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+  </form-shell>
 </template>
 
 <script lang="ts">
@@ -253,6 +225,7 @@ import DatePick from '@/components/DateTime.vue'
 import { HumanReadable } from '@/plugins/utils'
 import Data from '@/store/modules/data'
 import { locale } from '@/locales'
+import FormShell from '@/components/nexus/drawers/FormShell.vue'
 
 export default {
   props: ['visible', 'id', 'inboundTags', 'groups'],
@@ -395,7 +368,7 @@ export default {
       }
     },
   },
-  components: { DatePick },
+  components: { FormShell, DatePick },
 }
 
 </script>

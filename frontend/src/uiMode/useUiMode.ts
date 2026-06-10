@@ -15,8 +15,11 @@ const readPersisted = (): UiMode => {
 
 const persisted = ref<UiMode>(readPersisted())
 
+// When the Nexus feature gate is off we force the literal 'classic' rather
+// than DEFAULT_UI_MODE: the default is now 'nexus', so deriving from it would
+// keep Nexus active even when the gate is meant to disable it.
 const effective = computed<UiMode>(() =>
-  isNexusEnabled() ? persisted.value : DEFAULT_UI_MODE,
+  isNexusEnabled() ? persisted.value : 'classic',
 )
 
 const setMode = (next: UiMode): void => {

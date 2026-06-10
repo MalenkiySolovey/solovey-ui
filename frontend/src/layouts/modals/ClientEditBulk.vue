@@ -1,11 +1,11 @@
 <template>
-  <v-dialog transition="dialog-bottom-transition" width="800">
-    <v-card class="rounded-lg">
-      <v-card-title>
-        {{ $t('actions.editbulk') }}
-      </v-card-title>
-      <v-divider></v-divider>
-      <v-card-text style="padding: 0 16px; overflow-y: scroll;">
+  <form-shell
+    :title="$t('actions.editbulk')"
+    :loading="loading"
+    :save-disabled="loading || (selectedClients.model !== 'all' && selectedClients.values.length == 0)"
+    @close="closeModal"
+    @save="saveChanges"
+  >
         <v-container style="padding: 0;">
           <v-card :subtitle="$t('actions.action')" class="mb-4">
             <v-card-text>
@@ -66,32 +66,12 @@
           <!-- Section two: Clients (like init users in Inbound modal) -->
           <Users :clients="clients" :data="selectedClients" />
         </v-container>
-      </v-card-text>
-      <v-card-actions>
-        <v-spacer></v-spacer>
-        <v-btn
-          color="primary"
-          variant="outlined"
-          @click="closeModal"
-        >
-          {{ $t('actions.close') }}
-        </v-btn>
-        <v-btn
-          color="primary"
-          variant="tonal"
-          :loading="loading"
-          :disabled="loading || selectedClients.values.length == 0"
-          @click="saveChanges"
-        >
-          {{ $t('actions.save') }}
-        </v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+  </form-shell>
 </template>
 
 <script lang="ts">
 import Users from '@/components/Users.vue'
+import FormShell from '@/components/nexus/drawers/FormShell.vue'
 import { i18n } from '@/locales'
 import Data from '@/store/modules/data';
 import { Client } from '@/types/clients';
@@ -99,7 +79,7 @@ import { Client } from '@/types/clients';
 export default {
   props: ['visible', 'clients', 'inboundTags'],
   emits: ['close'],
-  components: { Users },
+  components: { Users, FormShell },
   data() {
     return {
       loading: false,

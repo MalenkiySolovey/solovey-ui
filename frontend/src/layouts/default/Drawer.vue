@@ -9,9 +9,11 @@
   >
     <v-list-item
       height="63"
-      prepend-avatar="@/assets/logo.svg"
       title="S-UI"
     >
+      <template v-slot:prepend>
+        <span aria-hidden="true" class="default-drawer__logo">S</span>
+      </template>
       <template v-slot:append v-if="isMobile">
         <v-icon icon="mdi-close" />
       </template>
@@ -69,3 +71,19 @@ const Logout = async () => {
   logout()
 }
 </script>
+
+<style scoped>
+.default-drawer__logo {
+  align-items: center;
+  background: #00d4ff;
+  border-radius: 6px;
+  color: #0a0a0a;
+  display: inline-flex;
+  font-size: 18px;
+  font-weight: 700;
+  height: 32px;
+  justify-content: center;
+  line-height: 1;
+  width: 32px;
+}
+</style>

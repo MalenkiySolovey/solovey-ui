@@ -1,27 +1,73 @@
+// Count keys map a menu entry to the reactive array on the Data() store whose
+// length drives its sidebar badge. Only store-backed collections are listed;
+// entries without a key simply render no badge.
+export type NexusCountKey =
+  | 'inbounds'
+  | 'clients'
+  | 'outbounds'
+  | 'endpoints'
+  | 'services'
+  | 'tlsConfigs'
+
 export interface NexusMenuItem {
   title: string
   icon: string
   path: string
   singBoxSettings?: boolean
+  countKey?: NexusCountKey
 }
 
-export const nexusMenu: NexusMenuItem[] = [
-  { title: 'pages.home', icon: 'mdi-home', path: '/' },
-  { title: 'pages.inbounds', icon: 'mdi-cloud-download', path: '/inbounds', singBoxSettings: true },
-  { title: 'pages.clients', icon: 'mdi-account-multiple', path: '/clients' },
-  { title: 'pages.outbounds', icon: 'mdi-cloud-upload', path: '/outbounds', singBoxSettings: true },
-  { title: 'pages.endpoints', icon: 'mdi-cloud-tags', path: '/endpoints', singBoxSettings: true },
-  { title: 'pages.services', icon: 'mdi-server', path: '/services', singBoxSettings: true },
-  { title: 'pages.tls', icon: 'mdi-certificate', path: '/tls', singBoxSettings: true },
-  { title: 'pages.basics', icon: 'mdi-application-cog', path: '/basics', singBoxSettings: true },
-  { title: 'pages.rules', icon: 'mdi-routes', path: '/rules', singBoxSettings: true },
-  { title: 'pages.dns', icon: 'mdi-dns', path: '/dns', singBoxSettings: true },
-  { title: 'pages.admins', icon: 'mdi-account-tie', path: '/admins' },
-  { title: 'pages.telegram', icon: 'mdi-send', path: '/telegram' },
-  { title: 'pages.paidSub', icon: 'mdi-cash-multiple', path: '/paid-subscriptions' },
-  { title: 'pages.audit', icon: 'mdi-shield-search', path: '/audit' },
-  { title: 'pages.settings', icon: 'mdi-cog', path: '/settings' },
+export interface NexusMenuGroup {
+  // No labelKey -> the group renders without a subheader (e.g. Dashboard).
+  labelKey?: string
+  items: NexusMenuItem[]
+}
+
+export const nexusMenuGroups: NexusMenuGroup[] = [
+  {
+    items: [
+      { title: 'pages.home', icon: 'lucide:layout-grid', path: '/' },
+    ],
+  },
+  {
+    labelKey: 'nav.groups.proxy',
+    items: [
+      { title: 'pages.inbounds', icon: 'lucide:zap', path: '/inbounds', singBoxSettings: true, countKey: 'inbounds' },
+      { title: 'pages.clients', icon: 'lucide:users', path: '/clients', countKey: 'clients' },
+      { title: 'pages.outbounds', icon: 'lucide:arrow-up-right', path: '/outbounds', singBoxSettings: true, countKey: 'outbounds' },
+      { title: 'pages.endpoints', icon: 'lucide:globe', path: '/endpoints', singBoxSettings: true, countKey: 'endpoints' },
+      { title: 'pages.services', icon: 'lucide:server', path: '/services', singBoxSettings: true, countKey: 'services' },
+    ],
+  },
+  {
+    labelKey: 'nav.groups.network',
+    items: [
+      { title: 'pages.tls', icon: 'lucide:lock', path: '/tls', singBoxSettings: true, countKey: 'tlsConfigs' },
+      { title: 'pages.rules', icon: 'lucide:list', path: '/rules', singBoxSettings: true },
+      { title: 'pages.dns', icon: 'lucide:network', path: '/dns', singBoxSettings: true },
+    ],
+  },
+  {
+    labelKey: 'nav.groups.integrations',
+    items: [
+      { title: 'pages.telegram', icon: 'lucide:send', path: '/telegram' },
+      { title: 'pages.paidSub', icon: 'lucide:credit-card', path: '/paid-subscriptions' },
+    ],
+  },
+  {
+    labelKey: 'nav.groups.system',
+    items: [
+      { title: 'pages.admins', icon: 'lucide:user-cog', path: '/admins' },
+      { title: 'pages.audit', icon: 'lucide:file-text', path: '/audit' },
+      { title: 'pages.basics', icon: 'lucide:sliders-horizontal', path: '/basics', singBoxSettings: true },
+      { title: 'pages.settings', icon: 'lucide:settings', path: '/settings' },
+    ],
+  },
 ]
+
+// Flat projections preserved so existing consumers (and route-parity tests)
+// keep working; they are derived, never maintained by hand.
+export const nexusMenu: NexusMenuItem[] = nexusMenuGroups.flatMap(group => group.items)
 
 export const nexusSingBoxSettingsPaths = nexusMenu
   .filter(item => item.singBoxSettings)

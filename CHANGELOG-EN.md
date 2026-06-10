@@ -5,6 +5,52 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.7-beta9] - 2026-06-10 - Nexus interface aligned to the reference design
+
+Frontend-only release. The default Nexus interface now matches the dark
+"technical" reference design. There are no backend, breaking, manual-migration,
+or configuration changes.
+
+### New look
+
+- **Refreshed Nexus interface.** The default interface now matches the dark
+  "technical" reference design end to end: the exact colour palette (surfaces,
+  `#2a2a2a` borders, the cyan accent, status and text colours, and a cyan primary
+  button), a single system font, and monospace IP / port / UUID cells.
+
+### Improvements
+
+- **Clearer status at a glance.** Online / Offline / Disabled now render as
+  coloured status badges and TLS shows On / Off pills; the status column is
+  labelled "Status".
+- **Page header in the top bar.** Each page shows its title, a live count summary
+  (for example "8 inbounds • 3 online") and the search box in the top bar, with
+  the global controls on the right.
+- **Compact sidebar and refreshed icons.** A tighter, flat sidebar with a cyan
+  "S" brand mark and refreshed icons throughout. The first menu entry is now
+  "Dashboard".
+
+### Fixes
+
+- Fixed the bulk client **Add** and **Edit** dialogs where dropdown menus could
+  stack open and not close; they now open as proper drawers.
+- Fixed the bulk client **Edit** "Save" button staying disabled when "All
+  clients" was selected.
+- Fixed the untranslated "Refresh" and "Cancel" buttons on the Paid
+  Subscriptions screen.
+
+### Localization
+
+- Localized the Paid Subscriptions screen (English and Russian; other locales
+  fall back to English) and page subtitles with natural per-language phrasing.
+
+This frontend-only release was validated with lint, 128 unit tests (including new
+Lucide icon-set and English/Russian key-parity tests), the production build, the
+Nexus end-to-end specs, and a multi-agent regression review of the diff (no
+regressions).
+
+Full release notes: [`docs/releases/v1.5.7-beta9.md`](docs/releases/v1.5.7-beta9.md).
+
 ## [1.5.7-beta8] - 2026-06-07 - Internal reliability and audit-tooling hardening
 
 Internal reliability and audit hardening. There are no user-facing feature

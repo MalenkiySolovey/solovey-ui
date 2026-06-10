@@ -1,4 +1,31 @@
 export default {
+  nav: {
+    groups: {
+      proxy: "Proxy",
+      network: "Mạng",
+      integrations: "Tích hợp",
+      system: "Hệ thống",
+    },
+  },
+  table: {
+    search: "Tìm kiếm",
+    rowsPerPage: "Số hàng mỗi trang",
+    showingRange: "{from}–{to} trên {total}",
+    selectAll: "Chọn tất cả",
+    expandRow: "Hiện chi tiết hàng",
+    clearFilters: "Xóa bộ lọc",
+    noData: "Không có dữ liệu",
+  },
+  form: {
+    unsavedChanges: "Thay đổi chưa lưu",
+    leaveTitle: "Hủy thay đổi?",
+    leaveConfirm: "Bạn có thay đổi chưa lưu. Hủy chúng?",
+    discard: "Hủy bỏ",
+    sections: {
+      basic: "Cơ bản",
+      configuration: "Cấu hình",
+    },
+  },
   success: "Thành công",
   failed: "Thất bại",
   enable: "Kích hoạt",
@@ -20,6 +47,7 @@ export default {
   noData: "Không có dữ liệu!",
   invalidLogin: "Đăng nhập không hợp lệ!",
   online: "Trực tuyến",
+  status: "Trạng thái",
   version: "Phiên bản",
   email: "Email",
   commaSeparated: "(được phân tách bằng dấu phẩy)",
@@ -38,7 +66,7 @@ export default {
   },
   pages: {
     login: "Đăng nhập",
-    home: "Trang chủ",
+    home: "Bảng điều khiển",
     inbounds: "Đầu vào",
     outbounds: "Đầu ra",
     services: "Dịch vụ",
@@ -241,6 +269,15 @@ export default {
     },
   },
   nexus: {
+    on: "Bật",
+    off: "Tắt",
+    palette: {
+      label: "Bảng màu",
+      options: {
+        technical: "Kỹ thuật",
+        navy: "Xanh navy",
+      },
+    },
     mode: {
       label: "Chế độ giao diện",
       switchTo: "Chuyển sang chế độ {mode}",
@@ -389,6 +426,9 @@ export default {
   },
   menu: {
     logout: "Đăng xuất",
+    language: "Ngôn ngữ",
+    theme: "Giao diện",
+    navigation: "Bật/tắt điều hướng",
   },
   admin: {
     addAdmin: "Thêm quản trị viên",

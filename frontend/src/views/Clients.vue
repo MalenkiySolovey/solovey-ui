@@ -41,6 +41,25 @@
     :is-admin="true"
     @cleared="onClientIpsCleared"
   />
+
+  <ClientsNexusList
+    v-if="mode === 'nexus'"
+    :clients="<any[]>clients"
+    :inbounds="<any[]>inbounds"
+    :groups="groups"
+    :onlines="<string[]>(Data().onlines.user ?? [])"
+    :enable-traffic="enableTraffic"
+    @add="showModal(0)"
+    @add-bulk="addBulk"
+    @del="delClient"
+    @edit="showModal"
+    @edit-bulk="editBulk"
+    @qr="showQrCode"
+    @show-ips="showClientIps"
+    @stats="showStats"
+  />
+
+  <template v-else>
   <v-row justify="center" align="center">
     <v-col cols="auto">
       <v-btn color="primary" @click="showModal(0)">{{ $t('actions.add') }}</v-btn>
@@ -239,6 +258,7 @@
       </v-data-table>
     </v-col>
   </v-row>
+  </template>
 </template>
 <style>
 .v-data-table__tr--mobile td {
@@ -258,12 +278,19 @@ import QrCode from '@/layouts/modals/QrCode.vue'
 import Stats from '@/layouts/modals/Stats.vue'
 import IpHistoryModal from '@/components/IpHistoryModal.vue'
 import { Client } from '@/types/clients'
-import { computed, ref } from 'vue'
+import { computed, defineAsyncComponent, ref } from 'vue'
 import { HumanReadable } from '@/plugins/utils'
 import { i18n, locale } from '@/locales'
 import { useDisplay } from 'vuetify'
+import { useUiMode } from '@/uiMode/useUiMode'
 
 const { smAndDown } = useDisplay()
+
+const { mode } = useUiMode()
+const ClientsNexusList = defineAsyncComponent(
+  () => import('@/views/clients/ClientsNexusList.vue'),
+)
+const enableTraffic = computed((): boolean => Data().enableTraffic)
 
 const clients = computed((): any[] => {
   return Data().clients

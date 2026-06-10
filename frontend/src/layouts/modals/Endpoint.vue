@@ -1,11 +1,10 @@
 <template>
-  <v-dialog transition="dialog-bottom-transition" width="800">
-    <v-card class="rounded-lg">
-      <v-card-title>
-        {{ $t('actions.' + title) + " " + $t('objects.endpoint') }}
-      </v-card-title>
-      <v-divider></v-divider>
-      <v-card-text style="padding: 0 16px; overflow-y: scroll;">
+  <form-shell
+    :loading="loading"
+    :title="$t('actions.' + title) + ' ' + $t('objects.endpoint')"
+    @close="closeModal"
+    @save="saveChanges"
+  >
         <v-row>
           <v-col cols="12" sm="6" md="4">
             <v-select
@@ -31,28 +30,7 @@
         <Warp v-if="endpoint.type == epTypes.Warp" :data="endpoint" />
         <TailscaleVue v-if="endpoint.type == epTypes.Tailscale" :data="endpoint" />
         <Dial :dial="endpoint" />
-      </v-card-text>
-      <v-card-actions>
-        <v-spacer></v-spacer>
-        <v-btn
-          color="primary"
-          variant="outlined"
-          @click="closeModal"
-        >
-          {{ $t('actions.close') }}
-        </v-btn>
-        <v-btn
-          color="primary"
-          variant="tonal"
-          :loading="loading"
-          :disabled="loading"
-          @click="saveChanges"
-        >
-          {{ $t('actions.save') }}
-        </v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+  </form-shell>
 </template>
 
 <script lang="ts">
@@ -66,6 +44,7 @@ import HttpUtils from '@/plugins/httputil'
 import { push } from 'notivue'
 import { i18n } from '@/locales'
 import Data from '@/store/modules/data'
+import FormShell from '@/components/nexus/drawers/FormShell.vue'
 export default {
   props: ['visible', 'data', 'id', 'tags'],
   emits: ['close'],
@@ -226,6 +205,6 @@ export default {
       }
     },
   },
-  components: { Dial, Wireguard, Warp, TailscaleVue }
+  components: { FormShell, Dial, Wireguard, Warp, TailscaleVue }
 }
 </script>

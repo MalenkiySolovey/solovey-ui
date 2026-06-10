@@ -1,4 +1,31 @@
 export default {
+  nav: {
+    groups: {
+      proxy: "代理",
+      network: "网络",
+      integrations: "集成",
+      system: "系统",
+    },
+  },
+  table: {
+    search: "搜索",
+    rowsPerPage: "每页行数",
+    showingRange: "{from}–{to}，共 {total}",
+    selectAll: "全选",
+    expandRow: "展开行详情",
+    clearFilters: "清除筛选",
+    noData: "暂无数据",
+  },
+  form: {
+    unsavedChanges: "未保存的更改",
+    leaveTitle: "放弃更改？",
+    leaveConfirm: "您有未保存的更改。要放弃吗？",
+    discard: "放弃",
+    sections: {
+      basic: "基本",
+      configuration: "配置",
+    },
+  },
   success: "成功",
   failed: "失败",
   enable: "启用",
@@ -20,6 +47,7 @@ export default {
   noData: "无数据！",
   invalidLogin: "登录无效！",
   online: "在线",
+  status: "状态",
   version: "版本",
   email: "电子邮件",
   commaSeparated: "（逗号分隔）",
@@ -38,7 +66,7 @@ export default {
   },
   pages: {
     login: "登录",
-    home: "主页",
+    home: "仪表盘",
     inbounds: "入站管理",
     outbounds: "出站管理",
     services: "服务管理",
@@ -241,6 +269,15 @@ export default {
     },
   },
   nexus: {
+    on: "开",
+    off: "关",
+    palette: {
+      label: "调色板",
+      options: {
+        technical: "技术",
+        navy: "藏青",
+      },
+    },
     mode: {
       label: "界面模式",
       switchTo: "切换到 {mode} 模式",
@@ -389,6 +426,9 @@ export default {
   },
   menu: {
     logout: "退出登录",
+    language: "语言",
+    theme: "主题",
+    navigation: "切换导航",
   },
   admin: {
     addAdmin: "添加管理员",

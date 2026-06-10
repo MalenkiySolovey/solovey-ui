@@ -1,4 +1,31 @@
 export default {
+  nav: {
+    groups: {
+      proxy: "代理",
+      network: "網路",
+      integrations: "整合",
+      system: "系統",
+    },
+  },
+  table: {
+    search: "搜尋",
+    rowsPerPage: "每頁列數",
+    showingRange: "{from}–{to}，共 {total}",
+    selectAll: "全選",
+    expandRow: "展開列詳情",
+    clearFilters: "清除篩選",
+    noData: "暫無資料",
+  },
+  form: {
+    unsavedChanges: "未儲存的變更",
+    leaveTitle: "放棄變更？",
+    leaveConfirm: "您有未儲存的變更。要放棄嗎？",
+    discard: "放棄",
+    sections: {
+      basic: "基本",
+      configuration: "設定",
+    },
+  },
   success: "成功",
   failed: "失敗",
   enable: "啟用",
@@ -20,6 +47,7 @@ export default {
   noData: "無數據！",
   invalidLogin: "登錄無效！",
   online: "在線",
+  status: "狀態",
   version: "版本",
   email: "電子郵件",
   commaSeparated: "（逗號分隔）",
@@ -38,7 +66,7 @@ export default {
   },
   pages: {
     login: "登錄",
-    home: "主頁",
+    home: "儀表板",
     inbounds: "入站管理",
     outbounds: "出站管理",
     services: "服務管理",
@@ -241,6 +269,15 @@ export default {
     },
   },
   nexus: {
+    on: "開",
+    off: "關",
+    palette: {
+      label: "調色盤",
+      options: {
+        technical: "技術",
+        navy: "藏青",
+      },
+    },
     mode: {
       label: "介面模式",
       switchTo: "切換到 {mode} 模式",
@@ -389,6 +426,9 @@ export default {
   },
   menu: {
     logout: "退出登錄",
+    language: "語言",
+    theme: "主題",
+    navigation: "切換導覽",
   },
   admin: {
     addAdmin: "新增管理員",

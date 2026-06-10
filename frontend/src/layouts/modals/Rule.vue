@@ -1,11 +1,10 @@
 <template>
-  <v-dialog transition="dialog-bottom-transition" width="800">
-    <v-card class="rounded-lg">
-      <v-card-title>
-        {{ $t('actions.' + title) + " " + $t('objects.rule') }}
-      </v-card-title>
-      <v-divider></v-divider>
-      <v-card-text style="padding: 0 16px;">
+  <form-shell
+    :loading="loading"
+    :title="$t('actions.' + title) + ' ' + $t('objects.rule')"
+    @close="closeModal"
+    @save="saveChanges"
+  >
         <v-row>
           <v-col cols="12" sm="6" md="4">
             <v-switch color="primary" v-model="logical" :label="$t('rule.logical')" hide-details></v-switch>
@@ -181,32 +180,13 @@
             </v-col>
           </v-row>
         </v-card>
-      </v-card-text>
-      <v-card-actions>
-        <v-spacer></v-spacer>
-        <v-btn
-          color="primary"
-          variant="outlined"
-          @click="closeModal"
-        >
-          {{ $t('actions.close') }}
-        </v-btn>
-        <v-btn
-          color="primary"
-          variant="tonal"
-          :loading="loading"
-          @click="saveChanges"
-        >
-          {{ $t('actions.save') }}
-        </v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+  </form-shell>
 </template>
 
 <script lang="ts">
 import { logicalRule, rule, actionKeys } from '@/types/rules'
 import RuleOptions from '@/components/Rule.vue'
+import FormShell from '@/components/nexus/drawers/FormShell.vue'
 export default {
   props: ['visible', 'data', 'index', 'clients', 'inTags', 'outTags', 'rsTags'],
   emits: ['close', 'save'],
@@ -387,7 +367,7 @@ export default {
       }
     },
   },
-  components: { RuleOptions }
+  components: { FormShell, RuleOptions }
 }
 
 </script>

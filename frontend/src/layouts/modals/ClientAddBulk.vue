@@ -1,11 +1,10 @@
 <template>
-  <v-dialog transition="dialog-bottom-transition" width="800">
-    <v-card class="rounded-lg">
-      <v-card-title>
-        {{ $t('actions.addbulk') }}
-      </v-card-title>
-      <v-divider></v-divider>
-      <v-card-text style="padding: 0 16px; overflow-y: scroll;">
+  <form-shell
+    :title="$t('actions.addbulk')"
+    :loading="loading"
+    @close="closeModal"
+    @save="saveChanges"
+  >
         <v-container style="padding: 0;">
           <v-row>
             <v-col cols="12" sm="6" md="4">
@@ -78,32 +77,12 @@
             </v-col>
           </v-row>
         </v-container>
-      </v-card-text>
-      <v-card-actions>
-        <v-spacer></v-spacer>
-        <v-btn
-          color="primary"
-          variant="outlined"
-          @click="closeModal"
-        >
-          {{ $t('actions.close') }}
-        </v-btn>
-        <v-btn
-          color="primary"
-          variant="tonal"
-          :loading="loading"
-          :disabled="loading"
-          @click="saveChanges"
-        >
-          {{ $t('actions.save') }}
-        </v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+  </form-shell>
 </template>
 
 <script lang="ts">
 import DatePick from '@/components/DateTime.vue'
+import FormShell from '@/components/nexus/drawers/FormShell.vue'
 import { push } from 'notivue'
 import RandomUtil from '@/plugins/randomUtil'
 import { Client, createClient, randomConfigs } from '@/types/clients'
@@ -227,7 +206,7 @@ export default {
       }
     },
   },
-  components: { DatePick },
+  components: { DatePick, FormShell },
 }
 
 </script>

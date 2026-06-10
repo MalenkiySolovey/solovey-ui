@@ -1,5 +1,6 @@
 <template>
-  <v-card :loading="loading">
+  <page-header v-if="nexus" :title="$t('pages.settings')" />
+  <v-card :loading="loading" :flat="nexus">
     <v-tabs
     v-model="tab"
     color="primary"
@@ -168,7 +169,9 @@
 
 <script lang="ts" setup>
 import UiModeControl from '@/components/UiModeControl.vue'
+import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import { isNexusEnabled } from '@/uiMode/featureGate'
+import { useUiMode } from '@/uiMode/useUiMode'
 import { i18n } from '@/locales'
 import { Ref, computed, inject, onMounted, ref } from 'vue'
 import HttpUtils from '@/plugins/httputil'
@@ -179,6 +182,8 @@ import MaintenanceTab from '@/components/settings/MaintenanceTab.vue'
 import { normalizeSecretFields, stripSecretPlaceholders } from '@/components/settingsSecretField'
 import { push } from 'notivue'
 const tab = ref("t1")
+const { mode } = useUiMode()
+const nexus = computed(() => mode.value === 'nexus')
 const showNexusControls = isNexusEnabled()
 const loading:Ref = inject('loading')?? ref(false)
 const oldSettings = ref({})

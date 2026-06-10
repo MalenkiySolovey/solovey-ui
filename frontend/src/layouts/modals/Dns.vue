@@ -1,11 +1,9 @@
 <template>
-  <v-dialog transition="dialog-bottom-transition" width="800">
-    <v-card class="rounded-lg">
-      <v-card-title>
-        {{ $t('actions.' + title) + " " + $t('objects.dnsserver') }}
-      </v-card-title>
-      <v-divider></v-divider>
-      <v-card-text>
+  <form-shell
+    :title="$t('actions.' + title) + ' ' + $t('objects.dnsserver')"
+    @close="close"
+    @save="save"
+  >
         <v-row>
           <v-col cols="12" sm="6" md="4">
             <v-select
@@ -93,14 +91,7 @@
             <v-switch v-model="dnsServer.accept_default_resolvers" :label="$t('dns.rule.acceptDefault')" hide-details></v-switch>
           </v-col>
         </v-row>
-      </v-card-text>
-      <v-card-actions>
-        <v-spacer></v-spacer>
-        <v-btn color="blue-darken-1" variant="outlined" @click="close">{{ $t('actions.close') }}</v-btn>
-        <v-btn color="blue-darken-1" variant="tonal" @click="save">{{ $t('actions.save') }}</v-btn>
-      </v-card-actions>
-    </v-card>
-  </v-dialog>
+  </form-shell>
 </template>
 
 <script lang="ts">
@@ -109,6 +100,7 @@ import oTlsVue from '@/components/tls/OutTLS.vue'
 import Headers from '@/components/Headers.vue'
 import RandomUtil from '@/plugins/randomUtil'
 import { DnsTypes, createDnsServer } from '@/types/dns'
+import FormShell from '@/components/nexus/drawers/FormShell.vue'
 export default {
   props: ['visible', 'data', 'index', 'tsTags', 'rslvdTags'],
   emits: ['close', 'save'],
@@ -205,6 +197,6 @@ export default {
       }
     },
   },
-  components: { DialVue, oTlsVue, Headers }
+  components: { FormShell, DialVue, oTlsVue, Headers }
 }
 </script>

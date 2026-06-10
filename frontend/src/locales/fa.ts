@@ -1,4 +1,31 @@
 export default {
+  nav: {
+    groups: {
+      proxy: "پروکسی",
+      network: "شبکه",
+      integrations: "یکپارچه‌سازی",
+      system: "سیستم",
+    },
+  },
+  table: {
+    search: "جستجو",
+    rowsPerPage: "ردیف در هر صفحه",
+    showingRange: "{from}–{to} از {total}",
+    selectAll: "انتخاب همه",
+    expandRow: "نمایش جزئیات ردیف",
+    clearFilters: "پاک کردن فیلترها",
+    noData: "داده‌ای نیست",
+  },
+  form: {
+    unsavedChanges: "تغییرات ذخیره‌نشده",
+    leaveTitle: "تغییرات نادیده گرفته شود؟",
+    leaveConfirm: "تغییرات ذخیره‌نشده دارید. نادیده گرفته شوند؟",
+    discard: "نادیده‌گرفتن",
+    sections: {
+      basic: "پایه",
+      configuration: "پیکربندی",
+    },
+  },
   success: "موفق",
   failed: "خطا",
   enable: "فعال",
@@ -20,6 +47,7 @@ export default {
   noData: "بدون داده!",
   invalidLogin: "ورود نامعتبر!",
   online: "آنلاین",
+  status: "وضعیت",
   version: "نسخه",
   email: "ایمیل",
   commaSeparated: "(جداشده با کاما)",
@@ -38,7 +66,7 @@ export default {
   },
   pages: {
     login: "ورود",
-    home: "خانه",
+    home: "داشبورد",
     inbounds: "ورودی‌ها",
     outbounds: "خروجی‌ها",
     endpoints: "درگاه‌ها",
@@ -241,6 +269,15 @@ export default {
     },
   },
   nexus: {
+    on: "روشن",
+    off: "خاموش",
+    palette: {
+      label: "پالت",
+      options: {
+        technical: "فنی",
+        navy: "سرمه‌ای",
+      },
+    },
     mode: {
       label: "حالت رابط",
       switchTo: "تغییر به حالت {mode}",
@@ -389,6 +426,9 @@ export default {
   },
   menu: {
     logout: "خروج",
+    language: "زبان",
+    theme: "تم",
+    navigation: "تغییر ناوبری",
   },
   admin: {
     addAdmin: "افزودن مدیر",
