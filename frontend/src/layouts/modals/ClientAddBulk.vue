@@ -1,5 +1,6 @@
 <template>
   <form-shell
+    :dirty="dirty"
     :title="$t('actions.addbulk')"
     :loading="loading"
     @close="closeModal"
@@ -112,6 +113,7 @@ export default {
         { title: i18n.global.t("bulk.order"), value: "order" },
       ],
       loading: false,
+      snapshot: '',
     }
   },
   methods: {
@@ -129,6 +131,7 @@ export default {
         autoReset: false,
         resetDays: 0,
       }
+      this.snapshot = JSON.stringify([this.count, this.bulkData])
     },
     closeModal() {
       this.$emit('close')
@@ -198,7 +201,11 @@ export default {
       this.bulkData.clientInbounds = this.inboundTags.map((i:any) => i.value).sort()
     }
   },
-  computed: {},
+  computed: {
+    dirty(): boolean {
+      return this.snapshot !== '' && JSON.stringify([this.count, this.bulkData]) !== this.snapshot
+    },
+  },
   watch: {
     visible(newValue) {
       if (newValue) {

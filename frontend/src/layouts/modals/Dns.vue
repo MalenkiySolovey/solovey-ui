@@ -1,5 +1,6 @@
 <template>
   <form-shell
+    :dirty="dirty"
     :title="$t('actions.' + title) + ' ' + $t('objects.dnsserver')"
     @close="close"
     @save="save"
@@ -107,6 +108,7 @@ export default {
   data() {
     return {
       title: "add",
+      snapshot: '',
       dnsServer: createDnsServer("local",{tag: "dns-" + RandomUtil.randomSeq(3)}),
       dnsTypes: Object.keys(DnsTypes).map((key,index) => ({title: key, value: Object.values(DnsTypes)[index]})),
       HasServer: [DnsTypes.TCP, DnsTypes.UDP, DnsTypes.TLS, DnsTypes.QUIC, DnsTypes.HTTPS, DnsTypes.HTTP3],
@@ -125,6 +127,7 @@ export default {
         this.dnsServer = createDnsServer("local",{tag: "dns-" + RandomUtil.randomSeq(3)})
         this.title = 'add'
       }
+      this.snapshot = JSON.stringify(this.dnsServer)
     },
     changeType(dnsType: string) {
       this.dnsServer = createDnsServer(dnsType,{tag: this.dnsServer.tag})
@@ -156,6 +159,9 @@ export default {
     },
   },
   computed:{
+    dirty(): boolean {
+      return this.snapshot !== '' && JSON.stringify(this.dnsServer) !== this.snapshot
+    },
     hostsPath: {
       get() { return this.dnsServer.path },
       set(v: string) {

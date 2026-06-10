@@ -3,9 +3,17 @@ package importxui
 import (
 	"fmt"
 	"net/netip"
+	"regexp"
 	"strconv"
 	"strings"
 )
+
+// geoCodeAllowed restricts a normalised geoip/geosite code to the lowercase
+// token charset the meta-rules-dat repo actually uses. A code originates from an
+// untrusted (possibly attacker-crafted) x-ui DB and is interpolated into a
+// persisted remote rule-set URL, so anything outside this set is dropped rather
+// than allowed to inject path/URL fragments.
+var geoCodeAllowed = regexp.MustCompile(`^[a-z0-9_-]+$`)
 
 // applyRuleMatchers translates an Xray routing rule's matcher fields into
 // sing-box route-rule fields on next. It returns whether at least one matcher
@@ -230,7 +238,14 @@ func geoRuleSetCode(raw string) string {
 	if i := strings.IndexByte(code, '@'); i >= 0 {
 		code = code[:i]
 	}
-	return strings.TrimSpace(code)
+	code = strings.TrimSpace(code)
+	// Reject anything outside the rule-set repo's token charset so an untrusted
+	// code can never inject into the URL built from it (callers treat "" as a
+	// skip-with-warning).
+	if !geoCodeAllowed.MatchString(code) {
+		return ""
+	}
+	return code
 }
 
 // mapPortMatchers splits Xray port specs (a number, an "a-b" range, or a list/

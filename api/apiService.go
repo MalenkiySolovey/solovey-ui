@@ -368,6 +368,12 @@ func (a *ApiService) GetDb(c *gin.Context) {
 		"channel": "download",
 		"exclude": exclude,
 	})
+	// Real-time alert on config exfiltration (T1530): a full DB export is one of
+	// the highest-signal admin-compromise events.
+	a.TelegramService.NotifyTelegramEvent("db_exported", map[string]string{
+		"actor": requestActor(c),
+		"ip":    getRemoteIp(c),
+	})
 	c.Header("Content-Type", "application/octet-stream")
 	c.Header("Content-Disposition", "attachment; filename=s-ui_"+time.Now().Format("20060102-150405")+".db")
 	_, _ = c.Writer.Write(db)
@@ -456,15 +462,22 @@ func (a *ApiService) Login(c *gin.Context) {
 		a.recordAudit(c, username, "login_blocked", "auth", service.AuditSeverityWarn, map[string]any{
 			"reason": "rate_limit_ip",
 		})
+		// Real-time alert on the lockout transition (T1110): brute-force reaching
+		// the per-IP block is a high-signal admin-compromise indicator.
+		a.TelegramService.NotifyTelegramEvent("login_blocked", telegramRequestFields(c))
 		jsonMsg(c, "", err)
 		return
 	}
-	if err := checkLoginRateLimit(userKey); err != nil {
-		a.recordAudit(c, username, "login_blocked", "auth", service.AuditSeverityWarn, map[string]any{
-			"reason": "rate_limit_user",
-		})
-		jsonMsg(c, "", err)
-		return
+	// Per-username throttle is a tarpit (escalating, capped delay), never a hard
+	// block — so a distributed attacker burning failures from rotating IPs
+	// cannot lock a known admin out of their own panel. The per-IP hard block
+	// above remains the primary brute-force defence.
+	if delay := loginUsernameTarpitDelay(userKey); delay > 0 {
+		select {
+		case <-time.After(delay):
+		case <-c.Request.Context().Done():
+			return
+		}
 	}
 	loginUser, err := a.UserService.Login(username, c.Request.FormValue("pass"), remoteIP)
 	if err != nil {
@@ -521,6 +534,18 @@ func (a *ApiService) ChangePass(c *gin.Context) {
 		a.recordAudit(c, currentUser, "admin_credentials_changed", "admin", service.AuditSeverityWarn, map[string]any{
 			"newUsername": newUsername,
 		})
+		// Rotate the session generation so every OTHER web session and all WS
+		// tokens (including any minted under the old credentials) are invalidated,
+		// then re-establish only THIS session under the new generation so the
+		// admin who changed the password is not logged out of their own session.
+		if newGen, rerr := a.SettingService.RotateSessionGeneration(); rerr != nil {
+			logger.Warning("session rotation after credential change failed:", rerr)
+		} else {
+			sessionMaxAge, _ := a.SettingService.GetSessionMaxAge()
+			if serr := SetLoginUser(c, newUsername, sessionMaxAge, newGen); serr != nil {
+				logger.Warning("re-establishing session after credential change failed:", serr)
+			}
+		}
 		jsonMsg(c, "save", nil)
 	} else {
 		logger.Warning("change user credentials failed:", err)

@@ -4,7 +4,6 @@
     :confirm-label="request?.confirmLabel"
     :message="request?.message"
     :model-value="!!request"
-    :require-password="request?.requirePassword"
     :title="request?.title ?? ''"
     :tone="request?.tone ?? 'error'"
     @cancel="onCancel"

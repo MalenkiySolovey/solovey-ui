@@ -3,6 +3,7 @@
     :dirty="dirty"
     :loading="loading"
     :model-value="visible"
+    :save-disabled="!validate"
     :saving="loading"
     :title="$t('actions.' + title) + ' ' + $t('objects.inbound')"
     :width="720"

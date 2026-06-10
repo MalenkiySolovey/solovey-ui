@@ -1,5 +1,6 @@
 <template>
   <form-shell
+    :dirty="dirty"
     :loading="loading"
     :title="$t('actions.' + title) + ' ' + $t('objects.endpoint')"
     @close="closeModal"
@@ -55,7 +56,13 @@ export default {
       tab: "t1",
       loading: false,
       epTypes: EpTypes,
+      snapshot: '',
     }
+  },
+  computed: {
+    dirty(): boolean {
+      return this.snapshot !== '' && JSON.stringify(this.endpoint) !== this.snapshot
+    },
   },
   methods: {
     async updateData(id: number) {
@@ -71,6 +78,7 @@ export default {
         this.title = "add"
       }
       this.tab = "t1"
+      this.snapshot = JSON.stringify(this.endpoint)
     },
     async changeType() {
       // Tag change only in add endpoint

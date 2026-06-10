@@ -30,7 +30,7 @@
     @update:search="search = $event"
   />
 
-  <page-toolbar v-if="nexus" :searchable="false">
+  <page-toolbar v-if="nexus">
     <template #actions>
       <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" @click="showDnsModal(-1)">{{ $t('dns.add') }}</v-btn>
       <v-btn prepend-icon="lucide:plus" variant="text" @click="showDnsRuleModal(-1)">{{ $t('dns.rule.add') }}</v-btn>

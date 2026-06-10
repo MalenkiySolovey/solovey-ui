@@ -8,6 +8,7 @@ import (
 
 	"github.com/deposist/s-ui-x/database"
 	"github.com/deposist/s-ui-x/database/model"
+	"github.com/deposist/s-ui-x/logger"
 	"github.com/deposist/s-ui-x/service"
 	"github.com/deposist/s-ui-x/util"
 
@@ -62,10 +63,16 @@ func (j *SubService) getClientBySubId(subId string) (*model.Client, error) {
 	if required {
 		return nil, gorm.ErrRecordNotFound
 	}
+	// Legacy name-based lookup, active only when the admin has disabled required
+	// sub-secrets. Client names are admin-chosen and often guessable, so this
+	// fallback allows unauthenticated enumeration of other clients' configs by
+	// name. Warn whenever it actually serves a config so the operator is aware
+	// the insecure mode is on (enable required sub-secrets to close it).
 	err = db.Model(model.Client{}).Where("enable = true and name = ?", subId).First(client).Error
 	if err != nil {
 		return nil, err
 	}
+	logger.Warning("sub: served config via legacy name lookup (subSecretRequired is OFF) — enable required sub-secrets to prevent name-based enumeration")
 	return client, j.ensureClientSubSecret(db, client)
 }
 

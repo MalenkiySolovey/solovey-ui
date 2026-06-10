@@ -208,6 +208,12 @@ const setOffline = () => {
   sparkSamples.value = []
 }
 
+// Pause the status poll while the browser tab is hidden; refresh immediately
+// when it becomes visible again so the operator never sees stale data.
+const onVisible = () => {
+  if (!document.hidden) void loadStatus()
+}
+
 onMounted(() => {
   if (data.lastLoad === 0) {
     void data.loadData()
@@ -215,15 +221,18 @@ onMounted(() => {
 
   window.addEventListener('online', setOnline)
   window.addEventListener('offline', setOffline)
+  document.addEventListener('visibilitychange', onVisible)
   void loadStatus()
   void loadAuditEvents()
   statusInterval = setInterval(() => {
+    if (document.hidden) return
     void loadStatus()
   }, 10000)
 })
 
 onBeforeUnmount(() => {
   if (statusInterval) clearInterval(statusInterval)
+  document.removeEventListener('visibilitychange', onVisible)
   window.removeEventListener('online', setOnline)
   window.removeEventListener('offline', setOffline)
 })

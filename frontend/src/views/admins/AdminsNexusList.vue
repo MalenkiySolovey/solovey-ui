@@ -2,7 +2,7 @@
   <div class="admins-nexus">
     <page-header :subtitle="subtitle" :title="$t('pages.admins')" />
 
-    <page-toolbar :searchable="false">
+    <page-toolbar>
       <template #actions>
         <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" @click="emit('add')">
           {{ $t('admin.addAdmin') }}

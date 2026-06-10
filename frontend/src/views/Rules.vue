@@ -46,7 +46,7 @@
     @update:search="search = $event"
   />
 
-  <page-toolbar v-if="nexus" :searchable="false">
+  <page-toolbar v-if="nexus">
     <template #actions>
       <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" @click="showRuleModal(-1)">{{ $t('rule.add') }}</v-btn>
       <v-btn prepend-icon="lucide:plus" variant="text" @click="showRulesetModal(-1)">{{ $t('ruleset.add') }}</v-btn>

@@ -12,6 +12,7 @@ export default {
     rowsPerPage: "Строк на странице",
     showingRange: "{from}–{to} из {total}",
     selectAll: "Выбрать все",
+    selectRow: "Выбрать строку",
     expandRow: "Показать детали строки",
     clearFilters: "Сбросить фильтры",
     noData: "Нет данных",

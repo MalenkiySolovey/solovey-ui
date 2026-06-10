@@ -72,6 +72,19 @@ func (a *APP) Init() error {
 	a.runtime = service.NewRuntime(a.core)
 	service.SetDefaultRuntime(a.runtime)
 
+	// Mirror ipmonitor IP-limit enforcement into the durable audit log (D-5).
+	// Set via a hook to avoid an import cycle; debounced upstream so it cannot
+	// flood the audit log.
+	ipmonitor.SecurityEventAuditHook = func(clientName string, kind string, payload map[string]any) {
+		_ = (&service.AuditService{}).Record(service.AuditEvent{
+			Actor:    "system",
+			Event:    "ip_limit_enforced",
+			Resource: "ipmonitor",
+			Severity: service.AuditSeverityWarn,
+			Details:  payload,
+		})
+	}
+
 	a.cronJob = cronjob.NewCronJob()
 	a.webServer, err = web.NewServer(web.WithRuntime(a.runtime))
 	if err != nil {

@@ -1,5 +1,6 @@
 <template>
   <form-shell
+    :dirty="dirty"
     :loading="loading"
     :title="$t('actions.' + title) + ' ' + $t('objects.client')"
     @close="closeModal"
@@ -241,6 +242,7 @@ export default {
       extLinks: <Link[]>[],
       subLinks: <Link[]>[],
       ipLimitModes: ['monitor', 'enforce'],
+      snapshot: '',
     }
   },
   methods: {
@@ -263,6 +265,7 @@ export default {
       this.subLinks = this.client.links?.filter(l => l.type == 'sub')?? []
       this.tab = "t1"
       this.loading = false
+      this.snapshot = JSON.stringify([this.client, this.clientConfig, this.links, this.extLinks, this.subLinks])
     },
     closeModal() {
       this.updateData(0) // reset
@@ -309,6 +312,10 @@ export default {
     }
   },
   computed: {
+    dirty(): boolean {
+      return this.snapshot !== '' &&
+        JSON.stringify([this.client, this.clientConfig, this.links, this.extLinks, this.subLinks]) !== this.snapshot
+    },
     clientInbounds: {
       get() { return this.client.inbounds.length>0 ? this.client.inbounds.sort() : [] },
       set(v:number[]) { this.client.inbounds = v.length == 0 ?  [] : v.sort() }

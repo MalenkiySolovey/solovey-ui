@@ -5,6 +5,60 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.7-beta10] - 2026-06-10 - Remediation from a full quality, security, and supply-chain review
+
+Applies the fixes from a full code-quality, optimization, security, and
+supply-chain review. One additive database column is created automatically (no
+manual migration). Two behavior changes: changing the admin password signs out
+all other sessions, and the per-username login lockout is now a delay (tarpit)
+rather than a hard block.
+
+### Paid Subscriptions (financial correctness)
+
+- A CryptoBot payment confirmed after the local order timeout is no longer lost
+  (the poll runs before expiry; polled orders use a long grace window).
+- Refunds restore the usage counters symmetrically (via an internal snapshot),
+  not just the volume.
+- Stars refunds return the money before finalizing, so a transient failure leaves
+  the order retryable.
+- CryptoBot polling re-validates the paid amount and currency against the order.
+- Tariffs reject negative values server-side.
+
+### Security
+
+- Changing the admin password rotates the session generation: other web sessions
+  and all WebSocket tokens are invalidated, and only the current session stays
+  signed in.
+- The per-username login throttle is now an escalating, capped delay (tarpit)
+  instead of a hard block; the per-IP block is unchanged.
+- x-ui import validates geoip/geosite codes before using them in a rule-set URL.
+- The subscription link service no longer panics on a malformed vmess `ps` field.
+- Fixed a database-import race on the shared connection handle.
+
+### Detection and audit
+
+- New audit signals: `/sub` enumeration, login from a new IP, cross-user order
+  access on the client bot, IP-limit enforcement, and an audit-pipeline drop
+  marker.
+- Real-time alerts on account lockout and database export.
+
+### Interface (Nexus)
+
+- Unsaved-changes confirmation now covers every entity form (drawers and the
+  classic dialogs) in both interface modes.
+- Case-insensitive client search; TLS option defaults no longer leak between
+  forms; the inbound form Save is disabled until valid; a correct per-row checkbox
+  label; and removed dead UI code.
+- The dashboard status poll pauses while the browser tab is hidden.
+
+### Supply chain (CI)
+
+- Third-party and Docker GitHub Actions are pinned to commit SHAs, and a
+  Dependabot config keeps dependencies current. The Docker frontend build uses
+  `npm ci`.
+
+Full release notes: [`docs/releases/v1.5.7-beta10.md`](docs/releases/v1.5.7-beta10.md).
+
 ## [1.5.7-beta9-hotfix1] - 2026-06-10 - Fix blank panel from dropped underscore-named chunks
 
 Hotfix for v1.5.7-beta9. No backend logic, breaking, manual-migration, or

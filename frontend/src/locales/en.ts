@@ -12,6 +12,7 @@ export default {
     rowsPerPage: "Rows per page",
     showingRange: "{from}–{to} of {total}",
     selectAll: "Select all",
+    selectRow: "Select row",
     expandRow: "Toggle row details",
     clearFilters: "Clear filters",
     noData: "No data",

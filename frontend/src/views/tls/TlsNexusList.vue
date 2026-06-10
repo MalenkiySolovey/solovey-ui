@@ -8,7 +8,7 @@
       @update:search="search = $event"
     />
 
-    <page-toolbar :searchable="false">
+    <page-toolbar>
       <template #actions>
         <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" @click="emit('add')">
           {{ $t('actions.add') }}

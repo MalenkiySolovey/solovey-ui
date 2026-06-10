@@ -1,7 +1,9 @@
 FROM --platform=$BUILDPLATFORM node:alpine AS front-builder
 WORKDIR /app
 COPY frontend/ ./
-RUN npm install && npm run build
+# npm ci (not install) so the image is built from the exact, audited
+# package-lock.json — matches CI/release and fails closed on lockfile drift.
+RUN npm ci && npm run build
 
 FROM golang:1.26.4-alpine AS backend-builder
 WORKDIR /app

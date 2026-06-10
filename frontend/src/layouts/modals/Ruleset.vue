@@ -1,5 +1,6 @@
 <template>
   <form-shell
+    :dirty="dirty"
     :loading="loading"
     :title="$t('actions.' + title) + ' ' + $t('objects.ruleset')"
     @close="closeModal"
@@ -79,6 +80,7 @@ export default {
     return {
       title: "add",
       loading: false,
+      snapshot: '',
       rule_set: <ruleset>{},
     }
   },
@@ -94,6 +96,7 @@ export default {
         this.title = "add"
         this.rule_set = <ruleset>{type: 'local', tag: "rs-" + RandomUtil.randomSeq(3), format: 'binary'}
       }
+      this.snapshot = JSON.stringify(this.rule_set)
     },
     updateType(t:string) {
       if (t == 'inline') {
@@ -137,6 +140,9 @@ export default {
     }
   },
   computed: {
+    dirty(): boolean {
+      return this.snapshot !== '' && JSON.stringify(this.rule_set) !== this.snapshot
+    },
     update_intervals: {
       get() { return this.rule_set.update_interval != undefined ? parseInt(this.rule_set.update_interval.replace('d','')) : 0 },
       set(v:number) { this.rule_set.update_interval = v>0 ?  v + 'd' : undefined }

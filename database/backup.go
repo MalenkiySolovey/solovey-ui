@@ -329,8 +329,13 @@ func ImportDB(file multipart.File) error {
 }
 
 func closeLiveDB() {
+	// Swap the global pointer under dbMu (mirrors OpenDB), so concurrent
+	// GetDB() readers — e.g. a cron job firing mid-import — never race the write.
+	// The actual Close() is done outside the lock (I/O, touches no global).
+	dbMu.Lock()
 	current := db
 	db = nil
+	dbMu.Unlock()
 	if current == nil {
 		return
 	}

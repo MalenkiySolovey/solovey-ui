@@ -8,7 +8,7 @@
       @update:search="search = $event"
     />
 
-    <page-toolbar :searchable="false">
+    <page-toolbar>
       <template #filters>
         <v-select
           density="compact"
@@ -187,9 +187,9 @@ const groupItems = computed(() => [
 // store-bound filter is untouched for Classic mode.
 const filtered = computed<ClientRow[]>(() => {
   let rows = props.clients.slice()
-  const query = search.value.trim()
+  const query = search.value.trim().toLowerCase()
 
-  if (query) rows = rows.filter(c => c.name.includes(query) || (c.desc ?? '').includes(query))
+  if (query) rows = rows.filter(c => c.name.toLowerCase().includes(query) || (c.desc ?? '').toLowerCase().includes(query))
   if (filterGroup.value !== '-') rows = rows.filter(c => c.group === filterGroup.value)
 
   if (filterState.value === 'disable') rows = rows.filter(c => c.enable === false)

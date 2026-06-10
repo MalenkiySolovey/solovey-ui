@@ -1,5 +1,6 @@
 <template>
   <form-shell
+    :dirty="dirty"
     :loading="loading"
     :title="$t('actions.' + title) + ' ' + $t('objects.rule')"
     @close="closeModal"
@@ -194,6 +195,7 @@ export default {
     return {
       title: 'add',
       loading: false,
+      snapshot: '',
       ruleData: <any>{
         type: 'logical',
         mode: 'and',
@@ -268,6 +270,7 @@ export default {
           }
         this.title = 'add'
       }
+      this.snapshot = JSON.stringify(this.ruleData)
     },
     closeModal() {
       this.updateData() // reset
@@ -335,6 +338,9 @@ export default {
     }
   },
   computed: {
+    dirty(): boolean {
+      return this.snapshot !== '' && JSON.stringify(this.ruleData) !== this.snapshot
+    },
     logical: {
       get() { return this.ruleData.type == 'logical' },
       set(v:boolean) {

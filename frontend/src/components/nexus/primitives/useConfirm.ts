@@ -8,7 +8,6 @@ export interface ConfirmOptions {
   confirmLabel?: string
   cancelLabel?: string
   tone?: ConfirmTone
-  requirePassword?: boolean
 }
 
 export interface ConfirmRequest extends ConfirmOptions {

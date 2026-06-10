@@ -811,14 +811,16 @@ const openTariff = (item?: any) => {
 }
 const saveTariff = async () => {
   const e = tariffEdit.value
+  // Clamp every numeric to >= 0 so a typo / negative spinner value never reaches
+  // the backend (which now also rejects negatives — defense in depth).
   const data: any = {
     name: e.name, description: e.description,
-    price: Math.round(Number(e.priceMajor) * 100),
+    price: Math.max(0, Math.round(Number(e.priceMajor) * 100) || 0),
     currency: (e.currency || 'RUB').toUpperCase(),
-    starsAmount: Math.round(Number(e.starsAmount) || 0),
-    addDays: Math.round(Number(e.addDays) || 0),
-    addTrafficBytes: Math.round((Number(e.addTrafficGB) || 0) * 1024 * 1024 * 1024),
-    sort: Math.round(Number(e.sort) || 0),
+    starsAmount: Math.max(0, Math.round(Number(e.starsAmount) || 0)),
+    addDays: Math.max(0, Math.round(Number(e.addDays) || 0)),
+    addTrafficBytes: Math.max(0, Math.round((Number(e.addTrafficGB) || 0) * 1024 * 1024 * 1024)),
+    sort: Math.max(0, Math.round(Number(e.sort) || 0)),
     enabled: !!e.enabled,
   }
   const action = e.id ? 'edit' : 'new'

@@ -15,16 +15,6 @@
         {{ message }}
       </v-card-text>
 
-      <v-card-text v-if="requirePassword">
-        <v-text-field
-          v-model="password"
-          autocomplete="current-password"
-          hide-details
-          :label="$t('admin.oldPass')"
-          type="password"
-        />
-      </v-card-text>
-
       <v-card-actions>
         <v-spacer />
         <v-btn variant="text" @click="cancel">
@@ -32,7 +22,6 @@
         </v-btn>
         <v-btn
           :color="tone"
-          :disabled="requirePassword && !password"
           :loading="loading"
           variant="flat"
           @click="onConfirm"
@@ -45,7 +34,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, ref, watch } from 'vue'
+import { computed } from 'vue'
 
 import type { ConfirmTone } from './useConfirm'
 
@@ -56,30 +45,22 @@ const props = withDefaults(defineProps<{
   confirmLabel?: string
   cancelLabel?: string
   tone?: ConfirmTone
-  requirePassword?: boolean
   loading?: boolean
 }>(), {
   tone: 'error',
 })
 
 const emit = defineEmits<{
-  confirm: [password?: string]
+  confirm: []
   cancel: []
   'update:modelValue': [value: boolean]
 }>()
-
-const password = ref('')
-
-// Clear the password field whenever the dialog reopens.
-watch(() => props.modelValue, open => {
-  if (open) password.value = ''
-})
 
 const toneIcon = computed(() =>
   props.tone === 'error' ? 'lucide:alert-circle' : 'lucide:info',
 )
 
-const onConfirm = () => emit('confirm', props.requirePassword ? password.value : undefined)
+const onConfirm = () => emit('confirm')
 const cancel = () => emit('cancel')
 const onModel = (value: boolean) => {
   emit('update:modelValue', value)

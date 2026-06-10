@@ -1,5 +1,6 @@
 <template>
   <form-shell
+    :dirty="dirty"
     :title="$t('actions.editbulk')"
     :loading="loading"
     :save-disabled="loading || (selectedClients.model !== 'all' && selectedClients.values.length == 0)"
@@ -100,7 +101,14 @@ export default {
         model: 'none',
         values: [] as any[],
       },
+      snapshot: '',
     }
+  },
+  computed: {
+    dirty(): boolean {
+      return this.snapshot !== '' &&
+        JSON.stringify([this.actionMode, this.editData, this.selectedClients]) !== this.snapshot
+    },
   },
   methods: {
     onActionChange() {
@@ -173,6 +181,7 @@ export default {
         this.actionMode = 'change_limits'
         this.editData = { enable: true, addDays: 0, addVolume: 0, inboundTags: [] }
         this.selectedClients = { model: 'none', values: [] }
+        this.snapshot = JSON.stringify([this.actionMode, this.editData, this.selectedClients])
       }
     },
   },

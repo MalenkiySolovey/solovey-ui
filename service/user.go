@@ -97,9 +97,16 @@ func (s *UserService) Login(username string, password string, remoteIP string) (
 			logger.Warning("password migration failed:", err)
 		}
 	}
+	// Flag a login from a new source IP (T1078) BEFORE RecordLogin overwrites the
+	// previous last_logins, then record this login. Both are best-effort.
+	s.detectNewLoginIP(user, remoteIP)
+	s.RecordLogin(username, remoteIP)
 	return user.Username, nil
 }
 
+// CheckUser is a pure query (Command-Query Separation): it validates the
+// credentials and returns the user plus whether the stored hash needs
+// migration. It performs NO writes — recording the login is RecordLogin's job.
 func (s *UserService) CheckUser(username string, password string, remoteIP string) (*model.User, bool) {
 	db := database.GetDB()
 
@@ -121,15 +128,42 @@ func (s *UserService) CheckUser(username string, password string, remoteIP strin
 	if !ok {
 		return nil, false
 	}
+	return user, needsMigration
+}
 
+// RecordLogin persists the most recent login timestamp + IP for an admin. Kept
+// out of CheckUser so the query stays pure; best-effort (logged, never blocks).
+func (s *UserService) RecordLogin(username string, remoteIP string) {
 	lastLoginTxt := time.Now().Format("2006-01-02 15:04:05") + " " + remoteIP
-	err = db.Model(model.User{}).
+	if err := database.GetDB().Model(model.User{}).
 		Where("username = ?", username).
-		Update("last_logins", &lastLoginTxt).Error
-	if err != nil {
+		Update("last_logins", &lastLoginTxt).Error; err != nil {
 		logger.Warning("unable to log login data", err)
 	}
-	return user, needsMigration
+}
+
+// detectNewLoginIP records a warn audit when a successful login arrives from a
+// source IP different from the admin's previous login (T1078). It reuses the
+// existing last_logins value (no new storage) and must run BEFORE RecordLogin
+// overwrites it. Best-effort.
+func (s *UserService) detectNewLoginIP(user *model.User, remoteIP string) {
+	prev := strings.TrimSpace(user.LastLogins)
+	if prev == "" || remoteIP == "" {
+		return
+	}
+	fields := strings.Fields(prev)
+	prevIP := fields[len(fields)-1]
+	if prevIP == "" || prevIP == remoteIP {
+		return
+	}
+	_ = (&AuditService{}).Record(AuditEvent{
+		Actor:    user.Username,
+		Event:    "login_new_ip",
+		Resource: "auth",
+		Severity: AuditSeverityWarn,
+		IP:       remoteIP,
+		Details:  map[string]any{"previousIP": prevIP},
+	})
 }
 
 func (s *UserService) GetUsers() (*[]model.User, error) {

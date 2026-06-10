@@ -25,7 +25,7 @@
             <tr class="nexus-data-table__row">
               <td v-if="selectable" class="nexus-data-table__select">
                 <v-checkbox-btn
-                  :aria-label="$t('table.selectAll')"
+                  :aria-label="$t('table.selectRow')"
                   density="compact"
                   hide-details
                   :model-value="selection.isSelected(keyOf(item))"
@@ -83,7 +83,7 @@
 </template>
 
 <script lang="ts" setup generic="T extends Record<string, any>">
-import { computed, ref, watch } from 'vue'
+import { computed, ref, useSlots, watch } from 'vue'
 
 import DenseTable from '@/components/nexus/primitives/DenseTable.vue'
 import EmptyState from '@/components/nexus/primitives/EmptyState.vue'
@@ -106,6 +106,9 @@ const props = withDefaults(defineProps<{
   // When false, the table renders every item with no footer pager. Used by
   // server-paginated callers (e.g. Audit) that page through their own cursor.
   paginated?: boolean
+  // Namespaces the persisted rows-per-page preference so each table keeps its
+  // own size. When omitted, the legacy shared key is used (back-compatible).
+  storageKey?: string
 }>(), {
   rowKey: undefined,
   selectable: false,
@@ -119,8 +122,13 @@ const emit = defineEmits<{
 
 const keyOf = (item: T): RowKey => (props.rowKey ? props.rowKey(item) : (item.id as RowKey))
 
+// Per-table storage key: namespaced by `storageKey` when provided, else the
+// legacy shared key (so existing installs keep their saved size).
+const itemsPerPageStorageKey = (): string =>
+  props.storageKey ? `${ITEMS_PER_PAGE_KEY}:${props.storageKey}` : ITEMS_PER_PAGE_KEY
+
 const readItemsPerPage = (): number => {
-  const stored = Number(localStorage.getItem(ITEMS_PER_PAGE_KEY))
+  const stored = Number(localStorage.getItem(itemsPerPageStorageKey()))
 
   return Number.isFinite(stored) && stored > 0 ? stored : 10
 }
@@ -146,7 +154,11 @@ const selection = useRowSelection(() => pagedItems.value.map(keyOf))
 const skeletonColumns = computed(() =>
   props.columns.length + (props.selectable ? 1 : 0) + (props.expandable ? 1 : 0),
 )
-const expandColspan = computed(() => skeletonColumns.value + 1)
+// The trailing actions <td> is rendered only when an `actions` slot is provided
+// (see template), so the expansion row must span columns + selection/expand
+// toggles + the actions column only when it actually exists.
+const slots = useSlots()
+const expandColspan = computed(() => skeletonColumns.value + (slots.actions ? 1 : 0))
 
 const onSort = (key: string) => {
   sort.value = nextSortState(sort.value, key)
@@ -157,7 +169,7 @@ const onItemsPerPage = (value: number) => {
   itemsPerPage.value = value
   page.value = 1
   try {
-    localStorage.setItem(ITEMS_PER_PAGE_KEY, String(value))
+    localStorage.setItem(itemsPerPageStorageKey(), String(value))
   } catch {
     // Ignore unavailable storage; pagination still works in-memory.
   }

@@ -286,7 +286,7 @@ export default {
           reality: { enabled: true, handshake: { server_port: 443 }, short_id: RandomUtil.randomShortId() },
           server_name: ""
         }
-        this.tls.client = <oTls>{ reality: { public_key: "" }, utls: defaultOutTls.utls }
+        this.tls.client = <oTls>{ reality: { public_key: "" }, utls: JSON.parse(JSON.stringify(defaultOutTls.utls)) }
       } else {
         this.tls.server = <iTls>{ enabled: true }
         this.tls.client = <oTls>{}
@@ -427,7 +427,7 @@ export default {
     },
     optionALPN: {
       get(): boolean { return this.inTls.alpn != undefined },
-      set(v:boolean) { this.inTls.alpn = v ? defaultInTls.alpn : undefined }
+      set(v:boolean) { this.inTls.alpn = v ? JSON.parse(JSON.stringify(defaultInTls.alpn)) : undefined }
     },
     optionMinV: {
       get(): boolean { return this.inTls.min_version != undefined },
@@ -439,7 +439,7 @@ export default {
     },
     optionCS: {
       get(): boolean { return this.inTls.cipher_suites != undefined },
-      set(v:boolean) { this.inTls.cipher_suites = v ? defaultInTls.cipher_suites : undefined }
+      set(v:boolean) { this.inTls.cipher_suites = v ? JSON.parse(JSON.stringify(defaultInTls.cipher_suites)) : undefined }
     },
     optionCurve: {
       get(): boolean { return this.inTls.curve_preferences != undefined },
@@ -468,7 +468,7 @@ export default {
     },
     optionFP: {
       get(): boolean { return this.outTls.utls != undefined },
-      set(v:boolean) { this.outTls.utls = v ? defaultOutTls.utls : undefined }
+      set(v:boolean) { this.outTls.utls = v ? JSON.parse(JSON.stringify(defaultOutTls.utls)) : undefined }
     },
     optionStore: {
       get(): boolean { return this.inTls.store != undefined },
@@ -488,7 +488,7 @@ export default {
     },
     optionEch: {
       get(): boolean { return this.outTls.ech != undefined },
-      set(v:boolean) { this.outTls.ech = v ? defaultOutTls.ech : undefined }
+      set(v:boolean) { this.outTls.ech = v ? JSON.parse(JSON.stringify(defaultOutTls.ech)) : undefined }
     },
     optionTime: {
       get(): boolean { return this.inTls?.reality?.max_time_difference != undefined },
