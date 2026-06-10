@@ -4,6 +4,19 @@
 
 这是中文版更新日志。英文版请见 `CHANGELOG-EN.md`，俄文版请见 `CHANGELOG-RU.md`。
 
+## [1.5.7-beta9-hotfix1] - 2026-06-10 - 修复因丢弃下划线开头分块导致的空白面板
+
+v1.5.7-beta9 的热修复。没有后端逻辑、破坏性变更、手动迁移或配置变更。
+
+### 修复
+
+- 修复了当构建生成以“_”开头的资源名时出现的空白面板（“Failed to fetch dynamically
+  imported module”，JS 分块 404）：Go 的 `//go:embed` 在不使用 `all:` 前缀时会丢弃此类
+  文件。现在 embed 使用 `all:`，且前端为资源名添加前缀（`app-`/`chunk-`/`style-[hash]`），
+  使其永远不以“_”开头。
+
+完整发布说明：[`docs/releases/v1.5.7-beta9-hotfix1.md`](docs/releases/v1.5.7-beta9-hotfix1.md)。
+
 ## [1.5.7-beta9] - 2026-06-10 - Nexus 界面对齐参考设计
 
 仅前端发布。默认的 Nexus 界面已对齐深色“技术”参考设计。没有后端、破坏性变更、

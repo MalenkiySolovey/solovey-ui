@@ -5,6 +5,21 @@ All notable changes to this project are documented in this file.
 This is the English-language changelog. See `CHANGELOG-RU.md` for Russian and
 `CHANGELOG-ZH.md` for Simplified Chinese.
 
+## [1.5.7-beta9-hotfix1] - 2026-06-10 - Fix blank panel from dropped underscore-named chunks
+
+Hotfix for v1.5.7-beta9. No backend logic, breaking, manual-migration, or
+configuration changes.
+
+### Fixes
+
+- Fixed a blank panel ("Failed to fetch dynamically imported module", 404 on a
+  JS chunk) that occurred when the build emitted an asset name starting with
+  "_": Go's `//go:embed` drops such files unless the `all:` prefix is used. The
+  embed now uses `all:`, and the frontend prefixes asset names
+  (`app-`/`chunk-`/`style-[hash]`) so they never start with "_".
+
+Full release notes: [`docs/releases/v1.5.7-beta9-hotfix1.md`](docs/releases/v1.5.7-beta9-hotfix1.md).
+
 ## [1.5.7-beta9] - 2026-06-10 - Nexus interface aligned to the reference design
 
 Frontend-only release. The default Nexus interface now matches the dark
