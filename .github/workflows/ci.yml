@@ -18,7 +18,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
 
       - name: Shell syntax
         run: bash -n install.sh solovey-ui.sh scripts/release-package-linux.sh scripts/server-smoke-debian.sh tests/installer/release-package.sh tests/installer/install-update.sh tests/installer/migrate-from-sui.sh tests/installer/rollback.sh
@@ -40,7 +40,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
 
       - name: Set up Go
         uses: actions/setup-go@v6
@@ -58,7 +58,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6.0.2
+        uses: actions/checkout@v6.0.3
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
