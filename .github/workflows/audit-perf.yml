@@ -27,7 +27,7 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || contains(join(github.event.pull_request.labels.*.name, ','), 'run-perf') }}
     steps:
       - uses: actions/checkout@v6.0.2
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
