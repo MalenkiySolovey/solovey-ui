@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/deposist/s-ui-x/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 )
 
 // TestClientChangeNameJSONProducesValidChangesFeed pins the M5 fix: a client

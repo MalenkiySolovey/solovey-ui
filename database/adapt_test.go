@@ -1,12 +1,14 @@
 package database
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/config"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
 // TestAdaptRehashesLegacyPlaintextPassword simulates an imported legacy backup
@@ -56,6 +58,71 @@ func TestAdaptRehashesLegacyPlaintextPassword(t *testing.T) {
 	}
 	if second != stored {
 		t.Fatal("AdaptToCurrentVersion is not idempotent; password changed on second run")
+	}
+}
+
+func TestAdaptRotatesLegacyDefaultAdminPassword(t *testing.T) {
+	dbDir := makeDBTempDir(t, "s-ui-adapt-test-")
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	if err := InitDB(filepath.Join(dbDir, "s-ui.db")); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { closeMainDB(t) })
+
+	passwordPath := initialAdminPasswordPath(config.GetDBPath())
+	if err := os.Remove(passwordPath); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	d := GetDB()
+	if err := d.Model(&model.User{}).Where("username = ?", "admin").Updates(map[string]any{
+		"password":             "admin",
+		"force_password_reset": true,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := AdaptToCurrentVersion(); err != nil {
+		t.Fatal(err)
+	}
+
+	generatedBytes, err := os.ReadFile(passwordPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	generated := strings.TrimSpace(string(generatedBytes))
+	if generated == "" || generated == "admin" {
+		t.Fatalf("unexpected generated admin password: %q", generated)
+	}
+
+	var stored model.User
+	if err := d.Model(&model.User{}).Where("username = ?", "admin").First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !common.IsPasswordHash(stored.Password) {
+		t.Fatalf("rotated password was not hashed: %q", stored.Password)
+	}
+	if ok, _ := common.CheckPassword(stored.Password, "admin"); ok {
+		t.Fatal("legacy admin/admin password still validates after adapt")
+	}
+	if ok, _ := common.CheckPassword(stored.Password, generated); !ok {
+		t.Fatal("generated admin password does not validate")
+	}
+	if stored.ForcePasswordReset {
+		t.Fatalf("rotated initial-admin password should be directly usable: %#v", stored)
+	}
+
+	if err := AdaptToCurrentVersion(); err != nil {
+		t.Fatal(err)
+	}
+	secondBytes, err := os.ReadFile(passwordPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.TrimSpace(string(secondBytes)) != generated {
+		t.Fatal("AdaptToCurrentVersion rotated default admin password more than once")
 	}
 }
 

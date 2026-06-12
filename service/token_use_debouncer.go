@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/logger"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
 )
 
 const (

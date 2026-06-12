@@ -10,12 +10,12 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deposist/s-ui-x/config"
-	"github.com/deposist/s-ui-x/logger"
-	"github.com/deposist/s-ui-x/middleware"
-	"github.com/deposist/s-ui-x/network"
-	"github.com/deposist/s-ui-x/service"
-	"github.com/deposist/s-ui-x/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/config"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/middleware"
+	"github.com/MalenkiySolovey/solovey-ui/network"
+	"github.com/MalenkiySolovey/solovey-ui/service"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	"github.com/gin-gonic/gin"
 )

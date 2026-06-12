@@ -7,8 +7,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/ipmonitor"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/ipmonitor"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing/common/buf"

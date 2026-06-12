@@ -6,8 +6,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/logger"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
 )
 
 const (

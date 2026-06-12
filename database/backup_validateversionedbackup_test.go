@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/deposist/s-ui-x/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"

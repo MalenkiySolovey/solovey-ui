@@ -11,6 +11,7 @@ export default defineConfig({
     environment: 'node',
     include: ['src/**/*.test.ts', 'src/**/*.spec.ts'],
     css: false,
+    testTimeout: 30000,
     // Transform Vuetify through Vite (not Node's ESM loader) so its side-effect
     // .css imports are neutralised by `css: false` instead of crashing on the
     // unknown ".css" extension. Lets tests render real Vuetify components.

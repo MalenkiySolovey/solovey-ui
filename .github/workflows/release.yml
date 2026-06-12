@@ -1,4 +1,4 @@
-name: Release S-UI
+name: Release Solovey UI
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v1.5.6-beta2"
+        default: "v1.5.7-solovey.1"
         type: string
   push:
     tags:
@@ -22,6 +22,27 @@ env:
   BOOTLIN_BASE_URL: https://toolchains.bootlin.com/downloads/releases/toolchains
 
 jobs:
+  test-installer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6.0.2
+
+      - name: Shell syntax
+        run: bash -n install.sh solovey-ui.sh scripts/release-package-linux.sh scripts/server-smoke-debian.sh tests/installer/install-update.sh tests/installer/migrate-from-sui.sh tests/installer/rollback.sh tests/installer/release-package.sh
+
+      - name: release package integration
+        run: bash tests/installer/release-package.sh
+
+      - name: install/update integration
+        run: bash tests/installer/install-update.sh
+
+      - name: migrate-from-sui integration
+        run: bash tests/installer/migrate-from-sui.sh
+
+      - name: rollback integration
+        run: bash tests/installer/rollback.sh
+
   build-frontend:
     runs-on: ubuntu-latest
     steps:
@@ -69,7 +90,9 @@ jobs:
 
   build-linux:
     name: Build-${{ matrix.platform }}
-    needs: build-frontend
+    needs:
+      - build-frontend
+      - test-installer
     strategy:
       fail-fast: false
       matrix:
@@ -135,6 +158,24 @@ jobs:
           echo "GOARCH=${{ matrix.arch }}" >> $GITHUB_ENV
           if [ -n "${{ matrix.goarm }}" ]; then echo "GOARM=${{ matrix.goarm }}" >> $GITHUB_ENV; fi
 
+      - name: Resolve build metadata
+        id: build_meta
+        run: |
+          set -e
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            PANEL_VERSION="${{ inputs.tag }}"
+          else
+            PANEL_VERSION="${GITHUB_REF_NAME}"
+          fi
+          case "$PANEL_VERSION" in
+            v*) ;;
+            *) PANEL_VERSION="v${PANEL_VERSION}" ;;
+          esac
+          SING_BOX_VERSION="$(go list -m -f '{{.Version}}' github.com/sagernet/sing-box)"
+          [ -n "$SING_BOX_VERSION" ] || { echo "sing-box module version is empty" >&2; exit 1; }
+          echo "panel_version=$PANEL_VERSION" >> "$GITHUB_OUTPUT"
+          echo "sing_box_version=$SING_BOX_VERSION" >> "$GITHUB_OUTPUT"
+
       - name: Set up Bootlin musl (non-naive platforms)
         if: ${{ matrix.naive != true }}
         run: |
@@ -163,33 +204,40 @@ jobs:
             echo "CGO_LDFLAGS=--sysroot=$SYSROOT -static" >> $GITHUB_ENV
           fi
 
-      - name: Build s-ui
+      - name: Build Solovey UI
         run: |
           set -e
           BUILD_TAGS="with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale"
           [ "${{ matrix.naive }}" = "true" ] && BUILD_TAGS="${BUILD_TAGS},with_naive_outbound,with_musl"
-          go build -ldflags="-w -s -checklinkname=0 -linkmode external -extldflags '-static'" -tags "$BUILD_TAGS" -o sui main.go
-          file sui
-          ldd sui 2>/dev/null || echo "Static binary confirmed"
-
-          mkdir s-ui
-          cp sui s-ui/
-          cp s-ui.service s-ui/
-          cp s-ui.sh s-ui/
+          go build -ldflags="-w -s -checklinkname=0 -linkmode external -extldflags '-static'" -tags "$BUILD_TAGS" -o solovey-ui main.go
+          file solovey-ui
+          ldd solovey-ui 2>/dev/null || echo "Static binary confirmed"
+          {
+            echo "app=solovey-ui"
+            echo "version=${{ steps.build_meta.outputs.panel_version }}"
+            echo "commit=${GITHUB_SHA}"
+            echo "platform=linux/${{ matrix.platform }}"
+            echo "go=$(go version)"
+            echo "sing_box=${{ steps.build_meta.outputs.sing_box_version }}"
+          } > BUILD_INFO.txt
 
       - name: Package
-        run: tar -zcvf s-ui-linux-${{ matrix.platform }}.tar.gz s-ui
-
-      - name: Generate SHA256 checksum
-        run: sha256sum s-ui-linux-${{ matrix.platform }}.tar.gz > s-ui-linux-${{ matrix.platform }}.tar.gz.sha256
+        run: |
+          bash scripts/release-package-linux.sh \
+            --target linux-${{ matrix.platform }} \
+            --binary ./solovey-ui \
+            --manager ./solovey-ui.sh \
+            --service ./solovey-ui.service \
+            --build-info ./BUILD_INFO.txt \
+            --out-dir .
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
-          name: s-ui-linux-${{ matrix.platform }}
+          name: solovey-ui-linux-${{ matrix.platform }}
           path: |
-            ./s-ui-linux-${{ matrix.platform }}.tar.gz
-            ./s-ui-linux-${{ matrix.platform }}.tar.gz.sha256
+            ./solovey-ui-linux-${{ matrix.platform }}.tar.gz
+            ./solovey-ui-linux-${{ matrix.platform }}.tar.gz.sha256
           retention-days: 1
 
   publish-linux:
@@ -228,7 +276,7 @@ jobs:
       - name: Download Linux build artifacts
         uses: actions/download-artifact@v8
         with:
-          pattern: s-ui-linux-*
+          pattern: solovey-ui-linux-*
           path: release-assets
           merge-multiple: true
 
@@ -236,7 +284,7 @@ jobs:
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
         with:
           tag_name: ${{ steps.vars.outputs.tag }}
-          name: s-ui ${{ steps.vars.outputs.tag }}
+          name: Solovey UI ${{ steps.vars.outputs.tag }}
           target_commitish: ${{ github.sha }}
           prerelease: ${{ steps.vars.outputs.prerelease == 'true' }}
           body_path: ${{ steps.vars.outputs.notes_path }}

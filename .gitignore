@@ -1,13 +1,14 @@
 .DS_Store
-dist/
-release/
-backup/
-bin/
-db/
+/dist/
+/release/
+/backup/
+/bin/
+/db/
 sui
-web/html
+/web/html
 main
-tmp
+/tmp
+/.tmp/
 .sync*
 *.tar.gz
 
@@ -18,15 +19,20 @@ tmp
 # Log files
 *.log*
 .cache
+.runtime/
 
 # Windows build artifacts
 *.exe
 *.zip
 *.test.exe
 s-ui-windows/
+solovey-ui-windows/
 sui-*.exe
 sui-*.zip
+solovey-ui-*.exe
+solovey-ui-*.zip
 windows/sui-*.exe
+windows/solovey-ui-*.exe
 
 # Local audit/test scratch output
 test-results/
@@ -40,6 +46,9 @@ verify-*.txt
 
 # Internal development log (not needed by end users)
 docs/project-context.md
+docs/architecture-cleanup.md
+docs/github-publish.md
+docs/releases/
 dc42e16-files.txt
 docs/audit/
 tests/baseline/*

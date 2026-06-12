@@ -9,13 +9,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deposist/s-ui-x/config"
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/logger"
+	"github.com/MalenkiySolovey/solovey-ui/config"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
 )
 
 const (
-	versionCheckURL     = "https://api.github.com/repos/deposist/s-ui-x/releases/latest"
+	versionCheckURL     = "https://api.github.com/repos/MalenkiySolovey/solovey-ui/releases/latest"
 	versionCheckCache   = time.Hour
 	versionCheckTimeout = 3 * time.Second
 )
@@ -120,7 +120,7 @@ func fetchLatestRelease(client *http.Client, url string, etag string) (string, s
 		return "", "", "", false, err
 	}
 	req.Header.Set("Accept", "application/vnd.github+json")
-	req.Header.Set("User-Agent", "s-ui-version-check")
+	req.Header.Set("User-Agent", "solovey-ui-version-check")
 	if etag != "" {
 		req.Header.Set("If-None-Match", etag)
 	}

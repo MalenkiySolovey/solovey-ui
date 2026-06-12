@@ -3,7 +3,7 @@ package api
 import (
 	"strings"
 
-	"github.com/deposist/s-ui-x/paidsub"
+	"github.com/MalenkiySolovey/solovey-ui/paidsub"
 
 	"github.com/gin-gonic/gin"
 )

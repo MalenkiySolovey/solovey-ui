@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deposist/s-ui-x/config"
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/database/importxui"
+	"github.com/MalenkiySolovey/solovey-ui/config"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui"
 )
 
 func TestImportXuiCommandDryRunReport(t *testing.T) {

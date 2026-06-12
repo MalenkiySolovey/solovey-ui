@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deposist/s-ui-x/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -45,6 +45,10 @@ func (a *ApiService) IssueCSRFToken(c *gin.Context) {
 		"token":     token,
 		"expiresAt": expiresAt,
 	}, nil)
+}
+
+func (a *ApiService) GetCSRF(c *gin.Context) {
+	a.IssueCSRFToken(c)
 }
 
 func ResetSessionCSRF(s sessions.Session) {

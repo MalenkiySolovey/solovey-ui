@@ -6,13 +6,12 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/deposist/s-ui-x/core"
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/logger"
-	"github.com/deposist/s-ui-x/realtime"
-	"github.com/deposist/s-ui-x/util/common"
-	"github.com/deposist/s-ui-x/util/redact"
+	"github.com/MalenkiySolovey/solovey-ui/core"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/util/redact"
 )
 
 type ConfigService struct {
@@ -59,56 +58,24 @@ func NewConfigServiceWithRuntime(runtime *Runtime) *ConfigService {
 }
 
 func (s *ConfigService) GetConfig(data string) (*[]byte, error) {
-	var err error
-	if len(data) == 0 {
-		data, err = s.SettingService.GetConfig()
-		if err != nil {
-			return nil, err
-		}
-	}
-	var singboxConfig map[string]json.RawMessage
-	err = json.Unmarshal([]byte(data), &singboxConfig)
-	if err != nil {
-		return nil, err
-	}
-
-	inbounds, err := s.InboundService.GetAllConfig(database.GetDB())
-	if err != nil {
-		return nil, err
-	}
-	singboxConfig["inbounds"], err = json.Marshal(inbounds)
-	if err != nil {
-		return nil, err
-	}
-	outbounds, err := s.OutboundService.GetAllConfig(database.GetDB())
-	if err != nil {
-		return nil, err
-	}
-	singboxConfig["outbounds"], err = json.Marshal(outbounds)
-	if err != nil {
-		return nil, err
-	}
-	services, err := s.ServicesService.GetAllConfig(database.GetDB())
-	if err != nil {
-		return nil, err
-	}
-	singboxConfig["services"], err = json.Marshal(services)
-	if err != nil {
-		return nil, err
-	}
-	endpoints, err := s.EndpointService.GetAllConfig(database.GetDB())
-	if err != nil {
-		return nil, err
-	}
-	singboxConfig["endpoints"], err = json.Marshal(endpoints)
-	if err != nil {
-		return nil, err
-	}
-	rawConfig, err := json.MarshalIndent(singboxConfig, "", "  ")
+	rawConfig, err := s.singBoxConfigBuilder().Build(data)
 	if err != nil {
 		return nil, err
 	}
 	return &rawConfig, nil
+}
+
+func (s *ConfigService) singBoxConfigBuilder() SingBoxConfigBuilder {
+	if s == nil {
+		return NewSingBoxConfigBuilder(DefaultRuntime())
+	}
+	return SingBoxConfigBuilder{
+		SettingService:  s.SettingService,
+		InboundService:  s.InboundService,
+		OutboundService: s.OutboundService,
+		ServicesService: s.ServicesService,
+		EndpointService: s.EndpointService,
+	}
 }
 
 // startCore starts sing-box. When force is true, the cool-down between failed
@@ -220,8 +187,7 @@ func (s *ConfigService) CheckOutboundWithContext(ctx context.Context, tag string
 }
 
 func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initUsers string, loginUser string, hostname string) (objs []string, err error) {
-	objs = []string{obj}
-	needsCoreRestart := false
+	plan := newConfigSavePlan(obj)
 	auditTelegramBackupPassphrase, auditTelegramBackupPassphraseConfigured, err := s.telegramBackupPassphraseAuditState(obj, data)
 	if err != nil {
 		return nil, err
@@ -229,95 +195,30 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 
 	db := database.GetDB()
 	tx := db.Begin()
+	committed := false
 	defer func() {
-		if err == nil {
-			if commitErr := tx.Commit().Error; commitErr != nil {
-				err = commitErr
-				return
-			}
-			if auditTelegramBackupPassphrase {
-				s.SettingService.recordTelegramBackupPassphraseChanged(loginUser, auditTelegramBackupPassphraseConfigured)
-			}
-			realtime.Publish(realtime.TopicConfigInvalidated, nil)
-			coreInstance := s.coreInstance()
-			if coreInstance == nil {
-				return
-			}
-			if needsCoreRestart {
-				if coreInstance.IsRunning() {
-					if restartErr := s.RestartCore(); restartErr != nil {
-						logger.Warning("sing-box restart after save failed: ", restartErr)
-					}
-				} else {
-					if startErr := s.startCore(true); startErr != nil {
-						logger.Warning("sing-box start after save failed: ", startErr)
-					}
-				}
-			} else if !coreInstance.IsRunning() {
-				if startErr := s.startCore(true); startErr != nil {
-					logger.Warning("sing-box start after save failed: ", startErr)
-				}
-			}
-		} else {
+		if !committed {
 			tx.Rollback()
 		}
 	}()
 
-	switch obj {
-	case "clients":
-		var inboundIds []uint
-		inboundIds, err = s.ClientService.Save(tx, act, data, hostname)
-		if err == nil && len(inboundIds) > 0 {
-			objs = append(objs, "inbounds")
-			needsCoreRestart = true
-		}
-	case "tls":
-		err = s.TlsService.Save(tx, act, data, hostname)
-		objs = append(objs, "clients", "inbounds")
-		needsCoreRestart = true
-	case "inbounds":
-		err = s.InboundService.Save(tx, act, data, initUsers, hostname)
-		objs = append(objs, "clients")
-		needsCoreRestart = true
-	case "outbounds":
-		err = s.OutboundService.Save(tx, act, data)
-		needsCoreRestart = true
-	case "services":
-		err = s.ServicesService.Save(tx, act, data)
-		needsCoreRestart = true
-	case "endpoints":
-		err = s.EndpointService.Save(tx, act, data)
-		needsCoreRestart = true
-	case "config":
-		err = s.SettingService.SaveConfig(tx, data)
-		if err != nil {
-			return nil, err
-		}
-		needsCoreRestart = true
-	case "settings":
-		err = s.SettingService.Save(tx, data)
-	default:
-		return nil, common.NewError("unknown object: ", obj)
-	}
-	if err != nil {
+	if err = s.applyConfigSaveMutation(tx, &plan, obj, act, data, initUsers, hostname); err != nil {
 		return nil, err
 	}
-
-	dt := time.Now().Unix()
-	err = tx.Create(&model.Changes{
-		DateTime: dt,
-		Actor:    loginUser,
-		Key:      obj,
-		Action:   act,
-		Obj:      redactChangePayload(data),
-	}).Error
-	if err != nil {
+	if err = s.recordConfigChange(tx, loginUser, obj, act, data); err != nil {
 		return nil, err
 	}
 
 	s.setLastUpdate(time.Now().Unix())
 
-	return objs, nil
+	if err = tx.Commit().Error; err != nil {
+		return plan.Objects(), err
+	}
+	committed = true
+
+	s.applyConfigSaveEffects(plan, loginUser, auditTelegramBackupPassphrase, auditTelegramBackupPassphraseConfigured)
+
+	return plan.Objects(), nil
 }
 
 func (s *ConfigService) coreInstance() *core.Core {
@@ -342,7 +243,7 @@ func (s *ConfigService) telegramBackupPassphraseAuditState(obj string, data json
 	if err := json.Unmarshal(data, &settings); err != nil {
 		return false, false, err
 	}
-	newPassphrase, ok := settings["telegramBackupPassphrase"]
+	newPassphrase, ok := settings[settingKeyTelegramBackupPassphrase]
 	if !ok || newPassphrase == StoredSecretMarker {
 		return false, false, nil
 	}

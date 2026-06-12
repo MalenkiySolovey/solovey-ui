@@ -2,7 +2,7 @@ FROM --platform=$BUILDPLATFORM node:alpine AS front-builder
 WORKDIR /app
 COPY frontend/ ./
 # npm ci (not install) so the image is built from the exact, audited
-# package-lock.json — matches CI/release and fails closed on lockfile drift.
+# package-lock.json. This matches CI/release and fails closed on lockfile drift.
 RUN npm ci && npm run build
 
 FROM golang:1.26.4-alpine AS backend-builder
@@ -44,13 +44,13 @@ COPY --from=front-builder /app/dist/ /app/web/html/
 RUN if [ "$TARGETARCH" = "arm" ]; then export GOARM=7; [ "$TARGETVARIANT" = "v6" ] && export GOARM=6; fi; \
     go build -ldflags="-w -s" \
     -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,with_tailscale" \
-    -o sui main.go
+    -o solovey-ui main.go
 
 FROM alpine
 # Match defaultValueMap["timeLocation"] in service settings.
 ENV TZ=Europe/Moscow
 WORKDIR /app
 RUN set -ex && apk add --no-cache --upgrade bash tzdata ca-certificates nftables
-COPY --from=backend-builder /app/sui /app/libcronet.so /app/
+COPY --from=backend-builder /app/solovey-ui /app/libcronet.so /app/
 COPY entrypoint.sh /app/
 ENTRYPOINT [ "./entrypoint.sh" ]

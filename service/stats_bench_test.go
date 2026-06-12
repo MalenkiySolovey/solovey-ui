@@ -10,9 +10,9 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/deposist/s-ui-x/core"
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/core"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	gormlogger "gorm.io/gorm/logger"
 )
 

@@ -1,18 +1,36 @@
 .DS_Store
-dist/
-release/
-backup/
-bin/
-db/
+/dist/
+/release/
+/backup/
+/bin/
+/db/
 sui
-web/html
+solovey-ui
+/web/html
 main
-tmp
+/tmp
+/.tmp/
 .sync*
 *.tar.gz
 .kiro/
 frontend/node_modules
+frontend/dist
 frontend/.vite
+*.exe
+*.zip
+*.test.exe
+s-ui-windows/
+solovey-ui-windows/
+sui-*.exe
+sui-*.zip
+solovey-ui-*.exe
+solovey-ui-*.zip
+windows/sui-*.exe
+windows/solovey-ui-*.exe
+.gocache/
+.gotmp/
+.appdata/
+.audit/
 
 # local env files
 .env.local
@@ -21,6 +39,7 @@ frontend/.vite
 # Log files
 *.log*
 .cache
+.runtime/
 
 # Editor directories and files
 .idea

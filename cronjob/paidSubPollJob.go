@@ -3,7 +3,7 @@ package cronjob
 import (
 	"context"
 
-	"github.com/deposist/s-ui-x/paidsub"
+	"github.com/MalenkiySolovey/solovey-ui/paidsub"
 )
 
 // PaidSubPollJob drives the experimental Paid Subscriptions out-of-band payment

@@ -4,7 +4,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deposist/s-ui-x/service"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
 // subDisplaySettingsTTL bounds how long the per-process snapshot of the

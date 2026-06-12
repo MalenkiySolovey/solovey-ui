@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/deposist/s-ui-x/logger"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
 )
 
 func NewErrorf(format string, a ...interface{}) error {

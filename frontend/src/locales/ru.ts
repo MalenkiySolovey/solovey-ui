@@ -306,6 +306,7 @@ export default {
     audit: "Аудит",
     migrateXui: "Миграция 3x-ui",
     paidSub: "Платные подписки",
+    singBoxConfig: "Конфиг sing-box",
     settings: "Настройки",
   },
   telegram: {

@@ -1,4 +1,4 @@
-module github.com/deposist/s-ui-x
+module github.com/MalenkiySolovey/solovey-ui
 
 go 1.26.4
 

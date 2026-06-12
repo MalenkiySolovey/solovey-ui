@@ -45,6 +45,7 @@ export const nexusMenuGroups: NexusMenuGroup[] = [
       { title: 'pages.tls', icon: 'lucide:lock', path: '/tls', singBoxSettings: true, countKey: 'tlsConfigs' },
       { title: 'pages.rules', icon: 'lucide:list', path: '/rules', singBoxSettings: true },
       { title: 'pages.dns', icon: 'lucide:network', path: '/dns', singBoxSettings: true },
+      { title: 'pages.singBoxConfig', icon: 'lucide:file-text', path: '/sing-box-config', singBoxSettings: true },
     ],
   },
   {

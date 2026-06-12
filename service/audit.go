@@ -5,9 +5,9 @@ import (
 	"errors"
 	"time"
 
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/util/redact"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/util/redact"
 )
 
 const (

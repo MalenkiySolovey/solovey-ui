@@ -4,9 +4,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/service"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
 func setSubTitle(t *testing.T, value string) {

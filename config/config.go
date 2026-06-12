@@ -69,9 +69,9 @@ func GetDBFolderPath() string {
 		if err != nil {
 			// Cross-platform fallback path
 			if runtime.GOOS == "windows" {
-				return "C:\\Program Files\\s-ui\\db"
+				return "C:\\Program Files\\solovey-ui\\db"
 			}
-			return "/usr/local/s-ui/db"
+			return "/usr/local/solovey-ui/db"
 		}
 		dbFolderPath = filepath.Join(dir, "db")
 	}

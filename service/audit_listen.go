@@ -1,7 +1,7 @@
 package service
 
 import (
-	"github.com/deposist/s-ui-x/logger"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
 )
 
 func RecordListenFallbackAudit(component string, requestedAddr string, fallbackAddr string, bindErr error) error {

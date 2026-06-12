@@ -1,445 +1,602 @@
-#!/bin/bash
-# S-UI installer with multilingual UI (English / Russian / Chinese).
-# Language choice can be supplied non-interactively via env:
-#   SUI_LANG=en|ru|zh  bash install.sh ...
-# A version tag (e.g. "v1.4.2-beta") may be provided as the only positional
-# argument to install a specific release.
+#!/usr/bin/env bash
 
-red='\033[0;31m'
-green='\033[0;32m'
-yellow='\033[0;33m'
-plain='\033[0m'
+set -Eeuo pipefail
 
-LANG_FILE="/etc/s-ui/lang"
-SECRETBOX_ENV_DIR="/etc/s-ui"
-SECRETBOX_ENV_FILE="${SECRETBOX_ENV_DIR}/secretbox.env"
-SECRETBOX_DROPIN_DIR="/etc/systemd/system/s-ui.service.d"
-SECRETBOX_DROPIN_FILE="${SECRETBOX_DROPIN_DIR}/10-secretbox-env.conf"
+APP_NAME="solovey-ui"
+SERVICE_NAME="solovey-ui"
+REPO="${SOLOVEY_UI_REPO:-MalenkiySolovey/solovey-ui}"
 
-ask_language() {
-    if [[ -n "${SUI_LANG}" ]]; then
-        case "${SUI_LANG}" in
-            en|ru|zh) lang="${SUI_LANG}"; return ;;
-        esac
-    fi
-    if [[ -f "${LANG_FILE}" ]]; then
-        local saved
-        saved=$(cat "${LANG_FILE}" 2>/dev/null | tr -d '[:space:]')
-        case "${saved}" in
-            en|ru|zh) lang="${saved}"; return ;;
-        esac
-    fi
-    if [[ ! -t 0 ]]; then
-        # Non-interactive (piped from curl) and no env: default to English.
-        lang="en"
-        return
-    fi
-    echo
-    echo "Select language / Выберите язык / 请选择语言:"
-    echo "  1) English"
-    echo "  2) Русский"
-    echo "  3) 中文"
-    read -rp "[1-3, default 1]: " lang_choice
-    case "${lang_choice}" in
-        2|ru|RU|Russian|Русский) lang="ru" ;;
-        3|zh|ZH|Chinese|中文|简体中文) lang="zh" ;;
-        *) lang="en" ;;
-    esac
+INSTALL_DIR="${SOLOVEY_UI_INSTALL_DIR:-/usr/local/${APP_NAME}}"
+BIN_PATH="${INSTALL_DIR}/${APP_NAME}"
+MANAGER_PATH="${INSTALL_DIR}/${APP_NAME}.sh"
+CLI_PATH="${SOLOVEY_UI_CLI_PATH:-/usr/bin/${APP_NAME}}"
+SYSTEMD_SERVICE="${SOLOVEY_UI_SYSTEMD_SERVICE:-/etc/systemd/system/${SERVICE_NAME}.service}"
+ENV_DIR="${SOLOVEY_UI_ENV_DIR:-/etc/${APP_NAME}}"
+SECRETBOX_ENV_FILE="${SOLOVEY_UI_SECRETBOX_ENV_FILE:-${ENV_DIR}/secretbox.env}"
+BACKUP_ROOT="${SOLOVEY_UI_BACKUP_ROOT:-/var/backups/${APP_NAME}}"
+
+GITHUB_API="${SOLOVEY_UI_GITHUB_API:-https://api.github.com/repos/${REPO}/releases/latest}"
+GITHUB_RELEASES="${SOLOVEY_UI_GITHUB_RELEASES:-https://github.com/${REPO}/releases/download}"
+LEGACY_SERVICE_NAME="${SOLOVEY_UI_LEGACY_SERVICE_NAME:-s-ui}"
+LEGACY_DIR="${SOLOVEY_UI_LEGACY_DIR:-/usr/local/s-ui}"
+LEGACY_ENV_DIR="${SOLOVEY_UI_LEGACY_ENV_DIR:-/etc/s-ui}"
+LEGACY_SECRETBOX_ENV_FILE="${SOLOVEY_UI_LEGACY_SECRETBOX_ENV_FILE:-${LEGACY_ENV_DIR}/secretbox.env}"
+LEGACY_SERVICE_FILE="${SOLOVEY_UI_LEGACY_SERVICE_FILE:-/etc/systemd/system/${LEGACY_SERVICE_NAME}.service}"
+LEGACY_DROPIN_DIR="${SOLOVEY_UI_LEGACY_DROPIN_DIR:-/etc/systemd/system/${LEGACY_SERVICE_NAME}.service.d}"
+LEGACY_DB="${SOLOVEY_UI_LEGACY_DB:-${LEGACY_DIR}/db/s-ui.db}"
+LEGACY_CERT_DIR="${SOLOVEY_UI_LEGACY_CERT_DIR:-${LEGACY_DIR}/cert}"
+TARGET_DB="${INSTALL_DIR}/db/${APP_NAME}.db"
+
+DRY_RUN=0
+NON_INTERACTIVE=0
+BACKUP_MODE="auto"
+MIGRATE_FROM_SUI=0
+FORCE_MIGRATE=0
+VERSION=""
+BACKUP_PATH=""
+DOWNLOAD_TMP_DIR=""
+
+usage() {
+    cat <<EOF
+Solovey UI installer
+
+Usage:
+  bash install.sh [options] [version]
+
+Options:
+  --version, --tag <tag>  Install a specific release tag.
+  --dry-run              Print planned operations without changing the system.
+  --non-interactive, -y   Disable prompts. Currently the installer is prompt-free.
+  --backup               Always create a backup before installing.
+  --no-backup            Skip backup creation.
+  --migrate-from-sui     Copy a legacy /usr/local/s-ui install into Solovey UI.
+  --force-migrate        Allow --migrate-from-sui to replace an existing new DB.
+  --help, -h             Show this help.
+
+Examples:
+  bash install.sh
+  bash install.sh --version v1.5.7-solovey.1
+  bash install.sh --dry-run
+  bash install.sh --migrate-from-sui
+EOF
 }
 
-t() {
-    local key="$1"
-    if [[ "${lang}" == "zh" ]]; then
-        case "${key}" in
-            run_as_root)        echo "致命错误：请使用 root 权限运行此脚本"; return ;;
-            detect_failed)      echo "检测系统失败，请联系作者！"; return ;;
-            current_release)    echo "当前系统发行版为：$2"; return ;;
-            arch_label)         echo "架构：$2"; return ;;
-            arch_unsupported)   echo "不支持的 CPU 架构！"; return ;;
-            running)            echo "正在执行..."; return ;;
-            migrate)            echo "正在迁移..."; return ;;
-            install_done)       echo "安装/更新完成！出于安全考虑，建议修改面板设置"; return ;;
-            continue_settings)  echo "是否继续修改设置 [y/n]？"; return ;;
-            enter_panel_port)   echo "请输入面板端口（留空则使用现有/默认值）："; return ;;
-            enter_panel_path)   echo "请输入面板路径（留空则使用现有/默认值）："; return ;;
-            enter_sub_port)     echo "请输入订阅端口（留空则使用现有/默认值）："; return ;;
-            enter_sub_path)     echo "请输入订阅路径（留空则使用现有/默认值）："; return ;;
-            initializing)       echo "正在初始化，请稍候..."; return ;;
-            change_admin)       echo "是否修改管理员账号密码 [y/n]？"; return ;;
-            set_username)       echo "请设置用户名："; return ;;
-            set_password)       echo "请设置密码："; return ;;
-            current_admin)      echo "当前管理员账号密码："; return ;;
-            cancelled)          echo "已取消..."; return ;;
-            fresh_install_creds) echo "这是全新安装，出于安全考虑将生成随机登录信息："; return ;;
-            username_label)     echo "用户名：$2"; return ;;
-            password_label)     echo "密码：$2"; return ;;
-            lost_creds)         echo "如果忘记登录信息，可以输入 s-ui 打开配置菜单"; return ;;
-            upgrade_keep_settings) echo "这是升级安装，将保留旧设置；如果忘记登录信息，可以输入 s-ui 打开配置菜单"; return ;;
-            stop_singbox)       echo "正在停止 sing-box 服务..."; return ;;
-            bin_dir_exists)     echo "/usr/local/s-ui/bin 目录已存在！请检查其中内容，并在迁移后手动删除"; return ;;
-            fetching_latest)    echo "已获取 s-ui 最新版本：$2，开始安装..."; return ;;
-            rate_limited)       echo "获取 s-ui 版本失败，可能是 Github API 限制导致，请稍后重试"; return ;;
-            download_failed)    echo "下载 s-ui 失败，请确认服务器可以访问 Github"; return ;;
-            checksum_failed)    echo "s-ui 校验和验证失败，请稍后重试或检查发布文件"; return ;;
-            installing_specific) echo "开始安装 s-ui $2"; return ;;
-            download_failed_specific) echo "下载 s-ui $2 失败，请检查该版本是否存在"; return ;;
-            installed_running)  echo "s-ui $2 安装完成，现已启动并运行..."; return ;;
-            panel_url)          echo "你可以通过以下 URL 访问面板："; return ;;
-            secretbox_key_generated) echo "已生成加密设置的 S-UI secretbox 密钥。该值只显示一次："; return ;;
-            secretbox_key_label) echo "SUI_SECRETBOX_KEY：$2"; return ;;
-            secretbox_key_file) echo "密钥文件：$2"; return ;;
-            secretbox_key_keep) echo "请保持该文件和密钥私密，并在更新、恢复时保留同一个值。"; return ;;
-        esac
-    fi
-    case "${lang}:${key}" in
-        # generic
-        en:run_as_root)        echo "Critical error: run this script as root";;
-        ru:run_as_root)        echo "Критическая ошибка: запустите этот скрипт с правами root";;
-        en:detect_failed)      echo "Could not detect the system, please contact the maintainer.";;
-        ru:detect_failed)      echo "Не удалось определить систему, обратитесь к автору.";;
-        en:current_release)    echo "Detected distribution: $2";;
-        ru:current_release)    echo "Текущий дистрибутив: $2";;
-        en:arch_label)         echo "Architecture: $2";;
-        ru:arch_label)         echo "Архитектура: $2";;
-        en:arch_unsupported)   echo "CPU architecture is not supported.";;
-        ru:arch_unsupported)   echo "Архитектура CPU не поддерживается.";;
-
-        en:running)            echo "Running...";;
-        ru:running)            echo "Выполняется...";;
-        en:migrate)            echo "Running migration...";;
-        ru:migrate)            echo "Выполняется миграция...";;
-        en:install_done)       echo "Install/upgrade complete. For security reasons it is recommended to change panel settings.";;
-        ru:install_done)       echo "Установка/обновление завершены. Из соображений безопасности рекомендуется изменить настройки панели.";;
-        en:continue_settings)  echo "Continue editing settings? [y/n] ";;
-        ru:continue_settings)  echo "Продолжить изменение настроек? [y/n] ";;
-        en:enter_panel_port)   echo "Enter panel port (leave empty to keep current/default):";;
-        ru:enter_panel_port)   echo "Введите порт панели (оставьте пустым, чтобы использовать текущее/стандартное значение):";;
-        en:enter_panel_path)   echo "Enter panel path (leave empty to keep current/default):";;
-        ru:enter_panel_path)   echo "Введите путь панели (оставьте пустым, чтобы использовать текущее/стандартное значение):";;
-        en:enter_sub_port)     echo "Enter subscription port (leave empty to keep current/default):";;
-        ru:enter_sub_port)     echo "Введите порт подписки (оставьте пустым, чтобы использовать текущее/стандартное значение):";;
-        en:enter_sub_path)     echo "Enter subscription path (leave empty to keep current/default):";;
-        ru:enter_sub_path)     echo "Введите путь подписки (оставьте пустым, чтобы использовать текущее/стандартное значение):";;
-        en:initializing)       echo "Initializing, please wait...";;
-        ru:initializing)       echo "Инициализация, подождите...";;
-        en:change_admin)       echo "Change admin credentials? [y/n] ";;
-        ru:change_admin)       echo "Изменить логин и пароль администратора? [y/n] ";;
-        en:set_username)       echo "Username: ";;
-        ru:set_username)       echo "Имя пользователя: ";;
-        en:set_password)       echo "Password: ";;
-        ru:set_password)       echo "Пароль: ";;
-        en:current_admin)      echo "Current admin credentials:";;
-        ru:current_admin)      echo "Текущие учетные данные администратора:";;
-        en:cancelled)          echo "Cancelled.";;
-        ru:cancelled)          echo "Отменено.";;
-        en:fresh_install_creds) echo "Fresh install detected. For security a random username/password were generated:";;
-        ru:fresh_install_creds) echo "Это новая установка. Из соображений безопасности будут сгенерированы случайные данные для входа:";;
-        en:username_label)     echo "Username: $2";;
-        ru:username_label)     echo "Имя пользователя: $2";;
-        en:password_label)     echo "Password: $2";;
-        ru:password_label)     echo "Пароль: $2";;
-        en:lost_creds)         echo "If you forget the credentials, run 's-ui' to open the management menu.";;
-        ru:lost_creds)         echo "Если вы забыли данные для входа, введите s-ui для открытия меню настроек.";;
-        en:upgrade_keep_settings) echo "Upgrade detected; existing settings are preserved. Use 's-ui' menu to recover credentials if needed.";;
-        ru:upgrade_keep_settings) echo "Это обновление; старые настройки сохраняются. Откройте меню s-ui для восстановления данных входа.";;
-
-        en:stop_singbox)       echo "Stopping legacy sing-box service...";;
-        ru:stop_singbox)       echo "Останавливается служба sing-box...";;
-        en:bin_dir_exists)     echo "Directory /usr/local/s-ui/bin already exists; please review and remove it manually after the migration.";;
-        ru:bin_dir_exists)     echo "Каталог /usr/local/s-ui/bin уже существует. Проверьте его содержимое и удалите вручную после миграции.";;
-
-        en:fetching_latest)    echo "Got the latest s-ui version: $2. Starting installation...";;
-        ru:fetching_latest)    echo "Получена последняя версия s-ui: $2. Начинается установка...";;
-        en:rate_limited)       echo "Could not retrieve s-ui version. GitHub API rate limit may apply, please retry later.";;
-        ru:rate_limited)       echo "Не удалось получить версию s-ui. Возможно, сработало ограничение GitHub API. Повторите попытку позже.";;
-        en:download_failed)    echo "Could not download s-ui. Verify the server has access to GitHub.";;
-        ru:download_failed)    echo "Не удалось скачать s-ui. Убедитесь, что сервер имеет доступ к GitHub.";;
-        en:checksum_failed)    echo "s-ui checksum verification failed. Retry later or check the release files.";;
-        ru:checksum_failed)    echo "Проверка checksum s-ui не прошла. Повторите позже или проверьте файлы релиза.";;
-        en:installing_specific) echo "Installing s-ui $2";;
-        ru:installing_specific) echo "Начинается установка s-ui $2";;
-        en:download_failed_specific) echo "Could not download s-ui $2. Make sure this version exists.";;
-        ru:download_failed_specific) echo "Не удалось скачать s-ui $2. Проверьте, существует ли эта версия.";;
-        en:installed_running)  echo "s-ui $2 is installed, started and running...";;
-        ru:installed_running)  echo "s-ui $2 установлен, запущен и работает...";;
-        en:panel_url)          echo "Panel is available at:";;
-        ru:panel_url)          echo "Панель доступна по адресу:";;
-        en:secretbox_key_generated) echo "Generated the S-UI secretbox key for encrypted settings. It is shown once:";;
-        ru:secretbox_key_generated) echo "Сгенерирован S-UI secretbox key для зашифрованных настроек. Он показывается один раз:";;
-        en:secretbox_key_label) echo "SUI_SECRETBOX_KEY: $2";;
-        ru:secretbox_key_label) echo "SUI_SECRETBOX_KEY: $2";;
-        en:secretbox_key_file) echo "Key file: $2";;
-        ru:secretbox_key_file) echo "Файл ключа: $2";;
-        en:secretbox_key_keep) echo "Keep this file and key private, and preserve the same value across updates and restores.";;
-        ru:secretbox_key_keep) echo "Держите этот файл и ключ в секрете и сохраняйте то же значение при обновлениях и восстановлении.";;
-        *) echo "${key}";;
-    esac
+log() {
+    printf '[%s] %s\n' "${APP_NAME}" "$*"
 }
 
-cur_dir=$(pwd)
+warn() {
+    printf '[%s] WARNING: %s\n' "${APP_NAME}" "$*" >&2
+}
 
-ask_language
-
-[[ $EUID -ne 0 ]] && echo -e "${red}$(t run_as_root)${plain}\n" && exit 1
-
-# Persist selected language so the management menu picks it up.
-mkdir -p "$(dirname "${LANG_FILE}")"
-printf '%s\n' "${lang}" >"${LANG_FILE}" 2>/dev/null || true
-
-if [[ -f /etc/os-release ]]; then
-    source /etc/os-release
-    release=$ID
-elif [[ -f /usr/lib/os-release ]]; then
-    source /usr/lib/os-release
-    release=$ID
-else
-    echo "$(t detect_failed)" >&2
+fail() {
+    printf '[%s] ERROR: %s\n' "${APP_NAME}" "$*" >&2
     exit 1
-fi
-echo "$(t current_release "${release}")"
-
-arch() {
-    case "$(uname -m)" in
-    x86_64 | x64 | amd64) echo 'amd64' ;;
-    i*86 | x86) echo '386' ;;
-    armv8* | armv8 | arm64 | aarch64) echo 'arm64' ;;
-    armv7* | armv7 | arm) echo 'armv7' ;;
-    armv6* | armv6) echo 'armv6' ;;
-    armv5* | armv5) echo 'armv5' ;;
-    s390x) echo 's390x' ;;
-    *) echo -e "${green}$(t arch_unsupported)${plain}" && rm -f install.sh && exit 1 ;;
-    esac
 }
 
-echo "$(t arch_label "$(arch)")"
-
-install_base() {
-    case "${release}" in
-    centos | almalinux | rocky | oracle)
-        yum -y update && yum install -y -q wget curl tar tzdata
-        ;;
-    fedora)
-        dnf -y update && dnf install -y -q wget curl tar tzdata
-        ;;
-    arch | manjaro | parch)
-        pacman -Syu && pacman -Syu --noconfirm wget curl tar tzdata
-        ;;
-    opensuse-tumbleweed)
-        zypper refresh && zypper -q install -y wget curl tar timezone
-        ;;
-    *)
-        apt-get update && apt-get install -y -q wget curl tar tzdata
-        ;;
-    esac
+run() {
+    if [[ "${DRY_RUN}" == "1" ]]; then
+        printf '[%s] DRY RUN:' "${APP_NAME}"
+        printf ' %q' "$@"
+        printf '\n'
+        return 0
+    fi
+    "$@"
 }
 
-read_secretbox_key_file() {
-    [[ -f "${SECRETBOX_ENV_FILE}" ]] || return 1
-
-    local line
-    local secretbox_key
-    while IFS= read -r line; do
-        case "${line}" in
-            SUI_SECRETBOX_KEY=*)
-                secretbox_key="${line#SUI_SECRETBOX_KEY=}"
-                if [[ -n "${secretbox_key}" ]]; then
-                    printf '%s' "${secretbox_key}"
-                    return 0
-                fi
+parse_args() {
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --version|--tag)
+                [[ $# -ge 2 ]] || fail "$1 requires a value"
+                VERSION="$2"
+                shift 2
+                ;;
+            --dry-run)
+                DRY_RUN=1
+                shift
+                ;;
+            --non-interactive|-y)
+                NON_INTERACTIVE=1
+                shift
+                ;;
+            --backup)
+                BACKUP_MODE="always"
+                shift
+                ;;
+            --no-backup)
+                BACKUP_MODE="never"
+                shift
+                ;;
+            --migrate-from-sui)
+                MIGRATE_FROM_SUI=1
+                shift
+                ;;
+            --force-migrate)
+                FORCE_MIGRATE=1
+                shift
+                ;;
+            --help|-h)
+                usage
+                exit 0
+                ;;
+            -*)
+                fail "unknown option: $1"
+                ;;
+            *)
+                [[ -z "${VERSION}" ]] || fail "multiple versions provided"
+                VERSION="$1"
+                shift
                 ;;
         esac
-    done <"${SECRETBOX_ENV_FILE}"
-    return 1
+    done
 }
 
-write_secretbox_key_file() {
-    local secretbox_key="$1"
-
-    mkdir -p "${SECRETBOX_ENV_DIR}"
-    if [[ -f "${SECRETBOX_ENV_FILE}" ]]; then
-        printf '\nSUI_SECRETBOX_KEY=%s\n' "${secretbox_key}" >>"${SECRETBOX_ENV_FILE}"
-    else
-        (umask 077 && printf 'SUI_SECRETBOX_KEY=%s\n' "${secretbox_key}" >"${SECRETBOX_ENV_FILE}")
+require_root() {
+    if [[ "${SOLOVEY_UI_ALLOW_NON_ROOT:-0}" == "1" ]]; then
+        return 0
     fi
+    [[ "${EUID}" -eq 0 ]] || fail "run as root, for example: sudo bash install.sh"
+}
+
+require_command() {
+    command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"
+}
+
+require_tools() {
+    require_command uname
+    require_command curl
+    require_command sed
+    require_command grep
+
+    if [[ "${DRY_RUN}" != "1" ]]; then
+        require_command tar
+        require_command sha256sum
+        require_command systemctl
+        require_command base64
+        require_command dd
+        if [[ "${MIGRATE_FROM_SUI}" == "1" ]]; then
+            require_command sqlite3
+        fi
+    fi
+}
+
+detect_arch() {
+    local machine
+    machine="$(uname -m)"
+    case "${machine}" in
+        x86_64|amd64) echo "amd64" ;;
+        aarch64|arm64) echo "arm64" ;;
+        armv7l|armv7*) echo "armv7" ;;
+        armv6l|armv6*) echo "armv6" ;;
+        armv5tel|armv5*) echo "armv5" ;;
+        i386|i686) echo "386" ;;
+        s390x) echo "s390x" ;;
+        *) fail "unsupported architecture: ${machine}" ;;
+    esac
+}
+
+latest_version() {
+    local tag
+    tag="$(
+        curl -fsSL \
+            -H "Accept: application/vnd.github+json" \
+            -H "User-Agent: ${APP_NAME}-installer" \
+            "${GITHUB_API}" |
+        sed -nE 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' |
+        head -n 1
+    )"
+    [[ -n "${tag}" ]] || fail "could not resolve latest release from ${GITHUB_API}"
+    printf '%s\n' "${tag}"
+}
+
+maybe_warn_legacy_install() {
+    if [[ -d "${LEGACY_DIR}" ]]; then
+        if [[ "${MIGRATE_FROM_SUI}" == "1" ]]; then
+            log "legacy s-ui install detected at ${LEGACY_DIR}; migration is enabled"
+            return 0
+        fi
+        warn "legacy s-ui install detected at ${LEGACY_DIR}; run with --migrate-from-sui to migrate it"
+        if [[ -f "${LEGACY_DB}" ]]; then
+            warn "legacy database found at ${LEGACY_DB}; keep it backed up before any manual migration"
+        fi
+    fi
+}
+
+describe_legacy_migration_plan() {
+    [[ "${MIGRATE_FROM_SUI}" == "1" ]] || return 0
+
+    log "legacy migration plan:"
+    log "  legacy DB: ${LEGACY_DB}"
+    log "  target DB: ${TARGET_DB}"
+    log "  legacy env: ${LEGACY_SECRETBOX_ENV_FILE}"
+    log "  target env: ${SECRETBOX_ENV_FILE}"
+    log "  legacy cert dir: ${LEGACY_CERT_DIR}"
+    log "  target cert dir: ${INSTALL_DIR}/cert"
+    log "  legacy service: ${LEGACY_SERVICE_NAME}"
+}
+
+validate_legacy_migration_ready() {
+    [[ "${MIGRATE_FROM_SUI}" == "1" ]] || return 0
+
+    [[ -f "${LEGACY_DB}" ]] || fail "--migrate-from-sui requested, but legacy DB does not exist: ${LEGACY_DB}"
+
+    if [[ "${FORCE_MIGRATE}" != "1" ]]; then
+        if [[ -f "${TARGET_DB}" || -f "${TARGET_DB}-wal" || -f "${TARGET_DB}-shm" ]]; then
+            fail "target DB already exists: ${TARGET_DB}; rerun with --force-migrate only after checking the backup"
+        fi
+    fi
+}
+
+backup_existing() {
+    local should_backup=0
+
+    case "${BACKUP_MODE}" in
+        always) should_backup=1 ;;
+        never) should_backup=0 ;;
+        auto)
+            if [[ -d "${INSTALL_DIR}" || -d "${ENV_DIR}" || -f "${SYSTEMD_SERVICE}" || "${MIGRATE_FROM_SUI}" == "1" ]]; then
+                should_backup=1
+            fi
+            ;;
+    esac
+
+    [[ "${should_backup}" == "1" ]] || return 0
+
+    local stamp target counter
+    stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+    target="${BACKUP_ROOT}/${stamp}"
+    counter=1
+    while [[ -e "${target}" ]]; do
+        target="${BACKUP_ROOT}/${stamp}-${counter}"
+        counter=$((counter + 1))
+    done
+    BACKUP_PATH="${target}"
+
+    log "creating backup at ${target}"
+    run mkdir -p "${target}"
+
+    if [[ -d "${INSTALL_DIR}" ]]; then
+        run cp -a "${INSTALL_DIR}" "${target}/app"
+    fi
+    if [[ -d "${ENV_DIR}" ]]; then
+        run cp -a "${ENV_DIR}" "${target}/etc"
+    fi
+    if [[ -f "${SYSTEMD_SERVICE}" ]]; then
+        run cp -a "${SYSTEMD_SERVICE}" "${target}/${SERVICE_NAME}.service"
+    fi
+    if [[ "${MIGRATE_FROM_SUI}" == "1" ]]; then
+        if [[ -d "${LEGACY_DIR}" ]]; then
+            run cp -a "${LEGACY_DIR}" "${target}/legacy-app"
+        fi
+        if [[ -d "${LEGACY_ENV_DIR}" ]]; then
+            run cp -a "${LEGACY_ENV_DIR}" "${target}/legacy-etc"
+        fi
+        if [[ -f "${LEGACY_SERVICE_FILE}" ]]; then
+            run cp -a "${LEGACY_SERVICE_FILE}" "${target}/${LEGACY_SERVICE_NAME}.service"
+        fi
+        if [[ -d "${LEGACY_DROPIN_DIR}" ]]; then
+            run cp -a "${LEGACY_DROPIN_DIR}" "${target}/${LEGACY_SERVICE_NAME}.service.d"
+        fi
+    fi
+
+    if [[ "${DRY_RUN}" != "1" ]]; then
+        {
+            printf 'app=%s\n' "${APP_NAME}"
+            printf 'created_at=%s\n' "${stamp}"
+            printf 'install_dir=%s\n' "${INSTALL_DIR}"
+            printf 'env_dir=%s\n' "${ENV_DIR}"
+            printf 'service=%s\n' "${SYSTEMD_SERVICE}"
+            append_backup_build_info "${INSTALL_DIR}/BUILD_INFO.txt"
+            if [[ "${MIGRATE_FROM_SUI}" == "1" ]]; then
+                printf 'legacy_dir=%s\n' "${LEGACY_DIR}"
+                printf 'legacy_env_dir=%s\n' "${LEGACY_ENV_DIR}"
+                printf 'legacy_service=%s\n' "${LEGACY_SERVICE_FILE}"
+            fi
+        } > "${target}/manifest.txt"
+    fi
+}
+
+append_backup_build_info() {
+    local info_file="$1"
+    local key value
+    [[ -f "${info_file}" ]] || return 0
+
+    while IFS='=' read -r key value || [[ -n "${key}" ]]; do
+        case "${key}" in
+            app|version|commit|platform|go|sing_box)
+                printf 'build_%s=%s\n' "${key}" "${value}"
+                ;;
+        esac
+    done < "${info_file}"
+}
+
+restore_backup_dir() {
+    local src="$1"
+    local dest="$2"
+
+    [[ -d "${src}" ]] || return 0
+    rm -rf "${dest}"
+    mkdir -p "$(dirname "${dest}")"
+    cp -a "${src}" "${dest}"
+}
+
+backup_has_current_install_payload() {
+    local backup="$1"
+    [[ -d "${backup}/app" || -d "${backup}/etc" || -f "${backup}/${SERVICE_NAME}.service" ]]
+}
+
+restore_current_install_backup() {
+    local backup="$1"
+
+    backup_has_current_install_payload "${backup}" || return 1
+
+    systemctl stop "${SERVICE_NAME}" >/dev/null 2>&1 || true
+    restore_backup_dir "${backup}/app" "${INSTALL_DIR}"
+    restore_backup_dir "${backup}/etc" "${ENV_DIR}"
+
+    if [[ -f "${backup}/${SERVICE_NAME}.service" ]]; then
+        mkdir -p "$(dirname "${SYSTEMD_SERVICE}")"
+        cp -a "${backup}/${SERVICE_NAME}.service" "${SYSTEMD_SERVICE}"
+    fi
+
+    if [[ -f "${INSTALL_DIR}/${APP_NAME}.sh" ]]; then
+        mkdir -p "$(dirname "${CLI_PATH}")"
+        ln -sf "${INSTALL_DIR}/${APP_NAME}.sh" "${CLI_PATH}"
+    fi
+
+    systemctl daemon-reload
+    systemctl restart "${SERVICE_NAME}"
+}
+
+rollback_failed_install() {
+    local status="$1"
+
+    if [[ -z "${BACKUP_PATH}" || ! -f "${BACKUP_PATH}/manifest.txt" ]]; then
+        warn "install failed; no previous Solovey UI backup is available for automatic rollback"
+        return "${status}"
+    fi
+    if ! backup_has_current_install_payload "${BACKUP_PATH}"; then
+        warn "install failed; backup has no previous Solovey UI payload to restore: ${BACKUP_PATH}"
+        return "${status}"
+    fi
+
+    warn "install failed; rolling back from ${BACKUP_PATH}"
+    if restore_current_install_backup "${BACKUP_PATH}"; then
+        warn "rollback after failed install completed"
+    else
+        warn "rollback after failed install failed; inspect backup: ${BACKUP_PATH}"
+    fi
+    return "${status}"
+}
+
+env_file_has_key() {
+    local file="$1"
+    local key="$2"
+    [[ -f "${file}" ]] && grep -qE "^${key}=" "${file}"
+}
+
+append_legacy_env_key_if_missing() {
+    local key="$1"
+    local line
+
+    env_file_has_key "${SECRETBOX_ENV_FILE}" "${key}" && return 0
+    line="$(grep -m1 -E "^${key}=" "${LEGACY_SECRETBOX_ENV_FILE}" 2>/dev/null || true)"
+    [[ -n "${line}" ]] || return 0
+
+    if [[ "${DRY_RUN}" == "1" ]]; then
+        log "would copy ${key} from ${LEGACY_SECRETBOX_ENV_FILE} to ${SECRETBOX_ENV_FILE}"
+        return 0
+    fi
+
+    printf '\n%s\n' "${line}" >> "${SECRETBOX_ENV_FILE}"
+}
+
+copy_legacy_secretbox_env() {
+    [[ "${MIGRATE_FROM_SUI}" == "1" ]] || return 0
+    [[ -f "${LEGACY_SECRETBOX_ENV_FILE}" ]] || return 0
+
+    run mkdir -p "${ENV_DIR}"
+    if [[ ! -f "${SECRETBOX_ENV_FILE}" ]]; then
+        log "copying legacy secretbox env to ${SECRETBOX_ENV_FILE}"
+        run cp -a "${LEGACY_SECRETBOX_ENV_FILE}" "${SECRETBOX_ENV_FILE}"
+        run chmod 600 "${SECRETBOX_ENV_FILE}"
+        return 0
+    fi
+
+    append_legacy_env_key_if_missing "SUI_SECRETBOX_KEY"
+    append_legacy_env_key_if_missing "SUI_COOKIE_KEY"
+    append_legacy_env_key_if_missing "SUI_SECRET"
+    run chmod 600 "${SECRETBOX_ENV_FILE}"
+}
+
+create_secretbox_env() {
+    if [[ -f "${SECRETBOX_ENV_FILE}" ]]; then
+        run chmod 600 "${SECRETBOX_ENV_FILE}"
+        return 0
+    fi
+
+    log "creating ${SECRETBOX_ENV_FILE}"
+    run mkdir -p "${ENV_DIR}"
+
+    if [[ "${DRY_RUN}" == "1" ]]; then
+        log "would create SUI_SECRETBOX_KEY in ${SECRETBOX_ENV_FILE}"
+        return 0
+    fi
+
+    local secret
+    secret="$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64 | tr -d '\n')"
+    umask 077
+    printf 'SUI_SECRETBOX_KEY=%s\n' "${secret}" > "${SECRETBOX_ENV_FILE}"
     chmod 600 "${SECRETBOX_ENV_FILE}"
 }
 
-prepare_secretbox_key() {
-    local secretbox_key
-    local generated_key="false"
+stop_existing_service() {
+    if systemctl list-unit-files "${SERVICE_NAME}.service" >/dev/null 2>&1 || [[ -f "${SYSTEMD_SERVICE}" ]]; then
+        if systemctl is-active --quiet "${SERVICE_NAME}" >/dev/null 2>&1; then
+            log "stopping ${SERVICE_NAME}"
+            run systemctl stop "${SERVICE_NAME}"
+        fi
+    fi
+}
 
-    if secretbox_key=$(read_secretbox_key_file); then
-        chmod 600 "${SECRETBOX_ENV_FILE}"
-        export SUI_SECRETBOX_KEY="${secretbox_key}"
-    else
-        if [[ -n "${SUI_SECRETBOX_KEY:-}" ]]; then
-            secretbox_key="${SUI_SECRETBOX_KEY}"
+stop_legacy_service_for_migration() {
+    [[ "${MIGRATE_FROM_SUI}" == "1" ]] || return 0
+
+    if systemctl list-unit-files "${LEGACY_SERVICE_NAME}.service" >/dev/null 2>&1 || [[ -f "${LEGACY_SERVICE_FILE}" ]]; then
+        if systemctl is-active --quiet "${LEGACY_SERVICE_NAME}" >/dev/null 2>&1; then
+            log "stopping legacy ${LEGACY_SERVICE_NAME}"
+            run systemctl stop "${LEGACY_SERVICE_NAME}"
+        fi
+        log "disabling legacy ${LEGACY_SERVICE_NAME}"
+        run systemctl disable "${LEGACY_SERVICE_NAME}" >/dev/null 2>&1 || true
+    fi
+
+    if [[ -x "${LEGACY_DIR}/bin/sing-box" ]] && systemctl is-active --quiet sing-box >/dev/null 2>&1; then
+        log "stopping legacy sing-box service managed from ${LEGACY_DIR}/bin"
+        run systemctl stop sing-box
+    fi
+}
+
+copy_legacy_db_sidecar() {
+    local suffix="$1"
+    local source="${LEGACY_DB}${suffix}"
+    local target="${TARGET_DB}${suffix}"
+
+    if [[ -f "${source}" ]]; then
+        run cp -a "${source}" "${target}"
+    fi
+}
+
+rewrite_legacy_paths_in_db() {
+    [[ "${DRY_RUN}" != "1" ]] || return 0
+
+    sqlite3 "${TARGET_DB}" <<SQL
+UPDATE settings
+   SET value = replace(value, '/usr/local/s-ui/', '/usr/local/solovey-ui/')
+ WHERE value LIKE '%/usr/local/s-ui/%';
+SQL
+}
+
+migrate_legacy_data() {
+    [[ "${MIGRATE_FROM_SUI}" == "1" ]] || return 0
+
+    log "migrating legacy s-ui data"
+    run mkdir -p "${INSTALL_DIR}/db"
+
+    if [[ -f "${TARGET_DB}" && "${FORCE_MIGRATE}" == "1" ]]; then
+        warn "replacing existing target DB because --force-migrate was provided: ${TARGET_DB}"
+        run rm -f "${TARGET_DB}" "${TARGET_DB}-wal" "${TARGET_DB}-shm"
+    fi
+
+    run cp -a "${LEGACY_DB}" "${TARGET_DB}"
+    copy_legacy_db_sidecar "-wal"
+    copy_legacy_db_sidecar "-shm"
+
+    if [[ -d "${LEGACY_CERT_DIR}" ]]; then
+        if [[ -e "${INSTALL_DIR}/cert" ]]; then
+            warn "target cert directory already exists, not overwriting: ${INSTALL_DIR}/cert"
         else
-            secretbox_key=$(head -c 32 /dev/urandom | base64 | tr -d '\r\n')
-            generated_key="true"
-        fi
-        write_secretbox_key_file "${secretbox_key}"
-        export SUI_SECRETBOX_KEY="${secretbox_key}"
-
-        if [[ "${generated_key}" == "true" ]]; then
-            echo -e "###############################################"
-            echo -e "${yellow}$(t secretbox_key_generated)${plain}"
-            echo -e "${green}$(t secretbox_key_label "${secretbox_key}")${plain}"
-            echo -e "$(t secretbox_key_file "${SECRETBOX_ENV_FILE}")"
-            echo -e "${red}$(t secretbox_key_keep)${plain}"
-            echo -e "###############################################"
+            run cp -a "${LEGACY_CERT_DIR}" "${INSTALL_DIR}/cert"
         fi
     fi
 
-    mkdir -p "${SECRETBOX_DROPIN_DIR}"
-    printf '[Service]\nEnvironmentFile=-%s\n' "${SECRETBOX_ENV_FILE}" >"${SECRETBOX_DROPIN_FILE}"
-    chmod 644 "${SECRETBOX_DROPIN_FILE}"
+    rewrite_legacy_paths_in_db
 }
 
-config_after_install() {
-    echo -e "${yellow}$(t migrate)${plain}"
-    /usr/local/s-ui/sui migrate
+install_payload() {
+    local payload_dir="$1"
 
-    echo -e "${yellow}$(t install_done)${plain}"
-    read -rp "$(t continue_settings)" config_confirm
-    if [[ "${config_confirm}" == "y" || "${config_confirm}" == "Y" ]]; then
-        echo -e "$(t enter_panel_port)"
-        read -r config_port
-        echo -e "$(t enter_panel_path)"
-        read -r config_path
+    [[ -d "${payload_dir}" ]] || fail "release payload directory not found: ${payload_dir}"
+    [[ -f "${payload_dir}/${APP_NAME}" ]] || fail "release payload misses ${APP_NAME} binary"
+    [[ -f "${payload_dir}/${APP_NAME}.sh" ]] || fail "release payload misses ${APP_NAME}.sh"
+    [[ -f "${payload_dir}/${SERVICE_NAME}.service" ]] || fail "release payload misses ${SERVICE_NAME}.service"
 
-        echo -e "$(t enter_sub_port)"
-        read -r config_subPort
-        echo -e "$(t enter_sub_path)"
-        read -r config_subPath
+    stop_existing_service || return
+    stop_legacy_service_for_migration || return
 
-        echo -e "${yellow}$(t initializing)${plain}"
-        params=""
-        [ -z "$config_port" ] || params="$params -port $config_port"
-        [ -z "$config_path" ] || params="$params -path $config_path"
-        [ -z "$config_subPort" ] || params="$params -subPort $config_subPort"
-        [ -z "$config_subPath" ] || params="$params -subPath $config_subPath"
-        /usr/local/s-ui/sui setting ${params}
+    run mkdir -p "${INSTALL_DIR}" "${INSTALL_DIR}/db" "${ENV_DIR}" "${SYSTEMD_SERVICE%/*}" "${CLI_PATH%/*}" || return
+    run cp -a "${payload_dir}/." "${INSTALL_DIR}/" || return
+    run chmod 755 "${BIN_PATH}" "${MANAGER_PATH}" || return
+    run cp -f "${payload_dir}/${SERVICE_NAME}.service" "${SYSTEMD_SERVICE}" || return
+    run ln -sf "${MANAGER_PATH}" "${CLI_PATH}" || return
+    copy_legacy_secretbox_env || return
+    create_secretbox_env || return
+    migrate_legacy_data || return
 
-        read -rp "$(t change_admin)" admin_confirm
-        if [[ "${admin_confirm}" == "y" || "${admin_confirm}" == "Y" ]]; then
-            read -rp "$(t set_username)" config_account
-            read -rp "$(t set_password)" config_password
+    run systemctl daemon-reload || return
+    run "${BIN_PATH}" migrate || return
+    run systemctl enable "${SERVICE_NAME}" || return
+    run systemctl restart "${SERVICE_NAME}" || return
+}
 
-            echo -e "${yellow}$(t initializing)${plain}"
-            /usr/local/s-ui/sui admin -username "${config_account}" -password "${config_password}"
-        else
-            echo -e "${yellow}$(t current_admin)${plain}"
-            /usr/local/s-ui/sui admin -show
+download_and_install() {
+    local platform artifact version url checksum_url tmp_dir payload_dir install_status
+    platform="$(detect_arch)"
+    version="${VERSION:-$(latest_version)}"
+    artifact="${APP_NAME}-linux-${platform}.tar.gz"
+    url="${GITHUB_RELEASES}/${version}/${artifact}"
+    checksum_url="${url}.sha256"
+
+    log "release: ${version}"
+    log "platform: linux/${platform}"
+    log "artifact: ${artifact}"
+    log "install dir: ${INSTALL_DIR}"
+    log "service: ${SERVICE_NAME}"
+
+    maybe_warn_legacy_install
+    describe_legacy_migration_plan
+
+    if [[ "${DRY_RUN}" == "1" ]]; then
+        backup_existing
+        log "would download ${url}"
+        log "would verify ${checksum_url}"
+        log "would install ${APP_NAME} and restart ${SERVICE_NAME}"
+        if [[ "${MIGRATE_FROM_SUI}" == "1" ]]; then
+            log "would stop and disable legacy ${LEGACY_SERVICE_NAME}, copy DB/env/cert, rewrite legacy paths, then run ${APP_NAME} migrate"
         fi
+        return 0
+    fi
+
+    require_root
+    validate_legacy_migration_ready
+    backup_existing
+
+    tmp_dir="$(mktemp -d)"
+    DOWNLOAD_TMP_DIR="${tmp_dir}"
+    trap 'if [[ -n "${DOWNLOAD_TMP_DIR:-}" ]]; then rm -rf "${DOWNLOAD_TMP_DIR}"; fi' EXIT
+
+    log "downloading ${url}"
+    curl -fL --proto '=https' --tlsv1.2 -o "${tmp_dir}/${artifact}" "${url}"
+    curl -fL --proto '=https' --tlsv1.2 -o "${tmp_dir}/${artifact}.sha256" "${checksum_url}"
+
+    log "verifying checksum"
+    (
+        cd "${tmp_dir}"
+        sha256sum -c "${artifact}.sha256"
+    )
+
+    log "extracting release"
+    tar -xzf "${tmp_dir}/${artifact}" -C "${tmp_dir}"
+    payload_dir="${tmp_dir}/${APP_NAME}"
+
+    install_status=0
+    install_payload "${payload_dir}" || install_status=$?
+    if [[ "${install_status}" != "0" ]]; then
+        rollback_failed_install "${install_status}"
+    fi
+
+    log "${APP_NAME} ${version} is installed and running"
+    if [[ -n "${BACKUP_PATH}" ]]; then
+        log "backup: ${BACKUP_PATH}"
+    fi
+    if [[ -f "${INSTALL_DIR}/db/initial-admin.txt" ]]; then
+        log "initial admin credentials: ${INSTALL_DIR}/db/initial-admin.txt"
     else
-        echo -e "${red}$(t cancelled)${plain}"
-        if [[ ! -f "/usr/local/s-ui/db/s-ui.db" ]]; then
-            local usernameTemp
-            local passwordTemp
-            usernameTemp=$(head -c 6 /dev/urandom | base64)
-            passwordTemp=$(head -c 6 /dev/urandom | base64)
-            echo -e "$(t fresh_install_creds)"
-            echo -e "###############################################"
-            echo -e "${green}$(t username_label "${usernameTemp}")${plain}"
-            echo -e "${green}$(t password_label "${passwordTemp}")${plain}"
-            echo -e "###############################################"
-            echo -e "${red}$(t lost_creds)${plain}"
-            /usr/local/s-ui/sui admin -username "${usernameTemp}" -password "${passwordTemp}"
-        else
-            echo -e "${red}$(t upgrade_keep_settings)${plain}"
-        fi
+        log "use '${APP_NAME} admin -show' to inspect the current admin account"
     fi
 }
 
-prepare_services() {
-    if [[ -f "/etc/systemd/system/sing-box.service" ]]; then
-        echo -e "${yellow}$(t stop_singbox)${plain}"
-        systemctl stop sing-box
-        rm -f /usr/local/s-ui/bin/sing-box /usr/local/s-ui/bin/runSingbox.sh /usr/local/s-ui/bin/signal
-    fi
-    if [[ -e "/usr/local/s-ui/bin" ]]; then
-        echo -e "###############################################################"
-        echo -e "${red}$(t bin_dir_exists)${plain}"
-        echo -e "###############################################################"
-    fi
-    systemctl daemon-reload
-}
-
-verify_download_checksum() {
-    local artifact_name="$1"
-    local checksum_url="$2"
-    local checksum_name="${artifact_name}.sha256"
-
-    wget -N --no-check-certificate -O "/tmp/${checksum_name}" "${checksum_url}"
-    if [[ $? -ne 0 ]]; then
-        echo -e "${red}$(t checksum_failed)${plain}"
-        exit 1
-    fi
-    if ! (cd /tmp/ && sha256sum -c "${checksum_name}"); then
-        echo -e "${red}$(t checksum_failed)${plain}"
-        exit 1
-    fi
-}
-
-install_s-ui() {
-    cd /tmp/
-    artifact_name="s-ui-linux-$(arch).tar.gz"
-
-    if [[ $# -eq 0 || -z "${1:-}" ]]; then
-        last_version=$(curl -Ls "https://api.github.com/repos/deposist/s-ui-x/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
-        if [[ ! -n "$last_version" ]]; then
-            echo -e "${red}$(t rate_limited)${plain}"
-            exit 1
-        fi
-        echo -e "$(t fetching_latest "${last_version}")"
-        url="https://github.com/deposist/s-ui-x/releases/download/${last_version}/${artifact_name}"
-        wget -N --no-check-certificate -O "/tmp/${artifact_name}" "${url}"
-        if [[ $? -ne 0 ]]; then
-            echo -e "${red}$(t download_failed)${plain}"
-            exit 1
-        fi
-        verify_download_checksum "${artifact_name}" "${url}.sha256"
-    else
-        last_version=$1
-        [[ "${last_version}" != v* ]] && last_version="v${last_version}"
-        url="https://github.com/deposist/s-ui-x/releases/download/${last_version}/${artifact_name}"
-        echo -e "$(t installing_specific "${last_version}")"
-        wget -N --no-check-certificate -O "/tmp/${artifact_name}" "${url}"
-        if [[ $? -ne 0 ]]; then
-            echo -e "${red}$(t download_failed_specific "${last_version}")${plain}"
-            exit 1
-        fi
-        verify_download_checksum "${artifact_name}" "${url}.sha256"
-    fi
-
-    if [[ -e /usr/local/s-ui/ ]]; then
-        systemctl stop s-ui
-    fi
-
-    tar zxvf "${artifact_name}"
-    rm "${artifact_name}" "${artifact_name}.sha256" -f
-
-    chmod +x s-ui/sui s-ui/s-ui.sh
-    cp s-ui/s-ui.sh /usr/bin/s-ui
-    cp -rf s-ui /usr/local/
-    cp -f s-ui/*.service /etc/systemd/system/
-    rm -rf s-ui
-
-    prepare_secretbox_key
-    config_after_install
-    prepare_services
-
-    systemctl enable s-ui --now
-
-    echo -e "${green}$(t installed_running "${last_version}")${plain}"
-    echo -e "$(t panel_url)${green}"
-    /usr/local/s-ui/sui uri
-    echo -e "${plain}"
-    echo -e ""
-    s-ui help
-}
-
-echo -e "${green}$(t running)${plain}"
-install_base
-install_s-ui "$@"
+parse_args "$@"
+require_tools
+download_and_install

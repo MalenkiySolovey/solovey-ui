@@ -18,10 +18,14 @@
         type="button"
         :aria-label="$t('menu.navigation')"
         @click="emit('toggle-rail')"
-      >S</button>
-      <div v-else aria-hidden="true" class="nexus-sidebar__logo">S</div>
+      >
+        <img :src="logoUrl" alt="" />
+      </button>
+      <div v-else aria-hidden="true" class="nexus-sidebar__logo">
+        <img :src="logoUrl" alt="" />
+      </div>
 
-      <span v-if="!collapsed" class="nexus-sidebar__brand-text">S-UI</span>
+      <span v-if="!collapsed" class="nexus-sidebar__brand-text">Solovey UI</span>
       <v-spacer v-if="!collapsed" />
 
       <v-btn
@@ -115,6 +119,7 @@ import { useRoute } from 'vue-router'
 
 import { logout } from '@/plugins/httputil'
 import Data from '@/store/modules/data'
+import logoUrl from '@/assets/logo.png'
 import { nexusMenuGroups as groups, type NexusMenuItem } from './nexusMenu'
 
 const props = defineProps<{
@@ -167,22 +172,28 @@ const badgeCount = (item: NexusMenuItem): number => {
 
 .nexus-sidebar__logo {
   align-items: center;
-  background: var(--nexus-accent-primary);
+  background: transparent;
   border-radius: var(--nexus-radius-md);
-  color: var(--nexus-surface-0);
   display: inline-flex;
   flex: 0 0 auto;
-  font-size: 18px;
-  font-weight: 700;
   height: 32px;
   justify-content: center;
   line-height: 1;
+  overflow: hidden;
   width: 32px;
+}
+
+.nexus-sidebar__logo img {
+  display: block;
+  height: 100%;
+  object-fit: contain;
+  width: 100%;
 }
 
 .nexus-sidebar__logo--button {
   border: 0;
   cursor: pointer;
+  padding: 0;
 }
 
 .nexus-sidebar__brand-text {

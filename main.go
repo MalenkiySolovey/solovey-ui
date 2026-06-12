@@ -6,12 +6,14 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/deposist/s-ui-x/app"
-	"github.com/deposist/s-ui-x/cmd"
+	"github.com/MalenkiySolovey/solovey-ui/app"
+	"github.com/MalenkiySolovey/solovey-ui/cmd"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
 func runApp() {
 	app := app.NewApp()
+	service.SetInProcessRestart(app.RestartApp)
 
 	err := app.Init()
 	if err != nil {

@@ -67,6 +67,11 @@ const routes = [
         component: () => import('@/views/Dns.vue'),
       },
       {
+        path: '/sing-box-config',
+        name: 'pages.singBoxConfig',
+        component: () => import('@/views/SingBoxConfig.vue'),
+      },
+      {
         path: '/admins',
         name: 'pages.admins',
         component: () => import('@/views/Admins.vue'),

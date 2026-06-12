@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deposist/s-ui-x/config"
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/database/importxui"
+	"github.com/MalenkiySolovey/solovey-ui/config"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui"
 )
 
 func runImportXui(args []string, out io.Writer) int {
@@ -47,7 +47,7 @@ func runImportXui(args []string, out io.Writer) int {
 		return 2
 	}
 	if !dryRun && !yes {
-		fmt.Fprint(out, "This will import into the active s-ui database. Type 'yes' to continue: ")
+		fmt.Fprint(out, "This will import into the active solovey-ui database. Type 'yes' to continue: ")
 		var answer string
 		if _, err := fmt.Fscan(os.Stdin, &answer); err != nil || answer != "yes" {
 			fmt.Fprintln(out, "import-xui: cancelled")

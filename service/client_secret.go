@@ -3,9 +3,9 @@ package service
 import (
 	"strconv"
 
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	"github.com/gofrs/uuid/v5"
 	"gorm.io/gorm"

@@ -2,14 +2,12 @@ package service
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"strings"
 
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/util"
-	"github.com/deposist/s-ui-x/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/util"
 
 	"gorm.io/gorm"
 )
@@ -30,11 +28,6 @@ type inboundListItem struct {
 	id           uint
 	data         map[string]interface{}
 	includeUsers bool
-}
-
-type inboundUserNameRow struct {
-	InboundID uint
-	Name      string
 }
 
 func (s *InboundService) Get(ids string) (*[]map[string]interface{}, error) {
@@ -107,7 +100,7 @@ func (s *InboundService) GetAll() (*[]map[string]interface{}, error) {
 			includeUsers: includeUsers,
 		})
 	}
-	usersByInbound, err := fetchInboundUserNames(db, userInboundIDs)
+	usersByInbound, err := clientNamesByInboundIDs(db, userInboundIDs)
 	if err != nil {
 		return nil, err
 	}
@@ -121,31 +114,6 @@ func (s *InboundService) GetAll() (*[]map[string]interface{}, error) {
 	return &data, nil
 }
 
-func fetchInboundUserNames(db *gorm.DB, inboundIDs []uint) (map[uint][]string, error) {
-	usersByInbound := make(map[uint][]string, len(inboundIDs))
-	if len(inboundIDs) == 0 {
-		return usersByInbound, nil
-	}
-	for _, id := range inboundIDs {
-		usersByInbound[id] = []string{}
-	}
-
-	var rows []inboundUserNameRow
-	err := db.Raw(`
-		SELECT je.value AS inbound_id, clients.name
-		FROM clients, json_each(clients.inbounds) AS je
-		WHERE je.value IN ?
-		ORDER BY clients.id, je.key
-	`, inboundIDs).Scan(&rows).Error
-	if err != nil {
-		return nil, err
-	}
-	for _, row := range rows {
-		usersByInbound[row.InboundID] = append(usersByInbound[row.InboundID], row.Name)
-	}
-	return usersByInbound, nil
-}
-
 func (s *InboundService) FromIds(ids []uint) ([]*model.Inbound, error) {
 	db := database.GetDB()
 	inbounds := []*model.Inbound{}
@@ -157,70 +125,13 @@ func (s *InboundService) FromIds(ids []uint) ([]*model.Inbound, error) {
 }
 
 func (s *InboundService) Save(tx *gorm.DB, act string, data json.RawMessage, initUserIds string, hostname string) error {
-	var err error
-
-	switch act {
-	case "new", "edit":
-		var inbound model.Inbound
-		err = inbound.UnmarshalJSON(data)
-		if err != nil {
-			return err
-		}
-		if inbound.TlsId > 0 {
-			err = tx.Model(model.Tls{}).Where("id = ?", inbound.TlsId).Find(&inbound.Tls).Error
-			if err != nil {
-				return err
-			}
-		}
-		var oldTag string
-		if act == "edit" {
-			err = tx.Model(model.Inbound{}).Select("tag").Where("id = ?", inbound.Id).Find(&oldTag).Error
-			if err != nil {
-				return err
-			}
-		}
-
-		err = util.FillOutJson(&inbound, hostname)
-		if err != nil {
-			return err
-		}
-
-		err = tx.Save(&inbound).Error
-		if err != nil {
-			return err
-		}
-		switch act {
-		case "new":
-			err = s.ClientService.UpdateClientsOnInboundAdd(tx, initUserIds, inbound.Id, hostname)
-		case "edit":
-			err = s.ClientService.UpdateLinksByInboundChange(tx, &[]model.Inbound{inbound}, hostname, oldTag)
-		}
-		if err != nil {
-			return err
-		}
-	case "del":
-		var tag string
-		err = json.Unmarshal(data, &tag)
-		if err != nil {
-			return err
-		}
-		var id uint
-		err = tx.Model(model.Inbound{}).Select("id").Where("tag = ?", tag).Scan(&id).Error
-		if err != nil {
-			return err
-		}
-		err = s.ClientService.UpdateClientsOnInboundDelete(tx, id, tag)
-		if err != nil {
-			return err
-		}
-		err = tx.Where("tag = ?", tag).Delete(model.Inbound{}).Error
-		if err != nil {
-			return err
-		}
-	default:
-		return common.NewErrorf("unknown action: %s", act)
-	}
-	return nil
+	return s.applyInboundSave(inboundSaveRequest{
+		tx:          tx,
+		action:      act,
+		data:        data,
+		initUserIDs: initUserIds,
+		hostname:    hostname,
+	})
 }
 
 func (s *InboundService) UpdateOutJsons(tx *gorm.DB, inboundIds []uint, hostname string) error {
@@ -262,132 +173,6 @@ func (s *InboundService) GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 		inboundsJson = append(inboundsJson, inboundJson)
 	}
 	return inboundsJson, nil
-}
-
-func (s *InboundService) hasUser(inboundType string) bool {
-	_, ok := userJSONField[inboundType]
-	return ok
-}
-
-// userJSONField maps an inbound type to the JSON path used inside
-// clients.config to locate per-user data. Do not extend this map without a
-// positive list for both the inbound type and the JSON field value.
-var userJSONField = map[string]string{
-	"mixed":         "mixed",
-	"socks":         "socks",
-	"http":          "http",
-	"shadowsocks":   "shadowsocks",
-	"shadowsocks16": "shadowsocks",
-	"vmess":         "vmess",
-	"trojan":        "trojan",
-	"naive":         "naive",
-	"hysteria":      "hysteria",
-	"shadowtls":     "shadowtls",
-	"tuic":          "tuic",
-	"hysteria2":     "hysteria2",
-	"vless":         "vless",
-	"anytls":        "anytls",
-}
-
-var allowedUserJSONFields = map[string]struct{}{
-	"mixed":       {},
-	"socks":       {},
-	"http":        {},
-	"shadowsocks": {},
-	"vmess":       {},
-	"trojan":      {},
-	"naive":       {},
-	"hysteria":    {},
-	"shadowtls":   {},
-	"tuic":        {},
-	"hysteria2":   {},
-	"vless":       {},
-	"anytls":      {},
-}
-
-func (s *InboundService) addUsers(db *gorm.DB, inboundJson []byte, inboundId uint, inboundType string) ([]byte, error) {
-	if !s.hasUser(inboundType) {
-		return inboundJson, nil
-	}
-
-	var inbound map[string]interface{}
-	err := json.Unmarshal(inboundJson, &inbound)
-	if err != nil {
-		return nil, err
-	}
-
-	// A Trojan inbound authenticates per user; sing-box has no top-level
-	// "password" field for it (only "users") and rejects the whole config
-	// (`unknown field "password"`) if one is present. The inbound editor used to
-	// write one for inbounds, so drop any leftover before emitting.
-	if inboundType == "trojan" {
-		delete(inbound, "password")
-	}
-
-	condition := "? IN (SELECT json_each.value FROM json_each(clients.inbounds))"
-	inbound["users"], err = s.fetchUsersByCondition(db, inboundType, condition, inbound, inboundId)
-	if err != nil {
-		return nil, err
-	}
-
-	return json.Marshal(inbound)
-}
-
-func (s *InboundService) fetchUsersByCondition(db *gorm.DB, inboundType string, condition string, inbound map[string]interface{}, args ...interface{}) ([]json.RawMessage, error) {
-	if inboundType == "shadowtls" {
-		version, _ := inbound["version"].(float64)
-		if int(version) < 3 {
-			return nil, nil
-		}
-	}
-	if inboundType == "shadowsocks" {
-		method, _ := inbound["method"].(string)
-		if method == "2022-blake3-aes-128-gcm" {
-			inboundType = "shadowsocks16"
-		}
-	}
-
-	field, ok := userJSONField[inboundType]
-	if !ok {
-		return nil, common.NewErrorf("unsupported inbound type for user lookup: %s", inboundType)
-	}
-	if _, ok := allowedUserJSONFields[field]; !ok {
-		return nil, common.NewErrorf("unsupported user JSON field for user lookup: %s", field)
-	}
-
-	var users []string
-	// `field` is constrained to a static allow-list above, so embedding it
-	// directly into the JSON path is safe. The dynamic condition is fed
-	// through the query parameter slot to remain SQL-injection free.
-	query := fmt.Sprintf(`SELECT json_extract(clients.config, '$.%s') FROM clients WHERE enable = true AND %s`, field, condition)
-	err := db.Raw(query, args...).Scan(&users).Error
-	if err != nil {
-		return nil, err
-	}
-	// `xtls-rprx-vision` is strictly TCP. Xray-core rejects any vless
-	// inbound that advertises the flow over a non-TCP transport (grpc,
-	// ws, http, httpupgrade, ...) or without TLS. Strip the flow string
-	// here so a single client UUID can be reused across multiple vless
-	// inbounds with different transports without breaking the non-TCP
-	// inbound (issue #1127).
-	stripVisionFlow := false
-	if inboundType == "vless" {
-		if inbound["tls"] == nil {
-			stripVisionFlow = true
-		} else if transport, ok := inbound["transport"].(map[string]interface{}); ok {
-			if tt, _ := transport["type"].(string); tt != "" && tt != "tcp" {
-				stripVisionFlow = true
-			}
-		}
-	}
-	var usersJson []json.RawMessage
-	for _, user := range users {
-		if stripVisionFlow {
-			user = strings.Replace(user, "xtls-rprx-vision", "", -1)
-		}
-		usersJson = append(usersJson, json.RawMessage(user))
-	}
-	return usersJson, nil
 }
 
 func (s *InboundService) RestartInbounds(tx *gorm.DB, ids []uint) error {

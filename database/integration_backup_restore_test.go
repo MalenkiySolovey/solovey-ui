@@ -10,10 +10,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deposist/s-ui-x/config"
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/service"
+	"github.com/MalenkiySolovey/solovey-ui/config"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -103,8 +103,8 @@ func initBackupRestoreIntegrationDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	livePath := filepath.Join(dbDir, "s-ui.db")
 	t.Setenv("SUI_DB_FOLDER", dbDir)
+	livePath := config.GetDBPath()
 	closeBackupRestoreIntegrationDB()
 	if err := database.InitDB(livePath); err != nil {
 		_ = os.RemoveAll(dbDir)

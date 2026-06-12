@@ -1,3 +1,3 @@
-module github.com/deposist/s-ui-x/frontend
+module github.com/MalenkiySolovey/solovey-ui/frontend
 
 go 1.26.4

@@ -1,0 +1,18 @@
+[Unit]
+Description=Solovey UI Service
+Documentation=https://github.com/MalenkiySolovey/solovey-ui
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/usr/local/solovey-ui/
+Environment=SUI_DB_FOLDER=/usr/local/solovey-ui/db
+EnvironmentFile=-/etc/solovey-ui/secretbox.env
+ExecStart=/usr/local/solovey-ui/solovey-ui
+Restart=on-failure
+RestartSec=10s
+LimitNOFILE=1048576
+
+[Install]
+WantedBy=multi-user.target

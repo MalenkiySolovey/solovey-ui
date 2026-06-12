@@ -13,6 +13,28 @@ env:
   NODE_VERSION: "25"
 
 jobs:
+  installer:
+    name: Installer
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6.0.2
+
+      - name: Shell syntax
+        run: bash -n install.sh solovey-ui.sh scripts/release-package-linux.sh scripts/server-smoke-debian.sh tests/installer/release-package.sh tests/installer/install-update.sh tests/installer/migrate-from-sui.sh tests/installer/rollback.sh
+
+      - name: release package integration
+        run: bash tests/installer/release-package.sh
+
+      - name: install/update integration
+        run: bash tests/installer/install-update.sh
+
+      - name: migrate-from-sui integration
+        run: bash tests/installer/migrate-from-sui.sh
+
+      - name: rollback integration
+        run: bash tests/installer/rollback.sh
+
   backend:
     name: Backend
     runs-on: ubuntu-24.04

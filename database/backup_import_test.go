@@ -11,9 +11,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deposist/s-ui-x/config"
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/config"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -81,8 +81,8 @@ func TestImportDBRunsResetHooks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	livePath := filepath.Join(dbDir, "s-ui.db")
 	t.Setenv("SUI_DB_FOLDER", dbDir)
+	livePath := config.GetDBPath()
 	t.Cleanup(func() {
 		closeMainDB(t)
 		time.Sleep(25 * time.Millisecond)
@@ -130,8 +130,8 @@ func TestImportDBPreservesConfigDNSAndRouteRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	livePath := filepath.Join(dbDir, "s-ui.db")
 	t.Setenv("SUI_DB_FOLDER", dbDir)
+	livePath := config.GetDBPath()
 	t.Cleanup(func() {
 		closeMainDB(t)
 		time.Sleep(25 * time.Millisecond)
@@ -211,7 +211,7 @@ func TestImportDBAdaptsLegacyBackup(t *testing.T) {
 	// Initialize a fresh "live" database so ImportDB has something to
 	// rotate aside as the fallback. Use the same path GetDBPath() returns
 	// so the import code targets it.
-	livePath := filepath.Join(dbDir, "s-ui.db")
+	livePath := config.GetDBPath()
 	if err := InitDB(livePath); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
@@ -289,7 +289,7 @@ func TestImportDBRejectsCorruptSQLiteBackup(t *testing.T) {
 	}
 	dbDir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", dbDir)
-	livePath := filepath.Join(dbDir, "s-ui.db")
+	livePath := config.GetDBPath()
 	if err := InitDB(livePath); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
@@ -311,7 +311,7 @@ func TestImportDBRejectsCorruptSQLiteBackup(t *testing.T) {
 func TestImportDBAcceptsVersionedBackupWithoutConfigIssue12(t *testing.T) {
 	dbDir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", dbDir)
-	livePath := filepath.Join(dbDir, "s-ui.db")
+	livePath := config.GetDBPath()
 	if err := InitDB(livePath); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
@@ -354,7 +354,7 @@ func TestImportDBAcceptsVersionedBackupWithoutConfigIssue12(t *testing.T) {
 func TestImportDBRollsBackForeignKeyFailureAndReopensLiveDB(t *testing.T) {
 	dbDir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", dbDir)
-	livePath := filepath.Join(dbDir, "s-ui.db")
+	livePath := config.GetDBPath()
 	if err := InitDB(livePath); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)

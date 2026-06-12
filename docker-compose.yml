@@ -1,8 +1,8 @@
 services:
-  s-ui:
-    image: ghcr.io/deposist/s-ui-x
-    container_name: s-ui
-    hostname: "s-ui"
+  solovey-ui:
+    image: ghcr.io/malenkiysolovey/solovey-ui
+    container_name: solovey-ui
+    hostname: "solovey-ui"
     network_mode: host
     volumes:
       - "./db:/app/db"

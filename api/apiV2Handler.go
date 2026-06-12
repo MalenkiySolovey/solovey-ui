@@ -7,9 +7,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deposist/s-ui-x/logger"
-	"github.com/deposist/s-ui-x/service"
-	"github.com/deposist/s-ui-x/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/service"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	"github.com/gin-gonic/gin"
 )

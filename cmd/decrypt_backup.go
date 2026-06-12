@@ -9,7 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/deposist/s-ui-x/service"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 	"golang.org/x/term"
 )
 

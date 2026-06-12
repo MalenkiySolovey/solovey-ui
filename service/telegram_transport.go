@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/deposist/s-ui-x/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	M "github.com/sagernet/sing/common/metadata"
 )

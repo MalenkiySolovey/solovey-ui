@@ -5,17 +5,17 @@ import (
 	"log"
 	"time"
 
-	"github.com/deposist/s-ui-x/cmd/migration"
-	"github.com/deposist/s-ui-x/config"
-	"github.com/deposist/s-ui-x/core"
-	"github.com/deposist/s-ui-x/cronjob"
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/ipmonitor"
-	"github.com/deposist/s-ui-x/logger"
-	"github.com/deposist/s-ui-x/paidsub"
-	"github.com/deposist/s-ui-x/service"
-	"github.com/deposist/s-ui-x/sub"
-	"github.com/deposist/s-ui-x/web"
+	"github.com/MalenkiySolovey/solovey-ui/cmd/migration"
+	"github.com/MalenkiySolovey/solovey-ui/config"
+	"github.com/MalenkiySolovey/solovey-ui/core"
+	"github.com/MalenkiySolovey/solovey-ui/cronjob"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/ipmonitor"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/paidsub"
+	"github.com/MalenkiySolovey/solovey-ui/service"
+	"github.com/MalenkiySolovey/solovey-ui/sub"
+	"github.com/MalenkiySolovey/solovey-ui/web"
 )
 
 type APP struct {

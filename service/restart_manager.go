@@ -7,11 +7,16 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/logger"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
 )
 
 const restartSignalDelay = 3 * time.Second
+
+var inProcessRestart struct {
+	mu sync.RWMutex
+	fn func()
+}
 
 type restartManager struct {
 	mu           sync.Mutex
@@ -33,6 +38,12 @@ func init() {
 		}
 		return manager.sendSighup()
 	})
+}
+
+func SetInProcessRestart(fn func()) {
+	inProcessRestart.mu.Lock()
+	inProcessRestart.fn = fn
+	inProcessRestart.mu.Unlock()
 }
 
 func newRestartManager(signalDelay time.Duration, signal func() error) *restartManager {
@@ -123,12 +134,23 @@ func (m *restartManager) endPending(timer *time.Timer) {
 }
 
 func signalCurrentProcess() error {
+	if runtime.GOOS == "windows" && runInProcessRestart() {
+		return nil
+	}
 	process, err := os.FindProcess(os.Getpid())
 	if err != nil {
 		return err
 	}
-	if runtime.GOOS == "windows" {
-		return process.Kill()
-	}
 	return process.Signal(syscall.SIGHUP)
+}
+
+func runInProcessRestart() bool {
+	inProcessRestart.mu.RLock()
+	fn := inProcessRestart.fn
+	inProcessRestart.mu.RUnlock()
+	if fn == nil {
+		return false
+	}
+	fn()
+	return true
 }

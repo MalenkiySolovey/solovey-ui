@@ -6,9 +6,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/logger"
-	"github.com/deposist/s-ui-x/util/redact"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/util/redact"
 )
 
 const (
@@ -112,7 +112,7 @@ func (s *TelegramBackupService) RunOnce(ctx context.Context, trigger string) (re
 		result.ErrorClass = "disabled"
 		return result
 	}
-	token, err := s.SettingService.getString("telegramBotToken")
+	token, err := s.SettingService.getString(settingKeyTelegramBotToken)
 	if err != nil {
 		result.ErrorClass = "settings"
 		return result

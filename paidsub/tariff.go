@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/deposist/s-ui-x/database"
+	"github.com/MalenkiySolovey/solovey-ui/database"
 
 	"gorm.io/gorm"
 )

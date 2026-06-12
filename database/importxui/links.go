@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/util"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/util"
 
 	"gorm.io/gorm"
 )

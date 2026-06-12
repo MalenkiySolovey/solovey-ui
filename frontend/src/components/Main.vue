@@ -6,7 +6,7 @@
     <v-responsive :class="reloadItems.length>0 ? 'fill-height text-center' : 'align-center'" >
       <v-row class="d-flex align-center justify-center">
         <v-col cols="auto">
-          <v-img src="@/assets/logo.svg" :width="reloadItems.length>0 ? 100 : 200"></v-img>
+          <v-img src="@/assets/logo.png" :width="reloadItems.length>0 ? 100 : 200"></v-img>
         </v-col>
       </v-row>
       <v-row class="d-flex align-center justify-center">
@@ -112,7 +112,7 @@
                       IPv6
                     </v-chip>
                   </v-col>
-                  <v-col cols="3">S-UI</v-col>
+                  <v-col cols="3">Solovey UI</v-col>
                   <v-col cols="9">
                     <v-chip density="compact" color="blue">
                       v{{ tilesData.sys?.appVersion }}

@@ -10,7 +10,7 @@
       size="20"
     />
     <div v-if="!rail" class="nexus-server-status__copy">
-      <strong>S-UI</strong>
+      <strong>Solovey UI</strong>
       <span>{{ $t(statusLabel) }}</span>
     </div>
   </div>

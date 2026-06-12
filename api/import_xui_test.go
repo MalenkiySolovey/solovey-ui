@@ -14,11 +14,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deposist/s-ui-x/config"
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/database/importxui"
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/service"
+	"github.com/MalenkiySolovey/solovey-ui/config"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
 )

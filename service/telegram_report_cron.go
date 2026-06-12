@@ -4,7 +4,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deposist/s-ui-x/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/robfig/cron/v3"
 )
 

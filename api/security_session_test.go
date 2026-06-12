@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/deposist/s-ui-x/database"
+	"github.com/MalenkiySolovey/solovey-ui/database"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"

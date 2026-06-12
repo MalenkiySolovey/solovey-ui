@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deposist/s-ui-x/config"
-	"github.com/deposist/s-ui-x/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/config"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -195,7 +195,7 @@ func verifyForeignKeysBeforeMigration(db *gorm.DB, options Options) error {
 		fmt.Println("Warning: foreign-key audit event skipped:", err)
 	}
 	if !options.RepairForeignKeyOrphans {
-		return fmt.Errorf("foreign key check failed: %s; rerun `s-ui migrate -repair-fk-orphans` to delete safe token orphans, or repair the database manually", summarizeForeignKeyViolations(violations))
+		return fmt.Errorf("foreign key check failed: %s; rerun `solovey-ui migrate -repair-fk-orphans` to delete safe token orphans, or repair the database manually", summarizeForeignKeyViolations(violations))
 	}
 	repaired, err := repairSafeForeignKeyOrphans(db, violations)
 	if err != nil {

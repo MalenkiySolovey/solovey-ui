@@ -3,8 +3,8 @@ package api
 import (
 	"strconv"
 
-	"github.com/deposist/s-ui-x/ipmonitor"
-	"github.com/deposist/s-ui-x/service"
+	"github.com/MalenkiySolovey/solovey-ui/ipmonitor"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
 )

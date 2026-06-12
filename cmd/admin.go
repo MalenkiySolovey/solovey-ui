@@ -3,10 +3,10 @@ package cmd
 import (
 	"fmt"
 
-	"github.com/deposist/s-ui-x/config"
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/service"
-	"github.com/deposist/s-ui-x/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/config"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/service"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
 func resetAdmin() {
@@ -66,5 +66,5 @@ func showAdmin() {
 	}
 	fmt.Println("First admin credentials:")
 	fmt.Println("\tUsername:\t", username)
-	fmt.Println("\tPassword is hashed; use 's-ui admin -reset' or 's-ui admin -username/-password' to set a new one")
+	fmt.Println("\tPassword is hashed; use 'solovey-ui admin -reset' or 'solovey-ui admin -username/-password' to set a new one")
 }

@@ -4,8 +4,8 @@ import (
 	"context"
 	"time"
 
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
 // broadcastThrottle paces sends to stay well under Telegram's ~30 msg/s limit.

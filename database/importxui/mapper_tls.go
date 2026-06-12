@@ -7,22 +7,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/deposist/s-ui-x/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 
 	"gorm.io/gorm"
 )
-
-type xuiStreamSettings struct {
-	Network         string            `json:"network"`
-	Security        string            `json:"security"`
-	TLSSettings     xuiTLSSetting     `json:"tlsSettings"`
-	RealitySettings xuiRealitySetting `json:"realitySettings"`
-	TCPSettings     map[string]any    `json:"tcpSettings"`
-	WSSettings      map[string]any    `json:"wsSettings"`
-	GRPCSettings    map[string]any    `json:"grpcSettings"`
-	HTTPSettings    map[string]any    `json:"httpSettings"`
-	HTTPUPSettings  map[string]any    `json:"httpupgradeSettings"`
-}
 
 type xuiRealitySetting struct {
 	Target      string              `json:"target"`
@@ -60,19 +48,6 @@ type realitySpec struct {
 	Fingerprint string
 	ShortIDs    []string
 	MaxTimediff int64
-}
-
-func parseStreamSettings(row xuiInboundRow) (xuiStreamSettings, error) {
-	var stream xuiStreamSettings
-	if len(row.StreamSettings) == 0 {
-		return stream, nil
-	}
-	if err := json.Unmarshal(row.StreamSettings, &stream); err != nil {
-		return stream, fmt.Errorf("inbound %s stream_settings: %w", row.Tag, err)
-	}
-	stream.Network = strings.ToLower(strings.TrimSpace(stream.Network))
-	stream.Security = strings.ToLower(strings.TrimSpace(stream.Security))
-	return stream, nil
 }
 
 func extractReality(row xuiInboundRow) (*realitySpec, []string, error) {
@@ -208,22 +183,4 @@ func tlsMatchesReality(row model.Tls, spec realitySpec) bool {
 	return server.Reality.PrivateKey == spec.PrivateKey &&
 		server.Reality.Handshake.Server == targetHost &&
 		server.Reality.Handshake.ServerPort == targetPort
-}
-
-func firstString(values []string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return strings.TrimSpace(value)
-		}
-	}
-	return ""
 }

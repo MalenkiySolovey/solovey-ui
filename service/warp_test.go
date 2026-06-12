@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deposist/s-ui-x/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 )
 
 type warpCaptureRoundTripper struct {

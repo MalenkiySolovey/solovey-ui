@@ -6,11 +6,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/service"
-	"github.com/deposist/s-ui-x/util"
-	"github.com/deposist/s-ui-x/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/service"
+	"github.com/MalenkiySolovey/solovey-ui/util"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
 const defaultJson = `

@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/logger"
-	"github.com/deposist/s-ui-x/service"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
 // cryptoBotBase is pinned (never configurable) to prevent token exfiltration.

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deposist/s-ui-x/config"
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/config"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"gorm.io/gorm"
 )
 
@@ -99,7 +99,7 @@ func TestGetAllSettingConcurrentDefaultInitializationIssue19(t *testing.T) {
 	if returned == nil {
 		t.Fatal("no successful GetAllSetting result")
 	}
-	for _, key := range []string{"secret", "installSalt", "sessionGeneration", "config", "version"} {
+	for key := range internalSettingKeys {
 		if _, ok := returned[key]; ok {
 			t.Fatalf("returned settings should omit %q", key)
 		}

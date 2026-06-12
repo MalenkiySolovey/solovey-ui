@@ -5,7 +5,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/deposist/s-ui-x/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/gofrs/uuid/v5"
 )
 

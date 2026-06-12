@@ -3,7 +3,7 @@ package util
 import (
 	"strings"
 
-	"github.com/deposist/s-ui-x/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
 // ReservedPathPrefixes are framework-owned routes that custom web/sub paths

@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deposist/s-ui-x/database"
+	"github.com/MalenkiySolovey/solovey-ui/database"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )

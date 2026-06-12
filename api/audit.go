@@ -1,8 +1,8 @@
 package api
 
 import (
-	"github.com/deposist/s-ui-x/logger"
-	"github.com/deposist/s-ui-x/service"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
 )

@@ -16,11 +16,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/deposist/s-ui-x/cmd/migration"
-	"github.com/deposist/s-ui-x/config"
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/logger"
-	"github.com/deposist/s-ui-x/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/config"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -303,27 +302,16 @@ func ImportDB(file multipart.File) error {
 		return rollbackImportedDB(dbPath, fallbackPath, fallbackReady, stage, cause)
 	}
 
-	// Schema migrations + post-migration adapter for legacy backups.
-	if migErr := migration.MigrateDb(); migErr != nil {
-		return rollback("migrating imported db", migErr)
-	}
-	if err := InitDB(dbPath); err != nil {
-		return rollback("opening imported db", err)
-	}
-	if err := ResetCaches(context.Background()); err != nil {
-		return rollback("resetting in-memory caches", err)
+	if err := runImportPostActions(context.Background(), importRollbackProtectedPostActions(dbPath), rollback); err != nil {
+		return err
 	}
 
 	// Imported db is healthy and live; drop the on-disk fallback.
 	_ = os.Remove(fallbackPath)
 	cleanupSidecars(fallbackPath)
 
-	// Trigger an in-process restart. We use SIGHUP for parity with the rest
-	// of the codebase; main.go traps SIGHUP and re-runs app.Init -> Start,
-	// at which point migration is re-run as a no-op against the now-current
-	// DB and the panel starts cleanly.
-	if err := SendSighup(); err != nil {
-		return common.NewErrorf("Error restarting app: %v", err)
+	if err := runImportPostActions(context.Background(), importFinalPostActions(), nil); err != nil {
+		return err
 	}
 	return nil
 }

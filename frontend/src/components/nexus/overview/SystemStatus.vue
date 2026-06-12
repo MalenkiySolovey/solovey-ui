@@ -8,7 +8,7 @@
 
     <dense-list class="nexus-system-status__list">
       <li>
-        <span class="nexus-system-status__key">S-UI</span>
+        <span class="nexus-system-status__key">Solovey UI</span>
         <strong dir="ltr">{{ status.appVersion || '-' }}</strong>
       </li>
       <li>

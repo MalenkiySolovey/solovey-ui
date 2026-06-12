@@ -1,4 +1,4 @@
-name: Build S-UI for Windows
+name: Build Solovey UI for Windows
 
 on:
   workflow_dispatch:
@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v1.5.6-beta2"
+        default: "v1.5.7-solovey.1"
         type: string
   push:
     tags:
@@ -88,7 +88,7 @@ jobs:
           }
           choco install zip -y
 
-      - name: Build s-ui
+      - name: Build Solovey UI
         shell: bash
         run: |
           export CGO_ENABLED=${{ matrix.cgo }}
@@ -99,28 +99,28 @@ jobs:
           go version
           go env GOOS GOARCH
 
-          go build -ldflags="-w -s -checklinkname=0" -tags "${{ env.TAGS }}" -o sui.exe main.go
-          file sui.exe
+          go build -ldflags="-w -s -checklinkname=0" -tags "${{ env.TAGS }}" -o solovey-ui.exe main.go
+          file solovey-ui.exe
 
-          mkdir s-ui-windows
-          cp sui.exe s-ui-windows/
-          cp -r windows/* s-ui-windows/
+          mkdir solovey-ui-windows
+          cp solovey-ui.exe solovey-ui-windows/
+          cp -r windows/* solovey-ui-windows/
 
       - name: Download libcronet-go
         shell: bash
         run: |
-          curl -qsL -o s-ui-windows/libcronet.dll ${{ env.LIBCRONET_BASE_URL }}/libcronet-windows-${{ matrix.arch }}.dll
+          curl -qsL -o solovey-ui-windows/libcronet.dll ${{ env.LIBCRONET_BASE_URL }}/libcronet-windows-${{ matrix.arch }}.dll
 
       - name: Package
         shell: bash
         run: |
-          zip -r "s-ui-windows-${{ matrix.arch }}.zip" s-ui-windows
+          zip -r "solovey-ui-windows-${{ matrix.arch }}.zip" solovey-ui-windows
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v7
         with:
-          name: s-ui-windows-${{ matrix.arch }}
-          path: ./s-ui-windows-${{ matrix.arch }}.zip
+          name: solovey-ui-windows-${{ matrix.arch }}
+          path: ./solovey-ui-windows-${{ matrix.arch }}.zip
           retention-days: 1
 
   publish-windows:
@@ -144,7 +144,7 @@ jobs:
       - name: Download Windows build artifacts
         uses: actions/download-artifact@v8
         with:
-          pattern: s-ui-windows-*
+          pattern: solovey-ui-windows-*
           path: release-assets
           merge-multiple: true
 
@@ -152,7 +152,7 @@ jobs:
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
         with:
           tag_name: ${{ steps.vars.outputs.tag }}
-          name: s-ui ${{ steps.vars.outputs.tag }}
+          name: Solovey UI ${{ steps.vars.outputs.tag }}
           target_commitish: ${{ github.sha }}
           fail_on_unmatched_files: true
           files: release-assets/*

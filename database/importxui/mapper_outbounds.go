@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/deposist/s-ui-x/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 )
 
 // dnsHijackTarget and rejectTarget are sentinel routing targets for Xray system
@@ -54,16 +54,6 @@ type xrayProxyUser struct {
 	Encryption string `json:"encryption"` // vless (none)
 	User       string `json:"user"`       // socks, http
 	Pass       string `json:"pass"`       // socks, http
-}
-
-// xuiTLSSetting is the `tlsSettings` block of an Xray stream (client/outbound
-// side). Only the fields s-ui can carry over are decoded.
-type xuiTLSSetting struct {
-	ServerName    string           `json:"serverName"`
-	AllowInsecure bool             `json:"allowInsecure"`
-	Fingerprint   string           `json:"fingerprint"`
-	ALPN          []string         `json:"alpn"`
-	Certificates  []xuiCertificate `json:"certificates"`
 }
 
 // outboundsFromXray converts a proxy Xray outbound (vmess/vless/trojan/
@@ -236,70 +226,4 @@ func firstProxyUser(users []xrayProxyUser) xrayProxyUser {
 		return xrayProxyUser{}
 	}
 	return users[0]
-}
-
-// parseOutboundStream decodes an Xray outbound's streamSettings into the shared
-// xuiStreamSettings shape so mapTransport and mapOutboundClientTLS can reuse the
-// inbound helpers. An absent/invalid block yields a zero (tcp/none) stream.
-func parseOutboundStream(ob xrayOutbound) xuiStreamSettings {
-	var stream xuiStreamSettings
-	if len(ob.StreamSettings) == 0 {
-		return stream
-	}
-	if err := json.Unmarshal(ob.StreamSettings, &stream); err != nil {
-		return xuiStreamSettings{}
-	}
-	stream.Network = strings.ToLower(strings.TrimSpace(stream.Network))
-	stream.Security = strings.ToLower(strings.TrimSpace(stream.Security))
-	return stream
-}
-
-// mapOutboundClientTLS builds the sing-box outbound `tls` block from an Xray
-// outbound's streamSettings. For reality it uses the peer public key/short id
-// that the Xray outbound stores at the top level of realitySettings (unlike an
-// inbound, which stores the private key). Returns nil when TLS is disabled.
-func mapOutboundClientTLS(tag string, stream xuiStreamSettings) (map[string]any, []string) {
-	switch stream.Security {
-	case "", "none":
-		return nil, nil
-	case "tls":
-		tls := map[string]any{"enabled": true}
-		if sni := strings.TrimSpace(stream.TLSSettings.ServerName); sni != "" {
-			tls["server_name"] = sni
-		}
-		if stream.TLSSettings.AllowInsecure {
-			tls["insecure"] = true
-		}
-		if len(stream.TLSSettings.ALPN) > 0 {
-			tls["alpn"] = stream.TLSSettings.ALPN
-		}
-		if fp := strings.TrimSpace(stream.TLSSettings.Fingerprint); fp != "" {
-			tls["utls"] = map[string]any{"enabled": true, "fingerprint": fp}
-		}
-		return tls, nil
-	case "reality":
-		r := stream.RealitySettings
-		serverName := firstNonEmpty(r.ServerName, firstString(r.ServerNames))
-		fingerprint := firstNonEmpty(r.Fingerprint, "chrome")
-		var warnings []string
-		if strings.TrimSpace(r.PublicKey) == "" {
-			warnings = append(warnings, fmt.Sprintf("outbound %s: reality publicKey is empty; verify the outbound TLS settings", tag))
-		}
-		tls := map[string]any{
-			"enabled":     true,
-			"server_name": serverName,
-			"utls": map[string]any{
-				"enabled":     true,
-				"fingerprint": fingerprint,
-			},
-			"reality": map[string]any{
-				"enabled":    true,
-				"public_key": strings.TrimSpace(r.PublicKey),
-				"short_id":   firstNonEmpty(r.ShortID, firstString(r.ShortIDs)),
-			},
-		}
-		return tls, warnings
-	default:
-		return nil, []string{fmt.Sprintf("outbound %s: TLS security %q requires manual review", tag, stream.Security)}
-	}
 }

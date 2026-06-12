@@ -12,7 +12,7 @@ try {
 const workflowDir = path.join(process.cwd(), '.github', 'workflows');
 const files = fs
   .readdirSync(workflowDir)
-  .filter((name) => /^audit.*\.ya?ml$/.test(name))
+  .filter((name) => /\.ya?ml$/.test(name))
   .sort();
 
 for (const file of files) {

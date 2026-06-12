@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deposist/s-ui-x/database"
+	"github.com/MalenkiySolovey/solovey-ui/database"
 )
 
 func TestShowAdminDoesNotPrintPasswordHash(t *testing.T) {
@@ -30,7 +30,7 @@ func TestShowAdminDoesNotPrintPasswordHash(t *testing.T) {
 	if strings.Contains(stdout, "bcrypt:") || strings.Contains(stdout, "$2a$") || strings.Contains(stdout, "$2b$") || strings.Contains(stdout, "$2y$") {
 		t.Fatalf("showAdmin leaked a password hash: %q", stdout)
 	}
-	if !strings.Contains(stdout, "Password is hashed; use 's-ui admin -reset' or 's-ui admin -username/-password' to set a new one") {
+	if !strings.Contains(stdout, "Password is hashed; use 'solovey-ui admin -reset' or 'solovey-ui admin -username/-password' to set a new one") {
 		t.Fatalf("showAdmin did not print reset guidance: %q", stdout)
 	}
 }

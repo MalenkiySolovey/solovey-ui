@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/deposist/s-ui-x/service"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
 func TestDecryptBackupCommandRoundTripWithEnvPassphrase(t *testing.T) {

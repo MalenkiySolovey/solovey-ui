@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v1.5.6-beta2"
+        default: "v1.5.7-solovey.1"
         type: string
   push:
     tags:
@@ -54,6 +54,10 @@ jobs:
             *) echo "tag=v$TAG" >> "$GITHUB_OUTPUT" ;;
           esac
 
+      - name: Normalize image name
+        id: image
+        run: echo "name=${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
+
       - name: Build and push Docker image
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
@@ -62,5 +66,5 @@ jobs:
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            ${{ env.IMAGE_NAME }}:${{ steps.vars.outputs.tag }}
-            ${{ env.IMAGE_NAME }}:latest
+            ${{ steps.image.outputs.name }}:${{ steps.vars.outputs.tag }}
+            ${{ steps.image.outputs.name }}:latest

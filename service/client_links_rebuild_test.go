@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 )
 
 // linkURIs collects the "uri" field of every link entry in a client's Links

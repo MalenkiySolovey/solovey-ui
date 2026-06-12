@@ -11,11 +11,11 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/logger"
-	"github.com/deposist/s-ui-x/util/common"
-	"github.com/deposist/s-ui-x/util/secretbox"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 	"golang.org/x/crypto/hkdf"
 )
 
@@ -25,21 +25,7 @@ var (
 	cookieKeyFallbackWarning sync.Once
 	cookieKeyInvalidWarning  sync.Once
 
-	encryptedSettingKeys = map[string]struct{}{
-		"telegramBackupPassphrase": {},
-		"telegramBotToken":         {},
-		"telegramProxyPassword":    {},
-		"telegramProxyURL":         {},
-		"telegramProxyUsername":    {},
-		"paidSubBotToken":          {},
-		"paidSubYooKassaToken":     {},
-		"paidSubStripeToken":       {},
-		"paidSubPayMasterToken":    {},
-		"paidSubCryptoBotToken":    {},
-		"paidSubProxyURL":          {},
-		"paidSubProxyUsername":     {},
-		"paidSubProxyPassword":     {},
-	}
+	encryptedSettingKeys = mergeSettingKeySets(telegramEncryptedSettingKeys, paidSubEncryptedSettingKeys)
 )
 
 // #nosec G101 -- UI placeholder text shown in place of a stored secret, not a credential.
@@ -62,9 +48,19 @@ func isEncryptedSettingKey(key string) bool {
 	return ok
 }
 
+func mergeSettingKeySets(groups ...map[string]struct{}) map[string]struct{} {
+	merged := make(map[string]struct{})
+	for _, group := range groups {
+		for key := range group {
+			merged[key] = struct{}{}
+		}
+	}
+	return merged
+}
+
 func writeSecretSettingMarker(settings map[string]string, key string, value string) {
 	settings[key+"HasSecret"] = strconv.FormatBool(value != "")
-	if key == "telegramBackupPassphrase" {
+	if key == settingKeyTelegramBackupPassphrase {
 		if value == "" {
 			settings[key] = ""
 		} else {

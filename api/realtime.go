@@ -1,44 +1,26 @@
 package api
 
 import (
-	"bytes"
 	"context"
-	"crypto/sha256"
-	"crypto/subtle"
 	"encoding/json"
-	"net"
 	"net/http"
-	"net/url"
-	"sort"
-	"strconv"
-	"strings"
-	"sync"
-	stdatomic "sync/atomic"
 	"time"
 
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/realtime"
-	"github.com/deposist/s-ui-x/service"
-	"github.com/deposist/s-ui-x/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/realtime"
 
 	"github.com/coder/websocket"
 	"github.com/gin-gonic/gin"
 )
 
 const (
-	wsTokenTTL    = 60 * time.Second
 	wsCloseAuth   = websocket.StatusCode(4401)
 	maxWSPerUser  = 5
 	maxWSPerIP    = 20
 	wsQueueSize   = 16
 	wsSubprotocol = "sui.realtime"
-	wsTokenPrefix = "sui.token."
 
 	defaultWSPingInterval = 25 * time.Second
 	defaultWSPingTimeout  = 5 * time.Second
-
-	wsTokenSweepInterval = time.Minute
-	maxWSTokens          = 4096
 )
 
 type realtimeConfig struct {
@@ -69,57 +51,6 @@ func WithPingTimeout(timeout time.Duration) realtimeOption {
 			config.pingTimeout = timeout
 		}
 	}
-}
-
-type realtimeToken struct {
-	user      string
-	expiresAt time.Time
-}
-
-var wsTokens = struct {
-	sync.Mutex
-	tokens          map[[sha256.Size]byte]realtimeToken
-	lastSweep       time.Time
-	sweepTimer      *time.Timer
-	sweepGeneration uint64
-}{
-	tokens: map[[sha256.Size]byte]realtimeToken{},
-}
-
-var legacyWSProtocolAuditWarned stdatomic.Bool
-
-func init() {
-	database.RegisterResetHook("api.ws_tokens", func() {
-		_ = sweepAllWSTokens()
-	})
-	service.RegisterWSTokenInvalidationHook("api.ws_tokens", sweepAllWSTokens)
-}
-
-func (a *ApiService) IssueWSToken(c *gin.Context) {
-	if !a.enforceWSHandshakeRateLimit(c, "ws-token") {
-		return
-	}
-	user := GetLoginUser(c)
-	if user == "" {
-		jsonMsg(c, "wsToken", common.NewError("invalid login"))
-		return
-	}
-	if !a.validateWSOrigin(c, user) {
-		return
-	}
-	now := time.Now()
-	expiresAt := now.Add(wsTokenTTL)
-	token := common.Random(32)
-	wsTokens.Lock()
-	maybeSweepWSTokensLocked(now)
-	wsTokens.tokens[wsTokenDigest(token)] = realtimeToken{user: user, expiresAt: expiresAt}
-	enforceWSTokenCapLocked()
-	scheduleWSTokenSweepLocked()
-	wsTokens.Unlock()
-	jsonObj(c, gin.H{
-		"token":     token,
-		"expiresAt": expiresAt.Unix(),
-	}, nil)
 }
 
 func (a *ApiService) RealtimeWS(c *gin.Context) {
@@ -260,268 +191,4 @@ func startWSHeartbeat(ctx context.Context, conn *websocket.Conn, config realtime
 		}
 	}()
 	return done
-}
-
-func (a *ApiService) enforceWSHandshakeRateLimit(c *gin.Context, endpoint string) bool {
-	err := checkWSHandshakeRateLimit(wsHandshakeRateLimitKey(endpoint, getRemoteIp(c)))
-	if err == nil {
-		return true
-	}
-	a.recordAudit(c, "", "ws_rate_limited", "realtime", service.AuditSeverityWarn, map[string]any{
-		"endpoint": endpoint,
-	})
-	c.Header("Retry-After", strconv.Itoa(int(wsHandshakeRateLimitWindow/time.Second)))
-	if endpoint == "ws-token" {
-		c.JSON(http.StatusTooManyRequests, Msg{Success: false, Msg: "wsToken: " + err.Error()})
-	} else {
-		c.Status(http.StatusTooManyRequests)
-	}
-	return false
-}
-
-func wsTokenFromRequest(c *gin.Context) (string, bool) {
-	if token := strings.TrimSpace(c.Query("token")); token != "" {
-		return token, false
-	}
-	var legacy string
-	for _, part := range strings.Split(c.GetHeader("Sec-WebSocket-Protocol"), ",") {
-		part = strings.TrimSpace(part)
-		if token, ok := strings.CutPrefix(part, wsTokenPrefix); ok && token != "" {
-			return token, false
-		}
-		if part != "" && part != wsSubprotocol && legacy == "" {
-			legacy = part
-		}
-	}
-	if legacy != "" {
-		return legacy, true
-	}
-	return "", false
-}
-
-func (a *ApiService) recordLegacyWSProtocolAuditOnce(c *gin.Context, user string) {
-	if !legacyWSProtocolAuditWarned.CompareAndSwap(false, true) {
-		return
-	}
-	a.recordAudit(c, user, "ws_protocol_deprecated", "realtime", service.AuditSeverityWarn, map[string]any{
-		"format": "legacy_token_subprotocol",
-	})
-}
-
-func wsTokenDigest(token string) [sha256.Size]byte {
-	return sha256.Sum256([]byte(token))
-}
-
-func (a *ApiService) validateWSOrigin(c *gin.Context, user string) bool {
-	originHeader := strings.TrimSpace(c.GetHeader("Origin"))
-	if originHeader == "" {
-		return true
-	}
-	webDomain, _ := a.SettingService.GetWebDomain()
-	allowed, reason := wsOriginAllowed(originHeader, c.Request.Host, webDomain)
-	if allowed {
-		return true
-	}
-	originHost, originScheme := originAuditParts(originHeader)
-	a.recordAudit(c, user, "ws_origin_rejected", "realtime", service.AuditSeverityWarn, map[string]any{
-		"reason":       reason,
-		"originScheme": originScheme,
-		"originHost":   originHost,
-		"requestHost":  canonicalHostPort(c.Request.Host),
-		"webDomain":    canonicalHostname(webDomain),
-	})
-	c.Status(http.StatusForbidden)
-	return false
-}
-
-func wsOriginAllowed(originHeader string, requestHost string, webDomain string) (bool, string) {
-	originURL, err := url.Parse(originHeader)
-	if err != nil || originURL.Scheme == "" || originURL.Host == "" {
-		return false, "invalid_origin"
-	}
-	if originURL.Scheme != "http" && originURL.Scheme != "https" {
-		return false, "invalid_scheme"
-	}
-	if originURL.RawQuery != "" || originURL.Fragment != "" || (originURL.Path != "" && originURL.Path != "/") {
-		return false, "invalid_origin"
-	}
-
-	originHostPort := canonicalHostPort(originURL.Host)
-	if originHostPort == "" {
-		return false, "invalid_origin"
-	}
-	if requestHost != "" && originHostPort == canonicalHostPort(requestHost) {
-		return true, "request_host"
-	}
-
-	originHost := canonicalHostname(originURL.Host)
-	webDomainHost := canonicalHostname(webDomain)
-	if webDomainHost != "" && originHost == webDomainHost {
-		return true, "web_domain"
-	}
-	if webDomainHostPort := canonicalHostPort(webDomain); webDomainHostPort != "" && originHostPort == webDomainHostPort {
-		return true, "web_domain"
-	}
-	return false, "host_mismatch"
-}
-
-func originAuditParts(originHeader string) (string, string) {
-	originURL, err := url.Parse(originHeader)
-	if err != nil {
-		return "", ""
-	}
-	return canonicalHostPort(originURL.Host), originURL.Scheme
-}
-
-func canonicalHostPort(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	if parsed, err := url.Parse(value); err == nil && parsed.Host != "" {
-		value = parsed.Host
-	}
-	if host, port, err := net.SplitHostPort(value); err == nil {
-		return strings.TrimSuffix(strings.ToLower(strings.Trim(host, "[]")), ".") + ":" + port
-	}
-	return strings.TrimSuffix(strings.ToLower(strings.Trim(value, "[]")), ".")
-}
-
-func canonicalHostname(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	if parsed, err := url.Parse(value); err == nil && parsed.Host != "" {
-		value = parsed.Host
-	}
-	if host, _, err := net.SplitHostPort(value); err == nil {
-		value = host
-	}
-	return strings.TrimSuffix(strings.ToLower(strings.Trim(value, "[]")), ".")
-}
-
-func consumeWSToken(token string) (string, bool) {
-	if token == "" {
-		return "", false
-	}
-	wsTokens.Lock()
-	defer wsTokens.Unlock()
-
-	candidate := wsTokenDigest(token)
-	keys := make([][sha256.Size]byte, 0, len(wsTokens.tokens))
-	for key := range wsTokens.tokens {
-		keys = append(keys, key)
-	}
-	sort.Slice(keys, func(i, j int) bool {
-		return bytes.Compare(keys[i][:], keys[j][:]) < 0
-	})
-
-	matched := 0
-	var matchedKey [sha256.Size]byte
-	matchedExpiresAtUnixNano := int64(0)
-	matchedUserIndex := 0
-	users := make([]string, len(keys))
-	for i, key := range keys {
-		data := wsTokens.tokens[key]
-		users[i] = data.user
-		eq := subtle.ConstantTimeCompare(candidate[:], key[:])
-		subtle.ConstantTimeCopy(eq, matchedKey[:], key[:])
-		matched = subtle.ConstantTimeSelect(eq, 1, matched)
-		matchedExpiresAtUnixNano = constantTimeSelectInt64(eq, data.expiresAt.UnixNano(), matchedExpiresAtUnixNano)
-		matchedUserIndex = subtle.ConstantTimeSelect(eq, i+1, matchedUserIndex)
-	}
-	delete(wsTokens.tokens, matchedKey)
-	now := time.Now()
-	matchedExpiresAt := time.Unix(0, matchedExpiresAtUnixNano)
-	if matched != 1 || now.After(matchedExpiresAt) {
-		return "", false
-	}
-	return users[matchedUserIndex-1], true
-}
-
-func constantTimeSelectInt64(v int, x int64, y int64) int64 {
-	mask := int64(-v)
-	return (x & mask) | (y &^ mask)
-}
-
-func maybeSweepWSTokensLocked(now time.Time) {
-	if wsTokens.lastSweep.IsZero() || now.Sub(wsTokens.lastSweep) > wsTokenSweepInterval {
-		sweepWSTokensLocked(now)
-	}
-}
-
-func runWSTokenSweep(generation uint64) {
-	wsTokens.Lock()
-	defer wsTokens.Unlock()
-	if generation != wsTokens.sweepGeneration {
-		return
-	}
-	wsTokens.sweepTimer = nil
-	sweepWSTokensLocked(time.Now())
-	scheduleWSTokenSweepLocked()
-}
-
-func scheduleWSTokenSweepLocked() {
-	if len(wsTokens.tokens) == 0 || wsTokens.sweepTimer != nil {
-		return
-	}
-	generation := wsTokens.sweepGeneration
-	wsTokens.sweepTimer = time.AfterFunc(wsTokenSweepInterval, func() {
-		runWSTokenSweep(generation)
-	})
-}
-
-func sweepWSTokensLocked(now time.Time) {
-	for token, data := range wsTokens.tokens {
-		if now.After(data.expiresAt) {
-			delete(wsTokens.tokens, token)
-		}
-	}
-	wsTokens.lastSweep = now
-	enforceWSTokenCapLocked()
-}
-
-func sweepAllWSTokens() int {
-	wsTokens.Lock()
-	defer wsTokens.Unlock()
-	return sweepAllWSTokensLocked()
-}
-
-func sweepAllWSTokensLocked() int {
-	count := len(wsTokens.tokens)
-	wsTokens.tokens = map[[sha256.Size]byte]realtimeToken{}
-	wsTokens.lastSweep = time.Time{}
-	if wsTokens.sweepTimer != nil {
-		wsTokens.sweepTimer.Stop()
-		wsTokens.sweepTimer = nil
-	}
-	wsTokens.sweepGeneration++
-	return count
-}
-
-func enforceWSTokenCapLocked() {
-	overflow := len(wsTokens.tokens) - maxWSTokens
-	if overflow <= 0 {
-		return
-	}
-	entries := make([]struct {
-		token     [sha256.Size]byte
-		expiresAt time.Time
-	}, 0, len(wsTokens.tokens))
-	for token, data := range wsTokens.tokens {
-		entries = append(entries, struct {
-			token     [sha256.Size]byte
-			expiresAt time.Time
-		}{token: token, expiresAt: data.expiresAt})
-	}
-	sort.Slice(entries, func(i, j int) bool {
-		if entries[i].expiresAt.Equal(entries[j].expiresAt) {
-			return bytes.Compare(entries[i].token[:], entries[j].token[:]) < 0
-		}
-		return entries[i].expiresAt.Before(entries[j].expiresAt)
-	})
-	for i := 0; i < overflow; i++ {
-		delete(wsTokens.tokens, entries[i].token)
-	}
 }

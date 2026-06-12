@@ -9,10 +9,10 @@
   >
     <v-list-item
       height="63"
-      title="S-UI"
+      title="Solovey UI"
     >
       <template v-slot:prepend>
-        <span aria-hidden="true" class="default-drawer__logo">S</span>
+        <img aria-hidden="true" :src="logoUrl" class="default-drawer__logo" alt="" />
       </template>
       <template v-slot:append v-if="isMobile">
         <v-icon icon="mdi-close" />
@@ -43,6 +43,7 @@
 import { computed } from 'vue'
 import router from '@/router'
 import { logout } from '@/plugins/httputil'
+import logoUrl from '@/assets/logo.png'
 
 const props = defineProps(['isMobile','displayDrawer'])
 
@@ -61,6 +62,7 @@ const menu = [
   { title: 'pages.basics', icon: 'mdi-application-cog',  path: '/basics' },
   { title: 'pages.rules', icon: 'mdi-routes',  path: '/rules' },
   { title: 'pages.dns', icon: 'mdi-dns',  path: '/dns' },
+  { title: 'pages.singBoxConfig', icon: 'mdi-code-json',  path: '/sing-box-config' },
   { title: 'pages.admins', icon: 'mdi-account-tie',  path: '/admins' },
   { title: 'pages.telegram', icon: 'mdi-send',  path: '/telegram' },
   { title: 'pages.audit', icon: 'mdi-shield-search',  path: '/audit' },
@@ -74,16 +76,11 @@ const Logout = async () => {
 
 <style scoped>
 .default-drawer__logo {
-  align-items: center;
-  background: #00d4ff;
+  background: transparent;
   border-radius: 6px;
-  color: #0a0a0a;
-  display: inline-flex;
-  font-size: 18px;
-  font-weight: 700;
+  display: block;
   height: 32px;
-  justify-content: center;
-  line-height: 1;
+  object-fit: contain;
   width: 32px;
 }
 </style>

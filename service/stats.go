@@ -6,11 +6,11 @@ import (
 	"sync"
 	"time"
 
-	"github.com/deposist/s-ui-x/database"
-	"github.com/deposist/s-ui-x/database/model"
-	"github.com/deposist/s-ui-x/ipmonitor"
-	"github.com/deposist/s-ui-x/logger"
-	"github.com/deposist/s-ui-x/realtime"
+	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/ipmonitor"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/realtime"
 
 	"gorm.io/gorm"
 )

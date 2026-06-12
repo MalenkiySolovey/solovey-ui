@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/deposist/s-ui-x/realtime"
+	"github.com/MalenkiySolovey/solovey-ui/realtime"
 )
 
 func TestRotateSessionGenerationClosesRealtimeSessions(t *testing.T) {

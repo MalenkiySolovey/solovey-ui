@@ -6,8 +6,8 @@ import (
 	"os"
 	"runtime/debug"
 
-	"github.com/deposist/s-ui-x/cmd/migration"
-	"github.com/deposist/s-ui-x/config"
+	"github.com/MalenkiySolovey/solovey-ui/cmd/migration"
+	"github.com/MalenkiySolovey/solovey-ui/config"
 )
 
 func ParseCmd() {
@@ -63,7 +63,7 @@ func ParseCmd() {
 
 	flag.Parse()
 	if showVersion {
-		fmt.Println("S-UI Panel\t", config.GetVersion())
+		fmt.Println("Solovey UI Panel\t", config.GetVersion())
 		info, ok := debug.ReadBuildInfo()
 		if ok {
 			for _, dep := range info.Deps {
