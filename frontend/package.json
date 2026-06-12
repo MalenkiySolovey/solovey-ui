@@ -15,7 +15,7 @@
     "axios": "^1.14.0",
     "chart.js": "^4.5.1",
     "clipboard": "^2.0.11",
-    "lucide-vue-next": "^0.487.0",
+    "lucide-vue-next": "^1.0.0",
     "moment": "^2.30.1",
     "notivue": "^2.4.5",
     "pinia": "^3.0.4",
