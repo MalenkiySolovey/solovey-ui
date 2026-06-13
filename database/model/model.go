@@ -9,14 +9,16 @@ type Setting struct {
 }
 
 type Tls struct {
-	Id     uint            `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
-	Name   string          `json:"name" form:"name"`
-	Server json.RawMessage `json:"server" form:"server"`
-	Client json.RawMessage `json:"client" form:"client"`
+	Id        uint            `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
+	SortOrder int             `json:"sortOrder" form:"sortOrder" gorm:"column:sort_order;default:0;not null;index"`
+	Name      string          `json:"name" form:"name"`
+	Server    json.RawMessage `json:"server" form:"server"`
+	Client    json.RawMessage `json:"client" form:"client"`
 }
 
 type User struct {
 	Id                 uint   `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
+	SortOrder          int    `json:"sortOrder" form:"sortOrder" gorm:"column:sort_order;default:0;not null;index"`
 	Username           string `json:"username" form:"username"`
 	Password           string `json:"password" form:"password"`
 	LastLogins         string `json:"lastLogin"`
@@ -25,6 +27,7 @@ type User struct {
 
 type Client struct {
 	Id          uint            `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
+	SortOrder   int             `json:"sortOrder" form:"sortOrder" gorm:"column:sort_order;default:0;not null;index"`
 	Enable      bool            `json:"enable" form:"enable"`
 	Name        string          `json:"name" form:"name"`
 	SubSecret   string          `json:"subSecret,omitempty" form:"subSecret" gorm:"index"`

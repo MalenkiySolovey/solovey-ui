@@ -18,7 +18,7 @@ type TlsService struct {
 func (s *TlsService) GetAll() ([]model.Tls, error) {
 	db := database.GetDB()
 	tlsConfig := []model.Tls{}
-	err := db.Model(model.Tls{}).Where("id > 0").Scan(&tlsConfig).Error
+	err := db.Model(model.Tls{}).Where("id > 0").Order(sortOrderClause).Scan(&tlsConfig).Error
 	if err != nil {
 		return nil, err
 	}

@@ -25,17 +25,18 @@ func (s *ServicesService) runtime() *Runtime {
 func (s *ServicesService) GetAll() (*[]map[string]interface{}, error) {
 	db := database.GetDB()
 	services := []model.Service{}
-	err := db.Model(model.Service{}).Scan(&services).Error
+	err := db.Model(model.Service{}).Order(sortOrderClause).Scan(&services).Error
 	if err != nil {
 		return nil, err
 	}
 	var data []map[string]interface{}
 	for _, srv := range services {
 		srvData := map[string]interface{}{
-			"id":     srv.Id,
-			"type":   srv.Type,
-			"tag":    srv.Tag,
-			"tls_id": srv.TlsId,
+			"id":        srv.Id,
+			"sortOrder": srv.SortOrder,
+			"type":      srv.Type,
+			"tag":       srv.Tag,
+			"tls_id":    srv.TlsId,
 		}
 		if srv.Options != nil {
 			var restFields map[string]json.RawMessage
@@ -55,7 +56,7 @@ func (s *ServicesService) GetAll() (*[]map[string]interface{}, error) {
 func (s *ServicesService) GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 	var servicesJson []json.RawMessage
 	var services []*model.Service
-	err := db.Model(model.Service{}).Preload("Tls").Find(&services).Error
+	err := db.Model(model.Service{}).Preload("Tls").Order(sortOrderClause).Find(&services).Error
 	if err != nil {
 		return nil, err
 	}
@@ -85,6 +86,10 @@ func (s *ServicesService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 			if err != nil {
 				return err
 			}
+		}
+		srv.SortOrder, err = sortOrderForSave(tx, &model.Service{}, srv.Id)
+		if err != nil {
+			return err
 		}
 
 		err = tx.Save(&srv).Error

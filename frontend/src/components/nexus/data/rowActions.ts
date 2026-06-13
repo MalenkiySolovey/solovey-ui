@@ -12,4 +12,6 @@ export interface RowAction {
   divider?: boolean
   // Caller-computed per-row visibility (e.g. Stats only when traffic is enabled).
   hidden?: boolean
+  // Keeps the inline button slot reserved while hidden, useful for up/down pairs.
+  reserveSpace?: boolean
 }

@@ -91,6 +91,21 @@ const Data = defineStore('Data', {
       }
       return msg.success
     },
+    async reorder (object: string, order: Array<number|string>): Promise<boolean> {
+      const msg = await HttpUtils.post('api/reorder', {
+        object,
+        data: JSON.stringify(order),
+      })
+      if (msg.success) {
+        push.success({
+          title: i18n.global.t('success'),
+          duration: 5000,
+          message: i18n.global.t('actions.update') + " " + i18n.global.t('objects.' + (object === 'tls' ? 'tls' : object.substring(0, object.length - 1)))
+        })
+        this.setNewData(msg.obj)
+      }
+      return msg.success
+    },
     // Check duplicate client name
     checkClientName (id: number, newName: string): boolean {
       const oldName = id > 0 ? this.clients.findLast((i: any) => i.id == id)?.name : null

@@ -109,7 +109,11 @@ func upsertUserWithPassword(tx *gorm.DB, username string, passwordHash string, a
 		return err
 	}
 	if database.IsNotFound(err) {
-		return tx.Create(&model.User{Username: username, Password: passwordHash, ForcePasswordReset: forcePasswordReset}).Error
+		sortOrder, err := nextImportSortOrder(tx, &model.User{})
+		if err != nil {
+			return err
+		}
+		return tx.Create(&model.User{SortOrder: sortOrder, Username: username, Password: passwordHash, ForcePasswordReset: forcePasswordReset}).Error
 	}
 	if action == ActionSkip || action == "" {
 		return nil
@@ -130,7 +134,11 @@ func upsertUserResetRequired(tx *gorm.DB, username string, sourcePasswordHash st
 		if action == ActionSkip || action == "" {
 			return nil
 		}
-		return tx.Create(&model.User{Username: username, Password: sourcePasswordHash, ForcePasswordReset: true}).Error
+		sortOrder, err := nextImportSortOrder(tx, &model.User{})
+		if err != nil {
+			return err
+		}
+		return tx.Create(&model.User{SortOrder: sortOrder, Username: username, Password: sourcePasswordHash, ForcePasswordReset: true}).Error
 	}
 	if action == ActionSkip || action == "" {
 		return nil

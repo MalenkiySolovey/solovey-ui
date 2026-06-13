@@ -29,6 +29,9 @@
     @add="showModal(0)"
     @del="delEndpoint"
     @edit="showModal"
+    @move="moveEndpoint"
+    @move-to="dragEndpoint"
+    @sort-by-name="sortEndpointsByName"
     @qr="showQrCode"
     @stats="showStats"
   />
@@ -37,10 +40,28 @@
     <v-row>
       <v-col cols="12" justify="center" align="center">
         <v-btn color="primary" @click="showModal(0)">{{ $t('actions.add') }}</v-btn>
+        <ManualSortButton
+          :disabled="endpoints.length < 2"
+          style="margin: 0 5px;"
+          @sort="sortEndpointsByName"
+        />
       </v-col>
     </v-row>
     <v-row>
-      <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>endpoints" :key="item.tag">
+      <v-col
+        cols="12"
+        sm="4"
+        md="3"
+        lg="2"
+        v-for="(item, index) in <any[]>endpoints"
+        :key="item.tag"
+        :draggable="false"
+        @pointerdown="endpointDrag.prepare($event)"
+        @dragstart="endpointDrag.start($event, item.id)"
+        @dragover="endpointDrag.over($event)"
+        @drop="onEndpointDrop($event, item.id)"
+        @dragend="endpointDrag.clear($event)"
+      >
         <v-card rounded="xl" elevation="5" min-width="200" :title="item.tag">
           <v-card-subtitle style="margin-top: -15px;">
             <v-row>
@@ -120,12 +141,20 @@
 
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
+import ManualSortButton from '@/components/ManualSortButton.vue'
 import EndpointVue from '@/layouts/modals/Endpoint.vue'
 import Stats from '@/layouts/modals/Stats.vue'
 import QrCode from '@/layouts/modals/WgQrCode.vue'
 import { Endpoint } from '@/types/endpoints'
 import { computed, defineAsyncComponent, ref } from 'vue'
 import { useUiMode } from '@/uiMode/useUiMode'
+import { useManualDrag } from '@/composables/useManualDrag'
+import {
+  dragManualOrder,
+  type ManualSortDirection,
+  moveManualOrder,
+  sortManualOrderByText,
+} from '@/composables/useManualReorder'
 
 const { mode } = useUiMode()
 
@@ -177,6 +206,23 @@ const delEndpoint = async (tag: string) => {
   const index = endpoints.value.findIndex(i => i.tag == tag)
   const success = await Data().save("endpoints", "del", tag)
   if (success) delOverlay.value[index] = false
+}
+
+const moveEndpoint = async (id: number, dir: number) => {
+  await moveManualOrder("endpoints", endpoints.value as any[], id, dir)
+}
+
+const dragEndpoint = async (draggedId: number, targetId: number) => {
+  await dragManualOrder("endpoints", endpoints.value as any[], draggedId, targetId)
+}
+
+const sortEndpointsByName = async (direction: ManualSortDirection) => {
+  await sortManualOrderByText("endpoints", endpoints.value as any[], direction, "tag")
+}
+
+const endpointDrag = useManualDrag<number>()
+const onEndpointDrop = (event: DragEvent, targetId: number) => {
+  endpointDrag.drop(event, targetId, dragEndpoint)
 }
 
 const showStats = (tag: string) => {

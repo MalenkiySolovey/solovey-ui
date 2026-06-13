@@ -18,6 +18,7 @@ func (a *ApiService) GetUsers(c *gin.Context) {
 	for _, user := range *users {
 		result = append(result, gin.H{
 			"id":        user.Id,
+			"sortOrder": user.SortOrder,
 			"username":  user.Username,
 			"lastLogin": user.LastLogins,
 			"isCurrent": user.Username == loginUser,

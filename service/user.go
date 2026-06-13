@@ -52,6 +52,7 @@ func (s *UserService) GetFirstUser() (*model.User, error) {
 
 	user := &model.User{}
 	err := db.Model(model.User{}).
+		Order("id ASC").
 		First(user).
 		Error
 	if err != nil {
@@ -169,7 +170,7 @@ func (s *UserService) detectNewLoginIP(user *model.User, remoteIP string) {
 func (s *UserService) GetUsers() (*[]model.User, error) {
 	var users []model.User
 	db := database.GetDB()
-	err := db.Model(model.User{}).Select("id,username,last_logins").Scan(&users).Error
+	err := db.Model(model.User{}).Select("id,sort_order,username,last_logins").Order(sortOrderClause).Scan(&users).Error
 	if err != nil {
 		return nil, err
 	}
@@ -210,7 +211,12 @@ func (s *UserService) AddUser(actorUsername string, currentPass string, newUsern
 		if err != nil {
 			return err
 		}
+		sortOrder, err := nextSortOrder(tx, &model.User{})
+		if err != nil {
+			return err
+		}
 		created = model.User{
+			SortOrder:          sortOrder,
 			Username:           newUsername,
 			Password:           passwordHash,
 			ForcePasswordReset: false,

@@ -21,6 +21,8 @@ type SQLiteSessionStore struct {
 	optionsMu sync.RWMutex
 	options   *gsessions.Options
 	now       func() time.Time
+	schemaMu  sync.Mutex
+	schemaDB  *gorm.DB
 }
 
 type sqliteSessionRow struct {
@@ -134,7 +136,18 @@ func (s *SQLiteSessionStore) Save(_ *http.Request, w http.ResponseWriter, sessio
 }
 
 func (s *SQLiteSessionStore) ensureSchema() error {
-	if err := s.liveDB().Exec(`
+	liveDB := s.liveDB()
+	if liveDB == nil {
+		return errors.New("sqlite session store requires an initialized database")
+	}
+
+	s.schemaMu.Lock()
+	defer s.schemaMu.Unlock()
+	if s.schemaDB == liveDB {
+		return nil
+	}
+
+	if err := liveDB.Exec(`
 CREATE TABLE IF NOT EXISTS sessions (
 	id TEXT PRIMARY KEY,
 	data BLOB NOT NULL,
@@ -142,10 +155,17 @@ CREATE TABLE IF NOT EXISTS sessions (
 )`).Error; err != nil {
 		return err
 	}
-	return s.liveDB().Exec("CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)").Error
+	if err := liveDB.Exec("CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)").Error; err != nil {
+		return err
+	}
+	s.schemaDB = liveDB
+	return nil
 }
 
 func (s *SQLiteSessionStore) save(session *gsessions.Session) error {
+	if err := s.ensureSchema(); err != nil {
+		return err
+	}
 	encoded, err := securecookie.EncodeMulti(session.Name(), session.Values, s.codecs...)
 	if err != nil {
 		return err
@@ -162,6 +182,9 @@ ON CONFLICT(id) DO UPDATE SET data = excluded.data, expires_at = excluded.expire
 }
 
 func (s *SQLiteSessionStore) load(session *gsessions.Session) (bool, error) {
+	if err := s.ensureSchema(); err != nil {
+		return false, err
+	}
 	var row sqliteSessionRow
 	err := s.liveDB().Table("sessions").Where("id = ?", session.ID).First(&row).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -183,6 +206,9 @@ func (s *SQLiteSessionStore) load(session *gsessions.Session) (bool, error) {
 }
 
 func (s *SQLiteSessionStore) erase(id string) error {
+	if err := s.ensureSchema(); err != nil {
+		return err
+	}
 	return s.liveDB().Exec("DELETE FROM sessions WHERE id = ?", id).Error
 }
 

@@ -659,6 +659,8 @@ export default {
     testAll: "Тестировать все",
     save: "Сохранить",
     update: "Обновить",
+    sortByNameAsc: "Имя А-Я",
+    sortByNameDesc: "Имя Я-А",
     submit: "Отправить",
     set: "Установить",
     generate: "Генерировать",

@@ -3,9 +3,10 @@ package model
 import "encoding/json"
 
 type Service struct {
-	Id   uint   `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
-	Type string `json:"type" form:"type"`
-	Tag  string `json:"tag" form:"tag" gorm:"unique"`
+	Id        uint   `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
+	SortOrder int    `json:"sortOrder" form:"sortOrder" gorm:"column:sort_order;default:0;not null;index"`
+	Type      string `json:"type" form:"type"`
+	Tag       string `json:"tag" form:"tag" gorm:"unique"`
 
 	// Foreign key to tls table
 	TlsId uint `json:"tls_id" form:"tls_id"`
@@ -26,6 +27,14 @@ func (i *Service) UnmarshalJSON(data []byte) error {
 		i.Id = uint(val)
 	}
 	delete(raw, "id")
+	if val, exists := raw["sortOrder"].(float64); exists {
+		i.SortOrder = int(val)
+	}
+	if val, exists := raw["sort_order"].(float64); exists {
+		i.SortOrder = int(val)
+	}
+	delete(raw, "sortOrder")
+	delete(raw, "sort_order")
 	i.Type, _ = raw["type"].(string)
 	delete(raw, "type")
 	i.Tag, _ = raw["tag"].(string)
@@ -70,6 +79,7 @@ func (i Service) MarshalJSON() ([]byte, error) {
 func (i Service) MarshalFull() (*map[string]interface{}, error) {
 	combined := make(map[string]interface{})
 	combined["id"] = i.Id
+	combined["sortOrder"] = i.SortOrder
 	combined["type"] = i.Type
 	combined["tag"] = i.Tag
 	combined["tls_id"] = i.TlsId

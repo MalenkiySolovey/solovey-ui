@@ -80,6 +80,11 @@ func applyInbound(tx *gorm.DB, inbound *model.Inbound, strategy Strategy, report
 		return 0, false, false, err
 	}
 	if database.IsNotFound(err) {
+		sortOrder, err := nextImportSortOrder(tx, &model.Inbound{})
+		if err != nil {
+			return 0, false, false, err
+		}
+		inbound.SortOrder = sortOrder
 		if err := tx.Create(inbound).Error; err != nil {
 			return 0, false, false, err
 		}
@@ -95,12 +100,14 @@ func applyInbound(tx *gorm.DB, inbound *model.Inbound, strategy Strategy, report
 			return 0, false, false, err
 		}
 		inbound.Id = 0
+		inbound.SortOrder = existing.SortOrder
 		if err := tx.Create(inbound).Error; err != nil {
 			return 0, false, false, err
 		}
 		return inbound.Id, true, false, nil
 	default:
 		inbound.Id = existing.Id
+		inbound.SortOrder = existing.SortOrder
 		if err := tx.Save(inbound).Error; err != nil {
 			return 0, false, false, err
 		}
@@ -115,6 +122,11 @@ func applyEndpoint(tx *gorm.DB, endpoint *model.Endpoint, strategy Strategy, rep
 		return false, err
 	}
 	if database.IsNotFound(err) {
+		sortOrder, err := nextImportSortOrder(tx, &model.Endpoint{})
+		if err != nil {
+			return false, err
+		}
+		endpoint.SortOrder = sortOrder
 		return true, tx.Create(endpoint).Error
 	}
 	switch strategy {
@@ -126,9 +138,11 @@ func applyEndpoint(tx *gorm.DB, endpoint *model.Endpoint, strategy Strategy, rep
 			return false, err
 		}
 		endpoint.Id = 0
+		endpoint.SortOrder = existing.SortOrder
 		return true, tx.Create(endpoint).Error
 	default:
 		endpoint.Id = existing.Id
+		endpoint.SortOrder = existing.SortOrder
 		return true, tx.Save(endpoint).Error
 	}
 }

@@ -3,10 +3,11 @@ package model
 import "encoding/json"
 
 type Outbound struct {
-	Id      uint            `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
-	Type    string          `json:"type" form:"type"`
-	Tag     string          `json:"tag" form:"tag" gorm:"unique"`
-	Options json.RawMessage `json:"-" form:"-"`
+	Id        uint            `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
+	SortOrder int             `json:"sortOrder" form:"sortOrder" gorm:"column:sort_order;default:0;not null;index"`
+	Type      string          `json:"type" form:"type"`
+	Tag       string          `json:"tag" form:"tag" gorm:"unique"`
+	Options   json.RawMessage `json:"-" form:"-"`
 }
 
 func (o *Outbound) UnmarshalJSON(data []byte) error {
@@ -21,6 +22,14 @@ func (o *Outbound) UnmarshalJSON(data []byte) error {
 		o.Id = uint(val)
 	}
 	delete(raw, "id")
+	if val, exists := raw["sortOrder"].(float64); exists {
+		o.SortOrder = int(val)
+	}
+	if val, exists := raw["sort_order"].(float64); exists {
+		o.SortOrder = int(val)
+	}
+	delete(raw, "sortOrder")
+	delete(raw, "sort_order")
 	o.Type, _ = raw["type"].(string)
 	delete(raw, "type")
 	o.Tag, _ = raw["tag"].(string)

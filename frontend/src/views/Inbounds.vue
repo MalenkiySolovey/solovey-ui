@@ -25,6 +25,9 @@
     @clone="clone"
     @del="delInbound"
     @edit="showModal"
+    @move="moveInbound"
+    @move-to="dragInbound"
+    @sort-by-name="sortInboundsByName"
     @stats="showStats"
   />
 
@@ -32,10 +35,28 @@
     <v-row>
       <v-col cols="12" justify="center" align="center">
         <v-btn color="primary" @click="showModal(0)">{{ $t('actions.add') }}</v-btn>
+        <ManualSortButton
+          :disabled="inbounds.length < 2"
+          style="margin: 0 5px;"
+          @sort="sortInboundsByName"
+        />
       </v-col>
     </v-row>
     <v-row>
-      <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>inbounds" :key="item.tag">
+      <v-col
+        cols="12"
+        sm="4"
+        md="3"
+        lg="2"
+        v-for="(item, index) in <any[]>inbounds"
+        :key="item.tag"
+        :draggable="false"
+        @pointerdown="inboundDrag.prepare($event)"
+        @dragstart="inboundDrag.start($event, item.id)"
+        @dragover="inboundDrag.over($event)"
+        @drop="onInboundDrop($event, item.id)"
+        @dragend="inboundDrag.clear($event)"
+      >
         <v-card rounded="xl" elevation="5" min-width="200" :title="item.tag">
           <v-card-subtitle style="margin-top: -15px;">
             <v-row>
@@ -124,6 +145,7 @@
 
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
+import ManualSortButton from '@/components/ManualSortButton.vue'
 import InboundVue from '@/layouts/modals/Inbound.vue'
 import Stats from '@/layouts/modals/Stats.vue'
 import { Config } from '@/types/config'
@@ -131,6 +153,13 @@ import { computed, defineAsyncComponent, ref } from 'vue'
 import { createInbound, Inbound } from '@/types/inbounds'
 import RandomUtil from '@/plugins/randomUtil'
 import { useUiMode } from '@/uiMode/useUiMode'
+import { useManualDrag } from '@/composables/useManualDrag'
+import {
+  dragManualOrder,
+  type ManualSortDirection,
+  moveManualOrder,
+  sortManualOrderByText,
+} from '@/composables/useManualReorder'
 
 const { mode } = useUiMode()
 
@@ -189,6 +218,23 @@ const delInbound = async (id: number) => {
 
   const success = await Data().save("inbounds", "del", tag)
   if (success) delOverlay.value[index] = false
+}
+
+const moveInbound = async (id: number, dir: number) => {
+  await moveManualOrder("inbounds", inbounds.value as any[], id, dir)
+}
+
+const dragInbound = async (draggedId: number, targetId: number) => {
+  await dragManualOrder("inbounds", inbounds.value as any[], draggedId, targetId)
+}
+
+const sortInboundsByName = async (direction: ManualSortDirection) => {
+  await sortManualOrderByText("inbounds", inbounds.value as any[], direction, "tag")
+}
+
+const inboundDrag = useManualDrag<number>()
+const onInboundDrop = (event: DragEvent, targetId: number) => {
+  inboundDrag.drop(event, targetId, dragInbound)
 }
 
 let cloneLoading = ref(false)

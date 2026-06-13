@@ -123,6 +123,52 @@ func TestSQLiteSessionStoreSupportsCookieKeyRollover(t *testing.T) {
 	}
 }
 
+func TestSQLiteSessionStoreCreatesSchemaAfterLiveDBSwap(t *testing.T) {
+	db1 := initSQLiteSessionTestDB(t)
+	store, err := NewSQLiteSessionStore(db1, []byte("test-session-secret-32-bytes-long"))
+	if err != nil {
+		t.Fatalf("NewSQLiteSessionStore: %v", err)
+	}
+	closeSQLiteSessionTestDB(db1)
+
+	tempDir := t.TempDir()
+	t.Setenv("SUI_DB_FOLDER", tempDir)
+	dbPath := filepath.Join(tempDir, "s-ui.db")
+	if err := database.InitDB(dbPath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	db2 := database.GetDB()
+	t.Cleanup(func() { closeSQLiteSessionTestDB(db2) })
+
+	router := gin.New()
+	router.Use(ginsessions.Sessions("s-ui", store))
+	router.GET("/login", func(c *gin.Context) {
+		session := ginsessions.Default(c)
+		session.Set("user", "admin")
+		session.Options(ginsessions.Options{Path: "/", HttpOnly: true, SameSite: http.SameSiteLaxMode})
+		if err := session.Save(); err != nil {
+			c.String(http.StatusInternalServerError, err.Error())
+			return
+		}
+		c.Status(http.StatusNoContent)
+	})
+
+	login := performSQLiteSessionRequest(router, "/login")
+	if login.Code != http.StatusNoContent {
+		t.Fatalf("login returned %d: %s", login.Code, login.Body.String())
+	}
+	var count int64
+	if err := db2.Table("sessions").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("session rows=%d, want 1", count)
+	}
+}
+
 func BenchmarkSQLiteSessionStoreProtectedRequest(b *testing.B) {
 	db := initSQLiteSessionTestDB(b)
 	router := newSQLiteSessionTestRouter(b, db)

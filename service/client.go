@@ -41,7 +41,7 @@ func (s *ClientService) Get(id string) (*[]model.Client, error) {
 func (s *ClientService) getById(id string) (*[]model.Client, error) {
 	db := database.GetDB()
 	var client []model.Client
-	err := db.Model(model.Client{}).Where("id in ?", strings.Split(id, ",")).Scan(&client).Error
+	err := db.Model(model.Client{}).Where("id in ?", strings.Split(id, ",")).Order(sortOrderClause).Scan(&client).Error
 	if err != nil {
 		return nil, err
 	}
@@ -53,7 +53,8 @@ func (s *ClientService) GetAll() (*[]model.Client, error) {
 	db := database.GetDB()
 	var clients []model.Client
 	err := db.Model(model.Client{}).
-		Select("`id`, `enable`, `name`, `sub_secret`, `desc`, `group`, `inbounds`, `up`, `down`, `volume`, `expiry`, `limit_ip`, `ip_limit_mode`, `last_online`, `last_ip_count`").
+		Select("`id`, `sort_order`, `enable`, `name`, `sub_secret`, `desc`, `group`, `inbounds`, `up`, `down`, `volume`, `expiry`, `limit_ip`, `ip_limit_mode`, `last_online`, `last_ip_count`").
+		Order(sortOrderClause).
 		Scan(&clients).Error
 	if err != nil {
 		return nil, err

@@ -43,6 +43,11 @@ func applyClient(tx *gorm.DB, agg *clientAggregate, strategy Strategy, report *R
 		if next.Links, err = buildClientLinks(tx, next.Config, next.Inbounds, hostname); err != nil {
 			return err
 		}
+		sortOrder, err := nextImportSortOrder(tx, &model.Client{})
+		if err != nil {
+			return err
+		}
+		next.SortOrder = sortOrder
 		report.Summary.Clients.Created++
 		return tx.Create(&next).Error
 	}
@@ -53,6 +58,7 @@ func applyClient(tx *gorm.DB, agg *clientAggregate, strategy Strategy, report *R
 	case StrategyReplace:
 		next.Id = existing.Id
 		next.SubSecret = existing.SubSecret
+		next.SortOrder = existing.SortOrder
 		if next.Links, err = buildClientLinks(tx, next.Config, next.Inbounds, hostname); err != nil {
 			return err
 		}

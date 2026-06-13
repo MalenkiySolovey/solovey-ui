@@ -659,6 +659,8 @@ export default {
     testAll: "Test all",
     save: "Save",
     update: "Update",
+    sortByNameAsc: "Name A-Z",
+    sortByNameDesc: "Name Z-A",
     submit: "Submit",
     set: "Set",
     generate: "Generate",

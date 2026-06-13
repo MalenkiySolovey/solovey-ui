@@ -104,7 +104,7 @@ func (s *InboundService) fetchUsersByCondition(db *gorm.DB, inboundType string, 
 	// `field` is constrained to a static allow-list above, so embedding it
 	// directly into the JSON path is safe. The dynamic condition is fed
 	// through the query parameter slot to remain SQL-injection free.
-	query := fmt.Sprintf(`SELECT json_extract(clients.config, '$.%s') FROM clients WHERE enable = true AND %s`, field, condition)
+	query := fmt.Sprintf(`SELECT json_extract(clients.config, '$.%s') FROM clients WHERE enable = true AND %s ORDER BY clients.sort_order, clients.id`, field, condition)
 	err := db.Raw(query, args...).Scan(&users).Error
 	if err != nil {
 		return nil, err

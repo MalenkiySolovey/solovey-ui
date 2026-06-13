@@ -178,6 +178,58 @@ func TestIssue13InitDBCreatesForcePasswordResetDefaultFalse(t *testing.T) {
 	}
 }
 
+func TestInitDBBackfillsSortOrderColumns(t *testing.T) {
+	dbDir := makeDBTempDir(t, "s-ui-db-test-")
+	dbPath := filepath.Join(dbDir, "s-ui.db")
+	if err := InitDB(dbPath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		cleanupBackupSidecars(dbPath)
+	})
+
+	if err := GetDB().Create(&model.Outbound{Type: "direct", Tag: "second", Options: []byte("{}")}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, query := range []string{
+		"UPDATE outbounds SET sort_order = 0",
+		"UPDATE tls SET sort_order = 0",
+		"UPDATE users SET sort_order = 0",
+	} {
+		if err := GetDB().Exec(query).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := ensureSortOrders(); err != nil {
+		t.Fatal(err)
+	}
+
+	assertSortOrders := func(table string, want []int) {
+		t.Helper()
+		var got []int
+		if err := GetDB().Raw("SELECT sort_order FROM " + table + " ORDER BY sort_order ASC, id ASC").Scan(&got).Error; err != nil {
+			t.Fatal(err)
+		}
+		if len(got) != len(want) {
+			t.Fatalf("%s sort_order len=%d, want %d: %v", table, len(got), len(want), got)
+		}
+		for i := range want {
+			if got[i] != want[i] {
+				t.Fatalf("%s sort_order=%v, want %v", table, got, want)
+			}
+		}
+	}
+
+	assertSortOrders("outbounds", []int{1, 2})
+	assertSortOrders("tls", []int{1})
+	assertSortOrders("users", []int{1})
+}
+
 func TestIssue15DBPoolConfigFromEnv(t *testing.T) {
 	cases := []struct {
 		name        string

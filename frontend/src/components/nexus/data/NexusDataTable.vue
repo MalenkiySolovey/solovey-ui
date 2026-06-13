@@ -22,7 +22,16 @@
         />
         <tbody>
           <template v-for="item in pagedItems" :key="keyOf(item)">
-            <tr class="nexus-data-table__row">
+            <tr
+              class="nexus-data-table__row"
+              :class="{ 'nexus-data-table__row--draggable': draggableRows && !dragDisabled }"
+              :draggable="false"
+              @pointerdown="onRowPointerDown"
+              @dragstart="onRowDragStart($event, item)"
+              @dragover="onRowDragOver"
+              @drop="onRowDrop($event, item)"
+              @dragend="onRowDragEnd"
+            >
               <td v-if="selectable" class="nexus-data-table__select">
                 <v-checkbox-btn
                   :aria-label="$t('table.selectRow')"
@@ -49,11 +58,13 @@
                 :key="column.key"
                 :class="`nexus-data-table__cell nexus-data-table__cell--${column.align ?? 'start'}`"
               >
-                <slot
-                  :item="item"
-                  :name="`col.${column.key}`"
-                  :value="item[column.key]"
-                >{{ item[column.key] }}</slot>
+                <span class="nexus-data-table__cell-content manual-drag-no-drag">
+                  <slot
+                    :item="item"
+                    :name="`col.${column.key}`"
+                    :value="item[column.key]"
+                  >{{ item[column.key] }}</slot>
+                </span>
               </td>
 
               <td v-if="$slots.actions" class="nexus-data-table__actions">
@@ -85,6 +96,7 @@
 <script lang="ts" setup generic="T extends Record<string, any>">
 import { computed, ref, useSlots, watch } from 'vue'
 
+import { canStartManualDrag, prepareManualDrag } from '@/composables/useManualDrag'
 import DenseTable from '@/components/nexus/primitives/DenseTable.vue'
 import EmptyState from '@/components/nexus/primitives/EmptyState.vue'
 import TableSkeleton from '@/components/nexus/primitives/TableSkeleton.vue'
@@ -109,15 +121,20 @@ const props = withDefaults(defineProps<{
   // Namespaces the persisted rows-per-page preference so each table keeps its
   // own size. When omitted, the legacy shared key is used (back-compatible).
   storageKey?: string
+  draggableRows?: boolean
+  dragDisabled?: boolean
 }>(), {
   rowKey: undefined,
   selectable: false,
   expandable: false,
   paginated: true,
+  draggableRows: false,
+  dragDisabled: false,
 })
 
 const emit = defineEmits<{
   'update:selected': [keys: RowKey[]]
+  'row-drop': [dragged: T, target: T]
 }>()
 
 const keyOf = (item: T): RowKey => (props.rowKey ? props.rowKey(item) : (item.id as RowKey))
@@ -137,11 +154,20 @@ const sort = ref<SortState | null>(null)
 const page = ref(1)
 const itemsPerPage = ref(readItemsPerPage())
 const expanded = ref<Set<RowKey>>(new Set())
+const draggedRow = ref<T | null>(null)
 
 // The header never reads the row generic; widen so the invariant Column<T>
 // (its sortValue accessor makes Column invariant in T) assigns to Column[].
-const headerColumns = computed(() => props.columns as unknown as Column[])
-const sortedItems = computed(() => sortItems(props.items, sort.value, props.columns))
+const headerColumns = computed(() => {
+  const columns = props.draggableRows
+    ? props.columns.map(column => ({ ...column, sortable: false }))
+    : props.columns
+
+  return columns as unknown as Column[]
+})
+const sortedItems = computed(() =>
+  props.draggableRows ? [...props.items] : sortItems(props.items, sort.value, props.columns),
+)
 const pagedItems = computed(() => {
   if (!props.paginated) return sortedItems.value
 
@@ -161,6 +187,7 @@ const slots = useSlots()
 const expandColspan = computed(() => skeletonColumns.value + (slots.actions ? 1 : 0))
 
 const onSort = (key: string) => {
+  if (props.draggableRows) return
   sort.value = nextSortState(sort.value, key)
   page.value = 1
 }
@@ -187,6 +214,41 @@ const toggleExpand = (item: T) => {
   expanded.value = next
 }
 
+const onRowPointerDown = (event: PointerEvent) => {
+  prepareManualDrag(event, !props.draggableRows || props.dragDisabled)
+}
+
+const onRowDragStart = (event: DragEvent, item: T) => {
+  if (!props.draggableRows || props.dragDisabled || !canStartManualDrag(event)) {
+    event.preventDefault()
+    return
+  }
+  draggedRow.value = item as any
+  if (event.dataTransfer) {
+    event.dataTransfer.effectAllowed = 'move'
+    event.dataTransfer.setData('text/plain', String(keyOf(item)))
+  }
+}
+
+const onRowDragOver = (event: DragEvent) => {
+  if (!props.draggableRows || props.dragDisabled || draggedRow.value == null) return
+  event.preventDefault()
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+}
+
+const onRowDrop = (event: DragEvent, target: T) => {
+  if (!props.draggableRows || props.dragDisabled || draggedRow.value == null) return
+  event.preventDefault()
+  const source = draggedRow.value as T
+  draggedRow.value = null
+  if (keyOf(source) === keyOf(target)) return
+  emit('row-drop', source, target)
+}
+
+const onRowDragEnd = () => {
+  draggedRow.value = null
+}
+
 // Clamp the page when the underlying list shrinks (delete/filter).
 watch([sortedItems, itemsPerPage], () => {
   const pageCount = Math.max(1, Math.ceil(sortedItems.value.length / itemsPerPage.value))
@@ -204,12 +266,26 @@ defineExpose({ clearSelection: selection.clear })
   transition: background var(--nexus-transition-fast);
 }
 
+.nexus-data-table__row--draggable {
+  cursor: grab;
+}
+
+.nexus-data-table__row--draggable:active {
+  cursor: grabbing;
+}
+
 .nexus-data-table__row:hover {
   background: var(--nexus-surface-hover);
 }
 
 .nexus-data-table__cell--center { text-align: center; }
 .nexus-data-table__cell--end { text-align: end; }
+.nexus-data-table__cell-content {
+  cursor: text;
+  display: inline-block;
+  max-width: 100%;
+  user-select: text;
+}
 .nexus-data-table__actions { text-align: end; white-space: nowrap; }
 .nexus-data-table__select,
 .nexus-data-table__expand { width: 44px; }

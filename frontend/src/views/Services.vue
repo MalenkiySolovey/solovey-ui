@@ -18,16 +18,37 @@
     @add="showModal(0)"
     @del="delSrv"
     @edit="showModal"
+    @move="moveSrv"
+    @move-to="dragSrv"
+    @sort-by-name="sortServicesByName"
   />
 
   <template v-else>
     <v-row>
       <v-col cols="12" justify="center" align="center">
         <v-btn color="primary" @click="showModal(0)">{{ $t('actions.add') }}</v-btn>
+        <ManualSortButton
+          :disabled="services.length < 2"
+          style="margin: 0 5px;"
+          @sort="sortServicesByName"
+        />
       </v-col>
     </v-row>
     <v-row>
-      <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>services" :key="item.tag">
+      <v-col
+        cols="12"
+        sm="4"
+        md="3"
+        lg="2"
+        v-for="(item, index) in <any[]>services"
+        :key="item.tag"
+        :draggable="false"
+        @pointerdown="serviceDrag.prepare($event)"
+        @dragstart="serviceDrag.start($event, item.id)"
+        @dragover="serviceDrag.over($event)"
+        @drop="onServiceDrop($event, item.id)"
+        @dragend="serviceDrag.clear($event)"
+      >
         <v-card rounded="xl" elevation="5" min-width="200" :title="item.tag">
           <v-card-subtitle style="margin-top: -15px;">
             <v-row>
@@ -91,11 +112,19 @@
 
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
+import ManualSortButton from '@/components/ManualSortButton.vue'
 import { Srv } from '@/types/services'
 import { computed, ref } from 'vue'
 import ServiceVue from '@/layouts/modals/Service.vue'
 import { useUiMode } from '@/uiMode/useUiMode'
 import { defineAsyncComponent } from 'vue'
+import { useManualDrag } from '@/composables/useManualDrag'
+import {
+  dragManualOrder,
+  type ManualSortDirection,
+  moveManualOrder,
+  sortManualOrderByText,
+} from '@/composables/useManualReorder'
 
 const { mode } = useUiMode()
 
@@ -152,5 +181,22 @@ const delSrv = async (id: number) => {
 
   const success = await Data().save("services", "del", tag)
   if (success) delOverlay.value[index] = false
+}
+
+const moveSrv = async (id: number, dir: number) => {
+  await moveManualOrder("services", services.value as any[], id, dir)
+}
+
+const dragSrv = async (draggedId: number, targetId: number) => {
+  await dragManualOrder("services", services.value as any[], draggedId, targetId)
+}
+
+const sortServicesByName = async (direction: ManualSortDirection) => {
+  await sortManualOrderByText("services", services.value as any[], direction, "tag")
+}
+
+const serviceDrag = useManualDrag<number>()
+const onServiceDrop = (event: DragEvent, targetId: number) => {
+  serviceDrag.drop(event, targetId, dragSrv)
 }
 </script>

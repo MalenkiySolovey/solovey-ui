@@ -10,6 +10,10 @@
 
     <page-toolbar>
       <template #actions>
+        <ManualSortButton
+          :disabled="outbounds.length < 2"
+          @sort="sortByName"
+        />
         <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" @click="emit('add')">
           {{ $t('actions.add') }}
         </v-btn>
@@ -28,7 +32,14 @@
       </template>
     </page-toolbar>
 
-    <nexus-data-table :columns="columns" :items="filtered" :row-key="(item) => item.id">
+    <nexus-data-table
+      :columns="columns"
+      :drag-disabled="search.trim().length > 0"
+      draggable-rows
+      :items="filtered"
+      :row-key="(item) => item.id"
+      @row-drop="(dragged, target) => emit('moveTo', dragged.id, target.id)"
+    >
       <template #col.status="{ item }">
         <status-badge v-if="onlines.includes(item.tag)" :label="$t('online')" tone="success" />
         <status-badge v-else :label="$t('nexus.status.offline')" tone="neutral" />
@@ -105,6 +116,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import ManualSortButton from '@/components/ManualSortButton.vue'
 import type { Column } from '@/components/nexus/data/dataTableColumns'
 import NexusDataTable from '@/components/nexus/data/NexusDataTable.vue'
 import RowActions from '@/components/nexus/data/RowActions.vue'
@@ -115,6 +127,7 @@ import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import StatusBadge from '@/components/nexus/primitives/StatusBadge.vue'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
+import type { ManualSortDirection } from '@/composables/useManualReorder'
 
 interface CheckResult {
   loading?: boolean
@@ -148,12 +161,19 @@ const emit = defineEmits<{
   test: [tag: string]
   edit: [id: number]
   del: [tag: string]
+  move: [id: number, dir: number]
+  moveTo: [draggedId: number, targetId: number]
+  sortByName: [direction: ManualSortDirection]
   stats: [tag: string]
 }>()
 
 const { t } = useI18n()
 const { confirm } = useConfirm()
 const search = ref('')
+
+const sortByName = (direction: ManualSortDirection) => {
+  emit('sortByName', direction)
+}
 
 const subtitle = computed(() => {
   const total = props.outbounds.length
@@ -164,10 +184,10 @@ const subtitle = computed(() => {
 
 const columns: Column<OutboundRow>[] = [
   { key: 'status', labelKey: 'status' },
-  { key: 'tag', labelKey: 'objects.tag', sortable: true },
-  { key: 'type', labelKey: 'type', sortable: true },
+  { key: 'tag', labelKey: 'objects.tag' },
+  { key: 'type', labelKey: 'type' },
   { key: 'server', labelKey: 'in.addr' },
-  { key: 'server_port', labelKey: 'in.port', sortable: true },
+  { key: 'server_port', labelKey: 'in.port' },
   { key: 'tls', labelKey: 'objects.tls' },
   { key: 'delay', labelKey: 'out.delay' },
 ]
@@ -181,6 +201,8 @@ const filtered = computed<OutboundRow[]>(() => {
 })
 
 const outboundActions = (item: OutboundRow): RowAction[] => [
+  { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || props.outbounds.findIndex(row => row.id === item.id) === 0 },
+  { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || props.outbounds.findIndex(row => row.id === item.id) === props.outbounds.length - 1 },
   { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
   { key: 'stats', labelKey: 'stats.graphTitle', icon: 'lucide:line-chart', inline: true, hidden: !props.enableTraffic },
   { key: 'del', labelKey: 'actions.del', icon: 'lucide:trash-2', tone: 'error', divider: true },
@@ -188,6 +210,12 @@ const outboundActions = (item: OutboundRow): RowAction[] => [
 
 const handleAction = async (key: string, item: OutboundRow) => {
   switch (key) {
+    case 'up':
+      emit('move', item.id, -1)
+      break
+    case 'down':
+      emit('move', item.id, 1)
+      break
     case 'edit':
       emit('edit', item.id)
       break

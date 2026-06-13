@@ -207,6 +207,9 @@ func InitDB(dbPath string) error {
 	if err := adaptToCurrentVersion(); err != nil {
 		return fmt.Errorf("post-migration adapt failed: %w", err)
 	}
+	if err := ensureSortOrders(); err != nil {
+		return fmt.Errorf("sort-order backfill failed: %w", err)
+	}
 
 	return nil
 }
@@ -302,6 +305,13 @@ func ensureIndexes() error {
 		"CREATE INDEX IF NOT EXISTS idx_audit_events_severity_dt ON audit_events(severity, date_time DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name)",
 		"CREATE INDEX IF NOT EXISTS idx_clients_sub_secret ON clients(sub_secret)",
+		"CREATE INDEX IF NOT EXISTS idx_clients_sort_order ON clients(sort_order, id)",
+		"CREATE INDEX IF NOT EXISTS idx_inbounds_sort_order ON inbounds(sort_order, id)",
+		"CREATE INDEX IF NOT EXISTS idx_outbounds_sort_order ON outbounds(sort_order, id)",
+		"CREATE INDEX IF NOT EXISTS idx_endpoints_sort_order ON endpoints(sort_order, id)",
+		"CREATE INDEX IF NOT EXISTS idx_services_sort_order ON services(sort_order, id)",
+		"CREATE INDEX IF NOT EXISTS idx_tls_sort_order ON tls(sort_order, id)",
+		"CREATE INDEX IF NOT EXISTS idx_users_sort_order ON users(sort_order, id)",
 		"CREATE INDEX IF NOT EXISTS idx_client_ips_client_legacy_ip ON client_ips(client_name, ip) WHERE ip IS NOT NULL AND ip != ''",
 		"CREATE INDEX IF NOT EXISTS idx_client_ips_last_seen ON client_ips(last_seen)",
 	}
@@ -311,6 +321,58 @@ func ensureIndexes() error {
 		}
 	}
 	return nil
+}
+
+func ensureSortOrders() error {
+	for _, table := range []string{"inbounds", "clients", "outbounds", "endpoints", "services", "tls", "users"} {
+		if err := ensureTableSortOrder(table); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ensureTableSortOrder(table string) error {
+	if !db.Migrator().HasTable(table) || !db.Migrator().HasColumn(table, "sort_order") {
+		return nil
+	}
+
+	quotedTable := quoteSQLiteIdentifier(table)
+	rows := []struct {
+		ID        int64
+		SortOrder int
+	}{}
+	if err := db.Raw(fmt.Sprintf("SELECT id, sort_order FROM %s ORDER BY sort_order ASC, id ASC", quotedTable)).Scan(&rows).Error; err != nil {
+		return err
+	}
+	if len(rows) == 0 {
+		return nil
+	}
+
+	needsBackfill := false
+	for index, row := range rows {
+		if row.SortOrder != index+1 {
+			needsBackfill = true
+			break
+		}
+	}
+	if !needsBackfill {
+		return nil
+	}
+
+	return db.Transaction(func(tx *gorm.DB) error {
+		query := fmt.Sprintf("UPDATE %s SET sort_order = ? WHERE id = ?", quotedTable)
+		for index, row := range rows {
+			if err := tx.Exec(query, index+1, row.ID).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
+func quoteSQLiteIdentifier(identifier string) string {
+	return `"` + strings.ReplaceAll(identifier, `"`, `""`) + `"`
 }
 
 func GetDB() *gorm.DB {

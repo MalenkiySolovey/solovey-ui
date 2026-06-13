@@ -55,6 +55,9 @@
     @edit="showModal"
     @edit-bulk="editBulk"
     @qr="showQrCode"
+    @move="moveClient"
+    @move-to="dragClient"
+    @sort-by-name="sortClientsByName"
     @show-ips="showClientIps"
     @stats="showStats"
   />
@@ -63,6 +66,12 @@
   <v-row justify="center" align="center">
     <v-col cols="auto">
       <v-btn color="primary" @click="showModal(0)">{{ $t('actions.add') }}</v-btn>
+    </v-col>
+    <v-col cols="auto">
+      <ManualSortButton
+        :disabled="clients.length < 2"
+        @sort="sortClientsByName"
+      />
     </v-col>
     <v-col cols="auto">
       <v-menu v-model="actionMenu" :close-on-content-click="false" location="bottom center">
@@ -165,6 +174,7 @@
         item-value="name"
         :mobile="smAndDown"
         mobile-breakpoint="sm"
+        :row-props="clientRowProps"
         width="100%"
         class="elevation-3 rounded"
         >
@@ -271,6 +281,7 @@
 </style>
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
+import ManualSortButton from '@/components/ManualSortButton.vue'
 import ClientModal from '@/layouts/modals/Client.vue'
 import ClientAddBulk from '@/layouts/modals/ClientAddBulk.vue'
 import ClientEditBulk from '@/layouts/modals/ClientEditBulk.vue'
@@ -283,6 +294,13 @@ import { HumanReadable } from '@/plugins/utils'
 import { i18n, locale } from '@/locales'
 import { useDisplay } from 'vuetify'
 import { useUiMode } from '@/uiMode/useUiMode'
+import { useManualDrag } from '@/composables/useManualDrag'
+import {
+  dragManualOrder,
+  type ManualSortDirection,
+  moveManualOrder,
+  sortManualOrderByText,
+} from '@/composables/useManualReorder'
 
 const { smAndDown } = useDisplay()
 
@@ -372,6 +390,32 @@ const delClient = async (id: number) => {
   const success = await Data().save("clients", "del", id)
   if (success) delOverlay.value[index] = false
 }
+
+const moveClient = async (id: number, dir: number) => {
+  await moveManualOrder("clients", clients.value as any[], id, dir)
+}
+
+const dragClient = async (draggedId: number, targetId: number) => {
+  await dragManualOrder("clients", clients.value as any[], draggedId, targetId)
+}
+
+const sortClientsByName = async (direction: ManualSortDirection) => {
+  await sortManualOrderByText("clients", clients.value as any[], direction, "name")
+}
+
+const clientDrag = useManualDrag<number>()
+const onClientDrop = (event: DragEvent, targetId: number) => {
+  clientDrag.drop(event, targetId, dragClient, filterSettings.value.enabled)
+}
+
+const clientRowProps = ({ item }: { item: any }) => ({
+  draggable: false,
+  onPointerdown: (event: PointerEvent) => clientDrag.prepare(event, filterSettings.value.enabled),
+  onDragstart: (event: DragEvent) => clientDrag.start(event, item.id, filterSettings.value.enabled),
+  onDragover: (event: DragEvent) => clientDrag.over(event, filterSettings.value.enabled),
+  onDrop: (event: DragEvent) => onClientDrop(event, item.id),
+  onDragend: (event: DragEvent) => clientDrag.clear(event),
+})
 
 const qrcode = ref({
   visible: false,

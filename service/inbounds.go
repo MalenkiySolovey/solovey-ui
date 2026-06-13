@@ -41,7 +41,7 @@ func (s *InboundService) getById(ids string) (*[]map[string]interface{}, error) 
 	var inbound []model.Inbound
 	var result []map[string]interface{}
 	db := database.GetDB()
-	err := db.Model(model.Inbound{}).Where("id in ?", strings.Split(ids, ",")).Scan(&inbound).Error
+	err := db.Model(model.Inbound{}).Where("id in ?", strings.Split(ids, ",")).Order(sortOrderClause).Scan(&inbound).Error
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +58,7 @@ func (s *InboundService) getById(ids string) (*[]map[string]interface{}, error) 
 func (s *InboundService) GetAll() (*[]map[string]interface{}, error) {
 	db := database.GetDB()
 	inbounds := []model.Inbound{}
-	err := db.Model(model.Inbound{}).Scan(&inbounds).Error
+	err := db.Model(model.Inbound{}).Order(sortOrderClause).Scan(&inbounds).Error
 	if err != nil {
 		return nil, err
 	}
@@ -68,10 +68,11 @@ func (s *InboundService) GetAll() (*[]map[string]interface{}, error) {
 		var shadowtls_version uint
 		ss_managed := false
 		inbData := map[string]interface{}{
-			"id":     inbound.Id,
-			"type":   inbound.Type,
-			"tag":    inbound.Tag,
-			"tls_id": inbound.TlsId,
+			"id":        inbound.Id,
+			"sortOrder": inbound.SortOrder,
+			"type":      inbound.Type,
+			"tag":       inbound.Tag,
+			"tls_id":    inbound.TlsId,
 		}
 		if inbound.Options != nil {
 			var restFields map[string]json.RawMessage
@@ -117,7 +118,7 @@ func (s *InboundService) GetAll() (*[]map[string]interface{}, error) {
 func (s *InboundService) FromIds(ids []uint) ([]*model.Inbound, error) {
 	db := database.GetDB()
 	inbounds := []*model.Inbound{}
-	err := db.Model(model.Inbound{}).Where("id in ?", ids).Scan(&inbounds).Error
+	err := db.Model(model.Inbound{}).Where("id in ?", ids).Order(sortOrderClause).Scan(&inbounds).Error
 	if err != nil {
 		return nil, err
 	}
@@ -157,7 +158,7 @@ func (s *InboundService) UpdateOutJsons(tx *gorm.DB, inboundIds []uint, hostname
 func (s *InboundService) GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 	var inboundsJson []json.RawMessage
 	var inbounds []*model.Inbound
-	err := db.Model(model.Inbound{}).Preload("Tls").Find(&inbounds).Error
+	err := db.Model(model.Inbound{}).Preload("Tls").Order(sortOrderClause).Find(&inbounds).Error
 	if err != nil {
 		return nil, err
 	}

@@ -30,6 +30,10 @@
         />
       </template>
       <template #actions>
+        <ManualSortButton
+          :disabled="clients.length < 2"
+          @sort="sortByName"
+        />
         <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" @click="emit('add')">
           {{ $t('actions.add') }}
         </v-btn>
@@ -45,7 +49,14 @@
       </template>
     </page-toolbar>
 
-    <nexus-data-table :columns="columns" :items="filtered" :row-key="(item) => item.id">
+    <nexus-data-table
+      :columns="columns"
+      :drag-disabled="hasActiveFilter"
+      draggable-rows
+      :items="filtered"
+      :row-key="(item) => item.id"
+      @row-drop="(dragged, target) => emit('moveTo', dragged.id, target.id)"
+    >
       <template #col.name="{ item }">
         <span class="clients-nexus__name">{{ item.name }}</span>
       </template>
@@ -89,7 +100,7 @@
       </template>
 
       <template #actions="{ item }">
-        <row-actions :actions="clientActions()" @action="(key) => handleAction(key, item)" />
+        <row-actions :actions="clientActions(item)" @action="(key) => handleAction(key, item)" />
       </template>
 
       <template #empty>
@@ -103,6 +114,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import ManualSortButton from '@/components/ManualSortButton.vue'
 import type { Column } from '@/components/nexus/data/dataTableColumns'
 import NexusDataTable from '@/components/nexus/data/NexusDataTable.vue'
 import RowActions from '@/components/nexus/data/RowActions.vue'
@@ -113,6 +125,7 @@ import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import StatusBadge from '@/components/nexus/primitives/StatusBadge.vue'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
 import { HumanReadable } from '@/plugins/utils'
+import type { ManualSortDirection } from '@/composables/useManualReorder'
 
 interface ClientRow {
   id: number
@@ -144,6 +157,9 @@ const emit = defineEmits<{
   edit: [id: number]
   del: [id: number]
   qr: [id: number]
+  move: [id: number, dir: number]
+  moveTo: [draggedId: number, targetId: number]
+  sortByName: [direction: ManualSortDirection]
   stats: [name: string]
   showIps: [name: string]
 }>()
@@ -154,6 +170,10 @@ const search = ref('')
 const filterState = ref('')
 const filterGroup = ref('-')
 
+const sortByName = (direction: ManualSortDirection) => {
+  emit('sortByName', direction)
+}
+
 const subtitle = computed(() => {
   const total = props.clients.length
   const online = props.clients.filter(c => props.onlines.includes(c.name)).length
@@ -162,9 +182,9 @@ const subtitle = computed(() => {
 })
 
 const columns: Column<ClientRow>[] = [
-  { key: 'name', labelKey: 'client.name', sortable: true },
+  { key: 'name', labelKey: 'client.name' },
   { key: 'desc', labelKey: 'client.desc' },
-  { key: 'group', labelKey: 'client.group', sortable: true },
+  { key: 'group', labelKey: 'client.group' },
   { key: 'inbounds', labelKey: 'pages.inbounds' },
   { key: 'volume', labelKey: 'stats.volume' },
   { key: 'expiry', labelKey: 'date.expiry' },
@@ -199,6 +219,12 @@ const filtered = computed<ClientRow[]>(() => {
   return rows
 })
 
+const hasActiveFilter = computed(() =>
+  search.value.trim().length > 0 ||
+  filterGroup.value !== '-' ||
+  filterState.value !== '',
+)
+
 const inboundTag = (id: number) => props.inbounds.find(i => i.id === id)?.tag ?? id
 const percent = (c: ClientRow) => (c.volume > 0 ? Math.round((c.up + c.down) * 100 / c.volume) : 0)
 const percentColor = (c: ClientRow) => ((c.up + c.down) >= c.volume ? 'error' : percent(c) > 90 ? 'warning' : 'success')
@@ -208,7 +234,9 @@ const volumeColor = (c: ClientRow) => (c.volume === 0 ? 'success' : c.volume <= 
 const remainedDays = (expiry: number) => HumanReadable.remainedDays(expiry)
 const expiryColor = (c: ClientRow) => (c.expiry === 0 ? 'success' : c.expiry <= Date.now() / 1000 ? 'error' : undefined)
 
-const clientActions = (): RowAction[] => [
+const clientActions = (item: ClientRow): RowAction[] => [
+  { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, reserveSpace: true, hidden: hasActiveFilter.value || props.clients.findIndex(row => row.id === item.id) === 0 },
+  { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, reserveSpace: true, hidden: hasActiveFilter.value || props.clients.findIndex(row => row.id === item.id) === props.clients.length - 1 },
   { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
   { key: 'qr', labelKey: 'objects.config', icon: 'lucide:qr-code', inline: true },
   { key: 'stats', labelKey: 'stats.graphTitle', icon: 'lucide:line-chart', inline: true, hidden: !props.enableTraffic },
@@ -217,6 +245,12 @@ const clientActions = (): RowAction[] => [
 
 const handleAction = async (key: string, item: ClientRow) => {
   switch (key) {
+    case 'up':
+      emit('move', item.id, -1)
+      break
+    case 'down':
+      emit('move', item.id, 1)
+      break
     case 'edit':
       emit('edit', item.id)
       break

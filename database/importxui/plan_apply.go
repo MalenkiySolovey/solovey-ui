@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 
 	"gorm.io/gorm"
 )
@@ -194,6 +195,13 @@ func (s *applyState) applyTLS(ctx context.Context, tx *gorm.DB, src *sourceDB) e
 			if err := tx.Delete(&existing).Error; err != nil {
 				return err
 			}
+			record.SortOrder = existing.SortOrder
+		} else {
+			sortOrder, err := nextImportSortOrder(tx, &model.Tls{})
+			if err != nil {
+				return err
+			}
+			record.SortOrder = sortOrder
 		}
 		if err := tx.Create(&record).Error; err != nil {
 			return err
@@ -257,6 +265,13 @@ func (s *applyState) applyPlainTLS(tx *gorm.DB, row xuiInboundRow) error {
 		if err := tx.Delete(&existing).Error; err != nil {
 			return err
 		}
+		record.SortOrder = existing.SortOrder
+	} else {
+		sortOrder, err := nextImportSortOrder(tx, &model.Tls{})
+		if err != nil {
+			return err
+		}
+		record.SortOrder = sortOrder
 	}
 	if err := tx.Create(&record).Error; err != nil {
 		return err

@@ -17,16 +17,37 @@
     @clone="clone"
     @del="delTls"
     @edit="showModal"
+    @move="moveTls"
+    @move-to="dragTls"
+    @sort-by-name="sortTlsByName"
   />
 
   <template v-else>
     <v-row>
       <v-col cols="12" justify="center" align="center">
         <v-btn color="primary" @click="showModal(0)">{{ $t('actions.add') }}</v-btn>
+        <ManualSortButton
+          :disabled="tlsConfigs.length < 2"
+          style="margin: 0 5px;"
+          @sort="sortTlsByName"
+        />
       </v-col>
     </v-row>
     <v-row>
-      <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>tlsConfigs" :key="item.id">
+      <v-col
+        cols="12"
+        sm="4"
+        md="3"
+        lg="2"
+        v-for="(item, index) in <any[]>tlsConfigs"
+        :key="item.id"
+        :draggable="false"
+        @pointerdown="tlsDrag.prepare($event)"
+        @dragstart="tlsDrag.start($event, item.id)"
+        @dragover="tlsDrag.over($event)"
+        @drop="onTlsDrop($event, item.id)"
+        @dragend="tlsDrag.clear($event)"
+      >
         <v-card rounded="xl" elevation="5" min-width="200" :title="item.name">
           <v-card-subtitle style="margin-top: -15px;">
             {{ item.server?.server_name?.length>0 ? item.server.server_name : "-" }}
@@ -101,10 +122,18 @@
 <script lang="ts" setup>
 import TlsVue from '@/layouts/modals/Tls.vue'
 import Data from '@/store/modules/data'
+import ManualSortButton from '@/components/ManualSortButton.vue'
 import { computed, defineAsyncComponent, ref } from 'vue'
 import { Inbound } from '@/types/inbounds'
 import { tls } from '@/types/tls'
 import { useUiMode } from '@/uiMode/useUiMode'
+import { useManualDrag } from '@/composables/useManualDrag'
+import {
+  dragManualOrder,
+  type ManualSortDirection,
+  moveManualOrder,
+  sortManualOrderByText,
+} from '@/composables/useManualReorder'
 
 const { mode } = useUiMode()
 
@@ -162,5 +191,22 @@ const delTls = async (id: number) => {
   const index = tlsConfigs.value.findIndex(t => t.id == id)
   const success = await Data().save("tls", "del", id)
   if (success) delOverlay.value[index] = false
+}
+
+const moveTls = async (id: number, dir: number) => {
+  await moveManualOrder("tls", tlsConfigs.value as any[], id, dir)
+}
+
+const dragTls = async (draggedId: number, targetId: number) => {
+  await dragManualOrder("tls", tlsConfigs.value as any[], draggedId, targetId)
+}
+
+const sortTlsByName = async (direction: ManualSortDirection) => {
+  await sortManualOrderByText("tls", tlsConfigs.value as any[], direction, "name")
+}
+
+const tlsDrag = useManualDrag<number>()
+const onTlsDrop = (event: DragEvent, targetId: number) => {
+  tlsDrag.drop(event, targetId, dragTls)
 }
 </script>

@@ -13,7 +13,7 @@ type syslogBackend struct {
 }
 
 func newSyslogBackend() (logBackend, error) {
-	writer, err := syslog.New(syslog.LOG_INFO|syslog.LOG_DAEMON, "s-ui")
+	writer, err := syslog.New(syslog.LOG_INFO|syslog.LOG_DAEMON, "solovey-ui")
 	if err != nil {
 		return nil, err
 	}

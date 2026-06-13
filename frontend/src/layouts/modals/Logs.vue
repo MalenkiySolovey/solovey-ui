@@ -63,7 +63,7 @@ export default {
         { title: 'DEBUG', value: 'debug' },
         { title: 'INFO', value: 'info' },
         { title: 'WARNING', value: 'warning' },
-        { title: 'ERROR', value: 'err' },
+        { title: 'ERROR', value: 'error' },
       ],
       logCount: 10,
     }

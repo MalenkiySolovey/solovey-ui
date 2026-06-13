@@ -39,6 +39,9 @@
     @changes="showChangesModal"
     @del="showDeleteModal"
     @edit="showEditModal"
+    @move="moveAdmin"
+    @move-to="dragAdmin"
+    @sort-by-name="sortAdminsByName"
     @logout-all="logoutAllAdmins"
     @token="showTokenModal"
   />
@@ -47,6 +50,11 @@
   <v-row>
     <v-col cols="12" justify="center" align="center">
       <v-btn color="primary" prepend-icon="mdi-account-plus" @click="showAddModal()" style="margin: 0 5px;">{{ $t('admin.addAdmin') }}</v-btn>
+      <ManualSortButton
+        :disabled="users.length < 2"
+        style="margin: 0 5px;"
+        @sort="sortAdminsByName"
+      />
       <v-btn color="primary" @click="showChangesModal('')" style="margin: 0 5px;">{{ $t('admin.changes') }}</v-btn>
       <v-btn color="primary" @click="showTokenModal()" style="margin: 0 5px;">{{ $t('admin.api.token') }}</v-btn>
       <v-menu v-model="logoutAllMenu" :close-on-content-click="false" location="bottom center">
@@ -69,7 +77,20 @@
     </v-col>
   </v-row>
   <v-row>
-    <v-col cols="12" sm="4" md="3" lg="2" v-for="item in users" :key="item.id">
+    <v-col
+      cols="12"
+      sm="4"
+      md="3"
+      lg="2"
+      v-for="item in users"
+      :key="item.id"
+      :draggable="false"
+      @pointerdown="adminDrag.prepare($event)"
+      @dragstart="adminDrag.start($event, item.id)"
+      @dragover="adminDrag.over($event)"
+      @drop="onAdminDrop($event, item.id)"
+      @dragend="adminDrag.clear($event)"
+    >
       <v-card rounded="xl" elevation="5" min-width="200" :title="item.username">
         <v-card-subtitle style="margin-top: -15px;">
           {{ $t('admin.lastLogin') }}
@@ -117,6 +138,7 @@
 
 <script lang="ts" setup>
 import AdminsNexusList from '@/views/admins/AdminsNexusList.vue'
+import ManualSortButton from '@/components/ManualSortButton.vue'
 import AdminModal from '@/layouts/modals/Admin.vue'
 import AdminAddModal from '@/layouts/modals/AdminAdd.vue'
 import AdminDeleteModal from '@/layouts/modals/AdminDelete.vue'
@@ -128,6 +150,11 @@ import { clearCSRFToken } from '@/store/csrf'
 import { Ref, computed, ref, inject, onMounted } from 'vue'
 import router from '@/router'
 import { useUiMode } from '@/uiMode/useUiMode'
+import { useManualDrag } from '@/composables/useManualDrag'
+import {
+  type ManualSortDirection,
+  sortRowsByText,
+} from '@/composables/useManualReorder'
 
 const { mode } = useUiMode()
 const nexus = computed(() => mode.value === 'nexus')
@@ -167,19 +194,21 @@ const loadData = async () => {
   users.value = []
   if (msg.success) {
     const payload = Array.isArray(msg.obj) ? msg.obj : []
-    payload.forEach((u:any) => {
-      const lastLogin = String(u.lastLogin ?? '').split(" ")
-      const localLastLogin = lastLogin.length > 2 ? dateFormatted(Date.parse(lastLogin[0] + " " + lastLogin[1])) : "- -"
-      const loginDateTime = localLastLogin.split(" ")
-      users.value.push({
-        id: Number(u.id),
-        username: String(u.username ?? ''),
-        loginDate: loginDateTime[0],
-        loginTime: loginDateTime[1],
-        ip: lastLogin[2]?? "-",
-        isCurrent: Boolean(u.isCurrent),
-      })
-    })
+    users.value = payload.map(adminListItemFromPayload)
+  }
+}
+
+const adminListItemFromPayload = (u: any): AdminListItem => {
+  const lastLogin = String(u.lastLogin ?? '').split(" ")
+  const localLastLogin = lastLogin.length > 2 ? dateFormatted(Date.parse(lastLogin[0] + " " + lastLogin[1])) : "- -"
+  const loginDateTime = localLastLogin.split(" ")
+  return {
+    id: Number(u.id),
+    username: String(u.username ?? ''),
+    loginDate: loginDateTime[0],
+    loginTime: loginDateTime[1],
+    ip: lastLogin[2]?? "-",
+    isCurrent: Boolean(u.isCurrent),
   }
 }
 
@@ -290,5 +319,50 @@ const logoutAllAdmins = async () => {
     clearCSRFToken()
     router.push('/login')
   }
+}
+
+const moveAdmin = async (id: number, dir: number) => {
+  const rows = [...users.value]
+  const index = rows.findIndex(user => user.id === id)
+  const target = index + dir
+  if (index < 0 || target < 0 || target >= rows.length) return
+
+  const [item] = rows.splice(index, 1)
+  rows.splice(target, 0, item)
+  await saveAdminOrder(rows)
+}
+
+const dragAdmin = async (draggedId: number, targetId: number) => {
+  if (draggedId === targetId) return
+  const rows = [...users.value]
+  const from = rows.findIndex(user => user.id === draggedId)
+  const to = rows.findIndex(user => user.id === targetId)
+  if (from < 0 || to < 0) return
+
+  const [item] = rows.splice(from, 1)
+  rows.splice(to, 0, item)
+  await saveAdminOrder(rows)
+}
+
+const saveAdminOrder = async (rows: AdminListItem[]): Promise<boolean> => {
+  const response = await HttpUtils.post('api/reorder', {
+    object: 'admins',
+    data: JSON.stringify(rows.map(user => user.id)),
+  })
+  if (response.success) {
+    const payload = response.obj?.users
+    users.value = Array.isArray(payload) ? payload.map(adminListItemFromPayload) : rows
+  }
+  return response.success
+}
+
+const sortAdminsByName = async (direction: ManualSortDirection) => {
+  if (users.value.length < 2) return
+  await saveAdminOrder(sortRowsByText(users.value, direction, "username"))
+}
+
+const adminDrag = useManualDrag<number>()
+const onAdminDrop = (event: DragEvent, targetId: number) => {
+  adminDrag.drop(event, targetId, dragAdmin)
 }
 </script>

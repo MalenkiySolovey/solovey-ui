@@ -26,6 +26,11 @@ func createNewEndpoints(tx *gorm.DB, endpoints []model.Endpoint, report *Report)
 			report.warn(fmt.Sprintf("endpoint %q already exists; WARP outbound left unchanged", ep.Tag))
 			continue
 		}
+		sortOrder, err := nextImportSortOrder(tx, &model.Endpoint{})
+		if err != nil {
+			return err
+		}
+		ep.SortOrder = sortOrder
 		if err := tx.Create(ep).Error; err != nil {
 			return err
 		}
@@ -50,6 +55,11 @@ func createNewOutbounds(tx *gorm.DB, outbounds []model.Outbound, report *Report)
 			report.warn(fmt.Sprintf("outbound %q already exists; left unchanged", ob.Tag))
 			continue
 		}
+		sortOrder, err := nextImportSortOrder(tx, &model.Outbound{})
+		if err != nil {
+			return err
+		}
+		ob.SortOrder = sortOrder
 		if err := tx.Create(ob).Error; err != nil {
 			return err
 		}

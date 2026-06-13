@@ -4,6 +4,10 @@
 
     <page-toolbar>
       <template #actions>
+        <ManualSortButton
+          :disabled="users.length < 2"
+          @sort="sortByName"
+        />
         <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" @click="emit('add')">
           {{ $t('admin.addAdmin') }}
         </v-btn>
@@ -19,7 +23,13 @@
       </template>
     </page-toolbar>
 
-    <nexus-data-table :columns="columns" :items="users" :row-key="(item) => item.id">
+    <nexus-data-table
+      :columns="columns"
+      draggable-rows
+      :items="users"
+      :row-key="(item) => item.id"
+      @row-drop="(dragged, target) => emit('moveTo', dragged.id, target.id)"
+    >
       <template #col.username="{ item }">
         <span class="admins-nexus__name">{{ item.username }}</span>
       </template>
@@ -43,6 +53,7 @@
 <script lang="ts" setup>
 import { computed } from 'vue'
 
+import ManualSortButton from '@/components/ManualSortButton.vue'
 import type { Column } from '@/components/nexus/data/dataTableColumns'
 import NexusDataTable from '@/components/nexus/data/NexusDataTable.vue'
 import RowActions from '@/components/nexus/data/RowActions.vue'
@@ -52,6 +63,7 @@ import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
 import { useI18n } from 'vue-i18n'
+import type { ManualSortDirection } from '@/composables/useManualReorder'
 
 interface AdminRow {
   id: number
@@ -72,6 +84,9 @@ const emit = defineEmits<{
   edit: [user: AdminRow]
   changes: [actor: string]
   del: [user: AdminRow]
+  move: [id: number, dir: number]
+  moveTo: [draggedId: number, targetId: number]
+  sortByName: [direction: ManualSortDirection]
   token: []
   logoutAll: []
 }>()
@@ -79,11 +94,15 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const { confirm } = useConfirm()
 
+const sortByName = (direction: ManualSortDirection) => {
+  emit('sortByName', direction)
+}
+
 const subtitle = computed(() => t('nexus.summary.admins', { total: props.users.length }))
 
 const columns: Column<AdminRow>[] = [
-  { key: 'username', labelKey: 'admin.username', sortable: true },
-  { key: 'loginDate', labelKey: 'admin.date', sortable: true },
+  { key: 'username', labelKey: 'admin.username' },
+  { key: 'loginDate', labelKey: 'admin.date' },
   { key: 'loginTime', labelKey: 'admin.time' },
   { key: 'ip', labelKey: 'IP' },
 ]
@@ -91,6 +110,8 @@ const columns: Column<AdminRow>[] = [
 // Named <entity>Actions (not rowActions) so it never shadows the RowActions
 // component in this template — see the Nexus list convention.
 const adminActions = (item: AdminRow): RowAction[] => [
+  { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, reserveSpace: true, hidden: props.users.findIndex(row => row.id === item.id) === 0 },
+  { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, reserveSpace: true, hidden: props.users.findIndex(row => row.id === item.id) === props.users.length - 1 },
   { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
   { key: 'changes', labelKey: 'admin.changes', icon: 'lucide:history', inline: true },
   { key: 'del', labelKey: 'admin.deleteAdmin', icon: 'lucide:trash-2', tone: 'error', inline: true, hidden: item.isCurrent },
@@ -98,6 +119,12 @@ const adminActions = (item: AdminRow): RowAction[] => [
 
 const handleAction = (key: string, item: AdminRow) => {
   switch (key) {
+    case 'up':
+      emit('move', item.id, -1)
+      break
+    case 'down':
+      emit('move', item.id, 1)
+      break
     case 'edit':
       emit('edit', item)
       break

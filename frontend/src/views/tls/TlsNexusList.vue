@@ -10,13 +10,24 @@
 
     <page-toolbar>
       <template #actions>
+        <ManualSortButton
+          :disabled="tlsConfigs.length < 2"
+          @sort="sortByName"
+        />
         <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" @click="emit('add')">
           {{ $t('actions.add') }}
         </v-btn>
       </template>
     </page-toolbar>
 
-    <nexus-data-table :columns="columns" :items="filtered" :row-key="(item) => item.id">
+    <nexus-data-table
+      :columns="columns"
+      :drag-disabled="search.trim().length > 0"
+      draggable-rows
+      :items="filtered"
+      :row-key="(item) => item.id"
+      @row-drop="(dragged, target) => emit('moveTo', dragged.id, target.id)"
+    >
       <template #col.name="{ item }">
         <span class="tls-nexus__name">{{ item.name }}</span>
       </template>
@@ -64,6 +75,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import ManualSortButton from '@/components/ManualSortButton.vue'
 import type { Column } from '@/components/nexus/data/dataTableColumns'
 import NexusDataTable from '@/components/nexus/data/NexusDataTable.vue'
 import RowActions from '@/components/nexus/data/RowActions.vue'
@@ -73,6 +85,7 @@ import EmptyState from '@/components/nexus/primitives/EmptyState.vue'
 import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
+import type { ManualSortDirection } from '@/composables/useManualReorder'
 
 interface TlsRow {
   id: number
@@ -93,11 +106,18 @@ const emit = defineEmits<{
   edit: [id: number]
   clone: [item: TlsRow]
   del: [id: number]
+  move: [id: number, dir: number]
+  moveTo: [draggedId: number, targetId: number]
+  sortByName: [direction: ManualSortDirection]
 }>()
 
 const { t } = useI18n()
 const { confirm } = useConfirm()
 const search = ref('')
+
+const sortByName = (direction: ManualSortDirection) => {
+  emit('sortByName', direction)
+}
 
 const subtitle = computed(() => {
   const total = props.tlsConfigs.length
@@ -108,7 +128,7 @@ const subtitle = computed(() => {
 })
 
 const columns: Column<TlsRow>[] = [
-  { key: 'name', labelKey: 'client.name', sortable: true },
+  { key: 'name', labelKey: 'client.name' },
   { key: 'server_name', labelKey: 'setting.domain' },
   { key: 'inbounds', labelKey: 'pages.inbounds' },
   { key: 'acme', labelKey: 'ACME' },
@@ -128,6 +148,8 @@ const filtered = computed<TlsRow[]>(() => {
 })
 
 const tlsActions = (item: TlsRow): RowAction[] => [
+  { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || props.tlsConfigs.findIndex(row => row.id === item.id) === 0 },
+  { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || props.tlsConfigs.findIndex(row => row.id === item.id) === props.tlsConfigs.length - 1 },
   { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
   { key: 'clone', labelKey: 'actions.clone', icon: 'lucide:copy', inline: true },
   // Delete-guard: a TLS config bound to an inbound cannot be deleted.
@@ -136,6 +158,12 @@ const tlsActions = (item: TlsRow): RowAction[] => [
 
 const handleAction = async (key: string, item: TlsRow) => {
   switch (key) {
+    case 'up':
+      emit('move', item.id, -1)
+      break
+    case 'down':
+      emit('move', item.id, 1)
+      break
     case 'edit':
       emit('edit', item.id)
       break

@@ -78,6 +78,7 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 var apiV2ActionScopes = map[string][]string{
 	// State mutations and active probes require write.
 	"save":          {"write"},
+	"reorder":       {"write"},
 	"restartApp":    {"write"},
 	"restartSb":     {"write"},
 	"checkOutbound": {"write"},
@@ -125,6 +126,8 @@ func (a *APIv2Handler) postHandler(c *gin.Context) {
 	switch action {
 	case "save":
 		a.ApiService.Save(c, username)
+	case "reorder":
+		a.ApiService.Reorder(c, username)
 	case "restartApp":
 		a.ApiService.RestartApp(c)
 	case "restartSb":

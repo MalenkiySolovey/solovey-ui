@@ -93,6 +93,11 @@ func saveSingleClient(s *ClientService, req clientSaveRequest, editing bool) ([]
 	if err := s.updateLinksWithFixedInbounds(req.tx, []*model.Client{&client}, req.hostname); err != nil {
 		return nil, err
 	}
+	sortOrder, err := sortOrderForSave(req.tx, &model.Client{}, client.Id)
+	if err != nil {
+		return nil, err
+	}
+	client.SortOrder = sortOrder
 
 	var inboundIds []uint
 	if editing {
@@ -131,6 +136,14 @@ func saveAddedBulkClients(s *ClientService, req clientSaveRequest) ([]uint, erro
 			return nil, err
 		}
 	}
+	nextOrder, err := nextSortOrder(req.tx, &model.Client{})
+	if err != nil {
+		return nil, err
+	}
+	for _, client := range clients {
+		client.SortOrder = nextOrder
+		nextOrder++
+	}
 	if err := s.updateLinksWithFixedInbounds(req.tx, clients, req.hostname); err != nil {
 		return nil, err
 	}
@@ -158,6 +171,11 @@ func saveEditedBulkClients(s *ClientService, req clientSaveRequest) ([]uint, err
 		if len(changedInboundIds) > 0 {
 			inboundIds = common.UnionUintArray(inboundIds, changedInboundIds)
 		}
+		sortOrder, err := sortOrderForSave(req.tx, &model.Client{}, client.Id)
+		if err != nil {
+			return nil, err
+		}
+		client.SortOrder = sortOrder
 	}
 	if len(inboundIds) > 0 {
 		if err := s.updateLinksWithFixedInbounds(req.tx, clients, req.hostname); err != nil {

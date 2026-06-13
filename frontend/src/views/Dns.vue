@@ -99,8 +99,23 @@
     </v-col>
   </v-row>
   <template v-if="nexus">
-    <div class="dns-nexus__section">{{ $t('dns.title') }}</div>
-    <nexus-data-table :columns="serverColumns" :items="dnsServerRows" :row-key="(item) => item._index">
+    <div class="dns-nexus__section-row">
+      <div class="dns-nexus__section-label">{{ $t('dns.title') }}</div>
+      <ManualSortButton
+        :disabled="(dns.servers?.length ?? 0) < 2"
+        density="compact"
+        size="small"
+        @sort="sortDnsServersByName"
+      />
+    </div>
+    <nexus-data-table
+      :columns="serverColumns"
+      :drag-disabled="search.trim().length > 0"
+      draggable-rows
+      :items="dnsServerRows"
+      :row-key="(item) => item._index"
+      @row-drop="(dragged, target) => moveDnsServerTo(dragged._index, target._index)"
+    >
       <template #col.tag="{ item }"><span class="dns-nexus__tag">{{ item.tag }}</span></template>
       <template #col.server="{ item }">
         <span v-if="item.server" class="nexus-mono">{{ item.server }}</span>
@@ -119,14 +134,34 @@
         <span v-else class="dns-nexus__muted">—</span>
       </template>
       <template #actions="{ item }">
-        <row-actions :actions="serverActions()" @action="(key) => handleServerAction(key, item)" />
+        <row-actions :actions="serverActions(item)" @action="(key) => handleServerAction(key, item)" />
       </template>
       <template #empty><empty-state compact icon="lucide:network" :title="$t('dns.empty')" /></template>
     </nexus-data-table>
   </template>
   <v-row v-else>
-    <v-col class="v-card-subtitle" cols="12">{{ $t('dns.title') }}</v-col>
-    <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>dns.servers" :key="item.id">
+    <v-col class="v-card-subtitle" cols="12">
+      {{ $t('dns.title') }}
+      <ManualSortButton
+        :disabled="(dns.servers?.length ?? 0) < 2"
+        style="margin: 0 5px;"
+        @sort="sortDnsServersByName"
+      />
+    </v-col>
+    <v-col
+      cols="12"
+      sm="4"
+      md="3"
+      lg="2"
+      v-for="(item, index) in <any[]>dns.servers"
+      :key="item.id"
+      :draggable="false"
+      @pointerdown="dnsServerDrag.prepare($event)"
+      @dragstart="dnsServerDrag.start($event, index)"
+      @dragover="dnsServerDrag.over($event)"
+      @drop="onDnsServerDrop($event, index)"
+      @dragend="dnsServerDrag.clear($event)"
+    >
       <v-card rounded="xl" elevation="5" min-width="200" :title="item.tag">
         <v-card-subtitle style="margin-top: -15px;">
           <v-row>
@@ -183,7 +218,15 @@
   </v-row>
   <template v-if="nexus">
     <div class="dns-nexus__section">{{ $t('dns.rule.title') }}</div>
-    <nexus-data-table :columns="ruleColumns" :items="dnsRuleRows" :row-key="(item) => item._index" :paginated="false">
+    <nexus-data-table
+      :columns="ruleColumns"
+      :drag-disabled="search.trim().length > 0"
+      draggable-rows
+      :items="dnsRuleRows"
+      :row-key="(item) => item._index"
+      :paginated="false"
+      @row-drop="(dragged, target) => moveDnsRuleTo(dragged._index, target._index)"
+    >
       <template #col._index="{ item }">{{ item._index + 1 }}</template>
       <template #col.type="{ item }">{{ item.type != undefined ? $t('rule.logical') + ' (' + item.mode + ')' : $t('rule.simple') }}</template>
       <template #col.server="{ item }">{{ item.server ?? '-' }}</template>
@@ -198,10 +241,12 @@
     <v-col class="v-card-subtitle" cols="12">{{ $t('dns.rule.title') }}</v-col>
     <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>dnsRules"
       :key="item.id"
-      :draggable="true"
-      @dragstart="onDragStart(index)"
-      @dragover.prevent
-      @drop="onDrop(index)"
+      :draggable="false"
+      @pointerdown="dnsRuleDrag.prepare($event)"
+      @dragstart="dnsRuleDrag.start($event, index)"
+      @dragover="dnsRuleDrag.over($event)"
+      @drop="onDnsRuleDrop($event, index)"
+      @dragend="dnsRuleDrag.clear($event)"
       >
       <v-card rounded="xl" elevation="5" min-width="200" :title="index+1">
         <v-card-subtitle style="margin-top: -15px;">
@@ -267,6 +312,7 @@
 
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
+import ManualSortButton from '@/components/ManualSortButton.vue'
 import { computed, ref, onBeforeMount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DnsVue from '@/layouts/modals/Dns.vue'
@@ -274,6 +320,11 @@ import DnsRuleVue from '@/layouts/modals/DnsRule.vue'
 import { Config } from '@/types/config'
 import { actionDnsRuleKeys, dnsRule } from '@/types/dns'
 import { FindDiff } from '@/plugins/utils'
+import { moveArrayItem, useManualDrag } from '@/composables/useManualDrag'
+import {
+  type ManualSortDirection,
+  sortArrayByText,
+} from '@/composables/useManualReorder'
 import type { Column } from '@/components/nexus/data/dataTableColumns'
 import NexusDataTable from '@/components/nexus/data/NexusDataTable.vue'
 import RowActions from '@/components/nexus/data/RowActions.vue'
@@ -461,8 +512,8 @@ const dnsRuleRows = computed(() =>
     .filter((r: any) => matchesSearch(`${r.action ?? ''} ${r.server ?? ''}`)))
 
 const serverColumns: Column<any>[] = [
-  { key: 'tag', labelKey: 'objects.tag', sortable: true },
-  { key: 'type', labelKey: 'type', sortable: true },
+  { key: 'tag', labelKey: 'objects.tag' },
+  { key: 'type', labelKey: 'type' },
   { key: 'server', labelKey: 'dns.server' },
   { key: 'server_port', labelKey: 'in.port' },
   { key: 'tls', labelKey: 'objects.tls' },
@@ -484,19 +535,23 @@ const subtitle = computed(() => {
   return t('nexus.summary.dns', { servers, rules })
 })
 
-const serverActions = (): RowAction[] => [
+const serverActions = (item: any): RowAction[] => [
+  { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || item._index === 0 },
+  { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || item._index === (dns.value?.servers?.length ?? 0) - 1 },
   { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
   { key: 'del', labelKey: 'actions.del', icon: 'lucide:trash-2', tone: 'error', inline: true },
 ]
 
 const ruleActions = (item: any): RowAction[] => [
-  { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, hidden: item._index === 0 },
-  { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, hidden: item._index === dnsRules.value.length - 1 },
+  { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || item._index === 0 },
+  { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || item._index === dnsRules.value.length - 1 },
   { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
   { key: 'del', labelKey: 'actions.del', icon: 'lucide:trash-2', tone: 'error', inline: true },
 ]
 
 const handleServerAction = async (key: string, item: any) => {
+  if (key === 'up') { moveDnsServer(item._index, -1); return }
+  if (key === 'down') { moveDnsServer(item._index, 1); return }
   if (key === 'edit') { showDnsModal(item._index); return }
   if (key === 'del') {
     const ok = await confirm({ title: `${t('actions.del')} ${t('objects.dnsserver')}`, message: item.tag, confirmLabel: t('actions.del'), tone: 'error' })
@@ -504,12 +559,34 @@ const handleServerAction = async (key: string, item: any) => {
   }
 }
 
+const moveDnsServer = (index: number, dir: number) => {
+  moveDnsServerTo(index, index + dir)
+}
+
+const preserveImplicitDnsFinal = () => {
+  const servers = dns.value?.servers ?? []
+  if (!dns.value?.final && servers[0]?.tag) dns.value.final = servers[0].tag
+}
+
+const moveDnsServerTo = (index: number, target: number) => {
+  const servers = dns.value?.servers ?? []
+  if (target < 0 || target >= servers.length) return
+  preserveImplicitDnsFinal()
+  moveArrayItem(servers, index, target)
+}
+
+const sortDnsServersByName = (direction: ManualSortDirection) => {
+  const servers = dns.value?.servers ?? []
+  preserveImplicitDnsFinal()
+  sortArrayByText(servers, direction, "tag")
+}
+
 const moveDnsRule = (index: number, dir: number) => {
-  const target = index + dir
-  if (target < 0 || target >= dnsRules.value.length) return
-  const arr = dnsRules.value
-  const [moved] = arr.splice(index, 1)
-  arr.splice(target, 0, moved)
+  moveDnsRuleTo(index, index + dir)
+}
+
+const moveDnsRuleTo = (index: number, target: number) => {
+  moveArrayItem(dnsRules.value, index, target)
 }
 
 const handleRuleAction = async (key: string, item: any) => {
@@ -522,31 +599,38 @@ const handleRuleAction = async (key: string, item: any) => {
   }
 }
 
-const draggedItemIndex = ref(null)
+const dnsServerDrag = useManualDrag<number>()
+const dnsRuleDrag = useManualDrag<number>()
 
-const onDragStart = (index: any) => {
-  draggedItemIndex.value = index
+const onDnsServerDrop = (event: DragEvent, target: number) => {
+  dnsServerDrag.drop(event, target, moveDnsServerTo)
 }
 
-const onDrop = (index: any) => {
-  if (draggedItemIndex.value !== null) {
-    // Swap the dragged item with the dropped one
-    const draggedItem = dnsRules.value[draggedItemIndex.value]
-    dnsRules.value.splice(draggedItemIndex.value, 1)
-    dnsRules.value.splice(index, 0, draggedItem)
-    draggedItemIndex.value = null
-  }
+const onDnsRuleDrop = (event: DragEvent, target: number) => {
+  dnsRuleDrag.drop(event, target, moveDnsRuleTo)
 }
 </script>
 
 <style scoped>
-.dns-nexus__section {
+.dns-nexus__section-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nexus-gap-2);
+  margin-block: var(--nexus-gap-4) var(--nexus-gap-2);
+}
+
+.dns-nexus__section,
+.dns-nexus__section-label {
   color: var(--nexus-text-secondary);
   font-size: 0.78rem;
   font-weight: 650;
   letter-spacing: 0.4px;
-  margin-block: var(--nexus-gap-4) var(--nexus-gap-2);
   text-transform: uppercase;
+}
+
+.dns-nexus__section {
+  margin-block: var(--nexus-gap-4) var(--nexus-gap-2);
 }
 
 .dns-nexus__tag {

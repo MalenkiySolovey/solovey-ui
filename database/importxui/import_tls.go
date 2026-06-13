@@ -1,6 +1,10 @@
 package importxui
 
-import "gorm.io/gorm"
+import (
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+
+	"gorm.io/gorm"
+)
 
 func (s *importState) importTLS(tx *gorm.DB, src *sourceDB) error {
 	return src.eachInbound(func(row xuiInboundRow) error {
@@ -30,6 +34,11 @@ func (s *importState) importTLS(tx *gorm.DB, src *sourceDB) error {
 			if err != nil {
 				return err
 			}
+			sortOrder, err := nextImportSortOrder(tx, &model.Tls{})
+			if err != nil {
+				return err
+			}
+			record.SortOrder = sortOrder
 			if err := tx.Create(&record).Error; err != nil {
 				return err
 			}
@@ -72,6 +81,11 @@ func (s *importState) importPlainTLS(tx *gorm.DB, row xuiInboundRow) error {
 	if err != nil {
 		return err
 	}
+	sortOrder, err := nextImportSortOrder(tx, &model.Tls{})
+	if err != nil {
+		return err
+	}
+	record.SortOrder = sortOrder
 	if err := tx.Create(&record).Error; err != nil {
 		return err
 	}

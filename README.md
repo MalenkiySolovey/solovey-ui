@@ -1,12 +1,12 @@
 # Solovey UI
 
-Solovey UI is a personal web panel for managing a bundled `sing-box` core. It is
-based on the original S-UI ecosystem and is being adapted for private use,
-safer updates, cleaner maintenance, and my own panel features.
+Solovey UI is a personal web panel for managing a bundled `sing-box` core. It
+is based on the original S-UI ecosystem and is being adapted for private use,
+safer updates, cleaner maintenance, and custom panel features.
 
 Current version: `1.5.7-solovey.1`
 
-## Русская версия
+## Русская Версия
 
 ### Важно
 
@@ -16,17 +16,17 @@ Current version: `1.5.7-solovey.1`
 резервные копии и соблюдение законов своей страны.
 
 Если вы используете этот код, вы делаете это на свой риск. Перед установкой на
-рабочий сервер обязательно делайте backup и проверяйте изменения на тестовой
+рабочий сервер обязательно делайте backup и проверяйте обновления на тестовой
 машине.
 
-### Что это
+### Что Это
 
-Solovey UI — панель управления для `sing-box` с веб-интерфейсом, системным
-service-файлом, установщиком, обновлениями через GitHub Releases, локальными
+Solovey UI - панель управления для `sing-box` с веб-интерфейсом, systemd
+service, установщиком, обновлениями через GitHub Releases, локальными
 backup/rollback командами и заделом под миграцию с оригинальной S-UI.
 
-Основной целевой сервер: Debian 12. Другие Linux-системы могут работать, но
-проверять их нужно отдельно.
+Основной целевой сервер: Debian 12. Другие Linux-системы могут работать, но их
+нужно проверять отдельно.
 
 ### Установка
 
@@ -48,7 +48,7 @@ bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/m
 
 - каталог установки: `/usr/local/solovey-ui`
 - база данных: `/usr/local/solovey-ui/db/solovey-ui.db`
-- секреты окружения: `/etc/solovey-ui/secretbox.env`
+- файл секретов окружения: `/etc/solovey-ui/secretbox.env`
 - systemd service: `solovey-ui`
 - CLI-команда: `solovey-ui`
 
@@ -66,9 +66,9 @@ sudo systemctl status solovey-ui --no-pager
 sudo solovey-ui update --version v1.5.7-solovey.1
 ```
 
-### Backup и rollback
+### Backup И Rollback
 
-Сделать локальный backup:
+Создать локальный backup:
 
 ```bash
 sudo solovey-ui backup
@@ -83,7 +83,7 @@ sudo solovey-ui doctor
 
 Backup'и хранятся в `/var/backups/solovey-ui`.
 
-### Миграция с оригинальной S-UI
+### Миграция С Оригинальной S-UI
 
 Миграция пока считается дополнительной возможностью, а не основным сценарием.
 Перед использованием обязательно сделайте ручную копию старой панели.
@@ -93,9 +93,9 @@ sudo solovey-ui migrate-from-sui
 ```
 
 Команда пытается перенести данные из `/usr/local/s-ui` и `/etc/s-ui`, включая
-базу, secretbox-файл, сертификаты и service-метаданные.
+базу, `secretbox.env`, сертификаты и service-метаданные.
 
-### Полезные команды
+### Полезные Команды
 
 ```bash
 sudo solovey-ui status
@@ -118,7 +118,7 @@ sudo solovey-ui uninstall
 sudo solovey-ui uninstall --purge
 ```
 
-### Локальная проверка в браузере
+### Локальная Проверка В Браузере
 
 На Windows из корня репозитория:
 
@@ -141,10 +141,10 @@ type .runtime\local-panel\startup-summary.txt
 .\scripts\dev\stop-panel.cmd -Clean
 ```
 
-### Сборка релиза
+### Сборка Релиза
 
-Linux-архив для GitHub Release собирается workflow'ом `.github/workflows/release.yml`.
-Локально контракт архива можно проверить так:
+Linux-архив для GitHub Release собирается workflow'ом
+`.github/workflows/release.yml`. Локально контракт архива можно проверить так:
 
 ```bash
 bash tests/installer/release-package.sh
@@ -250,8 +250,7 @@ sudo solovey-ui migrate-from-sui
 ```
 
 The command attempts to copy data from `/usr/local/s-ui` and `/etc/s-ui`,
-including the database, secretbox environment file, certificates, and service
-metadata.
+including the database, `secretbox.env`, certificates, and service metadata.
 
 ### Useful Commands
 
@@ -264,7 +263,7 @@ sudo solovey-ui build-info
 sudo solovey-ui doctor
 ```
 
-Uninstall while keeping data:
+Uninstall the panel without removing data:
 
 ```bash
 sudo solovey-ui uninstall
@@ -276,7 +275,7 @@ Remove the panel and its data:
 sudo solovey-ui uninstall --purge
 ```
 
-### Local Browser Test
+### Local Browser Check
 
 On Windows, from the repository root:
 
@@ -285,7 +284,8 @@ On Windows, from the repository root:
 type .runtime\local-panel\startup-summary.txt
 ```
 
-The test database, logs, PID, and secrets stay under `.runtime/local-panel/`.
+The test database, logs, PID, and secrets are stored under
+`.runtime/local-panel/`.
 
 Stop the local panel:
 
@@ -293,7 +293,7 @@ Stop the local panel:
 .\scripts\dev\stop-panel.cmd
 ```
 
-Stop and remove test data:
+Stop it and remove test data:
 
 ```powershell
 .\scripts\dev\stop-panel.cmd -Clean
@@ -301,8 +301,8 @@ Stop and remove test data:
 
 ### Release Build
 
-Linux release archives are built by `.github/workflows/release.yml`. The archive
-contract can be tested locally with:
+The Linux archive for GitHub Release is built by `.github/workflows/release.yml`.
+The archive contract can be checked locally with:
 
 ```bash
 bash tests/installer/release-package.sh
@@ -317,6 +317,6 @@ The release archive must contain:
 
 ### Credits
 
-Solovey UI is based on ideas and code from the original S-UI project and related
+Solovey UI is based on ideas and code from the original S-UI ecosystem and its
 forks, including `alireza0/s-ui`, `admin8800/s-ui`, `deposist/s-ui-x`,
-`shenaba/2s-ui`, and other projects in the same ecosystem.
+`shenaba/2s-ui`, and related projects.

@@ -117,6 +117,11 @@ func fillAndSaveInbound(tx *gorm.DB, inbound *model.Inbound, hostname string) er
 	if err := util.FillOutJson(inbound, hostname); err != nil {
 		return err
 	}
+	sortOrder, err := sortOrderForSave(tx, &model.Inbound{}, inbound.Id)
+	if err != nil {
+		return err
+	}
+	inbound.SortOrder = sortOrder
 	return tx.Save(inbound).Error
 }
 

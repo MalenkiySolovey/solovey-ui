@@ -58,7 +58,7 @@ func removeClientInbound(clientID uint, raw json.RawMessage, inboundID uint, ope
 
 func clientIDsByInbound(tx *gorm.DB, inboundID uint) ([]uint, error) {
 	var clientIDs []uint
-	err := tx.Raw("SELECT clients.id FROM clients, json_each(clients.inbounds) AS je WHERE je.value = ?", inboundID).Scan(&clientIDs).Error
+	err := tx.Raw("SELECT clients.id FROM clients, json_each(clients.inbounds) AS je WHERE je.value = ? ORDER BY clients.sort_order, clients.id", inboundID).Scan(&clientIDs).Error
 	return clientIDs, err
 }
 
@@ -68,7 +68,7 @@ func clientsByInbound(tx *gorm.DB, inboundID uint) ([]model.Client, error) {
 		return nil, err
 	}
 	var clients []model.Client
-	err = tx.Model(model.Client{}).Where("id IN ?", clientIDs).Find(&clients).Error
+	err = tx.Model(model.Client{}).Where("id IN ?", clientIDs).Order(sortOrderClause).Find(&clients).Error
 	return clients, err
 }
 
@@ -86,7 +86,7 @@ func clientNamesByInboundIDs(db *gorm.DB, inboundIDs []uint) (map[uint][]string,
 		SELECT je.value AS inbound_id, clients.name
 		FROM clients, json_each(clients.inbounds) AS je
 		WHERE je.value IN ?
-		ORDER BY clients.id, je.key
+		ORDER BY clients.sort_order, clients.id, je.key
 	`, inboundIDs).Scan(&rows).Error
 	if err != nil {
 		return nil, err

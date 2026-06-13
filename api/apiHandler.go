@@ -40,6 +40,7 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	g.POST("/addAdmin", a.ApiService.AddAdmin)
 	g.POST("/deleteAdmin", a.reloadTokensAfter(a.ApiService.DeleteAdmin))
 	g.POST("/save", a.save)
+	g.POST("/reorder", a.reorder)
 	g.POST("/restartApp", a.ApiService.RestartApp)
 	g.POST("/restartSb", a.ApiService.RestartSb)
 	g.POST("/linkConvert", a.ApiService.LinkConvert)
@@ -104,6 +105,10 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 
 func (a *APIHandler) save(c *gin.Context) {
 	a.ApiService.Save(c, GetLoginUser(c))
+}
+
+func (a *APIHandler) reorder(c *gin.Context) {
+	a.ApiService.Reorder(c, GetLoginUser(c))
 }
 
 func (a *APIHandler) loadPartialData(action string) gin.HandlerFunc {

@@ -15,16 +15,17 @@ type OutboundService struct{}
 func (o *OutboundService) GetAll() (*[]map[string]interface{}, error) {
 	db := database.GetDB()
 	outbounds := []*model.Outbound{}
-	err := db.Model(model.Outbound{}).Scan(&outbounds).Error
+	err := db.Model(model.Outbound{}).Order(sortOrderClause).Scan(&outbounds).Error
 	if err != nil {
 		return nil, err
 	}
 	var data []map[string]interface{}
 	for _, outbound := range outbounds {
 		outData := map[string]interface{}{
-			"id":   outbound.Id,
-			"type": outbound.Type,
-			"tag":  outbound.Tag,
+			"id":        outbound.Id,
+			"sortOrder": outbound.SortOrder,
+			"type":      outbound.Type,
+			"tag":       outbound.Tag,
 		}
 		if outbound.Options != nil {
 			var restFields map[string]json.RawMessage
@@ -43,7 +44,7 @@ func (o *OutboundService) GetAll() (*[]map[string]interface{}, error) {
 func (o *OutboundService) GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 	var outboundsJson []json.RawMessage
 	var outbounds []*model.Outbound
-	err := db.Model(model.Outbound{}).Scan(&outbounds).Error
+	err := db.Model(model.Outbound{}).Order(sortOrderClause).Scan(&outbounds).Error
 	if err != nil {
 		return nil, err
 	}
@@ -64,6 +65,10 @@ func (s *OutboundService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 	case "new", "edit":
 		var outbound model.Outbound
 		err = outbound.UnmarshalJSON(data)
+		if err != nil {
+			return err
+		}
+		outbound.SortOrder, err = sortOrderForSave(tx, &model.Outbound{}, outbound.Id)
 		if err != nil {
 			return err
 		}

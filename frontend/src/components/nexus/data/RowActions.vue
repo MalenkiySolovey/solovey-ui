@@ -4,8 +4,10 @@
       v-for="action in inlineActions"
       :key="action.key"
       :aria-label="$t(action.labelKey)"
+      :class="{ 'nexus-row-actions__reserved': action.hidden }"
       :color="action.tone === 'error' ? 'error' : undefined"
       density="comfortable"
+      :disabled="action.hidden"
       :icon="action.icon"
       size="small"
       :title="$t(action.labelKey)"
@@ -53,7 +55,7 @@ const emit = defineEmits<{
 }>()
 
 const visible = computed(() => props.actions.filter(action => !action.hidden))
-const inlineActions = computed(() => visible.value.filter(action => action.inline))
+const inlineActions = computed(() => props.actions.filter(action => action.inline && (!action.hidden || action.reserveSpace)))
 const menuActions = computed(() => visible.value.filter(action => !action.inline))
 </script>
 
@@ -63,5 +65,10 @@ const menuActions = computed(() => visible.value.filter(action => !action.inline
   display: flex;
   gap: var(--nexus-gap-1);
   justify-content: flex-end;
+}
+
+.nexus-row-actions__reserved {
+  pointer-events: none;
+  visibility: hidden;
 }
 </style>

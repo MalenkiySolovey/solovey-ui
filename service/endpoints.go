@@ -17,17 +17,18 @@ type EndpointService struct {
 func (o *EndpointService) GetAll() (*[]map[string]interface{}, error) {
 	db := database.GetDB()
 	endpoints := []*model.Endpoint{}
-	err := db.Model(model.Endpoint{}).Scan(&endpoints).Error
+	err := db.Model(model.Endpoint{}).Order(sortOrderClause).Scan(&endpoints).Error
 	if err != nil {
 		return nil, err
 	}
 	var data []map[string]interface{}
 	for _, endpoint := range endpoints {
 		epData := map[string]interface{}{
-			"id":   endpoint.Id,
-			"type": endpoint.Type,
-			"tag":  endpoint.Tag,
-			"ext":  endpoint.Ext,
+			"id":        endpoint.Id,
+			"sortOrder": endpoint.SortOrder,
+			"type":      endpoint.Type,
+			"tag":       endpoint.Tag,
+			"ext":       endpoint.Ext,
 		}
 		if endpoint.Options != nil {
 			var restFields map[string]json.RawMessage
@@ -46,7 +47,7 @@ func (o *EndpointService) GetAll() (*[]map[string]interface{}, error) {
 func (o *EndpointService) GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 	var endpointsJson []json.RawMessage
 	var endpoints []*model.Endpoint
-	err := db.Model(model.Endpoint{}).Scan(&endpoints).Error
+	err := db.Model(model.Endpoint{}).Order(sortOrderClause).Scan(&endpoints).Error
 	if err != nil {
 		return nil, err
 	}
@@ -88,6 +89,10 @@ func (s *EndpointService) Save(tx *gorm.DB, act string, data json.RawMessage) er
 					return err
 				}
 			}
+		}
+		endpoint.SortOrder, err = sortOrderForSave(tx, &model.Endpoint{}, endpoint.Id)
+		if err != nil {
+			return err
 		}
 
 		err = tx.Save(&endpoint).Error

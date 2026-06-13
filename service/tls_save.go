@@ -82,6 +82,11 @@ func saveTLSConfig(tx *gorm.DB, data json.RawMessage) (model.Tls, error) {
 	if err := json.Unmarshal(data, &tls); err != nil {
 		return tls, err
 	}
+	sortOrder, err := sortOrderForSave(tx, &model.Tls{}, tls.Id)
+	if err != nil {
+		return tls, err
+	}
+	tls.SortOrder = sortOrder
 	if err := tx.Save(&tls).Error; err != nil {
 		return tls, err
 	}

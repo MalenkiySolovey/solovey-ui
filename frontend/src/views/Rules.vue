@@ -180,21 +180,56 @@
     </v-col>
   </v-row>
   <template v-if="nexus">
-    <div class="rules-nexus__section">{{ $t('rule.ruleset') }}</div>
-    <nexus-data-table :columns="rulesetColumns" :items="rulesetRows" :row-key="(item) => item._index">
+    <div class="rules-nexus__section-row">
+      <div class="rules-nexus__section-label">{{ $t('rule.ruleset') }}</div>
+      <ManualSortButton
+        :disabled="rulesets.length < 2"
+        density="compact"
+        size="small"
+        @sort="sortRulesetsByName"
+      />
+    </div>
+    <nexus-data-table
+      :columns="rulesetColumns"
+      :drag-disabled="search.trim().length > 0"
+      draggable-rows
+      :items="rulesetRows"
+      :row-key="(item) => item._index"
+      @row-drop="(dragged, target) => moveRulesetTo(dragged._index, target._index)"
+    >
       <template #col.tag="{ item }"><span class="rules-nexus__tag">{{ item.tag }}</span></template>
       <template #col.type="{ item }">{{ $t('ruleset.' + item.type) }}</template>
       <template #col.download_detour="{ item }">{{ item.download_detour ?? '-' }}</template>
       <template #col.update_interval="{ item }">{{ item.update_interval ?? '-' }}</template>
       <template #actions="{ item }">
-        <row-actions :actions="rulesetActions()" @action="(key) => handleRulesetAction(key, item)" />
+        <row-actions :actions="rulesetActions(item)" @action="(key) => handleRulesetAction(key, item)" />
       </template>
       <template #empty><empty-state compact icon="lucide:list" :title="$t('ruleset.empty')" /></template>
     </nexus-data-table>
   </template>
   <v-row v-else>
-    <v-col class="v-card-subtitle" cols="12">{{ $t('rule.ruleset') }}</v-col>
-    <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>rulesets" :key="item.tag">
+    <v-col class="v-card-subtitle" cols="12">
+      {{ $t('rule.ruleset') }}
+      <ManualSortButton
+        :disabled="rulesets.length < 2"
+        style="margin: 0 5px;"
+        @sort="sortRulesetsByName"
+      />
+    </v-col>
+    <v-col
+      cols="12"
+      sm="4"
+      md="3"
+      lg="2"
+      v-for="(item, index) in <any[]>rulesets"
+      :key="item.tag"
+      :draggable="false"
+      @pointerdown="rulesetDrag.prepare($event)"
+      @dragstart="rulesetDrag.start($event, index)"
+      @dragover="rulesetDrag.over($event)"
+      @drop="onRulesetDrop($event, index)"
+      @dragend="rulesetDrag.clear($event)"
+    >
       <v-card rounded="xl" elevation="5" min-width="200" :title="item.tag">
         <v-card-subtitle style="margin-top: -15px;">
           <v-row><v-col>{{ $t('ruleset.' + item.type) }}</v-col></v-row>
@@ -228,7 +263,15 @@
   </v-row>
   <template v-if="nexus">
     <div class="rules-nexus__section">{{ $t('pages.rules') }}</div>
-    <nexus-data-table :columns="ruleColumns" :items="ruleRows" :row-key="(item) => item._index" :paginated="false">
+    <nexus-data-table
+      :columns="ruleColumns"
+      :drag-disabled="search.trim().length > 0"
+      draggable-rows
+      :items="ruleRows"
+      :row-key="(item) => item._index"
+      :paginated="false"
+      @row-drop="(dragged, target) => moveRuleTo(dragged._index, target._index)"
+    >
       <template #col._index="{ item }">{{ item._index + 1 }}</template>
       <template #col.type="{ item }">{{ item.type != undefined ? $t('rule.logical') + ' (' + item.mode + ')' : $t('rule.simple') }}</template>
       <template #col.outbound="{ item }">{{ item.outbound ?? '-' }}</template>
@@ -241,9 +284,20 @@
   </template>
   <v-row v-else>
     <v-col class="v-card-subtitle" cols="12">{{ $t('pages.rules') }}</v-col>
-    <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>rules"
-        :key="item.id" :draggable="true"
-        @dragstart="onDragStart(index)" @dragover.prevent @drop="onDrop(index)">
+    <v-col
+      cols="12"
+      sm="4"
+      md="3"
+      lg="2"
+      v-for="(item, index) in <any[]>rules"
+      :key="item.id"
+      :draggable="false"
+      @pointerdown="ruleDrag.prepare($event)"
+      @dragstart="ruleDrag.start($event, index)"
+      @dragover="ruleDrag.over($event)"
+      @drop="onRuleDrop($event, index)"
+      @dragend="ruleDrag.clear($event)"
+    >
       <v-card rounded="xl" elevation="5" min-width="200" :title="index+1">
         <v-card-subtitle style="margin-top: -15px;">
           <v-row><v-col>{{ item.type != undefined ? $t('rule.logical') + ' (' + item.mode + ')' : $t('rule.simple') }}</v-col></v-row>
@@ -280,6 +334,7 @@
 
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
+import ManualSortButton from '@/components/ManualSortButton.vue'
 import { computed, ref, onBeforeMount } from 'vue'
 import RuleVue from '@/layouts/modals/Rule.vue'
 import RulesetVue from '@/layouts/modals/Ruleset.vue'
@@ -290,6 +345,11 @@ import { Config } from '@/types/config'
 import { actionKeys, ruleset } from '@/types/rules'
 import { FindDiff } from '@/plugins/utils'
 import { i18n } from '@/locales'
+import { moveArrayItem, useManualDrag } from '@/composables/useManualDrag'
+import {
+  type ManualSortDirection,
+  sortArrayByText,
+} from '@/composables/useManualReorder'
 import type { Column } from '@/components/nexus/data/dataTableColumns'
 import NexusDataTable from '@/components/nexus/data/NexusDataTable.vue'
 import RowActions from '@/components/nexus/data/RowActions.vue'
@@ -476,8 +536,8 @@ const ruleRows = computed(() =>
     .filter((r: any) => matchesSearch(`${r.action ?? ''} ${r.outbound ?? ''}`)))
 
 const rulesetColumns: Column<any>[] = [
-  { key: 'tag', labelKey: 'objects.tag', sortable: true },
-  { key: 'type', labelKey: 'type', sortable: true },
+  { key: 'tag', labelKey: 'objects.tag' },
+  { key: 'type', labelKey: 'type' },
   { key: 'format', labelKey: 'ruleset.format' },
   { key: 'download_detour', labelKey: 'objects.outbound' },
   { key: 'update_interval', labelKey: 'actions.update' },
@@ -495,19 +555,23 @@ const ruleColumns: Column<any>[] = [
 const subtitle = computed(() =>
   i18n.global.t('nexus.summary.rules', { rulesets: rulesets.value.length, rules: rules.value.length }))
 
-const rulesetActions = (): RowAction[] => [
+const rulesetActions = (item: any): RowAction[] => [
+  { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || item._index === 0 },
+  { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || item._index === rulesets.value.length - 1 },
   { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
   { key: 'del', labelKey: 'actions.del', icon: 'lucide:trash-2', tone: 'error', inline: true },
 ]
 
 const ruleActions = (item: any): RowAction[] => [
-  { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, hidden: item._index === 0 },
-  { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, hidden: item._index === rules.value.length - 1 },
+  { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || item._index === 0 },
+  { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || item._index === rules.value.length - 1 },
   { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
   { key: 'del', labelKey: 'actions.del', icon: 'lucide:trash-2', tone: 'error', inline: true },
 ]
 
 const handleRulesetAction = async (key: string, item: any) => {
+  if (key === 'up') { moveRuleset(item._index, -1); return }
+  if (key === 'down') { moveRuleset(item._index, 1); return }
   if (key === 'edit') { showRulesetModal(item._index); return }
   if (key === 'del') {
     const ok = await confirm({ title: `${tt('actions.del')} ${tt('objects.ruleset')}`, message: item.tag, confirmLabel: tt('actions.del'), tone: 'error' })
@@ -515,12 +579,24 @@ const handleRulesetAction = async (key: string, item: any) => {
   }
 }
 
+const moveRuleset = (index: number, dir: number) => {
+  moveRulesetTo(index, index + dir)
+}
+
+const moveRulesetTo = (index: number, target: number) => {
+  moveArrayItem(rulesets.value, index, target)
+}
+
+const sortRulesetsByName = (direction: ManualSortDirection) => {
+  sortArrayByText(rulesets.value, direction, "tag")
+}
+
 const moveRule = (index: number, dir: number) => {
-  const target = index + dir
-  if (target < 0 || target >= rules.value.length) return
-  const arr = rules.value
-  const [moved] = arr.splice(index, 1)
-  arr.splice(target, 0, moved)
+  moveRuleTo(index, index + dir)
+}
+
+const moveRuleTo = (index: number, target: number) => {
+  moveArrayItem(rules.value, index, target)
 }
 
 const handleRuleAction = async (key: string, item: any) => {
@@ -564,15 +640,15 @@ const saveRulesetModal = (data:ruleset) => {
 }
 const delRuleset = (index: number) => { rulesets.value.splice(index, 1); delRulesetOverlay.value[index] = false }
 
-const draggedItemIndex = ref(null)
-const onDragStart = (index: any) => { draggedItemIndex.value = index }
-const onDrop = (index: any) => {
-  if (draggedItemIndex.value !== null) {
-    const draggedItem = rules.value[draggedItemIndex.value]
-    rules.value.splice(draggedItemIndex.value, 1)
-    rules.value.splice(index, 0, draggedItem)
-    draggedItemIndex.value = null
-  }
+const rulesetDrag = useManualDrag<number>()
+const ruleDrag = useManualDrag<number>()
+
+const onRulesetDrop = (event: DragEvent, target: number) => {
+  rulesetDrag.drop(event, target, moveRulesetTo)
+}
+
+const onRuleDrop = (event: DragEvent, target: number) => {
+  ruleDrag.drop(event, target, moveRuleTo)
 }
 
 const importRulesModal = ref({ visible: false })
@@ -619,13 +695,25 @@ function saveImportRulesets(items: any[]) {
 </script>
 
 <style scoped>
-.rules-nexus__section {
+.rules-nexus__section-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--nexus-gap-2);
+  margin-block: var(--nexus-gap-4) var(--nexus-gap-2);
+}
+
+.rules-nexus__section,
+.rules-nexus__section-label {
   color: var(--nexus-text-secondary);
   font-size: 0.78rem;
   font-weight: 650;
   letter-spacing: 0.4px;
-  margin-block: var(--nexus-gap-4) var(--nexus-gap-2);
   text-transform: uppercase;
+}
+
+.rules-nexus__section {
+  margin-block: var(--nexus-gap-4) var(--nexus-gap-2);
 }
 
 .rules-nexus__tag {

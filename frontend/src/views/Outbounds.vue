@@ -33,6 +33,9 @@
     @add-bulk="showBulkModal"
     @del="delOutbound"
     @edit="showModal"
+    @move="moveOutbound"
+    @move-to="dragOutbound"
+    @sort-by-name="sortOutboundsByName"
     @stats="showStats"
     @test="checkOutbound"
     @test-all="checkAllOutbounds"
@@ -45,6 +48,12 @@
       </v-col>
       <v-col cols="auto">
         <v-btn color="primary" @click="showBulkModal">{{ $t('actions.addbulk') }}</v-btn>
+      </v-col>
+      <v-col cols="auto">
+        <ManualSortButton
+          :disabled="outbounds.length < 2"
+          @sort="sortOutboundsByName"
+        />
       </v-col>
       <v-col cols="auto">
         <v-btn
@@ -60,7 +69,20 @@
       </v-col>
     </v-row>
     <v-row>
-      <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>outbounds" :key="item.tag">
+      <v-col
+        cols="12"
+        sm="4"
+        md="3"
+        lg="2"
+        v-for="(item, index) in <any[]>outbounds"
+        :key="item.tag"
+        :draggable="false"
+        @pointerdown="outboundDrag.prepare($event)"
+        @dragstart="outboundDrag.start($event, item.id)"
+        @dragover="outboundDrag.over($event)"
+        @drop="onOutboundDrop($event, item.id)"
+        @dragend="outboundDrag.clear($event)"
+      >
         <v-card rounded="xl" elevation="5" min-width="200" :title="item.tag">
           <v-card-subtitle style="margin-top: -15px;">
             <v-row>
@@ -168,6 +190,7 @@
 
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
+import ManualSortButton from '@/components/ManualSortButton.vue'
 import HttpUtils from '@/plugins/httputil'
 import OutboundVue from '@/layouts/modals/Outbound.vue'
 import OutboundBulk from '@/layouts/modals/OutboundBulk.vue'
@@ -175,6 +198,13 @@ import Stats from '@/layouts/modals/Stats.vue'
 import { Outbound } from '@/types/outbounds'
 import { computed, defineAsyncComponent, ref } from 'vue'
 import { useUiMode } from '@/uiMode/useUiMode'
+import { useManualDrag } from '@/composables/useManualDrag'
+import {
+  dragManualOrder,
+  type ManualSortDirection,
+  moveManualOrder,
+  sortManualOrderByText,
+} from '@/composables/useManualReorder'
 
 const { mode } = useUiMode()
 
@@ -274,6 +304,23 @@ const delOutbound = async (tag: string) => {
   const index = outbounds.value.findIndex(i => i.tag == tag)
   const success = await Data().save("outbounds", "del", tag)
   if (success) delOverlay.value[index] = false
+}
+
+const moveOutbound = async (id: number, dir: number) => {
+  await moveManualOrder("outbounds", outbounds.value as any[], id, dir)
+}
+
+const dragOutbound = async (draggedId: number, targetId: number) => {
+  await dragManualOrder("outbounds", outbounds.value as any[], draggedId, targetId)
+}
+
+const sortOutboundsByName = async (direction: ManualSortDirection) => {
+  await sortManualOrderByText("outbounds", outbounds.value as any[], direction, "tag")
+}
+
+const outboundDrag = useManualDrag<number>()
+const onOutboundDrop = (event: DragEvent, targetId: number) => {
+  outboundDrag.drop(event, targetId, dragOutbound)
 }
 
 const showStats = (tag: string) => {
