@@ -38,6 +38,17 @@ func (s *ClientService) Get(id string) (*[]model.Client, error) {
 	return s.getById(id)
 }
 
+func (s *ClientService) GetWithLocalLinks(id string, hostname string) (*[]model.Client, error) {
+	clients, err := s.Get(id)
+	if err != nil || id == "" {
+		return clients, err
+	}
+	if err := s.previewClientsWithLocalLinks(clients, hostname); err != nil {
+		return nil, err
+	}
+	return clients, nil
+}
+
 func (s *ClientService) getById(id string) (*[]model.Client, error) {
 	db := database.GetDB()
 	var client []model.Client

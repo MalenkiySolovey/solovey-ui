@@ -104,7 +104,12 @@ sudo solovey-ui log
 sudo solovey-ui version
 sudo solovey-ui build-info
 sudo solovey-ui doctor
+sudo solovey-ui doctor --full
+sudo solovey-ui diagnose
+sudo solovey-ui report
 ```
+
+`doctor --full`, `diagnose` и `report` показывают расширенный отчёт по базе данных, настройкам, портам, systemd-сервису, системе, сети и последним логам.
 
 Удаление панели без удаления данных:
 
@@ -261,7 +266,12 @@ sudo solovey-ui log
 sudo solovey-ui version
 sudo solovey-ui build-info
 sudo solovey-ui doctor
+sudo solovey-ui doctor --full
+sudo solovey-ui diagnose
+sudo solovey-ui report
 ```
+
+`doctor --full`, `diagnose`, and `report` print the extended diagnostics report: database, settings, ports, systemd service, system, network, and recent logs.
 
 Uninstall the panel without removing data:
 

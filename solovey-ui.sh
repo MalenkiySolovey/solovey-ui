@@ -42,7 +42,8 @@ Maintenance:
   install [args]       Download and run the installer
   update [args]        Download and run the installer
   migrate-from-sui [args] Download installer and migrate /usr/local/s-ui
-  doctor               Run post-install/update smoke checks
+  doctor [--full]      Run post-install/update smoke checks
+  diagnose, report     Run extended diagnostic report
   backup               Create a local backup
   rollback [backup]    Restore a backup directory (default: latest)
   uninstall [--purge]  Remove service and command; --purge also removes data
@@ -114,6 +115,18 @@ doctor_fail() {
     doctor_failures=$((${doctor_failures:-0} + 1))
 }
 
+doctor_warn() {
+    printf '[WARN] %s\n' "$*" >&2
+}
+
+doctor_info() {
+    printf '[INFO] %s\n' "$*"
+}
+
+doctor_section() {
+    printf '\n== %s ==\n' "$*"
+}
+
 doctor_require_file() {
     local label="$1"
     local path="$2"
@@ -143,7 +156,218 @@ doctor_build_value() {
     sed -nE "s/^${key}=(.*)$/\1/p" "${file}" 2>/dev/null | head -n 1
 }
 
+doctor_indent() {
+    while IFS= read -r line || [[ -n "${line}" ]]; do
+        printf '  %s\n' "${line}"
+    done
+}
+
+doctor_run_command() {
+    local label="$1"
+    shift
+
+    doctor_section "${label}"
+    local output
+    if output="$("$@" 2>&1)"; then
+        if [[ -n "${output}" ]]; then
+            printf '%s\n' "${output}" | doctor_indent
+        else
+            doctor_info "${label}: no output"
+        fi
+    else
+        doctor_warn "${label} failed: ${output}"
+    fi
+}
+
+doctor_run_command_if_available() {
+    local executable="$1"
+    local label="$2"
+    shift 2
+
+    if command -v "${executable}" >/dev/null 2>&1; then
+        doctor_run_command "${label}" "$@"
+    else
+        doctor_warn "${label} skipped: ${executable} not found"
+    fi
+}
+
+doctor_sqlite_scalar() {
+    local db="$1"
+    local sql="$2"
+
+    sqlite3 "${db}" "${sql}" 2>/dev/null | head -n 1
+}
+
+doctor_database_report() {
+    local db="${INSTALL_DIR}/db/${APP_NAME}.db"
+    doctor_section "database"
+
+    if [[ ! -f "${db}" ]]; then
+        doctor_fail "database missing: ${db}"
+        return
+    fi
+
+    doctor_info "path=${db}"
+    if command -v stat >/dev/null 2>&1; then
+        stat -c '  size=%s bytes permissions=%a owner=%U:%G' "${db}" 2>/dev/null || true
+    fi
+
+    if ! command -v sqlite3 >/dev/null 2>&1; then
+        doctor_warn "sqlite3 not found; DB quick_check and counters skipped"
+        return
+    fi
+
+    local quick
+    if quick="$(sqlite3 "${db}" 'PRAGMA quick_check;' 2>&1)" && [[ "${quick}" == "ok" ]]; then
+        doctor_ok "sqlite quick_check=ok"
+    else
+        doctor_fail "sqlite quick_check failed: ${quick}"
+    fi
+
+    local table count
+    for table in settings clients inbounds outbounds services endpoints users tokens audit_events; do
+        count="$(doctor_sqlite_scalar "${db}" "SELECT COUNT(*) FROM ${table};" || true)"
+        if [[ -n "${count}" ]]; then
+            doctor_info "${table}=${count}"
+        fi
+    done
+}
+
+doctor_settings_report() {
+    local db="${INSTALL_DIR}/db/${APP_NAME}.db"
+    doctor_section "panel settings"
+
+    if ! command -v sqlite3 >/dev/null 2>&1 || [[ ! -f "${db}" ]]; then
+        doctor_warn "settings report skipped: sqlite3/database unavailable"
+        return
+    fi
+
+    local settings
+    settings="$(sqlite3 "${db}" "SELECT key || '=' || value FROM settings WHERE key IN ('webListen','webPort','webPath','webDomain','webURI','subListen','subPort','subPath','subDomain','subURI','subLinkEnable','subJsonEnable','subClashEnable') ORDER BY key;" 2>/dev/null || true)"
+    if [[ -n "${settings}" ]]; then
+        printf '%s\n' "${settings}" | doctor_indent
+    else
+        doctor_warn "no panel/subscription settings found"
+    fi
+}
+
+doctor_port_report() {
+    local db="${INSTALL_DIR}/db/${APP_NAME}.db"
+    doctor_section "listening ports"
+
+    if ! command -v ss >/dev/null 2>&1; then
+        doctor_warn "ss not found; listening port checks skipped"
+        return
+    fi
+
+    local sockets
+    sockets="$(ss -ltnp 2>/dev/null || ss -ltn 2>/dev/null || true)"
+    if [[ -z "${sockets}" ]]; then
+        doctor_warn "ss returned no listening TCP sockets"
+        return
+    fi
+
+    local ports=""
+    if command -v sqlite3 >/dev/null 2>&1 && [[ -f "${db}" ]]; then
+        ports="$(sqlite3 "${db}" "SELECT value FROM settings WHERE key IN ('webPort','subPort') AND value <> '';" 2>/dev/null || true)"
+    fi
+
+    if [[ -z "${ports}" ]]; then
+        doctor_warn "no web/sub ports found in settings; printing listening sockets for ${APP_NAME}"
+        printf '%s\n' "${sockets}" | grep -F "${APP_NAME}" | doctor_indent || true
+        return
+    fi
+
+    local port
+    while IFS= read -r port || [[ -n "${port}" ]]; do
+        [[ -n "${port}" ]] || continue
+        if printf '%s\n' "${sockets}" | grep -Eq "[:.]${port}[[:space:]]"; then
+            doctor_ok "port ${port} is listening"
+            printf '%s\n' "${sockets}" | grep -E "[:.]${port}[[:space:]]" | doctor_indent
+        else
+            doctor_warn "port ${port} from settings is not visible in ss output"
+        fi
+    done <<< "${ports}"
+}
+
+doctor_service_report() {
+    doctor_section "systemd service"
+
+    if ! command -v systemctl >/dev/null 2>&1; then
+        doctor_warn "systemctl not found"
+        return
+    fi
+
+    doctor_run_command "systemctl show ${SERVICE_NAME}" systemctl show "${SERVICE_NAME}" \
+        -p Id -p LoadState -p ActiveState -p SubState -p UnitFileState -p ExecMainStatus \
+        -p NRestarts -p RestartUSec -p FragmentPath --no-pager
+}
+
+doctor_logs_report() {
+    if ! command -v journalctl >/dev/null 2>&1; then
+        doctor_warn "journalctl not found; log report skipped"
+        return
+    fi
+
+    doctor_run_command "recent warnings/errors" journalctl -u "${SERVICE_NAME}" -n 80 -p warning..alert --no-pager
+    doctor_run_command "recent service log tail" journalctl -u "${SERVICE_NAME}" -n 40 --no-pager
+}
+
+doctor_system_report() {
+    doctor_section "system"
+    doctor_info "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    doctor_info "install_dir=${INSTALL_DIR}"
+    doctor_info "env_dir=${ENV_DIR}"
+    doctor_info "backup_root=${BACKUP_ROOT}"
+
+    doctor_run_command_if_available uname "kernel" uname -a
+    doctor_run_command_if_available uptime "uptime" uptime
+    doctor_run_command_if_available df "disk usage" df -h "${INSTALL_DIR}"
+    doctor_run_command_if_available free "memory" free -h
+}
+
+doctor_network_report() {
+    doctor_section "network basics"
+    doctor_run_command_if_available ip "addresses" ip -brief address
+    doctor_run_command_if_available getent "DNS lookup: github.com" getent hosts github.com
+    if command -v curl >/dev/null 2>&1; then
+        doctor_run_command "HTTPS reachability: github.com" curl -fsSIL --max-time 8 https://github.com
+    else
+        doctor_warn "curl not found; HTTPS reachability skipped"
+    fi
+}
+
+run_full_doctor_report() {
+    doctor_system_report
+
+    if [[ -x "${BIN_PATH}" ]]; then
+        doctor_run_command "binary version" "${BIN_PATH}" -v
+    else
+        doctor_warn "binary version skipped: ${BIN_PATH} is not executable"
+    fi
+
+    doctor_database_report
+    doctor_settings_report
+    doctor_service_report
+    doctor_port_report
+    doctor_network_report
+    doctor_logs_report
+}
+
 run_doctor() {
+    local full=0
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --full|-f)
+                full=1
+                ;;
+            *)
+                fail "unknown doctor option: $1"
+                ;;
+        esac
+        shift
+    done
+
     local doctor_failures=0
     local build_info="${INSTALL_DIR}/BUILD_INFO.txt"
     local version=""
@@ -190,6 +414,10 @@ run_doctor() {
         doctor_fail "systemctl not found"
     fi
 
+    if [[ "${full}" == "1" ]]; then
+        run_full_doctor_report
+    fi
+
     if [[ "${doctor_failures}" -gt 0 ]]; then
         fail "doctor found ${doctor_failures} failure(s)"
     fi
@@ -209,8 +437,21 @@ run_installer() {
     bash "${tmp}" "$@"
 }
 
+backup_copy_or_fail() {
+    local src="$1"
+    local dest="$2"
+    local target="$3"
+
+    if ! cp -a "${src}" "${dest}"; then
+        rm -rf "${target}"
+        fail "backup failed while copying ${src}; removed incomplete backup ${target}"
+    fi
+}
+
 backup_local() {
     need_root backup
+
+    ensure_backup_space
 
     local stamp target counter
     stamp="$(date -u +%Y%m%dT%H%M%SZ)"
@@ -223,25 +464,74 @@ backup_local() {
 
     mkdir -p "${target}"
     if [[ -d "${INSTALL_DIR}" ]]; then
-        cp -a "${INSTALL_DIR}" "${target}/app"
+        backup_copy_or_fail "${INSTALL_DIR}" "${target}/app" "${target}"
     fi
     if [[ -d "${ENV_DIR}" ]]; then
-        cp -a "${ENV_DIR}" "${target}/etc"
+        backup_copy_or_fail "${ENV_DIR}" "${target}/etc" "${target}"
     fi
     if [[ -f "${SERVICE_FILE}" ]]; then
-        cp -a "${SERVICE_FILE}" "${target}/${SERVICE_NAME}.service"
+        backup_copy_or_fail "${SERVICE_FILE}" "${target}/${SERVICE_NAME}.service" "${target}"
     fi
 
-    {
+    if ! {
         printf 'app=%s\n' "${APP_NAME}"
         printf 'created_at=%s\n' "${stamp}"
         printf 'install_dir=%s\n' "${INSTALL_DIR}"
         printf 'env_dir=%s\n' "${ENV_DIR}"
         printf 'service=%s\n' "${SERVICE_FILE}"
         append_backup_build_info "${INSTALL_DIR}/BUILD_INFO.txt"
-    } > "${target}/manifest.txt"
+    } > "${target}/manifest.txt"; then
+        rm -rf "${target}"
+        fail "backup failed while writing manifest; removed incomplete backup ${target}"
+    fi
 
     log "backup created at ${target}"
+}
+
+backup_path_size_kb() {
+    local path="$1"
+    local size
+
+    if [[ ! -e "${path}" ]]; then
+        printf '0\n'
+        return 0
+    fi
+
+    size="$(du -sk "${path}" 2>/dev/null | awk 'NR == 1 { print $1 }')"
+    [[ -n "${size}" ]] || fail "cannot estimate backup size for ${path}"
+    printf '%s\n' "${size}"
+}
+
+estimate_backup_size_kb() {
+    local total=0
+    local size
+
+    size="$(backup_path_size_kb "${INSTALL_DIR}")"
+    total=$((total + size))
+    size="$(backup_path_size_kb "${ENV_DIR}")"
+    total=$((total + size))
+    size="$(backup_path_size_kb "${SERVICE_FILE}")"
+    total=$((total + size))
+
+    printf '%s\n' "${total}"
+}
+
+ensure_backup_space() {
+    local required_kb needed_kb available_kb
+
+    mkdir -p "${BACKUP_ROOT}"
+    required_kb="$(estimate_backup_size_kb)"
+    if [[ "${required_kb}" -le 0 ]]; then
+        return 0
+    fi
+
+    needed_kb=$(((required_kb * 12 + 9) / 10))
+    available_kb="$(df -k "${BACKUP_ROOT}" 2>/dev/null | awk 'NR == 2 { print $4 }')"
+    [[ -n "${available_kb}" ]] || fail "cannot determine free space for backup root: ${BACKUP_ROOT}"
+
+    if [[ "${available_kb}" -lt "${needed_kb}" ]]; then
+        fail "not enough disk space for backup: need about ${needed_kb} KiB, available ${available_kb} KiB at ${BACKUP_ROOT}"
+    fi
 }
 
 append_backup_build_info() {
@@ -285,9 +575,36 @@ restore_backup_dir() {
     local dest="$2"
 
     [[ -d "${src}" ]] || return 0
-    rm -rf "${dest}"
-    mkdir -p "$(dirname "${dest}")"
-    cp -a "${src}" "${dest}"
+    local parent base restoring previous
+    parent="$(dirname "${dest}")"
+    base="$(basename "${dest}")"
+    restoring="${parent}/.${base}.restoring.$$"
+    previous="${parent}/.${base}.previous.$$"
+
+    mkdir -p "${parent}"
+    rm -rf "${restoring}" "${previous}"
+
+    if ! cp -a "${src}" "${restoring}"; then
+        rm -rf "${restoring}"
+        fail "rollback restore failed while copying ${src}; existing ${dest} was left unchanged"
+    fi
+
+    if [[ -e "${dest}" ]]; then
+        if ! mv "${dest}" "${previous}"; then
+            rm -rf "${restoring}"
+            fail "rollback restore failed while preparing ${dest}; existing data was left unchanged"
+        fi
+    fi
+
+    if ! mv "${restoring}" "${dest}"; then
+        if [[ -e "${previous}" && ! -e "${dest}" ]]; then
+            mv "${previous}" "${dest}" || true
+        fi
+        rm -rf "${restoring}"
+        fail "rollback restore failed while replacing ${dest}; check the safety backup created before rollback"
+    fi
+
+    rm -rf "${previous}"
 }
 
 rollback_backup() {
@@ -420,7 +737,10 @@ case "${command}" in
         run_installer --migrate-from-sui "$@"
         ;;
     doctor|check)
-        run_doctor
+        run_doctor "$@"
+        ;;
+    diagnose|report)
+        run_doctor --full "$@"
         ;;
     backup)
         backup_local

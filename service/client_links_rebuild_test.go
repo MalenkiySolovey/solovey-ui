@@ -43,7 +43,7 @@ func assertKept(t *testing.T, uris map[string]bool, kept, dropped []string) {
 // result must marshal to `[]`, never `null`, and invalid stored links make the
 // caller skip the client (ok=false).
 func TestRebuildClientLinksNeverEmitsNull(t *testing.T) {
-	keepAll := func(map[string]string) bool { return true }
+	keepAll := func(clientLink) bool { return true }
 
 	links, ok, err := rebuildClientLinks(1, json.RawMessage(`{}`), json.RawMessage(`[]`), nil, "host", keepAll, "test")
 	if err != nil || !ok {
@@ -55,6 +55,24 @@ func TestRebuildClientLinksNeverEmitsNull(t *testing.T) {
 
 	if _, ok, _ := rebuildClientLinks(1, json.RawMessage(`{}`), json.RawMessage(`{bad`), nil, "host", keepAll, "test"); ok {
 		t.Fatal("invalid stored links must report ok=false so the caller skips the client")
+	}
+}
+
+func TestRebuildClientLinksPreservesRemoteGroupLink(t *testing.T) {
+	links, ok, err := rebuildClientLinks(1, json.RawMessage(`{}`), json.RawMessage(`[
+		{"type":"remoteGroup","groupId":42,"remark":"remote","uri":""}
+	]`), nil, "host", func(link clientLink) bool {
+		return clientLinkString(link, "type") != "local"
+	}, "test")
+	if err != nil || !ok {
+		t.Fatalf("rebuild remote group link: ok=%v err=%v", ok, err)
+	}
+	var decoded []map[string]interface{}
+	if err := json.Unmarshal(links, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if len(decoded) != 1 || decoded[0]["type"] != "remoteGroup" || decoded[0]["groupId"] != float64(42) {
+		t.Fatalf("remote group link was not preserved: %s", string(links))
 	}
 }
 

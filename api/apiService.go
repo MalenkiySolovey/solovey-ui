@@ -11,6 +11,7 @@ type ApiService struct {
 	service.TlsService
 	service.InboundService
 	service.OutboundService
+	service.RemoteOutboundService
 	service.EndpointService
 	service.ServicesService
 	service.PanelService
@@ -18,6 +19,7 @@ type ApiService struct {
 	service.ServerService
 	service.AuditService
 	service.ObservabilityService
+	service.DiagnosticsService
 	service.TelegramService
 	service.VersionService
 }
@@ -60,6 +62,7 @@ func (a *ApiService) bindRuntime() {
 		ServicesService: service.ServicesService{Runtime: runtime},
 	}
 	a.InboundService = service.InboundService{Runtime: runtime, ClientService: service.ClientService{Runtime: runtime}}
+	a.RemoteOutboundService = service.RemoteOutboundService{Runtime: runtime}
 	a.ServicesService = service.ServicesService{Runtime: runtime}
 	a.PanelService = service.PanelService{Runtime: runtime}
 	a.StatsService = service.StatsService{Runtime: runtime}
@@ -68,5 +71,6 @@ func (a *ApiService) bindRuntime() {
 	a.ObservabilityService = service.ObservabilityService{
 		ServerService: service.ServerService{Runtime: runtime},
 	}
+	a.DiagnosticsService = service.DiagnosticsService{Runtime: runtime}
 	a.TelegramService = service.TelegramService{Runtime: runtime}
 }

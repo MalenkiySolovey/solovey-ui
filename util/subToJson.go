@@ -99,7 +99,7 @@ func getExternalHTTPClient() *http.Client {
 }
 
 func GetExternalLink(rawURL string) (string, error) {
-	if err := validateExternalURL(rawURL); err != nil {
+	if err := ValidateExternalURL(rawURL); err != nil {
 		logger.Warning("sub: invalid external URL:", err)
 		return "", err
 	}
@@ -195,7 +195,7 @@ func GetExternalSub(url string) ([]map[string]interface{}, error) {
 	return result, nil
 }
 
-func validateExternalURL(rawURL string) error {
+func ValidateExternalURL(rawURL string) error {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return err

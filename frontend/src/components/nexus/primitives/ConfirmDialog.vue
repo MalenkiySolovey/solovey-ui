@@ -81,5 +81,7 @@ const onModel = (value: boolean) => {
 .nexus-confirm__message {
   color: var(--nexus-text-secondary);
   font-size: 0.875rem;
+  overflow-wrap: anywhere;
+  white-space: pre-line;
 }
 </style>

@@ -14,9 +14,19 @@ export const repoRoot = path.resolve(process.cwd(), '..')
 export const phase6Dir = path.join(repoRoot, 'tests', 'baseline', 'phase6')
 export const serverStatePath = path.join(phase6Dir, 'e2e-server', 'state.json')
 
+const sleepSync = (ms: number) => {
+  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
+}
+
 export const readServerState = (): E2EServerState => {
-  if (fs.existsSync(serverStatePath)) {
-    return JSON.parse(fs.readFileSync(serverStatePath, 'utf8')) as E2EServerState
+  const deadline = Date.now() + 120_000
+  while (Date.now() < deadline) {
+    if (fs.existsSync(serverStatePath)) {
+      const state = JSON.parse(fs.readFileSync(serverStatePath, 'utf8')) as E2EServerState
+      if (state.password) return state
+    }
+    if (process.env.SUI_E2E_PASSWORD) break
+    sleepSync(250)
   }
   return {
     baseURL: process.env.SUI_E2E_BASE_URL ?? 'http://127.0.0.1:3000/app/',

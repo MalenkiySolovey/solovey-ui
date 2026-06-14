@@ -7,6 +7,8 @@ import (
 	"github.com/sagernet/sing-box/protocol/naive"
 )
 
+const SupportsNaiveOutbound = true
+
 func registerNaiveOutbound(registry *outbound.Registry) {
 	naive.RegisterOutbound(registry)
 }

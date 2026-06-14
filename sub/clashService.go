@@ -1,6 +1,7 @@
 package sub
 
 import (
+	"fmt"
 	"strings"
 	"time"
 
@@ -105,6 +106,12 @@ func (s *ClashService) GetClash(subId string) (*string, []string, error) {
 			*outTags = append(*outTags, tag)
 		}
 	}
+	remoteOutbounds, remoteTags, err := (&service.RemoteOutboundService{}).OutboundsForClientLinks(client.Links)
+	if err != nil {
+		return nil, nil, err
+	}
+	*outbounds = append(*outbounds, remoteOutbounds...)
+	*outTags = append(*outTags, remoteTags...)
 
 	basicConfig, err := s.getClashConfig()
 	if err != nil || len(basicConfig) == 0 {
@@ -132,7 +139,6 @@ func (s *ClashService) getClashConfig() (string, error) {
 
 func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, basicConfig string) (string, error) {
 	var proxies []interface{}
-	proxyTags := make([]string, 0)
 	for _, obMap := range *outbounds {
 
 		t, _ := obMap["type"].(string)
@@ -405,8 +411,8 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 		}
 
 		proxies = append(proxies, proxy)
-		proxyTags = append(proxyTags, asString(obMap["tag"]))
 	}
+	proxyTags := ensureUniqueClashProxyNames(proxies)
 
 	var proxyGroups []map[string]interface{}
 	err := yaml.Unmarshal([]byte(ProxyGroups), &proxyGroups)
@@ -441,4 +447,37 @@ func (s *ClashService) ConvertToClashMeta(outbounds *[]map[string]interface{}, b
 		return "", err
 	}
 	return string(result), nil
+}
+
+func ensureUniqueClashProxyNames(proxies []interface{}) []string {
+	seen := make(map[string]bool, len(proxies))
+	proxyTags := make([]string, 0, len(proxies))
+	for index, raw := range proxies {
+		proxy, ok := raw.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		base := strings.TrimSpace(asString(proxy["name"]))
+		if base == "" {
+			base = clashProxyFallbackName(proxy, index)
+		}
+		name := base
+		for suffix := 2; seen[name]; suffix++ {
+			name = fmt.Sprintf("%s-%d", base, suffix)
+		}
+		proxy["name"] = name
+		seen[name] = true
+		proxyTags = append(proxyTags, name)
+	}
+	return proxyTags
+}
+
+func clashProxyFallbackName(proxy map[string]interface{}, index int) string {
+	proxyType := strings.TrimSpace(asString(proxy["type"]))
+	server := strings.Trim(strings.TrimSpace(asString(proxy["server"])), "'")
+	port := strings.TrimSpace(fmt.Sprint(proxy["port"]))
+	if proxyType != "" && server != "" && port != "" && port != "<nil>" {
+		return fmt.Sprintf("%s-%s-%s", proxyType, server, port)
+	}
+	return fmt.Sprintf("proxy-%d", index+1)
 }

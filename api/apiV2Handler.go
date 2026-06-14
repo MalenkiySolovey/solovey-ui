@@ -62,7 +62,11 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 	g.POST("/telegram/test", a.ApiService.TestTelegram)
 	g.POST("/telegram/backup", a.ApiService.BackupToTelegram)
 	g.POST("/telegram/backup/run", a.ApiService.RunTelegramBackup)
+	g.GET("/logs/entries", a.ApiService.GetLogEntries)
+	g.GET("/diagnostics/report", a.ApiService.GetDiagnosticsReport)
+	g.GET("/diagnostics/bundle", a.ApiService.GetDiagnosticsBundle)
 	registerImportXUIRoutes(g, &a.ApiService)
+	registerRemoteOutboundSubscriptionRoutes(g, &a.ApiService)
 	g.POST("/:postAction", a.postHandler)
 	g.GET("/:getAction", a.getHandler)
 }

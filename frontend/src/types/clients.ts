@@ -1,9 +1,11 @@
 import RandomUtil from "@/plugins/randomUtil"
 
 export interface Link {
-  type: "local" | "external" | "sub"
+  type: "local" | "external" | "sub" | "remoteGroup"
   remark?: string
   uri: string
+  groupId?: number
+  remoteGroupId?: number
 }
 
 export interface Client {

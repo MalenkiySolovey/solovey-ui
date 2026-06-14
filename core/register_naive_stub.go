@@ -7,6 +7,8 @@ import (
 	"github.com/sagernet/sing-box/adapter/outbound"
 )
 
+const SupportsNaiveOutbound = false
+
 func registerNaiveOutbound(registry *outbound.Registry) {
 	// naive outbound is disabled when built without with_naive_outbound tag
 	logger.Error("naive outbound is disabled when built without with_naive_outbound tag")

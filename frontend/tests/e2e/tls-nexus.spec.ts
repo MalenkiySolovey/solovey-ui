@@ -13,7 +13,7 @@ test('nexus tls list: drawer add (save-emit) + action buttons', async ({ page })
   await expect(drawer).toContainText('Add TLS')
 
   const name = `tls-${Date.now()}`
-  await page.getByLabel('Name').fill(name)
+  await drawer.getByRole('textbox', { name: 'Name', exact: true }).fill(name)
   await drawer.getByRole('button', { name: 'Save', exact: true }).click()
   await expect(page.getByText(name)).toBeVisible()
 

@@ -10,24 +10,24 @@
   <v-card style="background-color: inherit;">
     <v-row>
       <v-col cols="12" v-if="optionInbound">
-        <v-combobox
+        <StrictSelect
           v-model="rule.inbound"
           :items="inTags"
           :label="$t('pages.inbounds')"
           multiple
           chips
           hide-details
-        ></v-combobox>
+        />
       </v-col>
       <v-col cols="12" v-if="optionClient">
-        <v-combobox
+        <StrictSelect
           v-model="rule.auth_user"
           :items="clients"
           :label="$t('pages.clients')"
           multiple
           chips
           hide-details
-        ></v-combobox>
+        />
       </v-col>
       <v-col cols="12" sm="6" md="4" v-if="optionIPver">
         <v-select
@@ -38,14 +38,14 @@
         </v-select>
       </v-col>
       <v-col cols="12" sm="6" md="4" v-if="optionQueryType">
-        <v-combobox
+        <StrictSelect
           v-model="rule.query_type"
           :items="queryTypes"
           :label="$t('dns.rule.queryType')"
           multiple
           chips
           hide-details>
-        </v-combobox>
+        </StrictSelect>
       </v-col>
       <v-col cols="12" sm="6" md="4" v-if="optionNetwork">
         <v-select
@@ -58,14 +58,14 @@
         </v-select>
       </v-col>
       <v-col cols="12" sm="6" v-if="optionProtocol">
-        <v-combobox
+        <StrictSelect
           v-model="rule.protocol"
           :items="['http','tls', 'quic', 'stun', 'dns']"
           :label="$t('protocol')"
           multiple
           chips
           hide-details
-        ></v-combobox>
+        />
       </v-col>
     </v-row>
     <v-row v-if="optionDomain">
@@ -239,14 +239,14 @@
     </v-row>
     <v-row v-if="optionRuleSet">
       <v-col cols="12" sm="6">
-        <v-combobox
+        <StrictSelect
           v-model="rule.rule_set"
           :items="ruleSets"
           :label="$t('rule.ruleset')"
           multiple
           chips
           hide-details
-        ></v-combobox>
+        />
       </v-col>
       <v-col cols="12" sm="6">
         <v-switch v-model="rule.rule_set_ip_cidr_match_source" color="primary" :label="$t('rule.rulesetMatchSrc')" hide-details></v-switch>
@@ -315,6 +315,7 @@
 import ExpTextarea from '@/components/ExpTextarea.vue'
 import RuleInterfaceAddress from '@/components/RuleInterfaceAddress.vue'
 import RuleNetworkState from '@/components/RuleNetworkState.vue'
+import StrictSelect from '@/components/StrictSelect.vue'
 
 const splitLineList = (value: string): string[] =>
   value.length > 0
@@ -327,7 +328,7 @@ const splitNumberLineList = (value: string): number[] =>
     .filter((item: number) => Number.isFinite(item))
 
 export default {
-  components: { ExpTextarea, RuleInterfaceAddress, RuleNetworkState },
+  components: { ExpTextarea, RuleInterfaceAddress, RuleNetworkState, StrictSelect },
   props: ['rule', 'clients', 'inTags', 'rsTags', 'deleteable', 'ruleSets'],
   data() {
     return {

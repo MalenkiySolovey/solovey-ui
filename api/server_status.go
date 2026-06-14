@@ -50,6 +50,26 @@ func (a *ApiService) GetLogs(c *gin.Context) {
 	jsonObj(c, logs, nil)
 }
 
+func (a *ApiService) GetLogEntries(c *gin.Context) {
+	if !a.requireTokenScopeAny(c, "logs", "admin", "read", "write", "observability") {
+		return
+	}
+	count := c.Query("count")
+	if count == "" {
+		count = c.Query("c")
+	}
+	level := c.Query("level")
+	if level == "" {
+		level = c.Query("l")
+	}
+	logs, err := a.ServerService.GetLogEntriesFiltered(count, level, c.Query("source"), c.Query("filter"), c.Query("category"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, Msg{Success: false, Msg: "logs: " + err.Error()})
+		return
+	}
+	jsonObj(c, logs, nil)
+}
+
 func (a *ApiService) GetKeypairs(c *gin.Context) {
 	kType := c.Query("k")
 	options := c.Query("o")

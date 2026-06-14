@@ -99,16 +99,18 @@
     </v-col>
   </v-row>
   <template v-if="nexus">
-    <div class="dns-nexus__section-row">
-      <div class="dns-nexus__section-label">{{ $t('dns.title') }}</div>
-      <ManualSortButton
-        :disabled="(dns.servers?.length ?? 0) < 2"
-        density="compact"
-        size="small"
-        @sort="sortDnsServersByName"
-      />
-    </div>
+    <CollapsibleSectionHeader v-model="dnsServersExpanded" :title="$t('dns.title')" nexus>
+      <template #actions>
+        <ManualSortButton
+          :disabled="(dns.servers?.length ?? 0) < 2"
+          density="compact"
+          size="small"
+          @sort="sortDnsServersByName"
+        />
+      </template>
+    </CollapsibleSectionHeader>
     <nexus-data-table
+      v-if="dnsServersExpanded"
       :columns="serverColumns"
       :drag-disabled="search.trim().length > 0"
       draggable-rows
@@ -141,14 +143,18 @@
   </template>
   <v-row v-else>
     <v-col class="v-card-subtitle" cols="12">
-      {{ $t('dns.title') }}
-      <ManualSortButton
-        :disabled="(dns.servers?.length ?? 0) < 2"
-        style="margin: 0 5px;"
-        @sort="sortDnsServersByName"
-      />
+      <CollapsibleSectionHeader v-model="dnsServersExpanded" :title="$t('dns.title')">
+        <template #actions>
+          <ManualSortButton
+            :disabled="(dns.servers?.length ?? 0) < 2"
+            style="margin: 0 5px;"
+            @sort="sortDnsServersByName"
+          />
+        </template>
+      </CollapsibleSectionHeader>
     </v-col>
     <v-col
+      v-if="dnsServersExpanded"
       cols="12"
       sm="4"
       md="3"
@@ -313,6 +319,7 @@
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
 import ManualSortButton from '@/components/ManualSortButton.vue'
+import CollapsibleSectionHeader from '@/components/CollapsibleSectionHeader.vue'
 import { computed, ref, onBeforeMount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import DnsVue from '@/layouts/modals/Dns.vue'
@@ -344,6 +351,7 @@ const nexus = computed(() => mode.value === 'nexus')
 const oldConfig = ref(<any>{})
 const loading = ref(false)
 const search = ref('')
+const dnsServersExpanded = ref(true)
 
 // Edit a LOCAL clone of the store config. A background reload (data.ts setNewData
 // replaces Data().config wholesale, driven by the 10s poll / WS events) must not wipe
@@ -612,14 +620,6 @@ const onDnsRuleDrop = (event: DragEvent, target: number) => {
 </script>
 
 <style scoped>
-.dns-nexus__section-row {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--nexus-gap-2);
-  margin-block: var(--nexus-gap-4) var(--nexus-gap-2);
-}
-
 .dns-nexus__section,
 .dns-nexus__section-label {
   color: var(--nexus-text-secondary);

@@ -228,6 +228,84 @@ validate_legacy_migration_ready() {
     fi
 }
 
+backup_path_size_kb() {
+    local path="$1"
+    local size
+
+    if [[ ! -e "${path}" ]]; then
+        printf '0\n'
+        return 0
+    fi
+
+    size="$(du -sk "${path}" 2>/dev/null | awk 'NR == 1 { print $1 }')"
+    [[ -n "${size}" ]] || fail "cannot estimate backup size for ${path}"
+    printf '%s\n' "${size}"
+}
+
+estimate_backup_size_kb() {
+    local total=0
+    local size
+
+    size="$(backup_path_size_kb "${INSTALL_DIR}")"
+    total=$((total + size))
+    size="$(backup_path_size_kb "${ENV_DIR}")"
+    total=$((total + size))
+    size="$(backup_path_size_kb "${SYSTEMD_SERVICE}")"
+    total=$((total + size))
+
+    if [[ "${MIGRATE_FROM_SUI}" == "1" ]]; then
+        size="$(backup_path_size_kb "${LEGACY_DIR}")"
+        total=$((total + size))
+        size="$(backup_path_size_kb "${LEGACY_ENV_DIR}")"
+        total=$((total + size))
+        size="$(backup_path_size_kb "${LEGACY_SERVICE_FILE}")"
+        total=$((total + size))
+        size="$(backup_path_size_kb "${LEGACY_DROPIN_DIR}")"
+        total=$((total + size))
+    fi
+
+    printf '%s\n' "${total}"
+}
+
+ensure_backup_space() {
+    local required_kb needed_kb available_kb
+
+    [[ "${DRY_RUN}" != "1" ]] || return 0
+
+    mkdir -p "${BACKUP_ROOT}"
+    required_kb="$(estimate_backup_size_kb)"
+    if [[ "${required_kb}" -le 0 ]]; then
+        return 0
+    fi
+
+    needed_kb=$(((required_kb * 12 + 9) / 10))
+    available_kb="$(df -k "${BACKUP_ROOT}" 2>/dev/null | awk 'NR == 2 { print $4 }')"
+    [[ -n "${available_kb}" ]] || fail "cannot determine free space for backup root: ${BACKUP_ROOT}"
+
+    if [[ "${available_kb}" -lt "${needed_kb}" ]]; then
+        fail "not enough disk space for backup: need about ${needed_kb} KiB, available ${available_kb} KiB at ${BACKUP_ROOT}"
+    fi
+}
+
+cleanup_incomplete_backup() {
+    local target="$1"
+
+    if [[ "${DRY_RUN}" != "1" && -n "${target}" && -d "${target}" ]]; then
+        rm -rf "${target}"
+    fi
+}
+
+copy_backup_path() {
+    local source="$1"
+    local target="$2"
+    local backup_dir="$3"
+
+    if ! run cp -a "${source}" "${target}"; then
+        cleanup_incomplete_backup "${backup_dir}"
+        fail "backup failed while copying ${source}; removed incomplete backup ${backup_dir}"
+    fi
+}
+
 backup_existing() {
     local should_backup=0
 
@@ -243,6 +321,8 @@ backup_existing() {
 
     [[ "${should_backup}" == "1" ]] || return 0
 
+    ensure_backup_space
+
     local stamp target counter
     stamp="$(date -u +%Y%m%dT%H%M%SZ)"
     target="${BACKUP_ROOT}/${stamp}"
@@ -254,34 +334,36 @@ backup_existing() {
     BACKUP_PATH="${target}"
 
     log "creating backup at ${target}"
-    run mkdir -p "${target}"
+    if ! run mkdir -p "${target}"; then
+        fail "cannot create backup directory: ${target}"
+    fi
 
     if [[ -d "${INSTALL_DIR}" ]]; then
-        run cp -a "${INSTALL_DIR}" "${target}/app"
+        copy_backup_path "${INSTALL_DIR}" "${target}/app" "${target}"
     fi
     if [[ -d "${ENV_DIR}" ]]; then
-        run cp -a "${ENV_DIR}" "${target}/etc"
+        copy_backup_path "${ENV_DIR}" "${target}/etc" "${target}"
     fi
     if [[ -f "${SYSTEMD_SERVICE}" ]]; then
-        run cp -a "${SYSTEMD_SERVICE}" "${target}/${SERVICE_NAME}.service"
+        copy_backup_path "${SYSTEMD_SERVICE}" "${target}/${SERVICE_NAME}.service" "${target}"
     fi
     if [[ "${MIGRATE_FROM_SUI}" == "1" ]]; then
         if [[ -d "${LEGACY_DIR}" ]]; then
-            run cp -a "${LEGACY_DIR}" "${target}/legacy-app"
+            copy_backup_path "${LEGACY_DIR}" "${target}/legacy-app" "${target}"
         fi
         if [[ -d "${LEGACY_ENV_DIR}" ]]; then
-            run cp -a "${LEGACY_ENV_DIR}" "${target}/legacy-etc"
+            copy_backup_path "${LEGACY_ENV_DIR}" "${target}/legacy-etc" "${target}"
         fi
         if [[ -f "${LEGACY_SERVICE_FILE}" ]]; then
-            run cp -a "${LEGACY_SERVICE_FILE}" "${target}/${LEGACY_SERVICE_NAME}.service"
+            copy_backup_path "${LEGACY_SERVICE_FILE}" "${target}/${LEGACY_SERVICE_NAME}.service" "${target}"
         fi
         if [[ -d "${LEGACY_DROPIN_DIR}" ]]; then
-            run cp -a "${LEGACY_DROPIN_DIR}" "${target}/${LEGACY_SERVICE_NAME}.service.d"
+            copy_backup_path "${LEGACY_DROPIN_DIR}" "${target}/${LEGACY_SERVICE_NAME}.service.d" "${target}"
         fi
     fi
 
     if [[ "${DRY_RUN}" != "1" ]]; then
-        {
+        if ! {
             printf 'app=%s\n' "${APP_NAME}"
             printf 'created_at=%s\n' "${stamp}"
             printf 'install_dir=%s\n' "${INSTALL_DIR}"
@@ -293,7 +375,10 @@ backup_existing() {
                 printf 'legacy_env_dir=%s\n' "${LEGACY_ENV_DIR}"
                 printf 'legacy_service=%s\n' "${LEGACY_SERVICE_FILE}"
             fi
-        } > "${target}/manifest.txt"
+        } > "${target}/manifest.txt"; then
+            cleanup_incomplete_backup "${target}"
+            fail "backup failed while writing manifest; removed incomplete backup ${target}"
+        fi
     fi
 }
 
@@ -316,9 +401,39 @@ restore_backup_dir() {
     local dest="$2"
 
     [[ -d "${src}" ]] || return 0
-    rm -rf "${dest}"
-    mkdir -p "$(dirname "${dest}")"
-    cp -a "${src}" "${dest}"
+    local parent base restoring previous
+    parent="$(dirname "${dest}")"
+    base="$(basename "${dest}")"
+    restoring="${parent}/.${base}.restoring.$$"
+    previous="${parent}/.${base}.previous.$$"
+
+    mkdir -p "${parent}" || return 1
+    rm -rf "${restoring}" "${previous}" || return 1
+
+    if ! cp -a "${src}" "${restoring}"; then
+        rm -rf "${restoring}"
+        warn "rollback restore failed while copying ${src}; existing ${dest} was left unchanged"
+        return 1
+    fi
+
+    if [[ -e "${dest}" ]]; then
+        if ! mv "${dest}" "${previous}"; then
+            rm -rf "${restoring}"
+            warn "rollback restore failed while preparing ${dest}; existing data was left unchanged"
+            return 1
+        fi
+    fi
+
+    if ! mv "${restoring}" "${dest}"; then
+        if [[ -e "${previous}" && ! -e "${dest}" ]]; then
+            mv "${previous}" "${dest}" || true
+        fi
+        rm -rf "${restoring}"
+        warn "rollback restore failed while replacing ${dest}; check the backup at ${BACKUP_PATH}"
+        return 1
+    fi
+
+    rm -rf "${previous}"
 }
 
 backup_has_current_install_payload() {
@@ -332,21 +447,21 @@ restore_current_install_backup() {
     backup_has_current_install_payload "${backup}" || return 1
 
     systemctl stop "${SERVICE_NAME}" >/dev/null 2>&1 || true
-    restore_backup_dir "${backup}/app" "${INSTALL_DIR}"
-    restore_backup_dir "${backup}/etc" "${ENV_DIR}"
+    restore_backup_dir "${backup}/app" "${INSTALL_DIR}" || return 1
+    restore_backup_dir "${backup}/etc" "${ENV_DIR}" || return 1
 
     if [[ -f "${backup}/${SERVICE_NAME}.service" ]]; then
         mkdir -p "$(dirname "${SYSTEMD_SERVICE}")"
-        cp -a "${backup}/${SERVICE_NAME}.service" "${SYSTEMD_SERVICE}"
+        cp -a "${backup}/${SERVICE_NAME}.service" "${SYSTEMD_SERVICE}" || return 1
     fi
 
     if [[ -f "${INSTALL_DIR}/${APP_NAME}.sh" ]]; then
         mkdir -p "$(dirname "${CLI_PATH}")"
-        ln -sf "${INSTALL_DIR}/${APP_NAME}.sh" "${CLI_PATH}"
+        ln -sf "${INSTALL_DIR}/${APP_NAME}.sh" "${CLI_PATH}" || return 1
     fi
 
-    systemctl daemon-reload
-    systemctl restart "${SERVICE_NAME}"
+    systemctl daemon-reload || return 1
+    systemctl restart "${SERVICE_NAME}" || return 1
 }
 
 rollback_failed_install() {

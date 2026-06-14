@@ -99,7 +99,7 @@ func MigrateDbWithOptions(options Options) error {
 	}
 
 	// Before 1.3
-	if strings.HasPrefix(dbVersion, "1.2") {
+	if dbVersionMinorIs(dbVersion, 1, 2) {
 		if err = to1_3(tx); err != nil {
 			return fmt.Errorf("migration to 1.3: %w", err)
 		}
@@ -107,7 +107,7 @@ func MigrateDbWithOptions(options Options) error {
 	}
 
 	// Before 1.4
-	if strings.HasPrefix(dbVersion, "1.3") {
+	if dbVersionMinorIs(dbVersion, 1, 3) {
 		if err = to1_4(tx); err != nil {
 			return fmt.Errorf("migration to 1.4: %w", err)
 		}
@@ -115,7 +115,7 @@ func MigrateDbWithOptions(options Options) error {
 	}
 
 	// Before 1.5
-	if strings.HasPrefix(dbVersion, "1.4") {
+	if dbVersionMinorIs(dbVersion, 1, 4) {
 		if err = to1_5(tx); err != nil {
 			return fmt.Errorf("migration to 1.5: %w", err)
 		}
@@ -123,7 +123,7 @@ func MigrateDbWithOptions(options Options) error {
 	}
 
 	// Before 1.6
-	if strings.HasPrefix(dbVersion, "1.5") {
+	if dbVersionMinorIs(dbVersion, 1, 5) {
 		if err = to1_6(tx); err != nil {
 			return fmt.Errorf("migration to 1.6: %w", err)
 		}
@@ -131,7 +131,7 @@ func MigrateDbWithOptions(options Options) error {
 	}
 
 	// Before 1.7
-	if strings.HasPrefix(dbVersion, "1.6") {
+	if dbVersionMinorIs(dbVersion, 1, 6) {
 		if err = to1_7(tx); err != nil {
 			return fmt.Errorf("migration to 1.7: %w", err)
 		}
@@ -161,6 +161,14 @@ func MigrateDbWithOptions(options Options) error {
 	}
 	fmt.Println("Migration done!")
 	return nil
+}
+
+func dbVersionMinorIs(version string, major int, minor int) bool {
+	parsed, ok := config.ParseSemver(config.NormalizeVersion(version))
+	if !ok {
+		return false
+	}
+	return parsed.Major == major && parsed.Minor == minor
 }
 
 func sqliteMigrationDSN(path string) string {

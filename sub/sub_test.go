@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -350,4 +351,114 @@ func TestSubHandlerLinkDisableReturns404ForBaseSubscription(t *testing.T) {
 	if jsonRecorder.Code != http.StatusOK {
 		t.Fatalf("json format should use subJsonEnable, got %d", jsonRecorder.Code)
 	}
+}
+
+func TestJsonSubscriptionKeepsRemoteOutboundsAfterClientOutbounds(t *testing.T) {
+	initSubTestDB(t)
+	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	db := database.GetDB()
+
+	inbound := model.Inbound{
+		Type:    "vless",
+		Tag:     "local-in",
+		Addrs:   json.RawMessage(`[]`),
+		OutJson: json.RawMessage(`{"type":"vless","tag":"local-node","server":"local.example.com","server_port":443}`),
+		Options: json.RawMessage(`{}`),
+	}
+	if err := db.Create(&inbound).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	subscription := model.RemoteOutboundSubscription{Name: "Remote", Url: "https://example.com/sub", Enabled: true}
+	if err := db.Create(&subscription).Error; err != nil {
+		t.Fatal(err)
+	}
+	group := model.RemoteOutboundGroup{SubscriptionId: subscription.Id, Name: "Client", Enabled: true}
+	if err := db.Create(&group).Error; err != nil {
+		t.Fatal(err)
+	}
+	connection := model.RemoteOutboundConnection{
+		SubscriptionId: subscription.Id,
+		GroupId:        group.Id,
+		Name:           "Remote Node",
+		SourceKey:      "remote-node",
+		Type:           "vless",
+		OutboundTag:    "remote-node",
+		Enabled:        true,
+		Options:        json.RawMessage(`{"server":"remote.example.com","server_port":443,"uuid":"22222222-2222-4222-8222-222222222222"}`),
+	}
+	if err := db.Create(&connection).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.RemoteOutboundGroupConnection{GroupId: group.Id, ConnectionId: connection.Id}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	client := model.Client{
+		Enable:    true,
+		Name:      "alice",
+		SubSecret: "secret-id",
+		Config:    json.RawMessage(`{"vless":{"uuid":"11111111-1111-4111-8111-111111111111"}}`),
+		Inbounds:  json.RawMessage(`[` + strconv.FormatUint(uint64(inbound.Id), 10) + `]`),
+		Links:     json.RawMessage(`[{ "type": "remoteGroup", "groupId": ` + strconv.FormatUint(uint64(group.Id), 10) + ` }]`),
+	}
+	if err := db.Create(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	result, _, err := (&JsonService{}).GetJson("secret-id", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]interface{}
+	if err := json.Unmarshal([]byte(*result), &config); err != nil {
+		t.Fatal(err)
+	}
+	selectorRefs := jsonSelectorOutbounds(t, config, "proxy")
+	localIndex := indexOfString(selectorRefs, "local-node")
+	remoteIndex := indexOfString(selectorRefs, "remote-node")
+	if localIndex < 0 || remoteIndex < 0 {
+		t.Fatalf("selector does not contain expected tags: %#v", selectorRefs)
+	}
+	if remoteIndex <= localIndex {
+		t.Fatalf("remote outbound should follow client outbound, selector=%#v", selectorRefs)
+	}
+}
+
+func jsonSelectorOutbounds(t *testing.T, config map[string]interface{}, tag string) []string {
+	t.Helper()
+	rawOutbounds, ok := config["outbounds"].([]interface{})
+	if !ok {
+		t.Fatalf("config has no outbounds array: %#v", config["outbounds"])
+	}
+	for _, raw := range rawOutbounds {
+		outbound, ok := raw.(map[string]interface{})
+		if !ok || outbound["tag"] != tag {
+			continue
+		}
+		rawRefs, ok := outbound["outbounds"].([]interface{})
+		if !ok {
+			t.Fatalf("selector %q has no outbounds: %#v", tag, outbound)
+		}
+		refs := make([]string, 0, len(rawRefs))
+		for _, rawRef := range rawRefs {
+			if ref, ok := rawRef.(string); ok {
+				refs = append(refs, ref)
+			}
+		}
+		return refs
+	}
+	t.Fatalf("selector %q not found in %#v", tag, rawOutbounds)
+	return nil
+}
+
+func indexOfString(values []string, needle string) int {
+	for index, value := range values {
+		if value == needle {
+			return index
+		}
+	}
+	return -1
 }
