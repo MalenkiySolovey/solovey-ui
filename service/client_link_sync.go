@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util"
@@ -12,15 +13,22 @@ import (
 	"gorm.io/gorm"
 )
 
-func decodeClientLinks(clientID uint, raw json.RawMessage, operation string) ([]map[string]string, bool) {
+type clientLink map[string]any
+
+func clientLinkString(link clientLink, key string) string {
+	value, _ := link[key].(string)
+	return value
+}
+
+func decodeClientLinks(clientID uint, raw json.RawMessage, operation string) ([]clientLink, bool) {
 	// A migrated (or freshly inserted) client can have a NULL/empty Links
 	// column. Treat that as "no links yet" rather than an error, otherwise the
 	// link-regeneration paths skip the client and its inbounds never appear in
 	// the subscription even after an inbound edit.
 	if len(bytes.TrimSpace(raw)) == 0 {
-		return []map[string]string{}, true
+		return []clientLink{}, true
 	}
-	var links []map[string]string
+	var links []clientLink
 	if err := json.Unmarshal(raw, &links); err != nil {
 		logger.Warningf("%s skipped client %d with invalid links: %v", operation, clientID, err)
 		return nil, false
@@ -31,11 +39,11 @@ func decodeClientLinks(clientID uint, raw json.RawMessage, operation string) ([]
 // buildLinksForInbounds generates the "local" link entries for the given
 // inbounds. The result is always a non-nil slice so an empty result marshals to
 // `[]`, never `null`.
-func buildLinksForInbounds(config json.RawMessage, inbounds []model.Inbound, hostname string) []map[string]string {
-	links := []map[string]string{}
+func buildLinksForInbounds(config json.RawMessage, inbounds []model.Inbound, hostname string) []clientLink {
+	links := []clientLink{}
 	for i := range inbounds {
 		for _, uri := range util.LinkGenerator(config, &inbounds[i], hostname) {
-			links = append(links, map[string]string{
+			links = append(links, clientLink{
 				"remark": inbounds[i].Tag,
 				"type":   "local",
 				"uri":    uri,
@@ -45,7 +53,7 @@ func buildLinksForInbounds(config json.RawMessage, inbounds []model.Inbound, hos
 	return links
 }
 
-func rebuildClientLinks(clientID uint, config, rawLinks json.RawMessage, inbounds []model.Inbound, hostname string, keep func(link map[string]string) bool, operation string) (json.RawMessage, bool, error) {
+func rebuildClientLinks(clientID uint, config, rawLinks json.RawMessage, inbounds []model.Inbound, hostname string, keep func(link clientLink) bool, operation string) (json.RawMessage, bool, error) {
 	clientLinks, ok := decodeClientLinks(clientID, rawLinks, operation)
 	if !ok {
 		return nil, false, nil
@@ -85,8 +93,8 @@ func (s *ClientService) updateLinksWithFixedInbounds(tx *gorm.DB, clients []*mod
 			}
 			inboundCache[cacheKey] = inbounds
 		}
-		links, ok, err := rebuildClientLinks(client.Id, client.Config, client.Links, inbounds, hostname, func(link map[string]string) bool {
-			return link["type"] != "local"
+		links, ok, err := rebuildClientLinks(client.Id, client.Config, client.Links, inbounds, hostname, func(link clientLink) bool {
+			return clientLinkString(link, "type") != "local"
 		}, "fixed inbound link update")
 		if err != nil {
 			return err
@@ -96,6 +104,43 @@ func (s *ClientService) updateLinksWithFixedInbounds(tx *gorm.DB, clients []*mod
 		}
 		// #nosec G602 -- index is the range index over clients; never out of range.
 		clients[index].Links = links
+	}
+	return nil
+}
+
+func (s *ClientService) previewClientsWithLocalLinks(clients *[]model.Client, hostname string) error {
+	if clients == nil || len(*clients) == 0 {
+		return nil
+	}
+	db := database.GetDB()
+	inboundCache := map[string][]model.Inbound{}
+	for index := range *clients {
+		client := &(*clients)[index]
+		var inboundIds []uint
+		if err := json.Unmarshal(client.Inbounds, &inboundIds); err != nil {
+			return err
+		}
+		cacheKey := string(client.Inbounds)
+		inbounds, cached := inboundCache[cacheKey]
+		if !cached {
+			if len(inboundIds) > 0 {
+				if err := db.Model(model.Inbound{}).Preload("Tls").
+					Where("id in ? and type in ?", inboundIds, util.InboundTypeWithLink).
+					Find(&inbounds).Error; err != nil {
+					return err
+				}
+			}
+			inboundCache[cacheKey] = inbounds
+		}
+		links, ok, err := rebuildClientLinks(client.Id, client.Config, client.Links, inbounds, hostname, func(link clientLink) bool {
+			return clientLinkString(link, "type") != "local"
+		}, "client local link preview")
+		if err != nil {
+			return err
+		}
+		if ok {
+			client.Links = links
+		}
 	}
 	return nil
 }
@@ -121,8 +166,8 @@ func (s *ClientService) UpdateClientsOnInboundAdd(tx *gorm.DB, initIds string, i
 		if !ok {
 			continue
 		}
-		links, decoded, lerr := rebuildClientLinks(client.Id, client.Config, client.Links, []model.Inbound{inbound}, hostname, func(link map[string]string) bool {
-			return link["remark"] != inbound.Tag
+		links, decoded, lerr := rebuildClientLinks(client.Id, client.Config, client.Links, []model.Inbound{inbound}, hostname, func(link clientLink) bool {
+			return clientLinkString(link, "remark") != inbound.Tag
 		}, "inbound add")
 		if lerr != nil {
 			return lerr
@@ -156,9 +201,9 @@ func (s *ClientService) UpdateClientsOnInboundDelete(tx *gorm.DB, id uint, tag s
 		if !ok {
 			continue
 		}
-		var newClientLinks []map[string]string
+		var newClientLinks []clientLink
 		for _, clientLink := range clientLinks {
-			if clientLink["remark"] != tag {
+			if clientLinkString(clientLink, "remark") != tag {
 				newClientLinks = append(newClientLinks, clientLink)
 			}
 		}
@@ -181,8 +226,8 @@ func (s *ClientService) UpdateLinksByInboundChange(tx *gorm.DB, inbounds *[]mode
 			return err
 		}
 		for _, client := range clients {
-			links, decoded, lerr := rebuildClientLinks(client.Id, client.Config, client.Links, []model.Inbound{inbound}, hostname, func(link map[string]string) bool {
-				return link["type"] != "local" || (link["remark"] != inbound.Tag && link["remark"] != oldTag)
+			links, decoded, lerr := rebuildClientLinks(client.Id, client.Config, client.Links, []model.Inbound{inbound}, hostname, func(link clientLink) bool {
+				return clientLinkString(link, "type") != "local" || (clientLinkString(link, "remark") != inbound.Tag && clientLinkString(link, "remark") != oldTag)
 			}, "inbound link update")
 			if lerr != nil {
 				return lerr

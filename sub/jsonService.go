@@ -80,6 +80,12 @@ func (j *JsonService) GetJson(subId string, format string) (*string, []string, e
 			*outTags = append(*outTags, tag)
 		}
 	}
+	remoteOutbounds, remoteTags, err := (&service.RemoteOutboundService{}).OutboundsForClientLinks(client.Links)
+	if err != nil {
+		return nil, nil, err
+	}
+	*outbounds = append(*outbounds, remoteOutbounds...)
+	*outTags = append(*outTags, remoteTags...)
 
 	j.addDefaultOutbounds(outbounds, outTags)
 

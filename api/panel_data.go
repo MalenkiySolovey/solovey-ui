@@ -140,7 +140,7 @@ func (a *ApiService) LoadPartialData(c *gin.Context, objs []string) error {
 			}
 			data[obj] = tlsConfigs
 		case "clients":
-			clients, err := a.ClientService.Get(id)
+			clients, err := a.ClientService.GetWithLocalLinks(id, getHostname(c))
 			if err != nil {
 				return err
 			}

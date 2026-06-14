@@ -133,6 +133,7 @@ func (a *APP) Start() error {
 	// internally, so starting unconditionally is safe and lets the admin toggle
 	// it at runtime without a restart.
 	paidsub.StartBot()
+	service.StartRemoteOutboundAutoRefresh(a.runtime)
 
 	// A core start failure is intentionally non-fatal: the web/sub panel must
 	// stay up so the admin can fix a bad sing-box config through the UI. The
@@ -168,6 +169,11 @@ func (a *APP) Stop() {
 	defer telegramCancel()
 	if err := service.StopTelegramNotifier(telegramCtx); err != nil {
 		logger.Warning("stop telegram notifier err:", err)
+	}
+	remoteSubCtx, remoteSubCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer remoteSubCancel()
+	if err := service.StopRemoteOutboundAutoRefresh(remoteSubCtx); err != nil {
+		logger.Warning("stop remote subscription auto refresh err:", err)
 	}
 	paidSubCtx, paidSubCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer paidSubCancel()

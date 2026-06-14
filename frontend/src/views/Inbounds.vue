@@ -18,15 +18,19 @@
 
   <InboundsNexusList
     v-if="mode === 'nexus'"
-    :inbounds="<any[]>inbounds"
+    :inbounds="<any[]>orderedInbounds"
     :onlines="onlines"
     :enable-traffic="enableTraffic"
+    :order-dirty="inboundOrderDirty"
+    :order-saving="inboundOrderSaving"
     @add="showModal(0)"
+    @cancel-order="cancelInboundOrder"
     @clone="clone"
     @del="delInbound"
     @edit="showModal"
     @move="moveInbound"
     @move-to="dragInbound"
+    @save-order="saveInboundOrder"
     @sort-by-name="sortInboundsByName"
     @stats="showStats"
   />
@@ -35,9 +39,13 @@
     <v-row>
       <v-col cols="12" justify="center" align="center">
         <v-btn color="primary" @click="showModal(0)">{{ $t('actions.add') }}</v-btn>
-        <ManualSortButton
-          :disabled="inbounds.length < 2"
+        <ManualOrderControls
+          :dirty="inboundOrderDirty"
+          :saving="inboundOrderSaving"
+          :sort-disabled="orderedInbounds.length < 2"
           style="margin: 0 5px;"
+          @cancel="cancelInboundOrder"
+          @save="saveInboundOrder"
           @sort="sortInboundsByName"
         />
       </v-col>
@@ -48,7 +56,7 @@
         sm="4"
         md="3"
         lg="2"
-        v-for="(item, index) in <any[]>inbounds"
+        v-for="(item, index) in <any[]>orderedInbounds"
         :key="item.tag"
         :draggable="false"
         @pointerdown="inboundDrag.prepare($event)"
@@ -145,7 +153,7 @@
 
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
-import ManualSortButton from '@/components/ManualSortButton.vue'
+import ManualOrderControls from '@/components/ManualOrderControls.vue'
 import InboundVue from '@/layouts/modals/Inbound.vue'
 import Stats from '@/layouts/modals/Stats.vue'
 import { Config } from '@/types/config'
@@ -154,12 +162,8 @@ import { createInbound, Inbound } from '@/types/inbounds'
 import RandomUtil from '@/plugins/randomUtil'
 import { useUiMode } from '@/uiMode/useUiMode'
 import { useManualDrag } from '@/composables/useManualDrag'
-import {
-  dragManualOrder,
-  type ManualSortDirection,
-  moveManualOrder,
-  sortManualOrderByText,
-} from '@/composables/useManualReorder'
+import type { ManualSortDirection } from '@/composables/useManualReorder'
+import { usePendingManualOrder } from '@/composables/usePendingManualOrder'
 
 const { mode } = useUiMode()
 
@@ -180,6 +184,10 @@ const appConfig = computed((): Config => {
 const inbounds = computed((): Inbound[] => {
   return <Inbound[]> Data().inbounds
 })
+const inboundsOrder = usePendingManualOrder<Inbound>('inbounds', inbounds)
+const orderedInbounds = inboundsOrder.displayItems
+const inboundOrderDirty = inboundsOrder.dirty
+const inboundOrderSaving = inboundsOrder.saving
 
 const tlsConfigs = computed((): any[] => {
   return <any[]> Data().tlsConfigs
@@ -217,20 +225,23 @@ const delInbound = async (id: number) => {
   const tag = inbounds.value[index].tag
 
   const success = await Data().save("inbounds", "del", tag)
-  if (success) delOverlay.value[index] = false
+  if (success) delOverlay.value = []
 }
 
-const moveInbound = async (id: number, dir: number) => {
-  await moveManualOrder("inbounds", inbounds.value as any[], id, dir)
+const moveInbound = (id: number, dir: number) => {
+  inboundsOrder.move(id, dir)
 }
 
-const dragInbound = async (draggedId: number, targetId: number) => {
-  await dragManualOrder("inbounds", inbounds.value as any[], draggedId, targetId)
+const dragInbound = (draggedId: number, targetId: number) => {
+  inboundsOrder.moveTo(draggedId, targetId)
 }
 
-const sortInboundsByName = async (direction: ManualSortDirection) => {
-  await sortManualOrderByText("inbounds", inbounds.value as any[], direction, "tag")
+const sortInboundsByName = (direction: ManualSortDirection) => {
+  inboundsOrder.sortByText(direction, "tag")
 }
+
+const saveInboundOrder = () => inboundsOrder.save()
+const cancelInboundOrder = () => inboundsOrder.reset()
 
 const inboundDrag = useManualDrag<number>()
 const onInboundDrop = (event: DragEvent, targetId: number) => {

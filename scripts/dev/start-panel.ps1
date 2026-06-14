@@ -131,7 +131,8 @@ if ($Build -or !(Test-Path $exe)) {
     Write-Output "Building backend..."
     Push-Location $repoRoot
     try {
-        & go build -o $exe main.go
+        $buildTags = "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale"
+        & go build -tags $buildTags -o $exe main.go
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     } finally {
         Pop-Location

@@ -10,8 +10,12 @@
 
     <page-toolbar>
       <template #actions>
-        <ManualSortButton
-          :disabled="inbounds.length < 2"
+        <ManualOrderControls
+          :dirty="orderDirty"
+          :saving="orderSaving"
+          :sort-disabled="inbounds.length < 2"
+          @cancel="emit('cancelOrder')"
+          @save="emit('saveOrder')"
           @sort="sortByName"
         />
         <v-btn
@@ -86,7 +90,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import ManualSortButton from '@/components/ManualSortButton.vue'
+import ManualOrderControls from '@/components/ManualOrderControls.vue'
 import type { Column } from '@/components/nexus/data/dataTableColumns'
 import NexusDataTable from '@/components/nexus/data/NexusDataTable.vue'
 import RowActions from '@/components/nexus/data/RowActions.vue'
@@ -114,15 +118,19 @@ const props = defineProps<{
   inbounds: InboundRow[]
   onlines: string[]
   enableTraffic: boolean
+  orderDirty?: boolean
+  orderSaving?: boolean
 }>()
 
 const emit = defineEmits<{
   add: []
+  cancelOrder: []
   edit: [id: number]
   clone: [id: number]
   del: [id: number]
   move: [id: number, dir: number]
   moveTo: [draggedId: number, targetId: number]
+  saveOrder: []
   sortByName: [direction: ManualSortDirection]
   stats: [tag: string]
 }>()

@@ -30,7 +30,7 @@ func TestDecodeClientLinks(t *testing.T) {
 	if !ok {
 		t.Fatal("valid links should decode")
 	}
-	want := []map[string]string{{
+	want := []clientLink{{
 		"remark": "in",
 		"type":   "local",
 		"uri":    "vless://example",

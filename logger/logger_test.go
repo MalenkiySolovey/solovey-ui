@@ -73,6 +73,23 @@ func TestSlogAdapterWritesRingBuffer(t *testing.T) {
 	}
 }
 
+func TestLogEntriesFilteredIncludeMetadata(t *testing.T) {
+	resetLogBufferForTest(t)
+
+	Slog("panel").Error("metadata ready", slog.String("component", "logger"))
+
+	entries := GetLogEntriesFiltered(10, "debug", "panel", "metadata ready")
+	if len(entries) != 1 {
+		t.Fatalf("expected one entry, got %#v", entries)
+	}
+	if entries[0].Level != "ERROR" || entries[0].Source != "panel" || entries[0].Timestamp == 0 {
+		t.Fatalf("unexpected entry metadata: %#v", entries[0])
+	}
+	if !strings.Contains(entries[0].Message, "component=logger") {
+		t.Fatalf("slog attrs were not preserved: %#v", entries[0])
+	}
+}
+
 func TestInitInstallsSlogDefault(t *testing.T) {
 	resetLogBufferForTest(t)
 

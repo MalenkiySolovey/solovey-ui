@@ -123,7 +123,7 @@
               </v-row>
               <v-row>
                 <v-col>
-                  <v-select
+                  <StrictSelect
                     v-model="clientInbounds"
                     :items="inboundTags"
                     :label="$t('client.inboundTags')"
@@ -134,7 +134,7 @@
                     <template v-slot:append>
                       <v-icon @click="setAllInbounds" icon="mdi-set-all" v-tooltip:top="$t('all')" />
                     </template>
-                  </v-select>
+                  </StrictSelect>
                 </v-col>
               </v-row>
             </v-window-item>
@@ -200,18 +200,15 @@
               </v-row>
               <v-row>
                 <v-col>
-                  <v-btn color="primary" @click="subLinks.push({ type: 'sub', uri: ''})">{{ $t('actions.add') }} {{ $t('client.sub') }}</v-btn>
-                </v-col>
-              </v-row>
-              <v-row v-for="(lnk, index) in subLinks">
-                <v-col>
-                  <v-text-field
-                  dir="ltr"
-                  :label="$t('client.sub') + ' ' + (index+1)"
-                  append-icon="mdi-delete"
-                  @click:append="subLinks.splice(index,1)"
-                  placeholder="http[s]://<domain>[:]<port>/<path>"
-                  v-model="lnk.uri" />
+                  <StrictSelect
+                    v-model="remoteGroupIds"
+                    :items="remoteGroupItems"
+                    :label="$t('client.subscriptionTags')"
+                    clearable
+                    multiple
+                    chips
+                    hide-details
+                  />
                 </v-col>
               </v-row>
             </v-window-item>
@@ -227,6 +224,8 @@ import { HumanReadable } from '@/plugins/utils'
 import Data from '@/store/modules/data'
 import { locale } from '@/locales'
 import FormShell from '@/components/nexus/drawers/FormShell.vue'
+import HttpUtils from '@/plugins/httputil'
+import StrictSelect from '@/components/StrictSelect.vue'
 
 export default {
   props: ['visible', 'id', 'inboundTags', 'groups'],
@@ -241,19 +240,21 @@ export default {
       links: <Link[]>[],
       extLinks: <Link[]>[],
       subLinks: <Link[]>[],
+      remoteGroupLinks: <Link[]>[],
+      remoteSubscriptions: <any[]>[],
       ipLimitModes: ['monitor', 'enforce'],
       snapshot: '',
     }
   },
   methods: {
     async updateData(id: number) {
+      this.loading = true
+      await this.loadRemoteSubscriptions()
       if (id > 0) {
-        this.loading = true
         const newData = await Data().loadClients(id)
         this.client = createClient(newData)
         this.title = "edit"
         this.clientConfig = this.client.config
-        this.loading = false
       }
       else {
         this.client = createClient()
@@ -263,11 +264,19 @@ export default {
       this.links = this.client.links?.filter(l => l.type == 'local')?? []
       this.extLinks = this.client.links?.filter(l => l.type == 'external')?? []
       this.subLinks = this.client.links?.filter(l => l.type == 'sub')?? []
+      this.remoteGroupLinks = this.client.links?.filter(l => l.type == 'remoteGroup')?? []
       this.tab = "t1"
       this.loading = false
-      this.snapshot = JSON.stringify([this.client, this.clientConfig, this.links, this.extLinks, this.subLinks])
+      this.snapshot = JSON.stringify([this.client, this.clientConfig, this.links, this.extLinks, this.subLinks, this.remoteGroupLinks])
+    },
+    async loadRemoteSubscriptions() {
+      const msg = await HttpUtils.get('api/remote-outbound-subscriptions')
+      if (msg.success) {
+        this.remoteSubscriptions = msg.obj ?? []
+      }
     },
     closeModal() {
+      this.closeSelectMenus()
       this.updateData(0) // reset
       this.$emit('close')
     },
@@ -288,7 +297,8 @@ export default {
         this.client.config = updateConfigs(this.clientConfig, this.client.name)
         this.client.links = [
                           ...this.extLinks.filter(l => l.uri != ''),
-                          ...this.subLinks.filter(l => l.uri != '')]
+                          ...this.subLinks.filter(l => l.uri != ''),
+                          ...this.remoteGroupLinks.filter(l => l.groupId || l.remoteGroupId)]
         const success = await Data().save("clients", this.$props.id == 0 ? "new" : "edit", this.client)
         if (success) this.closeModal()
       } finally {
@@ -299,7 +309,10 @@ export default {
       this.client.expiry = newDate
     },
     setAllInbounds(){
-      this.client.inbounds = this.inboundTags.map((i:any) => i.value).sort()
+      this.client.inbounds = this.inboundTags.map((i:any) => typeof i === 'object' ? i.value : i).filter(Boolean).sort()
+    },
+    closeSelectMenus() {
+      window.dispatchEvent(new Event('sui-close-select-menus'))
     },
     shuffle(k?:string) {
       shuffleConfigs(this.clientConfig, k)
@@ -314,7 +327,40 @@ export default {
   computed: {
     dirty(): boolean {
       return this.snapshot !== '' &&
-        JSON.stringify([this.client, this.clientConfig, this.links, this.extLinks, this.subLinks]) !== this.snapshot
+        JSON.stringify([this.client, this.clientConfig, this.links, this.extLinks, this.subLinks, this.remoteGroupLinks]) !== this.snapshot
+    },
+    remoteGroupItems(): { title: string, value: number }[] {
+      const items: { title: string, value: number }[] = []
+      for (const subscription of this.remoteSubscriptions ?? []) {
+        for (const group of subscription.groups ?? []) {
+          const count = (subscription.connections ?? []).filter((connection:any) => {
+            const groupIds = connection.groupIds?.length ? connection.groupIds : (connection.groupId ? [connection.groupId] : [])
+            return groupIds.includes(group.id)
+          }).length
+          items.push({
+            title: `${subscription.name} / ${group.name} (${count})`,
+            value: group.id,
+          })
+        }
+      }
+      return items
+    },
+    remoteGroupIds: {
+      get(): number[] {
+        return this.remoteGroupLinks
+          .map(link => Number(link.groupId ?? link.remoteGroupId ?? 0))
+          .filter(Boolean)
+          .sort((a, b) => a - b)
+      },
+      set(ids: number[]) {
+        const names = new Map(this.remoteGroupItems.map(item => [item.value, item.title]))
+        this.remoteGroupLinks = (ids ?? []).map(id => ({
+          type: 'remoteGroup',
+          groupId: id,
+          remark: names.get(id) ?? String(id),
+          uri: '',
+        }))
+      },
     },
     clientInbounds: {
       get() { return this.client.inbounds.length>0 ? this.client.inbounds.sort() : [] },
@@ -372,10 +418,15 @@ export default {
     visible(newValue) {
       if (newValue) {
         this.updateData(this.$props.id)
+      } else {
+        this.closeSelectMenus()
       }
     },
+    tab() {
+      this.closeSelectMenus()
+    },
   },
-  components: { FormShell, DatePick },
+  components: { FormShell, DatePick, StrictSelect },
 }
 
 </script>

@@ -180,16 +180,18 @@
     </v-col>
   </v-row>
   <template v-if="nexus">
-    <div class="rules-nexus__section-row">
-      <div class="rules-nexus__section-label">{{ $t('rule.ruleset') }}</div>
-      <ManualSortButton
-        :disabled="rulesets.length < 2"
-        density="compact"
-        size="small"
-        @sort="sortRulesetsByName"
-      />
-    </div>
+    <CollapsibleSectionHeader v-model="rulesetsExpanded" :title="$t('rule.ruleset')" nexus>
+      <template #actions>
+        <ManualSortButton
+          :disabled="rulesets.length < 2"
+          density="compact"
+          size="small"
+          @sort="sortRulesetsByName"
+        />
+      </template>
+    </CollapsibleSectionHeader>
     <nexus-data-table
+      v-if="rulesetsExpanded"
       :columns="rulesetColumns"
       :drag-disabled="search.trim().length > 0"
       draggable-rows
@@ -209,14 +211,18 @@
   </template>
   <v-row v-else>
     <v-col class="v-card-subtitle" cols="12">
-      {{ $t('rule.ruleset') }}
-      <ManualSortButton
-        :disabled="rulesets.length < 2"
-        style="margin: 0 5px;"
-        @sort="sortRulesetsByName"
-      />
+      <CollapsibleSectionHeader v-model="rulesetsExpanded" :title="$t('rule.ruleset')">
+        <template #actions>
+          <ManualSortButton
+            :disabled="rulesets.length < 2"
+            style="margin: 0 5px;"
+            @sort="sortRulesetsByName"
+          />
+        </template>
+      </CollapsibleSectionHeader>
     </v-col>
     <v-col
+      v-if="rulesetsExpanded"
       cols="12"
       sm="4"
       md="3"
@@ -335,6 +341,7 @@
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
 import ManualSortButton from '@/components/ManualSortButton.vue'
+import CollapsibleSectionHeader from '@/components/CollapsibleSectionHeader.vue'
 import { computed, ref, onBeforeMount } from 'vue'
 import RuleVue from '@/layouts/modals/Rule.vue'
 import RulesetVue from '@/layouts/modals/Ruleset.vue'
@@ -369,6 +376,7 @@ const oldConfig = ref(<any>{})
 const loading = ref(false)
 const actionMenu = ref(false)
 const search = ref('')
+const rulesetsExpanded = ref(true)
 // Edit a LOCAL clone of the store config. A background reload (data.ts setNewData
 // replaces Data().config wholesale, driven by the 10s poll / WS events) must not wipe
 // unsaved edits, so the form binds to this clone instead of the live store object.
@@ -695,14 +703,6 @@ function saveImportRulesets(items: any[]) {
 </script>
 
 <style scoped>
-.rules-nexus__section-row {
-  align-items: center;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--nexus-gap-2);
-  margin-block: var(--nexus-gap-4) var(--nexus-gap-2);
-}
-
 .rules-nexus__section,
 .rules-nexus__section-label {
   color: var(--nexus-text-secondary);

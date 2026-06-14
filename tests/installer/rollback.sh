@@ -52,7 +52,17 @@ echo "unexpected fake ln invocation: $*" >&2
 exit 2
 SH
 
-    chmod +x "${FAKEBIN}/systemctl" "${FAKEBIN}/ln"
+    cat > "${FAKEBIN}/cp" <<'SH'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+if [[ "${TEST_FAIL_RESTORE_CP:-}" == "1" && "${1:-}" == "-a" && "${2:-}" == *"/20260101T000000Z/app" ]]; then
+    echo "simulated restore copy failure" >&2
+    exit 42
+fi
+exec /usr/bin/cp "$@"
+SH
+
+    chmod +x "${FAKEBIN}/systemctl" "${FAKEBIN}/ln" "${FAKEBIN}/cp"
 }
 
 create_current_install() {
@@ -93,15 +103,17 @@ EOF
 }
 
 run_rollback() {
+    local requested="${1:-latest}"
     PATH="${FAKEBIN}:${PATH}" \
     TEST_INSTALLER_LOG="${LOG_DIR}" \
+    TEST_FAIL_RESTORE_CP="${TEST_FAIL_RESTORE_CP:-}" \
     SOLOVEY_UI_ALLOW_NON_ROOT=1 \
     SOLOVEY_UI_INSTALL_DIR="${INSTALL_DIR}" \
     SOLOVEY_UI_CLI_PATH="${CLI_PATH}" \
     SOLOVEY_UI_SYSTEMD_SERVICE="${SERVICE_FILE}" \
     SOLOVEY_UI_ENV_DIR="${ENV_DIR}" \
     SOLOVEY_UI_BACKUP_ROOT="${BACKUP_ROOT}" \
-    "${BASH:-bash}" "${ROOT}/solovey-ui.sh" rollback latest
+    "${BASH:-bash}" "${ROOT}/solovey-ui.sh" rollback "${requested}"
 }
 
 run_version() {
@@ -164,6 +176,17 @@ assert_rollback() {
     assert_contains "${safety_backup}/solovey-ui.service" '^current service$'
 }
 
+assert_failed_restore_leaves_current_install() {
+    if TEST_FAIL_RESTORE_CP=1 run_rollback 20260101T000000Z > "${LOG_DIR}/rollback-fail.out" 2>&1; then
+        fail "rollback should fail when restore copy fails"
+    fi
+    assert_contains "${LOG_DIR}/rollback-fail.out" 'existing .+ was left unchanged'
+    assert_contains "${INSTALL_DIR}/db/solovey-ui.db" '^current db$'
+    assert_contains "${ENV_DIR}/secretbox.env" '^SUI_SECRETBOX_KEY=current-secret$'
+    assert_contains "${SERVICE_FILE}" '^current service$'
+    assert_contains "${CLI_PATH}" 'current manager'
+}
+
 write_fake_tools
 create_current_install
 create_backup
@@ -171,7 +194,8 @@ run_version
 assert_version
 run_doctor
 assert_doctor
-run_rollback
+assert_failed_restore_leaves_current_install
+run_rollback 20260101T000000Z
 assert_rollback
 
 printf 'PASS: installer rollback integration\n'

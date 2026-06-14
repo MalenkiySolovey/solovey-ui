@@ -56,6 +56,7 @@ const menu = [
   { title: 'pages.inbounds', icon: 'mdi-cloud-download',  path: '/inbounds' },
   { title: 'pages.clients', icon: 'mdi-account-multiple',  path: '/clients' },
   { title: 'pages.outbounds', icon: 'mdi-cloud-upload',  path: '/outbounds' },
+  { title: 'pages.remoteOutboundSubscriptions', icon: 'mdi-cloud-download',  path: '/remote-subscriptions' },
   { title: 'pages.endpoints', icon: 'mdi-cloud-tags',  path: '/endpoints' },
   { title: 'pages.services', icon: 'mdi-server',  path: '/services' },
   { title: 'pages.tls', icon: 'mdi-certificate',  path: '/tls' },
@@ -65,7 +66,9 @@ const menu = [
   { title: 'pages.singBoxConfig', icon: 'mdi-code-json',  path: '/sing-box-config' },
   { title: 'pages.admins', icon: 'mdi-account-tie',  path: '/admins' },
   { title: 'pages.telegram', icon: 'mdi-send',  path: '/telegram' },
+  { title: 'pages.paidSub', icon: 'mdi-cash-multiple',  path: '/paid-subscriptions' },
   { title: 'pages.audit', icon: 'mdi-shield-search',  path: '/audit' },
+  { title: 'pages.diagnostics', icon: 'mdi-clipboard-search',  path: '/diagnostics' },
   { title: 'pages.settings', icon: 'mdi-cog',  path: '/settings' },
 ]
 

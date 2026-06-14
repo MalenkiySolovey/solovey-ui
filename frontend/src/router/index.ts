@@ -37,6 +37,12 @@ const routes = [
         component: () => import('@/views/Outbounds.vue'),
       },
       {
+        path: '/remote-subscriptions',
+        name: 'pages.remoteOutboundSubscriptions',
+        alias: '/remote-outbound-subscriptions',
+        component: () => import('@/views/RemoteOutboundSubscriptions.vue'),
+      },
+      {
         path: '/services',
         name: 'pages.services',
         component: () => import('@/views/Services.vue'),
@@ -85,6 +91,11 @@ const routes = [
         path: '/audit',
         name: 'pages.audit',
         component: () => import('@/views/Audit.vue'),
+      },
+      {
+        path: '/diagnostics',
+        name: 'pages.diagnostics',
+        component: () => import('@/views/Diagnostics.vue'),
       },
       {
         path: '/migrate-xui',

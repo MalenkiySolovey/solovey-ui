@@ -2,14 +2,14 @@
   <v-card subtitle="URL Test">
     <v-row>
       <v-col cols="12" sm="6">
-        <v-combobox
+        <StrictSelect
           v-model="data.outbounds"
           :items="tags"
           :label="$t('pages.outbounds')"
           multiple
           chips
           hide-details
-        ></v-combobox>
+        />
       </v-col>
     </v-row>
     <v-row>
@@ -79,8 +79,10 @@
 </template>
 
 <script lang="ts">
+import StrictSelect from '@/components/StrictSelect.vue'
 
 export default {
+  components: { StrictSelect },
   props: ['data', 'tags'],
   data() {
     return {

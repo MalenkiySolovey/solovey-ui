@@ -9,9 +9,12 @@ const serverDir = path.join(phaseDir, 'e2e-server')
 const dbDir = path.join(phaseDir, 'e2e-db')
 const appDataDir = path.join(phaseDir, 'appdata')
 const statePath = path.join(serverDir, 'state.json')
+const bundledZig = path.join(repoRoot, '..', '..', '.devtools', 'zig-x86_64-windows-0.16.0', 'zig.exe')
+const resolvedCC = process.env.CC || (process.platform === 'win32' && fs.existsSync(bundledZig) ? `${bundledZig} cc` : undefined)
 
 fs.mkdirSync(serverDir, { recursive: true })
 fs.mkdirSync(appDataDir, { recursive: true })
+fs.rmSync(statePath, { force: true })
 fs.rmSync(dbDir, { recursive: true, force: true })
 fs.mkdirSync(dbDir, { recursive: true })
 
@@ -89,6 +92,8 @@ const main = async () => {
     SUI_DISABLE_CORE: '1',
     XUI_DISABLE_REMOTE: '1',
     APPDATA: appDataDir,
+    CGO_ENABLED: process.env.CGO_ENABLED || '1',
+    ...(resolvedCC ? { CC: resolvedCC } : {}),
     GOTELEMETRY: 'off',
     GOTELEMETRYDIR: path.join(serverDir, 'go-telemetry'),
   }

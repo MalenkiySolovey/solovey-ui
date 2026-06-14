@@ -35,6 +35,7 @@ export const nexusMenuGroups: NexusMenuGroup[] = [
       { title: 'pages.inbounds', icon: 'lucide:zap', path: '/inbounds', singBoxSettings: true, countKey: 'inbounds' },
       { title: 'pages.clients', icon: 'lucide:users', path: '/clients', countKey: 'clients' },
       { title: 'pages.outbounds', icon: 'lucide:arrow-up-right', path: '/outbounds', singBoxSettings: true, countKey: 'outbounds' },
+      { title: 'pages.remoteOutboundSubscriptions', icon: 'lucide:cloud-download', path: '/remote-subscriptions', singBoxSettings: true },
       { title: 'pages.endpoints', icon: 'lucide:globe', path: '/endpoints', singBoxSettings: true, countKey: 'endpoints' },
       { title: 'pages.services', icon: 'lucide:server', path: '/services', singBoxSettings: true, countKey: 'services' },
     ],
@@ -60,6 +61,7 @@ export const nexusMenuGroups: NexusMenuGroup[] = [
     items: [
       { title: 'pages.admins', icon: 'lucide:user-cog', path: '/admins' },
       { title: 'pages.audit', icon: 'lucide:file-text', path: '/audit' },
+      { title: 'pages.diagnostics', icon: 'lucide:gauge', path: '/diagnostics' },
       { title: 'pages.basics', icon: 'lucide:sliders-horizontal', path: '/basics', singBoxSettings: true },
       { title: 'pages.settings', icon: 'lucide:settings', path: '/settings' },
     ],

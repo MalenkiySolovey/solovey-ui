@@ -7,6 +7,7 @@ describe('nexus sing-box settings route parity', () => {
     expect(nexusSingBoxSettingsPaths).toEqual(expect.arrayContaining([
       '/inbounds',
       '/outbounds',
+      '/remote-subscriptions',
       '/endpoints',
       '/services',
       '/tls',
@@ -35,11 +36,11 @@ describe('nexus grouped navigation integrity', () => {
     const paths = nexusMenuGroups.flatMap(group => group.items.map(item => item.path))
 
     expect(paths).toEqual(expect.arrayContaining([
-      '/', '/inbounds', '/clients', '/outbounds', '/endpoints', '/services',
+      '/', '/inbounds', '/clients', '/outbounds', '/remote-subscriptions', '/endpoints', '/services',
       '/tls', '/rules', '/dns', '/sing-box-config', '/telegram', '/paid-subscriptions',
-      '/admins', '/audit', '/basics', '/settings',
+      '/admins', '/audit', '/diagnostics', '/basics', '/settings',
     ]))
-    expect(paths).toHaveLength(16)
+    expect(paths).toHaveLength(18)
   })
 
   it('labels every non-dashboard group with a nav.groups.* key', () => {

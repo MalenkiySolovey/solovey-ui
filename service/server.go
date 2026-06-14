@@ -5,7 +5,6 @@ import (
 	"net/netip"
 	"os"
 	"runtime"
-	"strconv"
 	"strings"
 	"time"
 
@@ -13,7 +12,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	"github.com/sagernet/sing-box/common/tls"
 	"github.com/shirou/gopsutil/v4/cpu"
@@ -247,86 +245,6 @@ func systemInterfaceUsable(flags []string) bool {
 		}
 	}
 	return up
-}
-
-const (
-	defaultLogCount = 10
-	maxLogCount     = 500
-	maxLogFilter    = 64
-)
-
-type LogQuery struct {
-	Count  int
-	Level  string
-	Source string
-	Filter string
-}
-
-func (s *ServerService) GetLogs(count string, level string) []string {
-	logs, err := s.GetLogsFiltered(count, level, "", "")
-	if err != nil {
-		return nil
-	}
-	return logs
-}
-
-func (s *ServerService) GetLogsFiltered(count string, level string, source string, filter string) ([]string, error) {
-	query, err := ParseLogQuery(count, level, source, filter)
-	if err != nil {
-		return nil, err
-	}
-	return logger.GetLogsFiltered(query.Count, query.Level, query.Source, query.Filter), nil
-}
-
-func ParseLogQuery(count string, level string, source string, filter string) (LogQuery, error) {
-	parsedCount := defaultLogCount
-	if count != "" {
-		c, err := strconv.Atoi(count)
-		if err != nil || c <= 0 {
-			return LogQuery{}, common.NewError("invalid log count")
-		}
-		if c > maxLogCount {
-			c = maxLogCount
-		}
-		parsedCount = c
-	}
-	if level == "" {
-		level = "debug"
-	}
-	level = strings.ToLower(level)
-	if !isValidLogLevel(level) {
-		return LogQuery{}, common.NewError("invalid log level")
-	}
-	if source != "" && source != "panel" && source != "core" {
-		return LogQuery{}, common.NewError("invalid log source")
-	}
-	if len(filter) > maxLogFilter || containsControlRune(filter) {
-		return LogQuery{}, common.NewError("invalid log filter")
-	}
-	return LogQuery{
-		Count:  parsedCount,
-		Level:  level,
-		Source: source,
-		Filter: filter,
-	}, nil
-}
-
-func isValidLogLevel(level string) bool {
-	switch strings.ToLower(level) {
-	case "debug", "info", "notice", "warning", "error", "critical":
-		return true
-	default:
-		return false
-	}
-}
-
-func containsControlRune(value string) bool {
-	for _, r := range value {
-		if r == 0 || r < 0x20 || r == 0x7f {
-			return true
-		}
-	}
-	return false
 }
 
 func (s *ServerService) GenKeypair(keyType string, options string) []string {

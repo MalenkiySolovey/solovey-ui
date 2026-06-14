@@ -10,8 +10,12 @@
 
     <page-toolbar>
       <template #actions>
-        <ManualSortButton
-          :disabled="outbounds.length < 2"
+        <ManualOrderControls
+          :dirty="orderDirty"
+          :saving="orderSaving"
+          :sort-disabled="outbounds.length < 2"
+          @cancel="emit('cancelOrder')"
+          @save="emit('saveOrder')"
           @sort="sortByName"
         />
         <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" @click="emit('add')">
@@ -47,6 +51,12 @@
 
       <template #col.tag="{ item }">
         <span class="outbounds-nexus__tag">{{ item.tag }}</span>
+        <nexus-badge
+          v-if="item.remoteOutboundManaged"
+          class="outbounds-nexus__remote-badge"
+          :label="$t('remoteOutbound.managedOutbound')"
+          variant="secondary"
+        />
       </template>
 
       <template #col.server="{ item }">
@@ -116,7 +126,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import ManualSortButton from '@/components/ManualSortButton.vue'
+import ManualOrderControls from '@/components/ManualOrderControls.vue'
 import type { Column } from '@/components/nexus/data/dataTableColumns'
 import NexusDataTable from '@/components/nexus/data/NexusDataTable.vue'
 import RowActions from '@/components/nexus/data/RowActions.vue'
@@ -143,6 +153,7 @@ interface OutboundRow {
   server?: string
   server_port?: number
   tls?: { enabled?: boolean }
+  remoteOutboundManaged?: boolean
   [key: string]: unknown
 }
 
@@ -151,18 +162,22 @@ const props = defineProps<{
   onlines: string[]
   enableTraffic: boolean
   checkResults: Record<string, CheckResult>
+  orderDirty?: boolean
+  orderSaving?: boolean
   testingAll: boolean
 }>()
 
 const emit = defineEmits<{
   add: []
   addBulk: []
+  cancelOrder: []
   testAll: []
   test: [tag: string]
   edit: [id: number]
   del: [tag: string]
   move: [id: number, dir: number]
   moveTo: [draggedId: number, targetId: number]
+  saveOrder: []
   sortByName: [direction: ManualSortDirection]
   stats: [tag: string]
 }>()
@@ -225,7 +240,9 @@ const handleAction = async (key: string, item: OutboundRow) => {
     case 'del': {
       const discard = await confirm({
         title: `${t('actions.del')} ${t('objects.outbound')}`,
-        message: item.tag,
+        message: item.remoteOutboundManaged
+          ? `${item.tag}\n${t('remoteOutbound.deleteManagedOutboundWarning')}`
+          : item.tag,
         confirmLabel: t('actions.del'),
         tone: 'error',
       })
@@ -241,6 +258,10 @@ const handleAction = async (key: string, item: OutboundRow) => {
 .outbounds-nexus__tag {
   color: var(--nexus-text-primary);
   font-weight: 600;
+}
+
+.outbounds-nexus__remote-badge {
+  margin-inline-start: var(--nexus-gap-2);
 }
 
 .outbounds-nexus__muted {

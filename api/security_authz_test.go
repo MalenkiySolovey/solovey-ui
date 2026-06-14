@@ -28,6 +28,9 @@ type securityAuthZRow struct {
 func securityAuthZScopeRows() []securityAuthZRow {
 	return []securityAuthZRow{
 		{method: http.MethodGet, path: "/apiv2/security/audit", auditAdmin: true},
+		{method: http.MethodGet, path: "/apiv2/logs/entries", resource: "logs", allowed: []string{"admin", "read", "write", "observability"}},
+		{method: http.MethodGet, path: "/apiv2/diagnostics/report", resource: "diagnostics", allowed: []string{"admin", "read", "write", "observability"}},
+		{method: http.MethodGet, path: "/apiv2/diagnostics/bundle", resource: "diagnostics", allowed: []string{"admin", "read", "write", "observability"}},
 		{method: http.MethodPost, path: "/apiv2/rotateSubSecret", resource: "client", allowed: []string{"admin", "write"}},
 		{method: http.MethodPost, path: "/apiv2/telegram/test", resource: "telegram", allowed: []string{"admin"}},
 		{method: http.MethodPost, path: "/apiv2/telegram/backup", resource: "telegram", allowed: []string{"telegram", "admin"}},
@@ -39,6 +42,19 @@ func securityAuthZScopeRows() []securityAuthZRow {
 		{method: http.MethodPost, path: "/apiv2/importdb", resource: "database", allowed: []string{"admin", "database"}},
 		{method: http.MethodPost, path: "/apiv2/import-xui", resource: "database", allowed: []string{"admin", "database"}},
 		{method: http.MethodGet, path: "/apiv2/getdb", resource: "database", allowed: []string{"admin", "database"}},
+		{method: http.MethodGet, path: "/api/remote-outbound-subscriptions", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "read", "write"}},
+		{method: http.MethodPost, path: "/api/remote-outbound-subscriptions/save", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
+		{method: http.MethodPost, path: "/api/remote-outbound-subscriptions/delete", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
+		{method: http.MethodPost, path: "/api/remote-outbound-subscriptions/refresh", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
+		{method: http.MethodGet, path: "/api/remote-outbound-subscriptions/test", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
+		{method: http.MethodGet, path: "/api/remote-outbound-subscriptions/test-all", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
+		{method: http.MethodPost, path: "/api/remote-outbound-subscriptions/groups/save", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
+		{method: http.MethodPost, path: "/api/remote-outbound-subscriptions/groups/delete", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
+		{method: http.MethodPost, path: "/api/remote-outbound-subscriptions/groups/connections", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
+		{method: http.MethodPost, path: "/api/remote-outbound-subscriptions/groups/outbounds", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
+		{method: http.MethodPost, path: "/api/remote-outbound-subscriptions/connections/group", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
+		{method: http.MethodPost, path: "/api/remote-outbound-subscriptions/connections/sync", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
+		{method: http.MethodGet, path: "/api/remote-outbound-subscriptions/connections/test", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
 	}
 }
 

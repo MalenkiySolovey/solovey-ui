@@ -31,9 +31,18 @@ const (
 
 type bufferedLog struct {
 	time   string
+	at     time.Time
 	level  slog.Level
 	source string
 	log    string
+}
+
+type Entry struct {
+	Time      string `json:"time"`
+	Timestamp int64  `json:"timestamp"`
+	Level     string `json:"level"`
+	Source    string `json:"source"`
+	Message   string `json:"message"`
 }
 
 type loggerConfig struct {
@@ -218,6 +227,7 @@ func addToBufferAt(source string, level slog.Level, newLog string, t time.Time) 
 
 	logBuffer.append(bufferedLog{
 		time:   t.Format("2006/01/02 15:04:05"),
+		at:     t,
 		level:  level,
 		source: source,
 		log:    newLog,
@@ -229,7 +239,16 @@ func GetLogs(c int, level string) []string {
 }
 
 func GetLogsFiltered(c int, level string, source string, filter string) []string {
+	entries := GetLogEntriesFiltered(c, level, source, filter)
 	var output []string
+	for _, entry := range entries {
+		output = append(output, fmt.Sprintf("%s %s - %s", entry.Time, entry.Level, entry.Message))
+	}
+	return output
+}
+
+func GetLogEntriesFiltered(c int, level string, source string, filter string) []Entry {
+	var output []Entry
 	minLevel := parseSlogLevel(level)
 
 	logBufferMu.RLock()
@@ -245,10 +264,24 @@ func GetLogsFiltered(c int, level string, source string, filter string) []string
 			continue
 		}
 		if entry.level >= minLevel {
-			output = append(output, fmt.Sprintf("%s %s - %s", entry.time, slogLevelName(entry.level), entry.log))
+			output = append(output, newEntry(entry))
 		}
 	}
 	return output
+}
+
+func newEntry(entry bufferedLog) Entry {
+	timestamp := int64(0)
+	if !entry.at.IsZero() {
+		timestamp = entry.at.Unix()
+	}
+	return Entry{
+		Time:      entry.time,
+		Timestamp: timestamp,
+		Level:     slogLevelName(entry.level),
+		Source:    entry.source,
+		Message:   entry.log,
+	}
 }
 
 func parseSlogLevel(level string) slog.Level {

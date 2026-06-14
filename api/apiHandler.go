@@ -65,6 +65,9 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	g.GET("/status", a.ApiService.GetStatus)
 	g.GET("/onlines", a.ApiService.GetOnlines)
 	g.GET("/logs", a.ApiService.GetLogs)
+	g.GET("/logs/entries", a.ApiService.GetLogEntries)
+	g.GET("/diagnostics/report", a.ApiService.GetDiagnosticsReport)
+	g.GET("/diagnostics/bundle", a.ApiService.GetDiagnosticsBundle)
 	g.GET("/changes", a.ApiService.CheckChanges)
 	g.GET("/keypairs", a.ApiService.GetKeypairs)
 	g.GET("/getdb", a.ApiService.GetDb)
@@ -74,6 +77,7 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	g.GET("/version", a.ApiService.GetVersionInfo)
 	g.POST("/checkOutbounds", a.ApiService.CheckOutbounds)
 	g.POST("/rotateSubSecret", a.ApiService.RotateSubSecret)
+	registerRemoteOutboundSubscriptionRoutes(g, &a.ApiService)
 
 	security := g.Group("/security")
 	security.GET("/audit", a.ApiService.GetSecurityAudit)

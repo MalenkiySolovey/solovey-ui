@@ -134,7 +134,37 @@ echo "unexpected fake ln invocation: $*" >&2
 exit 2
 SH
 
-    chmod +x "${FAKEBIN}/curl" "${FAKEBIN}/systemctl" "${FAKEBIN}/ln"
+    cat > "${FAKEBIN}/df" <<'SH'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ "${1:-}" == "-k" ]]; then
+    target="${2:-/}"
+    printf 'Filesystem 1K-blocks Used Available Use%% Mounted on\n'
+    if [[ "${TEST_BACKUP_LOW_SPACE:-0}" == "1" ]]; then
+        printf 'fakefs 100 99 1 99%% %s\n' "${target}"
+    else
+        printf 'fakefs 1000000 1 999999 1%% %s\n' "${target}"
+    fi
+    exit 0
+fi
+
+exec /usr/bin/df "$@"
+SH
+
+    cat > "${FAKEBIN}/cp" <<'SH'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+if [[ "${TEST_FAIL_INSTALL_RESTORE_CP:-0}" == "1" && "${1:-}" == "-a" && "${2:-}" == *"/app" && "${3:-}" == *"/.solovey-ui.restoring."* ]]; then
+    echo "simulated install rollback restore copy failure" >&2
+    exit 43
+fi
+
+exec /usr/bin/cp "$@"
+SH
+
+    chmod +x "${FAKEBIN}/curl" "${FAKEBIN}/systemctl" "${FAKEBIN}/ln" "${FAKEBIN}/df" "${FAKEBIN}/cp"
 }
 
 create_release_fixture() {
@@ -179,6 +209,8 @@ run_installer() {
     FIXTURE_SHA="${FIXTURE}/${version}/solovey-ui-linux-amd64.tar.gz.sha256" \
     TEST_INSTALLER_LOG="${LOG_DIR}" \
     TEST_BINARY_FAIL_MIGRATE="${TEST_BINARY_FAIL_MIGRATE:-0}" \
+    TEST_BACKUP_LOW_SPACE="${TEST_BACKUP_LOW_SPACE:-0}" \
+    TEST_FAIL_INSTALL_RESTORE_CP="${TEST_FAIL_INSTALL_RESTORE_CP:-0}" \
     TEST_SERVICE_FILE="${SERVICE_FILE}" \
     SOLOVEY_UI_ALLOW_NON_ROOT=1 \
     SOLOVEY_UI_GITHUB_RELEASES="https://example.invalid/releases/download" \
@@ -228,6 +260,24 @@ assert_update_install() {
     assert_contains "${backup_dir}/manifest.txt" '^build_sing_box=v-test-v1$'
 }
 
+assert_low_space_backup_precheck() {
+    local output="${LOG_DIR}/low-space-update.out"
+    local before_count after_count
+
+    before_count="$(find "${BACKUP_ROOT}" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+    if TEST_BACKUP_LOW_SPACE=1 run_installer v3 >"${output}" 2>&1; then
+        fail "installer succeeded despite forced low backup space"
+    fi
+    after_count="$(find "${BACKUP_ROOT}" -mindepth 1 -maxdepth 1 -type d | wc -l | tr -d ' ')"
+
+    [[ "${before_count}" == "${after_count}" ]] || fail "low-space precheck created a partial backup"
+    assert_contains "${output}" 'not enough disk space for backup'
+    assert_contains "${INSTALL_DIR}/solovey-ui.sh" 'manager v2'
+    assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^version=v2$'
+    assert_contains "${SERVICE_FILE}" '^service v2$'
+    assert_contains "${CLI_PATH}" 'manager v2'
+}
+
 assert_failed_update_rolls_back() {
     local output="${LOG_DIR}/failed-update.out"
 
@@ -248,6 +298,22 @@ assert_failed_update_rolls_back() {
     local rollback_backup
     rollback_backup="$(grep -R -l '^build_version=v2$' "${BACKUP_ROOT}"/*/manifest.txt | head -n 1)"
     [[ -n "${rollback_backup}" ]] || fail "failed update did not create a v2 rollback manifest"
+}
+
+assert_failed_rollback_copy_is_non_destructive() {
+    local output="${LOG_DIR}/failed-rollback-copy.out"
+
+    printf 'db before failed rollback copy\n' > "${INSTALL_DIR}/db/solovey-ui.db"
+    if TEST_BINARY_FAIL_MIGRATE=1 TEST_FAIL_INSTALL_RESTORE_CP=1 run_installer v3 >"${output}" 2>&1; then
+        fail "installer succeeded despite forced rollback restore failure"
+    fi
+
+    assert_contains "${output}" 'rollback restore failed while copying'
+    assert_contains "${output}" 'rollback after failed install failed'
+    assert_contains "${INSTALL_DIR}/solovey-ui.sh" 'manager v3'
+    assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^version=v3$'
+    assert_contains "${SERVICE_FILE}" '^service v3$'
+    assert_contains "${INSTALL_DIR}/db/solovey-ui.db" '^db before failed rollback copy$'
 }
 
 assert_download_failure_is_non_destructive() {
@@ -286,7 +352,13 @@ run_installer v2
 assert_update_install
 
 reset_logs
+assert_low_space_backup_precheck
+
+reset_logs
 assert_failed_update_rolls_back
+
+reset_logs
+assert_failed_rollback_copy_is_non_destructive
 
 rm -rf "${TARGET}"
 mkdir -p "${TARGET}"

@@ -41,9 +41,11 @@ RUN CRONET_ARCH="$TARGETARCH" && \
 COPY . .
 COPY --from=front-builder /app/dist/ /app/web/html/
 
+# Keep Docker build tags aligned with the release workflow. The container keeps
+# dynamic linking because the Alpine runtime ships musl and libcronet.so.
 RUN if [ "$TARGETARCH" = "arm" ]; then export GOARM=7; [ "$TARGETVARIANT" = "v6" ] && export GOARM=6; fi; \
-    go build -ldflags="-w -s" \
-    -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,with_tailscale" \
+    go build -ldflags="-w -s -checklinkname=0" \
+    -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale,with_naive_outbound,with_musl" \
     -o solovey-ui main.go
 
 FROM alpine

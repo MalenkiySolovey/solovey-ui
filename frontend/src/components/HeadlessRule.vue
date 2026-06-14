@@ -35,7 +35,7 @@
     <template v-else>
       <v-row>
         <v-col cols="12" sm="6" md="4" v-if="optionQueryType">
-          <v-combobox v-model="rule.query_type" :items="queryTypes" :label="$t('dns.rule.queryType')" multiple chips hide-details />
+          <StrictSelect v-model="rule.query_type" :items="queryTypes" :label="$t('dns.rule.queryType')" multiple chips hide-details />
         </v-col>
         <v-col cols="12" sm="6" md="4" v-if="optionNetwork">
           <v-select v-model="rule.network" :items="['tcp', 'udp']" :label="$t('network')" multiple chips hide-details />
@@ -126,6 +126,7 @@
 <script lang="ts">
 import RuleInterfaceAddress from '@/components/RuleInterfaceAddress.vue'
 import RuleNetworkState from '@/components/RuleNetworkState.vue'
+import StrictSelect from '@/components/StrictSelect.vue'
 
 const splitStringList = (value: string): string[] => value
   .split(/[\n,]/)
@@ -138,7 +139,7 @@ const splitNumberList = (value: string): number[] => splitStringList(value)
 
 export default {
   name: 'HeadlessRule',
-  components: { RuleInterfaceAddress, RuleNetworkState },
+  components: { RuleInterfaceAddress, RuleNetworkState, StrictSelect },
   props: ['rule', 'deleteable'],
   emits: ['delete'],
   data() {
