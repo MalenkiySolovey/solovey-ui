@@ -10,7 +10,7 @@ WORKDIR /app
 ARG TARGETARCH
 ARG TARGETVARIANT
 ARG CRONET_GO_VERSION=2faf34666c2cc8234f10f2ab6d4c4d6104d34ae2
-ARG CRONET_GO_DOWNLOAD_DATE=2026-05-13
+ARG CRONET_GO_REPO=https://github.com/sagernet/cronet-go.git
 ENV CGO_ENABLED=1
 ENV CGO_CFLAGS="-D_LARGEFILE64_SOURCE"
 ENV GOARCH=$TARGETARCH
@@ -24,27 +24,40 @@ RUN apk update && apk add --no-cache \
     wget \
     unzip \
     bash \
-    curl
+    curl \
+    ca-certificates \
+    gnupg \
+    xz
 
 ENV CC=gcc
-
-# SagerNet/cronet-go does not publish prebuilt release assets keyed by commit
-# SHA. Keep the source pin synchronized with release.yml and download the
-# latest prebuilt asset as of CRONET_GO_DOWNLOAD_DATE until pinned assets exist.
-RUN CRONET_ARCH="$TARGETARCH" && \
-    CRONET_URL="https://github.com/SagerNet/cronet-go/releases/latest/download/libcronet-linux-${CRONET_ARCH}.so"; \
-    echo "cronet-go source pin: ${CRONET_GO_VERSION}; prebuilt asset fallback date: ${CRONET_GO_DOWNLOAD_DATE}" && \
-    echo "Downloading $CRONET_URL" && \
-    wget -q -O ./libcronet.so "$CRONET_URL" && \
-    chmod 755 ./libcronet.so
 
 COPY . .
 COPY --from=front-builder /app/dist/ /app/web/html/
 
-# Keep Docker build tags aligned with the release workflow. The container keeps
-# dynamic linking because the Alpine runtime ships musl and libcronet.so.
-RUN if [ "$TARGETARCH" = "arm" ]; then export GOARM=7; [ "$TARGETVARIANT" = "v6" ] && export GOARM=6; fi; \
-    go build -ldflags="-w -s -checklinkname=0" \
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+
+# Build Docker images with the same naive outbound support as Linux release
+# artifacts. cronet-go provides the static libcronet.a and musl toolchain env
+# required by sing-box's with_naive_outbound build tag.
+RUN set -e; \
+    git init /tmp/cronet-go; \
+    git -C /tmp/cronet-go remote add origin "${CRONET_GO_REPO}"; \
+    git -C /tmp/cronet-go fetch --depth=1 origin "${CRONET_GO_VERSION}"; \
+    git -C /tmp/cronet-go checkout FETCH_HEAD; \
+    git -C /tmp/cronet-go submodule update --init --recursive --depth=1; \
+    rm -f /tmp/cronet-go/naiveproxy/src/build/linux/sysroot_scripts/keyring.gpg; \
+    (cd /tmp/cronet-go && GPG_TTY=/dev/null ./naiveproxy/src/build/linux/sysroot_scripts/generate_keyring.sh); \
+    cronet_target="linux/${TARGETARCH}"; \
+    cd /tmp/cronet-go; \
+    go run ./cmd/build-naive --target="${cronet_target}" --libc=musl download-toolchain; \
+    while IFS= read -r line; do \
+        line="${line#export }"; \
+        [[ -z "${line}" ]] && continue; \
+        export "${line}"; \
+    done < <(go run ./cmd/build-naive --target="${cronet_target}" --libc=musl env); \
+    cd /app; \
+    if [ "$TARGETARCH" = "arm" ]; then export GOARM=7; [ "$TARGETVARIANT" = "v6" ] && export GOARM=6; fi; \
+    go build -ldflags="-w -s -checklinkname=0 -linkmode external -extldflags '-static'" \
     -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale,with_naive_outbound,with_musl" \
     -o solovey-ui main.go
 
@@ -53,6 +66,6 @@ FROM alpine
 ENV TZ=Europe/Moscow
 WORKDIR /app
 RUN set -ex && apk add --no-cache --upgrade bash tzdata ca-certificates nftables
-COPY --from=backend-builder /app/solovey-ui /app/libcronet.so /app/
+COPY --from=backend-builder /app/solovey-ui /app/
 COPY entrypoint.sh /app/
 ENTRYPOINT [ "./entrypoint.sh" ]
