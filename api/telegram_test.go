@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )
@@ -29,8 +29,10 @@ func TestAPIV2TelegramTestRequiresAdminScope(t *testing.T) {
 		t.Fatalf("read token should be forbidden, got %d", recorder.Code)
 	}
 
+	flushAPIAudit(t)
+
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "scope_denied").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "scope_denied").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Resource != "telegram" {
@@ -68,8 +70,10 @@ func TestAPIV2TelegramTestAuditsWithoutSecrets(t *testing.T) {
 		t.Fatalf("disabled Telegram test should report provider failure, got %#v", payload)
 	}
 
+	flushAPIAudit(t)
+
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "telegram_test").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "telegram_test").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Resource != "telegram" {

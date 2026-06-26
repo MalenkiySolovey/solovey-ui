@@ -15,7 +15,7 @@
             <v-btn color="primary" @click="ruleData.rules.push(<dnsRule>{})" hide-details>{{ $t('actions.add') + " " + $t('objects.rule') }}</v-btn>
           </v-col>
         </v-row>
-        <v-card style="background-color: inherit; margin-bottom: 5px;" v-for="(r, index) in ruleData.rules" v-if="ruleData.type == 'logical'">
+        <v-card style="background-color: inherit; margin-bottom: 5px;" v-for="(r, index) in ruleData.rules" :key="ruleObjectKey(r)" v-if="ruleData.type == 'logical'">
           <v-card-subtitle>{{ $t('objects.rule') + ' ' + (Number(index)+1) }}
             <v-icon @click="ruleData.rules.splice(index,1)" icon="mdi-delete" v-if="ruleData.rules.length>1" />
           </v-card-subtitle>
@@ -54,7 +54,7 @@
             <v-switch color="primary" v-model="ruleData.invert" :label="$t('rule.invert')" hide-details></v-switch>
           </v-col>
         </v-row>
-        <v-card :subtitle="$t('dns.rule.action.route')" v-if="['route', 'route-options'].includes(ruleData.action)">
+        <v-card :subtitle="$t(ruleData.action == 'route' ? 'dns.rule.action.route' : 'dns.rule.action.routeOptions')" v-if="['route', 'route-options'].includes(ruleData.action)">
           <v-row v-if="ruleData.action == 'route'">
             <v-col cols="12" sm="6" md="4">
               <v-select
@@ -134,9 +134,13 @@
 
 <script lang="ts">
 import { logicalDnsRule, dnsRule, actionDnsRuleKeys } from '@/types/dns'
-import RuleOptions from '@/components/DnsRule.vue'
+import RuleOptions from '@/components/rules/DnsRule.vue'
 import { i18n } from '@/locales'
 import FormShell from '@/components/nexus/drawers/FormShell.vue'
+
+const dnsRuleObjectKeys = new WeakMap<object, number>()
+let dnsRuleObjectKeySeq = 0
+
 export default {
   props: ['visible', 'data', 'index', 'clients', 'inTags', 'serverTags', 'ruleSets'],
   emits: ['close', 'save'],
@@ -176,6 +180,15 @@ export default {
     }
   },
   methods: {
+    ruleObjectKey(r: any): number {
+      if (r == null || typeof r !== 'object') return -1
+      let key = dnsRuleObjectKeys.get(r)
+      if (key === undefined) {
+        key = ++dnsRuleObjectKeySeq
+        dnsRuleObjectKeys.set(r, key)
+      }
+      return key
+    },
     updateData() {
       if (this.$props.index != -1) {
         const newData = JSON.parse(this.$props.data)

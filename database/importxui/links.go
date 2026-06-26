@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	"github.com/MalenkiySolovey/solovey-ui/util"
+	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 
 	"gorm.io/gorm"
 )
@@ -52,13 +52,13 @@ func localLinkEntries(tx *gorm.DB, config json.RawMessage, inboundsJSON json.Raw
 	}
 	var inbounds []model.Inbound
 	if err := tx.Model(model.Inbound{}).Preload("Tls").
-		Where("id in ? and type in ?", inboundIDs, util.InboundTypeWithLink).
+		Where("id in ? and type in ?", inboundIDs, suburi.SupportedInboundTypes).
 		Find(&inbounds).Error; err != nil {
 		return nil, err
 	}
 	entries := make([]map[string]string, 0, len(inbounds))
 	for i := range inbounds {
-		for _, uri := range util.LinkGenerator(config, &inbounds[i], hostname) {
+		for _, uri := range suburi.Generate(config, &inbounds[i], hostname) {
 			entries = append(entries, map[string]string{
 				"remark": inbounds[i].Tag,
 				"type":   "local",

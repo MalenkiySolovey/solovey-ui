@@ -24,6 +24,12 @@
         <v-btn prepend-icon="lucide:plus" variant="tonal" @click="emit('addBulk')">
           {{ $t('actions.addbulk') }}
         </v-btn>
+        <BulkSelectionControls
+          :active="selectionMode"
+          :count="selectedIds.length"
+          @delete="deleteSelected"
+          @toggle="toggleSelectionMode"
+        />
         <v-btn
           append-icon="lucide:gauge"
           :disabled="testingAll || outbounds.length === 0"
@@ -42,7 +48,11 @@
       draggable-rows
       :items="filtered"
       :row-key="(item) => item.id"
-      @row-drop="(dragged, target) => emit('moveTo', dragged.id, target.id)"
+      :selectable="selectionMode"
+      :selected="selectedIds"
+      @update:selected="selectedIds = $event"
+      @row-drop="(dragged, target, position) => emit('moveTo', dragged.id, target.id, position)"
+      @rows-drop="(dragged, target, position) => emit('moveManyTo', dragged.map(item => item.id), target.id, position)"
     >
       <template #col.status="{ item }">
         <status-badge v-if="onlines.includes(item.tag)" :label="$t('online')" tone="success" />
@@ -57,10 +67,24 @@
           :label="$t('remoteOutbound.managedOutbound')"
           variant="secondary"
         />
+        <nexus-badge
+          v-if="item.remoteMissing"
+          class="outbounds-nexus__remote-badge"
+          :label="$t('remoteOutbound.missing')"
+          variant="warning"
+        />
+        <div v-if="item.remoteMissing" class="outbounds-nexus__remote-missing">
+          {{ item.remoteMissingSource || item.remoteOutboundSubscription || item.remoteOutboundConnection || item.remoteMissingReason }}
+        </div>
       </template>
 
       <template #col.server="{ item }">
-        <span v-if="item.server" class="nexus-mono">{{ item.server }}</span>
+        <template v-if="item.type === 'failover'">
+          <span v-if="failoverActive(item.tag)" class="nexus-mono outbounds-nexus__active">→ {{ failoverActive(item.tag) }}</span>
+          <nexus-badge v-if="failoverAllDown(item.tag)" class="ml-1" :label="$t('types.failover.allDown')" variant="secondary" />
+          <span v-if="!failoverActive(item.tag) && !failoverAllDown(item.tag)" class="outbounds-nexus__muted">—</span>
+        </template>
+        <span v-else-if="item.server" class="nexus-mono">{{ item.server }}</span>
         <span v-else class="outbounds-nexus__muted">—</span>
       </template>
 
@@ -126,7 +150,8 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import ManualOrderControls from '@/components/ManualOrderControls.vue'
+import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
+import ManualOrderControls from '@/shared/ui/ManualOrderControls.vue'
 import type { Column } from '@/components/nexus/data/dataTableColumns'
 import NexusDataTable from '@/components/nexus/data/NexusDataTable.vue'
 import RowActions from '@/components/nexus/data/RowActions.vue'
@@ -137,7 +162,10 @@ import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import StatusBadge from '@/components/nexus/primitives/StatusBadge.vue'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
-import type { ManualSortDirection } from '@/composables/useManualReorder'
+import { useBulkSelection } from '@/shared/composables/dragSelection/bulkSelection'
+import type { ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
+import type { ManualSortDirection } from '@/shared/composables/dragSelection/manualReorder'
+import type { FailoverStatusMap } from '@/shared/composables/useFailoverStatus'
 
 interface CheckResult {
   loading?: boolean
@@ -154,6 +182,11 @@ interface OutboundRow {
   server_port?: number
   tls?: { enabled?: boolean }
   remoteOutboundManaged?: boolean
+  remoteMissing?: boolean
+  remoteMissingReason?: string
+  remoteMissingSource?: string
+  remoteOutboundConnection?: string
+  remoteOutboundSubscription?: string
   [key: string]: unknown
 }
 
@@ -162,6 +195,7 @@ const props = defineProps<{
   onlines: string[]
   enableTraffic: boolean
   checkResults: Record<string, CheckResult>
+  failoverStatus: FailoverStatusMap
   orderDirty?: boolean
   orderSaving?: boolean
   testingAll: boolean
@@ -175,8 +209,10 @@ const emit = defineEmits<{
   test: [tag: string]
   edit: [id: number]
   del: [tag: string]
+  delMany: [tags: string[]]
   move: [id: number, dir: number]
-  moveTo: [draggedId: number, targetId: number]
+  moveManyTo: [draggedIds: number[], targetId: number, position: ManualDropPosition | null]
+  moveTo: [draggedId: number, targetId: number, position: ManualDropPosition | null]
   saveOrder: []
   sortByName: [direction: ManualSortDirection]
   stats: [tag: string]
@@ -185,6 +221,12 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const { confirm } = useConfirm()
 const search = ref('')
+const selection = useBulkSelection(computed(() => props.outbounds), item => item.id)
+const selectionMode = selection.active
+const selectedIds = selection.selectedIds
+
+const failoverActive = (tag: string): string => props.failoverStatus[tag]?.active || ''
+const failoverAllDown = (tag: string): boolean => props.failoverStatus[tag]?.allDown === true
 
 const sortByName = (direction: ManualSortDirection) => {
   emit('sortByName', direction)
@@ -214,6 +256,23 @@ const filtered = computed<OutboundRow[]>(() => {
 
   return props.outbounds.filter(item => String(item.tag).toLowerCase().includes(query))
 })
+
+const selectedRows = selection.selectedItems
+const toggleSelectionMode = selection.toggleActive
+
+const deleteSelected = async () => {
+  const tags = selectedRows.value.map(item => item.tag)
+  if (tags.length === 0) return
+  const accepted = await confirm({
+    title: `${t('actions.delbulk')} ${t('objects.outbound')}`,
+    message: tags.join('\n'),
+    confirmLabel: t('actions.del'),
+    tone: 'error',
+  })
+  if (!accepted) return
+  emit('delMany', tags)
+  selection.clear()
+}
 
 const outboundActions = (item: OutboundRow): RowAction[] => [
   { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || props.outbounds.findIndex(row => row.id === item.id) === 0 },
@@ -264,8 +323,20 @@ const handleAction = async (key: string, item: OutboundRow) => {
   margin-inline-start: var(--nexus-gap-2);
 }
 
+.outbounds-nexus__remote-missing {
+  color: var(--nexus-status-warn);
+  font-size: 0.75rem;
+  line-height: 1.25;
+  margin-top: 2px;
+}
+
 .outbounds-nexus__muted {
   color: var(--nexus-text-muted);
+}
+
+.outbounds-nexus__active {
+  color: var(--nexus-text-primary);
+  font-weight: 600;
 }
 
 .outbounds-nexus__delay {

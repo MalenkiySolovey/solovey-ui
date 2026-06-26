@@ -65,7 +65,7 @@
         </v-text-field>
       </v-col>
     </v-row>
-    <v-row>
+    <v-row v-if="data.ext">
       <v-col cols="12" sm="8">
         <v-text-field v-model="data.ext.dns" :label="$t('dns.title') + ' ' + $t('commaSeparated')" hide-details></v-text-field>
       </v-col>
@@ -121,7 +121,7 @@
 </template>
 
 <script lang="ts">
-import Peer from '@/components/WgPeer.vue'
+import Peer from '@/components/fields/WgPeer.vue'
 
 export default {
   props: ['data'],
@@ -189,7 +189,10 @@ export default {
     },
     public_key: {
       get() { return this.$props.data.ext?.public_key?? '' },
-      set(v:string) { this.$props.data.ext.public_key = v }
+      set(v:string) {
+        if (!this.$props.data.ext) this.$props.data.ext = { keys: [] }
+        this.$props.data.ext.public_key = v
+      }
     }
   },
   components: { Peer }

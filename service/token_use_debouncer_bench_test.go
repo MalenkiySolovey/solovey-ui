@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 func BenchmarkTokenUseDebouncer_Record(b *testing.B) {
@@ -49,7 +49,7 @@ func BenchmarkTokenUseDebouncer_BatchFlush(b *testing.B) {
 		// #nosec G115 -- bench loop index, always small and non-negative.
 		updates[uint(i+1)] = tokenUseUpdate{ip: "198.51.100.10", ts: int64(1700000000 + i)}
 	}
-	if err := database.GetDB().CreateInBatches(&rows, tokenUseBatchSize).Error; err != nil {
+	if err := dbsqlite.DB().CreateInBatches(&rows, tokenUseBatchSize).Error; err != nil {
 		b.Fatal(err)
 	}
 	b.ReportMetric(float64(tokens), "tokens")

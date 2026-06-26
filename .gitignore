@@ -1,5 +1,10 @@
 .DS_Store
+node_modules/
+frontend/node_modules/
 /dist/
+frontend/dist/
+build/
+coverage/
 /release/
 /backup/
 /bin/
@@ -13,6 +18,9 @@ main
 *.tar.gz
 
 # local env files
+.env
+.env.*
+!.env.example
 .env.local
 .env.*.local
 
@@ -53,14 +61,18 @@ dc42e16-files.txt
 docs/audit/
 tests/baseline/*
 !tests/baseline/run-command.ps1
+PANEL_VERSION_SOURCES.md
+config/identity/*.local.md
 
 # Editor directories and files
 .idea
 .vscode
 
-# Local Claude Code instructions/state (not for public repo)
-CLAUDE.md
-.claude/
+# Local workspace instructions/state (not for public repo)
+[Cc][Ll][Aa][Uu][Dd][Ee].md
+AGENTS.md
+.clau[d]e/
+.pi/
 
 # Kiro local specs (not for public repo)
 .kiro/

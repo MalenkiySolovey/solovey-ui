@@ -1,0 +1,7 @@
+.v-data-table__tr--mobile td {
+  height: fit-content;
+  min-height: 36px !important;
+}
+.v-data-table__tr--mobile td div {
+  width:max-content;
+}

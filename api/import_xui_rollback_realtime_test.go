@@ -9,8 +9,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/backup"
+
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
@@ -19,13 +21,13 @@ import (
 
 func TestImportXuiRollbackPublishesConfigInvalidatedIssue39(t *testing.T) {
 	settingService, src := setupXuiAPITestDB(t)
-	database.SetSendSighupHook(func() error { return nil })
-	t.Cleanup(func() { database.SetSendSighupHook(nil) })
+	backup.SetSendSighupHook(func() error { return nil })
+	t.Cleanup(func() { backup.SetSendSighupHook(nil) })
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/import-xui/plan", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiPlan))
-		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiApply))
-		router.POST("/api/import-xui/rollback", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiRollback))
+		router.POST("/api/import-xui/plan", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXuiPlan))
+		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXuiApply))
+		router.POST("/api/import-xui/rollback", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXuiRollback))
 	})
 
 	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1"), cookies...)
@@ -55,8 +57,10 @@ func TestImportXuiRollbackPublishesConfigInvalidatedIssue39(t *testing.T) {
 
 	expectImportXuiRealtimeTopicIssue39(t, events, realtime.TopicConfigInvalidated)
 
+	flushAPIAudit(t)
+
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "xui_import_rollback").Order("id desc").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "xui_import_rollback").Order("id desc").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Resource != "database" || event.Severity != service.AuditSeverityWarn {
@@ -70,7 +74,7 @@ func TestImportXuiRollbackPublishesConfigInvalidatedIssue39(t *testing.T) {
 func TestImportXuiRollbackInvalidBackupDoesNotPublishIssue39(t *testing.T) {
 	settingService, _ := setupXuiAPITestDB(t)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/import-xui/rollback", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiRollback))
+		router.POST("/api/import-xui/rollback", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXuiRollback))
 	})
 	events, unregister := registerImportXuiRealtimeIssue39(t)
 	defer unregister()

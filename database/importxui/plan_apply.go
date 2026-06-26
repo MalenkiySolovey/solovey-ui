@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/mapping"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 
 	"gorm.io/gorm"
 )
@@ -21,24 +23,24 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 	if err := checkContext(opts.Context); err != nil {
 		return report, fmt.Errorf("xui-import: %w", err)
 	}
-	hash, err := hashSource(srcPath)
+	hash, err := source.Hash(srcPath)
 	if err != nil {
 		return report, fmt.Errorf("xui-import: %w", err)
 	}
 	if plan.Source.Hash != "" && plan.Source.Hash != hash {
 		return report, fmt.Errorf("xui-import: %w", ErrPlanStale)
 	}
-	src, err := openSource(srcPath)
+	src, err := source.Open(srcPath)
 	if err != nil {
 		return report, fmt.Errorf("xui-import: %w", err)
 	}
-	defer src.close()
-	db := database.GetDB()
+	defer src.Close()
+	db := dbsqlite.DB()
 	if db == nil {
 		return report, fmt.Errorf("xui-import: destination database is not initialized")
 	}
 	var backupPath string
-	if !opts.DryRun {
+	if !opts.DryRun && !opts.SkipBackup {
 		now := time.Now().Unix()
 		if opts.Now != nil {
 			now = opts.Now()
@@ -62,10 +64,10 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 	state := &applyState{
 		report:           report,
 		plan:             normalizePlan(plan),
-		realityByKey:     map[string]*realitySpec{},
-		realityBySource:  map[int64]*realitySpec{},
-		plainTLSByKey:    map[string]*tlsCertSpec{},
-		plainTLSBySource: map[int64]*tlsCertSpec{},
+		realityByKey:     map[string]*mapping.RealitySpec{},
+		realityBySource:  map[int64]*mapping.RealitySpec{},
+		plainTLSByKey:    map[string]*mapping.TLSCertSpec{},
+		plainTLSBySource: map[int64]*mapping.TLSCertSpec{},
 		tlsIDByKey:       map[string]uint{},
 		inboundIDBySrc:   map[int64]uint{},
 		server:           destinationServer(tx),
@@ -92,13 +94,13 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 type applyState struct {
 	report           *Report
 	plan             map[string]PlanItem
-	realityByKey     map[string]*realitySpec
-	realityBySource  map[int64]*realitySpec
-	plainTLSByKey    map[string]*tlsCertSpec
-	plainTLSBySource map[int64]*tlsCertSpec
+	realityByKey     map[string]*mapping.RealitySpec
+	realityBySource  map[int64]*mapping.RealitySpec
+	plainTLSByKey    map[string]*mapping.TLSCertSpec
+	plainTLSBySource map[int64]*mapping.TLSCertSpec
 	tlsIDByKey       map[string]uint
 	inboundIDBySrc   map[int64]uint
-	clientRefs       []ClientRef
+	clientRefs       []mapping.ClientRef
 	server           string
 	hostname         string
 	onProgress       func(Progress)
@@ -106,8 +108,8 @@ type applyState struct {
 	total            int
 }
 
-func (s *applyState) run(ctx context.Context, tx *gorm.DB, src *sourceDB, opts ApplyOptions) error {
-	total, err := src.inboundCount()
+func (s *applyState) run(ctx context.Context, tx *gorm.DB, src *source.Database, opts ApplyOptions) error {
+	total, err := src.InboundCount()
 	if err != nil {
 		return err
 	}
@@ -142,12 +144,12 @@ func (s *applyState) run(ctx context.Context, tx *gorm.DB, src *sourceDB, opts A
 	return nil
 }
 
-func (s *applyState) applyTLS(ctx context.Context, tx *gorm.DB, src *sourceDB) error {
-	return src.eachInbound(func(row xuiInboundRow) error {
+func (s *applyState) applyTLS(ctx context.Context, tx *gorm.DB, src *source.Database) error {
+	return src.EachInbound(func(row source.InboundRow) error {
 		if err := checkContext(ctx); err != nil {
 			return err
 		}
-		spec, warnings, err := extractReality(row)
+		spec, warnings, err := mapping.ExtractReality(row)
 		if err != nil {
 			return err
 		}
@@ -167,21 +169,21 @@ func (s *applyState) applyTLS(ctx context.Context, tx *gorm.DB, src *sourceDB) e
 			// Skip means "don't create/overwrite", not "unlink": if a matching
 			// TLS record already exists, still resolve its id so inbounds keep a
 			// valid reference instead of being saved with TlsId=0.
-			if existing, found, err := findExistingRealityTLS(tx, *spec); err != nil {
+			if existing, found, err := mapping.FindExistingRealityTLS(tx, *spec); err != nil {
 				return err
 			} else if found {
 				s.tlsIDByKey[spec.Key] = existing.Id
 			}
 			return nil
 		}
-		record, err := buildTLSRecord(*spec)
+		record, err := mapping.BuildTLSRecord(*spec)
 		if err != nil {
 			return err
 		}
 		if item.DstTag != "" {
 			record.Name = item.DstTag
 		}
-		existing, found, err := findExistingRealityTLS(tx, *spec)
+		existing, found, err := mapping.FindExistingRealityTLS(tx, *spec)
 		if err != nil {
 			return err
 		}
@@ -217,8 +219,8 @@ func (s *applyState) applyTLS(ctx context.Context, tx *gorm.DB, src *sourceDB) e
 // whose certificate is inline: it dedups by certificate content, honours the
 // plan item's action (skip/replace), and records the resulting TLS id so the
 // inbound can reference it.
-func (s *applyState) applyPlainTLS(tx *gorm.DB, row xuiInboundRow) error {
-	spec, warnings, err := extractPlainTLS(row)
+func (s *applyState) applyPlainTLS(tx *gorm.DB, row source.InboundRow) error {
+	spec, warnings, err := mapping.ExtractPlainTLS(row)
 	if err != nil {
 		return err
 	}
@@ -237,21 +239,21 @@ func (s *applyState) applyPlainTLS(tx *gorm.DB, row xuiInboundRow) error {
 	if item.Action == ActionSkip {
 		// Skip means "don't create/overwrite", not "unlink": resolve an existing
 		// matching record's id so referencing inbounds keep a valid TlsId.
-		if existing, found, err := findExistingPlainTLS(tx, *spec); err != nil {
+		if existing, found, err := mapping.FindExistingPlainTLS(tx, *spec); err != nil {
 			return err
 		} else if found {
 			s.tlsIDByKey[spec.Key] = existing.Id
 		}
 		return nil
 	}
-	record, err := buildPlainTLSRecord(*spec)
+	record, err := mapping.BuildPlainTLSRecord(*spec)
 	if err != nil {
 		return err
 	}
 	if item.DstTag != "" {
 		record.Name = item.DstTag
 	}
-	existing, found, err := findExistingPlainTLS(tx, *spec)
+	existing, found, err := mapping.FindExistingPlainTLS(tx, *spec)
 	if err != nil {
 		return err
 	}
@@ -282,13 +284,13 @@ func (s *applyState) applyPlainTLS(tx *gorm.DB, row xuiInboundRow) error {
 	return nil
 }
 
-func (s *applyState) applyInboundsEndpoints(ctx context.Context, tx *gorm.DB, src *sourceDB) error {
-	return src.eachInbound(func(row xuiInboundRow) error {
+func (s *applyState) applyInboundsEndpoints(ctx context.Context, tx *gorm.DB, src *source.Database) error {
+	return src.EachInbound(func(row source.InboundRow) error {
 		if err := checkContext(ctx); err != nil {
 			return err
 		}
 		if row.Protocol == "wireguard" {
-			endpoint, warnings, err := mapWireguardEndpoint(row)
+			endpoint, warnings, err := mapping.MapWireguardEndpoint(row)
 			if err != nil {
 				return err
 			}
@@ -312,14 +314,14 @@ func (s *applyState) applyInboundsEndpoints(ctx context.Context, tx *gorm.DB, sr
 			return nil
 		}
 		var tlsID uint
-		var reality *realitySpec
+		var reality *mapping.RealitySpec
 		if spec, ok := s.realityBySource[row.ID]; ok {
 			reality = spec
 			tlsID = s.tlsIDByKey[spec.Key]
 		} else if spec, ok := s.plainTLSBySource[row.ID]; ok {
 			tlsID = s.tlsIDByKey[spec.Key]
 		}
-		mapped, err := mapInbound(row, tlsID, reality, s.server)
+		mapped, err := mapping.MapInbound(row, tlsID, reality, s.server)
 		if err != nil {
 			return err
 		}
@@ -358,7 +360,7 @@ func (s *applyState) applyInboundsEndpoints(ctx context.Context, tx *gorm.DB, sr
 	})
 }
 
-func (s *applyState) applyClients(ctx context.Context, tx *gorm.DB, src *sourceDB) error {
+func (s *applyState) applyClients(ctx context.Context, tx *gorm.DB, src *source.Database) error {
 	aggs, err := collectClientAggregates(src, s.clientRefs, s.inboundIDBySrc)
 	if err != nil {
 		return err

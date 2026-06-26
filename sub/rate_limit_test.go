@@ -1,31 +1,30 @@
 package sub
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )
 
 func TestRateLimitMiddlewareCanonicalizesMappedClientIP(t *testing.T) {
 	initSubTestDB(t)
-	resetRateLimitBucketsForTest()
+	subserver.ResetRateLimitForTest()
 	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "subRateLimitPerIP").Update("value", "2").Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "subRateLimitPerIP").Update("value", "2").Error; err != nil {
 		t.Fatal(err)
 	}
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(rateLimitMiddleware())
+	router.Use(subserver.RateLimitMiddleware())
 	router.GET("/sub/:subid", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
@@ -44,17 +43,17 @@ func TestRateLimitMiddlewareCanonicalizesMappedClientIP(t *testing.T) {
 
 func TestRateLimitMiddlewareUsesConfiguredLimitAndRetryAfter(t *testing.T) {
 	initSubTestDB(t)
-	resetRateLimitBucketsForTest()
+	subserver.ResetRateLimitForTest()
 	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "subRateLimitPerIP").Update("value", "2").Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "subRateLimitPerIP").Update("value", "2").Error; err != nil {
 		t.Fatal(err)
 	}
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(rateLimitMiddleware())
+	router.Use(subserver.RateLimitMiddleware())
 	router.GET("/sub/:subid", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
@@ -71,47 +70,6 @@ func TestRateLimitMiddlewareUsesConfiguredLimitAndRetryAfter(t *testing.T) {
 	}
 	if recorder.Header().Get("Retry-After") == "" {
 		t.Fatal("missing Retry-After header")
-	}
-}
-
-func TestRateLimitGCSweepsExpiredBuckets(t *testing.T) {
-	resetRateLimitBucketsForTest()
-	now := time.Now()
-
-	rateLimitMu.Lock()
-	rateLimitBuckets["expired"] = rateBucket{windowStart: now.Add(-rateLimitWindow - time.Second), count: 1}
-	rateLimitBuckets["active"] = rateBucket{windowStart: now.Add(-10 * time.Second), count: 1}
-	gcRateLimitBucketsLocked(now)
-	_, expiredOK := rateLimitBuckets["expired"]
-	_, activeOK := rateLimitBuckets["active"]
-	gcAt := rateLimitGC
-	rateLimitMu.Unlock()
-
-	if expiredOK {
-		t.Fatal("expired rate-limit bucket was not swept")
-	}
-	if !activeOK {
-		t.Fatal("active rate-limit bucket was swept")
-	}
-	if !gcAt.Equal(now) {
-		t.Fatalf("rateLimitGC=%s, want %s", gcAt, now)
-	}
-}
-
-func TestRateLimitBucketCapEvictsOverflow(t *testing.T) {
-	resetRateLimitBucketsForTest()
-	now := time.Now()
-
-	rateLimitMu.Lock()
-	for i := 0; i < rateLimitMaxKeys+17; i++ {
-		rateLimitBuckets[fmt.Sprintf("198.51.100.%d", i)] = rateBucket{windowStart: now, count: 1}
-	}
-	gcRateLimitBucketsLocked(now)
-	count := len(rateLimitBuckets)
-	rateLimitMu.Unlock()
-
-	if count != rateLimitMaxKeys {
-		t.Fatalf("rate-limit bucket count=%d, want %d", count, rateLimitMaxKeys)
 	}
 }
 

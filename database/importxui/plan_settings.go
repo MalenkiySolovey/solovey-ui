@@ -4,14 +4,15 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 
 	"gorm.io/gorm"
 )
 
-func planSettings(ctx context.Context, tx *gorm.DB, src *sourceDB, plan *MigrationPlan, strategy Strategy) error {
-	settings, err := src.settings()
+func planSettings(ctx context.Context, tx *gorm.DB, src *source.Database, plan *MigrationPlan, strategy Strategy) error {
+	settings, err := src.Settings()
 	if err != nil {
 		return err
 	}
@@ -61,11 +62,11 @@ func planSettings(ctx context.Context, tx *gorm.DB, src *sourceDB, plan *Migrati
 	return nil
 }
 
-func (s *applyState) applySettings(ctx context.Context, tx *gorm.DB, src *sourceDB) error {
+func (s *applyState) applySettings(ctx context.Context, tx *gorm.DB, src *source.Database) error {
 	if !s.hasKind(KindSetting) {
 		return nil
 	}
-	settings, err := src.settings()
+	settings, err := src.Settings()
 	if err != nil {
 		return err
 	}
@@ -118,10 +119,13 @@ var xuiSettingKeyMap = map[string]string{
 	"subURI":         "subURI",
 	"subJsonPath":    "subJsonPath",
 	"subClashPath":   "subClashPath",
+	"subXrayPath":    "subXrayPath",
 	"subJsonURI":     "subJsonURI",
 	"subClashURI":    "subClashURI",
+	"subXrayURI":     "subXrayURI",
 	"subJsonEnable":  "subJsonEnable",
 	"subClashEnable": "subClashEnable",
+	"subXrayEnable":  "subXrayEnable",
 	"subShowInfo":    "subShowInfo",
 	"subTitle":       "subTitle",
 	"subSupportUrl":  "subSupportUrl",
@@ -168,6 +172,7 @@ var hostSpecificSettingKeys = map[string]struct{}{
 	"subURI":      {},
 	"subJsonURI":  {},
 	"subClashURI": {},
+	"subXrayURI":  {},
 }
 
 func isHostSpecificSettingKey(key string) bool {
@@ -183,10 +188,10 @@ func mapSettingKey(key string) (string, bool) {
 func upsertSetting(tx *gorm.DB, key string, value string) error {
 	var setting model.Setting
 	err := tx.Where("key = ?", key).First(&setting).Error
-	if err != nil && !database.IsNotFound(err) {
+	if err != nil && !dbsqlite.IsNotFound(err) {
 		return err
 	}
-	if database.IsNotFound(err) {
+	if dbsqlite.IsNotFound(err) {
 		return tx.Create(&model.Setting{Key: key, Value: value}).Error
 	}
 	return tx.Model(&setting).Update("value", value).Error

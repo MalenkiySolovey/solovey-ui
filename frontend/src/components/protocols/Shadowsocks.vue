@@ -59,8 +59,8 @@
 </template>
 
 <script lang="ts">
-import Network from '@/components/Network.vue'
-import UoT from '@/components/UoT.vue'
+import Network from '@/components/fields/Network.vue'
+import UoT from '@/components/fields/UoT.vue'
 import RandomUtil from '@/plugins/randomUtil'
 
 export default {

@@ -16,8 +16,10 @@
     @add="showModal(0)"
     @clone="clone"
     @del="delTls"
+    @del-many="delTlsBulk"
     @edit="showModal"
     @move="moveTls"
+    @move-many-to="dragSelectedTls"
     @move-to="dragTls"
     @sort-by-name="sortTlsByName"
   />
@@ -31,6 +33,15 @@
           style="margin: 0 5px;"
           @sort="sortTlsByName"
         />
+        <BulkSelectionControls
+          :active="tlsSelectMode"
+          :count="selectedTlsCount"
+          inactive-color="secondary"
+          inactive-variant="outlined"
+          style="margin: 0 5px;"
+          @delete="deleteSelectedTls"
+          @toggle="toggleTlsSelectMode"
+        />
       </v-col>
     </v-row>
     <v-row>
@@ -41,14 +52,33 @@
         lg="2"
         v-for="(item, index) in <any[]>tlsConfigs"
         :key="item.id"
+        class="manual-drop-grid-cell"
+        :class="tlsDrag.indicatorClasses(item.id)"
+        :style="tlsDrag.indicatorStyles(item.id)"
         :draggable="false"
         @pointerdown="tlsDrag.prepare($event)"
         @dragstart="tlsDrag.start($event, item.id)"
-        @dragover="tlsDrag.over($event)"
+        @dragover="tlsDrag.overTarget($event, item.id, tlsConfigs.map(row => row.id), tlsSelectMode ? selectedTlsIds.map(Number) : [], false, 'grid')"
+        @dragleave="tlsDrag.leaveTarget($event, item.id)"
         @drop="onTlsDrop($event, item.id)"
         @dragend="tlsDrag.clear($event)"
       >
-        <v-card rounded="xl" elevation="5" min-width="200" :title="item.name">
+        <v-card
+          rounded="xl"
+          elevation="5"
+          min-width="200"
+          :title="item.name"
+          class="tls__card"
+          :class="{ 'tls__card--selected': isTlsSelected(item.id) }"
+        >
+          <div v-if="tlsSelectMode" class="tls__select manual-drag-no-drag">
+            <v-checkbox-btn
+              :model-value="isTlsSelected(item.id)"
+              :aria-label="$t('table.selectRow')"
+              density="compact"
+              @update:model-value="toggleTlsSelection(item.id, Boolean($event))"
+            />
+          </div>
           <v-card-subtitle style="margin-top: -15px;">
             {{ item.server?.server_name?.length>0 ? item.server.server_name : "-" }}
           </v-card-subtitle>
@@ -122,20 +152,27 @@
 <script lang="ts" setup>
 import TlsVue from '@/layouts/modals/Tls.vue'
 import Data from '@/store/modules/data'
+import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
 import ManualSortButton from '@/components/ManualSortButton.vue'
 import { computed, defineAsyncComponent, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { Inbound } from '@/types/inbounds'
 import { tls } from '@/types/tls'
 import { useUiMode } from '@/uiMode/useUiMode'
-import { useManualDrag } from '@/composables/useManualDrag'
+import { useManualDrag, type ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
 import {
   dragManualOrder,
   type ManualSortDirection,
+  moveManyManualOrder,
   moveManualOrder,
   sortManualOrderByText,
-} from '@/composables/useManualReorder'
+} from '@/shared/composables/dragSelection/manualReorder'
+import { useBulkSelection } from '@/shared/composables/dragSelection/bulkSelection'
+import { useConfirm } from '@/components/nexus/primitives/useConfirm'
 
 const { mode } = useUiMode()
+const { t } = useI18n()
+const { confirm } = useConfirm()
 
 const TlsNexusList = defineAsyncComponent(
   () => import('@/views/tls/TlsNexusList.vue'),
@@ -149,6 +186,13 @@ const EntityForm = computed(() => (mode.value === 'nexus' ? TlsDrawer : TlsVue))
 const tlsConfigs = computed((): any[] => {
   return Data().tlsConfigs
 })
+const tlsSelection = useBulkSelection(tlsConfigs, item => item.id)
+const tlsSelectMode = tlsSelection.active
+const selectedTlsIds = tlsSelection.selectedIds
+const selectedTlsCount = tlsSelection.selectedCount
+const isTlsSelected = tlsSelection.isSelected
+const toggleTlsSelection = tlsSelection.toggle
+const toggleTlsSelectMode = tlsSelection.toggleActive
 
 const inbounds = computed((): Inbound[] => {
   return Data().inbounds
@@ -193,12 +237,44 @@ const delTls = async (id: number) => {
   if (success) delOverlay.value[index] = false
 }
 
+const delTlsBulk = async (ids: number[]) => {
+  const uniqueIds = [...new Set(ids.map(Number).filter(Boolean))]
+  let success = true
+  for (const id of uniqueIds) {
+    if (tlsInbounds(id).length > 0) continue
+    success = await Data().save("tls", "del", id)
+    if (!success) break
+  }
+  if (success) {
+    delOverlay.value = []
+    tlsSelection.clear()
+  }
+  return success
+}
+
+const deleteSelectedTls = async () => {
+  const rows = tlsSelection.selectedItems.value.filter(item => tlsInbounds(item.id).length === 0)
+  if (rows.length === 0) return
+  const accepted = await confirm({
+    title: `${t('actions.delbulk')} ${t('objects.tls')}`,
+    message: rows.map(item => item.name).join('\n'),
+    confirmLabel: t('actions.del'),
+    tone: 'error',
+  })
+  if (!accepted) return
+  await delTlsBulk(rows.map(item => item.id))
+}
+
 const moveTls = async (id: number, dir: number) => {
   await moveManualOrder("tls", tlsConfigs.value as any[], id, dir)
 }
 
-const dragTls = async (draggedId: number, targetId: number) => {
-  await dragManualOrder("tls", tlsConfigs.value as any[], draggedId, targetId)
+const dragTls = async (draggedId: number, targetId: number, position: ManualDropPosition | null = null) => {
+  await dragManualOrder("tls", tlsConfigs.value as any[], draggedId, targetId, "id", position)
+}
+
+const dragSelectedTls = async (draggedIds: number[], targetId: number, position: ManualDropPosition | null = null) => {
+  await moveManyManualOrder("tls", tlsConfigs.value as any[], draggedIds, targetId, "id", position)
 }
 
 const sortTlsByName = async (direction: ManualSortDirection) => {
@@ -207,6 +283,30 @@ const sortTlsByName = async (direction: ManualSortDirection) => {
 
 const tlsDrag = useManualDrag<number>()
 const onTlsDrop = (event: DragEvent, targetId: number) => {
-  tlsDrag.drop(event, targetId, dragTls)
+  tlsDrag.drop(event, targetId, (draggedId, dropTargetId, position) => {
+    if (tlsSelectMode.value && tlsSelection.isSelected(draggedId)) {
+      void dragSelectedTls(tlsSelection.selectedIds.value.map(Number), dropTargetId, position)
+      return
+    }
+    void dragTls(draggedId, dropTargetId, position)
+  })
 }
 </script>
+
+<style scoped>
+.tls__card {
+  position: relative;
+}
+
+.tls__card--selected {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+
+.tls__select {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 2;
+}
+</style>

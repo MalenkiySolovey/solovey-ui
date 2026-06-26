@@ -3,14 +3,16 @@ package service
 import (
 	"encoding/json"
 	"reflect"
+	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 )
 
 func TestConfigSavePlanReturnsCopiedObjects(t *testing.T) {
-	plan := newConfigSavePlan(configSaveObjectClients.String())
-	plan.IncludeSaveObjects(configSaveObjectInbounds)
+	plan := newConfigSavePlan(singboxapply.ObjectClients.String())
+	plan.IncludeSaveObjects(singboxapply.ObjectInbounds)
 	plan.RequireCoreRestart()
 
 	objects := plan.Objects()
@@ -34,11 +36,11 @@ func TestApplyConfigSaveMutationPlansSettingsWithoutCoreRestart(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tx := database.GetDB().Begin()
+	tx := dbsqlite.DB().Begin()
 	defer tx.Rollback()
 
-	plan := newConfigSavePlan(configSaveObjectSettings.String())
-	if err := (&ConfigService{}).applyConfigSaveMutation(tx, &plan, configSaveObjectSettings.String(), "set", payload, "", "example.com"); err != nil {
+	plan := newConfigSavePlan(singboxapply.ObjectSettings.String())
+	if err := (&ConfigService{}).applyConfigSaveMutation(tx, &plan, singboxapply.ObjectSettings.String(), "set", payload, "", "example.com"); err != nil {
 		t.Fatal(err)
 	}
 	if got := plan.Objects(); !reflect.DeepEqual(got, []string{"settings"}) {
@@ -53,11 +55,11 @@ func TestApplyConfigSaveMutationPlansConfigCoreRestart(t *testing.T) {
 	initSettingTestDB(t)
 
 	payload := json.RawMessage(`{"log":{"level":"info"},"dns":{"servers":[],"rules":[]},"route":{"rules":[]},"experimental":{}}`)
-	tx := database.GetDB().Begin()
+	tx := dbsqlite.DB().Begin()
 	defer tx.Rollback()
 
-	plan := newConfigSavePlan(configSaveObjectConfig.String())
-	if err := (&ConfigService{}).applyConfigSaveMutation(tx, &plan, configSaveObjectConfig.String(), "set", payload, "", "example.com"); err != nil {
+	plan := newConfigSavePlan(singboxapply.ObjectConfig.String())
+	if err := (&ConfigService{}).applyConfigSaveMutation(tx, &plan, singboxapply.ObjectConfig.String(), "set", payload, "", "example.com"); err != nil {
 		t.Fatal(err)
 	}
 	if got := plan.Objects(); !reflect.DeepEqual(got, []string{"config"}) {
@@ -65,5 +67,43 @@ func TestApplyConfigSaveMutationPlansConfigCoreRestart(t *testing.T) {
 	}
 	if !plan.RequiresCoreRestart() {
 		t.Fatal("config save should require core restart")
+	}
+}
+
+func TestApplyConfigSaveMutationPlansUnchangedConfigWithoutCoreRestart(t *testing.T) {
+	settingService := initSettingTestDB(t)
+
+	payload := json.RawMessage(`{"log":{"level":"info"},"dns":{"servers":[],"rules":[]},"route":{"rules":[]},"experimental":{}}`)
+	tx := dbsqlite.DB().Begin()
+	if err := settingService.SaveConfig(tx, payload); err != nil {
+		tx.Rollback()
+		t.Fatal(err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		t.Fatal(err)
+	}
+
+	tx = dbsqlite.DB().Begin()
+	defer tx.Rollback()
+	plan := newConfigSavePlan(singboxapply.ObjectConfig.String())
+	if err := (&ConfigService{}).applyConfigSaveMutation(tx, &plan, singboxapply.ObjectConfig.String(), "set", payload, "", "example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if plan.RequiresCoreRestart() {
+		t.Fatal("unchanged config save should not require core restart")
+	}
+}
+
+func TestApplyConfigSaveMutationRejectsUnsafeLogOutput(t *testing.T) {
+	initSettingTestDB(t)
+
+	payload := json.RawMessage(`{"log":{"level":"info","output":"../panel.log"},"dns":{"servers":[],"rules":[]},"route":{"rules":[]},"experimental":{}}`)
+	tx := dbsqlite.DB().Begin()
+	defer tx.Rollback()
+
+	plan := newConfigSavePlan(singboxapply.ObjectConfig.String())
+	err := (&ConfigService{}).applyConfigSaveMutation(tx, &plan, singboxapply.ObjectConfig.String(), "set", payload, "", "example.com")
+	if err == nil || !strings.Contains(err.Error(), "log.output") {
+		t.Fatalf("expected unsafe log.output error, got %v", err)
 	}
 }

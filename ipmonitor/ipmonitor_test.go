@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -41,14 +41,14 @@ func initIPMonitorTestDB(t *testing.T) {
 	realtime.CloseAll("test_reset")
 	tempDir := makeIPMonitorTempDir(t, "s-ui-ipmonitor-test-")
 	t.Setenv("SUI_DB_FOLDER", tempDir)
-	closeIPMonitorTestDB(database.GetDB())
-	if err := database.InitDB(filepath.Join(tempDir, "s-ui.db")); err != nil {
+	closeIPMonitorTestDB(dbsqlite.DB())
+	if err := dbsqlite.Init(filepath.Join(tempDir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
 		t.Fatal(err)
 	}
-	testDB := database.GetDB()
+	testDB := dbsqlite.DB()
 	t.Cleanup(func() {
 		closeIPMonitorTestDB(testDB)
 		realtime.CloseAll("test_done")
@@ -87,7 +87,7 @@ func makeIPMonitorTempDir(tb testing.TB, prefix string) string {
 
 func TestRecordFlushAndClear(t *testing.T) {
 	initIPMonitorTestDB(t)
-	if err := database.GetDB().Create(&model.Client{
+	if err := dbsqlite.DB().Create(&model.Client{
 		Enable:      true,
 		Name:        "alice",
 		IPLimitMode: ModeMonitor,
@@ -109,7 +109,7 @@ func TestRecordFlushAndClear(t *testing.T) {
 		t.Fatalf("expected two IP rows, got %d", len(rows))
 	}
 	var client model.Client
-	if err := database.GetDB().Where("name = ?", "alice").First(&client).Error; err != nil {
+	if err := dbsqlite.DB().Where("name = ?", "alice").First(&client).Error; err != nil {
 		t.Fatal(err)
 	}
 	if client.LastIPCount != 2 || client.LastOnline == 0 {
@@ -129,7 +129,7 @@ func TestRecordFlushAndClear(t *testing.T) {
 
 func TestAllowEnforceRejectsNewIPOverLimit(t *testing.T) {
 	initIPMonitorTestDB(t)
-	if err := database.GetDB().Create(&model.Client{
+	if err := dbsqlite.DB().Create(&model.Client{
 		Enable:      true,
 		Name:        "alice",
 		LimitIP:     1,
@@ -157,7 +157,7 @@ func TestAllowEnforceRejectsNewIPOverLimit(t *testing.T) {
 
 func TestAllowEnforceRejectPublishesSecurityEventWithoutRawIP(t *testing.T) {
 	initIPMonitorTestDB(t)
-	if err := database.GetDB().Create(&model.Client{
+	if err := dbsqlite.DB().Create(&model.Client{
 		Enable:      true,
 		Name:        "alice",
 		LimitIP:     1,
@@ -204,7 +204,7 @@ func TestAllowEnforceRejectPublishesSecurityEventWithoutRawIP(t *testing.T) {
 
 func TestAllowEnforceRejectSecurityEventDebounced(t *testing.T) {
 	initIPMonitorTestDB(t)
-	if err := database.GetDB().Create(&model.Client{
+	if err := dbsqlite.DB().Create(&model.Client{
 		Enable:      true,
 		Name:        "alice",
 		LimitIP:     1,
@@ -248,7 +248,7 @@ func TestAllowEnforceRejectSecurityEventDebounced(t *testing.T) {
 
 func TestRecordFlushStoresHashedIPAndMasksHistoryByDefault(t *testing.T) {
 	initIPMonitorTestDB(t)
-	if err := database.GetDB().Create(&model.Client{
+	if err := dbsqlite.DB().Create(&model.Client{
 		Enable:      true,
 		Name:        "alice",
 		IPLimitMode: ModeMonitor,
@@ -265,7 +265,7 @@ func TestRecordFlushStoresHashedIPAndMasksHistoryByDefault(t *testing.T) {
 	}
 
 	var row model.ClientIP
-	if err := database.GetDB().Where("client_name = ?", "alice").First(&row).Error; err != nil {
+	if err := dbsqlite.DB().Where("client_name = ?", "alice").First(&row).Error; err != nil {
 		t.Fatal(err)
 	}
 	if row.IP == rawIP {
@@ -295,13 +295,13 @@ func TestRecordFlushStoresHashedIPAndMasksHistoryByDefault(t *testing.T) {
 
 func TestRecordFlushStoresRawDisplayOnlyWhenEnabled(t *testing.T) {
 	initIPMonitorTestDB(t)
-	if err := database.GetDB().Create(&model.Setting{Key: "ipShowRaw", Value: "true"}).Error; err != nil {
+	if err := dbsqlite.DB().Create(&model.Setting{Key: "ipShowRaw", Value: "true"}).Error; err != nil {
 		t.Fatal(err)
 	}
 	ipPrivacySettings.Lock()
 	ipPrivacySettings.expiresAt = time.Time{}
 	ipPrivacySettings.Unlock()
-	if err := database.GetDB().Create(&model.Client{
+	if err := dbsqlite.DB().Create(&model.Client{
 		Enable:      true,
 		Name:        "alice",
 		IPLimitMode: ModeMonitor,
@@ -318,7 +318,7 @@ func TestRecordFlushStoresRawDisplayOnlyWhenEnabled(t *testing.T) {
 	}
 
 	var row model.ClientIP
-	if err := database.GetDB().Where("client_name = ?", "alice").First(&row).Error; err != nil {
+	if err := dbsqlite.DB().Where("client_name = ?", "alice").First(&row).Error; err != nil {
 		t.Fatal(err)
 	}
 	if row.IPDisplay == nil || *row.IPDisplay != rawIP {
@@ -346,7 +346,7 @@ func TestRecordFlushStoresRawDisplayOnlyWhenEnabled(t *testing.T) {
 // preserving first_seen and never creating a duplicate row.
 func TestFlushBatchUpsertCountsAndPreservesFirstSeen(t *testing.T) {
 	initIPMonitorTestDB(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	for _, name := range []string{"alice", "bob"} {
 		if err := db.Create(&model.Client{Enable: true, Name: name, IPLimitMode: ModeMonitor, Inbounds: []byte("[]"), Links: []byte("[]")}).Error; err != nil {
 			t.Fatal(err)
@@ -420,7 +420,7 @@ func TestFlushBatchUpsertCountsAndPreservesFirstSeen(t *testing.T) {
 
 func TestWarmUpLoadsActiveEnforceClients(t *testing.T) {
 	initIPMonitorTestDB(t)
-	if err := database.GetDB().Create(&model.Client{
+	if err := dbsqlite.DB().Create(&model.Client{
 		Enable:      true,
 		Name:        "alice",
 		LimitIP:     1,
@@ -430,7 +430,7 @@ func TestWarmUpLoadsActiveEnforceClients(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Create(&model.ClientIP{
+	if err := dbsqlite.DB().Create(&model.ClientIP{
 		ClientName: "alice",
 		IP:         "198.51.100.10",
 		FirstSeen:  1,
@@ -440,7 +440,7 @@ func TestWarmUpLoadsActiveEnforceClients(t *testing.T) {
 	}
 	warmUpIPMonitorForTest(t)
 	queryCounter := &countingGormLogger{}
-	database.GetDB().Config.Logger = queryCounter
+	dbsqlite.DB().Config.Logger = queryCounter
 
 	if !Allow("alice", "198.51.100.10") {
 		t.Fatal("known IP should be allowed")
@@ -460,7 +460,7 @@ func TestWarmUpLoadsActiveEnforceClients(t *testing.T) {
 
 func TestAllowFailOpenOnCacheMissAndRefreshesAsync(t *testing.T) {
 	initIPMonitorTestDB(t)
-	if err := database.GetDB().Create(&model.Client{
+	if err := dbsqlite.DB().Create(&model.Client{
 		Enable:      true,
 		Name:        "alice",
 		LimitIP:     1,
@@ -470,7 +470,7 @@ func TestAllowFailOpenOnCacheMissAndRefreshesAsync(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Create(&model.ClientIP{
+	if err := dbsqlite.DB().Create(&model.ClientIP{
 		ClientName: "alice",
 		IP:         "198.51.100.10",
 		FirstSeen:  1,
@@ -489,7 +489,7 @@ func TestAllowFailOpenOnCacheMissAndRefreshesAsync(t *testing.T) {
 
 func TestAllowCacheConcurrent10K(t *testing.T) {
 	initIPMonitorTestDB(t)
-	if err := database.GetDB().Create(&model.Client{
+	if err := dbsqlite.DB().Create(&model.Client{
 		Enable:      true,
 		Name:        "alice",
 		LimitIP:     2,
@@ -505,7 +505,7 @@ func TestAllowCacheConcurrent10K(t *testing.T) {
 		t.Fatal("known pending IP should be allowed")
 	}
 	queryCounter := &countingGormLogger{}
-	database.GetDB().Config.Logger = queryCounter
+	dbsqlite.DB().Config.Logger = queryCounter
 
 	const total = 10000
 	const workers = 32

@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
@@ -19,18 +20,15 @@ import (
 func TestConsumeWSTokenExtraDoubleSpendExpiredAndCapacity(t *testing.T) {
 	resetRealtimeForTest()
 	setWSTokenForTest("single-use", "admin")
-	if user, ok := consumeWSToken("single-use"); !ok || user != "admin" {
+	if user, ok := realtimehttp.ConsumeToken("single-use"); !ok || user != "admin" {
 		t.Fatalf("first token consume failed: user=%q ok=%v", user, ok)
 	}
-	if _, ok := consumeWSToken("single-use"); ok {
+	if _, ok := realtimehttp.ConsumeToken("single-use"); ok {
 		t.Fatal("second token consume should fail")
 	}
 
-	expiredKey := wsTokenDigest("expired")
-	wsTokens.Lock()
-	wsTokens.tokens[expiredKey] = realtimeToken{user: "admin", expiresAt: time.Now().Add(-time.Second)}
-	wsTokens.Unlock()
-	if _, ok := consumeWSToken("expired"); ok {
+	realtimehttp.StoreToken("expired", "admin", time.Now().Add(-time.Second))
+	if _, ok := realtimehttp.ConsumeToken("expired"); ok {
 		t.Fatal("expired token should be rejected")
 	}
 	if hasWSTokenForTest("expired") {
@@ -38,17 +36,14 @@ func TestConsumeWSTokenExtraDoubleSpendExpiredAndCapacity(t *testing.T) {
 	}
 
 	base := time.Now()
-	wsTokens.Lock()
-	for i := 0; i < maxWSTokens+1; i++ {
+	for i := 0; i < realtimehttp.MaxTokens+1; i++ {
 		token := fmt.Sprintf("capacity-%04d", i)
-		wsTokens.tokens[wsTokenDigest(token)] = realtimeToken{user: "admin", expiresAt: base.Add(time.Duration(i) * time.Second)}
+		realtimehttp.StoreToken(token, "admin", base.Add(time.Duration(i)*time.Second))
 	}
-	enforceWSTokenCapLocked()
-	count := len(wsTokens.tokens)
-	_, oldestOK := wsTokens.tokens[wsTokenDigest("capacity-0000")]
-	wsTokens.Unlock()
-	if count != maxWSTokens {
-		t.Fatalf("token capacity=%d, want %d", count, maxWSTokens)
+	count := realtimehttp.TokenCount()
+	oldestOK := realtimehttp.HasToken("capacity-0000")
+	if count != realtimehttp.MaxTokens {
+		t.Fatalf("token capacity=%d, want %d", count, realtimehttp.MaxTokens)
 	}
 	if oldestOK {
 		t.Fatal("oldest token should be evicted at capacity")
@@ -78,7 +73,7 @@ func TestIssueWSTokenExtraRateLimit(t *testing.T) {
 		}
 		c.Status(http.StatusNoContent)
 	})
-	router.GET("/api/realtime/ws-token", (&ApiService{}).IssueWSToken)
+	router.GET("/api/realtime/ws-token", (&ApiService{}).realtimeHandler().IssueWSToken)
 
 	loginRecorder := httptest.NewRecorder()
 	router.ServeHTTP(loginRecorder, httptest.NewRequest(http.MethodGet, "/login", nil))
@@ -86,9 +81,9 @@ func TestIssueWSTokenExtraRateLimit(t *testing.T) {
 		t.Fatalf("login returned %d", loginRecorder.Code)
 	}
 
-	key := wsHandshakeRateLimitKey("ws-token", "198.51.100.10")
-	for i := 0; i < wsHandshakeRateLimitMax; i++ {
-		if err := checkWSHandshakeRateLimit(key); err != nil {
+	key := realtimehttp.HandshakeRateLimitKey("ws-token", "198.51.100.10")
+	for i := 0; i < realtimehttp.HandshakeLimit; i++ {
+		if err := realtimehttp.CheckHandshakeRateLimit(key); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -136,7 +131,7 @@ func TestConsumeWSTokenTimingRegressionAnchor(t *testing.T) {
 	for i := 0; i < tokenCount; i++ {
 		token := fmt.Sprintf("timing-token-%03d", i)
 		tokens[i] = token
-		ranked[i] = rankedToken{token: token, digest: wsTokenDigest(token)}
+		ranked[i] = rankedToken{token: token, digest: sha256.Sum256([]byte(token))}
 	}
 	sort.Slice(ranked, func(i, j int) bool {
 		return bytes.Compare(ranked[i].digest[:], ranked[j].digest[:]) < 0
@@ -185,13 +180,13 @@ func measureConsumeWSTokenAverages(t *testing.T, tokens []string, cases []consum
 			tc := cases[index]
 			seedWSTimingTokensForTest(tokens, expiresAt)
 			start := time.Now()
-			user, ok := consumeWSToken(tc.token)
+			user, ok := realtimehttp.ConsumeToken(tc.token)
 			totals[index] += time.Since(start)
 			if ok != tc.wantOK {
-				t.Fatalf("%s consumeWSToken(%q) ok=%v, want %v", tc.name, tc.token, ok, tc.wantOK)
+				t.Fatalf("%s realtimehttp.ConsumeToken(%q) ok=%v, want %v", tc.name, tc.token, ok, tc.wantOK)
 			}
 			if tc.wantOK && user != "admin" {
-				t.Fatalf("%s consumeWSToken(%q) user=%q, want admin", tc.name, tc.token, user)
+				t.Fatalf("%s realtimehttp.ConsumeToken(%q) user=%q, want admin", tc.name, tc.token, user)
 			}
 		}
 	}
@@ -203,12 +198,10 @@ func measureConsumeWSTokenAverages(t *testing.T, tokens []string, cases []consum
 }
 
 func seedWSTimingTokensForTest(tokens []string, expiresAt time.Time) {
-	wsTokens.Lock()
-	wsTokens.tokens = make(map[[sha256.Size]byte]realtimeToken, len(tokens))
+	realtimehttp.ResetTokens()
 	for _, token := range tokens {
-		wsTokens.tokens[wsTokenDigest(token)] = realtimeToken{user: "admin", expiresAt: expiresAt}
+		realtimehttp.StoreToken(token, "admin", expiresAt)
 	}
-	wsTokens.Unlock()
 }
 
 func timingDeltaRatio(a time.Duration, b time.Duration) float64 {

@@ -63,15 +63,21 @@ if (Test-Path $pidFile) {
     if ($existingPid -match '^\d+$') {
         $existing = Get-Process -Id ([int] $existingPid) -ErrorAction SilentlyContinue
         if ($existing) {
-            if (Test-Path $summaryFile) {
-                Get-Content -LiteralPath $summaryFile
+            if ($Build) {
+                Write-Output "Stopping existing Solovey UI process before rebuild (PID: $existingPid)..."
+                Stop-Process -Id ([int] $existingPid) -Force
+                Remove-Item -LiteralPath $pidFile -Force -ErrorAction SilentlyContinue
             } else {
-                Write-Output "Solovey UI is already running."
-                Write-Output "PID: $existingPid"
-                Write-Output "URL: http://127.0.0.1:2095/app/"
-                Write-Output "Stop: .\scripts\dev\stop-panel.cmd"
+                if (Test-Path $summaryFile) {
+                    Get-Content -LiteralPath $summaryFile
+                } else {
+                    Write-Output "Solovey UI is already running."
+                    Write-Output "PID: $existingPid"
+                    Write-Output "URL: http://127.0.0.1:2095/app/"
+                    Write-Output "Stop: .\scripts\dev\stop-panel.cmd"
+                }
+                exit 0
             }
-            exit 0
         }
     }
 }

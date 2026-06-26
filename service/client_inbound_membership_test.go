@@ -6,8 +6,9 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 )
 
 func TestClientInboundMembershipFindsClientsAndNames(t *testing.T) {
@@ -15,27 +16,27 @@ func TestClientInboundMembershipFindsClientsAndNames(t *testing.T) {
 
 	inA := model.Inbound{Type: "vmess", Tag: "in-a", Options: json.RawMessage(`{}`)}
 	inB := model.Inbound{Type: "vmess", Tag: "in-b", Options: json.RawMessage(`{}`)}
-	if err := database.GetDB().Create(&inA).Error; err != nil {
+	if err := dbsqlite.DB().Create(&inA).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Create(&inB).Error; err != nil {
+	if err := dbsqlite.DB().Create(&inB).Error; err != nil {
 		t.Fatal(err)
 	}
 
 	alice := model.Client{Name: "alice", Inbounds: json.RawMessage(fmt.Sprintf("[%d,%d]", inA.Id, inB.Id))}
 	bob := model.Client{Name: "bob", Inbounds: json.RawMessage(fmt.Sprintf("[%d]", inB.Id))}
 	cara := model.Client{Name: "cara", Inbounds: json.RawMessage(`[]`)}
-	if err := database.GetDB().Create(&alice).Error; err != nil {
+	if err := dbsqlite.DB().Create(&alice).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Create(&bob).Error; err != nil {
+	if err := dbsqlite.DB().Create(&bob).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Create(&cara).Error; err != nil {
+	if err := dbsqlite.DB().Create(&cara).Error; err != nil {
 		t.Fatal(err)
 	}
 
-	clients, err := clientsByInbound(database.GetDB(), inB.Id)
+	clients, err := entityclients.ByInbound(dbsqlite.DB(), inB.Id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,7 +48,7 @@ func TestClientInboundMembershipFindsClientsAndNames(t *testing.T) {
 		t.Fatalf("clientsByInbound names = %v, want alice and bob", names)
 	}
 
-	usersByInbound, err := clientNamesByInboundIDs(database.GetDB(), []uint{inA.Id, inB.Id, 999})
+	usersByInbound, err := entityclients.NamesByInboundIDs(dbsqlite.DB(), []uint{inA.Id, inB.Id, 999})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -63,19 +64,19 @@ func TestClientInboundMembershipFindsClientsAndNames(t *testing.T) {
 }
 
 func TestClientInboundMembershipMutatesJSON(t *testing.T) {
-	added, ok, err := appendClientInbound(7, json.RawMessage(`[1]`), 2, "test add")
+	added, ok, err := entityclients.AppendInbound(7, json.RawMessage(`[1]`), 2, "test add")
 	if err != nil || !ok {
 		t.Fatalf("appendClientInbound ok=%v err=%v", ok, err)
 	}
 	assertJSONUintSlice(t, added, []uint{1, 2})
 
-	removed, ok, err := removeClientInbound(7, added, 1, "test remove")
+	removed, ok, err := entityclients.RemoveInbound(7, added, 1, "test remove")
 	if err != nil || !ok {
 		t.Fatalf("removeClientInbound ok=%v err=%v", ok, err)
 	}
 	assertJSONUintSlice(t, removed, []uint{2})
 
-	if _, ok, err := appendClientInbound(7, json.RawMessage(`{bad`), 2, "test add"); err != nil || ok {
+	if _, ok, err := entityclients.AppendInbound(7, json.RawMessage(`{bad`), 2, "test add"); err != nil || ok {
 		t.Fatalf("invalid inbound JSON should skip without error, ok=%v err=%v", ok, err)
 	}
 }

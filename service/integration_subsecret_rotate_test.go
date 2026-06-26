@@ -11,8 +11,8 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/api"
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
@@ -28,7 +28,7 @@ func TestIntegrationSubSecretRotateReloadsClientAndPublishesRealtime(t *testing.
 		Inbounds:  []byte("[]"),
 		Links:     []byte("[]"),
 	}
-	if err := database.GetDB().Create(&client).Error; err != nil {
+	if err := dbsqlite.DB().Create(&client).Error; err != nil {
 		t.Fatal(err)
 	}
 	token, err := (&service.UserService{}).AddToken("admin", 0, "phase3-write", "write")
@@ -109,17 +109,14 @@ func TestIntegrationSubSecretRotateReloadsClientAndPublishesRealtime(t *testing.
 
 func initSubSecretIntegrationDB(t *testing.T) {
 	t.Helper()
-	prevAuditSync := service.AuditSyncForTest
-	service.AuditSyncForTest = true
-	t.Cleanup(func() { service.AuditSyncForTest = prevAuditSync })
 	tempDir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", tempDir)
-	if db := database.GetDB(); db != nil {
+	if db := dbsqlite.DB(); db != nil {
 		if sqlDB, err := db.DB(); err == nil {
 			_ = sqlDB.Close()
 		}
 	}
-	if err := database.InitDB(filepath.Join(tempDir, "s-ui.db")); err != nil {
+	if err := dbsqlite.Init(filepath.Join(tempDir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
@@ -128,7 +125,7 @@ func initSubSecretIntegrationDB(t *testing.T) {
 	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
-	testDB := database.GetDB()
+	testDB := dbsqlite.DB()
 	t.Cleanup(func() {
 		if testDB != nil {
 			if sqlDB, err := testDB.DB(); err == nil {

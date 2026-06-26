@@ -12,8 +12,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/internal/integrations/telegram"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )
 
@@ -50,7 +52,7 @@ func TestTelegramBackupWeakPassphraseValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = database.GetDB().Transaction(func(tx *gorm.DB) error {
+	err = dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, payload)
 	})
 	if err == nil || !strings.Contains(err.Error(), "weak_passphrase") {
@@ -67,25 +69,25 @@ func TestTelegramBackupRunOnceSuccessSendsEnvelopeAndAuditsSizes(t *testing.T) {
 		Passphrase:      passphrase,
 	})
 	rt := &captureRoundTripper{}
-	t.Cleanup(setTelegramHTTPClient(&http.Client{Transport: rt, Timeout: time.Second}))
+	backupService := &TelegramBackupService{TelegramService: TelegramService{Client: &http.Client{Transport: rt, Timeout: time.Second}}}
 
 	ctx := ContextWithTelegramBackupActor(context.Background(), "admin")
-	result := (&TelegramBackupService{}).RunOnce(ctx, TelegramBackupTriggerManual)
+	result := backupService.RunOnce(ctx, TelegramBackupTriggerManual)
 	if !result.Success || result.Filename == "" || result.Trigger != TelegramBackupTriggerManual {
 		t.Fatalf("unexpected result: %#v", result)
 	}
 	document := telegramDocumentFromCapture(t, rt)
-	if !IsTelegramBackupEnvelope(document) {
+	if !integrationtelegram.IsTelegramBackupEnvelope(document) {
 		t.Fatalf("sent document is not a backup envelope: %x", document[:min(len(document), 16)])
 	}
 	if bytes.Contains(document, []byte("SQLite format 3")) {
 		t.Fatal("sent document contains plaintext SQLite signature")
 	}
-	plaintext, err := OpenTelegramBackupEnvelope(document, []byte(passphrase))
+	plaintext, err := integrationtelegram.OpenTelegramBackupEnvelope(document, []byte(passphrase))
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer zeroBytes(plaintext)
+	defer common.WipeBytes(plaintext)
 	if !bytes.HasPrefix(plaintext, []byte("SQLite format 3\x00")) {
 		t.Fatal("decrypted Telegram document is not SQLite")
 	}
@@ -106,13 +108,13 @@ func TestTelegramBackupRunOnceOversizeSkipsSendAndAuditRedactsIssue25(t *testing
 		MaxSizeMB:       "1",
 	})
 	bigDesc := strings.Repeat("x", 2<<20)
-	if err := database.GetDB().Create(&model.Client{Name: "large-client", Desc: bigDesc}).Error; err != nil {
+	if err := dbsqlite.DB().Create(&model.Client{Name: "large-client", Desc: bigDesc}).Error; err != nil {
 		t.Fatal(err)
 	}
 	rt := &countingRoundTripper{}
-	t.Cleanup(setTelegramHTTPClient(&http.Client{Transport: rt, Timeout: time.Second}))
+	backupService := &TelegramBackupService{TelegramService: TelegramService{Client: &http.Client{Transport: rt, Timeout: time.Second}}}
 
-	result := (&TelegramBackupService{}).RunOnce(context.Background(), TelegramBackupTriggerManual)
+	result := backupService.RunOnce(context.Background(), TelegramBackupTriggerManual)
 	if result.Success || result.ErrorClass != "oversize" {
 		t.Fatalf("expected oversize, got %#v", result)
 	}
@@ -145,23 +147,22 @@ func TestTelegramBackupRunOnceConcurrentGuard(t *testing.T) {
 	})
 	started := make(chan struct{})
 	release := make(chan struct{})
-	restoreSend := replaceTelegramBackupSendDocumentForTest(t, func(_ *TelegramService, _ string, _ []byte, _ string) TelegramResult {
+	backupService := &TelegramBackupService{SendDocument: func(_ string, _ []byte, _ string) TelegramResult {
 		close(started)
 		<-release
 		return TelegramResult{Success: true}
-	})
-	defer restoreSend()
+	}}
 
 	done := make(chan TelegramBackupResult, 1)
 	go func() {
-		done <- (&TelegramBackupService{}).RunOnce(context.Background(), TelegramBackupTriggerManual)
+		done <- backupService.RunOnce(context.Background(), TelegramBackupTriggerManual)
 	}()
 	select {
 	case <-started:
 	case <-time.After(5 * time.Second):
 		t.Fatal("first backup did not reach send")
 	}
-	result := (&TelegramBackupService{}).RunOnce(context.Background(), TelegramBackupTriggerScheduled)
+	result := backupService.RunOnce(context.Background(), TelegramBackupTriggerScheduled)
 	if result.Success || result.ErrorClass != "concurrent_run" || result.Trigger != TelegramBackupTriggerScheduled {
 		t.Fatalf("expected concurrent_run, got %#v", result)
 	}
@@ -180,20 +181,17 @@ func TestTelegramBackupRunOncePassesThroughTelegramErrorClassAndFallback(t *test
 		Passphrase:      passphrase,
 	})
 
-	restoreSend := replaceTelegramBackupSendDocumentForTest(t, func(_ *TelegramService, _ string, _ []byte, _ string) TelegramResult {
+	backupService := &TelegramBackupService{SendDocument: func(_ string, _ []byte, _ string) TelegramResult {
 		return TelegramResult{ErrorClass: "proxy"}
-	})
-	result := (&TelegramBackupService{}).RunOnce(context.Background(), TelegramBackupTriggerManual)
+	}}
+	result := backupService.RunOnce(context.Background(), TelegramBackupTriggerManual)
 	if result.Success || result.ErrorClass != "proxy" {
 		t.Fatalf("expected proxy pass-through, got %#v", result)
 	}
-	restoreSend()
-
-	restoreSend = replaceTelegramBackupSendDocumentForTest(t, func(_ *TelegramService, _ string, _ []byte, _ string) TelegramResult {
+	backupService.SendDocument = func(_ string, _ []byte, _ string) TelegramResult {
 		return TelegramResult{}
-	})
-	defer restoreSend()
-	result = (&TelegramBackupService{}).RunOnce(context.Background(), TelegramBackupTriggerManual)
+	}
+	result = backupService.RunOnce(context.Background(), TelegramBackupTriggerManual)
 	if result.Success || result.ErrorClass != "internal" {
 		t.Fatalf("expected internal fallback, got %#v", result)
 	}
@@ -227,7 +225,7 @@ func configureTelegramBackupSettings(t *testing.T, settingService *SettingServic
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, payload)
 	}); err != nil {
 		t.Fatal(err)
@@ -239,15 +237,6 @@ func boolString(value bool) string {
 		return "true"
 	}
 	return "false"
-}
-
-func replaceTelegramBackupSendDocumentForTest(t *testing.T, send func(*TelegramService, string, []byte, string) TelegramResult) func() {
-	t.Helper()
-	old := telegramBackupSendDocument
-	telegramBackupSendDocument = send
-	return func() {
-		telegramBackupSendDocument = old
-	}
 }
 
 func telegramDocumentFromCapture(t *testing.T, rt *captureRoundTripper) []byte {
@@ -283,8 +272,9 @@ func telegramDocumentFromCapture(t *testing.T, rt *captureRoundTripper) []byte {
 
 func assertTelegramBackupAudit(t *testing.T, eventName string, errorClass string, payloadSize int64, envelopeSize int64) model.AuditEvent {
 	t.Helper()
+	flushAuditForTest(t)
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", eventName).Order("id desc").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", eventName).Order("id desc").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	var details map[string]any

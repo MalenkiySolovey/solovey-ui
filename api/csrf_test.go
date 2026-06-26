@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -47,6 +48,7 @@ func performCSRFRequest(router *gin.Engine, method string, path string, token st
 		req.AddCookie(c)
 	}
 	router.ServeHTTP(recorder, req)
+	_ = service.StopAuditWriter(context.Background())
 	return recorder
 }
 

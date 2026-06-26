@@ -5,14 +5,15 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 
 	"gorm.io/gorm"
 )
 
 func TestDecodeClientInbounds(t *testing.T) {
-	got, ok := decodeClientInbounds(7, []byte(`[1,2,3]`), "test")
+	got, ok := entityclients.DecodeInbounds(7, []byte(`[1,2,3]`), "test")
 	if !ok {
 		t.Fatal("valid inbounds should decode")
 	}
@@ -20,17 +21,17 @@ func TestDecodeClientInbounds(t *testing.T) {
 		t.Fatalf("unexpected inbounds: %#v, want %#v", got, want)
 	}
 
-	if _, ok := decodeClientInbounds(7, []byte(`{`), "test"); ok {
+	if _, ok := entityclients.DecodeInbounds(7, []byte(`{`), "test"); ok {
 		t.Fatal("invalid inbounds should be rejected")
 	}
 }
 
 func TestDecodeClientLinks(t *testing.T) {
-	got, ok := decodeClientLinks(7, []byte(`[{"remark":"in","type":"local","uri":"vless://example"}]`), "test")
+	got, ok := entityclients.DecodeLinks(7, []byte(`[{"remark":"in","type":"local","uri":"vless://example"}]`), "test")
 	if !ok {
 		t.Fatal("valid links should decode")
 	}
-	want := []clientLink{{
+	want := []entityclients.Link{{
 		"remark": "in",
 		"type":   "local",
 		"uri":    "vless://example",
@@ -39,7 +40,7 @@ func TestDecodeClientLinks(t *testing.T) {
 		t.Fatalf("unexpected links: %#v, want %#v", got, want)
 	}
 
-	if _, ok := decodeClientLinks(7, []byte(`{`), "test"); ok {
+	if _, ok := entityclients.DecodeLinks(7, []byte(`{`), "test"); ok {
 		t.Fatal("invalid links should be rejected")
 	}
 
@@ -47,7 +48,7 @@ func TestDecodeClientLinks(t *testing.T) {
 	// an empty slice, not be rejected — otherwise the link-regeneration paths
 	// skip the client and its inbounds never reach the subscription.
 	for _, raw := range []json.RawMessage{nil, []byte(""), []byte("  "), []byte("null")} {
-		got, ok := decodeClientLinks(7, raw, "test")
+		got, ok := entityclients.DecodeLinks(7, raw, "test")
 		if !ok {
 			t.Fatalf("empty links %q should decode, not be rejected", raw)
 		}
@@ -82,7 +83,7 @@ func TestDepleteClientsTrafficLimitAvoidsInt64Overflow(t *testing.T) {
 			Volume:   maxInt64 - 1,
 		},
 	}
-	if err := database.GetDB().Create(&clients).Error; err != nil {
+	if err := dbsqlite.DB().Create(&clients).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -91,7 +92,7 @@ func TestDepleteClientsTrafficLimitAvoidsInt64Overflow(t *testing.T) {
 	}
 
 	var got []model.Client
-	if err := database.GetDB().Order("name").Find(&got).Error; err != nil {
+	if err := dbsqlite.DB().Order("name").Find(&got).Error; err != nil {
 		t.Fatal(err)
 	}
 	state := map[string]bool{}
@@ -125,13 +126,13 @@ func TestResetClientsUsesColumnUpdatesAndPreservesIndependentFields(t *testing.T
 		Volume:    300,
 		Expiry:    400,
 	}
-	if err := database.GetDB().Create(&client).Error; err != nil {
+	if err := dbsqlite.DB().Create(&client).Error; err != nil {
 		t.Fatal(err)
 	}
 
 	const callbackName = "test:manual-client-update-before-reset"
 	triggered := false
-	if err := database.GetDB().Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
+	if err := dbsqlite.DB().Callback().Update().Before("gorm:update").Register(callbackName, func(tx *gorm.DB) {
 		if triggered || tx.Statement.Table != "clients" {
 			return
 		}
@@ -146,15 +147,15 @@ func TestResetClientsUsesColumnUpdatesAndPreservesIndependentFields(t *testing.T
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		_ = database.GetDB().Callback().Update().Remove(callbackName)
+		_ = dbsqlite.DB().Callback().Update().Remove(callbackName)
 	})
 
-	if _, err := (&ClientService{}).ResetClients(database.GetDB(), now); err != nil {
+	if _, err := (&ClientService{}).ResetClients(dbsqlite.DB(), now); err != nil {
 		t.Fatal(err)
 	}
 
 	var got model.Client
-	if err := database.GetDB().Where("id = ?", client.Id).First(&got).Error; err != nil {
+	if err := dbsqlite.DB().Where("id = ?", client.Id).First(&got).Error; err != nil {
 		t.Fatal(err)
 	}
 	if got.Volume != 777 || got.Expiry != 888 {

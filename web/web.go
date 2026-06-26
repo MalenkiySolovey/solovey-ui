@@ -14,11 +14,14 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/api"
-	"github.com/MalenkiySolovey/solovey-ui/config"
-	"github.com/MalenkiySolovey/solovey-ui/database"
-	"github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-ui/middleware"
-	"github.com/MalenkiySolovey/solovey-ui/network"
+	importxuihttp "github.com/MalenkiySolovey/solovey-ui/api/importxui"
+	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	logger "github.com/MalenkiySolovey/solovey-ui/logger"
+	domainmiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/domain"
+	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/security"
+	"github.com/MalenkiySolovey/solovey-ui/network/autohttps"
+	"github.com/MalenkiySolovey/solovey-ui/network/bind"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-contrib/gzip"
@@ -73,7 +76,7 @@ func NewServer(options ...Option) (*Server, error) {
 }
 
 func (s *Server) initRouter() (*gin.Engine, error) {
-	if config.IsDebug() {
+	if configlogging.IsDebug() {
 		gin.SetMode(gin.DebugMode)
 	} else {
 		gin.DefaultWriter = io.Discard
@@ -102,9 +105,9 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	}
 
 	if webDomain != "" {
-		engine.Use(middleware.DomainValidator(webDomain))
+		engine.Use(domainmiddleware.Validator(webDomain))
 	}
-	engine.Use(middleware.AdminSecurityHeaders(api.RequestIsHTTPS))
+	engine.Use(securitymiddleware.Admin(api.RequestIsHTTPS))
 
 	cookieKeys, err := s.settingService.GetCookieKeys()
 	if err != nil {
@@ -114,7 +117,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	engine.Use(gzip.Gzip(gzip.DefaultCompression))
 	assetsBasePath := base_url + "assets/"
 
-	store, err := NewSQLiteSessionStore(database.GetDB(), cookieKeys...)
+	store, err := NewSQLiteSessionStore(dbsqlite.DB(), cookieKeys...)
 	if err != nil {
 		return nil, err
 	}
@@ -213,13 +216,13 @@ func (s *Server) Start() (err error) {
 		return err
 	}
 	listenAddr := net.JoinHostPort(listen, strconv.Itoa(port))
-	listenResult, err := network.ListenWithFallbackResult(listenAddr, listen, strconv.Itoa(port))
+	listenResult, err := bind.ListenWithFallbackResult(listenAddr, listen, strconv.Itoa(port))
 	if err != nil {
 		return err
 	}
 	listener := listenResult.Listener
 	if listenResult.Fallback {
-		_ = service.RecordListenFallbackAudit("web", listenResult.RequestedAddr, listenResult.FallbackAddr, listenResult.BindError)
+		_ = (&service.AuditService{}).RecordListenFallback("web", listenResult.RequestedAddr, listenResult.FallbackAddr, listenResult.BindError)
 	}
 	if certFile != "" || keyFile != "" {
 		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
@@ -231,7 +234,7 @@ func (s *Server) Start() (err error) {
 			Certificates: []tls.Certificate{cert},
 			MinVersion:   tls.VersionTLS12,
 		}
-		listener = network.NewAutoHttpsListener(listener)
+		listener = autohttps.NewAutoHttpsListener(listener)
 		listener = tls.NewListener(listener, c)
 	}
 
@@ -252,7 +255,7 @@ func (s *Server) Start() (err error) {
 		// can lift the 30s Read/Write timeouts. The gzip middleware wraps
 		// c.Writer such that http.NewResponseController can no longer reach the
 		// connection, so the deadline must be set on the conn directly.
-		ConnContext: api.SaveConnContext,
+		ConnContext: importxuihttp.SaveConnContext,
 	}
 
 	go func() {

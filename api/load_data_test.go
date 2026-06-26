@@ -5,9 +5,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/core"
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
@@ -15,15 +15,16 @@ import (
 
 func TestLoadDataIncludesSubscriptionURIOverrides(t *testing.T) {
 	settingService := initSessionTestDB(t)
-	service.NewConfigService(core.NewCore())
+	service.NewConfigService(coreruntime.NewCore())
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
 	for key, value := range map[string]string{
 		"subJsonURI":  "https://json.example/sub/",
 		"subClashURI": "https://clash.example/sub/",
+		"subXrayURI":  "https://xray.example/sub/",
 	} {
-		if err := database.GetDB().Model(model.Setting{}).Where("key = ?", key).Update("value", value).Error; err != nil {
+		if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", key).Update("value", value).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -33,7 +34,7 @@ func TestLoadDataIncludesSubscriptionURIOverrides(t *testing.T) {
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodGet, "http://panel.example/api/load", nil)
 
-	data, err := (&ApiService{}).getData(c)
+	data, err := (&ApiService{}).configHandler().GetData(c)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -46,5 +47,8 @@ func TestLoadDataIncludesSubscriptionURIOverrides(t *testing.T) {
 	}
 	if payload["subClashURI"] != "https://clash.example/sub/" {
 		t.Fatalf("subClashURI override missing: %#v", payload)
+	}
+	if payload["subXrayURI"] != "https://xray.example/sub/" {
+		t.Fatalf("subXrayURI override missing: %#v", payload)
 	}
 }

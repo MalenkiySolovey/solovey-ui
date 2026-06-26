@@ -1,17 +1,27 @@
 package api
 
 import (
-	"strings"
-
-	"github.com/MalenkiySolovey/solovey-ui/paidsub"
+	authhttp "github.com/MalenkiySolovey/solovey-ui/api/auth"
+	confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
+	dbtransferhttp "github.com/MalenkiySolovey/solovey-ui/api/dbtransfer"
+	failoverhttp "github.com/MalenkiySolovey/solovey-ui/api/failover"
+	importxuihttp "github.com/MalenkiySolovey/solovey-ui/api/importxui"
+	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
+	remotesubhttp "github.com/MalenkiySolovey/solovey-ui/api/remotesub"
+	telegramhttp "github.com/MalenkiySolovey/solovey-ui/api/telegram"
+	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
+	updatehttp "github.com/MalenkiySolovey/solovey-ui/api/update"
+	paidadmin "github.com/MalenkiySolovey/solovey-ui/paidsub/admin"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
 )
 
 type APIHandler struct {
 	ApiService
-	apiv2         *APIv2Handler
-	csrfLoginPath string
+	apiv2           *APIv2Handler
+	csrfLoginPath   string
+	authExemptPaths map[string]struct{}
 }
 
 func NewAPIHandler(g *gin.RouterGroup, a2 *APIv2Handler, options ...Option) {
@@ -24,9 +34,9 @@ func NewAPIHandler(g *gin.RouterGroup, a2 *APIv2Handler, options ...Option) {
 
 func (a *APIHandler) initRouter(g *gin.RouterGroup) {
 	a.csrfLoginPath = a.cachedCSRFLoginPath()
+	a.authExemptPaths = a.cachedAuthExemptPaths()
 	g.Use(func(c *gin.Context) {
-		path := c.Request.URL.Path
-		if !strings.HasSuffix(path, "login") && !strings.HasSuffix(path, "logout") {
+		if _, exempt := a.authExemptPaths[c.Request.URL.Path]; !exempt {
 			checkLogin(c)
 		}
 	})
@@ -34,94 +44,72 @@ func (a *APIHandler) initRouter(g *gin.RouterGroup) {
 	a.registerGroupedRoutes(g)
 }
 
-func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
-	g.POST("/login", a.ApiService.Login)
-	g.POST("/changePass", a.ApiService.ChangePass)
-	g.POST("/addAdmin", a.ApiService.AddAdmin)
-	g.POST("/deleteAdmin", a.reloadTokensAfter(a.ApiService.DeleteAdmin))
-	g.POST("/save", a.save)
-	g.POST("/reorder", a.reorder)
-	g.POST("/restartApp", a.ApiService.RestartApp)
-	g.POST("/restartSb", a.ApiService.RestartSb)
-	g.POST("/linkConvert", a.ApiService.LinkConvert)
-	g.POST("/subConvert", a.ApiService.SubConvert)
-	g.POST("/importdb", a.ApiService.ImportDb)
-	registerImportXUIRoutes(g, &a.ApiService)
-	g.POST("/addToken", a.reloadTokensAfter(a.ApiService.AddToken))
-	g.POST("/deleteToken", a.reloadTokensAfter(a.ApiService.DeleteToken))
-	g.POST("/setTokenEnabled", a.reloadTokensAfter(a.ApiService.SetTokenEnabled))
-	g.POST("/logoutAllAdmins", a.ApiService.LogoutAllAdmins)
-
-	g.GET("/csrf", a.ApiService.GetCSRF)
-	g.GET("/logout", a.ApiService.Logout)
-	g.GET("/load", a.ApiService.LoadData)
-	for _, action := range []string{"inbounds", "outbounds", "endpoints", "services", "tls", "clients", "config"} {
-		action := action
-		g.GET("/"+action, a.loadPartialData(action))
+func (a *APIHandler) cachedAuthExemptPaths() map[string]struct{} {
+	webPath, err := a.SettingService.GetWebPath()
+	if err != nil {
+		webPath = "/"
 	}
-	g.GET("/users", a.ApiService.GetUsers)
-	g.GET("/settings", a.ApiService.GetSettings)
-	g.GET("/stats", a.ApiService.GetStats)
-	g.GET("/status", a.ApiService.GetStatus)
-	g.GET("/onlines", a.ApiService.GetOnlines)
-	g.GET("/logs", a.ApiService.GetLogs)
-	g.GET("/logs/entries", a.ApiService.GetLogEntries)
-	g.GET("/diagnostics/report", a.ApiService.GetDiagnosticsReport)
-	g.GET("/diagnostics/bundle", a.ApiService.GetDiagnosticsBundle)
-	g.GET("/changes", a.ApiService.CheckChanges)
-	g.GET("/keypairs", a.ApiService.GetKeypairs)
-	g.GET("/getdb", a.ApiService.GetDb)
-	g.GET("/tokens", a.ApiService.GetTokens)
-	g.GET("/singbox-config", a.ApiService.GetSingboxConfig)
-	g.GET("/checkOutbound", a.ApiService.GetCheckOutbound)
-	g.GET("/version", a.ApiService.GetVersionInfo)
-	g.POST("/checkOutbounds", a.ApiService.CheckOutbounds)
-	g.POST("/rotateSubSecret", a.ApiService.RotateSubSecret)
-	registerRemoteOutboundSubscriptionRoutes(g, &a.ApiService)
+	return map[string]struct{}{
+		joinURL(webPath, "api/login"):  {},
+		joinURL(webPath, "api/logout"): {},
+	}
+}
 
-	security := g.Group("/security")
-	security.GET("/audit", a.ApiService.GetSecurityAudit)
+func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
+	authDeps := a.authDeps()
+	authDeps.CSRF = a.ApiService.GetCSRF
+	authDeps.ReloadTokensAfter = a.reloadTokensAfter
+	authhttp.RegisterRoutes(g, authDeps)
 
-	telegram := g.Group("/telegram")
-	telegram.POST("/test", a.ApiService.TestTelegram)
-	telegram.POST("/backup", a.ApiService.BackupToTelegram)
-	telegram.POST("/backup/run", a.ApiService.RunTelegramBackup)
+	configDeps := a.configDeps()
+	configDeps.LoginUser = GetLoginUser
+	confighttp.RegisterRoutes(g, configDeps)
 
-	realtime := g.Group("/realtime")
-	realtime.GET("/ws-token", a.ApiService.IssueWSToken)
-	realtime.GET("/ws", a.ApiService.RealtimeWS)
+	dbtransferhttp.RegisterRoutes(g, a.dbTransferDeps())
+	importxuihttp.RegisterRoutes(g, a.importXUIDeps())
+	telemetryhttp.RegisterRoutes(g, a.telemetryDeps())
+	updatehttp.RegisterRoutes(g, a.updateDeps())
+	failoverhttp.RegisterRoutes(g, failoverhttp.Deps{
+		Status:  service.FailoverStatusEntries,
+		JSONObj: jsonObj,
+	})
 
-	ipMonitor := g.Group("/ip-monitor")
-	ipMonitor.GET("/:client", a.ApiService.GetClientIPHistory)
-	ipMonitor.POST("/:client/clear", a.ApiService.ClearClientIPHistory)
+	remotesubhttp.RegisterRoutes(g, remotesubhttp.Deps{
+		Service:        &a.RemoteOutboundService,
+		RequireScope:   a.requireTokenScopeAny,
+		Actor:          requestActor,
+		ValidateTarget: confighttp.ValidateOutboundCheckTarget,
+		JSONObj:        jsonObj,
+		JSONMsg:        jsonMsg,
+	})
+	telegramhttp.RegisterRoutes(g, telegramhttp.Deps{
+		Settings:       a.SettingService,
+		Telegram:       a.TelegramService,
+		AuditService:   a.AuditService,
+		RequireScope:   a.requireTokenScopeAny,
+		Actor:          requestActor,
+		RemoteIP:       getRemoteIp,
+		CheckRateLimit: checkTelegramBackupManualRateLimit,
+		Audit:          a.recordAudit,
+		JSONObj:        jsonObj,
+	})
 
-	observability := g.Group("/observability")
-	observability.GET("/history", a.ApiService.GetObservabilityHistory)
-	observability.GET("/core-history", a.ApiService.GetCoreHistory)
+	realtimehttp.RegisterRoutes(g, realtimehttp.Deps{
+		SettingService: a.SettingService,
+		LoginUser:      GetLoginUser,
+		RemoteIP:       getRemoteIp,
+		Scope:          realtimeScopeFromContext,
+		Audit:          a.recordAudit,
+		JSONObj:        jsonObj,
+		JSONMsg:        jsonMsg,
+	})
 
 	// Experimental Paid Subscriptions module owns its own routes; mount them on
 	// the already-authenticated (session + CSRF) browser group.
-	paidsub.RegisterRoutes(g, paidsub.Deps{
+	paidadmin.RegisterRoutes(g, paidadmin.Deps{
 		LoginUser: GetLoginUser,
 		Audit:     a.ApiService.recordAudit,
 	})
-}
-
-func (a *APIHandler) save(c *gin.Context) {
-	a.ApiService.Save(c, GetLoginUser(c))
-}
-
-func (a *APIHandler) reorder(c *gin.Context) {
-	a.ApiService.Reorder(c, GetLoginUser(c))
-}
-
-func (a *APIHandler) loadPartialData(action string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		err := a.ApiService.LoadPartialData(c, []string{action})
-		if err != nil {
-			jsonMsg(c, action, err)
-		}
-	}
 }
 
 func (a *APIHandler) reloadTokensAfter(handler gin.HandlerFunc) gin.HandlerFunc {

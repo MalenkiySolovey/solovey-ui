@@ -47,6 +47,19 @@ func IsSafeOutboundURL(rawURL string) bool {
 	return ValidateOutboundURL(context.Background(), rawURL) == nil
 }
 
+// ValidateProxyURL applies the outbound URL policy and requires credentials to
+// be supplied separately so they cannot leak through URL logging.
+func ValidateProxyURL(rawURL string) error {
+	if rawURL == "" {
+		return nil
+	}
+	parsed, err := url.Parse(rawURL)
+	if err == nil && parsed.User != nil {
+		return common.NewError("proxy url must not contain credentials; use the username/password fields")
+	}
+	return ValidateOutboundURL(context.Background(), rawURL, "http", "https", "socks5")
+}
+
 func ValidateOutboundURL(ctx context.Context, rawURL string, allowedSchemes ...string) error {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {

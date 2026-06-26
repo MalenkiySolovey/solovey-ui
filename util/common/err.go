@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/MalenkiySolovey/solovey-ui/logger"
+	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 )
 
 func NewErrorf(format string, a ...interface{}) error {

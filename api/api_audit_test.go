@@ -8,8 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )
@@ -22,19 +23,19 @@ func TestGetSecurityAuditDoesNotPruneOnRead(t *testing.T) {
 		Actor:    "admin",
 		Event:    "old",
 	}
-	if err := database.GetDB().Create(&oldEvent).Error; err != nil {
+	if err := dbsqlite.DB().Create(&oldEvent).Error; err != nil {
 		t.Fatal(err)
 	}
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/security/audit", (&ApiService{}).GetSecurityAudit)
+		router.GET("/api/security/audit", (&ApiService{}).telemetryHandler().GetSecurityAudit)
 	})
 	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?limit=10", nil), cookies...)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}
 	var count int64
-	if err := database.GetDB().Model(model.AuditEvent{}).Where("event = ?", "old").Count(&count).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.AuditEvent{}).Where("event = ?", "old").Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
@@ -47,7 +48,7 @@ func TestGetSecurityAuditPaginatesByCursorAndCapsLimit(t *testing.T) {
 	settingService := initSessionTestDB(t)
 	now := time.Now().Unix()
 	for i := 0; i < 3; i++ {
-		if err := database.GetDB().Create(&model.AuditEvent{
+		if err := dbsqlite.DB().Create(&model.AuditEvent{
 			DateTime: now + int64(i),
 			Actor:    "admin",
 			Event:    "event",
@@ -57,7 +58,7 @@ func TestGetSecurityAuditPaginatesByCursorAndCapsLimit(t *testing.T) {
 	}
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/security/audit", (&ApiService{}).GetSecurityAudit)
+		router.GET("/api/security/audit", (&ApiService{}).telemetryHandler().GetSecurityAudit)
 	})
 	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?limit=2", nil), cookies...)
 	if recorder.Code != http.StatusOK {
@@ -109,12 +110,12 @@ func TestGetSecurityAuditFiltersEventAndSeverity(t *testing.T) {
 		{DateTime: now + 1, Actor: "admin", Event: "telegram_test", Severity: "info"},
 		{DateTime: now + 2, Actor: "admin", Event: "login_success", Severity: "info"},
 	}
-	if err := database.GetDB().Create(&events).Error; err != nil {
+	if err := dbsqlite.DB().Create(&events).Error; err != nil {
 		t.Fatal(err)
 	}
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/security/audit", (&ApiService{}).GetSecurityAudit)
+		router.GET("/api/security/audit", (&ApiService{}).telemetryHandler().GetSecurityAudit)
 	})
 	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?event=telegram_test&severity=warn", nil), cookies...)
 	if recorder.Code != http.StatusOK {
@@ -152,12 +153,12 @@ func TestGetSecurityAuditFiltersDateRange(t *testing.T) {
 		{DateTime: now, Actor: "admin", Event: "inside", Severity: "info"},
 		{DateTime: now + 10, Actor: "admin", Event: "after", Severity: "info"},
 	}
-	if err := database.GetDB().Create(&events).Error; err != nil {
+	if err := dbsqlite.DB().Create(&events).Error; err != nil {
 		t.Fatal(err)
 	}
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/security/audit", (&ApiService{}).GetSecurityAudit)
+		router.GET("/api/security/audit", (&ApiService{}).telemetryHandler().GetSecurityAudit)
 	})
 	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?since="+strconv.FormatInt(now, 10)+"&until="+strconv.FormatInt(now+5, 10), nil), cookies...)
 	if recorder.Code != http.StatusOK {
@@ -206,7 +207,7 @@ func TestParseAuditUnixSecondsFilter(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, err := parseAuditUnixSecondsFilter("since", tt.raw)
+			got, err := telemetryhttp.ParseAuditUnixSecondsFilter("since", tt.raw)
 			if tt.wantErr {
 				if err == nil {
 					t.Fatal("expected error")
@@ -241,7 +242,7 @@ func TestGetSecurityAuditScopeMatrix(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			resetRateLimitState()
 			settingService := initSessionTestDB(t)
-			handler := (&ApiService{}).GetSecurityAudit
+			handler := (&ApiService{}).telemetryHandler().GetSecurityAudit
 			if tt.hasScope {
 				handler = withTestTokenScope("api-user", tt.scope, handler)
 			}
@@ -255,8 +256,9 @@ func TestGetSecurityAuditScopeMatrix(t *testing.T) {
 			if tt.wantStatus != http.StatusForbidden {
 				return
 			}
+			flushAPIAudit(t)
 			var event model.AuditEvent
-			if err := database.GetDB().Where("event = ?", "audit_scope_denied").First(&event).Error; err != nil {
+			if err := dbsqlite.DB().Where("event = ?", "audit_scope_denied").First(&event).Error; err != nil {
 				t.Fatal(err)
 			}
 			if event.Actor != "api-user" {
@@ -298,7 +300,7 @@ func TestGetSecurityAuditRateLimitReturns429AndAudits(t *testing.T) {
 		}
 	}
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/security/audit", withTestTokenScope("admin", "admin", (&ApiService{}).GetSecurityAudit))
+		router.GET("/api/security/audit", withTestTokenScope("admin", "admin", (&ApiService{}).telemetryHandler().GetSecurityAudit))
 	})
 	req := httptest.NewRequest(http.MethodGet, "/api/security/audit", nil)
 	req.RemoteAddr = ip + ":1234"
@@ -309,8 +311,9 @@ func TestGetSecurityAuditRateLimitReturns429AndAudits(t *testing.T) {
 	if recorder.Header().Get("Retry-After") == "" {
 		t.Fatal("missing retry-after header")
 	}
+	flushAPIAudit(t)
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "audit_rate_limited").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "audit_rate_limited").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" {
@@ -334,7 +337,7 @@ func TestGetSecurityAuditRateLimitKeyUsesActorAndCanonicalIP(t *testing.T) {
 		}
 	}
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/security/audit", withTestTokenScope("admin", "admin", (&ApiService{}).GetSecurityAudit))
+		router.GET("/api/security/audit", withTestTokenScope("admin", "admin", (&ApiService{}).telemetryHandler().GetSecurityAudit))
 	})
 
 	blockedReq := httptest.NewRequest(http.MethodGet, "/api/security/audit", nil)
@@ -352,7 +355,7 @@ func TestGetSecurityAuditRateLimitKeyUsesActorAndCanonicalIP(t *testing.T) {
 	}
 
 	otherActorRouter, otherActorCookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/security/audit", withTestTokenScope("other-admin", "admin", (&ApiService{}).GetSecurityAudit))
+		router.GET("/api/security/audit", withTestTokenScope("other-admin", "admin", (&ApiService{}).telemetryHandler().GetSecurityAudit))
 	})
 	otherActorReq := httptest.NewRequest(http.MethodGet, "/api/security/audit", nil)
 	otherActorReq.RemoteAddr = "198.51.100.10:1234"
@@ -373,7 +376,7 @@ func TestAPIV2SecurityAuditRequiresAdminScope(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Create(&model.AuditEvent{
+	if err := dbsqlite.DB().Create(&model.AuditEvent{
 		DateTime: time.Now().Unix(),
 		Actor:    "admin",
 		Event:    "login_success",

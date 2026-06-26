@@ -4,13 +4,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 func TestLoadCacheEntryFailsClosedOnClientIPReadError(t *testing.T) {
 	initIPMonitorTestDB(t)
-	if err := database.GetDB().Create(&model.Client{
+	if err := dbsqlite.DB().Create(&model.Client{
 		Enable:      true,
 		Name:        "alice",
 		LimitIP:     1,
@@ -20,7 +20,7 @@ func TestLoadCacheEntryFailsClosedOnClientIPReadError(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Migrator().DropTable(&model.ClientIP{}); err != nil {
+	if err := dbsqlite.DB().Migrator().DropTable(&model.ClientIP{}); err != nil {
 		t.Fatal(err)
 	}
 

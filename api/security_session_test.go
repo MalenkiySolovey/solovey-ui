@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
@@ -22,7 +22,7 @@ func TestSecuritySessionCookieFlagsAndMaxAge(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := settingService.Save(database.GetDB(), payload); err != nil {
+	if err := settingService.Save(dbsqlite.DB(), payload); err != nil {
 		t.Fatal(err)
 	}
 	router := newSecuritySessionMaxAgeRouter(t, settingService)
@@ -105,7 +105,7 @@ func TestSecuritySessionStrictSameSite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := settingService.Save(database.GetDB(), payload); err != nil {
+	if err := settingService.Save(dbsqlite.DB(), payload); err != nil {
 		t.Fatal(err)
 	}
 	router := newSecuritySessionMaxAgeRouter(t, settingService)

@@ -5,15 +5,16 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	"gorm.io/gorm"
 )
 
-func planAdmins(ctx context.Context, tx *gorm.DB, src *sourceDB, plan *MigrationPlan, strategy Strategy, mode AdminMode) error {
-	users, err := src.users()
+func planAdmins(ctx context.Context, tx *gorm.DB, src *source.Database, plan *MigrationPlan, strategy Strategy, mode AdminMode) error {
+	users, err := src.Users()
 	if err != nil {
 		return err
 	}
@@ -47,11 +48,11 @@ func planAdmins(ctx context.Context, tx *gorm.DB, src *sourceDB, plan *Migration
 	return nil
 }
 
-func (s *applyState) applyAdmins(ctx context.Context, tx *gorm.DB, src *sourceDB) error {
+func (s *applyState) applyAdmins(ctx context.Context, tx *gorm.DB, src *source.Database) error {
 	if !s.hasKind(KindAdmin) {
 		return nil
 	}
-	users, err := src.users()
+	users, err := src.Users()
 	if err != nil {
 		return err
 	}
@@ -63,8 +64,8 @@ func (s *applyState) applyAdmins(ctx context.Context, tx *gorm.DB, src *sourceDB
 		if item.Action == ActionSkip {
 			continue
 		}
-		username := firstNonEmpty(item.DstTag, user.Username)
-		mode := AdminMode(firstNonEmpty(item.AdminMode, string(AdminModeNewPassword)))
+		username := firstSet(item.DstTag, user.Username)
+		mode := AdminMode(firstSet(item.AdminMode, string(AdminModeNewPassword)))
 		if err := mode.Validate(); err != nil {
 			return err
 		}
@@ -95,6 +96,15 @@ func (s *applyState) applyAdmins(ctx context.Context, tx *gorm.DB, src *sourceDB
 	return nil
 }
 
+func firstSet(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
+}
+
 func sourceAdminPasswordHash(password string) (string, error) {
 	if common.IsPasswordHash(password) {
 		return password, nil
@@ -105,10 +115,10 @@ func sourceAdminPasswordHash(password string) (string, error) {
 func upsertUserWithPassword(tx *gorm.DB, username string, passwordHash string, action string, forcePasswordReset bool) error {
 	var user model.User
 	err := tx.Where("username = ?", username).First(&user).Error
-	if err != nil && !database.IsNotFound(err) {
+	if err != nil && !dbsqlite.IsNotFound(err) {
 		return err
 	}
-	if database.IsNotFound(err) {
+	if dbsqlite.IsNotFound(err) {
 		sortOrder, err := nextImportSortOrder(tx, &model.User{})
 		if err != nil {
 			return err
@@ -127,10 +137,10 @@ func upsertUserWithPassword(tx *gorm.DB, username string, passwordHash string, a
 func upsertUserResetRequired(tx *gorm.DB, username string, sourcePasswordHash string, action string) error {
 	var user model.User
 	err := tx.Where("username = ?", username).First(&user).Error
-	if err != nil && !database.IsNotFound(err) {
+	if err != nil && !dbsqlite.IsNotFound(err) {
 		return err
 	}
-	if database.IsNotFound(err) {
+	if dbsqlite.IsNotFound(err) {
 		if action == ActionSkip || action == "" {
 			return nil
 		}

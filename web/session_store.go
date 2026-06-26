@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	ginsessions "github.com/gin-contrib/sessions"
 	"github.com/gorilla/securecookie"
@@ -213,7 +213,7 @@ func (s *SQLiteSessionStore) erase(id string) error {
 }
 
 func (s *SQLiteSessionStore) liveDB() *gorm.DB {
-	if live := database.GetDB(); live != nil {
+	if live := dbsqlite.DB(); live != nil {
 		return live
 	}
 	return s.db

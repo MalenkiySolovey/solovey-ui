@@ -6,6 +6,8 @@ import (
 	mrand "math/rand"
 	"sync"
 	"time"
+
+	"github.com/gofrs/uuid/v5"
 )
 
 var (
@@ -53,4 +55,13 @@ func RandomInt(n int) int {
 		return fallbackRand.Intn(n)
 	}
 	return int(result.Int64())
+}
+
+// RandomUUID returns a cryptographically random UUIDv4 string.
+func RandomUUID() (string, error) {
+	id, err := uuid.NewV4()
+	if err != nil {
+		return "", err
+	}
+	return id.String(), nil
 }

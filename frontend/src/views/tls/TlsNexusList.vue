@@ -17,6 +17,12 @@
         <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" @click="emit('add')">
           {{ $t('actions.add') }}
         </v-btn>
+        <BulkSelectionControls
+          :active="selectionMode"
+          :count="selectedIds.length"
+          @delete="deleteSelected"
+          @toggle="toggleSelectionMode"
+        />
       </template>
     </page-toolbar>
 
@@ -26,7 +32,11 @@
       draggable-rows
       :items="filtered"
       :row-key="(item) => item.id"
-      @row-drop="(dragged, target) => emit('moveTo', dragged.id, target.id)"
+      :selectable="selectionMode"
+      :selected="selectedIds"
+      @update:selected="selectedIds = $event"
+      @row-drop="(dragged, target, position) => emit('moveTo', dragged.id, target.id, position)"
+      @rows-drop="(dragged, target, position) => emit('moveManyTo', dragged.map(item => item.id), target.id, position)"
     >
       <template #col.name="{ item }">
         <span class="tls-nexus__name">{{ item.name }}</span>
@@ -75,6 +85,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
 import ManualSortButton from '@/components/ManualSortButton.vue'
 import type { Column } from '@/components/nexus/data/dataTableColumns'
 import NexusDataTable from '@/components/nexus/data/NexusDataTable.vue'
@@ -85,7 +96,9 @@ import EmptyState from '@/components/nexus/primitives/EmptyState.vue'
 import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
-import type { ManualSortDirection } from '@/composables/useManualReorder'
+import { useBulkSelection } from '@/shared/composables/dragSelection/bulkSelection'
+import type { ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
+import type { ManualSortDirection } from '@/shared/composables/dragSelection/manualReorder'
 
 interface TlsRow {
   id: number
@@ -106,14 +119,19 @@ const emit = defineEmits<{
   edit: [id: number]
   clone: [item: TlsRow]
   del: [id: number]
+  delMany: [ids: number[]]
   move: [id: number, dir: number]
-  moveTo: [draggedId: number, targetId: number]
+  moveManyTo: [draggedIds: number[], targetId: number, position: ManualDropPosition | null]
+  moveTo: [draggedId: number, targetId: number, position: ManualDropPosition | null]
   sortByName: [direction: ManualSortDirection]
 }>()
 
 const { t } = useI18n()
 const { confirm } = useConfirm()
 const search = ref('')
+const selection = useBulkSelection(computed(() => props.tlsConfigs), item => item.id)
+const selectionMode = selection.active
+const selectedIds = selection.selectedIds
 
 const sortByName = (direction: ManualSortDirection) => {
   emit('sortByName', direction)
@@ -131,9 +149,9 @@ const columns: Column<TlsRow>[] = [
   { key: 'name', labelKey: 'client.name' },
   { key: 'server_name', labelKey: 'setting.domain' },
   { key: 'inbounds', labelKey: 'pages.inbounds' },
-  { key: 'acme', labelKey: 'ACME' },
-  { key: 'ech', labelKey: 'ECH' },
-  { key: 'reality', labelKey: 'Reality' },
+  { key: 'acme', label: 'ACME' },
+  { key: 'ech', label: 'ECH' },
+  { key: 'reality', label: 'Reality' },
 ]
 
 const usedBy = (id: number): string[] =>
@@ -146,6 +164,23 @@ const filtered = computed<TlsRow[]>(() => {
 
   return props.tlsConfigs.filter(item => String(item.name).toLowerCase().includes(query))
 })
+
+const selectedRows = selection.selectedItems
+const toggleSelectionMode = selection.toggleActive
+
+const deleteSelected = async () => {
+  const rows = selectedRows.value.filter(item => usedBy(item.id).length === 0)
+  if (rows.length === 0) return
+  const accepted = await confirm({
+    title: `${t('actions.delbulk')} ${t('objects.tls')}`,
+    message: rows.map(item => item.name).join('\n'),
+    confirmLabel: t('actions.del'),
+    tone: 'error',
+  })
+  if (!accepted) return
+  emit('delMany', rows.map(item => item.id))
+  selection.clear()
+}
 
 const tlsActions = (item: TlsRow): RowAction[] => [
   { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || props.tlsConfigs.findIndex(row => row.id === item.id) === 0 },

@@ -17,8 +17,10 @@
     :services="<any[]>services"
     @add="showModal(0)"
     @del="delSrv"
+    @del-many="delServicesBulk"
     @edit="showModal"
     @move="moveSrv"
+    @move-many-to="dragSelectedServices"
     @move-to="dragSrv"
     @sort-by-name="sortServicesByName"
   />
@@ -32,6 +34,15 @@
           style="margin: 0 5px;"
           @sort="sortServicesByName"
         />
+        <BulkSelectionControls
+          :active="serviceSelectMode"
+          :count="selectedServiceCount"
+          inactive-color="secondary"
+          inactive-variant="outlined"
+          style="margin: 0 5px;"
+          @delete="deleteSelectedServices"
+          @toggle="toggleServiceSelectMode"
+        />
       </v-col>
     </v-row>
     <v-row>
@@ -42,14 +53,33 @@
         lg="2"
         v-for="(item, index) in <any[]>services"
         :key="item.tag"
+        class="manual-drop-grid-cell"
+        :class="serviceDrag.indicatorClasses(item.id)"
+        :style="serviceDrag.indicatorStyles(item.id)"
         :draggable="false"
         @pointerdown="serviceDrag.prepare($event)"
         @dragstart="serviceDrag.start($event, item.id)"
-        @dragover="serviceDrag.over($event)"
+        @dragover="serviceDrag.overTarget($event, item.id, services.map(row => row.id), serviceSelectMode ? selectedServiceIds.map(Number) : [], false, 'grid')"
+        @dragleave="serviceDrag.leaveTarget($event, item.id)"
         @drop="onServiceDrop($event, item.id)"
         @dragend="serviceDrag.clear($event)"
       >
-        <v-card rounded="xl" elevation="5" min-width="200" :title="item.tag">
+        <v-card
+          rounded="xl"
+          elevation="5"
+          min-width="200"
+          :title="item.tag"
+          class="services__card"
+          :class="{ 'services__card--selected': isServiceSelected(item.id) }"
+        >
+          <div v-if="serviceSelectMode" class="services__select manual-drag-no-drag">
+            <v-checkbox-btn
+              :model-value="isServiceSelected(item.id)"
+              :aria-label="$t('table.selectRow')"
+              density="compact"
+              @update:model-value="toggleServiceSelection(item.id, Boolean($event))"
+            />
+          </div>
           <v-card-subtitle style="margin-top: -15px;">
             <v-row>
               <v-col>{{ item.type }}</v-col>
@@ -112,21 +142,28 @@
 
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
+import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
 import ManualSortButton from '@/components/ManualSortButton.vue'
 import { Srv } from '@/types/services'
 import { computed, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import ServiceVue from '@/layouts/modals/Service.vue'
 import { useUiMode } from '@/uiMode/useUiMode'
 import { defineAsyncComponent } from 'vue'
-import { useManualDrag } from '@/composables/useManualDrag'
+import { useManualDrag, type ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
 import {
   dragManualOrder,
   type ManualSortDirection,
+  moveManyManualOrder,
   moveManualOrder,
   sortManualOrderByText,
-} from '@/composables/useManualReorder'
+} from '@/shared/composables/dragSelection/manualReorder'
+import { useBulkSelection } from '@/shared/composables/dragSelection/bulkSelection'
+import { useConfirm } from '@/components/nexus/primitives/useConfirm'
 
 const { mode } = useUiMode()
+const { t } = useI18n()
+const { confirm } = useConfirm()
 
 const ServicesNexusList = defineAsyncComponent(
   () => import('@/views/services/ServicesNexusList.vue'),
@@ -140,6 +177,13 @@ const EntityForm = computed(() => (mode.value === 'nexus' ? ServiceDrawer : Serv
 const services = computed((): Srv[] => {
   return <Srv[]> Data().services
 })
+const serviceSelection = useBulkSelection(services, item => item.id)
+const serviceSelectMode = serviceSelection.active
+const selectedServiceIds = serviceSelection.selectedIds
+const selectedServiceCount = serviceSelection.selectedCount
+const isServiceSelected = serviceSelection.isSelected
+const toggleServiceSelection = serviceSelection.toggle
+const toggleServiceSelectMode = serviceSelection.toggleActive
 
 const tsTags = computed((): any[] => {
   return Data().endpoints?.filter((o:any) => o.type == "tailscale")?.map((o:any) => o.tag)
@@ -183,12 +227,45 @@ const delSrv = async (id: number) => {
   if (success) delOverlay.value[index] = false
 }
 
+const delServicesBulk = async (ids: number[]) => {
+  const uniqueIds = [...new Set(ids.map(Number).filter(Boolean))]
+  let success = true
+  for (const id of uniqueIds) {
+    const service = services.value.find(item => item.id === id)
+    if (!service) continue
+    success = await Data().save("services", "del", service.tag)
+    if (!success) break
+  }
+  if (success) {
+    delOverlay.value = []
+    serviceSelection.clear()
+  }
+  return success
+}
+
+const deleteSelectedServices = async () => {
+  const rows = serviceSelection.selectedItems.value
+  if (rows.length === 0) return
+  const accepted = await confirm({
+    title: `${t('actions.delbulk')} ${t('objects.service')}`,
+    message: rows.map(item => item.tag).join('\n'),
+    confirmLabel: t('actions.del'),
+    tone: 'error',
+  })
+  if (!accepted) return
+  await delServicesBulk(rows.map(item => item.id))
+}
+
 const moveSrv = async (id: number, dir: number) => {
   await moveManualOrder("services", services.value as any[], id, dir)
 }
 
-const dragSrv = async (draggedId: number, targetId: number) => {
-  await dragManualOrder("services", services.value as any[], draggedId, targetId)
+const dragSrv = async (draggedId: number, targetId: number, position: ManualDropPosition | null = null) => {
+  await dragManualOrder("services", services.value as any[], draggedId, targetId, "id", position)
+}
+
+const dragSelectedServices = async (draggedIds: number[], targetId: number, position: ManualDropPosition | null = null) => {
+  await moveManyManualOrder("services", services.value as any[], draggedIds, targetId, "id", position)
 }
 
 const sortServicesByName = async (direction: ManualSortDirection) => {
@@ -197,6 +274,30 @@ const sortServicesByName = async (direction: ManualSortDirection) => {
 
 const serviceDrag = useManualDrag<number>()
 const onServiceDrop = (event: DragEvent, targetId: number) => {
-  serviceDrag.drop(event, targetId, dragSrv)
+  serviceDrag.drop(event, targetId, (draggedId, dropTargetId, position) => {
+    if (serviceSelectMode.value && serviceSelection.isSelected(draggedId)) {
+      void dragSelectedServices(serviceSelection.selectedIds.value.map(Number), dropTargetId, position)
+      return
+    }
+    void dragSrv(draggedId, dropTargetId, position)
+  })
 }
 </script>
+
+<style scoped>
+.services__card {
+  position: relative;
+}
+
+.services__card--selected {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+
+.services__select {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 2;
+}
+</style>

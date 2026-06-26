@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-contrib/sessions"
@@ -43,6 +43,7 @@ func securityAuthZScopeRows() []securityAuthZRow {
 		{method: http.MethodPost, path: "/apiv2/import-xui", resource: "database", allowed: []string{"admin", "database"}},
 		{method: http.MethodGet, path: "/apiv2/getdb", resource: "database", allowed: []string{"admin", "database"}},
 		{method: http.MethodGet, path: "/api/remote-outbound-subscriptions", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "read", "write"}},
+		{method: http.MethodGet, path: "/api/remote-outbound-subscriptions/collected", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "read", "write"}},
 		{method: http.MethodPost, path: "/api/remote-outbound-subscriptions/save", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
 		{method: http.MethodPost, path: "/api/remote-outbound-subscriptions/delete", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
 		{method: http.MethodPost, path: "/api/remote-outbound-subscriptions/refresh", resource: "remoteOutboundSubscriptions", allowed: []string{"admin", "write"}},
@@ -124,7 +125,7 @@ func TestSecurityAuthZAPIV2InvalidAndExpiredTokenCurrentStatus(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Create(&model.Tokens{
+	if err := dbsqlite.DB().Create(&model.Tokens{
 		Desc:        "expired",
 		TokenHash:   expiredHash,
 		TokenPrefix: "expired-",

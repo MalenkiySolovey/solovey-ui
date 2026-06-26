@@ -27,8 +27,10 @@
     @cancel-order="cancelInboundOrder"
     @clone="clone"
     @del="delInbound"
+    @del-many="delInboundsBulk"
     @edit="showModal"
     @move="moveInbound"
+    @move-many-to="dragSelectedInbounds"
     @move-to="dragInbound"
     @save-order="saveInboundOrder"
     @sort-by-name="sortInboundsByName"
@@ -48,6 +50,15 @@
           @save="saveInboundOrder"
           @sort="sortInboundsByName"
         />
+        <BulkSelectionControls
+          :active="inboundSelectMode"
+          :count="selectedInboundCount"
+          inactive-color="secondary"
+          inactive-variant="outlined"
+          style="margin: 0 5px;"
+          @delete="deleteSelectedInbounds"
+          @toggle="toggleInboundSelectMode"
+        />
       </v-col>
     </v-row>
     <v-row>
@@ -58,14 +69,33 @@
         lg="2"
         v-for="(item, index) in <any[]>orderedInbounds"
         :key="item.tag"
+        class="manual-drop-grid-cell"
+        :class="inboundDrag.indicatorClasses(item.id)"
+        :style="inboundDrag.indicatorStyles(item.id)"
         :draggable="false"
         @pointerdown="inboundDrag.prepare($event)"
         @dragstart="inboundDrag.start($event, item.id)"
-        @dragover="inboundDrag.over($event)"
+        @dragover="inboundDrag.overTarget($event, item.id, orderedInbounds.map(row => row.id), inboundSelectMode ? selectedInboundIds.map(Number) : [], false, 'grid')"
+        @dragleave="inboundDrag.leaveTarget($event, item.id)"
         @drop="onInboundDrop($event, item.id)"
         @dragend="inboundDrag.clear($event)"
       >
-        <v-card rounded="xl" elevation="5" min-width="200" :title="item.tag">
+        <v-card
+          rounded="xl"
+          elevation="5"
+          min-width="200"
+          :title="item.tag"
+          class="inbounds__card"
+          :class="{ 'inbounds__card--selected': isInboundSelected(item.id) }"
+        >
+          <div v-if="inboundSelectMode" class="inbounds__select manual-drag-no-drag">
+            <v-checkbox-btn
+              :model-value="isInboundSelected(item.id)"
+              :aria-label="$t('table.selectRow')"
+              density="compact"
+              @update:model-value="toggleInboundSelection(item.id, Boolean($event))"
+            />
+          </div>
           <v-card-subtitle style="margin-top: -15px;">
             <v-row>
               <v-col>{{ item.type }}</v-col>
@@ -153,19 +183,25 @@
 
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
-import ManualOrderControls from '@/components/ManualOrderControls.vue'
+import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
+import ManualOrderControls from '@/shared/ui/ManualOrderControls.vue'
 import InboundVue from '@/layouts/modals/Inbound.vue'
 import Stats from '@/layouts/modals/Stats.vue'
 import { Config } from '@/types/config'
 import { computed, defineAsyncComponent, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { createInbound, Inbound } from '@/types/inbounds'
 import RandomUtil from '@/plugins/randomUtil'
 import { useUiMode } from '@/uiMode/useUiMode'
-import { useManualDrag } from '@/composables/useManualDrag'
-import type { ManualSortDirection } from '@/composables/useManualReorder'
-import { usePendingManualOrder } from '@/composables/usePendingManualOrder'
+import { useManualDrag, type ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
+import type { ManualSortDirection } from '@/shared/composables/dragSelection/manualReorder'
+import { usePendingManualOrder } from '@/shared/composables/usePendingManualOrder'
+import { useBulkSelection } from '@/shared/composables/dragSelection/bulkSelection'
+import { useConfirm } from '@/components/nexus/primitives/useConfirm'
 
 const { mode } = useUiMode()
+const { t } = useI18n()
+const { confirm } = useConfirm()
 
 const InboundsNexusList = defineAsyncComponent(
   () => import('@/views/inbounds/InboundsNexusList.vue'),
@@ -188,6 +224,13 @@ const inboundsOrder = usePendingManualOrder<Inbound>('inbounds', inbounds)
 const orderedInbounds = inboundsOrder.displayItems
 const inboundOrderDirty = inboundsOrder.dirty
 const inboundOrderSaving = inboundsOrder.saving
+const inboundSelection = useBulkSelection(orderedInbounds, item => item.id)
+const inboundSelectMode = inboundSelection.active
+const selectedInboundIds = inboundSelection.selectedIds
+const selectedInboundCount = inboundSelection.selectedCount
+const isInboundSelected = inboundSelection.isSelected
+const toggleInboundSelection = inboundSelection.toggle
+const toggleInboundSelectMode = inboundSelection.toggleActive
 
 const tlsConfigs = computed((): any[] => {
   return <any[]> Data().tlsConfigs
@@ -228,12 +271,45 @@ const delInbound = async (id: number) => {
   if (success) delOverlay.value = []
 }
 
+const delInboundsBulk = async (ids: number[]) => {
+  const uniqueIds = [...new Set(ids.map(Number).filter(Boolean))]
+  let success = true
+  for (const id of uniqueIds) {
+    const inbound = inbounds.value.find(item => item.id === id)
+    if (!inbound) continue
+    success = await Data().save("inbounds", "del", inbound.tag)
+    if (!success) break
+  }
+  if (success) {
+    delOverlay.value = []
+    inboundSelection.clear()
+  }
+  return success
+}
+
+const deleteSelectedInbounds = async () => {
+  const rows = inboundSelection.selectedItems.value
+  if (rows.length === 0) return
+  const accepted = await confirm({
+    title: `${t('actions.delbulk')} ${t('objects.inbound')}`,
+    message: rows.map(item => item.tag).join('\n'),
+    confirmLabel: t('actions.del'),
+    tone: 'error',
+  })
+  if (!accepted) return
+  await delInboundsBulk(rows.map(item => item.id))
+}
+
 const moveInbound = (id: number, dir: number) => {
   inboundsOrder.move(id, dir)
 }
 
-const dragInbound = (draggedId: number, targetId: number) => {
-  inboundsOrder.moveTo(draggedId, targetId)
+const dragInbound = (draggedId: number, targetId: number, position: ManualDropPosition | null = null) => {
+  inboundsOrder.moveTo(draggedId, targetId, position)
+}
+
+const dragSelectedInbounds = (draggedIds: number[], targetId: number, position: ManualDropPosition | null = null) => {
+  inboundsOrder.moveManyTo(draggedIds, targetId, position)
 }
 
 const sortInboundsByName = (direction: ManualSortDirection) => {
@@ -245,7 +321,13 @@ const cancelInboundOrder = () => inboundsOrder.reset()
 
 const inboundDrag = useManualDrag<number>()
 const onInboundDrop = (event: DragEvent, targetId: number) => {
-  inboundDrag.drop(event, targetId, dragInbound)
+  inboundDrag.drop(event, targetId, (draggedId, dropTargetId, position) => {
+    if (inboundSelectMode.value && inboundSelection.isSelected(draggedId)) {
+      dragSelectedInbounds(inboundSelection.selectedIds.value.map(Number), dropTargetId, position)
+      return
+    }
+    dragInbound(draggedId, dropTargetId, position)
+  })
 }
 
 let cloneLoading = ref(false)
@@ -278,3 +360,21 @@ const closeStats = () => {
   stats.value.visible = false
 }
 </script>
+
+<style scoped>
+.inbounds__card {
+  position: relative;
+}
+
+.inbounds__card--selected {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+
+.inbounds__select {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 2;
+}
+</style>

@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
-	"github.com/MalenkiySolovey/solovey-ui/logger"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 )
 
 const (
@@ -50,11 +50,6 @@ func newTokenUseDebouncer(interval time.Duration, flush func(map[uint]tokenUseUp
 
 func getTokenUseDebouncer() *tokenUseDebouncer {
 	return DefaultRuntime().tokenUseDebouncer()
-}
-
-func resetTokenUseDebouncerForTest() {
-	DefaultRuntime().resetTokenUseDebouncer()
-	resumeTokenUseFlush()
 }
 
 func StopTokenUseDebouncer(ctx context.Context) error {
@@ -319,7 +314,7 @@ func resumeTokenUseFlush() {
 }
 
 func flushTokenUseUpdates(updates map[uint]tokenUseUpdate) error {
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	if db == nil || len(updates) == 0 {
 		return nil
 	}
@@ -367,7 +362,7 @@ func flushTokenUseBatch(ids []uint, updates map[uint]tokenUseUpdate) error {
 		args = append(args, id)
 	}
 	query.WriteByte(')')
-	if err := database.GetDB().Exec(query.String(), args...).Error; err != nil {
+	if err := dbsqlite.DB().Exec(query.String(), args...).Error; err != nil {
 		return fmt.Errorf("flush token use batch: %w", err)
 	}
 	return nil

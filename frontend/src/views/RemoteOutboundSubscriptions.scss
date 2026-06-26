@@ -1,0 +1,168 @@
+.remote-outbounds {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.remote-outbounds__form {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.remote-outbounds__form-actions,
+.remote-outbounds__actions,
+.remote-outbounds__group-form,
+.remote-outbounds__group-actions,
+.remote-outbounds__status,
+.remote-outbounds__delay,
+.remote-outbounds__chips {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.remote-outbounds__title {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.remote-outbounds__url {
+  color: rgba(var(--v-theme-on-surface), .64);
+  display: block;
+  font-size: .78rem;
+  margin-top: 2px;
+  max-width: min(72vw, 760px);
+  overflow-wrap: anywhere;
+}
+
+.remote-outbounds code {
+  font-family: "Segoe UI", "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", sans-serif;
+  user-select: text;
+}
+
+.remote-outbounds__meta {
+  color: rgba(var(--v-theme-on-surface), .72);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 18px;
+  margin-bottom: 12px;
+}
+
+.remote-outbounds__error {
+  color: rgb(var(--v-theme-error));
+  overflow-wrap: anywhere;
+}
+
+.remote-outbounds__group-form {
+  margin: 12px 0;
+  max-width: 420px;
+}
+
+.remote-outbounds__groups {
+  display: grid;
+  gap: 10px;
+  margin: 12px 0 16px;
+}
+
+.remote-outbounds__group {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 8px;
+  padding: 8px;
+}
+
+.remote-outbounds__group-head {
+  align-items: center;
+  display: flex;
+  gap: 12px;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.remote-outbounds__group-head span {
+  color: rgba(var(--v-theme-on-surface), .62);
+  display: block;
+  font-size: .78rem;
+  margin-top: 2px;
+}
+
+.remote-outbounds__table {
+  margin-top: 8px;
+}
+
+.remote-outbounds__dialog-heading,
+.remote-outbounds__dialog-title {
+  align-items: center;
+  display: flex;
+  gap: 8px;
+}
+
+.remote-outbounds__dialog-heading {
+  line-height: 1.35;
+}
+
+.remote-outbounds__dialog-title {
+  font-size: .95rem;
+  font-weight: 700;
+  margin: 12px 0 8px;
+}
+
+.remote-outbounds__policy-table {
+  margin-bottom: 14px;
+}
+
+.remote-outbounds__conversion-original {
+  align-items: center;
+  background: rgba(var(--v-theme-on-surface), .06);
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 6px;
+  color: rgba(var(--v-theme-on-surface), .46);
+  display: inline-flex;
+  font-size: .84rem;
+  min-height: 40px;
+  padding: 0 12px;
+  width: 100%;
+}
+
+.remote-outbounds__connection-name {
+  font-weight: 600;
+}
+
+.remote-outbounds__delay-icon {
+  cursor: pointer;
+}
+
+.remote-outbounds__empty {
+  color: rgba(var(--v-theme-on-surface), .64);
+  text-align: center;
+}
+
+.remote-outbounds__empty-state {
+  align-items: center;
+  border: 1px dashed rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 8px;
+  color: rgba(var(--v-theme-on-surface), .68);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 32px;
+  text-align: center;
+}
+
+.remote-outbounds--nexus .remote-outbounds__form,
+.remote-outbounds--nexus .remote-outbounds__subscription,
+.remote-outbounds--nexus .remote-outbounds__group {
+  border-color: var(--nexus-border-subtle);
+}
+
+@media (max-width: 720px) {
+  .remote-outbounds__title,
+  .remote-outbounds__group-head {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

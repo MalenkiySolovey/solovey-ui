@@ -8,10 +8,9 @@ import (
 	"net/url"
 	"strings"
 	"testing"
-	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-contrib/sessions"
@@ -29,7 +28,7 @@ func TestSecurityLoginLockoutBlocksAuditsAndRecovers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := settingService.Save(database.GetDB(), webPathPayload); err != nil {
+	if err := settingService.Save(dbsqlite.DB(), webPathPayload); err != nil {
 		t.Fatal(err)
 	}
 	if err := (&service.UserService{}).UpdateFirstUser("admin", "correct-password"); err != nil {
@@ -49,8 +48,9 @@ func TestSecurityLoginLockoutBlocksAuditsAndRecovers(t *testing.T) {
 		}
 	}
 
+	flushAPIAudit(t)
 	var blocked model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "login_blocked").Order("id desc").First(&blocked).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "login_blocked").Order("id desc").First(&blocked).Error; err != nil {
 		t.Fatal(err)
 	}
 	if blocked.Actor != "admin" || blocked.Resource != "auth" {
@@ -88,7 +88,7 @@ func TestSecurityLoginPerUsernameTarpitNeverLocksOut(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := settingService.Save(database.GetDB(), webPathPayload); err != nil {
+	if err := settingService.Save(dbsqlite.DB(), webPathPayload); err != nil {
 		t.Fatal(err)
 	}
 	if err := (&service.UserService{}).UpdateFirstUser("admin", "correct-password"); err != nil {
@@ -172,11 +172,7 @@ func assertSecurityLoginFailureContains(t *testing.T, recorder *httptest.Respons
 }
 
 func forceLoginWindowElapsed(key string) {
-	loginRateLimitMu.Lock()
-	defer loginRateLimitMu.Unlock()
-	attempt := loginRateLimits[key]
-	attempt.firstFailAt = time.Now().Add(-loginRateLimitWindow - time.Second)
-	attempt.blockedUntil = time.Now().Add(-time.Second)
-	loginRateLimits[key] = attempt
-	loginRateLimitGC = time.Time{}
+	// Exact expiry semantics are covered by util/ratelimit. This integration
+	// test only needs the post-expiry state before retrying the login flow.
+	loginRateLimiter.Reset(key)
 }

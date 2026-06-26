@@ -189,7 +189,6 @@
 </template>
 
 <script lang="ts" setup>
-import HttpUtils from '@/plugins/httputil'
 import { HumanReadable } from '@/plugins/utils'
 import Data from '@/store/modules/data'
 import Gauge from '@/components/tiles/Gauge.vue'
@@ -199,6 +198,7 @@ import { i18n, locale } from '@/locales'
 import LogVue from '@/layouts/modals/Logs.vue'
 import Backup from '@/layouts/modals/Backup.vue'
 import UsageStats from '@/layouts/modals/UsageStats.vue'
+import { fetchServerStatus, restartSingBox } from '@/shared/composables/useServerOperations'
 
 const loading = ref(false)
 const menu = ref(false)
@@ -240,17 +240,13 @@ const reloadItems = computed({
 const reloadData = async () => {
   const request = [...new Set(reloadItems.value.map(r => r.split('-')[1]))]
   const filteredRequest = tilesData.value?.sys?.appVersion ? request.filter(r => r != 'sys') : request
-  const data = await HttpUtils.get('api/status',{ r: filteredRequest.join(',')})
-  if (data.success) {
-    tilesData.value = data.obj
-  }
+  const data = await fetchServerStatus(filteredRequest)
+  if (data) tilesData.value = data
 }
 
 const reloadSys = async () => {
-  const data = await HttpUtils.get('api/status',{ r: 'sys'})
-  if (data.success) {
-    tilesData.value.sys = data.obj.sys
-  }
+  const data = await fetchServerStatus(['sys'])
+  if (data) tilesData.value.sys = data.sys
 }
 
 let intervalId: ReturnType<typeof setInterval> | null = null
@@ -289,7 +285,7 @@ const usageStatsModal = ref({ visible: false })
 
 const restartSingbox = async () => {
   loading.value = true
-  await HttpUtils.post('api/restartSb',{})
+  await restartSingBox()
   loading.value = false
 }
 </script>

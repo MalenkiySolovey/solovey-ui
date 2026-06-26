@@ -7,10 +7,17 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/util/redact"
 )
+
+func flushAuditForTest(t testing.TB) {
+	t.Helper()
+	if err := StopAuditWriter(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
 
 func TestAuditRecordRedactsDetails(t *testing.T) {
 	auditService := &AuditService{}
@@ -25,6 +32,9 @@ func TestAuditRecordRedactsDetails(t *testing.T) {
 			"desc":  "automation",
 		},
 	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := StopAuditWriter(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	events, err := auditService.List(10)
@@ -60,7 +70,7 @@ func TestAuditPruneDeletesOldEvents(t *testing.T) {
 		Actor:    "admin",
 		Event:    "recent",
 	}
-	if err := database.GetDB().Create(&[]model.AuditEvent{old, recent}).Error; err != nil {
+	if err := dbsqlite.DB().Create(&[]model.AuditEvent{old, recent}).Error; err != nil {
 		if strings.Contains(err.Error(), "no such table") {
 			t.Skip(err)
 		}
@@ -175,15 +185,18 @@ func TestAuditWriterStopBeforeStartPreventsStart(t *testing.T) {
 	}
 }
 
-func TestAuditRecordSyncForTestWritesImmediately(t *testing.T) {
+func TestAuditRecordFlushesThroughWriter(t *testing.T) {
 	auditService := &AuditService{}
 	initSettingTestDB(t)
 
 	if err := auditService.Record(AuditEvent{Event: "sync_test"}); err != nil {
 		t.Fatal(err)
 	}
+	if err := StopAuditWriter(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 	var count int64
-	if err := database.GetDB().Model(model.AuditEvent{}).Where("event = ?", "sync_test").Count(&count).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.AuditEvent{}).Where("event = ?", "sync_test").Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
@@ -194,10 +207,6 @@ func TestAuditRecordSyncForTestWritesImmediately(t *testing.T) {
 func TestAuditRecordReturnsMarshalErrorOnly(t *testing.T) {
 	auditService := &AuditService{}
 	initSettingTestDB(t)
-	prevSync := AuditSyncForTest
-	AuditSyncForTest = false
-	t.Cleanup(func() { AuditSyncForTest = prevSync })
-
 	if err := auditService.Record(AuditEvent{
 		Event:   "bad_details",
 		Details: map[string]any{"bad": func() {}},
@@ -206,15 +215,18 @@ func TestAuditRecordReturnsMarshalErrorOnly(t *testing.T) {
 	}
 }
 
-func TestRecordListenFallbackAudit(t *testing.T) {
+func TestAuditServiceRecordsListenFallback(t *testing.T) {
 	initSettingTestDB(t)
 
-	if err := RecordListenFallbackAudit("web", "192.0.2.10:2095", ":2095", nil); err != nil {
+	if err := (&AuditService{}).RecordListenFallback("web", "192.0.2.10:2095", ":2095", nil); err != nil {
+		t.Fatal(err)
+	}
+	if err := StopAuditWriter(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "listen_fallback").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "listen_fallback").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "system" || event.Resource != "network" || event.Severity != AuditSeverityWarn {

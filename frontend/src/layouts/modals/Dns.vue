@@ -96,9 +96,9 @@
 </template>
 
 <script lang="ts">
-import DialVue from '@/components/Dial.vue' 
+import DialVue from '@/components/fields/Dial.vue'
 import oTlsVue from '@/components/tls/OutTLS.vue'
-import Headers from '@/components/Headers.vue'
+import Headers from '@/components/fields/Headers.vue'
 import RandomUtil from '@/plugins/randomUtil'
 import { DnsTypes, createDnsServer } from '@/types/dns'
 import FormShell from '@/components/nexus/drawers/FormShell.vue'

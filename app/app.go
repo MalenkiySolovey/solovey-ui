@@ -3,17 +3,23 @@ package app
 import (
 	"context"
 	"log"
+	"os"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/cmd/migration"
-	"github.com/MalenkiySolovey/solovey-ui/config"
-	"github.com/MalenkiySolovey/solovey-ui/core"
-	"github.com/MalenkiySolovey/solovey-ui/cronjob"
-	"github.com/MalenkiySolovey/solovey-ui/database"
-	"github.com/MalenkiySolovey/solovey-ui/ipmonitor"
-	"github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-ui/paidsub"
+	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
+	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
+	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
+	"github.com/MalenkiySolovey/solovey-ui/cronjob/scheduler"
+	"github.com/MalenkiySolovey/solovey-ui/database/migration"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	paidcore "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/paid"
+	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"
+	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
+	logger "github.com/MalenkiySolovey/solovey-ui/logger"
+	paidtelegram "github.com/MalenkiySolovey/solovey-ui/paidsub/telegram"
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	serviceupdate "github.com/MalenkiySolovey/solovey-ui/service/update"
 	"github.com/MalenkiySolovey/solovey-ui/sub"
 	"github.com/MalenkiySolovey/solovey-ui/web"
 )
@@ -23,8 +29,8 @@ type APP struct {
 	configService *service.ConfigService
 	webServer     *web.Server
 	subServer     *sub.Server
-	cronJob       *cronjob.CronJob
-	core          *core.Core
+	cronScheduler *scheduler.Scheduler
+	core          *coreruntime.Core
 	runtime       *service.Runtime
 }
 
@@ -33,9 +39,14 @@ func NewApp() *APP {
 }
 
 func (a *APP) Init() error {
-	log.Printf("%v %v", config.GetName(), config.GetVersion())
+	log.Printf("%v %v", configidentity.GetName(), configidentity.GetVersion())
 
 	a.initLog()
+
+	if executable, err := os.Executable(); err == nil && executable != "" && serviceupdate.CheckPending(executable) {
+		logger.Warning("self-update failed to boot twice; restored previous binary")
+		os.Exit(1)
+	}
 
 	// Run schema migrations against the on-disk DB before opening it. This
 	// turns the upgrade flow into a one-step procedure: drop in the new
@@ -46,7 +57,7 @@ func (a *APP) Init() error {
 		return err
 	}
 
-	err := database.InitDB(config.GetDBPath())
+	err := dbsqlite.Init(configstorage.GetDBPath())
 	if err != nil {
 		return err
 	}
@@ -68,7 +79,7 @@ func (a *APP) Init() error {
 		return err
 	}
 
-	a.core = core.NewCore()
+	a.core = coreruntime.NewCore(ipmonitor.Observer{})
 	a.runtime = service.NewRuntime(a.core)
 	service.SetDefaultRuntime(a.runtime)
 
@@ -85,7 +96,26 @@ func (a *APP) Init() error {
 		})
 	}
 
-	a.cronJob = cronjob.NewCronJob()
+	// Subscription server hooks: connect audit and rate-limit settings to the
+	// service layer without the pure subscription-server package importing it.
+	subserver.ListenFallbackAuditHook = func(component, requestedAddr, fallbackAddr string, bindErr error) {
+		_ = (&service.AuditService{}).RecordListenFallback(component, requestedAddr, fallbackAddr, bindErr)
+	}
+	subserver.SubEnumerationAuditHook = func(ip string, invalidLookups, windowMinutes int) {
+		_ = (&service.AuditService{}).Record(service.AuditEvent{
+			Actor:    "anonymous",
+			Event:    "sub_enumeration",
+			Resource: "sub",
+			Severity: service.AuditSeverityWarn,
+			IP:       ip,
+			Details:  map[string]any{"invalidLookups": invalidLookups, "windowMinutes": windowMinutes},
+		})
+	}
+	subserver.SubRateLimitProvider = func() (int, error) {
+		return (&service.SettingService{}).GetSubRateLimitPerIP()
+	}
+
+	a.cronScheduler = scheduler.New()
 	a.webServer, err = web.NewServer(web.WithRuntime(a.runtime))
 	if err != nil {
 		return err
@@ -96,7 +126,7 @@ func (a *APP) Init() error {
 
 	// Experimental Paid Subscriptions module owns its own schema; create it
 	// idempotently at startup. Non-fatal: a failure here must not block core.
-	if err := paidsub.EnsureSchema(database.GetDB()); err != nil {
+	if err := paidcore.EnsureSchema(dbsqlite.DB()); err != nil {
 		logger.Warning("failed to ensure paidsub schema: ", err)
 	}
 
@@ -114,7 +144,7 @@ func (a *APP) Start() error {
 		return err
 	}
 
-	err = a.cronJob.Start(loc, trafficAge)
+	err = a.cronScheduler.Start(loc, trafficAge)
 	if err != nil {
 		return err
 	}
@@ -132,7 +162,7 @@ func (a *APP) Start() error {
 	// Experimental Paid Subscriptions client bot. Self-gates on paidSubEnabled
 	// internally, so starting unconditionally is safe and lets the admin toggle
 	// it at runtime without a restart.
-	paidsub.StartBot()
+	paidtelegram.StartBot()
 	service.StartRemoteOutboundAutoRefresh(a.runtime)
 
 	// A core start failure is intentionally non-fatal: the web/sub panel must
@@ -141,13 +171,16 @@ func (a *APP) Start() error {
 	if err = a.configService.StartCore(); err != nil {
 		logger.Error("sing-box core failed to start; panel stays up so you can fix the config: ", err)
 	}
+	if executable, err := os.Executable(); err == nil && executable != "" {
+		serviceupdate.ClearPending(executable)
+	}
 
 	return nil
 }
 
 func (a *APP) Stop() {
 	service.StopRestartManager()
-	a.cronJob.Stop()
+	a.cronScheduler.Stop()
 	err := a.subServer.Stop()
 	if err != nil {
 		logger.Warning("stop Sub Server err:", err)
@@ -177,7 +210,7 @@ func (a *APP) Stop() {
 	}
 	paidSubCtx, paidSubCancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer paidSubCancel()
-	if err := paidsub.StopBot(paidSubCtx); err != nil {
+	if err := paidtelegram.StopBot(paidSubCtx); err != nil {
 		logger.Warning("stop paidsub bot err:", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -188,14 +221,14 @@ func (a *APP) Stop() {
 }
 
 func (a *APP) initLog() {
-	switch config.GetLogLevel() {
-	case config.Debug:
+	switch configlogging.GetLogLevel() {
+	case configlogging.Debug:
 		logger.Init(logger.LevelDebug)
-	case config.Info:
+	case configlogging.Info:
 		logger.Init(logger.LevelInfo)
-	case config.Warn:
+	case configlogging.Warn:
 		logger.Init(logger.LevelWarning)
-	case config.Error:
+	case configlogging.Error:
 		logger.Init(logger.LevelError)
 	default:
 		logger.Init(logger.LevelInfo)
@@ -209,6 +242,6 @@ func (a *APP) RestartApp() {
 	}
 }
 
-func (a *APP) GetCore() *core.Core {
+func (a *APP) GetCore() *coreruntime.Core {
 	return a.core
 }

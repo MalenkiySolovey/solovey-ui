@@ -170,7 +170,7 @@
 
 <script lang="ts" setup>
 import { i18n, locale } from '@/locales'
-import HttpUtils from '@/plugins/httputil'
+import { loadAuditEvents } from '@/shared/composables/useAuditOperations'
 import DatePicker from 'vue3-persian-datetime-picker'
 import { computed, onMounted, ref } from 'vue'
 import type { Column } from '@/components/nexus/data/dataTableColumns'
@@ -242,7 +242,7 @@ const loadData = async () => {
   if (severityFilter.value) query.severity = severityFilter.value
   if (sinceFilter.value > 0) query.since = sinceFilter.value
   if (untilFilter.value > 0) query.until = untilFilter.value
-  const msg = await HttpUtils.get('api/security/audit', query)
+  const msg = await loadAuditEvents(query)
   if (msg.success) {
     events.value = msg.obj?.events ?? []
     nextCursor.value = Number(msg.obj?.nextCursor ?? 0)

@@ -1,9 +1,11 @@
 <template>
   <section class="nexus-overview">
     <kpi-row
+      v-model:traffic-range="trafficRange"
       :loading="dashboardLoading"
       :summary="kpiSummary"
-      :traffic="trafficSparkSeries"
+      :status="systemStatus"
+      :traffic="trafficSeries"
       :ws-state="ws.state"
     />
 
@@ -33,7 +35,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 
 import KpiRow from '@/components/nexus/overview/KpiRow.vue'
 import ProtocolSummaries from '@/components/nexus/overview/ProtocolSummaries.vue'
@@ -45,7 +47,11 @@ import { selectKpiSummary } from '@/components/nexus/overview/selectors/kpiSelec
 import { selectProtocolSummaries } from '@/components/nexus/overview/selectors/protocolSummarySelectors'
 import { selectSystemStatus } from '@/components/nexus/overview/selectors/systemStatusSelectors'
 import { selectTopClients } from '@/components/nexus/overview/selectors/topClientsSelectors'
-import type { TrafficSeries } from '@/components/nexus/overview/selectors/trafficSelectors'
+import {
+  selectTrafficSeries,
+  trafficRangeHours,
+  type TrafficRange,
+} from '@/components/nexus/overview/selectors/trafficSelectors'
 import {
   auditEventsFromPayload,
   networkRateFromSamples,
@@ -53,7 +59,7 @@ import {
   overviewStatusNetworkSample,
   type NetworkTrafficRate,
 } from '@/components/nexus/overview/overviewPayloads'
-import HttpUtils from '@/plugins/httputil'
+import { loadOverviewStatus, loadOverviewTrafficSummary, loadRecentAuditEvents } from '@/shared/composables/useOverviewOperations'
 import Data from '@/store/modules/data'
 import Ws from '@/store/ws'
 
@@ -73,22 +79,23 @@ const liveTraffic = ref<NetworkTrafficRate>({
   downloadBps: 0,
   uploadBps: 0,
 })
-const SPARK_WINDOW = 24
-const sparkSamples = ref<{ download: number; upload: number; ts: number }[]>([])
+const trafficRange = ref<TrafficRange>('24h')
+const trafficSummary = ref<unknown>()
+const trafficLoading = ref(false)
 
 let statusInterval: ReturnType<typeof setInterval> | undefined
+let trafficInterval: ReturnType<typeof setInterval> | undefined
 let statusRequestPending = false
+let trafficRequestId = 0
 let previousNetworkSample = overviewStatusNetworkSample()
 
 const storeLoading = computed(() => data.lastLoad === 0)
-const dashboardLoading = computed(() => storeLoading.value || statusLoading.value)
+const dashboardLoading = computed(() => storeLoading.value || statusLoading.value || trafficLoading.value)
 const systemStatus = computed(() => selectSystemStatus(statusPayload.value, nowSec.value))
 const systemMetrics = computed(() => overviewStatusMetrics(statusPayload.value))
-const trafficSparkSeries = computed<TrafficSeries>(() => ({
-  range: 'realtime',
-  labels: sparkSamples.value.map((sample) => String(sample.ts)),
-  download: sparkSamples.value.map((sample) => sample.download),
-  upload: sparkSamples.value.map((sample) => sample.upload),
+const trafficSeries = computed(() => selectTrafficSeries({
+  range: trafficRange.value,
+  summary: trafficSummary.value,
 }))
 const topClients = computed(() => selectTopClients({
   clients: data.clients,
@@ -125,10 +132,22 @@ const kpiSummary = computed(() => selectKpiSummary({
   health: kpiHealth.value,
 }))
 
-const pushSparkSample = (rate: NetworkTrafficRate) => {
-  const next = sparkSamples.value.slice(-SPARK_WINDOW + 1)
-  next.push({ download: rate.downloadBps, upload: rate.uploadBps, ts: Date.now() })
-  sparkSamples.value = next
+const loadTrafficStats = async () => {
+  const requestId = ++trafficRequestId
+
+  if (!browserOnline.value) {
+    trafficSummary.value = undefined
+    trafficLoading.value = false
+    return
+  }
+
+  trafficLoading.value = trafficSummary.value === undefined
+  const response = await loadOverviewTrafficSummary(trafficRangeHours[trafficRange.value], 48)
+
+  if (requestId !== trafficRequestId) return
+
+  trafficSummary.value = response.success ? response.obj : undefined
+  trafficLoading.value = false
 }
 
 const loadStatus = async () => {
@@ -139,15 +158,12 @@ const loadStatus = async () => {
     statusUnavailable.value = true
     previousNetworkSample = undefined
     liveTraffic.value = { downloadBps: 0, uploadBps: 0 }
-    sparkSamples.value = []
     return
   }
 
   statusRequestPending = true
   statusLoading.value = !statusLoaded.value
-  const msg = await HttpUtils.get('api/status', {
-    r: 'sys,sbd,net,cpu,mem,dsk',
-  })
+  const msg = await loadOverviewStatus()
   nowSec.value = Math.floor(Date.now() / 1000)
 
   if (msg.success) {
@@ -159,7 +175,6 @@ const loadStatus = async () => {
     const rate = networkRateFromSamples(previousNetworkSample, networkSample)
     if (rate) {
       liveTraffic.value = rate
-      pushSparkSample(rate)
     }
     previousNetworkSample = networkSample
   } else {
@@ -180,7 +195,7 @@ const loadAuditEvents = async () => {
   }
 
   auditLoading.value = true
-  const msg = await HttpUtils.get('api/security/audit', { limit: 6 })
+  const msg = await loadRecentAuditEvents()
 
   if (msg.success) {
     auditEvents.value = mapAuditDisplayItems(auditEventsFromPayload(msg.obj))
@@ -197,6 +212,7 @@ const setOnline = () => {
   browserOnline.value = true
   void loadStatus()
   void loadAuditEvents()
+  void loadTrafficStats()
 }
 
 const setOffline = () => {
@@ -205,13 +221,20 @@ const setOffline = () => {
   auditUnavailable.value = true
   previousNetworkSample = undefined
   liveTraffic.value = { downloadBps: 0, uploadBps: 0 }
-  sparkSamples.value = []
+  trafficSummary.value = undefined
 }
 
-// Pause the status poll while the browser tab is hidden; refresh immediately
+watch(trafficRange, () => {
+  void loadTrafficStats()
+})
+
+// Pause polling while the browser tab is hidden; refresh immediately
 // when it becomes visible again so the operator never sees stale data.
 const onVisible = () => {
-  if (!document.hidden) void loadStatus()
+  if (!document.hidden) {
+    void loadStatus()
+    void loadTrafficStats()
+  }
 }
 
 onMounted(() => {
@@ -224,14 +247,20 @@ onMounted(() => {
   document.addEventListener('visibilitychange', onVisible)
   void loadStatus()
   void loadAuditEvents()
+  void loadTrafficStats()
   statusInterval = setInterval(() => {
     if (document.hidden) return
     void loadStatus()
   }, 10000)
+  trafficInterval = setInterval(() => {
+    if (document.hidden) return
+    void loadTrafficStats()
+  }, 60000)
 })
 
 onBeforeUnmount(() => {
   if (statusInterval) clearInterval(statusInterval)
+  if (trafficInterval) clearInterval(trafficInterval)
   document.removeEventListener('visibilitychange', onVisible)
   window.removeEventListener('online', setOnline)
   window.removeEventListener('offline', setOffline)
@@ -246,13 +275,16 @@ onBeforeUnmount(() => {
 }
 
 .nexus-overview__primary {
+  --nexus-overview-primary-panel-height: 320px;
+
   display: grid;
   gap: var(--nexus-gap-4);
   min-width: 0;
   grid-template-columns:
-    minmax(0, 1.15fr)
-    minmax(0, 1.4fr)
+    minmax(0, 1.2fr)
+    minmax(0, 1.2fr)
     minmax(320px, 1fr);
+  align-items: stretch;
 }
 
 @media (max-width: 1264px) {

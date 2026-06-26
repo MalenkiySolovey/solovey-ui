@@ -5,8 +5,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	"gorm.io/gorm"
 )
@@ -81,18 +81,18 @@ func TestUpdateClientTrafficDeltasBatchesTwoHundredClients(t *testing.T) {
 		expectedUp[name] = initialUp + upDelta
 		expectedDown[name] = initialDown + downDelta
 	}
-	if err := database.GetDB().Create(&clients).Error; err != nil {
+	if err := dbsqlite.DB().Create(&clients).Error; err != nil {
 		t.Fatal(err)
 	}
 
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return updateClientTrafficDeltas(tx, deltas)
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	var stored []model.Client
-	if err := database.GetDB().Order("name asc").Find(&stored).Error; err != nil {
+	if err := dbsqlite.DB().Order("name asc").Find(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
 	if len(stored) != 200 {

@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/config"
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -22,14 +22,14 @@ func TestDefaultSettingValueReadsCurrentVersion(t *testing.T) {
 	if !ok {
 		t.Fatal("version key is missing")
 	}
-	if got != config.GetVersion() {
-		t.Fatalf("default version = %q, want %q", got, config.GetVersion())
+	if got != configidentity.GetVersion() {
+		t.Fatalf("default version = %q, want %q", got, configidentity.GetVersion())
 	}
 }
 
 func TestGetAllSettingConcurrentDefaultInitializationIssue19(t *testing.T) {
 	initSettingTestDB(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	if err := db.Where("1 = 1").Delete(&model.Setting{}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -109,9 +109,37 @@ func TestGetAllSettingConcurrentDefaultInitializationIssue19(t *testing.T) {
 	}
 }
 
+func TestGetAllSettingDoesNotReseedOnSteadyState(t *testing.T) {
+	s := initSettingTestDB(t)
+	if _, err := s.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+
+	db := dbsqlite.DB()
+	const cbName = "test_count_seed_inserts"
+	var inserts int
+	if err := db.Callback().Raw().Before("gorm:raw").Register(cbName, func(tx *gorm.DB) {
+		if strings.Contains(strings.ToUpper(tx.Statement.SQL.String()), "INSERT") {
+			inserts++
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Callback().Raw().Remove(cbName) })
+
+	for i := 0; i < 3; i++ {
+		if _, err := s.GetAllSetting(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if inserts != 0 {
+		t.Fatalf("GetAllSetting issued %d INSERT statement(s) after defaults were seeded; the read path must not re-seed", inserts)
+	}
+}
+
 func TestSaveConfigCreatesMissingConfigSetting(t *testing.T) {
 	settingService := initSettingTestDB(t)
-	tx := database.GetDB().Begin()
+	tx := dbsqlite.DB().Begin()
 	if tx.Error != nil {
 		t.Fatal(tx.Error)
 	}
@@ -126,7 +154,7 @@ func TestSaveConfigCreatesMissingConfigSetting(t *testing.T) {
 	}
 
 	var saved string
-	if err := database.GetDB().Model(&model.Setting{}).Select("value").Where("key = ?", "config").Scan(&saved).Error; err != nil {
+	if err := dbsqlite.DB().Model(&model.Setting{}).Select("value").Where("key = ?", "config").Scan(&saved).Error; err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(saved, `"dns"`) || !strings.Contains(saved, `"route"`) {
@@ -136,14 +164,14 @@ func TestSaveConfigCreatesMissingConfigSetting(t *testing.T) {
 
 func TestGetFinalSubURIOmitsDefaultPorts(t *testing.T) {
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
-	if err := database.InitDB("file::memory:?cache=shared"); err != nil {
+	if err := dbsqlite.Init("file::memory:?cache=shared"); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		if d := database.GetDB(); d != nil {
+		if d := dbsqlite.DB(); d != nil {
 			if sqlDB, err := d.DB(); err == nil {
 				_ = sqlDB.Close()
 			}
@@ -154,7 +182,7 @@ func TestGetFinalSubURIOmitsDefaultPorts(t *testing.T) {
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	settings := map[string]string{
 		"subPort":     "443",
 		"subCertFile": "/tmp/cert.pem",
@@ -220,7 +248,7 @@ func TestGetFinalSubURIFormatsIPv6Hosts(t *testing.T) {
 				t.Fatal(err)
 			}
 			for key, value := range tt.settings {
-				if err := database.GetDB().Model(model.Setting{}).Where("key = ?", key).Update("value", value).Error; err != nil {
+				if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", key).Update("value", value).Error; err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -246,7 +274,7 @@ func TestSaveRejectsReservedWebPath(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, payload)
 	}); err == nil {
 		t.Fatal("expected reserved webPath to be rejected")
@@ -264,7 +292,7 @@ func TestSaveAllowsDefaultSubPathButRejectsOtherReservedSubPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, validPayload)
 	}); err != nil {
 		t.Fatalf("default subPath should remain valid: %v", err)
@@ -276,7 +304,7 @@ func TestSaveAllowsDefaultSubPathButRejectsOtherReservedSubPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, invalidPayload)
 	}); err == nil {
 		t.Fatal("expected reserved subPath to be rejected")
@@ -293,10 +321,13 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 		"subLinkEnable",
 		"subJsonEnable",
 		"subClashEnable",
+		"subXrayEnable",
 		"subJsonPath",
 		"subClashPath",
+		"subXrayPath",
 		"subJsonURI",
 		"subClashURI",
+		"subXrayURI",
 		"subTitle",
 		"subSupportUrl",
 		"subProfileUrl",
@@ -307,6 +338,7 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 		"subJsonMux",
 		"subJsonDirectRules",
 		"subRateLimitPerIP",
+		"subRemoteGroupAdaptation",
 	} {
 		if _, ok := (*settings)[key]; !ok {
 			t.Fatalf("missing default setting %s", key)
@@ -314,17 +346,19 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 	}
 
 	validPayload, err := json.Marshal(map[string]string{
-		"subJsonPath":       "/json/",
-		"subClashPath":      "/clash/",
-		"subSupportUrl":     "https://example.com/support",
-		"subProfileUrl":     "https://example.com/profile",
-		"subJsonEnable":     "false",
-		"subRateLimitPerIP": "120",
+		"subJsonPath":              "/json/",
+		"subClashPath":             "/clash/",
+		"subXrayPath":              "/xray/",
+		"subSupportUrl":            "https://example.com/support",
+		"subProfileUrl":            "https://example.com/profile",
+		"subJsonEnable":            "false",
+		"subRateLimitPerIP":        "120",
+		"subRemoteGroupAdaptation": "failover",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, validPayload)
 	}); err != nil {
 		t.Fatalf("valid subscription settings rejected: %v", err)
@@ -333,11 +367,12 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 	validCustomPaths, err := json.Marshal(map[string]string{
 		"subJsonPath":  "/json-custom/",
 		"subClashPath": "/clash-custom/",
+		"subXrayPath":  "/xray-custom/",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, validCustomPaths)
 	}); err != nil {
 		t.Fatalf("valid custom subscription paths rejected: %v", err)
@@ -349,7 +384,7 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, validFragment)
 	}); err != nil {
 		t.Fatalf("valid JSON fragment setting rejected: %v", err)
@@ -360,7 +395,7 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, validNoises)
 	}); err != nil {
 		t.Fatalf("valid JSON noises setting rejected: %v", err)
@@ -372,7 +407,7 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, invalidPayload)
 	}); err == nil {
 		t.Fatal("expected invalid boolean setting to be rejected")
@@ -384,7 +419,7 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, invalidURLPayload)
 	}); err == nil {
 		t.Fatal("expected invalid URL setting to be rejected")
@@ -396,7 +431,7 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, invalidFragment)
 	}); err == nil {
 		t.Fatal("expected invalid JSON fragment setting to be rejected")
@@ -407,20 +442,33 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, invalidNoises)
 	}); err == nil {
 		t.Fatal("expected invalid JSON noises setting to be rejected")
 	}
 
-	conflictingPaths, err := json.Marshal(map[string]string{
-		"subJsonPath":  "/same/",
-		"subClashPath": "/same/",
+	invalidAdaptation, err := json.Marshal(map[string]string{
+		"subRemoteGroupAdaptation": "relay",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
+		return settingService.Save(tx, invalidAdaptation)
+	}); err == nil {
+		t.Fatal("expected invalid remote group adaptation setting to be rejected")
+	}
+
+	conflictingPaths, err := json.Marshal(map[string]string{
+		"subJsonPath":  "/same/",
+		"subClashPath": "/same/",
+		"subXrayPath":  "/xray/",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, conflictingPaths)
 	}); err == nil {
 		t.Fatal("expected duplicate subscription format paths to be rejected")
@@ -429,11 +477,12 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 	subPathConflict, err := json.Marshal(map[string]string{
 		"subPath":     "/custom-sub/",
 		"subJsonPath": "/custom-sub/json/",
+		"subXrayPath": "/xray/",
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, subPathConflict)
 	}); err == nil {
 		t.Fatal("expected subscription format path under subPath to be rejected")
@@ -442,8 +491,8 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 
 func TestSettingSaveDeterministicForDifferentPayloadOrders(t *testing.T) {
 	payloads := []json.RawMessage{
-		json.RawMessage(`{"telegramNotifyCpu":"true","telegramCpuThreshold":"75","observabilityMemoryCapMB":"64","subPath":"/sub-custom","subJsonPath":"/json-custom","subClashPath":"/clash-custom","subJsonEnable":"false"}`),
-		json.RawMessage(`{"subJsonEnable":"false","subClashPath":"/clash-custom","subJsonPath":"/json-custom","subPath":"/sub-custom","observabilityMemoryCapMB":"64","telegramCpuThreshold":"75","telegramNotifyCpu":"true"}`),
+		json.RawMessage(`{"telegramNotifyCpu":"true","telegramCpuThreshold":"75","observabilityMemoryCapMB":"64","subPath":"/sub-custom","subJsonPath":"/json-custom","subClashPath":"/clash-custom","subXrayPath":"/xray-custom","subJsonEnable":"false"}`),
+		json.RawMessage(`{"subJsonEnable":"false","subXrayPath":"/xray-custom","subClashPath":"/clash-custom","subJsonPath":"/json-custom","subPath":"/sub-custom","observabilityMemoryCapMB":"64","telegramCpuThreshold":"75","telegramNotifyCpu":"true"}`),
 	}
 	keys := []string{
 		"telegramNotifyCpu",
@@ -452,6 +501,7 @@ func TestSettingSaveDeterministicForDifferentPayloadOrders(t *testing.T) {
 		"subPath",
 		"subJsonPath",
 		"subClashPath",
+		"subXrayPath",
 		"subJsonEnable",
 	}
 
@@ -461,7 +511,7 @@ func TestSettingSaveDeterministicForDifferentPayloadOrders(t *testing.T) {
 		if _, err := settingService.GetAllSetting(); err != nil {
 			t.Fatal(err)
 		}
-		if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+		if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 			return settingService.Save(tx, payload)
 		}); err != nil {
 			t.Fatal(err)
@@ -469,7 +519,7 @@ func TestSettingSaveDeterministicForDifferentPayloadOrders(t *testing.T) {
 		snapshot := map[string]string{}
 		for _, key := range keys {
 			var setting model.Setting
-			if err := database.GetDB().Where("key = ?", key).First(&setting).Error; err != nil {
+			if err := dbsqlite.DB().Where("key = ?", key).First(&setting).Error; err != nil {
 				t.Fatal(err)
 			}
 			snapshot[key] = setting.Value
@@ -495,7 +545,7 @@ func TestSaveValidatesTelegramProxyURLBeforeEncrypting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, invalidPayload)
 	}); err == nil {
 		t.Fatal("expected private telegramProxyURL to be rejected")
@@ -507,7 +557,7 @@ func TestSaveValidatesTelegramProxyURLBeforeEncrypting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, validPayload)
 	}); err != nil {
 		t.Fatalf("expected public telegramProxyURL to be accepted: %v", err)
@@ -534,7 +584,7 @@ func TestSaveValidatesTelegramCPUSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, validPayload)
 	}); err != nil {
 		t.Fatalf("valid CPU settings rejected: %v", err)
@@ -546,7 +596,7 @@ func TestSaveValidatesTelegramCPUSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, invalidPayload)
 	}); err == nil {
 		t.Fatal("expected invalid CPU threshold to be rejected")
@@ -558,7 +608,7 @@ func TestGetTimeLocationRespectsConfiguredLocation(t *testing.T) {
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "timeLocation").Update("value", "UTC").Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "timeLocation").Update("value", "UTC").Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -576,7 +626,7 @@ func TestGetTimeLocationFallsBackToLocalForInvalidLocation(t *testing.T) {
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "timeLocation").Update("value", "Invalid/Nowhere").Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "timeLocation").Update("value", "Invalid/Nowhere").Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -602,7 +652,7 @@ func TestSaveValidatesDomainSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, validPayload)
 	}); err != nil {
 		t.Fatalf("valid domains rejected: %v", err)
@@ -614,7 +664,7 @@ func TestSaveValidatesDomainSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, invalidPayload)
 	}); err == nil {
 		t.Fatal("expected domain with port to be rejected")
@@ -633,7 +683,7 @@ func TestSaveValidatesForceCookieSecureSetting(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, invalidPayload)
 	}); err == nil {
 		t.Fatal("expected invalid forceCookieSecure to be rejected")
@@ -660,7 +710,7 @@ func TestGetForceCookieSecureReadsSettingAndEnvOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, payload)
 	}); err != nil {
 		t.Fatal(err)
@@ -703,7 +753,7 @@ func TestSaveRejectsUnknownSettingKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = database.GetDB().Transaction(func(tx *gorm.DB) error {
+	err = dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, payload)
 	})
 	if err == nil {
@@ -725,7 +775,7 @@ func TestSaveRejectsProtectedSettingKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = database.GetDB().Transaction(func(tx *gorm.DB) error {
+	err = dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, payload)
 	})
 	if err == nil {
@@ -747,7 +797,7 @@ func TestSaveRejectsUnknownHasSecretMarker(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	err = database.GetDB().Transaction(func(tx *gorm.DB) error {
+	err = dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, payload)
 	})
 	if err == nil {
@@ -760,7 +810,7 @@ func TestSaveRejectsUnknownHasSecretMarker(t *testing.T) {
 
 func TestGetSecretCreatesSettingWhenMissing(t *testing.T) {
 	settingService := initSettingTestDB(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 
 	if err := db.Where("key = ?", "secret").Delete(&model.Setting{}).Error; err != nil {
 		t.Fatal(err)
@@ -801,7 +851,7 @@ func TestGetSecretCreatesSettingWhenMissing(t *testing.T) {
 
 func TestGetInstallSaltCreatesSettingWhenMissing(t *testing.T) {
 	settingService := initSettingTestDB(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 
 	if err := db.Where("key = ?", "installSalt").Delete(&model.Setting{}).Error; err != nil {
 		t.Fatal(err)
@@ -845,7 +895,7 @@ func TestGetSecretReturnsErrorWhenDBClosed(t *testing.T) {
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
-	liveDB := database.GetDB()
+	liveDB := dbsqlite.DB()
 	sqlDB, err := liveDB.DB()
 	if err != nil {
 		t.Fatal(err)
@@ -864,7 +914,7 @@ func TestGetInstallSaltReturnsErrorWhenDBClosed(t *testing.T) {
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
-	liveDB := database.GetDB()
+	liveDB := dbsqlite.DB()
 	sqlDB, err := liveDB.DB()
 	if err != nil {
 		t.Fatal(err)

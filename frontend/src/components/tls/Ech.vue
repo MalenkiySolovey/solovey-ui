@@ -80,9 +80,9 @@
 
 <script lang="ts">
 import { i18n } from '@/locales'
-import HttpUtils from '@/plugins/httputil'
 import { ech } from '@/types/tls'
 import { push } from 'notivue'
+import { generateKeypair, parseECHKeypair } from '@/shared/composables/useKeypairs'
 
 export default {
   props: ['iTls','oTls'],
@@ -95,43 +95,15 @@ export default {
   methods: {
     async genECH(){
       this.loading = true
-      const msg = await HttpUtils.get('api/keypairs', {
-        k: "ech",
-        o: this.iTls.server_name?? "''"
-      })
+      const msg = await generateKeypair('ech', this.iTls.server_name ?? "''")
       this.loading = false
       if (msg.success && this.iTls.ech && this.oTls.ech) {
         this.iTls.ech.key_path=undefined
         this.useEchPath = 1
         if (msg.obj.length>0){
-          let config = <string[]>[]
-          let key = <string[]>[]
-          let isConfig = false
-          let isKey = false
-
-          msg.obj.forEach((line:string) => {
-            if (line === "-----BEGIN ECH CONFIGS-----") {
-              isConfig = true
-              isKey = false
-              config.push(line)
-            } else if (line === "-----END ECH CONFIGS-----") {
-              isConfig = false
-              config.push(line)
-            } else if (line === "-----BEGIN ECH KEYS-----") {
-              isKey = true
-              isConfig = false
-              key.push(line)
-            } else if (line === "-----END ECH KEYS-----") {
-              isKey = false
-              key.push(line)
-            } else if (isConfig) {
-              config.push(line)
-            } else if (isKey) {
-              key.push(line)
-            }
-          })
-          this.iTls.ech.key = key?? undefined
-          this.oTls.ech.config = config?? undefined
+          const pair = parseECHKeypair(msg.obj as string[])
+          this.iTls.ech.key = pair.key
+          this.oTls.ech.config = pair.config
 
         } else {
           push.error({

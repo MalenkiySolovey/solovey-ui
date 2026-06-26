@@ -158,10 +158,12 @@ create_current_install
 run_command doctor-full doctor --full
 run_command diagnose diagnose
 run_command report report
+run_command ip-cert ip-cert status
 
 assert_full_report "${LOG_DIR}/doctor-full.out"
 assert_full_report "${LOG_DIR}/diagnose.out"
 assert_full_report "${LOG_DIR}/report.out"
+assert_contains "${LOG_DIR}/ip-cert.out" '^binary:ip-cert status$'
 assert_contains "${LOG_DIR}/systemctl.log" '^is-active --quiet solovey-ui$'
 assert_contains "${LOG_DIR}/systemctl.log" '^show solovey-ui '
 

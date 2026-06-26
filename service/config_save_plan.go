@@ -5,41 +5,29 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	"github.com/MalenkiySolovey/solovey-ui/logger"
+	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
+	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 
 	"gorm.io/gorm"
 )
 
 type configSavePlan struct {
-	objects           []string
-	requiresCoreReset bool
+	singboxapply.Plan
+}
+
+var invalidateSubscriptionOutputCacheAfterSave func()
+
+func RegisterSubscriptionOutputCacheInvalidator(fn func()) {
+	invalidateSubscriptionOutputCacheAfterSave = fn
 }
 
 func newConfigSavePlan(primaryObject string) configSavePlan {
-	return configSavePlan{objects: []string{primaryObject}}
+	return configSavePlan{Plan: singboxapply.NewPlan(primaryObject)}
 }
 
-func (p *configSavePlan) IncludeObjects(objects ...string) {
-	p.objects = append(p.objects, objects...)
-}
-
-func (p *configSavePlan) IncludeSaveObjects(objects ...configSaveObject) {
-	for _, object := range objects {
-		p.IncludeObjects(object.String())
-	}
-}
-
-func (p *configSavePlan) RequireCoreRestart() {
-	p.requiresCoreReset = true
-}
-
-func (p configSavePlan) Objects() []string {
-	return append([]string(nil), p.objects...)
-}
-
-func (p configSavePlan) RequiresCoreRestart() bool {
-	return p.requiresCoreReset
+func (p *configSavePlan) IncludeSaveObjects(objects ...singboxapply.Object) {
+	p.Plan.IncludeSaveObjects(objects...)
 }
 
 func (s *ConfigService) recordConfigChange(tx *gorm.DB, loginUser string, obj string, act string, data json.RawMessage) error {
@@ -57,27 +45,67 @@ func (s *ConfigService) applyConfigSaveEffects(plan configSavePlan, loginUser st
 		s.SettingService.recordTelegramBackupPassphraseChanged(loginUser, auditTelegramBackupPassphraseConfigured)
 	}
 	realtime.Publish(realtime.TopicConfigInvalidated, nil)
+	if invalidateSubscriptionOutputCacheAfterSave != nil {
+		invalidateSubscriptionOutputCacheAfterSave()
+	}
 	s.applyCoreSaveEffect(plan)
 }
 
 func (s *ConfigService) applyCoreSaveEffect(plan configSavePlan) {
+	if s.coreInstance() == nil {
+		return
+	}
+	manager := s.runtime().restart()
+	if manager == nil {
+		logger.Warning("sing-box post-save sync skipped: restart manager not initialized")
+		return
+	}
+	_ = manager.RunBlocking(func() error {
+		s.applyCoreSaveEffectLocked(plan)
+		return nil
+	})
+}
+
+func (s *ConfigService) applyCoreSaveEffectLocked(plan configSavePlan) {
 	coreInstance := s.coreInstance()
 	if coreInstance == nil {
 		return
 	}
+	lifecycle := s.configCoreLifecycle()
 	if plan.RequiresCoreRestart() {
+		if reason := plan.RestartReason(); reason != "" {
+			logger.Info("sing-box full restart after save: ", reason)
+		}
 		if coreInstance.IsRunning() {
-			if restartErr := s.RestartCore(); restartErr != nil {
+			if restartErr := lifecycle.restartCoreLocked(); restartErr != nil {
 				logger.Warning("sing-box restart after save failed: ", restartErr)
 			}
 		} else {
-			if startErr := s.startCore(true); startErr != nil {
+			if startErr := lifecycle.startCoreLocked(true); startErr != nil {
 				logger.Warning("sing-box start after save failed: ", startErr)
 			}
 		}
-	} else if !coreInstance.IsRunning() {
-		if startErr := s.startCore(true); startErr != nil {
+		return
+	}
+	if !coreInstance.IsRunning() {
+		if startErr := lifecycle.startCoreLocked(true); startErr != nil {
 			logger.Warning("sing-box start after save failed: ", startErr)
 		}
+		return
 	}
+	if !plan.HasObjectChanges() {
+		return
+	}
+	if err := s.applyObjectChangesLocked(plan); err == nil {
+		return
+	} else {
+		logger.Warning("sing-box partial reload after save failed: ", err)
+	}
+	if restartErr := lifecycle.restartCoreLocked(); restartErr != nil {
+		logger.Error("sing-box restart after failed partial reload also failed; core may be out of sync: ", restartErr)
+	}
+}
+
+func (s *ConfigService) applyObjectChangesLocked(plan configSavePlan) error {
+	return singboxapply.ExecuteObjectChanges(configDatabase(), plan.Plan, s.configCoreObjectApplier())
 }

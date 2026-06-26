@@ -21,6 +21,12 @@
     @close="closeDnsRuleModal"
     @save="saveDnsRuleModal"
   />
+  <RegionalPresetDrawer
+    v-model="regionalPresetDrawer"
+    :config="appConfig"
+    :outbound-tags="outboundTags"
+    @apply="applyPresetConfig"
+  />
   <page-header
     v-if="nexus"
     :search="search"
@@ -31,9 +37,12 @@
   />
 
   <page-toolbar v-if="nexus">
-    <template #actions>
+    <template #secondary-actions>
       <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" @click="showDnsModal(-1)">{{ $t('dns.add') }}</v-btn>
       <v-btn prepend-icon="lucide:plus" variant="text" @click="showDnsRuleModal(-1)">{{ $t('dns.rule.add') }}</v-btn>
+      <v-btn prepend-icon="mdi-routes" variant="text" @click="regionalPresetDrawer = true">{{ $t('regionalPresets.open') }}</v-btn>
+    </template>
+    <template #primary-actions>
       <v-btn variant="tonal" color="warning" @click="saveConfig" :loading="loading" :disabled="stateChange">
         {{ $t('actions.save') }}
       </v-btn>
@@ -43,6 +52,7 @@
     <v-col cols="12" justify="center" align="center">
       <v-btn color="primary" @click="showDnsModal(-1)" style="margin: 0 5px;">{{ $t('dns.add') }}</v-btn>
       <v-btn color="primary" @click="showDnsRuleModal(-1)" style="margin: 0 5px;">{{ $t('dns.rule.add') }}</v-btn>
+      <v-btn color="primary" prepend-icon="mdi-routes" @click="regionalPresetDrawer = true" style="margin: 0 5px;">{{ $t('regionalPresets.open') }}</v-btn>
       <v-btn variant="outlined" color="warning" @click="saveConfig" :loading="loading" :disabled="stateChange">
         {{ $t('actions.save') }}
       </v-btn>
@@ -107,6 +117,13 @@
           size="small"
           @sort="sortDnsServersByName"
         />
+        <BulkSelectionControls
+          :active="dnsServerSelectMode"
+          :count="selectedDnsServerIndexes.length"
+          size="small"
+          @delete="deleteSelectedDnsServers"
+          @toggle="toggleDnsServerSelectMode"
+        />
       </template>
     </CollapsibleSectionHeader>
     <nexus-data-table
@@ -116,7 +133,11 @@
       draggable-rows
       :items="dnsServerRows"
       :row-key="(item) => item._index"
-      @row-drop="(dragged, target) => moveDnsServerTo(dragged._index, target._index)"
+      :selectable="dnsServerSelectMode"
+      :selected="selectedDnsServerIndexes"
+      @update:selected="selectedDnsServerIndexes = $event"
+      @row-drop="(dragged, target, position) => moveDnsServerTo(dragged._index, target._index, position)"
+      @rows-drop="(dragged, target, position) => moveDnsServersTo(dragged.map(item => item._index), target._index, position)"
     >
       <template #col.tag="{ item }"><span class="dns-nexus__tag">{{ item.tag }}</span></template>
       <template #col.server="{ item }">
@@ -135,6 +156,9 @@
         />
         <span v-else class="dns-nexus__muted">—</span>
       </template>
+      <template #col.source="{ item }">
+        <nexus-badge :label="presetSourceLabel(item)" :variant="presetSourceVariant(item)" />
+      </template>
       <template #actions="{ item }">
         <row-actions :actions="serverActions(item)" @action="(key) => handleServerAction(key, item)" />
       </template>
@@ -150,6 +174,14 @@
             style="margin: 0 5px;"
             @sort="sortDnsServersByName"
           />
+          <BulkSelectionControls
+            :active="dnsServerSelectMode"
+            :count="selectedDnsServerIndexes.length"
+            inactive-color="secondary"
+            inactive-variant="outlined"
+            @delete="deleteSelectedDnsServers"
+            @toggle="toggleDnsServerSelectMode"
+          />
         </template>
       </CollapsibleSectionHeader>
     </v-col>
@@ -161,69 +193,47 @@
       lg="2"
       v-for="(item, index) in <any[]>dns.servers"
       :key="item.id"
+      class="manual-drop-grid-cell"
+      :class="dnsServerDrag.indicatorClasses(index)"
+      :style="dnsServerDrag.indicatorStyles(index)"
       :draggable="false"
       @pointerdown="dnsServerDrag.prepare($event)"
       @dragstart="dnsServerDrag.start($event, index)"
-      @dragover="dnsServerDrag.over($event)"
+      @dragover="dnsServerDrag.overTarget($event, index, indexKeys(dns.servers), dnsServerSelectMode ? selectedDnsServerIndexes.map(Number) : [], false, 'grid')"
+      @dragleave="dnsServerDrag.leaveTarget($event, index)"
       @drop="onDnsServerDrop($event, index)"
       @dragend="dnsServerDrag.clear($event)"
     >
-      <v-card rounded="xl" elevation="5" min-width="200" :title="item.tag">
-        <v-card-subtitle style="margin-top: -15px;">
-          <v-row>
-            <v-col>{{ item.type }}</v-col>
-          </v-row>
-        </v-card-subtitle>
-        <v-card-text>
-          <v-row>
-            <v-col>{{ $t('dns.server') }}</v-col>
-            <v-col>
-              {{ item.server?? '-' }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>{{ $t('in.port') }}</v-col>
-            <v-col>
-              {{ item.server_port?? '-' }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>{{ $t('objects.tls') }}</v-col>
-            <v-col>
-              {{ Object.hasOwn(item,'tls') ? $t(item.tls?.enabled ? 'enable' : 'disable') : '-'  }}
-            </v-col>
-          </v-row>
-        </v-card-text>
-        <v-divider></v-divider>
-        <v-card-actions style="padding: 0;">
-          <v-btn icon="mdi-file-edit" @click="showDnsModal(index)">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('actions.edit')"></v-tooltip>
-          </v-btn>
-          <v-btn icon="mdi-file-remove" style="margin-inline-start:0;" color="warning" @click="delDnsOverlay[index] = true">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('actions.del')"></v-tooltip>
-          </v-btn>
-          <v-overlay
-            v-model="delDnsOverlay[index]"
-            contained
-            class="align-center justify-center"
-          >
-            <v-card :title="$t('actions.del')" rounded="lg">
-              <v-divider></v-divider>
-              <v-card-text>{{ $t('confirm') }}</v-card-text>
-              <v-card-actions>
-                <v-btn color="error" variant="outlined" @click="delDns(index)">{{ $t('yes') }}</v-btn>
-                <v-btn color="success" variant="outlined" @click="delDnsOverlay[index] = false">{{ $t('no') }}</v-btn>
-              </v-card-actions>
-            </v-card>
-          </v-overlay>
-        </v-card-actions>
-      </v-card>
+      <ClassicConfigCard
+        :delete-open="delDnsOverlay[index] ?? false"
+        :rows="[
+          { label: $t('dns.server'), value: item.server ?? '-' },
+          { label: $t('in.port'), value: item.server_port ?? '-' },
+          { label: $t('objects.tls'), value: Object.hasOwn(item, 'tls') ? $t(item.tls?.enabled ? 'enable' : 'disable') : '-' },
+          { label: $t('presets.source'), value: presetSourceLabel(item) },
+        ]"
+        :selected="isDnsServerSelected(index)"
+        :select-mode="dnsServerSelectMode"
+        :subtitle="item.type"
+        :title="item.tag"
+        @delete="delDns(index)"
+        @edit="showDnsModal(index)"
+        @update:delete-open="delDnsOverlay[index] = $event"
+        @update:selected="toggleDnsServerSelection(index, Boolean($event))"
+      />
     </v-col>
   </v-row>
   <template v-if="nexus">
-    <div class="dns-nexus__section">{{ $t('dns.rule.title') }}</div>
+    <div class="dns-nexus__section-row">
+      <div class="dns-nexus__section">{{ $t('dns.rule.title') }}</div>
+      <BulkSelectionControls
+        :active="dnsRuleSelectMode"
+        :count="selectedDnsRuleIndexes.length"
+        size="small"
+        @delete="deleteSelectedDnsRules"
+        @toggle="toggleDnsRuleSelectMode"
+      />
+    </div>
     <nexus-data-table
       :columns="ruleColumns"
       :drag-disabled="search.trim().length > 0"
@@ -231,12 +241,19 @@
       :items="dnsRuleRows"
       :row-key="(item) => item._index"
       :paginated="false"
-      @row-drop="(dragged, target) => moveDnsRuleTo(dragged._index, target._index)"
+      :selectable="dnsRuleSelectMode"
+      :selected="selectedDnsRuleIndexes"
+      @update:selected="selectedDnsRuleIndexes = $event"
+      @row-drop="(dragged, target, position) => moveDnsRuleTo(dragged._index, target._index, position)"
+      @rows-drop="(dragged, target, position) => moveDnsRulesTo(dragged.map(item => item._index), target._index, position)"
     >
       <template #col._index="{ item }">{{ item._index + 1 }}</template>
       <template #col.type="{ item }">{{ item.type != undefined ? $t('rule.logical') + ' (' + item.mode + ')' : $t('rule.simple') }}</template>
       <template #col.server="{ item }">{{ item.server ?? '-' }}</template>
       <template #col.invert="{ item }">{{ $t((item.invert ?? false) ? 'yes' : 'no') }}</template>
+      <template #col.source="{ item }">
+        <nexus-badge :label="presetSourceLabel(item)" :variant="presetSourceVariant(item)" />
+      </template>
       <template #actions="{ item }">
         <row-actions :actions="ruleActions(item)" @action="(key) => handleRuleAction(key, item)" />
       </template>
@@ -244,401 +261,74 @@
     </nexus-data-table>
   </template>
   <v-row v-else>
-    <v-col class="v-card-subtitle" cols="12">{{ $t('dns.rule.title') }}</v-col>
+    <v-col class="v-card-subtitle" cols="12">
+      <div class="dns__section-actions">
+        <span>{{ $t('dns.rule.title') }}</span>
+        <BulkSelectionControls
+          :active="dnsRuleSelectMode"
+          :count="selectedDnsRuleIndexes.length"
+          inactive-color="secondary"
+          inactive-variant="outlined"
+          @delete="deleteSelectedDnsRules"
+          @toggle="toggleDnsRuleSelectMode"
+        />
+      </div>
+    </v-col>
     <v-col cols="12" sm="4" md="3" lg="2" v-for="(item, index) in <any[]>dnsRules"
       :key="item.id"
+      class="manual-drop-grid-cell"
+      :class="dnsRuleDrag.indicatorClasses(index)"
+      :style="dnsRuleDrag.indicatorStyles(index)"
       :draggable="false"
       @pointerdown="dnsRuleDrag.prepare($event)"
       @dragstart="dnsRuleDrag.start($event, index)"
-      @dragover="dnsRuleDrag.over($event)"
+      @dragover="dnsRuleDrag.overTarget($event, index, indexKeys(dnsRules), dnsRuleSelectMode ? selectedDnsRuleIndexes.map(Number) : [], false, 'grid')"
+      @dragleave="dnsRuleDrag.leaveTarget($event, index)"
       @drop="onDnsRuleDrop($event, index)"
       @dragend="dnsRuleDrag.clear($event)"
       >
-      <v-card rounded="xl" elevation="5" min-width="200" :title="index+1">
-        <v-card-subtitle style="margin-top: -15px;">
-          <v-row>
-            <v-col>{{ item.type != undefined ? $t('rule.logical') + ' (' + item.mode + ')' : $t('rule.simple') }}</v-col>
-          </v-row>
-        </v-card-subtitle>
-        <v-card-text>
-          <v-row>
-            <v-col>{{ $t('admin.action') }}</v-col>
-            <v-col>
-              {{ item.action }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>{{ $t('dns.server') }}</v-col>
-            <v-col>
-              {{ item.server?? '-' }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>{{ $t('pages.rules') }}</v-col>
-            <v-col>
-              {{ item.rules ? item.rules.length : Object.keys(item).filter(r => !actionDnsRuleKeys.includes(r)).length }}
-            </v-col>
-          </v-row>
-          <v-row>
-            <v-col>{{ $t('rule.invert') }}</v-col>
-            <v-col>
-              {{ $t( (item.invert?? false)? 'yes' : 'no') }}
-            </v-col>
-          </v-row>
-        </v-card-text>
-        <v-divider></v-divider>
-        <v-card-actions style="padding: 0;">
-          <v-btn icon="mdi-file-edit" @click="showDnsRuleModal(index)">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('actions.edit')"></v-tooltip>
-          </v-btn>
-          <v-btn icon="mdi-file-remove" style="margin-inline-start:0;" color="warning" @click="delDnsRuleOverlay[index] = true">
-            <v-icon />
-            <v-tooltip activator="parent" location="top" :text="$t('actions.del')"></v-tooltip>
-          </v-btn>
-          <v-overlay
-            v-model="delDnsRuleOverlay[index]"
-            contained
-            class="align-center justify-center"
-          >
-            <v-card :title="$t('actions.del')" rounded="lg">
-              <v-divider></v-divider>
-              <v-card-text>{{ $t('confirm') }}</v-card-text>
-              <v-card-actions>
-                <v-btn color="error" variant="outlined" @click="delDnsRule(index)">{{ $t('yes') }}</v-btn>
-                <v-btn color="success" variant="outlined" @click="delDnsRuleOverlay[index] = false">{{ $t('no') }}</v-btn>
-              </v-card-actions>
-            </v-card>
-          </v-overlay>
-        </v-card-actions>
-      </v-card>
+      <ClassicConfigCard
+        :delete-open="delDnsRuleOverlay[index] ?? false"
+        :rows="[
+          { label: $t('admin.action'), value: item.action },
+          { label: $t('dns.server'), value: item.server ?? '-' },
+          { label: $t('pages.rules'), value: item.rules ? item.rules.length : Object.keys(item).filter(r => !actionDnsRuleKeys.includes(r)).length },
+          { label: $t('rule.invert'), value: $t((item.invert ?? false) ? 'yes' : 'no') },
+          { label: $t('presets.source'), value: presetSourceLabel(item) },
+        ]"
+        :selected="isDnsRuleSelected(index)"
+        :select-mode="dnsRuleSelectMode"
+        :subtitle="item.type != undefined ? $t('rule.logical') + ' (' + item.mode + ')' : $t('rule.simple')"
+        :title="index + 1"
+        @delete="delDnsRule(index)"
+        @edit="showDnsRuleModal(index)"
+        @update:delete-open="delDnsRuleOverlay[index] = $event"
+        @update:selected="toggleDnsRuleSelection(index, Boolean($event))"
+      />
     </v-col>
   </v-row>
 </template>
 
 <script lang="ts" setup>
-import Data from '@/store/modules/data'
 import ManualSortButton from '@/components/ManualSortButton.vue'
-import CollapsibleSectionHeader from '@/components/CollapsibleSectionHeader.vue'
-import { computed, ref, onBeforeMount } from 'vue'
-import { useI18n } from 'vue-i18n'
+import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
+import ClassicConfigCard from '@/shared/ui/ClassicConfigCard.vue'
+import CollapsibleSectionHeader from '@/shared/ui/CollapsibleSectionHeader.vue'
 import DnsVue from '@/layouts/modals/Dns.vue'
 import DnsRuleVue from '@/layouts/modals/DnsRule.vue'
-import { Config } from '@/types/config'
-import { actionDnsRuleKeys, dnsRule } from '@/types/dns'
-import { FindDiff } from '@/plugins/utils'
-import { moveArrayItem, useManualDrag } from '@/composables/useManualDrag'
-import {
-  type ManualSortDirection,
-  sortArrayByText,
-} from '@/composables/useManualReorder'
-import type { Column } from '@/components/nexus/data/dataTableColumns'
+import RegionalPresetDrawer from '@/components/presets/RegionalPresetDrawer.vue'
+import { isPresetManagedItem } from '@/components/presets/routingDnsPresets'
 import NexusDataTable from '@/components/nexus/data/NexusDataTable.vue'
 import RowActions from '@/components/nexus/data/RowActions.vue'
-import type { RowAction } from '@/components/nexus/data/rowActions'
 import NexusBadge from '@/components/nexus/primitives/Badge.vue'
 import EmptyState from '@/components/nexus/primitives/EmptyState.vue'
 import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
-import { useConfirm } from '@/components/nexus/primitives/useConfirm'
-import { useUiMode } from '@/uiMode/useUiMode'
+import { useDnsPage } from '@/shared/composables/pages/useDnsPage'
 
-const { t } = useI18n()
-const { confirm } = useConfirm()
-const { mode } = useUiMode()
-const nexus = computed(() => mode.value === 'nexus')
-
-const oldConfig = ref(<any>{})
-const loading = ref(false)
-const search = ref('')
-const dnsServersExpanded = ref(true)
-
-// Edit a LOCAL clone of the store config. A background reload (data.ts setNewData
-// replaces Data().config wholesale, driven by the 10s poll / WS events) must not wipe
-// unsaved edits, so the form binds to this clone instead of the live store object.
-const cloneStoreConfig = (): Config => JSON.parse(JSON.stringify(Data().config ?? {}))
-const ensureDnsShape = (cfg: Config) => {
-  // fix old configs
-  if (!cfg.dns) cfg.dns = { servers: [], rules: [] }
-  if (!cfg.dns.servers) cfg.dns.servers = []
-  if (!cfg.dns.rules) cfg.dns.rules = []
-}
-const appConfig = ref<Config>((() => { const c = cloneStoreConfig(); ensureDnsShape(c); return c })())
-
-const resyncFromStore = () => {
-  const c = cloneStoreConfig()
-  ensureDnsShape(c)
-  appConfig.value = c
-  oldConfig.value = JSON.parse(JSON.stringify(c))
-}
-
-onBeforeMount( async () => {
-  loading.value = true
-  while (Data().lastLoad == 0) {
-    await new Promise(resolve => setTimeout(resolve, 100))
-  }
-  resyncFromStore()
-  loading.value = false
-})
-
-const tsTags = computed((): string[] => {
-  return Data().endpoints?.filter((e:any) => e.type == "tailscale").map((e:any) => e.tag)
-})
-
-const rslvdTags = computed((): string[] => {
-  return Data().services?.filter((e:any) => e.type == "resolved").map((e:any) => e.tag)
-})
-
-const clients = computed((): string[] => {
-  return Data().clients.map((c:any) => c.name)
-})
-
-const stateChange = computed(() => {
-  return FindDiff.deepCompare(appConfig.value.dns,oldConfig.value.dns)
-})
-
-const saveConfig = async () => {
-  loading.value = true
-  const success = await Data().save("config", "set", appConfig.value)
-  if (success) {
-    resyncFromStore()
-  }
-  loading.value = false
-}
-
-const inboundTags = computed((): string[] => {
-  return [...Data().inbounds?.map((o:any) => o.tag), ...Data().endpoints?.filter((e:any) => e.listen_port > 0).map((e:any) => e.tag)]
-})
-
-const dns = computed((): any => {
-  return appConfig.value.dns
-})
-
-const dnsServerTags = computed((): string[] => {
-  return dns.value?.servers?.filter((s:any) => s.tag && s.tag != "")?.map((s:any) => s.tag) ?? []
-})
-
-const finalDns = computed({
-  get() { return dns.value?.final?? '' },
-  set(v:string) { dns.value.final = v.length>0 ? v : undefined }
-})
-
-
-const dnsRules = computed((): dnsRule[] => {
-  return <dnsRule[]>dns.value.rules
-})
-
-const ruleSets = computed((): string[] => {
-  return appConfig.value?.route?.rule_set?.map((r:any) => r.tag) ?? []
-})
-
-let delDnsOverlay = ref(new Array<boolean>)
-let delDnsRuleOverlay = ref(new Array<boolean>)
-
-const dnsModal = ref({
-  visible: false,
-  index: -1,
-  data: "",
-})
-
-const showDnsModal = (index: number) => {
-  dnsModal.value.index = index
-  dnsModal.value.data = index == -1 ? '' : JSON.stringify(dns.value.servers[index])
-  dnsModal.value.visible = true
-}
-
-const closeDnsModal = () => {
-  dnsModal.value.visible = false
-}
-
-const saveDnsModal = (data:any) => {
-  // New or Edit
-  if (dnsModal.value.index == -1) {
-    dns.value.servers.push(data)
-  } else {
-    dns.value.servers[dnsModal.value.index] = data
-  }
-  dnsModal.value.visible = false
-}
-
-const delDns = (index: number) => {
-  dns.value.servers.splice(index,1)
-  delDnsOverlay.value[index] = false
-}
-
-const dnsRuleModal = ref({
-  visible: false,
-  index: -1,
-  data: "",
-})
-
-const showDnsRuleModal = (index: number) => {
-  dnsRuleModal.value.index = index
-  dnsRuleModal.value.data = index == -1 ? '' : JSON.stringify(dnsRules.value[index])
-  dnsRuleModal.value.visible = true
-}
-
-const closeDnsRuleModal = () => {
-  dnsRuleModal.value.visible = false
-}
-
-const saveDnsRuleModal = (data:dnsRule) => {
-  // New or Edit
-  if (dnsRuleModal.value.index == -1) {
-    dnsRules.value.push(data)
-  } else {
-    dnsRules.value[dnsRuleModal.value.index] = data
-  }
-  dnsRuleModal.value.visible = false
-}
-
-const delDnsRule = (index: number) => {
-  dnsRules.value.splice(index,1)
-  delDnsRuleOverlay.value[index] = false
-}
-
-// ---- Nexus table projections (read-only; actions carry the array index) ----
-// _index keeps the ORIGINAL array index (edit/delete operate by index), so filter
-// AFTER mapping. Search matches tag/type/server (servers) and action/server (rules).
-const matchesSearch = (text: string): boolean => {
-  const q = search.value.trim().toLowerCase()
-  return !q || text.toLowerCase().includes(q)
-}
-
-const dnsServerRows = computed(() =>
-  (dns.value?.servers ?? [])
-    .map((s: any, i: number) => ({ ...s, _index: i }))
-    .filter((s: any) => matchesSearch(`${s.tag ?? ''} ${s.type ?? ''} ${s.server ?? ''}`)))
-
-const dnsRuleRows = computed(() =>
-  dnsRules.value
-    .map((r: any, i: number) => ({
-      ...r,
-      _index: i,
-      _rulesCount: r.rules ? r.rules.length : Object.keys(r).filter((k: string) => !actionDnsRuleKeys.includes(k)).length,
-    }))
-    .filter((r: any) => matchesSearch(`${r.action ?? ''} ${r.server ?? ''}`)))
-
-const serverColumns: Column<any>[] = [
-  { key: 'tag', labelKey: 'objects.tag' },
-  { key: 'type', labelKey: 'type' },
-  { key: 'server', labelKey: 'dns.server' },
-  { key: 'server_port', labelKey: 'in.port' },
-  { key: 'tls', labelKey: 'objects.tls' },
-]
-
-const ruleColumns: Column<any>[] = [
-  { key: '_index', labelKey: '#' },
-  { key: 'type', labelKey: 'type' },
-  { key: 'action', labelKey: 'admin.action' },
-  { key: 'server', labelKey: 'dns.server' },
-  { key: '_rulesCount', labelKey: 'pages.rules' },
-  { key: 'invert', labelKey: 'rule.invert' },
-]
-
-const subtitle = computed(() => {
-  const servers = dns.value?.servers?.length ?? 0
-  const rules = dnsRules.value?.length ?? 0
-
-  return t('nexus.summary.dns', { servers, rules })
-})
-
-const serverActions = (item: any): RowAction[] => [
-  { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || item._index === 0 },
-  { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || item._index === (dns.value?.servers?.length ?? 0) - 1 },
-  { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
-  { key: 'del', labelKey: 'actions.del', icon: 'lucide:trash-2', tone: 'error', inline: true },
-]
-
-const ruleActions = (item: any): RowAction[] => [
-  { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || item._index === 0 },
-  { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || item._index === dnsRules.value.length - 1 },
-  { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
-  { key: 'del', labelKey: 'actions.del', icon: 'lucide:trash-2', tone: 'error', inline: true },
-]
-
-const handleServerAction = async (key: string, item: any) => {
-  if (key === 'up') { moveDnsServer(item._index, -1); return }
-  if (key === 'down') { moveDnsServer(item._index, 1); return }
-  if (key === 'edit') { showDnsModal(item._index); return }
-  if (key === 'del') {
-    const ok = await confirm({ title: `${t('actions.del')} ${t('objects.dnsserver')}`, message: item.tag, confirmLabel: t('actions.del'), tone: 'error' })
-    if (ok) delDns(item._index)
-  }
-}
-
-const moveDnsServer = (index: number, dir: number) => {
-  moveDnsServerTo(index, index + dir)
-}
-
-const preserveImplicitDnsFinal = () => {
-  const servers = dns.value?.servers ?? []
-  if (!dns.value?.final && servers[0]?.tag) dns.value.final = servers[0].tag
-}
-
-const moveDnsServerTo = (index: number, target: number) => {
-  const servers = dns.value?.servers ?? []
-  if (target < 0 || target >= servers.length) return
-  preserveImplicitDnsFinal()
-  moveArrayItem(servers, index, target)
-}
-
-const sortDnsServersByName = (direction: ManualSortDirection) => {
-  const servers = dns.value?.servers ?? []
-  preserveImplicitDnsFinal()
-  sortArrayByText(servers, direction, "tag")
-}
-
-const moveDnsRule = (index: number, dir: number) => {
-  moveDnsRuleTo(index, index + dir)
-}
-
-const moveDnsRuleTo = (index: number, target: number) => {
-  moveArrayItem(dnsRules.value, index, target)
-}
-
-const handleRuleAction = async (key: string, item: any) => {
-  if (key === 'edit') { showDnsRuleModal(item._index); return }
-  if (key === 'up') { moveDnsRule(item._index, -1); return }
-  if (key === 'down') { moveDnsRule(item._index, 1); return }
-  if (key === 'del') {
-    const ok = await confirm({ title: `${t('actions.del')} ${t('dns.rule.title')}`, message: String(item._index + 1), confirmLabel: t('actions.del'), tone: 'error' })
-    if (ok) delDnsRule(item._index)
-  }
-}
-
-const dnsServerDrag = useManualDrag<number>()
-const dnsRuleDrag = useManualDrag<number>()
-
-const onDnsServerDrop = (event: DragEvent, target: number) => {
-  dnsServerDrag.drop(event, target, moveDnsServerTo)
-}
-
-const onDnsRuleDrop = (event: DragEvent, target: number) => {
-  dnsRuleDrag.drop(event, target, moveDnsRuleTo)
-}
+const { actionDnsRuleKeys, appConfig, applyPresetConfig, clients, closeDnsModal, closeDnsRuleModal, confirm, delDns, delDnsOverlay, delDnsRule, delDnsRuleOverlay, deleteSelectedDnsRules, deleteSelectedDnsServers, dns, dnsModal, dnsRuleDrag, dnsRuleModal, dnsRuleRows, dnsRuleSelectMode, dnsRules, dnsServerDrag, dnsServerRows, dnsServerSelectMode, dnsServerTags, dnsServersExpanded, finalDns, handleRuleAction, handleServerAction, inboundTags, isDnsRuleSelected, isDnsServerSelected, loading, mode, moveDnsRulesTo, moveDnsServersTo, moveDnsRuleTo, moveDnsServerTo, nexus, onDnsRuleDrop, onDnsServerDrop, outboundTags, presetSourceLabel, regionalPresetDrawer, rslvdTags, ruleActions, ruleColumns, ruleSets, saveConfig, saveDnsModal, saveDnsRuleModal, search, selectedDnsRuleIndexes, selectedDnsServerIndexes, serverActions, serverColumns, showDnsModal, showDnsRuleModal, sortDnsServersByName, stateChange, subtitle, t, toggleDnsRuleSelectMode, toggleDnsRuleSelection, toggleDnsServerSelectMode, toggleDnsServerSelection, tsTags } = useDnsPage()
+const indexKeys = (rows: unknown[]): number[] => rows.map((_, rowIndex) => rowIndex)
+const presetSourceVariant = (item: any) => isPresetManagedItem(item) ? 'success' : 'secondary'
 </script>
 
-<style scoped>
-.dns-nexus__section,
-.dns-nexus__section-label {
-  color: var(--nexus-text-secondary);
-  font-size: 0.78rem;
-  font-weight: 650;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-}
-
-.dns-nexus__section {
-  margin-block: var(--nexus-gap-4) var(--nexus-gap-2);
-}
-
-.dns-nexus__tag {
-  color: var(--nexus-text-primary);
-  font-weight: 600;
-}
-
-.dns-nexus__muted {
-  color: var(--nexus-text-muted);
-}
-</style>
+<style scoped lang="scss" src="./Dns.scss"></style>

@@ -10,8 +10,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/backup"
+
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/internal/integrations/telegram"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
@@ -23,7 +26,7 @@ func TestRestoreEndpointAcceptsPlaintextDatabaseBackup(t *testing.T) {
 	if err := setRestoreMarker("plaintext-backup"); err != nil {
 		t.Fatal(err)
 	}
-	backup, err := database.GetDb("")
+	backup, err := backup.Export("")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -32,7 +35,7 @@ func TestRestoreEndpointAcceptsPlaintextDatabaseBackup(t *testing.T) {
 	}
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/importdb", withTestTokenScope("admin", "admin", (&ApiService{}).ImportDb))
+		router.POST("/api/importdb", withTestTokenScope("admin", "admin", (&ApiService{}).dbTransferHandler().ImportDb))
 	})
 	recorder := performAuthenticatedTestRequest(router, newDatabaseImportRequest(t, backup), cookies...)
 	if recorder.Code != http.StatusOK {
@@ -50,12 +53,12 @@ func TestRestoreEndpointDecryptsTelegramBackupEnvelope(t *testing.T) {
 	if err := setRestoreMarker("encrypted-backup"); err != nil {
 		t.Fatal(err)
 	}
-	backup, err := database.GetDb("")
+	backup, err := backup.Export("")
 	if err != nil {
 		t.Fatal(err)
 	}
 	passphrase := []byte("correct horse battery staple")
-	envelope, err := service.BuildTelegramBackupEnvelope(backup, passphrase)
+	envelope, err := integrationtelegram.BuildTelegramBackupEnvelope(backup, passphrase)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -64,7 +67,7 @@ func TestRestoreEndpointDecryptsTelegramBackupEnvelope(t *testing.T) {
 	}
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/importdb", withTestTokenScope("admin", "admin", (&ApiService{}).ImportDb))
+		router.POST("/api/importdb", withTestTokenScope("admin", "admin", (&ApiService{}).dbTransferHandler().ImportDb))
 	})
 	req := newDatabaseImportRequestWithPassphrase(t, envelope, string(passphrase))
 	recorder := performAuthenticatedTestRequest(router, req, cookies...)
@@ -83,11 +86,11 @@ func TestRestoreEndpointRejectsBadTelegramBackupPassphraseWithoutTouchingLiveDB(
 	if err := setRestoreMarker("encrypted-backup"); err != nil {
 		t.Fatal(err)
 	}
-	backup, err := database.GetDb("")
+	backup, err := backup.Export("")
 	if err != nil {
 		t.Fatal(err)
 	}
-	envelope, err := service.BuildTelegramBackupEnvelope(backup, []byte("correct horse battery staple"))
+	envelope, err := integrationtelegram.BuildTelegramBackupEnvelope(backup, []byte("correct horse battery staple"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -96,7 +99,7 @@ func TestRestoreEndpointRejectsBadTelegramBackupPassphraseWithoutTouchingLiveDB(
 	}
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/importdb", withTestTokenScope("admin", "admin", (&ApiService{}).ImportDb))
+		router.POST("/api/importdb", withTestTokenScope("admin", "admin", (&ApiService{}).dbTransferHandler().ImportDb))
 	})
 	req := newDatabaseImportRequestWithPassphrase(t, envelope, "wrong horse battery staple")
 	recorder := performAuthenticatedTestRequest(router, req, cookies...)
@@ -108,8 +111,10 @@ func TestRestoreEndpointRejectsBadTelegramBackupPassphraseWithoutTouchingLiveDB(
 		t.Fatalf("failed decrypt touched live DB, marker=%q", got)
 	}
 
+	flushAPIAudit(t)
+
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "tg_backup_restore_failed").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "tg_backup_restore_failed").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	details := string(event.Details)
@@ -156,10 +161,10 @@ func newDatabaseImportRequestWithPassphrase(t *testing.T, content []byte, passph
 
 func withNoopSighup(t *testing.T) {
 	t.Helper()
-	database.SetSendSighupHook(func() error { return nil })
-	t.Cleanup(func() { database.SetSendSighupHook(nil) })
+	backup.SetSendSighupHook(func() error { return nil })
+	t.Cleanup(func() { backup.SetSendSighupHook(nil) })
 	t.Cleanup(func() {
-		if db := database.GetDB(); db != nil {
+		if db := dbsqlite.DB(); db != nil {
 			if sqlDB, err := db.DB(); err == nil {
 				_ = sqlDB.Close()
 				time.Sleep(25 * time.Millisecond)
@@ -169,7 +174,7 @@ func withNoopSighup(t *testing.T) {
 }
 
 func setRestoreMarker(value string) error {
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	if err := db.Where("key = ?", "restore_marker").Delete(&model.Setting{}).Error; err != nil {
 		return err
 	}
@@ -179,7 +184,7 @@ func setRestoreMarker(value string) error {
 func restoreMarkerValue(t *testing.T) string {
 	t.Helper()
 	var setting model.Setting
-	if err := database.GetDB().Where("key = ?", "restore_marker").Order("id desc").First(&setting).Error; err != nil {
+	if err := dbsqlite.DB().Where("key = ?", "restore_marker").Order("id desc").First(&setting).Error; err != nil {
 		t.Fatal(err)
 	}
 	return setting.Value

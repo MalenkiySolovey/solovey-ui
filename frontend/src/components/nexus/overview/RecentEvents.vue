@@ -1,37 +1,38 @@
 <template>
-  <article class="nexus-overview-panel">
-    <panel-header :title="$t('nexus.overview.events.title')">
-      <template #action>
-        <status-badge :label="stateLabel" :tone="stateTone" />
-      </template>
-    </panel-header>
+  <overview-panel class="nexus-recent-events" :title="$t('nexus.overview.events.title')">
+    <template #action>
+      <status-badge :label="stateLabel" :tone="stateTone" />
+    </template>
 
-    <div v-if="loading" class="nexus-overview-panel__state">
+    <overview-state v-if="loading">
       {{ $t('nexus.overview.events.loading') }}
-    </div>
+    </overview-state>
 
-    <div v-else-if="events.length === 0" class="nexus-overview-panel__state">
+    <overview-state v-else-if="events.length === 0">
       {{ emptyCopy }}
+    </overview-state>
+
+    <div v-else class="nexus-recent-events__scroll">
+      <dense-list class="nexus-recent-events__list">
+        <li
+          v-for="(event, index) in events"
+          :key="`${event.id}-${event.timestamp}-${index}`"
+          class="nexus-recent-events__item"
+        >
+          <v-icon :icon="event.icon" :class="`nexus-recent-events__icon--${event.tone}`" />
+
+          <div class="nexus-recent-events__copy">
+            <strong>{{ event.text }}</strong>
+            <span v-if="event.detail">{{ event.detail }}</span>
+          </div>
+
+          <time :datetime="dateTimeValue(event.timestamp)" class="nexus-mono">
+            {{ timestampLabel(event.timestamp) }}
+          </time>
+        </li>
+      </dense-list>
     </div>
-
-    <dense-list v-else class="nexus-recent-events__list">
-      <li
-        v-for="(event, index) in events"
-        :key="`${event.id}-${event.timestamp}-${index}`"
-      >
-        <v-icon :icon="event.icon" :class="`nexus-recent-events__icon--${event.tone}`" />
-
-        <div class="nexus-recent-events__copy">
-          <strong>{{ event.text }}</strong>
-          <span v-if="event.detail">{{ event.detail }}</span>
-        </div>
-
-        <time :datetime="dateTimeValue(event.timestamp)">
-          {{ timestampLabel(event.timestamp) }}
-        </time>
-      </li>
-    </dense-list>
-  </article>
+  </overview-panel>
 </template>
 
 <script lang="ts" setup>
@@ -39,8 +40,9 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import DenseList from '@/components/nexus/primitives/DenseList.vue'
-import PanelHeader from '@/components/nexus/primitives/PanelHeader.vue'
 import StatusBadge from '@/components/nexus/primitives/StatusBadge.vue'
+import OverviewPanel from './OverviewPanel.vue'
+import OverviewState from './OverviewState.vue'
 import type { AuditDisplayItem } from './selectors/auditMapper'
 
 const props = defineProps<{
@@ -86,35 +88,29 @@ const dateTimeValue = (timestamp: number): string | undefined => {
 </script>
 
 <style scoped>
-.nexus-overview-panel {
-  background: var(--nexus-surface-1);
-  border: 1px solid var(--nexus-border);
-  border-radius: var(--nexus-radius-lg);
-  display: grid;
-  gap: var(--nexus-gap-3);
-  min-width: 0;
-  padding: var(--nexus-gap-4);
+.nexus-recent-events.nexus-overview-panel {
+  height: var(--nexus-overview-primary-panel-height);
+  min-height: 0;
+  overflow: hidden;
 }
 
-.nexus-overview-panel__state {
-  align-items: center;
-  background: var(--nexus-surface-2);
-  border: 1px dashed var(--nexus-border-strong);
+.nexus-recent-events__scroll {
   border-radius: var(--nexus-radius-md);
-  color: rgb(var(--v-theme-on-surface) / 68%);
-  display: grid;
-  font-size: 0.86rem;
-  letter-spacing: 0;
-  line-height: 1.4;
-  min-height: auto;
-  overflow-wrap: anywhere;
-  padding: var(--nexus-gap-3);
-  text-align: center;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  scrollbar-width: thin;
 }
 
 .nexus-recent-events__list :deep(li) {
   display: grid;
   grid-template-columns: auto minmax(0, 1fr) auto;
+  transition: background var(--nexus-transition-fast);
+}
+
+.nexus-recent-events__list :deep(li.nexus-recent-events__item:hover) {
+  background: var(--nexus-surface-hover);
+  cursor: pointer;
 }
 
 .nexus-recent-events__copy {
@@ -135,7 +131,7 @@ const dateTimeValue = (timestamp: number): string | undefined => {
 
 .nexus-recent-events__copy span,
 .nexus-recent-events__list time {
-  color: rgb(var(--v-theme-on-surface) / 62%);
+  color: var(--nexus-text-secondary);
 }
 
 .nexus-recent-events__list time {

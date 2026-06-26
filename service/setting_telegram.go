@@ -1,8 +1,7 @@
 package service
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/database"
-	"github.com/MalenkiySolovey/solovey-ui/logger"
+	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 )
 
 func (s *SettingService) GetTelegramCpuThreshold() (int, error) {
@@ -15,6 +14,34 @@ func (s *SettingService) GetTelegramNotifyCpu() (bool, error) {
 
 func (s *SettingService) GetTelegramEnabled() (bool, error) {
 	return s.getBool(settingKeyTelegramEnabled)
+}
+
+func (s *SettingService) GetTelegramBotToken() (string, error) {
+	return s.getString(settingKeyTelegramBotToken)
+}
+
+func (s *SettingService) GetTelegramChatID() (string, error) {
+	return s.getString(settingKeyTelegramChatID)
+}
+
+func (s *SettingService) GetTelegramProxyURL() (string, error) {
+	return s.getString(settingKeyTelegramProxyURL)
+}
+
+func (s *SettingService) GetTelegramProxyUsername() (string, error) {
+	return s.getString(settingKeyTelegramProxyUsername)
+}
+
+func (s *SettingService) GetTelegramProxyPassword() (string, error) {
+	return s.getString(settingKeyTelegramProxyPassword)
+}
+
+func (s *SettingService) GetTelegramTransportMode() (string, error) {
+	return s.getString(settingKeyTelegramTransportMode)
+}
+
+func (s *SettingService) GetTelegramOutboundTag() (string, error) {
+	return s.getString(settingKeyTelegramOutboundTag)
 }
 
 func (s *SettingService) GetTelegramReport() (bool, error) {
@@ -43,7 +70,7 @@ func (s *SettingService) GetTelegramBackupMaxSizeMB() (int, error) {
 
 func (s *SettingService) GetTelegramBackupPassphraseBytes() ([]byte, error) {
 	setting, err := s.getSetting(settingKeyTelegramBackupPassphrase)
-	if database.IsNotFound(err) {
+	if settingNotFound(err) {
 		value, _ := defaultSettingValue(settingKeyTelegramBackupPassphrase)
 		return []byte(value), nil
 	}
@@ -55,7 +82,7 @@ func (s *SettingService) GetTelegramBackupPassphraseBytes() ([]byte, error) {
 
 func (s *SettingService) HasTelegramBackupPassphrase() (bool, error) {
 	setting, err := s.getSetting(settingKeyTelegramBackupPassphrase)
-	if database.IsNotFound(err) {
+	if settingNotFound(err) {
 		value, _ := defaultSettingValue(settingKeyTelegramBackupPassphrase)
 		return value != "", nil
 	}
@@ -66,7 +93,7 @@ func (s *SettingService) HasTelegramBackupPassphrase() (bool, error) {
 }
 
 func (s *SettingService) recordTelegramBackupPassphraseChanged(actor string, configured bool) {
-	if database.GetDB() == nil {
+	if !settingsDatabaseAvailable() {
 		return
 	}
 	if err := (&AuditService{}).Record(AuditEvent{

@@ -29,7 +29,7 @@
 </template>
 
 <script lang="ts">
-import StrictSelect from '@/components/StrictSelect.vue'
+import StrictSelect from '@/shared/ui/StrictSelect.vue'
 
 export default {
   components: { StrictSelect },

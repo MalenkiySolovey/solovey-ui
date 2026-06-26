@@ -6,10 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/mapping"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 
-	"gorm.io/driver/sqlite"
+	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -17,7 +18,7 @@ import (
 // produced sing-box rule (or nil) plus counts.
 func firstMappedRule(t *testing.T, raw string) (map[string]any, int, int, []string) {
 	t.Helper()
-	mapped, warnings, mappedCount, manualCount := MapXrayRouting(raw, map[string]string{"out": "direct"})
+	mapped, warnings, mappedCount, manualCount := mapping.MapXrayRouting(raw, map[string]string{"out": "direct"})
 	route := mapped["route"].(map[string]any)
 	rules := route["rules"].([]any)
 	var rule map[string]any
@@ -155,8 +156,8 @@ func TestRoutingMatchers_DomainPrefixes(t *testing.T) {
 func TestRouting_BlackholeBecomesRejectAction(t *testing.T) {
 	raw := `{"outbounds":[{"tag":"blocked","protocol":"blackhole"}],` +
 		`"routing":{"rules":[{"outboundTag":"blocked","domain":["full:ads.example"]}]}}`
-	_, _, targets, _ := mapXrayOutbounds(raw)
-	mapped, _, mappedCount, manualCount := MapXrayRouting(raw, targets)
+	_, _, targets, _ := mapping.MapXrayOutbounds(raw)
+	mapped, _, mappedCount, manualCount := mapping.MapXrayRouting(raw, targets)
 	if mappedCount != 1 || manualCount != 0 {
 		t.Fatalf("mapped=%d manual=%d", mappedCount, manualCount)
 	}
@@ -176,8 +177,8 @@ func TestRouting_BlackholeBecomesRejectAction(t *testing.T) {
 func TestRouting_ProxyTaggedBlockKeepsRouting(t *testing.T) {
 	raw := `{"outbounds":[{"tag":"block","protocol":"vless","settings":{"vnext":[{"address":"a.example.com","port":443,"users":[{"id":"u"}]}]}}],` +
 		`"routing":{"rules":[{"outboundTag":"block","domain":["full:x.example"]}]}}`
-	_, _, targets, _ := mapXrayOutbounds(raw)
-	mapped, _, mappedCount, manualCount := MapXrayRouting(raw, targets)
+	_, _, targets, _ := mapping.MapXrayOutbounds(raw)
+	mapped, _, mappedCount, manualCount := mapping.MapXrayRouting(raw, targets)
 	if mappedCount != 1 || manualCount != 0 {
 		t.Fatalf("mapped=%d manual=%d", mappedCount, manualCount)
 	}
@@ -191,25 +192,25 @@ func TestRouting_ProxyTaggedBlockKeepsRouting(t *testing.T) {
 }
 
 // TestEnsureDirectOutbound_SkipsWhenSeededInDB is a regression test: when a
-// direct outbound already exists in the DB (the s-ui default InitDB seeds), the
+// direct outbound already exists in the DB (the s-ui default sqlite.Init seeds), the
 // migration must NOT inject a duplicate — otherwise createNewOutbounds reports a
 // misleading "outbound \"direct\" already exists; left unchanged" skip on every
 // routing import that references direct.
 func TestEnsureDirectOutbound_SkipsWhenSeededInDB(t *testing.T) {
 	initCompatDest(t)
-	db := database.GetDB()
-	mapped := map[string]any{"route": map[string]any{"rules": []any{map[string]any{"outbound": directOutboundTag}}}}
+	db := dbsqlite.DB()
+	mapped := map[string]any{"route": map[string]any{"rules": []any{map[string]any{"outbound": mapping.DirectOutboundTag}}}}
 
 	// Seed present (the normal destination): nothing must be injected.
 	if got := ensureDirectOutbound(db, nil, mapped); len(got) != 0 {
 		t.Errorf("with a seeded direct outbound, ensureDirectOutbound must inject nothing, got %d", len(got))
 	}
 	// Seed removed: a direct outbound must be injected so the reference resolves.
-	if err := db.Where("tag = ?", directOutboundTag).Delete(&model.Outbound{}).Error; err != nil {
+	if err := db.Where("tag = ?", mapping.DirectOutboundTag).Delete(&model.Outbound{}).Error; err != nil {
 		t.Fatal(err)
 	}
 	got := ensureDirectOutbound(db, nil, mapped)
-	if len(got) != 1 || got[0].Tag != directOutboundTag || got[0].Type != directOutboundTag {
+	if len(got) != 1 || got[0].Tag != mapping.DirectOutboundTag || got[0].Type != mapping.DirectOutboundTag {
 		t.Errorf("with no direct outbound, ensureDirectOutbound must inject one, got %#v", got)
 	}
 }
@@ -223,7 +224,7 @@ func TestApply_DNSOnlyConfigIsNotSkipped(t *testing.T) {
 	src := filepath.Join(dir, "x-ui.db")
 	buildCompatSource(t, forkVariant, src)
 
-	db, err := gorm.Open(sqlite.Open(src), &gorm.Config{})
+	db, err := gorm.Open(gormsqlite.Open(src), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -252,7 +253,7 @@ func TestApply_DNSOnlyConfigIsNotSkipped(t *testing.T) {
 		t.Fatalf("apply: %v", err)
 	}
 
-	dest := database.GetDB()
+	dest := dbsqlite.DB()
 	var cfg model.Setting
 	if err := dest.Where("key = ?", "config").First(&cfg).Error; err != nil {
 		t.Fatal(err)
@@ -275,17 +276,17 @@ func TestApply_DNSOnlyConfigIsNotSkipped(t *testing.T) {
 // must point at an outbound/endpoint that actually exists.
 func TestApply_BlackholeRejectAndDirectResolves(t *testing.T) {
 	initCompatDest(t)
-	// InitDB seeds a {Type:"direct",Tag:"direct"} outbound; delete it so the
+	// sqlite.Init seeds a {Type:"direct",Tag:"direct"} outbound; delete it so the
 	// post-import assertion that a direct outbound exists proves ensureDirectOutbound
 	// injected one, instead of passing vacuously on the seed.
-	if err := database.GetDB().Where("tag = ?", directOutboundTag).Delete(&model.Outbound{}).Error; err != nil {
+	if err := dbsqlite.DB().Where("tag = ?", mapping.DirectOutboundTag).Delete(&model.Outbound{}).Error; err != nil {
 		t.Fatal(err)
 	}
 	dir := makeImportXUITempDir(t)
 	src := filepath.Join(dir, "x-ui.db")
 	buildCompatSource(t, forkVariant, src)
 
-	db, err := gorm.Open(sqlite.Open(src), &gorm.Config{})
+	db, err := gorm.Open(gormsqlite.Open(src), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -313,7 +314,7 @@ func TestApply_BlackholeRejectAndDirectResolves(t *testing.T) {
 		t.Fatalf("apply: %v", err)
 	}
 
-	dest := database.GetDB()
+	dest := dbsqlite.DB()
 	var cfg model.Setting
 	if err := dest.Where("key = ?", "config").First(&cfg).Error; err != nil {
 		t.Fatal(err)
@@ -397,7 +398,7 @@ func TestApply_RoutingMergesIntoLiveConfig(t *testing.T) {
 	src := filepath.Join(dir, "x-ui.db")
 	buildCompatSource(t, forkVariant, src)
 
-	db, err := gorm.Open(sqlite.Open(src), &gorm.Config{})
+	db, err := gorm.Open(gormsqlite.Open(src), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -419,7 +420,7 @@ func TestApply_RoutingMergesIntoLiveConfig(t *testing.T) {
 		t.Fatalf("apply: %v", err)
 	}
 
-	dest := database.GetDB()
+	dest := dbsqlite.DB()
 	var cfg model.Setting
 	if err := dest.Where("key = ?", "config").First(&cfg).Error; err != nil {
 		t.Fatal(err)

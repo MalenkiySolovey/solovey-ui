@@ -1,20 +1,22 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/core"
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
+	coretracker "github.com/MalenkiySolovey/solovey-ui/core/tracker"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	"gorm.io/gorm"
 )
 
 func TestStatsServiceSaveStatsWithEmptyStats(t *testing.T) {
-	coreInstance := core.NewCore()
+	coreInstance := coreruntime.NewCore()
 	if err := coreInstance.Start([]byte(`{"log":{"disabled":true},"inbounds":[],"outbounds":[{"type":"direct","tag":"direct"}]}`)); err != nil {
 		t.Skipf("minimal core start unavailable for empty-stats regression: %v", err)
 	}
@@ -43,10 +45,6 @@ func TestStatsServiceSaveStatsCommitFailureAuditsAndReturnsIssue26(t *testing.T)
 	initSettingTestDB(t)
 	seedStatsBenchClients(t, 1)
 
-	prevAuditSync := AuditSyncForTest
-	AuditSyncForTest = true
-	t.Cleanup(func() { AuditSyncForTest = prevAuditSync })
-
 	realtime.CloseAll("issue26_reset")
 	t.Cleanup(func() { realtime.CloseAll("issue26_done") })
 	ch := make(chan realtime.Event, 4)
@@ -65,16 +63,19 @@ func TestStatsServiceSaveStatsCommitFailureAuditsAndReturnsIssue26(t *testing.T)
 	}
 	t.Cleanup(func() { commitStatsTransaction = prevCommit })
 
-	tracker := core.NewStatsTracker()
+	tracker := coretracker.NewStatsTracker()
 	seedSyntheticUserStatsForBench(t, tracker, 1)
 	statsService := &StatsService{Runtime: NewRuntime(syntheticStatsCoreForBench(t, tracker))}
 
 	if err := statsService.SaveStats(true); !errors.Is(err, commitErr) {
 		t.Fatalf("SaveStats error=%v, want %v", err, commitErr)
 	}
+	if err := statsService.Runtime.StopAuditWriter(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 
 	var audit model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "stats_commit_failed").First(&audit).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "stats_commit_failed").First(&audit).Error; err != nil {
 		t.Fatal(err)
 	}
 	if audit.Actor != "system" || audit.Resource != "stats" || audit.Severity != AuditSeverityWarn {
@@ -92,11 +93,91 @@ func TestStatsServiceSaveStatsCommitFailureAuditsAndReturnsIssue26(t *testing.T)
 	expectNoStatsRealtimeEventsIssue26(t, ch)
 
 	var statsRows int64
-	if err := database.GetDB().Model(model.Stats{}).Count(&statsRows).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Stats{}).Count(&statsRows).Error; err != nil {
 		t.Fatal(err)
 	}
 	if statsRows != 0 {
 		t.Fatalf("stats rows committed after failed commit: %d", statsRows)
+	}
+}
+
+func TestStatsServiceSaveStatsCreatesStatsInSafeBatches(t *testing.T) {
+	initServicePerfDB(t)
+	const clients = 220
+	seedStatsBenchClients(t, clients)
+
+	tracker := coretracker.NewStatsTracker()
+	seedSyntheticUserStatsForBench(t, tracker, clients)
+	statsService := &StatsService{Runtime: NewRuntime(syntheticStatsCoreForBench(t, tracker))}
+
+	if err := statsService.SaveStats(true); err != nil {
+		t.Fatal(err)
+	}
+
+	var statsRows int64
+	if err := dbsqlite.DB().Model(model.Stats{}).Count(&statsRows).Error; err != nil {
+		t.Fatal(err)
+	}
+	if statsRows != clients*2 {
+		t.Fatalf("unexpected stats rows: got %d want %d", statsRows, clients*2)
+	}
+}
+
+func TestStatsServiceGetInboundTrafficSummaryUsesExactBucketSums(t *testing.T) {
+	initSettingTestDB(t)
+	statsService := &StatsService{}
+	const endTime int64 = 3600
+
+	rows := make([]model.Stats, 0, 164)
+	var wantDownload int64
+	var wantUpload int64
+	for i := 0; i < 80; i++ {
+		stamp := int64(30 + i*40)
+		down := int64(i + 1)
+		up := int64((i + 1) * 2)
+		rows = append(rows,
+			model.Stats{DateTime: stamp, Resource: "inbound", Tag: "in-a", Direction: false, Traffic: down},
+			model.Stats{DateTime: stamp, Resource: "inbound", Tag: "in-b", Direction: true, Traffic: up},
+		)
+		wantDownload += down
+		wantUpload += up
+	}
+	rows = append(rows,
+		model.Stats{DateTime: 120, Resource: "user", Tag: "alice", Direction: false, Traffic: 999999},
+		model.Stats{DateTime: 120, Resource: "outbound", Tag: "direct", Direction: true, Traffic: 999999},
+		model.Stats{DateTime: endTime + 1, Resource: "inbound", Tag: "late", Direction: false, Traffic: 999999},
+		model.Stats{DateTime: endTime, Resource: "inbound", Tag: "edge", Direction: true, Traffic: 7},
+	)
+	wantUpload += 7
+	if err := dbsqlite.DB().Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := statsService.GetInboundTrafficSummary(1, 4, endTime)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.StartTime != 0 || got.EndTime != endTime || got.Range != 1 {
+		t.Fatalf("unexpected window metadata: %#v", got)
+	}
+	if len(got.Buckets) != 4 {
+		t.Fatalf("expected 4 buckets, got %d", len(got.Buckets))
+	}
+	if got.Download != wantDownload || got.Upload != wantUpload {
+		t.Fatalf("unexpected totals: download=%d upload=%d want download=%d upload=%d", got.Download, got.Upload, wantDownload, wantUpload)
+	}
+
+	var bucketDownload int64
+	var bucketUpload int64
+	for _, bucket := range got.Buckets {
+		bucketDownload += bucket.Download
+		bucketUpload += bucket.Upload
+	}
+	if bucketDownload != got.Download || bucketUpload != got.Upload {
+		t.Fatalf("bucket totals do not match summary: buckets down/up=%d/%d summary down/up=%d/%d", bucketDownload, bucketUpload, got.Download, got.Upload)
+	}
+	if got.Buckets[3].Upload < 7 {
+		t.Fatalf("end boundary traffic should be included in the last bucket: %#v", got.Buckets[3])
 	}
 }
 

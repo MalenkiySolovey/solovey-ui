@@ -123,8 +123,8 @@ test('websocket survives repeated offline/online chaos and returns to connected'
       await setFakeWsOnline(false)
       await context.setOffline(true)
     } else {
-      await context.setOffline(false)
       await setFakeWsOnline(true)
+      await context.setOffline(false)
     }
     log.push(`${index + 1}: offline=${step.offline} waitMs=${step.waitMs}`)
     await page.waitForTimeout(step.waitMs)

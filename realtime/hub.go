@@ -1,6 +1,7 @@
 package realtime
 
 import (
+	"encoding/json"
 	"sync"
 	"time"
 )
@@ -100,12 +101,16 @@ func (h *hub) Register(c *ClientHandle) (unregister func()) {
 }
 
 func (h *hub) Publish(topic Topic, payload interface{}) {
+	clients := h.snapshot(topic)
+	if len(clients) == 0 {
+		return
+	}
 	event := Event{
 		Type:    topic,
 		Ts:      time.Now().Unix(),
 		Payload: payload,
 	}
-	clients := h.snapshot(topic)
+	event.frame, _ = json.Marshal(event)
 	for _, c := range clients {
 		select {
 		case c.sendCh <- event:

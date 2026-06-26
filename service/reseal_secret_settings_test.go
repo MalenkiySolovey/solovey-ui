@@ -3,8 +3,8 @@ package service
 import (
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 )
 
@@ -36,7 +36,7 @@ func TestResealSecretSettings(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", key).Update("value", legacySealed).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", key).Update("value", legacySealed).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -59,7 +59,7 @@ func TestResealSecretSettings(t *testing.T) {
 	// The stored value changed and now opens under the preferred env box (idx 0),
 	// recovering the original plaintext.
 	var after model.Setting
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", key).First(&after).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", key).First(&after).Error; err != nil {
 		t.Fatal(err)
 	}
 	if after.Value == legacySealed {

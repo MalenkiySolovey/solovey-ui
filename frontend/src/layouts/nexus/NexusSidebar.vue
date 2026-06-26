@@ -47,7 +47,12 @@
 
     <v-divider />
 
-    <v-list class="nexus-sidebar__navigation" nav>
+    <v-list
+      :aria-label="$t('menu.navigation')"
+      class="nexus-sidebar__navigation"
+      nav
+      role="navigation"
+    >
       <template v-for="group in groups" :key="group.labelKey ?? 'dashboard'">
         <v-list-subheader
           v-if="group.labelKey && !collapsed"
@@ -117,7 +122,7 @@
 import { computed } from 'vue'
 import { useRoute } from 'vue-router'
 
-import { logout } from '@/plugins/httputil'
+import { logout } from '@/shared/composables/useAuthOperations'
 import Data from '@/store/modules/data'
 import logoUrl from '@/assets/logo.png'
 import { nexusMenuGroups as groups, type NexusMenuItem } from './nexusMenu'

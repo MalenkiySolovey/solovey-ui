@@ -13,33 +13,6 @@ const (
 	StrategySkip    Strategy = "skip"
 )
 
-type Options struct {
-	Context        context.Context
-	DryRun         bool
-	Strategy       Strategy
-	ReportPath     string
-	SkipBackup     bool
-	SkipAudit      bool
-	Now            func() int64
-	OnProgress     func(Progress)
-	IncludeHistory bool
-	IncludeRouting bool
-	// Hostname is the address baked into each migrated client's subscription
-	// links (mirrors the panel host used on a normal client save). Empty
-	// leaves Links nil — the importer never emits a link with an empty host.
-	Hostname string
-}
-
-func (o Options) normalized() (Options, error) {
-	if o.Strategy == "" {
-		o.Strategy = StrategyMerge
-	}
-	if err := o.Strategy.Validate(); err != nil {
-		return o, err
-	}
-	return o, nil
-}
-
 type PlanOptions struct {
 	Context         context.Context
 	Strategy        Strategy
@@ -72,12 +45,12 @@ func (o PlanOptions) normalized() (PlanOptions, error) {
 type ApplyOptions struct {
 	Context    context.Context
 	DryRun     bool
+	SkipBackup bool
 	SkipAudit  bool
 	OnlyNew    bool
 	Now        func() int64
 	OnProgress func(Progress)
-	// Hostname is the address baked into each migrated client's subscription
-	// links. See Options.Hostname.
+	// Hostname is baked into migrated client subscription links.
 	Hostname string
 }
 

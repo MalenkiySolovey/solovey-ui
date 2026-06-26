@@ -152,7 +152,7 @@
 
 <script lang="ts">
 import { i18n } from '@/locales'
-import HttpUtils from '@/plugins/httputil'
+import { addToken, deleteToken, loadTokens, setTokenEnabled } from '@/shared/composables/useTokenOperations'
 import Clipboard from 'clipboard'
 import { push } from 'notivue';
 
@@ -189,7 +189,7 @@ export default {
   methods: {
     async loadData() {
       this.loading = true
-      const data = await HttpUtils.get('api/tokens')
+      const data = await loadTokens()
       if (data.success) {
         this.tokens = data.obj ?? []
         this.delOverlay = new Array<boolean>(this.tokens.length).fill(false)
@@ -211,7 +211,7 @@ export default {
     async addToken() {
       this.loading = true
       this.newToken.expiry = this.newToken.expiry>0 ? this.newToken.expiry : 0
-      const response = await HttpUtils.post('api/addToken', { desc: this.newToken.desc, expiry: this.newToken.expiry, scope: this.newToken.scope })
+      const response = await addToken(this.newToken.desc, this.newToken.expiry, this.newToken.scope)
       if (response.success) {
         this.newToken.token = response.obj
         this.loadData()
@@ -221,7 +221,7 @@ export default {
     },
     async setTokenEnabled(id: number, enabled: boolean) {
       this.loading = true
-      const response = await HttpUtils.post('api/setTokenEnabled', { id, enabled })
+      const response = await setTokenEnabled(id, enabled)
       if (response.success) {
         this.loadData()
       }
@@ -229,7 +229,7 @@ export default {
     },
     async deleteToken(id: number) {
       this.loading = true
-      const response = await HttpUtils.post('api/deleteToken', { id: id })
+      const response = await deleteToken(id)
       if (response.success) {
         this.loadData()
       }

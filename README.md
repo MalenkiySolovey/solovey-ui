@@ -4,7 +4,7 @@ Solovey UI is a personal web panel for managing a bundled `sing-box` core. It
 is based on the original S-UI ecosystem and is being adapted for private use,
 safer updates, cleaner maintenance, and custom panel features.
 
-Current version: `1.5.7-solovey.1`
+Current version: `2026.1.0`
 
 ## Русская Версия
 
@@ -41,7 +41,7 @@ sudo solovey-ui status
 Установка конкретной версии:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v1.5.7-solovey.1
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.1.0
 ```
 
 По умолчанию используются:
@@ -63,7 +63,7 @@ sudo systemctl status solovey-ui --no-pager
 Обновление на конкретный тег:
 
 ```bash
-sudo solovey-ui update --version v1.5.7-solovey.1
+sudo solovey-ui update --version v2026.1.0
 ```
 
 ### Backup И Rollback
@@ -162,11 +162,20 @@ bash tests/installer/release-package.sh
 - `solovey-ui/solovey-ui.service`
 - `solovey-ui/BUILD_INFO.txt`
 
-### Благодарности
+### Происхождение И Благодарности
 
-Solovey UI основан на идеях и коде оригинального S-UI и его форков, включая
-`alireza0/s-ui`, `admin8800/s-ui`, `deposist/s-ui-x`, `shenaba/2s-ui` и другие
-родственные проекты.
+Solovey UI — самостоятельная модифицированная GPL-3.0 производная работа на основе экосистемы S-UI.
+
+Проект основан на идеях и коде оригинального S-UI и его форков, включая:
+- `alireza0/s-ui`
+- `admin8800/s-ui`
+- `deposist/s-ui-x`
+- `shenaba/2s-ui`
+- другие родственные проекты и их участников
+
+Solovey UI не является официальным продуктом S-UI, S-UI-X, sing-box или SagerNet. Изменения из upstream адаптируются вручную, так как кодовая база Solovey UI значительно разошлась с оригинальными проектами.
+
+Дополнительные сведения указаны в `NOTICE.md`.
 
 ---
 
@@ -203,7 +212,7 @@ sudo solovey-ui status
 Install a specific version:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v1.5.7-solovey.1
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.1.0
 ```
 
 Default paths:
@@ -225,7 +234,7 @@ sudo systemctl status solovey-ui --no-pager
 Update to a specific tag:
 
 ```bash
-sudo solovey-ui update --version v1.5.7-solovey.1
+sudo solovey-ui update --version v2026.1.0
 ```
 
 ### Backup And Rollback
@@ -325,8 +334,17 @@ The release archive must contain:
 - `solovey-ui/solovey-ui.service`
 - `solovey-ui/BUILD_INFO.txt`
 
-### Credits
+### Origin And Credits
 
-Solovey UI is based on ideas and code from the original S-UI ecosystem and its
-forks, including `alireza0/s-ui`, `admin8800/s-ui`, `deposist/s-ui-x`,
-`shenaba/2s-ui`, and related projects.
+Solovey UI is an independent modified GPL-3.0 derivative of the S-UI ecosystem.
+
+It is based on ideas and code from the original S-UI project and its forks, including:
+- `alireza0/s-ui`
+- `admin8800/s-ui`
+- `deposist/s-ui-x`
+- `shenaba/2s-ui`
+- related projects and contributors
+
+Solovey UI is not an official S-UI, S-UI-X, sing-box, or SagerNet product. Upstream changes are adapted manually because the Solovey UI codebase has diverged significantly from the original projects.
+
+See `NOTICE.md` for additional attribution and modification notes.

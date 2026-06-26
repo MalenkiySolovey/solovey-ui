@@ -37,7 +37,7 @@
 
 <script lang="ts">
 import { i18n } from '@/locales'
-import HttpUtils from '@/plugins/httputil'
+import { loadStats } from '@/shared/composables/useOperationsData'
 import { HumanReadable } from '@/plugins/utils'
 import {
   Chart as ChartJS,
@@ -131,7 +131,7 @@ export default {
   methods: {
     async loadData() {
       this.loading = true
-      const data = await HttpUtils.get('api/stats', { resource: this.resource, tag: this.tag, limit: this.limit })
+      const data = await loadStats(this.resource, this.tag, this.limit)
       if (data.success && data.obj) {
         const obj = <any[]>data.obj
         const l = String(i18n.global.locale) == 'fa' ? "fa-IR" : "en-US"

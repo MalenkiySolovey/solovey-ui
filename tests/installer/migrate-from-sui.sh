@@ -129,6 +129,12 @@ SH
 #!/usr/bin/env bash
 echo "fake manager"
 SH
+    cat > "${release_dir}/BUILD_INFO.txt" <<'INFO'
+app=solovey-ui
+version=v1.5.10-beta7-solovey.1
+platform=linux/amd64
+sing_box=v-test
+INFO
     cp "${ROOT}/solovey-ui.service" "${release_dir}/solovey-ui.service"
     chmod +x "${release_dir}/solovey-ui" "${release_dir}/solovey-ui.sh"
 
@@ -169,7 +175,7 @@ run_installer() {
     SOLOVEY_UI_LEGACY_ENV_DIR="${LEGACY}/etc/s-ui" \
     SOLOVEY_UI_LEGACY_SERVICE_FILE="${LEGACY}/etc/systemd/system/s-ui.service" \
     SOLOVEY_UI_LEGACY_DROPIN_DIR="${LEGACY}/etc/systemd/system/s-ui.service.d" \
-    "${BASH:-bash}" "${ROOT}/install.sh" --version v1.5.7-solovey.1 --migrate-from-sui "$@"
+    "${BASH:-bash}" "${ROOT}/install.sh" --version v1.5.10-beta7-solovey.1 --migrate-from-sui "$@"
 }
 
 assert_migrated_install() {

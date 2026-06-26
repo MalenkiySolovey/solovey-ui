@@ -29,7 +29,7 @@ func New(masterKey []byte) (*Box, error) {
 		return nil, common.NewError("empty secretbox key")
 	}
 	key := make([]byte, 32)
-	defer zeroBytes(key)
+	defer common.WipeBytes(key)
 	reader := hkdf.New(sha256.New, masterKey, salt, info)
 	if _, err := io.ReadFull(reader, key); err != nil {
 		return nil, err
@@ -50,7 +50,7 @@ func NewRawKey(key []byte) (*Box, error) {
 		return nil, common.NewError("secretbox raw key must be at least 32 bytes")
 	}
 	aesKey := make([]byte, 32)
-	defer zeroBytes(aesKey)
+	defer common.WipeBytes(aesKey)
 	copy(aesKey, key[:32])
 	block, err := aes.NewCipher(aesKey)
 	if err != nil {
@@ -83,7 +83,7 @@ func IsEncrypted(value string) bool {
 
 func (b *Box) EncryptString(plaintext string, associatedData string) (string, error) {
 	plain := []byte(plaintext)
-	defer zeroBytes(plain)
+	defer common.WipeBytes(plain)
 	return b.EncryptBytes(plain, associatedData)
 }
 
@@ -92,7 +92,7 @@ func (b *Box) DecryptString(value string, associatedData string) (string, error)
 	if err != nil {
 		return "", err
 	}
-	defer zeroBytes(plaintext)
+	defer common.WipeBytes(plaintext)
 	return string(plaintext), nil
 }
 
@@ -126,10 +126,4 @@ func (b *Box) DecryptBytes(value string, associatedData string) ([]byte, error) 
 		return nil, err
 	}
 	return plaintext, nil
-}
-
-func zeroBytes(buf []byte) {
-	for i := range buf {
-		buf[i] = 0
-	}
 }

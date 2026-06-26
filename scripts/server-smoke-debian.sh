@@ -21,7 +21,7 @@ Required safety confirmation:
 
 Optional environment:
   SOLOVEY_UI_REPO=MalenkiySolovey/solovey-ui
-  SOLOVEY_UI_SMOKE_VERSION=v1.5.7-solovey.1
+  SOLOVEY_UI_SMOKE_VERSION=v1.5.10-beta7-solovey.1
   SOLOVEY_UI_SMOKE_PURGE_AFTER=1
 
 Usage:
@@ -57,7 +57,11 @@ install_release() {
     trap 'rm -f "${tmp:-}"' EXIT
 
     log "downloading installer from ${INSTALL_URL}"
-    curl -fsSL --proto '=https' --tlsv1.2 -o "${tmp}" "${INSTALL_URL}"
+    curl --fail --location --silent --show-error \
+        --proto '=https' --tlsv1.2 \
+        --connect-timeout 20 --max-time 120 \
+        --retry 3 --retry-delay 2 --retry-all-errors \
+        -o "${tmp}" "${INSTALL_URL}"
 
     args=(--non-interactive)
     if [[ -n "${VERSION}" ]]; then

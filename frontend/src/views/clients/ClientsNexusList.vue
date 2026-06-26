@@ -46,6 +46,13 @@
             <v-list-item prepend-icon="lucide:user-check" :title="$t('actions.editbulk')" @click="emit('editBulk')" />
           </v-list>
         </v-menu>
+        <BulkSelectionControls
+          :active="selectionMode"
+          :count="selectedIds.length"
+          :disabled="hasActiveFilter"
+          @delete="deleteSelected"
+          @toggle="toggleSelectionMode"
+        />
       </template>
     </page-toolbar>
 
@@ -55,7 +62,11 @@
       draggable-rows
       :items="filtered"
       :row-key="(item) => item.id"
-      @row-drop="(dragged, target) => emit('moveTo', dragged.id, target.id)"
+      :selectable="selectionMode"
+      :selected="selectedIds"
+      @update:selected="selectedIds = $event"
+      @row-drop="(dragged, target, position) => emit('moveTo', dragged.id, target.id, position)"
+      @rows-drop="(dragged, target, position) => emit('moveManyTo', dragged.map(item => item.id), target.id, position)"
     >
       <template #col.name="{ item }">
         <span class="clients-nexus__name">{{ item.name }}</span>
@@ -114,6 +125,7 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
+import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
 import ManualSortButton from '@/components/ManualSortButton.vue'
 import type { Column } from '@/components/nexus/data/dataTableColumns'
 import NexusDataTable from '@/components/nexus/data/NexusDataTable.vue'
@@ -125,7 +137,9 @@ import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import StatusBadge from '@/components/nexus/primitives/StatusBadge.vue'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
 import { HumanReadable } from '@/plugins/utils'
-import type { ManualSortDirection } from '@/composables/useManualReorder'
+import { useBulkSelection } from '@/shared/composables/dragSelection/bulkSelection'
+import type { ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
+import type { ManualSortDirection } from '@/shared/composables/dragSelection/manualReorder'
 
 interface ClientRow {
   id: number
@@ -156,9 +170,12 @@ const emit = defineEmits<{
   editBulk: []
   edit: [id: number]
   del: [id: number]
+  delMany: [ids: number[]]
   qr: [id: number]
+  diagnose: [id: number]
   move: [id: number, dir: number]
-  moveTo: [draggedId: number, targetId: number]
+  moveManyTo: [draggedIds: number[], targetId: number, position: ManualDropPosition | null]
+  moveTo: [draggedId: number, targetId: number, position: ManualDropPosition | null]
   sortByName: [direction: ManualSortDirection]
   stats: [name: string]
   showIps: [name: string]
@@ -169,6 +186,9 @@ const { confirm } = useConfirm()
 const search = ref('')
 const filterState = ref('')
 const filterGroup = ref('-')
+const selection = useBulkSelection(computed(() => props.clients), item => item.id)
+const selectionMode = selection.active
+const selectedIds = selection.selectedIds
 
 const sortByName = (direction: ManualSortDirection) => {
   emit('sortByName', direction)
@@ -225,6 +245,27 @@ const hasActiveFilter = computed(() =>
   filterState.value !== '',
 )
 
+const selectedRows = selection.selectedItems
+
+const toggleSelectionMode = () => {
+  if (hasActiveFilter.value) return
+  selection.toggleActive()
+}
+
+const deleteSelected = async () => {
+  const rows = selectedRows.value
+  if (rows.length === 0) return
+  const accepted = await confirm({
+    title: `${t('actions.delbulk')} ${t('objects.client')}`,
+    message: rows.map(item => item.name).join('\n'),
+    confirmLabel: t('actions.del'),
+    tone: 'error',
+  })
+  if (!accepted) return
+  emit('delMany', rows.map(item => item.id))
+  selection.clear()
+}
+
 const inboundTag = (id: number) => props.inbounds.find(i => i.id === id)?.tag ?? id
 const percent = (c: ClientRow) => (c.volume > 0 ? Math.round((c.up + c.down) * 100 / c.volume) : 0)
 const percentColor = (c: ClientRow) => ((c.up + c.down) >= c.volume ? 'error' : percent(c) > 90 ? 'warning' : 'success')
@@ -239,6 +280,7 @@ const clientActions = (item: ClientRow): RowAction[] => [
   { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, reserveSpace: true, hidden: hasActiveFilter.value || props.clients.findIndex(row => row.id === item.id) === props.clients.length - 1 },
   { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
   { key: 'qr', labelKey: 'objects.config', icon: 'lucide:qr-code', inline: true },
+  { key: 'diagnose', labelKey: 'actions.diagnose', icon: 'lucide:activity', inline: true },
   { key: 'stats', labelKey: 'stats.graphTitle', icon: 'lucide:line-chart', inline: true, hidden: !props.enableTraffic },
   { key: 'del', labelKey: 'actions.del', icon: 'lucide:trash-2', tone: 'error', divider: true },
 ]
@@ -256,6 +298,9 @@ const handleAction = async (key: string, item: ClientRow) => {
       break
     case 'qr':
       emit('qr', item.id)
+      break
+    case 'diagnose':
+      emit('diagnose', item.id)
       break
     case 'stats':
       emit('stats', item.name)

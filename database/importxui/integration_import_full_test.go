@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 func TestIntegrationImportXUIFullFixturePlanApply(t *testing.T) {
@@ -49,7 +49,7 @@ func TestIntegrationImportXUIFullFixturePlanApply(t *testing.T) {
 				t.Fatalf("backupPath file is not available: %v", err)
 			}
 			var audit model.AuditEvent
-			if err := database.GetDB().Where("event = ?", "xui_import").Order("id desc").First(&audit).Error; err != nil {
+			if err := dbsqlite.DB().Where("event = ?", "xui_import").Order("id desc").First(&audit).Error; err != nil {
 				t.Fatal(err)
 			}
 			if audit.Resource != "database" || audit.Severity != "info" {

@@ -62,8 +62,8 @@ export const nexusMenuGroups: NexusMenuGroup[] = [
       { title: 'pages.admins', icon: 'lucide:user-cog', path: '/admins' },
       { title: 'pages.audit', icon: 'lucide:file-text', path: '/audit' },
       { title: 'pages.diagnostics', icon: 'lucide:gauge', path: '/diagnostics' },
-      { title: 'pages.basics', icon: 'lucide:sliders-horizontal', path: '/basics', singBoxSettings: true },
       { title: 'pages.settings', icon: 'lucide:settings', path: '/settings' },
+      { title: 'pages.support', icon: 'lucide:heart-handshake', path: '/support' },
     ],
   },
 ]

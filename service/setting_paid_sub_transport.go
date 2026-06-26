@@ -3,6 +3,8 @@ package service
 import (
 	"net/http"
 	"time"
+
+	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/internal/integrations/telegram"
 )
 
 // NewPaidSubHTTPClient builds the HTTP client the paid-subscriptions bot uses,
@@ -20,7 +22,7 @@ func NewPaidSubHTTPClient(timeout time.Duration) (*http.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	client, err := newTelegramHTTPClient(cfg)
+	client, err := integrationtelegram.NewHTTPClient(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -30,18 +32,18 @@ func NewPaidSubHTTPClient(timeout time.Duration) (*http.Client, error) {
 	return client, nil
 }
 
-func (s *SettingService) paidSubProxyConfig() (telegramProxyConfig, error) {
+func (s *SettingService) paidSubProxyConfig() (integrationtelegram.ProxyConfig, error) {
 	proxyURL, err := s.getString(settingKeyPaidSubProxyURL)
 	if err != nil {
-		return telegramProxyConfig{}, err
+		return integrationtelegram.ProxyConfig{}, err
 	}
 	username, err := s.getString(settingKeyPaidSubProxyUsername)
 	if err != nil {
-		return telegramProxyConfig{}, err
+		return integrationtelegram.ProxyConfig{}, err
 	}
 	password, err := s.getString(settingKeyPaidSubProxyPassword)
 	if err != nil {
-		return telegramProxyConfig{}, err
+		return integrationtelegram.ProxyConfig{}, err
 	}
-	return telegramProxyConfig{URL: proxyURL, Username: username, Password: password}, nil
+	return integrationtelegram.ProxyConfig{URL: proxyURL, Username: username, Password: password}, nil
 }

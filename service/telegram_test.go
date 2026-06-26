@@ -18,8 +18,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/internal/integrations/telegram"
 )
 
 type countingRoundTripper struct {
@@ -85,9 +86,8 @@ func (r *captureRoundTripper) RoundTrip(req *http.Request) (*http.Response, erro
 func TestTelegramDisabledMakesNoOutboundCall(t *testing.T) {
 	initSettingTestDB(t)
 	rt := &countingRoundTripper{}
-	t.Cleanup(setTelegramHTTPClient(&http.Client{Transport: rt, Timeout: time.Second}))
 
-	result := (&TelegramService{}).TestTelegram()
+	result := (&TelegramService{Client: &http.Client{Transport: rt, Timeout: time.Second}}).TestTelegram()
 	if result.Success || result.ErrorClass != "disabled" {
 		t.Fatalf("unexpected result: %#v", result)
 	}
@@ -97,7 +97,7 @@ func TestTelegramDisabledMakesNoOutboundCall(t *testing.T) {
 }
 
 func TestNewTelegramHTTPClientUsesHTTPProxySettings(t *testing.T) {
-	client, err := newTelegramHTTPClient(telegramProxyConfig{
+	client, err := integrationtelegram.NewHTTPClient(integrationtelegram.ProxyConfig{
 		URL:      "http://1.1.1.1:8080",
 		Username: "proxy-user",
 		Password: "proxy-pass",
@@ -130,7 +130,7 @@ func TestNewTelegramHTTPClientUsesHTTPProxySettings(t *testing.T) {
 
 func TestEncryptTelegramBackupRoundTrip(t *testing.T) {
 	plain := []byte("sqlite bytes")
-	encrypted, key, err := EncryptTelegramBackup(plain)
+	encrypted, key, err := integrationtelegram.EncryptTelegramBackup(plain)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,9 +163,8 @@ func TestSendTelegramDocumentSanitizesCaptionAndUsesMultipart(t *testing.T) {
 	settingService := initSettingTestDB(t)
 	enableTelegramForTest(t, settingService)
 	rt := &captureRoundTripper{}
-	t.Cleanup(setTelegramHTTPClient(&http.Client{Transport: rt, Timeout: time.Second}))
 
-	result := (&TelegramService{}).SendTelegramDocument("backup.db.aes", []byte("encrypted"), "ok\r\nAuthorization: Bearer secret")
+	result := (&TelegramService{Client: &http.Client{Transport: rt, Timeout: time.Second}}).SendTelegramDocument("backup.db.aes", []byte("encrypted"), "ok\r\nAuthorization: Bearer secret")
 	if !result.Success {
 		t.Fatalf("unexpected result: %#v", result)
 	}
@@ -207,7 +206,7 @@ func TestSendTelegramDocumentSanitizesCaptionAndUsesMultipart(t *testing.T) {
 }
 
 func TestNewTelegramHTTPClientAcceptsSOCKS5Proxy(t *testing.T) {
-	client, err := newTelegramHTTPClient(telegramProxyConfig{
+	client, err := integrationtelegram.NewHTTPClient(integrationtelegram.ProxyConfig{
 		URL: "socks5://1.1.1.1:1080",
 	})
 	if err != nil {
@@ -237,7 +236,7 @@ func TestTelegramSOCKS5DialReturnsOnContextCancel(t *testing.T) {
 		<-stop
 	}()
 
-	transport, err := newTelegramSOCKS5Transport(listener.Addr().String(), nil)
+	transport, err := integrationtelegram.NewSOCKS5Transport(listener.Addr().String(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -262,8 +261,7 @@ func TestTelegramSOCKS5DialReturnsOnContextCancel(t *testing.T) {
 func TestTelegramInvalidProxySettingFailsBeforeOutbound(t *testing.T) {
 	settingService := initSettingTestDB(t)
 	enableTelegramForTest(t, settingService)
-	resetTelegramHTTPClientCacheForTest(t)
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "telegramProxyURL").Update("value", "http://127.0.0.1:8080").Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "telegramProxyURL").Update("value", "http://127.0.0.1:8080").Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -287,9 +285,7 @@ func TestTelegramStatusErrorClassMapping(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.want, func(t *testing.T) {
-			restore := setTelegramHTTPClient(&http.Client{Transport: statusRoundTripper{status: tt.status}, Timeout: time.Second})
-			defer restore()
-			result := (&TelegramService{}).TestTelegram()
+			result := (&TelegramService{Client: &http.Client{Transport: statusRoundTripper{status: tt.status}, Timeout: time.Second}}).TestTelegram()
 			if result.Success || result.ErrorClass != tt.want {
 				t.Fatalf("unexpected result for %d: %#v", tt.status, result)
 			}
@@ -326,13 +322,12 @@ func TestTelegramSendParsesRetryAfterFrom429Response(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	restoreClient := setTelegramHTTPClient(&http.Client{
+	telegramService := &TelegramService{Client: &http.Client{
 		Transport: telegramServerRoundTripper{base: baseURL, transport: http.DefaultTransport},
 		Timeout:   time.Second,
-	})
-	defer restoreClient()
+	}}
 
-	result := (&TelegramService{}).send("message")
+	result := telegramService.send("message")
 
 	if requests.Load() != 1 {
 		t.Fatalf("expected one telegram request, got %d", requests.Load())
@@ -343,9 +338,9 @@ func TestTelegramSendParsesRetryAfterFrom429Response(t *testing.T) {
 }
 
 func TestTelegramRetryAfterCapsAtMax(t *testing.T) {
-	got := telegramRetryAfter(http.StatusTooManyRequests, []byte(`{"ok":false,"error_code":429,"parameters":{"retry_after":999}}`))
-	if got != telegramMaxRetryAfter {
-		t.Fatalf("retry_after cap=%s, want %s", got, telegramMaxRetryAfter)
+	got := integrationtelegram.RetryAfter(http.StatusTooManyRequests, []byte(`{"ok":false,"error_code":429,"parameters":{"retry_after":999}}`))
+	if got != integrationtelegram.MaxRetryAfter {
+		t.Fatalf("retry_after cap=%s, want %s", got, integrationtelegram.MaxRetryAfter)
 	}
 }
 
@@ -358,13 +353,13 @@ func TestNotifyTelegramEventReturnsBeforeSendCompletes(t *testing.T) {
 	sendDone := make(chan struct{})
 	var startedOnce sync.Once
 	var doneOnce sync.Once
-	notifier := newTelegramNotifier(telegramQueueCapacity, func(string) TelegramResult {
+	notifier := integrationtelegram.NewNotifier(integrationtelegram.QueueCapacity, func(string) integrationtelegram.Result {
 		startedOnce.Do(func() { close(sendStarted) })
 		<-releaseSend
 		doneOnce.Do(func() { close(sendDone) })
-		return TelegramResult{Success: true}
+		return integrationtelegram.Result{Success: true}
 	}, func(string, map[string]any) {})
-	notifier.backoff = nil
+	notifier.Backoff = nil
 	replaceDefaultTelegramNotifierForTest(t, notifier)
 
 	start := time.Now()
@@ -399,11 +394,11 @@ func TestNotifyTelegramEventRedactsSensitiveFields(t *testing.T) {
 	enableTelegramForTest(t, settingService)
 
 	sent := make(chan string, 1)
-	notifier := newTelegramNotifier(telegramQueueCapacity, func(text string) TelegramResult {
+	notifier := integrationtelegram.NewNotifier(integrationtelegram.QueueCapacity, func(text string) integrationtelegram.Result {
 		sent <- text
-		return TelegramResult{Success: true}
+		return integrationtelegram.Result{Success: true}
 	}, func(string, map[string]any) {})
-	notifier.backoff = nil
+	notifier.Backoff = nil
 	replaceDefaultTelegramNotifierForTest(t, notifier)
 
 	(&TelegramService{}).NotifyTelegramEvent("manual_backup", map[string]string{
@@ -428,15 +423,15 @@ func TestTelegramNotifierRetriesAndAuditsFailure(t *testing.T) {
 	}
 	auditCh := make(chan auditRecord, 1)
 	var attempts atomic.Int32
-	notifier := newTelegramNotifier(4, func(string) TelegramResult {
+	notifier := integrationtelegram.NewNotifier(4, func(string) integrationtelegram.Result {
 		attempts.Add(1)
-		return TelegramResult{ErrorClass: "network"}
+		return integrationtelegram.Result{ErrorClass: "network"}
 	}, func(event string, details map[string]any) {
 		auditCh <- auditRecord{event: event, details: details}
 	})
-	notifier.backoff = []time.Duration{time.Millisecond, time.Millisecond}
+	notifier.Backoff = []time.Duration{time.Millisecond, time.Millisecond}
 
-	notifier.Enqueue(telegramNotification{event: "login_failed", text: "message body"})
+	notifier.Enqueue(integrationtelegram.Notification{Event: "login_failed", Text: "message body"})
 
 	var record auditRecord
 	select {
@@ -465,15 +460,15 @@ func TestTelegramNotifierStopCancelsBackoffIssue22(t *testing.T) {
 	firstSend := make(chan struct{})
 	var attempts atomic.Int32
 	var firstOnce sync.Once
-	notifier := newTelegramNotifier(1, func(string) TelegramResult {
+	notifier := integrationtelegram.NewNotifier(1, func(string) integrationtelegram.Result {
 		if attempts.Add(1) == 1 {
 			firstOnce.Do(func() { close(firstSend) })
 		}
-		return TelegramResult{ErrorClass: "network"}
+		return integrationtelegram.Result{ErrorClass: "network"}
 	}, nil)
-	notifier.backoff = []time.Duration{time.Hour}
+	notifier.Backoff = []time.Duration{time.Hour}
 
-	notifier.Enqueue(telegramNotification{event: "issue22", text: "message"})
+	notifier.Enqueue(integrationtelegram.Notification{Event: "issue22", Text: "message"})
 	waitForTestChannel(t, firstSend, time.Second, "first telegram send did not start")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -499,22 +494,22 @@ func TestTelegramNotifierDropsOldestAndAuditsOverflow(t *testing.T) {
 	sent := make(chan string, 4)
 	releaseFirst := make(chan struct{})
 	var blockFirst sync.Once
-	notifier := newTelegramNotifier(2, func(text string) TelegramResult {
+	notifier := integrationtelegram.NewNotifier(2, func(text string) integrationtelegram.Result {
 		sent <- text
 		blockFirst.Do(func() { <-releaseFirst })
-		return TelegramResult{Success: true}
+		return integrationtelegram.Result{Success: true}
 	}, func(event string, details map[string]any) {
 		auditCh <- auditRecord{event: event, details: details}
 	})
-	notifier.backoff = nil
+	notifier.Backoff = nil
 
-	notifier.Enqueue(telegramNotification{event: "e1", text: "e1"})
+	notifier.Enqueue(integrationtelegram.Notification{Event: "e1", Text: "e1"})
 	if got := receiveString(t, sent, "first send"); got != "e1" {
 		t.Fatalf("unexpected first send: %s", got)
 	}
-	notifier.Enqueue(telegramNotification{event: "e2", text: "e2"})
-	notifier.Enqueue(telegramNotification{event: "e3", text: "e3"})
-	notifier.Enqueue(telegramNotification{event: "e4", text: "e4"})
+	notifier.Enqueue(integrationtelegram.Notification{Event: "e2", Text: "e2"})
+	notifier.Enqueue(integrationtelegram.Notification{Event: "e3", Text: "e3"})
+	notifier.Enqueue(integrationtelegram.Notification{Event: "e4", Text: "e4"})
 
 	var record auditRecord
 	select {
@@ -556,7 +551,7 @@ func enableTelegramForTest(t *testing.T, settingService *SettingService) {
 		"telegramChatID":   "42",
 	}
 	for key, value := range settings {
-		if err := database.GetDB().Model(model.Setting{}).Where("key = ?", key).Update("value", value).Error; err != nil {
+		if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", key).Update("value", value).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -564,13 +559,13 @@ func enableTelegramForTest(t *testing.T, settingService *SettingService) {
 
 func TestTelegramNotifierStopIsIdempotentAndRejectsLateEnqueue(t *testing.T) {
 	sent := make(chan string, 2)
-	notifier := newTelegramNotifier(10, func(text string) TelegramResult {
+	notifier := integrationtelegram.NewNotifier(10, func(text string) integrationtelegram.Result {
 		sent <- text
-		return TelegramResult{Success: true}
+		return integrationtelegram.Result{Success: true}
 	}, nil)
-	notifier.backoff = nil
+	notifier.Backoff = nil
 
-	notifier.Enqueue(telegramNotification{event: "before_stop", text: "before_stop"})
+	notifier.Enqueue(integrationtelegram.Notification{Event: "before_stop", Text: "before_stop"})
 	if got := receiveString(t, sent, "before stop send"); got != "before_stop" {
 		t.Fatalf("unexpected first send: %s", got)
 	}
@@ -581,11 +576,11 @@ func TestTelegramNotifierStopIsIdempotentAndRejectsLateEnqueue(t *testing.T) {
 	if err := notifier.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if !notifier.stopped {
+	if !notifier.Stopped() {
 		t.Fatal("notifier should be stopped")
 	}
 
-	notifier.Enqueue(telegramNotification{event: "after_stop", text: "after_stop"})
+	notifier.Enqueue(integrationtelegram.Notification{Event: "after_stop", Text: "after_stop"})
 	select {
 	case got := <-sent:
 		t.Fatalf("late enqueue delivered after stop: %s", got)
@@ -594,24 +589,22 @@ func TestTelegramNotifierStopIsIdempotentAndRejectsLateEnqueue(t *testing.T) {
 }
 
 func TestTelegramNotifierStopBeforeStartPreventsStart(t *testing.T) {
-	notifier := newTelegramNotifier(10, func(string) TelegramResult {
+	notifier := integrationtelegram.NewNotifier(10, func(string) integrationtelegram.Result {
 		t.Fatal("stopped notifier delivered event")
-		return TelegramResult{Success: true}
+		return integrationtelegram.Result{Success: true}
 	}, nil)
 
 	if err := notifier.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	notifier.Enqueue(telegramNotification{event: "after_stop", text: "after_stop"})
+	notifier.Enqueue(integrationtelegram.Notification{Event: "after_stop", Text: "after_stop"})
 
-	notifier.mu.Lock()
-	defer notifier.mu.Unlock()
-	if !notifier.stopped || notifier.started || len(notifier.queue) != 0 {
-		t.Fatalf("unexpected notifier state after stop-before-start: started=%v stopped=%v queue=%d", notifier.started, notifier.stopped, len(notifier.queue))
+	if !notifier.Stopped() || notifier.Started() || notifier.QueueLen() != 0 {
+		t.Fatalf("unexpected notifier state after stop-before-start: started=%v stopped=%v queue=%d", notifier.Started(), notifier.Stopped(), notifier.QueueLen())
 	}
 }
 
-func replaceDefaultTelegramNotifierForTest(t *testing.T, notifier *telegramNotifier) {
+func replaceDefaultTelegramNotifierForTest(t *testing.T, notifier *integrationtelegram.Notifier) {
 	t.Helper()
 	runtime := DefaultRuntime()
 	runtime.mu.Lock()
@@ -625,25 +618,6 @@ func replaceDefaultTelegramNotifierForTest(t *testing.T, notifier *telegramNotif
 		runtime.mu.Lock()
 		runtime.telegramNotifier = oldNotifier
 		runtime.mu.Unlock()
-	})
-}
-
-func resetTelegramHTTPClientCacheForTest(t *testing.T) {
-	t.Helper()
-	telegramHTTPClientMu.Lock()
-	oldClient := telegramHTTPClient
-	oldOverride := telegramHTTPOverride
-	oldConfig := telegramHTTPConfig
-	telegramHTTPClient = &http.Client{Timeout: 10 * time.Second}
-	telegramHTTPOverride = false
-	telegramHTTPConfig = telegramProxyConfig{}
-	telegramHTTPClientMu.Unlock()
-	t.Cleanup(func() {
-		telegramHTTPClientMu.Lock()
-		telegramHTTPClient = oldClient
-		telegramHTTPOverride = oldOverride
-		telegramHTTPConfig = oldConfig
-		telegramHTTPClientMu.Unlock()
 	})
 }
 

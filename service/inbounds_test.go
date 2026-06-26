@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	netentitysvc "github.com/MalenkiySolovey/solovey-ui/service/netentity"
 )
 
 func TestInboundGetAllLoadsUsersForManyInboundsInBatch(t *testing.T) {
@@ -20,7 +21,7 @@ func TestInboundGetAllLoadsUsersForManyInboundsInBatch(t *testing.T) {
 			Options: json.RawMessage(`{}`),
 		})
 	}
-	if err := database.GetDB().Create(&inbounds).Error; err != nil {
+	if err := dbsqlite.DB().Create(&inbounds).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -42,7 +43,7 @@ func TestInboundGetAllLoadsUsersForManyInboundsInBatch(t *testing.T) {
 			Inbounds: json.RawMessage(inboundIDsJSON),
 		})
 	}
-	if err := database.GetDB().Create(&clients).Error; err != nil {
+	if err := dbsqlite.DB().Create(&clients).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -82,10 +83,10 @@ func TestAddUsersDropsTrojanTopLevelPassword(t *testing.T) {
 		Tag:     "trojan-1",
 		Options: json.RawMessage(`{"listen":"0.0.0.0","listen_port":443,"password":"hello"}`),
 	}
-	if err := database.GetDB().Create(&inbound).Error; err != nil {
+	if err := dbsqlite.DB().Create(&inbound).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Create(&model.Client{
+	if err := dbsqlite.DB().Create(&model.Client{
 		Name:     "alice",
 		Inbounds: json.RawMessage(fmt.Sprintf("[%d]", inbound.Id)),
 	}).Error; err != nil {
@@ -99,7 +100,7 @@ func TestAddUsersDropsTrojanTopLevelPassword(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := (&InboundService{}).addUsers(database.GetDB(), inboundJSON, inbound.Id, "trojan")
+	out, err := (&netentitysvc.InboundService{}).AddUsers(dbsqlite.DB(), inboundJSON, inbound.Id, "trojan")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,30 +115,5 @@ func TestAddUsersDropsTrojanTopLevelPassword(t *testing.T) {
 	}
 	if _, has := got["users"]; !has {
 		t.Errorf("trojan inbound should have users injected: %s", out)
-	}
-}
-
-func TestFetchUsersByConditionRejectsUnsupportedInboundTypeBeforeSQL(t *testing.T) {
-	_, err := (&InboundService{}).fetchUsersByCondition(nil, "vmess'); DROP TABLE clients; --", "1=1", map[string]interface{}{})
-	if err == nil {
-		t.Fatal("unsupported inbound type should be rejected before SQL execution")
-	}
-}
-
-func TestFetchUsersByConditionRejectsUnexpectedJSONFieldBeforeSQL(t *testing.T) {
-	const inboundType = "test-malicious-field"
-	old, existed := userJSONField[inboundType]
-	userJSONField[inboundType] = "vmess') FROM clients; --"
-	t.Cleanup(func() {
-		if existed {
-			userJSONField[inboundType] = old
-		} else {
-			delete(userJSONField, inboundType)
-		}
-	})
-
-	_, err := (&InboundService{}).fetchUsersByCondition(nil, inboundType, "1=1", map[string]interface{}{})
-	if err == nil {
-		t.Fatal("unexpected JSON field should be rejected before SQL execution")
 	}
 }

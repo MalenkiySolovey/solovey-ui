@@ -5,16 +5,17 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/mapping"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	"gorm.io/driver/sqlite"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
 func TestApplyState_TLSReplaceDeleteError(t *testing.T) {
 	initPlanTLSDeleteTestDB(t)
-	db := database.GetDB()
-	spec := realitySpec{
+	db := dbsqlite.DB()
+	spec := mapping.RealitySpec{
 		PrivateKey:  "private-key-delete-error",
 		Target:      "example.com:443",
 		Host:        "example.com",
@@ -24,7 +25,7 @@ func TestApplyState_TLSReplaceDeleteError(t *testing.T) {
 		Fingerprint: "chrome",
 		ShortIDs:    []string{"abcd"},
 	}
-	existing, err := buildTLSRecord(spec)
+	existing, err := mapping.BuildTLSRecord(spec)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -62,7 +63,7 @@ func initPlanTLSDeleteTestDB(t *testing.T) {
 	closeMainDBForImportTest(t)
 	dir := makeImportXUITempDir(t)
 	t.Setenv("SUI_DB_FOLDER", dir)
-	if err := database.InitDB(filepath.Join(dir, "s-ui.db")); err != nil {
+	if err := dbsqlite.Init(filepath.Join(dir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
@@ -76,7 +77,7 @@ func initPlanTLSDeleteTestDB(t *testing.T) {
 func createPlanTLSDeleteSource(t *testing.T) string {
 	t.Helper()
 	path := filepath.Join(makeImportXUITempDir(t), "x-ui.db")
-	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	db, err := gorm.Open(gormsqlite.Open(path), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}

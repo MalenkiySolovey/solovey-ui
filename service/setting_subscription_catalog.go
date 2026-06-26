@@ -1,89 +1,45 @@
 package service
 
+import settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
+
 const (
-	settingKeySubListen          = "subListen"
-	settingKeySubPort            = "subPort"
-	settingKeySubPath            = "subPath"
-	settingKeySubDomain          = "subDomain"
-	settingKeySubCertFile        = "subCertFile"
-	settingKeySubKeyFile         = "subKeyFile"
-	settingKeySubUpdates         = "subUpdates"
-	settingKeySubEncode          = "subEncode"
-	settingKeySubShowInfo        = "subShowInfo"
-	settingKeySubSecretRequired  = "subSecretRequired"
-	settingKeySubRateLimitPerIP  = "subRateLimitPerIP"
-	settingKeySubLinkEnable      = "subLinkEnable"
-	settingKeySubJsonEnable      = "subJsonEnable"
-	settingKeySubClashEnable     = "subClashEnable"
-	settingKeySubJsonPath        = "subJsonPath"
-	settingKeySubClashPath       = "subClashPath"
-	settingKeySubJsonURI         = "subJsonURI"
-	settingKeySubClashURI        = "subClashURI"
-	settingKeySubTitle           = "subTitle"
-	settingKeySubSupportURL      = "subSupportUrl"
-	settingKeySubProfileURL      = "subProfileUrl"
-	settingKeySubAnnounce        = "subAnnounce"
-	settingKeySubNameInRemark    = "subNameInRemark"
-	settingKeySubJsonFragment    = "subJsonFragment"
-	settingKeySubJsonNoises      = "subJsonNoises"
-	settingKeySubJsonMux         = "subJsonMux"
-	settingKeySubJsonDirectRules = "subJsonDirectRules"
-	settingKeySubURI             = "subURI"
-	settingKeySubJsonExt         = "subJsonExt"
-	settingKeySubClashExt        = "subClashExt"
+	settingKeySubListen                 = settingcatalog.SubListenKey
+	settingKeySubPort                   = settingcatalog.SubPortKey
+	settingKeySubPath                   = settingcatalog.SubPathKey
+	settingKeySubDomain                 = settingcatalog.SubDomainKey
+	settingKeySubCertFile               = settingcatalog.SubCertFileKey
+	settingKeySubKeyFile                = settingcatalog.SubKeyFileKey
+	settingKeySubUpdates                = settingcatalog.SubUpdatesKey
+	settingKeySubEncode                 = settingcatalog.SubEncodeKey
+	settingKeySubShowInfo               = settingcatalog.SubShowInfoKey
+	settingKeySubSecretRequired         = settingcatalog.SubSecretRequiredKey
+	settingKeySubRateLimitPerIP         = settingcatalog.SubRateLimitPerIPKey
+	settingKeySubLinkEnable             = settingcatalog.SubLinkEnableKey
+	settingKeySubJsonEnable             = settingcatalog.SubJsonEnableKey
+	settingKeySubClashEnable            = settingcatalog.SubClashEnableKey
+	settingKeySubXrayEnable             = settingcatalog.SubXrayEnableKey
+	settingKeySubRemoteGroupAdaptation  = settingcatalog.SubRemoteGroupAdaptationKey
+	settingKeySubRemoteConversionPolicy = settingcatalog.SubRemoteConversionPolicyKey
+	settingKeySubJsonPath               = settingcatalog.SubJsonPathKey
+	settingKeySubClashPath              = settingcatalog.SubClashPathKey
+	settingKeySubXrayPath               = settingcatalog.SubXrayPathKey
+	settingKeySubJsonURI                = settingcatalog.SubJsonURIKey
+	settingKeySubClashURI               = settingcatalog.SubClashURIKey
+	settingKeySubXrayURI                = settingcatalog.SubXrayURIKey
+	settingKeySubTitle                  = settingcatalog.SubTitleKey
+	settingKeySubSupportURL             = settingcatalog.SubSupportURLKey
+	settingKeySubProfileURL             = settingcatalog.SubProfileURLKey
+	settingKeySubAnnounce               = settingcatalog.SubAnnounceKey
+	settingKeySubNameInRemark           = settingcatalog.SubNameInRemarkKey
+	settingKeySubJsonFragment           = settingcatalog.SubJsonFragmentKey
+	settingKeySubJsonNoises             = settingcatalog.SubJsonNoisesKey
+	settingKeySubJsonMux                = settingcatalog.SubJsonMuxKey
+	settingKeySubJsonDirectRules        = settingcatalog.SubJsonDirectRulesKey
+	settingKeySubURI                    = settingcatalog.SubURIKey
+	settingKeySubJsonExt                = settingcatalog.SubJsonExtKey
+	settingKeySubClashExt               = settingcatalog.SubClashExtKey
 )
 
-var defaultSubscriptionSettingValues = map[string]string{
-	settingKeySubListen:          "",
-	settingKeySubPort:            "2096",
-	settingKeySubPath:            "/sub/",
-	settingKeySubDomain:          "",
-	settingKeySubCertFile:        "",
-	settingKeySubKeyFile:         "",
-	settingKeySubUpdates:         "12",
-	settingKeySubEncode:          "true",
-	settingKeySubShowInfo:        "false",
-	settingKeySubSecretRequired:  "false",
-	settingKeySubRateLimitPerIP:  "60",
-	settingKeySubLinkEnable:      "true",
-	settingKeySubJsonEnable:      "true",
-	settingKeySubClashEnable:     "true",
-	settingKeySubJsonPath:        "/json/",
-	settingKeySubClashPath:       "/clash/",
-	settingKeySubJsonURI:         "",
-	settingKeySubClashURI:        "",
-	settingKeySubTitle:           "",
-	settingKeySubSupportURL:      "",
-	settingKeySubProfileURL:      "",
-	settingKeySubAnnounce:        "",
-	settingKeySubNameInRemark:    "false",
-	settingKeySubJsonFragment:    "",
-	settingKeySubJsonNoises:      "",
-	settingKeySubJsonMux:         "false",
-	settingKeySubJsonDirectRules: "false",
-	settingKeySubURI:             "",
-	settingKeySubJsonExt:         "",
-	settingKeySubClashExt:        "",
-}
+var defaultSubscriptionSettingValues = settingcatalog.SubscriptionDefaults()
 
-var subscriptionPathSettingKeys = []string{
-	settingKeySubPath,
-	settingKeySubJsonPath,
-	settingKeySubClashPath,
-}
-
-var subscriptionBooleanSettingKeys = settingKeySet(
-	settingKeySubLinkEnable,
-	settingKeySubJsonEnable,
-	settingKeySubClashEnable,
-	settingKeySubNameInRemark,
-	settingKeySubJsonMux,
-	settingKeySubJsonDirectRules,
-)
-
-var subscriptionURLSettingKeys = settingKeySet(
-	settingKeySubJsonURI,
-	settingKeySubClashURI,
-	settingKeySubSupportURL,
-	settingKeySubProfileURL,
-)
+var subscriptionPathSettingKeys = settingcatalog.SubscriptionPathKeys()

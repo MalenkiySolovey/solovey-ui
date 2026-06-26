@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/mapping"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/source"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 
 	"gorm.io/gorm"
 )
@@ -74,6 +76,18 @@ type Progress struct {
 	Percent     int    `json:"percent"`
 }
 
+type planningState struct {
+	report           *Report
+	realityByKey     map[string]*mapping.RealitySpec
+	realityBySource  map[int64]*mapping.RealitySpec
+	plainTLSByKey    map[string]*mapping.TLSCertSpec
+	plainTLSBySource map[int64]*mapping.TLSCertSpec
+	tlsIDByKey       map[string]uint
+	inboundIDBySrc   map[int64]uint
+	clientRefs       []mapping.ClientRef
+	server           string
+}
+
 func Plan(srcPath string, opts PlanOptions) (*MigrationPlan, error) {
 	opts, err := opts.normalized()
 	if err != nil {
@@ -82,26 +96,26 @@ func Plan(srcPath string, opts PlanOptions) (*MigrationPlan, error) {
 	if err := checkContext(opts.Context); err != nil {
 		return nil, fmt.Errorf("xui-import: %w", err)
 	}
-	src, err := openSource(srcPath)
+	src, err := source.Open(srcPath)
 	if err != nil {
 		return nil, fmt.Errorf("xui-import: %w", err)
 	}
-	defer src.close()
-	hash, err := hashSource(srcPath)
+	defer src.Close()
+	hash, err := source.Hash(srcPath)
 	if err != nil {
 		return nil, fmt.Errorf("xui-import: %w", err)
 	}
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	if db == nil {
 		return nil, fmt.Errorf("xui-import: destination database is not initialized")
 	}
 	tx := db.Session(&gorm.Session{})
-	state := &importState{
+	state := &planningState{
 		report:           &Report{},
-		realityByKey:     map[string]*realitySpec{},
-		realityBySource:  map[int64]*realitySpec{},
-		plainTLSByKey:    map[string]*tlsCertSpec{},
-		plainTLSBySource: map[int64]*tlsCertSpec{},
+		realityByKey:     map[string]*mapping.RealitySpec{},
+		realityBySource:  map[int64]*mapping.RealitySpec{},
+		plainTLSByKey:    map[string]*mapping.TLSCertSpec{},
+		plainTLSBySource: map[int64]*mapping.TLSCertSpec{},
 		tlsIDByKey:       map[string]uint{},
 		inboundIDBySrc:   map[int64]uint{},
 		server:           destinationServer(tx),

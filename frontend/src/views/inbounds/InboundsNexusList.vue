@@ -26,6 +26,12 @@
         >
           {{ $t('actions.add') }}
         </v-btn>
+        <BulkSelectionControls
+          :active="selectionMode"
+          :count="selectedIds.length"
+          @delete="deleteSelected"
+          @toggle="toggleSelectionMode"
+        />
       </template>
     </page-toolbar>
 
@@ -35,7 +41,11 @@
       draggable-rows
       :items="filtered"
       :row-key="(item) => item.id"
-      @row-drop="(dragged, target) => emit('moveTo', dragged.id, target.id)"
+      :selectable="selectionMode"
+      :selected="selectedIds"
+      @update:selected="selectedIds = $event"
+      @row-drop="(dragged, target, position) => emit('moveTo', dragged.id, target.id, position)"
+      @rows-drop="(dragged, target, position) => emit('moveManyTo', dragged.map(item => item.id), target.id, position)"
     >
       <template #col.status="{ item }">
         <status-badge
@@ -90,7 +100,8 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import ManualOrderControls from '@/components/ManualOrderControls.vue'
+import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
+import ManualOrderControls from '@/shared/ui/ManualOrderControls.vue'
 import type { Column } from '@/components/nexus/data/dataTableColumns'
 import NexusDataTable from '@/components/nexus/data/NexusDataTable.vue'
 import RowActions from '@/components/nexus/data/RowActions.vue'
@@ -101,7 +112,9 @@ import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import StatusBadge from '@/components/nexus/primitives/StatusBadge.vue'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
-import type { ManualSortDirection } from '@/composables/useManualReorder'
+import { useBulkSelection } from '@/shared/composables/dragSelection/bulkSelection'
+import type { ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
+import type { ManualSortDirection } from '@/shared/composables/dragSelection/manualReorder'
 
 interface InboundRow {
   id: number
@@ -128,8 +141,10 @@ const emit = defineEmits<{
   edit: [id: number]
   clone: [id: number]
   del: [id: number]
+  delMany: [ids: number[]]
   move: [id: number, dir: number]
-  moveTo: [draggedId: number, targetId: number]
+  moveManyTo: [draggedIds: number[], targetId: number, position: ManualDropPosition | null]
+  moveTo: [draggedId: number, targetId: number, position: ManualDropPosition | null]
   saveOrder: []
   sortByName: [direction: ManualSortDirection]
   stats: [tag: string]
@@ -138,6 +153,9 @@ const emit = defineEmits<{
 const { t } = useI18n()
 const { confirm } = useConfirm()
 const search = ref('')
+const selection = useBulkSelection(computed(() => props.inbounds), item => item.id)
+const selectionMode = selection.active
+const selectedIds = selection.selectedIds
 
 const sortByName = (direction: ManualSortDirection) => {
   emit('sortByName', direction)
@@ -167,6 +185,23 @@ const filtered = computed<InboundRow[]>(() => {
 
   return props.inbounds.filter(item => String(item.tag).toLowerCase().includes(query))
 })
+
+const selectedRows = selection.selectedItems
+const toggleSelectionMode = selection.toggleActive
+
+const deleteSelected = async () => {
+  const rows = selectedRows.value
+  if (rows.length === 0) return
+  const accepted = await confirm({
+    title: `${t('actions.delbulk')} ${t('objects.inbound')}`,
+    message: rows.map(item => item.tag).join('\n'),
+    confirmLabel: t('actions.del'),
+    tone: 'error',
+  })
+  if (!accepted) return
+  emit('delMany', rows.map(item => item.id))
+  selection.clear()
+}
 
 // Named to NOT collide with the <row-actions> (RowActions) component: a
 // camelCase `rowActions` binding would shadow the component in the template and

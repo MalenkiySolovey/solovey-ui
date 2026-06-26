@@ -7,15 +7,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 func TestLoadTokensMigratesLegacyPlaintextToken(t *testing.T) {
 	initSettingTestDB(t)
 	userService := &UserService{}
 
-	if err := database.GetDB().Create(&model.Tokens{
+	if err := dbsqlite.DB().Create(&model.Tokens{
 		Desc:    "legacy",
 		Token:   "legacy-token",
 		Enabled: true,
@@ -41,7 +41,7 @@ func TestLoadTokensMigratesLegacyPlaintextToken(t *testing.T) {
 	}
 
 	var stored model.Tokens
-	if err := database.GetDB().First(&stored).Error; err != nil {
+	if err := dbsqlite.DB().First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
 	if stored.Token != "" {
@@ -72,7 +72,7 @@ func TestAddTokenValidatesScopeAllowlist(t *testing.T) {
 	}
 
 	var tokens []model.Tokens
-	if err := database.GetDB().Order("id asc").Find(&tokens).Error; err != nil {
+	if err := dbsqlite.DB().Order("id asc").Find(&tokens).Error; err != nil {
 		t.Fatal(err)
 	}
 	for _, token := range tokens {
@@ -422,7 +422,7 @@ func TestRecordTokenUseFlushesBatchedUpdate(t *testing.T) {
 	t.Cleanup(resetTokenUseDebouncerForTest)
 
 	userService := &UserService{}
-	if err := database.GetDB().Create(&model.Tokens{
+	if err := dbsqlite.DB().Create(&model.Tokens{
 		Desc:      "tracked",
 		TokenHash: "hash",
 		Enabled:   true,
@@ -431,14 +431,14 @@ func TestRecordTokenUseFlushesBatchedUpdate(t *testing.T) {
 		t.Fatal(err)
 	}
 	var token model.Tokens
-	if err := database.GetDB().Where("desc = ?", "tracked").First(&token).Error; err != nil {
+	if err := dbsqlite.DB().Where("desc = ?", "tracked").First(&token).Error; err != nil {
 		t.Fatal(err)
 	}
 
 	if err := userService.RecordTokenUse(token.Id, "198.51.100.10"); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().First(&token, token.Id).Error; err != nil {
+	if err := dbsqlite.DB().First(&token, token.Id).Error; err != nil {
 		t.Fatal(err)
 	}
 	if token.LastUsedAt != 0 || token.LastUsedIP != "" {
@@ -451,7 +451,7 @@ func TestRecordTokenUseFlushesBatchedUpdate(t *testing.T) {
 	if err := StopTokenUseDebouncer(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().First(&token, token.Id).Error; err != nil {
+	if err := dbsqlite.DB().First(&token, token.Id).Error; err != nil {
 		t.Fatal(err)
 	}
 	if token.LastUsedAt == 0 || token.LastUsedIP != "198.51.100.11" {

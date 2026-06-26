@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/mapping"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	"github.com/MalenkiySolovey/solovey-ui/internal/singboxconfig"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 
 	"gorm.io/gorm"
 )
@@ -18,7 +20,7 @@ func createNewEndpoints(tx *gorm.DB, endpoints []model.Endpoint, report *Report)
 		ep := &endpoints[i]
 		var existing model.Endpoint
 		err := tx.Where("tag = ?", ep.Tag).First(&existing).Error
-		if err != nil && !database.IsNotFound(err) {
+		if err != nil && !dbsqlite.IsNotFound(err) {
 			return err
 		}
 		if err == nil {
@@ -47,7 +49,7 @@ func createNewOutbounds(tx *gorm.DB, outbounds []model.Outbound, report *Report)
 		ob := &outbounds[i]
 		var existing model.Outbound
 		err := tx.Where("tag = ?", ob.Tag).First(&existing).Error
-		if err != nil && !database.IsNotFound(err) {
+		if err != nil && !dbsqlite.IsNotFound(err) {
 			return err
 		}
 		if err == nil {
@@ -74,15 +76,15 @@ func ensureDirectOutbound(tx *gorm.DB, outbounds []model.Outbound, mapped map[st
 		return outbounds
 	}
 	for i := range outbounds {
-		if outbounds[i].Tag == directOutboundTag {
+		if outbounds[i].Tag == mapping.DirectOutboundTag {
 			return outbounds
 		}
 	}
 	var existing model.Outbound
-	if err := tx.Where("tag = ?", directOutboundTag).First(&existing).Error; err == nil {
+	if err := tx.Where("tag = ?", mapping.DirectOutboundTag).First(&existing).Error; err == nil {
 		return outbounds
 	}
-	return append(outbounds, model.Outbound{Type: directOutboundTag, Tag: directOutboundTag})
+	return append(outbounds, model.Outbound{Type: mapping.DirectOutboundTag, Tag: mapping.DirectOutboundTag})
 }
 
 func routingReferencesDirect(mapped map[string]any) bool {
@@ -90,16 +92,16 @@ func routingReferencesDirect(mapped map[string]any) bool {
 	if !ok {
 		return false
 	}
-	for _, r := range toAnySlice(route["rules"]) {
+	for _, r := range mapping.ToAnySlice(route["rules"]) {
 		if m, ok := r.(map[string]any); ok {
-			if ob, _ := m["outbound"].(string); ob == directOutboundTag {
+			if ob, _ := m["outbound"].(string); ob == mapping.DirectOutboundTag {
 				return true
 			}
 		}
 	}
-	for _, rs := range toAnySlice(route["rule_set"]) {
+	for _, rs := range mapping.ToAnySlice(route["rule_set"]) {
 		if m, ok := rs.(map[string]any); ok {
-			if d, _ := m["download_detour"].(string); d == directOutboundTag {
+			if d, _ := m["download_detour"].(string); d == mapping.DirectOutboundTag {
 				return true
 			}
 		}
@@ -107,7 +109,7 @@ func routingReferencesDirect(mapped map[string]any) bool {
 	return false
 }
 
-func (s *applyState) applyRouting(ctx context.Context, tx *gorm.DB, src *sourceDB, _ ApplyOptions) error {
+func (s *applyState) applyRouting(ctx context.Context, tx *gorm.DB, src *source.Database, _ ApplyOptions) error {
 	if !s.hasKind(KindRouting) {
 		return nil
 	}
@@ -118,13 +120,13 @@ func (s *applyState) applyRouting(ctx context.Context, tx *gorm.DB, src *sourceD
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
-	xrayConfig, err := src.xrayConfig()
+	xrayConfig, err := src.XrayConfig()
 	if err != nil {
 		return err
 	}
-	endpoints, outbounds, targets, outboundWarnings := mapXrayOutbounds(xrayConfig)
+	endpoints, outbounds, targets, outboundWarnings := mapping.MapXrayOutbounds(xrayConfig)
 	s.report.warnAll(outboundWarnings)
-	mapped, warnings, mappedCount, manualCount := MapXrayRouting(xrayConfig, targets)
+	mapped, warnings, mappedCount, manualCount := mapping.MapXrayRouting(xrayConfig, targets)
 	outbounds = ensureDirectOutbound(tx, outbounds, mapped)
 	if err := createNewEndpoints(tx, endpoints, s.report); err != nil {
 		return err

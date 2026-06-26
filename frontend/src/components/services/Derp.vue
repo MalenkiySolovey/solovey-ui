@@ -171,9 +171,9 @@
 </template>
 
 <script lang="ts">
-import Dial from '@/components/Dial.vue'
+import Dial from '@/components/fields/Dial.vue'
 import OutTLS from '../tls/OutTLS.vue'
-import Listen from '../Listen.vue'
+import Listen from '@/components/fields/Listen.vue'
 export default {
   props: ['data', 'tsTags', 'inTags'],
   data() {

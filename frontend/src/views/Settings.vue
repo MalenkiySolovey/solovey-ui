@@ -1,6 +1,6 @@
 <template>
   <page-header v-if="nexus" :title="$t('pages.settings')" />
-  <v-card :loading="loading" :flat="nexus">
+  <v-card :loading="loading" :flat="nexus" :class="{ 'settings-nexus-card': nexus }">
     <v-tabs
     v-model="tab"
     color="primary"
@@ -11,10 +11,18 @@
     <v-tab value="t2">{{ $t('setting.sub') }}</v-tab>
     <v-tab value="t3">{{ $t('setting.jsonSub') }}</v-tab>
     <v-tab value="t4">{{ $t('setting.clashSub') }}</v-tab>
-    <v-tab value="t5">{{ $t('setting.maintenance') }}</v-tab>
+    <v-tab value="t5">{{ $t('setting.xraySub') }}</v-tab>
+    <v-tab value="basics">Basics (Singbox)</v-tab>
+    <v-tab value="t6">{{ $t('setting.maintenance') }}</v-tab>
   </v-tabs>
   <v-card-text>
-    <v-row v-if="tab !== 't5'" align="center" justify="center" style="margin-bottom: 10px;">
+    <v-row
+      v-if="tab !== 't6' && tab !== 'basics'"
+      align="center"
+      class="settings-actions"
+      :class="{ 'settings-actions--nexus': nexus }"
+      justify="center"
+    >
       <v-col cols="auto">
         <v-btn color="primary" @click="save" :loading="loading" :disabled="!stateChange">
           {{ $t('actions.save') }}
@@ -35,25 +43,39 @@
         </v-row>
         <v-row>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.webListen" :label="$t('setting.addr')" hide-details></v-text-field>
+            <v-text-field class="setting-info-field" v-model="settings.webListen" :label="$t('setting.addr')" placeholder="0.0.0.0" persistent-placeholder hide-details>
+              <template #append-inner><SettingInfo :text="$t('setting.hint.webListen')" /></template>
+            </v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model.number="webPort" min="1" type="number" :label="$t('setting.port')" hide-details></v-text-field>
+            <v-text-field class="setting-info-field" v-model.number="webPort" min="1" type="number" :label="$t('setting.port')" placeholder="2095" persistent-placeholder hide-details>
+              <template #append-inner><SettingInfo :text="$t('setting.hint.webPort')" /></template>
+            </v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.webPath" :label="$t('setting.webPath')" hide-details></v-text-field>
+            <v-text-field class="setting-info-field" v-model="settings.webPath" :label="$t('setting.webPath')" placeholder="/app/" persistent-placeholder hide-details>
+              <template #append-inner><SettingInfo :text="$t('setting.hint.webPath')" /></template>
+            </v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.webDomain" :label="$t('setting.domain')" hide-details></v-text-field>
+            <v-text-field class="setting-info-field" v-model="settings.webDomain" :label="$t('setting.domain')" placeholder="example.com" persistent-placeholder hide-details>
+              <template #append-inner><SettingInfo :text="$t('setting.hint.webDomain')" /></template>
+            </v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.webKeyFile" :label="$t('setting.sslKey')" hide-details></v-text-field>
+            <v-text-field class="setting-info-field" v-model="settings.webKeyFile" :label="$t('setting.sslKey')" placeholder="/etc/solovey-ui/panel.key" persistent-placeholder hide-details>
+              <template #append-inner><SettingInfo :text="$t('setting.hint.sslKey')" /></template>
+            </v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.webCertFile" :label="$t('setting.sslCert')" hide-details></v-text-field>
+            <v-text-field class="setting-info-field" v-model="settings.webCertFile" :label="$t('setting.sslCert')" placeholder="/etc/solovey-ui/panel.crt" persistent-placeholder hide-details>
+              <template #append-inner><SettingInfo :text="$t('setting.hint.sslCert')" /></template>
+            </v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.webURI" :label="$t('setting.webUri')" hide-details></v-text-field>
+            <v-text-field class="setting-info-field" v-model="settings.webURI" :label="$t('setting.webUri')" placeholder="https://panel.example.com/app/" persistent-placeholder hide-details>
+              <template #append-inner><SettingInfo :text="$t('setting.hint.webUri')" /></template>
+            </v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
             <v-text-field
@@ -62,8 +84,13 @@
               min="0"
               :label="$t('setting.sessionAge')"
               :suffix="$t('date.m')"
+              placeholder="0"
+              persistent-placeholder
+              class="setting-info-field"
               hide-details
-              ></v-text-field>
+              >
+              <template #append-inner><SettingInfo :text="$t('setting.hint.sessionAge')" /></template>
+            </v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
             <v-text-field
@@ -72,11 +99,27 @@
               min="0"
               :label="$t('setting.trafficAge')"
               :suffix="$t('date.d')"
+              placeholder="30"
+              persistent-placeholder
+              class="setting-info-field"
               hide-details
-              ></v-text-field>
+              >
+              <template #append-inner><SettingInfo :text="$t('setting.hint.trafficAge')" /></template>
+            </v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.timeLocation" :label="$t('setting.timeLoc')" hide-details></v-text-field>
+            <v-autocomplete
+              v-model="settings.timeLocation"
+              auto-select-first
+              class="setting-info-field"
+              hide-details
+              :items="timezones"
+              :label="$t('setting.timeLoc')"
+              persistent-placeholder
+              placeholder="Europe/Moscow"
+            >
+              <template #append-inner><SettingInfo :text="$t('setting.hint.timeLoc')" /></template>
+            </v-autocomplete>
           </v-col>
         </v-row>
       </v-window-item>
@@ -84,15 +127,32 @@
       <v-window-item value="t2">
         <v-row>
           <v-col cols="12" sm="6" md="4">
-            <v-switch color="primary" v-model="subEncode" :label="$t('setting.subEncode')" hide-details />
+            <div class="d-flex align-center"><v-switch color="primary" v-model="subEncode" :label="$t('setting.subEncode')" hide-details /><SettingInfo class="ms-1" :text="$t('setting.hint.subEncode')" /></div>
           </v-col>
           <v-col cols="12" sm="6" md="4">
-            <v-switch color="primary" v-model="subShowInfo" :label="$t('setting.subInfo')" hide-details />
+            <div class="d-flex align-center"><v-switch color="primary" v-model="subShowInfo" :label="$t('setting.subInfo')" hide-details /><SettingInfo class="ms-1" :text="$t('setting.hint.subInfo')" /></div>
+          </v-col>
+          <v-col cols="12" sm="6" md="4">
+            <div class="d-flex align-center"><v-switch color="primary" v-model="subSecretRequired" :label="$t('setting.subSecretRequired')" hide-details /><SettingInfo class="ms-1" :text="$t('setting.hint.subSecretRequired')" /></div>
           </v-col>
         </v-row>
         <v-row>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.subListen" :label="$t('setting.addr')" hide-details></v-text-field>
+            <div class="d-flex align-center"><v-switch color="primary" v-model="subLinkEnable" :label="$t('setting.subLinkEnable')" hide-details /><SettingInfo class="ms-1" :text="$t('setting.hint.subLinkEnable')" /></div>
+          </v-col>
+          <v-col cols="12" sm="6" md="4">
+            <div class="d-flex align-center"><v-switch color="primary" v-model="subJsonEnable" :label="$t('setting.subJsonEnable')" hide-details /><SettingInfo class="ms-1" :text="$t('setting.hint.subJsonEnable')" /></div>
+          </v-col>
+          <v-col cols="12" sm="6" md="4">
+            <div class="d-flex align-center"><v-switch color="primary" v-model="subClashEnable" :label="$t('setting.subClashEnable')" hide-details /><SettingInfo class="ms-1" :text="$t('setting.hint.subClashEnable')" /></div>
+          </v-col>
+          <v-col cols="12" sm="6" md="4">
+            <div class="d-flex align-center"><v-switch color="primary" v-model="subXrayEnable" :label="$t('setting.subXrayEnable')" hide-details /><SettingInfo class="ms-1" :text="$t('setting.hint.subXrayEnable')" /></div>
+          </v-col>
+        </v-row>
+        <v-row>
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field class="setting-info-field" v-model="settings.subListen" :label="$t('setting.addr')" placeholder="0.0.0.0" persistent-placeholder hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.subListen')" /></template></v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
             <v-text-field
@@ -100,23 +160,26 @@
               v-model.number="subPort"
               min="1"
               :label="$t('setting.port')"
-              hide-details></v-text-field>
+              placeholder="2096"
+              persistent-placeholder
+              class="setting-info-field"
+              hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.subPort')" /></template></v-text-field>
           </v-col>
         </v-row>
         <v-row>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.subKeyFile" :label="$t('setting.sslKey')" hide-details></v-text-field>
+            <v-text-field class="setting-info-field" v-model="settings.subKeyFile" :label="$t('setting.sslKey')" placeholder="/etc/solovey-ui/sub.key" persistent-placeholder hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.subKeyFile')" /></template></v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.subCertFile" :label="$t('setting.sslCert')" hide-details></v-text-field>
+            <v-text-field class="setting-info-field" v-model="settings.subCertFile" :label="$t('setting.sslCert')" placeholder="/etc/solovey-ui/sub.crt" persistent-placeholder hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.subCertFile')" /></template></v-text-field>
           </v-col>
         </v-row>
         <v-row>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.subDomain" :label="$t('setting.domain')" hide-details></v-text-field>
+            <v-text-field class="setting-info-field" v-model="settings.subDomain" :label="$t('setting.domain')" placeholder="sub.example.com" persistent-placeholder hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.subDomain')" /></template></v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.subPath" :label="$t('setting.path')" hide-details></v-text-field>
+            <v-text-field class="setting-info-field" v-model="settings.subPath" :label="$t('setting.path')" placeholder="/sub/" persistent-placeholder hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.subPath')" /></template></v-text-field>
           </v-col>
         </v-row>
         <v-row>
@@ -126,11 +189,53 @@
               v-model.number="subUpdates"
               min="0"
               :label="$t('setting.update')"
+              placeholder="12"
+              persistent-placeholder
+              class="setting-info-field"
               hide-details
-              ></v-text-field>
+              ><template #append-inner><SettingInfo :text="$t('setting.hint.update')" /></template></v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.subURI" :label="$t('setting.subUri')" hide-details></v-text-field>
+            <v-text-field class="setting-info-field" v-model="settings.subURI" :label="$t('setting.subUri')" placeholder="https://sub.example.com/sub/" persistent-placeholder hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.subUri')" /></template></v-text-field>
+          </v-col>
+        </v-row>
+        <v-row>
+          <v-col cols="12" class="v-card-subtitle">{{ $t('setting.subAdvanced') }}</v-col>
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field class="setting-info-field" v-model="settings.subTitle" :label="$t('setting.subTitle')" hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.subTitle')" /></template></v-text-field>
+          </v-col>
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field class="setting-info-field" v-model="settings.subSupportUrl" :label="$t('setting.subSupportUrl')" hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.subSupportUrl')" /></template></v-text-field>
+          </v-col>
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field class="setting-info-field" v-model="settings.subProfileUrl" :label="$t('setting.subProfileUrl')" hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.subProfileUrl')" /></template></v-text-field>
+          </v-col>
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field
+              v-model.number="subRateLimitPerIP"
+              min="0"
+              type="number"
+              :label="$t('setting.subRateLimitPerIP')"
+              class="setting-info-field"
+              hide-details
+            ><template #append-inner><SettingInfo :text="$t('setting.hint.subRateLimitPerIP')" /></template></v-text-field>
+          </v-col>
+          <v-col cols="12" sm="6" md="4">
+            <div class="d-flex align-center"><v-switch color="primary" v-model="subNameInRemark" :label="$t('setting.subNameInRemark')" hide-details /><SettingInfo class="ms-1" :text="$t('setting.hint.subNameInRemark')" /></div>
+          </v-col>
+          <v-col cols="12" sm="6" md="4">
+            <v-select
+              v-model="settings.subRemoteGroupAdaptation"
+              class="setting-info-field"
+              density="compact"
+              hide-details
+              :items="remoteGroupAdaptationItems"
+              :label="$t('setting.subRemoteGroupAdaptation')"
+              variant="outlined"
+            ><template #append-inner><SettingInfo :text="$t('setting.hint.subRemoteGroupAdaptation')" /></template></v-select>
+          </v-col>
+          <v-col cols="12">
+            <v-textarea class="setting-info-field" v-model="settings.subAnnounce" :label="$t('setting.subAnnounce')" rows="2" hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.subAnnounce')" /></template></v-textarea>
           </v-col>
         </v-row>
       </v-window-item>
@@ -138,10 +243,10 @@
       <v-window-item value="t3">
         <v-row>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.subJsonPath" :label="$t('setting.jsonPath')" hide-details></v-text-field>
+            <v-text-field class="setting-info-field" v-model="settings.subJsonPath" :label="$t('setting.jsonPath')" placeholder="/json/" persistent-placeholder hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.jsonPath')" /></template></v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.subJsonURI" :label="$t('setting.jsonSub') + ' ' + $t('setting.subUri')" hide-details></v-text-field>
+            <v-text-field class="setting-info-field" v-model="settings.subJsonURI" :label="$t('setting.jsonSub') + ' URI'" hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.subJsonURI')" /></template></v-text-field>
           </v-col>
         </v-row>
         <SubJsonExtVue :settings="settings" />
@@ -150,17 +255,32 @@
       <v-window-item value="t4">
         <v-row>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.subClashPath" :label="$t('setting.clashPath')" hide-details></v-text-field>
+            <v-text-field class="setting-info-field" v-model="settings.subClashPath" :label="$t('setting.clashPath')" placeholder="/clash/" persistent-placeholder hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.clashPath')" /></template></v-text-field>
           </v-col>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="settings.subClashURI" :label="$t('setting.clashSub') + ' ' + $t('setting.subUri')" hide-details></v-text-field>
+            <v-text-field class="setting-info-field" v-model="settings.subClashURI" :label="$t('setting.clashSub') + ' URI'" hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.subClashURI')" /></template></v-text-field>
           </v-col>
         </v-row>
         <SubClashExtVue :settings="settings" />
       </v-window-item>
 
       <v-window-item value="t5">
+        <v-row>
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field class="setting-info-field" v-model="settings.subXrayPath" :label="$t('setting.xrayPath')" placeholder="/xray/" persistent-placeholder hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.xrayPath')" /></template></v-text-field>
+          </v-col>
+          <v-col cols="12" sm="6" md="4">
+            <v-text-field class="setting-info-field" v-model="settings.subXrayURI" :label="$t('setting.xraySub') + ' URI'" hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.subXrayURI')" /></template></v-text-field>
+          </v-col>
+        </v-row>
+      </v-window-item>
+
+      <v-window-item value="t6">
         <MaintenanceTab />
+      </v-window-item>
+
+      <v-window-item value="basics">
+        <BasicsTab />
       </v-window-item>
     </v-window>
   </v-card-text>
@@ -170,171 +290,16 @@
 <script lang="ts" setup>
 import UiModeControl from '@/components/UiModeControl.vue'
 import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
-import { isNexusEnabled } from '@/uiMode/featureGate'
-import { useUiMode } from '@/uiMode/useUiMode'
-import { i18n } from '@/locales'
-import { Ref, computed, inject, onMounted, ref } from 'vue'
-import HttpUtils from '@/plugins/httputil'
-import { FindDiff } from '@/plugins/utils'
-import SubJsonExtVue from '@/components/SubJsonExt.vue'
-import SubClashExtVue from '@/components/SubClashExt.vue'
+import BasicsTab from '@/components/settings/BasicsTab.vue'
+import SubJsonExtVue from '@/components/subscription/SubJsonExt.vue'
+import SubClashExtVue from '@/components/subscription/SubClashExt.vue'
 import MaintenanceTab from '@/components/settings/MaintenanceTab.vue'
-import { normalizeSecretFields, stripSecretPlaceholders } from '@/components/settingsSecretField'
-import { push } from 'notivue'
-const tab = ref("t1")
-const { mode } = useUiMode()
-const nexus = computed(() => mode.value === 'nexus')
-const showNexusControls = isNexusEnabled()
-const loading:Ref = inject('loading')?? ref(false)
-const oldSettings = ref({})
+import SettingInfo from '@/components/settings/SettingInfo.vue'
+import { useSettingsPage } from '@/shared/composables/pages/useSettingsPage'
 
-const settings = ref({
-	webListen: "",
-	webDomain: "",
-	webPort: "2095",
-	webCertFile: "",
-	webKeyFile: "",
-  webPath: "/app/",
-  webURI: "",
-	sessionMaxAge: "0",
-  trafficAge: "30",
-	timeLocation: "Asia/Shanghai",
-  subListen: "",
-	subPort: "2096",
-	subPath: "/sub/",
-	subDomain: "",
-	subCertFile: "",
-	subKeyFile: "",
-	subUpdates: "12",
-  subEncode: "true",
-  subShowInfo: "false",
-	subURI: "",
-  subJsonPath: "/json/",
-  subClashPath: "/clash/",
-  subJsonURI: "",
-  subClashURI: "",
-  subJsonExt: "",
-  subClashExt: "",
-})
+const remoteGroupAdaptationItems = ['urltest', 'selector', 'failover']
 
-onMounted(async () => {
-  loading.value = true
-  await loadData()
-  loading.value = false
-})
-
-const loadData = async () => {
-  loading.value = true
-  const msg = await HttpUtils.get('api/settings')
-  loading.value = false
-  if (msg.success) {
-    setData(msg.obj)
-  }
-}
-
-const setData = (data: any) => {
-  const normalized = normalizeSecretFields(data)
-  settings.value = normalized
-  oldSettings.value = { ...normalized }
-}
-
-const save = async () => {
-  loading.value = true
-  const payload = stripSecretPlaceholders(settings.value)
-  const restartRequired = subscriptionPathChanged()
-  const msg = await HttpUtils.post('api/save', { object: 'settings', action: 'set', data: JSON.stringify(payload) })
-  if (msg.success) {
-    push.success({
-      title: i18n.global.t('success'),
-      duration: 5000,
-      message: i18n.global.t('actions.set') + " " + i18n.global.t('pages.settings')
-    })
-    if (restartRequired) {
-      push.warning({
-        title: i18n.global.t('setting.restartRequired'),
-        duration: 8000,
-        message: i18n.global.t('setting.subPathRestartNotice')
-      })
-    }
-    setData(msg.obj.settings)
-  }
-  loading.value = false
-}
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms))
-
-const restartApp = async () => {
-  loading.value = true
-  const msg = await HttpUtils.post('api/restartApp',{})
-  if (msg.success) {
-    let url = settings.value.webURI
-    if (url !== "") {
-      const isTLS = settings.value.webCertFile !== "" || settings.value.webKeyFile !== ""
-      url = buildURL(settings.value.webDomain,settings.value.webPort.toString(),isTLS, settings.value.webPath)
-    }
-    await sleep(3000)
-    window.location.replace(url)
-  }
-  loading.value = false
-}
-
-const buildURL = (host: string, port: string, isTLS: boolean, path: string) => {
-  if (!host || host.length == 0) host = window.location.hostname
-  if (!port || port.length == 0) port = window.location.port
-
-  const protocol = isTLS ? "https:" : "http:"
-
-  if (port === "" || (isTLS && port === "443") || (!isTLS && port === "80")) {
-      port = ""
-  } else {
-      port = `:${port}`
-  }
-
-  return `${protocol}//${host}${port}${path}settings`
-}
-
-const subEncode = computed({
-  get: () => { return settings.value.subEncode == "true" },
-  set: (v:boolean) => { settings.value.subEncode = v ? "true" : "false" }
-})
-
-const subShowInfo = computed({
-  get: () => { return settings.value.subShowInfo == "true" },
-  set: (v:boolean) => { settings.value.subShowInfo = v ? "true" : "false" }
-})
-
-const webPort = computed({
-  get: () => { return settings.value.webPort.length>0 ? parseInt(settings.value.webPort) : 2095 },
-  set: (v:number) => { settings.value.webPort = v>0 ? v.toString() : "2095" }
-})
-
-const sessionMaxAge = computed({
-  get: () => { return settings.value.sessionMaxAge.length>0 ? parseInt(settings.value.sessionMaxAge) : 0 },
-  set: (v:number) => { settings.value.sessionMaxAge = v>0 ? v.toString() : "0" }
-})
-
-const trafficAge = computed({
-  get: () => { return settings.value.trafficAge.length>0 ? parseInt(settings.value.trafficAge) : 0 },
-  set: (v:number) => { settings.value.trafficAge = v>0 ? v.toString() : "0" }
-})
-
-const subPort = computed({
-  get: () => { return settings.value.subPort.length>0 ? parseInt(settings.value.subPort) : 2096 },
-  set: (v:number) => { settings.value.subPort = v>0 ? v.toString() : "2096" }
-})
-
-const subUpdates = computed({
-  get: () => { return settings.value.subUpdates.length>0 ? parseInt(settings.value.subUpdates) : 12 },
-  set: (v:number) => { settings.value.subUpdates = v>0 ? v.toString() : "12" }
-})
-
-const subscriptionPathKeys = ['subPath', 'subJsonPath', 'subClashPath'] as const
-
-const subscriptionPathChanged = () => {
-  return subscriptionPathKeys.some((key) => settings.value[key] !== (oldSettings.value as any)[key])
-}
-
-const stateChange = computed(() => {
-  return !FindDiff.deepCompare(settings.value,oldSettings.value)
-})
+const { loading, nexus, restartApp, save, sessionMaxAge, settings, showNexusControls, stateChange, subClashEnable, subEncode, subJsonEnable, subLinkEnable, subNameInRemark, subPort, subRateLimitPerIP, subSecretRequired, subShowInfo, subUpdates, subXrayEnable, tab, trafficAge, timezones, webPort } = useSettingsPage()
 </script>
+
+<style scoped lang="scss" src="./Settings.scss"></style>

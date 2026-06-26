@@ -3,8 +3,26 @@ package ssrf
 import (
 	"context"
 	"net/netip"
+	"strings"
 	"testing"
 )
+
+func TestValidateProxyURL(t *testing.T) {
+	for _, rawURL := range []string{"http://8.8.8.8:8080", "socks5://8.8.8.8:1080"} {
+		if err := ValidateProxyURL(rawURL); err != nil {
+			t.Fatalf("ValidateProxyURL(%q): %v", rawURL, err)
+		}
+	}
+	for _, rawURL := range []string{"ftp://8.8.8.8:21", "http://127.0.0.1:8080"} {
+		if err := ValidateProxyURL(rawURL); err == nil {
+			t.Fatalf("ValidateProxyURL(%q) succeeded, want error", rawURL)
+		}
+	}
+	err := ValidateProxyURL("http://user:pass@8.8.8.8:8080")
+	if err == nil || !strings.Contains(err.Error(), "credentials") {
+		t.Fatalf("credentials error = %v, want credentials rejection", err)
+	}
+}
 
 func TestValidateOutboundURLRejectsUnsafeTargets(t *testing.T) {
 	tests := []string{

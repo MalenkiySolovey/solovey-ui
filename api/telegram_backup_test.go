@@ -8,8 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	telegramhttp "github.com/MalenkiySolovey/solovey-ui/api/telegram"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-contrib/sessions"
@@ -37,8 +38,10 @@ func TestAPIV2TelegramBackupRequiresTelegramOrAdminScope(t *testing.T) {
 		t.Fatalf("read token should be forbidden, got %d", recorder.Code)
 	}
 
+	flushAPIAudit(t)
+
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "scope_denied").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "scope_denied").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Resource != "telegram" {
@@ -71,8 +74,10 @@ func TestAPIV2TelegramBackupDisabledFailureAuditsWithoutKey(t *testing.T) {
 		t.Fatalf("failed backup response leaked a backup key: %s", recorder.Body.String())
 	}
 
+	flushAPIAudit(t)
+
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "tg_backup_failed").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "tg_backup_failed").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Resource != "database" {
@@ -167,8 +172,8 @@ func TestTelegramBackupManualRouteErrorMapping(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.errorClass, func(t *testing.T) {
-			if got := telegramBackupHTTPStatus(tt.errorClass); got != tt.want {
-				t.Fatalf("telegramBackupHTTPStatus(%q)=%d, want %d", tt.errorClass, got, tt.want)
+			if got := telegramhttp.BackupHTTPStatus(tt.errorClass); got != tt.want {
+				t.Fatalf("telegramhttp.BackupHTTPStatus(%q)=%d, want %d", tt.errorClass, got, tt.want)
 			}
 		})
 	}

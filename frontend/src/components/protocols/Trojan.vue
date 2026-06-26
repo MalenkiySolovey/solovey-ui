@@ -78,7 +78,7 @@
 </template>
 
 <script lang="ts">
-import Network from '@/components/Network.vue'
+import Network from '@/components/fields/Network.vue'
 
 export default {
   props: ['direction', 'data'],

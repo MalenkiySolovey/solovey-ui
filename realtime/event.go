@@ -8,6 +8,7 @@ const (
 	TopicCoreState         Topic = "core_state"
 	TopicConfigInvalidated Topic = "config_invalidated"
 	TopicRestartStatus     Topic = "restart_status"
+	TopicFailoverStatus    Topic = "failover_status"
 	TopicNotification      Topic = "notification"
 	TopicSecurityEvent     Topic = "security_event"
 	TopicXUIImportProgress Topic = "xui_import_progress"
@@ -26,6 +27,13 @@ type Event struct {
 	Type    Topic       `json:"type"`
 	Ts      int64       `json:"ts"`
 	Payload interface{} `json:"payload,omitempty"`
+	frame   []byte
+}
+
+// Frame returns the JSON prepared once by the hub for a broadcast event.
+// Locally-created events, such as the per-connection handshake, have no frame.
+func (e Event) Frame() []byte {
+	return e.frame
 }
 
 func topicAllowed(topic Topic, scope Scope) bool {

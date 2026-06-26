@@ -2,25 +2,27 @@ package service
 
 import (
 	"context"
+	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	"sync"
 	"sync/atomic"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/core"
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	"github.com/MalenkiySolovey/solovey-ui/logger"
+	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/internal/integrations/telegram"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/restart"
+	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 )
 
 const defaultCoreStartCooldown = 15 * time.Second
 
 type CoreProvider interface {
-	Core() *core.Core
+	Core() *coreruntime.Core
 }
 
-type CoreProviderFunc func() *core.Core
+type CoreProviderFunc func() *coreruntime.Core
 
-func (f CoreProviderFunc) Core() *core.Core {
+func (f CoreProviderFunc) Core() *coreruntime.Core {
 	if f == nil {
 		return nil
 	}
@@ -40,7 +42,6 @@ func (s *LastUpdateStore) Set(value int64) {
 		return
 	}
 	s.value.Store(value)
-	LastUpdate = value
 }
 
 func (s *LastUpdateStore) Get() int64 {
@@ -54,18 +55,18 @@ type Runtime struct {
 	mu sync.RWMutex
 
 	coreProvider     CoreProvider
-	restartManager   *restartManager
+	restartManager   *restart.Manager
 	lastUpdate       *LastUpdateStore
 	auditWriter      *auditWriter
-	telegramNotifier *telegramNotifier
+	telegramNotifier *integrationtelegram.Notifier
 	tokenUse         *tokenUseDebouncer
 
 	coreStartCooldown time.Duration
 	lastStartFailTime time.Time
 }
 
-func NewRuntime(coreInstance *core.Core) *Runtime {
-	return NewRuntimeWithCoreProvider(CoreProviderFunc(func() *core.Core {
+func NewRuntime(coreInstance *coreruntime.Core) *Runtime {
+	return NewRuntimeWithCoreProvider(CoreProviderFunc(func() *coreruntime.Core {
 		return coreInstance
 	}))
 }
@@ -73,7 +74,7 @@ func NewRuntime(coreInstance *core.Core) *Runtime {
 func NewRuntimeWithCoreProvider(provider CoreProvider) *Runtime {
 	return &Runtime{
 		coreProvider:      provider,
-		restartManager:    newRestartManager(restartSignalDelay, signalCurrentProcess),
+		restartManager:    restart.NewManager(restartSignalDelay, signalCurrentProcess),
 		lastUpdate:        NewLastUpdateStore(),
 		auditWriter:       newAuditWriter(auditQueueCapacity, auditBatchSize, auditFlushInterval, writeAuditEvents),
 		tokenUse:          newTokenUseDebouncer(tokenUseFlushInterval, flushTokenUseUpdates),
@@ -81,11 +82,11 @@ func NewRuntimeWithCoreProvider(provider CoreProvider) *Runtime {
 	}
 }
 
-func (r *Runtime) SetCore(coreInstance *core.Core) {
+func (r *Runtime) SetCore(coreInstance *coreruntime.Core) {
 	if r == nil {
 		return
 	}
-	r.SetCoreProvider(CoreProviderFunc(func() *core.Core {
+	r.SetCoreProvider(CoreProviderFunc(func() *coreruntime.Core {
 		return coreInstance
 	}))
 }
@@ -99,7 +100,7 @@ func (r *Runtime) SetCoreProvider(provider CoreProvider) {
 	r.mu.Unlock()
 }
 
-func (r *Runtime) Core() *core.Core {
+func (r *Runtime) Core() *coreruntime.Core {
 	if r == nil {
 		return nil
 	}
@@ -122,7 +123,7 @@ func (r *Runtime) RestartScheduler() RestartScheduler {
 	return manager
 }
 
-func (r *Runtime) restart() *restartManager {
+func (r *Runtime) restart() *restart.Manager {
 	if r == nil {
 		return nil
 	}
@@ -163,7 +164,7 @@ func (r *Runtime) replaceAuditWriterIfCurrent(current *auditWriter) {
 	r.mu.Unlock()
 }
 
-func (r *Runtime) telegram() *telegramNotifier {
+func (r *Runtime) telegram() *integrationtelegram.Notifier {
 	if r == nil {
 		return nil
 	}
@@ -176,7 +177,7 @@ func (r *Runtime) telegram() *telegramNotifier {
 	return notifier
 }
 
-func (r *Runtime) replaceTelegramNotifierIfCurrent(current *telegramNotifier) {
+func (r *Runtime) replaceTelegramNotifierIfCurrent(current *integrationtelegram.Notifier) {
 	if r == nil {
 		return
 	}
@@ -262,7 +263,7 @@ var (
 )
 
 func init() {
-	database.RegisterResetHook("service.token_use_debouncer", func() {
+	dbhooks.RegisterResetHook("service.token_use_debouncer", func() {
 		DefaultRuntime().resetTokenUseDebouncer()
 	})
 }
@@ -283,21 +284,6 @@ func SetDefaultRuntime(runtime *Runtime) {
 	defaultRuntimeMu.Unlock()
 }
 
-func ReplaceDefaultRuntimeForTest(runtime *Runtime) func() {
-	defaultRuntimeMu.Lock()
-	previous := defaultRuntime
-	if runtime == nil {
-		runtime = NewRuntimeWithCoreProvider(nil)
-	}
-	defaultRuntime = runtime
-	defaultRuntimeMu.Unlock()
-	return func() {
-		defaultRuntimeMu.Lock()
-		defaultRuntime = previous
-		defaultRuntimeMu.Unlock()
-	}
-}
-
 func runtimeOrDefault(runtime *Runtime) *Runtime {
 	if runtime != nil {
 		return runtime
@@ -311,10 +297,3 @@ func writeAuditRuntime(writer *auditWriter, event model.AuditEvent) {
 	}
 	writer.Enqueue(event)
 }
-
-// LastUpdate is kept as a compatibility mirror for older in-package tests and
-// integrations. New code should use the injected Runtime last-update store
-// (Runtime.updates) via the ConfigService setLastUpdate/getLastUpdate methods.
-//
-// Deprecated: use the injected Runtime last-update store.
-var LastUpdate int64

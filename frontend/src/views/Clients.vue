@@ -28,6 +28,12 @@
     :id="qrcode.id"
     @close="closeQrCode"
   />
+  <ClientDoctor
+    v-model="doctor.visible"
+    :visible="doctor.visible"
+    :id="doctor.id"
+    @close="closeDoctor"
+  />
   <Stats
     v-model="stats.visible"
     :visible="stats.visible"
@@ -47,15 +53,18 @@
     :clients="<any[]>clients"
     :inbounds="<any[]>inbounds"
     :groups="groups"
-    :onlines="<string[]>(Data().onlines.user ?? [])"
+    :onlines="onlineUsers"
     :enable-traffic="enableTraffic"
     @add="showModal(0)"
     @add-bulk="addBulk"
     @del="delClient"
+    @del-many="delClientsBulk"
+    @diagnose="showDoctor"
     @edit="showModal"
     @edit-bulk="editBulk"
     @qr="showQrCode"
     @move="moveClient"
+    @move-many-to="dragSelectedClients"
     @move-to="dragClient"
     @sort-by-name="sortClientsByName"
     @show-ips="showClientIps"
@@ -160,6 +169,17 @@
         </v-card>
       </v-menu>
     </v-col>
+    <v-col cols="auto">
+      <BulkSelectionControls
+        :active="clientSelectMode"
+        :count="selectedClientCount"
+        :disabled="filterSettings.enabled"
+        inactive-color="secondary"
+        inactive-variant="outlined"
+        @delete="deleteSelectedClients"
+        @toggle="toggleClientSelectMode"
+      />
+    </v-col>
   </v-row>
   <v-row>
     <v-col cols="12">
@@ -171,7 +191,9 @@
         @update:items-per-page="setItemPerPage($event)"
         hide-no-data
         fixed-header
-        item-value="name"
+        item-value="id"
+        :show-select="clientSelectMode"
+        v-model="selectedClientIds"
         :mobile="smAndDown"
         mobile-breakpoint="sm"
         :row-props="clientRowProps"
@@ -187,12 +209,12 @@
           </span>
         </template>
         <template v-slot:item.volume="{ item }">
-          <div class="text-start" v-tooltip:top="'↓' + HumanReadable.sizeFormat(item.down) + ' - ' + HumanReadable.sizeFormat(item.up) + '↑'">
+          <div class="text-start" v-tooltip:top="'↓' + formatSize(item.down) + ' - ' + formatSize(item.up) + '↑'">
             <v-chip
               size="small"
               :color="item.volume==0 ? 'success' : item.volume<=(item.up + item.down)? 'error': ''"
               label
-            >{{ HumanReadable.sizeFormat(item.up + item.down) + ' / ' + (item.volume == 0 ? $t('unlimited') : HumanReadable.sizeFormat(item.volume)) }}</v-chip>
+            >{{ formatSize(item.up + item.down) + ' / ' + (item.volume == 0 ? $t('unlimited') : formatSize(item.volume)) }}</v-chip>
           </div>
           <v-progress-linear
             :model-value="percent(item)"
@@ -209,7 +231,7 @@
               size="small"
               :color="item.expiry==0 ? 'success' : item.expiry<=Date.now()/1000? 'error': ''"
               label
-            >{{ HumanReadable.remainedDays(item.expiry) }}</v-chip>
+            >{{ remainedDays(item.expiry) }}</v-chip>
           </div>
         </template>
         <template v-slot:item.online="{ item }">
@@ -233,7 +255,7 @@
           mdi-pencil
         </v-icon>
         <v-menu
-          v-model="delOverlay[clients.findIndex(c => c.id == item.id)]"
+          v-model="delOverlay[clients.findIndex(o => o.id == item.id)]"
           :close-on-content-click="false"
           location="top center"
         >
@@ -251,7 +273,7 @@
             <v-card-text>{{ $t('confirm') }}</v-card-text>
             <v-card-actions>
               <v-btn color="error" variant="outlined" @click="delClient(item.id)">{{ $t('yes') }}</v-btn>
-              <v-btn color="success" variant="outlined" @click="delOverlay[clients.findIndex(c => c.id == item.id)] = false">{{ $t('no') }}</v-btn>
+              <v-btn color="success" variant="outlined" @click="delOverlay[clients.findIndex(o => o.id == item.id)] = false">{{ $t('no') }}</v-btn>
             </v-card-actions>
           </v-card>
         </v-menu>
@@ -261,7 +283,10 @@
         >
           mdi-qrcode
         </v-icon>
-        <v-icon icon="mdi-chart-line" @click="showStats(item.name)" v-if="Data().enableTraffic">
+        <v-icon class="me-2" icon="lucide:activity" @click="showDoctor(item.id)">
+          <v-tooltip activator="parent" location="top" :text="$t('actions.diagnose')"></v-tooltip>
+        </v-icon>
+        <v-icon icon="mdi-chart-line" @click="showStats(item.name)" v-if="enableTraffic">
           <v-tooltip activator="parent" location="top" :text="$t('stats.graphTitle')"></v-tooltip>
         </v-icon>
       </template>
@@ -270,253 +295,19 @@
   </v-row>
   </template>
 </template>
-<style>
-.v-data-table__tr--mobile td {
-  height: fit-content;
-  min-height: 36px !important;
-}
-.v-data-table__tr--mobile td div {
-  width:max-content;
-}
-</style>
+<style lang="scss" src="./Clients.scss"></style>
 <script lang="ts" setup>
-import Data from '@/store/modules/data'
 import ManualSortButton from '@/components/ManualSortButton.vue'
+import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
 import ClientModal from '@/layouts/modals/Client.vue'
 import ClientAddBulk from '@/layouts/modals/ClientAddBulk.vue'
 import ClientEditBulk from '@/layouts/modals/ClientEditBulk.vue'
 import QrCode from '@/layouts/modals/QrCode.vue'
+import ClientDoctor from '@/layouts/modals/ClientDoctor.vue'
 import Stats from '@/layouts/modals/Stats.vue'
-import IpHistoryModal from '@/components/IpHistoryModal.vue'
-import { Client } from '@/types/clients'
-import { computed, defineAsyncComponent, ref } from 'vue'
-import { HumanReadable } from '@/plugins/utils'
-import { i18n, locale } from '@/locales'
-import { useDisplay } from 'vuetify'
-import { useUiMode } from '@/uiMode/useUiMode'
-import { useManualDrag } from '@/composables/useManualDrag'
-import {
-  dragManualOrder,
-  type ManualSortDirection,
-  moveManualOrder,
-  sortManualOrderByText,
-} from '@/composables/useManualReorder'
+import IpHistoryModal from '@/components/security/IpHistoryModal.vue'
+import ClientsNexusList from '@/views/clients/ClientsNexusList.vue'
+import { useClientsPage } from '@/shared/composables/pages/useClientsPage'
 
-const { smAndDown } = useDisplay()
-
-const { mode } = useUiMode()
-const ClientsNexusList = defineAsyncComponent(
-  () => import('@/views/clients/ClientsNexusList.vue'),
-)
-const enableTraffic = computed((): boolean => Data().enableTraffic)
-
-const clients = computed((): any[] => {
-  return Data().clients
-})
-
-const isOnline = (cname: string) => computed(() => {
-  return Data().onlines?.user ? Data().onlines.user.includes(cname) : false
-})
-
-const inbounds = computed((): any[] => {
-  return Data().inbounds?? []
-})
-
-const inboundTags = computed((): any[] => {
-  if (!inbounds.value) return []
-  return inbounds.value?.filter(i => i.tag != "" && i.users).map(i => { return { title: i.tag, value: i.id } })
-})
-
-const groups = computed((): string[] => {
-  if (!clients.value) return []
-  if (filterSettings?.value.enabled) return Array.from(new Set(filterSettings.value.filteredClients?.map(c => c.group)))
-  return Array.from(new Set(clients.value?.map(c => c.group)))
-})
-
-const actionMenu = ref(false)
-const filterMenu = ref(false)
-const filterSettings = ref({
-  enabled: false,
-  state: '',
-  group: '-',
-  text: '',
-  filteredClients: <any[]>[]
-})
-
-const filterItems = [
-  { title: i18n.global.t('none'), value: '' },
-  { title: i18n.global.t('disable'), value: 'disable' },
-  { title: i18n.global.t('date.expired'), value: 'expired' },
-  { title: i18n.global.t('online'), value: 'online' },
-]
-
-const headers = [
-  { title: i18n.global.t('client.name'), key: 'name' },
-  { title: i18n.global.t('client.desc'), key: 'desc' },
-  { title: i18n.global.t('client.group'), key: 'group' },
-  { title: i18n.global.t('pages.inbounds'), key: 'inbounds', width: 10 },
-  { title: i18n.global.t('actions.action'), key: 'actions', sortable: false },
-  { title: i18n.global.t('stats.volume'), key: 'volume' },
-  { title: i18n.global.t('date.expiry'), key: 'expiry' },
-  { title: i18n.global.t('online'), key: 'online' },
-  { title: i18n.global.t('client.lastIpCount'), key: 'lastIpCount' },
-  { key: 'data-table-group', width: 0 },
-]
-
-const itemPerPage = ref(localStorage.getItem('items-per-page') || '10')
-
-const setItemPerPage = (items: number) => {
-  itemPerPage.value = items.toString()
-  localStorage.setItem('items-per-page', items.toString())
-}
-
-const modal = ref({
-  visible: false,
-  id: 0,
-})
-
-const delOverlay = ref(new Array<boolean>(clients.value.length).fill(false))
-
-const showModal = async (id: number) => {
-  modal.value.id = id
-  modal.value.visible = true
-}
-const closeModal = () => {
-  modal.value.visible = false
-}
-
-const delClient = async (id: number) => {
-  const index = clients.value.findIndex(c => c.id === id)
-  const success = await Data().save("clients", "del", id)
-  if (success) delOverlay.value[index] = false
-}
-
-const moveClient = async (id: number, dir: number) => {
-  await moveManualOrder("clients", clients.value as any[], id, dir)
-}
-
-const dragClient = async (draggedId: number, targetId: number) => {
-  await dragManualOrder("clients", clients.value as any[], draggedId, targetId)
-}
-
-const sortClientsByName = async (direction: ManualSortDirection) => {
-  await sortManualOrderByText("clients", clients.value as any[], direction, "name")
-}
-
-const clientDrag = useManualDrag<number>()
-const onClientDrop = (event: DragEvent, targetId: number) => {
-  clientDrag.drop(event, targetId, dragClient, filterSettings.value.enabled)
-}
-
-const clientRowProps = ({ item }: { item: any }) => ({
-  draggable: false,
-  onPointerdown: (event: PointerEvent) => clientDrag.prepare(event, filterSettings.value.enabled),
-  onDragstart: (event: DragEvent) => clientDrag.start(event, item.id, filterSettings.value.enabled),
-  onDragover: (event: DragEvent) => clientDrag.over(event, filterSettings.value.enabled),
-  onDrop: (event: DragEvent) => onClientDrop(event, item.id),
-  onDragend: (event: DragEvent) => clientDrag.clear(event),
-})
-
-const qrcode = ref({
-  visible: false,
-  id: 0,
-})
-
-const showQrCode = (id: number) => {
-  qrcode.value.id = id
-  qrcode.value.visible = true
-}
-const closeQrCode = () => {
-  qrcode.value.visible = false
-}
-
-const stats = ref({
-  visible: false,
-  resource: "user",
-  tag: "",
-})
-
-const ipModal = ref({
-  visible: false,
-  client: '',
-})
-
-const showClientIps = (clientName: string) => {
-  ipModal.value.visible = true
-  ipModal.value.client = clientName
-}
-
-const onClientIpsCleared = () => {
-  Data().loadData()
-}
-
-const showStats = (tag: string) => {
-  stats.value.tag = tag
-  stats.value.visible = true
-}
-const closeStats = () => {
-  stats.value.visible = false
-}
-
-const doFilter = () => {
-  let filteredClients = clients.value.slice()
-  if (filterSettings.value.group != '-') {
-    filteredClients = filteredClients.filter(c => c.group == filterSettings.value.group)
-  }
-  if (filterSettings.value.text.length>0) {
-    const txt = filterSettings.value.text
-    filteredClients = filteredClients.filter(c => c.name.search(txt) != -1 || c.desc.search(txt) != -1)
-  }
-  switch (filterSettings.value.state) {
-    case "disable":
-      filteredClients = filteredClients.filter(c => c.enable == false)
-      break
-    case "expired":
-      filteredClients = filteredClients.filter(c => c.expiry > 0 && c.expiry < (Date.now()/1000) )
-      break
-    case "online":
-      filteredClients = filteredClients.filter(c => Data().onlines?.user?.includes(c.name))
-      break
-  }
-  filterSettings.value.filteredClients = filteredClients
-  filterSettings.value.enabled = true
-  filterMenu.value = false
-}
-
-const clearFilter = () => {
-  filterSettings.value = {
-    enabled: false,
-    state: '',
-    group: '-',
-    text: '',
-    filteredClients: <any[]>[]
-  }
-  filterMenu.value = false
-}
-
-const addBulkModal = ref(false)
-
-const addBulk = () => {
-  addBulkModal.value = true
-  actionMenu.value = false
-}
-
-const closeAddBulk = () => {
-  addBulkModal.value = false
-}
-
-const editBulkModal = ref(false)
-
-const editBulk = () => {
-  editBulkModal.value = true
-  actionMenu.value = false
-}
-
-const closeEditBulk = () => {
-  editBulkModal.value = false
-}
-
-const percent = (c: Client) => { return c.volume>0 ? Math.round((c.up+c.down) *100 / c.volume) : 0 }
-const percentColor = (c: Client) => { return (c.up+c.down) >= c.volume ? 'error' : percent(c)>90 ? 'warning' : 'success' }
-
+const { actionMenu, addBulk, addBulkModal, clearFilter, clientRowProps, clientSelectMode, clients, closeAddBulk, closeDoctor, closeEditBulk, closeModal, closeQrCode, closeStats, delClient, delClientsBulk, deleteSelectedClients, delOverlay, doFilter, doctor, dragClient, dragSelectedClients, editBulk, editBulkModal, enableTraffic, filterItems, filterMenu, filterSettings, formatSize, groups, headers, inboundTags, inbounds, ipModal, isOnline, itemPerPage, locale, modal, mode, moveClient, onClientIpsCleared, onlineUsers, percent, percentColor, qrcode, remainedDays, selectedClientCount, selectedClientIds, setItemPerPage, showClientIps, showDoctor, showModal, showQrCode, showStats, smAndDown, sortClientsByName, stats, toggleClientSelectMode } = useClientsPage()
 </script>

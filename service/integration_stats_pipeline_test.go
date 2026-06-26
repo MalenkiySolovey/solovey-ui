@@ -3,14 +3,13 @@ package service
 import (
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/ipmonitor"
+	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
 )
 
 func TestIntegrationStatsPipelineNilCoreSmoke(t *testing.T) {
 	initSettingTestDB(t)
 	runtime := NewRuntimeWithCoreProvider(nil)
-	restore := ReplaceDefaultRuntimeForTest(runtime)
-	t.Cleanup(restore)
+	replaceDefaultRuntimeForTest(t, runtime)
 	ipmonitor.ResetCaches()
 
 	if err := (&StatsService{Runtime: runtime}).SaveStats(true); err != nil {

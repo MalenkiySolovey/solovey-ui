@@ -66,7 +66,7 @@
 </template>
 
 <script lang="ts">
-import HttpUtils from '@/plugins/httputil'
+import { convertSubscriptionLink } from '@/shared/composables/useOutboundConversion'
 import RandomUtil from '@/plugins/randomUtil';
 import Data from '@/store/modules/data'
 import { createOutbound, Outbound } from '@/types/outbounds'
@@ -98,7 +98,7 @@ export default {
     async linkCheck() {
       this.loading = true
       this.outbounds = []
-      const msg = await HttpUtils.post('api/subConvert', { link: this.link })
+      const msg = await convertSubscriptionLink(this.link)
       if (msg.success) {
         if (msg.obj?.length>0) {
           msg.obj.forEach((o:any, index:number) => {

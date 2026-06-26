@@ -1,10 +1,21 @@
 package realtime
 
 import (
+	"strconv"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
+
+type countingPayload struct {
+	marshals *atomic.Int32
+}
+
+func (p countingPayload) MarshalJSON() ([]byte, error) {
+	p.marshals.Add(1)
+	return []byte(`{"ok":true}`), nil
+}
 
 func TestHubPublishFansOutAndGatesSecurityEvents(t *testing.T) {
 	h := newHub()
@@ -22,6 +33,29 @@ func TestHubPublishFansOutAndGatesSecurityEvents(t *testing.T) {
 	h.Publish(TopicSecurityEvent, map[string]any{"kind": "test"})
 	expectEvent(t, adminCh, TopicSecurityEvent)
 	expectNoEvent(t, readCh)
+}
+
+func TestHubPublishMarshalsBroadcastOnce(t *testing.T) {
+	h := newHub()
+	first := make(chan Event, 1)
+	second := make(chan Event, 1)
+	h.Register(&ClientHandle{User: "first", Scope: ScopeRead, SendCh: first})
+	h.Register(&ClientHandle{User: "second", Scope: ScopeRead, SendCh: second})
+
+	var marshals atomic.Int32
+	h.Publish(TopicOnlines, countingPayload{marshals: &marshals})
+
+	firstEvent := <-first
+	secondEvent := <-second
+	if got := marshals.Load(); got != 1 {
+		t.Fatalf("broadcast payload was marshaled %d times, want 1", got)
+	}
+	if got, want := string(firstEvent.Frame()), string(secondEvent.Frame()); got != want || got == "" {
+		t.Fatalf("clients did not receive the same prepared frame: first=%q second=%q", got, want)
+	}
+	if got := string(firstEvent.Frame()); got != `{"type":"onlines","ts":`+strconv.FormatInt(firstEvent.Ts, 10)+`,"payload":{"ok":true}}` {
+		t.Fatalf("unexpected prepared frame: %s", got)
+	}
 }
 
 func TestHubSlowUnbufferedClientIsDropped(t *testing.T) {

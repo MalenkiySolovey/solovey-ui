@@ -17,7 +17,7 @@ toolchain in `PATH`.
 Run from the repository root:
 
 ```powershell
-cd C:\Users\Malenkiy_Solovey\Desktop\Codex\S-UI\workbench\s-ui-personal
+cd path\to\solovey-ui
 .\scripts\dev\start-panel.cmd -Fresh -OpenBrowser
 type .runtime\local-panel\startup-summary.txt
 ```

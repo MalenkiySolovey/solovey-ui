@@ -72,12 +72,29 @@ export type Endpoint = InterfaceMap[keyof InterfaceMap]
 
 // Create defaultValues object dynamically
 const defaultValues: Record<EpType, Endpoint> = {
-  wireguard: { type: EpTypes.Wireguard, address: ['10.0.0.2/32','fe80::2/128'], private_key: '', listen_port: 0 },
+  wireguard: {
+    type: EpTypes.Wireguard,
+    address: ['10.0.0.2/32', 'fe80::2/128'],
+    private_key: '',
+    listen_port: 0,
+    peers: [],
+    ext: { keys: [] },
+  },
   warp: { type: EpTypes.Warp, address: [], private_key: '', listen_port: 0, mtu: 1420, peers: [{ address: '', port: 0, public_key: ''}] },
   tailscale: { type: EpTypes.Tailscale, domain_resolver: 'local' },
 }
 
 export function createEndpoint<T extends Endpoint>(type: string,json?: Partial<T>): Endpoint {
-  const defaultObject: Endpoint = { ...defaultValues[type], ...(json || {}) }
-  return defaultObject
+  const defaults = defaultValues[type]
+  const endpoint: Endpoint = { ...structuredClone(defaults ?? { type }), ...(json || {}) }
+
+  if (type === EpTypes.Wireguard) {
+    endpoint.address = Array.isArray(endpoint.address) ? [...endpoint.address] : []
+    endpoint.peers = Array.isArray(endpoint.peers) ? endpoint.peers.map((peer: WgPeer) => ({ ...peer })) : []
+    endpoint.ext = endpoint.ext && typeof endpoint.ext === 'object'
+      ? { ...endpoint.ext, keys: Array.isArray(endpoint.ext.keys) ? [...endpoint.ext.keys] : [] }
+      : { keys: [] }
+  }
+
+  return endpoint
 }

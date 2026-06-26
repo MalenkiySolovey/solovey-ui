@@ -8,8 +8,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 
 	"github.com/gin-gonic/gin"
 )
@@ -17,7 +17,7 @@ import (
 func newAPIV2TokenTestRouter(t *testing.T) *gin.Engine {
 	t.Helper()
 	initSessionTestDB(t)
-	if err := database.GetDB().Create(&model.Tokens{
+	if err := dbsqlite.DB().Create(&model.Tokens{
 		Desc:   "legacy",
 		Token:  "legacy-token",
 		Expiry: 0,

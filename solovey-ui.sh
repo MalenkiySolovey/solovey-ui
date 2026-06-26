@@ -35,12 +35,14 @@ Panel commands:
   migrate [args]       Run database migrations
   import-xui [args]    Run 3x-ui/x-ui import command
   decrypt-backup [args] Run backup decrypt command
+  ip-cert [args]       Run IP certificate CLI command
   version, -v          Show binary version
   build-info           Show release build metadata
 
 Maintenance:
   install [args]       Download and run the installer
   update [args]        Download and run the installer
+  rotate-cookie-key    Rotate SUI_COOKIE_KEY and invalidate browser sessions
   migrate-from-sui [args] Download installer and migrate /usr/local/s-ui
   doctor [--full]      Run post-install/update smoke checks
   diagnose, report     Run extended diagnostic report
@@ -433,8 +435,41 @@ run_installer() {
     tmp="$(mktemp)"
     trap 'rm -f "${tmp}"' RETURN
 
-    curl -fsSL --proto '=https' --tlsv1.2 -o "${tmp}" "${INSTALL_URL}"
+    curl --fail --location --silent --show-error \
+        --proto '=https' --tlsv1.2 \
+        --connect-timeout 20 --max-time 120 \
+        --retry 3 --retry-delay 2 --retry-all-errors \
+        -o "${tmp}" "${INSTALL_URL}"
     bash "${tmp}" "$@"
+}
+
+rotate_cookie_key() {
+    need_root rotate-cookie-key
+    command -v base64 >/dev/null 2>&1 || fail "base64 is required"
+    command -v dd >/dev/null 2>&1 || fail "dd is required"
+
+    local env_file="${ENV_DIR}/secretbox.env"
+    local backup tmp key
+    mkdir -p "${ENV_DIR}"
+    touch "${env_file}"
+    chmod 600 "${env_file}"
+    backup="${env_file}.bak.$(date -u +%Y%m%dT%H%M%SZ)"
+    cp -a "${env_file}" "${backup}"
+    tmp="${env_file}.incoming.$$"
+    key="$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64 | tr -d '\n')"
+    [[ -n "${key}" ]] || fail "failed to generate SUI_COOKIE_KEY"
+
+    awk -v replacement="SUI_COOKIE_KEY=${key}" '
+        BEGIN { replaced = 0 }
+        /^SUI_COOKIE_KEY=/ { if (!replaced) print replacement; replaced = 1; next }
+        { print }
+        END { if (!replaced) print replacement }
+    ' "${env_file}" > "${tmp}"
+    chmod 600 "${tmp}"
+    mv -f "${tmp}" "${env_file}"
+    systemctl restart "${SERVICE_NAME}"
+    log "SUI_COOKIE_KEY rotated; existing browser sessions are invalidated"
+    log "previous environment backup: ${backup}"
 }
 
 backup_copy_or_fail() {
@@ -682,6 +717,8 @@ Solovey UI
 8) setting -show
 9) update
 10) doctor
+11) ip-cert status
+12) rotate cookie key
 0) exit
 EOF
         printf '> '
@@ -697,6 +734,8 @@ EOF
             8) run_binary setting -show ;;
             9) run_installer ;;
             10) run_doctor ;;
+            11) run_binary ip-cert status ;;
+            12) rotate_cookie_key ;;
             0) exit 0 ;;
             *) usage ;;
         esac
@@ -721,7 +760,7 @@ case "${command}" in
     log)
         show_log
         ;;
-    uri|admin|setting|migrate|import-xui|decrypt-backup)
+    uri|admin|setting|migrate|import-xui|decrypt-backup|ip-cert)
         run_binary "${command}" "$@"
         ;;
     build-info)
@@ -732,6 +771,9 @@ case "${command}" in
         ;;
     install|update)
         run_installer "$@"
+        ;;
+    rotate-cookie-key)
+        rotate_cookie_key
         ;;
     migrate-from-sui)
         run_installer --migrate-from-sui "$@"

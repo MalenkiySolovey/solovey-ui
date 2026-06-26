@@ -3,13 +3,11 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"strconv"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/core"
-	"github.com/MalenkiySolovey/solovey-ui/database"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	"github.com/MalenkiySolovey/solovey-ui/logger"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
+	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
+	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/MalenkiySolovey/solovey-ui/util/redact"
 )
@@ -22,7 +20,9 @@ type ConfigService struct {
 	OutboundService
 	ServicesService
 	EndpointService
-	Runtime *Runtime
+	Runtime           *Runtime
+	coreObjectApplier singboxapply.ObjectApplier
+	coreLifecycle     configCoreLifecycle
 }
 
 type SingBoxConfig struct {
@@ -37,7 +37,7 @@ type SingBoxConfig struct {
 	Experimental json.RawMessage   `json:"experimental"`
 }
 
-func NewConfigService(core *core.Core) *ConfigService {
+func NewConfigService(core *coreruntime.Core) *ConfigService {
 	runtime := NewRuntime(core)
 	SetDefaultRuntime(runtime)
 	return NewConfigServiceWithRuntime(runtime)
@@ -50,9 +50,9 @@ func NewConfigServiceWithRuntime(runtime *Runtime) *ConfigService {
 		TlsService:      TlsService{Runtime: runtime, InboundService: InboundService{Runtime: runtime, ClientService: ClientService{Runtime: runtime}}, ServicesService: ServicesService{Runtime: runtime}},
 		SettingService:  SettingService{},
 		InboundService:  InboundService{Runtime: runtime, ClientService: ClientService{Runtime: runtime}},
-		OutboundService: OutboundService{},
+		OutboundService: OutboundService{Runtime: runtime},
 		ServicesService: ServicesService{Runtime: runtime},
-		EndpointService: EndpointService{},
+		EndpointService: EndpointService{Runtime: runtime},
 		Runtime:         runtime,
 	}
 }
@@ -86,7 +86,7 @@ func (s *ConfigService) startCore(force bool) error {
 	if manager == nil {
 		return common.NewError("restart manager not initialized")
 	}
-	return manager.run(func() error {
+	return manager.Run(func() error {
 		return s.startCoreLocked(force)
 	})
 }
@@ -128,25 +128,32 @@ func (s *ConfigService) StartCore() error {
 }
 
 // RestartCore is invoked from user actions; it bypasses the cooldown so the
-// caller observes the true start status.
+// caller observes the true start status. It waits for in-flight core operations
+// instead of silently skipping the restart.
 func (s *ConfigService) RestartCore() error {
 	manager := s.runtime().restart()
 	if manager == nil {
 		return common.NewError("restart manager not initialized")
 	}
-	return manager.run(func() error {
-		coreInstance := s.coreInstance()
-		if coreInstance == nil {
-			return common.NewError("core not initialized")
-		}
-		if err := s.StopCore(); err != nil {
-			return err
-		}
-		return s.startCoreLocked(true)
-	})
+	return manager.RunBlocking(s.restartCoreLocked)
+}
+
+func (s *ConfigService) restartCoreLocked() error {
+	if err := s.stopCoreLocked(); err != nil {
+		return err
+	}
+	return s.startCoreLocked(true)
 }
 
 func (s *ConfigService) StopCore() error {
+	manager := s.runtime().restart()
+	if manager == nil {
+		return common.NewError("restart manager not initialized")
+	}
+	return manager.RunBlocking(s.stopCoreLocked)
+}
+
+func (s *ConfigService) stopCoreLocked() error {
 	coreInstance := s.coreInstance()
 	if coreInstance == nil {
 		return common.NewError("core not initialized")
@@ -164,24 +171,24 @@ func (s *ConfigService) IsCoreRunning() bool {
 	return coreInstance != nil && coreInstance.IsRunning()
 }
 
-func (s *ConfigService) CheckOutbound(tag string, link string) core.CheckOutboundResult {
+func (s *ConfigService) CheckOutbound(tag string, link string) coreruntime.CheckOutboundResult {
 	if tag == "" {
-		return core.CheckOutboundResult{Error: "missing query parameter: tag"}
+		return coreruntime.CheckOutboundResult{Error: "missing query parameter: tag"}
 	}
 	coreInstance := s.coreInstance()
 	if coreInstance == nil || !coreInstance.IsRunning() {
-		return core.CheckOutboundResult{Error: "core not running"}
+		return coreruntime.CheckOutboundResult{Error: "core not running"}
 	}
 	return coreInstance.CheckOutbound(coreInstance.GetCtx(), tag, link)
 }
 
-func (s *ConfigService) CheckOutboundWithContext(ctx context.Context, tag string, link string) core.CheckOutboundResult {
+func (s *ConfigService) CheckOutboundWithContext(ctx context.Context, tag string, link string) coreruntime.CheckOutboundResult {
 	if tag == "" {
-		return core.CheckOutboundResult{Error: "missing query parameter: tag"}
+		return coreruntime.CheckOutboundResult{Error: "missing query parameter: tag"}
 	}
 	coreInstance := s.coreInstance()
 	if coreInstance == nil || !coreInstance.IsRunning() {
-		return core.CheckOutboundResult{Error: "core not running"}
+		return coreruntime.CheckOutboundResult{Error: "core not running"}
 	}
 	return coreInstance.CheckOutbound(ctx, tag, link)
 }
@@ -193,12 +200,18 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 		return nil, err
 	}
 
-	db := database.GetDB()
+	db := configDatabase()
 	tx := db.Begin()
 	committed := false
 	defer func() {
+		if recovered := recover(); recovered != nil {
+			if !committed {
+				_ = tx.Rollback().Error
+			}
+			panic(recovered)
+		}
 		if !committed {
-			tx.Rollback()
+			_ = tx.Rollback().Error
 		}
 	}()
 
@@ -221,7 +234,7 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 	return plan.Objects(), nil
 }
 
-func (s *ConfigService) coreInstance() *core.Core {
+func (s *ConfigService) coreInstance() *coreruntime.Core {
 	if s == nil {
 		return DefaultRuntime().Core()
 	}
@@ -251,7 +264,7 @@ func (s *ConfigService) telegramBackupPassphraseAuditState(obj string, data json
 	if err != nil {
 		return false, false, err
 	}
-	defer zeroBytes(oldPassphrase)
+	defer common.WipeBytes(oldPassphrase)
 	if string(oldPassphrase) == newPassphrase {
 		return false, false, nil
 	}
@@ -272,48 +285,6 @@ func redactChangePayload(data json.RawMessage) json.RawMessage {
 		return json.RawMessage(`"[REDACTED]"`)
 	}
 	return encoded
-}
-
-func (s *ConfigService) CheckChanges(lu string) (bool, error) {
-	if lu == "" {
-		return true, nil
-	}
-	lastUpdate := s.getLastUpdate()
-	if lastUpdate == 0 {
-		db := database.GetDB()
-		var count int64
-		intLu, err := strconv.ParseInt(lu, 10, 64)
-		if err != nil {
-			return false, err
-		}
-		err = db.Model(model.Changes{}).Where("date_time > ?", intLu).Count(&count).Error
-		if err == nil {
-			s.setLastUpdate(time.Now().Unix())
-		}
-		return count > 0, err
-	}
-	intLu, err := strconv.ParseInt(lu, 10, 64)
-	return lastUpdate > intLu, err
-}
-
-func (s *ConfigService) GetChanges(actor string, chngKey string, count string) []model.Changes {
-	c, _ := strconv.Atoi(count)
-	if c <= 0 || c > 200 {
-		c = 20
-	}
-	db := database.GetDB().Model(model.Changes{})
-	if len(actor) > 0 {
-		db = db.Where("actor = ?", actor)
-	}
-	if len(chngKey) > 0 {
-		db = db.Where("key = ?", chngKey)
-	}
-	var chngs []model.Changes
-	err := db.Order("id desc").Limit(c).Scan(&chngs).Error
-	if err != nil {
-		logger.Warning(err)
-	}
-	return chngs
 }
 
 func (s *ConfigService) setLastUpdate(value int64) {

@@ -2,10 +2,10 @@
   <div class="nexus-data-table">
     <table-skeleton v-if="loading" :columns="skeletonColumns" :rows="6" />
 
-    <template v-else-if="sortedItems.length === 0">
+    <div v-else-if="sortedItems.length === 0" class="nexus-data-table__empty">
       <slot v-if="$slots.empty" name="empty" />
       <empty-state v-else :title="emptyTitle ?? $t('table.noData')" />
-    </template>
+    </div>
 
     <template v-else>
       <dense-table>
@@ -24,11 +24,17 @@
           <template v-for="item in pagedItems" :key="keyOf(item)">
             <tr
               class="nexus-data-table__row"
-              :class="{ 'nexus-data-table__row--draggable': draggableRows && !dragDisabled }"
+              :class="{
+                'nexus-data-table__row--draggable': draggableRows && !dragDisabled,
+                'nexus-data-table__row--selected': selection.isSelected(keyOf(item)),
+                'nexus-data-table__row--drop-before': dropIndicator?.key === keyOf(item) && dropIndicator.position === 'before',
+                'nexus-data-table__row--drop-after': dropIndicator?.key === keyOf(item) && dropIndicator.position === 'after',
+              }"
               :draggable="false"
               @pointerdown="onRowPointerDown"
               @dragstart="onRowDragStart($event, item)"
-              @dragover="onRowDragOver"
+              @dragover="onRowDragOver($event, item)"
+              @dragleave="onRowDragLeave($event, item)"
               @drop="onRowDrop($event, item)"
               @dragend="onRowDragEnd"
             >
@@ -57,6 +63,7 @@
                 v-for="column in columns"
                 :key="column.key"
                 :class="`nexus-data-table__cell nexus-data-table__cell--${column.align ?? 'start'}`"
+                :data-column-key="column.key"
               >
                 <span class="nexus-data-table__cell-content manual-drag-no-drag">
                   <slot
@@ -67,7 +74,7 @@
                 </span>
               </td>
 
-              <td v-if="$slots.actions" class="nexus-data-table__actions">
+              <td v-if="$slots.actions" class="nexus-data-table__actions" data-column-key="actions">
                 <slot name="actions" :item="item" />
               </td>
             </tr>
@@ -96,13 +103,13 @@
 <script lang="ts" setup generic="T extends Record<string, any>">
 import { computed, ref, useSlots, watch } from 'vue'
 
-import { canStartManualDrag, prepareManualDrag } from '@/composables/useManualDrag'
+import { canStartManualDrag, manualDropIndicatorFor, manualDropPositionFromEvent, prepareManualDrag, type ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
 import DenseTable from '@/components/nexus/primitives/DenseTable.vue'
 import EmptyState from '@/components/nexus/primitives/EmptyState.vue'
 import TableSkeleton from '@/components/nexus/primitives/TableSkeleton.vue'
 import { type Column, nextSortState, type SortState, sortItems } from './dataTableColumns'
 import NexusTableHeader from './NexusTableHeader.vue'
-import { type RowKey, useRowSelection } from './RowSelection'
+import { type RowKey, useRowSelection } from '@/shared/composables/dragSelection/rowSelection'
 import TablePagination from './TablePagination.vue'
 
 const ITEMS_PER_PAGE_KEY = 'items-per-page'
@@ -113,6 +120,7 @@ const props = withDefaults(defineProps<{
   rowKey?: (item: T) => RowKey
   loading?: boolean
   selectable?: boolean
+  selected?: RowKey[]
   expandable?: boolean
   emptyTitle?: string
   // When false, the table renders every item with no footer pager. Used by
@@ -134,7 +142,8 @@ const props = withDefaults(defineProps<{
 
 const emit = defineEmits<{
   'update:selected': [keys: RowKey[]]
-  'row-drop': [dragged: T, target: T]
+  'row-drop': [dragged: T, target: T, position: ManualDropPosition | null]
+  'rows-drop': [dragged: T[], target: T, position: ManualDropPosition | null]
 }>()
 
 const keyOf = (item: T): RowKey => (props.rowKey ? props.rowKey(item) : (item.id as RowKey))
@@ -155,6 +164,7 @@ const page = ref(1)
 const itemsPerPage = ref(readItemsPerPage())
 const expanded = ref<Set<RowKey>>(new Set())
 const draggedRow = ref<T | null>(null)
+const dropIndicator = ref<{ key: RowKey; position: 'before' | 'after' } | null>(null)
 
 // The header never reads the row generic; widen so the invariant Column<T>
 // (its sortValue accessor makes Column invariant in T) assigns to Column[].
@@ -230,23 +240,51 @@ const onRowDragStart = (event: DragEvent, item: T) => {
   }
 }
 
-const onRowDragOver = (event: DragEvent) => {
+const onRowDragOver = (event: DragEvent, target: T) => {
   if (!props.draggableRows || props.dragDisabled || draggedRow.value == null) return
   event.preventDefault()
   if (event.dataTransfer) event.dataTransfer.dropEffect = 'move'
+  const nextIndicator = dropIndicatorForEvent(event, target)
+  if (sameDropIndicator(dropIndicator.value, nextIndicator)) return
+  dropIndicator.value = nextIndicator
+}
+
+const onRowDragLeave = (event: DragEvent, item: T) => {
+  const current = event.currentTarget
+  const related = event.relatedTarget
+  if (current instanceof HTMLElement && related instanceof Node && current.contains(related)) return
+  if (draggedRow.value != null) return
+  if (dropIndicator.value?.key === keyOf(item)) dropIndicator.value = null
 }
 
 const onRowDrop = (event: DragEvent, target: T) => {
   if (!props.draggableRows || props.dragDisabled || draggedRow.value == null) return
   event.preventDefault()
   const source = draggedRow.value as T
+  const activeDrop = dropIndicator.value
+  if (!activeDrop) {
+    draggedRow.value = null
+    dropIndicator.value = null
+    return
+  }
+  const effectiveTarget = sortedItems.value.find(item => String(keyOf(item)) === String(activeDrop.key)) ?? target
+  const position = activeDrop?.position ?? null
   draggedRow.value = null
-  if (keyOf(source) === keyOf(target)) return
-  emit('row-drop', source, target)
+  dropIndicator.value = null
+  if (keyOf(source) === keyOf(effectiveTarget)) return
+  if (props.selectable && selection.isSelected(keyOf(source))) {
+    const selectedRows = sortedItems.value.filter(item => selection.isSelected(keyOf(item)))
+    if (selectedRows.length > 1) {
+      emit('rows-drop', selectedRows, effectiveTarget, position)
+      return
+    }
+  }
+  emit('row-drop', source, effectiveTarget, position)
 }
 
 const onRowDragEnd = () => {
   draggedRow.value = null
+  dropIndicator.value = null
 }
 
 // Clamp the page when the underlying list shrinks (delete/filter).
@@ -258,39 +296,68 @@ watch([sortedItems, itemsPerPage], () => {
 
 watch(selection.selectedKeys, keys => emit('update:selected', keys))
 
+watch(() => props.selected, (keys) => {
+  if (!keys) return
+  if (rowKeysEqual(keys, selection.selectedKeys.value)) return
+  selection.replace(new Set(keys))
+}, { immediate: true })
+
+watch(() => props.selectable, (selectable) => {
+  if (!selectable) selection.clear()
+})
+
+watch(sortedItems, () => {
+  dropIndicator.value = null
+})
+
 defineExpose({ clearSelection: selection.clear })
+
+function dropIndicatorForEvent(event: DragEvent, target: T): { key: RowKey; position: ManualDropPosition } | null {
+  const position = manualDropPositionFromEvent(event, 'vertical')
+  if (!position) return null
+
+  const rows = sortedItems.value
+  const targetIndex = rows.findIndex(item => String(keyOf(item)) === String(keyOf(target)))
+  if (position === 'after' && targetIndex >= 0 && targetIndex < rows.length - 1) {
+    return dropIndicatorFor(rows[targetIndex + 1], 'before')
+  }
+
+  return dropIndicatorFor(target, position)
+}
+
+function dropIndicatorFor(target: T, position: ManualDropPosition): { key: RowKey; position: ManualDropPosition } | null {
+  const source = draggedRow.value
+  if (!source) return null
+
+  const targetKey = keyOf(target)
+  const sourceKey = keyOf(source)
+  const rows = sortedItems.value
+  const orderedKeys = rows.map(keyOf)
+
+  if (props.selectable && selection.isSelected(sourceKey)) {
+    const indicator = manualDropIndicatorFor(sourceKey, targetKey, orderedKeys, rows.filter(item => selection.isSelected(keyOf(item))).map(keyOf), position)
+    return indicator ? { key: indicator.target, position: indicator.position } : null
+  }
+
+  const indicator = manualDropIndicatorFor(sourceKey, targetKey, orderedKeys, [], position)
+  return indicator ? { key: indicator.target, position: indicator.position } : null
+}
+
+function rowKeysEqual(a: readonly RowKey[], b: readonly RowKey[]): boolean {
+  if (a.length !== b.length) return false
+  for (let index = 0; index < a.length; index++) {
+    if (String(a[index]) !== String(b[index])) return false
+  }
+  return true
+}
+
+function sameDropIndicator(
+  left: { key: RowKey; position: ManualDropPosition } | null,
+  right: { key: RowKey; position: ManualDropPosition } | null,
+): boolean {
+  if (!left || !right) return left === right
+  return String(left.key) === String(right.key) && left.position === right.position
+}
 </script>
 
-<style scoped>
-.nexus-data-table__row {
-  transition: background var(--nexus-transition-fast);
-}
-
-.nexus-data-table__row--draggable {
-  cursor: grab;
-}
-
-.nexus-data-table__row--draggable:active {
-  cursor: grabbing;
-}
-
-.nexus-data-table__row:hover {
-  background: var(--nexus-surface-hover);
-}
-
-.nexus-data-table__cell--center { text-align: center; }
-.nexus-data-table__cell--end { text-align: end; }
-.nexus-data-table__cell-content {
-  cursor: text;
-  display: inline-block;
-  max-width: 100%;
-  user-select: text;
-}
-.nexus-data-table__actions { text-align: end; white-space: nowrap; }
-.nexus-data-table__select,
-.nexus-data-table__expand { width: 44px; }
-
-.nexus-data-table__expansion > td {
-  background: var(--nexus-surface-0);
-}
-</style>
+<style scoped src="./NexusDataTable.scss"></style>

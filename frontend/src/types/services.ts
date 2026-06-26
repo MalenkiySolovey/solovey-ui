@@ -5,8 +5,6 @@ export const SrvTypes = {
   DERP: 'derp',
   Resolved: 'resolved',
   SSMAPI: 'ssm-api',
-  OCM: 'ocm', 
-  CCM: 'ccm', 
   OOMKiller: 'oom-killer',
 }
 
@@ -39,22 +37,6 @@ export interface SSMAPI extends SrvBasics {
   tls?: iTls
 }
 
-export interface OCM extends SrvBasics {
-  credential_path?: string
-  usages_path?: string
-  users?: { name: string; token: string }[]
-  headers?: { [key: string]: string | string[] }
-  detour?: string
-}
-
-export interface CCM extends SrvBasics {
-  credential_path?: string
-  usages_path?: string
-  users?: { name: string; token: string }[]
-  headers?: { [key: string]: string | string[] }
-  detour?: string
-}
-
 export interface OOMKiller extends SrvBasics {
   memory_limit?: string | number
   safety_margin?: string | number
@@ -67,8 +49,6 @@ type InterfaceMap = {
   derp: DERP
   resolved: Resolved
   'ssm-api': SSMAPI
-  ocm: OCM
-  ccm: CCM
   'oom-killer': OOMKiller
 }
 
@@ -78,8 +58,6 @@ const defaultValues: Record<SrvType, Srv> = {
   derp: <DERP>{ type: 'derp', config_path: '', tls_id:0 },
   resolved: <Resolved>{ type: 'resolved', listen: '::', listen_port: 53 },
   'ssm-api': <SSMAPI>{ type: 'ssm-api', tls_id: 0, servers: {} },
-  ocm: { type: 'ocm', id: 0, tag: '', listen: '::', listen_port: 8080, tls_id: 0, users: [] } as OCM,
-  ccm: { type: 'ccm', id: 0, tag: '', listen: '::', listen_port: 8080, tls_id: 0, users: [] } as CCM,
   'oom-killer': { type: 'oom-killer', id: 0, tag: '', checks_before_limit: 3 } as OOMKiller,
 }
 

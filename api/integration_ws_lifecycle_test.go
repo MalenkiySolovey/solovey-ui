@@ -12,8 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
@@ -83,12 +84,12 @@ func TestIntegrationRealtimeWSMultipleClientsReceivePublish(t *testing.T) {
 func TestIntegrationRealtimeWSMaxPerUserCapacity(t *testing.T) {
 	resetRateLimitState()
 	resetRealtimeForTest()
-	router := newIntegrationWSRouterWithOptions(t, WithPingInterval(time.Hour), WithPingTimeout(time.Second))
+	router := newIntegrationWSRouterWithOptions(t, realtimehttp.WithPingInterval(time.Hour), realtimehttp.WithPingTimeout(time.Second))
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 	cookies := loginIntegrationWSUser(t, router, "admin")
 
-	for i := 0; i < maxWSPerUser; i++ {
+	for i := 0; i < realtimehttp.MaxConnectionsPerUser; i++ {
 		token := issueIntegrationWSToken(t, server, cookies)
 		conn := dialIntegrationWS(t, server, cookies, token)
 		t.Cleanup(func() { _ = conn.CloseNow() })
@@ -104,7 +105,7 @@ func TestIntegrationRealtimeWSMaxPerUserCapacity(t *testing.T) {
 	}
 	if err == nil {
 		_ = overflow.CloseNow()
-		t.Fatal("expected maxWSPerUser overflow to reject websocket")
+		t.Fatal("expected realtimehttp.MaxConnectionsPerUser overflow to reject websocket")
 	}
 	if resp == nil || resp.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("unexpected overflow response: resp=%v err=%v", resp, err)
@@ -114,11 +115,11 @@ func TestIntegrationRealtimeWSMaxPerUserCapacity(t *testing.T) {
 func TestIntegrationRealtimeWSMaxPerIPCapacity(t *testing.T) {
 	resetRateLimitState()
 	resetRealtimeForTest()
-	router := newIntegrationWSRouterWithOptions(t, WithPingInterval(time.Hour), WithPingTimeout(time.Second))
+	router := newIntegrationWSRouterWithOptions(t, realtimehttp.WithPingInterval(time.Hour), realtimehttp.WithPingTimeout(time.Second))
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 
-	for i := 0; i < maxWSPerIP; i++ {
+	for i := 0; i < realtimehttp.MaxConnectionsPerIP; i++ {
 		cookies := loginIntegrationWSUser(t, router, fmt.Sprintf("user-%02d", i))
 		token := issueIntegrationWSToken(t, server, cookies)
 		conn := dialIntegrationWS(t, server, cookies, token)
@@ -136,7 +137,7 @@ func TestIntegrationRealtimeWSMaxPerIPCapacity(t *testing.T) {
 	}
 	if err == nil {
 		_ = overflow.CloseNow()
-		t.Fatal("expected maxWSPerIP overflow to reject websocket")
+		t.Fatal("expected realtimehttp.MaxConnectionsPerIP overflow to reject websocket")
 	}
 	if resp == nil || resp.StatusCode != http.StatusTooManyRequests {
 		t.Fatalf("unexpected IP overflow response: resp=%v err=%v", resp, err)
@@ -149,10 +150,10 @@ func TestIntegrationRealtimeWSSlowClientDrop_XFAILPhase3(t *testing.T) {
 
 func newIntegrationWSRouter(t *testing.T) *gin.Engine {
 	t.Helper()
-	return newIntegrationWSRouterWithOptions(t, WithPingInterval(time.Second), WithPingTimeout(time.Second))
+	return newIntegrationWSRouterWithOptions(t, realtimehttp.WithPingInterval(time.Second), realtimehttp.WithPingTimeout(time.Second))
 }
 
-func newIntegrationWSRouterWithOptions(t *testing.T, options ...realtimeOption) *gin.Engine {
+func newIntegrationWSRouterWithOptions(t *testing.T, options ...realtimehttp.Option) *gin.Engine {
 	t.Helper()
 	settingService := initSessionTestDB(t)
 	if _, err := settingService.GetAllSetting(); err != nil {
@@ -177,15 +178,15 @@ func newIntegrationWSRouterWithOptions(t *testing.T, options ...realtimeOption) 
 		}
 		c.Status(http.StatusNoContent)
 	})
-	router.GET("/api/realtime/ws-token", (&ApiService{}).IssueWSToken)
-	router.GET("/api/realtime/ws", (&ApiService{}).RealtimeWSWithOptions(options...))
+	router.GET("/api/realtime/ws-token", (&ApiService{}).realtimeHandler().IssueWSToken)
+	router.GET("/api/realtime/ws", (&ApiService{}).realtimeHandler().RealtimeWSWithOptions(options...))
 	return router
 }
 
 func ensureIntegrationWSSessionUser(t *testing.T, username string) bool {
 	t.Helper()
 	var count int64
-	if err := database.GetDB().Model(model.User{}).Where("username = ?", username).Count(&count).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.User{}).Where("username = ?", username).Count(&count).Error; err != nil {
 		t.Logf("count session user %q failed: %v", username, err)
 		return false
 	}
@@ -197,7 +198,7 @@ func ensureIntegrationWSSessionUser(t *testing.T, username string) bool {
 		t.Logf("hash session user password failed: %v", err)
 		return false
 	}
-	if err := database.GetDB().Create(&model.User{Username: username, Password: passwordHash}).Error; err != nil {
+	if err := dbsqlite.DB().Create(&model.User{Username: username, Password: passwordHash}).Error; err != nil {
 		t.Logf("create session user %q failed: %v", username, err)
 		return false
 	}

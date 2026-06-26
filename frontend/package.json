@@ -1,6 +1,6 @@
 {
   "name": "solovey-ui-frontend",
-  "version": "1.5.7-solovey.1",
+  "version": "2026.1.0",
   "private": true,
   "scripts": {
     "dev": "vite --host",

@@ -28,6 +28,7 @@
     :onlines="onlines"
     :enable-traffic="enableTraffic"
     :check-results="checkResults"
+    :failover-status="failoverStatus"
     :order-dirty="outboundOrderDirty"
     :order-saving="outboundOrderSaving"
     :testing-all="testingAll"
@@ -35,8 +36,10 @@
     @add-bulk="showBulkModal"
     @cancel-order="cancelOutboundOrder"
     @del="delOutbound"
+    @del-many="delOutboundsBulk"
     @edit="showModal"
     @move="moveOutbound"
+    @move-many-to="dragSelectedOutbounds"
     @move-to="dragOutbound"
     @save-order="saveOutboundOrder"
     @sort-by-name="sortOutboundsByName"
@@ -64,6 +67,16 @@
         />
       </v-col>
       <v-col cols="auto">
+        <BulkSelectionControls
+          :active="outboundSelectMode"
+          :count="selectedOutboundCount"
+          inactive-color="secondary"
+          inactive-variant="outlined"
+          @delete="deleteSelectedOutbounds"
+          @toggle="toggleOutboundSelectMode"
+        />
+      </v-col>
+      <v-col cols="auto">
         <v-btn
           color="secondary"
           variant="outlined"
@@ -84,14 +97,33 @@
         lg="2"
         v-for="(item, index) in <any[]>orderedOutbounds"
         :key="item.tag"
+        class="manual-drop-grid-cell"
+        :class="outboundDrag.indicatorClasses(item.id)"
+        :style="outboundDrag.indicatorStyles(item.id)"
         :draggable="false"
         @pointerdown="outboundDrag.prepare($event)"
         @dragstart="outboundDrag.start($event, item.id)"
-        @dragover="outboundDrag.over($event)"
+        @dragover="outboundDrag.overTarget($event, item.id, orderedOutbounds.map(row => row.id), outboundSelectMode ? selectedOutboundIds : [], false, 'grid')"
+        @dragleave="outboundDrag.leaveTarget($event, item.id)"
         @drop="onOutboundDrop($event, item.id)"
         @dragend="outboundDrag.clear($event)"
       >
-        <v-card rounded="xl" elevation="5" min-width="200" :title="item.tag">
+        <v-card
+          rounded="xl"
+          elevation="5"
+          min-width="200"
+          :title="item.tag"
+          class="outbounds__card"
+          :class="{ 'outbounds__card--selected': isOutboundSelected(item.id) }"
+        >
+          <div v-if="outboundSelectMode" class="outbounds__select manual-drag-no-drag">
+            <v-checkbox-btn
+              :model-value="isOutboundSelected(item.id)"
+              :aria-label="$t('table.selectRow')"
+              density="compact"
+              @update:model-value="toggleOutboundSelection(item.id, Boolean($event))"
+            />
+          </div>
           <v-card-subtitle style="margin-top: -15px;">
             <v-row>
               <v-col>{{ item.type }}</v-col>
@@ -99,8 +131,14 @@
                 <v-chip color="info" density="compact" size="small" variant="tonal">
                   {{ $t('remoteOutbound.managedOutbound') }}
                 </v-chip>
+                <v-chip v-if="item.remoteMissing" class="ml-1" color="warning" density="compact" size="small" variant="flat">
+                  {{ $t('remoteOutbound.missing') }}
+                </v-chip>
               </v-col>
             </v-row>
+            <div v-if="item.remoteMissing" class="outbounds__remote-missing">
+              {{ item.remoteMissingSource || item.remoteOutboundSubscription || item.remoteOutboundConnection || item.remoteMissingReason }}
+            </div>
           </v-card-subtitle>
           <v-card-text>
             <v-row>
@@ -195,7 +233,7 @@
                 </v-card-actions>
               </v-card>
             </v-overlay>
-            <v-btn icon="mdi-chart-line" @click="showStats(item.tag)" v-if="Data().enableTraffic">
+            <v-btn icon="mdi-chart-line" @click="showStats(item.tag)" v-if="enableTraffic">
               <v-icon />
               <v-tooltip activator="parent" location="top" :text="$t('stats.graphTitle')"></v-tooltip>
             </v-btn>
@@ -207,158 +245,45 @@
 </template>
 
 <script lang="ts" setup>
-import Data from '@/store/modules/data'
-import ManualOrderControls from '@/components/ManualOrderControls.vue'
-import HttpUtils from '@/plugins/httputil'
+import ManualOrderControls from '@/shared/ui/ManualOrderControls.vue'
+import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
 import OutboundVue from '@/layouts/modals/Outbound.vue'
 import OutboundBulk from '@/layouts/modals/OutboundBulk.vue'
 import Stats from '@/layouts/modals/Stats.vue'
-import { Outbound } from '@/types/outbounds'
-import { computed, defineAsyncComponent, ref } from 'vue'
-import { useUiMode } from '@/uiMode/useUiMode'
-import { useManualDrag } from '@/composables/useManualDrag'
-import type { ManualSortDirection } from '@/composables/useManualReorder'
-import { usePendingManualOrder } from '@/composables/usePendingManualOrder'
-import { useAsyncTaskQueue } from '@/composables/useAsyncTaskQueue'
+import { useOutboundsPage } from '@/shared/composables/pages/useOutboundsPage'
 
-const { mode } = useUiMode()
-
-const OutboundsNexusList = defineAsyncComponent(
-  () => import('@/views/outbounds/OutboundsNexusList.vue'),
-)
-const OutboundDrawer = defineAsyncComponent(
-  () => import('@/components/nexus/drawers/OutboundDrawer.vue'),
-)
-
-const EntityForm = computed(() => (mode.value === 'nexus' ? OutboundDrawer : OutboundVue))
-
-interface CheckResult {
-  loading?: boolean
-  success: boolean
-  data?: { OK?: boolean; Delay?: number; Error?: string } | null
-  errorMessage?: string
-}
-
-const checkResults = ref<Record<string, CheckResult>>({})
-const outboundCheckQueue = useAsyncTaskQueue(8)
-
-const performOutboundCheck = async (tag: string) => {
-  checkResults.value = { ...checkResults.value, [tag]: { loading: true, success: false } }
-  const msg = await HttpUtils.get('api/checkOutbound', { tag })
-  const success = msg.success && msg.obj?.OK
-  const errorMessage = success ? undefined : (msg.obj?.Error ?? msg.msg ?? '')
-  checkResults.value = {
-    ...checkResults.value,
-    [tag]: { loading: false, success, data: msg.obj ?? null, errorMessage }
-  }
-}
-
-const checkOutbound = async (tag: string) => {
-  await outboundCheckQueue.runOne(tag, () => performOutboundCheck(tag))
-}
-
-const testingAll = outboundCheckQueue.runningAll
-
-const checkAllOutbounds = async () => {
-  const list = outbounds.value
-  if (list.length === 0) return
-  await outboundCheckQueue.runMany(list, item => item.tag, item => performOutboundCheck(item.tag))
-}
-
-const outbounds = computed((): Outbound[] => {
-  return <Outbound[]> Data().outbounds
-})
-const outboundsOrder = usePendingManualOrder<Outbound>('outbounds', outbounds)
-const orderedOutbounds = outboundsOrder.displayItems
-const outboundOrderDirty = outboundsOrder.dirty
-const outboundOrderSaving = outboundsOrder.saving
-
-const outboundTags = computed((): string[] => {
-  return [...Data().outbounds?.map((o:Outbound) => o.tag), ...Data().endpoints?.map((e:any) => e.tag)]
-})
-
-const onlines = computed(() => {
-  return Data().onlines.outbound?? []
-})
-
-const enableTraffic = computed((): boolean => {
-  return Data().enableTraffic
-})
-
-const modal = ref({
-  visible: false,
-  id: 0,
-  data: "",
-})
-
-let delOverlay = ref(new Array<boolean>)
-
-const showModal = (id: number) => {
-  modal.value.id = id
-  modal.value.data = id == 0 ? '' : JSON.stringify(outbounds.value.findLast(o => o.id == id))
-  modal.value.visible = true
-}
-
-const closeModal = () => {
-  modal.value.visible = false
-}
-
-const bulkModal = ref({ visible: false })
-
-const showBulkModal = () => {
-  bulkModal.value.visible = true
-}
-
-const closeBulkModal = () => {
-  bulkModal.value.visible = false
-}
-
-const stats = ref({
-  visible: false,
-  resource: "outbound",
-  tag: "",
-})
-
-const delOutbound = async (tag: string) => {
-  const success = await Data().save("outbounds", "del", tag)
-  if (success) delOverlay.value = []
-}
-
-const moveOutbound = (id: number, dir: number) => {
-  outboundsOrder.move(id, dir)
-}
-
-const dragOutbound = (draggedId: number, targetId: number) => {
-  outboundsOrder.moveTo(draggedId, targetId)
-}
-
-const sortOutboundsByName = (direction: ManualSortDirection) => {
-  outboundsOrder.sortByText(direction, "tag")
-}
-
-const saveOutboundOrder = () => outboundsOrder.save()
-const cancelOutboundOrder = () => outboundsOrder.reset()
-
-const outboundDrag = useManualDrag<number>()
-const onOutboundDrop = (event: DragEvent, targetId: number) => {
-  outboundDrag.drop(event, targetId, dragOutbound)
-}
-
-const showStats = (tag: string) => {
-  stats.value.tag = tag
-  stats.value.visible = true
-}
-const closeStats = () => {
-  stats.value.visible = false
-}
+const { mode, EntityForm, OutboundsNexusList, checkResults, testingAll, checkOutbound, checkAllOutbounds, failoverStatus, outbounds, orderedOutbounds, outboundOrderDirty, outboundOrderSaving, outboundTags, onlines, enableTraffic, modal, showModal, closeModal, bulkModal, showBulkModal, closeBulkModal, stats, showStats, closeStats, delOverlay, delOutbound, delOutboundsBulk, deleteSelectedOutbounds, outboundSelectMode, selectedOutboundCount, selectedOutboundIds, isOutboundSelected, toggleOutboundSelectMode, toggleOutboundSelection, moveOutbound, dragOutbound, dragSelectedOutbounds, sortOutboundsByName, saveOutboundOrder, cancelOutboundOrder, outboundDrag, onOutboundDrop } = useOutboundsPage(OutboundVue)
 </script>
 
 <style scoped>
+.outbounds__card {
+  position: relative;
+}
+
+.outbounds__card--selected {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+
+.outbounds__select {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 2;
+}
+
 .outbounds__delete-hint {
   color: rgb(var(--v-theme-warning));
   font-size: 0.82rem;
   line-height: 1.35;
   margin-top: 8px;
   max-width: 260px;
+}
+
+.outbounds__remote-missing {
+  color: rgb(var(--v-theme-warning));
+  font-size: 0.74rem;
+  line-height: 1.25;
+  margin-top: 4px;
 }
 </style>

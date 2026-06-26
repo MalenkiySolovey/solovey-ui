@@ -3,11 +3,13 @@
     <drawer :isMobile="isMobile" :displayDrawer="displayDrawer" @toggleDrawer="toggleDrawer" />
     <default-bar :isMobile="isMobile" @toggleDrawer="toggleDrawer" />
     <default-view />
+    <confirm-host />
   </v-app>
 </template>
 
 <script lang="ts" setup>
 import { computed, ref, watch } from 'vue'
+import ConfirmHost from '@/components/nexus/primitives/ConfirmHost.vue'
 import DefaultBar from './AppBar.vue'
 import Drawer from './Drawer.vue'
 import DefaultView from './View.vue'

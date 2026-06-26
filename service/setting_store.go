@@ -3,59 +3,41 @@ package service
 import (
 	"strconv"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"gorm.io/gorm"
 )
 
+func settingsDatabase() *gorm.DB {
+	return dbsqlite.DB()
+}
+
+func settingNotFound(err error) bool {
+	return dbsqlite.IsNotFound(err)
+}
+
+func settingsDatabaseAvailable() bool {
+	return settingsDatabase() != nil
+}
+
 func (s *SettingService) getSetting(key string) (*model.Setting, error) {
-	db := database.GetDB()
-	if db == nil {
-		return nil, common.NewError("database is not initialized")
-	}
-	setting := &model.Setting{}
-	err := db.Model(model.Setting{}).Where("key = ?", key).First(setting).Error
-	if err != nil {
-		return nil, err
-	}
-	return setting, nil
+	return s.settingsManager().Find(key)
 }
 
 func (s *SettingService) getString(key string) (string, error) {
-	setting, err := s.getSetting(key)
-	if database.IsNotFound(err) {
-		value, ok := defaultSettingValue(key)
-		if !ok {
-			return "", common.NewErrorf("key <%v> not in defaultValueMap", key)
-		}
-		return value, nil
-	} else if err != nil {
-		return "", err
-	}
-	if isEncryptedSettingKey(key) {
-		return s.decryptSettingValue(key, setting.Value)
-	}
-	return setting.Value, nil
+	return s.settingsManager(true).GetString(key)
 }
 
 func (s *SettingService) saveSetting(key string, value string) error {
-	setting, err := s.getSetting(key)
-	db := database.GetDB()
-	if database.IsNotFound(err) {
-		return db.Create(&model.Setting{
-			Key:   key,
-			Value: value,
-		}).Error
-	} else if err != nil {
-		return err
-	}
-	setting.Key = key
-	setting.Value = value
-	return db.Save(setting).Error
+	return s.settingsManager().SetString(key, value)
 }
 
 func (s *SettingService) setString(key string, value string) error {
 	return s.saveSetting(key, value)
+}
+
+func (s *SettingService) setEncryptedString(key string, value string) error {
+	return s.settingsManager().SetEncryptedString(key, value)
 }
 
 func (s *SettingService) getBool(key string) (bool, error) {

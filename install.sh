@@ -35,6 +35,8 @@ FORCE_MIGRATE=0
 VERSION=""
 BACKUP_PATH=""
 DOWNLOAD_TMP_DIR=""
+CURL_CONNECT_TIMEOUT="${SOLOVEY_UI_CURL_CONNECT_TIMEOUT:-20}"
+CURL_MAX_TIME="${SOLOVEY_UI_CURL_MAX_TIME:-300}"
 
 usage() {
     cat <<EOF
@@ -55,7 +57,7 @@ Options:
 
 Examples:
   bash install.sh
-  bash install.sh --version v1.5.7-solovey.1
+  bash install.sh --version v2026.1.0
   bash install.sh --dry-run
   bash install.sh --migrate-from-sui
 EOF
@@ -143,6 +145,15 @@ require_command() {
     command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"
 }
 
+secure_curl() {
+    curl --fail --location --silent --show-error \
+        --proto '=https' --tlsv1.2 \
+        --connect-timeout "${CURL_CONNECT_TIMEOUT}" \
+        --max-time "${CURL_MAX_TIME}" \
+        --retry 3 --retry-delay 2 --retry-all-errors \
+        "$@"
+}
+
 require_tools() {
     require_command uname
     require_command curl
@@ -179,7 +190,7 @@ detect_arch() {
 latest_version() {
     local tag
     tag="$(
-        curl -fsSL \
+        secure_curl \
             -H "Accept: application/vnd.github+json" \
             -H "User-Agent: ${APP_NAME}-installer" \
             "${GITHUB_API}" |
@@ -526,24 +537,42 @@ copy_legacy_secretbox_env() {
 }
 
 create_secretbox_env() {
-    if [[ -f "${SECRETBOX_ENV_FILE}" ]]; then
-        run chmod 600 "${SECRETBOX_ENV_FILE}"
-        return 0
-    fi
+    local key secret
 
-    log "creating ${SECRETBOX_ENV_FILE}"
+    if [[ ! -f "${SECRETBOX_ENV_FILE}" ]]; then
+        log "creating ${SECRETBOX_ENV_FILE}"
+    fi
     run mkdir -p "${ENV_DIR}"
 
     if [[ "${DRY_RUN}" == "1" ]]; then
-        log "would create SUI_SECRETBOX_KEY in ${SECRETBOX_ENV_FILE}"
+        log "would ensure SUI_SECRETBOX_KEY and SUI_COOKIE_KEY in ${SECRETBOX_ENV_FILE}"
         return 0
     fi
 
-    local secret
-    secret="$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64 | tr -d '\n')"
     umask 077
-    printf 'SUI_SECRETBOX_KEY=%s\n' "${secret}" > "${SECRETBOX_ENV_FILE}"
+    touch "${SECRETBOX_ENV_FILE}"
+    for key in SUI_SECRETBOX_KEY SUI_COOKIE_KEY; do
+        if grep -Eq "^${key}=" "${SECRETBOX_ENV_FILE}" 2>/dev/null; then
+            continue
+        fi
+        secret="$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64 | tr -d '\n')"
+        [[ -n "${secret}" ]] || fail "failed to generate ${key}"
+        printf '%s=%s\n' "${key}" "${secret}" >> "${SECRETBOX_ENV_FILE}"
+    done
     chmod 600 "${SECRETBOX_ENV_FILE}"
+}
+
+atomic_install_file() {
+    local source="$1"
+    local destination="$2"
+    local mode="$3"
+    local incoming="${destination}.incoming.$$"
+
+    mkdir -p "$(dirname "${destination}")"
+    rm -f "${incoming}"
+    cp -a "${source}" "${incoming}" || { rm -f "${incoming}"; return 1; }
+    chmod "${mode}" "${incoming}" || { rm -f "${incoming}"; return 1; }
+    mv -f "${incoming}" "${destination}" || { rm -f "${incoming}"; return 1; }
 }
 
 stop_existing_service() {
@@ -626,14 +655,17 @@ install_payload() {
     [[ -f "${payload_dir}/${APP_NAME}" ]] || fail "release payload misses ${APP_NAME} binary"
     [[ -f "${payload_dir}/${APP_NAME}.sh" ]] || fail "release payload misses ${APP_NAME}.sh"
     [[ -f "${payload_dir}/${SERVICE_NAME}.service" ]] || fail "release payload misses ${SERVICE_NAME}.service"
+    [[ -f "${payload_dir}/BUILD_INFO.txt" ]] || fail "release payload misses BUILD_INFO.txt"
 
     stop_existing_service || return
     stop_legacy_service_for_migration || return
 
     run mkdir -p "${INSTALL_DIR}" "${INSTALL_DIR}/db" "${ENV_DIR}" "${SYSTEMD_SERVICE%/*}" "${CLI_PATH%/*}" || return
-    run cp -a "${payload_dir}/." "${INSTALL_DIR}/" || return
-    run chmod 755 "${BIN_PATH}" "${MANAGER_PATH}" || return
-    run cp -f "${payload_dir}/${SERVICE_NAME}.service" "${SYSTEMD_SERVICE}" || return
+    atomic_install_file "${payload_dir}/${APP_NAME}" "${BIN_PATH}" 755 || return
+    atomic_install_file "${payload_dir}/${APP_NAME}.sh" "${MANAGER_PATH}" 755 || return
+    atomic_install_file "${payload_dir}/${SERVICE_NAME}.service" "${INSTALL_DIR}/${SERVICE_NAME}.service" 644 || return
+    atomic_install_file "${payload_dir}/BUILD_INFO.txt" "${INSTALL_DIR}/BUILD_INFO.txt" 644 || return
+    atomic_install_file "${payload_dir}/${SERVICE_NAME}.service" "${SYSTEMD_SERVICE}" 644 || return
     run ln -sf "${MANAGER_PATH}" "${CLI_PATH}" || return
     copy_legacy_secretbox_env || return
     create_secretbox_env || return
@@ -682,8 +714,8 @@ download_and_install() {
     trap 'if [[ -n "${DOWNLOAD_TMP_DIR:-}" ]]; then rm -rf "${DOWNLOAD_TMP_DIR}"; fi' EXIT
 
     log "downloading ${url}"
-    curl -fL --proto '=https' --tlsv1.2 -o "${tmp_dir}/${artifact}" "${url}"
-    curl -fL --proto '=https' --tlsv1.2 -o "${tmp_dir}/${artifact}.sha256" "${checksum_url}"
+    secure_curl -o "${tmp_dir}/${artifact}" "${url}"
+    secure_curl -o "${tmp_dir}/${artifact}.sha256" "${checksum_url}"
 
     log "verifying checksum"
     (

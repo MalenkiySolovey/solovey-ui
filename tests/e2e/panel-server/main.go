@@ -13,10 +13,10 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/api"
-	"github.com/MalenkiySolovey/solovey-ui/config"
-	"github.com/MalenkiySolovey/solovey-ui/database"
-	"github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-ui/middleware"
+	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	logger "github.com/MalenkiySolovey/solovey-ui/logger"
+	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/security"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/web"
 
@@ -30,7 +30,7 @@ func main() {
 	logger.Init(logger.LevelWarning)
 
 	fmt.Println("phase6 e2e panel-server: init database")
-	if err := database.InitDB(config.GetDBPath()); err != nil {
+	if err := dbsqlite.Init(configstorage.GetDBPath()); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("phase6 e2e panel-server: load settings")
@@ -50,14 +50,14 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	store, err := web.NewSQLiteSessionStore(database.GetDB(), cookieKeys...)
+	store, err := web.NewSQLiteSessionStore(dbsqlite.DB(), cookieKeys...)
 	if err != nil {
 		log.Fatal(err)
 	}
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(gin.Recovery())
-	engine.Use(middleware.AdminSecurityHeaders(api.RequestIsHTTPS))
+	engine.Use(securitymiddleware.Admin(api.RequestIsHTTPS))
 	engine.Use(sessions.Sessions("s-ui", store))
 	groupAPIV2 := engine.Group(baseURL + "apiv2")
 	apiv2 := api.NewAPIv2Handler(groupAPIV2, api.WithRuntime(runtime))

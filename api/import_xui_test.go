@@ -3,7 +3,6 @@ package api
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -14,10 +13,13 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/config"
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/backup"
+
+	importxuihttp "github.com/MalenkiySolovey/solovey-ui/api/importxui"
+	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/database/importxui"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
@@ -26,14 +28,15 @@ import (
 func TestImportXuiRequiresDatabaseScopeAndAuditsDenied(t *testing.T) {
 	settingService, src := setupXuiAPITestDB(t)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/import-xui", withTestTokenScope("reader", "read", (&ApiService{}).ImportXui))
+		router.POST("/api/import-xui", withTestTokenScope("reader", "read", (&ApiService{}).importXUIHandler().ImportXui))
 	})
 	recorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui", readFile(t, src), "1"), cookies...)
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("reader scope should be forbidden, got %d", recorder.Code)
 	}
+	flushAPIAudit(t)
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "scope_denied").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "scope_denied").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "reader" || event.Resource != "database" || !strings.Contains(string(event.Details), `"scope":"read"`) {
@@ -44,8 +47,8 @@ func TestImportXuiRequiresDatabaseScopeAndAuditsDenied(t *testing.T) {
 func TestImportXuiPlanAndApplyWithEditedPlan(t *testing.T) {
 	settingService, src := setupXuiAPITestDB(t)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/import-xui/plan", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiPlan))
-		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiApply))
+		router.POST("/api/import-xui/plan", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXuiPlan))
+		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXuiApply))
 	})
 	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1"), cookies...)
 	if planRecorder.Code != http.StatusOK {
@@ -72,8 +75,8 @@ func TestImportXuiPlanAndApplyWithEditedPlan(t *testing.T) {
 func TestImportXuiApplyRejectsStalePlan(t *testing.T) {
 	settingService, src := setupXuiAPITestDB(t)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/import-xui/plan", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiPlan))
-		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiApply))
+		router.POST("/api/import-xui/plan", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXuiPlan))
+		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXuiApply))
 	})
 	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1"), cookies...)
 	plan := decodePlanResponse(t, planRecorder.Body.Bytes())
@@ -91,8 +94,8 @@ func TestImportXuiApplyRejectsStalePlan(t *testing.T) {
 func TestImportXuiApplyAcceptsSevenMiBPlanField(t *testing.T) {
 	settingService, src := setupXuiAPITestDB(t)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/import-xui/plan", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiPlan))
-		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiApply))
+		router.POST("/api/import-xui/plan", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXuiPlan))
+		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXuiApply))
 	})
 	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1"), cookies...)
 	if planRecorder.Code != http.StatusOK {
@@ -113,7 +116,7 @@ func TestImportXuiApplyAcceptsSevenMiBPlanField(t *testing.T) {
 func TestImportXuiApplyRejectsNineMiBPlanFieldWith413(t *testing.T) {
 	settingService, src := setupXuiAPITestDB(t)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiApply))
+		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXuiApply))
 	})
 	req := newXuiApplyRawPlanRequest(t, readFile(t, src), strings.Repeat("x", 9<<20))
 	recorder := performAuthenticatedTestRequest(router, req, cookies...)
@@ -127,12 +130,12 @@ func TestImportXuiApplyRejectsNineMiBPlanFieldWith413(t *testing.T) {
 
 func TestImportXuiRollbackRestoresBackup(t *testing.T) {
 	settingService, src := setupXuiAPITestDB(t)
-	database.SetSendSighupHook(func() error { return nil })
-	t.Cleanup(func() { database.SetSendSighupHook(nil) })
+	backup.SetSendSighupHook(func() error { return nil })
+	t.Cleanup(func() { backup.SetSendSighupHook(nil) })
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/import-xui/plan", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiPlan))
-		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiApply))
-		router.POST("/api/import-xui/rollback", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiRollback))
+		router.POST("/api/import-xui/plan", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXuiPlan))
+		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXuiApply))
+		router.POST("/api/import-xui/rollback", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXuiRollback))
 	})
 	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1"), cookies...)
 	plan := decodePlanResponse(t, planRecorder.Body.Bytes())
@@ -150,184 +153,10 @@ func TestImportXuiRollbackRestoresBackup(t *testing.T) {
 	}
 }
 
-func TestValidateRollbackPathRejectsSymlinkEscape(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("SUI_DB_FOLDER", dir)
-	outside := filepath.Join(t.TempDir(), "outside.db")
-	if err := os.WriteFile(outside, []byte("SQLite format 3\x00"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	symlink := filepath.Join(dir, "s-ui-pre-xui-import-1.db")
-	if err := os.Symlink(outside, symlink); err != nil {
-		t.Skipf("symlink unavailable: %v", err)
-	}
-	if err := validateRollbackPath(symlink); err == nil {
-		t.Fatal("expected symlink rollback path to be rejected")
-	}
-}
-
-func TestValidateRollbackPathAllowsRealBackupInDatabaseDir(t *testing.T) {
-	dir := t.TempDir()
-	t.Setenv("SUI_DB_FOLDER", dir)
-	backup := filepath.Join(dir, "s-ui-pre-xui-import-1.db")
-	if err := os.WriteFile(backup, []byte("SQLite format 3\x00"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := validateRollbackPath(backup); err != nil {
-		t.Fatalf("expected rollback path to be accepted: %v", err)
-	}
-}
-
-func TestCleanupStaleXUIUploadsRemovesOnlyOldImportDirsIssue38(t *testing.T) {
-	root := t.TempDir()
-	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
-	oldTime := now.Add(-xuiUploadTempMaxAge - time.Minute)
-	boundaryTime := now.Add(-xuiUploadTempMaxAge)
-	freshTime := now.Add(-time.Minute)
-
-	oldImportDir := filepath.Join(root, xuiUploadTempPrefix+"old")
-	freshImportDir := filepath.Join(root, xuiUploadTempPrefix+"fresh")
-	boundaryImportDir := filepath.Join(root, xuiUploadTempPrefix+"boundary")
-	unrelatedOldDir := filepath.Join(root, "other-import-old")
-	nestedImportDir := filepath.Join(root, "nested", xuiUploadTempPrefix+"old")
-	importFile := filepath.Join(root, xuiUploadTempPrefix+"file")
-	symlinkTarget := filepath.Join(root, "old-symlink-target")
-	symlinkImportDir := filepath.Join(root, xuiUploadTempPrefix+"symlink")
-	for _, dir := range []string{oldImportDir, freshImportDir, boundaryImportDir, unrelatedOldDir, nestedImportDir, symlinkTarget} {
-		if err := os.MkdirAll(dir, 0o700); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.WriteFile(filepath.Join(oldImportDir, "payload.db"), []byte("old"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(importFile, []byte("not a dir"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	symlinkCreated := false
-	if err := os.Symlink(symlinkTarget, symlinkImportDir); err == nil {
-		symlinkCreated = true
-	} else {
-		t.Logf("symlink unavailable, skipping symlink assertion: %v", err)
-	}
-	for _, path := range []string{oldImportDir, unrelatedOldDir, nestedImportDir, symlinkTarget, importFile} {
-		if err := os.Chtimes(path, oldTime, oldTime); err != nil {
-			t.Fatal(err)
-		}
-	}
-	if err := os.Chtimes(boundaryImportDir, boundaryTime, boundaryTime); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chtimes(freshImportDir, freshTime, freshTime); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := cleanupStaleXUIUploads(root, now, xuiUploadTempMaxAge); err != nil {
-		t.Fatal(err)
-	}
-
-	assertPathMissing(t, oldImportDir)
-	for _, path := range []string{freshImportDir, boundaryImportDir, unrelatedOldDir, nestedImportDir, importFile, symlinkTarget} {
-		assertPathExists(t, path)
-	}
-	if symlinkCreated {
-		assertPathExists(t, symlinkImportDir)
-	}
-}
-
-func TestSaveXUIUploadTriggersStaleCleanupIssue38(t *testing.T) {
-	root := t.TempDir()
-	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
-	resetXUIUploadCleanupForTest()
-	prevRoot := xuiUploadTempRoot
-	prevNow := xuiUploadNow
-	xuiUploadTempRoot = func() string { return root }
-	xuiUploadNow = func() time.Time { return now }
-	t.Cleanup(func() {
-		xuiUploadTempRoot = prevRoot
-		xuiUploadNow = prevNow
-		resetXUIUploadCleanupForTest()
-	})
-
-	staleDir := filepath.Join(root, xuiUploadTempPrefix+"stale")
-	if err := os.MkdirAll(staleDir, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(staleDir, "payload.db"), []byte("stale"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	oldTime := now.Add(-xuiUploadTempMaxAge - time.Minute)
-	if err := os.Chtimes(staleDir, oldTime, oldTime); err != nil {
-		t.Fatal(err)
-	}
-
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = newXuiImportRequest(t, "/api/import-xui", []byte("SQLite format 3\x00"), "1")
-
-	upload, err := saveXUIUpload(c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(upload.Dir)
-
-	assertPathMissing(t, staleDir)
-	assertPathExists(t, upload.Dir)
-	if filepath.Dir(upload.Path) != upload.Dir {
-		t.Fatalf("upload path %q is not under upload dir %q", upload.Path, upload.Dir)
-	}
-	if !strings.HasPrefix(upload.Dir, root+string(os.PathSeparator)) {
-		t.Fatalf("upload dir %q is not under temp root %q", upload.Dir, root)
-	}
-	if upload.SHA256 == "" {
-		t.Fatal("upload SHA256 was not populated")
-	}
-}
-
-func TestSaveXUIUploadCleanupIsFailSoftIssue38(t *testing.T) {
-	root := t.TempDir()
-	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
-	resetXUIUploadCleanupForTest()
-	prevRoot := xuiUploadTempRoot
-	prevNow := xuiUploadNow
-	prevCleanup := xuiUploadCleanup
-	cleanupErr := errors.New("cleanup failed")
-	cleanupCalls := 0
-	xuiUploadTempRoot = func() string { return root }
-	xuiUploadNow = func() time.Time { return now }
-	xuiUploadCleanup = func(root string, now time.Time, maxAge time.Duration) error {
-		cleanupCalls++
-		return cleanupErr
-	}
-	t.Cleanup(func() {
-		xuiUploadTempRoot = prevRoot
-		xuiUploadNow = prevNow
-		xuiUploadCleanup = prevCleanup
-		resetXUIUploadCleanupForTest()
-	})
-
-	recorder := httptest.NewRecorder()
-	c, _ := gin.CreateTestContext(recorder)
-	c.Request = newXuiImportRequest(t, "/api/import-xui", []byte("SQLite format 3\x00"), "1")
-
-	upload, err := saveXUIUpload(c)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer os.RemoveAll(upload.Dir)
-	if cleanupCalls != 1 {
-		t.Fatalf("cleanup calls=%d, want 1", cleanupCalls)
-	}
-	assertPathExists(t, upload.Dir)
-	if upload.SHA256 == "" {
-		t.Fatal("upload SHA256 was not populated")
-	}
-}
-
 func TestImportXuiCorruptFileAuditsFailure(t *testing.T) {
 	settingService, _ := setupXuiAPITestDB(t)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/import-xui", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXui))
+		router.POST("/api/import-xui", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXui))
 	})
 	recorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui", []byte("not sqlite"), "1"), cookies...)
 	if recorder.Code != http.StatusBadRequest {
@@ -340,8 +169,9 @@ func TestImportXuiCorruptFileAuditsFailure(t *testing.T) {
 	if msg.Success {
 		t.Fatal("corrupt x-ui import should fail")
 	}
+	flushAPIAudit(t)
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "xui_import_failed").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "xui_import_failed").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Resource != "database" {
@@ -353,7 +183,7 @@ func TestImportXuiDryRunReturnsReportWithoutMutation(t *testing.T) {
 	settingService, src := setupXuiAPITestDB(t)
 	before := apiTableCounts(t, "inbounds", "endpoints", "tls", "clients")
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/import-xui", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXui))
+		router.POST("/api/import-xui", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXui))
 	})
 	recorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui", readFile(t, src), "1"), cookies...)
 	if recorder.Code != http.StatusOK {
@@ -381,7 +211,7 @@ func TestImportXuiDryRunReturnsReportWithoutMutation(t *testing.T) {
 func TestImportXuiAppliesImportAndAuditsSuccess(t *testing.T) {
 	settingService, src := setupXuiAPITestDB(t)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/import-xui", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXui))
+		router.POST("/api/import-xui", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXui))
 	})
 	recorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui", readFile(t, src), "0"), cookies...)
 	if recorder.Code != http.StatusOK {
@@ -398,21 +228,21 @@ func TestImportXuiAppliesImportAndAuditsSuccess(t *testing.T) {
 		t.Fatal("trojan inbound was not imported")
 	}
 	var endpointCount int64
-	if err := database.GetDB().Model(model.Endpoint{}).Where("tag = ?", "inbound-12555").Count(&endpointCount).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Endpoint{}).Where("tag = ?", "inbound-12555").Count(&endpointCount).Error; err != nil {
 		t.Fatal(err)
 	}
 	if endpointCount == 0 {
 		t.Fatal("wireguard endpoint was not imported")
 	}
 	var clientCount int64
-	if err := database.GetDB().Model(model.Client{}).Where("name = ?", "AndPh1").Count(&clientCount).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Client{}).Where("name = ?", "AndPh1").Count(&clientCount).Error; err != nil {
 		t.Fatal(err)
 	}
 	if clientCount == 0 {
 		t.Fatal("source client was not imported")
 	}
 	var auditCount int64
-	if err := database.GetDB().Model(model.AuditEvent{}).Where("event = ?", "xui_import").Count(&auditCount).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.AuditEvent{}).Where("event = ?", "xui_import").Count(&auditCount).Error; err != nil {
 		t.Fatal(err)
 	}
 	if auditCount == 0 {
@@ -423,20 +253,15 @@ func TestImportXuiAppliesImportAndAuditsSuccess(t *testing.T) {
 func setupXuiAPITestDB(t *testing.T) (*service.SettingService, string) {
 	t.Helper()
 	closeAPITestDB(t)
-	xuiRateMu.Lock()
-	xuiRates = map[string]xuiAttempt{}
-	xuiRateMu.Unlock()
-	prevAuditSync := service.AuditSyncForTest
-	service.AuditSyncForTest = true
-	t.Cleanup(func() { service.AuditSyncForTest = prevAuditSync })
+	importxuihttp.ResetRateLimits()
 	dir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", dir)
-	copyAPIFixture(t, "s-ui.db", config.GetDBPath())
+	copyAPIFixture(t, "s-ui.db", configstorage.GetDBPath())
 	src := copyAPIFixture(t, "x-ui.db", filepath.Join(dir, "x-ui.db"))
-	initAPITestDB(t, config.GetDBPath())
+	initAPITestDB(t, configstorage.GetDBPath())
 	t.Cleanup(func() {
 		stopTokenUseDebouncerBeforeAPITestDBInit(t)
-		if testDB := database.GetDB(); testDB != nil {
+		if testDB := dbsqlite.DB(); testDB != nil {
 			if sqlDB, err := testDB.DB(); err == nil {
 				_ = sqlDB.Close()
 				time.Sleep(25 * time.Millisecond)
@@ -585,30 +410,10 @@ func decodeReportResponse(t *testing.T, raw []byte) importxui.Report {
 func closeAPITestDB(t *testing.T) {
 	t.Helper()
 	stopTokenUseDebouncerBeforeAPITestDBInit(t)
-	if db := database.GetDB(); db != nil {
+	if db := dbsqlite.DB(); db != nil {
 		if sqlDB, err := db.DB(); err == nil {
 			_ = sqlDB.Close()
 		}
-	}
-}
-
-func resetXUIUploadCleanupForTest() {
-	xuiUploadCleanupMu.Lock()
-	defer xuiUploadCleanupMu.Unlock()
-	xuiUploadLastCleanup = time.Time{}
-}
-
-func assertPathExists(t *testing.T, path string) {
-	t.Helper()
-	if _, err := os.Stat(path); err != nil {
-		t.Fatalf("expected %q to exist: %v", path, err)
-	}
-}
-
-func assertPathMissing(t *testing.T, path string) {
-	t.Helper()
-	if _, err := os.Stat(path); !errors.Is(err, os.ErrNotExist) {
-		t.Fatalf("expected %q to be removed, stat err=%v", path, err)
 	}
 }
 
@@ -617,7 +422,7 @@ func apiTableCounts(t *testing.T, tables ...string) map[string]int64 {
 	counts := map[string]int64{}
 	for _, table := range tables {
 		var count int64
-		if err := database.GetDB().Table(table).Count(&count).Error; err != nil {
+		if err := dbsqlite.DB().Table(table).Count(&count).Error; err != nil {
 			t.Fatal(err)
 		}
 		counts[table] = count
@@ -640,7 +445,7 @@ func sameCounts(a map[string]int64, b map[string]int64) bool {
 func inboundByTagForAPI(t *testing.T, tag string) model.Inbound {
 	t.Helper()
 	var inbound model.Inbound
-	if err := database.GetDB().Where("tag = ?", tag).First(&inbound).Error; err != nil {
+	if err := dbsqlite.DB().Where("tag = ?", tag).First(&inbound).Error; err != nil {
 		t.Fatal(err)
 	}
 	return inbound

@@ -6,10 +6,11 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 
-	"gorm.io/driver/sqlite"
+	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
@@ -126,7 +127,7 @@ var vanillaVariant = schemaVariant{
 
 func buildCompatSource(t *testing.T, variant schemaVariant, path string) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
+	db, err := gorm.Open(gormsqlite.Open(path), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -207,7 +208,7 @@ func initCompatDest(t *testing.T) {
 	closeMainDBForImportTest(t)
 	dir := makeImportXUITempDir(t)
 	t.Setenv("SUI_DB_FOLDER", dir)
-	if err := database.InitDB(filepath.Join(dir, "s-ui.db")); err != nil {
+	if err := dbsqlite.Init(filepath.Join(dir, "s-ui.db")); err != nil {
 		t.Fatalf("init destination: %v", err)
 	}
 	t.Cleanup(func() { closeMainDBForImportTest(t) })
@@ -251,7 +252,7 @@ func TestImport_SchemaWithoutAllTime(t *testing.T) {
 				t.Fatalf("expected reality TLS row to be created")
 			}
 
-			db := database.GetDB()
+			db := dbsqlite.DB()
 			for _, tag := range []string{"inbound-443", "inbound-12223"} {
 				var n int64
 				if err := db.Model(model.Inbound{}).Where("tag = ?", tag).Count(&n).Error; err != nil || n != 1 {
@@ -321,7 +322,7 @@ func assertSetting(t *testing.T, db *gorm.DB, key, want string) {
 }
 
 // assertNotMigrated verifies a host-specific source value did not land in the
-// destination. InitDB does not seed default settings, so a correctly skipped
+// destination. sqlite.Init does not seed default settings, so a correctly skipped
 // key is simply absent; the value must never equal the source server's value.
 func assertNotMigrated(t *testing.T, db *gorm.DB, key, forbidden string) {
 	t.Helper()
@@ -355,7 +356,7 @@ func TestImport_RealXUIBackup(t *testing.T) {
 	if path == "" {
 		t.Skip("set IMPORT_XUI_REAL_DB to a real x-ui.db to run this test")
 	}
-	if err := ValidateSQLiteSource(path); err != nil {
+	if err := source.ValidateSQLiteSource(path); err != nil {
 		t.Fatalf("source validation failed: %v", err)
 	}
 	initCompatDest(t)
@@ -388,7 +389,7 @@ func TestImport_RealXUIBackup(t *testing.T) {
 		t.Fatalf("real import migrated nothing: %#v", report.Summary)
 	}
 
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	// Portable settings migrate: webBasePath (/whatafuck/) -> webPath, and the
 	// panel port carries over.
 	assertSetting(t, db, "webPath", "/whatafuck/")

@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-contrib/sessions"
@@ -24,7 +24,7 @@ func TestAdminCreateDeleteFlowRequiresCurrentPasswordAndAudits(t *testing.T) {
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "webPath").Update("value", "/").Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "webPath").Update("value", "/").Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := (&service.UserService{}).UpdateFirstUser("admin", "current-password"); err != nil {
@@ -68,7 +68,7 @@ func TestAdminCreateDeleteFlowRequiresCurrentPasswordAndAudits(t *testing.T) {
 		t.Fatalf("create response leaked credentials: %s", create.Body.String())
 	}
 	var created model.User
-	if err := database.GetDB().Where("username = ?", "new-admin").First(&created).Error; err != nil {
+	if err := dbsqlite.DB().Where("username = ?", "new-admin").First(&created).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -78,7 +78,7 @@ func TestAdminCreateDeleteFlowRequiresCurrentPasswordAndAudits(t *testing.T) {
 	assertAdminFlowUsersCurrentFlags(t, users)
 
 	var admin model.User
-	if err := database.GetDB().Where("username = ?", "admin").First(&admin).Error; err != nil {
+	if err := dbsqlite.DB().Where("username = ?", "admin").First(&admin).Error; err != nil {
 		t.Fatal(err)
 	}
 	selfDelete := adminFlowPost(t, router, adminJar, csrf, "/api/deleteAdmin", url.Values{
@@ -103,7 +103,7 @@ func TestAdminCreateDeleteFlowRequiresCurrentPasswordAndAudits(t *testing.T) {
 		t.Fatal("target admin should be deleted")
 	}
 	var tokenCount int64
-	if err := database.GetDB().Model(model.Tokens{}).Where("user_id = ?", target.Id).Count(&tokenCount).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Tokens{}).Where("user_id = ?", target.Id).Count(&tokenCount).Error; err != nil {
 		t.Fatal(err)
 	}
 	if tokenCount != 0 {

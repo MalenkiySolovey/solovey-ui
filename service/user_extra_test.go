@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
@@ -29,7 +29,7 @@ func TestUserServiceLoginHappyWrongAndLastLogin(t *testing.T) {
 	}
 
 	var user model.User
-	if err := database.GetDB().Where("username = ?", "admin").First(&user).Error; err != nil {
+	if err := dbsqlite.DB().Where("username = ?", "admin").First(&user).Error; err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(user.LastLogins, "203.0.113.10") {
@@ -55,7 +55,7 @@ func TestUserServiceAddTokenScopePersistenceAndInvalidScope(t *testing.T) {
 	}
 
 	var stored []model.Tokens
-	if err := database.GetDB().Order("id asc").Find(&stored).Error; err != nil {
+	if err := dbsqlite.DB().Order("id asc").Find(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
 	if len(stored) != 5 {
@@ -77,7 +77,7 @@ func TestUserServiceHashAPITokenDeterministicWithStableInstallSalt(t *testing.T)
 	if _, err := settingService.GetInstallSalt(); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "installSalt").Update("value", "phase2-stable-salt").Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "installSalt").Update("value", "phase2-stable-salt").Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -94,7 +94,7 @@ func TestUserServiceHashAPITokenDeterministicWithStableInstallSalt(t *testing.T)
 		t.Fatalf("hash changed with stable installSalt: %q != %q", first, second)
 	}
 
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "installSalt").Update("value", "phase2-other-salt").Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "installSalt").Update("value", "phase2-other-salt").Error; err != nil {
 		t.Fatal(err)
 	}
 	third, err := userService.HashAPIToken("plain-token")
@@ -114,14 +114,14 @@ func TestUserServiceMigrateLegacyTokensKeepsDisabledIssue27(t *testing.T) {
 		Token:  "legacy-disabled-token",
 		UserId: 1,
 	}
-	if err := database.GetDB().Create(&legacy).Error; err != nil {
+	if err := dbsqlite.DB().Create(&legacy).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Model(&model.Tokens{}).Where("id = ?", legacy.Id).Update("enabled", false).Error; err != nil {
+	if err := dbsqlite.DB().Model(&model.Tokens{}).Where("id = ?", legacy.Id).Update("enabled", false).Error; err != nil {
 		t.Fatal(err)
 	}
 	var before model.Tokens
-	if err := database.GetDB().Where("id = ?", legacy.Id).First(&before).Error; err != nil {
+	if err := dbsqlite.DB().Where("id = ?", legacy.Id).First(&before).Error; err != nil {
 		t.Fatal(err)
 	}
 	if before.Enabled {
@@ -131,7 +131,7 @@ func TestUserServiceMigrateLegacyTokensKeepsDisabledIssue27(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stored model.Tokens
-	if err := database.GetDB().Where("id = ?", legacy.Id).First(&stored).Error; err != nil {
+	if err := dbsqlite.DB().Where("id = ?", legacy.Id).First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
 	if stored.Enabled {
@@ -152,10 +152,10 @@ func TestIssue9UpdateFirstUserClearsForcePasswordReset(t *testing.T) {
 	initSettingTestDB(t)
 	userService := &UserService{}
 	var admin model.User
-	if err := database.GetDB().Where("username = ?", "admin").First(&admin).Error; err != nil {
+	if err := dbsqlite.DB().Where("username = ?", "admin").First(&admin).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Model(&model.User{}).Where("id = ?", admin.Id).Update("force_password_reset", true).Error; err != nil {
+	if err := dbsqlite.DB().Model(&model.User{}).Where("id = ?", admin.Id).Update("force_password_reset", true).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -164,7 +164,7 @@ func TestIssue9UpdateFirstUserClearsForcePasswordReset(t *testing.T) {
 	}
 
 	var stored model.User
-	if err := database.GetDB().Where("username = ?", "admin").First(&stored).Error; err != nil {
+	if err := dbsqlite.DB().Where("username = ?", "admin").First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
 	if stored.ForcePasswordReset {
@@ -182,10 +182,10 @@ func TestIssue9ChangePassClearsForcePasswordReset(t *testing.T) {
 		t.Fatal(err)
 	}
 	var admin model.User
-	if err := database.GetDB().Where("username = ?", "admin").First(&admin).Error; err != nil {
+	if err := dbsqlite.DB().Where("username = ?", "admin").First(&admin).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Model(&model.User{}).Where("id = ?", admin.Id).Update("force_password_reset", true).Error; err != nil {
+	if err := dbsqlite.DB().Model(&model.User{}).Where("id = ?", admin.Id).Update("force_password_reset", true).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -194,7 +194,7 @@ func TestIssue9ChangePassClearsForcePasswordReset(t *testing.T) {
 	}
 
 	var stored model.User
-	if err := database.GetDB().Where("id = ?", admin.Id).First(&stored).Error; err != nil {
+	if err := dbsqlite.DB().Where("id = ?", admin.Id).First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
 	if stored.Username != "admin-renamed" {
@@ -220,10 +220,10 @@ func TestIssue9LoginPasswordHashMigrationClearsForcePasswordReset(t *testing.T) 
 		t.Fatal("test hash did not use bcrypt prefix")
 	}
 	var admin model.User
-	if err := database.GetDB().Where("username = ?", "admin").First(&admin).Error; err != nil {
+	if err := dbsqlite.DB().Where("username = ?", "admin").First(&admin).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Model(&model.User{}).Where("id = ?", admin.Id).Updates(map[string]any{
+	if err := dbsqlite.DB().Model(&model.User{}).Where("id = ?", admin.Id).Updates(map[string]any{
 		"password":             rawBcryptHash,
 		"force_password_reset": true,
 	}).Error; err != nil {
@@ -235,7 +235,7 @@ func TestIssue9LoginPasswordHashMigrationClearsForcePasswordReset(t *testing.T) 
 	}
 
 	var stored model.User
-	if err := database.GetDB().Where("id = ?", admin.Id).First(&stored).Error; err != nil {
+	if err := dbsqlite.DB().Where("id = ?", admin.Id).First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
 	if stored.ForcePasswordReset {
@@ -299,7 +299,7 @@ func TestUserServiceDeleteUserRejectsSelfAndDeletesTokens(t *testing.T) {
 	}
 
 	var admin model.User
-	if err := database.GetDB().Where("username = ?", "admin").First(&admin).Error; err != nil {
+	if err := dbsqlite.DB().Where("username = ?", "admin").First(&admin).Error; err != nil {
 		t.Fatal(err)
 	}
 	if _, err := userService.DeleteUser("admin", "current-password", strconv.FormatUint(uint64(admin.Id), 10)); err == nil {
@@ -331,7 +331,7 @@ func TestUserServiceDeleteUserRejectsSelfAndDeletesTokens(t *testing.T) {
 		t.Fatal("deleted admin should not exist")
 	}
 	var tokenCount int64
-	if err := database.GetDB().Model(model.Tokens{}).Where("user_id = ?", target.Id).Count(&tokenCount).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Tokens{}).Where("user_id = ?", target.Id).Count(&tokenCount).Error; err != nil {
 		t.Fatal(err)
 	}
 	if tokenCount != 0 {

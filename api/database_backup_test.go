@@ -9,8 +9,11 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/backup"
+
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/internal/integrations/telegram"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -20,7 +23,7 @@ func TestImportDbRequiresAdminScopeAndAuditsFailure(t *testing.T) {
 	settingService := initSessionTestDB(t)
 
 	readRouter, readCookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/importdb", withTestTokenScope("reader", "read", (&ApiService{}).ImportDb))
+		router.POST("/api/importdb", withTestTokenScope("reader", "read", (&ApiService{}).dbTransferHandler().ImportDb))
 	})
 	readRecorder := performAuthenticatedTestRequest(readRouter, newDatabaseImportRequest(t, []byte("not sqlite")), readCookies...)
 	if readRecorder.Code != http.StatusForbidden {
@@ -28,7 +31,7 @@ func TestImportDbRequiresAdminScopeAndAuditsFailure(t *testing.T) {
 	}
 
 	adminRouter, adminCookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/importdb", withTestTokenScope("admin", "admin", (&ApiService{}).ImportDb))
+		router.POST("/api/importdb", withTestTokenScope("admin", "admin", (&ApiService{}).dbTransferHandler().ImportDb))
 	})
 	adminRecorder := performAuthenticatedTestRequest(adminRouter, newDatabaseImportRequest(t, []byte("not sqlite")), adminCookies...)
 	if adminRecorder.Code != http.StatusOK {
@@ -42,8 +45,10 @@ func TestImportDbRequiresAdminScopeAndAuditsFailure(t *testing.T) {
 		t.Fatal("invalid db import should fail")
 	}
 
+	flushAPIAudit(t)
+
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "db_import_failed").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "db_import_failed").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Resource != "database" || !strings.Contains(string(event.Details), `"reason":"invalid_db"`) {
@@ -51,10 +56,10 @@ func TestImportDbRequiresAdminScopeAndAuditsFailure(t *testing.T) {
 	}
 }
 
-func TestGetDbAuditsExport(t *testing.T) {
+func TestDownloadDatabaseAuditsExport(t *testing.T) {
 	settingService := initSessionTestDB(t)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/getdb", withTestTokenScope("admin", "admin", (&ApiService{}).GetDb))
+		router.GET("/api/getdb", withTestTokenScope("admin", "admin", (&ApiService{}).dbTransferHandler().DownloadDatabase))
 	})
 	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/getdb", nil), cookies...)
 	if recorder.Code != http.StatusOK {
@@ -63,8 +68,9 @@ func TestGetDbAuditsExport(t *testing.T) {
 	if recorder.Body.Len() == 0 {
 		t.Fatal("empty database export")
 	}
+	flushAPIAudit(t)
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "db_exported").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "db_exported").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Resource != "database" || !strings.Contains(string(event.Details), `"channel":"download"`) {
@@ -72,26 +78,26 @@ func TestGetDbAuditsExport(t *testing.T) {
 	}
 }
 
-func TestGetDbEncryptedWithTelegramBackupPassphrase(t *testing.T) {
+func TestDownloadDatabaseEncryptedWithTelegramBackupPassphrase(t *testing.T) {
 	settingService := initSessionTestDB(t)
 	passphrase := "correct horse battery staple"
 	saveTelegramBackupPassphrase(t, settingService, passphrase)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/getdb", withTestTokenScope("admin", "admin", (&ApiService{}).GetDb))
+		router.GET("/api/getdb", withTestTokenScope("admin", "admin", (&ApiService{}).dbTransferHandler().DownloadDatabase))
 	})
 	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/getdb?encryptTelegramBackup=true&exclude=stats,audit,unknown", nil), cookies...)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d body=%s", recorder.Code, recorder.Body.String())
 	}
 	envelope := recorder.Body.Bytes()
-	if !service.IsTelegramBackupEnvelope(envelope) {
+	if !integrationtelegram.IsTelegramBackupEnvelope(envelope) {
 		t.Fatalf("encrypted backup did not return Telegram backup envelope")
 	}
-	plaintext, err := service.OpenTelegramBackupEnvelope(envelope, []byte(passphrase))
+	plaintext, err := integrationtelegram.OpenTelegramBackupEnvelope(envelope, []byte(passphrase))
 	if err != nil {
 		t.Fatal(err)
 	}
-	isDB, err := database.IsSQLiteDB(bytes.NewReader(plaintext))
+	isDB, err := backup.IsSQLite(bytes.NewReader(plaintext))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,8 +105,10 @@ func TestGetDbEncryptedWithTelegramBackupPassphrase(t *testing.T) {
 		t.Fatal("decrypted encrypted backup is not SQLite")
 	}
 
+	flushAPIAudit(t)
+
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "tg_backup_manual_encrypted").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "tg_backup_manual_encrypted").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	var details map[string]any
@@ -119,10 +127,10 @@ func TestGetDbEncryptedWithTelegramBackupPassphrase(t *testing.T) {
 	}
 }
 
-func TestGetDbEncryptedRejectsMissingTelegramBackupPassphrase(t *testing.T) {
+func TestDownloadDatabaseEncryptedRejectsMissingTelegramBackupPassphrase(t *testing.T) {
 	settingService := initSessionTestDB(t)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/getdb", withTestTokenScope("admin", "admin", (&ApiService{}).GetDb))
+		router.GET("/api/getdb", withTestTokenScope("admin", "admin", (&ApiService{}).dbTransferHandler().DownloadDatabase))
 	})
 	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/getdb?encryptTelegramBackup=true", nil), cookies...)
 	if recorder.Code != http.StatusBadRequest {
@@ -137,7 +145,7 @@ func TestGetDbEncryptedRejectsMissingTelegramBackupPassphrase(t *testing.T) {
 		t.Fatalf("unexpected missing-passphrase response: %#v", msg.Obj)
 	}
 	var count int64
-	if err := database.GetDB().Model(&model.AuditEvent{}).Where("event = ?", "db_exported").Count(&count).Error; err != nil {
+	if err := dbsqlite.DB().Model(&model.AuditEvent{}).Where("event = ?", "db_exported").Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
 	if count != 0 {
@@ -151,7 +159,7 @@ func saveTelegramBackupPassphrase(t *testing.T, settingService *service.SettingS
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, payload)
 	}); err != nil {
 		t.Fatal(err)

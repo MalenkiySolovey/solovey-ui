@@ -12,8 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
@@ -69,8 +70,8 @@ func TestRealtimeWSCapacityAnchorPhase5(t *testing.T) {
 		cookiesByUser[user] = loginRealtimePerfUser(t, server, user)
 		resetRateLimitState()
 		resetRealtimeForTest()
-		conns := make([]*websocket.Conn, 0, maxWSPerUser)
-		for i := 0; i < maxWSPerUser; i++ {
+		conns := make([]*websocket.Conn, 0, realtimehttp.MaxConnectionsPerUser)
+		for i := 0; i < realtimehttp.MaxConnectionsPerUser; i++ {
 			token := fmt.Sprintf("same-user-%d", i)
 			setWSTokenForTest(token, user)
 			conn := dialRealtimeWSForBench(t, server, cookiesByUser[user], token)
@@ -93,17 +94,17 @@ func TestRealtimeWSCapacityAnchorPhase5(t *testing.T) {
 		if resp == nil || resp.StatusCode != http.StatusTooManyRequests {
 			t.Fatalf("max per user status=%v err=%v", statusCode(resp), err)
 		}
-		t.Logf("phase5 ws capacity anchor: maxWSPerUser=%d status=%d", maxWSPerUser, resp.StatusCode)
+		t.Logf("phase5 ws capacity anchor: realtimehttp.MaxConnectionsPerUser=%d status=%d", realtimehttp.MaxConnectionsPerUser, resp.StatusCode)
 	})
 
 	t.Run("max per ip", func(t *testing.T) {
-		router, cookiesByUser := newRealtimePerfRouter(t, maxWSPerIP+1)
+		router, cookiesByUser := newRealtimePerfRouter(t, realtimehttp.MaxConnectionsPerIP+1)
 		server := httptest.NewServer(router)
 		t.Cleanup(server.Close)
 		resetRateLimitState()
 		resetRealtimeForTest()
-		conns := make([]*websocket.Conn, 0, maxWSPerIP)
-		for i := 0; i < maxWSPerIP; i++ {
+		conns := make([]*websocket.Conn, 0, realtimehttp.MaxConnectionsPerIP)
+		for i := 0; i < realtimehttp.MaxConnectionsPerIP; i++ {
 			user := fmt.Sprintf("phase5-ip-%03d", i)
 			cookiesByUser[user] = loginRealtimePerfUser(t, server, user)
 			token := fmt.Sprintf("ip-token-%d", i)
@@ -130,7 +131,7 @@ func TestRealtimeWSCapacityAnchorPhase5(t *testing.T) {
 		if resp == nil || resp.StatusCode != http.StatusTooManyRequests {
 			t.Fatalf("max per ip status=%v err=%v", statusCode(resp), err)
 		}
-		t.Logf("phase5 ws capacity anchor: maxWSPerIP=%d status=%d", maxWSPerIP, resp.StatusCode)
+		t.Logf("phase5 ws capacity anchor: realtimehttp.MaxConnectionsPerIP=%d status=%d", realtimehttp.MaxConnectionsPerIP, resp.StatusCode)
 	})
 }
 
@@ -162,14 +163,14 @@ func newRealtimePerfRouter(tb testing.TB, users int) (*gin.Engine, map[string][]
 		}
 		c.Status(http.StatusNoContent)
 	})
-	router.GET("/api/realtime/ws", (&ApiService{}).RealtimeWSWithOptions(WithPingInterval(time.Hour), WithPingTimeout(time.Second)))
+	router.GET("/api/realtime/ws", (&ApiService{}).realtimeHandler().RealtimeWSWithOptions(realtimehttp.WithPingInterval(time.Hour), realtimehttp.WithPingTimeout(time.Second)))
 	return router, make(map[string][]*http.Cookie, users)
 }
 
 func ensureRealtimePerfSessionUser(tb testing.TB, username string) bool {
 	tb.Helper()
 	var count int64
-	if err := database.GetDB().Model(model.User{}).Where("username = ?", username).Count(&count).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.User{}).Where("username = ?", username).Count(&count).Error; err != nil {
 		tb.Logf("count session user %q failed: %v", username, err)
 		return false
 	}
@@ -181,7 +182,7 @@ func ensureRealtimePerfSessionUser(tb testing.TB, username string) bool {
 		tb.Logf("hash session user password failed: %v", err)
 		return false
 	}
-	if err := database.GetDB().Create(&model.User{Username: username, Password: passwordHash}).Error; err != nil {
+	if err := dbsqlite.DB().Create(&model.User{Username: username, Password: passwordHash}).Error; err != nil {
 		tb.Logf("create session user %q failed: %v", username, err)
 		return false
 	}
@@ -191,22 +192,19 @@ func ensureRealtimePerfSessionUser(tb testing.TB, username string) bool {
 func initAPIRealtimePerfDB(tb testing.TB) {
 	tb.Helper()
 	stopTokenUseDebouncerBeforeAPITestDBInit(tb)
-	if db := database.GetDB(); db != nil {
+	if db := dbsqlite.DB(); db != nil {
 		if sqlDB, err := db.DB(); err == nil {
 			_ = sqlDB.Close()
 			time.Sleep(25 * time.Millisecond)
 		}
 	}
-	prevAuditSync := service.AuditSyncForTest
-	service.AuditSyncForTest = true
-	tb.Cleanup(func() { service.AuditSyncForTest = prevAuditSync })
 	dir := tb.TempDir()
 	tb.Setenv("SUI_DB_FOLDER", dir)
 	initAPITestDB(tb, filepath.Join(dir, "s-ui.db"))
-	database.GetDB().Config.Logger = gormlogger.Discard
+	dbsqlite.DB().Config.Logger = gormlogger.Discard
 	tb.Cleanup(func() {
 		stopTokenUseDebouncerBeforeAPITestDBInit(tb)
-		if db := database.GetDB(); db != nil {
+		if db := dbsqlite.DB(); db != nil {
 			if sqlDB, err := db.DB(); err == nil {
 				_ = sqlDB.Close()
 			}

@@ -4,6 +4,22 @@ import { push } from 'notivue'
 import { i18n } from '@/locales'
 import { Inbound } from '@/types/inbounds'
 import { Client } from '@/types/clients'
+import { actionableLogLevel } from './dataLogLevel'
+
+export interface FailoverMemberStatus {
+  tag: string
+  healthy: boolean
+  priority: number
+}
+
+export interface FailoverStatusEntry {
+  tag: string
+  active: string
+  allDown: boolean
+  members: FailoverMemberStatus[]
+}
+
+export type FailoverStatusMap = Record<string, FailoverStatusEntry>
 
 const Data = defineStore('Data', {
   state: () => ({ 
@@ -12,6 +28,7 @@ const Data = defineStore('Data', {
     subURI: "",
     subJsonURI: "",
     subClashURI: "",
+    subXrayURI: "",
     enableTraffic: false,
     onlines: {inbound: <string[]>[], outbound: <string[]>[], user: <string[]>[]},
     config: <any>{},
@@ -21,6 +38,7 @@ const Data = defineStore('Data', {
     endpoints: <any[]>[],
     clients: <any>[],
     tlsConfigs: <any[]>[],
+    failoverStatus: <FailoverStatusMap>{},
   }),
   actions: {
     async loadData() {
@@ -28,11 +46,21 @@ const Data = defineStore('Data', {
       if(msg.success) {
         this.onlines = msg.obj.onlines
         if (msg.obj.lastLog) {
-          push.error({
-            title: i18n.global.t('error.core'),
-            duration: 5000,
-            message: msg.obj.lastLog
-          })
+          const logLevel = actionableLogLevel(String(msg.obj.lastLog))
+
+          if (logLevel === 'error') {
+            push.error({
+              title: i18n.global.t('error.core'),
+              duration: 8000,
+              message: msg.obj.lastLog
+            })
+          } else if (logLevel === 'warning') {
+            push.warning({
+              title: i18n.global.t('warning'),
+              duration: 6000,
+              message: msg.obj.lastLog
+            })
+          }
         }
         
         if (msg.obj.config) {
@@ -47,6 +75,8 @@ const Data = defineStore('Data', {
       else if (Object.hasOwn(data, 'config')) this.subJsonURI = ""
       if (Object.hasOwn(data, 'subClashURI')) this.subClashURI = data.subClashURI
       else if (Object.hasOwn(data, 'config')) this.subClashURI = ""
+      if (Object.hasOwn(data, 'subXrayURI')) this.subXrayURI = data.subXrayURI
+      else if (Object.hasOwn(data, 'config')) this.subXrayURI = ""
       if (Object.hasOwn(data, 'enableTraffic')) this.enableTraffic = data.enableTraffic
       if (data.config) this.config = data.config
       if (Object.hasOwn(data, 'clients')) this.clients = data.clients ?? []

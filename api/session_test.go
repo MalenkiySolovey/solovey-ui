@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-contrib/sessions"
@@ -20,13 +20,9 @@ import (
 
 func initSessionTestDB(t *testing.T) *service.SettingService {
 	t.Helper()
-	saveDedup.reset() // isolate the global create-dedup cache between tests
-	prevAuditSync := service.AuditSyncForTest
-	service.AuditSyncForTest = true
-	t.Cleanup(func() { service.AuditSyncForTest = prevAuditSync })
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
 	initAPITestDB(t, filepath.Join(t.TempDir(), "s-ui.db"))
-	testDB := database.GetDB()
+	testDB := dbsqlite.DB()
 	t.Cleanup(func() {
 		stopTokenUseDebouncerBeforeAPITestDBInit(t)
 		if testDB != nil {
@@ -113,7 +109,7 @@ func TestSessionCookieSecureAutoFromWebURI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := settingService.Save(database.GetDB(), payload); err != nil {
+	if err := settingService.Save(dbsqlite.DB(), payload); err != nil {
 		t.Fatal(err)
 	}
 	router := newSessionTestRouter(t, settingService)
@@ -196,7 +192,7 @@ func TestResolveCookieSecureMatrix(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if err := settingService.Save(database.GetDB(), payload); err != nil {
+				if err := settingService.Save(dbsqlite.DB(), payload); err != nil {
 					t.Fatal(err)
 				}
 			},
@@ -207,7 +203,7 @@ func TestResolveCookieSecureMatrix(t *testing.T) {
 			remote: "198.51.100.10:1234",
 			setup: func(t *testing.T, _ *service.SettingService) {
 				t.Helper()
-				if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "webDomain").Update("value", "https://panel.example.com").Error; err != nil {
+				if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "webDomain").Update("value", "https://panel.example.com").Error; err != nil {
 					t.Fatal(err)
 				}
 			},

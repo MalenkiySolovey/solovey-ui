@@ -17,7 +17,8 @@ permissions:
 
 env:
   NODE_VERSION: "25"
-  CRONET_GO_VERSION: "2faf34666c2cc8234f10f2ab6d4c4d6104d34ae2"
+  CRONET_GO_VERSION: "v148.0.7778.96-1"
+  CRONET_GO_COMMIT: "2faf34666c2cc8234f10f2ab6d4c4d6104d34ae2"
   CRONET_GO_REPO: https://github.com/sagernet/cronet-go.git
   BOOTLIN_BASE_URL: https://toolchains.bootlin.com/downloads/releases/toolchains
 
@@ -26,10 +27,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6.0.3
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Shell syntax
-        run: bash -n install.sh solovey-ui.sh scripts/release-package-linux.sh scripts/server-smoke-debian.sh tests/installer/install-update.sh tests/installer/migrate-from-sui.sh tests/installer/rollback.sh tests/installer/release-package.sh
+        run: bash -n install.sh solovey-ui.sh scripts/release-package-linux.sh scripts/server-smoke-debian.sh tests/installer/install-update.sh tests/installer/migrate-from-sui.sh tests/installer/rollback.sh tests/installer/release-package.sh tests/installer/manager-cookie-key.sh
 
       - name: release package integration
         run: bash tests/installer/release-package.sh
@@ -43,17 +44,20 @@ jobs:
       - name: rollback integration
         run: bash tests/installer/rollback.sh
 
+      - name: cookie key rotation integration
+        run: bash tests/installer/manager-cookie-key.sh
+
   build-frontend:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6.0.3
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           submodules: recursive
           fetch-depth: 1
 
       - name: Set up Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: "npm"
@@ -82,7 +86,7 @@ jobs:
         run: npm run build
 
       - name: Upload frontend build artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: frontend-dist
           path: frontend/dist/
@@ -107,16 +111,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
-        uses: actions/checkout@v6.0.3
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Download frontend build artifact
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: frontend-dist
           path: web/html
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           cache: false
           go-version-file: go.mod
@@ -129,6 +133,7 @@ jobs:
           git -C ~/cronet-go remote add origin ${{ env.CRONET_GO_REPO }}
           git -C ~/cronet-go fetch --depth=1 origin "${{ env.CRONET_GO_VERSION }}"
           git -C ~/cronet-go checkout FETCH_HEAD
+          test "$(git -C ~/cronet-go rev-parse HEAD)" = "${{ env.CRONET_GO_COMMIT }}"
           git -C ~/cronet-go submodule update --init --recursive --depth=1
 
       - name: Regenerate Debian keyring (cronet sysroot)
@@ -209,7 +214,7 @@ jobs:
           set -e
           BUILD_TAGS="with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale"
           [ "${{ matrix.naive }}" = "true" ] && BUILD_TAGS="${BUILD_TAGS},with_naive_outbound,with_musl"
-          go build -ldflags="-w -s -checklinkname=0 -linkmode external -extldflags '-static'" -tags "$BUILD_TAGS" -o solovey-ui main.go
+          go build -ldflags="-w -s -checklinkname=0 -linkmode external -extldflags '-static' -X github.com/MalenkiySolovey/solovey-ui/config/update.ArtifactPlatform=${{ matrix.platform }}" -tags "$BUILD_TAGS" -o solovey-ui main.go
           file solovey-ui
           ldd solovey-ui 2>/dev/null || echo "Static binary confirmed"
           {
@@ -232,7 +237,7 @@ jobs:
             --out-dir .
 
       - name: Upload build artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: solovey-ui-linux-${{ matrix.platform }}
           path: |
@@ -246,7 +251,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository (for release notes)
-        uses: actions/checkout@v6.0.3
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           fetch-depth: 1
 
@@ -262,6 +267,7 @@ jobs:
             v*) echo "tag=$TAG" >> "$GITHUB_OUTPUT" ;;
             *) TAG="v$TAG"; echo "tag=$TAG" >> "$GITHUB_OUTPUT" ;;
           esac
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
           case "$TAG" in
             *-alpha*|*-beta*|*-rc*|*-pre*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
             *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
@@ -274,7 +280,7 @@ jobs:
           fi
 
       - name: Download Linux build artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: solovey-ui-linux-*
           path: release-assets
@@ -284,7 +290,7 @@ jobs:
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
         with:
           tag_name: ${{ steps.vars.outputs.tag }}
-          name: Solovey UI ${{ steps.vars.outputs.tag }}
+          name: Solovey UI ${{ steps.vars.outputs.version }}
           target_commitish: ${{ github.sha }}
           prerelease: ${{ steps.vars.outputs.prerelease == 'true' }}
           body_path: ${{ steps.vars.outputs.notes_path }}

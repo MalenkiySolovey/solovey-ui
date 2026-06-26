@@ -5,6 +5,8 @@ import router from '@/router'
 import { push } from 'notivue'
 import { clearCSRFToken } from '@/store/csrf'
 
+let invalidLoginHandled = false
+
 export interface Msg {
   success: boolean
   msg: string
@@ -17,10 +19,13 @@ function _handleMsg(msg: any): void {
   }
   if(msg.msg){
     if (!msg.success && msg.msg == "Invalid login") {
-      push.error({
-        title: i18n.global.t('invalidLogin'),
-      })
-      logout()
+      if (!invalidLoginHandled) {
+        invalidLoginHandled = true
+        push.error({
+          title: i18n.global.t('invalidLogin'),
+        })
+        localLogout()
+      }
       return
     }
     if (msg.success) {
@@ -36,12 +41,31 @@ function _handleMsg(msg: any): void {
   }
 }
 
-export const logout = async () => {
+export const localLogout = () => {
   clearCSRFToken()
-  const response = await HttpUtils.get('api/logout')
+  router.push('/login')
+}
+
+export const resetInvalidLoginHandling = () => {
+  invalidLoginHandled = false
+}
+
+export const logout = async () => {
+  const response = await HttpUtils.post('api/logout', null)
+  clearCSRFToken()
   if(response.success){
     router.push('/login')
   }
+}
+
+export const probeExternalURL = async (url: string): Promise<void> => {
+  await fetch(url, { method: 'GET', mode: 'no-cors', credentials: 'omit', cache: 'no-store' })
+}
+
+export const fetchExternalJSON = async (url: string): Promise<unknown> => {
+  const response = await fetch(url, { credentials: 'omit', cache: 'no-store' })
+  if (!response.ok) throw new Error(`HTTP ${response.status}`)
+  return response.json()
 }
 
 function _respToMsg(resp: any): Msg {
@@ -66,6 +90,9 @@ function _errorToMsg(error: any): Msg {
   if (error?.response?.data) {
     return _respToMsg(error.response)
   }
+  if (error?.message === 'Invalid login') {
+    return { success: false, msg: 'Invalid login', obj: null }
+  }
   return { success: false, msg: error.toString(), obj: null }
 }
 
@@ -74,6 +101,10 @@ function isMsg(obj: any): obj is Msg {
 }
   
 const HttpUtils = {
+  async getRaw<T>(url: string, data: object = {}, options: any = {}): Promise<T> {
+    const response = await api.get<T>(url, { params: data, ...options })
+    return response.data
+  },
   async get(url: string, data: object = {}, options: any = {}): Promise<Msg> {
     let msg: Msg
     try {

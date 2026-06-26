@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { STORED_SECRET_PLACEHOLDER } from '@/components/settingsSecretField'
+import { STORED_SECRET_PLACEHOLDER } from '@/components/settings/settingsSecretField'
 import { hasWeakTelegramBackupPassphrase, pickTelegramSettings } from './telegramSettingsPayload'
 
 describe('telegram settings payload', () => {

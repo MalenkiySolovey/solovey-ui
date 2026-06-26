@@ -5,8 +5,9 @@ import (
 	"strconv"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 )
 
 var uuidV4Pattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$`)
@@ -20,7 +21,7 @@ func TestPrepareClientSubSecretGeneratesUUIDV4(t *testing.T) {
 		Links:    []byte("[]"),
 	}
 
-	if err := (&ClientService{}).prepareClientSubSecret(database.GetDB(), &client, false); err != nil {
+	if err := entityclients.PrepareSubSecret(dbsqlite.DB(), &client, false); err != nil {
 		t.Fatal(err)
 	}
 	if !uuidV4Pattern.MatchString(client.SubSecret) {
@@ -37,7 +38,7 @@ func TestRotateSubSecretChangesExistingClientSecret(t *testing.T) {
 		Inbounds:  []byte("[]"),
 		Links:     []byte("[]"),
 	}
-	if err := database.GetDB().Create(&client).Error; err != nil {
+	if err := dbsqlite.DB().Create(&client).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -50,7 +51,7 @@ func TestRotateSubSecretChangesExistingClientSecret(t *testing.T) {
 	}
 
 	var stored model.Client
-	if err := database.GetDB().Where("id = ?", client.Id).First(&stored).Error; err != nil {
+	if err := dbsqlite.DB().Where("id = ?", client.Id).First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
 	if stored.SubSecret == "" || stored.SubSecret == "old-secret" {

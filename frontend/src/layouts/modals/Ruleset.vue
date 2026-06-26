@@ -71,7 +71,7 @@
 <script lang="ts">
 import RandomUtil from '@/plugins/randomUtil'
 import { ruleset } from '@/types/rules'
-import HeadlessRule from '@/components/HeadlessRule.vue'
+import HeadlessRule from '@/components/rules/HeadlessRule.vue'
 import FormShell from '@/components/nexus/drawers/FormShell.vue'
 export default {
   props: ['visible', 'data', 'index', 'outTags'],

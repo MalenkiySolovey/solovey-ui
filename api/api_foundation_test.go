@@ -4,6 +4,8 @@ import (
 	"context"
 	"strings"
 	"testing"
+
+	confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
 )
 
 func TestValidateOutboundCheckTargetRejectsNonHTTPSAndPrivateIP(t *testing.T) {
@@ -17,7 +19,7 @@ func TestValidateOutboundCheckTargetRejectsNonHTTPSAndPrivateIP(t *testing.T) {
 	}
 	for _, target := range tests {
 		t.Run(target, func(t *testing.T) {
-			err := validateOutboundCheckTarget(context.Background(), target)
+			err := confighttp.ValidateOutboundCheckTarget(context.Background(), target)
 			if err == nil {
 				t.Fatal("expected target to be rejected")
 			}
@@ -26,7 +28,7 @@ func TestValidateOutboundCheckTargetRejectsNonHTTPSAndPrivateIP(t *testing.T) {
 }
 
 func TestValidateOutboundCheckTargetAcceptsPublicIP(t *testing.T) {
-	err := validateOutboundCheckTarget(context.Background(), "https://1.1.1.1/generate_204")
+	err := confighttp.ValidateOutboundCheckTarget(context.Background(), "https://1.1.1.1/generate_204")
 	if err != nil && strings.Contains(err.Error(), "not allowed") {
 		t.Fatalf("public IP should be allowed: %v", err)
 	}

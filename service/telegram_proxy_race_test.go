@@ -4,20 +4,24 @@ import (
 	"net/http"
 	"sync"
 	"testing"
-	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/internal/integrations/telegram"
 )
 
 func TestTelegramHTTPClientConcurrentReloadRaceAnchorIssue21(t *testing.T) {
 	settingService := initSettingTestDB(t)
-	setTelegramProxyConfigIssue21(t, settingService, telegramProxyConfig{})
-	seed := seedTelegramHTTPClientCacheIssue21(t, telegramProxyConfig{URL: "http://8.8.8.8:8080"})
+	setTelegramProxyConfigIssue21(t, settingService, integrationtelegram.ProxyConfig{URL: "http://8.8.8.8:8080"})
+	service := &TelegramService{}
+	seed, err := service.getTelegramHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setTelegramProxyConfigIssue21(t, settingService, integrationtelegram.ProxyConfig{})
 
 	const workers = 64
 
-	service := &TelegramService{}
 	clients := make([]*http.Client, workers)
 	errs := make(chan error, workers)
 	start := make(chan struct{})
@@ -58,8 +62,7 @@ func TestTelegramHTTPClientConcurrentReloadRaceAnchorIssue21(t *testing.T) {
 
 func TestTelegramHTTPClientReusesClientOnSameConfigIssue21(t *testing.T) {
 	settingService := initSettingTestDB(t)
-	setTelegramProxyConfigIssue21(t, settingService, telegramProxyConfig{})
-	seed := seedTelegramHTTPClientCacheIssue21(t, telegramProxyConfig{})
+	setTelegramProxyConfigIssue21(t, settingService, integrationtelegram.ProxyConfig{})
 
 	service := &TelegramService{}
 	first, err := service.getTelegramHTTPClient()
@@ -70,9 +73,6 @@ func TestTelegramHTTPClientReusesClientOnSameConfigIssue21(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if first != seed {
-		t.Fatal("expected first call to reuse the seeded client")
-	}
 	if second != first {
 		t.Fatal("expected same config to reuse the telegram http client")
 	}
@@ -80,9 +80,12 @@ func TestTelegramHTTPClientReusesClientOnSameConfigIssue21(t *testing.T) {
 
 func TestTelegramHTTPClientReplacesClientOnDifferentConfigIssue21(t *testing.T) {
 	settingService := initSettingTestDB(t)
-	setTelegramProxyConfigIssue21(t, settingService, telegramProxyConfig{})
-	seed := seedTelegramHTTPClientCacheIssue21(t, telegramProxyConfig{})
-	setTelegramProxyConfigIssue21(t, settingService, telegramProxyConfig{URL: "http://8.8.8.8:8080"})
+	setTelegramProxyConfigIssue21(t, settingService, integrationtelegram.ProxyConfig{})
+	seed, err := (&TelegramService{}).getTelegramHTTPClient()
+	if err != nil {
+		t.Fatal(err)
+	}
+	setTelegramProxyConfigIssue21(t, settingService, integrationtelegram.ProxyConfig{URL: "http://8.8.8.8:8080"})
 
 	client, err := (&TelegramService{}).getTelegramHTTPClient()
 	if err != nil {
@@ -96,7 +99,7 @@ func TestTelegramHTTPClientReplacesClientOnDifferentConfigIssue21(t *testing.T) 
 	}
 }
 
-func setTelegramProxyConfigIssue21(t *testing.T, settingService *SettingService, cfg telegramProxyConfig) {
+func setTelegramProxyConfigIssue21(t *testing.T, settingService *SettingService, cfg integrationtelegram.ProxyConfig) {
 	t.Helper()
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
@@ -107,33 +110,8 @@ func setTelegramProxyConfigIssue21(t *testing.T, settingService *SettingService,
 		"telegramProxyPassword": cfg.Password,
 	}
 	for key, value := range settings {
-		if err := database.GetDB().Model(model.Setting{}).Where("key = ?", key).Update("value", value).Error; err != nil {
+		if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", key).Update("value", value).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
-}
-
-func seedTelegramHTTPClientCacheIssue21(t *testing.T, cfg telegramProxyConfig) *http.Client {
-	t.Helper()
-
-	client := &http.Client{Timeout: time.Second}
-
-	telegramHTTPClientMu.Lock()
-	oldClient := telegramHTTPClient
-	oldOverride := telegramHTTPOverride
-	oldConfig := telegramHTTPConfig
-	telegramHTTPClient = client
-	telegramHTTPOverride = false
-	telegramHTTPConfig = cfg
-	telegramHTTPClientMu.Unlock()
-
-	t.Cleanup(func() {
-		telegramHTTPClientMu.Lock()
-		telegramHTTPClient = oldClient
-		telegramHTTPOverride = oldOverride
-		telegramHTTPConfig = oldConfig
-		telegramHTTPClientMu.Unlock()
-	})
-
-	return client
 }

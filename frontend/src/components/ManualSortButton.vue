@@ -37,7 +37,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { ManualSortDirection } from '@/composables/useManualReorder'
+import type { ManualSortDirection } from '@/shared/composables/dragSelection/manualReorder'
 
 type ButtonVariant = 'flat' | 'text' | 'elevated' | 'outlined' | 'plain' | 'tonal'
 

@@ -4,21 +4,22 @@ import (
 	"context"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 
 	"gorm.io/gorm"
 )
 
-func planHistorical(ctx context.Context, src *sourceDB, plan *MigrationPlan) error {
+func planHistorical(ctx context.Context, src *source.Database, plan *MigrationPlan) error {
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
-	clients, err := src.dialect.ReadClients(src.sqlDB())
+	clients, err := src.Clients()
 	if err != nil {
 		return err
 	}
-	outbounds, err := src.outboundTraffics()
+	outbounds, err := src.OutboundTraffics()
 	if err != nil {
 		return err
 	}
@@ -54,7 +55,7 @@ func planHistorical(ctx context.Context, src *sourceDB, plan *MigrationPlan) err
 	return nil
 }
 
-func (s *applyState) applyHistorical(ctx context.Context, tx *gorm.DB, src *sourceDB, opts ApplyOptions) error {
+func (s *applyState) applyHistorical(ctx context.Context, tx *gorm.DB, src *source.Database, opts ApplyOptions) error {
 	if !s.hasKind(KindHistory) {
 		return nil
 	}
@@ -70,7 +71,7 @@ func (s *applyState) applyHistorical(ctx context.Context, tx *gorm.DB, src *sour
 		now = opts.Now()
 	}
 	var stats []model.Stats
-	clients, err := src.dialect.ReadClients(src.sqlDB())
+	clients, err := src.Clients()
 	if err != nil {
 		return err
 	}
@@ -85,7 +86,7 @@ func (s *applyState) applyHistorical(ctx context.Context, tx *gorm.DB, src *sour
 			stats = append(stats, model.Stats{DateTime: now, Resource: "client", Tag: row.Email, Direction: false, Traffic: row.Down})
 		}
 	}
-	outbounds, err := src.outboundTraffics()
+	outbounds, err := src.OutboundTraffics()
 	if err != nil {
 		return err
 	}
@@ -101,7 +102,7 @@ func (s *applyState) applyHistorical(ctx context.Context, tx *gorm.DB, src *sour
 		}
 	}
 	if len(stats) > 0 {
-		if err := database.CreateInBatchesSafe(tx, &stats); err != nil {
+		if err := dbsqlite.CreateInBatches(tx, &stats); err != nil {
 			return err
 		}
 	}

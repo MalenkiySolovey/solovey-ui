@@ -38,7 +38,7 @@
 
 <script lang="ts">
 import { WebSocket } from '../../types/transport'
-import Headers from '../Headers.vue'
+import Headers from '@/components/fields/Headers.vue'
 export default {
   props: ['transport'],
   data() {

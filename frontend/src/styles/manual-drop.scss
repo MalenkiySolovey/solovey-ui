@@ -1,0 +1,58 @@
+.manual-drop-before,
+.manual-drop-after {
+  position: relative;
+}
+
+.manual-drop-before::before,
+.manual-drop-after::after {
+  background: rgba(var(--v-theme-on-surface), .92);
+  border-radius: 999px;
+  box-shadow:
+    0 0 0 1px rgba(var(--v-theme-surface), .82),
+    0 0 12px rgba(var(--v-theme-on-surface), .24);
+  content: "";
+  height: 3px;
+  left: 10px;
+  pointer-events: none;
+  position: absolute;
+  right: 10px;
+  z-index: 4;
+}
+
+.manual-drop-before::before {
+  top: -2px;
+}
+
+.manual-drop-after::after {
+  bottom: -2px;
+}
+
+tr.manual-drop-before::before,
+tr.manual-drop-after::after {
+  display: none;
+}
+
+tr.manual-drop-before > td,
+tr.manual-drop-before > th {
+  box-shadow: inset 0 2px 0 rgba(var(--v-theme-on-surface), .92);
+}
+
+tr.manual-drop-after > td,
+tr.manual-drop-after > th {
+  box-shadow: inset 0 -2px 0 rgba(var(--v-theme-on-surface), .92);
+}
+
+.manual-drop-grid-cell.manual-drop-before::before,
+.manual-drop-grid-cell.manual-drop-after::after {
+  background: rgba(var(--v-theme-on-surface), .92);
+  bottom: auto;
+  box-shadow:
+    0 0 0 1px rgba(var(--v-theme-surface), .82),
+    0 0 10px rgba(var(--v-theme-on-surface), .24);
+  height: var(--manual-drop-line-height, calc(100% - 28px));
+  left: var(--manual-drop-line-left, 0);
+  right: auto;
+  top: var(--manual-drop-line-top, 14px);
+  transform: translateX(-50%);
+  width: 3px;
+}

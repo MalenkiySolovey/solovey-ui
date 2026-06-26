@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 
-	"gorm.io/driver/sqlite"
+	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -89,7 +89,7 @@ func BenchmarkApply(b *testing.B) {
 
 func initImportXUIPerfMainDB(tb testing.TB) {
 	tb.Helper()
-	if db := database.GetDB(); db != nil {
+	if db := dbsqlite.DB(); db != nil {
 		if sqlDB, err := db.DB(); err == nil {
 			_ = sqlDB.Close()
 			time.Sleep(25 * time.Millisecond)
@@ -97,15 +97,15 @@ func initImportXUIPerfMainDB(tb testing.TB) {
 	}
 	dir := makeImportXUITempDir(tb)
 	tb.Setenv("SUI_DB_FOLDER", dir)
-	if err := database.InitDB(filepath.Join(dir, "s-ui.db")); err != nil {
+	if err := dbsqlite.Init(filepath.Join(dir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			tb.Skip(err)
 		}
 		tb.Fatal(err)
 	}
-	database.GetDB().Config.Logger = gormlogger.Discard
+	dbsqlite.DB().Config.Logger = gormlogger.Discard
 	tb.Cleanup(func() {
-		if db := database.GetDB(); db != nil {
+		if db := dbsqlite.DB(); db != nil {
 			if sqlDB, err := db.DB(); err == nil {
 				_ = sqlDB.Close()
 			}
@@ -116,7 +116,7 @@ func initImportXUIPerfMainDB(tb testing.TB) {
 func createImportXUIPerfSource(tb testing.TB, inbounds int) string {
 	tb.Helper()
 	path := filepath.Join(makeImportXUITempDir(tb), "x-ui.db")
-	db, err := gorm.Open(sqlite.Open(path), &gorm.Config{Logger: gormlogger.Discard})
+	db, err := gorm.Open(gormsqlite.Open(path), &gorm.Config{Logger: gormlogger.Discard})
 	if err != nil {
 		tb.Fatal(err)
 	}

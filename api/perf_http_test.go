@@ -13,8 +13,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	importxuihttp "github.com/MalenkiySolovey/solovey-ui/api/importxui"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
@@ -62,11 +63,11 @@ func BenchmarkAPI_Save(b *testing.B) {
 
 func BenchmarkAPI_ImportXUIReports(b *testing.B) {
 	router := newAPIPerfRouter(b)
-	b.ReportMetric(float64(xuiRequestMax), "rate_limit")
+	b.ReportMetric(float64(importxuihttp.RequestLimit), "rate_limit")
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		resetXUIRateLimitCache()
-		for j := 0; j < xuiRequestMax; j++ {
+		importxuihttp.ResetRateLimits()
+		for j := 0; j < importxuihttp.RequestLimit; j++ {
 			req := httptest.NewRequest(http.MethodGet, "/import-xui/reports", nil)
 			recorder := httptest.NewRecorder()
 			router.ServeHTTP(recorder, req)
@@ -97,12 +98,12 @@ func TestAPIHTTPLoadScenariosPhase5(t *testing.T) {
 
 func TestAPIImportXUIReportsRateLimitPhase5(t *testing.T) {
 	router := newAPIPerfRouter(t)
-	resetXUIRateLimitCache()
+	importxuihttp.ResetRateLimits()
 	statuses := runAPIPerfLoad(t, router, http.MethodGet, "/import-xui/reports", "", 1, 100)
-	if statuses[http.StatusOK] != xuiRequestMax || statuses[http.StatusTooManyRequests] != 100-xuiRequestMax {
-		t.Fatalf("unexpected rate-limit statuses=%v want ok=%d too_many=%d", statuses, xuiRequestMax, 100-xuiRequestMax)
+	if statuses[http.StatusOK] != importxuihttp.RequestLimit || statuses[http.StatusTooManyRequests] != 100-importxuihttp.RequestLimit {
+		t.Fatalf("unexpected rate-limit statuses=%v want ok=%d too_many=%d", statuses, importxuihttp.RequestLimit, 100-importxuihttp.RequestLimit)
 	}
-	t.Logf("phase5 issue36/44 anchor: GET /import-xui/reports requests=100 rate_limit=%d statuses=%v", xuiRequestMax, statuses)
+	t.Logf("phase5 issue36/44 anchor: GET /import-xui/reports requests=100 rate_limit=%d statuses=%v", importxuihttp.RequestLimit, statuses)
 }
 
 func benchmarkAPIGET(b *testing.B, router *gin.Engine, path string, parallelism int) {
@@ -130,40 +131,40 @@ func newAPIPerfRouter(tb testing.TB) *gin.Engine {
 	initAPIPerfDB(tb)
 	runtime := service.NewRuntime(nil)
 	apiService := NewApiService(WithRuntime(runtime))
+	configHandler := apiService.configHandler()
+	telemetryHandler := apiService.telemetryHandler()
+	importHandler := apiService.importXUIHandler()
 	seedAPIPerfData(tb)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.GET("/load", apiService.LoadData)
-	router.GET("/stats", apiService.GetStats)
-	router.GET("/onlines", apiService.GetOnlines)
+	router.GET("/load", configHandler.LoadData)
+	router.GET("/stats", telemetryHandler.GetStats)
+	router.GET("/onlines", telemetryHandler.GetOnlines)
 	router.POST("/save", func(c *gin.Context) {
-		apiService.Save(c, "admin")
+		configHandler.Save(c, "admin")
 	})
-	router.GET("/import-xui/reports", withTestTokenScope("admin", "admin", apiService.ImportXuiReports))
+	router.GET("/import-xui/reports", withTestTokenScope("admin", "admin", importHandler.ImportXuiReports))
 	return router
 }
 
 func initAPIPerfDB(tb testing.TB) {
 	tb.Helper()
 	stopTokenUseDebouncerBeforeAPITestDBInit(tb)
-	if db := database.GetDB(); db != nil {
+	if db := dbsqlite.DB(); db != nil {
 		if sqlDB, err := db.DB(); err == nil {
 			_ = sqlDB.Close()
 			time.Sleep(25 * time.Millisecond)
 		}
 	}
 	resetRateLimitState()
-	resetXUIRateLimitCache()
-	prevAuditSync := service.AuditSyncForTest
-	service.AuditSyncForTest = true
-	tb.Cleanup(func() { service.AuditSyncForTest = prevAuditSync })
+	importxuihttp.ResetRateLimits()
 	dir := tb.TempDir()
 	tb.Setenv("SUI_DB_FOLDER", dir)
 	initAPITestDB(tb, filepath.Join(dir, "s-ui.db"))
-	database.GetDB().Config.Logger = gormlogger.Discard
+	dbsqlite.DB().Config.Logger = gormlogger.Discard
 	tb.Cleanup(func() {
 		stopTokenUseDebouncerBeforeAPITestDBInit(tb)
-		if db := database.GetDB(); db != nil {
+		if db := dbsqlite.DB(); db != nil {
 			if sqlDB, err := db.DB(); err == nil {
 				_ = sqlDB.Close()
 			}
@@ -184,7 +185,7 @@ func seedAPIPerfData(tb testing.TB) {
 			IPLimitMode: "monitor",
 		}
 	}
-	if err := database.GetDB().CreateInBatches(&clients, database.SafeSQLiteBatchSize(database.GetDB(), &model.Client{})).Error; err != nil {
+	if err := dbsqlite.DB().CreateInBatches(&clients, dbsqlite.BatchSize(dbsqlite.DB(), &model.Client{})).Error; err != nil {
 		tb.Fatal(err)
 	}
 	now := time.Now().Unix()
@@ -196,7 +197,7 @@ func seedAPIPerfData(tb testing.TB) {
 			model.Stats{DateTime: ts, Resource: "user", Tag: "user-0000", Direction: true, Traffic: int64(i + 2)},
 		)
 	}
-	if err := database.GetDB().CreateInBatches(&stats, database.SafeSQLiteBatchSize(database.GetDB(), &model.Stats{})).Error; err != nil {
+	if err := dbsqlite.DB().CreateInBatches(&stats, dbsqlite.BatchSize(dbsqlite.DB(), &model.Stats{})).Error; err != nil {
 		tb.Fatal(err)
 	}
 	events := make([]model.AuditEvent, 50)
@@ -210,7 +211,7 @@ func seedAPIPerfData(tb testing.TB) {
 			Details:  []byte(`{"phase":"5"}`),
 		}
 	}
-	if err := database.GetDB().CreateInBatches(&events, database.SafeSQLiteBatchSize(database.GetDB(), &model.AuditEvent{})).Error; err != nil {
+	if err := dbsqlite.DB().CreateInBatches(&events, dbsqlite.BatchSize(dbsqlite.DB(), &model.AuditEvent{})).Error; err != nil {
 		tb.Fatal(err)
 	}
 }

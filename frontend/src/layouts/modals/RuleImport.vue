@@ -144,6 +144,8 @@
 </template>
 
 <script lang="ts">
+import { loadExternalJSON } from '@/shared/composables/useExternalHttp'
+
 export default {
   props: ["visible", "existingRulesCount", "existingRulesetsCount", "existingRulesetTags"],
   emits: ['save', 'close'],
@@ -211,9 +213,7 @@ export default {
       this.parsed = null
       this.fetching = true
       try {
-        const resp = await fetch(this.fetchUrl)
-        if (!resp.ok) throw new Error(`HTTP ${resp.status}`)
-        const block = this.extractRouteBlock(await resp.json())
+        const block = this.extractRouteBlock(await loadExternalJSON(this.fetchUrl))
         if (!block) this.error = this.$t('rule.import.errNoArraysFetched')
         else this.setParsed(block)
       } catch (e: any) {

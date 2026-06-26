@@ -7,7 +7,14 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/logger"
+	authhttp "github.com/MalenkiySolovey/solovey-ui/api/auth"
+	confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
+	dbtransferhttp "github.com/MalenkiySolovey/solovey-ui/api/dbtransfer"
+	importxuihttp "github.com/MalenkiySolovey/solovey-ui/api/importxui"
+	remotesubhttp "github.com/MalenkiySolovey/solovey-ui/api/remotesub"
+	telegramhttp "github.com/MalenkiySolovey/solovey-ui/api/telegram"
+	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
+	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
@@ -26,8 +33,12 @@ type TokenInMemory struct {
 
 type APIv2Handler struct {
 	ApiService
-	tokensMu sync.RWMutex
-	tokens   map[string]TokenInMemory
+	auth      *authhttp.Handler
+	config    *confighttp.Handler
+	db        *dbtransferhttp.Handler
+	telemetry *telemetryhttp.Handler
+	tokensMu  sync.RWMutex
+	tokens    map[string]TokenInMemory
 }
 
 const (
@@ -48,6 +59,10 @@ func NewAPIv2Handler(g *gin.RouterGroup, options ...Option) *APIv2Handler {
 		ApiService: NewApiService(options...),
 		tokens:     map[string]TokenInMemory{},
 	}
+	a.auth = a.authHandler()
+	a.config = a.configHandler()
+	a.db = a.dbTransferHandler()
+	a.telemetry = a.telemetryHandler()
 	a.ReloadTokens()
 	a.initRouter(g)
 	return a
@@ -57,16 +72,31 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 	g.Use(func(c *gin.Context) {
 		a.checkToken(c)
 	})
-	g.GET("/security/audit", a.ApiService.GetSecurityAudit)
-	g.POST("/rotateSubSecret", a.ApiService.RotateSubSecret)
-	g.POST("/telegram/test", a.ApiService.TestTelegram)
-	g.POST("/telegram/backup", a.ApiService.BackupToTelegram)
-	g.POST("/telegram/backup/run", a.ApiService.RunTelegramBackup)
-	g.GET("/logs/entries", a.ApiService.GetLogEntries)
-	g.GET("/diagnostics/report", a.ApiService.GetDiagnosticsReport)
-	g.GET("/diagnostics/bundle", a.ApiService.GetDiagnosticsBundle)
-	registerImportXUIRoutes(g, &a.ApiService)
-	registerRemoteOutboundSubscriptionRoutes(g, &a.ApiService)
+	g.GET("/security/audit", a.telemetry.GetSecurityAudit)
+	g.POST("/rotateSubSecret", a.config.RotateSubSecret)
+	telegramhttp.RegisterRoutes(g, telegramhttp.Deps{
+		Settings:       a.SettingService,
+		Telegram:       a.TelegramService,
+		AuditService:   a.AuditService,
+		RequireScope:   a.requireTokenScopeAny,
+		Actor:          requestActor,
+		RemoteIP:       getRemoteIp,
+		CheckRateLimit: checkTelegramBackupManualRateLimit,
+		Audit:          a.recordAudit,
+		JSONObj:        jsonObj,
+	})
+	g.GET("/logs/entries", a.telemetry.GetLogEntries)
+	g.GET("/diagnostics/report", a.telemetry.GetDiagnosticsReport)
+	g.GET("/diagnostics/bundle", a.telemetry.GetDiagnosticsBundle)
+	importxuihttp.RegisterRoutes(g, a.importXUIDeps())
+	remotesubhttp.RegisterRoutes(g, remotesubhttp.Deps{
+		Service:        &a.RemoteOutboundService,
+		RequireScope:   a.requireTokenScopeAny,
+		Actor:          requestActor,
+		ValidateTarget: confighttp.ValidateOutboundCheckTarget,
+		JSONObj:        jsonObj,
+		JSONMsg:        jsonMsg,
+	})
 	g.POST("/:postAction", a.postHandler)
 	g.GET("/:getAction", a.getHandler)
 }
@@ -129,21 +159,21 @@ func (a *APIv2Handler) postHandler(c *gin.Context) {
 
 	switch action {
 	case "save":
-		a.ApiService.Save(c, username)
+		a.config.Save(c, username)
 	case "reorder":
-		a.ApiService.Reorder(c, username)
+		a.config.Reorder(c, username)
 	case "restartApp":
-		a.ApiService.RestartApp(c)
+		a.config.RestartApp(c)
 	case "restartSb":
-		a.ApiService.RestartSb(c)
+		a.config.RestartSb(c)
 	case "linkConvert":
-		a.ApiService.LinkConvert(c)
+		a.config.LinkConvert(c)
 	case "subConvert":
-		a.ApiService.SubConvert(c)
+		a.config.SubConvert(c)
 	case "importdb":
-		a.ApiService.ImportDb(c)
+		a.db.ImportDb(c)
 	case "rotateSubSecret":
-		a.ApiService.RotateSubSecret(c)
+		a.config.RotateSubSecret(c)
 	default:
 		jsonMsg(c, "failed", common.NewError("unknown action: ", action))
 	}
@@ -157,33 +187,33 @@ func (a *APIv2Handler) getHandler(c *gin.Context) {
 
 	switch action {
 	case "load":
-		a.ApiService.LoadData(c)
+		a.config.LoadData(c)
 	case "inbounds", "outbounds", "endpoints", "services", "tls", "clients", "config":
-		err := a.ApiService.LoadPartialData(c, []string{action})
+		err := a.config.LoadPartialData(c, []string{action})
 		if err != nil {
 			jsonMsg(c, action, err)
 		}
 		return
 	case "users":
-		a.ApiService.GetUsers(c)
+		a.auth.GetUsers(c)
 	case "settings":
-		a.ApiService.GetSettings(c)
+		a.config.GetSettings(c)
 	case "stats":
-		a.ApiService.GetStats(c)
+		a.telemetry.GetStats(c)
 	case "status":
-		a.ApiService.GetStatus(c)
+		a.telemetry.GetStatus(c)
 	case "onlines":
-		a.ApiService.GetOnlines(c)
+		a.telemetry.GetOnlines(c)
 	case "logs":
-		a.ApiService.GetLogs(c)
+		a.telemetry.GetLogs(c)
 	case "changes":
-		a.ApiService.CheckChanges(c)
+		a.config.CheckChanges(c)
 	case "keypairs":
-		a.ApiService.GetKeypairs(c)
+		a.telemetry.GetKeypairs(c)
 	case "getdb":
-		a.ApiService.GetDb(c)
+		a.db.DownloadDatabase(c)
 	case "checkOutbound":
-		a.ApiService.GetCheckOutbound(c)
+		a.config.GetCheckOutbound(c)
 	default:
 		jsonMsg(c, "failed", common.NewError("unknown action: ", action))
 	}
@@ -250,7 +280,7 @@ func (a *APIv2Handler) checkToken(c *gin.Context) {
 }
 
 func (a *APIv2Handler) ReloadTokens() {
-	tokens, err := a.ApiService.LoadTokens()
+	tokens, err := a.auth.LoadTokens()
 	if err != nil {
 		logger.Error("unable to load tokens: ", err)
 		return

@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -9,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
@@ -25,7 +26,7 @@ func TestIntegrationAuthFlowLoginCSRFSaveSettingsPublishesRealtime(t *testing.T)
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "webPath").Update("value", "/").Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "webPath").Update("value", "/").Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := (&service.UserService{}).UpdateFirstUser("admin", "phase3-password"); err != nil {
@@ -109,7 +110,7 @@ func TestIntegrationAuthFlowLoginCSRFSaveSettingsPublishesRealtime(t *testing.T)
 	assertIntegrationAuditEvent(t, "settings_save_rejected_key", "settings")
 
 	var change model.Changes
-	if err := database.GetDB().Where("actor = ? AND key = ? AND action = ?", "admin", "settings", "set").First(&change).Error; err != nil {
+	if err := dbsqlite.DB().Where("actor = ? AND key = ? AND action = ?", "admin", "settings", "set").First(&change).Error; err != nil {
 		t.Fatal(err)
 	}
 }
@@ -121,7 +122,7 @@ func TestIntegrationAuthFlowSettingsSaveSuccessAudit(t *testing.T) {
 	}
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
 		router.POST("/api/save", func(c *gin.Context) {
-			(&ApiService{}).Save(c, "admin")
+			(&ApiService{}).configHandler().Save(c, "admin")
 		})
 	})
 
@@ -141,8 +142,10 @@ func TestIntegrationAuthFlowSettingsSaveSuccessAudit(t *testing.T) {
 		t.Fatalf("settings save returned %d body=%s", recorder.Code, recorder.Body.String())
 	}
 
+	flushAPIAudit(t)
+
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "settings_save_succeeded").Order("id desc").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "settings_save_succeeded").Order("id desc").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Resource != "settings" || event.Severity != service.AuditSeverityInfo {
@@ -186,6 +189,7 @@ func performIntegrationRequest(router *gin.Engine, req *http.Request, jar *integ
 	}
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, req)
+	_ = service.StopAuditWriter(context.Background())
 	if jar != nil {
 		jar.store(recorder.Result().Cookies())
 	}
@@ -237,8 +241,9 @@ func expectIntegrationRealtimeTopic(t *testing.T, events <-chan realtime.Event, 
 
 func assertIntegrationAuditEvent(t *testing.T, eventName string, resource string) model.AuditEvent {
 	t.Helper()
+	flushAPIAudit(t)
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", eventName).Order("id desc").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", eventName).Order("id desc").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Resource != resource {

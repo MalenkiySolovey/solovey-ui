@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
 	"github.com/gin-gonic/gin"
 )
 
@@ -86,48 +87,34 @@ func withAPITokenNow(t *testing.T, now time.Time) {
 }
 
 func TestSecurityConsumeWSTokenDoubleSpendExpiredAndCapacity(t *testing.T) {
-	_ = sweepAllWSTokens()
-	t.Cleanup(func() { _ = sweepAllWSTokens() })
+	_ = realtimehttp.ResetTokens()
+	t.Cleanup(func() { _ = realtimehttp.ResetTokens() })
 
-	wsTokens.Lock()
-	wsTokens.tokens[wsTokenDigest("single-use")] = realtimeToken{user: "admin", expiresAt: time.Now().Add(time.Minute)}
-	wsTokens.Unlock()
-	if user, ok := consumeWSToken("single-use"); !ok || user != "admin" {
+	realtimehttp.StoreToken("single-use", "admin", time.Now().Add(time.Minute))
+	if user, ok := realtimehttp.ConsumeToken("single-use"); !ok || user != "admin" {
 		t.Fatalf("first consume failed: user=%q ok=%v", user, ok)
 	}
-	if user, ok := consumeWSToken("single-use"); ok || user != "" {
+	if user, ok := realtimehttp.ConsumeToken("single-use"); ok || user != "" {
 		t.Fatalf("second consume should fail: user=%q ok=%v", user, ok)
 	}
 
-	wsTokens.Lock()
-	expiredDigest := wsTokenDigest("expired")
-	wsTokens.tokens[expiredDigest] = realtimeToken{user: "admin", expiresAt: time.Now().Add(-time.Second)}
-	wsTokens.Unlock()
-	if user, ok := consumeWSToken("expired"); ok || user != "" {
+	realtimehttp.StoreToken("expired", "admin", time.Now().Add(-time.Second))
+	if user, ok := realtimehttp.ConsumeToken("expired"); ok || user != "" {
 		t.Fatalf("expired consume should fail: user=%q ok=%v", user, ok)
 	}
-	wsTokens.Lock()
-	_, stillPresent := wsTokens.tokens[expiredDigest]
-	wsTokens.Unlock()
-	if stillPresent {
+	if realtimehttp.HasToken("expired") {
 		t.Fatal("expired matched token should be deleted after consume attempt")
 	}
 
-	oldDigest := wsTokenDigest("oldest")
-	wsTokens.Lock()
-	wsTokens.tokens[oldDigest] = realtimeToken{user: "admin", expiresAt: time.Now().Add(time.Minute)}
-	for i := 0; i < maxWSTokens; i++ {
+	realtimehttp.StoreToken("oldest", "admin", time.Now().Add(time.Minute))
+	for i := 0; i < realtimehttp.MaxTokens; i++ {
 		token := "new-" + strconv.Itoa(i)
-		wsTokens.tokens[wsTokenDigest(token)] = realtimeToken{user: "admin", expiresAt: time.Now().Add(time.Hour + time.Duration(i)*time.Second)}
+		realtimehttp.StoreToken(token, "admin", time.Now().Add(time.Hour+time.Duration(i)*time.Second))
 	}
-	enforceWSTokenCapLocked()
-	_, oldStillPresent := wsTokens.tokens[oldDigest]
-	size := len(wsTokens.tokens)
-	wsTokens.Unlock()
-	if oldStillPresent {
+	if realtimehttp.HasToken("oldest") {
 		t.Fatal("oldest websocket token was not evicted when capacity was exceeded")
 	}
-	if size != maxWSTokens {
-		t.Fatalf("unexpected websocket token capacity size %d, want %d", size, maxWSTokens)
+	if size := realtimehttp.TokenCount(); size != realtimehttp.MaxTokens {
+		t.Fatalf("unexpected websocket token capacity size %d, want %d", size, realtimehttp.MaxTokens)
 	}
 }

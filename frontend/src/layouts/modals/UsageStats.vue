@@ -31,7 +31,7 @@
 
 <script lang="ts">
 import { computed, ref, watch } from 'vue'
-import HttpUtils from '@/plugins/httputil'
+import { loadUsageStats } from '@/shared/composables/useOperationsData'
 import { HumanReadable } from '@/plugins/utils'
 import { i18n } from '@/locales'
 
@@ -76,7 +76,7 @@ export default {
 
     const refresh = async () => {
       loading.value = true
-      const data = await HttpUtils.get('api/status', { r: 'db' })
+      const data = await loadUsageStats()
       if (data.success && data.obj) {
         info.value = data.obj.db ?? data.obj
       }

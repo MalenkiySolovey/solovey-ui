@@ -7,8 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 
 	gormlogger "gorm.io/gorm/logger"
@@ -108,18 +108,18 @@ func initIPMonitorPerfDB(tb testing.TB) {
 	tb.Helper()
 	ResetCaches()
 	realtime.CloseAll("phase5_reset")
-	closeIPMonitorTestDB(database.GetDB())
+	closeIPMonitorTestDB(dbsqlite.DB())
 	dir := makeIPMonitorTempDir(tb, "s-ui-ipmonitor-perf-")
 	tb.Setenv("SUI_DB_FOLDER", dir)
-	if err := database.InitDB(filepath.Join(dir, "s-ui.db")); err != nil {
+	if err := dbsqlite.Init(filepath.Join(dir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			tb.Skip(err)
 		}
 		tb.Fatal(err)
 	}
-	database.GetDB().Config.Logger = gormlogger.Discard
+	dbsqlite.DB().Config.Logger = gormlogger.Discard
 	tb.Cleanup(func() {
-		closeIPMonitorTestDB(database.GetDB())
+		closeIPMonitorTestDB(dbsqlite.DB())
 		ResetCaches()
 		realtime.CloseAll("phase5_done")
 	})
@@ -142,7 +142,7 @@ func seedIPMonitorPerfClients(tb testing.TB, clients int, ipsPerClient int) []st
 			Links:       []byte(`[]`),
 		}
 	}
-	if err := database.GetDB().CreateInBatches(&rows, database.SafeSQLiteBatchSize(database.GetDB(), &model.Client{})).Error; err != nil {
+	if err := dbsqlite.DB().CreateInBatches(&rows, dbsqlite.BatchSize(dbsqlite.DB(), &model.Client{})).Error; err != nil {
 		tb.Fatal(err)
 	}
 	now := time.Now().Unix()
@@ -162,7 +162,7 @@ func seedIPMonitorPerfClients(tb testing.TB, clients int, ipsPerClient int) []st
 			})
 		}
 	}
-	if err := database.GetDB().CreateInBatches(&ipRows, database.SafeSQLiteBatchSize(database.GetDB(), &model.ClientIP{})).Error; err != nil {
+	if err := dbsqlite.DB().CreateInBatches(&ipRows, dbsqlite.BatchSize(dbsqlite.DB(), &model.ClientIP{})).Error; err != nil {
 		tb.Fatal(err)
 	}
 	return names

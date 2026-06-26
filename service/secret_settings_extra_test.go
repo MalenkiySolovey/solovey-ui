@@ -3,8 +3,8 @@ package service
 import (
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 )
 
@@ -44,8 +44,9 @@ func TestDecryptPrimarySecretboxCandidateDoesNotAuditFallback(t *testing.T) {
 		t.Fatalf("unexpected decrypted value %q", decrypted)
 	}
 
+	flushAuditForTest(t)
 	var count int64
-	if err := database.GetDB().Model(model.AuditEvent{}).Where("event = ?", "settings_secretbox_key_fallback").Count(&count).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.AuditEvent{}).Where("event = ?", "settings_secretbox_key_fallback").Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
 	if count != 0 {
@@ -70,15 +71,16 @@ func TestLegacySecretboxFallbackDoesNotAuditAfterFix_XFAILIssue17(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "telegramBotToken").Update("value", legacyValue).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "telegramBotToken").Update("value", legacyValue).Error; err != nil {
 		t.Fatal(err)
 	}
 	if _, err := settingService.decryptSettingValue("telegramBotToken", legacyValue); err != nil {
 		t.Fatal(err)
 	}
 
+	flushAuditForTest(t)
 	var count int64
-	if err := database.GetDB().Model(model.AuditEvent{}).Where("event = ?", "settings_secretbox_key_fallback").Count(&count).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.AuditEvent{}).Where("event = ?", "settings_secretbox_key_fallback").Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
 	if count != 0 {

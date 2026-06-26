@@ -10,9 +10,11 @@ import (
 	"time"
 	"unsafe"
 
-	"github.com/MalenkiySolovey/solovey-ui/core"
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
+	coretracker "github.com/MalenkiySolovey/solovey-ui/core/tracker"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	gormlogger "gorm.io/gorm/logger"
 )
 
@@ -22,7 +24,7 @@ func BenchmarkStatsService_SaveStats(b *testing.B) {
 		b.Run(fmt.Sprintf("clients_%d", clients), func(b *testing.B) {
 			initServicePerfDB(b)
 			seedStatsBenchClients(b, clients)
-			tracker := core.NewStatsTracker()
+			tracker := coretracker.NewStatsTracker()
 			statsService := &StatsService{Runtime: NewRuntime(syntheticStatsCoreForBench(b, tracker))}
 			b.ReportMetric(float64(clients), "clients")
 			b.ReportMetric(float64(clients*2), "stats/input")
@@ -58,7 +60,7 @@ func BenchmarkUpdateClientTrafficDeltas(b *testing.B) {
 			b.ReportMetric(float64(emptyPercent), "empty_pct")
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				tx := database.GetDB().Begin()
+				tx := dbsqlite.DB().Begin()
 				if tx.Error != nil {
 					b.Fatal(tx.Error)
 				}
@@ -87,22 +89,22 @@ func seedStatsBenchClients(tb testing.TB, n int) {
 			IPLimitMode: "monitor",
 		}
 	}
-	if err := database.GetDB().CreateInBatches(&clients, database.SafeSQLiteBatchSize(database.GetDB(), &model.Client{})).Error; err != nil {
+	if err := dbsqlite.DB().CreateInBatches(&clients, dbsqlite.BatchSize(dbsqlite.DB(), &model.Client{})).Error; err != nil {
 		tb.Fatal(err)
 	}
 }
 
-func syntheticStatsCoreForBench(tb testing.TB, tracker *core.StatsTracker) *core.Core {
+func syntheticStatsCoreForBench(tb testing.TB, tracker *coretracker.StatsTracker) *coreruntime.Core {
 	tb.Helper()
-	box := &core.Box{}
+	box := &corebox.Box{}
 	setUnexportedFieldForBench(reflect.ValueOf(box).Elem().FieldByName("statsTracker"), reflect.ValueOf(tracker))
-	coreInstance := core.NewCore()
+	coreInstance := coreruntime.NewCore()
 	setUnexportedFieldForBench(reflect.ValueOf(coreInstance).Elem().FieldByName("isRunning"), reflect.ValueOf(true))
 	setUnexportedFieldForBench(reflect.ValueOf(coreInstance).Elem().FieldByName("instance"), reflect.ValueOf(box))
 	return coreInstance
 }
 
-func seedSyntheticUserStatsForBench(tb testing.TB, tracker *core.StatsTracker, n int) {
+func seedSyntheticUserStatsForBench(tb testing.TB, tracker *coretracker.StatsTracker, n int) {
 	tb.Helper()
 	trackerValue := reflect.ValueOf(tracker).Elem()
 	usersField := trackerValue.FieldByName("users")
@@ -132,7 +134,7 @@ func setUnexportedFieldForBench(field reflect.Value, value reflect.Value) {
 
 func initServicePerfDB(tb testing.TB) {
 	tb.Helper()
-	if db := database.GetDB(); db != nil {
+	if db := dbsqlite.DB(); db != nil {
 		if sqlDB, err := db.DB(); err == nil {
 			_ = sqlDB.Close()
 			time.Sleep(25 * time.Millisecond)
@@ -140,15 +142,15 @@ func initServicePerfDB(tb testing.TB) {
 	}
 	dir := tb.TempDir()
 	tb.Setenv("SUI_DB_FOLDER", dir)
-	if err := database.InitDB(filepath.Join(dir, "s-ui.db")); err != nil {
+	if err := dbsqlite.Init(filepath.Join(dir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			tb.Skip(err)
 		}
 		tb.Fatal(err)
 	}
-	database.GetDB().Config.Logger = gormlogger.Discard
+	dbsqlite.DB().Config.Logger = gormlogger.Discard
 	tb.Cleanup(func() {
-		if db := database.GetDB(); db != nil {
+		if db := dbsqlite.DB(); db != nil {
 			if sqlDB, err := db.DB(); err == nil {
 				_ = sqlDB.Close()
 			}

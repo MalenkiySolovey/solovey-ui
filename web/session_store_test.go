@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	ginsessions "github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/securecookie"
@@ -134,13 +134,13 @@ func TestSQLiteSessionStoreCreatesSchemaAfterLiveDBSwap(t *testing.T) {
 	tempDir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", tempDir)
 	dbPath := filepath.Join(tempDir, "s-ui.db")
-	if err := database.InitDB(dbPath); err != nil {
+	if err := dbsqlite.Init(dbPath); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
 		t.Fatal(err)
 	}
-	db2 := database.GetDB()
+	db2 := dbsqlite.DB()
 	t.Cleanup(func() { closeSQLiteSessionTestDB(db2) })
 
 	router := gin.New()
@@ -192,14 +192,14 @@ func initSQLiteSessionTestDB(tb testing.TB) *gorm.DB {
 	tb.Helper()
 	tempDir := tb.TempDir()
 	tb.Setenv("SUI_DB_FOLDER", tempDir)
-	closeSQLiteSessionTestDB(database.GetDB())
-	if err := database.InitDB(filepath.Join(tempDir, "s-ui.db")); err != nil {
+	closeSQLiteSessionTestDB(dbsqlite.DB())
+	if err := dbsqlite.Init(filepath.Join(tempDir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			tb.Skip(err)
 		}
 		tb.Fatal(err)
 	}
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	tb.Cleanup(func() { closeSQLiteSessionTestDB(db) })
 	return db
 }

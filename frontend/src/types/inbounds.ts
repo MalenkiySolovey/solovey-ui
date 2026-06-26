@@ -41,6 +41,7 @@ export interface Listen {
   routing_mark?: number | string
   reuse_addr?: boolean
   netns?: string
+  proxy_protocol?: boolean
   tcp_fast_open?: boolean
   tcp_multi_path?: boolean
   udp_fragment?: boolean

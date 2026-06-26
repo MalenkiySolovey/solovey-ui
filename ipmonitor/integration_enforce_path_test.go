@@ -3,8 +3,8 @@ package ipmonitor
 import (
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 func TestIntegrationAllowEnforcePathLimitModes(t *testing.T) {
@@ -54,7 +54,7 @@ func TestIntegrationAllowEnforcePathLimitModes(t *testing.T) {
 
 func seedIntegrationIPClient(t *testing.T, name string, limit int, mode string, enabled bool) {
 	t.Helper()
-	if err := database.GetDB().Create(&model.Client{
+	if err := dbsqlite.DB().Create(&model.Client{
 		Enable:      enabled,
 		Name:        name,
 		LimitIP:     limit,

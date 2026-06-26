@@ -5,14 +5,14 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 func TestConfigSaveRedactsSensitiveChangePayload(t *testing.T) {
 	t.Setenv("SUI_SECRETBOX_KEY", encodedTestSecretboxKey())
 	initSettingTestDB(t)
-	t.Cleanup(ReplaceDefaultRuntimeForTest(NewRuntimeWithCoreProvider(nil)))
+	replaceDefaultRuntimeForTest(t, NewRuntimeWithCoreProvider(nil))
 	payload, err := json.Marshal(map[string]string{
 		"telegramBotToken": "1234567890:" + strings.Repeat("A", 35),
 		"telegramChatID":   "42",
@@ -26,7 +26,7 @@ func TestConfigSaveRedactsSensitiveChangePayload(t *testing.T) {
 	}
 
 	var change model.Changes
-	if err := database.GetDB().Where("key = ?", "settings").First(&change).Error; err != nil {
+	if err := dbsqlite.DB().Where("key = ?", "settings").First(&change).Error; err != nil {
 		t.Fatal(err)
 	}
 	stored := string(change.Obj)

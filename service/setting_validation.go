@@ -1,35 +1,20 @@
 package service
 
 import (
-	"sort"
-	"strings"
+	"os"
 
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
+	settingsschema "github.com/MalenkiySolovey/solovey-ui/internal/settings/schema"
+	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/internal/settings/validation"
 )
-
-func (s *SettingService) validateSaveKeys(settings map[string]string) error {
-	for _, key := range sortedSettingKeys(settings) {
-		if strings.HasSuffix(key, "HasSecret") {
-			baseKey := strings.TrimSuffix(key, "HasSecret")
-			if isEncryptedSettingKey(baseKey) {
-				continue
-			}
-			return common.NewError("invalid setting key: ", key)
-		}
-		if !isEditableSettingKey(key) {
-			return common.NewError("invalid setting key: ", key)
-		}
-	}
-	return nil
-}
 
 func (s *SettingService) validateAll(settings map[string]string) error {
 	if err := s.validateSubscriptionPathSettings(settings); err != nil {
 		return err
 	}
-	for _, key := range sortedSettingKeys(settings) {
+	for _, key := range settingcatalog.SortedKeys(settings) {
 		obj := settings[key]
-		if shouldSkipSettingValidationKey(key) {
+		if settingsschema.IsSecretPresenceMarker(key) {
 			continue
 		}
 		if err := s.validateSettingInput(key, obj); err != nil {
@@ -39,47 +24,73 @@ func (s *SettingService) validateAll(settings map[string]string) error {
 	return nil
 }
 
-func sortedSettingKeys(settings map[string]string) []string {
-	keys := make([]string, 0, len(settings))
-	for key := range settings {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	return keys
-}
-
-func shouldSkipSettingValidationKey(key string) bool {
-	return strings.HasSuffix(key, "HasSecret")
-}
-
 func (s *SettingService) validateSettingInput(key string, value string) error {
-	if err := validateProxyURLSetting(key, value); err != nil {
+	if err := settingsvalidation.ValidateProxyURLSetting(key, value, StoredSecretMarker); err != nil {
 		return err
 	}
-	if err := validateTelegramSettingInput(key, value); err != nil {
+	if err := settingsvalidation.ValidateTelegramSettingInput(key, value, StoredSecretMarker); err != nil {
 		return err
 	}
-	if err := validateSessionSettingInput(key, value); err != nil {
+	if err := settingsvalidation.ValidateSessionSettingInput(key, value); err != nil {
 		return err
 	}
-	if err := validateRuntimeSettingInput(key, value); err != nil {
+	if err := settingsvalidation.ValidateRuntimeSettingInput(key, value); err != nil {
 		return err
 	}
-	if err := validateSubscriptionSettingInput(key, value); err != nil {
+	if err := settingsvalidation.ValidateSubscriptionSettingInput(key, value); err != nil {
 		return err
 	}
-	if err := validatePaidSubSettingInput(key, value); err != nil {
+	if err := settingsvalidation.ValidatePaidSubSettingInput(key, value); err != nil {
+		return err
+	}
+	if err := settingsvalidation.ValidateIPCertSettingInput(key, value); err != nil {
 		return err
 	}
 	return s.validateEndpointSettingInput(key, value)
 }
 
-func validateProxyURLSetting(key string, value string) error {
-	if key != settingKeyTelegramProxyURL && key != settingKeyPaidSubProxyURL {
+func (s *SettingService) validateEndpointSettingInput(key string, value string) error {
+	return settingsvalidation.ValidateEndpointSettingInput(key, value, s.fileExists)
+}
+
+func (s *SettingService) fileExists(path string) error {
+	_, err := os.Stat(path)
+	return err
+}
+
+func (s *SettingService) validateSubscriptionPathSettings(settings map[string]string) error {
+	touched := false
+	for _, key := range subscriptionPathSettingKeys {
+		if _, ok := settings[key]; ok {
+			touched = true
+			break
+		}
+	}
+	if !touched {
 		return nil
 	}
-	if value == "" || value == StoredSecretMarker {
-		return nil
+
+	paths := make(map[string]string, len(subscriptionPathSettingKeys))
+	for _, key := range subscriptionPathSettingKeys {
+		value, ok := settings[key]
+		if !ok {
+			var err error
+			value, err = s.getString(key)
+			if err != nil {
+				return err
+			}
+		}
+		normalized, err := settingsvalidation.NormalizeAndValidatePathSetting(key, value)
+		if err != nil {
+			return err
+		}
+		paths[key] = normalized
 	}
-	return validateTelegramProxyURL(value)
+
+	return settingsvalidation.ValidateSubscriptionPaths(settingsvalidation.SubscriptionPaths{
+		Base:  paths[settingKeySubPath],
+		JSON:  paths[settingKeySubJsonPath],
+		Clash: paths[settingKeySubClashPath],
+		Xray:  paths[settingKeySubXrayPath],
+	})
 }

@@ -1,5 +1,7 @@
 package service
 
+import settingsvalidation "github.com/MalenkiySolovey/solovey-ui/internal/settings/validation"
+
 func (s *SettingService) GetSubListen() (string, error) {
 	return s.getString(settingKeySubListen)
 }
@@ -21,11 +23,11 @@ func (s *SettingService) getNormalizedSubPath(key string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return normalizeURLPath(subPath), nil
+	return settingsvalidation.NormalizeURLPath(subPath), nil
 }
 
 func (s *SettingService) SetSubPath(subPath string) error {
-	subPath, err := normalizeAndValidatePathSetting(settingKeySubPath, subPath)
+	subPath, err := settingsvalidation.NormalizeAndValidatePathSetting(settingKeySubPath, subPath)
 	if err != nil {
 		return err
 	}
@@ -76,6 +78,18 @@ func (s *SettingService) GetSubClashEnable() (bool, error) {
 	return s.getBool(settingKeySubClashEnable)
 }
 
+func (s *SettingService) GetSubXrayEnable() (bool, error) {
+	return s.getBool(settingKeySubXrayEnable)
+}
+
+func (s *SettingService) GetSubRemoteGroupAdaptation() (string, error) {
+	return s.getString(settingKeySubRemoteGroupAdaptation)
+}
+
+func (s *SettingService) GetSubRemoteConversionPolicy() (string, error) {
+	return s.getString(settingKeySubRemoteConversionPolicy)
+}
+
 func (s *SettingService) GetSubJsonPath() (string, error) {
 	return s.getNormalizedSubPath(settingKeySubJsonPath)
 }
@@ -84,12 +98,20 @@ func (s *SettingService) GetSubClashPath() (string, error) {
 	return s.getNormalizedSubPath(settingKeySubClashPath)
 }
 
+func (s *SettingService) GetSubXrayPath() (string, error) {
+	return s.getNormalizedSubPath(settingKeySubXrayPath)
+}
+
 func (s *SettingService) GetSubJsonURI() (string, error) {
 	return s.getString(settingKeySubJsonURI)
 }
 
 func (s *SettingService) GetSubClashURI() (string, error) {
 	return s.getString(settingKeySubClashURI)
+}
+
+func (s *SettingService) GetSubXrayURI() (string, error) {
+	return s.getString(settingKeySubXrayURI)
 }
 
 func (s *SettingService) GetSubTitle() (string, error) {

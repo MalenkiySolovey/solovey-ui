@@ -1,0 +1,28 @@
+package service
+
+import (
+	"encoding/json"
+	"testing"
+)
+
+func TestConfigSaveDelOfMissingEntityIsIdempotent(t *testing.T) {
+	cases := []struct {
+		obj  string
+		data string
+	}{
+		{"inbounds", `"missing-tag"`},
+		{"outbounds", `"missing-tag"`},
+		{"endpoints", `"missing-tag"`},
+		{"services", `"missing-tag"`},
+		{"tls", `999999`},
+	}
+	for _, tc := range cases {
+		t.Run(tc.obj, func(t *testing.T) {
+			initSettingTestDB(t)
+			cs := NewConfigServiceWithRuntime(NewRuntimeWithCoreProvider(nil))
+			if _, err := cs.Save(tc.obj, "del", json.RawMessage(tc.data), "", "admin", "example.com"); err != nil {
+				t.Fatalf("deleting a missing %s should be a no-op success, got: %v", tc.obj, err)
+			}
+		})
+	}
+}

@@ -4,13 +4,13 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 func TestSingBoxConfigBuilderBuildsRuntimeSectionsFromDB(t *testing.T) {
 	initSettingTestDB(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	if err := db.Create(&model.Inbound{
 		Type:    "direct",
 		Tag:     "builder-in",

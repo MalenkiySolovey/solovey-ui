@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 // TestBuildClientLinks is the CI regression guard for the migration bug where
@@ -15,7 +15,7 @@ import (
 // trojan/grpc inbound with no TLS — the exact shape that reproduced the report.
 func TestBuildClientLinks(t *testing.T) {
 	initCompatDest(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 
 	inbound := model.Inbound{
 		Type:    "trojan",
@@ -70,7 +70,7 @@ func TestBuildClientLinks(t *testing.T) {
 // hostname falls back to the destination's configured sub/web domain.
 func TestResolveLinkHostname(t *testing.T) {
 	initCompatDest(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 
 	// No domains configured, no explicit host -> empty.
 	if got := resolveLinkHostname(db, ""); got != "" {
@@ -101,7 +101,7 @@ func TestResolveLinkHostname(t *testing.T) {
 // (external/sub) links, and never clobbers links on a host-less import.
 func TestBuildMergedClientLinks(t *testing.T) {
 	initCompatDest(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 
 	inbound := model.Inbound{
 		Type:    "trojan",

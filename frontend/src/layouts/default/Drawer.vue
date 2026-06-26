@@ -42,7 +42,7 @@
 <script lang="ts" setup>
 import { computed } from 'vue'
 import router from '@/router'
-import { logout } from '@/plugins/httputil'
+import { logout } from '@/shared/composables/useAuthOperations'
 import logoUrl from '@/assets/logo.png'
 
 const props = defineProps(['isMobile','displayDrawer'])
@@ -60,7 +60,6 @@ const menu = [
   { title: 'pages.endpoints', icon: 'mdi-cloud-tags',  path: '/endpoints' },
   { title: 'pages.services', icon: 'mdi-server',  path: '/services' },
   { title: 'pages.tls', icon: 'mdi-certificate',  path: '/tls' },
-  { title: 'pages.basics', icon: 'mdi-application-cog',  path: '/basics' },
   { title: 'pages.rules', icon: 'mdi-routes',  path: '/rules' },
   { title: 'pages.dns', icon: 'mdi-dns',  path: '/dns' },
   { title: 'pages.singBoxConfig', icon: 'mdi-code-json',  path: '/sing-box-config' },
@@ -70,6 +69,7 @@ const menu = [
   { title: 'pages.audit', icon: 'mdi-shield-search',  path: '/audit' },
   { title: 'pages.diagnostics', icon: 'mdi-clipboard-search',  path: '/diagnostics' },
   { title: 'pages.settings', icon: 'mdi-cog',  path: '/settings' },
+  { title: 'pages.support', icon: 'mdi-heart-outline', path: '/support' },
 ]
 
 const Logout = async () => {

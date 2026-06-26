@@ -17,3 +17,7 @@ func (s *SettingService) SetConfig(config string) error {
 func (s *SettingService) SaveConfig(tx *gorm.DB, config json.RawMessage) error {
 	return NewSingBoxBaseConfigStore(s).Save(tx, config)
 }
+
+func (s *SettingService) ConfigBlobChanged(tx *gorm.DB, config json.RawMessage) (bool, error) {
+	return NewSingBoxBaseConfigStore(s).Changed(tx, config)
+}

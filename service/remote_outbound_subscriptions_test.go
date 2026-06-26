@@ -8,13 +8,15 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	remotesub "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/remote"
+	"gorm.io/gorm"
 )
 
 func TestOutboundDeleteClearsRemoteOutboundLink(t *testing.T) {
 	initSettingTestDB(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 
 	subscription, group := createRemoteOutboundSubscriptionFixture(t, "Remote", "ros-")
 	outbound := model.Outbound{Tag: "ros-node", Type: "vless", Options: json.RawMessage(`{"server":"example.com","server_port":443}`)}
@@ -44,11 +46,18 @@ func TestOutboundDeleteClearsRemoteOutboundLink(t *testing.T) {
 	if err := db.Create(&connection).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := addRemoteOutboundGroupConnectionTx(db, group.Id, connection.Id, time.Now().Unix()); err != nil {
+	if err := remotesub.AddGroupConnection(db, group.Id, connection.Id, time.Now().Unix()); err != nil {
 		t.Fatal(err)
 	}
 
 	payload, _ := json.Marshal(outbound.Tag)
+	if err := (&OutboundService{}).Save(db, "del", payload); err == nil || !strings.Contains(err.Error(), "still referenced") {
+		t.Fatalf("referenced outbound delete should be blocked, got %v", err)
+	}
+
+	if err := db.Delete(&urltest).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := (&OutboundService{}).Save(db, "del", payload); err != nil {
 		t.Fatal(err)
 	}
@@ -67,18 +76,6 @@ func TestOutboundDeleteClearsRemoteOutboundLink(t *testing.T) {
 	if outbounds != 0 {
 		t.Fatalf("outbound was not deleted, count=%d", outbounds)
 	}
-	var storedURLTest model.Outbound
-	if err := db.First(&storedURLTest, urltest.Id).Error; err != nil {
-		t.Fatal(err)
-	}
-	var options map[string]interface{}
-	if err := json.Unmarshal(storedURLTest.Options, &options); err != nil {
-		t.Fatal(err)
-	}
-	refs, _ := options["outbounds"].([]interface{})
-	if len(refs) != 1 || refs[0] != "direct" {
-		t.Fatalf("urltest references were not pruned safely: %s", string(storedURLTest.Options))
-	}
 	var storedGroup model.RemoteOutboundGroup
 	if err := db.First(&storedGroup, group.Id).Error; err != nil {
 		t.Fatal(err)
@@ -88,9 +85,9 @@ func TestOutboundDeleteClearsRemoteOutboundLink(t *testing.T) {
 	}
 }
 
-func TestRemoteOutboundUnsyncPrunesSelectorReferences(t *testing.T) {
+func TestRemoteOutboundUnsyncBlocksReferencedSelector(t *testing.T) {
 	initSettingTestDB(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 
 	subscription, group := createRemoteOutboundSubscriptionFixture(t, "Remote", "ros-")
 	outbound := model.Outbound{Tag: "ros-node", Type: "vless", Options: json.RawMessage(`{"server":"example.com","server_port":443}`)}
@@ -117,25 +114,18 @@ func TestRemoteOutboundUnsyncPrunesSelectorReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := (&RemoteOutboundService{}).unsyncConnectionFromOutboundTx(db, &connection); err != nil {
+	if err := remotesub.UnsyncConnectionFromOutbound(db, &connection); err == nil || !strings.Contains(err.Error(), "still referenced") {
+		t.Fatalf("referenced remote outbound unsync should be blocked, got %v", err)
+	}
+
+	selector.Options = json.RawMessage(`{"outbounds":["direct"],"default":"direct"}`)
+	if err := db.Save(&selector).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := remotesub.UnsyncConnectionFromOutbound(db, &connection); err != nil {
 		t.Fatal(err)
 	}
 
-	var storedSelector model.Outbound
-	if err := db.First(&storedSelector, selector.Id).Error; err != nil {
-		t.Fatal(err)
-	}
-	var options map[string]interface{}
-	if err := json.Unmarshal(storedSelector.Options, &options); err != nil {
-		t.Fatal(err)
-	}
-	refs, _ := options["outbounds"].([]interface{})
-	if len(refs) != 1 || refs[0] != "direct" {
-		t.Fatalf("selector references were not pruned safely: %s", string(storedSelector.Options))
-	}
-	if options["default"] != "direct" {
-		t.Fatalf("selector default was not moved to fallback: %s", string(storedSelector.Options))
-	}
 	var deleted int64
 	if err := db.Model(&model.Outbound{}).Where("tag = ?", outbound.Tag).Count(&deleted).Error; err != nil {
 		t.Fatal(err)
@@ -145,10 +135,196 @@ func TestRemoteOutboundUnsyncPrunesSelectorReferences(t *testing.T) {
 	}
 }
 
+func TestRemoteOutboundManualEditDetachesManagedOutbound(t *testing.T) {
+	initSettingTestDB(t)
+	db := dbsqlite.DB()
+
+	_, _, connection, outbound := createSyncedRemoteOutboundFixture(t, "Remote", "ros-", "ros-node")
+	payload, _ := json.Marshal(map[string]interface{}{
+		"id":          outbound.Id,
+		"type":        outbound.Type,
+		"tag":         outbound.Tag,
+		"server":      "changed.example.com",
+		"server_port": 443,
+	})
+	if err := (&OutboundService{}).Save(db, "edit", payload); err != nil {
+		t.Fatal(err)
+	}
+
+	var stored model.RemoteOutboundConnection
+	if err := db.First(&stored, connection.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Synced || stored.OutboundId != nil {
+		t.Fatalf("manual outbound edit did not detach remote link: %#v", stored)
+	}
+
+	outbounds, err := (&OutboundService{}).GetAll()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, item := range *outbounds {
+		if item["tag"] != outbound.Tag {
+			continue
+		}
+		if item["remoteOutboundManaged"] == true {
+			t.Fatalf("manually edited outbound is still presented as remote-managed: %#v", item)
+		}
+		return
+	}
+	t.Fatalf("edited outbound %q not found", outbound.Tag)
+}
+
+func TestRemoteOutboundSubscriptionDeleteBlocksReferencedOutbound(t *testing.T) {
+	initSettingTestDB(t)
+	db := dbsqlite.DB()
+
+	subscription, group := createRemoteOutboundSubscriptionFixture(t, "Remote", "ros-")
+	outbound := model.Outbound{Tag: "ros-node", Type: "vless", Options: json.RawMessage(`{"server":"example.com","server_port":443}`)}
+	if err := db.Create(&outbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	urltest := model.Outbound{Tag: "auto", Type: "urltest", Options: json.RawMessage(`{"outbounds":["ros-node"],"url":"https://www.gstatic.com/generate_204"}`)}
+	if err := db.Create(&urltest).Error; err != nil {
+		t.Fatal(err)
+	}
+	connection := model.RemoteOutboundConnection{
+		SubscriptionId: subscription.Id,
+		GroupId:        group.Id,
+		Name:           "Node",
+		SourceKey:      "node",
+		Type:           outbound.Type,
+		OutboundTag:    outbound.Tag,
+		Enabled:        true,
+		Synced:         true,
+		OutboundId:     &outbound.Id,
+		Options:        outbound.Options,
+	}
+	if err := db.Create(&connection).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	service := &RemoteOutboundService{}
+	if err := service.DeleteSubscription(subscription.Id, "test"); err == nil || !strings.Contains(err.Error(), "still referenced") {
+		t.Fatalf("referenced subscription outbound delete should be blocked, got %v", err)
+	}
+
+	var remaining int64
+	if err := db.Model(&model.RemoteOutboundSubscription{}).Where("id = ?", subscription.Id).Count(&remaining).Error; err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 1 {
+		t.Fatalf("subscription should remain after blocked delete, count=%d", remaining)
+	}
+	if err := db.Delete(&urltest).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := service.DeleteSubscription(subscription.Id, "test"); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := db.Model(&model.RemoteOutboundSubscription{}).Where("id = ?", subscription.Id).Count(&remaining).Error; err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 0 {
+		t.Fatalf("subscription was not deleted, count=%d", remaining)
+	}
+	if err := db.Model(&model.Outbound{}).Where("tag = ?", outbound.Tag).Count(&remaining).Error; err != nil {
+		t.Fatal(err)
+	}
+	if remaining != 0 {
+		t.Fatalf("synced outbound was not deleted after references were removed, count=%d", remaining)
+	}
+}
+
+func TestRemoteOutboundUnsyncBlocksConfigReferences(t *testing.T) {
+	cases := []struct {
+		name    string
+		config  string
+		locator string
+	}{
+		{
+			name:    "route final",
+			config:  `{"route":{"final":"ros-node","rules":[]},"dns":{"servers":[]}}`,
+			locator: "route final",
+		},
+		{
+			name:    "route rule",
+			config:  `{"route":{"rules":[{"outbound":"ros-node"}]},"dns":{"servers":[]}}`,
+			locator: "route rule #0",
+		},
+		{
+			name:    "dns server detour",
+			config:  `{"dns":{"servers":[{"tag":"dns-remote","address":"1.1.1.1","detour":"ros-node"}]},"route":{"rules":[]}}`,
+			locator: `dns server "dns-remote"`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			initSettingTestDB(t)
+			db := dbsqlite.DB()
+			_, _, connection, _ := createSyncedRemoteOutboundFixture(t, "Remote", "ros-", "ros-node")
+			seedRemoteOutboundConfig(t, tc.config)
+
+			err := remotesub.UnsyncConnectionFromOutbound(db, &connection)
+			if err == nil {
+				t.Fatal("referenced remote outbound unsync should be blocked")
+			}
+			if !strings.Contains(err.Error(), "still referenced") || !strings.Contains(err.Error(), tc.locator) {
+				t.Fatalf("unexpected reference error: %v", err)
+			}
+		})
+	}
+}
+
+func TestRemoteOutboundSubscriptionDeleteBlocksConfigReferences(t *testing.T) {
+	cases := []struct {
+		name    string
+		config  string
+		locator string
+	}{
+		{
+			name:    "route final",
+			config:  `{"route":{"final":"ros-node","rules":[]},"dns":{"servers":[]}}`,
+			locator: "route final",
+		},
+		{
+			name:    "dns server detour",
+			config:  `{"dns":{"servers":[{"tag":"dns-remote","address":"1.1.1.1","detour":"ros-node"}]},"route":{"rules":[]}}`,
+			locator: `dns server "dns-remote"`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			initSettingTestDB(t)
+			subscription, _, _, _ := createSyncedRemoteOutboundFixture(t, "Remote", "ros-", "ros-node")
+			seedRemoteOutboundConfig(t, tc.config)
+
+			err := (&RemoteOutboundService{}).DeleteSubscription(subscription.Id, "test")
+			if err == nil {
+				t.Fatal("referenced subscription delete should be blocked")
+			}
+			if !strings.Contains(err.Error(), "still referenced") || !strings.Contains(err.Error(), tc.locator) {
+				t.Fatalf("unexpected reference error: %v", err)
+			}
+
+			var remaining int64
+			if err := dbsqlite.DB().Model(&model.RemoteOutboundSubscription{}).Where("id = ?", subscription.Id).Count(&remaining).Error; err != nil {
+				t.Fatal(err)
+			}
+			if remaining != 1 {
+				t.Fatalf("subscription should remain after blocked delete, count=%d", remaining)
+			}
+		})
+	}
+}
+
 func TestRemoteOutboundRetagKeepsUnicodeAndUpdatesLinkedOutbound(t *testing.T) {
 	initSettingTestDB(t)
 	t.Setenv("SUI_ALLOW_PRIVATE_SUB_URLS", "true")
-	db := database.GetDB()
+	db := dbsqlite.DB()
 
 	subscription, group := createRemoteOutboundSubscriptionFixture(t, "Подписка", "старый-")
 	outbound := model.Outbound{Tag: "старый-Узел-Москва", Type: "vless", Options: json.RawMessage(`{"server":"example.com","server_port":443}`)}
@@ -203,7 +379,7 @@ func TestRemoteOutboundRetagKeepsUnicodeAndUpdatesLinkedOutbound(t *testing.T) {
 
 func TestRemoteOutboundSaveRejectsUnsafeURLBeforePersisting(t *testing.T) {
 	initSettingTestDB(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 
 	_, err := (&RemoteOutboundService{}).SaveSubscription(model.RemoteOutboundSubscription{
 		Name:    "Unsafe",
@@ -225,7 +401,7 @@ func TestRemoteOutboundSaveRejectsUnsafeURLBeforePersisting(t *testing.T) {
 
 func TestRemoteOutboundAutoRefreshUsesInternalRefreshWithoutDeadlock(t *testing.T) {
 	initSettingTestDB(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	subscription := model.RemoteOutboundSubscription{
 		Name:           "Auto",
 		Url:            "file:///tmp/sub.txt",
@@ -256,15 +432,15 @@ func TestRemoteOutboundAutoRefreshUsesInternalRefreshWithoutDeadlock(t *testing.
 
 func TestRemoteOutboundGroupsAreManyToManyAndFallbackToDefault(t *testing.T) {
 	initSettingTestDB(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	service := &RemoteOutboundService{}
 
 	subscription, defaultGroup := createRemoteOutboundSubscriptionFixture(t, "Remote", "ros-")
-	groupA, err := service.SaveGroup(model.RemoteOutboundGroup{SubscriptionId: subscription.Id, Name: "Client"}, true, "test")
+	groupA, err := service.SaveGroup(model.RemoteOutboundGroup{SubscriptionId: subscription.Id, Name: "Client", Enabled: true}, true, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	groupB, err := service.SaveGroup(model.RemoteOutboundGroup{SubscriptionId: subscription.Id, Name: "Outbound"}, true, "test")
+	groupB, err := service.SaveGroup(model.RemoteOutboundGroup{SubscriptionId: subscription.Id, Name: "Outbound", Enabled: true}, true, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -301,9 +477,50 @@ func TestRemoteOutboundGroupsAreManyToManyAndFallbackToDefault(t *testing.T) {
 	assertRemoteGroupMemberships(t, connection.Id, defaultGroup.Id)
 }
 
+func TestRemoteOutboundBulkGroupCreatesMissingGroupPerSubscription(t *testing.T) {
+	initSettingTestDB(t)
+	db := dbsqlite.DB()
+	service := &RemoteOutboundService{}
+
+	subA, _ := createRemoteOutboundSubscriptionFixture(t, "Remote A", "a-")
+	subB, _ := createRemoteOutboundSubscriptionFixture(t, "Remote B", "b-")
+	if _, err := service.SaveGroup(model.RemoteOutboundGroup{SubscriptionId: subA.Id, Name: "Shared", Enabled: true}, true, "test"); err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := service.SaveGroupForAllSubscriptions(" Shared ", "test")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Name != "Shared" || result.Created != 1 || result.Skipped != 1 {
+		t.Fatalf("bulk result = %#v", result)
+	}
+
+	for _, sub := range []model.RemoteOutboundSubscription{subA, subB} {
+		var count int64
+		if err := db.Model(&model.RemoteOutboundGroup{}).
+			Where("subscription_id = ? AND name = ?", sub.Id, "Shared").
+			Count(&count).Error; err != nil {
+			t.Fatal(err)
+		}
+		if count != 1 {
+			t.Fatalf("subscription %d shared group count = %d, want 1", sub.Id, count)
+		}
+	}
+}
+
+func TestRemoteOutboundBulkGroupRequiresSubscriptions(t *testing.T) {
+	initSettingTestDB(t)
+
+	_, err := (&RemoteOutboundService{}).SaveGroupForAllSubscriptions("Shared", "test")
+	if err == nil || !strings.Contains(err.Error(), "no remote subscriptions") {
+		t.Fatalf("empty bulk group should fail clearly, got %v", err)
+	}
+}
+
 func TestRemoteOutboundDefaultGroupMembershipCanBeCleared(t *testing.T) {
 	initSettingTestDB(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	service := &RemoteOutboundService{}
 
 	_, defaultGroup := createRemoteOutboundSubscriptionFixture(t, "Remote", "ros-")
@@ -320,7 +537,7 @@ func TestRemoteOutboundDefaultGroupMembershipCanBeCleared(t *testing.T) {
 	if err := db.Create(&connection).Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := addRemoteOutboundGroupConnectionTx(db, defaultGroup.Id, connection.Id, time.Now().Unix()); err != nil {
+	if err := remotesub.AddGroupConnection(db, defaultGroup.Id, connection.Id, time.Now().Unix()); err != nil {
 		t.Fatal(err)
 	}
 
@@ -345,15 +562,15 @@ func TestRemoteOutboundDefaultGroupMembershipCanBeCleared(t *testing.T) {
 
 func TestRemoteOutboundSharedGroupDoesNotDuplicateOrUnsyncEarly(t *testing.T) {
 	initSettingTestDB(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	service := &RemoteOutboundService{}
 
 	subscription, _ := createRemoteOutboundSubscriptionFixture(t, "Remote", "ros-")
-	groupA, err := service.SaveGroup(model.RemoteOutboundGroup{SubscriptionId: subscription.Id, Name: "Client"}, true, "test")
+	groupA, err := service.SaveGroup(model.RemoteOutboundGroup{SubscriptionId: subscription.Id, Name: "Client", Enabled: true}, true, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
-	groupB, err := service.SaveGroup(model.RemoteOutboundGroup{SubscriptionId: subscription.Id, Name: "Outbound"}, true, "test")
+	groupB, err := service.SaveGroup(model.RemoteOutboundGroup{SubscriptionId: subscription.Id, Name: "Outbound", Enabled: true}, true, "test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -376,9 +593,9 @@ func TestRemoteOutboundSharedGroupDoesNotDuplicateOrUnsyncEarly(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	outbounds, tags, err := service.OutboundsForClientLinks(json.RawMessage(`[
-		{"type":"remoteGroup","groupId":` + strconv.FormatUint(uint64(groupA.Id), 10) + `},
-		{"type":"remoteGroup","groupId":` + strconv.FormatUint(uint64(groupB.Id), 10) + `}
+	outbounds, tags, err := remotesub.OutboundsForClientLinks(dbsqlite.DB(), json.RawMessage(`[
+		{"type":"remoteGroup","groupId":`+strconv.FormatUint(uint64(groupA.Id), 10)+`},
+		{"type":"remoteGroup","groupId":`+strconv.FormatUint(uint64(groupB.Id), 10)+`}
 	]`))
 	if err != nil {
 		t.Fatal(err)
@@ -418,7 +635,7 @@ func TestRemoteOutboundSharedGroupDoesNotDuplicateOrUnsyncEarly(t *testing.T) {
 func assertRemoteGroupMemberships(t *testing.T, connectionID uint, expected ...uint) {
 	t.Helper()
 	var links []model.RemoteOutboundGroupConnection
-	if err := database.GetDB().
+	if err := dbsqlite.DB().
 		Where("connection_id = ?", connectionID).
 		Order("group_id ASC").
 		Find(&links).Error; err != nil {
@@ -440,7 +657,7 @@ func assertRemoteGroupMemberships(t *testing.T, connectionID uint, expected ...u
 
 func createRemoteOutboundSubscriptionFixture(t *testing.T, name string, prefix string) (model.RemoteOutboundSubscription, model.RemoteOutboundGroup) {
 	t.Helper()
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	subscription := model.RemoteOutboundSubscription{
 		Name:      name,
 		Url:       "https://example.com/sub",
@@ -459,4 +676,40 @@ func createRemoteOutboundSubscriptionFixture(t *testing.T, name string, prefix s
 		t.Fatal(err)
 	}
 	return subscription, group
+}
+
+func createSyncedRemoteOutboundFixture(t *testing.T, name string, prefix string, tag string) (model.RemoteOutboundSubscription, model.RemoteOutboundGroup, model.RemoteOutboundConnection, model.Outbound) {
+	t.Helper()
+	db := dbsqlite.DB()
+	subscription, group := createRemoteOutboundSubscriptionFixture(t, name, prefix)
+	outbound := model.Outbound{Tag: tag, Type: "vless", Options: json.RawMessage(`{"server":"example.com","server_port":443}`)}
+	if err := db.Create(&outbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	connection := model.RemoteOutboundConnection{
+		SubscriptionId: subscription.Id,
+		GroupId:        group.Id,
+		Name:           "Node",
+		SourceKey:      "node",
+		Type:           outbound.Type,
+		OutboundTag:    outbound.Tag,
+		Enabled:        true,
+		Synced:         true,
+		OutboundId:     &outbound.Id,
+		Options:        outbound.Options,
+	}
+	if err := db.Create(&connection).Error; err != nil {
+		t.Fatal(err)
+	}
+	return subscription, group, connection, outbound
+}
+
+func seedRemoteOutboundConfig(t *testing.T, raw string) {
+	t.Helper()
+	db := dbsqlite.DB()
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		return (&SettingService{}).SaveConfig(tx, json.RawMessage(raw))
+	}); err != nil {
+		t.Fatal(err)
+	}
 }

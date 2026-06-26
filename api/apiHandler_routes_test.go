@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	importxuihttp "github.com/MalenkiySolovey/solovey-ui/api/importxui"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
@@ -45,6 +46,7 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/deleteToken",
 			"/api/setTokenEnabled",
 			"/api/logoutAllAdmins",
+			"/api/logout",
 			"/api/checkOutbounds",
 			"/api/rotateSubSecret",
 			"/api/remote-outbound-subscriptions/save",
@@ -60,10 +62,11 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/telegram/backup",
 			"/api/telegram/backup/run",
 			"/api/ip-monitor/:client/clear",
+			"/api/update/check",
+			"/api/update/apply",
 		},
 		http.MethodGet: {
 			"/api/csrf",
-			"/api/logout",
 			"/api/load",
 			"/api/inbounds",
 			"/api/outbounds",
@@ -74,8 +77,12 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/config",
 			"/api/users",
 			"/api/settings",
+			"/api/settings/schema",
 			"/api/stats",
+			"/api/stats/traffic",
 			"/api/status",
+			"/api/failover-status",
+			"/api/update/status",
 			"/api/onlines",
 			"/api/logs",
 			"/api/logs/entries",
@@ -89,6 +96,7 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/checkOutbound",
 			"/api/version",
 			"/api/remote-outbound-subscriptions",
+			"/api/remote-outbound-subscriptions/collected",
 			"/api/remote-outbound-subscriptions/test",
 			"/api/remote-outbound-subscriptions/test-all",
 			"/api/remote-outbound-subscriptions/connections/test",
@@ -124,9 +132,9 @@ func TestImportXUIRoutesUseSharedRegistryIssue35(t *testing.T) {
 		routes[route.Method+" "+route.Path] = route
 	}
 
-	for _, spec := range importXUIRouteSpecs {
+	for _, spec := range importxuihttp.RouteSpecs {
 		for _, prefix := range []string{"/api", "/apiv2"} {
-			key := spec.method + " " + prefix + spec.path
+			key := spec.Method + " " + prefix + spec.Path
 			if _, ok := routes[key]; !ok {
 				t.Fatalf("missing import-xui shared route %s", key)
 			}

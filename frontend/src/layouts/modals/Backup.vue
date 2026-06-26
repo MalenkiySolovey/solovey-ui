@@ -109,7 +109,7 @@
 </template>
 
 <script lang="ts">
-import HttpUtils from '@/plugins/httputil'
+import { importXuiDatabase, loadBackupSettings, restoreDatabase } from '@/shared/composables/useBackupOperations'
 export default {
   props: ['control', 'visible'],
   data() {
@@ -178,7 +178,7 @@ export default {
 
       this.control.visible = false
 
-      const uploadMsg = await HttpUtils.post('api/importdb', formData)
+      const uploadMsg = await restoreDatabase(formData)
 
       if (uploadMsg.success) {
         await new Promise(resolve => setTimeout(resolve, 1000))
@@ -191,7 +191,7 @@ export default {
       return expected.every((value, index) => magic[index] === value)
     },
     async loadTelegramBackupPassphraseState() {
-      const msg = await HttpUtils.get('api/settings')
+      const msg = await loadBackupSettings()
       if (msg.success) {
         this.telegramBackupPassphraseConfigured = msg.obj?.telegramBackupPassphraseHasSecret === 'true'
         if (!this.telegramBackupPassphraseConfigured) {
@@ -214,7 +214,7 @@ export default {
           formData.append('dryRun', this.xuiDryRun ? '1' : '0')
           formData.append('strategy', this.xuiStrategy)
 
-          const uploadMsg = await HttpUtils.post('api/import-xui', formData)
+          const uploadMsg = await importXuiDatabase(formData)
 
           if (uploadMsg.success) {
             this.xuiReport = uploadMsg.obj

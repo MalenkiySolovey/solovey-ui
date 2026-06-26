@@ -1,4 +1,5 @@
 import './uiMode/bootstrap'
+import './styles/manual-drop.scss'
 
 /**
  * main.ts

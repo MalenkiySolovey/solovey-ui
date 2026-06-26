@@ -28,8 +28,10 @@
     :enable-traffic="enableTraffic"
     @add="showModal(0)"
     @del="delEndpoint"
+    @del-many="delEndpointsBulk"
     @edit="showModal"
     @move="moveEndpoint"
+    @move-many-to="dragSelectedEndpoints"
     @move-to="dragEndpoint"
     @sort-by-name="sortEndpointsByName"
     @qr="showQrCode"
@@ -45,6 +47,15 @@
           style="margin: 0 5px;"
           @sort="sortEndpointsByName"
         />
+        <BulkSelectionControls
+          :active="endpointSelectMode"
+          :count="selectedEndpointCount"
+          inactive-color="secondary"
+          inactive-variant="outlined"
+          style="margin: 0 5px;"
+          @delete="deleteSelectedEndpoints"
+          @toggle="toggleEndpointSelectMode"
+        />
       </v-col>
     </v-row>
     <v-row>
@@ -55,14 +66,33 @@
         lg="2"
         v-for="(item, index) in <any[]>endpoints"
         :key="item.tag"
+        class="manual-drop-grid-cell"
+        :class="endpointDrag.indicatorClasses(item.id)"
+        :style="endpointDrag.indicatorStyles(item.id)"
         :draggable="false"
         @pointerdown="endpointDrag.prepare($event)"
         @dragstart="endpointDrag.start($event, item.id)"
-        @dragover="endpointDrag.over($event)"
+        @dragover="endpointDrag.overTarget($event, item.id, endpoints.map(row => row.id), endpointSelectMode ? selectedEndpointIds.map(Number) : [], false, 'grid')"
+        @dragleave="endpointDrag.leaveTarget($event, item.id)"
         @drop="onEndpointDrop($event, item.id)"
         @dragend="endpointDrag.clear($event)"
       >
-        <v-card rounded="xl" elevation="5" min-width="200" :title="item.tag">
+        <v-card
+          rounded="xl"
+          elevation="5"
+          min-width="200"
+          :title="item.tag"
+          class="endpoints__card"
+          :class="{ 'endpoints__card--selected': isEndpointSelected(item.id) }"
+        >
+          <div v-if="endpointSelectMode" class="endpoints__select manual-drag-no-drag">
+            <v-checkbox-btn
+              :model-value="isEndpointSelected(item.id)"
+              :aria-label="$t('table.selectRow')"
+              density="compact"
+              @update:model-value="toggleEndpointSelection(item.id, Boolean($event))"
+            />
+          </div>
           <v-card-subtitle style="margin-top: -15px;">
             <v-row>
               <v-col>{{ item.type }}</v-col>
@@ -141,22 +171,29 @@
 
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
+import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
 import ManualSortButton from '@/components/ManualSortButton.vue'
 import EndpointVue from '@/layouts/modals/Endpoint.vue'
 import Stats from '@/layouts/modals/Stats.vue'
 import QrCode from '@/layouts/modals/WgQrCode.vue'
 import { Endpoint } from '@/types/endpoints'
 import { computed, defineAsyncComponent, ref } from 'vue'
+import { useI18n } from 'vue-i18n'
 import { useUiMode } from '@/uiMode/useUiMode'
-import { useManualDrag } from '@/composables/useManualDrag'
+import { useManualDrag, type ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
 import {
   dragManualOrder,
   type ManualSortDirection,
+  moveManyManualOrder,
   moveManualOrder,
   sortManualOrderByText,
-} from '@/composables/useManualReorder'
+} from '@/shared/composables/dragSelection/manualReorder'
+import { useBulkSelection } from '@/shared/composables/dragSelection/bulkSelection'
+import { useConfirm } from '@/components/nexus/primitives/useConfirm'
 
 const { mode } = useUiMode()
+const { t } = useI18n()
+const { confirm } = useConfirm()
 
 const EndpointsNexusList = defineAsyncComponent(
   () => import('@/views/endpoints/EndpointsNexusList.vue'),
@@ -165,6 +202,13 @@ const EndpointsNexusList = defineAsyncComponent(
 const endpoints = computed((): Endpoint[] => {
   return <Endpoint[]> Data().endpoints
 })
+const endpointSelection = useBulkSelection(endpoints, item => item.id)
+const endpointSelectMode = endpointSelection.active
+const selectedEndpointIds = endpointSelection.selectedIds
+const selectedEndpointCount = endpointSelection.selectedCount
+const isEndpointSelected = endpointSelection.isSelected
+const toggleEndpointSelection = endpointSelection.toggle
+const toggleEndpointSelectMode = endpointSelection.toggleActive
 
 const endpointTags = computed((): any[] => {
   return endpoints.value?.map((o:Endpoint) => o.tag)
@@ -208,12 +252,43 @@ const delEndpoint = async (tag: string) => {
   if (success) delOverlay.value[index] = false
 }
 
+const delEndpointsBulk = async (tags: string[]) => {
+  const uniqueTags = [...new Set(tags.map(String).filter(Boolean))]
+  let success = true
+  for (const tag of uniqueTags) {
+    success = await Data().save("endpoints", "del", tag)
+    if (!success) break
+  }
+  if (success) {
+    delOverlay.value = []
+    endpointSelection.clear()
+  }
+  return success
+}
+
+const deleteSelectedEndpoints = async () => {
+  const rows = endpointSelection.selectedItems.value
+  if (rows.length === 0) return
+  const accepted = await confirm({
+    title: `${t('actions.delbulk')} ${t('objects.endpoint')}`,
+    message: rows.map(item => item.tag).join('\n'),
+    confirmLabel: t('actions.del'),
+    tone: 'error',
+  })
+  if (!accepted) return
+  await delEndpointsBulk(rows.map(item => item.tag))
+}
+
 const moveEndpoint = async (id: number, dir: number) => {
   await moveManualOrder("endpoints", endpoints.value as any[], id, dir)
 }
 
-const dragEndpoint = async (draggedId: number, targetId: number) => {
-  await dragManualOrder("endpoints", endpoints.value as any[], draggedId, targetId)
+const dragEndpoint = async (draggedId: number, targetId: number, position: ManualDropPosition | null = null) => {
+  await dragManualOrder("endpoints", endpoints.value as any[], draggedId, targetId, "id", position)
+}
+
+const dragSelectedEndpoints = async (draggedIds: number[], targetId: number, position: ManualDropPosition | null = null) => {
+  await moveManyManualOrder("endpoints", endpoints.value as any[], draggedIds, targetId, "id", position)
 }
 
 const sortEndpointsByName = async (direction: ManualSortDirection) => {
@@ -222,7 +297,13 @@ const sortEndpointsByName = async (direction: ManualSortDirection) => {
 
 const endpointDrag = useManualDrag<number>()
 const onEndpointDrop = (event: DragEvent, targetId: number) => {
-  endpointDrag.drop(event, targetId, dragEndpoint)
+  endpointDrag.drop(event, targetId, (draggedId, dropTargetId, position) => {
+    if (endpointSelectMode.value && endpointSelection.isSelected(draggedId)) {
+      void dragSelectedEndpoints(endpointSelection.selectedIds.value.map(Number), dropTargetId, position)
+      return
+    }
+    void dragEndpoint(draggedId, dropTargetId, position)
+  })
 }
 
 const showStats = (tag: string) => {
@@ -246,3 +327,21 @@ const closeQrCode = () => {
   qrcode.value.visible = false
 }
 </script>
+
+<style scoped>
+.endpoints__card {
+  position: relative;
+}
+
+.endpoints__card--selected {
+  outline: 2px solid rgb(var(--v-theme-primary));
+  outline-offset: 2px;
+}
+
+.endpoints__select {
+  position: absolute;
+  right: 8px;
+  top: 8px;
+  z-index: 2;
+}
+</style>

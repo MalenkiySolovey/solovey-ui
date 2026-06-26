@@ -1,0 +1,38 @@
+.dns-nexus__section,
+.dns-nexus__section-label {
+  color: var(--nexus-text-secondary);
+  font-size: 0.78rem;
+  font-weight: 650;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+}
+
+.dns-nexus__section {
+  margin-block: var(--nexus-gap-4) var(--nexus-gap-2);
+}
+
+.dns-nexus__section-row,
+.dns__section-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: space-between;
+}
+
+.dns-nexus__section-row {
+  margin-block: var(--nexus-gap-4) var(--nexus-gap-2);
+}
+
+.dns-nexus__section-row .dns-nexus__section {
+  margin-block: 0;
+}
+
+.dns-nexus__tag {
+  color: var(--nexus-text-primary);
+  font-weight: 600;
+}
+
+.dns-nexus__muted {
+  color: var(--nexus-text-muted);
+}

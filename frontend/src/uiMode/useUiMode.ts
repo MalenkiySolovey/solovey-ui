@@ -22,10 +22,17 @@ const effective = computed<UiMode>(() =>
   isNexusEnabled() ? persisted.value : 'classic',
 )
 
+const syncDocumentMode = (mode: UiMode): void => {
+  if (typeof document !== 'undefined') {
+    document.documentElement.dataset.uiMode = mode
+  }
+}
+
 const setMode = (next: UiMode): void => {
   if (!isUiMode(next)) return
 
   persisted.value = next
+  syncDocumentMode(effective.value)
 
   try {
     localStorage.setItem(UI_MODE_KEY, next)

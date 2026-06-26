@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 )
 
 func localLinkRemarks(t *testing.T, raw json.RawMessage) []string {
@@ -39,7 +40,7 @@ func TestUpdateLinksWithFixedInboundsUsesEachClientsOwnInbounds(t *testing.T) {
 			Options: json.RawMessage(`{"listen":"0.0.0.0","listen_port":443}`),
 			Addrs:   json.RawMessage(`[]`),
 		}
-		if err := database.GetDB().Create(&in).Error; err != nil {
+		if err := dbsqlite.DB().Create(&in).Error; err != nil {
 			t.Fatal(err)
 		}
 		return in
@@ -60,12 +61,12 @@ func TestUpdateLinksWithFixedInboundsUsesEachClientsOwnInbounds(t *testing.T) {
 		Links:    json.RawMessage(`[]`),
 	}
 	for _, cl := range []*model.Client{client1, client2} {
-		if err := database.GetDB().Create(cl).Error; err != nil {
+		if err := dbsqlite.DB().Create(cl).Error; err != nil {
 			t.Fatal(err)
 		}
 	}
 
-	if err := (&ClientService{}).updateLinksWithFixedInbounds(database.GetDB(), []*model.Client{client1, client2}, "example.com"); err != nil {
+	if err := entityclients.UpdateLinksWithFixedInbounds(dbsqlite.DB(), []*model.Client{client1, client2}, "example.com"); err != nil {
 		t.Fatal(err)
 	}
 

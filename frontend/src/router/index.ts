@@ -64,8 +64,7 @@ const routes = [
       },
       {
         path: '/basics',
-        name: 'pages.basics',
-        component: () => import('@/views/Basics.vue'),
+        redirect: '/settings?tab=basics',
       },
       {
         path: '/dns',
@@ -111,6 +110,11 @@ const routes = [
         path: '/settings',
         name: 'pages.settings',
         component: () => import('@/views/Settings.vue'),
+      },
+      {
+        path: '/support',
+        name: 'pages.support',
+        component: () => import('@/views/Donations.vue'),
       },
     ],
   },

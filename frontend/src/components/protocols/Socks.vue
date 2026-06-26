@@ -36,8 +36,8 @@
 </template>
 
 <script lang="ts">
-import Network from '@/components/Network.vue'
-import UoT from '@/components/UoT.vue'
+import Network from '@/components/fields/Network.vue'
+import UoT from '@/components/fields/UoT.vue'
 
 export default {
   props: ['data'],

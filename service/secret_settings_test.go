@@ -9,25 +9,23 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 	"gorm.io/gorm"
 )
 
 func initSettingTestDB(t *testing.T) *SettingService {
 	t.Helper()
-	prevAuditSync := AuditSyncForTest
-	AuditSyncForTest = true
-	t.Cleanup(func() { AuditSyncForTest = prevAuditSync })
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
-	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
+	if err := dbsqlite.Init(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
 		t.Fatal(err)
 	}
-	testDB := database.GetDB()
+	testDB := dbsqlite.DB()
 	t.Cleanup(func() {
 		if testDB != nil {
 			if sqlDB, err := testDB.DB(); err == nil {
@@ -57,14 +55,14 @@ func TestSecretSettingIsEncryptedAndMasked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, payload)
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	var setting model.Setting
-	if err := database.GetDB().Where("key = ?", "telegramBotToken").First(&setting).Error; err != nil {
+	if err := dbsqlite.DB().Where("key = ?", "telegramBotToken").First(&setting).Error; err != nil {
 		t.Fatal(err)
 	}
 	if setting.Value == "123456:secret-token" || !secretbox.IsEncrypted(setting.Value) {
@@ -96,7 +94,7 @@ func TestSecretSettingIsEncryptedAndMasked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, emptyPayload)
 	}); err != nil {
 		t.Fatal(err)
@@ -116,7 +114,7 @@ func TestLegacyPlaintextSecretRoundTripEncryptsOnSave(t *testing.T) {
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "telegramProxyPassword").Update("value", "legacy-plain-secret").Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "telegramProxyPassword").Update("value", "legacy-plain-secret").Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -134,14 +132,14 @@ func TestLegacyPlaintextSecretRoundTripEncryptsOnSave(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, payload)
 	}); err != nil {
 		t.Fatal(err)
 	}
 
 	var stored model.Setting
-	if err := database.GetDB().Where("key = ?", "telegramProxyPassword").First(&stored).Error; err != nil {
+	if err := dbsqlite.DB().Where("key = ?", "telegramProxyPassword").First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
 	if stored.Value == got || !secretbox.IsEncrypted(stored.Value) {
@@ -174,7 +172,7 @@ func TestTelegramBackupPassphraseEncryptedMaskedAndClearable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Transaction(func(tx *gorm.DB) error {
+	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, weakPayload)
 	}); err == nil || !strings.Contains(err.Error(), "weak_passphrase") {
 		t.Fatalf("expected weak passphrase validation, got %v", err)
@@ -191,7 +189,7 @@ func TestTelegramBackupPassphraseEncryptedMaskedAndClearable(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stored model.Setting
-	if err := database.GetDB().Where("key = ?", "telegramBackupPassphrase").First(&stored).Error; err != nil {
+	if err := dbsqlite.DB().Where("key = ?", "telegramBackupPassphrase").First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
 	if stored.Value == passphrase || !secretbox.IsEncrypted(stored.Value) {
@@ -204,7 +202,7 @@ func TestTelegramBackupPassphraseEncryptedMaskedAndClearable(t *testing.T) {
 	if string(decrypted) != passphrase {
 		t.Fatalf("unexpected passphrase %q", string(decrypted))
 	}
-	zeroBytes(decrypted)
+	common.WipeBytes(decrypted)
 
 	settings, err = settingService.GetAllSetting()
 	if err != nil {
@@ -214,8 +212,9 @@ func TestTelegramBackupPassphraseEncryptedMaskedAndClearable(t *testing.T) {
 		t.Fatalf("passphrase was not masked: %#v", *settings)
 	}
 
+	flushAuditForTest(t)
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "tg_backup_passphrase_changed").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "tg_backup_passphrase_changed").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Severity != AuditSeverityInfo || strings.Contains(string(event.Details), passphrase) {
@@ -330,7 +329,7 @@ func TestGetCookieKeysInvalidEnvFallsBackToDerivedKey(t *testing.T) {
 		t.Fatalf("expected derived 32-byte cookie key, got %d keys len=%d", len(keys), len(keys[0]))
 	}
 	var count int64
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "secret").Count(&count).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "secret").Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
@@ -358,7 +357,7 @@ func TestInvalidSecretboxEnvFallsBackToSettingsSecret(t *testing.T) {
 	}
 
 	var count int64
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "secret").Count(&count).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "secret").Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
@@ -413,7 +412,7 @@ func TestSecretboxLegacyFallbackAudits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "telegramBotToken").Update("value", legacyValue).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "telegramBotToken").Update("value", legacyValue).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -425,8 +424,9 @@ func TestSecretboxLegacyFallbackAudits(t *testing.T) {
 		t.Fatalf("unexpected legacy decrypted value %q", got)
 	}
 
+	flushAuditForTest(t)
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "settings_secretbox_key_fallback").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "settings_secretbox_key_fallback").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Resource != "settings" || event.Severity != AuditSeverityWarn {
@@ -458,7 +458,7 @@ func TestSecretboxEnvOverrideCanReadSettingsSecretLegacyCiphertext(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "telegramProxyPassword").Update("value", legacyValue).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "telegramProxyPassword").Update("value", legacyValue).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -471,8 +471,9 @@ func TestSecretboxEnvOverrideCanReadSettingsSecretLegacyCiphertext(t *testing.T)
 		t.Fatalf("unexpected fallback value %q", got)
 	}
 
+	flushAuditForTest(t)
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "settings_secretbox_key_fallback").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "settings_secretbox_key_fallback").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(event.Details), `"candidate":"legacy_settings_secret"`) {

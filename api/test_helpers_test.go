@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-contrib/sessions"
@@ -55,7 +55,15 @@ func performAuthenticatedTestRequest(router *gin.Engine, req *http.Request, cook
 		req.AddCookie(c)
 	}
 	router.ServeHTTP(recorder, req)
+	_ = service.StopAuditWriter(context.Background())
 	return recorder
+}
+
+func flushAPIAudit(t testing.TB) {
+	t.Helper()
+	if err := service.StopAuditWriter(context.Background()); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func withTestTokenScope(username string, scope string, handler gin.HandlerFunc) gin.HandlerFunc {
@@ -76,7 +84,7 @@ func stopTokenUseDebouncerBeforeAPITestDBInit(tb testing.TB) {
 func initAPITestDB(tb testing.TB, dbPath string) {
 	tb.Helper()
 	stopTokenUseDebouncerBeforeAPITestDBInit(tb)
-	if err := database.InitDB(dbPath); err != nil {
+	if err := dbsqlite.Init(dbPath); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			tb.Skip(err)
 		}

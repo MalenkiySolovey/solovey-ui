@@ -1,6 +1,7 @@
 <template>
   <div
     class="nexus-area-series"
+    :class="{ 'nexus-area-series--compact': compact }"
     :aria-label="ariaLabel"
     :role="ariaLabel ? 'img' : undefined"
   >
@@ -49,9 +50,11 @@ const props = withDefaults(defineProps<{
   series?: Series[]
   ariaLabel?: string
   valueFormatter?: (value: number) => string
+  compact?: boolean
 }>(), {
   labels: () => [],
   series: () => [],
+  compact: false,
 })
 
 const SERIES_COLORS: SeriesColor[] = [
@@ -97,8 +100,7 @@ function colorFor(index: number): SeriesColor {
 }
 
 function resolveToken(chart: Chart, token: string, fallback: string): string {
-  if (typeof window === 'undefined')
-    return fallback
+  if (typeof window === 'undefined') return fallback
 
   return getComputedStyle(chart.canvas).getPropertyValue(token).trim() || fallback
 }
@@ -106,8 +108,7 @@ function resolveToken(chart: Chart, token: string, fallback: string): string {
 function withOpacity(color: string, opacity: number): string {
   const hex = color.match(/^#([\da-f]{3}|[\da-f]{6})$/i)?.[1]
 
-  if (!hex)
-    return opacity === 0 ? 'transparent' : color
+  if (!hex) return opacity === 0 ? 'transparent' : color
 
   const expandedHex = hex.length === 3
     ? hex.split('').map(value => `${value}${value}`).join('')
@@ -126,8 +127,7 @@ function areaGradient(
   const seriesColor = resolveToken(context.chart, color.token, color.fallback)
   const { chartArea, ctx } = context.chart
 
-  if (!chartArea)
-    return withOpacity(seriesColor, 0.22)
+  if (!chartArea) return withOpacity(seriesColor, 0.22)
 
   const gradient = ctx.createLinearGradient(0, chartArea.top, 0, chartArea.bottom)
   gradient.addColorStop(0, withOpacity(seriesColor, 0.3))
@@ -152,12 +152,9 @@ function tooltipValue(rawValue: unknown, fallback: string): string {
 
 function findTooltip(chart: Chart): HTMLElement | undefined {
   const host = chart.canvas.closest('.nexus-area-series')
-
-  if (!(host instanceof HTMLElement))
-    return
+  if (!(host instanceof HTMLElement)) return
 
   let tooltip = host.querySelector<HTMLElement>('.nexus-area-series__tooltip')
-
   if (!tooltip) {
     tooltip = document.createElement('div')
     tooltip.className = 'nexus-area-series__tooltip'
@@ -170,9 +167,7 @@ function findTooltip(chart: Chart): HTMLElement | undefined {
 
 function renderTooltip(chart: Chart, model: TooltipModel<'line'>): void {
   const tooltip = findTooltip(chart)
-
-  if (!tooltip)
-    return
+  if (!tooltip) return
 
   if (model.opacity === 0) {
     tooltip.hidden = true
@@ -268,6 +263,7 @@ const chartOptions = computed<ChartOptions<'line'>>(() => ({
       border: {
         display: false,
       },
+      display: !props.compact,
       grid: {
         display: false,
       },
@@ -280,6 +276,7 @@ const chartOptions = computed<ChartOptions<'line'>>(() => ({
       border: {
         display: false,
       },
+      display: !props.compact,
       grid: {
         color: context => resolveToken(
           context.chart,
@@ -306,6 +303,10 @@ const chartOptions = computed<ChartOptions<'line'>>(() => ({
 
 .nexus-area-series :deep(canvas) {
   display: block;
+}
+
+.nexus-area-series--compact {
+  min-block-size: 64px;
 }
 
 .nexus-area-series__empty {

@@ -3,15 +3,17 @@ package importxui
 import (
 	"context"
 
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/mapping"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/source"
 	"gorm.io/gorm"
 )
 
-func (s *importState) planTLS(ctx context.Context, tx *gorm.DB, src *sourceDB, plan *MigrationPlan, strategy Strategy) error {
-	return src.eachInbound(func(row xuiInboundRow) error {
+func (s *planningState) planTLS(ctx context.Context, tx *gorm.DB, src *source.Database, plan *MigrationPlan, strategy Strategy) error {
+	return src.EachInbound(func(row source.InboundRow) error {
 		if err := checkContext(ctx); err != nil {
 			return err
 		}
-		spec, warnings, err := extractReality(row)
+		spec, warnings, err := mapping.ExtractReality(row)
 		if err != nil {
 			return err
 		}
@@ -24,7 +26,7 @@ func (s *importState) planTLS(ctx context.Context, tx *gorm.DB, src *sourceDB, p
 		}
 		s.realityByKey[spec.Key] = spec
 		s.realityBySource[row.ID] = spec
-		record, err := buildTLSRecord(*spec)
+		record, err := mapping.BuildTLSRecord(*spec)
 		if err != nil {
 			return err
 		}
@@ -32,7 +34,7 @@ func (s *importState) planTLS(ctx context.Context, tx *gorm.DB, src *sourceDB, p
 		if err != nil {
 			return err
 		}
-		_, conflict, err := findExistingRealityTLS(tx, *spec)
+		_, conflict, err := mapping.FindExistingRealityTLS(tx, *spec)
 		if err != nil {
 			return err
 		}
@@ -50,8 +52,8 @@ func (s *importState) planTLS(ctx context.Context, tx *gorm.DB, src *sourceDB, p
 	})
 }
 
-func (s *importState) planPlainTLS(tx *gorm.DB, row xuiInboundRow, plan *MigrationPlan, strategy Strategy) error {
-	spec, warnings, err := extractPlainTLS(row)
+func (s *planningState) planPlainTLS(tx *gorm.DB, row source.InboundRow, plan *MigrationPlan, strategy Strategy) error {
+	spec, warnings, err := mapping.ExtractPlainTLS(row)
 	if err != nil {
 		return err
 	}
@@ -67,7 +69,7 @@ func (s *importState) planPlainTLS(tx *gorm.DB, row xuiInboundRow, plan *Migrati
 	}
 	s.plainTLSByKey[spec.Key] = spec
 	s.plainTLSBySource[row.ID] = spec
-	record, err := buildPlainTLSRecord(*spec)
+	record, err := mapping.BuildPlainTLSRecord(*spec)
 	if err != nil {
 		return err
 	}
@@ -75,7 +77,7 @@ func (s *importState) planPlainTLS(tx *gorm.DB, row xuiInboundRow, plan *Migrati
 	if err != nil {
 		return err
 	}
-	_, conflict, err := findExistingPlainTLS(tx, *spec)
+	_, conflict, err := mapping.FindExistingPlainTLS(tx, *spec)
 	if err != nil {
 		return err
 	}

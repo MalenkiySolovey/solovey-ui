@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-contrib/sessions"
@@ -40,6 +40,8 @@ func securityCSRFPostRoutes() []string {
 		"/api/telegram/backup",
 		"/api/telegram/backup/run",
 		"/api/ip-monitor/alice/clear",
+		"/api/update/check",
+		"/api/update/apply",
 		"/api/paidsub/bindings",
 		"/api/paidsub/tariffs",
 		"/api/paidsub/broadcast",
@@ -56,7 +58,7 @@ func newSecurityCSRFTestRouter(t *testing.T, settingService *service.SettingServ
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := settingService.Save(database.GetDB(), webPathPayload); err != nil {
+	if err := settingService.Save(dbsqlite.DB(), webPathPayload); err != nil {
 		t.Fatal(err)
 	}
 	gin.SetMode(gin.TestMode)
@@ -143,9 +145,9 @@ func TestSecurityCSRFMatrixDocumentsExceptions(t *testing.T) {
 	if login.Code == http.StatusForbidden {
 		t.Fatal("login must remain CSRF-exempt")
 	}
-	logout := performCSRFRequest(router, http.MethodGet, "/api/logout", "")
-	if logout.Code == http.StatusForbidden {
-		t.Fatal("GET logout must remain CSRF-exempt")
+	logout := performCSRFRequest(router, http.MethodPost, "/api/logout", "")
+	if logout.Code != http.StatusForbidden {
+		t.Fatalf("POST logout without CSRF token must be forbidden, got %d", logout.Code)
 	}
 	sessionLogin := performCSRFRequest(router, http.MethodGet, "/login", "")
 	if sessionLogin.Code != http.StatusNoContent {

@@ -47,6 +47,12 @@ class ManualTimers {
     this.intervals = this.intervals.filter((entry) => entry.id !== timerID)
   }) as unknown as typeof clearInterval
 
+  runTimeout(delay?: number) {
+    const index = this.timeouts.findIndex((entry) => entry.delay === delay)
+    const timer = index >= 0 ? this.timeouts.splice(index, 1)[0] : this.timeouts.shift()
+    timer?.callback()
+  }
+
   runNextTimeout() {
     const timer = this.timeouts.shift()
     timer?.callback()
@@ -70,6 +76,26 @@ const runtimeDeps = (overrides: Partial<ConstructorParameters<typeof WsRuntime>[
   baseUrl: '/',
   ...overrides,
 })
+
+const onlineEvents = () => {
+  const handlers = new Map<string, Set<() => void>>()
+  return {
+    target: {
+      addEventListener: vi.fn((type: string, handler: EventListenerOrEventListenerObject) => {
+        if (typeof handler !== 'function') return
+        const bucket = handlers.get(type) ?? new Set<() => void>()
+        bucket.add(handler as () => void)
+        handlers.set(type, bucket)
+      }),
+      removeEventListener: vi.fn((type: string, handler: EventListenerOrEventListenerObject) => {
+        handlers.get(type)?.delete(handler as () => void)
+      }),
+    } as unknown as Pick<Window, 'addEventListener' | 'removeEventListener'>,
+    dispatch(type: string) {
+      for (const handler of handlers.get(type) ?? []) handler()
+    },
+  }
+}
 
 describe('WsRuntime regression anchors', () => {
   afterEach(() => {
@@ -243,5 +269,40 @@ describe('WsRuntime regression anchors', () => {
     await vi.advanceTimersByTimeAsync(10000)
     expect(deps.loadData).toHaveBeenCalledTimes(1)
     expect(deps.createSocket).toHaveBeenCalledTimes(1)
+  })
+
+  it('heals from degraded fallback when the browser reports online', async () => {
+    const timers = new ManualTimers()
+    const events = onlineEvents()
+    const socket = new FakeSocket()
+    const deps = runtimeDeps({
+      getToken: vi.fn()
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce('ws-token'),
+      createSocket: vi.fn(() => socket),
+      onlineEvents: events.target,
+      setTimeout: timers.setTimeout,
+      clearTimeout: timers.clearTimeout,
+      setInterval: timers.setInterval,
+      clearInterval: timers.clearInterval,
+    })
+    const runtime = new WsRuntime(deps)
+
+    await runtime.connect()
+    expect(runtime.state).toBe('degraded')
+    expect(events.target.addEventListener).toHaveBeenCalledWith('online', expect.any(Function))
+
+    events.dispatch('online')
+    timers.runTimeout(100)
+    await flushPromises()
+
+    expect(deps.getToken).toHaveBeenCalledTimes(2)
+    expect(deps.createSocket).toHaveBeenCalledTimes(1)
+    expect(runtime.state).toBe('reconnecting')
+
+    socket.onopen?.()
+
+    expect(runtime.state).toBe('connected')
+    expect(events.target.removeEventListener).toHaveBeenCalledWith('online', expect.any(Function))
   })
 })

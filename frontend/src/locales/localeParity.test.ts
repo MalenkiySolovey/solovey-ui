@@ -1,9 +1,13 @@
 import { describe, expect, it } from 'vitest'
 
 import en from './en'
+import fa from './fa'
 import ru from './ru'
+import vi from './vi'
+import zhcn from './zhcn'
+import zhtw from './zhtw'
 
-// Project convention (see CLAUDE.md / redesign notes): en is the source of truth
+// Project convention: en is the source of truth
 // and ru is the second fully-maintained locale; fa/vi/zhcn/zhtw intentionally fall
 // back to en for newer keys (fallbackLocale='en'). So we enforce en<->ru parity
 // only — this catches a translation added to one but forgotten in the other (which
@@ -34,4 +38,63 @@ describe('en/ru locale key parity', () => {
     const extra = [...ruKeys].filter((k) => !enKeys.has(k)).sort()
     expect(extra, `keys in ru but missing from en: ${extra.join(', ')}`).toEqual([])
   })
+})
+
+describe('fully translated feature namespaces', () => {
+  const source = en as Record<string, unknown>
+  const namespaces = ['remoteOutbound', 'paidSub']
+  const expected = new Set(flatten(Object.fromEntries(namespaces.map((key) => [key, source[key]]))))
+  const locales = { fa, vi, zhcn, zhtw }
+
+  for (const [locale, messages] of Object.entries(locales)) {
+    it(`${locale} defines every subscription key`, () => {
+      const localized = messages as Record<string, unknown>
+      const actual = new Set(flatten(Object.fromEntries(namespaces.map((key) => [key, localized[key]]))))
+      const missing = [...expected].filter((key) => !actual.has(key)).sort()
+      const extra = [...actual].filter((key) => !expected.has(key)).sort()
+      expect({ missing, extra }).toEqual({ missing: [], extra: [] })
+    })
+  }
+})
+
+describe('ported UX translations', () => {
+  const locales = { en, fa, ru, vi, zhcn, zhtw }
+  const paths = [
+    'basic.hint',
+    'rule.action',
+    'setting.hint',
+    'telegram.hint',
+  ]
+
+  const pick = (messages: Record<string, unknown>, path: string) => {
+    return path.split('.').reduce<unknown>((value, key) => {
+      if (!value || typeof value !== 'object') return undefined
+      return (value as Record<string, unknown>)[key]
+    }, messages)
+  }
+
+  const expected = new Set(paths.flatMap((path) => {
+    const value = pick(en as Record<string, unknown>, path) as Record<string, unknown>
+    return flatten(value, path)
+  }))
+
+  for (const [locale, messages] of Object.entries(locales)) {
+    it(`${locale} defines every ported UX key`, () => {
+      const localized = messages as Record<string, unknown>
+      const actual = new Set(paths.flatMap((path) => {
+        const value = pick(localized, path) as Record<string, unknown>
+        return flatten(value ?? {}, path)
+      }))
+      const missing = [...expected].filter((key) => !actual.has(key)).sort()
+      expect(missing).toEqual([])
+    })
+
+    it(`${locale} has no empty top-level namespace`, () => {
+      const empty = Object.entries(messages as Record<string, unknown>)
+        .filter(([, value]) => value && typeof value === 'object' && !Array.isArray(value))
+        .filter(([, value]) => Object.keys(value as Record<string, unknown>).length === 0)
+        .map(([key]) => key)
+      expect(empty).toEqual([])
+    })
+  }
 })

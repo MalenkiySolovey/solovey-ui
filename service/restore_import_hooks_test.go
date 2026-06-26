@@ -7,13 +7,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 func TestRestoreImportServicePostOpenActionsEnsuresDefaultsRotatesAndAudits(t *testing.T) {
 	settingService := initSettingTestDB(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	if err := db.Where("key IN ?", []string{"secret", "sessionGeneration"}).Delete(&model.Setting{}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -38,6 +38,7 @@ func TestRestoreImportServicePostOpenActionsEnsuresDefaultsRotatesAndAudits(t *t
 		t.Fatal("session generation was not rotated")
 	}
 
+	flushAuditForTest(t)
 	var event model.AuditEvent
 	if err := db.Where("event = ?", "db_restore_post_actions").Order("id desc").First(&event).Error; err != nil {
 		t.Fatal(err)

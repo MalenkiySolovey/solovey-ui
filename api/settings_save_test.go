@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )
@@ -21,7 +21,7 @@ func TestSaveSettingsAuditsSubscriptionPathChange(t *testing.T) {
 	}
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
 		router.POST("/api/save", func(c *gin.Context) {
-			(&ApiService{}).Save(c, "admin")
+			(&ApiService{}).configHandler().Save(c, "admin")
 		})
 	})
 
@@ -43,8 +43,10 @@ func TestSaveSettingsAuditsSubscriptionPathChange(t *testing.T) {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}
 
+	flushAPIAudit(t)
+
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "sub_path_changed").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "sub_path_changed").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Resource != "subscription" || event.Severity != service.AuditSeverityWarn {
@@ -63,7 +65,7 @@ func TestSaveSettingsRejectsUnknownKeyAndAudits(t *testing.T) {
 	}
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
 		router.POST("/api/save", func(c *gin.Context) {
-			(&ApiService{}).Save(c, "admin")
+			(&ApiService{}).configHandler().Save(c, "admin")
 		})
 	})
 
@@ -86,8 +88,10 @@ func TestSaveSettingsRejectsUnknownKeyAndAudits(t *testing.T) {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}
 
+	flushAPIAudit(t)
+
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "settings_save_rejected_key").Order("id desc").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "settings_save_rejected_key").Order("id desc").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Resource != "settings" || event.Severity != service.AuditSeverityWarn {
@@ -99,7 +103,7 @@ func TestSaveSettingsRejectsUnknownKeyAndAudits(t *testing.T) {
 	}
 
 	var count int64
-	if err := database.GetDB().Model(model.Setting{}).Where("key = ?", "unexpectedKey").Count(&count).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "unexpectedKey").Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
 	if count != 0 {
@@ -114,7 +118,7 @@ func TestSaveSettingsRejectsProtectedKeyAndAudits(t *testing.T) {
 	}
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
 		router.POST("/api/save", func(c *gin.Context) {
-			(&ApiService{}).Save(c, "admin")
+			(&ApiService{}).configHandler().Save(c, "admin")
 		})
 	})
 
@@ -136,8 +140,10 @@ func TestSaveSettingsRejectsProtectedKeyAndAudits(t *testing.T) {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}
 
+	flushAPIAudit(t)
+
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "settings_save_rejected_key").Order("id desc").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "settings_save_rejected_key").Order("id desc").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Resource != "settings" || event.Severity != service.AuditSeverityWarn {

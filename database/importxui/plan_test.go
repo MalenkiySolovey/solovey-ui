@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 func TestPlan_ProducesPreviewJSON(t *testing.T) {
@@ -78,7 +78,7 @@ func TestApply_RespectsPerObjectAction(t *testing.T) {
 		t.Fatal(err)
 	}
 	var count int64
-	if err := database.GetDB().Model(model.Inbound{}).Where("tag = ?", "inbound-12223").Count(&count).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Inbound{}).Where("tag = ?", "inbound-12223").Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
 	if count != 0 {
@@ -169,14 +169,14 @@ func TestApply_ImportsSettingsAndNewPasswordAdmins(t *testing.T) {
 		t.Fatal(err)
 	}
 	var setting model.Setting
-	if err := database.GetDB().Where("key = ?", settingItem.DstTag).First(&setting).Error; err != nil {
+	if err := dbsqlite.DB().Where("key = ?", settingItem.DstTag).First(&setting).Error; err != nil {
 		t.Fatalf("setting %s was not imported: %v", settingItem.DstTag, err)
 	}
 	if len(report.GeneratedAdmins) == 0 || report.GeneratedAdmins[0].Password == "" {
 		t.Fatalf("new-password admin was not returned once in report: %#v", report.GeneratedAdmins)
 	}
 	var admin model.User
-	if err := database.GetDB().Where("username = ?", report.GeneratedAdmins[0].Username).First(&admin).Error; err != nil {
+	if err := dbsqlite.DB().Where("username = ?", report.GeneratedAdmins[0].Username).First(&admin).Error; err != nil {
 		t.Fatal(err)
 	}
 	if admin.ForcePasswordReset {

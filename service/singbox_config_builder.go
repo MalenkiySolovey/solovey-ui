@@ -3,7 +3,8 @@ package service
 import (
 	"encoding/json"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 )
 
 type SingBoxConfigBuilder struct {
@@ -34,17 +35,9 @@ func (b SingBoxConfigBuilder) Build(data string) ([]byte, error) {
 		}
 	}
 
-	var singboxConfig map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(data), &singboxConfig); err != nil {
-		return nil, err
-	}
-
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	inbounds, err := b.InboundService.GetAllConfig(db)
 	if err != nil {
-		return nil, err
-	}
-	if err := setSingBoxConfigSection(singboxConfig, "inbounds", inbounds); err != nil {
 		return nil, err
 	}
 
@@ -52,15 +45,9 @@ func (b SingBoxConfigBuilder) Build(data string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := setSingBoxConfigSection(singboxConfig, "outbounds", outbounds); err != nil {
-		return nil, err
-	}
 
 	services, err := b.ServicesService.GetAllConfig(db)
 	if err != nil {
-		return nil, err
-	}
-	if err := setSingBoxConfigSection(singboxConfig, "services", services); err != nil {
 		return nil, err
 	}
 
@@ -68,18 +55,11 @@ func (b SingBoxConfigBuilder) Build(data string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := setSingBoxConfigSection(singboxConfig, "endpoints", endpoints); err != nil {
-		return nil, err
-	}
 
-	return json.MarshalIndent(singboxConfig, "", "  ")
-}
-
-func setSingBoxConfigSection(config map[string]json.RawMessage, section string, value any) error {
-	raw, err := json.Marshal(value)
-	if err != nil {
-		return err
-	}
-	config[section] = raw
-	return nil
+	return singboxconfig.BuildRuntimeConfig(json.RawMessage(data), singboxconfig.RuntimeSections{
+		Inbounds:  inbounds,
+		Outbounds: outbounds,
+		Services:  services,
+		Endpoints: endpoints,
+	})
 }

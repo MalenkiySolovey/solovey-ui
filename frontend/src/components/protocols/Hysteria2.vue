@@ -160,8 +160,8 @@
 </template>
 
 <script lang="ts">
-import Network from '@/components/Network.vue'
-import Headers from '@/components/Headers.vue'
+import Network from '@/components/fields/Network.vue'
+import Headers from '@/components/fields/Headers.vue'
 import { i18n } from '@/locales'
 
 export default {

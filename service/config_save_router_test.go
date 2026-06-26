@@ -2,9 +2,10 @@ package service
 
 import (
 	"reflect"
-	"sort"
 	"strings"
 	"testing"
+
+	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 )
 
 func TestConfigSaveHandlersCoverSupportedObjects(t *testing.T) {
@@ -18,36 +19,30 @@ func TestConfigSaveHandlersCoverSupportedObjects(t *testing.T) {
 		"settings",
 		"tls",
 	}
-	if got := supportedConfigSaveObjectStrings(); !reflect.DeepEqual(got, want) {
+	if got := singboxapply.SupportedObjectStrings(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("supported config save objects = %#v, want %#v", got, want)
 	}
-
-	got := make([]string, 0, len(configSaveHandlers))
-	for object := range configSaveHandlers {
-		got = append(got, object.String())
-	}
-	sort.Strings(got)
-	if !reflect.DeepEqual(got, want) {
-		t.Fatalf("config save handlers = %#v, want %#v", got, want)
+	if got := singboxapply.MutationHandlerObjectStrings(); !reflect.DeepEqual(got, want) {
+		t.Fatalf("config save mutation handlers = %#v, want %#v", got, want)
 	}
 }
 
 func TestParseConfigSaveObject(t *testing.T) {
-	object, ok := parseConfigSaveObject("clients")
+	object, ok := singboxapply.ParseObject("clients")
 	if !ok {
 		t.Fatal("expected clients object to be supported")
 	}
-	if object != configSaveObjectClients {
-		t.Fatalf("parsed object = %q, want %q", object, configSaveObjectClients)
+	if object != singboxapply.ObjectClients {
+		t.Fatalf("parsed object = %q, want %q", object, singboxapply.ObjectClients)
 	}
-	if _, ok := parseConfigSaveObject("mystery"); ok {
+	if _, ok := singboxapply.ParseObject("mystery"); ok {
 		t.Fatal("unexpected support for unknown save object")
 	}
 }
 
 func TestApplyConfigSaveObjectRejectsUnknownObject(t *testing.T) {
 	plan := newConfigSavePlan("mystery")
-	err := applyConfigSaveObject(&ConfigService{}, configSaveRequest{object: "mystery"}, &plan)
+	err := applyConfigSaveObject(&ConfigService{}, singboxapply.MutationRequest{Object: "mystery"}, &plan.Plan)
 	if err == nil {
 		t.Fatal("expected unknown config save object to be rejected")
 	}

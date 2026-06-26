@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
@@ -25,7 +25,7 @@ func TestAPIV2RotateSubSecretRequiresWriteScopeAndAudits(t *testing.T) {
 		Inbounds:  []byte("[]"),
 		Links:     []byte("[]"),
 	}
-	if err := database.GetDB().Create(&client).Error; err != nil {
+	if err := dbsqlite.DB().Create(&client).Error; err != nil {
 		t.Fatal(err)
 	}
 	readToken, err := (&service.UserService{}).AddToken("admin", 0, "read", "read")
@@ -46,7 +46,7 @@ func TestAPIV2RotateSubSecretRequiresWriteScopeAndAudits(t *testing.T) {
 		t.Fatalf("read token should be forbidden, got %d", readRecorder.Code)
 	}
 	var stored model.Client
-	if err := database.GetDB().Where("id = ?", client.Id).First(&stored).Error; err != nil {
+	if err := dbsqlite.DB().Where("id = ?", client.Id).First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
 	if stored.SubSecret != "old-secret" {
@@ -74,7 +74,7 @@ func TestAPIV2RotateSubSecretRequiresWriteScopeAndAudits(t *testing.T) {
 	if !msg.Success {
 		t.Fatalf("rotate request failed: %s", msg.Msg)
 	}
-	if err := database.GetDB().Where("id = ?", client.Id).First(&stored).Error; err != nil {
+	if err := dbsqlite.DB().Where("id = ?", client.Id).First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
 	if stored.SubSecret == "" || stored.SubSecret == "old-secret" {
@@ -92,8 +92,10 @@ func TestAPIV2RotateSubSecretRequiresWriteScopeAndAudits(t *testing.T) {
 		t.Fatal("config_invalidated was not published after sub secret rotation")
 	}
 
+	flushAPIAudit(t)
+
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "sub_secret_rotated").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "sub_secret_rotated").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" {

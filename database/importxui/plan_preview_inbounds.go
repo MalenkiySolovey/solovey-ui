@@ -3,18 +3,20 @@ package importxui
 import (
 	"context"
 
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/mapping"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 
 	"gorm.io/gorm"
 )
 
-func (s *importState) planInboundsEndpoints(ctx context.Context, tx *gorm.DB, src *sourceDB, plan *MigrationPlan, strategy Strategy) error {
-	return src.eachInbound(func(row xuiInboundRow) error {
+func (s *planningState) planInboundsEndpoints(ctx context.Context, tx *gorm.DB, src *source.Database, plan *MigrationPlan, strategy Strategy) error {
+	return src.EachInbound(func(row source.InboundRow) error {
 		if err := checkContext(ctx); err != nil {
 			return err
 		}
 		if row.Protocol == "wireguard" {
-			endpoint, warnings, err := mapWireguardEndpoint(row)
+			endpoint, warnings, err := mapping.MapWireguardEndpoint(row)
 			if err != nil || endpoint == nil {
 				if endpoint == nil {
 					plan.Items = append(plan.Items, warningOnlyItem(KindEndpoint, row.ID, row.Tag, row.Tag, warnings))
@@ -41,11 +43,11 @@ func (s *importState) planInboundsEndpoints(ctx context.Context, tx *gorm.DB, sr
 			})
 			return nil
 		}
-		var reality *realitySpec
+		var reality *mapping.RealitySpec
 		if spec, ok := s.realityBySource[row.ID]; ok {
 			reality = spec
 		}
-		mapped, err := mapInbound(row, 0, reality, s.server)
+		mapped, err := mapping.MapInbound(row, 0, reality, s.server)
 		if err != nil {
 			return err
 		}

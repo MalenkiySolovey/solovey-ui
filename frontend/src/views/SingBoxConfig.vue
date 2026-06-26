@@ -57,55 +57,11 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, onMounted, ref } from 'vue'
-import { push } from 'notivue'
-
 import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
-import { i18n } from '@/locales'
-import api from '@/plugins/api'
-import { useUiMode } from '@/uiMode/useUiMode'
+import { useSingBoxConfigPage } from '@/shared/composables/pages/useSingBoxConfigPage'
 
-const { mode } = useUiMode()
-const refreshing = ref(false)
-const config = ref<Record<string, unknown>>({})
-
-const nexus = computed(() => mode.value === 'nexus')
-const configText = computed(() => JSON.stringify(config.value ?? {}, null, 2))
-
-const refreshConfig = async () => {
-  refreshing.value = true
-  try {
-    const response = await api.get('api/singbox-config', {
-      headers: { Accept: 'application/json' },
-    })
-    config.value = response.data ?? {}
-  } catch (error: any) {
-    push.error({
-      message: error?.response?.data || error?.message || i18n.global.t('failed'),
-      duration: 5000,
-    })
-  } finally {
-    refreshing.value = false
-  }
-}
-
-const copyConfig = async () => {
-  try {
-    await navigator.clipboard.writeText(configText.value)
-    push.success({
-      message: i18n.global.t('success') + ': ' + i18n.global.t('copyToClipboard'),
-      duration: 5000,
-    })
-  } catch {
-    push.error({
-      message: i18n.global.t('failed') + ': ' + i18n.global.t('copyToClipboard'),
-      duration: 5000,
-    })
-  }
-}
-
-onMounted(refreshConfig)
+const { configText, copyConfig, nexus, refreshConfig, refreshing } = useSingBoxConfigPage()
 </script>
 
 <style scoped>

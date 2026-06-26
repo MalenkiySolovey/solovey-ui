@@ -1,6 +1,7 @@
 package importxui
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,17 +9,48 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 
-	"gorm.io/driver/sqlite"
+	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+type testImportOptions struct {
+	Context        context.Context
+	DryRun         bool
+	Strategy       Strategy
+	Now            func() int64
+	IncludeHistory bool
+	IncludeRouting bool
+	Hostname       string
+}
+
+func importForTest(srcPath string, opts testImportOptions) (*Report, error) {
+	plan, err := Plan(srcPath, PlanOptions{
+		Context:        opts.Context,
+		Strategy:       opts.Strategy,
+		AdminMode:      AdminModeSkip,
+		IncludeHistory: opts.IncludeHistory,
+		IncludeRouting: opts.IncludeRouting,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return Apply(srcPath, *plan, ApplyOptions{
+		Context:    opts.Context,
+		DryRun:     opts.DryRun,
+		SkipBackup: true,
+		Now:        opts.Now,
+		Hostname:   opts.Hostname,
+	})
+}
 
 func TestImport_DryRun_NoMutation(t *testing.T) {
 	src, _ := setupImportTestDB(t)
 	before := tableCounts(t, "inbounds", "endpoints", "tls", "clients", "audit_events")
-	report, err := Import(src, Options{DryRun: true, Strategy: StrategyMerge})
+	report, err := importForTest(src, testImportOptions{DryRun: true, Strategy: StrategyMerge})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -33,7 +65,7 @@ func TestImport_DryRun_NoMutation(t *testing.T) {
 
 func TestImport_Reality_DedupAndShape(t *testing.T) {
 	src, _ := setupImportTestDB(t)
-	if _, err := Import(src, Options{Strategy: StrategyMerge, Now: func() int64 { return 1 }}); err != nil {
+	if _, err := importForTest(src, testImportOptions{Strategy: StrategyMerge, Now: func() int64 { return 1 }}); err != nil {
 		t.Fatal(err)
 	}
 	rows := tlsByRealityPrivateKey(t, "UF2GdUBplZ268703D0dNVZPZ7DU5PvAhtbZiylmCOHk")
@@ -53,7 +85,7 @@ func TestImport_Reality_DedupAndShape(t *testing.T) {
 
 func TestImport_Trojan_Grpc(t *testing.T) {
 	src, _ := setupImportTestDB(t)
-	if _, err := Import(src, Options{Strategy: StrategyMerge}); err != nil {
+	if _, err := importForTest(src, testImportOptions{Strategy: StrategyMerge}); err != nil {
 		t.Fatal(err)
 	}
 	inbound := inboundByTag(t, "inbound-12223")
@@ -72,18 +104,18 @@ func TestImport_Trojan_Grpc(t *testing.T) {
 
 func TestImport_Wireguard_AsEndpoint(t *testing.T) {
 	src, _ := setupImportTestDB(t)
-	if _, err := Import(src, Options{Strategy: StrategyMerge}); err != nil {
+	if _, err := importForTest(src, testImportOptions{Strategy: StrategyMerge}); err != nil {
 		t.Fatal(err)
 	}
 	var inboundCount int64
-	if err := database.GetDB().Model(model.Inbound{}).Where("tag = ?", "inbound-12555").Count(&inboundCount).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Inbound{}).Where("tag = ?", "inbound-12555").Count(&inboundCount).Error; err != nil {
 		t.Fatal(err)
 	}
 	if inboundCount != 0 {
 		t.Fatal("wireguard source inbound must not be stored in inbounds")
 	}
 	var endpoint model.Endpoint
-	if err := database.GetDB().Where("tag = ?", "inbound-12555").First(&endpoint).Error; err != nil {
+	if err := dbsqlite.DB().Where("tag = ?", "inbound-12555").First(&endpoint).Error; err != nil {
 		t.Fatal(err)
 	}
 	if endpoint.Type != "wireguard" {
@@ -101,7 +133,7 @@ func TestImport_Wireguard_AsEndpoint(t *testing.T) {
 func TestImport_Clients_AggregateByEmail(t *testing.T) {
 	src, _ := setupImportTestDB(t)
 	addDuplicateClientToInbound(t, src, "AndPh1", 13)
-	if _, err := Import(src, Options{Strategy: StrategyMerge}); err != nil {
+	if _, err := importForTest(src, testImportOptions{Strategy: StrategyMerge}); err != nil {
 		t.Fatal(err)
 	}
 	client := clientByName(t, "AndPh1")
@@ -116,13 +148,13 @@ func TestImport_Clients_AggregateByEmail(t *testing.T) {
 
 func TestImport_Clients_DefaultsDeterministic(t *testing.T) {
 	src1, _ := setupImportTestDB(t)
-	if _, err := Import(src1, Options{Strategy: StrategyMerge}); err != nil {
+	if _, err := importForTest(src1, testImportOptions{Strategy: StrategyMerge}); err != nil {
 		t.Fatal(err)
 	}
 	config1 := append([]byte(nil), clientByName(t, "AndPh1").Config...)
 
 	src2, _ := setupImportTestDB(t)
-	if _, err := Import(src2, Options{Strategy: StrategyMerge}); err != nil {
+	if _, err := importForTest(src2, testImportOptions{Strategy: StrategyMerge}); err != nil {
 		t.Fatal(err)
 	}
 	config2 := clientByName(t, "AndPh1").Config
@@ -133,11 +165,11 @@ func TestImport_Clients_DefaultsDeterministic(t *testing.T) {
 
 func TestImport_Idempotent(t *testing.T) {
 	src, _ := setupImportTestDB(t)
-	if _, err := Import(src, Options{Strategy: StrategyMerge}); err != nil {
+	if _, err := importForTest(src, testImportOptions{Strategy: StrategyMerge}); err != nil {
 		t.Fatal(err)
 	}
 	before := tableCounts(t, "inbounds", "endpoints", "tls", "clients")
-	if _, err := Import(src, Options{Strategy: StrategyMerge}); err != nil {
+	if _, err := importForTest(src, testImportOptions{Strategy: StrategyMerge}); err != nil {
 		t.Fatal(err)
 	}
 	after := tableCounts(t, "inbounds", "endpoints", "tls", "clients")
@@ -149,7 +181,7 @@ func TestImport_Idempotent(t *testing.T) {
 func TestImport_StrategyReplace_OverwritesInbound(t *testing.T) {
 	src, _ := setupImportTestDB(t)
 	placeholder := placeholderInbound(t, "inbound-12223")
-	if _, err := Import(src, Options{Strategy: StrategyReplace}); err != nil {
+	if _, err := importForTest(src, testImportOptions{Strategy: StrategyReplace}); err != nil {
 		t.Fatal(err)
 	}
 	inbound := inboundByTag(t, "inbound-12223")
@@ -164,7 +196,7 @@ func TestImport_StrategyReplace_OverwritesInbound(t *testing.T) {
 func TestImport_StrategySkip_KeepsExisting(t *testing.T) {
 	src, _ := setupImportTestDB(t)
 	placeholderInbound(t, "inbound-12223")
-	report, err := Import(src, Options{Strategy: StrategySkip})
+	report, err := importForTest(src, testImportOptions{Strategy: StrategySkip})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -179,11 +211,11 @@ func TestImport_StrategySkip_KeepsExisting(t *testing.T) {
 
 func TestImport_AuditEntryCreated(t *testing.T) {
 	src, _ := setupImportTestDB(t)
-	if _, err := Import(src, Options{Strategy: StrategyMerge, Now: func() int64 { return 123 }}); err != nil {
+	if _, err := importForTest(src, testImportOptions{Strategy: StrategyMerge, Now: func() int64 { return 123 }}); err != nil {
 		t.Fatal(err)
 	}
 	var count int64
-	if err := database.GetDB().Model(model.AuditEvent{}).Where("event = ?", "xui_import").Count(&count).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.AuditEvent{}).Where("event = ?", "xui_import").Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
 	if count == 0 {
@@ -197,11 +229,11 @@ func TestImport_Clients_AllTrafficEmailsPresent(t *testing.T) {
 	if len(emails) != 42 {
 		t.Fatalf("fixture expectation changed: got %d unique emails", len(emails))
 	}
-	if _, err := Import(src, Options{Strategy: StrategyMerge}); err != nil {
+	if _, err := importForTest(src, testImportOptions{Strategy: StrategyMerge}); err != nil {
 		t.Fatal(err)
 	}
 	var count int64
-	if err := database.GetDB().Model(model.Client{}).Where("name IN ?", emails).Count(&count).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Client{}).Where("name IN ?", emails).Count(&count).Error; err != nil {
 		t.Fatal(err)
 	}
 	if int(count) != len(emails) {
@@ -216,7 +248,7 @@ func setupImportTestDB(t *testing.T) (string, string) {
 	t.Setenv("SUI_DB_FOLDER", dir)
 	src := copyFixture(t, "x-ui.db", filepath.Join(dir, "x-ui.db"))
 	dst := copyFixture(t, "s-ui.db", filepath.Join(dir, "s-ui.db"))
-	if err := database.InitDB(dst); err != nil {
+	if err := dbsqlite.Init(dst); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
@@ -256,7 +288,7 @@ func copyFixture(t *testing.T, name string, dst string) string {
 
 func closeMainDBForImportTest(t *testing.T) {
 	t.Helper()
-	if db := database.GetDB(); db != nil {
+	if db := dbsqlite.DB(); db != nil {
 		_ = db.Exec("PRAGMA wal_checkpoint(TRUNCATE)").Error
 		if sqlDB, err := db.DB(); err == nil {
 			_ = sqlDB.Close()
@@ -289,7 +321,7 @@ func tableCounts(t *testing.T, tables ...string) map[string]int64 {
 	counts := map[string]int64{}
 	for _, table := range tables {
 		var count int64
-		if err := database.GetDB().Table(table).Count(&count).Error; err != nil {
+		if err := dbsqlite.DB().Table(table).Count(&count).Error; err != nil {
 			t.Fatal(err)
 		}
 		counts[table] = count
@@ -300,7 +332,7 @@ func tableCounts(t *testing.T, tables ...string) map[string]int64 {
 func tlsByRealityPrivateKey(t *testing.T, privateKey string) []model.Tls {
 	t.Helper()
 	var rows []model.Tls
-	if err := database.GetDB().Find(&rows).Error; err != nil {
+	if err := dbsqlite.DB().Find(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
 	var matched []model.Tls
@@ -320,7 +352,7 @@ func tlsByRealityPrivateKey(t *testing.T, privateKey string) []model.Tls {
 func inboundByTag(t *testing.T, tag string) model.Inbound {
 	t.Helper()
 	var inbound model.Inbound
-	if err := database.GetDB().Where("tag = ?", tag).First(&inbound).Error; err != nil {
+	if err := dbsqlite.DB().Where("tag = ?", tag).First(&inbound).Error; err != nil {
 		t.Fatal(err)
 	}
 	return inbound
@@ -329,7 +361,7 @@ func inboundByTag(t *testing.T, tag string) model.Inbound {
 func clientByName(t *testing.T, name string) model.Client {
 	t.Helper()
 	var client model.Client
-	if err := database.GetDB().Where("name = ?", name).First(&client).Error; err != nil {
+	if err := dbsqlite.DB().Where("name = ?", name).First(&client).Error; err != nil {
 		t.Fatal(err)
 	}
 	return client
@@ -345,7 +377,7 @@ func placeholderInbound(t *testing.T, tag string) model.Inbound {
 		OutJson: json.RawMessage(`{}`),
 		Options: options,
 	}
-	if err := database.GetDB().Create(&inbound).Error; err != nil {
+	if err := dbsqlite.DB().Create(&inbound).Error; err != nil {
 		t.Fatal(err)
 	}
 	return inbound
@@ -353,7 +385,7 @@ func placeholderInbound(t *testing.T, tag string) model.Inbound {
 
 func addDuplicateClientToInbound(t *testing.T, src string, email string, inboundID int64) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(src), &gorm.Config{})
+	db, err := gorm.Open(gormsqlite.Open(src), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -365,18 +397,26 @@ func addDuplicateClientToInbound(t *testing.T, src string, email string, inbound
 	if err := db.Raw("SELECT settings FROM inbounds WHERE id = ?", inboundID).Scan(&settingsText).Error; err != nil {
 		t.Fatal(err)
 	}
-	var settings xuiInboundSettings
+	var settings struct {
+		Clients []struct {
+			Email  string `json:"email"`
+			Enable *bool  `json:"enable"`
+			ID     string `json:"id"`
+			Flow   string `json:"flow"`
+			SubID  string `json:"subId"`
+		} `json:"clients"`
+	}
 	if err := json.Unmarshal([]byte(settingsText), &settings); err != nil {
 		t.Fatal(err)
 	}
 	enabled := true
-	settings.Clients = append(settings.Clients, xuiClientSetting{
-		Email:  email,
-		Enable: &enabled,
-		ID:     deterministicUUID(email + ":duplicate"),
-		Flow:   "xtls-rprx-vision",
-		SubID:  "duplicate-sub",
-	})
+	settings.Clients = append(settings.Clients, struct {
+		Email  string `json:"email"`
+		Enable *bool  `json:"enable"`
+		ID     string `json:"id"`
+		Flow   string `json:"flow"`
+		SubID  string `json:"subId"`
+	}{Email: email, Enable: &enabled, ID: deterministicUUID(email + ":duplicate"), Flow: "xtls-rprx-vision", SubID: "duplicate-sub"})
 	next, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -388,13 +428,13 @@ func addDuplicateClientToInbound(t *testing.T, src string, email string, inbound
 
 func sourceTrafficEmails(t *testing.T, srcPath string) []string {
 	t.Helper()
-	src, err := openSource(srcPath)
+	src, err := source.Open(srcPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer src.close()
+	defer src.Close()
 	seen := map[string]struct{}{}
-	if err := src.eachClientTraffic(func(row xuiClientTraffic) error {
+	if err := src.EachClientTraffic(func(row source.ClientTraffic) error {
 		if row.Email != "" {
 			seen[row.Email] = struct{}{}
 		}

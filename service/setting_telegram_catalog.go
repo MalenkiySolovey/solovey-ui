@@ -1,54 +1,27 @@
 package service
 
+import settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
+
 const (
-	settingKeyTelegramEnabled             = "telegramEnabled"
-	settingKeyTelegramBotToken            = "telegramBotToken"
-	settingKeyTelegramChatID              = "telegramChatID"
-	settingKeyTelegramProxyURL            = "telegramProxyURL"
-	settingKeyTelegramProxyUsername       = "telegramProxyUsername"
-	settingKeyTelegramProxyPassword       = "telegramProxyPassword"
-	settingKeyTelegramTransportMode       = "telegramTransportMode"
-	settingKeyTelegramOutboundTag         = "telegramOutboundTag"
-	settingKeyTelegramCPUThreshold        = "telegramCpuThreshold"
-	settingKeyTelegramNotifyCPU           = "telegramNotifyCpu"
-	settingKeyTelegramReport              = "telegramReport"
-	settingKeyTelegramReportCron          = "telegramReportCron"
-	settingKeyTelegramBackupEnabled       = "telegramBackupEnabled"
-	settingKeyTelegramBackupPassphrase    = "telegramBackupPassphrase"
-	settingKeyTelegramBackupCron          = "telegramBackupCron"
-	settingKeyTelegramBackupExcludeTables = "telegramBackupExcludeTables"
-	settingKeyTelegramBackupMaxSizeMB     = "telegramBackupMaxSizeMB"
+	settingKeyTelegramEnabled             = settingcatalog.TelegramEnabledKey
+	settingKeyTelegramBotToken            = settingcatalog.TelegramBotTokenKey
+	settingKeyTelegramChatID              = settingcatalog.TelegramChatIDKey
+	settingKeyTelegramProxyURL            = settingcatalog.TelegramProxyURLKey
+	settingKeyTelegramProxyUsername       = settingcatalog.TelegramProxyUsernameKey
+	settingKeyTelegramProxyPassword       = settingcatalog.TelegramProxyPasswordKey
+	settingKeyTelegramTransportMode       = settingcatalog.TelegramTransportModeKey
+	settingKeyTelegramOutboundTag         = settingcatalog.TelegramOutboundTagKey
+	settingKeyTelegramCPUThreshold        = settingcatalog.TelegramCPUThresholdKey
+	settingKeyTelegramNotifyCPU           = settingcatalog.TelegramNotifyCPUKey
+	settingKeyTelegramReport              = settingcatalog.TelegramReportKey
+	settingKeyTelegramReportCron          = settingcatalog.TelegramReportCronKey
+	settingKeyTelegramBackupEnabled       = settingcatalog.TelegramBackupEnabledKey
+	settingKeyTelegramBackupPassphrase    = settingcatalog.TelegramBackupPassphraseKey
+	settingKeyTelegramBackupCron          = settingcatalog.TelegramBackupCronKey
+	settingKeyTelegramBackupExcludeTables = settingcatalog.TelegramBackupExcludeTablesKey
+	settingKeyTelegramBackupMaxSizeMB     = settingcatalog.TelegramBackupMaxSizeMBKey
 )
 
-var defaultTelegramSettingValues = map[string]string{
-	settingKeyTelegramEnabled:             "false",
-	settingKeyTelegramBotToken:            "",
-	settingKeyTelegramChatID:              "",
-	settingKeyTelegramProxyURL:            "",
-	settingKeyTelegramProxyUsername:       "",
-	settingKeyTelegramProxyPassword:       "",
-	settingKeyTelegramTransportMode:       "proxy",
-	settingKeyTelegramOutboundTag:         "",
-	settingKeyTelegramCPUThreshold:        "90",
-	settingKeyTelegramNotifyCPU:           "false",
-	settingKeyTelegramReport:              "false",
-	settingKeyTelegramReportCron:          "",
-	settingKeyTelegramBackupEnabled:       "false",
-	settingKeyTelegramBackupPassphrase:    "",
-	settingKeyTelegramBackupCron:          "",
-	settingKeyTelegramBackupExcludeTables: "stats,client_ips,audit_events,changes",
-	settingKeyTelegramBackupMaxSizeMB:     "45",
-}
+var defaultTelegramSettingValues = settingcatalog.TelegramDefaults()
 
-var telegramBooleanSettingKeys = settingKeySet(
-	settingKeyTelegramNotifyCPU,
-	settingKeyTelegramReport,
-)
-
-var telegramEncryptedSettingKeys = settingKeySet(
-	settingKeyTelegramBackupPassphrase,
-	settingKeyTelegramBotToken,
-	settingKeyTelegramProxyPassword,
-	settingKeyTelegramProxyURL,
-	settingKeyTelegramProxyUsername,
-)
+var telegramEncryptedSettingKeys = settingcatalog.TelegramEncryptedKeys()

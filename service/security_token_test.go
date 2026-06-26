@@ -1,11 +1,15 @@
 package service
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
+)
 
 func TestSecurityConstantTimeStringEqualAllowedScopes(t *testing.T) {
 	for _, scope := range allowedAPITokenScopes {
 		t.Run(scope, func(t *testing.T) {
-			if constantTimeStringEqual(scope, scope, maxAPITokenScopeLen) != 1 {
+			if common.ConstantTimeStringEqual(scope, scope, maxAPITokenScopeLen) != 1 {
 				t.Fatalf("scope %q should compare equal", scope)
 			}
 			if !apiTokenScopeAllowed(scope) {
@@ -13,7 +17,7 @@ func TestSecurityConstantTimeStringEqualAllowedScopes(t *testing.T) {
 			}
 		})
 	}
-	if constantTimeStringEqual("admin", "read", maxAPITokenScopeLen) != 0 {
+	if common.ConstantTimeStringEqual("admin", "read", maxAPITokenScopeLen) != 0 {
 		t.Fatal("different scopes compared equal")
 	}
 	if apiTokenScopeAllowed("admin" + string(make([]byte, maxAPITokenScopeLen+1))) {

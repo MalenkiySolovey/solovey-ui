@@ -1,14 +1,9 @@
 package api
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
-	"errors"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
-	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -119,58 +114,6 @@ func TestRequestIsHTTPSGatesForwardedProtoByTrustedProxy(t *testing.T) {
 			t.Fatal("X-Forwarded-Proto: http must not be treated as HTTPS")
 		}
 	})
-}
-
-func TestTelegramRequestFieldsUseOnlyAllowedMetadata(t *testing.T) {
-	c := makeContext(t, "203.0.113.5:1234", "")
-	userAgent := "Mozilla/5.0 test agent"
-	c.Request.Header.Set("User-Agent", userAgent)
-
-	fields := telegramRequestFields(c)
-	if len(fields) != 3 {
-		t.Fatalf("expected exactly 3 fields, got %#v", fields)
-	}
-	if fields["ip"] != "203.0.113.5" {
-		t.Fatalf("unexpected ip field: %q", fields["ip"])
-	}
-	sum := sha256.Sum256([]byte(userAgent))
-	if fields["ua_hash"] != hex.EncodeToString(sum[:]) {
-		t.Fatalf("unexpected ua_hash: %q", fields["ua_hash"])
-	}
-	if _, err := time.Parse(time.RFC3339, fields["ts"]); err != nil {
-		t.Fatalf("ts is not RFC3339: %q", fields["ts"])
-	}
-	for _, forbidden := range []string{"user", "username", "reason", "error"} {
-		if _, ok := fields[forbidden]; ok {
-			t.Fatalf("forbidden field %q leaked into Telegram payload: %#v", forbidden, fields)
-		}
-	}
-}
-
-func TestCoreRestartFailedTelegramFieldsDoNotExposeRawError(t *testing.T) {
-	c := makeContext(t, "203.0.113.5:1234", "")
-	rawErr := "config parse failed: Authorization: Bearer core-secret-token"
-
-	fields := coreRestartFailedTelegramFields(c, errors.New(rawErr))
-	if fields["errorClass"] != "config" {
-		t.Fatalf("unexpected errorClass: %q", fields["errorClass"])
-	}
-	for _, forbiddenKey := range []string{"reason", "error"} {
-		if _, ok := fields[forbiddenKey]; ok {
-			t.Fatalf("forbidden field %q leaked into Telegram payload: %#v", forbiddenKey, fields)
-		}
-	}
-
-	var values []string
-	for _, value := range fields {
-		values = append(values, value)
-	}
-	joined := strings.Join(values, "\n")
-	for _, forbidden := range []string{rawErr, "core-secret-token", "Authorization: Bearer"} {
-		if strings.Contains(joined, forbidden) {
-			t.Fatalf("raw restart error leaked into Telegram payload: %#v", fields)
-		}
-	}
 }
 
 func TestLoginRedirectPathUsesConfiguredWebPath(t *testing.T) {

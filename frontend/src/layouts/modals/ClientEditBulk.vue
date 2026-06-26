@@ -71,7 +71,7 @@
 </template>
 
 <script lang="ts">
-import Users from '@/components/Users.vue'
+import Users from '@/components/fields/Users.vue'
 import FormShell from '@/components/nexus/drawers/FormShell.vue'
 import { i18n } from '@/locales'
 import Data from '@/store/modules/data';

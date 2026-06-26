@@ -1,34 +1,15 @@
-import { STORED_SECRET_PLACEHOLDER } from '@/components/settingsSecretField'
+import { STORED_SECRET_PLACEHOLDER } from '@/components/settings/settingsSecretField'
+import {
+  pickSecretAwareSettings,
+  telegramSecretSettingKeys,
+  telegramSettingKeys,
+  telegramSettingsDefaults,
+  type SettingsMap,
+} from '@/views/settingsPayload'
 
-export type TelegramSettingsMap = Record<string, string>
+export type TelegramSettingsMap = SettingsMap
 
-export const telegramSettingKeys = [
-  'telegramEnabled',
-  'telegramBotToken',
-  'telegramChatID',
-  'telegramProxyURL',
-  'telegramProxyUsername',
-  'telegramProxyPassword',
-  'telegramTransportMode',
-  'telegramOutboundTag',
-  'telegramCpuThreshold',
-  'telegramNotifyCpu',
-  'telegramReport',
-  'telegramReportCron',
-  'telegramBackupEnabled',
-  'telegramBackupPassphrase',
-  'telegramBackupCron',
-  'telegramBackupExcludeTables',
-  'telegramBackupMaxSizeMB',
-]
-
-const telegramSecretSettingKeys = [
-  'telegramBotToken',
-  'telegramProxyURL',
-  'telegramProxyUsername',
-  'telegramProxyPassword',
-  'telegramBackupPassphrase',
-]
+export { telegramSettingKeys, telegramSettingsDefaults }
 
 export const minTelegramBackupPassphraseLength = 12
 
@@ -39,12 +20,5 @@ export const hasWeakTelegramBackupPassphrase = (value: string): boolean => {
 }
 
 export const pickTelegramSettings = (source: TelegramSettingsMap): TelegramSettingsMap => {
-  const picked: TelegramSettingsMap = {}
-  for (const key of telegramSettingKeys) {
-    picked[key] = String(source[key] ?? '')
-  }
-  for (const key of telegramSecretSettingKeys) {
-    picked[key + 'HasSecret'] = String(source[key + 'HasSecret'] ?? 'false')
-  }
-  return picked
+  return pickSecretAwareSettings(telegramSettingKeys, telegramSecretSettingKeys, source)
 }

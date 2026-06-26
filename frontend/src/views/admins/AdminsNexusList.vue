@@ -28,7 +28,7 @@
       draggable-rows
       :items="users"
       :row-key="(item) => item.id"
-      @row-drop="(dragged, target) => emit('moveTo', dragged.id, target.id)"
+      @row-drop="(dragged, target, position) => emit('moveTo', dragged.id, target.id, position)"
     >
       <template #col.username="{ item }">
         <span class="admins-nexus__name">{{ item.username }}</span>
@@ -63,7 +63,8 @@ import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
 import { useI18n } from 'vue-i18n'
-import type { ManualSortDirection } from '@/composables/useManualReorder'
+import type { ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
+import type { ManualSortDirection } from '@/shared/composables/dragSelection/manualReorder'
 
 interface AdminRow {
   id: number
@@ -85,7 +86,7 @@ const emit = defineEmits<{
   changes: [actor: string]
   del: [user: AdminRow]
   move: [id: number, dir: number]
-  moveTo: [draggedId: number, targetId: number]
+  moveTo: [draggedId: number, targetId: number, position: ManualDropPosition | null]
   sortByName: [direction: ManualSortDirection]
   token: []
   logoutAll: []
@@ -104,7 +105,7 @@ const columns: Column<AdminRow>[] = [
   { key: 'username', labelKey: 'admin.username' },
   { key: 'loginDate', labelKey: 'admin.date' },
   { key: 'loginTime', labelKey: 'admin.time' },
-  { key: 'ip', labelKey: 'IP' },
+  { key: 'ip', label: 'IP' },
 ]
 
 // Named <entity>Actions (not rowActions) so it never shadows the RowActions

@@ -1,6 +1,10 @@
 package service
 
-import "testing"
+import (
+	"testing"
+
+	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/internal/settings/validation"
+)
 
 func TestValidateSubscriptionPathSettingsRejectsPhase2Conflicts(t *testing.T) {
 	settingService := &SettingService{}
@@ -9,11 +13,19 @@ func TestValidateSubscriptionPathSettingsRejectsPhase2Conflicts(t *testing.T) {
 			"subPath":      "/sub/",
 			"subJsonPath":  "/same/",
 			"subClashPath": "/same/",
+			"subXrayPath":  "/xray/",
 		},
 		{
 			"subPath":      "/subscriptions/",
 			"subJsonPath":  "/subscriptions/json/",
 			"subClashPath": "/clash/",
+			"subXrayPath":  "/xray/",
+		},
+		{
+			"subPath":      "/sub/",
+			"subJsonPath":  "/json/",
+			"subClashPath": "/clash/",
+			"subXrayPath":  "/",
 		},
 	}
 	for _, settings := range tests {
@@ -24,19 +36,19 @@ func TestValidateSubscriptionPathSettingsRejectsPhase2Conflicts(t *testing.T) {
 }
 
 func TestValidateTelegramSettingInputRejectsWeakBackupPassphrase(t *testing.T) {
-	if err := validateTelegramSettingInput("telegramBackupPassphrase", "too-short"); err == nil {
+	if err := settingsvalidation.ValidateTelegramSettingInput("telegramBackupPassphrase", "too-short", StoredSecretMarker); err == nil {
 		t.Fatal("weak telegram backup passphrase should be rejected")
 	}
-	if err := validateTelegramSettingInput("telegramBackupPassphrase", "correct horse battery staple"); err != nil {
+	if err := settingsvalidation.ValidateTelegramSettingInput("telegramBackupPassphrase", "correct horse battery staple", StoredSecretMarker); err != nil {
 		t.Fatalf("strong telegram backup passphrase should be accepted: %v", err)
 	}
 }
 
 func TestValidateOptionalHTTPURLRejectsUserInfo(t *testing.T) {
-	if err := validateOptionalHTTPURL("https://user:pass@example.com/profile"); err == nil {
+	if err := settingsvalidation.ValidateOptionalHTTPURL("https://user:pass@example.com/profile"); err == nil {
 		t.Fatal("URL with user-info should be rejected")
 	}
-	if err := validateOptionalHTTPURL("https://example.com/profile"); err != nil {
+	if err := settingsvalidation.ValidateOptionalHTTPURL("https://example.com/profile"); err != nil {
 		t.Fatalf("plain HTTPS URL should be accepted: %v", err)
 	}
 }
@@ -86,7 +98,7 @@ func TestValidateOptionalHTTPURLRejectsUnsafePartsIssue30(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			err := validateOptionalHTTPURL(tt.value)
+			err := settingsvalidation.ValidateOptionalHTTPURL(tt.value)
 			if tt.wantErr && err == nil {
 				t.Fatal("expected URL setting to be rejected")
 			}

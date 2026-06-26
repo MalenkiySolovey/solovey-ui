@@ -1,138 +1,75 @@
 package service
 
 import (
-	"encoding/json"
-	"errors"
-	"time"
-
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	"github.com/MalenkiySolovey/solovey-ui/util/redact"
+	auditsvc "github.com/MalenkiySolovey/solovey-ui/service/audit"
 )
 
 const (
-	AuditSeverityInfo = "info"
-	AuditSeverityWarn = "warn"
+	AuditSeverityInfo = auditsvc.AuditSeverityInfo
+	AuditSeverityWarn = auditsvc.AuditSeverityWarn
 )
+
+type AuditEvent auditsvc.Event
 
 type AuditService struct {
 	Runtime *Runtime
 }
 
-func (s *AuditService) runtime() *Runtime {
+func (s *AuditService) backend() auditsvc.Service {
+	runtime := DefaultRuntime()
 	if s != nil {
-		return runtimeOrDefault(s.Runtime)
+		runtime = runtimeOrDefault(s.Runtime)
 	}
-	return DefaultRuntime()
+	return auditsvc.New(func(event model.AuditEvent) {
+		writeAuditRuntime(runtime.audit(), event)
+	})
 }
-
-type AuditEvent struct {
-	Actor     string
-	Event     string
-	Resource  string
-	Severity  string
-	IP        string
-	UserAgent string
-	Details   map[string]any
-}
-
-var AuditSyncForTest bool
 
 func (s *AuditService) Record(event AuditEvent) error {
-	record, err := buildAuditRecord(event)
-	if err != nil {
-		return err
-	}
-	if AuditSyncForTest {
-		return writeAuditEvents([]model.AuditEvent{record})
-	}
-	writeAuditRuntime(s.runtime().audit(), record)
-	return nil
+	backend := s.backend()
+	return backend.Record(auditsvc.Event(event), false)
 }
 
-func buildAuditRecord(event AuditEvent) (model.AuditEvent, error) {
-	if event.Severity == "" {
-		event.Severity = AuditSeverityInfo
-	}
-	details, err := json.Marshal(redact.Value(event.Details))
-	if err != nil {
-		return model.AuditEvent{}, err
-	}
-	return model.AuditEvent{
-		DateTime:  time.Now().Unix(),
-		Actor:     event.Actor,
-		Event:     event.Event,
-		Resource:  event.Resource,
-		Severity:  event.Severity,
-		IP:        event.IP,
-		UserAgent: event.UserAgent,
-		Details:   details,
-	}, nil
-}
-
-func writeAuditEvents(events []model.AuditEvent) error {
-	if len(events) == 0 {
-		return nil
-	}
-	db := database.GetDB()
-	if db == nil {
-		return errors.New("audit database is not initialized")
-	}
-	return db.Create(&events).Error
+func (s *AuditService) RecordListenFallback(component, requestedAddr, fallbackAddr string, bindErr error) error {
+	backend := s.backend()
+	return backend.RecordListenFallback(component, requestedAddr, fallbackAddr, bindErr, false)
 }
 
 func (s *AuditService) List(limit int) ([]model.AuditEvent, error) {
-	events, _, err := s.ListPage(0, limit)
-	return events, err
+	backend := s.backend()
+	return backend.List(limit)
 }
 
 func (s *AuditService) ListPage(cursor uint64, limit int) ([]model.AuditEvent, uint64, error) {
-	return s.ListPageFiltered(cursor, limit, "", "", 0, 0)
+	backend := s.backend()
+	return backend.ListPage(cursor, limit)
 }
 
-func (s *AuditService) ListPageFiltered(cursor uint64, limit int, event string, severity string, since int64, until int64) ([]model.AuditEvent, uint64, error) {
-	if limit <= 0 {
-		limit = 200
-	}
-	if limit > 200 {
-		limit = 200
-	}
-	events := make([]model.AuditEvent, 0, limit+1)
-	query := database.GetDB().Model(model.AuditEvent{})
-	if cursor > 0 {
-		query = query.Where("id < ?", cursor)
-	}
-	if event != "" {
-		query = query.Where("event = ?", event)
-	}
-	if severity != "" {
-		query = query.Where("severity = ?", severity)
-	}
-	if since > 0 {
-		query = query.Where("date_time >= ?", since)
-	}
-	if until > 0 {
-		query = query.Where("date_time <= ?", until)
-	}
-	err := query.
-		Order("id desc").
-		Limit(limit + 1).
-		Find(&events).Error
-	if err != nil {
-		return nil, 0, err
-	}
-	var nextCursor uint64
-	if len(events) > limit {
-		events = events[:limit]
-		nextCursor = events[len(events)-1].Id
-	}
-	return events, nextCursor, nil
+func (s *AuditService) ListPageFiltered(cursor uint64, limit int, event, severity string, since, until int64) ([]model.AuditEvent, uint64, error) {
+	backend := s.backend()
+	return backend.ListPageFiltered(cursor, limit, event, severity, since, until)
+}
+
+func (s *AuditService) ListXUIImportReports(limit int) ([]model.AuditEvent, error) {
+	backend := s.backend()
+	return backend.ListXUIImportReports(limit)
 }
 
 func (s *AuditService) Prune(retentionDays int) error {
-	if retentionDays <= 0 {
-		return nil
-	}
-	before := time.Now().Add(-time.Duration(retentionDays) * 24 * time.Hour).Unix()
-	return database.GetDB().Where("date_time < ?", before).Delete(&model.AuditEvent{}).Error
+	backend := s.backend()
+	return backend.Prune(retentionDays)
+}
+
+func (s *AuditService) PruneOlderThan(before int64) (int64, error) {
+	backend := s.backend()
+	return backend.PruneOlderThan(before)
+}
+
+func buildAuditRecord(event AuditEvent) (model.AuditEvent, error) {
+	return auditsvc.BuildRecord(auditsvc.Event(event))
+}
+
+func writeAuditEvents(events []model.AuditEvent) error {
+	return auditsvc.WriteEvents(events)
 }

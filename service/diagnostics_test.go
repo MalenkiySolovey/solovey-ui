@@ -4,29 +4,30 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/core"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
+	opsdiagnostics "github.com/MalenkiySolovey/solovey-ui/internal/ops/diagnostics"
 )
 
 func TestSummarizeDiagnosticChecks(t *testing.T) {
-	healthy := summarizeDiagnosticChecks([]DiagnosticCheck{
-		{Status: DiagnosticStatusOK},
-		{Status: DiagnosticStatusOK},
+	healthy := opsdiagnostics.SummarizeChecks([]opsdiagnostics.Check{
+		{Status: opsdiagnostics.StatusOK},
+		{Status: opsdiagnostics.StatusOK},
 	})
 	if healthy.Status != "healthy" || healthy.Counts["ok"] != 2 {
 		t.Fatalf("healthy summary = %#v", healthy)
 	}
 
-	degraded := summarizeDiagnosticChecks([]DiagnosticCheck{
-		{Status: DiagnosticStatusOK},
-		{Status: DiagnosticStatusWarn},
+	degraded := opsdiagnostics.SummarizeChecks([]opsdiagnostics.Check{
+		{Status: opsdiagnostics.StatusOK},
+		{Status: opsdiagnostics.StatusWarn},
 	})
 	if degraded.Status != "degraded" || degraded.Counts["warn"] != 1 {
 		t.Fatalf("degraded summary = %#v", degraded)
 	}
 
-	down := summarizeDiagnosticChecks([]DiagnosticCheck{
-		{Status: DiagnosticStatusWarn},
-		{Status: DiagnosticStatusFail},
+	down := opsdiagnostics.SummarizeChecks([]opsdiagnostics.Check{
+		{Status: opsdiagnostics.StatusWarn},
+		{Status: opsdiagnostics.StatusFail},
 	})
 	if down.Status != "down" || down.Counts["fail"] != 1 {
 		t.Fatalf("down summary = %#v", down)
@@ -35,9 +36,8 @@ func TestSummarizeDiagnosticChecks(t *testing.T) {
 
 func TestDiagnosticsReportBuildsExpectedSections(t *testing.T) {
 	initSettingTestDB(t)
-	runtime := NewRuntime(core.NewCore())
-	restore := ReplaceDefaultRuntimeForTest(runtime)
-	defer restore()
+	runtime := NewRuntime(coreruntime.NewCore())
+	replaceDefaultRuntimeForTest(t, runtime)
 
 	report := (&DiagnosticsService{Runtime: runtime}).Report()
 	if report.GeneratedAt == 0 {
@@ -62,7 +62,7 @@ func TestDiagnosticsReportBuildsExpectedSections(t *testing.T) {
 
 func TestRedactDiagnosticText(t *testing.T) {
 	raw := `Authorization: Bearer core-secret-token password="admin-pass" subToken=abc123 https://example.test/?token=raw&ok=1`
-	redacted := redactDiagnosticText(raw)
+	redacted := opsdiagnostics.RedactText(raw)
 	for _, forbidden := range []string{"core-secret-token", "admin-pass", "abc123", "token=raw"} {
 		if redacted == raw || strings.Contains(redacted, forbidden) {
 			t.Fatalf("diagnostic redaction leaked %q: %s", forbidden, redacted)
@@ -75,7 +75,7 @@ func TestRedactDiagnosticText(t *testing.T) {
 	}
 }
 
-func hasDiagnosticCheck(checks []DiagnosticCheck, key string) bool {
+func hasDiagnosticCheck(checks []opsdiagnostics.Check, key string) bool {
 	for _, check := range checks {
 		if check.Key == key {
 			return true

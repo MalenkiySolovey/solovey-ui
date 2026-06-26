@@ -17,11 +17,14 @@
 import { type Component, defineComponent, h, mergeProps } from 'vue'
 import { mdi as mdiSvgBase } from 'vuetify/iconsets/mdi-svg'
 import {
+  Activity,
   AlertCircle,
   AlertTriangle,
   ArrowDown,
   ArrowLeft,
+  ArrowRight,
   ArrowUp,
+  ArrowUpCircle,
   ArrowUpRight,
   Calendar,
   Check,
@@ -39,7 +42,9 @@ import {
   Filter,
   FilterX,
   Gauge,
+  Github,
   Globe,
+  HeartHandshake,
   History,
   Inbox,
   Info,
@@ -52,10 +57,13 @@ import {
   LayoutPanelLeft,
   LineChart,
   List,
+  ListPlus,
+  ListX,
   Lock,
   LogOut,
   Menu,
   Monitor,
+  MessageSquare,
   Moon,
   MoreVertical,
   Network,
@@ -71,6 +79,7 @@ import {
   Send,
   Server,
   Settings,
+  Shuffle,
   SlidersHorizontal,
   Sun,
   SunMoon,
@@ -93,6 +102,7 @@ import {
 // the mdi scan in mdiIcons.test.ts), catching typos/unmapped names that would
 // otherwise render a blank icon with only a DEV console.warn.
 export const iconMap: Record<string, Component> = {
+  activity: Activity,
   // Sidebar navigation
   'layout-grid': LayoutGrid,
   zap: Zap,
@@ -102,6 +112,8 @@ export const iconMap: Record<string, Component> = {
   server: Server,
   lock: Lock,
   list: List,
+  'list-plus': ListPlus,
+  'list-x': ListX,
   network: Network,
   send: Send,
   'credit-card': CreditCard,
@@ -109,6 +121,7 @@ export const iconMap: Record<string, Component> = {
   'file-text': FileText,
   'sliders-horizontal': SlidersHorizontal,
   settings: Settings,
+  shuffle: Shuffle,
   // Topbar / global controls
   menu: Menu,
   languages: Languages,
@@ -133,6 +146,8 @@ export const iconMap: Record<string, Component> = {
   'chevron-left': ChevronLeft,
   'arrow-up': ArrowUp,
   'arrow-down': ArrowDown,
+  'arrow-right': ArrowRight,
+  'arrow-up-circle': ArrowUpCircle,
   calendar: Calendar,
   // Row actions
   pencil: Pencil,
@@ -154,6 +169,9 @@ export const iconMap: Record<string, Component> = {
   'user-plus': UserPlus,
   'user-check': UserCheck,
   megaphone: Megaphone,
+  github: Github,
+  'heart-handshake': HeartHandshake,
+  'message-square': MessageSquare,
   link: Link2,
   receipt: Receipt,
   unlink: Unlink,

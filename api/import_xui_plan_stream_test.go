@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	importxuihttp "github.com/MalenkiySolovey/solovey-ui/api/importxui"
 	"github.com/MalenkiySolovey/solovey-ui/database/importxui"
 
 	"github.com/gin-gonic/gin"
@@ -13,8 +14,8 @@ import (
 func TestIssue37ImportXuiApplyAcceptsLargePlan(t *testing.T) {
 	settingService, src := setupXuiAPITestDB(t)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/import-xui/plan", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiPlan))
-		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).ImportXuiApply))
+		router.POST("/api/import-xui/plan", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXuiPlan))
+		router.POST("/api/import-xui/apply", withTestTokenScope("admin", "admin", (&ApiService{}).importXUIHandler().ImportXuiApply))
 	})
 
 	planRecorder := performAuthenticatedTestRequest(router, newXuiImportRequest(t, "/api/import-xui/plan", readFile(t, src), "1"), cookies...)
@@ -38,7 +39,7 @@ func TestIssue37ImportXuiApplyAcceptsLargePlan(t *testing.T) {
 	if !renamed {
 		t.Fatal("test plan did not include inbound-12223")
 	}
-	plan.Items[0].Warnings = []string{strings.Repeat("a", maxXUIFieldBytes+1024)}
+	plan.Items[0].Warnings = []string{strings.Repeat("a", importxuihttp.MaxFieldBytes+1024)}
 
 	applyRecorder := performAuthenticatedTestRequest(router, newXuiApplyRequest(t, readFile(t, src), plan), cookies...)
 	if applyRecorder.Code != http.StatusOK {

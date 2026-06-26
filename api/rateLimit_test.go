@@ -7,31 +7,19 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 
 	"github.com/gin-gonic/gin"
 )
 
 func resetRateLimitState() {
-	loginRateLimitMu.Lock()
-	defer loginRateLimitMu.Unlock()
-	loginRateLimits = map[string]loginAttempt{}
-	loginRateLimitGC = time.Time{}
-	wsHandshakeRateLimitMu.Lock()
-	defer wsHandshakeRateLimitMu.Unlock()
-	wsHandshakeRateLimits = map[string]wsHandshakeAttempt{}
-	wsHandshakeRateLimitGC = time.Time{}
-	auditEndpointRateLimitMu.Lock()
-	defer auditEndpointRateLimitMu.Unlock()
-	auditEndpointRateLimits = map[string]auditEndpointAttempt{}
-	auditEndpointRateLimitGC = time.Time{}
-	telegramBackupManualRateLimitMu.Lock()
-	defer telegramBackupManualRateLimitMu.Unlock()
-	telegramBackupManualRateLimits = map[string]telegramBackupManualAttempt{}
-	telegramBackupManualRateLimitGC = time.Time{}
+	loginRateLimiter.ResetAll()
+	realtimehttp.ResetRateLimits()
+	auditEndpointRateLimiter.ResetAll()
+	telegramBackupManualRateLimiter.ResetAll()
 }
 
 func TestLoginRateLimitBlocksAfterMaxFailures(t *testing.T) {
@@ -88,19 +76,19 @@ func TestLoginRateLimitConcurrent(t *testing.T) {
 
 func TestWSHandshakeRateLimitBlocksAfterMaxAttemptsPerEndpointAndIP(t *testing.T) {
 	resetRateLimitState()
-	key := wsHandshakeRateLimitKey("ws", "198.51.100.10")
-	for i := 0; i < wsHandshakeRateLimitMax; i++ {
-		if err := checkWSHandshakeRateLimit(key); err != nil {
+	key := realtimehttp.HandshakeRateLimitKey("ws", "198.51.100.10")
+	for i := 0; i < realtimehttp.HandshakeLimit; i++ {
+		if err := realtimehttp.CheckHandshakeRateLimit(key); err != nil {
 			t.Fatalf("attempt %d should not be blocked: %v", i, err)
 		}
 	}
-	if err := checkWSHandshakeRateLimit(key); err == nil || !strings.Contains(err.Error(), "too many websocket handshake attempts") {
+	if err := realtimehttp.CheckHandshakeRateLimit(key); err == nil || !strings.Contains(err.Error(), "too many websocket handshake attempts") {
 		t.Fatalf("expected rate-limit error, got %v", err)
 	}
-	if err := checkWSHandshakeRateLimit(wsHandshakeRateLimitKey("ws-token", "198.51.100.10")); err != nil {
+	if err := realtimehttp.CheckHandshakeRateLimit(realtimehttp.HandshakeRateLimitKey("ws-token", "198.51.100.10")); err != nil {
 		t.Fatalf("separate endpoint bucket should not be blocked: %v", err)
 	}
-	if err := checkWSHandshakeRateLimit(wsHandshakeRateLimitKey("ws", "198.51.100.11")); err != nil {
+	if err := realtimehttp.CheckHandshakeRateLimit(realtimehttp.HandshakeRateLimitKey("ws", "198.51.100.11")); err != nil {
 		t.Fatalf("separate IP bucket should not be blocked: %v", err)
 	}
 }
@@ -108,9 +96,9 @@ func TestWSHandshakeRateLimitBlocksAfterMaxAttemptsPerEndpointAndIP(t *testing.T
 func TestEnforceWSHandshakeRateLimitReturns429AndAudits(t *testing.T) {
 	resetRateLimitState()
 	initSessionTestDB(t)
-	key := wsHandshakeRateLimitKey("ws-token", "198.51.100.10")
-	for i := 0; i < wsHandshakeRateLimitMax; i++ {
-		if err := checkWSHandshakeRateLimit(key); err != nil {
+	key := realtimehttp.HandshakeRateLimitKey("ws-token", "198.51.100.10")
+	for i := 0; i < realtimehttp.HandshakeLimit; i++ {
+		if err := realtimehttp.CheckHandshakeRateLimit(key); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -122,7 +110,7 @@ func TestEnforceWSHandshakeRateLimitReturns429AndAudits(t *testing.T) {
 	req.RemoteAddr = "198.51.100.10:1234"
 	c.Request = req
 
-	if (&ApiService{}).enforceWSHandshakeRateLimit(c, "ws-token") {
+	if (&ApiService{}).realtimeHandler().EnforceHandshakeRateLimit(c, "ws-token") {
 		t.Fatal("expected request to be rate-limited")
 	}
 	if recorder.Code != http.StatusTooManyRequests {
@@ -139,8 +127,10 @@ func TestEnforceWSHandshakeRateLimitReturns429AndAudits(t *testing.T) {
 		t.Fatalf("unexpected JSON response: %#v", msg)
 	}
 
+	flushAPIAudit(t)
+
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "ws_rate_limited").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "ws_rate_limited").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	var details map[string]any

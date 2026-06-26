@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	"github.com/MalenkiySolovey/solovey-ui/internal/singboxconfig"
+	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	"gorm.io/gorm"
 )
 
@@ -46,6 +46,22 @@ func (s SingBoxBaseConfigStore) Save(tx *gorm.DB, config json.RawMessage) error 
 		return tx.Create(&model.Setting{Key: "config", Value: configs}).Error
 	}
 	return nil
+}
+
+func (s SingBoxBaseConfigStore) Changed(tx *gorm.DB, config json.RawMessage) (bool, error) {
+	configs, err := normalizeSingBoxBaseConfig(config)
+	if err != nil {
+		return false, err
+	}
+	var stored model.Setting
+	result := tx.Model(model.Setting{}).Where("key = ?", "config").Limit(1).Find(&stored)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return true, nil
+	}
+	return stored.Value != configs, nil
 }
 
 func normalizeSingBoxBaseConfig(config json.RawMessage) (string, error) {

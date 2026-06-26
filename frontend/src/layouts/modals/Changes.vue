@@ -82,7 +82,7 @@
 
 <script lang="ts">
 import { i18n } from '@/locales'
-import HttpUtils from '@/plugins/httputil'
+import { loadChanges } from '@/shared/composables/useOperationsData'
 
 export default {
   props: ['admins', 'actor', 'visible'],
@@ -106,7 +106,7 @@ export default {
   methods: {
     async loadData() {
       this.loading = true
-      const data = await HttpUtils.get('api/changes',{ a: this.user, k: this.key, c: this.chngCount })
+      const data = await loadChanges(this.user, this.key, this.chngCount)
       if (data.success) {
         this.changes = data.obj?? []
         this.loading = false

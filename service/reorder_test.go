@@ -6,13 +6,15 @@ import (
 	"reflect"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
+	netentitysvc "github.com/MalenkiySolovey/solovey-ui/service/netentity"
 )
 
 func TestReorderOutboundsPreservesImplicitRouteFinal(t *testing.T) {
 	settingService := initSettingTestDB(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 
 	if err := saveTestBaseConfig(settingService, `{"dns":{"servers":[],"rules":[]},"route":{"rules":[]},"experimental":{}}`); err != nil {
 		t.Fatal(err)
@@ -37,7 +39,7 @@ func TestReorderOutboundsPreservesImplicitRouteFinal(t *testing.T) {
 	}
 
 	var rows []model.Outbound
-	if err := db.Model(model.Outbound{}).Order(sortOrderClause).Find(&rows).Error; err != nil {
+	if err := db.Model(model.Outbound{}).Order(entityorder.Clause).Find(&rows).Error; err != nil {
 		t.Fatal(err)
 	}
 	gotTags := []string{rows[0].Tag, rows[1].Tag}
@@ -79,7 +81,7 @@ func TestReorderDNSServersPreservesImplicitFinal(t *testing.T) {
 
 func TestReorderRejectsPartialIDList(t *testing.T) {
 	initSettingTestDB(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	proxy := model.Outbound{SortOrder: 2, Type: "direct", Tag: "proxy", Options: json.RawMessage(`{}`)}
 	if err := db.Create(&proxy).Error; err != nil {
 		t.Fatal(err)
@@ -97,7 +99,7 @@ func TestReorderRejectsPartialIDList(t *testing.T) {
 
 func TestReorderClientsControlsGeneratedInboundUserOrder(t *testing.T) {
 	initSettingTestDB(t)
-	db := database.GetDB()
+	db := dbsqlite.DB()
 
 	inbound := model.Inbound{SortOrder: 1, Type: "vmess", Tag: "vmess-in", Options: json.RawMessage(`{}`)}
 	if err := db.Create(&inbound).Error; err != nil {
@@ -133,7 +135,7 @@ func TestReorderClientsControlsGeneratedInboundUserOrder(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	out, err := (&InboundService{}).addUsers(db, inboundJSON, inbound.Id, inbound.Type)
+	out, err := (&netentitysvc.InboundService{}).AddUsers(db, inboundJSON, inbound.Id, inbound.Type)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +152,7 @@ func TestReorderClientsControlsGeneratedInboundUserOrder(t *testing.T) {
 }
 
 func saveTestBaseConfig(settingService *SettingService, raw string) error {
-	tx := database.GetDB().Begin()
+	tx := dbsqlite.DB().Begin()
 	if tx.Error != nil {
 		return tx.Error
 	}

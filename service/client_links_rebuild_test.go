@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 )
 
 // linkURIs collects the "uri" field of every link entry in a client's Links
@@ -43,9 +44,9 @@ func assertKept(t *testing.T, uris map[string]bool, kept, dropped []string) {
 // result must marshal to `[]`, never `null`, and invalid stored links make the
 // caller skip the client (ok=false).
 func TestRebuildClientLinksNeverEmitsNull(t *testing.T) {
-	keepAll := func(clientLink) bool { return true }
+	keepAll := func(entityclients.Link) bool { return true }
 
-	links, ok, err := rebuildClientLinks(1, json.RawMessage(`{}`), json.RawMessage(`[]`), nil, "host", keepAll, "test")
+	links, ok, err := entityclients.RebuildLinks(1, json.RawMessage(`{}`), json.RawMessage(`[]`), nil, "host", keepAll, "test")
 	if err != nil || !ok {
 		t.Fatalf("rebuild with empty inputs: ok=%v err=%v", ok, err)
 	}
@@ -53,16 +54,16 @@ func TestRebuildClientLinksNeverEmitsNull(t *testing.T) {
 		t.Fatalf("empty rebuild must marshal to [], got %q", links)
 	}
 
-	if _, ok, _ := rebuildClientLinks(1, json.RawMessage(`{}`), json.RawMessage(`{bad`), nil, "host", keepAll, "test"); ok {
+	if _, ok, _ := entityclients.RebuildLinks(1, json.RawMessage(`{}`), json.RawMessage(`{bad`), nil, "host", keepAll, "test"); ok {
 		t.Fatal("invalid stored links must report ok=false so the caller skips the client")
 	}
 }
 
 func TestRebuildClientLinksPreservesRemoteGroupLink(t *testing.T) {
-	links, ok, err := rebuildClientLinks(1, json.RawMessage(`{}`), json.RawMessage(`[
+	links, ok, err := entityclients.RebuildLinks(1, json.RawMessage(`{}`), json.RawMessage(`[
 		{"type":"remoteGroup","groupId":42,"remark":"remote","uri":""}
-	]`), nil, "host", func(link clientLink) bool {
-		return clientLinkString(link, "type") != "local"
+	]`), nil, "host", func(link entityclients.Link) bool {
+		return entityclients.LinkString(link, "type") != "local"
 	}, "test")
 	if err != nil || !ok {
 		t.Fatalf("rebuild remote group link: ok=%v err=%v", ok, err)
@@ -82,7 +83,7 @@ func TestRebuildClientLinksPreservesRemoteGroupLink(t *testing.T) {
 func TestUpdateClientsOnInboundAddKeepsOtherInboundLinks(t *testing.T) {
 	initSettingTestDB(t)
 	inbound := model.Inbound{Type: "trojan", Tag: "in-A", Options: json.RawMessage(`{"listen":"0.0.0.0","listen_port":443}`)}
-	if err := database.GetDB().Create(&inbound).Error; err != nil {
+	if err := dbsqlite.DB().Create(&inbound).Error; err != nil {
 		t.Fatal(err)
 	}
 	client := model.Client{
@@ -96,16 +97,16 @@ func TestUpdateClientsOnInboundAddKeepsOtherInboundLinks(t *testing.T) {
 			{"remark":"in-B","type":"external","uri":"keep-ext-B"}
 		]`),
 	}
-	if err := database.GetDB().Create(&client).Error; err != nil {
+	if err := dbsqlite.DB().Create(&client).Error; err != nil {
 		t.Fatal(err)
 	}
 
-	if err := (&ClientService{}).UpdateClientsOnInboundAdd(database.GetDB(), fmt.Sprintf("%d", client.Id), inbound.Id, "host"); err != nil {
+	if err := (&ClientService{}).UpdateClientsOnInboundAdd(dbsqlite.DB(), fmt.Sprintf("%d", client.Id), inbound.Id, "host"); err != nil {
 		t.Fatal(err)
 	}
 
 	var got model.Client
-	if err := database.GetDB().Where("id = ?", client.Id).First(&got).Error; err != nil {
+	if err := dbsqlite.DB().Where("id = ?", client.Id).First(&got).Error; err != nil {
 		t.Fatal(err)
 	}
 	assertKept(t, linkURIs(t, got.Links),
@@ -119,7 +120,7 @@ func TestUpdateClientsOnInboundAddKeepsOtherInboundLinks(t *testing.T) {
 func TestUpdateLinksByInboundChangeKeepsNonLocalAndOtherTags(t *testing.T) {
 	initSettingTestDB(t)
 	inbound := model.Inbound{Type: "trojan", Tag: "new-tag", Options: json.RawMessage(`{"listen":"0.0.0.0","listen_port":443}`)}
-	if err := database.GetDB().Create(&inbound).Error; err != nil {
+	if err := dbsqlite.DB().Create(&inbound).Error; err != nil {
 		t.Fatal(err)
 	}
 	client := model.Client{
@@ -133,17 +134,17 @@ func TestUpdateLinksByInboundChangeKeepsNonLocalAndOtherTags(t *testing.T) {
 			{"remark":"new-tag","type":"external","uri":"keep-new-external"}
 		]`),
 	}
-	if err := database.GetDB().Create(&client).Error; err != nil {
+	if err := dbsqlite.DB().Create(&client).Error; err != nil {
 		t.Fatal(err)
 	}
 
 	inbounds := []model.Inbound{inbound}
-	if err := (&ClientService{}).UpdateLinksByInboundChange(database.GetDB(), &inbounds, "host", "old-tag"); err != nil {
+	if err := (&ClientService{}).UpdateLinksByInboundChange(dbsqlite.DB(), &inbounds, "host", "old-tag"); err != nil {
 		t.Fatal(err)
 	}
 
 	var got model.Client
-	if err := database.GetDB().Where("id = ?", client.Id).First(&got).Error; err != nil {
+	if err := dbsqlite.DB().Where("id = ?", client.Id).First(&got).Error; err != nil {
 		t.Fatal(err)
 	}
 	assertKept(t, linkURIs(t, got.Links),
@@ -156,7 +157,7 @@ func TestUpdateLinksByInboundChangeKeepsNonLocalAndOtherTags(t *testing.T) {
 func TestUpdateLinksWithFixedInboundsKeepsNonLocal(t *testing.T) {
 	initSettingTestDB(t)
 	inbound := model.Inbound{Type: "trojan", Tag: "fix-tag", Options: json.RawMessage(`{"listen":"0.0.0.0","listen_port":443}`)}
-	if err := database.GetDB().Create(&inbound).Error; err != nil {
+	if err := dbsqlite.DB().Create(&inbound).Error; err != nil {
 		t.Fatal(err)
 	}
 	client := &model.Client{
@@ -168,13 +169,13 @@ func TestUpdateLinksWithFixedInboundsKeepsNonLocal(t *testing.T) {
 			{"remark":"whatever","type":"external","uri":"keep-external"}
 		]`),
 	}
-	if err := database.GetDB().Create(client).Error; err != nil {
+	if err := dbsqlite.DB().Create(client).Error; err != nil {
 		t.Fatal(err)
 	}
 
 	// updateLinksWithFixedInbounds mutates the client structs in place (the
 	// caller persists them), so assert on the in-memory Links.
-	if err := (&ClientService{}).updateLinksWithFixedInbounds(database.GetDB(), []*model.Client{client}, "host"); err != nil {
+	if err := entityclients.UpdateLinksWithFixedInbounds(dbsqlite.DB(), []*model.Client{client}, "host"); err != nil {
 		t.Fatal(err)
 	}
 	assertKept(t, linkURIs(t, client.Links),

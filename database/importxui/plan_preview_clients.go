@@ -3,12 +3,13 @@ package importxui
 import (
 	"context"
 
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 
 	"gorm.io/gorm"
 )
 
-func (s *importState) planClients(ctx context.Context, tx *gorm.DB, src *sourceDB, plan *MigrationPlan, strategy Strategy) error {
+func (s *planningState) planClients(ctx context.Context, tx *gorm.DB, src *source.Database, plan *MigrationPlan, strategy Strategy) error {
 	aggs, err := collectClientAggregates(src, s.clientRefs, s.inboundIDBySrc)
 	if err != nil {
 		return err

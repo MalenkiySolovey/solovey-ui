@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	"github.com/MalenkiySolovey/solovey-ui/logger"
+	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 )
 
 const (
@@ -67,14 +67,18 @@ func newAuditWriter(capacity int, batchSize int, flushInterval time.Duration, wr
 }
 
 func StopAuditWriter(ctx context.Context) error {
-	runtime := DefaultRuntime()
-	writer := runtime.audit()
+	return DefaultRuntime().StopAuditWriter(ctx)
+}
+
+func (r *Runtime) StopAuditWriter(ctx context.Context) error {
+	r = runtimeOrDefault(r)
+	writer := r.audit()
 	if writer == nil {
 		return nil
 	}
 
 	err := writer.Stop(ctx)
-	runtime.replaceAuditWriterIfCurrent(writer)
+	r.replaceAuditWriterIfCurrent(writer)
 	return err
 }
 

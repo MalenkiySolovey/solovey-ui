@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 // TestRepro_MigratedClientLinks reproduces the reported bug: after a 3x-ui
@@ -35,7 +35,7 @@ func TestRepro_MigratedClientLinks(t *testing.T) {
 		t.Fatalf("Apply failed: %v", err)
 	}
 
-	db := database.GetDB()
+	db := dbsqlite.DB()
 
 	var clients []model.Client
 	if err := db.Model(model.Client{}).Find(&clients).Error; err != nil {

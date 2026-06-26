@@ -1,6 +1,11 @@
 package service
 
-import "testing"
+import (
+	"testing"
+
+	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/internal/integrations/telegram"
+	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/internal/settings/validation"
+)
 
 func TestSecurityTelegramProxyURLRejectsUnsafeOutboundTargets(t *testing.T) {
 	tests := []string{
@@ -15,7 +20,7 @@ func TestSecurityTelegramProxyURLRejectsUnsafeOutboundTargets(t *testing.T) {
 	}
 	for _, rawURL := range tests {
 		t.Run(rawURL, func(t *testing.T) {
-			if err := validateTelegramProxyURL(rawURL); err == nil {
+			if err := integrationtelegram.ValidateProxyURL(rawURL); err == nil {
 				t.Fatalf("expected %q to be rejected", rawURL)
 			}
 		})
@@ -29,7 +34,7 @@ func TestSecurityTelegramProxyURLAllowsPublicProxySchemes(t *testing.T) {
 		"socks5://8.8.8.8:1080",
 	} {
 		t.Run(rawURL, func(t *testing.T) {
-			if err := validateTelegramProxyURL(rawURL); err != nil {
+			if err := integrationtelegram.ValidateProxyURL(rawURL); err != nil {
 				t.Fatalf("expected %q to be accepted: %v", rawURL, err)
 			}
 		})
@@ -37,7 +42,7 @@ func TestSecurityTelegramProxyURLAllowsPublicProxySchemes(t *testing.T) {
 }
 
 func TestSecurityTelegramProxyURLRejectsUserInfo(t *testing.T) {
-	if err := validateTelegramProxyURL("http://user:pass@8.8.8.8:8080"); err == nil {
+	if err := integrationtelegram.ValidateProxyURL("http://user:pass@8.8.8.8:8080"); err == nil {
 		t.Fatal("expected proxy userinfo to be rejected")
 	}
 }
@@ -50,7 +55,7 @@ func TestSecurityValidateOptionalHTTPURLRejectsUnsafeSyntax(t *testing.T) {
 		"https://user:pass@example.com/path",
 	} {
 		t.Run(rawURL, func(t *testing.T) {
-			if err := validateOptionalHTTPURL(rawURL); err == nil {
+			if err := settingsvalidation.ValidateOptionalHTTPURL(rawURL); err == nil {
 				t.Fatalf("expected %q to be rejected", rawURL)
 			}
 		})
@@ -66,7 +71,7 @@ func TestSecurityValidateOptionalHTTPURLRejectsPrivateHosts(t *testing.T) {
 		"http://169.254.1.1",
 		"http://224.0.0.1",
 	} {
-		if err := validateOptionalHTTPURL(rawURL); err == nil {
+		if err := settingsvalidation.ValidateOptionalHTTPURL(rawURL); err == nil {
 			t.Fatalf("expected %q to be rejected", rawURL)
 		}
 	}

@@ -3,6 +3,9 @@ package importxui
 import (
 	"context"
 	"fmt"
+
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/mapping"
+	"github.com/MalenkiySolovey/solovey-ui/database/importxui/source"
 )
 
 // mappedHasDNS reports whether the migrated config carries DNS servers or
@@ -12,20 +15,20 @@ func mappedHasDNS(mapped map[string]any) bool {
 	if !ok {
 		return false
 	}
-	return len(toAnySlice(dns["servers"])) > 0 || len(toAnySlice(dns["rules"])) > 0
+	return len(mapping.ToAnySlice(dns["servers"])) > 0 || len(mapping.ToAnySlice(dns["rules"])) > 0
 }
 
 // planRoutingDisabledNotice surfaces a warning-only plan item when routing
 // import is off but xrayConfig still contains proxy outbounds or WARP endpoints.
-func planRoutingDisabledNotice(ctx context.Context, src *sourceDB, plan *MigrationPlan) error {
+func planRoutingDisabledNotice(ctx context.Context, src *source.Database, plan *MigrationPlan) error {
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
-	xrayConfig, err := src.xrayConfig()
+	xrayConfig, err := src.XrayConfig()
 	if err != nil {
 		return err
 	}
-	endpoints, outbounds, _, _ := mapXrayOutbounds(xrayConfig)
+	endpoints, outbounds, _, _ := mapping.MapXrayOutbounds(xrayConfig)
 	if len(endpoints) == 0 && len(outbounds) == 0 {
 		return nil
 	}
@@ -36,16 +39,16 @@ func planRoutingDisabledNotice(ctx context.Context, src *sourceDB, plan *Migrati
 	return nil
 }
 
-func planRouting(ctx context.Context, src *sourceDB, plan *MigrationPlan) error {
+func planRouting(ctx context.Context, src *source.Database, plan *MigrationPlan) error {
 	if err := checkContext(ctx); err != nil {
 		return err
 	}
-	xrayConfig, err := src.xrayConfig()
+	xrayConfig, err := src.XrayConfig()
 	if err != nil {
 		return err
 	}
-	endpoints, outbounds, targets, outboundWarnings := mapXrayOutbounds(xrayConfig)
-	mapped, warnings, mappedCount, manualCount := MapXrayRouting(xrayConfig, targets)
+	endpoints, outbounds, targets, outboundWarnings := mapping.MapXrayOutbounds(xrayConfig)
+	mapped, warnings, mappedCount, manualCount := mapping.MapXrayRouting(xrayConfig, targets)
 	warnings = append(outboundWarnings, warnings...)
 	preview, err := marshalJSON(mapped)
 	if err != nil {

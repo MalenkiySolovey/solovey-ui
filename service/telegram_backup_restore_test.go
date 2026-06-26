@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"mime/multipart"
 	"net/http"
@@ -12,8 +13,11 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/api"
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	dbtransferhttp "github.com/MalenkiySolovey/solovey-ui/api/dbtransfer"
+	"github.com/MalenkiySolovey/solovey-ui/database/backup"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/internal/integrations/telegram"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-contrib/sessions"
@@ -27,7 +31,7 @@ func TestRestoreEndpointAcceptsPlaintextAndTelegramBackupEnvelope(t *testing.T) 
 		if err := setRestoreEndpointMarker("plaintext-backup"); err != nil {
 			t.Fatal(err)
 		}
-		backup, err := database.GetDb("")
+		backup, err := backup.Export("")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -50,11 +54,11 @@ func TestRestoreEndpointAcceptsPlaintextAndTelegramBackupEnvelope(t *testing.T) 
 		if err := setRestoreEndpointMarker("encrypted-backup"); err != nil {
 			t.Fatal(err)
 		}
-		backup, err := database.GetDb("")
+		backup, err := backup.Export("")
 		if err != nil {
 			t.Fatal(err)
 		}
-		envelope, err := service.BuildTelegramBackupEnvelope(backup, []byte(passphrase))
+		envelope, err := integrationtelegram.BuildTelegramBackupEnvelope(backup, []byte(passphrase))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -76,11 +80,11 @@ func TestRestoreEndpointAcceptsPlaintextAndTelegramBackupEnvelope(t *testing.T) 
 		if err := setRestoreEndpointMarker("encrypted-backup"); err != nil {
 			t.Fatal(err)
 		}
-		backup, err := database.GetDb("")
+		backup, err := backup.Export("")
 		if err != nil {
 			t.Fatal(err)
 		}
-		envelope, err := service.BuildTelegramBackupEnvelope(backup, []byte("correct horse battery staple"))
+		envelope, err := integrationtelegram.BuildTelegramBackupEnvelope(backup, []byte("correct horse battery staple"))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -95,8 +99,11 @@ func TestRestoreEndpointAcceptsPlaintextAndTelegramBackupEnvelope(t *testing.T) 
 		if got := restoreEndpointMarkerValue(t); got != "live-before-import" {
 			t.Fatalf("failed decrypt touched live DB, marker=%q", got)
 		}
+		if err := service.StopAuditWriter(context.Background()); err != nil {
+			t.Fatal(err)
+		}
 		var event model.AuditEvent
-		if err := database.GetDB().Where("event = ?", "tg_backup_restore_failed").First(&event).Error; err != nil {
+		if err := dbsqlite.DB().Where("event = ?", "tg_backup_restore_failed").First(&event).Error; err != nil {
 			t.Fatal(err)
 		}
 		if strings.Contains(string(event.Details), "wrong horse") || strings.Contains(string(event.Details), "correct horse") {
@@ -107,11 +114,8 @@ func TestRestoreEndpointAcceptsPlaintextAndTelegramBackupEnvelope(t *testing.T) 
 
 func initRestoreEndpointTestDB(t *testing.T) {
 	t.Helper()
-	prevAuditSync := service.AuditSyncForTest
-	service.AuditSyncForTest = true
-	t.Cleanup(func() { service.AuditSyncForTest = prevAuditSync })
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
-	if err := database.InitDB(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
+	if err := dbsqlite.Init(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
@@ -120,10 +124,10 @@ func initRestoreEndpointTestDB(t *testing.T) {
 	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
-	database.SetSendSighupHook(func() error { return nil })
-	t.Cleanup(func() { database.SetSendSighupHook(nil) })
+	backup.SetSendSighupHook(func() error { return nil })
+	t.Cleanup(func() { backup.SetSendSighupHook(nil) })
 	t.Cleanup(func() {
-		if db := database.GetDB(); db != nil {
+		if db := dbsqlite.DB(); db != nil {
 			if sqlDB, err := db.DB(); err == nil {
 				_ = sqlDB.Close()
 				time.Sleep(25 * time.Millisecond)
@@ -136,7 +140,26 @@ func performRestoreEndpointRequest(t *testing.T, content []byte, passphrase stri
 	t.Helper()
 	router := gin.New()
 	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
-	router.POST("/api/importdb", (&api.ApiService{}).ImportDb)
+	handler := &dbtransferhttp.Handler{
+		SettingService:  service.SettingService{},
+		TelegramService: service.TelegramService{},
+		RequireScope:    func(*gin.Context, string, ...string) bool { return true },
+		Audit: func(_ *gin.Context, actor, event, resource, severity string, details map[string]any) {
+			_ = (&service.AuditService{}).Record(service.AuditEvent{
+				Actor: actor, Event: event, Resource: resource, Severity: severity, Details: details,
+			})
+		},
+		Actor:    func(*gin.Context) string { return "admin" },
+		RemoteIP: func(*gin.Context) string { return "203.0.113.1" },
+		JSONMsg: func(c *gin.Context, msg string, err error) {
+			if err == nil {
+				c.JSON(http.StatusOK, gin.H{"success": true, "msg": msg, "obj": nil})
+				return
+			}
+			c.JSON(http.StatusBadRequest, gin.H{"success": false, "msg": msg + ": " + err.Error(), "obj": nil})
+		},
+	}
+	router.POST("/api/importdb", handler.ImportDb)
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, newRestoreEndpointRequest(t, content, passphrase))
 	return recorder
@@ -167,7 +190,7 @@ func newRestoreEndpointRequest(t *testing.T, content []byte, passphrase string) 
 }
 
 func setRestoreEndpointMarker(value string) error {
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	if err := db.Where("key = ?", "restore_marker").Delete(&model.Setting{}).Error; err != nil {
 		return err
 	}
@@ -177,7 +200,7 @@ func setRestoreEndpointMarker(value string) error {
 func restoreEndpointMarkerValue(t *testing.T) string {
 	t.Helper()
 	var setting model.Setting
-	if err := database.GetDB().Where("key = ?", "restore_marker").Order("id desc").First(&setting).Error; err != nil {
+	if err := dbsqlite.DB().Where("key = ?", "restore_marker").Order("id desc").First(&setting).Error; err != nil {
 		t.Fatal(err)
 	}
 	return setting.Value

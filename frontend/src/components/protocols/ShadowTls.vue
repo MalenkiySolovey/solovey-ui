@@ -106,7 +106,7 @@
 
 <script lang="ts">
 import { ShadowTLS } from '@/types/inbounds'
-import Dial from '../Dial.vue'
+import Dial from '@/components/fields/Dial.vue'
 
 export default {
   props: ['direction', 'data'],

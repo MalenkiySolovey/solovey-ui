@@ -1,0 +1,108 @@
+.diagnostics {
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.diagnostics :deep(.v-card-text),
+.diagnostics :deep(.v-expansion-panel-title),
+.diagnostics :deep(.v-expansion-panel-text),
+.diagnostics :deep(.v-field),
+.diagnostics :deep(.v-field__input),
+.diagnostics :deep(.v-label),
+.diagnostics :deep(.v-select__selection),
+.diagnostics :deep(.v-select__selection-text),
+.diagnostics :deep(textarea),
+.diagnostics :deep(pre),
+.diagnostics :deep(code) {
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.diagnostics__summary {
+  align-items: center;
+  display: flex;
+  gap: 10px;
+  justify-content: space-between;
+  min-height: 56px;
+  padding: 12px 14px;
+}
+
+.diagnostics__summary-label {
+  color: rgba(var(--v-theme-on-surface), .72);
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.diagnostics__counts,
+.diagnostics__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: flex-start;
+}
+
+.diagnostics__section-title {
+  color: rgb(var(--v-theme-on-surface));
+  font-size: 0.95rem;
+  font-weight: 700;
+  margin-bottom: 10px;
+}
+
+.diagnostics__table {
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 6px;
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.diagnostics__table :deep(td),
+.diagnostics__table :deep(th) {
+  color: rgb(var(--v-theme-on-surface));
+}
+
+.diagnostics__logs {
+  margin-top: 12px;
+}
+
+.diagnostics__details,
+.diagnostics__hint {
+  color: rgba(var(--v-theme-on-surface), .72);
+  font-size: 0.76rem;
+  margin-top: 2px;
+  overflow-wrap: anywhere;
+}
+
+.diagnostics__time {
+  white-space: nowrap;
+}
+
+.diagnostics__message-cell {
+  min-width: 280px;
+}
+
+.diagnostics__log-message,
+.diagnostics__textarea :deep(textarea),
+.diagnostics__details {
+  font-family: var(--nexus-font-mono, "Cascadia Mono", Consolas, "Courier New", monospace);
+}
+
+.diagnostics__log-message {
+  font-size: 0.82rem;
+  line-height: 1.45;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.diagnostics__signals {
+  margin-top: 6px;
+}
+
+.diagnostics__empty {
+  color: rgba(var(--v-theme-on-surface), .72);
+  padding: 18px;
+  text-align: center;
+}
+
+.diagnostics__textarea :deep(textarea) {
+  color: rgb(var(--v-theme-on-surface));
+  font-size: 0.82rem;
+  line-height: 1.45;
+}

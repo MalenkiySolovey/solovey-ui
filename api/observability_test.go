@@ -8,9 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	observabilitysvc "github.com/MalenkiySolovey/solovey-ui/service/observability"
 	"github.com/gin-gonic/gin"
 )
 
@@ -18,7 +19,7 @@ func TestGetObservabilityHistoryFiltersMetricBucketAndSince(t *testing.T) {
 	settingService := initSessionTestDB(t)
 	base := time.Now().Unix() + 100000
 	observabilityService := &service.ObservabilityService{}
-	if err := observabilityService.RecordObservabilitySample(service.ObservabilityBucket30s, service.ObservabilitySample{
+	if err := observabilityService.RecordObservabilitySample(observabilitysvc.ObservabilityBucket30s, observabilitysvc.ObservabilitySample{
 		DateTime: base,
 		CPU:      1,
 		Memory:   map[string]interface{}{"current": uint64(10)},
@@ -26,7 +27,7 @@ func TestGetObservabilityHistoryFiltersMetricBucketAndSince(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := observabilityService.RecordObservabilitySample(service.ObservabilityBucket30s, service.ObservabilitySample{
+	if err := observabilityService.RecordObservabilitySample(observabilitysvc.ObservabilityBucket30s, observabilitysvc.ObservabilitySample{
 		DateTime: base + 10,
 		CPU:      3,
 		Memory:   map[string]interface{}{"current": uint64(30)},
@@ -36,7 +37,7 @@ func TestGetObservabilityHistoryFiltersMetricBucketAndSince(t *testing.T) {
 	}
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/observability/history", withTestTokenScope("observer", "observability", (&ApiService{}).GetObservabilityHistory))
+		router.GET("/api/observability/history", withTestTokenScope("observer", "observability", (&ApiService{}).telemetryHandler().GetObservabilityHistory))
 	})
 	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/observability/history?metric=net_in&bucket=30s&since="+formatUnix(base), nil), cookies...)
 	if recorder.Code != http.StatusOK {
@@ -66,7 +67,7 @@ func TestGetObservabilityHistoryFiltersMetricBucketAndSince(t *testing.T) {
 func TestGetObservabilityHistoryRejectsInvalidInputs(t *testing.T) {
 	settingService := initSessionTestDB(t)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/observability/history", withTestTokenScope("observer", "observability", (&ApiService{}).GetObservabilityHistory))
+		router.GET("/api/observability/history", withTestTokenScope("observer", "observability", (&ApiService{}).telemetryHandler().GetObservabilityHistory))
 	})
 	for _, target := range []string{
 		"/api/observability/history?metric=net_in&bucket=10s",
@@ -83,14 +84,15 @@ func TestGetObservabilityHistoryRejectsInvalidInputs(t *testing.T) {
 func TestGetObservabilityHistoryRequiresObservabilityScope(t *testing.T) {
 	settingService := initSessionTestDB(t)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/observability/history", withTestTokenScope("api-user", "read", (&ApiService{}).GetObservabilityHistory))
+		router.GET("/api/observability/history", withTestTokenScope("api-user", "read", (&ApiService{}).telemetryHandler().GetObservabilityHistory))
 	})
 	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/observability/history", nil), cookies...)
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}
+	flushAPIAudit(t)
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "scope_denied").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "scope_denied").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "api-user" || event.Resource != "observability" {

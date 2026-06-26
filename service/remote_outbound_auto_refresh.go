@@ -5,44 +5,16 @@ import (
 	"sync"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	"github.com/MalenkiySolovey/solovey-ui/logger"
+	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 )
 
 const remoteOutboundAutoRefreshTick = time.Minute
 
 var (
-	remoteOutboundRefreshMu sync.Mutex
-	remoteOutboundAutoMu    sync.Mutex
-	remoteOutboundAutoStop  context.CancelFunc
-	remoteOutboundAutoDone  chan struct{}
+	remoteOutboundAutoMu   sync.Mutex
+	remoteOutboundAutoStop context.CancelFunc
+	remoteOutboundAutoDone chan struct{}
 )
-
-func (s *RemoteOutboundService) RefreshDueSubscriptions(loginUser string) (int, error) {
-	remoteOutboundRefreshMu.Lock()
-	defer remoteOutboundRefreshMu.Unlock()
-
-	now := time.Now().Unix()
-	var subscriptions []model.RemoteOutboundSubscription
-	if err := database.GetDB().
-		Where("enabled = ? AND auto_update = ? AND update_interval > 0", true, true).
-		Where("last_updated = 0 OR last_updated + update_interval <= ?", now).
-		Order(sortOrderClause).
-		Find(&subscriptions).Error; err != nil {
-		return 0, err
-	}
-
-	refreshed := 0
-	for _, subscription := range subscriptions {
-		if _, err := s.refreshSubscription(subscription.Id, loginUser); err != nil {
-			logger.Warning("remote subscription auto refresh failed: ", subscription.Name, ": ", err)
-			continue
-		}
-		refreshed++
-	}
-	return refreshed, nil
-}
 
 func StartRemoteOutboundAutoRefresh(runtime *Runtime) {
 	remoteOutboundAutoMu.Lock()

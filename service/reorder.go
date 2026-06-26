@@ -5,26 +5,25 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	"gorm.io/gorm"
 )
 
 type dbReorderTarget struct {
-	modelValue  any
-	where       string
+	entityorder.DBTarget
 	reload      []string
 	coreRestart bool
-	before      func(*gorm.DB) error
 }
 
 func (s *ConfigService) Reorder(obj string, data json.RawMessage, loginUser string) ([]string, error) {
 	obj = normalizeReorderObject(obj)
 	plan := newConfigSavePlan(primaryReorderObject(obj))
 
-	db := database.GetDB()
+	db := dbsqlite.DB()
 	tx := db.Begin()
 	committed := false
 	defer func() {
@@ -83,103 +82,32 @@ func primaryReorderObject(obj string) string {
 func (s *ConfigService) dbReorderTarget(obj string) (dbReorderTarget, bool) {
 	switch obj {
 	case "inbounds":
-		return dbReorderTarget{modelValue: &model.Inbound{}, reload: []string{"inbounds"}, coreRestart: true}, true
+		return dbReorderTarget{DBTarget: entityorder.DBTarget{ModelValue: &model.Inbound{}}, reload: []string{"inbounds"}}, true
 	case "clients":
-		return dbReorderTarget{modelValue: &model.Client{}, reload: []string{"clients", "inbounds"}, coreRestart: true}, true
+		return dbReorderTarget{DBTarget: entityorder.DBTarget{ModelValue: &model.Client{}}, reload: []string{"clients", "inbounds"}}, true
 	case "outbounds":
 		return dbReorderTarget{
-			modelValue:  &model.Outbound{},
-			reload:      []string{"outbounds", "config"},
-			coreRestart: true,
-			before:      s.preserveImplicitRouteFinal,
+			DBTarget: entityorder.DBTarget{
+				ModelValue: &model.Outbound{},
+				Before:     s.preserveImplicitRouteFinal,
+			},
+			reload: []string{"outbounds", "config"},
 		}, true
 	case "endpoints":
-		return dbReorderTarget{modelValue: &model.Endpoint{}, reload: []string{"endpoints"}, coreRestart: true}, true
+		return dbReorderTarget{DBTarget: entityorder.DBTarget{ModelValue: &model.Endpoint{}}, reload: []string{"endpoints"}}, true
 	case "services":
-		return dbReorderTarget{modelValue: &model.Service{}, reload: []string{"services"}, coreRestart: true}, true
+		return dbReorderTarget{DBTarget: entityorder.DBTarget{ModelValue: &model.Service{}}, reload: []string{"services"}}, true
 	case "tls":
-		return dbReorderTarget{modelValue: &model.Tls{}, where: "id > 0", reload: []string{"tls"}}, true
+		return dbReorderTarget{DBTarget: entityorder.DBTarget{ModelValue: &model.Tls{}, Where: "id > 0"}, reload: []string{"tls"}}, true
 	case "admins":
-		return dbReorderTarget{modelValue: &model.User{}, reload: []string{"users"}}, true
+		return dbReorderTarget{DBTarget: entityorder.DBTarget{ModelValue: &model.User{}}, reload: []string{"users"}}, true
 	default:
 		return dbReorderTarget{}, false
 	}
 }
 
 func (s *ConfigService) reorderDBTarget(tx *gorm.DB, target dbReorderTarget, data json.RawMessage) error {
-	ids, err := parseReorderIDs(data)
-	if err != nil {
-		return err
-	}
-	if target.before != nil {
-		if err := target.before(tx); err != nil {
-			return err
-		}
-	}
-
-	var currentIDs []uint
-	query := tx.Model(target.modelValue).Select("id").Order(sortOrderClause)
-	if target.where != "" {
-		query = query.Where(target.where)
-	}
-	if err := query.Scan(&currentIDs).Error; err != nil {
-		return err
-	}
-	if err := validateReorderIDs(currentIDs, ids); err != nil {
-		return err
-	}
-
-	for index, id := range ids {
-		update := tx.Model(target.modelValue).Where("id = ?", id).Update("sort_order", index+1)
-		if update.Error != nil {
-			return update.Error
-		}
-		if update.RowsAffected == 0 {
-			return common.NewErrorf("reorder id %d was not updated", id)
-		}
-	}
-	return nil
-}
-
-func parseReorderIDs(data json.RawMessage) ([]uint, error) {
-	var ids []uint
-	if err := json.Unmarshal(data, &ids); err == nil {
-		return ids, nil
-	}
-
-	var numbers []float64
-	if err := json.Unmarshal(data, &numbers); err != nil {
-		return nil, err
-	}
-	ids = make([]uint, 0, len(numbers))
-	for _, n := range numbers {
-		if n <= 0 || n != float64(uint(n)) {
-			return nil, common.NewError("invalid reorder id")
-		}
-		ids = append(ids, uint(n))
-	}
-	return ids, nil
-}
-
-func validateReorderIDs(current []uint, requested []uint) error {
-	if len(current) != len(requested) {
-		return common.NewErrorf("reorder list length mismatch: got %d, want %d", len(requested), len(current))
-	}
-	expected := make(map[uint]struct{}, len(current))
-	for _, id := range current {
-		expected[id] = struct{}{}
-	}
-	seen := make(map[uint]struct{}, len(requested))
-	for _, id := range requested {
-		if _, exists := seen[id]; exists {
-			return common.NewErrorf("duplicate reorder id: %d", id)
-		}
-		seen[id] = struct{}{}
-		if _, ok := expected[id]; !ok {
-			return common.NewErrorf("unknown reorder id: %d", id)
-		}
-	}
-	return nil
+	return entityorder.ReorderDBTarget(tx, target.DBTarget, data)
 }
 
 func (s *ConfigService) reorderConfigTarget(tx *gorm.DB, obj string, data json.RawMessage, plan *configSavePlan) error {
@@ -215,7 +143,6 @@ func (s *ConfigService) reorderConfigTarget(tx *gorm.DB, obj string, data json.R
 	if err := NewSingBoxBaseConfigStore(&s.SettingService).Save(tx, raw); err != nil {
 		return err
 	}
-	plan.RequireCoreRestart()
 	return nil
 }
 
@@ -335,7 +262,7 @@ func (s *ConfigService) preserveImplicitRouteFinal(tx *gorm.DB) error {
 		return nil
 	}
 	var firstTag string
-	if err := tx.Model(model.Outbound{}).Select("tag").Order(sortOrderClause).Limit(1).Scan(&firstTag).Error; err != nil {
+	if err := tx.Model(model.Outbound{}).Select("tag").Order(entityorder.Clause).Limit(1).Scan(&firstTag).Error; err != nil {
 		return err
 	}
 	if strings.TrimSpace(firstTag) == "" {

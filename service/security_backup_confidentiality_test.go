@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 func TestSecurityTelegramBackupAuditOmitsPayloadPassphraseAndToken(t *testing.T) {
@@ -18,17 +18,17 @@ func TestSecurityTelegramBackupAuditOmitsPayloadPassphraseAndToken(t *testing.T)
 		BackupEnabled:   true,
 		Passphrase:      passphrase,
 	})
-	restoreSend := replaceTelegramBackupSendDocumentForTest(t, func(_ *TelegramService, _ string, _ []byte, _ string) TelegramResult {
+	backupService := &TelegramBackupService{SendDocument: func(_ string, _ []byte, _ string) TelegramResult {
 		return TelegramResult{Success: true}
-	})
-	defer restoreSend()
+	}}
 
-	result := (&TelegramBackupService{}).RunOnce(ContextWithTelegramBackupActor(context.Background(), "admin"), TelegramBackupTriggerManual)
+	result := backupService.RunOnce(ContextWithTelegramBackupActor(context.Background(), "admin"), TelegramBackupTriggerManual)
 	if !result.Success {
 		t.Fatalf("backup failed: %#v", result)
 	}
+	flushAuditForTest(t)
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "tg_backup_sent").Order("id desc").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "tg_backup_sent").Order("id desc").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	details := string(event.Details)
@@ -62,7 +62,7 @@ func TestSecurityConfigChangeRedactsTelegramBackupPassphrase(t *testing.T) {
 		t.Fatal(err)
 	}
 	var change model.Changes
-	if err := database.GetDB().Where("key = ?", "settings").Order("id desc").First(&change).Error; err != nil {
+	if err := dbsqlite.DB().Where("key = ?", "settings").Order("id desc").First(&change).Error; err != nil {
 		t.Fatal(err)
 	}
 	stored := string(change.Obj)

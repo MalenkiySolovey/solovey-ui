@@ -3,6 +3,8 @@ import HttpUtils from '@/plugins/httputil'
 import Data from '@/store/modules/data'
 import { clearCSRFToken } from '@/store/csrf'
 import { getBaseUrl } from '@/plugins/base-url'
+import { push } from 'notivue'
+import { i18n } from '@/locales'
 
 export type WsConnectionState = 'connected' | 'reconnecting' | 'degraded'
 
@@ -20,6 +22,7 @@ export interface WsRuntimeDeps {
   loadData: () => void | Promise<void>
   onState?: (state: WsConnectionState) => void
   onEvent?: (event: any) => void
+  onlineEvents?: Pick<Window, 'addEventListener' | 'removeEventListener'>
   setTimeout?: typeof setTimeout
   clearTimeout?: typeof clearTimeout
   setInterval?: typeof setInterval
@@ -33,6 +36,7 @@ const reconnectBaseDelayMs = 250
 const reconnectJitterMs = 250
 const reconnectMaxDelayMs = 5000
 const fallbackPollMs = 10000
+const onlineRecoveryDelayMs = 100
 const closeFallbackThreshold = 3
 
 export const reconnectDelayForRetry = (retry: number) => {
@@ -50,6 +54,7 @@ export class WsRuntime {
   private noOpenTimer: ReturnType<typeof setTimeout> | null = null
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null
   private fallbackTimer: ReturnType<typeof setInterval> | null = null
+  private onlineRecoveryHandler: (() => void) | null = null
   private closeCount = 0
 
   constructor(private deps: WsRuntimeDeps) {}
@@ -130,6 +135,7 @@ export class WsRuntime {
   private startFallback() {
     this.clearNoOpenTimer()
     this.setState('degraded')
+    this.startOnlineRecovery()
     if (this.fallbackTimer) return
     this.fallbackTimer = this.setRuntimeInterval(() => {
       void this.deps.loadData()
@@ -139,9 +145,31 @@ export class WsRuntime {
   }
 
   private stopFallback() {
+    this.stopOnlineRecovery()
     if (!this.fallbackTimer) return
     this.clearRuntimeInterval(this.fallbackTimer)
     this.fallbackTimer = null
+  }
+
+  private startOnlineRecovery() {
+    if (this.onlineRecoveryHandler) return
+    const events = this.deps.onlineEvents ?? (typeof window === 'undefined' ? undefined : window)
+    if (!events?.addEventListener) return
+    this.onlineRecoveryHandler = () => {
+      if (this.reconnectTimer || this.ws) return
+      this.reconnectTimer = this.setRuntimeTimeout(() => {
+        this.reconnectTimer = null
+        void this.connect()
+      }, onlineRecoveryDelayMs)
+    }
+    events.addEventListener('online', this.onlineRecoveryHandler)
+  }
+
+  private stopOnlineRecovery() {
+    if (!this.onlineRecoveryHandler) return
+    const events = this.deps.onlineEvents ?? (typeof window === 'undefined' ? undefined : window)
+    events?.removeEventListener?.('online', this.onlineRecoveryHandler)
+    this.onlineRecoveryHandler = null
   }
 
   private clearNoOpenTimer() {
@@ -192,6 +220,25 @@ const applyRealtimeEvent = (event: any) => {
       break
     case 'xui_import_progress':
       ws.xuiImportProgress = event.payload ?? null
+      break
+    case 'failover_status':
+      if (event.payload?.tag) {
+        data.failoverStatus = {
+          ...data.failoverStatus,
+          [event.payload.tag]: event.payload,
+        }
+      }
+      break
+    case 'core_state':
+      if (event.payload?.warning) {
+        const warning = String(event.payload.warning)
+        const group = event.payload.group ? `: ${event.payload.group}` : ''
+        push.warning({
+          title: i18n.global.t('warning'),
+          duration: 6000,
+          message: `${warning}${group}`,
+        })
+      }
       break
     case 'config_invalidated':
     case 'reload':

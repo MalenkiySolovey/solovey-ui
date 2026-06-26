@@ -12,8 +12,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
@@ -24,38 +25,31 @@ import (
 )
 
 func resetRealtimeForTest() {
-	_ = sweepAllWSTokens()
+	_ = realtimehttp.ResetTokens()
 	realtime.CloseAll("test_reset")
 }
 
 func setWSTokenForTest(token string, user string) {
-	wsTokens.Lock()
-	wsTokens.tokens[wsTokenDigest(token)] = realtimeToken{user: user, expiresAt: time.Now().Add(time.Minute)}
-	wsTokens.Unlock()
+	realtimehttp.StoreToken(token, user, time.Now().Add(time.Minute))
 }
 
 func hasWSTokenForTest(token string) bool {
-	wsTokens.Lock()
-	defer wsTokens.Unlock()
-	_, ok := wsTokens.tokens[wsTokenDigest(token)]
-	return ok
+	return realtimehttp.HasToken(token)
 }
 
 func wsTokenCountForTest() int {
-	wsTokens.Lock()
-	defer wsTokens.Unlock()
-	return len(wsTokens.tokens)
+	return realtimehttp.TokenCount()
 }
 
 func TestConsumeWSTokenIsOneTime(t *testing.T) {
 	resetRealtimeForTest()
 	setWSTokenForTest("token", "admin")
 
-	user, ok := consumeWSToken("token")
+	user, ok := realtimehttp.ConsumeToken("token")
 	if !ok || user != "admin" {
 		t.Fatalf("expected first consume to work, got user=%q ok=%v", user, ok)
 	}
-	if _, ok := consumeWSToken("token"); ok {
+	if _, ok := realtimehttp.ConsumeToken("token"); ok {
 		t.Fatal("expected second consume to fail")
 	}
 }
@@ -64,16 +58,11 @@ func TestWSTokenSweepRemovesExpiredUnusedTokens(t *testing.T) {
 	resetRealtimeForTest()
 	now := time.Now()
 
-	expiredKey := wsTokenDigest("expired")
-	activeKey := wsTokenDigest("active")
-	wsTokens.Lock()
-	wsTokens.tokens[expiredKey] = realtimeToken{user: "admin", expiresAt: now.Add(-time.Second)}
-	wsTokens.tokens[activeKey] = realtimeToken{user: "admin", expiresAt: now.Add(time.Minute)}
-	sweepWSTokensLocked(now)
-	_, expiredOK := wsTokens.tokens[expiredKey]
-	_, activeOK := wsTokens.tokens[activeKey]
-	lastSweep := wsTokens.lastSweep
-	wsTokens.Unlock()
+	realtimehttp.StoreToken("expired", "admin", now.Add(-time.Second))
+	realtimehttp.StoreToken("active", "admin", now.Add(time.Minute))
+	realtimehttp.SweepExpired(now)
+	expiredOK := realtimehttp.HasToken("expired")
+	activeOK := realtimehttp.HasToken("active")
 
 	if expiredOK {
 		t.Fatal("expired websocket token was not swept")
@@ -81,29 +70,23 @@ func TestWSTokenSweepRemovesExpiredUnusedTokens(t *testing.T) {
 	if !activeOK {
 		t.Fatal("active websocket token was swept")
 	}
-	if !lastSweep.Equal(now) {
-		t.Fatalf("lastSweep=%s, want %s", lastSweep, now)
-	}
 }
 
 func TestWSTokenCapDropsOldestByExpiry(t *testing.T) {
 	resetRealtimeForTest()
 	base := time.Now()
 
-	wsTokens.Lock()
-	for i := 0; i < maxWSTokens+2; i++ {
+	for i := 0; i < realtimehttp.MaxTokens+2; i++ {
 		token := fmt.Sprintf("token-%04d", i)
-		wsTokens.tokens[wsTokenDigest(token)] = realtimeToken{user: "admin", expiresAt: base.Add(time.Duration(i) * time.Millisecond)}
+		realtimehttp.StoreToken(token, "admin", base.Add(time.Duration(i)*time.Millisecond))
 	}
-	enforceWSTokenCapLocked()
-	count := len(wsTokens.tokens)
-	_, firstOK := wsTokens.tokens[wsTokenDigest("token-0000")]
-	_, secondOK := wsTokens.tokens[wsTokenDigest("token-0001")]
-	_, thirdOK := wsTokens.tokens[wsTokenDigest("token-0002")]
-	wsTokens.Unlock()
+	count := realtimehttp.TokenCount()
+	firstOK := realtimehttp.HasToken("token-0000")
+	secondOK := realtimehttp.HasToken("token-0001")
+	thirdOK := realtimehttp.HasToken("token-0002")
 
-	if count != maxWSTokens {
-		t.Fatalf("token count=%d, want %d", count, maxWSTokens)
+	if count != realtimehttp.MaxTokens {
+		t.Fatalf("token count=%d, want %d", count, realtimehttp.MaxTokens)
 	}
 	if firstOK || secondOK {
 		t.Fatal("oldest websocket tokens were not dropped")
@@ -118,13 +101,13 @@ func TestSweepAllWSTokensClearsIssuedTokens(t *testing.T) {
 	setWSTokenForTest("token-a", "admin")
 	setWSTokenForTest("token-b", "admin")
 
-	if got := sweepAllWSTokens(); got != 2 {
+	if got := realtimehttp.ResetTokens(); got != 2 {
 		t.Fatalf("swept token count=%d, want 2", got)
 	}
 	if wsTokenCountForTest() != 0 {
 		t.Fatal("websocket tokens remained after sweepAll")
 	}
-	if _, ok := consumeWSToken("token-a"); ok {
+	if _, ok := realtimehttp.ConsumeToken("token-a"); ok {
 		t.Fatal("swept token was still accepted")
 	}
 }
@@ -133,19 +116,20 @@ func TestRotateSessionGenerationInvalidatesWSTokens(t *testing.T) {
 	settingService := initSessionTestDB(t)
 	resetRealtimeForTest()
 	setWSTokenForTest("rotated-token", "admin")
-	prevAuditSync := service.AuditSyncForTest
-	service.AuditSyncForTest = true
-	t.Cleanup(func() { service.AuditSyncForTest = prevAuditSync })
-
 	if _, err := settingService.RotateSessionGeneration(); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := consumeWSToken("rotated-token"); ok {
+	if _, ok := realtimehttp.ConsumeToken("rotated-token"); ok {
 		t.Fatal("websocket token survived session generation rotation")
 	}
+	if err := service.StopAuditWriter(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	flushAPIAudit(t)
 
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "ws_tokens_invalidated").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "ws_tokens_invalidated").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(string(event.Details), `"count":1`) {
@@ -159,7 +143,7 @@ func TestWSTokenFromRequestAcceptsPrefixedSubprotocolAnyOrder(t *testing.T) {
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/realtime/ws", nil)
 	ctx.Request.Header.Set("Sec-WebSocket-Protocol", "sui.realtime, extra.v1, sui.token.prefixed-token")
 
-	token, legacy := wsTokenFromRequest(ctx)
+	token, legacy := realtimehttp.TokenFromRequest(ctx)
 	if token != "prefixed-token" || legacy {
 		t.Fatalf("token=%q legacy=%v, want prefixed token without legacy flag", token, legacy)
 	}
@@ -171,7 +155,7 @@ func TestWSTokenFromRequestAcceptsDeprecatedLegacySubprotocol(t *testing.T) {
 	ctx.Request = httptest.NewRequest(http.MethodGet, "/api/realtime/ws", nil)
 	ctx.Request.Header.Set("Sec-WebSocket-Protocol", "legacy-token, sui.realtime")
 
-	token, legacy := wsTokenFromRequest(ctx)
+	token, legacy := realtimehttp.TokenFromRequest(ctx)
 	if token != "legacy-token" || !legacy {
 		t.Fatalf("token=%q legacy=%v, want legacy token with flag", token, legacy)
 	}
@@ -220,7 +204,7 @@ func TestWSOriginAllowedAcceptsRequestHostAndWebDomain(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			allowed, _ := wsOriginAllowed(tt.origin, tt.requestHost, tt.webDomain)
+			allowed, _ := realtimehttp.OriginAllowed(tt.origin, tt.requestHost, tt.webDomain)
 			if allowed != tt.wantAllowed {
 				t.Fatalf("allowed=%v, want %v", allowed, tt.wantAllowed)
 			}
@@ -251,7 +235,7 @@ func TestIssueWSTokenRejectsForeignOriginAndAudits(t *testing.T) {
 		}
 		c.Status(http.StatusNoContent)
 	})
-	router.GET("/api/realtime/ws-token", (&ApiService{}).IssueWSToken)
+	router.GET("/api/realtime/ws-token", (&ApiService{}).realtimeHandler().IssueWSToken)
 
 	loginRecorder := httptest.NewRecorder()
 	loginReq := httptest.NewRequest(http.MethodGet, "/login", nil)
@@ -275,8 +259,10 @@ func TestIssueWSTokenRejectsForeignOriginAndAudits(t *testing.T) {
 		t.Fatal("foreign Origin request issued a websocket token")
 	}
 
+	flushAPIAudit(t)
+
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "ws_origin_rejected").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "ws_origin_rejected").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" {
@@ -310,7 +296,7 @@ func TestRealtimeWSRejectsForeignOriginAuditsAndKeepsToken(t *testing.T) {
 		}
 		c.Status(http.StatusNoContent)
 	})
-	router.GET("/api/realtime/ws", (&ApiService{}).RealtimeWS)
+	router.GET("/api/realtime/ws", (&ApiService{}).realtimeHandler().RealtimeWS)
 
 	loginRecorder := httptest.NewRecorder()
 	loginReq := httptest.NewRequest(http.MethodGet, "/login", nil)
@@ -335,8 +321,10 @@ func TestRealtimeWSRejectsForeignOriginAuditsAndKeepsToken(t *testing.T) {
 		t.Fatal("foreign Origin consumed the websocket token")
 	}
 
+	flushAPIAudit(t)
+
 	var event model.AuditEvent
-	if err := database.GetDB().Where("event = ?", "ws_origin_rejected").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "ws_origin_rejected").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	var details map[string]any
@@ -352,7 +340,7 @@ func TestRealtimeWSRejectsForeignOriginAuditsAndKeepsToken(t *testing.T) {
 }
 
 func TestRealtimeWSSendsHeartbeatPing(t *testing.T) {
-	router, cookies := newRealtimeWSTestRouterWithOptions(t, WithPingInterval(10*time.Millisecond), WithPingTimeout(100*time.Millisecond))
+	router, cookies := newRealtimeWSTestRouterWithOptions(t, realtimehttp.WithPingInterval(10*time.Millisecond), realtimehttp.WithPingTimeout(100*time.Millisecond))
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 
@@ -476,7 +464,7 @@ func TestRealtimeScopeFromContextDefaultsSessionToAdmin(t *testing.T) {
 }
 
 func TestRealtimeWSDeliversEventsWhileHeartbeatWaitsForPong(t *testing.T) {
-	router, cookies := newRealtimeWSTestRouterWithOptions(t, WithPingInterval(10*time.Millisecond), WithPingTimeout(200*time.Millisecond))
+	router, cookies := newRealtimeWSTestRouterWithOptions(t, realtimehttp.WithPingInterval(10*time.Millisecond), realtimehttp.WithPingTimeout(200*time.Millisecond))
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 
@@ -568,7 +556,7 @@ func TestRealtimeWSRejectsReplayToken(t *testing.T) {
 }
 
 func TestRealtimeWSClosesWhenPongMissing(t *testing.T) {
-	router, cookies := newRealtimeWSTestRouterWithOptions(t, WithPingInterval(10*time.Millisecond), WithPingTimeout(30*time.Millisecond))
+	router, cookies := newRealtimeWSTestRouterWithOptions(t, realtimehttp.WithPingInterval(10*time.Millisecond), realtimehttp.WithPingTimeout(30*time.Millisecond))
 	server := httptest.NewServer(router)
 	t.Cleanup(server.Close)
 
@@ -595,7 +583,7 @@ func newRealtimeWSTestRouter(t *testing.T) (*gin.Engine, []*http.Cookie) {
 	return newRealtimeWSTestRouterWithScope(t, "")
 }
 
-func newRealtimeWSTestRouterWithOptions(t *testing.T, options ...realtimeOption) (*gin.Engine, []*http.Cookie) {
+func newRealtimeWSTestRouterWithOptions(t *testing.T, options ...realtimehttp.Option) (*gin.Engine, []*http.Cookie) {
 	return newRealtimeWSTestRouterWithScopeAndOptions(t, "", options...)
 }
 
@@ -603,7 +591,7 @@ func newRealtimeWSTestRouterWithScope(t *testing.T, scope string) (*gin.Engine, 
 	return newRealtimeWSTestRouterWithScopeAndOptions(t, scope)
 }
 
-func newRealtimeWSTestRouterWithScopeAndOptions(t *testing.T, scope string, options ...realtimeOption) (*gin.Engine, []*http.Cookie) {
+func newRealtimeWSTestRouterWithScopeAndOptions(t *testing.T, scope string, options ...realtimehttp.Option) (*gin.Engine, []*http.Cookie) {
 	t.Helper()
 	settingService := initSessionTestDB(t)
 	if _, err := settingService.GetAllSetting(); err != nil {
@@ -630,7 +618,7 @@ func newRealtimeWSTestRouterWithScopeAndOptions(t *testing.T, scope string, opti
 		}
 		c.Status(http.StatusNoContent)
 	})
-	router.GET("/api/realtime/ws", (&ApiService{}).RealtimeWSWithOptions(options...))
+	router.GET("/api/realtime/ws", (&ApiService{}).realtimeHandler().RealtimeWSWithOptions(options...))
 
 	loginRecorder := httptest.NewRecorder()
 	loginReq := httptest.NewRequest(http.MethodGet, "/login", nil)

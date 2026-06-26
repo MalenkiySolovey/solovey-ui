@@ -66,6 +66,16 @@ describe('useUiMode', () => {
     expect(second.persisted.value).toBe('nexus')
   })
 
+  it('synchronizes the document mode when the operator switches UI', async () => {
+    const documentElement = { dataset: { uiMode: 'classic' } }
+    vi.stubGlobal('document', { documentElement })
+    const { useUiMode } = await import('./useUiMode')
+
+    useUiMode().setMode('nexus')
+
+    expect(documentElement.dataset.uiMode).toBe('nexus')
+  })
+
   it('keeps the in-memory mode when storage persistence throws', async () => {
     setItem.mockImplementationOnce(() => {
       throw new Error('storage unavailable')

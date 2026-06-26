@@ -6,8 +6,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/MalenkiySolovey/solovey-ui/database"
+	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 
 	"github.com/gin-gonic/gin"
 )
@@ -30,9 +31,9 @@ func TestSecurityWSOriginAllowedMatrix(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got, reason := wsOriginAllowed(tt.origin, tt.host, tt.webDomain)
+			got, reason := realtimehttp.OriginAllowed(tt.origin, tt.host, tt.webDomain)
 			if got != tt.want || reason != tt.wantReason {
-				t.Fatalf("wsOriginAllowed()=(%v,%q), want (%v,%q)", got, reason, tt.want, tt.wantReason)
+				t.Fatalf("realtimehttp.OriginAllowed()=(%v,%q), want (%v,%q)", got, reason, tt.want, tt.wantReason)
 			}
 		})
 	}
@@ -59,14 +60,15 @@ func TestSecurityValidateWSOriginRejectsAndAudits(t *testing.T) {
 			req.Header.Set("Origin", tt.origin)
 			c.Request = req
 
-			if (&ApiService{}).validateWSOrigin(c, "admin") {
+			if (&ApiService{}).realtimeHandler().ValidateOrigin(c, "admin") {
 				t.Fatal("origin should have been rejected")
 			}
 			if c.Writer.Status() != http.StatusForbidden {
 				t.Fatalf("unexpected status %d", c.Writer.Status())
 			}
+			flushAPIAudit(t)
 			var event model.AuditEvent
-			if err := database.GetDB().Where("event = ?", "ws_origin_rejected").Order("id desc").First(&event).Error; err != nil {
+			if err := dbsqlite.DB().Where("event = ?", "ws_origin_rejected").Order("id desc").First(&event).Error; err != nil {
 				t.Fatal(err)
 			}
 			var details map[string]any
