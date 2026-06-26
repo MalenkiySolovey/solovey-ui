@@ -25,7 +25,8 @@ main
 .env.*.local
 
 # Log files
-*.log*
+*.log
+*.log.*
 .cache
 .runtime/
 

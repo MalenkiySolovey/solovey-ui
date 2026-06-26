@@ -310,4 +310,4 @@
   </v-card>
 </template>
 
-<script lang="ts" src="./Rule.logic.ts"></script>
+<script lang="ts" src="./Rule.logic"></script>

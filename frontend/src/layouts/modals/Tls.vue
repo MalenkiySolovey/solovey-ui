@@ -334,4 +334,4 @@
   </v-dialog>
 </template>
 
-<script lang="ts" src="./Tls.logic.ts"></script>
+<script lang="ts" src="./Tls.logic"></script>

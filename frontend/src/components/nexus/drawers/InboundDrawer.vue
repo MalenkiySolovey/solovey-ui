@@ -108,4 +108,4 @@
   </entity-drawer>
 </template>
 
-<script lang="ts" src="./InboundDrawer.logic.ts"></script>
+<script lang="ts" src="./InboundDrawer.logic"></script>

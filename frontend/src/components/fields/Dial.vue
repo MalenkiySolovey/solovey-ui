@@ -194,4 +194,4 @@
   </v-card>
 </template>
 
-<script lang="ts" src="./Dial.logic.ts"></script>
+<script lang="ts" src="./Dial.logic"></script>

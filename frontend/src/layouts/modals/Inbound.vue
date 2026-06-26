@@ -128,4 +128,4 @@
   </v-dialog>
 </template>
 
-<script lang="ts" src="./Inbound.logic.ts"></script>
+<script lang="ts" src="./Inbound.logic"></script>

@@ -217,4 +217,4 @@
   </form-shell>
 </template>
 
-<script lang="ts" src="./Client.logic.ts"></script>
+<script lang="ts" src="./Client.logic"></script>

@@ -34,4 +34,4 @@
   </entity-drawer>
 </template>
 
-<script lang="ts" src="./ServiceDrawer.logic.ts"></script>
+<script lang="ts" src="./ServiceDrawer.logic"></script>

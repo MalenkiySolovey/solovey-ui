@@ -107,4 +107,4 @@
   </v-dialog>
 </template>
 
-<script lang="ts" src="./Outbound.logic.ts"></script>
+<script lang="ts" src="./Outbound.logic"></script>

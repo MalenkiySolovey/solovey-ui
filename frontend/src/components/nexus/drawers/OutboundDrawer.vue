@@ -68,4 +68,4 @@
   </entity-drawer>
 </template>
 
-<script lang="ts" src="./OutboundDrawer.logic.ts"></script>
+<script lang="ts" src="./OutboundDrawer.logic"></script>

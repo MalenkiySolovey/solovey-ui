@@ -187,4 +187,4 @@
   </entity-drawer>
 </template>
 
-<script lang="ts" src="./TlsDrawer.logic.ts"></script>
+<script lang="ts" src="./TlsDrawer.logic"></script>

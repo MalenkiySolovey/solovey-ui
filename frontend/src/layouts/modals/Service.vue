@@ -50,4 +50,4 @@
   </v-dialog>
 </template>
 
-<script lang="ts" src="./Service.logic.ts"></script>
+<script lang="ts" src="./Service.logic"></script>

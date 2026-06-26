@@ -151,4 +151,4 @@
   </v-card>
 </template>
 
-<script lang="ts" src="./SubJsonExt.logic.ts"></script>
+<script lang="ts" src="./SubJsonExt.logic"></script>

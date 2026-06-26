@@ -177,4 +177,4 @@
   </v-card>
 </template>
 
-<script lang="ts" src="./Tun.logic.ts"></script>
+<script lang="ts" src="./Tun.logic"></script>

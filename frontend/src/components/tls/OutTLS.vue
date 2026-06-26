@@ -323,4 +323,4 @@
   </v-card>
 </template>
 
-<script lang="ts" src="./OutTLS.logic.ts"></script>
+<script lang="ts" src="./OutTLS.logic"></script>

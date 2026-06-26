@@ -311,4 +311,4 @@
   </v-card>
 </template>
 
-<script lang="ts" src="./DnsRule.logic.ts"></script>
+<script lang="ts" src="./DnsRule.logic"></script>
