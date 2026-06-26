@@ -46,6 +46,15 @@
                 :disabled="loading"
                 hide-details
               ></v-file-input>
+              <input
+                class="migrate-xui__native-file-input"
+                data-testid="migrate-xui-db-file-input"
+                type="file"
+                accept=".db"
+                aria-hidden="true"
+                tabindex="-1"
+                @change="handleNativeFileChange"
+              />
             </v-col>
             <v-col cols="12" sm="6" md="3">
               <v-select

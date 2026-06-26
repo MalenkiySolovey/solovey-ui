@@ -254,6 +254,10 @@ export default defineComponent({
     setImport(item: PlanItem, enabled: boolean) {
       item.action = enabled ? (item.conflict ? this.strategy : 'create') : 'skip'
     },
+    handleNativeFileChange(event: Event) {
+      const input = event.target as HTMLInputElement
+      this.file = input.files?.[0] ?? null
+    },
     rowItem(item: any): PlanItem {
       return item?.raw ?? item
     },

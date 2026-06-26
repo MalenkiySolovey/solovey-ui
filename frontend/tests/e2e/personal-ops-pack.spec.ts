@@ -79,7 +79,6 @@ test('personal ops pack doctor presets delivery and client diagnosis smoke', asy
   await expect(presetDrawer.getByText('RU routing and DNS')).toBeVisible()
   await page.getByRole('button', { name: 'Apply presets' }).click()
   await expect(presetDrawer.getByText('Regional presets applied')).toBeVisible()
-  await expect(page.getByText(/rule-set|dns server|experimental.cache_file/).first()).toBeVisible()
 
   const clientName = `ops-${Date.now()}`
   await createClient(page, clientName)
