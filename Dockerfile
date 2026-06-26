@@ -30,12 +30,12 @@ COPY --from=front-builder /app/dist/ /app/web/html/
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Build Docker images inside the target platform container so CGO uses Alpine's
-# native musl toolchain. The cronet-go static libraries are pinned through
-# go.mod/go.sum, avoiding a second Chromium toolchain build inside Docker.
+# native musl toolchain. Linux/Windows release binaries include naive outbound;
+# the container image omits it to avoid a second Chromium toolchain build here.
 RUN set -e; \
     if [ "$TARGETARCH" = "arm" ]; then export GOARM=7; [ "$TARGETVARIANT" = "v6" ] && export GOARM=6; fi; \
     go build -ldflags="-w -s -checklinkname=0 -linkmode external -extldflags '-static'" \
-    -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale,with_naive_outbound,with_musl" \
+    -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale" \
     -o solovey-ui main.go
 
 FROM alpine:latest@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4
