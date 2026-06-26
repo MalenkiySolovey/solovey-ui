@@ -1,11 +1,11 @@
-FROM --platform=$BUILDPLATFORM node:alpine@sha256:3ad34ca6292aec4a91d8ddeb9229e29d9c2f689efd0dd242860889ac71842eba AS front-builder
+FROM --platform=$BUILDPLATFORM node:alpine@sha256:725aeba2364a9b16beae49e180d83bd597dbd0b15c47f1f28875c290bfd255b9 AS front-builder
 WORKDIR /app
 COPY frontend/ ./
 # npm ci (not install) so the image is built from the exact, audited
 # package-lock.json. This matches CI/release and fails closed on lockfile drift.
 RUN npm ci && npm run build
 
-FROM --platform=$TARGETPLATFORM golang:1.26.4-alpine@sha256:7a3e50096189ad57c9f9f865e7e4aa8585ed1585248513dc5cda498e2f41812c AS backend-builder
+FROM --platform=$TARGETPLATFORM golang:1.26.4-alpine@sha256:3ad57304ad93bbec8548a0437ad9e06a455660655d9af011d58b993f6f615648 AS backend-builder
 WORKDIR /app
 ARG TARGETARCH
 ARG TARGETVARIANT
@@ -59,7 +59,7 @@ RUN set -e; \
     -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0,with_tailscale" \
     -o solovey-ui main.go
 
-FROM alpine:latest@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4
+FROM alpine:latest@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 # Match defaultValueMap["timeLocation"] in service settings.
 ENV TZ=Europe/Moscow
 WORKDIR /app
