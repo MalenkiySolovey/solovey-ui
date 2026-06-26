@@ -24,11 +24,30 @@ const normalizeLocale = (value?: string | null): LocaleCode => {
   return DEFAULT_LOCALE
 }
 
-const storedLocale = () => {
-  if (typeof localStorage === 'undefined') {
-    return DEFAULT_LOCALE
+const storageGet = (key: string): string | null => {
+  if (typeof localStorage === 'undefined' || typeof localStorage.getItem !== 'function') {
+    return null
   }
-  return normalizeLocale(localStorage.getItem('locale'))
+  try {
+    return localStorage.getItem(key)
+  } catch {
+    return null
+  }
+}
+
+const storageSet = (key: string, value: string) => {
+  if (typeof localStorage === 'undefined' || typeof localStorage.setItem !== 'function') {
+    return
+  }
+  try {
+    localStorage.setItem(key, value)
+  } catch {
+    // Storage can be unavailable in private mode or test shims.
+  }
+}
+
+const storedLocale = () => {
+  return normalizeLocale(storageGet('locale'))
 }
 
 const initialLocale = storedLocale()
@@ -63,9 +82,7 @@ export const loadInitialLocaleMessages = () => loadLocaleMessages(initialLocale)
 export const setI18nLocale = async (localeCode: string) => {
   const normalized = await loadLocaleMessages(localeCode)
   i18n.global.locale.value = normalized
-  if (typeof localStorage !== 'undefined') {
-    localStorage.setItem('locale', normalized)
-  }
+  storageSet('locale', normalized)
   return normalized
 }
 
