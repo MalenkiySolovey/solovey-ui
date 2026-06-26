@@ -101,6 +101,7 @@ test('websocket survives repeated offline/online chaos and returns to connected'
     await page.evaluate((nextOnline) => {
       ;(window as any).__SUI_FAKE_WS_ONLINE__ = nextOnline
       if (!nextOnline) (window as any).__SUI_FAKE_WS_CLOSE_ALL__?.()
+      else window.dispatchEvent(new Event('online'))
     }, online)
   }
 

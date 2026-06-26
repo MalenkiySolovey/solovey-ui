@@ -160,10 +160,10 @@ describe('HttpUtils regression anchors', () => {
 
     const msg = await HttpUtils.get('api/load')
 
-    expect(msg).toEqual({ success: false, msg: 'unknown data: [object Object]', obj: null })
+    expect(msg).toEqual({ success: false, msg: 'unknown data: {"unexpected":true}', obj: null })
     expect(mocks.pushError).toHaveBeenCalledWith({
       title: 'failed',
-      message: 'unknown data: [object Object]',
+      message: 'unknown data: {"unexpected":true}',
     })
   })
 })

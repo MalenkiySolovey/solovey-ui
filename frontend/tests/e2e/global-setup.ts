@@ -9,6 +9,8 @@ import {
   stopManagedServer,
 } from './server-lifecycle'
 
+const managedServerTimeoutMs = Number(process.env.SUI_E2E_READY_TIMEOUT_MS || 360_000)
+
 const waitForManagedServer = async (timeoutMs: number): Promise<void> => {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -42,7 +44,7 @@ export default async function globalSetup() {
   server.unref()
 
   try {
-    await waitForManagedServer(180_000)
+    await waitForManagedServer(managedServerTimeoutMs)
   } catch (error) {
     stopManagedServer(server.pid)
     throw error

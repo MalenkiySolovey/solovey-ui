@@ -1,35 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
 
-const mockAuthenticatedShell = async (page: Page) => {
-  await page.addInitScript(() => {
-    window.localStorage.setItem('locale', 'en')
-  })
-  await page.route('**/api/load**', async route => route.fulfill({
-    json: {
-      success: true,
-      msg: '',
-      obj: {
-        onlines: { inbound: [], outbound: [], user: [] },
-        config: {},
-        inbounds: [],
-        outbounds: [],
-        services: [],
-        endpoints: [],
-        clients: [],
-        tls: [],
-      },
-    },
-  }))
-  await page.route('**/api/csrf', async route => route.fulfill({
-    json: { success: true, msg: '', obj: { token: 'cluster-h-csrf' } },
-  }))
-  await page.route('**/api/realtime/ws-token', async route => route.fulfill({
-    json: { success: true, msg: '', obj: { token: 'cluster-h-ws-token' } },
-  }))
-  await page.route('**/api/logout', async route => route.fulfill({
-    json: { success: true, msg: '', obj: null },
-  }))
-}
+import { login } from './helpers'
 
 const syntheticDbFile = {
   name: 'x-ui.db',
@@ -54,7 +25,7 @@ const chooseMigrateSelectOption = async (page: Page, testId: string, option: str
 test.skip('upload synthetic db, build plan, apply, download JSON/Markdown report, and rollback', async () => {})
 
 test('Issue43 shows inline apply failure on review step', async ({ page }) => {
-  await mockAuthenticatedShell(page)
+  await login(page)
   await page.route('**/api/import-xui/plan', async route => route.fulfill({
     json: {
       success: true,
@@ -94,7 +65,7 @@ test('Issue43 shows inline apply failure on review step', async ({ page }) => {
 
 test('Issue44 waits for rollback database health before reload', async ({ page }) => {
   let healthCalls = 0
-  await mockAuthenticatedShell(page)
+  await login(page)
   await page.route('**/api/import-xui/plan', async route => route.fulfill({
     json: {
       success: true,
@@ -159,7 +130,7 @@ test('Issue45 hides generated admin passwords until reveal and auto-clears them'
       return nativeSetTimeout(handler, adjusted, ...args)
     }) as typeof window.setTimeout
   })
-  await mockAuthenticatedShell(page)
+  await login(page)
   await page.route('**/api/import-xui/plan', async route => route.fulfill({
     json: {
       success: true,
@@ -213,7 +184,7 @@ test('Issue45 hides generated admin passwords until reveal and auto-clears them'
 
 test('Issue46 sends reset_required adminMode when building a plan', async ({ page }) => {
   let planRequestBody = ''
-  await mockAuthenticatedShell(page)
+  await login(page)
   await page.route('**/api/import-xui/plan', async route => {
     planRequestBody = route.request().postData() ?? ''
     await route.fulfill({

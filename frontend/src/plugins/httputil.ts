@@ -79,7 +79,16 @@ function _respToMsg(resp: any): Msg {
         return data
     }
   } else {
-    return { success: false, msg: `unknown data: ${data}`, obj: null }
+    return { success: false, msg: `unknown data: ${formatUnknownData(data)}`, obj: null }
+  }
+}
+
+function formatUnknownData(data: any): string {
+  if (typeof data === 'string') return data
+  try {
+    return JSON.stringify(data) ?? String(data)
+  } catch {
+    return String(data)
   }
 }
 
