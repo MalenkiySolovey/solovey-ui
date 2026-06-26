@@ -38,8 +38,10 @@ const syntheticDbFile = {
 }
 
 const uploadSyntheticDb = async (page: Page) => {
-  const fileInput = page.getByTestId('migrate-xui-db-file-input')
-  await expect(fileInput).toHaveCount(1)
+  await page.getByRole('button', { name: 'Upload' }).click()
+  await expect(page.getByRole('button', { name: 'Build plan' })).toBeVisible()
+  const fileInput = page.locator('.migrate-xui input[type="file"]').first()
+  await expect(fileInput).toBeAttached()
   await fileInput.setInputFiles(syntheticDbFile)
 }
 
