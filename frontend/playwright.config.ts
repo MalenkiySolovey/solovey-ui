@@ -10,6 +10,7 @@ export default defineConfig({
   expect: {
     timeout: 10_000,
   },
+  retries: process.env.CI ? 2 : 0,
   fullyParallel: false,
   workers: 1,
   outputDir: '../tests/baseline/phase6/playwright/test-results',

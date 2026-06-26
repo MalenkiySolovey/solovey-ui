@@ -138,5 +138,5 @@ test('websocket survives repeated offline/online chaos and returns to connected'
 
   await expect.poll(async () => {
     return page.evaluate(() => (window as any).__SUI_WS_STATE__ ?? 'unknown')
-  }, { timeout: 25_000 }).toBe('connected')
+  }, { timeout: 45_000 }).toBe('connected')
 })

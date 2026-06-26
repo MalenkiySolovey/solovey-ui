@@ -2,6 +2,7 @@
   <v-navigation-drawer
     v-model="visible"
     class="regional-preset-drawer"
+    data-testid="regional-preset-drawer"
     location="right"
     temporary
     :width="drawerWidth"
@@ -31,6 +32,7 @@
             <v-col cols="12" sm="6">
               <v-select
                 v-model="proxyOutbound"
+                data-testid="regional-preset-proxy-outbound"
                 density="compact"
                 hide-details
                 :items="outboundItems"
@@ -41,6 +43,7 @@
             <v-col cols="12" sm="6">
               <v-select
                 v-model="directOutbound"
+                data-testid="regional-preset-direct-outbound"
                 density="compact"
                 hide-details
                 :items="outboundItems"
@@ -76,6 +79,7 @@
                 <v-switch
                   v-model="r.state.enabled"
                   color="primary"
+                  :data-testid="`regional-preset-${r.key}-enabled`"
                   density="compact"
                   hide-details
                 />
