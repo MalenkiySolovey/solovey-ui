@@ -1,6 +1,6 @@
 //go:build !minimal
 
-// Package importxui owns the HTTP route surface for 3x-ui migration.
+// Package importxui owns the HTTP route surface for compatible panel migration.
 package importxui
 
 import (
@@ -21,7 +21,7 @@ type Handler struct {
 	JSONMsg      func(*gin.Context, string, error)
 }
 
-// Deps contains the host capabilities required by 3x-ui import routes.
+// Deps contains the host capabilities required by compatible panel import routes.
 type Deps struct {
 	AuditService service.AuditService
 	RequireScope func(*gin.Context, string, ...string) bool
@@ -74,7 +74,7 @@ func NewHandler(deps Deps) *Handler {
 	}
 }
 
-// RegisterRoutes mounts 3x-ui import routes using RouteSpecs as the route registry.
+// RegisterRoutes mounts compatible panel import routes using RouteSpecs as the route registry.
 func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
 	h := NewHandler(deps)
 	handlers := []gin.HandlerFunc{

@@ -1,8 +1,12 @@
 # Contributing
 
-## Запуск audit-pipeline локально
+Solovey UI is organized around a compact core and optional components. Keep new
+feature code close to the owner that registers and removes it.
 
-Минимальный набор перед PR:
+## Local Checks
+
+Run the smallest check that covers your change, then run the broader checks
+before publishing:
 
 ```sh
 make audit:build
@@ -13,9 +17,7 @@ make audit:fe-build
 make audit:test-fe
 ```
 
-`make audit:fe-build` запускает `vue-tsc --noEmit` внутри `npm run build`; отдельного `typecheck` script сейчас нет.
-
-Soft checks, которые полезны для диагностики, но сейчас не являются merge gates:
+Soft diagnostic checks:
 
 ```sh
 make audit:test-go-race
@@ -26,17 +28,35 @@ go test -tags=chaos ./tests/chaos/... -count=1 -timeout 30m
 go test ./... -bench=. -benchmem -run=^$ -benchtime=2s
 ```
 
-Frontend:
-- перед frontend checks выполните `make audit:fe-install` или `npm ci` в `frontend/`;
-- Playwright требует `npx playwright install chromium`;
-- e2e использует test-only server helper `tests/e2e/run-server.js`.
-
-Fixtures:
-- полные importxui fixture-тесты требуют `test-db/x-ui.db` и `test-db/s-ui.db`;
-- если fixture нет, эти тесты должны оставаться skipped.
-
-Отчёты собираются в `tests/baseline/phase*/`. Dashboard можно пересобрать так:
+Frontend setup:
 
 ```sh
-bash scripts/audit/aggregate.sh
+cd frontend
+npm ci
+npm run test:unit
+npm run build
 ```
+
+Playwright setup:
+
+```sh
+cd frontend
+npx playwright install chromium
+npx playwright test
+```
+
+## Component Rules
+
+- Core packages must not import `components/*`.
+- Component behavior tests should live inside the component package.
+- Core tests may use synthetic fixture components to verify generic host,
+  routing, and lifecycle contracts.
+- Disable means unregister runtime behavior while keeping data.
+- Remove means remove component files and runtime registration.
+- Data deletion must be explicit and handled by the component owner.
+
+## Fixtures
+
+Some migration tests require local database fixtures under `test-db/`. These
+fixtures may contain private operational data and must stay out of the
+repository.

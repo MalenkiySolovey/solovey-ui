@@ -64,6 +64,34 @@ func (s *Supervisor) Migrate(ctx context.Context) error {
 	return joined
 }
 
+func (s *Supervisor) DropData(ctx context.Context, componentID string) error {
+	if s == nil {
+		return nil
+	}
+	if err := manifest.ValidateID(componentID); err != nil {
+		return err
+	}
+	component, ok := registry.ComponentByID(componentID)
+	if !ok {
+		return fmt.Errorf("component %q is not available in this binary", componentID)
+	}
+
+	var joined error
+	if dropper, ok := component.Lifecycle.(lifecycle.DataDropper); ok {
+		if err := safeCall(component.Manifest.ID, "drop data", func() error {
+			return dropper.DropData(ctx, lifecycle.Context{Host: s.host})
+		}); err != nil {
+			joined = errors.Join(joined, err)
+		}
+	}
+	if db := dbsqlite.DB(); db != nil {
+		if err := componentmigrations.DeleteRecords(db, componentID); err != nil {
+			joined = errors.Join(joined, fmt.Errorf("component %q migration journal cleanup failed: %w", componentID, err))
+		}
+	}
+	return joined
+}
+
 func (s *Supervisor) Start(ctx context.Context) error {
 	if s == nil {
 		return nil

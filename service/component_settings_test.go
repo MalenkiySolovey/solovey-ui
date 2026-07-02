@@ -47,3 +47,20 @@ func TestConfigSaveRejectsInvalidComponentEnabledSetting(t *testing.T) {
 		t.Fatal("invalid component enabled setting was accepted")
 	}
 }
+
+func TestDropComponentDataDelegatesToRegisteredDropper(t *testing.T) {
+	defer RegisterComponentDataDropper(nil)
+
+	var gotID string
+	RegisterComponentDataDropper(func(_ context.Context, id string) error {
+		gotID = id
+		return nil
+	})
+
+	if err := DropComponentData(context.Background(), "test-component"); err != nil {
+		t.Fatal(err)
+	}
+	if gotID != "test-component" {
+		t.Fatalf("dropper id = %q, want test-component", gotID)
+	}
+}

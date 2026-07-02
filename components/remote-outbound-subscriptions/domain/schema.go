@@ -49,6 +49,27 @@ func EnsureSchema(db *gorm.DB) error {
 	return nil
 }
 
+func DropSchema(db *gorm.DB) error {
+	if db == nil {
+		return nil
+	}
+	migrator := db.Migrator()
+	for _, table := range []any{
+		&RemoteOutboundGroupConnection{},
+		&RemoteOutboundConnection{},
+		&RemoteOutboundGroup{},
+		&RemoteOutboundSubscription{},
+	} {
+		if !migrator.HasTable(table) {
+			continue
+		}
+		if err := migrator.DropTable(table); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func dropConnectionMissingColumns(db *gorm.DB) error {
 	if !db.Migrator().HasTable(&RemoteOutboundConnection{}) {
 		return nil

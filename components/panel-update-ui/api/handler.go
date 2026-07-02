@@ -37,7 +37,7 @@ type ComponentManager interface {
 	Enable(panelupdateservice.OperationContext, string) (panelupdateservice.ComponentStatus, error)
 	Disable(panelupdateservice.OperationContext, string) (panelupdateservice.ComponentStatus, error)
 	Install(panelupdateservice.OperationContext, string) (panelupdateservice.ComponentStatus, error)
-	Remove(panelupdateservice.OperationContext, string) (panelupdateservice.ComponentStatus, error)
+	Remove(panelupdateservice.OperationContext, string, bool) (panelupdateservice.ComponentStatus, error)
 }
 
 type Deps struct {
@@ -233,7 +233,8 @@ func (h Handler) componentInstall(context *gin.Context) {
 }
 
 type componentRemoveRequest struct {
-	Password string `json:"password" form:"password"`
+	Password   string `json:"password" form:"password"`
+	DeleteData bool   `json:"deleteData" form:"deleteData"`
 }
 
 func (h Handler) componentRemove(context *gin.Context) {
@@ -260,14 +261,15 @@ func (h Handler) componentRemove(context *gin.Context) {
 		h.deps.JSONMsg(context, "", common.NewError("re-authentication failed"))
 		return
 	}
-	status, err := h.deps.ComponentManager.Remove(h.componentOperationContext(context), id)
+	status, err := h.deps.ComponentManager.Remove(h.componentOperationContext(context), id, request.DeleteData)
 	if err != nil {
 		h.deps.JSONMsg(context, "", err)
 		return
 	}
 	h.deps.Audit(context, user, "component_installed_changed", "component", service.AuditSeverityWarn, map[string]any{
-		"component": id,
-		"installed": false,
+		"component":  id,
+		"installed":  false,
+		"deleteData": request.DeleteData,
 	})
 	h.deps.JSONObj(context, status, nil)
 }

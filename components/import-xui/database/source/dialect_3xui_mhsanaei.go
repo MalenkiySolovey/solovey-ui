@@ -33,7 +33,7 @@ func (Dialect3XUIMHSanaei) ReadInbounds(db *sql.DB) ([]InboundRow, error) {
 	if err != nil {
 		return nil, err
 	}
-	// Project a fixed column order, defaulting any column a given 3x-ui fork
+	// Project a fixed column order, defaulting any column a given compatible panel fork
 	// does not define. Vanilla mhsanaei lacks all_time/traffic_reset/
 	// last_traffic_reset_time; normalized forks add node_id and keep these.
 	projection := selectColumns(present, []columnSpec{

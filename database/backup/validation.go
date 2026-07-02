@@ -63,7 +63,7 @@ func validateVersionedBackupConfig(probe *gorm.DB) error {
 		return common.NewErrorf("Error checking db config: %v", err)
 	}
 	if configRows == 0 {
-		logger.Warning("versioned S-UI backup is missing settings.config; legacy or partial backup, restore will continue")
+		logger.Warning("versioned Solovey UI backup is missing settings.config; legacy or partial backup, restore will continue")
 	}
 	return nil
 }

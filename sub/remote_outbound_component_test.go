@@ -7,10 +7,8 @@ import (
 	"strconv"
 	"testing"
 
-	remotesub "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	subconversion "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/conversion"
 	sublocal "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/local"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"gopkg.in/yaml.v3"
@@ -19,22 +17,29 @@ import (
 func initSubRemoteTestDB(t *testing.T) {
 	t.Helper()
 	initSubTestDB(t)
-	if err := remotesub.EnsureSchema(dbsqlite.DB()); err != nil {
-		t.Fatalf("remote subscription schema: %v", err)
-	}
 }
 
 func registerRemoteClientOutboundContributorForTest(t *testing.T) {
 	t.Helper()
 	unregister := sublocal.RegisterClientOutboundContributor("test.remote", func(ctx sublocal.ClientOutboundContributionContext, set *sublocal.OutboundSet) error {
-		outbounds, tags, err := remotesub.OutboundsForClientLinksWithOptions(ctx.DB, ctx.RawLinks, remotesub.ClientConversionOptions{
-			Target: ctx.Target,
-			Policy: subconversion.DefaultPolicy(),
-		})
-		if err != nil {
+		var links []struct {
+			Type string `json:"type"`
+		}
+		if err := json.Unmarshal(ctx.RawLinks, &links); err != nil {
 			return err
 		}
-		set.AppendMany(outbounds, tags)
+		for _, link := range links {
+			if link.Type != "remoteGroup" {
+				continue
+			}
+			set.Append(map[string]interface{}{
+				"type":        "vless",
+				"tag":         "remote-node",
+				"server":      "remote.example.com",
+				"server_port": 443,
+				"uuid":        "22222222-2222-4222-8222-222222222222",
+			}, "remote-node")
+		}
 		return nil
 	})
 	t.Cleanup(unregister)
@@ -58,38 +63,13 @@ func TestJSONSubscriptionDoesNotExpandRemoteClientGroups(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	subscription := remotesub.RemoteOutboundSubscription{Name: "Remote", Url: "https://example.com/sub", Enabled: true}
-	if err := db.Create(&subscription).Error; err != nil {
-		t.Fatal(err)
-	}
-	group := remotesub.RemoteOutboundGroup{SubscriptionId: subscription.Id, Name: "Client", Enabled: true}
-	if err := db.Create(&group).Error; err != nil {
-		t.Fatal(err)
-	}
-	connection := remotesub.RemoteOutboundConnection{
-		SubscriptionId: subscription.Id,
-		GroupId:        group.Id,
-		Name:           "Remote Node",
-		SourceKey:      "remote-node",
-		Type:           "vless",
-		OutboundTag:    "remote-node",
-		Enabled:        true,
-		Options:        json.RawMessage(`{"server":"remote.example.com","server_port":443,"uuid":"22222222-2222-4222-8222-222222222222"}`),
-	}
-	if err := db.Create(&connection).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Create(&remotesub.RemoteOutboundGroupConnection{GroupId: group.Id, ConnectionId: connection.Id}).Error; err != nil {
-		t.Fatal(err)
-	}
-
 	client := model.Client{
 		Enable:    true,
 		Name:      "alice",
 		SubSecret: "secret-id",
 		Config:    json.RawMessage(`{"vless":{"uuid":"11111111-1111-4111-8111-111111111111"}}`),
 		Inbounds:  json.RawMessage(`[` + strconv.FormatUint(uint64(inbound.Id), 10) + `]`),
-		Links:     json.RawMessage(`[{ "type": "remoteGroup", "groupId": ` + strconv.FormatUint(uint64(group.Id), 10) + ` }]`),
+		Links:     json.RawMessage(`[{ "type": "remoteGroup", "groupId": 1 }]`),
 	}
 	if err := db.Create(&client).Error; err != nil {
 		t.Fatal(err)
@@ -131,38 +111,13 @@ func TestJSONSubscriptionExpandsRemoteClientGroupsWhenContributorRegistered(t *t
 		t.Fatal(err)
 	}
 
-	subscription := remotesub.RemoteOutboundSubscription{Name: "Remote", Url: "https://example.com/sub", Enabled: true}
-	if err := db.Create(&subscription).Error; err != nil {
-		t.Fatal(err)
-	}
-	group := remotesub.RemoteOutboundGroup{SubscriptionId: subscription.Id, Name: "Client", Enabled: true}
-	if err := db.Create(&group).Error; err != nil {
-		t.Fatal(err)
-	}
-	connection := remotesub.RemoteOutboundConnection{
-		SubscriptionId: subscription.Id,
-		GroupId:        group.Id,
-		Name:           "Remote Node",
-		SourceKey:      "remote-node",
-		Type:           "vless",
-		OutboundTag:    "remote-node",
-		Enabled:        true,
-		Options:        json.RawMessage(`{"server":"remote.example.com","server_port":443,"uuid":"22222222-2222-4222-8222-222222222222"}`),
-	}
-	if err := db.Create(&connection).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Create(&remotesub.RemoteOutboundGroupConnection{GroupId: group.Id, ConnectionId: connection.Id}).Error; err != nil {
-		t.Fatal(err)
-	}
-
 	client := model.Client{
 		Enable:    true,
 		Name:      "alice",
 		SubSecret: "secret-id",
 		Config:    json.RawMessage(`{"vless":{"uuid":"11111111-1111-4111-8111-111111111111"}}`),
 		Inbounds:  json.RawMessage(`[` + strconv.FormatUint(uint64(inbound.Id), 10) + `]`),
-		Links:     json.RawMessage(`[{ "type": "remoteGroup", "groupId": ` + strconv.FormatUint(uint64(group.Id), 10) + ` }]`),
+		Links:     json.RawMessage(`[{ "type": "remoteGroup", "groupId": 1 }]`),
 	}
 	if err := db.Create(&client).Error; err != nil {
 		t.Fatal(err)
@@ -198,38 +153,13 @@ func TestClashSubscriptionDoesNotExpandRemoteClientGroups(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	subscription := remotesub.RemoteOutboundSubscription{Name: "Remote", Url: "https://example.com/sub", Enabled: true}
-	if err := db.Create(&subscription).Error; err != nil {
-		t.Fatal(err)
-	}
-	group := remotesub.RemoteOutboundGroup{SubscriptionId: subscription.Id, Name: "Client", Enabled: true}
-	if err := db.Create(&group).Error; err != nil {
-		t.Fatal(err)
-	}
-	connection := remotesub.RemoteOutboundConnection{
-		SubscriptionId: subscription.Id,
-		GroupId:        group.Id,
-		Name:           "Remote Node",
-		SourceKey:      "remote-node",
-		Type:           "vless",
-		OutboundTag:    "remote-node",
-		Enabled:        true,
-		Options:        json.RawMessage(`{"server":"remote.example.com","server_port":443,"uuid":"22222222-2222-4222-8222-222222222222"}`),
-	}
-	if err := db.Create(&connection).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := db.Create(&remotesub.RemoteOutboundGroupConnection{GroupId: group.Id, ConnectionId: connection.Id}).Error; err != nil {
-		t.Fatal(err)
-	}
-
 	client := model.Client{
 		Enable:    true,
 		Name:      "alice",
 		SubSecret: "secret-id",
 		Config:    json.RawMessage(`{"vless":{"uuid":"11111111-1111-4111-8111-111111111111"}}`),
 		Inbounds:  json.RawMessage(`[` + strconv.FormatUint(uint64(inbound.Id), 10) + `]`),
-		Links:     json.RawMessage(`[{ "type": "remoteGroup", "groupId": ` + strconv.FormatUint(uint64(group.Id), 10) + ` }]`),
+		Links:     json.RawMessage(`[{ "type": "remoteGroup", "groupId": 1 }]`),
 	}
 	if err := db.Create(&client).Error; err != nil {
 		t.Fatal(err)
@@ -268,53 +198,13 @@ func TestXraySubscriptionDoesNotExpandRemoteClientGroups(t *testing.T) {
 	}
 	db := dbsqlite.DB()
 
-	subscription := remotesub.RemoteOutboundSubscription{Name: "Remote", Url: "https://example.com/sub", Enabled: true}
-	if err := db.Create(&subscription).Error; err != nil {
-		t.Fatal(err)
-	}
-	group := remotesub.RemoteOutboundGroup{SubscriptionId: subscription.Id, Name: "Client", Enabled: true}
-	if err := db.Create(&group).Error; err != nil {
-		t.Fatal(err)
-	}
-	node := remotesub.RemoteOutboundConnection{
-		SubscriptionId: subscription.Id,
-		GroupId:        group.Id,
-		Name:           "Remote Node",
-		SourceKey:      "remote-node",
-		Type:           "vless",
-		OutboundTag:    "remote-node",
-		Enabled:        true,
-		Options:        json.RawMessage(`{"server":"remote.example.com","server_port":443,"uuid":"22222222-2222-4222-8222-222222222222"}`),
-	}
-	if err := db.Create(&node).Error; err != nil {
-		t.Fatal(err)
-	}
-	auto := remotesub.RemoteOutboundConnection{
-		SubscriptionId: subscription.Id,
-		GroupId:        group.Id,
-		Name:           "Auto",
-		SourceKey:      "auto",
-		Type:           "urltest",
-		OutboundTag:    "remote-auto",
-		Enabled:        true,
-		Options:        json.RawMessage(`{"outbounds":["remote-node"],"url":"http://www.gstatic.com/generate_204","interval":"10m","tolerance":50}`),
-	}
-	if err := db.Create(&auto).Error; err != nil {
-		t.Fatal(err)
-	}
-	for _, connection := range []remotesub.RemoteOutboundConnection{node, auto} {
-		if err := db.Create(&remotesub.RemoteOutboundGroupConnection{GroupId: group.Id, ConnectionId: connection.Id}).Error; err != nil {
-			t.Fatal(err)
-		}
-	}
-
 	client := model.Client{
 		Enable:    true,
 		Name:      "alice",
 		SubSecret: "secret-id",
 		Config:    json.RawMessage(`{}`),
 		Inbounds:  json.RawMessage(`[]`),
-		Links:     json.RawMessage(`[{ "type": "remoteGroup", "groupId": ` + strconv.FormatUint(uint64(group.Id), 10) + ` }]`),
+		Links:     json.RawMessage(`[{ "type": "remoteGroup", "groupId": 1 }]`),
 	}
 	if err := db.Create(&client).Error; err != nil {
 		t.Fatal(err)

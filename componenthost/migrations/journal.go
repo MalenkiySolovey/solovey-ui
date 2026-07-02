@@ -44,3 +44,16 @@ func RecordApplied(db *gorm.DB, item manifest.Manifest) error {
 		}),
 	}).Create(&record).Error
 }
+
+func DeleteRecords(db *gorm.DB, componentID string) error {
+	if db == nil {
+		return errors.New("component migration journal database is not initialized")
+	}
+	if err := manifest.ValidateID(componentID); err != nil {
+		return err
+	}
+	if !db.Migrator().HasTable(&model.ComponentMigration{}) {
+		return nil
+	}
+	return db.Where("component_id = ?", componentID).Delete(&model.ComponentMigration{}).Error
+}

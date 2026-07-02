@@ -26,7 +26,7 @@ func planSettings(ctx context.Context, tx *gorm.DB, src *source.Database, plan *
 		if !ok {
 			// Surface every unmapped source setting as a skipped, warning-only
 			// item so the operator can see exactly what did not migrate instead
-			// of it being dropped silently. Most are 3x-ui/xray specific keys
+			// of it being dropped silently. Most are compatible panel/xray specific keys
 			// with no sing-box equivalent in s-ui.
 			plan.Items = append(plan.Items, warningOnlyItem(KindSetting, setting.ID, setting.Key, setting.Key, []string{fmt.Sprintf("setting %s has no s-ui equivalent; not migrated", setting.Key)}))
 			continue
@@ -95,12 +95,12 @@ func (s *applyState) applySettings(ctx context.Context, tx *gorm.DB, src *source
 	return nil
 }
 
-// xuiSettingKeyMap maps 3x-ui setting keys to their s-ui equivalents. It only
+// xuiSettingKeyMap maps compatible panel setting keys to their s-ui equivalents. It only
 // contains settings whose meaning is portable to s-ui's sing-box-based panel:
 // network/listen/port/path/domain/cert settings, subscription endpoints, a few
 // display toggles, and the Telegram bot credentials. xray-specific subscription
 // payload settings (subJson*/subClash* fragments, routing rules, encode mode)
-// and 3x-ui-only keys are intentionally omitted because their format/semantics
+// and compatible panel-only keys are intentionally omitted because their format/semantics
 // differ; planSettings reports those as skipped so the loss is visible.
 var xuiSettingKeyMap = map[string]string{
 	// Web panel
@@ -139,7 +139,7 @@ var xuiSettingKeyMap = map[string]string{
 	"timeLocation":  "timeLocation",
 	"sessionMaxAge": "sessionMaxAge",
 
-	// Telegram bot: 3x-ui tgBot* -> s-ui telegram*
+	// Telegram bot: compatible panel tgBot* -> s-ui telegram*
 	"tgBotEnable": "telegramEnabled",
 	"tgBotToken":  "telegramBotToken",
 	"tgBotChatId": "telegramChatID",
@@ -149,7 +149,7 @@ var xuiSettingKeyMap = map[string]string{
 	"tgBotProxy":  "telegramProxyURL",
 }
 
-// hostSpecificSettingKeys are 3x-ui source keys whose values identify the
+// hostSpecificSettingKeys are compatible panel source keys whose values identify the
 // SOURCE server's host/domain: the bind address, the panel/sub domain, on-disk
 // TLS certificate paths, and the absolute subscription URLs that embed the
 // host. Copying these onto a different destination host breaks it - the panel

@@ -11,7 +11,12 @@ function readArg(name, fallback = '') {
   const inline = args.find((arg) => arg.startsWith(`${name}=`))
   if (inline) return inline.slice(name.length + 1)
   const index = args.indexOf(name)
-  if (index >= 0 && index + 1 < args.length) return args[index + 1]
+  if (index >= 0 && index + 1 < args.length) {
+    const value = args[index + 1]
+    // A flag token here means the value was omitted (PowerShell drops
+    // empty-string arguments); fall back instead of consuming the flag.
+    if (!value.startsWith('--')) return value
+  }
   return fallback
 }
 

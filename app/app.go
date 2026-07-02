@@ -124,6 +124,8 @@ func (a *APP) Init() error {
 		Scheduler: a.cronScheduler,
 	})
 	service.RegisterComponentSettingsReconciler(a.components.Reconcile)
+	service.RegisterComponentMigrator(a.components.Migrate)
+	service.RegisterComponentDataDropper(a.components.DropData)
 	a.webServer, err = web.NewServer(web.WithRuntime(a.runtime))
 	if err != nil {
 		return err

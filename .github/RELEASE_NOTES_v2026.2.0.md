@@ -4,43 +4,41 @@ Compared with `v2026.1.0`.
 
 ## English
 
-- Introduced the optional component install model for release builds: full/core
-  binaries, a compact component bundle, installer profiles (`full`,
-  `minimal/core`) and custom `--with` / `--without` component selection.
-- Moved optional feature areas behind component boundaries: panel import,
-  remote outbound subscriptions, paid subscriptions, Telegram, observability
-  extras, and panel update UI now register their routes, settings, jobs,
-  database tables, CLI entries, and frontend entries through the component host.
-- Added generated backend component composition and frontend component registry
-  loading so the core panel does not need direct edits for every optional
-  feature.
-- Synced selected upstream fixes from `deposist/s-ui-x v1.5.10-beta9`: stale
-  settings rows no longer round-trip into saves, and RU/ZH regional presets now
-  use country-direct behavior with managed RU `geosite-ru-smart` `.srs`
-  preparation.
-- Synced the `alireza0/s-ui v1.5.1` security direction by updating sing-box
-  integration to `v1.13.14` and auditing the TLS certificate pin conflict fix
-  against Solovey UI's TLS/outbound generation path.
-- Updated public documentation and release defaults for the `2026.2.0` version
-  scheme.
+- Added a real optional component system: components register backend routes,
+  jobs, settings, database hooks, frontend entries, and lifecycle behavior only
+  when installed and enabled.
+- Added component-aware release packaging: full binary, core binary, one
+  component bundle, release manifest, and compatibility metadata.
+- Added update UI support for component availability, required panel versions,
+  install/remove, enable/disable, and explicit component data deletion.
+- Hardened component boundaries: core packages and core tests no longer import
+  concrete component packages; generic host behavior is tested with fixtures.
+- Improved remote outbound subscriptions: normalized collected profile data,
+  group conversion, delay checks, bulk groups, and safer synchronization into
+  panel outbounds and client exports.
+- Improved frontend drag-and-drop selection and placement indicators across
+  Nexus and classic layouts.
+- Updated Docker and release automation for multi-platform images and modular
+  release artifacts.
+- Cleaned public documentation and release defaults for the `2026.2.0` line.
 
 ## Русский
 
-- Добавлена компонентная модель установки для релизных сборок: full/core
-  бинарники, один компактный component bundle, профили установщика (`full`,
-  `minimal/core`) и выбор компонентов через `--with` / `--without`.
-- Optional-функции вынесены за компонентные границы: импорт панелей, remote
-  outbound-подписки, платные подписки, Telegram, расширенная observability и UI
-  обновлений регистрируют routes, settings, jobs, database tables, CLI и
-  frontend-входы через component host.
-- Добавлена генерация backend component composition и загрузка frontend
-  component registry, чтобы ядро панели не требовало прямых правок под каждый
-  optional-компонент.
-- Перенесены выбранные исправления из `deposist/s-ui-x v1.5.10-beta9`: stale
-  settings rows больше не возвращаются в Settings save, а RU/ZH regional presets
-  работают в режиме country-direct с подготовкой managed RU
-  `geosite-ru-smart` `.srs`.
-- Учтено направление безопасности `alireza0/s-ui v1.5.1`: интеграция sing-box
-  обновлена до `v1.13.14`, а исправление конфликта TLS certificate pin сверено с
-  текущей логикой TLS/outbound в Solovey UI.
-- Обновлены публичная документация и релизные defaults под версию `2026.2.0`.
+- Добавлена настоящая optional component system: компоненты регистрируют backend
+  routes, jobs, settings, database hooks, frontend entries и lifecycle только
+  когда они установлены и включены.
+- Добавлена компонентная релизная упаковка: full binary, core binary, один
+  component bundle, release manifest и metadata совместимости.
+- В update UI добавлены сведения о доступности компонентов, требуемой версии
+  панели, установке/удалении, включении/отключении и явном удалении данных
+  компонента.
+- Усилены границы компонентов: core-пакеты и core-тесты больше не импортируют
+  конкретные component-пакеты; generic host behavior проверяется фикстурами.
+- Улучшены remote outbound subscriptions: нормализованный профиль данных,
+  конвертация групп, delay checks, bulk groups и более безопасная синхронизация
+  в panel outbounds и client exports.
+- Улучшены drag-and-drop selection и placement indicators во frontend для Nexus
+  и classic layouts.
+- Обновлены Docker и release automation под multi-platform images и модульные
+  release artifacts.
+- Очищена публичная документация и release defaults для ветки `2026.2.0`.

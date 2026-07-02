@@ -3,7 +3,7 @@ chcp 65001 >nul
 setlocal enabledelayedexpansion
 
 echo ========================================
-echo Установщик S-UI для Windows
+echo Установщик Solovey UI для Windows
 echo ========================================
 
 REM Проверка запуска от имени администратора
@@ -17,10 +17,10 @@ if %errorLevel% neq 0 (
 
 cd /d "%~dp0"
 REM Каталог установки
-set "INSTALL_DIR=C:\Program Files\s-ui"
-set "SERVICE_NAME=s-ui"
+set "INSTALL_DIR=C:\Program Files\Solovey UI"
+set "SERVICE_NAME=solovey-ui"
 
-echo Установка S-UI в каталог: %INSTALL_DIR%
+echo Установка Solovey UI в каталог: %INSTALL_DIR%
 
 REM Создание каталога установки
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
@@ -51,11 +51,11 @@ REM Установка службы Windows
 if exist "%WINSW_PATH%" (
     echo Установка службы Windows...
     cd /d "%INSTALL_DIR%"
-    copy "winsw.exe" "s-ui-service.exe" >nul
-    copy "s-ui-windows.xml" "s-ui-service.xml" >nul
+    copy "winsw.exe" "solovey-ui-service.exe" >nul
+    copy "s-ui-windows.xml" "solovey-ui-service.xml" >nul
         
     REM Установка службы
-    s-ui-service.exe install
+    solovey-ui-service.exe install
     if %errorLevel% equ 0 (
         echo Служба успешно установлена
     ) else (
@@ -126,7 +126,7 @@ echo Настройка учетных данных администратора
 sui.exe admin -username "%admin_username%" -password "%admin_password%"
 
 REM Запуск службы
-echo Запуск службы S-UI...
+echo Запуск службы Solovey UI...
 net start %SERVICE_NAME%
 if %errorLevel% equ 0 (
     echo Служба успешно запущена
@@ -138,7 +138,7 @@ REM Создание ярлыка на рабочем столе
 echo Создание ярлыка на рабочем столе...
 set "DESKTOP=%USERPROFILE%\Desktop"
 if exist "%DESKTOP%" (
-    powershell -Command "& {$WshShell = New-Object -comObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%DESKTOP%\S-UI.lnk'); $Shortcut.TargetPath = '%INSTALL_DIR%\s-ui-windows.bat'; $Shortcut.WorkingDirectory = '%INSTALL_DIR%'; $Shortcut.Description = 'Панель управления S-UI'; $Shortcut.Save()}"
+    powershell -Command "& {$WshShell = New-Object -comObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%DESKTOP%\Solovey UI.lnk'); $Shortcut.TargetPath = '%INSTALL_DIR%\s-ui-windows.bat'; $Shortcut.WorkingDirectory = '%INSTALL_DIR%'; $Shortcut.Description = 'Панель управления Solovey UI'; $Shortcut.Save()}"
     echo Ярлык на рабочем столе создан
 )
 
@@ -146,8 +146,8 @@ REM Создание ярлыка в меню Пуск
 echo Создание ярлыка в меню Пуск...
 set "START_MENU=%APPDATA%\Microsoft\Windows\Start Menu\Programs"
 if exist "%START_MENU%" (
-    if not exist "%START_MENU%\S-UI" mkdir "%START_MENU%\S-UI"
-    powershell -Command "& {$WshShell = New-Object -comObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%START_MENU%\S-UI\Панель управления S-UI.lnk'); $Shortcut.TargetPath = '%INSTALL_DIR%\s-ui-windows.bat'; $Shortcut.WorkingDirectory = '%INSTALL_DIR%'; $Shortcut.Description = 'Панель управления S-UI'; $Shortcut.Save()}"
+    if not exist "%START_MENU%\Solovey UI" mkdir "%START_MENU%\Solovey UI"
+    powershell -Command "& {$WshShell = New-Object -comObject WScript.Shell; $Shortcut = $WshShell.CreateShortcut('%START_MENU%\Solovey UI\Панель управления Solovey UI.lnk'); $Shortcut.TargetPath = '%INSTALL_DIR%\s-ui-windows.bat'; $Shortcut.WorkingDirectory = '%INSTALL_DIR%'; $Shortcut.Description = 'Панель управления Solovey UI'; $Shortcut.Save()}"
     echo Ярлык в меню Пуск создан
 )
 
@@ -167,7 +167,7 @@ echo ========================================
 echo Установка успешно завершена!
 echo ========================================
 echo.
-echo S-UI установлен в каталог: %INSTALL_DIR%
+echo Solovey UI установлен в каталог: %INSTALL_DIR%
 echo.
 echo Конфигурация:
 echo   Порт панели: %panel_port%

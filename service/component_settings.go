@@ -13,10 +13,32 @@ var componentSettingsReconciler = struct {
 	fn func(context.Context) error
 }{}
 
+var componentMigrator = struct {
+	sync.RWMutex
+	fn func(context.Context) error
+}{}
+
+var componentDataDropper = struct {
+	sync.RWMutex
+	fn func(context.Context, string) error
+}{}
+
 func RegisterComponentSettingsReconciler(fn func(context.Context) error) {
 	componentSettingsReconciler.Lock()
 	defer componentSettingsReconciler.Unlock()
 	componentSettingsReconciler.fn = fn
+}
+
+func RegisterComponentMigrator(fn func(context.Context) error) {
+	componentMigrator.Lock()
+	defer componentMigrator.Unlock()
+	componentMigrator.fn = fn
+}
+
+func RegisterComponentDataDropper(fn func(context.Context, string) error) {
+	componentDataDropper.Lock()
+	defer componentDataDropper.Unlock()
+	componentDataDropper.fn = fn
 }
 
 func reconcileComponentSettings(ctx context.Context) error {
@@ -31,6 +53,26 @@ func ReconcileComponents(ctx context.Context) error {
 		return nil
 	}
 	return fn(ctx)
+}
+
+func MigrateComponents(ctx context.Context) error {
+	componentMigrator.RLock()
+	fn := componentMigrator.fn
+	componentMigrator.RUnlock()
+	if fn == nil {
+		return nil
+	}
+	return fn(ctx)
+}
+
+func DropComponentData(ctx context.Context, id string) error {
+	componentDataDropper.RLock()
+	fn := componentDataDropper.fn
+	componentDataDropper.RUnlock()
+	if fn == nil {
+		return nil
+	}
+	return fn(ctx, id)
 }
 
 func componentEnabledSettingsTouched(obj string, data json.RawMessage) (bool, error) {

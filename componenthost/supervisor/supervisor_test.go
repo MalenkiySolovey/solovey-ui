@@ -26,6 +26,11 @@ func (l recordingLifecycle) Stop(context.Context) error {
 	return nil
 }
 
+func (l recordingLifecycle) DropData(context.Context, lifecycle.Context) error {
+	*l.events = append(*l.events, "drop:"+l.id)
+	return nil
+}
+
 func TestSupervisorReconcileStartsAndStopsChangedComponents(t *testing.T) {
 	var events []string
 	components := []registry.Component{
@@ -75,6 +80,21 @@ func TestSupervisorStopStopsRunningComponentsInReverseOrder(t *testing.T) {
 
 	want := []string{"start:alpha", "start:beta", "stop:beta", "stop:alpha"}
 	if !reflect.DeepEqual(events, want) {
+		t.Fatalf("events = %#v, want %#v", events, want)
+	}
+}
+
+func TestSupervisorDropDataCallsComponentDropper(t *testing.T) {
+	var events []string
+	const componentID = "test-supervisor-drop"
+	component := testComponent(componentID, &events)
+	registry.Register(component)
+	supervisor := New(lifecycleHostForTest())
+
+	if err := supervisor.DropData(context.Background(), componentID); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"drop:" + componentID}; !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %#v, want %#v", events, want)
 	}
 }

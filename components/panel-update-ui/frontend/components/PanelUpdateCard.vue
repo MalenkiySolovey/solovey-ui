@@ -98,6 +98,17 @@
     <v-divider />
 
     <section class="panel-update__components">
+      <div class="panel-update__section-title">Component catalog</div>
+      <div class="panel-update__catalog-card">
+        <span>Binary profile: <strong>{{ componentInventory?.binaryProfile || 'unknown' }}</strong></span>
+        <span v-if="componentInventory?.releaseVersion">GitHub catalog: <strong>{{ componentInventory.releaseVersion }}</strong></span>
+        <span v-else>GitHub catalog: <strong>not loaded</strong></span>
+        <span v-if="componentInventory?.releaseSource" class="panel-update__component-meta">{{ componentInventory.releaseSource }}</span>
+      </div>
+      <v-alert v-if="componentInventory?.releaseError" density="compact" type="warning" variant="tonal">
+        GitHub component catalog could not be loaded: {{ componentInventory.releaseError }}
+      </v-alert>
+
       <div class="panel-update__section-title">Installed components</div>
       <div v-if="installedComponents.length === 0" class="panel-update__empty">No installed components.</div>
       <div
@@ -113,8 +124,11 @@
           <v-chip :color="component.active ? 'success' : 'warning'" density="compact" label size="small">
             {{ component.active ? 'Enabled' : 'Disabled' }}
           </v-chip>
+          <v-chip v-if="component.locked" color="info" density="compact" label size="small">
+            Locked
+          </v-chip>
           <v-btn
-            v-if="component.active"
+            v-if="component.active && !component.locked"
             size="small"
             variant="tonal"
             :disabled="!!componentAction"
@@ -124,7 +138,7 @@
             Disable
           </v-btn>
           <v-btn
-            v-else
+            v-else-if="!component.locked"
             size="small"
             variant="tonal"
             color="primary"
@@ -135,7 +149,7 @@
             Enable
           </v-btn>
           <v-btn
-            v-if="component.removable"
+            v-if="component.removable && !component.locked"
             size="small"
             variant="tonal"
             color="error"
@@ -148,8 +162,8 @@
         </div>
       </div>
 
-      <div class="panel-update__section-title">Available in binary</div>
-      <div v-if="availableComponents.length === 0" class="panel-update__empty">No bundled components are waiting for installer-managed install.</div>
+      <div class="panel-update__section-title">Available for this build</div>
+      <div v-if="availableComponents.length === 0" class="panel-update__empty">No bundled components are waiting for install.</div>
       <div
         v-for="component in availableComponents"
         :key="component.id"
@@ -167,7 +181,7 @@
           :loading="isComponentAction(component, 'install')"
           @click="setComponentInstalled(component, true)"
         >
-          {{ component.installable ? 'Install' : 'Use installer' }}
+          {{ component.installable ? 'Install' : 'Unavailable' }}
         </v-btn>
       </div>
 
@@ -185,7 +199,9 @@
             <span v-if="component.unavailableReason"> / {{ component.unavailableReason }}</span>
           </div>
         </div>
-        <v-btn disabled size="small" variant="tonal">Install</v-btn>
+        <v-btn disabled size="small" variant="tonal">
+          {{ component.compatible ? 'Not bundled' : 'Requires newer panel' }}
+        </v-btn>
       </div>
     </section>
 
@@ -214,6 +230,16 @@
           </v-alert>
           <p class="mb-3">Confirm removing <strong>{{ componentRemoveTarget?.name }}</strong> with your current password.</p>
           <v-text-field v-model="componentRemovePassword" autocomplete="current-password" density="comfortable" label="Password" type="password" variant="outlined" />
+          <v-checkbox
+            v-model="componentRemoveDeleteData"
+            color="error"
+            density="compact"
+            hide-details
+            label="Also delete component database data"
+          />
+          <div class="panel-update__component-meta">
+            Keep this unchecked to remove only the component footprint. Database rows stay available for reinstall.
+          </div>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
@@ -240,7 +266,9 @@ const {
   checkUpdates,
   checking,
   componentAction,
+  componentInventory,
   componentRemoveConfirm,
+  componentRemoveDeleteData,
   componentRemovePassword,
   componentRemoveTarget,
   confirm,
@@ -261,11 +289,14 @@ const releaseNoteBlocks = computed(() => parseMarkdownBlocks(status.value?.relea
 const headingTag = (level = 3) => `h${Math.min(Math.max(level + 2, 4), 6)}`
 const isComponentAction = (component: ComponentCatalogStatus, action: string) => componentAction.value === `${component.id}:${action}`
 const componentMeta = (component: ComponentCatalogStatus) => {
-  const parts = [component.id, `current ${component.version}`]
+  const parts = [component.id]
+  if (component.version) parts.push(`current ${component.version}`)
   if (component.latestVersion && component.latestVersion !== component.version) parts.push(`latest ${component.latestVersion}`)
-  if (component.since) parts.push(`since ${component.since}`)
+  if (component.requiredPanelVersion || component.since) parts.push(`requires panel ${component.requiredPanelVersion || component.since}`)
   parts.push(component.delivery)
-  if (!component.installable && !component.removable) parts.push('installer-managed')
+  if (!component.compatible) parts.push('incompatible')
+  if (component.locked && component.lockedReason) parts.push(component.lockedReason)
+  else if (!component.installable && !component.removable && !component.availableInBinary) parts.push('release-only')
   return parts.join(' / ')
 }
 </script>
@@ -294,6 +325,7 @@ const componentMeta = (component: ComponentCatalogStatus) => {
 .panel-update__actions { display: flex; justify-content: flex-end; }
 .panel-update__components { display: grid; gap: 10px; min-width: 0; }
 .panel-update__panel-card { border: 1px solid rgba(var(--v-theme-on-surface), 0.10); border-radius: 8px; display: grid; gap: 12px; padding: 10px; }
+.panel-update__catalog-card { align-items: center; border: 1px solid rgba(var(--v-theme-on-surface), 0.10); border-radius: 8px; display: flex; flex-wrap: wrap; gap: 10px 14px; padding: 10px; }
 .panel-update__section-title { color: var(--nexus-text-primary); font-size: 0.88rem; font-weight: 700; margin-top: 4px; }
 .panel-update__empty { color: rgba(var(--v-theme-on-surface), 0.62); font-size: 0.82rem; }
 .panel-update__component-row { align-items: center; border: 1px solid rgba(var(--v-theme-on-surface), 0.10); border-radius: 8px; display: flex; gap: 12px; justify-content: space-between; min-width: 0; padding: 10px; }

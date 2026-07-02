@@ -1,10 +1,23 @@
 # Changelog
 
-The full changelog is maintained per language. Pick the file that matches your
-preferred language:
+## 2026.2.0
 
-- English — [`CHANGELOG-EN.md`](CHANGELOG-EN.md)
-- Русский — [`CHANGELOG-RU.md`](CHANGELOG-RU.md)
-- 简体中文 — [`CHANGELOG-ZH.md`](CHANGELOG-ZH.md)
+- Added the component runtime model: optional features register routes, jobs,
+  settings, database hooks, frontend entries, and lifecycle behavior only when
+  installed and enabled.
+- Added component-aware install profiles and release packaging: full binary,
+  core binary, compact component bundle, and release manifest.
+- Added panel update UI support for component availability, version
+  compatibility, enable/disable, install/remove, and explicit data deletion.
+- Improved remote outbound subscriptions: normalized collected profile data,
+  group conversion, delay checks, bulk group operations, and synchronization
+  rules.
+- Improved frontend drag-and-drop selection behavior and UI consistency across
+  Nexus and classic layouts.
+- Updated release, Docker, and local development scripts for the modular build.
 
-All three files cover the same set of releases and are kept in sync.
+## 2026.1.0
+
+- Introduced the Solovey UI versioning line.
+- Reworked remote subscription parsing and synchronization.
+- Added Windows development helpers and release hardening.

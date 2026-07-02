@@ -12,7 +12,7 @@ func (s *Service) NotifyEvent(event string, fields map[string]string) {
 	if err != nil || !enabled || s.Notifier == nil {
 		return
 	}
-	message := "S-UI event: " + redact.String(event)
+	message := "Solovey UI event: " + redact.String(event)
 	for key, value := range fields {
 		if value == "" {
 			continue

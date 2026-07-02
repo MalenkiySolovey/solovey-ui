@@ -1,24 +1,46 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"sort"
 	"strings"
+	"time"
 
+	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
+	"github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	componentprofile "github.com/MalenkiySolovey/solovey-ui/internal/components/profile"
 )
 
-const ReleaseManifestFileEnv = "SUI_COMPONENT_RELEASE_MANIFEST_FILE"
+const (
+	ReleaseManifestFileEnv = "SUI_COMPONENT_RELEASE_MANIFEST_FILE"
+	ReleaseManifestURLEnv  = "SUI_COMPONENT_RELEASE_MANIFEST_URL"
+	releaseDownloadBase    = "https://github.com/MalenkiySolovey/solovey-ui/releases/download"
+	releaseManifestName    = "solovey-ui-release.json"
+	releaseHTTPTimeout     = 5 * time.Second
+)
+
+type HTTPDoer interface {
+	Do(*http.Request) (*http.Response, error)
+}
 
 type Catalog struct {
 	ReleaseManifestFile string
+	ReleaseManifestURL  string
+	HTTPClient          HTTPDoer
 }
 
 func NewCatalog() Catalog {
-	return Catalog{ReleaseManifestFile: os.Getenv(ReleaseManifestFileEnv)}
+	return Catalog{
+		ReleaseManifestFile: os.Getenv(ReleaseManifestFileEnv),
+		ReleaseManifestURL:  os.Getenv(ReleaseManifestURLEnv),
+		HTTPClient:          &http.Client{Timeout: releaseHTTPTimeout},
+	}
 }
 
 func (c Catalog) Inventory() (Inventory, error) {
@@ -27,12 +49,19 @@ func (c Catalog) Inventory() (Inventory, error) {
 	if err != nil {
 		return Inventory{}, err
 	}
-	release, err := c.loadReleaseCatalog()
+	release, source, err := c.loadReleaseCatalog()
 	if err != nil {
-		return Inventory{}, err
+		release = releaseCatalog{Components: map[string]releaseComponent{}}
 	}
 
-	inventory := Inventory{BinaryProfile: componentprofile.Binary}
+	inventory := Inventory{
+		BinaryProfile:  componentprofile.Binary,
+		ReleaseVersion: release.Version,
+		ReleaseSource:  source,
+	}
+	if err != nil {
+		inventory.ReleaseError = err.Error()
+	}
 	seen := make(map[string]struct{}, len(statuses))
 	for _, status := range statuses {
 		seen[status.ID] = struct{}{}
@@ -82,15 +111,57 @@ func (c Catalog) StatusByID(id string) (ComponentStatus, error) {
 	return ComponentStatus{}, fmt.Errorf("component is not available in this profile: %s", id)
 }
 
-func (c Catalog) loadReleaseCatalog() (releaseCatalog, error) {
+func (c Catalog) loadReleaseCatalog() (releaseCatalog, string, error) {
 	path := strings.TrimSpace(c.ReleaseManifestFile)
 	if path == "" {
-		return releaseCatalog{Components: map[string]releaseComponent{}}, nil
+		return c.fetchReleaseCatalog()
 	}
 	data, err := os.ReadFile(path) // #nosec G304 -- update component reads the installer-provided release manifest path.
 	if err != nil {
-		return releaseCatalog{}, err
+		return releaseCatalog{}, path, err
 	}
+	catalog, err := decodeReleaseCatalog(data)
+	return catalog, path, err
+}
+
+func (c Catalog) fetchReleaseCatalog() (releaseCatalog, string, error) {
+	requestURL := strings.TrimSpace(c.ReleaseManifestURL)
+	if requestURL == "" {
+		requestURL = defaultReleaseManifestURL(configidentity.GetVersion())
+	}
+	if requestURL == "" {
+		return releaseCatalog{Components: map[string]releaseComponent{}}, "", nil
+	}
+	client := c.HTTPClient
+	if client == nil {
+		client = &http.Client{Timeout: releaseHTTPTimeout}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), releaseHTTPTimeout)
+	defer cancel()
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, requestURL, nil)
+	if err != nil {
+		return releaseCatalog{}, requestURL, err
+	}
+	request.Header.Set("Accept", "application/json")
+	request.Header.Set("User-Agent", "solovey-ui-component-catalog")
+	response, err := client.Do(request)
+	if err != nil {
+		return releaseCatalog{}, requestURL, err
+	}
+	defer response.Body.Close()
+	if response.StatusCode < 200 || response.StatusCode >= 300 {
+		_, _ = io.Copy(io.Discard, io.LimitReader(response.Body, 1024))
+		return releaseCatalog{}, requestURL, fmt.Errorf("release manifest status %d", response.StatusCode)
+	}
+	data, err := io.ReadAll(io.LimitReader(response.Body, 2<<20))
+	if err != nil {
+		return releaseCatalog{}, requestURL, err
+	}
+	catalog, err := decodeReleaseCatalog(data)
+	return catalog, requestURL, err
+}
+
+func decodeReleaseCatalog(data []byte) (releaseCatalog, error) {
 	var catalog releaseCatalog
 	if err := json.Unmarshal(data, &catalog); err != nil {
 		return releaseCatalog{}, err
@@ -101,8 +172,32 @@ func (c Catalog) loadReleaseCatalog() (releaseCatalog, error) {
 	return catalog, nil
 }
 
+func defaultReleaseManifestURL(version string) string {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return ""
+	}
+	tag := version
+	if !strings.HasPrefix(strings.ToLower(tag), "v") {
+		tag = "v" + tag
+	}
+	return fmt.Sprintf("%s/%s/%s", releaseDownloadBase, tag, releaseManifestName)
+}
+
 type releaseCatalog struct {
-	Components map[string]releaseComponent `json:"components"`
+	SchemaVersion int                         `json:"schemaVersion"`
+	Version       string                      `json:"version"`
+	Linux         map[string]releaseArtifacts `json:"linux"`
+	Components    map[string]releaseComponent `json:"components"`
+}
+
+type releaseArtifacts struct {
+	Components *releaseArtifact `json:"components,omitempty"`
+}
+
+type releaseArtifact struct {
+	Name   string `json:"name"`
+	SHA256 string `json:"sha256"`
 }
 
 type releaseComponent struct {
@@ -130,6 +225,13 @@ func mergeReleaseMetadata(status *ComponentStatus, release releaseComponent) {
 	if len(release.TokenScopes) > 0 {
 		status.TokenScopes = append([]string(nil), release.TokenScopes...)
 	}
+	status.RequiredPanel = requiredPanelVersion(status.Since)
+	status.Compatible = panelVersionCompatible(status.RequiredPanel)
+	if !status.Compatible {
+		status.Installable = false
+		status.Removable = false
+		status.UnavailableReason = fmt.Sprintf("requires panel %s or newer", status.RequiredPanel)
+	}
 }
 
 func unavailableStatus(id string, release releaseComponent) ComponentStatus {
@@ -147,18 +249,78 @@ func unavailableStatus(id string, release releaseComponent) ComponentStatus {
 		Version:           release.Version,
 		LatestVersion:     release.Version,
 		Since:             release.Since,
+		RequiredPanel:     requiredPanelVersion(release.Since),
 		Delivery:          delivery,
 		DefaultEnabled:    release.DefaultEnabled,
 		TokenScopes:       append([]string(nil), release.TokenScopes...),
 		AvailableInBinary: false,
+		Compatible:        panelVersionCompatible(requiredPanelVersion(release.Since)),
 		Installable:       false,
 		Removable:         false,
 		Installed:         false,
 		Enabled:           false,
 		Active:            false,
 		Group:             GroupUnavailable,
-		UnavailableReason: "not bundled in this binary profile",
+		UnavailableReason: unavailableReasonForReleaseOnly(release),
 	}
+}
+
+func unavailableReasonForReleaseOnly(release releaseComponent) string {
+	required := requiredPanelVersion(release.Since)
+	if !panelVersionCompatible(required) {
+		return fmt.Sprintf("requires panel %s or newer", required)
+	}
+	return "not bundled in this binary profile"
+}
+
+func requiredPanelVersion(since string) string {
+	return strings.TrimSpace(since)
+}
+
+func panelVersionCompatible(required string) bool {
+	required = strings.TrimSpace(required)
+	if required == "" {
+		return true
+	}
+	comparison, ok := versionpolicy.CompareVersions(configidentity.GetVersion(), required)
+	return ok && comparison >= 0
+}
+
+func (c Catalog) componentBundleArtifact() (releaseArtifact, string, error) {
+	release, source, err := c.loadReleaseCatalog()
+	if err != nil {
+		return releaseArtifact{}, source, err
+	}
+	artifact := releaseArtifact{}
+	for _, artifacts := range release.Linux {
+		if artifacts.Components != nil && artifacts.Components.Name != "" {
+			artifact = *artifacts.Components
+			break
+		}
+	}
+	if artifact.Name == "" {
+		return releaseArtifact{}, source, fmt.Errorf("release component bundle is not listed")
+	}
+	if strings.TrimSpace(artifact.SHA256) == "" {
+		return releaseArtifact{}, source, fmt.Errorf("release component bundle checksum is not listed")
+	}
+	tagVersion := release.Version
+	if tagVersion == "" {
+		tagVersion = configidentity.GetVersion()
+	}
+	return artifact, componentBundleURL(tagVersion, artifact.Name), nil
+}
+
+func componentBundleURL(version string, artifact string) string {
+	version = strings.TrimSpace(version)
+	if version == "" || artifact == "" {
+		return ""
+	}
+	tag := version
+	if !strings.HasPrefix(strings.ToLower(tag), "v") {
+		tag = "v" + tag
+	}
+	return fmt.Sprintf("%s/%s/%s", releaseDownloadBase, tag, artifact)
 }
 
 func sortInventory(inventory *Inventory) {

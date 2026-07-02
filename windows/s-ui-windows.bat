@@ -1,29 +1,29 @@
 @echo off
 setlocal enabledelayedexpansion
 
-REM S-UI Windows Control Script
-REM This script provides a menu-driven interface for managing S-UI on Windows
+REM Solovey UI Windows Control Script
+REM This script provides a menu-driven interface for managing Solovey UI on Windows
 
 cd /d "%~dp0"
-set "SERVICE_NAME=s-ui"
+set "SERVICE_NAME=solovey-ui"
 set "INSTALL_DIR=%SUI_HOME%"
-if "%INSTALL_DIR%"=="" set "INSTALL_DIR=C:\Program Files\s-ui"
+if "%INSTALL_DIR%"=="" set "INSTALL_DIR=C:\Program Files\Solovey UI"
 
 :menu
 cls
 echo ========================================
-echo S-UI Windows Control Panel
+echo Solovey UI Windows Control Panel
 echo ========================================
 echo.
 echo Current directory: %INSTALL_DIR%
 echo.
-echo 1. Start S-UI Service
-echo 2. Stop S-UI Service
-echo 3. Restart S-UI Service
+echo 1. Start Solovey UI Service
+echo 2. Stop Solovey UI Service
+echo 3. Restart Solovey UI Service
 echo 4. Check Service Status
 echo 5. View Service Logs
 echo 6. Open Panel in Browser
-echo 7. Run S-UI Manually
+echo 7. Run Solovey UI Manually
 echo 8. Install/Uninstall Service
 echo 9. Open Installation Directory
 echo 10. Show Configuration
@@ -49,7 +49,7 @@ if "%choice%"=="0" goto exit
 goto invalid_choice
 
 :start_service
-echo Starting S-UI service...
+echo Starting Solovey UI service...
 net start %SERVICE_NAME%
 if %errorLevel% equ 0 (
     echo Service started successfully!
@@ -60,7 +60,7 @@ pause
 goto menu
 
 :stop_service
-echo Stopping S-UI service...
+echo Stopping Solovey UI service...
 net stop %SERVICE_NAME%
 if %errorLevel% equ 0 (
     echo Service stopped successfully!
@@ -71,7 +71,7 @@ pause
 goto menu
 
 :restart_service
-echo Restarting S-UI service...
+echo Restarting Solovey UI service...
 net stop %SERVICE_NAME% >nul 2>&1
 timeout /t 2 /nobreak >nul
 net start %SERVICE_NAME%
@@ -84,7 +84,7 @@ pause
 goto menu
 
 :check_status
-echo Checking S-UI service status...
+echo Checking Solovey UI service status...
 sc query %SERVICE_NAME%
 echo.
 echo Service status details:
@@ -95,7 +95,7 @@ pause
 goto menu
 
 :view_logs
-echo Opening S-UI logs...
+echo Opening Solovey UI logs...
 if exist "%INSTALL_DIR%\logs" (
     start "" "%INSTALL_DIR%\logs"
 ) else (
@@ -105,22 +105,22 @@ pause
 goto menu
 
 :open_panel
-echo Opening S-UI panel in browser...
+echo Opening Solovey UI panel in browser...
 start http://localhost:2095
 echo Panel opened in default browser.
 pause
 goto menu
 
 :run_manual
-echo Running S-UI manually...
+echo Running Solovey UI manually...
 if exist "%INSTALL_DIR%\sui.exe" (
     cd /d "%INSTALL_DIR%"
-    echo Starting S-UI in current window...
+    echo Starting Solovey UI in current window...
     echo Press Ctrl+C to stop
     echo.
     sui.exe
 ) else (
-    echo S-UI executable not found: %INSTALL_DIR%\sui.exe
+    echo Solovey UI executable not found: %INSTALL_DIR%\sui.exe
     echo Please run the installer first.
 )
 pause
@@ -145,9 +145,9 @@ goto invalid_choice
 
 :install_service
 echo Installing Windows Service...
-if exist "%INSTALL_DIR%\s-ui-service.exe" (
+if exist "%INSTALL_DIR%\solovey-ui-service.exe" (
     cd /d "%INSTALL_DIR%"
-    s-ui-service.exe install
+    solovey-ui-service.exe install
     if %errorLevel% equ 0 (
         echo Service installed successfully!
         echo Starting service...
@@ -163,10 +163,10 @@ goto service_management
 
 :uninstall_service
 echo Uninstalling Windows Service...
-if exist "%INSTALL_DIR%\s-ui-service.exe" (
+if exist "%INSTALL_DIR%\solovey-ui-service.exe" (
     cd /d "%INSTALL_DIR%"
     net stop %SERVICE_NAME% >nul 2>&1
-    s-ui-service.exe uninstall
+    solovey-ui-service.exe uninstall
     if %errorLevel% equ 0 (
         echo Service uninstalled successfully!
     ) else (
@@ -191,7 +191,7 @@ goto menu
 :show_config
 echo.
 echo ========================================
-echo S-UI Configuration
+echo Solovey UI Configuration
 echo ========================================
 if exist "%INSTALL_DIR%\sui.exe" (
     cd /d "%INSTALL_DIR%"
@@ -201,7 +201,7 @@ if exist "%INSTALL_DIR%\sui.exe" (
     echo Admin credentials:
     sui.exe admin -show
 ) else (
-    echo S-UI executable not found. Please run the installer first.
+    echo Solovey UI executable not found. Please run the installer first.
 )
 pause
 goto menu
@@ -233,5 +233,5 @@ pause
 goto menu
 
 :exit
-echo Thank you for using S-UI Windows Control Panel!
+echo Thank you for using Solovey UI Windows Control Panel!
 exit /b 0

@@ -1,4 +1,4 @@
-# PowerShell script for building S-UI on Windows
+# PowerShell script for building Solovey UI on Windows
 param(
     [string]$Architecture = "amd64",
     [switch]$NoCGO,
@@ -15,7 +15,7 @@ if ($Help) {
     exit 0
 }
 
-Write-Host "Building S-UI for Windows ($Architecture)..." -ForegroundColor Green
+Write-Host "Building Solovey UI for Windows ($Architecture)..." -ForegroundColor Green
 
 # Check if Go is installed
 try {

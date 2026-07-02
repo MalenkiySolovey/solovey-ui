@@ -1,7 +1,7 @@
 # Solovey UI
 
 <p align="center">
-  <b>Personal sing-box panel with modular optional features</b>
+  <b>Personal sing-box panel with a modular runtime, component-aware installer, and built-in operational tooling.</b>
 </p>
 
 <p align="center">
@@ -12,25 +12,34 @@
 
 Current version: `2026.2.0`
 
-Solovey UI is a modified GPL-3.0 derivative of the S-UI ecosystem. It keeps the
-core panel focused on `sing-box` management and moves larger features into
-installable optional components.
+Solovey UI is a GPL-3.0 panel for managing a `sing-box` server through a web
+interface and CLI. The core panel contains the required runtime: users,
+inbounds, outbounds, routing, DNS, TLS, services, backups, diagnostics, and
+basic subscriptions. Larger features are shipped as optional components so a
+server can be installed as a full panel, a compact core panel, or a custom
+profile.
 
-> This is not an official S-UI, S-UI-X, sing-box, or SagerNet product. Use it at
-> your own risk, keep backups, and test updates before touching production.
+This project is experimental operational software. Keep backups, test upgrades
+before production use, and review generated configuration when changing network
+behavior.
 
 ## Highlights
 
-- Bundled `sing-box` core with web UI and CLI management.
-- Nexus and classic UI modes.
-- Optional component system with `full`, `minimal/core`, and custom installs.
-- Remote outbound subscriptions with canonical connection data, group handling,
-  delay checks, and sing-box conversion.
-- Client subscriptions in URI, sing-box JSON, Clash/Mihomo YAML, and Xray JSON.
-- Backup, restore, rollback, diagnostics, doctor checks, and audit logs.
-- Debian-oriented installer with release checksums and component metadata.
-- Upstream fixes adapted from `alireza0/s-ui` and `deposist/s-ui-x` without
-  reverting to their older flat project structure.
+- `sing-box` management with inbounds, outbounds, endpoints, DNS, route rules,
+  TLS settings, services, and client subscriptions.
+- Two UI modes: Nexus and classic.
+- Real optional components: routes, jobs, settings, tables, frontend entries,
+  and runtime hooks are registered only when the component is installed and
+  enabled.
+- Component-aware install profiles: `full`, `minimal`/`core`, `--with`, and
+  `--without`.
+- Remote outbound subscriptions with normalized profile data, group handling,
+  delay checks, and synchronization into panel outbounds.
+- Client exports in URI, sing-box JSON, Clash/Mihomo YAML, and Xray JSON.
+- Backup, restore, rollback, doctor checks, diagnostics, reports, audit events,
+  and release checksums.
+- Release packaging with full binaries, core binaries, one component bundle,
+  release manifest, and Docker/GHCR image publishing.
 
 ## Install
 
@@ -48,16 +57,20 @@ bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/m
 
 Default paths:
 
-- install directory: `/usr/local/solovey-ui`
-- database: `/usr/local/solovey-ui/db/solovey-ui.db`
-- secret environment file: `/etc/solovey-ui/secretbox.env`
-- systemd service: `solovey-ui`
-- CLI command: `solovey-ui`
+| Item | Path |
+|---|---|
+| Install directory | `/usr/local/solovey-ui` |
+| Database | `/usr/local/solovey-ui/db/solovey-ui.db` |
+| Secret environment | `/etc/solovey-ui/secretbox.env` |
+| systemd service | `solovey-ui` |
+| CLI command | `solovey-ui` |
+| Backups | `/var/backups/solovey-ui` |
 
 ## Optional Components
 
-The default install is `full`: it installs the full binary and all optional
-components. Use `minimal` or `core` when you want only the base panel.
+The default install profile is `full`. It installs the full binary and all
+optional components. Use `minimal` or `core` for the base panel only, or select a
+custom component set.
 
 ```bash
 # Core panel only, no optional components
@@ -66,24 +79,30 @@ bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/m
 # Full binary, but without selected components
 bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --without telegram,paid-subscriptions
 
-# Custom install with only selected optional components
+# Full binary with only selected optional components
 bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --with remote-outbound-subscriptions,telegram
 ```
 
-Available component IDs:
+`--with` and `--without` accept comma-separated component IDs. The installer
+chooses the smallest binary profile that can satisfy the selected component set.
 
-| ID | What it adds |
-|---|---|
-| `import-xui` | Import and migration tools for compatible panel databases. |
-| `remote-outbound-subscriptions` | External outbound subscriptions, groups, conversion, delay checks, and synchronization into outbounds. |
-| `paid-subscriptions` | Paid client subscriptions, tariffs, orders, and related admin UI. |
-| `telegram` | Telegram notifications, bot transport, and backup delivery. |
-| `observability-extra` | Extra runtime sampling and observability views. |
-| `panel-update-ui` | Web UI for checking and applying panel updates. |
+### Component Catalog
 
-Component choices are real install choices, not just visual hiding. Disabled
-components are not installed into the runtime component directory and their
-routes, jobs, settings, tables, and frontend entries are not activated.
+| Component ID | Purpose | Typical use |
+|---|---|---|
+| `panel-update-ui` | Web UI for checking available panel/component updates, applying updates, enabling/disabling components, and removing optional components. | Manage updates from the panel instead of the CLI. |
+| `remote-outbound-subscriptions` | External outbound subscriptions, normalized collected profile data, groups, conversion policies, delay checks, bulk groups, and synchronization into outbounds. | Pull remote proxy lists and convert selected entries into sing-box outbounds. |
+| `import-xui` | Migration tools for compatible panel databases, including preview, conflict handling, and selective import. | Move existing panel data into Solovey UI with review before applying. |
+| `paid-subscriptions` | Paid client subscription entities, tariffs, payment orders, bindings, and admin UI. | Sell or manage paid client subscription access. |
+| `telegram` | Telegram notifications, bot transport, backup delivery, and related settings. | Receive operational alerts and backups outside the panel. |
+| `observability-extra` | Additional runtime sampling, observability views, and related metrics. | Inspect runtime behavior beyond the base diagnostics. |
+
+Installed components can be disabled without deleting data. Removing a component
+removes its runtime files and unregisters routes/jobs/hooks. Data deletion is a
+separate explicit action when the component supports it.
+
+The update UI component protects itself: it cannot remove or disable its own
+management surface from inside that same surface.
 
 ## Update
 
@@ -107,7 +126,12 @@ sudo solovey-ui rollback latest
 sudo solovey-ui doctor
 ```
 
-Backups are stored under `/var/backups/solovey-ui`.
+Use `uninstall --purge` only when you intentionally want to remove panel data.
+
+```bash
+sudo solovey-ui uninstall
+sudo solovey-ui uninstall --purge
+```
 
 ## Useful CLI Commands
 
@@ -121,8 +145,6 @@ sudo solovey-ui doctor
 sudo solovey-ui doctor --full
 sudo solovey-ui diagnose
 sudo solovey-ui report
-sudo solovey-ui uninstall
-sudo solovey-ui uninstall --purge
 ```
 
 ## Local Development On Windows
@@ -130,23 +152,26 @@ sudo solovey-ui uninstall --purge
 From the repository worktree:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-panel.ps1 -Build -OpenBrowser
+.\scripts\dev\start-panel.ps1 -Build -OpenBrowser
 ```
 
 Useful component examples:
 
 ```powershell
 # Core/minimal local panel
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-panel.ps1 -Build -OpenBrowser -Profile minimal
+.\scripts\dev\start-panel.ps1 -Build -OpenBrowser -Profile minimal
 
 # Custom local panel
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-panel.ps1 -Build -OpenBrowser -With remote-outbound-subscriptions,telegram
+.\scripts\dev\start-panel.ps1 -Build -OpenBrowser -With remote-outbound-subscriptions,telegram
+
+# Exclude selected components
+.\scripts\dev\start-panel.ps1 -Build -OpenBrowser -Without import-xui,observability-extra,paid-subscriptions,telegram
 ```
 
 Clean local runtime state:
 
 ```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\stop-panel.ps1 -Clean
+.\scripts\dev\stop-panel.ps1 -Clean
 ```
 
 ## Release Artifacts
@@ -156,16 +181,16 @@ GitHub Releases publish:
 - full Linux archives: `solovey-ui-linux-<arch>.tar.gz`
 - core Linux archives: `solovey-ui-core-linux-<arch>.tar.gz`
 - component bundle: `solovey-ui-components.tar.gz`
+- release manifest: `release-manifest.json`
 - checksums for every archive
 
-The installer chooses the smallest binary profile that can satisfy the selected
-components. Optional component files are shipped as one component bundle to keep
-the release page compact.
+Docker images are published to GHCR for release tags.
 
-## Credits
+## Related Projects And Credits
 
 Solovey UI is based on the S-UI family and manually adapts selected fixes and
-ideas from related projects:
+ideas from related open-source projects while keeping its own structure,
+component model, installer, and release flow:
 
 - [alireza0/s-ui](https://github.com/alireza0/s-ui)
 - [deposist/s-ui-x](https://github.com/deposist/s-ui-x)
@@ -174,99 +199,4 @@ ideas from related projects:
 - [printfer/v2sing](https://github.com/printfer/v2sing)
 - [sub-store-org/Sub-Store](https://github.com/sub-store-org/Sub-Store)
 
-See `NOTICE.md` for attribution details.
-
----
-
-## Русская Версия
-
-Solovey UI - модифицированная панель из экосистемы S-UI для управления
-`sing-box`. Основная панель остаётся компактной, а крупные возможности вынесены
-в optional components, которые можно реально не устанавливать.
-
-> Проект не является официальным продуктом S-UI, S-UI-X, sing-box или SagerNet.
-> Используйте его на свой риск, делайте backup и проверяйте обновления на
-> тестовой машине.
-
-### Возможности
-
-- встроенный `sing-box` core, web UI и CLI;
-- режимы Nexus и classic;
-- компонентная установка: `full`, `minimal/core` или свой набор компонентов;
-- ремоут outbound-подписки, группы, delay-проверки и синхронизация в outbounds;
-- клиентские подписки URI, sing-box JSON, Clash/Mihomo YAML и Xray JSON;
-- backup, restore, rollback, doctor, diagnostics и audit logs;
-- установщик для Debian-серверов с checksum-проверкой релизных архивов.
-
-### Установка
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh)
-sudo solovey-ui doctor
-sudo solovey-ui status
-```
-
-Конкретная версия:
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.2.0
-```
-
-### Компоненты
-
-```bash
-# Только базовая панель
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --profile minimal
-
-# Полная панель без выбранных компонентов
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --without telegram,paid-subscriptions
-
-# Только нужные optional components
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --with remote-outbound-subscriptions,telegram
-```
-
-Доступные ID компонентов: `import-xui`, `remote-outbound-subscriptions`,
-`paid-subscriptions`, `telegram`, `observability-extra`, `panel-update-ui`.
-
-### Обновление
-
-```bash
-sudo solovey-ui update
-sudo solovey-ui doctor
-sudo systemctl status solovey-ui --no-pager
-```
-
-Обновление до конкретного тега:
-
-```bash
-sudo solovey-ui update --version v2026.2.0
-```
-
-### Backup И Rollback
-
-```bash
-sudo solovey-ui backup
-sudo solovey-ui rollback latest
-sudo solovey-ui doctor
-```
-
-Backup хранится в `/var/backups/solovey-ui`.
-
-### Локальный Запуск На Windows
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-panel.ps1 -Build -OpenBrowser
-```
-
-С компонентными аргументами:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-panel.ps1 -Build -OpenBrowser -Profile minimal
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-panel.ps1 -Build -OpenBrowser -With remote-outbound-subscriptions,telegram
-```
-
-Очистить локальную тестовую базу и конфиг:
-
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\stop-panel.ps1 -Clean
-```
+The project remains licensed under GNU GPL v3.0.

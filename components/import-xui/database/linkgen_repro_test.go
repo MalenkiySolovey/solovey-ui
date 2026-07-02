@@ -12,7 +12,7 @@ import (
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
-// TestRepro_MigratedClientLinks reproduces the reported bug: after a 3x-ui
+// TestRepro_MigratedClientLinks reproduces the reported bug: after a compatible panel
 // migration the subscription/links show nothing for the imported inbounds.
 //
 //	IMPORT_XUI_REAL_DB="C:\\CheckErrorS-ui\\x-ui (6).db" go test ./components/import-xui/database/ -run Repro_MigratedClientLinks -v

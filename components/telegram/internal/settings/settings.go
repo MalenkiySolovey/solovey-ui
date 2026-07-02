@@ -51,6 +51,14 @@ func Defaults() map[string]string {
 	}
 }
 
+func AllKeys() []string {
+	keys := make([]string, 0, len(Defaults()))
+	for key := range Defaults() {
+		keys = append(keys, key)
+	}
+	return keys
+}
+
 func BooleanKeys() map[string]struct{} {
 	return keySet(
 		NotifyCPUKey,

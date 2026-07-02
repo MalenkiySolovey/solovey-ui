@@ -17,7 +17,7 @@ import (
 )
 
 // realityStream mirrors the reality stream_settings shape exported by recent
-// 3x-ui builds (nested settings.publicKey, post-quantum mldsa65 fields, etc.).
+// compatible panel builds (nested settings.publicKey, post-quantum mldsa65 fields, etc.).
 const realityStream = `{
   "network": "tcp",
   "security": "reality",
@@ -76,7 +76,7 @@ type compatInbound struct {
 	enable   int
 }
 
-// schemaVariant describes how to materialize a 3x-ui source database whose
+// schemaVariant describes how to materialize a compatible panel source database whose
 // inbounds/client_traffics columns deliberately differ from the importer's old
 // hard-coded SELECT list.
 type schemaVariant struct {
@@ -403,13 +403,13 @@ func TestImport_RealXUIBackup(t *testing.T) {
 		t.Fatalf("webDomain plan action = %q, want skip (host-specific)", domainItem.Action)
 	}
 	t.Logf("real-db settings: webPath/webPort migrated; host/domain-specific keys (webDomain etc.) skipped by default")
-	// No setting may be written under a dead 3x-ui key that s-ui ignores.
+	// No setting may be written under a dead compatible panel key that s-ui ignores.
 	var deadKeys int64
 	if err := db.Model(model.Setting{}).Where("key IN ?", []string{"webBasePath", "subEnable", "tgBotRunTime", "tgBotEnable", "tgBotToken"}).Count(&deadKeys).Error; err != nil {
 		t.Fatal(err)
 	}
 	if deadKeys != 0 {
-		t.Fatalf("found %d settings written under dead 3x-ui keys s-ui ignores", deadKeys)
+		t.Fatalf("found %d settings written under dead compatible panel keys s-ui ignores", deadKeys)
 	}
 }
 

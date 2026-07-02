@@ -1,7 +1,7 @@
 @echo off
 setlocal enabledelayedexpansion
 
-echo Building S-UI for Windows...
+echo Building Solovey UI for Windows...
 
 cd /d "%~dp0"
 

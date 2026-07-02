@@ -20,6 +20,13 @@ func Defaults() map[string]string {
 	}
 }
 
+func AllKeys() []string {
+	return []string{
+		GroupAdaptationKey,
+		ConversionPolicyKey,
+	}
+}
+
 type Reader struct{}
 
 func (Reader) GetRemoteGroupAdaptation() (string, error) {

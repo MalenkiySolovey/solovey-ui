@@ -7,7 +7,6 @@ import (
 	"strings"
 	"testing"
 
-	importxuihttp "github.com/MalenkiySolovey/solovey-ui/components/import-xui/api"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
@@ -29,7 +28,16 @@ func TestImportXUIRoutesUseSharedRegistryIssue35(t *testing.T) {
 		t.Skip("import-xui component is not registered in this profile")
 	}
 
-	for _, spec := range importxuihttp.RouteSpecs {
+	for _, spec := range []struct {
+		Method string
+		Path   string
+	}{
+		{Method: http.MethodPost, Path: "/import-xui"},
+		{Method: http.MethodPost, Path: "/import-xui/plan"},
+		{Method: http.MethodPost, Path: "/import-xui/apply"},
+		{Method: http.MethodPost, Path: "/import-xui/rollback"},
+		{Method: http.MethodGet, Path: "/import-xui/reports"},
+	} {
 		for _, prefix := range []string{"/api", "/apiv2"} {
 			key := spec.Method + " " + prefix + spec.Path
 			if _, ok := routes[key]; !ok {

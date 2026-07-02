@@ -1,70 +1,25 @@
-# S-UI-Frontend
-** A frontend for S-UI **
+# Solovey UI Frontend
 
-[![License](https://img.shields.io/badge/license-GPL%20V3-blue.svg?longCache=true)](https://www.gnu.org/licenses/gpl-3.0.en.html)
+Vue/Vuetify frontend for the Solovey UI panel.
 
-> **Disclaimer:** This project is only for personal learning and communication, please do not use it for illegal purposes, please do not use it in a production environment
+## Development
 
-## Project setup
-
-```
-# yarn
-yarn
-
-# npm
-npm install
-
-# pnpm
-pnpm install
-
-# bun
-bun install
-```
-
-### Compiles and hot-reloads for development
-
-```
-# yarn
-yarn dev
-
-# npm
+```sh
+npm ci
 npm run dev
-
-# pnpm
-pnpm dev
-
-# bun
-pnpm run dev
 ```
 
-### Compiles and minifies for production
+## Checks
 
-```
-# yarn
-yarn build
-
-# npm
-npm run build
-
-# pnpm
-pnpm build
-
-# bun
-pnpm run build
-```
-
-### Lints and fixes files
-
-```
-# yarn
-yarn lint
-
-# npm
+```sh
 npm run lint
+npm run test:unit
+npm run build
+```
 
-# pnpm
-pnpm lint
+Playwright checks are kept separately because they start a local panel server:
 
-# bun
-pnpm run lint
+```sh
+npx playwright install chromium
+npx playwright test
 ```

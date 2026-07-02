@@ -8,7 +8,7 @@ import (
 	"strings"
 )
 
-// 3x-ui forks diverge in their `inbounds` / `client_traffics` columns: vanilla
+// compatible panel forks diverge in their `inbounds` / `client_traffics` columns: vanilla
 // mhsanaei has neither `all_time` nor `last_online`, while normalized forks add
 // `traffic_reset`, `last_traffic_reset_time`, `node_id` and friends. A fixed
 // SELECT list breaks on every schema that lacks one of the named columns

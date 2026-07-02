@@ -1,8 +1,8 @@
 export default {
   "migrateXui": {
     "backupAction": {
-      "title": "مهاجرت از 3x-ui",
-      "button": "انتخاب پایگاه داده 3x-ui…",
+      "title": "مهاجرت از compatible panel",
+      "button": "انتخاب پایگاه داده compatible panel…",
       "dryRun": "اجرای آزمایشی (فقط پیش‌نمایش)",
       "strategy": "راهبرد تعارض",
       "merge": "ادغام",
@@ -12,14 +12,14 @@ export default {
       "warnings": "هشدارها",
       "openFull": "باز کردن نمای کامل مهاجرت"
     },
-    "title": "مهاجرت از 3x-ui",
+    "title": "مهاجرت از compatible panel",
     "steps": {
       "upload": "بارگذاری",
       "review": "بازبینی",
       "progress": "پیشرفت",
       "result": "نتیجه"
     },
-    "chooseFile": "پایگاه داده 3x-ui",
+    "chooseFile": "پایگاه داده compatible panel",
     "strategy": "راهبرد تعارض",
     "includeSettings": "وارد کردن تنظیمات پنل",
     "includeHistory": "وارد کردن ترافیک تاریخی",

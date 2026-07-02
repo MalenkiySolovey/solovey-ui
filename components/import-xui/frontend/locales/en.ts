@@ -2,7 +2,7 @@ export default {
   "migrateXui": {
     "backupAction": {
       "title": "Panel import",
-      "hint": "Quick import applies immediately. The full wizard lets you preview, review conflicts and choose exactly what to migrate. Current database import support includes 3x-ui/x-ui formats.",
+      "hint": "Quick import applies immediately. The full wizard lets you preview, review conflicts and choose exactly what to migrate. Current support covers compatible panel database formats.",
       "button": "Quick import — choose panel .db…",
       "dryRun": "Dry-run (preview only)",
       "strategy": "Conflict strategy",
@@ -13,14 +13,14 @@ export default {
       "warnings": "Warnings",
       "openFull": "Full wizard (review & select)"
     },
-    "title": "Migrate from 3x-ui",
+    "title": "Panel database import",
     "steps": {
       "upload": "Upload",
       "review": "Review",
       "progress": "Progress",
       "result": "Result"
     },
-    "chooseFile": "3x-ui database",
+    "chooseFile": "Panel database",
     "strategy": "Conflict strategy",
     "includeSettings": "Import panel settings",
     "includeHistory": "Import historical traffic",

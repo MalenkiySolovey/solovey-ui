@@ -17,29 +17,17 @@ func (m Manager) Inventory() (Inventory, error) {
 }
 
 func (m Manager) Enable(ctx OperationContext, id string) (ComponentStatus, error) {
-	if _, err := m.Runtime.Enable(ctx, id); err != nil {
-		return ComponentStatus{}, err
-	}
-	return m.Catalog.StatusByID(id)
+	return m.Runtime.Enable(ctx, id)
 }
 
 func (m Manager) Disable(ctx OperationContext, id string) (ComponentStatus, error) {
-	if _, err := m.Runtime.Disable(ctx, id); err != nil {
-		return ComponentStatus{}, err
-	}
-	return m.Catalog.StatusByID(id)
+	return m.Runtime.Disable(ctx, id)
 }
 
 func (m Manager) Install(ctx OperationContext, id string) (ComponentStatus, error) {
-	if _, err := m.Runtime.Install(ctx, id); err != nil {
-		return ComponentStatus{}, err
-	}
-	return m.Catalog.StatusByID(id)
+	return m.Runtime.Install(ctx, id)
 }
 
-func (m Manager) Remove(ctx OperationContext, id string) (ComponentStatus, error) {
-	if _, err := m.Runtime.Remove(ctx, id); err != nil {
-		return ComponentStatus{}, err
-	}
-	return m.Catalog.StatusByID(id)
+func (m Manager) Remove(ctx OperationContext, id string, deleteData bool) (ComponentStatus, error) {
+	return m.Runtime.Remove(ctx, id, deleteData)
 }

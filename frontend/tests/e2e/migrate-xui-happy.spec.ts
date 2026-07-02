@@ -53,7 +53,7 @@ test('Issue43 shows inline apply failure on review step', async ({ page }) => {
 
   await page.goto('migrate-xui')
   await expect(page).toHaveURL(/\/migrate-xui$/)
-  await expect(page.getByText('Migrate from 3x-ui')).toBeVisible()
+  await expect(page.getByText('Panel database import')).toBeVisible()
   await uploadSyntheticDb(page)
   await page.getByRole('button', { name: 'Build plan' }).click()
   await page.getByRole('button', { name: 'Apply plan' }).click()
@@ -109,7 +109,7 @@ test('Issue44 waits for rollback database health before reload', async ({ page }
 
   await page.goto('migrate-xui')
   await expect(page).toHaveURL(/\/migrate-xui$/)
-  await expect(page.getByText('Migrate from 3x-ui')).toBeVisible()
+  await expect(page.getByText('Panel database import')).toBeVisible()
   await uploadSyntheticDb(page)
   await page.getByRole('button', { name: 'Build plan' }).click()
   await page.getByRole('button', { name: 'Apply plan' }).click()
@@ -168,7 +168,7 @@ test('Issue45 hides generated admin passwords until reveal and auto-clears them'
 
   await page.goto('migrate-xui')
   await expect(page).toHaveURL(/\/migrate-xui$/)
-  await expect(page.getByText('Migrate from 3x-ui')).toBeVisible()
+  await expect(page.getByText('Panel database import')).toBeVisible()
   await uploadSyntheticDb(page)
   await page.getByRole('button', { name: 'Build plan' }).click()
   await page.getByRole('button', { name: 'Apply plan' }).click()
@@ -213,7 +213,7 @@ test('Issue46 sends reset_required adminMode when building a plan', async ({ pag
 
   await page.goto('migrate-xui')
   await expect(page).toHaveURL(/\/migrate-xui$/)
-  await expect(page.getByText('Migrate from 3x-ui')).toBeVisible()
+  await expect(page.getByText('Panel database import')).toBeVisible()
   await uploadSyntheticDb(page)
   await chooseMigrateSelectOption(page, 'migrate-xui-admin-mode', 'Require password reset')
   await page.getByRole('button', { name: 'Build plan' }).click()

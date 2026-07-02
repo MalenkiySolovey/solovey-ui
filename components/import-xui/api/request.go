@@ -49,7 +49,7 @@ func (a *Handler) beginRequest(c *gin.Context) (context.Context, context.CancelF
 }
 
 // extendSlowRequestDeadlines lifts the http.Server's 30s Read/Write timeouts
-// for a long-running request. Importing a large 3x-ui database can take well
+// for a long-running request. Importing a large compatible panel database can take well
 // over 30s; without this the server severs the connection mid-import, so the
 // client never receives the result and may resubmit - duplicating the import
 // and its pre-import backup (the runaway-backup symptom).

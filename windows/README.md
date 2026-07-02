@@ -1,23 +1,14 @@
-# Файлы Windows
+# Windows Helpers
 
-Этот каталог содержит все файлы S-UI, относящиеся к Windows.
+This directory contains Windows service and build helpers for Solovey UI.
 
-## Доступные файлы:
+## Files
 
-- **s-ui-windows.xml**: конфигурация службы Windows
-- **install-windows.bat**: скрипт установки
-- **s-ui-windows.bat**: панель управления
-- **uninstall-windows.bat**: скрипт удаления
-- **build-windows.bat**: простой скрипт сборки для CMD
-- **build-windows.ps1**: расширенный скрипт сборки для PowerShell
+- `s-ui-windows.xml`: Windows service configuration.
+- `install-windows.bat`: service installation helper.
+- `s-ui-windows.bat`: local control helper.
+- `uninstall-windows.bat`: service removal helper.
+- `build-windows.bat`: CMD build helper.
+- `build-windows.ps1`: PowerShell build helper.
 
-## Использование:
-
-Чтобы установить S-UI на Windows:
-1. Запустите `install-windows.bat` от имени администратора
-2. Следуйте инструкциям мастера установки
-3. Используйте `s-ui-windows.bat` для управления
-
-Чтобы собрать из исходного кода:
-- Через CMD: `build-windows.bat`
-- Через PowerShell: `.\build-windows.ps1`
+Run installation helpers from an elevated terminal.

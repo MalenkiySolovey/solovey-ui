@@ -12,7 +12,9 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	paidadmin "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/admin"
 	paidcore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
+	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
 	paidtelegram "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/telegram"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 
@@ -46,6 +48,16 @@ type component struct {
 
 func (*component) Migrate(context.Context, lifecycle.Context) error {
 	return paidcore.EnsureSchema(dbsqlite.DB())
+}
+
+func (*component) DropData(context.Context, lifecycle.Context) error {
+	if err := paidcore.DropSchema(dbsqlite.DB()); err != nil {
+		return err
+	}
+	if dbsqlite.DB() == nil {
+		return nil
+	}
+	return dbsqlite.DB().Where("key IN ?", paidsettings.AllKeys()).Delete(&model.Setting{}).Error
 }
 
 func (c *component) Start(_ context.Context, ctx lifecycle.Context) error {

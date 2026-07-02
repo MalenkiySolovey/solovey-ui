@@ -9,7 +9,9 @@ const args = new Map()
 for (let index = 2; index < process.argv.length; index += 2) {
   const key = process.argv[index]
   const value = process.argv[index + 1]
-  if (!key?.startsWith('--') || !value) {
+  // value.startsWith('--') means the real value was dropped (empty shell
+  // variable) and the next flag would be consumed silently.
+  if (!key?.startsWith('--') || !value || value.startsWith('--')) {
     usage()
   }
   args.set(key.slice(2), value)

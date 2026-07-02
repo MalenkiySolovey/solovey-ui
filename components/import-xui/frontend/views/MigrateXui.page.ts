@@ -280,7 +280,7 @@ export default defineComponent({
     },
     markdownReport(): string {
       const summary = this.report?.summary ?? {}
-      const lines = ['# 3x-ui import report', '', `Backup: ${this.report?.backupPath || '-'}`, '']
+      const lines = ['# Panel import report', '', `Backup: ${this.report?.backupPath || '-'}`, '']
       for (const [key, value] of Object.entries(summary)) {
         lines.push(`## ${key}`, '```json', JSON.stringify(value, null, 2), '```', '')
       }

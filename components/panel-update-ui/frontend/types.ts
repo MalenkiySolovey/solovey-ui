@@ -4,7 +4,11 @@ export type ComponentCatalogGroup = 'installed' | 'available' | 'unavailable'
 
 export interface ComponentCatalogStatus extends RuntimeComponentStatus {
   latestVersion?: string
+  requiredPanelVersion?: string
   availableInBinary: boolean
+  compatible: boolean
+  locked?: boolean
+  lockedReason?: string
   installable: boolean
   removable: boolean
   group: ComponentCatalogGroup
@@ -13,6 +17,9 @@ export interface ComponentCatalogStatus extends RuntimeComponentStatus {
 
 export interface ComponentCatalogInventory {
   binaryProfile: string
+  releaseVersion?: string
+  releaseSource?: string
+  releaseError?: string
   components: ComponentCatalogStatus[]
   installed: ComponentCatalogStatus[]
   available: ComponentCatalogStatus[]

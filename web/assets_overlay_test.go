@@ -11,15 +11,23 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 )
 
-func TestOverlayFSUsesEmbeddedAssetsFirst(t *testing.T) {
-	assets := overlayFS{roots: []fs.FS{
-		fstest.MapFS{
-			"shared.js": {Data: []byte("embedded")},
-		},
-		fstest.MapFS{
-			"shared.js":   {Data: []byte("component")},
-			"optional.js": {Data: []byte("optional")},
-		},
+func TestAssetsFSUsesEmbeddedAssetsFirst(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("SUI_DB_FOLDER", filepath.Join(root, "db"))
+	t.Setenv(installstate.InstalledFileEnv, filepath.Join(root, "components", "installed.json"))
+	writeComponentPack(t, root, "telegram", map[string]string{
+		"shared.js":   "component",
+		"optional.js": "optional",
+	})
+	writeInstalledMetadata(t, root, `{
+		"version": 1,
+		"components": [
+			{"id": "telegram", "delivery": "in-process", "installed": true}
+		]
+	}`)
+
+	assets := assetsFS{embedded: fstest.MapFS{
+		"shared.js": {Data: []byte("embedded")},
 	}}
 
 	data, err := fs.ReadFile(assets, "shared.js")
@@ -39,11 +47,53 @@ func TestOverlayFSUsesEmbeddedAssetsFirst(t *testing.T) {
 	}
 }
 
-func TestOverlayFSMissingFileReturnsNotExist(t *testing.T) {
-	assets := overlayFS{roots: []fs.FS{fstest.MapFS{}}}
+func TestAssetsFSMissingFileReturnsNotExist(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("SUI_DB_FOLDER", filepath.Join(root, "db"))
+	t.Setenv(installstate.InstalledFileEnv, filepath.Join(root, "components", "missing.json"))
 
+	assets := assetsFS{embedded: fstest.MapFS{}}
 	if _, err := fs.ReadFile(assets, "missing.js"); !os.IsNotExist(err) {
 		t.Fatalf("missing file error = %v, want not-exist", err)
+	}
+}
+
+func TestAssetsFSReadsNewlyInstalledComponentAssets(t *testing.T) {
+	root := t.TempDir()
+	dbDir := filepath.Join(root, "db")
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	t.Setenv(installstate.InstalledFileEnv, filepath.Join(root, "components", "installed.json"))
+
+	assets := assetsFS{embedded: fstest.MapFS{}}
+	if _, err := fs.ReadFile(assets, "optional.js"); !os.IsNotExist(err) {
+		t.Fatalf("missing component asset error = %v, want not-exist", err)
+	}
+
+	telegramAssets := filepath.Join(root, "components", "telegram", "frontend", "assets")
+	if err := os.MkdirAll(telegramAssets, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "components", "telegram", "component.json"), []byte(`{"id":"telegram"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(telegramAssets, "optional.js"), []byte("installed"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "components", "installed.json"), []byte(`{
+		"version": 1,
+		"components": [
+			{"id": "telegram", "delivery": "in-process", "installed": true}
+		]
+	}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	data, err := fs.ReadFile(assets, "optional.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "installed" {
+		t.Fatalf("component asset = %q, want installed", data)
 	}
 }
 
@@ -121,5 +171,80 @@ func TestComponentFrontendAssetDirsAllowsMissingMetadata(t *testing.T) {
 	}
 	if len(got) != 0 {
 		t.Fatalf("componentFrontendAssetDirs() = %#v, want empty", got)
+	}
+}
+
+func TestComponentFrontendAssetDirsRefreshesWhenMetadataChanges(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("SUI_DB_FOLDER", filepath.Join(root, "db"))
+	t.Setenv(installstate.InstalledFileEnv, filepath.Join(root, "components", "installed.json"))
+	writeComponentPack(t, root, "telegram", map[string]string{"optional.js": "installed"})
+	writeInstalledMetadata(t, root, `{
+		"version": 1,
+		"components": [
+			{"id": "telegram", "delivery": "in-process", "installed": true}
+		]
+	}`)
+
+	got, err := componentFrontendAssetDirs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	telegramAssets := filepath.Join(root, "components", "telegram", "frontend", "assets")
+	if !reflect.DeepEqual(got, []string{telegramAssets}) {
+		t.Fatalf("componentFrontendAssetDirs() = %#v, want %#v", got, []string{telegramAssets})
+	}
+
+	// A cached second call must serve the same resolved set.
+	again, err := componentFrontendAssetDirs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(again, got) {
+		t.Fatalf("cached componentFrontendAssetDirs() = %#v, want %#v", again, got)
+	}
+
+	// Rewriting installed.json (runtime remove) must invalidate the cache;
+	// pad the payload so size differs even on coarse-mtime filesystems.
+	writeInstalledMetadata(t, root, `{
+		"version": 1,
+		"profile": "custom",
+		"components": [
+			{"id": "telegram", "delivery": "in-process", "installed": false}
+		]
+	}`)
+
+	got, err = componentFrontendAssetDirs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != 0 {
+		t.Fatalf("componentFrontendAssetDirs() after removal = %#v, want empty", got)
+	}
+}
+
+func writeComponentPack(t *testing.T, root string, id string, assets map[string]string) {
+	t.Helper()
+	assetsDir := filepath.Join(root, "components", id, "frontend", "assets")
+	if err := os.MkdirAll(assetsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "components", id, "component.json"), []byte(`{"id":"`+id+`"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for name, content := range assets {
+		if err := os.WriteFile(filepath.Join(assetsDir, name), []byte(content), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func writeInstalledMetadata(t *testing.T, root string, payload string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(root, "components"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "components", "installed.json"), []byte(payload), 0o600); err != nil {
+		t.Fatal(err)
 	}
 }

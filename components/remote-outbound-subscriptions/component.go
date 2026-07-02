@@ -59,6 +59,13 @@ func (component) Migrate(context.Context, lifecycle.Context) error {
 	return remotesub.EnsureSchema(dbsqlite.DB())
 }
 
+func (component) DropData(context.Context, lifecycle.Context) error {
+	if err := remotesub.DropSchema(dbsqlite.DB()); err != nil {
+		return err
+	}
+	return deleteComponentSettings(remotesettings.AllKeys())
+}
+
 func (component) Start(_ context.Context, ctx lifecycle.Context) error {
 	registerRuntimeHooks()
 	remotesubservice.StartRemoteOutboundAutoRefresh(ctx.Host.API.Runtime)
@@ -182,4 +189,11 @@ func remoteOutboundDeps(host componenthost.APIDeps) remotesubhttp.Deps {
 		JSONObj:        host.HTTP.JSONObj,
 		JSONMsg:        host.HTTP.JSONMsg,
 	}
+}
+
+func deleteComponentSettings(keys []string) error {
+	if len(keys) == 0 || dbsqlite.DB() == nil {
+		return nil
+	}
+	return dbsqlite.DB().Where("key IN ?", keys).Delete(&model.Setting{}).Error
 }

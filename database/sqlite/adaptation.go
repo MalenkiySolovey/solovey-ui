@@ -3,7 +3,7 @@ package sqlite
 import "github.com/MalenkiySolovey/solovey-ui/util/common"
 
 // Adapt performs idempotent post-migration adjustments that
-// ensure a database imported from an older S-UI version is fully usable on the
+// ensure a database imported from an older Solovey UI version is fully usable on the
 // current build:
 //
 //  1. Any remaining default admin/admin state is rotated to a random password

@@ -1,8 +1,8 @@
 export default {
   "migrateXui": {
     "backupAction": {
-      "title": "Di chuyển từ 3x-ui",
-      "button": "Chọn cơ sở dữ liệu 3x-ui…",
+      "title": "Di chuyển từ compatible panel",
+      "button": "Chọn cơ sở dữ liệu compatible panel…",
       "dryRun": "Chạy thử (chỉ xem trước)",
       "strategy": "Chiến lược xung đột",
       "merge": "Gộp",
@@ -12,14 +12,14 @@ export default {
       "warnings": "Cảnh báo",
       "openFull": "Mở trình di chuyển đầy đủ"
     },
-    "title": "Di chuyển từ 3x-ui",
+    "title": "Di chuyển từ compatible panel",
     "steps": {
       "upload": "Tải lên",
       "review": "Xem lại",
       "progress": "Tiến trình",
       "result": "Kết quả"
     },
-    "chooseFile": "Cơ sở dữ liệu 3x-ui",
+    "chooseFile": "Cơ sở dữ liệu compatible panel",
     "strategy": "Chiến lược xung đột",
     "includeSettings": "Nhập cài đặt bảng điều khiển",
     "includeHistory": "Nhập lưu lượng lịch sử",

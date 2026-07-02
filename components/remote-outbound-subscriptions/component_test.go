@@ -3,13 +3,16 @@
 package remoteoutboundsubscriptions
 
 import (
+	"context"
 	"encoding/json"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	remotesettings "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/internal/settings"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	outboundentities "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	localsub "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/local"
@@ -38,6 +41,37 @@ func TestRuntimeHooksFollowComponentLifecycle(t *testing.T) {
 	afterUnregister := localsub.ClientOutboundContributorsVersion()
 	if afterUnregister == afterRegister {
 		t.Fatal("remote component stop did not unregister client outbound contributor")
+	}
+}
+
+func TestRemoteDropDataRemovesOwnedTablesAndSettings(t *testing.T) {
+	initRemoteComponentSettingTestDB(t)
+	if err := (component{}).Migrate(context.Background(), lifecycle.Context{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.DB().Create(&model.Setting{Key: remotesettings.GroupAdaptationKey, Value: "selector"}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	if err := (component{}).DropData(context.Background(), lifecycle.Context{}); err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{
+		"remote_outbound_subscriptions",
+		"remote_outbound_groups",
+		"remote_outbound_connections",
+		"remote_outbound_group_connections",
+	} {
+		if dbsqlite.DB().Migrator().HasTable(table) {
+			t.Fatalf("remote DropData left table %s", table)
+		}
+	}
+	var settingsCount int64
+	if err := dbsqlite.DB().Model(&model.Setting{}).Where("key IN ?", remotesettings.AllKeys()).Count(&settingsCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if settingsCount != 0 {
+		t.Fatalf("remote DropData left %d setting rows", settingsCount)
 	}
 }
 

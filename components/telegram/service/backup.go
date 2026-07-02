@@ -224,7 +224,7 @@ func telegramBackupActor(ctx context.Context, trigger string) string {
 }
 
 func telegramBackupFilename(now time.Time) string {
-	return "s-ui-backup-" + now.Format("20060102-150405Z") + ".db.aes"
+	return "Solovey UI-backup-" + now.Format("20060102-150405Z") + ".db.aes"
 }
 
 func telegramBackupCaption(now time.Time, trigger string, excludedTables []string) string {
@@ -232,7 +232,7 @@ func telegramBackupCaption(now time.Time, trigger string, excludedTables []strin
 	if len(excludedTables) > 0 {
 		excluded = strings.Join(excludedTables, ",")
 	}
-	return redact.String("S-UI encrypted database backup\ncreatedAt: " +
+	return redact.String("Solovey UI encrypted database backup\ncreatedAt: " +
 		now.Format(time.RFC3339) +
 		"\nsource: " + trigger +
 		"\nexcludedTables: " + excluded)

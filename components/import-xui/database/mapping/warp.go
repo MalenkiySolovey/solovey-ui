@@ -22,7 +22,7 @@ type xrayOutbound struct {
 }
 
 // xrayWireguardOutbound is the settings block of an Xray wireguard outbound
-// (this is how 3x-ui stores Cloudflare WARP).
+// (this is how compatible panel stores Cloudflare WARP).
 type xrayWireguardOutbound struct {
 	MTU            int                         `json:"mtu"`
 	SecretKey      string                      `json:"secretKey"`
@@ -50,7 +50,7 @@ type xrayWireguardOutboundPeer struct {
 //     wireguard->the endpoint tag, proxy->its own outbound tag),
 //   - warnings for anything skipped or needing review.
 //
-// 3x-ui (Xray) stores every outbound — system ones (freedom/blackhole/dns),
+// compatible panel (Xray) stores every outbound — system ones (freedom/blackhole/dns),
 // WARP, and proxy chains — in this array. s-ui (sing-box) models system
 // outbounds as routing actions/built-ins, WARP as an *endpoint*, and proxy
 // chains as first-class *outbounds*, so each kind is mapped to its s-ui home

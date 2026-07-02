@@ -19,6 +19,10 @@ type Migrator interface {
 	Migrate(context.Context, Context) error
 }
 
+type DataDropper interface {
+	DropData(context.Context, Context) error
+}
+
 type Noop struct{}
 
 func (Noop) Start(context.Context, Context) error {

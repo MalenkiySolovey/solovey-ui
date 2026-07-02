@@ -18,6 +18,8 @@ import (
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/components/telegram/jobs"
 	telegramservice "github.com/MalenkiySolovey/solovey-ui/components/telegram/service"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/diagnostics"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
@@ -163,6 +165,13 @@ func (c *component) Stop(ctx context.Context) error {
 		return notifier.Stop(ctx)
 	}
 	return nil
+}
+
+func (c *component) DropData(context.Context, lifecycle.Context) error {
+	if dbsqlite.DB() == nil {
+		return nil
+	}
+	return dbsqlite.DB().Where("key IN ?", telegramsettings.AllKeys()).Delete(&model.Setting{}).Error
 }
 
 type telegramRuntimeJobs struct {

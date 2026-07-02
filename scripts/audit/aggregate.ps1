@@ -179,7 +179,7 @@ $html = @"
 <html lang="ru">
 <head>
   <meta charset="utf-8">
-  <title>s-ui-x audit dashboard</title>
+  <title>Solovey UI audit dashboard</title>
   <style>
     body { font-family: system-ui, -apple-system, Segoe UI, sans-serif; margin: 32px; color: #17202a; }
     table { border-collapse: collapse; width: 100%; margin-top: 16px; }
@@ -191,7 +191,7 @@ $html = @"
   </style>
 </head>
 <body>
-  <h1>s-ui-x audit dashboard</h1>
+  <h1>Solovey UI audit dashboard</h1>
   <p class="meta">Generated at $($result.generatedAt)</p>
   <p>Totals: <span class="green">$($totals.green) green</span>, <span class="red">$($totals.red) red</span>, $($totals.skipped) skipped, $($totals.xfail) XFAIL markers.</p>
   <table>

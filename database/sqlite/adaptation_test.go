@@ -16,9 +16,9 @@ import (
 // adaptation, and asserts that the stored password is now a bcrypt hash that
 // still validates the original plaintext.
 func TestAdaptRehashesLegacyPlaintextPassword(t *testing.T) {
-	dbDir := makeDBTempDir(t, "s-ui-adapt-test-")
+	dbDir := makeDBTempDir(t, "Solovey UI-adapt-test-")
 	t.Setenv("SUI_DB_FOLDER", dbDir)
-	if err := Init(filepath.Join(dbDir, "s-ui.db")); err != nil {
+	if err := Init(filepath.Join(dbDir, "Solovey UI.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
@@ -27,7 +27,7 @@ func TestAdaptRehashesLegacyPlaintextPassword(t *testing.T) {
 	t.Cleanup(func() { closeMainDB(t) })
 
 	// Replace the auto-generated admin password with a plaintext value, as
-	// it would appear in a backup made against an older S-UI version.
+	// it would appear in a backup made against an older Solovey UI version.
 	d := DB()
 	if err := d.Model(&model.User{}).Where("username = ?", "admin").Update("password", "legacy-plaintext").Error; err != nil {
 		t.Fatal(err)
@@ -62,9 +62,9 @@ func TestAdaptRehashesLegacyPlaintextPassword(t *testing.T) {
 }
 
 func TestAdaptRotatesLegacyDefaultAdminPassword(t *testing.T) {
-	dbDir := makeDBTempDir(t, "s-ui-adapt-test-")
+	dbDir := makeDBTempDir(t, "Solovey UI-adapt-test-")
 	t.Setenv("SUI_DB_FOLDER", dbDir)
-	if err := Init(filepath.Join(dbDir, "s-ui.db")); err != nil {
+	if err := Init(filepath.Join(dbDir, "Solovey UI.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
@@ -129,9 +129,9 @@ func TestAdaptRotatesLegacyDefaultAdminPassword(t *testing.T) {
 // TestAdaptBumpsVersionSetting asserts the settings.version row is upgraded
 // to the current build version regardless of whether it was missing or stale.
 func TestAdaptBumpsVersionSetting(t *testing.T) {
-	dbDir := makeDBTempDir(t, "s-ui-adapt-test-")
+	dbDir := makeDBTempDir(t, "Solovey UI-adapt-test-")
 	t.Setenv("SUI_DB_FOLDER", dbDir)
-	if err := Init(filepath.Join(dbDir, "s-ui.db")); err != nil {
+	if err := Init(filepath.Join(dbDir, "Solovey UI.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
@@ -157,9 +157,9 @@ func TestAdaptBumpsVersionSetting(t *testing.T) {
 }
 
 func TestAdaptDoesNotDowngradeFutureVersionSetting(t *testing.T) {
-	dbDir := makeDBTempDir(t, "s-ui-adapt-test-")
+	dbDir := makeDBTempDir(t, "Solovey UI-adapt-test-")
 	t.Setenv("SUI_DB_FOLDER", dbDir)
-	if err := Init(filepath.Join(dbDir, "s-ui.db")); err != nil {
+	if err := Init(filepath.Join(dbDir, "Solovey UI.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}

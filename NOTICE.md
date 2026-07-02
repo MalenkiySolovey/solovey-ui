@@ -1,20 +1,21 @@
-# Notices and Credits
+# Notices
 
-Solovey UI is a modified GPL-3.0 derivative of the S-UI ecosystem.
+Solovey UI is a modified GPL-3.0 panel project.
 
-Main upstream sources:
-- https://github.com/deposist/s-ui-x
-- https://github.com/alireza0/s-ui
-- https://github.com/admin8800/s-ui
-- https://github.com/shenaba/2s-ui
-
-This repository contains substantial modifications by MalenkiySolovey, including branding, installer/update flow, diagnostics, backup/rollback logic, release packaging, frontend/backend changes, and private-use adaptations.
+This repository contains substantial modifications by MalenkiySolovey,
+including branding, installer and update flow, diagnostics, backup and rollback
+logic, release packaging, frontend/backend changes, component boundaries, and
+private-use adaptations.
 
 Modification notice:
+
 - Project renamed to Solovey UI.
-- Service, CLI, install paths and release process were changed.
-- Upstream changes are adapted manually because the codebase has diverged from the original projects.
+- Service, CLI, install paths, release process, and component runtime were
+  changed.
+- The project keeps attribution links in the README while avoiding operational
+  dependency on external panel repositories.
 
 License:
+
 - The project remains licensed under GNU GPL v3.0.
 - Original copyright and license notices should remain intact where present.

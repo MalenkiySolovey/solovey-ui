@@ -92,7 +92,9 @@ function Split-ComponentList {
             }
         }
     }
-    return @($result)
+    # Unary comma keeps the (possibly empty) array from unrolling to $null
+    # at the function boundary.
+    return ,$result.ToArray()
 }
 
 function Parse-ComponentArgs {
@@ -197,7 +199,7 @@ function Resolve-ComponentSelection {
 
     $withIDs = Split-ComponentList $RequestedWith
     $withoutIDs = Split-ComponentList $RequestedWithout
-    foreach ($id in @($withIDs + $withoutIDs)) {
+    foreach ($id in @($withIDs) + @($withoutIDs)) {
         if (!$availableByID.ContainsKey($id)) {
             throw "Unknown component id: $id"
         }
@@ -299,10 +301,17 @@ function Invoke-ComponentImportGeneration {
         throw "Node.js is required to generate backend component imports."
     }
 
+    # Inline --name=value form: PowerShell 5.1 silently drops empty-string
+    # arguments to native commands, so a space-separated "--selected-ids ''"
+    # would make the next flag its value.
+    $generatedIDs = ""
+    if ($Selection.BinaryProfile -eq "core") {
+        $generatedIDs = $Selection.SelectedIDs -join ","
+    }
     & node $generator `
-        --profile $Selection.BinaryProfile `
-        --selected-ids ($Selection.SelectedIDs -join ",") `
-        --out (Join-Path $repoRoot "app\components_generated.go")
+        "--profile=$($Selection.BinaryProfile)" `
+        "--selected-ids=$generatedIDs" `
+        "--out=$(Join-Path $repoRoot 'app\components_generated.go')"
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 }
 
@@ -391,7 +400,11 @@ if ($Build -or !(Test-Path $webIndex)) {
             $previousFrontendProfile = $env:SOLOVEY_UI_PROFILE
             $previousFrontendComponents = $env:SOLOVEY_UI_COMPONENT_IDS
             $env:SOLOVEY_UI_PROFILE = $componentSelection.FrontendProfile
-            $env:SOLOVEY_UI_COMPONENT_IDS = ($componentSelection.SelectedIDs -join ",")
+            if ($componentSelection.FrontendProfile -eq "core") {
+                $env:SOLOVEY_UI_COMPONENT_IDS = ""
+            } else {
+                Remove-Item Env:\SOLOVEY_UI_COMPONENT_IDS -ErrorAction SilentlyContinue
+            }
             & npm ci
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
             & npm run build

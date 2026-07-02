@@ -1,8 +1,8 @@
 export default {
   "migrateXui": {
     "backupAction": {
-      "title": "從 3x-ui 遷移",
-      "button": "選擇 3x-ui 資料庫…",
+      "title": "從 compatible panel 遷移",
+      "button": "選擇 compatible panel 資料庫…",
       "dryRun": "試運行（僅預覽）",
       "strategy": "衝突策略",
       "merge": "合併",
@@ -12,14 +12,14 @@ export default {
       "warnings": "警告",
       "openFull": "打開完整遷移視圖"
     },
-    "title": "從 3x-ui 遷移",
+    "title": "從 compatible panel 遷移",
     "steps": {
       "upload": "上傳",
       "review": "審核",
       "progress": "進度",
       "result": "結果"
     },
-    "chooseFile": "3x-ui 資料庫",
+    "chooseFile": "compatible panel 資料庫",
     "strategy": "衝突策略",
     "includeSettings": "匯入面板設定",
     "includeHistory": "匯入歷史流量",

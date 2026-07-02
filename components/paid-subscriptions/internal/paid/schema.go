@@ -75,3 +75,22 @@ func EnsureSchema(db *gorm.DB) error {
 	}
 	return nil
 }
+
+func DropSchema(db *gorm.DB) error {
+	if db == nil {
+		return nil
+	}
+	for _, table := range []string{
+		"payment_orders",
+		"tariffs",
+		"paidsub_bindings",
+	} {
+		if !db.Migrator().HasTable(table) {
+			continue
+		}
+		if err := db.Migrator().DropTable(table); err != nil {
+			return err
+		}
+	}
+	return nil
+}

@@ -18,9 +18,6 @@ func TestComponentImportsStayBehindCompositionRoot(t *testing.T) {
 	var violations []string
 	walkGoFiles(t, root, func(path string) {
 		rel := filepath.ToSlash(mustRel(t, root, path))
-		if strings.HasSuffix(rel, "_test.go") {
-			return
-		}
 		for _, imported := range fileImports(t, path) {
 			if !strings.HasPrefix(imported, componentImportPrefix) {
 				continue

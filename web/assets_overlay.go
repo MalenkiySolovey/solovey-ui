@@ -6,23 +6,36 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
+	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 )
 
-type overlayFS struct {
-	roots []fs.FS
+type assetsFS struct {
+	embedded fs.FS
 }
 
-func (overlay overlayFS) Open(name string) (fs.File, error) {
+func (assets assetsFS) Open(name string) (fs.File, error) {
 	if !fs.ValidPath(name) {
 		return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrInvalid}
 	}
+	file, err := assets.embedded.Open(name)
+	if err == nil {
+		return file, nil
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		return nil, err
+	}
 
-	for _, root := range overlay.roots {
-		file, err := root.Open(name)
+	componentAssets, err := componentFrontendAssetDirs()
+	if err != nil {
+		return nil, err
+	}
+	for _, dir := range componentAssets {
+		file, err := os.DirFS(dir).Open(name)
 		if err == nil {
 			return file, nil
 		}
@@ -30,7 +43,6 @@ func (overlay overlayFS) Open(name string) (fs.File, error) {
 			return nil, err
 		}
 	}
-
 	return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 }
 
@@ -39,20 +51,58 @@ func newAssetsFS() (fs.FS, error) {
 	if err != nil {
 		return nil, err
 	}
+	return assetsFS{embedded: embeddedAssets}, nil
+}
 
-	roots := []fs.FS{embeddedAssets}
-	componentAssets, err := componentFrontendAssetDirs()
-	if err != nil {
-		return nil, err
-	}
-	for _, dir := range componentAssets {
-		roots = append(roots, os.DirFS(dir))
-	}
-	return overlayFS{roots: roots}, nil
+// assetDirsCache memoizes the resolved component asset directories keyed by
+// the installed-metadata file identity (path + mtime + size). Runtime pack
+// install/remove rewrites installed.json atomically, so a single os.Stat per
+// request is enough to detect any change — including writes made by the
+// installer outside this process — without re-reading and re-validating the
+// metadata on every asset request.
+var assetDirsCache struct {
+	sync.Mutex
+	path    string
+	modTime time.Time
+	size    int64
+	dirs    []string
+	valid   bool
 }
 
 func componentFrontendAssetDirs() ([]string, error) {
-	metadata, exists, err := installstate.Load(installstate.DefaultPath())
+	metadataPath := installstate.DefaultPath()
+	info, err := os.Stat(metadataPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil, nil
+		}
+		return nil, err
+	}
+
+	assetDirsCache.Lock()
+	defer assetDirsCache.Unlock()
+	if assetDirsCache.valid &&
+		assetDirsCache.path == metadataPath &&
+		assetDirsCache.modTime.Equal(info.ModTime()) &&
+		assetDirsCache.size == info.Size() {
+		return assetDirsCache.dirs, nil
+	}
+
+	dirs, err := resolveComponentFrontendAssetDirs(metadataPath)
+	if err != nil {
+		assetDirsCache.valid = false
+		return nil, err
+	}
+	assetDirsCache.path = metadataPath
+	assetDirsCache.modTime = info.ModTime()
+	assetDirsCache.size = info.Size()
+	assetDirsCache.dirs = dirs
+	assetDirsCache.valid = true
+	return dirs, nil
+}
+
+func resolveComponentFrontendAssetDirs(metadataPath string) ([]string, error) {
+	metadata, exists, err := installstate.Load(metadataPath)
 	if err != nil {
 		return nil, err
 	}

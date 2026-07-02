@@ -15,7 +15,7 @@ import (
 )
 
 func (s *Service) TestTelegram() Result {
-	return s.Send("S-UI Telegram notification test")
+	return s.Send("Solovey UI Telegram notification test")
 }
 
 func (s *Service) SendDocument(filename string, data []byte, caption string) Result {

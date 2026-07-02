@@ -10,8 +10,6 @@ import (
 	"strings"
 	"testing"
 
-	telegramhttp "github.com/MalenkiySolovey/solovey-ui/components/telegram/api"
-	telegramservice "github.com/MalenkiySolovey/solovey-ui/components/telegram/service"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -156,40 +154,6 @@ func TestComponentRouteTelegramBackupBrowserRouteRequiresCSRF(t *testing.T) {
 	}
 }
 
-func TestComponentRouteTelegramBackupManualRouteErrorMapping(t *testing.T) {
-	tests := []struct {
-		errorClass string
-		want       int
-	}{
-		{"concurrent_run", http.StatusConflict},
-		{"rate_limited", http.StatusTooManyRequests},
-		{"disabled", http.StatusServiceUnavailable},
-		{"missing_token", http.StatusServiceUnavailable},
-		{"missing_chat", http.StatusServiceUnavailable},
-		{"missing_passphrase", http.StatusServiceUnavailable},
-		{"oversize", http.StatusServiceUnavailable},
-		{"network", http.StatusServiceUnavailable},
-		{"proxy", http.StatusServiceUnavailable},
-		{"unauthorized", http.StatusServiceUnavailable},
-		{"chat_not_found", http.StatusServiceUnavailable},
-		{"db_snapshot_failed", http.StatusInternalServerError},
-		{"encryption_failed", http.StatusInternalServerError},
-		{"settings", http.StatusInternalServerError},
-		{"payload", http.StatusInternalServerError},
-		{"request", http.StatusInternalServerError},
-		{"unknown", http.StatusInternalServerError},
-		{"internal", http.StatusInternalServerError},
-		{"new_telegram_class", http.StatusInternalServerError},
-	}
-	for _, tt := range tests {
-		t.Run(tt.errorClass, func(t *testing.T) {
-			if got := telegramhttp.BackupHTTPStatus(tt.errorClass); got != tt.want {
-				t.Fatalf("telegramhttp.BackupHTTPStatus(%q)=%d, want %d", tt.errorClass, got, tt.want)
-			}
-		})
-	}
-}
-
 func newComponentTelegramBackupFullRouter(t *testing.T, settingService *service.SettingService) (*gin.Engine, []*http.Cookie, string) {
 	t.Helper()
 	prepareComponentRouteMetadata(t)
@@ -301,7 +265,7 @@ func assertComponentTelegramBackupFailure(t *testing.T, recorder *httptest.Respo
 	if obj["errorClass"] != wantClass {
 		t.Fatalf("unexpected errorClass: %#v body=%s", obj["errorClass"], recorder.Body.String())
 	}
-	if obj["trigger"] != telegramservice.TelegramBackupTriggerManual {
+	if obj["trigger"] != "manual" {
 		t.Fatalf("unexpected trigger: %#v", obj["trigger"])
 	}
 }

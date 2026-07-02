@@ -28,6 +28,7 @@ export const usePanelUpdate = () => {
   const componentRemoveConfirm = ref(false)
   const componentRemoveTarget = ref<ComponentCatalogStatus>()
   const componentRemovePassword = ref('')
+  const componentRemoveDeleteData = ref(false)
   const confirm = ref(false)
   const password = ref('')
   let suppressChannelCheck = false
@@ -43,6 +44,7 @@ export const usePanelUpdate = () => {
   const runtimeInstalledComponents = computed<ComponentCatalogStatus[]>(() => data.components.map(component => ({
     ...component,
     latestVersion: component.version,
+    compatible: true,
     availableInBinary: true,
     installable: false,
     removable: false,
@@ -132,10 +134,10 @@ export const usePanelUpdate = () => {
     }
   }
 
-  const setComponentInstalled = async (component: ComponentCatalogStatus, installed: boolean, password = '') => {
+  const setComponentInstalled = async (component: ComponentCatalogStatus, installed: boolean, password = '', deleteData = false) => {
     componentAction.value = `${component.id}:${installed ? 'install' : 'remove'}`
     try {
-      const body = installed ? {} : { password }
+      const body = installed ? {} : { password, deleteData }
       const message = await HttpUtils.post(`api/update/components/${component.id}/${installed ? 'install' : 'remove'}`, body)
       if (message.success) {
         await loadComponents()
@@ -150,15 +152,22 @@ export const usePanelUpdate = () => {
   const openComponentRemoveConfirm = (component: ComponentCatalogStatus) => {
     componentRemoveTarget.value = component
     componentRemovePassword.value = ''
+    componentRemoveDeleteData.value = false
     componentRemoveConfirm.value = true
   }
 
   const removeComponent = async () => {
     if (!componentRemoveTarget.value) return
-    const ok = await setComponentInstalled(componentRemoveTarget.value, false, componentRemovePassword.value)
+    const ok = await setComponentInstalled(
+      componentRemoveTarget.value,
+      false,
+      componentRemovePassword.value,
+      componentRemoveDeleteData.value,
+    )
     if (ok) {
       componentRemoveConfirm.value = false
       componentRemovePassword.value = ''
+      componentRemoveDeleteData.value = false
       componentRemoveTarget.value = undefined
     }
   }
@@ -185,6 +194,7 @@ export const usePanelUpdate = () => {
     componentAction,
     componentInventory,
     componentRemoveConfirm,
+    componentRemoveDeleteData,
     componentRemovePassword,
     componentRemoveTarget,
     confirm,
