@@ -33,7 +33,8 @@ func serveAssetsFS(assetsFS fs.FS) gin.HandlerFunc {
 			c.Status(http.StatusNotFound)
 			return
 		}
-		// fs.FS rooted at html/assets does not include the assets/ prefix.
+		// The assets FS is rooted at the public assets directory, so it does
+		// not include the assets/ URL prefix.
 		if _, err := fs.Stat(assetsFS, clean); err != nil {
 			c.Status(http.StatusNotFound)
 			return

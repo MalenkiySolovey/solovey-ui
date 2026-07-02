@@ -32,11 +32,20 @@ NON_INTERACTIVE=0
 BACKUP_MODE="auto"
 MIGRATE_FROM_SUI=0
 FORCE_MIGRATE=0
+REQUESTED_PROFILE="${SOLOVEY_UI_PROFILE:-full}"
+BINARY_PROFILE=""
+REQUIRE_CORE=0
 VERSION=""
 BACKUP_PATH=""
 DOWNLOAD_TMP_DIR=""
+COMPONENT_PAYLOAD_DIR=""
 CURL_CONNECT_TIMEOUT="${SOLOVEY_UI_CURL_CONNECT_TIMEOUT:-20}"
 CURL_MAX_TIME="${SOLOVEY_UI_CURL_MAX_TIME:-300}"
+COMPONENT_IDS_RAW="${SOLOVEY_UI_COMPONENT_IDS:-}"
+COMPONENT_IDS=()
+COMPONENT_IDS_LOADED=0
+WITH_COMPONENTS=()
+WITHOUT_COMPONENTS=()
 
 usage() {
     cat <<EOF
@@ -51,13 +60,25 @@ Options:
   --non-interactive, -y   Disable prompts. Currently the installer is prompt-free.
   --backup               Always create a backup before installing.
   --no-backup            Skip backup creation.
+  --profile <full|minimal|core>
+                         Component footprint profile. Default: full.
+                         "core" is accepted as an alias for "minimal".
+                         The installer resolves the minimal sufficient binary
+                         profile separately from this footprint profile.
+  --require-core         Fail if selected components require the full binary.
+  --with <ids>           Install only these optional components when provided.
+                         Accepts comma-separated ids or "all"; repeatable.
+  --without <ids>        Disable these optional components. Accepts comma-separated
+                         ids or "all"; repeatable.
   --migrate-from-sui     Copy a legacy /usr/local/s-ui install into Solovey UI.
   --force-migrate        Allow --migrate-from-sui to replace an existing new DB.
   --help, -h             Show this help.
 
 Examples:
   bash install.sh
-  bash install.sh --version v2026.1.0
+  bash install.sh --version v2026.2.0
+  bash install.sh --without component-id,another-component
+  bash install.sh --with component-id
   bash install.sh --dry-run
   bash install.sh --migrate-from-sui
 EOF
@@ -86,6 +107,78 @@ run() {
     "$@"
 }
 
+component_id_valid() {
+    [[ "$1" =~ ^[a-z0-9-]+$ ]]
+}
+
+append_component_list() {
+    local target="$1"
+    local raw="$2"
+    local old_ifs item
+
+    old_ifs="${IFS}"
+    IFS=','
+    for item in ${raw}; do
+		item="${item//[[:space:]]/}"
+		[[ -n "${item}" ]] || continue
+		if [[ "${item}" != "all" ]]; then
+			component_id_valid "${item}" || fail "invalid component id: ${item}"
+		fi
+        if [[ "${target}" == "with" ]]; then
+            WITH_COMPONENTS+=("${item}")
+        else
+            WITHOUT_COMPONENTS+=("${item}")
+        fi
+    done
+    IFS="${old_ifs}"
+}
+
+load_component_ids_from_payload() {
+    local dir="$1"
+    local source manifest id seen
+
+    COMPONENT_IDS=()
+    [[ -d "${dir}" ]] || fail "component payload directory is missing: ${dir}"
+    for source in "${dir}"/*; do
+        [[ -d "${source}" ]] || continue
+        manifest="${source}/component.json"
+        [[ -f "${manifest}" ]] || continue
+        id="$(basename "${source}")"
+        component_id_valid "${id}" || fail "invalid component id in pack manifest: ${manifest}"
+        validate_component_pack_manifest "${id}" "${manifest}"
+        for seen in "${COMPONENT_IDS[@]}"; do
+            [[ "${seen}" == "${id}" ]] && fail "duplicate component pack id: ${id}"
+        done
+        COMPONENT_IDS+=("${id}")
+    done
+    COMPONENT_IDS_LOADED=1
+    validate_component_filters
+}
+
+component_ids_loaded() {
+    [[ "${COMPONENT_IDS_LOADED}" == "1" ]]
+}
+
+component_known() {
+    local id="$1"
+    local known
+    component_ids_loaded || fail "component catalog is not loaded"
+    for known in "${COMPONENT_IDS[@]}"; do
+        [[ "${known}" == "${id}" ]] && return 0
+    done
+    return 1
+}
+
+validate_component_filters() {
+    local item
+    component_ids_loaded || return 0
+    for item in "${WITH_COMPONENTS[@]}" "${WITHOUT_COMPONENTS[@]}"; do
+        [[ -n "${item}" ]] || continue
+        [[ "${item}" == "all" ]] && continue
+        component_known "${item}" || fail "unknown component id: ${item}"
+    done
+}
+
 parse_args() {
     while [[ $# -gt 0 ]]; do
         case "$1" in
@@ -110,6 +203,25 @@ parse_args() {
                 BACKUP_MODE="never"
                 shift
                 ;;
+            --profile)
+                [[ $# -ge 2 ]] || fail "$1 requires a value"
+                REQUESTED_PROFILE="$2"
+                shift 2
+                ;;
+            --require-core)
+                REQUIRE_CORE=1
+                shift
+                ;;
+            --with)
+                [[ $# -ge 2 ]] || fail "$1 requires a value"
+                append_component_list "with" "$2"
+                shift 2
+                ;;
+            --without)
+                [[ $# -ge 2 ]] || fail "$1 requires a value"
+                append_component_list "without" "$2"
+                shift 2
+                ;;
             --migrate-from-sui)
                 MIGRATE_FROM_SUI=1
                 shift
@@ -132,6 +244,9 @@ parse_args() {
                 ;;
         esac
     done
+
+    normalize_requested_profile
+    resolve_binary_profile
 }
 
 require_root() {
@@ -143,6 +258,303 @@ require_root() {
 
 require_command() {
     command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"
+}
+
+component_in_list() {
+    local needle="$1"
+    shift
+    local item
+    for item in "$@"; do
+        [[ "${item}" == "${needle}" ]] && return 0
+    done
+    return 1
+}
+
+component_list_has_all() {
+    component_in_list "all" "$@"
+}
+
+component_selection_needs_bundle() {
+    if [[ "${#WITH_COMPONENTS[@]}" -gt 0 ]]; then
+        component_list_has_all "${WITHOUT_COMPONENTS[@]}" && return 1
+        return 0
+    fi
+    if [[ "${REQUESTED_PROFILE}" == "minimal" ]]; then
+        return 1
+    fi
+    component_list_has_all "${WITHOUT_COMPONENTS[@]}" && return 1
+    return 0
+}
+
+component_installed() {
+    local id="$1"
+
+    if [[ "${#WITH_COMPONENTS[@]}" -gt 0 ]] && ! component_list_has_all "${WITH_COMPONENTS[@]}" && ! component_in_list "${id}" "${WITH_COMPONENTS[@]}"; then
+        return 1
+    fi
+    if [[ "${REQUESTED_PROFILE}" == "minimal" && "${#WITH_COMPONENTS[@]}" -eq 0 ]]; then
+        return 1
+    fi
+    if component_list_has_all "${WITHOUT_COMPONENTS[@]}" || component_in_list "${id}" "${WITHOUT_COMPONENTS[@]}"; then
+        return 1
+    fi
+    return 0
+}
+
+any_component_installed() {
+    local id
+    if ! component_ids_loaded; then
+        component_selection_needs_bundle
+        return
+    fi
+    for id in "${COMPONENT_IDS[@]}"; do
+        if component_installed "${id}"; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+all_components_installed() {
+    local id
+    if ! component_ids_loaded; then
+        [[ "${REQUESTED_PROFILE}" == "full" && "${#WITH_COMPONENTS[@]}" -eq 0 ]] && ! component_list_has_all "${WITHOUT_COMPONENTS[@]}"
+        return
+    fi
+    for id in "${COMPONENT_IDS[@]}"; do
+        component_installed "${id}" || return 1
+    done
+    return 0
+}
+
+normalize_requested_profile() {
+    case "${REQUESTED_PROFILE}" in
+        full|minimal) ;;
+        core) REQUESTED_PROFILE="minimal" ;;
+        *) fail "--profile must be full, minimal or core: ${REQUESTED_PROFILE}" ;;
+    esac
+}
+
+resolve_binary_profile() {
+    if any_component_installed; then
+        # All first-wave backend components are in-process. Sidecar-capable
+        # components can lower this decision once their delivery is real.
+        BINARY_PROFILE="full"
+    else
+        BINARY_PROFILE="core"
+    fi
+
+    if [[ "${REQUIRE_CORE}" == "1" && "${BINARY_PROFILE}" != "core" ]]; then
+        fail "selected components require the full binary; remove in-process components or omit --require-core"
+    fi
+}
+
+component_profile_name() {
+    if ! any_component_installed; then
+        printf 'core\n'
+        return
+    fi
+    if all_components_installed; then
+        printf 'full\n'
+    else
+        printf 'custom\n'
+    fi
+}
+
+component_summary() {
+    local id enabled enabled_ids=() disabled_ids=()
+    if ! component_ids_loaded; then
+        if any_component_installed; then
+            printf 'resolved-from-component-bundle'
+        else
+            printf 'enabled=none'
+        fi
+        if [[ "${#WITH_COMPONENTS[@]}" -gt 0 ]]; then
+            printf ' with=%s' "$(IFS=,; printf '%s' "${WITH_COMPONENTS[*]}")"
+        fi
+        if [[ "${#WITHOUT_COMPONENTS[@]}" -gt 0 ]]; then
+            printf ' without=%s' "$(IFS=,; printf '%s' "${WITHOUT_COMPONENTS[*]}")"
+        fi
+        return
+    fi
+    for id in "${COMPONENT_IDS[@]}"; do
+        if component_installed "${id}"; then
+            enabled_ids+=("${id}")
+        else
+            disabled_ids+=("${id}")
+        fi
+    done
+    enabled="$(IFS=,; printf '%s' "${enabled_ids[*]:-none}")"
+    printf 'enabled=%s' "${enabled:-none}"
+    if [[ "${#disabled_ids[@]}" -gt 0 ]]; then
+        printf ' disabled=%s' "$(IFS=,; printf '%s' "${disabled_ids[*]}")"
+    fi
+}
+
+release_artifact_name() {
+    local platform="$1"
+    if [[ "${BINARY_PROFILE}" == "core" ]]; then
+        printf '%s-core-linux-%s.tar.gz\n' "${APP_NAME}" "${platform}"
+    else
+        printf '%s-linux-%s.tar.gz\n' "${APP_NAME}" "${platform}"
+    fi
+}
+
+components_bundle_artifact_name() {
+    printf '%s-components.tar.gz\n' "${APP_NAME}"
+}
+
+component_manifest_string_field() {
+    local manifest="$1"
+    local field="$2"
+    sed -nE "s/.*\"${field}\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\\1/p" "${manifest}" | head -n 1
+}
+
+validate_component_pack_manifest() {
+    local id="$1"
+    local manifest="$2"
+    local manifest_id delivery
+
+    manifest_id="$(component_manifest_string_field "${manifest}" "id")"
+    delivery="$(component_manifest_string_field "${manifest}" "delivery")"
+    [[ "${manifest_id}" == "${id}" ]] || fail "component pack id mismatch: expected ${id}, got ${manifest_id:-<missing>}"
+	[[ "${delivery}" == "in-process" ]] || fail "component pack ${id} has unsupported delivery: ${delivery:-<missing>}"
+}
+
+validate_component_payload() {
+    local id source
+
+    any_component_installed || return 0
+    [[ -n "${COMPONENT_PAYLOAD_DIR}" ]] || fail "component payload directory is not prepared"
+    [[ -d "${COMPONENT_PAYLOAD_DIR}" ]] || fail "component payload directory is missing: ${COMPONENT_PAYLOAD_DIR}"
+
+    for id in "${COMPONENT_IDS[@]}"; do
+        component_installed "${id}" || continue
+        source="${COMPONENT_PAYLOAD_DIR}/${id}"
+        [[ -d "${source}" ]] || fail "component pack is missing from bundle: ${id}"
+        [[ -f "${source}/component.json" ]] || fail "component pack misses component.json: ${id}"
+        validate_component_pack_manifest "${id}" "${source}/component.json"
+    done
+}
+
+validate_tar_paths() {
+    local archive="$1"
+    local member part
+    local -a parts
+
+    while IFS= read -r member; do
+        [[ -n "${member}" ]] || continue
+        [[ "${member}" != /* ]] || fail "archive contains absolute path: ${member}"
+        [[ "${member}" != *\\* ]] || fail "archive contains backslash path: ${member}"
+        IFS='/' read -r -a parts <<< "${member}"
+        for part in "${parts[@]}"; do
+            [[ "${part}" != ".." ]] || fail "archive contains parent traversal: ${member}"
+        done
+    done < <(tar -tzf "${archive}")
+}
+
+safe_extract_tar() {
+    local archive="$1"
+    local target="$2"
+
+    validate_tar_paths "${archive}"
+    tar -xzf "${archive}" -C "${target}"
+}
+
+write_component_metadata() {
+    local dir="${INSTALL_DIR}/components"
+    local path="${dir}/installed.json"
+    local tmp="${path}.tmp.$$"
+    local id comma index total_installed
+
+    if [[ "${DRY_RUN}" == "1" ]]; then
+        log "would write component metadata: profile=$(component_profile_name) binary=${BINARY_PROFILE} $(component_summary)"
+        return 0
+    fi
+
+    mkdir -p "${dir}" || return
+    {
+        printf '{\n'
+        printf '  "version": 1,\n'
+        printf '  "profile": "%s",\n' "$(component_profile_name)"
+        printf '  "binary": "%s",\n' "${BINARY_PROFILE}"
+        printf '  "components": [\n'
+        index=0
+        total_installed=0
+        for id in "${COMPONENT_IDS[@]}"; do
+            component_installed "${id}" && total_installed=$((total_installed + 1))
+        done
+        for id in "${COMPONENT_IDS[@]}"; do
+            component_installed "${id}" || continue
+            index=$((index + 1))
+            comma=","
+            [[ "${index}" -eq "${total_installed}" ]] && comma=""
+            printf '    {"id": "%s", "delivery": "in-process", "installed": true}%s\n' "${id}" "${comma}"
+        done
+        printf '  ]\n'
+        printf '}\n'
+    } > "${tmp}" || return
+    chmod 600 "${tmp}" || return
+    mv "${tmp}" "${path}"
+}
+
+install_component_pack_dir() {
+    local id="$1"
+    local source="${COMPONENT_PAYLOAD_DIR}/${id}"
+    local target="${INSTALL_DIR}/components/${id}"
+    local incoming="${target}.incoming.$$"
+    local previous="${target}.previous.$$"
+
+    [[ -n "${COMPONENT_PAYLOAD_DIR}" ]] || fail "component payload directory is not prepared"
+    [[ -d "${source}" ]] || fail "component pack is missing from bundle: ${id}"
+    [[ -f "${source}/component.json" ]] || fail "component pack misses component.json: ${id}"
+    validate_component_pack_manifest "${id}" "${source}/component.json"
+
+    rm -rf "${incoming}" "${previous}"
+    cp -a "${source}" "${incoming}" || { rm -rf "${incoming}"; return 1; }
+    if [[ -e "${target}" ]]; then
+        mv "${target}" "${previous}" || { rm -rf "${incoming}"; return 1; }
+    fi
+    if ! mv "${incoming}" "${target}"; then
+        if [[ -e "${previous}" && ! -e "${target}" ]]; then
+            mv "${previous}" "${target}" || true
+        fi
+        rm -rf "${incoming}"
+        return 1
+    fi
+    rm -rf "${previous}"
+}
+
+install_component_packs() {
+    local id existing existing_id
+
+    if [[ "${DRY_RUN}" == "1" ]]; then
+        log "would install component packs: $(component_summary)"
+        return 0
+    fi
+
+    mkdir -p "${INSTALL_DIR}/components" || return
+
+    for id in "${COMPONENT_IDS[@]}"; do
+        if component_installed "${id}"; then
+            install_component_pack_dir "${id}" || return
+        else
+            rm -rf "${INSTALL_DIR}/components/${id}" \
+                "${INSTALL_DIR}/components/${id}.incoming."* \
+                "${INSTALL_DIR}/components/${id}.previous."*
+        fi
+    done
+
+    for existing in "${INSTALL_DIR}/components"/*; do
+        [[ -d "${existing}" ]] || continue
+        existing_id="$(basename "${existing}")"
+        [[ "${existing_id}" != "installed.json" ]] || continue
+        if ! component_known "${existing_id}" || ! component_installed "${existing_id}"; then
+            rm -rf "${existing}" \
+                "${INSTALL_DIR}/components/${existing_id}.incoming."* \
+                "${INSTALL_DIR}/components/${existing_id}.previous."*
+        fi
+    done
 }
 
 secure_curl() {
@@ -670,6 +1082,8 @@ install_payload() {
     copy_legacy_secretbox_env || return
     create_secretbox_env || return
     migrate_legacy_data || return
+    install_component_packs || return
+    write_component_metadata || return
 
     run systemctl daemon-reload || return
     run "${BIN_PATH}" migrate || return
@@ -678,15 +1092,22 @@ install_payload() {
 }
 
 download_and_install() {
-    local platform artifact version url checksum_url tmp_dir payload_dir install_status
+    local platform artifact version url checksum_url components_artifact components_url components_checksum_url tmp_dir payload_dir install_status
     platform="$(detect_arch)"
     version="${VERSION:-$(latest_version)}"
-    artifact="${APP_NAME}-linux-${platform}.tar.gz"
+    artifact="$(release_artifact_name "${platform}")"
     url="${GITHUB_RELEASES}/${version}/${artifact}"
     checksum_url="${url}.sha256"
+    components_artifact="$(components_bundle_artifact_name)"
+    components_url="${GITHUB_RELEASES}/${version}/${components_artifact}"
+    components_checksum_url="${components_url}.sha256"
 
     log "release: ${version}"
     log "platform: linux/${platform}"
+    log "requested profile: ${REQUESTED_PROFILE}"
+    log "resolved profile: $(component_profile_name)"
+    log "binary: ${BINARY_PROFILE}"
+    log "components: $(component_summary)"
     log "artifact: ${artifact}"
     log "install dir: ${INSTALL_DIR}"
     log "service: ${SERVICE_NAME}"
@@ -698,7 +1119,14 @@ download_and_install() {
         backup_existing
         log "would download ${url}"
         log "would verify ${checksum_url}"
+        if any_component_installed; then
+            log "would download ${components_url}"
+            log "would verify ${components_checksum_url}"
+        else
+            log "would skip component bundle download because no optional components are selected"
+        fi
         log "would install ${APP_NAME} and restart ${SERVICE_NAME}"
+        log "would install component profile $(component_profile_name) with ${BINARY_PROFILE} binary: $(component_summary)"
         if [[ "${MIGRATE_FROM_SUI}" == "1" ]]; then
             log "would stop and disable legacy ${LEGACY_SERVICE_NAME}, copy DB/env/cert, rewrite legacy paths, then run ${APP_NAME} migrate"
         fi
@@ -716,16 +1144,31 @@ download_and_install() {
     log "downloading ${url}"
     secure_curl -o "${tmp_dir}/${artifact}" "${url}"
     secure_curl -o "${tmp_dir}/${artifact}.sha256" "${checksum_url}"
+    if any_component_installed; then
+        log "downloading ${components_url}"
+        secure_curl -o "${tmp_dir}/${components_artifact}" "${components_url}"
+        secure_curl -o "${tmp_dir}/${components_artifact}.sha256" "${components_checksum_url}"
+    fi
 
     log "verifying checksum"
     (
         cd "${tmp_dir}"
         sha256sum -c "${artifact}.sha256"
+        if any_component_installed; then
+            sha256sum -c "${components_artifact}.sha256"
+        fi
     )
 
     log "extracting release"
-    tar -xzf "${tmp_dir}/${artifact}" -C "${tmp_dir}"
+    safe_extract_tar "${tmp_dir}/${artifact}" "${tmp_dir}"
     payload_dir="${tmp_dir}/${APP_NAME}"
+    if any_component_installed; then
+        log "extracting component bundle"
+        safe_extract_tar "${tmp_dir}/${components_artifact}" "${tmp_dir}"
+        COMPONENT_PAYLOAD_DIR="${tmp_dir}/components"
+        load_component_ids_from_payload "${COMPONENT_PAYLOAD_DIR}"
+        validate_component_payload
+    fi
 
     install_status=0
     install_payload "${payload_dir}" || install_status=$?
@@ -744,6 +1187,9 @@ download_and_install() {
     fi
 }
 
+if [[ -n "${COMPONENT_IDS_RAW}" ]]; then
+    append_component_list "with" "${COMPONENT_IDS_RAW}"
+fi
 parse_args "$@"
 require_tools
 download_and_install

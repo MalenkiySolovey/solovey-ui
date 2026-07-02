@@ -10,9 +10,6 @@ import (
 	authhttp "github.com/MalenkiySolovey/solovey-ui/api/auth"
 	confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
 	dbtransferhttp "github.com/MalenkiySolovey/solovey-ui/api/dbtransfer"
-	importxuihttp "github.com/MalenkiySolovey/solovey-ui/api/importxui"
-	remotesubhttp "github.com/MalenkiySolovey/solovey-ui/api/remotesub"
-	telegramhttp "github.com/MalenkiySolovey/solovey-ui/api/telegram"
 	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -62,7 +59,7 @@ func NewAPIv2Handler(g *gin.RouterGroup, options ...Option) *APIv2Handler {
 	a.auth = a.authHandler()
 	a.config = a.configHandler()
 	a.db = a.dbTransferHandler()
-	a.telemetry = a.telemetryHandler()
+	a.telemetry = a.coreTelemetryHandler()
 	a.ReloadTokens()
 	a.initRouter(g)
 	return a
@@ -72,31 +69,12 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 	g.Use(func(c *gin.Context) {
 		a.checkToken(c)
 	})
-	g.GET("/security/audit", a.telemetry.GetSecurityAudit)
+	g.GET("/security/audit/recent", a.telemetry.GetRecentSecurityAudit)
 	g.POST("/rotateSubSecret", a.config.RotateSubSecret)
-	telegramhttp.RegisterRoutes(g, telegramhttp.Deps{
-		Settings:       a.SettingService,
-		Telegram:       a.TelegramService,
-		AuditService:   a.AuditService,
-		RequireScope:   a.requireTokenScopeAny,
-		Actor:          requestActor,
-		RemoteIP:       getRemoteIp,
-		CheckRateLimit: checkTelegramBackupManualRateLimit,
-		Audit:          a.recordAudit,
-		JSONObj:        jsonObj,
-	})
+	registerComponentAPIRoutes(g, a.componentAPI())
 	g.GET("/logs/entries", a.telemetry.GetLogEntries)
 	g.GET("/diagnostics/report", a.telemetry.GetDiagnosticsReport)
 	g.GET("/diagnostics/bundle", a.telemetry.GetDiagnosticsBundle)
-	importxuihttp.RegisterRoutes(g, a.importXUIDeps())
-	remotesubhttp.RegisterRoutes(g, remotesubhttp.Deps{
-		Service:        &a.RemoteOutboundService,
-		RequireScope:   a.requireTokenScopeAny,
-		Actor:          requestActor,
-		ValidateTarget: confighttp.ValidateOutboundCheckTarget,
-		JSONObj:        jsonObj,
-		JSONMsg:        jsonMsg,
-	})
 	g.POST("/:postAction", a.postHandler)
 	g.GET("/:getAction", a.getHandler)
 }
@@ -106,7 +84,7 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 // and is also the default token scope, so this only constrains tokens an admin
 // deliberately narrowed. Actions that enforce their own scope inside the handler
 // (getdb, importdb, rotateSubSecret) are intentionally omitted, as are the
-// separately-registered routes (telegram/*, import-xui/*, security/audit).
+// separately-registered component routes and security/audit.
 // Browser sessions carry no token scope and are allowed through by
 // requireTokenScopeAny.
 var apiV2ActionScopes = map[string][]string{
@@ -118,7 +96,7 @@ var apiV2ActionScopes = map[string][]string{
 	"checkOutbound": {"write"},
 	"linkConvert":   {"read", "write"},
 	"subConvert":    {"read", "write"},
-	// Config / identity / secret reads — observability and telegram excluded.
+	// Config / identity / secret reads — component scopes are excluded.
 	"load":      {"read", "write"},
 	"inbounds":  {"read", "write"},
 	"outbounds": {"read", "write"},

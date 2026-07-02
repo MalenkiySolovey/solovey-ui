@@ -5,30 +5,25 @@ import (
 	"io"
 	"mime/multipart"
 
-	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/internal/integrations/telegram"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	"github.com/gin-gonic/gin"
 )
 
-func (a *Handler) prepareTelegramBackupRestoreFile(c *gin.Context, source multipart.File) (preparedDatabaseImportFile, bool) {
-	passphrase := telegramBackupRestorePassphrase(c)
-	defer common.WipeBytes(passphrase)
-	if len(passphrase) == 0 {
-		a.respondTelegramBackupRestoreDecryptionFailed(c)
+func (a *Handler) prepareBackupCodecRestoreFile(c *gin.Context, source multipart.File, codec backupImportCodecEntry) (preparedDatabaseImportFile, bool) {
+	payload, err := io.ReadAll(source)
+	if err != nil {
+		a.respondBackupRestoreDecryptionFailed(c, codec.codec.FailureAuditEvent)
 		return preparedDatabaseImportFile{}, false
 	}
+	defer common.WipeBytes(payload)
 
-	envelope, err := io.ReadAll(source)
+	plaintext, err := codec.codec.Decode(BackupImportContext{
+		Gin:     c,
+		Payload: payload,
+	})
 	if err != nil {
-		a.respondTelegramBackupRestoreDecryptionFailed(c)
-		return preparedDatabaseImportFile{}, false
-	}
-	defer common.WipeBytes(envelope)
-
-	plaintext, err := integrationtelegram.OpenTelegramBackupEnvelope(envelope, passphrase)
-	if err != nil {
-		a.respondTelegramBackupRestoreDecryptionFailed(c)
+		a.respondBackupRestoreDecryptionFailed(c, codec.codec.FailureAuditEvent)
 		return preparedDatabaseImportFile{}, false
 	}
 	return preparedDatabaseImportFile{
@@ -38,12 +33,4 @@ func (a *Handler) prepareTelegramBackupRestoreFile(c *gin.Context, source multip
 			common.WipeBytes(plaintext)
 		},
 	}, true
-}
-
-func telegramBackupRestorePassphrase(c *gin.Context) []byte {
-	passphraseValue := c.PostForm("telegramBackupPassphrase")
-	if passphraseValue == "" {
-		passphraseValue = c.PostForm("backupPassphrase")
-	}
-	return []byte(passphraseValue)
 }

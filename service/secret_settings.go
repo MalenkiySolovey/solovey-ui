@@ -11,7 +11,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 )
 
-var encryptedSettingKeys = settingcatalog.MergeKeySets(telegramEncryptedSettingKeys, paidSubEncryptedSettingKeys, ipCertEncryptedSettingKeys)
+var encryptedSettingKeys = settingcatalog.MergeKeySets(ipCertEncryptedSettingKeys)
 
 // #nosec G101 -- UI placeholder text shown in place of a stored secret, not a credential.
 const StoredSecretMarker = "\u2022\u2022\u2022 stored \u2022\u2022\u2022"
@@ -53,7 +53,7 @@ func (s *SettingService) settingsSecretCodec(auditFallback ...bool) settingscryp
 
 func writeSecretSettingMarker(settings map[string]string, key string, value string) {
 	settings[settingsschema.SecretPresenceKey(key)] = strconv.FormatBool(value != "")
-	if key == settingKeyTelegramBackupPassphrase {
+	if canClearEmptyEncryptedSetting(key) {
 		if value == "" {
 			settings[key] = ""
 		} else {
@@ -112,7 +112,7 @@ func decryptWithCandidate(candidates []secretboxCandidate, key, value string) (i
 }
 
 func (s *SettingService) ResealSecretSettings() (int, error) {
-	return settingsmanager.ResealSecretSettings(settingsDatabase(), s.settingsSecretCodec(), encryptedSettingKeys)
+	return settingsmanager.ResealSecretSettings(settingsDatabase(), s.settingsSecretCodec(), currentEncryptedSettingKeys())
 }
 
 func fromSettingsCryptoCandidates(candidates []settingscrypto.Candidate) []secretboxCandidate {

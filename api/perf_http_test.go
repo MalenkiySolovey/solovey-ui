@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	importxuihttp "github.com/MalenkiySolovey/solovey-ui/api/importxui"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -61,23 +60,6 @@ func BenchmarkAPI_Save(b *testing.B) {
 	}
 }
 
-func BenchmarkAPI_ImportXUIReports(b *testing.B) {
-	router := newAPIPerfRouter(b)
-	b.ReportMetric(float64(importxuihttp.RequestLimit), "rate_limit")
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		importxuihttp.ResetRateLimits()
-		for j := 0; j < importxuihttp.RequestLimit; j++ {
-			req := httptest.NewRequest(http.MethodGet, "/import-xui/reports", nil)
-			recorder := httptest.NewRecorder()
-			router.ServeHTTP(recorder, req)
-			if recorder.Code != http.StatusOK {
-				b.Fatalf("GET /import-xui/reports status=%d body=%s", recorder.Code, recorder.Body.String())
-			}
-		}
-	}
-}
-
 func TestAPIHTTPLoadScenariosPhase5(t *testing.T) {
 	router := newAPIPerfRouter(t)
 	for _, path := range []string{
@@ -94,16 +76,6 @@ func TestAPIHTTPLoadScenariosPhase5(t *testing.T) {
 			t.Logf("phase5 http load anchor: path=%s parallel=100 requests=1000 statuses=%v", path, statuses)
 		})
 	}
-}
-
-func TestAPIImportXUIReportsRateLimitPhase5(t *testing.T) {
-	router := newAPIPerfRouter(t)
-	importxuihttp.ResetRateLimits()
-	statuses := runAPIPerfLoad(t, router, http.MethodGet, "/import-xui/reports", "", 1, 100)
-	if statuses[http.StatusOK] != importxuihttp.RequestLimit || statuses[http.StatusTooManyRequests] != 100-importxuihttp.RequestLimit {
-		t.Fatalf("unexpected rate-limit statuses=%v want ok=%d too_many=%d", statuses, importxuihttp.RequestLimit, 100-importxuihttp.RequestLimit)
-	}
-	t.Logf("phase5 issue36/44 anchor: GET /import-xui/reports requests=100 rate_limit=%d statuses=%v", importxuihttp.RequestLimit, statuses)
 }
 
 func benchmarkAPIGET(b *testing.B, router *gin.Engine, path string, parallelism int) {
@@ -132,8 +104,7 @@ func newAPIPerfRouter(tb testing.TB) *gin.Engine {
 	runtime := service.NewRuntime(nil)
 	apiService := NewApiService(WithRuntime(runtime))
 	configHandler := apiService.configHandler()
-	telemetryHandler := apiService.telemetryHandler()
-	importHandler := apiService.importXUIHandler()
+	telemetryHandler := apiService.coreTelemetryHandler()
 	seedAPIPerfData(tb)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -143,7 +114,6 @@ func newAPIPerfRouter(tb testing.TB) *gin.Engine {
 	router.POST("/save", func(c *gin.Context) {
 		configHandler.Save(c, "admin")
 	})
-	router.GET("/import-xui/reports", withTestTokenScope("admin", "admin", importHandler.ImportXuiReports))
 	return router
 }
 
@@ -157,7 +127,6 @@ func initAPIPerfDB(tb testing.TB) {
 		}
 	}
 	resetRateLimitState()
-	importxuihttp.ResetRateLimits()
 	dir := tb.TempDir()
 	tb.Setenv("SUI_DB_FOLDER", dir)
 	initAPITestDB(tb, filepath.Join(dir, "s-ui.db"))
@@ -205,7 +174,7 @@ func seedAPIPerfData(tb testing.TB) {
 		events[i] = model.AuditEvent{
 			DateTime: now - int64(i),
 			Actor:    "admin",
-			Event:    "xui_import",
+			Event:    "panel_import",
 			Resource: "database",
 			Severity: service.AuditSeverityInfo,
 			Details:  []byte(`{"phase":"5"}`),

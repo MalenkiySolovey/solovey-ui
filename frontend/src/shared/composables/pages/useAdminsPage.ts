@@ -1,15 +1,15 @@
-import { i18n } from '@/locales'
+﻿import { i18n } from '@/locales'
 import { changeAdminPassword, createAdmin, loadAdmins, logoutAllAdmins as logoutEveryAdmin, removeAdmin, reorderAdmins } from '@/shared/composables/useAdminOperations'
 import { clearCSRFToken } from '@/store/csrf'
 import { Ref, computed, ref, inject, onMounted } from 'vue'
 import router from '@/router'
 import { useUiMode } from '@/uiMode/useUiMode'
-import { useManualDrag, type ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
+import { useManualDrag, type ManualDropPosition } from '@/shared/dnd/manualDrag'
 import {
   type ManualSortDirection,
   moveRowsToPosition,
   sortRowsByText,
-} from '@/shared/composables/dragSelection/manualReorder'
+} from '@/shared/dnd/manualReorder'
 
 export const useAdminsPage = () => {
 const { mode } = useUiMode()

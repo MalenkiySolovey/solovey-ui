@@ -33,7 +33,7 @@ Panel commands:
   admin [args]         Run admin CLI command
   setting [args]       Run setting CLI command
   migrate [args]       Run database migrations
-  import-xui [args]    Run 3x-ui/x-ui import command
+  <component command>  Run an installed component CLI command
   decrypt-backup [args] Run backup decrypt command
   ip-cert [args]       Run IP certificate CLI command
   version, -v          Show binary version
@@ -48,6 +48,8 @@ Maintenance:
   diagnose, report     Run extended diagnostic report
   backup               Create a local backup
   rollback [backup]    Restore a backup directory (default: latest)
+  bbr-enable           Enable TCP BBR on the host
+  bbr-disable          Disable Solovey UI BBR override
   uninstall [--purge]  Remove service and command; --purge also removes data
   help                 Show this help
 EOF
@@ -89,6 +91,124 @@ show_log() {
 run_binary() {
     need_binary
     "${BIN_PATH}" "$@"
+}
+
+menu_header() {
+    local active="unknown" enabled="unknown"
+    if command -v systemctl >/dev/null 2>&1; then
+        active="$(systemctl is-active "${SERVICE_NAME}" 2>/dev/null || true)"
+        enabled="$(systemctl is-enabled "${SERVICE_NAME}" 2>/dev/null || true)"
+    fi
+    printf '\nSolovey UI — service: %s, autostart: %s\n' "${active:-unknown}" "${enabled:-unknown}"
+    if [[ ! -x "${BIN_PATH}" ]]; then
+        printf 'Binary is not executable: %s\nUse rollback or custom version install from this menu.\n' "${BIN_PATH}"
+    fi
+}
+
+custom_version_menu() {
+    printf 'Release tag/version to install: '
+    read -r version
+    [[ -n "${version}" ]] || fail "version is required"
+    run_installer --version "${version}"
+}
+
+admin_set_menu() {
+    local username password
+    printf 'New admin username: '
+    read -r username
+    [[ -n "${username}" ]] || fail "username is required"
+    printf 'New admin password: '
+    read -rs password
+    printf '\n'
+    [[ -n "${password}" ]] || fail "password is required"
+    run_binary admin -username "${username}" -password "${password}"
+}
+
+setting_set_menu() {
+    local panel_port panel_path sub_port sub_path
+    local args=()
+
+    printf 'Panel port (empty = keep current): '
+    read -r panel_port
+    printf 'Panel path (empty = keep current): '
+    read -r panel_path
+    printf 'Subscription port (empty = keep current): '
+    read -r sub_port
+    printf 'Subscription path (empty = keep current): '
+    read -r sub_path
+
+    [[ -z "${panel_port}" ]] || args+=("-port" "${panel_port}")
+    [[ -z "${panel_path}" ]] || args+=("-path" "${panel_path}")
+    [[ -z "${sub_port}" ]] || args+=("-subPort" "${sub_port}")
+    [[ -z "${sub_path}" ]] || args+=("-subPath" "${sub_path}")
+    [[ "${#args[@]}" -gt 0 ]] || fail "no setting changes were entered"
+    run_binary setting "${args[@]}"
+}
+
+bbr_enable() {
+    need_root "bbr-enable"
+    modprobe tcp_bbr >/dev/null 2>&1 || true
+    if ! sysctl net.ipv4.tcp_available_congestion_control 2>/dev/null | grep -qw bbr; then
+        fail "kernel does not report BBR support"
+    fi
+    cat > /etc/sysctl.d/99-solovey-ui-bbr.conf <<'EOF'
+net.core.default_qdisc=fq
+net.ipv4.tcp_congestion_control=bbr
+EOF
+    sysctl --system >/dev/null
+    log "BBR enabled"
+}
+
+bbr_disable() {
+    need_root "bbr-disable"
+    rm -f /etc/sysctl.d/99-solovey-ui-bbr.conf
+    sysctl -w net.ipv4.tcp_congestion_control=cubic >/dev/null 2>&1 || true
+    sysctl -w net.core.default_qdisc=fq_codel >/dev/null 2>&1 || true
+    log "Solovey UI BBR override disabled"
+}
+
+ssl_certificate_menu() {
+    local choice ip email port renew_arg
+    cat <<EOF
+1) ip-cert status
+2) issue IP certificate
+3) renew IP certificate
+4) disable managed IP certificate
+0) back
+EOF
+    printf '> '
+    read -r choice
+    case "${choice}" in
+        1) run_binary ip-cert status ;;
+        2)
+            printf 'Public IP: '
+            read -r ip
+            printf 'ACME email: '
+            read -r email
+            printf 'HTTP challenge port (empty = 80): '
+            read -r port
+            printf 'Disable auto-renew? [y/N]: '
+            read -r renew_arg
+            local args=("ip-cert" "issue" "-ip" "${ip}" "-email" "${email}")
+            [[ -z "${port}" ]] || args+=("-port" "${port}")
+            case "${renew_arg}" in
+                y|Y|yes|YES) args+=("-no-renew") ;;
+            esac
+            run_binary "${args[@]}"
+            ;;
+        3) run_binary ip-cert renew ;;
+        4) run_binary ip-cert disable ;;
+        0) return 0 ;;
+        *) usage ;;
+    esac
+}
+
+cloudflare_ssl_notice() {
+    cat <<EOF
+Cloudflare SSL automation is not supported by the Solovey UI manager script.
+Use a reverse proxy/Cloudflare origin certificate workflow outside this script,
+or use "SSL Certificate Management" for the built-in bare-IP ACME flow.
+EOF
 }
 
 print_build_info() {
@@ -704,21 +824,36 @@ uninstall() {
 
 menu() {
     while true; do
+        menu_header
         cat <<EOF
-
-Solovey UI
 1) status
 2) start
 3) stop
 4) restart
 5) log
-6) uri
-7) admin -show
-8) setting -show
-9) update
-10) doctor
-11) ip-cert status
-12) rotate cookie key
+6) rollback latest backup
+7) backup now
+8) install/update latest
+9) install custom version
+10) uninstall
+11) enable autostart
+12) disable autostart
+13) uri
+14) admin -show
+15) setting -show
+16) admin reset
+17) setting reset
+18) doctor
+19) full diagnostic report
+20) components report
+21) ip-cert status
+22) rotate cookie key
+23) admin set
+24) setting set
+25) BBR enable
+26) BBR disable
+27) SSL Certificate Management
+28) Cloudflare SSL notice
 0) exit
 EOF
         printf '> '
@@ -729,13 +864,29 @@ EOF
             3) systemctl_cmd stop ;;
             4) systemctl_cmd restart ;;
             5) show_log ;;
-            6) run_binary uri ;;
-            7) run_binary admin -show ;;
-            8) run_binary setting -show ;;
-            9) run_installer ;;
-            10) run_doctor ;;
-            11) run_binary ip-cert status ;;
-            12) rotate_cookie_key ;;
+            6) rollback_backup ;;
+            7) backup_local ;;
+            8) run_installer ;;
+            9) custom_version_menu ;;
+            10) uninstall ;;
+            11) systemctl_cmd enable ;;
+            12) systemctl_cmd disable ;;
+            13) run_binary uri ;;
+            14) run_binary admin -show ;;
+            15) run_binary setting -show ;;
+            16) run_binary admin -reset ;;
+            17) run_binary setting -reset ;;
+            18) run_doctor ;;
+            19) run_doctor --full ;;
+            20) run_binary doctor --components ;;
+            21) run_binary ip-cert status ;;
+            22) rotate_cookie_key ;;
+            23) admin_set_menu ;;
+            24) setting_set_menu ;;
+            25) bbr_enable ;;
+            26) bbr_disable ;;
+            27) ssl_certificate_menu ;;
+            28) cloudflare_ssl_notice ;;
             0) exit 0 ;;
             *) usage ;;
         esac
@@ -760,7 +911,7 @@ case "${command}" in
     log)
         show_log
         ;;
-    uri|admin|setting|migrate|import-xui|decrypt-backup|ip-cert)
+    uri|admin|setting|migrate|decrypt-backup|ip-cert)
         run_binary "${command}" "$@"
         ;;
     build-info)
@@ -789,6 +940,12 @@ case "${command}" in
         ;;
     rollback)
         rollback_backup "$@"
+        ;;
+    bbr-enable)
+        bbr_enable
+        ;;
+    bbr-disable)
+        bbr_disable
         ;;
     uninstall)
         uninstall "$@"

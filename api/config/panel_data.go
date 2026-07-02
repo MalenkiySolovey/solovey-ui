@@ -3,6 +3,7 @@ package config
 import (
 	"encoding/json"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/sync/errgroup"
@@ -40,7 +41,7 @@ func (a *Handler) GetData(c *gin.Context) (interface{}, error) {
 	if isUpdated {
 		hostname := a.Hostname(c)
 		var loadSettings service.PanelLoadSettings
-		var clients, tlsConfigs, inbounds, outbounds, endpoints, services any
+		var clients, tlsConfigs, inbounds, outbounds, endpoints, services, components any
 		var group errgroup.Group
 		group.Go(func() error {
 			settings, err := a.SettingService.LoadPanelSettingsForData(hostname)
@@ -77,6 +78,11 @@ func (a *Handler) GetData(c *gin.Context) (interface{}, error) {
 			services = result
 			return err
 		})
+		group.Go(func() error {
+			result, err := state.Components()
+			components = result
+			return err
+		})
 		if err := group.Wait(); err != nil {
 			return "", err
 		}
@@ -87,6 +93,7 @@ func (a *Handler) GetData(c *gin.Context) (interface{}, error) {
 		data["outbounds"] = outbounds
 		data["endpoints"] = endpoints
 		data["services"] = services
+		data["components"] = components
 		data["subURI"] = loadSettings.SubURI
 		if loadSettings.SubJsonURI != "" {
 			data["subJsonURI"] = loadSettings.SubJsonURI

@@ -61,6 +61,14 @@ func NormalizeBaseConfig(config json.RawMessage) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	config, _, err = NormalizeManagedRuleSetsForStorage(doc.raw)
+	if err != nil {
+		return "", err
+	}
+	doc, err = ParseBaseConfig(config)
+	if err != nil {
+		return "", err
+	}
 	if err := doc.ValidateEditableSections(); err != nil {
 		return "", err
 	}

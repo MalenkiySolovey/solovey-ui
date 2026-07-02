@@ -37,10 +37,70 @@ assert_contains() {
     grep -Eq "${pattern}" "${file}" || fail "expected ${file} to match ${pattern}"
 }
 
+assert_not_contains() {
+    local file="$1"
+    local pattern="$2"
+    ! grep -Eq "${pattern}" "${file}" || fail "expected ${file} not to match ${pattern}"
+}
+
 assert_no_backup_dirs() {
     if [[ -d "${BACKUP_ROOT}" ]] && find "${BACKUP_ROOT}" -mindepth 1 -maxdepth 1 -type d | grep -q .; then
         fail "unexpected backup directory for fresh install"
     fi
+}
+
+assert_component_metadata() {
+    local binary="$1"
+    local remote="$2"
+    local telegram="$3"
+    local paid="$4"
+    local file="${INSTALL_DIR}/components/installed.json"
+    local profile="${binary}"
+
+    if [[ "${binary}" == "full" && ( "${remote}" != "true" || "${telegram}" != "true" || "${paid}" != "true" ) ]]; then
+        profile="custom"
+    fi
+
+    assert_file "${file}"
+    assert_contains "${file}" "\"profile\": \"${profile}\""
+    assert_contains "${file}" "\"binary\": \"${binary}\""
+    assert_component_metadata_entry "${file}" "remote-outbound-subscriptions" "${remote}"
+    assert_component_metadata_entry "${file}" "telegram" "${telegram}"
+    assert_component_metadata_entry "${file}" "paid-subscriptions" "${paid}"
+}
+
+assert_component_metadata_entry() {
+    local file="$1"
+    local id="$2"
+    local installed="$3"
+
+    if [[ "${installed}" == "true" ]]; then
+        assert_contains "${file}" "\"id\": \"${id}\", \"delivery\": \"in-process\", \"installed\": true"
+    else
+        assert_not_contains "${file}" "\"id\": \"${id}\""
+    fi
+}
+
+assert_component_pack() {
+    local id="$1"
+    local installed="$2"
+    local dir="${INSTALL_DIR}/components/${id}"
+
+    if [[ "${installed}" == "true" ]]; then
+        assert_file "${dir}/component.json"
+    else
+        assert_not_exists "${dir}"
+    fi
+}
+
+assert_component_packs() {
+    local remote="$1"
+    local telegram="$2"
+    local paid="$3"
+
+    assert_component_pack remote-outbound-subscriptions "${remote}"
+    assert_component_pack telegram "${telegram}"
+    assert_component_pack paid-subscriptions "${paid}"
 }
 
 reset_logs() {
@@ -90,12 +150,24 @@ fi
 case "${url}" in
     *.tar.gz.sha256)
         if [[ "${TEST_BAD_CHECKSUM:-0}" == "1" ]]; then
-            printf '0000000000000000000000000000000000000000000000000000000000000000  %s\n' "$(basename "${FIXTURE_TAR}")" > "${out}"
+            printf '0000000000000000000000000000000000000000000000000000000000000000  %s\n' "$(basename "${url%.sha256}")" > "${out}"
+        elif [[ "${url}" == *"/solovey-ui-components.tar.gz.sha256" ]]; then
+            cp "${FIXTURE_COMPONENTS_SHA}" "${out}"
+        elif [[ "${url}" == *"/solovey-ui-core-linux-"*.tar.gz.sha256 ]]; then
+            cp "${FIXTURE_CORE_SHA}" "${out}"
         else
             cp "${FIXTURE_SHA}" "${out}"
         fi
         ;;
-    *.tar.gz) cp "${FIXTURE_TAR}" "${out}" ;;
+    *.tar.gz)
+        if [[ "${url}" == *"/solovey-ui-components.tar.gz" ]]; then
+            cp "${FIXTURE_COMPONENTS_TAR}" "${out}"
+        elif [[ "${url}" == *"/solovey-ui-core-linux-"*.tar.gz ]]; then
+            cp "${FIXTURE_CORE_TAR}" "${out}"
+        else
+            cp "${FIXTURE_TAR}" "${out}"
+        fi
+        ;;
     *) echo "unexpected fake curl URL: ${url}" >&2; exit 3 ;;
 esac
 SH
@@ -172,6 +244,8 @@ create_release_fixture() {
     local release_root="${FIXTURE}/${version}"
     local release_dir="${release_root}/solovey-ui"
     local artifact="${release_root}/solovey-ui-linux-amd64.tar.gz"
+    local core_artifact="${release_root}/solovey-ui-core-linux-amd64.tar.gz"
+    local components_artifact="${release_root}/solovey-ui-components.tar.gz"
 
     rm -rf "${release_root}"
     mkdir -p "${release_dir}"
@@ -190,6 +264,7 @@ echo "manager ${version}"
 SH
     {
         printf 'app=solovey-ui\n'
+        printf 'profile=full\n'
         printf 'version=%s\n' "${version}"
         printf 'sing_box=v-test-%s\n' "${version}"
     } > "${release_dir}/BUILD_INFO.txt"
@@ -198,6 +273,30 @@ SH
 
     tar -czf "${artifact}" -C "${release_root}" solovey-ui
     (cd "${release_root}" && sha256sum "$(basename "${artifact}")" > "$(basename "${artifact}").sha256")
+    sed -i 's/^profile=full$/profile=core/' "${release_dir}/BUILD_INFO.txt"
+    tar -czf "${core_artifact}" -C "${release_root}" solovey-ui
+    (cd "${release_root}" && sha256sum "$(basename "${core_artifact}")" > "$(basename "${core_artifact}").sha256")
+
+    mkdir -p \
+        "${release_root}/components/remote-outbound-subscriptions" \
+        "${release_root}/components/telegram" \
+        "${release_root}/components/paid-subscriptions"
+    printf '{"id":"remote-outbound-subscriptions","delivery":"in-process"}\n' > "${release_root}/components/remote-outbound-subscriptions/component.json"
+    printf '{"id":"telegram","delivery":"in-process"}\n' > "${release_root}/components/telegram/component.json"
+    printf '{"id":"paid-subscriptions","delivery":"in-process"}\n' > "${release_root}/components/paid-subscriptions/component.json"
+    tar -czf "${components_artifact}" -C "${release_root}" components
+    (cd "${release_root}" && sha256sum "$(basename "${components_artifact}")" > "$(basename "${components_artifact}").sha256")
+}
+
+create_bad_component_fixture() {
+    local version="$1"
+    local release_root="${FIXTURE}/${version}"
+    local components_artifact="${release_root}/solovey-ui-components.tar.gz"
+
+    create_release_fixture "${version}"
+    printf '{"id":"not-telegram","delivery":"in-process"}\n' > "${release_root}/components/telegram/component.json"
+    tar -czf "${components_artifact}" -C "${release_root}" components
+    (cd "${release_root}" && sha256sum "$(basename "${components_artifact}")" > "$(basename "${components_artifact}").sha256")
 }
 
 run_installer() {
@@ -207,6 +306,10 @@ run_installer() {
     PATH="${FAKEBIN}:${PATH}" \
     FIXTURE_TAR="${FIXTURE}/${version}/solovey-ui-linux-amd64.tar.gz" \
     FIXTURE_SHA="${FIXTURE}/${version}/solovey-ui-linux-amd64.tar.gz.sha256" \
+    FIXTURE_CORE_TAR="${FIXTURE}/${version}/solovey-ui-core-linux-amd64.tar.gz" \
+    FIXTURE_CORE_SHA="${FIXTURE}/${version}/solovey-ui-core-linux-amd64.tar.gz.sha256" \
+    FIXTURE_COMPONENTS_TAR="${FIXTURE}/${version}/solovey-ui-components.tar.gz" \
+    FIXTURE_COMPONENTS_SHA="${FIXTURE}/${version}/solovey-ui-components.tar.gz.sha256" \
     TEST_INSTALLER_LOG="${LOG_DIR}" \
     TEST_BINARY_FAIL_MIGRATE="${TEST_BINARY_FAIL_MIGRATE:-0}" \
     TEST_BACKUP_LOW_SPACE="${TEST_BACKUP_LOW_SPACE:-0}" \
@@ -225,6 +328,7 @@ run_installer() {
 assert_fresh_install() {
     assert_contains "${INSTALL_DIR}/solovey-ui.sh" 'manager v1'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^version=v1$'
+    assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^profile=full$'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^sing_box=v-test-v1$'
     assert_contains "${SERVICE_FILE}" '^service v1$'
     assert_contains "${CLI_PATH}" 'manager v1'
@@ -233,18 +337,23 @@ assert_fresh_install() {
     assert_contains "${LOG_DIR}/binary.log" '^v1:migrate$'
     assert_contains "${LOG_DIR}/systemctl.log" '^enable solovey-ui$'
     assert_contains "${LOG_DIR}/systemctl.log" '^restart solovey-ui$'
+    assert_component_metadata full true true true
+    assert_component_packs true true true
     assert_no_backup_dirs
 }
 
 assert_update_install() {
     assert_contains "${INSTALL_DIR}/solovey-ui.sh" 'manager v2'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^version=v2$'
+    assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^profile=full$'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^sing_box=v-test-v2$'
     assert_contains "${SERVICE_FILE}" '^service v2$'
     assert_contains "${CLI_PATH}" 'manager v2'
     assert_contains "${INSTALL_DIR}/db/solovey-ui.db" '^db after v1$'
     assert_contains "${ENV_DIR}/secretbox.env" '^SUI_SECRETBOX_KEY=existing-secret$'
     assert_contains "${ENV_DIR}/secretbox.env" '^SUI_COOKIE_KEY='
+    assert_component_metadata full true true true
+    assert_component_packs true true true
     assert_contains "${LOG_DIR}/binary.log" '^v2:migrate$'
     assert_contains "${LOG_DIR}/systemctl.log" '^stop solovey-ui$'
     assert_contains "${LOG_DIR}/systemctl.log" '^restart solovey-ui$'
@@ -337,10 +446,112 @@ assert_checksum_failure_is_non_destructive() {
     assert_contains "${output}" 'FAILED|WARNING'
 }
 
+assert_custom_component_selection() {
+    rm -rf "${TARGET}"
+    mkdir -p "${TARGET}"
+    reset_logs
+
+    run_installer v1 --with remote-outbound-subscriptions --without telegram,paid-subscriptions
+    assert_component_metadata full true false false
+    assert_component_packs true false false
+    assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^profile=full$'
+    assert_contains "${LOG_DIR}/binary.log" '^v1:migrate$'
+}
+
+assert_auto_core_component_selection() {
+    rm -rf "${TARGET}"
+    mkdir -p "${TARGET}"
+    reset_logs
+
+    run_installer v1 --without all
+    assert_component_metadata core false false false
+    assert_component_packs false false false
+    assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^profile=core$'
+    assert_contains "${LOG_DIR}/binary.log" '^v1:migrate$'
+}
+
+assert_minimal_profile_alias() {
+    rm -rf "${TARGET}"
+    mkdir -p "${TARGET}"
+    reset_logs
+
+    run_installer v1 --profile minimal
+    assert_component_metadata core false false false
+    assert_component_packs false false false
+    assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^profile=core$'
+    assert_contains "${LOG_DIR}/binary.log" '^v1:migrate$'
+}
+
+assert_explicit_full_without_all_resolves_core_binary() {
+    rm -rf "${TARGET}"
+    mkdir -p "${TARGET}"
+    reset_logs
+
+    run_installer v1 --profile full --without all
+    assert_component_metadata core false false false
+    assert_component_packs false false false
+    assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^profile=core$'
+    assert_contains "${LOG_DIR}/binary.log" '^v1:migrate$'
+}
+
+assert_minimal_with_inprocess_component_resolves_full_binary() {
+    rm -rf "${TARGET}"
+    mkdir -p "${TARGET}"
+    reset_logs
+
+    run_installer v1 --profile minimal --with remote-outbound-subscriptions
+    assert_component_metadata full true false false
+    assert_component_packs true false false
+    assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^profile=full$'
+    assert_contains "${LOG_DIR}/binary.log" '^v1:migrate$'
+}
+
+assert_require_core_rejects_inprocess_components() {
+    rm -rf "${TARGET}"
+    mkdir -p "${TARGET}"
+    reset_logs
+
+    local output="${LOG_DIR}/require-core.out"
+    if run_installer v1 --profile minimal --with remote-outbound-subscriptions --require-core >"${output}" 2>&1; then
+        fail "installer accepted an in-process component with --require-core"
+    fi
+    assert_not_exists "${INSTALL_DIR}"
+    assert_contains "${output}" 'selected components require the full binary'
+}
+
+assert_component_pack_removal_on_update() {
+    rm -rf "${TARGET}"
+    mkdir -p "${TARGET}"
+    reset_logs
+
+    run_installer v1
+    assert_component_packs true true true
+
+    reset_logs
+    run_installer v2 --with remote-outbound-subscriptions --without telegram,paid-subscriptions
+    assert_component_metadata full true false false
+    assert_component_packs true false false
+    assert_contains "${LOG_DIR}/binary.log" '^v2:migrate$'
+}
+
+assert_bad_component_pack_is_rejected() {
+    rm -rf "${TARGET}"
+    mkdir -p "${TARGET}"
+    reset_logs
+
+    local output="${LOG_DIR}/bad-component-pack.out"
+    if run_installer vbad --with telegram >"${output}" 2>&1; then
+        fail "installer accepted a component pack with mismatched id"
+    fi
+    assert_not_exists "${INSTALL_DIR}"
+    assert_contains "${output}" 'component pack id mismatch'
+}
+
 write_fake_tools
 create_release_fixture v1
 create_release_fixture v2
 create_release_fixture v3
+create_bad_component_fixture vbad
 
 reset_logs
 run_installer v1
@@ -371,5 +582,14 @@ rm -rf "${TARGET}"
 mkdir -p "${TARGET}"
 reset_logs
 assert_checksum_failure_is_non_destructive
+
+assert_custom_component_selection
+assert_auto_core_component_selection
+assert_minimal_profile_alias
+assert_explicit_full_without_all_resolves_core_binary
+assert_minimal_with_inprocess_component_resolves_full_binary
+assert_require_core_rejects_inprocess_components
+assert_component_pack_removal_on_update
+assert_bad_component_pack_is_rejected
 
 printf 'PASS: installer fresh/update/failure integration\n'

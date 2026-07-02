@@ -2,12 +2,7 @@
 
 Validated dependency:
 
-- `github.com/sagernet/sing-box v1.13.13`
-
-> Note: upstream moved the `v1.13.13` tag after publishing. `go.mod` keeps
-> `require v1.13.13` but `replace`s it with the fixed release commit
-> (`v1.13.13-0.20260603083344-78b2e12fbdd8`, commit `78b2e12`) because the
-> original tag commit cached by the Go proxy breaks Windows builds.
+- `github.com/sagernet/sing-box v1.13.14`
 
 The local `ConnTracker` and `StatsTracker` wrap sing-box routed TCP and packet
 connections. Any bump of `github.com/sagernet/sing-box` must revalidate this
@@ -42,3 +37,12 @@ Revalidation log:
   `Socksaddr`, and the local Done-once/reset/counter-pointer invariants are
   unchanged. Local verification still needs `go test ./core` on a Go-equipped
   environment.
+- 2026-07-02, v1.13.13 -> v1.13.14: synced the release dependency update after
+  reviewing alireza0/s-ui v1.5.1 security fixes. The `adapter.RouterConnectionTracker`
+  signatures for routed TCP and packet connections are unchanged, route tracking
+  still passes the selected rule and outbound through the same arguments, and
+  `adapter.InboundContext.Source.Addr` is still the source IP boundary used by
+  local stats. Local non-race verification passed with
+  `go test -count=1 ./core/tracker`; the local Windows race gate did not reach
+  test execution because Zig/LLD could not link the Go race runtime against
+  `WaitOnAddress` / `WakeByAddress*`.

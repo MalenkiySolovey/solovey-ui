@@ -110,6 +110,50 @@ func TestManagerSaveRejectsUnknownAndInternalKeys(t *testing.T) {
 	}
 }
 
+func TestManagerGetAllSkipsRowsOutsideActiveSchema(t *testing.T) {
+	db := newManagerTestDB(t)
+	manager := newTestManager(db)
+
+	if err := db.Create(&model.Setting{Key: "visible", Value: "stored-visible"}).Error; err != nil {
+		t.Fatalf("seed visible: %v", err)
+	}
+	if err := db.Create(&model.Setting{Key: "component.removed.setting", Value: "stale"}).Error; err != nil {
+		t.Fatalf("seed removed component setting: %v", err)
+	}
+
+	settings, err := manager.GetAll()
+	if err != nil {
+		t.Fatalf("get all: %v", err)
+	}
+	if settings["visible"] != "stored-visible" {
+		t.Fatalf("visible = %q, want stored-visible", settings["visible"])
+	}
+	if _, ok := settings["component.removed.setting"]; ok {
+		t.Fatalf("inactive component setting leaked through GetAll: %#v", settings)
+	}
+}
+
+func TestManagerSaveAllowsHookApprovedDynamicKeys(t *testing.T) {
+	db := newManagerTestDB(t)
+	manager := newTestManager(db)
+	manager.Hooks.CanSaveKey = func(key string) bool {
+		return key == "component.enabled"
+	}
+
+	payload, _ := json.Marshal(map[string]string{"component.enabled": "false"})
+	if err := manager.Save(db, payload); err != nil {
+		t.Fatalf("save dynamic key: %v", err)
+	}
+
+	got, err := manager.GetString("component.enabled")
+	if err != nil {
+		t.Fatalf("get dynamic key: %v", err)
+	}
+	if got != "false" {
+		t.Fatalf("dynamic key = %q, want false", got)
+	}
+}
+
 func TestManagerSaveSkipsStoredSecretMarker(t *testing.T) {
 	db := newManagerTestDB(t)
 	manager := newTestManager(db)

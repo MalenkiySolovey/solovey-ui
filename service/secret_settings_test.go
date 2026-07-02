@@ -18,6 +18,7 @@ import (
 
 func initSettingTestDB(t *testing.T) *SettingService {
 	t.Helper()
+	registerSettingsPayloadContributionsForTest(t)
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
 	if err := dbsqlite.Init(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
@@ -157,6 +158,7 @@ func TestLegacyPlaintextSecretRoundTripEncryptsOnSave(t *testing.T) {
 func TestTelegramBackupPassphraseEncryptedMaskedAndClearable(t *testing.T) {
 	t.Setenv("SUI_SECRETBOX_KEY", encodedTestSecretboxKey())
 	settingService := initSettingTestDB(t)
+	registerTelegramBackupPassphraseAuditObserverForTest(t)
 
 	settings, err := settingService.GetAllSetting()
 	if err != nil {
@@ -195,7 +197,7 @@ func TestTelegramBackupPassphraseEncryptedMaskedAndClearable(t *testing.T) {
 	if stored.Value == passphrase || !secretbox.IsEncrypted(stored.Value) {
 		t.Fatalf("backup passphrase was not encrypted: %q", stored.Value)
 	}
-	decrypted, err := settingService.GetTelegramBackupPassphraseBytes()
+	decrypted, err := settingService.GetComponentSettingSecretBytes(testTelegramBackupPassphraseKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -230,13 +232,55 @@ func TestTelegramBackupPassphraseEncryptedMaskedAndClearable(t *testing.T) {
 	if _, err := (&ConfigService{}).Save("settings", "set", clearPayload, "", "admin", "localhost"); err != nil {
 		t.Fatal(err)
 	}
-	decrypted, err = settingService.GetTelegramBackupPassphraseBytes()
+	decrypted, err = settingService.GetComponentSettingSecretBytes(testTelegramBackupPassphraseKey)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(decrypted) != 0 {
 		t.Fatalf("passphrase was not cleared: %q", string(decrypted))
 	}
+}
+
+func registerTelegramBackupPassphraseAuditObserverForTest(t *testing.T) {
+	t.Helper()
+	resetConfigSaveObserversForTest()
+	unregister := RegisterConfigSaveObserver("test.telegram", func(ctx ConfigSaveObserverContext) (ConfigSaveAfterCommit, error) {
+		if ctx.Object != "settings" {
+			return nil, nil
+		}
+		var settings map[string]string
+		if err := json.Unmarshal(ctx.Data, &settings); err != nil {
+			return nil, err
+		}
+		newPassphrase, ok := settings[testTelegramBackupPassphraseKey]
+		if !ok || newPassphrase == StoredSecretMarker {
+			return nil, nil
+		}
+		oldPassphrase, err := (&SettingService{}).GetComponentSettingSecretBytes(testTelegramBackupPassphraseKey)
+		if err != nil {
+			return nil, err
+		}
+		defer common.WipeBytes(oldPassphrase)
+		if string(oldPassphrase) == newPassphrase {
+			return nil, nil
+		}
+		configured := newPassphrase != ""
+		return func() {
+			_ = (&AuditService{}).Record(AuditEvent{
+				Actor:    ctx.LoginUser,
+				Event:    "tg_backup_passphrase_changed",
+				Resource: "database",
+				Severity: AuditSeverityInfo,
+				Details: map[string]any{
+					"configured": configured,
+				},
+			})
+		}, nil
+	})
+	t.Cleanup(func() {
+		unregister()
+		resetConfigSaveObserversForTest()
+	})
 }
 
 func TestGetCookieKeysDerivedFromSecretByDefault(t *testing.T) {

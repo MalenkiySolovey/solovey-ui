@@ -1,3 +1,5 @@
+//go:build !minimal
+
 package api
 
 import (
@@ -15,9 +17,9 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
 
-	importxuihttp "github.com/MalenkiySolovey/solovey-ui/api/importxui"
+	importxuihttp "github.com/MalenkiySolovey/solovey-ui/components/import-xui/api"
+	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
-	"github.com/MalenkiySolovey/solovey-ui/database/importxui"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -171,7 +173,7 @@ func TestImportXuiCorruptFileAuditsFailure(t *testing.T) {
 	}
 	flushAPIAudit(t)
 	var event model.AuditEvent
-	if err := dbsqlite.DB().Where("event = ?", "xui_import_failed").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "panel_import_failed").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Resource != "database" {
@@ -242,7 +244,7 @@ func TestImportXuiAppliesImportAndAuditsSuccess(t *testing.T) {
 		t.Fatal("source client was not imported")
 	}
 	var auditCount int64
-	if err := dbsqlite.DB().Model(model.AuditEvent{}).Where("event = ?", "xui_import").Count(&auditCount).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.AuditEvent{}).Where("event = ?", "panel_import").Count(&auditCount).Error; err != nil {
 		t.Fatal(err)
 	}
 	if auditCount == 0 {

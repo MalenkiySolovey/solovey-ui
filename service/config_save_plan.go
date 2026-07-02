@@ -16,6 +16,13 @@ type configSavePlan struct {
 	singboxapply.Plan
 }
 
+type ComponentConfigChangeEffects struct {
+	PrimaryObject  string
+	IncludeObjects []string
+	CoreRestart    bool
+	RestartReason  string
+}
+
 var invalidateSubscriptionOutputCacheAfterSave func()
 
 func RegisterSubscriptionOutputCacheInvalidator(fn func()) {
@@ -40,9 +47,48 @@ func (s *ConfigService) recordConfigChange(tx *gorm.DB, loginUser string, obj st
 	}).Error
 }
 
-func (s *ConfigService) applyConfigSaveEffects(plan configSavePlan, loginUser string, auditTelegramBackupPassphrase bool, auditTelegramBackupPassphraseConfigured bool) {
-	if auditTelegramBackupPassphrase {
-		s.SettingService.recordTelegramBackupPassphraseChanged(loginUser, auditTelegramBackupPassphraseConfigured)
+func (s *ConfigService) RecordComponentConfigChange(tx *gorm.DB, loginUser string, obj string, act string, payload any) error {
+	data, err := marshalConfigChangePayload(payload)
+	if err != nil {
+		return err
+	}
+	return s.recordConfigChange(tx, loginUser, obj, act, data)
+}
+
+func marshalConfigChangePayload(payload any) (json.RawMessage, error) {
+	switch value := payload.(type) {
+	case nil:
+		return json.RawMessage("null"), nil
+	case json.RawMessage:
+		return value, nil
+	case []byte:
+		return json.RawMessage(value), nil
+	default:
+		return json.Marshal(value)
+	}
+}
+
+func (s *ConfigService) ApplyComponentConfigChangeEffects(effects ComponentConfigChangeEffects) {
+	s.setLastUpdate(time.Now().Unix())
+	if !effects.CoreRestart {
+		realtime.Publish(realtime.TopicConfigInvalidated, nil)
+		return
+	}
+	primaryObject := effects.PrimaryObject
+	if primaryObject == "" {
+		primaryObject = "component"
+	}
+	plan := newConfigSavePlan(primaryObject)
+	plan.IncludeObjects(effects.IncludeObjects...)
+	plan.RequireCoreRestart(effects.RestartReason)
+	s.applyConfigSaveEffects(plan, nil)
+}
+
+func (s *ConfigService) applyConfigSaveEffects(plan configSavePlan, afterCommitEffects []ConfigSaveAfterCommit) {
+	for _, effect := range afterCommitEffects {
+		if effect != nil {
+			effect()
+		}
 	}
 	realtime.Publish(realtime.TopicConfigInvalidated, nil)
 	if invalidateSubscriptionOutputCacheAfterSave != nil {

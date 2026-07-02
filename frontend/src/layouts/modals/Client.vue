@@ -198,19 +198,7 @@
                   v-model="lnk.uri" />
                 </v-col>
               </v-row>
-              <v-row>
-                <v-col>
-                  <StrictSelect
-                    v-model="remoteGroupIds"
-                    :items="remoteGroupItems"
-                    :label="$t('client.subscriptionTags')"
-                    clearable
-                    multiple
-                    chips
-                    hide-details
-                  />
-                </v-col>
-              </v-row>
+              <ComponentSlot name="client-editor:subscription-sources" :ctx="slotContext" />
             </v-window-item>
           </v-window>
         </v-container>

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="services-nexus">
     <page-header
       :search="search"
@@ -87,9 +87,9 @@ import EmptyState from '@/components/nexus/primitives/EmptyState.vue'
 import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
-import { useBulkSelection } from '@/shared/composables/dragSelection/bulkSelection'
-import type { ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
-import type { ManualSortDirection } from '@/shared/composables/dragSelection/manualReorder'
+import { useBulkSelection } from '@/shared/dnd/bulkSelection'
+import type { ManualDropPosition } from '@/shared/dnd/manualDrag'
+import type { ManualSortDirection } from '@/shared/dnd/manualReorder'
 
 interface ServiceRow {
   id: number

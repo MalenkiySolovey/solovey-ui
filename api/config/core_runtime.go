@@ -29,9 +29,9 @@ func (a *Handler) RestartApp(c *gin.Context) {
 func (a *Handler) RestartSb(c *gin.Context) {
 	err := a.ConfigService.RestartCore()
 	if err != nil {
-		a.TelegramService.NotifyTelegramEvent("core_restart_failed", a.coreRestartFailureFields(c, err))
+		a.NotifyEvent("core_restart_failed", a.coreRestartFailureFields(c, err))
 	} else {
-		a.TelegramService.NotifyTelegramEvent("core_restarted", nil)
+		a.NotifyEvent("core_restarted", nil)
 	}
 	a.JSONMsg(c, "restartSb", err)
 }

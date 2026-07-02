@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v1.5.7-solovey.1"
+        default: "v2026.2.0"
         type: string
   push:
     tags:
@@ -77,6 +77,11 @@ jobs:
           cache: false
           go-version-file: go.mod
 
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
       - name: Build Solovey UI
         shell: bash
         run: |
@@ -88,6 +93,7 @@ jobs:
           go version
           go env GOOS GOARCH
 
+          node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
           go build -ldflags="-w -s -checklinkname=0" -tags "${{ env.TAGS }}" -o solovey-ui.exe main.go
           file solovey-ui.exe
 

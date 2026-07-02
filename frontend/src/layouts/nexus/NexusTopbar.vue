@@ -36,7 +36,7 @@
           />
         </div>
       </template>
-      <span v-else class="nexus-topbar__page">{{ $t(<string>route.name) }}</span>
+      <span v-else class="nexus-topbar__page">{{ $t(routeTitleKey) }}</span>
     </div>
 
     <template #append>
@@ -189,6 +189,7 @@ defineProps<{
 }>()
 
 const route = useRoute()
+const routeTitleKey = computed(() => String(route.meta.title ?? route.name ?? ''))
 
 const emit = defineEmits<{
   'toggle-navigation': []

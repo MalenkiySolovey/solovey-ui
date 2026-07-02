@@ -44,6 +44,7 @@ import { computed } from 'vue'
 import router from '@/router'
 import { logout } from '@/shared/composables/useAuthOperations'
 import logoUrl from '@/assets/logo.png'
+import { classicMenuItems } from '@/componentSystem/navigation'
 
 const props = defineProps(['isMobile','displayDrawer'])
 
@@ -51,26 +52,7 @@ const showDrawer = computed((): boolean => {
   return props.displayDrawer
 })
 
-const menu = [
-  { title: 'pages.home', icon: 'mdi-home',  path: '/' },
-  { title: 'pages.inbounds', icon: 'mdi-cloud-download',  path: '/inbounds' },
-  { title: 'pages.clients', icon: 'mdi-account-multiple',  path: '/clients' },
-  { title: 'pages.outbounds', icon: 'mdi-cloud-upload',  path: '/outbounds' },
-  { title: 'pages.remoteOutboundSubscriptions', icon: 'mdi-cloud-download',  path: '/remote-subscriptions' },
-  { title: 'pages.endpoints', icon: 'mdi-cloud-tags',  path: '/endpoints' },
-  { title: 'pages.services', icon: 'mdi-server',  path: '/services' },
-  { title: 'pages.tls', icon: 'mdi-certificate',  path: '/tls' },
-  { title: 'pages.rules', icon: 'mdi-routes',  path: '/rules' },
-  { title: 'pages.dns', icon: 'mdi-dns',  path: '/dns' },
-  { title: 'pages.singBoxConfig', icon: 'mdi-code-json',  path: '/sing-box-config' },
-  { title: 'pages.admins', icon: 'mdi-account-tie',  path: '/admins' },
-  { title: 'pages.telegram', icon: 'mdi-send',  path: '/telegram' },
-  { title: 'pages.paidSub', icon: 'mdi-cash-multiple',  path: '/paid-subscriptions' },
-  { title: 'pages.audit', icon: 'mdi-shield-search',  path: '/audit' },
-  { title: 'pages.diagnostics', icon: 'mdi-clipboard-search',  path: '/diagnostics' },
-  { title: 'pages.settings', icon: 'mdi-cog',  path: '/settings' },
-  { title: 'pages.support', icon: 'mdi-heart-outline', path: '/support' },
-]
+const menu = computed(() => classicMenuItems.value)
 
 const Logout = async () => {
   logout()

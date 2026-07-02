@@ -25,8 +25,11 @@ func (a *Handler) respondDatabaseImportFailure(c *gin.Context, err error) {
 	})
 }
 
-func (a *Handler) respondTelegramBackupRestoreDecryptionFailed(c *gin.Context) {
-	a.Audit(c, a.Actor(c), "tg_backup_restore_failed", "database", service.AuditSeverityWarn, map[string]any{
+func (a *Handler) respondBackupRestoreDecryptionFailed(c *gin.Context, auditEvent string) {
+	if auditEvent == "" {
+		auditEvent = "backup_restore_decryption_failed"
+	}
+	a.Audit(c, a.Actor(c), auditEvent, "database", service.AuditSeverityWarn, map[string]any{
 		"errorClass": "decryption_failed",
 	})
 	c.JSON(http.StatusBadRequest, gin.H{

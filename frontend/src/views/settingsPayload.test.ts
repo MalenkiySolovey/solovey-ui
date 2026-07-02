@@ -1,15 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
-  paidSubSecretSettingKeys,
-  paidSubSettingKeys,
-  paidSubSettingsDefaults,
-  pickPaidSubSettings,
   pickSecretAwareSettings,
   pickSettingsByDefaults,
   settingsPageDefaults,
-  telegramSecretSettingKeys,
-  telegramSettingKeys,
-  telegramSettingsDefaults,
 } from './settingsPayload'
 
 describe('settings payload defaults', () => {
@@ -19,7 +12,7 @@ describe('settings payload defaults', () => {
     expect(settingsPageDefaults.subJsonPath).toBe('/json/')
     expect(settingsPageDefaults.subClashPath).toBe('/clash/')
     expect(settingsPageDefaults.subXrayPath).toBe('/xray/')
-    expect(settingsPageDefaults.subRemoteGroupAdaptation).toBe('urltest')
+    expect(settingsPageDefaults).not.toHaveProperty('subRemoteGroupAdaptation')
   })
 
   it('picks only keys from the selected defaults map', () => {
@@ -36,44 +29,15 @@ describe('settings payload defaults', () => {
   })
 
   it('keeps secret markers only for declared secret fields', () => {
-    const picked = pickSecretAwareSettings(telegramSettingKeys, telegramSecretSettingKeys, {
-      telegramBotToken: '',
-      telegramBotTokenHasSecret: 'true',
-      telegramBackupCron: '* * * * *',
-      telegramBackupCronHasSecret: 'true',
+    const picked = pickSecretAwareSettings(['apiToken', 'cron'], ['apiToken'], {
+      apiToken: '',
+      apiTokenHasSecret: 'true',
+      cron: '* * * * *',
+      cronHasSecret: 'true',
     })
 
-    expect(picked.telegramBotTokenHasSecret).toBe('true')
-    expect(picked.telegramBackupCron).toBe('* * * * *')
-    expect(picked).not.toHaveProperty('telegramBackupCronHasSecret')
-  })
-
-  it('keeps paid subscription payload coverage explicit', () => {
-    expect(paidSubSettingKeys).toContain('paidSubRefundRevoke')
-    expect(paidSubSecretSettingKeys).toContain('paidSubBotToken')
-
-    const picked = pickPaidSubSettings({
-      paidSubEnabled: 'true',
-      paidSubRefundRevoke: 'false',
-      paidSubBotTokenHasSecret: 'true',
-      unrelated: 'ignored',
-    })
-
-    expect(picked.paidSubEnabled).toBe('true')
-    expect(picked.paidSubRefundRevoke).toBe('false')
-    expect(picked.paidSubBotTokenHasSecret).toBe('true')
-    expect(picked.paidSubCurrency).toBe('RUB')
-    expect(picked).not.toHaveProperty('unrelated')
-  })
-
-  it('matches the Telegram defaults used by the Telegram page', () => {
-    expect(telegramSettingsDefaults.telegramTransportMode).toBe('proxy')
-    expect(telegramSettingsDefaults.telegramBackupExcludeTables).toBe('stats,client_ips,audit_events,changes')
-  })
-
-  it('includes every paid subscription secret marker default', () => {
-    for (const key of paidSubSecretSettingKeys) {
-      expect(paidSubSettingsDefaults[key + 'HasSecret']).toBe('false')
-    }
+    expect(picked.apiTokenHasSecret).toBe('true')
+    expect(picked.cron).toBe('* * * * *')
+    expect(picked).not.toHaveProperty('cronHasSecret')
   })
 })

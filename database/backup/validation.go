@@ -33,7 +33,7 @@ func validateSQLiteBackup(path string) error {
 		return common.NewErrorf("Invalid db integrity: %s", result)
 	}
 	if isXUIDatabase(probe) {
-		return common.NewError("this looks like a 3x-ui/x-ui database, not an s-ui backup; use \"Migrate from 3x-ui\" to import it instead of Restore")
+		return common.NewError("this looks like a supported third-party panel database, not a Solovey UI backup; use Panel Import instead of Restore")
 	}
 	return validateVersionedBackupConfig(probe)
 }

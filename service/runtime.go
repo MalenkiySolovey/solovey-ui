@@ -9,7 +9,6 @@ import (
 
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/internal/integrations/telegram"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/restart"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 )
@@ -54,12 +53,11 @@ func (s *LastUpdateStore) Get() int64 {
 type Runtime struct {
 	mu sync.RWMutex
 
-	coreProvider     CoreProvider
-	restartManager   *restart.Manager
-	lastUpdate       *LastUpdateStore
-	auditWriter      *auditWriter
-	telegramNotifier *integrationtelegram.Notifier
-	tokenUse         *tokenUseDebouncer
+	coreProvider   CoreProvider
+	restartManager *restart.Manager
+	lastUpdate     *LastUpdateStore
+	auditWriter    *auditWriter
+	tokenUse       *tokenUseDebouncer
 
 	coreStartCooldown time.Duration
 	lastStartFailTime time.Time
@@ -160,30 +158,6 @@ func (r *Runtime) replaceAuditWriterIfCurrent(current *auditWriter) {
 	r.mu.Lock()
 	if r.auditWriter == current {
 		r.auditWriter = newAuditWriter(auditQueueCapacity, auditBatchSize, auditFlushInterval, writeAuditEvents)
-	}
-	r.mu.Unlock()
-}
-
-func (r *Runtime) telegram() *integrationtelegram.Notifier {
-	if r == nil {
-		return nil
-	}
-	r.mu.Lock()
-	defer r.mu.Unlock()
-	if r.telegramNotifier == nil {
-		r.telegramNotifier = newDefaultTelegramNotifier()
-	}
-	notifier := r.telegramNotifier
-	return notifier
-}
-
-func (r *Runtime) replaceTelegramNotifierIfCurrent(current *integrationtelegram.Notifier) {
-	if r == nil {
-		return
-	}
-	r.mu.Lock()
-	if r.telegramNotifier == current {
-		r.telegramNotifier = newDefaultTelegramNotifier()
 	}
 	r.mu.Unlock()
 }

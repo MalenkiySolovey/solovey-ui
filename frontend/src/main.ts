@@ -8,7 +8,7 @@ import './styles/manual-drop.scss'
  */
 
 // Composables
-import { createApp, ref } from 'vue'
+import { createApp, ref, watch } from 'vue'
 
 // Components
 import App from './App.vue'
@@ -18,12 +18,15 @@ import router from './router'
 
 // Store
 import store from './store'
+import Data from '@/store/modules/data'
+import { configureManualOrderPersistence } from '@/shared/dnd/manualReorder'
 
 // Plugins
 import { registerPlugins } from '@/plugins'
 
 // Locale
 import { i18n, loadInitialLocaleMessages } from '@/locales'
+import { syncEnabledComponents } from '@/componentSystem/loader'
 
 // Notivue
 import { createNotivue } from 'notivue'
@@ -51,10 +54,21 @@ const bootstrap = async () => {
   registerPlugins(app)
 
   app
-    .use(router)
     .use(store)
     .use(i18n)
     .use(notivue)
+
+  const data = Data()
+  configureManualOrderPersistence((object, order) => data.reorder(object, order))
+  watch(
+    () => data.components.map(component => `${component.id}:${component.installed}:${component.active}`).join('|'),
+    () => {
+      void syncEnabledComponents(router)
+    },
+  )
+
+  app
+    .use(router)
     .mount('#app')
 }
 

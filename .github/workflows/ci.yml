@@ -21,7 +21,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Shell syntax
-        run: bash -n install.sh solovey-ui.sh scripts/release-package-linux.sh scripts/server-smoke-debian.sh tests/installer/release-package.sh tests/installer/install-update.sh tests/installer/migrate-from-sui.sh tests/installer/rollback.sh tests/installer/manager-cookie-key.sh
+        run: bash -n install.sh solovey-ui.sh scripts/release-package-linux.sh scripts/release-package-components.sh scripts/server-smoke-debian.sh tests/installer/release-package.sh tests/installer/install-update.sh tests/installer/migrate-from-sui.sh tests/installer/rollback.sh tests/installer/manager-cookie-key.sh
 
       - name: release package integration
         run: bash tests/installer/release-package.sh
@@ -50,11 +50,35 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Generate backend component imports
+        run: node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
+
       - name: Go vet
         run: go vet ./...
 
       - name: Go race tests
         run: go test -race -timeout=10m ./...
+
+      - name: Component profile tests
+        run: |
+          go test -p 1 -count=1 ./internal/components/... ./components/... ./api ./app ./web
+          go test -p 1 -tags minimal -count=1 ./internal/components/... ./api ./app ./web
+
+      - name: Minimal dependency boundary
+        run: |
+          set -euo pipefail
+          if go list -tags minimal -deps ./app | grep -E 'github.com/MalenkiySolovey/solovey-ui/(components|api/remotesub|paidsub|api/telegram|service/remote_outbound|internal/subscriptions/remote|cronjob/jobs/notifications)'; then
+            echo "minimal app depends on optional backend packages" >&2
+            exit 1
+          fi
+
+      - name: Core profile build
+        run: go build -tags minimal -o /tmp/solovey-ui-core main.go
 
   frontend:
     name: Frontend
@@ -74,6 +98,15 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Frontend utility script syntax
+        run: |
+          node --check scripts/component-frontend-manifest.mjs
+          node --check scripts/check-frontend-profile.mjs
+          node --check scripts/extract-component-frontend.mjs
+          node --check scripts/generate-component-imports.mjs
+          node --check scripts/release-manifest.mjs
+          node --check scripts/write-component-installed-metadata.mjs
+
       - name: Frontend lint
         working-directory: frontend
         run: npm run lint
@@ -82,6 +115,19 @@ jobs:
         working-directory: frontend
         run: npm run test
 
-      - name: Frontend build
+      - name: Frontend full build
         working-directory: frontend
-        run: npm run build
+        run: SOLOVEY_UI_PROFILE=full npm run build
+
+      - name: Frontend full profile scan
+        run: node scripts/check-frontend-profile.mjs --profile full --dist frontend/dist
+
+      - name: Frontend component pack extraction scan
+        run: node scripts/extract-component-frontend.mjs --dist frontend/dist --components-dir components --out-dir .release/components --prune-dist
+
+      - name: Frontend core build
+        working-directory: frontend
+        run: SOLOVEY_UI_PROFILE=core npm run build
+
+      - name: Frontend core profile scan
+        run: node scripts/check-frontend-profile.mjs --profile core --dist frontend/dist

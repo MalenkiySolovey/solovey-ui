@@ -1,0 +1,13 @@
+{
+  "id": "panel-update-ui",
+  "name": "Panel Update UI",
+  "version": "1",
+  "since": "2026.1.0",
+  "delivery": "in-process",
+  "defaultEnabled": true,
+  "frontend": {
+    "entries": [
+      "frontend/index.ts"
+    ]
+  }
+}

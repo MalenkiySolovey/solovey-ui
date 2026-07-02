@@ -5,13 +5,8 @@ import (
 	confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
 	dbtransferhttp "github.com/MalenkiySolovey/solovey-ui/api/dbtransfer"
 	failoverhttp "github.com/MalenkiySolovey/solovey-ui/api/failover"
-	importxuihttp "github.com/MalenkiySolovey/solovey-ui/api/importxui"
 	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
-	remotesubhttp "github.com/MalenkiySolovey/solovey-ui/api/remotesub"
-	telegramhttp "github.com/MalenkiySolovey/solovey-ui/api/telegram"
 	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
-	updatehttp "github.com/MalenkiySolovey/solovey-ui/api/update"
-	paidadmin "github.com/MalenkiySolovey/solovey-ui/paidsub/admin"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
@@ -66,33 +61,14 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	confighttp.RegisterRoutes(g, configDeps)
 
 	dbtransferhttp.RegisterRoutes(g, a.dbTransferDeps())
-	importxuihttp.RegisterRoutes(g, a.importXUIDeps())
-	telemetryhttp.RegisterRoutes(g, a.telemetryDeps())
-	updatehttp.RegisterRoutes(g, a.updateDeps())
+	telemetryhttp.RegisterCoreRoutes(g, a.telemetryDeps())
 	failoverhttp.RegisterRoutes(g, failoverhttp.Deps{
 		Status:  service.FailoverStatusEntries,
 		JSONObj: jsonObj,
 	})
 
-	remotesubhttp.RegisterRoutes(g, remotesubhttp.Deps{
-		Service:        &a.RemoteOutboundService,
-		RequireScope:   a.requireTokenScopeAny,
-		Actor:          requestActor,
-		ValidateTarget: confighttp.ValidateOutboundCheckTarget,
-		JSONObj:        jsonObj,
-		JSONMsg:        jsonMsg,
-	})
-	telegramhttp.RegisterRoutes(g, telegramhttp.Deps{
-		Settings:       a.SettingService,
-		Telegram:       a.TelegramService,
-		AuditService:   a.AuditService,
-		RequireScope:   a.requireTokenScopeAny,
-		Actor:          requestActor,
-		RemoteIP:       getRemoteIp,
-		CheckRateLimit: checkTelegramBackupManualRateLimit,
-		Audit:          a.recordAudit,
-		JSONObj:        jsonObj,
-	})
+	a.registerComponentStatusRoutes(g)
+	registerComponentAPIRoutes(g, a.componentAPI())
 
 	realtimehttp.RegisterRoutes(g, realtimehttp.Deps{
 		SettingService: a.SettingService,
@@ -104,12 +80,6 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 		JSONMsg:        jsonMsg,
 	})
 
-	// Experimental Paid Subscriptions module owns its own routes; mount them on
-	// the already-authenticated (session + CSRF) browser group.
-	paidadmin.RegisterRoutes(g, paidadmin.Deps{
-		LoginUser: GetLoginUser,
-		Audit:     a.ApiService.recordAudit,
-	})
 }
 
 func (a *APIHandler) reloadTokensAfter(handler gin.HandlerFunc) gin.HandlerFunc {

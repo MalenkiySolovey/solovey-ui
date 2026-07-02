@@ -1,0 +1,21 @@
+{
+  "id": "telegram",
+  "name": "Telegram",
+  "version": "1",
+  "since": "2026.1.0",
+  "delivery": "in-process",
+  "defaultEnabled": true,
+  "tokenScopes": [
+    "telegram"
+  ],
+  "frontend": {
+    "entries": [
+      "frontend/index.ts"
+    ]
+  },
+  "cli": {
+    "entries": [
+      "cmd"
+    ]
+  }
+}

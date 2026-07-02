@@ -1,9 +1,11 @@
+//go:build !minimal
+
 package service
 
 import (
 	"testing"
 
-	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/internal/integrations/telegram"
+	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
 	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/internal/settings/validation"
 )
 

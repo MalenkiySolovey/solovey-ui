@@ -7,6 +7,7 @@ frontend/dist/
 build/
 coverage/
 /release/
+/.release/
 /backup/
 /bin/
 /db/
@@ -35,6 +36,9 @@ windows/solovey-ui-*.exe
 .gotmp/
 .appdata/
 .audit/
+tests/baseline/phase6/tmp/
+tests/baseline/phase6/appdata/
+tests/baseline/phase6/zig-*-cache/
 
 # local env files
 .env

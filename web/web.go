@@ -14,9 +14,9 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/api"
-	importxuihttp "github.com/MalenkiySolovey/solovey-ui/api/importxui"
 	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/internal/httpconn"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	domainmiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/domain"
 	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/security"
@@ -57,7 +57,7 @@ func WithRuntime(runtime *service.Runtime) Option {
 }
 
 func NewServer(options ...Option) (*Server, error) {
-	assetsFS, err := fs.Sub(content, "html/assets")
+	assetsFS, err := newAssetsFS()
 	if err != nil {
 		return nil, err
 	}
@@ -251,11 +251,11 @@ func (s *Server) Start() (err error) {
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
-		// Expose the raw connection so the long-running 3x-ui import handlers
+		// Expose the raw connection so long-running import handlers
 		// can lift the 30s Read/Write timeouts. The gzip middleware wraps
 		// c.Writer such that http.NewResponseController can no longer reach the
 		// connection, so the deadline must be set on the conn directly.
-		ConnContext: importxuihttp.SaveConnContext,
+		ConnContext: httpconn.SaveContext,
 	}
 
 	go func() {

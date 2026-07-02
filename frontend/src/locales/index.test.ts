@@ -26,6 +26,12 @@ describe('locale loading', () => {
 
     expect(i18n.global.availableLocales).toContain('en')
     expect(i18n.global.availableLocales).not.toContain('ru')
+    expect(i18n.global.getLocaleMessage('en')).not.toHaveProperty('telegram')
+    expect(i18n.global.getLocaleMessage('en')).not.toHaveProperty('paidSub')
+    expect(i18n.global.getLocaleMessage('en')).not.toHaveProperty('remoteOutbound')
+    expect(i18n.global.getLocaleMessage('en')).not.toHaveProperty('migrateXui')
+    expect(i18n.global.getLocaleMessage('en')).not.toHaveProperty('audit')
+    expect(i18n.global.getLocaleMessage('en')).not.toHaveProperty('diagnostics')
   })
 
   it('loads stored locale with english fallback on startup', async () => {
@@ -58,5 +64,25 @@ describe('locale loading', () => {
     expect(storage.get('locale')).toBe('en')
     expect(i18n.global.locale.value).toBe('en')
     expect(i18n.global.availableLocales).toEqual(['en'])
+  })
+
+  it('loads optional component locale namespaces on demand', async () => {
+    const { i18n, loadInitialLocaleMessages } = await import('./index')
+    const { registerComponent, unregisterComponent } = await import('@/componentSystem/registry')
+    const { loadComponentLocaleMessages } = await import('@/componentSystem/locales')
+
+    await loadInitialLocaleMessages()
+    registerComponent({
+      id: 'test-locale',
+      apiVersion: '1.0',
+      locales: {
+        en: async () => ({ default: { optionalLocaleTest: { title: 'Optional Locale Test' } } }),
+      },
+    })
+    await loadComponentLocaleMessages('test-locale')
+    unregisterComponent('test-locale')
+
+    expect(i18n.global.getLocaleMessage('en')).toHaveProperty('optionalLocaleTest')
+    expect(i18n.global.getLocaleMessage('en')).not.toHaveProperty('paidSub')
   })
 })

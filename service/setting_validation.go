@@ -3,6 +3,7 @@ package service
 import (
 	"os"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	settingsschema "github.com/MalenkiySolovey/solovey-ui/internal/settings/schema"
 	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/internal/settings/validation"
@@ -25,11 +26,8 @@ func (s *SettingService) validateAll(settings map[string]string) error {
 }
 
 func (s *SettingService) validateSettingInput(key string, value string) error {
-	if err := settingsvalidation.ValidateProxyURLSetting(key, value, StoredSecretMarker); err != nil {
-		return err
-	}
-	if err := settingsvalidation.ValidateTelegramSettingInput(key, value, StoredSecretMarker); err != nil {
-		return err
+	if enabledstate.IsSettingKey(key) {
+		return enabledstate.ValidateSettingValue(value)
 	}
 	if err := settingsvalidation.ValidateSessionSettingInput(key, value); err != nil {
 		return err
@@ -40,11 +38,13 @@ func (s *SettingService) validateSettingInput(key string, value string) error {
 	if err := settingsvalidation.ValidateSubscriptionSettingInput(key, value); err != nil {
 		return err
 	}
-	if err := settingsvalidation.ValidatePaidSubSettingInput(key, value); err != nil {
-		return err
-	}
 	if err := settingsvalidation.ValidateIPCertSettingInput(key, value); err != nil {
 		return err
+	}
+	for _, validator := range currentSettingValidators() {
+		if err := validator(key, value, StoredSecretMarker); err != nil {
+			return err
+		}
 	}
 	return s.validateEndpointSettingInput(key, value)
 }

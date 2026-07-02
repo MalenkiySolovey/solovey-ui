@@ -15,7 +15,9 @@
     "selectAll": "Chọn tất cả",
     "expandRow": "Hiện chi tiết hàng",
     "clearFilters": "Xóa bộ lọc",
-    "noData": "Không có dữ liệu"
+    "noData": "Không có dữ liệu",
+    "previousPage": "Previous page",
+    "nextPage": "Next page"
   },
   "form": {
     "unsavedChanges": "Thay đổi chưa lưu",
@@ -79,9 +81,6 @@
     "basics": "Cơ bản",
     "dns": "DNS",
     "admins": "Quản trị viên",
-    "telegram": "Telegram",
-    "audit": "Kiểm toán",
-    "migrateXui": "Di chuyển 3x-ui",
     "settings": "Cài đặt",
     "support": "Hỗ trợ dự án"
   },
@@ -129,22 +128,8 @@
       "restore": "Khôi phục bản sao lưu",
       "exclStats": "Loại trừ các biểu đồ",
       "exclChanges": "Loại trừ các thay đổi",
-      "encryptTelegram": "Mã hóa bằng cụm mật khẩu sao lưu Telegram",
-      "encryptDisabledHint": "Đặt cụm mật khẩu sao lưu trong tab Telegram",
       "restorePassphrase": "Cụm mật khẩu sao lưu",
       "sbConfig": "Tải xuống cấu hình Sing-Box",
-      "xui": {
-        "title": "Di chuyển từ 3x-ui",
-        "button": "Chọn cơ sở dữ liệu 3x-ui…",
-        "dryRun": "Chạy thử (chỉ xem trước)",
-        "strategy": "Chiến lược xung đột",
-        "merge": "Gộp",
-        "replace": "Thay thế",
-        "skip": "Bỏ qua",
-        "summary": "Tóm tắt nhập",
-        "warnings": "Cảnh báo",
-        "openFull": "Mở trình di chuyển đầy đủ"
-      }
     },
     "stats": {
       "title": "Sử dụng và số lượng",
@@ -535,6 +520,7 @@
       "members": "Đầu ra theo ưu tiên",
       "primary": "Chính",
       "backup": "Dự phòng",
+      "final": "Outbound cuối cùng",
       "addMember": "Thêm đầu ra",
       "probeTarget": "URL kiểm tra",
       "interval": "Chu kỳ kiểm tra",

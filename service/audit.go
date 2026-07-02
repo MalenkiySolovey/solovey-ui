@@ -51,9 +51,9 @@ func (s *AuditService) ListPageFiltered(cursor uint64, limit int, event, severit
 	return backend.ListPageFiltered(cursor, limit, event, severity, since, until)
 }
 
-func (s *AuditService) ListXUIImportReports(limit int) ([]model.AuditEvent, error) {
+func (s *AuditService) ListByEvents(limit int, eventNames []string) ([]model.AuditEvent, error) {
 	backend := s.backend()
-	return backend.ListXUIImportReports(limit)
+	return backend.ListByEvents(limit, eventNames)
 }
 
 func (s *AuditService) Prune(retentionDays int) error {

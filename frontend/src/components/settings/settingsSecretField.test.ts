@@ -17,34 +17,43 @@ describe('settings secret field helpers', () => {
 
   it('normalizes HasSecret markers to empty editable values', () => {
     const settings = normalizeSecretFields({
-      telegramBotTokenHasSecret: 'true',
-      telegramProxyPasswordHasSecret: 'false',
-      telegramBackupPassphraseHasSecret: 'true',
-      telegramBackupPassphrase: STORED_SECRET_PLACEHOLDER,
+      botTokenHasSecret: 'true',
+      proxyPasswordHasSecret: 'false',
+      backupPassphraseHasSecret: 'true',
+      backupPassphrase: STORED_SECRET_PLACEHOLDER,
     })
 
-    expect(settings.telegramBotToken).toBe('')
-    expect(settings.telegramProxyPassword).toBe('')
-    expect(settings.telegramBackupPassphrase).toBe(STORED_SECRET_PLACEHOLDER)
+    expect(settings.botToken).toBe('')
+    expect(settings.proxyPassword).toBe('')
+    expect(settings.backupPassphrase).toBe(STORED_SECRET_PLACEHOLDER)
   })
 
   it('does not submit the stored placeholder as a secret value', () => {
     const settings = stripSecretPlaceholders({
-      telegramBotTokenHasSecret: 'true',
-      telegramBotToken: STORED_SECRET_PLACEHOLDER,
-      telegramChatID: '42',
+      botTokenHasSecret: 'true',
+      botToken: STORED_SECRET_PLACEHOLDER,
+      chatID: '42',
     })
 
-    expect(settings.telegramBotToken).toBe('')
-    expect(settings.telegramChatID).toBe('42')
+    expect(settings.botToken).toBe('')
+    expect(settings.chatID).toBe('42')
   })
 
-  it('keeps the Telegram backup stored marker so save does not clear it', () => {
+  it('strips stored placeholders for all secret values by default', () => {
     const settings = stripSecretPlaceholders({
-      telegramBackupPassphraseHasSecret: 'true',
-      telegramBackupPassphrase: STORED_SECRET_PLACEHOLDER,
+      backupPassphraseHasSecret: 'true',
+      backupPassphrase: STORED_SECRET_PLACEHOLDER,
     })
 
-    expect(settings.telegramBackupPassphrase).toBe(STORED_SECRET_PLACEHOLDER)
+    expect(settings.backupPassphrase).toBe('')
+  })
+
+  it('can preserve stored placeholders for caller-owned clearable secrets', () => {
+    const settings = stripSecretPlaceholders({
+      backupPassphraseHasSecret: 'true',
+      backupPassphrase: STORED_SECRET_PLACEHOLDER,
+    }, { preserve: ['backupPassphrase'] })
+
+    expect(settings.backupPassphrase).toBe(STORED_SECRET_PLACEHOLDER)
   })
 })

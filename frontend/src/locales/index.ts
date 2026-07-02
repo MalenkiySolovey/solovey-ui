@@ -1,9 +1,9 @@
 import { createI18n } from 'vue-i18n'
 
-type LocaleCode = 'en' | 'fa' | 'vi' | 'zhHans' | 'zhHant' | 'ru'
-type LocaleMessages = Record<string, unknown>
+export type LocaleCode = 'en' | 'fa' | 'vi' | 'zhHans' | 'zhHant' | 'ru'
+export type LocaleMessages = Record<string, unknown>
 
-const DEFAULT_LOCALE: LocaleCode = 'en'
+export const DEFAULT_LOCALE: LocaleCode = 'en'
 
 const localeLoaders: Record<LocaleCode, () => Promise<{ default: LocaleMessages }>> = {
   en: () => import('./en'),
@@ -17,7 +17,7 @@ const localeLoaders: Record<LocaleCode, () => Promise<{ default: LocaleMessages 
 const supportedLocales = new Set<LocaleCode>(Object.keys(localeLoaders) as LocaleCode[])
 const loadedLocales = new Set<LocaleCode>()
 
-const normalizeLocale = (value?: string | null): LocaleCode => {
+export const normalizeLocale = (value?: string | null): LocaleCode => {
   if (value && supportedLocales.has(value as LocaleCode)) {
     return value as LocaleCode
   }
@@ -81,8 +81,20 @@ export const loadInitialLocaleMessages = () => loadLocaleMessages(initialLocale)
 
 export const setI18nLocale = async (localeCode: string) => {
   const normalized = await loadLocaleMessages(localeCode)
+  const { loadActiveComponentLocaleMessages } = await import('@/componentSystem/locales')
+  await loadActiveComponentLocaleMessages(normalized)
   i18n.global.locale.value = normalized
   storageSet('locale', normalized)
+  return normalized
+}
+
+export const mergeLocaleMessages = async (localeCode: string, messages: LocaleMessages) => {
+  const normalized = await loadLocaleMessages(localeCode)
+  const current = i18n.global.getLocaleMessage(normalized) as LocaleMessages
+  i18n.global.setLocaleMessage(normalized, {
+    ...current,
+    ...messages,
+  })
   return normalized
 }
 

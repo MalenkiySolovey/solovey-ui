@@ -6,9 +6,7 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	remotesub "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/remote"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
-	"gorm.io/gorm"
 )
 
 type OutboundSet struct {
@@ -20,13 +18,22 @@ func (s *OutboundSet) Append(outbound map[string]interface{}, tag string) {
 	if outbound == nil || tag == "" {
 		return
 	}
+	for _, existing := range s.Tags {
+		if existing == tag {
+			return
+		}
+	}
 	s.Outbounds = append(s.Outbounds, outbound)
 	s.Tags = append(s.Tags, tag)
 }
 
 func (s *OutboundSet) AppendMany(outbounds []map[string]interface{}, tags []string) {
-	s.Outbounds = append(s.Outbounds, outbounds...)
-	s.Tags = append(s.Tags, tags...)
+	for index, outbound := range outbounds {
+		if index >= len(tags) {
+			break
+		}
+		s.Append(outbound, tags[index])
+	}
 }
 
 func BuildInboundOutbounds(clientConfig json.RawMessage, inbounds []*model.Inbound) (*OutboundSet, error) {
@@ -67,22 +74,6 @@ func AppendExternalLinkOutbounds(set *OutboundSet, links []string) {
 			set.Append(*outbound, tag)
 		}
 	}
-}
-
-func AppendRemoteGroupOutbounds(db *gorm.DB, set *OutboundSet, rawLinks json.RawMessage) error {
-	return AppendRemoteGroupOutboundsWithOptions(db, set, rawLinks, remotesub.ClientConversionOptions{})
-}
-
-func AppendRemoteGroupOutboundsWithOptions(db *gorm.DB, set *OutboundSet, rawLinks json.RawMessage, options remotesub.ClientConversionOptions) error {
-	if set == nil {
-		return nil
-	}
-	remoteOutbounds, remoteTags, err := remotesub.OutboundsForClientLinksWithOptions(db, rawLinks, options)
-	if err != nil {
-		return err
-	}
-	set.AppendMany(remoteOutbounds, remoteTags)
-	return nil
 }
 
 func PrependDefaultJSONOutbounds(set *OutboundSet) {

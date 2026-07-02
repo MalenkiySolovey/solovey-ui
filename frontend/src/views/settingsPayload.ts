@@ -26,8 +26,6 @@ export const settingsPageDefaults: SettingsMap = {
   subJsonEnable: 'true',
   subClashEnable: 'true',
   subXrayEnable: 'true',
-  subRemoteGroupAdaptation: 'urltest',
-  subRemoteConversionPolicy: '{"outbound":{"mihomoFallback":"urltest","mihomoLoadBalance":"urltest","mihomoRelay":"selector","mihomoSmart":"urltest","mihomoSsid":"selector","xrayBalancer":"urltest"},"client":{"singBox":{"mihomoFallback":"urltest","mihomoLoadBalance":"urltest","mihomoRelay":"selector","mihomoSmart":"urltest","mihomoSsid":"selector","xrayBalancer":"urltest"},"xray":{"mihomoFallback":"balancer","mihomoLoadBalance":"balancer","mihomoRelay":"balancer","mihomoSmart":"balancer","mihomoSsid":"balancer","xrayBalancer":"original"},"mihomo":{"mihomoFallback":"original","mihomoLoadBalance":"original","mihomoRelay":"original","mihomoSmart":"original","mihomoSsid":"original","xrayBalancer":"url-test"}}}',
   subURI: '',
   subJsonPath: '/json/',
   subClashPath: '/clash/',
@@ -43,112 +41,6 @@ export const settingsPageDefaults: SettingsMap = {
   subJsonExt: '',
   subClashExt: '',
 }
-
-export const telegramSettingsDefaults: SettingsMap = {
-  telegramEnabled: 'false',
-  telegramBotToken: '',
-  telegramBotTokenHasSecret: 'false',
-  telegramChatID: '',
-  telegramProxyURL: '',
-  telegramProxyURLHasSecret: 'false',
-  telegramProxyUsername: '',
-  telegramProxyUsernameHasSecret: 'false',
-  telegramProxyPassword: '',
-  telegramProxyPasswordHasSecret: 'false',
-  telegramTransportMode: 'proxy',
-  telegramOutboundTag: '',
-  telegramCpuThreshold: '90',
-  telegramNotifyCpu: 'false',
-  telegramReport: 'false',
-  telegramReportCron: '',
-  telegramBackupEnabled: 'false',
-  telegramBackupPassphrase: '',
-  telegramBackupPassphraseHasSecret: 'false',
-  telegramBackupCron: '',
-  telegramBackupExcludeTables: 'stats,client_ips,audit_events,changes',
-  telegramBackupMaxSizeMB: '45',
-}
-
-export const telegramSettingKeys = [
-  'telegramEnabled',
-  'telegramBotToken',
-  'telegramChatID',
-  'telegramProxyURL',
-  'telegramProxyUsername',
-  'telegramProxyPassword',
-  'telegramTransportMode',
-  'telegramOutboundTag',
-  'telegramCpuThreshold',
-  'telegramNotifyCpu',
-  'telegramReport',
-  'telegramReportCron',
-  'telegramBackupEnabled',
-  'telegramBackupPassphrase',
-  'telegramBackupCron',
-  'telegramBackupExcludeTables',
-  'telegramBackupMaxSizeMB',
-]
-
-export const telegramSecretSettingKeys = [
-  'telegramBotToken',
-  'telegramProxyURL',
-  'telegramProxyUsername',
-  'telegramProxyPassword',
-  'telegramBackupPassphrase',
-]
-
-export const paidSubSettingsDefaults: SettingsMap = {
-  paidSubEnabled: 'false',
-  paidSubBotToken: '',
-  paidSubBotTokenHasSecret: 'false',
-  paidSubBotPollSeconds: '25',
-  paidSubTransportMode: 'proxy',
-  paidSubProxyURL: '',
-  paidSubProxyURLHasSecret: 'false',
-  paidSubProxyUsername: '',
-  paidSubProxyUsernameHasSecret: 'false',
-  paidSubProxyPassword: '',
-  paidSubProxyPasswordHasSecret: 'false',
-  paidSubOutboundTag: '',
-  paidSubAutoRegister: 'false',
-  paidSubAutoInbounds: '[]',
-  paidSubTrialDays: '3',
-  paidSubTrialVolumeGB: '0',
-  paidSubMaxClients: '5000',
-  paidSubStartRateLimitPerMin: '3',
-  paidSubCurrency: 'RUB',
-  paidSubStarsEnabled: 'false',
-  paidSubYooKassaEnabled: 'false',
-  paidSubYooKassaToken: '',
-  paidSubYooKassaTokenHasSecret: 'false',
-  paidSubStripeEnabled: 'false',
-  paidSubStripeToken: '',
-  paidSubStripeTokenHasSecret: 'false',
-  paidSubPayMasterEnabled: 'false',
-  paidSubPayMasterToken: '',
-  paidSubPayMasterTokenHasSecret: 'false',
-  paidSubCryptoBotEnabled: 'false',
-  paidSubCryptoBotToken: '',
-  paidSubCryptoBotTokenHasSecret: 'false',
-  paidSubExternalEnabled: 'false',
-  paidSubExternalUrlTemplate: '',
-  paidSubOrderTTLMinutes: '30',
-  paidSubGreeting: '',
-  paidSubRefundRevoke: 'true',
-}
-
-export const paidSubSettingKeys = Object.keys(paidSubSettingsDefaults).filter(key => !key.endsWith('HasSecret'))
-
-export const paidSubSecretSettingKeys = [
-  'paidSubBotToken',
-  'paidSubProxyURL',
-  'paidSubProxyUsername',
-  'paidSubProxyPassword',
-  'paidSubYooKassaToken',
-  'paidSubStripeToken',
-  'paidSubPayMasterToken',
-  'paidSubCryptoBotToken',
-]
 
 export const pickSettingsByDefaults = (defaults: SettingsMap, source: SettingsMap): SettingsMap => {
   const picked: SettingsMap = {}
@@ -171,8 +63,4 @@ export const pickSecretAwareSettings = (
     picked[key + 'HasSecret'] = String(source[key + 'HasSecret'] ?? 'false')
   }
   return picked
-}
-
-export const pickPaidSubSettings = (source: SettingsMap): SettingsMap => {
-  return pickSettingsByDefaults(paidSubSettingsDefaults, source)
 }

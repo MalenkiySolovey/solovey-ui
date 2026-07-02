@@ -6,6 +6,8 @@ import (
 	"os"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost"
+	componentsupervisor "github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
@@ -13,11 +15,9 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/cronjob/scheduler"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	paidcore "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/paid"
 	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"
 	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	paidtelegram "github.com/MalenkiySolovey/solovey-ui/paidsub/telegram"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	serviceupdate "github.com/MalenkiySolovey/solovey-ui/service/update"
 	"github.com/MalenkiySolovey/solovey-ui/sub"
@@ -32,6 +32,7 @@ type APP struct {
 	cronScheduler *scheduler.Scheduler
 	core          *coreruntime.Core
 	runtime       *service.Runtime
+	components    *componentsupervisor.Supervisor
 }
 
 func NewApp() *APP {
@@ -116,6 +117,13 @@ func (a *APP) Init() error {
 	}
 
 	a.cronScheduler = scheduler.New()
+	a.components = componentsupervisor.New(componenthost.Deps{
+		API: componenthost.APIDeps{
+			Runtime: a.runtime,
+		},
+		Scheduler: a.cronScheduler,
+	})
+	service.RegisterComponentSettingsReconciler(a.components.Reconcile)
 	a.webServer, err = web.NewServer(web.WithRuntime(a.runtime))
 	if err != nil {
 		return err
@@ -124,10 +132,8 @@ func (a *APP) Init() error {
 
 	a.configService = service.NewConfigServiceWithRuntime(a.runtime)
 
-	// Experimental Paid Subscriptions module owns its own schema; create it
-	// idempotently at startup. Non-fatal: a failure here must not block core.
-	if err := paidcore.EnsureSchema(dbsqlite.DB()); err != nil {
-		logger.Warning("failed to ensure paidsub schema: ", err)
+	if err := a.components.Migrate(context.Background()); err != nil {
+		logger.Warning("failed to migrate components: ", err)
 	}
 
 	return nil
@@ -159,11 +165,12 @@ func (a *APP) Start() error {
 		return err
 	}
 
-	// Experimental Paid Subscriptions client bot. Self-gates on paidSubEnabled
-	// internally, so starting unconditionally is safe and lets the admin toggle
-	// it at runtime without a restart.
-	paidtelegram.StartBot()
-	service.StartRemoteOutboundAutoRefresh(a.runtime)
+	// Optional in-process components self-register behind the component
+	// supervisor. This keeps app free of direct optional-domain imports while
+	// preserving the existing full-profile behavior.
+	if err := a.components.Start(context.Background()); err != nil {
+		logger.Warning("start components err:", err)
+	}
 
 	// A core start failure is intentionally non-fatal: the web/sub panel must
 	// stay up so the admin can fix a bad sing-box config through the UI. The
@@ -198,20 +205,10 @@ func (a *APP) Stop() {
 	if err := service.StopTokenUseDebouncer(tokenCtx); err != nil {
 		logger.Warning("stop token use debouncer err:", err)
 	}
-	telegramCtx, telegramCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer telegramCancel()
-	if err := service.StopTelegramNotifier(telegramCtx); err != nil {
-		logger.Warning("stop telegram notifier err:", err)
-	}
-	remoteSubCtx, remoteSubCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer remoteSubCancel()
-	if err := service.StopRemoteOutboundAutoRefresh(remoteSubCtx); err != nil {
-		logger.Warning("stop remote subscription auto refresh err:", err)
-	}
-	paidSubCtx, paidSubCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer paidSubCancel()
-	if err := paidtelegram.StopBot(paidSubCtx); err != nil {
-		logger.Warning("stop paidsub bot err:", err)
+	componentsCtx, componentsCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer componentsCancel()
+	if err := a.components.Stop(componentsCtx); err != nil {
+		logger.Warning("stop components err:", err)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

@@ -127,17 +127,22 @@
           <v-card-subtitle style="margin-top: -15px;">
             <v-row>
               <v-col>{{ item.type }}</v-col>
-              <v-col v-if="item.remoteOutboundManaged">
-                <v-chip color="info" density="compact" size="small" variant="tonal">
-                  {{ $t('remoteOutbound.managedOutbound') }}
-                </v-chip>
-                <v-chip v-if="item.remoteMissing" class="ml-1" color="warning" density="compact" size="small" variant="flat">
-                  {{ $t('remoteOutbound.missing') }}
+              <v-col v-if="item.componentBadges?.length">
+                <v-chip
+                  v-for="badge in item.componentBadges"
+                  :key="badge.labelKey || badge.label"
+                  class="ml-1"
+                  :color="badge.color || 'info'"
+                  density="compact"
+                  size="small"
+                  :variant="badge.vuetifyVariant || 'tonal'"
+                >
+                  {{ badge.labelKey ? $t(badge.labelKey) : badge.label }}
                 </v-chip>
               </v-col>
             </v-row>
-            <div v-if="item.remoteMissing" class="outbounds__remote-missing">
-              {{ item.remoteMissingSource || item.remoteOutboundSubscription || item.remoteOutboundConnection || item.remoteMissingReason }}
+            <div v-if="item.componentNotice" class="outbounds__component-notice">
+              {{ item.componentNotice }}
             </div>
           </v-card-subtitle>
           <v-card-text>
@@ -223,8 +228,8 @@
                 <v-divider></v-divider>
                 <v-card-text>
                   <div>{{ $t('confirm') }}</div>
-                  <div v-if="item.remoteOutboundManaged" class="outbounds__delete-hint">
-                    {{ $t('remoteOutbound.deleteManagedOutboundWarning') }}
+                  <div v-if="item.componentDeleteHint || item.componentDeleteHintKey" class="outbounds__delete-hint">
+                    {{ item.componentDeleteHintKey ? $t(item.componentDeleteHintKey) : item.componentDeleteHint }}
                   </div>
                 </v-card-text>
                 <v-card-actions>
@@ -280,7 +285,7 @@ const { mode, EntityForm, OutboundsNexusList, checkResults, testingAll, checkOut
   max-width: 260px;
 }
 
-.outbounds__remote-missing {
+.outbounds__component-notice {
   color: rgb(var(--v-theme-warning));
   font-size: 0.74rem;
   line-height: 1.25;

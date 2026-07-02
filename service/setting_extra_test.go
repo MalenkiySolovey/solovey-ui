@@ -35,15 +35,6 @@ func TestValidateSubscriptionPathSettingsRejectsPhase2Conflicts(t *testing.T) {
 	}
 }
 
-func TestValidateTelegramSettingInputRejectsWeakBackupPassphrase(t *testing.T) {
-	if err := settingsvalidation.ValidateTelegramSettingInput("telegramBackupPassphrase", "too-short", StoredSecretMarker); err == nil {
-		t.Fatal("weak telegram backup passphrase should be rejected")
-	}
-	if err := settingsvalidation.ValidateTelegramSettingInput("telegramBackupPassphrase", "correct horse battery staple", StoredSecretMarker); err != nil {
-		t.Fatalf("strong telegram backup passphrase should be accepted: %v", err)
-	}
-}
-
 func TestValidateOptionalHTTPURLRejectsUserInfo(t *testing.T) {
 	if err := settingsvalidation.ValidateOptionalHTTPURL("https://user:pass@example.com/profile"); err == nil {
 		t.Fatal("URL with user-info should be rejected")

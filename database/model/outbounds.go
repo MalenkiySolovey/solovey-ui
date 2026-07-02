@@ -57,10 +57,7 @@ func (o *Outbound) UnmarshalJSON(data []byte) error {
 	delete(raw, "remote_missing_reason")
 	delete(raw, "remote_missing_source")
 	delete(raw, "remote_missing_since")
-	delete(raw, "remoteOutboundManaged")
-	delete(raw, "remoteOutboundConnection")
-	delete(raw, "remoteOutboundSubscription")
-	delete(raw, "remoteOutboundGroups")
+	stripRegisteredOutboundOptionKeys(raw)
 
 	// Remaining fields
 	o.Options, err = json.MarshalIndent(raw, "", "  ")

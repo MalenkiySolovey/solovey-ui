@@ -7,10 +7,10 @@ import (
 	"runtime/debug"
 
 	admincmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/admin"
-	backupcmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/backup"
-	importxuicmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/importxui"
+	componentdoctorcmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/componentdoctor"
 	ipcertcmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/ipcert"
 	settingscmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/settings"
+	optionalcmd "github.com/MalenkiySolovey/solovey-ui/cmd/optional"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 )
@@ -55,8 +55,10 @@ func ParseCmd() {
 		fmt.Println()
 		fmt.Println("Commands:")
 		fmt.Println("    admin          set/reset/show first admin credentials")
-		fmt.Println("    decrypt-backup decrypt Telegram backup envelope")
-		fmt.Println("    import-xui     import configuration from a 3x-ui database")
+		fmt.Println("    doctor         run local diagnostics")
+		for _, line := range optionalcmd.UsageLines() {
+			fmt.Println(line)
+		}
 		fmt.Println("    ip-cert        issue/renew/status/disable an IP-address TLS certificate")
 		fmt.Println("    uri            Show panel URI")
 		fmt.Println("    migrate        migrate form older version")
@@ -89,6 +91,10 @@ func ParseCmd() {
 		return
 	}
 
+	if exitCode, handled := optionalcmd.Run(args[0], args[1:], os.Stdin, os.Stdout, os.Stderr, os.Getenv); handled {
+		os.Exit(exitCode)
+	}
+
 	switch args[0] {
 	case "admin":
 		err := adminCmd.Parse(args[1:])
@@ -119,14 +125,11 @@ func ParseCmd() {
 			os.Exit(1)
 		}
 
-	case "import-xui":
-		os.Exit(importxuicmd.Run(args[1:], os.Stdout))
-
 	case "ip-cert":
 		os.Exit(ipcertcmd.Run(args[1:]))
 
-	case "decrypt-backup":
-		os.Exit(backupcmd.RunDecrypt(args[1:], os.Stdin, os.Stdout, os.Stderr, os.Getenv))
+	case "doctor":
+		os.Exit(componentdoctorcmd.Run(args[1:], os.Stdout))
 
 	case "setting":
 		err := settingCmd.Parse(args[1:])

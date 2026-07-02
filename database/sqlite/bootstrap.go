@@ -47,11 +47,9 @@ func Init(dbPath string) error {
 func schemaModels() []any {
 	return []any{
 		&model.Setting{}, &model.Tls{}, &model.Inbound{}, &model.Outbound{},
-		&model.RemoteOutboundSubscription{}, &model.RemoteOutboundGroup{},
-		&model.RemoteOutboundGroupConnection{}, &model.RemoteOutboundConnection{},
 		&model.Service{}, &model.Endpoint{}, &model.User{}, &model.Tokens{},
 		&model.Stats{}, &model.ClientIP{}, &model.Client{}, &model.Changes{},
-		&model.AuditEvent{}, &model.FailoverMemberState{},
+		&model.AuditEvent{}, &model.FailoverMemberState{}, &model.ComponentMigration{},
 	}
 }
 

@@ -2,17 +2,14 @@ package api
 
 import (
 	"net/http"
-	"strings"
 	"testing"
 
-	importxuihttp "github.com/MalenkiySolovey/solovey-ui/api/importxui"
-	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
 
 func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 	initSessionTestDB(t)
+	prepareComponentRouteMetadata(t)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	handler := &APIHandler{}
@@ -38,10 +35,6 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/linkConvert",
 			"/api/subConvert",
 			"/api/importdb",
-			"/api/import-xui",
-			"/api/import-xui/plan",
-			"/api/import-xui/apply",
-			"/api/import-xui/rollback",
 			"/api/addToken",
 			"/api/deleteToken",
 			"/api/setTokenEnabled",
@@ -49,21 +42,7 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/logout",
 			"/api/checkOutbounds",
 			"/api/rotateSubSecret",
-			"/api/remote-outbound-subscriptions/save",
-			"/api/remote-outbound-subscriptions/delete",
-			"/api/remote-outbound-subscriptions/refresh",
-			"/api/remote-outbound-subscriptions/groups/save",
-			"/api/remote-outbound-subscriptions/groups/delete",
-			"/api/remote-outbound-subscriptions/groups/connections",
-			"/api/remote-outbound-subscriptions/groups/outbounds",
-			"/api/remote-outbound-subscriptions/connections/group",
-			"/api/remote-outbound-subscriptions/connections/sync",
-			"/api/telegram/test",
-			"/api/telegram/backup",
-			"/api/telegram/backup/run",
 			"/api/ip-monitor/:client/clear",
-			"/api/update/check",
-			"/api/update/apply",
 		},
 		http.MethodGet: {
 			"/api/csrf",
@@ -82,7 +61,7 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/stats/traffic",
 			"/api/status",
 			"/api/failover-status",
-			"/api/update/status",
+			"/api/components",
 			"/api/onlines",
 			"/api/logs",
 			"/api/logs/entries",
@@ -95,20 +74,14 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/singbox-config",
 			"/api/checkOutbound",
 			"/api/version",
-			"/api/remote-outbound-subscriptions",
-			"/api/remote-outbound-subscriptions/collected",
-			"/api/remote-outbound-subscriptions/test",
-			"/api/remote-outbound-subscriptions/test-all",
-			"/api/remote-outbound-subscriptions/connections/test",
-			"/api/import-xui/reports",
-			"/api/security/audit",
+			"/api/security/audit/recent",
 			"/api/realtime/ws-token",
 			"/api/realtime/ws",
 			"/api/ip-monitor/:client",
-			"/api/observability/history",
-			"/api/observability/core-history",
 		},
 	}
+	expected[http.MethodPost] = append(expected[http.MethodPost], expectedOptionalAPIPostRoutes()...)
+	expected[http.MethodGet] = append(expected[http.MethodGet], expectedOptionalAPIGetRoutes()...)
 
 	for method, paths := range expected {
 		for _, path := range paths {
@@ -116,36 +89,5 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 				t.Fatalf("missing explicit route %s %s", method, path)
 			}
 		}
-	}
-}
-
-func TestImportXUIRoutesUseSharedRegistryIssue35(t *testing.T) {
-	initSessionTestDB(t)
-	gin.SetMode(gin.TestMode)
-	router := gin.New()
-	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
-	apiv2 := NewAPIv2Handler(router.Group("/apiv2"))
-	NewAPIHandler(router.Group("/api"), apiv2)
-
-	routes := map[string]gin.RouteInfo{}
-	for _, route := range router.Routes() {
-		routes[route.Method+" "+route.Path] = route
-	}
-
-	for _, spec := range importxuihttp.RouteSpecs {
-		for _, prefix := range []string{"/api", "/apiv2"} {
-			key := spec.Method + " " + prefix + spec.Path
-			if _, ok := routes[key]; !ok {
-				t.Fatalf("missing import-xui shared route %s", key)
-			}
-		}
-	}
-
-	route, ok := routes[http.MethodPost+" /apiv2/import-xui"]
-	if !ok {
-		t.Fatal("missing explicit POST /apiv2/import-xui route")
-	}
-	if strings.Contains(route.Handler, "postHandler") {
-		t.Fatalf("POST /apiv2/import-xui is still handled by generic postHandler: %s", route.Handler)
 	}
 }

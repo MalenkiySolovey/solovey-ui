@@ -6,6 +6,7 @@ frontend/dist/
 build/
 coverage/
 /release/
+/.release/
 /backup/
 /bin/
 /db/
@@ -62,8 +63,13 @@ dc42e16-files.txt
 docs/audit/
 tests/baseline/*
 !tests/baseline/run-command.ps1
+tests/baseline/phase6/tmp/
+tests/baseline/phase6/appdata/
+tests/baseline/phase6/zig-*-cache/
 PANEL_VERSION_SOURCES.md
 config/identity/*.local.md
+app/components_generated.go
+cmd/optional_commands_generated.go
 
 # Editor directories and files
 .idea

@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="admins-nexus">
     <page-header :subtitle="subtitle" :title="$t('pages.admins')" />
 
@@ -63,8 +63,8 @@ import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
 import { useI18n } from 'vue-i18n'
-import type { ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
-import type { ManualSortDirection } from '@/shared/composables/dragSelection/manualReorder'
+import type { ManualDropPosition } from '@/shared/dnd/manualDrag'
+import type { ManualSortDirection } from '@/shared/dnd/manualReorder'
 
 interface AdminRow {
   id: number

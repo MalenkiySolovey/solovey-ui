@@ -4,7 +4,6 @@ import (
 	"strconv"
 
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
-	subconversion "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/conversion"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
@@ -61,23 +60,6 @@ func ValidateSubscriptionSettingInput(key string, value string) error {
 		if err := ValidateOptionalJSONArray(value, key); err != nil {
 			return err
 		}
-	case settingcatalog.SubRemoteGroupAdaptationKey:
-		if !validSubscriptionGroupAdaptation(value) {
-			return common.NewError("invalid subscription group adaptation setting: ", key)
-		}
-	case settingcatalog.SubRemoteConversionPolicyKey:
-		if err := subconversion.ValidatePolicyJSON(value); err != nil {
-			return common.NewError("invalid remote conversion policy setting: ", err)
-		}
 	}
 	return nil
-}
-
-func validSubscriptionGroupAdaptation(value string) bool {
-	switch value {
-	case "urltest", "selector", "failover":
-		return true
-	default:
-		return false
-	}
 }

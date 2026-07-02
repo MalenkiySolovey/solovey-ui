@@ -5,7 +5,7 @@ import (
 	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
 )
 
-func (a *ApiService) telemetryHandler() *telemetryhttp.Handler {
+func (a *ApiService) coreTelemetryHandler() *telemetryhttp.Handler {
 	return telemetryhttp.NewHandler(a.telemetryDeps())
 }
 
@@ -15,7 +15,6 @@ func (a *ApiService) telemetryDeps() telemetryhttp.Deps {
 		ServerService:          a.ServerService,
 		DiagnosticsService:     a.DiagnosticsService,
 		DoctorService:          a.DoctorService,
-		ObservabilityService:   a.ObservabilityService,
 		AuditService:           a.AuditService,
 		VersionService:         a.VersionService,
 		RequireScope:           a.requireTokenScopeAny,

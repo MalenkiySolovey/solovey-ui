@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="nexus-data-table">
     <table-skeleton v-if="loading" :columns="skeletonColumns" :rows="6" />
 
@@ -103,13 +103,13 @@
 <script lang="ts" setup generic="T extends Record<string, any>">
 import { computed, ref, useSlots, watch } from 'vue'
 
-import { canStartManualDrag, manualDropIndicatorFor, manualDropPositionFromEvent, prepareManualDrag, type ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
+import { canStartManualDrag, manualDropIndicatorFor, manualDropPositionFromEvent, prepareManualDrag, type ManualDropPosition } from '@/shared/dnd/manualDrag'
 import DenseTable from '@/components/nexus/primitives/DenseTable.vue'
 import EmptyState from '@/components/nexus/primitives/EmptyState.vue'
 import TableSkeleton from '@/components/nexus/primitives/TableSkeleton.vue'
 import { type Column, nextSortState, type SortState, sortItems } from './dataTableColumns'
 import NexusTableHeader from './NexusTableHeader.vue'
-import { type RowKey, useRowSelection } from '@/shared/composables/dragSelection/rowSelection'
+import { type RowKey, useRowSelection } from '@/shared/dnd/rowSelection'
 import TablePagination from './TablePagination.vue'
 
 const ITEMS_PER_PAGE_KEY = 'items-per-page'

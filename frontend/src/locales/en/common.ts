@@ -18,7 +18,9 @@
     "clearFilters": "Clear filters",
     "noData": "No data",
     "moveUp": "Move up",
-    "moveDown": "Move down"
+    "moveDown": "Move down",
+    "previousPage": "Previous page",
+    "nextPage": "Next page"
   },
   "form": {
     "unsavedChanges": "Unsaved changes",
@@ -74,7 +76,6 @@
     "home": "Dashboard",
     "inbounds": "Inbounds",
     "outbounds": "Outbounds",
-    "remoteOutboundSubscriptions": "Remote Subscriptions",
     "services": "Services",
     "endpoints": "Endpoints",
     "clients": "Clients",
@@ -83,11 +84,6 @@
     "basics": "Basics",
     "dns": "DNS",
     "admins": "Admins",
-    "telegram": "Telegram",
-    "audit": "Audit",
-    "diagnostics": "Diagnostics",
-    "migrateXui": "3x-ui Migration",
-    "paidSub": "Paid Subscriptions",
     "singBoxConfig": "Sing-box Config",
     "settings": "Settings",
     "support": "Support"
@@ -134,26 +130,11 @@
       "title": "Backup & Restore",
       "backup": "Download Backup",
       "restore": "Restore Backup",
-      "restoreHint": "Restores an s-ui backup (.db). To import a 3x-ui database, use \"Migrate from 3x-ui\" below — not this.",
+      "restoreHint": "Restores a Solovey UI backup (.db). Use Panel Import for supported third-party panel databases.",
       "exclStats": "Exclude graphs",
       "exclChanges": "Exclude changes",
-      "encryptTelegram": "Encrypt with Telegram backup passphrase",
-      "encryptDisabledHint": "Set Backup passphrase in the Telegram tab",
       "restorePassphrase": "Backup passphrase",
       "sbConfig": "Download Sing-Box Config",
-      "xui": {
-        "title": "Migrate from 3x-ui",
-        "hint": "Quick import applies immediately. The full wizard lets you preview, review conflicts and choose exactly what to migrate.",
-        "button": "Quick import — choose 3x-ui .db…",
-        "dryRun": "Dry-run (preview only)",
-        "strategy": "Conflict strategy",
-        "merge": "Merge",
-        "replace": "Replace",
-        "skip": "Skip",
-        "summary": "Import summary",
-        "warnings": "Warnings",
-        "openFull": "Full wizard (review & select)"
-      }
     },
     "stats": {
       "title": "Usage & Counts",
@@ -566,6 +547,7 @@
       "members": "Priority Outbounds",
       "primary": "Primary",
       "backup": "Backup",
+      "final": "Final outbound",
       "addMember": "Add Outbound",
       "probeTarget": "Probe URL",
       "interval": "Probe Interval",

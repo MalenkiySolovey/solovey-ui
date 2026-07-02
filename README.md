@@ -1,36 +1,38 @@
 # Solovey UI
 
-Solovey UI is a personal web panel for managing a bundled `sing-box` core. It
-is based on the original S-UI ecosystem and is being adapted for private use,
-safer updates, cleaner maintenance, and custom panel features.
+<p align="center">
+  <b>Personal sing-box panel with modular optional features</b>
+</p>
 
-Current version: `2026.1.0`
+<p align="center">
+  <a href="https://github.com/MalenkiySolovey/solovey-ui/releases"><img alt="Release" src="https://img.shields.io/github/v/release/MalenkiySolovey/solovey-ui?include_prereleases&label=release"></a>
+  <a href="https://github.com/MalenkiySolovey/solovey-ui/actions"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/MalenkiySolovey/solovey-ui/ci.yml?branch=main&label=ci"></a>
+  <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/MalenkiySolovey/solovey-ui"></a>
+</p>
 
-## Русская Версия
+Current version: `2026.2.0`
 
-### Важно
+Solovey UI is a modified GPL-3.0 derivative of the S-UI ecosystem. It keeps the
+core panel focused on `sing-box` management and moves larger features into
+installable optional components.
 
-Этот проект делается для личного использования. Он не является официальным
-продуктом S-UI или sing-box, не предоставляет никаких гарантий и не снимает с
-пользователя ответственность за установку, настройку, обновление, безопасность,
-резервные копии и соблюдение законов своей страны.
+> This is not an official S-UI, S-UI-X, sing-box, or SagerNet product. Use it at
+> your own risk, keep backups, and test updates before touching production.
 
-Если вы используете этот код, вы делаете это на свой риск. Перед установкой на
-рабочий сервер обязательно делайте backup и проверяйте обновления на тестовой
-машине.
+## Highlights
 
-### Что Это
+- Bundled `sing-box` core with web UI and CLI management.
+- Nexus and classic UI modes.
+- Optional component system with `full`, `minimal/core`, and custom installs.
+- Remote outbound subscriptions with canonical connection data, group handling,
+  delay checks, and sing-box conversion.
+- Client subscriptions in URI, sing-box JSON, Clash/Mihomo YAML, and Xray JSON.
+- Backup, restore, rollback, diagnostics, doctor checks, and audit logs.
+- Debian-oriented installer with release checksums and component metadata.
+- Upstream fixes adapted from `alireza0/s-ui` and `deposist/s-ui-x` without
+  reverting to their older flat project structure.
 
-Solovey UI - панель управления для `sing-box` с веб-интерфейсом, systemd
-service, установщиком, обновлениями через GitHub Releases, локальными
-backup/rollback командами и заделом под миграцию с оригинальной S-UI.
-
-Основной целевой сервер: Debian 12. Другие Linux-системы могут работать, но их
-нужно проверять отдельно.
-
-### Установка
-
-После публикации первого GitHub Release установите панель так:
+## Install
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh)
@@ -38,181 +40,10 @@ sudo solovey-ui doctor
 sudo solovey-ui status
 ```
 
-Установка конкретной версии:
+Install a specific release:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.1.0
-```
-
-По умолчанию используются:
-
-- каталог установки: `/usr/local/solovey-ui`
-- база данных: `/usr/local/solovey-ui/db/solovey-ui.db`
-- файл секретов окружения: `/etc/solovey-ui/secretbox.env`
-- systemd service: `solovey-ui`
-- CLI-команда: `solovey-ui`
-
-### Обновление
-
-```bash
-sudo solovey-ui update
-sudo solovey-ui doctor
-sudo systemctl status solovey-ui --no-pager
-```
-
-Обновление на конкретный тег:
-
-```bash
-sudo solovey-ui update --version v2026.1.0
-```
-
-### Backup И Rollback
-
-Создать локальный backup:
-
-```bash
-sudo solovey-ui backup
-```
-
-Откатиться на последний backup:
-
-```bash
-sudo solovey-ui rollback latest
-sudo solovey-ui doctor
-```
-
-Backup'и хранятся в `/var/backups/solovey-ui`.
-
-### Миграция С Оригинальной S-UI
-
-Миграция пока считается дополнительной возможностью, а не основным сценарием.
-Перед использованием обязательно сделайте ручную копию старой панели.
-
-```bash
-sudo solovey-ui migrate-from-sui
-```
-
-Команда пытается перенести данные из `/usr/local/s-ui` и `/etc/s-ui`, включая
-базу, `secretbox.env`, сертификаты и service-метаданные.
-
-### Полезные Команды
-
-```bash
-sudo solovey-ui status
-sudo solovey-ui restart
-sudo solovey-ui log
-sudo solovey-ui version
-sudo solovey-ui build-info
-sudo solovey-ui doctor
-sudo solovey-ui doctor --full
-sudo solovey-ui diagnose
-sudo solovey-ui report
-```
-
-`doctor --full`, `diagnose` и `report` показывают расширенный отчёт по базе данных, настройкам, портам, systemd-сервису, системе, сети и последним логам.
-
-Удаление панели без удаления данных:
-
-```bash
-sudo solovey-ui uninstall
-```
-
-Полное удаление вместе с данными:
-
-```bash
-sudo solovey-ui uninstall --purge
-```
-
-### Локальная Проверка В Браузере
-
-На Windows из корня репозитория:
-
-```powershell
-.\scripts\dev\start-panel.cmd -Fresh -Build -OpenBrowser
-type .runtime\local-panel\startup-summary.txt
-```
-
-Тестовая база, логи, PID и секреты будут лежать в `.runtime/local-panel/`.
-
-Остановить локальную панель:
-
-```powershell
-.\scripts\dev\stop-panel.cmd
-```
-
-Остановить и удалить тестовые данные:
-
-```powershell
-.\scripts\dev\stop-panel.cmd -Clean
-```
-
-### Сборка Релиза
-
-Linux-архив для GitHub Release собирается workflow'ом
-`.github/workflows/release.yml`. Локально контракт архива можно проверить так:
-
-```bash
-bash tests/installer/release-package.sh
-```
-
-Релизный архив должен содержать:
-
-- `solovey-ui/solovey-ui`
-- `solovey-ui/solovey-ui.sh`
-- `solovey-ui/solovey-ui.service`
-- `solovey-ui/BUILD_INFO.txt`
-
-### Происхождение И Благодарности
-
-Solovey UI — самостоятельная модифицированная GPL-3.0 производная работа на основе экосистемы S-UI.
-
-Проект основан на идеях и коде оригинального S-UI и его форков, включая:
-- `alireza0/s-ui`
-- `admin8800/s-ui`
-- `deposist/s-ui-x`
-- `shenaba/2s-ui`
-- другие родственные проекты и их участников
-
-Solovey UI не является официальным продуктом S-UI, S-UI-X, sing-box или SagerNet. Изменения из upstream адаптируются вручную, так как кодовая база Solovey UI значительно разошлась с оригинальными проектами.
-
-Дополнительные сведения указаны в `NOTICE.md`.
-
----
-
-## English Version
-
-### Important
-
-This project is maintained for personal use. It is not an official S-UI or
-sing-box product, comes with no warranty, and does not take responsibility for
-your deployment, configuration, updates, backups, security, or legal compliance.
-
-If you use this code, you do so at your own risk. Always make a backup and test
-updates on a non-production machine before touching a real server.
-
-### What It Is
-
-Solovey UI is a web panel for managing a bundled `sing-box` core. It includes a
-web UI, systemd service, GitHub Release based installer/update flow, local
-backup/rollback commands, and early migration support from legacy S-UI installs.
-
-The primary target is Debian 12. Other Linux systems may work, but should be
-tested separately.
-
-### Install
-
-After the first GitHub Release is published:
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh)
-sudo solovey-ui doctor
-sudo solovey-ui status
-```
-
-Install a specific version:
-
-```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.1.0
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.2.0
 ```
 
 Default paths:
@@ -223,7 +54,38 @@ Default paths:
 - systemd service: `solovey-ui`
 - CLI command: `solovey-ui`
 
-### Update
+## Optional Components
+
+The default install is `full`: it installs the full binary and all optional
+components. Use `minimal` or `core` when you want only the base panel.
+
+```bash
+# Core panel only, no optional components
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --profile minimal
+
+# Full binary, but without selected components
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --without telegram,paid-subscriptions
+
+# Custom install with only selected optional components
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --with remote-outbound-subscriptions,telegram
+```
+
+Available component IDs:
+
+| ID | What it adds |
+|---|---|
+| `import-xui` | Import and migration tools for compatible panel databases. |
+| `remote-outbound-subscriptions` | External outbound subscriptions, groups, conversion, delay checks, and synchronization into outbounds. |
+| `paid-subscriptions` | Paid client subscriptions, tariffs, orders, and related admin UI. |
+| `telegram` | Telegram notifications, bot transport, and backup delivery. |
+| `observability-extra` | Extra runtime sampling and observability views. |
+| `panel-update-ui` | Web UI for checking and applying panel updates. |
+
+Component choices are real install choices, not just visual hiding. Disabled
+components are not installed into the runtime component directory and their
+routes, jobs, settings, tables, and frontend entries are not activated.
+
+## Update
 
 ```bash
 sudo solovey-ui update
@@ -234,39 +96,20 @@ sudo systemctl status solovey-ui --no-pager
 Update to a specific tag:
 
 ```bash
-sudo solovey-ui update --version v2026.1.0
+sudo solovey-ui update --version v2026.2.0
 ```
 
-### Backup And Rollback
-
-Create a local backup:
+## Backup And Restore
 
 ```bash
 sudo solovey-ui backup
-```
-
-Rollback to the latest backup:
-
-```bash
 sudo solovey-ui rollback latest
 sudo solovey-ui doctor
 ```
 
 Backups are stored under `/var/backups/solovey-ui`.
 
-### Legacy S-UI Migration
-
-Migration is an optional path, not the primary install flow. Make a manual copy
-of the old panel before using it.
-
-```bash
-sudo solovey-ui migrate-from-sui
-```
-
-The command attempts to copy data from `/usr/local/s-ui` and `/etc/s-ui`,
-including the database, `secretbox.env`, certificates, and service metadata.
-
-### Useful Commands
+## Useful CLI Commands
 
 ```bash
 sudo solovey-ui status
@@ -278,73 +121,152 @@ sudo solovey-ui doctor
 sudo solovey-ui doctor --full
 sudo solovey-ui diagnose
 sudo solovey-ui report
-```
-
-`doctor --full`, `diagnose`, and `report` print the extended diagnostics report: database, settings, ports, systemd service, system, network, and recent logs.
-
-Uninstall the panel without removing data:
-
-```bash
 sudo solovey-ui uninstall
-```
-
-Remove the panel and its data:
-
-```bash
 sudo solovey-ui uninstall --purge
 ```
 
-### Local Browser Check
+## Local Development On Windows
 
-On Windows, from the repository root:
-
-```powershell
-.\scripts\dev\start-panel.cmd -Fresh -Build -OpenBrowser
-type .runtime\local-panel\startup-summary.txt
-```
-
-The test database, logs, PID, and secrets are stored under
-`.runtime/local-panel/`.
-
-Stop the local panel:
+From the repository worktree:
 
 ```powershell
-.\scripts\dev\stop-panel.cmd
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-panel.ps1 -Build -OpenBrowser
 ```
 
-Stop it and remove test data:
+Useful component examples:
 
 ```powershell
-.\scripts\dev\stop-panel.cmd -Clean
+# Core/minimal local panel
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-panel.ps1 -Build -OpenBrowser -Profile minimal
+
+# Custom local panel
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-panel.ps1 -Build -OpenBrowser -With remote-outbound-subscriptions,telegram
 ```
 
-### Release Build
+Clean local runtime state:
 
-The Linux archive for GitHub Release is built by `.github/workflows/release.yml`.
-The archive contract can be checked locally with:
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\stop-panel.ps1 -Clean
+```
+
+## Release Artifacts
+
+GitHub Releases publish:
+
+- full Linux archives: `solovey-ui-linux-<arch>.tar.gz`
+- core Linux archives: `solovey-ui-core-linux-<arch>.tar.gz`
+- component bundle: `solovey-ui-components.tar.gz`
+- checksums for every archive
+
+The installer chooses the smallest binary profile that can satisfy the selected
+components. Optional component files are shipped as one component bundle to keep
+the release page compact.
+
+## Credits
+
+Solovey UI is based on the S-UI family and manually adapts selected fixes and
+ideas from related projects:
+
+- [alireza0/s-ui](https://github.com/alireza0/s-ui)
+- [deposist/s-ui-x](https://github.com/deposist/s-ui-x)
+- [admin8800/s-ui](https://github.com/admin8800/s-ui)
+- [shenaba/2s-ui](https://github.com/shenaba/2s-ui)
+- [printfer/v2sing](https://github.com/printfer/v2sing)
+- [sub-store-org/Sub-Store](https://github.com/sub-store-org/Sub-Store)
+
+See `NOTICE.md` for attribution details.
+
+---
+
+## Русская Версия
+
+Solovey UI - модифицированная панель из экосистемы S-UI для управления
+`sing-box`. Основная панель остаётся компактной, а крупные возможности вынесены
+в optional components, которые можно реально не устанавливать.
+
+> Проект не является официальным продуктом S-UI, S-UI-X, sing-box или SagerNet.
+> Используйте его на свой риск, делайте backup и проверяйте обновления на
+> тестовой машине.
+
+### Возможности
+
+- встроенный `sing-box` core, web UI и CLI;
+- режимы Nexus и classic;
+- компонентная установка: `full`, `minimal/core` или свой набор компонентов;
+- ремоут outbound-подписки, группы, delay-проверки и синхронизация в outbounds;
+- клиентские подписки URI, sing-box JSON, Clash/Mihomo YAML и Xray JSON;
+- backup, restore, rollback, doctor, diagnostics и audit logs;
+- установщик для Debian-серверов с checksum-проверкой релизных архивов.
+
+### Установка
 
 ```bash
-bash tests/installer/release-package.sh
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh)
+sudo solovey-ui doctor
+sudo solovey-ui status
 ```
 
-The release archive must contain:
+Конкретная версия:
 
-- `solovey-ui/solovey-ui`
-- `solovey-ui/solovey-ui.sh`
-- `solovey-ui/solovey-ui.service`
-- `solovey-ui/BUILD_INFO.txt`
+```bash
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.2.0
+```
 
-### Origin And Credits
+### Компоненты
 
-Solovey UI is an independent modified GPL-3.0 derivative of the S-UI ecosystem.
+```bash
+# Только базовая панель
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --profile minimal
 
-It is based on ideas and code from the original S-UI project and its forks, including:
-- `alireza0/s-ui`
-- `admin8800/s-ui`
-- `deposist/s-ui-x`
-- `shenaba/2s-ui`
-- related projects and contributors
+# Полная панель без выбранных компонентов
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --without telegram,paid-subscriptions
 
-Solovey UI is not an official S-UI, S-UI-X, sing-box, or SagerNet product. Upstream changes are adapted manually because the Solovey UI codebase has diverged significantly from the original projects.
+# Только нужные optional components
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --with remote-outbound-subscriptions,telegram
+```
 
-See `NOTICE.md` for additional attribution and modification notes.
+Доступные ID компонентов: `import-xui`, `remote-outbound-subscriptions`,
+`paid-subscriptions`, `telegram`, `observability-extra`, `panel-update-ui`.
+
+### Обновление
+
+```bash
+sudo solovey-ui update
+sudo solovey-ui doctor
+sudo systemctl status solovey-ui --no-pager
+```
+
+Обновление до конкретного тега:
+
+```bash
+sudo solovey-ui update --version v2026.2.0
+```
+
+### Backup И Rollback
+
+```bash
+sudo solovey-ui backup
+sudo solovey-ui rollback latest
+sudo solovey-ui doctor
+```
+
+Backup хранится в `/var/backups/solovey-ui`.
+
+### Локальный Запуск На Windows
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-panel.ps1 -Build -OpenBrowser
+```
+
+С компонентными аргументами:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-panel.ps1 -Build -OpenBrowser -Profile minimal
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\start-panel.ps1 -Build -OpenBrowser -With remote-outbound-subscriptions,telegram
+```
+
+Очистить локальную тестовую базу и конфиг:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\dev\stop-panel.ps1 -Clean
+```

@@ -212,6 +212,109 @@ proxy-providers:
 	}
 }
 
+func TestRenderClashDoesNotInjectDefaultGroupsIntoFullyCustomConfig(t *testing.T) {
+	basicConfig := `
+mixed-port: 7890
+rules:
+  - MATCH,Custom
+proxy-groups:
+  - name: Custom
+    type: select
+    proxies: []
+`
+	rendered, err := RenderClash([]map[string]interface{}{
+		{
+			"type":        "vless",
+			"tag":         "proxy-a",
+			"server":      "edge.example.com",
+			"server_port": 443,
+			"uuid":        "11111111-1111-1111-1111-111111111111",
+		},
+	}, basicConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]interface{}
+	if err := yaml.Unmarshal([]byte(rendered), &config); err != nil {
+		t.Fatal(err)
+	}
+	names := clashGroupNames(t, config)
+	if countClashGroupNamed(names, "Proxy") != 0 || countClashGroupNamed(names, "Auto") != 0 {
+		t.Fatalf("default groups should not be injected into independent custom config: %#v", names)
+	}
+	if countClashGroupNamed(names, "Custom") != 1 {
+		t.Fatalf("custom group was not preserved: %#v", names)
+	}
+}
+
+func TestRenderClashInjectsDefaultProxyWhenCustomGroupReferencesIt(t *testing.T) {
+	basicConfig := `
+mixed-port: 7890
+rules:
+  - MATCH,Custom
+proxy-groups:
+  - name: Custom
+    type: select
+    proxies:
+      - Proxy
+`
+	rendered, err := RenderClash([]map[string]interface{}{
+		{
+			"type":        "vless",
+			"tag":         "proxy-a",
+			"server":      "edge.example.com",
+			"server_port": 443,
+			"uuid":        "11111111-1111-1111-1111-111111111111",
+		},
+	}, basicConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]interface{}
+	if err := yaml.Unmarshal([]byte(rendered), &config); err != nil {
+		t.Fatal(err)
+	}
+	names := clashGroupNames(t, config)
+	if countClashGroupNamed(names, "Proxy") != 1 || countClashGroupNamed(names, "Auto") != 1 {
+		t.Fatalf("referenced default groups were not injected exactly once: %#v", names)
+	}
+	if countClashGroupNamed(names, "Custom") != 1 {
+		t.Fatalf("custom group was not preserved: %#v", names)
+	}
+}
+
+func TestRenderClashDoesNotDuplicateExistingProxyGroup(t *testing.T) {
+	basicConfig := `
+mixed-port: 7890
+rules:
+  - MATCH,Proxy
+proxy-groups:
+  - name: Proxy
+    type: select
+    proxies: []
+`
+	rendered, err := RenderClash([]map[string]interface{}{
+		{
+			"type":        "vless",
+			"tag":         "proxy-a",
+			"server":      "edge.example.com",
+			"server_port": 443,
+			"uuid":        "11111111-1111-1111-1111-111111111111",
+		},
+	}, basicConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]interface{}
+	if err := yaml.Unmarshal([]byte(rendered), &config); err != nil {
+		t.Fatal(err)
+	}
+	names := clashGroupNames(t, config)
+	if countClashGroupNamed(names, "Proxy") != 1 {
+		t.Fatalf("existing Proxy group should not be duplicated: %#v", names)
+	}
+}
+
 func clashGroupByName(t *testing.T, groups []interface{}, name string) map[string]interface{} {
 	t.Helper()
 	for _, raw := range groups {
@@ -222,4 +325,31 @@ func clashGroupByName(t *testing.T, groups []interface{}, name string) map[strin
 	}
 	t.Fatalf("group %q not found in %#v", name, groups)
 	return nil
+}
+
+func clashGroupNames(t *testing.T, config map[string]interface{}) []string {
+	t.Helper()
+	groups, ok := config["proxy-groups"].([]interface{})
+	if !ok {
+		t.Fatalf("proxy-groups missing or malformed: %#v", config["proxy-groups"])
+	}
+	names := make([]string, 0, len(groups))
+	for _, raw := range groups {
+		group, ok := raw.(map[string]interface{})
+		if !ok {
+			t.Fatalf("proxy group is not a map: %#v", raw)
+		}
+		names = append(names, asString(group["name"]))
+	}
+	return names
+}
+
+func countClashGroupNamed(names []string, name string) int {
+	count := 0
+	for _, candidate := range names {
+		if candidate == name {
+			count++
+		}
+	}
+	return count
 }

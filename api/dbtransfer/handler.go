@@ -7,35 +7,39 @@ import (
 )
 
 type Handler struct {
-	SettingService  service.SettingService
-	TelegramService service.TelegramService
-	RequireScope    func(*gin.Context, string, ...string) bool
-	Audit           func(*gin.Context, string, string, string, string, map[string]any)
-	Actor           func(*gin.Context) string
-	RemoteIP        func(*gin.Context) string
-	JSONMsg         func(*gin.Context, string, error)
+	SettingService service.SettingService
+	NotifyEvent    func(string, map[string]string)
+	RequireScope   func(*gin.Context, string, ...string) bool
+	Audit          func(*gin.Context, string, string, string, string, map[string]any)
+	Actor          func(*gin.Context) string
+	RemoteIP       func(*gin.Context) string
+	JSONMsg        func(*gin.Context, string, error)
 }
 
 // Deps contains the host capabilities required by database transfer routes.
 type Deps struct {
-	SettingService  service.SettingService
-	TelegramService service.TelegramService
-	RequireScope    func(*gin.Context, string, ...string) bool
-	Audit           func(*gin.Context, string, string, string, string, map[string]any)
-	Actor           func(*gin.Context) string
-	RemoteIP        func(*gin.Context) string
-	JSONMsg         func(*gin.Context, string, error)
+	SettingService service.SettingService
+	NotifyEvent    func(string, map[string]string)
+	RequireScope   func(*gin.Context, string, ...string) bool
+	Audit          func(*gin.Context, string, string, string, string, map[string]any)
+	Actor          func(*gin.Context) string
+	RemoteIP       func(*gin.Context) string
+	JSONMsg        func(*gin.Context, string, error)
 }
 
 func NewHandler(deps Deps) *Handler {
+	notifyEvent := deps.NotifyEvent
+	if notifyEvent == nil {
+		notifyEvent = func(string, map[string]string) {}
+	}
 	return &Handler{
-		SettingService:  deps.SettingService,
-		TelegramService: deps.TelegramService,
-		RequireScope:    deps.RequireScope,
-		Audit:           deps.Audit,
-		Actor:           deps.Actor,
-		RemoteIP:        deps.RemoteIP,
-		JSONMsg:         deps.JSONMsg,
+		SettingService: deps.SettingService,
+		NotifyEvent:    notifyEvent,
+		RequireScope:   deps.RequireScope,
+		Audit:          deps.Audit,
+		Actor:          deps.Actor,
+		RemoteIP:       deps.RemoteIP,
+		JSONMsg:        deps.JSONMsg,
 	}
 }
 

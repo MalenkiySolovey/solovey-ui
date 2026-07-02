@@ -39,7 +39,15 @@ func BuildRuntimeConfig(base json.RawMessage, sections RuntimeSections) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	return []byte(merged), nil
+	mergedBytes := json.RawMessage(merged)
+	if err := EnsureManagedRuleSetsForConfig(mergedBytes); err != nil {
+		return nil, err
+	}
+	runtimeConfig, err := RewriteManagedRuleSetsForRuntime(mergedBytes)
+	if err != nil {
+		return nil, err
+	}
+	return runtimeConfig, nil
 }
 
 func (d *Document) SetSection(section string, value any) error {

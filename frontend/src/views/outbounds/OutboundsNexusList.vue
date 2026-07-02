@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="outbounds-nexus">
     <page-header
       :search="search"
@@ -62,19 +62,14 @@
       <template #col.tag="{ item }">
         <span class="outbounds-nexus__tag">{{ item.tag }}</span>
         <nexus-badge
-          v-if="item.remoteOutboundManaged"
-          class="outbounds-nexus__remote-badge"
-          :label="$t('remoteOutbound.managedOutbound')"
-          variant="secondary"
+          v-for="badge in item.componentBadges || []"
+          :key="badge.labelKey || badge.label"
+          class="outbounds-nexus__component-badge"
+          :label="componentBadgeLabel(badge)"
+          :variant="badge.variant || 'secondary'"
         />
-        <nexus-badge
-          v-if="item.remoteMissing"
-          class="outbounds-nexus__remote-badge"
-          :label="$t('remoteOutbound.missing')"
-          variant="warning"
-        />
-        <div v-if="item.remoteMissing" class="outbounds-nexus__remote-missing">
-          {{ item.remoteMissingSource || item.remoteOutboundSubscription || item.remoteOutboundConnection || item.remoteMissingReason }}
+        <div v-if="item.componentNotice" class="outbounds-nexus__component-notice">
+          {{ item.componentNotice }}
         </div>
       </template>
 
@@ -162,9 +157,9 @@ import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import StatusBadge from '@/components/nexus/primitives/StatusBadge.vue'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
-import { useBulkSelection } from '@/shared/composables/dragSelection/bulkSelection'
-import type { ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
-import type { ManualSortDirection } from '@/shared/composables/dragSelection/manualReorder'
+import { useBulkSelection } from '@/shared/dnd/bulkSelection'
+import type { ManualDropPosition } from '@/shared/dnd/manualDrag'
+import type { ManualSortDirection } from '@/shared/dnd/manualReorder'
 import type { FailoverStatusMap } from '@/shared/composables/useFailoverStatus'
 
 interface CheckResult {
@@ -181,12 +176,14 @@ interface OutboundRow {
   server?: string
   server_port?: number
   tls?: { enabled?: boolean }
-  remoteOutboundManaged?: boolean
-  remoteMissing?: boolean
-  remoteMissingReason?: string
-  remoteMissingSource?: string
-  remoteOutboundConnection?: string
-  remoteOutboundSubscription?: string
+  componentBadges?: Array<{
+    label?: string
+    labelKey?: string
+    variant?: 'success' | 'secondary' | 'warning'
+  }>
+  componentDeleteHint?: string
+  componentDeleteHintKey?: string
+  componentNotice?: string
   [key: string]: unknown
 }
 
@@ -227,6 +224,8 @@ const selectedIds = selection.selectedIds
 
 const failoverActive = (tag: string): string => props.failoverStatus[tag]?.active || ''
 const failoverAllDown = (tag: string): boolean => props.failoverStatus[tag]?.allDown === true
+const componentBadgeLabel = (badge: NonNullable<OutboundRow['componentBadges']>[number]): string =>
+  badge.labelKey ? t(badge.labelKey) : (badge.label ?? '')
 
 const sortByName = (direction: ManualSortDirection) => {
   emit('sortByName', direction)
@@ -299,8 +298,8 @@ const handleAction = async (key: string, item: OutboundRow) => {
     case 'del': {
       const discard = await confirm({
         title: `${t('actions.del')} ${t('objects.outbound')}`,
-        message: item.remoteOutboundManaged
-          ? `${item.tag}\n${t('remoteOutbound.deleteManagedOutboundWarning')}`
+        message: item.componentDeleteHint || item.componentDeleteHintKey
+          ? `${item.tag}\n${item.componentDeleteHintKey ? t(item.componentDeleteHintKey) : item.componentDeleteHint}`
           : item.tag,
         confirmLabel: t('actions.del'),
         tone: 'error',
@@ -319,11 +318,11 @@ const handleAction = async (key: string, item: OutboundRow) => {
   font-weight: 600;
 }
 
-.outbounds-nexus__remote-badge {
+.outbounds-nexus__component-badge {
   margin-inline-start: var(--nexus-gap-2);
 }
 
-.outbounds-nexus__remote-missing {
+.outbounds-nexus__component-notice {
   color: var(--nexus-status-warn);
   font-size: 0.75rem;
   line-height: 1.25;

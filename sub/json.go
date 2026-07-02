@@ -1,6 +1,7 @@
 package sub
 
 import (
+	"strconv"
 	"time"
 
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
@@ -18,7 +19,7 @@ type JSONService struct {
 
 func (s *JSONService) GetJSON(subID string) (*string, []string, error) {
 	now := time.Now()
-	cacheKey := "json:" + subID
+	cacheKey := "json:" + subID + ":clientHooks=" + strconv.FormatUint(localsub.ClientOutboundContributorsVersion(), 10)
 	if body, headers, ok := subscriptionCacheGet(cacheKey, now); ok {
 		return &body, headers, nil
 	}
@@ -37,7 +38,11 @@ func (s *JSONService) GetJSON(subID string) (*string, []string, error) {
 	}
 	links := resolveClientLinks(client.Links, localsub.LinkModeExternal, "")
 	localsub.AppendExternalLinkOutbounds(outboundSet, links)
-	if err := localsub.AppendRemoteGroupOutboundsWithOptions(dbsqlite.DB(), outboundSet, client.Links, remoteClientConversionOptions(&s.SettingService, subconversion.TargetSingBox)); err != nil {
+	if err := localsub.AppendClientOutboundContributions(localsub.ClientOutboundContributionContext{
+		DB:       dbsqlite.DB(),
+		RawLinks: client.Links,
+		Target:   subconversion.TargetSingBox,
+	}, outboundSet); err != nil {
 		return nil, nil, err
 	}
 	localsub.PrependDefaultJSONOutbounds(outboundSet)

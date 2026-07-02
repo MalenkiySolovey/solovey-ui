@@ -6,7 +6,6 @@ import (
 	"mime/multipart"
 	"net/http"
 
-	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/internal/integrations/telegram"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	"github.com/gin-gonic/gin"
@@ -57,7 +56,11 @@ func (a *Handler) openDatabaseImportFile(c *gin.Context) (preparedDatabaseImport
 }
 
 func (a *Handler) prepareDatabaseImportFile(c *gin.Context, file multipart.File) (preparedDatabaseImportFile, bool) {
-	header := make([]byte, len(integrationtelegram.TelegramBackupMagic))
+	headerSize := maxBackupImportCodecHeaderBytes()
+	if headerSize <= 0 {
+		return preparedDatabaseImportFile{file: file}, true
+	}
+	header := make([]byte, headerSize)
 	n, readErr := io.ReadFull(file, header)
 	if seekErr := seekMultipartFileStart(file); seekErr != nil {
 		a.respondDatabaseImportFailure(c, seekErr)
@@ -69,10 +72,11 @@ func (a *Handler) prepareDatabaseImportFile(c *gin.Context, file multipart.File)
 		a.JSONMsg(c, "", readErr)
 		return preparedDatabaseImportFile{}, false
 	}
-	if !integrationtelegram.IsTelegramBackupEnvelope(header[:n]) {
+	codec, ok := matchingBackupImportCodec(header[:n])
+	if !ok {
 		return preparedDatabaseImportFile{file: file}, true
 	}
-	return a.prepareTelegramBackupRestoreFile(c, file)
+	return a.prepareBackupCodecRestoreFile(c, file, codec)
 }
 
 func seekMultipartFileStart(file multipart.File) error {

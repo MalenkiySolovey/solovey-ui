@@ -6,13 +6,15 @@
       </v-card>
     </v-col>
 
-    <v-col cols="12" md="6">
+    <v-col v-if="maintenanceSlots.length > 0" cols="12" md="6">
       <v-card class="settings-maintenance__card" variant="outlined">
-        <PanelUpdateCard />
+        <div class="settings-maintenance__slot">
+          <ComponentSlot name="settings:maintenance" />
+        </div>
       </v-card>
     </v-col>
 
-    <v-col cols="12" md="6">
+    <v-col cols="12" :md="maintenanceSlots.length > 0 ? 6 : 12">
       <v-card class="settings-maintenance__card settings-maintenance__backup" variant="outlined">
         <div class="settings-maintenance__heading">
           <v-icon color="primary" icon="mdi-backup-restore" />
@@ -20,35 +22,19 @@
             <h3>{{ $t('main.backup.title') }}</h3>
           </div>
         </div>
-        <v-btn
-          variant="tonal"
-          prepend-icon="mdi-backup-restore"
-          @click="backupModal.visible = true"
-        >
-          {{ $t('main.backup.title') }}
-        </v-btn>
+        <BackupRestorePanel />
       </v-card>
     </v-col>
   </v-row>
-
-  <Backup
-    v-model="backupModal.visible"
-    :control="backupModal"
-    :visible="backupModal.visible"
-  />
 </template>
 
 <script setup lang="ts">
+import BackupRestorePanel from '@/components/settings/BackupRestorePanel.vue'
 import ConfigDoctor from '@/components/settings/ConfigDoctor.vue'
-import PanelUpdateCard from '@/components/settings/PanelUpdateCard.vue'
-import Backup from '@/layouts/modals/Backup.vue'
-import { ref } from 'vue'
+import ComponentSlot from '@/componentSystem/ComponentSlot.vue'
+import { useSlot } from '@/componentSystem/slots'
 
-interface ModalControl {
-  visible: boolean
-}
-
-const backupModal = ref<ModalControl>({ visible: false })
+const maintenanceSlots = useSlot('settings:maintenance')
 </script>
 
 <style scoped>
@@ -65,10 +51,21 @@ const backupModal = ref<ModalControl>({ visible: false })
   min-width: 0;
 }
 
-.settings-maintenance__card :deep(.settings-config-doctor),
-.settings-maintenance__card :deep(.panel-update) {
+.settings-maintenance__card :deep(.settings-config-doctor) {
   border: 0;
   height: 100%;
+}
+
+.settings-maintenance__slot {
+  display: grid;
+  gap: var(--nexus-gap-3);
+  height: 100%;
+  min-width: 0;
+}
+
+.settings-maintenance__slot :deep(> *) {
+  border: 0;
+  min-width: 0;
 }
 
 .settings-maintenance__backup {

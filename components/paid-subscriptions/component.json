@@ -1,0 +1,20 @@
+{
+  "id": "paid-subscriptions",
+  "name": "Paid Subscriptions",
+  "version": "1",
+  "since": "2026.1.0",
+  "delivery": "in-process",
+  "defaultEnabled": true,
+  "frontend": {
+    "entries": [
+      "frontend/index.ts"
+    ]
+  },
+  "database": {
+    "tables": [
+      "paid_subscription_tariffs",
+      "paid_subscription_bindings",
+      "paid_subscription_orders"
+    ]
+  }
+}

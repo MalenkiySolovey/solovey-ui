@@ -2,6 +2,7 @@ package outbounds
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -10,12 +11,15 @@ import (
 )
 
 const (
-	FailoverType       = "failover"
-	DirectTag          = "direct"
-	DefaultProbeTarget = "https://www.gstatic.com/generate_204"
-	DefaultInterval    = 30 * time.Second
-	MinInterval        = 5 * time.Second
-	DefaultHysteresis  = 2
+	FailoverType              = "failover"
+	DirectTag                 = "direct"
+	FailoverFinalDirect       = "direct"
+	FailoverFinalReject       = "reject"
+	FailoverRejectOutboundTag = "__solovey_failover_reject"
+	DefaultProbeTarget        = "https://www.gstatic.com/generate_204"
+	DefaultInterval           = 30 * time.Second
+	MinInterval               = 5 * time.Second
+	DefaultHysteresis         = 2
 )
 
 type failoverProbe struct {
@@ -28,6 +32,7 @@ type failoverProbe struct {
 type failoverOptions struct {
 	Outbounds                 []string      `json:"outbounds"`
 	Default                   string        `json:"default,omitempty"`
+	Final                     string        `json:"final,omitempty"`
 	InterruptExistConnections *bool         `json:"interrupt_exist_connections,omitempty"`
 	Failover                  failoverProbe `json:"failover"`
 }
@@ -72,10 +77,33 @@ func (p failoverProbe) target() string {
 	return p.ProbeTarget
 }
 
+func (o failoverOptions) finalChoice() string {
+	switch strings.TrimSpace(o.Final) {
+	case "", FailoverFinalDirect:
+		return FailoverFinalDirect
+	case FailoverFinalReject:
+		return FailoverFinalReject
+	default:
+		return strings.TrimSpace(o.Final)
+	}
+}
+
+func (o failoverOptions) finalTag(directTag string) string {
+	switch o.finalChoice() {
+	case FailoverFinalDirect:
+		return directTag
+	case FailoverFinalReject:
+		return FailoverRejectOutboundTag
+	default:
+		return o.finalChoice()
+	}
+}
+
 // FailoverGroup is the manager-facing view of a persisted failover outbound.
 type FailoverGroup struct {
 	Tag         string
 	Members     []string
+	FinalTag    string
 	ProbeTarget string
 	Interval    time.Duration
 	Hysteresis  int
@@ -90,6 +118,7 @@ func LoadFailoverGroups(db *gorm.DB) ([]FailoverGroup, error) {
 		return nil, err
 	}
 	groups := make([]FailoverGroup, 0, len(rows))
+	directTag := DirectFallbackTag(db)
 	for _, row := range rows {
 		opts, err := parseFailoverOptions(row.Options)
 		if err != nil || len(opts.Outbounds) == 0 {
@@ -98,6 +127,7 @@ func LoadFailoverGroups(db *gorm.DB) ([]FailoverGroup, error) {
 		groups = append(groups, FailoverGroup{
 			Tag:         row.Tag,
 			Members:     append([]string(nil), opts.Outbounds...),
+			FinalTag:    strings.TrimSpace(opts.finalTag(directTag)),
 			ProbeTarget: opts.Failover.target(),
 			Interval:    opts.Failover.interval(),
 			Hysteresis:  opts.Failover.hysteresis(),
@@ -120,7 +150,7 @@ func DirectFallbackTag(db *gorm.DB) string {
 		}
 	}
 	if len(tags) == 0 {
-		return ""
+		return DirectTag
 	}
 	return tags[0]
 }

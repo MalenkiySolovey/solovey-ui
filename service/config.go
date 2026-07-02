@@ -195,7 +195,11 @@ func (s *ConfigService) CheckOutboundWithContext(ctx context.Context, tag string
 
 func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initUsers string, loginUser string, hostname string) (objs []string, err error) {
 	plan := newConfigSavePlan(obj)
-	auditTelegramBackupPassphrase, auditTelegramBackupPassphraseConfigured, err := s.telegramBackupPassphraseAuditState(obj, data)
+	afterCommitEffects, err := s.prepareConfigSaveObserverEffects(obj, data, loginUser)
+	if err != nil {
+		return nil, err
+	}
+	componentSettingsChanged, err := componentEnabledSettingsTouched(obj, data)
 	if err != nil {
 		return nil, err
 	}
@@ -229,7 +233,14 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 	}
 	committed = true
 
-	s.applyConfigSaveEffects(plan, loginUser, auditTelegramBackupPassphrase, auditTelegramBackupPassphraseConfigured)
+	s.applyConfigSaveEffects(plan, afterCommitEffects)
+	if componentSettingsChanged {
+		reconcileCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if reconcileErr := reconcileComponentSettings(reconcileCtx); reconcileErr != nil {
+			logger.Warning("component settings reconcile failed: ", reconcileErr)
+		}
+	}
 
 	return plan.Objects(), nil
 }
@@ -246,29 +257,6 @@ func (s *ConfigService) runtime() *Runtime {
 		return runtimeOrDefault(s.Runtime)
 	}
 	return DefaultRuntime()
-}
-
-func (s *ConfigService) telegramBackupPassphraseAuditState(obj string, data json.RawMessage) (bool, bool, error) {
-	if obj != "settings" {
-		return false, false, nil
-	}
-	var settings map[string]string
-	if err := json.Unmarshal(data, &settings); err != nil {
-		return false, false, err
-	}
-	newPassphrase, ok := settings[settingKeyTelegramBackupPassphrase]
-	if !ok || newPassphrase == StoredSecretMarker {
-		return false, false, nil
-	}
-	oldPassphrase, err := s.SettingService.GetTelegramBackupPassphraseBytes()
-	if err != nil {
-		return false, false, err
-	}
-	defer common.WipeBytes(oldPassphrase)
-	if string(oldPassphrase) == newPassphrase {
-		return false, false, nil
-	}
-	return true, newPassphrase != "", nil
 }
 
 func redactChangePayload(data json.RawMessage) json.RawMessage {

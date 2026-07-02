@@ -20,9 +20,9 @@ type Handler struct {
 	OutboundService   service.OutboundService
 	EndpointService   service.EndpointService
 	ServicesService   service.ServicesService
-	TelegramService   service.TelegramService
 	StatsService      service.StatsService
 	ServerService     service.ServerService
+	NotifyEvent       func(string, map[string]string)
 	RequireScope      func(*gin.Context, string, ...string) bool
 	Actor             func(*gin.Context) string
 	Hostname          func(*gin.Context) string
@@ -47,9 +47,9 @@ type Deps struct {
 	OutboundService  service.OutboundService
 	EndpointService  service.EndpointService
 	ServicesService  service.ServicesService
-	TelegramService  service.TelegramService
 	StatsService     service.StatsService
 	ServerService    service.ServerService
+	NotifyEvent      func(string, map[string]string)
 	RequireScope     func(*gin.Context, string, ...string) bool
 	Actor            func(*gin.Context) string
 	Hostname         func(*gin.Context) string
@@ -62,6 +62,10 @@ type Deps struct {
 }
 
 func NewHandler(deps Deps) *Handler {
+	notifyEvent := deps.NotifyEvent
+	if notifyEvent == nil {
+		notifyEvent = func(string, map[string]string) {}
+	}
 	h := &Handler{
 		Runtime:          deps.Runtime,
 		RestartScheduler: deps.RestartScheduler,
@@ -74,9 +78,9 @@ func NewHandler(deps Deps) *Handler {
 		OutboundService:  deps.OutboundService,
 		EndpointService:  deps.EndpointService,
 		ServicesService:  deps.ServicesService,
-		TelegramService:  deps.TelegramService,
 		StatsService:     deps.StatsService,
 		ServerService:    deps.ServerService,
+		NotifyEvent:      notifyEvent,
 		RequireScope:     deps.RequireScope,
 		Actor:            deps.Actor,
 		Hostname:         deps.Hostname,

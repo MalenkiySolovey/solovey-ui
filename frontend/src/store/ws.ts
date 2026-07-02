@@ -218,8 +218,10 @@ const applyRealtimeEvent = (event: any) => {
     case 'onlines':
       if (event.payload) data.onlines = event.payload
       break
-    case 'xui_import_progress':
-      ws.xuiImportProgress = event.payload ?? null
+    case 'component_progress':
+      if (event.payload?.componentId) {
+        ws.componentProgress[event.payload.componentId] = event.payload.progress ?? null
+      }
       break
     case 'failover_status':
       if (event.payload?.tag) {
@@ -253,7 +255,7 @@ const Ws = defineStore('Ws', {
   state: () => ({
     state: <WsConnectionState>'degraded',
     runtime: <WsRuntime | null>null,
-    xuiImportProgress: <any>null,
+    componentProgress: <Record<string, any>>{},
   }),
   actions: {
     ensureRuntime() {

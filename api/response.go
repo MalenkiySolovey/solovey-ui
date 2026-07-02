@@ -26,7 +26,7 @@ func jsonObj(c *gin.Context, obj interface{}, err error) {
 // flag. This SPA contract is intentional: business/validation errors are
 // conveyed as {success:false, msg} at HTTP 200 (the frontend reads the flag),
 // not via HTTP status codes; transport-level handlers that genuinely need real
-// status codes (xuiImportError, telegram backup) set them explicitly. The
+// status codes set them explicitly. The
 // client-facing error text is redacted to avoid leaking paths/SQL/internals;
 // the full error is still logged server-side.
 func jsonMsgObj(c *gin.Context, msg string, obj interface{}, err error) {

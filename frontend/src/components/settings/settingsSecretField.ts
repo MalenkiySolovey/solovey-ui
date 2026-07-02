@@ -4,6 +4,10 @@ export const SECRET_MARKER_SUFFIX = 'HasSecret'
 type SettingValue = string | boolean | number | null | undefined
 type SettingsMap = Record<string, SettingValue>
 
+type StripSecretPlaceholderOptions = {
+  preserve?: string[]
+}
+
 export const hasStoredSecret = (value: SettingValue): boolean => {
   return value === true || value === 'true'
 }
@@ -25,12 +29,13 @@ export const normalizeSecretFields = <T extends SettingsMap>(settings: T): T & S
   return normalized as T & SettingsMap
 }
 
-export const stripSecretPlaceholders = <T extends SettingsMap>(settings: T): T & SettingsMap => {
+export const stripSecretPlaceholders = <T extends SettingsMap>(settings: T, options: StripSecretPlaceholderOptions = {}): T & SettingsMap => {
   const stripped = { ...settings } as SettingsMap
+  const preserved = new Set(options.preserve ?? [])
   for (const key of Object.keys(stripped)) {
     const secretKey = secretKeyFromMarker(key)
     if (!secretKey) continue
-    if (stripped[secretKey] === STORED_SECRET_PLACEHOLDER && secretKey !== 'telegramBackupPassphrase') {
+    if (stripped[secretKey] === STORED_SECRET_PLACEHOLDER && !preserved.has(secretKey)) {
       stripped[secretKey] = ''
     }
   }

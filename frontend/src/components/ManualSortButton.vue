@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div
     class="manual-sort-buttons"
     role="group"
@@ -37,7 +37,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
-import type { ManualSortDirection } from '@/shared/composables/dragSelection/manualReorder'
+import type { ManualSortDirection } from '@/shared/dnd/manualReorder'
 
 type ButtonVariant = 'flat' | 'text' | 'elevated' | 'outlined' | 'plain' | 'tonal'
 

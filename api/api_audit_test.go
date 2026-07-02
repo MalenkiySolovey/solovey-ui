@@ -28,7 +28,7 @@ func TestGetSecurityAuditDoesNotPruneOnRead(t *testing.T) {
 	}
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/security/audit", (&ApiService{}).telemetryHandler().GetSecurityAudit)
+		router.GET("/api/security/audit", (&ApiService{}).coreTelemetryHandler().GetSecurityAudit)
 	})
 	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?limit=10", nil), cookies...)
 	if recorder.Code != http.StatusOK {
@@ -58,7 +58,7 @@ func TestGetSecurityAuditPaginatesByCursorAndCapsLimit(t *testing.T) {
 	}
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/security/audit", (&ApiService{}).telemetryHandler().GetSecurityAudit)
+		router.GET("/api/security/audit", (&ApiService{}).coreTelemetryHandler().GetSecurityAudit)
 	})
 	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?limit=2", nil), cookies...)
 	if recorder.Code != http.StatusOK {
@@ -115,7 +115,7 @@ func TestGetSecurityAuditFiltersEventAndSeverity(t *testing.T) {
 	}
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/security/audit", (&ApiService{}).telemetryHandler().GetSecurityAudit)
+		router.GET("/api/security/audit", (&ApiService{}).coreTelemetryHandler().GetSecurityAudit)
 	})
 	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?event=telegram_test&severity=warn", nil), cookies...)
 	if recorder.Code != http.StatusOK {
@@ -158,7 +158,7 @@ func TestGetSecurityAuditFiltersDateRange(t *testing.T) {
 	}
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/security/audit", (&ApiService{}).telemetryHandler().GetSecurityAudit)
+		router.GET("/api/security/audit", (&ApiService{}).coreTelemetryHandler().GetSecurityAudit)
 	})
 	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?since="+strconv.FormatInt(now, 10)+"&until="+strconv.FormatInt(now+5, 10), nil), cookies...)
 	if recorder.Code != http.StatusOK {
@@ -242,7 +242,7 @@ func TestGetSecurityAuditScopeMatrix(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			resetRateLimitState()
 			settingService := initSessionTestDB(t)
-			handler := (&ApiService{}).telemetryHandler().GetSecurityAudit
+			handler := (&ApiService{}).coreTelemetryHandler().GetSecurityAudit
 			if tt.hasScope {
 				handler = withTestTokenScope("api-user", tt.scope, handler)
 			}
@@ -300,7 +300,7 @@ func TestGetSecurityAuditRateLimitReturns429AndAudits(t *testing.T) {
 		}
 	}
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/security/audit", withTestTokenScope("admin", "admin", (&ApiService{}).telemetryHandler().GetSecurityAudit))
+		router.GET("/api/security/audit", withTestTokenScope("admin", "admin", (&ApiService{}).coreTelemetryHandler().GetSecurityAudit))
 	})
 	req := httptest.NewRequest(http.MethodGet, "/api/security/audit", nil)
 	req.RemoteAddr = ip + ":1234"
@@ -337,7 +337,7 @@ func TestGetSecurityAuditRateLimitKeyUsesActorAndCanonicalIP(t *testing.T) {
 		}
 	}
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/security/audit", withTestTokenScope("admin", "admin", (&ApiService{}).telemetryHandler().GetSecurityAudit))
+		router.GET("/api/security/audit", withTestTokenScope("admin", "admin", (&ApiService{}).coreTelemetryHandler().GetSecurityAudit))
 	})
 
 	blockedReq := httptest.NewRequest(http.MethodGet, "/api/security/audit", nil)
@@ -355,7 +355,7 @@ func TestGetSecurityAuditRateLimitKeyUsesActorAndCanonicalIP(t *testing.T) {
 	}
 
 	otherActorRouter, otherActorCookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/security/audit", withTestTokenScope("other-admin", "admin", (&ApiService{}).telemetryHandler().GetSecurityAudit))
+		router.GET("/api/security/audit", withTestTokenScope("other-admin", "admin", (&ApiService{}).coreTelemetryHandler().GetSecurityAudit))
 	})
 	otherActorReq := httptest.NewRequest(http.MethodGet, "/api/security/audit", nil)
 	otherActorReq.RemoteAddr = "198.51.100.10:1234"
@@ -387,6 +387,9 @@ func TestAPIV2SecurityAuditRequiresAdminScope(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	NewAPIv2Handler(router.Group("/apiv2"))
+	if !routeExists(router, http.MethodGet, "/apiv2/security/audit") {
+		t.Skip("full security audit route is owned by optional observability-extra component")
+	}
 
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/apiv2/security/audit", nil)

@@ -1,3 +1,5 @@
+//go:build !minimal
+
 package api
 
 import (
@@ -5,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	importxuihttp "github.com/MalenkiySolovey/solovey-ui/api/importxui"
-	"github.com/MalenkiySolovey/solovey-ui/database/importxui"
+	importxuihttp "github.com/MalenkiySolovey/solovey-ui/components/import-xui/api"
+	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database"
 
 	"github.com/gin-gonic/gin"
 )

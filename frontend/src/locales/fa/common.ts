@@ -15,7 +15,9 @@
     "selectAll": "انتخاب همه",
     "expandRow": "نمایش جزئیات ردیف",
     "clearFilters": "پاک کردن فیلترها",
-    "noData": "داده‌ای نیست"
+    "noData": "داده‌ای نیست",
+    "previousPage": "Previous page",
+    "nextPage": "Next page"
   },
   "form": {
     "unsavedChanges": "تغییرات ذخیره‌نشده",
@@ -79,9 +81,6 @@
     "basics": "ترازها",
     "dns": "DNS",
     "admins": "ادمین‌ها",
-    "telegram": "تلگرام",
-    "audit": "حسابرسی",
-    "migrateXui": "مهاجرت 3x-ui",
     "settings": "پیکربندی",
     "support": "پشتیبانی از پروژه"
   },
@@ -129,22 +128,8 @@
       "restore": "بازیابی پشتیبان",
       "exclStats": "بدون گراف‌ها",
       "exclChanges": "بدون تغییرات",
-      "encryptTelegram": "رمزگذاری با عبارت پشتیبان تلگرام",
-      "encryptDisabledHint": "عبارت عبور پشتیبان را در زبانه تلگرام تنظیم کنید",
       "restorePassphrase": "عبارت عبور پشتیبان",
       "sbConfig": "دریافت پیکربندی سینگ‌باکس",
-      "xui": {
-        "title": "مهاجرت از 3x-ui",
-        "button": "انتخاب پایگاه داده 3x-ui…",
-        "dryRun": "اجرای آزمایشی (فقط پیش‌نمایش)",
-        "strategy": "راهبرد تعارض",
-        "merge": "ادغام",
-        "replace": "جایگزینی",
-        "skip": "رد کردن",
-        "summary": "خلاصه وارد کردن",
-        "warnings": "هشدارها",
-        "openFull": "باز کردن نمای کامل مهاجرت"
-      }
     },
     "stats": {
       "title": "آمار و تعداد",
@@ -535,6 +520,7 @@
       "members": "خروجی‌های اولویت‌دار",
       "primary": "اصلی",
       "backup": "پشتیبان",
+      "final": "Final outbound",
       "addMember": "افزودن خروجی",
       "probeTarget": "نشانی بررسی",
       "interval": "فاصله بررسی",

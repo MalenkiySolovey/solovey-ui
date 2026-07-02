@@ -15,7 +15,9 @@
     "selectAll": "全選",
     "expandRow": "展開列詳情",
     "clearFilters": "清除篩選",
-    "noData": "暫無資料"
+    "noData": "暫無資料",
+    "previousPage": "Previous page",
+    "nextPage": "Next page"
   },
   "form": {
     "unsavedChanges": "未儲存的變更",
@@ -79,9 +81,6 @@
     "basics": "基礎信息",
     "dns": "DNS",
     "admins": "管理員",
-    "telegram": "Telegram",
-    "audit": "稽核",
-    "migrateXui": "3x-ui 遷移",
     "settings": "設置",
     "support": "支援專案"
   },
@@ -129,22 +128,8 @@
       "restore": "恢復備份",
       "exclStats": "排除圖表記錄",
       "exclChanges": "排除更改記錄",
-      "encryptTelegram": "使用 Telegram 備份密語加密",
-      "encryptDisabledHint": "請先在 Telegram 分頁設定備份密語",
       "restorePassphrase": "備份密語",
       "sbConfig": "下載 Sing-Box 配置",
-      "xui": {
-        "title": "從 3x-ui 遷移",
-        "button": "選擇 3x-ui 資料庫…",
-        "dryRun": "試運行（僅預覽）",
-        "strategy": "衝突策略",
-        "merge": "合併",
-        "replace": "替換",
-        "skip": "跳過",
-        "summary": "匯入摘要",
-        "warnings": "警告",
-        "openFull": "打開完整遷移視圖"
-      }
     },
     "stats": {
       "title": "使用量與統計",
@@ -535,6 +520,7 @@
       "members": "優先出口",
       "primary": "主要出口",
       "backup": "備用出口",
+      "final": "最終出站",
       "addMember": "新增出口",
       "probeTarget": "探測 URL",
       "interval": "探測間隔",

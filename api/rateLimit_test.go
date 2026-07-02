@@ -19,7 +19,7 @@ func resetRateLimitState() {
 	loginRateLimiter.ResetAll()
 	realtimehttp.ResetRateLimits()
 	auditEndpointRateLimiter.ResetAll()
-	telegramBackupManualRateLimiter.ResetAll()
+	componentManualActionRateLimiter.ResetAll()
 }
 
 func TestLoginRateLimitBlocksAfterMaxFailures(t *testing.T) {

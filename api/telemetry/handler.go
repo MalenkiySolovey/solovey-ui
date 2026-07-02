@@ -14,7 +14,6 @@ type Handler struct {
 	ServerService          service.ServerService
 	DiagnosticsService     service.DiagnosticsService
 	DoctorService          service.DoctorService
-	ObservabilityService   service.ObservabilityService
 	AuditService           service.AuditService
 	VersionService         service.VersionService
 	RequireScope           func(*gin.Context, string, ...string) bool
@@ -38,7 +37,6 @@ type Deps struct {
 	ServerService          service.ServerService
 	DiagnosticsService     service.DiagnosticsService
 	DoctorService          service.DoctorService
-	ObservabilityService   service.ObservabilityService
 	AuditService           service.AuditService
 	VersionService         service.VersionService
 	RequireScope           func(*gin.Context, string, ...string) bool
@@ -62,7 +60,6 @@ func NewHandler(deps Deps) *Handler {
 		ServerService:          deps.ServerService,
 		DiagnosticsService:     deps.DiagnosticsService,
 		DoctorService:          deps.DoctorService,
-		ObservabilityService:   deps.ObservabilityService,
 		AuditService:           deps.AuditService,
 		VersionService:         deps.VersionService,
 		RequireScope:           deps.RequireScope,
@@ -81,8 +78,8 @@ func NewHandler(deps Deps) *Handler {
 	}
 }
 
-// RegisterRoutes mounts operational data, diagnostics, and audit endpoints.
-func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
+// RegisterCoreRoutes mounts the always-on operational and diagnostics surface.
+func RegisterCoreRoutes(g *gin.RouterGroup, deps Deps) {
 	h := NewHandler(deps)
 	g.GET("/stats", h.GetStats)
 	g.GET("/stats/traffic", h.GetTrafficStats)
@@ -100,15 +97,18 @@ func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
 	doctor.POST("/client", h.DiagnoseClient)
 
 	security := g.Group("/security")
-	security.GET("/audit", h.GetSecurityAudit)
+	security.GET("/audit/recent", h.GetRecentSecurityAudit)
 
 	ipMonitor := g.Group("/ip-monitor")
 	ipMonitor.GET("/:client", h.GetClientIPHistory)
 	ipMonitor.POST("/:client/clear", h.ClearClientIPHistory)
+}
 
-	observability := g.Group("/observability")
-	observability.GET("/history", h.GetObservabilityHistory)
-	observability.GET("/core-history", h.GetCoreHistory)
+// RegisterRoutes preserves the legacy core telemetry registration for package
+// tests and local callers. Optional telemetry surfaces are registered by their
+// owning components through the component route registry.
+func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
+	RegisterCoreRoutes(g, deps)
 }
 
 type Envelope struct {

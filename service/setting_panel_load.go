@@ -79,8 +79,9 @@ func (s *SettingService) getSettingsSnapshot(keys ...string) (map[string]string,
 		}
 		values[key] = value
 	}
+	schema := currentSettingsSchema()
 	for _, setting := range settings {
-		if settingsSchema.Encrypted(setting.Key) {
+		if schema.Encrypted(setting.Key) {
 			value, err := s.decryptSettingValue(setting.Key, setting.Value)
 			if err != nil {
 				return nil, err

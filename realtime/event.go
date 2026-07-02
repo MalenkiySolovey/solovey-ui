@@ -11,7 +11,7 @@ const (
 	TopicFailoverStatus    Topic = "failover_status"
 	TopicNotification      Topic = "notification"
 	TopicSecurityEvent     Topic = "security_event"
-	TopicXUIImportProgress Topic = "xui_import_progress"
+	TopicComponentProgress Topic = "component_progress"
 )
 
 type Scope string
@@ -30,6 +30,11 @@ type Event struct {
 	frame   []byte
 }
 
+type ComponentProgress struct {
+	ComponentID string      `json:"componentId"`
+	Progress    interface{} `json:"progress"`
+}
+
 // Frame returns the JSON prepared once by the hub for a broadcast event.
 // Locally-created events, such as the per-connection handshake, have no frame.
 func (e Event) Frame() []byte {
@@ -37,7 +42,7 @@ func (e Event) Frame() []byte {
 }
 
 func topicAllowed(topic Topic, scope Scope) bool {
-	if topic == TopicSecurityEvent || topic == TopicXUIImportProgress {
+	if topic == TopicSecurityEvent || topic == TopicComponentProgress {
 		return scope == ScopeAdmin
 	}
 	return true

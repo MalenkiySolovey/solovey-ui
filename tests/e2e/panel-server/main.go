@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/api"
+	_ "github.com/MalenkiySolovey/solovey-ui/app"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"

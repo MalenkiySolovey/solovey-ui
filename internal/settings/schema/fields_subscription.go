@@ -25,8 +25,6 @@ func subscriptionFieldMetadata() []Field {
 		{Key: settingcatalog.SubRateLimitPerIPKey, Page: PageSettings, Group: GroupSubscription, Type: FieldTypeInt, LabelKey: "setting.subRateLimitPerIP", Min: intPtr(0), Advanced: true, Order: 190},
 		{Key: settingcatalog.SubNameInRemarkKey, Page: PageSettings, Group: GroupSubscription, Type: FieldTypeBool, LabelKey: "setting.subNameInRemark", Advanced: true, Order: 200},
 		{Key: settingcatalog.SubAnnounceKey, Page: PageSettings, Group: GroupSubscription, Type: FieldTypeText, LabelKey: "setting.subAnnounce", Advanced: true, Order: 210},
-		{Key: settingcatalog.SubRemoteGroupAdaptationKey, Page: PageSettings, Group: GroupSubscription, Type: FieldTypeEnum, LabelKey: "setting.subRemoteGroupAdaptation", Options: []string{"urltest", "selector", "failover"}, Advanced: true, Order: 220},
-		{Key: settingcatalog.SubRemoteConversionPolicyKey, Page: PageSettings, Group: GroupSubscription, Type: FieldTypeJSON, LabelKey: "setting.subRemoteConversionPolicy", Advanced: true, Order: 230},
 
 		{Key: settingcatalog.SubJsonPathKey, Page: PageSettings, Group: GroupSubscriptionJSON, Type: FieldTypePath, LabelKey: "setting.jsonPath", RestartRequired: true, Order: 10},
 		{Key: settingcatalog.SubJsonURIKey, Page: PageSettings, Group: GroupSubscriptionJSON, Type: FieldTypeURL, LabelKey: "setting.jsonSub", Order: 20},

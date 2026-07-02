@@ -27,10 +27,6 @@ func backupTables() []backupTable {
 		{name: "tls", model: &model.Tls{}},
 		{name: "inbounds", model: &model.Inbound{}},
 		{name: "outbounds", model: &model.Outbound{}},
-		{name: "remote_outbound_subscriptions", model: &model.RemoteOutboundSubscription{}},
-		{name: "remote_outbound_groups", model: &model.RemoteOutboundGroup{}},
-		{name: "remote_outbound_group_connections", model: &model.RemoteOutboundGroupConnection{}},
-		{name: "remote_outbound_connections", model: &model.RemoteOutboundConnection{}},
 		{name: "services", model: &model.Service{}},
 		{name: "endpoints", model: &model.Endpoint{}},
 		{name: "users", model: &model.User{}},
@@ -40,7 +36,24 @@ func backupTables() []backupTable {
 		{name: "clients", model: &model.Client{}},
 		{name: "changes", model: &model.Changes{}},
 		{name: "audit_events", model: &model.AuditEvent{}},
+		{name: "component_migrations", model: &model.ComponentMigration{}},
 	}
+}
+
+func exportTables(sourceDB *gorm.DB) []backupTable {
+	tables := backupTables()
+	seen := make(map[string]struct{}, len(tables))
+	for _, table := range tables {
+		seen[table.name] = struct{}{}
+	}
+	for _, table := range contributedBackupTables(sourceDB) {
+		if _, ok := seen[table.name]; ok {
+			continue
+		}
+		seen[table.name] = struct{}{}
+		tables = append(tables, table)
+	}
+	return tables
 }
 
 // Export returns a self-contained SQLite backup of the selected tables.
@@ -97,7 +110,11 @@ func PrepareExport(exclude string) (string, func(), error) {
 	}
 	defer func() { _ = backupSQLDB.Close() }()
 
-	tables := backupTables()
+	sourceDB := dbsqlite.DB()
+	if sourceDB == nil {
+		return "", nil, common.NewError("database is not initialized")
+	}
+	tables := exportTables(sourceDB)
 	models := make([]any, 0, len(tables))
 	for _, table := range tables {
 		models = append(models, table.model)
@@ -106,10 +123,6 @@ func PrepareExport(exclude string) (string, func(), error) {
 		return "", nil, err
 	}
 
-	sourceDB := dbsqlite.DB()
-	if sourceDB == nil {
-		return "", nil, common.NewError("database is not initialized")
-	}
 	for _, table := range tables {
 		if excludedTables[table.name] {
 			continue

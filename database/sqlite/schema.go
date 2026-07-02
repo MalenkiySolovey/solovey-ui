@@ -8,14 +8,6 @@ import (
 )
 
 func dropDeprecatedTables() error {
-	for _, query := range []string{
-		"DROP TABLE IF EXISTS xui_sync_profiles",
-		"DROP TABLE IF EXISTS xui_known_hosts",
-	} {
-		if err := db.Exec(query).Error; err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -54,13 +46,6 @@ func ensureIndexes() error {
 		"CREATE INDEX IF NOT EXISTS idx_clients_sort_order ON clients(sort_order, id)",
 		"CREATE INDEX IF NOT EXISTS idx_inbounds_sort_order ON inbounds(sort_order, id)",
 		"CREATE INDEX IF NOT EXISTS idx_outbounds_sort_order ON outbounds(sort_order, id)",
-		"CREATE INDEX IF NOT EXISTS idx_remote_outbound_subscriptions_sort_order ON remote_outbound_subscriptions(sort_order, id)",
-		"CREATE INDEX IF NOT EXISTS idx_remote_outbound_groups_subscription_sort_order ON remote_outbound_groups(subscription_id, sort_order, id)",
-		"CREATE INDEX IF NOT EXISTS idx_remote_outbound_group_connections_group ON remote_outbound_group_connections(group_id)",
-		"CREATE INDEX IF NOT EXISTS idx_remote_outbound_group_connections_connection ON remote_outbound_group_connections(connection_id)",
-		"CREATE INDEX IF NOT EXISTS idx_remote_outbound_connections_subscription_sort_order ON remote_outbound_connections(subscription_id, sort_order, id)",
-		"CREATE INDEX IF NOT EXISTS idx_remote_outbound_connections_group_sort_order ON remote_outbound_connections(group_id, sort_order, id)",
-		"CREATE INDEX IF NOT EXISTS idx_remote_outbound_connections_outbound_id ON remote_outbound_connections(outbound_id)",
 		"CREATE INDEX IF NOT EXISTS idx_endpoints_sort_order ON endpoints(sort_order, id)",
 		"CREATE INDEX IF NOT EXISTS idx_services_sort_order ON services(sort_order, id)",
 		"CREATE INDEX IF NOT EXISTS idx_tls_sort_order ON tls(sort_order, id)",
@@ -78,9 +63,7 @@ func ensureIndexes() error {
 
 func ensureSortOrders() error {
 	for _, table := range []string{
-		"inbounds", "clients", "outbounds", "remote_outbound_subscriptions",
-		"remote_outbound_groups", "remote_outbound_connections", "endpoints",
-		"services", "tls", "users",
+		"inbounds", "clients", "outbounds", "endpoints", "services", "tls", "users",
 	} {
 		if err := ensureTableSortOrder(table); err != nil {
 			return err

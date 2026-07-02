@@ -16,7 +16,7 @@ import (
 )
 
 func securityCSRFPostRoutes() []string {
-	return []string{
+	routes := []string{
 		"/api/changePass",
 		"/api/addAdmin",
 		"/api/deleteAdmin",
@@ -26,27 +26,15 @@ func securityCSRFPostRoutes() []string {
 		"/api/linkConvert",
 		"/api/subConvert",
 		"/api/importdb",
-		"/api/import-xui",
-		"/api/import-xui/plan",
-		"/api/import-xui/apply",
-		"/api/import-xui/rollback",
 		"/api/addToken",
 		"/api/deleteToken",
 		"/api/setTokenEnabled",
 		"/api/logoutAllAdmins",
 		"/api/checkOutbounds",
 		"/api/rotateSubSecret",
-		"/api/telegram/test",
-		"/api/telegram/backup",
-		"/api/telegram/backup/run",
 		"/api/ip-monitor/alice/clear",
-		"/api/update/check",
-		"/api/update/apply",
-		"/api/paidsub/bindings",
-		"/api/paidsub/tariffs",
-		"/api/paidsub/broadcast",
-		"/api/paidsub/refund",
 	}
+	return append(routes, securityCSRFOptionalPostRoutes()...)
 }
 
 func newSecurityCSRFTestRouter(t *testing.T, settingService *service.SettingService) *gin.Engine {
@@ -61,6 +49,7 @@ func newSecurityCSRFTestRouter(t *testing.T, settingService *service.SettingServ
 	if err := settingService.Save(dbsqlite.DB(), webPathPayload); err != nil {
 		t.Fatal(err)
 	}
+	prepareComponentRouteMetadata(t)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))

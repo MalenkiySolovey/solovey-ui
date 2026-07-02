@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="clients-nexus">
     <page-header
       :search="search"
@@ -137,9 +137,9 @@ import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import StatusBadge from '@/components/nexus/primitives/StatusBadge.vue'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
 import { HumanReadable } from '@/plugins/utils'
-import { useBulkSelection } from '@/shared/composables/dragSelection/bulkSelection'
-import type { ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
-import type { ManualSortDirection } from '@/shared/composables/dragSelection/manualReorder'
+import { useBulkSelection } from '@/shared/dnd/bulkSelection'
+import type { ManualDropPosition } from '@/shared/dnd/manualDrag'
+import type { ManualSortDirection } from '@/shared/dnd/manualReorder'
 
 interface ClientRow {
   id: number

@@ -125,7 +125,7 @@ import { useRoute } from 'vue-router'
 import { logout } from '@/shared/composables/useAuthOperations'
 import Data from '@/store/modules/data'
 import logoUrl from '@/assets/logo.png'
-import { nexusMenuGroups as groups, type NexusMenuItem } from './nexusMenu'
+import { visibleNexusMenuGroups, type NexusMenuItem } from './nexusMenu'
 
 const props = defineProps<{
   open: boolean
@@ -144,6 +144,7 @@ const data = Data()
 const route = useRoute()
 
 const collapsed = computed(() => props.rail && !props.temporary)
+const groups = computed(() => visibleNexusMenuGroups())
 
 // Exact-match the dashboard ('/') so it isn't flagged active on every route
 // (Vue Router treats '/' as a prefix of all paths); other items match their

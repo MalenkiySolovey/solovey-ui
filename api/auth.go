@@ -2,6 +2,7 @@ package api
 
 import (
 	authhttp "github.com/MalenkiySolovey/solovey-ui/api/auth"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
 func (a *ApiService) authHandler() *authhttp.Handler {
@@ -12,7 +13,7 @@ func (a *ApiService) authDeps() authhttp.Deps {
 	return authhttp.Deps{
 		UserService:              a.UserService,
 		SettingService:           a.SettingService,
-		TelegramService:          a.TelegramService,
+		NotifyEvent:              service.NotifyPanelEvent,
 		JSONObj:                  jsonObj,
 		JSONMsg:                  jsonMsg,
 		JSONMsgObj:               jsonMsgObj,

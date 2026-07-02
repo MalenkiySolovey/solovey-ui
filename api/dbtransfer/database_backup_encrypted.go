@@ -4,24 +4,20 @@ import (
 	"net/http"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
-
-	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/internal/integrations/telegram"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	"github.com/gin-gonic/gin"
 )
 
-func (a *Handler) getEncryptedDb(c *gin.Context, request databaseBackupRequest) {
-	hasPassphrase, err := a.SettingService.HasTelegramBackupPassphrase()
-	if err != nil {
-		respondDatabaseBackupError(c, http.StatusInternalServerError, "settings")
-		return
+func (a *Handler) getEncodedDb(c *gin.Context, request databaseBackupRequest, codec backupExportCodecEntry) {
+	if codec.codec.Preflight != nil {
+		if err := codec.codec.Preflight(c); err != nil {
+			respondDatabaseBackupCodecError(c, err, "preflight_failed")
+			return
+		}
 	}
-	if !hasPassphrase {
-		respondDatabaseBackupError(c, http.StatusBadRequest, "missing_passphrase")
-		return
-	}
+
 	db, err := backup.Export(request.Exclude)
 	if err != nil {
 		a.Audit(c, a.Actor(c), "db_export_failed", "database", service.AuditSeverityWarn, map[string]any{
@@ -31,33 +27,36 @@ func (a *Handler) getEncryptedDb(c *gin.Context, request databaseBackupRequest) 
 		a.JSONMsg(c, "", err)
 		return
 	}
-	payloadSize := len(db)
 	defer common.WipeBytes(db)
 
-	passphrase, err := a.SettingService.GetTelegramBackupPassphraseBytes()
-	if err != nil {
-		respondDatabaseBackupError(c, http.StatusInternalServerError, "settings")
-		return
-	}
-	defer common.WipeBytes(passphrase)
-	if len(passphrase) == 0 {
-		respondDatabaseBackupError(c, http.StatusBadRequest, "missing_passphrase")
-		return
-	}
-
-	envelope, err := integrationtelegram.BuildTelegramBackupEnvelope(db, passphrase)
-	common.WipeBytes(passphrase)
-	if err != nil {
-		respondDatabaseBackupError(c, http.StatusInternalServerError, "encryption_failed")
-		return
-	}
-	common.WipeBytes(db)
-
-	a.Audit(c, a.Actor(c), "tg_backup_manual_encrypted", "database", service.AuditSeverityInfo, map[string]any{
-		"channel":           "local_download",
-		"payloadSizeBytes":  int64(payloadSize),
-		"envelopeSizeBytes": int64(len(envelope)),
-		"excludedTables":    backup.ParseExcludes(request.Exclude),
+	result, err := codec.codec.Encode(BackupExportContext{
+		Gin:     c,
+		Exclude: request.Exclude,
+		Plain:   db,
 	})
-	writeDatabaseDownload(c, envelope, true)
+	if err != nil {
+		respondDatabaseBackupCodecError(c, err, "encryption_failed")
+		return
+	}
+	if len(result.Payload) == 0 {
+		respondDatabaseBackupError(c, http.StatusInternalServerError, "empty_payload")
+		return
+	}
+	defer common.WipeBytes(result.Payload)
+
+	auditEvent := result.AuditEvent
+	if auditEvent == "" {
+		auditEvent = "db_exported"
+	}
+	auditSeverity := result.AuditSeverity
+	if auditSeverity == "" {
+		auditSeverity = service.AuditSeverityInfo
+	}
+	a.Audit(c, a.Actor(c), auditEvent, "database", auditSeverity, result.AuditDetails)
+	writeDatabaseDownload(c, result.Payload, result.Encrypted)
+}
+
+func respondDatabaseBackupCodecError(c *gin.Context, err error, fallbackClass string) {
+	status, class := backupCodecHTTPError(err, fallbackClass)
+	respondDatabaseBackupError(c, status, class)
 }

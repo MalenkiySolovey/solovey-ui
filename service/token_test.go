@@ -57,12 +57,31 @@ func TestLoadTokensMigratesLegacyPlaintextToken(t *testing.T) {
 
 func TestAddTokenValidatesScopeAllowlist(t *testing.T) {
 	initSettingTestDB(t)
+	ResetAPITokenScopeProvidersForTest()
+	t.Cleanup(ResetAPITokenScopeProvidersForTest)
 	userService := &UserService{}
 
-	for _, scope := range []string{"", "admin", "read", "write", "database", "telegram", "observability"} {
+	for _, scope := range []string{"", "admin", "read", "write", "update", "database", "observability"} {
 		if _, err := userService.AddToken("admin", 0, "valid "+scope, scope); err != nil {
 			t.Fatalf("scope %q should be accepted: %v", scope, err)
 		}
+	}
+	if _, err := userService.AddToken("admin", 0, "component scope without provider", "telegram"); err == nil {
+		t.Fatal("component scope without provider should be rejected")
+	}
+	unregister := RegisterAPITokenScopeProvider(func() []string { return []string{"component-scope"} })
+	if _, err := userService.AddToken("admin", 0, "component scope", "component-scope"); err != nil {
+		t.Fatalf("registered component scope should be accepted: %v", err)
+	}
+	if !apiTokenScopeAllowed("component-scope") {
+		t.Fatal("registered component scope should be allowed")
+	}
+	unregister()
+	if apiTokenScopeAllowed("component-scope") {
+		t.Fatal("unregistered component scope should stop being allowed")
+	}
+	if _, err := userService.AddToken("admin", 0, "component scope after unregister", "component-scope"); err == nil {
+		t.Fatal("unregistered component scope should be rejected")
 	}
 	if _, err := userService.AddToken("admin", 0, "invalid", "full"); err == nil {
 		t.Fatal("scope full should be rejected")
@@ -76,6 +95,9 @@ func TestAddTokenValidatesScopeAllowlist(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, token := range tokens {
+		if token.Scope == "component-scope" {
+			continue
+		}
 		if !apiTokenScopeAllowed(token.Scope) {
 			t.Fatalf("stored invalid scope: %#v", token)
 		}

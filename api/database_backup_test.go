@@ -13,7 +13,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/internal/integrations/telegram"
+	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
@@ -82,18 +82,19 @@ func TestDownloadDatabaseEncryptedWithTelegramBackupPassphrase(t *testing.T) {
 	settingService := initSessionTestDB(t)
 	passphrase := "correct horse battery staple"
 	saveTelegramBackupPassphrase(t, settingService, passphrase)
+	registerTelegramBackupTransferCodecsForTest(t, settingService)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
 		router.GET("/api/getdb", withTestTokenScope("admin", "admin", (&ApiService{}).dbTransferHandler().DownloadDatabase))
 	})
-	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/getdb?encryptTelegramBackup=true&exclude=stats,audit,unknown", nil), cookies...)
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/getdb?backupEncryption=test-telegram&exclude=stats,audit,unknown", nil), cookies...)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d body=%s", recorder.Code, recorder.Body.String())
 	}
 	envelope := recorder.Body.Bytes()
-	if !integrationtelegram.IsTelegramBackupEnvelope(envelope) {
+	if !backupenvelope.IsEnvelope(envelope) {
 		t.Fatalf("encrypted backup did not return Telegram backup envelope")
 	}
-	plaintext, err := integrationtelegram.OpenTelegramBackupEnvelope(envelope, []byte(passphrase))
+	plaintext, err := backupenvelope.Open(envelope, []byte(passphrase))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -129,10 +130,12 @@ func TestDownloadDatabaseEncryptedWithTelegramBackupPassphrase(t *testing.T) {
 
 func TestDownloadDatabaseEncryptedRejectsMissingTelegramBackupPassphrase(t *testing.T) {
 	settingService := initSessionTestDB(t)
+	registerTelegramSettingsContributionForTest(t)
+	registerTelegramBackupTransferCodecsForTest(t, settingService)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
 		router.GET("/api/getdb", withTestTokenScope("admin", "admin", (&ApiService{}).dbTransferHandler().DownloadDatabase))
 	})
-	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/getdb?encryptTelegramBackup=true", nil), cookies...)
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/getdb?backupEncryption=test-telegram", nil), cookies...)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("unexpected status: %d body=%s", recorder.Code, recorder.Body.String())
 	}
@@ -155,6 +158,7 @@ func TestDownloadDatabaseEncryptedRejectsMissingTelegramBackupPassphrase(t *test
 
 func saveTelegramBackupPassphrase(t *testing.T, settingService *service.SettingService, passphrase string) {
 	t.Helper()
+	registerTelegramSettingsContributionForTest(t)
 	payload, err := json.Marshal(map[string]string{"telegramBackupPassphrase": passphrase})
 	if err != nil {
 		t.Fatal(err)

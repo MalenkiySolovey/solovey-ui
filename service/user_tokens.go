@@ -4,7 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -15,16 +17,82 @@ import (
 
 const (
 	defaultAPITokenScope = "admin"
-	maxAPITokenScopeLen  = len("observability")
+	maxAPITokenScopeLen  = 64
 )
 
-var allowedAPITokenScopes = []string{
+var coreAPITokenScopes = []string{
 	"admin",
 	"read",
 	"write",
+	"update",
 	"database",
-	"telegram",
 	"observability",
+}
+
+var apiTokenScopeProviders = struct {
+	sync.RWMutex
+	next uint64
+	list map[uint64]func() []string
+}{}
+
+func RegisterAPITokenScopeProvider(provider func() []string) func() {
+	if provider == nil {
+		return func() {}
+	}
+	apiTokenScopeProviders.Lock()
+	if apiTokenScopeProviders.list == nil {
+		apiTokenScopeProviders.list = map[uint64]func() []string{}
+	}
+	id := apiTokenScopeProviders.next
+	apiTokenScopeProviders.next++
+	apiTokenScopeProviders.list[id] = provider
+	apiTokenScopeProviders.Unlock()
+
+	return func() {
+		apiTokenScopeProviders.Lock()
+		delete(apiTokenScopeProviders.list, id)
+		apiTokenScopeProviders.Unlock()
+	}
+}
+
+func ResetAPITokenScopeProvidersForTest() {
+	apiTokenScopeProviders.Lock()
+	apiTokenScopeProviders.next = 0
+	apiTokenScopeProviders.list = nil
+	apiTokenScopeProviders.Unlock()
+}
+
+func allowedAPITokenScopes() []string {
+	scopes := append([]string(nil), coreAPITokenScopes...)
+	apiTokenScopeProviders.RLock()
+	providerIDs := make([]uint64, 0, len(apiTokenScopeProviders.list))
+	for id := range apiTokenScopeProviders.list {
+		providerIDs = append(providerIDs, id)
+	}
+	sort.Slice(providerIDs, func(i, j int) bool { return providerIDs[i] < providerIDs[j] })
+	providers := make([]func() []string, 0, len(providerIDs))
+	for _, id := range providerIDs {
+		providers = append(providers, apiTokenScopeProviders.list[id])
+	}
+	apiTokenScopeProviders.RUnlock()
+	seen := make(map[string]struct{}, len(scopes))
+	for _, scope := range scopes {
+		seen[scope] = struct{}{}
+	}
+	for _, provider := range providers {
+		for _, scope := range provider() {
+			scope = normalizeTokenScope(scope)
+			if scope == "" {
+				continue
+			}
+			if _, exists := seen[scope]; exists {
+				continue
+			}
+			seen[scope] = struct{}{}
+			scopes = append(scopes, scope)
+		}
+	}
+	return scopes
 }
 
 func (s *UserService) LoadTokens() ([]byte, error) {
@@ -202,7 +270,7 @@ func apiTokenScopeAllowed(scope string) bool {
 		return false
 	}
 	matched := 0
-	for _, allowed := range allowedAPITokenScopes {
+	for _, allowed := range allowedAPITokenScopes() {
 		matched |= common.ConstantTimeStringEqual(scope, allowed, maxAPITokenScopeLen)
 	}
 	return matched == 1

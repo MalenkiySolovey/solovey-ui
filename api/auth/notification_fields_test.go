@@ -11,7 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestTelegramRequestFieldsUseOnlyAllowedMetadata(t *testing.T) {
+func TestSecurityEventRequestFieldsUseOnlyAllowedMetadata(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	request := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
 	request.Header.Set("User-Agent", "Mozilla/5.0 test agent")
@@ -19,7 +19,7 @@ func TestTelegramRequestFieldsUseOnlyAllowedMetadata(t *testing.T) {
 	context.Request = request
 	handler := Handler{RemoteIP: func(*gin.Context) string { return "203.0.113.5" }}
 
-	fields := handler.telegramRequestFields(context)
+	fields := handler.securityEventRequestFields(context)
 	if len(fields) != 3 || fields["ip"] != "203.0.113.5" {
 		t.Fatalf("unexpected request fields: %#v", fields)
 	}
@@ -32,7 +32,7 @@ func TestTelegramRequestFieldsUseOnlyAllowedMetadata(t *testing.T) {
 	}
 	for _, forbidden := range []string{"user", "username", "reason", "error"} {
 		if _, ok := fields[forbidden]; ok {
-			t.Fatalf("forbidden field %q leaked into Telegram payload: %#v", forbidden, fields)
+			t.Fatalf("forbidden field %q leaked into notification payload: %#v", forbidden, fields)
 		}
 	}
 }

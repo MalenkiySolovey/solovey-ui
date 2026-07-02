@@ -2,9 +2,10 @@
 // only — request parsing, authentication, CSRF, and response shaping; business
 // logic lives in the service/ and internal/ layers.
 //
-// Each feature domain is a subpackage (auth, config, dbtransfer, importxui,
-// realtime, telemetry, telegram, remotesub) that exposes a Handler. The
-// Handler's cross-cutting dependencies (response writers, audit, login-user,
+// Core feature domains are subpackages (auth, config, dbtransfer, realtime,
+// telemetry, and similar) that expose a Handler. Optional domains live under
+// components/<id>/ and enter this layer through component route contributions.
+// Handler cross-cutting dependencies (response writers, audit, login-user,
 // token-scope checks) are injected as function fields, so a domain handler
 // never imports package api and stays unit-testable in isolation.
 //
@@ -19,8 +20,8 @@
 // weaken them. HTTP methods are security-relevant (CSRF guards POST, not GET),
 // so a route's method must never be changed as part of an unrelated refactor.
 //
-// Route registration is orchestrated from apiHandler.go. The experimental
-// paidsub admin module shows the target convention for a self-contained domain:
+// Route registration is orchestrated from apiHandler.go. Component route
+// packages follow the same target convention for a self-contained domain:
 //
 //	<domain>.RegisterRoutes(group, <domain>.Deps{...})
 //

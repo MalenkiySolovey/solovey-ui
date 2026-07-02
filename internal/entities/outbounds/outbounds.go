@@ -28,14 +28,10 @@ func GetAll(db *gorm.DB) (*[]map[string]interface{}, error) {
 	var data []map[string]interface{}
 	for _, outbound := range outbounds {
 		outData := map[string]interface{}{
-			"id":                  outbound.Id,
-			"sortOrder":           outbound.SortOrder,
-			"type":                outbound.Type,
-			"tag":                 outbound.Tag,
-			"remoteMissing":       outbound.RemoteMissing,
-			"remoteMissingReason": outbound.RemoteMissingReason,
-			"remoteMissingSince":  outbound.RemoteMissingSince,
-			"remoteMissingSource": outbound.RemoteMissingSource,
+			"id":        outbound.Id,
+			"sortOrder": outbound.SortOrder,
+			"type":      outbound.Type,
+			"tag":       outbound.Tag,
 		}
 		if outbound.Options != nil {
 			var restFields map[string]json.RawMessage
@@ -48,7 +44,7 @@ func GetAll(db *gorm.DB) (*[]map[string]interface{}, error) {
 		}
 		data = append(data, outData)
 	}
-	if err := annotateRemoteOutboundMetadata(db, data); err != nil {
+	if err := annotateMetadata(db, data); err != nil {
 		return nil, err
 	}
 	return &data, nil
@@ -62,17 +58,30 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 		return nil, err
 	}
 	directTag := DirectFallbackTag(db)
+	failoverRejectSupportAdded := false
 	for _, outbound := range rows {
-		var outboundJSON json.RawMessage
 		if outbound.Type == FailoverType {
-			outboundJSON, err = AssembleFailoverForCore(*outbound, directTag)
+			configs, err := AssembleFailoverOutboundsForCore(*outbound, directTag)
+			if err != nil {
+				return nil, err
+			}
+			for _, config := range configs {
+				if isFailoverRejectSupportConfig(config) {
+					if failoverRejectSupportAdded {
+						continue
+					}
+					failoverRejectSupportAdded = true
+				}
+				outboundsJSON = append(outboundsJSON, config)
+			}
+			continue
 		} else {
-			outboundJSON, err = outbound.MarshalJSON()
+			outboundJSON, err := outbound.MarshalJSON()
+			if err != nil {
+				return nil, err
+			}
+			outboundsJSON = append(outboundsJSON, outboundJSON)
 		}
-		if err != nil {
-			return nil, err
-		}
-		outboundsJSON = append(outboundsJSON, outboundJSON)
 	}
 	return outboundsJSON, nil
 }
@@ -169,7 +178,7 @@ func saveDelete(tx *gorm.DB, data json.RawMessage) (*singboxapply.Change, error)
 	if len(refs) > 0 {
 		return nil, tagrefs.FormatError("outbound", tag, refs)
 	}
-	if err := UnsyncRemoteConnections(tx, tag); err != nil {
+	if err := runDeleteHooks(tx, tag); err != nil {
 		return nil, err
 	}
 	if err := tx.Where("tag = ?", tag).Delete(model.Outbound{}).Error; err != nil {
@@ -184,26 +193,6 @@ func IDByTag(tx *gorm.DB, tag string) (uint, error) {
 	return id, err
 }
 
-func UnsyncRemoteConnections(tx *gorm.DB, tag string) error {
-	var linkedConnections []model.RemoteOutboundConnection
-	if err := tx.Where("outbound_tag = ?", tag).Find(&linkedConnections).Error; err != nil {
-		return err
-	}
-	for _, connection := range linkedConnections {
-		if err := tx.Model(&model.RemoteOutboundGroup{}).
-			Where("outbound_enabled = ? AND id IN (SELECT group_id FROM remote_outbound_group_connections WHERE connection_id = ?)", true, connection.Id).
-			Update("outbound_enabled", false).Error; err != nil {
-			return err
-		}
-	}
-	return tx.Model(&model.RemoteOutboundConnection{}).
-		Where("outbound_tag = ?", tag).
-		Updates(map[string]any{
-			"synced":      false,
-			"outbound_id": nil,
-		}).Error
-}
-
 func Restart(tx *gorm.DB, ids []uint, core Core) error {
 	if core == nil || !core.IsRunning() {
 		return nil
@@ -212,22 +201,35 @@ func Restart(tx *gorm.DB, ids []uint, core Core) error {
 	if err := tx.Model(model.Outbound{}).Where("id IN ?", ids).Find(&rows).Error; err != nil {
 		return err
 	}
+	failoverRejectSupportAdded := false
 	for _, outbound := range rows {
 		if err := core.RemoveOutbound(outbound.Tag); err != nil && err != os.ErrInvalid {
 			return err
 		}
-		var outboundConfig json.RawMessage
-		var err error
+		var outboundConfigs []json.RawMessage
 		if outbound.Type == FailoverType {
-			outboundConfig, err = AssembleFailoverForCore(*outbound, DirectFallbackTag(tx))
+			configs, err := AssembleFailoverOutboundsForCore(*outbound, DirectFallbackTag(tx))
+			if err != nil {
+				return err
+			}
+			outboundConfigs = configs
 		} else {
-			outboundConfig, err = outbound.MarshalJSON()
+			config, err := outbound.MarshalJSON()
+			if err != nil {
+				return err
+			}
+			outboundConfigs = []json.RawMessage{config}
 		}
-		if err != nil {
-			return err
-		}
-		if err := core.AddOutbound(outboundConfig); err != nil {
-			return err
+		for _, outboundConfig := range outboundConfigs {
+			if isFailoverRejectSupportConfig(outboundConfig) {
+				if failoverRejectSupportAdded {
+					continue
+				}
+				failoverRejectSupportAdded = true
+			}
+			if err := core.AddOutbound(outboundConfig); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
@@ -243,96 +245,4 @@ func RemoveFromCore(tags []string, core Core) error {
 		}
 	}
 	return nil
-}
-
-func annotateRemoteOutboundMetadata(tx *gorm.DB, outbounds []map[string]interface{}) error {
-	if len(outbounds) == 0 {
-		return nil
-	}
-	ids := make([]uint, 0, len(outbounds))
-	tags := make([]string, 0, len(outbounds))
-	byID := map[uint]map[string]interface{}{}
-	byTag := map[string]map[string]interface{}{}
-	for index := range outbounds {
-		id := uintFromInterface(outbounds[index]["id"])
-		tag, _ := outbounds[index]["tag"].(string)
-		if id != 0 {
-			ids = append(ids, id)
-			byID[id] = outbounds[index]
-		}
-		if tag != "" {
-			tags = append(tags, tag)
-			byTag[tag] = outbounds[index]
-		}
-	}
-	var rows []struct {
-		OutboundId       *uint
-		OutboundTag      string
-		ConnectionName   string
-		SubscriptionName string
-		GroupName        string
-	}
-	if err := tx.Table("remote_outbound_connections").
-		Select("remote_outbound_connections.outbound_id, remote_outbound_connections.outbound_tag, remote_outbound_connections.name AS connection_name, remote_outbound_subscriptions.name AS subscription_name, remote_outbound_groups.name AS group_name").
-		Joins("LEFT JOIN remote_outbound_subscriptions ON remote_outbound_subscriptions.id = remote_outbound_connections.subscription_id").
-		Joins("LEFT JOIN remote_outbound_group_connections ON remote_outbound_group_connections.connection_id = remote_outbound_connections.id").
-		Joins("LEFT JOIN remote_outbound_groups ON remote_outbound_groups.id = remote_outbound_group_connections.group_id").
-		Where("remote_outbound_connections.synced = ?", true).
-		Where("remote_outbound_connections.outbound_id IN ? OR remote_outbound_connections.outbound_tag IN ?", ids, tags).
-		Scan(&rows).Error; err != nil {
-		return err
-	}
-	for _, row := range rows {
-		target := map[string]interface{}(nil)
-		if row.OutboundId != nil {
-			target = byID[*row.OutboundId]
-		}
-		if target == nil {
-			target = byTag[row.OutboundTag]
-		}
-		if target == nil {
-			continue
-		}
-		target["remoteOutboundManaged"] = true
-		if row.ConnectionName != "" {
-			target["remoteOutboundConnection"] = row.ConnectionName
-		}
-		if row.SubscriptionName != "" {
-			target["remoteOutboundSubscription"] = row.SubscriptionName
-		}
-		if row.GroupName != "" {
-			target["remoteOutboundGroups"] = appendUniqueStringInterface(target["remoteOutboundGroups"], row.GroupName)
-		}
-	}
-	return nil
-}
-
-func uintFromInterface(value interface{}) uint {
-	switch v := value.(type) {
-	case uint:
-		return v
-	case int:
-		if v > 0 {
-			return uint(v)
-		}
-	case int64:
-		if v > 0 {
-			return uint(v)
-		}
-	case float64:
-		if v > 0 {
-			return uint(v)
-		}
-	}
-	return 0
-}
-
-func appendUniqueStringInterface(value interface{}, next string) []string {
-	existing, _ := value.([]string)
-	for _, item := range existing {
-		if item == next {
-			return existing
-		}
-	}
-	return append(existing, next)
 }

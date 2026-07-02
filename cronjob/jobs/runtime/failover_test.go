@@ -60,6 +60,26 @@ func TestFailoverJobAllDownUsesDirect(t *testing.T) {
 	}
 }
 
+func TestFailoverJobAllDownUsesConfiguredFinal(t *testing.T) {
+	now := time.Unix(1000, 0)
+	active := "a"
+	var switches []string
+	job := newTestFailoverJob(func() time.Time { return now }, func(string) bool { return false }, &active, &switches)
+	group := entityoutbounds.FailoverGroup{
+		Tag:         "g",
+		Members:     []string{"a", "b"},
+		FinalTag:    "backup-final",
+		ProbeTarget: "https://example.com",
+		Interval:    30 * time.Second,
+		Hysteresis:  2,
+		Enabled:     true,
+	}
+	job.runGroup(nil, group, "direct")
+	if len(switches) != 1 || switches[0] != "backup-final" {
+		t.Fatalf("switches = %v, want [backup-final]", switches)
+	}
+}
+
 func TestFailoverJobDisabledGroupIsSkipped(t *testing.T) {
 	now := time.Unix(1000, 0)
 	active := "a"

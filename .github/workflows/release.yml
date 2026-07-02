@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v1.5.7-solovey.1"
+        default: "v2026.2.0"
         type: string
   push:
     tags:
@@ -30,7 +30,7 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Shell syntax
-        run: bash -n install.sh solovey-ui.sh scripts/release-package-linux.sh scripts/server-smoke-debian.sh tests/installer/install-update.sh tests/installer/migrate-from-sui.sh tests/installer/rollback.sh tests/installer/release-package.sh tests/installer/manager-cookie-key.sh
+        run: bash -n install.sh solovey-ui.sh scripts/release-package-linux.sh scripts/release-package-components.sh scripts/server-smoke-debian.sh tests/installer/install-update.sh tests/installer/migrate-from-sui.sh tests/installer/rollback.sh tests/installer/release-package.sh tests/installer/manager-cookie-key.sh
 
       - name: release package integration
         run: bash tests/installer/release-package.sh
@@ -73,6 +73,15 @@ jobs:
         working-directory: frontend
         run: npm ci
 
+      - name: Frontend utility script syntax
+        run: |
+          node --check scripts/component-frontend-manifest.mjs
+          node --check scripts/check-frontend-profile.mjs
+          node --check scripts/extract-component-frontend.mjs
+          node --check scripts/generate-component-imports.mjs
+          node --check scripts/release-manifest.mjs
+          node --check scripts/write-component-installed-metadata.mjs
+
       - name: Frontend lint
         working-directory: frontend
         run: npm run lint
@@ -81,21 +90,84 @@ jobs:
         working-directory: frontend
         run: npm run test
 
-      - name: Build frontend
+      - name: Build full frontend
         working-directory: frontend
-        run: npm run build
+        run: SOLOVEY_UI_PROFILE=full npm run build
 
-      - name: Upload frontend build artifact
+      - name: Check full frontend profile
+        run: node scripts/check-frontend-profile.mjs --profile full --dist frontend/dist
+
+      - name: Extract optional component frontend packs
+        run: node scripts/extract-component-frontend.mjs --dist frontend/dist --components-dir components --out-dir .release/components --prune-dist
+
+      - name: Upload full frontend build artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: frontend-dist
+          name: frontend-dist-full
           path: frontend/dist/
           retention-days: 1
+
+      - name: Upload component frontend packs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: component-frontend-packs
+          path: .release/components/
+          retention-days: 1
+
+      - name: Build core frontend
+        working-directory: frontend
+        run: SOLOVEY_UI_PROFILE=core npm run build
+
+      - name: Check core frontend profile
+        run: node scripts/check-frontend-profile.mjs --profile core --dist frontend/dist
+
+      - name: Upload core frontend build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: frontend-dist-core
+          path: frontend/dist/
+          retention-days: 1
+
+  component-profile-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Generate backend component imports
+        run: node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
+
+      - name: Component profile tests
+        run: |
+          go test -p 1 -count=1 ./internal/components/... ./components/... ./api ./app ./web
+          go test -p 1 -tags minimal -count=1 ./internal/components/... ./api ./app ./web
+
+      - name: Minimal dependency boundary
+        run: |
+          set -euo pipefail
+          if go list -tags minimal -deps ./app | grep -E 'github.com/MalenkiySolovey/solovey-ui/(components|api/remotesub|paidsub|api/telegram|service/remote_outbound|internal/subscriptions/remote|cronjob/jobs/notifications)'; then
+            echo "minimal app depends on optional backend packages" >&2
+            exit 1
+          fi
+
+      - name: Core profile build
+        run: go build -tags minimal -o /tmp/solovey-ui-core main.go
 
   build-linux:
     name: Build-${{ matrix.platform }}
     needs:
       - build-frontend
+      - component-profile-checks
       - test-installer
     strategy:
       fail-fast: false
@@ -113,17 +185,28 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
-      - name: Download frontend build artifact
+      - name: Download full frontend build artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: frontend-dist
-          path: web/html
+          name: frontend-dist-full
+          path: .release/frontend-full
+
+      - name: Download core frontend build artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: frontend-dist-core
+          path: .release/frontend-core
 
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           cache: false
           go-version-file: go.mod
+
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
 
       - name: Clone cronet-go (naive platforms)
         if: matrix.naive
@@ -209,31 +292,62 @@ jobs:
             echo "CGO_LDFLAGS=--sysroot=$SYSROOT -static" >> $GITHUB_ENV
           fi
 
-      - name: Build Solovey UI
+      - name: Build Solovey UI profiles
         run: |
           set -e
+          node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
           BUILD_TAGS="with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale"
           [ "${{ matrix.naive }}" = "true" ] && BUILD_TAGS="${BUILD_TAGS},with_naive_outbound,with_musl"
+          rm -rf web/html
+          mkdir -p web/html
+          cp -a .release/frontend-full/. web/html/
           go build -ldflags="-w -s -checklinkname=0 -linkmode external -extldflags '-static' -X github.com/MalenkiySolovey/solovey-ui/config/update.ArtifactPlatform=${{ matrix.platform }}" -tags "$BUILD_TAGS" -o solovey-ui main.go
+          rm -rf web/html
+          mkdir -p web/html
+          cp -a .release/frontend-core/. web/html/
+          go build -ldflags="-w -s -checklinkname=0 -linkmode external -extldflags '-static' -X github.com/MalenkiySolovey/solovey-ui/config/update.ArtifactPlatform=${{ matrix.platform }}" -tags "${BUILD_TAGS},minimal" -o solovey-ui-core main.go
           file solovey-ui
+          file solovey-ui-core
           ldd solovey-ui 2>/dev/null || echo "Static binary confirmed"
+          ldd solovey-ui-core 2>/dev/null || echo "Static core binary confirmed"
           {
             echo "app=solovey-ui"
+            echo "profile=full"
             echo "version=${{ steps.build_meta.outputs.panel_version }}"
             echo "commit=${GITHUB_SHA}"
             echo "platform=linux/${{ matrix.platform }}"
             echo "go=$(go version)"
             echo "sing_box=${{ steps.build_meta.outputs.sing_box_version }}"
-          } > BUILD_INFO.txt
+          } > BUILD_INFO.full.txt
+          {
+            echo "app=solovey-ui"
+            echo "profile=core"
+            echo "version=${{ steps.build_meta.outputs.panel_version }}"
+            echo "commit=${GITHUB_SHA}"
+            echo "platform=linux/${{ matrix.platform }}"
+            echo "go=$(go version)"
+            echo "sing_box=${{ steps.build_meta.outputs.sing_box_version }}"
+          } > BUILD_INFO.core.txt
 
-      - name: Package
+      - name: Package full profile
         run: |
           bash scripts/release-package-linux.sh \
             --target linux-${{ matrix.platform }} \
             --binary ./solovey-ui \
             --manager ./solovey-ui.sh \
             --service ./solovey-ui.service \
-            --build-info ./BUILD_INFO.txt \
+            --build-info ./BUILD_INFO.full.txt \
+            --out-dir .
+
+      - name: Package core profile
+        run: |
+          bash scripts/release-package-linux.sh \
+            --profile core \
+            --target linux-${{ matrix.platform }} \
+            --binary ./solovey-ui-core \
+            --manager ./solovey-ui.sh \
+            --service ./solovey-ui.service \
+            --build-info ./BUILD_INFO.core.txt \
             --out-dir .
 
       - name: Upload build artifact
@@ -243,6 +357,8 @@ jobs:
           path: |
             ./solovey-ui-linux-${{ matrix.platform }}.tar.gz
             ./solovey-ui-linux-${{ matrix.platform }}.tar.gz.sha256
+            ./solovey-ui-core-linux-${{ matrix.platform }}.tar.gz
+            ./solovey-ui-core-linux-${{ matrix.platform }}.tar.gz.sha256
           retention-days: 1
 
   publish-linux:
@@ -279,12 +395,26 @@ jobs:
             echo "notes_path=" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Download component frontend packs
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: component-frontend-packs
+          path: .release/components
+
+      - name: Package component bundle
+        run: |
+          mkdir -p release-assets
+          bash scripts/release-package-components.sh --components-dir .release/components --out-dir release-assets
+
       - name: Download Linux build artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: solovey-ui-linux-*
           path: release-assets
           merge-multiple: true
+
+      - name: Generate release manifest
+        run: node scripts/release-manifest.mjs --version "${{ steps.vars.outputs.version }}" --assets-dir release-assets --components-dir .release/components
 
       - name: Publish to current repository Release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3

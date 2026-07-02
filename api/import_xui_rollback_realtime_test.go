@@ -1,3 +1,5 @@
+//go:build !minimal
+
 package api
 
 import (
@@ -60,7 +62,7 @@ func TestImportXuiRollbackPublishesConfigInvalidatedIssue39(t *testing.T) {
 	flushAPIAudit(t)
 
 	var event model.AuditEvent
-	if err := dbsqlite.DB().Where("event = ?", "xui_import_rollback").Order("id desc").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "panel_import_rollback").Order("id desc").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Resource != "database" || event.Severity != service.AuditSeverityWarn {

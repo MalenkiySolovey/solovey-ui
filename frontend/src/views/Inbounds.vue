@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <component
     :is="EntityForm"
     v-model="modal.visible"
@@ -193,10 +193,10 @@ import { useI18n } from 'vue-i18n'
 import { createInbound, Inbound } from '@/types/inbounds'
 import RandomUtil from '@/plugins/randomUtil'
 import { useUiMode } from '@/uiMode/useUiMode'
-import { useManualDrag, type ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
-import type { ManualSortDirection } from '@/shared/composables/dragSelection/manualReorder'
+import { useManualDrag, type ManualDropPosition } from '@/shared/dnd/manualDrag'
+import type { ManualSortDirection } from '@/shared/dnd/manualReorder'
 import { usePendingManualOrder } from '@/shared/composables/usePendingManualOrder'
-import { useBulkSelection } from '@/shared/composables/dragSelection/bulkSelection'
+import { useBulkSelection } from '@/shared/dnd/bulkSelection'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
 
 const { mode } = useUiMode()

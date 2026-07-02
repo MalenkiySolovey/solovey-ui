@@ -60,8 +60,20 @@ done
 
 [[ -n "${out}" ]] || { echo "fake curl requires -o" >&2; exit 2; }
 case "${url}" in
-    *.tar.gz.sha256) cp "${FIXTURE_SHA}" "${out}" ;;
-    *.tar.gz) cp "${FIXTURE_TAR}" "${out}" ;;
+    *.tar.gz.sha256)
+        if [[ "${url}" == *"/solovey-ui-components.tar.gz.sha256" ]]; then
+            cp "${FIXTURE_COMPONENTS_SHA}" "${out}"
+        else
+            cp "${FIXTURE_SHA}" "${out}"
+        fi
+        ;;
+    *.tar.gz)
+        if [[ "${url}" == *"/solovey-ui-components.tar.gz" ]]; then
+            cp "${FIXTURE_COMPONENTS_TAR}" "${out}"
+        else
+            cp "${FIXTURE_TAR}" "${out}"
+        fi
+        ;;
     *) echo "unexpected fake curl URL: ${url}" >&2; exit 3 ;;
 esac
 SH
@@ -117,6 +129,7 @@ SH
 create_release_fixture() {
     local release_dir="${FIXTURE}/release/solovey-ui"
     local artifact="${FIXTURE}/solovey-ui-linux-amd64.tar.gz"
+    local components_artifact="${FIXTURE}/solovey-ui-components.tar.gz"
 
     mkdir -p "${release_dir}"
     cat > "${release_dir}/solovey-ui" <<'SH'
@@ -140,6 +153,16 @@ INFO
 
     tar -czf "${artifact}" -C "${FIXTURE}/release" solovey-ui
     (cd "${FIXTURE}" && sha256sum "$(basename "${artifact}")" > "$(basename "${artifact}").sha256")
+
+    mkdir -p \
+        "${FIXTURE}/components/remote-outbound-subscriptions" \
+        "${FIXTURE}/components/telegram" \
+        "${FIXTURE}/components/paid-subscriptions"
+    printf '{"id":"remote-outbound-subscriptions","delivery":"in-process"}\n' > "${FIXTURE}/components/remote-outbound-subscriptions/component.json"
+    printf '{"id":"telegram","delivery":"in-process"}\n' > "${FIXTURE}/components/telegram/component.json"
+    printf '{"id":"paid-subscriptions","delivery":"in-process"}\n' > "${FIXTURE}/components/paid-subscriptions/component.json"
+    tar -czf "${components_artifact}" -C "${FIXTURE}" components
+    (cd "${FIXTURE}" && sha256sum "$(basename "${components_artifact}")" > "$(basename "${components_artifact}").sha256")
 }
 
 create_legacy_fixture() {
@@ -163,6 +186,8 @@ run_installer() {
     PATH="${FAKEBIN}:${PATH}" \
     FIXTURE_TAR="${FIXTURE}/solovey-ui-linux-amd64.tar.gz" \
     FIXTURE_SHA="${FIXTURE}/solovey-ui-linux-amd64.tar.gz.sha256" \
+    FIXTURE_COMPONENTS_TAR="${FIXTURE}/solovey-ui-components.tar.gz" \
+    FIXTURE_COMPONENTS_SHA="${FIXTURE}/solovey-ui-components.tar.gz.sha256" \
     TEST_INSTALLER_LOG="${LOG_DIR}" \
     SOLOVEY_UI_ALLOW_NON_ROOT=1 \
     SOLOVEY_UI_GITHUB_RELEASES="https://example.invalid/releases/download" \

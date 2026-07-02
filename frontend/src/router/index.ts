@@ -4,6 +4,7 @@ import Login from '@/views/Login.vue'
 import Data from '@/store/modules/data'
 import Ws from '@/store/ws'
 import { getBaseUrl } from '@/plugins/base-url'
+import { syncEnabledComponents } from '@/componentSystem/loader'
 
 const routes = [
   {
@@ -13,6 +14,7 @@ const routes = [
   },
   {
     path: '/',
+    name: 'main',
     component: () => import('@/layouts/AuthenticatedHost.vue'),
     meta: { requiresAuth: true },
     children: [
@@ -35,12 +37,6 @@ const routes = [
         path: '/outbounds',
         name: 'pages.outbounds',
         component: () => import('@/views/Outbounds.vue'),
-      },
-      {
-        path: '/remote-subscriptions',
-        name: 'pages.remoteOutboundSubscriptions',
-        alias: '/remote-outbound-subscriptions',
-        component: () => import('@/views/RemoteOutboundSubscriptions.vue'),
       },
       {
         path: '/services',
@@ -80,31 +76,6 @@ const routes = [
         path: '/admins',
         name: 'pages.admins',
         component: () => import('@/views/Admins.vue'),
-      },
-      {
-        path: '/telegram',
-        name: 'pages.telegram',
-        component: () => import('@/views/TelegramSettings.vue'),
-      },
-      {
-        path: '/audit',
-        name: 'pages.audit',
-        component: () => import('@/views/Audit.vue'),
-      },
-      {
-        path: '/diagnostics',
-        name: 'pages.diagnostics',
-        component: () => import('@/views/Diagnostics.vue'),
-      },
-      {
-        path: '/migrate-xui',
-        name: 'pages.migrateXui',
-        component: () => import('@/views/MigrateXui.vue'),
-      },
-      {
-        path: '/paid-subscriptions',
-        name: 'pages.paidSub',
-        component: () => import('@/views/paidsub/PaidSubscriptions.vue'),
       },
       {
         path: '/settings',
@@ -171,10 +142,30 @@ let intervalId: any
 // guard below only handles the UX detail of pulling fresh data on first
 // navigation to a protected page and stopping the polling timer when we
 // land on /login.
-router.beforeEach((to) => {
+router.beforeEach(async (to) => {
+  const data = Data()
   if (to.path !== '/login') {
     loadDataInterval()
     Ws().connect()
+    if (!data.componentsLoaded) {
+      try {
+        await data.loadData()
+      } catch {
+        // Keep navigation usable; API/auth errors are handled by HttpUtils.
+      }
+    }
+    await syncEnabledComponents(router)
+    const resolved = router.resolve(to.fullPath)
+    const componentId = to.meta.componentId as string | undefined
+    if (to.matched.length === 0 && resolved.matched.length > 0) {
+      return to.fullPath
+    }
+    if (to.matched.length === 0) {
+      return '/'
+    }
+    if (componentId && !resolved.matched.some(record => record.meta.componentId === componentId)) {
+      return '/'
+    }
   } else if (intervalId) {
     clearInterval(intervalId)
     intervalId = undefined

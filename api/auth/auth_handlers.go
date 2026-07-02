@@ -22,7 +22,7 @@ func (a *Handler) Login(c *gin.Context) {
 		})
 		// Real-time alert on the lockout transition (T1110): brute-force reaching
 		// the per-IP block is a high-signal admin-compromise indicator.
-		a.TelegramService.NotifyTelegramEvent("login_blocked", a.telegramRequestFields(c))
+		a.NotifyEvent("login_blocked", a.securityEventRequestFields(c))
 		a.JSONMsg(c, "", err)
 		return
 	}
@@ -44,7 +44,7 @@ func (a *Handler) Login(c *gin.Context) {
 		a.Audit(c, username, "login_failed", "auth", service.AuditSeverityWarn, map[string]any{
 			"reason": err.Error(),
 		})
-		a.TelegramService.NotifyTelegramEvent("login_failed", a.telegramRequestFields(c))
+		a.NotifyEvent("login_failed", a.securityEventRequestFields(c))
 		a.JSONMsg(c, "", err)
 		return
 	}
@@ -65,7 +65,7 @@ func (a *Handler) Login(c *gin.Context) {
 	if err == nil {
 		logger.Info("user ", loginUser, " login success")
 		a.Audit(c, loginUser, "login_success", "auth", service.AuditSeverityInfo, nil)
-		a.TelegramService.NotifyTelegramEvent("login_success", map[string]string{
+		a.NotifyEvent("login_success", map[string]string{
 			"user": loginUser,
 			"ip":   remoteIP,
 		})
@@ -97,7 +97,7 @@ func (a *Handler) LogoutAllAdmins(c *gin.Context) {
 			logger.Infof("user %s logged out all admin web sessions", loginUser)
 		}
 		a.Audit(c, loginUser, "logout_all_admins", "auth", service.AuditSeverityWarn, nil)
-		a.TelegramService.NotifyTelegramEvent("logout_all_admins", map[string]string{
+		a.NotifyEvent("logout_all_admins", map[string]string{
 			"user": loginUser,
 		})
 		a.ClearSession(c)

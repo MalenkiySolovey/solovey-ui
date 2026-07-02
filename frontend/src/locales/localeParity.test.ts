@@ -25,9 +25,35 @@ const flatten = (obj: Record<string, unknown>, prefix = ''): string[] => {
   return out
 }
 
+const withOptionalMessages = (
+  base: Record<string, unknown>,
+  ...optional: Record<string, unknown>[]
+) => ({
+  ...base,
+  ...Object.assign({}, ...optional),
+})
+
+const componentLocaleModules = import.meta.glob('../../../components/*/frontend/locales/*.ts', {
+  eager: true,
+  import: 'default',
+}) as Record<string, Record<string, unknown>>
+
+const componentMessagesFor = (locale: string): Record<string, unknown>[] =>
+  Object.entries(componentLocaleModules)
+    .filter(([path]) => path.endsWith(`/locales/${locale}.ts`))
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([, messages]) => messages)
+
+const enFull = withOptionalMessages(en, ...componentMessagesFor('en'))
+const faFull = withOptionalMessages(fa, ...componentMessagesFor('fa'))
+const ruFull = withOptionalMessages(ru, ...componentMessagesFor('ru'))
+const viFull = withOptionalMessages(vi, ...componentMessagesFor('vi'))
+const zhcnFull = withOptionalMessages(zhcn, ...componentMessagesFor('zhcn'))
+const zhtwFull = withOptionalMessages(zhtw, ...componentMessagesFor('zhtw'))
+
 describe('en/ru locale key parity', () => {
-  const enKeys = new Set(flatten(en as Record<string, unknown>))
-  const ruKeys = new Set(flatten(ru as Record<string, unknown>))
+  const enKeys = new Set(flatten(enFull as Record<string, unknown>))
+  const ruKeys = new Set(flatten(ruFull as Record<string, unknown>))
 
   it('ru defines every key en defines', () => {
     const missing = [...enKeys].filter((k) => !ruKeys.has(k)).sort()
@@ -41,10 +67,10 @@ describe('en/ru locale key parity', () => {
 })
 
 describe('fully translated feature namespaces', () => {
-  const source = en as Record<string, unknown>
+  const source = enFull as Record<string, unknown>
   const namespaces = ['remoteOutbound', 'paidSub']
   const expected = new Set(flatten(Object.fromEntries(namespaces.map((key) => [key, source[key]]))))
-  const locales = { fa, vi, zhcn, zhtw }
+  const locales = { fa: faFull, vi: viFull, zhcn: zhcnFull, zhtw: zhtwFull }
 
   for (const [locale, messages] of Object.entries(locales)) {
     it(`${locale} defines every subscription key`, () => {
@@ -58,13 +84,20 @@ describe('fully translated feature namespaces', () => {
 })
 
 describe('ported UX translations', () => {
-  const locales = { en, fa, ru, vi, zhcn, zhtw }
-  const paths = [
+  const locales = { en: enFull, fa: faFull, ru: ruFull, vi: viFull, zhcn: zhcnFull, zhtw: zhtwFull }
+  const corePaths = [
     'basic.hint',
     'rule.action',
     'setting.hint',
-    'telegram.hint',
   ]
+  const componentHintPaths = Object.entries(enFull as Record<string, unknown>)
+    .filter(([, value]) => value && typeof value === 'object' && !Array.isArray(value))
+    .filter(([, value]) => {
+      const hint = (value as Record<string, unknown>).hint
+      return hint && typeof hint === 'object' && !Array.isArray(hint)
+    })
+    .map(([key]) => `${key}.hint`)
+  const paths = [...corePaths, ...componentHintPaths]
 
   const pick = (messages: Record<string, unknown>, path: string) => {
     return path.split('.').reduce<unknown>((value, key) => {
@@ -74,8 +107,8 @@ describe('ported UX translations', () => {
   }
 
   const expected = new Set(paths.flatMap((path) => {
-    const value = pick(en as Record<string, unknown>, path) as Record<string, unknown>
-    return flatten(value, path)
+    const value = pick(enFull as Record<string, unknown>, path) as Record<string, unknown> | undefined
+    return flatten(value ?? {}, path)
   }))
 
   for (const [locale, messages] of Object.entries(locales)) {

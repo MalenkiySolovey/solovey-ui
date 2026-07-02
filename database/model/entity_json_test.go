@@ -47,3 +47,23 @@ func TestOutboundEndpointUnmarshalTagNoPanic(t *testing.T) {
 		})
 	}
 }
+
+func TestOutboundUnmarshalStripsRegisteredComponentOptionKeys(t *testing.T) {
+	unregister := RegisterOutboundOptionStripKeys("test-component", "componentManaged")
+	t.Cleanup(unregister)
+
+	var outbound Outbound
+	if err := json.Unmarshal([]byte(`{"type":"direct","tag":"direct","componentManaged":true,"server":"example.com"}`), &outbound); err != nil {
+		t.Fatal(err)
+	}
+	var options map[string]any
+	if err := json.Unmarshal(outbound.Options, &options); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := options["componentManaged"]; ok {
+		t.Fatalf("registered component option key leaked into Options: %s", outbound.Options)
+	}
+	if options["server"] != "example.com" {
+		t.Fatalf("regular option was removed: %s", outbound.Options)
+	}
+}

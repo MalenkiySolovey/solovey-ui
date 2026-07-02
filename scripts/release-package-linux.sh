@@ -11,6 +11,7 @@ service="${APP_NAME}.service"
 build_info="BUILD_INFO.txt"
 out_dir="dist/release"
 package_tmp_dir=""
+profile="full"
 
 usage() {
     cat <<EOF
@@ -25,6 +26,7 @@ Options:
   --manager <path>      Manager script path. Default: ./${APP_NAME}.sh
   --service <path>      systemd service path. Default: ./${APP_NAME}.service
   --build-info <path>   BUILD_INFO.txt path. Default: ./BUILD_INFO.txt
+  --profile <full|core> Artifact profile. Default: full.
   --out-dir <path>      Output directory. Default: ./dist/release
   --help, -h            Show this help.
 EOF
@@ -61,6 +63,11 @@ parse_args() {
             --build-info)
                 [[ $# -ge 2 ]] || fail "$1 requires a value"
                 build_info="$2"
+                shift 2
+                ;;
+            --profile)
+                [[ $# -ge 2 ]] || fail "$1 requires a value"
+                profile="$2"
                 shift 2
                 ;;
             --out-dir)
@@ -105,6 +112,10 @@ validate_inputs() {
         linux-*) ;;
         *) fail "--target must look like linux-<arch>: ${target}" ;;
     esac
+    case "${profile}" in
+        full|core) ;;
+        *) fail "--profile must be full or core: ${profile}" ;;
+    esac
 
     command -v tar >/dev/null 2>&1 || fail "tar is required"
     command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
@@ -115,6 +126,7 @@ validate_inputs() {
     require_file "build metadata" "${build_info}"
 
     grep -Eq "^app=${APP_NAME}$" "${build_info}" || fail "BUILD_INFO.txt app must be ${APP_NAME}"
+    grep -Eq "^profile=${profile}$" "${build_info}" || fail "BUILD_INFO.txt profile must be ${profile}"
     require_build_key version
     require_build_key commit
     require_build_key platform
@@ -129,7 +141,11 @@ package_release() {
     package_tmp_dir="${tmp_dir}"
     trap 'rm -rf "${package_tmp_dir:-}"' EXIT
     payload="${tmp_dir}/${APP_NAME}"
-    artifact="${APP_NAME}-${target}.tar.gz"
+    if [[ "${profile}" == "core" ]]; then
+        artifact="${APP_NAME}-core-${target}.tar.gz"
+    else
+        artifact="${APP_NAME}-${target}.tar.gz"
+    fi
     checksum="${artifact}.sha256"
 
     mkdir -p "${payload}" "${out_dir}"

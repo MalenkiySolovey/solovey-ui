@@ -15,7 +15,7 @@ import (
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/internal/integrations/telegram"
+	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	gormsqlite "gorm.io/driver/sqlite"
@@ -39,11 +39,11 @@ func TestIntegrationBackupEnvelopeRestorePreservesBackupTableCounts(t *testing.T
 		t.Fatal(err)
 	}
 	passphrase := []byte("correct horse battery staple")
-	envelope, err := integrationtelegram.BuildTelegramBackupEnvelope(backup, passphrase)
+	envelope, err := backupenvelope.Build(backup, passphrase)
 	if err != nil {
 		t.Fatal(err)
 	}
-	plaintext, err := integrationtelegram.OpenTelegramBackupEnvelope(envelope, passphrase)
+	plaintext, err := backupenvelope.Open(envelope, passphrase)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -1,6 +1,9 @@
 package api
 
-import confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
+import (
+	confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
+	"github.com/MalenkiySolovey/solovey-ui/service"
+)
 
 func (a *ApiService) configHandler() *confighttp.Handler {
 	return confighttp.NewHandler(a.configDeps())
@@ -19,9 +22,9 @@ func (a *ApiService) configDeps() confighttp.Deps {
 		OutboundService:  a.OutboundService,
 		EndpointService:  a.EndpointService,
 		ServicesService:  a.ServicesService,
-		TelegramService:  a.TelegramService,
 		StatsService:     a.StatsService,
 		ServerService:    a.ServerService,
+		NotifyEvent:      service.NotifyPanelEvent,
 		RequireScope:     a.requireTokenScopeAny,
 		Actor:            requestActor,
 		Hostname:         getHostname,

@@ -35,9 +35,9 @@ func (a *Handler) getPlainDb(c *gin.Context, request databaseBackupRequest) {
 		"channel": "download",
 		"exclude": request.Exclude,
 	})
-	// Real-time alert on config exfiltration (T1530): a full DB export is one of
-	// the highest-signal admin-compromise events.
-	a.TelegramService.NotifyTelegramEvent("db_exported", map[string]string{
+	// A full DB export is one of the highest-signal admin-compromise events;
+	// optional notification components can subscribe to this panel event.
+	a.NotifyEvent("db_exported", map[string]string{
 		"actor": a.Actor(c),
 		"ip":    a.RemoteIP(c),
 	})

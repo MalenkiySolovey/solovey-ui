@@ -82,14 +82,6 @@ func (s *SettingService) GetSubXrayEnable() (bool, error) {
 	return s.getBool(settingKeySubXrayEnable)
 }
 
-func (s *SettingService) GetSubRemoteGroupAdaptation() (string, error) {
-	return s.getString(settingKeySubRemoteGroupAdaptation)
-}
-
-func (s *SettingService) GetSubRemoteConversionPolicy() (string, error) {
-	return s.getString(settingKeySubRemoteConversionPolicy)
-}
-
 func (s *SettingService) GetSubJsonPath() (string, error) {
 	return s.getNormalizedSubPath(settingKeySubJsonPath)
 }

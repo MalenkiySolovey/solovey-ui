@@ -5,7 +5,6 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
-	remotesub "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/remote"
 	netentitysvc "github.com/MalenkiySolovey/solovey-ui/service/netentity"
 
 	"gorm.io/gorm"
@@ -76,7 +75,7 @@ func (s *OutboundService) SaveWithCoreChange(tx *gorm.DB, action string, data js
 	if err != nil {
 		return nil, err
 	}
-	if _, err := remotesub.ReconcileOutboundLinks(tx); err != nil {
+	if err := runOutboundSaveHooks(tx); err != nil {
 		return nil, err
 	}
 	return change, nil

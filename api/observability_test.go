@@ -1,3 +1,5 @@
+//go:build !minimal
+
 package api
 
 import (
@@ -8,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	observabilityhttp "github.com/MalenkiySolovey/solovey-ui/components/observability-extra/api"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -37,7 +40,7 @@ func TestGetObservabilityHistoryFiltersMetricBucketAndSince(t *testing.T) {
 	}
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/observability/history", withTestTokenScope("observer", "observability", (&ApiService{}).telemetryHandler().GetObservabilityHistory))
+		router.GET("/api/observability/history", withTestTokenScope("observer", "observability", observabilityTestHandler().GetObservabilityHistory))
 	})
 	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/observability/history?metric=net_in&bucket=30s&since="+formatUnix(base), nil), cookies...)
 	if recorder.Code != http.StatusOK {
@@ -67,7 +70,7 @@ func TestGetObservabilityHistoryFiltersMetricBucketAndSince(t *testing.T) {
 func TestGetObservabilityHistoryRejectsInvalidInputs(t *testing.T) {
 	settingService := initSessionTestDB(t)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/observability/history", withTestTokenScope("observer", "observability", (&ApiService{}).telemetryHandler().GetObservabilityHistory))
+		router.GET("/api/observability/history", withTestTokenScope("observer", "observability", observabilityTestHandler().GetObservabilityHistory))
 	})
 	for _, target := range []string{
 		"/api/observability/history?metric=net_in&bucket=10s",
@@ -84,7 +87,7 @@ func TestGetObservabilityHistoryRejectsInvalidInputs(t *testing.T) {
 func TestGetObservabilityHistoryRequiresObservabilityScope(t *testing.T) {
 	settingService := initSessionTestDB(t)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.GET("/api/observability/history", withTestTokenScope("api-user", "read", (&ApiService{}).telemetryHandler().GetObservabilityHistory))
+		router.GET("/api/observability/history", withTestTokenScope("api-user", "read", observabilityTestHandler().GetObservabilityHistory))
 	})
 	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/observability/history", nil), cookies...)
 	if recorder.Code != http.StatusForbidden {
@@ -102,4 +105,13 @@ func TestGetObservabilityHistoryRequiresObservabilityScope(t *testing.T) {
 
 func formatUnix(value int64) string {
 	return strconv.FormatInt(value, 10)
+}
+
+func observabilityTestHandler() *observabilityhttp.Handler {
+	serviceUnderTest := &ApiService{}
+	serviceUnderTest.bindRuntime()
+	return observabilityhttp.NewHandler(observabilityhttp.Deps{
+		Telemetry:            serviceUnderTest.telemetryDeps(),
+		ObservabilityService: service.ObservabilityService{},
+	})
 }

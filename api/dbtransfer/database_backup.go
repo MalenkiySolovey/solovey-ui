@@ -3,8 +3,7 @@ package dbtransfer
 import "github.com/gin-gonic/gin"
 
 type databaseBackupRequest struct {
-	Exclude               string
-	EncryptTelegramBackup bool
+	Exclude string
 }
 
 func (a *Handler) DownloadDatabase(c *gin.Context) {
@@ -12,8 +11,12 @@ func (a *Handler) DownloadDatabase(c *gin.Context) {
 		return
 	}
 	request := parseDatabaseBackupRequest(c)
-	if request.EncryptTelegramBackup {
-		a.getEncryptedDb(c, request)
+	if codec, ok := selectedBackupExportCodec(c); ok {
+		a.getEncodedDb(c, request, codec)
+		return
+	}
+	if backupExportCodecRequested(c) {
+		respondDatabaseBackupError(c, 400, "unsupported_encryption")
 		return
 	}
 	a.getPlainDb(c, request)
@@ -21,7 +24,6 @@ func (a *Handler) DownloadDatabase(c *gin.Context) {
 
 func parseDatabaseBackupRequest(c *gin.Context) databaseBackupRequest {
 	return databaseBackupRequest{
-		Exclude:               c.Query("exclude"),
-		EncryptTelegramBackup: c.Query("encryptTelegramBackup") == "true",
+		Exclude: c.Query("exclude"),
 	}
 }

@@ -1,3 +1,5 @@
+//go:build !minimal
+
 package observability
 
 func AggregateObservabilitySamples(samples []ObservabilitySample, dateTime int64) ObservabilitySample {

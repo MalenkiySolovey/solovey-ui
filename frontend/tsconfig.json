@@ -10,14 +10,21 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "esModuleInterop": true,
+    "ignoreDeprecations": "6.0",
     "lib": ["ESNext", "DOM"],
     "skipLibCheck": true,
     "noEmit": true,
+    "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "vue": ["./node_modules/vue"],
+      "vue-i18n": ["./node_modules/vue-i18n"],
+      "vue-router": ["./node_modules/vue-router"],
+      "notivue": ["./node_modules/notivue"],
+      "vitest": ["./node_modules/vitest"]
     }
   },
-  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue"],
+  "include": ["src/**/*.ts", "src/**/*.d.ts", "src/**/*.tsx", "src/**/*.vue", "../components/*/frontend/**/*.ts", "../components/*/frontend/**/*.vue"],
   "references": [{ "path": "./tsconfig.node.json" }],
   "exclude": ["node_modules"],
 }

@@ -20,6 +20,7 @@ type SecretCodec interface {
 
 type Hooks struct {
 	ValidateAll            func(settings map[string]string) error
+	CanSaveKey             func(key string) bool
 	NormalizePath          func(key string, value string) (string, bool, error)
 	ApplySideEffects       func(tx *gorm.DB, key string, value string) error
 	CanClearEmptyEncrypted func(key string) bool
@@ -48,6 +49,9 @@ func (m Manager) GetAll() (map[string]string, error) {
 	}
 	allSetting := map[string]string{}
 	for _, setting := range settings {
+		if _, ok := m.Schema.Default(setting.Key); !ok {
+			continue
+		}
 		if m.Schema.Encrypted(setting.Key) {
 			if m.Secret != nil {
 				m.Secret.WriteMarker(allSetting, setting.Key, setting.Value)
@@ -188,6 +192,9 @@ func (m Manager) validateSaveKeys(settings map[string]string) error {
 			return common.NewError("invalid setting key: ", key)
 		}
 		if !m.Schema.Editable(key) {
+			if m.Hooks.CanSaveKey != nil && m.Hooks.CanSaveKey(key) {
+				continue
+			}
 			return common.NewError("invalid setting key: ", key)
 		}
 	}

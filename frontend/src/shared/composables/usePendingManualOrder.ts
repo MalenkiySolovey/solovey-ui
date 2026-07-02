@@ -1,8 +1,8 @@
-import { computed, ref, watch, type ComputedRef } from 'vue'
+﻿import { computed, ref, watch, type ComputedRef } from 'vue'
 
 import Data from '@/store/modules/data'
-import { moveRowsToPosition, sortRowsByText, type ManualSortDirection } from './dragSelection/manualReorder'
-import type { ManualDropPosition } from './dragSelection/manualDrag'
+import { moveRowsToPosition, sortRowsByText, type ManualSortDirection } from '@/shared/dnd/manualReorder'
+import type { ManualDropPosition } from '@/shared/dnd/manualDrag'
 
 type RowId = number | string
 

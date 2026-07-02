@@ -7,8 +7,6 @@ func DefaultFieldMetadata() []Field {
 		runtimeFieldMetadata(),
 		internalFieldMetadata(),
 		subscriptionFieldMetadata(),
-		telegramFieldMetadata(),
-		paidSubFieldMetadata(),
 		ipCertFieldMetadata(),
 	)
 }

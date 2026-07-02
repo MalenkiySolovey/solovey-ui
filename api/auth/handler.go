@@ -11,7 +11,7 @@ import (
 type Handler struct {
 	UserService              service.UserService
 	SettingService           service.SettingService
-	TelegramService          service.TelegramService
+	NotifyEvent              func(string, map[string]string)
 	JSONObj                  func(*gin.Context, interface{}, error)
 	JSONMsg                  func(*gin.Context, string, error)
 	JSONMsgObj               func(*gin.Context, string, interface{}, error)
@@ -31,7 +31,7 @@ type Handler struct {
 type Deps struct {
 	UserService              service.UserService
 	SettingService           service.SettingService
-	TelegramService          service.TelegramService
+	NotifyEvent              func(string, map[string]string)
 	JSONObj                  func(*gin.Context, interface{}, error)
 	JSONMsg                  func(*gin.Context, string, error)
 	JSONMsgObj               func(*gin.Context, string, interface{}, error)
@@ -50,10 +50,14 @@ type Deps struct {
 }
 
 func NewHandler(deps Deps) *Handler {
+	notifyEvent := deps.NotifyEvent
+	if notifyEvent == nil {
+		notifyEvent = func(string, map[string]string) {}
+	}
 	return &Handler{
 		UserService:              deps.UserService,
 		SettingService:           deps.SettingService,
-		TelegramService:          deps.TelegramService,
+		NotifyEvent:              notifyEvent,
 		JSONObj:                  deps.JSONObj,
 		JSONMsg:                  deps.JSONMsg,
 		JSONMsgObj:               deps.JSONMsgObj,

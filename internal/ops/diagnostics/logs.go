@@ -3,6 +3,7 @@ package diagnostics
 import (
 	"strconv"
 	"strings"
+	"sync"
 
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
@@ -38,6 +39,37 @@ type LogInsights struct {
 	ByLevel    map[string]int `json:"byLevel"`
 	ByCategory map[string]int `json:"byCategory"`
 	LastError  *LogEntry      `json:"lastError,omitempty"`
+}
+
+type LogCategoryContribution struct {
+	Category string
+	Hint     string
+	Match    func(source string, message string) bool
+}
+
+var logCategoryContributions = struct {
+	sync.RWMutex
+	entries map[string]LogCategoryContribution
+}{
+	entries: map[string]LogCategoryContribution{},
+}
+
+func RegisterLogCategory(contribution LogCategoryContribution) func() {
+	category := strings.ToLower(strings.TrimSpace(contribution.Category))
+	if category == "" || contribution.Match == nil {
+		return func() {}
+	}
+	contribution.Category = category
+
+	logCategoryContributions.Lock()
+	logCategoryContributions.entries[category] = contribution
+	logCategoryContributions.Unlock()
+
+	return func() {
+		logCategoryContributions.Lock()
+		delete(logCategoryContributions.entries, category)
+		logCategoryContributions.Unlock()
+	}
 }
 
 func ParseLogQuery(count string, level string, source string, filter string) (LogQuery, error) {
@@ -130,8 +162,6 @@ func LogHint(category string, message string) string {
 		return "Check subscription settings, client links, Clash/Mihomo export, and sub path/domain."
 	case "database":
 		return "Check SQLite quick_check, WAL checkpoint messages, disk space, and recent imports/backups."
-	case "telegram":
-		return "Check Telegram bot token/chat settings, proxy/outbound transport, and Bot API network access."
 	case "network":
 		return "Check firewall, ports, DNS resolution, TLS handshake, and outbound connectivity."
 	case "backup":
@@ -145,7 +175,7 @@ func LogHint(category string, message string) string {
 	case "api":
 		return "Check API token scope, rate limits, and request parameters."
 	default:
-		return ""
+		return registeredLogHint(category)
 	}
 }
 
@@ -169,14 +199,17 @@ func containsControlRune(value string) bool {
 
 func isValidLogCategory(category string) bool {
 	switch category {
-	case "", "panel", "core", "auth", "subscription", "config", "database", "telegram", "network", "audit", "stats", "backup", "import", "api":
+	case "", "panel", "core", "auth", "subscription", "config", "database", "network", "audit", "stats", "backup", "import", "api":
 		return true
 	default:
-		return false
+		return registeredLogCategory(category)
 	}
 }
 
 func classifyLogCategory(source string, message string) string {
+	if category := classifyRegisteredLogCategory(source, message); category != "" {
+		return category
+	}
 	switch {
 	case source == "core":
 		return "core"
@@ -186,11 +219,9 @@ func classifyLogCategory(source string, message string) string {
 		return "subscription"
 	case containsAny(message, "sqlite", "database", "wal", "db ", "gorm"):
 		return "database"
-	case containsAny(message, "telegram", "bot api", "notifier"):
-		return "telegram"
 	case containsAny(message, "backup", "restore"):
 		return "backup"
-	case containsAny(message, "import", "x-ui", "xui"):
+	case containsAny(message, "import"):
 		return "import"
 	case containsAny(message, "audit"):
 		return "audit"
@@ -205,6 +236,38 @@ func classifyLogCategory(source string, message string) string {
 	default:
 		return "panel"
 	}
+}
+
+func registeredLogCategory(category string) bool {
+	category = strings.ToLower(strings.TrimSpace(category))
+	logCategoryContributions.RLock()
+	_, ok := logCategoryContributions.entries[category]
+	logCategoryContributions.RUnlock()
+	return ok
+}
+
+func registeredLogHint(category string) string {
+	category = strings.ToLower(strings.TrimSpace(category))
+	logCategoryContributions.RLock()
+	entry := logCategoryContributions.entries[category]
+	logCategoryContributions.RUnlock()
+	return entry.Hint
+}
+
+func classifyRegisteredLogCategory(source string, message string) string {
+	logCategoryContributions.RLock()
+	entries := make([]LogCategoryContribution, 0, len(logCategoryContributions.entries))
+	for _, entry := range logCategoryContributions.entries {
+		entries = append(entries, entry)
+	}
+	logCategoryContributions.RUnlock()
+
+	for _, entry := range entries {
+		if entry.Match(source, message) {
+			return entry.Category
+		}
+	}
+	return ""
 }
 
 func classifyLogSignals(message string) []string {

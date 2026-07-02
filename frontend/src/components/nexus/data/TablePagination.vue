@@ -18,7 +18,7 @@
 
     <div class="nexus-pagination__nav">
       <v-btn
-        :aria-label="$t('audit.previous')"
+        :aria-label="$t('table.previousPage')"
         density="comfortable"
         :disabled="page <= 1"
         icon="lucide:chevron-left"
@@ -27,7 +27,7 @@
         @click="emit('update:page', page - 1)"
       />
       <v-btn
-        :aria-label="$t('audit.next')"
+        :aria-label="$t('table.nextPage')"
         density="comfortable"
         :disabled="page >= pageCount"
         icon="lucide:chevron-right"

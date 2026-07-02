@@ -8,7 +8,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (a *Handler) telegramRequestFields(c *gin.Context) map[string]string {
+func (a *Handler) securityEventRequestFields(c *gin.Context) map[string]string {
 	sum := sha256.Sum256([]byte(c.Request.UserAgent()))
 	return map[string]string{
 		"ip":      a.RemoteIP(c),

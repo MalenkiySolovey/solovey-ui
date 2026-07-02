@@ -9,36 +9,54 @@ import (
 )
 
 func TestFrontendSettingsPayloadDefaultsMatchBackendSchema(t *testing.T) {
-	payloadFile := filepath.Join("..", "frontend", "src", "views", "settingsPayload.ts")
-	raw, err := os.ReadFile(payloadFile)
-	if err != nil {
-		t.Fatalf("read frontend settings payload: %v", err)
+	registerSettingsPayloadContributionsForTest(t)
+	payloadObjects := []struct {
+		file string
+		name string
+	}{
+		{
+			file: filepath.Join("..", "frontend", "src", "views", "settingsPayload.ts"),
+			name: "settingsPageDefaults",
+		},
+		{
+			file: filepath.Join("..", "components", "telegram", "frontend", "views", "telegramSettingsPayload.ts"),
+			name: "telegramSettingsDefaults",
+		},
+		{
+			file: filepath.Join("..", "components", "paid-subscriptions", "frontend", "views", "paidSubSettingsPayload.ts"),
+			name: "paidSubSettingsDefaults",
+		},
 	}
 
-	for _, objectName := range []string{"settingsPageDefaults", "telegramSettingsDefaults", "paidSubSettingsDefaults"} {
-		defaults := parseSettingsPayloadDefaults(t, string(raw), objectName)
+	for _, payloadObject := range payloadObjects {
+		raw, err := os.ReadFile(payloadObject.file)
+		if err != nil {
+			t.Fatalf("read frontend settings payload %s: %v", payloadObject.file, err)
+		}
+		schema := currentSettingsSchema()
+		defaults := parseSettingsPayloadDefaults(t, string(raw), payloadObject.name)
 		if len(defaults) == 0 {
-			t.Fatalf("%s has no parsed defaults", objectName)
+			t.Fatalf("%s has no parsed defaults", payloadObject.name)
 		}
 		for key, value := range defaults {
 			if strings.HasSuffix(key, "HasSecret") {
 				if value != "false" {
-					t.Fatalf("%s marker %s default = %q, want false", objectName, key, value)
+					t.Fatalf("%s marker %s default = %q, want false", payloadObject.name, key, value)
 				}
-				if !settingsSchema.AcceptsSecretPresenceMarker(key) {
-					t.Fatalf("%s marker %s is not accepted by backend schema", objectName, key)
+				if !schema.AcceptsSecretPresenceMarker(key) {
+					t.Fatalf("%s marker %s is not accepted by backend schema", payloadObject.name, key)
 				}
 				continue
 			}
-			backendDefault, ok := settingsSchema.Default(key)
+			backendDefault, ok := schema.Default(key)
 			if !ok {
-				t.Fatalf("%s key %s does not exist in backend schema", objectName, key)
+				t.Fatalf("%s key %s does not exist in backend schema", payloadObject.name, key)
 			}
-			if !settingsSchema.Editable(key) {
-				t.Fatalf("%s key %s is not editable in backend schema", objectName, key)
+			if !schema.Editable(key) {
+				t.Fatalf("%s key %s is not editable in backend schema", payloadObject.name, key)
 			}
 			if backendDefault != value {
-				t.Fatalf("%s key %s frontend default = %q, backend default = %q", objectName, key, value, backendDefault)
+				t.Fatalf("%s key %s frontend default = %q, backend default = %q", payloadObject.name, key, value, backendDefault)
 			}
 		}
 	}

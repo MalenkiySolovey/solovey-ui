@@ -150,13 +150,16 @@ func (s *Service) ListPageFiltered(cursor uint64, limit int, event string, sever
 	return events, nextCursor, nil
 }
 
-func (s *Service) ListXUIImportReports(limit int) ([]model.AuditEvent, error) {
+func (s *Service) ListByEvents(limit int, eventNames []string) ([]model.AuditEvent, error) {
 	if limit <= 0 || limit > 200 {
 		limit = 50
 	}
+	if len(eventNames) == 0 {
+		return []model.AuditEvent{}, nil
+	}
 	events := make([]model.AuditEvent, 0, limit)
 	err := dbsqlite.DB().
-		Where("event IN ?", []string{"xui_import", "xui_import_failed", "xui_import_rollback"}).
+		Where("event IN ?", eventNames).
 		Order("date_time desc").
 		Limit(limit).
 		Find(&events).Error

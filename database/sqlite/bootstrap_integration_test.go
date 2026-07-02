@@ -73,6 +73,39 @@ func TestEnsureDefaultOutboundSkipsExistingTable(t *testing.T) {
 	}
 }
 
+func TestInitDoesNotCreateOptionalComponentTables(t *testing.T) {
+	dbDir := makeDBTempDir(t, "s-ui-db-test-")
+	dbPath := filepath.Join(dbDir, "s-ui.db")
+	if err := Init(dbPath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		cleanupSQLiteSidecars(dbPath)
+	})
+
+	for _, table := range optionalComponentTablesForTest() {
+		if DB().Migrator().HasTable(table) {
+			t.Fatalf("sqlite.Init must not create optional table %q", table)
+		}
+	}
+}
+
+func optionalComponentTablesForTest() []string {
+	return []string{
+		"remote_outbound_subscriptions",
+		"remote_outbound_groups",
+		"remote_outbound_group_connections",
+		"remote_outbound_connections",
+		"paidsub_bindings",
+		"tariffs",
+		"payment_orders",
+	}
+}
+
 func TestInitDropsObsoleteClientIPUniqueIndex(t *testing.T) {
 	dbDir := makeDBTempDir(t, "s-ui-db-test-")
 	dbPath := filepath.Join(dbDir, "s-ui.db")

@@ -53,7 +53,7 @@ func (s *ConfigService) Reorder(obj string, data json.RawMessage, loginUser stri
 		return plan.Objects(), err
 	}
 	committed = true
-	s.applyConfigSaveEffects(plan, loginUser, false, false)
+	s.applyConfigSaveEffects(plan, nil)
 	return plan.Objects(), nil
 }
 

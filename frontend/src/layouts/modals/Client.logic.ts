@@ -1,11 +1,11 @@
 import { defineAsyncComponent, defineComponent } from 'vue'
-import { createClient, randomConfigs, updateConfigs, Link, shuffleConfigs } from '@/types/clients'
+import { createClient, randomConfigs, updateConfigs, Link, isCoreClientLinkType, shuffleConfigs } from '@/types/clients'
 import { HumanReadable } from '@/plugins/utils'
 import Data from '@/store/modules/data'
 import { locale } from '@/locales'
 import FormShell from '@/components/nexus/drawers/FormShell.vue'
-import { loadRemoteOutboundSubscriptions } from '@/shared/composables/useRemoteOutboundCatalog'
 import StrictSelect from '@/shared/ui/StrictSelect.vue'
+import ComponentSlot from '@/componentSystem/ComponentSlot.vue'
 
 const DatePick = defineAsyncComponent(() => import('@/components/fields/DateTime.vue'))
 
@@ -22,8 +22,7 @@ export default defineComponent({
       links: <Link[]>[],
       extLinks: <Link[]>[],
       subLinks: <Link[]>[],
-      remoteGroupLinks: <Link[]>[],
-      remoteSubscriptions: <any[]>[],
+      componentLinks: <Link[]>[],
       ipLimitModes: ['monitor', 'enforce'],
       snapshot: '',
     }
@@ -31,7 +30,6 @@ export default defineComponent({
   methods: {
     async updateData(id: number) {
       this.loading = true
-      await this.loadRemoteSubscriptions()
       if (id > 0) {
         const newData = await Data().loadClients(id)
         this.client = createClient(newData)
@@ -43,19 +41,14 @@ export default defineComponent({
         this.title = "add"
         this.clientConfig = randomConfigs('client')
       }
-      this.links = this.client.links?.filter(l => l.type == 'local')?? []
-      this.extLinks = this.client.links?.filter(l => l.type == 'external')?? []
-      this.subLinks = this.client.links?.filter(l => l.type == 'sub')?? []
-      this.remoteGroupLinks = this.client.links?.filter(l => l.type == 'remoteGroup' || l.type == 'remoteSubscription')?? []
+      const clientLinks = this.client.links ?? []
+      this.links = clientLinks.filter(l => l.type === 'local')
+      this.extLinks = clientLinks.filter(l => l.type === 'external')
+      this.subLinks = clientLinks.filter(l => l.type === 'sub')
+      this.componentLinks = clientLinks.filter(l => !isCoreClientLinkType(l.type))
       this.tab = "t1"
       this.loading = false
-      this.snapshot = JSON.stringify([this.client, this.clientConfig, this.links, this.extLinks, this.subLinks, this.remoteGroupLinks])
-    },
-    async loadRemoteSubscriptions() {
-      const msg = await loadRemoteOutboundSubscriptions()
-      if (msg.success) {
-        this.remoteSubscriptions = msg.obj ?? []
-      }
+      this.snapshot = JSON.stringify([this.client, this.clientConfig, this.links, this.extLinks, this.subLinks, this.componentLinks])
     },
     closeModal() {
       this.closeSelectMenus()
@@ -80,7 +73,7 @@ export default defineComponent({
         this.client.links = [
                           ...this.extLinks.filter(l => l.uri != ''),
                           ...this.subLinks.filter(l => l.uri != ''),
-                          ...this.remoteGroupLinks.filter(l => this.isRemoteSubscriptionLink(l) || this.isRemoteGroupLink(l))]
+                          ...this.componentLinks.filter(l => this.isComponentLink(l))]
         const success = await Data().save("clients", this.$props.id == 0 ? "new" : "edit", this.client)
         if (success) this.closeModal()
       } finally {
@@ -105,75 +98,17 @@ export default defineComponent({
       this.client.up = 0
       this.client.down = 0
     },
-    isRemoteGroupLink(link: Link) {
-      return link.type === 'remoteGroup' && Boolean(link.groupId || link.remoteGroupId)
-    },
-    isRemoteSubscriptionLink(link: Link) {
-      return link.type === 'remoteSubscription' && Boolean(link.subscriptionId || link.remoteSubscriptionId)
+    isComponentLink(link: Link) {
+      return Boolean(link?.type) && !isCoreClientLinkType(link.type)
     },
   },
   computed: {
     dirty(): boolean {
       return this.snapshot !== '' &&
-        JSON.stringify([this.client, this.clientConfig, this.links, this.extLinks, this.subLinks, this.remoteGroupLinks]) !== this.snapshot
+        JSON.stringify([this.client, this.clientConfig, this.links, this.extLinks, this.subLinks, this.componentLinks]) !== this.snapshot
     },
-    remoteGroupItems(): { title: string, value: string }[] {
-      const items: { title: string, value: string }[] = []
-      for (const subscription of this.remoteSubscriptions ?? []) {
-        const allCount = (subscription.connections ?? []).length
-        items.push({
-          title: `${subscription.name} / All (${allCount})`,
-          value: `subscription:${subscription.id}`,
-        })
-        for (const group of subscription.groups ?? []) {
-          const count = (subscription.connections ?? []).filter((connection:any) => {
-            const groupIds = connection.groupIds?.length ? connection.groupIds : (connection.groupId ? [connection.groupId] : [])
-            return groupIds.includes(group.id)
-          }).length
-          items.push({
-            title: `${subscription.name} / ${group.name} (${count})`,
-            value: `group:${group.id}`,
-          })
-        }
-      }
-      return items
-    },
-    remoteGroupIds: {
-      get(): string[] {
-        return this.remoteGroupLinks
-          .map(link => {
-            if (link.type === 'remoteSubscription') {
-              const id = Number(link.subscriptionId ?? link.remoteSubscriptionId ?? 0)
-              return id ? `subscription:${id}` : ''
-            }
-            const id = Number(link.groupId ?? link.remoteGroupId ?? 0)
-            return id ? `group:${id}` : ''
-          })
-          .filter(Boolean)
-          .sort()
-      },
-      set(ids: string[]) {
-        const names = new Map(this.remoteGroupItems.map(item => [item.value, item.title]))
-        this.remoteGroupLinks = (ids ?? []).map(rawId => {
-          const value = String(rawId)
-          const [kind, idText] = value.split(':')
-          const id = Number(idText)
-          if (kind === 'subscription' && id > 0) {
-            return {
-              type: 'remoteSubscription',
-              subscriptionId: id,
-              remark: names.get(value) ?? `Subscription ${id} / All`,
-              uri: '',
-            }
-          }
-          return {
-            type: 'remoteGroup',
-            groupId: id,
-            remark: names.get(value) ?? String(id),
-            uri: '',
-          }
-        }).filter(link => this.isRemoteSubscriptionLink(link as Link) || this.isRemoteGroupLink(link as Link)) as Link[]
-      },
+    slotContext(): Record<string, unknown> {
+      return { editor: this }
     },
     clientInbounds: {
       get() { return this.client.inbounds.length>0 ? this.client.inbounds.sort() : [] },
@@ -239,5 +174,5 @@ export default defineComponent({
       this.closeSelectMenus()
     },
   },
-  components: { FormShell, DatePick, StrictSelect },
+  components: { FormShell, DatePick, StrictSelect, ComponentSlot },
 })

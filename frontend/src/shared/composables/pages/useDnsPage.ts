@@ -1,13 +1,13 @@
-import { computed, ref } from 'vue'
+﻿import { computed, ref } from 'vue'
 import { actionDnsRuleKeys, dnsRule } from '@/types/dns'
-import { useManualDrag, type ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
+import { useManualDrag, type ManualDropPosition } from '@/shared/dnd/manualDrag'
 import {
   moveArrayItemKeepingSelection,
   moveManyArrayItemsKeepingSelection,
   removeArrayItemKeepingSelection,
   type ManualSortDirection,
   sortArrayByTextKeepingSelection,
-} from '@/shared/composables/dragSelection/manualReorder'
+} from '@/shared/dnd/manualReorder'
 import type { Column } from '@/components/nexus/data/dataTableColumns'
 import type { RowAction } from '@/components/nexus/data/rowActions'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'

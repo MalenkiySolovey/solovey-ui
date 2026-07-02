@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <div class="manual-order-controls">
     <ManualSortButton
       :disabled="sortDisabled"
@@ -27,7 +27,7 @@
 
 <script lang="ts" setup>
 import ManualSortButton from '@/components/ManualSortButton.vue'
-import type { ManualSortDirection } from '@/shared/composables/dragSelection/manualReorder'
+import type { ManualSortDirection } from '@/shared/dnd/manualReorder'
 
 withDefaults(defineProps<{
   sortDisabled?: boolean

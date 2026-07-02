@@ -47,6 +47,9 @@ func validateFailoverGroup(db *gorm.DB, outbound model.Outbound) error {
 			return common.NewErrorf("member %q is a group; failover members must be plain outbounds", member)
 		}
 	}
+	if err := validateFailoverFinal(outbound.Tag, opts, typeByTag); err != nil {
+		return err
+	}
 
 	if err := validateProbeTarget(opts.Failover.target()); err != nil {
 		return err
@@ -62,6 +65,30 @@ func validateFailoverGroup(db *gorm.DB, outbound model.Outbound) error {
 	}
 	if opts.Failover.Hysteresis < 0 {
 		return common.NewError("hysteresis must be >= 1")
+	}
+	return nil
+}
+
+func validateFailoverFinal(groupTag string, opts failoverOptions, typeByTag map[string]string) error {
+	final := opts.finalChoice()
+	switch final {
+	case FailoverFinalDirect:
+		return nil
+	case FailoverFinalReject:
+		if _, exists := typeByTag[FailoverRejectOutboundTag]; exists {
+			return common.NewErrorf("outbound tag %q is reserved for failover reject support", FailoverRejectOutboundTag)
+		}
+		return nil
+	}
+	if final == groupTag {
+		return common.NewError("a failover final outbound cannot reference the failover group itself")
+	}
+	finalType, exists := typeByTag[final]
+	if !exists {
+		return common.NewErrorf("failover final outbound %q does not exist", final)
+	}
+	if finalType == "selector" || finalType == "urltest" || finalType == FailoverType {
+		return common.NewErrorf("final outbound %q is a group; failover final must be direct, reject, or a plain outbound", final)
 	}
 	return nil
 }

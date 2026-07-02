@@ -18,7 +18,7 @@ var sequentialSteps = []step{
 	{fromMajor: 1, fromMinor: 3, target: "1.4", run: addTokenAuditSchema},
 	{fromMajor: 1, fromMinor: 4, target: "1.5", run: addClientIPPrivacySchema},
 	{fromMajor: 1, fromMinor: 5, target: "1.6", run: addAuditFilterIndexes},
-	{fromMajor: 1, fromMinor: 6, target: "1.7", run: addXUISyncSchema},
+	{fromMajor: 1, fromMinor: 6, target: "1.7", run: completeComponentSchemaBoundary},
 }
 
 func RunPending(tx *gorm.DB, dbVersion string) (string, error) {

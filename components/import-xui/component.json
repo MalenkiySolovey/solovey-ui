@@ -1,0 +1,18 @@
+{
+  "id": "import-xui",
+  "name": "Panel Import",
+  "version": "1",
+  "since": "2026.1.0",
+  "delivery": "in-process",
+  "defaultEnabled": true,
+  "frontend": {
+    "entries": [
+      "frontend/index.ts"
+    ]
+  },
+  "cli": {
+    "entries": [
+      "cmd"
+    ]
+  }
+}

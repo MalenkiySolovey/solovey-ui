@@ -22,9 +22,6 @@ func TestSubscriptionDefaults(t *testing.T) {
 	if defaults[SubXrayPathKey] != "/xray/" {
 		t.Fatalf("sub xray path default = %q", defaults[SubXrayPathKey])
 	}
-	if defaults[SubRemoteGroupAdaptationKey] != "urltest" {
-		t.Fatalf("remote group adaptation default = %q", defaults[SubRemoteGroupAdaptationKey])
-	}
 }
 
 func TestSubscriptionKeyGroups(t *testing.T) {

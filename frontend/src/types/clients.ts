@@ -1,13 +1,17 @@
 import RandomUtil from "@/plugins/randomUtil"
 
 export interface Link {
-  type: "local" | "external" | "sub" | "remoteGroup" | "remoteSubscription"
+  type: string
   remark?: string
   uri: string
-  groupId?: number
-  remoteGroupId?: number
-  subscriptionId?: number
-  remoteSubscriptionId?: number
+  [key: string]: any
+}
+
+export const coreClientLinkTypes = ['local', 'external', 'sub'] as const
+export type CoreClientLinkType = typeof coreClientLinkTypes[number]
+
+export function isCoreClientLinkType(type: string): type is CoreClientLinkType {
+  return (coreClientLinkTypes as readonly string[]).includes(type)
 }
 
 export interface Client {

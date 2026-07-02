@@ -11,8 +11,6 @@ var defaultValueMap = settingcatalog.MergeDefaultMaps(
 	defaultSessionSettingValues,
 	defaultRuntimeSettingValues,
 	defaultSubscriptionSettingValues,
-	defaultTelegramSettingValues,
-	defaultPaidSubSettingValues,
 	defaultIpCertSettingValues,
 	defaultInternalSettingValues,
 )
@@ -24,15 +22,14 @@ var internalSettingKeys = settingcatalog.MergeKeySets(
 		settingcatalog.SessionGenerationKey,
 		settingcatalog.ConfigKey,
 		settingcatalog.VersionKey,
-		settingKeyPaidSubUpdateOffset,
 	),
 	ipCertInternalSettingKeySet,
 )
 
-var settingsSchema = settingsschema.New(defaultValueMap, internalSettingKeys, encryptedSettingKeys, settingsschema.DefaultFieldMetadata()...)
+var coreFieldMetadata = settingsschema.DefaultFieldMetadata()
 
 func defaultSettingValue(key string) (string, bool) {
-	value, ok := settingsSchema.Default(key)
+	value, ok := currentSettingsSchema().Default(key)
 	if !ok {
 		return "", false
 	}

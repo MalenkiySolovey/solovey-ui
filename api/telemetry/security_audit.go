@@ -57,6 +57,26 @@ func (a *Handler) GetSecurityAudit(c *gin.Context) {
 	}, err)
 }
 
+func (a *Handler) GetRecentSecurityAudit(c *gin.Context) {
+	if !a.RequireScope(c, "auditRecent", "admin", "read", "write") {
+		return
+	}
+	limit, err := parseAuditLimit(c.Query("limit"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, Envelope{Success: false, Msg: "audit: " + err.Error()})
+		return
+	}
+	if limit > 25 {
+		limit = 25
+	}
+	events, nextCursor, err := a.AuditService.ListPageFiltered(0, limit, "", "", 0, 0)
+	a.JSONObj(c, gin.H{
+		"events":     events,
+		"nextCursor": nextCursor,
+		"limit":      limit,
+	}, err)
+}
+
 func parseAuditLimit(raw string) (int, error) {
 	if raw == "" {
 		return 200, nil

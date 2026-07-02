@@ -1,4 +1,4 @@
-import Data from '@/store/modules/data'
+﻿import Data from '@/store/modules/data'
 import { Client } from '@/types/clients'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -6,15 +6,15 @@ import { HumanReadable } from '@/plugins/utils'
 import { i18n, locale } from '@/locales'
 import { useDisplay } from 'vuetify'
 import { useUiMode } from '@/uiMode/useUiMode'
-import { useManualDrag, type ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
+import { useManualDrag, type ManualDropPosition } from '@/shared/dnd/manualDrag'
 import {
   dragManualOrder,
   type ManualSortDirection,
   moveManyManualOrder,
   moveManualOrder,
   sortManualOrderByText,
-} from '@/shared/composables/dragSelection/manualReorder'
-import { useBulkSelection } from '@/shared/composables/dragSelection/bulkSelection'
+} from '@/shared/dnd/manualReorder'
+import { useBulkSelection } from '@/shared/dnd/bulkSelection'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
 
 export const useClientsPage = () => {

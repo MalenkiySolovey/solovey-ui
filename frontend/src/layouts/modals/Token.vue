@@ -153,8 +153,11 @@
 <script lang="ts">
 import { i18n } from '@/locales'
 import { addToken, deleteToken, loadTokens, setTokenEnabled } from '@/shared/composables/useTokenOperations'
+import Data from '@/store/modules/data'
 import Clipboard from 'clipboard'
 import { push } from 'notivue';
+
+const coreTokenScopes = ['admin', 'update', 'database', 'write', 'read', 'observability']
 
 export default {
   props: ['visible', 'user'],
@@ -169,11 +172,16 @@ export default {
         expiry: 0,
         scope: 'admin',
       },
-      tokenScopes: ['admin', 'database', 'write', 'read', 'observability', 'telegram'],
       delOverlay: new Array<boolean>(0),
     }
   },
   computed: {
+    tokenScopes() {
+      const componentScopes = Data().components
+        .filter(component => component.installed && component.active)
+        .flatMap(component => component.tokenScopes ?? [])
+      return [...new Set([...coreTokenScopes, ...componentScopes])]
+    },
     locale() {
       const l = i18n.global.locale.value
       switch (l) {

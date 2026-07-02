@@ -45,7 +45,7 @@ func TestUserServiceAddTokenScopePersistenceAndInvalidScope(t *testing.T) {
 	initSettingTestDB(t)
 	userService := &UserService{}
 
-	for _, scope := range []string{"read", "write", "database", "telegram", "observability"} {
+	for _, scope := range []string{"read", "write", "update", "database", "observability"} {
 		if _, err := userService.AddToken("admin", 0, "scope "+scope, scope); err != nil {
 			t.Fatalf("scope %q should be accepted: %v", scope, err)
 		}

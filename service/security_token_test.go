@@ -7,7 +7,7 @@ import (
 )
 
 func TestSecurityConstantTimeStringEqualAllowedScopes(t *testing.T) {
-	for _, scope := range allowedAPITokenScopes {
+	for _, scope := range allowedAPITokenScopes() {
 		t.Run(scope, func(t *testing.T) {
 			if common.ConstantTimeStringEqual(scope, scope, maxAPITokenScopeLen) != 1 {
 				t.Fatalf("scope %q should compare equal", scope)

@@ -1,9 +1,17 @@
 FROM --platform=$BUILDPLATFORM node:alpine@sha256:3ad34ca6292aec4a91d8ddeb9229e29d9c2f689efd0dd242860889ac71842eba AS front-builder
 WORKDIR /app
-COPY frontend/ ./
+COPY frontend/ ./frontend/
+COPY components/ ./components/
+COPY scripts/component-frontend-manifest.mjs scripts/extract-component-frontend.mjs scripts/generate-component-imports.mjs scripts/write-component-installed-metadata.mjs ./scripts/
 # npm ci (not install) so the image is built from the exact, audited
 # package-lock.json. This matches CI/release and fails closed on lockfile drift.
-RUN npm ci && npm run build
+RUN cd frontend \
+    && npm ci \
+    && SOLOVEY_UI_PROFILE=full npm run build \
+    && cd .. \
+    && node scripts/extract-component-frontend.mjs --dist frontend/dist --components-dir components --out-dir component-packs --prune-dist \
+    && node scripts/write-component-installed-metadata.mjs --components-dir component-packs --out component-packs/installed.json --profile full --binary full \
+    && node scripts/generate-component-imports.mjs --profile full --out generated/components_generated.go --cmd-out generated/optional_commands_generated.go
 
 FROM --platform=$TARGETPLATFORM golang:1.26.4-alpine@sha256:7a3e50096189ad57c9f9f865e7e4aa8585ed1585248513dc5cda498e2f41812c AS backend-builder
 WORKDIR /app
@@ -46,7 +54,9 @@ RUN set -e; \
     chmod 755 ./libcronet.so
 
 COPY . .
-COPY --from=front-builder /app/dist/ /app/web/html/
+COPY --from=front-builder /app/frontend/dist/ /app/web/html/
+COPY --from=front-builder /app/generated/components_generated.go /app/app/components_generated.go
+COPY --from=front-builder /app/generated/optional_commands_generated.go /app/cmd/optional_commands_generated.go
 
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -65,6 +75,7 @@ ENV TZ=Europe/Moscow
 WORKDIR /app
 RUN set -ex && apk add --no-cache --upgrade bash tzdata ca-certificates nftables gcompat libgcc
 COPY --from=backend-builder /app/solovey-ui /app/libcronet.so /app/
+COPY --from=front-builder /app/component-packs/ /app/components/
 COPY entrypoint.sh /app/
 RUN chmod +x /app/entrypoint.sh
 ENTRYPOINT [ "./entrypoint.sh" ]

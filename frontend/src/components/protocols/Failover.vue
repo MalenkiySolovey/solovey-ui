@@ -50,6 +50,14 @@
     </v-row>
     <v-row>
       <v-col cols="12">
+        <StrictSelect
+          v-model="finalOutbound"
+          :items="finalItems()"
+          :label="$t('types.failover.final')"
+          hide-details
+        />
+      </v-col>
+      <v-col cols="12">
         <v-text-field
           v-model="probeTarget"
           :label="$t('types.failover.probeTarget')"
@@ -116,11 +124,24 @@ export default {
       get(): boolean { return this.$props.data.failover.enabled !== false },
       set(value: boolean) { this.$props.data.failover.enabled = value },
     },
+    finalOutbound: {
+      get(): string { return this.$props.data.final || 'direct' },
+      set(value: string) {
+        if (!value || value === 'direct') delete this.$props.data.final
+        else this.$props.data.final = value
+      },
+    },
   },
   methods: {
     memberItems(index: number): string[] {
       const selectedElsewhere = this.$props.data.outbounds.filter((_: string, itemIndex: number) => itemIndex !== index)
       return this.$props.tags.filter((tag: string) => tag !== this.$props.data.tag && (tag === this.$props.data.outbounds[index] || !selectedElsewhere.includes(tag)))
+    },
+    finalItems(): string[] {
+      const current = this.finalOutbound
+      const items = ['direct', 'reject', ...this.$props.tags.filter((tag: string) => tag !== this.$props.data.tag)]
+      if (current && !items.includes(current)) items.push(current)
+      return [...new Set(items)]
     },
     setMember(index: number, value: unknown) {
       this.$props.data.outbounds.splice(index, 1, typeof value === 'string' ? value : '')

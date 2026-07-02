@@ -71,8 +71,9 @@ func TestGetAllSettingConcurrentDefaultInitializationIssue19(t *testing.T) {
 	if err := db.Model(&model.Setting{}).Count(&rowCount).Error; err != nil {
 		t.Fatal(err)
 	}
-	if rowCount != int64(len(defaultValueMap)) {
-		t.Fatalf("settings row count = %d, want %d", rowCount, len(defaultValueMap))
+	expectedDefaults := currentDefaultValueMap()
+	if rowCount != int64(len(expectedDefaults)) {
+		t.Fatalf("settings row count = %d, want %d", rowCount, len(expectedDefaults))
 	}
 
 	var duplicates []struct {
@@ -99,7 +100,7 @@ func TestGetAllSettingConcurrentDefaultInitializationIssue19(t *testing.T) {
 	if returned == nil {
 		t.Fatal("no successful GetAllSetting result")
 	}
-	for key := range internalSettingKeys {
+	for key := range currentInternalSettingKeys() {
 		if _, ok := returned[key]; ok {
 			t.Fatalf("returned settings should omit %q", key)
 		}
@@ -338,7 +339,6 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 		"subJsonMux",
 		"subJsonDirectRules",
 		"subRateLimitPerIP",
-		"subRemoteGroupAdaptation",
 	} {
 		if _, ok := (*settings)[key]; !ok {
 			t.Fatalf("missing default setting %s", key)
@@ -346,14 +346,13 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 	}
 
 	validPayload, err := json.Marshal(map[string]string{
-		"subJsonPath":              "/json/",
-		"subClashPath":             "/clash/",
-		"subXrayPath":              "/xray/",
-		"subSupportUrl":            "https://example.com/support",
-		"subProfileUrl":            "https://example.com/profile",
-		"subJsonEnable":            "false",
-		"subRateLimitPerIP":        "120",
-		"subRemoteGroupAdaptation": "failover",
+		"subJsonPath":       "/json/",
+		"subClashPath":      "/clash/",
+		"subXrayPath":       "/xray/",
+		"subSupportUrl":     "https://example.com/support",
+		"subProfileUrl":     "https://example.com/profile",
+		"subJsonEnable":     "false",
+		"subRateLimitPerIP": "120",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -446,18 +445,6 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 		return settingService.Save(tx, invalidNoises)
 	}); err == nil {
 		t.Fatal("expected invalid JSON noises setting to be rejected")
-	}
-
-	invalidAdaptation, err := json.Marshal(map[string]string{
-		"subRemoteGroupAdaptation": "relay",
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
-		return settingService.Save(tx, invalidAdaptation)
-	}); err == nil {
-		t.Fatal("expected invalid remote group adaptation setting to be rejected")
 	}
 
 	conflictingPaths, err := json.Marshal(map[string]string{

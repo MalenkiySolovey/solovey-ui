@@ -1,0 +1,20 @@
+import type { ComponentStatus as RuntimeComponentStatus } from '@/store/modules/data'
+
+export type ComponentCatalogGroup = 'installed' | 'available' | 'unavailable'
+
+export interface ComponentCatalogStatus extends RuntimeComponentStatus {
+  latestVersion?: string
+  availableInBinary: boolean
+  installable: boolean
+  removable: boolean
+  group: ComponentCatalogGroup
+  unavailableReason?: string
+}
+
+export interface ComponentCatalogInventory {
+  binaryProfile: string
+  components: ComponentCatalogStatus[]
+  installed: ComponentCatalogStatus[]
+  available: ComponentCatalogStatus[]
+  unavailable: ComponentCatalogStatus[]
+}

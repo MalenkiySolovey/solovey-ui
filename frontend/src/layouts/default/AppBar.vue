@@ -2,7 +2,7 @@
   <v-app-bar :elevation="5">
     <v-icon v-if="isMobile" icon="mdi-menu" @click="$emit('toggleDrawer')" />
     <span v-else style="width: 24px"></span>
-    <v-app-bar-title :text="$t(<string>route.name)" class="align-center text-center " />
+    <v-app-bar-title :text="$t(routeTitleKey)" class="align-center text-center " />
     <v-menu>
       <template v-slot:activator="{ props }">
         <v-btn icon v-bind="props">
@@ -48,6 +48,7 @@ import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { languages, setI18nLocale } from '@/locales'
 import UiModeControl from '@/components/UiModeControl.vue'
+import { computed } from 'vue'
 
 defineProps(['isMobile'])
 
@@ -55,6 +56,7 @@ const route = useRoute()
 const { locale: i18nLocale } = useI18n()
 const vuetifyLocale = useLocale()
 const theme = useTheme()
+const routeTitleKey = computed(() => String(route.meta.title ?? route.name ?? ''))
 
 const changeLocale = async (l: string) => {
   const selectedLocale = await setI18nLocale(l)

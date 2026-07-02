@@ -13,7 +13,7 @@ Version source of truth:
 Git release tags:
 
 - Git tag names use `v` plus the exact `config/identity/version` value.
-- Example: `config/identity/version` = `2026.1.0`, Git tag = `v2026.1.0`.
+- Example: `config/identity/version` = `2026.2.0`, Git tag = `v2026.2.0`.
 
 Database version policy:
 

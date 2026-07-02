@@ -21,6 +21,19 @@ export interface FailoverStatusEntry {
 
 export type FailoverStatusMap = Record<string, FailoverStatusEntry>
 
+export interface ComponentStatus {
+  id: string
+  name: string
+  version: string
+  since?: string
+  delivery: string
+  defaultEnabled: boolean
+  tokenScopes?: string[]
+  installed: boolean
+  enabled: boolean
+  active: boolean
+}
+
 const Data = defineStore('Data', {
   state: () => ({ 
     lastLoad: 0,
@@ -38,6 +51,8 @@ const Data = defineStore('Data', {
     endpoints: <any[]>[],
     clients: <any>[],
     tlsConfigs: <any[]>[],
+    componentsLoaded: false,
+    components: <ComponentStatus[]>[],
     failoverStatus: <FailoverStatusMap>{},
   }),
   actions: {
@@ -85,6 +100,10 @@ const Data = defineStore('Data', {
       if (Object.hasOwn(data, 'services')) this.services = data.services ?? []
       if (Object.hasOwn(data, 'endpoints')) this.endpoints = data.endpoints ?? []
       if (Object.hasOwn(data, 'tls')) this.tlsConfigs = data.tls ?? []
+      if (Object.hasOwn(data, 'components')) {
+        this.componentsLoaded = true
+        this.components = data.components ?? []
+      }
     },
     async loadInbounds(ids: number[]): Promise<Inbound[]> {
       const options = ids.length > 0 ? {id: ids.join(",")} : {}

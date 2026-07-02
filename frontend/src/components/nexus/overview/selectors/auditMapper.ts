@@ -108,10 +108,10 @@ const knownAuditEvents = {
     tone: 'warning',
     text: 'Client subscription secret rotated',
   },
-  xui_import: {
+  panel_import: {
     icon: 'mdi-database-import-outline',
     tone: 'success',
-    text: '3x-ui import applied',
+    text: 'Panel import applied',
   },
 } satisfies Record<string, AuditPresentation>
 

@@ -1,0 +1,13 @@
+{
+  "id": "observability-extra",
+  "name": "Observability Extra",
+  "version": "1",
+  "since": "2026.1.0",
+  "delivery": "in-process",
+  "defaultEnabled": true,
+  "frontend": {
+    "entries": [
+      "frontend/index.ts"
+    ]
+  }
+}

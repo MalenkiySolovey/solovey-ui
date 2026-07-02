@@ -79,7 +79,7 @@ func TestSchemaFieldsCombineMetadataWithKeyProperties(t *testing.T) {
 		map[string]struct{}{"hidden": {}},
 		map[string]struct{}{"secret": {}},
 		Field{Key: "shown", Page: PageSettings, Group: GroupRuntime, Type: FieldTypeInt, LabelKey: "shown.label", Min: intPtr(0), Order: 20},
-		Field{Key: "secret", Page: PageTelegram, Group: GroupTelegramCore, LabelKey: "secret.label", Order: 10},
+		Field{Key: "secret", Page: "component_page", Group: "component_group", LabelKey: "secret.label", Order: 10},
 	)
 
 	shown, ok := schema.Field("shown")
@@ -119,8 +119,6 @@ func TestDefaultFieldMetadataCoversEveryKnownDefault(t *testing.T) {
 		settingcatalog.RuntimeDefaults(),
 		settingcatalog.InternalDefaults("{}"),
 		settingcatalog.SubscriptionDefaults(),
-		settingcatalog.TelegramDefaults(),
-		settingcatalog.PaidSubDefaults(),
 		settingcatalog.IPCertDefaults(),
 	} {
 		for key, value := range group {

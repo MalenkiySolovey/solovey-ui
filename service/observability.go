@@ -1,3 +1,5 @@
+//go:build !minimal
+
 package service
 
 import observabilityimpl "github.com/MalenkiySolovey/solovey-ui/service/observability"

@@ -23,11 +23,11 @@ const (
 	auditEndpointRateLimitMaxKeys = 4096
 	auditEndpointRateLimitGCEvery = time.Minute
 
-	telegramBackupManualRateLimitWindow  = time.Minute
-	telegramBackupManualRateLimitMax     = 3
-	telegramBackupManualRateLimitMaxKeys = 4096
-	telegramBackupManualRateLimitGCEvery = time.Minute
-	updateCheckRateLimitWindow           = 5 * time.Second
+	componentManualActionRateLimitWindow  = time.Minute
+	componentManualActionRateLimitMax     = 3
+	componentManualActionRateLimitMaxKeys = 4096
+	componentManualActionRateLimitGCEvery = time.Minute
+	updateCheckRateLimitWindow            = 5 * time.Second
 )
 
 var (
@@ -46,11 +46,11 @@ var (
 		auditEndpointRateLimitMaxKeys,
 		auditEndpointRateLimitGCEvery,
 	)
-	telegramBackupManualRateLimiter = ratelimit.NewSlidingWindow[string](
-		telegramBackupManualRateLimitWindow,
-		telegramBackupManualRateLimitMax,
-		telegramBackupManualRateLimitMaxKeys,
-		telegramBackupManualRateLimitGCEvery,
+	componentManualActionRateLimiter = ratelimit.NewSlidingWindow[string](
+		componentManualActionRateLimitWindow,
+		componentManualActionRateLimitMax,
+		componentManualActionRateLimitMaxKeys,
+		componentManualActionRateLimitGCEvery,
 	)
 	updateCheckRateLimiter = ratelimit.NewFixedWindow[string](updateCheckRateLimitWindow, 1, 1, time.Minute)
 )
@@ -103,8 +103,8 @@ func checkAuditEndpointRateLimit(key string) error {
 	return nil
 }
 
-func checkTelegramBackupManualRateLimit(key string) (time.Duration, error) {
-	decision := telegramBackupManualRateLimiter.Allow(key)
+func checkComponentManualActionRateLimit(key string) (time.Duration, error) {
+	decision := componentManualActionRateLimiter.Allow(key)
 	if decision.Allowed {
 		return 0, nil
 	}
@@ -112,5 +112,5 @@ func checkTelegramBackupManualRateLimit(key string) (time.Duration, error) {
 	if retryAfter < time.Second {
 		retryAfter = time.Second
 	}
-	return retryAfter, common.NewError("too many telegram backup requests")
+	return retryAfter, common.NewError("too many component action requests")
 }

@@ -21,8 +21,6 @@ const (
 
 const (
 	PageSettings = "settings"
-	PageTelegram = "telegram"
-	PagePaidSub  = "paid_sub"
 	PageIPCert   = "ip_cert"
 	PageInternal = "internal"
 )
@@ -35,12 +33,6 @@ const (
 	GroupSubscriptionJSON  = "subscription_json"
 	GroupSubscriptionClash = "subscription_clash"
 	GroupSubscriptionXray  = "subscription_xray"
-	GroupTelegramCore      = "telegram_core"
-	GroupTelegramBackup    = "telegram_backup"
-	GroupPaidSubBot        = "paid_sub_bot"
-	GroupPaidSubAutoreg    = "paid_sub_autoreg"
-	GroupPaidSubPayments   = "paid_sub_payments"
-	GroupPaidSubMessages   = "paid_sub_messages"
 	GroupIPCertPublic      = "ip_cert_public"
 	GroupIPCertInternal    = "ip_cert_internal"
 	GroupInternal          = "internal"

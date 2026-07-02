@@ -1,14 +1,14 @@
-import { computed, ref } from 'vue'
+﻿import { computed, ref } from 'vue'
 import { actionKeys, ruleset } from '@/types/rules'
 import { i18n } from '@/locales'
-import { useManualDrag, type ManualDropPosition } from '@/shared/composables/dragSelection/manualDrag'
+import { useManualDrag, type ManualDropPosition } from '@/shared/dnd/manualDrag'
 import {
   moveArrayItemKeepingSelection,
   moveManyArrayItemsKeepingSelection,
   removeArrayItemKeepingSelection,
   type ManualSortDirection,
   sortArrayByTextKeepingSelection,
-} from '@/shared/composables/dragSelection/manualReorder'
+} from '@/shared/dnd/manualReorder'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
 import { useUiMode } from '@/uiMode/useUiMode'
 import { isPresetManagedItem } from '@/components/presets/routingDnsPresets'

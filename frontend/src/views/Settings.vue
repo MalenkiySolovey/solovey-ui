@@ -14,10 +14,17 @@
     <v-tab value="t5">{{ $t('setting.xraySub') }}</v-tab>
     <v-tab value="basics">Basics (Singbox)</v-tab>
     <v-tab value="t6">{{ $t('setting.maintenance') }}</v-tab>
+    <v-tab
+      v-for="item in componentSettingsTabs"
+      :key="item.key"
+      :value="item.key"
+    >
+      {{ $t(item.title) }}
+    </v-tab>
   </v-tabs>
   <v-card-text>
     <v-row
-      v-if="tab !== 't6' && tab !== 'basics'"
+      v-if="tab !== 't6' && tab !== 'basics' && !componentSettingsTabKeys.has(String(tab))"
       align="center"
       class="settings-actions"
       :class="{ 'settings-actions--nexus': nexus }"
@@ -223,17 +230,7 @@
           <v-col cols="12" sm="6" md="4">
             <div class="d-flex align-center"><v-switch color="primary" v-model="subNameInRemark" :label="$t('setting.subNameInRemark')" hide-details /><SettingInfo class="ms-1" :text="$t('setting.hint.subNameInRemark')" /></div>
           </v-col>
-          <v-col cols="12" sm="6" md="4">
-            <v-select
-              v-model="settings.subRemoteGroupAdaptation"
-              class="setting-info-field"
-              density="compact"
-              hide-details
-              :items="remoteGroupAdaptationItems"
-              :label="$t('setting.subRemoteGroupAdaptation')"
-              variant="outlined"
-            ><template #append-inner><SettingInfo :text="$t('setting.hint.subRemoteGroupAdaptation')" /></template></v-select>
-          </v-col>
+          <ComponentSlot name="settings:subscription-advanced" :ctx="{ settings }" />
           <v-col cols="12">
             <v-textarea class="setting-info-field" v-model="settings.subAnnounce" :label="$t('setting.subAnnounce')" rows="2" hide-details><template #append-inner><SettingInfo :text="$t('setting.hint.subAnnounce')" /></template></v-textarea>
           </v-col>
@@ -282,6 +279,14 @@
       <v-window-item value="basics">
         <BasicsTab />
       </v-window-item>
+
+      <v-window-item
+        v-for="item in componentSettingsTabs"
+        :key="item.key"
+        :value="item.key"
+      >
+        <component :is="settingTabComponent(item)" />
+      </v-window-item>
     </v-window>
   </v-card-text>
 </v-card>
@@ -295,9 +300,15 @@ import SubJsonExtVue from '@/components/subscription/SubJsonExt.vue'
 import SubClashExtVue from '@/components/subscription/SubClashExt.vue'
 import MaintenanceTab from '@/components/settings/MaintenanceTab.vue'
 import SettingInfo from '@/components/settings/SettingInfo.vue'
+import ComponentSlot from '@/componentSystem/ComponentSlot.vue'
+import { settingsTabs } from '@/componentSystem/registry'
+import type { SettingsTab } from '@/componentSystem/types'
 import { useSettingsPage } from '@/shared/composables/pages/useSettingsPage'
+import { computed, defineAsyncComponent } from 'vue'
 
-const remoteGroupAdaptationItems = ['urltest', 'selector', 'failover']
+const componentSettingsTabs = settingsTabs
+const componentSettingsTabKeys = computed(() => new Set(componentSettingsTabs.value.map(item => item.key)))
+const settingTabComponent = (item: SettingsTab) => defineAsyncComponent(item.component)
 
 const { loading, nexus, restartApp, save, sessionMaxAge, settings, showNexusControls, stateChange, subClashEnable, subEncode, subJsonEnable, subLinkEnable, subNameInRemark, subPort, subRateLimitPerIP, subSecretRequired, subShowInfo, subUpdates, subXrayEnable, tab, trafficAge, timezones, webPort } = useSettingsPage()
 </script>

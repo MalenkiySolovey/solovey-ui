@@ -372,7 +372,11 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string) (string
 	}
 
 	if pg, ok := output["proxy-groups"].([]interface{}); ok {
-		pg = append(pg, proxyGroups[0], proxyGroups[1])
+		if shouldInjectDefaultClashGroups(pg) {
+			for _, group := range defaultClashGroupsForInjection(proxyGroups, pg, renderedGroupNames, proxyTags) {
+				pg = append(pg, group)
+			}
+		}
 		for _, group := range renderedGroups {
 			pg = append(pg, group)
 		}
@@ -386,4 +390,62 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string) (string
 		return "", err
 	}
 	return string(result), nil
+}
+
+func shouldInjectDefaultClashGroups(groups []interface{}) bool {
+	if hasClashGroupNamed(groups, "Proxy") {
+		return false
+	}
+	if len(groups) == 0 {
+		return true
+	}
+	return clashGroupsReference(groups, "Proxy")
+}
+
+func defaultClashGroupsForInjection(defaultGroups []map[string]interface{}, existing []interface{}, renderedGroupNames []string, proxyTags []string) []map[string]interface{} {
+	groups := make([]map[string]interface{}, 0, len(defaultGroups))
+	for _, group := range defaultGroups {
+		if asString(group["name"]) == "Auto" && hasClashGroupNamed(existing, "Auto") {
+			continue
+		}
+		clone := make(map[string]interface{}, len(group))
+		for key, value := range group {
+			clone[key] = value
+		}
+		if asString(clone["name"]) == "Proxy" && hasClashGroupNamed(existing, "Auto") {
+			refs := append([]string(nil), renderedGroupNames...)
+			refs = append(refs, proxyTags...)
+			clone["proxies"] = refs
+		}
+		groups = append(groups, clone)
+	}
+	return groups
+}
+
+func hasClashGroupNamed(groups []interface{}, name string) bool {
+	for _, item := range groups {
+		group, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if asString(group["name"]) == name {
+			return true
+		}
+	}
+	return false
+}
+
+func clashGroupsReference(groups []interface{}, target string) bool {
+	for _, item := range groups {
+		group, ok := item.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		for _, ref := range clashStringList(group["proxies"]) {
+			if ref == target {
+				return true
+			}
+		}
+	}
+	return false
 }
