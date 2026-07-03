@@ -142,6 +142,8 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Playwright e2e via local test server
         working-directory: frontend
+        env:
+          SUI_E2E_READY_TIMEOUT_MS: "900000"
         run: npx playwright test
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
@@ -150,6 +152,7 @@ jobs:
           path: |
             tests/baseline/phase6/playwright/**
             tests/baseline/phase6/playwright.junit.xml
+            tests/baseline/phase6/e2e-server/**
             frontend/playwright-report/**
           if-no-files-found: ignore
           retention-days: 7
@@ -186,6 +189,8 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Axe accessibility specs
         working-directory: frontend
+        env:
+          SUI_E2E_READY_TIMEOUT_MS: "900000"
         run: npx playwright test tests/e2e/a11y.spec.ts
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
@@ -195,5 +200,6 @@ jobs:
             tests/baseline/phase6/a11y/**
             tests/baseline/phase6/playwright/**
             tests/baseline/phase6/playwright.junit.xml
+            tests/baseline/phase6/e2e-server/**
           if-no-files-found: ignore
           retention-days: 7

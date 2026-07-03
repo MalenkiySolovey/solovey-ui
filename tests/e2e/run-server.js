@@ -14,7 +14,7 @@ const zigLocalCacheDir = path.join(phaseDir, 'zig-local-cache')
 const statePath = path.join(serverDir, 'state.json')
 const bundledZig = path.join(repoRoot, '..', '..', '.devtools', 'zig-x86_64-windows-0.16.0', 'zig.exe')
 const resolvedCC = process.env.CC || (process.platform === 'win32' && fs.existsSync(bundledZig) ? `${bundledZig} cc` : undefined)
-const readyTimeoutMs = Number(process.env.SUI_E2E_READY_TIMEOUT_MS || 300000)
+const readyTimeoutMs = Number(process.env.SUI_E2E_READY_TIMEOUT_MS || (process.env.CI ? 900000 : 300000))
 
 fs.mkdirSync(serverDir, { recursive: true })
 fs.mkdirSync(appDataDir, { recursive: true })

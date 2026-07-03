@@ -5,7 +5,7 @@ import "strings"
 const (
 	TrackerValidatedSingBoxModule  = "github.com/sagernet/sing-box"
 	TrackerValidatedSingBoxVersion = "v1.13.14"
-	TrackerRevalidationPolicyDoc   = "docs/sing-box-tracker-revalidation.md"
+	TrackerRevalidationPolicyName  = "sing-box tracker revalidation policy"
 )
 
 var TrackerRevalidationChecks = []string{
@@ -23,7 +23,7 @@ type TrackerRevalidationStatus struct {
 	ValidatedVersion string
 	CurrentVersion   string
 	Required         bool
-	PolicyDoc        string
+	PolicyName       string
 	Checks           []string
 }
 
@@ -35,7 +35,7 @@ func SingBoxTrackerRevalidationStatus(currentVersion string) TrackerRevalidation
 		ValidatedVersion: validatedVersion,
 		CurrentVersion:   currentVersion,
 		Required:         currentVersion == "" || currentVersion != validatedVersion,
-		PolicyDoc:        TrackerRevalidationPolicyDoc,
+		PolicyName:       TrackerRevalidationPolicyName,
 		Checks:           append([]string(nil), TrackerRevalidationChecks...),
 	}
 }

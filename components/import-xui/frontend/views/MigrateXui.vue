@@ -2,7 +2,7 @@
   <v-container fluid class="migrate-xui">
     <v-row>
       <v-col cols="12" md="6">
-        <div class="text-h5">{{ $t('migrateXui.title') }}</div>
+        <h1 class="text-h5">{{ $t('migrateXui.title') }}</h1>
       </v-col>
     </v-row>
 

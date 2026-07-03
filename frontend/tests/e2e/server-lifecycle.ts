@@ -3,12 +3,15 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 export const repositoryRoot = path.resolve(process.cwd(), '..')
-export const managedServerStatePath = path.join(
+export const managedServerDir = path.join(
   repositoryRoot,
   'tests',
   'baseline',
   'phase6',
   'e2e-server',
+)
+export const managedServerStatePath = path.join(
+  managedServerDir,
   'state.json',
 )
 

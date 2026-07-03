@@ -14,6 +14,11 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/api"
 	_ "github.com/MalenkiySolovey/solovey-ui/app"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
+	componentsupervisor "github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
@@ -32,6 +37,10 @@ func main() {
 
 	fmt.Println("phase6 e2e panel-server: init database")
 	if err := dbsqlite.Init(configstorage.GetDBPath()); err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println("phase6 e2e panel-server: install registered components")
+	if err := installRegisteredComponentsForE2E(); err != nil {
 		log.Fatal(err)
 	}
 	fmt.Println("phase6 e2e panel-server: load settings")
@@ -56,6 +65,14 @@ func main() {
 		log.Fatal(err)
 	}
 	gin.SetMode(gin.ReleaseMode)
+	components := componentsupervisor.New(componenthost.Deps{
+		API: componenthost.APIDeps{
+			Runtime: runtime,
+		},
+	})
+	if err := components.Migrate(context.Background()); err != nil {
+		log.Fatal(err)
+	}
 	engine := gin.New()
 	engine.Use(gin.Recovery())
 	engine.Use(securitymiddleware.Admin(api.RequestIsHTTPS))
@@ -106,4 +123,26 @@ func main() {
 	case <-done:
 	case <-ctx.Done():
 	}
+}
+
+func installRegisteredComponentsForE2E() error {
+	registered := registry.Components()
+	components := make([]installstate.InstalledComponent, 0, len(registered))
+	for _, component := range registered {
+		components = append(components, installstate.InstalledComponent{
+			ID:        component.Manifest.ID,
+			Delivery:  component.Manifest.Delivery,
+			Installed: true,
+		})
+	}
+	if err := installstate.Store(installstate.DefaultPath(), installstate.Metadata{
+		Version:    1,
+		Profile:    "e2e-full",
+		Binary:     "full",
+		Components: components,
+	}); err != nil {
+		return err
+	}
+	state.InvalidateActiveCache()
+	return nil
 }

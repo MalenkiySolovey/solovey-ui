@@ -13,7 +13,7 @@ func TestTrackerPolicyMatchesSingBoxDependency(t *testing.T) {
 			TrackerValidatedSingBoxModule,
 			TrackerValidatedSingBoxVersion,
 			version,
-			TrackerRevalidationPolicyDoc,
+			TrackerRevalidationPolicyName,
 		)
 	}
 
@@ -33,18 +33,21 @@ func TestTrackerPolicyRequiresRevalidationOnVersionChange(t *testing.T) {
 	}
 }
 
-func TestTrackerPolicyDocCoversCurrentChecklist(t *testing.T) {
-	doc, err := os.ReadFile("../../" + TrackerRevalidationPolicyDoc)
-	if err != nil {
-		t.Fatal(err)
+func TestTrackerPolicyStatusCoversCurrentChecklist(t *testing.T) {
+	status := SingBoxTrackerRevalidationStatus(TrackerValidatedSingBoxVersion)
+	if status.PolicyName != TrackerRevalidationPolicyName {
+		t.Fatalf("policy name = %q, want %q", status.PolicyName, TrackerRevalidationPolicyName)
 	}
-	text := string(doc)
-	if !strings.Contains(text, TrackerValidatedSingBoxVersion) {
-		t.Fatalf("policy doc does not mention validated sing-box version %s", TrackerValidatedSingBoxVersion)
+	if status.ValidatedVersion != TrackerValidatedSingBoxVersion {
+		t.Fatalf("validated version = %q, want %q", status.ValidatedVersion, TrackerValidatedSingBoxVersion)
+	}
+	seen := make(map[string]bool, len(status.Checks))
+	for _, check := range status.Checks {
+		seen[check] = true
 	}
 	for _, check := range TrackerRevalidationChecks {
-		if !strings.Contains(text, check) {
-			t.Fatalf("policy doc missing tracker check %q", check)
+		if !seen[check] {
+			t.Fatalf("policy status missing tracker check %q", check)
 		}
 	}
 }

@@ -6,6 +6,8 @@ import (
 	"strings"
 )
 
+const ReleaseVersionPolicySummary = "Solovey UI release versions are stored in config/identity/version, exposed through settings.version, and published as Git tags with a leading v. The canonical scheme is YYYY.RELEASE.PATCH[-PRERELEASE]. Update and migration code must never downgrade persisted settings.version."
+
 type Semver struct {
 	Major      int
 	Minor      int

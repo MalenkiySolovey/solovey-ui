@@ -3,13 +3,27 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import {
+  managedServerDir,
   managedServerStatePath,
   readManagedServerPid,
   repositoryRoot,
   stopManagedServer,
 } from './server-lifecycle'
 
-const managedServerTimeoutMs = Number(process.env.SUI_E2E_READY_TIMEOUT_MS || 360_000)
+const managedServerTimeoutMs = Number(process.env.SUI_E2E_READY_TIMEOUT_MS || (process.env.CI ? 900_000 : 360_000))
+
+const readLogTail = (fileName: string): string => {
+  const logPath = path.join(managedServerDir, fileName)
+  if (!fs.existsSync(logPath)) return `${fileName}: <missing>`
+
+  const lines = fs.readFileSync(logPath, 'utf8').trim().split(/\r?\n/)
+  return `${fileName}:\n${lines.slice(-80).join('\n')}`
+}
+
+const withManagedServerLogs = (error: unknown): Error => {
+  const message = error instanceof Error ? error.message : String(error)
+  return new Error(`${message}\n\nManaged E2E server logs:\n${readLogTail('backend.log')}\n\n${readLogTail('frontend.log')}`)
+}
 
 const waitForManagedServer = async (timeoutMs: number): Promise<void> => {
   const deadline = Date.now() + timeoutMs
@@ -38,7 +52,7 @@ export default async function globalSetup() {
     cwd: repositoryRoot,
     detached: true,
     env: process.env,
-    stdio: 'ignore',
+    stdio: ['ignore', 'inherit', 'inherit'],
     windowsHide: true,
   })
   server.unref()
@@ -47,6 +61,6 @@ export default async function globalSetup() {
     await waitForManagedServer(managedServerTimeoutMs)
   } catch (error) {
     stopManagedServer(server.pid)
-    throw error
+    throw withManagedServerLogs(error)
   }
 }

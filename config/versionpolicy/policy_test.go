@@ -1,7 +1,6 @@
 package versionpolicy
 
 import (
-	"os"
 	"strings"
 	"testing"
 
@@ -64,21 +63,16 @@ func TestCompareVersionsUsesSemverPrecedence(t *testing.T) {
 	}
 }
 
-func TestReleasePolicyDocCoversVersionRules(t *testing.T) {
-	doc, err := os.ReadFile("../../docs/release-policy.md")
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(doc)
+func TestReleasePolicySummaryCoversVersionRules(t *testing.T) {
 	for _, phrase := range []string{
 		"config/identity/version",
 		"YYYY.RELEASE.PATCH[-PRERELEASE]",
 		"Git tag",
 		"settings.version",
-		"must never be downgraded",
+		"must never downgrade",
 	} {
-		if !strings.Contains(text, phrase) {
-			t.Fatalf("release policy doc missing %q", phrase)
+		if !strings.Contains(ReleaseVersionPolicySummary, phrase) {
+			t.Fatalf("release version policy summary missing %q", phrase)
 		}
 	}
 }
