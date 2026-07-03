@@ -94,6 +94,26 @@ const spawnLogged = (name, command, args, options) => {
   return child
 }
 
+const generateComponentImports = () => {
+  const generator = path.join(repoRoot, 'scripts', 'generate-component-imports.mjs')
+  const result = spawnSync(process.execPath, [
+    generator,
+    '--profile',
+    'full',
+    '--out',
+    'app/components_generated.go',
+    '--cmd-out',
+    'cmd/optional_commands_generated.go',
+  ], {
+    cwd: repoRoot,
+    env: normalizeSpawnEnv(process.env),
+    stdio: 'inherit',
+    windowsHide: true,
+  })
+  if (result.error) throw result.error
+  if (result.status !== 0) throw new Error(`component import generation failed with exit code ${result.status}`)
+}
+
 const waitForFile = async (file, timeoutMs, watchedChildren = []) => {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
@@ -152,6 +172,8 @@ process.on('SIGTERM', () => {
 process.on('exit', stopAll)
 
 const main = async () => {
+  generateComponentImports()
+
   const backendEnv = {
     ...process.env,
     SUI_DB_FOLDER: dbDir,
