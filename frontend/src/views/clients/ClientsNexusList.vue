@@ -172,6 +172,7 @@ const emit = defineEmits<{
   del: [id: number]
   delMany: [ids: number[]]
   qr: [id: number]
+  resetTraffic: [client: ClientRow]
   diagnose: [id: number]
   move: [id: number, dir: number]
   moveManyTo: [draggedIds: number[], targetId: number, position: ManualDropPosition | null]
@@ -282,6 +283,7 @@ const clientActions = (item: ClientRow): RowAction[] => [
   { key: 'qr', labelKey: 'objects.config', icon: 'lucide:qr-code', inline: true },
   { key: 'diagnose', labelKey: 'actions.diagnose', icon: 'lucide:activity', inline: true },
   { key: 'stats', labelKey: 'stats.graphTitle', icon: 'lucide:line-chart', inline: true, hidden: !props.enableTraffic },
+  { key: 'resetTraffic', labelKey: 'actions.resetTraffic', icon: 'lucide:rotate-ccw', inline: true, hidden: !props.enableTraffic },
   { key: 'del', labelKey: 'actions.del', icon: 'lucide:trash-2', tone: 'error', divider: true },
 ]
 
@@ -304,6 +306,9 @@ const handleAction = async (key: string, item: ClientRow) => {
       break
     case 'stats':
       emit('stats', item.name)
+      break
+    case 'resetTraffic':
+      emit('resetTraffic', item)
       break
     case 'del': {
       const discard = await confirm({

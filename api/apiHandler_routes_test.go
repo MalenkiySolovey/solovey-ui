@@ -34,6 +34,7 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/restartSb",
 			"/api/linkConvert",
 			"/api/subConvert",
+			"/api/getCertPing",
 			"/api/importdb",
 			"/api/addToken",
 			"/api/deleteToken",
@@ -42,6 +43,7 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/logout",
 			"/api/checkOutbounds",
 			"/api/rotateSubSecret",
+			"/api/resetTraffic",
 			"/api/ip-monitor/:client/clear",
 		},
 		http.MethodGet: {

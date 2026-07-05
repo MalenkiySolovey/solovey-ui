@@ -155,6 +155,18 @@ const Data = defineStore('Data', {
       }
       return msg.success
     },
+    async resetClientTraffic (id: number, name: string): Promise<boolean> {
+      const msg = await HttpUtils.post('api/resetTraffic', null, { params: { id } })
+      if (msg.success) {
+        push.success({
+          title: i18n.global.t('success'),
+          duration: 5000,
+          message: `${i18n.global.t('actions.resetTraffic')} ${name}`
+        })
+        this.setNewData(msg.obj)
+      }
+      return msg.success
+    },
     // Check duplicate client name
     checkClientName (id: number, newName: string): boolean {
       const oldName = id > 0 ? this.clients.findLast((i: any) => i.id == id)?.name : null

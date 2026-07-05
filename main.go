@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	_ "time/tzdata"
 
 	"github.com/MalenkiySolovey/solovey-ui/app"
 	"github.com/MalenkiySolovey/solovey-ui/cmd"

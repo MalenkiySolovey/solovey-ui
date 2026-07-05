@@ -88,6 +88,9 @@ func getTlsParams(params *[]LinkParam, tls map[string]interface{}, insecureKey s
 		if disableSni, ok := tls["disable_sni"].(bool); ok && disableSni {
 			*params = append(*params, LinkParam{"disable_sni", "1"})
 		}
+		if pins := tlsStringList(tls["certificate_public_key_sha256"]); len(pins) > 0 && pins[0] != "" {
+			*params = append(*params, LinkParam{"pinSHA256", pins[0]})
+		}
 	}
 	if utls, ok := tls["utls"].(map[string]interface{}); ok {
 		if fingerprint, ok := utls["fingerprint"].(string); ok {
@@ -103,5 +106,22 @@ func getTlsParams(params *[]LinkParam, tls map[string]interface{}, insecureKey s
 			alpnList[i], _ = v.(string)
 		}
 		*params = append(*params, LinkParam{"alpn", strings.Join(alpnList, ",")})
+	}
+}
+
+func tlsStringList(value interface{}) []string {
+	switch typed := value.(type) {
+	case []string:
+		return typed
+	case []interface{}:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text, ok := item.(string); ok {
+				out = append(out, text)
+			}
+		}
+		return out
+	default:
+		return nil
 	}
 }

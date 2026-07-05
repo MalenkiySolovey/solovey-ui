@@ -104,7 +104,9 @@ func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
 	g.POST("/linkConvert", h.LinkConvert)
 	g.POST("/subConvert", h.SubConvert)
 	g.POST("/checkOutbounds", h.CheckOutbounds)
+	g.POST("/getCertPing", h.GetCertPing)
 	g.POST("/rotateSubSecret", h.RotateSubSecret)
+	g.POST("/resetTraffic", h.ResetTraffic)
 	g.GET("/singbox-config", h.GetSingboxConfig)
 	g.GET("/checkOutbound", h.GetCheckOutbound)
 

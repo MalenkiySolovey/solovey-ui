@@ -94,6 +94,8 @@ var apiV2ActionScopes = map[string][]string{
 	"restartApp":    {"write"},
 	"restartSb":     {"write"},
 	"checkOutbound": {"write"},
+	"getCertPing":   {"write"},
+	"resetTraffic":  {"write"},
 	"linkConvert":   {"read", "write"},
 	"subConvert":    {"read", "write"},
 	// Config / identity / secret reads — component scopes are excluded.
@@ -148,10 +150,14 @@ func (a *APIv2Handler) postHandler(c *gin.Context) {
 		a.config.LinkConvert(c)
 	case "subConvert":
 		a.config.SubConvert(c)
+	case "getCertPing":
+		a.config.GetCertPing(c)
 	case "importdb":
 		a.db.ImportDb(c)
 	case "rotateSubSecret":
 		a.config.RotateSubSecret(c)
+	case "resetTraffic":
+		a.config.ResetTraffic(c)
 	default:
 		jsonMsg(c, "failed", common.NewError("unknown action: ", action))
 	}

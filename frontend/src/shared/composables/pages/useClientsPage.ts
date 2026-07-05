@@ -135,6 +135,17 @@ export const useClientsPage = () => {
     return success
   }
 
+  const resetClientTraffic = async (client: { id: number; name: string }) => {
+    const accepted = await confirm({
+      title: `${t('actions.resetTraffic')} ${t('objects.client')}`,
+      message: client.name,
+      confirmLabel: t('actions.resetTraffic'),
+      tone: 'primary',
+    })
+    if (!accepted) return
+    await Data().resetClientTraffic(client.id, client.name)
+  }
+
   const deleteSelectedClients = async () => {
     const rows = clientSelection.selectedItems.value
     if (rows.length === 0) return
@@ -359,6 +370,7 @@ export const useClientsPage = () => {
     percentColor,
     qrcode,
     remainedDays,
+    resetClientTraffic,
     selectedClientCount,
     selectedClientIds,
     setItemPerPage,

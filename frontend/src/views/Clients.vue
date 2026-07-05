@@ -63,6 +63,7 @@
     @edit="showModal"
     @edit-bulk="editBulk"
     @qr="showQrCode"
+    @reset-traffic="resetClientTraffic"
     @move="moveClient"
     @move-many-to="dragSelectedClients"
     @move-to="dragClient"
@@ -289,6 +290,9 @@
         <v-icon icon="mdi-chart-line" @click="showStats(item.name)" v-if="enableTraffic">
           <v-tooltip activator="parent" location="top" :text="$t('stats.graphTitle')"></v-tooltip>
         </v-icon>
+        <v-icon icon="mdi-restart" class="ms-2" @click="resetClientTraffic(item)" v-if="enableTraffic">
+          <v-tooltip activator="parent" location="top" :text="$t('actions.resetTraffic')"></v-tooltip>
+        </v-icon>
       </template>
       </v-data-table>
     </v-col>
@@ -309,5 +313,5 @@ import IpHistoryModal from '@/components/security/IpHistoryModal.vue'
 import ClientsNexusList from '@/views/clients/ClientsNexusList.vue'
 import { useClientsPage } from '@/shared/composables/pages/useClientsPage'
 
-const { actionMenu, addBulk, addBulkModal, clearFilter, clientRowProps, clientSelectMode, clients, closeAddBulk, closeDoctor, closeEditBulk, closeModal, closeQrCode, closeStats, delClient, delClientsBulk, deleteSelectedClients, delOverlay, doFilter, doctor, dragClient, dragSelectedClients, editBulk, editBulkModal, enableTraffic, filterItems, filterMenu, filterSettings, formatSize, groups, headers, inboundTags, inbounds, ipModal, isOnline, itemPerPage, locale, modal, mode, moveClient, onClientIpsCleared, onlineUsers, percent, percentColor, qrcode, remainedDays, selectedClientCount, selectedClientIds, setItemPerPage, showClientIps, showDoctor, showModal, showQrCode, showStats, smAndDown, sortClientsByName, stats, toggleClientSelectMode } = useClientsPage()
+const { actionMenu, addBulk, addBulkModal, clearFilter, clientRowProps, clientSelectMode, clients, closeAddBulk, closeDoctor, closeEditBulk, closeModal, closeQrCode, closeStats, delClient, delClientsBulk, deleteSelectedClients, delOverlay, doFilter, doctor, dragClient, dragSelectedClients, editBulk, editBulkModal, enableTraffic, filterItems, filterMenu, filterSettings, formatSize, groups, headers, inboundTags, inbounds, ipModal, isOnline, itemPerPage, locale, modal, mode, moveClient, onClientIpsCleared, onlineUsers, percent, percentColor, qrcode, remainedDays, resetClientTraffic, selectedClientCount, selectedClientIds, setItemPerPage, showClientIps, showDoctor, showModal, showQrCode, showStats, smAndDown, sortClientsByName, stats, toggleClientSelectMode } = useClientsPage()
 </script>

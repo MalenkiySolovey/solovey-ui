@@ -111,7 +111,7 @@
         </v-col>
       </v-row>
       <v-row v-if="tls.certificate_public_key_sha256 != undefined">
-        <v-col cols="12">
+        <v-col cols="12" md="8">
           <v-textarea
             :label="$t('tls.certPubKeySha256')"
             rows="2"
@@ -119,6 +119,14 @@
             hide-details
             v-model="certificatePublicKeySha256">
           </v-textarea>
+        </v-col>
+        <v-col cols="12" md="4" class="d-flex align-end">
+          <v-btn
+            variant="tonal"
+            :loading="certPingLoading"
+            :disabled="!canFetchCertificatePin"
+            @click="fetchCertificatePin"
+          >{{ $t('tls.fetchCertPin') }}</v-btn>
         </v-col>
       </v-row>
       <template v-if="optionClientCert">

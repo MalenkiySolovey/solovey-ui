@@ -52,6 +52,11 @@ func (s *ClientService) ResetClients(tx *gorm.DB, dateTime int64) ([]uint, error
 	return backend.ResetClients(tx, dateTime)
 }
 
+func (s *ClientService) ResetTraffic(id string) (model.Client, error) {
+	backend := s.backend()
+	return backend.ResetTraffic(id)
+}
+
 func (s *ClientService) RotateSubSecret(id string) (string, error) {
 	backend := s.backend()
 	return backend.RotateSubSecret(id)

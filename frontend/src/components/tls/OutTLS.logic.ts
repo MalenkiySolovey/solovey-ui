@@ -1,10 +1,13 @@
 import { defineComponent } from 'vue'
 import { oTls, defaultOutTls } from '@/types/tls'
+import HttpUtils from '@/plugins/httputil'
+
 export default defineComponent({
   props: ['outbound'],
   data() {
     return {
       menu: false,
+      certPingLoading: false,
       usePath: this.$props.outbound?.tls?.certificate? 1:0,
       useEchPath: this.$props.outbound?.tls.ech?.config? 1:0,
       defaults: defaultOutTls,
@@ -172,6 +175,9 @@ export default defineComponent({
       get(): string { return this.tls.certificate_public_key_sha256?.join('\n') ?? '' },
       set(v:string) { this.$props.outbound.tls.certificate_public_key_sha256 = v.split(/[\n,]/).map((s:string) => s.trim()).filter((s:string) => s.length > 0) }
     },
+    canFetchCertificatePin(): boolean {
+      return Boolean(this.$props.outbound?.server)
+    },
     clientCertificateText: {
       get(): string { return this.tls.client_certificate ? this.tls.client_certificate.join('\n') : '' },
       set(v:string) { this.$props.outbound.tls.client_certificate = v.length > 0 ? v.split('\n') : [] }
@@ -184,5 +190,29 @@ export default defineComponent({
       get(): number { return parseInt(this.tls.fragment_fallback_delay?.replace('ms','')?? '500')?? 500 },
       set(v:number) { this.$props.outbound.tls.fragment_fallback_delay = v>0 ? `${v}ms` : undefined }
     }
+  },
+  methods: {
+    async fetchCertificatePin() {
+      const server = this.$props.outbound?.server
+      if (!server) return
+      this.certPingLoading = true
+      try {
+        const msg = await HttpUtils.post('api/getCertPing', {
+          server,
+          port: this.$props.outbound?.server_port ?? 443,
+          serverName: this.tls.server_name ?? '',
+        })
+        const leafHash = msg.obj?.leafHash
+        if (!msg.success || typeof leafHash !== 'string' || leafHash.length === 0) return
+        if (!this.tls.certificate_public_key_sha256) {
+          this.$props.outbound.tls.certificate_public_key_sha256 = []
+        }
+        if (!this.tls.certificate_public_key_sha256?.includes(leafHash)) {
+          this.$props.outbound.tls.certificate_public_key_sha256?.push(leafHash)
+        }
+      } finally {
+        this.certPingLoading = false
+      }
+    },
   }
 })

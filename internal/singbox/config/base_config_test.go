@@ -65,6 +65,40 @@ func TestNormalizeBaseConfigRejectsInvalidEditableSectionShapes(t *testing.T) {
 	}
 }
 
+func TestNormalizeBaseConfigRestrictsControlAPIListenersToLoopback(t *testing.T) {
+	accepted := []json.RawMessage{
+		json.RawMessage(`{"experimental":{"clash_api":{"external_controller":"127.0.0.1:9090"}}}`),
+		json.RawMessage(`{"experimental":{"clash_api":{"external_controller":"localhost:9090"}}}`),
+		json.RawMessage(`{"experimental":{"v2ray_api":{"listen":"[::1]:8080"}}}`),
+	}
+	for _, config := range accepted {
+		t.Run("accept "+string(config), func(t *testing.T) {
+			if _, err := NormalizeBaseConfig(config); err != nil {
+				t.Fatalf("expected loopback listener to be accepted: %v", err)
+			}
+		})
+	}
+
+	rejected := []struct {
+		config  json.RawMessage
+		wantErr string
+	}{
+		{json.RawMessage(`{"experimental":{"clash_api":{"external_controller":":9090"}}}`), "all interfaces"},
+		{json.RawMessage(`{"experimental":{"clash_api":{"external_controller":"0.0.0.0:9090"}}}`), "loopback"},
+		{json.RawMessage(`{"experimental":{"clash_api":{"external_controller":"192.168.1.10:9090"}}}`), "loopback"},
+		{json.RawMessage(`{"experimental":{"v2ray_api":{"listen":"example.com:8080"}}}`), "localhost"},
+		{json.RawMessage(`{"experimental":{"v2ray_api":{"listen":"127.0.0.1:70000"}}}`), "invalid port"},
+	}
+	for _, tt := range rejected {
+		t.Run("reject "+string(tt.config), func(t *testing.T) {
+			_, err := NormalizeBaseConfig(tt.config)
+			if err == nil || !strings.Contains(err.Error(), tt.wantErr) {
+				t.Fatalf("error = %v, want it to contain %q", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestNormalizeBaseConfigPreservesUnknownTopLevelFields(t *testing.T) {
 	normalized, err := NormalizeBaseConfig(json.RawMessage(`{"future_top_level":{"enabled":true},"dns":{"servers":[]},"route":{"rules":[]}}`))
 	if err != nil {

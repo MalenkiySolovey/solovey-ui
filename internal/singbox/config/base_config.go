@@ -72,6 +72,9 @@ func NormalizeBaseConfig(config json.RawMessage) (string, error) {
 	if err := doc.ValidateEditableSections(); err != nil {
 		return "", err
 	}
+	if err := validateControlAPIListeners(doc.raw); err != nil {
+		return "", err
+	}
 	return doc.MarshalIndented()
 }
 

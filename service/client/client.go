@@ -3,6 +3,8 @@ package client
 
 import (
 	"encoding/json"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -233,6 +235,62 @@ func (s *Service) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 		s.setLastUpdate(dt)
 	}
 	return inboundIds, nil
+}
+
+func (s *Service) ResetTraffic(id string) (client model.Client, err error) {
+	id = strings.TrimSpace(id)
+	if id == "" {
+		return client, common.NewError("client id is required")
+	}
+	clientID, parseErr := strconv.ParseUint(id, 10, 64)
+	if parseErr != nil || clientID == 0 {
+		return client, common.NewError("invalid client id")
+	}
+
+	db := clientDatabase()
+	tx := db.Begin()
+	if tx.Error != nil {
+		return client, tx.Error
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback().Error
+		}
+	}()
+
+	if err = tx.Model(model.Client{}).Where("id = ?", clientID).First(&client).Error; err != nil {
+		return client, err
+	}
+	dt := time.Now().Unix()
+	if err = tx.Model(model.Client{}).Where("id = ?", clientID).Updates(map[string]interface{}{
+		"total_up":   gorm.Expr("total_up + up"),
+		"total_down": gorm.Expr("total_down + down"),
+		"up":         0,
+		"down":       0,
+	}).Error; err != nil {
+		return client, err
+	}
+	if err = tx.Model(model.Changes{}).Create(&model.Changes{
+		DateTime: dt,
+		Actor:    "ResetTraffic",
+		Key:      "clients",
+		Action:   "resetTraffic",
+		Obj:      clientChangeNameJSON(client.Name),
+	}).Error; err != nil {
+		return client, err
+	}
+	if err = tx.Commit().Error; err != nil {
+		return client, err
+	}
+	committed = true
+	s.setLastUpdate(dt)
+
+	client.TotalUp += client.Up
+	client.TotalDown += client.Down
+	client.Up = 0
+	client.Down = 0
+	return client, nil
 }
 
 func clientResetPeriodDays(resetDays int) int64 {

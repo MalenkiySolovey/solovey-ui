@@ -105,7 +105,7 @@ func addTls(out *map[string]interface{}, tls *model.Tls) {
 	if maxVersion, ok := tlsServer["max_version"]; ok {
 		tlsConfig["max_version"] = maxVersion
 	}
-	if certificate, ok := tlsServer["certificate"]; ok {
+	if certificate, ok := tlsServer["certificate"]; ok && !hasPublicKeyPin(tlsConfig) {
 		tlsConfig["certificate"] = certificate
 	}
 	if cipherSuites, ok := tlsServer["cipher_suites"]; ok {
@@ -140,6 +140,21 @@ func addTls(out *map[string]interface{}, tls *model.Tls) {
 	}
 
 	(*out)["tls"] = tlsConfig
+}
+
+func hasPublicKeyPin(tlsConfig map[string]interface{}) bool {
+	pin, ok := tlsConfig["certificate_public_key_sha256"]
+	if !ok {
+		return false
+	}
+	switch values := pin.(type) {
+	case []interface{}:
+		return len(values) > 0
+	case []string:
+		return len(values) > 0
+	default:
+		return false
+	}
 }
 
 func naiveOut(out *map[string]interface{}, inbound map[string]interface{}) {

@@ -92,6 +92,7 @@ func SaveConfig(tx *gorm.DB, data json.RawMessage) (model.Tls, error) {
 	if err := json.Unmarshal(data, &tls); err != nil {
 		return tls, err
 	}
+	ApplySelfSignedPublicKeyPin(&tls)
 
 	sortOrder, err := entityorder.ForSave(tx, &model.Tls{}, tls.Id)
 	if err != nil {

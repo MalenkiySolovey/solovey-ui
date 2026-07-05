@@ -28,6 +28,9 @@ func adapt() error {
 	if err := rehashLegacyPasswords(db); err != nil {
 		return err
 	}
+	if err := backfillTLSClientPins(db); err != nil {
+		return err
+	}
 	if err := bumpVersionSetting(db); err != nil {
 		return err
 	}

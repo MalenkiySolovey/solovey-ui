@@ -73,7 +73,7 @@ FROM alpine:latest@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acae
 # Match defaultValueMap["timeLocation"] in service settings.
 ENV TZ=Europe/Moscow
 WORKDIR /app
-RUN set -ex && apk add --no-cache --upgrade bash tzdata ca-certificates nftables gcompat libgcc
+RUN set -ex && apk add --no-cache --upgrade bash ca-certificates nftables gcompat libgcc
 COPY --from=backend-builder /app/solovey-ui /app/libcronet.so /app/
 COPY --from=front-builder /app/component-packs/ /app/components/
 COPY entrypoint.sh /app/

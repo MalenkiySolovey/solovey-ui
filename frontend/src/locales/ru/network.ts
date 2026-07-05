@@ -85,6 +85,7 @@ export default {
     "kernelTx": "TX",
     "kernelRx": "RX",
     "certPubKeySha256": "SHA-256 публичного ключа сертификата",
+    "fetchCertPin": "Получить pin сертификата",
     "clientAuthentication": "Аутентификация клиента",
     "clientCertificate": "Клиентский сертификат",
     "clientCert": "Клиентский сертификат",

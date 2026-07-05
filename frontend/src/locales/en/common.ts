@@ -328,6 +328,7 @@
     "cancel": "Cancel",
     "refresh": "Refresh",
     "diagnose": "Diagnose",
+    "resetTraffic": "Reset traffic",
     "restartApp": "Restart App",
     "restartSb": "Restart Singbox",
     "logoutAllAdmins": "Log out all admins"

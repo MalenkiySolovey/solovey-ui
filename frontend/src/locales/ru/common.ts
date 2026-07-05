@@ -328,6 +328,7 @@
     "cancel": "Отмена",
     "refresh": "Обновить",
     "diagnose": "Диагностика",
+    "resetTraffic": "Сбросить трафик",
     "restartApp": "Перезапустить приложение",
     "restartSb": "Перезапустить Singbox",
     "logoutAllAdmins": "Выйти всем администраторам"

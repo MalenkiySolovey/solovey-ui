@@ -25,6 +25,7 @@ func securityCSRFPostRoutes() []string {
 		"/api/restartSb",
 		"/api/linkConvert",
 		"/api/subConvert",
+		"/api/getCertPing",
 		"/api/importdb",
 		"/api/addToken",
 		"/api/deleteToken",
@@ -32,6 +33,7 @@ func securityCSRFPostRoutes() []string {
 		"/api/logoutAllAdmins",
 		"/api/checkOutbounds",
 		"/api/rotateSubSecret",
+		"/api/resetTraffic",
 		"/api/ip-monitor/alice/clear",
 	}
 	return append(routes, securityCSRFOptionalPostRoutes()...)

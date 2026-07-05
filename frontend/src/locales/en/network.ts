@@ -85,6 +85,7 @@ export default {
     "kernelTx": "TX",
     "kernelRx": "RX",
     "certPubKeySha256": "Certificate Public Key SHA-256",
+    "fetchCertPin": "Fetch certificate pin",
     "clientAuthentication": "Client Authentication",
     "clientCertificate": "Client Certificate",
     "clientCert": "Client Certificate",
