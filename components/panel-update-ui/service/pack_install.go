@@ -19,6 +19,7 @@ import (
 
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
+	"github.com/MalenkiySolovey/solovey-ui/util/ssrf"
 )
 
 const maxComponentBundleBytes = 200 << 20
@@ -59,7 +60,7 @@ func installComponentPackFromBundle(ctx context.Context, client HTTPDoer, bundle
 		return err
 	}
 	if client == nil {
-		client = &http.Client{Timeout: releaseHTTPTimeout}
+		client = ssrf.NewHTTPClient(releaseHTTPTimeout, "https")
 	}
 	root := componentsRoot()
 	if err := os.MkdirAll(root, 0o750); err != nil {

@@ -15,6 +15,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	componentprofile "github.com/MalenkiySolovey/solovey-ui/internal/components/profile"
+	"github.com/MalenkiySolovey/solovey-ui/util/ssrf"
 )
 
 const (
@@ -39,7 +40,7 @@ func NewCatalog() Catalog {
 	return Catalog{
 		ReleaseManifestFile: os.Getenv(ReleaseManifestFileEnv),
 		ReleaseManifestURL:  os.Getenv(ReleaseManifestURLEnv),
-		HTTPClient:          &http.Client{Timeout: releaseHTTPTimeout},
+		HTTPClient:          ssrf.NewHTTPClient(releaseHTTPTimeout, "https"),
 	}
 }
 
@@ -134,7 +135,7 @@ func (c Catalog) fetchReleaseCatalog() (releaseCatalog, string, error) {
 	}
 	client := c.HTTPClient
 	if client == nil {
-		client = &http.Client{Timeout: releaseHTTPTimeout}
+		client = ssrf.NewHTTPClient(releaseHTTPTimeout, "https")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), releaseHTTPTimeout)
 	defer cancel()

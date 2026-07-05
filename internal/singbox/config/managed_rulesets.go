@@ -13,6 +13,7 @@ import (
 
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	"github.com/MalenkiySolovey/solovey-ui/util/ssrf"
 	"github.com/sagernet/sing-box/common/srs"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -247,7 +248,7 @@ func downloadGeositeRuSmartHTTP(ctx context.Context, sourceURL string) ([]byte, 
 	request.Header.Set("Accept", "application/octet-stream")
 	request.Header.Set("User-Agent", "solovey-ui-geosite-ru-smart/1")
 
-	response, err := http.DefaultClient.Do(request)
+	response, err := ssrf.NewHTTPClient(managedRuSmartDownloadTimeout, "https").Do(request)
 	if err != nil {
 		return nil, err
 	}
