@@ -3,6 +3,7 @@ package web
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -27,6 +28,7 @@ func TestNewServerInitializesEmbeddedAssets(t *testing.T) {
 func TestNoRouteDelegatesOutsideAdminBaseToPublicSurface(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := initWebRouterTestDB(t)
+	ensureWebIndexTemplate(t)
 	setWebRouterSetting(t, db, "webPath", "/secret-panel/")
 	unregister := publicsurface.Register("web-test-public", webTestPublicHandler{})
 	t.Cleanup(unregister)
@@ -102,6 +104,25 @@ func initWebRouterTestDB(t *testing.T) *gorm.DB {
 	}
 	t.Cleanup(func() { _ = dbsqlite.Close() })
 	return dbsqlite.DB()
+}
+
+func ensureWebIndexTemplate(t *testing.T) {
+	t.Helper()
+	path := filepath.Join("html", "index.html")
+	if _, err := os.Stat(path); err == nil {
+		return
+	} else if err != nil && !os.IsNotExist(err) {
+		t.Fatalf("stat %s: %v", path, err)
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatalf("create web html dir: %v", err)
+	}
+	if err := os.WriteFile(path, []byte("<!doctype html><html><body>{{ .BASE_URL }}</body></html>"), 0o644); err != nil {
+		t.Fatalf("write %s: %v", path, err)
+	}
+	t.Cleanup(func() {
+		_ = os.Remove(path)
+	})
 }
 
 func setWebRouterSetting(t *testing.T, db *gorm.DB, key string, value string) {
