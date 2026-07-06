@@ -302,6 +302,11 @@
     "key": "Key",
     "value": "Value"
   },
+  "inboundDrafts": {
+    "title": "Inbound drafts",
+    "reviewHint": "Drafts are review artifacts only. They do not change live inbounds until you explicitly save an inbound.",
+    "review": "Review"
+  },
   "actions": {
     "action": "Action",
     "add": "Add",

@@ -34,6 +34,23 @@ export interface ComponentStatus {
   active: boolean
 }
 
+export interface InboundDraftStatus {
+  id: number
+  source: string
+  sourceRef: string
+  status: string
+  inboundType: string
+  tag: string
+  payload?: {
+    inboundCandidate?: Record<string, unknown>
+    blocks?: string[]
+    warnings?: string[]
+    nextSteps?: string[]
+    noApply?: boolean
+  }
+  expiresAt: number
+}
+
 const Data = defineStore('Data', {
   state: () => ({ 
     lastLoad: 0,
@@ -46,6 +63,7 @@ const Data = defineStore('Data', {
     onlines: {inbound: <string[]>[], outbound: <string[]>[], user: <string[]>[]},
     config: <any>{},
     inbounds: <any[]>[],
+    inboundDrafts: <InboundDraftStatus[]>[],
     outbounds: <any[]>[],
     services: <any[]>[],
     endpoints: <any[]>[],
@@ -96,6 +114,7 @@ const Data = defineStore('Data', {
       if (data.config) this.config = data.config
       if (Object.hasOwn(data, 'clients')) this.clients = data.clients ?? []
       if (Object.hasOwn(data, 'inbounds')) this.inbounds = data.inbounds ?? []
+      if (Object.hasOwn(data, 'inboundDrafts')) this.inboundDrafts = data.inboundDrafts ?? []
       if (Object.hasOwn(data, 'outbounds')) this.outbounds = data.outbounds ?? []
       if (Object.hasOwn(data, 'services')) this.services = data.services ?? []
       if (Object.hasOwn(data, 'endpoints')) this.endpoints = data.endpoints ?? []
@@ -112,6 +131,27 @@ const Data = defineStore('Data', {
         return msg.obj.inbounds
       }
       return <Inbound[]>[]
+    },
+    async loadInboundDrafts(): Promise<InboundDraftStatus[]> {
+      const msg = await HttpUtils.get('api/inboundDrafts')
+      if (msg.success) {
+        this.inboundDrafts = msg.obj.inboundDrafts ?? []
+      }
+      return this.inboundDrafts
+    },
+    async applyInboundDraft(id: number): Promise<boolean> {
+      const msg = await HttpUtils.post(`api/inboundDrafts/${id}/apply`, null)
+      if (msg.success) {
+        this.setNewData(msg.obj)
+      }
+      return msg.success
+    },
+    async discardInboundDraft(id: number): Promise<boolean> {
+      const msg = await HttpUtils.post(`api/inboundDrafts/${id}/discard`, null)
+      if (msg.success) {
+        this.setNewData(msg.obj)
+      }
+      return msg.success
     },
     async loadClients(id: number): Promise<Client> {
       const options = id > 0 ? {id: id} : {}

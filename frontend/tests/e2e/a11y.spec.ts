@@ -1,6 +1,6 @@
 import { test } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
-import { login, setEnglishLocale, writeJSONArtifact } from './helpers'
+import { enableComponent, login, setEnglishLocale, writeJSONArtifact } from './helpers'
 
 test.setTimeout(90_000)
 
@@ -12,8 +12,10 @@ test('axe baseline for login and authenticated pages', async ({ page }) => {
   results.login = await new AxeBuilder({ page }).analyze()
 
   await login(page)
+  await enableComponent(page, 'fallback-html')
   for (const [name, route] of [
     ['dashboard', ''],
+    ['fallback-html', 'fallback-html'],
     ['migrate-xui', 'migrate-xui'],
     ['settings', 'settings'],
     ['audit', 'audit'],

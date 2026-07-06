@@ -4,6 +4,8 @@
     v-model="modal.visible"
     :visible="modal.visible"
     :id="modal.id"
+    :draft-id="modal.draftId"
+    :draft-inbound="draftInbound"
     :inTags="inTags"
     :tlsConfigs="tlsConfigs"
     @close="closeModal"
@@ -15,6 +17,48 @@
     :tag="stats.tag"
     @close="closeStats"
   />
+
+  <v-alert
+    v-if="inboundDrafts.length"
+    class="mb-4"
+    type="info"
+    variant="tonal"
+    density="comfortable"
+  >
+    <div class="font-weight-bold">{{ t('inboundDrafts.title') }}</div>
+    <div class="text-caption mb-2">{{ t('inboundDrafts.reviewHint') }}</div>
+    <div
+      v-for="draft in inboundDrafts"
+      :key="draft.id"
+      class="d-inline-flex align-center me-2 mb-2 ga-1"
+    >
+      <v-chip
+        size="small"
+        :color="draft.status === 'review_required' ? 'primary' : 'warning'"
+        variant="flat"
+      >
+        #{{ draft.id }} {{ draft.tag || draft.inboundType || draft.source }} · {{ draft.status }}
+      </v-chip>
+      <v-btn
+        v-if="canReviewInboundDraft(draft)"
+        size="x-small"
+        variant="tonal"
+        prepend-icon="mdi-file-eye-outline"
+        @click="reviewInboundDraft(draft)"
+      >
+        {{ t('inboundDrafts.review') }}
+      </v-btn>
+      <v-btn
+        size="x-small"
+        variant="text"
+        color="warning"
+        prepend-icon="mdi-close"
+        @click="discardInboundDraft(draft.id)"
+      >
+        {{ t('actions.close') }}
+      </v-btn>
+    </div>
+  </v-alert>
 
   <InboundsNexusList
     v-if="mode === 'nexus'"
@@ -188,20 +232,24 @@ import ManualOrderControls from '@/shared/ui/ManualOrderControls.vue'
 import InboundVue from '@/layouts/modals/Inbound.vue'
 import Stats from '@/layouts/modals/Stats.vue'
 import { Config } from '@/types/config'
-import { computed, defineAsyncComponent, ref } from 'vue'
+import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRoute, useRouter } from 'vue-router'
 import { createInbound, Inbound } from '@/types/inbounds'
 import RandomUtil from '@/plugins/randomUtil'
 import { useUiMode } from '@/uiMode/useUiMode'
 import { useManualDrag, type ManualDropPosition } from '@/shared/dnd/manualDrag'
 import type { ManualSortDirection } from '@/shared/dnd/manualReorder'
 import { usePendingManualOrder } from '@/shared/composables/usePendingManualOrder'
+import { canReviewInboundDraft, inboundFromDraft } from '@/shared/composables/inboundDraftReview'
 import { useBulkSelection } from '@/shared/dnd/bulkSelection'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
 
 const { mode } = useUiMode()
 const { t } = useI18n()
 const { confirm } = useConfirm()
+const route = useRoute()
+const router = useRouter()
 
 const InboundsNexusList = defineAsyncComponent(
   () => import('@/views/inbounds/InboundsNexusList.vue'),
@@ -220,6 +268,7 @@ const appConfig = computed((): Config => {
 const inbounds = computed((): Inbound[] => {
   return <Inbound[]> Data().inbounds
 })
+const inboundDrafts = computed(() => Data().inboundDrafts ?? [])
 const inboundsOrder = usePendingManualOrder<Inbound>('inbounds', inbounds)
 const orderedInbounds = inboundsOrder.displayItems
 const inboundOrderDirty = inboundsOrder.dirty
@@ -251,17 +300,56 @@ const enableTraffic = computed((): boolean => {
 const modal = ref({
   visible: false,
   id: 0,
+  draftId: 0,
 })
+const draftInbound = ref<Inbound | null>(null)
+const openedDraftFromRoute = ref(0)
 
 let delOverlay = ref(new Array<boolean>)
 
-const showModal = (id: number) => {
+const showModal = (id: number, draft: Inbound | null = null, draftId = 0) => {
   modal.value.id = id
+  modal.value.draftId = draftId
+  draftInbound.value = draft
   modal.value.visible = true
 }
 const closeModal = () => {
   modal.value.visible = false
+  modal.value.draftId = 0
+  draftInbound.value = null
 }
+
+const reviewInboundDraft = (draft: any) => {
+  const inbound = inboundFromDraft(draft)
+  if (!inbound) return
+  showModal(0, inbound, Number(draft.id))
+}
+
+const discardInboundDraft = async (id: number) => {
+  await Data().discardInboundDraft(id)
+}
+
+const openDraftFromRoute = async () => {
+  const raw = route.query.draft
+  const id = Number(Array.isArray(raw) ? raw[0] : raw)
+  if (!id || openedDraftFromRoute.value === id) return
+  openedDraftFromRoute.value = id
+  let draft = inboundDrafts.value.find(item => item.id === id)
+  if (!draft) {
+    await Data().loadInboundDrafts()
+    draft = inboundDrafts.value.find(item => item.id === id)
+  }
+  if (draft && canReviewInboundDraft(draft)) {
+    reviewInboundDraft(draft)
+  }
+  const query = { ...route.query }
+  delete query.draft
+  await router.replace({ query })
+}
+
+watch(() => route.query.draft, () => {
+  void openDraftFromRoute()
+}, { immediate: true })
 
 const delInbound = async (id: number) => {
   const index = inbounds.value.findIndex(i => i.id == id)

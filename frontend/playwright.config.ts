@@ -1,6 +1,7 @@
 import { defineConfig, devices } from '@playwright/test'
 
 const manageTestServer = process.env.SUI_E2E_SKIP_WEB_SERVER !== '1'
+const e2eWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH ?? '/phase6-panel/')
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -20,7 +21,7 @@ export default defineConfig({
     ['html', { outputFolder: '../tests/baseline/phase6/playwright/html', open: 'never' }],
   ],
   use: {
-    baseURL: process.env.SUI_E2E_BASE_URL ?? 'http://127.0.0.1:3000/app/',
+    baseURL: process.env.SUI_E2E_BASE_URL ?? `http://127.0.0.1:3000${e2eWebPath}`,
     trace: 'retain-on-failure',
     screenshot: 'only-on-failure',
   },
@@ -31,3 +32,9 @@ export default defineConfig({
     },
   ],
 })
+
+function normalizeWebPath(value: string): string {
+  const trimmed = value.trim()
+  if (!trimmed || trimmed === '/') return '/phase6-panel/'
+  return `${trimmed.startsWith('/') ? '' : '/'}${trimmed}${trimmed.endsWith('/') ? '' : '/'}`
+}

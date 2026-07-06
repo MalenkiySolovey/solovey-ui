@@ -99,18 +99,19 @@ var apiV2ActionScopes = map[string][]string{
 	"linkConvert":   {"read", "write"},
 	"subConvert":    {"read", "write"},
 	// Config / identity / secret reads — component scopes are excluded.
-	"load":      {"read", "write"},
-	"inbounds":  {"read", "write"},
-	"outbounds": {"read", "write"},
-	"endpoints": {"read", "write"},
-	"services":  {"read", "write"},
-	"tls":       {"read", "write"},
-	"clients":   {"read", "write"},
-	"config":    {"read", "write"},
-	"users":     {"read", "write"},
-	"settings":  {"read", "write"},
-	"changes":   {"read", "write"},
-	"keypairs":  {"read", "write"},
+	"load":          {"read", "write"},
+	"inbounds":      {"read", "write"},
+	"inboundDrafts": {"read", "write"},
+	"outbounds":     {"read", "write"},
+	"endpoints":     {"read", "write"},
+	"services":      {"read", "write"},
+	"tls":           {"read", "write"},
+	"clients":       {"read", "write"},
+	"config":        {"read", "write"},
+	"users":         {"read", "write"},
+	"settings":      {"read", "write"},
+	"changes":       {"read", "write"},
+	"keypairs":      {"read", "write"},
 	// Operational metrics — observability tokens may read these.
 	"stats":   {"read", "write", "observability"},
 	"status":  {"read", "write", "observability"},
@@ -172,7 +173,7 @@ func (a *APIv2Handler) getHandler(c *gin.Context) {
 	switch action {
 	case "load":
 		a.config.LoadData(c)
-	case "inbounds", "outbounds", "endpoints", "services", "tls", "clients", "config":
+	case "inbounds", "inboundDrafts", "outbounds", "endpoints", "services", "tls", "clients", "config":
 		err := a.config.LoadPartialData(c, []string{action})
 		if err != nil {
 			jsonMsg(c, action, err)

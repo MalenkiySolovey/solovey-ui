@@ -20,6 +20,7 @@ func TestTelegramComponentRoutesPresentInFullProfile(t *testing.T) {
 		"version": 1,
 		"binary": "full",
 		"components": [
+			{"id": "fallback-html", "delivery": "in-process", "installed": true},
 			{"id": "import-xui", "delivery": "in-process", "installed": true},
 			{"id": "observability-extra", "delivery": "in-process", "installed": true},
 			{"id": "paid-subscriptions", "delivery": "in-process", "installed": true},
@@ -35,6 +36,9 @@ func TestTelegramComponentRoutesPresentInFullProfile(t *testing.T) {
 	handler := &APIHandler{}
 	handler.initRouter(router.Group("/api"))
 
+	if !routeExists(router, http.MethodGet, "/api/components/fallback-html/health") {
+		t.Fatal("full profile must register GET /api/components/fallback-html/health")
+	}
 	if !routeExists(router, http.MethodPost, "/api/telegram/test") {
 		t.Fatal("full profile must register POST /api/telegram/test")
 	}

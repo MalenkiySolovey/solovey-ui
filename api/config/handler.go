@@ -101,6 +101,8 @@ func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
 	g.POST("/reorder", func(c *gin.Context) { h.Reorder(c, deps.LoginUser(c)) })
 	g.POST("/restartApp", h.RestartApp)
 	g.POST("/restartSb", h.RestartSb)
+	g.POST("/inboundDrafts/:id/apply", h.ApplyInboundDraft)
+	g.POST("/inboundDrafts/:id/discard", h.DiscardInboundDraft)
 	g.POST("/linkConvert", h.LinkConvert)
 	g.POST("/subConvert", h.SubConvert)
 	g.POST("/checkOutbounds", h.CheckOutbounds)
@@ -111,7 +113,7 @@ func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
 	g.GET("/checkOutbound", h.GetCheckOutbound)
 
 	g.GET("/load", h.LoadData)
-	for _, action := range []string{"inbounds", "outbounds", "endpoints", "services", "tls", "clients", "config"} {
+	for _, action := range []string{"inbounds", "inboundDrafts", "outbounds", "endpoints", "services", "tls", "clients", "config"} {
 		action := action
 		g.GET("/"+action, func(c *gin.Context) {
 			if err := h.LoadPartialData(c, []string{action}); err != nil {

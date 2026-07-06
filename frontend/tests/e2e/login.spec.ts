@@ -10,7 +10,7 @@ test.describe('login + CSRF smoke', () => {
     await inputs.nth(1).fill('not-the-password')
     await page.locator('button[type="submit"]').click()
 
-    await expect(page).toHaveURL(/\/app\/login$/)
+    await expect(page).toHaveURL(new URL('login', readServerState().baseURL).toString())
   })
 
   test('logs in with the generated test admin password', async ({ page }) => {

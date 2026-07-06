@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -25,6 +26,7 @@ import (
 	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/security"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/web"
+	"github.com/MalenkiySolovey/solovey-ui/web/publicsurface"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -44,14 +46,22 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Println("phase6 e2e panel-server: load settings")
-	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
+	settingService := &service.SettingService{}
+	if _, err := settingService.GetAllSetting(); err != nil {
+		log.Fatal(err)
+	}
+	if webPath := os.Getenv("SUI_E2E_WEB_PATH"); webPath != "" {
+		if err := settingService.SetComponentSettingString("webPath", webPath); err != nil {
+			log.Fatal(err)
+		}
+	}
+	if _, err := settingService.GetAllSetting(); err != nil {
 		log.Fatal(err)
 	}
 
 	fmt.Println("phase6 e2e panel-server: init api-only web server")
 	runtime := service.NewRuntime(nil)
 	service.SetDefaultRuntime(runtime)
-	settingService := &service.SettingService{}
 	baseURL, err := settingService.GetWebPath()
 	if err != nil {
 		log.Fatal(err)
@@ -70,9 +80,18 @@ func main() {
 			Runtime: runtime,
 		},
 	})
+	service.RegisterComponentMigrator(components.Migrate)
+	service.RegisterComponentSettingsReconciler(components.Reconcile)
+	service.RegisterComponentDataDropper(components.DropData)
 	if err := components.Migrate(context.Background()); err != nil {
 		log.Fatal(err)
 	}
+	if err := components.Start(context.Background()); err != nil {
+		log.Fatal(err)
+	}
+	defer func() {
+		_ = components.Stop(context.Background())
+	}()
 	engine := gin.New()
 	engine.Use(gin.Recovery())
 	engine.Use(securitymiddleware.Admin(api.RequestIsHTTPS))
@@ -86,6 +105,20 @@ func main() {
 	})
 	engine.GET(baseURL+"login", func(c *gin.Context) {
 		c.String(http.StatusOK, "phase6 e2e panel")
+	})
+	engine.NoRoute(func(c *gin.Context) {
+		if c.Request.URL.Path == strings.TrimSuffix(baseURL, "/") {
+			c.Redirect(http.StatusTemporaryRedirect, baseURL)
+			return
+		}
+		if !strings.HasPrefix(c.Request.URL.Path, baseURL) {
+			if publicsurface.Serve(c, publicsurface.Context{AdminBasePath: baseURL}) {
+				return
+			}
+			publicsurface.Handled404(c)
+			return
+		}
+		c.String(http.StatusNotFound, "phase6 e2e not found")
 	})
 
 	port, err := settingService.GetPort()

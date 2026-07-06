@@ -26,6 +26,7 @@ func backupTables() []backupTable {
 		{name: "settings", model: &model.Setting{}},
 		{name: "tls", model: &model.Tls{}},
 		{name: "inbounds", model: &model.Inbound{}},
+		{name: "inbound_drafts", model: &model.InboundDraft{}},
 		{name: "outbounds", model: &model.Outbound{}},
 		{name: "services", model: &model.Service{}},
 		{name: "endpoints", model: &model.Endpoint{}},

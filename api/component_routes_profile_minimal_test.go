@@ -16,6 +16,9 @@ func TestTelegramComponentRoutesAbsentInMinimalProfile(t *testing.T) {
 	handler := &APIHandler{}
 	handler.initRouter(router.Group("/api"))
 
+	if routeExists(router, http.MethodGet, "/api/components/fallback-html/health") {
+		t.Fatal("minimal profile must not register GET /api/components/fallback-html/health")
+	}
 	if routeExists(router, http.MethodPost, "/api/telegram/test") {
 		t.Fatal("minimal profile must not register POST /api/telegram/test")
 	}

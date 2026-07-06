@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	inbounddrafts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/drafts"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/sync/errgroup"
@@ -41,7 +43,7 @@ func (a *Handler) GetData(c *gin.Context) (interface{}, error) {
 	if isUpdated {
 		hostname := a.Hostname(c)
 		var loadSettings service.PanelLoadSettings
-		var clients, tlsConfigs, inbounds, outbounds, endpoints, services, components any
+		var clients, tlsConfigs, inbounds, inboundDraftRows, outbounds, endpoints, services, components any
 		var group errgroup.Group
 		group.Go(func() error {
 			settings, err := a.SettingService.LoadPanelSettingsForData(hostname)
@@ -61,6 +63,11 @@ func (a *Handler) GetData(c *gin.Context) (interface{}, error) {
 		group.Go(func() error {
 			result, err := a.InboundService.GetAll()
 			inbounds = result
+			return err
+		})
+		group.Go(func() error {
+			result, err := inbounddrafts.ListOpen(dbsqlite.DB(), 0)
+			inboundDraftRows = result
 			return err
 		})
 		group.Go(func() error {
@@ -90,6 +97,7 @@ func (a *Handler) GetData(c *gin.Context) (interface{}, error) {
 		data["clients"] = clients
 		data["tls"] = tlsConfigs
 		data["inbounds"] = inbounds
+		data["inboundDrafts"] = inboundDraftRows
 		data["outbounds"] = outbounds
 		data["endpoints"] = endpoints
 		data["services"] = services
@@ -125,6 +133,12 @@ func (a *Handler) LoadPartialData(c *gin.Context, objs []string) error {
 				return err
 			}
 			data[obj] = inbounds
+		case "inboundDrafts":
+			drafts, err := inbounddrafts.ListOpen(dbsqlite.DB(), 0)
+			if err != nil {
+				return err
+			}
+			data[obj] = drafts
 		case "outbounds":
 			outbounds, err := a.OutboundService.GetAll()
 			if err != nil {

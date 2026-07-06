@@ -13,10 +13,13 @@ const componentProfile = process.env.SOLOVEY_UI_PROFILE === 'core' ? 'core' : 'f
 const frontendRoot = fileURLToPath(new URL('.', import.meta.url))
 const repoRoot = path.resolve(frontendRoot, '..')
 const bundledComponentIDs = resolveBundledComponentIDs()
+const e2eWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH || '/phase6-panel/')
+const apiProxyPath = isE2E ? `${e2eWebPath}api` : '/app/api'
 
 export default defineConfig({
   base: '',
   plugins: [
+    e2eBaseURLPlugin(),
     componentEntriesPlugin(bundledComponentIDs),
     vue({
       template: { transformAssetUrls },
@@ -102,7 +105,7 @@ export default defineConfig({
     hmr: isE2E ? false : undefined,
     port: 3000,
     proxy: {
-      '/app/api': {
+      [apiProxyPath]: {
         target: 'http://localhost:2095',
         changeOrigin: true,
       },
@@ -130,6 +133,16 @@ function componentEntriesPlugin(componentIDs: string[]): Plugin {
         })
         .filter((entry): entry is string => Boolean(entry))
       return `export const componentEntries = {\n${entries.join(',\n')}\n}\n`
+    },
+  }
+}
+
+function e2eBaseURLPlugin(): Plugin {
+  return {
+    name: 'solovey-e2e-base-url',
+    transformIndexHtml(html) {
+      if (!isE2E) return html
+      return html.replace('{{ .BASE_URL }}', e2eWebPath)
     },
   }
 }
@@ -182,4 +195,10 @@ function assertComponentID(id: string) {
   if (!/^[a-z0-9-]+$/.test(id)) {
     throw new Error(`Invalid Solovey UI component id: ${id}`)
   }
+}
+
+function normalizeWebPath(value: string) {
+  const trimmed = String(value || '').trim()
+  if (!trimmed || trimmed === '/') return '/phase6-panel/'
+  return `${trimmed.startsWith('/') ? '' : '/'}${trimmed}${trimmed.endsWith('/') ? '' : '/'}`
 }

@@ -15,6 +15,7 @@ const statePath = path.join(serverDir, 'state.json')
 const bundledZig = path.join(repoRoot, '..', '..', '.devtools', 'zig-x86_64-windows-0.16.0', 'zig.exe')
 const resolvedCC = process.env.CC || (process.platform === 'win32' && fs.existsSync(bundledZig) ? `${bundledZig} cc` : undefined)
 const readyTimeoutMs = Number(process.env.SUI_E2E_READY_TIMEOUT_MS || (process.env.CI ? 900000 : 300000))
+const e2eWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH || '/phase6-panel/')
 
 fs.mkdirSync(serverDir, { recursive: true })
 fs.mkdirSync(appDataDir, { recursive: true })
@@ -43,6 +44,12 @@ const normalizeSpawnEnv = (env = process.env) => {
   }
   normalized.Path = pathValue
   return normalized
+}
+
+function normalizeWebPath(value) {
+  const trimmed = String(value || '').trim()
+  if (!trimmed || trimmed === '/') return '/phase6-panel/'
+  return `${trimmed.startsWith('/') ? '' : '/'}${trimmed}${trimmed.endsWith('/') ? '' : '/'}`
 }
 
 const rememberChildFailure = (child, name, error) => {
@@ -182,6 +189,7 @@ const main = async () => {
     SUI_LOG_LEVEL: 'warn',
     SUI_FORCE_COOKIE_SECURE: 'false',
     SUI_DISABLE_CORE: '1',
+    SUI_E2E_WEB_PATH: e2eWebPath,
     XUI_DISABLE_REMOTE: '1',
     APPDATA: appDataDir,
     LOCALAPPDATA: appDataDir,
@@ -198,7 +206,7 @@ const main = async () => {
 
   const backendWatch = [{ name: 'backend', child: backend }]
   const password = await waitForFile(path.join(dbDir, 'initial-admin.txt'), readyTimeoutMs, backendWatch)
-  await waitForURL('http://127.0.0.1:2095/app/login', readyTimeoutMs, backendWatch)
+  await waitForURL(`http://127.0.0.1:2095${e2eWebPath}login`, readyTimeoutMs, backendWatch)
 
   const viteCLI = path.join(frontendDir, 'node_modules', 'vite', 'bin', 'vite.js')
   const frontend = spawnLogged('frontend', process.execPath, [viteCLI, '--host', '127.0.0.1', '--port', '3000', '--strictPort'], {
@@ -206,18 +214,19 @@ const main = async () => {
     env: {
       ...process.env,
       SUI_E2E: '1',
+      SUI_E2E_WEB_PATH: e2eWebPath,
     },
   })
   const frontendWatch = [...backendWatch, { name: 'frontend', child: frontend }]
-  await waitForURL('http://127.0.0.1:3000/app/login', readyTimeoutMs, frontendWatch)
+  await waitForURL(`http://127.0.0.1:3000${e2eWebPath}login`, readyTimeoutMs, frontendWatch)
   for (const modulePath of ['Home.vue', 'MigrateXui.vue', 'Settings.vue', 'Audit.vue']) {
     await waitForURL(`http://127.0.0.1:3000/src/views/${modulePath}`, readyTimeoutMs, frontendWatch)
   }
 
   fs.writeFileSync(statePath, JSON.stringify({
     serverPid: process.pid,
-    baseURL: 'http://127.0.0.1:3000/app/',
-    backendURL: 'http://127.0.0.1:2095/app/',
+    baseURL: `http://127.0.0.1:3000${e2eWebPath}`,
+    backendURL: `http://127.0.0.1:2095${e2eWebPath}`,
     username: 'admin',
     password,
     dbDir,

@@ -23,7 +23,7 @@ import AddrVue from '@/components/fields/Addr.vue'
 import OutJsonVue from '@/components/subscription/OutJson.vue'
 import Data from '@/store/modules/data'
 export default defineComponent({
-  props: ['visible', 'id', 'inTags', 'tlsConfigs'],
+  props: ['visible', 'id', 'inTags', 'tlsConfigs', 'draftInbound', 'draftId'],
   emits: ['close'],
   data() {
     return {
@@ -90,11 +90,16 @@ export default defineComponent({
         this.title = "edit"
       }
       else {
-        const port = RandomUtil.randomIntRange(10000, 60000)
-        this.inbound = createInbound("direct",{ id: 0, tag: "direct-"+port ,listen: "::", listen_port: port })
+        if (this.$props.draftInbound) {
+          const draft = { ...this.$props.draftInbound, id: 0 }
+          this.inbound = createInbound(draft.type || "direct", draft)
+        } else {
+          const port = RandomUtil.randomIntRange(10000, 60000)
+          this.inbound = createInbound("direct",{ id: 0, tag: "direct-"+port ,listen: "::", listen_port: port })
+        }
         if (this.HasInData.includes(this.inbound.type)){
-          this.inbound.addrs = []
-          this.inbound.out_json = {}
+          this.inbound.addrs = this.inbound.addrs ?? []
+          this.inbound.out_json = this.inbound.out_json ?? {}
         } else {
           delete this.inbound.addrs
           delete this.inbound.out_json
@@ -156,7 +161,13 @@ export default defineComponent({
           }
         }
         const success = await Data().save("inbounds", this.$props.id == 0 ? "new" : "edit", this.inbound, clientIds)
-        if (success) this.closeModal()
+        if (success) {
+          const draftId = Number(this.$props.draftId ?? 0)
+          if (draftId > 0) {
+            await Data().applyInboundDraft(draftId)
+          }
+          this.closeModal()
+        }
       } finally {
         this.loading = false
       }

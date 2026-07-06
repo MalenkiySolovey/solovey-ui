@@ -45,6 +45,7 @@ func ensureIndexes() error {
 		"CREATE INDEX IF NOT EXISTS idx_clients_sub_secret ON clients(sub_secret)",
 		"CREATE INDEX IF NOT EXISTS idx_clients_sort_order ON clients(sort_order, id)",
 		"CREATE INDEX IF NOT EXISTS idx_inbounds_sort_order ON inbounds(sort_order, id)",
+		"CREATE INDEX IF NOT EXISTS idx_inbound_drafts_status_expires ON inbound_drafts(status, expires_at, id)",
 		"CREATE INDEX IF NOT EXISTS idx_outbounds_sort_order ON outbounds(sort_order, id)",
 		"CREATE INDEX IF NOT EXISTS idx_endpoints_sort_order ON endpoints(sort_order, id)",
 		"CREATE INDEX IF NOT EXISTS idx_services_sort_order ON services(sort_order, id)",

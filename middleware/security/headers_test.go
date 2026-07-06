@@ -66,6 +66,53 @@ func TestAdminSkipHSTSForPlainHTTP(t *testing.T) {
 	}
 }
 
+func TestAdminForBaseScopesHeadersToAdminPath(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(AdminForBase("/secret-panel/", func(*gin.Context) bool { return true }))
+	router.GET("/secret-panel/api/ping", func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+	router.GET("/public", func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
+
+	adminRecorder := httptest.NewRecorder()
+	router.ServeHTTP(adminRecorder, httptest.NewRequest(http.MethodGet, "/secret-panel/api/ping", nil))
+	adminHeaders := adminRecorder.Result().Header
+	if adminHeaders.Get("X-Frame-Options") != "DENY" {
+		t.Fatalf("admin path did not receive admin frame denial: %#v", adminHeaders)
+	}
+	if adminHeaders.Get("Content-Security-Policy") == "" {
+		t.Fatalf("admin path did not receive admin CSP: %#v", adminHeaders)
+	}
+	if adminHeaders.Get("Strict-Transport-Security") == "" {
+		t.Fatalf("admin path did not receive HSTS: %#v", adminHeaders)
+	}
+
+	publicRecorder := httptest.NewRecorder()
+	router.ServeHTTP(publicRecorder, httptest.NewRequest(http.MethodGet, "/public", nil))
+	publicHeaders := publicRecorder.Result().Header
+	if publicHeaders.Get("X-Frame-Options") != "" {
+		t.Fatalf("public path inherited admin frame denial: %#v", publicHeaders)
+	}
+	if publicHeaders.Get("Content-Security-Policy") != "" {
+		t.Fatalf("public path inherited admin CSP: %#v", publicHeaders)
+	}
+	if publicHeaders.Get("Strict-Transport-Security") != "" {
+		t.Fatalf("public path inherited admin HSTS: %#v", publicHeaders)
+	}
+}
+
+func TestAdminForBaseMatchesTrimmedBasePath(t *testing.T) {
+	if !adminPathMatches("/secret-panel/", "/secret-panel") {
+		t.Fatal("trimmed admin base path should match")
+	}
+	if adminPathMatches("/secret-panel/", "/secret-panelish") {
+		t.Fatal("lookalike path must not match admin base")
+	}
+}
+
 func TestSubscriptions(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

@@ -16,6 +16,7 @@ import (
 )
 
 func init() {
+	registerAPIComponentFixture("fallback-html", "Fallback HTML", []string{"public-site"}, registerFallbackHTMLFixtureRoutes)
 	registerAPIComponentFixture("import-xui", "Import XUI", []string{"database"}, registerImportXUIFixtureRoutes)
 	registerAPIComponentFixture("observability-extra", "Observability Extra", []string{"observability"}, registerObservabilityFixtureRoutes)
 	registerAPIComponentFixture("paid-subscriptions", "Paid Subscriptions", nil, registerPaidFixtureRoutes)
@@ -40,6 +41,17 @@ func registerAPIComponentFixture(id string, name string, scopes []string, regist
 		Lifecycle: lifecycle.Noop{},
 	})
 	registry.RegisterAPIRoutes(id, register)
+}
+
+func registerFallbackHTMLFixtureRoutes(g *gin.RouterGroup, deps componenthost.APIDeps) error {
+	group := g.Group("/components/fallback-html")
+	group.GET("/health", func(c *gin.Context) {
+		if !deps.Auth.RequireScope(c, "publicSite", "admin", "read", "write", "public-site") {
+			return
+		}
+		c.JSON(http.StatusOK, Msg{Success: true})
+	})
+	return nil
 }
 
 func registerImportXUIFixtureRoutes(g *gin.RouterGroup, deps componenthost.APIDeps) error {

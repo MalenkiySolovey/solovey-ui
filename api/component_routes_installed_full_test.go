@@ -27,6 +27,7 @@ func TestComponentRoutesRespectInstalledMetadata(t *testing.T) {
 		"version": 1,
 		"binary": "full",
 		"components": [
+			{"id": "fallback-html", "delivery": "in-process", "installed": true},
 			{"id": "telegram", "delivery": "in-process", "installed": true}
 		]
 	}`), 0o600); err != nil {
@@ -40,6 +41,9 @@ func TestComponentRoutesRespectInstalledMetadata(t *testing.T) {
 
 	if !routeExists(router, http.MethodPost, "/api/telegram/test") {
 		t.Fatal("installed telegram component route is missing")
+	}
+	if !routeExists(router, http.MethodGet, "/api/components/fallback-html/health") {
+		t.Fatal("installed fallback-html component route is missing")
 	}
 	if routeExists(router, http.MethodGet, "/api/paidsub/status") {
 		t.Fatal("paid-subscriptions route must be absent when component is not installed")
@@ -57,6 +61,7 @@ func TestComponentRoutesRespectEnabledSetting(t *testing.T) {
 		"version": 1,
 		"binary": "full",
 		"components": [
+			{"id": "fallback-html", "delivery": "in-process", "installed": true},
 			{"id": "telegram", "delivery": "in-process", "installed": true},
 			{"id": "paid-subscriptions", "delivery": "in-process", "installed": true}
 		]
@@ -64,6 +69,9 @@ func TestComponentRoutesRespectEnabledSetting(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := dbsqlite.DB().Create(&model.Setting{Key: enabledstate.SettingKey("telegram"), Value: "false"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.DB().Create(&model.Setting{Key: enabledstate.SettingKey("fallback-html"), Value: "false"}).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -78,6 +86,9 @@ func TestComponentRoutesRespectEnabledSetting(t *testing.T) {
 	if !routeExists(router, http.MethodGet, "/api/paidsub/status") {
 		t.Fatal("unrelated enabled component route should remain registered")
 	}
+	if !routeExists(router, http.MethodGet, "/api/components/fallback-html/health") {
+		t.Fatal("installed disabled fallback-html component route should remain registered")
+	}
 
 	bareRouter := gin.New()
 	registerComponentAPIRoutes(bareRouter.Group("/api"), componenthost.APIDeps{})
@@ -87,6 +98,12 @@ func TestComponentRoutesRespectEnabledSetting(t *testing.T) {
 	bareRouter.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusConflict {
 		t.Fatalf("disabled component route status = %d, want %d", recorder.Code, http.StatusConflict)
+	}
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/components/fallback-html/health", nil)
+	bareRouter.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("disabled fallback-html route status = %d, want %d", recorder.Code, http.StatusConflict)
 	}
 }
 

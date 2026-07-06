@@ -23,6 +23,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/network/autohttps"
 	"github.com/MalenkiySolovey/solovey-ui/network/bind"
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	"github.com/MalenkiySolovey/solovey-ui/web/publicsurface"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-contrib/sessions"
@@ -107,7 +108,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	if webDomain != "" {
 		engine.Use(domainmiddleware.Validator(webDomain))
 	}
-	engine.Use(securitymiddleware.Admin(api.RequestIsHTTPS))
+	engine.Use(securitymiddleware.AdminForBase(base_url, api.RequestIsHTTPS))
 
 	cookieKeys, err := s.settingService.GetCookieKeys()
 	if err != nil {
@@ -159,7 +160,10 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 			return
 		}
 		if !strings.HasPrefix(c.Request.URL.Path, base_url) {
-			c.String(404, "")
+			if publicsurface.Serve(c, publicsurface.Context{AdminBasePath: base_url}) {
+				return
+			}
+			publicsurface.Handled404(c)
 			return
 		}
 		if c.Request.URL.Path != base_url+"login" && !api.IsLogin(c) {

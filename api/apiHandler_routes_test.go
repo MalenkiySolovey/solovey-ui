@@ -50,6 +50,7 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/csrf",
 			"/api/load",
 			"/api/inbounds",
+			"/api/inboundDrafts",
 			"/api/outbounds",
 			"/api/endpoints",
 			"/api/services",
