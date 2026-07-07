@@ -110,6 +110,29 @@ func TestSafetyBlocksRootAdminPath(t *testing.T) {
 	}
 }
 
+func TestPublishAllowsDefaultAppPathWarning(t *testing.T) {
+	db, dbDir := openFallbackDB(t)
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	setSetting(t, db, "webPath", "/app/")
+	setSetting(t, db, "webListen", "127.0.0.1")
+	setSetting(t, db, "webPort", "2095")
+	service := New(db, NewRuntime())
+	site, err := service.SaveSite(SiteInput{Name: "Dev Portal"}, "tester")
+	if err != nil {
+		t.Fatalf("SaveSite: %v", err)
+	}
+	report, err := service.Safety(site.ID)
+	if err != nil {
+		t.Fatalf("Safety: %v", err)
+	}
+	if report.OK || !containsWarning(report.Warnings, "default /app/") {
+		t.Fatalf("safety should warn about default /app/ without hiding it: %#v", report)
+	}
+	if _, err := service.PublishSite(site.ID, "tester"); err != nil {
+		t.Fatalf("PublishSite should allow the default /app/ warning for local/dev verification: %v", err)
+	}
+}
+
 func TestSafetyBlocksLoopbackFallbackTarget(t *testing.T) {
 	if fallback, reason := addressWouldFallback("240.0.0.1"); !fallback {
 		t.Skipf("fallback path could not be exercised: %s", reason)
@@ -447,6 +470,92 @@ func TestPublishArtifactAndRollback(t *testing.T) {
 	}
 }
 
+func TestPrunePublishesKeepsActiveAndRecentRollbackVersions(t *testing.T) {
+	db, dbDir := openFallbackDB(t)
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	setSetting(t, db, "webPath", "/secret-panel/")
+	service := New(db, NewRuntime())
+	site, err := service.SaveSite(SiteInput{Name: "Example Portal"}, "tester")
+	if err != nil {
+		t.Fatalf("SaveSite: %v", err)
+	}
+
+	versions := make([]string, 0, 5)
+	roots := make(map[string]string, 5)
+	for index := 0; index < 5; index++ {
+		site, err = service.GetSite(site.ID)
+		if err != nil {
+			t.Fatalf("GetSite: %v", err)
+		}
+		var home fallbackdomain.Page
+		for _, page := range site.Pages {
+			if page.CanonicalPath == "/" {
+				home = page
+				break
+			}
+		}
+		if home.ID == 0 {
+			t.Fatal("home page not found")
+		}
+		body := "Published body " + strings.Repeat("x", index+1)
+		if _, err := service.SavePage(site.ID, PageInput{ID: home.ID, Path: home.CanonicalPath, Title: home.Title, Body: body, IsHome: true}, "tester"); err != nil {
+			t.Fatalf("SavePage %d: %v", index, err)
+		}
+		result, err := service.PublishSite(site.ID, "tester")
+		if err != nil {
+			t.Fatalf("PublishSite %d: %v", index, err)
+		}
+		var publish fallbackdomain.Publish
+		if err := db.Where("site_id = ? AND version = ?", site.ID, result.Version).First(&publish).Error; err != nil {
+			t.Fatalf("publish row %d: %v", index, err)
+		}
+		versions = append(versions, result.Version)
+		roots[result.Version] = publish.RootDir
+	}
+
+	result, err := service.PrunePublishes(site.ID, PrunePublishesInput{Keep: 1}, "tester")
+	if err != nil {
+		t.Fatalf("PrunePublishes: %v", err)
+	}
+	if result.Removed != 3 || result.Kept != 2 {
+		t.Fatalf("prune result = %#v, want removed=3 kept=2", result)
+	}
+	publishes, err := service.ListPublishes(site.ID)
+	if err != nil {
+		t.Fatalf("ListPublishes: %v", err)
+	}
+	if len(publishes) != 2 {
+		t.Fatalf("publishes after prune = %d, want 2", len(publishes))
+	}
+	kept := map[string]bool{}
+	for _, publish := range publishes {
+		kept[publish.Version] = true
+		if publish.Active && publish.Version != versions[4] {
+			t.Fatalf("active publish = %q, want latest %q", publish.Version, versions[4])
+		}
+	}
+	if !kept[versions[4]] || !kept[versions[3]] {
+		t.Fatalf("kept versions = %#v, want latest active and latest rollback", kept)
+	}
+	for _, version := range versions[:3] {
+		if _, err := os.Stat(roots[version]); !errors.Is(err, os.ErrNotExist) {
+			t.Fatalf("pruned root %s stat error = %v, want not exist", roots[version], err)
+		}
+	}
+	for _, version := range versions[3:] {
+		if _, err := os.Stat(roots[version]); err != nil {
+			t.Fatalf("kept root %s missing: %v", roots[version], err)
+		}
+	}
+	var events int64
+	if err := db.Model(&fallbackdomain.Event{}).Where("site_id = ? AND action = ?", site.ID, "publishes_pruned").Count(&events).Error; err != nil {
+		t.Fatalf("prune event count: %v", err)
+	}
+	if events != 1 {
+		t.Fatalf("prune events = %d, want 1", events)
+	}
+}
+
 func TestNodePublishPlanReportsArtifactContractAndStatus(t *testing.T) {
 	db, dbDir := openFallbackDB(t)
 	t.Setenv("SUI_DB_FOLDER", dbDir)
@@ -740,6 +849,10 @@ func TestSelfStealDraftIsBlockedAndNeverAppliesInbound(t *testing.T) {
 	if draft.Payload.InboundType != "vless" || draft.Payload.InboundTag == "" || draft.Payload.InboundCandidate == nil {
 		t.Fatalf("draft candidate was not populated: %#v", draft.Payload)
 	}
+	blockedCandidate, ok := draft.Payload.InboundCandidate.(map[string]any)
+	if !ok || blockedCandidate["listen_port"] != 443 || blockedCandidate["tls_id"] != uint(0) {
+		t.Fatalf("blocked draft should still show the 443 handoff candidate without a TLS record: %#v", draft.Payload.InboundCandidate)
+	}
 	if containsString(draft.Payload.ConservativeDefaults, "scMinPostsIntervalMs") || containsString(draft.Payload.ConservativeDefaults, "scMaxEachPostBytes") {
 		t.Fatalf("draft should not include DPI-triggering transport parameters: %#v", draft.Payload.ConservativeDefaults)
 	}
@@ -801,7 +914,10 @@ func TestSelfStealDraftCreatesReviewRequiredCoreDraftWhenSafe(t *testing.T) {
 		t.Fatalf("PublishSite: %v", err)
 	}
 
-	draft, err := service.CreateSelfStealDraft(site.ID, SelfStealDraftInput{HandshakeHost: "front.example.com"}, "tester")
+	draft, err := service.CreateSelfStealDraft(site.ID, SelfStealDraftInput{
+		HandshakeHost: "front.example.com",
+		PublicListen:  "203.0.113.10",
+	}, "tester")
 	if err != nil {
 		t.Fatalf("CreateSelfStealDraft: %v", err)
 	}
@@ -810,6 +926,36 @@ func TestSelfStealDraftCreatesReviewRequiredCoreDraftWhenSafe(t *testing.T) {
 	}
 	if draft.Payload.HandshakeHost != "front.example.com" {
 		t.Fatalf("handshake host = %q", draft.Payload.HandshakeHost)
+	}
+	if draft.Payload.PublicListen != "203.0.113.10" || draft.Payload.PublicPort != 443 {
+		t.Fatalf("public self-steal endpoint = %s:%d", draft.Payload.PublicListen, draft.Payload.PublicPort)
+	}
+	if draft.Payload.TLSRecordID == 0 || draft.Payload.RealityPublicKey == "" || draft.Payload.RealityShortID == "" {
+		t.Fatalf("ready draft did not create Reality TLS material: %#v", draft.Payload)
+	}
+	candidate, ok := draft.Payload.InboundCandidate.(map[string]any)
+	if !ok || candidate["listen_port"] != 443 || candidate["tls_id"] != draft.Payload.TLSRecordID {
+		t.Fatalf("ready draft candidate should listen on 443 and reference TLS record: %#v", draft.Payload.InboundCandidate)
+	}
+	var tlsRecord model.Tls
+	if err := db.First(&tlsRecord, draft.Payload.TLSRecordID).Error; err != nil {
+		t.Fatalf("self-steal TLS record: %v", err)
+	}
+	var tlsServer struct {
+		Reality struct {
+			Handshake struct {
+				Server     string `json:"server"`
+				ServerPort int    `json:"server_port"`
+			} `json:"handshake"`
+			PrivateKey string   `json:"private_key"`
+			ShortID    []string `json:"short_id"`
+		} `json:"reality"`
+	}
+	if err := json.Unmarshal(tlsRecord.Server, &tlsServer); err != nil {
+		t.Fatalf("self-steal TLS server JSON: %v", err)
+	}
+	if tlsServer.Reality.Handshake.Server == "" || tlsServer.Reality.Handshake.ServerPort != draft.Payload.HandshakeTarget.Port || tlsServer.Reality.PrivateKey == "" || len(tlsServer.Reality.ShortID) != 1 {
+		t.Fatalf("unexpected self-steal Reality server config: %#v", tlsServer)
 	}
 	var coreDraft model.InboundDraft
 	if err := db.First(&coreDraft, draft.CoreDraftID).Error; err != nil {
@@ -824,6 +970,77 @@ func TestSelfStealDraftCreatesReviewRequiredCoreDraftWhenSafe(t *testing.T) {
 	}
 	if inboundCount != 0 {
 		t.Fatalf("ready draft must still not create live inbounds, got %d", inboundCount)
+	}
+}
+
+func TestSelfStealDraftCanPreparePortTransferAndTrojanFallback(t *testing.T) {
+	db, dbDir := openFallbackDB(t)
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	setSetting(t, db, "webPath", "/secret-panel/")
+	setSetting(t, db, "webCertFile", "/tmp/fullchain.pem")
+	setSetting(t, db, "webKeyFile", "/tmp/privkey.pem")
+	service := New(db, NewRuntime())
+	site, err := service.SaveSite(SiteInput{Name: "Example Portal"}, "tester")
+	if err != nil {
+		t.Fatalf("SaveSite: %v", err)
+	}
+	if _, err := service.SaveTarget(site.ID, TargetInput{
+		Kind:     "standalone",
+		Host:     "front.example.com",
+		Listen:   "127.0.0.1",
+		Port:     443,
+		RootPath: "/",
+		Runtime:  "gin",
+		TLS:      true,
+	}, "tester"); err != nil {
+		t.Fatalf("SaveTarget: %v", err)
+	}
+	if _, err := service.PublishSite(site.ID, "tester"); err != nil {
+		t.Fatalf("PublishSite: %v", err)
+	}
+
+	draft, err := service.CreateSelfStealDraft(site.ID, SelfStealDraftInput{
+		Profile:         "trojan",
+		Transport:       "ws",
+		HandshakeHost:   "front.example.com",
+		PublicListen:    "203.0.113.10",
+		PrepareTransfer: true,
+	}, "tester")
+	if err != nil {
+		t.Fatalf("CreateSelfStealDraft: %v", err)
+	}
+	if draft.Status != "ready" || draft.Payload.InboundType != "trojan" {
+		t.Fatalf("trojan transfer draft should be ready: %#v", draft)
+	}
+	if draft.Payload.PortTransfer == nil || !draft.Payload.PortTransfer.Required || !draft.Payload.PortTransfer.Prepared {
+		t.Fatalf("port transfer was not prepared: %#v", draft.Payload.PortTransfer)
+	}
+	if draft.Payload.HandshakeTarget.Listen != "127.0.0.1" || draft.Payload.HandshakeTarget.Port == 443 {
+		t.Fatalf("handshake target was not moved to local TLS port: %#v", draft.Payload.HandshakeTarget)
+	}
+	candidate, ok := draft.Payload.InboundCandidate.(map[string]any)
+	if !ok || candidate["type"] != "trojan" || candidate["listen"] != "203.0.113.10" {
+		t.Fatalf("unexpected trojan candidate: %#v", draft.Payload.InboundCandidate)
+	}
+	if _, ok := candidate["fallback"]; !ok {
+		t.Fatalf("trojan candidate must include fallback: %#v", candidate)
+	}
+	if _, ok := candidate["fallback_for_alpn"]; !ok {
+		t.Fatalf("trojan candidate must include fallback_for_alpn: %#v", candidate)
+	}
+	if transport, ok := candidate["transport"].(map[string]any); !ok || transport["type"] != "ws" {
+		t.Fatalf("trojan transport was not preserved: %#v", candidate)
+	}
+	var tlsRecord model.Tls
+	if err := db.First(&tlsRecord, draft.Payload.TLSRecordID).Error; err != nil {
+		t.Fatalf("self-steal TLS record: %v", err)
+	}
+	var tlsServer map[string]any
+	if err := json.Unmarshal(tlsRecord.Server, &tlsServer); err != nil {
+		t.Fatalf("self-steal TLS server JSON: %v", err)
+	}
+	if tlsServer["certificate_path"] != "/tmp/fullchain.pem" || tlsServer["key_path"] != "/tmp/privkey.pem" {
+		t.Fatalf("trojan TLS record should use panel cert/key paths: %#v", tlsServer)
 	}
 }
 
@@ -1340,6 +1557,13 @@ func TestRemoteTemplateCatalogInstallCreatePublishAndDelete(t *testing.T) {
 	home := pageByPath(site.Pages, "/")
 	if home == nil || home.ContentMode != fallbackdomain.ContentModeStaticHTML || !strings.Contains(home.Body, site.Assets[0].LogicalPath) || strings.Contains(home.Body, "../assets/site.css") {
 		t.Fatalf("home page did not become static html with rewritten asset: %#v assets=%#v", home, site.Assets)
+	}
+	preview, err := service.PreviewSite(site.ID, PreviewInput{}, "tester")
+	if err != nil {
+		t.Fatalf("PreviewSite remote: %v", err)
+	}
+	if !strings.Contains(preview.HTML, "<style data-fallback-preview=") || strings.Contains(preview.HTML, `<link rel="stylesheet" href="`+site.Assets[0].LogicalPath+`"`) {
+		t.Fatalf("preview did not inline stylesheet asset: %s", preview.HTML)
 	}
 	publish, err := service.PublishSite(site.ID, "tester")
 	if err != nil {

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"time"
@@ -171,7 +172,7 @@ func (s *Service) RuntimeStatus() RuntimeStatus {
 func (s *Service) SaveSite(input SiteInput, actor string) (fallbackdomain.Site, error) {
 	name := strings.TrimSpace(input.Name)
 	if name == "" {
-		name = "Public site"
+		name = "Public Site"
 	}
 	templateID, err := s.normalizeTemplateID(input.TemplateID)
 	if err != nil {
@@ -553,6 +554,10 @@ func (s *Service) PreviewSite(siteID uint, input PreviewInput, actor string) (Pr
 			return PreviewResult{}, err
 		}
 		rendered = []byte(page.Body)
+		rendered, err = s.inlinePreviewStyles(site.ID, rendered)
+		if err != nil {
+			return PreviewResult{}, err
+		}
 	} else {
 		rendered, err = fallbackdomain.RenderGeneratedPage(fallbackdomain.TemplateData{
 			TemplateID: site.TemplateID,
@@ -574,6 +579,41 @@ func (s *Service) PreviewSite(siteID uint, input PreviewInput, actor string) (Pr
 		return PreviewResult{}, err
 	}
 	return PreviewResult{Path: page.CanonicalPath, HTML: string(rendered), Warnings: report.Warnings}, nil
+}
+
+func (s *Service) inlinePreviewStyles(siteID uint, html []byte) ([]byte, error) {
+	var assets []fallbackdomain.Asset
+	if err := s.db.Where("site_id = ? AND mime_type LIKE ?", siteID, "text/css%").Find(&assets).Error; err != nil {
+		return nil, err
+	}
+	out := string(html)
+	for _, asset := range assets {
+		if asset.LogicalPath == "" || asset.FilePath == "" {
+			continue
+		}
+		data, err := readOwnedRegularFile(assetRoot(siteID), asset.FilePath)
+		if err != nil {
+			return nil, err
+		}
+		css := strings.ReplaceAll(string(data), "</style", "<\\/style")
+		style := "<style data-fallback-preview=\"" + asset.LogicalPath + "\">\n" + css + "\n</style>"
+		out = replaceStylesheetLink(out, asset.LogicalPath, style)
+	}
+	return []byte(out), nil
+}
+
+func replaceStylesheetLink(html string, href string, style string) string {
+	linkTag := regexp.MustCompile(`(?is)<link\b[^>]*>`)
+	return linkTag.ReplaceAllStringFunc(html, func(tag string) string {
+		lower := strings.ToLower(tag)
+		if !strings.Contains(lower, "stylesheet") {
+			return tag
+		}
+		if !strings.Contains(tag, `href="`+href+`"`) && !strings.Contains(tag, `href='`+href+`'`) {
+			return tag
+		}
+		return style
+	})
 }
 
 func (s *Service) reservedPaths() ([]string, error) {
@@ -631,7 +671,9 @@ func (s *Service) safetyForSite(site fallbackdomain.Site) (SafetyReport, error) 
 		return SafetyReport{}, err
 	}
 	for _, target := range targets {
-		if target.Status != "" && target.Status != "available" {
+		switch target.Status {
+		case "", "available", "managed", "free", "active":
+		default:
 			warnings = append(warnings, "publish target "+target.Kind+" is "+target.Status+": "+target.Reason)
 		}
 		if target.Kind == "web-current" {

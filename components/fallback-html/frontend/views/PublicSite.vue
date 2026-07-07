@@ -21,17 +21,32 @@
       {{ t('fallbackHtml.noSites') }}
     </v-alert>
 
-    <v-dialog v-model="previewOpen" max-width="960">
+    <v-dialog v-model="previewOpen" max-width="1180">
       <v-card>
         <v-card-title class="d-flex align-center justify-space-between">
           <span>{{ t('fallbackHtml.preview') }} {{ previewPath }}</span>
           <v-btn icon="mdi-close" variant="text" @click="previewOpen = false" />
         </v-card-title>
         <v-card-text>
+          <v-alert v-if="previewLoading" type="info" variant="tonal" class="mb-3">
+            {{ t('fallbackHtml.previewLoading') }}
+          </v-alert>
+          <v-alert v-if="previewError" type="error" variant="tonal" class="mb-3">
+            {{ previewError }}
+          </v-alert>
           <v-alert v-if="previewWarnings.length" type="warning" variant="tonal" class="mb-3">
             <div v-for="warning in previewWarnings" :key="warning">{{ warning }}</div>
           </v-alert>
-          <iframe class="fallback-preview-frame" :srcdoc="previewHtml" :title="t('fallbackHtml.preview')" />
+          <v-alert v-if="!previewLoading && !previewError && !previewHtml" type="warning" variant="tonal">
+            {{ t('fallbackHtml.previewEmpty') }}
+          </v-alert>
+          <iframe
+            v-else-if="previewHtml"
+            :key="`${previewPath}-${previewHtml.length}`"
+            class="fallback-preview-frame"
+            :srcdoc="previewHtml"
+            :title="t('fallbackHtml.preview')"
+          />
         </v-card-text>
       </v-card>
     </v-dialog>
@@ -55,186 +70,170 @@
       </v-card>
     </v-dialog>
 
-    <v-card class="mb-4" variant="tonal">
-      <v-card-title>{{ t('fallbackHtml.targets') }}</v-card-title>
-      <v-card-text>
-        <v-chip
-          v-for="candidate in portCandidates"
-          :key="`${candidate.kind}-${candidate.listen}-${candidate.port}`"
-          class="me-2 mb-2"
-          size="small"
-          :color="endpointChipColor(candidate.status)"
-          :title="endpointChipTitle(candidate)"
-        >
-          {{ endpointLabel(candidate) }}
-          <span class="fallback-target-reason">{{ endpointStatusText(candidate) }}</span>
-        </v-chip>
-        <div v-if="!portCandidates.length" class="text-medium-emphasis">
-          {{ t('fallbackHtml.noTargets') }}
-        </div>
-      </v-card-text>
-    </v-card>
+    <v-dialog v-model="bodyEditorOpen" max-width="1100" scrollable>
+      <v-card>
+        <v-card-title class="d-flex align-center justify-space-between">
+          <span>{{ t('fallbackHtml.bodyEditor') }} {{ bodyEditorPageRef?.title }}</span>
+          <v-btn icon="mdi-close" variant="text" @click="bodyEditorOpen = false" />
+        </v-card-title>
+        <v-card-text>
+          <v-alert type="info" variant="tonal" class="mb-3">
+            {{ t('fallbackHtml.bodyEditorHelp') }}
+          </v-alert>
+          <v-textarea
+            v-model="bodyEditorText"
+            class="fallback-body-editor"
+            rows="24"
+            auto-grow
+            :label="t('fallbackHtml.body')"
+          />
+        </v-card-text>
+        <v-card-actions class="justify-end">
+          <v-btn variant="tonal" @click="bodyEditorOpen = false">{{ t('fallbackHtml.cancel') }}</v-btn>
+          <v-btn color="primary" prepend-icon="mdi-content-save" @click="applyBodyEditor">{{ t('fallbackHtml.applyBody') }}</v-btn>
+        </v-card-actions>
+      </v-card>
+    </v-dialog>
 
-    <v-card class="mb-4" variant="tonal">
-      <v-card-title>{{ t('fallbackHtml.runtimes') }}</v-card-title>
-      <v-card-text>
-        <v-chip
-          v-for="option in runtimeOptions"
-          :key="option.id"
-          class="me-2 mb-2"
-          size="small"
-          :color="endpointChipColor(option.status)"
-          :title="option.reason"
-        >
-          {{ option.label }}
-          <span class="fallback-target-reason">
-            {{ option.status }}<template v-if="option.nodeSide"> / {{ t('fallbackHtml.nodeSide') }}</template>
-          </span>
-        </v-chip>
-        <div v-if="!runtimeOptions.length" class="text-medium-emphasis">
-          {{ t('fallbackHtml.noRuntimes') }}
-        </div>
-      </v-card-text>
-    </v-card>
-
-    <v-card class="mb-4" variant="tonal">
-      <v-card-title class="d-flex align-center justify-space-between">
-        <span>{{ t('fallbackHtml.templateCatalog') }}</span>
-        <v-btn size="small" variant="tonal" prepend-icon="mdi-cloud-sync" :loading="catalogLoading" @click="loadTemplateCatalog">
-          {{ t('fallbackHtml.refreshCatalog') }}
-        </v-btn>
-      </v-card-title>
-      <v-card-text>
-        <v-alert type="info" variant="tonal" class="mb-3">
-          {{ t('fallbackHtml.templateCatalogHelp') }}
-        </v-alert>
-        <v-alert v-if="catalogError" type="error" variant="tonal" class="mb-3">{{ catalogError }}</v-alert>
-        <div class="d-flex ga-3 flex-wrap">
-          <v-card v-for="template in remoteTemplates" :key="template.id" class="fallback-template-card" variant="outlined">
-            <v-card-title class="text-subtitle-1">
-              {{ template.name }}
-              <v-chip size="x-small" class="ms-2" :color="template.installed ? 'success' : 'grey'">
-                {{ template.installed ? t('fallbackHtml.installed') : t('fallbackHtml.available') }}
-              </v-chip>
-            </v-card-title>
-            <v-card-text>
-              <div class="text-caption text-medium-emphasis">{{ template.contentTypeProfile }}</div>
-              <div class="text-caption">{{ template.license }}</div>
-              <div class="text-caption text-medium-emphasis fallback-source">{{ template.source }}</div>
-            </v-card-text>
-            <v-card-actions>
-              <v-btn
-                size="small"
-                color="primary"
-                variant="tonal"
-                prepend-icon="mdi-download"
-                :loading="installingTemplate === template.id"
-                @click="installRemoteTemplate(template)"
-              >
-                {{ template.installed ? t('fallbackHtml.updateTemplate') : t('fallbackHtml.installTemplate') }}
-              </v-btn>
-              <v-btn size="small" variant="tonal" prepend-icon="mdi-plus" :disabled="!template.installed" @click="createSiteFromTemplate(template.id)">
-                {{ t('fallbackHtml.createSite') }}
-              </v-btn>
-              <v-btn size="small" color="error" variant="text" prepend-icon="mdi-delete" :disabled="!template.installed" @click="deleteRemoteTemplate(template)">
-                {{ t('fallbackHtml.deleteTemplate') }}
-              </v-btn>
-            </v-card-actions>
-          </v-card>
-        </div>
-        <div v-if="!remoteTemplates.length && !catalogLoading" class="text-medium-emphasis">
-          {{ t('fallbackHtml.noRemoteTemplates') }}
-        </div>
-      </v-card-text>
-    </v-card>
-
-    <v-card class="mb-4" variant="tonal">
-      <v-card-title>{{ t('fallbackHtml.nodeEndpoints') }}</v-card-title>
-      <v-card-text>
-        <v-alert type="info" variant="tonal" class="mb-3">
-          {{ t('fallbackHtml.nodeEndpointHelp') }}
-        </v-alert>
-        <v-row density="compact">
-          <v-col cols="12" md="3">
-            <v-text-field v-model="nodeEndpointDraft.nodeId" :label="t('fallbackHtml.nodeId')" density="compact" />
-          </v-col>
-          <v-col cols="12" md="4">
-            <v-text-field v-model="nodeEndpointDraft.baseUrl" :label="t('fallbackHtml.nodeBaseUrl')" density="compact" />
-          </v-col>
-          <v-col cols="12" md="2">
-            <v-select v-model="nodeEndpointDraft.runtime" :items="nodeRuntimeItems" :label="t('fallbackHtml.runtime')" density="compact" />
-          </v-col>
-          <v-col cols="12" md="2">
-            <v-text-field v-model="nodeEndpointDraft.sharedSecret" :label="t('fallbackHtml.sharedSecret')" density="compact" type="password" />
-          </v-col>
-          <v-col cols="12" md="1" class="d-flex align-center">
-            <v-btn color="primary" variant="tonal" prepend-icon="mdi-server-plus" @click="saveNodeEndpoint">
-              {{ t('fallbackHtml.registerNode') }}
+    <v-expansion-panels class="mb-4">
+      <v-expansion-panel>
+        <v-expansion-panel-title>
+          <div class="d-flex align-center justify-space-between w-100 pe-3">
+            <div>
+              <div class="text-subtitle-1">{{ t('fallbackHtml.templateCatalog') }}</div>
+              <div class="text-caption text-medium-emphasis">{{ t('fallbackHtml.templateCatalogShortHelp') }}</div>
+            </div>
+            <v-chip size="small" color="info">{{ remoteTemplates.length }}</v-chip>
+          </div>
+        </v-expansion-panel-title>
+        <v-expansion-panel-text>
+          <div class="d-flex justify-space-between align-center mb-3">
+            <v-alert type="info" variant="tonal" density="compact" class="flex-grow-1 me-3">
+              {{ t('fallbackHtml.templateCatalogHelp') }}
+            </v-alert>
+            <v-btn size="small" variant="tonal" prepend-icon="mdi-cloud-sync" :loading="catalogLoading" @click="loadTemplateCatalog">
+              {{ t('fallbackHtml.refreshCatalog') }}
             </v-btn>
-          </v-col>
-        </v-row>
-        <div class="d-flex ga-2 flex-wrap">
-          <v-chip
-            v-for="node in nodeEndpoints"
-            :key="node.nodeId"
-            size="small"
-            :color="node.enabled ? 'success' : 'grey'"
-            closable
-            @click:close="deleteNodeEndpoint(node)"
-          >
-            {{ node.nodeId }}
-            <span class="fallback-target-reason">{{ node.runtime }} / {{ node.baseUrl }}</span>
-            <span v-if="node.hasSharedSecret" class="fallback-target-reason"> / {{ t('fallbackHtml.signedOperation') }}</span>
-          </v-chip>
-        </div>
-        <div v-if="!nodeEndpoints.length" class="text-caption text-medium-emphasis">
-          {{ t('fallbackHtml.noNodeEndpoints') }}
-        </div>
-      </v-card-text>
-    </v-card>
+          </div>
+          <v-alert v-if="catalogError" type="error" variant="tonal" class="mb-3">{{ catalogError }}</v-alert>
+          <div class="fallback-template-grid">
+            <v-card v-for="template in remoteTemplates" :key="template.id" class="fallback-template-card" variant="outlined">
+              <v-card-title class="fallback-template-title">
+                <span>{{ template.name }}</span>
+                <v-chip size="x-small" :color="template.installed ? 'success' : 'grey'">
+                  {{ template.installed ? t('fallbackHtml.installed') : t('fallbackHtml.available') }}
+                </v-chip>
+              </v-card-title>
+              <v-card-text class="py-2">
+                <div class="text-caption text-medium-emphasis">{{ template.contentTypeProfile }}</div>
+                <div class="text-caption">{{ template.license }}</div>
+              </v-card-text>
+              <v-card-actions class="fallback-template-actions">
+                <v-btn
+                  size="small"
+                  color="primary"
+                  variant="tonal"
+                  prepend-icon="mdi-download"
+                  :loading="installingTemplate === template.id"
+                  @click="installRemoteTemplate(template)"
+                >
+                  {{ template.installed ? t('fallbackHtml.updateTemplate') : t('fallbackHtml.installTemplate') }}
+                </v-btn>
+                <v-btn size="small" variant="tonal" prepend-icon="mdi-plus" :disabled="!template.installed" @click="createSiteFromTemplate(template.id)">
+                  {{ t('fallbackHtml.createSite') }}
+                </v-btn>
+                <v-btn size="small" color="error" variant="text" icon="mdi-delete" :disabled="!template.installed" @click="deleteRemoteTemplate(template)" />
+              </v-card-actions>
+            </v-card>
+          </div>
+          <div v-if="!remoteTemplates.length && !catalogLoading" class="text-medium-emphasis">
+            {{ t('fallbackHtml.noRemoteTemplates') }}
+          </div>
+        </v-expansion-panel-text>
+      </v-expansion-panel>
+    </v-expansion-panels>
 
-    <v-row>
-      <v-col v-for="site in sites" :key="site.id" cols="12" lg="6">
-        <v-card>
-          <v-card-title class="d-flex align-center justify-space-between">
-            <span>{{ site.name }}</span>
-            <v-chip size="small" :color="site.status === 'published' ? 'success' : 'grey'">
-              {{ site.status }}
-            </v-chip>
+    <div class="fallback-site-list">
+        <v-card v-for="site in sites" :key="site.id" class="fallback-site-card">
+          <v-card-title class="fallback-site-title">
+            <div class="fallback-site-heading">
+              <span>{{ site.name }}</span>
+              <v-chip size="small" :color="siteStatusColor(site)">
+                {{ siteStatusText(site) }}
+              </v-chip>
+              <v-chip v-if="targetsBySite[site.id]?.[0]" size="small" variant="tonal">
+                {{ publicTargetSummary(site) }}
+              </v-chip>
+            </div>
+            <v-btn
+              size="small"
+              variant="text"
+              :prepend-icon="siteCollapsed(site) ? 'mdi-chevron-down' : 'mdi-arrow-up'"
+              @click="toggleSiteCollapse(site)"
+            >
+              {{ siteCollapsed(site) ? t('fallbackHtml.expandSite') : t('fallbackHtml.collapseSite') }}
+            </v-btn>
           </v-card-title>
-          <v-card-text>
+          <v-card-text v-if="!siteCollapsed(site)">
             <v-text-field v-model="site.name" :label="t('fallbackHtml.siteName')" density="compact" />
             <v-select
               v-model="site.templateId"
-              :items="templates"
+              :items="templateSelectItems(site)"
               item-title="name"
               item-value="id"
               :label="t('fallbackHtml.template')"
               density="compact"
+              :disabled="!templateAffectsSite(site)"
             />
+            <div class="text-caption text-medium-emphasis mb-2">
+              {{ templateHelp(site) }}
+            </div>
             <v-switch v-model="site.enabled" :label="t('fallbackHtml.enabled')" color="primary" hide-details />
+            <v-alert v-if="siteMessages[site.id]" class="mt-3" :type="siteMessages[site.id].type" variant="tonal" density="compact">
+              {{ siteMessages[site.id].text }}
+            </v-alert>
 
             <v-divider class="my-4" />
-            <div class="mb-4">
+            <div class="mb-4 fallback-section">
               <div class="text-subtitle-2 mb-2">{{ t('fallbackHtml.publishTarget') }}</div>
-              <v-chip
-                v-for="target in targetsBySite[site.id] || []"
-                :key="target.id || `${target.kind}-${target.port}`"
-                class="me-2 mb-2"
-                size="small"
-                :color="endpointChipColor(target.status)"
-                :title="endpointChipTitle(target)"
-              >
-                {{ endpointLabel(target) }}
-                <span class="fallback-target-reason">{{ endpointStatusText(target) }}</span>
-              </v-chip>
-              <v-btn size="small" variant="tonal" prepend-icon="mdi-sync" @click="syncTarget(site)">
-                {{ t('fallbackHtml.syncTarget') }}
-              </v-btn>
+              <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+                {{ t('fallbackHtml.publishTargetHelp') }}
+              </v-alert>
+              <v-row density="compact" align="center">
+                <v-col cols="12" md="3">
+                  <v-text-field v-model="targetDraft(site).listen" :label="t('fallbackHtml.listen')" density="compact" />
+                </v-col>
+                <v-col cols="12" md="2">
+                  <v-text-field v-model.number="targetDraft(site).port" :label="t('fallbackHtml.port')" density="compact" type="number" />
+                </v-col>
+                <v-col cols="12" md="2">
+                  <v-switch v-model="targetDraft(site).tls" :label="t('fallbackHtml.tls')" color="primary" density="compact" hide-details />
+                </v-col>
+                <v-col cols="12" md="5" class="d-flex ga-2 align-center flex-wrap">
+                  <v-btn size="small" color="primary" variant="tonal" prepend-icon="mdi-content-save" @click="saveTarget(site)">
+                    {{ t('fallbackHtml.saveTarget') }}
+                  </v-btn>
+                  <v-btn size="small" variant="tonal" prepend-icon="mdi-server-network" @click="useCurrentPanelTarget(site)">
+                    {{ t('fallbackHtml.usePanelPort') }}
+                  </v-btn>
+                  <v-chip
+                    v-for="target in targetsBySite[site.id] || []"
+                    :key="target.id || `${target.kind}-${target.port}`"
+                    size="small"
+                    :color="endpointChipColor(target.status)"
+                    :title="endpointChipTitle(target)"
+                  >
+                    {{ endpointLabel(target) }}
+                    <span class="fallback-target-reason">{{ endpointStatusText(target) }}</span>
+                  </v-chip>
+                </v-col>
+              </v-row>
             </div>
 
             <v-divider class="my-4" />
-            <div v-for="page in site.pages" :key="page.id" class="mb-4">
+            <div class="text-subtitle-2 mb-2">{{ t('fallbackHtml.pages') }}</div>
+            <v-card v-for="page in site.pages" :key="page.id || page.path" class="mb-3 fallback-page-card" variant="outlined">
+              <v-card-text>
               <v-row density="compact">
                 <v-col cols="12" md="4">
                   <v-text-field v-model="page.path" :label="t('fallbackHtml.path')" density="compact" />
@@ -257,7 +256,12 @@
                   />
                 </v-col>
                 <v-col cols="12">
-                  <v-textarea v-model="page.body" :label="t('fallbackHtml.body')" rows="3" density="compact" />
+                  <div class="fallback-body-summary">
+                    <span>{{ page.body || t('fallbackHtml.emptyBody') }}</span>
+                    <v-btn size="small" variant="tonal" prepend-icon="mdi-arrow-expand" @click="openBodyEditor(page)">
+                      {{ t('fallbackHtml.openBodyEditor') }}
+                    </v-btn>
+                  </div>
                 </v-col>
                 <v-col cols="12" class="d-flex ga-2">
                   <v-btn size="small" color="primary" prepend-icon="mdi-content-save" @click="savePage(site, page)">
@@ -268,7 +272,8 @@
                   </v-btn>
                 </v-col>
               </v-row>
-            </div>
+              </v-card-text>
+            </v-card>
             <v-btn size="small" variant="tonal" prepend-icon="mdi-plus" @click="addPage(site)">
               {{ t('fallbackHtml.addPage') }}
             </v-btn>
@@ -371,9 +376,74 @@
               <div v-for="warning in safetyBySite[site.id].warnings" :key="warning">{{ warning }}</div>
             </v-alert>
 
+            <v-divider class="my-4" />
+            <div class="mb-4 fallback-section">
+              <div class="text-subtitle-2 mb-2">{{ t('fallbackHtml.selfStealDraft') }}</div>
+              <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+                {{ t('fallbackHtml.selfStealHelp') }}
+              </v-alert>
+              <v-row density="compact" align="center">
+                <v-col cols="12" md="3">
+                  <v-select
+                    v-model="selfStealOptions(site).profile"
+                    :items="selfStealProfiles"
+                    item-title="title"
+                    item-value="value"
+                    :label="t('fallbackHtml.selfStealProfile')"
+                    density="compact"
+                  />
+                </v-col>
+                <v-col cols="12" md="2">
+                  <v-select
+                    v-model="selfStealOptions(site).transport"
+                    :items="selfStealTransports"
+                    item-title="title"
+                    item-value="value"
+                    :label="t('fallbackHtml.selfStealTransport')"
+                    density="compact"
+                  />
+                </v-col>
+                <v-col cols="12" md="3">
+                  <v-text-field
+                    v-model="selfStealOptions(site).publicListen"
+                    :label="t('fallbackHtml.selfStealPublicListen')"
+                    density="compact"
+                  />
+                </v-col>
+                <v-col cols="12" md="2">
+                  <v-switch
+                    v-model="selfStealOptions(site).prepareTransfer"
+                    :label="t('fallbackHtml.preparePortTransfer')"
+                    color="primary"
+                    density="compact"
+                    hide-details
+                  />
+                </v-col>
+                <v-col cols="12" md="2" class="d-flex align-center">
+                  <v-btn
+                    variant="tonal"
+                    prepend-icon="mdi-shield-outline"
+                    :disabled="!canCreateSelfStealDraft(site)"
+                    @click="createSelfStealDraft(site)"
+                  >
+                    {{ t('fallbackHtml.selfStealDraft') }}
+                  </v-btn>
+                </v-col>
+              </v-row>
+            </div>
+
             <v-alert v-if="selfStealDraftBySite[site.id]" class="mt-4" type="info" variant="tonal">
               <div class="font-weight-bold">
                 {{ t('fallbackHtml.selfStealDraft') }}: {{ selfStealDraftBySite[site.id].status }}
+              </div>
+              <div>
+                {{ selfStealDraftBySite[site.id].payload.profile }} /
+                {{ selfStealDraftBySite[site.id].payload.transport }} /
+                {{ selfStealDraftBySite[site.id].payload.publicListen }}:{{ selfStealDraftBySite[site.id].payload.publicPort }}
+              </div>
+              <div v-if="selfStealDraftBySite[site.id].payload.portTransfer">
+                {{ t('fallbackHtml.portTransfer') }}:
+                {{ selfStealDraftBySite[site.id].payload.portTransfer?.prepared ? t('fallbackHtml.prepared') : t('fallbackHtml.required') }}
               </div>
               <div v-if="selfStealDraftBySite[site.id].coreDraftId">
                 {{ t('fallbackHtml.coreDraft') }}: #{{ selfStealDraftBySite[site.id].coreDraftId }}
@@ -398,7 +468,24 @@
             </v-alert>
 
             <v-divider class="my-4" />
-            <div class="text-subtitle-2 mb-2">{{ t('fallbackHtml.publishes') }}</div>
+            <div class="d-flex align-center justify-space-between flex-wrap ga-2 mb-2">
+              <div class="text-subtitle-2">{{ t('fallbackHtml.publishes') }}</div>
+              <div class="d-flex align-center ga-2 flex-wrap">
+                <v-text-field
+                  v-model.number="pruneKeepBySite[site.id]"
+                  class="fallback-prune-keep"
+                  density="compact"
+                  type="number"
+                  min="0"
+                  max="50"
+                  hide-details
+                  :label="t('fallbackHtml.keepRollbackVersions')"
+                />
+                <v-btn size="small" variant="tonal" prepend-icon="mdi-delete-outline" @click="prunePublishes(site)">
+                  {{ t('fallbackHtml.pruneOldVersions') }}
+                </v-btn>
+              </div>
+            </div>
             <div class="d-flex ga-2 align-center flex-wrap">
               <v-chip
                 v-for="publish in publishesBySite[site.id] || []"
@@ -408,54 +495,6 @@
               >
                 {{ publish.version }} - {{ publish.files }} {{ t('fallbackHtml.files') }}
               </v-chip>
-            </div>
-            <div class="mt-3">
-              <div class="text-caption text-medium-emphasis mb-1">{{ t('fallbackHtml.nodePublications') }}</div>
-              <v-chip
-                v-for="publication in nodePublicationsBySite[site.id] || []"
-                :key="publication.id || `${publication.nodeId}-${publication.publishVersion}`"
-                class="me-2 mb-2"
-                size="small"
-                :color="endpointChipColor(publication.status)"
-                :title="publication.lastError || publication.artifactSha256"
-              >
-                {{ publication.nodeId || t('fallbackHtml.nodeUnknown') }}
-                <span class="fallback-target-reason">{{ publication.status }} / {{ publication.runtime }}</span>
-              </v-chip>
-              <div v-if="!(nodePublicationsBySite[site.id] || []).length" class="text-caption text-medium-emphasis">
-                {{ t('fallbackHtml.noNodePublications') }}
-              </div>
-              <v-row class="mt-2" density="compact">
-                <v-col cols="12" md="8">
-                  <v-select
-                    v-model="nodeSelectionBySite[site.id]"
-                    :items="nodeEndpoints.filter(node => node.enabled)"
-                    item-title="nodeId"
-                    item-value="nodeId"
-                    :label="t('fallbackHtml.selectNode')"
-                    density="compact"
-                    :disabled="!nodeEndpoints.length"
-                  />
-                </v-col>
-                <v-col cols="12" md="4" class="d-flex align-center">
-                  <v-btn
-                    variant="tonal"
-                    color="primary"
-                    prepend-icon="mdi-cloud-upload-outline"
-                    :loading="applyingNodeBySite[site.id]"
-                    :disabled="!activePublish(site) || !nodeSelectionBySite[site.id]"
-                    @click="applyPublishToNode(site)"
-                  >
-                    {{ t('fallbackHtml.applyToNode') }}
-                  </v-btn>
-                </v-col>
-              </v-row>
-              <v-alert v-if="nodePlanBySite[site.id]" class="mt-2" type="info" variant="tonal">
-                <div class="font-weight-bold">{{ t('fallbackHtml.nodePlan') }}</div>
-                <div>{{ nodePlanBySite[site.id].artifact.filename }}</div>
-                <div>sha256: {{ nodePlanBySite[site.id].artifact.sha256 }}</div>
-                <div>{{ t('fallbackHtml.signatureMode') }}: {{ nodePlanBySite[site.id].signature.mode }}</div>
-              </v-alert>
             </div>
             <v-row v-if="rollbackVersions(site).length" class="mt-2" density="compact">
               <v-col cols="12" md="8">
@@ -475,26 +514,22 @@
               </v-col>
             </v-row>
           </v-card-text>
-          <v-card-actions class="justify-end">
+          <v-card-actions v-if="!siteCollapsed(site)" class="justify-end flex-wrap fallback-site-actions">
             <v-btn variant="tonal" prepend-icon="mdi-database-import" @click="openImport(site)">
               {{ t('fallbackHtml.importJson') }}
             </v-btn>
-            <v-btn variant="tonal" prepend-icon="mdi-server-network" :disabled="!activePublish(site)" @click="loadNodePlan(site)">
-              {{ t('fallbackHtml.nodePlan') }}
-            </v-btn>
             <v-btn
               variant="tonal"
-              prepend-icon="mdi-shield-outline"
-              :disabled="!canCreateSelfStealDraft(site)"
-              @click="createSelfStealDraft(site)"
+              prepend-icon="mdi-shield-search"
+              @click="checkSafety(site)"
             >
-              {{ t('fallbackHtml.selfStealDraft') }}
-            </v-btn>
-            <v-btn variant="tonal" prepend-icon="mdi-shield-search" @click="checkSafety(site)">
               {{ t('fallbackHtml.safety') }}
             </v-btn>
             <v-btn variant="tonal" prepend-icon="mdi-eye" @click="previewSite(site)">
               {{ t('fallbackHtml.preview') }}
+            </v-btn>
+            <v-btn variant="tonal" prepend-icon="mdi-open-in-new" @click="openPublishedSite(site)">
+              {{ t('fallbackHtml.openPublishedPage') }}
             </v-btn>
             <v-btn color="secondary" prepend-icon="mdi-content-save" @click="saveSite(site)">
               {{ t('fallbackHtml.save') }}
@@ -505,10 +540,12 @@
             <v-btn color="warning" variant="tonal" prepend-icon="mdi-server-off" @click="unpublishSite(site)">
               {{ t('fallbackHtml.unpublish') }}
             </v-btn>
+            <v-btn color="error" variant="tonal" prepend-icon="mdi-delete" @click="deleteSite(site)">
+              {{ t('fallbackHtml.deleteSite') }}
+            </v-btn>
           </v-card-actions>
         </v-card>
-      </v-col>
-    </v-row>
+    </div>
   </v-container>
 </template>
 
@@ -569,6 +606,7 @@ interface Site {
   enabled: boolean
   status: string
   templateId: string
+  hostname?: string
   pages: Page[]
   redirects: Redirect[]
 }
@@ -597,14 +635,6 @@ interface PortCandidate {
   reason: string
 }
 
-interface RuntimeOption {
-  id: string
-  label: string
-  status: string
-  reason: string
-  nodeSide: boolean
-}
-
 interface SafetyReport {
   ok: boolean
   warnings: string[]
@@ -622,6 +652,7 @@ interface TemplateDefinition {
   source: string
   license: string
   contentTypeProfile: string
+  renderable: boolean
 }
 
 interface RemoteTemplateView {
@@ -644,6 +675,11 @@ interface PublishView {
   createdAt: number
 }
 
+interface PrunePublishesResult {
+  removed: number
+  kept: number
+}
+
 interface SelfStealDraftView {
   id: number
   siteId: number
@@ -654,6 +690,15 @@ interface SelfStealDraftView {
     requiresCapability: string
     coreDraftId?: number
     activePublish: string
+    profile?: string
+    transport?: string
+    publicListen?: string
+    publicPort?: number
+    portTransfer?: {
+      required: boolean
+      prepared: boolean
+      reason: string
+    }
     inboundType?: string
     inboundTag?: string
     inboundCandidate?: unknown
@@ -664,47 +709,11 @@ interface SelfStealDraftView {
   createdAt: number
 }
 
-interface NodePublicationView {
-  id: number
-  siteId: number
-  nodeId: string
-  publishVersion: string
-  runtime: string
-  status: string
-  artifactSha256?: string
-  operationId?: string
-  lastError?: string
-  createdAt?: number
-  updatedAt?: number
-  appliedAt?: number
-}
-
-interface NodeEndpointView {
-  id: number
-  nodeId: string
-  baseUrl: string
-  runtime: string
-  hasSharedSecret: boolean
-  enabled: boolean
-  createdAt: number
-  updatedAt: number
-}
-
-interface NodePublishPlan {
-  schema: string
-  siteId: number
-  nodeId?: string
-  version: string
-  artifact: {
-    filename: string
-    contentType: string
-    sha256: string
-    sizeBytes: number
-  }
-  signature: {
-    mode: string
-    required: boolean
-  }
+interface SelfStealOptions {
+  profile: string
+  transport: string
+  publicListen: string
+  prepareTransfer: boolean
 }
 
 const { t } = useI18n()
@@ -713,48 +722,65 @@ const sites = ref<Site[]>([])
 const templates = ref<TemplateDefinition[]>([])
 const remoteTemplates = ref<RemoteTemplateView[]>([])
 const portCandidates = ref<PortCandidate[]>([])
-const runtimeOptions = ref<RuntimeOption[]>([])
-const nodeEndpoints = ref<NodeEndpointView[]>([])
 const loading = ref(false)
 const catalogLoading = ref(false)
 const installingTemplate = ref('')
 const error = ref('')
 const catalogError = ref('')
 const previewOpen = ref(false)
+const previewLoading = ref(false)
 const previewHtml = ref('')
 const previewPath = ref('')
 const previewWarnings = ref<string[]>([])
+const previewError = ref('')
 const importOpen = ref(false)
 const importSiteRef = ref<Site | null>(null)
 const importText = ref('')
 const targetsBySite = reactive<Record<number, TargetView[]>>({})
+const targetDraftsBySite = reactive<Record<number, TargetView>>({})
+const siteMessages = reactive<Record<number, { type: 'success' | 'info' | 'warning' | 'error', text: string }>>({})
+const collapsedSites = reactive<Record<number, boolean>>({})
 const assetsBySite = reactive<Record<number, AssetView[]>>({})
 const externalResourcesBySite = reactive<Record<number, ExternalResourceView[]>>({})
 const publishesBySite = reactive<Record<number, PublishView[]>>({})
-const nodePublicationsBySite = reactive<Record<number, NodePublicationView[]>>({})
-const nodePlanBySite = reactive<Record<number, NodePublishPlan>>({})
-const nodeSelectionBySite = reactive<Record<number, string>>({})
-const applyingNodeBySite = reactive<Record<number, boolean>>({})
+const pruneKeepBySite = reactive<Record<number, number>>({})
 const rollbackSelectionBySite = reactive<Record<number, string>>({})
 const safetyBySite = reactive<Record<number, SafetyReport>>({})
 const selfStealDraftBySite = reactive<Record<number, SelfStealDraftView>>({})
+const selfStealOptionsBySite = reactive<Record<number, SelfStealOptions>>({})
+const bodyEditorOpen = ref(false)
+const bodyEditorPageRef = ref<Page | null>(null)
+const bodyEditorText = ref('')
 const jsonPost = { headers: { 'Content-Type': 'application/json' } }
 const redirectStatuses = [301, 302, 307, 308]
 const externalResourceKinds = ['link', 'image', 'font']
-const nodeRuntimeItems = ['gin', 'nginx', 'caddy']
-const nodeEndpointDraft = reactive({
-  nodeId: '',
-  baseUrl: '',
-  runtime: 'gin',
-  sharedSecret: '',
-})
 const contentModes = [
   { title: 'Text', value: 'text' },
   { title: 'Safe HTML', value: 'html' },
   { title: 'Downloaded static HTML', value: 'static-html' },
 ]
+const selfStealProfiles = [
+  { title: 'VLESS + REALITY', value: 'vless-reality' },
+  { title: 'Trojan + TLS fallback', value: 'trojan-tls-fallback' },
+]
+const selfStealTransports = [
+  { title: 'TCP', value: 'tcp' },
+  { title: 'WebSocket', value: 'ws' },
+  { title: 'HTTP', value: 'http' },
+  { title: 'gRPC', value: 'grpc' },
+  { title: 'HTTP Upgrade', value: 'httpupgrade' },
+]
 
-const apiObj = <T>(response: { data: { obj: T } }) => response.data.obj
+const apiObj = <T>(response: { data: { success?: boolean, msg?: string, obj?: T } | T }): T => {
+  const data = response.data as { success?: boolean, msg?: string, obj?: T } | T
+  if (data && typeof data === 'object' && 'success' in data && 'obj' in data) {
+    if (data.success === false) {
+      throw new Error(data.msg || 'Request failed')
+    }
+    return data.obj as T
+  }
+  return data as T
+}
 
 function normalizeSites(items: Site[]): Site[] {
   return items.map(site => ({
@@ -765,6 +791,52 @@ function normalizeSites(items: Site[]): Site[] {
   }))
 }
 
+function siteCollapsed(site: Site): boolean {
+  return collapsedSites[site.id] === true
+}
+
+function toggleSiteCollapse(site: Site) {
+  collapsedSites[site.id] = !siteCollapsed(site)
+}
+
+function siteStatusColor(site: Site): string {
+  if (!site.enabled) return 'warning'
+  if (site.status === 'published') return 'success'
+  if (site.status === 'error') return 'error'
+  return 'grey'
+}
+
+function siteStatusText(site: Site): string {
+  if (!site.enabled) return t('fallbackHtml.statusDisabled')
+  if (site.status === 'published') return t('fallbackHtml.statusPublished')
+  if (site.status === 'error') return t('fallbackHtml.statusError')
+  return t('fallbackHtml.statusDraft')
+}
+
+function publicTargetSummary(site: Site): string {
+  const target = targetsBySite[site.id]?.[0]
+  if (!target) return t('fallbackHtml.noPublishTarget')
+  return endpointLabel(target)
+}
+
+function templateAffectsSite(site: Site): boolean {
+  return site.pages.some(page => (page.contentMode || 'text') !== 'static-html')
+}
+
+function templateSelectItems(site: Site): TemplateDefinition[] {
+  if (!templateAffectsSite(site)) {
+    return templates.value
+  }
+  return templates.value.filter(template => template.renderable)
+}
+
+function templateHelp(site: Site): string {
+  if (!templateAffectsSite(site)) {
+    return t('fallbackHtml.templateStaticHelp')
+  }
+  return t('fallbackHtml.templateGeneratedHelp')
+}
+
 async function loadSites() {
   loading.value = true
   error.value = ''
@@ -772,10 +844,8 @@ async function loadSites() {
     sites.value = normalizeSites(apiObj(await api.get('api/components/fallback-html/sites')) ?? [])
     templates.value = apiObj(await api.get('api/components/fallback-html/templates')) ?? []
     portCandidates.value = apiObj(await api.get('api/components/fallback-html/ports')) ?? []
-    runtimeOptions.value = apiObj(await api.get('api/components/fallback-html/runtimes')) ?? []
-    await loadNodeEndpoints()
     await loadTemplateCatalog()
-    await Promise.all(sites.value.flatMap(site => [loadTargets(site), loadAssets(site), loadExternalResources(site), loadPublishes(site), loadNodePublications(site)]))
+    await Promise.all(sites.value.flatMap(site => [loadTargets(site), loadAssets(site), loadExternalResources(site), loadPublishes(site)]))
   } catch (err) {
     error.value = err instanceof Error ? err.message : String(err)
   } finally {
@@ -784,7 +854,9 @@ async function loadSites() {
 }
 
 async function loadTargets(site: Site) {
-  targetsBySite[site.id] = apiObj(await api.get(`api/components/fallback-html/sites/${site.id}/targets`)) ?? []
+  const targets = apiObj<TargetView[]>(await api.get(`api/components/fallback-html/sites/${site.id}/targets`)) ?? []
+  targetsBySite[site.id] = targets
+  targetDraftsBySite[site.id] = cloneTarget(targets[0] ?? defaultTargetDraft())
 }
 
 async function loadAssets(site: Site) {
@@ -798,19 +870,14 @@ async function loadExternalResources(site: Site) {
 async function loadPublishes(site: Site) {
   const publishes = apiObj<PublishView[]>(await api.get(`api/components/fallback-html/sites/${site.id}/publishes`)) ?? []
   publishesBySite[site.id] = publishes
+  if (pruneKeepBySite[site.id] === undefined) {
+    pruneKeepBySite[site.id] = 2
+  }
   const selected = rollbackSelectionBySite[site.id]
   const versions = publishes.filter(publish => !publish.active)
   if (!selected || !versions.some(publish => publish.version === selected)) {
     rollbackSelectionBySite[site.id] = versions[0]?.version ?? ''
   }
-}
-
-async function loadNodePublications(site: Site) {
-  nodePublicationsBySite[site.id] = apiObj(await api.get(`api/components/fallback-html/sites/${site.id}/node-publications`)) ?? []
-}
-
-async function loadNodeEndpoints() {
-  nodeEndpoints.value = apiObj(await api.get('api/components/fallback-html/nodes')) ?? []
 }
 
 async function loadTemplateCatalog() {
@@ -843,51 +910,22 @@ async function deleteRemoteTemplate(template: RemoteTemplateView) {
   await loadTemplateCatalog()
 }
 
-async function saveNodeEndpoint() {
-  await api.post('api/components/fallback-html/nodes', {
-    nodeId: nodeEndpointDraft.nodeId,
-    baseUrl: nodeEndpointDraft.baseUrl,
-    runtime: nodeEndpointDraft.runtime,
-    sharedSecret: nodeEndpointDraft.sharedSecret,
-    enabled: true,
-  }, jsonPost)
-  nodeEndpointDraft.nodeId = ''
-  nodeEndpointDraft.baseUrl = ''
-  nodeEndpointDraft.runtime = 'gin'
-  nodeEndpointDraft.sharedSecret = ''
-  await loadNodeEndpoints()
-}
-
-async function deleteNodeEndpoint(node: NodeEndpointView) {
-  await api.delete(`api/components/fallback-html/nodes/${encodeURIComponent(node.nodeId)}`)
-  for (const siteID of Object.keys(nodeSelectionBySite)) {
-    if (nodeSelectionBySite[Number(siteID)] === node.nodeId) {
-      nodeSelectionBySite[Number(siteID)] = ''
-    }
-  }
-  await loadNodeEndpoints()
-}
-
-async function applyPublishToNode(site: Site) {
-  const publish = activePublish(site)
-  const nodeId = nodeSelectionBySite[site.id]
-  if (!publish || !nodeId) return
-  applyingNodeBySite[site.id] = true
-  try {
-    await api.post(`api/components/fallback-html/sites/${site.id}/node-publications/${publish.version}/apply`, { nodeId }, jsonPost)
-    await Promise.all([loadNodePublications(site), loadNodePlan(site)])
-  } finally {
-    applyingNodeBySite[site.id] = false
-  }
-}
-
 async function createSite() {
-  await api.post('api/components/fallback-html/sites', { name: 'Public site', enabled: true }, jsonPost)
+  const created = apiObj<Site>(await api.post('api/components/fallback-html/sites', { name: 'Public Site', enabled: true }, jsonPost))
+  await api.post(`api/components/fallback-html/sites/${created.id}/targets`, {
+    kind: 'standalone',
+    listen: defaultExactListen(),
+    port: 443,
+    rootPath: '/',
+    runtime: 'gin',
+    tls: false,
+  }, jsonPost)
   await loadSites()
 }
 
 async function createSiteFromTemplate(templateId: string) {
-  await api.post(`api/components/fallback-html/templates/${encodeURIComponent(templateId)}/create-site`)
+  const created = apiObj<Site>(await api.post(`api/components/fallback-html/templates/${encodeURIComponent(templateId)}/create-site`))
+  await api.post(`api/components/fallback-html/sites/${created.id}/targets`, defaultTargetPayload(), jsonPost)
   await loadSites()
 }
 
@@ -899,6 +937,15 @@ async function saveSite(site: Site) {
     templateId: site.templateId,
   }, jsonPost))
   Object.assign(site, normalizeSites([saved])[0])
+}
+
+async function saveSiteMetadata(site: Site) {
+  await saveSite(site)
+}
+
+async function deleteSite(site: Site) {
+  await api.delete(`api/components/fallback-html/sites/${site.id}`)
+  await loadSites()
 }
 
 function addPage(site: Site) {
@@ -942,6 +989,19 @@ function openImport(site: Site) {
   importOpen.value = true
 }
 
+function openBodyEditor(page: Page) {
+  bodyEditorPageRef.value = page
+  bodyEditorText.value = page.body
+  bodyEditorOpen.value = true
+}
+
+function applyBodyEditor() {
+  if (bodyEditorPageRef.value) {
+    bodyEditorPageRef.value.body = bodyEditorText.value
+  }
+  bodyEditorOpen.value = false
+}
+
 async function applyImport() {
   if (!importSiteRef.value) return
   const payload = JSON.parse(importText.value)
@@ -962,13 +1022,46 @@ async function saveRedirect(site: Site, redirect: Redirect) {
   await loadSites()
 }
 
-async function syncTarget(site: Site) {
-  const current = targetsBySite[site.id]?.[0]
-  const saved = apiObj<TargetView>(await api.post(`api/components/fallback-html/sites/${site.id}/targets`, {
-    id: current?.id ?? 0,
+async function saveTarget(site: Site) {
+  clearSiteMessage(site.id)
+  const draft = targetDraft(site)
+  try {
+    const saved = apiObj<TargetView>(await api.post(`api/components/fallback-html/sites/${site.id}/targets`, targetPayloadFromDraft(draft), jsonPost))
+    targetsBySite[site.id] = [saved]
+    targetDraftsBySite[site.id] = cloneTarget(saved)
+    portCandidates.value = apiObj(await api.get('api/components/fallback-html/ports')) ?? []
+    setSiteMessage(site.id, 'success', t('fallbackHtml.targetSaved'))
+  } catch (err) {
+    setSiteMessage(site.id, 'error', formatSiteError(err, t('fallbackHtml.targetSaveFailed')))
+  }
+}
+
+async function useCurrentPanelTarget(site: Site) {
+  clearSiteMessage(site.id)
+  try {
+    portCandidates.value = apiObj(await api.get('api/components/fallback-html/ports')) ?? []
+  } catch (err) {
+    setSiteMessage(site.id, 'error', formatSiteError(err, t('fallbackHtml.targetSaveFailed')))
+    return
+  }
+  const current = portCandidates.value.find(candidate => candidate.kind === 'web-current')
+  if (!current) {
+    setSiteMessage(site.id, 'warning', t('fallbackHtml.noTargets'))
+    return
+  }
+  targetDraftsBySite[site.id] = cloneTarget({
+    id: targetDraft(site).id,
     kind: 'web-current',
-  }, jsonPost))
-  targetsBySite[site.id] = [saved]
+    host: '',
+    listen: current.listen || defaultExactListen(),
+    port: current.port || 0,
+    rootPath: '/',
+    runtime: current.runtime || 'gin',
+    tls: current.tls || false,
+    status: current.status || 'managed',
+    reason: current.reason || '',
+    current: true,
+  })
 }
 
 async function deletePage(site: Site, page: Page) {
@@ -1038,19 +1131,72 @@ async function deleteExternalResource(site: Site, resource: ExternalResourceView
 }
 
 async function checkSafety(site: Site) {
-  safetyBySite[site.id] = apiObj(await api.post(`api/components/fallback-html/sites/${site.id}/safety`))
+  clearSiteMessage(site.id)
+  try {
+    safetyBySite[site.id] = apiObj(await api.post(`api/components/fallback-html/sites/${site.id}/safety`))
+  } catch (err) {
+    setSiteMessage(site.id, 'error', formatSiteError(err, t('fallbackHtml.safetyFailed')))
+  }
 }
 
 async function previewSite(site: Site) {
-  const result = apiObj<PreviewResult>(await api.post(`api/components/fallback-html/sites/${site.id}/preview`, {}, jsonPost))
-  previewHtml.value = result.html
-  previewPath.value = result.path
-  previewWarnings.value = result.warnings ?? []
   previewOpen.value = true
+  previewLoading.value = true
+  previewError.value = ''
+  previewHtml.value = ''
+  previewPath.value = ''
+  previewWarnings.value = []
+  try {
+    await saveSiteMetadata(site)
+    const result = apiObj<PreviewResult | null>(await api.post(`api/components/fallback-html/sites/${site.id}/preview`, {}, jsonPost))
+    if (!result) {
+      throw new Error(t('fallbackHtml.previewEmpty'))
+    }
+    previewHtml.value = result.html || ''
+    previewPath.value = result.path || '/'
+    previewWarnings.value = result.warnings ?? []
+  } catch (err) {
+    previewError.value = formatSiteError(err, t('fallbackHtml.previewFailed'))
+    setSiteMessage(site.id, 'error', previewError.value)
+  } finally {
+    previewLoading.value = false
+  }
+}
+
+function openPublishedSite(site: Site) {
+  const url = publicSiteURL(site)
+  if (!url) {
+    setSiteMessage(site.id, 'warning', t('fallbackHtml.openPublishedPageUnavailable'))
+    return
+  }
+  window.open(url, '_blank', 'noopener,noreferrer')
+}
+
+function publicSiteURL(site: Site): string {
+  const target = targetsBySite[site.id]?.[0] ?? targetDraft(site)
+  const rootPath = target.rootPath || '/'
+  if (target.kind === 'web-current') {
+    return new URL(rootPath, window.location.origin).toString()
+  }
+  const protocol = target.tls ? 'https:' : 'http:'
+  let host = target.host || target.listen || window.location.hostname || '127.0.0.1'
+  if (host === '0.0.0.0' || host === '::' || host === '[::]') {
+    host = window.location.hostname || '127.0.0.1'
+  }
+  if (host.includes(':') && !host.startsWith('[')) {
+    host = `[${host}]`
+  }
+  const port = Number(target.port) || (target.tls ? 443 : 80)
+  const defaultPort = (protocol === 'https:' && port === 443) || (protocol === 'http:' && port === 80)
+  return `${protocol}//${host}${defaultPort ? '' : `:${port}`}${rootPath.startsWith('/') ? rootPath : `/${rootPath}`}`
 }
 
 async function createSelfStealDraft(site: Site) {
-  const draft = apiObj<SelfStealDraftView>(await api.post(`api/components/fallback-html/sites/${site.id}/self-steal/draft`, {}, jsonPost))
+  const draft = apiObj<SelfStealDraftView>(await api.post(
+    `api/components/fallback-html/sites/${site.id}/self-steal/draft`,
+    selfStealOptions(site),
+    jsonPost,
+  ))
   selfStealDraftBySite[site.id] = draft
   if (canReviewSelfStealDraft(draft)) {
     await reviewSelfStealDraft(draft)
@@ -1065,32 +1211,80 @@ function canCreateSelfStealDraft(site: Site): boolean {
   return !!activePublish(site) && safetyBySite[site.id]?.ok === true
 }
 
+function selfStealOptions(site: Site): SelfStealOptions {
+  if (!selfStealOptionsBySite[site.id]) {
+    selfStealOptionsBySite[site.id] = {
+      profile: 'vless-reality',
+      transport: 'tcp',
+      publicListen: defaultSelfStealPublicListen(site),
+      prepareTransfer: true,
+    }
+  }
+  return selfStealOptionsBySite[site.id]
+}
+
+function defaultSelfStealPublicListen(site: Site): string {
+  const target = targetsBySite[site.id]?.[0] ?? targetDraft(site)
+  for (const candidate of [site.hostname, target.host, target.listen, window.location.hostname]) {
+    const value = String(candidate || '').trim()
+    if (value && value !== '0.0.0.0' && value !== '::' && value !== '[::]') {
+      return value
+    }
+  }
+  return '127.0.0.1'
+}
+
 async function reviewSelfStealDraft(draft: SelfStealDraftView) {
   await Data().loadInboundDrafts()
   await router.push({ path: '/inbounds', query: { draft: String(draft.coreDraftId) } })
 }
 
-async function loadNodePlan(site: Site) {
-  const publish = activePublish(site)
-  if (!publish) return
-  nodePlanBySite[site.id] = apiObj(await api.get(`api/components/fallback-html/sites/${site.id}/node-plan/${publish.version}`))
-}
-
 async function publishSite(site: Site) {
-  await api.post(`api/components/fallback-html/sites/${site.id}/publish`)
-  await loadSites()
+  clearSiteMessage(site.id)
+  try {
+    await saveSiteMetadata(site)
+    apiObj<unknown>(await api.post(`api/components/fallback-html/sites/${site.id}/publish`))
+    await loadSites()
+    setSiteMessage(site.id, 'success', t('fallbackHtml.publishSucceeded'))
+  } catch (err) {
+    setSiteMessage(site.id, 'error', formatSiteError(err, t('fallbackHtml.publishFailed')))
+  }
 }
 
 async function rollbackSite(site: Site) {
-  await api.post(`api/components/fallback-html/sites/${site.id}/rollback`, {
-    version: rollbackSelectionBySite[site.id] || '',
-  }, jsonPost)
-  await loadSites()
+  clearSiteMessage(site.id)
+  try {
+    apiObj<unknown>(await api.post(`api/components/fallback-html/sites/${site.id}/rollback`, {
+      version: rollbackSelectionBySite[site.id] || '',
+    }, jsonPost))
+    await loadSites()
+    setSiteMessage(site.id, 'success', t('fallbackHtml.rollbackSucceeded'))
+  } catch (err) {
+    setSiteMessage(site.id, 'error', formatSiteError(err, t('fallbackHtml.rollbackFailed')))
+  }
 }
 
 async function unpublishSite(site: Site) {
-  await api.post(`api/components/fallback-html/sites/${site.id}/unpublish`)
-  await loadSites()
+  clearSiteMessage(site.id)
+  try {
+    apiObj<unknown>(await api.post(`api/components/fallback-html/sites/${site.id}/unpublish`))
+    await loadSites()
+    setSiteMessage(site.id, 'success', t('fallbackHtml.unpublishSucceeded'))
+  } catch (err) {
+    setSiteMessage(site.id, 'error', formatSiteError(err, t('fallbackHtml.unpublishFailed')))
+  }
+}
+
+async function prunePublishes(site: Site) {
+  clearSiteMessage(site.id)
+  try {
+    const keep = Number(pruneKeepBySite[site.id] ?? 2)
+    const result = apiObj<PrunePublishesResult>(await api.post(`api/components/fallback-html/sites/${site.id}/publishes/prune`, { keep }, jsonPost))
+    await loadPublishes(site)
+    setSiteMessage(site.id, 'success', t('fallbackHtml.pruneSucceeded', { removed: result.removed, kept: result.kept }))
+  } catch (err) {
+    setSiteMessage(site.id, 'error', formatSiteError(err, t('fallbackHtml.pruneFailed')))
+  }
 }
 
 function rollbackVersions(site: Site): PublishView[] {
@@ -1099,6 +1293,11 @@ function rollbackVersions(site: Site): PublishView[] {
 
 function activePublish(site: Site): PublishView | undefined {
   return (publishesBySite[site.id] ?? []).find(publish => publish.active)
+}
+
+function formatUnix(value: number): string {
+  if (!value) return '-'
+  return new Date(value * 1000).toLocaleString()
 }
 
 function pathPreview(value: string): string {
@@ -1113,13 +1312,89 @@ function isExternalTarget(value: string): boolean {
   return isExternalURL(value)
 }
 
+function targetDraft(site: Site): TargetView {
+  if (!targetDraftsBySite[site.id]) {
+    targetDraftsBySite[site.id] = cloneTarget(targetsBySite[site.id]?.[0] ?? defaultTargetDraft())
+  }
+  return targetDraftsBySite[site.id]
+}
+
+function defaultTargetDraft(): TargetView {
+  return {
+    id: 0,
+    kind: 'standalone',
+    host: '',
+    listen: defaultExactListen(),
+    port: 443,
+    rootPath: '/',
+    runtime: 'gin',
+    tls: false,
+    status: '',
+    reason: '',
+    current: false,
+  }
+}
+
+function cloneTarget(target: TargetView): TargetView {
+  return { ...defaultTargetDraft(), ...target }
+}
+
+function defaultTargetPayload() {
+  return {
+    kind: 'standalone',
+    listen: defaultExactListen(),
+    port: 443,
+    rootPath: '/',
+    runtime: 'gin',
+    tls: false,
+  }
+}
+
+function targetPayloadFromDraft(draft: TargetView) {
+  return {
+    id: draft.id ?? 0,
+    kind: draft.kind || 'standalone',
+    host: draft.host || '',
+    listen: draft.listen || defaultExactListen(),
+    port: Number(draft.port) || 443,
+    rootPath: draft.rootPath || '/',
+    runtime: draft.runtime || 'gin',
+    tls: !!draft.tls,
+  }
+}
+
+function defaultExactListen(): string {
+  const host = window.location.hostname || '127.0.0.1'
+  return host === '0.0.0.0' || host === '::' || host === '[::]' ? '127.0.0.1' : host
+}
+
+function setSiteMessage(siteId: number, type: 'success' | 'info' | 'warning' | 'error', text: string) {
+  siteMessages[siteId] = { type, text }
+}
+
+function clearSiteMessage(siteId: number) {
+  delete siteMessages[siteId]
+}
+
+function formatSiteError(err: unknown, fallback: string): string {
+  if (typeof err === 'object' && err && 'response' in err) {
+    const response = (err as { response?: { data?: { msg?: string, error?: string } } }).response
+    const message = response?.data?.msg || response?.data?.error
+    if (message) return message
+  }
+  if (err instanceof Error && err.message) {
+    return err.message
+  }
+  return fallback
+}
+
 onMounted(loadSites)
 </script>
 
 <style scoped>
 .fallback-preview-frame {
   width: 100%;
-  min-height: 560px;
+  min-height: 640px;
   border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
   border-radius: 8px;
   background: #fff;
@@ -1135,11 +1410,103 @@ onMounted(loadSites)
 }
 
 .fallback-template-card {
-  width: min(100%, 360px);
+  min-width: 240px;
 }
 
-.fallback-source {
-  overflow-wrap: anywhere;
+.fallback-template-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+}
+
+.fallback-template-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 0.95rem;
+}
+
+.fallback-template-actions {
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.fallback-site-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.fallback-site-card {
+  width: 100%;
+}
+
+.fallback-site-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.fallback-site-heading {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.fallback-site-heading > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fallback-site-actions {
+  gap: 8px;
+}
+
+.fallback-site-actions .v-btn {
+  min-width: max-content;
+}
+
+.fallback-prune-keep {
+  max-width: 190px;
+}
+
+.fallback-section {
+  padding: 12px;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 10px;
+}
+
+.fallback-page-card {
+  background: rgba(var(--v-theme-surface), 0.5);
+}
+
+.fallback-body-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 48px;
+  padding: 10px 12px;
+  border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity));
+  border-radius: 8px;
+}
+
+.fallback-body-summary span {
+  overflow: hidden;
+  color: rgba(var(--v-theme-on-surface), 0.76);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fallback-body-editor :deep(textarea) {
+  font-family: ui-monospace, SFMono-Regular, Consolas, Liberation Mono, Menlo, monospace;
+  line-height: 1.45;
 }
 
 .fallback-path-hint {

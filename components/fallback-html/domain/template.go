@@ -40,6 +40,7 @@ type TemplateDefinition struct {
 	Source             string `json:"source"`
 	License            string `json:"license"`
 	ContentTypeProfile string `json:"contentTypeProfile"`
+	Renderable         bool   `json:"renderable"`
 }
 
 var generatedPortalTemplate = template.Must(template.New("fallback-generated-portal").Parse(`<!doctype html>
@@ -218,6 +219,7 @@ func BuiltInTemplates() []TemplateDefinition {
 			Source:             "Solovey UI generated template",
 			License:            "Project license",
 			ContentTypeProfile: "portal",
+			Renderable:         true,
 		},
 		{
 			ID:                 "knowledge-base",
@@ -225,6 +227,7 @@ func BuiltInTemplates() []TemplateDefinition {
 			Source:             "Solovey UI generated template",
 			License:            "Project license",
 			ContentTypeProfile: "knowledge-base",
+			Renderable:         true,
 		},
 		{
 			ID:                 "webmail-workspace",
@@ -232,6 +235,7 @@ func BuiltInTemplates() []TemplateDefinition {
 			Source:             "s-ui-fallback-decoys/templates/webmail-workspace; adapted from Tabler MIT page patterns",
 			License:            "MIT-adapted",
 			ContentTypeProfile: "webmail",
+			Renderable:         true,
 		},
 		{
 			ID:                 "file-vault",
@@ -239,6 +243,7 @@ func BuiltInTemplates() []TemplateDefinition {
 			Source:             "s-ui-fallback-decoys/templates/file-vault; adapted from AdminLTE MIT page patterns",
 			License:            "MIT-adapted",
 			ContentTypeProfile: "file-cloud",
+			Renderable:         true,
 		},
 		{
 			ID:                 "status-dashboard",
@@ -246,6 +251,7 @@ func BuiltInTemplates() []TemplateDefinition {
 			Source:             "s-ui-fallback-decoys/templates/status-dashboard; adapted from CoreUI MIT page patterns",
 			License:            "MIT-adapted",
 			ContentTypeProfile: "dashboard",
+			Renderable:         true,
 		},
 	}
 }

@@ -76,15 +76,14 @@ func (s *Service) SaveTarget(siteID uint, input TargetInput, actor string) (Targ
 	if err != nil {
 		return TargetView{}, err
 	}
-	if input.Kind == "" {
-		input.Kind = current.Kind
-	}
-	if input.Kind != "web-current" {
-		return TargetView{}, fmt.Errorf("only the current managed web listener is supported by the Gin MVP")
+	target, err := normalizeTargetInput(siteID, input, current, now)
+	if err != nil {
+		return TargetView{}, err
 	}
 	var saved fallbackdomain.RuntimeTarget
+	var site fallbackdomain.Site
 	err = s.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.First(&fallbackdomain.Site{}, siteID).Error; err != nil {
+		if err := tx.First(&site, siteID).Error; err != nil {
 			return err
 		}
 		if input.ID != 0 {
@@ -94,21 +93,29 @@ func (s *Service) SaveTarget(siteID uint, input TargetInput, actor string) (Targ
 		} else {
 			saved = fallbackdomain.RuntimeTarget{SiteID: siteID, CreatedAt: now}
 		}
-		saved.Kind = current.Kind
-		saved.Host = current.Host
-		saved.Listen = current.Listen
-		saved.Port = current.Port
-		saved.RootPath = current.RootPath
-		saved.Runtime = current.Runtime
-		saved.TLS = current.TLS
+		saved.Kind = target.Kind
+		saved.Host = target.Host
+		saved.Listen = target.Listen
+		saved.Port = target.Port
+		saved.RootPath = target.RootPath
+		saved.Runtime = target.Runtime
+		saved.TLS = target.TLS
 		saved.UpdatedAt = now
 		if err := tx.Save(&saved).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("site_id = ? AND id <> ?", siteID, saved.ID).Delete(&fallbackdomain.RuntimeTarget{}).Error; err != nil {
 			return err
 		}
 		return recordEvent(tx, siteID, actor, "target_saved", map[string]any{"kind": saved.Kind, "port": saved.Port})
 	})
 	if err != nil {
 		return TargetView{}, err
+	}
+	if strings.EqualFold(site.Status, "published") && site.Enabled {
+		if err := s.runtime.Rebuild(s.db); err != nil {
+			return TargetView{}, err
+		}
 	}
 	return s.targetView(saved, current), nil
 }
@@ -149,6 +156,9 @@ func (s *Service) PortCandidates() ([]PortCandidate, error) {
 		currentCandidate.Reason = reason
 	}
 	candidates := []PortCandidate{currentCandidate}
+	if candidate, ok := defaultHTTPSPortCandidate(current); ok {
+		candidates = append(candidates, candidate)
+	}
 	candidates = append(candidates, s.savedTargetPortCandidates(current)...)
 	candidates = append(candidates, s.inboundPortCandidates()...)
 	if free, ok := freeLoopbackPortCandidate(current.TLS); ok {
@@ -166,21 +176,93 @@ func (s *Service) RuntimeOptions() []RuntimeOption {
 			Status: "available",
 			Reason: "Serves the published site through the existing panel web listener.",
 		},
-		{
-			ID:       "nginx",
-			Label:    "Nginx runtime",
-			Status:   "unavailable",
-			Reason:   "Node runtime capability is required; the panel component never runs nginx or systemctl directly.",
-			NodeSide: true,
-		},
-		{
-			ID:       "caddy",
-			Label:    "Caddy runtime",
-			Status:   "unavailable",
-			Reason:   "Node runtime capability is required; the panel component never runs caddy or systemctl directly.",
-			NodeSide: true,
-		},
 	}
+}
+
+func normalizeTargetInput(siteID uint, input TargetInput, current TargetView, now int64) (fallbackdomain.RuntimeTarget, error) {
+	listen := strings.TrimSpace(input.Listen)
+	if listen == "" {
+		listen = strings.TrimSpace(input.Host)
+	}
+	if listen == "" {
+		listen = "127.0.0.1"
+	}
+	port := input.Port
+	if port == 0 {
+		port = 443
+	}
+	if port < 1 || port > 65535 {
+		return fallbackdomain.RuntimeTarget{}, fmt.Errorf("publish port must be between 1 and 65535")
+	}
+	rootPath := strings.TrimSpace(input.RootPath)
+	if rootPath == "" {
+		rootPath = "/"
+	}
+	runtime := strings.TrimSpace(input.Runtime)
+	if runtime == "" {
+		runtime = "gin"
+	}
+	if runtime != "gin" {
+		return fallbackdomain.RuntimeTarget{}, fmt.Errorf("runtime %q requires a node/runtime component", runtime)
+	}
+	kind := strings.TrimSpace(input.Kind)
+	if kind == "" {
+		kind = "standalone"
+	}
+	if kind == "web-current" {
+		return targetFromView(siteID, current, now), nil
+	}
+	if targetMatchesCurrent(listen, port, runtime, current) {
+		kind = "web-current"
+	}
+	switch kind {
+	case "web-current":
+		return fallbackdomain.RuntimeTarget{
+			SiteID:    siteID,
+			Kind:      current.Kind,
+			Host:      current.Host,
+			Listen:    current.Listen,
+			Port:      current.Port,
+			RootPath:  current.RootPath,
+			Runtime:   current.Runtime,
+			TLS:       current.TLS,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}, nil
+	case "standalone":
+		return fallbackdomain.RuntimeTarget{
+			SiteID:    siteID,
+			Kind:      "standalone",
+			Host:      strings.TrimSpace(input.Host),
+			Listen:    listen,
+			Port:      port,
+			RootPath:  rootPath,
+			Runtime:   runtime,
+			TLS:       input.TLS,
+			CreatedAt: now,
+			UpdatedAt: now,
+		}, nil
+	default:
+		return fallbackdomain.RuntimeTarget{}, fmt.Errorf("unsupported publish target kind %q", kind)
+	}
+}
+
+func defaultHTTPSPortCandidate(current TargetView) (PortCandidate, bool) {
+	listen := preferredExactListen(current)
+	if current.Port == 443 && listen == strings.TrimSpace(current.Listen) {
+		return PortCandidate{}, false
+	}
+	candidate := PortCandidate{
+		Kind:    "standalone",
+		Listen:  listen,
+		Port:    443,
+		Runtime: "gin",
+		TLS:     current.TLS,
+	}
+	status, reason := probeBind(candidate.Listen, candidate.Port)
+	candidate.Status = status
+	candidate.Reason = reason
+	return candidate, true
 }
 
 func (s *Service) savedTargetPortCandidates(current TargetView) []PortCandidate {
@@ -408,11 +490,13 @@ func (s *Service) targetsForSite(site fallbackdomain.Site) ([]TargetView, error)
 func normalizeSelfStealProfile(value string) (string, error) {
 	profile := strings.TrimSpace(strings.ToLower(value))
 	if profile == "" {
-		profile = "sing-box-reality"
+		profile = selfStealProfileVLESS
 	}
 	switch profile {
-	case "sing-box-reality", "custom":
-		return profile, nil
+	case "sing-box-reality", "sing-box-vless-reality", "vless", "vless-reality", "vless+reality":
+		return selfStealProfileVLESS, nil
+	case "trojan", "trojan-tls", "trojan-tls-fallback", "sing-box-trojan":
+		return selfStealProfileTrojan, nil
 	default:
 		return "", fmt.Errorf("unsupported self-steal profile %q", value)
 	}
@@ -447,6 +531,16 @@ func normalizeSelfStealHandshakeHost(value string, target TargetView) string {
 	return "localhost"
 }
 
+func preferredExactListen(current TargetView) string {
+	for _, candidate := range []string{current.Host, current.Listen} {
+		listen := strings.TrimSpace(candidate)
+		if listen != "" && listen != "0.0.0.0" && listen != "::" && listen != "[::]" {
+			return listen
+		}
+	}
+	return "127.0.0.1"
+}
+
 func (s *Service) targetView(target fallbackdomain.RuntimeTarget, current TargetView) TargetView {
 	view := TargetView{
 		ID:       target.ID,
@@ -468,6 +562,28 @@ func (s *Service) targetView(target fallbackdomain.RuntimeTarget, current Target
 	if !view.Current {
 		view.Status = "stale"
 		view.Reason = "target no longer matches the current panel web listener; save it again before publishing"
+	}
+	if view.Kind == "standalone" {
+		if view.Port <= 0 {
+			view.Status = "blocked-external"
+			view.Reason = "port is required"
+			return view
+		}
+		if view.TLS {
+			certFile, keyFile := runtimeTLSFiles()
+			if certFile == "" || keyFile == "" {
+				view.Status = "blocked-external"
+				view.Reason = "TLS target requires panel certificate and key settings"
+				return view
+			}
+		}
+		if s.runtime != nil && s.runtime.Owns(view.Listen, view.Port) {
+			view.Status = "active"
+			view.Reason = "fallback-html currently owns this listener"
+			return view
+		}
+		view.Status, view.Reason = probeBind(view.Listen, view.Port)
+		return view
 	}
 	if view.Kind != "web-current" {
 		view.Status = "unsupported"

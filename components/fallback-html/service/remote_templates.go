@@ -436,6 +436,7 @@ func (s *Service) ListTemplates() []fallbackdomain.TemplateDefinition {
 			Source:             source.Source,
 			License:            source.License,
 			ContentTypeProfile: source.ContentTypeProfile,
+			Renderable:         isBuiltInTemplateID(source.TemplateID),
 		}
 		if index, ok := known[source.TemplateID]; ok {
 			definitions[index] = definition

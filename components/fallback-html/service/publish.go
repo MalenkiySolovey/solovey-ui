@@ -48,6 +48,15 @@ type RollbackInput struct {
 	Version string `json:"version"`
 }
 
+type PrunePublishesInput struct {
+	Keep int `json:"keep"`
+}
+
+type PrunePublishesResult struct {
+	Removed int `json:"removed"`
+	Kept    int `json:"kept"`
+}
+
 type SafetyReport struct {
 	OK       bool     `json:"ok"`
 	Warnings []string `json:"warnings"`
@@ -131,6 +140,103 @@ func (s *Service) ListPublishes(siteID uint) ([]PublishView, error) {
 	return out, nil
 }
 
+func (s *Service) PrunePublishes(siteID uint, input PrunePublishesInput, actor string) (PrunePublishesResult, error) {
+	keepInactive := input.Keep
+	if keepInactive < 0 {
+		return PrunePublishesResult{}, errors.New("keep must be zero or greater")
+	}
+	if keepInactive > 50 {
+		keepInactive = 50
+	}
+
+	var publishes []fallbackdomain.Publish
+	if err := s.db.
+		Preload("Files").
+		Where("site_id = ?", siteID).
+		Order("id DESC").
+		Find(&publishes).Error; err != nil {
+		return PrunePublishesResult{}, err
+	}
+	if len(publishes) == 0 {
+		return PrunePublishesResult{}, nil
+	}
+
+	keepIDs := make(map[uint]bool, keepInactive+1)
+	inactiveKept := 0
+	for _, publish := range publishes {
+		if publish.Active {
+			keepIDs[publish.ID] = true
+			continue
+		}
+		if inactiveKept < keepInactive {
+			keepIDs[publish.ID] = true
+			inactiveKept++
+		}
+	}
+
+	var removeIDs []uint
+	var removeVersions []string
+	var removeRoots []string
+	for _, publish := range publishes {
+		if keepIDs[publish.ID] {
+			continue
+		}
+		removeIDs = append(removeIDs, publish.ID)
+		removeVersions = append(removeVersions, publish.Version)
+		removeRoots = append(removeRoots, publish.RootDir)
+	}
+	if len(removeIDs) == 0 {
+		return PrunePublishesResult{Kept: len(publishes)}, nil
+	}
+
+	err := s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.First(&fallbackdomain.Site{}, siteID).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("site_id = ? AND publish_version IN ?", siteID, removeVersions).Delete(&fallbackdomain.NodePublication{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("publish_id IN ?", removeIDs).Delete(&fallbackdomain.PublishRedirect{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("publish_id IN ?", removeIDs).Delete(&fallbackdomain.PublishFile{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("site_id = ? AND id IN ? AND active = ?", siteID, removeIDs, false).Delete(&fallbackdomain.Publish{}).Error; err != nil {
+			return err
+		}
+		return recordEvent(tx, siteID, actor, "publishes_pruned", map[string]any{"removed": len(removeIDs), "keepInactive": keepInactive})
+	})
+	if err != nil {
+		return PrunePublishesResult{}, err
+	}
+	for _, root := range removeRoots {
+		if strings.TrimSpace(root) == "" {
+			continue
+		}
+		if err := removeOwnedPublishRoot(siteID, root); err != nil {
+			return PrunePublishesResult{}, err
+		}
+	}
+	return PrunePublishesResult{Removed: len(removeIDs), Kept: len(publishes) - len(removeIDs)}, nil
+}
+
+func removeOwnedPublishRoot(siteID uint, root string) error {
+	base := filepath.Join(storageRoot(), "publishes", "site-"+uintString(siteID))
+	baseAbs, err := filepath.Abs(base)
+	if err != nil {
+		return err
+	}
+	rootAbs, err := filepath.Abs(root)
+	if err != nil {
+		return err
+	}
+	if rootAbs == baseAbs || !strings.HasPrefix(rootAbs, baseAbs+string(os.PathSeparator)) {
+		return fmt.Errorf("refusing to remove publish root outside site storage: %s", root)
+	}
+	return os.RemoveAll(rootAbs)
+}
+
 func (s *Service) GetPublishArtifact(siteID uint, version string) (ArtifactArchive, error) {
 	version = strings.TrimSpace(version)
 	if version == "" {
@@ -180,8 +286,8 @@ func (s *Service) PublishSite(siteID uint, actor string) (PublishResult, error) 
 	if err != nil {
 		return PublishResult{}, err
 	}
-	if !report.OK {
-		return PublishResult{}, fmt.Errorf("public site is not safe to publish: %s", strings.Join(report.Warnings, "; "))
+	if blockers := blockingSafetyWarnings(report.Warnings); len(blockers) > 0 {
+		return PublishResult{}, fmt.Errorf("public site is not safe to publish: %s", strings.Join(blockers, "; "))
 	}
 	version := strconv.FormatInt(time.Now().UnixNano(), 10)
 	root := publishRoot(siteID, version)
@@ -238,6 +344,21 @@ func (s *Service) PublishSite(siteID uint, actor string) (PublishResult, error) 
 		return PublishResult{}, err
 	}
 	return PublishResult{SiteID: siteID, Version: version, Files: len(files)}, s.runtime.Rebuild(s.db)
+}
+
+func blockingSafetyWarnings(warnings []string) []string {
+	blockers := make([]string, 0, len(warnings))
+	for _, warning := range warnings {
+		switch {
+		case strings.Contains(warning, "admin web path is '/'"),
+			strings.Contains(warning, "conflicts with reserved panel paths"),
+			strings.Contains(warning, "targets a reserved panel path"),
+			strings.Contains(warning, "site does not have a home page at /"),
+			strings.Contains(warning, "publish target "):
+			blockers = append(blockers, warning)
+		}
+	}
+	return blockers
 }
 
 func (s *Service) RollbackSite(siteID uint, input RollbackInput, actor string) (PublishResult, error) {

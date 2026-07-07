@@ -3,7 +3,6 @@
 package api
 
 import (
-	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -55,14 +54,6 @@ func TestRoutesCreatePublishAndReportHealth(t *testing.T) {
 	if artifact.Code != http.StatusOK || artifact.Header().Get("Content-Type") != "application/gzip" || !strings.Contains(artifact.Header().Get("Content-Disposition"), ".tar.gz") || artifact.Body.Len() == 0 {
 		t.Fatalf("artifact download = %d headers=%v len=%d", artifact.Code, artifact.Header(), artifact.Body.Len())
 	}
-	plan := assertFallbackAPIObj[fallbackservice.NodePublishPlan](t, performFallbackAPIRequest(router, http.MethodGet, "/api/components/fallback-html/sites/"+uintString(site.ID)+"/node-plan/"+activePublish.Version+"?nodeId=node-eu-1", ""))
-	if plan.Schema == "" || plan.NodeID != "node-eu-1" || plan.Artifact.Sha256 == "" || plan.Signature.Mode == "" {
-		t.Fatalf("unexpected node publish plan: %#v", plan)
-	}
-	publications := assertFallbackAPIObj[[]fallbackservice.NodePublicationView](t, performFallbackAPIRequest(router, http.MethodGet, "/api/components/fallback-html/sites/"+uintString(site.ID)+"/node-publications", ""))
-	if len(publications) != 0 {
-		t.Fatalf("node publications should be empty before orchestrator records status: %#v", publications)
-	}
 
 	healthAfter := performFallbackAPIRequest(router, http.MethodGet, "/api/components/fallback-html/health", "")
 	after := assertFallbackAPIObj[fallbackservice.RuntimeHealth](t, healthAfter)
@@ -71,8 +62,8 @@ func TestRoutesCreatePublishAndReportHealth(t *testing.T) {
 	}
 }
 
-func TestNodePublicationApplyRoute(t *testing.T) {
-	router, service := newFallbackAPITestRouter(t, true)
+func TestNodeRoutesStayBehindNodeOrchestratorComponent(t *testing.T) {
+	router, _ := newFallbackAPITestRouter(t, true)
 	create := performFallbackAPIRequest(router, http.MethodPost, "/api/components/fallback-html/sites", `{"name":"Public test","enabled":true}`)
 	assertFallbackAPISuccess(t, create)
 	var site fallbackdomain.Site
@@ -85,38 +76,22 @@ func TestNodePublicationApplyRoute(t *testing.T) {
 	if err := dbsqlite.DB().Where("site_id = ? AND active = ?", site.ID, true).First(&activePublish).Error; err != nil {
 		t.Fatalf("active publish: %v", err)
 	}
-	service.SetNodeClient(apiNodeClientFunc{
-		validate: func(_ context.Context, target fallbackservice.NodeApplyTarget, artifact fallbackservice.ArtifactArchive) (fallbackservice.NodeRuntimeStatus, error) {
-			if target.NodeID != "node-api" || target.Runtime != "gin" || artifact.Sha256 == "" {
-				t.Fatalf("unexpected validate input target=%#v artifact=%#v", target, artifact)
-			}
-			return fallbackservice.NodeRuntimeStatus{OK: true, SiteID: uintString(site.ID), Version: activePublish.Version, ArtifactSha256: artifact.Sha256}, nil
-		},
-		apply: func(_ context.Context, target fallbackservice.NodeApplyTarget, artifact fallbackservice.ArtifactArchive) (fallbackservice.NodeRuntimeStatus, error) {
-			return fallbackservice.NodeRuntimeStatus{SiteID: uintString(site.ID), Version: activePublish.Version, Runtime: target.Runtime, Status: "applied", ArtifactSha256: artifact.Sha256, AppliedAt: 77}, nil
-		},
-	})
-	response := performFallbackAPIRequest(router, http.MethodPost, "/api/components/fallback-html/sites/"+uintString(site.ID)+"/node-publications/"+activePublish.Version+"/apply", `{"nodeId":"node-api","baseUrl":"https://node.example.com","runtime":"gin"}`)
-	result := assertFallbackAPIObj[fallbackservice.NodeApplyResult](t, response)
-	if result.Status.Status != "active" || result.Status.NodeID != "node-api" || result.Status.AppliedAt != 77 {
-		t.Fatalf("unexpected node apply API result: %#v", result)
+	paths := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{http.MethodGet, "/api/components/fallback-html/nodes", ""},
+		{http.MethodPost, "/api/components/fallback-html/nodes", `{"nodeId":"node-ui","baseUrl":"https://node.example.com"}`},
+		{http.MethodGet, "/api/components/fallback-html/sites/" + uintString(site.ID) + "/node-plan/" + activePublish.Version, ""},
+		{http.MethodGet, "/api/components/fallback-html/sites/" + uintString(site.ID) + "/node-publications", ""},
+		{http.MethodPost, "/api/components/fallback-html/sites/" + uintString(site.ID) + "/node-publications/" + activePublish.Version + "/apply", `{"nodeId":"node-api"}`},
 	}
-}
-
-func TestNodeEndpointRegistryRoutes(t *testing.T) {
-	router, _ := newFallbackAPITestRouter(t, true)
-	saved := assertFallbackAPIObj[fallbackservice.NodeEndpointView](t, performFallbackAPIRequest(router, http.MethodPost, "/api/components/fallback-html/nodes", `{"nodeId":"node-ui","baseUrl":"https://node.example.com","runtime":"nginx","sharedSecret":"secret"}`))
-	if saved.NodeID != "node-ui" || saved.BaseURL != "https://node.example.com" || saved.Runtime != "nginx" || !saved.Enabled || !saved.HasSharedSecret {
-		t.Fatalf("unexpected saved node endpoint: %#v", saved)
-	}
-	nodes := assertFallbackAPIObj[[]fallbackservice.NodeEndpointView](t, performFallbackAPIRequest(router, http.MethodGet, "/api/components/fallback-html/nodes", ""))
-	if len(nodes) != 1 || nodes[0].NodeID != "node-ui" {
-		t.Fatalf("unexpected node endpoints: %#v", nodes)
-	}
-	assertFallbackAPISuccess(t, performFallbackAPIRequest(router, http.MethodDelete, "/api/components/fallback-html/nodes/node-ui", ""))
-	nodes = assertFallbackAPIObj[[]fallbackservice.NodeEndpointView](t, performFallbackAPIRequest(router, http.MethodGet, "/api/components/fallback-html/nodes", ""))
-	if len(nodes) != 0 {
-		t.Fatalf("node endpoint was not deleted: %#v", nodes)
+	for _, item := range paths {
+		response := performFallbackAPIRequest(router, item.method, item.path, item.body)
+		if response.Code != http.StatusNotFound {
+			t.Fatalf("%s %s = %d, want 404", item.method, item.path, response.Code)
+		}
 	}
 }
 
@@ -125,7 +100,7 @@ func TestRoutesReturnValidationErrorAndEnforceScope(t *testing.T) {
 	create := performFallbackAPIRequest(router, http.MethodPost, "/api/components/fallback-html/sites", `{"name":"Public test","enabled":true}`)
 	assertFallbackAPISuccess(t, create)
 	runtimes := assertFallbackAPIObj[[]fallbackservice.RuntimeOption](t, performFallbackAPIRequest(router, http.MethodGet, "/api/components/fallback-html/runtimes", ""))
-	if len(runtimes) != 3 || runtimes[0].ID != "gin" || runtimes[0].Status != "available" || runtimes[1].Status != "unavailable" || !runtimes[1].NodeSide {
+	if len(runtimes) != 1 || runtimes[0].ID != "gin" || runtimes[0].Status != "available" || runtimes[0].NodeSide {
 		t.Fatalf("unexpected runtime options: %#v", runtimes)
 	}
 
@@ -286,17 +261,4 @@ func decodeFallbackAPIResponse(t *testing.T, response *httptest.ResponseRecorder
 
 func uintString(value uint) string {
 	return strconv.FormatUint(uint64(value), 10)
-}
-
-type apiNodeClientFunc struct {
-	validate func(context.Context, fallbackservice.NodeApplyTarget, fallbackservice.ArtifactArchive) (fallbackservice.NodeRuntimeStatus, error)
-	apply    func(context.Context, fallbackservice.NodeApplyTarget, fallbackservice.ArtifactArchive) (fallbackservice.NodeRuntimeStatus, error)
-}
-
-func (n apiNodeClientFunc) Validate(ctx context.Context, target fallbackservice.NodeApplyTarget, artifact fallbackservice.ArtifactArchive) (fallbackservice.NodeRuntimeStatus, error) {
-	return n.validate(ctx, target, artifact)
-}
-
-func (n apiNodeClientFunc) Apply(ctx context.Context, target fallbackservice.NodeApplyTarget, artifact fallbackservice.ArtifactArchive) (fallbackservice.NodeRuntimeStatus, error) {
-	return n.apply(ctx, target, artifact)
 }

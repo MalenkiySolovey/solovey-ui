@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"net"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/security"
+	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/ratelimit"
 	"github.com/MalenkiySolovey/solovey-ui/web/publicsurface"
 	"github.com/gin-gonic/gin"
@@ -37,6 +39,7 @@ type Runtime struct {
 	mu         sync.Mutex
 	db         *gorm.DB
 	unregister func()
+	listeners  map[string]*http.Server
 	limiter    *ratelimit.FixedWindow[string]
 	snapshot   atomic.Value // *snapshot
 }
@@ -75,7 +78,7 @@ type publishedRedirect struct {
 }
 
 func NewRuntime() *Runtime {
-	r := &Runtime{limiter: newPublicSiteLimiter()}
+	r := &Runtime{limiter: newPublicSiteLimiter(), listeners: map[string]*http.Server{}}
 	r.snapshot.Store((*snapshot)(nil))
 	return r
 }
@@ -101,6 +104,7 @@ func (r *Runtime) Stop() {
 	if r.limiter != nil {
 		r.limiter.ResetAll()
 	}
+	r.stopStandaloneLocked()
 	r.snapshot.Store((*snapshot)(nil))
 }
 
@@ -128,6 +132,7 @@ func (r *Runtime) Status() RuntimeStatus {
 
 func (r *Runtime) rebuildLocked() error {
 	if r.db == nil {
+		r.stopStandaloneLocked()
 		r.snapshot.Store((*snapshot)(nil))
 		return nil
 	}
@@ -140,6 +145,7 @@ func (r *Runtime) rebuildLocked() error {
 		Order("fallback_html_publishes.id DESC").
 		First(&publish).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		r.stopStandaloneLocked()
 		r.snapshot.Store((*snapshot)(nil))
 		return nil
 	}
@@ -189,8 +195,212 @@ func (r *Runtime) rebuildLocked() error {
 			external:   redirect.External,
 		}
 	}
+	targets, err := r.activeStandaloneTargets(publish.SiteID)
+	if err != nil {
+		return err
+	}
+	if err := r.applyStandaloneTargetsLocked(targets); err != nil {
+		return err
+	}
 	r.snapshot.Store(next)
 	return nil
+}
+
+func (r *Runtime) Owns(listen string, port int) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	_, ok := r.listeners[runtimeTargetKey(listen, port)]
+	return ok
+}
+
+func (r *Runtime) activeStandaloneTargets(siteID uint) ([]fallbackdomain.RuntimeTarget, error) {
+	var targets []fallbackdomain.RuntimeTarget
+	if err := r.db.Where("site_id = ? AND kind = ?", siteID, "standalone").Find(&targets).Error; err != nil {
+		return nil, err
+	}
+	return targets, nil
+}
+
+func (r *Runtime) applyStandaloneTargetsLocked(targets []fallbackdomain.RuntimeTarget) error {
+	r.stopStandaloneLocked()
+	next := map[string]*http.Server{}
+	for _, target := range targets {
+		if target.Port <= 0 {
+			continue
+		}
+		listen := strings.TrimSpace(target.Listen)
+		if listen == "" {
+			listen = "127.0.0.1"
+		}
+		certFile, keyFile := "", ""
+		if target.TLS {
+			certFile, keyFile = runtimeTLSFiles()
+			if certFile == "" || keyFile == "" {
+				for _, server := range next {
+					_ = server.Close()
+				}
+				return fmt.Errorf("fallback-html cannot publish TLS target %s:%d: panel certificate and key are required", listen, target.Port)
+			}
+		}
+		address := net.JoinHostPort(listen, strconv.Itoa(target.Port))
+		listener, err := net.Listen("tcp", address)
+		if err != nil {
+			for _, server := range next {
+				_ = server.Close()
+			}
+			return fmt.Errorf("fallback-html cannot publish on %s: %w", address, err)
+		}
+		server := &http.Server{
+			Addr:              address,
+			Handler:           http.HandlerFunc(r.serveHTTPPublic),
+			ReadHeaderTimeout: 5 * time.Second,
+		}
+		key := runtimeTargetKey(listen, target.Port)
+		next[key] = server
+		go func(server *http.Server, listener net.Listener, tls bool, certFile string, keyFile string) {
+			if tls {
+				_ = server.ServeTLS(listener, certFile, keyFile)
+				return
+			}
+			_ = server.Serve(listener)
+		}(server, listener, target.TLS, certFile, keyFile)
+	}
+	r.listeners = next
+	return nil
+}
+
+func (r *Runtime) stopStandaloneLocked() {
+	if len(r.listeners) == 0 {
+		r.listeners = map[string]*http.Server{}
+		return
+	}
+	for _, server := range r.listeners {
+		_ = server.Close()
+	}
+	r.listeners = map[string]*http.Server{}
+}
+
+func runtimeTLSFiles() (string, string) {
+	settings := coreservice.SettingService{}
+	certFile, certErr := settings.GetCertFile()
+	keyFile, keyErr := settings.GetKeyFile()
+	if certErr != nil || keyErr != nil {
+		return "", ""
+	}
+	return strings.TrimSpace(certFile), strings.TrimSpace(keyFile)
+}
+
+func runtimeTargetKey(listen string, port int) string {
+	listen = strings.TrimSpace(listen)
+	if listen == "" {
+		listen = "127.0.0.1"
+	}
+	return net.JoinHostPort(listen, strconv.Itoa(port))
+}
+
+func (r *Runtime) serveHTTPPublic(w http.ResponseWriter, req *http.Request) {
+	snap := r.snapshot.Load().(*snapshot)
+	if snap == nil {
+		http.NotFound(w, req)
+		return
+	}
+	if !r.allowHTTPPublicRequest(w, req, snap.csp) {
+		return
+	}
+	requestPath := req.URL.Path
+	if requestPath == "" {
+		requestPath = "/"
+	}
+	path, err := fallbackdomain.NormalizePublicPath(requestPath)
+	if err != nil || fallbackdomain.IsReservedPublicPath(path, nil) {
+		http.NotFound(w, req)
+		return
+	}
+	if req.Method != http.MethodGet && req.Method != http.MethodHead {
+		w.WriteHeader(http.StatusMethodNotAllowed)
+		return
+	}
+	if redirect, ok := snap.redirects[path]; ok {
+		setPublicHTTPHeaders(w, snap.csp)
+		w.Header().Set("Cache-Control", "no-store")
+		http.Redirect(w, req, redirect.toPath, redirect.statusCode)
+		return
+	}
+	if requestPath != path {
+		if _, ok := snap.pages[path]; ok {
+			setPublicHTTPHeaders(w, snap.csp)
+			w.Header().Set("Cache-Control", "no-store")
+			http.Redirect(w, req, path, http.StatusPermanentRedirect)
+			return
+		}
+	}
+	file, ok := snap.pages[path]
+	if !ok {
+		if !snap.hasNotFound {
+			http.NotFound(w, req)
+			return
+		}
+		r.writeHTTPFile(w, req, snap.notFound, http.StatusNotFound, snap.csp)
+		return
+	}
+	r.writeHTTPFile(w, req, file, http.StatusOK, snap.csp)
+}
+
+func (r *Runtime) allowHTTPPublicRequest(w http.ResponseWriter, req *http.Request, csp string) bool {
+	if r.limiter == nil {
+		return true
+	}
+	key := req.RemoteAddr
+	if host, _, err := net.SplitHostPort(req.RemoteAddr); err == nil && host != "" {
+		key = host
+	}
+	if key == "" {
+		key = "unknown"
+	}
+	decision := r.limiter.Allow(key)
+	if decision.Allowed {
+		return true
+	}
+	setPublicHTTPHeaders(w, csp)
+	retryAfter := int((decision.RetryAfter + time.Second - 1) / time.Second)
+	if retryAfter < 1 {
+		retryAfter = 1
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	w.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+	w.WriteHeader(http.StatusTooManyRequests)
+	return false
+}
+
+func (r *Runtime) writeHTTPFile(w http.ResponseWriter, req *http.Request, file publishedFile, status int, csp string) {
+	setPublicHTTPHeaders(w, csp)
+	if file.cache != "" {
+		w.Header().Set("Cache-Control", file.cache)
+	} else {
+		w.Header().Set("Cache-Control", htmlCachePolicy)
+	}
+	etag := `"` + file.sha256 + `"`
+	w.Header().Set("ETag", etag)
+	if file.modified > 0 {
+		w.Header().Set("Last-Modified", time.Unix(file.modified, 0).UTC().Format(http.TimeFormat))
+	}
+	if status == http.StatusOK && requestCacheFresh(req, etag, file.modified) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
+	w.Header().Set("Content-Type", file.mimeType)
+	w.Header().Set("Content-Length", strconv.Itoa(len(file.data)))
+	w.WriteHeader(status)
+	if req.Method != http.MethodHead {
+		_, _ = w.Write(file.data)
+	}
+}
+
+func setPublicHTTPHeaders(w http.ResponseWriter, csp string) {
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.Header().Del("X-Frame-Options")
+	w.Header().Set("Referrer-Policy", "strict-origin-when-cross-origin")
+	w.Header().Set("Content-Security-Policy", csp)
 }
 
 func (r *Runtime) ServePublic(c *gin.Context, ctx publicsurface.Context) bool {

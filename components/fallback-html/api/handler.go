@@ -33,9 +33,6 @@ func RegisterRoutes(group *gin.RouterGroup, deps Deps) {
 	routes.GET("/health", handler.health)
 	routes.GET("/ports", handler.ports)
 	routes.GET("/runtimes", handler.runtimes)
-	routes.GET("/nodes", handler.listNodeEndpoints)
-	routes.POST("/nodes", handler.saveNodeEndpoint)
-	routes.DELETE("/nodes/:nodeId", handler.deleteNodeEndpoint)
 	routes.GET("/templates", handler.templates)
 	routes.GET("/template-catalog", handler.remoteTemplateCatalog)
 	routes.POST("/template-catalog/:templateId/install", handler.installRemoteTemplate)
@@ -60,10 +57,8 @@ func RegisterRoutes(group *gin.RouterGroup, deps Deps) {
 	routes.POST("/sites/:id/external-resources", handler.saveExternalResource)
 	routes.DELETE("/sites/:id/external-resources/:resourceId", handler.deleteExternalResource)
 	routes.GET("/sites/:id/publishes", handler.listPublishes)
+	routes.POST("/sites/:id/publishes/prune", handler.prunePublishes)
 	routes.GET("/sites/:id/artifact/:version", handler.downloadArtifact)
-	routes.GET("/sites/:id/node-plan/:version", handler.nodePublishPlan)
-	routes.GET("/sites/:id/node-publications", handler.listNodePublications)
-	routes.POST("/sites/:id/node-publications/:version/apply", handler.applyNodePublication)
 	routes.POST("/sites/:id/import", handler.importSite)
 	routes.GET("/sites/:id/pages", handler.listPages)
 	routes.POST("/sites/:id/pages", handler.savePage)
@@ -98,34 +93,6 @@ func (h Handler) runtimes(c *gin.Context) {
 		return
 	}
 	h.deps.JSONObj(c, h.deps.Service.RuntimeOptions(), nil)
-}
-
-func (h Handler) listNodeEndpoints(c *gin.Context) {
-	if !h.deps.RequireScope(c, "publicSite", "admin", "read", "write", "public-site") {
-		return
-	}
-	result, err := h.deps.Service.ListNodeEndpoints()
-	h.deps.JSONObj(c, result, err)
-}
-
-func (h Handler) saveNodeEndpoint(c *gin.Context) {
-	if !h.deps.RequireScope(c, "publicSite", "admin", "write", "public-site") {
-		return
-	}
-	var input fallbackcomponent.NodeEndpointInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		h.deps.JSONMsg(c, "fallbackHtml", err)
-		return
-	}
-	result, err := h.deps.Service.SaveNodeEndpoint(input, h.deps.Actor(c))
-	h.deps.JSONObj(c, result, err)
-}
-
-func (h Handler) deleteNodeEndpoint(c *gin.Context) {
-	if !h.deps.RequireScope(c, "publicSite", "admin", "write", "public-site") {
-		return
-	}
-	h.deps.JSONMsg(c, "del", h.deps.Service.DeleteNodeEndpoint(c.Param("nodeId"), h.deps.Actor(c)))
 }
 
 func (h Handler) templates(c *gin.Context) {
@@ -457,6 +424,23 @@ func (h Handler) listPublishes(c *gin.Context) {
 	h.deps.JSONObj(c, result, err)
 }
 
+func (h Handler) prunePublishes(c *gin.Context) {
+	if !h.deps.RequireScope(c, "publicSite", "admin", "write", "public-site") {
+		return
+	}
+	siteID, ok := pathUint(c, "id")
+	if !ok {
+		return
+	}
+	var input fallbackcomponent.PrunePublishesInput
+	if err := c.ShouldBindJSON(&input); err != nil {
+		h.deps.JSONMsg(c, "fallbackHtml", err)
+		return
+	}
+	result, err := h.deps.Service.PrunePublishes(siteID, input, h.deps.Actor(c))
+	h.deps.JSONObj(c, result, err)
+}
+
 func (h Handler) downloadArtifact(c *gin.Context) {
 	if !h.deps.RequireScope(c, "publicSite", "admin", "read", "write", "public-site") {
 		return
@@ -472,47 +456,6 @@ func (h Handler) downloadArtifact(c *gin.Context) {
 	}
 	c.Header("Content-Disposition", `attachment; filename="`+artifact.Filename+`"`)
 	c.Data(http.StatusOK, artifact.ContentType, artifact.Data)
-}
-
-func (h Handler) nodePublishPlan(c *gin.Context) {
-	if !h.deps.RequireScope(c, "publicSite", "admin", "read", "write", "public-site") {
-		return
-	}
-	siteID, ok := pathUint(c, "id")
-	if !ok {
-		return
-	}
-	result, err := h.deps.Service.GetNodePublishPlan(siteID, c.Param("version"), c.Query("nodeId"))
-	h.deps.JSONObj(c, result, err)
-}
-
-func (h Handler) listNodePublications(c *gin.Context) {
-	if !h.deps.RequireScope(c, "publicSite", "admin", "read", "write", "public-site") {
-		return
-	}
-	siteID, ok := pathUint(c, "id")
-	if !ok {
-		return
-	}
-	result, err := h.deps.Service.ListNodePublications(siteID)
-	h.deps.JSONObj(c, result, err)
-}
-
-func (h Handler) applyNodePublication(c *gin.Context) {
-	if !h.deps.RequireScope(c, "publicSite", "admin", "write", "public-site") {
-		return
-	}
-	siteID, ok := pathUint(c, "id")
-	if !ok {
-		return
-	}
-	var input fallbackcomponent.NodeApplyInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		h.deps.JSONMsg(c, "fallbackHtml", err)
-		return
-	}
-	result, err := h.deps.Service.ApplyPublishToNode(c.Request.Context(), siteID, c.Param("version"), input, h.deps.Actor(c))
-	h.deps.JSONObj(c, result, err)
 }
 
 func (h Handler) importSite(c *gin.Context) {
