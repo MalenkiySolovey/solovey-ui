@@ -984,19 +984,23 @@ func TestSelfStealDraftCanPreparePortTransferAndTrojanFallback(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveSite: %v", err)
 	}
-	if _, err := service.SaveTarget(site.ID, TargetInput{
+	target, err := service.SaveTarget(site.ID, TargetInput{
 		Kind:     "standalone",
 		Host:     "front.example.com",
 		Listen:   "127.0.0.1",
-		Port:     443,
+		Port:     24443,
 		RootPath: "/",
 		Runtime:  "gin",
 		TLS:      true,
-	}, "tester"); err != nil {
+	}, "tester")
+	if err != nil {
 		t.Fatalf("SaveTarget: %v", err)
 	}
 	if _, err := service.PublishSite(site.ID, "tester"); err != nil {
 		t.Fatalf("PublishSite: %v", err)
+	}
+	if err := db.Model(&fallbackdomain.RuntimeTarget{}).Where("id = ?", target.ID).Update("port", 443).Error; err != nil {
+		t.Fatalf("simulate public 443 target: %v", err)
 	}
 
 	draft, err := service.CreateSelfStealDraft(site.ID, SelfStealDraftInput{
