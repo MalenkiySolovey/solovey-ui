@@ -231,6 +231,7 @@ func (s *Service) CreateSelfStealDraft(siteID uint, input SelfStealDraftInput, a
 	var draft fallbackdomain.SelfStealDraft
 	var coreDraftID uint
 	var tlsRecordID uint
+	transferSaved := false
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		expiredBefore := now - int64(selfStealDraftTTL/time.Second)
 		if err := tx.Where("created_at < ?", expiredBefore).Delete(&fallbackdomain.SelfStealDraft{}).Error; err != nil {
@@ -247,6 +248,7 @@ func (s *Service) CreateSelfStealDraft(siteID uint, input SelfStealDraftInput, a
 				if err != nil {
 					return err
 				}
+				transferSaved = true
 				targetForDraft = savedTarget
 				transfer.NewTarget = savedTarget
 				payload.Target = target
@@ -313,7 +315,7 @@ func (s *Service) CreateSelfStealDraft(siteID uint, input SelfStealDraftInput, a
 	if err != nil {
 		return SelfStealDraftView{}, err
 	}
-	if transfer.Required && transfer.Prepared {
+	if transferSaved {
 		if err := s.runtime.Rebuild(s.db); err != nil {
 			return SelfStealDraftView{}, err
 		}
