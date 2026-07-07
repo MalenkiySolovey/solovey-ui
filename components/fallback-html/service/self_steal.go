@@ -112,7 +112,26 @@ func (s *Service) CreateSelfStealDraft(siteID uint, input SelfStealDraftInput, a
 	if err != nil {
 		return SelfStealDraftView{}, err
 	}
-	report, err := s.safetyForSite(site)
+	blocks := []string{}
+	publicListen, publicListenWarnings, publicListenBlocks := resolveSelfStealPublicListen(input.PublicListen, site, target)
+	blocks = append(blocks, publicListenBlocks...)
+	targetForDraft := target
+	transfer := planSelfStealPortTransfer(target)
+	transferWarnings := []string{}
+	if transfer.Required {
+		if input.PrepareTransfer {
+			targetForDraft = transfer.NewTarget
+			transfer.Prepared = true
+			transferWarnings = append(transferWarnings, "port 443 ownership will move to the reviewed inbound; fallback-html will keep the decoy site on a local TLS target")
+		} else {
+			blocks = append(blocks, "port ownership transfer is required: move the fallback site to a local TLS target before the inbound can own public 443")
+		}
+	}
+	siteForSafety := site
+	if transfer.Required && transfer.Prepared {
+		siteForSafety.Targets = []fallbackdomain.RuntimeTarget{targetFromView(site.ID, targetForDraft, time.Now().Unix())}
+	}
+	report, err := s.safetyForSite(siteForSafety)
 	if err != nil {
 		return SelfStealDraftView{}, err
 	}
@@ -130,21 +149,8 @@ func (s *Service) CreateSelfStealDraft(siteID uint, input SelfStealDraftInput, a
 	}
 
 	warnings := append([]string(nil), report.Warnings...)
-	blocks := []string{}
-	publicListen, publicListenWarnings, publicListenBlocks := resolveSelfStealPublicListen(input.PublicListen, site, target)
 	warnings = append(warnings, publicListenWarnings...)
-	blocks = append(blocks, publicListenBlocks...)
-	targetForDraft := target
-	transfer := planSelfStealPortTransfer(target)
-	if transfer.Required {
-		if input.PrepareTransfer {
-			targetForDraft = transfer.NewTarget
-			transfer.Prepared = true
-			warnings = append(warnings, "port 443 ownership will move to the reviewed inbound; fallback-html will keep the decoy site on a local TLS target")
-		} else {
-			blocks = append(blocks, "port ownership transfer is required: move the fallback site to a local TLS target before the inbound can own public 443")
-		}
-	}
+	warnings = append(warnings, transferWarnings...)
 	if activePublish == "" {
 		blocks = append(blocks, "publish the site before creating a self-steal inbound draft")
 	}
