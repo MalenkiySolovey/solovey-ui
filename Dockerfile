@@ -1,4 +1,4 @@
-FROM --platform=$BUILDPLATFORM node:alpine@sha256:3ad34ca6292aec4a91d8ddeb9229e29d9c2f689efd0dd242860889ac71842eba AS front-builder
+FROM --platform=$BUILDPLATFORM node:alpine@sha256:e88a35be04478413b7c71c455cd9865de9b9360e1f43456be5951032d7ac1a66 AS front-builder
 WORKDIR /app
 COPY frontend/ ./frontend/
 COPY components/ ./components/
@@ -13,7 +13,7 @@ RUN cd frontend \
     && node scripts/write-component-installed-metadata.mjs --components-dir component-packs --out component-packs/installed.json --profile full --binary full \
     && node scripts/generate-component-imports.mjs --profile full --out generated/components_generated.go --cmd-out generated/optional_commands_generated.go
 
-FROM --platform=$TARGETPLATFORM golang:1.26.4-alpine@sha256:7a3e50096189ad57c9f9f865e7e4aa8585ed1585248513dc5cda498e2f41812c AS backend-builder
+FROM --platform=$TARGETPLATFORM golang:1.26.5-alpine@sha256:0178a641fbb4858c5f1b48e34bdaabe0350a330a1b1149aabd498d0699ff5fb2 AS backend-builder
 WORKDIR /app
 ARG TARGETARCH
 ARG TARGETVARIANT
@@ -69,7 +69,7 @@ RUN set -e; \
     -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0,with_tailscale" \
     -o solovey-ui main.go
 
-FROM alpine:latest@sha256:a2d49ea686c2adfe3c992e47dc3b5e7fa6e6b5055609400dc2acaeb241c829f4
+FROM alpine:latest@sha256:28bd5fe8b56d1bd048e5babf5b10710ebe0bae67db86916198a6eec434943f8b
 # Match defaultValueMap["timeLocation"] in service settings.
 ENV TZ=Europe/Moscow
 WORKDIR /app
