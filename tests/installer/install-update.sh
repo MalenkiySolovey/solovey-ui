@@ -364,7 +364,7 @@ assert_fresh_install() {
 	assert_contains "${LOG_DIR}/binary.log" '^v1:solovey-broker-manifest$'
 	assert_contains "${LOG_DIR}/systemctl.log" '^enable solovey-privileged-broker.socket solovey-privileged-proof.socket$'
 	if [[ "$(uname -s)" == Linux ]]; then
-		[[ "$(stat -c '%a' "${INSTALL_DIR}/solovey-ssh-proof")" == 2755 ]] || fail "SSH proof helper is not installed setgid 2755"
+		[[ "$(stat -Lc '%a' "${INSTALL_DIR}/solovey-ssh-proof")" == 2755 ]] || fail "SSH proof helper is not installed setgid 2755"
 	fi
     assert_contains "${CLI_PATH}" 'manager v1'
     assert_contains "${ENV_DIR}/secretbox.env" '^SUI_SECRETBOX_KEY='
