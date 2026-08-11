@@ -33,6 +33,26 @@ func setWSTokenForTest(token string, user string) {
 	realtimehttp.StoreToken(token, user, time.Now().Add(time.Minute))
 }
 
+func setBoundWSTokenForTest(tb testing.TB, server *httptest.Server, cookies []*http.Cookie, token string) {
+	tb.Helper()
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/test/realtime-token/"+token, nil)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	for _, cookie := range cookies {
+		req.AddCookie(cookie)
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		tb.Fatal(err)
+	}
+	defer resp.Body.Close()
+	_, _ = io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode != http.StatusNoContent {
+		tb.Fatalf("bound websocket token setup status=%d", resp.StatusCode)
+	}
+}
+
 func hasWSTokenForTest(token string) bool {
 	return realtimehttp.HasToken(token)
 }
@@ -180,7 +200,7 @@ func TestWSOriginAllowedAcceptsRequestHostAndWebDomain(t *testing.T) {
 			origin:      "https://admin.example",
 			requestHost: "127.0.0.1:2095",
 			webDomain:   "admin.example",
-			wantAllowed: true,
+			wantAllowed: false,
 		},
 		{
 			name:        "foreign host",
@@ -345,7 +365,7 @@ func TestRealtimeWSSendsHeartbeatPing(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	resetRealtimeForTest()
-	setWSTokenForTest("ws-token", "admin")
+	setBoundWSTokenForTest(t, server, cookies, "ws-token")
 
 	var pings atomic.Int32
 	conn := dialRealtimeWSForTest(t, server, cookies, func(context.Context, []byte) bool {
@@ -378,7 +398,7 @@ func TestRealtimeWSSendsPublishedEvents(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	resetRealtimeForTest()
-	setWSTokenForTest("ws-token", "admin")
+	setBoundWSTokenForTest(t, server, cookies, "ws-token")
 
 	conn := dialRealtimeWSForTest(t, server, cookies, func(context.Context, []byte) bool {
 		return true
@@ -415,7 +435,7 @@ func TestRealtimeWSUsesTokenScopeForSecurityEvents(t *testing.T) {
 			t.Cleanup(server.Close)
 
 			resetRealtimeForTest()
-			setWSTokenForTest("ws-token", "admin")
+			setBoundWSTokenForTest(t, server, cookies, "ws-token")
 
 			conn := dialRealtimeWSForTest(t, server, cookies, func(context.Context, []byte) bool {
 				return true
@@ -469,7 +489,7 @@ func TestRealtimeWSDeliversEventsWhileHeartbeatWaitsForPong(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	resetRealtimeForTest()
-	setWSTokenForTest("ws-token", "admin")
+	setBoundWSTokenForTest(t, server, cookies, "ws-token")
 
 	var pings atomic.Int32
 	conn := dialRealtimeWSForTest(t, server, cookies, func(context.Context, []byte) bool {
@@ -528,7 +548,7 @@ func TestRealtimeWSRejectsReplayToken(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	resetRealtimeForTest()
-	setWSTokenForTest("ws-token", "admin")
+	setBoundWSTokenForTest(t, server, cookies, "ws-token")
 
 	conn := dialRealtimeWSForTest(t, server, cookies, func(context.Context, []byte) bool {
 		return true
@@ -561,7 +581,7 @@ func TestRealtimeWSClosesWhenPongMissing(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	resetRealtimeForTest()
-	setWSTokenForTest("ws-token", "admin")
+	setBoundWSTokenForTest(t, server, cookies, "ws-token")
 
 	conn := dialRealtimeWSForTest(t, server, cookies, func(context.Context, []byte) bool {
 		return false
@@ -593,6 +613,7 @@ func newRealtimeWSTestRouterWithScope(t *testing.T, scope string) (*gin.Engine, 
 
 func newRealtimeWSTestRouterWithScopeAndOptions(t *testing.T, scope string, options ...realtimehttp.Option) (*gin.Engine, []*http.Cookie) {
 	t.Helper()
+	resetRateLimitState()
 	settingService := initSessionTestDB(t)
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
@@ -616,6 +637,15 @@ func newRealtimeWSTestRouterWithScopeAndOptions(t *testing.T, scope string, opti
 			c.Status(http.StatusInternalServerError)
 			return
 		}
+		c.Status(http.StatusNoContent)
+	})
+	router.GET("/test/realtime-token/:token", func(c *gin.Context) {
+		binding, ok := realtimeSessionBinding(c)
+		if !ok {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		realtimehttp.StoreBoundToken(c.Param("token"), binding, time.Now().Add(time.Minute))
 		c.Status(http.StatusNoContent)
 	})
 	router.GET("/api/realtime/ws", (&ApiService{}).realtimeHandler().RealtimeWSWithOptions(options...))

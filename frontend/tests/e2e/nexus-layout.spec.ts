@@ -19,6 +19,7 @@ const nexusRoutes = [
   { name: 'rules', path: 'rules' },
   { name: 'dns', path: 'dns' },
   { name: 'settings', path: 'settings' },
+	{ name: 'deployment', path: 'deployment' },
 ] as const
 
 const viewports = [

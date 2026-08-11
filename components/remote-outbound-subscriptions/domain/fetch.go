@@ -54,6 +54,8 @@ type fetchCandidate struct {
 var fetchSubscriptionData = subexternal.Fetch
 var fetchSubscriptionDataWithUserAgent = subexternal.FetchWithUserAgent
 
+const maxFetchErrorBytes = 4 << 10
+
 var (
 	fetchErrorURLPattern    = regexp.MustCompile(`https?://[^\s"'<>]+`)
 	fetchErrorSecretPattern = regexp.MustCompile(`(?i)((?:token|secret|password|passphrase|api[_-]?key)\s*[=:]\s*)[^\s,;"']+`)
@@ -63,7 +65,10 @@ func ValidateSubscriptionURL(rawURL string) error {
 	if rawURL == "" {
 		return common.NewError("no url")
 	}
-	return subexternal.ValidateURL(rawURL)
+	if err := subexternal.ValidateURL(rawURL); err != nil {
+		return common.NewError("invalid or disallowed subscription url")
+	}
+	return nil
 }
 
 func FetchOutbounds(rawURL string) ([]map[string]interface{}, error) {
@@ -84,7 +89,7 @@ func FetchSubscriptionWithOptions(rawURL string, options FetchOptions) (*Fetched
 	}
 	candidates, err := subscriptionFetchCandidates(rawURL)
 	if err != nil {
-		return nil, err
+		return nil, common.NewError("invalid or disallowed subscription url")
 	}
 	var attempts []FetchAttempt
 	var fetchedParts []*FetchedSubscription
@@ -99,7 +104,7 @@ func FetchSubscriptionWithOptions(rawURL string, options FetchOptions) (*Fetched
 		}
 		fetched, err := ParseFetchedSubscriptionWithOptions(data, options)
 		if err != nil {
-			attempt.Error = err.Error()
+			attempt.Error = sanitizeFetchError(err)
 			attempts = append(attempts, attempt)
 			continue
 		}
@@ -277,7 +282,7 @@ func parseFetchedFormat(format string, data string, parse func(string) ([]map[st
 	result := FormatResult{Format: format}
 	outbounds, err := parse(data)
 	if err != nil {
-		result.Error = err.Error()
+		result.Error = sanitizeFetchError(err)
 		return result
 	}
 	result.Outbounds = outbounds
@@ -312,11 +317,12 @@ func sanitizeFetchError(err error) string {
 func sanitizeFetchErrorText(value string) string {
 	value = redact.String(value)
 	value = fetchErrorSecretPattern.ReplaceAllString(value, `${1}[redacted]`)
-	return fetchErrorURLPattern.ReplaceAllStringFunc(value, func(raw string) string {
+	value = fetchErrorURLPattern.ReplaceAllStringFunc(value, func(raw string) string {
 		parsed, err := url.Parse(raw)
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 			return raw
 		}
 		return parsed.Scheme + "://" + parsed.Host + "/[redacted]"
 	})
+	return redact.StringLimit(value, maxFetchErrorBytes)
 }

@@ -22,7 +22,77 @@ func init() {
 	registerAPIComponentFixture("paid-subscriptions", "Paid Subscriptions", nil, registerPaidFixtureRoutes)
 	registerAPIComponentFixture("panel-update-ui", "Panel Update UI", []string{"update"}, registerUpdateFixtureRoutes)
 	registerAPIComponentFixture("remote-outbound-subscriptions", "Remote Outbound Subscriptions", nil, registerRemoteOutboundFixtureRoutes)
+	registerAPIComponentFixture("server-protection", "Server Protection", []string{"server-protection:read", "server-protection:write", "server-protection:apply"}, registerServerProtectionFixtureRoutes)
 	registerAPIComponentFixture("telegram", "Telegram", []string{"telegram"}, registerTelegramFixtureRoutes)
+}
+
+func registerServerProtectionFixtureRoutes(g *gin.RouterGroup, deps componenthost.APIDeps) error {
+	group := g.Group("/components/server-protection")
+	for _, spec := range []struct {
+		method  string
+		path    string
+		allowed []string
+	}{
+		{http.MethodGet, "/status", []string{"admin", "server-protection:read", "server-protection:write", "server-protection:apply"}},
+		{http.MethodGet, "/settings", []string{"admin", "server-protection:read", "server-protection:write", "server-protection:apply"}},
+		{http.MethodPut, "/settings", []string{"admin", "server-protection:write"}},
+		{http.MethodGet, "/resources", []string{"admin", "server-protection:read", "server-protection:write", "server-protection:apply"}},
+		{http.MethodGet, "/profiles", []string{"admin", "server-protection:read", "server-protection:write", "server-protection:apply"}},
+		{http.MethodPost, "/profiles", []string{"admin", "server-protection:write"}},
+		{http.MethodPut, "/profiles/:id", []string{"admin", "server-protection:write"}},
+		{http.MethodDelete, "/profiles/:id", []string{"admin", "server-protection:write"}},
+		{http.MethodPost, "/profiles/:id/reattach", []string{"admin", "server-protection:write"}},
+		{http.MethodGet, "/events", []string{"admin", "server-protection:read", "server-protection:write", "server-protection:apply"}},
+		{http.MethodDelete, "/events", []string{"admin", "server-protection:write"}},
+		{http.MethodGet, "/graylist", []string{"admin", "server-protection:read", "server-protection:write", "server-protection:apply"}},
+		{http.MethodDelete, "/graylist", []string{"admin", "server-protection:write"}},
+		{http.MethodGet, "/allowlist/ports", []string{"admin", "server-protection:read", "server-protection:write", "server-protection:apply"}},
+		{http.MethodPost, "/allowlist/ports", []string{"admin", "server-protection:write"}},
+		{http.MethodDelete, "/allowlist/ports/:id", []string{"admin", "server-protection:write"}},
+		{http.MethodGet, "/allowlist/ips", []string{"admin", "server-protection:read", "server-protection:write", "server-protection:apply"}},
+		{http.MethodPost, "/allowlist/ips", []string{"admin", "server-protection:write"}},
+		{http.MethodDelete, "/allowlist/ips/:id", []string{"admin", "server-protection:write"}},
+		{http.MethodGet, "/diagnostics", []string{"admin", "server-protection:read", "server-protection:write", "server-protection:apply"}},
+		{http.MethodGet, "/fronting/status", []string{"admin", "server-protection:read", "server-protection:write", "server-protection:apply"}},
+		{http.MethodPost, "/fronting/preview", []string{"admin", "server-protection:write"}},
+		{http.MethodPost, "/fronting/sync", []string{"admin", "server-protection:apply"}},
+		{http.MethodPost, "/fronting/apply", []string{"admin", "server-protection:apply"}},
+		{http.MethodPost, "/fronting/rollback", []string{"admin", "server-protection:apply"}},
+		{http.MethodGet, "/fronting/operations/:operationId", []string{"admin", "server-protection:read", "server-protection:write", "server-protection:apply"}},
+		{http.MethodPost, "/firewall/preview", []string{"admin", "server-protection:write"}},
+		{http.MethodPost, "/firewall/prepare", []string{"admin", "server-protection:apply"}},
+		{http.MethodGet, "/operations", []string{"admin", "server-protection:read", "server-protection:write", "server-protection:apply"}},
+		{http.MethodPost, "/operations/:operationId/force-unlock", []string{"admin", "server-protection:apply"}},
+		{http.MethodPost, "/operations/:operationId/forget-state", []string{"admin", "server-protection:apply"}},
+		{http.MethodPost, "/firewall/apply", []string{"admin", "server-protection:apply"}},
+		{http.MethodPost, "/firewall/rollback", []string{"admin", "server-protection:apply"}},
+		{http.MethodPost, "/ports/prepare", []string{"admin", "server-protection:apply"}},
+		{http.MethodPost, "/ports/apply", []string{"admin", "server-protection:apply"}},
+		{http.MethodPost, "/ports/rollback", []string{"admin", "server-protection:apply"}},
+		{http.MethodGet, "/native-fallback/status", []string{"admin", "server-protection:read", "server-protection:write", "server-protection:apply"}},
+		{http.MethodPost, "/native-fallback/preview", []string{"admin", "server-protection:write"}},
+		{http.MethodPost, "/native-fallback/prepare", []string{"admin", "server-protection:apply"}},
+		{http.MethodPost, "/native-fallback/apply", []string{"admin", "server-protection:apply"}},
+		{http.MethodPost, "/native-fallback/rollback", []string{"admin", "server-protection:apply"}},
+		// The shared CSRF matrix exercises every mutation path with POST,
+		// including production PUT/DELETE routes. These aliases exist only in
+		// this test registry and keep that transport-level matrix exhaustive.
+		{http.MethodPost, "/settings", []string{"admin", "server-protection:write"}},
+		{http.MethodPost, "/profiles/:id", []string{"admin", "server-protection:write"}},
+		{http.MethodPost, "/events", []string{"admin", "server-protection:write"}},
+		{http.MethodPost, "/graylist", []string{"admin", "server-protection:write"}},
+		{http.MethodPost, "/allowlist/ports/:id", []string{"admin", "server-protection:write"}},
+		{http.MethodPost, "/allowlist/ips/:id", []string{"admin", "server-protection:write"}},
+	} {
+		route := spec
+		group.Handle(route.method, route.path, func(c *gin.Context) {
+			if !deps.Auth.RequireScope(c, "serverProtection", route.allowed...) {
+				return
+			}
+			c.JSON(http.StatusOK, Msg{Success: true})
+		})
+	}
+	return nil
 }
 
 func registerAPIComponentFixture(id string, name string, scopes []string, register registry.APIRouteRegistrar) {

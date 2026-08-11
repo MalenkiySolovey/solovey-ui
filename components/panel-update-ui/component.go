@@ -43,6 +43,7 @@ func panelUpdateDeps(host componenthost.APIDeps) panelupdatehttp.Deps {
 		RemoteIP:         host.Request.RemoteIP,
 		Hostname:         host.Request.Hostname,
 		RequireScope:     host.Auth.RequireScope,
+		RequireStepUp:    host.Auth.RequireStepUp,
 		CheckPassword:    host.Auth.CheckPassword,
 		CheckRateLimit:   host.Rate.CheckLoginRateLimit,
 		RecordFailure:    host.Rate.RecordLoginFailure,

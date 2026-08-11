@@ -2,6 +2,7 @@ package drafts
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
@@ -12,10 +13,11 @@ import (
 )
 
 const (
-	StatusBlocked        = "blocked"
-	StatusReviewRequired = "review_required"
-	StatusApplied        = "applied"
-	StatusDiscarded      = "discarded"
+	StatusBlocked                = "blocked"
+	StatusReviewRequired         = "review_required"
+	StatusApplied                = "applied"
+	StatusDiscarded              = "discarded"
+	retiredSelfStealSourceSuffix = ":self-steal"
 )
 
 type CreateInput struct {
@@ -108,6 +110,16 @@ func CleanupExpired(tx *gorm.DB, now int64) error {
 }
 
 func MarkApplied(tx *gorm.DB, id uint, now int64) error {
+	if tx == nil {
+		return common.NewError("database is not initialized")
+	}
+	var draft model.InboundDraft
+	if err := tx.Select("id", "source").First(&draft, id).Error; err != nil {
+		return err
+	}
+	if strings.HasSuffix(strings.TrimSpace(draft.Source), retiredSelfStealSourceSuffix) {
+		return errors.New("legacy_self_steal_retired")
+	}
 	return markClosed(tx, id, StatusApplied, now)
 }
 

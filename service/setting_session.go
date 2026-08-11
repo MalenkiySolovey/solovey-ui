@@ -1,6 +1,9 @@
 package service
 
 import (
+	"strings"
+	"time"
+
 	configsecurity "github.com/MalenkiySolovey/solovey-ui/config/security"
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
@@ -42,6 +45,45 @@ func (s *SettingService) GetInstallSalt() ([]byte, error) {
 
 func (s *SettingService) GetSessionMaxAge() (int, error) {
 	return s.getInt(settingcatalog.SessionMaxAgeKey)
+}
+
+type SessionLifetime struct {
+	Posture      string
+	LegacyMaxAge time.Duration
+}
+
+// ResolveSessionLifetime keeps upgraded installations on their explicit
+// compatibility posture until the administrator adopts bounded_v1. A legacy
+// non-zero sessionMaxAge remains a configured fixed lifetime rather than an
+// unbounded session.
+func (s *SettingService) ResolveSessionLifetime() (SessionLifetime, error) {
+	policy, err := s.getString(settingcatalog.SessionLifetimePolicyKey)
+	if err != nil {
+		return SessionLifetime{}, err
+	}
+	policy = strings.TrimSpace(policy)
+	switch policy {
+	case LifetimePostureBoundedV1:
+		return SessionLifetime{Posture: LifetimePostureBoundedV1}, nil
+	case LifetimePostureLegacyUnbounded:
+		maxAge, err := s.GetSessionMaxAge()
+		if err != nil {
+			return SessionLifetime{}, err
+		}
+		if maxAge > 0 {
+			return SessionLifetime{
+				Posture:      LifetimePostureLegacyExplicit,
+				LegacyMaxAge: time.Duration(maxAge) * time.Minute,
+			}, nil
+		}
+		return SessionLifetime{Posture: LifetimePostureLegacyUnbounded}, nil
+	default:
+		return SessionLifetime{}, common.NewError("invalid session lifetime policy")
+	}
+}
+
+func (s *SettingService) AdoptBoundedSessionLifetime() error {
+	return s.setString(settingcatalog.SessionLifetimePolicyKey, LifetimePostureBoundedV1)
 }
 
 func (s *SettingService) GetForceCookieSecure() (bool, error) {

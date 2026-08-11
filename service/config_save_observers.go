@@ -18,11 +18,19 @@ type ConfigSaveAfterCommit func()
 
 type ConfigSaveObserver func(ConfigSaveObserverContext) (ConfigSaveAfterCommit, error)
 
+const maxConfigSaveObservers = 128
+
+type registeredConfigSaveObserver struct {
+	observer ConfigSaveObserver
+	token    uint64
+}
+
 var configSaveObservers = struct {
 	sync.RWMutex
-	entries map[string]ConfigSaveObserver
+	entries   map[string]registeredConfigSaveObserver
+	nextToken uint64
 }{
-	entries: map[string]ConfigSaveObserver{},
+	entries: map[string]registeredConfigSaveObserver{},
 }
 
 func RegisterConfigSaveObserver(name string, observer ConfigSaveObserver) func() {
@@ -38,19 +46,27 @@ func RegisterConfigSaveObserver(name string, observer ConfigSaveObserver) func()
 		configSaveObservers.Unlock()
 		panic(fmt.Errorf("config save observer %q already registered", name))
 	}
-	configSaveObservers.entries[name] = observer
+	if len(configSaveObservers.entries) >= maxConfigSaveObservers {
+		configSaveObservers.Unlock()
+		panic("config save observer registry capacity exceeded")
+	}
+	configSaveObservers.nextToken++
+	token := configSaveObservers.nextToken
+	configSaveObservers.entries[name] = registeredConfigSaveObserver{observer: observer, token: token}
 	configSaveObservers.Unlock()
 
 	return func() {
 		configSaveObservers.Lock()
-		delete(configSaveObservers.entries, name)
+		if current, ok := configSaveObservers.entries[name]; ok && current.token == token {
+			delete(configSaveObservers.entries, name)
+		}
 		configSaveObservers.Unlock()
 	}
 }
 
 func resetConfigSaveObserversForTest() {
 	configSaveObservers.Lock()
-	configSaveObservers.entries = map[string]ConfigSaveObserver{}
+	configSaveObservers.entries = map[string]registeredConfigSaveObserver{}
 	configSaveObservers.Unlock()
 }
 
@@ -87,8 +103,8 @@ type configSaveObserverEntry struct {
 func configSaveObserverSnapshot() []configSaveObserverEntry {
 	configSaveObservers.RLock()
 	entries := make([]configSaveObserverEntry, 0, len(configSaveObservers.entries))
-	for name, observer := range configSaveObservers.entries {
-		entries = append(entries, configSaveObserverEntry{name: name, observer: observer})
+	for name, registered := range configSaveObservers.entries {
+		entries = append(entries, configSaveObserverEntry{name: name, observer: registered.observer})
 	}
 	configSaveObservers.RUnlock()
 

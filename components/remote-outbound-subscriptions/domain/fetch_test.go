@@ -672,6 +672,34 @@ func TestFetchSubscriptionRedactsURLSecretsFromErrors(t *testing.T) {
 	}
 }
 
+func TestParseFetchedSubscriptionRedactsAndBoundsFormatErrors(t *testing.T) {
+	payload := `{"password":"format-secret","padding":"` + strings.Repeat("x", maxFetchErrorBytes*2) + `"}`
+
+	_, err := ParseFetchedSubscription(payload)
+	if err == nil {
+		t.Fatal("expected parse error")
+	}
+	message := err.Error()
+	if strings.Contains(message, "format-secret") {
+		t.Fatalf("format error leaked a secret: %q", message)
+	}
+	if len(message) > maxFetchErrorBytes+128 {
+		t.Fatalf("format error was not bounded: %d bytes", len(message))
+	}
+}
+
+func TestFetchSubscriptionDoesNotEchoMalformedURL(t *testing.T) {
+	const secret = "https://example.com/%zz?token=url-secret"
+
+	_, err := FetchSubscription(secret)
+	if err == nil {
+		t.Fatal("expected invalid URL error")
+	}
+	if strings.Contains(err.Error(), "url-secret") || strings.Contains(err.Error(), "%zz") {
+		t.Fatalf("invalid URL error echoed input: %q", err)
+	}
+}
+
 func hasString(values []string, target string) bool {
 	for _, value := range values {
 		if value == target {

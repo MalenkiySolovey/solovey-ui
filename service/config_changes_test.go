@@ -14,8 +14,8 @@ func TestConfigSaveRedactsSensitiveChangePayload(t *testing.T) {
 	initSettingTestDB(t)
 	replaceDefaultRuntimeForTest(t, NewRuntimeWithCoreProvider(nil))
 	payload, err := json.Marshal(map[string]string{
-		"telegramBotToken": "1234567890:" + strings.Repeat("A", 35),
-		"telegramChatID":   "42",
+		"fixturePrimaryBotToken": "1234567890:" + strings.Repeat("A", 35),
+		"fixturePrimaryChatID":   "42",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -33,10 +33,10 @@ func TestConfigSaveRedactsSensitiveChangePayload(t *testing.T) {
 	if strings.Contains(stored, "1234567890:") || strings.Contains(stored, strings.Repeat("A", 35)) {
 		t.Fatalf("change payload leaked secret: %s", stored)
 	}
-	if !strings.Contains(stored, `"telegramBotToken":"[REDACTED]"`) {
+	if !strings.Contains(stored, `"fixturePrimaryBotToken":"[REDACTED]"`) {
 		t.Fatalf("change payload was not redacted: %s", stored)
 	}
-	if !strings.Contains(stored, `"telegramChatID":"42"`) {
+	if !strings.Contains(stored, `"fixturePrimaryChatID":"42"`) {
 		t.Fatalf("non-sensitive setting was unexpectedly removed: %s", stored)
 	}
 }

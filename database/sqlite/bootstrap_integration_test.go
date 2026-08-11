@@ -212,7 +212,7 @@ func TestIssue14InitReturnsAdaptError(t *testing.T) {
 	}
 }
 
-func TestIssue13InitCreatesForcePasswordResetDefaultFalse(t *testing.T) {
+func TestInitCreatesForcedTransitionForGeneratedAdmin(t *testing.T) {
 	dbDir := makeDBTempDir(t, "s-ui-db-test-")
 	dbPath := filepath.Join(dbDir, "s-ui.db")
 	if err := Init(dbPath); err != nil {
@@ -233,8 +233,15 @@ func TestIssue13InitCreatesForcePasswordResetDefaultFalse(t *testing.T) {
 	if err := DB().Where("username = ?", "admin").First(&admin).Error; err != nil {
 		t.Fatal(err)
 	}
-	if admin.ForcePasswordReset {
-		t.Fatalf("initial admin should not require reset: %#v", admin)
+	if !admin.ForcePasswordReset {
+		t.Fatalf("generated initial admin must require reset: %#v", admin)
+	}
+	var lifetimePolicy string
+	if err := DB().Model(&model.Setting{}).Select("value").Where("key = ?", "sessionLifetimePolicy").Scan(&lifetimePolicy).Error; err != nil {
+		t.Fatal(err)
+	}
+	if lifetimePolicy != "bounded_v1" {
+		t.Fatalf("fresh-install session lifetime policy=%q, want bounded_v1", lifetimePolicy)
 	}
 }
 

@@ -15,6 +15,8 @@ const (
 	ForceCookieSecureKey     = "forceCookieSecure"
 	SessionSameSiteStrictKey = "sessionSameSiteStrict"
 	SessionGenerationKey     = "sessionGeneration"
+	SessionLifetimePolicyKey = "sessionLifetimePolicy"
+	CoreSchemaVersionKey     = "coreSchemaVersion"
 
 	TrafficAgeKey               = "trafficAge"
 	TimeLocationKey             = "timeLocation"
@@ -48,6 +50,11 @@ func SessionDefaults(secret string, installSalt string) map[string]string {
 		ForceCookieSecureKey:     "false",
 		SessionSameSiteStrictKey: "false",
 		SessionGenerationKey:     "",
+		// Missing markers belong to installations that predate the bounded
+		// session policy. Fresh installations persist bounded_v1 explicitly
+		// while creating their bootstrap administrator.
+		SessionLifetimePolicyKey: "legacy_unbounded",
+		CoreSchemaVersionKey:     "1.8",
 	}
 }
 

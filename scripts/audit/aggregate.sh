@@ -2,7 +2,7 @@
 set -u
 
 ROOT_DIR="${1:-.}"
-OUT_DIR="${AUDIT_OUT_DIR:-tests/baseline/phase8}"
+OUT_DIR="${AUDIT_OUT_DIR:-tests/baseline/current}"
 
 mkdir -p "$ROOT_DIR/$OUT_DIR"
 
@@ -11,7 +11,7 @@ const fs = require('fs');
 const path = require('path');
 
 const root = path.resolve(process.argv[2] || '.');
-const outDir = path.resolve(root, process.argv[3] || 'tests/baseline/phase8');
+const outDir = path.resolve(root, process.argv[3] || 'tests/baseline/current');
 const baselineDir = path.join(root, 'tests', 'baseline');
 const summaryPath = path.join(baselineDir, 'SUMMARY.md');
 
@@ -49,9 +49,9 @@ function num(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
-function phaseOf(file) {
+function groupOf(file) {
   const rel = path.relative(baselineDir, file).split(path.sep);
-  return rel.find((part) => /^phase\d+/.test(part)) || 'unknown';
+  return rel[0] || 'unknown';
 }
 
 function countMarkers(text, pattern) {
@@ -73,7 +73,7 @@ const junitFiles = walk(baselineDir)
   .filter((file) => file.endsWith('.junit.xml'))
   .sort();
 
-const byPhase = new Map();
+const byGroup = new Map();
 const files = [];
 let totals = { tests: 0, green: 0, red: 0, skipped: 0, xfail: 0 };
 
@@ -105,12 +105,12 @@ for (const file of junitFiles) {
   const xfail = countMarkers(markerText, /\b(XFAIL|expected[- ]fail|fixme)\b/gi);
   const red = failures + errors;
   const green = Math.max(0, tests - red - skipped);
-  const phase = phaseOf(file);
+  const group = groupOf(file);
 
-  if (!byPhase.has(phase)) {
-    byPhase.set(phase, { phase, tests: 0, green: 0, red: 0, skipped: 0, xfail: 0, files: 0 });
+  if (!byGroup.has(group)) {
+    byGroup.set(group, { group, tests: 0, green: 0, red: 0, skipped: 0, xfail: 0, files: 0 });
   }
-  const bucket = byPhase.get(phase);
+  const bucket = byGroup.get(group);
   bucket.tests += tests;
   bucket.green += green;
   bucket.red += red;
@@ -125,7 +125,7 @@ for (const file of junitFiles) {
   totals.xfail += xfail;
 
   files.push({
-    phase,
+    group,
     file: path.relative(root, file).replace(/\\/g, '/'),
     tests,
     green,
@@ -143,7 +143,7 @@ const baselineMarkers = {
   xfail: countMarkers(summaryMd, /\bXFAIL\b/gi),
 };
 
-const phases = [...byPhase.values()].sort((a, b) => a.phase.localeCompare(b.phase, undefined, { numeric: true }));
+const groups = [...byGroup.values()].sort((a, b) => a.group.localeCompare(b.group));
 const result = {
   generatedAt: new Date().toISOString(),
   root,
@@ -156,21 +156,21 @@ const result = {
     skipped: totals.skipped - baselineMarkers.skipped,
     xfail: totals.xfail - baselineMarkers.xfail,
   },
-  phases,
+  groups,
   files,
 };
 
 fs.writeFileSync(path.join(outDir, 'summary.json'), `${JSON.stringify(result, null, 2)}\n`);
 
-const rows = phases.map((phase) => `
+const rows = groups.map((group) => `
       <tr>
-        <td>${escapeHtml(phase.phase)}</td>
-        <td>${phase.files}</td>
-        <td>${phase.tests}</td>
-        <td class="green">${phase.green}</td>
-        <td class="red">${phase.red}</td>
-        <td>${phase.skipped}</td>
-        <td>${phase.xfail}</td>
+        <td>${escapeHtml(group.group)}</td>
+        <td>${group.files}</td>
+        <td>${group.tests}</td>
+        <td class="green">${group.green}</td>
+        <td class="red">${group.red}</td>
+        <td>${group.skipped}</td>
+        <td>${group.xfail}</td>
       </tr>`).join('');
 
 const html = `<!doctype html>
@@ -197,7 +197,7 @@ const html = `<!doctype html>
   <table>
     <thead>
       <tr>
-        <th>Phase</th>
+        <th>Group</th>
         <th>JUnit files</th>
         <th>Tests</th>
         <th>Green</th>
@@ -218,7 +218,7 @@ fs.writeFileSync(path.join(outDir, 'summary.html'), html);
 
 const junit = `<?xml version="1.0" encoding="UTF-8"?>
 <testsuite name="audit-aggregate" tests="1" failures="0" errors="0" skipped="0">
-  <testcase classname="audit.phase8" name="aggregate" />
+  <testcase classname="audit.aggregate" name="aggregate" />
 </testsuite>
 `;
 fs.writeFileSync(path.join(outDir, 'aggregate.junit.xml'), junit);

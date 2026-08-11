@@ -21,10 +21,25 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Shell syntax
-        run: bash -n install.sh solovey-ui.sh scripts/release-package-linux.sh scripts/release-package-components.sh scripts/server-smoke-debian.sh tests/installer/release-package.sh tests/installer/install-update.sh tests/installer/migrate-from-sui.sh tests/installer/rollback.sh tests/installer/manager-cookie-key.sh
+        run: bash -n install.sh solovey-ui.sh scripts/release-package-linux.sh scripts/release-package-components.sh scripts/server-smoke-debian.sh tests/installer/release-package.sh tests/installer/install-update.sh tests/installer/migrate-from-sui.sh tests/installer/rollback.sh tests/installer/manager-cookie-key.sh tests/installer/systemd-contracts.sh
+
+      - name: Validate deployment contracts
+        env:
+          SOLOVEY_UI_IMAGE_DIGEST: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          SOLOVEY_UI_PANEL_PORT: "2095"
+          SOLOVEY_UI_PUBLIC_TCP_PORT: "443"
+          SOLOVEY_UI_PUBLIC_UDP_PORT: "443"
+        run: |
+          bash tests/installer/systemd-contracts.sh
+          docker compose -f docker-compose.yml config >/dev/null
+          docker compose -f deploy/docker/docker-compose.bridge.yml config >/dev/null
+          docker compose -f deploy/docker/docker-compose.network-advanced.yml config >/dev/null
 
       - name: release package integration
         run: bash tests/installer/release-package.sh
+      - name: privileged broker Linux builds
+        run: |
+          CGO_ENABLED=0 GOOS=linux go build ./cmd/solovey-privileged-broker ./cmd/solovey-ssh-proof ./cmd/solovey-broker-manifest
 
       - name: install/update integration
         run: bash tests/installer/install-update.sh

@@ -3,13 +3,15 @@ package sub
 import (
 	"context"
 
+	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )
 
 type Server struct {
-	runtime *subserver.RuntimeServer
+	runtime          *subserver.RuntimeServer
+	unregisterHealth func()
 
 	service.SettingService
 }
@@ -39,13 +41,42 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 }
 
 func (s *Server) Start() error {
-	return s.runtime.Start()
+	if err := s.runtime.Start(); err != nil {
+		return err
+	}
+	if s.unregisterHealth == nil {
+		unregister, registerErr := componenthealth.Register(subscriptionHealthChecker{server: s})
+		if registerErr != nil {
+			_ = s.runtime.Stop()
+			return registerErr
+		}
+		s.unregisterHealth = unregister
+	}
+	return nil
 }
 
 func (s *Server) Stop() error {
+	if s.unregisterHealth != nil {
+		s.unregisterHealth()
+		s.unregisterHealth = nil
+	}
 	return s.runtime.Stop()
 }
 
 func (s *Server) GetCtx() context.Context {
 	return s.runtime.Context()
+}
+
+type subscriptionHealthChecker struct{ server *Server }
+
+func (subscriptionHealthChecker) ResourceID() string { return "core:subscription:default" }
+
+func (c subscriptionHealthChecker) Check(ctx context.Context) componenthealth.Result {
+	if err := ctx.Err(); err != nil {
+		return componenthealth.Result{Status: componenthealth.StatusDegraded, FactCode: "health_check_timeout"}
+	}
+	if c.server == nil || c.server.runtime == nil || !c.server.runtime.ListenerReady() {
+		return componenthealth.Result{Status: componenthealth.StatusDegraded, Check: "subscription_listener", FactCode: "subscription_listener_unavailable"}
+	}
+	return componenthealth.Result{Status: componenthealth.StatusOK, Check: "subscription_listener", FactCode: "listener_ready"}
 }

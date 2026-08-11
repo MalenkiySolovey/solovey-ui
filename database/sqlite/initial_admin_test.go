@@ -42,7 +42,7 @@ func TestEnsureInitialAdminWritesPasswordFileWithoutLeakingSecret(t *testing.T) 
 	if strings.Contains(stderr, password) {
 		t.Fatal("initial admin password leaked to stderr")
 	}
-	if !strings.Contains(stderr, "initial admin password saved to "+passwordPath+"; delete after first login") {
+	if !strings.Contains(stderr, "initial admin password saved to "+passwordPath+"; it is removed after the required password change") {
 		t.Fatalf("stderr did not contain the one-time file notice: %q", stderr)
 	}
 	if count := strings.Count(stderr, "initial admin password saved to "); count != 1 {

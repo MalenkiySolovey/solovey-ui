@@ -9,23 +9,43 @@ import (
 
 type PanelEventNotifier func(event string, fields map[string]string)
 
+const maxPanelEventNotifiers = 128
+
+type registeredPanelEventNotifier struct {
+	notifier PanelEventNotifier
+	token    uint64
+}
+
 var panelEventNotifiers = struct {
 	sync.RWMutex
-	entries map[string]PanelEventNotifier
+	entries   map[string]registeredPanelEventNotifier
+	nextToken uint64
 }{
-	entries: map[string]PanelEventNotifier{},
+	entries: map[string]registeredPanelEventNotifier{},
 }
 
 func RegisterPanelEventNotifier(name string, fn PanelEventNotifier) func() {
 	if name == "" || fn == nil {
-		return func() {}
+		panic("panel event notifier name and callback are required")
 	}
 	panelEventNotifiers.Lock()
-	panelEventNotifiers.entries[name] = fn
+	if _, exists := panelEventNotifiers.entries[name]; exists {
+		panelEventNotifiers.Unlock()
+		panic("panel event notifier already registered: " + name)
+	}
+	if len(panelEventNotifiers.entries) >= maxPanelEventNotifiers {
+		panelEventNotifiers.Unlock()
+		panic("panel event notifier registry capacity exceeded")
+	}
+	panelEventNotifiers.nextToken++
+	token := panelEventNotifiers.nextToken
+	panelEventNotifiers.entries[name] = registeredPanelEventNotifier{notifier: fn, token: token}
 	panelEventNotifiers.Unlock()
 	return func() {
 		panelEventNotifiers.Lock()
-		delete(panelEventNotifiers.entries, name)
+		if current, ok := panelEventNotifiers.entries[name]; ok && current.token == token {
+			delete(panelEventNotifiers.entries, name)
+		}
 		panelEventNotifiers.Unlock()
 	}
 }
@@ -43,12 +63,6 @@ func NotifyPanelEvent(event string, fields map[string]string) {
 	}
 }
 
-func ResetPanelEventNotifiersForTest() {
-	panelEventNotifiers.Lock()
-	panelEventNotifiers.entries = map[string]PanelEventNotifier{}
-	panelEventNotifiers.Unlock()
-}
-
 func panelEventNotifierEntries() []PanelEventNotifier {
 	panelEventNotifiers.RLock()
 	defer panelEventNotifiers.RUnlock()
@@ -59,7 +73,7 @@ func panelEventNotifierEntries() []PanelEventNotifier {
 	sort.Strings(names)
 	entries := make([]PanelEventNotifier, 0, len(names))
 	for _, name := range names {
-		entries = append(entries, panelEventNotifiers.entries[name])
+		entries = append(entries, panelEventNotifiers.entries[name].notifier)
 	}
 	return entries
 }

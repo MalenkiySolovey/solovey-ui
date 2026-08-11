@@ -57,4 +57,7 @@ func TestTelegramComponentRoutesPresentInFullProfile(t *testing.T) {
 	if !routeExists(router, http.MethodGet, "/api/update/status") {
 		t.Fatal("full profile must register GET /api/update/status")
 	}
+	if routeExists(router, http.MethodGet, "/api/components/server-protection/status") {
+		t.Fatal("uninstalled server-protection route must be absent from the full profile")
+	}
 }

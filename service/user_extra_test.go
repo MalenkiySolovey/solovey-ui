@@ -8,6 +8,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func TestUserServiceLoginHappyWrongAndLastLogin(t *testing.T) {
@@ -77,7 +78,7 @@ func TestUserServiceHashAPITokenDeterministicWithStableInstallSalt(t *testing.T)
 	if _, err := settingService.GetInstallSalt(); err != nil {
 		t.Fatal(err)
 	}
-	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "installSalt").Update("value", "phase2-stable-salt").Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "installSalt").Update("value", "stable-test-salt").Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -94,7 +95,7 @@ func TestUserServiceHashAPITokenDeterministicWithStableInstallSalt(t *testing.T)
 		t.Fatalf("hash changed with stable installSalt: %q != %q", first, second)
 	}
 
-	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "installSalt").Update("value", "phase2-other-salt").Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "installSalt").Update("value", "other-test-salt").Error; err != nil {
 		t.Fatal(err)
 	}
 	third, err := userService.HashAPIToken("plain-token")
@@ -159,7 +160,7 @@ func TestIssue9UpdateFirstUserClearsForcePasswordReset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := userService.UpdateFirstUser("admin", "updated-password"); err != nil {
+	if err := userService.UpdateFirstUser("admin", "updated-password-value"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -170,7 +171,7 @@ func TestIssue9UpdateFirstUserClearsForcePasswordReset(t *testing.T) {
 	if stored.ForcePasswordReset {
 		t.Fatalf("UpdateFirstUser should clear force reset: %#v", stored)
 	}
-	if ok, _ := common.CheckPassword(stored.Password, "updated-password"); !ok {
+	if ok, _ := common.CheckPassword(stored.Password, "updated-password-value"); !ok {
 		t.Fatal("updated password does not validate")
 	}
 }
@@ -178,7 +179,7 @@ func TestIssue9UpdateFirstUserClearsForcePasswordReset(t *testing.T) {
 func TestIssue9ChangePassClearsForcePasswordReset(t *testing.T) {
 	initSettingTestDB(t)
 	userService := &UserService{}
-	if err := userService.UpdateFirstUser("admin", "old-password"); err != nil {
+	if err := userService.UpdateFirstUser("admin", "old-password-value"); err != nil {
 		t.Fatal(err)
 	}
 	var admin model.User
@@ -189,7 +190,7 @@ func TestIssue9ChangePassClearsForcePasswordReset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := userService.ChangePass("admin", "old-password", "admin-renamed", "new-password"); err != nil {
+	if err := userService.ChangePass("admin", "old-password-value", "admin-renamed", "new-password-value"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -203,22 +204,19 @@ func TestIssue9ChangePassClearsForcePasswordReset(t *testing.T) {
 	if stored.ForcePasswordReset {
 		t.Fatalf("ChangePass should clear force reset: %#v", stored)
 	}
-	if ok, _ := common.CheckPassword(stored.Password, "new-password"); !ok {
+	if ok, _ := common.CheckPassword(stored.Password, "new-password-value"); !ok {
 		t.Fatal("new password does not validate")
 	}
 }
 
-func TestIssue9LoginPasswordHashMigrationClearsForcePasswordReset(t *testing.T) {
+func TestLoginPasswordHashMigrationPreservesForcePasswordReset(t *testing.T) {
 	initSettingTestDB(t)
 	userService := &UserService{}
-	prefixedHash, err := common.HashPassword("legacy-password")
+	rawBcryptBytes, err := bcrypt.GenerateFromPassword([]byte("legacy-password"), bcrypt.DefaultCost)
 	if err != nil {
 		t.Fatal(err)
 	}
-	rawBcryptHash := strings.TrimPrefix(prefixedHash, "bcrypt:")
-	if rawBcryptHash == prefixedHash {
-		t.Fatal("test hash did not use bcrypt prefix")
-	}
+	rawBcryptHash := string(rawBcryptBytes)
 	var admin model.User
 	if err := dbsqlite.DB().Where("username = ?", "admin").First(&admin).Error; err != nil {
 		t.Fatal(err)
@@ -238,11 +236,39 @@ func TestIssue9LoginPasswordHashMigrationClearsForcePasswordReset(t *testing.T) 
 	if err := dbsqlite.DB().Where("id = ?", admin.Id).First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
-	if stored.ForcePasswordReset {
-		t.Fatalf("password hash migration should clear force reset: %#v", stored)
+	if !stored.ForcePasswordReset {
+		t.Fatalf("password hash migration must preserve force reset: %#v", stored)
 	}
-	if !strings.HasPrefix(stored.Password, "bcrypt:") {
+	if !strings.HasPrefix(stored.Password, "$argon2id$") {
 		t.Fatalf("password was not migrated to canonical hash: %q", stored.Password)
+	}
+}
+
+func TestLegacyPolicyCredentialRemainsAccessibleWithExplicitUpgradePosture(t *testing.T) {
+	initSettingTestDB(t)
+	const password = "Existing administrator secret 2026!"
+	if err := (&UserService{}).UpdateFirstUser("admin", password); err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.DB().Model(&model.User{}).Where("username = ?", "admin").Updates(map[string]any{
+		"force_password_reset":    false,
+		"password_policy_version": 0,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	result, err := (&UserService{}).Authenticate(t.Context(), "admin", password, "198.51.100.10")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.AuthState != AuthStateAuthenticated {
+		t.Fatalf("legacy non-default credential was restricted: %q", result.AuthState)
+	}
+	var stored model.User
+	if err := dbsqlite.DB().Where("username = ?", "admin").First(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.PasswordPolicyVersion != 0 || stored.ForcePasswordReset {
+		t.Fatalf("legacy upgrade posture was silently changed: %#v", stored)
 	}
 }
 
@@ -253,23 +279,23 @@ func TestUserServiceAddUserRequiresCurrentPasswordAndStoresHash(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	created, err := userService.AddUser("admin", "current-password", " new-admin ", "new-password")
+	created, err := userService.AddUser("admin", "current-password", " new-admin ", "new-password-value")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if created.Username != "new-admin" {
 		t.Fatalf("username was not normalized: %#v", created)
 	}
-	if created.Password == "new-password" || !common.IsPasswordHash(created.Password) {
+	if created.Password == "new-password-value" || !common.IsPasswordHash(created.Password) {
 		t.Fatalf("password must be stored as hash only: %q", created.Password)
 	}
-	if ok, _ := common.CheckPassword(created.Password, "new-password"); !ok {
+	if ok, _ := common.CheckPassword(created.Password, "new-password-value"); !ok {
 		t.Fatal("stored password hash does not validate")
 	}
 	if created.ForcePasswordReset {
 		t.Fatalf("new admin should not require reset: %#v", created)
 	}
-	if _, err := userService.AddUser("admin", "wrong-password", "denied-admin", "new-password"); err == nil {
+	if _, err := userService.AddUser("admin", "wrong-password", "denied-admin", "new-password-value"); err == nil {
 		t.Fatal("wrong current password should be rejected")
 	}
 	exists, err := userService.UserExists("denied-admin")

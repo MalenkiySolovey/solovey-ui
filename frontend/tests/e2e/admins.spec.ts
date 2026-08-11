@@ -2,9 +2,9 @@ import { expect, test, type Page } from '@playwright/test'
 import fs from 'node:fs'
 import path from 'node:path'
 
-import { phase6Dir, readServerState } from './helpers'
+import { e2eResultDir, readServerState } from './helpers'
 
-const screenshotDir = path.join(phase6Dir, 'admin-smoke')
+const screenshotDir = path.join(e2eResultDir, 'admin-smoke')
 
 const unique = () => `${Date.now()}-${Math.floor(Math.random() * 10000)}`
 

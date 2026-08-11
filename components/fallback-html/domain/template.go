@@ -344,9 +344,25 @@ func ValidateStaticHTML(value string) error {
 	return validateStaticHTMLNode(root)
 }
 
+func ValidateDecoyTemplateHTML(value string) error {
+	if strings.Contains(strings.ToLower(value), "<!--[if") {
+		return errors.New("static html templates must not contain conditional comments")
+	}
+	if err := ValidateStaticHTML(value); err != nil {
+		return err
+	}
+	root, err := xhtml.Parse(strings.NewReader(value))
+	if err != nil {
+		return err
+	}
+	if countDecoyScripts(root) != 1 {
+		return errors.New("static html decoy templates must load exactly one decoy-interactivity.js script")
+	}
+	return nil
+}
+
 var blockedStaticHTMLTags = map[string]bool{
-	"base": true, "embed": true, "form": true, "iframe": true, "input": true, "object": true,
-	"script": true, "select": true, "textarea": true,
+	"base": true, "embed": true, "iframe": true, "object": true,
 }
 
 func validateStaticHTMLNode(node *xhtml.Node) error {
@@ -354,6 +370,14 @@ func validateStaticHTMLNode(node *xhtml.Node) error {
 		tag := strings.ToLower(node.Data)
 		if blockedStaticHTMLTags[tag] {
 			return errors.New("static html templates must not contain <" + tag + ">")
+		}
+		if tag == "script" {
+			if err := validateDecoyScript(node); err != nil {
+				return err
+			}
+		}
+		if tag == "style" && containsExternalCSSURL(staticHTMLNodeText(node)) {
+			return errors.New("static html style blocks must not load external URLs")
 		}
 		for _, attr := range node.Attr {
 			key := strings.ToLower(strings.TrimSpace(attr.Key))
@@ -374,6 +398,10 @@ func validateStaticHTMLNode(node *xhtml.Node) error {
 					return errors.New("static html templates must not use meta refresh")
 				}
 			}
+			if (tag == "form" && (key == "action" || key == "method" || key == "name")) ||
+				((tag == "input" || tag == "textarea" || tag == "select" || tag == "button") && key == "name") {
+				return errors.New("static html decoy forms must not submit or name fields")
+			}
 		}
 	}
 	for child := node.FirstChild; child != nil; child = child.NextSibling {
@@ -382,6 +410,62 @@ func validateStaticHTMLNode(node *xhtml.Node) error {
 		}
 	}
 	return nil
+}
+
+func countDecoyScripts(node *xhtml.Node) int {
+	count := 0
+	if node.Type == xhtml.ElementNode && strings.EqualFold(node.Data, "script") {
+		for _, attr := range node.Attr {
+			if strings.EqualFold(strings.TrimSpace(attr.Key), "src") && isDecoyScriptReference(attr.Val) {
+				count++
+			}
+		}
+	}
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		count += countDecoyScripts(child)
+	}
+	return count
+}
+
+func staticHTMLNodeText(node *xhtml.Node) string {
+	var out strings.Builder
+	for child := node.FirstChild; child != nil; child = child.NextSibling {
+		if child.Type == xhtml.TextNode {
+			out.WriteString(child.Data)
+			continue
+		}
+		out.WriteString(staticHTMLNodeText(child))
+	}
+	return out.String()
+}
+
+func validateDecoyScript(node *xhtml.Node) error {
+	if node.FirstChild != nil {
+		return errors.New("static html templates must not contain inline scripts")
+	}
+	var src string
+	for _, attr := range node.Attr {
+		if strings.EqualFold(strings.TrimSpace(attr.Key), "src") {
+			src = strings.TrimSpace(attr.Val)
+			continue
+		}
+		return errors.New("static html decoy script must only declare src")
+	}
+	if !isDecoyScriptReference(src) {
+		return errors.New("static html templates may only load the controlled decoy-interactivity.js script")
+	}
+	if parsed, err := url.Parse(src); err != nil || parsed.IsAbs() || strings.HasPrefix(src, "//") {
+		return errors.New("static html decoy script must be local")
+	}
+	return nil
+}
+
+func isDecoyScriptReference(value string) bool {
+	lower := strings.ToLower(strings.TrimSpace(value))
+	if lower == "decoy-interactivity.js" || strings.HasSuffix(lower, "/decoy-interactivity.js") {
+		return true
+	}
+	return strings.HasPrefix(lower, "/media/") && strings.HasSuffix(lower, "-decoy-interactivity.js")
 }
 
 func validateStaticHTMLURL(tag string, attr string, value string) error {

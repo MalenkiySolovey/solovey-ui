@@ -10,9 +10,9 @@ test('settings path conflict is rejected by the local panel', async ({ page }) =
 
   const payload = {
     ...settingsBody.obj,
-    subPath: '/phase6-conflict/',
-    subJsonPath: '/phase6-conflict/',
-    subClashPath: '/phase6-clash/',
+    subPath: '/e2e-conflict/',
+    subJsonPath: '/e2e-conflict/',
+    subClashPath: '/e2e-clash/',
   }
 
   const response = await page.request.post('api/save', {

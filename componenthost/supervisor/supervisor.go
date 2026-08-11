@@ -26,6 +26,8 @@ type Supervisor struct {
 	running []registry.Component
 }
 
+var componentMigrationMu sync.Mutex
+
 func New(host componenthost.Deps) *Supervisor {
 	return &Supervisor{
 		host:                host,
@@ -38,23 +40,50 @@ func (s *Supervisor) Migrate(ctx context.Context) error {
 	if s == nil {
 		return nil
 	}
+	componentMigrationMu.Lock()
+	defer componentMigrationMu.Unlock()
 	var joined error
 	if err := componentmigrations.EnsureJournal(dbsqlite.DB()); err != nil {
 		return err
+	}
+	installedOwners, err := installstate.InstalledComponents()
+	if err != nil {
+		return err
+	}
+	for _, owner := range installedOwners {
+		if _, available := registry.ComponentByID(owner.ID); !available {
+			_ = componentmigrations.RecordUnavailableOwner(dbsqlite.DB(), owner)
+			return fmt.Errorf("installed component owner %q is unavailable; migrations fail closed", owner.ID)
+		}
 	}
 	components, err := s.installed()
 	if err != nil {
 		return err
 	}
 	for _, component := range components {
-		migrator, ok := component.Lifecycle.(lifecycle.Migrator)
-		if !ok {
+		step, err := componentmigrations.StepFor(component.Manifest)
+		if err != nil {
+			return err
+		}
+		run, err := componentmigrations.BeginStep(dbsqlite.DB(), step)
+		if err != nil {
+			return fmt.Errorf("component %q migration admission failed: %w", component.Manifest.ID, err)
+		}
+		if !run {
 			continue
 		}
-		if err := safeCall(component.Manifest.ID, "migrate", func() error {
-			return migrator.Migrate(ctx, lifecycle.Context{Host: s.host})
-		}); err != nil {
-			joined = errors.Join(joined, err)
+		migrator, ok := component.Lifecycle.(lifecycle.Migrator)
+		var migrationErr error
+		if ok {
+			migrationErr = safeCall(component.Manifest.ID, "migrate", func() error {
+				return migrator.Migrate(ctx, lifecycle.Context{Host: s.host})
+			})
+		}
+		if finishErr := componentmigrations.FinishStep(dbsqlite.DB(), step, migrationErr); finishErr != nil {
+			joined = errors.Join(joined, finishErr)
+		}
+		if migrationErr != nil {
+			joined = errors.Join(joined, migrationErr)
 			continue
 		}
 		if err := componentmigrations.RecordApplied(dbsqlite.DB(), component.Manifest); err != nil {
@@ -150,9 +179,7 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 		}
 		nextRunning = append(nextRunning, component)
 	}
-	for _, component := range stopFailed {
-		nextRunning = append(nextRunning, component)
-	}
+	nextRunning = append(nextRunning, stopFailed...)
 	s.running = nextRunning
 	state.InvalidateActiveCache()
 	return joined
@@ -203,7 +230,7 @@ func installedComponents() ([]registry.Component, error) {
 	for _, item := range installed {
 		component, ok := registry.ComponentByID(item.ID)
 		if !ok {
-			continue
+			return nil, fmt.Errorf("installed component owner %q is unavailable", item.ID)
 		}
 		if item.Delivery != "" && item.Delivery != component.Manifest.Delivery {
 			return nil, fmt.Errorf("installed component %q delivery %q does not match binary delivery %q", item.ID, item.Delivery, component.Manifest.Delivery)

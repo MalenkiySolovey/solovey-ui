@@ -22,6 +22,7 @@ func sessionFieldMetadata() []Field {
 		{Key: settingcatalog.ForceCookieSecureKey, Page: PageSettings, Group: GroupSession, Type: FieldTypeBool, LabelKey: "setting.forceCookieSecure", Advanced: true, Order: 40},
 		{Key: settingcatalog.SessionSameSiteStrictKey, Page: PageSettings, Group: GroupSession, Type: FieldTypeBool, LabelKey: "setting.sessionSameSiteStrict", Advanced: true, Order: 50},
 		{Key: settingcatalog.SessionGenerationKey, Page: PageInternal, Group: GroupInternal, Type: FieldTypeString, LabelKey: "setting.sessionGeneration", Order: 60},
+		{Key: settingcatalog.SessionLifetimePolicyKey, Page: PageInternal, Group: GroupInternal, Type: FieldTypeString, LabelKey: "setting.sessionLifetimePolicy", Order: 70},
 	}
 }
 
@@ -41,5 +42,6 @@ func internalFieldMetadata() []Field {
 	return []Field{
 		{Key: settingcatalog.ConfigKey, Page: PageInternal, Group: GroupInternal, Type: FieldTypeJSON, LabelKey: "setting.config", Order: 10},
 		{Key: settingcatalog.VersionKey, Page: PageInternal, Group: GroupInternal, Type: FieldTypeString, LabelKey: "setting.version", Order: 20},
+		{Key: settingcatalog.CoreSchemaVersionKey, Page: PageInternal, Group: GroupInternal, Type: FieldTypeString, LabelKey: "setting.coreSchemaVersion", Order: 30},
 	}
 }

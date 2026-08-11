@@ -42,6 +42,7 @@ type APIDeps struct {
 type AuthDeps struct {
 	RequireScope           func(*gin.Context, string, ...string) bool
 	RequireAuditAdminScope func(*gin.Context) bool
+	RequireStepUp          func(*gin.Context, string, string) bool
 	LoginUser              func(*gin.Context) string
 	CheckPassword          func(string, string, string) bool
 }

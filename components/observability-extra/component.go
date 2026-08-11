@@ -7,7 +7,6 @@ import (
 	_ "embed"
 	"sync"
 
-	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
@@ -38,27 +37,34 @@ func init() {
 
 type component struct {
 	mu        sync.Mutex
+	started   bool
 	scheduler componenthost.Scheduler
 	entryID   cron.EntryID
 }
 
 func (c *component) Start(_ context.Context, ctx lifecycle.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.started {
+		return nil
+	}
 	if ctx.Host.Scheduler == nil {
+		c.started = true
 		return nil
 	}
 	entryID, err := ctx.Host.Scheduler.AddJob("@every 2s", jobs.NewSamplingJob())
 	if err != nil {
 		return err
 	}
-	c.mu.Lock()
+	c.started = true
 	c.scheduler = ctx.Host.Scheduler
 	c.entryID = entryID
-	c.mu.Unlock()
 	return nil
 }
 
 func (c *component) Stop(context.Context) error {
 	c.mu.Lock()
+	c.started = false
 	scheduler := c.scheduler
 	entryID := c.entryID
 	c.scheduler = nil
@@ -72,27 +78,16 @@ func (c *component) Stop(context.Context) error {
 
 func observabilityExtraDeps(host componenthost.APIDeps) observabilityhttp.Deps {
 	return observabilityhttp.Deps{
-		Telemetry: telemetryhttp.Deps{
-			StatsService:           service.StatsService{Runtime: host.Runtime},
-			ServerService:          service.NewServerService(host.Runtime),
-			DiagnosticsService:     service.DiagnosticsService{Runtime: host.Runtime},
-			DoctorService:          service.DoctorService{Runtime: host.Runtime},
-			AuditService:           service.AuditService{Runtime: host.Runtime},
-			VersionService:         service.VersionService{},
-			RequireScope:           host.Auth.RequireScope,
-			JSONObj:                host.HTTP.JSONObj,
-			JSONMsg:                host.HTTP.JSONMsg,
-			Hostname:               host.Request.Hostname,
-			ValidateTarget:         host.Request.ValidateTarget,
-			Audit:                  host.Audit.Audit,
-			LoginUser:              host.Auth.LoginUser,
-			RequireAuditAdminScope: host.Auth.RequireAuditAdminScope,
-			Actor:                  host.Request.Actor,
-			RemoteIP:               host.Request.RemoteIP,
-			CheckAuditRateLimit:    host.Rate.CheckAuditRateLimit,
-			AuditRateLimitKey:      host.Rate.AuditRateLimitKey,
-			AuditRateLimitWindow:   host.Rate.AuditRateLimitWindow,
-		},
-		ObservabilityService: service.ObservabilityService{ServerService: service.NewServerService(host.Runtime)},
+		ObservabilityService:   service.ObservabilityService{ServerService: service.NewServerService(host.Runtime)},
+		AuditService:           service.AuditService{Runtime: host.Runtime},
+		RequireScope:           host.Auth.RequireScope,
+		RequireAuditAdminScope: host.Auth.RequireAuditAdminScope,
+		JSONObj:                host.HTTP.JSONObj,
+		Actor:                  host.Request.Actor,
+		RemoteIP:               host.Request.RemoteIP,
+		CheckAuditRateLimit:    host.Rate.CheckAuditRateLimit,
+		AuditRateLimitKey:      host.Rate.AuditRateLimitKey,
+		AuditRateLimitWindow:   host.Rate.AuditRateLimitWindow,
+		Audit:                  host.Audit.Audit,
 	}
 }

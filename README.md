@@ -10,7 +10,7 @@
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/MalenkiySolovey/solovey-ui"></a>
 </p>
 
-Current version: `2026.2.3`
+Current version: `2026.3.0`
 
 Solovey UI is a GPL-3.0 panel for managing a `sing-box` server through a web
 interface and command-line tool. The core panel includes the required runtime
@@ -52,7 +52,7 @@ sudo solovey-ui status
 Install a specific release:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.2.3
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.3.0
 ```
 
 Default paths:
@@ -60,11 +60,35 @@ Default paths:
 | Item | Path |
 |---|---|
 | Install directory | `/usr/local/solovey-ui` |
-| Database | `/usr/local/solovey-ui/db/solovey-ui.db` |
+| Hardened database | `/var/lib/solovey-ui/db/solovey-ui.db` |
+| Legacy-root database | `/usr/local/solovey-ui/db/solovey-ui.db` |
 | Secret environment file | `/etc/solovey-ui/secretbox.env` |
 | systemd service | `solovey-ui` |
+| Privileged broker sockets | `/run/solovey-ui/privileged-broker.sock`, `/run/solovey-ui/privileged-proof.sock` |
 | CLI command | `solovey-ui` |
 | Backups | `/var/backups/solovey-ui` |
+
+### Deployment security profiles
+
+New compatible native installs use `native-hardened`: the panel runs as the
+`solovey-ui` service account without capabilities, while one socket-activated
+root broker accepts only fixed semantic operations. Existing installs retain
+the explicit `native-legacy-root` compatibility profile until an operator runs
+the revision-bound migration workflow. `native-network-advanced` is generated
+but deliberately unavailable until the network runtime can be isolated from
+the panel; do not grant the panel `CAP_NET_ADMIN` as a workaround.
+
+Docker has separate host, explicit-bridge, and experimental advanced-network
+profiles. Every profile uses an immutable image digest, a non-root process, a
+read-only root filesystem, bounded resources/logs/tmpfs, and no Docker or
+broker socket. The panel does not control the Docker daemon and does not call a
+non-root container a rootless daemon without engine evidence.
+
+See [Deployment profiles and privileged broker](docs/deployment-profiles.md)
+for profile selection, migration, rollback, Docker commands, and verification.
+See [Operations and data lifecycle](docs/operations.md) for signed updates,
+resource pressure, SQLite/migrations, backup/restore, Drop Data, and recovery
+boundaries.
 
 ## Optional Components
 
@@ -96,6 +120,8 @@ chooses the smallest binary profile that can satisfy the selected component set.
 | `paid-subscriptions` | Paid client subscription records, tariffs, payment orders, bindings, and administration UI. | Sell or manage paid access to client subscriptions. |
 | `telegram` | Telegram notifications, bot transport, backup delivery, and related settings. | Receive operational alerts and backups outside the panel. |
 | `observability-extra` | Additional runtime sampling, observability views, and related metrics. | Inspect runtime behavior beyond the base diagnostics. |
+| `fallback-html` | Default-disabled managed fallback HTML sites, pages, redirects, assets, and publication records. | Prepare an explicit fallback site without enabling it automatically. |
+| `server-protection` | Default-disabled host-bound protection, fronting, firewall-composition, UDP guard, and recovery workflows. | Inspect or stage experimental protection capabilities; external Live acceptance remains separate and is not implied by installation. |
 
 Installed components can be disabled without deleting data. Removing a component
 removes its runtime files and unregisters its routes, jobs, and hooks. Data
@@ -115,7 +141,7 @@ sudo systemctl status solovey-ui --no-pager
 Update to a specific tag:
 
 ```bash
-sudo solovey-ui update --version v2026.2.3
+sudo solovey-ui update --version v2026.3.0
 ```
 
 ## Backup And Restore
@@ -184,7 +210,10 @@ GitHub Releases publish:
 - release manifest: `release-manifest.json`
 - checksums for every archive
 
-Docker images are published to GHCR for release tags.
+Docker images are published to GHCR for release tags. The Compose contracts
+require `SOLOVEY_UI_IMAGE_DIGEST` to pin the exact release image; review the
+[deployment guide](docs/deployment-profiles.md) before selecting bridge or
+advanced networking.
 
 ## Related Projects And Credits
 
@@ -209,7 +238,7 @@ The project remains licensed under GNU GPL v3.0.
   <b>Персональная панель для sing-box с модульной средой выполнения, установщиком с учётом компонентов и встроенными инструментами администрирования.</b>
 </p>
 
-Текущая версия: `2026.2.3`
+Текущая версия: `2026.3.0`
 
 Solovey UI — панель GPL-3.0 для управления сервером `sing-box` через веб-интерфейс
 и командную строку. Базовое ядро включает обязательные части среды выполнения:
@@ -257,7 +286,7 @@ sudo solovey-ui status
 Установка конкретного релиза:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.2.3
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.3.0
 ```
 
 Пути по умолчанию:
@@ -265,11 +294,37 @@ bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/m
 | Что | Путь |
 |---|---|
 | Каталог установки | `/usr/local/solovey-ui` |
-| База данных | `/usr/local/solovey-ui/db/solovey-ui.db` |
+| База данных защищённого профиля | `/var/lib/solovey-ui/db/solovey-ui.db` |
+| База данных совместимого root-профиля | `/usr/local/solovey-ui/db/solovey-ui.db` |
 | Файл секретного окружения | `/etc/solovey-ui/secretbox.env` |
 | Служба systemd | `solovey-ui` |
+| Сокеты привилегированного брокера | `/run/solovey-ui/privileged-broker.sock`, `/run/solovey-ui/privileged-proof.sock` |
 | CLI команда | `solovey-ui` |
 | Резервные копии | `/var/backups/solovey-ui` |
+
+### Профили безопасности развёртывания
+
+Новые совместимые нативные установки используют `native-hardened`: панель
+работает от служебной учётной записи `solovey-ui` без capabilities, а один
+активируемый сокетами root-брокер принимает только фиксированные семантические
+операции. Существующие установки сохраняют явный совместимый профиль
+`native-legacy-root`, пока оператор не выполнит привязанную к ревизиям
+миграцию. `native-network-advanced` генерируется, но намеренно недоступен до
+изоляции сетевой среды от панели; выдавать панели `CAP_NET_ADMIN` в качестве
+обхода нельзя.
+
+Для Docker предусмотрены отдельные профили host, explicit bridge и
+экспериментальный advanced network. Каждый профиль использует неизменяемый
+digest образа, непривилегированный процесс, файловую систему root только для
+чтения, ограниченные ресурсы, журналы и tmpfs, без сокета Docker или брокера.
+Панель не управляет Docker daemon и не называет контейнер rootless без фактов о
+движке.
+
+Выбор профиля, миграция, откат, команды Docker и проверки описаны в
+[руководстве по профилям развёртывания](docs/deployment-profiles.md).
+[Operations and data lifecycle](docs/operations.md) описывает подписанные
+обновления, нагрузку, SQLite/миграции, backup/restore, Drop Data и границы
+восстановления.
 
 ## Дополнительные компоненты
 
@@ -302,6 +357,8 @@ bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/m
 | `paid-subscriptions` | Записи платных клиентских подписок, тарифы, платёжные заказы, привязки и интерфейс администрирования. | Продавать или управлять платным доступом к клиентским подпискам. |
 | `telegram` | Уведомления Telegram, транспорт бота, доставка резервных копий и связанные настройки. | Получать эксплуатационные оповещения и резервные копии вне панели. |
 | `observability-extra` | Дополнительная выборка данных среды выполнения, представления наблюдаемости и связанные метрики. | Изучать поведение среды выполнения глубже базовой диагностики. |
+| `fallback-html` | Отключённые по умолчанию управляемые fallback-сайты, страницы, перенаправления, ресурсы и записи публикации. | Подготовить явный резервный сайт без его автоматического включения. |
+| `server-protection` | Отключённые по умолчанию и привязанные к хосту процессы защиты, fronting, композиции firewall, UDP guard и восстановления. | Проверять или подготавливать экспериментальные возможности защиты; установка не означает отдельную внешнюю Live-приёмку. |
 
 Установленные компоненты можно отключать без удаления данных. Удаление компонента
 удаляет его файлы среды выполнения и снимает регистрацию его маршрутов, заданий
@@ -322,7 +379,7 @@ sudo systemctl status solovey-ui --no-pager
 Обновление до конкретного тега:
 
 ```bash
-sudo solovey-ui update --version v2026.2.3
+sudo solovey-ui update --version v2026.3.0
 ```
 
 ## Резервное копирование и восстановление
@@ -392,7 +449,10 @@ GitHub Releases публикует:
 - манифест релиза: `release-manifest.json`
 - контрольные суммы для каждого архива
 
-Образы Docker публикуются в GHCR для релизных тегов.
+Образы Docker публикуются в GHCR для релизных тегов. Compose-контракты требуют
+`SOLOVEY_UI_IMAGE_DIGEST` с digest точного релизного образа; перед выбором
+bridge или advanced networking изучите
+[руководство по развёртыванию](docs/deployment-profiles.md).
 
 ## Связанные проекты и благодарности
 

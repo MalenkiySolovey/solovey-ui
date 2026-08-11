@@ -24,7 +24,7 @@ func ReferenceChecks(rawConfig []byte) []Item {
 		Endpoints []map[string]any `json:"endpoints"`
 	}
 	if err := json.Unmarshal(rawConfig, &cfg); err != nil {
-		return []Item{Error("reference-parse", "Reference scan", err.Error(), "Fix malformed config JSON.", nil)}
+		return []Item{Error("reference-parse", "Reference scan", "Generated configuration is malformed.", "Fix malformed config JSON.", nil)}
 	}
 
 	dnsTags := map[string]bool{}

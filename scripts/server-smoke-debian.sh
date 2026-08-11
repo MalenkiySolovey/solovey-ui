@@ -14,7 +14,7 @@ usage() {
 Run a Solovey UI release smoke test on a disposable Debian-like server.
 
 This script installs the GitHub release, runs post-install checks, and optionally
-purges the install afterwards. It is intended for a fresh VM, not production.
+purges the install afterwards. It is intended for a fresh disposable host, not production.
 
 Required safety confirmation:
   export SOLOVEY_UI_SMOKE_CONFIRM=disposable
@@ -43,7 +43,7 @@ require_root() {
 }
 
 require_disposable_confirmation() {
-    [[ "${CONFIRM}" == "disposable" ]] || fail "set SOLOVEY_UI_SMOKE_CONFIRM=disposable on a fresh disposable VM"
+    [[ "${CONFIRM}" == "disposable" ]] || fail "set SOLOVEY_UI_SMOKE_CONFIRM=disposable on a fresh disposable host"
 }
 
 require_command() {

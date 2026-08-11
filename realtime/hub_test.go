@@ -2,6 +2,7 @@ package realtime
 
 import (
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -58,6 +59,49 @@ func TestHubPublishMarshalsBroadcastOnce(t *testing.T) {
 	}
 }
 
+func TestHubPublishRedactsTypedPayloadBeforeFrame(t *testing.T) {
+	type securityPayload struct {
+		Kind         string `json:"kind"`
+		CSRFToken    string `json:"csrfToken"`
+		RecoveryCode string `json:"recoveryCode"`
+	}
+	h := newHub()
+	events := make(chan Event, 1)
+	h.Register(&ClientHandle{User: "admin", Scope: ScopeAdmin, SendCh: events})
+	h.Publish(TopicSecurityEvent, securityPayload{
+		Kind:         "mfa",
+		CSRFToken:    "csrf-canary",
+		RecoveryCode: "recovery-canary",
+	})
+	event := <-events
+	frame := string(event.Frame())
+	for _, secret := range []string{"csrf-canary", "recovery-canary"} {
+		if strings.Contains(frame, secret) {
+			t.Fatalf("realtime frame leaked %q: %s", secret, frame)
+		}
+	}
+	if !strings.Contains(frame, `"kind":"mfa"`) || !strings.Contains(frame, "[REDACTED]") {
+		t.Fatalf("safe field or redaction marker missing: %s", frame)
+	}
+}
+
+func TestHubPublishReplacesOversizedFrameWithStableMarker(t *testing.T) {
+	h := newHub()
+	events := make(chan Event, 1)
+	h.Register(&ClientHandle{User: "admin", Scope: ScopeAdmin, SendCh: events})
+	h.Publish(TopicSecurityEvent, map[string]any{
+		"value": strings.Repeat("x", MaxEventFrameBytes+1),
+	})
+	event := <-events
+	frame := string(event.Frame())
+	if len(frame) > MaxEventFrameBytes {
+		t.Fatalf("oversized realtime frame was not bounded: %d", len(frame))
+	}
+	if !strings.Contains(frame, `"reason":"payload_too_large"`) || strings.Contains(frame, strings.Repeat("x", 128)) {
+		t.Fatalf("oversized realtime frame did not use the stable marker: %s", frame)
+	}
+}
+
 func TestHubSlowUnbufferedClientIsDropped(t *testing.T) {
 	h := newHub()
 	sendCh := make(chan Event)
@@ -110,6 +154,37 @@ func TestHubCloseAllDropsClientsAndStopsDelivery(t *testing.T) {
 
 	h.Publish(TopicOnlines, nil)
 	expectNoEvent(t, sendCh)
+}
+
+func TestHubCloseSessionTargetsOnlyMatchingLiveConnections(t *testing.T) {
+	h := newHub()
+	firstDrops := make(chan string, 1)
+	secondDrops := make(chan string, 1)
+	h.Register(&ClientHandle{
+		User: "admin", SessionRef: "session-a", Scope: ScopeAdmin,
+		SendCh: make(chan Event, 1),
+		OnDrop: func(reason string) {
+			firstDrops <- reason
+		},
+	})
+	h.Register(&ClientHandle{
+		User: "admin", SessionRef: "session-b", Scope: ScopeAdmin,
+		SendCh: make(chan Event, 1),
+		OnDrop: func(reason string) {
+			secondDrops <- reason
+		},
+	})
+
+	h.CloseSession("session-a", "session_revoked")
+	select {
+	case reason := <-firstDrops:
+		if reason != "session_revoked" {
+			t.Fatalf("unexpected close reason: %s", reason)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("matching live session was not closed")
+	}
+	expectNoString(t, secondDrops)
 }
 
 func TestHubUnregisterIsIdempotent(t *testing.T) {

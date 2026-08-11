@@ -1,0 +1,57 @@
+[Unit]
+Description=Solovey UI (native-network-advanced generated contract; unavailable)
+Documentation=https://github.com/MalenkiySolovey/S-UI
+After=network-online.target solovey-privileged-broker.socket solovey-privileged-proof.socket
+Wants=network-online.target
+Requires=solovey-privileged-broker.socket solovey-privileged-proof.socket
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=solovey-ui
+Group=solovey-ui
+WorkingDirectory=/var/lib/solovey-ui
+Environment=SUI_DB_FOLDER=/var/lib/solovey-ui/db
+Environment=SUI_COMPONENTS_INSTALLED_FILE=/usr/local/solovey-ui/components/installed.json
+EnvironmentFile=-/etc/solovey-ui/secretbox.env
+ExecStart=/usr/local/solovey-ui/releases/current/solovey-ui
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=45s
+TimeoutStopSec=30s
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/solovey-ui /usr/local/solovey-ui/.runtime/server-protection /usr/local/solovey-ui/cert
+ReadOnlyPaths=/etc/solovey-ui
+LimitNOFILE=1048576
+TasksMax=4096
+MemoryHigh=768M
+MemoryMax=1G
+CPUQuota=200%
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=200
+
+[Install]
+WantedBy=multi-user.target

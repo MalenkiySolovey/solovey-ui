@@ -189,7 +189,7 @@ func (s *Service) PrunePublishes(siteID uint, input PrunePublishesInput, actor s
 		return PrunePublishesResult{Kept: len(publishes)}, nil
 	}
 
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	err := s.guardedSiteMutation(siteID, func(tx *gorm.DB) error {
 		if err := tx.First(&fallbackdomain.Site{}, siteID).Error; err != nil {
 			return err
 		}
@@ -206,17 +206,19 @@ func (s *Service) PrunePublishes(siteID uint, input PrunePublishesInput, actor s
 			return err
 		}
 		return recordEvent(tx, siteID, actor, "publishes_pruned", map[string]any{"removed": len(removeIDs), "keepInactive": keepInactive})
+	}, func() error {
+		for _, root := range removeRoots {
+			if strings.TrimSpace(root) == "" {
+				continue
+			}
+			if err := removeOwnedPublishRoot(siteID, root); err != nil {
+				return err
+			}
+		}
+		return nil
 	})
 	if err != nil {
 		return PrunePublishesResult{}, err
-	}
-	for _, root := range removeRoots {
-		if strings.TrimSpace(root) == "" {
-			continue
-		}
-		if err := removeOwnedPublishRoot(siteID, root); err != nil {
-			return PrunePublishesResult{}, err
-		}
 	}
 	return PrunePublishesResult{Removed: len(removeIDs), Kept: len(publishes) - len(removeIDs)}, nil
 }
@@ -309,7 +311,7 @@ func (s *Service) PublishSite(siteID uint, actor string) (PublishResult, error) 
 		_ = os.RemoveAll(root)
 		return PublishResult{}, err
 	}
-	err = s.db.Transaction(func(tx *gorm.DB) error {
+	err = s.guardedSiteMutation(siteID, func(tx *gorm.DB) error {
 		if err := tx.Model(&fallbackdomain.Publish{}).Where("site_id = ?", siteID).Update("active", false).Error; err != nil {
 			return err
 		}
@@ -338,12 +340,12 @@ func (s *Service) PublishSite(siteID uint, actor string) (PublishResult, error) 
 			return err
 		}
 		return recordEvent(tx, siteID, actor, "site_published", map[string]any{"version": version, "files": len(files)})
-	})
+	}, func() error { return s.runtime.Rebuild(s.db) })
 	if err != nil {
 		_ = os.RemoveAll(root)
 		return PublishResult{}, err
 	}
-	return PublishResult{SiteID: siteID, Version: version, Files: len(files)}, s.runtime.Rebuild(s.db)
+	return PublishResult{SiteID: siteID, Version: version, Files: len(files)}, nil
 }
 
 func blockingSafetyWarnings(warnings []string) []string {
@@ -389,7 +391,7 @@ func (s *Service) RollbackSite(siteID uint, input RollbackInput, actor string) (
 		return PublishResult{}, err
 	}
 	now := time.Now().Unix()
-	err = s.db.Transaction(func(tx *gorm.DB) error {
+	err = s.guardedSiteMutation(siteID, func(tx *gorm.DB) error {
 		if err := tx.Model(&fallbackdomain.Publish{}).Where("site_id = ?", siteID).Update("active", false).Error; err != nil {
 			return err
 		}
@@ -400,11 +402,11 @@ func (s *Service) RollbackSite(siteID uint, input RollbackInput, actor string) (
 			return err
 		}
 		return recordEvent(tx, siteID, actor, "site_rollback", map[string]any{"version": publish.Version, "files": len(publish.Files)})
-	})
+	}, func() error { return s.runtime.Rebuild(s.db) })
 	if err != nil {
 		return PublishResult{}, err
 	}
-	return PublishResult{SiteID: siteID, Version: publish.Version, Files: len(publish.Files)}, s.runtime.Rebuild(s.db)
+	return PublishResult{SiteID: siteID, Version: publish.Version, Files: len(publish.Files)}, nil
 }
 
 func (s *Service) ensureNoActiveGinPublishConflict(siteID uint) error {
@@ -426,7 +428,7 @@ func (s *Service) ensureNoActiveGinPublishConflict(siteID uint) error {
 }
 
 func (s *Service) UnpublishSite(siteID uint, actor string) error {
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	return s.guardedSiteMutation(siteID, func(tx *gorm.DB) error {
 		if err := tx.Model(&fallbackdomain.Publish{}).Where("site_id = ?", siteID).Update("active", false).Error; err != nil {
 			return err
 		}
@@ -434,11 +436,7 @@ func (s *Service) UnpublishSite(siteID uint, actor string) error {
 			return err
 		}
 		return recordEvent(tx, siteID, actor, "site_unpublished", nil)
-	})
-	if err != nil {
-		return err
-	}
-	return s.runtime.Rebuild(s.db)
+	}, func() error { return s.runtime.Rebuild(s.db) })
 }
 
 func buildPublishFiles(root string, site fallbackdomain.Site) ([]fallbackdomain.PublishFile, error) {

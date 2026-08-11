@@ -14,6 +14,8 @@ type Msg struct {
 	Obj     interface{} `json:"obj"`
 }
 
+const maxClientErrorBytes = 4 * 1024
+
 func jsonMsg(c *gin.Context, msg string, err error) {
 	jsonMsgObj(c, msg, nil, err)
 }
@@ -28,7 +30,7 @@ func jsonObj(c *gin.Context, obj interface{}, err error) {
 // not via HTTP status codes; transport-level handlers that genuinely need real
 // status codes set them explicitly. The
 // client-facing error text is redacted to avoid leaking paths/SQL/internals;
-// the full error is still logged server-side.
+// the corresponding server log is independently redacted and bounded.
 func jsonMsgObj(c *gin.Context, msg string, obj interface{}, err error) {
 	m := Msg{
 		Obj: obj,
@@ -40,7 +42,7 @@ func jsonMsgObj(c *gin.Context, msg string, obj interface{}, err error) {
 		}
 	} else {
 		m.Success = false
-		m.Msg = msg + ": " + redact.String(err.Error())
+		m.Msg = redact.StringLimit(msg+": "+err.Error(), maxClientErrorBytes)
 		logger.Warning("failed :", err)
 	}
 	c.JSON(http.StatusOK, m)

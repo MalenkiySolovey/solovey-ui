@@ -100,6 +100,8 @@
     "basics": "基礎信息",
     "dns": "DNS",
     "admins": "管理員",
+    "security": "Account security",
+    "securityTransition": "Security verification",
     "settings": "設置",
     "support": "支援專案"
   },

@@ -36,11 +36,14 @@ export const useLoginPage = () => {
       const response = await authenticate(username.value, password.value)
       if (response.success) {
         resetInvalidLoginHandling()
-        await router.push('/')
+        const state = response.obj?.state
+        password.value = ''
+        await router.push(state === 'password_reset' || state === 'mfa_pending' || state === 'mfa_recovery' ? '/security-transition' : '/')
         return
       }
       errorMessage.value = response.msg || i18n.global.t('login.invalidCredentials')
     } finally {
+      password.value = ''
       loading.value = false
     }
   }

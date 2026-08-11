@@ -103,6 +103,11 @@
     "basics": "Basics",
     "dns": "DNS",
     "admins": "Admins",
+    "security": "Account security",
+    "sshManagement": "SSH recovery",
+    "deployment": "Deployment",
+    "operations": "Operations",
+    "securityTransition": "Security verification",
     "singBoxConfig": "Sing-box Config",
     "settings": "Settings",
     "support": "Support"

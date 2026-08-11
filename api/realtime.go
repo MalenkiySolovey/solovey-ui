@@ -11,6 +11,8 @@ func (a *ApiService) realtimeHandler() *realtimehttp.Handler {
 		SettingService: a.SettingService,
 		LoginUser:      GetLoginUser,
 		RemoteIP:       getRemoteIp,
+		SessionBinding: realtimeSessionBinding,
+		SessionValid:   realtimeSessionValid,
 		Scope:          realtimeScopeFromContext,
 		Audit:          a.recordAudit,
 		JSONObj:        jsonObj,

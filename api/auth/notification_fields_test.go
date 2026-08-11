@@ -36,3 +36,14 @@ func TestSecurityEventRequestFieldsUseOnlyAllowedMetadata(t *testing.T) {
 		}
 	}
 }
+
+func TestPanelRecoverySessionRevisionIsDeterministicAndDoesNotExposeGeneration(t *testing.T) {
+	generation := "session-generation-secret"
+	revision := sessionRevision(generation)
+	if len(revision) != 64 || revision != sessionRevision(generation) || revision == generation {
+		t.Fatalf("session generation was not converted to an exact opaque revision: %q", revision)
+	}
+	if sessionRevision("") != "" {
+		t.Fatal("missing session generation became verified recovery metadata")
+	}
+}

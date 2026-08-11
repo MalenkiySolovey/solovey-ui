@@ -59,13 +59,14 @@ func (c *component) Stop(context.Context) error {
 
 func importXUIDeps(host componenthost.APIDeps) importxuihttp.Deps {
 	return importxuihttp.Deps{
-		AuditService: service.AuditService{Runtime: host.Runtime},
-		RequireScope: host.Auth.RequireScope,
-		Audit:        host.Audit.Audit,
-		Actor:        host.Request.Actor,
-		RemoteIP:     host.Request.RemoteIP,
-		Hostname:     host.Request.Hostname,
-		JSONObj:      host.HTTP.JSONObj,
-		JSONMsg:      host.HTTP.JSONMsg,
+		AuditService:  service.AuditService{Runtime: host.Runtime},
+		RequireScope:  host.Auth.RequireScope,
+		RequireStepUp: host.Auth.RequireStepUp,
+		Audit:         host.Audit.Audit,
+		Actor:         host.Request.Actor,
+		RemoteIP:      host.Request.RemoteIP,
+		Hostname:      host.Request.Hostname,
+		JSONObj:       host.HTTP.JSONObj,
+		JSONMsg:       host.HTTP.JSONMsg,
 	}
 }

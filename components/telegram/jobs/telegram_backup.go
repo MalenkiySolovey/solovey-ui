@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	telegramschedule "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/schedule"
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	telegramservice "github.com/MalenkiySolovey/solovey-ui/components/telegram/service"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
@@ -102,7 +103,7 @@ func (s *TelegramBackupScheduler) reconcile(spec string) error {
 	if spec == "" {
 		return nil
 	}
-	schedule, err := parseTelegramCron(spec)
+	schedule, err := telegramschedule.Parse(spec)
 	if err != nil {
 		return err
 	}

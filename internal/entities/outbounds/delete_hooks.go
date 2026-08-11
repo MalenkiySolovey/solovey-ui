@@ -10,11 +10,19 @@ import (
 
 type DeleteHook func(*gorm.DB, string) error
 
+const maxDeleteHooks = 128
+
+type registeredDeleteHook struct {
+	hook  DeleteHook
+	token uint64
+}
+
 var deleteHooks = struct {
 	sync.RWMutex
-	entries map[string]DeleteHook
+	entries   map[string]registeredDeleteHook
+	nextToken uint64
 }{
-	entries: map[string]DeleteHook{},
+	entries: map[string]registeredDeleteHook{},
 }
 
 func RegisterDeleteHook(name string, fn DeleteHook) func() {
@@ -30,12 +38,20 @@ func RegisterDeleteHook(name string, fn DeleteHook) func() {
 		deleteHooks.Unlock()
 		panic(fmt.Errorf("outbound delete hook %q already registered", name))
 	}
-	deleteHooks.entries[name] = fn
+	if len(deleteHooks.entries) >= maxDeleteHooks {
+		deleteHooks.Unlock()
+		panic("outbound delete hook registry capacity exceeded")
+	}
+	deleteHooks.nextToken++
+	token := deleteHooks.nextToken
+	deleteHooks.entries[name] = registeredDeleteHook{hook: fn, token: token}
 	deleteHooks.Unlock()
 
 	return func() {
 		deleteHooks.Lock()
-		delete(deleteHooks.entries, name)
+		if current, ok := deleteHooks.entries[name]; ok && current.token == token {
+			delete(deleteHooks.entries, name)
+		}
 		deleteHooks.Unlock()
 	}
 }
@@ -51,7 +67,7 @@ func runDeleteHooks(tx *gorm.DB, tag string) error {
 
 func ResetDeleteHooksForTest() {
 	deleteHooks.Lock()
-	deleteHooks.entries = map[string]DeleteHook{}
+	deleteHooks.entries = map[string]registeredDeleteHook{}
 	deleteHooks.Unlock()
 }
 
@@ -63,8 +79,8 @@ type deleteHookEntry struct {
 func deleteHookSnapshot() []deleteHookEntry {
 	deleteHooks.RLock()
 	entries := make([]deleteHookEntry, 0, len(deleteHooks.entries))
-	for name, fn := range deleteHooks.entries {
-		entries = append(entries, deleteHookEntry{name: name, fn: fn})
+	for name, registered := range deleteHooks.entries {
+		entries = append(entries, deleteHookEntry{name: name, fn: registered.hook})
 	}
 	deleteHooks.RUnlock()
 

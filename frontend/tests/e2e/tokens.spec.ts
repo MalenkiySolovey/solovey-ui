@@ -8,7 +8,7 @@ test('API token can be created, disabled, enabled, listed masked, and deleted', 
   const addResponse = await page.request.post('api/addToken', {
     headers: { 'X-CSRF-Token': token },
     form: {
-      desc: 'phase6-e2e-token',
+      desc: 'e2e-token',
       expiry: '1',
       scope: 'read',
     },
@@ -20,7 +20,7 @@ test('API token can be created, disabled, enabled, listed masked, and deleted', 
 
   const listBody = await (await page.request.get('api/tokens')).json()
   expect(listBody.success).toBe(true)
-  const created = listBody.obj.find((item: any) => item.desc === 'phase6-e2e-token')
+  const created = listBody.obj.find((item: any) => item.desc === 'e2e-token')
   expect(created).toBeTruthy()
   expect(created.token).toBeUndefined()
   expect(created.tokenPrefix).toBe(plainToken.slice(0, 8))

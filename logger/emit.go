@@ -4,7 +4,17 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/MalenkiySolovey/solovey-ui/util/redact"
 )
+
+const MaxMessageBytes = 16 * 1024
+
+// SanitizeMessage is the common final logger sink guard used by panel, slog,
+// and observable core logging.
+func SanitizeMessage(message string) string {
+	return redact.StringLimit(message, MaxMessageBytes)
+}
 
 func Debug(args ...interface{}) { logPanel(slog.LevelDebug, fmt.Sprint(args...)) }
 func Debugf(format string, args ...interface{}) {
@@ -37,6 +47,7 @@ func logCore(level, message string) {
 }
 
 func logWithSource(source string, level slog.Level, message string) {
+	message = SanitizeMessage(message)
 	at := time.Now()
 	writeConfiguredLog(at, level, message)
 	addToBufferAt(source, level, message, at)

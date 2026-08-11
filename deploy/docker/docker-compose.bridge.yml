@@ -1,0 +1,20 @@
+services:
+  solovey-ui:
+    extends:
+      file: ../../docker-compose.yml
+      service: solovey-ui
+    network_mode: ""
+    networks: [solovey-ui]
+    ports:
+      - "${SOLOVEY_UI_BIND_ADDRESS:-127.0.0.1}:${SOLOVEY_UI_PANEL_PORT:?set the explicit panel port}:${SOLOVEY_UI_PANEL_PORT}/tcp"
+      - "${SOLOVEY_UI_BIND_ADDRESS:-0.0.0.0}:${SOLOVEY_UI_PUBLIC_TCP_PORT:?set the explicit public TCP port}:${SOLOVEY_UI_PUBLIC_TCP_PORT}/tcp"
+      - "${SOLOVEY_UI_BIND_ADDRESS:-0.0.0.0}:${SOLOVEY_UI_PUBLIC_UDP_PORT:?set the explicit public UDP port}:${SOLOVEY_UI_PUBLIC_UDP_PORT}/udp"
+    environment:
+      SOLOVEY_DEPLOYMENT_PROFILE: docker-bridge-explicit
+    labels:
+      io.solovey.deployment-profile: docker-bridge-explicit
+
+networks:
+  solovey-ui:
+    driver: bridge
+    internal: false

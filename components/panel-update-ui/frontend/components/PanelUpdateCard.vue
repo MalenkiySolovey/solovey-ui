@@ -228,8 +228,17 @@
           <v-alert class="mb-3" density="compact" type="warning" variant="tonal">
             Component footprint will be removed from this panel profile. Database data stays intact.
           </v-alert>
-          <p class="mb-3">Confirm removing <strong>{{ componentRemoveTarget?.name }}</strong> with your current password.</p>
-          <v-text-field v-model="componentRemovePassword" autocomplete="current-password" density="comfortable" label="Password" type="password" variant="outlined" />
+          <p class="mb-3">Confirm removing <strong>{{ componentRemoveTarget?.name }}</strong>. Deleting its data requires a fresh security verification.</p>
+          <v-text-field
+            v-model="componentRemovePassword"
+            autocomplete="current-password"
+            density="comfortable"
+            :hint="componentRemoveDeleteData ? $t('security.stepUpCredentialHint') : undefined"
+            :label="componentRemoveDeleteData ? $t('security.stepUpCredential') : 'Password'"
+            :persistent-hint="componentRemoveDeleteData"
+            type="password"
+            variant="outlined"
+          />
           <v-checkbox
             v-model="componentRemoveDeleteData"
             color="error"

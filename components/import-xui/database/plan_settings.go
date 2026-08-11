@@ -9,6 +9,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"gorm.io/gorm"
 )
@@ -96,9 +97,10 @@ func (s *applyState) applySettings(ctx context.Context, tx *gorm.DB, src *source
 }
 
 // xuiSettingKeyMap maps compatible panel setting keys to their s-ui equivalents. It only
-// contains settings whose meaning is portable to s-ui's sing-box-based panel:
-// network/listen/port/path/domain/cert settings, subscription endpoints, a few
-// display toggles, and the Telegram bot credentials. xray-specific subscription
+// contains core settings whose meaning is portable to s-ui's sing-box-based
+// panel: network/listen/port/path/domain/cert settings, subscription endpoints,
+// and a few display toggles. Optional setting owners contribute their own
+// external aliases through service.SettingContribution. Xray-specific subscription
 // payload settings (subJson*/subClash* fragments, routing rules, encode mode)
 // and compatible panel-only keys are intentionally omitted because their format/semantics
 // differ; planSettings reports those as skipped so the loss is visible.
@@ -138,15 +140,6 @@ var xuiSettingKeyMap = map[string]string{
 	// Panel behavior
 	"timeLocation":  "timeLocation",
 	"sessionMaxAge": "sessionMaxAge",
-
-	// Telegram bot: compatible panel tgBot* -> s-ui telegram*
-	"tgBotEnable": "telegramEnabled",
-	"tgBotToken":  "telegramBotToken",
-	"tgBotChatId": "telegramChatID",
-	"tgRunTime":   "telegramReportCron",
-	"tgCpu":       "telegramCpuThreshold",
-	"tgBotBackup": "telegramBackupEnabled",
-	"tgBotProxy":  "telegramProxyURL",
 }
 
 // hostSpecificSettingKeys are compatible panel source keys whose values identify the
@@ -184,6 +177,10 @@ func isHostSpecificSettingKey(key string) bool {
 
 func mapSettingKey(key string) (string, bool) {
 	target, ok := xuiSettingKeyMap[key]
+	if ok {
+		return target, true
+	}
+	target, ok = service.CurrentSettingImportAliases()[key]
 	return target, ok
 }
 

@@ -32,6 +32,9 @@ func (a *Handler) ImportXui(c *gin.Context) {
 	defer os.RemoveAll(upload.Dir)
 
 	dryRun := upload.Fields["dryRun"] == "1"
+	if !dryRun && !a.requireMutationStepUp(c) {
+		return
+	}
 	strategy := dbimport.Strategy(upload.Fields["strategy"])
 	if strategy == "" {
 		strategy = dbimport.StrategyMerge
@@ -126,6 +129,9 @@ func (a *Handler) ImportXuiApply(c *gin.Context) {
 		return
 	}
 	defer cancel()
+	if !a.requireMutationStepUp(c) {
+		return
+	}
 	extendSlowRequestDeadlines(c)
 	upload, err := saveUpload(c)
 	if err != nil {
@@ -166,6 +172,9 @@ func (a *Handler) ImportXuiRollback(c *gin.Context) {
 		return
 	}
 	if !a.enforceRateLimit(c) {
+		return
+	}
+	if !a.requireMutationStepUp(c) {
 		return
 	}
 	backupPath := xuiRollbackBackupPath(c)

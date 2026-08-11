@@ -57,7 +57,7 @@ func (Dialect3XUIMHSanaei) ReadInbounds(db *sql.DB) ([]InboundRow, error) {
 		{"sniffing", "NULL"},
 	})
 	// #nosec G202 -- projection is assembled solely from the fixed column
-	// allow-list above (quoted via quoteIdent) and literal defaults; no
+	// allow-list above (quoted via sqliteident.Quote) and literal defaults; no
 	// external input reaches the SQL string.
 	rows, err := db.Query("SELECT " + projection + " FROM inbounds ORDER BY id")
 	if err != nil {
@@ -114,7 +114,7 @@ func (Dialect3XUIMHSanaei) ReadClients(db *sql.DB) ([]ClientTraffic, error) {
 		{"last_online", "0"},
 	})
 	// #nosec G202 -- projection is assembled solely from the fixed column
-	// allow-list above (quoted via quoteIdent) and literal defaults; no
+	// allow-list above (quoted via sqliteident.Quote) and literal defaults; no
 	// external input reaches the SQL string.
 	rows, err := db.Query("SELECT " + projection + " FROM client_traffics ORDER BY id")
 	if err != nil {

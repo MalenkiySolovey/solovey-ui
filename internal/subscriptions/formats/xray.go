@@ -6,8 +6,6 @@ import (
 	"strings"
 )
 
-const xrayProbeURL = "http://www.gstatic.com/generate_204"
-
 func RenderXray(outbounds []map[string]interface{}) (string, error) {
 	configOutbounds := make([]map[string]interface{}, 0, len(outbounds)+2)
 	proxyTags := make([]string, 0, len(outbounds))

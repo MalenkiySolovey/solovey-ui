@@ -1,0 +1,54 @@
+[Unit]
+Description=Solovey UI typed privileged broker
+Documentation=https://github.com/MalenkiySolovey/S-UI
+Requires=solovey-privileged-broker.socket solovey-privileged-proof.socket
+After=solovey-privileged-broker.socket solovey-privileged-proof.socket
+Before=solovey-ui.service
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/var/lib/solovey-ui-broker
+ExecStart=/usr/local/solovey-ui/releases/current/solovey-privileged-broker
+Restart=on-failure
+RestartSec=3s
+TimeoutStartSec=30s
+TimeoutStopSec=30s
+UMask=0077
+
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
+RestrictNamespaces=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+MemoryDenyWriteExecute=true
+SystemCallArchitectures=native
+# Cross-UID peer attestation reads /proc/<pid>/exe under the kernel's ptrace access check.
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_NET_ADMIN CAP_NET_RAW CAP_SETGID CAP_SETUID CAP_SYS_PTRACE
+AmbientCapabilities=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_NET_ADMIN CAP_NET_RAW CAP_SETGID CAP_SETUID CAP_SYS_PTRACE
+ReadWritePaths=/var/lib/solovey-ui-broker /var/lib/solovey-ui /usr/local/solovey-ui/releases /usr/local/solovey-ui/.runtime/server-protection /etc/solovey-ui /etc/systemd/system /etc/ssh/sshd_config.d -/etc/nginx -/run/nginx -/var/lib/nginx -/var/log/nginx /run/systemd
+ReadOnlyPaths=/etc/ssh /usr/local/solovey-ui /usr/local/lib/solovey-ui/systemd
+LimitNOFILE=4096
+TasksMax=128
+MemoryHigh=192M
+MemoryMax=256M
+CPUQuota=100%
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=100
+
+[Install]
+WantedBy=multi-user.target

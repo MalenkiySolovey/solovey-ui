@@ -27,8 +27,8 @@ func TestRecordAppliedUpsertsComponentMigration(t *testing.T) {
 	}
 
 	item := manifest.Manifest{
-		ID:       "telegram",
-		Name:     "Telegram",
+		ID:       "fixture-beta",
+		Name:     "Fixture Beta",
 		Version:  "1",
 		Delivery: manifest.DeliveryInProcess,
 	}
@@ -36,7 +36,7 @@ func TestRecordAppliedUpsertsComponentMigration(t *testing.T) {
 		t.Fatal(err)
 	}
 	time.Sleep(time.Second)
-	item.Name = "Telegram Updated"
+	item.Name = "Fixture Beta Updated"
 	if err := RecordApplied(db, item); err != nil {
 		t.Fatal(err)
 	}
@@ -48,7 +48,7 @@ func TestRecordAppliedUpsertsComponentMigration(t *testing.T) {
 	if len(records) != 1 {
 		t.Fatalf("expected one upserted migration record, got %#v", records)
 	}
-	if records[0].Name != "Telegram Updated" {
+	if records[0].Name != "Fixture Beta Updated" {
 		t.Fatalf("journal did not update metadata: %#v", records[0])
 	}
 }

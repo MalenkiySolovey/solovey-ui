@@ -51,6 +51,7 @@ type Deps struct {
 	RemoteIP       func(*gin.Context) string
 	Hostname       func(*gin.Context) string
 	RequireScope   func(*gin.Context, string, ...string) bool
+	RequireStepUp  func(*gin.Context, string, string) bool
 	CheckPassword  func(string, string, string) bool
 	CheckRateLimit func(string) error
 	RecordFailure  func(string)
@@ -202,7 +203,7 @@ func (h Handler) componentSetEnabled(context *gin.Context, enabled bool) {
 		status, err = h.deps.ComponentManager.Disable(h.componentOperationContext(context), id)
 	}
 	if err != nil {
-		context.AbortWithStatusJSON(http.StatusConflict, gin.H{"success": false, "msg": err.Error()})
+		context.AbortWithStatusJSON(http.StatusConflict, gin.H{"success": false, "msg": "component state change rejected"})
 		return
 	}
 	h.deps.Audit(context, h.deps.LoginUser(context), "component_enabled_changed", "component", service.AuditSeverityInfo, map[string]any{
@@ -252,11 +253,21 @@ func (h Handler) componentRemove(context *gin.Context) {
 	}
 	user := h.deps.LoginUser(context)
 	remoteIP := h.deps.RemoteIP(context)
-	if user == "" || request.Password == "" {
+	if request.DeleteData {
+		if h.deps.RequireStepUp == nil {
+			context.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+				"success": false,
+				"msg":     "A valid step-up grant is required",
+			})
+			return
+		}
+		if !h.deps.RequireStepUp(context, "drop_data", "component:"+id) {
+			return
+		}
+	} else if user == "" || request.Password == "" {
 		h.deps.JSONMsg(context, "", common.NewError("re-authentication required"))
 		return
-	}
-	if !h.deps.CheckPassword(user, request.Password, remoteIP) {
+	} else if !h.deps.CheckPassword(user, request.Password, remoteIP) {
 		h.deps.Audit(context, user, "component_remove_reauth_failed", "component", service.AuditSeverityWarn, map[string]any{"component": id})
 		h.deps.JSONMsg(context, "", common.NewError("re-authentication failed"))
 		return

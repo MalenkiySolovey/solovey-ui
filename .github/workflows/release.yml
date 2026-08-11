@@ -293,20 +293,29 @@ jobs:
           fi
 
       - name: Build Solovey UI profiles
+        env:
+          SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
         run: |
           set -e
+          [ -n "$SUI_RELEASE_TRUST_ROOTS_B64" ] || { echo "SUI_RELEASE_TRUST_ROOTS_B64 repository variable is required" >&2; exit 1; }
           node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
           BUILD_TAGS="with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale"
           [ "${{ matrix.naive }}" = "true" ] && BUILD_TAGS="${BUILD_TAGS},with_naive_outbound,with_musl"
+          PANEL_LDFLAGS="-w -s -checklinkname=0 -linkmode external -extldflags '-static' -X github.com/MalenkiySolovey/solovey-ui/config/update.ArtifactPlatform=${{ matrix.platform }} -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=${SUI_RELEASE_TRUST_ROOTS_B64}"
           rm -rf web/html
           mkdir -p web/html
           cp -a .release/frontend-full/. web/html/
-          go build -ldflags="-w -s -checklinkname=0 -linkmode external -extldflags '-static' -X github.com/MalenkiySolovey/solovey-ui/config/update.ArtifactPlatform=${{ matrix.platform }}" -tags "$BUILD_TAGS" -o solovey-ui main.go
+          go build -ldflags="$PANEL_LDFLAGS" -tags "$BUILD_TAGS" -o solovey-ui main.go
+          go build -ldflags="-w -s -linkmode external -extldflags '-static'" -o solovey-protect-helper ./components/server-protection/cmd/solovey-protect-helper
+          go build -ldflags="-w -s -linkmode external -extldflags '-static'" -o solovey-privileged-broker ./cmd/solovey-privileged-broker
+          go build -ldflags="-w -s -linkmode external -extldflags '-static'" -o solovey-ssh-proof ./cmd/solovey-ssh-proof
+          go build -ldflags="-w -s -linkmode external -extldflags '-static'" -o solovey-broker-manifest ./cmd/solovey-broker-manifest
           rm -rf web/html
           mkdir -p web/html
           cp -a .release/frontend-core/. web/html/
-          go build -ldflags="-w -s -checklinkname=0 -linkmode external -extldflags '-static' -X github.com/MalenkiySolovey/solovey-ui/config/update.ArtifactPlatform=${{ matrix.platform }}" -tags "${BUILD_TAGS},minimal" -o solovey-ui-core main.go
+          go build -ldflags="$PANEL_LDFLAGS" -tags "${BUILD_TAGS},minimal" -o solovey-ui-core main.go
           file solovey-ui
+          file solovey-protect-helper
           file solovey-ui-core
           ldd solovey-ui 2>/dev/null || echo "Static binary confirmed"
           ldd solovey-ui-core 2>/dev/null || echo "Static core binary confirmed"
@@ -334,6 +343,7 @@ jobs:
           bash scripts/release-package-linux.sh \
             --target linux-${{ matrix.platform }} \
             --binary ./solovey-ui \
+            --helper ./solovey-protect-helper \
             --manager ./solovey-ui.sh \
             --service ./solovey-ui.service \
             --build-info ./BUILD_INFO.full.txt \
@@ -414,7 +424,25 @@ jobs:
           merge-multiple: true
 
       - name: Generate release manifest
-        run: node scripts/release-manifest.mjs --version "${{ steps.vars.outputs.version }}" --assets-dir release-assets --components-dir .release/components
+        env:
+          SUI_RELEASE_SIGNING_PRIVATE_KEY_B64: ${{ secrets.SUI_RELEASE_SIGNING_PRIVATE_KEY_B64 }}
+          SUI_RELEASE_SIGNING_KEY_ID: ${{ vars.SUI_RELEASE_SIGNING_KEY_ID }}
+        run: |
+          set -e
+          [ -n "$SUI_RELEASE_SIGNING_PRIVATE_KEY_B64" ] || { echo "release signing secret is required" >&2; exit 1; }
+          [ -n "$SUI_RELEASE_SIGNING_KEY_ID" ] || { echo "release signing key id variable is required" >&2; exit 1; }
+          ISSUED_AT="$(date +%s)"
+          RELEASE_SEQUENCE="$((GITHUB_RUN_NUMBER * 1000 + GITHUB_RUN_ATTEMPT))"
+          CHANNEL=main
+          [ "${{ steps.vars.outputs.prerelease }}" = "true" ] && CHANNEL=beta
+          node scripts/release-manifest.mjs \
+            --version "${{ steps.vars.outputs.version }}" \
+            --sequence "$RELEASE_SEQUENCE" \
+            --channel "$CHANNEL" \
+            --issued-at "$ISSUED_AT" \
+            --key-id "$SUI_RELEASE_SIGNING_KEY_ID" \
+            --assets-dir release-assets \
+            --components-dir .release/components
 
       - name: Publish to current repository Release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
@@ -426,3 +454,18 @@ jobs:
           body_path: ${{ steps.vars.outputs.notes_path }}
           fail_on_unmatched_files: true
           files: release-assets/*
+
+      - name: Publish signed channel release set
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          CHANNEL=main
+          [ "${{ steps.vars.outputs.prerelease }}" = "true" ] && CHANNEL=beta
+          CHANNEL_TAG="channel-${CHANNEL}"
+          if ! gh release view "$CHANNEL_TAG" >/dev/null 2>&1; then
+            CREATE_ARGS=(--target "$GITHUB_SHA" --title "Solovey UI ${CHANNEL} signed channel" --notes "Signed, expiring Solovey UI ${CHANNEL} release-set pointer. Artifact trust is established only by solovey-ui-release.json.")
+            [ "$CHANNEL" = beta ] && CREATE_ARGS+=(--prerelease)
+            gh release create "$CHANNEL_TAG" "${CREATE_ARGS[@]}"
+          fi
+          gh release upload "$CHANNEL_TAG" release-assets/* --clobber

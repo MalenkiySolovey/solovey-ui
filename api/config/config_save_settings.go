@@ -20,10 +20,15 @@ func (a *Handler) handleSettingsSaveError(c *gin.Context, actor string, obj stri
 		event = "settings_save_rejected_key"
 	}
 	a.Audit(c, actor, event, "settings", service.AuditSeverityWarn, map[string]any{
-		"reason": err.Error(),
+		"reason": func() string {
+			if invalidSettingKey {
+				return "invalid_setting_key"
+			}
+			return "save_failed"
+		}(),
 	})
 	if invalidSettingKey {
-		c.JSON(http.StatusBadRequest, Envelope{Success: false, Msg: "save: " + err.Error()})
+		c.JSON(http.StatusBadRequest, Envelope{Success: false, Msg: "save: invalid setting key"})
 		return true
 	}
 	return false

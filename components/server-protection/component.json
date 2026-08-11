@@ -1,0 +1,62 @@
+{
+  "id": "server-protection",
+  "name": "Server Protection",
+  "version": "1",
+  "since": "2026.3.0",
+  "delivery": "in-process",
+  "defaultEnabled": false,
+  "tokenScopes": [
+    "server-protection:read",
+    "server-protection:write",
+    "server-protection:apply"
+  ],
+  "database": {
+	"schema": "solovey.durable-resource/v1",
+	"schemaVersion": "1",
+	"migrationVersion": "1",
+	"indexPolicy": "ALL_OWNED_TABLE_INDEXES",
+    "tables": [
+      "server_protection_settings",
+      "server_protection_port_allowlist",
+      "server_protection_ip_allowlist",
+      "server_protection_profiles",
+      "server_protection_graylist",
+      "server_protection_graylist_v2",
+      "server_protection_score_states",
+      "server_protection_probe_events",
+      "server_protection_signals_v2",
+      "server_protection_decisions_v2",
+      "server_protection_planned_responses_v2",
+      "server_protection_recovery_paths_v1",
+      "server_protection_port_operations",
+      "server_protection_operation_locks",
+      "server_protection_artifacts",
+      "server_protection_firewall_states",
+      "server_protection_firewall_contributions_v1",
+      "server_protection_firewall_composition_v1",
+      "server_protection_firewall_contribution_transitions_v1",
+      "server_protection_fallback_target_leases",
+      "server_protection_native_fallback_states",
+      "server_protection_native_fallback_operations",
+      "server_protection_fronting_states_v2",
+      "server_protection_fronting_idempotency_v2",
+      "server_protection_udp_guard_states_v1",
+      "server_protection_udp_guard_idempotency_v1",
+      "server_protection_local_proxy_states_v1",
+	  "server_protection_local_proxy_idempotency_v1"
+	],
+	"files": [{
+	  "path": ".runtime/server-protection",
+	  "backupClass": "EXCLUDED_HOST_LOCAL",
+	  "redaction": "SENSITIVE",
+	  "portability": "HOST_BOUND"
+	}],
+	"backupCodec": "SQLITE_OWNER_V1",
+	"restoreHook": "MIGRATE_AND_VALIDATE_V1",
+	"dropDataPlan": "OWNER_LIFECYCLE_V1",
+	"dropPostcondition": "DECLARED_RESOURCES_ABSENT_V1",
+	"redactionClass": "SENSITIVE",
+	"portabilityClass": "HOST_BOUND",
+	"compatibilityRange": {"minimumSchema": "1", "maximumSchema": "1"}
+  }
+}

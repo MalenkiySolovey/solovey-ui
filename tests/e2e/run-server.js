@@ -4,18 +4,18 @@ const { spawn, spawnSync } = require('node:child_process')
 
 const repoRoot = path.resolve(__dirname, '..', '..')
 const frontendDir = path.join(repoRoot, 'frontend')
-const phaseDir = path.join(repoRoot, 'tests', 'baseline', 'phase6')
-const serverDir = path.join(phaseDir, 'e2e-server')
-const dbDir = path.join(phaseDir, 'e2e-db')
-const appDataDir = path.join(phaseDir, 'appdata')
-const tempDir = path.join(phaseDir, 'tmp')
-const zigGlobalCacheDir = path.join(phaseDir, 'zig-global-cache')
-const zigLocalCacheDir = path.join(phaseDir, 'zig-local-cache')
+const resultDir = path.join(repoRoot, 'tests', 'baseline', 'e2e')
+const serverDir = path.join(resultDir, 'e2e-server')
+const dbDir = path.join(resultDir, 'e2e-db')
+const appDataDir = path.join(resultDir, 'appdata')
+const tempDir = path.join(resultDir, 'tmp')
+const zigGlobalCacheDir = path.join(resultDir, 'zig-global-cache')
+const zigLocalCacheDir = path.join(resultDir, 'zig-local-cache')
 const statePath = path.join(serverDir, 'state.json')
 const bundledZig = path.join(repoRoot, '..', '..', '.devtools', 'zig-x86_64-windows-0.16.0', 'zig.exe')
 const resolvedCC = process.env.CC || (process.platform === 'win32' && fs.existsSync(bundledZig) ? `${bundledZig} cc` : undefined)
 const readyTimeoutMs = Number(process.env.SUI_E2E_READY_TIMEOUT_MS || (process.env.CI ? 900000 : 300000))
-const e2eWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH || '/phase6-panel/')
+const e2eWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH || '/e2e-panel/')
 
 fs.mkdirSync(serverDir, { recursive: true })
 fs.mkdirSync(appDataDir, { recursive: true })
@@ -48,7 +48,7 @@ const normalizeSpawnEnv = (env = process.env) => {
 
 function normalizeWebPath(value) {
   const trimmed = String(value || '').trim()
-  if (!trimmed || trimmed === '/') return '/phase6-panel/'
+  if (!trimmed || trimmed === '/') return '/e2e-panel/'
   return `${trimmed.startsWith('/') ? '' : '/'}${trimmed}${trimmed.endsWith('/') ? '' : '/'}`
 }
 
@@ -184,7 +184,7 @@ const main = async () => {
   const backendEnv = {
     ...process.env,
     SUI_DB_FOLDER: dbDir,
-    SUI_SECRET: 'phase6-e2e-secret',
+    SUI_SECRET: 'e2e-test-secret',
     SUI_COOKIE_KEY: 'MDEyMzQ1Njc4OWFiY2RlZjAxMjM0NTY3ODlhYmNkZWY=',
     SUI_LOG_LEVEL: 'warn',
     SUI_FORCE_COOKIE_SECURE: 'false',

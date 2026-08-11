@@ -1,16 +1,23 @@
 // Composables
 import { createRouter, createWebHistory } from 'vue-router'
 import Login from '@/views/Login.vue'
+import SecurityTransition from '@/views/SecurityTransition.vue'
 import Data from '@/store/modules/data'
 import Ws from '@/store/ws'
 import { getBaseUrl } from '@/plugins/base-url'
 import { syncEnabledComponents } from '@/componentSystem/loader'
+import { getSecurityPosture, messageObject, type SecurityPosture } from '@/shared/composables/useSecurityOperations'
 
 const routes = [
   {
     path: '/login',
     name: 'pages.login',
     component: Login,
+  },
+  {
+    path: '/security-transition',
+    name: 'pages.securityTransition',
+    component: SecurityTransition,
   },
   {
     path: '/',
@@ -76,6 +83,26 @@ const routes = [
         path: '/admins',
         name: 'pages.admins',
         component: () => import('@/views/Admins.vue'),
+      },
+      {
+        path: '/security',
+        name: 'pages.security',
+        component: () => import('@/views/Security.vue'),
+      },
+      {
+		path: '/ssh-management',
+        name: 'pages.sshManagement',
+        component: () => import('@/views/SSHManagement.vue'),
+      },
+	  {
+		path: '/deployment',
+		name: 'pages.deployment',
+		component: () => import('@/views/Deployment.vue'),
+	  },
+      {
+        path: '/operations',
+        name: 'pages.operations',
+        component: () => import('@/views/Operations.vue'),
       },
       {
         path: '/settings',
@@ -144,7 +171,13 @@ let intervalId: any
 // land on /login.
 router.beforeEach(async (to) => {
   const data = Data()
-  if (to.path !== '/login') {
+  const transitionOnly = to.path === '/security-transition'
+  if (to.path !== '/login' && !transitionOnly) {
+    const postureResponse = await getSecurityPosture()
+    const posture = messageObject<SecurityPosture>(postureResponse)
+    if (posture?.authState === 'password_reset' || posture?.authState === 'mfa_pending' || posture?.authState === 'mfa_recovery') {
+      return '/security-transition'
+    }
     loadDataInterval()
     Ws().connect()
     if (!data.componentsLoaded) {
@@ -166,9 +199,11 @@ router.beforeEach(async (to) => {
     if (componentId && !resolved.matched.some(record => record.meta.componentId === componentId)) {
       return '/'
     }
-  } else if (intervalId) {
-    clearInterval(intervalId)
-    intervalId = undefined
+  } else {
+    if (intervalId) {
+      clearInterval(intervalId)
+      intervalId = undefined
+    }
     Ws().disconnect()
   }
 })

@@ -2,8 +2,10 @@ package api
 
 import (
 	"net/http"
+	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/middleware/requestbudget"
 	"github.com/gin-gonic/gin"
 )
 
@@ -91,6 +93,75 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			if !routes[method+" "+path] {
 				t.Fatalf("missing explicit route %s %s", method, path)
 			}
+		}
+	}
+}
+
+func TestAdminAPIRouteSecurityInventoryIsComplete(t *testing.T) {
+	initSessionTestDB(t)
+	prepareComponentRouteMetadata(t)
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	apiv2 := NewAPIv2Handler(router.Group("/apiv2"))
+	NewAPIHandler(router.Group("/api"), apiv2)
+
+	registry := requestbudget.NewRegistry("")
+	registry.DeclareGinRoutes(router.Routes())
+	for _, route := range router.Routes() {
+		if route.Path != "/api" && route.Path != "/apiv2" &&
+			!strings.HasPrefix(route.Path, "/api/") &&
+			!strings.HasPrefix(route.Path, "/apiv2/") {
+			continue
+		}
+		policy, ok := registry.Lookup(route.Method, route.Path)
+		if !ok {
+			t.Fatalf("missing security inventory for %s %s", route.Method, route.Path)
+		}
+		if policy.Authentication == "" || policy.ActionScope == "" ||
+			policy.BodyClass == "" || policy.PressureClass == "" ||
+			policy.AuditPolicy == "" || policy.ResponseClass != "bounded_safe_envelope" {
+			t.Fatalf("incomplete security inventory for %s %s: %#v", route.Method, route.Path, policy)
+		}
+	}
+
+	requiredStepUp := map[string]string{
+		"/api/changePass":                         "admin.credential",
+		"/api/addAdmin":                           "admin.create",
+		"/api/deleteAdmin":                        "admin.delete",
+		"/api/addToken":                           "token.create",
+		"/api/deleteToken":                        "token.revoke",
+		"/api/setTokenEnabled":                    "token.change",
+		"/api/importdb":                           "backup.restore",
+		"/api/v1/security/password/change":        "admin.credential",
+		"/api/v1/security/sessions/revoke-others": "sessions.revoke_others",
+		"/api/v1/security/sessions/adopt-bounded": "sessions.adopt_bounded",
+		"/api/v1/security/mfa/enroll":             "mfa.enroll",
+		"/api/v1/security/mfa/recovery/rotate":    "mfa.recovery.rotate",
+		"/api/v1/security/mfa/disable":            "mfa.disable",
+		"/api/v1/operations/update/prepare":       "update.prepare",
+		"/api/v1/operations/update/preflight":     "update.prepare",
+		"/api/v1/operations/update/activate":      "update.activate",
+		"/api/v1/operations/update/rollback":      "update.rollback",
+		"/api/v1/operations/data/drop":            "data.drop",
+	}
+	for path, operation := range requiredStepUp {
+		policy, ok := registry.Lookup(http.MethodPost, path)
+		if !ok || policy.StepUpOperation != operation {
+			t.Fatalf("step-up inventory %s=%q, want %q (present=%v)", path, policy.StepUpOperation, operation, ok)
+		}
+	}
+	optionalStepUp := map[string]string{
+		"/api/import-xui/apply":             "backup.restore",
+		"/api/import-xui/rollback":          "backup.restore",
+		"/api/update/components/:id/remove": "drop_data",
+	}
+	for path, operation := range optionalStepUp {
+		if !routeExists(router, http.MethodPost, path) {
+			continue
+		}
+		policy, ok := registry.Lookup(http.MethodPost, path)
+		if !ok || policy.StepUpOperation != operation {
+			t.Fatalf("optional step-up inventory %s=%q, want %q (present=%v)", path, policy.StepUpOperation, operation, ok)
 		}
 	}
 }

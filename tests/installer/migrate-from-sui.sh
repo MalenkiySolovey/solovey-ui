@@ -109,21 +109,22 @@ cat >> "${TEST_INSTALLER_LOG}/sqlite3.sql"
 exit 0
 SH
 
-    cat > "${FAKEBIN}/ln" <<'SH'
+    for tool in systemd-sysusers systemd-tmpfiles chown; do
+        cat > "${FAKEBIN}/${tool}" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+    done
+    cat > "${FAKEBIN}/runuser" <<'SH'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-
-if [[ "${1:-}" == "-sf" ]]; then
-    cp "$2" "$3"
-    chmod +x "$3"
-    exit 0
-fi
-
-echo "unexpected fake ln invocation: $*" >&2
-exit 2
+while [[ $# -gt 0 && "$1" != "--" ]]; do shift; done
+[[ "${1:-}" == "--" ]] && shift
+exec "$@"
 SH
 
-    chmod +x "${FAKEBIN}/curl" "${FAKEBIN}/systemctl" "${FAKEBIN}/sqlite3" "${FAKEBIN}/ln"
+    chmod +x "${FAKEBIN}/curl" "${FAKEBIN}/systemctl" "${FAKEBIN}/sqlite3" \
+        "${FAKEBIN}/systemd-sysusers" "${FAKEBIN}/systemd-tmpfiles" "${FAKEBIN}/chown" "${FAKEBIN}/runuser"
 }
 
 create_release_fixture() {
@@ -149,7 +150,19 @@ platform=linux/amd64
 sing_box=v-test
 INFO
     cp "${ROOT}/solovey-ui.service" "${release_dir}/solovey-ui.service"
-    chmod +x "${release_dir}/solovey-ui" "${release_dir}/solovey-ui.sh"
+    for name in solovey-privileged-broker solovey-ssh-proof solovey-broker-manifest; do
+        cat > "${release_dir}/${name}" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+    done
+    mkdir -p "${release_dir}/systemd"
+    for unit in solovey-ui-native-hardened.service solovey-ui-native-network-advanced.service solovey-ui-native-legacy-root.service \
+        solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket solovey-ui.sysusers solovey-ui.tmpfiles; do
+        printf 'fixture deployment asset %s\n' "${unit}" > "${release_dir}/systemd/${unit}"
+    done
+    chmod +x "${release_dir}/solovey-ui" "${release_dir}/solovey-ui.sh" "${release_dir}/solovey-privileged-broker" \
+        "${release_dir}/solovey-ssh-proof" "${release_dir}/solovey-broker-manifest"
 
     tar -czf "${artifact}" -C "${FIXTURE}/release" solovey-ui
     (cd "${FIXTURE}" && sha256sum "$(basename "${artifact}")" > "$(basename "${artifact}").sha256")
@@ -194,6 +207,10 @@ run_installer() {
     SOLOVEY_UI_INSTALL_DIR="${TARGET}/usr/local/solovey-ui" \
     SOLOVEY_UI_CLI_PATH="${TARGET}/usr/bin/solovey-ui" \
     SOLOVEY_UI_SYSTEMD_SERVICE="${TARGET}/etc/systemd/system/solovey-ui.service" \
+    SOLOVEY_UI_SYSTEMD_UNIT_ROOT="${TARGET}/etc/systemd/system" \
+    SOLOVEY_UI_SYSTEMD_PROFILE_ROOT="${TARGET}/usr/local/lib/solovey-ui/systemd" \
+    SOLOVEY_UI_DEPLOYMENT_MARKER="${TARGET}/etc/solovey-ui/deployment-profile" \
+    SOLOVEY_UI_HARDENED_DATA_ROOT="${TARGET}/var/lib/solovey-ui" \
     SOLOVEY_UI_ENV_DIR="${TARGET}/etc/solovey-ui" \
     SOLOVEY_UI_BACKUP_ROOT="${TARGET}/var/backups/solovey-ui" \
     SOLOVEY_UI_LEGACY_DIR="${LEGACY}/usr/local/s-ui" \

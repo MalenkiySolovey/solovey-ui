@@ -51,10 +51,10 @@ jobs:
         with:
           name: audit-go-build-${{ matrix.os }}
           path: |
-            tests/baseline/phase*/*.txt
-            tests/baseline/phase*/*.junit.xml
-            tests/baseline/phase*/coverage/**
-            tests/baseline/phase*/coverage.out
+            tests/baseline/*/*.txt
+            tests/baseline/*/*.junit.xml
+            tests/baseline/*/coverage/**
+            tests/baseline/*/coverage.out
           if-no-files-found: ignore
           retention-days: 7
 
@@ -87,8 +87,8 @@ jobs:
         with:
           name: audit-go-vet-${{ matrix.os }}
           path: |
-            tests/baseline/phase*/*.txt
-            tests/baseline/phase*/*.junit.xml
+            tests/baseline/*/*.txt
+            tests/baseline/*/*.junit.xml
           if-no-files-found: ignore
           retention-days: 7
 
@@ -122,8 +122,8 @@ jobs:
         with:
           name: audit-go-test-${{ matrix.os }}
           path: |
-            tests/baseline/phase*/*.txt
-            tests/baseline/phase*/*.junit.xml
+            tests/baseline/*/*.txt
+            tests/baseline/*/*.junit.xml
           if-no-files-found: ignore
           retention-days: 7
 
@@ -158,8 +158,8 @@ jobs:
         with:
           name: audit-go-race-${{ matrix.os }}
           path: |
-            tests/baseline/phase*/*.txt
-            tests/baseline/phase*/*.junit.xml
+            tests/baseline/*/*.txt
+            tests/baseline/*/*.junit.xml
           if-no-files-found: ignore
           retention-days: 7
 
@@ -182,10 +182,10 @@ jobs:
         with:
           name: audit-go-coverage
           path: |
-            tests/baseline/phase*/*.txt
-            tests/baseline/phase*/*.junit.xml
-            tests/baseline/phase*/coverage/**
-            tests/baseline/phase*/coverage.out
+            tests/baseline/*/*.txt
+            tests/baseline/*/*.junit.xml
+            tests/baseline/*/coverage/**
+            tests/baseline/*/coverage.out
           if-no-files-found: ignore
           retention-days: 7
 
@@ -225,8 +225,8 @@ jobs:
         with:
           name: audit-go-lint-${{ matrix.os }}
           path: |
-            tests/baseline/phase*/*.txt
-            tests/baseline/phase*/*.junit.xml
+            tests/baseline/*/*.txt
+            tests/baseline/*/*.junit.xml
           if-no-files-found: ignore
           retention-days: 7
 
@@ -252,14 +252,14 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: staticcheck
         shell: bash
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tests/baseline/run-command.ps1 -Phase phase8 -Name staticcheck -CommandLine "staticcheck ./..." -ContinueOnError
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tests/baseline/run-command.ps1 -Group current -Name staticcheck -CommandLine "staticcheck ./..." -ContinueOnError
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: audit-go-staticcheck-${{ matrix.os }}
           path: |
-            tests/baseline/phase8/staticcheck.txt
-            tests/baseline/phase8/staticcheck.junit.xml
+            tests/baseline/current/staticcheck.txt
+            tests/baseline/current/staticcheck.junit.xml
           if-no-files-found: ignore
           retention-days: 7
 
@@ -298,8 +298,8 @@ jobs:
         with:
           name: audit-go-gosec-${{ matrix.os }}
           path: |
-            tests/baseline/phase*/*.txt
-            tests/baseline/phase*/*.junit.xml
+            tests/baseline/*/*.txt
+            tests/baseline/*/*.junit.xml
           if-no-files-found: ignore
           retention-days: 7
 
@@ -338,8 +338,8 @@ jobs:
         with:
           name: audit-go-govulncheck-${{ matrix.os }}
           path: |
-            tests/baseline/phase*/*.txt
-            tests/baseline/phase*/*.junit.xml
+            tests/baseline/*/*.txt
+            tests/baseline/*/*.junit.xml
           if-no-files-found: ignore
           retention-days: 7
 
@@ -373,8 +373,8 @@ jobs:
         with:
           name: audit-go-dashboard
           path: |
-            tests/baseline/phase8/summary.html
-            tests/baseline/phase8/summary.json
-            tests/baseline/phase8/aggregate.junit.xml
+            tests/baseline/current/summary.html
+            tests/baseline/current/summary.json
+            tests/baseline/current/aggregate.junit.xml
           if-no-files-found: ignore
           retention-days: 30

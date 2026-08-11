@@ -46,7 +46,6 @@ const (
 	assetCachePolicy   = "public, max-age=31536000, immutable"
 	serviceCachePolicy = "public, max-age=3600, must-revalidate"
 	noStoreCachePolicy = "no-store"
-	selfStealDraftTTL  = 24 * time.Hour
 )
 
 var assetMimeByExt = map[string]string{
@@ -326,6 +325,15 @@ func validateAssetFile(filename string, data []byte) (string, string, error) {
 		return "", "", fmt.Errorf("asset content type %s does not match %s", detected, ext)
 	}
 	return safe, mimeType, nil
+}
+
+func assetLogicalPath(filename string, data []byte) (string, error) {
+	safeName, _, err := validateAssetFile(filename, data)
+	if err != nil {
+		return "", err
+	}
+	sum := sha256.Sum256(data)
+	return fallbackdomain.ValidatePagePath("/media/"+hex.EncodeToString(sum[:])[:12]+"-"+safeName, nil)
 }
 
 func ensureSiteAssetQuota(tx *gorm.DB, siteID uint, incomingBytes int64) error {

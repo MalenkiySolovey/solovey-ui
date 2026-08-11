@@ -59,6 +59,10 @@ func (component) Migrate(context.Context, lifecycle.Context) error {
 	return remotesub.EnsureSchema(dbsqlite.DB())
 }
 
+func (component) MigrateStaged(_ context.Context, db *gorm.DB) error {
+	return remotesub.EnsureSchema(db)
+}
+
 func (component) DropData(context.Context, lifecycle.Context) error {
 	if err := remotesub.DropSchema(dbsqlite.DB()); err != nil {
 		return err

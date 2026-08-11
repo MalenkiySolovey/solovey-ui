@@ -13,6 +13,8 @@ var resetHooks = struct {
 	byName: map[string]func(){},
 }
 
+const maxResetHooks = 128
+
 func RegisterResetHook(name string, fn func()) {
 	if name == "" {
 		return
@@ -22,6 +24,9 @@ func RegisterResetHook(name string, fn func()) {
 	if fn == nil {
 		delete(resetHooks.byName, name)
 		return
+	}
+	if _, exists := resetHooks.byName[name]; !exists && len(resetHooks.byName) >= maxResetHooks {
+		panic("database reset-hook registry capacity exceeded")
 	}
 	resetHooks.byName[name] = fn
 }

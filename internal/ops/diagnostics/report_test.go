@@ -35,3 +35,13 @@ func TestNaiveSupportCheck(t *testing.T) {
 		t.Fatalf("supported naive should not warn: %#v", checks)
 	}
 }
+
+func TestConfigDetailsUsesStableParseFailure(t *testing.T) {
+	details := ConfigDetails([]byte(`{"password":"diagnostic-canary"`))
+	if details["json"] != "invalid" {
+		t.Fatalf("unexpected parse failure details: %#v", details)
+	}
+	if strings.Contains(details["json"].(string), "diagnostic-canary") {
+		t.Fatalf("parse failure leaked input: %#v", details)
+	}
+}

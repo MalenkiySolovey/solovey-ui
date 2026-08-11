@@ -4,6 +4,7 @@ package importxui
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"mime/multipart"
 	"net/http"
@@ -188,6 +189,42 @@ func TestSaveXUIUploadCleanupIsFailSoftIssue38(t *testing.T) {
 	assertPathExists(t, upload.Dir)
 	if upload.SHA256 == "" {
 		t.Fatal("upload SHA256 was not populated")
+	}
+}
+
+func TestSaveXUIUploadRejectsDuplicateMultipartFields(t *testing.T) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	if err := writer.WriteField("strategy", "merge"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.WriteField("strategy", "replace"); err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
+	}
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/import-xui", &body)
+	c.Request.Header.Set("Content-Type", writer.FormDataContentType())
+
+	if upload, err := saveUpload(c); err == nil || upload != nil || !strings.Contains(err.Error(), "duplicate") {
+		t.Fatalf("duplicate multipart field result: upload=%#v err=%v", upload, err)
+	}
+}
+
+func TestXUIImportErrorDoesNotExposeInternalErrorText(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	xuiImportError(c, errors.New(`open C:\private\panel.db: token=secret-value`))
+
+	var response Envelope
+	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+		t.Fatal(err)
+	}
+	if response.Msg != "Compatible panel import failed" {
+		t.Fatalf("unsafe import response: %q", response.Msg)
 	}
 }
 

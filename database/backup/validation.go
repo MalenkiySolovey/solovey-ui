@@ -2,6 +2,7 @@ package backup
 
 import (
 	"bytes"
+	"fmt"
 	"io"
 	"net/url"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
@@ -35,7 +37,13 @@ func validateSQLiteBackup(path string) error {
 	if isXUIDatabase(probe) {
 		return common.NewError("this looks like a supported third-party panel database, not a Solovey UI backup; use Panel Import instead of Restore")
 	}
-	return validateVersionedBackupConfig(probe)
+	if err := validateVersionedBackupConfig(probe); err != nil {
+		return err
+	}
+	if err := dbsqlite.ValidateSupportedVersionFile(path); err != nil {
+		return fmt.Errorf("unsupported backup version: %w", err)
+	}
+	return nil
 }
 
 func isXUIDatabase(probe *gorm.DB) bool {

@@ -1,12 +1,45 @@
 services:
   solovey-ui:
-    image: ghcr.io/malenkiysolovey/solovey-ui
+    image: ghcr.io/malenkiysolovey/solovey-ui@sha256:${SOLOVEY_UI_IMAGE_DIGEST:?set the immutable release image digest}
     container_name: solovey-ui
-    hostname: "solovey-ui"
+    hostname: solovey-ui
+    user: "65532:65532"
     network_mode: host
+    read_only: true
+    cap_drop: ["ALL"]
+    security_opt:
+      - no-new-privileges:true
     volumes:
-      - "./db:/app/db"
-      - "./cert:/app/cert"
-    tty: true
+      - ./db:/data
+      - ./cert:/cert
+    tmpfs:
+      - /tmp:rw,noexec,nosuid,nodev,size=64m,mode=1700,uid=65532,gid=65532
+      - /run/solovey-ui:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=65532,gid=65532
+    environment:
+      SUI_DB_FOLDER: /data
+      SUI_COMPONENTS_INSTALLED_FILE: /app/components/installed.json
+      SOLOVEY_DEPLOYMENT_PROFILE: docker-host-unprivileged
     restart: unless-stopped
-    entrypoint: "./entrypoint.sh"
+    stop_grace_period: ${SOLOVEY_UI_STOP_GRACE_PERIOD:-30s}
+    init: true
+    pids_limit: 4096
+    mem_reservation: ${SOLOVEY_UI_MEMORY_RESERVATION:-512m}
+    mem_limit: ${SOLOVEY_UI_MEMORY_LIMIT:-1g}
+    cpus: ${SOLOVEY_UI_CPU_LIMIT:-2.0}
+    ulimits:
+      nofile:
+        soft: 16384
+        hard: 16384
+    healthcheck:
+      test: ["CMD", "/app/solovey-ui", "doctor", "--components"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    labels:
+      io.solovey.deployment-profile: docker-host-unprivileged

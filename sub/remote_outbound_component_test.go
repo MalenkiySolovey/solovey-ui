@@ -242,40 +242,6 @@ func xrayOutboundTags(t *testing.T, config map[string]interface{}) []string {
 	return tags
 }
 
-func xrayBalancerSelector(t *testing.T, config map[string]interface{}, tag string) []string {
-	t.Helper()
-	routing, ok := config["routing"].(map[string]interface{})
-	if !ok {
-		t.Fatalf("xray config has no routing object: %#v", config["routing"])
-	}
-	rawBalancers, ok := routing["balancers"].([]interface{})
-	if !ok {
-		t.Fatalf("xray config has no balancers: %#v", routing["balancers"])
-	}
-	for _, raw := range rawBalancers {
-		balancer, ok := raw.(map[string]interface{})
-		if !ok {
-			t.Fatalf("unexpected xray balancer shape: %#v", raw)
-		}
-		if balancer["tag"] != tag {
-			continue
-		}
-		rawSelector, ok := balancer["selector"].([]interface{})
-		if !ok {
-			t.Fatalf("xray balancer %q has no selector: %#v", tag, balancer)
-		}
-		selector := make([]string, 0, len(rawSelector))
-		for _, rawRef := range rawSelector {
-			if ref, ok := rawRef.(string); ok {
-				selector = append(selector, ref)
-			}
-		}
-		return selector
-	}
-	t.Fatalf("xray balancer %q not found in %#v", tag, rawBalancers)
-	return nil
-}
-
 func jsonSelectorOutbounds(t *testing.T, config map[string]interface{}, tag string) []string {
 	t.Helper()
 	rawOutbounds, ok := config["outbounds"].([]interface{})

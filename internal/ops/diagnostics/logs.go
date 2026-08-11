@@ -47,11 +47,19 @@ type LogCategoryContribution struct {
 	Match    func(source string, message string) bool
 }
 
+const maxLogCategoryContributions = 128
+
+type registeredLogCategoryContribution struct {
+	contribution LogCategoryContribution
+	token        uint64
+}
+
 var logCategoryContributions = struct {
 	sync.RWMutex
-	entries map[string]LogCategoryContribution
+	entries   map[string]registeredLogCategoryContribution
+	nextToken uint64
 }{
-	entries: map[string]LogCategoryContribution{},
+	entries: map[string]registeredLogCategoryContribution{},
 }
 
 func RegisterLogCategory(contribution LogCategoryContribution) func() {
@@ -62,12 +70,24 @@ func RegisterLogCategory(contribution LogCategoryContribution) func() {
 	contribution.Category = category
 
 	logCategoryContributions.Lock()
-	logCategoryContributions.entries[category] = contribution
+	if _, exists := logCategoryContributions.entries[category]; exists {
+		logCategoryContributions.Unlock()
+		panic("log category contribution already registered: " + category)
+	}
+	if len(logCategoryContributions.entries) >= maxLogCategoryContributions {
+		logCategoryContributions.Unlock()
+		panic("log category contribution registry capacity exceeded")
+	}
+	logCategoryContributions.nextToken++
+	token := logCategoryContributions.nextToken
+	logCategoryContributions.entries[category] = registeredLogCategoryContribution{contribution: contribution, token: token}
 	logCategoryContributions.Unlock()
 
 	return func() {
 		logCategoryContributions.Lock()
-		delete(logCategoryContributions.entries, category)
+		if current, ok := logCategoryContributions.entries[category]; ok && current.token == token {
+			delete(logCategoryContributions.entries, category)
+		}
 		logCategoryContributions.Unlock()
 	}
 }
@@ -251,14 +271,14 @@ func registeredLogHint(category string) string {
 	logCategoryContributions.RLock()
 	entry := logCategoryContributions.entries[category]
 	logCategoryContributions.RUnlock()
-	return entry.Hint
+	return entry.contribution.Hint
 }
 
 func classifyRegisteredLogCategory(source string, message string) string {
 	logCategoryContributions.RLock()
 	entries := make([]LogCategoryContribution, 0, len(logCategoryContributions.entries))
-	for _, entry := range logCategoryContributions.entries {
-		entries = append(entries, entry)
+	for _, registered := range logCategoryContributions.entries {
+		entries = append(entries, registered.contribution)
 	}
 	logCategoryContributions.RUnlock()
 

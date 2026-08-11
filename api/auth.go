@@ -20,6 +20,7 @@ func (a *ApiService) authDeps() authhttp.Deps {
 		Audit:                    a.recordAudit,
 		LoginUser:                GetLoginUser,
 		SetLoginUser:             SetLoginUser,
+		SetLoginSecurity:         SetLoginSecurity,
 		ClearSession:             ClearSession,
 		RemoteIP:                 getRemoteIp,
 		CheckLoginRateLimit:      checkLoginRateLimit,

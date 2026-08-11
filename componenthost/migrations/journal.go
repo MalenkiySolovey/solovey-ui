@@ -52,8 +52,17 @@ func DeleteRecords(db *gorm.DB, componentID string) error {
 	if err := manifest.ValidateID(componentID); err != nil {
 		return err
 	}
-	if !db.Migrator().HasTable(&model.ComponentMigration{}) {
+	return db.Transaction(func(tx *gorm.DB) error {
+		if tx.Migrator().HasTable(&model.ComponentMigration{}) {
+			if err := tx.Where("component_id = ?", componentID).Delete(&model.ComponentMigration{}).Error; err != nil {
+				return err
+			}
+		}
+		if tx.Migrator().HasTable(&model.MigrationJournal{}) {
+			if err := tx.Where("scope = ? AND owner_id = ?", ScopeComponent, componentID).Delete(&model.MigrationJournal{}).Error; err != nil {
+				return err
+			}
+		}
 		return nil
-	}
-	return db.Where("component_id = ?", componentID).Delete(&model.ComponentMigration{}).Error
+	})
 }

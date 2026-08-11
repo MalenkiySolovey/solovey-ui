@@ -30,9 +30,17 @@ func initSubTestDB(t *testing.T) {
 	// Mirror the production wiring (app.go) so the subscription rate limiter reads
 	// the configured per-IP limit from settings without the server package
 	// importing the service layer.
-	subserver.SubRateLimitProvider = func() (int, error) {
-		return (&service.SettingService{}).GetSubRateLimitPerIP()
+	stopHooks, err := subserver.RegisterHooks(subserver.Hooks{
+		ListenFallbackAudit: func(string, string, string, error) {},
+		EnumerationAudit:    func(string, int, int) {},
+		RateLimitProvider: func() (int, error) {
+			return (&service.SettingService{}).GetSubRateLimitPerIP()
+		},
+	})
+	if err != nil {
+		t.Fatalf("register subscription test hooks: %v", err)
 	}
+	t.Cleanup(stopHooks)
 	tempDir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", tempDir)
 	closeSubTestDB(dbsqlite.DB())

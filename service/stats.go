@@ -139,7 +139,7 @@ func (s *StatsService) SaveStats(enableTraffic bool) (err error) {
 					Resource: "stats",
 					Severity: AuditSeverityWarn,
 					Details: map[string]any{
-						"error": commitErr.Error(),
+						"reason": "commit_failed",
 					},
 				}); auditErr != nil {
 					logger.Warning("stats commit failure audit failed:", auditErr)

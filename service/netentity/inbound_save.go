@@ -37,6 +37,9 @@ func (s *InboundService) applyInboundSave(req inboundSaveRequest) (*singboxapply
 	if !ok {
 		return nil, common.NewErrorf("unknown action: %s", req.action)
 	}
+	if err := guardInboundFrontingLease(req.tx, req.action, req.data); err != nil {
+		return nil, err
+	}
 	return inboundSaveHandlers[action](s, req)
 }
 

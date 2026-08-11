@@ -26,6 +26,7 @@ import (
 const (
 	maxXUIImportBytes = 200 << 20
 	MaxFieldBytes     = 8 << 20
+	maxXUIUploadParts = 8
 
 	xuiUploadTempPrefix          = "xui-import-"
 	xuiUploadTempMaxAge          = 24 * time.Hour
@@ -62,6 +63,8 @@ func saveUpload(c *gin.Context) (*Upload, error) {
 		return nil, err
 	}
 	upload := &Upload{Dir: dir, Fields: map[string]string{}}
+	seenParts := make(map[string]struct{}, maxXUIUploadParts)
+	partCount := 0
 	for {
 		part, err := reader.NextPart()
 		if errors.Is(err, io.EOF) {
@@ -72,6 +75,16 @@ func saveUpload(c *gin.Context) (*Upload, error) {
 			return nil, err
 		}
 		name := part.FormName()
+		partCount++
+		if partCount > maxXUIUploadParts || !allowedXUIUploadPart(name) {
+			_ = os.RemoveAll(dir)
+			return nil, errors.New("invalid compatible-panel import part")
+		}
+		if _, duplicate := seenParts[name]; duplicate {
+			_ = os.RemoveAll(dir)
+			return nil, errors.New("duplicate compatible-panel import part")
+		}
+		seenParts[name] = struct{}{}
 		if name == "db" {
 			path := filepath.Join(dir, "source.db")
 			// #nosec G304 -- path is a fixed name under the per-request upload temp directory.
@@ -133,6 +146,15 @@ func saveUpload(c *gin.Context) (*Upload, error) {
 		return nil, errors.New("missing db file")
 	}
 	return upload, nil
+}
+
+func allowedXUIUploadPart(name string) bool {
+	switch name {
+	case "db", "plan", "dryRun", "strategy", "adminMode", "includeSettings", "includeHistory", "includeRouting":
+		return true
+	default:
+		return false
+	}
 }
 
 func maybeCleanupStaleXUIUploads() {

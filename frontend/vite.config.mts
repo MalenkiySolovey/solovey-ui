@@ -13,7 +13,7 @@ const componentProfile = process.env.SOLOVEY_UI_PROFILE === 'core' ? 'core' : 'f
 const frontendRoot = fileURLToPath(new URL('.', import.meta.url))
 const repoRoot = path.resolve(frontendRoot, '..')
 const bundledComponentIDs = resolveBundledComponentIDs()
-const e2eWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH || '/phase6-panel/')
+const e2eWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH || '/e2e-panel/')
 const apiProxyPath = isE2E ? `${e2eWebPath}api` : '/app/api'
 
 export default defineConfig({
@@ -199,6 +199,6 @@ function assertComponentID(id: string) {
 
 function normalizeWebPath(value: string) {
   const trimmed = String(value || '').trim()
-  if (!trimmed || trimmed === '/') return '/phase6-panel/'
+  if (!trimmed || trimmed === '/') return '/e2e-panel/'
   return `${trimmed.startsWith('/') ? '' : '/'}${trimmed}${trimmed.endsWith('/') ? '' : '/'}`
 }

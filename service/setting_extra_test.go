@@ -6,7 +6,7 @@ import (
 	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/internal/settings/validation"
 )
 
-func TestValidateSubscriptionPathSettingsRejectsPhase2Conflicts(t *testing.T) {
+func TestValidateSubscriptionPathSettingsRejectsConflicts(t *testing.T) {
 	settingService := &SettingService{}
 	tests := []map[string]string{
 		{

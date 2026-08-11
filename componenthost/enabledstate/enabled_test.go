@@ -13,7 +13,7 @@ import (
 func TestEnabledUsesManifestDefaultWhenSettingMissing(t *testing.T) {
 	initEnabledStateTestDB(t)
 
-	enabled, err := Enabled(manifest.Manifest{ID: "telegram", DefaultEnabled: true})
+	enabled, err := Enabled(manifest.Manifest{ID: "fixture-beta", DefaultEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -24,16 +24,16 @@ func TestEnabledUsesManifestDefaultWhenSettingMissing(t *testing.T) {
 
 func TestEnabledReadsComponentSetting(t *testing.T) {
 	initEnabledStateTestDB(t)
-	if err := dbsqlite.DB().Create(&model.Setting{Key: SettingKey("telegram"), Value: "false"}).Error; err != nil {
+	if err := dbsqlite.DB().Create(&model.Setting{Key: SettingKey("fixture-beta"), Value: "false"}).Error; err != nil {
 		t.Fatal(err)
 	}
 
-	enabled, err := Enabled(manifest.Manifest{ID: "telegram", DefaultEnabled: true})
+	enabled, err := Enabled(manifest.Manifest{ID: "fixture-beta", DefaultEnabled: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if enabled {
-		t.Fatal("telegram should be disabled by setting")
+		t.Fatal("fixture-beta should be disabled by setting")
 	}
 }
 

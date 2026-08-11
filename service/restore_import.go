@@ -87,6 +87,9 @@ func rotateRestoreImportSessions(ctx context.Context, settingService *SettingSer
 		return err
 	}
 	result.sessionRotated = generation != ""
+	if result.sessionRotated {
+		NotifyPanelEvent("logout_all_admins", map[string]string{})
+	}
 	return ctx.Err()
 }
 

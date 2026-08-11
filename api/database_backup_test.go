@@ -15,6 +15,7 @@ import (
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	datalifecycle "github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -23,7 +24,7 @@ func TestImportDbRequiresAdminScopeAndAuditsFailure(t *testing.T) {
 	settingService := initSessionTestDB(t)
 
 	readRouter, readCookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/importdb", withTestTokenScope("reader", "read", (&ApiService{}).dbTransferHandler().ImportDb))
+		router.POST("/api/importdb", withTestTokenScope("reader", "read", databaseImportTestHandler()))
 	})
 	readRecorder := performAuthenticatedTestRequest(readRouter, newDatabaseImportRequest(t, []byte("not sqlite")), readCookies...)
 	if readRecorder.Code != http.StatusForbidden {
@@ -31,7 +32,7 @@ func TestImportDbRequiresAdminScopeAndAuditsFailure(t *testing.T) {
 	}
 
 	adminRouter, adminCookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/importdb", withTestTokenScope("admin", "admin", (&ApiService{}).dbTransferHandler().ImportDb))
+		router.POST("/api/importdb", withTestTokenScope("admin", "admin", databaseImportTestHandler()))
 	})
 	adminRecorder := performAuthenticatedTestRequest(adminRouter, newDatabaseImportRequest(t, []byte("not sqlite")), adminCookies...)
 	if adminRecorder.Code != http.StatusOK {
@@ -56,6 +57,15 @@ func TestImportDbRequiresAdminScopeAndAuditsFailure(t *testing.T) {
 	}
 }
 
+func databaseImportTestHandler() gin.HandlerFunc {
+	handler := (&ApiService{}).dbTransferHandler()
+	handler.RequireStepUp = func(*gin.Context, string, string) bool { return true }
+	manager := datalifecycle.NewManager()
+	manager.Admit = func(string) bool { return true }
+	handler.DataLifecycle = manager
+	return handler.ImportDb
+}
+
 func TestDownloadDatabaseAuditsExport(t *testing.T) {
 	settingService := initSessionTestDB(t)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
@@ -78,21 +88,21 @@ func TestDownloadDatabaseAuditsExport(t *testing.T) {
 	}
 }
 
-func TestDownloadDatabaseEncryptedWithTelegramBackupPassphrase(t *testing.T) {
+func TestDownloadDatabaseEncryptedWithFixtureBackupPassphrase(t *testing.T) {
 	settingService := initSessionTestDB(t)
 	passphrase := "correct horse battery staple"
-	saveTelegramBackupPassphrase(t, settingService, passphrase)
-	registerTelegramBackupTransferCodecsForTest(t, settingService)
+	saveFixtureBackupPassphrase(t, settingService, passphrase)
+	registerFixtureBackupTransferCodecsForTest(t, settingService)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
 		router.GET("/api/getdb", withTestTokenScope("admin", "admin", (&ApiService{}).dbTransferHandler().DownloadDatabase))
 	})
-	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/getdb?backupEncryption=test-telegram&exclude=stats,audit,unknown", nil), cookies...)
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/getdb?backupEncryption=test-fixture-codec&exclude=stats,audit,unknown", nil), cookies...)
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d body=%s", recorder.Code, recorder.Body.String())
 	}
 	envelope := recorder.Body.Bytes()
 	if !backupenvelope.IsEnvelope(envelope) {
-		t.Fatalf("encrypted backup did not return Telegram backup envelope")
+		t.Fatalf("encrypted backup did not return fixture backup envelope")
 	}
 	plaintext, err := backupenvelope.Open(envelope, []byte(passphrase))
 	if err != nil {
@@ -109,7 +119,7 @@ func TestDownloadDatabaseEncryptedWithTelegramBackupPassphrase(t *testing.T) {
 	flushAPIAudit(t)
 
 	var event model.AuditEvent
-	if err := dbsqlite.DB().Where("event = ?", "tg_backup_manual_encrypted").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "fixture_backup_manual_encrypted").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	var details map[string]any
@@ -128,14 +138,14 @@ func TestDownloadDatabaseEncryptedWithTelegramBackupPassphrase(t *testing.T) {
 	}
 }
 
-func TestDownloadDatabaseEncryptedRejectsMissingTelegramBackupPassphrase(t *testing.T) {
+func TestDownloadDatabaseEncryptedRejectsMissingFixtureBackupPassphrase(t *testing.T) {
 	settingService := initSessionTestDB(t)
-	registerTelegramSettingsContributionForTest(t)
-	registerTelegramBackupTransferCodecsForTest(t, settingService)
+	registerFixtureSettingsContributionForTest(t)
+	registerFixtureBackupTransferCodecsForTest(t, settingService)
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
 		router.GET("/api/getdb", withTestTokenScope("admin", "admin", (&ApiService{}).dbTransferHandler().DownloadDatabase))
 	})
-	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/getdb?backupEncryption=test-telegram", nil), cookies...)
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/getdb?backupEncryption=test-fixture-codec", nil), cookies...)
 	if recorder.Code != http.StatusBadRequest {
 		t.Fatalf("unexpected status: %d body=%s", recorder.Code, recorder.Body.String())
 	}
@@ -156,10 +166,10 @@ func TestDownloadDatabaseEncryptedRejectsMissingTelegramBackupPassphrase(t *test
 	}
 }
 
-func saveTelegramBackupPassphrase(t *testing.T, settingService *service.SettingService, passphrase string) {
+func saveFixtureBackupPassphrase(t *testing.T, settingService *service.SettingService, passphrase string) {
 	t.Helper()
-	registerTelegramSettingsContributionForTest(t)
-	payload, err := json.Marshal(map[string]string{"telegramBackupPassphrase": passphrase})
+	registerFixtureSettingsContributionForTest(t)
+	payload, err := json.Marshal(map[string]string{"fixtureBackupPassphrase": passphrase})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -181,10 +191,30 @@ func newDatabaseImportRequest(t *testing.T, content []byte) *http.Request {
 	if _, err := part.Write(content); err != nil {
 		t.Fatal(err)
 	}
+	writeRestoreExecutionFields(t, writer, content)
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)
 	}
 	req := httptest.NewRequest(http.MethodPost, "/api/importdb", &body)
 	req.Header.Set("Content-Type", writer.FormDataContentType())
 	return req
+}
+
+func writeRestoreExecutionFields(t *testing.T, writer *multipart.Writer, plaintext []byte) {
+	t.Helper()
+	rehearsal, err := backup.Rehearse(t.Context(), bytes.NewReader(plaintext))
+	if err != nil || !rehearsal.Possible {
+		return
+	}
+	fields := map[string]string{
+		"expectedRehearsalRevision": rehearsal.Revision,
+		"idempotencyKey":            "restore-test-" + rehearsal.Revision[:24],
+		"confirmation":              datalifecycle.RestoreConfirmation(rehearsal.Revision),
+		"acknowledged":              "true",
+	}
+	for key, value := range fields {
+		if err := writer.WriteField(key, value); err != nil {
+			t.Fatal(err)
+		}
+	}
 }

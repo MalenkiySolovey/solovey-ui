@@ -133,8 +133,8 @@ func TestSecurityCSRFMatrixDocumentsExceptions(t *testing.T) {
 	router := newSecurityCSRFTestRouter(t, settingService)
 
 	login := performCSRFRequest(router, http.MethodPost, "/api/login", "")
-	if login.Code == http.StatusForbidden {
-		t.Fatal("login must remain CSRF-exempt")
+	if login.Code != http.StatusForbidden {
+		t.Fatalf("login without pre-auth CSRF token must be forbidden, got %d", login.Code)
 	}
 	logout := performCSRFRequest(router, http.MethodPost, "/api/logout", "")
 	if logout.Code != http.StatusForbidden {

@@ -40,7 +40,16 @@ func (a *Handler) IssueWSToken(c *gin.Context) {
 	now := time.Now()
 	expiresAt := now.Add(wsTokenTTL)
 	token := common.Random(32)
-	StoreToken(token, user, expiresAt)
+	binding := service.RealtimeSessionBinding{Username: user}
+	if a.SessionBinding != nil {
+		resolved, ok := a.SessionBinding(c)
+		if !ok || resolved.Username != user {
+			a.JSONMsg(c, "wsToken", common.NewError("invalid session"))
+			return
+		}
+		binding = resolved
+	}
+	StoreBoundToken(token, binding, expiresAt)
 	a.JSONObj(c, gin.H{
 		"token":     token,
 		"expiresAt": expiresAt.Unix(),
@@ -65,9 +74,6 @@ func (a *Handler) EnforceHandshakeRateLimit(c *gin.Context, endpoint string) boo
 }
 
 func TokenFromRequest(c *gin.Context) (string, bool) {
-	if token := strings.TrimSpace(c.Query("token")); token != "" {
-		return token, false
-	}
 	var legacy string
 	for _, part := range strings.Split(c.GetHeader("Sec-WebSocket-Protocol"), ",") {
 		part = strings.TrimSpace(part)
@@ -80,6 +86,11 @@ func TokenFromRequest(c *gin.Context) (string, bool) {
 	}
 	if legacy != "" {
 		return legacy, true
+	}
+	if token := strings.TrimSpace(c.Query("token")); token != "" {
+		c.Header("Deprecation", "true")
+		c.Header("Sunset", "Wed, 31 Dec 2026 23:59:59 GMT")
+		return token, true
 	}
 	return "", false
 }

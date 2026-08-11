@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
@@ -51,6 +52,9 @@ func newAuthenticatedTestRouter(t *testing.T, settingService *service.SettingSer
 
 func performAuthenticatedTestRequest(router *gin.Engine, req *http.Request, cookies ...*http.Cookie) *httptest.ResponseRecorder {
 	recorder := httptest.NewRecorder()
+	if csrfProtectedMethod(req.Method) && req.Header.Get("Origin") == "" {
+		req.Header.Set("Origin", "http://example.com")
+	}
 	for _, c := range cookies {
 		req.AddCookie(c)
 	}
@@ -88,6 +92,9 @@ func initAPITestDB(tb testing.TB, dbPath string) {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			tb.Skip(err)
 		}
+		tb.Fatal(err)
+	}
+	if err := migration.EnsureCurrentSchemaJournal(dbsqlite.DB(), true); err != nil {
 		tb.Fatal(err)
 	}
 }

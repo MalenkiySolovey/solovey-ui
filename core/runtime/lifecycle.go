@@ -37,6 +37,8 @@ func (c *Core) Start(sbConfig []byte) error {
 	ctx = service.ContextWith(ctx, c)
 
 	c.access.Lock()
+	c.managerGeneration++
+	generation := c.managerGeneration
 	c.ctx = ctx
 	c.instance = instance
 	c.isRunning = true
@@ -46,6 +48,14 @@ func (c *Core) Start(sbConfig []byte) error {
 	c.endpointManager = instance.Endpoint()
 	c.router = instance.Router()
 	c.factory = instance.LogFactory()
+	c.effectiveInbounds = make(map[string]InboundRuntimeRecord, len(opt.Inbounds))
+	for _, inboundOptions := range opt.Inbounds {
+		record, recorded := inboundRuntimeRecord(ctx, inboundOptions, generation)
+		if !recorded {
+			continue
+		}
+		c.effectiveInbounds[inboundOptions.Tag] = record
+	}
 	c.access.Unlock()
 	return nil
 }
@@ -65,6 +75,7 @@ func (c *Core) Stop() error {
 	c.endpointManager = nil
 	c.router = nil
 	c.factory = nil
+	c.effectiveInbounds = make(map[string]InboundRuntimeRecord)
 	c.access.Unlock()
 	err := instance.Close()
 	return err

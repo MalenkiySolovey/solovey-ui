@@ -2,11 +2,15 @@ package app
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os"
+	"sync"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
+	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
+	managementregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/management"
 	componentsupervisor "github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
@@ -14,11 +18,19 @@ import (
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/cronjob/scheduler"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/database/restorestate"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	deploymentdomain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"
 	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	datalifecycleservice "github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
+	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"
+	"github.com/MalenkiySolovey/solovey-ui/service/resourceinventory"
+	pressureService "github.com/MalenkiySolovey/solovey-ui/service/resourcepressure"
+	sshmanagementservice "github.com/MalenkiySolovey/solovey-ui/service/sshmanagement"
 	serviceupdate "github.com/MalenkiySolovey/solovey-ui/service/update"
 	"github.com/MalenkiySolovey/solovey-ui/sub"
 	"github.com/MalenkiySolovey/solovey-ui/web"
@@ -33,6 +45,8 @@ type APP struct {
 	core          *coreruntime.Core
 	runtime       *service.Runtime
 	components    *componentsupervisor.Supervisor
+	stopResources func()
+	stopCoreHooks func()
 }
 
 func NewApp() *APP {
@@ -44,9 +58,14 @@ func (a *APP) Init() error {
 
 	a.initLog()
 
-	if executable, err := os.Executable(); err == nil && executable != "" && serviceupdate.CheckPending(executable) {
-		logger.Warning("self-update failed to boot twice; restored previous binary")
-		os.Exit(1)
+	databasePath := configstorage.GetDBPath()
+	if err := restorestate.Recover(databasePath); err != nil {
+		return err
+	}
+	_, databaseStatErr := os.Stat(databasePath)
+	freshDatabase := errors.Is(databaseStatErr, os.ErrNotExist)
+	if databaseStatErr != nil && !freshDatabase {
+		return databaseStatErr
 	}
 
 	// Run schema migrations against the on-disk DB before opening it. This
@@ -62,12 +81,19 @@ func (a *APP) Init() error {
 	if err != nil {
 		return err
 	}
+	if err := migration.EnsureCurrentSchemaJournal(dbsqlite.DB(), freshDatabase); err != nil {
+		return err
+	}
+	dataReconcileCtx, cancelDataReconcile := context.WithTimeout(context.Background(), 10*time.Second)
+	if reconcileErr := datalifecycleservice.Shared().ReconcileStartup(dataReconcileCtx); reconcileErr != nil {
+		logger.Warning("data lifecycle startup reconciliation requires attention")
+	}
+	cancelDataReconcile()
 
 	// Init Setting
 	if _, err := a.SettingService.GetAllSetting(); err != nil {
 		logger.Warning("failed to initialize settings: ", err)
 	}
-
 	// Re-seal any secret settings still encrypted under a DB-derived key once an
 	// out-of-database SUI_SECRETBOX_KEY is configured. No-op without the env key,
 	// idempotent, and fail-safe per row; a failure here must not block startup.
@@ -83,38 +109,6 @@ func (a *APP) Init() error {
 	a.core = coreruntime.NewCore(ipmonitor.Observer{})
 	a.runtime = service.NewRuntime(a.core)
 	service.SetDefaultRuntime(a.runtime)
-
-	// Mirror ipmonitor IP-limit enforcement into the durable audit log (D-5).
-	// Set via a hook to avoid an import cycle; debounced upstream so it cannot
-	// flood the audit log.
-	ipmonitor.SecurityEventAuditHook = func(clientName string, kind string, payload map[string]any) {
-		_ = (&service.AuditService{}).Record(service.AuditEvent{
-			Actor:    "system",
-			Event:    "ip_limit_enforced",
-			Resource: "ipmonitor",
-			Severity: service.AuditSeverityWarn,
-			Details:  payload,
-		})
-	}
-
-	// Subscription server hooks: connect audit and rate-limit settings to the
-	// service layer without the pure subscription-server package importing it.
-	subserver.ListenFallbackAuditHook = func(component, requestedAddr, fallbackAddr string, bindErr error) {
-		_ = (&service.AuditService{}).RecordListenFallback(component, requestedAddr, fallbackAddr, bindErr)
-	}
-	subserver.SubEnumerationAuditHook = func(ip string, invalidLookups, windowMinutes int) {
-		_ = (&service.AuditService{}).Record(service.AuditEvent{
-			Actor:    "anonymous",
-			Event:    "sub_enumeration",
-			Resource: "sub",
-			Severity: service.AuditSeverityWarn,
-			IP:       ip,
-			Details:  map[string]any{"invalidLookups": invalidLookups, "windowMinutes": windowMinutes},
-		})
-	}
-	subserver.SubRateLimitProvider = func() (int, error) {
-		return (&service.SettingService{}).GetSubRateLimitPerIP()
-	}
 
 	a.cronScheduler = scheduler.New()
 	a.components = componentsupervisor.New(componenthost.Deps{
@@ -133,6 +127,14 @@ func (a *APP) Init() error {
 	a.subServer = sub.NewServer()
 
 	a.configService = service.NewConfigServiceWithRuntime(a.runtime)
+	if err := a.registerResources(); err != nil {
+		return err
+	}
+	if err := a.registerCoreHooks(); err != nil {
+		a.stopResources()
+		a.stopResources = nil
+		return err
+	}
 
 	if err := a.components.Migrate(context.Background()); err != nil {
 		logger.Warning("failed to migrate components: ", err)
@@ -142,6 +144,12 @@ func (a *APP) Init() error {
 }
 
 func (a *APP) Start() error {
+	if err := a.registerResources(); err != nil {
+		return err
+	}
+	if err := a.registerCoreHooks(); err != nil {
+		return err
+	}
 	loc, err := a.SettingService.GetTimeLocation()
 	if err != nil {
 		return err
@@ -180,10 +188,11 @@ func (a *APP) Start() error {
 	if err = a.configService.StartCore(); err != nil {
 		logger.Error("sing-box core failed to start; panel stays up so you can fix the config: ", err)
 	}
-	if executable, err := os.Executable(); err == nil && executable != "" {
-		serviceupdate.ClearPending(executable)
+	reconcileCtx, cancelReconcile := context.WithTimeout(context.Background(), 30*time.Second)
+	if reconcileErr := serviceupdate.SharedLifecycle().ReconcileStartup(reconcileCtx); reconcileErr != nil {
+		logger.Warning("signed update startup reconciliation requires attention")
 	}
-
+	cancelReconcile()
 	return nil
 }
 
@@ -217,6 +226,14 @@ func (a *APP) Stop() {
 	if err := service.StopAuditWriter(ctx); err != nil {
 		logger.Warning("stop audit writer err:", err)
 	}
+	if a.stopCoreHooks != nil {
+		a.stopCoreHooks()
+		a.stopCoreHooks = nil
+	}
+	if a.stopResources != nil {
+		a.stopResources()
+		a.stopResources = nil
+	}
 }
 
 func (a *APP) initLog() {
@@ -234,13 +251,170 @@ func (a *APP) initLog() {
 	}
 }
 
+func (a *APP) registerResources() error {
+	if a.stopResources != nil {
+		return nil
+	}
+	if a.configService == nil {
+		return errors.New("core resource registration requires initialized config service")
+	}
+	stop, err := resourceinventory.RegisterCoreContributors(&a.SettingService, dbsqlite.DB(), a.configService.CoreInboundControl())
+	if err != nil {
+		return err
+	}
+	a.stopResources = stop
+	return nil
+}
+
+func (a *APP) registerCoreHooks() error {
+	if a.stopCoreHooks != nil {
+		return nil
+	}
+	stopIPMonitor, err := ipmonitor.RegisterSecurityEventAuditHook(func(_ string, _ string, payload map[string]any) {
+		_ = (&service.AuditService{}).Record(service.AuditEvent{
+			Actor:    "system",
+			Event:    "ip_limit_enforced",
+			Resource: "ipmonitor",
+			Severity: service.AuditSeverityWarn,
+			Details:  payload,
+		})
+	})
+	if err != nil {
+		return err
+	}
+	stopSubscriptions, err := subserver.RegisterHooks(subserver.Hooks{
+		ListenFallbackAudit: func(component, requestedAddr, fallbackAddr string, bindErr error) {
+			_ = (&service.AuditService{}).RecordListenFallback(component, requestedAddr, fallbackAddr, bindErr)
+		},
+		EnumerationAudit: func(ip string, invalidLookups, windowMinutes int) {
+			_ = (&service.AuditService{}).Record(service.AuditEvent{
+				Actor:    "anonymous",
+				Event:    "sub_enumeration",
+				Resource: "sub",
+				Severity: service.AuditSeverityWarn,
+				IP:       ip,
+				Details:  map[string]any{"invalidLookups": invalidLookups, "windowMinutes": windowMinutes},
+			})
+		},
+		RateLimitProvider: func() (int, error) {
+			return (&service.SettingService{}).GetSubRateLimitPerIP()
+		},
+	})
+	if err != nil {
+		stopIPMonitor()
+		return err
+	}
+	sshManager := sshmanagementservice.Shared()
+	sshManager.Audit = func(_ context.Context, event sshmanagementservice.AuditEventV1) {
+		_ = (&service.AuditService{}).Record(service.AuditEvent{Actor: "system", Event: "ssh_management_" + event.Event,
+			Resource: "ssh-management", Severity: service.AuditSeverityWarn, Details: map[string]any{
+				"operationId": event.OperationID, "state": event.State, "reasonCode": event.ReasonCode, "revision": event.Revision,
+			}})
+	}
+	stopSSHEvidence := managementregistry.RegisterEvidenceProvider(sshManager)
+	stopSSHPanelEvents := service.RegisterPanelEventNotifier("core:ssh-management-recovery", func(event string, fields map[string]string) {
+		if err := sshManager.HandlePanelEvent(event, fields); err != nil {
+			logger.Warning("SSH management panel recovery observation failed")
+		}
+	})
+	watchdogCtx, stopSSHWatchdog := context.WithCancel(context.Background())
+	pressureService.Shared().Start(watchdogCtx)
+	updateManager := serviceupdate.SharedLifecycle()
+	updateManager.SetAdmissionCheck(func(class string) bool { return pressureService.Shared().Admission(class).Allowed })
+	updateManager.SetHealthCheck(func(ctx context.Context, operation model.UpdateOperation) serviceupdate.HealthResult {
+		reasons := []string{}
+		panel := componenthealth.Check(ctx, "core:panel:web")
+		if panel.Status != componenthealth.StatusOK {
+			reasons = append(reasons, "panel_api_health_failed")
+		}
+		coreReady := a.runtime != nil && a.runtime.Core() != nil && a.runtime.Core().IsRunning()
+		if operation.RestartClass == "stack" && !coreReady {
+			reasons = append(reasons, "core_runtime_health_failed")
+		}
+		databaseVersion, coreSchema := "", ""
+		runtimeStatus, runtimeErr := dbsqlite.InspectRuntime(dbsqlite.DB())
+		if runtimeErr != nil || !runtimeStatus.WALCapable || !runtimeStatus.WALResetSafe {
+			reasons = append(reasons, "sqlite_runtime_health_failed")
+		}
+		if db := dbsqlite.DB(); db == nil {
+			reasons = append(reasons, "database_health_unavailable")
+		} else {
+			var settings []model.Setting
+			if err := db.WithContext(ctx).Where("key IN ?", []string{"version", "coreSchemaVersion"}).Find(&settings).Error; err != nil {
+				reasons = append(reasons, "database_schema_health_unavailable")
+			} else {
+				for _, setting := range settings {
+					switch setting.Key {
+					case "version":
+						databaseVersion = setting.Value
+					case "coreSchemaVersion":
+						coreSchema = setting.Value
+					}
+				}
+			}
+			var failedMigrations int64
+			if err := db.WithContext(ctx).Model(&model.MigrationJournal{}).
+				Where("state IN ?", []string{"FAILED", "RECOVERY_REQUIRED"}).Count(&failedMigrations).Error; err != nil || failedMigrations != 0 {
+				reasons = append(reasons, "owner_migration_health_failed")
+			}
+		}
+		if configidentity.GetVersion() != operation.Version || databaseVersion != operation.Version || coreSchema != "1.11" {
+			reasons = append(reasons, "release_schema_identity_mismatch")
+		}
+		evidence := struct {
+			OperationID, Version, DatabaseVersion, CoreSchema, SQLiteRevision, PanelStatus string
+			CoreReady, Ready                                                               bool
+		}{operation.OperationID, operation.Version, databaseVersion, coreSchema, runtimeStatus.Revision, string(panel.Status), coreReady, len(reasons) == 0}
+		return serviceupdate.HealthResult{Ready: len(reasons) == 0, ReasonCodes: reasons, Revision: deploymentdomain.Revision(evidence)}
+	})
+	if err := sshManager.ReconcileStartup(watchdogCtx); err != nil {
+		logger.Warning("SSH management startup reconciliation requires attention")
+	}
+	go sshManager.StartWatchdog(watchdogCtx)
+	deploymentManager := deploymentservice.Shared()
+	deploymentManager.Health = func(ctx context.Context, _ time.Time) deploymentservice.RuntimeHealth {
+		panel := componenthealth.Check(ctx, "core:panel:web")
+		coreReady := a.runtime != nil && a.runtime.Core() != nil && a.runtime.Core().IsRunning()
+		reasons := []string{}
+		if panel.Status != componenthealth.StatusOK {
+			reasons = append(reasons, "panel_api_health_failed")
+		}
+		if !coreReady {
+			reasons = append(reasons, "core_runtime_health_failed")
+		}
+		result := deploymentservice.RuntimeHealth{Ready: len(reasons) == 0, Reasons: reasons,
+			EvidenceRevision: deploymentdomain.Revision(struct {
+				Panel componenthealth.Result
+				Core  bool
+			}{panel, coreReady})}
+		result.Revision = deploymentdomain.Revision(result)
+		return result
+	}
+	deploymentManager.Audit = func(_ context.Context, event deploymentservice.AuditEvent) {
+		_ = (&service.AuditService{}).Record(service.AuditEvent{Actor: "system", Event: "deployment_" + event.Event,
+			Resource: "deployment", Severity: service.AuditSeverityWarn, Details: map[string]any{
+				"operationId": event.OperationID, "state": event.State, "reasonCode": event.Reason, "revision": event.Revision,
+			}})
+	}
+	if err := deploymentManager.ReconcileStartup(watchdogCtx); err != nil {
+		logger.Warning("deployment startup reconciliation requires attention")
+	}
+	var once sync.Once
+	a.stopCoreHooks = func() {
+		once.Do(func() {
+			stopSSHWatchdog()
+			stopSSHPanelEvents()
+			stopSSHEvidence()
+			stopSubscriptions()
+			stopIPMonitor()
+		})
+	}
+	return nil
+}
+
 func (a *APP) RestartApp() {
 	a.Stop()
 	if err := a.Start(); err != nil {
 		logger.Warning("failed to restart app: ", err)
 	}
-}
-
-func (a *APP) GetCore() *coreruntime.Core {
-	return a.core
 }

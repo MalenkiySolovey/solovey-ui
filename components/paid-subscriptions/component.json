@@ -11,10 +11,33 @@
     ]
   },
   "database": {
+	"schema": "solovey.durable-resource/v1",
+	"schemaVersion": "1",
+	"migrationVersion": "1",
+	"indexPolicy": "ALL_OWNED_TABLE_INDEXES",
     "tables": [
       "paid_subscription_tariffs",
       "paid_subscription_bindings",
-      "paid_subscription_orders"
-    ]
+	  "paid_subscription_orders"
+	],
+	"settings": [
+	  "paidSubAutoInbounds", "paidSubAutoRegister", "paidSubBotPollSeconds", "paidSubCryptoBotEnabled",
+	  "paidSubCurrency", "paidSubEnabled", "paidSubExternalEnabled", "paidSubExternalUrlTemplate",
+	  "paidSubGreeting", "paidSubMaxClients", "paidSubOrderTTLMinutes", "paidSubOutboundTag",
+	  "paidSubPayMasterEnabled", "paidSubRefundRevoke", "paidSubStarsEnabled", "paidSubStartRateLimitPerMin",
+	  "paidSubStripeEnabled", "paidSubTransportMode", "paidSubTrialDays", "paidSubTrialVolumeGB",
+	  "paidSubUpdateOffset", "paidSubYooKassaEnabled"
+	],
+	"secrets": [
+	  "paidSubBotToken", "paidSubCryptoBotToken", "paidSubPayMasterToken", "paidSubProxyPassword",
+	  "paidSubProxyURL", "paidSubProxyUsername", "paidSubStripeToken", "paidSubYooKassaToken"
+	],
+	"backupCodec": "SQLITE_OWNER_V1",
+	"restoreHook": "MIGRATE_AND_VALIDATE_V1",
+	"dropDataPlan": "OWNER_LIFECYCLE_V1",
+	"dropPostcondition": "DECLARED_RESOURCES_ABSENT_V1",
+	"redactionClass": "SENSITIVE",
+	"portabilityClass": "PORTABLE",
+	"compatibilityRange": {"minimumSchema": "1", "maximumSchema": "1"}
   }
 }

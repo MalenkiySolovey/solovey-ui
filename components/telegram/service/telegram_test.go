@@ -194,6 +194,7 @@ func TestTelegramSOCKS5DialReturnsOnContextCancel(t *testing.T) {
 		_ = conn.Close()
 	}
 	close(stop)
+	_ = listener.Close()
 	waitForTestChannel(t, acceptedDone, time.Second, "slow SOCKS5 server goroutine did not exit")
 	if err == nil {
 		t.Fatal("slow SOCKS5 dial should fail on context timeout")
@@ -298,11 +299,11 @@ func TestNotifyTelegramEventReturnsBeforeSendCompletes(t *testing.T) {
 	sendDone := make(chan struct{})
 	var startedOnce sync.Once
 	var doneOnce sync.Once
-	notifier := integrationtelegram.NewNotifier(integrationtelegram.QueueCapacity, func(string) integrationtelegram.Result {
+	notifier := telegramservice.NewNotifier(telegramservice.QueueCapacity, func(string) telegramservice.Result {
 		startedOnce.Do(func() { close(sendStarted) })
 		<-releaseSend
 		doneOnce.Do(func() { close(sendDone) })
-		return integrationtelegram.Result{Success: true}
+		return telegramservice.Result{Success: true}
 	}, func(string, map[string]any) {})
 	notifier.Backoff = nil
 	stopNotifierAfterTest(t, notifier)
@@ -339,9 +340,9 @@ func TestNotifyTelegramEventRedactsSensitiveFields(t *testing.T) {
 	enableTelegramForTest(t, settingService)
 
 	sent := make(chan string, 1)
-	notifier := integrationtelegram.NewNotifier(integrationtelegram.QueueCapacity, func(text string) integrationtelegram.Result {
+	notifier := telegramservice.NewNotifier(telegramservice.QueueCapacity, func(text string) telegramservice.Result {
 		sent <- text
-		return integrationtelegram.Result{Success: true}
+		return telegramservice.Result{Success: true}
 	}, func(string, map[string]any) {})
 	notifier.Backoff = nil
 	stopNotifierAfterTest(t, notifier)
@@ -368,15 +369,15 @@ func TestTelegramNotifierRetriesAndAuditsFailure(t *testing.T) {
 	}
 	auditCh := make(chan auditRecord, 1)
 	var attempts atomic.Int32
-	notifier := integrationtelegram.NewNotifier(4, func(string) integrationtelegram.Result {
+	notifier := telegramservice.NewNotifier(4, func(string) telegramservice.Result {
 		attempts.Add(1)
-		return integrationtelegram.Result{ErrorClass: "network"}
+		return telegramservice.Result{ErrorClass: "network"}
 	}, func(event string, details map[string]any) {
 		auditCh <- auditRecord{event: event, details: details}
 	})
 	notifier.Backoff = []time.Duration{time.Millisecond, time.Millisecond}
 
-	notifier.Enqueue(integrationtelegram.Notification{Event: "login_failed", Text: "message body"})
+	notifier.Enqueue(telegramservice.Notification{Event: "login_failed", Text: "message body"})
 
 	var record auditRecord
 	select {
@@ -405,15 +406,15 @@ func TestTelegramNotifierStopCancelsBackoffIssue22(t *testing.T) {
 	firstSend := make(chan struct{})
 	var attempts atomic.Int32
 	var firstOnce sync.Once
-	notifier := integrationtelegram.NewNotifier(1, func(string) integrationtelegram.Result {
+	notifier := telegramservice.NewNotifier(1, func(string) telegramservice.Result {
 		if attempts.Add(1) == 1 {
 			firstOnce.Do(func() { close(firstSend) })
 		}
-		return integrationtelegram.Result{ErrorClass: "network"}
+		return telegramservice.Result{ErrorClass: "network"}
 	}, nil)
 	notifier.Backoff = []time.Duration{time.Hour}
 
-	notifier.Enqueue(integrationtelegram.Notification{Event: "issue22", Text: "message"})
+	notifier.Enqueue(telegramservice.Notification{Event: "issue22", Text: "message"})
 	waitForTestChannel(t, firstSend, time.Second, "first telegram send did not start")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -439,22 +440,22 @@ func TestTelegramNotifierDropsOldestAndAuditsOverflow(t *testing.T) {
 	sent := make(chan string, 4)
 	releaseFirst := make(chan struct{})
 	var blockFirst sync.Once
-	notifier := integrationtelegram.NewNotifier(2, func(text string) integrationtelegram.Result {
+	notifier := telegramservice.NewNotifier(2, func(text string) telegramservice.Result {
 		sent <- text
 		blockFirst.Do(func() { <-releaseFirst })
-		return integrationtelegram.Result{Success: true}
+		return telegramservice.Result{Success: true}
 	}, func(event string, details map[string]any) {
 		auditCh <- auditRecord{event: event, details: details}
 	})
 	notifier.Backoff = nil
 
-	notifier.Enqueue(integrationtelegram.Notification{Event: "e1", Text: "e1"})
+	notifier.Enqueue(telegramservice.Notification{Event: "e1", Text: "e1"})
 	if got := receiveString(t, sent, "first send"); got != "e1" {
 		t.Fatalf("unexpected first send: %s", got)
 	}
-	notifier.Enqueue(integrationtelegram.Notification{Event: "e2", Text: "e2"})
-	notifier.Enqueue(integrationtelegram.Notification{Event: "e3", Text: "e3"})
-	notifier.Enqueue(integrationtelegram.Notification{Event: "e4", Text: "e4"})
+	notifier.Enqueue(telegramservice.Notification{Event: "e2", Text: "e2"})
+	notifier.Enqueue(telegramservice.Notification{Event: "e3", Text: "e3"})
+	notifier.Enqueue(telegramservice.Notification{Event: "e4", Text: "e4"})
 
 	var record auditRecord
 	select {
@@ -504,13 +505,13 @@ func enableTelegramForTest(t *testing.T, settingService *coreservice.SettingServ
 
 func TestTelegramNotifierStopIsIdempotentAndRejectsLateEnqueue(t *testing.T) {
 	sent := make(chan string, 2)
-	notifier := integrationtelegram.NewNotifier(10, func(text string) integrationtelegram.Result {
+	notifier := telegramservice.NewNotifier(10, func(text string) telegramservice.Result {
 		sent <- text
-		return integrationtelegram.Result{Success: true}
+		return telegramservice.Result{Success: true}
 	}, nil)
 	notifier.Backoff = nil
 
-	notifier.Enqueue(integrationtelegram.Notification{Event: "before_stop", Text: "before_stop"})
+	notifier.Enqueue(telegramservice.Notification{Event: "before_stop", Text: "before_stop"})
 	if got := receiveString(t, sent, "before stop send"); got != "before_stop" {
 		t.Fatalf("unexpected first send: %s", got)
 	}
@@ -525,7 +526,7 @@ func TestTelegramNotifierStopIsIdempotentAndRejectsLateEnqueue(t *testing.T) {
 		t.Fatal("notifier should be stopped")
 	}
 
-	notifier.Enqueue(integrationtelegram.Notification{Event: "after_stop", Text: "after_stop"})
+	notifier.Enqueue(telegramservice.Notification{Event: "after_stop", Text: "after_stop"})
 	select {
 	case got := <-sent:
 		t.Fatalf("late enqueue delivered after stop: %s", got)
@@ -534,22 +535,22 @@ func TestTelegramNotifierStopIsIdempotentAndRejectsLateEnqueue(t *testing.T) {
 }
 
 func TestTelegramNotifierStopBeforeStartPreventsStart(t *testing.T) {
-	notifier := integrationtelegram.NewNotifier(10, func(string) integrationtelegram.Result {
+	notifier := telegramservice.NewNotifier(10, func(string) telegramservice.Result {
 		t.Fatal("stopped notifier delivered event")
-		return integrationtelegram.Result{Success: true}
+		return telegramservice.Result{Success: true}
 	}, nil)
 
 	if err := notifier.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	notifier.Enqueue(integrationtelegram.Notification{Event: "after_stop", Text: "after_stop"})
+	notifier.Enqueue(telegramservice.Notification{Event: "after_stop", Text: "after_stop"})
 
 	if !notifier.Stopped() || notifier.Started() || notifier.QueueLen() != 0 {
 		t.Fatalf("unexpected notifier state after stop-before-start: started=%v stopped=%v queue=%d", notifier.Started(), notifier.Stopped(), notifier.QueueLen())
 	}
 }
 
-func stopNotifierAfterTest(t *testing.T, notifier *integrationtelegram.Notifier) {
+func stopNotifierAfterTest(t *testing.T, notifier *telegramservice.Notifier) {
 	t.Helper()
 	t.Cleanup(func() {
 		stopCtx, stopCancel := context.WithTimeout(context.Background(), time.Second)

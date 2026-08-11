@@ -30,8 +30,8 @@ jobs:
         with:
           name: audit-dashboard
           path: |
-            tests/baseline/phase8/summary.html
-            tests/baseline/phase8/summary.json
-            tests/baseline/phase8/aggregate.junit.xml
+            tests/baseline/current/summary.html
+            tests/baseline/current/summary.json
+            tests/baseline/current/aggregate.junit.xml
           if-no-files-found: ignore
           retention-days: 30

@@ -21,6 +21,7 @@ import (
 type Bot struct {
 	setting      paidSettings
 	stats        service.StatsService
+	runtime      *service.Runtime
 	payments     *paymentCoordinator
 	client       *http.Client
 	token        string
@@ -36,6 +37,12 @@ func newBot() *Bot {
 	}
 }
 
+func newBotWithRuntime(runtime *service.Runtime) *Bot {
+	bot := newBot()
+	bot.runtime = runtime
+	return bot
+}
+
 func nowUnix() int64 { return time.Now().Unix() }
 
 // ---- lifecycle (package singleton) ----
@@ -47,7 +54,7 @@ var (
 )
 
 // StartBot launches the receiver goroutine if not already running. Idempotent.
-func StartBot() {
+func StartBot(runtime *service.Runtime) {
 	botMu.Lock()
 	defer botMu.Unlock()
 	if botCancel != nil {
@@ -57,7 +64,7 @@ func StartBot() {
 	done := make(chan struct{})
 	botCancel = cancel
 	botDone = done
-	b := newBot()
+	b := newBotWithRuntime(runtime)
 	go b.run(ctx, done)
 }
 

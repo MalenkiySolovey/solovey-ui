@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
@@ -70,7 +71,7 @@ func DropComponentData(ctx context.Context, id string) error {
 	fn := componentDataDropper.fn
 	componentDataDropper.RUnlock()
 	if fn == nil {
-		return nil
+		return errors.New("component data lifecycle owner is unavailable")
 	}
 	return fn(ctx, id)
 }

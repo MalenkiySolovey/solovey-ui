@@ -22,7 +22,7 @@ func NoteSubNotFound(ip string) {
 	}
 	decision := subEnumerationTracker.Add(ip)
 	if decision.Triggered {
-		if hook := SubEnumerationAuditHook; hook != nil {
+		if hook := currentHooks().EnumerationAudit; hook != nil {
 			hook(ip, decision.Count, int(SubEnumWindow.Minutes()))
 		}
 	}

@@ -20,6 +20,8 @@ var internalSettingKeys = settingcatalog.MergeKeySets(
 		settingcatalog.SecretKey,
 		settingcatalog.InstallSaltKey,
 		settingcatalog.SessionGenerationKey,
+		settingcatalog.SessionLifetimePolicyKey,
+		settingcatalog.CoreSchemaVersionKey,
 		settingcatalog.ConfigKey,
 		settingcatalog.VersionKey,
 	),

@@ -3,7 +3,9 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -11,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/components/fallback-html/authority"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	fallbackservice "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/service"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -62,6 +65,24 @@ func TestRoutesCreatePublishAndReportHealth(t *testing.T) {
 	}
 }
 
+func TestValidateAssetUploadMultipartRequiresOneFileOnly(t *testing.T) {
+	valid := &multipart.Form{File: map[string][]*multipart.FileHeader{"file": {{Filename: "asset.png"}}}}
+	if err := validateAssetUploadMultipart(valid); err != nil {
+		t.Fatalf("valid upload rejected: %v", err)
+	}
+	for name, form := range map[string]*multipart.Form{
+		"missing":   {File: map[string][]*multipart.FileHeader{}},
+		"duplicate": {File: map[string][]*multipart.FileHeader{"file": {{Filename: "a"}, {Filename: "b"}}}},
+		"field":     {Value: map[string][]string{"extra": {"x"}}, File: map[string][]*multipart.FileHeader{"file": {{Filename: "a"}}}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateAssetUploadMultipart(form); err == nil {
+				t.Fatal("invalid multipart upload was accepted")
+			}
+		})
+	}
+}
+
 func TestNodeRoutesStayBehindNodeOrchestratorComponent(t *testing.T) {
 	router, _ := newFallbackAPITestRouter(t, true)
 	create := performFallbackAPIRequest(router, http.MethodPost, "/api/components/fallback-html/sites", `{"name":"Public test","enabled":true}`)
@@ -108,9 +129,10 @@ func TestRoutesReturnValidationErrorAndEnforceScope(t *testing.T) {
 	if err := dbsqlite.DB().First(&site).Error; err != nil {
 		t.Fatalf("created site: %v", err)
 	}
-	draft := assertFallbackAPIObj[fallbackservice.SelfStealDraftView](t, performFallbackAPIRequest(router, http.MethodPost, "/api/components/fallback-html/sites/"+uintString(site.ID)+"/self-steal/draft", `{}`))
-	if draft.Status != "blocked" || !draft.Payload.NoApply || draft.Payload.RequiresCapability != "inbound-draft" {
-		t.Fatalf("unexpected self-steal API draft: %#v", draft)
+	providerStatus := assertFallbackAPIObj[ProviderStatusView](t, performFallbackAPIRequest(router, http.MethodGet, "/api/components/fallback-html/sites/"+uintString(site.ID)+"/provider-status", ""))
+	if providerStatus.TargetID != "site:"+uintString(site.ID) || providerStatus.EndpointMode != "UNKNOWN" ||
+		providerStatus.Readiness != "UNKNOWN" || providerStatus.CapacitySlotsTotal != 4 {
+		t.Fatalf("provider status=%#v", providerStatus)
 	}
 	imported := assertFallbackAPIObj[fallbackservice.SiteImportResult](t, performFallbackAPIRequest(router, http.MethodPost, "/api/components/fallback-html/sites/"+uintString(site.ID)+"/import", `{"schema":"solovey-ui/fallback-html-site/v1","pages":[{"path":"/","title":"Imported","body":"Hello"}]}`))
 	if imported.Pages != 1 || imported.SiteID != site.ID {
@@ -132,6 +154,82 @@ func TestRoutesReturnValidationErrorAndEnforceScope(t *testing.T) {
 	if denied.Code != http.StatusForbidden {
 		t.Fatalf("scope denied status = %d, want 403", denied.Code)
 	}
+}
+
+func TestLegacySelfStealRouteIsBoundedGoneAndMakesZeroWrites(t *testing.T) {
+	router, _ := newFallbackAPITestRouter(t, true)
+	db := dbsqlite.DB()
+	if err := authority.EnsureSchema(db); err != nil {
+		t.Fatal(err)
+	}
+	site := fallbackdomain.Site{Name: "Historical", Enabled: true, Status: "draft", CreatedAt: 1, UpdatedAt: 1}
+	if err := db.Create(&site).Error; err != nil {
+		t.Fatal(err)
+	}
+	target := fallbackdomain.RuntimeTarget{SiteID: site.ID, Kind: "standalone", Listen: "127.0.0.1", Port: 8443, Runtime: "gin"}
+	if err := db.Create(&target).Error; err != nil {
+		t.Fatal(err)
+	}
+	before := fallbackMutationCounts(t, db)
+	path := "/api/components/fallback-html/sites/" + uintString(site.ID) + "/self-steal/draft"
+	valid := performFallbackAPIRequest(router, http.MethodPost, path, `{"profile":"vless-reality","privateKey":"do-not-echo","path":"/private/path"}`)
+	malformed := performFallbackAPIRequest(router, http.MethodPost, path, `{`)
+	repeated := performFallbackAPIRequest(router, http.MethodPost, path, `{`)
+	for _, response := range []*httptest.ResponseRecorder{valid, malformed, repeated} {
+		decoded := decodeFallbackAPIResponse(t, response)
+		if response.Code != http.StatusGone || decoded.Success || decoded.Msg != legacySelfStealRetiredCode {
+			t.Fatalf("tombstone response=%d %#v body=%s", response.Code, decoded, response.Body.String())
+		}
+		for _, forbidden := range []string{"do-not-echo", "/private/path", "privateKey"} {
+			if strings.Contains(response.Body.String(), forbidden) {
+				t.Fatalf("tombstone leaked %q: %s", forbidden, response.Body.String())
+			}
+		}
+	}
+	if malformed.Body.String() != repeated.Body.String() || valid.Body.String() != malformed.Body.String() {
+		t.Fatalf("tombstone response is not deterministic: valid=%s malformed=%s repeated=%s", valid.Body, malformed.Body, repeated.Body)
+	}
+	if after := fallbackMutationCounts(t, db); after != before {
+		t.Fatalf("legacy tombstone mutated database: before=%#v after=%#v", before, after)
+	}
+	if response := performFallbackAPIRequest(router, http.MethodGet, path, ""); response.Code != http.StatusNotFound {
+		t.Fatalf("unsupported method status=%d, want 404", response.Code)
+	}
+	deniedRouter, _ := newFallbackAPITestRouter(t, false)
+	if response := performFallbackAPIRequest(deniedRouter, http.MethodPost, path, `{}`); response.Code != http.StatusForbidden {
+		t.Fatalf("scope denial status=%d, want 403", response.Code)
+	}
+	oversized := performFallbackAPIRequest(router, http.MethodPost, path, strings.Repeat("x", legacySelfStealBodyLimit+1))
+	if oversized.Code != http.StatusRequestEntityTooLarge || strings.Contains(oversized.Body.String(), strings.Repeat("x", 32)) {
+		t.Fatalf("oversized body response=%d %s", oversized.Code, oversized.Body.String())
+	}
+}
+
+type mutationCounts struct {
+	HistoricalDrafts int64
+	CoreDrafts       int64
+	Targets          int64
+	TLSRows          int64
+	Inbounds         int64
+	Reservations     int64
+}
+
+func fallbackMutationCounts(t *testing.T, db *gorm.DB) mutationCounts {
+	t.Helper()
+	var result mutationCounts
+	for modelValue, destination := range map[any]*int64{
+		&fallbackdomain.SelfStealDraft{}: &result.HistoricalDrafts,
+		&model.InboundDraft{}:            &result.CoreDrafts,
+		&fallbackdomain.RuntimeTarget{}:  &result.Targets,
+		&model.Tls{}:                     &result.TLSRows,
+		&model.Inbound{}:                 &result.Inbounds,
+		&authority.ReservationModel{}:    &result.Reservations,
+	} {
+		if err := db.Model(modelValue).Count(destination).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	return result
 }
 
 func TestCreateSiteFromTemplateRoute(t *testing.T) {
@@ -160,6 +258,13 @@ func newFallbackAPITestRouter(t *testing.T, allowed bool) (*gin.Engine, *fallbac
 	router := gin.New()
 	RegisterRoutes(router.Group("/api"), Deps{
 		Service: service,
+		ProviderStatus: func(_ context.Context, siteID uint) (ProviderStatusView, error) {
+			return ProviderStatusView{
+				TargetID: siteIDString(siteID), EndpointMode: "UNKNOWN", Readiness: "UNKNOWN",
+				HealthFreshness: "UNKNOWN", CapacityState: "UNKNOWN", CapacitySlotsTotal: 4,
+				Reservations: []ProviderReservationStateView{}, ReasonCodes: []string{"target_not_published_or_ready"},
+			}, nil
+		},
 		RequireScope: func(c *gin.Context, _ string, _ ...string) bool {
 			if allowed {
 				return true
@@ -184,6 +289,10 @@ func newFallbackAPITestRouter(t *testing.T, allowed bool) (*gin.Engine, *fallbac
 		},
 	})
 	return router, service
+}
+
+func siteIDString(siteID uint) string {
+	return "site:" + strconv.FormatUint(uint64(siteID), 10)
 }
 
 func openFallbackAPITestDB(t *testing.T) *gorm.DB {

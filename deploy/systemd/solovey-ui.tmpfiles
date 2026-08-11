@@ -1,0 +1,11 @@
+d /run/solovey-ui 0750 root solovey-ui -
+d /var/lib/solovey-ui 0750 solovey-ui solovey-ui -
+d /var/lib/solovey-ui/db 0700 solovey-ui solovey-ui -
+d /var/lib/solovey-ui/cert 0700 solovey-ui solovey-ui -
+d /var/lib/solovey-ui-broker 0700 root root -
+d /usr/local/solovey-ui/.runtime 0750 solovey-ui solovey-ui -
+d /usr/local/solovey-ui/cert 0700 solovey-ui solovey-ui -
+d /usr/local/solovey-ui/.runtime/server-protection 0700 solovey-ui solovey-ui -
+d /usr/local/solovey-ui/.runtime/server-protection/revisions 0700 solovey-ui solovey-ui -
+d /usr/local/solovey-ui/.runtime/server-protection/operations 0700 solovey-ui solovey-ui -
+d /usr/local/solovey-ui/.runtime/server-protection/recovery 0700 solovey-ui solovey-ui -

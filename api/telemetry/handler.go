@@ -104,13 +104,6 @@ func RegisterCoreRoutes(g *gin.RouterGroup, deps Deps) {
 	ipMonitor.POST("/:client/clear", h.ClearClientIPHistory)
 }
 
-// RegisterRoutes preserves the legacy core telemetry registration for package
-// tests and local callers. Optional telemetry surfaces are registered by their
-// owning components through the component route registry.
-func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
-	RegisterCoreRoutes(g, deps)
-}
-
 type Envelope struct {
 	Success bool        `json:"success"`
 	Msg     string      `json:"msg"`

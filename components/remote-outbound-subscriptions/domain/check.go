@@ -5,7 +5,6 @@ package remote
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"strings"
 	"sync"
 	"time"
@@ -78,7 +77,7 @@ func CheckConnectionRecordsWithDB(ctx context.Context, db *gorm.DB, connections 
 				results[index] = CheckResult{
 					ConnectionId: item.Id,
 					OutboundTag:  item.OutboundTag,
-					Error:        ctx.Err().Error(),
+					Error:        coreruntime.ClassifyOutboundCheckError(ctx.Err()),
 				}
 				return
 			}
@@ -116,12 +115,12 @@ func CheckConnectionWithTempCore(ctx context.Context, connection RemoteOutboundC
 func CheckConnectionWithTempCoreDB(ctx context.Context, db *gorm.DB, connection RemoteOutboundConnection, target string) (result coreruntime.CheckOutboundResult) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
-			result = coreruntime.CheckOutboundResult{Error: fmt.Sprintf("temporary core check failed: %v", recovered)}
+			result = coreruntime.CheckOutboundResult{Error: coreruntime.CheckOutboundErrorFailed}
 		}
 	}()
 	checkConfig, err := checkTempCoreConfig(db, connection)
 	if err != nil {
-		return coreruntime.CheckOutboundResult{Error: err.Error()}
+		return coreruntime.CheckOutboundResult{Error: coreruntime.ClassifyOutboundCheckError(err)}
 	}
 	config, err := json.Marshal(map[string]any{
 		"log": map[string]any{
@@ -130,14 +129,14 @@ func CheckConnectionWithTempCoreDB(ctx context.Context, db *gorm.DB, connection 
 		"outbounds": checkConfig.Outbounds,
 	})
 	if err != nil {
-		return coreruntime.CheckOutboundResult{Error: err.Error()}
+		return coreruntime.CheckOutboundResult{Error: coreruntime.ClassifyOutboundCheckError(err)}
 	}
 	instance := coreruntime.NewCore()
 	defer func() {
 		_ = instance.Stop()
 	}()
 	if err := instance.Start(config); err != nil {
-		return coreruntime.CheckOutboundResult{Error: err.Error()}
+		return coreruntime.CheckOutboundResult{Error: coreruntime.ClassifyOutboundCheckError(err)}
 	}
 	return checkTempCoreOutboundTags(ctx, instance, checkConfig.CheckTags, target)
 }
@@ -184,7 +183,7 @@ func checkTempCoreConfig(db *gorm.DB, connection RemoteOutboundConnection) (temp
 func checkTempCoreOutboundTags(ctx context.Context, instance *coreruntime.Core, tags []string, target string) coreruntime.CheckOutboundResult {
 	tags = uniqueCheckTags(tags)
 	if len(tags) == 0 {
-		return coreruntime.CheckOutboundResult{Error: "outbound tag is empty"}
+		return coreruntime.CheckOutboundResult{Error: coreruntime.CheckOutboundErrorInvalidRequest}
 	}
 	if len(tags) == 1 {
 		return instance.CheckOutbound(ctx, tags[0], target)
@@ -205,7 +204,7 @@ func checkTempCoreOutboundTags(ctx context.Context, instance *coreruntime.Core, 
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
 			case <-ctx.Done():
-				results <- tagResult{tag: outboundTag, result: coreruntime.CheckOutboundResult{Error: ctx.Err().Error()}}
+				results <- tagResult{tag: outboundTag, result: coreruntime.CheckOutboundResult{Error: coreruntime.ClassifyOutboundCheckError(ctx.Err())}}
 				return
 			}
 			results <- tagResult{tag: outboundTag, result: instance.CheckOutbound(ctx, outboundTag, target)}
@@ -215,7 +214,6 @@ func checkTempCoreOutboundTags(ctx context.Context, instance *coreruntime.Core, 
 	close(results)
 
 	var best coreruntime.CheckOutboundResult
-	errors := make([]string, 0, len(tags))
 	for item := range results {
 		if item.result.OK {
 			if !best.OK || item.result.Delay < best.Delay {
@@ -223,17 +221,11 @@ func checkTempCoreOutboundTags(ctx context.Context, instance *coreruntime.Core, 
 			}
 			continue
 		}
-		if message := strings.TrimSpace(item.result.Error); message != "" {
-			errors = append(errors, fmt.Sprintf("%s: %s", item.tag, message))
-		}
 	}
 	if best.OK {
 		return best
 	}
-	if len(errors) == 0 {
-		return coreruntime.CheckOutboundResult{Error: "all group members failed"}
-	}
-	return coreruntime.CheckOutboundResult{Error: "all group members failed: " + strings.Join(errors, "; ")}
+	return coreruntime.CheckOutboundResult{Error: "outbound_group_failed"}
 }
 func uniqueCheckTags(tags []string) []string {
 	result := make([]string, 0, len(tags))
@@ -250,13 +242,6 @@ func uniqueCheckTags(tags []string) []string {
 		result = append(result, tag)
 	}
 	return result
-}
-func checkConnectionOutboundConfig(connection RemoteOutboundConnection, tagMap map[string]string) (json.RawMessage, error) {
-	outbounds, err := checkConnectionOutboundConfigs(connection, tagMap)
-	if err != nil {
-		return nil, err
-	}
-	return outbounds[len(outbounds)-1], nil
 }
 func checkConnectionOutboundConfigs(connection RemoteOutboundConnection, tagMap map[string]string) ([]json.RawMessage, error) {
 	outbound, err := ConnectionOutboundConfig(connection)

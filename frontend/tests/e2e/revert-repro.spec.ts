@@ -11,7 +11,7 @@ import { readServerState } from './helpers'
 // now SURVIVES a real server-side config change, while that change still reaches the store, and
 // that Save still works afterwards.
 
-const OUT = path.join(process.cwd(), '..', 'tests', 'baseline', 'phase6', 'revert-repro')
+const OUT = path.join(process.cwd(), '..', 'tests', 'baseline', 'e2e', 'revert-repro')
 const xrw = { 'X-Requested-With': 'XMLHttpRequest' }
 
 // Credentials come from run-server.js's generated state.json (the per-run admin password), with a

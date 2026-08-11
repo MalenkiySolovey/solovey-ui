@@ -23,12 +23,27 @@ func (s *AuditService) backend() auditsvc.Service {
 	}
 	return auditsvc.New(func(event model.AuditEvent) {
 		writeAuditRuntime(runtime.audit(), event)
-	})
+	}, runtime.auditDenialAggregator())
+}
+
+func (s *AuditService) ResetDenialAggregation() {
+	runtime := DefaultRuntime()
+	if s != nil {
+		runtime = runtimeOrDefault(s.Runtime)
+	}
+	if aggregator := runtime.auditDenialAggregator(); aggregator != nil {
+		aggregator.Reset()
+	}
 }
 
 func (s *AuditService) Record(event AuditEvent) error {
 	backend := s.backend()
 	return backend.Record(auditsvc.Event(event), false)
+}
+
+func (s *AuditService) RecordSynchronous(event AuditEvent) error {
+	backend := s.backend()
+	return backend.Record(auditsvc.Event(event), true)
 }
 
 func (s *AuditService) RecordListenFallback(component, requestedAddr, fallbackAddr string, bindErr error) error {

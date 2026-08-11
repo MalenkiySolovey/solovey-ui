@@ -3,11 +3,13 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"time"
 
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/MalenkiySolovey/solovey-ui/util/redact"
 )
@@ -20,9 +22,11 @@ type ConfigService struct {
 	OutboundService
 	ServicesService
 	EndpointService
-	Runtime           *Runtime
-	coreObjectApplier singboxapply.ObjectApplier
-	coreLifecycle     configCoreLifecycle
+	Runtime              *Runtime
+	coreObjectApplier    singboxapply.ObjectApplier
+	coreLifecycle        configCoreLifecycle
+	coreInboundControlMu sync.Mutex
+	coreInboundControl   *coreinboundcontrol.Service
 }
 
 type SingBoxConfig struct {
@@ -173,22 +177,22 @@ func (s *ConfigService) IsCoreRunning() bool {
 
 func (s *ConfigService) CheckOutbound(tag string, link string) coreruntime.CheckOutboundResult {
 	if tag == "" {
-		return coreruntime.CheckOutboundResult{Error: "missing query parameter: tag"}
+		return coreruntime.CheckOutboundResult{Error: coreruntime.CheckOutboundErrorInvalidRequest}
 	}
 	coreInstance := s.coreInstance()
 	if coreInstance == nil || !coreInstance.IsRunning() {
-		return coreruntime.CheckOutboundResult{Error: "core not running"}
+		return coreruntime.CheckOutboundResult{Error: coreruntime.CheckOutboundErrorCoreUnavailable}
 	}
 	return coreInstance.CheckOutbound(coreInstance.GetCtx(), tag, link)
 }
 
 func (s *ConfigService) CheckOutboundWithContext(ctx context.Context, tag string, link string) coreruntime.CheckOutboundResult {
 	if tag == "" {
-		return coreruntime.CheckOutboundResult{Error: "missing query parameter: tag"}
+		return coreruntime.CheckOutboundResult{Error: coreruntime.CheckOutboundErrorInvalidRequest}
 	}
 	coreInstance := s.coreInstance()
 	if coreInstance == nil || !coreInstance.IsRunning() {
-		return coreruntime.CheckOutboundResult{Error: "core not running"}
+		return coreruntime.CheckOutboundResult{Error: coreruntime.CheckOutboundErrorCoreUnavailable}
 	}
 	return coreInstance.CheckOutbound(ctx, tag, link)
 }

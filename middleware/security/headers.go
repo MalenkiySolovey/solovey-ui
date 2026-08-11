@@ -68,10 +68,6 @@ func Subscriptions() gin.HandlerFunc {
 	}
 }
 
-func SetPublicSiteHeaders(c *gin.Context) {
-	SetPublicSiteHeadersWithCSP(c, "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; img-src 'self' data:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'none'; connect-src 'none'; frame-src 'none'; form-action 'self'")
-}
-
 func SetPublicSiteHeadersWithCSP(c *gin.Context, csp string) {
 	h := c.Writer.Header()
 	h.Set("X-Content-Type-Options", "nosniff")

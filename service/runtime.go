@@ -2,15 +2,16 @@ package service
 
 import (
 	"context"
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
+	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/restart"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
+	auditsvc "github.com/MalenkiySolovey/solovey-ui/service/audit"
 )
 
 const defaultCoreStartCooldown = 15 * time.Second
@@ -57,6 +58,7 @@ type Runtime struct {
 	restartManager *restart.Manager
 	lastUpdate     *LastUpdateStore
 	auditWriter    *auditWriter
+	auditDenials   *auditsvc.DenialAggregator
 	tokenUse       *tokenUseDebouncer
 
 	coreStartCooldown time.Duration
@@ -75,6 +77,7 @@ func NewRuntimeWithCoreProvider(provider CoreProvider) *Runtime {
 		restartManager:    restart.NewManager(restartSignalDelay, signalCurrentProcess),
 		lastUpdate:        NewLastUpdateStore(),
 		auditWriter:       newAuditWriter(auditQueueCapacity, auditBatchSize, auditFlushInterval, writeAuditEvents),
+		auditDenials:      auditsvc.NewDenialAggregator(auditsvc.DefaultDenialAggregationWindow, auditsvc.DefaultDenialAggregationKeys),
 		tokenUse:          newTokenUseDebouncer(tokenUseFlushInterval, flushTokenUseUpdates),
 		coreStartCooldown: defaultCoreStartCooldown,
 	}
@@ -149,6 +152,16 @@ func (r *Runtime) audit() *auditWriter {
 	writer := r.auditWriter
 	r.mu.RUnlock()
 	return writer
+}
+
+func (r *Runtime) auditDenialAggregator() *auditsvc.DenialAggregator {
+	if r == nil {
+		return nil
+	}
+	r.mu.RLock()
+	aggregator := r.auditDenials
+	r.mu.RUnlock()
+	return aggregator
 }
 
 func (r *Runtime) replaceAuditWriterIfCurrent(current *auditWriter) {

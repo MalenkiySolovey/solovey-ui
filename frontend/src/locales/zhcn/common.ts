@@ -100,6 +100,8 @@
     "basics": "基础信息",
     "dns": "DNS",
     "admins": "管理员",
+    "security": "Account security",
+    "securityTransition": "Security verification",
     "settings": "设置",
     "support": "支持项目"
   },

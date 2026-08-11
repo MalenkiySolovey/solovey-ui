@@ -18,7 +18,7 @@ import (
 
 func initSettingTestDB(t *testing.T) *SettingService {
 	t.Helper()
-	registerSettingsPayloadContributionsForTest(t)
+	registerFixtureSettingContributionsForTest(t)
 	t.Setenv("SUI_DB_FOLDER", t.TempDir())
 	if err := dbsqlite.Init(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
@@ -51,7 +51,7 @@ func TestSecretSettingIsEncryptedAndMasked(t *testing.T) {
 	}
 
 	payload, err := json.Marshal(map[string]string{
-		"telegramBotToken": "123456:secret-token",
+		"fixturePrimaryBotToken": "123456:secret-token",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -63,14 +63,14 @@ func TestSecretSettingIsEncryptedAndMasked(t *testing.T) {
 	}
 
 	var setting model.Setting
-	if err := dbsqlite.DB().Where("key = ?", "telegramBotToken").First(&setting).Error; err != nil {
+	if err := dbsqlite.DB().Where("key = ?", "fixturePrimaryBotToken").First(&setting).Error; err != nil {
 		t.Fatal(err)
 	}
 	if setting.Value == "123456:secret-token" || !secretbox.IsEncrypted(setting.Value) {
 		t.Fatalf("secret setting was not encrypted: %q", setting.Value)
 	}
 
-	decrypted, err := settingService.getString("telegramBotToken")
+	decrypted, err := settingService.getString("fixturePrimaryBotToken")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -82,15 +82,15 @@ func TestSecretSettingIsEncryptedAndMasked(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := (*settings)["telegramBotToken"]; ok {
-		t.Fatal("raw telegramBotToken leaked through settings API")
+	if _, ok := (*settings)["fixturePrimaryBotToken"]; ok {
+		t.Fatal("raw fixturePrimaryBotToken leaked through settings API")
 	}
-	if (*settings)["telegramBotTokenHasSecret"] != "true" {
-		t.Fatalf("expected has-secret marker, got %q", (*settings)["telegramBotTokenHasSecret"])
+	if (*settings)["fixturePrimaryBotTokenHasSecret"] != "true" {
+		t.Fatalf("expected has-secret marker, got %q", (*settings)["fixturePrimaryBotTokenHasSecret"])
 	}
 
 	emptyPayload, err := json.Marshal(map[string]string{
-		"telegramBotToken": "",
+		"fixturePrimaryBotToken": "",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -100,7 +100,7 @@ func TestSecretSettingIsEncryptedAndMasked(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	afterEmpty, err := settingService.getString("telegramBotToken")
+	afterEmpty, err := settingService.getString("fixturePrimaryBotToken")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -115,11 +115,11 @@ func TestLegacyPlaintextSecretRoundTripEncryptsOnSave(t *testing.T) {
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
-	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "telegramProxyPassword").Update("value", "legacy-plain-secret").Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "fixturePrimaryProxyPassword").Update("value", "legacy-plain-secret").Error; err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := settingService.getString("telegramProxyPassword")
+	got, err := settingService.getString("fixturePrimaryProxyPassword")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -128,7 +128,7 @@ func TestLegacyPlaintextSecretRoundTripEncryptsOnSave(t *testing.T) {
 	}
 
 	payload, err := json.Marshal(map[string]string{
-		"telegramProxyPassword": got,
+		"fixturePrimaryProxyPassword": got,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -140,13 +140,13 @@ func TestLegacyPlaintextSecretRoundTripEncryptsOnSave(t *testing.T) {
 	}
 
 	var stored model.Setting
-	if err := dbsqlite.DB().Where("key = ?", "telegramProxyPassword").First(&stored).Error; err != nil {
+	if err := dbsqlite.DB().Where("key = ?", "fixturePrimaryProxyPassword").First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
 	if stored.Value == got || !secretbox.IsEncrypted(stored.Value) {
 		t.Fatalf("legacy plaintext secret was not encrypted on save: %q", stored.Value)
 	}
-	after, err := settingService.getString("telegramProxyPassword")
+	after, err := settingService.getString("fixturePrimaryProxyPassword")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -155,21 +155,21 @@ func TestLegacyPlaintextSecretRoundTripEncryptsOnSave(t *testing.T) {
 	}
 }
 
-func TestTelegramBackupPassphraseEncryptedMaskedAndClearable(t *testing.T) {
+func TestComponentBackupPassphraseEncryptedMaskedAndClearable(t *testing.T) {
 	t.Setenv("SUI_SECRETBOX_KEY", encodedTestSecretboxKey())
 	settingService := initSettingTestDB(t)
-	registerTelegramBackupPassphraseAuditObserverForTest(t)
+	registerFixtureBackupPassphraseAuditObserverForTest(t)
 
 	settings, err := settingService.GetAllSetting()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if (*settings)["telegramBackupPassphrase"] != "" || (*settings)["telegramBackupPassphraseHasSecret"] != "false" {
+	if (*settings)["fixturePrimaryBackupPassphrase"] != "" || (*settings)["fixturePrimaryBackupPassphraseHasSecret"] != "false" {
 		t.Fatalf("unexpected default passphrase markers: %#v", *settings)
 	}
 
 	weakPayload, err := json.Marshal(map[string]string{
-		"telegramBackupPassphrase": "too-short",
+		"fixturePrimaryBackupPassphrase": "too-short",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -182,7 +182,7 @@ func TestTelegramBackupPassphraseEncryptedMaskedAndClearable(t *testing.T) {
 
 	passphrase := "correct horse battery staple"
 	payload, err := json.Marshal(map[string]string{
-		"telegramBackupPassphrase": passphrase,
+		"fixturePrimaryBackupPassphrase": passphrase,
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -191,13 +191,13 @@ func TestTelegramBackupPassphraseEncryptedMaskedAndClearable(t *testing.T) {
 		t.Fatal(err)
 	}
 	var stored model.Setting
-	if err := dbsqlite.DB().Where("key = ?", "telegramBackupPassphrase").First(&stored).Error; err != nil {
+	if err := dbsqlite.DB().Where("key = ?", "fixturePrimaryBackupPassphrase").First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
 	if stored.Value == passphrase || !secretbox.IsEncrypted(stored.Value) {
 		t.Fatalf("backup passphrase was not encrypted: %q", stored.Value)
 	}
-	decrypted, err := settingService.GetComponentSettingSecretBytes(testTelegramBackupPassphraseKey)
+	decrypted, err := settingService.GetComponentSettingSecretBytes(testFixturePrimaryBackupPassphraseKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,13 +210,13 @@ func TestTelegramBackupPassphraseEncryptedMaskedAndClearable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if (*settings)["telegramBackupPassphrase"] != StoredSecretMarker || (*settings)["telegramBackupPassphraseHasSecret"] != "true" {
+	if (*settings)["fixturePrimaryBackupPassphrase"] != StoredSecretMarker || (*settings)["fixturePrimaryBackupPassphraseHasSecret"] != "true" {
 		t.Fatalf("passphrase was not masked: %#v", *settings)
 	}
 
 	flushAuditForTest(t)
 	var event model.AuditEvent
-	if err := dbsqlite.DB().Where("event = ?", "tg_backup_passphrase_changed").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "fixture_backup_passphrase_changed").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	if event.Actor != "admin" || event.Severity != AuditSeverityInfo || strings.Contains(string(event.Details), passphrase) {
@@ -224,7 +224,7 @@ func TestTelegramBackupPassphraseEncryptedMaskedAndClearable(t *testing.T) {
 	}
 
 	clearPayload, err := json.Marshal(map[string]string{
-		"telegramBackupPassphrase": "",
+		"fixturePrimaryBackupPassphrase": "",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -232,7 +232,7 @@ func TestTelegramBackupPassphraseEncryptedMaskedAndClearable(t *testing.T) {
 	if _, err := (&ConfigService{}).Save("settings", "set", clearPayload, "", "admin", "localhost"); err != nil {
 		t.Fatal(err)
 	}
-	decrypted, err = settingService.GetComponentSettingSecretBytes(testTelegramBackupPassphraseKey)
+	decrypted, err = settingService.GetComponentSettingSecretBytes(testFixturePrimaryBackupPassphraseKey)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -241,10 +241,10 @@ func TestTelegramBackupPassphraseEncryptedMaskedAndClearable(t *testing.T) {
 	}
 }
 
-func registerTelegramBackupPassphraseAuditObserverForTest(t *testing.T) {
+func registerFixtureBackupPassphraseAuditObserverForTest(t *testing.T) {
 	t.Helper()
 	resetConfigSaveObserversForTest()
-	unregister := RegisterConfigSaveObserver("test.telegram", func(ctx ConfigSaveObserverContext) (ConfigSaveAfterCommit, error) {
+	unregister := RegisterConfigSaveObserver("test.fixture-primary", func(ctx ConfigSaveObserverContext) (ConfigSaveAfterCommit, error) {
 		if ctx.Object != "settings" {
 			return nil, nil
 		}
@@ -252,11 +252,11 @@ func registerTelegramBackupPassphraseAuditObserverForTest(t *testing.T) {
 		if err := json.Unmarshal(ctx.Data, &settings); err != nil {
 			return nil, err
 		}
-		newPassphrase, ok := settings[testTelegramBackupPassphraseKey]
+		newPassphrase, ok := settings[testFixturePrimaryBackupPassphraseKey]
 		if !ok || newPassphrase == StoredSecretMarker {
 			return nil, nil
 		}
-		oldPassphrase, err := (&SettingService{}).GetComponentSettingSecretBytes(testTelegramBackupPassphraseKey)
+		oldPassphrase, err := (&SettingService{}).GetComponentSettingSecretBytes(testFixturePrimaryBackupPassphraseKey)
 		if err != nil {
 			return nil, err
 		}
@@ -268,7 +268,7 @@ func registerTelegramBackupPassphraseAuditObserverForTest(t *testing.T) {
 		return func() {
 			_ = (&AuditService{}).Record(AuditEvent{
 				Actor:    ctx.LoginUser,
-				Event:    "tg_backup_passphrase_changed",
+				Event:    "fixture_backup_passphrase_changed",
 				Resource: "database",
 				Severity: AuditSeverityInfo,
 				Details: map[string]any{
@@ -385,14 +385,14 @@ func TestInvalidSecretboxEnvFallsBackToSettingsSecret(t *testing.T) {
 	t.Setenv("SUI_SECRETBOX_KEY", "short")
 	settingService := initSettingTestDB(t)
 
-	encrypted, err := settingService.encryptSettingValue("telegramBotToken", "fallback-secret")
+	encrypted, err := settingService.encryptSettingValue("fixturePrimaryBotToken", "fallback-secret")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !secretbox.IsEncrypted(encrypted) {
 		t.Fatalf("expected encrypted value, got %q", encrypted)
 	}
-	decrypted, err := settingService.decryptSettingValue("telegramBotToken", encrypted)
+	decrypted, err := settingService.decryptSettingValue("fixturePrimaryBotToken", encrypted)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -414,7 +414,7 @@ func TestSecretboxUsesEnvRawKeyOverride(t *testing.T) {
 	t.Setenv("SUI_SECRETBOX_KEY", base64.RawURLEncoding.EncodeToString(rawKey))
 	settingService := initSettingTestDB(t)
 
-	encrypted, err := settingService.encryptSettingValue("telegramBotToken", "env-secret")
+	encrypted, err := settingService.encryptSettingValue("fixturePrimaryBotToken", "env-secret")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -422,7 +422,7 @@ func TestSecretboxUsesEnvRawKeyOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	decrypted, err := rawBox.DecryptString(encrypted, "telegramBotToken")
+	decrypted, err := rawBox.DecryptString(encrypted, "fixturePrimaryBotToken")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -434,7 +434,7 @@ func TestSecretboxUsesEnvRawKeyOverride(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := legacyBox.DecryptString(encrypted, "telegramBotToken"); err == nil {
+	if _, err := legacyBox.DecryptString(encrypted, "fixturePrimaryBotToken"); err == nil {
 		t.Fatal("env raw-key ciphertext should not decrypt with legacy HKDF constructor")
 	}
 }
@@ -452,15 +452,15 @@ func TestSecretboxLegacyFallbackAudits(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacyValue, err := legacyBox.EncryptString("legacy-secret", "telegramBotToken")
+	legacyValue, err := legacyBox.EncryptString("legacy-secret", "fixturePrimaryBotToken")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "telegramBotToken").Update("value", legacyValue).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "fixturePrimaryBotToken").Update("value", legacyValue).Error; err != nil {
 		t.Fatal(err)
 	}
 
-	got, err := settingService.getString("telegramBotToken")
+	got, err := settingService.getString("fixturePrimaryBotToken")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -476,7 +476,7 @@ func TestSecretboxLegacyFallbackAudits(t *testing.T) {
 	if event.Resource != "settings" || event.Severity != AuditSeverityWarn {
 		t.Fatalf("unexpected fallback audit event: %#v", event)
 	}
-	if !strings.Contains(string(event.Details), `"key":"telegramBotToken"`) ||
+	if !strings.Contains(string(event.Details), `"key":"fixturePrimaryBotToken"`) ||
 		!strings.Contains(string(event.Details), `"candidate":"legacy_settings_secret"`) {
 		t.Fatalf("unexpected fallback audit details: %s", event.Details)
 	}
@@ -498,16 +498,16 @@ func TestSecretboxEnvOverrideCanReadSettingsSecretLegacyCiphertext(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacyValue, err := legacyBox.EncryptString("legacy-before-env", "telegramProxyPassword")
+	legacyValue, err := legacyBox.EncryptString("legacy-before-env", "fixturePrimaryProxyPassword")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "telegramProxyPassword").Update("value", legacyValue).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "fixturePrimaryProxyPassword").Update("value", legacyValue).Error; err != nil {
 		t.Fatal(err)
 	}
 
 	t.Setenv("SUI_SECRETBOX_KEY", encodedTestSecretboxKey())
-	got, err := settingService.getString("telegramProxyPassword")
+	got, err := settingService.getString("fixturePrimaryProxyPassword")
 	if err != nil {
 		t.Fatal(err)
 	}

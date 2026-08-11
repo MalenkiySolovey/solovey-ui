@@ -178,6 +178,10 @@ set -Eeuo pipefail
 
 printf '%s\n' "$*" >> "${TEST_INSTALLER_LOG}/systemctl.log"
 case "${1:-}" in
+    --version)
+		echo "systemd ${TEST_SYSTEMD_VERSION:-255} (${TEST_SYSTEMD_VERSION:-255}.1-test)"
+        exit 0
+        ;;
     list-unit-files)
         [[ -f "${TEST_SERVICE_FILE}" ]] && exit 0
         exit 1
@@ -192,18 +196,18 @@ case "${1:-}" in
 esac
 SH
 
-    cat > "${FAKEBIN}/ln" <<'SH'
+	for tool in systemd-sysusers systemd-tmpfiles chown; do
+		cat > "${FAKEBIN}/${tool}" <<'SH'
+#!/usr/bin/env bash
+exit 0
+SH
+	done
+	cat > "${FAKEBIN}/runuser" <<'SH'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-
-if [[ "${1:-}" == "-sf" ]]; then
-    cp "$2" "$3"
-    chmod +x "$3"
-    exit 0
-fi
-
-echo "unexpected fake ln invocation: $*" >&2
-exit 2
+while [[ $# -gt 0 && "$1" != "--" ]]; do shift; done
+[[ "${1:-}" == "--" ]] && shift
+exec "$@"
 SH
 
     cat > "${FAKEBIN}/df" <<'SH'
@@ -236,7 +240,8 @@ fi
 exec /usr/bin/cp "$@"
 SH
 
-    chmod +x "${FAKEBIN}/curl" "${FAKEBIN}/systemctl" "${FAKEBIN}/ln" "${FAKEBIN}/df" "${FAKEBIN}/cp"
+    chmod +x "${FAKEBIN}/curl" "${FAKEBIN}/systemctl" "${FAKEBIN}/df" "${FAKEBIN}/cp" \
+		"${FAKEBIN}/systemd-sysusers" "${FAKEBIN}/systemd-tmpfiles" "${FAKEBIN}/chown" "${FAKEBIN}/runuser"
 }
 
 create_release_fixture() {
@@ -269,7 +274,20 @@ SH
         printf 'sing_box=v-test-%s\n' "${version}"
     } > "${release_dir}/BUILD_INFO.txt"
     printf 'service %s\n' "${version}" > "${release_dir}/solovey-ui.service"
-    chmod +x "${release_dir}/solovey-ui" "${release_dir}/solovey-ui.sh"
+	for name in solovey-privileged-broker solovey-ssh-proof solovey-broker-manifest; do
+		cat > "${release_dir}/${name}" <<SH
+#!/usr/bin/env bash
+printf '%s\n' "${version}:${name}" >> "\${TEST_INSTALLER_LOG}/binary.log"
+exit 0
+SH
+	done
+	mkdir -p "${release_dir}/systemd"
+	for unit in solovey-ui-native-hardened.service solovey-ui-native-network-advanced.service solovey-ui-native-legacy-root.service \
+		solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket solovey-ui.sysusers solovey-ui.tmpfiles; do
+		printf 'deployment asset %s %s\n' "${version}" "${unit}" > "${release_dir}/systemd/${unit}"
+	done
+    chmod +x "${release_dir}/solovey-ui" "${release_dir}/solovey-ui.sh" "${release_dir}/solovey-privileged-broker" \
+		"${release_dir}/solovey-ssh-proof" "${release_dir}/solovey-broker-manifest"
 
     tar -czf "${artifact}" -C "${release_root}" solovey-ui
     (cd "${release_root}" && sha256sum "$(basename "${artifact}")" > "$(basename "${artifact}").sha256")
@@ -314,12 +332,17 @@ run_installer() {
     TEST_BINARY_FAIL_MIGRATE="${TEST_BINARY_FAIL_MIGRATE:-0}" \
     TEST_BACKUP_LOW_SPACE="${TEST_BACKUP_LOW_SPACE:-0}" \
     TEST_FAIL_INSTALL_RESTORE_CP="${TEST_FAIL_INSTALL_RESTORE_CP:-0}" \
+	TEST_SYSTEMD_VERSION="${TEST_SYSTEMD_VERSION:-255}" \
     TEST_SERVICE_FILE="${SERVICE_FILE}" \
     SOLOVEY_UI_ALLOW_NON_ROOT=1 \
     SOLOVEY_UI_GITHUB_RELEASES="https://example.invalid/releases/download" \
     SOLOVEY_UI_INSTALL_DIR="${INSTALL_DIR}" \
     SOLOVEY_UI_CLI_PATH="${CLI_PATH}" \
     SOLOVEY_UI_SYSTEMD_SERVICE="${SERVICE_FILE}" \
+	SOLOVEY_UI_SYSTEMD_UNIT_ROOT="${TARGET}/etc/systemd/system" \
+	SOLOVEY_UI_SYSTEMD_PROFILE_ROOT="${TARGET}/usr/local/lib/solovey-ui/systemd" \
+	SOLOVEY_UI_DEPLOYMENT_MARKER="${ENV_DIR}/deployment-profile" \
+	SOLOVEY_UI_HARDENED_DATA_ROOT="${TARGET}/var/lib/solovey-ui" \
     SOLOVEY_UI_ENV_DIR="${ENV_DIR}" \
     SOLOVEY_UI_BACKUP_ROOT="${BACKUP_ROOT}" \
     "${BASH:-bash}" "${ROOT}/install.sh" --version "${version}" "$@"
@@ -330,7 +353,19 @@ assert_fresh_install() {
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^version=v1$'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^profile=full$'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^sing_box=v-test-v1$'
-    assert_contains "${SERVICE_FILE}" '^service v1$'
+	assert_contains "${SERVICE_FILE}" 'solovey-ui-native-hardened.service'
+	assert_contains "${ENV_DIR}/deployment-profile" '^native-hardened$'
+	for name in solovey-privileged-broker solovey-ssh-proof solovey-broker-manifest; do
+		assert_file "${INSTALL_DIR}/${name}"
+	done
+	for unit in solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket; do
+		assert_file "${TARGET}/etc/systemd/system/${unit}"
+	done
+	assert_contains "${LOG_DIR}/binary.log" '^v1:solovey-broker-manifest$'
+	assert_contains "${LOG_DIR}/systemctl.log" '^enable solovey-privileged-broker.socket solovey-privileged-proof.socket$'
+	if [[ "$(uname -s)" == Linux ]]; then
+		[[ "$(stat -c '%a' "${INSTALL_DIR}/solovey-ssh-proof")" == 2755 ]] || fail "SSH proof helper is not installed setgid 2755"
+	fi
     assert_contains "${CLI_PATH}" 'manager v1'
     assert_contains "${ENV_DIR}/secretbox.env" '^SUI_SECRETBOX_KEY='
     assert_contains "${ENV_DIR}/secretbox.env" '^SUI_COOKIE_KEY='
@@ -347,7 +382,7 @@ assert_update_install() {
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^version=v2$'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^profile=full$'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^sing_box=v-test-v2$'
-    assert_contains "${SERVICE_FILE}" '^service v2$'
+	assert_contains "${SERVICE_FILE}" 'solovey-ui-native-hardened.service'
     assert_contains "${CLI_PATH}" 'manager v2'
     assert_contains "${INSTALL_DIR}/db/solovey-ui.db" '^db after v1$'
     assert_contains "${ENV_DIR}/secretbox.env" '^SUI_SECRETBOX_KEY=existing-secret$'
@@ -365,7 +400,11 @@ assert_update_install() {
     assert_contains "${backup_dir}/app/BUILD_INFO.txt" '^version=v1$'
     assert_contains "${backup_dir}/app/db/solovey-ui.db" '^db after v1$'
     assert_contains "${backup_dir}/etc/secretbox.env" '^SUI_SECRETBOX_KEY=existing-secret$'
-    assert_contains "${backup_dir}/solovey-ui.service" '^service v1$'
+	assert_contains "${backup_dir}/solovey-ui.service" 'solovey-ui-native-hardened.service'
+	assert_contains "${backup_dir}/hardened-data/db/solovey-ui.db" '^hardened db after v1$'
+	assert_file "${backup_dir}/systemd-assets/profiles/solovey-ui-native-hardened.service"
+	assert_file "${backup_dir}/systemd-assets/units/solovey-privileged-broker.service"
+	assert_contains "${backup_dir}/systemd-assets/inventory.txt" '^solovey-privileged-broker.socket=present$'
     assert_file "${backup_dir}/manifest.txt"
     assert_contains "${backup_dir}/manifest.txt" '^build_version=v1$'
     assert_contains "${backup_dir}/manifest.txt" '^build_sing_box=v-test-v1$'
@@ -385,7 +424,7 @@ assert_low_space_backup_precheck() {
     assert_contains "${output}" 'not enough disk space for backup'
     assert_contains "${INSTALL_DIR}/solovey-ui.sh" 'manager v2'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^version=v2$'
-    assert_contains "${SERVICE_FILE}" '^service v2$'
+	assert_contains "${SERVICE_FILE}" 'solovey-ui-native-hardened.service'
     assert_contains "${CLI_PATH}" 'manager v2'
 }
 
@@ -402,7 +441,7 @@ assert_failed_update_rolls_back() {
     assert_contains "${INSTALL_DIR}/solovey-ui.sh" 'manager v2'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^version=v2$'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^sing_box=v-test-v2$'
-    assert_contains "${SERVICE_FILE}" '^service v2$'
+	assert_contains "${SERVICE_FILE}" 'solovey-ui-native-hardened.service'
     assert_contains "${CLI_PATH}" 'manager v2'
     assert_contains "${INSTALL_DIR}/db/solovey-ui.db" '^db after v2$'
 
@@ -423,7 +462,7 @@ assert_failed_rollback_copy_is_non_destructive() {
     assert_contains "${output}" 'rollback after failed install failed'
     assert_contains "${INSTALL_DIR}/solovey-ui.sh" 'manager v3'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^version=v3$'
-    assert_contains "${SERVICE_FILE}" '^service v3$'
+	assert_contains "${SERVICE_FILE}" 'solovey-ui-native-hardened.service'
     assert_contains "${INSTALL_DIR}/db/solovey-ui.db" '^db before failed rollback copy$'
 }
 
@@ -547,6 +586,33 @@ assert_bad_component_pack_is_rejected() {
     assert_contains "${output}" 'component pack id mismatch'
 }
 
+assert_unsupported_systemd_is_rejected_before_install() {
+	rm -rf "${TARGET}"
+	mkdir -p "${TARGET}"
+	reset_logs
+	local output="${LOG_DIR}/unsupported-systemd.out"
+	if TEST_SYSTEMD_VERSION=248 run_installer v1 >"${output}" 2>&1; then
+		fail "fresh hardened install accepted unsupported systemd"
+	fi
+	assert_not_exists "${INSTALL_DIR}"
+	assert_not_exists "${SERVICE_FILE}"
+	assert_contains "${output}" 'requires systemd 249 or newer'
+}
+
+assert_native_advanced_fails_closed_before_install() {
+	rm -rf "${TARGET}"
+	mkdir -p "${ENV_DIR}"
+	printf 'native-network-advanced\n' > "${ENV_DIR}/deployment-profile"
+	reset_logs
+	local output="${LOG_DIR}/advanced-unavailable.out"
+	if run_installer v1 >"${output}" 2>&1; then
+		fail "installer activated native advanced without a separated runtime"
+	fi
+	assert_not_exists "${INSTALL_DIR}"
+	assert_not_exists "${SERVICE_FILE}"
+	assert_contains "${output}" 'separately confined core runtime'
+}
+
 write_fake_tools
 create_release_fixture v1
 create_release_fixture v2
@@ -558,6 +624,8 @@ run_installer v1
 assert_fresh_install
 
 printf 'db after v1\n' > "${INSTALL_DIR}/db/solovey-ui.db"
+mkdir -p "${TARGET}/var/lib/solovey-ui/db"
+printf 'hardened db after v1\n' > "${TARGET}/var/lib/solovey-ui/db/solovey-ui.db"
 printf 'SUI_SECRETBOX_KEY=existing-secret\n' > "${ENV_DIR}/secretbox.env"
 
 reset_logs
@@ -591,5 +659,7 @@ assert_minimal_with_inprocess_component_resolves_full_binary
 assert_require_core_rejects_inprocess_components
 assert_component_pack_removal_on_update
 assert_bad_component_pack_is_rejected
+assert_unsupported_systemd_is_rejected_before_install
+assert_native_advanced_fails_closed_before_install
 
 printf 'PASS: installer fresh/update/failure integration\n'

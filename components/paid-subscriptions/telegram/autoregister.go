@@ -99,7 +99,12 @@ func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *tgUser, l
 	}
 
 	host, _ := b.setting.GetWebDomain()
-	cfg := service.NewConfigServiceWithRuntime(service.DefaultRuntime())
+	if b.runtime == nil {
+		logger.Warning("paidsub: auto-register runtime unavailable")
+		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		return true
+	}
+	cfg := service.NewConfigServiceWithRuntime(b.runtime)
 	if _, err := cfg.Save("clients", "new", data, "", "PaidSubBot", host); err != nil {
 		logger.Warning("paidsub: auto-register save failed: ", err)
 		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)

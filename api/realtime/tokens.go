@@ -19,7 +19,7 @@ const (
 )
 
 type realtimeToken struct {
-	user      string
+	binding   service.RealtimeSessionBinding
 	expiresAt time.Time
 }
 
@@ -45,16 +45,23 @@ func wsTokenDigest(token string) [sha256.Size]byte {
 }
 
 func StoreToken(token string, user string, expiresAt time.Time) {
+	StoreBoundToken(token, service.RealtimeSessionBinding{Username: user}, expiresAt)
+}
+
+func StoreBoundToken(token string, binding service.RealtimeSessionBinding, expiresAt time.Time) {
 	now := time.Now()
 	wsTokens.Lock()
 	maybeSweepWSTokensLocked(now)
-	wsTokens.tokens[wsTokenDigest(token)] = realtimeToken{user: user, expiresAt: expiresAt}
+	wsTokens.tokens[wsTokenDigest(token)] = realtimeToken{binding: binding, expiresAt: expiresAt}
 	enforceWSTokenCapLocked()
 	scheduleWSTokenSweepLocked()
 	wsTokens.Unlock()
 }
 
-func ConsumeToken(token string) (string, bool) { return consumeWSToken(token) }
+func ConsumeToken(token string) (string, bool) {
+	binding, ok := consumeBoundWSToken(token)
+	return binding.Username, ok
+}
 
 func ResetTokens() int { return sweepAllWSTokens() }
 
@@ -77,9 +84,9 @@ func SweepExpired(now time.Time) {
 	sweepWSTokensLocked(now)
 }
 
-func consumeWSToken(token string) (string, bool) {
+func consumeBoundWSToken(token string) (service.RealtimeSessionBinding, bool) {
 	if token == "" {
-		return "", false
+		return service.RealtimeSessionBinding{}, false
 	}
 	wsTokens.Lock()
 	defer wsTokens.Unlock()
@@ -97,10 +104,10 @@ func consumeWSToken(token string) (string, bool) {
 	var matchedKey [sha256.Size]byte
 	matchedExpiresAtUnixNano := int64(0)
 	matchedUserIndex := 0
-	users := make([]string, len(keys))
+	bindings := make([]service.RealtimeSessionBinding, len(keys))
 	for i, key := range keys {
 		data := wsTokens.tokens[key]
-		users[i] = data.user
+		bindings[i] = data.binding
 		eq := subtle.ConstantTimeCompare(candidate[:], key[:])
 		subtle.ConstantTimeCopy(eq, matchedKey[:], key[:])
 		matched = subtle.ConstantTimeSelect(eq, 1, matched)
@@ -111,9 +118,9 @@ func consumeWSToken(token string) (string, bool) {
 	now := time.Now()
 	matchedExpiresAt := time.Unix(0, matchedExpiresAtUnixNano)
 	if matched != 1 || now.After(matchedExpiresAt) {
-		return "", false
+		return service.RealtimeSessionBinding{}, false
 	}
-	return users[matchedUserIndex-1], true
+	return bindings[matchedUserIndex-1], true
 }
 
 func constantTimeSelectInt64(v int, x int64, y int64) int64 {

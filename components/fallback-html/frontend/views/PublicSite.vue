@@ -377,95 +377,34 @@
             </v-alert>
 
             <v-divider class="my-4" />
-            <div class="mb-4 fallback-section">
-              <div class="text-subtitle-2 mb-2">{{ t('fallbackHtml.selfStealDraft') }}</div>
-              <v-alert type="info" variant="tonal" density="compact" class="mb-3">
-                {{ t('fallbackHtml.selfStealHelp') }}
-              </v-alert>
-              <v-row density="compact" align="center">
-                <v-col cols="12" md="3">
-                  <v-select
-                    v-model="selfStealOptions(site).profile"
-                    :items="selfStealProfiles"
-                    item-title="title"
-                    item-value="value"
-                    :label="t('fallbackHtml.selfStealProfile')"
-                    density="compact"
-                  />
-                </v-col>
-                <v-col cols="12" md="2">
-                  <v-select
-                    v-model="selfStealOptions(site).transport"
-                    :items="selfStealTransports"
-                    item-title="title"
-                    item-value="value"
-                    :label="t('fallbackHtml.selfStealTransport')"
-                    density="compact"
-                  />
-                </v-col>
-                <v-col cols="12" md="3">
-                  <v-text-field
-                    v-model="selfStealOptions(site).publicListen"
-                    :label="t('fallbackHtml.selfStealPublicListen')"
-                    density="compact"
-                  />
-                </v-col>
-                <v-col cols="12" md="2">
-                  <v-switch
-                    v-model="selfStealOptions(site).prepareTransfer"
-                    :label="t('fallbackHtml.preparePortTransfer')"
-                    color="primary"
-                    density="compact"
-                    hide-details
-                  />
-                </v-col>
-                <v-col cols="12" md="2" class="d-flex align-center">
-                  <v-btn
-                    variant="tonal"
-                    prepend-icon="mdi-shield-outline"
-                    :disabled="!canCreateSelfStealDraft(site)"
-                    @click="createSelfStealDraft(site)"
-                  >
-                    {{ t('fallbackHtml.selfStealDraft') }}
-                  </v-btn>
-                </v-col>
-              </v-row>
-            </div>
-
-            <v-alert v-if="selfStealDraftBySite[site.id]" class="mt-4" type="info" variant="tonal">
-              <div class="font-weight-bold">
-                {{ t('fallbackHtml.selfStealDraft') }}: {{ selfStealDraftBySite[site.id].status }}
-              </div>
-              <div>
-                {{ selfStealDraftBySite[site.id].payload.profile }} /
-                {{ selfStealDraftBySite[site.id].payload.transport }} /
-                {{ selfStealDraftBySite[site.id].payload.publicListen }}:{{ selfStealDraftBySite[site.id].payload.publicPort }}
-              </div>
-              <div v-if="selfStealDraftBySite[site.id].payload.portTransfer">
-                {{ t('fallbackHtml.portTransfer') }}:
-                {{ selfStealDraftBySite[site.id].payload.portTransfer?.prepared ? t('fallbackHtml.prepared') : t('fallbackHtml.required') }}
-              </div>
-              <div v-if="selfStealDraftBySite[site.id].coreDraftId">
-                {{ t('fallbackHtml.coreDraft') }}: #{{ selfStealDraftBySite[site.id].coreDraftId }}
-              </div>
-              <div v-for="block in selfStealDraftBySite[site.id].payload.blocks" :key="block">
-                {{ block }}
-              </div>
-              <div v-if="selfStealDraftBySite[site.id].payload.nextSteps.length" class="mt-2">
-                {{ t('fallbackHtml.nextSteps') }}:
-                {{ selfStealDraftBySite[site.id].payload.nextSteps.join('; ') }}
-              </div>
-              <v-btn
-                v-if="canReviewSelfStealDraft(selfStealDraftBySite[site.id])"
-                class="mt-3"
-                size="small"
-                variant="tonal"
-                prepend-icon="mdi-file-eye-outline"
-                @click="reviewSelfStealDraft(selfStealDraftBySite[site.id])"
-              >
-                {{ t('fallbackHtml.reviewInInbounds') }}
-              </v-btn>
-            </v-alert>
+            <v-card class="mb-4 fallback-section" variant="outlined" role="status" aria-live="polite">
+              <v-card-title class="text-subtitle-2">{{ t('fallbackHtml.providerAuthority') }}</v-card-title>
+              <v-card-text>
+                <v-alert type="info" variant="tonal" density="compact" class="mb-3">
+                  {{ t('fallbackHtml.nativeFallbackManagedElsewhere') }}
+                </v-alert>
+                <div class="d-flex ga-2 flex-wrap mb-3">
+                  <v-chip size="small">{{ providerStatus(site).targetId }}</v-chip>
+                  <v-chip size="small">{{ t('fallbackHtml.endpointMode') }}: {{ providerStatus(site).endpointMode }}</v-chip>
+                  <v-chip size="small">{{ t('fallbackHtml.readiness') }}: {{ providerStatus(site).readiness }}</v-chip>
+                  <v-chip size="small">{{ t('fallbackHtml.healthFreshness') }}: {{ providerStatus(site).healthFreshness }}</v-chip>
+                  <v-chip size="small">
+                    {{ t('fallbackHtml.capacity') }}:
+                    {{ providerStatus(site).capacitySlotsUsed }}/{{ providerStatus(site).capacitySlotsTotal }}
+                    ({{ providerStatus(site).capacityState }})
+                  </v-chip>
+                  <v-chip size="small" :color="providerStatus(site).inUse ? 'warning' : 'success'">
+                    {{ providerStatus(site).inUse ? t('fallbackHtml.reservedInUse') : t('fallbackHtml.notReserved') }}
+                  </v-chip>
+                  <v-chip v-if="providerStatus(site).reconcileRequired" size="small" color="error">
+                    {{ t('fallbackHtml.reconcileRequired') }}
+                  </v-chip>
+                </div>
+                <v-alert v-if="providerStatus(site).reasonCodes.length" type="warning" variant="tonal" density="compact" class="mb-3">
+                  <div v-for="reason in providerStatus(site).reasonCodes" :key="reason">{{ reason }}</div>
+                </v-alert>
+              </v-card-text>
+            </v-card>
 
             <v-divider class="my-4" />
             <div class="d-flex align-center justify-space-between flex-wrap ga-2 mb-2">
@@ -550,845 +489,100 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
-import { useI18n } from 'vue-i18n'
-import { useRouter } from 'vue-router'
-import api from '@/plugins/api'
-import Data from '@/store/modules/data'
-import {
+import { usePublicSite } from '../usePublicSite'
+
+const {
+  t,
+  sites,
+  templates,
+  remoteTemplates,
+  portCandidates,
+  loading,
+  catalogLoading,
+  installingTemplate,
+  error,
+  catalogError,
+  previewOpen,
+  previewLoading,
+  previewHtml,
+  previewPath,
+  previewWarnings,
+  previewError,
+  importOpen,
+  importSiteRef,
+  importText,
+  targetsBySite,
+  targetDraftsBySite,
+  siteMessages,
+  collapsedSites,
+  assetsBySite,
+  externalResourcesBySite,
+  publishesBySite,
+  pruneKeepBySite,
+  rollbackSelectionBySite,
+  safetyBySite,
+  providerStatusBySite,
+  bodyEditorOpen,
+  bodyEditorPageRef,
+  bodyEditorText,
+  redirectStatuses,
+  externalResourceKinds,
+  contentModes,
   endpointChipColor,
   endpointChipTitle,
   endpointLabel,
   endpointStatusText,
-  isExternalURL,
-  isReservedPublicPath,
-  normalizePublicPathPreview,
-} from '../publicSiteLogic'
-
-interface Page {
-  id: number
-  path: string
-  title: string
-  body: string
-  contentMode: string
-  isHome: boolean
-}
-
-interface Redirect {
-  id: number
-  fromPath: string
-  toPath: string
-  statusCode: number
-  external: boolean
-}
-
-interface AssetView {
-  id: number
-  logicalPath: string
-  mimeType: string
-  sha256: string
-  sizeBytes: number
-  provenance: string
-  createdAt: number
-}
-
-interface ExternalResourceView {
-  id: number
-  kind: string
-  url: string
-  allowed: boolean
-  createdAt: number
-}
-
-interface Site {
-  id: number
-  name: string
-  enabled: boolean
-  status: string
-  templateId: string
-  hostname?: string
-  pages: Page[]
-  redirects: Redirect[]
-}
-
-interface TargetView {
-  id: number
-  kind: string
-  host: string
-  listen: string
-  port: number
-  rootPath: string
-  runtime: string
-  tls: boolean
-  status: string
-  reason: string
-  current: boolean
-}
-
-interface PortCandidate {
-  kind: string
-  listen: string
-  port: number
-  runtime: string
-  tls: boolean
-  status: string
-  reason: string
-}
-
-interface SafetyReport {
-  ok: boolean
-  warnings: string[]
-}
-
-interface PreviewResult {
-  path: string
-  html: string
-  warnings: string[]
-}
-
-interface TemplateDefinition {
-  id: string
-  name: string
-  source: string
-  license: string
-  contentTypeProfile: string
-  renderable: boolean
-}
-
-interface RemoteTemplateView {
-  id: string
-  name: string
-  source: string
-  license: string
-  contentTypeProfile: string
-  manifestUrl: string
-  installed: boolean
-  installedAt: number
-  notes: string[]
-}
-
-interface PublishView {
-  id: number
-  version: string
-  active: boolean
-  files: number
-  createdAt: number
-}
-
-interface PrunePublishesResult {
-  removed: number
-  kept: number
-}
-
-interface SelfStealDraftView {
-  id: number
-  siteId: number
-  coreDraftId: number
-  status: string
-  payload: {
-    noApply: boolean
-    requiresCapability: string
-    coreDraftId?: number
-    activePublish: string
-    profile?: string
-    transport?: string
-    publicListen?: string
-    publicPort?: number
-    portTransfer?: {
-      required: boolean
-      prepared: boolean
-      reason: string
-    }
-    inboundType?: string
-    inboundTag?: string
-    inboundCandidate?: unknown
-    warnings: string[]
-    blocks: string[]
-    nextSteps: string[]
-  }
-  createdAt: number
-}
-
-interface SelfStealOptions {
-  profile: string
-  transport: string
-  publicListen: string
-  prepareTransfer: boolean
-}
-
-const { t } = useI18n()
-const router = useRouter()
-const sites = ref<Site[]>([])
-const templates = ref<TemplateDefinition[]>([])
-const remoteTemplates = ref<RemoteTemplateView[]>([])
-const portCandidates = ref<PortCandidate[]>([])
-const loading = ref(false)
-const catalogLoading = ref(false)
-const installingTemplate = ref('')
-const error = ref('')
-const catalogError = ref('')
-const previewOpen = ref(false)
-const previewLoading = ref(false)
-const previewHtml = ref('')
-const previewPath = ref('')
-const previewWarnings = ref<string[]>([])
-const previewError = ref('')
-const importOpen = ref(false)
-const importSiteRef = ref<Site | null>(null)
-const importText = ref('')
-const targetsBySite = reactive<Record<number, TargetView[]>>({})
-const targetDraftsBySite = reactive<Record<number, TargetView>>({})
-const siteMessages = reactive<Record<number, { type: 'success' | 'info' | 'warning' | 'error', text: string }>>({})
-const collapsedSites = reactive<Record<number, boolean>>({})
-const assetsBySite = reactive<Record<number, AssetView[]>>({})
-const externalResourcesBySite = reactive<Record<number, ExternalResourceView[]>>({})
-const publishesBySite = reactive<Record<number, PublishView[]>>({})
-const pruneKeepBySite = reactive<Record<number, number>>({})
-const rollbackSelectionBySite = reactive<Record<number, string>>({})
-const safetyBySite = reactive<Record<number, SafetyReport>>({})
-const selfStealDraftBySite = reactive<Record<number, SelfStealDraftView>>({})
-const selfStealOptionsBySite = reactive<Record<number, SelfStealOptions>>({})
-const bodyEditorOpen = ref(false)
-const bodyEditorPageRef = ref<Page | null>(null)
-const bodyEditorText = ref('')
-const jsonPost = { headers: { 'Content-Type': 'application/json' } }
-const redirectStatuses = [301, 302, 307, 308]
-const externalResourceKinds = ['link', 'image', 'font']
-const contentModes = [
-  { title: 'Text', value: 'text' },
-  { title: 'Safe HTML', value: 'html' },
-  { title: 'Downloaded static HTML', value: 'static-html' },
-]
-const selfStealProfiles = [
-  { title: 'VLESS + REALITY', value: 'vless-reality' },
-  { title: 'Trojan + TLS fallback', value: 'trojan-tls-fallback' },
-]
-const selfStealTransports = [
-  { title: 'TCP', value: 'tcp' },
-  { title: 'WebSocket', value: 'ws' },
-  { title: 'HTTP', value: 'http' },
-  { title: 'gRPC', value: 'grpc' },
-  { title: 'HTTP Upgrade', value: 'httpupgrade' },
-]
-
-const apiObj = <T>(response: { data: { success?: boolean, msg?: string, obj?: T } | T }): T => {
-  const data = response.data as { success?: boolean, msg?: string, obj?: T } | T
-  if (data && typeof data === 'object' && 'success' in data && 'obj' in data) {
-    if (data.success === false) {
-      throw new Error(data.msg || 'Request failed')
-    }
-    return data.obj as T
-  }
-  return data as T
-}
-
-function normalizeSites(items: Site[]): Site[] {
-  return items.map(site => ({
-    ...site,
-    templateId: site.templateId || 'generated-portal',
-    pages: (site.pages ?? []).map(page => ({ ...page, contentMode: page.contentMode || 'text' })),
-    redirects: site.redirects ?? [],
-  }))
-}
-
-function siteCollapsed(site: Site): boolean {
-  return collapsedSites[site.id] === true
-}
-
-function toggleSiteCollapse(site: Site) {
-  collapsedSites[site.id] = !siteCollapsed(site)
-}
-
-function siteStatusColor(site: Site): string {
-  if (!site.enabled) return 'warning'
-  if (site.status === 'published') return 'success'
-  if (site.status === 'error') return 'error'
-  return 'grey'
-}
-
-function siteStatusText(site: Site): string {
-  if (!site.enabled) return t('fallbackHtml.statusDisabled')
-  if (site.status === 'published') return t('fallbackHtml.statusPublished')
-  if (site.status === 'error') return t('fallbackHtml.statusError')
-  return t('fallbackHtml.statusDraft')
-}
-
-function publicTargetSummary(site: Site): string {
-  const target = targetsBySite[site.id]?.[0]
-  if (!target) return t('fallbackHtml.noPublishTarget')
-  return endpointLabel(target)
-}
-
-function templateAffectsSite(site: Site): boolean {
-  return site.pages.some(page => (page.contentMode || 'text') !== 'static-html')
-}
-
-function templateSelectItems(site: Site): TemplateDefinition[] {
-  if (!templateAffectsSite(site)) {
-    return templates.value
-  }
-  return templates.value.filter(template => template.renderable)
-}
-
-function templateHelp(site: Site): string {
-  if (!templateAffectsSite(site)) {
-    return t('fallbackHtml.templateStaticHelp')
-  }
-  return t('fallbackHtml.templateGeneratedHelp')
-}
-
-async function loadSites() {
-  loading.value = true
-  error.value = ''
-  try {
-    sites.value = normalizeSites(apiObj(await api.get('api/components/fallback-html/sites')) ?? [])
-    templates.value = apiObj(await api.get('api/components/fallback-html/templates')) ?? []
-    portCandidates.value = apiObj(await api.get('api/components/fallback-html/ports')) ?? []
-    await loadTemplateCatalog()
-    await Promise.all(sites.value.flatMap(site => [loadTargets(site), loadAssets(site), loadExternalResources(site), loadPublishes(site)]))
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err)
-  } finally {
-    loading.value = false
-  }
-}
-
-async function loadTargets(site: Site) {
-  const targets = apiObj<TargetView[]>(await api.get(`api/components/fallback-html/sites/${site.id}/targets`)) ?? []
-  targetsBySite[site.id] = targets
-  targetDraftsBySite[site.id] = cloneTarget(targets[0] ?? defaultTargetDraft())
-}
-
-async function loadAssets(site: Site) {
-  assetsBySite[site.id] = apiObj(await api.get(`api/components/fallback-html/sites/${site.id}/assets`)) ?? []
-}
-
-async function loadExternalResources(site: Site) {
-  externalResourcesBySite[site.id] = apiObj(await api.get(`api/components/fallback-html/sites/${site.id}/external-resources`)) ?? []
-}
-
-async function loadPublishes(site: Site) {
-  const publishes = apiObj<PublishView[]>(await api.get(`api/components/fallback-html/sites/${site.id}/publishes`)) ?? []
-  publishesBySite[site.id] = publishes
-  if (pruneKeepBySite[site.id] === undefined) {
-    pruneKeepBySite[site.id] = 2
-  }
-  const selected = rollbackSelectionBySite[site.id]
-  const versions = publishes.filter(publish => !publish.active)
-  if (!selected || !versions.some(publish => publish.version === selected)) {
-    rollbackSelectionBySite[site.id] = versions[0]?.version ?? ''
-  }
-}
-
-async function loadTemplateCatalog() {
-  catalogLoading.value = true
-  catalogError.value = ''
-  try {
-    const catalog = apiObj<{ templates: RemoteTemplateView[] }>(await api.get('api/components/fallback-html/template-catalog'))
-    remoteTemplates.value = catalog?.templates ?? []
-  } catch (err) {
-    catalogError.value = err instanceof Error ? err.message : String(err)
-  } finally {
-    catalogLoading.value = false
-  }
-}
-
-async function installRemoteTemplate(template: RemoteTemplateView) {
-  installingTemplate.value = template.id
-  try {
-    await api.post(`api/components/fallback-html/template-catalog/${encodeURIComponent(template.id)}/install`)
-    templates.value = apiObj(await api.get('api/components/fallback-html/templates')) ?? []
-    await loadTemplateCatalog()
-  } finally {
-    installingTemplate.value = ''
-  }
-}
-
-async function deleteRemoteTemplate(template: RemoteTemplateView) {
-  await api.delete(`api/components/fallback-html/template-catalog/${encodeURIComponent(template.id)}`)
-  templates.value = apiObj(await api.get('api/components/fallback-html/templates')) ?? []
-  await loadTemplateCatalog()
-}
-
-async function createSite() {
-  const created = apiObj<Site>(await api.post('api/components/fallback-html/sites', { name: 'Public Site', enabled: true }, jsonPost))
-  await api.post(`api/components/fallback-html/sites/${created.id}/targets`, {
-    kind: 'standalone',
-    listen: defaultExactListen(),
-    port: 443,
-    rootPath: '/',
-    runtime: 'gin',
-    tls: false,
-  }, jsonPost)
-  await loadSites()
-}
-
-async function createSiteFromTemplate(templateId: string) {
-  const created = apiObj<Site>(await api.post(`api/components/fallback-html/templates/${encodeURIComponent(templateId)}/create-site`))
-  await api.post(`api/components/fallback-html/sites/${created.id}/targets`, defaultTargetPayload(), jsonPost)
-  await loadSites()
-}
-
-async function saveSite(site: Site) {
-  const saved = apiObj<Site>(await api.post('api/components/fallback-html/sites', {
-    id: site.id,
-    name: site.name,
-    enabled: site.enabled,
-    templateId: site.templateId,
-  }, jsonPost))
-  Object.assign(site, normalizeSites([saved])[0])
-}
-
-async function saveSiteMetadata(site: Site) {
-  await saveSite(site)
-}
-
-async function deleteSite(site: Site) {
-  await api.delete(`api/components/fallback-html/sites/${site.id}`)
-  await loadSites()
-}
-
-function addPage(site: Site) {
-  site.pages.push({
-    id: 0,
-    path: `/page-${site.pages.length + 1}/`,
-    title: 'New page',
-    body: 'Write public content for this page.',
-    contentMode: 'text',
-    isHome: false,
-  })
-}
-
-function addRedirect(site: Site) {
-  site.redirects.push({
-    id: 0,
-    fromPath: `/old-${site.redirects.length + 1}/`,
-    toPath: '/',
-    statusCode: 302,
-    external: false,
-  })
-}
-
-function openImport(site: Site) {
-  importSiteRef.value = site
-  importText.value = JSON.stringify({
-    schema: 'solovey-ui/fallback-html-site/v1',
-    pages: site.pages.map(page => ({
-      path: page.path,
-      title: page.title,
-      body: page.body,
-      contentMode: page.contentMode,
-      isHome: page.isHome,
-    })),
-    redirects: site.redirects.map(redirect => ({
-      fromPath: redirect.fromPath,
-      toPath: redirect.toPath,
-      statusCode: redirect.statusCode,
-    })),
-  }, null, 2)
-  importOpen.value = true
-}
-
-function openBodyEditor(page: Page) {
-  bodyEditorPageRef.value = page
-  bodyEditorText.value = page.body
-  bodyEditorOpen.value = true
-}
-
-function applyBodyEditor() {
-  if (bodyEditorPageRef.value) {
-    bodyEditorPageRef.value.body = bodyEditorText.value
-  }
-  bodyEditorOpen.value = false
-}
-
-async function applyImport() {
-  if (!importSiteRef.value) return
-  const payload = JSON.parse(importText.value)
-  await api.post(`api/components/fallback-html/sites/${importSiteRef.value.id}/import`, payload, jsonPost)
-  importOpen.value = false
-  await loadSites()
-}
-
-async function savePage(site: Site, page: Page) {
-  const saved = apiObj<Page>(await api.post(`api/components/fallback-html/sites/${site.id}/pages`, page, jsonPost))
-  Object.assign(page, saved)
-  await loadSites()
-}
-
-async function saveRedirect(site: Site, redirect: Redirect) {
-  const saved = apiObj<Redirect>(await api.post(`api/components/fallback-html/sites/${site.id}/redirects`, redirect, jsonPost))
-  Object.assign(redirect, saved)
-  await loadSites()
-}
-
-async function saveTarget(site: Site) {
-  clearSiteMessage(site.id)
-  const draft = targetDraft(site)
-  try {
-    const saved = apiObj<TargetView>(await api.post(`api/components/fallback-html/sites/${site.id}/targets`, targetPayloadFromDraft(draft), jsonPost))
-    targetsBySite[site.id] = [saved]
-    targetDraftsBySite[site.id] = cloneTarget(saved)
-    portCandidates.value = apiObj(await api.get('api/components/fallback-html/ports')) ?? []
-    setSiteMessage(site.id, 'success', t('fallbackHtml.targetSaved'))
-  } catch (err) {
-    setSiteMessage(site.id, 'error', formatSiteError(err, t('fallbackHtml.targetSaveFailed')))
-  }
-}
-
-async function useCurrentPanelTarget(site: Site) {
-  clearSiteMessage(site.id)
-  try {
-    portCandidates.value = apiObj(await api.get('api/components/fallback-html/ports')) ?? []
-  } catch (err) {
-    setSiteMessage(site.id, 'error', formatSiteError(err, t('fallbackHtml.targetSaveFailed')))
-    return
-  }
-  const current = portCandidates.value.find(candidate => candidate.kind === 'web-current')
-  if (!current) {
-    setSiteMessage(site.id, 'warning', t('fallbackHtml.noTargets'))
-    return
-  }
-  targetDraftsBySite[site.id] = cloneTarget({
-    id: targetDraft(site).id,
-    kind: 'web-current',
-    host: '',
-    listen: current.listen || defaultExactListen(),
-    port: current.port || 0,
-    rootPath: '/',
-    runtime: current.runtime || 'gin',
-    tls: current.tls || false,
-    status: current.status || 'managed',
-    reason: current.reason || '',
-    current: true,
-  })
-}
-
-async function deletePage(site: Site, page: Page) {
-  if (!page.id) {
-    site.pages = site.pages.filter(candidate => candidate !== page)
-    return
-  }
-  await api.delete(`api/components/fallback-html/sites/${site.id}/pages/${page.id}`)
-  await loadSites()
-}
-
-async function deleteRedirect(site: Site, redirect: Redirect) {
-  if (!redirect.id) {
-    site.redirects = site.redirects.filter(candidate => candidate !== redirect)
-    return
-  }
-  await api.delete(`api/components/fallback-html/sites/${site.id}/redirects/${redirect.id}`)
-  await loadSites()
-}
-
-async function uploadAsset(site: Site, event: Event) {
-  const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (!file) return
-  const form = new FormData()
-  form.append('file', file)
-  await api.post(`api/components/fallback-html/sites/${site.id}/assets`, form)
-  input.value = ''
-  await loadAssets(site)
-}
-
-async function deleteAsset(site: Site, asset: AssetView) {
-  await api.delete(`api/components/fallback-html/sites/${site.id}/assets/${asset.id}`)
-  await loadAssets(site)
-}
-
-function addExternalResource(site: Site) {
-  const list = externalResourcesBySite[site.id] ?? []
-  externalResourcesBySite[site.id] = [
-    ...list,
-    { id: 0, kind: 'link', url: 'https://example.com/', allowed: true, createdAt: 0 },
-  ]
-}
-
-async function saveExternalResource(site: Site, resource: ExternalResourceView) {
-  const saved = apiObj<ExternalResourceView>(await api.post(
-    `api/components/fallback-html/sites/${site.id}/external-resources`,
-    resource,
-    jsonPost,
-  ))
-  const list = externalResourcesBySite[site.id] ?? []
-  const index = list.indexOf(resource)
-  if (index >= 0) {
-    list.splice(index, 1, saved)
-  } else {
-    externalResourcesBySite[site.id] = [...list, saved]
-  }
-}
-
-async function deleteExternalResource(site: Site, resource: ExternalResourceView) {
-  if (!resource.id) {
-    externalResourcesBySite[site.id] = (externalResourcesBySite[site.id] ?? []).filter(candidate => candidate !== resource)
-    return
-  }
-  await api.delete(`api/components/fallback-html/sites/${site.id}/external-resources/${resource.id}`)
-  await loadExternalResources(site)
-}
-
-async function checkSafety(site: Site) {
-  clearSiteMessage(site.id)
-  try {
-    safetyBySite[site.id] = apiObj(await api.post(`api/components/fallback-html/sites/${site.id}/safety`))
-  } catch (err) {
-    setSiteMessage(site.id, 'error', formatSiteError(err, t('fallbackHtml.safetyFailed')))
-  }
-}
-
-async function previewSite(site: Site) {
-  previewOpen.value = true
-  previewLoading.value = true
-  previewError.value = ''
-  previewHtml.value = ''
-  previewPath.value = ''
-  previewWarnings.value = []
-  try {
-    await saveSiteMetadata(site)
-    const result = apiObj<PreviewResult | null>(await api.post(`api/components/fallback-html/sites/${site.id}/preview`, {}, jsonPost))
-    if (!result) {
-      throw new Error(t('fallbackHtml.previewEmpty'))
-    }
-    previewHtml.value = result.html || ''
-    previewPath.value = result.path || '/'
-    previewWarnings.value = result.warnings ?? []
-  } catch (err) {
-    previewError.value = formatSiteError(err, t('fallbackHtml.previewFailed'))
-    setSiteMessage(site.id, 'error', previewError.value)
-  } finally {
-    previewLoading.value = false
-  }
-}
-
-function openPublishedSite(site: Site) {
-  const url = publicSiteURL(site)
-  if (!url) {
-    setSiteMessage(site.id, 'warning', t('fallbackHtml.openPublishedPageUnavailable'))
-    return
-  }
-  window.open(url, '_blank', 'noopener,noreferrer')
-}
-
-function publicSiteURL(site: Site): string {
-  const target = targetsBySite[site.id]?.[0] ?? targetDraft(site)
-  const rootPath = target.rootPath || '/'
-  if (target.kind === 'web-current') {
-    return new URL(rootPath, window.location.origin).toString()
-  }
-  const protocol = target.tls ? 'https:' : 'http:'
-  let host = target.host || target.listen || window.location.hostname || '127.0.0.1'
-  if (host === '0.0.0.0' || host === '::' || host === '[::]') {
-    host = window.location.hostname || '127.0.0.1'
-  }
-  if (host.includes(':') && !host.startsWith('[')) {
-    host = `[${host}]`
-  }
-  const port = Number(target.port) || (target.tls ? 443 : 80)
-  const defaultPort = (protocol === 'https:' && port === 443) || (protocol === 'http:' && port === 80)
-  return `${protocol}//${host}${defaultPort ? '' : `:${port}`}${rootPath.startsWith('/') ? rootPath : `/${rootPath}`}`
-}
-
-async function createSelfStealDraft(site: Site) {
-  const draft = apiObj<SelfStealDraftView>(await api.post(
-    `api/components/fallback-html/sites/${site.id}/self-steal/draft`,
-    selfStealOptions(site),
-    jsonPost,
-  ))
-  selfStealDraftBySite[site.id] = draft
-  if (canReviewSelfStealDraft(draft)) {
-    await reviewSelfStealDraft(draft)
-  }
-}
-
-function canReviewSelfStealDraft(draft?: SelfStealDraftView): boolean {
-  return !!draft?.coreDraftId && draft.status === 'ready' && !!draft.payload?.inboundCandidate
-}
-
-function canCreateSelfStealDraft(site: Site): boolean {
-  return !!activePublish(site) && safetyBySite[site.id]?.ok === true
-}
-
-function selfStealOptions(site: Site): SelfStealOptions {
-  if (!selfStealOptionsBySite[site.id]) {
-    selfStealOptionsBySite[site.id] = {
-      profile: 'vless-reality',
-      transport: 'tcp',
-      publicListen: defaultSelfStealPublicListen(site),
-      prepareTransfer: true,
-    }
-  }
-  return selfStealOptionsBySite[site.id]
-}
-
-function defaultSelfStealPublicListen(site: Site): string {
-  const target = targetsBySite[site.id]?.[0] ?? targetDraft(site)
-  for (const candidate of [site.hostname, target.host, target.listen, window.location.hostname]) {
-    const value = String(candidate || '').trim()
-    if (value && value !== '0.0.0.0' && value !== '::' && value !== '[::]') {
-      return value
-    }
-  }
-  return '127.0.0.1'
-}
-
-async function reviewSelfStealDraft(draft: SelfStealDraftView) {
-  await Data().loadInboundDrafts()
-  await router.push({ path: '/inbounds', query: { draft: String(draft.coreDraftId) } })
-}
-
-async function publishSite(site: Site) {
-  clearSiteMessage(site.id)
-  try {
-    await saveSiteMetadata(site)
-    apiObj<unknown>(await api.post(`api/components/fallback-html/sites/${site.id}/publish`))
-    await loadSites()
-    setSiteMessage(site.id, 'success', t('fallbackHtml.publishSucceeded'))
-  } catch (err) {
-    setSiteMessage(site.id, 'error', formatSiteError(err, t('fallbackHtml.publishFailed')))
-  }
-}
-
-async function rollbackSite(site: Site) {
-  clearSiteMessage(site.id)
-  try {
-    apiObj<unknown>(await api.post(`api/components/fallback-html/sites/${site.id}/rollback`, {
-      version: rollbackSelectionBySite[site.id] || '',
-    }, jsonPost))
-    await loadSites()
-    setSiteMessage(site.id, 'success', t('fallbackHtml.rollbackSucceeded'))
-  } catch (err) {
-    setSiteMessage(site.id, 'error', formatSiteError(err, t('fallbackHtml.rollbackFailed')))
-  }
-}
-
-async function unpublishSite(site: Site) {
-  clearSiteMessage(site.id)
-  try {
-    apiObj<unknown>(await api.post(`api/components/fallback-html/sites/${site.id}/unpublish`))
-    await loadSites()
-    setSiteMessage(site.id, 'success', t('fallbackHtml.unpublishSucceeded'))
-  } catch (err) {
-    setSiteMessage(site.id, 'error', formatSiteError(err, t('fallbackHtml.unpublishFailed')))
-  }
-}
-
-async function prunePublishes(site: Site) {
-  clearSiteMessage(site.id)
-  try {
-    const keep = Number(pruneKeepBySite[site.id] ?? 2)
-    const result = apiObj<PrunePublishesResult>(await api.post(`api/components/fallback-html/sites/${site.id}/publishes/prune`, { keep }, jsonPost))
-    await loadPublishes(site)
-    setSiteMessage(site.id, 'success', t('fallbackHtml.pruneSucceeded', { removed: result.removed, kept: result.kept }))
-  } catch (err) {
-    setSiteMessage(site.id, 'error', formatSiteError(err, t('fallbackHtml.pruneFailed')))
-  }
-}
-
-function rollbackVersions(site: Site): PublishView[] {
-  return (publishesBySite[site.id] ?? []).filter(publish => !publish.active)
-}
-
-function activePublish(site: Site): PublishView | undefined {
-  return (publishesBySite[site.id] ?? []).find(publish => publish.active)
-}
-
-function formatUnix(value: number): string {
-  if (!value) return '-'
-  return new Date(value * 1000).toLocaleString()
-}
-
-function pathPreview(value: string): string {
-  return normalizePublicPathPreview(value)
-}
-
-function pathIsReserved(value: string): boolean {
-  return isReservedPublicPath(value)
-}
-
-function isExternalTarget(value: string): boolean {
-  return isExternalURL(value)
-}
-
-function targetDraft(site: Site): TargetView {
-  if (!targetDraftsBySite[site.id]) {
-    targetDraftsBySite[site.id] = cloneTarget(targetsBySite[site.id]?.[0] ?? defaultTargetDraft())
-  }
-  return targetDraftsBySite[site.id]
-}
-
-function defaultTargetDraft(): TargetView {
-  return {
-    id: 0,
-    kind: 'standalone',
-    host: '',
-    listen: defaultExactListen(),
-    port: 443,
-    rootPath: '/',
-    runtime: 'gin',
-    tls: false,
-    status: '',
-    reason: '',
-    current: false,
-  }
-}
-
-function cloneTarget(target: TargetView): TargetView {
-  return { ...defaultTargetDraft(), ...target }
-}
-
-function defaultTargetPayload() {
-  return {
-    kind: 'standalone',
-    listen: defaultExactListen(),
-    port: 443,
-    rootPath: '/',
-    runtime: 'gin',
-    tls: false,
-  }
-}
-
-function targetPayloadFromDraft(draft: TargetView) {
-  return {
-    id: draft.id ?? 0,
-    kind: draft.kind || 'standalone',
-    host: draft.host || '',
-    listen: draft.listen || defaultExactListen(),
-    port: Number(draft.port) || 443,
-    rootPath: draft.rootPath || '/',
-    runtime: draft.runtime || 'gin',
-    tls: !!draft.tls,
-  }
-}
-
-function defaultExactListen(): string {
-  const host = window.location.hostname || '127.0.0.1'
-  return host === '0.0.0.0' || host === '::' || host === '[::]' ? '127.0.0.1' : host
-}
-
-function setSiteMessage(siteId: number, type: 'success' | 'info' | 'warning' | 'error', text: string) {
-  siteMessages[siteId] = { type, text }
-}
-
-function clearSiteMessage(siteId: number) {
-  delete siteMessages[siteId]
-}
-
-function formatSiteError(err: unknown, fallback: string): string {
-  if (typeof err === 'object' && err && 'response' in err) {
-    const response = (err as { response?: { data?: { msg?: string, error?: string } } }).response
-    const message = response?.data?.msg || response?.data?.error
-    if (message) return message
-  }
-  if (err instanceof Error && err.message) {
-    return err.message
-  }
-  return fallback
-}
-
-onMounted(loadSites)
+  siteCollapsed,
+  toggleSiteCollapse,
+  siteStatusColor,
+  siteStatusText,
+  publicTargetSummary,
+  templateAffectsSite,
+  templateSelectItems,
+  templateHelp,
+  loadSites,
+  loadTemplateCatalog,
+  installRemoteTemplate,
+  deleteRemoteTemplate,
+  createSite,
+  createSiteFromTemplate,
+  saveSite,
+  saveSiteMetadata,
+  deleteSite,
+  addPage,
+  addRedirect,
+  openImport,
+  openBodyEditor,
+  applyBodyEditor,
+  applyImport,
+  savePage,
+  saveRedirect,
+  saveTarget,
+  useCurrentPanelTarget,
+  deletePage,
+  deleteRedirect,
+  uploadAsset,
+  deleteAsset,
+  addExternalResource,
+  saveExternalResource,
+  deleteExternalResource,
+  checkSafety,
+  previewSite,
+  openPublishedSite,
+  publicSiteURL,
+  publishSite,
+  rollbackSite,
+  unpublishSite,
+  prunePublishes,
+  rollbackVersions,
+  activePublish,
+  formatUnix,
+  pathPreview,
+  pathIsReserved,
+  isExternalTarget,
+  targetDraft,
+  providerStatus,
+} = usePublicSite()
 </script>
 
 <style scoped>

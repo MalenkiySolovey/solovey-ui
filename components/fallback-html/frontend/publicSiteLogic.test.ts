@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest'
+import publicSiteSource from './views/PublicSite.vue?raw'
+import publicSiteWorkflowSource from './usePublicSite.ts?raw'
 import {
   endpointChipColor,
   endpointChipTitle,
@@ -10,6 +12,36 @@ import {
 } from './publicSiteLogic'
 
 describe('fallback-html public site UI logic', () => {
+  it('retires legacy orchestration and keeps only neutral provider facts', () => {
+    const completeSource = `${publicSiteSource}\n${publicSiteWorkflowSource}`
+    for (const retired of [
+      '/self-steal/draft',
+      'prepareTransfer',
+      'selfStealProfile',
+      'selfStealTransport',
+      'selfStealPublicListen',
+      'reviewSelfStealDraft',
+      "Data().loadInboundDrafts",
+    ]) {
+      expect(completeSource).not.toContain(retired)
+    }
+    for (const providerFact of [
+      '/provider-status',
+      'endpointMode',
+      'readiness',
+      'healthFreshness',
+      'capacityState',
+      'reconcileRequired',
+      'aria-live="polite"',
+    ]) {
+      expect(completeSource).toContain(providerFact)
+    }
+    expect(completeSource).not.toContain('native-fallback/preview')
+    expect(completeSource).not.toContain('native-fallback/prepare')
+    expect(completeSource).not.toContain('native-fallback/apply')
+    expect(publicSiteSource).not.toContain("@/plugins/api")
+  })
+
   it('renders target labels and blocked reasons explicitly', () => {
     const endpoint = {
       runtime: 'gin',

@@ -10,11 +10,11 @@ import (
 func TestRegistryComponentsAreSortedAndUnique(t *testing.T) {
 	r := newRegistry()
 	r.register(Component{
-		Manifest:  manifest.Manifest{ID: "telegram", Name: "Telegram", Delivery: manifest.DeliveryInProcess},
+		Manifest:  manifest.Manifest{ID: "fixture-beta", Name: "Fixture Beta", Delivery: manifest.DeliveryInProcess},
 		Lifecycle: lifecycle.Noop{},
 	})
 	r.register(Component{
-		Manifest:  manifest.Manifest{ID: "paid-subscriptions", Name: "Paid Subscriptions", Delivery: manifest.DeliveryInProcess},
+		Manifest:  manifest.Manifest{ID: "fixture-alpha", Name: "Fixture Alpha", Delivery: manifest.DeliveryInProcess},
 		Lifecycle: lifecycle.Noop{},
 	})
 
@@ -22,13 +22,13 @@ func TestRegistryComponentsAreSortedAndUnique(t *testing.T) {
 	if len(components) != 2 {
 		t.Fatalf("components len=%d, want 2", len(components))
 	}
-	if components[0].Manifest.ID != "paid-subscriptions" || components[1].Manifest.ID != "telegram" {
+	if components[0].Manifest.ID != "fixture-alpha" || components[1].Manifest.ID != "fixture-beta" {
 		t.Fatalf("components are not sorted by id: %#v", components)
 	}
 
 	assertPanic(t, func() {
 		r.register(Component{
-			Manifest:  manifest.Manifest{ID: "telegram", Name: "Telegram duplicate", Delivery: manifest.DeliveryInProcess},
+			Manifest:  manifest.Manifest{ID: "fixture-beta", Name: "Fixture Beta duplicate", Delivery: manifest.DeliveryInProcess},
 			Lifecycle: lifecycle.Noop{},
 		})
 	})

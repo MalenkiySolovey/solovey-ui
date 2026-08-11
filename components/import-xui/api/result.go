@@ -58,10 +58,26 @@ func xuiImportError(c *gin.Context, err error) {
 	case errors.Is(err, dbimport.ErrPlanStale) || strings.Contains(err.Error(), "plan_stale"):
 		status = http.StatusBadRequest
 	}
+	errorClass := xuiImportErrorClass(err)
 	c.JSON(status, Envelope{
 		Success: false,
-		Msg:     "import-xui: " + err.Error(),
+		Msg:     xuiImportSafeMessage(errorClass),
 	})
+}
+
+func xuiImportSafeMessage(class string) string {
+	switch class {
+	case "payload_too_large":
+		return "Compatible panel import payload is too large"
+	case "busy":
+		return "Compatible panel import is busy"
+	case "plan_stale":
+		return "Compatible panel import plan is stale"
+	case "not_sqlite":
+		return "Compatible panel database is invalid"
+	default:
+		return "Compatible panel import failed"
+	}
 }
 
 func xuiImportErrorClass(err error) string {

@@ -54,8 +54,8 @@ jobs:
         with:
           name: audit-frontend-lint
           path: |
-            tests/baseline/phase*/*.txt
-            tests/baseline/phase*/*.junit.xml
+            tests/baseline/*/*.txt
+            tests/baseline/*/*.junit.xml
           if-no-files-found: ignore
           retention-days: 7
 
@@ -79,8 +79,8 @@ jobs:
         with:
           name: audit-frontend-build
           path: |
-            tests/baseline/phase*/*.txt
-            tests/baseline/phase*/*.junit.xml
+            tests/baseline/*/*.txt
+            tests/baseline/*/*.junit.xml
             frontend/dist/**
           if-no-files-found: ignore
           retention-days: 7
@@ -105,8 +105,8 @@ jobs:
         with:
           name: audit-frontend-vitest
           path: |
-            tests/baseline/phase*/*.txt
-            tests/baseline/phase*/*.junit.xml
+            tests/baseline/*/*.txt
+            tests/baseline/*/*.junit.xml
           if-no-files-found: ignore
           retention-days: 7
 
@@ -150,9 +150,9 @@ jobs:
         with:
           name: audit-frontend-playwright
           path: |
-            tests/baseline/phase6/playwright/**
-            tests/baseline/phase6/playwright.junit.xml
-            tests/baseline/phase6/e2e-server/**
+            tests/baseline/e2e/playwright/**
+            tests/baseline/e2e/playwright.junit.xml
+            tests/baseline/e2e/e2e-server/**
             frontend/playwright-report/**
           if-no-files-found: ignore
           retention-days: 7
@@ -197,9 +197,9 @@ jobs:
         with:
           name: audit-frontend-accessibility
           path: |
-            tests/baseline/phase6/a11y/**
-            tests/baseline/phase6/playwright/**
-            tests/baseline/phase6/playwright.junit.xml
-            tests/baseline/phase6/e2e-server/**
+            tests/baseline/e2e/a11y/**
+            tests/baseline/e2e/playwright/**
+            tests/baseline/e2e/playwright.junit.xml
+            tests/baseline/e2e/e2e-server/**
           if-no-files-found: ignore
           retention-days: 7

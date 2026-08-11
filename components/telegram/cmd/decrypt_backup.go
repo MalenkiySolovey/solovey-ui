@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	optionalcmd "github.com/MalenkiySolovey/solovey-ui/cmd/optional"
+	optionalcmd "github.com/MalenkiySolovey/solovey-ui/componenthost/commands"
 	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"golang.org/x/term"

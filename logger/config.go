@@ -40,7 +40,7 @@ func initBackend() logBackend {
 	if err == nil {
 		return backend
 	}
-	fmt.Println("Unable to use syslog: " + err.Error())
+	fmt.Println("Unable to use syslog")
 	return newStreamBackend(os.Stderr, true)
 }
 

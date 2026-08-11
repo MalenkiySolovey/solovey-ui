@@ -3,6 +3,7 @@ import Ws from '@/store/ws'
 import { defineComponent } from 'vue'
 import { applyXuiMigration, planXuiMigration, rollbackXuiMigration } from '../composables/useXuiMigrationOperations'
 import api from '@/plugins/api'
+import { acquireStepUpToken } from '@/shared/composables/useSecurityOperations'
 import MigrationResultStep from '../components/MigrationResultStep.vue'
 
 type PlanItem = {
@@ -49,6 +50,7 @@ export default defineComponent({
       progress: null as any,
       applyError: '',
       rollbackError: '',
+      securityCredential: '',
       generatedAdminsRevealed: false,
       generatedAdminsClearTimer: undefined as ReturnType<typeof setTimeout> | undefined,
     }
@@ -174,13 +176,23 @@ export default defineComponent({
     async applyPlan() {
       if (!this.selectedFile || !this.plan) return
       this.applyError = ''
+      const stepUp = await acquireStepUpToken(
+        'backup.restore',
+        'database:compatible-import',
+        this.securityCredential,
+      )
+      this.securityCredential = ''
+      if (!stepUp.token) {
+        this.applyError = stepUp.response.msg || this.$t('migrateXui.applyFailedFallback')
+        return
+      }
       this.progress = { step: 'queued', current: 0, total: Math.max(this.selectedCount, 1), percent: 0 }
       this.maxStep = Math.max(this.maxStep, 3)
       this.step = 3
       const formData = new FormData()
       formData.append('db', this.selectedFile)
       formData.append('plan', JSON.stringify(this.plan))
-      const msg = await applyXuiMigration(formData)
+      const msg = await applyXuiMigration(formData, stepUp.token)
       if (!msg.success) {
         this.step = 2
         this.progress = null
@@ -198,9 +210,19 @@ export default defineComponent({
     async rollback() {
       if (!this.report?.backupPath) return
       this.rollbackError = ''
+      const stepUp = await acquireStepUpToken(
+        'backup.restore',
+        'database:compatible-import',
+        this.securityCredential,
+      )
+      this.securityCredential = ''
+      if (!stepUp.token) {
+        this.rollbackError = stepUp.response.msg || this.$t('migrateXui.rollbackFailedFallback')
+        return
+      }
       this.rollbackLoading = true
       try {
-        const msg = await rollbackXuiMigration(this.report.backupPath)
+        const msg = await rollbackXuiMigration(this.report.backupPath, stepUp.token)
         if (!msg.success) {
           this.rollbackError = msg.msg || this.$t('migrateXui.rollbackFailedFallback')
           return

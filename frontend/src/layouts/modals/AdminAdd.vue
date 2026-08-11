@@ -29,6 +29,17 @@
         <v-row>
           <v-col>
             <v-text-field
+              v-model="newData.stepUpCredential"
+              :hint="$t('security.stepUpCredentialHint')"
+              :label="$t('security.stepUpCredential')"
+              persistent-hint
+              type="password"
+            ></v-text-field>
+          </v-col>
+        </v-row>
+        <v-row>
+          <v-col>
+            <v-text-field
               v-model="newData.username"
               :label="$t('admin.newUname')"
               autocomplete="username"
@@ -95,6 +106,7 @@ export default {
       error: '',
       newData: {
         currentPass: '',
+        stepUpCredential: '',
         username: '',
         password: '',
         confirmPassword: '',
@@ -105,6 +117,7 @@ export default {
     resetData() {
       this.error = ''
       this.newData.currentPass = ''
+      this.newData.stepUpCredential = ''
       this.newData.username = ''
       this.newData.password = ''
       this.newData.confirmPassword = ''
@@ -125,6 +138,7 @@ export default {
       }
       this.$emit('save', {
         currentPass: this.newData.currentPass,
+        stepUpCredential: this.newData.stepUpCredential,
         username: normalizeAdminUsername(this.newData.username),
         password: this.newData.password,
       })

@@ -3,6 +3,7 @@
 package domain
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -45,5 +46,27 @@ func TestBuiltInTemplatesRenderSafePublicHTML(t *testing.T) {
 				t.Fatalf("template definition misses provenance/profile: %#v", definition)
 			}
 		})
+	}
+}
+
+func TestValidateDecoyTemplateHTMLAllowsPassiveControls(t *testing.T) {
+	html := `<!doctype html><html><head><link rel="stylesheet" href="../assets/site.css"></head><body><form><input type="email"><button type="submit">Sign in</button></form><script src="../assets/decoy-interactivity.js"></script></body></html>`
+	if err := ValidateDecoyTemplateHTML(html); err != nil {
+		t.Fatalf("ValidateDecoyTemplateHTML: %v", err)
+	}
+}
+
+func TestValidateDecoyTemplateHTMLRejectsUnsafeContent(t *testing.T) {
+	base := `<!doctype html><html><body>%s<script src="../assets/decoy-interactivity.js"></script></body></html>`
+	for _, content := range []string{
+		`<form action="https://example.com"><input></form>`,
+		`<input name="password">`,
+		`<script src="https://example.com/app.js"></script>`,
+		`<style>@import url(https://example.com/site.css);</style>`,
+		`<!--[if lte IE 8]><script src="legacy.js"></script><![endif]-->`,
+	} {
+		if err := ValidateDecoyTemplateHTML(fmt.Sprintf(base, content)); err == nil {
+			t.Fatalf("unsafe static template was accepted: %s", content)
+		}
 	}
 }

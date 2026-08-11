@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -85,7 +86,7 @@ func TestStatsServiceSaveStatsCommitFailureAuditsAndReturnsIssue26(t *testing.T)
 	if err := json.Unmarshal(audit.Details, &details); err != nil {
 		t.Fatal(err)
 	}
-	if details["error"] != commitErr.Error() {
+	if details["reason"] != "commit_failed" || strings.Contains(string(audit.Details), commitErr.Error()) {
 		t.Fatalf("unexpected audit details: %#v", details)
 	}
 

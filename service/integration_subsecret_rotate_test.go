@@ -31,13 +31,13 @@ func TestIntegrationSubSecretRotateReloadsClientAndPublishesRealtime(t *testing.
 	if err := dbsqlite.DB().Create(&client).Error; err != nil {
 		t.Fatal(err)
 	}
-	token, err := (&service.UserService{}).AddToken("admin", 0, "phase3-write", "write")
+	token, err := (&service.UserService{}).AddToken("admin", 0, "integration-write", "write")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	realtime.CloseAll("phase3_subsecret_reset")
-	t.Cleanup(func() { realtime.CloseAll("phase3_subsecret_done") })
+	realtime.CloseAll("integration_subsecret_reset")
+	t.Cleanup(func() { realtime.CloseAll("integration_subsecret_done") })
 	events := make(chan realtime.Event, 1)
 	unregister := realtime.Register(&realtime.ClientHandle{
 		User:   "admin",

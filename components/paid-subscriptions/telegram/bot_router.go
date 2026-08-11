@@ -124,7 +124,7 @@ func parsePayData(data string) (uint, string, bool) {
 }
 
 // handlePreCheckout / handleSuccessfulPayment are implemented in payment.go
-// (Phase 5). Declared here as no-ops would shadow them; the real methods live
+// Declared here as no-ops would shadow them; the real methods live
 // in payment.go.
 
 // ---- commands ----

@@ -5,7 +5,7 @@ describe('inbound draft review handoff', () => {
   it('opens only review-required drafts with an inbound candidate', () => {
     expect(canReviewInboundDraft({
       id: 1,
-      source: 'fallback-html:self-steal',
+      source: 'fixture-provider:self-steal',
       sourceRef: 'site/1',
       status: 'blocked',
       inboundType: 'vless',
@@ -16,20 +16,20 @@ describe('inbound draft review handoff', () => {
 
     expect(canReviewInboundDraft({
       id: 2,
-      source: 'fallback-html:self-steal',
+      source: 'fixture-provider:self-steal',
       sourceRef: 'site/1',
       status: 'review_required',
       inboundType: 'vless',
       tag: 'ready',
       payload: { inboundCandidate: { type: 'vless' } },
       expiresAt: 0,
-    })).toBe(true)
+    })).toBe(false)
   })
 
   it('normalizes a draft candidate into an unsaved inbound', () => {
     const inbound = inboundFromDraft({
       id: 2,
-      source: 'fallback-html:self-steal',
+      source: 'fixture-provider:self-steal',
       sourceRef: 'site/1',
       status: 'review_required',
       inboundType: 'vless',
@@ -37,7 +37,7 @@ describe('inbound draft review handoff', () => {
       payload: {
         inboundCandidate: {
           type: 'vless',
-          tag: 'fallback-html-site-1',
+          tag: 'fixture-site-1',
           listen: '0.0.0.0',
           listen_port: 443,
         },
@@ -45,13 +45,6 @@ describe('inbound draft review handoff', () => {
       expiresAt: 0,
     })
 
-    expect(inbound).toMatchObject({
-      id: 0,
-      type: 'vless',
-      tag: 'fallback-html-site-1',
-      listen: '0.0.0.0',
-      listen_port: 443,
-      tls_id: 0,
-    })
+    expect(inbound).toBeNull()
   })
 })

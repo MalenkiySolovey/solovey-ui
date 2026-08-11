@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"sync/atomic"
 	"time"
 
 	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
@@ -39,6 +40,7 @@ type RuntimeServer struct {
 	listener   net.Listener
 	ctx        context.Context
 	cancel     context.CancelFunc
+	running    atomic.Bool
 
 	settings      Settings
 	baseRoutes    BaseRoutes
@@ -183,7 +185,7 @@ func (s *RuntimeServer) Start() (err error) {
 	}
 	listener := listenResult.Listener
 	if listenResult.Fallback {
-		if hook := ListenFallbackAuditHook; hook != nil {
+		if hook := currentHooks().ListenFallbackAudit; hook != nil {
 			hook("sub", listenResult.RequestedAddr, listenResult.FallbackAddr, listenResult.BindError)
 		}
 	}
@@ -216,8 +218,10 @@ func (s *RuntimeServer) Start() (err error) {
 		WriteTimeout:      30 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
+	s.running.Store(true)
 
 	go func() {
+		defer s.running.Store(false)
 		if serveErr := s.httpServer.Serve(listener); serveErr != nil && serveErr != http.ErrServerClosed {
 			logger.Warning("Sub server stopped unexpectedly:", serveErr)
 		}
@@ -227,6 +231,7 @@ func (s *RuntimeServer) Start() (err error) {
 }
 
 func (s *RuntimeServer) Stop() error {
+	s.running.Store(false)
 	var err error
 	if s.httpServer != nil {
 		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 30*time.Second)
@@ -252,4 +257,10 @@ func (s *RuntimeServer) Stop() error {
 
 func (s *RuntimeServer) Context() context.Context {
 	return s.ctx
+}
+
+// ListenerReady exposes only lifecycle state; it never derives or probes a
+// subscription URL, so callers cannot turn it into a secret-path health probe.
+func (s *RuntimeServer) ListenerReady() bool {
+	return s != nil && s.listener != nil && s.httpServer != nil && s.running.Load()
 }

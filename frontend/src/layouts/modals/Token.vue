@@ -10,6 +10,14 @@
       </v-card-title>
       <v-divider></v-divider>
       <v-card-text>
+        <v-text-field
+          v-model="securityCredential"
+          autocomplete="current-password"
+          :hint="$t('security.stepUpCredentialHint')"
+          :label="$t('security.stepUpCredential')"
+          persistent-hint
+          type="password"
+        />
         <v-alert
           v-if="newToken.token.length>0"
           color="success"
@@ -173,6 +181,7 @@ export default {
         scope: 'admin',
       },
       delOverlay: new Array<boolean>(0),
+      securityCredential: '',
     }
   },
   computed: {
@@ -219,7 +228,8 @@ export default {
     async addToken() {
       this.loading = true
       this.newToken.expiry = this.newToken.expiry>0 ? this.newToken.expiry : 0
-      const response = await addToken(this.newToken.desc, this.newToken.expiry, this.newToken.scope)
+      const response = await addToken(this.newToken.desc, this.newToken.expiry, this.newToken.scope, this.securityCredential)
+      this.securityCredential = ''
       if (response.success) {
         this.newToken.token = response.obj
         this.loadData()
@@ -229,7 +239,8 @@ export default {
     },
     async setTokenEnabled(id: number, enabled: boolean) {
       this.loading = true
-      const response = await setTokenEnabled(id, enabled)
+      const response = await setTokenEnabled(id, enabled, this.securityCredential)
+      this.securityCredential = ''
       if (response.success) {
         this.loadData()
       }
@@ -237,7 +248,8 @@ export default {
     },
     async deleteToken(id: number) {
       this.loading = true
-      const response = await deleteToken(id)
+      const response = await deleteToken(id, this.securityCredential)
+      this.securityCredential = ''
       if (response.success) {
         this.loadData()
       }
@@ -290,6 +302,7 @@ export default {
     visible(v) {
       if (v) {
         this.resetNewToken()
+        this.securityCredential = ''
         this.loadData()
       }
     },

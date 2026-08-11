@@ -1,9 +1,11 @@
 package installstate
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -14,6 +16,12 @@ import (
 )
 
 const InstalledFileEnv = "SUI_COMPONENTS_INSTALLED_FILE"
+
+const (
+	InstalledMetadataVersion  = 1
+	MaxInstalledMetadataBytes = 1 << 20
+	MaxInstalledComponents    = 256
+)
 
 type Metadata struct {
 	Version    int                  `json:"version"`
@@ -97,19 +105,31 @@ func Load(path string) (Metadata, bool, error) {
 	if path == "" {
 		return Metadata{}, false, errors.New("component installed metadata path is empty")
 	}
-	data, err := os.ReadFile(path) // #nosec G304 -- path comes from installation metadata/env override.
+	info, err := os.Lstat(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return Metadata{}, false, nil
 		}
 		return Metadata{}, false, err
 	}
-	var metadata Metadata
-	if err := json.Unmarshal(data, &metadata); err != nil {
+	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > MaxInstalledMetadataBytes {
+		return Metadata{}, true, errors.New("component installed metadata file is invalid")
+	}
+	data, err := os.ReadFile(path) // #nosec G304 -- path comes from installation metadata/env override.
+	if err != nil {
 		return Metadata{}, true, err
 	}
-	if metadata.Version <= 0 {
-		return Metadata{}, true, errors.New("component installed metadata version is required")
+	var metadata Metadata
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&metadata); err != nil {
+		return Metadata{}, true, err
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return Metadata{}, true, errors.New("component installed metadata contains multiple JSON values")
+	}
+	if err := validateMetadata(metadata); err != nil {
+		return Metadata{}, true, err
 	}
 	return metadata, true, nil
 }
@@ -192,15 +212,58 @@ func Store(path string, metadata Metadata) error {
 	if path == "" {
 		return errors.New("component installed metadata path is empty")
 	}
-	if metadata.Version <= 0 {
-		return errors.New("component installed metadata version is required")
+	if err := validateMetadata(metadata); err != nil {
+		return err
 	}
 	data, err := json.MarshalIndent(metadata, "", "  ")
-	if err != nil {
+	if err != nil || len(data)+1 > MaxInstalledMetadataBytes {
+		if err == nil {
+			err = errors.New("component installed metadata exceeds the size limit")
+		}
 		return err
 	}
 	data = append(data, '\n')
 	return atomicWrite(path, data)
+}
+
+func validateMetadata(metadata Metadata) error {
+	if metadata.Version != InstalledMetadataVersion {
+		return errors.New("component installed metadata version is unsupported")
+	}
+	if len(metadata.Components) > MaxInstalledComponents || !safeMetadataLabel(metadata.Profile) || !safeMetadataLabel(metadata.Binary) {
+		return errors.New("component installed metadata inventory is invalid")
+	}
+	seen := make(map[string]struct{}, len(metadata.Components))
+	for _, item := range metadata.Components {
+		if err := manifest.ValidateID(item.ID); err != nil {
+			return err
+		}
+		if _, duplicate := seen[item.ID]; duplicate {
+			return fmt.Errorf("component %q is duplicated in installed metadata", item.ID)
+		}
+		seen[item.ID] = struct{}{}
+		if item.Delivery != "" && item.Delivery != manifest.DeliveryInProcess {
+			return fmt.Errorf("component %q has unsupported installed delivery %q", item.ID, item.Delivery)
+		}
+	}
+	return nil
+}
+
+func safeMetadataLabel(value string) bool {
+	if value == "" {
+		return true
+	}
+	if len(value) > 64 {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' ||
+			character >= '0' && character <= '9' || character == '-' || character == '_' || character == '.' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func defaultProfile(available []manifest.Manifest) string {

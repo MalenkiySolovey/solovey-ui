@@ -5,9 +5,7 @@ package telegram_test
 import (
 	"context"
 	"encoding/base64"
-	"errors"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -15,7 +13,6 @@ import (
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	settingsschema "github.com/MalenkiySolovey/solovey-ui/internal/settings/schema"
-	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/internal/settings/validation"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 )
 
@@ -50,35 +47,10 @@ func registerTelegramSettingsForTest(t *testing.T) {
 		ClearableEmptyEncrypted: telegramsettings.ClearableEmptyEncryptedKeys(),
 		Fields:                  []settingsschema.Field{},
 		Validators: []coreservice.SettingValidator{
-			validateTelegramSettingForTest,
+			telegramsettings.Validate,
 		},
 	})
 	t.Cleanup(unregister)
-}
-
-func validateTelegramSettingForTest(key string, value string, storedSecretMarker string) error {
-	if _, ok := telegramsettings.BooleanKeys()[key]; ok {
-		_, err := strconv.ParseBool(value)
-		return err
-	}
-	switch key {
-	case telegramsettings.BackupEnabledKey:
-		if value != "true" && value != "false" {
-			return errors.New("invalid boolean setting")
-		}
-	case telegramsettings.CPUThresholdKey:
-		threshold, err := strconv.Atoi(value)
-		if err != nil || threshold <= 0 || threshold > 100 {
-			return errors.New("invalid cpu threshold setting")
-		}
-	case telegramsettings.BackupPassphraseKey:
-		if value != "" && value != storedSecretMarker && len([]rune(value)) < 12 {
-			return errors.New("weak_passphrase")
-		}
-	case telegramsettings.ProxyURLKey:
-		return settingsvalidation.ValidateProxyURLValue(value, storedSecretMarker)
-	}
-	return nil
 }
 
 func encodedTestSecretboxKey() string {

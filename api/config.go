@@ -10,10 +10,15 @@ func (a *ApiService) configHandler() *confighttp.Handler {
 }
 
 func (a *ApiService) configDeps() confighttp.Deps {
+	configService := a.ConfigService
+	if configService == nil {
+		configService = service.NewConfigServiceWithRuntime(a.Runtime)
+		a.ConfigService = configService
+	}
 	return confighttp.Deps{
 		Runtime:          a.Runtime,
 		RestartScheduler: a.RestartScheduler,
-		ConfigService:    a.ConfigService,
+		ConfigService:    configService,
 		SettingService:   a.SettingService,
 		UserService:      a.UserService,
 		ClientService:    a.ClientService,

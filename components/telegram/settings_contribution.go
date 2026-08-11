@@ -3,16 +3,9 @@
 package telegram
 
 import (
-	"strconv"
-	"strings"
-	"time"
-
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	settingsschema "github.com/MalenkiySolovey/solovey-ui/internal/settings/schema"
-	settingsvalidation "github.com/MalenkiySolovey/solovey-ui/internal/settings/validation"
 	"github.com/MalenkiySolovey/solovey-ui/service"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
-	"github.com/robfig/cron/v3"
 )
 
 const (
@@ -21,16 +14,23 @@ const (
 	telegramBackupGroup  = "telegram_backup"
 )
 
-var telegramCronParser = cron.NewParser(cron.Minute | cron.Hour | cron.Dom | cron.Month | cron.Dow)
-
 func registerSettingContribution() func() {
 	return service.RegisterSettingContribution(id, service.SettingContribution{
 		Defaults:                telegramsettings.Defaults(),
 		Encrypted:               telegramsettings.EncryptedKeys(),
 		ClearableEmptyEncrypted: telegramsettings.ClearableEmptyEncryptedKeys(),
-		Fields:                  telegramSettingFields(),
+		ImportAliases: map[string]string{
+			"tgBotEnable": telegramsettings.EnabledKey,
+			"tgBotToken":  telegramsettings.BotTokenKey,
+			"tgBotChatId": telegramsettings.ChatIDKey,
+			"tgRunTime":   telegramsettings.ReportCronKey,
+			"tgCpu":       telegramsettings.CPUThresholdKey,
+			"tgBotBackup": telegramsettings.BackupEnabledKey,
+			"tgBotProxy":  telegramsettings.ProxyURLKey,
+		},
+		Fields: telegramSettingFields(),
 		Validators: []service.SettingValidator{
-			validateTelegramSettingInput,
+			telegramsettings.Validate,
 		},
 	})
 }
@@ -56,73 +56,6 @@ func telegramSettingFields() []settingsschema.Field {
 		{Key: telegramsettings.BackupExcludeTablesKey, Page: telegramSettingsPage, Group: telegramBackupGroup, Type: settingsschema.FieldTypeTagList, LabelKey: "telegram.backup.excludeTables", Options: []string{"stats", "client_ips", "audit_events", "changes"}, Order: 40},
 		{Key: telegramsettings.BackupMaxSizeMBKey, Page: telegramSettingsPage, Group: telegramBackupGroup, Type: settingsschema.FieldTypeInt, LabelKey: "telegram.backup.maxSize", Min: intPtr(1), Max: intPtr(50), Order: 50},
 	}
-}
-
-func validateTelegramSettingInput(key string, value string, storedSecretMarker string) error {
-	if _, ok := telegramsettings.BooleanKeys()[key]; ok {
-		if _, err := strconv.ParseBool(value); err != nil {
-			return common.NewError("invalid boolean setting: ", key)
-		}
-		return nil
-	}
-	switch key {
-	case telegramsettings.BackupEnabledKey:
-		if value != "true" && value != "false" {
-			return common.NewError("invalid boolean setting: ", key)
-		}
-	case telegramsettings.CPUThresholdKey:
-		threshold, err := strconv.Atoi(value)
-		if err != nil || threshold <= 0 || threshold > 100 {
-			return common.NewError("invalid cpu threshold setting")
-		}
-	case telegramsettings.ReportCronKey, telegramsettings.BackupCronKey:
-		if _, err := parseTelegramCron(value); err != nil {
-			return err
-		}
-	case telegramsettings.BackupPassphraseKey:
-		if value != "" && value != storedSecretMarker && len([]rune(value)) < 12 {
-			return common.NewError("weak_passphrase")
-		}
-	case telegramsettings.BackupExcludeTablesKey:
-		if len(value) > 256 {
-			return common.NewError("telegramBackupExcludeTables is too long")
-		}
-	case telegramsettings.BackupMaxSizeMBKey:
-		limit, err := strconv.Atoi(value)
-		if err != nil || limit < 1 || limit > 50 {
-			return common.NewError("invalid telegram backup max size setting")
-		}
-	case telegramsettings.TransportModeKey:
-		if err := settingsvalidation.ValidateTransportMode(value); err != nil {
-			return err
-		}
-	case telegramsettings.OutboundTagKey:
-		if len(value) > 256 {
-			return common.NewError("telegramOutboundTag is too long")
-		}
-	case telegramsettings.ProxyURLKey:
-		if err := settingsvalidation.ValidateProxyURLValue(value, storedSecretMarker); err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
-func parseTelegramCron(spec string) (cron.Schedule, error) {
-	spec = strings.TrimSpace(spec)
-	if spec == "" {
-		return nil, nil
-	}
-	schedule, err := telegramCronParser.Parse(spec)
-	if err != nil {
-		return nil, err
-	}
-	first := schedule.Next(time.Unix(0, 0))
-	second := schedule.Next(first)
-	if !second.IsZero() && second.Sub(first) < time.Minute {
-		return nil, common.NewError("telegram cron step must be at least 1 minute")
-	}
-	return schedule, nil
 }
 
 func intPtr(value int) *int {

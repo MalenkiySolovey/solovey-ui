@@ -26,7 +26,8 @@ type Component struct {
 
 var activeCache = struct {
 	sync.RWMutex
-	ids map[string]struct{}
+	ids        map[string]struct{}
+	generation uint64
 }{}
 
 func Components() ([]Component, error) {
@@ -104,27 +105,45 @@ func IsActiveCached(id string) (bool, error) {
 }
 
 func activeIDsCachedSnapshot() (map[string]struct{}, error) {
-	activeCache.RLock()
-	if activeCache.ids != nil {
-		ids := activeCache.ids
+	for {
+		activeCache.RLock()
+		if activeCache.ids != nil {
+			ids := activeCache.ids
+			activeCache.RUnlock()
+			return ids, nil
+		}
+		generation := activeCache.generation
 		activeCache.RUnlock()
-		return ids, nil
-	}
-	activeCache.RUnlock()
 
-	ids, err := ActiveIDs()
-	if err != nil {
-		return nil, err
+		ids, err := ActiveIDs()
+		if err != nil {
+			return nil, err
+		}
+		if cached, published := publishActiveIDs(generation, ids); published {
+			return cached, nil
+		}
+		// Installed/enabled state changed while the snapshot was loading. Do
+		// not resurrect the stale snapshot after invalidation; load the new
+		// generation instead.
 	}
+}
+
+func publishActiveIDs(generation uint64, ids map[string]struct{}) (map[string]struct{}, bool) {
 	activeCache.Lock()
-	activeCache.ids = cloneIDs(ids)
+	defer activeCache.Unlock()
+	if activeCache.generation != generation {
+		return nil, false
+	}
+	if activeCache.ids == nil {
+		activeCache.ids = cloneIDs(ids)
+	}
 	cached := activeCache.ids
-	activeCache.Unlock()
-	return cached, nil
+	return cached, true
 }
 
 func InvalidateActiveCache() {
 	activeCache.Lock()
+	activeCache.generation++
 	activeCache.ids = nil
 	activeCache.Unlock()
 }

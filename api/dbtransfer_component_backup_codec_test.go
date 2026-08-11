@@ -35,7 +35,7 @@ func TestRestoreEndpointAcceptsPlaintextDatabaseBackup(t *testing.T) {
 	}
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/importdb", withTestTokenScope("admin", "admin", (&ApiService{}).dbTransferHandler().ImportDb))
+		router.POST("/api/importdb", withTestTokenScope("admin", "admin", databaseImportTestHandler()))
 	})
 	recorder := performAuthenticatedTestRequest(router, newDatabaseImportRequest(t, backup), cookies...)
 	if recorder.Code != http.StatusOK {
@@ -49,7 +49,7 @@ func TestRestoreEndpointAcceptsPlaintextDatabaseBackup(t *testing.T) {
 
 func TestRestoreEndpointDecryptsComponentBackupEnvelope(t *testing.T) {
 	settingService := initRestoreTestDB(t)
-	registerTelegramBackupTransferCodecsForTest(t, settingService)
+	registerFixtureBackupTransferCodecsForTest(t, settingService)
 	withNoopSighup(t)
 	if err := setRestoreMarker("encrypted-backup"); err != nil {
 		t.Fatal(err)
@@ -68,7 +68,7 @@ func TestRestoreEndpointDecryptsComponentBackupEnvelope(t *testing.T) {
 	}
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/importdb", withTestTokenScope("admin", "admin", (&ApiService{}).dbTransferHandler().ImportDb))
+		router.POST("/api/importdb", withTestTokenScope("admin", "admin", databaseImportTestHandler()))
 	})
 	req := newDatabaseImportRequestWithPassphrase(t, envelope, string(passphrase))
 	recorder := performAuthenticatedTestRequest(router, req, cookies...)
@@ -83,7 +83,7 @@ func TestRestoreEndpointDecryptsComponentBackupEnvelope(t *testing.T) {
 
 func TestRestoreEndpointRejectsBadComponentBackupPassphraseWithoutTouchingLiveDB(t *testing.T) {
 	settingService := initRestoreTestDB(t)
-	registerTelegramBackupTransferCodecsForTest(t, settingService)
+	registerFixtureBackupTransferCodecsForTest(t, settingService)
 	withNoopSighup(t)
 	if err := setRestoreMarker("encrypted-backup"); err != nil {
 		t.Fatal(err)
@@ -101,7 +101,7 @@ func TestRestoreEndpointRejectsBadComponentBackupPassphraseWithoutTouchingLiveDB
 	}
 
 	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
-		router.POST("/api/importdb", withTestTokenScope("admin", "admin", (&ApiService{}).dbTransferHandler().ImportDb))
+		router.POST("/api/importdb", withTestTokenScope("admin", "admin", databaseImportTestHandler()))
 	})
 	req := newDatabaseImportRequestWithPassphrase(t, envelope, "wrong horse battery staple")
 	recorder := performAuthenticatedTestRequest(router, req, cookies...)
@@ -116,7 +116,7 @@ func TestRestoreEndpointRejectsBadComponentBackupPassphraseWithoutTouchingLiveDB
 	flushAPIAudit(t)
 
 	var event model.AuditEvent
-	if err := dbsqlite.DB().Where("event = ?", "tg_backup_restore_failed").First(&event).Error; err != nil {
+	if err := dbsqlite.DB().Where("event = ?", "fixture_backup_restore_failed").First(&event).Error; err != nil {
 		t.Fatal(err)
 	}
 	details := string(event.Details)
@@ -149,9 +149,12 @@ func newDatabaseImportRequestWithPassphrase(t *testing.T, content []byte, passph
 		t.Fatal(err)
 	}
 	if passphrase != "" {
-		if err := writer.WriteField("telegramBackupPassphrase", passphrase); err != nil {
+		if err := writer.WriteField("fixtureBackupPassphrase", passphrase); err != nil {
 			t.Fatal(err)
 		}
+	}
+	if plaintext, err := backupenvelope.Open(content, []byte(passphrase)); err == nil {
+		writeRestoreExecutionFields(t, writer, plaintext)
 	}
 	if err := writer.Close(); err != nil {
 		t.Fatal(err)

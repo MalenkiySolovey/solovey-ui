@@ -123,7 +123,7 @@ func ConfigDetails(raw []byte) map[string]any {
 	var doc map[string]json.RawMessage
 	details := map[string]any{"bytes": len(raw)}
 	if err := json.Unmarshal(raw, &doc); err != nil {
-		details["json"] = err.Error()
+		details["json"] = "invalid"
 		return details
 	}
 	for _, section := range []string{"inbounds", "outbounds", "services", "endpoints"} {

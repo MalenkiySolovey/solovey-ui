@@ -31,7 +31,7 @@ func TestApplyConfigSaveMutationPlansSettingsWithoutCoreRestart(t *testing.T) {
 	initSettingTestDB(t)
 
 	payload, err := json.Marshal(map[string]string{
-		"telegramChatID": "42",
+		"fixturePrimaryChatID": "42",
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -7,8 +7,6 @@ package telegram
 import (
 	"net/http"
 	"time"
-
-	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
 )
 
 type Settings interface {
@@ -46,7 +44,7 @@ type RuntimeProvider interface {
 type Service struct {
 	Settings Settings
 	Runtime  RuntimeProvider
-	Notifier *integrationtelegram.Notifier
+	Notifier *Notifier
 	Client   *http.Client
 }
 

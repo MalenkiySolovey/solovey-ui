@@ -12,7 +12,12 @@ func (s *SettingService) GetAllSetting() (*map[string]string, error) {
 }
 
 func (s *SettingService) ResetSettings() error {
-	return s.settingsManager().Reset()
+	if err := s.settingsManager().Reset(); err != nil {
+		return err
+	}
+	// A deliberate reset adopts current safe defaults; it must not recreate
+	// the upgrade-only LEGACY_UNBOUNDED fallback by deleting its marker.
+	return s.AdoptBoundedSessionLifetime()
 }
 
 func (s *SettingService) GetComponentSettingString(key string) (string, error) {

@@ -7,10 +7,16 @@ SERVICE_NAME="solovey-ui"
 REPO="${SOLOVEY_UI_REPO:-MalenkiySolovey/solovey-ui}"
 
 INSTALL_DIR="${SOLOVEY_UI_INSTALL_DIR:-/usr/local/${APP_NAME}}"
-BIN_PATH="${INSTALL_DIR}/${APP_NAME}"
-MANAGER_PATH="${INSTALL_DIR}/${APP_NAME}.sh"
+RELEASES_DIR="${INSTALL_DIR}/releases"
+CURRENT_RELEASE_DIR="${RELEASES_DIR}/current"
+BIN_PATH="${CURRENT_RELEASE_DIR}/${APP_NAME}"
+MANAGER_PATH="${CURRENT_RELEASE_DIR}/${APP_NAME}.sh"
 CLI_PATH="${SOLOVEY_UI_CLI_PATH:-/usr/bin/${APP_NAME}}"
 SYSTEMD_SERVICE="${SOLOVEY_UI_SYSTEMD_SERVICE:-/etc/systemd/system/${SERVICE_NAME}.service}"
+SYSTEMD_UNIT_ROOT="${SOLOVEY_UI_SYSTEMD_UNIT_ROOT:-${SYSTEMD_SERVICE%/*}}"
+SYSTEMD_PROFILE_ROOT="${SOLOVEY_UI_SYSTEMD_PROFILE_ROOT:-/usr/local/lib/${APP_NAME}/systemd}"
+DEPLOYMENT_MARKER="${SOLOVEY_UI_DEPLOYMENT_MARKER:-/etc/${APP_NAME}/deployment-profile}"
+HARDENED_DATA_ROOT="${SOLOVEY_UI_HARDENED_DATA_ROOT:-/var/lib/${APP_NAME}}"
 ENV_DIR="${SOLOVEY_UI_ENV_DIR:-/etc/${APP_NAME}}"
 SECRETBOX_ENV_FILE="${SOLOVEY_UI_SECRETBOX_ENV_FILE:-${ENV_DIR}/secretbox.env}"
 BACKUP_ROOT="${SOLOVEY_UI_BACKUP_ROOT:-/var/backups/${APP_NAME}}"
@@ -26,6 +32,7 @@ LEGACY_DROPIN_DIR="${SOLOVEY_UI_LEGACY_DROPIN_DIR:-/etc/systemd/system/${LEGACY_
 LEGACY_DB="${SOLOVEY_UI_LEGACY_DB:-${LEGACY_DIR}/db/s-ui.db}"
 LEGACY_CERT_DIR="${SOLOVEY_UI_LEGACY_CERT_DIR:-${LEGACY_DIR}/cert}"
 TARGET_DB="${INSTALL_DIR}/db/${APP_NAME}.db"
+DEPLOYMENT_PROFILE=""
 
 DRY_RUN=0
 NON_INTERACTIVE=0
@@ -576,6 +583,9 @@ require_tools() {
         require_command tar
         require_command sha256sum
         require_command systemctl
+		require_command systemd-sysusers
+		require_command systemd-tmpfiles
+		require_command runuser
         require_command base64
         require_command dd
         if [[ "${MIGRATE_FROM_SUI}" == "1" ]]; then
@@ -675,6 +685,14 @@ estimate_backup_size_kb() {
     total=$((total + size))
     size="$(backup_path_size_kb "${SYSTEMD_SERVICE}")"
     total=$((total + size))
+	size="$(backup_path_size_kb "${HARDENED_DATA_ROOT}")"
+	total=$((total + size))
+	size="$(backup_path_size_kb "${SYSTEMD_PROFILE_ROOT}")"
+	total=$((total + size))
+	for unit in solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket; do
+		size="$(backup_path_size_kb "${SYSTEMD_UNIT_ROOT}/${unit}")"
+		total=$((total + size))
+	done
 
     if [[ "${MIGRATE_FROM_SUI}" == "1" ]]; then
         size="$(backup_path_size_kb "${LEGACY_DIR}")"
@@ -716,6 +734,25 @@ cleanup_incomplete_backup() {
     if [[ "${DRY_RUN}" != "1" && -n "${target}" && -d "${target}" ]]; then
         rm -rf "${target}"
     fi
+}
+
+backup_systemd_assets() {
+	local target="$1" unit state
+	mkdir -p "${target}/systemd-assets/units" || return 1
+	if [[ -d "${SYSTEMD_PROFILE_ROOT}" ]]; then
+		copy_backup_path "${SYSTEMD_PROFILE_ROOT}" "${target}/systemd-assets/profiles" "${target}" || return 1
+		printf 'profiles=present\n' >> "${target}/systemd-assets/inventory.txt"
+	else
+		printf 'profiles=absent\n' >> "${target}/systemd-assets/inventory.txt"
+	fi
+	for unit in solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket; do
+		state=absent
+		if [[ -f "${SYSTEMD_UNIT_ROOT}/${unit}" ]]; then
+			copy_backup_path "${SYSTEMD_UNIT_ROOT}/${unit}" "${target}/systemd-assets/units/${unit}" "${target}" || return 1
+			state=present
+		fi
+		printf '%s=%s\n' "${unit}" "${state}" >> "${target}/systemd-assets/inventory.txt"
+	done
 }
 
 copy_backup_path() {
@@ -767,9 +804,13 @@ backup_existing() {
     if [[ -d "${ENV_DIR}" ]]; then
         copy_backup_path "${ENV_DIR}" "${target}/etc" "${target}"
     fi
-    if [[ -f "${SYSTEMD_SERVICE}" ]]; then
-        copy_backup_path "${SYSTEMD_SERVICE}" "${target}/${SERVICE_NAME}.service" "${target}"
-    fi
+	if [[ -f "${SYSTEMD_SERVICE}" ]]; then
+		copy_backup_path "${SYSTEMD_SERVICE}" "${target}/${SERVICE_NAME}.service" "${target}"
+	fi
+	if [[ -d "${HARDENED_DATA_ROOT}" ]]; then
+		copy_backup_path "${HARDENED_DATA_ROOT}" "${target}/hardened-data" "${target}"
+	fi
+	backup_systemd_assets "${target}" || return
     if [[ "${MIGRATE_FROM_SUI}" == "1" ]]; then
         if [[ -d "${LEGACY_DIR}" ]]; then
             copy_backup_path "${LEGACY_DIR}" "${target}/legacy-app" "${target}"
@@ -792,6 +833,9 @@ backup_existing() {
             printf 'install_dir=%s\n' "${INSTALL_DIR}"
             printf 'env_dir=%s\n' "${ENV_DIR}"
             printf 'service=%s\n' "${SYSTEMD_SERVICE}"
+			printf 'hardened_data_root=%s\n' "${HARDENED_DATA_ROOT}"
+			printf 'systemd_profile_root=%s\n' "${SYSTEMD_PROFILE_ROOT}"
+			printf 'systemd_unit_root=%s\n' "${SYSTEMD_UNIT_ROOT}"
             append_backup_build_info "${INSTALL_DIR}/BUILD_INFO.txt"
             if [[ "${MIGRATE_FROM_SUI}" == "1" ]]; then
                 printf 'legacy_dir=%s\n' "${LEGACY_DIR}"
@@ -872,6 +916,8 @@ restore_current_install_backup() {
     systemctl stop "${SERVICE_NAME}" >/dev/null 2>&1 || true
     restore_backup_dir "${backup}/app" "${INSTALL_DIR}" || return 1
     restore_backup_dir "${backup}/etc" "${ENV_DIR}" || return 1
+	restore_backup_dir "${backup}/hardened-data" "${HARDENED_DATA_ROOT}" || return 1
+	restore_systemd_assets "${backup}" || return 1
 
     if [[ -f "${backup}/${SERVICE_NAME}.service" ]]; then
         mkdir -p "$(dirname "${SYSTEMD_SERVICE}")"
@@ -885,6 +931,30 @@ restore_current_install_backup() {
 
     systemctl daemon-reload || return 1
     systemctl restart "${SERVICE_NAME}" || return 1
+}
+
+restore_systemd_assets() {
+	local backup="$1" inventory="${backup}/systemd-assets/inventory.txt" unit state
+	[[ -f "${inventory}" ]] || return 0
+	state="$(sed -n 's/^profiles=//p' "${inventory}" | head -n 1)"
+	if [[ "${state}" == present ]]; then
+		restore_backup_dir "${backup}/systemd-assets/profiles" "${SYSTEMD_PROFILE_ROOT}" || return 1
+	elif [[ "${state}" == absent ]]; then
+		rm -rf "${SYSTEMD_PROFILE_ROOT}" || return 1
+	else
+		return 1
+	fi
+	for unit in solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket; do
+		state="$(sed -n "s/^${unit}=//p" "${inventory}" | head -n 1)"
+		if [[ "${state}" == present && -f "${backup}/systemd-assets/units/${unit}" ]]; then
+			mkdir -p "${SYSTEMD_UNIT_ROOT}" || return 1
+			cp -a "${backup}/systemd-assets/units/${unit}" "${SYSTEMD_UNIT_ROOT}/${unit}" || return 1
+		elif [[ "${state}" == absent ]]; then
+			rm -f "${SYSTEMD_UNIT_ROOT}/${unit}" || return 1
+		else
+			return 1
+		fi
+	done
 }
 
 rollback_failed_install() {
@@ -984,6 +1054,7 @@ atomic_install_file() {
     rm -f "${incoming}"
     cp -a "${source}" "${incoming}" || { rm -f "${incoming}"; return 1; }
     chmod "${mode}" "${incoming}" || { rm -f "${incoming}"; return 1; }
+	chown 0:0 "${incoming}" || { rm -f "${incoming}"; return 1; }
     mv -f "${incoming}" "${destination}" || { rm -f "${incoming}"; return 1; }
 }
 
@@ -1062,22 +1133,61 @@ migrate_legacy_data() {
 
 install_payload() {
     local payload_dir="$1"
+	local release_digest release_id release_root release_staging current_incoming name
 
     [[ -d "${payload_dir}" ]] || fail "release payload directory not found: ${payload_dir}"
     [[ -f "${payload_dir}/${APP_NAME}" ]] || fail "release payload misses ${APP_NAME} binary"
     [[ -f "${payload_dir}/${APP_NAME}.sh" ]] || fail "release payload misses ${APP_NAME}.sh"
     [[ -f "${payload_dir}/${SERVICE_NAME}.service" ]] || fail "release payload misses ${SERVICE_NAME}.service"
+	[[ -x "${payload_dir}/solovey-privileged-broker" ]] || fail "release payload misses privileged broker"
+	[[ -x "${payload_dir}/solovey-ssh-proof" ]] || fail "release payload misses SSH proof client"
+	[[ -x "${payload_dir}/solovey-broker-manifest" ]] || fail "release payload misses broker manifest writer"
+	[[ -d "${payload_dir}/systemd" ]] || fail "release payload misses systemd profiles"
     [[ -f "${payload_dir}/BUILD_INFO.txt" ]] || fail "release payload misses BUILD_INFO.txt"
 
+	detect_deployment_profile
+	verify_systemd_profile_support || return
     stop_existing_service || return
     stop_legacy_service_for_migration || return
 
-    run mkdir -p "${INSTALL_DIR}" "${INSTALL_DIR}/db" "${ENV_DIR}" "${SYSTEMD_SERVICE%/*}" "${CLI_PATH%/*}" || return
-    atomic_install_file "${payload_dir}/${APP_NAME}" "${BIN_PATH}" 755 || return
-    atomic_install_file "${payload_dir}/${APP_NAME}.sh" "${MANAGER_PATH}" 755 || return
-    atomic_install_file "${payload_dir}/${SERVICE_NAME}.service" "${INSTALL_DIR}/${SERVICE_NAME}.service" 644 || return
-    atomic_install_file "${payload_dir}/BUILD_INFO.txt" "${INSTALL_DIR}/BUILD_INFO.txt" 644 || return
-    atomic_install_file "${payload_dir}/${SERVICE_NAME}.service" "${SYSTEMD_SERVICE}" 644 || return
+	release_digest="$(
+		cd "${payload_dir}"
+		find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum | sha256sum | awk '{print substr($1,1,16)}'
+	)"
+	[[ "${release_digest}" =~ ^[a-f0-9]{16}$ ]] || fail "release-set digest is invalid"
+	release_id="installer-${release_digest}"
+	release_root="${RELEASES_DIR}/${release_id}"
+	release_staging="${release_root}.incoming.$$"
+	current_incoming="${RELEASES_DIR}/.current-${release_id}.$$"
+	run mkdir -p "${INSTALL_DIR}" "${INSTALL_DIR}/db" "${RELEASES_DIR}" "${ENV_DIR}" "${SYSTEMD_SERVICE%/*}" "${CLI_PATH%/*}" "${SYSTEMD_PROFILE_ROOT}" || return
+	if [[ ! -d "${release_root}" ]]; then
+		run rm -rf "${release_staging}" || return
+		run mkdir -p "${release_staging}" || return
+		run cp -a "${payload_dir}/." "${release_staging}/" || return
+		run chown -R 0:0 "${release_staging}" || return
+		run chmod 755 "${release_staging}/${APP_NAME}" "${release_staging}/${APP_NAME}.sh" \
+			"${release_staging}/solovey-privileged-broker" "${release_staging}/solovey-ssh-proof" \
+			"${release_staging}/solovey-broker-manifest" || return
+		if [[ -f "${release_staging}/solovey-protect-helper" ]]; then
+			run chmod 755 "${release_staging}/solovey-protect-helper" || return
+		fi
+		run chmod 644 "${release_staging}/${SERVICE_NAME}.service" "${release_staging}/BUILD_INFO.txt" || return
+		run mv "${release_staging}" "${release_root}" || return
+	fi
+	run rm -f "${current_incoming}" || return
+	run ln -s "${release_id}" "${current_incoming}" || return
+	run mv -Tf "${current_incoming}" "${CURRENT_RELEASE_DIR}" || return
+	for name in "${APP_NAME}" "${APP_NAME}.sh" solovey-privileged-broker solovey-ssh-proof solovey-broker-manifest "${SERVICE_NAME}.service" BUILD_INFO.txt; do
+		run ln -sfn "releases/current/${name}" "${INSTALL_DIR}/${name}" || return
+	done
+	if [[ -f "${CURRENT_RELEASE_DIR}/solovey-protect-helper" ]]; then
+		run ln -sfn "releases/current/solovey-protect-helper" "${INSTALL_DIR}/solovey-protect-helper" || return
+	else
+		run rm -f "${INSTALL_DIR}/solovey-protect-helper" || return
+	fi
+	install_systemd_profiles "${payload_dir}/systemd" || return
+	run chown root:solovey-ui "${CURRENT_RELEASE_DIR}/solovey-ssh-proof" || return
+	run chmod 2755 "${CURRENT_RELEASE_DIR}/solovey-ssh-proof" || return
     run ln -sf "${MANAGER_PATH}" "${CLI_PATH}" || return
     copy_legacy_secretbox_env || return
     create_secretbox_env || return
@@ -1085,10 +1195,84 @@ install_payload() {
     install_component_packs || return
     write_component_metadata || return
 
-    run systemctl daemon-reload || return
-    run "${BIN_PATH}" migrate || return
+	configure_deployment_profile || return
+	run systemctl daemon-reload || return
+	run systemctl enable solovey-privileged-broker.socket solovey-privileged-proof.socket || return
+	run "${CURRENT_RELEASE_DIR}/solovey-broker-manifest" || return
+	if [[ "${DEPLOYMENT_PROFILE}" == "native-legacy-root" ]]; then
+		run env SUI_DB_FOLDER="${INSTALL_DIR}/db" "${BIN_PATH}" migrate || return
+	else
+		run runuser -u solovey-ui -- env SUI_DB_FOLDER="${HARDENED_DATA_ROOT}/db" "${BIN_PATH}" migrate || return
+	fi
     run systemctl enable "${SERVICE_NAME}" || return
     run systemctl restart "${SERVICE_NAME}" || return
+}
+
+detect_deployment_profile() {
+	local installed=""
+	if [[ -f "${DEPLOYMENT_MARKER}" ]]; then
+		installed="$(tr -d '\r\n' < "${DEPLOYMENT_MARKER}")"
+	fi
+	case "${installed}" in
+		native-hardened|native-network-advanced|native-legacy-root) DEPLOYMENT_PROFILE="${installed}" ;;
+		*)
+			if [[ "${MIGRATE_FROM_SUI}" == "1" || -f "${SYSTEMD_SERVICE}" || -f "${INSTALL_DIR}/db/${APP_NAME}.db" ]]; then
+				DEPLOYMENT_PROFILE="native-legacy-root"
+			else
+				DEPLOYMENT_PROFILE="native-hardened"
+			fi
+			;;
+	esac
+	if [[ "${DEPLOYMENT_PROFILE}" == "native-legacy-root" ]]; then
+		TARGET_DB="${INSTALL_DIR}/db/${APP_NAME}.db"
+	else
+		TARGET_DB="${HARDENED_DATA_ROOT}/db/${APP_NAME}.db"
+	fi
+	log "deployment profile: ${DEPLOYMENT_PROFILE}"
+}
+
+install_systemd_profiles() {
+	local source="$1" unit
+	for unit in solovey-ui-native-hardened.service solovey-ui-native-network-advanced.service solovey-ui-native-legacy-root.service \
+		solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket solovey-ui.sysusers solovey-ui.tmpfiles; do
+		[[ -f "${source}/${unit}" ]] || fail "release payload misses systemd asset ${unit}"
+		atomic_install_file "${source}/${unit}" "${SYSTEMD_PROFILE_ROOT}/${unit}" 644 || return
+	done
+	atomic_install_file "${source}/solovey-privileged-broker.service" "${SYSTEMD_UNIT_ROOT}/solovey-privileged-broker.service" 644 || return
+	atomic_install_file "${source}/solovey-privileged-broker.socket" "${SYSTEMD_UNIT_ROOT}/solovey-privileged-broker.socket" 644 || return
+	atomic_install_file "${source}/solovey-privileged-proof.socket" "${SYSTEMD_UNIT_ROOT}/solovey-privileged-proof.socket" 644 || return
+	run systemd-sysusers "${source}/solovey-ui.sysusers" || return
+	run systemd-tmpfiles --create "${source}/solovey-ui.tmpfiles" || return
+}
+
+configure_deployment_profile() {
+	local target="${SYSTEMD_PROFILE_ROOT}/solovey-ui-${DEPLOYMENT_PROFILE}.service" incoming="${SYSTEMD_SERVICE}.incoming.$$"
+	[[ -f "${target}" ]] || fail "selected deployment profile is not packaged: ${DEPLOYMENT_PROFILE}"
+	if [[ "${DRY_RUN}" == "1" ]]; then
+		log "would select ${target} as ${SYSTEMD_SERVICE}"
+		return 0
+	fi
+	rm -f "${incoming}"
+	ln -s "${target}" "${incoming}" || return
+	mv -Tf "${incoming}" "${SYSTEMD_SERVICE}" || return
+	printf '%s\n' "${DEPLOYMENT_PROFILE}" > "${DEPLOYMENT_MARKER}.incoming"
+	chmod 0644 "${DEPLOYMENT_MARKER}.incoming"
+	mv -f "${DEPLOYMENT_MARKER}.incoming" "${DEPLOYMENT_MARKER}"
+}
+
+verify_systemd_profile_support() {
+	[[ "${DRY_RUN}" == "1" || "${DEPLOYMENT_PROFILE}" == "native-legacy-root" ]] && return 0
+	if [[ "${DEPLOYMENT_PROFILE}" == "native-network-advanced" ]]; then
+		fail "native-network-advanced is generated but unavailable until a separately confined core runtime exists"
+	fi
+	local first version
+	first="$(LC_ALL=C systemctl --version 2>/dev/null | sed -n '1p')" || fail "unable to inspect installed systemd capabilities"
+	if [[ "${first}" =~ ^systemd[[:space:]]+([0-9]+) ]]; then
+		version="${BASH_REMATCH[1]}"
+	else
+		fail "unable to parse installed systemd capability version"
+	fi
+	(( version >= 249 )) || fail "native-hardened requires systemd 249 or newer; no legacy-root fallback is selected for a fresh install"
 }
 
 download_and_install() {

@@ -17,6 +17,7 @@ import (
 	_ "github.com/MalenkiySolovey/solovey-ui/app"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	componentsupervisor "github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
@@ -26,7 +27,6 @@ import (
 	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/security"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/web"
-	"github.com/MalenkiySolovey/solovey-ui/web/publicsurface"
 
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-gonic/gin"
@@ -34,18 +34,18 @@ import (
 
 func main() {
 	log.SetOutput(os.Stdout)
-	fmt.Println("phase6 e2e panel-server: init logger")
+	fmt.Println("e2e panel-server: init logger")
 	logger.Init(logger.LevelWarning)
 
-	fmt.Println("phase6 e2e panel-server: init database")
+	fmt.Println("e2e panel-server: init database")
 	if err := dbsqlite.Init(configstorage.GetDBPath()); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("phase6 e2e panel-server: install registered components")
+	fmt.Println("e2e panel-server: install registered components")
 	if err := installRegisteredComponentsForE2E(); err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("phase6 e2e panel-server: load settings")
+	fmt.Println("e2e panel-server: load settings")
 	settingService := &service.SettingService{}
 	if _, err := settingService.GetAllSetting(); err != nil {
 		log.Fatal(err)
@@ -59,7 +59,7 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Println("phase6 e2e panel-server: init api-only web server")
+	fmt.Println("e2e panel-server: init api-only web server")
 	runtime := service.NewRuntime(nil)
 	service.SetDefaultRuntime(runtime)
 	baseURL, err := settingService.GetWebPath()
@@ -101,10 +101,10 @@ func main() {
 	groupAPI := engine.Group(baseURL + "api")
 	api.NewAPIHandler(groupAPI, apiv2, api.WithRuntime(runtime))
 	engine.GET(baseURL, func(c *gin.Context) {
-		c.String(http.StatusOK, "phase6 e2e panel")
+		c.String(http.StatusOK, "e2e panel")
 	})
 	engine.GET(baseURL+"login", func(c *gin.Context) {
-		c.String(http.StatusOK, "phase6 e2e panel")
+		c.String(http.StatusOK, "e2e panel")
 	})
 	engine.NoRoute(func(c *gin.Context) {
 		if c.Request.URL.Path == strings.TrimSuffix(baseURL, "/") {
@@ -118,7 +118,7 @@ func main() {
 			publicsurface.Handled404(c)
 			return
 		}
-		c.String(http.StatusNotFound, "phase6 e2e not found")
+		c.String(http.StatusNotFound, "e2e not found")
 	})
 
 	port, err := settingService.GetPort()
@@ -127,7 +127,7 @@ func main() {
 	}
 	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
 	if err != nil {
-		fmt.Printf("phase6 e2e panel-server: listen error: %#v\n", err)
+		fmt.Printf("e2e panel-server: listen error: %#v\n", err)
 		os.Exit(1)
 	}
 	server := &http.Server{
@@ -136,10 +136,10 @@ func main() {
 	}
 	go func() {
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
-			logger.Warning("phase6 e2e api-only server stopped:", err)
+			logger.Warning("e2e api-only server stopped:", err)
 		}
 	}()
-	fmt.Println("phase6 e2e panel-server: ready")
+	fmt.Println("e2e panel-server: ready")
 
 	stop := make(chan os.Signal, 1)
 	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)

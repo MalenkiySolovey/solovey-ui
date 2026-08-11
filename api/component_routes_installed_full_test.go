@@ -10,13 +10,14 @@ import (
 	"strings"
 	"testing"
 
+	"net/http/httptest"
+
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/gin-gonic/gin"
-	"net/http/httptest"
 )
 
 func TestComponentRoutesRespectInstalledMetadata(t *testing.T) {
@@ -28,7 +29,8 @@ func TestComponentRoutesRespectInstalledMetadata(t *testing.T) {
 		"binary": "full",
 		"components": [
 			{"id": "fallback-html", "delivery": "in-process", "installed": true},
-			{"id": "telegram", "delivery": "in-process", "installed": true}
+			{"id": "telegram", "delivery": "in-process", "installed": true},
+			{"id": "server-protection", "delivery": "in-process", "installed": true}
 		]
 	}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -44,6 +46,17 @@ func TestComponentRoutesRespectInstalledMetadata(t *testing.T) {
 	}
 	if !routeExists(router, http.MethodGet, "/api/components/fallback-html/health") {
 		t.Fatal("installed fallback-html component route is missing")
+	}
+	if !routeExists(router, http.MethodGet, "/api/components/server-protection/status") ||
+		!routeExists(router, http.MethodPost, "/api/components/server-protection/firewall/preview") ||
+		!routeExists(router, http.MethodPost, "/api/components/server-protection/fronting/sync") ||
+		!routeExists(router, http.MethodGet, "/api/components/server-protection/fronting/operations/:operationId") ||
+		!routeExists(router, http.MethodGet, "/api/components/server-protection/native-fallback/status") ||
+		!routeExists(router, http.MethodPost, "/api/components/server-protection/native-fallback/preview") ||
+		!routeExists(router, http.MethodPost, "/api/components/server-protection/native-fallback/prepare") ||
+		!routeExists(router, http.MethodPost, "/api/components/server-protection/native-fallback/apply") ||
+		!routeExists(router, http.MethodPost, "/api/components/server-protection/native-fallback/rollback") {
+		t.Fatal("installed server-protection component route snapshot is incomplete")
 	}
 	if routeExists(router, http.MethodGet, "/api/paidsub/status") {
 		t.Fatal("paid-subscriptions route must be absent when component is not installed")
@@ -63,7 +76,8 @@ func TestComponentRoutesRespectEnabledSetting(t *testing.T) {
 		"components": [
 			{"id": "fallback-html", "delivery": "in-process", "installed": true},
 			{"id": "telegram", "delivery": "in-process", "installed": true},
-			{"id": "paid-subscriptions", "delivery": "in-process", "installed": true}
+			{"id": "paid-subscriptions", "delivery": "in-process", "installed": true},
+			{"id": "server-protection", "delivery": "in-process", "installed": true}
 		]
 	}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -72,6 +86,9 @@ func TestComponentRoutesRespectEnabledSetting(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := dbsqlite.DB().Create(&model.Setting{Key: enabledstate.SettingKey("fallback-html"), Value: "false"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.DB().Create(&model.Setting{Key: enabledstate.SettingKey("server-protection"), Value: "false"}).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -89,6 +106,9 @@ func TestComponentRoutesRespectEnabledSetting(t *testing.T) {
 	if !routeExists(router, http.MethodGet, "/api/components/fallback-html/health") {
 		t.Fatal("installed disabled fallback-html component route should remain registered")
 	}
+	if !routeExists(router, http.MethodGet, "/api/components/server-protection/status") {
+		t.Fatal("installed disabled server-protection route should remain registered")
+	}
 
 	bareRouter := gin.New()
 	registerComponentAPIRoutes(bareRouter.Group("/api"), componenthost.APIDeps{})
@@ -104,6 +124,18 @@ func TestComponentRoutesRespectEnabledSetting(t *testing.T) {
 	bareRouter.ServeHTTP(recorder, request)
 	if recorder.Code != http.StatusConflict {
 		t.Fatalf("disabled fallback-html route status = %d, want %d", recorder.Code, http.StatusConflict)
+	}
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/api/components/server-protection/status", nil)
+	bareRouter.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("disabled server-protection route status = %d, want %d", recorder.Code, http.StatusConflict)
+	}
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodPost, "/api/components/server-protection/native-fallback/apply", strings.NewReader(`{}`))
+	bareRouter.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusConflict {
+		t.Fatalf("disabled native fallback route status = %d, want %d", recorder.Code, http.StatusConflict)
 	}
 }
 

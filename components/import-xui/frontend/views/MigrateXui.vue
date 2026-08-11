@@ -32,6 +32,20 @@
       </v-col>
     </v-row>
 
+    <v-row v-if="step === 2 || step === 4">
+      <v-col cols="12">
+        <v-text-field
+          v-model="securityCredential"
+          autocomplete="current-password"
+          data-testid="migrate-xui-security-credential"
+          :hint="$t('security.stepUpCredentialHint')"
+          :label="$t('security.stepUpCredential')"
+          persistent-hint
+          type="password"
+        />
+      </v-col>
+    </v-row>
+
     <v-window v-model="step">
       <v-window-item :value="1">
         <v-card class="pa-4" rounded="lg">

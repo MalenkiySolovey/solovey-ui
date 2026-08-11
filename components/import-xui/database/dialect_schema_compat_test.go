@@ -11,6 +11,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -414,17 +415,16 @@ func TestImport_RealXUIBackup(t *testing.T) {
 }
 
 func TestMapSettingKey_TargetsAreCanonicalSUIKeys(t *testing.T) {
+	cleanup := service.RegisterSettingContribution("test.import-xui-alias", service.SettingContribution{
+		Defaults:      map[string]string{"fixtureOptionalSetting": ""},
+		ImportAliases: map[string]string{"legacyOptionalSetting": "fixtureOptionalSetting"},
+	})
+	t.Cleanup(cleanup)
 	// The renamed keys are the ones most likely to regress; assert them
 	// explicitly. Direct same-name keys are covered by the map itself.
 	renamed := map[string]string{
-		"webBasePath": "webPath",
-		"tgBotEnable": "telegramEnabled",
-		"tgBotToken":  "telegramBotToken",
-		"tgBotChatId": "telegramChatID",
-		"tgRunTime":   "telegramReportCron",
-		"tgCpu":       "telegramCpuThreshold",
-		"tgBotBackup": "telegramBackupEnabled",
-		"tgBotProxy":  "telegramProxyURL",
+		"webBasePath":           "webPath",
+		"legacyOptionalSetting": "fixtureOptionalSetting",
 	}
 	for src, want := range renamed {
 		got, ok := mapSettingKey(src)

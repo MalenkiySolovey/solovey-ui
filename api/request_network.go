@@ -1,61 +1,82 @@
 package api
 
 import (
-	"net"
-	"net/netip"
-	"os"
-	"strings"
-	"sync"
+	"net/http"
 
-	logger "github.com/MalenkiySolovey/solovey-ui/logger"
+	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )
 
-// getRemoteIp returns the client IP, walking the X-Forwarded-For chain from the
-// transport peer outward and returning the first hop that is not in the
-// configured list of trusted proxies. Without trusted proxies it always
-// returns the transport peer.
-func getRemoteIp(c *gin.Context) string {
-	remoteIP := canonicalClientIP(splitRemoteIP(c.Request.RemoteAddr))
-	if !isTrustedProxy(remoteIP) {
-		return remoteIP
-	}
-	value := c.GetHeader("X-Forwarded-For")
-	if value == "" {
-		return remoteIP
-	}
-	parts := strings.Split(value, ",")
-	// Walk right-to-left: strip trusted proxies.
-	for i := len(parts) - 1; i >= 0; i-- {
-		hop := canonicalClientIP(strings.TrimSpace(parts[i]))
-		if hop == "" {
-			continue
-		}
-		if !isTrustedProxy(hop) {
-			return hop
+const clientIdentityContextKey = "sui.client_identity.v1"
+
+func RequestClientIdentity(c *gin.Context) clientidentity.V1 {
+	if cached, ok := c.Get(clientIdentityContextKey); ok {
+		if identity, typeOK := cached.(clientidentity.V1); typeOK {
+			return identity
 		}
 	}
-	return remoteIP
+	identity := clientidentity.ResolveRequest(c.Request)
+	c.Set(clientIdentityContextKey, identity)
+	return identity
 }
 
-func splitRemoteIP(addr string) string {
-	ip, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		return strings.Trim(addr, "[]")
+// requestAuthorityMiddleware rejects ambiguous Host and trusted-forwarding
+// authority before authentication, CSRF, or route handlers consume it.
+func (a *APIHandler) requestAuthorityMiddleware(c *gin.Context) {
+	identity := RequestClientIdentity(c)
+	config := clientidentity.ConfigFromEnvironment()
+	a.auditTrustedProxyConfig(c, config)
+	if identity.ExternalHost == "" || !identity.ForwardedValid {
+		a.recordAudit(c, "system", "request_authority_rejected", "network", service.AuditSeverityWarn, map[string]any{
+			"hostValid":      identity.ExternalHost != "",
+			"forwardedValid": identity.ForwardedValid,
+			"configRevision": identity.ConfigRevision,
+		})
+		c.AbortWithStatusJSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"msg":     "Invalid request authority",
+			"obj":     nil,
+		})
+		return
 	}
-	return strings.Trim(ip, "[]")
+	c.Next()
+}
+
+func (a *APIHandler) auditTrustedProxyConfig(c *gin.Context, config clientidentity.Config) {
+	a.proxyConfigMu.Lock()
+	changed := a.proxyConfigSeen && a.proxyRevision != config.Revision
+	first := !a.proxyConfigSeen
+	if first || changed {
+		a.proxyConfigSeen = true
+		a.proxyRevision = config.Revision
+	}
+	a.proxyConfigMu.Unlock()
+	if !first && !changed {
+		return
+	}
+	event := "trusted_proxy_config_observed"
+	if changed {
+		event = "trusted_proxy_config_changed"
+	}
+	severity := service.AuditSeverityInfo
+	if len(config.Warnings) > 0 {
+		severity = service.AuditSeverityWarn
+	}
+	a.recordAudit(c, "system", event, "network", severity, map[string]any{
+		"source":       config.Source,
+		"revision":     config.Revision,
+		"configured":   len(config.TrustedProxies),
+		"warningCodes": config.Warnings,
+	})
+}
+
+func getRemoteIp(c *gin.Context) string {
+	return RequestClientIdentity(c).ClientIP
 }
 
 func canonicalClientIP(value string) string {
-	value = strings.TrimSpace(strings.Trim(value, "[]"))
-	if value == "" || strings.Contains(value, "%") {
-		return ""
-	}
-	addr, err := netip.ParseAddr(value)
-	if err != nil || addr.Zone() != "" {
-		return ""
-	}
-	return addr.Unmap().String()
+	return clientidentity.CanonicalIP(value)
 }
 
 // RequestIsHTTPS reports whether the request arrived over HTTPS, trusting
@@ -64,64 +85,5 @@ func canonicalClientIP(value string) string {
 // decision (a spoofed X-Forwarded-Proto from an untrusted client must not
 // trigger HSTS).
 func RequestIsHTTPS(c *gin.Context) bool {
-	if c.Request.TLS != nil {
-		return true
-	}
-	return isTrustedProxy(canonicalClientIP(splitRemoteIP(c.Request.RemoteAddr))) && strings.EqualFold(c.GetHeader("X-Forwarded-Proto"), "https")
-}
-
-var (
-	trustedProxiesMu     sync.Mutex
-	trustedProxiesRaw    string
-	trustedProxiesParsed []netip.Prefix
-)
-
-func parseTrustedProxies() []netip.Prefix {
-	raw := os.Getenv("SUI_TRUSTED_PROXIES")
-	trustedProxiesMu.Lock()
-	defer trustedProxiesMu.Unlock()
-	if raw == trustedProxiesRaw {
-		return trustedProxiesParsed
-	}
-	trustedProxiesRaw = raw
-	if raw == "" {
-		trustedProxiesParsed = nil
-		return nil
-	}
-	var parsed []netip.Prefix
-	for _, item := range strings.Split(raw, ",") {
-		item = strings.TrimSpace(item)
-		if item == "" {
-			continue
-		}
-		if prefix, err := netip.ParsePrefix(item); err == nil {
-			parsed = append(parsed, prefix)
-			continue
-		}
-		if itemAddr, err := netip.ParseAddr(item); err == nil {
-			itemAddr = itemAddr.Unmap()
-			parsed = append(parsed, netip.PrefixFrom(itemAddr, itemAddr.BitLen()))
-			continue
-		}
-		logger.Warningf("invalid SUI_TRUSTED_PROXIES entry: %q", item)
-	}
-	trustedProxiesParsed = parsed
-	return parsed
-}
-
-func isTrustedProxy(remoteIP string) bool {
-	prefixes := parseTrustedProxies()
-	if len(prefixes) == 0 {
-		return false
-	}
-	addr, err := netip.ParseAddr(canonicalClientIP(remoteIP))
-	if err != nil {
-		return false
-	}
-	for _, prefix := range prefixes {
-		if prefix.Contains(addr) {
-			return true
-		}
-	}
-	return false
+	return RequestClientIdentity(c).DesiredScheme == "https"
 }

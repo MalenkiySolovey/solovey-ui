@@ -1,0 +1,17 @@
+[Unit]
+Description=Solovey UI SSH reconnect proof socket
+
+[Socket]
+ListenStream=/run/solovey-ui/privileged-proof.sock
+FileDescriptorName=proof
+SocketUser=root
+SocketGroup=solovey-ui
+SocketMode=0660
+DirectoryMode=0750
+RemoveOnStop=true
+Accept=no
+MaxConnections=32
+Service=solovey-privileged-broker.service
+
+[Install]
+WantedBy=sockets.target

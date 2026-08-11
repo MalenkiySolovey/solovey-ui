@@ -13,12 +13,13 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (a *ApiService) componentAPI() componenthost.APIDeps {
+func (a *ApiService) componentAPI(requireStepUp func(*gin.Context, string, string) bool) componenthost.APIDeps {
 	return componenthost.APIDeps{
 		Runtime: a.Runtime,
 		Auth: componenthost.AuthDeps{
 			RequireScope:           a.requireTokenScopeAny,
 			RequireAuditAdminScope: a.requireAuditAdminScope,
+			RequireStepUp:          requireStepUp,
 			LoginUser:              GetLoginUser,
 			CheckPassword: func(user, password, remoteIP string) bool {
 				found, _ := a.UserService.CheckUser(user, password, remoteIP)
@@ -75,7 +76,7 @@ func componentActiveMiddleware(componentID string) gin.HandlerFunc {
 		if err != nil {
 			c.AbortWithStatusJSON(http.StatusInternalServerError, Msg{
 				Success: false,
-				Msg:     "component state: " + err.Error(),
+				Msg:     "component state unavailable",
 			})
 			return
 		}

@@ -50,7 +50,7 @@ func TestIntegrationBackupEnvelopeRestorePreservesBackupTableCounts(t *testing.T
 
 	if err := dbsqlite.DB().Create(&model.Client{
 		Enable:   true,
-		Name:     "phase3-live-after-backup",
+		Name:     "integration-live-after-backup",
 		Inbounds: []byte("[]"),
 		Links:    []byte("[]"),
 	}).Error; err != nil {
@@ -68,7 +68,7 @@ func TestIntegrationBackupEnvelopeRestorePreservesBackupTableCounts(t *testing.T
 	}
 }
 
-func TestIntegrationRestoreMigrationFailureRestoresFallback(t *testing.T) {
+func TestIntegrationRestoreInvalidCandidateLeavesLiveUntouched(t *testing.T) {
 	initBackupRestoreIntegrationDB(t)
 	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
 		t.Fatal(err)
@@ -80,11 +80,11 @@ func TestIntegrationRestoreMigrationFailureRestoresFallback(t *testing.T) {
 	t.Cleanup(func() { dbbackup.SetSendSighupHook(nil) })
 
 	err := dbbackup.Restore(integrationMemMultipartFile{Reader: bytes.NewReader(newIntegrationForeignKeyBrokenBackup(t))})
-	if err == nil || !strings.Contains(err.Error(), "foreign key check failed") {
-		t.Fatalf("expected migration foreign key failure after rename, got %v", err)
+	if err == nil || !strings.Contains(err.Error(), "backup_manifest_invalid") {
+		t.Fatalf("expected strict manifest rehearsal rejection, got %v", err)
 	}
 	if dbsqlite.DB() == nil {
-		t.Fatal("live DB handle was not restored after failed import")
+		t.Fatal("live DB handle was lost after rehearsal rejection")
 	}
 	if sqlDB, dbErr := dbsqlite.DB().DB(); dbErr != nil {
 		t.Fatalf("live DB handle error after rollback: %v", dbErr)
@@ -102,7 +102,7 @@ func TestIntegrationRestoreMigrationFailureRestoresFallback(t *testing.T) {
 
 func initBackupRestoreIntegrationDB(t *testing.T) {
 	t.Helper()
-	dbDir, err := os.MkdirTemp("", "s-ui-phase3-backup-*")
+	dbDir, err := os.MkdirTemp("", "s-ui-integration-backup-*")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -138,15 +138,15 @@ func seedBackupRestoreTables(t *testing.T) {
 	t.Helper()
 	db := dbsqlite.DB()
 	rows := []any{
-		&model.Inbound{Type: "http", Tag: "phase3-inbound", TlsId: 0, Addrs: []byte("[]"), OutJson: []byte("{}"), Options: []byte(`{"listen_port":18080}`)},
-		&model.Service{Type: "derp", Tag: "phase3-service", TlsId: 0, Options: []byte("{}")},
-		&model.Endpoint{Type: "wireguard", Tag: "phase3-endpoint", Options: []byte("{}"), Ext: []byte("{}")},
-		&model.Tokens{Desc: "phase3-token", Token: "plain-token", UserId: 1, Enabled: true},
-		&model.Stats{DateTime: 1, Resource: "user", Tag: "phase3-client", Direction: true, Traffic: 10},
-		&model.ClientIP{ClientName: "phase3-client", IPHash: "phase3-hash", FirstSeen: 1, LastSeen: 2},
-		&model.Client{Enable: true, Name: "phase3-client", Inbounds: []byte("[]"), Links: []byte("[]")},
-		&model.Changes{DateTime: 1, Actor: "phase3", Key: "settings", Action: "set", Obj: []byte(`{"subPath":"/phase3/"}`)},
-		&model.AuditEvent{DateTime: 1, Actor: "phase3", Event: "phase3_seed", Resource: "test", Severity: "info"},
+		&model.Inbound{Type: "http", Tag: "integration-inbound", TlsId: 0, Addrs: []byte("[]"), OutJson: []byte("{}"), Options: []byte(`{"listen_port":18080}`)},
+		&model.Service{Type: "derp", Tag: "integration-service", TlsId: 0, Options: []byte("{}")},
+		&model.Endpoint{Type: "wireguard", Tag: "integration-endpoint", Options: []byte("{}"), Ext: []byte("{}")},
+		&model.Tokens{Desc: "integration-token", Token: "plain-token", UserId: 1, Enabled: true},
+		&model.Stats{DateTime: 1, Resource: "user", Tag: "integration-client", Direction: true, Traffic: 10},
+		&model.ClientIP{ClientName: "integration-client", IPHash: "integration-hash", FirstSeen: 1, LastSeen: 2},
+		&model.Client{Enable: true, Name: "integration-client", Inbounds: []byte("[]"), Links: []byte("[]")},
+		&model.Changes{DateTime: 1, Actor: "integration", Key: "settings", Action: "set", Obj: []byte(`{"subPath":"/integration/"}`)},
+		&model.AuditEvent{DateTime: 1, Actor: "integration", Event: "integration_seed", Resource: "test", Severity: "info"},
 	}
 	for _, row := range rows {
 		if err := db.Create(row).Error; err != nil {

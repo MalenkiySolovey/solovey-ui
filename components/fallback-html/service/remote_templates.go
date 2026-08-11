@@ -15,6 +15,8 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
+	"sort"
 	"strings"
 	"time"
 
@@ -312,23 +314,106 @@ func (s *Service) createSiteFromRemotePackage(pkg installedTemplatePackage, acto
 }
 
 func (s *Service) installTemplateAssets(tx *gorm.DB, siteID uint, manifest remoteTemplateManifest) (map[string]string, error) {
-	result := make(map[string]string, len(manifest.Assets))
+	payloads := make([]templateAssetPayload, 0, len(manifest.Assets))
 	for _, assetPath := range manifest.Assets {
 		clean, err := cleanRemoteTemplateFilePath(assetPath)
 		if err != nil {
 			return nil, err
 		}
-		data, err := readOwnedRegularFile(templateRoot(manifest.ID), filepath.Join(templateRoot(manifest.ID), filepath.FromSlash(clean)))
+		data := decoyInteractivityScript
+		if !isDecoyInteractivityAsset(clean) {
+			data, err = readOwnedRegularFile(templateRoot(manifest.ID), filepath.Join(templateRoot(manifest.ID), filepath.FromSlash(clean)))
+			if err != nil {
+				return nil, err
+			}
+		}
+		payloads = append(payloads, templateAssetPayload{Path: clean, Data: data})
+	}
+	sort.Slice(payloads, func(left, right int) bool { return payloads[left].Path < payloads[right].Path })
+	result := make(map[string]string, len(payloads))
+	for _, payload := range payloads {
+		if path.Ext(payload.Path) == ".css" {
+			continue
+		}
+		logical, err := templateAssetLogicalPath(payload.Path, payload.Data)
 		if err != nil {
 			return nil, err
 		}
-		view, err := s.saveAssetInTx(tx, siteID, path.Base(clean), data, "template:"+manifest.ID)
+		result[payload.Path] = logical
+	}
+	for index := range payloads {
+		if path.Ext(payloads[index].Path) != ".css" {
+			continue
+		}
+		payloads[index].Data = rewriteTemplateCSSAssetReferences(payloads[index].Path, payloads[index].Data, result)
+		logical, err := templateAssetLogicalPath(payloads[index].Path, payloads[index].Data)
 		if err != nil {
 			return nil, err
 		}
-		result[clean] = view.LogicalPath
+		result[payloads[index].Path] = logical
+	}
+	for _, payload := range payloads {
+		var view AssetView
+		var err error
+		if isDecoyInteractivityAsset(payload.Path) {
+			view, err = s.saveDecoyInteractivityAssetInTx(tx, siteID, "template:"+manifest.ID)
+		} else {
+			view, err = s.saveAssetInTx(tx, siteID, path.Base(payload.Path), payload.Data, "template:"+manifest.ID)
+		}
+		if err != nil {
+			return nil, err
+		}
+		if view.LogicalPath != result[payload.Path] {
+			return nil, fmt.Errorf("fallback template asset %s changed while installing", payload.Path)
+		}
 	}
 	return result, nil
+}
+
+type templateAssetPayload struct {
+	Path string
+	Data []byte
+}
+
+func isDecoyInteractivityAsset(value string) bool {
+	return strings.EqualFold(strings.TrimSpace(strings.ReplaceAll(value, "\\", "/")), decoyInteractivityAssetPath)
+}
+
+func templateAssetLogicalPath(assetPath string, data []byte) (string, error) {
+	if isDecoyInteractivityAsset(assetPath) {
+		sum := sha256.Sum256(decoyInteractivityScript)
+		return fallbackdomain.ValidatePagePath("/media/"+hex.EncodeToString(sum[:])[:12]+"-decoy-interactivity.js", nil)
+	}
+	return assetLogicalPath(path.Base(assetPath), data)
+}
+
+func (s *Service) saveDecoyInteractivityAssetInTx(tx *gorm.DB, siteID uint, provenance string) (AssetView, error) {
+	if err := tx.First(&fallbackdomain.Site{}, siteID).Error; err != nil {
+		return AssetView{}, err
+	}
+	if err := ensureSiteAssetQuota(tx, siteID, int64(len(decoyInteractivityScript))); err != nil {
+		return AssetView{}, err
+	}
+	sum := sha256.Sum256(decoyInteractivityScript)
+	sha := hex.EncodeToString(sum[:])
+	logicalPath, err := fallbackdomain.ValidatePagePath("/media/"+sha[:12]+"-decoy-interactivity.js", nil)
+	if err != nil {
+		return AssetView{}, err
+	}
+	diskPath := filepath.Join(assetRoot(siteID), sha[:12]+"-decoy-interactivity.js")
+	if err := writeOwnedNewFile(assetRoot(siteID), diskPath, decoyInteractivityScript, 0o640); err != nil {
+		return AssetView{}, err
+	}
+	asset := fallbackdomain.Asset{
+		SiteID: siteID, LogicalPath: logicalPath, FilePath: diskPath,
+		MimeType: "application/javascript; charset=utf-8", Sha256: sha,
+		SizeBytes: int64(len(decoyInteractivityScript)), Provenance: provenance,
+		CreatedAt: time.Now().Unix(),
+	}
+	if err := tx.Create(&asset).Error; err != nil {
+		return AssetView{}, err
+	}
+	return assetView(asset), nil
 }
 
 func (s *Service) saveAssetInTx(tx *gorm.DB, siteID uint, filename string, data []byte, provenance string) (AssetView, error) {
@@ -396,7 +481,7 @@ func buildTemplatePages(siteID uint, manifest remoteTemplateManifest, assetMap m
 			return nil, err
 		}
 		html := rewriteTemplateAssetReferences(clean, string(data), assetMap)
-		if err := fallbackdomain.ValidateStaticHTML(html); err != nil {
+		if err := fallbackdomain.ValidateDecoyTemplateHTML(html); err != nil {
 			return nil, err
 		}
 		pages = append(pages, fallbackdomain.Page{
@@ -551,6 +636,9 @@ func (s *Service) downloadRemoteTemplateFiles(ctx context.Context, manifestURL s
 		if err != nil {
 			return err
 		}
+		if isDecoyInteractivityAsset(clean) {
+			continue
+		}
 		fileURL, err := resolveRemoteTemplateURL(manifestURL, clean)
 		if err != nil {
 			return err
@@ -561,7 +649,7 @@ func (s *Service) downloadRemoteTemplateFiles(ctx context.Context, manifestURL s
 		}
 		if path.Ext(clean) == ".html" {
 			html := rewriteTemplateAssetReferences(clean, string(data), nil)
-			if err := fallbackdomain.ValidateStaticHTML(html); err != nil {
+			if err := fallbackdomain.ValidateDecoyTemplateHTML(html); err != nil {
 				return err
 			}
 		} else if _, _, err := validateAssetFile(path.Base(clean), data); err != nil {
@@ -611,10 +699,37 @@ func validateRemoteManifest(expectedID string, manifest remoteTemplateManifest) 
 	if len(manifest.Pages) == 0 {
 		return errors.New("fallback template must include pages")
 	}
-	for _, item := range append(append([]string{}, manifest.Pages...), manifest.Assets...) {
-		if _, err := cleanRemoteTemplateFilePath(item); err != nil {
+	seen := make(map[string]struct{}, len(manifest.Pages)+len(manifest.Assets))
+	for _, item := range manifest.Pages {
+		clean, err := cleanRemoteTemplateFilePath(item)
+		if err != nil {
 			return err
 		}
+		if !strings.HasPrefix(clean, "pages/") || path.Ext(clean) != ".html" {
+			return fmt.Errorf("fallback template page %q must be an html file under pages/", item)
+		}
+		if _, exists := seen[clean]; exists {
+			return fmt.Errorf("fallback template lists %q more than once", item)
+		}
+		seen[clean] = struct{}{}
+	}
+	hasDecoyScript := false
+	for _, item := range manifest.Assets {
+		clean, err := cleanRemoteTemplateFilePath(item)
+		if err != nil {
+			return err
+		}
+		if !strings.HasPrefix(clean, "assets/") {
+			return fmt.Errorf("fallback template asset %q must be under assets/", item)
+		}
+		if _, exists := seen[clean]; exists {
+			return fmt.Errorf("fallback template lists %q more than once", item)
+		}
+		seen[clean] = struct{}{}
+		hasDecoyScript = hasDecoyScript || isDecoyInteractivityAsset(clean)
+	}
+	if !hasDecoyScript {
+		return errors.New("fallback template must declare assets/decoy-interactivity.js")
 	}
 	return nil
 }
@@ -625,8 +740,11 @@ func cleanRemoteTemplateFilePath(value string) (string, error) {
 		return "", fmt.Errorf("invalid fallback template file path %q", value)
 	}
 	ext := strings.ToLower(path.Ext(clean))
-	if ext != ".html" && ext != ".css" && ext != ".ico" && ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".txt" && ext != ".webp" && ext != ".woff" && ext != ".woff2" {
+	if ext != ".html" && ext != ".css" && ext != ".ico" && ext != ".jpg" && ext != ".jpeg" && ext != ".png" && ext != ".txt" && ext != ".webp" && ext != ".woff" && ext != ".woff2" && ext != ".js" {
 		return "", fmt.Errorf("fallback template file extension %s is not allowed", ext)
+	}
+	if ext == ".js" && !isDecoyInteractivityAsset(clean) {
+		return "", errors.New("fallback template may only declare the controlled decoy-interactivity.js script")
 	}
 	return clean, nil
 }
@@ -639,19 +757,25 @@ func templatePagePublicPath(pageFile string) (string, error) {
 	if path.Ext(clean) != ".html" {
 		return "", fmt.Errorf("remote template page %s must be html", clean)
 	}
-	name := strings.TrimSuffix(path.Base(clean), ".html")
+	relative := strings.TrimPrefix(clean, "pages/")
+	dir := path.Dir(relative)
+	name := strings.TrimSuffix(path.Base(relative), ".html")
 	if name == "index" {
-		dir := path.Dir(clean)
-		if dir == "." || dir == "pages" {
+		if dir == "." {
 			return "/", nil
 		}
-		dir = strings.TrimPrefix(dir, "pages/")
 		return "/" + strings.Trim(dir, "/") + "/", nil
 	}
 	if name == "404" || name == "500" {
-		return "/" + name + ".html", nil
+		if dir == "." {
+			return "/" + name + ".html", nil
+		}
+		return "/" + strings.Trim(path.Join(dir, name+".html"), "/"), nil
 	}
-	return "/" + name + "/", nil
+	if dir == "." {
+		return "/" + name + "/", nil
+	}
+	return "/" + strings.Trim(path.Join(dir, name), "/") + "/", nil
 }
 
 func templatePageTitle(publicPath string, fallbackName string) string {
@@ -685,6 +809,30 @@ func rewriteTemplateAssetReferences(pageFile string, html string, assetMap map[s
 		}
 	}
 	return html
+}
+
+var templateCSSURLPattern = regexp.MustCompile(`(?i)url\(\s*(?:['"])?([^'"\)]+)(?:['"])?\s*\)`)
+
+func rewriteTemplateCSSAssetReferences(assetFile string, data []byte, assetMap map[string]string) []byte {
+	if len(assetMap) == 0 {
+		return data
+	}
+	return templateCSSURLPattern.ReplaceAllFunc(data, func(match []byte) []byte {
+		parts := templateCSSURLPattern.FindSubmatch(match)
+		if len(parts) < 2 {
+			return match
+		}
+		reference := strings.TrimSpace(string(parts[1]))
+		if reference == "" || strings.HasPrefix(reference, "#") || strings.HasPrefix(strings.ToLower(reference), "data:") || strings.Contains(reference, "://") || strings.HasPrefix(reference, "//") {
+			return match
+		}
+		resolved := path.Clean(path.Join(path.Dir(assetFile), strings.TrimPrefix(reference, "/")))
+		logical, ok := assetMap[resolved]
+		if !ok {
+			return match
+		}
+		return []byte(`url("` + logical + `")`)
+	})
 }
 
 func (s *Service) installedTemplateSources() (map[string]fallbackdomain.TemplateSource, error) {

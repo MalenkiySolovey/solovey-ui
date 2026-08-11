@@ -1,14 +1,18 @@
 package backup
 
 import (
+	"context"
+	"errors"
+	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"reflect"
 	"strings"
 
+	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/database/sqliteident"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
@@ -17,8 +21,12 @@ import (
 )
 
 type backupTable struct {
-	name  string
-	model any
+	name          string
+	model         any
+	owner         string
+	opaque        bool
+	alwaysExclude bool
+	exclusionCode string
 }
 
 func backupTables() []backupTable {
@@ -31,17 +39,46 @@ func backupTables() []backupTable {
 		{name: "services", model: &model.Service{}},
 		{name: "endpoints", model: &model.Endpoint{}},
 		{name: "users", model: &model.User{}},
+		{name: "admin_mfa_factors", model: &model.AdminMFAFactor{}},
+		{name: "admin_recovery_codes", model: &model.AdminRecoveryCode{}},
+		{name: "security_sessions", model: &model.SecuritySession{}, alwaysExclude: true, exclusionCode: "NONPORTABLE_RUNTIME_AUTHORITY"},
+		{name: "step_up_grants", model: &model.StepUpGrant{}, alwaysExclude: true, exclusionCode: "NONPORTABLE_RUNTIME_AUTHORITY"},
 		{name: "tokens", model: &model.Tokens{}},
 		{name: "stats", model: &model.Stats{}},
 		{name: "client_ips", model: &model.ClientIP{}},
 		{name: "clients", model: &model.Client{}},
 		{name: "changes", model: &model.Changes{}},
 		{name: "audit_events", model: &model.AuditEvent{}},
+		{name: "inbound_fallback_checkpoints", model: &model.InboundFallbackCheckpoint{}},
+		{name: "inbound_endpoint_leases", model: &model.InboundEndpointLease{}, alwaysExclude: true, exclusionCode: "NONPORTABLE_RUNTIME_AUTHORITY"},
+		{name: "failover_state", model: &model.FailoverMemberState{}, alwaysExclude: true, exclusionCode: "NONPORTABLE_RUNTIME_STATE"},
 		{name: "component_migrations", model: &model.ComponentMigration{}},
+		// Safe SSH semantic metadata is portable. Exact artifact checkpoints and
+		// reconnect verifier digests are intentionally absent from backups.
+		{name: "ssh_posture_snapshots_v1", model: &model.SSHPostureSnapshot{}},
+		{name: "ssh_management_candidates_v1", model: &model.SSHManagementCandidate{}},
+		{name: "ssh_recovery_evidence_v1", model: &model.SSHRecoveryEvidence{}},
+		{name: "ssh_management_journal_v1", model: &model.SSHManagementJournal{}},
+		{name: "ssh_managed_artifact_checkpoints_v1", model: &model.SSHManagedArtifactCheckpoint{}, alwaysExclude: true, exclusionCode: "NONPORTABLE_HOST_AUTHORITY"},
+		{name: "ssh_reconnect_challenges_v1", model: &model.SSHReconnectChallenge{}, alwaysExclude: true, exclusionCode: "NONPORTABLE_RUNTIME_AUTHORITY"},
+		// Deployment profile/doctor/timeline metadata is portable. Broker
+		// checkpoint references and receipts are scrubbed while copying below.
+		{name: "deployment_state_v1", model: &model.DeploymentState{}},
+		{name: "deployment_operations_v1", model: &model.DeploymentOperation{}},
+		{name: "deployment_journal_v1", model: &model.DeploymentJournal{}},
+		{name: "deployment_doctor_snapshots_v1", model: &model.DeploymentDoctorSnapshot{}},
+		{name: "update_release_state_v1", model: &model.UpdateReleaseState{}},
+		{name: "update_operations_v1", model: &model.UpdateOperation{}},
+		{name: "update_journal_v1", model: &model.UpdateJournal{}},
+		{name: "resource_pressure_state_v1", model: &model.ResourcePressureState{}},
+		{name: "resource_pressure_transitions_v1", model: &model.ResourcePressureTransition{}},
+		{name: "migration_journal_v1", model: &model.MigrationJournal{}},
+		{name: "data_lifecycle_operations_v1", model: &model.DataLifecycleOperation{}},
+		{name: "data_lifecycle_journal_v1", model: &model.DataLifecycleJournal{}},
 	}
 }
 
-func exportTables(sourceDB *gorm.DB) []backupTable {
+func exportTables(sourceDB *gorm.DB) ([]backupTable, error) {
 	tables := backupTables()
 	seen := make(map[string]struct{}, len(tables))
 	for _, table := range tables {
@@ -54,7 +91,12 @@ func exportTables(sourceDB *gorm.DB) []backupTable {
 		seen[table.name] = struct{}{}
 		tables = append(tables, table)
 	}
-	return tables
+	opaque, err := installedOwnerTables(sourceDB, seen)
+	if err != nil {
+		return nil, err
+	}
+	tables = append(tables, opaque...)
+	return tables, nil
 }
 
 // Export returns a self-contained SQLite backup of the selected tables.
@@ -77,9 +119,19 @@ func Export(exclude string) ([]byte, error) {
 // path plus a cleanup callback. Callers that can stream a file should use this
 // instead of Export to avoid holding the entire database in memory.
 func PrepareExport(exclude string) (string, func(), error) {
+	return PrepareExportContext(context.Background(), exclude)
+}
+
+func PrepareExportContext(ctx context.Context, exclude string) (string, func(), error) {
+	if ctx == nil {
+		return "", nil, errors.New("backup context is required")
+	}
 	excludedTables := parseBackupExcludes(exclude)
-	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
-	if err != nil {
+	dir := configstorage.GetDBFolderPath()
+	if dir == "" {
+		return "", nil, errors.New("backup staging directory is unavailable")
+	}
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", nil, err
 	}
 	tmpFile, err := os.CreateTemp(dir, "s-ui-backup-*.db")
@@ -115,16 +167,24 @@ func PrepareExport(exclude string) (string, func(), error) {
 	if sourceDB == nil {
 		return "", nil, common.NewError("database is not initialized")
 	}
-	tables := exportTables(sourceDB)
+	tables, err := exportTables(sourceDB)
+	if err != nil {
+		return "", nil, err
+	}
 	models := make([]any, 0, len(tables))
 	for _, table := range tables {
-		models = append(models, table.model)
+		if table.model != nil && !table.alwaysExclude {
+			models = append(models, table.model)
+		}
 	}
 	if err = backupDB.AutoMigrate(models...); err != nil {
 		return "", nil, err
 	}
 
 	for _, table := range tables {
+		if table.alwaysExclude {
+			continue
+		}
 		if excludedTables[table.name] {
 			continue
 		}
@@ -132,11 +192,19 @@ func PrepareExport(exclude string) (string, func(), error) {
 		if table.name == "tls" {
 			tableSource = sourceDB.Where("id <> ?", 0)
 		}
-		if err := copyBackupTable(tableSource, backupDB, table.model); err != nil {
+		if table.opaque {
+			err = copyOpaqueTable(ctx, tableSource, backupDB, table.name)
+		} else {
+			err = copyBackupTable(tableSource, backupDB, table.model)
+		}
+		if err != nil {
 			return "", nil, err
 		}
 	}
 	if err := dbsqlite.EnsureNoTLSRow(backupDB); err != nil {
+		return "", nil, err
+	}
+	if err := writeBackupManifest(ctx, backupDB, tables, excludedTables); err != nil {
 		return "", nil, err
 	}
 	if err := walCheckpointWithFallback(backupDB); err != nil {
@@ -187,9 +255,114 @@ func copyBackupTable(sourceDB *gorm.DB, backupDB *gorm.DB, modelValue any) error
 			if slicePtr.Elem().Len() == 0 {
 				return nil
 			}
+			if _, deploymentOperations := modelValue.(*model.DeploymentOperation); deploymentOperations {
+				for index := 0; index < slicePtr.Elem().Len(); index++ {
+					row := slicePtr.Elem().Index(index).Addr().Interface().(*model.DeploymentOperation)
+					row.CheckpointRef = ""
+					row.BrokerReceipt = ""
+					row.RestoredUntrusted = true
+				}
+			}
+			if _, updateStates := modelValue.(*model.UpdateReleaseState); updateStates {
+				for index := 0; index < slicePtr.Elem().Len(); index++ {
+					row := slicePtr.Elem().Index(index).Addr().Interface().(*model.UpdateReleaseState)
+					row.LastVerifiedSequence, row.ManifestDigest, row.SigningKeyID = 0, "", ""
+				}
+			}
+			if _, updateOperations := modelValue.(*model.UpdateOperation); updateOperations {
+				for index := 0; index < slicePtr.Elem().Len(); index++ {
+					row := slicePtr.Elem().Index(index).Addr().Interface().(*model.UpdateOperation)
+					row.RestoredUntrusted = true
+				}
+			}
+			if _, pressureStates := modelValue.(*model.ResourcePressureState); pressureStates {
+				for index := 0; index < slicePtr.Elem().Len(); index++ {
+					row := slicePtr.Elem().Index(index).Addr().Interface().(*model.ResourcePressureState)
+					row.PreviousState, row.State, row.ReasonCode = row.State, "UNKNOWN", "restored_pressure_state_untrusted"
+				}
+			}
+			if _, dataOperations := modelValue.(*model.DataLifecycleOperation); dataOperations {
+				for index := 0; index < slicePtr.Elem().Len(); index++ {
+					row := slicePtr.Elem().Index(index).Addr().Interface().(*model.DataLifecycleOperation)
+					row.RestoredUntrusted = true
+				}
+			}
 			return tx.CreateInBatches(slicePtr.Elem().Interface(), batch).Error
 		}).Error
 	})
+}
+
+func copyOpaqueTable(ctx context.Context, sourceDB, backupDB *gorm.DB, tableName string) error {
+	if ctx == nil || sourceDB == nil || backupDB == nil || !sqliteident.Valid(tableName) {
+		return errors.New("opaque backup table request is invalid")
+	}
+	var schemaSQL string
+	if err := sourceDB.WithContext(ctx).Raw("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = ? LIMIT 1", tableName).Scan(&schemaSQL).Error; err != nil {
+		return err
+	}
+	if schemaSQL == "" || len(schemaSQL) > 256<<10 {
+		return fmt.Errorf("opaque backup schema for %s is unavailable", tableName)
+	}
+	if err := backupDB.WithContext(ctx).Exec(schemaSQL).Error; err != nil {
+		return err
+	}
+	rows, err := sourceDB.WithContext(ctx).Raw("SELECT * FROM " + sqliteident.Quote(tableName)).Rows()
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	columns, err := rows.Columns()
+	if err != nil || len(columns) == 0 || len(columns) > 256 {
+		return errors.New("opaque backup column inventory is invalid")
+	}
+	for _, column := range columns {
+		if !sqliteident.Valid(column) {
+			return errors.New("opaque backup column identity is invalid")
+		}
+	}
+	quotedColumns := make([]string, len(columns))
+	placeholders := make([]string, len(columns))
+	for index, column := range columns {
+		quotedColumns[index], placeholders[index] = sqliteident.Quote(column), "?"
+	}
+	insertSQL := "INSERT INTO " + sqliteident.Quote(tableName) + " (" + strings.Join(quotedColumns, ",") + ") VALUES (" + strings.Join(placeholders, ",") + ")"
+	if err := backupDB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		for rows.Next() {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
+			values := make([]any, len(columns))
+			targets := make([]any, len(columns))
+			for index := range values {
+				targets[index] = &values[index]
+			}
+			if err := rows.Scan(targets...); err != nil {
+				return err
+			}
+			if err := tx.Exec(insertSQL, values...).Error; err != nil {
+				return err
+			}
+		}
+		return rows.Err()
+	}); err != nil {
+		return err
+	}
+	var definitions []string
+	if err := sourceDB.WithContext(ctx).Raw("SELECT sql FROM sqlite_master WHERE tbl_name = ? AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type, name", tableName).Scan(&definitions).Error; err != nil {
+		return err
+	}
+	if len(definitions) > 256 {
+		return errors.New("opaque backup secondary schema is too large")
+	}
+	for _, definition := range definitions {
+		if definition == "" || len(definition) > 256<<10 {
+			return errors.New("opaque backup secondary schema is invalid")
+		}
+		if err := backupDB.WithContext(ctx).Exec(definition).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 var backupTempPathHook func(string)

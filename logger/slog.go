@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"strings"
 	"time"
+
+	"github.com/MalenkiySolovey/solovey-ui/util/redact"
 )
 
 // Slog returns a standard-library logger backed by the existing logger
@@ -32,6 +34,7 @@ func (h *slogHandler) Handle(_ context.Context, record slog.Record) error {
 	if fields := h.fields(record); fields != "" {
 		message += " " + fields
 	}
+	message = SanitizeMessage(message)
 	t := record.Time
 	if t.IsZero() {
 		t = time.Now()
@@ -71,7 +74,11 @@ func (h *slogHandler) fields(record slog.Record) string {
 		if len(h.groups) > 0 {
 			key = strings.Join(append(append([]string{}, h.groups...), key), ".")
 		}
-		fields = append(fields, fmt.Sprintf("%s=%s", key, attr.Value.String()))
+		value := redact.StringLimit(attr.Value.String(), 4*1024)
+		if redact.IsSensitiveKey(key) {
+			value = redact.Marker
+		}
+		fields = append(fields, fmt.Sprintf("%s=%s", key, value))
 	}
 	return strings.Join(fields, " ")
 }

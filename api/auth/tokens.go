@@ -20,6 +20,9 @@ func (a *Handler) GetTokens(c *gin.Context) {
 
 func (a *Handler) AddToken(c *gin.Context) {
 	loginUser := a.LoginUser(c)
+	if !a.requireStepUp(c, "token.create", "new-token") {
+		return
+	}
 	expiry := c.Request.FormValue("expiry")
 	expiryInt, err := strconv.ParseInt(expiry, 10, 64)
 	if err != nil {
@@ -41,6 +44,9 @@ func (a *Handler) AddToken(c *gin.Context) {
 
 func (a *Handler) DeleteToken(c *gin.Context) {
 	tokenId := c.Request.FormValue("id")
+	if !a.requireStepUp(c, "token.revoke", "token:"+tokenId) {
+		return
+	}
 	err := a.UserService.DeleteToken(tokenId)
 	if err == nil {
 		a.Audit(c, a.LoginUser(c), "api_token_deleted", "api_token", service.AuditSeverityWarn, map[string]any{
@@ -52,6 +58,9 @@ func (a *Handler) DeleteToken(c *gin.Context) {
 
 func (a *Handler) SetTokenEnabled(c *gin.Context) {
 	id := c.Request.FormValue("id")
+	if !a.requireStepUp(c, "token.change", "token:"+id) {
+		return
+	}
 	enabled, err := strconv.ParseBool(c.Request.FormValue("enabled"))
 	if err != nil {
 		a.JSONMsg(c, "", err)

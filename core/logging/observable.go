@@ -21,7 +21,7 @@ func (l *observableLogger) Log(ctx context.Context, level log.Level, args []any)
 	if level > l.level {
 		return
 	}
-	msg := F.ToString(args...)
+	msg := suiLog.SanitizeMessage(F.ToString(args...))
 	switch level {
 	case log.LevelInfo:
 		suiLog.CoreInfo(l.tag, msg)

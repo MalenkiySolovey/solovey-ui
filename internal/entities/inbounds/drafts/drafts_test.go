@@ -14,7 +14,7 @@ func TestCreateInboundDraftValidatesAndPersistsReviewDraft(t *testing.T) {
 	db := newDraftDB(t)
 
 	draft, err := Create(db, CreateInput{
-		Source:      " fallback-html ",
+		Source:      " fixture-provider ",
 		SourceRef:   " site/1 ",
 		Status:      StatusReviewRequired,
 		InboundType: "vless",
@@ -27,7 +27,7 @@ func TestCreateInboundDraftValidatesAndPersistsReviewDraft(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Create: %v", err)
 	}
-	if draft.Id == 0 || draft.Source != "fallback-html" || draft.SourceRef != "site/1" || draft.Status != StatusReviewRequired {
+	if draft.Id == 0 || draft.Source != "fixture-provider" || draft.SourceRef != "site/1" || draft.Status != StatusReviewRequired {
 		t.Fatalf("unexpected draft: %#v", draft)
 	}
 
@@ -126,6 +126,26 @@ func TestMarkAppliedClosesOnlyOpenDraft(t *testing.T) {
 	}
 	if len(open) != 0 {
 		t.Fatalf("open drafts after apply = %#v", open)
+	}
+}
+
+func TestMarkAppliedRejectsRetiredLegacySelfStealDraft(t *testing.T) {
+	db := newDraftDB(t)
+	row := model.InboundDraft{
+		Source: "fixture-provider" + retiredSelfStealSourceSuffix, SourceRef: "historical", Status: StatusReviewRequired,
+		Payload: json.RawMessage(`{"inboundCandidate":{"type":"vless"}}`), CreatedAt: 1, UpdatedAt: 1,
+	}
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := MarkApplied(db, row.Id, 2); err == nil || err.Error() != "legacy_self_steal_retired" {
+		t.Fatalf("retired draft apply err=%v", err)
+	}
+	if err := db.First(&row, row.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.Status != StatusReviewRequired || row.UpdatedAt != 1 {
+		t.Fatalf("retired draft changed: %#v", row)
 	}
 }
 

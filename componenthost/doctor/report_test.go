@@ -18,8 +18,8 @@ func TestInspectDoesNotInstallAvailableComponentsWhenMetadataMissing(t *testing.
 	report := InspectWith(Options{
 		Components: []registry.Component{{
 			Manifest: manifest.Manifest{
-				ID:             "telegram",
-				Name:           "Telegram",
+				ID:             "fixture-beta",
+				Name:           "Fixture Beta",
 				Version:        "1",
 				Delivery:       manifest.DeliveryInProcess,
 				DefaultEnabled: true,
@@ -70,7 +70,7 @@ func TestInspectReportsInstalledComponentMissingPack(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{
 		"version": 1,
 		"components": [
-			{"id": "telegram", "delivery": "in-process", "installed": true}
+			{"id": "fixture-beta", "delivery": "in-process", "installed": true}
 		]
 	}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -79,18 +79,18 @@ func TestInspectReportsInstalledComponentMissingPack(t *testing.T) {
 	report := InspectWith(Options{
 		Components: []registry.Component{{
 			Manifest: manifest.Manifest{
-				ID:       "telegram",
-				Name:     "Telegram",
+				ID:       "fixture-beta",
+				Name:     "Fixture Beta",
 				Version:  "1",
 				Delivery: manifest.DeliveryInProcess,
 				Frontend: manifest.Frontend{
-					Entries: []string{"src/views/TelegramSettings.vue"},
+					Entries: []string{"src/views/Fixture BetaSettings.vue"},
 				},
 			},
 		}},
 		InstalledPath: path,
 	})
-	row := findRow(t, report, "telegram")
+	row := findRow(t, report, "fixture-beta")
 	if !hasIssue(row.Issues, "pack is missing") {
 		t.Fatalf("issues = %#v, want missing pack issue", row.Issues)
 	}
@@ -102,18 +102,18 @@ func TestInspectReportsInstalledComponentMissingPack(t *testing.T) {
 func TestInspectAcceptsInstalledComponentFrontendPack(t *testing.T) {
 	root := t.TempDir()
 	path := filepath.Join(root, "components", "installed.json")
-	packDir := filepath.Join(root, "components", "telegram")
+	packDir := filepath.Join(root, "components", "fixture-beta")
 	assetDir := filepath.Join(packDir, "frontend", "assets")
 	if err := os.MkdirAll(assetDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(packDir, "component.json"), []byte(`{"id":"telegram"}`), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(packDir, "component.json"), []byte(`{"id":"fixture-beta"}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(path, []byte(`{
 		"version": 1,
 		"components": [
-			{"id": "telegram", "delivery": "in-process", "installed": true}
+			{"id": "fixture-beta", "delivery": "in-process", "installed": true}
 		]
 	}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -122,18 +122,18 @@ func TestInspectAcceptsInstalledComponentFrontendPack(t *testing.T) {
 	report := InspectWith(Options{
 		Components: []registry.Component{{
 			Manifest: manifest.Manifest{
-				ID:       "telegram",
-				Name:     "Telegram",
+				ID:       "fixture-beta",
+				Name:     "Fixture Beta",
 				Version:  "1",
 				Delivery: manifest.DeliveryInProcess,
 				Frontend: manifest.Frontend{
-					Entries: []string{"src/views/TelegramSettings.vue"},
+					Entries: []string{"src/views/Fixture BetaSettings.vue"},
 				},
 			},
 		}},
 		InstalledPath: path,
 	})
-	row := findRow(t, report, "telegram")
+	row := findRow(t, report, "fixture-beta")
 	if hasIssue(row.Issues, "pack") || hasIssue(row.Issues, "frontend assets") {
 		t.Fatalf("issues = %#v, want no pack/frontend issue", row.Issues)
 	}
@@ -151,9 +151,11 @@ func TestInspectReportsInvalidMetadataIDEvenWhenNotInstalled(t *testing.T) {
 	}
 
 	report := InspectWith(Options{InstalledPath: path})
-	row := findRow(t, report, "bad_component")
-	if !hasIssue(row.Issues, "must match") {
-		t.Fatalf("issues = %#v, want invalid metadata id issue", row.Issues)
+	if report.MetadataError == "" || !strings.Contains(report.MetadataError, "must match") {
+		t.Fatalf("metadata error = %q, want invalid id diagnostic", report.MetadataError)
+	}
+	if len(report.Rows) != 0 {
+		t.Fatalf("invalid installed metadata produced trusted rows: %#v", report.Rows)
 	}
 	if !HasErrors(report) {
 		t.Fatal("report should have an error")
@@ -166,8 +168,8 @@ func TestInspectReportsMigrationDataForUninstalledComponent(t *testing.T) {
 		t.Fatal(err)
 	}
 	if err := db.Create(&model.ComponentMigration{
-		ComponentID: "telegram",
-		Name:        "Telegram",
+		ComponentID: "fixture-beta",
+		Name:        "Fixture Beta",
 		Version:     "1",
 		Delivery:    string(manifest.DeliveryInProcess),
 		AppliedAt:   1,
@@ -179,7 +181,7 @@ func TestInspectReportsMigrationDataForUninstalledComponent(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{
 		"version": 1,
 		"components": [
-			{"id": "telegram", "delivery": "in-process", "installed": false}
+			{"id": "fixture-beta", "delivery": "in-process", "installed": false}
 		]
 	}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -188,8 +190,8 @@ func TestInspectReportsMigrationDataForUninstalledComponent(t *testing.T) {
 	report := InspectWith(Options{
 		Components: []registry.Component{{
 			Manifest: manifest.Manifest{
-				ID:       "telegram",
-				Name:     "Telegram",
+				ID:       "fixture-beta",
+				Name:     "Fixture Beta",
 				Version:  "1",
 				Delivery: manifest.DeliveryInProcess,
 			},
@@ -197,7 +199,7 @@ func TestInspectReportsMigrationDataForUninstalledComponent(t *testing.T) {
 		InstalledPath: path,
 		DB:            db,
 	})
-	row := findRow(t, report, "telegram")
+	row := findRow(t, report, "fixture-beta")
 	if row.Installed {
 		t.Fatalf("row state = %#v, want uninstalled component", row)
 	}
@@ -214,15 +216,15 @@ func TestInspectReportsInvalidEnabledSetting(t *testing.T) {
 	if err := db.AutoMigrate(&model.Setting{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Create(&model.Setting{Key: "telegram.enabled", Value: "maybe"}).Error; err != nil {
+	if err := db.Create(&model.Setting{Key: "fixture-beta.enabled", Value: "maybe"}).Error; err != nil {
 		t.Fatal(err)
 	}
 
 	report := InspectWith(Options{
 		Components: []registry.Component{{
 			Manifest: manifest.Manifest{
-				ID:             "telegram",
-				Name:           "Telegram",
+				ID:             "fixture-beta",
+				Name:           "Fixture Beta",
 				Version:        "1",
 				Delivery:       manifest.DeliveryInProcess,
 				DefaultEnabled: true,
@@ -231,7 +233,7 @@ func TestInspectReportsInvalidEnabledSetting(t *testing.T) {
 		InstalledPath: filepath.Join(t.TempDir(), "missing.json"),
 		DB:            db,
 	})
-	row := findRow(t, report, "telegram")
+	row := findRow(t, report, "fixture-beta")
 	if !hasIssue(row.Issues, "enabled setting is invalid") {
 		t.Fatalf("issues = %#v, want invalid enabled setting issue", row.Issues)
 	}
@@ -245,7 +247,7 @@ func TestInspectReportsEnabledSettingForUnavailableComponent(t *testing.T) {
 	if err := db.AutoMigrate(&model.Setting{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Create(&model.Setting{Key: "remote-outbound-subscriptions.enabled", Value: "true"}).Error; err != nil {
+	if err := db.Create(&model.Setting{Key: "fixture-remote.enabled", Value: "true"}).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -254,7 +256,7 @@ func TestInspectReportsEnabledSettingForUnavailableComponent(t *testing.T) {
 		InstalledPath: filepath.Join(t.TempDir(), "missing.json"),
 		DB:            db,
 	})
-	row := findRow(t, report, "remote-outbound-subscriptions")
+	row := findRow(t, report, "fixture-remote")
 	if row.Available || row.Enabled {
 		t.Fatalf("row state = %#v, want unavailable orphan enabled setting", row)
 	}

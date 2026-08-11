@@ -44,7 +44,7 @@ func TestCatalogCombinesRuntimeStateWithReleaseManifest(t *testing.T) {
 			"future-component": {
 				"name": "Future Component",
 				"version": "1",
-				"since": "2026.3.0",
+				"since": "2026.4.0",
 				"delivery": "in-process",
 				"defaultEnabled": true
 			}
@@ -72,7 +72,7 @@ func TestCatalogCombinesRuntimeStateWithReleaseManifest(t *testing.T) {
 	if inventory.Unavailable[0].Installable || inventory.Unavailable[0].AvailableInBinary {
 		t.Fatalf("future component must not be installable from this binary: %#v", inventory.Unavailable[0])
 	}
-	if inventory.Unavailable[0].Compatible || inventory.Unavailable[0].RequiredPanel != "2026.3.0" {
+	if inventory.Unavailable[0].Compatible || inventory.Unavailable[0].RequiredPanel != "2026.4.0" {
 		t.Fatalf("future component compatibility metadata = %#v", inventory.Unavailable[0])
 	}
 }

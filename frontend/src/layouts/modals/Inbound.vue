@@ -103,6 +103,14 @@
               </v-card>
             </v-window-item>
           </v-window>
+          <ComponentSlot
+            name="inbound:editor"
+            :ctx="{ inbound, loading, mode: title === 'add' ? 'add' : 'edit' }"
+          />
+          <ComponentSlot
+            name="inbound:status-detail"
+            :ctx="{ inbound, loading, mode: title === 'add' ? 'add' : 'edit' }"
+          />
         </v-container>
       </v-card-text>
       <v-card-actions>

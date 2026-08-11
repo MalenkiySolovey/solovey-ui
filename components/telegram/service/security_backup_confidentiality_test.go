@@ -5,6 +5,7 @@ package telegram_test
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"strings"
 	"testing"
 
@@ -25,7 +26,7 @@ func TestSecurityTelegramBackupAuditOmitsPayloadPassphraseAndToken(t *testing.T)
 	backupService := &telegramservice.TelegramBackupService{
 		Settings: testTelegramSettings{},
 		Audit:    testTelegramBackupAudit,
-		SendDocument: func(_ string, _ []byte, _ string) telegramservice.Result {
+		SendDocumentStream: func(_ context.Context, _ string, _ io.Reader, _ string) telegramservice.Result {
 			return telegramservice.Result{Success: true}
 		},
 	}

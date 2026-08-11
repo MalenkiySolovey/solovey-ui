@@ -8,7 +8,7 @@ import (
 
 func TestTelegramBackupEnvelopeExtraRoundTrip(t *testing.T) {
 	random := bytes.Repeat([]byte{0x7a}, saltSize+nonceSize)
-	envelope, err := build([]byte("phase2 sqlite payload"), []byte("correct horse battery staple"), bytes.NewReader(random))
+	envelope, err := build([]byte("sqlite test payload"), []byte("correct horse battery staple"), bytes.NewReader(random))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -16,7 +16,7 @@ func TestTelegramBackupEnvelopeExtraRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(plaintext) != "phase2 sqlite payload" {
+	if string(plaintext) != "sqlite test payload" {
 		t.Fatalf("unexpected plaintext %q", string(plaintext))
 	}
 }

@@ -10,6 +10,8 @@ type outboundOptionStripKey struct {
 	key   string
 }
 
+const maxOutboundOptionStripKeys = 1024
+
 var outboundOptionStripKeys = struct {
 	sync.RWMutex
 	next uint64
@@ -34,6 +36,10 @@ func RegisterOutboundOptionStripKeys(owner string, keys ...string) func() {
 	}
 
 	outboundOptionStripKeys.Lock()
+	if len(outboundOptionStripKeys.keys)+len(registered) > maxOutboundOptionStripKeys {
+		outboundOptionStripKeys.Unlock()
+		panic("outbound option strip-key registry capacity exceeded")
+	}
 	outboundOptionStripKeys.next++
 	token := outboundOptionStripKeys.next
 	for i := range registered {

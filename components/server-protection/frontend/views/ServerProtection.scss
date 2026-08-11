@@ -1,0 +1,26 @@
+.server-protection-page {
+  max-width: 1500px;
+}
+
+.protection-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+
+.protection-resource-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 12px;
+}
+
+.server-protection-page code {
+  overflow-wrap: anywhere;
+}
+
+.protection-script {
+  max-height: 420px;
+  overflow: auto;
+  white-space: pre-wrap;
+  font-size: 0.8rem;
+}

@@ -13,15 +13,15 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func registerTelegramBackupTransferCodecsForTest(t *testing.T, settingService *service.SettingService) {
+func registerFixtureBackupTransferCodecsForTest(t *testing.T, settingService *service.SettingService) {
 	t.Helper()
 	dbtransferhttp.ResetBackupCodecsForTest()
-	unregisterExport := dbtransferhttp.RegisterBackupExportCodec("test-telegram", dbtransferhttp.BackupExportCodec{
+	unregisterExport := dbtransferhttp.RegisterBackupExportCodec("test-fixture-codec", dbtransferhttp.BackupExportCodec{
 		Selected: func(c *gin.Context) bool {
-			return c.Query("backupEncryption") == "test-telegram"
+			return c.Query("backupEncryption") == "test-fixture-codec"
 		},
 		Preflight: func(*gin.Context) error {
-			hasPassphrase, err := settingService.HasComponentSettingSecret("telegramBackupPassphrase")
+			hasPassphrase, err := settingService.HasComponentSettingSecret("fixtureBackupPassphrase")
 			if err != nil {
 				return dbtransferhttp.NewBackupCodecError(http.StatusInternalServerError, "settings", err)
 			}
@@ -31,7 +31,7 @@ func registerTelegramBackupTransferCodecsForTest(t *testing.T, settingService *s
 			return nil
 		},
 		Encode: func(ctx dbtransferhttp.BackupExportContext) (dbtransferhttp.BackupExportResult, error) {
-			passphrase, err := settingService.GetComponentSettingSecretBytes("telegramBackupPassphrase")
+			passphrase, err := settingService.GetComponentSettingSecretBytes("fixtureBackupPassphrase")
 			if err != nil {
 				return dbtransferhttp.BackupExportResult{}, dbtransferhttp.NewBackupCodecError(http.StatusInternalServerError, "settings", err)
 			}
@@ -43,7 +43,7 @@ func registerTelegramBackupTransferCodecsForTest(t *testing.T, settingService *s
 			return dbtransferhttp.BackupExportResult{
 				Payload:       envelope,
 				Encrypted:     true,
-				AuditEvent:    "tg_backup_manual_encrypted",
+				AuditEvent:    "fixture_backup_manual_encrypted",
 				AuditSeverity: service.AuditSeverityInfo,
 				AuditDetails: map[string]any{
 					"channel":           "local_download",
@@ -54,12 +54,13 @@ func registerTelegramBackupTransferCodecsForTest(t *testing.T, settingService *s
 			}, nil
 		},
 	})
-	unregisterImport := dbtransferhttp.RegisterBackupImportCodec("test-telegram", dbtransferhttp.BackupImportCodec{
+	unregisterImport := dbtransferhttp.RegisterBackupImportCodec("test-fixture-codec", dbtransferhttp.BackupImportCodec{
 		HeaderBytes:       len(backupenvelope.Magic),
+		PassphraseFields:  []string{"fixtureBackupPassphrase"},
 		Match:             backupenvelope.IsEnvelope,
-		FailureAuditEvent: "tg_backup_restore_failed",
+		FailureAuditEvent: "fixture_backup_restore_failed",
 		Decode: func(ctx dbtransferhttp.BackupImportContext) ([]byte, error) {
-			passphrase := ctx.Gin.PostForm("telegramBackupPassphrase")
+			passphrase := ctx.Gin.PostForm("fixtureBackupPassphrase")
 			if passphrase == "" {
 				passphrase = ctx.Gin.PostForm("backupPassphrase")
 			}

@@ -79,7 +79,7 @@ func MapInbound(row source.InboundRow, tlsID uint, reality *RealitySpec, server 
 	}
 	switch stream.Network {
 	case "kcp", "mkcp", "quic":
-		return &MappedInbound{Warnings: []string{fmt.Sprintf("inbound %s: transport %q is unsupported by phase 2 importer; skipped", row.Tag, stream.Network)}}, nil
+		return &MappedInbound{Warnings: []string{fmt.Sprintf("inbound %s: transport %q is unsupported by this importer; skipped", row.Tag, stream.Network)}}, nil
 	}
 
 	inType := inboundType(row.Protocol)

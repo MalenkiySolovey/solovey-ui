@@ -39,8 +39,7 @@ func (a *Handler) RestartSb(c *gin.Context) {
 func (a *Handler) GetSingboxConfig(c *gin.Context) {
 	rawConfig, err := a.ConfigService.GetConfig("")
 	if err != nil {
-		c.Status(400)
-		_, _ = c.Writer.WriteString(err.Error())
+		c.String(400, "configuration generation failed")
 		return
 	}
 	c.Header("Content-Type", "application/json")
@@ -103,7 +102,7 @@ func (a *Handler) CheckOutbounds(c *gin.Context) {
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
 			case <-ctx.Done():
-				results[index].Error = ctx.Err().Error()
+				results[index].Error = "outbound_check_timeout"
 				return
 			}
 			checkCtx, cancelCheck := context.WithTimeout(ctx, 5*time.Second)
@@ -124,7 +123,7 @@ func (a *Handler) CheckOutbounds(c *gin.Context) {
 func ValidateOutboundCheckTarget(ctx context.Context, rawURL string) error {
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
-		return err
+		return common.NewError("check target is invalid")
 	}
 	if parsed.Scheme != "https" || parsed.Hostname() == "" {
 		return common.NewError("check target must be an HTTPS URL")

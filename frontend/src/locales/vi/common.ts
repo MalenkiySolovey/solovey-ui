@@ -100,6 +100,8 @@
     "basics": "Cơ bản",
     "dns": "DNS",
     "admins": "Quản trị viên",
+    "security": "Account security",
+    "securityTransition": "Security verification",
     "settings": "Cài đặt",
     "support": "Hỗ trợ dự án"
   },

@@ -3,20 +3,31 @@ package components
 import (
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 )
 
 func TestComponentJSONManifestsAreValid(t *testing.T) {
-	for _, id := range []string{
-		"import-xui",
-		"observability-extra",
-		"paid-subscriptions",
-		"panel-update-ui",
-		"remote-outbound-subscriptions",
-		"telegram",
-	} {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ids := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		if _, err := os.Stat(filepath.Join(entry.Name(), "component.json")); err == nil {
+			ids = append(ids, entry.Name())
+		}
+	}
+	sort.Strings(ids)
+	if len(ids) == 0 {
+		t.Fatal("no component manifests discovered")
+	}
+	for _, id := range ids {
 		t.Run(id, func(t *testing.T) {
 			path := filepath.Join(id, "component.json")
 			data, err := os.ReadFile(path)

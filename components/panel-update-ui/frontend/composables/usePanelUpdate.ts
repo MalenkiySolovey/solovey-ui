@@ -1,6 +1,7 @@
 import HttpUtils from '@/plugins/httputil'
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import Data from '@/store/modules/data'
+import { acquireStepUpToken } from '@/shared/composables/useSecurityOperations'
 import type { ComponentCatalogInventory, ComponentCatalogStatus } from '../types'
 
 export interface UpdateStatus {
@@ -134,11 +135,22 @@ export const usePanelUpdate = () => {
     }
   }
 
-  const setComponentInstalled = async (component: ComponentCatalogStatus, installed: boolean, password = '', deleteData = false) => {
+  const setComponentInstalled = async (
+    component: ComponentCatalogStatus,
+    installed: boolean,
+    password = '',
+    deleteData = false,
+    stepUpToken = '',
+  ) => {
     componentAction.value = `${component.id}:${installed ? 'install' : 'remove'}`
     try {
       const body = installed ? {} : { password, deleteData }
-      const message = await HttpUtils.post(`api/update/components/${component.id}/${installed ? 'install' : 'remove'}`, body)
+      const options = stepUpToken ? { headers: { 'X-Step-Up-Token': stepUpToken } } : undefined
+      const message = await HttpUtils.post(
+        `api/update/components/${component.id}/${installed ? 'install' : 'remove'}`,
+        body,
+        options,
+      )
       if (message.success) {
         await loadComponents()
         await data.loadData()
@@ -158,11 +170,23 @@ export const usePanelUpdate = () => {
 
   const removeComponent = async () => {
     if (!componentRemoveTarget.value) return
+    let stepUpToken = ''
+    if (componentRemoveDeleteData.value) {
+      const stepUp = await acquireStepUpToken(
+        'drop_data',
+        `component:${componentRemoveTarget.value.id}`,
+        componentRemovePassword.value,
+      )
+      componentRemovePassword.value = ''
+      stepUpToken = stepUp.token ?? ''
+      if (!stepUpToken) return
+    }
     const ok = await setComponentInstalled(
       componentRemoveTarget.value,
       false,
       componentRemovePassword.value,
       componentRemoveDeleteData.value,
+      stepUpToken,
     )
     if (ok) {
       componentRemoveConfirm.value = false

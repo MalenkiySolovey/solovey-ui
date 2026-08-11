@@ -17,6 +17,8 @@ var importPostOpenHooks = struct {
 	byName: map[string]importPostOpenHook{},
 }
 
+const maxImportPostOpenHooks = 128
+
 func RegisterImportPostOpenHook(name string, fn func(context.Context) error) {
 	if name == "" {
 		return
@@ -26,6 +28,9 @@ func RegisterImportPostOpenHook(name string, fn func(context.Context) error) {
 	if fn == nil {
 		delete(importPostOpenHooks.byName, name)
 		return
+	}
+	if _, exists := importPostOpenHooks.byName[name]; !exists && len(importPostOpenHooks.byName) >= maxImportPostOpenHooks {
+		panic("database import post-open hook registry capacity exceeded")
 	}
 	importPostOpenHooks.byName[name] = fn
 }

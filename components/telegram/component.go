@@ -13,7 +13,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
-	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
 	telegramhttp "github.com/MalenkiySolovey/solovey-ui/components/telegram/api"
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/components/telegram/jobs"
@@ -47,6 +46,7 @@ func init() {
 
 type component struct {
 	mu                     sync.Mutex
+	started                bool
 	scheduler              componenthost.Scheduler
 	unregisterEvent        func()
 	unregisterContribution func()
@@ -54,7 +54,7 @@ type component struct {
 	unregisterSettings     func()
 	unregisterLogCategory  func()
 	unregisterTokenScope   func()
-	notifier               *integrationtelegram.Notifier
+	notifier               *telegramservice.Notifier
 	entryIDs               []cron.EntryID
 	reportScheduler        *jobs.TelegramReportScheduler
 	backupScheduler        *jobs.TelegramBackupScheduler
@@ -66,6 +66,11 @@ func (c *component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) e
 
 func (c *component) start(ctx context.Context, scheduler componenthost.Scheduler, runtime *service.Runtime) error {
 	c.mu.Lock()
+	if c.started {
+		c.mu.Unlock()
+		return nil
+	}
+	c.started = true
 	if c.notifier == nil {
 		c.notifier = newTelegramNotifier(runtime)
 	}
@@ -123,6 +128,7 @@ func (c *component) start(ctx context.Context, scheduler componenthost.Scheduler
 
 func (c *component) Stop(ctx context.Context) error {
 	c.mu.Lock()
+	c.started = false
 	scheduler := c.scheduler
 	unregisterEvent := c.unregisterEvent
 	unregisterContribution := c.unregisterContribution
@@ -255,15 +261,14 @@ func telegramDeps(host componenthost.APIDeps) telegramhttp.Deps {
 	}
 }
 
-func newTelegramNotifier(runtime *service.Runtime) *integrationtelegram.Notifier {
-	return integrationtelegram.NewNotifier(
-		integrationtelegram.QueueCapacity,
-		func(text string) integrationtelegram.Result {
-			result := (&telegramservice.Service{
+func newTelegramNotifier(runtime *service.Runtime) *telegramservice.Notifier {
+	return telegramservice.NewNotifier(
+		telegramservice.QueueCapacity,
+		func(text string) telegramservice.Result {
+			return (&telegramservice.Service{
 				Runtime:  runtimeAdapter{Runtime: runtime},
 				Settings: telegramsettings.Reader{},
 			}).Send(text)
-			return integrationtelegram.Result(result)
 		},
 		recordTelegramNotifierAudit,
 	)

@@ -2,6 +2,10 @@ package api
 
 import (
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	datalifecycleservice "github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
+	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"
+	sshmanagementservice "github.com/MalenkiySolovey/solovey-ui/service/sshmanagement"
+	updateservice "github.com/MalenkiySolovey/solovey-ui/service/update"
 )
 
 type ApiService struct {
@@ -9,7 +13,7 @@ type ApiService struct {
 	RestartScheduler   service.RestartScheduler
 	SettingService     service.SettingService
 	UserService        service.UserService
-	ConfigService      service.ConfigService
+	ConfigService      *service.ConfigService
 	ClientService      service.ClientService
 	TlsService         service.TlsService
 	InboundService     service.InboundService
@@ -22,6 +26,10 @@ type ApiService struct {
 	DiagnosticsService service.DiagnosticsService
 	VersionService     service.VersionService
 	DoctorService      service.DoctorService
+	Deployment         *deploymentservice.Manager
+	SSHManagement      *sshmanagementservice.Manager
+	Update             *updateservice.LifecycleManager
+	DataLifecycle      *datalifecycleservice.Manager
 }
 
 type Option func(*ApiService)
@@ -54,7 +62,7 @@ func (a *ApiService) bindRuntime() {
 		a.Runtime = runtime
 	}
 	a.UserService = service.UserService{Runtime: runtime}
-	a.ConfigService = *service.NewConfigServiceWithRuntime(runtime)
+	a.ConfigService = service.NewConfigServiceWithRuntime(runtime)
 	a.ClientService = service.ClientService{Runtime: runtime}
 	a.TlsService = service.TlsService{
 		Runtime:         runtime,
@@ -69,4 +77,8 @@ func (a *ApiService) bindRuntime() {
 	a.AuditService = service.AuditService{Runtime: runtime}
 	a.DiagnosticsService = service.DiagnosticsService{Runtime: runtime}
 	a.DoctorService = service.DoctorService{Runtime: runtime}
+	a.Deployment = deploymentservice.Shared()
+	a.SSHManagement = sshmanagementservice.Shared()
+	a.Update = updateservice.SharedLifecycle()
+	a.DataLifecycle = datalifecycleservice.Shared()
 }

@@ -12,18 +12,18 @@ func TestEncryptDecryptSettingValueRoundTripExtra(t *testing.T) {
 	t.Setenv("SUI_SECRETBOX_KEY", encodedTestSecretboxKey())
 	settingService := initSettingTestDB(t)
 
-	encrypted, err := settingService.encryptSettingValue("telegramBotToken", "phase2-secret")
+	encrypted, err := settingService.encryptSettingValue("fixturePrimaryBotToken", "test-secret")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if encrypted == "phase2-secret" || !secretbox.IsEncrypted(encrypted) {
+	if encrypted == "test-secret" || !secretbox.IsEncrypted(encrypted) {
 		t.Fatalf("value was not encrypted: %q", encrypted)
 	}
-	decrypted, err := settingService.decryptSettingValue("telegramBotToken", encrypted)
+	decrypted, err := settingService.decryptSettingValue("fixturePrimaryBotToken", encrypted)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decrypted != "phase2-secret" {
+	if decrypted != "test-secret" {
 		t.Fatalf("unexpected decrypted value %q", decrypted)
 	}
 }
@@ -32,11 +32,11 @@ func TestDecryptPrimarySecretboxCandidateDoesNotAuditFallback(t *testing.T) {
 	t.Setenv("SUI_SECRETBOX_KEY", encodedTestSecretboxKey())
 	settingService := initSettingTestDB(t)
 
-	encrypted, err := settingService.encryptSettingValue("telegramProxyPassword", "primary-secret")
+	encrypted, err := settingService.encryptSettingValue("fixturePrimaryProxyPassword", "primary-secret")
 	if err != nil {
 		t.Fatal(err)
 	}
-	decrypted, err := settingService.decryptSettingValue("telegramProxyPassword", encrypted)
+	decrypted, err := settingService.decryptSettingValue("fixturePrimaryProxyPassword", encrypted)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -67,14 +67,14 @@ func TestLegacySecretboxFallbackDoesNotAuditAfterFix_XFAILIssue17(t *testing.T) 
 	if err != nil {
 		t.Fatal(err)
 	}
-	legacyValue, err := legacyBox.EncryptString("legacy-secret", "telegramBotToken")
+	legacyValue, err := legacyBox.EncryptString("legacy-secret", "fixturePrimaryBotToken")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "telegramBotToken").Update("value", legacyValue).Error; err != nil {
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "fixturePrimaryBotToken").Update("value", legacyValue).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := settingService.decryptSettingValue("telegramBotToken", legacyValue); err != nil {
+	if _, err := settingService.decryptSettingValue("fixturePrimaryBotToken", legacyValue); err != nil {
 		t.Fatal(err)
 	}
 

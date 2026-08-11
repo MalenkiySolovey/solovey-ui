@@ -2,10 +2,12 @@ package logger
 
 import (
 	"fmt"
+	"io"
 	"log/slog"
 	"strings"
 	"sync"
 	"testing"
+	"unicode/utf8"
 )
 
 func TestLogRingBufferOverflowKeepsNewestEntries(t *testing.T) {
@@ -102,6 +104,58 @@ func TestInitInstallsSlogDefault(t *testing.T) {
 	}
 	if !strings.Contains(logs[0], "phase=p4") {
 		t.Fatalf("default slog attrs were not formatted: %q", logs[0])
+	}
+}
+
+func TestLoggerSinkRedactsCanariesBeforeBackendAndHistory(t *testing.T) {
+	resetLogBufferForTest(t)
+
+	Info("Cookie: s-ui=cookie-canary csrf_token=csrf-canary")
+	Slog("panel").Warn(
+		"step-up rejected",
+		slog.String("recoveryCode", "recovery-canary"),
+		slog.String("safeReason", "expired"),
+	)
+
+	logs := FilteredLogs(10, "DEBUG", "panel", "")
+	combined := strings.Join(logs, "\n")
+	for _, secret := range []string{"cookie-canary", "csrf-canary", "recovery-canary"} {
+		if strings.Contains(combined, secret) {
+			t.Fatalf("logger sink leaked %q: %s", secret, combined)
+		}
+	}
+	if !strings.Contains(combined, "[REDACTED]") || !strings.Contains(combined, "safeReason=expired") {
+		t.Fatalf("redaction marker or safe field missing: %s", combined)
+	}
+}
+
+func TestLoggerSinkBoundsMessagesWithoutBreakingUTF8(t *testing.T) {
+	resetLogBufferForTest(t)
+	logConfigMu.Lock()
+	previousConfig := logConfig
+	logConfig.backend = newStreamBackend(io.Discard, false)
+	logConfigMu.Unlock()
+	t.Cleanup(func() {
+		logConfigMu.Lock()
+		logConfig = previousConfig
+		logConfigMu.Unlock()
+	})
+
+	Info("password=logger-canary ", strings.Repeat("界", MaxMessageBytes))
+
+	entries := Entries(1, "DEBUG", "panel", "")
+	if len(entries) != 1 {
+		t.Fatalf("expected one bounded entry, got %#v", entries)
+	}
+	message := entries[0].Message
+	if len(message) > MaxMessageBytes {
+		t.Fatalf("message exceeded sink ceiling: %d", len(message))
+	}
+	if !utf8.ValidString(message) {
+		t.Fatal("message ceiling produced invalid UTF-8")
+	}
+	if strings.Contains(message, "logger-canary") || !strings.Contains(message, "[REDACTED]") {
+		t.Fatalf("bounded message was not redacted: %q", message)
 	}
 }
 

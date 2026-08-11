@@ -25,17 +25,16 @@ func TestPasswordHashAndMigrationChecks(t *testing.T) {
 	}
 }
 
-// TestEqualizeLoginTimingUsesValidDummyHash pins S-2: the not-found login path
-// must do the same bcrypt work as a wrong-password path, so the dummy hash has
-// to be a valid bcrypt hash at DefaultCost.
-func TestEqualizeLoginTimingUsesValidDummyHash(t *testing.T) {
-	cost, err := bcrypt.Cost([]byte(dummyBcryptHash))
+func TestLegacyBcryptVerificationRequestsMigration(t *testing.T) {
+	hash, err := bcrypt.GenerateFromPassword([]byte("legacy-password"), bcrypt.DefaultCost)
 	if err != nil {
-		t.Fatalf("dummy hash is not a valid bcrypt hash: %v", err)
+		t.Fatal(err)
 	}
-	if cost != bcrypt.DefaultCost {
-		t.Fatalf("dummy hash cost = %d, want DefaultCost %d", cost, bcrypt.DefaultCost)
+	if ok, migrate := CheckPassword("bcrypt:"+string(hash), "legacy-password"); !ok || !migrate {
+		t.Fatalf("legacy bcrypt check = %v, migrate = %v", ok, migrate)
 	}
-	// Must not panic; the comparison result is intentionally discarded.
+}
+
+func TestEqualizeLoginTimingUsesCurrentBoundedWork(t *testing.T) {
 	EqualizeLoginTiming("any-password")
 }

@@ -10,6 +10,7 @@ func FromJSON(data []byte) (Manifest, error) {
 	if err := json.Unmarshal(data, &parsed); err != nil {
 		return Manifest{}, err
 	}
+	parsed = parsed.Normalized()
 	if err := parsed.Validate(); err != nil {
 		return Manifest{}, err
 	}

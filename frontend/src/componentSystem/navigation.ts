@@ -21,6 +21,10 @@ const coreClassicMenuItems: ClassicMenuItem[] = [
   { title: 'pages.dns', icon: 'mdi-dns', path: '/dns', order: 62 },
   { title: 'pages.singBoxConfig', icon: 'mdi-code-json', path: '/sing-box-config', order: 63 },
   { title: 'pages.admins', icon: 'mdi-account-tie', path: '/admins', order: 100 },
+  { title: 'pages.security', icon: 'mdi-account-lock-outline', path: '/security', order: 110 },
+  { title: 'pages.sshManagement', icon: 'mdi-server-network', path: '/ssh-management', order: 120 },
+	{ title: 'pages.deployment', icon: 'mdi-server-security', path: '/deployment', order: 125 },
+  { title: 'pages.operations', icon: 'mdi-shield-sync-outline', path: '/operations', order: 127 },
   { title: 'pages.settings', icon: 'mdi-cog', path: '/settings', order: 130 },
   { title: 'pages.support', icon: 'mdi-heart-outline', path: '/support', order: 140 },
 ]

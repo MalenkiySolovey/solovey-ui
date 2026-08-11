@@ -5,10 +5,10 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"testing"
 	"time"
 
+	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -20,8 +20,10 @@ import (
 
 func initSessionTestDB(t *testing.T) *service.SettingService {
 	t.Helper()
-	t.Setenv("SUI_DB_FOLDER", t.TempDir())
-	initAPITestDB(t, filepath.Join(t.TempDir(), "s-ui.db"))
+	(&service.AuditService{}).ResetDenialAggregation()
+	databaseFolder := t.TempDir()
+	t.Setenv("SUI_DB_FOLDER", databaseFolder)
+	initAPITestDB(t, configstorage.GetDBPath())
 	testDB := dbsqlite.DB()
 	t.Cleanup(func() {
 		stopTokenUseDebouncerBeforeAPITestDBInit(t)

@@ -66,7 +66,7 @@ func TestAddTokenValidatesScopeAllowlist(t *testing.T) {
 			t.Fatalf("scope %q should be accepted: %v", scope, err)
 		}
 	}
-	if _, err := userService.AddToken("admin", 0, "component scope without provider", "telegram"); err == nil {
+	if _, err := userService.AddToken("admin", 0, "component scope without provider", "fixture-scope"); err == nil {
 		t.Fatal("component scope without provider should be rejected")
 	}
 	unregister := RegisterAPITokenScopeProvider(func() []string { return []string{"component-scope"} })

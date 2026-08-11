@@ -31,7 +31,7 @@ func TestSecurityLoginLockoutBlocksAuditsAndRecovers(t *testing.T) {
 	if err := settingService.Save(dbsqlite.DB(), webPathPayload); err != nil {
 		t.Fatal(err)
 	}
-	if err := (&service.UserService{}).UpdateFirstUser("admin", "correct-password"); err != nil {
+	if err := (&service.UserService{}).UpdateFirstUser("admin", "correct-password-value"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -57,12 +57,12 @@ func TestSecurityLoginLockoutBlocksAuditsAndRecovers(t *testing.T) {
 		t.Fatalf("unexpected login_blocked audit: %#v", blocked)
 	}
 
-	blockedLogin := performSecurityLogin(router, "correct-password")
+	blockedLogin := performSecurityLogin(router, "correct-password-value")
 	assertSecurityLoginFailureContains(t, blockedLogin, "too many login attempts")
 
 	forceLoginWindowElapsed(ip)
 	forceLoginWindowElapsed(loginRateLimitUserKey("admin"))
-	recovered := performSecurityLogin(router, "correct-password")
+	recovered := performSecurityLogin(router, "correct-password-value")
 	assertSecurityLoginSuccess(t, recovered)
 
 	for i := 0; i < loginRateLimitMax; i++ {
@@ -70,7 +70,7 @@ func TestSecurityLoginLockoutBlocksAuditsAndRecovers(t *testing.T) {
 	}
 	resetLoginFailures(ip)
 	resetLoginFailures(loginRateLimitUserKey("admin"))
-	afterReset := performSecurityLogin(router, "correct-password")
+	afterReset := performSecurityLogin(router, "correct-password-value")
 	assertSecurityLoginSuccess(t, afterReset)
 }
 
@@ -91,7 +91,7 @@ func TestSecurityLoginPerUsernameTarpitNeverLocksOut(t *testing.T) {
 	if err := settingService.Save(dbsqlite.DB(), webPathPayload); err != nil {
 		t.Fatal(err)
 	}
-	if err := (&service.UserService{}).UpdateFirstUser("admin", "correct-password"); err != nil {
+	if err := (&service.UserService{}).UpdateFirstUser("admin", "correct-password-value"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -124,7 +124,7 @@ func TestSecurityLoginPerUsernameTarpitNeverLocksOut(t *testing.T) {
 	// state clears, a correct password from a fresh IP is accepted immediately —
 	// proving the per-username path never hard-blocks the account.
 	resetLoginFailures(userKey)
-	rec := performSecurityLoginFromIP(router, "203.0.113.250", "correct-password")
+	rec := performSecurityLoginFromIP(router, "203.0.113.250", "correct-password-value")
 	assertSecurityLoginSuccess(t, rec)
 }
 
@@ -135,12 +135,26 @@ func performSecurityLogin(router *gin.Engine, password string) *httptest.Respons
 }
 
 func performSecurityLoginFromIP(router *gin.Engine, ip, password string) *httptest.ResponseRecorder {
+	csrfRequest := httptest.NewRequest(http.MethodGet, "/api/csrf", nil)
+	csrfRequest.RemoteAddr = ip + ":12345"
+	csrfRecorder := httptest.NewRecorder()
+	router.ServeHTTP(csrfRecorder, csrfRequest)
+	var csrfMsg Msg
+	_ = json.Unmarshal(csrfRecorder.Body.Bytes(), &csrfMsg)
+	csrfObject, _ := csrfMsg.Obj.(map[string]any)
+	csrfToken, _ := csrfObject["token"].(string)
+
 	form := url.Values{}
 	form.Set("user", "admin")
 	form.Set("pass", password)
 	req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(form.Encode()))
 	req.RemoteAddr = ip + ":12345"
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Origin", "http://example.com")
+	req.Header.Set(csrfHeader, csrfToken)
+	for _, cookie := range csrfRecorder.Result().Cookies() {
+		req.AddCookie(cookie)
+	}
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, req)
 	return recorder

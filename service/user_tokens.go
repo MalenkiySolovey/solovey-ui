@@ -18,6 +18,7 @@ import (
 const (
 	defaultAPITokenScope = "admin"
 	maxAPITokenScopeLen  = 64
+	maxAPITokenProviders = 128
 )
 
 var coreAPITokenScopes = []string{
@@ -43,6 +44,10 @@ func RegisterAPITokenScopeProvider(provider func() []string) func() {
 	if apiTokenScopeProviders.list == nil {
 		apiTokenScopeProviders.list = map[uint64]func() []string{}
 	}
+	if len(apiTokenScopeProviders.list) >= maxAPITokenProviders {
+		apiTokenScopeProviders.Unlock()
+		panic("API token scope provider registry capacity exceeded")
+	}
 	id := apiTokenScopeProviders.next
 	apiTokenScopeProviders.next++
 	apiTokenScopeProviders.list[id] = provider
@@ -57,7 +62,6 @@ func RegisterAPITokenScopeProvider(provider func() []string) func() {
 
 func ResetAPITokenScopeProvidersForTest() {
 	apiTokenScopeProviders.Lock()
-	apiTokenScopeProviders.next = 0
 	apiTokenScopeProviders.list = nil
 	apiTokenScopeProviders.Unlock()
 }

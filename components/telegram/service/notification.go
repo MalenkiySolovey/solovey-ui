@@ -3,7 +3,6 @@
 package telegram
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
 	"github.com/MalenkiySolovey/solovey-ui/util/redact"
 )
 
@@ -25,6 +24,6 @@ func (s *Service) NotifyEvent(event string, fields map[string]string) {
 		message += "\n" + key + ": " + value
 	}
 	if s.Notifier != nil {
-		s.Notifier.Enqueue(telegram.Notification{Event: event, Text: message})
+		s.Notifier.Enqueue(Notification{Event: event, Text: message})
 	}
 }

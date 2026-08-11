@@ -100,6 +100,8 @@
     "basics": "ترازها",
     "dns": "DNS",
     "admins": "ادمین‌ها",
+    "security": "Account security",
+    "securityTransition": "Security verification",
     "settings": "پیکربندی",
     "support": "پشتیبانی از پروژه"
   },

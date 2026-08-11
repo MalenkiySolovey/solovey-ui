@@ -478,12 +478,12 @@ func TestSubscriptionSettingsDefaultsAndValidation(t *testing.T) {
 
 func TestSettingSaveDeterministicForDifferentPayloadOrders(t *testing.T) {
 	payloads := []json.RawMessage{
-		json.RawMessage(`{"telegramNotifyCpu":"true","telegramCpuThreshold":"75","observabilityMemoryCapMB":"64","subPath":"/sub-custom","subJsonPath":"/json-custom","subClashPath":"/clash-custom","subXrayPath":"/xray-custom","subJsonEnable":"false"}`),
-		json.RawMessage(`{"subJsonEnable":"false","subXrayPath":"/xray-custom","subClashPath":"/clash-custom","subJsonPath":"/json-custom","subPath":"/sub-custom","observabilityMemoryCapMB":"64","telegramCpuThreshold":"75","telegramNotifyCpu":"true"}`),
+		json.RawMessage(`{"fixturePrimaryNotifyCPU":"true","fixturePrimaryCPUThreshold":"75","observabilityMemoryCapMB":"64","subPath":"/sub-custom","subJsonPath":"/json-custom","subClashPath":"/clash-custom","subXrayPath":"/xray-custom","subJsonEnable":"false"}`),
+		json.RawMessage(`{"subJsonEnable":"false","subXrayPath":"/xray-custom","subClashPath":"/clash-custom","subJsonPath":"/json-custom","subPath":"/sub-custom","observabilityMemoryCapMB":"64","fixturePrimaryCPUThreshold":"75","fixturePrimaryNotifyCPU":"true"}`),
 	}
 	keys := []string{
-		"telegramNotifyCpu",
-		"telegramCpuThreshold",
+		"fixturePrimaryNotifyCPU",
+		"fixturePrimaryCPUThreshold",
 		"observabilityMemoryCapMB",
 		"subPath",
 		"subJsonPath",
@@ -519,7 +519,7 @@ func TestSettingSaveDeterministicForDifferentPayloadOrders(t *testing.T) {
 	}
 }
 
-func TestSaveValidatesTelegramProxyURLBeforeEncrypting(t *testing.T) {
+func TestSaveValidatesFixtureComponentProxyURLBeforeEncrypting(t *testing.T) {
 	t.Setenv("SUI_SECRETBOX_KEY", encodedTestSecretboxKey())
 	settingService := initSettingTestDB(t)
 	if _, err := settingService.GetAllSetting(); err != nil {
@@ -527,7 +527,7 @@ func TestSaveValidatesTelegramProxyURLBeforeEncrypting(t *testing.T) {
 	}
 
 	invalidPayload, err := json.Marshal(map[string]string{
-		"telegramProxyURL": "http://127.0.0.1:8080",
+		"fixturePrimaryProxyURL": "http://127.0.0.1:8080",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -535,11 +535,11 @@ func TestSaveValidatesTelegramProxyURLBeforeEncrypting(t *testing.T) {
 	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, invalidPayload)
 	}); err == nil {
-		t.Fatal("expected private telegramProxyURL to be rejected")
+		t.Fatal("expected private fixturePrimaryProxyURL to be rejected")
 	}
 
 	validPayload, err := json.Marshal(map[string]string{
-		"telegramProxyURL": "socks5://8.8.8.8:1080",
+		"fixturePrimaryProxyURL": "socks5://8.8.8.8:1080",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -547,26 +547,26 @@ func TestSaveValidatesTelegramProxyURLBeforeEncrypting(t *testing.T) {
 	if err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {
 		return settingService.Save(tx, validPayload)
 	}); err != nil {
-		t.Fatalf("expected public telegramProxyURL to be accepted: %v", err)
+		t.Fatalf("expected public fixturePrimaryProxyURL to be accepted: %v", err)
 	}
-	decrypted, err := settingService.getString("telegramProxyURL")
+	decrypted, err := settingService.getString("fixturePrimaryProxyURL")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if decrypted != "socks5://8.8.8.8:1080" {
-		t.Fatalf("unexpected stored telegramProxyURL: %q", decrypted)
+		t.Fatalf("unexpected stored fixturePrimaryProxyURL: %q", decrypted)
 	}
 }
 
-func TestSaveValidatesTelegramCPUSettings(t *testing.T) {
+func TestSaveValidatesFixtureComponentCPUSettings(t *testing.T) {
 	settingService := initSettingTestDB(t)
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
 
 	validPayload, err := json.Marshal(map[string]string{
-		"telegramNotifyCpu":    "true",
-		"telegramCpuThreshold": "85",
+		"fixturePrimaryNotifyCPU":    "true",
+		"fixturePrimaryCPUThreshold": "85",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -578,7 +578,7 @@ func TestSaveValidatesTelegramCPUSettings(t *testing.T) {
 	}
 
 	invalidPayload, err := json.Marshal(map[string]string{
-		"telegramCpuThreshold": "101",
+		"fixturePrimaryCPUThreshold": "101",
 	})
 	if err != nil {
 		t.Fatal(err)

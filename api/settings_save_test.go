@@ -98,8 +98,8 @@ func TestSaveSettingsRejectsUnknownKeyAndAudits(t *testing.T) {
 		t.Fatalf("unexpected audit event: %#v", event)
 	}
 	details := string(event.Details)
-	if !strings.Contains(details, `"reason":"invalid setting key:`) || !strings.Contains(details, `unexpectedKey`) {
-		t.Fatalf("audit details missing reject reason: %s", details)
+	if !strings.Contains(details, `"reason":"invalid_setting_key"`) || strings.Contains(details, `unexpectedKey`) {
+		t.Fatalf("audit details did not use the stable reject reason: %s", details)
 	}
 
 	var count int64
@@ -149,7 +149,7 @@ func TestSaveSettingsRejectsProtectedKeyAndAudits(t *testing.T) {
 	if event.Actor != "admin" || event.Resource != "settings" || event.Severity != service.AuditSeverityWarn {
 		t.Fatalf("unexpected audit event: %#v", event)
 	}
-	if !strings.Contains(string(event.Details), `secret`) {
-		t.Fatalf("audit details missing protected key: %s", event.Details)
+	if !strings.Contains(string(event.Details), `"reason":"invalid_setting_key"`) || strings.Contains(string(event.Details), `override-not-allowed`) {
+		t.Fatalf("audit details did not use the stable protected-key reason: %s", event.Details)
 	}
 }

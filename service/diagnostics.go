@@ -141,7 +141,7 @@ func (s *DiagnosticsService) databaseCheck() opsdiagnostics.Check {
 			Key:     "database",
 			Title:   "Database",
 			Status:  opsdiagnostics.StatusFail,
-			Message: err.Error(),
+			Message: "database quick_check failed",
 		}
 	}
 	if quick != "ok" {
@@ -149,7 +149,7 @@ func (s *DiagnosticsService) databaseCheck() opsdiagnostics.Check {
 			Key:     "database",
 			Title:   "Database",
 			Status:  opsdiagnostics.StatusFail,
-			Message: quick,
+			Message: "database quick_check reported an error",
 		}
 	}
 	return opsdiagnostics.Check{
@@ -167,7 +167,7 @@ func (s *DiagnosticsService) configChecks(configService *ConfigService) []opsdia
 			Key:     "config_build",
 			Title:   "Generated config",
 			Status:  opsdiagnostics.StatusFail,
-			Message: err.Error(),
+			Message: "configuration generation failed",
 		}}
 	}
 
@@ -185,7 +185,7 @@ func (s *DiagnosticsService) configChecks(configService *ConfigService) []opsdia
 			Key:     "config_parse",
 			Title:   "sing-box parse",
 			Status:  opsdiagnostics.StatusFail,
-			Message: err.Error(),
+			Message: "generated configuration was rejected",
 		})
 		return checks
 	}
@@ -219,12 +219,12 @@ func diagnosticsSettingsChecks(settings SettingService) []opsdiagnostics.Check {
 	return checks
 }
 
-func diagnosticSettingFail(key string, title string, err error) opsdiagnostics.Check {
+func diagnosticSettingFail(key string, title string, _ error) opsdiagnostics.Check {
 	return opsdiagnostics.Check{
 		Key:     key,
 		Title:   title,
 		Status:  opsdiagnostics.StatusFail,
-		Message: err.Error(),
+		Message: "setting unavailable",
 	}
 }
 
@@ -232,14 +232,10 @@ func diagnosticsSettingsSnapshot(settings SettingService) map[string]interface{}
 	snapshot := map[string]interface{}{}
 	addStringSetting(snapshot, "webListen", settings.GetListen)
 	addIntSetting(snapshot, "webPort", settings.GetPort)
-	addStringSetting(snapshot, "webPath", settings.GetWebPath)
 	addStringSetting(snapshot, "webDomain", settings.GetWebDomain)
-	addStringSetting(snapshot, "webURI", settings.GetWebURI)
 	addStringSetting(snapshot, "subListen", settings.GetSubListen)
 	addIntSetting(snapshot, "subPort", settings.GetSubPort)
-	addStringSetting(snapshot, "subPath", settings.GetSubPath)
 	addStringSetting(snapshot, "subDomain", settings.GetSubDomain)
-	addStringSetting(snapshot, "subURI", settings.GetSubURI)
 	addBoolSetting(snapshot, "subLinkEnable", settings.GetSubLinkEnable)
 	addBoolSetting(snapshot, "subJsonEnable", settings.GetSubJsonEnable)
 	addBoolSetting(snapshot, "subClashEnable", settings.GetSubClashEnable)

@@ -18,16 +18,17 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/util/ratelimit"
-	"github.com/MalenkiySolovey/solovey-ui/web/publicsurface"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -804,251 +805,152 @@ func (n nodeClientFunc) Apply(ctx context.Context, target NodeApplyTarget, artif
 	return n.apply(ctx, target, artifact)
 }
 
-func TestSelfStealDraftIsBlockedAndNeverAppliesInbound(t *testing.T) {
-	db, dbDir := openFallbackDB(t)
-	t.Setenv("SUI_DB_FOLDER", dbDir)
-	setSetting(t, db, "webPath", "/secret-panel/")
-	service := New(db, NewRuntime())
-	site, err := service.SaveSite(SiteInput{Name: "Example Portal"}, "tester")
+func TestLegacySelfStealDecoderIsBoundedStrictAndNonActionable(t *testing.T) {
+	raw := legacySelfStealPayload()
+	inspection, err := DecodeLegacySelfStealPayload(raw)
+	if err != nil || inspection.Classification != "RETIRED_NON_ACTIONABLE" ||
+		!containsString(inspection.ReasonCodes, LegacySelfStealRetiredReason) {
+		t.Fatalf("inspection=%#v err=%v", inspection, err)
+	}
+	encoded, err := json.Marshal(inspection)
 	if err != nil {
-		t.Fatalf("SaveSite: %v", err)
+		t.Fatal(err)
 	}
-	publish, err := service.PublishSite(site.ID, "tester")
-	if err != nil {
-		t.Fatalf("PublishSite: %v", err)
+	for _, forbidden := range []string{"secret-key", "/private/path", "203.0.113.10", "443", "tlsRecordId"} {
+		if strings.Contains(string(encoded), forbidden) {
+			t.Fatalf("inspection leaked %q: %s", forbidden, encoded)
+		}
 	}
-	oldDraft := fallbackdomain.SelfStealDraft{
-		SiteID:    site.ID,
-		Status:    "blocked",
-		Payload:   json.RawMessage(`{"old":true}`),
-		CreatedAt: time.Now().Add(-48 * time.Hour).Unix(),
+	for _, invalid := range []json.RawMessage{
+		json.RawMessage(`{"schema":"solovey-ui/fallback-html-self-steal-draft/v1","source":"fallback-html:self-steal","unknown":true}`),
+		json.RawMessage(`{"schema":"solovey-ui/fallback-html-self-steal-draft/v1","source":"other"}`),
+		json.RawMessage(`{`),
+	} {
+		inspection, err = DecodeLegacySelfStealPayload(invalid)
+		if err == nil || inspection.Classification != "LEGACY_INVALID_NON_ACTIONABLE" {
+			t.Fatalf("invalid payload became actionable: %#v err=%v", inspection, err)
+		}
 	}
-	if err := db.Create(&oldDraft).Error; err != nil {
-		t.Fatalf("create expired self-steal draft: %v", err)
-	}
-
-	draft, err := service.CreateSelfStealDraft(site.ID, SelfStealDraftInput{}, "tester")
-	if err != nil {
-		t.Fatalf("CreateSelfStealDraft: %v", err)
-	}
-	if draft.Status != "blocked" || !draft.Payload.NoApply || draft.Payload.RequiresCapability != "inbound-draft" {
-		t.Fatalf("unexpected self-steal draft: %#v", draft)
-	}
-	if draft.CoreDraftID == 0 || draft.Payload.CoreDraftID != draft.CoreDraftID {
-		t.Fatalf("core draft id was not linked: %#v", draft)
-	}
-	if draft.Payload.ActivePublish != publish.Version {
-		t.Fatalf("draft active publish = %q, want %q", draft.Payload.ActivePublish, publish.Version)
-	}
-	if containsString(draft.Payload.Blocks, "handoff is not available") {
-		t.Fatalf("draft should use the core handoff instead of blocking on missing capability: %#v", draft.Payload.Blocks)
-	}
-	if !containsString(draft.Payload.Blocks, "self-steal requires a TLS-capable public site target") {
-		t.Fatalf("draft did not block non-TLS target: %#v", draft.Payload.Blocks)
-	}
-	if draft.Payload.InboundType != "vless" || draft.Payload.InboundTag == "" || draft.Payload.InboundCandidate == nil {
-		t.Fatalf("draft candidate was not populated: %#v", draft.Payload)
-	}
-	blockedCandidate, ok := draft.Payload.InboundCandidate.(map[string]any)
-	if !ok || blockedCandidate["listen_port"] != 443 || blockedCandidate["tls_id"] != uint(0) {
-		t.Fatalf("blocked draft should still show the 443 handoff candidate without a TLS record: %#v", draft.Payload.InboundCandidate)
-	}
-	if containsString(draft.Payload.ConservativeDefaults, "scMinPostsIntervalMs") || containsString(draft.Payload.ConservativeDefaults, "scMaxEachPostBytes") {
-		t.Fatalf("draft should not include DPI-triggering transport parameters: %#v", draft.Payload.ConservativeDefaults)
-	}
-	var stored fallbackdomain.SelfStealDraft
-	if err := db.First(&stored, draft.ID).Error; err != nil {
-		t.Fatalf("stored self-steal draft: %v", err)
-	}
-	if stored.Status != "blocked" || stored.CoreDraftID != draft.CoreDraftID || !strings.Contains(string(stored.Payload), `"noApply":true`) {
-		t.Fatalf("stored draft should be blocked/no-apply: %#v", stored)
-	}
-	var coreDraft model.InboundDraft
-	if err := db.First(&coreDraft, draft.CoreDraftID).Error; err != nil {
-		t.Fatalf("core inbound draft: %v", err)
-	}
-	if coreDraft.Status != "blocked" || coreDraft.Source != "fallback-html:self-steal" || coreDraft.InboundType != "vless" || coreDraft.Tag != draft.Payload.InboundTag {
-		t.Fatalf("unexpected core inbound draft: %#v", coreDraft)
-	}
-	if !strings.Contains(string(coreDraft.Payload), `"coreDraftId":`) || !strings.Contains(string(coreDraft.Payload), `"inboundCandidate"`) {
-		t.Fatalf("core draft payload missing handoff details: %s", string(coreDraft.Payload))
-	}
-	var inboundCount int64
-	if err := db.Model(&model.Inbound{}).Count(&inboundCount).Error; err != nil {
-		t.Fatalf("count inbounds: %v", err)
-	}
-	if inboundCount != 0 {
-		t.Fatalf("self-steal draft must not create live inbounds, got %d", inboundCount)
-	}
-	var oldDraftCount int64
-	if err := db.Model(&fallbackdomain.SelfStealDraft{}).Where("id = ?", oldDraft.ID).Count(&oldDraftCount).Error; err != nil {
-		t.Fatalf("count expired self-steal draft: %v", err)
-	}
-	if oldDraftCount != 0 {
-		t.Fatalf("expired self-steal draft was not cleaned up")
-	}
-	var events int64
-	if err := db.Model(&fallbackdomain.Event{}).Where("site_id = ? AND action = ?", site.ID, "self_steal_draft_blocked").Count(&events).Error; err != nil {
-		t.Fatalf("count self-steal event: %v", err)
-	}
-	if events != 1 {
-		t.Fatalf("self-steal events = %d, want 1", events)
-	}
-	if _, err := service.CreateSelfStealDraft(site.ID, SelfStealDraftInput{Profile: "xray"}, "tester"); err == nil {
-		t.Fatalf("unsupported profile should be rejected")
+	oversized := make(json.RawMessage, maxLegacySelfStealPayloadBytes+1)
+	if _, err := DecodeLegacySelfStealPayload(oversized); err == nil {
+		t.Fatal("oversized legacy payload was accepted")
 	}
 }
 
-func TestSelfStealDraftCreatesReviewRequiredCoreDraftWhenSafe(t *testing.T) {
-	db, dbDir := openFallbackDB(t)
-	t.Setenv("SUI_DB_FOLDER", dbDir)
-	setSetting(t, db, "webPath", "/secret-panel/")
-	setSetting(t, db, "webCertFile", "/tmp/fullchain.pem")
-	setSetting(t, db, "webKeyFile", "/tmp/privkey.pem")
-	service := New(db, NewRuntime())
-	site, err := service.SaveSite(SiteInput{Name: "Example Portal"}, "tester")
-	if err != nil {
-		t.Fatalf("SaveSite: %v", err)
+func TestLegacySelfStealReconciliationPreservesDataAndIsIdempotent(t *testing.T) {
+	db, _ := openFallbackDB(t)
+	now := time.Unix(2000, 0).UTC()
+	valid := legacySelfStealPayload()
+	historical := []fallbackdomain.SelfStealDraft{
+		{SiteID: 1, CoreDraftID: 11, Status: "ready", Payload: valid, CreatedAt: 10},
+		{SiteID: 1, CoreDraftID: 12, Status: "blocked", Payload: json.RawMessage(`{`), CreatedAt: 11},
+		{SiteID: 1, CoreDraftID: 13, Status: LegacySelfStealRetiredStatus, Payload: valid, CreatedAt: 12},
 	}
-	if _, err := service.PublishSite(site.ID, "tester"); err != nil {
-		t.Fatalf("PublishSite: %v", err)
+	if err := db.Create(&historical).Error; err != nil {
+		t.Fatal(err)
 	}
-
-	draft, err := service.CreateSelfStealDraft(site.ID, SelfStealDraftInput{
-		HandshakeHost: "front.example.com",
-		PublicListen:  "203.0.113.10",
-	}, "tester")
-	if err != nil {
-		t.Fatalf("CreateSelfStealDraft: %v", err)
+	coreDrafts := []model.InboundDraft{
+		{Source: LegacySelfStealSource, SourceRef: "open", Status: "review_required", Payload: valid, ReviewNotes: json.RawMessage(`{"keep":true}`), CreatedAt: 10, UpdatedAt: 10},
+		{Source: LegacySelfStealSource, SourceRef: "invalid", Status: "blocked", Payload: json.RawMessage(`{`), CreatedAt: 11, UpdatedAt: 11},
+		{Source: LegacySelfStealSource, SourceRef: "terminal", Status: "applied", Payload: valid, CreatedAt: 12, UpdatedAt: 12},
+		{Source: "other-component", SourceRef: "other", Status: "review_required", Payload: valid, CreatedAt: 13, UpdatedAt: 13},
 	}
-	if draft.Status != "ready" || len(draft.Payload.Blocks) != 0 || !draft.Payload.NoApply {
-		t.Fatalf("safe self-steal draft should be ready but not applied: %#v", draft)
+	if err := db.Create(&coreDrafts).Error; err != nil {
+		t.Fatal(err)
 	}
-	if draft.Payload.HandshakeHost != "front.example.com" {
-		t.Fatalf("handshake host = %q", draft.Payload.HandshakeHost)
+	site := fallbackdomain.Site{ID: 1, Name: "Historical", Enabled: true, Status: "published", CreatedAt: 1, UpdatedAt: 1}
+	if err := db.Create(&site).Error; err != nil {
+		t.Fatal(err)
 	}
-	if draft.Payload.PublicListen != "203.0.113.10" || draft.Payload.PublicPort != 443 {
-		t.Fatalf("public self-steal endpoint = %s:%d", draft.Payload.PublicListen, draft.Payload.PublicPort)
+	target := fallbackdomain.RuntimeTarget{SiteID: 1, Kind: "standalone", Listen: "127.0.0.1", Port: 443, Runtime: "gin", TLS: true}
+	publish := fallbackdomain.Publish{SiteID: 1, Version: "keep", RootDir: "historical", Active: true, CreatedAt: 20}
+	tls := model.Tls{Name: "keep", Server: json.RawMessage(`{"private_key":"secret-key"}`), Client: json.RawMessage(`{}`)}
+	inbound := model.Inbound{Type: "trojan", Tag: "matching-looking"}
+	for _, row := range []any{&target, &publish, &tls, &inbound} {
+		if err := db.Create(row).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
-	if draft.Payload.TLSRecordID == 0 || draft.Payload.RealityPublicKey == "" || draft.Payload.RealityShortID == "" {
-		t.Fatalf("ready draft did not create Reality TLS material: %#v", draft.Payload)
+	preservedTables := []any{&fallbackdomain.RuntimeTarget{}, &fallbackdomain.Publish{}, &model.Tls{}, &model.Inbound{}}
+	preservedCounts := make([]int64, len(preservedTables))
+	for i, table := range preservedTables {
+		if err := db.Model(table).Count(&preservedCounts[i]).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
-	candidate, ok := draft.Payload.InboundCandidate.(map[string]any)
-	if !ok || candidate["listen_port"] != 443 || candidate["tls_id"] != draft.Payload.TLSRecordID {
-		t.Fatalf("ready draft candidate should listen on 443 and reference TLS record: %#v", draft.Payload.InboundCandidate)
+	if err := ReconcileLegacySelfSteal(context.Background(), db, now); err != nil {
+		t.Fatal(err)
 	}
-	var tlsRecord model.Tls
-	if err := db.First(&tlsRecord, draft.Payload.TLSRecordID).Error; err != nil {
-		t.Fatalf("self-steal TLS record: %v", err)
+	var retired, invalid fallbackdomain.SelfStealDraft
+	if err := db.First(&retired, historical[0].ID).Error; err != nil {
+		t.Fatal(err)
 	}
-	var tlsServer struct {
-		Reality struct {
-			Handshake struct {
-				Server     string `json:"server"`
-				ServerPort int    `json:"server_port"`
-			} `json:"handshake"`
-			PrivateKey string   `json:"private_key"`
-			ShortID    []string `json:"short_id"`
-		} `json:"reality"`
+	if err := db.First(&invalid, historical[1].ID).Error; err != nil {
+		t.Fatal(err)
 	}
-	if err := json.Unmarshal(tlsRecord.Server, &tlsServer); err != nil {
-		t.Fatalf("self-steal TLS server JSON: %v", err)
+	if retired.Status != LegacySelfStealRetiredStatus || invalid.Status != LegacySelfStealInvalidStatus ||
+		!bytes.Equal(retired.Payload, valid) || !bytes.Equal(invalid.Payload, historical[1].Payload) {
+		t.Fatalf("historical rows=%#v %#v", retired, invalid)
 	}
-	if tlsServer.Reality.Handshake.Server == "" || tlsServer.Reality.Handshake.ServerPort != draft.Payload.HandshakeTarget.Port || tlsServer.Reality.PrivateKey == "" || len(tlsServer.Reality.ShortID) != 1 {
-		t.Fatalf("unexpected self-steal Reality server config: %#v", tlsServer)
+	var open, malformed, terminal, unrelated model.InboundDraft
+	for id, destination := range map[uint]*model.InboundDraft{
+		coreDrafts[0].Id: &open, coreDrafts[1].Id: &malformed, coreDrafts[2].Id: &terminal, coreDrafts[3].Id: &unrelated,
+	} {
+		if err := db.First(destination, id).Error; err != nil {
+			t.Fatal(err)
+		}
 	}
-	var coreDraft model.InboundDraft
-	if err := db.First(&coreDraft, draft.CoreDraftID).Error; err != nil {
-		t.Fatalf("core inbound draft: %v", err)
+	if open.Status != "discarded" || malformed.Status != "discarded" ||
+		!bytes.Equal(open.Payload, valid) || !strings.Contains(string(open.ReviewNotes), LegacySelfStealRetiredReason) ||
+		!strings.Contains(string(malformed.ReviewNotes), LegacySelfStealInvalidReason) {
+		t.Fatalf("open=%#v malformed=%#v", open, malformed)
 	}
-	if coreDraft.Status != "review_required" || coreDraft.ExpiresAt <= coreDraft.CreatedAt {
-		t.Fatalf("unexpected core draft state: %#v", coreDraft)
+	if terminal.Status != "applied" || terminal.UpdatedAt != 12 ||
+		unrelated.Status != "review_required" || unrelated.UpdatedAt != 13 {
+		t.Fatalf("terminal=%#v unrelated=%#v", terminal, unrelated)
 	}
-	var inboundCount int64
-	if err := db.Model(&model.Inbound{}).Count(&inboundCount).Error; err != nil {
-		t.Fatalf("count inbounds: %v", err)
+	snapshot := []byte(open.Status + string(open.ReviewNotes) + strconv.FormatInt(open.UpdatedAt, 10))
+	if err := ReconcileLegacySelfSteal(context.Background(), db, now.Add(time.Hour)); err != nil {
+		t.Fatal(err)
 	}
-	if inboundCount != 0 {
-		t.Fatalf("ready draft must still not create live inbounds, got %d", inboundCount)
+	if err := db.First(&open, coreDrafts[0].Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(snapshot, []byte(open.Status+string(open.ReviewNotes)+strconv.FormatInt(open.UpdatedAt, 10))) {
+		t.Fatalf("idempotent reconciliation rewrote the row: %#v", open)
+	}
+	for i, table := range preservedTables {
+		var count int64
+		if err := db.Model(table).Count(&count).Error; err != nil || count != preservedCounts[i] {
+			t.Fatalf("preserved table %T count=%d want=%d err=%v", table, count, preservedCounts[i], err)
+		}
 	}
 }
 
-func TestSelfStealDraftCanPreparePortTransferAndTrojanFallback(t *testing.T) {
-	db, dbDir := openFallbackDB(t)
-	t.Setenv("SUI_DB_FOLDER", dbDir)
-	setSetting(t, db, "webPath", "/secret-panel/")
-	setSetting(t, db, "webCertFile", "/tmp/fullchain.pem")
-	setSetting(t, db, "webKeyFile", "/tmp/privkey.pem")
-	service := New(db, NewRuntime())
-	site, err := service.SaveSite(SiteInput{Name: "Example Portal"}, "tester")
-	if err != nil {
-		t.Fatalf("SaveSite: %v", err)
+func TestLegacySelfStealReconciliationCancellationRollsBack(t *testing.T) {
+	db, _ := openFallbackDB(t)
+	row := model.InboundDraft{
+		Source: LegacySelfStealSource, SourceRef: "cancel", Status: "review_required",
+		Payload: legacySelfStealPayload(), CreatedAt: 10, UpdatedAt: 10,
 	}
-	if _, err := service.SaveTarget(site.ID, TargetInput{
-		Kind:     "standalone",
-		Host:     "front.example.com",
-		Listen:   "127.0.0.1",
-		Port:     443,
-		RootPath: "/",
-		Runtime:  "gin",
-		TLS:      true,
-	}, "tester"); err != nil {
-		t.Fatalf("SaveTarget: %v", err)
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatal(err)
 	}
-	now := time.Now().Unix()
-	if err := db.Create(&fallbackdomain.Publish{
-		SiteID:    site.ID,
-		Version:   "published-for-self-steal",
-		RootDir:   t.TempDir(),
-		Active:    true,
-		CreatedAt: now,
-	}).Error; err != nil {
-		t.Fatalf("create active publish fixture: %v", err)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := ReconcileLegacySelfSteal(ctx, db, time.Unix(2000, 0)); !errors.Is(err, context.Canceled) {
+		t.Fatalf("canceled migration err=%v", err)
 	}
+	if err := db.First(&row, row.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if row.Status != "review_required" || row.UpdatedAt != 10 {
+		t.Fatalf("canceled reconciliation changed row: %#v", row)
+	}
+}
 
-	draft, err := service.CreateSelfStealDraft(site.ID, SelfStealDraftInput{
-		Profile:         "trojan",
-		Transport:       "ws",
-		HandshakeHost:   "front.example.com",
-		PublicListen:    "203.0.113.10",
-		PrepareTransfer: true,
-	}, "tester")
-	if err != nil {
-		t.Fatalf("CreateSelfStealDraft: %v", err)
-	}
-	if draft.Status != "ready" || draft.Payload.InboundType != "trojan" {
-		t.Fatalf("trojan transfer draft should be ready: %#v", draft)
-	}
-	if draft.Payload.PortTransfer == nil || !draft.Payload.PortTransfer.Required || !draft.Payload.PortTransfer.Prepared {
-		t.Fatalf("port transfer was not prepared: %#v", draft.Payload.PortTransfer)
-	}
-	if draft.Payload.HandshakeTarget.Listen != "127.0.0.1" || draft.Payload.HandshakeTarget.Port == 443 {
-		t.Fatalf("handshake target was not moved to local TLS port: %#v", draft.Payload.HandshakeTarget)
-	}
-	candidate, ok := draft.Payload.InboundCandidate.(map[string]any)
-	if !ok || candidate["type"] != "trojan" || candidate["listen"] != "203.0.113.10" {
-		t.Fatalf("unexpected trojan candidate: %#v", draft.Payload.InboundCandidate)
-	}
-	if _, ok := candidate["fallback"]; !ok {
-		t.Fatalf("trojan candidate must include fallback: %#v", candidate)
-	}
-	if _, ok := candidate["fallback_for_alpn"]; !ok {
-		t.Fatalf("trojan candidate must include fallback_for_alpn: %#v", candidate)
-	}
-	if transport, ok := candidate["transport"].(map[string]any); !ok || transport["type"] != "ws" {
-		t.Fatalf("trojan transport was not preserved: %#v", candidate)
-	}
-	var tlsRecord model.Tls
-	if err := db.First(&tlsRecord, draft.Payload.TLSRecordID).Error; err != nil {
-		t.Fatalf("self-steal TLS record: %v", err)
-	}
-	var tlsServer map[string]any
-	if err := json.Unmarshal(tlsRecord.Server, &tlsServer); err != nil {
-		t.Fatalf("self-steal TLS server JSON: %v", err)
-	}
-	if tlsServer["certificate_path"] != "/tmp/fullchain.pem" || tlsServer["key_path"] != "/tmp/privkey.pem" {
-		t.Fatalf("trojan TLS record should use panel cert/key paths: %#v", tlsServer)
-	}
+func legacySelfStealPayload() json.RawMessage {
+	return json.RawMessage(`{"schema":"solovey-ui/fallback-html-self-steal-draft/v1","source":"fallback-html:self-steal","profile":"vless-reality","noApply":true,"requiresCapability":"inbound-draft","target":{"port":443},"handshakeTarget":{"path":"/private/path"},"publicListen":"203.0.113.10","publicPort":443,"tlsRecordId":9,"inboundCandidate":{"private_key":"secret-key"},"warnings":[],"blocks":[],"conservativeDefaults":[],"nextSteps":[]}`)
 }
 
 func TestImportSiteReplacesDraftContentOnly(t *testing.T) {
@@ -1149,6 +1051,14 @@ func TestRestorePostOpenDeactivatesPublishes(t *testing.T) {
 	if status := runtime.Status(); !status.Active {
 		t.Fatalf("runtime should be active after publish: %#v", status)
 	}
+	legacyPayload := legacySelfStealPayload()
+	legacyDraft := model.InboundDraft{
+		Source: LegacySelfStealSource, SourceRef: "restored", Status: "review_required",
+		Payload: legacyPayload, CreatedAt: 10, UpdatedAt: 10,
+	}
+	if err := db.Create(&legacyDraft).Error; err != nil {
+		t.Fatalf("create legacy draft: %v", err)
+	}
 
 	if err := HandleRestorePostOpen(context.Background(), db); err != nil {
 		t.Fatalf("HandleRestorePostOpen: %v", err)
@@ -1176,6 +1086,24 @@ func TestRestorePostOpenDeactivatesPublishes(t *testing.T) {
 	}
 	if restoreEvents != 1 {
 		t.Fatalf("restore events = %d, want 1", restoreEvents)
+	}
+	var retired model.InboundDraft
+	if err := db.First(&retired, legacyDraft.Id).Error; err != nil {
+		t.Fatalf("restored legacy draft: %v", err)
+	}
+	if retired.Status != "discarded" || !bytes.Equal(retired.Payload, legacyPayload) ||
+		!strings.Contains(string(retired.ReviewNotes), LegacySelfStealRetiredReason) {
+		t.Fatalf("legacy draft was not retired safely: %#v", retired)
+	}
+	firstUpdatedAt := retired.UpdatedAt
+	if err := HandleRestorePostOpen(context.Background(), db); err != nil {
+		t.Fatalf("second HandleRestorePostOpen: %v", err)
+	}
+	if err := db.First(&retired, legacyDraft.Id).Error; err != nil {
+		t.Fatalf("second restored legacy draft read: %v", err)
+	}
+	if retired.UpdatedAt != firstUpdatedAt {
+		t.Fatalf("repeated restore rewrote retired draft: updatedAt=%d want=%d", retired.UpdatedAt, firstUpdatedAt)
 	}
 }
 
@@ -1504,21 +1432,21 @@ func TestRemoteTemplateCatalogInstallCreatePublishAndDelete(t *testing.T) {
 			"source":{"repository":"test/fallback-pages","license":"MIT","referenceFiles":["upstreams/FallbackHTML/status"]},
 			"contentTypeProfile":"dashboard",
 			"pages":["pages/index.html","pages/about.html","pages/404.html"],
-			"assets":["assets/site.css"],
+			"assets":["assets/site.css","assets/decoy-interactivity.js"],
 			"notes":["local test catalog"]
 		}`))
 	})
 	mux.HandleFunc("/templates/remote-status-board/pages/index.html", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(`<!doctype html><html><head><title>Status</title><link rel="stylesheet" href="../assets/site.css"></head><body><main><h1>Remote status board</h1><a href="/about/">About</a></main></body></html>`))
+		_, _ = w.Write([]byte(`<!doctype html><html><head><title>Status</title><link rel="stylesheet" href="../assets/site.css"></head><body><main><h1>Remote status board</h1><a href="/about/">About</a></main><script src="../assets/decoy-interactivity.js"></script></body></html>`))
 	})
 	mux.HandleFunc("/templates/remote-status-board/pages/about.html", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(`<!doctype html><html><head><title>About</title><link rel="stylesheet" href="../assets/site.css"></head><body><main><h1>About status</h1><a href="https://example.com/status">Public status</a></main></body></html>`))
+		_, _ = w.Write([]byte(`<!doctype html><html><head><title>About</title><link rel="stylesheet" href="../assets/site.css"></head><body><main><h1>About status</h1><a href="https://example.com/status">Public status</a></main><script src="../assets/decoy-interactivity.js"></script></body></html>`))
 	})
 	mux.HandleFunc("/templates/remote-status-board/pages/404.html", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write([]byte(`<!doctype html><html><head><title>Missing</title></head><body><main><h1>Not found</h1></main></body></html>`))
+		_, _ = w.Write([]byte(`<!doctype html><html><head><title>Missing</title></head><body><main><h1>Not found</h1></main><script src="../assets/decoy-interactivity.js"></script></body></html>`))
 	})
 	mux.HandleFunc("/templates/remote-status-board/assets/site.css", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/css; charset=utf-8")
@@ -1558,18 +1486,28 @@ func TestRemoteTemplateCatalogInstallCreatePublishAndDelete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateSiteFromTemplate remote: %v", err)
 	}
-	if site.TemplateID != "remote-status-board" || len(site.Pages) != 3 || len(site.Assets) != 1 {
+	if site.TemplateID != "remote-status-board" || len(site.Pages) != 3 || len(site.Assets) != 2 {
 		t.Fatalf("unexpected remote-created site: %#v", site)
 	}
+	var stylesheet fallbackdomain.Asset
+	for _, asset := range site.Assets {
+		if strings.HasPrefix(asset.MimeType, "text/css") {
+			stylesheet = asset
+			break
+		}
+	}
+	if stylesheet.ID == 0 {
+		t.Fatalf("remote-created site did not include stylesheet: %#v", site.Assets)
+	}
 	home := pageByPath(site.Pages, "/")
-	if home == nil || home.ContentMode != fallbackdomain.ContentModeStaticHTML || !strings.Contains(home.Body, site.Assets[0].LogicalPath) || strings.Contains(home.Body, "../assets/site.css") {
+	if home == nil || home.ContentMode != fallbackdomain.ContentModeStaticHTML || !strings.Contains(home.Body, stylesheet.LogicalPath) || strings.Contains(home.Body, "../assets/site.css") {
 		t.Fatalf("home page did not become static html with rewritten asset: %#v assets=%#v", home, site.Assets)
 	}
 	preview, err := service.PreviewSite(site.ID, PreviewInput{}, "tester")
 	if err != nil {
 		t.Fatalf("PreviewSite remote: %v", err)
 	}
-	if !strings.Contains(preview.HTML, "<style data-fallback-preview=") || strings.Contains(preview.HTML, `<link rel="stylesheet" href="`+site.Assets[0].LogicalPath+`"`) {
+	if !strings.Contains(preview.HTML, "<style data-fallback-preview=") || strings.Contains(preview.HTML, `<link rel="stylesheet" href="`+stylesheet.LogicalPath+`"`) {
 		t.Fatalf("preview did not inline stylesheet asset: %s", preview.HTML)
 	}
 	publish, err := service.PublishSite(site.ID, "tester")
@@ -1817,7 +1755,7 @@ func TestExternalResourcePolicyValidation(t *testing.T) {
 	if !strings.Contains(csp, "https://example.com") || !strings.Contains(csp, "https://fonts.example.net") {
 		t.Fatalf("CSP does not include passive allowlist origins: %s", csp)
 	}
-	if !strings.Contains(csp, "script-src 'none'") || !strings.Contains(csp, "connect-src 'none'") || !strings.Contains(csp, "frame-src 'none'") || !strings.Contains(csp, "frame-ancestors 'none'") {
+	if !strings.Contains(csp, "script-src 'self'") || !strings.Contains(csp, "connect-src 'none'") || !strings.Contains(csp, "frame-src 'none'") || !strings.Contains(csp, "frame-ancestors 'none'") || !strings.Contains(csp, "form-action 'none'") {
 		t.Fatalf("CSP does not keep active external content blocked by default: %s", csp)
 	}
 	if strings.Contains(csp, "links.example.org") {
@@ -1870,6 +1808,10 @@ func TestRuntimeStatusAndCacheValidators(t *testing.T) {
 	}
 	if head.Body.Len() != 0 {
 		t.Fatalf("HEAD response body length = %d, want 0", head.Body.Len())
+	}
+	post := recordPublicMethod(t, runtime, http.MethodPost, "/")
+	if post.Code != http.StatusOK || post.Body.Len() == 0 {
+		t.Fatalf("passive POST / = %d with %d bytes, want 200 and a home page", post.Code, post.Body.Len())
 	}
 }
 

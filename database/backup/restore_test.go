@@ -2,6 +2,9 @@ package backup
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
 	"github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"io"
@@ -29,7 +32,7 @@ type memMultipartFile struct{ *bytes.Reader }
 
 func (memMultipartFile) Close() error { return nil }
 
-func newLegacyBackup(t *testing.T) []byte {
+func newLegacyBackup(t testing.TB) []byte {
 	t.Helper()
 
 	dir := t.TempDir()
@@ -199,6 +202,123 @@ func TestRestorePreservesConfigDNSAndRouteRules(t *testing.T) {
 	}
 }
 
+func TestRestoreRejectsFutureCoreSchemaBeforeMutatingLiveDatabase(t *testing.T) {
+	dbDir, err := os.MkdirTemp("", "s-ui-import-future-version-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	livePath := configstorage.GetDBPath()
+	t.Cleanup(func() {
+		closeMainDB(t)
+		time.Sleep(25 * time.Millisecond)
+		_ = os.RemoveAll(dbDir)
+	})
+	if err := dbsqlite.Init(livePath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	if err := dbsqlite.DB().Create(&model.Setting{Key: "restore-live-sentinel", Value: "unchanged"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	liveDB := dbsqlite.DB()
+
+	candidateBytes, err := Export("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	candidatePath := filepath.Join(dbDir, "future.db")
+	if err := os.WriteFile(candidatePath, candidateBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	candidate, err := gorm.Open(sqlite.Open(candidatePath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := candidate.Model(&model.Setting{}).Where("key = ?", "coreSchemaVersion").Update("value", "9999.0.0")
+	if updated.Error != nil {
+		t.Fatal(updated.Error)
+	}
+	if updated.RowsAffected == 0 {
+		if err := candidate.Create(&model.Setting{Key: "coreSchemaVersion", Value: "9999.0.0"}).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	rewriteBackupManifestForTest(t, candidate, func(item *BackupManifest) { item.CoreSchema = "9999.0.0" })
+	candidateSQL, err := candidate.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := candidateSQL.Close(); err != nil {
+		t.Fatal(err)
+	}
+	candidateBytes, err = os.ReadFile(candidatePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	err = Restore(memMultipartFile{Reader: bytes.NewReader(candidateBytes)})
+	if err == nil || !strings.Contains(strings.ToLower(err.Error()), "future_core_schema") {
+		t.Fatalf("future-schema restore error=%v", err)
+	}
+	if dbsqlite.DB() != liveDB {
+		t.Fatal("live database handle changed before future-schema rejection")
+	}
+	var value string
+	if err := dbsqlite.DB().Model(&model.Setting{}).
+		Select("value").Where("key = ?", "restore-live-sentinel").Scan(&value).Error; err != nil {
+		t.Fatal(err)
+	}
+	if value != "unchanged" {
+		t.Fatalf("live sentinel mutated: %q", value)
+	}
+	if _, err := os.Stat(livePath + ".backup"); !os.IsNotExist(err) {
+		t.Fatalf("restore rotated live database before validation: %v", err)
+	}
+}
+
+func rewriteBackupManifestForTest(t *testing.T, db *gorm.DB, mutate func(*BackupManifest)) {
+	t.Helper()
+	var record backupManifestRecord
+	if err := db.First(&record, "scope = ?", "backup").Error; err != nil {
+		t.Fatal(err)
+	}
+	var item BackupManifest
+	if err := json.Unmarshal(record.Payload, &item); err != nil {
+		t.Fatal(err)
+	}
+	if mutate != nil {
+		mutate(&item)
+	}
+	for index := range item.Tables {
+		if item.Tables[index].Excluded && item.Tables[index].ExclusionCode != "OPERATOR_EXCLUDED_OPTIONAL_TELEMETRY" {
+			schemaDigest, contentDigest := excludedTableDigests(item.Tables[index].Name, item.Tables[index].ExclusionCode)
+			item.Tables[index].Rows = 0
+			item.Tables[index].SchemaDigest = schemaDigest
+			item.Tables[index].ContentDigest = contentDigest
+			continue
+		}
+		entry, err := digestBackupTable(context.Background(), db, item.Tables[index].Owner, item.Tables[index].Name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		entry.Excluded, entry.ExclusionCode = item.Tables[index].Excluded, item.Tables[index].ExclusionCode
+		item.Tables[index] = entry
+	}
+	item.BackupID = backupManifestDigest(item)
+	payload, err := json.Marshal(item)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&backupManifestRecord{}).Where("scope = ?", "backup").Updates(map[string]any{
+		"payload": payload, "digest": item.BackupID,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestRestoreAdaptsLegacyBackup(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		// On Windows the test runner's t.TempDir() cleanup races against
@@ -286,6 +406,21 @@ func TestRestoreAdaptsLegacyBackup(t *testing.T) {
 	}
 }
 
+func TestRehearsalExplicitlyAdaptsOnlySupportedLegacyBackup(t *testing.T) {
+	dbDir := t.TempDir()
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+	legacyBytes := newLegacyBackup(t)
+	rehearsal, err := Rehearse(context.Background(), bytes.NewReader(legacyBytes))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rehearsal.Possible || rehearsal.ManifestStatus != "LEGACY_EXPLICITLY_ADAPTED" ||
+		rehearsal.Manifest == nil || rehearsal.Manifest.AppVersion != "1.4.1" ||
+		rehearsal.MigrationPlan != "REHEARSED" {
+		t.Fatalf("legacy rehearsal=%#v", rehearsal)
+	}
+}
+
 func TestRestoreRejectsCorruptSQLiteBackup(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("skipping Windows-specific TempDir cleanup race; logic is exercised on Linux CI")
@@ -354,7 +489,7 @@ func TestRestoreAcceptsVersionedBackupWithoutConfigIssue12(t *testing.T) {
 	}
 }
 
-func TestRestoreRollsBackForeignKeyFailureAndReopensLiveDB(t *testing.T) {
+func TestRestoreRollsBackProtectedPostSwapFailureAndReopensExactLiveDB(t *testing.T) {
 	dbDir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", dbDir)
 	livePath := configstorage.GetDBPath()
@@ -374,10 +509,19 @@ func TestRestoreRollsBackForeignKeyFailureAndReopensLiveDB(t *testing.T) {
 	if err := dbsqlite.DB().Create(&model.Setting{Key: "restore_marker", Value: "live-before-import"}).Error; err != nil {
 		t.Fatal(err)
 	}
+	candidate, err := Export("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.DB().Model(&model.Setting{}).Where("key = ?", "restore_marker").Update("value", "live-after-candidate").Error; err != nil {
+		t.Fatal(err)
+	}
+	restoreProtectedPostActionHook = func(context.Context) error { return errors.New("forced protected failure") }
+	t.Cleanup(func() { restoreProtectedPostActionHook = nil })
 
-	err := Restore(memMultipartFile{Reader: bytes.NewReader(newForeignKeyBrokenBackup(t))})
-	if err == nil || !strings.Contains(err.Error(), "foreign key check failed") {
-		t.Fatalf("expected foreign key import failure, got %v", err)
+	err = Restore(memMultipartFile{Reader: bytes.NewReader(candidate)})
+	if err == nil || !strings.Contains(err.Error(), "forced protected failure") {
+		t.Fatalf("expected protected post-swap failure, got %v", err)
 	}
 	if dbsqlite.DB() == nil {
 		t.Fatal("sqlite.DB returned nil after failed import rollback")
@@ -391,45 +535,9 @@ func TestRestoreRollsBackForeignKeyFailureAndReopensLiveDB(t *testing.T) {
 	if err := dbsqlite.DB().Model(&model.Setting{}).Select("value").Where("key = ?", "restore_marker").Scan(&marker).Error; err != nil {
 		t.Fatal(err)
 	}
-	if marker != "live-before-import" {
-		t.Fatalf("rollback marker=%q, want live-before-import", marker)
+	if marker != "live-after-candidate" {
+		t.Fatalf("rollback marker=%q, want exact live-after-candidate", marker)
 	}
-}
-
-func newForeignKeyBrokenBackup(t *testing.T) []byte {
-	t.Helper()
-
-	path := filepath.Join(t.TempDir(), "broken-fk.db")
-	broken, err := gorm.Open(sqlite.Open(path), &gorm.Config{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := broken.AutoMigrate(&model.Setting{}, &model.Tls{}, &model.Inbound{}); err != nil {
-		t.Fatal(err)
-	}
-	if err := broken.Create(&model.Setting{Key: "version", Value: configidentity.GetVersion()}).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := broken.Create(&model.Setting{Key: "config", Value: `{"dns":{},"route":{}}`}).Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := broken.Exec("PRAGMA foreign_keys = OFF").Error; err != nil {
-		t.Fatal(err)
-	}
-	if err := broken.Exec(`
-INSERT INTO inbounds(type, tag, tls_id, addrs, out_json, options)
-VALUES(?, ?, ?, ?, ?, ?)
-`, "http", "broken-fk", 99, []byte("[]"), []byte("{}"), []byte("{}")).Error; err != nil {
-		t.Fatal(err)
-	}
-	if sqlDB, err := broken.DB(); err == nil {
-		_ = sqlDB.Close()
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return data
 }
 
 func newVersionedBackupWithoutConfig(t *testing.T) []byte {

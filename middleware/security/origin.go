@@ -4,9 +4,11 @@ import (
 	"net"
 	"net/url"
 	"strings"
+
+	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
 )
 
-func WebSocketOriginAllowed(originHeader, requestHost, webDomain string) (bool, string) {
+func WebSocketOriginAllowed(originHeader, requestHost, _ string) (bool, string) {
 	originURL, err := url.Parse(originHeader)
 	if err != nil || originURL.Scheme == "" || originURL.Host == "" {
 		return false, "invalid_origin"
@@ -22,16 +24,12 @@ func WebSocketOriginAllowed(originHeader, requestHost, webDomain string) (bool, 
 	if originHostPort == "" {
 		return false, "invalid_origin"
 	}
-	if requestHost != "" && originHostPort == CanonicalHostPort(requestHost) {
+	canonicalRequestHost := CanonicalHostPort(requestHost)
+	if canonicalRequestHost == "" {
+		return false, "invalid_request_host"
+	}
+	if originHostPort == canonicalRequestHost {
 		return true, "request_host"
-	}
-	originHost := CanonicalHostname(originURL.Host)
-	webDomainHost := CanonicalHostname(webDomain)
-	if webDomainHost != "" && originHost == webDomainHost {
-		return true, "web_domain"
-	}
-	if webDomainHostPort := CanonicalHostPort(webDomain); webDomainHostPort != "" && originHostPort == webDomainHostPort {
-		return true, "web_domain"
 	}
 	return false, "host_mismatch"
 }
@@ -49,13 +47,10 @@ func CanonicalHostPort(value string) string {
 	if value == "" {
 		return ""
 	}
-	if parsed, err := url.Parse(value); err == nil && parsed.Host != "" {
+	if parsed, err := url.Parse(value); err == nil && parsed.Host != "" && parsed.User == nil {
 		value = parsed.Host
 	}
-	if host, port, err := net.SplitHostPort(value); err == nil {
-		return strings.TrimSuffix(strings.ToLower(strings.Trim(host, "[]")), ".") + ":" + port
-	}
-	return strings.TrimSuffix(strings.ToLower(strings.Trim(value, "[]")), ".")
+	return clientidentity.CanonicalHostPort(value)
 }
 
 func CanonicalHostname(value string) string {
@@ -63,11 +58,15 @@ func CanonicalHostname(value string) string {
 	if value == "" {
 		return ""
 	}
-	if parsed, err := url.Parse(value); err == nil && parsed.Host != "" {
+	if parsed, err := url.Parse(value); err == nil && parsed.Host != "" && parsed.User == nil {
 		value = parsed.Host
 	}
-	if host, _, err := net.SplitHostPort(value); err == nil {
-		value = host
+	canonical := clientidentity.CanonicalHostPort(value)
+	if canonical == "" {
+		return ""
 	}
-	return strings.TrimSuffix(strings.ToLower(strings.Trim(value, "[]")), ".")
+	if host, _, err := net.SplitHostPort(canonical); err == nil {
+		return strings.Trim(host, "[]")
+	}
+	return strings.Trim(canonical, "[]")
 }

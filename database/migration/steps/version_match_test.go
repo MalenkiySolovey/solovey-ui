@@ -1,6 +1,11 @@
 package steps
 
-import "testing"
+import (
+	"testing"
+
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
+)
 
 func TestDBVersionMinorIsExactMinor(t *testing.T) {
 	tests := []struct {
@@ -19,5 +24,15 @@ func TestDBVersionMinorIsExactMinor(t *testing.T) {
 		if got := dbVersionMinorIs(test.version, test.major, test.minor); got != test.want {
 			t.Fatalf("dbVersionMinorIs(%q, %d, %d)=%v, want %v", test.version, test.major, test.minor, got, test.want)
 		}
+	}
+}
+
+func TestCoreSequentialPlanRejectsUnsupportedOldBoundary(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:unsupported-core-boundary?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := RunCorePending(db, "1.6"); err == nil {
+		t.Fatal("unsupported old core boundary was silently promoted")
 	}
 }

@@ -40,13 +40,13 @@ func (s *DoctorService) Run(hostname string) opsdoctor.Report {
 
 	rawConfig, err := configService.GetConfig("")
 	if err != nil {
-		items = append(items, opsdoctor.Error("config-build", "Build sing-box config", "Unable to build config: "+err.Error(), "Fix database/config rows before restarting sing-box.", nil))
+		items = append(items, opsdoctor.Error("config-build", "Build sing-box config", "Unable to build configuration.", "Fix database/config rows before restarting sing-box.", nil))
 		return opsdoctor.FinishReport(start, items)
 	}
 	items = append(items, opsdoctor.OK("config-build", "Build sing-box config", "Full sing-box config was assembled from database rows.", nil))
 
 	if err := singboxvalidation.ValidateConfig(*rawConfig); err != nil {
-		items = append(items, opsdoctor.Error("config-dry-check", "Dry config check", err.Error(), "Open the affected config section and fix the reported sing-box option.", nil))
+		items = append(items, opsdoctor.Error("config-dry-check", "Dry config check", "Generated configuration was rejected.", "Open the affected config section and fix the reported sing-box option.", nil))
 	} else {
 		items = append(items, opsdoctor.OK("config-dry-check", "Dry config check", "Config parses and constructs without starting sing-box.", nil))
 	}
@@ -77,7 +77,7 @@ func (s *DoctorService) DiagnoseClient(req DoctorClientRequest, hostname string)
 
 	var client model.Client
 	if err := db.Model(model.Client{}).Where("id = ?", req.ClientID).First(&client).Error; err != nil {
-		return opsdoctor.Report{}, err
+		return opsdoctor.Report{}, common.NewError("client unavailable")
 	}
 
 	var items []opsdoctor.Item
@@ -112,14 +112,14 @@ func (s *DoctorService) subscriptionChecks(hostname string) []opsdoctor.Item {
 	settingService := SettingService{}
 	settings, err := settingService.GetAllSetting()
 	if err != nil {
-		return []opsdoctor.Item{opsdoctor.Error("subscription-settings", "Subscription settings", err.Error(), "Fix settings storage before serving subscriptions.", nil)}
+		return []opsdoctor.Item{opsdoctor.Error("subscription-settings", "Subscription settings", "Subscription settings are unavailable.", "Fix settings storage before serving subscriptions.", nil)}
 	}
 	var items []opsdoctor.Item
 	subURI, err := settingService.GetFinalSubURI(hostname)
 	if err != nil || strings.TrimSpace(subURI) == "" {
 		items = append(items, opsdoctor.Warn("subscription-uri", "Subscription URI", "Subscription URI cannot be resolved.", "Set subscription domain/URI in Settings.", nil))
 	} else {
-		items = append(items, opsdoctor.OK("subscription-uri", "Subscription URI", "Subscription URI resolves to "+subURI, nil))
+		items = append(items, opsdoctor.OK("subscription-uri", "Subscription URI", "Subscription URI resolves.", nil))
 	}
 	enabledFormats := 0
 	for _, key := range []string{"subLinkEnable", "subJsonEnable", "subClashEnable", "subXrayEnable"} {
@@ -143,7 +143,7 @@ func (s *DoctorService) subscriptionChecks(hostname string) []opsdoctor.Item {
 func (s *DoctorService) recentLogCheck(serverService ServerService) opsdoctor.Item {
 	logs, err := serverService.GetLogsFiltered("20", "warning", "core", "")
 	if err != nil {
-		return opsdoctor.Warn("core-logs", "Recent core logs", err.Error(), "Open Logs for details.", nil)
+		return opsdoctor.Warn("core-logs", "Recent core logs", "Recent core logs are unavailable.", "Open Logs for details.", nil)
 	}
 	if len(logs) == 0 {
 		return opsdoctor.OK("core-logs", "Recent core logs", "No recent core warnings/errors in the in-memory log buffer.", nil)
@@ -169,7 +169,7 @@ func (s *DoctorService) outboundChecksTarget(configService *ConfigService, targe
 	}
 	outbounds, err := configService.OutboundService.GetAll()
 	if err != nil {
-		return opsdoctor.Warn("outbound-checks", "Outbound checks", err.Error(), "Open Outbounds and verify rows.", nil)
+		return opsdoctor.Warn("outbound-checks", "Outbound checks", "Outbound inventory is unavailable.", "Open Outbounds and verify rows.", nil)
 	}
 	if !configService.IsCoreRunning() {
 		return opsdoctor.Warn("outbound-checks", "Outbound checks", "Skipped because sing-box core is not running.", "Start sing-box before testing outbound latency.", nil)
@@ -204,7 +204,7 @@ func (s *DoctorService) outboundChecksTarget(configService *ConfigService, targe
 			case sem <- struct{}{}:
 				defer func() { <-sem }()
 			case <-ctx.Done():
-				results[index] = result{Tag: outboundTag, Error: ctx.Err().Error(), Skipped: true}
+				results[index] = result{Tag: outboundTag, Error: "outbound_check_timeout", Skipped: true}
 				return
 			}
 			check := configService.CheckOutboundWithContext(ctx, outboundTag, target)
@@ -244,14 +244,14 @@ func (s *DoctorService) outboundChecksTarget(configService *ConfigService, targe
 func (s *DoctorService) clientInboundChecks(client model.Client) ([]uint, []opsdoctor.Item) {
 	var inboundIDs []uint
 	if err := json.Unmarshal(client.Inbounds, &inboundIDs); err != nil {
-		return nil, []opsdoctor.Item{opsdoctor.Error("client-inbounds", "Client inbounds", "Client inbound list is malformed: "+err.Error(), "Re-save the client inbound list.", nil)}
+		return nil, []opsdoctor.Item{opsdoctor.Error("client-inbounds", "Client inbounds", "Client inbound list is malformed.", "Re-save the client inbound list.", nil)}
 	}
 	if len(inboundIDs) == 0 {
 		return inboundIDs, []opsdoctor.Item{opsdoctor.Error("client-inbounds", "Client inbounds", "Client has no inbounds.", "Assign at least one inbound to the client.", nil)}
 	}
 	var found []uint
 	if err := dbsqlite.DB().Model(model.Inbound{}).Where("id in ?", inboundIDs).Pluck("id", &found).Error; err != nil {
-		return inboundIDs, []opsdoctor.Item{opsdoctor.Error("client-inbounds", "Client inbounds", err.Error(), "Open Clients and re-save inbound membership.", nil)}
+		return inboundIDs, []opsdoctor.Item{opsdoctor.Error("client-inbounds", "Client inbounds", "Client inbound membership is unavailable.", "Open Clients and re-save inbound membership.", nil)}
 	}
 	if len(found) != len(inboundIDs) {
 		return inboundIDs, []opsdoctor.Item{opsdoctor.Error("client-inbounds", "Client inbounds", "Some assigned inbounds no longer exist.", "Remove stale inbound ids or assign valid inbounds.", map[string]any{"assigned": inboundIDs, "found": found})}
@@ -263,7 +263,7 @@ func (s *DoctorService) clientLinkChecks(client model.Client, inboundIDs []uint,
 	var links []map[string]string
 	if len(strings.TrimSpace(string(client.Links))) > 0 {
 		if err := json.Unmarshal(client.Links, &links); err != nil {
-			return []opsdoctor.Item{opsdoctor.Error("client-links", "Client links", "Client links are malformed: "+err.Error(), "Re-save the client to rebuild generated links.", nil)}
+			return []opsdoctor.Item{opsdoctor.Error("client-links", "Client links", "Client links are malformed.", "Re-save the client to rebuild generated links.", nil)}
 		}
 	}
 	if len(links) == 0 && len(inboundIDs) > 0 {
@@ -282,7 +282,7 @@ func (s *DoctorService) clientSubscriptionChecks(client model.Client) []opsdocto
 		items = append(items, opsdoctor.OK("client-sub-secret", "Subscription secret", "Client has a subscription secret.", nil))
 	}
 	if reqErr != nil {
-		items = append(items, opsdoctor.Warn("client-sub-secret-required", "Subscription lookup", "Could not read the subscription secret requirement: "+reqErr.Error(), "Check settings storage.", nil))
+		items = append(items, opsdoctor.Warn("client-sub-secret-required", "Subscription lookup", "Could not read the subscription secret requirement.", "Check settings storage.", nil))
 	} else if !required {
 		items = append(items, opsdoctor.Warn("client-sub-secret-required", "Subscription lookup", "Legacy name lookup is allowed globally.", "Enable required subscription secrets in Settings.", nil))
 	}

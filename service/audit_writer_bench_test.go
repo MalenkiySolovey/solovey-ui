@@ -13,7 +13,7 @@ import (
 func BenchmarkAuditWriter_Push(b *testing.B) {
 	writer := newAuditWriter(auditQueueCapacity, auditBatchSize, time.Hour, nil)
 	auditDroppedTotal.Store(0)
-	event := model.AuditEvent{Event: "phase5_audit_push", Severity: AuditSeverityInfo}
+	event := model.AuditEvent{Event: "benchmark_audit_push", Severity: AuditSeverityInfo}
 	b.ReportMetric(float64(auditQueueCapacity), "capacity")
 	b.ReportMetric(float64(auditBatchSize), "batch")
 	b.ResetTimer()
@@ -34,7 +34,7 @@ func BenchmarkAuditWriter_Overload10000(b *testing.B) {
 	}
 }
 
-func TestAuditWriterOverloadSeverityPriorityAnchorIssue16Phase5(t *testing.T) {
+func TestAuditWriterOverloadSeverityPriorityAnchorIssue16(t *testing.T) {
 	auditDroppedTotal.Store(0)
 	writer := newAuditWriter(auditQueueCapacity, auditBatchSize, time.Hour, nil)
 	for i := 0; i < 10_000; i++ {
@@ -68,7 +68,7 @@ func TestAuditWriterOverloadSeverityPriorityAnchorIssue16Phase5(t *testing.T) {
 		t.Fatalf("severity priority eviction kept warn/security=%d info=%d; want warn/security=%d info=%d; kept=%v",
 			kept[AuditSeverityWarn], kept[AuditSeverityInfo], wantKeptWarnSecurity, wantKeptInfo, kept)
 	}
-	t.Logf("phase5 issue16 anchor: dropped=%d lost_warn_security=%d lost_info=%d kept=%v", dropped, lostWarnSecurity, lostInfo, kept)
+	t.Logf("issue16 anchor: dropped=%d lost_warn_security=%d lost_info=%d kept=%v", dropped, lostWarnSecurity, lostInfo, kept)
 }
 
 func auditWriterBenchEvent(i int) model.AuditEvent {
@@ -79,7 +79,7 @@ func auditWriterBenchEvent(i int) model.AuditEvent {
 		resource = "security"
 	}
 	return model.AuditEvent{
-		Event:    fmt.Sprintf("phase5_audit_%05d", i),
+		Event:    fmt.Sprintf("benchmark_audit_%05d", i),
 		Resource: resource,
 		Severity: severity,
 	}
@@ -96,7 +96,7 @@ func BenchmarkAuditWriter_EnqueueAndFlush(b *testing.B) {
 		defer cancel()
 		_ = writer.Stop(ctx)
 	}()
-	event := model.AuditEvent{Event: "phase5_audit_enqueue", Severity: AuditSeverityInfo}
+	event := model.AuditEvent{Event: "benchmark_audit_enqueue", Severity: AuditSeverityInfo}
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
 		writer.Enqueue(event)

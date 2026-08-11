@@ -166,7 +166,7 @@ func createImportXUIPerfSource(tb testing.TB, inbounds int) string {
 	tx := db.Begin()
 	for i := 0; i < inbounds; i++ {
 		settings := fmt.Sprintf(`{"mtu":1280,"secretKey":"private-key-%d","peers":[{"publicKey":"public-key-%d","allowedIPs":["0.0.0.0/0"],"keepAlive":25}]}`, i, i)
-		tag := fmt.Sprintf("wg-phase5-%04d", i)
+		tag := fmt.Sprintf("wg-benchmark-%04d", i)
 		if err := tx.Exec(`INSERT INTO inbounds
 			(id, user_id, up, down, total, all_time, remark, enable, expiry_time, traffic_reset,
 			 last_traffic_reset_time, listen, port, protocol, settings, stream_settings, tag, sniffing)

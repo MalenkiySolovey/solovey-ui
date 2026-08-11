@@ -19,6 +19,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 
 	"github.com/robfig/cron/v3"
+	"gorm.io/gorm"
 )
 
 //go:embed component.json
@@ -40,6 +41,7 @@ func init() {
 
 type component struct {
 	mu                            sync.Mutex
+	started                       bool
 	scheduler                     componenthost.Scheduler
 	unregisterSettingContribution func()
 	unregisterTelegramActions     func()
@@ -48,6 +50,10 @@ type component struct {
 
 func (*component) Migrate(context.Context, lifecycle.Context) error {
 	return paidcore.EnsureSchema(dbsqlite.DB())
+}
+
+func (*component) MigrateStaged(_ context.Context, db *gorm.DB) error {
+	return paidcore.EnsureSchema(db)
 }
 
 func (*component) DropData(context.Context, lifecycle.Context) error {
@@ -62,6 +68,11 @@ func (*component) DropData(context.Context, lifecycle.Context) error {
 
 func (c *component) Start(_ context.Context, ctx lifecycle.Context) error {
 	c.mu.Lock()
+	if c.started {
+		c.mu.Unlock()
+		return nil
+	}
+	c.started = true
 	var rollback []func()
 	if c.unregisterTelegramActions == nil {
 		c.unregisterTelegramActions = paidadmin.RegisterTelegramActions(paidtelegram.Broadcast, paidtelegram.RefundOrder)
@@ -83,12 +94,13 @@ func (c *component) Start(_ context.Context, ctx lifecycle.Context) error {
 		c.paymentPollEntryID = entryID
 		c.mu.Unlock()
 	}
-	paidtelegram.StartBot()
+	paidtelegram.StartBot(ctx.Host.API.Runtime)
 	return nil
 }
 
 func (c *component) rollbackStartHooks(rollback []func()) {
 	c.mu.Lock()
+	c.started = false
 	c.unregisterTelegramActions = nil
 	c.unregisterSettingContribution = nil
 	c.mu.Unlock()
@@ -101,6 +113,7 @@ func (c *component) rollbackStartHooks(rollback []func()) {
 
 func (c *component) Stop(ctx context.Context) error {
 	c.mu.Lock()
+	c.started = false
 	scheduler := c.scheduler
 	unregisterSettingContribution := c.unregisterSettingContribution
 	unregisterTelegramActions := c.unregisterTelegramActions

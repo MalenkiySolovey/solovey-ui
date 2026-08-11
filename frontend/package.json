@@ -1,6 +1,6 @@
 {
   "name": "solovey-ui-frontend",
-  "version": "2026.2.3",
+  "version": "2026.3.0",
   "private": true,
   "scripts": {
     "dev": "vite --host",
@@ -13,7 +13,7 @@
   },
   "dependencies": {
     "@mdi/js": "7.4.47",
-    "axios": "^1.14.0",
+    "axios": "^1.19.0",
     "chart.js": "^4.5.1",
     "clipboard": "^2.0.11",
     "lucide-vue-next": "^1.0.0",

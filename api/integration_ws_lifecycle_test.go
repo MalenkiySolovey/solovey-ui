@@ -39,18 +39,92 @@ func TestIntegrationRealtimeWSIssueConnectPublishCloseReconnect(t *testing.T) {
 		t.Fatalf("expected connected event, got %s", connected.Type)
 	}
 
-	realtime.Publish(realtime.TopicNotification, map[string]any{"phase": "phase3"})
+	realtime.Publish(realtime.TopicNotification, map[string]any{"test": "integration"})
 	event := readIntegrationWSEvent(t, conn)
 	if event.Type != realtime.TopicNotification {
 		t.Fatalf("expected notification event, got %s", event.Type)
 	}
-	_ = conn.Close(websocket.StatusNormalClosure, "phase3 reconnect")
+	_ = conn.Close(websocket.StatusNormalClosure, "integration reconnect")
 
 	token = issueIntegrationWSToken(t, server, cookies)
 	reconnected := dialIntegrationWS(t, server, cookies, token)
 	t.Cleanup(func() { _ = reconnected.CloseNow() })
 	if event := readIntegrationWSEvent(t, reconnected); event.Type != realtime.Topic("connected") {
 		t.Fatalf("expected connected event after reconnect, got %s", event.Type)
+	}
+}
+
+func TestIntegrationRealtimeWSRejectsTicketFromDifferentSession(t *testing.T) {
+	resetRateLimitState()
+	resetRealtimeForTest()
+	router := newIntegrationWSRouter(t)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+
+	issuerCookies := loginIntegrationWSUser(t, router, "admin")
+	foreignCookies := loginIntegrationWSUser(t, router, "admin")
+	token := issueIntegrationWSToken(t, server, issuerCookies)
+	conn, response, err := dialIntegrationWSRaw(t, server, foreignCookies, token)
+	if response != nil && response.Body != nil {
+		defer response.Body.Close()
+	}
+	if err == nil {
+		_ = conn.CloseNow()
+		t.Fatal("ticket issued to another session opened a websocket")
+	}
+	if response == nil || response.StatusCode != http.StatusUnauthorized {
+		t.Fatalf("cross-session websocket response=%v err=%v", response, err)
+	}
+}
+
+func TestIntegrationRealtimeWSRejectsMissingOriginBeforeConsumingTicket(t *testing.T) {
+	resetRateLimitState()
+	resetRealtimeForTest()
+	router := newIntegrationWSRouter(t)
+	cookies := loginIntegrationWSUser(t, router, "admin")
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/api/realtime/ws", nil)
+	request.Header.Set("Connection", "Upgrade")
+	request.Header.Set("Upgrade", "websocket")
+	request.Header.Set("Sec-WebSocket-Version", "13")
+	request.Header.Set("Sec-WebSocket-Key", "dGhlIHNhbXBsZSBub25jZQ==")
+	request.Header.Set("Sec-WebSocket-Protocol", "sui.realtime, sui.token.not-consumed")
+	for _, cookie := range cookies {
+		request.AddCookie(cookie)
+	}
+	router.ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("missing Origin status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestIntegrationRealtimeWSQueryTicketFallbackEmitsDeprecationHeaders(t *testing.T) {
+	resetRateLimitState()
+	resetRealtimeForTest()
+	router := newIntegrationWSRouter(t)
+	server := httptest.NewServer(router)
+	t.Cleanup(server.Close)
+	cookies := loginIntegrationWSUser(t, router, "admin")
+	token := issueIntegrationWSToken(t, server, cookies)
+
+	header := http.Header{}
+	header.Set("Origin", server.URL)
+	header.Set("Cookie", cookieHeader(cookies))
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/realtime/ws?token=" + url.QueryEscape(token)
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	conn, response, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{HTTPHeader: header})
+	if response != nil && response.Body != nil {
+		defer response.Body.Close()
+	}
+	if err != nil {
+		t.Fatalf("deprecated query-ticket handshake failed: %v", err)
+	}
+	t.Cleanup(func() { _ = conn.CloseNow() })
+	if response == nil || response.Header.Get("Deprecation") != "true" ||
+		response.Header.Get("Sunset") == "" {
+		t.Fatalf("missing query-ticket deprecation headers: %#v", response)
 	}
 }
 
@@ -144,8 +218,8 @@ func TestIntegrationRealtimeWSMaxPerIPCapacity(t *testing.T) {
 	}
 }
 
-func TestIntegrationRealtimeWSSlowClientDrop_XFAILPhase3(t *testing.T) {
-	t.Skip("XFAIL Phase3: требуется hook для детерминированной блокировки websocket writer / заполнения ws send queue; связано с реестром п. 32 по WS reliability")
+func TestIntegrationRealtimeWSSlowClientDrop_XFAIL(t *testing.T) {
+	t.Skip("XFAIL: требуется hook для детерминированной блокировки websocket writer / заполнения ws send queue; связано с реестром п. 32 по WS reliability")
 }
 
 func newIntegrationWSRouter(t *testing.T) *gin.Engine {
@@ -227,6 +301,7 @@ func issueIntegrationWSToken(t *testing.T, server *httptest.Server, cookies []*h
 		t.Fatal(err)
 	}
 	req.Header.Set("Cookie", cookieHeader(cookies))
+	req.Header.Set("Origin", server.URL)
 	resp, err := server.Client().Do(req)
 	if err != nil {
 		t.Fatal(err)
@@ -272,11 +347,15 @@ func dialIntegrationWSRaw(t *testing.T, server *httptest.Server, cookies []*http
 	header := http.Header{}
 	header.Set("Origin", server.URL)
 	header.Set("Cookie", cookieHeader(cookies))
-	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/realtime/ws?token=" + url.QueryEscape(token)
+	wsURL := "ws" + strings.TrimPrefix(server.URL, "http") + "/api/realtime/ws"
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	conn, resp, err := websocket.Dial(ctx, wsURL, &websocket.DialOptions{
 		HTTPHeader: header,
+		Subprotocols: []string{
+			realtimehttp.Subprotocol,
+			"sui.token." + token,
+		},
 		OnPingReceived: func(context.Context, []byte) bool {
 			return true
 		},

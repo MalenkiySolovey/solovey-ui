@@ -61,8 +61,10 @@ func AllKeys() []string {
 
 func BooleanKeys() map[string]struct{} {
 	return keySet(
+		EnabledKey,
 		NotifyCPUKey,
 		ReportKey,
+		BackupEnabledKey,
 	)
 }
 

@@ -99,9 +99,6 @@ func applyClientConversion(connection RemoteOutboundConnection, outbound map[str
 	attachNativeClientMetadata(outbound, connection.Canonical, target)
 	return outbound
 }
-func convertGroupOutbound(outbound map[string]interface{}, mode string) map[string]interface{} {
-	return convertRuntimeGroupOutbound(outbound, mode)
-}
 func convertClientGroupOutbound(outbound map[string]interface{}, target string, mode string) map[string]interface{} {
 	switch strings.TrimSpace(target) {
 	case subconversion.TargetXray:

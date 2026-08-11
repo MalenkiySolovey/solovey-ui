@@ -4,12 +4,74 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	panelupdateservice "github.com/MalenkiySolovey/solovey-ui/components/panel-update-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"github.com/gin-gonic/gin"
 )
+
+type componentManagerStepUpStub struct {
+	removeCalls int
+}
+
+func (stub *componentManagerStepUpStub) Enable(panelupdateservice.OperationContext, string) (panelupdateservice.ComponentStatus, error) {
+	return panelupdateservice.ComponentStatus{}, nil
+}
+
+func (stub *componentManagerStepUpStub) Disable(panelupdateservice.OperationContext, string) (panelupdateservice.ComponentStatus, error) {
+	return panelupdateservice.ComponentStatus{}, nil
+}
+
+func (stub *componentManagerStepUpStub) Install(panelupdateservice.OperationContext, string) (panelupdateservice.ComponentStatus, error) {
+	return panelupdateservice.ComponentStatus{}, nil
+}
+
+func (stub *componentManagerStepUpStub) Remove(_ panelupdateservice.OperationContext, id string, deleteData bool) (panelupdateservice.ComponentStatus, error) {
+	stub.removeCalls++
+	return panelupdateservice.ComponentStatus{ID: id, Installed: false}, nil
+}
+
+func TestComponentDropDataRequiresExactStepUpBeforeRemoval(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	manager := &componentManagerStepUpStub{}
+	var operation, target string
+	router := gin.New()
+	RegisterRoutes(router.Group("/api"), Deps{
+		ComponentManager: manager,
+		RequireScope:     func(*gin.Context, string, ...string) bool { return true },
+		RequireStepUp: func(c *gin.Context, gotOperation, gotTarget string) bool {
+			operation, target = gotOperation, gotTarget
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "msg": "denied"})
+			return false
+		},
+		LoginUser: func(*gin.Context) string { return "admin" },
+		RemoteIP:  func(*gin.Context) string { return "192.0.2.1" },
+		JSONMsg: func(c *gin.Context, msg string, err error) {
+			c.JSON(http.StatusOK, gin.H{"success": err == nil, "msg": msg})
+		},
+		JSONObj: func(c *gin.Context, obj any, err error) {
+			c.JSON(http.StatusOK, gin.H{"success": err == nil, "obj": obj})
+		},
+	})
+
+	request := httptest.NewRequest(
+		http.MethodPost,
+		"/api/update/components/telegram/remove",
+		strings.NewReader(`{"deleteData":true}`),
+	)
+	request.Header.Set("Content-Type", "application/json")
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusForbidden || manager.removeCalls != 0 {
+		t.Fatalf("drop-data response=%d calls=%d body=%s", recorder.Code, manager.removeCalls, recorder.Body.String())
+	}
+	if operation != "drop_data" || target != "component:telegram" {
+		t.Fatalf("step-up binding operation=%q target=%q", operation, target)
+	}
+}
 
 type componentCatalogStub struct {
 	inventory panelupdateservice.Inventory

@@ -61,7 +61,7 @@ func (c Catalog) Inventory() (Inventory, error) {
 		ReleaseSource:  source,
 	}
 	if err != nil {
-		inventory.ReleaseError = err.Error()
+		inventory.ReleaseError = "release_catalog_unavailable"
 	}
 	seen := make(map[string]struct{}, len(statuses))
 	for _, status := range statuses {

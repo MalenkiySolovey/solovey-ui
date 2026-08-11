@@ -23,6 +23,13 @@
           autocomplete="current-password"
           required
         ></v-text-field>
+        <v-text-field
+          v-model="newData.stepUpCredential"
+          :hint="$t('security.stepUpCredentialHint')"
+          :label="$t('security.stepUpCredential')"
+          persistent-hint
+          type="password"
+        ></v-text-field>
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
@@ -56,6 +63,7 @@ export default {
       error: '',
       newData: {
         currentPass: '',
+        stepUpCredential: '',
       },
     }
   },
@@ -63,6 +71,7 @@ export default {
     resetData() {
       this.error = ''
       this.newData.currentPass = ''
+      this.newData.stepUpCredential = ''
     },
     closeModal() {
       this.resetData()
@@ -77,6 +86,7 @@ export default {
       this.$emit('delete', {
         id: this.$props.user.id,
         currentPass: this.newData.currentPass,
+        stepUpCredential: this.newData.stepUpCredential,
       })
     },
   },

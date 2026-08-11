@@ -18,5 +18,6 @@ func (a *ApiService) dbTransferDeps() dbtransferhttp.Deps {
 		Actor:          requestActor,
 		RemoteIP:       getRemoteIp,
 		JSONMsg:        jsonMsg,
+		DataLifecycle:  a.DataLifecycle,
 	}
 }

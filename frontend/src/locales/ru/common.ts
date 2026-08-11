@@ -103,6 +103,11 @@
     "basics": "Основы",
     "dns": "DNS",
     "admins": "Администраторы",
+    "security": "Безопасность аккаунта",
+    "sshManagement": "Восстановление SSH",
+    "deployment": "Развёртывание",
+    "operations": "Операции",
+    "securityTransition": "Проверка безопасности",
     "singBoxConfig": "Конфиг sing-box",
     "settings": "Настройки",
     "support": "Поддержать проект"

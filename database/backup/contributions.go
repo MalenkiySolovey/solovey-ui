@@ -19,6 +19,8 @@ type registeredBackupTable struct {
 	table backupTable
 }
 
+const maxContributedBackupTables = 1024
+
 var backupTableRegistry = struct {
 	sync.RWMutex
 	next   uint64
@@ -37,7 +39,7 @@ func RegisterTables(owner string, tables []TableContribution) func() {
 			continue
 		}
 		registered = append(registered, registeredBackupTable{
-			table: backupTable{name: name, model: table.Model},
+			table: backupTable{name: name, model: table.Model, owner: owner},
 		})
 	}
 	if len(registered) == 0 {
@@ -45,6 +47,10 @@ func RegisterTables(owner string, tables []TableContribution) func() {
 	}
 
 	backupTableRegistry.Lock()
+	if len(backupTableRegistry.tables)+len(registered) > maxContributedBackupTables {
+		backupTableRegistry.Unlock()
+		panic("backup table contribution registry capacity exceeded")
+	}
 	backupTableRegistry.next++
 	token := backupTableRegistry.next
 	for i := range registered {

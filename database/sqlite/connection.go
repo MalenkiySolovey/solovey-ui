@@ -1,7 +1,9 @@
 package sqlite
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -10,15 +12,15 @@ import (
 	"time"
 
 	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
-
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
 
 var (
-	dbMu sync.RWMutex
-	db   *gorm.DB
+	dbMu         sync.RWMutex
+	db           *gorm.DB
+	activeDBPath string
 )
 
 const (
@@ -71,6 +73,7 @@ func open(dbPath string) error {
 
 	dbMu.Lock()
 	db = openedDB
+	activeDBPath = dbPath
 	dbMu.Unlock()
 	return nil
 }
@@ -112,11 +115,18 @@ func DB() *gorm.DB {
 	return db
 }
 
+func currentDatabasePath() string {
+	dbMu.RLock()
+	defer dbMu.RUnlock()
+	return activeDBPath
+}
+
 // Close atomically detaches and closes the active database connection.
 func Close() error {
 	dbMu.Lock()
 	current := db
 	db = nil
+	activeDBPath = ""
 	dbMu.Unlock()
 	if current == nil {
 		return nil
@@ -126,6 +136,50 @@ func Close() error {
 		return err
 	}
 	return sqlDB.Close()
+}
+
+// CloseForFileSwap detaches the live handle, proves a non-busy TRUNCATE
+// checkpoint, and closes every pooled connection before a restore renames the
+// database file. If the checkpoint cannot be proven, the still-open handle is
+// reattached and no file mutation is allowed.
+func CloseForFileSwap(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("sqlite file-swap context is required")
+	}
+	dbMu.Lock()
+	current, currentPath := db, activeDBPath
+	db, activeDBPath = nil, ""
+	dbMu.Unlock()
+	if current == nil {
+		return errors.New("sqlite database is unavailable for file swap")
+	}
+	sqlDB, err := current.DB()
+	if err != nil {
+		reattach(current, currentPath)
+		return err
+	}
+	var busy, logFrames, checkpointed int
+	if err := sqlDB.QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &logFrames, &checkpointed); err != nil {
+		reattach(current, currentPath)
+		return fmt.Errorf("sqlite WAL checkpoint failed before file swap: %w", err)
+	}
+	if busy != 0 {
+		reattach(current, currentPath)
+		return fmt.Errorf("sqlite WAL checkpoint is busy before file swap: busy=%d log=%d checkpointed=%d",
+			busy, logFrames, checkpointed)
+	}
+	if err := sqlDB.Close(); err != nil {
+		return fmt.Errorf("close sqlite database for file swap: %w", err)
+	}
+	return nil
+}
+
+func reattach(database *gorm.DB, path string) {
+	dbMu.Lock()
+	defer dbMu.Unlock()
+	if db == nil {
+		db, activeDBPath = database, path
+	}
 }
 
 func IsNotFound(err error) bool {

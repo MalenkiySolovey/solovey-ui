@@ -7,18 +7,18 @@ func TestEncryptDecryptRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	encrypted, err := box.EncryptString("telegram-token", "telegramBotToken")
+	encrypted, err := box.EncryptString("fixture-token", "fixtureBotToken")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if encrypted == "telegram-token" || !IsEncrypted(encrypted) {
+	if encrypted == "fixture-token" || !IsEncrypted(encrypted) {
 		t.Fatalf("value was not encrypted: %q", encrypted)
 	}
-	decrypted, err := box.DecryptString(encrypted, "telegramBotToken")
+	decrypted, err := box.DecryptString(encrypted, "fixtureBotToken")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decrypted != "telegram-token" {
+	if decrypted != "fixture-token" {
 		t.Fatalf("unexpected plaintext %q", decrypted)
 	}
 }
@@ -28,11 +28,11 @@ func TestDecryptRejectsWrongAssociatedData(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	encrypted, err := box.EncryptString("telegram-token", "telegramBotToken")
+	encrypted, err := box.EncryptString("fixture-token", "fixtureBotToken")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := box.DecryptString(encrypted, "telegramProxyURL"); err == nil {
+	if _, err := box.DecryptString(encrypted, "fixtureProxyURL"); err == nil {
 		t.Fatal("expected decrypt to fail with wrong associated data")
 	}
 }
@@ -43,14 +43,14 @@ func TestEncryptDecryptBytesRoundTrip(t *testing.T) {
 		t.Fatal(err)
 	}
 	plain := []byte{0, 1, 2, 3, 255}
-	encrypted, err := box.EncryptBytes(plain, "telegramBackupPassphrase")
+	encrypted, err := box.EncryptBytes(plain, "fixtureBackupPassphrase")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if encrypted == string(plain) || !IsEncrypted(encrypted) {
 		t.Fatalf("value was not encrypted: %q", encrypted)
 	}
-	decrypted, err := box.DecryptBytes(encrypted, "telegramBackupPassphrase")
+	decrypted, err := box.DecryptBytes(encrypted, "fixtureBackupPassphrase")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,15 +65,15 @@ func TestNewRawKeyUsesProvidedAESKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	encrypted, err := box.EncryptString("telegram-token", "telegramBotToken")
+	encrypted, err := box.EncryptString("fixture-token", "fixtureBotToken")
 	if err != nil {
 		t.Fatal(err)
 	}
-	decrypted, err := box.DecryptString(encrypted, "telegramBotToken")
+	decrypted, err := box.DecryptString(encrypted, "fixtureBotToken")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if decrypted != "telegram-token" {
+	if decrypted != "fixture-token" {
 		t.Fatalf("unexpected plaintext %q", decrypted)
 	}
 
@@ -81,7 +81,7 @@ func TestNewRawKeyUsesProvidedAESKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := legacyBox.DecryptString(encrypted, "telegramBotToken"); err == nil {
+	if _, err := legacyBox.DecryptString(encrypted, "fixtureBotToken"); err == nil {
 		t.Fatal("raw-key ciphertext should not decrypt with legacy HKDF constructor")
 	}
 }

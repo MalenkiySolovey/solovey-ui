@@ -48,6 +48,7 @@ import { importXuiDatabase } from './composables/useXuiMigrationOperations'
 type BackupActionContext = {
   visible?: boolean
   close?: () => void
+  acquireDatabaseImportStepUp?: () => Promise<string | null>
 }
 
 const props = defineProps<{
@@ -74,7 +75,12 @@ const migrate = () => {
     formData.append('dryRun', dryRun.value ? '1' : '0')
     formData.append('strategy', strategy.value)
 
-    const uploadMsg = await importXuiDatabase(formData)
+    let stepUpToken = ''
+    if (!dryRun.value) {
+      stepUpToken = await props.ctx?.acquireDatabaseImportStepUp?.() ?? ''
+      if (!stepUpToken) return
+    }
+    const uploadMsg = await importXuiDatabase(formData, stepUpToken)
     if (uploadMsg.success) {
       report.value = uploadMsg.obj
       if (!dryRun.value) {

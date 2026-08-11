@@ -1,6 +1,7 @@
 package restart
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -38,6 +39,18 @@ func (m *Manager) Run(operation func() error) error {
 // running core out of sync with committed state.
 func (m *Manager) RunBlocking(operation func() error) error {
 	m.beginBlocking()
+	defer m.end()
+	return operation()
+}
+
+// RunBlockingContext acquires the same exclusive restart/apply ownership as
+// RunBlocking while allowing a caller that has not acquired ownership yet to
+// abandon the wait. Once ownership is acquired, the operation is responsible
+// for observing ctx at its own commit and runtime boundaries.
+func (m *Manager) RunBlockingContext(ctx context.Context, operation func() error) error {
+	if err := m.beginBlockingContext(ctx); err != nil {
+		return err
+	}
 	defer m.end()
 	return operation()
 }
@@ -126,6 +139,31 @@ func (m *Manager) beginBlocking() {
 	}
 	m.inFlight = true
 	m.mu.Unlock()
+}
+
+func (m *Manager) beginBlockingContext(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for m.inFlight {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		stopWake := context.AfterFunc(ctx, func() {
+			m.mu.Lock()
+			m.cond.Broadcast()
+			m.mu.Unlock()
+		})
+		m.cond.Wait()
+		stopWake()
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	m.inFlight = true
+	return nil
 }
 
 func (m *Manager) end() {

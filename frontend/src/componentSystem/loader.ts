@@ -3,7 +3,7 @@ import Data from '@/store/modules/data'
 import { componentEntries } from 'virtual:solovey-component-entries'
 import { componentRoutes, registeredComponents, registerComponent, unregisterComponent } from './registry'
 
-type ComponentEntryModule = { register: () => void }
+type ComponentEntryModule = { register: () => void; unregister?: () => void }
 type ComponentEntryLoader = () => Promise<ComponentEntryModule>
 type ComponentLocaleModule = typeof import('./locales')
 
@@ -13,7 +13,7 @@ const entryByID = new Map<string, ComponentEntryLoader>(
   Object.entries(bundledEntries)
 )
 
-const loadedEntries = new Set<string>()
+const loadedEntries = new Map<string, ComponentEntryModule>()
 const routeRemovers = new Map<string, () => void>()
 let componentLocaleModule: Promise<ComponentLocaleModule> | undefined
 
@@ -32,8 +32,7 @@ export const syncEnabledComponents = async (router: Router) => {
   for (const component of registeredComponents.value) {
     if (!enabled.has(component.id)) {
       removeComponentRoutes(component.id)
-      unregisterComponent(component.id)
-      loadedEntries.delete(component.id)
+      unloadComponent(component.id)
     }
   }
 
@@ -45,7 +44,7 @@ export const syncEnabledComponents = async (router: Router) => {
       try {
         const module = await loader()
         module.register()
-        loadedEntries.add(id)
+        loadedEntries.set(id, module)
       } catch (error) {
         console.warn(`[componentSystem] failed to load ${id}`, error)
         continue
@@ -55,6 +54,13 @@ export const syncEnabledComponents = async (router: Router) => {
   }
 
   syncComponentRoutes(router)
+}
+
+const unloadComponent = (id: string) => {
+  const module = loadedEntries.get(id)
+  if (module?.unregister) module.unregister()
+  else unregisterComponent(id)
+  loadedEntries.delete(id)
 }
 
 const loadComponentLocales = () => {

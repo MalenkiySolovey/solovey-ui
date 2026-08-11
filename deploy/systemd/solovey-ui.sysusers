@@ -1,0 +1,2 @@
+u solovey-ui - "Solovey UI service account" /var/lib/solovey-ui /usr/sbin/nologin
+m solovey-ui solovey-ui

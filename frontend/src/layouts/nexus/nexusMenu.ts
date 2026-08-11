@@ -60,6 +60,9 @@ const coreGroups: NexusMenuGroup[] = [
     labelKey: 'nav.groups.system',
     items: [
       { title: 'pages.admins', icon: 'lucide:user-cog', path: '/admins' },
+      { title: 'pages.security', icon: 'lucide:shield-check', path: '/security' },
+	  { title: 'pages.deployment', icon: 'lucide:server-cog', path: '/deployment' },
+      { title: 'pages.operations', icon: 'lucide:activity', path: '/operations' },
       { title: 'pages.settings', icon: 'lucide:settings', path: '/settings' },
       { title: 'pages.support', icon: 'lucide:heart-handshake', path: '/support' },
     ],

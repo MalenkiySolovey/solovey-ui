@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"strconv"
 
@@ -13,14 +14,19 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-const assetUploadReadLimit = 1024*1024 + 1
+const (
+	assetUploadReadLimit       = 1024*1024 + 1
+	legacySelfStealBodyLimit   = 64 * 1024
+	legacySelfStealRetiredCode = "legacy_self_steal_retired"
+)
 
 type Deps struct {
-	Service      *fallbackcomponent.Service
-	RequireScope func(*gin.Context, string, ...string) bool
-	Actor        func(*gin.Context) string
-	JSONObj      func(*gin.Context, interface{}, error)
-	JSONMsg      func(*gin.Context, string, error)
+	Service        *fallbackcomponent.Service
+	ProviderStatus func(context.Context, uint) (ProviderStatusView, error)
+	RequireScope   func(*gin.Context, string, ...string) bool
+	Actor          func(*gin.Context) string
+	JSONObj        func(*gin.Context, interface{}, error)
+	JSONMsg        func(*gin.Context, string, error)
 }
 
 type Handler struct {
@@ -44,6 +50,7 @@ func RegisterRoutes(group *gin.RouterGroup, deps Deps) {
 	routes.PUT("/sites/:id", handler.updateSite)
 	routes.DELETE("/sites/:id", handler.deleteSite)
 	routes.GET("/sites/:id/targets", handler.listTargets)
+	routes.GET("/sites/:id/provider-status", handler.providerStatus)
 	routes.POST("/sites/:id/targets", handler.saveTarget)
 	routes.PUT("/sites/:id/targets/:targetId", handler.updateTarget)
 	routes.DELETE("/sites/:id/targets/:targetId", handler.deleteTarget)
@@ -71,6 +78,27 @@ func RegisterRoutes(group *gin.RouterGroup, deps Deps) {
 	routes.POST("/sites/:id/publish", handler.publish)
 	routes.POST("/sites/:id/rollback", handler.rollback)
 	routes.POST("/sites/:id/unpublish", handler.unpublish)
+}
+
+type ProviderReservationStateView struct {
+	State string `json:"state"`
+	Count int    `json:"count"`
+}
+
+type ProviderStatusView struct {
+	TargetID           string                         `json:"targetId"`
+	EndpointMode       string                         `json:"endpointMode"`
+	Readiness          string                         `json:"readiness"`
+	HealthFreshness    string                         `json:"healthFreshness"`
+	HealthObservedAt   int64                          `json:"healthObservedAt"`
+	HealthExpiresAt    int64                          `json:"healthExpiresAt"`
+	CapacityState      string                         `json:"capacityState"`
+	CapacitySlotsUsed  uint32                         `json:"capacitySlotsUsed"`
+	CapacitySlotsTotal uint32                         `json:"capacitySlotsTotal"`
+	InUse              bool                           `json:"inUse"`
+	ReconcileRequired  bool                           `json:"reconcileRequired"`
+	Reservations       []ProviderReservationStateView `json:"reservations"`
+	ReasonCodes        []string                       `json:"reasonCodes"`
 }
 
 func (h Handler) health(c *gin.Context) {
@@ -215,6 +243,22 @@ func (h Handler) listTargets(c *gin.Context) {
 	h.deps.JSONObj(c, result, err)
 }
 
+func (h Handler) providerStatus(c *gin.Context) {
+	if !h.deps.RequireScope(c, "publicSite", "admin", "read", "write", "public-site") {
+		return
+	}
+	id, ok := pathUint(c, "id")
+	if !ok {
+		return
+	}
+	if h.deps.ProviderStatus == nil {
+		h.deps.JSONObj(c, ProviderStatusView{}, errors.New("provider status is unavailable"))
+		return
+	}
+	result, err := h.deps.ProviderStatus(c.Request.Context(), id)
+	h.deps.JSONObj(c, result, err)
+}
+
 func (h Handler) saveTarget(c *gin.Context) {
 	if !h.deps.RequireScope(c, "publicSite", "admin", "write", "public-site") {
 		return
@@ -333,6 +377,17 @@ func (h Handler) uploadAsset(c *gin.Context) {
 	if !ok {
 		return
 	}
+	if err := c.Request.ParseMultipartForm(1 << 20); err != nil {
+		h.deps.JSONMsg(c, "fallbackHtml", err)
+		return
+	}
+	if c.Request.MultipartForm != nil {
+		defer func() { _ = c.Request.MultipartForm.RemoveAll() }()
+	}
+	if err := validateAssetUploadMultipart(c.Request.MultipartForm); err != nil {
+		h.deps.JSONMsg(c, "fallbackHtml", err)
+		return
+	}
 	header, err := c.FormFile("file")
 	if err != nil {
 		h.deps.JSONMsg(c, "fallbackHtml", err)
@@ -351,6 +406,13 @@ func (h Handler) uploadAsset(c *gin.Context) {
 	}
 	result, err := h.deps.Service.SaveAsset(siteID, header.Filename, data, h.deps.Actor(c))
 	h.deps.JSONObj(c, result, err)
+}
+
+func validateAssetUploadMultipart(form *multipart.Form) error {
+	if form == nil || len(form.Value) != 0 || len(form.File) != 1 || len(form.File["file"]) != 1 {
+		return errors.New("asset upload requires exactly one file")
+	}
+	return nil
 }
 
 func (h Handler) deleteAsset(c *gin.Context) {
@@ -574,17 +636,26 @@ func (h Handler) createSelfStealDraft(c *gin.Context) {
 	if !h.deps.RequireScope(c, "publicSite", "admin", "write", "public-site") {
 		return
 	}
-	id, ok := pathUint(c, "id")
-	if !ok {
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, legacySelfStealBodyLimit)
+	if _, err := io.Copy(io.Discard, c.Request.Body); err != nil {
+		c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{
+			"success": false,
+			"msg":     legacySelfStealRetiredCode,
+			"obj": gin.H{
+				"code":    legacySelfStealRetiredCode,
+				"message": "Native fallback is managed through the protection workflow.",
+			},
+		})
 		return
 	}
-	var input fallbackcomponent.SelfStealDraftInput
-	if err := c.ShouldBindJSON(&input); err != nil && err != io.EOF {
-		h.deps.JSONMsg(c, "fallbackHtml", err)
-		return
-	}
-	result, err := h.deps.Service.CreateSelfStealDraft(id, input, h.deps.Actor(c))
-	h.deps.JSONObj(c, result, err)
+	c.JSON(http.StatusGone, gin.H{
+		"success": false,
+		"msg":     legacySelfStealRetiredCode,
+		"obj": gin.H{
+			"code":    legacySelfStealRetiredCode,
+			"message": "Native fallback is managed through the protection workflow.",
+		},
+	})
 }
 
 func (h Handler) preview(c *gin.Context) {

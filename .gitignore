@@ -61,9 +61,9 @@ verify-*.txt
 dc42e16-files.txt
 tests/baseline/*
 !tests/baseline/run-command.ps1
-tests/baseline/phase6/tmp/
-tests/baseline/phase6/appdata/
-tests/baseline/phase6/zig-*-cache/
+tests/baseline/e2e/tmp/
+tests/baseline/e2e/appdata/
+tests/baseline/e2e/zig-*-cache/
 PANEL_VERSION_SOURCES.md
 config/identity/*.local.md
 app/components_generated.go

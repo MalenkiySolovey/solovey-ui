@@ -7,8 +7,8 @@ import (
 	"net/http/httptest"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
-	"github.com/MalenkiySolovey/solovey-ui/web/publicsurface"
 	"github.com/gin-gonic/gin"
 )
 
@@ -35,7 +35,7 @@ func (s *Service) RuntimeHealth() RuntimeHealth {
 	}
 	report := s.runtime.Health(publicsurface.Context{AdminBasePath: adminBasePath})
 	if err != nil {
-		report.addIssue("panel web path is unavailable: " + err.Error())
+		report.addIssue("panel web path is unavailable")
 		report.OK = false
 	}
 	return report

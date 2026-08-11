@@ -11,6 +11,7 @@ require (
 	github.com/gofrs/uuid/v5 v5.4.0
 	github.com/gorilla/securecookie v1.1.2
 	github.com/gorilla/sessions v1.4.0
+	github.com/mattn/go-sqlite3 v1.14.49
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/sagernet/sing v0.8.11
 	github.com/sagernet/sing-box v1.13.14
@@ -87,7 +88,6 @@ require (
 	github.com/logrusorgru/aurora v2.0.3+incompatible // indirect
 	github.com/lufia/plan9stats v0.0.0-20250317134145-8bc96cf8fc35 // indirect
 	github.com/mattn/go-isatty v0.0.21 // indirect
-	github.com/mattn/go-sqlite3 v1.14.30 // indirect
 	github.com/mdlayher/netlink v1.9.0 // indirect
 	github.com/mdlayher/socket v0.5.1 // indirect
 	github.com/metacubex/utls v1.8.4 // indirect

@@ -17,6 +17,10 @@ type importPostAction struct {
 
 type importRollbackFunc func(stage string, cause error) error
 
+// restoreProtectedPostActionHook is package-private fault injection used to
+// prove exact rollback after the imported database has been installed/opened.
+var restoreProtectedPostActionHook func(context.Context) error
+
 func importRollbackProtectedPostActions(dbPath string) []importPostAction {
 	return []importPostAction{
 		{
@@ -31,6 +35,16 @@ func importRollbackProtectedPostActions(dbPath string) []importPostAction {
 			rollbackOnError: true,
 			run: func(context.Context) error {
 				return dbsqlite.Init(dbPath)
+			},
+		},
+		{
+			stage:           "verifying protected restore acceptance",
+			rollbackOnError: true,
+			run: func(ctx context.Context) error {
+				if restoreProtectedPostActionHook != nil {
+					return restoreProtectedPostActionHook(ctx)
+				}
+				return nil
 			},
 		},
 		{

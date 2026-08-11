@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [string]$Phase,
+    [string]$Group,
 
     [Parameter(Mandatory = $true)]
     [string]$Name,
@@ -29,10 +29,10 @@ function Escape-Xml {
         Replace("'", "&apos;")
 }
 
-$phaseDir = Join-Path "tests/baseline" $Phase
-New-Item -ItemType Directory -Force -Path $phaseDir | Out-Null
+$groupDir = Join-Path "tests/baseline" $Group
+New-Item -ItemType Directory -Force -Path $groupDir | Out-Null
 
-$base = Join-Path $phaseDir $Name
+$base = Join-Path $groupDir $Name
 $txtPath = "$base.txt"
 $xmlPath = "$base.junit.xml"
 $start = Get-Date
@@ -79,11 +79,11 @@ Set-Content -LiteralPath $txtPath -Value ($header + $output) -Encoding UTF8
 
 $escapedOutput = Escape-Xml $output
 if ($status -eq "skipped") {
-    $junit = "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`n<testsuite name=`"$Name`" tests=`"1`" failures=`"0`" errors=`"0`" skipped=`"1`" time=`"$duration`">`n  <testcase classname=`"baseline.$Phase`" name=`"$Name`" time=`"$duration`">`n    <skipped message=`"skipped`">$escapedOutput</skipped>`n  </testcase>`n</testsuite>`n"
+    $junit = "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`n<testsuite name=`"$Name`" tests=`"1`" failures=`"0`" errors=`"0`" skipped=`"1`" time=`"$duration`">`n  <testcase classname=`"baseline.$Group`" name=`"$Name`" time=`"$duration`">`n    <skipped message=`"skipped`">$escapedOutput</skipped>`n  </testcase>`n</testsuite>`n"
 } elseif ($exitCode -eq 0) {
-    $junit = "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`n<testsuite name=`"$Name`" tests=`"1`" failures=`"0`" errors=`"0`" skipped=`"0`" time=`"$duration`">`n  <testcase classname=`"baseline.$Phase`" name=`"$Name`" time=`"$duration`">`n    <system-out>$escapedOutput</system-out>`n  </testcase>`n</testsuite>`n"
+    $junit = "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`n<testsuite name=`"$Name`" tests=`"1`" failures=`"0`" errors=`"0`" skipped=`"0`" time=`"$duration`">`n  <testcase classname=`"baseline.$Group`" name=`"$Name`" time=`"$duration`">`n    <system-out>$escapedOutput</system-out>`n  </testcase>`n</testsuite>`n"
 } else {
-    $junit = "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`n<testsuite name=`"$Name`" tests=`"1`" failures=`"1`" errors=`"0`" skipped=`"0`" time=`"$duration`">`n  <testcase classname=`"baseline.$Phase`" name=`"$Name`" time=`"$duration`">`n    <failure message=`"exit code $exitCode`">$escapedOutput</failure>`n    <system-out>$escapedOutput</system-out>`n  </testcase>`n</testsuite>`n"
+    $junit = "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`n<testsuite name=`"$Name`" tests=`"1`" failures=`"1`" errors=`"0`" skipped=`"0`" time=`"$duration`">`n  <testcase classname=`"baseline.$Group`" name=`"$Name`" time=`"$duration`">`n    <failure message=`"exit code $exitCode`">$escapedOutput</failure>`n    <system-out>$escapedOutput</system-out>`n  </testcase>`n</testsuite>`n"
 }
 
 Set-Content -LiteralPath $xmlPath -Value $junit -Encoding UTF8

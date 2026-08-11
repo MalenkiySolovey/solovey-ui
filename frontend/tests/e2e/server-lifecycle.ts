@@ -7,7 +7,7 @@ export const managedServerDir = path.join(
   repositoryRoot,
   'tests',
   'baseline',
-  'phase6',
+  'e2e',
   'e2e-server',
 )
 export const managedServerStatePath = path.join(

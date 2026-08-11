@@ -8,8 +8,7 @@ import (
 	"testing"
 )
 
-func TestFrontendSettingsPayloadDefaultsMatchBackendSchema(t *testing.T) {
-	registerSettingsPayloadContributionsForTest(t)
+func TestCoreFrontendSettingsPayloadDefaultsMatchBackendSchema(t *testing.T) {
 	payloadObjects := []struct {
 		file string
 		name string
@@ -17,14 +16,6 @@ func TestFrontendSettingsPayloadDefaultsMatchBackendSchema(t *testing.T) {
 		{
 			file: filepath.Join("..", "frontend", "src", "views", "settingsPayload.ts"),
 			name: "settingsPageDefaults",
-		},
-		{
-			file: filepath.Join("..", "components", "telegram", "frontend", "views", "telegramSettingsPayload.ts"),
-			name: "telegramSettingsDefaults",
-		},
-		{
-			file: filepath.Join("..", "components", "paid-subscriptions", "frontend", "views", "paidSubSettingsPayload.ts"),
-			name: "paidSubSettingsDefaults",
 		},
 	}
 

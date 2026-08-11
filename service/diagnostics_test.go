@@ -55,6 +55,11 @@ func TestDiagnosticsReportBuildsExpectedSections(t *testing.T) {
 	if _, ok := report.Settings["webPort"]; !ok {
 		t.Fatalf("settings snapshot missing webPort: %#v", report.Settings)
 	}
+	for _, sensitiveKey := range []string{"webPath", "webURI", "subPath", "subURI"} {
+		if _, ok := report.Settings[sensitiveKey]; ok {
+			t.Fatalf("settings snapshot exposed sensitive route key %q: %#v", sensitiveKey, report.Settings)
+		}
+	}
 	if !hasDiagnosticCheck(report.Checks, "config_parse") {
 		t.Fatalf("report missing config_parse check: %#v", report.Checks)
 	}

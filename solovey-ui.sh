@@ -5,10 +5,16 @@ set -Eeuo pipefail
 APP_NAME="solovey-ui"
 SERVICE_NAME="solovey-ui"
 INSTALL_DIR="${SOLOVEY_UI_INSTALL_DIR:-/usr/local/${APP_NAME}}"
-BIN_PATH="${INSTALL_DIR}/${APP_NAME}"
+CURRENT_RELEASE_DIR="${INSTALL_DIR}/releases/current"
+BIN_PATH="${CURRENT_RELEASE_DIR}/${APP_NAME}"
+[[ -x "${BIN_PATH}" ]] || BIN_PATH="${INSTALL_DIR}/${APP_NAME}"
 CLI_PATH="${SOLOVEY_UI_CLI_PATH:-/usr/bin/${APP_NAME}}"
 SERVICE_FILE="${SOLOVEY_UI_SYSTEMD_SERVICE:-/etc/systemd/system/${SERVICE_NAME}.service}"
+SYSTEMD_UNIT_ROOT="${SOLOVEY_UI_SYSTEMD_UNIT_ROOT:-${SERVICE_FILE%/*}}"
+SYSTEMD_PROFILE_ROOT="${SOLOVEY_UI_SYSTEMD_PROFILE_ROOT:-/usr/local/lib/${APP_NAME}/systemd}"
 ENV_DIR="${SOLOVEY_UI_ENV_DIR:-/etc/${APP_NAME}}"
+HARDENED_DATA_ROOT="${SOLOVEY_UI_HARDENED_DATA_ROOT:-/var/lib/${APP_NAME}}"
+BROKER_STATE_ROOT="${SOLOVEY_UI_BROKER_STATE_ROOT:-/var/lib/${APP_NAME}-broker}"
 BACKUP_ROOT="${SOLOVEY_UI_BACKUP_ROOT:-/var/backups/${APP_NAME}}"
 INSTALL_URL="${SOLOVEY_UI_INSTALL_URL:-https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh}"
 
@@ -627,6 +633,10 @@ backup_local() {
     if [[ -f "${SERVICE_FILE}" ]]; then
         backup_copy_or_fail "${SERVICE_FILE}" "${target}/${SERVICE_NAME}.service" "${target}"
     fi
+	if [[ -d "${HARDENED_DATA_ROOT}" ]]; then
+		backup_copy_or_fail "${HARDENED_DATA_ROOT}" "${target}/hardened-data" "${target}"
+	fi
+	backup_systemd_assets "${target}"
 
     if ! {
         printf 'app=%s\n' "${APP_NAME}"
@@ -634,6 +644,9 @@ backup_local() {
         printf 'install_dir=%s\n' "${INSTALL_DIR}"
         printf 'env_dir=%s\n' "${ENV_DIR}"
         printf 'service=%s\n' "${SERVICE_FILE}"
+		printf 'hardened_data_root=%s\n' "${HARDENED_DATA_ROOT}"
+		printf 'systemd_profile_root=%s\n' "${SYSTEMD_PROFILE_ROOT}"
+		printf 'systemd_unit_root=%s\n' "${SYSTEMD_UNIT_ROOT}"
         append_backup_build_info "${INSTALL_DIR}/BUILD_INFO.txt"
     } > "${target}/manifest.txt"; then
         rm -rf "${target}"
@@ -641,6 +654,25 @@ backup_local() {
     fi
 
     log "backup created at ${target}"
+}
+
+backup_systemd_assets() {
+	local target="$1" unit state
+	mkdir -p "${target}/systemd-assets/units"
+	if [[ -d "${SYSTEMD_PROFILE_ROOT}" ]]; then
+		backup_copy_or_fail "${SYSTEMD_PROFILE_ROOT}" "${target}/systemd-assets/profiles" "${target}"
+		printf 'profiles=present\n' >> "${target}/systemd-assets/inventory.txt"
+	else
+		printf 'profiles=absent\n' >> "${target}/systemd-assets/inventory.txt"
+	fi
+	for unit in solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket; do
+		state=absent
+		if [[ -f "${SYSTEMD_UNIT_ROOT}/${unit}" ]]; then
+			backup_copy_or_fail "${SYSTEMD_UNIT_ROOT}/${unit}" "${target}/systemd-assets/units/${unit}" "${target}"
+			state=present
+		fi
+		printf '%s=%s\n' "${unit}" "${state}" >> "${target}/systemd-assets/inventory.txt"
+	done
 }
 
 backup_path_size_kb() {
@@ -667,6 +699,14 @@ estimate_backup_size_kb() {
     total=$((total + size))
     size="$(backup_path_size_kb "${SERVICE_FILE}")"
     total=$((total + size))
+	size="$(backup_path_size_kb "${HARDENED_DATA_ROOT}")"
+	total=$((total + size))
+	size="$(backup_path_size_kb "${SYSTEMD_PROFILE_ROOT}")"
+	total=$((total + size))
+	for unit in solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket; do
+		size="$(backup_path_size_kb "${SYSTEMD_UNIT_ROOT}/${unit}")"
+		total=$((total + size))
+	done
 
     printf '%s\n' "${total}"
 }
@@ -762,6 +802,30 @@ restore_backup_dir() {
     rm -rf "${previous}"
 }
 
+restore_systemd_assets() {
+	local backup="$1" inventory="${backup}/systemd-assets/inventory.txt" unit state
+	[[ -f "${inventory}" ]] || return 0
+	state="$(sed -n 's/^profiles=//p' "${inventory}" | head -n 1)"
+	if [[ "${state}" == present ]]; then
+		restore_backup_dir "${backup}/systemd-assets/profiles" "${SYSTEMD_PROFILE_ROOT}"
+	elif [[ "${state}" == absent ]]; then
+		rm -rf "${SYSTEMD_PROFILE_ROOT}"
+	else
+		fail "rollback systemd profile inventory is invalid"
+	fi
+	for unit in solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket; do
+		state="$(sed -n "s/^${unit}=//p" "${inventory}" | head -n 1)"
+		if [[ "${state}" == present && -f "${backup}/systemd-assets/units/${unit}" ]]; then
+			mkdir -p "${SYSTEMD_UNIT_ROOT}"
+			cp -a "${backup}/systemd-assets/units/${unit}" "${SYSTEMD_UNIT_ROOT}/${unit}"
+		elif [[ "${state}" == absent ]]; then
+			rm -f "${SYSTEMD_UNIT_ROOT}/${unit}"
+		else
+			fail "rollback systemd unit inventory is invalid: ${unit}"
+		fi
+	done
+}
+
 rollback_backup() {
     need_root rollback
     if [[ $# -gt 1 ]]; then
@@ -781,6 +845,8 @@ rollback_backup() {
     systemctl stop "${SERVICE_NAME}" >/dev/null 2>&1 || true
     restore_backup_dir "${backup}/app" "${INSTALL_DIR}"
     restore_backup_dir "${backup}/etc" "${ENV_DIR}"
+	restore_backup_dir "${backup}/hardened-data" "${HARDENED_DATA_ROOT}"
+	restore_systemd_assets "${backup}"
 
     if [[ -f "${backup}/${SERVICE_NAME}.service" ]]; then
         mkdir -p "$(dirname "${SERVICE_FILE}")"
@@ -811,11 +877,14 @@ uninstall() {
 
     systemctl stop "${SERVICE_NAME}" >/dev/null 2>&1 || true
     systemctl disable "${SERVICE_NAME}" >/dev/null 2>&1 || true
-    rm -f "${SERVICE_FILE}" "${CLI_PATH}"
+	systemctl disable --now solovey-privileged-broker.socket solovey-privileged-proof.socket solovey-privileged-broker.service >/dev/null 2>&1 || true
+    rm -f "${SERVICE_FILE}" "${CLI_PATH}" "${SYSTEMD_UNIT_ROOT}/solovey-privileged-broker.service" \
+		"${SYSTEMD_UNIT_ROOT}/solovey-privileged-broker.socket" "${SYSTEMD_UNIT_ROOT}/solovey-privileged-proof.socket"
+	rm -rf "${SYSTEMD_PROFILE_ROOT}"
     systemctl daemon-reload
 
     if [[ "${purge}" == "1" ]]; then
-        rm -rf "${INSTALL_DIR}" "${ENV_DIR}"
+		rm -rf "${INSTALL_DIR}" "${ENV_DIR}" "${HARDENED_DATA_ROOT}" "${BROKER_STATE_ROOT}"
         log "service, command, application files and data removed"
     else
         log "service and command removed; data remains in ${INSTALL_DIR} and ${ENV_DIR}"

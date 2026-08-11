@@ -2,13 +2,15 @@ package backup
 
 import (
 	"fmt"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
+
+	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"gorm.io/driver/sqlite"
@@ -41,14 +43,28 @@ func runBackupExportBench(b *testing.B, rowsPerTable int) {
 			b.ReportMetric(3*float64(rowsPerTable), "heavy_rows")
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				out, err := Export(exclude)
+				bytesOut, err := benchmarkPrepareAndStream(exclude)
 				if err != nil {
 					b.Fatal(err)
 				}
-				b.ReportMetric(float64(len(out)), "bytes_out")
+				b.ReportMetric(float64(bytesOut), "bytes_out")
 			}
 		})
 	}
+}
+
+func benchmarkPrepareAndStream(exclude string) (int64, error) {
+	path, cleanup, err := PrepareExport(exclude)
+	if err != nil {
+		return 0, err
+	}
+	defer cleanup()
+	file, err := os.Open(path)
+	if err != nil {
+		return 0, err
+	}
+	defer file.Close()
+	return io.CopyBuffer(io.Discard, file, make([]byte, 64<<10))
 }
 
 func prepareBackupBenchFixture(b *testing.B, rowsPerTable int) string {
@@ -97,9 +113,9 @@ func prepareBackupBenchFixture(b *testing.B, rowsPerTable int) string {
 func seedBackupBenchSmallTables(db *gorm.DB) error {
 	now := time.Now().Unix()
 	if err := db.Create(&[]model.Setting{
-		{Key: "version", Value: "phase5-perf"},
+		{Key: "version", Value: configidentity.GetVersion()},
 		{Key: "config", Value: `{"dns":{},"route":{}}`},
-		{Key: "installSalt", Value: "phase5-install-salt"},
+		{Key: "installSalt", Value: "benchmark-install-salt"},
 	}).Error; err != nil {
 		return err
 	}
@@ -151,7 +167,7 @@ func seedBackupBenchHeavyTables(db *gorm.DB, rows int) error {
 				SELECT x + 1 FROM n WHERE x + 1 < ?
 			)
 			INSERT INTO changes(date_time, actor, key, action, obj)
-			SELECT 1700000000 + ? + x, 'phase5', 'settings', 'set', CAST('{"i":' || (? + x) || '}' AS BLOB)
+			SELECT 1700000000 + ? + x, 'benchmark', 'settings', 'set', CAST('{"i":' || (? + x) || '}' AS BLOB)
 			FROM n
 		`, limit, start, start).Error; err != nil {
 			return err
@@ -165,15 +181,15 @@ func maxBackupBenchClient(i int) model.Client {
 		Enable:      true,
 		Name:        fmt.Sprintf("client-%06d", i),
 		SubSecret:   fmt.Sprintf("sub-secret-%06d", i),
-		Config:      []byte(`{"vmess":{"uuid":"00000000-0000-4000-8000-000000000000","alterId":0},"vless":{"flow":"xtls-rprx-vision"},"trojan":{"password":"phase5"},"shadowsocks":{"password":"phase5"}}`),
+		Config:      []byte(`{"vmess":{"uuid":"00000000-0000-4000-8000-000000000000","alterId":0},"vless":{"flow":"xtls-rprx-vision"},"trojan":{"password":"benchmark"},"shadowsocks":{"password":"benchmark"}}`),
 		Inbounds:    []byte(`[1,2,3,4]`),
-		Links:       []byte(`["vmess://phase5","vless://phase5","trojan://phase5"]`),
+		Links:       []byte(`["vmess://benchmark","vless://benchmark","trojan://benchmark"]`),
 		Volume:      1 << 40,
 		Expiry:      1893456000,
 		Down:        int64(i * 2),
 		Up:          int64(i),
-		Desc:        strings.Repeat("phase5 backup bench ", 4),
-		Group:       "phase5",
+		Desc:        strings.Repeat("backup benchmark ", 4),
+		Group:       "benchmark",
 		LimitIP:     4,
 		IPLimitMode: "enforce",
 		LastIPCount: 4,

@@ -16,7 +16,7 @@ func TestConfigSaveReconcilesAfterComponentEnabledSetting(t *testing.T) {
 		return nil
 	})
 
-	payload, _ := json.Marshal(map[string]string{"telegram.enabled": "false"})
+	payload, _ := json.Marshal(map[string]string{"fixture.enabled": "false"})
 	if _, err := (&ConfigService{}).Save("settings", "set", payload, "", "admin", "example.com"); err != nil {
 		t.Fatalf("save component setting: %v", err)
 	}
@@ -42,7 +42,7 @@ func TestConfigSaveRejectsInvalidComponentEnabledSetting(t *testing.T) {
 		return nil
 	})
 
-	payload, _ := json.Marshal(map[string]string{"telegram.enabled": "definitely"})
+	payload, _ := json.Marshal(map[string]string{"fixture.enabled": "definitely"})
 	if _, err := (&ConfigService{}).Save("settings", "set", payload, "", "admin", "example.com"); err == nil {
 		t.Fatal("invalid component enabled setting was accepted")
 	}
@@ -62,5 +62,12 @@ func TestDropComponentDataDelegatesToRegisteredDropper(t *testing.T) {
 	}
 	if gotID != "test-component" {
 		t.Fatalf("dropper id = %q, want test-component", gotID)
+	}
+}
+
+func TestDropComponentDataFailsClosedWithoutRegisteredOwner(t *testing.T) {
+	RegisterComponentDataDropper(nil)
+	if err := DropComponentData(context.Background(), "test-component"); err == nil {
+		t.Fatal("missing component data lifecycle owner was treated as a successful drop")
 	}
 }

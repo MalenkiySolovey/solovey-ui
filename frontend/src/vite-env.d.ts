@@ -3,7 +3,7 @@
 declare const __SOLOVEY_UI_COMPONENT_PROFILE__: 'full' | 'core'
 
 declare module 'virtual:solovey-component-entries' {
-  const componentEntries: Record<string, () => Promise<{ register: () => void }>>
+  const componentEntries: Record<string, () => Promise<{ register: () => void; unregister?: () => void }>>
   export { componentEntries }
 }
 

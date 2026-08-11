@@ -1,0 +1,17 @@
+[Unit]
+Description=Solovey UI privileged broker socket
+
+[Socket]
+ListenStream=/run/solovey-ui/privileged-broker.sock
+FileDescriptorName=main
+SocketUser=root
+SocketGroup=solovey-ui
+SocketMode=0660
+DirectoryMode=0750
+RemoveOnStop=true
+Accept=no
+MaxConnections=64
+Service=solovey-privileged-broker.service
+
+[Install]
+WantedBy=sockets.target

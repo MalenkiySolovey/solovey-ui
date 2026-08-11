@@ -37,9 +37,9 @@ jobs:
           go install golang.org/x/perf/cmd/benchstat@latest
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: Run benchmarks
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tests/baseline/run-command.ps1 -Phase phase8 -Name bench-all -CommandLine "go test ./... -bench=. -benchmem -run=^$ -benchtime=2s" -ContinueOnError
-      - name: Compare with Phase 5 baseline
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tests/baseline/run-command.ps1 -Phase phase8 -Name benchstat -CommandLine "benchstat tests/baseline/phase5/bench-all.txt tests/baseline/phase8/bench-all.txt" -ContinueOnError
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tests/baseline/run-command.ps1 -Group current -Name bench-all -CommandLine "go test ./... -bench=. -benchmem -run=^$ -benchtime=2s" -ContinueOnError
+      - name: Compare with reference baseline
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tests/baseline/run-command.ps1 -Group current -Name benchstat -CommandLine "benchstat tests/baseline/reference/bench-all.txt tests/baseline/current/bench-all.txt" -ContinueOnError
       - name: Detect >20 percent ns/op regressions
         id: regression
         shell: bash
@@ -55,8 +55,8 @@ jobs:
             }
             return rows;
           };
-          const oldRows = parse('tests/baseline/phase5/bench-all.txt');
-          const newRows = parse('tests/baseline/phase8/bench-all.txt');
+          const oldRows = parse('tests/baseline/reference/bench-all.txt');
+          const newRows = parse('tests/baseline/current/bench-all.txt');
           const regressions = [];
           for (const [name, oldNs] of oldRows) {
             const newNs = newRows.get(name);
@@ -64,7 +64,7 @@ jobs:
               regressions.push({ name, oldNs, newNs, ratio: newNs / oldNs });
             }
           }
-          fs.writeFileSync('tests/baseline/phase8/perf-regressions.json', JSON.stringify(regressions, null, 2) + '\n');
+          fs.writeFileSync('tests/baseline/current/perf-regressions.json', JSON.stringify(regressions, null, 2) + '\n');
           if (regressions.length > 0) {
             console.log(`regression=true`);
             fs.appendFileSync(process.env.GITHUB_OUTPUT, 'regression=true\n');
@@ -81,9 +81,9 @@ jobs:
         with:
           script: |
             const fs = require('fs');
-            const rows = JSON.parse(fs.readFileSync('tests/baseline/phase8/perf-regressions.json', 'utf8'));
+            const rows = JSON.parse(fs.readFileSync('tests/baseline/current/perf-regressions.json', 'utf8'));
             const body = [
-              'Phase 8 perf warning: benchmark regressions above 20% were detected.',
+              'Performance warning: benchmark regressions above 20% were detected.',
               '',
               ...rows.slice(0, 20).map((row) => `- \`${row.name}\`: ${row.oldNs} -> ${row.newNs} ns/op (${row.ratio.toFixed(2)}x)`),
               '',
@@ -100,10 +100,10 @@ jobs:
         with:
           name: audit-perf-bench
           path: |
-            tests/baseline/phase8/bench-all.txt
-            tests/baseline/phase8/bench-all.junit.xml
-            tests/baseline/phase8/benchstat.txt
-            tests/baseline/phase8/benchstat.junit.xml
-            tests/baseline/phase8/perf-regressions.json
+            tests/baseline/current/bench-all.txt
+            tests/baseline/current/bench-all.junit.xml
+            tests/baseline/current/benchstat.txt
+            tests/baseline/current/benchstat.junit.xml
+            tests/baseline/current/perf-regressions.json
           if-no-files-found: ignore
           retention-days: 30

@@ -11,7 +11,7 @@ import (
 	componentdoctorcmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/componentdoctor"
 	ipcertcmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/ipcert"
 	settingscmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/settings"
-	optionalcmd "github.com/MalenkiySolovey/solovey-ui/cmd/optional"
+	optionalcmd "github.com/MalenkiySolovey/solovey-ui/componenthost/commands"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 )

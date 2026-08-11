@@ -4,7 +4,6 @@ package service
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"net"
 	"sort"
@@ -82,7 +81,7 @@ func (s *Service) SaveTarget(siteID uint, input TargetInput, actor string) (Targ
 	}
 	var saved fallbackdomain.RuntimeTarget
 	var site fallbackdomain.Site
-	err = s.db.Transaction(func(tx *gorm.DB) error {
+	err = s.guardedSiteMutation(siteID, func(tx *gorm.DB) error {
 		if err := tx.First(&site, siteID).Error; err != nil {
 			return err
 		}
@@ -108,20 +107,20 @@ func (s *Service) SaveTarget(siteID uint, input TargetInput, actor string) (Targ
 			return err
 		}
 		return recordEvent(tx, siteID, actor, "target_saved", map[string]any{"kind": saved.Kind, "port": saved.Port})
+	}, func() error {
+		if strings.EqualFold(site.Status, "published") && site.Enabled {
+			return s.runtime.Rebuild(s.db)
+		}
+		return nil
 	})
 	if err != nil {
 		return TargetView{}, err
-	}
-	if strings.EqualFold(site.Status, "published") && site.Enabled {
-		if err := s.runtime.Rebuild(s.db); err != nil {
-			return TargetView{}, err
-		}
 	}
 	return s.targetView(saved, current), nil
 }
 
 func (s *Service) DeleteTarget(siteID, targetID uint, actor string) error {
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	return s.guardedSiteMutation(siteID, func(tx *gorm.DB) error {
 		var target fallbackdomain.RuntimeTarget
 		if err := tx.Where("site_id = ?", siteID).First(&target, targetID).Error; err != nil {
 			return err
@@ -130,11 +129,7 @@ func (s *Service) DeleteTarget(siteID, targetID uint, actor string) error {
 			return err
 		}
 		return recordEvent(tx, siteID, actor, "target_deleted", map[string]any{"targetId": targetID})
-	})
-	if err != nil {
-		return err
-	}
-	return s.runtime.Rebuild(s.db)
+	}, func() error { return s.runtime.Rebuild(s.db) })
 }
 
 func (s *Service) PortCandidates() ([]PortCandidate, error) {
@@ -485,50 +480,6 @@ func (s *Service) targetsForSite(site fallbackdomain.Site) ([]TargetView, error)
 		out = append(out, s.targetView(target, current))
 	}
 	return out, nil
-}
-
-func normalizeSelfStealProfile(value string) (string, error) {
-	profile := strings.TrimSpace(strings.ToLower(value))
-	if profile == "" {
-		profile = selfStealProfileVLESS
-	}
-	switch profile {
-	case "sing-box-reality", "sing-box-vless-reality", "vless", "vless-reality", "vless+reality":
-		return selfStealProfileVLESS, nil
-	case "trojan", "trojan-tls", "trojan-tls-fallback", "sing-box-trojan":
-		return selfStealProfileTrojan, nil
-	default:
-		return "", fmt.Errorf("unsupported self-steal profile %q", value)
-	}
-}
-
-func selectSelfStealTarget(targets []TargetView, targetID uint) (TargetView, error) {
-	if len(targets) == 0 {
-		return TargetView{}, errors.New("site has no runtime target")
-	}
-	if targetID == 0 {
-		return targets[0], nil
-	}
-	for _, target := range targets {
-		if target.ID == targetID {
-			return target, nil
-		}
-	}
-	return TargetView{}, fmt.Errorf("fallback-html runtime target %d not found", targetID)
-}
-
-func normalizeSelfStealHandshakeHost(value string, target TargetView) string {
-	host := strings.TrimSpace(value)
-	if host != "" {
-		return host
-	}
-	if strings.TrimSpace(target.Host) != "" {
-		return strings.TrimSpace(target.Host)
-	}
-	if target.Listen != "" && target.Listen != "0.0.0.0" && target.Listen != "::" {
-		return target.Listen
-	}
-	return "localhost"
 }
 
 func preferredExactListen(current TargetView) string {

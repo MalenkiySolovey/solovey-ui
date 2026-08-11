@@ -13,6 +13,17 @@
         </v-row>
         <v-row>
           <v-col>
+            <v-text-field
+              v-model="newData.stepUpCredential"
+              :hint="$t('security.stepUpCredentialHint')"
+              :label="$t('security.stepUpCredential')"
+              persistent-hint
+              type="password"
+            ></v-text-field>
+          </v-col>
+        </v-row>
+        <v-row>
+          <v-col>
             <v-text-field v-model="newData.newUsername" :label="$t('admin.newUname')" :rules="usernameRules" required></v-text-field>
           </v-col>
         </v-row>
@@ -53,6 +64,7 @@ export default {
       newData: {
         id: 0,
         oldPass: "",
+        stepUpCredential: "",
         newUsername: "",
         newPass: ""
       },
@@ -74,6 +86,7 @@ export default {
     resetData() {
       this.newData.id = this.$props.user.id
       this.newData.oldPass = ""
+      this.newData.stepUpCredential = ""
       this.newData.newUsername = ""
       this.newData.newPass = ""
     },

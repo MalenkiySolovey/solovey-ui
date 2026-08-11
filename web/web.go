@@ -11,19 +11,23 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/api"
+	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
 	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/httpconn"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	domainmiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/domain"
+	requestbudget "github.com/MalenkiySolovey/solovey-ui/middleware/requestbudget"
 	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/security"
 	"github.com/MalenkiySolovey/solovey-ui/network/autohttps"
 	"github.com/MalenkiySolovey/solovey-ui/network/bind"
 	"github.com/MalenkiySolovey/solovey-ui/service"
-	"github.com/MalenkiySolovey/solovey-ui/web/publicsurface"
+	pressureService "github.com/MalenkiySolovey/solovey-ui/service/resourcepressure"
 
 	"github.com/gin-contrib/gzip"
 	"github.com/gin-contrib/sessions"
@@ -40,13 +44,15 @@ import (
 var content embed.FS
 
 type Server struct {
-	httpServer     *http.Server
-	listener       net.Listener
-	ctx            context.Context
-	cancel         context.CancelFunc
-	settingService service.SettingService
-	runtime        *service.Runtime
-	assetsFS       fs.FS
+	httpServer       *http.Server
+	listener         net.Listener
+	ctx              context.Context
+	cancel           context.CancelFunc
+	settingService   service.SettingService
+	runtime          *service.Runtime
+	assetsFS         fs.FS
+	unregisterHealth func()
+	running          atomic.Bool
 }
 
 type Option func(*Server)
@@ -109,6 +115,12 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		engine.Use(domainmiddleware.Validator(webDomain))
 	}
 	engine.Use(securitymiddleware.AdminForBase(base_url, api.RequestIsHTTPS))
+	budgetRegistry := requestbudget.NewRegistry(base_url)
+	budgetRegistry.SetPressureGate(func(policy requestbudget.Policy) requestbudget.PressureDecision {
+		decision := pressureService.Shared().Admission(policy.PressureClass)
+		return requestbudget.PressureDecision{Allowed: decision.Allowed, Reason: decision.ReasonCode, RetryAfter: decision.RetryAfter}
+	})
+	engine.Use(requestbudget.Middleware(budgetRegistry, s.recordRequestBudgetRejection))
 
 	cookieKeys, err := s.settingService.GetCookieKeys()
 	if err != nil {
@@ -151,6 +163,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 
 	group_api := engine.Group(base_url + "api")
 	api.NewAPIHandler(group_api, apiv2, api.WithRuntime(s.runtime))
+	budgetRegistry.DeclareGinRoutes(engine.Routes())
 
 	// Serve index.html as the entry point
 	// Handle all other routes by serving index.html
@@ -188,6 +201,28 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	})
 
 	return engine, nil
+}
+
+func (s *Server) recordRequestBudgetRejection(c *gin.Context, policy requestbudget.Policy, reason string) {
+	peerIP := c.Request.RemoteAddr
+	if host, _, err := net.SplitHostPort(peerIP); err == nil {
+		peerIP = host
+	}
+	_ = (&service.AuditService{Runtime: s.runtime}).Record(service.AuditEvent{
+		Actor:     "system",
+		Event:     "request_budget_rejected",
+		Resource:  policy.Route,
+		Severity:  service.AuditSeverityWarn,
+		IP:        peerIP,
+		UserAgent: c.Request.UserAgent(),
+		Details: map[string]any{
+			"reason":           reason,
+			"method":           policy.Method,
+			"bodyClass":        policy.BodyClass,
+			"concurrencyClass": policy.ConcurrencyClass,
+			"auditPolicy":      policy.AuditPolicy,
+		},
+	})
 }
 
 func (s *Server) Start() (err error) {
@@ -251,6 +286,7 @@ func (s *Server) Start() (err error) {
 
 	s.httpServer = &http.Server{
 		Handler:           engine,
+		MaxHeaderBytes:    requestbudget.MaxHeaderBytes,
 		ReadHeaderTimeout: 10 * time.Second,
 		ReadTimeout:       30 * time.Second,
 		WriteTimeout:      30 * time.Second,
@@ -261,17 +297,31 @@ func (s *Server) Start() (err error) {
 		// connection, so the deadline must be set on the conn directly.
 		ConnContext: httpconn.SaveContext,
 	}
+	s.running.Store(true)
 
 	go func() {
+		defer s.running.Store(false)
 		if serveErr := s.httpServer.Serve(listener); serveErr != nil && serveErr != http.ErrServerClosed {
 			logger.Warning("web server stopped unexpectedly:", serveErr)
 		}
 	}()
+	if s.unregisterHealth == nil {
+		unregister, registerErr := componenthealth.Register(panelHealthChecker{server: s})
+		if registerErr != nil {
+			return registerErr
+		}
+		s.unregisterHealth = unregister
+	}
 
 	return nil
 }
 
 func (s *Server) Stop() error {
+	s.running.Store(false)
+	if s.unregisterHealth != nil {
+		s.unregisterHealth()
+		s.unregisterHealth = nil
+	}
 	var err error
 	if s.httpServer != nil {
 		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 30*time.Second)

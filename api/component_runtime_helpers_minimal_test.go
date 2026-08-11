@@ -8,23 +8,23 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
-func registerTelegramSettingsContributionForTest(t *testing.T) {
+func registerFixtureSettingsContributionForTest(t *testing.T) {
 	t.Helper()
-	unregister := service.RegisterSettingContribution("test.telegram."+t.Name(), service.SettingContribution{
+	unregister := service.RegisterSettingContribution("test.fixture."+t.Name(), service.SettingContribution{
 		Defaults: map[string]string{
-			"telegramEnabled":             "false",
-			"telegramBotToken":            "",
-			"telegramChatID":              "",
-			"telegramBackupPassphrase":    "",
-			"telegramBackupExcludeTables": "stats,client_ips,audit_events,changes",
-			"telegramBackupMaxSizeMB":     "45",
+			"fixtureEnabled":             "false",
+			"fixtureBotToken":            "",
+			"fixtureChatID":              "",
+			"fixtureBackupPassphrase":    "",
+			"fixtureBackupExcludeTables": "stats,client_ips,audit_events,changes",
+			"fixtureBackupMaxSizeMB":     "45",
 		},
 		Encrypted: map[string]struct{}{
-			"telegramBotToken":         {},
-			"telegramBackupPassphrase": {},
+			"fixtureBotToken":         {},
+			"fixtureBackupPassphrase": {},
 		},
 		ClearableEmptyEncrypted: map[string]struct{}{
-			"telegramBackupPassphrase": {},
+			"fixtureBackupPassphrase": {},
 		},
 	})
 	t.Cleanup(unregister)

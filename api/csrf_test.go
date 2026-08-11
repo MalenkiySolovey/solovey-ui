@@ -41,6 +41,9 @@ func performCSRFRequest(router *gin.Engine, method string, path string, token st
 	recorder := httptest.NewRecorder()
 	req := httptest.NewRequest(method, path, strings.NewReader(""))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	if csrfProtectedMethod(method) {
+		req.Header.Set("Origin", "http://example.com")
+	}
 	if token != "" {
 		req.Header.Set(csrfHeader, token)
 	}
@@ -89,6 +92,52 @@ func TestCSRFMiddlewareRequiresTokenForMutatingBrowserAPI(t *testing.T) {
 	}
 }
 
+func TestCSRFMiddlewareRequiresSameOriginForEveryBrowserMutation(t *testing.T) {
+	settingService := initSessionTestDB(t)
+	router := newCSRFTestRouter(t, settingService)
+	login := performCSRFRequest(router, http.MethodGet, "/login", "")
+	csrf := performCSRFRequest(router, http.MethodGet, "/api/csrf", "", login.Result().Cookies()...)
+	var msg Msg
+	if err := json.Unmarshal(csrf.Body.Bytes(), &msg); err != nil {
+		t.Fatal(err)
+	}
+	obj, ok := msg.Obj.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected csrf payload: %#v", msg.Obj)
+	}
+	token, _ := obj["token"].(string)
+	cookies := appendUpdatedCSRFCookies(login.Result().Cookies(), csrf.Result().Cookies())
+	for _, origin := range []string{"", "https://evil.example"} {
+		request := httptest.NewRequest(http.MethodPost, "/api/logoutAllAdmins", strings.NewReader(""))
+		request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		request.Header.Set(csrfHeader, token)
+		if origin != "" {
+			request.Header.Set("Origin", origin)
+		}
+		for _, cookieValue := range cookies {
+			request.AddCookie(cookieValue)
+		}
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusForbidden {
+			t.Fatalf("origin %q mutation status=%d body=%s", origin, recorder.Code, recorder.Body.String())
+		}
+	}
+	multiple := httptest.NewRequest(http.MethodPost, "/api/logoutAllAdmins", strings.NewReader(""))
+	multiple.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	multiple.Header.Set(csrfHeader, token)
+	multiple.Header.Add("Origin", "http://example.com")
+	multiple.Header.Add("Origin", "https://evil.example")
+	for _, cookieValue := range cookies {
+		multiple.AddCookie(cookieValue)
+	}
+	multipleRecorder := httptest.NewRecorder()
+	router.ServeHTTP(multipleRecorder, multiple)
+	if multipleRecorder.Code != http.StatusForbidden || !strings.Contains(multipleRecorder.Body.String(), "multiple origin") {
+		t.Fatalf("multiple Origin headers status=%d body=%s", multipleRecorder.Code, multipleRecorder.Body.String())
+	}
+}
+
 func TestCSRFCookieSecureForcedByEnv(t *testing.T) {
 	settingService := initSessionTestDB(t)
 	t.Setenv("SUI_FORCE_COOKIE_SECURE", "true")
@@ -111,17 +160,17 @@ func TestCSRFCookieSecureForcedByEnv(t *testing.T) {
 	}
 }
 
-func TestCSRFExemptPathOnlyAllowsAPILogin(t *testing.T) {
+func TestCSRFExemptPathAllowsNoStateChangingRoute(t *testing.T) {
 	tests := []struct {
 		name string
 		base string
 		path string
 		want bool
 	}{
-		{name: "exact base path", base: "/app/", path: "/app/api/login", want: true},
+		{name: "exact base path", base: "/app/", path: "/app/api/login", want: false},
 		{name: "suffix match rejected", base: "/app/", path: "/api/login", want: false},
 		{name: "empty path rejected", base: "/app/", path: "", want: false},
-		{name: "without base url", base: "/", path: "/api/login", want: true},
+		{name: "without base url", base: "/", path: "/api/login", want: false},
 		{name: "similar suffix rejected", base: "/", path: "/api/sublogin", want: false},
 	}
 	for _, tt := range tests {

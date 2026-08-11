@@ -1,0 +1,15 @@
+services:
+  solovey-ui:
+    extends:
+      file: ../../docker-compose.yml
+      service: solovey-ui
+    cap_add:
+      - NET_ADMIN
+      - NET_BIND_SERVICE
+      - NET_RAW
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    environment:
+      SOLOVEY_DEPLOYMENT_PROFILE: docker-network-advanced
+    labels:
+      io.solovey.deployment-profile: docker-network-advanced

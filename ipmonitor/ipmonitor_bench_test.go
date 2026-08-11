@@ -87,7 +87,7 @@ func BenchmarkAllow(b *testing.B) {
 	}
 }
 
-func TestIPMonitorAllowAnchorIssue18Phase5(t *testing.T) {
+func TestIPMonitorAllowAnchorIssue18(t *testing.T) {
 	initIPMonitorPerfDB(t)
 	names := seedIPMonitorPerfClients(t, 1000, 5)
 	start := time.Now()
@@ -101,13 +101,13 @@ func TestIPMonitorAllowAnchorIssue18Phase5(t *testing.T) {
 	if Allow(names[0], ipMonitorPerfNewIP(0)) {
 		t.Fatal("new IP over enforce limit should be rejected")
 	}
-	t.Logf("phase5 issue18 anchor: warmup=%s clients=%d ips_per_client=%d", warmup, len(names), 5)
+	t.Logf("issue18 anchor: warmup=%s clients=%d ips_per_client=%d", warmup, len(names), 5)
 }
 
 func initIPMonitorPerfDB(tb testing.TB) {
 	tb.Helper()
 	ResetCaches()
-	realtime.CloseAll("phase5_reset")
+	realtime.CloseAll("benchmark_reset")
 	closeIPMonitorTestDB(dbsqlite.DB())
 	dir := makeIPMonitorTempDir(tb, "s-ui-ipmonitor-perf-")
 	tb.Setenv("SUI_DB_FOLDER", dir)
@@ -121,7 +121,7 @@ func initIPMonitorPerfDB(tb testing.TB) {
 	tb.Cleanup(func() {
 		closeIPMonitorTestDB(dbsqlite.DB())
 		ResetCaches()
-		realtime.CloseAll("phase5_done")
+		realtime.CloseAll("benchmark_done")
 	})
 }
 
@@ -130,7 +130,7 @@ func seedIPMonitorPerfClients(tb testing.TB, clients int, ipsPerClient int) []st
 	names := make([]string, clients)
 	rows := make([]model.Client, clients)
 	for i := 0; i < clients; i++ {
-		name := fmt.Sprintf("phase5-user-%04d", i)
+		name := fmt.Sprintf("benchmark-user-%04d", i)
 		names[i] = name
 		rows[i] = model.Client{
 			Enable:      true,

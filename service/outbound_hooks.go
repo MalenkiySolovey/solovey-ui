@@ -10,11 +10,19 @@ import (
 
 type OutboundSaveHook func(*gorm.DB) error
 
+const maxOutboundSaveHooks = 128
+
+type registeredOutboundSaveHook struct {
+	hook  OutboundSaveHook
+	token uint64
+}
+
 var outboundSaveHooks = struct {
 	sync.RWMutex
-	entries map[string]OutboundSaveHook
+	entries   map[string]registeredOutboundSaveHook
+	nextToken uint64
 }{
-	entries: map[string]OutboundSaveHook{},
+	entries: map[string]registeredOutboundSaveHook{},
 }
 
 func RegisterOutboundSaveHook(name string, fn OutboundSaveHook) func() {
@@ -30,12 +38,20 @@ func RegisterOutboundSaveHook(name string, fn OutboundSaveHook) func() {
 		outboundSaveHooks.Unlock()
 		panic(fmt.Errorf("outbound save hook %q already registered", name))
 	}
-	outboundSaveHooks.entries[name] = fn
+	if len(outboundSaveHooks.entries) >= maxOutboundSaveHooks {
+		outboundSaveHooks.Unlock()
+		panic("outbound save hook registry capacity exceeded")
+	}
+	outboundSaveHooks.nextToken++
+	token := outboundSaveHooks.nextToken
+	outboundSaveHooks.entries[name] = registeredOutboundSaveHook{hook: fn, token: token}
 	outboundSaveHooks.Unlock()
 
 	return func() {
 		outboundSaveHooks.Lock()
-		delete(outboundSaveHooks.entries, name)
+		if current, ok := outboundSaveHooks.entries[name]; ok && current.token == token {
+			delete(outboundSaveHooks.entries, name)
+		}
 		outboundSaveHooks.Unlock()
 	}
 }
@@ -51,7 +67,7 @@ func runOutboundSaveHooks(tx *gorm.DB) error {
 
 func ResetOutboundSaveHooksForTest() {
 	outboundSaveHooks.Lock()
-	outboundSaveHooks.entries = map[string]OutboundSaveHook{}
+	outboundSaveHooks.entries = map[string]registeredOutboundSaveHook{}
 	outboundSaveHooks.Unlock()
 }
 
@@ -63,8 +79,8 @@ type outboundSaveHookEntry struct {
 func outboundSaveHookSnapshot() []outboundSaveHookEntry {
 	outboundSaveHooks.RLock()
 	entries := make([]outboundSaveHookEntry, 0, len(outboundSaveHooks.entries))
-	for name, fn := range outboundSaveHooks.entries {
-		entries = append(entries, outboundSaveHookEntry{name: name, fn: fn})
+	for name, registered := range outboundSaveHooks.entries {
+		entries = append(entries, outboundSaveHookEntry{name: name, fn: registered.hook})
 	}
 	outboundSaveHooks.RUnlock()
 

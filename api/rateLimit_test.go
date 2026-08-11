@@ -11,6 +11,7 @@ import (
 	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
 )
@@ -20,6 +21,9 @@ func resetRateLimitState() {
 	realtimehttp.ResetRateLimits()
 	auditEndpointRateLimiter.ResetAll()
 	componentManualActionRateLimiter.ResetAll()
+	securityVerificationAggregateRateLimit.ResetAll()
+	securityVerificationMethodRateLimit.ResetAll()
+	(&service.AuditService{}).ResetDenialAggregation()
 }
 
 func TestLoginRateLimitBlocksAfterMaxFailures(t *testing.T) {

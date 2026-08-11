@@ -8,6 +8,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/durableowner"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,6 +25,8 @@ type APIRoutes struct {
 	Register    APIRouteRegistrar
 }
 
+const maxRegisteredComponents = 64
+
 var defaultRegistry = newRegistry()
 
 type registry struct {
@@ -39,6 +42,16 @@ func newRegistry() *registry {
 }
 
 func Register(component Component) {
+	component.Manifest = component.Manifest.Normalized()
+	durableowner.Register(component.Manifest)
+	hooks := durableowner.Hooks{}
+	if migrator, ok := component.Lifecycle.(lifecycle.StagedMigrator); ok {
+		hooks.MigrateStaged = migrator.MigrateStaged
+	}
+	if rehearser, ok := component.Lifecycle.(lifecycle.RestoreRehearser); ok {
+		hooks.RehearseRestore = rehearser.RehearseRestore
+	}
+	durableowner.RegisterHooks(component.Manifest.ID, hooks)
 	defaultRegistry.register(component)
 }
 
@@ -75,6 +88,9 @@ func (r *registry) register(component Component) {
 	if _, exists := r.components[component.Manifest.ID]; exists {
 		panic(fmt.Errorf("component %q already registered", component.Manifest.ID))
 	}
+	if len(r.components) >= maxRegisteredComponents {
+		panic("component registry capacity exceeded")
+	}
 	r.components[component.Manifest.ID] = component
 }
 
@@ -88,6 +104,14 @@ func (r *registry) registerAPIRoutes(componentID string, register APIRouteRegist
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	if len(r.apiRoutes) >= maxRegisteredComponents {
+		panic("component API route registry capacity exceeded")
+	}
+	for _, current := range r.apiRoutes {
+		if current.ComponentID == componentID {
+			panic(fmt.Errorf("component %q API routes already registered", componentID))
+		}
+	}
 	r.apiRoutes = append(r.apiRoutes, APIRoutes{
 		ComponentID: componentID,
 		Register:    register,

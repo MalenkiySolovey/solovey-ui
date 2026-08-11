@@ -12,6 +12,17 @@ export type SlotName =
   | 'dashboard:widgets'
   | 'client-editor:subscription-sources'
   | 'outbounds:row-actions'
+  | 'inbound:editor'
+  | 'inbound:status-detail'
+
+// Inbound extensions receive the same draft object that the core modal is
+// editing.  They may add component metadata, but must not save the inbound or
+// call the core inbound API themselves.
+export interface InboundSlotContext {
+  inbound: Record<string, unknown>
+  loading: boolean
+  mode: 'add' | 'edit'
+}
 
 export type ComponentLoader = () => Promise<Component | { default: Component }>
 export type LocaleLoader = () => Promise<{ default: LocaleMessages }>

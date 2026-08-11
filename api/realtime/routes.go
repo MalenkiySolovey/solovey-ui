@@ -12,6 +12,8 @@ type Deps struct {
 	SettingService service.SettingService
 	LoginUser      func(*gin.Context) string
 	RemoteIP       func(*gin.Context) string
+	SessionBinding func(*gin.Context) (service.RealtimeSessionBinding, bool)
+	SessionValid   func(service.RealtimeSessionBinding) bool
 	Scope          func(*gin.Context) apprealtime.Scope
 	Audit          func(*gin.Context, string, string, string, string, map[string]any)
 	JSONObj        func(*gin.Context, interface{}, error)
@@ -24,6 +26,8 @@ func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
 		SettingService: deps.SettingService,
 		LoginUser:      deps.LoginUser,
 		RemoteIP:       deps.RemoteIP,
+		SessionBinding: deps.SessionBinding,
+		SessionValid:   deps.SessionValid,
 		Scope:          deps.Scope,
 		Audit:          deps.Audit,
 		JSONObj:        deps.JSONObj,

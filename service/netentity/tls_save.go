@@ -35,6 +35,9 @@ func (s *TlsService) applyTLSSave(req tlsSaveRequest) error {
 	if !ok {
 		return nil
 	}
+	if err := guardTLSFrontingLease(req.tx, req.action, req.data); err != nil {
+		return err
+	}
 	return tlsSaveHandlers[action](s, req)
 }
 

@@ -1,0 +1,29 @@
+table inet solovey_protection {
+  comment "solovey-revision:92e96e039e6941d680a55ae35fa7bf3ce476fb10d379aeae1ea4ca8e013b7e64"
+  set solovey_gray4_9e687d4fec8b {
+    type ipv4_addr
+    flags interval,timeout
+    size 4096
+    timeout 14400s
+    elements = { 203.0.113.0/24 timeout 300s }
+  }
+  set solovey_block4_9e687d4fec8b {
+    type ipv4_addr
+    flags interval,timeout
+    size 4096
+    timeout 14400s
+    elements = { 203.0.113.10/32 timeout 600s }
+  }
+  chain solovey_input {
+    type filter hook input priority -5; policy accept;
+    meta nfproto ipv4 ip saddr 198.51.100.0/24 ip daddr 192.0.2.5 meta l4proto tcp tcp dport 443 counter accept
+    iifname "lo" counter accept
+    ct state established,related counter accept
+    meta nfproto ipv4 ip daddr 192.0.2.5 meta l4proto tcp tcp dport 443 jump solovey_endpoint_9e687d4fec8b
+  }
+  chain solovey_endpoint_9e687d4fec8b {
+    ip saddr @solovey_gray4_9e687d4fec8b limit rate over 5/second burst 10 packets counter drop
+    ip saddr @solovey_block4_9e687d4fec8b counter drop
+    counter accept
+  }
+}

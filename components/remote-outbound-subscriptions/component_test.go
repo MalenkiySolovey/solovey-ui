@@ -6,6 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
@@ -19,6 +21,14 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"gorm.io/gorm"
 )
+
+func TestManifestDurableSettingsMatchRuntimeOwnership(t *testing.T) {
+	want := remotesettings.AllKeys()
+	sort.Strings(want)
+	if !slices.Equal(componentManifest.Database.Settings, want) {
+		t.Fatalf("manifest settings = %v, runtime ownership = %v", componentManifest.Database.Settings, want)
+	}
+}
 
 func TestRuntimeHooksFollowComponentLifecycle(t *testing.T) {
 	localsub.ResetClientOutboundContributorsForTest()

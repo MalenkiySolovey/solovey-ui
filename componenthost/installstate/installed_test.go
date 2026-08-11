@@ -12,8 +12,8 @@ func TestInstalledIDsEmptyWhenMetadataMissing(t *testing.T) {
 	t.Setenv(InstalledFileEnv, filepath.Join(t.TempDir(), "missing.json"))
 
 	ids, err := InstalledIDs([]manifest.Manifest{
-		{ID: "telegram", Delivery: manifest.DeliveryInProcess},
-		{ID: "remote-outbound-subscriptions", Delivery: manifest.DeliveryInProcess},
+		{ID: "fixture-beta", Delivery: manifest.DeliveryInProcess},
+		{ID: "fixture-remote", Delivery: manifest.DeliveryInProcess},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -30,25 +30,25 @@ func TestInstalledIDsUsesMetadataAsSourceOfTruth(t *testing.T) {
 		"version": 1,
 		"binary": "full",
 		"components": [
-			{"id": "telegram", "delivery": "in-process", "installed": true},
-			{"id": "remote-outbound-subscriptions", "delivery": "in-process", "installed": false}
+			{"id": "fixture-beta", "delivery": "in-process", "installed": true},
+			{"id": "fixture-remote", "delivery": "in-process", "installed": false}
 		]
 	}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	ids, err := InstalledIDs([]manifest.Manifest{
-		{ID: "telegram", Delivery: manifest.DeliveryInProcess},
-		{ID: "remote-outbound-subscriptions", Delivery: manifest.DeliveryInProcess},
+		{ID: "fixture-beta", Delivery: manifest.DeliveryInProcess},
+		{ID: "fixture-remote", Delivery: manifest.DeliveryInProcess},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := ids["telegram"]; !ok {
-		t.Fatal("telegram should be installed")
+	if _, ok := ids["fixture-beta"]; !ok {
+		t.Fatal("fixture-beta should be installed")
 	}
-	if _, ok := ids["remote-outbound-subscriptions"]; ok {
-		t.Fatal("remote-outbound-subscriptions should not be installed")
+	if _, ok := ids["fixture-remote"]; ok {
+		t.Fatal("fixture-remote should not be installed")
 	}
 }
 
@@ -59,7 +59,7 @@ func TestLoadPreservesProfileAndBinary(t *testing.T) {
 		"profile": "custom",
 		"binary": "full",
 		"components": [
-			{"id": "telegram", "delivery": "in-process", "installed": true}
+			{"id": "fixture-beta", "delivery": "in-process", "installed": true}
 		]
 	}`), 0o600); err != nil {
 		t.Fatal(err)
@@ -89,7 +89,7 @@ func TestInstalledIDsIgnoresUnavailableInstalledComponent(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ids, err := InstalledIDs([]manifest.Manifest{{ID: "telegram", Delivery: manifest.DeliveryInProcess}})
+	ids, err := InstalledIDs([]manifest.Manifest{{ID: "fixture-beta", Delivery: manifest.DeliveryInProcess}})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,11 +102,11 @@ func TestSetInstalledCreatesExplicitMetadataFromEmptyState(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "components", "installed.json")
 	t.Setenv(InstalledFileEnv, path)
 	available := []manifest.Manifest{
-		{ID: "paid-subscriptions", Name: "Paid subscriptions", Version: "1", Delivery: manifest.DeliveryInProcess},
-		{ID: "telegram", Name: "Telegram", Version: "1", Delivery: manifest.DeliveryInProcess},
+		{ID: "fixture-alpha", Name: "Fixture alpha", Version: "1", Delivery: manifest.DeliveryInProcess},
+		{ID: "fixture-beta", Name: "Fixture Beta", Version: "1", Delivery: manifest.DeliveryInProcess},
 	}
 
-	metadata, err := SetInstalled(path, available, "telegram", false)
+	metadata, err := SetInstalled(path, available, "fixture-beta", false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -118,10 +118,10 @@ func TestSetInstalledCreatesExplicitMetadataFromEmptyState(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := ids["telegram"]; ok {
-		t.Fatal("telegram should be explicitly removed")
+	if _, ok := ids["fixture-beta"]; ok {
+		t.Fatal("fixture-beta should be explicitly removed")
 	}
-	if _, ok := ids["paid-subscriptions"]; ok {
+	if _, ok := ids["fixture-alpha"]; ok {
 		t.Fatal("other components must not be installed implicitly when metadata is created")
 	}
 }
@@ -132,28 +132,28 @@ func TestSetInstalledAddsMissingAvailableComponent(t *testing.T) {
 	if err := os.WriteFile(path, []byte(`{
 		"version": 1,
 		"components": [
-			{"id": "telegram", "delivery": "in-process", "installed": false}
+			{"id": "fixture-beta", "delivery": "in-process", "installed": false}
 		]
 	}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	available := []manifest.Manifest{
-		{ID: "paid-subscriptions", Name: "Paid subscriptions", Version: "1", Delivery: manifest.DeliveryInProcess},
-		{ID: "telegram", Name: "Telegram", Version: "1", Delivery: manifest.DeliveryInProcess},
+		{ID: "fixture-alpha", Name: "Fixture alpha", Version: "1", Delivery: manifest.DeliveryInProcess},
+		{ID: "fixture-beta", Name: "Fixture Beta", Version: "1", Delivery: manifest.DeliveryInProcess},
 	}
 
-	if _, err := SetInstalled(path, available, "paid-subscriptions", true); err != nil {
+	if _, err := SetInstalled(path, available, "fixture-alpha", true); err != nil {
 		t.Fatal(err)
 	}
 	ids, err := InstalledIDs(available)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := ids["paid-subscriptions"]; !ok {
-		t.Fatal("paid-subscriptions should be installed")
+	if _, ok := ids["fixture-alpha"]; !ok {
+		t.Fatal("fixture-alpha should be installed")
 	}
-	if _, ok := ids["telegram"]; ok {
-		t.Fatal("telegram should keep its explicit removed state")
+	if _, ok := ids["fixture-beta"]; ok {
+		t.Fatal("fixture-beta should keep its explicit removed state")
 	}
 }
 
@@ -168,9 +168,9 @@ func TestSetInstalledPreservesUnavailableInstalledComponents(t *testing.T) {
 	}`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	available := []manifest.Manifest{{ID: "telegram", Name: "Telegram", Version: "1", Delivery: manifest.DeliveryInProcess}}
+	available := []manifest.Manifest{{ID: "fixture-beta", Name: "Fixture Beta", Version: "1", Delivery: manifest.DeliveryInProcess}}
 
-	metadata, err := SetInstalled(path, available, "telegram", true)
+	metadata, err := SetInstalled(path, available, "fixture-beta", true)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -178,20 +178,40 @@ func TestSetInstalledPreservesUnavailableInstalledComponents(t *testing.T) {
 	if !containsInstalled(metadata.Components, "old-component") {
 		t.Fatalf("unavailable component metadata should be preserved: %#v", metadata.Components)
 	}
-	if !containsInstalled(metadata.Components, "telegram") {
+	if !containsInstalled(metadata.Components, "fixture-beta") {
 		t.Fatalf("target component should be installed: %#v", metadata.Components)
 	}
 }
 
 func TestSetInstalledRejectsUnavailableComponent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "installed.json")
-	available := []manifest.Manifest{{ID: "telegram", Name: "Telegram", Version: "1", Delivery: manifest.DeliveryInProcess}}
+	available := []manifest.Manifest{{ID: "fixture-beta", Name: "Fixture Beta", Version: "1", Delivery: manifest.DeliveryInProcess}}
 
 	if _, err := SetInstalled(path, available, "missing-component", true); err == nil {
 		t.Fatal("expected unavailable component install to fail")
 	}
 	if _, exists, err := Load(path); err != nil || exists {
 		t.Fatalf("metadata should not be written on failure, exists=%v err=%v", exists, err)
+	}
+}
+
+func TestLoadRejectsUnknownFutureAndOversizedInstalledAuthority(t *testing.T) {
+	for name, payload := range map[string][]byte{
+		"unknown field":  []byte(`{"version":1,"components":[],"rawPath":"C:/unsafe"}`),
+		"future version": []byte(`{"version":2,"components":[]}`),
+		"duplicate":      []byte(`{"version":1,"components":[{"id":"fixture-beta","installed":true},{"id":"fixture-beta","installed":true}]}`),
+		"delivery":       []byte(`{"version":1,"components":[{"id":"fixture-beta","delivery":"external","installed":true}]}`),
+		"oversized":      append([]byte(`{"version":1,"components":[],"padding":"`), append(make([]byte, MaxInstalledMetadataBytes), []byte(`"}`)...)...),
+	} {
+		t.Run(name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "installed.json")
+			if err := os.WriteFile(path, payload, 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, exists, err := Load(path); !exists || err == nil {
+				t.Fatalf("malformed installed authority exists=%v err=%v", exists, err)
+			}
+		})
 	}
 }
 

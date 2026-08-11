@@ -18,12 +18,20 @@ type ClientOutboundContributionContext struct {
 
 type ClientOutboundContributor func(ClientOutboundContributionContext, *OutboundSet) error
 
+const maxClientOutboundContributors = 128
+
+type registeredClientOutboundContributor struct {
+	contributor ClientOutboundContributor
+	token       uint64
+}
+
 var clientOutboundContributors = struct {
 	sync.RWMutex
-	entries map[string]ClientOutboundContributor
-	version atomic.Uint64
+	entries   map[string]registeredClientOutboundContributor
+	version   atomic.Uint64
+	nextToken uint64
 }{
-	entries: map[string]ClientOutboundContributor{},
+	entries: map[string]registeredClientOutboundContributor{},
 }
 
 func RegisterClientOutboundContributor(name string, fn ClientOutboundContributor) func() {
@@ -39,13 +47,19 @@ func RegisterClientOutboundContributor(name string, fn ClientOutboundContributor
 		clientOutboundContributors.Unlock()
 		panic(fmt.Errorf("client outbound contributor %q already registered", name))
 	}
-	clientOutboundContributors.entries[name] = fn
+	if len(clientOutboundContributors.entries) >= maxClientOutboundContributors {
+		clientOutboundContributors.Unlock()
+		panic("client outbound contributor registry capacity exceeded")
+	}
+	clientOutboundContributors.nextToken++
+	token := clientOutboundContributors.nextToken
+	clientOutboundContributors.entries[name] = registeredClientOutboundContributor{contributor: fn, token: token}
 	clientOutboundContributors.version.Add(1)
 	clientOutboundContributors.Unlock()
 
 	return func() {
 		clientOutboundContributors.Lock()
-		if _, exists := clientOutboundContributors.entries[name]; exists {
+		if current, exists := clientOutboundContributors.entries[name]; exists && current.token == token {
 			delete(clientOutboundContributors.entries, name)
 			clientOutboundContributors.version.Add(1)
 		}
@@ -72,7 +86,7 @@ func ClientOutboundContributorsVersion() uint64 {
 
 func ResetClientOutboundContributorsForTest() {
 	clientOutboundContributors.Lock()
-	clientOutboundContributors.entries = map[string]ClientOutboundContributor{}
+	clientOutboundContributors.entries = map[string]registeredClientOutboundContributor{}
 	clientOutboundContributors.version.Add(1)
 	clientOutboundContributors.Unlock()
 }
@@ -85,8 +99,8 @@ type clientOutboundContributorEntry struct {
 func clientOutboundContributorSnapshot() []clientOutboundContributorEntry {
 	clientOutboundContributors.RLock()
 	entries := make([]clientOutboundContributorEntry, 0, len(clientOutboundContributors.entries))
-	for name, fn := range clientOutboundContributors.entries {
-		entries = append(entries, clientOutboundContributorEntry{name: name, fn: fn})
+	for name, registered := range clientOutboundContributors.entries {
+		entries = append(entries, clientOutboundContributorEntry{name: name, fn: registered.contributor})
 	}
 	clientOutboundContributors.RUnlock()
 

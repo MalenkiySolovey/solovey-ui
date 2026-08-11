@@ -117,12 +117,3 @@ func xrayDependencyScope(config map[string]interface{}, configIndex int, multiCo
 	}
 	return ""
 }
-func xrayConfigScope(config map[string]interface{}, configIndex int, multiConfig bool) string {
-	if !multiConfig {
-		return ""
-	}
-	if remarks := strings.TrimSpace(stringValue(config["remarks"])); remarks != "" {
-		return remarks
-	}
-	return fmt.Sprintf("xray-config-%d", configIndex+1)
-}

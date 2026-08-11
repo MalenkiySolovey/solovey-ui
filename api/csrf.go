@@ -3,9 +3,12 @@ package api
 import (
 	"crypto/subtle"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
+	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	"github.com/gin-contrib/sessions"
@@ -33,8 +36,8 @@ func (a *ApiService) IssueCSRFToken(c *gin.Context) {
 		HttpOnly: true,
 		SameSite: resolveCookieSameSite(&a.SettingService),
 	}
-	if maxAge, err := a.SettingService.GetSessionMaxAge(); err == nil && maxAge > 0 {
-		options.MaxAge = maxAge * 60
+	if maxAge := currentSessionCookieMaxAge(session, time.Now()); maxAge > 0 {
+		options.MaxAge = maxAge
 	}
 	session.Options(options)
 	if err := session.Save(); err != nil {
@@ -47,6 +50,25 @@ func (a *ApiService) IssueCSRFToken(c *gin.Context) {
 	}, nil)
 }
 
+func currentSessionCookieMaxAge(session sessions.Session, now time.Time) int {
+	if session == nil {
+		return 0
+	}
+	if rememberedExpiresAt, ok := sessionUint64(session.Get(service.SessionRememberedExpiresAtKey)); ok &&
+		rememberedExpiresAt > uint64(now.Unix()) {
+		return int(rememberedExpiresAt - uint64(now.Unix()))
+	}
+	posture, _ := session.Get(service.SessionLifetimePostureKey).(string)
+	if posture != service.LifetimePostureLegacyExplicit {
+		return 0
+	}
+	absoluteExpiresAt, ok := sessionUint64(session.Get(service.SessionAbsoluteExpiresAtKey))
+	if !ok || absoluteExpiresAt <= uint64(now.Unix()) {
+		return 0
+	}
+	return int(absoluteExpiresAt - uint64(now.Unix()))
+}
+
 func (a *ApiService) GetCSRF(c *gin.Context) {
 	a.IssueCSRFToken(c)
 }
@@ -57,8 +79,12 @@ func ResetSessionCSRF(s sessions.Session) {
 }
 
 func (a *APIHandler) csrfMiddleware(c *gin.Context) {
-	if !csrfProtectedMethod(c.Request.Method) || csrfExemptPath(c.Request.URL.Path, a.csrfLoginPath) {
+	if !csrfProtectedMethod(c.Request.Method) {
 		c.Next()
+		return
+	}
+	if allowed, reason := sameOriginRequest(c); !allowed {
+		csrfForbidden(c, reason)
 		return
 	}
 	session := sessions.Default(c)
@@ -102,7 +128,35 @@ func csrfLoginPathForBase(basePath string) string {
 }
 
 func csrfExemptPath(path string, loginPath string) bool {
-	return path != "" && path == loginPath
+	return false
+}
+
+func sameOriginRequest(c *gin.Context) (bool, string) {
+	r := c.Request
+	if len(r.Header.Values("Origin")) != 1 {
+		return false, "missing or multiple origin"
+	}
+	originHeader := strings.TrimSpace(r.Header.Get("Origin"))
+	if originHeader == "" {
+		return false, "missing origin"
+	}
+	origin, err := url.Parse(originHeader)
+	if err != nil || origin.Scheme == "" || origin.Host == "" || origin.User != nil || origin.Path != "" ||
+		origin.RawQuery != "" || origin.Fragment != "" {
+		return false, "invalid origin"
+	}
+	identity := RequestClientIdentity(c)
+	if identity.ExternalHost == "" || !identity.ForwardedValid {
+		return false, "invalid request authority"
+	}
+	expectedScheme := identity.DesiredScheme
+	if !strings.EqualFold(origin.Scheme, expectedScheme) {
+		return false, "origin scheme mismatch"
+	}
+	if clientidentity.CanonicalHostPort(origin.Host) != identity.ExternalHost {
+		return false, "origin host mismatch"
+	}
+	return true, ""
 }
 
 func joinURL(base string, child string) string {

@@ -4,22 +4,28 @@ import (
 	"encoding/json"
 	"sync"
 	"time"
+
+	"github.com/MalenkiySolovey/solovey-ui/util/redact"
 )
 
+const MaxEventFrameBytes = 256 * 1024
+
 type ClientHandle struct {
-	User   string
-	IP     string
-	Scope  Scope
-	SendCh chan<- Event
-	OnDrop func(reason string)
+	User       string
+	IP         string
+	SessionRef string
+	Scope      Scope
+	SendCh     chan<- Event
+	OnDrop     func(reason string)
 }
 
 type client struct {
-	user   string
-	ip     string
-	scope  Scope
-	sendCh chan<- Event
-	onDrop func(reason string)
+	user       string
+	ip         string
+	sessionRef string
+	scope      Scope
+	sendCh     chan<- Event
+	onDrop     func(reason string)
 }
 
 type hub struct {
@@ -51,6 +57,10 @@ func CloseAll(reason string) {
 	defaultHub.CloseAll(reason)
 }
 
+func CloseSession(sessionRef string, reason string) {
+	defaultHub.CloseSession(sessionRef, reason)
+}
+
 func Reserve(user string, ip string, maxPerUser int, maxPerIP int) (release func(), ok bool) {
 	return defaultHub.Reserve(user, ip, maxPerUser, maxPerIP)
 }
@@ -80,11 +90,12 @@ func (h *hub) Register(c *ClientHandle) (unregister func()) {
 		return func() {}
 	}
 	internal := &client{
-		user:   c.User,
-		ip:     c.IP,
-		scope:  c.Scope,
-		sendCh: c.SendCh,
-		onDrop: c.OnDrop,
+		user:       c.User,
+		ip:         c.IP,
+		sessionRef: c.SessionRef,
+		scope:      c.Scope,
+		sendCh:     c.SendCh,
+		onDrop:     c.OnDrop,
 	}
 	h.mu.Lock()
 	h.clients[internal] = struct{}{}
@@ -100,6 +111,24 @@ func (h *hub) Register(c *ClientHandle) (unregister func()) {
 	}
 }
 
+func (h *hub) CloseSession(sessionRef string, reason string) {
+	if sessionRef == "" {
+		return
+	}
+	h.mu.Lock()
+	clients := make([]*client, 0)
+	for c := range h.clients {
+		if c.sessionRef == sessionRef {
+			clients = append(clients, c)
+			delete(h.clients, c)
+		}
+	}
+	h.mu.Unlock()
+	for _, c := range clients {
+		c.callDrop(reason)
+	}
+}
+
 func (h *hub) Publish(topic Topic, payload interface{}) {
 	clients := h.snapshot(topic)
 	if len(clients) == 0 {
@@ -108,9 +137,16 @@ func (h *hub) Publish(topic Topic, payload interface{}) {
 	event := Event{
 		Type:    topic,
 		Ts:      time.Now().Unix(),
-		Payload: payload,
+		Payload: redact.Value(payload),
 	}
 	event.frame, _ = json.Marshal(event)
+	if len(event.frame) == 0 || len(event.frame) > MaxEventFrameBytes {
+		event.Payload = map[string]any{
+			"discarded": true,
+			"reason":    "payload_too_large",
+		}
+		event.frame, _ = json.Marshal(event)
+	}
 	for _, c := range clients {
 		select {
 		case c.sendCh <- event:

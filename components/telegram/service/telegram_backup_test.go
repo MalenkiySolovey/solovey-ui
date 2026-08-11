@@ -87,10 +87,12 @@ func TestTelegramBackupRunOnceSuccessSendsEnvelopeAndAuditsSizes(t *testing.T) {
 	if bytes.Contains(document, []byte("SQLite format 3")) {
 		t.Fatal("sent document contains plaintext SQLite signature")
 	}
-	plaintext, err := backupenvelope.Open(document, []byte(passphrase))
+	var opened bytes.Buffer
+	_, _, err := backupenvelope.OpenStream(&opened, bytes.NewReader(document), []byte(passphrase), backupenvelope.MaxStreamBytes)
 	if err != nil {
 		t.Fatal(err)
 	}
+	plaintext := opened.Bytes()
 	defer common.WipeBytes(plaintext)
 	if !bytes.HasPrefix(plaintext, []byte("SQLite format 3\x00")) {
 		t.Fatal("decrypted Telegram document is not SQLite")
@@ -151,7 +153,7 @@ func TestTelegramBackupRunOnceConcurrentGuard(t *testing.T) {
 	})
 	started := make(chan struct{})
 	release := make(chan struct{})
-	backupService := &telegramservice.TelegramBackupService{Settings: testTelegramSettings{}, SendDocument: func(_ string, _ []byte, _ string) telegramservice.Result {
+	backupService := &telegramservice.TelegramBackupService{Settings: testTelegramSettings{}, SendDocumentStream: func(_ context.Context, _ string, _ io.Reader, _ string) telegramservice.Result {
 		close(started)
 		<-release
 		return telegramservice.Result{Success: true}
@@ -185,14 +187,14 @@ func TestTelegramBackupRunOncePassesThroughTelegramErrorClassAndFallback(t *test
 		Passphrase:      passphrase,
 	})
 
-	backupService := &telegramservice.TelegramBackupService{Settings: testTelegramSettings{}, SendDocument: func(_ string, _ []byte, _ string) telegramservice.Result {
+	backupService := &telegramservice.TelegramBackupService{Settings: testTelegramSettings{}, SendDocumentStream: func(_ context.Context, _ string, _ io.Reader, _ string) telegramservice.Result {
 		return telegramservice.Result{ErrorClass: "proxy"}
 	}}
 	result := backupService.RunOnce(context.Background(), telegramservice.TelegramBackupTriggerManual)
 	if result.Success || result.ErrorClass != "proxy" {
 		t.Fatalf("expected proxy pass-through, got %#v", result)
 	}
-	backupService.SendDocument = func(_ string, _ []byte, _ string) telegramservice.Result {
+	backupService.SendDocumentStream = func(_ context.Context, _ string, _ io.Reader, _ string) telegramservice.Result {
 		return telegramservice.Result{}
 	}
 	result = backupService.RunOnce(context.Background(), telegramservice.TelegramBackupTriggerManual)

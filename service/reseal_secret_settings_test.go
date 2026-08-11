@@ -20,7 +20,7 @@ func TestResealSecretSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	const key = "telegramBotToken"
+	const key = "fixturePrimaryBotToken"
 	const secretValue = "123456789:pre-adoption-secret-token-value"
 
 	// Seal under the DB-derived box (candidates[0] when no env key is set) and

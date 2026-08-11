@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestMigrateDbDoesNotDowngradeFutureVersion(t *testing.T) {
+func TestMigrateDbRejectsFutureVersionBeforeMutation(t *testing.T) {
 	dbDir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", dbDir)
 	dbPath := filepath.Join(dbDir, configidentity.GetName()+".db")
@@ -39,8 +39,8 @@ CREATE TABLE settings (
 		}
 	}
 
-	if err := MigrateDb(); err != nil {
-		t.Fatal(err)
+	if err := MigrateDb(); err == nil || !strings.Contains(err.Error(), "newer than supported") {
+		t.Fatalf("MigrateDb() error = %v, want future-version rejection", err)
 	}
 
 	db = openMigrationDBAtPath(t, dbPath)
@@ -50,5 +50,10 @@ CREATE TABLE settings (
 	}
 	if version != futureVersion {
 		t.Fatalf("future version was downgraded: got %q want %q", version, futureVersion)
+	}
+	for _, table := range []string{"admin_mfa_factors", "admin_recovery_codes", "security_sessions", "step_up_grants"} {
+		if db.Migrator().HasTable(table) {
+			t.Fatalf("future-version preflight mutated schema by creating %q", table)
+		}
 	}
 }

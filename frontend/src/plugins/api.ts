@@ -37,7 +37,7 @@ const needsCSRFToken = (method?: string, url?: string) => {
         return false
     }
     const normalized = normalizeURL(url)
-    return normalized.startsWith('api/') && normalized !== 'api/login'
+    return normalized.startsWith('api/')
 }
 
 api.interceptors.request.use(

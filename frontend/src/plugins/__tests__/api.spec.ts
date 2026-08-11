@@ -68,7 +68,7 @@ describe('api axios interceptor regression anchors', () => {
     expect(config.headers['X-CSRF-Token']).toBe('csrf-token')
   })
 
-  it('does not add CSRF tokens to login requests', async () => {
+  it('adds the pre-auth CSRF token to login requests', async () => {
     await loadApi()
 
     const config = await mocks.requestFulfilled?.({
@@ -77,8 +77,8 @@ describe('api axios interceptor regression anchors', () => {
       headers: {},
     })
 
-    expect(mocks.getCSRFToken).not.toHaveBeenCalled()
-    expect(config.headers['X-CSRF-Token']).toBeUndefined()
+    expect(mocks.getCSRFToken).toHaveBeenCalledTimes(1)
+    expect(config.headers['X-CSRF-Token']).toBe('csrf-token')
   })
 
   it('aborts the previous duplicate idempotent request', async () => {

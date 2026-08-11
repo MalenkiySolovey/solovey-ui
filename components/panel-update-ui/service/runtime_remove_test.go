@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"path/filepath"
-	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
@@ -12,7 +12,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 )
 
-func TestRuntimeManagerRemoveWithDeleteDataDropsAfterReconcile(t *testing.T) {
+func TestRuntimeManagerRejectsLegacyCombinedRemoveAndDropData(t *testing.T) {
 	const id = "test-runtime-remove"
 	registerRuntimeTestComponent(id)
 
@@ -41,14 +41,18 @@ func TestRuntimeManagerRemoveWithDeleteDataDropsAfterReconcile(t *testing.T) {
 		},
 	}
 	status, err := manager.Remove(OperationContext{}, id, true)
-	if err != nil {
-		t.Fatal(err)
+	if err == nil || !strings.Contains(err.Error(), "core Drop Data preview") {
+		t.Fatalf("legacy combined removal error = %v", err)
 	}
-	if status.Installed {
-		t.Fatalf("removed component status = %#v", status)
+	if status.ID != "" || status.Installed {
+		t.Fatalf("rejected combined removal returned status: %#v", status)
 	}
-	if want := []string{"reconcile", "drop:" + id}; !reflect.DeepEqual(events, want) {
-		t.Fatalf("events = %#v, want %#v", events, want)
+	if len(events) != 0 {
+		t.Fatalf("rejected combined removal performed side effects: %#v", events)
+	}
+	installed, err := installstate.InstalledComponents()
+	if err != nil || len(installed) != 1 || installed[0].ID != id {
+		t.Fatalf("rejected combined removal changed installed metadata: %#v err=%v", installed, err)
 	}
 }
 

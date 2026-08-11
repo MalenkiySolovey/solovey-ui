@@ -18,7 +18,3 @@ func (s *VersionService) CheckForChannel(channel string, force bool) VersionInfo
 func (s *VersionService) ResolveTarget(channel string) (ReleaseTarget, error) {
 	return serviceupdate.ResolveTarget(channel)
 }
-
-func versionIsNewer(candidate, current string) bool {
-	return serviceupdate.VersionIsNewer(candidate, current)
-}

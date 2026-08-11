@@ -66,11 +66,26 @@ func writeInitialAdminPassword(path string, password string) error {
 }
 
 func notifyInitialAdminPasswordSaved(path string) {
-	fmt.Fprintf(os.Stderr, "initial admin password saved to %s; delete after first login\n", path)
+	fmt.Fprintf(os.Stderr, "initial admin password saved to %s; it is removed after the required password change\n", path)
 }
 
 func warnIfInitialAdminPasswordFileExists(path string) {
 	if _, err := os.Stat(path); err == nil {
-		logger.Warning("initial admin password file still exists; delete after first login: ", path)
+		logger.Warning("initial admin password file still exists; complete the required password change: ", path)
 	}
+}
+
+// RemoveInitialAdminPasswordFile is called only after the forced password
+// transition transaction has committed. Missing files are intentionally
+// treated as already acknowledged.
+func RemoveInitialAdminPasswordFile() error {
+	dbPath := currentDatabasePath()
+	if dbPath == "" {
+		dbPath = configstorage.GetDBPath()
+	}
+	path := initialAdminPasswordPath(dbPath)
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		return err
+	}
+	return nil
 }

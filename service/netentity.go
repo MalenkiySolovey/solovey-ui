@@ -163,6 +163,10 @@ func (s *InboundService) GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 	backend := s.backend()
 	return backend.GetAllConfig(db)
 }
+func (s *InboundService) AddUsers(db *gorm.DB, inboundJSON []byte, inboundID uint, inboundType string) ([]byte, error) {
+	backend := s.backend()
+	return backend.AddUsers(db, inboundJSON, inboundID, inboundType)
+}
 func (s *InboundService) RestartInbounds(tx *gorm.DB, ids []uint) error {
 	backend := s.backend()
 	return backend.RestartInbounds(tx, ids)

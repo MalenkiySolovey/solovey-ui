@@ -5,15 +5,78 @@ package paidsubscriptions
 import (
 	"context"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/robfig/cron/v3"
 )
+
+func TestManifestDurableSettingsMatchRuntimeOwnership(t *testing.T) {
+	secrets := paidsettings.EncryptedKeys()
+	wantSecrets := make([]string, 0, len(secrets))
+	for key := range secrets {
+		wantSecrets = append(wantSecrets, key)
+	}
+	wantSettings := make([]string, 0, len(paidsettings.Defaults())-len(secrets))
+	for key := range paidsettings.Defaults() {
+		if _, secret := secrets[key]; !secret {
+			wantSettings = append(wantSettings, key)
+		}
+	}
+	sort.Strings(wantSecrets)
+	sort.Strings(wantSettings)
+	if !slices.Equal(componentManifest.Database.Secrets, wantSecrets) {
+		t.Fatalf("manifest secrets = %v, runtime ownership = %v", componentManifest.Database.Secrets, wantSecrets)
+	}
+	if !slices.Equal(componentManifest.Database.Settings, wantSettings) {
+		t.Fatalf("manifest settings = %v, runtime ownership = %v", componentManifest.Database.Settings, wantSettings)
+	}
+}
+
+type paidTrackingScheduler struct {
+	added   int
+	removed int
+}
+
+func (s *paidTrackingScheduler) AddJob(string, cron.Job) (cron.EntryID, error) {
+	s.added++
+	return cron.EntryID(s.added), nil
+}
+func (*paidTrackingScheduler) Schedule(cron.Schedule, cron.Job) cron.EntryID { return 0 }
+func (s *paidTrackingScheduler) RemoveJob(cron.EntryID)                      { s.removed++ }
+
+func TestPaidComponentStartIsIdempotent(t *testing.T) {
+	initPaidComponentTestDB(t)
+	scheduler := &paidTrackingScheduler{}
+	c := &component{}
+	host := lifecycle.Context{Host: componenthost.Deps{Scheduler: scheduler}}
+	if err := c.Start(context.Background(), host); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Start(context.Background(), host); err != nil {
+		t.Fatal(err)
+	}
+	if scheduler.added != 1 {
+		t.Fatalf("repeated Start added %d jobs", scheduler.added)
+	}
+	if err := c.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if scheduler.removed != 1 {
+		t.Fatalf("repeated Stop removed %d jobs", scheduler.removed)
+	}
+}
 
 func TestPaidDropDataRemovesOwnedTablesAndSettings(t *testing.T) {
 	initPaidComponentTestDB(t)

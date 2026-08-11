@@ -71,7 +71,9 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 	})
 	g.GET("/security/audit/recent", a.telemetry.GetRecentSecurityAudit)
 	g.POST("/rotateSubSecret", a.config.RotateSubSecret)
-	registerComponentAPIRoutes(g, a.componentAPI())
+	// Browser step-up grants are deliberately unavailable to bearer-token
+	// component routes. Sensitive component mutations therefore fail closed.
+	registerComponentAPIRoutes(g, a.componentAPI(nil))
 	g.GET("/logs/entries", a.telemetry.GetLogEntries)
 	g.GET("/diagnostics/report", a.telemetry.GetDiagnosticsReport)
 	g.GET("/diagnostics/bundle", a.telemetry.GetDiagnosticsBundle)

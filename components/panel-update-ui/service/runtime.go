@@ -96,6 +96,9 @@ func (m RuntimeManager) Remove(ctx OperationContext, id string, deleteData bool)
 	if id == UpdateComponentID {
 		return ComponentStatus{}, fmt.Errorf("component %q cannot remove itself", id)
 	}
+	if deleteData {
+		return ComponentStatus{}, fmt.Errorf("component data removal requires the core Drop Data preview and guarded execution API")
+	}
 	status, err := m.catalog().StatusByID(id)
 	if err != nil {
 		return ComponentStatus{}, err
@@ -114,11 +117,6 @@ func (m RuntimeManager) Remove(ctx OperationContext, id string, deleteData bool)
 	}
 	if err := m.reconcile(); err != nil {
 		return ComponentStatus{}, err
-	}
-	if deleteData {
-		if err := m.dropData(id); err != nil {
-			return ComponentStatus{}, err
-		}
 	}
 	if err := removeComponentPack(id); err != nil {
 		return ComponentStatus{}, err

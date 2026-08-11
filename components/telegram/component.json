@@ -13,6 +13,27 @@
       "frontend/index.ts"
     ]
   },
+  "database": {
+	"schema": "solovey.durable-resource/v1",
+	"schemaVersion": "1",
+	"migrationVersion": "1",
+	"indexPolicy": "ALL_OWNED_TABLE_INDEXES",
+	"settings": [
+	  "telegramBackupCron", "telegramBackupEnabled", "telegramBackupExcludeTables", "telegramBackupMaxSizeMB",
+	  "telegramChatID", "telegramCpuThreshold", "telegramEnabled", "telegramNotifyCpu", "telegramOutboundTag",
+	  "telegramReport", "telegramReportCron", "telegramTransportMode"
+	],
+	"secrets": [
+	  "telegramBackupPassphrase", "telegramBotToken", "telegramProxyPassword", "telegramProxyURL", "telegramProxyUsername"
+	],
+	"backupCodec": "SQLITE_OWNER_V1",
+	"restoreHook": "MIGRATE_AND_VALIDATE_V1",
+	"dropDataPlan": "OWNER_LIFECYCLE_V1",
+	"dropPostcondition": "DECLARED_RESOURCES_ABSENT_V1",
+	"redactionClass": "SENSITIVE",
+	"portabilityClass": "PORTABLE",
+	"compatibilityRange": {"minimumSchema": "1", "maximumSchema": "1"}
+  },
   "cli": {
     "entries": [
       "cmd"

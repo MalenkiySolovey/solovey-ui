@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/components/fallback-html/authority"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 	"gorm.io/gorm"
@@ -97,8 +98,19 @@ func HandleRestorePostOpen(ctx context.Context, db *gorm.DB) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+	if err := ReconcileLegacySelfSteal(ctx, db, time.Now().UTC()); err != nil {
+		return err
+	}
 	migrator := db.Migrator()
+	hasReservations := migrator.HasTable(&authority.ReservationModel{})
 	if !migrator.HasTable(&fallbackdomain.Site{}) {
+		if hasReservations {
+			if err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+				return authority.ReconcileRestoredInTx(ctx, tx, time.Now().UTC())
+			}); err != nil {
+				return err
+			}
+		}
 		return DefaultRuntime.Rebuild(db)
 	}
 	hasPublishes := migrator.HasTable(&fallbackdomain.Publish{})
@@ -107,6 +119,11 @@ func HandleRestorePostOpen(ctx context.Context, db *gorm.DB) error {
 	err := db.Transaction(func(tx *gorm.DB) error {
 		if err := ctx.Err(); err != nil {
 			return err
+		}
+		if hasReservations {
+			if err := authority.ReconcileRestoredInTx(ctx, tx, time.Now().UTC()); err != nil {
+				return err
+			}
 		}
 		if hasPublishes {
 			if err := tx.Model(&fallbackdomain.Publish{}).Where("active = ?", true).Update("active", false).Error; err != nil {
@@ -184,38 +201,45 @@ func (s *Service) SaveSite(input SiteInput, actor string) (fallbackdomain.Site, 
 	if err != nil {
 		return site, err
 	}
-	err = s.db.Transaction(func(tx *gorm.DB) error {
-		if input.ID != 0 {
-			if err := tx.First(&site, input.ID).Error; err != nil {
+	err = authority.WithMutationLock(func() error {
+		return s.db.Transaction(func(tx *gorm.DB) error {
+			if input.ID != 0 {
+				if err := tx.First(&site, input.ID).Error; err != nil {
+					return err
+				}
+				if input.Enabled != nil && !*input.Enabled && site.Enabled {
+					if err := guardSiteTargetMutation(tx, site.ID); err != nil {
+						return err
+					}
+				}
+			} else {
+				site = fallbackdomain.Site{
+					Enabled:      true,
+					ExposureMode: "direct",
+					Status:       "draft",
+					CreatedAt:    now,
+				}
+			}
+			site.Name = name
+			site.TemplateID = templateID
+			if input.Enabled != nil {
+				site.Enabled = *input.Enabled
+			}
+			site.UpdatedAt = now
+			if err := tx.Save(&site).Error; err != nil {
 				return err
 			}
-		} else {
-			site = fallbackdomain.Site{
-				Enabled:      true,
-				ExposureMode: "direct",
-				Status:       "draft",
-				CreatedAt:    now,
+			if input.ID == 0 {
+				if err := createDefaultPages(tx, site.ID, site.Name, now); err != nil {
+					return err
+				}
+				target := targetFromView(site.ID, defaultTarget, now)
+				if err := tx.Create(&target).Error; err != nil {
+					return err
+				}
 			}
-		}
-		site.Name = name
-		site.TemplateID = templateID
-		if input.Enabled != nil {
-			site.Enabled = *input.Enabled
-		}
-		site.UpdatedAt = now
-		if err := tx.Save(&site).Error; err != nil {
-			return err
-		}
-		if input.ID == 0 {
-			if err := createDefaultPages(tx, site.ID, site.Name, now); err != nil {
-				return err
-			}
-			target := targetFromView(site.ID, defaultTarget, now)
-			if err := tx.Create(&target).Error; err != nil {
-				return err
-			}
-		}
-		return recordEvent(tx, site.ID, actor, "site_saved", map[string]any{"name": site.Name})
+			return recordEvent(tx, site.ID, actor, "site_saved", map[string]any{"name": site.Name})
+		})
 	})
 	if err != nil {
 		return site, err
@@ -272,18 +296,14 @@ func (s *Service) ListPages(siteID uint) ([]fallbackdomain.Page, error) {
 }
 
 func (s *Service) DeleteSite(id uint, actor string) error {
-	err := s.db.Transaction(func(tx *gorm.DB) error {
+	return s.guardedSiteMutation(id, func(tx *gorm.DB) error {
 		if err := recordEvent(tx, id, actor, "site_deleted", nil); err != nil {
 			return err
 		}
 		return tx.Delete(&fallbackdomain.Site{}, id).Error
+	}, func() error {
+		return errors.Join(RemoveSiteStorage(id), s.runtime.Rebuild(s.db))
 	})
-	if err != nil {
-		return err
-	}
-	removeErr := RemoveSiteStorage(id)
-	rebuildErr := s.runtime.Rebuild(s.db)
-	return errors.Join(removeErr, rebuildErr)
 }
 
 func (s *Service) ValidatePath(siteID uint, input PathValidationInput) (PathValidationResult, error) {

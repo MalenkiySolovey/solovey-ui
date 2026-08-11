@@ -14,17 +14,19 @@ import (
 )
 
 type Core struct {
-	access          sync.RWMutex
-	ctx             context.Context
-	isRunning       bool
-	instance        *corebox.Box
-	inboundManager  adapter.InboundManager
-	outboundManager adapter.OutboundManager
-	serviceManager  adapter.ServiceManager
-	endpointManager adapter.EndpointManager
-	router          adapter.Router
-	factory         log.Factory
-	ipObserver      tracker.IPObserver
+	access            sync.RWMutex
+	ctx               context.Context
+	isRunning         bool
+	instance          *corebox.Box
+	inboundManager    adapter.InboundManager
+	outboundManager   adapter.OutboundManager
+	serviceManager    adapter.ServiceManager
+	endpointManager   adapter.EndpointManager
+	router            adapter.Router
+	factory           log.Factory
+	ipObserver        tracker.IPObserver
+	managerGeneration uint64
+	effectiveInbounds map[string]InboundRuntimeRecord
 }
 
 func NewCore(observers ...tracker.IPObserver) *Core {
@@ -38,9 +40,10 @@ func NewCore(observers ...tracker.IPObserver) *Core {
 		registry.ServiceRegistry(),
 	)
 	core := &Core{
-		ctx:       ctx,
-		isRunning: false,
-		instance:  nil,
+		ctx:               ctx,
+		isRunning:         false,
+		instance:          nil,
+		effectiveInbounds: make(map[string]InboundRuntimeRecord),
 	}
 	if len(observers) > 0 {
 		core.ipObserver = observers[0]

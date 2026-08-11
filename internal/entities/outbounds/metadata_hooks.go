@@ -10,11 +10,19 @@ import (
 
 type MetadataAnnotator func(*gorm.DB, []map[string]interface{}) error
 
+const maxMetadataAnnotators = 128
+
+type registeredMetadataAnnotator struct {
+	annotator MetadataAnnotator
+	token     uint64
+}
+
 var metadataAnnotators = struct {
 	sync.RWMutex
-	entries map[string]MetadataAnnotator
+	entries   map[string]registeredMetadataAnnotator
+	nextToken uint64
 }{
-	entries: map[string]MetadataAnnotator{},
+	entries: map[string]registeredMetadataAnnotator{},
 }
 
 func RegisterMetadataAnnotator(name string, fn MetadataAnnotator) func() {
@@ -30,12 +38,20 @@ func RegisterMetadataAnnotator(name string, fn MetadataAnnotator) func() {
 		metadataAnnotators.Unlock()
 		panic(fmt.Errorf("outbound metadata annotator %q already registered", name))
 	}
-	metadataAnnotators.entries[name] = fn
+	if len(metadataAnnotators.entries) >= maxMetadataAnnotators {
+		metadataAnnotators.Unlock()
+		panic("outbound metadata annotator registry capacity exceeded")
+	}
+	metadataAnnotators.nextToken++
+	token := metadataAnnotators.nextToken
+	metadataAnnotators.entries[name] = registeredMetadataAnnotator{annotator: fn, token: token}
 	metadataAnnotators.Unlock()
 
 	return func() {
 		metadataAnnotators.Lock()
-		delete(metadataAnnotators.entries, name)
+		if current, ok := metadataAnnotators.entries[name]; ok && current.token == token {
+			delete(metadataAnnotators.entries, name)
+		}
 		metadataAnnotators.Unlock()
 	}
 }
@@ -51,7 +67,7 @@ func annotateMetadata(tx *gorm.DB, outbounds []map[string]interface{}) error {
 
 func ResetMetadataAnnotatorsForTest() {
 	metadataAnnotators.Lock()
-	metadataAnnotators.entries = map[string]MetadataAnnotator{}
+	metadataAnnotators.entries = map[string]registeredMetadataAnnotator{}
 	metadataAnnotators.Unlock()
 }
 
@@ -63,8 +79,8 @@ type metadataAnnotatorEntry struct {
 func metadataAnnotatorSnapshot() []metadataAnnotatorEntry {
 	metadataAnnotators.RLock()
 	entries := make([]metadataAnnotatorEntry, 0, len(metadataAnnotators.entries))
-	for name, fn := range metadataAnnotators.entries {
-		entries = append(entries, metadataAnnotatorEntry{name: name, fn: fn})
+	for name, registered := range metadataAnnotators.entries {
+		entries = append(entries, metadataAnnotatorEntry{name: name, fn: registered.annotator})
 	}
 	metadataAnnotators.RUnlock()
 

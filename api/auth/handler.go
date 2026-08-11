@@ -2,6 +2,7 @@
 package auth
 
 import (
+	"net/http"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -18,6 +19,7 @@ type Handler struct {
 	Audit                    func(*gin.Context, string, string, string, string, map[string]any)
 	LoginUser                func(*gin.Context) string
 	SetLoginUser             func(*gin.Context, string, int, string) error
+	SetLoginSecurity         func(*gin.Context, service.LoginSessionSpec) error
 	ClearSession             func(*gin.Context)
 	RemoteIP                 func(*gin.Context) string
 	CheckLoginRateLimit      func(string) error
@@ -25,6 +27,19 @@ type Handler struct {
 	ResetLoginFailures       func(string)
 	LoginRateLimitUserKey    func(string) string
 	LoginUsernameTarpitDelay func(string) time.Duration
+	RequireStepUp            func(*gin.Context, string, string) bool
+}
+
+func (a *Handler) requireStepUp(c *gin.Context, operation, target string) bool {
+	if a.RequireStepUp == nil {
+		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
+			"success": false,
+			"msg":     "A valid step-up grant is required",
+			"obj":     nil,
+		})
+		return false
+	}
+	return a.RequireStepUp(c, operation, target)
 }
 
 // Deps contains the host capabilities required by authentication routes.
@@ -38,6 +53,7 @@ type Deps struct {
 	Audit                    func(*gin.Context, string, string, string, string, map[string]any)
 	LoginUser                func(*gin.Context) string
 	SetLoginUser             func(*gin.Context, string, int, string) error
+	SetLoginSecurity         func(*gin.Context, service.LoginSessionSpec) error
 	ClearSession             func(*gin.Context)
 	RemoteIP                 func(*gin.Context) string
 	CheckLoginRateLimit      func(string) error
@@ -45,6 +61,7 @@ type Deps struct {
 	ResetLoginFailures       func(string)
 	LoginRateLimitUserKey    func(string) string
 	LoginUsernameTarpitDelay func(string) time.Duration
+	RequireStepUp            func(*gin.Context, string, string) bool
 	CSRF                     gin.HandlerFunc
 	ReloadTokensAfter        func(gin.HandlerFunc) gin.HandlerFunc
 }
@@ -64,6 +81,7 @@ func NewHandler(deps Deps) *Handler {
 		Audit:                    deps.Audit,
 		LoginUser:                deps.LoginUser,
 		SetLoginUser:             deps.SetLoginUser,
+		SetLoginSecurity:         deps.SetLoginSecurity,
 		ClearSession:             deps.ClearSession,
 		RemoteIP:                 deps.RemoteIP,
 		CheckLoginRateLimit:      deps.CheckLoginRateLimit,
@@ -71,6 +89,7 @@ func NewHandler(deps Deps) *Handler {
 		ResetLoginFailures:       deps.ResetLoginFailures,
 		LoginRateLimitUserKey:    deps.LoginRateLimitUserKey,
 		LoginUsernameTarpitDelay: deps.LoginUsernameTarpitDelay,
+		RequireStepUp:            deps.RequireStepUp,
 	}
 }
 

@@ -19,6 +19,7 @@ test('axe baseline for login and authenticated pages', async ({ page }) => {
     ['migrate-xui', 'migrate-xui'],
     ['settings', 'settings'],
     ['audit', 'audit'],
+	['deployment', 'deployment'],
   ] as const) {
     await page.goto(route)
     await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => undefined)

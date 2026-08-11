@@ -1,0 +1,34 @@
+[Unit]
+Description=Solovey UI (native-legacy-root compatibility)
+Documentation=https://github.com/MalenkiySolovey/S-UI
+After=network-online.target solovey-privileged-broker.socket solovey-privileged-proof.socket
+Wants=network-online.target
+Requires=solovey-privileged-broker.socket solovey-privileged-proof.socket
+StartLimitIntervalSec=60s
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=root
+Group=root
+WorkingDirectory=/usr/local/solovey-ui
+Environment=SUI_DB_FOLDER=/usr/local/solovey-ui/db
+Environment=SUI_COMPONENTS_INSTALLED_FILE=/usr/local/solovey-ui/components/installed.json
+EnvironmentFile=-/etc/solovey-ui/secretbox.env
+ExecStart=/usr/local/solovey-ui/releases/current/solovey-ui
+ExecReload=/bin/kill -HUP $MAINPID
+Restart=on-failure
+RestartSec=5s
+TimeoutStartSec=45s
+TimeoutStopSec=30s
+UMask=0077
+LimitNOFILE=1048576
+TasksMax=4096
+MemoryHigh=768M
+MemoryMax=1G
+CPUQuota=200%
+LogRateLimitIntervalSec=30s
+LogRateLimitBurst=200
+
+[Install]
+WantedBy=multi-user.target

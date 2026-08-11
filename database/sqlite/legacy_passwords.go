@@ -1,10 +1,13 @@
 package sqlite
 
 import (
+	"context"
+
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 
 	"gorm.io/gorm"
 )
@@ -37,11 +40,15 @@ func rehashLegacyPasswords(tx *gorm.DB) error {
 			}
 			continue
 		}
-		hashed, err := common.HashPassword(user.Password)
+		hashed, err := passwordutil.Hash(context.Background(), user.Password)
 		if err != nil {
 			return err
 		}
-		if err := tx.Model(model.User{}).Where("id = ?", user.Id).Update("password", hashed).Error; err != nil {
+		if err := tx.Model(model.User{}).Where("id = ?", user.Id).Updates(map[string]any{
+			"password":              hashed,
+			"password_hash_version": passwordutil.PolicyVersion,
+			"credential_generation": gorm.Expr("credential_generation + 1"),
+		}).Error; err != nil {
 			return err
 		}
 		logger.Infof("backup adapt: rehashed plaintext password for user %q", user.Username)
@@ -55,7 +62,7 @@ func isLegacyDefaultAdmin(user model.User) bool {
 
 func rotateLegacyDefaultAdminPassword(tx *gorm.DB, user model.User) error {
 	password := common.Random(24)
-	hashed, err := common.HashPassword(password)
+	hashed, err := passwordutil.Hash(context.Background(), password)
 	if err != nil {
 		return err
 	}
@@ -64,8 +71,11 @@ func rotateLegacyDefaultAdminPassword(tx *gorm.DB, user model.User) error {
 		return err
 	}
 	if err := tx.Model(model.User{}).Where("id = ?", user.Id).Updates(map[string]any{
-		"password":             hashed,
-		"force_password_reset": false,
+		"password":                hashed,
+		"force_password_reset":    true,
+		"password_policy_version": passwordutil.PolicyVersion,
+		"password_hash_version":   passwordutil.PolicyVersion,
+		"credential_generation":   gorm.Expr("credential_generation + 1"),
 	}).Error; err != nil {
 		return err
 	}

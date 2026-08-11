@@ -3,6 +3,7 @@
 package importxui
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -19,16 +20,33 @@ func WritePreImportBackup(now int64) (string, error) {
 	if now == 0 {
 		now = time.Now().Unix()
 	}
-	data, err := backup.Export("")
+	staged, cleanup, err := backup.PrepareExport("")
 	if err != nil {
 		return "", fmt.Errorf("xui-import: %w", err)
 	}
+	defer cleanup()
 	dir := filepath.Dir(configstorage.GetDBPath())
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", fmt.Errorf("xui-import: %w", err)
 	}
-	path := filepath.Join(dir, fmt.Sprintf("s-ui-pre-xui-import-%d.db", now))
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	path := ""
+	for suffix := 0; suffix < 100; suffix++ {
+		name := fmt.Sprintf("s-ui-pre-xui-import-%d.db", now)
+		if suffix > 0 {
+			name = fmt.Sprintf("s-ui-pre-xui-import-%d-%02d.db", now, suffix)
+		}
+		candidate := filepath.Join(dir, name)
+		if _, statErr := os.Lstat(candidate); os.IsNotExist(statErr) {
+			path = candidate
+			break
+		} else if statErr != nil {
+			return "", fmt.Errorf("xui-import: %w", statErr)
+		}
+	}
+	if path == "" {
+		return "", errors.New("xui-import: pre-import backup name inventory is exhausted")
+	}
+	if err := os.Rename(staged, path); err != nil {
 		return "", fmt.Errorf("xui-import: %w", err)
 	}
 	logger.Info("xui-import: pre-import backup saved to ", path)

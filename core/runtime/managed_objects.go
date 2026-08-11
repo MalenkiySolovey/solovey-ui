@@ -30,6 +30,20 @@ func (c *Core) AddInbound(config []byte) error {
 	if err != nil {
 		return err
 	}
+	record, recorded := inboundRuntimeRecord(rt.ctx, inbound_config, 0)
+	if !recorded {
+		_ = rt.inboundManager.Remove(inbound_config.Tag)
+		return common.NewError("record effective inbound")
+	}
+	c.access.Lock()
+	if c.isRunning && c.inboundManager == rt.inboundManager {
+		if c.effectiveInbounds == nil {
+			c.effectiveInbounds = make(map[string]InboundRuntimeRecord)
+		}
+		record.ManagerGeneration = c.managerGeneration
+		c.effectiveInbounds[inbound_config.Tag] = record
+	}
+	c.access.Unlock()
 
 	return nil
 }
@@ -40,7 +54,15 @@ func (c *Core) RemoveInbound(tag string) error {
 		return common.NewError("sing-box is not running")
 	}
 	logger.Info("remove inbound: ", tag)
-	return rt.inboundManager.Remove(tag)
+	if err := rt.inboundManager.Remove(tag); err != nil {
+		return err
+	}
+	c.access.Lock()
+	if c.effectiveInbounds != nil {
+		delete(c.effectiveInbounds, tag)
+	}
+	c.access.Unlock()
+	return nil
 }
 
 func (c *Core) AddOutbound(config []byte) error {

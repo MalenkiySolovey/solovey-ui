@@ -229,6 +229,8 @@ func performComponentTelegramBackupFullRequest(router *gin.Engine, method string
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if token != "" {
 		req.Header.Set("Authorization", "Bearer "+token)
+	} else if method != http.MethodGet && method != http.MethodHead && method != http.MethodOptions {
+		req.Header.Set("Origin", "http://example.com")
 	}
 	if csrf != "" {
 		req.Header.Set(csrfHeader, csrf)

@@ -16,10 +16,12 @@ import (
 )
 
 const (
-	xuiRequestWindow  = time.Minute
-	RequestLimit      = 5
-	xuiRequestTimeout = 10 * time.Minute
-	xuiRateMaxEntries = 4096
+	xuiRequestWindow   = time.Minute
+	RequestLimit       = 5
+	xuiRequestTimeout  = 10 * time.Minute
+	xuiRateMaxEntries  = 4096
+	xuiStepUpOperation = "backup.restore"
+	xuiStepUpTarget    = "database:compatible-import"
 )
 
 var xuiRequestRateLimiter = ratelimit.NewFixedWindow[string](xuiRequestWindow, RequestLimit, xuiRateMaxEntries, xuiRequestWindow)
@@ -46,6 +48,26 @@ func (a *Handler) beginRequest(c *gin.Context) (context.Context, context.CancelF
 	ctx, cancel := context.WithTimeout(c.Request.Context(), xuiRequestTimeout)
 	c.Request = c.Request.WithContext(ctx)
 	return ctx, cancel, true
+}
+
+func (a *Handler) requireMutationStepUp(c *gin.Context) bool {
+	if a.RequireStepUp == nil {
+		c.AbortWithStatusJSON(http.StatusForbidden, Envelope{
+			Success: false,
+			Msg:     "A valid step-up grant is required",
+		})
+		return false
+	}
+	if a.RequireStepUp(c, xuiStepUpOperation, xuiStepUpTarget) {
+		return true
+	}
+	if !c.IsAborted() {
+		c.AbortWithStatusJSON(http.StatusForbidden, Envelope{
+			Success: false,
+			Msg:     "A valid step-up grant is required",
+		})
+	}
+	return false
 }
 
 // extendSlowRequestDeadlines lifts the http.Server's 30s Read/Write timeouts

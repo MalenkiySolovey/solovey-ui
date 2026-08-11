@@ -20,6 +20,7 @@ type Manifest struct {
 	DefaultEnabled bool     `json:"defaultEnabled"`
 	TokenScopes    []string `json:"tokenScopes,omitempty"`
 	Frontend       Frontend `json:"frontend,omitempty"`
+	Database       Database `json:"database,omitempty"`
 }
 
 type Frontend struct {
@@ -27,8 +28,10 @@ type Frontend struct {
 }
 
 var idPattern = regexp.MustCompile(`^[a-z0-9-]+$`)
-var tokenScopePattern = regexp.MustCompile(`^[a-z0-9-]+$`)
+var tokenScopePattern = regexp.MustCompile(`^[a-z0-9-]+(?::[a-z0-9-]+)*$`)
 var frontendEntryPattern = regexp.MustCompile(`^(frontend|src)/[A-Za-z0-9_./-]+\.(ts|vue)$`)
+var databaseTablePattern = regexp.MustCompile(`^[a-z][a-z0-9_]{0,95}$`)
+var durableKeyPattern = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9_.:-]{0,127}$`)
 
 func ValidateID(id string) error {
 	if !idPattern.MatchString(id) {
@@ -57,7 +60,7 @@ func (m Manifest) Validate() error {
 			return fmt.Errorf("component %q token scope must not be empty", m.ID)
 		}
 		if !tokenScopePattern.MatchString(scope) {
-			return fmt.Errorf("component %q token scope %q must match ^[a-z0-9-]+$", m.ID, scope)
+			return fmt.Errorf("component %q token scope %q must use lowercase alphanumeric, dash and colon-separated segments", m.ID, scope)
 		}
 	}
 	for _, entry := range m.Frontend.Entries {
@@ -68,5 +71,12 @@ func (m Manifest) Validate() error {
 			return fmt.Errorf("component %q frontend entry %q must be a frontend/*.ts, frontend/*.vue, src/*.ts, or src/*.vue module", m.ID, entry)
 		}
 	}
-	return nil
+	return m.Database.Validate(m.ID, m.Version)
+}
+
+// Normalized returns the canonical manifest stored in the installed-owner
+// catalog. JSON and programmatic registrations have identical checksums.
+func (m Manifest) Normalized() Manifest {
+	m.Database = m.Database.Normalized(m.Version)
+	return m
 }

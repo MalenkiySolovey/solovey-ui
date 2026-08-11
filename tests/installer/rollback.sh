@@ -14,6 +14,10 @@ INSTALL_DIR="${TARGET}/usr/local/solovey-ui"
 ENV_DIR="${TARGET}/etc/solovey-ui"
 SERVICE_FILE="${TARGET}/etc/systemd/system/solovey-ui.service"
 CLI_PATH="${TARGET}/usr/bin/solovey-ui"
+SYSTEMD_UNIT_ROOT="${TARGET}/etc/systemd/system"
+SYSTEMD_PROFILE_ROOT="${TARGET}/usr/local/lib/solovey-ui/systemd"
+HARDENED_DATA_ROOT="${TARGET}/var/lib/solovey-ui"
+BROKER_STATE_ROOT="${TARGET}/var/lib/solovey-ui-broker"
 
 mkdir -p "${FAKEBIN}" "${LOG_DIR}" "${INSTALL_DIR}/db" "${ENV_DIR}" "$(dirname "${SERVICE_FILE}")" "$(dirname "${CLI_PATH}")"
 
@@ -37,6 +41,10 @@ write_fake_tools() {
 #!/usr/bin/env bash
 set -Eeuo pipefail
 printf '%s\n' "$*" >> "${TEST_INSTALLER_LOG}/systemctl.log"
+if [[ "${1:-}" == "--version" ]]; then
+    echo "systemd 255 (255.1-test)"
+    exit 0
+fi
 exit 0
 SH
 
@@ -81,18 +89,31 @@ SH
         printf 'sing_box=v-current\n'
     } > "${INSTALL_DIR}/BUILD_INFO.txt"
     chmod +x "${INSTALL_DIR}/solovey-ui" "${INSTALL_DIR}/solovey-ui.sh" "${CLI_PATH}"
+	mkdir -p "${HARDENED_DATA_ROOT}/db" "${SYSTEMD_PROFILE_ROOT}"
+	printf 'current hardened db\n' > "${HARDENED_DATA_ROOT}/db/solovey-ui.db"
+	printf 'current hardened profile\n' > "${SYSTEMD_PROFILE_ROOT}/solovey-ui-native-hardened.service"
+	for unit in solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket; do
+		printf 'current %s\n' "${unit}" > "${SYSTEMD_UNIT_ROOT}/${unit}"
+	done
 }
 
 create_backup() {
     local backup="${BACKUP_ROOT}/20260101T000000Z"
 
-    mkdir -p "${backup}/app/db" "${backup}/etc"
+    mkdir -p "${backup}/app/db" "${backup}/etc" "${backup}/hardened-data/db" "${backup}/systemd-assets/profiles" "${backup}/systemd-assets/units"
     printf 'restored db\n' > "${backup}/app/db/solovey-ui.db"
     printf '#!/usr/bin/env bash\necho restored manager\n' > "${backup}/app/solovey-ui.sh"
     printf '#!/usr/bin/env bash\necho restored binary\n' > "${backup}/app/solovey-ui"
     chmod +x "${backup}/app/solovey-ui.sh" "${backup}/app/solovey-ui"
     printf 'restored env\n' > "${backup}/etc/secretbox.env"
     printf 'restored service\n' > "${backup}/solovey-ui.service"
+	printf 'restored hardened db\n' > "${backup}/hardened-data/db/solovey-ui.db"
+	printf 'restored hardened profile\n' > "${backup}/systemd-assets/profiles/solovey-ui-native-hardened.service"
+	printf 'profiles=present\n' > "${backup}/systemd-assets/inventory.txt"
+	for unit in solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket; do
+		printf 'restored %s\n' "${unit}" > "${backup}/systemd-assets/units/${unit}"
+		printf '%s=present\n' "${unit}" >> "${backup}/systemd-assets/inventory.txt"
+	done
     cat > "${backup}/manifest.txt" <<EOF
 app=solovey-ui
 created_at=20260101T000000Z
@@ -111,6 +132,10 @@ run_rollback() {
     SOLOVEY_UI_INSTALL_DIR="${INSTALL_DIR}" \
     SOLOVEY_UI_CLI_PATH="${CLI_PATH}" \
     SOLOVEY_UI_SYSTEMD_SERVICE="${SERVICE_FILE}" \
+	SOLOVEY_UI_SYSTEMD_UNIT_ROOT="${SYSTEMD_UNIT_ROOT}" \
+	SOLOVEY_UI_SYSTEMD_PROFILE_ROOT="${SYSTEMD_PROFILE_ROOT}" \
+	SOLOVEY_UI_HARDENED_DATA_ROOT="${HARDENED_DATA_ROOT}" \
+	SOLOVEY_UI_BROKER_STATE_ROOT="${BROKER_STATE_ROOT}" \
     SOLOVEY_UI_ENV_DIR="${ENV_DIR}" \
     SOLOVEY_UI_BACKUP_ROOT="${BACKUP_ROOT}" \
     "${BASH:-bash}" "${ROOT}/solovey-ui.sh" rollback "${requested}"
@@ -129,6 +154,10 @@ run_doctor() {
     SOLOVEY_UI_INSTALL_DIR="${INSTALL_DIR}" \
     SOLOVEY_UI_CLI_PATH="${CLI_PATH}" \
     SOLOVEY_UI_SYSTEMD_SERVICE="${SERVICE_FILE}" \
+	SOLOVEY_UI_SYSTEMD_UNIT_ROOT="${SYSTEMD_UNIT_ROOT}" \
+	SOLOVEY_UI_SYSTEMD_PROFILE_ROOT="${SYSTEMD_PROFILE_ROOT}" \
+	SOLOVEY_UI_HARDENED_DATA_ROOT="${HARDENED_DATA_ROOT}" \
+	SOLOVEY_UI_BROKER_STATE_ROOT="${BROKER_STATE_ROOT}" \
     SOLOVEY_UI_ENV_DIR="${ENV_DIR}" \
     SOLOVEY_UI_BACKUP_ROOT="${BACKUP_ROOT}" \
     "${BASH:-bash}" "${ROOT}/solovey-ui.sh" doctor > "${LOG_DIR}/doctor.out"
@@ -160,6 +189,9 @@ assert_rollback() {
     assert_contains "${ENV_DIR}/secretbox.env" '^restored env$'
     assert_contains "${SERVICE_FILE}" '^restored service$'
     assert_contains "${CLI_PATH}" 'restored manager'
+	assert_contains "${HARDENED_DATA_ROOT}/db/solovey-ui.db" '^restored hardened db$'
+	assert_contains "${SYSTEMD_PROFILE_ROOT}/solovey-ui-native-hardened.service" '^restored hardened profile$'
+	assert_contains "${SYSTEMD_UNIT_ROOT}/solovey-privileged-broker.service" '^restored solovey-privileged-broker.service$'
 
     assert_contains "${LOG_DIR}/systemctl.log" '^stop solovey-ui$'
     assert_contains "${LOG_DIR}/systemctl.log" '^daemon-reload$'
@@ -174,6 +206,8 @@ assert_rollback() {
     assert_contains "${safety_backup}/app/db/solovey-ui.db" '^current db$'
     assert_contains "${safety_backup}/etc/secretbox.env" '^SUI_SECRETBOX_KEY=current-secret$'
     assert_contains "${safety_backup}/solovey-ui.service" '^current service$'
+	assert_contains "${safety_backup}/hardened-data/db/solovey-ui.db" '^current hardened db$'
+	assert_contains "${safety_backup}/systemd-assets/profiles/solovey-ui-native-hardened.service" '^current hardened profile$'
 }
 
 assert_failed_restore_leaves_current_install() {

@@ -27,6 +27,13 @@ func TestConfigCoreMethodsHandleNilCore(t *testing.T) {
 	}
 }
 
+func TestNilConfigServiceDoesNotFabricateInboundControl(t *testing.T) {
+	var configService *ConfigService
+	if control := configService.CoreInboundControl(); control != nil {
+		t.Fatal("nil config service fabricated a process-global inbound control")
+	}
+}
+
 func TestGetConfigPreservesTopLevelCertificateAndUnknownFields(t *testing.T) {
 	initSettingTestDB(t)
 

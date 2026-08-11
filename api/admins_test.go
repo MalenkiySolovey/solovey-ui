@@ -46,7 +46,7 @@ func TestAdminCreateDeleteFlowRequiresCurrentPasswordAndAudits(t *testing.T) {
 	loginAdminFlowUser(t, router, adminJar, "admin", "current-password")
 	csrf := adminFlowCSRFToken(t, router, adminJar)
 
-	deniedCreate := adminFlowPost(t, router, adminJar, csrf, "/api/addAdmin", url.Values{
+	deniedCreate := adminFlowPost(t, router, adminJar, csrf, "", "/api/addAdmin", url.Values{
 		"currentPass": {"wrong-password"},
 		"username":    {"denied-admin"},
 		"password":    {"denied-password"},
@@ -58,13 +58,14 @@ func TestAdminCreateDeleteFlowRequiresCurrentPasswordAndAudits(t *testing.T) {
 		t.Fatal("wrong current password should not create an admin")
 	}
 
-	create := adminFlowPost(t, router, adminJar, csrf, "/api/addAdmin", url.Values{
+	createGrant, csrf := adminFlowStepUp(t, router, adminJar, "current-password", "admin.create", "new-admin:new-admin")
+	create := adminFlowPost(t, router, adminJar, csrf, createGrant, "/api/addAdmin", url.Values{
 		"currentPass": {"current-password"},
 		"username":    {"new-admin"},
-		"password":    {"new-secret"},
+		"password":    {"new-secret-value"},
 	})
 	assertAdminFlowMsgSuccess(t, create, true)
-	if strings.Contains(create.Body.String(), "new-secret") || strings.Contains(create.Body.String(), "current-password") {
+	if strings.Contains(create.Body.String(), "new-secret-value") || strings.Contains(create.Body.String(), "current-password") {
 		t.Fatalf("create response leaked credentials: %s", create.Body.String())
 	}
 	var created model.User
@@ -81,7 +82,8 @@ func TestAdminCreateDeleteFlowRequiresCurrentPasswordAndAudits(t *testing.T) {
 	if err := dbsqlite.DB().Where("username = ?", "admin").First(&admin).Error; err != nil {
 		t.Fatal(err)
 	}
-	selfDelete := adminFlowPost(t, router, adminJar, csrf, "/api/deleteAdmin", url.Values{
+	selfGrant, csrf := adminFlowStepUp(t, router, adminJar, "current-password", "admin.delete", "user:"+strconv.FormatUint(uint64(admin.Id), 10))
+	selfDelete := adminFlowPost(t, router, adminJar, csrf, selfGrant, "/api/deleteAdmin", url.Values{
 		"currentPass": {"current-password"},
 		"id":          {strconv.FormatUint(uint64(admin.Id), 10)},
 	})
@@ -92,7 +94,8 @@ func TestAdminCreateDeleteFlowRequiresCurrentPasswordAndAudits(t *testing.T) {
 		t.Fatal("self delete must not remove the current admin")
 	}
 
-	deleteTarget := adminFlowPost(t, router, adminJar, csrf, "/api/deleteAdmin", url.Values{
+	deleteGrant, csrf := adminFlowStepUp(t, router, adminJar, "current-password", "admin.delete", "user:"+strconv.FormatUint(uint64(target.Id), 10))
+	deleteTarget := adminFlowPost(t, router, adminJar, csrf, deleteGrant, "/api/deleteAdmin", url.Values{
 		"currentPass": {"current-password"},
 		"id":          {strconv.FormatUint(uint64(target.Id), 10)},
 	})
@@ -125,7 +128,7 @@ func TestAdminCreateDeleteFlowRequiresCurrentPasswordAndAudits(t *testing.T) {
 	deletedAudit := assertIntegrationAuditEvent(t, "admin_deleted", "admin")
 	for _, event := range []model.AuditEvent{createdAudit, deletedAudit} {
 		details := string(event.Details)
-		for _, secret := range []string{"current-password", "target-password", "new-secret", targetToken} {
+		for _, secret := range []string{"current-password", "target-password", "new-secret-value", targetToken} {
 			if strings.Contains(details, secret) {
 				t.Fatalf("audit details leaked secret %q: %s", secret, details)
 			}
@@ -145,12 +148,15 @@ func newAdminFlowRouter(t *testing.T) (*gin.Engine, *APIv2Handler) {
 
 func loginAdminFlowUser(t *testing.T, router *gin.Engine, jar *integrationCookieJar, username string, password string) {
 	t.Helper()
+	csrf := adminFlowCSRFToken(t, router, jar)
 	loginForm := url.Values{}
 	loginForm.Set("user", username)
 	loginForm.Set("pass", password)
 	req := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(loginForm.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set("Origin", "http://example.com")
+	req.Header.Set(csrfHeader, csrf)
 	recorder := performIntegrationRequest(router, req, jar)
 	assertAdminFlowMsgSuccess(t, recorder, true)
 }
@@ -163,12 +169,44 @@ func adminFlowCSRFToken(t *testing.T, router *gin.Engine, jar *integrationCookie
 	return integrationCSRFToken(t, recorder)
 }
 
-func adminFlowPost(t *testing.T, router *gin.Engine, jar *integrationCookieJar, csrf string, path string, form url.Values) *httptest.ResponseRecorder {
+func adminFlowStepUp(t *testing.T, router *gin.Engine, jar *integrationCookieJar, credential, operation, target string) (string, string) {
+	t.Helper()
+	csrf := adminFlowCSRFToken(t, router, jar)
+	payload, err := json.Marshal(issueStepUpRequest{
+		Method:        "password",
+		Credential:    credential,
+		OperationKind: operation,
+		TargetDigest:  securityTargetDigest(target),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/security/step-up", strings.NewReader(string(payload)))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Requested-With", "XMLHttpRequest")
+	req.Header.Set(csrfHeader, csrf)
+	recorder := performIntegrationRequest(router, req, jar)
+	msg := assertAdminFlowMsgSuccess(t, recorder, true)
+	obj, ok := msg.Obj.(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected step-up payload: %#v", msg.Obj)
+	}
+	token, ok := obj["token"].(string)
+	if !ok || token == "" {
+		t.Fatalf("step-up token missing: %#v", msg.Obj)
+	}
+	return token, adminFlowCSRFToken(t, router, jar)
+}
+
+func adminFlowPost(t *testing.T, router *gin.Engine, jar *integrationCookieJar, csrf, stepUpToken, path string, form url.Values) *httptest.ResponseRecorder {
 	t.Helper()
 	req := httptest.NewRequest(http.MethodPost, path, strings.NewReader(form.Encode()))
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 	req.Header.Set(csrfHeader, csrf)
+	if stepUpToken != "" {
+		req.Header.Set(stepUpHeader, stepUpToken)
+	}
 	return performIntegrationRequest(router, req, jar)
 }
 

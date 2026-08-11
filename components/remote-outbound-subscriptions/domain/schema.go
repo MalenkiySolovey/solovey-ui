@@ -4,7 +4,8 @@ package remote
 
 import (
 	"fmt"
-	"strings"
+
+	"github.com/MalenkiySolovey/solovey-ui/database/sqliteident"
 
 	"gorm.io/gorm"
 )
@@ -89,7 +90,7 @@ func ensureTableSortOrder(db *gorm.DB, table string) error {
 	if !db.Migrator().HasTable(table) || !db.Migrator().HasColumn(table, "sort_order") {
 		return nil
 	}
-	quotedTable := quoteSQLiteIdentifier(table)
+	quotedTable := sqliteident.Quote(table)
 	rows := []struct {
 		ID        int64
 		SortOrder int
@@ -116,8 +117,4 @@ func ensureTableSortOrder(db *gorm.DB, table string) error {
 		}
 		return nil
 	})
-}
-
-func quoteSQLiteIdentifier(identifier string) string {
-	return `"` + strings.ReplaceAll(identifier, `"`, `""`) + `"`
 }

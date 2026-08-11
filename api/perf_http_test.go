@@ -38,7 +38,7 @@ func BenchmarkAPI_Onlines(b *testing.B) {
 
 func BenchmarkAPI_Save(b *testing.B) {
 	router := newAPIPerfRouter(b)
-	payload, err := json.Marshal(map[string]string{"subTitle": "phase5"})
+	payload, err := json.Marshal(map[string]string{"subTitle": "benchmark"})
 	if err != nil {
 		b.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func BenchmarkAPI_Save(b *testing.B) {
 	}
 }
 
-func TestAPIHTTPLoadScenariosPhase5(t *testing.T) {
+func TestAPIHTTPLoadScenarios(t *testing.T) {
 	router := newAPIPerfRouter(t)
 	for _, path := range []string{
 		"/load",
@@ -73,7 +73,7 @@ func TestAPIHTTPLoadScenariosPhase5(t *testing.T) {
 			if statuses[http.StatusOK] != 1000 {
 				t.Fatalf("%s statuses=%v", path, statuses)
 			}
-			t.Logf("phase5 http load anchor: path=%s parallel=100 requests=1000 statuses=%v", path, statuses)
+			t.Logf("http load anchor: path=%s parallel=100 requests=1000 statuses=%v", path, statuses)
 		})
 	}
 }
@@ -177,7 +177,7 @@ func seedAPIPerfData(tb testing.TB) {
 			Event:    "panel_import",
 			Resource: "database",
 			Severity: service.AuditSeverityInfo,
-			Details:  []byte(`{"phase":"5"}`),
+			Details:  []byte(`{"scenario":"load"}`),
 		}
 	}
 	if err := dbsqlite.DB().CreateInBatches(&events, dbsqlite.BatchSize(dbsqlite.DB(), &model.AuditEvent{})).Error; err != nil {

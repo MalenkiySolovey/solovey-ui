@@ -38,18 +38,26 @@ var telegramActions = struct {
 	sync.RWMutex
 	broadcast BroadcastFunc
 	refund    RefundFunc
+	token     uint64
 }{}
 
 func RegisterTelegramActions(broadcast BroadcastFunc, refund RefundFunc) func() {
 	telegramActions.Lock()
+	telegramActions.token++
+	token := telegramActions.token
 	telegramActions.broadcast = broadcast
 	telegramActions.refund = refund
 	telegramActions.Unlock()
+	var once sync.Once
 	return func() {
-		telegramActions.Lock()
-		telegramActions.broadcast = nil
-		telegramActions.refund = nil
-		telegramActions.Unlock()
+		once.Do(func() {
+			telegramActions.Lock()
+			if telegramActions.token == token {
+				telegramActions.broadcast = nil
+				telegramActions.refund = nil
+			}
+			telegramActions.Unlock()
+		})
 	}
 }
 

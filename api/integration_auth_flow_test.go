@@ -29,12 +29,12 @@ func TestIntegrationAuthFlowLoginCSRFSaveSettingsPublishesRealtime(t *testing.T)
 	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "webPath").Update("value", "/").Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := (&service.UserService{}).UpdateFirstUser("admin", "phase3-password"); err != nil {
+	if err := (&service.UserService{}).UpdateFirstUser("admin", "integration-password-value"); err != nil {
 		t.Fatal(err)
 	}
 
-	realtime.CloseAll("phase3_auth_reset")
-	t.Cleanup(func() { realtime.CloseAll("phase3_auth_done") })
+	realtime.CloseAll("integration_auth_reset")
+	t.Cleanup(func() { realtime.CloseAll("integration_auth_done") })
 	events := make(chan realtime.Event, 4)
 	unregister := realtime.Register(&realtime.ClientHandle{
 		User:   "admin",
@@ -48,12 +48,17 @@ func TestIntegrationAuthFlowLoginCSRFSaveSettingsPublishesRealtime(t *testing.T)
 	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
 	NewAPIHandler(router.Group("/api"), nil)
 	jar := integrationCookieJar{}
+	preauthCSRFReq := httptest.NewRequest(http.MethodGet, "/api/csrf", nil)
+	preauthCSRFRecorder := performIntegrationRequest(router, preauthCSRFReq, &jar)
+	preauthCSRFToken := integrationCSRFToken(t, preauthCSRFRecorder)
 
 	loginForm := url.Values{}
 	loginForm.Set("user", "admin")
-	loginForm.Set("pass", "phase3-password")
+	loginForm.Set("pass", "integration-password-value")
 	loginReq := httptest.NewRequest(http.MethodPost, "/api/login", strings.NewReader(loginForm.Encode()))
 	loginReq.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	loginReq.Header.Set("Origin", "http://example.com")
+	loginReq.Header.Set(csrfHeader, preauthCSRFToken)
 	loginRecorder := performIntegrationRequest(router, loginReq, &jar)
 	if loginRecorder.Code != http.StatusOK {
 		t.Fatalf("login returned %d body=%s", loginRecorder.Code, loginRecorder.Body.String())
@@ -68,7 +73,7 @@ func TestIntegrationAuthFlowLoginCSRFSaveSettingsPublishesRealtime(t *testing.T)
 	csrfToken := integrationCSRFToken(t, csrfRecorder)
 
 	payload, err := json.Marshal(map[string]string{
-		"subPath": "/phase3-sub/",
+		"subPath": "/integration-sub/",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -184,6 +189,9 @@ func (j *integrationCookieJar) store(cookies []*http.Cookie) {
 }
 
 func performIntegrationRequest(router *gin.Engine, req *http.Request, jar *integrationCookieJar) *httptest.ResponseRecorder {
+	if csrfProtectedMethod(req.Method) && req.Header.Get("Origin") == "" {
+		req.Header.Set("Origin", "http://example.com")
+	}
 	if jar != nil {
 		jar.addTo(req)
 	}

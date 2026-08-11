@@ -36,6 +36,8 @@ type Handler struct {
 	SettingService service.SettingService
 	LoginUser      func(*gin.Context) string
 	RemoteIP       func(*gin.Context) string
+	SessionBinding func(*gin.Context) (service.RealtimeSessionBinding, bool)
+	SessionValid   func(service.RealtimeSessionBinding) bool
 	Scope          func(*gin.Context) realtime.Scope
 	Audit          func(*gin.Context, string, string, string, string, map[string]any)
 	JSONObj        func(*gin.Context, interface{}, error)
@@ -93,8 +95,15 @@ func (a *Handler) realtimeWS(c *gin.Context, config Config) {
 	if legacyProtocol {
 		a.recordLegacyProtocolOnce(c, user)
 	}
-	tokenUser, ok := consumeWSToken(token)
-	if !ok || tokenUser == "" || tokenUser != user {
+	tokenBinding, ok := consumeBoundWSToken(token)
+	requestBindingMatches := true
+	if a.SessionBinding != nil {
+		requestBinding, requestBindingOK := a.SessionBinding(c)
+		requestBindingMatches = requestBindingOK && sameRealtimeSessionBinding(tokenBinding, requestBinding)
+	}
+	if !ok || tokenBinding.Username == "" || tokenBinding.Username != user ||
+		!requestBindingMatches ||
+		(a.SessionValid != nil && !a.SessionValid(tokenBinding)) {
 		c.Status(http.StatusUnauthorized)
 		return
 	}
@@ -114,10 +123,11 @@ func (a *Handler) realtimeWS(c *gin.Context, config Config) {
 	}
 	sendCh := make(chan realtime.Event, wsQueueSize)
 	unregister := realtime.Register(&realtime.ClientHandle{
-		User:   user,
-		IP:     ip,
-		Scope:  a.Scope(c),
-		SendCh: sendCh,
+		User:       user,
+		IP:         ip,
+		SessionRef: tokenBinding.SessionRef,
+		Scope:      a.Scope(c),
+		SendCh:     sendCh,
 		OnDrop: func(reason string) {
 			code := wsCloseAuth
 			if reason == "slow" {
@@ -147,8 +157,16 @@ func (a *Handler) realtimeWS(c *gin.Context, config Config) {
 		return
 	}
 	for {
+		authTimer := time.NewTimer(5 * time.Second)
 		select {
 		case event := <-sendCh:
+			if !authTimer.Stop() {
+				<-authTimer.C
+			}
+			if a.SessionValid != nil && !a.SessionValid(tokenBinding) {
+				_ = conn.Close(wsCloseAuth, "session_invalid")
+				return
+			}
 			payload := event.Frame()
 			if len(payload) == 0 {
 				payload, _ = json.Marshal(event)
@@ -159,10 +177,30 @@ func (a *Handler) realtimeWS(c *gin.Context, config Config) {
 			if err != nil {
 				return
 			}
+		case <-authTimer.C:
+			if a.SessionValid != nil && !a.SessionValid(tokenBinding) {
+				_ = conn.Close(wsCloseAuth, "session_invalid")
+				return
+			}
 		case <-wsCtx.Done():
+			if !authTimer.Stop() {
+				select {
+				case <-authTimer.C:
+				default:
+				}
+			}
 			return
 		}
 	}
+}
+
+func sameRealtimeSessionBinding(ticket, request service.RealtimeSessionBinding) bool {
+	return ticket.UserID != 0 && ticket.UserID == request.UserID &&
+		ticket.Username != "" && ticket.Username == request.Username &&
+		ticket.SessionRef != "" && ticket.SessionRef == request.SessionRef &&
+		ticket.SessionGenerationRevision != "" && ticket.SessionGenerationRevision == request.SessionGenerationRevision &&
+		ticket.CredentialGeneration != 0 && ticket.CredentialGeneration == request.CredentialGeneration &&
+		ticket.MFAGeneration != 0 && ticket.MFAGeneration == request.MFAGeneration
 }
 
 func startWSHeartbeat(ctx context.Context, conn *websocket.Conn, config Config) <-chan struct{} {

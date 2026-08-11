@@ -1,6 +1,6 @@
 param(
     [string]$Root = ".",
-    [string]$OutDir = "tests/baseline/phase8"
+    [string]$OutDir = "tests/baseline/current"
 )
 
 $ErrorActionPreference = "Stop"
@@ -51,18 +51,16 @@ function Get-XmlIntAttr {
     return 0
 }
 
-function Get-Phase {
+function Get-ResultGroup {
     param([string]$Path)
     $relative = Get-RelativePathCompat $baselineDir $Path
     foreach ($part in ($relative -split '[\\/]')) {
-        if ($part -match '^phase\d+') {
-            return $part
-        }
+        return $part
     }
     return "unknown"
 }
 
-$phaseMap = @{}
+$groupMap = @{}
 $files = @()
 $totals = [ordered]@{ tests = 0; green = 0; red = 0; skipped = 0; xfail = 0 }
 
@@ -103,13 +101,13 @@ foreach ($file in $junitFiles) {
     $xfail = Count-Matches ($xmlText + "`n" + $txtText) "\b(XFAIL|expected[- ]fail|fixme)\b"
     $red = $failures + $errors
     $green = [Math]::Max(0, $tests - $red - $skipped)
-    $phase = Get-Phase $file.FullName
+    $group = Get-ResultGroup $file.FullName
 
-    if (-not $phaseMap.ContainsKey($phase)) {
-        $phaseMap[$phase] = [ordered]@{ phase = $phase; tests = 0; green = 0; red = 0; skipped = 0; xfail = 0; files = 0 }
+    if (-not $groupMap.ContainsKey($group)) {
+        $groupMap[$group] = [ordered]@{ group = $group; tests = 0; green = 0; red = 0; skipped = 0; xfail = 0; files = 0 }
     }
 
-    $bucket = $phaseMap[$phase]
+    $bucket = $groupMap[$group]
     $bucket.tests += $tests
     $bucket.green += $green
     $bucket.red += $red
@@ -124,7 +122,7 @@ foreach ($file in $junitFiles) {
     $totals.xfail += $xfail
 
     $files += [ordered]@{
-        phase = $phase
+        group = $group
         file = (Get-RelativePathCompat $rootPath $file.FullName).Replace("\", "/")
         tests = $tests
         green = $green
@@ -147,7 +145,7 @@ $baselineMarkers = [ordered]@{
     xfail = Count-Matches $summaryText "\bXFAIL\b"
 }
 
-$phases = $phaseMap.Values | Sort-Object phase
+$groups = $groupMap.Values | Sort-Object group
 $result = [ordered]@{
     generatedAt = (Get-Date).ToUniversalTime().ToString("o")
     root = $rootPath
@@ -160,7 +158,7 @@ $result = [ordered]@{
         skipped = $totals.skipped - $baselineMarkers.skipped
         xfail = $totals.xfail - $baselineMarkers.xfail
     }
-    phases = @($phases)
+    groups = @($groups)
     files = @($files)
 }
 
@@ -170,8 +168,8 @@ $junitPath = Join-Path $outputDir "aggregate.junit.xml"
 
 $result | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $jsonPath -Encoding UTF8
 
-$rows = foreach ($phase in $phases) {
-    "<tr><td>$($phase.phase)</td><td>$($phase.files)</td><td>$($phase.tests)</td><td class=`"green`">$($phase.green)</td><td class=`"red`">$($phase.red)</td><td>$($phase.skipped)</td><td>$($phase.xfail)</td></tr>"
+$rows = foreach ($group in $groups) {
+    "<tr><td>$($group.group)</td><td>$($group.files)</td><td>$($group.tests)</td><td class=`"green`">$($group.green)</td><td class=`"red`">$($group.red)</td><td>$($group.skipped)</td><td>$($group.xfail)</td></tr>"
 }
 
 $html = @"
@@ -195,7 +193,7 @@ $html = @"
   <p class="meta">Generated at $($result.generatedAt)</p>
   <p>Totals: <span class="green">$($totals.green) green</span>, <span class="red">$($totals.red) red</span>, $($totals.skipped) skipped, $($totals.xfail) XFAIL markers.</p>
   <table>
-    <thead><tr><th>Phase</th><th>JUnit files</th><th>Tests</th><th>Green</th><th>Red</th><th>Skipped</th><th>XFAIL markers</th></tr></thead>
+    <thead><tr><th>Group</th><th>JUnit files</th><th>Tests</th><th>Green</th><th>Red</th><th>Skipped</th><th>XFAIL markers</th></tr></thead>
     <tbody>$($rows -join "`n")</tbody>
   </table>
 </body>
@@ -207,7 +205,7 @@ Set-Content -LiteralPath $htmlPath -Value $html -Encoding UTF8
 $junit = @"
 <?xml version="1.0" encoding="UTF-8"?>
 <testsuite name="audit-aggregate" tests="1" failures="0" errors="0" skipped="0">
-  <testcase classname="audit.phase8" name="aggregate" />
+  <testcase classname="audit.aggregate" name="aggregate" />
 </testsuite>
 "@
 Set-Content -LiteralPath $junitPath -Value $junit -Encoding UTF8

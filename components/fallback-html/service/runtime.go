@@ -18,11 +18,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/security"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/ratelimit"
-	"github.com/MalenkiySolovey/solovey-ui/web/publicsurface"
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
 )
@@ -304,6 +304,13 @@ func (r *Runtime) serveHTTPPublic(w http.ResponseWriter, req *http.Request) {
 		http.NotFound(w, req)
 		return
 	}
+	started := time.Now()
+	observed := &observationResponseWriter{ResponseWriter: w}
+	r.serveHTTPPublicResponse(observed, req, snap)
+	emitHTTPObservation(req, observed.statusCode(), observed.bytes, snap.siteID, time.Since(started))
+}
+
+func (r *Runtime) serveHTTPPublicResponse(w http.ResponseWriter, req *http.Request, snap *snapshot) {
 	if !r.allowHTTPPublicRequest(w, req, snap.csp) {
 		return
 	}
@@ -315,6 +322,12 @@ func (r *Runtime) serveHTTPPublic(w http.ResponseWriter, req *http.Request) {
 	if err != nil || fallbackdomain.IsReservedPublicPath(path, nil) {
 		http.NotFound(w, req)
 		return
+	}
+	if req.Method == http.MethodPost && path == "/" {
+		if file, ok := snap.pages["/"]; ok {
+			r.writeHTTPFile(w, req, file, http.StatusOK, snap.csp)
+			return
+		}
 	}
 	if req.Method != http.MethodGet && req.Method != http.MethodHead {
 		w.WriteHeader(http.StatusMethodNotAllowed)
@@ -404,7 +417,13 @@ func setPublicHTTPHeaders(w http.ResponseWriter, csp string) {
 }
 
 func (r *Runtime) ServePublic(c *gin.Context, ctx publicsurface.Context) bool {
-	return r.servePublic(c, ctx, true)
+	snap := r.snapshot.Load().(*snapshot)
+	started := time.Now()
+	handled := r.servePublic(c, ctx, true)
+	if handled && snap != nil {
+		emitGinObservation(c, snap.siteID, time.Since(started))
+	}
+	return handled
 }
 
 func (r *Runtime) servePublic(c *gin.Context, ctx publicsurface.Context, enforceRateLimit bool) bool {
@@ -446,6 +465,10 @@ func (r *Runtime) servePublic(c *gin.Context, ctx publicsurface.Context, enforce
 			return false
 		}
 		r.serveFile(c, snap.notFound, http.StatusNotFound, snap.csp)
+		return true
+	}
+	if c.Request.Method == http.MethodPost && path == "/" {
+		r.serveFile(c, file, http.StatusOK, snap.csp)
 		return true
 	}
 	if c.Request.Method != http.MethodGet && c.Request.Method != http.MethodHead {
@@ -566,7 +589,7 @@ func publicSiteCSP(resources []fallbackdomain.ExternalResource) string {
 	return "default-src 'self'; base-uri 'none'; object-src 'none'; frame-ancestors 'none'; img-src " +
 		strings.Join(imgSrc, " ") +
 		"; font-src " + strings.Join(fontSrc, " ") +
-		"; style-src 'self' 'unsafe-inline'; script-src 'none'; connect-src 'none'; frame-src 'none'; form-action 'self'"
+		"; style-src 'self' 'unsafe-inline'; script-src 'self'; connect-src 'none'; frame-src 'none'; form-action 'none'"
 }
 
 func externalOrigin(value string) string {
@@ -601,4 +624,72 @@ func (r *Runtime) Shutdown(ctx context.Context) error {
 	case <-done:
 		return nil
 	}
+}
+
+type observationResponseWriter struct {
+	http.ResponseWriter
+	status int
+	bytes  int64
+}
+
+func (w *observationResponseWriter) WriteHeader(status int) {
+	if w.status == 0 {
+		w.status = status
+	}
+	w.ResponseWriter.WriteHeader(status)
+}
+
+func (w *observationResponseWriter) Write(data []byte) (int, error) {
+	if w.status == 0 {
+		w.status = http.StatusOK
+	}
+	written, err := w.ResponseWriter.Write(data)
+	w.bytes += int64(written)
+	return written, err
+}
+
+func (w *observationResponseWriter) statusCode() int {
+	if w.status == 0 {
+		return http.StatusOK
+	}
+	return w.status
+}
+
+func emitGinObservation(c *gin.Context, siteID uint, duration time.Duration) {
+	if c == nil || c.Request == nil {
+		return
+	}
+	emitPublicObservation(c.Request, c.ClientIP(), c.Writer.Status(), int64(c.Writer.Size()), siteID, duration)
+}
+
+func emitHTTPObservation(req *http.Request, status int, bytes int64, siteID uint, duration time.Duration) {
+	if req == nil {
+		return
+	}
+	sourceIP := req.RemoteAddr
+	if host, _, err := net.SplitHostPort(req.RemoteAddr); err == nil {
+		sourceIP = host
+	}
+	emitPublicObservation(req, sourceIP, status, bytes, siteID, duration)
+}
+
+func emitPublicObservation(req *http.Request, sourceIP string, status int, bytes int64, siteID uint, duration time.Duration) {
+	if publicsurface.ObservationSubscribers() == 0 {
+		return
+	}
+	requestURI := req.URL.RequestURI()
+	publicsurface.EmitObservation(publicsurface.Observation{
+		ResourceID:     "component:fallback-html:site:" + strconv.FormatUint(uint64(siteID), 10),
+		ResourceKind:   "public_site",
+		ComponentID:    "fallback-html",
+		SourceIP:       strings.TrimSpace(sourceIP),
+		MethodClass:    publicsurface.ClassifyMethod(req.Method),
+		PathClass:      publicsurface.ClassifyPath(requestURI, false),
+		StatusClass:    publicsurface.ClassifyStatus(status),
+		UserAgentClass: publicsurface.ClassifyUserAgent(req.UserAgent()),
+		BytesClass:     publicsurface.ClassifyBytes(bytes),
+		DurationClass:  publicsurface.ClassifyDuration(duration.Milliseconds()),
+		RateLimited:    status == http.StatusTooManyRequests,
+		ObservedAt:     time.Now().Unix(),
+	})
 }

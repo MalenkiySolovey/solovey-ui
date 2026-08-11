@@ -32,6 +32,7 @@ func postSave(router *gin.Engine, token string, cookies []*http.Cookie, data str
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/save", strings.NewReader(form.Encode()))
 	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("Origin", "http://example.com")
 	request.Header.Set(csrfHeader, token)
 	for _, cookie := range cookies {
 		request.AddCookie(cookie)

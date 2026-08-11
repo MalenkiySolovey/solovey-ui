@@ -3,6 +3,7 @@ package auth
 import (
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 )
@@ -31,6 +32,9 @@ func (a *Handler) ChangePass(c *gin.Context) {
 	oldPass := c.Request.FormValue("oldPass")
 	newUsername := c.Request.FormValue("newUsername")
 	newPass := c.Request.FormValue("newPass")
+	if !a.requireStepUp(c, "admin.credential", "$self") {
+		return
+	}
 	// Bind the change to the authenticated session user; never trust a target id
 	// from the request, so one admin cannot change another admin's credentials.
 	currentUser := a.LoginUser(c)
@@ -40,6 +44,7 @@ func (a *Handler) ChangePass(c *gin.Context) {
 		a.Audit(c, currentUser, "admin_credentials_changed", "admin", service.AuditSeverityWarn, map[string]any{
 			"newUsername": newUsername,
 		})
+		a.NotifyEvent("admin_credentials_changed", map[string]string{"user": currentUser})
 		// Rotate the session generation so every OTHER web session and all WS
 		// tokens (including any minted under the old credentials) are invalidated,
 		// then re-establish only THIS session under the new generation so the
@@ -50,6 +55,12 @@ func (a *Handler) ChangePass(c *gin.Context) {
 			sessionMaxAge, _ := a.SettingService.GetSessionMaxAge()
 			if serr := a.SetLoginUser(c, newUsername, sessionMaxAge, newGen); serr != nil {
 				logger.Warning("re-establishing session after credential change failed:", serr)
+			} else {
+				a.NotifyEvent("login_success", map[string]string{
+					"user":            newUsername,
+					"ip":              a.RemoteIP(c),
+					"sessionRevision": sessionRevision(newGen),
+				})
 			}
 		}
 		a.JSONMsg(c, "save", nil)
@@ -61,10 +72,14 @@ func (a *Handler) ChangePass(c *gin.Context) {
 
 func (a *Handler) AddAdmin(c *gin.Context) {
 	loginUser := a.LoginUser(c)
+	username := c.Request.FormValue("username")
+	if !a.requireStepUp(c, "admin.create", "new-admin:"+strings.TrimSpace(username)) {
+		return
+	}
 	user, err := a.UserService.AddUser(
 		loginUser,
 		c.Request.FormValue("currentPass"),
-		c.Request.FormValue("username"),
+		username,
 		c.Request.FormValue("password"),
 	)
 	if err == nil {
@@ -87,10 +102,14 @@ func (a *Handler) AddAdmin(c *gin.Context) {
 
 func (a *Handler) DeleteAdmin(c *gin.Context) {
 	loginUser := a.LoginUser(c)
+	targetID := c.Request.FormValue("id")
+	if !a.requireStepUp(c, "admin.delete", "user:"+strings.TrimSpace(targetID)) {
+		return
+	}
 	result, err := a.UserService.DeleteUser(
 		loginUser,
 		c.Request.FormValue("currentPass"),
-		c.Request.FormValue("id"),
+		targetID,
 	)
 	if err == nil {
 		logger.Info("admin user deleted successfully")
@@ -99,6 +118,7 @@ func (a *Handler) DeleteAdmin(c *gin.Context) {
 			"username":          result.User.Username,
 			"deletedTokenCount": result.DeletedTokenCount,
 		})
+		a.NotifyEvent("admin_deleted", map[string]string{"user": result.User.Username})
 		a.JSONMsg(c, "del", nil)
 	} else {
 		logger.Warning("delete admin user failed:", err)

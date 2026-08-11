@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"context"
+	"errors"
 	"testing"
 )
 
@@ -19,12 +20,29 @@ func TestCoreManagersAreUnavailableWhenStopped(t *testing.T) {
 	}
 }
 
+func TestClassifyOutboundCheckErrorUsesStableClasses(t *testing.T) {
+	for name, test := range map[string]struct {
+		err  error
+		want string
+	}{
+		"deadline": {err: context.DeadlineExceeded, want: CheckOutboundErrorTimeout},
+		"canceled": {err: context.Canceled, want: CheckOutboundErrorCanceled},
+		"internal": {err: errors.New("password=outbound-canary"), want: CheckOutboundErrorFailed},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if got := ClassifyOutboundCheckError(test.err); got != test.want {
+				t.Fatalf("class = %q, want %q", got, test.want)
+			}
+		})
+	}
+}
+
 func TestCoreCheckOutboundRequiresRunningCore(t *testing.T) {
 	c := NewCore()
 
 	result := c.CheckOutbound(context.Background(), "direct", "https://example.com")
-	if result.Error != "core not running" {
-		t.Fatalf("expected core not running error, got %q", result.Error)
+	if result.Error != CheckOutboundErrorCoreUnavailable {
+		t.Fatalf("expected core unavailable error, got %q", result.Error)
 	}
 }
 

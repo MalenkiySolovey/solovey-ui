@@ -14,6 +14,8 @@ coverage/
 sui
 solovey-ui
 /web/html
+app/components_generated.go
+cmd/optional_commands_generated.go
 main
 /tmp
 /.tmp/
@@ -36,9 +38,9 @@ windows/solovey-ui-*.exe
 .gotmp/
 .appdata/
 .audit/
-tests/baseline/phase6/tmp/
-tests/baseline/phase6/appdata/
-tests/baseline/phase6/zig-*-cache/
+tests/baseline/e2e/tmp/
+tests/baseline/e2e/appdata/
+tests/baseline/e2e/zig-*-cache/
 
 # local env files
 .env

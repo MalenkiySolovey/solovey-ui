@@ -13,8 +13,9 @@ import (
 
 // TestAdaptRehashesLegacyPlaintextPassword simulates an imported legacy backup
 // where the admin password is still plaintext, runs the post-migration
-// adaptation, and asserts that the stored password is now a bcrypt hash that
-// still validates the original plaintext.
+// adaptation, and asserts that the stored password is now an Argon2id hash
+// that still validates the original plaintext without silently forcing an
+// existing non-default administrator through bootstrap recovery.
 func TestAdaptRehashesLegacyPlaintextPassword(t *testing.T) {
 	dbDir := makeDBTempDir(t, "Solovey UI-adapt-test-")
 	t.Setenv("SUI_DB_FOLDER", dbDir)
@@ -29,7 +30,12 @@ func TestAdaptRehashesLegacyPlaintextPassword(t *testing.T) {
 	// Replace the auto-generated admin password with a plaintext value, as
 	// it would appear in a backup made against an older Solovey UI version.
 	d := DB()
-	if err := d.Model(&model.User{}).Where("username = ?", "admin").Update("password", "legacy-plaintext").Error; err != nil {
+	if err := d.Model(&model.User{}).Where("username = ?", "admin").Updates(map[string]any{
+		"password":                "legacy-plaintext",
+		"force_password_reset":    false,
+		"password_policy_version": 0,
+		"password_hash_version":   0,
+	}).Error; err != nil {
 		t.Fatal(err)
 	}
 
@@ -37,26 +43,29 @@ func TestAdaptRehashesLegacyPlaintextPassword(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	var stored string
-	if err := d.Model(&model.User{}).Select("password").Where("username = ?", "admin").Scan(&stored).Error; err != nil {
+	var stored model.User
+	if err := d.Model(&model.User{}).Where("username = ?", "admin").First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
-	if !common.IsPasswordHash(stored) {
-		t.Fatalf("password was not migrated, still plaintext: %q", stored)
+	if !common.IsPasswordHash(stored.Password) {
+		t.Fatalf("password was not migrated, still plaintext: %q", stored.Password)
 	}
-	ok, _ := common.CheckPassword(stored, "legacy-plaintext")
+	ok, _ := common.CheckPassword(stored.Password, "legacy-plaintext")
 	if !ok {
 		t.Fatal("rehashed password no longer validates the original plaintext")
+	}
+	if stored.ForcePasswordReset || stored.PasswordPolicyVersion != 0 {
+		t.Fatalf("legacy non-default credential was silently forced through recovery: %#v", stored)
 	}
 	// A second adapt run must be a no-op and must not double-hash.
 	if err := adapt(); err != nil {
 		t.Fatal(err)
 	}
-	var second string
-	if err := d.Model(&model.User{}).Select("password").Where("username = ?", "admin").Scan(&second).Error; err != nil {
+	var second model.User
+	if err := d.Model(&model.User{}).Where("username = ?", "admin").First(&second).Error; err != nil {
 		t.Fatal(err)
 	}
-	if second != stored {
+	if second.Password != stored.Password {
 		t.Fatal("Adapt is not idempotent; password changed on second run")
 	}
 }
@@ -110,8 +119,8 @@ func TestAdaptRotatesLegacyDefaultAdminPassword(t *testing.T) {
 	if ok, _ := common.CheckPassword(stored.Password, generated); !ok {
 		t.Fatal("generated admin password does not validate")
 	}
-	if stored.ForcePasswordReset {
-		t.Fatalf("rotated initial-admin password should be directly usable: %#v", stored)
+	if !stored.ForcePasswordReset {
+		t.Fatalf("rotated initial-admin password must require a private replacement: %#v", stored)
 	}
 
 	if err := adapt(); err != nil {

@@ -4,6 +4,9 @@ package telegram
 
 import (
 	"context"
+	"io"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -32,10 +35,10 @@ type TelegramBackupResult struct {
 }
 
 type TelegramBackupService struct {
-	Settings     BackupSettings
-	Telegram     *Service
-	Audit        func(AuditRecord) error
-	SendDocument func(filename string, payload []byte, caption string) Result
+	Settings           BackupSettings
+	Telegram           *Service
+	Audit              func(AuditRecord) error
+	SendDocumentStream func(context.Context, string, io.Reader, string) Result
 }
 
 type telegramBackupActorContextKey struct{}
@@ -43,23 +46,12 @@ type telegramBackupActorContextKey struct{}
 var telegramBackupRunMu sync.Mutex
 
 type telegramBackupSecretBag struct {
-	payload    []byte
 	passphrase []byte
-}
-
-func (b *telegramBackupSecretBag) setPayload(payload []byte) {
-	b.zeroPayload()
-	b.payload = payload
 }
 
 func (b *telegramBackupSecretBag) setPassphrase(passphrase []byte) {
 	b.zeroPassphrase()
 	b.passphrase = passphrase
-}
-
-func (b *telegramBackupSecretBag) zeroPayload() {
-	common.WipeBytes(b.payload)
-	b.payload = nil
 }
 
 func (b *telegramBackupSecretBag) zeroPassphrase() {
@@ -69,7 +61,6 @@ func (b *telegramBackupSecretBag) zeroPassphrase() {
 
 func (b *telegramBackupSecretBag) zero() {
 	b.zeroPassphrase()
-	b.zeroPayload()
 }
 
 func ContextWithTelegramBackupActor(ctx context.Context, actor string) context.Context {
@@ -145,37 +136,51 @@ func (s *TelegramBackupService) RunOnce(ctx context.Context, trigger string) (re
 		return result
 	}
 
-	payload, err := backup.Export(exclude)
+	backupPath, cleanupBackup, err := backup.PrepareExportContext(ctx, exclude)
+	if err != nil {
+		result.ErrorClass = "db_snapshot_failed"
+		return result
+	}
+	defer cleanupBackup()
+	backupFile, err := os.Open(backupPath) // #nosec G304 -- generated bounded backup path.
 	if err != nil {
 		result.ErrorClass = "db_snapshot_failed"
 		return result
 	}
 	var secrets telegramBackupSecretBag
-	secrets.setPayload(payload)
 	defer secrets.zero()
-	result.PayloadSizeBytes = int64(len(secrets.payload))
 
 	passphrase, err := s.Settings.GetTelegramBackupPassphraseBytes()
 	if err != nil {
+		_ = backupFile.Close()
 		result.ErrorClass = "settings"
 		return result
 	}
 	secrets.setPassphrase(passphrase)
 	if len(secrets.passphrase) == 0 {
+		_ = backupFile.Close()
 		result.ErrorClass = "missing_passphrase"
 		return result
 	}
-	envelope, err := backupenvelope.Build(secrets.payload, secrets.passphrase)
-	secrets.zeroPassphrase()
+	envelopeFile, err := os.CreateTemp(filepath.Dir(backupPath), "s-ui-telegram-backup-*.aes")
 	if err != nil {
+		_ = backupFile.Close()
 		result.ErrorClass = "encryption_failed"
 		return result
 	}
-	secrets.zeroPayload()
-	result.EnvelopeSizeBytes = int64(len(envelope))
+	envelopePath := envelopeFile.Name()
+	defer func() { _ = os.Remove(envelopePath) }()
+	plainBytes, envelopeBytes, sealErr := backupenvelope.SealStream(envelopeFile, &telegramContextReader{ctx: ctx, reader: backupFile}, secrets.passphrase)
+	secrets.zeroPassphrase()
+	syncErr, envelopeCloseErr, backupCloseErr := envelopeFile.Sync(), envelopeFile.Close(), backupFile.Close()
+	if sealErr != nil || syncErr != nil || envelopeCloseErr != nil || backupCloseErr != nil {
+		result.ErrorClass = "encryption_failed"
+		return result
+	}
+	result.PayloadSizeBytes, result.EnvelopeSizeBytes = plainBytes, envelopeBytes
 
 	maxBytes := int64(maxSizeMB) * 1024 * 1024
-	if int64(len(envelope)) > maxBytes {
+	if envelopeBytes > maxBytes {
 		result.ErrorClass = "oversize"
 		return result
 	}
@@ -183,15 +188,21 @@ func (s *TelegramBackupService) RunOnce(ctx context.Context, trigger string) (re
 	now := time.Now().UTC()
 	filename := telegramBackupFilename(now)
 	caption := telegramBackupCaption(now, trigger, result.ExcludedTables)
-	send := s.SendDocument
+	send := s.SendDocumentStream
 	if send == nil && s.Telegram != nil {
-		send = s.Telegram.SendDocument
+		send = s.Telegram.SendDocumentStream
 	}
 	if send == nil {
 		result.ErrorClass = "internal"
 		return result
 	}
-	sendResult := send(filename, envelope, caption)
+	envelopeInput, err := os.Open(envelopePath) // #nosec G304 -- generated encrypted backup path.
+	if err != nil {
+		result.ErrorClass = "internal"
+		return result
+	}
+	sendResult := send(ctx, filename, envelopeInput, caption)
+	_ = envelopeInput.Close()
 	if !sendResult.Success {
 		result.ErrorClass = sendResult.ErrorClass
 		if result.ErrorClass == "" {
@@ -202,6 +213,18 @@ func (s *TelegramBackupService) RunOnce(ctx context.Context, trigger string) (re
 	result.Success = true
 	result.Filename = filename
 	return result
+}
+
+type telegramContextReader struct {
+	ctx    context.Context
+	reader io.Reader
+}
+
+func (reader *telegramContextReader) Read(buffer []byte) (int, error) {
+	if err := reader.ctx.Err(); err != nil {
+		return 0, err
+	}
+	return reader.reader.Read(buffer)
 }
 
 func normalizeTelegramBackupTrigger(trigger string) string {

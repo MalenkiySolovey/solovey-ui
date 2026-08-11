@@ -37,6 +37,9 @@ func TestImportXuiCorruptFileAuditsFailure(t *testing.T) {
 	if msg.Success {
 		t.Fatal("corrupt x-ui import should fail")
 	}
+	if msg.Msg != "Compatible panel database is invalid" {
+		t.Fatalf("unsafe or unstable import error: %q", msg.Msg)
+	}
 	flushImportXUIAPIAudit(t)
 	var event model.AuditEvent
 	if err := dbsqlite.DB().Where("event = ?", "panel_import_failed").First(&event).Error; err != nil {
@@ -44,6 +47,48 @@ func TestImportXuiCorruptFileAuditsFailure(t *testing.T) {
 	}
 	if event.Actor != "admin" || event.Resource != "database" {
 		t.Fatalf("unexpected failure audit: %#v", event)
+	}
+}
+
+func TestCompatiblePanelMutationsRequireExactStepUp(t *testing.T) {
+	ResetRateLimits()
+	var bindings [][2]string
+	gateway := NewHandler(Deps{
+		RequireScope: func(*gin.Context, string, ...string) bool { return true },
+		RequireStepUp: func(c *gin.Context, operation, target string) bool {
+			bindings = append(bindings, [2]string{operation, target})
+			c.AbortWithStatusJSON(http.StatusForbidden, Envelope{Success: false, Msg: "denied"})
+			return false
+		},
+		Audit:    func(*gin.Context, string, string, string, string, map[string]any) {},
+		Actor:    func(*gin.Context) string { return "admin" },
+		RemoteIP: func(*gin.Context) string { return "192.0.2.1" },
+	})
+	gatewayRouter := gin.New()
+	gatewayRouter.POST("/api/import-xui", gateway.ImportXui)
+	gatewayRouter.POST("/api/import-xui/apply", gateway.ImportXuiApply)
+	gatewayRouter.POST("/api/import-xui/rollback", gateway.ImportXuiRollback)
+
+	requests := []*http.Request{
+		newImportXUIUploadRequest(t, "/api/import-xui", []byte("SQLite format 3\x00"), "0"),
+		httptest.NewRequest(http.MethodPost, "/api/import-xui/apply", strings.NewReader("")),
+		httptest.NewRequest(http.MethodPost, "/api/import-xui/rollback", strings.NewReader("backup=ignored")),
+	}
+	requests[2].Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	for _, request := range requests {
+		recorder := httptest.NewRecorder()
+		gatewayRouter.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusForbidden {
+			t.Fatalf("%s status=%d body=%s", request.URL.Path, recorder.Code, recorder.Body.String())
+		}
+	}
+	if len(bindings) != len(requests) {
+		t.Fatalf("step-up bindings=%v, want %d", bindings, len(requests))
+	}
+	for _, binding := range bindings {
+		if binding != [2]string{xuiStepUpOperation, xuiStepUpTarget} {
+			t.Fatalf("unexpected step-up binding: %v", binding)
+		}
 	}
 }
 
@@ -68,6 +113,7 @@ func newImportXUIAPITestRouter(actor string, scope string) *gin.Engine {
 			c.JSON(http.StatusForbidden, Envelope{Success: false, Msg: "insufficient scope"})
 			return false
 		},
+		RequireStepUp: func(*gin.Context, string, string) bool { return true },
 		Audit: func(_ *gin.Context, actor string, event string, resource string, severity string, details map[string]any) {
 			_ = (&service.AuditService{}).Record(service.AuditEvent{
 				Actor:    actor,

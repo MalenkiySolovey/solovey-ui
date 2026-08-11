@@ -13,7 +13,6 @@ import (
 	"testing"
 	"time"
 
-	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -48,7 +47,7 @@ func TestGetObservabilityHistoryFiltersMetricBucketAndSince(t *testing.T) {
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("unexpected status: %d", recorder.Code)
 	}
-	var msg telemetryhttp.Envelope
+	var msg Envelope
 	if err := json.Unmarshal(recorder.Body.Bytes(), &msg); err != nil {
 		t.Fatal(err)
 	}
@@ -91,26 +90,24 @@ func newObservabilityAPITestRouter(actor string, scope string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	handler := NewHandler(Deps{
-		Telemetry: telemetryhttp.Deps{
-			RequireScope: func(c *gin.Context, resource string, allowed ...string) bool {
-				for _, allowedScope := range allowed {
-					if scope == allowedScope {
-						return true
-					}
+		RequireScope: func(c *gin.Context, resource string, allowed ...string) bool {
+			for _, allowedScope := range allowed {
+				if scope == allowedScope {
+					return true
 				}
-				_ = (&service.AuditService{}).Record(service.AuditEvent{
-					Actor:    actor,
-					Event:    "scope_denied",
-					Resource: resource,
-					Severity: service.AuditSeverityWarn,
-					Details:  map[string]any{"scope": scope, "required": allowed},
-				})
-				c.JSON(http.StatusForbidden, telemetryhttp.Envelope{Success: false, Msg: "insufficient scope"})
-				return false
-			},
-			JSONObj: func(c *gin.Context, obj interface{}, err error) {
-				c.JSON(http.StatusOK, telemetryhttp.Envelope{Success: err == nil, Obj: obj})
-			},
+			}
+			_ = (&service.AuditService{}).Record(service.AuditEvent{
+				Actor:    actor,
+				Event:    "scope_denied",
+				Resource: resource,
+				Severity: service.AuditSeverityWarn,
+				Details:  map[string]any{"scope": scope, "required": allowed},
+			})
+			c.JSON(http.StatusForbidden, Envelope{Success: false, Msg: "insufficient scope"})
+			return false
+		},
+		JSONObj: func(c *gin.Context, obj interface{}, err error) {
+			c.JSON(http.StatusOK, Envelope{Success: err == nil, Obj: obj})
 		},
 		ObservabilityService: service.ObservabilityService{},
 	})

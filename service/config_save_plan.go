@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"sync"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -23,10 +24,24 @@ type ComponentConfigChangeEffects struct {
 	RestartReason  string
 }
 
-var invalidateSubscriptionOutputCacheAfterSave func()
+var subscriptionOutputCacheInvalidator = struct {
+	sync.RWMutex
+	fn func()
+}{}
 
 func RegisterSubscriptionOutputCacheInvalidator(fn func()) {
-	invalidateSubscriptionOutputCacheAfterSave = fn
+	subscriptionOutputCacheInvalidator.Lock()
+	subscriptionOutputCacheInvalidator.fn = fn
+	subscriptionOutputCacheInvalidator.Unlock()
+}
+
+func invalidateSubscriptionOutputCache() {
+	subscriptionOutputCacheInvalidator.RLock()
+	invalidate := subscriptionOutputCacheInvalidator.fn
+	subscriptionOutputCacheInvalidator.RUnlock()
+	if invalidate != nil {
+		invalidate()
+	}
 }
 
 func newConfigSavePlan(primaryObject string) configSavePlan {
@@ -91,9 +106,7 @@ func (s *ConfigService) applyConfigSaveEffects(plan configSavePlan, afterCommitE
 		}
 	}
 	realtime.Publish(realtime.TopicConfigInvalidated, nil)
-	if invalidateSubscriptionOutputCacheAfterSave != nil {
-		invalidateSubscriptionOutputCacheAfterSave()
-	}
+	invalidateSubscriptionOutputCache()
 	s.applyCoreSaveEffect(plan)
 }
 

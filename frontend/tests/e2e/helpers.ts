@@ -11,9 +11,9 @@ export type E2EServerState = {
 }
 
 export const repoRoot = path.resolve(process.cwd(), '..')
-export const phase6Dir = path.join(repoRoot, 'tests', 'baseline', 'phase6')
-export const serverStatePath = path.join(phase6Dir, 'e2e-server', 'state.json')
-const fallbackE2EWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH ?? '/phase6-panel/')
+export const e2eResultDir = path.join(repoRoot, 'tests', 'baseline', 'e2e')
+export const serverStatePath = path.join(e2eResultDir, 'e2e-server', 'state.json')
+const fallbackE2EWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH ?? '/e2e-panel/')
 
 const sleepSync = (ms: number) => {
   Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
@@ -34,13 +34,13 @@ export const readServerState = (): E2EServerState => {
     backendURL: process.env.SUI_E2E_BACKEND_URL ?? `http://127.0.0.1:2095${fallbackE2EWebPath}`,
     username: process.env.SUI_E2E_USERNAME ?? 'admin',
     password: process.env.SUI_E2E_PASSWORD ?? '',
-    dbDir: process.env.SUI_E2E_DB_DIR ?? path.join(phase6Dir, 'e2e-db'),
+    dbDir: process.env.SUI_E2E_DB_DIR ?? path.join(e2eResultDir, 'e2e-db'),
   }
 }
 
 function normalizeWebPath(value: string): string {
   const trimmed = value.trim()
-  if (!trimmed || trimmed === '/') return '/phase6-panel/'
+  if (!trimmed || trimmed === '/') return '/e2e-panel/'
   return `${trimmed.startsWith('/') ? '' : '/'}${trimmed}${trimmed.endsWith('/') ? '' : '/'}`
 }
 
@@ -89,7 +89,7 @@ export const enableComponent = async (page: Page, id: string) => {
 }
 
 export const writeJSONArtifact = (relativePath: string, value: unknown) => {
-  const target = path.join(phase6Dir, relativePath)
+  const target = path.join(e2eResultDir, relativePath)
   fs.mkdirSync(path.dirname(target), { recursive: true })
   fs.writeFileSync(target, JSON.stringify(value, null, 2))
 }

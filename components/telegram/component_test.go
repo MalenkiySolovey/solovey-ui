@@ -5,15 +5,77 @@ package telegram
 import (
 	"context"
 	"path/filepath"
+	"slices"
+	"sort"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/robfig/cron/v3"
 )
+
+func TestManifestDurableSettingsMatchRuntimeOwnership(t *testing.T) {
+	secrets := telegramsettings.EncryptedKeys()
+	wantSecrets := make([]string, 0, len(secrets))
+	for key := range secrets {
+		wantSecrets = append(wantSecrets, key)
+	}
+	wantSettings := make([]string, 0, len(telegramsettings.Defaults())-len(secrets))
+	for key := range telegramsettings.Defaults() {
+		if _, secret := secrets[key]; !secret {
+			wantSettings = append(wantSettings, key)
+		}
+	}
+	sort.Strings(wantSecrets)
+	sort.Strings(wantSettings)
+	if !slices.Equal(telegramManifest.Database.Secrets, wantSecrets) {
+		t.Fatalf("manifest secrets = %v, runtime ownership = %v", telegramManifest.Database.Secrets, wantSecrets)
+	}
+	if !slices.Equal(telegramManifest.Database.Settings, wantSettings) {
+		t.Fatalf("manifest settings = %v, runtime ownership = %v", telegramManifest.Database.Settings, wantSettings)
+	}
+}
+
+type telegramTrackingScheduler struct {
+	added   int
+	removed int
+}
+
+func (s *telegramTrackingScheduler) AddJob(string, cron.Job) (cron.EntryID, error) {
+	s.added++
+	return cron.EntryID(s.added), nil
+}
+func (*telegramTrackingScheduler) Schedule(cron.Schedule, cron.Job) cron.EntryID { return 0 }
+func (s *telegramTrackingScheduler) RemoveJob(cron.EntryID)                      { s.removed++ }
+
+func TestTelegramComponentStartIsIdempotent(t *testing.T) {
+	scheduler := &telegramTrackingScheduler{}
+	c := &component{}
+	host := lifecycle.Context{Host: componenthost.Deps{Scheduler: scheduler}}
+	if err := c.Start(context.Background(), host); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Start(context.Background(), host); err != nil {
+		t.Fatal(err)
+	}
+	if scheduler.added != 3 {
+		t.Fatalf("repeated Start added %d jobs", scheduler.added)
+	}
+	if err := c.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if err := c.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if scheduler.removed != 3 {
+		t.Fatalf("repeated Stop removed %d jobs", scheduler.removed)
+	}
+}
 
 func TestTelegramDropDataRemovesOwnedSettings(t *testing.T) {
 	initTelegramComponentTestDB(t)

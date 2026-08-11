@@ -19,6 +19,13 @@ func (s *Service) TestTelegram() Result {
 }
 
 func (s *Service) SendDocument(filename string, data []byte, caption string) Result {
+	return s.SendDocumentStream(context.Background(), filename, bytes.NewReader(data), caption)
+}
+
+func (s *Service) SendDocumentStream(ctx context.Context, filename string, source io.Reader, caption string) Result {
+	if ctx == nil || source == nil {
+		return Result{ErrorClass: "payload"}
+	}
 	credentials, result := s.telegramBotCredentials()
 	if !result.Success {
 		return result
@@ -32,7 +39,7 @@ func (s *Service) SendDocument(filename string, data []byte, caption string) Res
 	writer := multipart.NewWriter(bodyWriter)
 	writeErr := make(chan error, 1)
 	go func() {
-		err := WriteDocumentMultipart(writer, credentials.ChatID, filename, data, caption)
+		err := WriteDocumentMultipartStream(writer, credentials.ChatID, filename, source, caption)
 		if err == nil {
 			err = writer.Close()
 		}
@@ -45,7 +52,7 @@ func (s *Service) SendDocument(filename string, data []byte, caption string) Res
 	}()
 
 	transport := integrationtelegram.NewBotClient(credentials.Token, client)
-	response, err := transport.Do(context.Background(), http.MethodPost, "sendDocument", nil, bodyReader, writer.FormDataContentType())
+	response, err := transport.Do(ctx, http.MethodPost, "sendDocument", nil, bodyReader, writer.FormDataContentType())
 	if err != nil {
 		_ = bodyReader.CloseWithError(err)
 		<-writeErr
@@ -61,6 +68,13 @@ func (s *Service) SendDocument(filename string, data []byte, caption string) Res
 }
 
 func WriteDocumentMultipart(writer *multipart.Writer, chatID string, filename string, data []byte, caption string) error {
+	return WriteDocumentMultipartStream(writer, chatID, filename, bytes.NewReader(data), caption)
+}
+
+func WriteDocumentMultipartStream(writer *multipart.Writer, chatID string, filename string, source io.Reader, caption string) error {
+	if source == nil {
+		return errors.New("document source is unavailable")
+	}
 	if err := writer.WriteField("chat_id", chatID); err != nil {
 		return err
 	}
@@ -73,7 +87,7 @@ func WriteDocumentMultipart(writer *multipart.Writer, chatID string, filename st
 	if err != nil {
 		return err
 	}
-	_, err = io.Copy(part, bytes.NewReader(data))
+	_, err = io.Copy(part, source)
 	return err
 }
 

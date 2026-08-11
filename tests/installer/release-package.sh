@@ -42,6 +42,17 @@ SH
 printf 'fake manager\n'
 SH
 
+    cat > "${SRC}/solovey-protect-helper" <<'SH'
+#!/usr/bin/env bash
+printf 'fake restricted helper\n'
+SH
+	for name in solovey-privileged-broker solovey-ssh-proof solovey-broker-manifest; do
+		cat > "${SRC}/${name}" <<SH
+#!/usr/bin/env bash
+printf 'fake ${name}\n'
+SH
+	done
+
     cat > "${SRC}/solovey-ui.service" <<'SERVICE'
 [Unit]
 Description=Fake Solovey UI
@@ -67,7 +78,8 @@ go=go version go1.25.0 linux/amd64
 sing_box=v1.12.0
 INFO
 
-    chmod +x "${SRC}/solovey-ui" "${SRC}/solovey-ui.sh"
+    chmod +x "${SRC}/solovey-ui" "${SRC}/solovey-ui.sh" "${SRC}/solovey-protect-helper" \
+		"${SRC}/solovey-privileged-broker" "${SRC}/solovey-ssh-proof" "${SRC}/solovey-broker-manifest"
 }
 
 write_component_fixture() {
@@ -104,6 +116,10 @@ assert_archive_contract() {
     tar -xzf "${artifact}" -C "${EXTRACT}"
     assert_executable "${EXTRACT}/solovey-ui/solovey-ui"
     assert_executable "${EXTRACT}/solovey-ui/solovey-ui.sh"
+    assert_executable "${EXTRACT}/solovey-ui/solovey-protect-helper"
+	assert_executable "${EXTRACT}/solovey-ui/solovey-privileged-broker"
+	assert_executable "${EXTRACT}/solovey-ui/solovey-ssh-proof"
+	assert_executable "${EXTRACT}/solovey-ui/solovey-broker-manifest"
     assert_file "${EXTRACT}/solovey-ui/solovey-ui.service"
     assert_file "${EXTRACT}/solovey-ui/BUILD_INFO.txt"
     assert_contains "${EXTRACT}/solovey-ui/BUILD_INFO.txt" '^app=solovey-ui$'
@@ -116,9 +132,22 @@ assert_archive_contract() {
     cat > "${TMP}/expected-files.txt" <<'EOF'
 solovey-ui/
 solovey-ui/BUILD_INFO.txt
+solovey-ui/solovey-broker-manifest
+solovey-ui/solovey-privileged-broker
+solovey-ui/solovey-protect-helper
+solovey-ui/solovey-ssh-proof
 solovey-ui/solovey-ui
 solovey-ui/solovey-ui.service
 solovey-ui/solovey-ui.sh
+solovey-ui/systemd/
+solovey-ui/systemd/solovey-privileged-broker.service
+solovey-ui/systemd/solovey-privileged-broker.socket
+solovey-ui/systemd/solovey-privileged-proof.socket
+solovey-ui/systemd/solovey-ui-native-hardened.service
+solovey-ui/systemd/solovey-ui-native-legacy-root.service
+solovey-ui/systemd/solovey-ui-native-network-advanced.service
+solovey-ui/systemd/solovey-ui.sysusers
+solovey-ui/systemd/solovey-ui.tmpfiles
 EOF
     diff -u "${TMP}/expected-files.txt" "${TMP}/actual-files.txt" || fail "archive file list does not match release contract"
 }
@@ -141,6 +170,9 @@ assert_core_archive_contract() {
     tar -xzf "${artifact}" -C "${EXTRACT}"
     assert_executable "${EXTRACT}/solovey-ui/solovey-ui"
     assert_executable "${EXTRACT}/solovey-ui/solovey-ui.sh"
+	assert_executable "${EXTRACT}/solovey-ui/solovey-privileged-broker"
+	assert_executable "${EXTRACT}/solovey-ui/solovey-ssh-proof"
+	assert_executable "${EXTRACT}/solovey-ui/solovey-broker-manifest"
     assert_file "${EXTRACT}/solovey-ui/solovey-ui.service"
     assert_file "${EXTRACT}/solovey-ui/BUILD_INFO.txt"
     assert_contains "${EXTRACT}/solovey-ui/BUILD_INFO.txt" '^profile=core$'
@@ -191,8 +223,13 @@ write_component_fixture
 bash "${ROOT}/scripts/release-package-linux.sh" \
     --target linux-amd64 \
     --binary "${SRC}/solovey-ui" \
+    --helper "${SRC}/solovey-protect-helper" \
+	--broker "${SRC}/solovey-privileged-broker" \
+	--proof "${SRC}/solovey-ssh-proof" \
+	--manifest-writer "${SRC}/solovey-broker-manifest" \
     --manager "${SRC}/solovey-ui.sh" \
     --service "${SRC}/solovey-ui.service" \
+	--systemd-dir "${ROOT}/deploy/systemd" \
     --build-info "${SRC}/BUILD_INFO.full.txt" \
     --out-dir "${OUT}" >/dev/null
 
@@ -201,8 +238,12 @@ assert_archive_contract
 bash "${ROOT}/scripts/release-package-linux.sh" \
     --target linux-amd64 \
     --binary "${SRC}/solovey-ui" \
+	--broker "${SRC}/solovey-privileged-broker" \
+	--proof "${SRC}/solovey-ssh-proof" \
+	--manifest-writer "${SRC}/solovey-broker-manifest" \
     --manager "${SRC}/solovey-ui.sh" \
     --service "${SRC}/solovey-ui.service" \
+	--systemd-dir "${ROOT}/deploy/systemd" \
     --build-info "${SRC}/BUILD_INFO.core.txt" \
     --profile core \
     --out-dir "${OUT}" >/dev/null

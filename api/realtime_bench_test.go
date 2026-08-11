@@ -35,7 +35,7 @@ func BenchmarkRealtimeWSConnectDisconnect(b *testing.B) {
 			defer server.Close()
 			users := make([]string, 0, clients)
 			for i := 0; i < clients; i++ {
-				users = append(users, fmt.Sprintf("phase5-ws-%03d", i))
+				users = append(users, fmt.Sprintf("benchmark-ws-%03d", i))
 			}
 			for _, user := range users {
 				cookiesByUser[user] = loginRealtimePerfUser(b, server, user)
@@ -47,8 +47,8 @@ func BenchmarkRealtimeWSConnectDisconnect(b *testing.B) {
 				resetRealtimeForTest()
 				conns := make([]*websocket.Conn, 0, clients)
 				for idx, user := range users {
-					token := fmt.Sprintf("phase5-token-%d-%d", i, idx)
-					setWSTokenForTest(token, user)
+					token := fmt.Sprintf("benchmark-token-%d-%d", i, idx)
+					setBoundWSTokenForTest(b, server, cookiesByUser[user], token)
 					conn := dialRealtimeWSForBench(b, server, cookiesByUser[user], token)
 					readRealtimeEventForBench(b, conn)
 					conns = append(conns, conn)
@@ -61,19 +61,19 @@ func BenchmarkRealtimeWSConnectDisconnect(b *testing.B) {
 	}
 }
 
-func TestRealtimeWSCapacityAnchorPhase5(t *testing.T) {
+func TestRealtimeWSCapacityAnchor(t *testing.T) {
 	t.Run("max per user", func(t *testing.T) {
 		router, cookiesByUser := newRealtimePerfRouter(t, 1)
 		server := httptest.NewServer(router)
 		t.Cleanup(server.Close)
-		user := "phase5-same-user"
+		user := "benchmark-same-user"
 		cookiesByUser[user] = loginRealtimePerfUser(t, server, user)
 		resetRateLimitState()
 		resetRealtimeForTest()
 		conns := make([]*websocket.Conn, 0, realtimehttp.MaxConnectionsPerUser)
 		for i := 0; i < realtimehttp.MaxConnectionsPerUser; i++ {
 			token := fmt.Sprintf("same-user-%d", i)
-			setWSTokenForTest(token, user)
+			setBoundWSTokenForTest(t, server, cookiesByUser[user], token)
 			conn := dialRealtimeWSForBench(t, server, cookiesByUser[user], token)
 			readRealtimeEventForBench(t, conn)
 			conns = append(conns, conn)
@@ -83,7 +83,7 @@ func TestRealtimeWSCapacityAnchorPhase5(t *testing.T) {
 				_ = conn.CloseNow()
 			}
 		})
-		setWSTokenForTest("same-user-over", user)
+		setBoundWSTokenForTest(t, server, cookiesByUser[user], "same-user-over")
 		_, resp, err := dialRealtimeWSRaw(server, cookiesByUser[user], "same-user-over")
 		if resp != nil && resp.Body != nil {
 			defer resp.Body.Close()
@@ -94,7 +94,7 @@ func TestRealtimeWSCapacityAnchorPhase5(t *testing.T) {
 		if resp == nil || resp.StatusCode != http.StatusTooManyRequests {
 			t.Fatalf("max per user status=%v err=%v", statusCode(resp), err)
 		}
-		t.Logf("phase5 ws capacity anchor: realtimehttp.MaxConnectionsPerUser=%d status=%d", realtimehttp.MaxConnectionsPerUser, resp.StatusCode)
+		t.Logf("ws capacity anchor: realtimehttp.MaxConnectionsPerUser=%d status=%d", realtimehttp.MaxConnectionsPerUser, resp.StatusCode)
 	})
 
 	t.Run("max per ip", func(t *testing.T) {
@@ -105,10 +105,10 @@ func TestRealtimeWSCapacityAnchorPhase5(t *testing.T) {
 		resetRealtimeForTest()
 		conns := make([]*websocket.Conn, 0, realtimehttp.MaxConnectionsPerIP)
 		for i := 0; i < realtimehttp.MaxConnectionsPerIP; i++ {
-			user := fmt.Sprintf("phase5-ip-%03d", i)
+			user := fmt.Sprintf("benchmark-ip-%03d", i)
 			cookiesByUser[user] = loginRealtimePerfUser(t, server, user)
 			token := fmt.Sprintf("ip-token-%d", i)
-			setWSTokenForTest(token, user)
+			setBoundWSTokenForTest(t, server, cookiesByUser[user], token)
 			conn := dialRealtimeWSForBench(t, server, cookiesByUser[user], token)
 			readRealtimeEventForBench(t, conn)
 			conns = append(conns, conn)
@@ -118,9 +118,9 @@ func TestRealtimeWSCapacityAnchorPhase5(t *testing.T) {
 				_ = conn.CloseNow()
 			}
 		})
-		user := "phase5-ip-over"
+		user := "benchmark-ip-over"
 		cookiesByUser[user] = loginRealtimePerfUser(t, server, user)
-		setWSTokenForTest("ip-token-over", user)
+		setBoundWSTokenForTest(t, server, cookiesByUser[user], "ip-token-over")
 		_, resp, err := dialRealtimeWSRaw(server, cookiesByUser[user], "ip-token-over")
 		if resp != nil && resp.Body != nil {
 			defer resp.Body.Close()
@@ -131,7 +131,7 @@ func TestRealtimeWSCapacityAnchorPhase5(t *testing.T) {
 		if resp == nil || resp.StatusCode != http.StatusTooManyRequests {
 			t.Fatalf("max per ip status=%v err=%v", statusCode(resp), err)
 		}
-		t.Logf("phase5 ws capacity anchor: realtimehttp.MaxConnectionsPerIP=%d status=%d", realtimehttp.MaxConnectionsPerIP, resp.StatusCode)
+		t.Logf("ws capacity anchor: realtimehttp.MaxConnectionsPerIP=%d status=%d", realtimehttp.MaxConnectionsPerIP, resp.StatusCode)
 	})
 }
 
@@ -161,6 +161,15 @@ func newRealtimePerfRouter(tb testing.TB, users int) (*gin.Engine, map[string][]
 			c.Status(http.StatusInternalServerError)
 			return
 		}
+		c.Status(http.StatusNoContent)
+	})
+	router.GET("/test/realtime-token/:token", func(c *gin.Context) {
+		binding, ok := realtimeSessionBinding(c)
+		if !ok {
+			c.Status(http.StatusUnauthorized)
+			return
+		}
+		realtimehttp.StoreBoundToken(c.Param("token"), binding, time.Now().Add(time.Minute))
 		c.Status(http.StatusNoContent)
 	})
 	router.GET("/api/realtime/ws", (&ApiService{}).realtimeHandler().RealtimeWSWithOptions(realtimehttp.WithPingInterval(time.Hour), realtimehttp.WithPingTimeout(time.Second)))
@@ -209,7 +218,7 @@ func initAPIRealtimePerfDB(tb testing.TB) {
 				_ = sqlDB.Close()
 			}
 		}
-		realtime.CloseAll("phase5_done")
+		realtime.CloseAll("benchmark_done")
 	})
 }
 

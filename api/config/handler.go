@@ -11,7 +11,7 @@ import (
 type Handler struct {
 	Runtime           *service.Runtime
 	RestartScheduler  service.RestartScheduler
-	ConfigService     service.ConfigService
+	ConfigService     *service.ConfigService
 	SettingService    service.SettingService
 	UserService       service.UserService
 	ClientService     service.ClientService
@@ -38,7 +38,7 @@ type Handler struct {
 type Deps struct {
 	Runtime          *service.Runtime
 	RestartScheduler service.RestartScheduler
-	ConfigService    service.ConfigService
+	ConfigService    *service.ConfigService
 	SettingService   service.SettingService
 	UserService      service.UserService
 	ClientService    service.ClientService

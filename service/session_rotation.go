@@ -9,6 +9,8 @@ import "sync"
 // single source of truth without an import cycle (web imports api).
 const SessionRegenerateKey = "__sui_session_regenerate__"
 
+const maxWSTokenInvalidationHooks = 128
+
 var wsTokenInvalidationHooks = struct {
 	sync.Mutex
 	byName map[string]func() int
@@ -25,6 +27,9 @@ func RegisterWSTokenInvalidationHook(name string, fn func() int) {
 	if fn == nil {
 		delete(wsTokenInvalidationHooks.byName, name)
 		return
+	}
+	if _, exists := wsTokenInvalidationHooks.byName[name]; !exists && len(wsTokenInvalidationHooks.byName) >= maxWSTokenInvalidationHooks {
+		panic("WebSocket token invalidation hook registry capacity exceeded")
 	}
 	wsTokenInvalidationHooks.byName[name] = fn
 }

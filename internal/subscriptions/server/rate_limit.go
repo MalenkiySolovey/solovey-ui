@@ -80,7 +80,7 @@ func currentRateLimitRequests(now time.Time) int {
 		return rateLimitSetting.limit
 	}
 	limit := DefaultRateLimitRequests
-	if provider := SubRateLimitProvider; provider != nil {
+	if provider := currentHooks().RateLimitProvider; provider != nil {
 		if configured, err := provider(); err == nil && configured > 0 {
 			limit = configured
 		}

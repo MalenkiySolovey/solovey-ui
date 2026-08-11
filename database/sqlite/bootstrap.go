@@ -1,12 +1,15 @@
 package sqlite
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 
 	"gorm.io/gorm"
 )
@@ -14,6 +17,9 @@ import (
 var adaptToCurrentVersion = adapt
 
 func Init(dbPath string) error {
+	if err := preflightSupportedVersion(dbPath); err != nil {
+		return err
+	}
 	if err := open(dbPath); err != nil {
 		return err
 	}
@@ -50,7 +56,14 @@ func schemaModels() []any {
 		&model.Service{}, &model.Endpoint{}, &model.User{}, &model.Tokens{},
 		&model.Stats{}, &model.ClientIP{}, &model.Client{}, &model.Changes{},
 		&model.AuditEvent{}, &model.FailoverMemberState{}, &model.InboundDraft{},
-		&model.ComponentMigration{},
+		&model.ComponentMigration{}, &model.InboundFallbackCheckpoint{}, &model.InboundEndpointLease{},
+		&model.AdminMFAFactor{}, &model.AdminRecoveryCode{}, &model.SecuritySession{}, &model.StepUpGrant{},
+		&model.SSHPostureSnapshot{}, &model.SSHManagementCandidate{}, &model.SSHManagedArtifactCheckpoint{},
+		&model.SSHReconnectChallenge{}, &model.SSHRecoveryEvidence{}, &model.SSHManagementJournal{},
+		&model.DeploymentState{}, &model.DeploymentOperation{}, &model.DeploymentJournal{}, &model.DeploymentDoctorSnapshot{},
+		&model.UpdateReleaseState{}, &model.UpdateOperation{}, &model.UpdateJournal{},
+		&model.ResourcePressureState{}, &model.ResourcePressureTransition{}, &model.MigrationJournal{},
+		&model.DataLifecycleOperation{}, &model.DataLifecycleJournal{},
 	}
 }
 
@@ -66,14 +79,34 @@ func ensureInitialAdmin(dbPath string) error {
 	}
 
 	password := common.Random(24)
-	passwordHash, err := common.HashPassword(password)
+	passwordHash, err := passwordutil.Hash(context.Background(), password)
 	if err != nil {
 		return err
 	}
 	if err := writeInitialAdminPassword(passwordPath, password); err != nil {
 		return err
 	}
-	if err := db.Create(&model.User{Username: "admin", Password: passwordHash}).Error; err != nil {
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&model.User{
+			Username:              "admin",
+			Password:              passwordHash,
+			ForcePasswordReset:    true,
+			PasswordPolicyVersion: passwordutil.PolicyVersion,
+			PasswordHashVersion:   passwordutil.PolicyVersion,
+			CredentialGeneration:  1,
+			MFAGeneration:         1,
+		}).Error; err != nil {
+			return err
+		}
+		// Fresh installations start with bounded sessions. Existing installations
+		// deliberately receive legacy_unbounded from the 1.8 migration/default
+		// fallback and require an explicit operator adoption.
+		return tx.Exec(
+			"INSERT INTO settings(key, value) VALUES(?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+			settingcatalog.SessionLifetimePolicyKey,
+			"bounded_v1",
+		).Error
+	}); err != nil {
 		_ = os.Remove(passwordPath)
 		return err
 	}

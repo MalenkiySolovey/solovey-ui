@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"fmt"
 	"strings"
+
+	"github.com/MalenkiySolovey/solovey-ui/database/sqliteident"
 )
 
 // compatible panel forks diverge in their `inbounds` / `client_traffics` columns: vanilla
@@ -16,13 +18,6 @@ import (
 // the columns it wants, substituting a literal default for any the source
 // database does not define, so the importer works across forks.
 
-// quoteIdent wraps a SQLite identifier in double quotes, escaping embedded
-// quotes. Identifiers handled here come from a fixed allow-list of table and
-// column names, but quoting keeps the generated SQL well-formed regardless.
-func quoteIdent(name string) string {
-	return `"` + strings.ReplaceAll(name, `"`, `""`) + `"`
-}
-
 // tableColumns returns the set of column names defined on table, lower-cased.
 // `SELECT * ... LIMIT 0` exposes the live column list without reading any rows
 // and works uniformly across SQLite drivers, unlike parameterised PRAGMA calls.
@@ -31,7 +26,7 @@ func quoteIdent(name string) string {
 // lower-case spec name, otherwise selectColumns would wrongly substitute a
 // default for a column that actually exists.
 func tableColumns(db *sql.DB, table string) (map[string]struct{}, error) {
-	rows, err := db.Query(fmt.Sprintf("SELECT * FROM %s LIMIT 0", quoteIdent(table)))
+	rows, err := db.Query(fmt.Sprintf("SELECT * FROM %s LIMIT 0", sqliteident.Quote(table)))
 	if err != nil {
 		return nil, err
 	}
@@ -62,9 +57,9 @@ func selectColumns(present map[string]struct{}, specs []columnSpec) string {
 	parts := make([]string, len(specs))
 	for i, spec := range specs {
 		if _, ok := present[strings.ToLower(spec.name)]; ok {
-			parts[i] = quoteIdent(spec.name)
+			parts[i] = sqliteident.Quote(spec.name)
 		} else {
-			parts[i] = spec.missingExpr + " AS " + quoteIdent(spec.name)
+			parts[i] = spec.missingExpr + " AS " + sqliteident.Quote(spec.name)
 		}
 	}
 	return strings.Join(parts, ", ")

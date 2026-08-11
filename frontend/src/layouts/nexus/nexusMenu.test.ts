@@ -73,9 +73,9 @@ describe('nexus grouped navigation integrity', () => {
     expect(paths).toEqual(expect.arrayContaining([
       '/', '/inbounds', '/clients', '/outbounds', '/remote-subscriptions', '/endpoints', '/services',
       '/tls', '/rules', '/dns', '/sing-box-config', '/telegram', '/paid-subscriptions',
-      '/admins', '/audit', '/diagnostics', '/settings', '/support',
+	  '/admins', '/security', '/audit', '/diagnostics', '/deployment', '/operations', '/settings', '/support',
     ]))
-    expect(paths).toHaveLength(18)
+	expect(paths).toHaveLength(21)
   })
 
   it('labels every non-dashboard group with a nav.groups.* key', () => {

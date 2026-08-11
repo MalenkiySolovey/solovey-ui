@@ -1,6 +1,8 @@
 package architecture
 
 import (
+	"encoding/json"
+	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
@@ -26,6 +28,9 @@ func TestComponentImportsStayBehindCompositionRoot(t *testing.T) {
 				continue
 			}
 			if strings.HasPrefix(rel, "cmd/optional_commands_") {
+				continue
+			}
+			if rel == "cmd/solovey-privileged-broker/main.go" {
 				continue
 			}
 			if strings.HasPrefix(rel, "components/") {
@@ -56,9 +61,6 @@ func TestInternalComponentsStayPure(t *testing.T) {
 	var violations []string
 	walkGoFiles(t, internalComponentsRoot, func(path string) {
 		rel := filepath.ToSlash(mustRel(t, root, path))
-		if strings.HasSuffix(rel, "_test.go") {
-			return
-		}
 		for _, imported := range fileImports(t, path) {
 			for _, forbidden := range forbiddenImports {
 				if imported == forbidden || strings.HasPrefix(imported, forbidden+"/") {
@@ -80,9 +82,6 @@ func TestComponentKitIsNotImportedByCore(t *testing.T) {
 	var violations []string
 	walkGoFiles(t, root, func(path string) {
 		rel := filepath.ToSlash(mustRel(t, root, path))
-		if strings.HasSuffix(rel, "_test.go") {
-			return
-		}
 		if strings.HasPrefix(rel, "components/") || strings.HasPrefix(rel, "componentkit/") {
 			return
 		}
@@ -98,6 +97,141 @@ func TestComponentKitIsNotImportedByCore(t *testing.T) {
 	}
 }
 
+func TestComponentKitHasNoRuntimeOwnership(t *testing.T) {
+	root := moduleRoot(t)
+	kitRoot := filepath.Join(root, "componentkit")
+	forbiddenImports := []string{
+		modulePath + "/componenthost",
+		modulePath + "/cronjob",
+		modulePath + "/database",
+		modulePath + "/logger",
+		modulePath + "/service",
+		"github.com/robfig/cron/v3",
+		"gorm.io/gorm",
+	}
+	forbiddenLifecycleNames := map[string]struct{}{
+		"Start": {}, "Stop": {}, "Migrate": {}, "DropData": {},
+		"Register": {}, "Unregister": {}, "Reconcile": {},
+	}
+
+	var violations []string
+	walkGoFiles(t, kitRoot, func(path string) {
+		rel := filepath.ToSlash(mustRel(t, root, path))
+		if strings.HasSuffix(rel, "_test.go") {
+			return
+		}
+		for _, imported := range fileImports(t, path) {
+			for _, forbidden := range forbiddenImports {
+				if imported == forbidden || strings.HasPrefix(imported, forbidden+"/") {
+					violations = append(violations, rel+" imports runtime owner "+imported)
+				}
+			}
+		}
+		file, err := parser.ParseFile(token.NewFileSet(), path, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", path, err)
+		}
+		ast.Inspect(file, func(node ast.Node) bool {
+			declaration, ok := node.(*ast.FuncDecl)
+			if !ok {
+				return true
+			}
+			if _, forbidden := forbiddenLifecycleNames[declaration.Name.Name]; forbidden {
+				violations = append(violations, rel+" declares lifecycle function "+declaration.Name.Name)
+			}
+			return true
+		})
+	})
+
+	if len(violations) > 0 {
+		t.Fatalf("componentkit owns runtime behavior:\n%s", strings.Join(violations, "\n"))
+	}
+}
+
+func TestComponentsDoNotImportCoreTransportOrComposition(t *testing.T) {
+	root := moduleRoot(t)
+	forbidden := []string{
+		modulePath + "/api",
+		modulePath + "/app",
+		modulePath + "/cmd",
+		modulePath + "/sub",
+		modulePath + "/web",
+	}
+	var violations []string
+	walkGoFiles(t, filepath.Join(root, "components"), func(path string) {
+		rel := filepath.ToSlash(mustRel(t, root, path))
+		for _, imported := range fileImports(t, path) {
+			for _, prefix := range forbidden {
+				if imported == prefix || strings.HasPrefix(imported, prefix+"/") {
+					violations = append(violations, rel+" imports core transport/composition "+imported)
+				}
+			}
+		}
+	})
+	if len(violations) > 0 {
+		t.Fatalf("component transport/composition boundary violated:\n%s", strings.Join(violations, "\n"))
+	}
+}
+
+func TestComponentsDoNotNameSiblingOwnedDatabaseResources(t *testing.T) {
+	root := moduleRoot(t)
+	componentRoots, resourcesByOwner := componentDatabaseResources(t, root)
+	resourceOwner := map[string]string{}
+	for owner, resources := range resourcesByOwner {
+		for _, resource := range resources {
+			if previous, exists := resourceOwner[resource]; exists {
+				t.Fatalf("database resource %q is declared by both %s and %s", resource, previous, owner)
+			}
+			resourceOwner[resource] = owner
+		}
+	}
+
+	var violations []string
+	for componentID, componentRoot := range componentRoots {
+		walkComponentSourceFiles(t, componentRoot, true, func(path string) {
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", path, err)
+			}
+			for resource, owner := range resourceOwner {
+				if owner != componentID && strings.Contains(string(content), resource) {
+					rel := filepath.ToSlash(mustRel(t, root, path))
+					violations = append(violations, rel+" names "+owner+" resource "+resource)
+				}
+			}
+		})
+	}
+	if len(violations) > 0 {
+		t.Fatalf("component database ownership boundary violated:\n%s", strings.Join(violations, "\n"))
+	}
+}
+
+func TestComponentsDoNotNameHyphenatedSiblingIDsInProduction(t *testing.T) {
+	root := moduleRoot(t)
+	componentRoots, _ := componentDatabaseResources(t, root)
+	var violations []string
+	for componentID, componentRoot := range componentRoots {
+		walkComponentSourceFiles(t, componentRoot, false, func(path string) {
+			content, err := os.ReadFile(path)
+			if err != nil {
+				t.Fatalf("read %s: %v", path, err)
+			}
+			for siblingID := range componentRoots {
+				if siblingID == componentID || !strings.Contains(siblingID, "-") {
+					continue
+				}
+				if strings.Contains(string(content), siblingID) {
+					rel := filepath.ToSlash(mustRel(t, root, path))
+					violations = append(violations, rel+" names sibling component "+siblingID)
+				}
+			}
+		})
+	}
+	if len(violations) > 0 {
+		t.Fatalf("component semantic boundary violated:\n%s", strings.Join(violations, "\n"))
+	}
+}
+
 func TestCoreSourceDoesNotNameConcreteOptionalComponents(t *testing.T) {
 	root := moduleRoot(t)
 	forbiddenTokens := []string{
@@ -106,6 +240,7 @@ func TestCoreSourceDoesNotNameConcreteOptionalComponents(t *testing.T) {
 		"ObservabilityExtra",
 		"RegisterObservabilityExtra",
 		"panel-update-ui",
+		"fallback-html",
 		"PanelUpdateService",
 		"NewPanelUpdateManager",
 		"paid-subscriptions",
@@ -119,6 +254,10 @@ func TestCoreSourceDoesNotNameConcreteOptionalComponents(t *testing.T) {
 		"subRemoteGroupAdaptation",
 		"subRemoteConversionPolicy",
 		"TelegramService",
+		"telegramBackupPassphrase",
+		"server-protection",
+		"serverProtection",
+		"ServerProtection",
 	}
 
 	var violations []string
@@ -144,13 +283,71 @@ func TestCoreSourceDoesNotNameConcreteOptionalComponents(t *testing.T) {
 	}
 }
 
+func TestDeprecatedProtectionNamesStayOutOfRuntimeSource(t *testing.T) {
+	root := moduleRoot(t)
+	forbidden := []string{"inbound-protection", "inbound_protection", "Inbound Protection", "inbound_protection_draft"}
+	var violations []string
+	walkSourceFiles(t, root, func(path string) {
+		rel := filepath.ToSlash(mustRel(t, root, path))
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, token := range forbidden {
+			if strings.Contains(string(data), token) {
+				violations = append(violations, rel+" contains deprecated "+token)
+			}
+		}
+	})
+	if len(violations) > 0 {
+		t.Fatalf("deprecated protection names remain in runtime source:\n%s", strings.Join(violations, "\n"))
+	}
+}
+
+func TestRuntimeSourceDoesNotContainDevelopmentProvenance(t *testing.T) {
+	root := moduleRoot(t)
+	forbidden := []string{
+		"C:\\Users\\",
+		"ChatGPT",
+		"Claude",
+		"Codex",
+		"Gemini",
+		"P18-E",
+		"QCOW",
+		"QEMU",
+		"SUI_TEST_LAB",
+		"cloud-init",
+		"solovey-lab",
+		"sui-lab",
+		"tools/lab",
+		"tools\\lab",
+	}
+	var violations []string
+	walkProductionSourceFiles(t, root, func(path string) {
+		content, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		for _, token := range forbidden {
+			if strings.Contains(string(content), token) {
+				rel := filepath.ToSlash(mustRel(t, root, path))
+				violations = append(violations, rel+" contains development provenance "+token)
+			}
+		}
+	})
+	if len(violations) > 0 {
+		t.Fatalf("development provenance leaked into runtime source:\n%s", strings.Join(violations, "\n"))
+	}
+}
+
 func componentOwnsImport(rel string, imported string) bool {
 	relParts := strings.Split(rel, "/")
 	if len(relParts) < 2 || relParts[0] != "components" {
 		return false
 	}
 	componentID := relParts[1]
-	return strings.HasPrefix(imported, modulePath+"/components/"+componentID)
+	componentPrefix := modulePath + "/components/" + componentID
+	return imported == componentPrefix || strings.HasPrefix(imported, componentPrefix+"/")
 }
 
 func walkSourceFiles(t *testing.T, root string, visit func(path string)) {
@@ -190,11 +387,122 @@ func walkSourceFiles(t *testing.T, root string, visit func(path string)) {
 	}
 }
 
+type componentResourceManifest struct {
+	ID       string `json:"id"`
+	Database struct {
+		Tables   []string `json:"tables"`
+		Settings []string `json:"settings"`
+		Secrets  []string `json:"secrets"`
+	} `json:"database"`
+}
+
+func componentDatabaseResources(t *testing.T, root string) (map[string]string, map[string][]string) {
+	t.Helper()
+	componentRoots := map[string]string{}
+	resourcesByOwner := map[string][]string{}
+	componentsRoot := filepath.Join(root, "components")
+	entries, err := os.ReadDir(componentsRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range entries {
+		if !entry.IsDir() {
+			continue
+		}
+		manifestPath := filepath.Join(componentsRoot, entry.Name(), "component.json")
+		content, err := os.ReadFile(manifestPath)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			t.Fatalf("read %s: %v", manifestPath, err)
+		}
+		var manifest componentResourceManifest
+		if err := json.Unmarshal(content, &manifest); err != nil {
+			t.Fatalf("parse %s: %v", manifestPath, err)
+		}
+		if manifest.ID == "" || manifest.ID != entry.Name() {
+			t.Fatalf("component directory %s has manifest id %q", entry.Name(), manifest.ID)
+		}
+		componentRoots[manifest.ID] = filepath.Join(componentsRoot, entry.Name())
+		resources := append([]string(nil), manifest.Database.Tables...)
+		resources = append(resources, manifest.Database.Settings...)
+		resources = append(resources, manifest.Database.Secrets...)
+		resourcesByOwner[manifest.ID] = resources
+	}
+	return componentRoots, resourcesByOwner
+}
+
+func walkComponentSourceFiles(t *testing.T, root string, includeTests bool, visit func(path string)) {
+	t.Helper()
+	allowedExt := map[string]struct{}{".go": {}, ".sql": {}, ".ts": {}, ".vue": {}}
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() {
+			if skipDir(entry.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if _, ok := allowedExt[filepath.Ext(entry.Name())]; !ok {
+			return nil
+		}
+		if !includeTests && (strings.HasSuffix(entry.Name(), "_test.go") || strings.HasSuffix(entry.Name(), ".test.ts") || strings.HasSuffix(entry.Name(), ".spec.ts")) {
+			return nil
+		}
+		visit(path)
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func walkProductionSourceFiles(t *testing.T, root string, visit func(path string)) {
+	t.Helper()
+	productionRoots := []string{
+		"api", "app", "cmd", "componenthost", "componentkit", "components",
+		"config", "core", "database", filepath.Join("frontend", "src"), "internal",
+		"ipmonitor", "logger", "middleware", "realtime", "service", "sub", "util", "web",
+	}
+	allowedExt := map[string]struct{}{".go": {}, ".js": {}, ".ts": {}, ".vue": {}}
+	for _, relativeRoot := range productionRoots {
+		pathRoot := filepath.Join(root, relativeRoot)
+		err := filepath.WalkDir(pathRoot, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() {
+				if skipDir(entry.Name()) {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			name := entry.Name()
+			if strings.HasSuffix(name, "_test.go") || strings.HasSuffix(name, ".test.ts") || strings.HasSuffix(name, ".spec.ts") {
+				return nil
+			}
+			if _, ok := allowedExt[filepath.Ext(name)]; ok {
+				visit(path)
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func allowedComponentKnowledgeFile(rel string) bool {
 	if strings.HasPrefix(rel, "app/components_") {
 		return true
 	}
 	if strings.HasPrefix(rel, "cmd/optional_commands_") {
+		return true
+	}
+	if rel == "cmd/solovey-privileged-broker/main.go" {
 		return true
 	}
 	return false

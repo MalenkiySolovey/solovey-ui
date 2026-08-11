@@ -140,6 +140,7 @@ func issueSessionRotationWSToken(t *testing.T, server *httptest.Server, cookies 
 		t.Fatal(err)
 	}
 	req.Header.Set("Cookie", sessionRotationCookieHeader(cookies))
+	req.Header.Set("Origin", server.URL)
 	resp, err := server.Client().Do(req)
 	if err != nil {
 		t.Fatal(err)

@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	optionalcmd "github.com/MalenkiySolovey/solovey-ui/cmd/optional"
-	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database"
+	optionalcmd "github.com/MalenkiySolovey/solovey-ui/componenthost/commands"
+	importxui "github.com/MalenkiySolovey/solovey-ui/components/import-xui/database"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
