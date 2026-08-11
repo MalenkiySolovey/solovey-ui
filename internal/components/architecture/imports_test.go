@@ -7,6 +7,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -312,7 +313,6 @@ func TestRuntimeSourceDoesNotContainDevelopmentProvenance(t *testing.T) {
 		"Claude",
 		"Codex",
 		"Gemini",
-		"P18-E",
 		"QCOW",
 		"QEMU",
 		"SUI_TEST_LAB",
@@ -322,6 +322,7 @@ func TestRuntimeSourceDoesNotContainDevelopmentProvenance(t *testing.T) {
 		"tools/lab",
 		"tools\\lab",
 	}
+	deprecatedMilestone := regexp.MustCompile(`(?i)\b(?:phase[\s_-]*1[578]|p1[578][-_])`)
 	var violations []string
 	walkProductionSourceFiles(t, root, func(path string) {
 		content, err := os.ReadFile(path)
@@ -333,6 +334,10 @@ func TestRuntimeSourceDoesNotContainDevelopmentProvenance(t *testing.T) {
 				rel := filepath.ToSlash(mustRel(t, root, path))
 				violations = append(violations, rel+" contains development provenance "+token)
 			}
+		}
+		if marker := deprecatedMilestone.FindString(string(content)); marker != "" {
+			rel := filepath.ToSlash(mustRel(t, root, path))
+			violations = append(violations, rel+" contains a development milestone identifier")
 		}
 	})
 	if len(violations) > 0 {

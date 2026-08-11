@@ -39,7 +39,7 @@ func TestCompletePasswordTransitionDoesNotUpgradeAStaleSQLiteReadTransaction(t *
 		}
 		fired = true
 		go func() {
-			writerDone <- db.Create(&model.Setting{Key: "p18-e02-concurrent-writer", Value: "committed"}).Error
+			writerDone <- db.Create(&model.Setting{Key: "test-concurrent-writer", Value: "committed"}).Error
 		}()
 		if err := <-writerDone; err != nil {
 			tx.AddError(err)

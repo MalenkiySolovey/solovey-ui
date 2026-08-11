@@ -1,4 +1,4 @@
-//go:build phase15_performance
+//go:build fronting_performance
 
 package fronting
 

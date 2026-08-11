@@ -15,7 +15,7 @@ import (
 // TestRepro_MigratedClientLinks reproduces the reported bug: after a compatible panel
 // migration the subscription/links show nothing for the imported inbounds.
 //
-//	IMPORT_XUI_REAL_DB="C:\\CheckErrorS-ui\\x-ui (6).db" go test ./components/import-xui/database/ -run Repro_MigratedClientLinks -v
+//	IMPORT_XUI_REAL_DB="path/to/x-ui.db" go test ./components/import-xui/database/ -run Repro_MigratedClientLinks -v
 func TestRepro_MigratedClientLinks(t *testing.T) {
 	path := os.Getenv("IMPORT_XUI_REAL_DB")
 	if path == "" {

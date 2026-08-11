@@ -3,7 +3,7 @@
  *
  * Custom Vuetify icon set that renders Lucide icons for the Nexus UI's *visible*
  * icons (sidebar nav, topbar, toolbars, row actions, drawers, empty states),
- * matching the C:\project reference prototype which uses Lucide-style line icons.
+ * using Lucide-style line icons throughout the operator interface.
  *
  * Vuetify keeps `defaultSet: 'mdi'`, so its internal icons (checkboxes, select
  * carets, expansion chevrons, pagination) stay MDI. Lucide is opt-in per usage

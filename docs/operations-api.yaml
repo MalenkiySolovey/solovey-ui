@@ -1,0 +1,743 @@
+openapi: 3.1.0
+info:
+  title: Solovey UI operations API
+  version: 2026.3.0
+  description: >-
+    Authenticated, bounded operator contracts for panel security, SSH recovery,
+    deployment, signed updates, resource pressure, SQLite, migrations, backup,
+    restore, and durable-owner data lifecycle. This contract does not claim
+    external Live acceptance.
+servers:
+  - url: /
+security:
+  - cookieAuth: []
+
+x-message-responses: &messageResponses
+  "200": { $ref: "#/components/responses/Message" }
+x-step-up-parameters: &stepUpParameters
+  - $ref: "#/components/parameters/StepUpToken"
+
+paths:
+  /api/v1/security/posture:
+    get: { operationId: getSecurityPosture, responses: *messageResponses }
+  /api/v1/security/sessions:
+    get:
+      operationId: getSecuritySessions
+      parameters:
+        - { name: cursor, in: query, schema: { type: string, maxLength: 256 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200 } }
+      responses: *messageResponses
+  /api/v1/security/sessions/revoke:
+    post:
+      operationId: revokeSecuritySession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SessionRevokeRequest" }
+      responses: *messageResponses
+  /api/v1/security/sessions/revoke-others:
+    post:
+      operationId: revokeOtherSecuritySessions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StepUpBodyRequest" }
+      responses: *messageResponses
+  /api/v1/security/sessions/adopt-bounded:
+    post:
+      operationId: adoptBoundedSecuritySessions
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StepUpBodyRequest" }
+      responses: *messageResponses
+  /api/v1/security/password/transition:
+    post:
+      operationId: completePasswordTransition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PasswordTransitionRequest" }
+      responses: *messageResponses
+  /api/v1/security/password/change:
+    post:
+      operationId: changeSecurityPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PasswordChangeRequest" }
+      responses: *messageResponses
+  /api/v1/security/step-up:
+    post:
+      operationId: issueSecurityStepUp
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StepUpIssueRequest" }
+      responses: *messageResponses
+  /api/v1/security/mfa/enroll:
+    post:
+      operationId: beginMFAEnrollment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StepUpBodyRequest" }
+      responses: *messageResponses
+  /api/v1/security/mfa/confirm:
+    post:
+      operationId: confirmMFAEnrollment
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MFACodeRequest" }
+      responses: *messageResponses
+  /api/v1/security/mfa/recovery/ack:
+    post:
+      operationId: acknowledgeMFARecoveryCodes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AcknowledgementRequest" }
+      responses: *messageResponses
+  /api/v1/security/mfa/challenge:
+    post:
+      operationId: completeMFAChallenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MFACodeRequest" }
+      responses: *messageResponses
+  /api/v1/security/mfa/recovery:
+    post:
+      operationId: completeMFARecoveryChallenge
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MFACodeRequest" }
+      responses: *messageResponses
+  /api/v1/security/mfa/recovery/complete:
+    post:
+      operationId: completeMFARecoveryTransition
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RecoveryTransitionRequest" }
+      responses: *messageResponses
+  /api/v1/security/mfa/recovery/rotate:
+    post:
+      operationId: rotateMFARecoveryCodes
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StepUpBodyRequest" }
+      responses: *messageResponses
+  /api/v1/security/mfa/disable:
+    post:
+      operationId: disableMFA
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/StepUpBodyRequest" }
+      responses: *messageResponses
+
+  /api/v1/operations/ssh/posture:
+    get: { operationId: getSSHPosture, responses: *messageResponses }
+  /api/v1/operations/ssh/capabilities:
+    get: { operationId: getSSHCapabilities, responses: *messageResponses }
+  /api/v1/operations/ssh/endpoints:
+    get: { operationId: getSSHManagementEndpoints, responses: *messageResponses }
+  /api/v1/operations/ssh/recovery:
+    get: { operationId: getSSHRecoveryPaths, responses: *messageResponses }
+  /api/v1/operations/ssh/desired:
+    get: { operationId: getSSHDesiredContract, responses: *messageResponses }
+  /api/v1/operations/ssh/preview:
+    post:
+      operationId: previewSSHPolicy
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SSHPreviewRequest" }
+      responses: *messageResponses
+  /api/v1/operations/ssh/candidate:
+    post:
+      operationId: startSSHCandidate
+      parameters: *stepUpParameters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SSHStartRequest" }
+      responses: *messageResponses
+  /api/v1/operations/ssh/candidate/{operationId}:
+    get:
+      operationId: getSSHCandidate
+      parameters:
+        - $ref: "#/components/parameters/SSHOperationId"
+      responses: *messageResponses
+  /api/v1/operations/ssh/candidate/{operationId}/status:
+    get:
+      operationId: getSSHCandidateStatus
+      parameters:
+        - $ref: "#/components/parameters/SSHOperationId"
+      responses: *messageResponses
+  /api/v1/operations/ssh/candidate/{operationId}/timeline:
+    get:
+      operationId: getSSHCandidateTimeline
+      parameters:
+        - $ref: "#/components/parameters/SSHOperationId"
+      responses: *messageResponses
+  /api/v1/operations/ssh/candidate/{operationId}/reconnect:
+    get:
+      operationId: getSSHReconnectState
+      parameters:
+        - $ref: "#/components/parameters/SSHOperationId"
+      responses: *messageResponses
+  /api/v1/operations/ssh/candidate/{operationId}/reconnect/confirm:
+    post:
+      operationId: confirmSSHReconnect
+      parameters:
+        - $ref: "#/components/parameters/SSHOperationId"
+        - $ref: "#/components/parameters/StepUpToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SSHReconnectConfirmationRequest" }
+      responses: *messageResponses
+  /api/v1/operations/ssh/candidate/{operationId}/rollback:
+    post:
+      operationId: rollbackSSHCandidate
+      parameters:
+        - $ref: "#/components/parameters/SSHOperationId"
+        - $ref: "#/components/parameters/StepUpToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RevisionRequest" }
+      responses: *messageResponses
+
+  /api/v1/operations/deployment/profiles:
+    get: { operationId: getDeploymentProfiles, responses: *messageResponses }
+  /api/v1/operations/deployment/manifests:
+    get: { operationId: getDeploymentManifests, responses: *messageResponses }
+  /api/v1/operations/deployment/broker:
+    get: { operationId: getDeploymentBroker, responses: *messageResponses }
+  /api/v1/operations/deployment/capabilities:
+    get: { operationId: getDeploymentCapabilities, responses: *messageResponses }
+  /api/v1/operations/deployment/status:
+    get: { operationId: getDeploymentStatus, responses: *messageResponses }
+  /api/v1/operations/deployment/posture:
+    get: { operationId: getDeploymentPosture, responses: *messageResponses }
+  /api/v1/operations/deployment/doctor:
+    get: { operationId: getDeploymentDoctor, responses: *messageResponses }
+  /api/v1/operations/deployment/recovery:
+    get: { operationId: getDeploymentRecovery, responses: *messageResponses }
+  /api/v1/operations/deployment/preview:
+    post:
+      operationId: previewDeploymentMigration
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeploymentPreviewRequest" }
+      responses: *messageResponses
+  /api/v1/operations/deployment/migration:
+    post:
+      operationId: startDeploymentMigration
+      parameters: *stepUpParameters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DeploymentStartRequest" }
+      responses: *messageResponses
+  /api/v1/operations/deployment/migration/{operationId}:
+    get:
+      operationId: getDeploymentMigration
+      parameters:
+        - $ref: "#/components/parameters/DeploymentOperationId"
+      responses: *messageResponses
+  /api/v1/operations/deployment/migration/{operationId}/status:
+    get:
+      operationId: getDeploymentMigrationStatus
+      parameters:
+        - $ref: "#/components/parameters/DeploymentOperationId"
+      responses: *messageResponses
+  /api/v1/operations/deployment/migration/{operationId}/timeline:
+    get:
+      operationId: getDeploymentMigrationTimeline
+      parameters:
+        - $ref: "#/components/parameters/DeploymentOperationId"
+      responses: *messageResponses
+  /api/v1/operations/deployment/migration/{operationId}/confirm:
+    post:
+      operationId: confirmDeploymentMigration
+      parameters:
+        - $ref: "#/components/parameters/DeploymentOperationId"
+        - $ref: "#/components/parameters/StepUpToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RevisionRequest" }
+      responses: *messageResponses
+  /api/v1/operations/deployment/migration/{operationId}/rollback:
+    post:
+      operationId: rollbackDeploymentMigration
+      parameters:
+        - $ref: "#/components/parameters/DeploymentOperationId"
+        - $ref: "#/components/parameters/StepUpToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RevisionRequest" }
+      responses: *messageResponses
+
+  /api/v1/operations/update/capabilities:
+    get: { operationId: getUpdateCapabilities, responses: *messageResponses }
+  /api/v1/operations/update/status:
+    get:
+      operationId: getUpdateStatus
+      parameters:
+        - $ref: "#/components/parameters/UpdateChannel"
+      responses: *messageResponses
+  /api/v1/operations/update/posture:
+    get:
+      operationId: getUpdatePosture
+      parameters:
+        - $ref: "#/components/parameters/UpdateChannel"
+      responses: *messageResponses
+  /api/v1/operations/update/recovery:
+    get: { operationId: getUpdateRecovery, responses: *messageResponses }
+  /api/v1/operations/update/check:
+    post:
+      operationId: checkSignedUpdate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateCheckRequest" }
+      responses: *messageResponses
+  /api/v1/operations/update/prepare:
+    post:
+      operationId: prepareSignedUpdate
+      parameters: *stepUpParameters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePrepareRequest" }
+      responses: *messageResponses
+  /api/v1/operations/update/preflight:
+    post:
+      operationId: preflightSignedUpdate
+      parameters: *stepUpParameters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdatePrepareRequest" }
+      responses: *messageResponses
+  /api/v1/operations/update/activate:
+    post:
+      operationId: activateSignedUpdate
+      parameters: *stepUpParameters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateOperationRequest" }
+      responses: *messageResponses
+  /api/v1/operations/update/rollback:
+    post:
+      operationId: rollbackSignedUpdate
+      parameters: *stepUpParameters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateOperationRequest" }
+      responses: *messageResponses
+  /api/v1/operations/update/operations/{operationId}:
+    get:
+      operationId: getUpdateOperation
+      parameters:
+        - $ref: "#/components/parameters/UpdateOperationId"
+      responses: *messageResponses
+  /api/v1/operations/update/operations/{operationId}/timeline:
+    get:
+      operationId: getUpdateTimeline
+      parameters:
+        - $ref: "#/components/parameters/UpdateOperationId"
+        - { name: after, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200 } }
+      responses: *messageResponses
+  /api/v1/operations/update/operations/{operationId}/activate:
+    post:
+      operationId: activateUpdateOperation
+      parameters:
+        - $ref: "#/components/parameters/UpdateOperationId"
+        - $ref: "#/components/parameters/StepUpToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateRevisionRequest" }
+      responses: *messageResponses
+  /api/v1/operations/update/operations/{operationId}/rollback:
+    post:
+      operationId: rollbackUpdateOperation
+      parameters:
+        - $ref: "#/components/parameters/UpdateOperationId"
+        - $ref: "#/components/parameters/StepUpToken"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/UpdateRevisionRequest" }
+      responses: *messageResponses
+
+  /api/v1/operations/status:
+    get: { operationId: getOperationsStatus, responses: *messageResponses }
+  /api/v1/operations/pressure:
+    get: { operationId: getResourcePressure, responses: *messageResponses }
+  /api/v1/operations/resource-pressure:
+    get: { operationId: getResourcePressureAlias, responses: *messageResponses }
+  /api/v1/operations/pressure/history:
+    get:
+      operationId: getResourcePressureHistory
+      parameters:
+        - { name: after, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200 } }
+      responses: *messageResponses
+  /api/v1/operations/pressure/cleanup:
+    get:
+      operationId: getResourcePressureCleanupPosture
+      description: Read-only preview; it does not authorize durable-data cleanup.
+      responses: *messageResponses
+  /api/v1/operations/sqlite:
+    get: { operationId: getSQLiteRuntime, responses: *messageResponses }
+  /api/v1/operations/migrations:
+    get: { operationId: getMigrationPosture, responses: *messageResponses }
+  /api/v1/operations/data/owners:
+    get: { operationId: getDataOwners, responses: *messageResponses }
+  /api/v1/operations/data/drop/preview:
+    post:
+      operationId: previewDropData
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DropPreviewRequest" }
+      responses: *messageResponses
+  /api/v1/operations/data/drop:
+    post:
+      operationId: executeDropData
+      parameters: *stepUpParameters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DropExecuteRequest" }
+      responses: *messageResponses
+  /api/v1/operations/data/operations/{operationId}:
+    get:
+      operationId: getDataOperation
+      parameters:
+        - $ref: "#/components/parameters/DataOperationId"
+      responses: *messageResponses
+  /api/v1/operations/data/recovery:
+    get: { operationId: getDataRecovery, responses: *messageResponses }
+  /api/getdb:
+    get:
+      operationId: downloadBoundedBackup
+      parameters:
+        - { name: exclude, in: query, schema: { type: string, maxLength: 128 } }
+        - { name: backupEncryption, in: query, schema: { type: string, enum: [telegram] } }
+      responses:
+        "200":
+          description: Bounded SQLite backup stream or configured encrypted envelope
+          content:
+            application/octet-stream:
+              schema: { type: string, contentEncoding: binary }
+  /api/v1/operations/data/restore/rehearsal:
+    post:
+      operationId: rehearseRestore
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/RestoreRehearsalRequest" }
+      responses: *messageResponses
+  /api/v1/operations/data/restore:
+    post:
+      operationId: executeRestore
+      parameters: *stepUpParameters
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema: { $ref: "#/components/schemas/RestoreExecuteRequest" }
+      responses: *messageResponses
+
+components:
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: session
+  parameters:
+    UpdateChannel:
+      name: channel
+      in: query
+      schema: { type: string, enum: [main, beta] }
+    SSHOperationId:
+      name: operationId
+      in: path
+      required: true
+      schema: { type: string, minLength: 15, maxLength: 64, pattern: "^ssh-operation:[A-Za-z0-9._:@+-]+$" }
+    DeploymentOperationId:
+      name: operationId
+      in: path
+      required: true
+      schema: { type: string, minLength: 22, maxLength: 96, pattern: "^deployment-operation:[A-Za-z0-9._:@+-]+$" }
+    UpdateOperationId:
+      name: operationId
+      in: path
+      required: true
+      schema: { type: string, minLength: 18, maxLength: 96, pattern: "^update-operation:[A-Za-z0-9._:@+-]+$" }
+    DataOperationId:
+      name: operationId
+      in: path
+      required: true
+      schema: { type: string, minLength: 16, maxLength: 96, pattern: "^data-operation:[A-Za-z0-9._:@+-]+$" }
+    StepUpToken:
+      name: X-Step-Up-Token
+      in: header
+      required: true
+      description: Purpose-bound, single-use browser step-up grant.
+      schema: { type: string, minLength: 1, maxLength: 512 }
+  responses:
+    Message:
+      description: Stable Solovey UI message envelope
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/MessageEnvelope" }
+  schemas:
+    MessageEnvelope:
+      type: object
+      additionalProperties: false
+      required: [success, msg]
+      properties:
+        success: { type: boolean }
+        msg: { type: string }
+        obj: {}
+    SessionRevokeRequest:
+      type: object
+      additionalProperties: false
+      required: [ref]
+      properties:
+        ref: { type: string, minLength: 1, maxLength: 256 }
+    StepUpBodyRequest:
+      type: object
+      additionalProperties: false
+      required: [stepUpToken]
+      properties:
+        stepUpToken: { type: string, minLength: 1, maxLength: 512, writeOnly: true }
+    PasswordTransitionRequest:
+      type: object
+      additionalProperties: false
+      required: [currentPassword, newUsername, newPassword]
+      properties:
+        currentPassword: { type: string, minLength: 1, maxLength: 256, writeOnly: true }
+        newUsername: { type: string, minLength: 1, maxLength: 64 }
+        newPassword: { type: string, minLength: 15, maxLength: 256, writeOnly: true }
+    PasswordChangeRequest:
+      type: object
+      additionalProperties: false
+      required: [newUsername, newPassword, stepUpToken]
+      properties:
+        newUsername: { type: string, minLength: 1, maxLength: 64 }
+        newPassword: { type: string, minLength: 15, maxLength: 256, writeOnly: true }
+        stepUpToken: { type: string, minLength: 1, maxLength: 512, writeOnly: true }
+    StepUpIssueRequest:
+      type: object
+      additionalProperties: false
+      required: [method, credential, operationKind, targetDigest]
+      properties:
+        method: { type: string, enum: [password, totp, recovery] }
+        credential: { type: string, minLength: 1, maxLength: 256, writeOnly: true }
+        operationKind: { type: string, minLength: 1, maxLength: 96 }
+        targetDigest: { $ref: "#/components/schemas/Digest" }
+    MFACodeRequest:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code: { type: string, minLength: 1, maxLength: 128, writeOnly: true }
+    AcknowledgementRequest:
+      type: object
+      additionalProperties: false
+      required: [acknowledged]
+      properties:
+        acknowledged: { type: boolean, const: true }
+    RecoveryTransitionRequest:
+      type: object
+      additionalProperties: false
+      required: [newUsername, newPassword]
+      properties:
+        newUsername: { type: string, minLength: 1, maxLength: 64 }
+        newPassword: { type: string, minLength: 15, maxLength: 256, writeOnly: true }
+    SSHDesiredPolicy:
+      type: object
+      additionalProperties: false
+      required: [schema, permitRootLogin]
+      properties:
+        schema: { type: string, const: solovey-ui/ssh-managed-policy/v1 }
+        maxAuthTries: { type: integer, minimum: 1, maximum: 20 }
+        loginGraceTimeSeconds: { type: integer, minimum: 1, maximum: 600 }
+        passwordAuthentication: { type: boolean }
+        kbdInteractiveAuthentication: { type: boolean }
+        permitRootLogin: { type: string, enum: [UNCHANGED, YES, NO, PROHIBIT_PASSWORD] }
+        pubkeyAuthentication: { type: boolean }
+    SSHPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [policy, acknowledged]
+      properties:
+        policy: { $ref: "#/components/schemas/SSHDesiredPolicy" }
+        acknowledged: { type: boolean }
+    SSHStartRequest:
+      type: object
+      additionalProperties: false
+      required: [policy, idempotencyKey, expectedPreviewRevision, expectedPostureRevision, expectedEndpointRevision, expectedRecoveryRevision, expectedProviderRevision, endpointId, principalId, authenticationClass, acknowledged]
+      properties:
+        policy: { $ref: "#/components/schemas/SSHDesiredPolicy" }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 96 }
+        expectedPreviewRevision: { $ref: "#/components/schemas/Digest" }
+        expectedPostureRevision: { $ref: "#/components/schemas/Digest" }
+        expectedEndpointRevision: { $ref: "#/components/schemas/Digest" }
+        expectedRecoveryRevision: { $ref: "#/components/schemas/Digest" }
+        expectedProviderRevision: { $ref: "#/components/schemas/Digest" }
+        endpointId: { type: string, minLength: 1, maxLength: 256 }
+        principalId: { type: string, minLength: 1, maxLength: 256 }
+        authenticationClass: { type: string, enum: [publickey, certificate] }
+        acknowledged: { type: boolean, const: true }
+    SSHReconnectConfirmationRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedRevision, providerEvidenceRef]
+      properties:
+        expectedRevision: { type: integer, minimum: 1 }
+        providerEvidenceRef: { type: string, minLength: 11, maxLength: 128, pattern: "^ssh-proof:[A-Za-z0-9._:@+-]+$", writeOnly: true }
+    RevisionRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedRevision]
+      properties:
+        expectedRevision: { type: integer, minimum: 1 }
+    DeploymentPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [targetProfile, acknowledged]
+      properties:
+        targetProfile: { type: string, enum: [native-hardened, native-network-advanced] }
+        acknowledged: { type: boolean }
+    DeploymentStartRequest:
+      type: object
+      additionalProperties: false
+      required: [targetProfile, idempotencyKey, expectedPreviewRevision, expectedPostureRevision, confirmation, acknowledged]
+      properties:
+        targetProfile: { type: string, enum: [native-hardened, native-network-advanced] }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 96 }
+        expectedPreviewRevision: { $ref: "#/components/schemas/Digest" }
+        expectedPostureRevision: { $ref: "#/components/schemas/Digest" }
+        confirmation: { type: string, minLength: 1, maxLength: 128 }
+        acknowledged: { type: boolean, const: true }
+    UpdateCheckRequest:
+      type: object
+      additionalProperties: false
+      required: [channel]
+      properties:
+        channel: { type: string, enum: [main, beta] }
+    UpdatePrepareRequest:
+      type: object
+      additionalProperties: false
+      required: [channel, expectedSequence, expectedManifestDigest, idempotencyKey, confirmation, acknowledged]
+      properties:
+        channel: { type: string, enum: [main, beta] }
+        expectedSequence: { type: integer, minimum: 1 }
+        expectedManifestDigest: { $ref: "#/components/schemas/Digest" }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 96 }
+        confirmation: { type: string, minLength: 16, maxLength: 96 }
+        acknowledged: { type: boolean, const: true }
+    UpdateOperationRequest:
+      type: object
+      additionalProperties: false
+      required: [operationId, expectedRevision, confirmation]
+      properties:
+        operationId: { type: string, minLength: 18, maxLength: 96, pattern: "^update-operation:[A-Za-z0-9._:@+-]+$" }
+        expectedRevision: { type: integer, minimum: 1 }
+        confirmation: { type: string, minLength: 16, maxLength: 128 }
+    UpdateRevisionRequest:
+      type: object
+      additionalProperties: false
+      required: [expectedRevision, confirmation]
+      properties:
+        expectedRevision: { type: integer, minimum: 1 }
+        confirmation: { type: string, minLength: 16, maxLength: 128 }
+    DropPreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [ownerId]
+      properties:
+        ownerId: { type: string, minLength: 1, maxLength: 64, pattern: "^[a-z0-9-]+$" }
+    DropExecuteRequest:
+      type: object
+      additionalProperties: false
+      required: [ownerId, expectedPreviewRevision, idempotencyKey, confirmation, backupAcknowledged, acknowledged]
+      properties:
+        ownerId: { type: string, minLength: 1, maxLength: 64, pattern: "^[a-z0-9-]+$" }
+        expectedPreviewRevision: { $ref: "#/components/schemas/Digest" }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 96 }
+        confirmation: { type: string, minLength: 12, maxLength: 96 }
+        backupAcknowledged: { type: boolean, const: true }
+        acknowledged: { type: boolean, const: true }
+    RestoreRehearsalRequest:
+      type: object
+      additionalProperties: false
+      required: [db]
+      properties:
+        db: { type: string, contentEncoding: binary }
+        backupPassphrase: { type: string, maxLength: 1024, writeOnly: true }
+    RestoreExecuteRequest:
+      type: object
+      additionalProperties: false
+      required: [db, expectedRehearsalRevision, idempotencyKey, confirmation, acknowledged]
+      properties:
+        db: { type: string, contentEncoding: binary }
+        backupPassphrase: { type: string, maxLength: 1024, writeOnly: true }
+        expectedRehearsalRevision: { $ref: "#/components/schemas/Digest" }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 96 }
+        confirmation: { type: string, minLength: 16, maxLength: 128 }
+        acknowledged: { type: boolean, const: true }
+    Digest:
+      type: string
+      pattern: "^[a-f0-9]{64}$"

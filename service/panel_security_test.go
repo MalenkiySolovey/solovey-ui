@@ -832,7 +832,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 		}
 		fired = true
 		go func() {
-			writerDone <- db.Create(&model.Setting{Key: "p18-e02-session-writer", Value: "committed"}).Error
+			writerDone <- db.Create(&model.Setting{Key: "test-session-writer", Value: "committed"}).Error
 		}()
 		if err := <-writerDone; err != nil {
 			tx.AddError(err)

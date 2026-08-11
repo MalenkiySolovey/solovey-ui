@@ -13,31 +13,31 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type phase17OpenAPISpec struct {
+type openAPISpec struct {
 	OpenAPI    string                                 `yaml:"openapi"`
-	Paths      map[string]map[string]phase17Operation `yaml:"paths"`
+	Paths      map[string]map[string]openAPIOperation `yaml:"paths"`
 	Components struct {
-		Schemas map[string]phase17Schema `yaml:"schemas"`
+		Schemas map[string]openAPISchema `yaml:"schemas"`
 	} `yaml:"components"`
 }
 
-type phase17Operation struct {
+type openAPIOperation struct {
 	OperationID string           `yaml:"operationId"`
 	RequestBody map[string]any   `yaml:"requestBody"`
 	Parameters  []map[string]any `yaml:"parameters"`
 }
 
-type phase17Schema struct {
+type openAPISchema struct {
 	AdditionalProperties *bool                    `yaml:"additionalProperties"`
-	Properties           map[string]phase17Schema `yaml:"properties"`
+	Properties           map[string]openAPISchema `yaml:"properties"`
 }
 
-func TestPhase17OpenAPIInventoryAndStrictRequests(t *testing.T) {
-	data, err := os.ReadFile(filepath.Join("..", "docs", "phase17-operations-api.yaml"))
+func TestOpenAPIInventoryAndStrictRequests(t *testing.T) {
+	data, err := os.ReadFile(filepath.Join("..", "docs", "operations-api.yaml"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	var spec phase17OpenAPISpec
+	var spec openAPISpec
 	if err := yaml.Unmarshal(data, &spec); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestPhase17OpenAPIInventoryAndStrictRequests(t *testing.T) {
 
 	actual := map[string]map[string]bool{}
 	for _, route := range router.Routes() {
-		if !phase17ContractRoute(route.Path) {
+		if !openAPIContractRoute(route.Path) {
 			continue
 		}
 		path := strings.ReplaceAll(route.Path, ":operationId", "{operationId}")
@@ -87,7 +87,7 @@ func TestPhase17OpenAPIInventoryAndStrictRequests(t *testing.T) {
 		}
 	}
 	for path, operations := range spec.Paths {
-		if !phase17ContractRoute(path) {
+		if !openAPIContractRoute(path) {
 			continue
 		}
 		for method := range operations {
@@ -151,7 +151,7 @@ func TestPhase17OpenAPIInventoryAndStrictRequests(t *testing.T) {
 	}
 }
 
-func phase17ContractRoute(path string) bool {
+func openAPIContractRoute(path string) bool {
 	return path == "/api/getdb" || strings.HasPrefix(path, "/api/v1/security/") ||
 		strings.HasPrefix(path, "/api/v1/operations/")
 }

@@ -353,7 +353,7 @@ func findSettingItem(t *testing.T, plan *MigrationPlan, srcKey string) PlanItem 
 // IMPORT_XUI_REAL_DB env var points at one. It is skipped in CI (no fixture)
 // but lets us prove the migration end-to-end against an actual export, e.g.
 //
-//	IMPORT_XUI_REAL_DB="C:\\CheckErrorS-ui\\x-ui (6).db" go test ./components/import-xui/database/ -run RealXUIBackup -v
+//	IMPORT_XUI_REAL_DB="path/to/x-ui.db" go test ./components/import-xui/database/ -run RealXUIBackup -v
 func TestImport_RealXUIBackup(t *testing.T) {
 	path := os.Getenv("IMPORT_XUI_REAL_DB")
 	if path == "" {

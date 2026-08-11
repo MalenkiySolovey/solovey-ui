@@ -194,7 +194,7 @@ func TestWarpEndpoint_DropsMalformedReserved(t *testing.T) {
 // the WARP wireguard outbound lands as an s-ui endpoint and its routing rule
 // targets that endpoint.
 //
-//	IMPORT_XUI_REAL_DB="C:\\CheckErrorS-ui\\x-ui (6).db" go test ./components/import-xui/database/ -run RealXUIBackup_WARP -v
+//	IMPORT_XUI_REAL_DB="path/to/x-ui.db" go test ./components/import-xui/database/ -run RealXUIBackup_WARP -v
 func TestImport_RealXUIBackup_WARP(t *testing.T) {
 	path := os.Getenv("IMPORT_XUI_REAL_DB")
 	if path == "" {

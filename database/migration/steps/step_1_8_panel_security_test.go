@@ -11,7 +11,7 @@ import (
 )
 
 func TestPanelSecurityMigrationIsAdditiveIdempotentAndPreservesLegacyAccess(t *testing.T) {
-	dsn := fmt.Sprintf("file:p17-security-%d?mode=memory&cache=shared", time.Now().UnixNano())
+	dsn := fmt.Sprintf("file:test-security-%d?mode=memory&cache=shared", time.Now().UnixNano())
 	db, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)

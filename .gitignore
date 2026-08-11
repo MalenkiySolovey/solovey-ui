@@ -57,7 +57,8 @@ verify-*.txt
 
 # Local documentation and development notes
 /doc/
-/docs/
+/docs/*
+!/docs/operations-api.yaml
 dc42e16-files.txt
 tests/baseline/*
 !tests/baseline/run-command.ps1
@@ -75,6 +76,7 @@ cmd/optional_commands_generated.go
 
 # Local workspace specs/state
 .kiro/
+.claude/settings.local.json
 
 # Local import fixtures with real production data
 test-db/
