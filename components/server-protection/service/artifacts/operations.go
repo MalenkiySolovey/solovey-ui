@@ -14,9 +14,9 @@ import (
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 
-// OperationRecovery connects persisted journal facts to local artifacts. Its
-// rollback method is deliberately unavailable until a later apply phase wires
-// a restricted backend.
+// OperationRecovery connects persisted journal facts to local artifacts. It is
+// the mutation-inert fallback used when no restricted per-kind rollback backend
+// is available; production composition replaces it for firewall and fronting.
 type OperationRecovery struct {
 	Storage    *Storage
 	Repository OperationRecoveryRepository

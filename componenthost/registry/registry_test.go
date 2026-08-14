@@ -49,6 +49,19 @@ func TestRegistryRejectsBrokenComponent(t *testing.T) {
 	})
 }
 
+func TestRegistryAdmissionRunsOnlyAfterLocalValidation(t *testing.T) {
+	r := newRegistry()
+	admitted := false
+	assertPanic(t, func() {
+		r.registerWith(Component{
+			Manifest: manifest.Manifest{ID: "missing-lifecycle", Name: "Missing Lifecycle", Delivery: manifest.DeliveryInProcess},
+		}, func(manifest.Manifest) { admitted = true })
+	})
+	if admitted {
+		t.Fatal("external owner catalog was mutated before lifecycle validation")
+	}
+}
+
 func assertPanic(t *testing.T, fn func()) {
 	t.Helper()
 	defer func() {

@@ -14,7 +14,7 @@ func TestCoreFrontendSettingsPayloadDefaultsMatchBackendSchema(t *testing.T) {
 		name string
 	}{
 		{
-			file: filepath.Join("..", "frontend", "src", "views", "settingsPayload.ts"),
+			file: filepath.Join("..", "frontend", "src", "features", "settingsPayload.ts"),
 			name: "settingsPageDefaults",
 		},
 	}

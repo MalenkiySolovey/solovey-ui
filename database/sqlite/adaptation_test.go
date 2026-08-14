@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,7 +9,7 @@ import (
 
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 )
 
 // TestAdaptRehashesLegacyPlaintextPassword simulates an imported legacy backup
@@ -47,10 +48,13 @@ func TestAdaptRehashesLegacyPlaintextPassword(t *testing.T) {
 	if err := d.Model(&model.User{}).Where("username = ?", "admin").First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
-	if !common.IsPasswordHash(stored.Password) {
+	if !passwordutil.IsEncoded(stored.Password) {
 		t.Fatalf("password was not migrated, still plaintext: %q", stored.Password)
 	}
-	ok, _ := common.CheckPassword(stored.Password, "legacy-plaintext")
+	ok, _, verifyErr := passwordutil.Verify(context.Background(), stored.Password, "legacy-plaintext")
+	if verifyErr != nil {
+		t.Fatal(verifyErr)
+	}
 	if !ok {
 		t.Fatal("rehashed password no longer validates the original plaintext")
 	}
@@ -110,13 +114,13 @@ func TestAdaptRotatesLegacyDefaultAdminPassword(t *testing.T) {
 	if err := d.Model(&model.User{}).Where("username = ?", "admin").First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
-	if !common.IsPasswordHash(stored.Password) {
+	if !passwordutil.IsEncoded(stored.Password) {
 		t.Fatalf("rotated password was not hashed: %q", stored.Password)
 	}
-	if ok, _ := common.CheckPassword(stored.Password, "admin"); ok {
+	if ok, _, err := passwordutil.Verify(context.Background(), stored.Password, "admin"); err != nil || ok {
 		t.Fatal("legacy admin/admin password still validates after adapt")
 	}
-	if ok, _ := common.CheckPassword(stored.Password, generated); !ok {
+	if ok, _, err := passwordutil.Verify(context.Background(), stored.Password, generated); err != nil || !ok {
 		t.Fatal("generated admin password does not validate")
 	}
 	if !stored.ForcePasswordReset {

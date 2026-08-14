@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestProcessExecutionExistsOnlyInRestrictedHelperAdapter(t *testing.T) {
+func TestProcessExecutionStaysInPrivilegedSemanticBackends(t *testing.T) {
 	componentRoot := filepath.Clean(filepath.Join("..", ".."))
 	err := filepath.WalkDir(componentRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -26,8 +26,8 @@ func TestProcessExecutionExistsOnlyInRestrictedHelperAdapter(t *testing.T) {
 			return nil
 		}
 		cleanPath := filepath.ToSlash(path)
-		if !strings.HasSuffix(cleanPath, "/service/helper/process.go") && !strings.HasSuffix(cleanPath, "/service/helper/nft_backend.go") && !strings.HasSuffix(cleanPath, "/service/helper/nginx_backend.go") && !strings.HasSuffix(cleanPath, "/service/helper/ssh_recovery_backend.go") && !strings.HasSuffix(cleanPath, "/service/helper/listener_owner_linux.go") {
-			t.Errorf("process execution escaped restricted helper adapter: %s", path)
+		if !strings.HasSuffix(cleanPath, "/service/helper/nft_backend.go") && !strings.HasSuffix(cleanPath, "/service/helper/nginx_backend.go") && !strings.HasSuffix(cleanPath, "/service/helper/ssh_recovery_backend.go") && !strings.HasSuffix(cleanPath, "/service/helper/listener_owner_linux.go") {
+			t.Errorf("process execution escaped a privileged semantic backend: %s", path)
 		}
 		return nil
 	})

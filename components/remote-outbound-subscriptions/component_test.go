@@ -16,13 +16,21 @@ import (
 	remotesettings "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	outboundentities "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	localsub "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/local"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"gorm.io/gorm"
 )
 
 func TestManifestDurableSettingsMatchRuntimeOwnership(t *testing.T) {
+	wantTables := []string{
+		"remote_outbound_connections",
+		"remote_outbound_group_connections",
+		"remote_outbound_groups",
+		"remote_outbound_subscriptions",
+	}
+	if !slices.Equal(componentManifest.Database.Tables, wantTables) {
+		t.Fatalf("manifest tables = %v, runtime ownership = %v", componentManifest.Database.Tables, wantTables)
+	}
 	want := remotesettings.AllKeys()
 	sort.Strings(want)
 	if !slices.Equal(componentManifest.Database.Settings, want) {
@@ -31,14 +39,8 @@ func TestManifestDurableSettingsMatchRuntimeOwnership(t *testing.T) {
 }
 
 func TestRuntimeHooksFollowComponentLifecycle(t *testing.T) {
-	localsub.ResetClientOutboundContributorsForTest()
-	service.ResetOutboundSaveHooksForTest()
-	outboundentities.ResetDeleteHooksForTest()
-	outboundentities.ResetMetadataAnnotatorsForTest()
-	t.Cleanup(localsub.ResetClientOutboundContributorsForTest)
-	t.Cleanup(service.ResetOutboundSaveHooksForTest)
-	t.Cleanup(outboundentities.ResetDeleteHooksForTest)
-	t.Cleanup(outboundentities.ResetMetadataAnnotatorsForTest)
+	unregisterRuntimeHooks()
+	t.Cleanup(unregisterRuntimeHooks)
 
 	beforeRegister := localsub.ClientOutboundContributorsVersion()
 	registerRuntimeHooks()
@@ -52,6 +54,25 @@ func TestRuntimeHooksFollowComponentLifecycle(t *testing.T) {
 	if afterUnregister == afterRegister {
 		t.Fatal("remote component stop did not unregister client outbound contributor")
 	}
+}
+
+func TestRemoteComponentStartFailsClosedWithoutRuntime(t *testing.T) {
+	locallyResetRemoteHooks(t)
+	beforeRegister := localsub.ClientOutboundContributorsVersion()
+
+	err := (component{}).Start(context.Background(), lifecycle.Context{})
+	if err == nil || !strings.Contains(err.Error(), "runtime is unavailable") {
+		t.Fatalf("Start() error = %v, want unavailable runtime", err)
+	}
+	if got := localsub.ClientOutboundContributorsVersion(); got != beforeRegister {
+		t.Fatalf("failed start changed client outbound contributor version: before=%d after=%d", beforeRegister, got)
+	}
+}
+
+func locallyResetRemoteHooks(t *testing.T) {
+	t.Helper()
+	unregisterRuntimeHooks()
+	t.Cleanup(unregisterRuntimeHooks)
 }
 
 func TestRemoteDropDataRemovesOwnedTablesAndSettings(t *testing.T) {

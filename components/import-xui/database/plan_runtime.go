@@ -51,7 +51,10 @@ func (s *applyState) item(kind string, srcID any) PlanItem {
 	if item, ok := s.plan[planKey(kind, srcID)]; ok {
 		return item
 	}
-	return PlanItem{Kind: kind, SrcID: srcID, Action: ActionCreate}
+	// A source row that was not in the server-rebuilt plan must never become an
+	// implicit create. This also fails closed if a CLI source file is replaced
+	// between plan validation and the immutable read connection being opened.
+	return PlanItem{Kind: kind, SrcID: srcID, Action: ActionSkip}
 }
 
 func (s *applyState) hasKind(kind string) bool {

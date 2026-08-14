@@ -6,10 +6,10 @@ APP_NAME="${SOLOVEY_UI_APP_NAME:-solovey-ui}"
 
 target=""
 binary="${APP_NAME}"
-helper="solovey-protect-helper"
 broker="solovey-privileged-broker"
 proof="solovey-ssh-proof"
 manifest_writer="solovey-broker-manifest"
+owner_manifest_writer="solovey-owner-manifest"
 manager="${APP_NAME}.sh"
 service="${APP_NAME}.service"
 systemd_dir="deploy/systemd"
@@ -28,10 +28,10 @@ Usage:
 Options:
   --target <name>       Artifact target suffix, for example linux-amd64.
   --binary <path>       Built binary path. Default: ./${APP_NAME}
-  --helper <path>       Restricted helper path. Default: ./solovey-protect-helper
   --broker <path>       Typed privileged broker. Default: ./solovey-privileged-broker
   --proof <path>        SSH proof client. Default: ./solovey-ssh-proof
   --manifest-writer <path> Fixed broker-manifest writer. Default: ./solovey-broker-manifest
+  --owner-manifest-writer <path> Application-owner manifest writer. Default: ./solovey-owner-manifest
   --manager <path>      Manager script path. Default: ./${APP_NAME}.sh
   --service <path>      systemd service path. Default: ./${APP_NAME}.service
   --systemd-dir <path>  Versioned profile unit directory. Default: ./deploy/systemd
@@ -60,11 +60,6 @@ parse_args() {
                 binary="$2"
                 shift 2
                 ;;
-            --helper)
-                [[ $# -ge 2 ]] || fail "$1 requires a value"
-                helper="$2"
-                shift 2
-                ;;
             --manager)
                 [[ $# -ge 2 ]] || fail "$1 requires a value"
                 manager="$2"
@@ -83,6 +78,11 @@ parse_args() {
             --manifest-writer)
 				[[ $# -ge 2 ]] || fail "$1 requires a value"
 				manifest_writer="$2"
+				shift 2
+				;;
+            --owner-manifest-writer)
+				[[ $# -ge 2 ]] || fail "$1 requires a value"
+				owner_manifest_writer="$2"
 				shift 2
 				;;
             --service)
@@ -159,9 +159,9 @@ validate_inputs() {
 	require_executable "privileged broker" "${broker}"
 	require_executable "SSH proof client" "${proof}"
 	require_executable "broker manifest writer" "${manifest_writer}"
-    if [[ "${profile}" == "full" ]]; then
-        require_executable "restricted helper" "${helper}"
-    fi
+	if [[ "${profile}" == "full" ]]; then
+		require_executable "application owner manifest writer" "${owner_manifest_writer}"
+	fi
     require_executable "manager script" "${manager}"
     require_file "systemd service" "${service}"
 	[[ -d "${systemd_dir}" ]] || fail "systemd profile directory not found: ${systemd_dir}"
@@ -199,19 +199,19 @@ package_release() {
 	cp -a "${broker}" "${payload}/solovey-privileged-broker"
 	cp -a "${proof}" "${payload}/solovey-ssh-proof"
 	cp -a "${manifest_writer}" "${payload}/solovey-broker-manifest"
+	if [[ "${profile}" == "full" ]]; then
+		cp -a "${owner_manifest_writer}" "${payload}/solovey-owner-manifest"
+	fi
 	mkdir -p "${payload}/systemd"
 	cp -a "${systemd_dir}/." "${payload}/systemd/"
-    if [[ "${profile}" == "full" ]]; then
-        cp -a "${helper}" "${payload}/solovey-protect-helper"
-    fi
     cp -a "${manager}" "${payload}/${APP_NAME}.sh"
     cp -a "${service}" "${payload}/${APP_NAME}.service"
     cp -a "${build_info}" "${payload}/BUILD_INFO.txt"
-    chmod 755 "${payload}/${APP_NAME}" "${payload}/${APP_NAME}.sh" "${payload}/solovey-privileged-broker" \
+	chmod 755 "${payload}/${APP_NAME}" "${payload}/${APP_NAME}.sh" "${payload}/solovey-privileged-broker" \
 		"${payload}/solovey-ssh-proof" "${payload}/solovey-broker-manifest"
-    if [[ "${profile}" == "full" ]]; then
-        chmod 755 "${payload}/solovey-protect-helper"
-    fi
+	if [[ "${profile}" == "full" ]]; then
+		chmod 755 "${payload}/solovey-owner-manifest"
+	fi
 
     tar -czf "${out_dir}/${artifact}" -C "${tmp_dir}" "${APP_NAME}"
     (

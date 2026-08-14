@@ -356,7 +356,7 @@
 <script lang="ts" setup>
 import Dial from '@/components/fields/Dial.vue'
 import SettingInfo from '@/components/settings/SettingInfo.vue'
-import { useBasicsPage } from '@/shared/composables/pages/useBasicsPage'
+import { useBasicsPage } from '@/features/useBasicsPage'
 
 withDefaults(defineProps<{
   showActions?: boolean

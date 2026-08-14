@@ -10,7 +10,9 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"gorm.io/gorm"
 )
@@ -20,6 +22,9 @@ import (
 func createNewEndpoints(tx *gorm.DB, endpoints []model.Endpoint, report *Report) error {
 	for i := range endpoints {
 		ep := &endpoints[i]
+		if err := identity.ValidateTypeTag(ep.Type, ep.Tag); err != nil {
+			return err
+		}
 		var existing model.Endpoint
 		err := tx.Where("tag = ?", ep.Tag).First(&existing).Error
 		if err != nil && !dbsqlite.IsNotFound(err) {
@@ -29,6 +34,9 @@ func createNewEndpoints(tx *gorm.DB, endpoints []model.Endpoint, report *Report)
 			report.Summary.Endpoints.Skipped++
 			report.warn(fmt.Sprintf("endpoint %q already exists; WARP outbound left unchanged", ep.Tag))
 			continue
+		}
+		if err := identity.EnsureOutboundTagAvailable(tx, ep.Tag, 0, 0); err != nil {
+			return err
 		}
 		sortOrder, err := nextImportSortOrder(tx, &model.Endpoint{})
 		if err != nil {
@@ -49,6 +57,9 @@ func createNewEndpoints(tx *gorm.DB, endpoints []model.Endpoint, report *Report)
 func createNewOutbounds(tx *gorm.DB, outbounds []model.Outbound, report *Report) error {
 	for i := range outbounds {
 		ob := &outbounds[i]
+		if err := identity.ValidateTypeTag(ob.Type, ob.Tag); err != nil {
+			return err
+		}
 		var existing model.Outbound
 		err := tx.Where("tag = ?", ob.Tag).First(&existing).Error
 		if err != nil && !dbsqlite.IsNotFound(err) {
@@ -58,6 +69,9 @@ func createNewOutbounds(tx *gorm.DB, outbounds []model.Outbound, report *Report)
 			report.Summary.Outbounds.Skipped++
 			report.warn(fmt.Sprintf("outbound %q already exists; left unchanged", ob.Tag))
 			continue
+		}
+		if err := identity.EnsureOutboundTagAvailable(tx, ob.Tag, 0, 0); err != nil {
+			return err
 		}
 		sortOrder, err := nextImportSortOrder(tx, &model.Outbound{})
 		if err != nil {
@@ -73,20 +87,23 @@ func createNewOutbounds(tx *gorm.DB, outbounds []model.Outbound, report *Report)
 	return nil
 }
 
-func ensureDirectOutbound(tx *gorm.DB, outbounds []model.Outbound, mapped map[string]any) []model.Outbound {
+func ensureDirectOutbound(tx *gorm.DB, outbounds []model.Outbound, mapped map[string]any) ([]model.Outbound, error) {
 	if !routingReferencesDirect(mapped) {
-		return outbounds
+		return outbounds, nil
 	}
 	for i := range outbounds {
 		if outbounds[i].Tag == mapping.DirectOutboundTag {
-			return outbounds
+			return outbounds, nil
 		}
 	}
 	var existing model.Outbound
 	if err := tx.Where("tag = ?", mapping.DirectOutboundTag).First(&existing).Error; err == nil {
-		return outbounds
+		return outbounds, nil
 	}
-	return append(outbounds, model.Outbound{Type: mapping.DirectOutboundTag, Tag: mapping.DirectOutboundTag})
+	if err := identity.EnsureOutboundTagAvailable(tx, mapping.DirectOutboundTag, 0, 0); err != nil {
+		return nil, err
+	}
+	return append(outbounds, model.Outbound{Type: mapping.DirectOutboundTag, Tag: mapping.DirectOutboundTag}), nil
 }
 
 func routingReferencesDirect(mapped map[string]any) bool {
@@ -129,7 +146,10 @@ func (s *applyState) applyRouting(ctx context.Context, tx *gorm.DB, src *source.
 	endpoints, outbounds, targets, outboundWarnings := mapping.MapXrayOutbounds(xrayConfig)
 	s.report.warnAll(outboundWarnings)
 	mapped, warnings, mappedCount, manualCount := mapping.MapXrayRouting(xrayConfig, targets)
-	outbounds = ensureDirectOutbound(tx, outbounds, mapped)
+	outbounds, err = ensureDirectOutbound(tx, outbounds, mapped)
+	if err != nil {
+		return err
+	}
 	if err := createNewEndpoints(tx, endpoints, s.report); err != nil {
 		return err
 	}
@@ -165,5 +185,5 @@ func mergeRoutingIntoConfig(tx *gorm.DB, mapped map[string]any) error {
 	if !changed {
 		return nil
 	}
-	return upsertSetting(tx, "config", merged)
+	return (&service.SettingService{}).SaveConfig(tx, []byte(merged))
 }

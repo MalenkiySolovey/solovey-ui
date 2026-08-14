@@ -7,6 +7,15 @@ import (
 	"strings"
 )
 
+func supportedMappedTransport(network string) bool {
+	switch strings.ToLower(strings.TrimSpace(network)) {
+	case "", "tcp", "ws", "grpc", "h2", "http", "httpupgrade", "splithttp", "xhttp":
+		return true
+	default:
+		return false
+	}
+}
+
 // mapTransport maps an Xray stream's transport to the sing-box transport block.
 // It is shared by inbound and outbound mapping; entity ("inbound"/"outbound")
 // only labels warning messages so the import report attributes them correctly.

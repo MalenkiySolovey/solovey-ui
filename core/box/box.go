@@ -3,6 +3,7 @@ package box
 import (
 	"context"
 	"io"
+	"sync"
 	"time"
 
 	corelogging "github.com/MalenkiySolovey/solovey-ui/core/logging"
@@ -51,6 +52,8 @@ type Box struct {
 	statsTracker    *tracker.StatsTracker
 	connTracker     *tracker.ConnTracker
 	done            chan struct{}
+	closeOnce       sync.Once
+	closeErr        error
 }
 
 func NewBox(options Options) (*Box, error) {

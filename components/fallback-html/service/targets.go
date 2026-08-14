@@ -3,7 +3,8 @@
 package service
 
 import (
-	"encoding/json"
+	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sort"
@@ -11,8 +12,8 @@ import (
 	"strings"
 	"time"
 
+	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/network/bind"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 	"gorm.io/gorm"
@@ -81,7 +82,7 @@ func (s *Service) SaveTarget(siteID uint, input TargetInput, actor string) (Targ
 	}
 	var saved fallbackdomain.RuntimeTarget
 	var site fallbackdomain.Site
-	err = s.guardedSiteMutation(siteID, func(tx *gorm.DB) error {
+	err = s.guardedRuntimeMutation(siteID, func(tx *gorm.DB) error {
 		if err := tx.First(&site, siteID).Error; err != nil {
 			return err
 		}
@@ -107,11 +108,6 @@ func (s *Service) SaveTarget(siteID uint, input TargetInput, actor string) (Targ
 			return err
 		}
 		return recordEvent(tx, siteID, actor, "target_saved", map[string]any{"kind": saved.Kind, "port": saved.Port})
-	}, func() error {
-		if strings.EqualFold(site.Status, "published") && site.Enabled {
-			return s.runtime.Rebuild(s.db)
-		}
-		return nil
 	})
 	if err != nil {
 		return TargetView{}, err
@@ -120,7 +116,7 @@ func (s *Service) SaveTarget(siteID uint, input TargetInput, actor string) (Targ
 }
 
 func (s *Service) DeleteTarget(siteID, targetID uint, actor string) error {
-	return s.guardedSiteMutation(siteID, func(tx *gorm.DB) error {
+	return s.guardedRuntimeMutation(siteID, func(tx *gorm.DB) error {
 		var target fallbackdomain.RuntimeTarget
 		if err := tx.Where("site_id = ?", siteID).First(&target, targetID).Error; err != nil {
 			return err
@@ -129,10 +125,10 @@ func (s *Service) DeleteTarget(siteID, targetID uint, actor string) error {
 			return err
 		}
 		return recordEvent(tx, siteID, actor, "target_deleted", map[string]any{"targetId": targetID})
-	}, func() error { return s.runtime.Rebuild(s.db) })
+	})
 }
 
-func (s *Service) PortCandidates() ([]PortCandidate, error) {
+func (s *Service) PortCandidates(ctx context.Context) ([]PortCandidate, error) {
 	current, err := s.currentWebTarget()
 	if err != nil {
 		return nil, err
@@ -154,8 +150,16 @@ func (s *Service) PortCandidates() ([]PortCandidate, error) {
 	if candidate, ok := defaultHTTPSPortCandidate(current); ok {
 		candidates = append(candidates, candidate)
 	}
-	candidates = append(candidates, s.savedTargetPortCandidates(current)...)
-	candidates = append(candidates, s.inboundPortCandidates()...)
+	saved, err := s.savedTargetPortCandidates(current)
+	if err != nil {
+		return nil, err
+	}
+	candidates = append(candidates, saved...)
+	inbounds, err := s.inboundPortCandidates(ctx)
+	if err != nil {
+		return nil, err
+	}
+	candidates = append(candidates, inbounds...)
 	if free, ok := freeLoopbackPortCandidate(current.TLS); ok {
 		candidates = append(candidates, free)
 	}
@@ -260,10 +264,10 @@ func defaultHTTPSPortCandidate(current TargetView) (PortCandidate, bool) {
 	return candidate, true
 }
 
-func (s *Service) savedTargetPortCandidates(current TargetView) []PortCandidate {
+func (s *Service) savedTargetPortCandidates(current TargetView) ([]PortCandidate, error) {
 	var targets []fallbackdomain.RuntimeTarget
 	if err := s.db.Order("site_id ASC, id ASC").Find(&targets).Error; err != nil {
-		return nil
+		return nil, err
 	}
 	out := make([]PortCandidate, 0, len(targets))
 	seen := map[string]bool{
@@ -282,40 +286,49 @@ func (s *Service) savedTargetPortCandidates(current TargetView) []PortCandidate 
 		candidate := probeTargetPortCandidate(target, current)
 		out = append(out, candidate)
 	}
-	return out
+	return out, nil
 }
 
-func (s *Service) inboundPortCandidates() []PortCandidate {
-	var inbounds []model.Inbound
-	if err := s.db.Find(&inbounds).Error; err != nil {
-		return nil
+func (s *Service) inboundPortCandidates(ctx context.Context) ([]PortCandidate, error) {
+	if ctx == nil {
+		ctx = context.Background()
 	}
-	out := make([]PortCandidate, 0, len(inbounds))
+	snapshotter := s.resourceSnapshot
+	if snapshotter == nil {
+		snapshotter = hostresources.Snapshot
+	}
+	snapshot := snapshotter(ctx)
+	if len(snapshot.Errors) > 0 {
+		return nil, errors.New("host resource inventory is unavailable")
+	}
+	out := make([]PortCandidate, 0)
 	seen := map[string]bool{}
-	for _, inbound := range inbounds {
-		listen, port, ok := inboundListen(inbound)
-		if !ok || port <= 0 {
+	for _, inbound := range snapshot.Resources {
+		if inbound.Owner != "core" || inbound.Kind != "inbound" || inbound.Port <= 0 {
 			continue
 		}
-		key := portCandidateKey("inbound", listen, port)
+		key := portCandidateKey("inbound", inbound.Listen, inbound.Port)
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
-		tag := strings.TrimSpace(inbound.Tag)
+		tag := strings.TrimSpace(inbound.InboundTag)
 		if tag == "" {
-			tag = uintString(inbound.Id)
+			tag = strings.TrimSpace(inbound.Name)
+		}
+		if tag == "" {
+			tag = inbound.ID
 		}
 		out = append(out, PortCandidate{
 			Kind:    "inbound",
-			Listen:  listen,
-			Port:    port,
+			Listen:  inbound.Listen,
+			Port:    inbound.Port,
 			Runtime: "sing-box",
 			Status:  "blocked-inbound",
 			Reason:  "sing-box inbound " + tag + " already uses this port",
 		})
 	}
-	return out
+	return out, nil
 }
 
 func probeTargetPortCandidate(target fallbackdomain.RuntimeTarget, current TargetView) PortCandidate {
@@ -394,44 +407,6 @@ func addressWouldFallback(listen string) (bool, string) {
 		return true, "configured listen address is not available on this host; panel would fall back to loopback"
 	}
 	return false, ""
-}
-
-func inboundListen(inbound model.Inbound) (string, int, bool) {
-	var options map[string]any
-	if len(inbound.Options) == 0 {
-		return "", 0, false
-	}
-	if err := json.Unmarshal(inbound.Options, &options); err != nil {
-		return "", 0, false
-	}
-	port, ok := intFromJSON(options["listen_port"])
-	if !ok || port <= 0 {
-		return "", 0, false
-	}
-	listen, _ := options["listen"].(string)
-	listen = strings.TrimSpace(listen)
-	if listen == "" {
-		listen = "0.0.0.0"
-	}
-	return listen, port, true
-}
-
-func intFromJSON(value any) (int, bool) {
-	switch typed := value.(type) {
-	case float64:
-		port := int(typed)
-		return port, typed == float64(port)
-	case int:
-		return typed, true
-	case json.Number:
-		port, err := strconv.Atoi(typed.String())
-		return port, err == nil
-	case string:
-		port, err := strconv.Atoi(strings.TrimSpace(typed))
-		return port, err == nil
-	default:
-		return 0, false
-	}
 }
 
 func targetMatchesCurrent(listen string, port int, runtime string, current TargetView) bool {
@@ -572,7 +547,7 @@ func (s *Service) currentWebTarget() (TargetView, error) {
 		Port:     port,
 		RootPath: "/",
 		Runtime:  "gin",
-		TLS:      certFile != "" || keyFile != "",
+		TLS:      certFile != "" && keyFile != "",
 		Status:   "available",
 		Reason:   "uses the current managed panel web listener",
 		Current:  true,

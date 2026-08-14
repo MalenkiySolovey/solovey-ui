@@ -165,13 +165,6 @@ func (e *Evaluator) Evaluate(now time.Time, signals []Signal) Snapshot {
 	return snapshot
 }
 
-func (e *Evaluator) Current() Snapshot {
-	if e == nil {
-		return Snapshot{State: StateUnknown}
-	}
-	return e.current
-}
-
 func (e *Evaluator) classify(now time.Time, signals []Signal, exitThresholds bool) (State, []string) {
 	byID := make(map[string]Signal, len(signals))
 	for _, signal := range signals {

@@ -14,7 +14,8 @@ import (
 
 func TestRateLimitMiddlewareCanonicalizesMappedClientIP(t *testing.T) {
 	initSubTestDB(t)
-	subserver.ResetRateLimitForTest()
+	limiter := subserver.NewRateLimiter()
+	t.Cleanup(limiter.Close)
 	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
@@ -24,7 +25,7 @@ func TestRateLimitMiddlewareCanonicalizesMappedClientIP(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(subserver.RateLimitMiddleware())
+	router.Use(limiter.Middleware())
 	router.GET("/sub/:subid", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})
@@ -43,7 +44,8 @@ func TestRateLimitMiddlewareCanonicalizesMappedClientIP(t *testing.T) {
 
 func TestRateLimitMiddlewareUsesConfiguredLimitAndRetryAfter(t *testing.T) {
 	initSubTestDB(t)
-	subserver.ResetRateLimitForTest()
+	limiter := subserver.NewRateLimiter()
+	t.Cleanup(limiter.Close)
 	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
@@ -53,7 +55,7 @@ func TestRateLimitMiddlewareUsesConfiguredLimitAndRetryAfter(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(subserver.RateLimitMiddleware())
+	router.Use(limiter.Middleware())
 	router.GET("/sub/:subid", func(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 	})

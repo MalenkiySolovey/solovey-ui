@@ -25,6 +25,7 @@ type failoverGroupState struct {
 
 type FailoverJob struct {
 	service.ConfigService
+	ctx context.Context
 
 	mu     sync.Mutex
 	states map[string]*failoverGroupState
@@ -35,11 +36,18 @@ type FailoverJob struct {
 	activeMember func(string) (string, bool)
 }
 
-func NewFailoverJob() *FailoverJob {
-	return &FailoverJob{states: make(map[string]*failoverGroupState), now: time.Now}
+func NewFailoverJob(contexts ...context.Context) *FailoverJob {
+	ctx := context.Background()
+	if len(contexts) > 0 && contexts[0] != nil {
+		ctx = contexts[0]
+	}
+	return &FailoverJob{ctx: ctx, states: make(map[string]*failoverGroupState), now: time.Now}
 }
 
 func (j *FailoverJob) Run() {
+	if err := j.context().Err(); err != nil {
+		return
+	}
 	db := dbsqlite.DB()
 	if db == nil {
 		return
@@ -182,7 +190,7 @@ func (j *FailoverJob) probeMembers(group entityoutbounds.FailoverGroup) map[stri
 	var mu sync.Mutex
 	var wait sync.WaitGroup
 	sem := make(chan struct{}, failoverProbeConcurrency)
-	ctx, cancel := context.WithTimeout(context.Background(), group.Interval)
+	ctx, cancel := context.WithTimeout(j.context(), group.Interval)
 	defer cancel()
 	for _, member := range group.Members {
 		wait.Add(1)
@@ -203,6 +211,13 @@ func (j *FailoverJob) probeMembers(group entityoutbounds.FailoverGroup) map[stri
 	}
 	wait.Wait()
 	return results
+}
+
+func (j *FailoverJob) context() context.Context {
+	if j != nil && j.ctx != nil {
+		return j.ctx
+	}
+	return context.Background()
 }
 
 func (j *FailoverJob) active(core *coreruntime.Core, groupTag string) (string, bool) {

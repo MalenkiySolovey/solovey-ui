@@ -21,9 +21,11 @@ type Notification struct {
 // queue, retry worker, cancellation, and audit callbacks.
 type Notifier struct {
 	capacity int
-	send     func(string) Result
+	send     func(context.Context, string) Result
 	audit    func(string, map[string]any)
 	Backoff  []time.Duration
+	runCtx   context.Context
+	cancel   context.CancelFunc
 	stopCh   chan struct{}
 	stopOnce sync.Once
 
@@ -37,13 +39,28 @@ type Notifier struct {
 }
 
 func NewNotifier(capacity int, send func(string) Result, audit func(string, map[string]any)) *Notifier {
+	return NewNotifierContext(capacity, func(_ context.Context, text string) Result {
+		if send == nil {
+			return Result{ErrorClass: "internal"}
+		}
+		return send(text)
+	}, audit)
+}
+
+func NewNotifierContext(capacity int, send func(context.Context, string) Result, audit func(string, map[string]any)) *Notifier {
 	if capacity <= 0 {
 		capacity = QueueCapacity
+	}
+	runCtx, cancel := context.WithCancel(context.Background())
+	if send == nil {
+		send = func(context.Context, string) Result { return Result{ErrorClass: "internal"} }
 	}
 	notifier := &Notifier{
 		capacity: capacity,
 		send:     send,
 		audit:    audit,
+		runCtx:   runCtx,
+		cancel:   cancel,
 		Backoff: []time.Duration{
 			500 * time.Millisecond,
 			2 * time.Second,
@@ -69,13 +86,18 @@ func (n *Notifier) Enqueue(job Notification) {
 }
 
 func (n *Notifier) Stop(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	n.mu.Lock()
 	n.stopped = true
+	n.queue = nil
 	n.cond.Broadcast()
 	started := n.started
 	done := n.done
 	n.mu.Unlock()
 	n.closeStopCh()
+	n.cancel()
 	if !started {
 		n.closeDone()
 	}
@@ -83,8 +105,18 @@ func (n *Notifier) Stop(ctx context.Context) error {
 	select {
 	case <-done:
 		return nil
+	default:
+	}
+	select {
+	case <-done:
+		return nil
 	case <-ctx.Done():
-		return ctx.Err()
+		select {
+		case <-done:
+			return nil
+		default:
+			return ctx.Err()
+		}
 	}
 }
 
@@ -164,7 +196,7 @@ func (n *Notifier) deliver(job Notification) {
 	attempts := len(n.Backoff) + 1
 	result := Result{ErrorClass: "unknown"}
 	for attempt := 0; attempt < attempts; attempt++ {
-		result = n.send(job.Text)
+		result = n.send(n.runCtx, job.Text)
 		if result.Success {
 			return
 		}

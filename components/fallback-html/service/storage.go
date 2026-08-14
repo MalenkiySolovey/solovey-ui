@@ -98,6 +98,38 @@ func readOwnedRegularFile(root, target string) ([]byte, error) {
 	return os.ReadFile(target) // #nosec G304 -- path is validated against component-owned storage root.
 }
 
+func stageOwnedFileRemoval(root, target string) (string, bool, error) {
+	if err := ensurePathInside(root, target); err != nil {
+		return "", false, err
+	}
+	info, err := os.Lstat(target)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+		return "", false, fmt.Errorf("refusing to remove non-regular storage file %s", target)
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(target), ".fallback-delete-*")
+	if err != nil {
+		return "", false, err
+	}
+	staged := temporary.Name()
+	if err := temporary.Close(); err != nil {
+		_ = os.Remove(staged)
+		return "", false, err
+	}
+	if err := os.Remove(staged); err != nil {
+		return "", false, err
+	}
+	if err := os.Rename(target, staged); err != nil {
+		return "", false, err
+	}
+	return staged, true, nil
+}
+
 func ensureOwnedDir(root, targetDir string) error {
 	rootAbs, targetAbs, err := cleanOwnedPaths(root, targetDir)
 	if err != nil {

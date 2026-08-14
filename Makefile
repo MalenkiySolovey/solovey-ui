@@ -1,5 +1,5 @@
 PS ?= powershell -NoProfile -ExecutionPolicy Bypass
-RUN = $(PS) -File tests/baseline/run-command.ps1 -ContinueOnError
+RUN = $(PS) -File tests/baseline/run-command.ps1
 
 .PHONY: audit audit\:lint-go audit\:vet audit\:build audit\:test-go audit\:test-go-race audit\:cover audit\:gosec audit\:vuln audit\:fe-typecheck audit\:fe-lint audit\:fe-build audit\:test-fe audit\:e2e audit\:fe-install
 
@@ -34,7 +34,7 @@ audit\:fe-install:
 	$(RUN) -Group core -Name npm-ci -WorkingDirectory frontend -CommandLine "npm ci"
 
 audit\:fe-typecheck:
-	$(RUN) -Group core -Name npm-run-typecheck -WorkingDirectory frontend -SkipReason "frontend/package.json does not define a typecheck script; build runs vue-tsc --noEmit."
+	$(RUN) -Group core -Name npm-run-typecheck -WorkingDirectory frontend -CommandLine "npm run typecheck"
 
 audit\:fe-lint:
 	$(RUN) -Group core -Name npm-run-lint -WorkingDirectory frontend -CommandLine "npm run lint"

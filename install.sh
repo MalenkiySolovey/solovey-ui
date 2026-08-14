@@ -16,6 +16,7 @@ SYSTEMD_SERVICE="${SOLOVEY_UI_SYSTEMD_SERVICE:-/etc/systemd/system/${SERVICE_NAM
 SYSTEMD_UNIT_ROOT="${SOLOVEY_UI_SYSTEMD_UNIT_ROOT:-${SYSTEMD_SERVICE%/*}}"
 SYSTEMD_PROFILE_ROOT="${SOLOVEY_UI_SYSTEMD_PROFILE_ROOT:-/usr/local/lib/${APP_NAME}/systemd}"
 DEPLOYMENT_MARKER="${SOLOVEY_UI_DEPLOYMENT_MARKER:-/etc/${APP_NAME}/deployment-profile}"
+APPLICATION_OWNER_CONTRACT="${SOLOVEY_UI_APPLICATION_OWNER_CONTRACT:-/etc/${APP_NAME}/application-owner-contract.json}"
 HARDENED_DATA_ROOT="${SOLOVEY_UI_HARDENED_DATA_ROOT:-/var/lib/${APP_NAME}}"
 ENV_DIR="${SOLOVEY_UI_ENV_DIR:-/etc/${APP_NAME}}"
 SECRETBOX_ENV_FILE="${SOLOVEY_UI_SECRETBOX_ENV_FILE:-${ENV_DIR}/secretbox.env}"
@@ -83,7 +84,7 @@ Options:
 
 Examples:
   bash install.sh
-  bash install.sh --version v2026.2.0
+  bash install.sh --version v2026.3.0
   bash install.sh --without component-id,another-component
   bash install.sh --with component-id
   bash install.sh --dry-run
@@ -1142,6 +1143,11 @@ install_payload() {
 	[[ -x "${payload_dir}/solovey-privileged-broker" ]] || fail "release payload misses privileged broker"
 	[[ -x "${payload_dir}/solovey-ssh-proof" ]] || fail "release payload misses SSH proof client"
 	[[ -x "${payload_dir}/solovey-broker-manifest" ]] || fail "release payload misses broker manifest writer"
+	if [[ "${BINARY_PROFILE}" == "full" ]]; then
+		[[ -x "${payload_dir}/solovey-owner-manifest" ]] || fail "full release payload misses application owner manifest writer"
+	elif [[ -e "${payload_dir}/solovey-owner-manifest" || -L "${payload_dir}/solovey-owner-manifest" ]]; then
+		fail "core release payload contains application owner manifest writer"
+	fi
 	[[ -d "${payload_dir}/systemd" ]] || fail "release payload misses systemd profiles"
     [[ -f "${payload_dir}/BUILD_INFO.txt" ]] || fail "release payload misses BUILD_INFO.txt"
 
@@ -1168,8 +1174,8 @@ install_payload() {
 		run chmod 755 "${release_staging}/${APP_NAME}" "${release_staging}/${APP_NAME}.sh" \
 			"${release_staging}/solovey-privileged-broker" "${release_staging}/solovey-ssh-proof" \
 			"${release_staging}/solovey-broker-manifest" || return
-		if [[ -f "${release_staging}/solovey-protect-helper" ]]; then
-			run chmod 755 "${release_staging}/solovey-protect-helper" || return
+		if [[ "${BINARY_PROFILE}" == "full" ]]; then
+			run chmod 755 "${release_staging}/solovey-owner-manifest" || return
 		fi
 		run chmod 644 "${release_staging}/${SERVICE_NAME}.service" "${release_staging}/BUILD_INFO.txt" || return
 		run mv "${release_staging}" "${release_root}" || return
@@ -1180,11 +1186,14 @@ install_payload() {
 	for name in "${APP_NAME}" "${APP_NAME}.sh" solovey-privileged-broker solovey-ssh-proof solovey-broker-manifest "${SERVICE_NAME}.service" BUILD_INFO.txt; do
 		run ln -sfn "releases/current/${name}" "${INSTALL_DIR}/${name}" || return
 	done
-	if [[ -f "${CURRENT_RELEASE_DIR}/solovey-protect-helper" ]]; then
-		run ln -sfn "releases/current/solovey-protect-helper" "${INSTALL_DIR}/solovey-protect-helper" || return
+	if [[ "${BINARY_PROFILE}" == "full" ]]; then
+		run ln -sfn "releases/current/solovey-owner-manifest" "${INSTALL_DIR}/solovey-owner-manifest" || return
 	else
-		run rm -f "${INSTALL_DIR}/solovey-protect-helper" || return
+		run rm -f "${INSTALL_DIR}/solovey-owner-manifest" || return
 	fi
+	# The component's semantic handlers are part of the single privileged
+	# broker. Remove a legacy standalone-helper link left by older releases.
+	run rm -f "${INSTALL_DIR}/solovey-protect-helper" || return
 	install_systemd_profiles "${payload_dir}/systemd" || return
 	run chown root:solovey-ui "${CURRENT_RELEASE_DIR}/solovey-ssh-proof" || return
 	run chmod 2755 "${CURRENT_RELEASE_DIR}/solovey-ssh-proof" || return
@@ -1199,6 +1208,11 @@ install_payload() {
 	run systemctl daemon-reload || return
 	run systemctl enable solovey-privileged-broker.socket solovey-privileged-proof.socket || return
 	run "${CURRENT_RELEASE_DIR}/solovey-broker-manifest" || return
+	if [[ "${BINARY_PROFILE}" == "full" ]]; then
+		run "${CURRENT_RELEASE_DIR}/solovey-owner-manifest" || return
+	else
+		run rm -f "${APPLICATION_OWNER_CONTRACT}" || return
+	fi
 	if [[ "${DEPLOYMENT_PROFILE}" == "native-legacy-root" ]]; then
 		run env SUI_DB_FOLDER="${INSTALL_DIR}/db" "${BIN_PATH}" migrate || return
 	else
@@ -1364,8 +1378,8 @@ download_and_install() {
     if [[ -n "${BACKUP_PATH}" ]]; then
         log "backup: ${BACKUP_PATH}"
     fi
-    if [[ -f "${INSTALL_DIR}/db/initial-admin.txt" ]]; then
-        log "initial admin credentials: ${INSTALL_DIR}/db/initial-admin.txt"
+    if [[ -f "${TARGET_DB%/*}/initial-admin.txt" ]]; then
+        log "initial admin credentials: ${TARGET_DB%/*}/initial-admin.txt"
     else
         log "use '${APP_NAME} admin -show' to inspect the current admin account"
     fi

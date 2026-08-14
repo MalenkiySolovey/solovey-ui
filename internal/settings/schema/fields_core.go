@@ -33,7 +33,7 @@ func runtimeFieldMetadata() []Field {
 		{Key: settingcatalog.AuditRetentionDaysKey, Page: PageSettings, Group: GroupRuntime, Type: FieldTypeInt, LabelKey: "setting.auditRetentionDays", Min: intPtr(0), Advanced: true, Order: 30},
 		{Key: settingcatalog.IPShowRawKey, Page: PageSettings, Group: GroupRuntime, Type: FieldTypeBool, LabelKey: "setting.ipShowRaw", Advanced: true, Order: 40},
 		{Key: settingcatalog.IPHistoryRetentionDaysKey, Page: PageSettings, Group: GroupRuntime, Type: FieldTypeInt, LabelKey: "setting.ipHistoryRetentionDays", Min: intPtr(0), Advanced: true, Order: 50},
-		{Key: settingcatalog.ObservabilityMemoryCapMBKey, Page: PageSettings, Group: GroupRuntime, Type: FieldTypeInt, LabelKey: "setting.observabilityMemoryCapMB", Min: intPtr(1), Advanced: true, Order: 60},
+		{Key: settingcatalog.ObservabilityMemoryCapMBKey, Page: PageSettings, Group: GroupRuntime, Type: FieldTypeInt, LabelKey: "setting.observabilityMemoryCapMB", Min: intPtr(1), Max: intPtr(1024), Advanced: true, Order: 60},
 		{Key: settingcatalog.UpdateChannelKey, Page: PageSettings, Group: GroupRuntime, Type: FieldTypeEnum, LabelKey: "update.title", Options: []string{"main", "beta"}, Order: 70},
 	}
 }

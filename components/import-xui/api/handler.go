@@ -6,12 +6,16 @@ package importxui
 import (
 	"net/http"
 
-	"github.com/MalenkiySolovey/solovey-ui/service"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/gin-gonic/gin"
 )
 
+type AuditHistory interface {
+	ListByEvents(int, []string) ([]model.AuditEvent, error)
+}
+
 type Handler struct {
-	AuditService  service.AuditService
+	AuditHistory  AuditHistory
 	RequireScope  func(*gin.Context, string, ...string) bool
 	RequireStepUp func(*gin.Context, string, string) bool
 	Audit         func(*gin.Context, string, string, string, string, map[string]any)
@@ -20,11 +24,12 @@ type Handler struct {
 	Hostname      func(*gin.Context) string
 	JSONObj       func(*gin.Context, interface{}, error)
 	JSONMsg       func(*gin.Context, string, error)
+	ConfigChanged func()
 }
 
 // Deps contains the host capabilities required by compatible panel import routes.
 type Deps struct {
-	AuditService  service.AuditService
+	AuditHistory  AuditHistory
 	RequireScope  func(*gin.Context, string, ...string) bool
 	RequireStepUp func(*gin.Context, string, string) bool
 	Audit         func(*gin.Context, string, string, string, string, map[string]any)
@@ -33,6 +38,7 @@ type Deps struct {
 	Hostname      func(*gin.Context) string
 	JSONObj       func(*gin.Context, interface{}, error)
 	JSONMsg       func(*gin.Context, string, error)
+	ConfigChanged func()
 }
 
 type Upload struct {
@@ -65,7 +71,7 @@ var RouteSpecs = []RouteSpec{
 
 func NewHandler(deps Deps) *Handler {
 	return &Handler{
-		AuditService:  deps.AuditService,
+		AuditHistory:  deps.AuditHistory,
 		RequireScope:  deps.RequireScope,
 		RequireStepUp: deps.RequireStepUp,
 		Audit:         deps.Audit,
@@ -74,6 +80,7 @@ func NewHandler(deps Deps) *Handler {
 		Hostname:      deps.Hostname,
 		JSONObj:       deps.JSONObj,
 		JSONMsg:       deps.JSONMsg,
+		ConfigChanged: deps.ConfigChanged,
 	}
 }
 

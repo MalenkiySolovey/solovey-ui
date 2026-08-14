@@ -66,3 +66,37 @@ func TestPrunePreImportBackups_NoopUnderLimit(t *testing.T) {
 		t.Fatalf("kept %d backups, want 3 (no pruning under limit)", len(matches))
 	}
 }
+
+func TestPublishPreImportBackupDoesNotReplaceExistingBackup(t *testing.T) {
+	dir := makeImportXUITempDir(t)
+	staged := filepath.Join(dir, "staged.db")
+	if err := os.WriteFile(staged, []byte("new"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	existing := filepath.Join(dir, "s-ui-pre-xui-import-1700000000.db")
+	if err := os.WriteFile(existing, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	published, err := publishPreImportBackup(staged, dir, 1700000000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Base(published) != "s-ui-pre-xui-import-1700000000-01.db" {
+		t.Fatalf("published path=%q", published)
+	}
+	old, err := os.ReadFile(existing)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(old) != "old" {
+		t.Fatalf("existing backup was replaced: %q", old)
+	}
+	fresh, err := os.ReadFile(published)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(fresh) != "new" {
+		t.Fatalf("published backup=%q", fresh)
+	}
+}

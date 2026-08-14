@@ -26,7 +26,8 @@ func (gzipTestSettings) GetSubPort() (int, error)         { return 0, nil }
 func TestRuntimeServerCompressesSubscriptionPayloads(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	payload := strings.Repeat("vless://compressible\n", 200)
-	server := NewRuntimeServer(gzipTestSettings{}, func(group *gin.RouterGroup) {
+	server := NewRuntimeServer(gzipTestSettings{}, func(group *gin.RouterGroup, rateLimit gin.HandlerFunc) {
+		group.Use(rateLimit)
 		group.GET("/:subid", func(c *gin.Context) { c.String(http.StatusOK, payload) })
 	}, func() FormatHandlers {
 		return FormatHandlers{

@@ -1,6 +1,7 @@
 package settingscmd
 
 import (
+	"errors"
 	"fmt"
 
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
@@ -8,51 +9,49 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
-func Reset() {
+func Reset() error {
 	err := dbsqlite.Init(configstorage.GetDBPath())
 	if err != nil {
-		fmt.Println(err)
-		return
+		return err
 	}
 
 	settingService := service.SettingService{}
 	err = settingService.ResetSettings()
 	if err != nil {
-		fmt.Println("reset setting failed:", err)
+		return fmt.Errorf("reset setting failed: %w", err)
 	} else {
 		fmt.Println("reset setting success")
 	}
+	return nil
 }
 
-func ClearWebDomain() {
+func ClearWebDomain() error {
 	err := dbsqlite.Init(configstorage.GetDBPath())
 	if err != nil {
-		fmt.Println(err)
-		return
+		return err
 	}
 
 	settingService := service.SettingService{}
 	if err := settingService.ClearWebDomainAndAddress(); err != nil {
-		fmt.Println("clear panel domain and address failed:", err)
-		return
+		return fmt.Errorf("clear panel domain and address failed: %w", err)
 	}
 	fmt.Println("clear panel domain and address success")
-	Show()
+	return Show()
 }
 
-func Update(port int, path string, subPort int, subPath string) {
+func Update(port int, path string, subPort int, subPath string) error {
 	err := dbsqlite.Init(configstorage.GetDBPath())
 	if err != nil {
-		fmt.Println(err)
-		return
+		return err
 	}
 
 	settingService := service.SettingService{}
+	var result error
 
 	if port > 0 {
 		err := settingService.SetPort(port)
 		if err != nil {
-			fmt.Println("set port failed:", err)
+			result = errors.Join(result, fmt.Errorf("set port failed: %w", err))
 		} else {
 			fmt.Println("set port success")
 		}
@@ -60,7 +59,7 @@ func Update(port int, path string, subPort int, subPath string) {
 	if path != "" {
 		err := settingService.SetWebPath(path)
 		if err != nil {
-			fmt.Println("set path failed:", err)
+			result = errors.Join(result, fmt.Errorf("set path failed: %w", err))
 		} else {
 			fmt.Println("set path success")
 		}
@@ -68,7 +67,7 @@ func Update(port int, path string, subPort int, subPath string) {
 	if subPort > 0 {
 		err := settingService.SetSubPort(subPort)
 		if err != nil {
-			fmt.Println("set sub port failed:", err)
+			result = errors.Join(result, fmt.Errorf("set sub port failed: %w", err))
 		} else {
 			fmt.Println("set sub port success")
 		}
@@ -76,23 +75,26 @@ func Update(port int, path string, subPort int, subPath string) {
 	if subPath != "" {
 		err := settingService.SetSubPath(subPath)
 		if err != nil {
-			fmt.Println("set sub path failed:", err)
+			result = errors.Join(result, fmt.Errorf("set sub path failed: %w", err))
 		} else {
 			fmt.Println("set sub path success")
 		}
 	}
+	return result
 }
 
-func Show() {
+func Show() error {
 	err := dbsqlite.Init(configstorage.GetDBPath())
 	if err != nil {
-		fmt.Println(err)
-		return
+		return err
 	}
 	settingService := service.SettingService{}
 	allSetting, err := settingService.GetAllSetting()
 	if err != nil {
-		fmt.Println("get current port failed,error info:", err)
+		return fmt.Errorf("get current settings failed: %w", err)
+	}
+	if allSetting == nil {
+		return fmt.Errorf("get current settings failed: settings are unavailable")
 	}
 	fmt.Println("Current panel settings:")
 	fmt.Println("\tPanel port:\t", (*allSetting)["webPort"])
@@ -119,4 +121,5 @@ func Show() {
 	if (*allSetting)["subURI"] != "" {
 		fmt.Println("\tSub URI:\t", (*allSetting)["subURI"])
 	}
+	return nil
 }

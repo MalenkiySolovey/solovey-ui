@@ -10,6 +10,10 @@ import (
 
 type testHandler struct{ handled bool }
 
+type panicHandler struct{}
+
+func (panicHandler) ServePublic(*gin.Context, Context) bool { panic("secret") }
+
 func (h testHandler) ServePublic(c *gin.Context, _ Context) bool {
 	if !h.handled {
 		return false
@@ -20,7 +24,10 @@ func (h testHandler) ServePublic(c *gin.Context, _ Context) bool {
 
 func TestRegistrySnapshotServesAndUnregisters(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	unregister := Register("test-public-surface", testHandler{handled: true})
+	unregister, err := Register("test-public-surface", testHandler{handled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
 	router := gin.New()
 	router.NoRoute(func(c *gin.Context) {
 		if Serve(c, Context{AdminBasePath: "/app/"}) {
@@ -45,16 +52,14 @@ func TestRegistrySnapshotServesAndUnregisters(t *testing.T) {
 
 func TestDuplicateOwnerCannotReplaceOrUnregisterExistingHandler(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	unregister := Register("duplicate-owner", testHandler{handled: true})
+	unregister, err := Register("duplicate-owner", testHandler{handled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(unregister)
-	func() {
-		defer func() {
-			if recover() == nil {
-				t.Fatal("duplicate owner registration did not panic")
-			}
-		}()
-		Register("duplicate-owner", testHandler{handled: false})
-	}()
+	if _, err := Register("duplicate-owner", testHandler{handled: false}); err == nil {
+		t.Fatal("duplicate owner registration was accepted")
+	}
 	router := gin.New()
 	router.NoRoute(func(c *gin.Context) {
 		if Serve(c, Context{}) {
@@ -66,5 +71,30 @@ func TestDuplicateOwnerCannotReplaceOrUnregisterExistingHandler(t *testing.T) {
 	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/public", nil))
 	if response.Code != http.StatusOK {
 		t.Fatalf("duplicate registration displaced original handler: %d", response.Code)
+	}
+}
+
+func TestServeContainsComponentHandlerPanic(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	unregisterPanic, err := Register("panic-owner", panicHandler{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unregisterPanic()
+	unregisterFallback, err := Register("safe-owner", testHandler{handled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unregisterFallback()
+	router := gin.New()
+	router.NoRoute(func(c *gin.Context) {
+		if !Serve(c, Context{}) {
+			Handled404(c)
+		}
+	})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/public", nil))
+	if response.Code != http.StatusOK || response.Body.String() != "public" {
+		t.Fatalf("panicking optional handler escaped isolation: %d %q", response.Code, response.Body.String())
 	}
 }

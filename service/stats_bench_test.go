@@ -10,7 +10,6 @@ import (
 	"time"
 	"unsafe"
 
-	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	coretracker "github.com/MalenkiySolovey/solovey-ui/core/tracker"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -96,11 +95,9 @@ func seedStatsBenchClients(tb testing.TB, n int) {
 
 func syntheticStatsCoreForBench(tb testing.TB, tracker *coretracker.StatsTracker) *coreruntime.Core {
 	tb.Helper()
-	box := &corebox.Box{}
-	setUnexportedFieldForBench(reflect.ValueOf(box).Elem().FieldByName("statsTracker"), reflect.ValueOf(tracker))
 	coreInstance := coreruntime.NewCore()
 	setUnexportedFieldForBench(reflect.ValueOf(coreInstance).Elem().FieldByName("isRunning"), reflect.ValueOf(true))
-	setUnexportedFieldForBench(reflect.ValueOf(coreInstance).Elem().FieldByName("instance"), reflect.ValueOf(box))
+	setUnexportedFieldForBench(reflect.ValueOf(coreInstance).Elem().FieldByName("statsTracker"), reflect.ValueOf(tracker))
 	return coreInstance
 }
 

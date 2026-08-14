@@ -2,6 +2,7 @@ package sub
 
 import (
 	"context"
+	"errors"
 
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"
@@ -20,8 +21,8 @@ func NewServer() *Server {
 	s := &Server{}
 	s.runtime = subserver.NewRuntimeServer(
 		&s.SettingService,
-		func(g *gin.RouterGroup) {
-			NewSubHandler(g)
+		func(g *gin.RouterGroup, rateLimit gin.HandlerFunc) {
+			newSubHandler(g, rateLimit)
 		},
 		func() subserver.FormatHandlers {
 			handler := &SubHandler{}
@@ -47,8 +48,7 @@ func (s *Server) Start() error {
 	if s.unregisterHealth == nil {
 		unregister, registerErr := componenthealth.Register(subscriptionHealthChecker{server: s})
 		if registerErr != nil {
-			_ = s.runtime.Stop()
-			return registerErr
+			return errors.Join(registerErr, s.runtime.Stop())
 		}
 		s.unregisterHealth = unregister
 	}
@@ -61,10 +61,6 @@ func (s *Server) Stop() error {
 		s.unregisterHealth = nil
 	}
 	return s.runtime.Stop()
-}
-
-func (s *Server) GetCtx() context.Context {
-	return s.runtime.Context()
 }
 
 type subscriptionHealthChecker struct{ server *Server }

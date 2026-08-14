@@ -30,33 +30,44 @@ type clientAggregate struct {
 	SeenMetadata bool
 }
 
-func newClientAggregate(email string) *clientAggregate {
+func newClientAggregate(email string) (*clientAggregate, error) {
+	config, err := secureClientConfig(email)
+	if err != nil {
+		return nil, err
+	}
 	return &clientAggregate{
 		Email:    email,
 		Enable:   true,
 		Inbounds: map[uint]struct{}{},
-		Config:   deterministicClientConfig(email),
+		Config:   config,
 		Group:    "imported",
-	}
+	}, nil
 }
 
 func collectClientAggregates(src *source.Database, refs []mapping.ClientRef, inboundIDBySrc map[int64]uint) (map[string]*clientAggregate, error) {
 	aggs := map[string]*clientAggregate{}
-	get := func(email string) *clientAggregate {
+	get := func(email string) (*clientAggregate, error) {
 		email = strings.TrimSpace(email)
 		if email == "" {
-			return nil
+			return nil, nil
 		}
 		agg, ok := aggs[email]
 		if !ok {
-			agg = newClientAggregate(email)
+			var err error
+			agg, err = newClientAggregate(email)
+			if err != nil {
+				return nil, err
+			}
 			aggs[email] = agg
 		}
-		return agg
+		return agg, nil
 	}
 
 	if err := src.EachClientTraffic(func(traffic source.ClientTraffic) error {
-		agg := get(traffic.Email)
+		agg, err := get(traffic.Email)
+		if err != nil {
+			return err
+		}
 		if agg == nil {
 			return nil
 		}
@@ -75,7 +86,10 @@ func collectClientAggregates(src *source.Database, refs []mapping.ClientRef, inb
 	}
 
 	for _, ref := range refs {
-		agg := get(ref.Email)
+		agg, err := get(ref.Email)
+		if err != nil {
+			return nil, err
+		}
 		if agg == nil {
 			continue
 		}

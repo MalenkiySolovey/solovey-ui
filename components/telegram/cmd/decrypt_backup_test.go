@@ -76,7 +76,37 @@ func TestDecryptBackupCommandRoundTripWithStdinPassphrase(t *testing.T) {
 	}
 }
 
-func TestDecryptBackupCommandWrongPassphraseRemovesPartialOutput(t *testing.T) {
+func TestDecryptBackupCommandRoundTripWithCurrentStreamEnvelope(t *testing.T) {
+	dir := t.TempDir()
+	payload := []byte("current streamed backup payload")
+	passphrase := "correct horse battery staple"
+	inPath := filepath.Join(dir, "backup.db.aes")
+	outPath := filepath.Join(dir, "backup.db")
+	var envelope bytes.Buffer
+	if _, _, err := backupenvelope.SealStream(&envelope, bytes.NewReader(payload), []byte(passphrase)); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(inPath, envelope.Bytes(), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	var stdout, stderr bytes.Buffer
+	code := RunDecryptBackup([]string{"--in", inPath, "--out", outPath, "--passphrase-env", "SUI_TEST_PASSPHRASE"}, strings.NewReader(""), &stdout, &stderr, func(string) string {
+		return passphrase
+	})
+	if code != 0 {
+		t.Fatalf("unexpected exit code %d stderr=%s", code, stderr.String())
+	}
+	got, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Equal(got, payload) {
+		t.Fatalf("decrypted stream payload mismatch: %q", got)
+	}
+}
+
+func TestDecryptBackupCommandWrongPassphrasePreservesExistingOutput(t *testing.T) {
 	dir := t.TempDir()
 	passphrase := "correct horse battery staple"
 	inPath := filepath.Join(dir, "backup.db.aes")
@@ -99,8 +129,31 @@ func TestDecryptBackupCommandWrongPassphraseRemovesPartialOutput(t *testing.T) {
 	if code == 0 {
 		t.Fatalf("expected failure")
 	}
-	if _, err := os.Stat(outPath); !os.IsNotExist(err) {
-		t.Fatalf("partial output was not removed, stat err=%v stderr=%s", err, stderr.String())
+	got, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "partial" {
+		t.Fatalf("existing output was modified: %q stderr=%s", got, stderr.String())
+	}
+}
+
+func TestDecryptBackupCommandRefusesExistingOutputBeforeDecrypt(t *testing.T) {
+	dir := t.TempDir()
+	inPath := filepath.Join(dir, "backup.db.aes")
+	outPath := filepath.Join(dir, "backup.db")
+	if err := os.WriteFile(inPath, []byte("not an envelope"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outPath, []byte("keep me"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	code := RunDecryptBackup([]string{"--in", inPath, "--out", outPath, "--passphrase-env", "SUI_TEST_PASSPHRASE"}, strings.NewReader(""), &stdout, &stderr, func(string) string {
+		return "wrong passphrase"
+	})
+	if code == 0 || !strings.Contains(stderr.String(), "output already exists") {
+		t.Fatalf("existing output was not rejected: code=%d stderr=%s", code, stderr.String())
 	}
 }
 

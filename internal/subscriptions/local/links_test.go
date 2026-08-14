@@ -33,7 +33,10 @@ func TestResolveClientLinksAllModeAddsClientInfo(t *testing.T) {
 }
 
 func TestAddClientInfoUpdatesVmessRemark(t *testing.T) {
-	raw := map[string]interface{}{"ps": "node", "add": "example.com"}
+	raw := map[string]interface{}{
+		"ps": "node", "add": "example.com", "port": 443, "net": "tcp",
+		"id": "11111111-1111-4111-8111-111111111111",
+	}
 	data, err := json.Marshal(raw)
 	if err != nil {
 		t.Fatal(err)

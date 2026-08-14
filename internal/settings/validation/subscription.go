@@ -1,8 +1,6 @@
 package validation
 
 import (
-	"strconv"
-
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
@@ -37,21 +35,10 @@ func ValidateSubscriptionPaths(paths SubscriptionPaths) error {
 }
 
 func ValidateSubscriptionSettingInput(key string, value string) error {
-	if _, ok := settingcatalog.SubscriptionBooleanKeys()[key]; ok {
-		if _, err := strconv.ParseBool(value); err != nil {
-			return common.NewError("invalid boolean setting: ", key)
-		}
-		return nil
-	}
 	if _, ok := settingcatalog.SubscriptionURLKeys()[key]; ok {
 		return ValidateOptionalHTTPURL(value)
 	}
 	switch key {
-	case settingcatalog.SubRateLimitPerIPKey:
-		limit, err := strconv.Atoi(value)
-		if err != nil || limit <= 0 || limit > 10000 {
-			return common.NewError("invalid rate-limit setting: ", key)
-		}
 	case settingcatalog.SubJsonFragmentKey:
 		if err := ValidateOptionalJSONObject(value, key); err != nil {
 			return err

@@ -4,36 +4,34 @@ import (
 	"bytes"
 	"net/http/httptest"
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
 )
 
 func TestRegistryRejectsDuplicateAndUnregistersExactlyOnce(t *testing.T) {
-	ResetForTest()
-	t.Cleanup(ResetForTest)
 	codec := ExportCodec{
 		Selected: func(*gin.Context) bool { return true },
 		Encode:   func(ExportContext) (ExportResult, error) { return ExportResult{}, nil },
 	}
-	unregister := RegisterExport("owner", codec)
+	unregister, err := RegisterExport("owner", codec)
+	if err != nil {
+		t.Fatal(err)
+	}
 	unregister()
 	unregister()
-	replacement := RegisterExport("owner", codec)
+	replacement, err := RegisterExport("owner", codec)
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(replacement)
-	func() {
-		defer func() {
-			if recover() == nil {
-				t.Fatal("duplicate export codec registration did not panic")
-			}
-		}()
-		RegisterExport("owner", codec)
-	}()
+	if _, err := RegisterExport("owner", codec); err == nil {
+		t.Fatal("duplicate export codec registration was accepted")
+	}
 }
 
 func TestImportPassphraseFieldsFollowCodecLifecycle(t *testing.T) {
-	ResetForTest()
-	t.Cleanup(ResetForTest)
 	newCodec := func(fields ...string) ImportCodec {
 		return ImportCodec{
 			HeaderBytes:      1,
@@ -42,8 +40,14 @@ func TestImportPassphraseFieldsFollowCodecLifecycle(t *testing.T) {
 			Decode:           func(ImportContext) ([]byte, error) { return nil, nil },
 		}
 	}
-	unregisterA := RegisterImport("a", newCodec("ownerPassphrase", "sharedPassphrase"))
-	unregisterB := RegisterImport("b", newCodec("sharedPassphrase", "secondPassphrase"))
+	unregisterA, err := RegisterImport("a", newCodec("ownerPassphrase", "sharedPassphrase"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	unregisterB, err := RegisterImport("b", newCodec("sharedPassphrase", "secondPassphrase"))
+	if err != nil {
+		t.Fatal(err)
+	}
 	if got, want := ImportPassphraseFields(), []string{"ownerPassphrase", "secondPassphrase", "sharedPassphrase"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("passphrase fields = %v, want %v", got, want)
 	}
@@ -55,22 +59,15 @@ func TestImportPassphraseFieldsFollowCodecLifecycle(t *testing.T) {
 }
 
 func TestImportPassphraseFieldsRejectInvalidDeclarations(t *testing.T) {
-	ResetForTest()
-	t.Cleanup(ResetForTest)
 	for _, fields := range [][]string{{"not-valid"}, {"duplicate", "duplicate"}} {
-		func() {
-			defer func() {
-				if recover() == nil {
-					t.Fatalf("invalid passphrase fields %v did not panic", fields)
-				}
-			}()
-			RegisterImport("invalid", ImportCodec{
-				HeaderBytes:      1,
-				PassphraseFields: fields,
-				Match:            func([]byte) bool { return true },
-				Decode:           func(ImportContext) ([]byte, error) { return nil, nil },
-			})
-		}()
+		if _, err := RegisterImport("invalid", ImportCodec{
+			HeaderBytes:      1,
+			PassphraseFields: fields,
+			Match:            func([]byte) bool { return true },
+			Decode:           func(ImportContext) ([]byte, error) { return nil, nil },
+		}); err == nil {
+			t.Fatalf("invalid passphrase fields %v were accepted", fields)
+		}
 	}
 }
 
@@ -83,5 +80,51 @@ func TestExportRequestDetectionIsBoundedToKnownSelectors(t *testing.T) {
 	context.Request = httptest.NewRequest("GET", "/backup?backupEncryption=none", nil)
 	if ExportRequested(context) {
 		t.Fatal("plain selection was treated as codec request")
+	}
+}
+
+func TestSelectionFailsClosedOnAmbiguousOrPanickingCodec(t *testing.T) {
+	codec := func(selected func(*gin.Context) bool) ExportCodec {
+		return ExportCodec{Selected: selected, Encode: func(ExportContext) (ExportResult, error) { return ExportResult{}, nil }}
+	}
+	unregisterOne, err := RegisterExport("one", codec(func(*gin.Context) bool { return true }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	unregisterTwo, err := RegisterExport("two", codec(func(*gin.Context) bool { return true }))
+	if err != nil {
+		unregisterOne()
+		t.Fatal(err)
+	}
+	if _, _, _, err := SelectedExport(nil); err == nil {
+		t.Fatal("ambiguous export codec authority was selected")
+	}
+	unregisterTwo()
+	unregisterOne()
+	unregisterPanic, err := RegisterExport("panic", codec(func(*gin.Context) bool { panic("secret") }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(unregisterPanic)
+	if _, _, _, err := SelectedExport(nil); err == nil || strings.Contains(err.Error(), "secret") {
+		t.Fatalf("panicking selector was not contained: %v", err)
+	}
+}
+
+func TestStaleCodecCleanupDoesNotRemoveReplacement(t *testing.T) {
+	codec := ExportCodec{Selected: func(*gin.Context) bool { return true }, Encode: func(ExportContext) (ExportResult, error) { return ExportResult{}, nil }}
+	cleanupOld, err := RegisterExport("owner", codec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cleanupOld()
+	cleanupNew, err := RegisterExport("owner", codec)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(cleanupNew)
+	cleanupOld()
+	if _, _, ok, err := SelectedExport(nil); err != nil || !ok {
+		t.Fatal("stale cleanup removed a newer codec registration")
 	}
 }

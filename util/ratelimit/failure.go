@@ -23,7 +23,6 @@ type FailureWindow[K comparable] struct {
 	lastGC     time.Time
 	tarpitStep time.Duration
 	tarpitMax  time.Duration
-	janitor    *janitor
 }
 
 func NewFailureWindow[K comparable](
@@ -48,7 +47,6 @@ func NewFailureWindow[K comparable](
 		tarpitStep: tarpitStep,
 		tarpitMax:  tarpitMax,
 	}
-	l.janitor = startJanitor(gcEvery, l.PruneAt)
 	return l
 }
 
@@ -129,22 +127,6 @@ func (l *FailureWindow[K]) ResetAll() {
 	l.mu.Lock()
 	l.entries = make(map[K]failureEntry)
 	l.mu.Unlock()
-}
-
-func (l *FailureWindow[K]) Len() int {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return len(l.entries)
-}
-
-func (l *FailureWindow[K]) PruneAt(now time.Time) {
-	l.mu.Lock()
-	l.pruneLocked(now)
-	l.mu.Unlock()
-}
-
-func (l *FailureWindow[K]) Close() {
-	l.janitor.close()
 }
 
 func (l *FailureWindow[K]) pruneLocked(now time.Time) {

@@ -77,9 +77,11 @@ func MapInbound(row source.InboundRow, tlsID uint, reality *RealitySpec, server 
 	if err != nil {
 		return nil, err
 	}
-	switch stream.Network {
-	case "kcp", "mkcp", "quic":
+	if !supportedMappedTransport(stream.Network) {
 		return &MappedInbound{Warnings: []string{fmt.Sprintf("inbound %s: transport %q is unsupported by this importer; skipped", row.Tag, stream.Network)}}, nil
+	}
+	if row.Port <= 0 || row.Port > 65535 {
+		return &MappedInbound{Warnings: []string{fmt.Sprintf("inbound %s: listen port is invalid; skipped", row.Tag)}}, nil
 	}
 
 	inType := inboundType(row.Protocol)

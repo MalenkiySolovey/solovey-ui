@@ -95,7 +95,7 @@ func validatePaidSubSettingInput(key string, value string, storedSecretMarker st
 			return err
 		}
 	case paidsettings.MaxClientsKey:
-		if err := settingsvalidation.ValidateIntRange(key, value, 0, 10000000); err != nil {
+		if err := settingsvalidation.ValidateIntRange(key, value, 1, 10000000); err != nil {
 			return err
 		}
 	case paidsettings.StartRateLimitPerMinKey:

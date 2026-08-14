@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	"gorm.io/gorm"
 )
 
@@ -57,12 +58,7 @@ func VerifyForeignKeysBeforeMigration(db *gorm.DB, options Options) error {
 }
 
 func EnsureNoTLSForeignKeyParent(db *gorm.DB) error {
-	if !db.Migrator().HasTable(&model.Tls{}) ||
-		!db.Migrator().HasColumn(&model.Tls{}, "server") ||
-		!db.Migrator().HasColumn(&model.Tls{}, "client") {
-		return nil
-	}
-	if err := db.Exec("INSERT OR IGNORE INTO tls(id, name, server, client) VALUES(0, ?, ?, ?)", "__none__", []byte("{}"), []byte("{}")).Error; err != nil {
+	if err := entitytls.EnsureSentinel(db); err != nil {
 		return fmt.Errorf("ensure no-tls foreign key parent: %w", err)
 	}
 	return nil

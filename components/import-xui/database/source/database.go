@@ -27,6 +27,8 @@ type Database struct {
 	dialect Dialect
 }
 
+const MaxSourceBytes int64 = 200 << 20
+
 type InboundRow struct {
 	ID                   int64
 	UserID               int64
@@ -79,6 +81,13 @@ func Open(path string) (*Database, error) {
 	if strings.TrimSpace(path) == "" {
 		return nil, fmt.Errorf("missing source path")
 	}
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, err
+	}
+	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > MaxSourceBytes {
+		return nil, fmt.Errorf("invalid source file")
+	}
 	dsn, err := SQLiteReadOnlyURI(path)
 	if err != nil {
 		return nil, err
@@ -96,12 +105,8 @@ func Open(path string) (*Database, error) {
 }
 
 func SQLiteReadOnlyURI(path string) (string, error) {
-	if strings.HasPrefix(path, "file:") {
-		sep := "?"
-		if strings.Contains(path, "?") {
-			sep = "&"
-		}
-		return path + sep + "mode=ro&immutable=1&_pragma=query_only(true)&_pragma=trusted_schema(OFF)", nil
+	if strings.HasPrefix(strings.ToLower(strings.TrimSpace(path)), "file:") || strings.ContainsRune(path, '\x00') {
+		return "", fmt.Errorf("source must be a filesystem path")
 	}
 	abs, err := filepath.Abs(path)
 	if err != nil {
@@ -147,6 +152,13 @@ func (s *Database) validate() error {
 		}
 		if ok {
 			s.dialect = dialect
+			var result string
+			if err := s.db.Raw("PRAGMA quick_check(1)").Scan(&result).Error; err != nil {
+				return err
+			}
+			if result != "ok" {
+				return fmt.Errorf("invalid sqlite integrity")
+			}
 			return nil
 		}
 	}

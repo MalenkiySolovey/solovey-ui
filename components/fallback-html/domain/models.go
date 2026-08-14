@@ -83,36 +83,6 @@ type Publish struct {
 
 func (Publish) TableName() string { return "fallback_html_publishes" }
 
-type NodePublication struct {
-	ID             uint   `json:"id" gorm:"primaryKey;autoIncrement"`
-	SiteID         uint   `json:"siteId" gorm:"column:site_id;index:idx_fallback_html_node_publication,unique;not null"`
-	NodeID         string `json:"nodeId" gorm:"column:node_id;index:idx_fallback_html_node_publication,unique;not null"`
-	PublishVersion string `json:"publishVersion" gorm:"column:publish_version;index:idx_fallback_html_node_publication,unique;not null"`
-	Runtime        string `json:"runtime" gorm:"default:unknown;not null"`
-	Status         string `json:"status" gorm:"default:planned;not null"`
-	ArtifactSha256 string `json:"artifactSha256" gorm:"column:artifact_sha256"`
-	OperationID    string `json:"operationId" gorm:"column:operation_id"`
-	LastError      string `json:"lastError" gorm:"column:last_error"`
-	CreatedAt      int64  `json:"createdAt" gorm:"default:0;not null"`
-	UpdatedAt      int64  `json:"updatedAt" gorm:"default:0;not null"`
-	AppliedAt      int64  `json:"appliedAt" gorm:"default:0;not null"`
-}
-
-func (NodePublication) TableName() string { return "fallback_html_node_publications" }
-
-type NodeEndpoint struct {
-	ID           uint   `json:"id" gorm:"primaryKey;autoIncrement"`
-	NodeID       string `json:"nodeId" gorm:"column:node_id;uniqueIndex;not null"`
-	BaseURL      string `json:"baseUrl" gorm:"column:base_url;not null"`
-	Runtime      string `json:"runtime" gorm:"default:gin;not null"`
-	SharedSecret string `json:"-" gorm:"column:shared_secret"`
-	Enabled      bool   `json:"enabled" gorm:"not null"`
-	CreatedAt    int64  `json:"createdAt" gorm:"default:0;not null"`
-	UpdatedAt    int64  `json:"updatedAt" gorm:"default:0;not null"`
-}
-
-func (NodeEndpoint) TableName() string { return "fallback_html_node_endpoints" }
-
 type PublishFile struct {
 	ID          uint   `json:"id" gorm:"primaryKey;autoIncrement"`
 	PublishID   uint   `json:"publishId" gorm:"column:publish_id;index;not null"`

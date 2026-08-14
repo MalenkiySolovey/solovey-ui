@@ -201,7 +201,7 @@ func (s *Service) ImportSite(siteID uint, input SiteImportInput, actor string) (
 		return SiteImportResult{}, err
 	}
 	now := time.Now().Unix()
-	err = s.guardedSiteMutation(siteID, func(tx *gorm.DB) error {
+	err = s.guardedRuntimeMutation(siteID, func(tx *gorm.DB) error {
 		if err := tx.First(&fallbackdomain.Site{}, siteID).Error; err != nil {
 			return err
 		}
@@ -209,6 +209,9 @@ func (s *Service) ImportSite(siteID uint, input SiteImportInput, actor string) (
 			return err
 		}
 		if err := tx.Where("site_id = ?", siteID).Delete(&fallbackdomain.Page{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&fallbackdomain.Publish{}).Where("site_id = ?", siteID).Update("active", false).Error; err != nil {
 			return err
 		}
 		for index := range pages {
@@ -231,7 +234,7 @@ func (s *Service) ImportSite(siteID uint, input SiteImportInput, actor string) (
 			return err
 		}
 		return recordEvent(tx, siteID, actor, "site_imported", map[string]any{"pages": len(pages), "redirects": len(redirects)})
-	}, nil)
+	})
 	if err != nil {
 		return SiteImportResult{}, err
 	}

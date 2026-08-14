@@ -6,7 +6,6 @@ package durableowner
 
 import (
 	"reflect"
-	"sort"
 	"sync"
 
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
@@ -18,11 +17,11 @@ var catalog = struct {
 }{items: map[string]manifest.Manifest{}}
 
 func Register(item manifest.Manifest) {
-	item = cloneManifest(item).Normalized()
 	item = cloneManifest(item)
 	if err := item.Validate(); err != nil {
 		panic(err)
 	}
+	item = cloneManifest(item.Normalized())
 	catalog.Lock()
 	defer catalog.Unlock()
 	if existing, ok := catalog.items[item.ID]; ok {
@@ -34,22 +33,36 @@ func Register(item manifest.Manifest) {
 	catalog.items[item.ID] = item
 }
 
+// RegisterWithHooks atomically publishes the durable manifest and its runtime
+// restore hooks. A failed admission must not leave one half of the owner
+// contract visible to backup or restore.
+func RegisterWithHooks(item manifest.Manifest, hooks Hooks) {
+	item = cloneManifest(item)
+	if err := item.Validate(); err != nil {
+		panic(err)
+	}
+	item = cloneManifest(item.Normalized())
+
+	catalog.Lock()
+	hookCatalog.Lock()
+	defer hookCatalog.Unlock()
+	defer catalog.Unlock()
+
+	if existing, ok := catalog.items[item.ID]; ok && !reflect.DeepEqual(existing, item) {
+		panic("durable owner manifest identity changed")
+	}
+	if _, duplicate := hookCatalog.items[item.ID]; duplicate {
+		panic("durable owner hooks already registered: " + item.ID)
+	}
+	catalog.items[item.ID] = item
+	hookCatalog.items[item.ID] = hooks
+}
+
 func Lookup(id string) (manifest.Manifest, bool) {
 	catalog.RLock()
 	defer catalog.RUnlock()
 	item, ok := catalog.items[id]
 	return cloneManifest(item), ok
-}
-
-func Manifests() []manifest.Manifest {
-	catalog.RLock()
-	defer catalog.RUnlock()
-	result := make([]manifest.Manifest, 0, len(catalog.items))
-	for _, item := range catalog.items {
-		result = append(result, cloneManifest(item))
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
-	return result
 }
 
 func cloneManifest(item manifest.Manifest) manifest.Manifest {

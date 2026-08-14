@@ -17,7 +17,7 @@ func TestTypedNginxBackendSequenceAndExactRollback(t *testing.T) {
 	nginx.ActiveRevision, nginx.ActiveSHA256 = previous, previousSHA
 	nginx.Revisions[previous] = previousSHA
 	nginx.RevisionListeners[previous] = []NginxListener{{Address: "0.0.0.0", Port: 443}}
-	engine := newContractEngineWithBackends(root, nil, nginx, nil)
+	engine := newContractEngineWithBackends(root, nil, nginx)
 	correlation := Correlation{OperationID: "operation-nginx", InstanceID: "instance-nginx", LockRevision: 1}
 	identity := nginx.Support.Binary
 	requests := []Request{
@@ -102,7 +102,7 @@ func TestNginxFakeContractVerifiesCandidateBytesBeforeBackend(t *testing.T) {
 	root, candidatePath, revision, _ := nginxTestRoot(t)
 	nginx := NewFakeNginxExecutor()
 	request := Request{ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "operation-sha", InstanceID: "instance", LockRevision: 1}, Operation: OperationNginxValidate, NginxValidate: &NginxValidateRequest{CandidatePath: candidatePath, ExpectedRevision: revision, ExpectedSHA256: strings.Repeat("d", 64), ExpectedBinary: nginx.Support.Binary}}
-	response := newContractEngineWithBackends(root, nil, nginx, nil).Handle(request)
+	response := newContractEngineWithBackends(root, nil, nginx).Handle(request)
 	if response.OK || response.Code != CodeValidationFailed || containsOperation(nginx.Calls, OperationNginxValidate) {
 		t.Fatalf("candidate SHA mismatch reached backend: response=%#v calls=%v", response, nginx.Calls)
 	}
@@ -117,7 +117,7 @@ func TestFakeNginxInstallNeverTouchesUserConfiguration(t *testing.T) {
 	}
 	nginx := NewFakeNginxExecutor()
 	request := Request{ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "operation-fake-scope", InstanceID: "instance", LockRevision: 1}, Operation: OperationNginxInstall, NginxInstall: &NginxInstallRequest{CandidatePath: candidatePath, ExpectedRevision: revision, ExpectedSHA256: candidateSHA, Listeners: []NginxListener{{Address: "0.0.0.0", Port: 8443}}}}
-	response := newContractEngineWithBackends(root, nil, nginx, nil).Handle(request)
+	response := newContractEngineWithBackends(root, nil, nginx).Handle(request)
 	got, err := os.ReadFile(userConfig)
 	if !response.OK || err != nil || string(got) != string(want) {
 		t.Fatalf("response=%#v userConfig=%q err=%v", response, got, err)
@@ -172,7 +172,7 @@ func TestNginxBackendTimeoutAndOversizedDiagnosticsAreTypedFailures(t *testing.T
 	for name, failure := range map[string]error{"timeout": context.DeadlineExceeded, "oversized": errNginxOutputLimit} {
 		t.Run(name, func(t *testing.T) {
 			nginx.Fail[OperationNginxValidate] = failure
-			response := newContractEngineWithBackends(root, nil, nginx, nil).Handle(request)
+			response := newContractEngineWithBackends(root, nil, nginx).Handle(request)
 			if response.OK {
 				t.Fatalf("failure accepted: %#v", response)
 			}

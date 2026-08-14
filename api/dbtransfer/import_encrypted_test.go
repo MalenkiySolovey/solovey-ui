@@ -136,9 +136,7 @@ func TestPrepareDatabaseImportFilePrefersDedicatedPassphraseField(t *testing.T) 
 
 func registerFixtureImportCodecForTest(t *testing.T) {
 	t.Helper()
-	ResetBackupCodecsForTest()
-	t.Cleanup(ResetBackupCodecsForTest)
-	unregister := RegisterBackupImportCodec("test-fixture-codec", BackupImportCodec{
+	unregister, err := RegisterBackupImportCodec("test-fixture-codec", BackupImportCodec{
 		HeaderBytes:       len(backupenvelope.Magic),
 		PassphraseFields:  []string{"fixtureBackupPassphrase"},
 		Match:             backupenvelope.IsEnvelope,
@@ -154,5 +152,8 @@ func registerFixtureImportCodecForTest(t *testing.T) {
 			return backupenvelope.Open(ctx.Payload, []byte(passphrase))
 		},
 	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(unregister)
 }

@@ -6,7 +6,10 @@ import (
 	"os"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveidentity"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
@@ -70,6 +73,28 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 	return endpointsJSON, nil
 }
 
+func ValidateStored(db *gorm.DB) error {
+	if db == nil {
+		return common.NewError("endpoint persistence is unavailable")
+	}
+	if !db.Migrator().HasTable(&model.Endpoint{}) {
+		return nil
+	}
+	var rows []model.Endpoint
+	if err := db.Order("id").Find(&rows).Error; err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if err := jsonvalue.OptionalObject("endpoint options", row.Options); err != nil {
+			return fmt.Errorf("stored endpoint row %d: %w", row.Id, err)
+		}
+		if err := jsonvalue.OptionalObject("endpoint extension", row.Ext); err != nil {
+			return fmt.Errorf("stored endpoint row %d: %w", row.Id, err)
+		}
+	}
+	return nil
+}
+
 func Save(tx *gorm.DB, act string, data json.RawMessage, warp WarpHooks) (*singboxapply.Change, error) {
 	switch act {
 	case "new", "edit":
@@ -84,6 +109,15 @@ func Save(tx *gorm.DB, act string, data json.RawMessage, warp WarpHooks) (*singb
 func saveUpsert(tx *gorm.DB, act string, data json.RawMessage, warp WarpHooks) (*singboxapply.Change, error) {
 	var endpoint model.Endpoint
 	if err := endpoint.UnmarshalJSON(data); err != nil {
+		return nil, err
+	}
+	if err := saveidentity.Validate(tx, act, endpoint.Id, &model.Endpoint{}); err != nil {
+		return nil, err
+	}
+	if err := entityidentity.ValidateTypeTag(endpoint.Type, endpoint.Tag); err != nil {
+		return nil, err
+	}
+	if err := entityidentity.EnsureOutboundTagAvailable(tx, endpoint.Tag, 0, endpoint.Id); err != nil {
 		return nil, err
 	}
 
@@ -158,6 +192,9 @@ func tagByID(tx *gorm.DB, id uint) (string, error) {
 func saveDelete(tx *gorm.DB, data json.RawMessage) (*singboxapply.Change, error) {
 	var tag string
 	if err := json.Unmarshal(data, &tag); err != nil {
+		return nil, err
+	}
+	if err := entityidentity.ValidateTag(tag); err != nil {
 		return nil, err
 	}
 	ownID, err := IDByTag(tx, tag)

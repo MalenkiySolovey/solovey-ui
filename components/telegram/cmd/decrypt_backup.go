@@ -63,22 +63,22 @@ func RunDecryptBackup(args []string, stdin io.Reader, stdout io.Writer, stderr i
 		return 2
 	}
 
+	if _, err := os.Lstat(outPath); err == nil {
+		fmt.Fprintln(stderr, "decrypt-backup: output already exists")
+		return 1
+	} else if !os.IsNotExist(err) {
+		fmt.Fprintln(stderr, "decrypt-backup:", err)
+		return 1
+	}
+
 	// #nosec G304 -- inPath is a CLI argument supplied by the operator.
-	envelope, err := os.ReadFile(inPath)
+	input, err := os.Open(inPath)
 	if err != nil {
 		fmt.Fprintln(stderr, "decrypt-backup:", err)
 		return 1
 	}
-	defer common.WipeBytes(envelope)
-	plaintext, err := backupenvelope.Open(envelope, passphrase)
-	if err != nil {
-		_ = os.Remove(outPath)
-		fmt.Fprintln(stderr, "decrypt-backup: decryption_failed")
-		return 1
-	}
-	defer common.WipeBytes(plaintext)
-	if err := writeDecryptBackupOutput(outPath, plaintext); err != nil {
-		_ = os.Remove(outPath)
+	defer input.Close()
+	if err := decryptBackupToNewFile(input, outPath, passphrase); err != nil {
 		fmt.Fprintln(stderr, "decrypt-backup:", err)
 		return 1
 	}
@@ -109,7 +109,10 @@ func readDecryptBackupPassphrase(stdin io.Reader, stderr io.Writer, getenv func(
 	return bytes.TrimRight(raw, "\r\n"), nil
 }
 
-func writeDecryptBackupOutput(outPath string, plaintext []byte) error {
+func decryptBackupToNewFile(input *os.File, outPath string, passphrase []byte) error {
+	if input == nil {
+		return backupenvelope.ErrInvalidEnvelope
+	}
 	dir := filepath.Dir(outPath)
 	base := filepath.Base(outPath)
 	temp, err := os.CreateTemp(dir, "."+base+".tmp-*")
@@ -118,9 +121,9 @@ func writeDecryptBackupOutput(outPath string, plaintext []byte) error {
 	}
 	tempPath := temp.Name()
 	defer os.Remove(tempPath)
-	if _, err := temp.Write(plaintext); err != nil {
+	if err := decryptBackupEnvelope(temp, input, passphrase); err != nil {
 		_ = temp.Close()
-		return err
+		return backupenvelope.ErrDecryptionFailed
 	}
 	if err := temp.Sync(); err != nil {
 		_ = temp.Close()
@@ -129,5 +132,47 @@ func writeDecryptBackupOutput(outPath string, plaintext []byte) error {
 	if err := temp.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tempPath, outPath)
+	if err := os.Link(tempPath, outPath); err != nil {
+		if _, statErr := os.Lstat(outPath); statErr == nil {
+			return fmt.Errorf("output already exists")
+		}
+		return err
+	}
+	return nil
+}
+
+func decryptBackupEnvelope(destination io.Writer, input *os.File, passphrase []byte) error {
+	prefix := make([]byte, len(backupenvelope.Magic)+1)
+	if _, err := io.ReadFull(input, prefix); err != nil || !backupenvelope.IsEnvelope(prefix) {
+		return backupenvelope.ErrInvalidEnvelope
+	}
+	version := prefix[len(backupenvelope.Magic)]
+	if _, err := input.Seek(0, io.SeekStart); err != nil {
+		return err
+	}
+	if version == backupenvelope.VersionStream {
+		_, _, err := backupenvelope.OpenStream(destination, input, passphrase, backupenvelope.MaxStreamBytes)
+		return err
+	}
+	if version != backupenvelope.Version {
+		return backupenvelope.ErrInvalidEnvelope
+	}
+	if stat, err := input.Stat(); err != nil {
+		return err
+	} else if stat.Size() > backupenvelope.LegacyMaxBytes {
+		return backupenvelope.ErrInvalidEnvelope
+	}
+	envelope, err := io.ReadAll(io.LimitReader(input, backupenvelope.LegacyMaxBytes+1))
+	if err != nil || int64(len(envelope)) > backupenvelope.LegacyMaxBytes {
+		common.WipeBytes(envelope)
+		return backupenvelope.ErrInvalidEnvelope
+	}
+	defer common.WipeBytes(envelope)
+	plaintext, err := backupenvelope.Open(envelope, passphrase)
+	if err != nil {
+		return err
+	}
+	defer common.WipeBytes(plaintext)
+	_, err = io.Copy(destination, bytes.NewReader(plaintext))
+	return err
 }

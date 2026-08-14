@@ -34,7 +34,7 @@ func BenchmarkAuditWriter_Overload10000(b *testing.B) {
 	}
 }
 
-func TestAuditWriterOverloadSeverityPriorityAnchorIssue16(t *testing.T) {
+func TestAuditWriterOverloadPreservesSeverityPriority(t *testing.T) {
 	auditDroppedTotal.Store(0)
 	writer := newAuditWriter(auditQueueCapacity, auditBatchSize, time.Hour, nil)
 	for i := 0; i < 10_000; i++ {
@@ -68,7 +68,7 @@ func TestAuditWriterOverloadSeverityPriorityAnchorIssue16(t *testing.T) {
 		t.Fatalf("severity priority eviction kept warn/security=%d info=%d; want warn/security=%d info=%d; kept=%v",
 			kept[AuditSeverityWarn], kept[AuditSeverityInfo], wantKeptWarnSecurity, wantKeptInfo, kept)
 	}
-	t.Logf("issue16 anchor: dropped=%d lost_warn_security=%d lost_info=%d kept=%v", dropped, lostWarnSecurity, lostInfo, kept)
+	t.Logf("overload anchor: dropped=%d lost_warn_security=%d lost_info=%d kept=%v", dropped, lostWarnSecurity, lostInfo, kept)
 }
 
 func auditWriterBenchEvent(i int) model.AuditEvent {

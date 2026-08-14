@@ -13,14 +13,11 @@ func NewServerService(runtime *Runtime) ServerService {
 	runtime = runtimeOrDefault(runtime)
 	backend := serversvc.New(func() (bool, uint32) {
 		coreInstance := runtime.Core()
-		if coreInstance == nil || !coreInstance.IsRunning() {
+		if coreInstance == nil {
 			return false, 0
 		}
-		instance := coreInstance.GetInstance()
-		if instance == nil {
-			return true, 0
-		}
-		return true, instance.Uptime()
+		uptime, running := coreInstance.Uptime()
+		return running, uptime
 	})
 	return ServerService{ServerService: backend}
 }

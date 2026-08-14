@@ -4,8 +4,11 @@
 package remotesub
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"strings"
@@ -81,7 +84,7 @@ type remoteOutboundBulkGroupPayload struct {
 }
 
 func (a *Handler) GetRemoteOutboundSubscriptions(c *gin.Context) {
-	if !a.RequireScope(c, "remoteOutboundSubscriptions", "admin", "read", "write") {
+	if !a.requireScope(c, "remoteOutboundSubscriptions", "admin", "read", "write") {
 		return
 	}
 	subscriptions, err := a.Service.GetAll()
@@ -89,7 +92,7 @@ func (a *Handler) GetRemoteOutboundSubscriptions(c *gin.Context) {
 }
 
 func (a *Handler) SaveRemoteOutboundSubscription(c *gin.Context) {
-	if !a.RequireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
+	if !a.requireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
 		return
 	}
 	var subscription remotesubdomain.RemoteOutboundSubscription
@@ -103,7 +106,7 @@ func (a *Handler) SaveRemoteOutboundSubscription(c *gin.Context) {
 }
 
 func (a *Handler) DeleteRemoteOutboundSubscription(c *gin.Context) {
-	if !a.RequireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
+	if !a.requireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
 		return
 	}
 	id, ok := a.remoteOutboundIDOrFail(c, "id")
@@ -115,19 +118,19 @@ func (a *Handler) DeleteRemoteOutboundSubscription(c *gin.Context) {
 }
 
 func (a *Handler) RefreshRemoteOutboundSubscription(c *gin.Context) {
-	if !a.RequireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
+	if !a.requireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
 		return
 	}
 	id, ok := a.remoteOutboundIDOrFail(c, "id")
 	if !ok {
 		return
 	}
-	result, err := a.Service.RefreshSubscription(id, a.Actor(c))
+	result, err := a.Service.RefreshSubscriptionContext(c.Request.Context(), id, a.Actor(c))
 	a.JSONObj(c, result, err)
 }
 
 func (a *Handler) GetRemoteOutboundSubscriptionCollectedData(c *gin.Context) {
-	if !a.RequireScope(c, "remoteOutboundSubscriptions", "admin", "read", "write") {
+	if !a.requireScope(c, "remoteOutboundSubscriptions", "admin", "read", "write") {
 		return
 	}
 	id, ok := a.remoteOutboundIDOrFail(c, "id")
@@ -139,7 +142,7 @@ func (a *Handler) GetRemoteOutboundSubscriptionCollectedData(c *gin.Context) {
 }
 
 func (a *Handler) SaveRemoteOutboundGroup(c *gin.Context) {
-	if !a.RequireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
+	if !a.requireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
 		return
 	}
 	var group remotesubdomain.RemoteOutboundGroup
@@ -153,7 +156,7 @@ func (a *Handler) SaveRemoteOutboundGroup(c *gin.Context) {
 }
 
 func (a *Handler) SaveRemoteOutboundGroupBulk(c *gin.Context) {
-	if !a.RequireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
+	if !a.requireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
 		return
 	}
 	var payload remoteOutboundBulkGroupPayload
@@ -166,7 +169,7 @@ func (a *Handler) SaveRemoteOutboundGroupBulk(c *gin.Context) {
 }
 
 func (a *Handler) DeleteRemoteOutboundGroup(c *gin.Context) {
-	if !a.RequireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
+	if !a.requireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
 		return
 	}
 	id, ok := a.remoteOutboundIDOrFail(c, "id")
@@ -178,7 +181,7 @@ func (a *Handler) DeleteRemoteOutboundGroup(c *gin.Context) {
 }
 
 func (a *Handler) SetRemoteOutboundGroupConnections(c *gin.Context) {
-	if !a.RequireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
+	if !a.requireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
 		return
 	}
 	var payload remoteOutboundGroupConnectionsPayload
@@ -191,7 +194,7 @@ func (a *Handler) SetRemoteOutboundGroupConnections(c *gin.Context) {
 }
 
 func (a *Handler) ToggleRemoteOutboundGroupOutbounds(c *gin.Context) {
-	if !a.RequireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
+	if !a.requireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
 		return
 	}
 	groupID, ok := a.remoteOutboundIDOrFail(c, "groupId")
@@ -203,7 +206,7 @@ func (a *Handler) ToggleRemoteOutboundGroupOutbounds(c *gin.Context) {
 }
 
 func (a *Handler) MoveRemoteOutboundConnectionGroup(c *gin.Context) {
-	if !a.RequireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
+	if !a.requireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
 		return
 	}
 	connectionID, ok := a.remoteOutboundIDOrFail(c, "connectionId")
@@ -219,7 +222,7 @@ func (a *Handler) MoveRemoteOutboundConnectionGroup(c *gin.Context) {
 }
 
 func (a *Handler) SyncRemoteOutboundConnection(c *gin.Context) {
-	if !a.RequireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
+	if !a.requireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
 		return
 	}
 	id, ok := a.remoteOutboundIDOrFail(c, "id")
@@ -231,7 +234,7 @@ func (a *Handler) SyncRemoteOutboundConnection(c *gin.Context) {
 }
 
 func (a *Handler) TestRemoteOutboundConnection(c *gin.Context) {
-	if !a.RequireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
+	if !a.requireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
 		return
 	}
 	target, ok := a.remoteOutboundCheckTarget(c)
@@ -249,7 +252,7 @@ func (a *Handler) TestRemoteOutboundConnection(c *gin.Context) {
 }
 
 func (a *Handler) TestRemoteOutboundSubscription(c *gin.Context) {
-	if !a.RequireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
+	if !a.requireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
 		return
 	}
 	target, ok := a.remoteOutboundCheckTarget(c)
@@ -267,7 +270,7 @@ func (a *Handler) TestRemoteOutboundSubscription(c *gin.Context) {
 }
 
 func (a *Handler) TestRemoteOutboundSubscriptions(c *gin.Context) {
-	if !a.RequireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
+	if !a.requireScope(c, "remoteOutboundSubscriptions", "admin", "write") {
 		return
 	}
 	target, ok := a.remoteOutboundCheckTarget(c)
@@ -292,6 +295,14 @@ func (a *Handler) remoteOutboundCheckTarget(c *gin.Context) (string, bool) {
 	return target, true
 }
 
+func (a *Handler) requireScope(c *gin.Context, action string, scopes ...string) bool {
+	if a == nil || a.Service == nil || a.RequireScope == nil || a.Actor == nil || a.ValidateTarget == nil || a.JSONObj == nil || a.JSONMsg == nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"success": false, "msg": "remote outbound subscription service is unavailable", "obj": nil})
+		return false
+	}
+	return a.RequireScope(c, action, scopes...)
+}
+
 func readRemoteOutboundPayload(c *gin.Context, target any) ([]byte, error) {
 	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, maxRemoteOutboundPayloadBytes)
 	if strings.Contains(c.ContentType(), "json") {
@@ -302,14 +313,30 @@ func readRemoteOutboundPayload(c *gin.Context, target any) ([]byte, error) {
 		if len(body) == 0 {
 			return nil, common.NewError("empty payload")
 		}
-		return body, json.Unmarshal(body, target)
+		return body, decodeRemoteOutboundJSON(body, target)
 	}
 	raw := strings.TrimSpace(c.PostForm("data"))
 	if raw == "" {
 		return nil, common.NewError("empty payload")
 	}
 	body := []byte(raw)
-	return body, json.Unmarshal(body, target)
+	return body, decodeRemoteOutboundJSON(body, target)
+}
+
+func decodeRemoteOutboundJSON(body []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return common.NewError("payload contains multiple JSON documents")
+		}
+		return err
+	}
+	return nil
 }
 
 func jsonPayloadHasKey(raw []byte, key string) bool {

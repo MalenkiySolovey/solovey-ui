@@ -823,7 +823,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 	}
 
 	db := dbsqlite.DB()
-	callbackName := "p18:e02:concurrent-writer-after-session-read"
+	callbackName := "test-concurrent-writer-after-session-read"
 	writerDone := make(chan error, 1)
 	fired := false
 	if err := db.Callback().Query().After("gorm:query").Register(callbackName, func(tx *gorm.DB) {

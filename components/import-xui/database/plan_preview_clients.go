@@ -25,11 +25,12 @@ func (s *planningState) planClients(ctx context.Context, tx *gorm.DB, src *sourc
 		if err := checkContext(ctx); err != nil {
 			return err
 		}
-		client, err := aggs[email].toModel()
-		if err != nil {
-			return err
-		}
-		preview, err := marshalJSON(client)
+		preview, err := marshalJSON(map[string]any{
+			"name":          email,
+			"enabled":       aggs[email].Enable,
+			"inbound_count": len(aggs[email].Inbounds),
+			"group":         aggs[email].Group,
+		})
 		if err != nil {
 			return err
 		}

@@ -27,7 +27,7 @@ func TestDefaultSettingValueReadsCurrentVersion(t *testing.T) {
 	}
 }
 
-func TestGetAllSettingConcurrentDefaultInitializationIssue19(t *testing.T) {
+func TestGetAllSettingConcurrentDefaultInitialization(t *testing.T) {
 	initSettingTestDB(t)
 	db := dbsqlite.DB()
 	if err := db.Where("1 = 1").Delete(&model.Setting{}).Error; err != nil {
@@ -512,6 +512,9 @@ func TestSettingSaveDeterministicForDifferentPayloadOrders(t *testing.T) {
 			snapshot[key] = setting.Value
 		}
 		snapshots = append(snapshots, snapshot)
+		if err := dbsqlite.Close(); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	if !reflect.DeepEqual(snapshots[0], snapshots[1]) {

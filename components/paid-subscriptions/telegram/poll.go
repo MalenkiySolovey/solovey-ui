@@ -10,6 +10,7 @@ import (
 	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
 var pollMu sync.Mutex
@@ -30,7 +31,7 @@ const cryptoBotPollGraceSeconds int64 = 24 * 60 * 60
 // after the local order TTL is applied before it could be moved out of the
 // pending set — otherwise a late-but-valid payment would be silently lost
 // (money taken, no grant, no recovery).
-func PollOnce(ctx context.Context) {
+func PollOnce(ctx context.Context, runtime *service.Runtime) {
 	setting := paidSettings{}
 	if enabled, err := setting.GetPaidSubEnabled(); err != nil || !enabled {
 		return
@@ -40,10 +41,10 @@ func PollOnce(ctx context.Context) {
 	}
 	defer pollMu.Unlock()
 
-	ps := newPaymentCoordinator()
+	ps := newPaymentCoordinator(runtime)
 
 	// 1. Confirm out-of-band payments first (before any expiry can hide them).
-	pollCryptoBot(ctx, ps)
+	pollCryptoBot(ctx, runtime, ps)
 
 	// 2. Expire non-polled providers on the short order TTL.
 	if err := ps.ExpireStaleOrders(); err != nil {
@@ -57,7 +58,7 @@ func PollOnce(ctx context.Context) {
 
 // pollCryptoBot loads pending CryptoBot orders and applies any the provider
 // reports as paid. Errors are logged and swallowed (best-effort per tick).
-func pollCryptoBot(ctx context.Context, ps *paymentCoordinator) {
+func pollCryptoBot(ctx context.Context, runtime *service.Runtime, ps *paymentCoordinator) {
 	prov := ps.providerByKind(paidprovider.ProviderCryptoBot)
 	if prov == nil {
 		return
@@ -87,15 +88,16 @@ func pollCryptoBot(ctx context.Context, ps *paymentCoordinator) {
 			continue
 		}
 		if applied && tgID > 0 {
-			notifyPaid(ctx, tgID)
+			notifyPaid(ctx, runtime, tgID)
 		}
 	}
 }
 
-func notifyPaid(ctx context.Context, tgUserID int64) {
-	b, err := newSenderBot()
+func notifyPaid(ctx context.Context, runtime *service.Runtime, tgUserID int64) {
+	b, err := newSenderBot(runtime)
 	if err != nil {
 		return
 	}
+	defer b.closeIdleConnections()
 	_ = b.sendMessage(ctx, tgUserID, tr(langEN, "pay_success"), nil)
 }

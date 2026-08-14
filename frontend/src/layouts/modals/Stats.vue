@@ -36,7 +36,7 @@
 </template>
 
 <script lang="ts">
-import { i18n } from '@/locales'
+import { dateLocale, i18n } from '@/locales'
 import { loadStats } from '@/shared/composables/useOperationsData'
 import { HumanReadable } from '@/plugins/utils'
 import {
@@ -50,7 +50,6 @@ import {
   Legend,
   Filler,
 } from 'chart.js'
-import { ref } from 'vue'
 import { Line } from 'vue-chartjs'
 ChartJS.register(
   CategoryScale,
@@ -125,62 +124,64 @@ export default {
           }
         }
       },
-      usage: ref(<any>{}),
+      usage: <any>{},
     }
   },
   methods: {
     async loadData() {
+      if (this.loading) return
       this.loading = true
-      const data = await loadStats(this.resource, this.tag, this.limit)
-      if (data.success && data.obj) {
-        const obj = <any[]>data.obj
-        const l = String(i18n.global.locale) == 'fa' ? "fa-IR" : "en-US"
-        const oneStep = this.limit * 3600 * 1000 / 360 // Each 10 sec
-        const now = new Date().getTime()
-        const steps = <number[]>[]
-        for (let i = 360; i >= 0; i--) {
-          steps.push(now - (oneStep * i))
+      try {
+        const data = await loadStats(this.resource, this.tag, this.limit)
+        if (data.success && Array.isArray(data.obj)) {
+          const locale = dateLocale()
+          const bucketCount = 360
+          const bucketDuration = this.limit * 3600 * 1000 / bucketCount
+          const now = Date.now()
+          const start = now - bucketDuration * bucketCount
+          const labels = Array.from({ length: bucketCount }, (_, index) =>
+            this.genLable(start + bucketDuration * (index + 1), locale))
+          const uplinkData = Array<number | null>(bucketCount).fill(null)
+          const downlinkData = Array<number | null>(bucketCount).fill(null)
+
+          for (const sample of data.obj) {
+            const timestamp = Number(sample?.dateTime) * 1000
+            const traffic = Number(sample?.traffic)
+            if (!Number.isFinite(timestamp) || !Number.isFinite(traffic)) continue
+            const bucket = Math.floor((timestamp - start) / bucketDuration)
+            if (bucket < 0 || bucket >= bucketCount) continue
+            const series = sample?.direction ? uplinkData : downlinkData
+            series[bucket] = (series[bucket] ?? 0) + traffic
+          }
+
+          this.usage = {
+            labels,
+            datasets: [
+              {
+                label: i18n.global.t('stats.upload'),
+                backgroundColor: 'rgba(255, 165, 0, 0.4)',
+                borderColor: 'rgba(255, 165, 0)',
+                fill: true,
+                data: uplinkData
+              },
+              {
+                label: i18n.global.t('stats.download'),
+                backgroundColor: 'rgba(0, 128, 0, 0.2)',
+                borderColor: 'rgba(0, 128, 0)',
+                fill: true,
+                data: downlinkData
+              }
+            ],
+          }
+          this.loaded = true
+          this.alert = false
+        } else {
+          this.alert = true
+          this.loaded = false
         }
-        const labels = <string[]>[]
-        const uplinkData = <number[]>[]
-        const downlinkData = <number[]>[]
-        for (let i = 1; i<360; i++) {
-          labels.push(this.genLable(steps[i],l))
-          let upSum:number
-          let downSum:number
-          const upTraffics = obj.filter(o => o.direction && o.dateTime*1000 < steps[i] && o.dateTime*1000 > steps[i-1]).map((o:any) => o.traffic)
-          upSum = upTraffics.length>0 ? upTraffics.reduce((acc:number, v:number) => acc + v, 0) : null
-          const downTraffics = obj.filter(o => !o.direction && o.dateTime*1000 < steps[i] && o.dateTime*1000 > steps[i-1]).map((o:any) => o.traffic)
-          downSum = downTraffics.length>0 ? downTraffics.reduce((acc:number, v:number) => acc + v, 0) : null
-          uplinkData.push(upSum)
-          downlinkData.push(downSum)
-        }
-        this.usage = {
-          labels: labels,
-          datasets: [
-            {
-              label: i18n.global.t('stats.upload'),
-              backgroundColor: 'rgba(255, 165, 0, 0.4)',
-              borderColor: 'rgba(255, 165, 0)',
-              fill: true,
-              data: uplinkData
-            },
-            {
-              label: i18n.global.t('stats.download'),
-              backgroundColor: 'rgba(0, 128, 0, 0.2)',
-              borderColor: 'rgba(0, 128, 0)',
-              fill: true,
-              data: downlinkData
-            }
-          ],
-        }
-        this.loaded = true
-        this.alert = false
-      } else {
-        this.alert = true
-        this.loaded = false
+      } finally {
+        this.loading = false
       }
-      this.loading = false
     },
     genLable(step:number, locale: string) {
       return new Date(step).toLocaleString(locale,{
@@ -191,28 +192,37 @@ export default {
         hour12: false,
       })
     },
+    startTimer() {
+      this.stopTimer()
+      this.intervalId = setInterval(() => {
+        if (document.hidden) return
+        void this.loadData()
+      }, 10000)
+    },
+    stopTimer() {
+      if (this.intervalId && this.intervalId != 0) clearInterval(this.intervalId)
+      this.intervalId = 0
+    },
+    resetChart() {
+      this.loaded = false
+      this.alert = false
+      this.usage = {}
+    },
   },
   watch: {
     visible(v) {
       if (v) {
         this.limit = 1
-        this.loadData()
-        this.intervalId = setInterval(() => {
-          this.loadData()
-        }, 10000)
+        void this.loadData()
+        this.startTimer()
       } else {
-        this.loaded = false
-        this.alert = false
-        this.usage.labels = []
-        if (this.usage.datasets) {
-          this.usage.datasets[0].data = []
-          this.usage.datasets[1].data = []
-        }
-        if (this.intervalId && this.intervalId != 0) {
-          clearInterval(this.intervalId)
-        }
+        this.stopTimer()
+        this.resetChart()
       }
     }
+  },
+  beforeUnmount() {
+    this.stopTimer()
   }
 }
 </script>

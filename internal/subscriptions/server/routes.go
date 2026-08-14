@@ -14,7 +14,7 @@ type FormatHandlers struct {
 	Headers gin.HandlerFunc
 }
 
-func RegisterFormatRoute(engine *gin.Engine, registered map[string]string, path string, format string, handlers FormatHandlers) error {
+func RegisterFormatRoute(engine *gin.Engine, registered map[string]string, path string, format string, handlers FormatHandlers, rateLimiter *RateLimiter) error {
 	path = NormalizeRoutePath(path)
 	if path == "/" {
 		return common.NewError("subscription format path cannot be root")
@@ -28,7 +28,7 @@ func RegisterFormatRoute(engine *gin.Engine, registered map[string]string, path 
 	registered[path] = format
 
 	group := engine.Group(path)
-	group.Use(RateLimitMiddleware())
+	group.Use(rateLimiter.Middleware())
 	switch format {
 	case "json":
 		if handlers.JSON == nil || handlers.Headers == nil {

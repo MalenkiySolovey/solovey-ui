@@ -51,7 +51,7 @@
   </template>
   
 <script lang="ts" setup>
-import { useLoginPage } from '@/shared/composables/pages/useLoginPage'
+import { useLoginPage } from '@/features/useLoginPage'
 
 const {
   changeLocale,

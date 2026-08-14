@@ -16,7 +16,7 @@ import (
 
 func TestInventoryManagementReaderRejectsOverlapAndUnknownFacts(t *testing.T) {
 	now := time.Unix(1_900_000_000, 0).UTC()
-	endpoint := hostresources.ManagementEndpointV1{Schema: hostresources.ManagementEndpointSchemaV1, ID: "management:panel", Network: hostresources.NetworkTCP, Family: hostresources.AddressFamilyIPv4, Bind: "127.0.0.1", Port: 8443, ServiceKind: hostresources.ManagementPanel, ConfidenceBP: 10000, ObservedAt: now.Unix(), ConfigurationRevision: strings.Repeat("a", 64)}
+	endpoint := hostresources.ManagementEndpointV1{Schema: hostresources.ManagementEndpointSchemaV1, ID: "management:panel", Network: hostresources.NetworkTCP, Family: hostresources.AddressFamilyIPv4, Bind: "127.0.0.1", Port: 8443, ServiceKind: hostresources.ManagementPanel, Exposure: hostresources.EndpointIntentLocal, Owner: "panel", RecoveryPolicy: "fresh_independent_path_required", Purpose: "administrative_access", ConfiguredIntent: true, Source: "fixture", ConfidenceBP: 10000, ObservedAt: now.Unix(), ExpiresAt: now.Add(90 * time.Second).Unix(), ConfigurationRevision: strings.Repeat("a", 64)}
 	reader := InventoryManagementReader{Now: func() time.Time { return now }, Endpoints: func(context.Context, time.Time) []hostresources.ManagementEndpointV1 {
 		return []hostresources.ManagementEndpointV1{endpoint}
 	}, Resources: func(context.Context) hostresources.ResourceSnapshot { return hostresources.ResourceSnapshot{} }}
@@ -97,7 +97,8 @@ func thousandFactPlanner(t testing.TB) (Planner, PlanRequestV1) {
 		endpoints[index] = hostresources.ManagementEndpointV1{
 			Schema: hostresources.ManagementEndpointSchemaV1, ID: fmt.Sprintf("management:fact:%04d", index), Network: hostresources.NetworkTCP,
 			Family: hostresources.AddressFamilyIPv4, Bind: "127.0.0.1", Port: uint16(10_000 + index), ServiceKind: hostresources.ManagementOtherAdmin,
-			ConfidenceBP: 10000, ObservedAt: now.Unix(), ConfigurationRevision: strings.Repeat("a", 64),
+			Exposure: hostresources.EndpointIntentLocal, Owner: "fixture", RecoveryPolicy: "fresh_independent_path_required", Purpose: "administrative_access", ConfiguredIntent: true,
+			Source: "fixture", ConfidenceBP: 10000, ObservedAt: now.Unix(), ExpiresAt: now.Add(90 * time.Second).Unix(), ConfigurationRevision: strings.Repeat("a", 64),
 		}
 	}
 	management := InventoryManagementReader{

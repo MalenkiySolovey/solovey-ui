@@ -97,12 +97,14 @@ func (s *Box) start() error {
 }
 
 func (s *Box) Close() error {
-	select {
-	case <-s.done:
-		return nil
-	default:
+	s.closeOnce.Do(func() {
 		close(s.done)
-	}
+		s.closeErr = s.close()
+	})
+	return s.closeErr
+}
+
+func (s *Box) close() error {
 	var err error
 	s.logger.Info("closing sing-box")
 	for _, closeItem := range []struct {

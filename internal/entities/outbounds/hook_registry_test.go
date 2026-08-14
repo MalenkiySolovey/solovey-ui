@@ -7,11 +7,6 @@ import (
 )
 
 func TestHookStaleCleanupPreservesNewRegistration(t *testing.T) {
-	ResetDeleteHooksForTest()
-	ResetMetadataAnnotatorsForTest()
-	t.Cleanup(ResetDeleteHooksForTest)
-	t.Cleanup(ResetMetadataAnnotatorsForTest)
-
 	oldDelete := RegisterDeleteHook("test.generation", func(*gorm.DB, string) error { return nil })
 	oldDelete()
 	newDelete := RegisterDeleteHook("test.generation", func(*gorm.DB, string) error { return nil })

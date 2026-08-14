@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test'
-import { csrfToken, login } from './helpers'
+import { csrfToken, login, mutationHeaders } from './helpers'
 
 test('settings path conflict is rejected by the local panel', async ({ page }) => {
   await login(page)
@@ -16,7 +16,7 @@ test('settings path conflict is rejected by the local panel', async ({ page }) =
   }
 
   const response = await page.request.post('api/save', {
-    headers: { 'X-CSRF-Token': token },
+    headers: mutationHeaders(token),
     form: {
       object: 'settings',
       action: 'set',

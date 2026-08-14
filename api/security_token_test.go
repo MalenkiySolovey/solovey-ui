@@ -46,7 +46,7 @@ func TestSecurityAPITokenFromRequestBearerAndLegacyHeader(t *testing.T) {
 	}
 }
 
-func TestSecurityAPITokenFromRequestLegacySunsetIssue34(t *testing.T) {
+func TestSecurityAPITokenFromRequestLegacySunset(t *testing.T) {
 	withAPITokenNow(t, legacyTokenHeaderSunsetAt)
 
 	recorder := httptest.NewRecorder()
@@ -116,5 +116,16 @@ func TestSecurityConsumeWSTokenDoubleSpendExpiredAndCapacity(t *testing.T) {
 	}
 	if size := realtimehttp.TokenCount(); size != realtimehttp.MaxTokens {
 		t.Fatalf("unexpected websocket token capacity size %d, want %d", size, realtimehttp.MaxTokens)
+	}
+}
+
+func TestSecurityWSTokenSweepExpiresExactBoundary(t *testing.T) {
+	_ = realtimehttp.ResetTokens()
+	t.Cleanup(func() { _ = realtimehttp.ResetTokens() })
+	expiresAt := time.Now().Add(time.Hour)
+	realtimehttp.StoreToken("boundary", "admin", expiresAt)
+	realtimehttp.SweepExpired(expiresAt)
+	if realtimehttp.HasToken("boundary") {
+		t.Fatal("websocket token survived its exact expiry boundary")
 	}
 }

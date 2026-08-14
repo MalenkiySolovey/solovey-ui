@@ -13,13 +13,13 @@ import (
 // TestListenWithFallbackBindsImmediatelyOnLoopback ensures the helper does
 // not perturb the happy path where the requested address is bindable.
 func TestListenWithFallbackBindsImmediatelyOnLoopback(t *testing.T) {
-	listener, err := ListenWithFallback("127.0.0.1:0", "127.0.0.1", "0")
+	result, err := ListenWithFallbackResult("127.0.0.1:0", "127.0.0.1", "0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer listener.Close()
-	if !strings.HasPrefix(listener.Addr().String(), "127.0.0.1:") {
-		t.Fatalf("expected loopback bind, got %s", listener.Addr())
+	defer result.Listener.Close()
+	if !strings.HasPrefix(result.Listener.Addr().String(), "127.0.0.1:") {
+		t.Fatalf("expected loopback bind, got %s", result.Listener.Addr())
 	}
 }
 

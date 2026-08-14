@@ -120,6 +120,7 @@ func (s *Service) saveAsset(siteID uint, filename string, data []byte, actor str
 	}
 	now := time.Now().Unix()
 	var asset fallbackdomain.Asset
+	createdPath := ""
 	err = s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.First(&fallbackdomain.Site{}, siteID).Error; err != nil {
 			return err
@@ -148,6 +149,7 @@ func (s *Service) saveAsset(siteID uint, filename string, data []byte, actor str
 		if err := writeOwnedNewFile(assetRoot(siteID), diskPath, data, 0o640); err != nil {
 			return err
 		}
+		createdPath = diskPath
 		asset = fallbackdomain.Asset{
 			SiteID:      siteID,
 			LogicalPath: logicalPath,
@@ -164,25 +166,46 @@ func (s *Service) saveAsset(siteID uint, filename string, data []byte, actor str
 		return recordEvent(tx, siteID, actor, "asset_uploaded", map[string]any{"path": logicalPath, "size": len(data)})
 	})
 	if err != nil {
+		if createdPath != "" {
+			_ = os.Remove(createdPath)
+		}
 		return AssetView{}, err
 	}
 	return assetView(asset), nil
 }
 
 func (s *Service) DeleteAsset(siteID, assetID uint, actor string) error {
-	return s.db.Transaction(func(tx *gorm.DB) error {
-		var asset fallbackdomain.Asset
+	var (
+		asset      fallbackdomain.Asset
+		stagedPath string
+		staged     bool
+	)
+	err := s.db.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("site_id = ?", siteID).First(&asset, assetID).Error; err != nil {
+			return err
+		}
+		var err error
+		stagedPath, staged, err = stageOwnedFileRemoval(assetRoot(siteID), asset.FilePath)
+		if err != nil {
 			return err
 		}
 		if err := tx.Delete(&asset).Error; err != nil {
 			return err
 		}
-		if err := os.Remove(asset.FilePath); err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
 		return recordEvent(tx, siteID, actor, "asset_deleted", map[string]any{"assetId": assetID})
 	})
+	if err != nil {
+		if staged {
+			if restoreErr := os.Rename(stagedPath, asset.FilePath); restoreErr != nil {
+				return errors.Join(err, fmt.Errorf("restore asset after rollback: %w", restoreErr))
+			}
+		}
+		return err
+	}
+	if staged {
+		return os.Remove(stagedPath)
+	}
+	return nil
 }
 
 func (s *Service) ListExternalResources(siteID uint) ([]ExternalResourceView, error) {
@@ -305,8 +328,7 @@ func validateAssetFile(filename string, data []byte) (string, string, error) {
 		if !looksLikeText(data) {
 			return "", "", errors.New("css asset must be valid text")
 		}
-		lower := strings.ToLower(string(data))
-		if strings.Contains(lower, "@import") || strings.Contains(lower, "url(http://") || strings.Contains(lower, "url(https://") {
+		if err := fallbackdomain.ValidateStaticCSS(string(data)); err != nil {
 			return "", "", errors.New("css assets must not import external resources")
 		}
 		return safe, mimeType, nil

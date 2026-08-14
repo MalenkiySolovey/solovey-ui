@@ -8,11 +8,15 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 
 	"gorm.io/gorm"
 )
 
 func applyClient(tx *gorm.DB, agg *clientAggregate, strategy Strategy, report *Report, hostname string) error {
+	if err := identity.ValidateName(agg.Email); err != nil {
+		return err
+	}
 	next, err := agg.toModel()
 	if err != nil {
 		return err

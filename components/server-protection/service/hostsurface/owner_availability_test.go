@@ -39,7 +39,6 @@ func TestOwnerAvailabilityStagesAreTypedAndBounded(t *testing.T) {
 		wantReason string
 	}{
 		{name: "operation_not_advertised", response: protectionhelper.Response{Code: protectionhelper.CodeMissingCapability, Reason: "missing_capability"}, metadata: validMetadata, want: OwnerOperationNotAdvertised, wantReason: "listener_owner_operation_not_advertised"},
-		{name: "helper_identity_mismatch", response: protectionhelper.Response{Code: protectionhelper.CodeProcessFailed, Reason: "helper_identity_mismatch"}, metadata: validMetadata, err: protectionhelper.ErrHelperIdentityMismatch, want: OwnerHelperIdentityMismatch, wantReason: "listener_owner_helper_identity_mismatch"},
 		{name: "helper_protocol_or_contract_unsupported", response: protectionhelper.Response{Code: protectionhelper.CodeMissingCapability, Reason: "helper_version_mismatch"}, metadata: validMetadata, err: errors.New("negotiation failed"), want: OwnerHelperContractUnsupported, wantReason: "listener_owner_helper_contract_unsupported"},
 		{name: "owner_contract_capability_mismatch", response: testOwnerResponse(validResult), metadata: func() protectionhelper.ExecutionMetadata {
 			value := validMetadata
@@ -232,21 +231,21 @@ func TestOwnerObserverNeverAcceptsManualInputsMutationOrSecretDiagnostics(t *tes
 	resource := firewallBaselineHostResource()
 	metadata := testOwnerMetadata(resource)
 	observer := HelperOwnerObserver{Helper: ownerExecutorFunc(func(_ context.Context, request protectionhelper.Request) (protectionhelper.Response, protectionhelper.ExecutionMetadata, error) {
-		if request.Operation != protectionhelper.OperationListenerOwnerObserve || request.ListenerOwnerObserve == nil || request.NFTApply != nil || request.NFTRollback != nil || request.NFTValidate != nil || request.ListenerProbe != nil {
+		if request.Operation != protectionhelper.OperationListenerOwnerObserve || request.ListenerOwnerObserve == nil || request.NFTApply != nil || request.NFTRollback != nil || request.NFTValidate != nil {
 			t.Fatalf("owner observation expanded into mutation or generic helper input: %#v", request)
 		}
 		payload, _ := json.Marshal(request.ListenerOwnerObserve)
 		if strings.Contains(string(payload), "password") || strings.Contains(string(payload), "secret") || strings.Contains(string(payload), "/proc/") {
 			t.Fatalf("owner request leaked manual/secret input: %s", payload)
 		}
-		return protectionhelper.Response{Code: protectionhelper.CodeProcessFailed, Reason: "/proc/123/fd/secret"}, metadata, errors.New("raw process error")
+		return protectionhelper.Response{Code: protectionhelper.CodeTransportFailed, Reason: "/proc/123/fd/secret"}, metadata, errors.New("raw transport error")
 	})}
 	outcome := observer.ObserveOwner(context.Background(), resource)
 	if outcome.Availability != OwnerObservationFailed {
 		t.Fatalf("typed helper failure availability=%s", outcome.Availability)
 	}
 	payload, _ := json.Marshal(outcome)
-	if strings.Contains(string(payload), "/proc/") || strings.Contains(string(payload), "secret") || strings.Contains(string(payload), "raw process error") {
+	if strings.Contains(string(payload), "/proc/") || strings.Contains(string(payload), "secret") || strings.Contains(string(payload), "raw transport error") {
 		t.Fatalf("secret or raw helper diagnostic crossed owner boundary: %s", payload)
 	}
 }

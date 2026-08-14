@@ -84,20 +84,28 @@ func refreshClientAsync(clientName string) {
 		allowCacheRefresh.Unlock()
 		return
 	}
-	allowCacheRefresh.inFlight[clientName] = struct{}{}
+	generation := allowCacheRefresh.generation
+	allowCacheRefresh.inFlight[clientName] = generation
 	allowCacheRefresh.Unlock()
 	go func() {
 		defer func() {
 			allowCacheRefresh.Lock()
-			delete(allowCacheRefresh.inFlight, clientName)
+			if allowCacheRefresh.inFlight[clientName] == generation {
+				delete(allowCacheRefresh.inFlight, clientName)
+			}
 			allowCacheRefresh.Unlock()
 		}()
-		refreshClient(clientName, time.Now())
+		refreshClientForGeneration(clientName, time.Now(), generation)
 	}()
 }
 
-func refreshClient(clientName string, now time.Time) bool {
+func refreshClientForGeneration(clientName string, now time.Time, generation uint64) bool {
 	entry, ok := loadCacheEntry(clientName, now)
+	allowCacheRefresh.Lock()
+	defer allowCacheRefresh.Unlock()
+	if allowCacheRefresh.generation != generation {
+		return false
+	}
 	allowCache.Lock()
 	defer allowCache.Unlock()
 	if !ok {

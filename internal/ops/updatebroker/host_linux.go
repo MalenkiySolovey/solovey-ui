@@ -13,12 +13,14 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
 	"syscall"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/deploymentidentity"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 )
 
@@ -44,17 +46,19 @@ type diskState struct {
 }
 
 type Host struct {
-	InboxRoot   string
-	ReleaseRoot string
-	StatePath   string
-	Manifest    string
-	Now         func() time.Time
-	Restart     func(panelPID int)
+	InboxRoot     string
+	ReleaseRoot   string
+	StatePath     string
+	Manifest      string
+	Now           func() time.Time
+	Restart       func(panelPID int)
+	OwnerManifest func(context.Context, string, string) error
+	saveStateFn   func(diskState) error
 }
 
 func NewHost() *Host {
 	return &Host{InboxRoot: defaultInboxRoot, ReleaseRoot: defaultReleaseRoot, StatePath: defaultStatePath,
-		Manifest: defaultManifest, Now: time.Now, Restart: scheduleReleaseRestart}
+		Manifest: defaultManifest, Now: time.Now, Restart: scheduleReleaseRestart, OwnerManifest: writeOwnerManifest}
 }
 
 func RegisterHandlers(registry *broker.Registry) error {
@@ -88,7 +92,9 @@ func (h *Host) observe(_ context.Context, _ broker.Request, peer broker.PeerIden
 	verified := h.runningRelease(state.ActiveRelease, peer)
 	if verified {
 		state.VerifiedSequence, state.VerifiedDigest = state.ActiveSequence, state.ActiveDigest
-		_ = h.saveState(state)
+		if err := h.persistState(state); err != nil {
+			return nil, broker.Failure(broker.CodeExecution, "verified update state could not be persisted")
+		}
 	}
 	result := ObservationV1{ProviderRevision: ProviderRevision, InstalledSequence: state.ActiveSequence,
 		ActiveSequence: state.ActiveSequence, ActiveDigest: state.ActiveDigest, InstalledDigest: state.ActiveDigest,
@@ -203,7 +209,7 @@ func (h *Host) prepare(_ context.Context, envelope broker.Request, _ broker.Peer
 			_ = os.RemoveAll(staging)
 			return nil, broker.Failure(broker.CodeExecution, "release payload is invalid")
 		}
-		if err := verifyReleaseExecutables(staging); err != nil {
+		if err := verifyPreparedReleaseExecutables(staging, request.Release.BinaryProfile); err != nil {
 			_ = os.RemoveAll(staging)
 			return nil, broker.Failure(broker.CodeExecution, "release payload is incomplete")
 		}
@@ -240,7 +246,7 @@ func (h *Host) prepare(_ context.Context, envelope broker.Request, _ broker.Peer
 		PreflightRevision: broker.Digest([]byte(releaseName + ":" + request.ExpectedManagementRevision))}, nil
 }
 
-func (h *Host) activate(_ context.Context, envelope broker.Request, peer broker.PeerIdentity) (any, error) {
+func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broker.PeerIdentity) (any, error) {
 	var request ActivateRequestV1
 	if err := broker.DecodeRawPayload(envelope.Payload, &request); err != nil || ValidateRelease(request.Release) != nil || request.ExpectedMode != "native" ||
 		request.PreparedRef != semanticRef("prepared", envelope.OperationID, request.Release.ManifestDigest) ||
@@ -250,22 +256,29 @@ func (h *Host) activate(_ context.Context, envelope broker.Request, peer broker.
 	releaseName := releaseDirectoryName(request.Release)
 	releaseRoot := filepath.Join(h.ReleaseRoot, releaseName)
 	stored, identityErr := loadReleaseIdentity(releaseRoot)
-	if err := verifyReleaseExecutables(releaseRoot); err != nil || identityErr != nil || !sameReleaseIdentity(stored, request.Release, false) {
+	if err := verifyPreparedReleaseExecutables(releaseRoot, request.Release.BinaryProfile); err != nil || identityErr != nil || !sameReleaseIdentity(stored, request.Release, false) {
 		return nil, broker.Failure(broker.CodeExecution, "prepared release is unavailable")
 	}
 	state, err := h.loadState()
 	if err != nil {
 		return nil, broker.Failure(broker.CodeExecution, "update state is unavailable")
 	}
+	previousRelease := state.ActiveRelease
 	if err := h.activateLink(releaseName); err != nil {
 		return nil, broker.Failure(broker.CodeExecution, "release activation could not be committed")
 	}
 	if err := h.rewriteClientManifest(releaseRoot); err != nil {
+		h.restoreActivation(ctx, previousRelease)
 		return nil, broker.Failure(broker.CodeExecution, "broker client manifest could not be rotated")
+	}
+	if h.OwnerManifest == nil || h.OwnerManifest(ctx, releaseRoot, request.Release.BinaryProfile) != nil {
+		h.restoreActivation(ctx, previousRelease)
+		return nil, broker.Failure(broker.CodeExecution, "application owner manifest could not be rotated")
 	}
 	state.ActiveRelease, state.ActiveSequence, state.ActiveDigest = releaseName, request.Release.Sequence, request.Release.ManifestDigest
 	state.VerifiedSequence, state.VerifiedDigest, state.UpdatedAt = 0, "", h.Now().Unix()
 	if err := h.saveState(state); err != nil {
+		h.restoreActivation(ctx, previousRelease)
 		return nil, broker.Failure(broker.CodeExecution, "active release state could not be committed")
 	}
 	if h.Restart != nil {
@@ -304,7 +317,7 @@ func (h *Host) verify(_ context.Context, envelope broker.Request, peer broker.Pe
 		VerifiedDigest: state.VerifiedDigest, ManagementReady: peer.PID > 0, HealthRevision: healthRevision}, nil
 }
 
-func (h *Host) rollback(_ context.Context, envelope broker.Request, peer broker.PeerIdentity) (any, error) {
+func (h *Host) rollback(ctx context.Context, envelope broker.Request, peer broker.PeerIdentity) (any, error) {
 	var request RollbackRequestV1
 	if err := broker.DecodeRawPayload(envelope.Payload, &request); err != nil || ValidateRelease(request.Release) != nil ||
 		request.RollbackRef != semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest) || len(request.ReasonCode) > 96 {
@@ -319,13 +332,18 @@ func (h *Host) rollback(_ context.Context, envelope broker.Request, peer broker.
 		return nil, broker.Failure(broker.CodeRevision, "rollback release metadata changed")
 	}
 	rollbackRoot := filepath.Join(h.ReleaseRoot, state.RollbackRelease)
-	if err := verifyReleaseExecutables(rollbackRoot); err != nil || h.activateLink(state.RollbackRelease) != nil || h.rewriteClientManifest(rollbackRoot) != nil {
+	previousRelease := state.ActiveRelease
+	rollbackProfile, profileErr := releaseBinaryProfile(rollbackRoot)
+	if err := verifyReleaseExecutables(rollbackRoot); err != nil || h.activateLink(state.RollbackRelease) != nil || h.rewriteClientManifest(rollbackRoot) != nil ||
+		profileErr != nil || h.OwnerManifest == nil || h.OwnerManifest(ctx, rollbackRoot, rollbackProfile) != nil {
+		h.restoreActivation(ctx, previousRelease)
 		return nil, broker.Failure(broker.CodeExecution, "update rollback could not be committed")
 	}
 	state.ActiveRelease, state.ActiveSequence, state.ActiveDigest = state.RollbackRelease, state.RollbackSequence, state.RollbackDigest
 	state.RollbackRelease, state.RollbackSequence, state.RollbackDigest = "", 0, ""
 	state.VerifiedSequence, state.VerifiedDigest, state.UpdatedAt = 0, "", h.Now().Unix()
 	if err := h.saveState(state); err != nil {
+		h.restoreActivation(ctx, previousRelease)
 		return nil, broker.Failure(broker.CodeExecution, "rollback release state could not be committed")
 	}
 	h.pruneReleases(state.ActiveRelease)
@@ -367,6 +385,46 @@ func (h *Host) activateLink(releaseName string) error {
 		return err
 	}
 	return syncDirectory(h.ReleaseRoot)
+}
+
+func (h *Host) restoreActivation(_ context.Context, releaseName string) {
+	if !releaseDirectoryPattern.MatchString(releaseName) {
+		return
+	}
+	cleanupContext, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	root := filepath.Join(h.ReleaseRoot, releaseName)
+	profile, profileErr := releaseBinaryProfile(root)
+	if verifyReleaseExecutables(root) != nil || profileErr != nil || h.activateLink(releaseName) != nil || h.rewriteClientManifest(root) != nil || h.OwnerManifest == nil {
+		return
+	}
+	_ = h.OwnerManifest(cleanupContext, root, profile)
+}
+
+func writeOwnerManifest(ctx context.Context, releaseRoot, profile string) error {
+	if profile == "core" {
+		if err := os.Remove(deploymentidentity.InstalledContractPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
+	if profile != "full" {
+		return errors.New("release binary profile is invalid")
+	}
+	writers := []string{filepath.Join(releaseRoot, "solovey-owner-manifest")}
+	if executable, err := os.Readlink("/proc/self/exe"); err == nil && filepath.IsAbs(executable) {
+		writers = append(writers, filepath.Join(filepath.Dir(executable), "solovey-owner-manifest"))
+	}
+	for _, writer := range writers {
+		if !safeReleaseExecutable(writer) {
+			continue
+		}
+		command := exec.CommandContext(ctx, writer)
+		command.Stdout = io.Discard
+		command.Stderr = io.Discard
+		return command.Run()
+	}
+	return errors.New("owner manifest writer is unavailable")
 }
 
 func (h *Host) pruneReleases(keep ...string) {
@@ -429,6 +487,13 @@ func (h *Host) saveState(state diskState) error {
 		return err
 	}
 	return syncDirectory(filepath.Dir(h.StatePath))
+}
+
+func (h *Host) persistState(state diskState) error {
+	if h.saveStateFn != nil {
+		return h.saveStateFn(state)
+	}
+	return h.saveState(state)
 }
 
 func (h *Host) runningRelease(releaseName string, peer broker.PeerIdentity) bool {
@@ -561,17 +626,75 @@ func allowedReleasePath(value string) bool {
 
 func executableReleasePath(value string) bool {
 	return value == "solovey-ui" || value == "solovey-privileged-broker" || value == "solovey-ssh-proof" ||
-		value == "solovey-broker-manifest" || value == "solovey-protect-helper" || value == "solovey-ui.sh"
+		value == "solovey-broker-manifest" || value == "solovey-owner-manifest" || value == "solovey-ui.sh"
 }
 
 func verifyReleaseExecutables(root string) error {
 	for _, name := range []string{"solovey-ui", "solovey-privileged-broker", "solovey-ssh-proof", "solovey-broker-manifest"} {
-		info, err := os.Stat(filepath.Join(root, name))
-		if err != nil || !info.Mode().IsRegular() || info.Mode().Perm()&0o022 != 0 || info.Mode().Perm()&0o111 == 0 {
+		if !safeReleaseExecutable(filepath.Join(root, name)) {
 			return fmt.Errorf("release executable %s is unsafe", name)
 		}
 	}
 	return nil
+}
+
+func verifyPreparedReleaseExecutables(root, profile string) error {
+	if err := verifyReleaseExecutables(root); err != nil {
+		return err
+	}
+	ownerWriter := filepath.Join(root, "solovey-owner-manifest")
+	if profile == "core" {
+		if _, err := os.Lstat(ownerWriter); !errors.Is(err, os.ErrNotExist) {
+			return errors.New("core release contains application owner manifest writer")
+		}
+		return nil
+	}
+	if profile != "full" || !safeReleaseExecutable(ownerWriter) {
+		return errors.New("release executable solovey-owner-manifest is unsafe")
+	}
+	return nil
+}
+
+func releaseBinaryProfile(root string) (string, error) {
+	identityPath := filepath.Join(root, "release-identity.json")
+	if _, statErr := os.Lstat(identityPath); statErr == nil {
+		identity, err := loadReleaseIdentity(root)
+		if err != nil {
+			return "", err
+		}
+		if identity.BinaryProfile == "full" || identity.BinaryProfile == "core" {
+			return identity.BinaryProfile, nil
+		}
+		return "", errors.New("release binary profile is invalid")
+	} else if !errors.Is(statErr, os.ErrNotExist) {
+		return "", statErr
+	}
+	data, err := os.ReadFile(filepath.Join(root, "BUILD_INFO.txt"))
+	if err != nil || len(data) == 0 || len(data) > 64<<10 {
+		return "", errors.New("release build metadata is unavailable")
+	}
+	profile := ""
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "profile=") {
+			if profile != "" {
+				return "", errors.New("release build metadata repeats profile")
+			}
+			profile = strings.TrimSpace(strings.TrimPrefix(line, "profile="))
+		}
+	}
+	if profile != "full" && profile != "core" {
+		return "", errors.New("release build metadata profile is invalid")
+	}
+	return profile, nil
+}
+
+func safeReleaseExecutable(name string) bool {
+	info, err := os.Lstat(name)
+	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0o022 != 0 || info.Mode().Perm()&0o111 == 0 {
+		return false
+	}
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	return ok && stat.Uid == 0 && stat.Gid == 0
 }
 
 func loadReleaseIdentity(root string) (ReleaseIdentityV1, error) {

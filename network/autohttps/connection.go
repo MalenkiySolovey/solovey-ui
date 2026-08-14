@@ -3,24 +3,31 @@ package autohttps
 import (
 	"bufio"
 	"bytes"
-	"fmt"
 	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"sync"
 )
 
 type AutoHttpsConn struct {
 	net.Conn
 
-	firstBuf []byte
-	bufStart int
+	firstBuf  []byte
+	bufStart  int
+	authority string
 
 	readRequestOnce sync.Once
 }
 
-func NewAutoHttpsConn(conn net.Conn) net.Conn {
+func NewAutoHttpsConn(conn net.Conn, authority ...string) net.Conn {
+	redirectAuthority := ""
+	if len(authority) > 0 {
+		redirectAuthority = strings.TrimSpace(authority[0])
+	}
 	return &AutoHttpsConn{
-		Conn: conn,
+		Conn:      conn,
+		authority: redirectAuthority,
 	}
 }
 
@@ -37,16 +44,29 @@ func (c *AutoHttpsConn) readRequest() bool {
 	if err != nil {
 		return false
 	}
-	resp := http.Response{
-		Header: http.Header{},
+	authority := c.authority
+	if authority == "" {
+		authority = request.Host
 	}
-	resp.StatusCode = http.StatusTemporaryRedirect
-	location := fmt.Sprintf("https://%v%v", request.Host, request.RequestURI)
+	if !validRedirectAuthority(authority) {
+		return false
+	}
+	target := &url.URL{Scheme: "https", Host: authority, Path: request.URL.Path, RawPath: request.URL.RawPath, RawQuery: request.URL.RawQuery}
+	resp := http.Response{StatusCode: http.StatusTemporaryRedirect, Header: http.Header{}}
+	location := target.String()
 	resp.Header.Set("Location", location)
 	_ = resp.Write(c.Conn)
 	_ = c.Close()
 	c.firstBuf = nil
 	return true
+}
+
+func validRedirectAuthority(authority string) bool {
+	if authority == "" || strings.ContainsAny(authority, "\r\n\t /\\") {
+		return false
+	}
+	parsed, err := url.Parse("https://" + authority)
+	return err == nil && parsed.Scheme == "https" && parsed.Host == authority && parsed.User == nil && parsed.Path == "" && parsed.RawQuery == "" && parsed.Fragment == ""
 }
 
 func (c *AutoHttpsConn) Read(buf []byte) (int, error) {

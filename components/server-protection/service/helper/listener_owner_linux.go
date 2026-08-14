@@ -187,15 +187,16 @@ func observeSystemdService(ctx context.Context, contract deploymentidentity.Appl
 	}
 	mainPID, err := strconv.Atoi(values["MainPID"])
 	start, startErr := strconv.ParseUint(values["ExecMainStartTimestampMonotonic"], 10, 64)
+	resolvedFragment, fragmentErr := filepath.EvalSymlinks(values["FragmentPath"])
 	if err != nil || startErr != nil || mainPID <= 1 || values["ActiveState"] != "active" || values["SubState"] != "running" ||
-		values["ControlGroup"] != contract.ServiceControlGroup || values["FragmentPath"] != contract.ServiceFragmentPath {
+		values["ControlGroup"] != contract.ServiceControlGroup || fragmentErr != nil || resolvedFragment != contract.ServiceFragmentPath {
 		return systemdOwnerSnapshot{}, errors.New("systemd service identity differs")
 	}
 	fragmentSHA, err := observeServiceFragment(contract)
 	if err != nil {
 		return systemdOwnerSnapshot{}, err
 	}
-	return systemdOwnerSnapshot{mainPID, values["ActiveState"], values["SubState"], values["ControlGroup"], values["FragmentPath"], fragmentSHA, start}, nil
+	return systemdOwnerSnapshot{mainPID, values["ActiveState"], values["SubState"], values["ControlGroup"], resolvedFragment, fragmentSHA, start}, nil
 }
 
 func observeServiceFragment(contract deploymentidentity.ApplicationOwnerContractV1) (string, error) {

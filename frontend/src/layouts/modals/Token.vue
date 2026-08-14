@@ -159,7 +159,7 @@
 </template>
 
 <script lang="ts">
-import { i18n } from '@/locales'
+import { dateLocale, i18n } from '@/locales'
 import { addToken, deleteToken, loadTokens, setTokenEnabled } from '@/shared/composables/useTokenOperations'
 import Data from '@/store/modules/data'
 import Clipboard from 'clipboard'
@@ -192,15 +192,7 @@ export default {
       return [...new Set([...coreTokenScopes, ...componentScopes])]
     },
     locale() {
-      const l = i18n.global.locale.value
-      switch (l) {
-        case "zhHans":
-          return "zh-cn"
-        case "zhHant":
-          return "zh-tw"
-        default:
-          return l
-      }
+      return dateLocale()
     },
   },
   methods: {

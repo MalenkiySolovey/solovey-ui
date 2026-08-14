@@ -58,6 +58,33 @@ func TestSingBoxConfigBuilderBuildsRuntimeSectionsFromDB(t *testing.T) {
 	assertConfigSectionMissingTag(t, config, "endpoints", "stale-endpoint")
 }
 
+func TestSingBoxConfigBuilderBuildFromDBUsesTransactionView(t *testing.T) {
+	initSettingTestDB(t)
+	db := dbsqlite.DB()
+	tx := db.Begin()
+	if tx.Error != nil {
+		t.Fatal(tx.Error)
+	}
+	defer tx.Rollback()
+	if err := tx.Create(&model.Inbound{
+		Type:    "direct",
+		Tag:     "transaction-only",
+		Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":18081}`),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	rawConfig, err := NewSingBoxConfigBuilder(nil).BuildFromDB(tx, defaultSingBoxBaseConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var config map[string]json.RawMessage
+	if err := json.Unmarshal(rawConfig, &config); err != nil {
+		t.Fatal(err)
+	}
+	assertConfigSectionHasTag(t, config, "inbounds", "transaction-only")
+}
+
 func assertConfigSectionHasTag(t *testing.T, config map[string]json.RawMessage, section string, tag string) {
 	t.Helper()
 	if !configSectionHasTag(t, config, section, tag) {

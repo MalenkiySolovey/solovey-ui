@@ -28,11 +28,14 @@ func installedOwnerTables(sourceDB *gorm.DB, already map[string]struct{}) ([]bac
 				return nil, fmt.Errorf("durable table %q has ambiguous owners %q and %q", tableName, previous, owner.ID)
 			}
 			claimed[tableName] = owner.ID
-			if _, exists := already[tableName]; exists || !sourceDB.Migrator().HasTable(tableName) {
+			if _, exists := already[tableName]; exists {
+				return nil, fmt.Errorf("durable table %q claimed by %q conflicts with an existing backup owner", tableName, owner.ID)
+			}
+			if !sourceDB.Migrator().HasTable(tableName) {
 				continue
 			}
 			if typed, ok := registered[tableName]; ok {
-				if typed.owner != owner.ID {
+				if typed.owner == "AMBIGUOUS" || typed.owner != owner.ID {
 					return nil, fmt.Errorf("durable table %q registration owner mismatch", tableName)
 				}
 				result = append(result, typed)

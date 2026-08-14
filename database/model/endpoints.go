@@ -15,21 +15,21 @@ type Endpoint struct {
 
 func (o *Endpoint) UnmarshalJSON(data []byte) error {
 	var err error
-	var raw map[string]interface{}
-	if err = json.Unmarshal(data, &raw); err != nil {
+	raw, err := decodeJSONObject(data)
+	if err != nil {
 		return err
 	}
 
 	// Extract fixed fields and store the rest in Options
-	if val, exists := raw["id"].(float64); exists {
-		o.Id = uint(val)
+	if err := optionalUint(raw, "id", &o.Id); err != nil {
+		return err
 	}
 	delete(raw, "id")
-	if val, exists := raw["sortOrder"].(float64); exists {
-		o.SortOrder = int(val)
+	if err := optionalInt(raw, "sortOrder", &o.SortOrder); err != nil {
+		return err
 	}
-	if val, exists := raw["sort_order"].(float64); exists {
-		o.SortOrder = int(val)
+	if err := optionalInt(raw, "sort_order", &o.SortOrder); err != nil {
+		return err
 	}
 	delete(raw, "sortOrder")
 	delete(raw, "sort_order")
@@ -37,7 +37,10 @@ func (o *Endpoint) UnmarshalJSON(data []byte) error {
 	delete(raw, "type")
 	o.Tag, _ = raw["tag"].(string)
 	delete(raw, "tag")
-	o.Ext, _ = json.MarshalIndent(raw["ext"], "", "  ")
+	o.Ext, err = json.MarshalIndent(raw["ext"], "", "  ")
+	if err != nil {
+		return err
+	}
 	delete(raw, "ext")
 
 	// Remaining fields

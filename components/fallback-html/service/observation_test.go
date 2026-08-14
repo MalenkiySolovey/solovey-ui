@@ -14,7 +14,10 @@ import (
 
 func TestServePublicEmitsOnlySanitizedObservationClasses(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	subscription, unregister := publicsurface.SubscribeObservations(4)
+	subscription, unregister, err := publicsurface.SubscribeObservations(4)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer unregister()
 	runtime := NewRuntime()
 	runtime.snapshot.Store(&snapshot{

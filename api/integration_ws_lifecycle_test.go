@@ -16,7 +16,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 
 	"github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"
@@ -24,7 +24,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestIntegrationRealtimeWSIssueConnectPublishCloseReconnect(t *testing.T) {
+func TestIntegrationRealtimeWSConnectPublishCloseReconnect(t *testing.T) {
 	resetRateLimitState()
 	resetRealtimeForTest()
 	router := newIntegrationWSRouter(t)
@@ -218,10 +218,6 @@ func TestIntegrationRealtimeWSMaxPerIPCapacity(t *testing.T) {
 	}
 }
 
-func TestIntegrationRealtimeWSSlowClientDrop_XFAIL(t *testing.T) {
-	t.Skip("XFAIL: требуется hook для детерминированной блокировки websocket writer / заполнения ws send queue; связано с реестром п. 32 по WS reliability")
-}
-
 func newIntegrationWSRouter(t *testing.T) *gin.Engine {
 	t.Helper()
 	return newIntegrationWSRouterWithOptions(t, realtimehttp.WithPingInterval(time.Second), realtimehttp.WithPingTimeout(time.Second))
@@ -267,7 +263,7 @@ func ensureIntegrationWSSessionUser(t *testing.T, username string) bool {
 	if count > 0 {
 		return true
 	}
-	passwordHash, err := common.HashPassword("integration-ws-password")
+	passwordHash, err := passwordutil.Hash(context.Background(), "integration-ws-password")
 	if err != nil {
 		t.Logf("hash session user password failed: %v", err)
 		return false

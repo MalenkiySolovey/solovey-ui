@@ -21,15 +21,16 @@ type FrontingBackendProviderV1 interface {
 type FrontingBackendRegistryV1 struct {
 	mu        sync.RWMutex
 	next      uint64
-	providers map[uint64]FrontingBackendProviderV1
+	providers map[uint64]identifiedProvider[FrontingBackendProviderV1]
 }
 
 func NewFrontingBackendRegistryV1() *FrontingBackendRegistryV1 {
-	return &FrontingBackendRegistryV1{providers: make(map[uint64]FrontingBackendProviderV1)}
+	return &FrontingBackendRegistryV1{providers: make(map[uint64]identifiedProvider[FrontingBackendProviderV1])}
 }
 
 func (r *FrontingBackendRegistryV1) Register(provider FrontingBackendProviderV1) (func(), error) {
-	if r == nil || provider == nil || !frontingToken(provider.ProviderID(), 128) {
+	providerID, ok := stableProviderID(provider, frontingToken)
+	if r == nil || !ok {
 		return func() {}, errors.New("fronting_backend_provider_v1_invalid")
 	}
 	r.mu.Lock()
@@ -38,13 +39,13 @@ func (r *FrontingBackendRegistryV1) Register(provider FrontingBackendProviderV1)
 		return func() {}, errors.New("fronting_backend_provider_v1_capacity_exceeded")
 	}
 	for _, current := range r.providers {
-		if current.ProviderID() == provider.ProviderID() {
+		if current.id == providerID {
 			return func() {}, errors.New("fronting_backend_provider_v1_duplicate")
 		}
 	}
 	id := r.next
 	r.next++
-	r.providers[id] = provider
+	r.providers[id] = identifiedProvider[FrontingBackendProviderV1]{id: providerID, provider: provider}
 	var once sync.Once
 	return func() { once.Do(func() { r.mu.Lock(); delete(r.providers, id); r.mu.Unlock() }) }, nil
 }
@@ -55,9 +56,9 @@ func (r *FrontingBackendRegistryV1) EndpointLeaseProviderV1(providerID string) (
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	for _, provider := range r.providers {
-		if provider.ProviderID() == providerID {
-			return provider, true
+	for _, entry := range r.providers {
+		if entry.id == providerID {
+			return entry.provider, true
 		}
 	}
 	return nil, false
@@ -68,27 +69,27 @@ func (r *FrontingBackendRegistryV1) FactsV1(ctx context.Context, now time.Time) 
 		return nil, errors.New("fronting_backend_registry_v1_unavailable")
 	}
 	r.mu.RLock()
-	providers := make([]FrontingBackendProviderV1, 0, len(r.providers))
+	providers := make([]identifiedProvider[FrontingBackendProviderV1], 0, len(r.providers))
 	for _, provider := range r.providers {
 		providers = append(providers, provider)
 	}
 	r.mu.RUnlock()
-	sort.Slice(providers, func(i, j int) bool { return providers[i].ProviderID() < providers[j].ProviderID() })
+	sort.Slice(providers, func(i, j int) bool { return providers[i].id < providers[j].id })
 	if len(providers) == 0 {
 		return nil, errors.New("fronting_backend_provider_v1_absent")
 	}
 	result := make([]FrontingBackendFactV1, 0)
 	seen := make(map[string]struct{})
-	for _, provider := range providers {
-		callCtx, cancel := context.WithTimeout(ctx, DefaultTimeoutForFrontingProviderV1)
-		facts, err := provider.FrontingBackendFactsV1(callCtx, now)
-		cancel()
+	for _, entry := range providers {
+		facts, err := callResourceProvider(ctx, DefaultTimeoutForFrontingProviderV1, func(callCtx context.Context) ([]FrontingBackendFactV1, error) {
+			return entry.provider.FrontingBackendFactsV1(callCtx, now)
+		})
 		if err != nil {
 			return nil, errors.New("fronting_backend_provider_v1_unavailable")
 		}
 		for _, fact := range facts {
 			key := fact.ProviderID + "\x00" + fact.ResourceID + "\x00" + fact.EndpointID
-			if fact.ProviderID != provider.ProviderID() || fact.Validate() != nil {
+			if fact.ProviderID != entry.id || fact.Validate() != nil {
 				return nil, errors.New("fronting_backend_fact_v1_invalid")
 			}
 			if _, duplicate := seen[key]; duplicate {
@@ -130,16 +131,16 @@ func (r *FrontingBackendRegistryV1) EndpointLeasesByHolderV1(ctx context.Context
 		return nil, errors.New("endpoint_lease_holder_v1_invalid")
 	}
 	r.mu.RLock()
-	providers := make([]FrontingBackendProviderV1, 0, len(r.providers))
+	providers := make([]identifiedProvider[FrontingBackendProviderV1], 0, len(r.providers))
 	for _, provider := range r.providers {
 		providers = append(providers, provider)
 	}
 	r.mu.RUnlock()
 	result := make([]EndpointLeaseV1, 0)
-	for _, provider := range providers {
-		callCtx, cancel := context.WithTimeout(ctx, DefaultTimeoutForFrontingProviderV1)
-		leases, err := provider.ListEndpointLeases(callCtx, ListEndpointLeasesRequestV1{HolderID: holderID, Limit: MaxEndpointLeasePageV1})
-		cancel()
+	for _, entry := range providers {
+		leases, err := callResourceProvider(ctx, DefaultTimeoutForFrontingProviderV1, func(callCtx context.Context) ([]EndpointLeaseV1, error) {
+			return entry.provider.ListEndpointLeases(callCtx, ListEndpointLeasesRequestV1{HolderID: holderID, Limit: MaxEndpointLeasePageV1})
+		})
 		if err != nil {
 			return nil, err
 		}

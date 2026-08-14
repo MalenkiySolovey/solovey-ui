@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 
 	remotedomain "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/domain"
 	remotesettings "github.com/MalenkiySolovey/solovey-ui/components/remote-outbound-subscriptions/internal/settings"
@@ -20,12 +21,10 @@ type RemoteOutboundService struct {
 }
 
 func (s *RemoteOutboundService) runtime() *coreservice.Runtime {
-	if s != nil {
-		if s.Runtime != nil {
-			return s.Runtime
-		}
+	if s == nil {
+		return nil
 	}
-	return coreservice.DefaultRuntime()
+	return s.Runtime
 }
 
 func (s *RemoteOutboundService) implementation() *remotesubservice.Service {
@@ -40,10 +39,16 @@ type remoteOutboundEffects struct {
 }
 
 func (e remoteOutboundEffects) RecordChange(tx *gorm.DB, loginUser string, action string, payload any) error {
+	if e.runtime == nil {
+		return errors.New("remote-outbound-subscriptions runtime is unavailable")
+	}
 	return (&coreservice.ConfigService{Runtime: e.runtime}).RecordComponentConfigChange(tx, loginUser, "remoteOutboundSubscriptions", action, payload)
 }
 
 func (e remoteOutboundEffects) Invalidate(loginUser string, coreRestart bool) {
+	if e.runtime == nil {
+		return
+	}
 	configService := coreservice.NewConfigServiceWithRuntime(e.runtime)
 	configService.ApplyComponentConfigChangeEffects(coreservice.ComponentConfigChangeEffects{
 		PrimaryObject: "remoteOutboundSubscriptions",
@@ -63,10 +68,6 @@ func (s *RemoteOutboundService) SaveSubscription(input remotedomain.RemoteOutbou
 	return s.implementation().SaveSubscription(input, enabledProvided, loginUser)
 }
 
-func (s *RemoteOutboundService) GetSubscription(id uint) (*remotedomain.RemoteOutboundSubscription, error) {
-	return s.implementation().GetSubscription(id)
-}
-
 func (s *RemoteOutboundService) GetCollectedData(id uint) (*remotesubservice.CollectedSubscriptionData, error) {
 	return s.implementation().GetCollectedData(id)
 }
@@ -75,8 +76,8 @@ func (s *RemoteOutboundService) DeleteSubscription(id uint, loginUser string) er
 	return s.implementation().DeleteSubscription(id, loginUser)
 }
 
-func (s *RemoteOutboundService) RefreshSubscription(id uint, loginUser string) (*remotedomain.RefreshResult, error) {
-	return s.implementation().RefreshSubscription(id, loginUser)
+func (s *RemoteOutboundService) RefreshSubscriptionContext(ctx context.Context, id uint, loginUser string) (*remotedomain.RefreshResult, error) {
+	return s.implementation().RefreshSubscriptionContext(ctx, id, loginUser)
 }
 
 func (s *RemoteOutboundService) SyncConnectionToOutbound(id uint, loginUser string) (*remotedomain.RemoteOutboundConnection, error) {
@@ -121,4 +122,8 @@ func (s *RemoteOutboundService) CheckAll(ctx context.Context, target string) ([]
 
 func (s *RemoteOutboundService) RefreshDueSubscriptions(loginUser string) (int, error) {
 	return s.implementation().RefreshDueSubscriptions(loginUser)
+}
+
+func (s *RemoteOutboundService) RefreshDueSubscriptionsContext(ctx context.Context, loginUser string) (int, error) {
+	return s.implementation().RefreshDueSubscriptionsContext(ctx, loginUser)
 }

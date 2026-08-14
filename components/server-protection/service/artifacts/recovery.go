@@ -233,7 +233,7 @@ type recoveryAction struct {
 
 func safeFirewallRecoveryActions() []recoveryAction {
 	return []recoveryAction{
-		{Program: "solovey-protect-helper", Args: []string{"--smoke"}, Purpose: "verify_release_matched_helper"},
+		{Program: "systemctl", Args: []string{"is-active", "solovey-privileged-broker.socket"}, Purpose: "verify_privileged_broker_socket"},
 		{Program: "nft", Args: []string{"list", "table", "inet", "solovey_protection"}, Purpose: "inspect_managed_table_only"},
 	}
 }
@@ -241,7 +241,7 @@ func safeFirewallRecoveryActions() []recoveryAction {
 func safeRecoveryActions(kind string) []recoveryAction {
 	if kind == "fronting" {
 		return []recoveryAction{
-			{Program: "solovey-protect-helper", Args: []string{"--smoke"}, Purpose: "verify_release_matched_helper"},
+			{Program: "systemctl", Args: []string{"is-active", "solovey-privileged-broker.socket"}, Purpose: "verify_privileged_broker_socket"},
 			{Program: "operator_review", Args: []string{"fronting_operation", "artifact_hashes", "active_revision"}, Purpose: "review_before_bounded_manual_repair"},
 		}
 	}

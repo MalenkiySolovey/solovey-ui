@@ -14,15 +14,15 @@ import (
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 )
 
-func TestTelegramHTTPClientConcurrentReloadRaceAnchorIssue21(t *testing.T) {
+func TestTelegramHTTPClientConcurrentReloadRaceAnchor(t *testing.T) {
 	settingService := initSettingTestDB(t)
-	setTelegramProxyConfigIssue21(t, settingService, integrationtelegram.ProxyConfig{URL: "http://8.8.8.8:8080"})
+	setTelegramProxyConfig(t, settingService, integrationtelegram.ProxyConfig{URL: "http://8.8.8.8:8080"})
 	service := &telegramservice.Service{Settings: testTelegramSettings{}}
 	seed, err := service.HTTPClient()
 	if err != nil {
 		t.Fatal(err)
 	}
-	setTelegramProxyConfigIssue21(t, settingService, integrationtelegram.ProxyConfig{})
+	setTelegramProxyConfig(t, settingService, integrationtelegram.ProxyConfig{})
 
 	const workers = 64
 
@@ -64,9 +64,9 @@ func TestTelegramHTTPClientConcurrentReloadRaceAnchorIssue21(t *testing.T) {
 	}
 }
 
-func TestTelegramHTTPClientReusesClientOnSameConfigIssue21(t *testing.T) {
+func TestTelegramHTTPClientReusesClientOnSameConfig(t *testing.T) {
 	settingService := initSettingTestDB(t)
-	setTelegramProxyConfigIssue21(t, settingService, integrationtelegram.ProxyConfig{})
+	setTelegramProxyConfig(t, settingService, integrationtelegram.ProxyConfig{})
 
 	service := &telegramservice.Service{Settings: testTelegramSettings{}}
 	first, err := service.HTTPClient()
@@ -82,14 +82,14 @@ func TestTelegramHTTPClientReusesClientOnSameConfigIssue21(t *testing.T) {
 	}
 }
 
-func TestTelegramHTTPClientReplacesClientOnDifferentConfigIssue21(t *testing.T) {
+func TestTelegramHTTPClientReplacesClientOnDifferentConfig(t *testing.T) {
 	settingService := initSettingTestDB(t)
-	setTelegramProxyConfigIssue21(t, settingService, integrationtelegram.ProxyConfig{})
+	setTelegramProxyConfig(t, settingService, integrationtelegram.ProxyConfig{})
 	seed, err := (&telegramservice.Service{Settings: testTelegramSettings{}}).HTTPClient()
 	if err != nil {
 		t.Fatal(err)
 	}
-	setTelegramProxyConfigIssue21(t, settingService, integrationtelegram.ProxyConfig{URL: "http://8.8.8.8:8080"})
+	setTelegramProxyConfig(t, settingService, integrationtelegram.ProxyConfig{URL: "http://8.8.8.8:8080"})
 
 	client, err := (&telegramservice.Service{Settings: testTelegramSettings{}}).HTTPClient()
 	if err != nil {
@@ -103,7 +103,7 @@ func TestTelegramHTTPClientReplacesClientOnDifferentConfigIssue21(t *testing.T) 
 	}
 }
 
-func setTelegramProxyConfigIssue21(t *testing.T, settingService *coreservice.SettingService, cfg integrationtelegram.ProxyConfig) {
+func setTelegramProxyConfig(t *testing.T, settingService *coreservice.SettingService, cfg integrationtelegram.ProxyConfig) {
 	t.Helper()
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)

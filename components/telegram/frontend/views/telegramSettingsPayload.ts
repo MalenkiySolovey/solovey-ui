@@ -2,7 +2,7 @@ import { STORED_SECRET_PLACEHOLDER } from '@/components/settings/settingsSecretF
 import {
   pickSecretAwareSettings,
   type SettingsMap,
-} from '@/views/settingsPayload'
+} from '@/features/settingsPayload'
 
 export type TelegramSettingsMap = SettingsMap
 

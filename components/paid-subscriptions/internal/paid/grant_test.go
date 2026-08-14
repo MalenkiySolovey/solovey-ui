@@ -1,6 +1,7 @@
 package paid
 
 import (
+	"math"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -18,7 +19,10 @@ func TestBuildPaidClientUpdatesExtendsFromLaterExpiryAndSnapshotsTraffic(t *test
 	}
 	tariff := Tariff{AddDays: 7, AddTrafficBytes: 9000}
 
-	clientUpdates, orderUpdates := BuildPaidClientUpdates(client, tariff, now)
+	clientUpdates, orderUpdates, err := BuildPaidClientUpdates(client, tariff, now)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if clientUpdates["enable"] != true {
 		t.Fatalf("enable update missing: %#v", clientUpdates)
 	}
@@ -33,6 +37,17 @@ func TestBuildPaidClientUpdatesExtendsFromLaterExpiryAndSnapshotsTraffic(t *test
 	}
 	if orderUpdates["granted_up"] != int64(200) || orderUpdates["granted_down"] != int64(300) {
 		t.Fatalf("grant snapshot wrong: %#v", orderUpdates)
+	}
+}
+
+func TestBuildPaidClientUpdatesRejectsCounterOverflow(t *testing.T) {
+	client := model.Client{Volume: math.MaxInt64}
+	if _, _, err := BuildPaidClientUpdates(client, Tariff{AddTrafficBytes: 1}, 1); err == nil {
+		t.Fatal("volume overflow should be rejected")
+	}
+	client = model.Client{Expiry: math.MaxInt64}
+	if _, _, err := BuildPaidClientUpdates(client, Tariff{AddDays: 1}, 1); err == nil {
+		t.Fatal("expiry overflow should be rejected")
 	}
 }
 

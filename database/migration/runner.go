@@ -20,7 +20,10 @@ import (
 
 type Options struct {
 	RepairForeignKeyOrphans bool
+	LegacyConfigPath        string
 }
+
+const maxLegacyConfigBytes = int64(16 << 20)
 
 // MigrateDb runs schema migrations against the SQLite database located at
 // `configstorage.GetDBPath()`. The legacy variant terminated the process on any
@@ -33,13 +36,53 @@ func MigrateDb() error {
 }
 
 func MigrateDbWithOptions(options Options) error {
-	// void running on first install
 	path := configstorage.GetDBPath()
-	if _, err := os.Stat(path); err != nil {
-		fmt.Println("Database not found")
+	return MigratePathIfExists(path, options)
+}
+
+// MigratePathIfExists is the authoritative open-time migration gate. Fresh
+// databases are left for bootstrap; every existing file must pass the
+// sequential migration plan before sqlite.Init can AutoMigrate current models.
+func MigratePathIfExists(path string, options Options) error {
+	// void running on first install and in-memory test databases
+	dataPath := strings.TrimPrefix(path, "file:")
+	if queryIndex := strings.IndexByte(dataPath, '?'); queryIndex >= 0 {
+		dataPath = dataPath[:queryIndex]
+	}
+	if dataPath == "" || strings.Contains(dataPath, ":memory:") {
+		return nil
+	}
+	if _, err := os.Stat(dataPath); err != nil {
+		if !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+		return nil
+	}
+	hasSettings, err := pathHasSettingsTable(path)
+	if err != nil {
+		return err
+	}
+	if !hasSettings {
 		return nil
 	}
 	return MigratePath(path, options)
+}
+
+func pathHasSettingsTable(path string) (bool, error) {
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	probe, err := gorm.Open(sqlite.Open(path + separator + "mode=ro&_query_only=1"))
+	if err != nil {
+		return false, fmt.Errorf("open migration identity preflight: %w", err)
+	}
+	sqlDB, err := probe.DB()
+	if err != nil {
+		return false, err
+	}
+	defer sqlDB.Close()
+	return probe.Migrator().HasTable("settings"), nil
 }
 
 // MigratePath runs the same production migration plan against an explicitly
@@ -100,6 +143,10 @@ func MigratePath(path string, options Options) error {
 			return err
 		}
 	}
+	legacyConfig, err := readLegacyConfig(options.LegacyConfigPath, dbVersion == "")
+	if err != nil {
+		return err
+	}
 
 	if err := integrity.EnsureNoTLSForeignKeyParent(db); err != nil {
 		return err
@@ -124,43 +171,55 @@ func MigratePath(path string, options Options) error {
 	if tx.Error != nil {
 		return fmt.Errorf("begin migration: %w", tx.Error)
 	}
-	committed := false
+	transactionClosed := false
 	defer func() {
-		if !committed {
-			tx.Rollback()
+		if !transactionClosed {
+			_ = tx.Rollback().Error
 		}
 	}()
+	abortMigration := func(cause error) error {
+		rollbackErr := tx.Rollback().Error
+		transactionClosed = true
+		state := "FAILED"
+		if rollbackErr != nil {
+			state = "RECOVERY_REQUIRED"
+			cause = errors.Join(cause, fmt.Errorf("rollback failed migration: %w", rollbackErr))
+		}
+		if journalPending {
+			if journalErr := recordOperationsMigrationState(db, state, "core_migration_failed"); journalErr != nil {
+				cause = errors.Join(cause, fmt.Errorf("record failed core migration: %w", journalErr))
+			}
+		}
+		return cause
+	}
 
 	fmt.Println("Start migrating database...")
 
-	if _, err = steps.RunPending(tx, dbVersion); err != nil {
-		if journalPending {
-			_ = recordOperationsMigrationState(db, "FAILED", "core_migration_failed")
-		}
-		return err
+	if _, err = steps.RunPending(tx, dbVersion, legacyConfig); err != nil {
+		return abortMigration(err)
 	}
 	if coreVersion, err = steps.RunCorePending(tx, coreVersion); err != nil {
-		if journalPending {
-			_ = recordOperationsMigrationState(db, "FAILED", "core_migration_failed")
-		}
-		return err
+		return abortMigration(err)
 	}
 	if err = upsertVersionSetting(tx, "coreSchemaVersion", coreVersion); err != nil {
-		return fmt.Errorf("update core schema version: %w", err)
+		return abortMigration(fmt.Errorf("update core schema version: %w", err))
 	}
 
 	// Persist the new version. The settings row is created lazily in older
 	// schemas, so use UPSERT semantics.
 	if err = upsertVersionSetting(tx, "version", currentVersion); err != nil {
-		return fmt.Errorf("update version: %w", err)
+		return abortMigration(fmt.Errorf("update version: %w", err))
 	}
-	if err = tx.Commit().Error; err != nil {
+	err = tx.Commit().Error
+	transactionClosed = true
+	if err != nil {
 		if journalPending {
-			_ = recordOperationsMigrationState(db, "RECOVERY_REQUIRED", "core_migration_commit_ambiguous")
+			if journalErr := recordOperationsMigrationState(db, "RECOVERY_REQUIRED", "core_migration_commit_ambiguous"); journalErr != nil {
+				err = errors.Join(err, fmt.Errorf("record ambiguous core migration commit: %w", journalErr))
+			}
 		}
 		return fmt.Errorf("commit migration: %w", err)
 	}
-	committed = true
 	if journalPending {
 		if err = recordOperationsMigrationState(db, "APPLIED", ""); err != nil {
 			return fmt.Errorf("finalize core migration journal: %w", err)
@@ -174,6 +233,25 @@ func MigratePath(path string, options Options) error {
 	}
 	fmt.Println("Migration done!")
 	return nil
+}
+
+func readLegacyConfig(path string, required bool) ([]byte, error) {
+	path = strings.TrimSpace(path)
+	if path == "" || !required {
+		return nil, nil
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return nil, fmt.Errorf("inspect explicit legacy config: %w", err)
+	}
+	if !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxLegacyConfigBytes {
+		return nil, errors.New("explicit legacy config is not a bounded regular file")
+	}
+	data, err := os.ReadFile(path) // #nosec G304 -- explicit operator-selected migration input.
+	if err != nil {
+		return nil, err
+	}
+	return data, nil
 }
 
 func readOnlyVersionPreflight(path string) (string, string, error) {
@@ -221,8 +299,10 @@ func ensureOperationsMigrationJournal(db *gorm.DB) error {
 	if err == nil {
 		if existing.Checksum != steps.OperationsLifecycleChecksum {
 			now := time.Now().Unix()
-			_ = db.Exec("UPDATE migration_journal_v1 SET state='RECOVERY_REQUIRED', compatibility_state='CHECKSUM_MISMATCH', error_code='core_migration_checksum_mismatch', finished_at=?, updated_at=? WHERE scope=? AND owner_id=? AND step_id=?",
-				now, now, "core", "core", steps.OperationsLifecycleStepID).Error
+			if updateErr := db.Exec("UPDATE migration_journal_v1 SET state='RECOVERY_REQUIRED', compatibility_state='CHECKSUM_MISMATCH', error_code='core_migration_checksum_mismatch', finished_at=?, updated_at=? WHERE scope=? AND owner_id=? AND step_id=?",
+				now, now, "core", "core", steps.OperationsLifecycleStepID).Error; updateErr != nil {
+				return errors.Join(errors.New("core migration checksum changed; recovery is required"), updateErr)
+			}
 			return errors.New("core migration checksum changed; recovery is required")
 		}
 		if existing.State == "RECOVERY_REQUIRED" || existing.State == "APPLIED" {

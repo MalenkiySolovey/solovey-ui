@@ -147,7 +147,7 @@ func (b *Bot) handleRefundRequest(ctx context.Context, chatID int64, tgID int64,
 		return
 	}
 	if order.TelegramUserId != tgID {
-		auditCrossUserOrderAccess(tgID, orderID, "refund")
+		auditCrossUserOrderAccess(b.runtime, tgID, orderID, "refund")
 		return
 	}
 	if order.Status != paidcore.StatusPaid {
@@ -165,7 +165,12 @@ func (b *Bot) handleRefundRequest(ctx context.Context, chatID int64, tgID int64,
 	}
 	// Stars: the admin policy (paidSubRefundRevoke) decides rollback; the user
 	// does not choose, to prevent buy → refund → keep-using abuse.
-	revoke, _ := b.setting.GetPaidSubRefundRevoke()
+	revoke, err := b.setting.GetPaidSubRefundRevoke()
+	if err != nil {
+		logger.Warning("paidsub: read refund revoke policy failed: ", err)
+		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		return
+	}
 	charge := strings.TrimPrefix(order.ProviderChargeID, "tg:")
 	// Return the MONEY FIRST, then finalize state (mirrors the admin RefundOrder
 	// path). This way a transient Telegram failure leaves the order paid and

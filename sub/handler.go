@@ -21,13 +21,13 @@ type SubHandler struct {
 
 const maxSubscriptionHeaderBytes = 512
 
-func NewSubHandler(g *gin.RouterGroup) {
+func newSubHandler(g *gin.RouterGroup, rateLimit gin.HandlerFunc) {
 	a := &SubHandler{}
-	a.initRouter(g)
+	a.initRouter(g, rateLimit)
 }
 
-func (s *SubHandler) initRouter(g *gin.RouterGroup) {
-	g.Use(subserver.RateLimitMiddleware())
+func (s *SubHandler) initRouter(g *gin.RouterGroup, rateLimit gin.HandlerFunc) {
+	g.Use(rateLimit)
 	g.GET("/:subid", s.subs)
 	g.HEAD("/:subid", s.subHeaders)
 	g.GET("/json/:subid", s.json)
@@ -130,7 +130,13 @@ func (s *SubHandler) subHeaders(c *gin.Context) {
 		return
 	}
 
-	headers := buildClientHeaders(client, subserver.CachedDisplaySettings(&s.SettingService, time.Now()))
+	displaySettings, err := subserver.CachedDisplaySettings(&s.SettingService, time.Now())
+	if err != nil {
+		logger.Error(err)
+		s.writeError(c, err)
+		return
+	}
+	headers := buildClientHeaders(client, displaySettings)
 	s.addHeaders(c, headers)
 
 	c.Status(200)

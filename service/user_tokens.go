@@ -60,12 +60,6 @@ func RegisterAPITokenScopeProvider(provider func() []string) func() {
 	}
 }
 
-func ResetAPITokenScopeProvidersForTest() {
-	apiTokenScopeProviders.Lock()
-	apiTokenScopeProviders.list = nil
-	apiTokenScopeProviders.Unlock()
-}
-
 func allowedAPITokenScopes() []string {
 	scopes := append([]string(nil), coreAPITokenScopes...)
 	apiTokenScopeProviders.RLock()
@@ -166,7 +160,10 @@ func (s *UserService) AddToken(username string, expiry int64, desc string, scope
 	if expiry > 0 {
 		expiry = expiry*86400 + time.Now().Unix()
 	}
-	plainToken := common.Random(32)
+	plainToken, err := common.SecureRandom(32)
+	if err != nil {
+		return "", err
+	}
 	tokenHash, err := s.HashAPIToken(plainToken)
 	if err != nil {
 		return "", err

@@ -14,8 +14,10 @@ ENV_DIR="${TARGET}/etc/solovey-ui"
 SERVICE_FILE="${TARGET}/etc/systemd/system/solovey-ui.service"
 CLI_PATH="${TARGET}/usr/bin/solovey-ui"
 BACKUP_ROOT="${TARGET}/var/backups/solovey-ui"
+HARDENED_DATA_ROOT="${TARGET}/var/lib/solovey-ui"
+DEPLOYMENT_MARKER="${ENV_DIR}/deployment-profile"
 
-mkdir -p "${FAKEBIN}" "${LOG_DIR}" "${INSTALL_DIR}/db" "${ENV_DIR}" "$(dirname "${SERVICE_FILE}")" "$(dirname "${CLI_PATH}")"
+mkdir -p "${FAKEBIN}" "${LOG_DIR}" "${INSTALL_DIR}/db" "${HARDENED_DATA_ROOT}/db" "${ENV_DIR}" "$(dirname "${SERVICE_FILE}")" "$(dirname "${CLI_PATH}")"
 
 fail() {
     printf 'FAIL: %s\n' "$*" >&2
@@ -103,7 +105,8 @@ create_current_install() {
     printf 'current service\n' > "${SERVICE_FILE}"
     cat > "${INSTALL_DIR}/solovey-ui" <<'SH'
 #!/usr/bin/env bash
-printf 'binary:%s\n' "$*"
+[[ "${SUI_SECRETBOX_KEY:-}" == "current-secret" ]] || exit 8
+printf 'binary:%s:db=%s\n' "$*" "${SUI_DB_FOLDER:-}"
 SH
     printf '#!/usr/bin/env bash\necho current manager\n' > "${INSTALL_DIR}/solovey-ui.sh"
     cp "${INSTALL_DIR}/solovey-ui.sh" "${CLI_PATH}"
@@ -127,6 +130,8 @@ run_command() {
     SOLOVEY_UI_CLI_PATH="${CLI_PATH}" \
     SOLOVEY_UI_SYSTEMD_SERVICE="${SERVICE_FILE}" \
     SOLOVEY_UI_ENV_DIR="${ENV_DIR}" \
+    SOLOVEY_UI_DEPLOYMENT_MARKER="${DEPLOYMENT_MARKER}" \
+    SOLOVEY_UI_HARDENED_DATA_ROOT="${HARDENED_DATA_ROOT}" \
     SOLOVEY_UI_BACKUP_ROOT="${BACKUP_ROOT}" \
     "${BASH:-bash}" "${ROOT}/solovey-ui.sh" "$@" > "${LOG_DIR}/${name}.out" 2>&1; then
         printf 'command failed: %s\n' "$*" >&2
@@ -163,8 +168,15 @@ run_command ip-cert ip-cert status
 assert_full_report "${LOG_DIR}/doctor-full.out"
 assert_full_report "${LOG_DIR}/diagnose.out"
 assert_full_report "${LOG_DIR}/report.out"
-assert_contains "${LOG_DIR}/ip-cert.out" '^binary:ip-cert status$'
+assert_contains "${LOG_DIR}/ip-cert.out" "^binary:ip-cert status:db=${INSTALL_DIR}/db$"
 assert_contains "${LOG_DIR}/systemctl.log" '^is-active --quiet solovey-ui$'
 assert_contains "${LOG_DIR}/systemctl.log" '^show solovey-ui '
+
+mv "${INSTALL_DIR}/db/solovey-ui.db" "${HARDENED_DATA_ROOT}/db/solovey-ui.db"
+printf 'native-hardened\n' > "${DEPLOYMENT_MARKER}"
+run_command doctor-hardened doctor --full
+assert_full_report "${LOG_DIR}/doctor-hardened.out"
+assert_contains "${LOG_DIR}/doctor-hardened.out" "path=${HARDENED_DATA_ROOT}/db/solovey-ui.db"
+assert_contains "${LOG_DIR}/doctor-hardened.out" "binary:-v:db=${HARDENED_DATA_ROOT}/db"
 
 printf 'PASS: installer doctor integration\n'

@@ -1,7 +1,9 @@
 package api
 
 import (
+	"crypto/sha256"
 	"crypto/subtle"
+	"encoding/hex"
 	"net/http"
 	"net/url"
 	"strings"
@@ -24,22 +26,26 @@ const (
 )
 
 func (a *ApiService) IssueCSRFToken(c *gin.Context) {
-	token := common.Random(32)
-	expiresAt := time.Now().Add(csrfTTL).Unix()
-
 	session := sessions.Default(c)
-	session.Set(csrfTokenKey, token)
-	session.Set(csrfExpiresKey, expiresAt)
-	options := sessions.Options{
-		Path:     "/",
-		Secure:   resolveCookieSecure(c, &a.SettingService),
-		HttpOnly: true,
-		SameSite: resolveCookieSameSite(&a.SettingService),
+	now := time.Now()
+	token, _ := session.Get(csrfTokenKey).(string)
+	expiresAt, _ := session.Get(csrfExpiresKey).(int64)
+	if token == "" || expiresAt < now.Unix() {
+		if sessionToken, ok := sessionBoundCSRFToken(session); ok {
+			token = sessionToken
+		} else {
+			var err error
+			token, err = common.SecureRandom(32)
+			if err != nil {
+				jsonMsg(c, "csrf", err)
+				return
+			}
+		}
+		expiresAt = now.Add(csrfTTL).Unix()
+		session.Set(csrfTokenKey, token)
+		session.Set(csrfExpiresKey, expiresAt)
 	}
-	if maxAge := currentSessionCookieMaxAge(session, time.Now()); maxAge > 0 {
-		options.MaxAge = maxAge
-	}
-	session.Options(options)
+	session.Options(sessionCookieOptions(c, &a.SettingService, session, now))
 	if err := session.Save(); err != nil {
 		jsonMsg(c, "csrf", err)
 		return
@@ -48,6 +54,32 @@ func (a *ApiService) IssueCSRFToken(c *gin.Context) {
 		"token":     token,
 		"expiresAt": expiresAt,
 	}, nil)
+}
+
+func sessionCookieOptions(c *gin.Context, settingService *service.SettingService, session sessions.Session, now time.Time) sessions.Options {
+	options := sessions.Options{
+		Path:     "/",
+		Secure:   resolveCookieSecure(c, settingService),
+		HttpOnly: true,
+		SameSite: resolveCookieSameSite(settingService),
+	}
+	if maxAge := currentSessionCookieMaxAge(session, now); maxAge > 0 {
+		options.MaxAge = maxAge
+	}
+	return options
+}
+
+func sessionBoundCSRFToken(session sessions.Session) (string, bool) {
+	if session == nil {
+		return "", false
+	}
+	ref, ok := session.Get(service.SessionRefKey).(string)
+	ref = strings.TrimSpace(ref)
+	if !ok || ref == "" {
+		return "", false
+	}
+	digest := sha256.Sum256([]byte("s-ui-csrf-v1\x00" + ref))
+	return hex.EncodeToString(digest[:]), true
 }
 
 func currentSessionCookieMaxAge(session sessions.Session, now time.Time) int {

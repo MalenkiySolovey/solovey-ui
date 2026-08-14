@@ -5,8 +5,9 @@ import {
   manualGridCardElement,
   manualGridDropFromEvent,
 } from '@/shared/dnd/manualGridDrop'
+import type { ManualDropPosition } from './manualDropTypes'
 
-export type ManualDropPosition = 'before' | 'after'
+export type { ManualDropPosition } from './manualDropTypes'
 export type ManualDropAxis = 'order' | 'vertical' | 'horizontal' | 'grid'
 export type ManualDragKey = string | number
 

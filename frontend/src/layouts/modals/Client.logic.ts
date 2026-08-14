@@ -2,7 +2,7 @@ import { defineAsyncComponent, defineComponent } from 'vue'
 import { createClient, randomConfigs, updateConfigs, Link, isCoreClientLinkType, shuffleConfigs } from '@/types/clients'
 import { HumanReadable } from '@/plugins/utils'
 import Data from '@/store/modules/data'
-import { locale } from '@/locales'
+import { dateLocale } from '@/locales'
 import FormShell from '@/components/nexus/drawers/FormShell.vue'
 import StrictSelect from '@/shared/ui/StrictSelect.vue'
 import ComponentSlot from '@/componentSystem/ComponentSlot.vue'
@@ -157,7 +157,7 @@ export default defineComponent({
       const ts = this.client.nextReset?? 0
       if (ts == 0) return '-'
       const date = new Date(ts*1000)
-      return date.toLocaleString(locale)
+      return date.toLocaleString(dateLocale())
     },
     percent() :number { return this.client.volume>0 ? Math.round((this.client.up + this.client.down) *100 / this.client.volume) : 0 },
     percentColor() :string { return (this.client.up+this.client.down) >= this.client.volume ? 'error' : this.percent>90 ? 'warning' : 'success' },

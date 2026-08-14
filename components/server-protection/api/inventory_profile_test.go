@@ -11,7 +11,6 @@ import (
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
-	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 )
 
 func TestMVPAPIInventoryProfileAndMissingApplyCapability(t *testing.T) {
@@ -68,14 +67,12 @@ func TestMVPAPIInventoryProfileAndMissingApplyCapability(t *testing.T) {
 		t.Fatalf("preview = %#v, want backend=%q generated=%t", preview, wantBackend, wantGeneratedNFT)
 	}
 
-	prepare := requestProtectionAPI(router, http.MethodPost, "/api/components/server-protection/ports/prepare", `{"kind":"port_handoff","resourceId":"fixture:listener:one","protocol":"tcp","listen":"127.0.0.1","port":9443,"planRevision":"preview-1","idempotencyKey":"api-preview-1","confirmation":"PREPARE SERVER PROTECTION preview-1"}`)
-	var prepared protectionoperations.AcquireResult
-	decodeProtectionObject(t, prepare, &prepared)
-	apply := requestProtectionAPI(router, http.MethodPost, "/api/components/server-protection/firewall/apply", `{"operationId":"`+prepared.Operation.OperationID+`","confirmation":"APPLY SERVER PROTECTION `+prepared.Operation.OperationID+`"}`)
+	operationID := "unavailable-firewall-operation"
+	apply := requestProtectionAPI(router, http.MethodPost, "/api/components/server-protection/firewall/apply", `{"operationId":"`+operationID+`","confirmation":"APPLY SERVER PROTECTION `+operationID+`"}`)
 	if apply.Code != http.StatusConflict || !strings.Contains(apply.Body.String(), "missing_capability") {
 		t.Fatalf("apply response = %d %s", apply.Code, apply.Body.String())
 	}
-	if len(*audits) != 5 {
+	if len(*audits) != 4 {
 		t.Fatalf("audit events = %#v", *audits)
 	}
 }

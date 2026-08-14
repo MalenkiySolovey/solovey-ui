@@ -8,7 +8,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func TestWALCheckpointFallbackHelperHandlesTruncateFailureIssue11(t *testing.T) {
+func TestWALCheckpointFallbackHelperHandlesTruncateFailure(t *testing.T) {
 	probe, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "checkpoint-closed.db")), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
@@ -26,7 +26,7 @@ func TestWALCheckpointFallbackHelperHandlesTruncateFailureIssue11(t *testing.T) 
 	}
 }
 
-func TestWALCheckpointFallbackHelperSucceedsIssue11(t *testing.T) {
+func TestWALCheckpointFallbackHelperSucceeds(t *testing.T) {
 	probe, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "checkpoint-open.db")), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)

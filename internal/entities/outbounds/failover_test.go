@@ -234,3 +234,14 @@ func TestLoadFailoverGroupsResolvesFinalTag(t *testing.T) {
 		t.Fatalf("direct final = %q, want %q", finalByTag["direct-final"], DirectTag)
 	}
 }
+
+func TestLoadFailoverGroupsRejectsMalformedStoredGroup(t *testing.T) {
+	db := newFailoverDB(t)
+	row := model.Outbound{Type: FailoverType, Tag: "broken", Options: json.RawMessage(`{"outbounds":[]}`)}
+	if err := db.Create(&row).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadFailoverGroups(db); err == nil {
+		t.Fatal("malformed stored failover group was silently omitted")
+	}
+}

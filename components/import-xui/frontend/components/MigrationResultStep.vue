@@ -8,7 +8,7 @@
         </v-col>
         <v-col cols="12" md="6">
           <div class="text-subtitle-2">{{ $t('migrateXui.backupPath') }}</div>
-          <div class="text-body-2 backup-path">{{ report?.backupPath || '-' }}</div>
+          <div class="text-body-2 backup-path">{{ report?.backup_path || '-' }}</div>
           <v-row class="mt-3">
             <v-col cols="12" sm="auto">
               <v-btn prepend-icon="mdi-code-json" variant="tonal" :disabled="!report" @click="$emit('download-json')">
@@ -21,7 +21,7 @@
               </v-btn>
             </v-col>
             <v-col cols="12" sm="auto">
-              <v-btn color="warning" prepend-icon="mdi-database-refresh" :loading="rollbackLoading" :disabled="!report?.backupPath" @click="$emit('rollback')">
+              <v-btn color="warning" prepend-icon="mdi-database-refresh" :loading="rollbackLoading" :disabled="!report?.backup_path" @click="$emit('rollback')">
                 {{ $t('migrateXui.restore') }}
               </v-btn>
             </v-col>

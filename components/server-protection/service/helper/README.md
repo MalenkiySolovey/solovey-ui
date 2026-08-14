@@ -1,36 +1,31 @@
 # Server-protection privileged helper protocol v1
 
-The component uses a narrow child-process boundary for managed nftables
-apply/rollback. `solovey-protect-helper` is a separate binary and is not reachable
-from an HTTP handler. The panel-side helper client accepts typed Go DTOs only.
+The component contributes narrow semantic operations to the single production
+`solovey-privileged-broker`. The panel-side client accepts typed Go DTOs only.
 There is no command string, shell field, argument array, environment map,
 binary path, arbitrary flag or filesystem-root field in the wire protocol.
 
 ## Trust boundary
 
 The panel acquires the in-process gate and persisted operation row
-before a non-capability call. Immediately before process invocation the client
+before a non-capability call. Immediately before broker invocation the client
 re-reads and verifies `operation_id`, `instance_id`, lock revision, operation
 kind, PID fencing and non-terminal state through `operations.Manager`. A failed
 or missing lock returns `missing_capability/operation_lock_required`; it is not
 possible to fall back to an unlocked execution path.
 
-The executable is selected only from a trusted install root and must have the
-exact name `solovey-protect-helper[.exe]`. It runs without a shell or arguments,
-with a fixed environment and the Solovey-managed
-`.runtime/server-protection` directory as its working directory. Requests use
+The broker entrypoint and managed root are selected by deployment policy; an
+HTTP request cannot select either. Requests use
 root-relative managed paths. Traversal, absolute paths and symlink escapes are
 rejected. The helper selects nft binaries and flags internally;
 the panel cannot provide them.
 
-The release-sibling executable is hashed when the production client is
-constructed and the same regular-file size/SHA-256 identity is re-attested
-immediately before every capability and operation invocation. The negotiated
-capability revision and pinned helper SHA-256 are returned only as bounded
-in-process execution metadata; listener-owner reconciliation binds both into
-the owner-observation-set revision. A replacement executable, capability
-revision drift, or a helper from a different release therefore fails closed
-before it can satisfy a frozen snapshot.
+The broker client re-attests the fixed socket and root peer credentials on
+every connection. The negotiated capability revision and broker identity
+revision are returned only as bounded in-process execution metadata;
+listener-owner reconciliation binds both into the owner-observation-set
+revision. Capability or broker contract drift therefore fails closed before
+it can satisfy a frozen snapshot.
 
 `capabilities`, `ssh.recovery.observe`, and `listener.owner.observe` are
 lock-exempt read-only requests. The two observers use fixed, independently
@@ -56,14 +51,13 @@ apply rejects drift before writing or mutating an artifact.
 - `nginx.reload`
 - `nginx.active.verify`
 - `nginx.revision.restore`
-- `listener.probe`
 - `listener.owner.observe`
 - `ssh.recovery.observe`
 - `artifact.manage`
 
 Each operation has exactly one corresponding DTO. Unknown JSON fields,
-multiple payloads, unknown enums, arbitrary nft tables, non-loopback listener
-probes, unapproved permission modes and oversized artifact content are
+multiple payloads, unknown enums, arbitrary nft tables, unapproved permission
+modes and oversized artifact content are
 rejected. nft operations are restricted to `inet solovey_protection`.
 
 ## Listener owner observation
@@ -122,18 +116,14 @@ identity, writes the exact rollback artifact and SHA-256 sidecar, applies a
 managed-only transaction, then reads the managed table back and verifies the
 revision. Rollback verifies its recorded hash and current-revision fence and
 restores/deletes only that table.
-`--smoke` remains the only CLI flag.
-
-stdin is limited to 1 MiB. stdout and stderr are independently limited to 256
-KiB. The panel applies fixed operation timeouts (15 seconds for ordinary
+The broker protocol bounds each payload to 1 MiB. The panel applies fixed operation timeouts (15 seconds for ordinary
 discovery/validation, a dedicated 60 seconds for exact listener-owner hashing,
 60 seconds for apply/reload, and 120 seconds for rollback) and
-uses context cancellation to terminate the child process. Exit statuses map to
-typed result classes. Audit records contain only correlation, operation,
+uses context cancellation to terminate the request. Audit records contain only correlation, operation,
 phase, result code, duration, exit class and truncation flags; payloads, paths,
 content, stdout and stderr are never recorded. A redacted audit recorder is
 mandatory, and failure to record the pre-invocation attempt prevents the
-operation from reaching the helper process.
+operation from reaching the broker.
 
 ## Nginx execution behavior
 
@@ -161,5 +151,6 @@ includes are never read, copied or mutated.
 
 Normal CI uses `MockInvoker`, a fake `NFTExecutor` and a durable fake
 `NginxExecutor`; none can start nft or nginx.
-The full Linux release packages a release-matched sibling helper, and the panel
-wires only that trusted path.
+Production exposes this protocol only through the privileged broker; there is
+no standalone helper process adapter or helper executable in the source,
+build, release package, installer, or runtime composition.

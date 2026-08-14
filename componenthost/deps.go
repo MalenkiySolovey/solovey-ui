@@ -27,6 +27,7 @@ type Scheduler interface {
 	AddJob(string, cron.Job) (cron.EntryID, error)
 	Schedule(cron.Schedule, cron.Job) cron.EntryID
 	RemoveJob(cron.EntryID)
+	RemoveJobAndWait(context.Context, cron.EntryID) error
 }
 
 type APIDeps struct {

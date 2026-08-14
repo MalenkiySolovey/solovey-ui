@@ -3,11 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"syscall"
@@ -22,6 +22,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	componentsupervisor "github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
+	cronscheduler "github.com/MalenkiySolovey/solovey-ui/cronjob/scheduler"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/security"
@@ -33,61 +34,70 @@ import (
 )
 
 func main() {
-	log.SetOutput(os.Stdout)
 	fmt.Println("e2e panel-server: init logger")
 	logger.Init(logger.LevelWarning)
 
 	fmt.Println("e2e panel-server: init database")
 	if err := dbsqlite.Init(configstorage.GetDBPath()); err != nil {
-		log.Fatal(err)
+		fatal("database initialization", err)
 	}
 	fmt.Println("e2e panel-server: install registered components")
 	if err := installRegisteredComponentsForE2E(); err != nil {
-		log.Fatal(err)
+		fatal("component installation", err)
 	}
 	fmt.Println("e2e panel-server: load settings")
 	settingService := &service.SettingService{}
 	if _, err := settingService.GetAllSetting(); err != nil {
-		log.Fatal(err)
+		fatal("initial settings load", err)
 	}
 	if webPath := os.Getenv("SUI_E2E_WEB_PATH"); webPath != "" {
-		if err := settingService.SetComponentSettingString("webPath", webPath); err != nil {
-			log.Fatal(err)
+		if err := settingService.SetWebPath(webPath); err != nil {
+			fatal("web path configuration", err)
 		}
 	}
 	if _, err := settingService.GetAllSetting(); err != nil {
-		log.Fatal(err)
+		fatal("settings reload", err)
 	}
 
 	fmt.Println("e2e panel-server: init api-only web server")
 	runtime := service.NewRuntime(nil)
 	service.SetDefaultRuntime(runtime)
+	cronScheduler := cronscheduler.New()
+	if err := cronScheduler.Start(time.UTC, 0); err != nil {
+		fatal("scheduler startup", err)
+	}
+	defer func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		_ = cronScheduler.Stop(ctx)
+	}()
 	baseURL, err := settingService.GetWebPath()
 	if err != nil {
-		log.Fatal(err)
+		fatal("web path lookup", err)
 	}
 	cookieKeys, err := settingService.GetCookieKeys()
 	if err != nil {
-		log.Fatal(err)
+		fatal("session key setup", err)
 	}
 	store, err := web.NewSQLiteSessionStore(dbsqlite.DB(), cookieKeys...)
 	if err != nil {
-		log.Fatal(err)
+		fatal("session store setup", err)
 	}
 	gin.SetMode(gin.ReleaseMode)
 	components := componentsupervisor.New(componenthost.Deps{
 		API: componenthost.APIDeps{
 			Runtime: runtime,
 		},
+		Scheduler: cronScheduler,
 	})
 	service.RegisterComponentMigrator(components.Migrate)
 	service.RegisterComponentSettingsReconciler(components.Reconcile)
 	service.RegisterComponentDataDropper(components.DropData)
 	if err := components.Migrate(context.Background()); err != nil {
-		log.Fatal(err)
+		fatal("component migration", err)
 	}
 	if err := components.Start(context.Background()); err != nil {
-		log.Fatal(err)
+		fatal("component startup", err)
 	}
 	defer func() {
 		_ = components.Stop(context.Background())
@@ -121,14 +131,21 @@ func main() {
 		c.String(http.StatusNotFound, "e2e not found")
 	})
 
-	port, err := settingService.GetPort()
-	if err != nil {
-		log.Fatal(err)
+	listenAddress := strings.TrimSpace(os.Getenv("SUI_E2E_BACKEND_LISTEN"))
+	if listenAddress == "" {
+		port, err := settingService.GetPort()
+		if err != nil {
+			fatal("web port lookup", err)
+		}
+		listenAddress = net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
 	}
-	listener, err := net.Listen("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)))
+	listener, err := net.Listen("tcp", listenAddress)
 	if err != nil {
-		fmt.Printf("e2e panel-server: listen error: %#v\n", err)
-		os.Exit(1)
+		fatal("backend listen", err)
+	}
+	defer listener.Close()
+	if err := writeBackendAddress(listener.Addr().String()); err != nil {
+		fatal("backend address publication", err)
 	}
 	server := &http.Server{
 		Handler:           engine,
@@ -156,6 +173,30 @@ func main() {
 	case <-done:
 	case <-ctx.Done():
 	}
+}
+
+func fatal(stage string, err error) {
+	fmt.Fprintf(os.Stderr, "e2e panel-server: %s failed: %v\n", stage, err)
+	os.Exit(1)
+}
+
+func writeBackendAddress(address string) error {
+	path := strings.TrimSpace(os.Getenv("SUI_E2E_BACKEND_ADDRESS_FILE"))
+	if path == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
+		return err
+	}
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, []byte(address+"\n"), 0o600); err != nil {
+		return err
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
 }
 
 func installRegisteredComponentsForE2E() error {

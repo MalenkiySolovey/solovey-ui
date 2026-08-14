@@ -16,10 +16,6 @@ type Service struct {
 	mutation  MutationDependencies
 }
 
-func New(db *gorm.DB, effective EffectiveInboundReader) *Service {
-	return NewWithMutations(db, effective, MutationDependencies{})
-}
-
 func NewWithMutations(db *gorm.DB, effective EffectiveInboundReader, mutation MutationDependencies) *Service {
 	service := &Service{db: db, effective: effective, identity: ReadRuntimeIdentityV1(), mutation: mutation}
 	return service

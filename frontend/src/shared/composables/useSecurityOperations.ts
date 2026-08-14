@@ -106,8 +106,8 @@ export const issueStepUp = async (payload: {
   targetDigest: string
 }) => {
   const response = await HttpUtils.post('api/v1/security/step-up', payload, jsonOptions)
-  // A successful privilege verification rotates the server-side CSRF value.
-  // Clear the in-memory copy before the protected action is submitted.
+  // A successful privilege verification invalidates the current server-side
+  // CSRF issuance. Clear the in-memory copy so the action fetches a fresh one.
   clearCSRFToken()
   return response
 }

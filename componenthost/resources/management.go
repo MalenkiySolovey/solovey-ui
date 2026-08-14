@@ -99,11 +99,22 @@ func ManagementEndpointFromResource(resource ProtectableResource, kind Managemen
 
 // ManagementEndpointCurrent is the neutral fail-closed validity fence shared
 // by recovery-path evaluation and every mutating policy consumer.
-func ManagementEndpointCurrent(value ManagementEndpointV1) bool {
-	if value.Schema != ManagementEndpointSchemaV1 || !safeManagementID(value.ID) || value.Network == NetworkUnknown || value.Family == AddressFamilyUnknown || value.Port == 0 || value.ObservedAt <= 0 || value.ConfidenceBP <= 0 || !validManagementRevision(value.ConfigurationRevision) {
+func ManagementEndpointCurrent(value ManagementEndpointV1, now time.Time) bool {
+	now = now.UTC()
+	if now.IsZero() || value.Schema != ManagementEndpointSchemaV1 || !safeManagementID(value.ID) ||
+		(value.Network != NetworkTCP && value.Network != NetworkUDP) ||
+		(value.Family != AddressFamilyIPv4 && value.Family != AddressFamilyIPv6) || value.Port == 0 ||
+		value.ObservedAt <= 0 || value.ObservedAt > now.Add(5*time.Minute).Unix() || value.ExpiresAt <= now.Unix() ||
+		value.ExpiresAt <= value.ObservedAt || value.ExpiresAt > value.ObservedAt+300 ||
+		value.ConfidenceBP <= 0 || value.ConfidenceBP > 10000 || !validManagementRevision(value.ConfigurationRevision) ||
+		!validManagementKind(string(value.ServiceKind)) || !safeManagementID(value.Owner) || !safeManagementID(value.Source) ||
+		(value.ResourceID != "" && !safeManagementID(value.ResourceID)) ||
+		(value.Purpose != "" && !safeManagementID(value.Purpose)) || !safeManagementID(value.RecoveryPolicy) {
 		return false
 	}
-	if value.ExpiresAt > 0 && value.ExpiresAt <= value.ObservedAt {
+	normalized := NormalizeListen(value.Bind)
+	if normalized.Value != value.Bind || AddressFamilyForListen(value.Bind) != value.Family ||
+		value.Exposure != EndpointIntentForBind(value.Bind) {
 		return false
 	}
 	for _, revision := range []string{value.OwnerRevision, value.RuntimeRevision, value.SemanticRevision} {
@@ -111,7 +122,8 @@ func ManagementEndpointCurrent(value ManagementEndpointV1) bool {
 			return false
 		}
 	}
-	if value.SemanticRevision != "" && value.ConfiguredIntent == value.ObservedListener && value.ServiceKind == ManagementSSH {
+	if !value.ConfiguredIntent && !value.ObservedListener ||
+		value.ServiceKind == ManagementSSH && value.ConfiguredIntent == value.ObservedListener {
 		// An SSH endpoint is one configured intent or one observed listener.
 		// Collapsing both facts (or carrying neither) hides configuration/runtime
 		// disagreement and is unsafe for management-preservation decisions.
@@ -119,6 +131,9 @@ func ManagementEndpointCurrent(value ManagementEndpointV1) bool {
 	}
 	for _, reason := range value.ReasonCodes {
 		lower := strings.ToLower(strings.TrimSpace(reason))
+		if !safeManagementID(lower) || len(lower) > 64 {
+			return false
+		}
 		if strings.Contains(lower, "unknown") || strings.Contains(lower, "stale") || strings.Contains(lower, "truncated") || strings.Contains(lower, "ambiguous") || strings.Contains(lower, "invalid") || strings.Contains(lower, "unavailable") || strings.Contains(lower, "not_verified") {
 			return false
 		}

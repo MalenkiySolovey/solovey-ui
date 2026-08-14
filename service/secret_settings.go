@@ -8,23 +8,12 @@ import (
 	settingsmanager "github.com/MalenkiySolovey/solovey-ui/internal/settings/manager"
 	settingsschema "github.com/MalenkiySolovey/solovey-ui/internal/settings/schema"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 )
 
 var encryptedSettingKeys = settingcatalog.MergeKeySets(ipCertEncryptedSettingKeys)
 
 // #nosec G101 -- UI placeholder text shown in place of a stored secret, not a credential.
 const StoredSecretMarker = "\u2022\u2022\u2022 stored \u2022\u2022\u2022"
-
-var (
-	cookieKeyHKDFInfo            = settingscrypto.CookieKeyHKDFInfo
-	settingsSecretboxKeyHKDFInfo = settingscrypto.SettingsSecretboxKeyHKDFInfo
-)
-
-type secretboxCandidate struct {
-	name string
-	box  *secretbox.Box
-}
 
 type settingSecretCodec struct {
 	service       *SettingService
@@ -62,20 +51,8 @@ func writeSecretSettingMarker(settings map[string]string, key string, value stri
 	}
 }
 
-func (s *SettingService) getSecretboxCandidates() ([]secretboxCandidate, error) {
-	candidates, err := s.settingsSecretCodec().SecretboxCandidates()
-	if err != nil {
-		return nil, err
-	}
-	return fromSettingsCryptoCandidates(candidates), nil
-}
-
 func (s *SettingService) GetCookieKeys() ([][]byte, error) {
 	return s.settingsSecretCodec().CookieKeys()
-}
-
-func deriveHKDFKey(masterKey []byte, salt []byte, info []byte) ([]byte, error) {
-	return settingscrypto.DeriveHKDFKey(masterKey, salt, info)
 }
 
 func (s *SettingService) encryptSettingValue(key string, value string) (string, error) {
@@ -107,32 +84,6 @@ func (s *SettingService) recordSecretboxFallback(key string, candidate string) {
 	}
 }
 
-func decryptWithCandidate(candidates []secretboxCandidate, key, value string) (int, string, bool) {
-	return settingscrypto.DecryptWithCandidate(toSettingsCryptoCandidates(candidates), key, value)
-}
-
 func (s *SettingService) ResealSecretSettings() (int, error) {
 	return settingsmanager.ResealSecretSettings(settingsDatabase(), s.settingsSecretCodec(), currentEncryptedSettingKeys())
-}
-
-func fromSettingsCryptoCandidates(candidates []settingscrypto.Candidate) []secretboxCandidate {
-	converted := make([]secretboxCandidate, 0, len(candidates))
-	for _, candidate := range candidates {
-		converted = append(converted, secretboxCandidate{
-			name: candidate.Name,
-			box:  candidate.Box,
-		})
-	}
-	return converted
-}
-
-func toSettingsCryptoCandidates(candidates []secretboxCandidate) []settingscrypto.Candidate {
-	converted := make([]settingscrypto.Candidate, 0, len(candidates))
-	for _, candidate := range candidates {
-		converted = append(converted, settingscrypto.Candidate{
-			Name: candidate.name,
-			Box:  candidate.box,
-		})
-	}
-	return converted
 }

@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
@@ -31,16 +33,18 @@ type auditEvent struct {
 	Details map[string]any
 }
 
-type fixtureContributor struct{}
+type fixtureContributor struct{ owner string }
 
-func (fixtureContributor) Owner() string { return "fixture" }
-func (fixtureContributor) ListProtectableResources(_ context.Context) ([]hostresources.ProtectableResource, error) {
+func (c fixtureContributor) Owner() string { return c.owner }
+func (c fixtureContributor) ListProtectableResources(_ context.Context) ([]hostresources.ProtectableResource, error) {
 	return []hostresources.ProtectableResource{{
-		ID: "fixture:listener:one", Kind: "component_listener", Owner: "fixture", Name: "Fixture listener",
+		ID: "fixture:listener:one", Kind: "component_listener", Owner: c.owner, Name: "Fixture listener",
 		Protocol: "stream", Listen: "127.0.0.1", Port: 9443, TLS: true, Source: "fixture", Fingerprint: "fixture-revision",
 		Capabilities: hostresources.ProtectableResourceCapabilities{Known: true, ConfigRevision: strings.Repeat("c", 64)},
 	}}, nil
 }
+
+var fixtureContributorSequence atomic.Uint64
 
 func newProtectionAPIRouter(t *testing.T, scope string) (*gin.Engine, *[]auditEvent) {
 	router, audits, _ := newProtectionAPIRouterWithOperations(t, scope)
@@ -80,7 +84,11 @@ func newProtectionAPIRouterWithLocalProxy(t *testing.T, scope string, fronting p
 	if err := protectionrepository.Migrate(db); err != nil {
 		t.Fatal(err)
 	}
-	unregister := hostresources.Register(fixtureContributor{})
+	owner := "fixture-api-" + strconv.FormatUint(fixtureContributorSequence.Add(1), 10)
+	unregister, err := hostresources.Register(fixtureContributor{owner: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(unregister)
 	audits := &[]auditEvent{}
 	repository := protectionrepository.New(db)

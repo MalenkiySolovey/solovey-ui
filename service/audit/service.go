@@ -2,6 +2,7 @@
 package audit
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
@@ -25,6 +26,7 @@ const (
 	AuditIPMaxBytes        = 64
 	AuditUserAgentMaxBytes = 512
 	AuditDetailsMaxBytes   = 16 * 1024
+	AuditWriteTimeout      = 3 * time.Second
 )
 
 type Service struct {
@@ -143,14 +145,23 @@ func boundedAuditField(value string, maxBytes int) string {
 }
 
 func WriteEvents(events []model.AuditEvent) error {
+	ctx, cancel := context.WithTimeout(context.Background(), AuditWriteTimeout)
+	defer cancel()
+	return WriteEventsContext(ctx, events)
+}
+
+func WriteEventsContext(ctx context.Context, events []model.AuditEvent) error {
 	if len(events) == 0 {
 		return nil
+	}
+	if ctx == nil {
+		return errors.New("audit write context is unavailable")
 	}
 	db := dbsqlite.DB()
 	if db == nil {
 		return errors.New("audit database is not initialized")
 	}
-	return db.Create(&events).Error
+	return db.WithContext(ctx).Create(&events).Error
 }
 
 func (s *Service) List(limit int) ([]model.AuditEvent, error) {
@@ -170,7 +181,11 @@ func (s *Service) ListPageFiltered(cursor uint64, limit int, event string, sever
 		limit = 200
 	}
 	events := make([]model.AuditEvent, 0, limit+1)
-	query := dbsqlite.DB().Model(model.AuditEvent{})
+	db := dbsqlite.DB()
+	if db == nil {
+		return nil, 0, errors.New("audit database is not initialized")
+	}
+	query := db.Model(model.AuditEvent{})
 	if cursor > 0 {
 		query = query.Where("id < ?", cursor)
 	}
@@ -209,7 +224,11 @@ func (s *Service) ListByEvents(limit int, eventNames []string) ([]model.AuditEve
 		return []model.AuditEvent{}, nil
 	}
 	events := make([]model.AuditEvent, 0, limit)
-	err := dbsqlite.DB().
+	db := dbsqlite.DB()
+	if db == nil {
+		return nil, errors.New("audit database is not initialized")
+	}
+	err := db.
 		Where("event IN ?", eventNames).
 		Order("date_time desc").
 		Limit(limit).

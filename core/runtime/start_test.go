@@ -17,7 +17,7 @@ func TestStartReturnsErrorOnMalformedConfig(t *testing.T) {
 	if c.IsRunning() {
 		t.Fatal("core must not report running after a failed config parse")
 	}
-	if c.GetInstance() != nil {
+	if c.instance != nil {
 		t.Fatal("core must not retain a box instance after a failed config parse")
 	}
 }

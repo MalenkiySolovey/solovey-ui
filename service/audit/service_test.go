@@ -75,3 +75,10 @@ func TestRecordListenFallbackUsesStableReason(t *testing.T) {
 		t.Fatalf("unexpected listen fallback reason: %#v", details)
 	}
 }
+
+func TestWriteEventsRejectsMissingContext(t *testing.T) {
+	//lint:ignore SA1012 This is the explicit missing-context rejection contract.
+	if err := WriteEventsContext(nil, []model.AuditEvent{{Event: "test"}}); err == nil {
+		t.Fatal("audit write accepted a missing context")
+	}
+}

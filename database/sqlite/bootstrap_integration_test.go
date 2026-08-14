@@ -14,65 +14,6 @@ import (
 	"gorm.io/gorm"
 )
 
-type mockDefaultOutboundStore struct {
-	hasTable       bool
-	createTableErr error
-	createErr      error
-	createTable    int
-	create         int
-}
-
-func (s *mockDefaultOutboundStore) HasTable(any) bool {
-	return s.hasTable
-}
-
-func (s *mockDefaultOutboundStore) CreateTable(...any) error {
-	s.createTable++
-	return s.createTableErr
-}
-
-func (s *mockDefaultOutboundStore) Create(any) error {
-	s.create++
-	return s.createErr
-}
-
-func TestEnsureDefaultOutboundReturnsCreateTableError(t *testing.T) {
-	want := errors.New("create table failed")
-	store := &mockDefaultOutboundStore{createTableErr: want}
-
-	err := ensureDefaultOutbound(store)
-	if !errors.Is(err, want) {
-		t.Fatalf("expected CreateTable error, got %v", err)
-	}
-	if store.create != 0 {
-		t.Fatal("default outbound row should not be created after CreateTable failure")
-	}
-}
-
-func TestEnsureDefaultOutboundReturnsCreateError(t *testing.T) {
-	want := errors.New("create default outbound failed")
-	store := &mockDefaultOutboundStore{createErr: want}
-
-	err := ensureDefaultOutbound(store)
-	if !errors.Is(err, want) {
-		t.Fatalf("expected Create error, got %v", err)
-	}
-	if store.createTable != 1 || store.create != 1 {
-		t.Fatalf("unexpected call counts: createTable=%d create=%d", store.createTable, store.create)
-	}
-}
-
-func TestEnsureDefaultOutboundSkipsExistingTable(t *testing.T) {
-	store := &mockDefaultOutboundStore{hasTable: true}
-
-	if err := ensureDefaultOutbound(store); err != nil {
-		t.Fatal(err)
-	}
-	if store.createTable != 0 || store.create != 0 {
-		t.Fatalf("existing table should skip writes: createTable=%d create=%d", store.createTable, store.create)
-	}
-}
-
 func TestInitDoesNotCreateOptionalComponentTables(t *testing.T) {
 	dbDir := makeDBTempDir(t, "s-ui-db-test-")
 	dbPath := filepath.Join(dbDir, "s-ui.db")
@@ -158,6 +99,51 @@ VALUES('alice', '', 'hash-1', 1, 1), ('alice', '', 'hash-2', 2, 2)
 	}
 }
 
+func TestInitRunsSequentialMigrationsBeforeCurrentSchemaBootstrap(t *testing.T) {
+	dbDir := makeDBTempDir(t, "s-ui-db-test-")
+	dbPath := filepath.Join(dbDir, "s-ui.db")
+	legacy, err := gorm.Open(sqlite.Open(dbPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		`CREATE TABLE settings (id integer PRIMARY KEY AUTOINCREMENT, key text, value text)`,
+		`INSERT INTO settings(key,value) VALUES('version','1.4.3')`,
+		`CREATE TABLE clients (id integer PRIMARY KEY AUTOINCREMENT, enable boolean, name text)`,
+		`INSERT INTO clients(enable,name) VALUES(1,'migrated-client')`,
+		`CREATE TABLE audit_events (id integer PRIMARY KEY AUTOINCREMENT, date_time integer, actor text, event text, resource text, severity text, ip text, user_agent text, details blob)`,
+	} {
+		if err := legacy.Exec(statement).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if sqlDB, err := legacy.DB(); err == nil {
+		_ = sqlDB.Close()
+	}
+
+	if err := Init(dbPath); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		cleanupSQLiteSidecars(dbPath)
+	})
+	var client model.Client
+	if err := DB().Where("name = ?", "migrated-client").First(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+	if client.SubSecret == "" {
+		t.Fatal("sqlite.Init bypassed the sequential client-secret migration")
+	}
+	var coreVersion string
+	if err := DB().Model(&model.Setting{}).Select("value").Where("key = ?", "coreSchemaVersion").Scan(&coreVersion).Error; err != nil {
+		t.Fatal(err)
+	}
+	if coreVersion != "1.11" {
+		t.Fatalf("core schema version = %q, want 1.11", coreVersion)
+	}
+}
+
 func TestInitCreatesStatsDashboardIndex(t *testing.T) {
 	dbDir := makeDBTempDir(t, "s-ui-db-test-")
 	dbPath := filepath.Join(dbDir, "s-ui.db")
@@ -185,10 +171,80 @@ func TestInitCreatesStatsDashboardIndex(t *testing.T) {
 	}
 }
 
-func TestIssue14InitReturnsAdaptError(t *testing.T) {
+func TestEnsureIndexesRejectsDuplicateSettingsWithoutDeletingRows(t *testing.T) {
+	database, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "duplicates.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pool, err := database.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = pool.Close() })
+	if err := database.AutoMigrate(schemaModels()...); err != nil {
+		t.Fatal(err)
+	}
+	if err := database.Create(&[]model.Setting{
+		{Key: "duplicate", Value: "first"},
+		{Key: "duplicate", Value: "second"},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	err = ensureIndexes(database)
+	if err == nil || !strings.Contains(err.Error(), `duplicate key "duplicate"`) {
+		t.Fatalf("ensureIndexes error = %v, want duplicate-setting rejection", err)
+	}
+	var count int64
+	if err := database.Model(&model.Setting{}).Where("key = ?", "duplicate").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 2 {
+		t.Fatalf("duplicate setting rows after rejection = %d, want 2", count)
+	}
+}
+
+func TestInitEnforcesClientIdentityIndexes(t *testing.T) {
 	dbDir := makeDBTempDir(t, "s-ui-db-test-")
 	dbPath := filepath.Join(dbDir, "s-ui.db")
-	sentinel := errors.New("issue14 adapt failure")
+	if err := Init(dbPath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		cleanupSQLiteSidecars(dbPath)
+	})
+
+	valid := func(name, secret string) model.Client {
+		return model.Client{
+			Name:      name,
+			SubSecret: secret,
+			Config:    []byte(`{}`),
+			Inbounds:  []byte(`[]`),
+			Links:     []byte(`[]`),
+		}
+	}
+	first := valid("first", "secret-one")
+	if err := DB().Create(&first).Error; err != nil {
+		t.Fatal(err)
+	}
+	duplicateName := valid("first", "secret-two")
+	if err := DB().Create(&duplicateName).Error; err == nil {
+		t.Fatal("duplicate client name bypassed the storage invariant")
+	}
+	duplicateSecret := valid("second", "secret-one")
+	if err := DB().Create(&duplicateSecret).Error; err == nil {
+		t.Fatal("duplicate client subscription secret bypassed the storage invariant")
+	}
+}
+
+func TestInitReturnsAdaptError(t *testing.T) {
+	dbDir := makeDBTempDir(t, "s-ui-db-test-")
+	dbPath := filepath.Join(dbDir, "s-ui.db")
+	sentinel := errors.New("adapt failure")
 
 	previousAdapt := adaptToCurrentVersion
 	adaptToCurrentVersion = func() error {
@@ -209,6 +265,36 @@ func TestIssue14InitReturnsAdaptError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "post-migration adapt failed") {
 		t.Fatalf("sqlite.Init error = %q, want post-migration adapt context", err)
+	}
+	if DB() != nil {
+		t.Fatal("failed database initialization left a globally reachable handle")
+	}
+}
+
+func TestInitRejectsReplacingLiveDatabase(t *testing.T) {
+	dbDir := makeDBTempDir(t, "s-ui-db-test-")
+	firstPath := filepath.Join(dbDir, "first.db")
+	secondPath := filepath.Join(dbDir, "second.db")
+	if err := Init(firstPath); err != nil {
+		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
+			t.Skip(err)
+		}
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		closeMainDB(t)
+		cleanupSQLiteSidecars(firstPath)
+		cleanupSQLiteSidecars(secondPath)
+	})
+	original := DB()
+	if err := Init(secondPath); err == nil || !strings.Contains(err.Error(), "already initialized") {
+		t.Fatalf("second Init error = %v, want live-database rejection", err)
+	}
+	if DB() != original {
+		t.Fatal("rejected Init replaced the live database handle")
+	}
+	if _, err := os.Stat(secondPath); !os.IsNotExist(err) {
+		t.Fatalf("rejected Init created the second database: %v", err)
 	}
 }
 
@@ -297,7 +383,7 @@ func TestInitBackfillsSortOrderColumns(t *testing.T) {
 	assertSortOrders("users", []int{1})
 }
 
-func TestIssue15DBPoolConfigFromEnv(t *testing.T) {
+func TestDBPoolConfigFromEnv(t *testing.T) {
 	cases := []struct {
 		name        string
 		maxOpenRaw  *string
@@ -363,7 +449,7 @@ func TestIssue15DBPoolConfigFromEnv(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			setIssue15DBPoolEnv(t, tc.maxOpenRaw, tc.maxIdleRaw)
+			setDBPoolEnv(t, tc.maxOpenRaw, tc.maxIdleRaw)
 
 			got := resolvedDBPoolConfig()
 			if got.maxOpenConns != tc.wantMaxOpen {
@@ -379,8 +465,8 @@ func TestIssue15DBPoolConfigFromEnv(t *testing.T) {
 	}
 }
 
-func TestIssue15ApplyDBPoolConfig(t *testing.T) {
-	pool := &issue15PoolSetter{}
+func TestApplyDBPoolConfig(t *testing.T) {
+	pool := &recordingDBPoolSetter{}
 	applyDBPoolConfig(pool, dbPoolConfig{
 		maxOpenConns:    5,
 		maxIdleConns:    2,
@@ -398,8 +484,8 @@ func TestIssue15ApplyDBPoolConfig(t *testing.T) {
 	}
 }
 
-func TestIssue15OpenDBUsesConfiguredMaxOpenConns(t *testing.T) {
-	setIssue15DBPoolEnv(t, stringPtr("2"), stringPtr("1"))
+func TestOpenDBUsesConfiguredMaxOpenConns(t *testing.T) {
+	setDBPoolEnv(t, stringPtr("2"), stringPtr("1"))
 
 	dbDir := makeDBTempDir(t, "s-ui-db-test-")
 	dbPath := filepath.Join(dbDir, "s-ui.db")
@@ -525,25 +611,25 @@ func dbTestHasIndex(tx *gorm.DB, table string, indexName string) (bool, error) {
 	return false, rows.Err()
 }
 
-type issue15PoolSetter struct {
+type recordingDBPoolSetter struct {
 	maxOpenConns    int
 	maxIdleConns    int
 	connMaxLifetime time.Duration
 }
 
-func (s *issue15PoolSetter) SetMaxOpenConns(value int) {
+func (s *recordingDBPoolSetter) SetMaxOpenConns(value int) {
 	s.maxOpenConns = value
 }
 
-func (s *issue15PoolSetter) SetMaxIdleConns(value int) {
+func (s *recordingDBPoolSetter) SetMaxIdleConns(value int) {
 	s.maxIdleConns = value
 }
 
-func (s *issue15PoolSetter) SetConnMaxLifetime(value time.Duration) {
+func (s *recordingDBPoolSetter) SetConnMaxLifetime(value time.Duration) {
 	s.connMaxLifetime = value
 }
 
-func setIssue15DBPoolEnv(t *testing.T, maxOpenRaw *string, maxIdleRaw *string) {
+func setDBPoolEnv(t *testing.T, maxOpenRaw *string, maxIdleRaw *string) {
 	t.Helper()
 
 	oldMaxOpen, hadMaxOpen := os.LookupEnv(dbMaxOpenConnsEnv)

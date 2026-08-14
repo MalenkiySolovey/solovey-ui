@@ -55,15 +55,22 @@ func (s *StepUpService) Issue(binding StepUpBinding) (IssuedStepUpGrant, error) 
 	if err := validateStepUpBinding(binding); err != nil {
 		return IssuedStepUpGrant{}, err
 	}
-	token := common.Random(48)
+	token, err := common.SecureRandom(48)
+	if err != nil {
+		return IssuedStepUpGrant{}, err
+	}
 	digest, err := s.digest(token)
 	if err != nil {
 		return IssuedStepUpGrant{}, err
 	}
 	now := s.now()
+	revision, err := common.SecureRandom(24)
+	if err != nil {
+		return IssuedStepUpGrant{}, err
+	}
 	grant := model.StepUpGrant{
 		Digest:                    digest,
-		Revision:                  common.Random(24),
+		Revision:                  revision,
 		UserID:                    binding.UserID,
 		SessionRef:                binding.SessionRef,
 		SessionGenerationRevision: binding.SessionGenerationRevision,

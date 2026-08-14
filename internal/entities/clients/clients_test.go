@@ -21,7 +21,7 @@ func newClientDB(t *testing.T) *gorm.DB {
 		}
 		t.Fatal(err)
 	}
-	if err := db.AutoMigrate(&model.Client{}, &model.Inbound{}, &model.Tls{}); err != nil {
+	if err := db.AutoMigrate(&model.Client{}, &model.ClientIP{}, &model.Inbound{}, &model.Tls{}); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
@@ -137,5 +137,135 @@ func TestPrepareSubSecretPreservesExisting(t *testing.T) {
 	}
 	if next.IPLimitMode != "monitor" {
 		t.Fatalf("ip limit mode = %q, want monitor", next.IPLimitMode)
+	}
+}
+
+func TestValidateStoredRejectsMissingAndDuplicateSubSecret(t *testing.T) {
+	db := newClientDB(t)
+	first := model.Client{Name: "first", SubSecret: "same", Inbounds: json.RawMessage(`[]`)}
+	second := model.Client{Name: "second", SubSecret: "same", Inbounds: json.RawMessage(`[]`)}
+	if err := db.Create(&[]model.Client{first, second}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateStored(db); err == nil || !strings.Contains(err.Error(), "duplicates subscription secret") {
+		t.Fatalf("ValidateStored duplicate error = %v", err)
+	}
+	if err := db.Model(&model.Client{}).Where("name = ?", "second").Update("sub_secret", "").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateStored(db); err == nil || !strings.Contains(err.Error(), "invalid subscription secret") {
+		t.Fatalf("ValidateStored missing error = %v", err)
+	}
+}
+
+func TestPrepareSubSecretIgnoresCallerControlledValues(t *testing.T) {
+	db := newClientDB(t)
+	newClient := model.Client{Name: "new", SubSecret: "chosen-by-caller"}
+	if err := PrepareSubSecret(db, &newClient, false); err != nil {
+		t.Fatal(err)
+	}
+	if newClient.SubSecret == "chosen-by-caller" || newClient.SubSecret == "" {
+		t.Fatalf("new client retained caller-controlled secret: %q", newClient.SubSecret)
+	}
+
+	stored := model.Client{Name: "stored", SubSecret: "persisted-secret", Inbounds: json.RawMessage(`[]`)}
+	if err := db.Create(&stored).Error; err != nil {
+		t.Fatal(err)
+	}
+	edit := model.Client{Id: stored.Id, Name: stored.Name, SubSecret: "replacement"}
+	if err := PrepareSubSecret(db, &edit, true); err != nil {
+		t.Fatal(err)
+	}
+	if edit.SubSecret != "persisted-secret" {
+		t.Fatalf("edit secret = %q, want persisted-secret", edit.SubSecret)
+	}
+}
+
+func TestSaveRejectsDuplicateNameAndNewActionWithID(t *testing.T) {
+	db := newClientDB(t)
+	existing := model.Client{Name: "alice", SubSecret: "secret", Inbounds: json.RawMessage(`[]`), Links: json.RawMessage(`[]`), Config: json.RawMessage(`{}`)}
+	if err := db.Create(&existing).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, payload := range []model.Client{
+		{Name: "alice", Inbounds: json.RawMessage(`[]`), Links: json.RawMessage(`[]`), Config: json.RawMessage(`{}`)},
+		{Id: existing.Id, Name: "replacement", Inbounds: json.RawMessage(`[]`), Links: json.RawMessage(`[]`), Config: json.RawMessage(`{}`)},
+	} {
+		raw, err := json.Marshal(payload)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Save(SaveRequest{Tx: db, Action: "new", Data: raw, Hostname: "example.com"}); err == nil {
+			t.Fatalf("invalid new client was accepted: %#v", payload)
+		}
+	}
+	var stored model.Client
+	if err := db.First(&stored, existing.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Name != "alice" {
+		t.Fatalf("existing client was overwritten: %#v", stored)
+	}
+}
+
+func TestSaveRejectsInvalidClientNameAndMissingBatchPersistence(t *testing.T) {
+	db := newClientDB(t)
+	invalid, err := json.Marshal(model.Client{
+		Name: "bad\nname", Inbounds: json.RawMessage(`[]`), Links: json.RawMessage(`[]`), Config: json.RawMessage(`{}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Save(SaveRequest{Tx: db, Action: "new", Data: invalid}); err == nil {
+		t.Fatal("client with a control character in its name was accepted")
+	}
+	invalidLinks, err := json.Marshal(model.Client{
+		Name: "bad-links", Inbounds: json.RawMessage(`[]`), Links: json.RawMessage(`{}`), Config: json.RawMessage(`{}`),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Save(SaveRequest{Tx: db, Action: "new", Data: invalidLinks}); err == nil {
+		t.Fatal("client with non-array links was accepted")
+	}
+
+	bulk, err := json.Marshal([]model.Client{{
+		Name: "batch-client", Inbounds: json.RawMessage(`[]`), Links: json.RawMessage(`[]`), Config: json.RawMessage(`{}`),
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Save(SaveRequest{Tx: db, Action: "addbulk", Data: bulk}); err == nil || !strings.Contains(err.Error(), "batch persistence") {
+		t.Fatalf("bulk save without persistence owner error = %v", err)
+	}
+}
+
+func TestSaveMovesAndDeletesClientIPHistory(t *testing.T) {
+	db := newClientDB(t)
+	client := model.Client{Name: "old", SubSecret: "secret", Inbounds: json.RawMessage(`[]`), Links: json.RawMessage(`[]`), Config: json.RawMessage(`{}`)}
+	if err := db.Create(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.ClientIP{ClientName: "old", IPHash: "hash", FirstSeen: 1, LastSeen: 2}).Error; err != nil {
+		t.Fatal(err)
+	}
+	client.Name = "new"
+	payload, err := json.Marshal(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Save(SaveRequest{Tx: db, Action: "edit", Data: payload, Hostname: "example.com"}); err != nil {
+		t.Fatal(err)
+	}
+	var count int64
+	if err := db.Model(&model.ClientIP{}).Where("client_name = ?", "new").Count(&count).Error; err != nil || count != 1 {
+		t.Fatalf("renamed history count=%d err=%v", count, err)
+	}
+	deletePayload, _ := json.Marshal(client.Id)
+	if _, err := Save(SaveRequest{Tx: db, Action: "del", Data: deletePayload}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&model.ClientIP{}).Where("client_name = ?", "new").Count(&count).Error; err != nil || count != 0 {
+		t.Fatalf("deleted history count=%d err=%v", count, err)
 	}
 }

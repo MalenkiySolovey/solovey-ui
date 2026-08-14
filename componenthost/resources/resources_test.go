@@ -17,6 +17,28 @@ type testContributor struct {
 	calls int
 }
 
+type blockingContributor struct {
+	panic bool
+}
+
+func (blockingContributor) Owner() string { return "blocking" }
+func (contributor blockingContributor) ListProtectableResources(context.Context) ([]ProtectableResource, error) {
+	if contributor.panic {
+		panic("secret")
+	}
+	time.Sleep(250 * time.Millisecond)
+	return nil, nil
+}
+
+func registerTestContributor(t *testing.T, registry *Registry, contributor ResourceContributor) func() {
+	t.Helper()
+	unregister, err := registry.Register(contributor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return unregister
+}
+
 func (c *testContributor) Owner() string { return c.owner }
 func (c *testContributor) ListProtectableResources(context.Context) ([]ProtectableResource, error) {
 	c.calls++
@@ -89,7 +111,7 @@ func TestRegistryCachesRefreshesAndClones(t *testing.T) {
 		Endpoints:           []PublicEndpoint{{ID: "provider-owned", Key: PublicEndpointKey{Network: NetworkTCP, AddressFamily: AddressFamilyIPv4, BindAddress: "127.0.0.1", Port: 1234}, ObservedAt: time.Now().Unix()}},
 		AdvertisedEndpoints: []AdvertisedEndpoint{{ID: "advertised:one", HostnameOrIP: "example.com", Port: 443, Network: NetworkTCP, ProtocolLabel: "https", RouteSelectors: []string{"route:one"}, SocketClaimIDs: []string{"claim:one"}}},
 	}}}
-	unregister := registry.Register(contributor)
+	unregister := registerTestContributor(t, registry, contributor)
 	first := registry.Snapshot(context.Background())
 	second := registry.Snapshot(context.Background())
 	if contributor.calls != 1 || len(first.Resources) != 1 || len(second.Resources) != 1 {
@@ -118,11 +140,33 @@ func TestRegistryCachesRefreshesAndClones(t *testing.T) {
 	}
 }
 
+func TestRegistryContainsBlockingAndPanickingContributors(t *testing.T) {
+	for name, contributor := range map[string]ResourceContributor{
+		"blocking":  blockingContributor{},
+		"panicking": blockingContributor{panic: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			registry := NewRegistry(0)
+			registerTestContributor(t, registry, contributor)
+			ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+			defer cancel()
+			started := time.Now()
+			snapshot := registry.Refresh(ctx)
+			if len(snapshot.Errors) != 1 || snapshot.Errors[0].Message != "resource contributor is unavailable" {
+				t.Fatalf("failure snapshot = %#v", snapshot)
+			}
+			if time.Since(started) > 200*time.Millisecond {
+				t.Fatal("contributor escaped the inventory deadline")
+			}
+		})
+	}
+}
+
 func TestRegistryIsolatesErrorsAndDuplicateIDs(t *testing.T) {
 	registry := NewRegistry(time.Minute)
-	registry.Register(&testContributor{owner: "broken", err: errors.New(`open C:\\secret\\token.db: offline`)})
-	registry.Register(&testContributor{owner: "first", items: []ProtectableResource{{ID: "same", Kind: "inbound", Protocol: "stream", Port: 1, Source: "first"}}})
-	registry.Register(&testContributor{owner: "second", items: []ProtectableResource{{ID: "same", Kind: "inbound", Protocol: "stream", Port: 2, Source: "second"}}})
+	registerTestContributor(t, registry, &testContributor{owner: "broken", err: errors.New(`open C:\\secret\\token.db: offline`)})
+	registerTestContributor(t, registry, &testContributor{owner: "first", items: []ProtectableResource{{ID: "same", Kind: "inbound", Protocol: "stream", Port: 1, Source: "first"}}})
+	registerTestContributor(t, registry, &testContributor{owner: "second", items: []ProtectableResource{{ID: "same", Kind: "inbound", Protocol: "stream", Port: 2, Source: "second"}}})
 	snapshot := registry.Refresh(context.Background())
 	if len(snapshot.Errors) != 1 || snapshot.Errors[0].Owner != "broken" {
 		t.Fatalf("errors = %#v", snapshot.Errors)
@@ -144,7 +188,7 @@ func TestRegistryIsolatesErrorsAndDuplicateIDs(t *testing.T) {
 
 func TestRegistryRejectsPathShapedIDsAndSanitizesEndpointIdentity(t *testing.T) {
 	registry := NewRegistry(time.Minute)
-	registry.Register(&testContributor{owner: "fixture", items: []ProtectableResource{
+	registerTestContributor(t, registry, &testContributor{owner: "fixture", items: []ProtectableResource{
 		{ID: `/var/lib/private/token`, Kind: "inbound", Protocol: "stream", Port: 443},
 		{ID: "fixture:safe", Kind: "inbound", Owner: "fixture", Protocol: "stream", Listen: "127.0.0.1", Port: 443, Source: "fixture", Capabilities: ProtectableResourceCapabilities{Known: true}, Endpoints: []PublicEndpoint{{ID: `/secret/endpoint`, Key: PublicEndpointKey{Network: NetworkTCP, AddressFamily: AddressFamilyIPv4, BindAddress: `C:\\secret\\bind`, Port: 443}, ResourceID: `/secret/resource`, Source: `/secret/source`, ObservedAt: 100}}},
 	}})
@@ -172,7 +216,7 @@ func TestRegistryBoundsCardinalityAndMarksTruncation(t *testing.T) {
 			Capabilities: ProtectableResourceCapabilities{Known: true},
 		}
 	}
-	registry.Register(&testContributor{owner: "fixture", items: items})
+	registerTestContributor(t, registry, &testContributor{owner: "fixture", items: items})
 
 	snapshot := registry.Refresh(context.Background())
 	if len(snapshot.Resources) != MaxResourceFacts {
@@ -241,22 +285,29 @@ func TestRecoveryPathRejectsExistingConnectionAsProof(t *testing.T) {
 }
 
 func TestManagementEndpointCurrentRequiresExactSemanticRevision(t *testing.T) {
+	now := time.Unix(100, 0).UTC()
 	value := ManagementEndpointV1{
 		Schema: ManagementEndpointSchemaV1, ID: "management:ssh:one", Network: NetworkTCP,
 		Family: AddressFamilyIPv4, Bind: "192.0.2.10", Port: 22, ServiceKind: ManagementSSH,
-		ObservedAt: 1, ConfidenceBP: 10000, ConfigurationRevision: strings.Repeat("a", 64),
+		Exposure: EndpointIntentPublic, Owner: "system", Source: "host-surface", RecoveryPolicy: "fresh_independent_path_required",
+		ObservedListener: true, ObservedAt: 99, ExpiresAt: 190, ConfidenceBP: 10000, ConfigurationRevision: strings.Repeat("a", 64),
 	}
-	if !ManagementEndpointCurrent(value) {
+	if !ManagementEndpointCurrent(value, now) {
 		t.Fatal("exact current management endpoint was rejected")
 	}
 	value.ConfigurationRevision = "legacy-nonempty-revision"
-	if ManagementEndpointCurrent(value) {
+	if ManagementEndpointCurrent(value, now) {
 		t.Fatal("non-digest management revision was accepted")
 	}
 	value.ConfigurationRevision = strings.Repeat("a", 64)
 	value.ReasonCodes = []string{"listener_owner_ambiguous"}
-	if ManagementEndpointCurrent(value) {
+	if ManagementEndpointCurrent(value, now) {
 		t.Fatal("ambiguous management ownership was accepted")
+	}
+	value.ReasonCodes = nil
+	value.ExpiresAt = now.Unix()
+	if ManagementEndpointCurrent(value, now) {
+		t.Fatal("expired management endpoint was accepted")
 	}
 }
 
@@ -271,7 +322,7 @@ func TestRegistryBoundsNestedFactsAndRedactsPathMetadata(t *testing.T) {
 		advertised[index] = AdvertisedEndpoint{ID: fmt.Sprintf("advertised:%d", index), HostnameOrIP: "example.com", Port: 443, Network: NetworkTCP, ProtocolLabel: "https"}
 	}
 	registry.now = func() time.Time { return time.Unix(100, 0).UTC() }
-	registry.Register(&testContributor{owner: "fixture", items: []ProtectableResource{{
+	registerTestContributor(t, registry, &testContributor{owner: "fixture", items: []ProtectableResource{{
 		ID: "fixture:nested", Kind: "inbound", Name: `/private/secret`, Protocol: "stream", Listen: `C:\\private\\bind`, Port: 443, Source: "fixture", Capabilities: ProtectableResourceCapabilities{Known: true}, Endpoints: endpoints, AdvertisedEndpoints: advertised,
 	}}})
 	snapshot := registry.Refresh(context.Background())

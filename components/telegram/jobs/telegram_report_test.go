@@ -18,6 +18,7 @@ func TestTelegramReportSchedulerReplansFromSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 	for key, value := range map[string]string{
+		"telegramEnabled":    "true",
 		"telegramReport":     "true",
 		"telegramReportCron": "*/5 * * * *",
 	} {
@@ -44,5 +45,34 @@ func TestTelegramReportSchedulerReplansFromSettings(t *testing.T) {
 	scheduler.Run()
 	if scheduler.entryID != 0 || scheduler.currentSpec != "" {
 		t.Fatalf("scheduler did not remove report job: %#v", scheduler)
+	}
+}
+
+func TestTelegramReportSchedulerStopsWhenTelegramSettingIsInvalid(t *testing.T) {
+	initDatabase(t)
+	registerTelegramSettingsForTest(t)
+	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	for key, value := range map[string]string{
+		"telegramEnabled":    "true",
+		"telegramReport":     "true",
+		"telegramReportCron": "*/5 * * * *",
+	} {
+		if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", key).Update("value", value).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	scheduler := NewTelegramReportScheduler(testEntryScheduler{Cron: cron.New()})
+	scheduler.Run()
+	if scheduler.entryID == 0 {
+		t.Fatal("report scheduler did not establish the initial job")
+	}
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", "telegramEnabled").Update("value", "invalid").Error; err != nil {
+		t.Fatal(err)
+	}
+	scheduler.Run()
+	if scheduler.entryID != 0 || scheduler.currentSpec != "" {
+		t.Fatalf("report scheduler retained a job after a settings failure: %#v", scheduler)
 	}
 }

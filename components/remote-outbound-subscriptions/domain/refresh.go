@@ -18,6 +18,7 @@ type RefreshResult struct {
 	Updated        int  `json:"updated"`
 	MarkedMissing  int  `json:"markedMissing"`
 	Synced         int  `json:"synced"`
+	PruneDeferred  bool `json:"pruneDeferred,omitempty"`
 }
 
 func MarkRefreshError(tx *gorm.DB, subscriptionID uint, message string, now int64) error {
@@ -37,15 +38,15 @@ func RefreshFetchedSubscription(tx *gorm.DB, subscription *RemoteOutboundSubscri
 	if err != nil {
 		return RefreshResult{SubscriptionId: subscription.Id}, false, err
 	}
-	return refreshSubscriptionOutbounds(tx, subscription, fetched.Outbounds, fetched.Snapshot, collectionSnapshot, now)
+	return refreshSubscriptionOutbounds(tx, subscription, fetched.Outbounds, fetched.Snapshot, collectionSnapshot, fetched.Complete(), now)
 }
 
 func RefreshSubscriptionOutbounds(tx *gorm.DB, subscription *RemoteOutboundSubscription, outbounds []map[string]interface{}, now int64) (RefreshResult, bool, error) {
 	canonicalSnapshot := subcanonical.ObserveOutbounds(subcanonical.FormatSingBox, outbounds)
-	return refreshSubscriptionOutbounds(tx, subscription, outbounds, canonicalSnapshot, nil, now)
+	return refreshSubscriptionOutbounds(tx, subscription, outbounds, canonicalSnapshot, nil, true, now)
 }
 
-func refreshSubscriptionOutbounds(tx *gorm.DB, subscription *RemoteOutboundSubscription, outbounds []map[string]interface{}, canonicalSnapshot subcanonical.Snapshot, collectionSnapshot json.RawMessage, now int64) (RefreshResult, bool, error) {
+func refreshSubscriptionOutbounds(tx *gorm.DB, subscription *RemoteOutboundSubscription, outbounds []map[string]interface{}, canonicalSnapshot subcanonical.Snapshot, collectionSnapshot json.RawMessage, allowPrune bool, now int64) (RefreshResult, bool, error) {
 	result := RefreshResult{
 		SubscriptionId: subscription.Id,
 		Fetched:        len(outbounds),
@@ -74,9 +75,14 @@ func refreshSubscriptionOutbounds(tx *gorm.DB, subscription *RemoteOutboundSubsc
 	if err := ReconcileDerivedGroupDependencies(tx, subscription.Id, defaultGroup.Id); err != nil {
 		return result, false, err
 	}
-	missingChanged, err := pruneStaleConnections(tx, subscription.Id, seen, now, &result)
-	if err != nil {
-		return result, false, err
+	missingChanged := false
+	if allowPrune {
+		missingChanged, err = pruneStaleConnections(tx, subscription.Id, seen, now, &result)
+		if err != nil {
+			return result, false, err
+		}
+	} else {
+		result.PruneDeferred = true
 	}
 	canonicalSnapshotData, err := json.Marshal(canonicalSnapshot)
 	if err != nil {

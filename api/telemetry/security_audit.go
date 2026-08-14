@@ -18,6 +18,9 @@ func (a *Handler) GetSecurityAudit(c *gin.Context) {
 	if !a.enforceAuditEndpointRateLimit(c) {
 		return
 	}
+	if !strictAuditQueryKeys(c, "limit", "cursor", "event", "severity", "since", "until") {
+		return
+	}
 	limit, err := parseAuditLimit(c.Query("limit"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, Envelope{Success: false, Msg: "audit: " + err.Error()})
@@ -60,6 +63,9 @@ func (a *Handler) GetRecentSecurityAudit(c *gin.Context) {
 	if !a.RequireScope(c, "auditRecent", "admin", "read", "write") {
 		return
 	}
+	if !strictAuditQueryKeys(c, "limit") {
+		return
+	}
 	limit, err := parseAuditLimit(c.Query("limit"))
 	if err != nil {
 		c.JSON(http.StatusBadRequest, Envelope{Success: false, Msg: "audit: " + err.Error()})
@@ -74,6 +80,20 @@ func (a *Handler) GetRecentSecurityAudit(c *gin.Context) {
 		"nextCursor": nextCursor,
 		"limit":      limit,
 	}, err)
+}
+
+func strictAuditQueryKeys(c *gin.Context, allowed ...string) bool {
+	known := make(map[string]struct{}, len(allowed))
+	for _, key := range allowed {
+		known[key] = struct{}{}
+	}
+	for key := range c.Request.URL.Query() {
+		if _, ok := known[key]; !ok {
+			c.JSON(http.StatusBadRequest, Envelope{Success: false, Msg: "audit: invalid query"})
+			return false
+		}
+	}
+	return true
 }
 
 func parseAuditLimit(raw string) (int, error) {

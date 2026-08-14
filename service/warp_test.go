@@ -32,13 +32,13 @@ func (r *warpCaptureRoundTripper) RoundTrip(req *http.Request) (*http.Response, 
 	}, nil
 }
 
-func TestSetWarpAuthorizedHeadersIssue31(t *testing.T) {
+func TestSetWarpAuthorizedHeaders(t *testing.T) {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodPut, "https://api.cloudflareclient.test/v0a4005/reg/device/account", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	setWarpAuthorizedHeaders(req, "access-token")
-	assertWarpClientHeadersIssue31(t, req, "access-token")
+	assertWarpClientHeaders(t, req, "access-token")
 	if got := req.Header.Get("Content-Type"); got != "application/json; charset=UTF-8" {
 		t.Fatalf("unexpected PUT Content-Type: %q", got)
 	}
@@ -66,7 +66,7 @@ func TestSetWarpAuthorizedHeadersIssue31(t *testing.T) {
 	}
 }
 
-func TestSetWarpLicenseSendsAuthorizedWarpHeadersIssue31(t *testing.T) {
+func TestSetWarpLicenseSendsAuthorizedWarpHeaders(t *testing.T) {
 	rt := &warpCaptureRoundTripper{}
 	oldClient := warpHTTPClient
 	warpHTTPClient = &http.Client{Transport: rt}
@@ -95,7 +95,7 @@ func TestSetWarpLicenseSendsAuthorizedWarpHeadersIssue31(t *testing.T) {
 	if got := rt.req.URL.Path; got != "/v0a4005/reg/device-id/account" {
 		t.Fatalf("unexpected request path: %s", got)
 	}
-	assertWarpClientHeadersIssue31(t, rt.req, "access-token")
+	assertWarpClientHeaders(t, rt.req, "access-token")
 	if got := rt.req.Header.Get("Content-Type"); got != "application/json; charset=UTF-8" {
 		t.Fatalf("unexpected Content-Type: %q", got)
 	}
@@ -109,7 +109,23 @@ func TestSetWarpLicenseSendsAuthorizedWarpHeadersIssue31(t *testing.T) {
 	}
 }
 
-func assertWarpClientHeadersIssue31(t *testing.T, req *http.Request, token string) {
+func TestWarpReservedBytesRequireExactThreeByteClientID(t *testing.T) {
+	service := &WarpService{}
+	reserved, err := service.getReserved("AQID")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(reserved) != 3 || reserved[0] != 1 || reserved[1] != 2 || reserved[2] != 3 {
+		t.Fatalf("unexpected reserved bytes: %#v", reserved)
+	}
+	for _, input := range []string{"", "AQI=", "not-base64"} {
+		if _, err := service.getReserved(input); err == nil {
+			t.Fatalf("invalid WARP client id %q was accepted", input)
+		}
+	}
+}
+
+func assertWarpClientHeaders(t *testing.T, req *http.Request, token string) {
 	t.Helper()
 	if got := req.Header.Get("User-Agent"); got != warpUserAgent {
 		t.Fatalf("unexpected User-Agent: %q", got)

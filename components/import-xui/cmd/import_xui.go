@@ -9,7 +9,6 @@ import (
 	"io"
 	"os"
 	"strings"
-	"time"
 
 	optionalcmd "github.com/MalenkiySolovey/solovey-ui/componenthost/commands"
 	importxui "github.com/MalenkiySolovey/solovey-ui/components/import-xui/database"
@@ -71,14 +70,6 @@ func Run(args []string, out io.Writer) int {
 		fmt.Fprintln(out, "import-xui:", err)
 		return 1
 	}
-	if !dryRun {
-		backupPath, err := importxui.WritePreImportBackup(time.Now().Unix())
-		if err != nil {
-			fmt.Fprintln(out, "import-xui:", err)
-			return 1
-		}
-		fmt.Fprintln(out, "Pre-import backup:", backupPath)
-	}
 	plan, err := importxui.Plan(src, importxui.PlanOptions{
 		Strategy:       importStrategy,
 		AdminMode:      importxui.AdminModeSkip,
@@ -90,13 +81,15 @@ func Run(args []string, out io.Writer) int {
 		return 1
 	}
 	report, err := importxui.Apply(src, *plan, importxui.ApplyOptions{
-		DryRun:     dryRun,
-		SkipBackup: true,
-		Hostname:   strings.TrimSpace(host),
+		DryRun:   dryRun,
+		Hostname: strings.TrimSpace(host),
 	})
 	if err != nil {
 		fmt.Fprintln(out, "import-xui:", err)
 		return 1
+	}
+	if report.BackupPath != "" {
+		fmt.Fprintln(out, "Pre-import backup:", report.BackupPath)
 	}
 	printImportXuiSummary(out, report)
 	if reportPath != "" {

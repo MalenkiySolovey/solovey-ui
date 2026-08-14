@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 
@@ -20,7 +21,9 @@ import (
 
 func newTestHandlers() *apiHandlers {
 	return &apiHandlers{
-		deps: Deps{},
+		deps: Deps{
+			RequireScope: func(*gin.Context, string, ...string) bool { return true },
+		},
 	}
 }
 
@@ -55,6 +58,46 @@ func doHandler(t *testing.T, handler gin.HandlerFunc, body string) apiMsg {
 		t.Fatalf("response is not an apiMsg envelope: %v (body %q)", err, rec.Body.String())
 	}
 	return m
+}
+
+func TestHandlersFailClosedWithoutScopeDependency(t *testing.T) {
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/paidsub/status", nil)
+
+	(&apiHandlers{}).status(c)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+	var response apiMsg
+	if err := json.Unmarshal(rec.Body.Bytes(), &response); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if response.Success || response.Msg != "paid subscription service is unavailable" || response.Obj != nil {
+		t.Fatalf("unexpected fail-closed response: %+v", response)
+	}
+}
+
+func TestHandlersDelegateReadScopeToHost(t *testing.T) {
+	var resource string
+	var scopes []string
+	rec := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(rec)
+	c.Request = httptest.NewRequest(http.MethodGet, "/paidsub/status", nil)
+	h := &apiHandlers{deps: Deps{RequireScope: func(c *gin.Context, gotResource string, gotScopes ...string) bool {
+		resource = gotResource
+		scopes = append([]string(nil), gotScopes...)
+		c.AbortWithStatus(http.StatusForbidden)
+		return false
+	}}}
+
+	h.status(c)
+	if rec.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusForbidden)
+	}
+	if resource != "paidSubscriptions" || !slices.Equal(scopes, []string{"admin", "read", "write"}) {
+		t.Fatalf("scope request = %q %v", resource, scopes)
+	}
 }
 
 func TestRefundHandlerValidationAndSuccess(t *testing.T) {

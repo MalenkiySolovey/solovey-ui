@@ -21,25 +21,30 @@ const (
 	RateLimitGCEvery         = time.Minute
 )
 
-var (
-	subscriptionRateLimiter = ratelimit.NewFixedWindow[string](RateLimitWindow, DefaultRateLimitRequests, RateLimitMaxKeys, RateLimitGCEvery)
-
-	rateLimitSettingMu sync.Mutex
-	rateLimitSetting   = struct {
+type RateLimiter struct {
+	limiter   *ratelimit.FixedWindow[string]
+	settingMu sync.Mutex
+	setting   struct {
 		limit     int
 		expiresAt time.Time
-	}{}
-)
+	}
+}
 
-func RateLimitMiddleware() gin.HandlerFunc {
+func NewRateLimiter() *RateLimiter {
+	return &RateLimiter{
+		limiter: ratelimit.NewFixedWindow[string](RateLimitWindow, DefaultRateLimitRequests, RateLimitMaxKeys, RateLimitGCEvery),
+	}
+}
+
+func (r *RateLimiter) Middleware() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		ip := CanonicalClientIP(c.ClientIP())
 		if ip == "" {
 			ip = c.ClientIP()
 		}
 		now := time.Now()
-		limit := currentRateLimitRequests(now)
-		decision := subscriptionRateLimiter.AllowWithLimitAt(ip, limit, now)
+		limit := r.currentRequests(now)
+		decision := r.limiter.AllowWithLimitAt(ip, limit, now)
 		if !decision.Allowed {
 			retryAfter := int(math.Ceil(decision.RetryAfter.Seconds()))
 			if retryAfter <= 0 {
@@ -65,19 +70,17 @@ func CanonicalClientIP(value string) string {
 	return addr.Unmap().String()
 }
 
-func ResetRateLimitForTest() {
-	subscriptionRateLimiter.ResetAll()
-	rateLimitSettingMu.Lock()
-	rateLimitSetting.limit = 0
-	rateLimitSetting.expiresAt = time.Time{}
-	rateLimitSettingMu.Unlock()
+func (r *RateLimiter) Close() {
+	if r != nil && r.limiter != nil {
+		r.limiter.Close()
+	}
 }
 
-func currentRateLimitRequests(now time.Time) int {
-	rateLimitSettingMu.Lock()
-	defer rateLimitSettingMu.Unlock()
-	if rateLimitSetting.limit > 0 && now.Before(rateLimitSetting.expiresAt) {
-		return rateLimitSetting.limit
+func (r *RateLimiter) currentRequests(now time.Time) int {
+	r.settingMu.Lock()
+	defer r.settingMu.Unlock()
+	if r.setting.limit > 0 && now.Before(r.setting.expiresAt) {
+		return r.setting.limit
 	}
 	limit := DefaultRateLimitRequests
 	if provider := currentHooks().RateLimitProvider; provider != nil {
@@ -85,7 +88,7 @@ func currentRateLimitRequests(now time.Time) int {
 			limit = configured
 		}
 	}
-	rateLimitSetting.limit = limit
-	rateLimitSetting.expiresAt = now.Add(RateLimitSettingTTL)
+	r.setting.limit = limit
+	r.setting.expiresAt = now.Add(RateLimitSettingTTL)
 	return limit
 }

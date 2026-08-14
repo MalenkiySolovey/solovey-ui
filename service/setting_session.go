@@ -14,7 +14,10 @@ import (
 func (s *SettingService) GetSecret() ([]byte, error) {
 	setting, err := s.getSetting(settingcatalog.SecretKey)
 	if settingNotFound(err) {
-		secret, _ := defaultSettingValue(settingcatalog.SecretKey)
+		secret, randomErr := common.SecureRandom(32)
+		if randomErr != nil {
+			return nil, randomErr
+		}
 		if saveErr := s.saveSetting(settingcatalog.SecretKey, secret); saveErr != nil {
 			logger.Warning("save secret failed:", saveErr)
 			return []byte(secret), saveErr
@@ -30,7 +33,10 @@ func (s *SettingService) GetSecret() ([]byte, error) {
 func (s *SettingService) GetInstallSalt() ([]byte, error) {
 	setting, err := s.getSetting(settingcatalog.InstallSaltKey)
 	if settingNotFound(err) {
-		salt, _ := defaultSettingValue(settingcatalog.InstallSaltKey)
+		salt, randomErr := common.SecureRandom(32)
+		if randomErr != nil {
+			return nil, randomErr
+		}
 		if saveErr := s.saveSetting(settingcatalog.InstallSaltKey, salt); saveErr != nil {
 			logger.Warning("save install salt failed:", saveErr)
 			return []byte(salt), saveErr
@@ -105,7 +111,10 @@ func (s *SettingService) GetSessionGeneration() (string, error) {
 }
 
 func (s *SettingService) RotateSessionGeneration() (string, error) {
-	generation := common.Random(32)
+	generation, err := common.SecureRandom(32)
+	if err != nil {
+		return "", err
+	}
 	if err := s.setString(settingcatalog.SessionGenerationKey, generation); err != nil {
 		return generation, err
 	}

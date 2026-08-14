@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import {
+  cleanupManagedServerRuntime,
   managedServerDir,
   managedServerStatePath,
   readManagedServerPid,
@@ -25,15 +26,17 @@ const withManagedServerLogs = (error: unknown): Error => {
   return new Error(`${message}\n\nManaged E2E server logs:\n${readLogTail('backend.log')}\n\n${readLogTail('frontend.log')}`)
 }
 
-const waitForManagedServer = async (timeoutMs: number): Promise<void> => {
+const waitForManagedServer = async (timeoutMs: number, startupFailure: () => Error | undefined): Promise<void> => {
   const deadline = Date.now() + timeoutMs
   while (Date.now() < deadline) {
+    const failure = startupFailure()
+    if (failure) throw failure
     if (fs.existsSync(managedServerStatePath)) {
       try {
         const state = JSON.parse(fs.readFileSync(managedServerStatePath, 'utf8')) as { baseURL?: string }
         if (state.baseURL) {
           const response = await fetch(new URL('login', state.baseURL))
-          if (response.status < 500) return
+          if (response.ok) return
         }
       } catch {
         // The state file or HTTP server is not ready yet.
@@ -46,7 +49,7 @@ const waitForManagedServer = async (timeoutMs: number): Promise<void> => {
 
 export default async function globalSetup() {
   stopManagedServer(readManagedServerPid())
-  fs.rmSync(managedServerStatePath, { force: true })
+  cleanupManagedServerRuntime(false)
 
   const server = spawn(process.execPath, [path.join(repositoryRoot, 'tests', 'e2e', 'run-server.js')], {
     cwd: repositoryRoot,
@@ -55,12 +58,20 @@ export default async function globalSetup() {
     stdio: ['ignore', 'inherit', 'inherit'],
     windowsHide: true,
   })
+  let startupError: Error | undefined
+  server.once('error', (error) => {
+    startupError = error
+  })
+  server.once('exit', (code, signal) => {
+    startupError ??= new Error(`Managed E2E server exited before readiness: code=${code} signal=${signal}`)
+  })
   server.unref()
 
   try {
-    await waitForManagedServer(managedServerTimeoutMs)
+    await waitForManagedServer(managedServerTimeoutMs, () => startupError)
   } catch (error) {
     stopManagedServer(server.pid)
+    cleanupManagedServerRuntime(true)
     throw withManagedServerLogs(error)
   }
 }

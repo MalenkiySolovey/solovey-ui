@@ -49,10 +49,11 @@ func TestIntegrationBackupEnvelopeRestorePreservesBackupTableCounts(t *testing.T
 	}
 
 	if err := dbsqlite.DB().Create(&model.Client{
-		Enable:   true,
-		Name:     "integration-live-after-backup",
-		Inbounds: []byte("[]"),
-		Links:    []byte("[]"),
+		Enable:    true,
+		Name:      "integration-live-after-backup",
+		SubSecret: "integration-live-after-backup-secret",
+		Inbounds:  []byte("[]"),
+		Links:     []byte("[]"),
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -144,7 +145,7 @@ func seedBackupRestoreTables(t *testing.T) {
 		&model.Tokens{Desc: "integration-token", Token: "plain-token", UserId: 1, Enabled: true},
 		&model.Stats{DateTime: 1, Resource: "user", Tag: "integration-client", Direction: true, Traffic: 10},
 		&model.ClientIP{ClientName: "integration-client", IPHash: "integration-hash", FirstSeen: 1, LastSeen: 2},
-		&model.Client{Enable: true, Name: "integration-client", Inbounds: []byte("[]"), Links: []byte("[]")},
+		&model.Client{Enable: true, Name: "integration-client", SubSecret: "integration-client-secret", Inbounds: []byte("[]"), Links: []byte("[]")},
 		&model.Changes{DateTime: 1, Actor: "integration", Key: "settings", Action: "set", Obj: []byte(`{"subPath":"/integration/"}`)},
 		&model.AuditEvent{DateTime: 1, Actor: "integration", Event: "integration_seed", Resource: "test", Severity: "info"},
 	}

@@ -255,9 +255,13 @@ import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
 import OutboundVue from '@/layouts/modals/Outbound.vue'
 import OutboundBulk from '@/layouts/modals/OutboundBulk.vue'
 import Stats from '@/layouts/modals/Stats.vue'
-import { useOutboundsPage } from '@/shared/composables/pages/useOutboundsPage'
+import { useOutboundsPage } from '@/features/useOutboundsPage'
+import { defineAsyncComponent } from 'vue'
 
-const { mode, EntityForm, OutboundsNexusList, checkResults, testingAll, checkOutbound, checkAllOutbounds, failoverStatus, outbounds, orderedOutbounds, outboundOrderDirty, outboundOrderSaving, outboundTags, onlines, enableTraffic, modal, showModal, closeModal, bulkModal, showBulkModal, closeBulkModal, stats, showStats, closeStats, delOverlay, delOutbound, delOutboundsBulk, deleteSelectedOutbounds, outboundSelectMode, selectedOutboundCount, selectedOutboundIds, isOutboundSelected, toggleOutboundSelectMode, toggleOutboundSelection, moveOutbound, dragOutbound, dragSelectedOutbounds, sortOutboundsByName, saveOutboundOrder, cancelOutboundOrder, outboundDrag, onOutboundDrop } = useOutboundsPage(OutboundVue)
+const OutboundsNexusList = defineAsyncComponent(() => import('./outbounds/OutboundsNexusList.vue'))
+const OutboundDrawer = defineAsyncComponent(() => import('@/components/nexus/drawers/OutboundDrawer.vue'))
+
+const { mode, EntityForm, checkResults, testingAll, checkOutbound, checkAllOutbounds, failoverStatus, outbounds, orderedOutbounds, outboundOrderDirty, outboundOrderSaving, outboundTags, onlines, enableTraffic, modal, showModal, closeModal, bulkModal, showBulkModal, closeBulkModal, stats, showStats, closeStats, delOverlay, delOutbound, delOutboundsBulk, deleteSelectedOutbounds, outboundSelectMode, selectedOutboundCount, selectedOutboundIds, isOutboundSelected, toggleOutboundSelectMode, toggleOutboundSelection, moveOutbound, dragOutbound, dragSelectedOutbounds, sortOutboundsByName, saveOutboundOrder, cancelOutboundOrder, outboundDrag, onOutboundDrop } = useOutboundsPage(OutboundVue, OutboundDrawer, OutboundsNexusList)
 </script>
 
 <style scoped>

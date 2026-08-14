@@ -15,8 +15,7 @@ import (
 
 func registerFixtureBackupTransferCodecsForTest(t *testing.T, settingService *service.SettingService) {
 	t.Helper()
-	dbtransferhttp.ResetBackupCodecsForTest()
-	unregisterExport := dbtransferhttp.RegisterBackupExportCodec("test-fixture-codec", dbtransferhttp.BackupExportCodec{
+	unregisterExport, err := dbtransferhttp.RegisterBackupExportCodec("test-fixture-codec", dbtransferhttp.BackupExportCodec{
 		Selected: func(c *gin.Context) bool {
 			return c.Query("backupEncryption") == "test-fixture-codec"
 		},
@@ -54,7 +53,10 @@ func registerFixtureBackupTransferCodecsForTest(t *testing.T, settingService *se
 			}, nil
 		},
 	})
-	unregisterImport := dbtransferhttp.RegisterBackupImportCodec("test-fixture-codec", dbtransferhttp.BackupImportCodec{
+	if err != nil {
+		t.Fatal(err)
+	}
+	unregisterImport, err := dbtransferhttp.RegisterBackupImportCodec("test-fixture-codec", dbtransferhttp.BackupImportCodec{
 		HeaderBytes:       len(backupenvelope.Magic),
 		PassphraseFields:  []string{"fixtureBackupPassphrase"},
 		Match:             backupenvelope.IsEnvelope,
@@ -70,9 +72,12 @@ func registerFixtureBackupTransferCodecsForTest(t *testing.T, settingService *se
 			return backupenvelope.Open(ctx.Payload, []byte(passphrase))
 		},
 	})
+	if err != nil {
+		unregisterExport()
+		t.Fatal(err)
+	}
 	t.Cleanup(func() {
 		unregisterImport()
 		unregisterExport()
-		dbtransferhttp.ResetBackupCodecsForTest()
 	})
 }

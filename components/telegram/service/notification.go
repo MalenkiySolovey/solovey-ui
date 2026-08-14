@@ -7,6 +7,9 @@ import (
 )
 
 func (s *Service) NotifyEvent(event string, fields map[string]string) {
+	if s == nil {
+		return
+	}
 	enabled, err := s.telegramEnabled()
 	if err != nil || !enabled || s.Notifier == nil {
 		return

@@ -3,6 +3,7 @@
 package jobs
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"strings"
@@ -21,6 +22,11 @@ type testEntryScheduler struct {
 
 func (s testEntryScheduler) RemoveJob(id cron.EntryID) {
 	s.Remove(id)
+}
+
+func (s testEntryScheduler) RemoveJobAndWait(_ context.Context, id cron.EntryID) error {
+	s.Remove(id)
+	return nil
 }
 
 func initDatabase(t *testing.T) {

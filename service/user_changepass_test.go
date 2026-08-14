@@ -6,7 +6,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 	"gorm.io/gorm"
 )
 
@@ -30,7 +30,7 @@ func TestCompletePasswordTransitionDoesNotUpgradeAStaleSQLiteReadTransaction(t *
 	}
 
 	db := dbsqlite.DB()
-	callbackName := "p18:e02:concurrent-writer-after-user-read"
+	callbackName := "test-concurrent-writer-after-user-read"
 	writerDone := make(chan error, 1)
 	fired := false
 	if err := db.Callback().Query().After("gorm:query").Register(callbackName, func(tx *gorm.DB) {
@@ -63,7 +63,7 @@ func TestCompletePasswordTransitionDoesNotUpgradeAStaleSQLiteReadTransaction(t *
 	if stored.ForcePasswordReset {
 		t.Fatal("successful transition preserved the forced-reset state")
 	}
-	if ok, _ := common.CheckPassword(stored.Password, newPassword); !ok {
+	if ok, _, err := passwordutil.Verify(context.Background(), stored.Password, newPassword); err != nil || !ok {
 		t.Fatal("successful transition did not persist the replacement credential")
 	}
 }
@@ -103,7 +103,7 @@ func TestUserServiceChangePassValidatesAndKeepsUsernamesUnique(t *testing.T) {
 	if err := dbsqlite.DB().Where("username = ?", "admin2").First(&stored).Error; err != nil {
 		t.Fatal(err)
 	}
-	if ok, _ := common.CheckPassword(stored.Password, "new-password-value"); !ok {
+	if ok, _, err := passwordutil.Verify(context.Background(), stored.Password, "new-password-value"); err != nil || !ok {
 		t.Fatal("new password was not persisted")
 	}
 	var bobCount int64

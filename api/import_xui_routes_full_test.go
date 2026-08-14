@@ -12,7 +12,7 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func TestImportXUIRoutesUseSharedRegistryIssue35(t *testing.T) {
+func TestImportXUIRoutesUseSharedRegistry(t *testing.T) {
 	initSessionTestDB(t)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

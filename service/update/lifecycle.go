@@ -49,6 +49,7 @@ const (
 
 var (
 	ErrSigningUnavailable  = errors.New("release signing trust is unavailable")
+	ErrNotNewer            = errors.New("installed version is up to date")
 	ErrProviderUnavailable = errors.New("native update provider is unavailable")
 	ErrRevisionMismatch    = errors.New("update operation revision mismatch")
 	ErrOperationConflict   = errors.New("another update operation is active")
@@ -540,7 +541,7 @@ func (m *LifecycleManager) Activate(ctx context.Context, request RevisionRequest
 	}
 	applied, err := m.advance(ctx, operation, StateApplied, "update_applied", "")
 	if err == nil {
-		m.cleanupTerminal(ctx, applied)
+		err = m.cleanupTerminal(ctx, applied)
 	}
 	return applied, err
 }
@@ -670,7 +671,7 @@ func (m *LifecycleManager) ReconcileStartup(ctx context.Context) error {
 	}
 	operation, err = m.advance(ctx, operation, state, "startup_reconciled", "")
 	if err == nil && state == StateApplied {
-		m.cleanupTerminal(ctx, operation)
+		err = m.cleanupTerminal(ctx, operation)
 	}
 	return err
 }
@@ -781,8 +782,7 @@ func (m *LifecycleManager) fail(ctx context.Context, operation model.UpdateOpera
 	if cause == nil {
 		cause = errors.New(reason)
 	}
-	m.cleanupTerminal(ctx, failed)
-	return failed, cause
+	return failed, errors.Join(cause, m.cleanupTerminal(ctx, failed))
 }
 
 func (m *LifecycleManager) rollbackAfterFailure(ctx context.Context, operation model.UpdateOperation, reason string, cause error) (model.UpdateOperation, error) {
@@ -819,7 +819,7 @@ func (m *LifecycleManager) performRollback(ctx context.Context, operation model.
 	operation.RollbackAvailable = false
 	rolledBack, err := m.advance(ctx, operation, StateRolledBack, "update_rolled_back", reason)
 	if err == nil {
-		m.cleanupTerminal(ctx, rolledBack)
+		err = m.cleanupTerminal(ctx, rolledBack)
 	}
 	return rolledBack, err
 }
@@ -833,10 +833,11 @@ func rollbackAllowedFrom(state State) bool {
 	}
 }
 
-func (m *LifecycleManager) cleanupTerminal(ctx context.Context, operation model.UpdateOperation) {
+func (m *LifecycleManager) cleanupTerminal(ctx context.Context, operation model.UpdateOperation) error {
 	if cleaner, ok := m.provider.(terminalCleaner); ok {
-		_ = cleaner.CleanupTerminal(ctx, operation)
+		return cleaner.CleanupTerminal(ctx, operation)
 	}
+	return nil
 }
 
 func (m *LifecycleManager) advance(ctx context.Context, operation model.UpdateOperation, state State, event, reason string) (model.UpdateOperation, error) {
@@ -1203,10 +1204,6 @@ func operationRecoveryProjection(operation model.UpdateOperation) model.UpdateOp
 	return operation
 }
 
-func IsTerminal(state State) bool {
-	return state == StateApplied || state == StateRolledBack || state == StateFailed
-}
-
 func ReasonCode(err error) string {
 	switch {
 	case errors.Is(err, ErrSigningUnavailable):
@@ -1226,9 +1223,4 @@ func ReasonCode(err error) string {
 	default:
 		return "update_operation_failed"
 	}
-}
-
-func (m *LifecycleManager) String() string {
-	source := m.sources[release.ChannelMain]
-	return fmt.Sprintf("update-lifecycle(%s)", source.ID)
 }

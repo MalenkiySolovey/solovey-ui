@@ -31,14 +31,6 @@ const (
 	MemoryCapCacheTTL  = observabilityMemoryCapCacheTTL
 )
 
-func DefaultBucketCap(bucket ObservabilityBucket) int {
-	return observabilityDefaultBucketCaps[bucket]
-}
-
-func CapsForMemory(capMB int) map[ObservabilityBucket]int {
-	return capsForObservabilityMemory(capMB)
-}
-
 var observabilityDefaultBucketCaps = map[ObservabilityBucket]int{
 	ObservabilityBucket2s:  300,
 	ObservabilityBucket30s: 240,

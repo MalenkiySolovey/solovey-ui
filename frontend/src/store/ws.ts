@@ -56,19 +56,24 @@ export class WsRuntime {
   private fallbackTimer: ReturnType<typeof setInterval> | null = null
   private onlineRecoveryHandler: (() => void) | null = null
   private closeCount = 0
+  private connectAttempt = 0
+  private connectingAttempt: number | null = null
 
   constructor(private deps: WsRuntimeDeps) {}
 
   async connect() {
-    if (this.ws || this.state === 'connected') return
+    if (this.ws || this.state === 'connected' || this.connectingAttempt !== null) return
+    const attempt = ++this.connectAttempt
+    this.connectingAttempt = attempt
     this.setState('reconnecting')
     this.stopFallback()
-    const token = await this.deps.getToken()
-    if (!token) {
-      this.startFallback()
-      return
-    }
     try {
+      const token = await this.deps.getToken()
+      if (attempt !== this.connectAttempt) return
+      if (!token) {
+        this.startFallback()
+        return
+      }
       const ws = this.deps.createSocket(this.wsURL(), token)
       this.ws = ws
       this.noOpenTimer = this.setRuntimeTimeout(() => {
@@ -112,11 +117,15 @@ export class WsRuntime {
         ws.close()
       }
     } catch {
-      this.startFallback()
+      if (attempt === this.connectAttempt) this.startFallback()
+    } finally {
+      if (this.connectingAttempt === attempt) this.connectingAttempt = null
     }
   }
 
   disconnect() {
+    this.connectAttempt++
+    this.connectingAttempt = null
     this.clearNoOpenTimer()
     if (this.reconnectTimer) {
       this.clearRuntimeTimeout(this.reconnectTimer)
@@ -220,7 +229,14 @@ const applyRealtimeEvent = (event: any) => {
       break
     case 'component_progress':
       if (event.payload?.componentId) {
-        ws.componentProgress[event.payload.componentId] = event.payload.progress ?? null
+        const componentId = String(event.payload.componentId)
+        const installedIDs = new Set(data.components.map(component => component.id))
+        for (const id of Object.keys(ws.componentProgress)) {
+          if (!installedIDs.has(id)) delete ws.componentProgress[id]
+        }
+        if (!installedIDs.has(componentId)) break
+        if (event.payload.progress == null) delete ws.componentProgress[componentId]
+        else ws.componentProgress[componentId] = event.payload.progress
       }
       break
     case 'failover_status':

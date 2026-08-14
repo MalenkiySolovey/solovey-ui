@@ -31,7 +31,7 @@ func productionManagementPreservation(ctx context.Context, now time.Time) Manage
 	} else {
 		postureRevision = posture.SemanticRevision
 		for _, endpoint := range posture.Endpoints {
-			if endpoint.ServiceKind == hostresources.ManagementSSH && endpoint.ObservedListener && hostresources.ManagementEndpointCurrent(endpoint) {
+			if endpoint.ServiceKind == hostresources.ManagementSSH && endpoint.ObservedListener && hostresources.ManagementEndpointCurrent(endpoint, now) {
 				currentSSH = true
 				break
 			}

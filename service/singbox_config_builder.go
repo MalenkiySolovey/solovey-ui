@@ -2,9 +2,12 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
+	"gorm.io/gorm"
 )
 
 type SingBoxConfigBuilder struct {
@@ -27,15 +30,29 @@ func NewSingBoxConfigBuilder(runtime *Runtime) SingBoxConfigBuilder {
 }
 
 func (b SingBoxConfigBuilder) Build(data string) ([]byte, error) {
-	var err error
+	db := dbsqlite.DB()
+	return b.BuildFromDB(db, data)
+}
+
+// BuildFromDB renders a complete candidate from the supplied database view.
+// It is used by transactional workflows that must validate uncommitted rows
+// without temporarily exposing them through the process-wide database handle.
+func (b SingBoxConfigBuilder) BuildFromDB(db *gorm.DB, data string) ([]byte, error) {
+	if db == nil {
+		return nil, errors.New("database is not initialized")
+	}
 	if len(data) == 0 {
-		data, err = b.SettingService.GetConfig()
-		if err != nil {
-			return nil, err
+		var setting model.Setting
+		result := db.Model(&model.Setting{}).Where("key = ?", "config").Limit(1).Find(&setting)
+		if result.Error != nil {
+			return nil, result.Error
+		}
+		if result.RowsAffected == 0 {
+			data = defaultSingBoxBaseConfig
+		} else {
+			data = setting.Value
 		}
 	}
-
-	db := dbsqlite.DB()
 	inbounds, err := b.InboundService.GetAllConfig(db)
 	if err != nil {
 		return nil, err

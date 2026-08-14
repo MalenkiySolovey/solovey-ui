@@ -8,7 +8,7 @@ import (
 )
 
 func TestRegisterCoreContributorsRollsBackPartialRegistration(t *testing.T) {
-	control := coreinboundcontrol.New(nil, nil)
+	control := coreinboundcontrol.NewWithMutations(nil, nil, coreinboundcontrol.MutationDependencies{})
 	unregisterConflict, err := hostresources.RegisterInboundTransportCapabilityProviderV2(NewCoreInboundTransportProviderV2(nil, control))
 	if err != nil {
 		t.Fatalf("register conflict fixture: %v", err)

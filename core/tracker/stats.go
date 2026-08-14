@@ -59,12 +59,6 @@ func resetCounters(counters map[string]Counter) {
 	}
 }
 
-func (c *StatsTracker) getReadCounters(inbound string, outbound string, user string) ([]*atomic.Int64, []*atomic.Int64) {
-	c.access.Lock()
-	defer c.access.Unlock()
-	return c.getReadCountersLocked(inbound, outbound, user)
-}
-
 func (c *StatsTracker) getTrackedReadCounters(inbound string, outbound string, user string) ([]*atomic.Int64, []*atomic.Int64, *trackerWaitGroup) {
 	c.access.Lock()
 	defer c.access.Unlock()
@@ -111,7 +105,11 @@ func (c *StatsTracker) RoutedConnection(ctx context.Context, conn net.Conn, meta
 	if c.observer != nil {
 		c.observer.Record(metadata.User, sourceIP)
 	}
-	readCounter, writeCounter, waitGroup := c.getTrackedReadCounters(metadata.Inbound, matchOutbound.Tag(), metadata.User)
+	outbound := ""
+	if matchOutbound != nil {
+		outbound = matchOutbound.Tag()
+	}
+	readCounter, writeCounter, waitGroup := c.getTrackedReadCounters(metadata.Inbound, outbound, metadata.User)
 	return newStatsTrackedConn(bufio.NewInt64CounterConn(conn, readCounter, writeCounter), waitGroup)
 }
 
@@ -124,7 +122,11 @@ func (c *StatsTracker) RoutedPacketConnection(ctx context.Context, conn network.
 	if c.observer != nil {
 		c.observer.Record(metadata.User, sourceIP)
 	}
-	readCounter, writeCounter, waitGroup := c.getTrackedReadCounters(metadata.Inbound, matchOutbound.Tag(), metadata.User)
+	outbound := ""
+	if matchOutbound != nil {
+		outbound = matchOutbound.Tag()
+	}
+	readCounter, writeCounter, waitGroup := c.getTrackedReadCounters(metadata.Inbound, outbound, metadata.User)
 	return newStatsTrackedPacketConn(bufio.NewInt64CounterPacketConn(conn, readCounter, nil, writeCounter, nil), waitGroup)
 }
 
@@ -298,4 +300,34 @@ func (c *StatsTracker) GetStats() []Stat {
 		}
 	}
 	return s
+}
+
+// RestoreStats returns samples drained by GetStats after their persistence
+// transaction fails. Counters are incremented rather than replaced so traffic
+// observed concurrently with the failed transaction is preserved.
+func (c *StatsTracker) RestoreStats(samples []Stat) {
+	if len(samples) == 0 {
+		return
+	}
+	c.access.Lock()
+	defer c.access.Unlock()
+	for _, sample := range samples {
+		var counters *map[string]Counter
+		switch sample.Resource {
+		case "inbound":
+			counters = &c.inbounds
+		case "outbound":
+			counters = &c.outbounds
+		case "user":
+			counters = &c.users
+		default:
+			continue
+		}
+		counter := c.loadOrCreateCounter(counters, sample.Tag)
+		if sample.Direction {
+			counter.read.Add(sample.Traffic)
+		} else {
+			counter.write.Add(sample.Traffic)
+		}
+	}
 }

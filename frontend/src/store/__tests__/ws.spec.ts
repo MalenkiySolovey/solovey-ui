@@ -126,6 +126,41 @@ describe('WsRuntime regression anchors', () => {
     expect(onEvent).toHaveBeenCalledWith({ type: 'onlines', payload: { alice: true } })
   })
 
+  it('coalesces concurrent connection attempts while the token is loading', async () => {
+    let resolveToken!: (token: string) => void
+    const token = new Promise<string>(resolve => {
+      resolveToken = resolve
+    })
+    const deps = runtimeDeps({ getToken: vi.fn(() => token) })
+    const runtime = new WsRuntime(deps)
+
+    const first = runtime.connect()
+    const second = runtime.connect()
+
+    expect(deps.getToken).toHaveBeenCalledTimes(1)
+    resolveToken('ws-token')
+    await Promise.all([first, second])
+
+    expect(deps.createSocket).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not create a socket when disconnected during token loading', async () => {
+    let resolveToken!: (token: string) => void
+    const token = new Promise<string>(resolve => {
+      resolveToken = resolve
+    })
+    const deps = runtimeDeps({ getToken: vi.fn(() => token) })
+    const runtime = new WsRuntime(deps)
+
+    const pending = runtime.connect()
+    runtime.disconnect()
+    resolveToken('ws-token')
+    await pending
+
+    expect(deps.createSocket).not.toHaveBeenCalled()
+    expect(runtime.state).toBe('degraded')
+  })
+
   it('falls back to degraded polling when no websocket token is available', async () => {
     const timers = new ManualTimers()
     const deps = runtimeDeps({

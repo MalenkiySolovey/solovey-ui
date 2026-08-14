@@ -37,6 +37,20 @@ func TestEnabledReadsComponentSetting(t *testing.T) {
 	}
 }
 
+func TestEnabledIDsRejectsDuplicateInputAndInvalidStoredValue(t *testing.T) {
+	initEnabledStateTestDB(t)
+	item := manifest.Manifest{ID: "fixture-beta", DefaultEnabled: true}
+	if _, err := EnabledIDs([]manifest.Manifest{item, item}); err == nil {
+		t.Fatal("duplicate component input was accepted")
+	}
+	if err := dbsqlite.DB().Create(&model.Setting{Key: SettingKey(item.ID), Value: "maybe"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := EnabledIDs([]manifest.Manifest{item}); err == nil {
+		t.Fatal("invalid enabled setting was accepted")
+	}
+}
+
 func initEnabledStateTestDB(t *testing.T) {
 	t.Helper()
 	tempDir := t.TempDir()

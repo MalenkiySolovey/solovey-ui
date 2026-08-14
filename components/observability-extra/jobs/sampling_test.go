@@ -11,12 +11,14 @@ import (
 
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
+	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
 	observabilitysvc "github.com/MalenkiySolovey/solovey-ui/service/observability"
 )
 
 func TestSamplingJobAggregatesBuckets(t *testing.T) {
 	initDatabase(t)
-	job := NewSamplingJob()
+	sampler := &coreservice.ObservabilityService{}
+	job := NewSamplingJob(sampler)
 	tick := 0
 	job.currentObservability = func() observabilitysvc.ObservabilitySample {
 		value := tick
@@ -50,14 +52,14 @@ func TestSamplingJobAggregatesBuckets(t *testing.T) {
 		job.Run()
 	}
 
-	samples2s, err := job.HistoryForBucket(observabilitysvc.ObservabilityBucket2s)
+	samples2s, err := sampler.HistoryForBucket(observabilitysvc.ObservabilityBucket2s)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(samples2s) < 30 {
 		t.Fatalf("expected 30 2s samples, got %d", len(samples2s))
 	}
-	samples30s, err := job.HistoryForBucket(observabilitysvc.ObservabilityBucket30s)
+	samples30s, err := sampler.HistoryForBucket(observabilitysvc.ObservabilityBucket30s)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,7 +74,7 @@ func TestSamplingJobAggregatesBuckets(t *testing.T) {
 		t.Fatalf("unexpected map aggregates: %#v %#v", tail30s[1].Memory, tail30s[1].Network)
 	}
 
-	samples1m, err := job.HistoryForBucket(observabilitysvc.ObservabilityBucket1m)
+	samples1m, err := sampler.HistoryForBucket(observabilitysvc.ObservabilityBucket1m)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -83,7 +85,7 @@ func TestSamplingJobAggregatesBuckets(t *testing.T) {
 	if last1m.CPU != 14.5 {
 		t.Fatalf("unexpected 1m aggregate: %#v", last1m)
 	}
-	core1m, err := job.CoreHistoryForBucket(observabilitysvc.ObservabilityBucket1m)
+	core1m, err := sampler.CoreHistoryForBucket(observabilitysvc.ObservabilityBucket1m)
 	if err != nil {
 		t.Fatal(err)
 	}

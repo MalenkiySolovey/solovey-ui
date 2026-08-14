@@ -1,6 +1,7 @@
 package architecture
 
 import (
+	"bytes"
 	"encoding/json"
 	"go/ast"
 	"go/parser"
@@ -31,7 +32,7 @@ func TestComponentImportsStayBehindCompositionRoot(t *testing.T) {
 			if strings.HasPrefix(rel, "cmd/optional_commands_") {
 				continue
 			}
-			if rel == "cmd/solovey-privileged-broker/main.go" {
+			if strings.HasPrefix(rel, "cmd/solovey-privileged-broker/components_") {
 				continue
 			}
 			if strings.HasPrefix(rel, "components/") {
@@ -345,6 +346,54 @@ func TestRuntimeSourceDoesNotContainDevelopmentProvenance(t *testing.T) {
 	}
 }
 
+func TestRetiredServerProtectionSurfacesStayAbsent(t *testing.T) {
+	root := moduleRoot(t)
+	retired := []string{
+		"components/server-protection/cmd/solovey-protect-helper",
+		"components/server-protection/service/classifier",
+		"components/server-protection/service/handoff",
+		"components/server-protection/service/recoverypath",
+		"components/server-protection/service/helper/process.go",
+		"components/server-protection/service/repository/port_operations.go",
+	}
+	for _, relative := range retired {
+		path := filepath.Join(root, filepath.FromSlash(relative))
+		info, err := os.Stat(path)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !info.IsDir() {
+			t.Errorf("retired server-protection surface exists: %s", relative)
+			continue
+		}
+		err = filepath.WalkDir(path, func(candidate string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return walkErr
+			}
+			if !entry.IsDir() {
+				t.Errorf("retired server-protection surface exists: %s", filepath.ToSlash(mustRel(t, root, candidate)))
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	routes, err := os.ReadFile(filepath.Join(root, "components", "server-protection", "api", "routes.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, route := range []string{"/ports/prepare", "/ports/apply", "/ports/rollback"} {
+		if bytes.Contains(routes, []byte(route)) {
+			t.Errorf("retired server-protection route exists: %s", route)
+		}
+	}
+}
+
 func componentOwnsImport(rel string, imported string) bool {
 	relParts := strings.Split(rel, "/")
 	if len(relParts) < 2 || relParts[0] != "components" {
@@ -507,7 +556,7 @@ func allowedComponentKnowledgeFile(rel string) bool {
 	if strings.HasPrefix(rel, "cmd/optional_commands_") {
 		return true
 	}
-	if rel == "cmd/solovey-privileged-broker/main.go" {
+	if strings.HasPrefix(rel, "cmd/solovey-privileged-broker/components_") {
 		return true
 	}
 	return false

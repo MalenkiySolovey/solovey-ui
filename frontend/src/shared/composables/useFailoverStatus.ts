@@ -11,22 +11,29 @@ interface OutboundType {
 export const useFailoverStatus = (outbounds: MaybeRefOrGetter<readonly OutboundType[]>) => {
   const statusByTag = computed<FailoverStatusMap>(() => Data().failoverStatus)
   let timer: ReturnType<typeof setInterval> | undefined
+  let refreshPending = false
 
   const refresh = async () => {
-    if (!toValue(outbounds).some((item) => item.type === 'failover')) {
-      Data().failoverStatus = {}
-      return
+    if (refreshPending) return
+    refreshPending = true
+    try {
+      if (!toValue(outbounds).some((item) => item.type === 'failover')) {
+        Data().failoverStatus = {}
+        return
+      }
+
+      const response = await HttpUtils.get('api/failover-status')
+      if (!response.success || !Array.isArray(response.obj)) return
+
+      Data().failoverStatus = Object.fromEntries(
+        (response.obj as FailoverStatusEntry[]).map((entry) => [
+          entry.tag,
+          entry,
+        ]),
+      )
+    } finally {
+      refreshPending = false
     }
-
-    const response = await HttpUtils.get('api/failover-status')
-    if (!response.success || !Array.isArray(response.obj)) return
-
-    Data().failoverStatus = Object.fromEntries(
-      (response.obj as FailoverStatusEntry[]).map((entry) => [
-        entry.tag,
-        entry,
-      ]),
-    )
   }
 
   const stop = () => {
@@ -37,7 +44,10 @@ export const useFailoverStatus = (outbounds: MaybeRefOrGetter<readonly OutboundT
   const start = () => {
     stop()
     void refresh()
-    timer = setInterval(refresh, 5000)
+    timer = setInterval(() => {
+      if (typeof document !== 'undefined' && document.hidden) return
+      void refresh()
+    }, 5000)
   }
 
   onMounted(start)

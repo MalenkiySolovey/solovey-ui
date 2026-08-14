@@ -72,7 +72,7 @@ func RegisterBrokerHandlers(registry *broker.Registry, root ManagedRoot) error {
 	engine := NewContractEngine(root)
 	for _, operation := range []Operation{OperationCapabilities, OperationNFTValidate, OperationNFTApply, OperationNFTRollback,
 		OperationNginxDetectVersion, OperationNginxValidate, OperationNginxInstall, OperationNginxSwitch,
-		OperationNginxReload, OperationNginxVerify, OperationNginxRestore, OperationListenerProbe,
+		OperationNginxReload, OperationNginxVerify, OperationNginxRestore,
 		OperationListenerOwnerObserve, OperationSSHRecoveryObserve, OperationArtifact} {
 		operation := operation
 		verb, _, _ := brokerVerb(operation)
@@ -101,7 +101,7 @@ func unlockedOperation(operation Operation) bool {
 func brokerVerb(operation Operation) (broker.Verb, int, bool) {
 	operations := []Operation{OperationCapabilities, OperationNFTValidate, OperationNFTApply, OperationNFTRollback,
 		OperationNginxDetectVersion, OperationNginxValidate, OperationNginxInstall, OperationNginxSwitch,
-		OperationNginxReload, OperationNginxVerify, OperationNginxRestore, OperationListenerProbe,
+		OperationNginxReload, OperationNginxVerify, OperationNginxRestore,
 		OperationListenerOwnerObserve, OperationSSHRecoveryObserve, OperationArtifact}
 	for index, candidate := range operations {
 		if candidate == operation {

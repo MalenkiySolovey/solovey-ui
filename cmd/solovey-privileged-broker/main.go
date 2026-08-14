@@ -12,8 +12,6 @@ import (
 	"syscall"
 	"time"
 
-	protectionruntime "github.com/MalenkiySolovey/solovey-ui/components/server-protection/runtimecontract"
-	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	deploymentbroker "github.com/MalenkiySolovey/solovey-ui/internal/ops/deploymentbroker"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	sshbroker "github.com/MalenkiySolovey/solovey-ui/internal/ops/sshbroker"
@@ -48,11 +46,7 @@ func run() error {
 		return err
 	}
 	registry := broker.NewRegistry()
-	root, err := protectionhelper.NewManagedRoot(protectionruntime.Installed().HelperManagedRoot)
-	if err != nil {
-		return err
-	}
-	if err := protectionhelper.RegisterBrokerHandlers(registry, root); err != nil {
+	if err := broker.RegisterContributedHandlers(registry); err != nil {
 		return err
 	}
 	if err := sshbroker.RegisterHandlers(registry); err != nil {
@@ -77,6 +71,7 @@ func run() error {
 	auditQueue := make(chan broker.AuditEvent, 128)
 	var droppedAuditEvents atomic.Uint64
 	auditDone := make(chan struct{})
+	auditStop := make(chan struct{})
 	go func() {
 		defer close(auditDone)
 		write := func(event broker.AuditEvent) {
@@ -90,7 +85,7 @@ func run() error {
 			select {
 			case event := <-auditQueue:
 				write(event)
-			case <-ctx.Done():
+			case <-auditStop:
 				for {
 					select {
 					case event := <-auditQueue:
@@ -135,6 +130,9 @@ func run() error {
 			_ = listener.Close()
 		}
 		group.Wait()
+		server.ShutdownConnections()
+		server.WaitConnections()
+		close(auditStop)
 		<-auditDone
 		return nil
 	case err := <-errorsChannel:
@@ -143,6 +141,9 @@ func run() error {
 			_ = listener.Close()
 		}
 		group.Wait()
+		server.ShutdownConnections()
+		server.WaitConnections()
+		close(auditStop)
 		<-auditDone
 		return err
 	}

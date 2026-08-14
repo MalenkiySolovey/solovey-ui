@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/netip"
+	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
@@ -15,19 +16,36 @@ import (
 	"github.com/shirou/gopsutil/v4/net"
 )
 
-func PanelURI() {
+func PanelURI() error {
 	err := dbsqlite.Init(configstorage.GetDBPath())
 	if err != nil {
-		fmt.Println(err)
-		return
+		return err
 	}
 	settingService := service.SettingService{}
-	Port, _ := settingService.GetPort()
-	BasePath, _ := settingService.GetWebPath()
-	Listen, _ := settingService.GetListen()
-	Domain, _ := settingService.GetWebDomain()
-	KeyFile, _ := settingService.GetKeyFile()
-	CertFile, _ := settingService.GetCertFile()
+	Port, err := settingService.GetPort()
+	if err != nil {
+		return fmt.Errorf("read panel port: %w", err)
+	}
+	BasePath, err := settingService.GetWebPath()
+	if err != nil {
+		return fmt.Errorf("read panel path: %w", err)
+	}
+	Listen, err := settingService.GetListen()
+	if err != nil {
+		return fmt.Errorf("read panel listen address: %w", err)
+	}
+	Domain, err := settingService.GetWebDomain()
+	if err != nil {
+		return fmt.Errorf("read panel domain: %w", err)
+	}
+	KeyFile, err := settingService.GetKeyFile()
+	if err != nil {
+		return fmt.Errorf("read panel TLS key setting: %w", err)
+	}
+	CertFile, err := settingService.GetCertFile()
+	if err != nil {
+		return fmt.Errorf("read panel TLS certificate setting: %w", err)
+	}
 	TLS := false
 	if KeyFile != "" && CertFile != "" {
 		TLS = true
@@ -44,34 +62,44 @@ func PanelURI() {
 	}
 	if len(Domain) > 0 {
 		fmt.Println(Proto + Domain + PortText + BasePath)
-		return
+		return nil
 	}
 	if len(Listen) > 0 {
 		fmt.Println(Proto + Listen + PortText + BasePath)
-		return
+		return nil
 	}
 	fmt.Println("Local address:")
-	netInterfaces, _ := net.Interfaces()
+	netInterfaces, err := net.Interfaces()
+	if err != nil {
+		return fmt.Errorf("list local interfaces: %w", err)
+	}
 	for i := 0; i < len(netInterfaces); i++ {
-		if len(netInterfaces[i].Flags) > 2 && netInterfaces[i].Flags[0] == "up" && netInterfaces[i].Flags[1] != "loopback" {
+		if slices.Contains(netInterfaces[i].Flags, "up") && !slices.Contains(netInterfaces[i].Flags, "loopback") {
 			addrs := netInterfaces[i].Addrs
 			for _, address := range addrs {
-				IP := strings.Split(address.Addr, "/")[0]
-				if strings.Contains(address.Addr, ".") {
-					fmt.Println(Proto + IP + PortText + BasePath)
-				} else if address.Addr[0:6] != "fe80::" {
-					fmt.Println(Proto + "[" + IP + "]" + PortText + BasePath)
+				prefix, parseErr := netip.ParsePrefix(address.Addr)
+				if parseErr != nil || prefix.Addr().IsLoopback() || prefix.Addr().IsLinkLocalUnicast() {
+					continue
+				}
+				ip := prefix.Addr()
+				if ip.Is4() {
+					fmt.Println(Proto + ip.String() + PortText + BasePath)
+				} else {
+					fmt.Println(Proto + "[" + ip.String() + "]" + PortText + BasePath)
 				}
 			}
 		}
 	}
-	pubIP := getPublicIP()
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	pubIP := getPublicIP(ctx)
 	if pubIP != "" {
 		fmt.Printf("\nGlobal address:\n%s%s%s\n", Proto, pubIP, PortText+BasePath)
 	}
+	return nil
 }
 
-func getPublicIP() string {
+func getPublicIP(ctx context.Context) string {
 	apis := []string{
 		"https://api64.ipify.org",
 		"https://ip.sb",
@@ -84,14 +112,13 @@ func getPublicIP() string {
 		err error
 	}
 	ch := make(chan result, len(apis))
-	var wg sync.WaitGroup
 	client := &http.Client{Timeout: 3 * time.Second}
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
 
 	for _, api := range apis {
-		wg.Add(1)
 		go func(url string) {
-			defer wg.Done()
-			req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, nil)
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 			if err != nil {
 				ch <- result{"", err}
 				return
@@ -102,23 +129,33 @@ func getPublicIP() string {
 				return
 			}
 			defer resp.Body.Close()
-			body, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+			if resp.StatusCode != http.StatusOK {
+				ch <- result{"", fmt.Errorf("unexpected status %d", resp.StatusCode)}
+				return
+			}
+			body, err := io.ReadAll(io.LimitReader(resp.Body, 128))
 			if err != nil {
 				ch <- result{"", err}
 				return
 			}
-			ch <- result{string(body), nil}
+			ip, err := netip.ParseAddr(strings.TrimSpace(string(body)))
+			if err != nil {
+				ch <- result{"", err}
+				return
+			}
+			ch <- result{ip.String(), nil}
 		}(api)
 	}
 
-	go func() {
-		wg.Wait()
-		close(ch)
-	}()
-
-	for res := range ch {
-		if res.err == nil && res.ip != "" {
-			return strings.TrimSpace(res.ip)
+	for range apis {
+		select {
+		case res := <-ch:
+			if res.err == nil && res.ip != "" {
+				cancel()
+				return res.ip
+			}
+		case <-ctx.Done():
+			return ""
 		}
 	}
 	return ""

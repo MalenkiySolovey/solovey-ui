@@ -1,22 +1,16 @@
 package helper
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
 )
 
 var (
-	ErrManagedPathForbidden   = errors.New("managed path is forbidden")
-	ErrHelperIdentityMismatch = errors.New("helper executable identity mismatch")
+	ErrManagedPathForbidden = errors.New("managed path is forbidden")
 )
-
-const maxTrustedBinaryBytes int64 = 256 << 20
 
 type ManagedRoot struct {
 	path string
@@ -158,88 +152,4 @@ func resolveWithExistingParent(candidate string, mustExist bool, eval func(strin
 func pathWithin(root, candidate string) bool {
 	relative, err := filepath.Rel(filepath.Clean(root), filepath.Clean(candidate))
 	return err == nil && relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator)) && !filepath.IsAbs(relative)
-}
-
-type TrustedBinary struct {
-	path   string
-	sha256 string
-	size   int64
-}
-
-func NewTrustedBinary(installRoot, binaryPath string) (TrustedBinary, error) {
-	root, err := filepath.Abs(installRoot)
-	if err != nil {
-		return TrustedBinary{}, err
-	}
-	path, err := filepath.Abs(binaryPath)
-	if err != nil {
-		return TrustedBinary{}, err
-	}
-	wanted := "solovey-protect-helper"
-	if filepath.Ext(path) == ".exe" {
-		wanted += ".exe"
-	}
-	if filepath.Base(path) != wanted {
-		return TrustedBinary{}, errors.New("helper binary name is not allowlisted")
-	}
-	resolvedRoot, err := filepath.EvalSymlinks(filepath.Clean(root))
-	if err != nil {
-		return TrustedBinary{}, fmt.Errorf("resolve helper install root: %w", err)
-	}
-	resolvedPath, err := filepath.EvalSymlinks(filepath.Clean(path))
-	if err != nil {
-		return TrustedBinary{}, fmt.Errorf("resolve helper binary: %w", err)
-	}
-	if !pathWithin(resolvedRoot, resolvedPath) {
-		return TrustedBinary{}, errors.New("helper binary is outside the allowlisted install root")
-	}
-	info, err := os.Lstat(resolvedPath)
-	if err != nil {
-		return TrustedBinary{}, err
-	}
-	if !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 {
-		return TrustedBinary{}, errors.New("helper binary is not a regular file")
-	}
-	digest, err := trustedBinaryDigest(resolvedPath, info.Size())
-	if err != nil {
-		return TrustedBinary{}, err
-	}
-	return TrustedBinary{path: resolvedPath, sha256: digest, size: info.Size()}, nil
-}
-
-// Verify re-attests the exact release sibling immediately before every helper
-// process launch. The path remains fixed and no caller-controlled executable,
-// argument, PID, or environment value enters this identity boundary.
-func (b TrustedBinary) Verify() error {
-	if b.path == "" || b.sha256 == "" || b.size <= 0 {
-		return ErrHelperIdentityMismatch
-	}
-	info, err := os.Lstat(b.path)
-	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() != b.size {
-		return ErrHelperIdentityMismatch
-	}
-	digest, err := trustedBinaryDigest(b.path, info.Size())
-	if err != nil || digest != b.sha256 {
-		return ErrHelperIdentityMismatch
-	}
-	return nil
-}
-
-func (b TrustedBinary) IdentityRevision() string { return b.sha256 }
-
-func trustedBinaryDigest(name string, size int64) (string, error) {
-	if size <= 0 || size > maxTrustedBinaryBytes {
-		return "", ErrHelperIdentityMismatch
-	}
-	file, err := os.Open(name)
-	if err != nil {
-		return "", err
-	}
-	hash := sha256.New()
-	written, copyErr := io.Copy(hash, io.LimitReader(file, maxTrustedBinaryBytes+1))
-	closeErr := file.Close()
-	if copyErr != nil || closeErr != nil || written != size || written > maxTrustedBinaryBytes {
-		return "", ErrHelperIdentityMismatch
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
 }

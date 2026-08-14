@@ -28,12 +28,12 @@ var coreSequentialSteps = []step{
 	{fromMajor: 1, fromMinor: 10, target: "1.11", run: addOperationsLifecycleSchema},
 }
 
-func RunPending(tx *gorm.DB, dbVersion string) (string, error) {
+func RunPending(tx *gorm.DB, dbVersion string, legacyConfig []byte) (string, error) {
 	if dbVersion == "" {
 		if err := normalizeClientStorage(tx); err != nil {
 			return "", fmt.Errorf("migration to 1.1: %w", err)
 		}
-		if err := importLegacyConfigObjects(tx); err != nil {
+		if err := importLegacyConfigObjects(tx, legacyConfig); err != nil {
 			return "", fmt.Errorf("migration to 1.2: %w", err)
 		}
 		dbVersion = "1.2"

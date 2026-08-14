@@ -35,7 +35,7 @@ export const useAsyncTaskQueue = (concurrency = 8) => {
     try {
       return await task()
     } finally {
-      active[normalized] = false
+      delete active[normalized]
     }
   }
 

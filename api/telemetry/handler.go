@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	updateservice "github.com/MalenkiySolovey/solovey-ui/service/update"
 	"github.com/gin-gonic/gin"
 )
 
@@ -15,7 +16,7 @@ type Handler struct {
 	DiagnosticsService     service.DiagnosticsService
 	DoctorService          service.DoctorService
 	AuditService           service.AuditService
-	VersionService         service.VersionService
+	Update                 *updateservice.LifecycleManager
 	RequireScope           func(*gin.Context, string, ...string) bool
 	JSONObj                func(*gin.Context, interface{}, error)
 	JSONMsg                func(*gin.Context, string, error)
@@ -38,7 +39,7 @@ type Deps struct {
 	DiagnosticsService     service.DiagnosticsService
 	DoctorService          service.DoctorService
 	AuditService           service.AuditService
-	VersionService         service.VersionService
+	Update                 *updateservice.LifecycleManager
 	RequireScope           func(*gin.Context, string, ...string) bool
 	JSONObj                func(*gin.Context, interface{}, error)
 	JSONMsg                func(*gin.Context, string, error)
@@ -61,7 +62,7 @@ func NewHandler(deps Deps) *Handler {
 		DiagnosticsService:     deps.DiagnosticsService,
 		DoctorService:          deps.DoctorService,
 		AuditService:           deps.AuditService,
-		VersionService:         deps.VersionService,
+		Update:                 deps.Update,
 		RequireScope:           deps.RequireScope,
 		JSONObj:                deps.JSONObj,
 		JSONMsg:                deps.JSONMsg,

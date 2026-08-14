@@ -42,8 +42,6 @@ func newRegistry() *registry {
 }
 
 func Register(component Component) {
-	component.Manifest = component.Manifest.Normalized()
-	durableowner.Register(component.Manifest)
 	hooks := durableowner.Hooks{}
 	if migrator, ok := component.Lifecycle.(lifecycle.StagedMigrator); ok {
 		hooks.MigrateStaged = migrator.MigrateStaged
@@ -51,8 +49,9 @@ func Register(component Component) {
 	if rehearser, ok := component.Lifecycle.(lifecycle.RestoreRehearser); ok {
 		hooks.RehearseRestore = rehearser.RehearseRestore
 	}
-	durableowner.RegisterHooks(component.Manifest.ID, hooks)
-	defaultRegistry.register(component)
+	defaultRegistry.registerWith(component, func(item manifest.Manifest) {
+		durableowner.RegisterWithHooks(item, hooks)
+	})
 }
 
 func RegisterAPIRoutes(componentID string, register APIRouteRegistrar) {
@@ -76,12 +75,17 @@ func APIRouteRegistrarsByComponentIDs(ids map[string]struct{}) []APIRoutes {
 }
 
 func (r *registry) register(component Component) {
+	r.registerWith(component, nil)
+}
+
+func (r *registry) registerWith(component Component, admit func(manifest.Manifest)) {
 	if err := component.Manifest.Validate(); err != nil {
 		panic(err)
 	}
 	if component.Lifecycle == nil {
 		panic(fmt.Errorf("component %q lifecycle is required", component.Manifest.ID))
 	}
+	component.Manifest = component.Manifest.Normalized()
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -90,6 +94,9 @@ func (r *registry) register(component Component) {
 	}
 	if len(r.components) >= maxRegisteredComponents {
 		panic("component registry capacity exceeded")
+	}
+	if admit != nil {
+		admit(component.Manifest)
 	}
 	r.components[component.Manifest.ID] = component
 }

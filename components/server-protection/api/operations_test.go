@@ -42,13 +42,13 @@ func TestOperationAPIRequiresExplicitForceUnlockConfirmation(t *testing.T) {
 
 func TestOperationAPIConfirmationAndAuditChoreography(t *testing.T) {
 	router, audits, manager := newProtectionAPIRouterWithOperations(t, applyScope)
-	denied := requestProtectionAPI(router, http.MethodPost, "/api/components/server-protection/ports/prepare", `{"kind":"firewall","planRevision":"revision-a","idempotencyKey":"choreography","confirmation":"wrong"}`)
-	if denied.Code != http.StatusBadRequest || len(*audits) != 0 {
-		t.Fatalf("unconfirmed prepare=%d audits=%#v", denied.Code, *audits)
+	prepared, err := manager.Acquire(context.Background(), protectionoperations.AcquireRequest{
+		Kind: protectionoperations.KindFirewall, ResourceID: "panel:https", Protocol: "tcp",
+		IdempotencyKey: "choreography", Actor: "tester", InitialState: protectionoperations.StatePrepared,
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
-	accepted := requestProtectionAPI(router, http.MethodPost, "/api/components/server-protection/ports/prepare", `{"kind":"firewall","planRevision":"revision-a","idempotencyKey":"choreography","confirmation":"PREPARE SERVER PROTECTION revision-a"}`)
-	var prepared protectionoperations.AcquireResult
-	decodeProtectionObject(t, accepted, &prepared)
 	operationID := prepared.Operation.OperationID
 	operationsResponse := requestProtectionAPI(router, http.MethodGet, "/api/components/server-protection/operations", "")
 	var operationsState struct {
@@ -60,7 +60,7 @@ func TestOperationAPIConfirmationAndAuditChoreography(t *testing.T) {
 		t.Fatalf("recovery API state = %#v", operationsState)
 	}
 	wrongApply := requestProtectionAPI(router, http.MethodPost, "/api/components/server-protection/firewall/apply", `{"operationId":"`+operationID+`","confirmation":"wrong"}`)
-	if wrongApply.Code != http.StatusBadRequest || len(*audits) != 1 {
+	if wrongApply.Code != http.StatusBadRequest || len(*audits) != 0 {
 		t.Fatalf("unconfirmed apply=%d audits=%#v", wrongApply.Code, *audits)
 	}
 	apply := requestProtectionAPI(router, http.MethodPost, "/api/components/server-protection/firewall/apply", `{"operationId":"`+operationID+`","confirmation":"APPLY SERVER PROTECTION `+operationID+`"}`)
@@ -85,7 +85,7 @@ func TestOperationAPIConfirmationAndAuditChoreography(t *testing.T) {
 	for _, audit := range *audits {
 		names = append(names, audit.Name)
 	}
-	for _, expected := range []string{"server_protection.prepare", "server_protection.apply", "server_protection.rollback", "server_protection.forget_state"} {
+	for _, expected := range []string{"server_protection.apply", "server_protection.rollback", "server_protection.forget_state"} {
 		if !slices.Contains(names, expected) {
 			t.Fatalf("missing audit %s in %#v", expected, names)
 		}

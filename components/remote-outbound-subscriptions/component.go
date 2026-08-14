@@ -5,6 +5,7 @@ package remoteoutboundsubscriptions
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"sync"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
@@ -71,14 +72,20 @@ func (component) DropData(context.Context, lifecycle.Context) error {
 }
 
 func (component) Start(_ context.Context, ctx lifecycle.Context) error {
+	if ctx.Host.API.Runtime == nil {
+		return errors.New("remote-outbound-subscriptions runtime is unavailable")
+	}
 	registerRuntimeHooks()
 	remotesubservice.StartRemoteOutboundAutoRefresh(ctx.Host.API.Runtime)
 	return nil
 }
 
 func (component) Stop(ctx context.Context) error {
+	if err := remotesubservice.StopRemoteOutboundAutoRefresh(ctx); err != nil {
+		return err
+	}
 	unregisterRuntimeHooks()
-	return remotesubservice.StopRemoteOutboundAutoRefresh(ctx)
+	return nil
 }
 
 func registerRuntimeHooks() {
@@ -108,7 +115,7 @@ func registerRuntimeHooks() {
 		})
 	}
 	if runtimeHooks.unregisterOptionKeys == nil {
-		runtimeHooks.unregisterOptionKeys = model.RegisterOutboundOptionStripKeys(
+		runtimeHooks.unregisterOptionKeys = outboundentities.RegisterOptionStripKeys(
 			id,
 			"componentBadges",
 			"componentDeleteHintKey",

@@ -46,8 +46,6 @@ var content embed.FS
 type Server struct {
 	httpServer       *http.Server
 	listener         net.Listener
-	ctx              context.Context
-	cancel           context.CancelFunc
 	settingService   service.SettingService
 	runtime          *service.Runtime
 	assetsFS         fs.FS
@@ -68,10 +66,7 @@ func NewServer(options ...Option) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	ctx, cancel := context.WithCancel(context.Background())
 	server := &Server{
-		ctx:      ctx,
-		cancel:   cancel,
 		assetsFS: assetsFS,
 	}
 	for _, option := range options {
@@ -254,6 +249,10 @@ func (s *Server) Start() (err error) {
 	if err != nil {
 		return err
 	}
+	webDomain, err := s.settingService.GetWebDomain()
+	if err != nil {
+		return err
+	}
 	listenAddr := net.JoinHostPort(listen, strconv.Itoa(port))
 	listenResult, err := bind.ListenWithFallbackResult(listenAddr, listen, strconv.Itoa(port))
 	if err != nil {
@@ -273,7 +272,7 @@ func (s *Server) Start() (err error) {
 			Certificates: []tls.Certificate{cert},
 			MinVersion:   tls.VersionTLS12,
 		}
-		listener = autohttps.NewAutoHttpsListener(listener)
+		listener = autohttps.NewAutoHttpsListener(listener, webDomain)
 		listener = tls.NewListener(listener, c)
 	}
 
@@ -328,7 +327,6 @@ func (s *Server) Stop() error {
 		err = s.httpServer.Shutdown(shutdownCtx)
 		cancelShutdown()
 		if err != nil {
-			s.cancel()
 			if s.listener != nil {
 				_ = s.listener.Close()
 			}
@@ -337,14 +335,10 @@ func (s *Server) Stop() error {
 	} else if s.listener != nil {
 		err = s.listener.Close()
 		if err != nil {
-			s.cancel()
 			return err
 		}
 	}
-	s.cancel()
+	s.httpServer = nil
+	s.listener = nil
 	return nil
-}
-
-func (s *Server) GetCtx() context.Context {
-	return s.ctx
 }

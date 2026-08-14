@@ -148,13 +148,13 @@
 
 <script lang="ts" setup>
 import AdminsNexusList from '@/views/admins/AdminsNexusList.vue'
-import ManualSortButton from '@/components/ManualSortButton.vue'
+import ManualSortButton from '@/shared/ui/ManualSortButton.vue'
 import AdminModal from '@/layouts/modals/Admin.vue'
 import AdminAddModal from '@/layouts/modals/AdminAdd.vue'
 import AdminDeleteModal from '@/layouts/modals/AdminDelete.vue'
 import ChangeModal  from '@/layouts/modals/Changes.vue'
 import TokenModal from '@/layouts/modals/Token.vue'
-import { useAdminsPage } from '@/shared/composables/pages/useAdminsPage'
+import { useAdminsPage } from '@/features/useAdminsPage'
 
 const { mode, nexus, loading, users, editModal, showEditModal, closeEditModal, saveEditModal, addModal, showAddModal, closeAddModal, saveAddModal, deleteModal, showDeleteModal, closeDeleteModal, deleteAdmin, changesModal, showChangesModal, closeChangesModal, tokenModal, showTokenModal, closeTokenModal, logoutAllMenu, logoutAllAdmins, moveAdmin, dragAdmin, sortAdminsByName, adminDrag, onAdminDrop } = useAdminsPage()
 </script>

@@ -7,6 +7,7 @@ import Ws from '@/store/ws'
 import { getBaseUrl } from '@/plugins/base-url'
 import { syncEnabledComponents } from '@/componentSystem/loader'
 import { getSecurityPosture, messageObject, type SecurityPosture } from '@/shared/composables/useSecurityOperations'
+import { configureLoginNavigation } from '@/plugins/loginNavigation'
 
 const routes = [
   {
@@ -123,6 +124,8 @@ const router = createRouter({
   routes,
 })
 
+configureLoginNavigation(() => router.push('/login'))
+
 // After a panel upgrade, the browser tab still holds the previous
 // index.html with hashed chunk names. The first dynamic import (e.g.
 // navigating to /clients) requests a chunk that no longer exists in the
@@ -160,8 +163,6 @@ router.afterEach(() => {
   }
 })
 
-let intervalId: any
-
 // The session cookie is HttpOnly (set by api/session.go) so it cannot be
 // observed from the client; auth is enforced server-side. Every API call
 // returns `Invalid login` when the cookie is missing or expired, and
@@ -178,8 +179,6 @@ router.beforeEach(async (to) => {
     if (posture?.authState === 'password_reset' || posture?.authState === 'mfa_pending' || posture?.authState === 'mfa_recovery') {
       return '/security-transition'
     }
-    loadDataInterval()
-    Ws().connect()
     if (!data.componentsLoaded) {
       try {
         await data.loadData()
@@ -188,6 +187,7 @@ router.beforeEach(async (to) => {
       }
     }
     await syncEnabledComponents(router)
+    void Ws().connect()
     const resolved = router.resolve(to.fullPath)
     const componentId = to.meta.componentId as string | undefined
     if (to.matched.length === 0 && resolved.matched.length > 0) {
@@ -200,20 +200,8 @@ router.beforeEach(async (to) => {
       return '/'
     }
   } else {
-    if (intervalId) {
-      clearInterval(intervalId)
-      intervalId = undefined
-    }
     Ws().disconnect()
   }
 })
-
-const loadDataInterval = () => {
-  if (intervalId) return
-  Data().loadData()
-  intervalId = setInterval(() => {
-    Data().loadData()
-  }, 10000)
-}
 
 export default router

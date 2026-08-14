@@ -14,8 +14,6 @@ func EnsureSchema(db *gorm.DB) error {
 		&Redirect{},
 		&Asset{},
 		&Publish{},
-		&NodePublication{},
-		&NodeEndpoint{},
 		&PublishFile{},
 		&PublishRedirect{},
 		&SafetyReport{},
@@ -26,6 +24,15 @@ func EnsureSchema(db *gorm.DB) error {
 		&Event{},
 	); err != nil {
 		return err
+	}
+	// Direct node mutation was never part of the public component surface. Drop
+	// its unreachable persistence, including plaintext endpoint secrets.
+	for _, retired := range []string{"fallback_html_node_publications", "fallback_html_node_endpoints"} {
+		if db.Migrator().HasTable(retired) {
+			if err := db.Migrator().DropTable(retired); err != nil {
+				return err
+			}
+		}
 	}
 	for _, query := range []string{
 		"CREATE INDEX IF NOT EXISTS idx_fallback_html_sites_enabled ON fallback_html_sites(enabled, id)",
@@ -52,8 +59,6 @@ func DropSchema(db *gorm.DB) error {
 		&SelfStealDraft{},
 		&TemplateSource{},
 		&SafetyReport{},
-		&NodePublication{},
-		&NodeEndpoint{},
 		&PublishRedirect{},
 		&PublishFile{},
 		&Publish{},
@@ -67,6 +72,13 @@ func DropSchema(db *gorm.DB) error {
 		}
 		if err := migrator.DropTable(table); err != nil {
 			return err
+		}
+	}
+	for _, retired := range []string{"fallback_html_node_publications", "fallback_html_node_endpoints"} {
+		if migrator.HasTable(retired) {
+			if err := migrator.DropTable(retired); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

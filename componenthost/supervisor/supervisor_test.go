@@ -2,6 +2,7 @@ package supervisor
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"testing"
 
@@ -14,6 +15,20 @@ import (
 type recordingLifecycle struct {
 	id     string
 	events *[]string
+}
+
+type retryStopLifecycle struct {
+	recordingLifecycle
+	failures int
+}
+
+func (l *retryStopLifecycle) Stop(ctx context.Context) error {
+	l.recordingLifecycle.Stop(ctx)
+	if l.failures > 0 {
+		l.failures--
+		return errors.New("stop failed")
+	}
+	return nil
 }
 
 func (l recordingLifecycle) Start(context.Context, lifecycle.Context) error {
@@ -84,6 +99,26 @@ func TestSupervisorStopStopsRunningComponentsInReverseOrder(t *testing.T) {
 	}
 }
 
+func TestSupervisorStopRetainsFailedComponentsForRetry(t *testing.T) {
+	var events []string
+	lifecycleValue := &retryStopLifecycle{recordingLifecycle: recordingLifecycle{id: "retry", events: &events}, failures: 1}
+	component := registry.Component{Manifest: manifest.Manifest{ID: "retry", Name: "Retry", Version: "1", Delivery: manifest.DeliveryInProcess}, Lifecycle: lifecycleValue}
+	supervisor := New(lifecycleHostForTest())
+	supervisor.running = []registry.Component{component}
+	if err := supervisor.Stop(context.Background()); err == nil {
+		t.Fatal("failed stop was reported as success")
+	}
+	if len(supervisor.running) != 1 {
+		t.Fatal("failed component was forgotten instead of retained for retry")
+	}
+	if err := supervisor.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if len(supervisor.running) != 0 {
+		t.Fatal("successfully retried component remained running")
+	}
+}
+
 func TestSupervisorDropDataCallsComponentDropper(t *testing.T) {
 	var events []string
 	const componentID = "test-supervisor-drop"
@@ -96,6 +131,18 @@ func TestSupervisorDropDataCallsComponentDropper(t *testing.T) {
 	}
 	if want := []string{"drop:" + componentID}; !reflect.DeepEqual(events, want) {
 		t.Fatalf("events = %#v, want %#v", events, want)
+	}
+}
+
+func TestSupervisorDropDataRequiresDurableOwnerLifecycle(t *testing.T) {
+	const componentID = "test-missing-drop-lifecycle"
+	registry.Register(registry.Component{
+		Manifest: manifest.Manifest{ID: componentID, Name: "Missing Drop", Version: "1", Delivery: manifest.DeliveryInProcess,
+			Database: manifest.Database{Tables: []string{"test_missing_drop_rows"}}},
+		Lifecycle: lifecycle.Noop{},
+	})
+	if err := New(lifecycleHostForTest()).DropData(context.Background(), componentID); err == nil {
+		t.Fatal("durable component without a data-drop lifecycle was accepted")
 	}
 }
 

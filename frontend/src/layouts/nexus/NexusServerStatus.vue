@@ -26,7 +26,7 @@
 <script lang="ts" setup>
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
-import HttpUtils from '@/plugins/httputil'
+import { fetchServerStatus } from '@/shared/composables/useServerOperations'
 import Ws from '@/store/ws'
 import { isSelectorRecord, nonNegativeNumber } from '@/components/nexus/overview/selectors/selectorUtils'
 
@@ -38,15 +38,18 @@ const ws = Ws()
 const cpuPercent = ref<number | null>(null)
 const ramPercent = ref<number | null>(null)
 let metricsInterval: ReturnType<typeof setInterval> | undefined
+let metricsPending = false
 
 const hasUsageMetrics = computed(() => cpuPercent.value !== null && ramPercent.value !== null)
 
 const loadMetrics = async () => {
+  if (metricsPending) return
+  metricsPending = true
   try {
-    const msg = await HttpUtils.get('api/status', { r: 'cpu,mem' })
-    if (!msg.success || !msg.obj) return
+    const payload = await fetchServerStatus(['cpu', 'mem'])
+    if (!payload) return
 
-    const status = isSelectorRecord(msg.obj) ? msg.obj : {}
+    const status = isSelectorRecord(payload) ? payload : {}
 
     let cpu = nonNegativeNumber(status.cpu)
     if (cpu === undefined && isSelectorRecord(status.sys)) {
@@ -68,12 +71,15 @@ const loadMetrics = async () => {
     }
   } catch {
     // Sidebar status is best-effort. Keep the connection indicator visible if metrics fail.
+  } finally {
+    metricsPending = false
   }
 }
 
 onMounted(() => {
   void loadMetrics()
   metricsInterval = setInterval(() => {
+    if (document.hidden) return
     void loadMetrics()
   }, 10000)
 })

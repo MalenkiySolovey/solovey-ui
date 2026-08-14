@@ -1,12 +1,11 @@
 import { expect, test } from '@playwright/test'
-import { csrfToken, login } from './helpers'
+import { login, stepUpMutationHeaders } from './helpers'
 
 test('API token can be created, disabled, enabled, listed masked, and deleted', async ({ page }) => {
   await login(page)
-  const token = await csrfToken(page)
 
   const addResponse = await page.request.post('api/addToken', {
-    headers: { 'X-CSRF-Token': token },
+    headers: await stepUpMutationHeaders(page, 'token.create', 'new-token'),
     form: {
       desc: 'e2e-token',
       expiry: '1',
@@ -14,7 +13,7 @@ test('API token can be created, disabled, enabled, listed masked, and deleted', 
     },
   })
   const addBody = await addResponse.json()
-  expect(addBody.success).toBe(true)
+  expect(addBody.success, addBody.msg).toBe(true)
   const plainToken = addBody.obj as string
   expect(plainToken).toMatch(/^[A-Za-z0-9]{32}$/)
 
@@ -27,17 +26,17 @@ test('API token can be created, disabled, enabled, listed masked, and deleted', 
 
   for (const enabled of [false, true]) {
     const response = await page.request.post('api/setTokenEnabled', {
-      headers: { 'X-CSRF-Token': token },
+      headers: await stepUpMutationHeaders(page, 'token.change', `token:${created.id}`),
       form: { id: String(created.id), enabled: String(enabled) },
     })
     const body = await response.json()
-    expect(body.success).toBe(true)
+    expect(body.success, body.msg).toBe(true)
   }
 
   const deleteResponse = await page.request.post('api/deleteToken', {
-    headers: { 'X-CSRF-Token': token },
+    headers: await stepUpMutationHeaders(page, 'token.revoke', `token:${created.id}`),
     form: { id: String(created.id) },
   })
   const deleteBody = await deleteResponse.json()
-  expect(deleteBody.success).toBe(true)
+  expect(deleteBody.success, deleteBody.msg).toBe(true)
 })

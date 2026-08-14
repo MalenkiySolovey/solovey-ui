@@ -11,7 +11,13 @@ func (a *Handler) DownloadDatabase(c *gin.Context) {
 		return
 	}
 	request := parseDatabaseBackupRequest(c)
-	if codec, ok := selectedBackupExportCodec(c); ok {
+	codec, ok, codecErr := selectedBackupExportCodec(c)
+	if codecErr != nil {
+		status, class := backupCodecHTTPError(codecErr, "backup_codec_failed")
+		respondDatabaseBackupError(c, status, class)
+		return
+	}
+	if ok {
 		a.getEncodedDb(c, request, codec)
 		return
 	}

@@ -98,7 +98,9 @@ func (m *Manager) Status(ctx context.Context) (domain.Posture, error) {
 	if err := posture.ValidateProjection(m.now()); err != nil {
 		return domain.Posture{}, err
 	}
-	_ = m.Repository.SavePosture(ctx, posture, posture.Validate(m.now()) == nil)
+	if err := m.Repository.SavePosture(ctx, posture, posture.Validate(m.now()) == nil); err != nil {
+		return domain.Posture{}, err
+	}
 	return posture, nil
 }
 
@@ -114,7 +116,9 @@ func (m *Manager) Doctor(ctx context.Context) (domain.DoctorReport, error) {
 		return domain.DoctorReport{}, ErrRevisionMismatch
 	}
 	if report.Posture != nil {
-		_ = m.Repository.SavePosture(ctx, *report.Posture, report.Healthy && report.Posture.Validate(m.now()) == nil)
+		if err := m.Repository.SavePosture(ctx, *report.Posture, report.Healthy && report.Posture.Validate(m.now()) == nil); err != nil {
+			return domain.DoctorReport{}, err
+		}
 	}
 	if state, stateErr := m.Repository.State(ctx); stateErr == nil {
 		report.Desired = domain.ProfileID(state.DesiredProfile)
@@ -130,14 +134,20 @@ func (m *Manager) Doctor(ctx context.Context) (domain.DoctorReport, error) {
 		case !state.Trusted || state.ActiveProfile != state.VerifiedProfile:
 			report.State = "ACTIVE_NOT_VERIFIED"
 		}
+	} else if !errors.Is(stateErr, gorm.ErrRecordNotFound) {
+		return domain.DoctorReport{}, stateErr
 	}
 	if recovery, recoveryErr := m.Repository.Recovery(ctx); recoveryErr == nil && (recovery.State == domain.StateManualRecoveryRequired || recovery.RestoredUntrusted) {
 		report.State = "RECOVERY_REQUIRED"
 		report.Healthy = false
+	} else if recoveryErr != nil && !errors.Is(recoveryErr, gorm.ErrRecordNotFound) {
+		return domain.DoctorReport{}, recoveryErr
 	}
 	report.Revision = ""
 	report.Revision = domain.Revision(report)
-	_ = m.Repository.SaveDoctor(ctx, report)
+	if err := m.Repository.SaveDoctor(ctx, report); err != nil {
+		return domain.DoctorReport{}, err
+	}
 	return report, nil
 }
 
@@ -259,7 +269,9 @@ func (m *Manager) Start(ctx context.Context, request StartRequest) (domain.Opera
 	if err != nil || posture.Profile != operation.TargetProfile {
 		return m.rollback(ctx, operation, "verification_failed")
 	}
-	_ = m.Repository.SavePosture(ctx, posture, true)
+	if err := m.Repository.SavePosture(ctx, posture, true); err != nil {
+		return m.rollback(ctx, operation, "posture_persistence_failed")
+	}
 	return m.advance(ctx, operation, domain.StateVerifying, "target_verified", "")
 }
 
@@ -281,7 +293,9 @@ func (m *Manager) Confirm(ctx context.Context, request ConfirmRequest) (domain.O
 		return m.rollback(ctx, operation, "confirm_verification_failed")
 	}
 	operation.ReconciledAt = m.now().Unix()
-	_ = m.Repository.SavePosture(ctx, posture, true)
+	if err := m.Repository.SavePosture(ctx, posture, true); err != nil {
+		return m.rollback(ctx, operation, "posture_persistence_failed")
+	}
 	return m.advance(ctx, operation, domain.StateCommitted, "migration_committed", "")
 }
 
@@ -324,7 +338,10 @@ func (m *Manager) ReconcileStartup(ctx context.Context) error {
 	if operation.State == domain.StateApplying || operation.State == domain.StateVerifying {
 		posture, verifyErr := m.Provider.Verify(ctx, m.fence(operation), operation.TargetProfile, operation.CheckpointRef)
 		if verifyErr == nil && posture.Profile == operation.TargetProfile && posture.Validate(m.now()) == nil {
-			_ = m.Repository.SavePosture(ctx, posture, true)
+			if saveErr := m.Repository.SavePosture(ctx, posture, true); saveErr != nil {
+				_, err = m.rollback(ctx, operation, "posture_persistence_failed")
+				return err
+			}
 			if operation.State == domain.StateApplying {
 				_, err = m.advance(ctx, operation, domain.StateVerifying, "startup_target_verified", "")
 			}
@@ -353,7 +370,9 @@ func (m *Manager) rollback(ctx context.Context, operation domain.Operation, reas
 		return m.manual(ctx, operation, "rollback_verification_failed")
 	}
 	operation.ReconciledAt = m.now().Unix()
-	_ = m.Repository.SavePosture(ctx, posture, true)
+	if err := m.Repository.SavePosture(ctx, posture, true); err != nil {
+		return m.manual(ctx, operation, "rollback_posture_persistence_failed")
+	}
 	return m.advance(ctx, operation, domain.StateRolledBack, "rollback_verified", reason)
 }
 

@@ -38,6 +38,9 @@ func TestSecurityAuthZAPIV2ActionScopeGate(t *testing.T) {
 		{"stats", []string{"read", "write", "observability"}},
 		{"status", []string{"read", "write", "observability"}},
 		{"logs", []string{"read", "write", "observability"}},
+		{"getdb", []string{"database"}},
+		{"importdb", []string{"database"}},
+		{"rotateSubSecret", []string{"write"}},
 	}
 	allScopes := []string{"read", "write", "database", "telegram", "observability"}
 
@@ -62,11 +65,8 @@ func TestSecurityAuthZAPIV2ActionScopeGate(t *testing.T) {
 		})
 	}
 
-	// Self-gated actions (getdb/importdb/rotateSubSecret) must NOT be blocked by
-	// enforceActionScope — they enforce their own scope inside the handler, so
-	// the dispatcher gate has to pass them through regardless of scope.
-	if code := runActionScopeGate(h, "getdb", "telegram"); code != http.StatusOK {
-		t.Fatalf("self-gated action getdb must pass enforceActionScope, got %d", code)
+	if code := runActionScopeGate(h, "futureActionWithoutPolicy", "admin"); code != http.StatusForbidden {
+		t.Fatalf("undeclared dispatcher action must fail closed, got %d", code)
 	}
 }
 
@@ -111,4 +111,17 @@ func scopeSliceContains(s []string, v string) bool {
 		}
 	}
 	return false
+}
+
+func TestStepUpOperationInventoryCoversRegisteredMutations(t *testing.T) {
+	for _, operation := range []string{
+		"data.drop",
+		"update.prepare",
+		"update.activate",
+		"update.rollback",
+	} {
+		if !validStepUpOperation(operation) {
+			t.Errorf("registered protected operation %q cannot be issued", operation)
+		}
+	}
 }

@@ -486,10 +486,12 @@ func (h *securityHTTP) issueStepUp(c *gin.Context) {
 	))
 	if err == nil {
 		session := sessions.Default(c)
+		now := time.Now()
 		if assurance == service.AssuranceMFA || assurance == service.AssuranceRecovery {
-			session.Set(service.SessionLastMFAAtKey, time.Now().Unix())
+			session.Set(service.SessionLastMFAAtKey, now.Unix())
 		}
 		ResetSessionCSRF(session)
+		session.Options(sessionCookieOptions(c, &h.api.SettingService, session, now))
 		if saveErr := session.Save(); saveErr != nil {
 			_ = h.stepUp.InvalidateSession(securityContext.Ref)
 			jsonMsg(c, "", saveErr)
@@ -941,9 +943,9 @@ func validDigest(value string) bool {
 func validStepUpOperation(value string) bool {
 	switch value {
 	case "admin.credential", "admin.create", "admin.delete", "token.create", "token.revoke", "token.change",
-		"backup.restore", "drop_data", "sessions.revoke_others", "sessions.adopt_bounded", "mfa.enroll",
+		"backup.restore", "data.drop", "drop_data", "sessions.revoke_others", "sessions.adopt_bounded", "mfa.enroll",
 		"mfa.recovery.rotate", "mfa.disable", "ssh.candidate.apply", "ssh.candidate.confirm", "ssh.candidate.rollback",
-		"deployment.migrate", "deployment.confirm", "deployment.rollback":
+		"deployment.migrate", "deployment.confirm", "deployment.rollback", "update.prepare", "update.activate", "update.rollback":
 		return true
 	default:
 		return false

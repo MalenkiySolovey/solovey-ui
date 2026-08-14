@@ -18,6 +18,7 @@ const (
 	ProtocolProbeObservationSchemaV1 = "solovey-ui/protocol-probe-observation/v1"
 	MaxProtocolProbeDuration         = 5 * time.Second
 	MaxProtocolProbeFreshness        = time.Minute
+	MaxProtocolProbeProvidersV1      = 128
 )
 
 type ProtocolProbeTargetV1 struct {
@@ -93,33 +94,41 @@ type ProtocolProbeProviderV1 interface {
 
 type ProtocolProbeRegistryV1 struct {
 	mu             sync.Mutex
-	providers      map[string]ProtocolProbeProviderV1
+	providers      map[string]protocolProbeProviderEntry
 	lastGeneration map[string]uint64
 	lastProbeID    map[string]string
 	nonce          atomic.Uint64
 }
 
+type protocolProbeProviderEntry struct {
+	id       string
+	instance string
+	provider ProtocolProbeProviderV1
+}
+
 func NewProtocolProbeRegistryV1() *ProtocolProbeRegistryV1 {
-	return &ProtocolProbeRegistryV1{providers: map[string]ProtocolProbeProviderV1{}, lastGeneration: map[string]uint64{}, lastProbeID: map[string]string{}}
+	return &ProtocolProbeRegistryV1{providers: map[string]protocolProbeProviderEntry{}, lastGeneration: map[string]uint64{}, lastProbeID: map[string]string{}}
 }
 
 func (r *ProtocolProbeRegistryV1) Register(provider ProtocolProbeProviderV1) (func(), error) {
-	if r == nil || provider == nil || strings.TrimSpace(provider.ProviderID()) == "" || strings.TrimSpace(provider.ProviderInstance()) == "" {
+	id, instance, ok := protocolProbeProviderIdentity(provider)
+	if r == nil || !ok {
 		return nil, errors.New("protocol_probe_provider_invalid")
 	}
-	id := provider.ProviderID()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.providers[id]; exists {
 		return nil, errors.New("protocol_probe_provider_duplicate")
 	}
-	r.providers[id] = provider
+	if len(r.providers) >= MaxProtocolProbeProvidersV1 {
+		return nil, errors.New("protocol_probe_provider_capacity_exceeded")
+	}
+	r.providers[id] = protocolProbeProviderEntry{id: id, instance: instance, provider: provider}
 	var once sync.Once
-	instance := provider.ProviderInstance()
 	return func() {
 		once.Do(func() {
 			r.mu.Lock()
-			if current := r.providers[id]; current != nil && current.ProviderInstance() == instance {
+			if current, exists := r.providers[id]; exists && current.instance == instance {
 				delete(r.providers, id)
 				prefix := instance + "|"
 				for key := range r.lastGeneration {
@@ -135,12 +144,17 @@ func (r *ProtocolProbeRegistryV1) Register(provider ProtocolProbeProviderV1) (fu
 }
 
 func (r *ProtocolProbeRegistryV1) Capability(ctx context.Context, target ProtocolProbeTargetV1) ProtocolProbeCapabilityV1 {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	callCtx, cancel := context.WithTimeout(ctx, MaxProtocolProbeDuration)
+	defer cancel()
 	providers := r.snapshotProviders()
 	var selected ProtocolProbeCapabilityV1
 	count := 0
-	for _, provider := range providers {
-		value := provider.Capability(ctx, target)
-		if value.Available {
+	for _, entry := range providers {
+		value, ok := callProtocolProbeCapability(callCtx, entry.provider, target)
+		if ok && value.ProviderID == entry.id && value.ProviderInstance == entry.instance && value.Available {
 			selected = value
 			count++
 		}
@@ -160,8 +174,8 @@ func (r *ProtocolProbeRegistryV1) ProbeFresh(ctx context.Context, request Protoc
 		return ProtocolProbeObservationV1{}, errors.New("protocol_probe_unavailable")
 	}
 	r.mu.Lock()
-	provider := r.providers[capability.ProviderID]
-	if provider == nil || provider.ProviderInstance() != capability.ProviderInstance {
+	entry, exists := r.providers[capability.ProviderID]
+	if !exists || entry.instance != capability.ProviderInstance {
 		r.mu.Unlock()
 		return ProtocolProbeObservationV1{}, errors.New("protocol_probe_unavailable")
 	}
@@ -180,7 +194,10 @@ func (r *ProtocolProbeRegistryV1) ProbeFresh(ctx context.Context, request Protoc
 		ProtocolProbeObservationSchemaV1, capability.ProviderInstance, request.Target.ResourceID, request.Target.EndpointID, minimum, r.nonce.Add(1), request.NotBeforeUnixNano})
 	probeCtx, cancel := context.WithTimeout(ctx, MaxProtocolProbeDuration)
 	defer cancel()
-	value, err := provider.Probe(probeCtx, request)
+	value, err, completed := callProtocolProbe(probeCtx, entry.provider, request)
+	if !completed {
+		return ProtocolProbeObservationV1{}, errors.New("protocol_probe_timeout")
+	}
 	if err != nil {
 		return ProtocolProbeObservationV1{}, err
 	}
@@ -196,15 +213,65 @@ func (r *ProtocolProbeRegistryV1) ProbeFresh(ctx context.Context, request Protoc
 	return value, nil
 }
 
-func (r *ProtocolProbeRegistryV1) snapshotProviders() []ProtocolProbeProviderV1 {
+func (r *ProtocolProbeRegistryV1) snapshotProviders() []protocolProbeProviderEntry {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	result := make([]ProtocolProbeProviderV1, 0, len(r.providers))
+	result := make([]protocolProbeProviderEntry, 0, len(r.providers))
 	for _, p := range r.providers {
 		result = append(result, p)
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].ProviderID() < result[j].ProviderID() })
+	sort.Slice(result, func(i, j int) bool { return result[i].id < result[j].id })
 	return result
+}
+
+func protocolProbeProviderIdentity(provider ProtocolProbeProviderV1) (id, instance string, ok bool) {
+	if provider == nil {
+		return "", "", false
+	}
+	defer func() {
+		if recover() != nil {
+			id, instance, ok = "", "", false
+		}
+	}()
+	id, instance = strings.TrimSpace(provider.ProviderID()), strings.TrimSpace(provider.ProviderInstance())
+	return id, instance, healthToken(id, 128) && healthToken(instance, 128)
+}
+
+func callProtocolProbeCapability(ctx context.Context, provider ProtocolProbeProviderV1, target ProtocolProbeTargetV1) (ProtocolProbeCapabilityV1, bool) {
+	result := make(chan ProtocolProbeCapabilityV1, 1)
+	go func() {
+		defer func() { _ = recover() }()
+		result <- provider.Capability(ctx, target)
+	}()
+	select {
+	case value := <-result:
+		return value, true
+	case <-ctx.Done():
+		return ProtocolProbeCapabilityV1{}, false
+	}
+}
+
+func callProtocolProbe(ctx context.Context, provider ProtocolProbeProviderV1, request ProtocolProbeRequestV1) (ProtocolProbeObservationV1, error, bool) {
+	type response struct {
+		value ProtocolProbeObservationV1
+		err   error
+	}
+	result := make(chan response, 1)
+	go func() {
+		defer func() {
+			if recover() != nil {
+				result <- response{err: errors.New("protocol_probe_failed")}
+			}
+		}()
+		value, err := provider.Probe(ctx, request)
+		result <- response{value: value, err: err}
+	}()
+	select {
+	case value := <-result:
+		return value.value, value.err, true
+	case <-ctx.Done():
+		return ProtocolProbeObservationV1{}, ctx.Err(), false
+	}
 }
 
 func validProtocolCapability(value ProtocolProbeCapabilityV1, target ProtocolProbeTargetV1) bool {

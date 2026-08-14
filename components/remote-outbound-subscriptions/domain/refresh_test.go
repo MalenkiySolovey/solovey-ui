@@ -186,6 +186,51 @@ func TestRefreshSubscriptionOutboundsUpdatesAndPrunesStaleConnections(t *testing
 	}
 }
 
+func TestPartialFetchedSubscriptionNeverPrunesPreviouslyObservedConnections(t *testing.T) {
+	db := newRemoteSyncDB(t)
+	sub := RemoteOutboundSubscription{Name: "Remote", TagPrefix: "ros-"}
+	if err := db.Create(&sub).Error; err != nil {
+		t.Fatal(err)
+	}
+	initial := []map[string]interface{}{
+		{"type": "vless", "tag": "Node A", "server": "a.example", "server_port": float64(443)},
+		{"type": "trojan", "tag": "Node B", "server": "b.example", "server_port": float64(443), "password": "secret"},
+	}
+	if _, _, err := RefreshSubscriptionOutbounds(db, &sub, initial, 100); err != nil {
+		t.Fatal(err)
+	}
+	fetched, err := ParseFetchedSubscription(
+		"vless://11111111-1111-1111-1111-111111111111@a2.example:8443#Node%20A",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	fetched.Attempts = []FetchAttempt{
+		{Variant: subcanonical.FormatURI, Formats: []string{subcanonical.FormatURI}},
+		{Variant: subcanonical.FormatClash, Error: "temporary fetch failure"},
+	}
+
+	result, coreChanged, err := RefreshFetchedSubscription(db, &sub, fetched, 200)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if coreChanged {
+		t.Fatal("partial refresh of unsynced rows should not require a core restart")
+	}
+	if !result.PruneDeferred || result.MarkedMissing != 0 {
+		t.Fatalf("partial refresh result = %#v, want deferred prune", result)
+	}
+	var count int64
+	if err := db.Model(&RemoteOutboundConnection{}).
+		Where("subscription_id = ? AND source_key = ?", sub.Id, "label:nodeb").
+		Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("partial refresh pruned the previously observed connection, count=%d", count)
+	}
+}
+
 func TestRefreshSubscriptionOutboundsMigratesLegacyTypedLabelSourceKey(t *testing.T) {
 	db := newRemoteSyncDB(t)
 	sub := RemoteOutboundSubscription{Name: "Remote", TagPrefix: "ros-"}

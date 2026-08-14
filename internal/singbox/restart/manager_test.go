@@ -84,3 +84,22 @@ func TestManagerCancelPendingSighup(t *testing.T) {
 	case <-time.After(75 * time.Millisecond):
 	}
 }
+
+func TestScheduledSignalCanSynchronouslyAcquireManager(t *testing.T) {
+	completed := make(chan struct{})
+	var manager *Manager
+	manager = NewManager(time.Millisecond, func() error {
+		return manager.RunBlocking(func() error {
+			close(completed)
+			return nil
+		})
+	})
+	if err := manager.SendSighup(); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-completed:
+	case <-time.After(time.Second):
+		t.Fatal("synchronous restart could not reacquire manager")
+	}
+}

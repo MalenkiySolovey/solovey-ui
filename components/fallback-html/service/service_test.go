@@ -11,6 +11,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -24,6 +25,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/publicsurface"
+	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -98,6 +100,7 @@ func TestSafetyBlocksRootAdminPath(t *testing.T) {
 	t.Setenv("SUI_DB_FOLDER", dbDir)
 	setSetting(t, db, "webPath", "/")
 	service := New(db, NewRuntime())
+	service.resourceSnapshot = func(context.Context) hostresources.ResourceSnapshot { return hostresources.ResourceSnapshot{} }
 	site, err := service.SaveSite(SiteInput{Name: "Example Portal"}, "tester")
 	if err != nil {
 		t.Fatalf("SaveSite: %v", err)
@@ -166,6 +169,7 @@ func TestTargetsUseCurrentManagedWebListener(t *testing.T) {
 	setSetting(t, db, "webListen", "127.0.0.1")
 	setSetting(t, db, "webPort", "24443")
 	service := New(db, NewRuntime())
+	service.resourceSnapshot = func(context.Context) hostresources.ResourceSnapshot { return hostresources.ResourceSnapshot{} }
 	site, err := service.SaveSite(SiteInput{Name: "Example Portal"}, "tester")
 	if err != nil {
 		t.Fatalf("SaveSite: %v", err)
@@ -191,7 +195,7 @@ func TestTargetsUseCurrentManagedWebListener(t *testing.T) {
 	if len(targets) != 1 || targets[0].ID != 0 || !targets[0].Current {
 		t.Fatalf("deleted target should fall back to current listener target: %#v", targets)
 	}
-	ports, err := service.PortCandidates()
+	ports, err := service.PortCandidates(context.Background())
 	if err != nil {
 		t.Fatalf("PortCandidates: %v", err)
 	}
@@ -214,12 +218,11 @@ func TestPortCandidatesReportInboundAndExternalBlocks(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SaveSite: %v", err)
 	}
-	if err := db.Create(&model.Inbound{
-		Type:    "vless",
-		Tag:     "vless-in",
-		Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":32221}`),
-	}).Error; err != nil {
-		t.Fatalf("create inbound: %v", err)
+	service.resourceSnapshot = func(context.Context) hostresources.ResourceSnapshot {
+		return hostresources.ResourceSnapshot{Resources: []hostresources.ProtectableResource{{
+			ID: "core:inbound:1", Owner: "core", Kind: "inbound", Name: "vless-in",
+			InboundTag: "vless-in", Listen: "127.0.0.1", Port: 32221,
+		}}}
 	}
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -238,7 +241,7 @@ func TestPortCandidatesReportInboundAndExternalBlocks(t *testing.T) {
 		t.Fatalf("create stale target: %v", err)
 	}
 
-	ports, err := service.PortCandidates()
+	ports, err := service.PortCandidates(context.Background())
 	if err != nil {
 		t.Fatalf("PortCandidates: %v", err)
 	}
@@ -390,7 +393,7 @@ func TestPublishArtifactAndRollback(t *testing.T) {
 			t.Fatalf("artifact archive missing %s, entries=%v", name, sortedKeys(entries))
 		}
 	}
-	var nodeArtifact NodeArtifactContract
+	var nodeArtifact nodeArtifactContract
 	if err := json.Unmarshal(entries["node-artifact.json"], &nodeArtifact); err != nil {
 		t.Fatalf("decode node artifact: %v", err)
 	}
@@ -555,254 +558,6 @@ func TestPrunePublishesKeepsActiveAndRecentRollbackVersions(t *testing.T) {
 	if events != 1 {
 		t.Fatalf("prune events = %d, want 1", events)
 	}
-}
-
-func TestNodePublishPlanReportsArtifactContractAndStatus(t *testing.T) {
-	db, dbDir := openFallbackDB(t)
-	t.Setenv("SUI_DB_FOLDER", dbDir)
-	setSetting(t, db, "webPath", "/secret-panel/")
-	service := New(db, NewRuntime())
-	site, err := service.SaveSite(SiteInput{Name: "Example Portal"}, "tester")
-	if err != nil {
-		t.Fatalf("SaveSite: %v", err)
-	}
-	publish, err := service.PublishSite(site.ID, "tester")
-	if err != nil {
-		t.Fatalf("PublishSite: %v", err)
-	}
-	plan, err := service.GetNodePublishPlan(site.ID, publish.Version, "node-eu-1")
-	if err != nil {
-		t.Fatalf("GetNodePublishPlan: %v", err)
-	}
-	if plan.Schema != nodePublishPlanSchema || plan.NodeID != "node-eu-1" || plan.Version != publish.Version {
-		t.Fatalf("unexpected node publish plan identity: %#v", plan)
-	}
-	if plan.Artifact.Sha256 == "" || plan.Artifact.SizeBytes <= 0 || !strings.HasSuffix(plan.Artifact.Filename, ".tar.gz") {
-		t.Fatalf("unexpected node publish artifact ref: %#v", plan.Artifact)
-	}
-	if plan.Signature.Mode != nodeSignatureMode || !plan.Signature.Required || !plan.Apply.StagingRequired || !plan.Apply.RollbackOnFailure {
-		t.Fatalf("unexpected node publish apply/signature contract: %#v", plan)
-	}
-	if len(plan.RequiredCapabilities) != 1 || plan.RequiredCapabilities[0].ID != nodeCapabilityPublicSite {
-		t.Fatalf("missing node public-site capability requirement: %#v", plan.RequiredCapabilities)
-	}
-	if !hasNodeEndpoint(plan.Endpoints, "POST", "/public-site/apply") || !hasNodeEndpoint(plan.Endpoints, "GET", "/capabilities") {
-		t.Fatalf("missing node endpoints: %#v", plan.Endpoints)
-	}
-	if plan.Status.Status != "not-targeted" || plan.Status.NodeID != "node-eu-1" {
-		t.Fatalf("unexpected default node status: %#v", plan.Status)
-	}
-	row, err := newNodePublication(site.ID, publish.Version, "node-eu-1", plan.Artifact.Sha256, "nginx", "planned")
-	if err != nil {
-		t.Fatalf("newNodePublication: %v", err)
-	}
-	if err := db.Create(&row).Error; err != nil {
-		t.Fatalf("create node publication: %v", err)
-	}
-	plan, err = service.GetNodePublishPlan(site.ID, publish.Version, "node-eu-1")
-	if err != nil {
-		t.Fatalf("GetNodePublishPlan with status: %v", err)
-	}
-	if plan.Status.Status != "planned" || plan.Status.Runtime != "nginx" || plan.Status.ArtifactSha256 != plan.Artifact.Sha256 {
-		t.Fatalf("stored node status was not surfaced: %#v", plan.Status)
-	}
-	statuses, err := service.ListNodePublications(site.ID)
-	if err != nil {
-		t.Fatalf("ListNodePublications: %v", err)
-	}
-	if len(statuses) != 1 || statuses[0].NodeID != "node-eu-1" {
-		t.Fatalf("unexpected node publications: %#v", statuses)
-	}
-}
-
-func TestApplyPublishToNodePushesArtifactAndStoresActiveStatus(t *testing.T) {
-	db, dbDir := openFallbackDB(t)
-	t.Setenv("SUI_DB_FOLDER", dbDir)
-	setSetting(t, db, "webPath", "/secret-panel/")
-	service := New(db, NewRuntime())
-	site, err := service.SaveSite(SiteInput{Name: "Example Portal"}, "tester")
-	if err != nil {
-		t.Fatalf("SaveSite: %v", err)
-	}
-	publish, err := service.PublishSite(site.ID, "tester")
-	if err != nil {
-		t.Fatalf("PublishSite: %v", err)
-	}
-	archive, err := service.GetPublishArtifact(site.ID, publish.Version)
-	if err != nil {
-		t.Fatalf("GetPublishArtifact: %v", err)
-	}
-	var validateSeen, applySeen bool
-	node := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			t.Fatalf("read node request: %v", err)
-		}
-		if got := r.Header.Get("X-Solovey-Site-ID"); got != uintString(site.ID) {
-			t.Fatalf("node site header = %q", got)
-		}
-		if got := r.Header.Get("X-Solovey-Runtime"); got != "gin" {
-			t.Fatalf("node runtime header = %q", got)
-		}
-		if got := r.Header.Get("X-Solovey-Artifact-Sha256"); got != archive.Sha256 {
-			t.Fatalf("node sha header = %q", got)
-		}
-		if got := archiveDigest(body); got != archive.Sha256 {
-			t.Fatalf("node artifact body sha = %q", got)
-		}
-		if r.Header.Get("X-Solovey-Signature") == "" || r.Header.Get("X-Solovey-Operation-ID") == "" || r.Header.Get("X-Solovey-Nonce") == "" {
-			t.Fatalf("signed operation headers were not sent: %v", r.Header)
-		}
-		if got := r.Header.Get("X-Solovey-Body-Sha256"); got != archive.Sha256 {
-			t.Fatalf("signed body sha = %q", got)
-		}
-		w.Header().Set("Content-Type", "application/json")
-		switch r.URL.Path {
-		case "/public-site/validate":
-			validateSeen = true
-			_, _ = w.Write([]byte(`{"ok":true,"siteId":"` + uintString(site.ID) + `","version":"` + publish.Version + `","artifactSha256":"` + archive.Sha256 + `","files":1}`))
-		case "/public-site/apply":
-			applySeen = true
-			_, _ = w.Write([]byte(`{"siteId":"` + uintString(site.ID) + `","version":"` + publish.Version + `","runtime":"gin","status":"applied","artifactSha256":"` + archive.Sha256 + `","appliedAt":123,"updatedAt":124}`))
-		default:
-			http.NotFound(w, r)
-		}
-	}))
-	defer node.Close()
-	service.nodeClient = &HTTPNodeClient{client: node.Client(), allowInsecureHTTP: true, skipURLValidation: true}
-
-	result, err := service.ApplyPublishToNode(context.Background(), site.ID, publish.Version, NodeApplyInput{
-		NodeID:       "node-local",
-		BaseURL:      node.URL,
-		Runtime:      "gin",
-		SharedSecret: "secret",
-	}, "tester")
-	if err != nil {
-		t.Fatalf("ApplyPublishToNode: %v", err)
-	}
-	if !validateSeen || !applySeen {
-		t.Fatalf("node validate/apply calls = %v/%v", validateSeen, applySeen)
-	}
-	if result.Status.Status != "active" || result.Status.NodeID != "node-local" || result.Status.AppliedAt != 123 {
-		t.Fatalf("unexpected node apply result: %#v", result)
-	}
-	var row fallbackdomain.NodePublication
-	if err := db.Where("site_id = ? AND node_id = ? AND publish_version = ?", site.ID, "node-local", publish.Version).First(&row).Error; err != nil {
-		t.Fatalf("node publication row: %v", err)
-	}
-	if row.Status != "active" || row.ArtifactSha256 != archive.Sha256 || row.OperationID == "" {
-		t.Fatalf("unexpected stored node publication: %#v", row)
-	}
-	var events int64
-	if err := db.Model(&fallbackdomain.Event{}).Where("site_id = ? AND action = ?", site.ID, "node_publish_applied").Count(&events).Error; err != nil {
-		t.Fatalf("count node publish event: %v", err)
-	}
-	if events != 1 {
-		t.Fatalf("node_publish_applied events = %d, want 1", events)
-	}
-}
-
-func TestApplyPublishToRegisteredNodeEndpoint(t *testing.T) {
-	db, dbDir := openFallbackDB(t)
-	t.Setenv("SUI_DB_FOLDER", dbDir)
-	setSetting(t, db, "webPath", "/secret-panel/")
-	service := New(db, NewRuntime())
-	site, err := service.SaveSite(SiteInput{Name: "Example Portal"}, "tester")
-	if err != nil {
-		t.Fatalf("SaveSite: %v", err)
-	}
-	publish, err := service.PublishSite(site.ID, "tester")
-	if err != nil {
-		t.Fatalf("PublishSite: %v", err)
-	}
-	endpoint, err := service.SaveNodeEndpoint(NodeEndpointInput{
-		NodeID:  "node-registered",
-		BaseURL: "https://node.example.com",
-		Runtime: "caddy",
-	}, "tester")
-	if err != nil {
-		t.Fatalf("SaveNodeEndpoint: %v", err)
-	}
-	if endpoint.NodeID != "node-registered" || endpoint.Runtime != "caddy" || !endpoint.Enabled {
-		t.Fatalf("unexpected node endpoint: %#v", endpoint)
-	}
-	service.nodeClient = nodeClientFunc{
-		validate: func(_ context.Context, target NodeApplyTarget, artifact ArtifactArchive) (NodeRuntimeStatus, error) {
-			if target.BaseURL != "https://node.example.com" || target.Runtime != "caddy" {
-				t.Fatalf("registered target was not resolved: %#v", target)
-			}
-			return NodeRuntimeStatus{OK: true, SiteID: uintString(site.ID), Version: publish.Version, ArtifactSha256: artifact.Sha256}, nil
-		},
-		apply: func(_ context.Context, target NodeApplyTarget, artifact ArtifactArchive) (NodeRuntimeStatus, error) {
-			return NodeRuntimeStatus{SiteID: uintString(site.ID), Version: publish.Version, Runtime: target.Runtime, Status: "applied", ArtifactSha256: artifact.Sha256, AppliedAt: 456}, nil
-		},
-	}
-	result, err := service.ApplyPublishToNode(context.Background(), site.ID, publish.Version, NodeApplyInput{NodeID: "node-registered"}, "tester")
-	if err != nil {
-		t.Fatalf("ApplyPublishToNode: %v", err)
-	}
-	if result.Status.Status != "active" || result.Status.Runtime != "caddy" || result.Status.AppliedAt != 456 {
-		t.Fatalf("unexpected registered apply result: %#v", result)
-	}
-	disabled := false
-	if _, err := service.SaveNodeEndpoint(NodeEndpointInput{NodeID: "node-disabled", BaseURL: "https://disabled.example.com", Enabled: &disabled}, "tester"); err != nil {
-		t.Fatalf("Save disabled endpoint: %v", err)
-	}
-	_, err = service.ApplyPublishToNode(context.Background(), site.ID, publish.Version, NodeApplyInput{NodeID: "node-disabled"}, "tester")
-	if err == nil || !strings.Contains(err.Error(), "not registered or disabled") {
-		t.Fatalf("expected disabled endpoint error, got %v", err)
-	}
-}
-
-func TestApplyPublishToNodeStoresFailedStatusOnUnexpectedArtifact(t *testing.T) {
-	db, dbDir := openFallbackDB(t)
-	t.Setenv("SUI_DB_FOLDER", dbDir)
-	setSetting(t, db, "webPath", "/secret-panel/")
-	service := New(db, NewRuntime())
-	site, err := service.SaveSite(SiteInput{Name: "Example Portal"}, "tester")
-	if err != nil {
-		t.Fatalf("SaveSite: %v", err)
-	}
-	publish, err := service.PublishSite(site.ID, "tester")
-	if err != nil {
-		t.Fatalf("PublishSite: %v", err)
-	}
-	service.nodeClient = nodeClientFunc{
-		validate: func(context.Context, NodeApplyTarget, ArtifactArchive) (NodeRuntimeStatus, error) {
-			return NodeRuntimeStatus{OK: true, SiteID: uintString(site.ID), Version: publish.Version}, nil
-		},
-		apply: func(context.Context, NodeApplyTarget, ArtifactArchive) (NodeRuntimeStatus, error) {
-			return NodeRuntimeStatus{SiteID: uintString(site.ID), Version: publish.Version, Status: "applied", ArtifactSha256: strings.Repeat("0", 64)}, nil
-		},
-	}
-	_, err = service.ApplyPublishToNode(context.Background(), site.ID, publish.Version, NodeApplyInput{
-		NodeID:  "node-bad",
-		BaseURL: "https://node.example.com",
-		Runtime: "gin",
-	}, "tester")
-	if err == nil || !strings.Contains(err.Error(), "unexpected artifact") {
-		t.Fatalf("expected unexpected artifact error, got %v", err)
-	}
-	var row fallbackdomain.NodePublication
-	if err := db.Where("site_id = ? AND node_id = ? AND publish_version = ?", site.ID, "node-bad", publish.Version).First(&row).Error; err != nil {
-		t.Fatalf("node publication row: %v", err)
-	}
-	if row.Status != "failed" || !strings.Contains(row.LastError, "unexpected artifact") {
-		t.Fatalf("unexpected failed node publication: %#v", row)
-	}
-}
-
-type nodeClientFunc struct {
-	validate func(context.Context, NodeApplyTarget, ArtifactArchive) (NodeRuntimeStatus, error)
-	apply    func(context.Context, NodeApplyTarget, ArtifactArchive) (NodeRuntimeStatus, error)
-}
-
-func (n nodeClientFunc) Validate(ctx context.Context, target NodeApplyTarget, artifact ArtifactArchive) (NodeRuntimeStatus, error) {
-	return n.validate(ctx, target, artifact)
-}
-
-func (n nodeClientFunc) Apply(ctx context.Context, target NodeApplyTarget, artifact ArtifactArchive) (NodeRuntimeStatus, error) {
-	return n.apply(ctx, target, artifact)
 }
 
 func TestLegacySelfStealDecoderIsBoundedStrictAndNonActionable(t *testing.T) {
@@ -1263,15 +1018,6 @@ func hasPortCandidateStatus(values []PortCandidate, status string) bool {
 	return false
 }
 
-func hasNodeEndpoint(values []NodeEndpointContract, method string, path string) bool {
-	for _, value := range values {
-		if value.Method == method && value.Path == path {
-			return true
-		}
-	}
-	return false
-}
-
 func TestPreviewSiteRendersDraftPage(t *testing.T) {
 	db, dbDir := openFallbackDB(t)
 	t.Setenv("SUI_DB_FOLDER", dbDir)
@@ -1551,6 +1297,95 @@ func TestRemoteTemplateURLStaysOnCatalogHost(t *testing.T) {
 	}
 	if !strings.Contains(resolved, "/templates/webmail-workspace/manifest.json") {
 		t.Fatalf("unexpected resolved URL: %s", resolved)
+	}
+}
+
+func TestRemoteTemplateFilesystemRestoresWhenDatabaseTransactionFails(t *testing.T) {
+	db, dbDir := openFallbackDB(t)
+	t.Setenv("SUI_DB_FOLDER", dbDir)
+
+	pageMarker := "original"
+	mux := http.NewServeMux()
+	mux.HandleFunc("/templates/catalog.json", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"schema":"solovey-ui/fallback-decoy-catalog/v1","templates":[{"id":"atomic-template","manifest":"atomic-template/manifest.json"}]}`))
+	})
+	mux.HandleFunc("/templates/atomic-template/manifest.json", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"schema":"solovey-ui/fallback-decoy-template/v1","id":"atomic-template","name":"Atomic Template","license":"MIT","source":{"repository":"test","license":"MIT","referenceFiles":[]},"contentTypeProfile":"dashboard","pages":["pages/index.html"],"assets":["assets/decoy-interactivity.js"],"notes":[]}`))
+	})
+	mux.HandleFunc("/templates/atomic-template/pages/index.html", func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = fmt.Fprintf(w, `<!doctype html><html><body><p>%s</p><script src="../assets/decoy-interactivity.js"></script></body></html>`, pageMarker)
+	})
+	server := httptest.NewServer(mux)
+	defer server.Close()
+
+	service := New(db, NewRuntime())
+	service.remoteCatalogURL = server.URL + "/templates/catalog.json"
+	service.templateHTTP = server.Client()
+	if _, err := service.InstallRemoteTemplate(context.Background(), "atomic-template", "tester"); err != nil {
+		t.Fatalf("initial InstallRemoteTemplate: %v", err)
+	}
+	originalPath := filepath.Join(templateRoot("atomic-template"), "pages", "index.html")
+	original, err := os.ReadFile(originalPath)
+	if err != nil {
+		t.Fatalf("read original template: %v", err)
+	}
+
+	if err := db.Callback().Create().Before("gorm:create").Register("test:reject-remote-template-event", func(tx *gorm.DB) {
+		if tx.Statement.Table == (fallbackdomain.Event{}).TableName() {
+			tx.AddError(errors.New("injected event failure"))
+		}
+	}); err != nil {
+		t.Fatalf("register failure callback: %v", err)
+	}
+	pageMarker = "replacement"
+	if _, err := service.InstallRemoteTemplate(context.Background(), "atomic-template", "tester"); err == nil {
+		t.Fatal("replacement install should fail with the injected database error")
+	}
+	afterInstall, err := os.ReadFile(originalPath)
+	if err != nil {
+		t.Fatalf("read restored template after install failure: %v", err)
+	}
+	if !bytes.Equal(afterInstall, original) || strings.Contains(string(afterInstall), pageMarker) {
+		t.Fatalf("failed install did not restore the previous template: %s", afterInstall)
+	}
+
+	if err := service.DeleteRemoteTemplate("atomic-template", "tester"); err == nil {
+		t.Fatal("delete should fail with the injected database error")
+	}
+	afterDelete, err := os.ReadFile(originalPath)
+	if err != nil {
+		t.Fatalf("read restored template after delete failure: %v", err)
+	}
+	if !bytes.Equal(afterDelete, original) {
+		t.Fatalf("failed delete did not restore the previous template: %s", afterDelete)
+	}
+}
+
+func TestRemoteTemplateMetadataIsStrictAndBounded(t *testing.T) {
+	var catalog remoteCatalogFile
+	if err := decodeRemoteJSON([]byte(`{"schema":"solovey-ui/fallback-decoy-catalog/v1","templates":[],"unexpected":true}`), &catalog); err == nil {
+		t.Fatal("unknown remote catalog fields should be rejected")
+	}
+	if err := decodeRemoteJSON([]byte(`{"schema":"solovey-ui/fallback-decoy-catalog/v1","templates":[]} {}`), &catalog); err == nil {
+		t.Fatal("multiple remote catalog documents should be rejected")
+	}
+	manifest := remoteTemplateManifest{
+		Schema: "solovey-ui/fallback-decoy-template/v1",
+		ID:     "unsafe/id",
+		Name:   "Unsafe",
+		Pages:  []string{"pages/index.html"},
+		Assets: []string{"assets/decoy-interactivity.js"},
+	}
+	if err := validateRemoteManifest(manifest.ID, manifest); err == nil {
+		t.Fatal("unsafe remote template ids should be rejected")
+	}
+	manifest.ID = "bounded-template"
+	manifest.Pages = make([]string, maxRemoteTemplateFiles)
+	for index := range manifest.Pages {
+		manifest.Pages[index] = fmt.Sprintf("pages/page-%d.html", index)
+	}
+	if err := validateRemoteManifest(manifest.ID, manifest); err == nil {
+		t.Fatal("remote templates with too many files should be rejected")
 	}
 }
 

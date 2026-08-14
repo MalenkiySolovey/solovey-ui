@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net"
 	"sort"
 	"strings"
@@ -28,6 +27,9 @@ type Server struct {
 	limit    chan struct{}
 	auditMu  sync.Mutex
 	denials  map[string]uint64
+	connMu   sync.Mutex
+	conns    map[*net.UnixConn]struct{}
+	connWG   sync.WaitGroup
 }
 
 // AuditEvent deliberately contains only bounded broker-domain facts. It must
@@ -61,7 +63,7 @@ func NewServer(registry *Registry, journal Journal, attestor Attestor, bootID st
 		return nil, errors.New("broker server dependencies are required")
 	}
 	server := &Server{Registry: registry, Journal: journal, Attestor: attestor, Now: time.Now,
-		BootID: bootID, limit: make(chan struct{}, 32), denials: make(map[string]uint64, 16)}
+		BootID: bootID, limit: make(chan struct{}, 32), denials: make(map[string]uint64, 16), conns: make(map[*net.UnixConn]struct{})}
 	for _, role := range []Role{RolePanel, RoleSSHProof} {
 		role := role
 		if _, exists := registry.definition(VerbCapabilities); !exists && role == RolePanel {
@@ -91,13 +93,43 @@ func (s *Server) Serve(ctx context.Context, listener *net.UnixListener, role Rol
 		}
 		select {
 		case s.limit <- struct{}{}:
+			s.connMu.Lock()
+			s.conns[connection] = struct{}{}
+			s.connWG.Add(1)
+			s.connMu.Unlock()
 			go func() {
-				defer func() { <-s.limit }()
+				defer func() {
+					s.connMu.Lock()
+					delete(s.conns, connection)
+					s.connMu.Unlock()
+					s.connWG.Done()
+					<-s.limit
+				}()
 				s.serveConnection(ctx, connection, role)
 			}()
 		default:
 			_ = connection.Close()
 		}
+	}
+}
+
+// ShutdownConnections interrupts active framed requests after listeners have
+// stopped accepting. WaitConnections can then prove that no handler or audit
+// callback survives broker shutdown.
+func (s *Server) ShutdownConnections() {
+	if s == nil {
+		return
+	}
+	s.connMu.Lock()
+	for connection := range s.conns {
+		_ = connection.Close()
+	}
+	s.connMu.Unlock()
+}
+
+func (s *Server) WaitConnections() {
+	if s != nil {
+		s.connWG.Wait()
 	}
 }
 
@@ -132,6 +164,9 @@ func (s *Server) serveConnection(ctx context.Context, connection *net.UnixConn, 
 }
 
 func (s *Server) Handle(ctx context.Context, request Request, peer PeerIdentity) Response {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	started := time.Now()
 	var response Response
 	defer func() {
@@ -175,7 +210,7 @@ func (s *Server) Handle(ctx context.Context, request Request, peer PeerIdentity)
 		}
 		receipt = active
 	}
-	result, err := definition.Handler(operationContext, request, peer)
+	result, err := invokeHandler(operationContext, definition, request, peer)
 	response = successResponse(request)
 	if err != nil {
 		code, message := publicFailure(err)
@@ -197,6 +232,22 @@ func (s *Server) Handle(ctx context.Context, request Request, peer PeerIdentity)
 		response = committed
 	}
 	return response
+}
+
+func invokeHandler(ctx context.Context, definition Definition, request Request, peer PeerIdentity) (result any, err error) {
+	defer func() {
+		if recover() != nil {
+			code := CodeInternal
+			message := "broker handler failed"
+			if definition.Mutation {
+				code = CodeRecoveryRequired
+				message = "broker mutation outcome requires recovery"
+			}
+			result = nil
+			err = Failure(code, message)
+		}
+	}()
+	return definition.Handler(ctx, request, peer)
 }
 
 func (s *Server) auditEvent(request Request, peer PeerIdentity, response Response, elapsed time.Duration) AuditEvent {
@@ -309,13 +360,3 @@ func failureResponse(request Request, code ErrorCode, message string) Response {
 		RequestID: request.RequestID, OperationID: request.OperationID, Verb: request.Verb,
 		Code: code, Message: message}
 }
-
-type StaticAttestor struct{ Peer PeerIdentity }
-
-func (a StaticAttestor) Attest(context.Context, *net.UnixConn, Role) (PeerIdentity, error) {
-	if a.Peer.Revision == "" {
-		return PeerIdentity{}, fmt.Errorf("static peer is absent")
-	}
-	return a.Peer, nil
-}
-func (a StaticAttestor) Recheck(context.Context, PeerIdentity, Role) error { return nil }

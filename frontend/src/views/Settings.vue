@@ -303,7 +303,7 @@ import SettingInfo from '@/components/settings/SettingInfo.vue'
 import ComponentSlot from '@/componentSystem/ComponentSlot.vue'
 import { settingsTabs } from '@/componentSystem/registry'
 import type { SettingsTab } from '@/componentSystem/types'
-import { useSettingsPage } from '@/shared/composables/pages/useSettingsPage'
+import { useSettingsPage } from '@/features/useSettingsPage'
 import { computed, defineAsyncComponent } from 'vue'
 
 const componentSettingsTabs = settingsTabs

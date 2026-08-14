@@ -2,9 +2,16 @@ package runtime
 
 import (
 	"context"
+	"errors"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/log"
+)
+
+var (
+	ErrCoreUnavailable  = errors.New("sing-box is not running")
+	ErrAlreadyRunning   = errors.New("sing-box is already running")
+	ErrOutboundNotFound = errors.New("outbound not found")
 )
 
 type coreRuntime struct {
@@ -17,32 +24,19 @@ type coreRuntime struct {
 	factory         log.Factory
 }
 
-func (c *Core) runtime() (coreRuntime, bool) {
-	c.access.RLock()
-	defer c.access.RUnlock()
-	if !c.isRunning || c.instance == nil {
-		return coreRuntime{}, false
-	}
-	return coreRuntime{
-		ctx:             c.ctx,
-		inboundManager:  c.inboundManager,
-		outboundManager: c.outboundManager,
-		serviceManager:  c.serviceManager,
-		endpointManager: c.endpointManager,
-		router:          c.router,
-		factory:         c.factory,
-	}, true
-}
-
-// withRuntime keeps the read lock for the complete operation. Use it when a
-// resolved manager object must remain valid until a mutation/read finishes.
+// withRuntime keeps the lifecycle read lock for the complete operation. The
+// state lock is held only while resolving managers, so callbacks may safely
+// update core-owned projections without racing Stop or deadlocking on access.
 func (c *Core) withRuntime(fn func(coreRuntime) error) error {
+	c.lifecycle.RLock()
+	defer c.lifecycle.RUnlock()
+
 	c.access.RLock()
-	defer c.access.RUnlock()
 	if !c.isRunning || c.instance == nil {
-		return nil
+		c.access.RUnlock()
+		return ErrCoreUnavailable
 	}
-	return fn(coreRuntime{
+	runtime := coreRuntime{
 		ctx:             c.ctx,
 		inboundManager:  c.inboundManager,
 		outboundManager: c.outboundManager,
@@ -50,17 +44,13 @@ func (c *Core) withRuntime(fn func(coreRuntime) error) error {
 		endpointManager: c.endpointManager,
 		router:          c.router,
 		factory:         c.factory,
-	})
+	}
+	c.access.RUnlock()
+	return fn(runtime)
 }
 
-func (c *Core) Router() adapter.Router {
-	c.access.RLock()
-	defer c.access.RUnlock()
-	return c.router
-}
-
-func (c *Core) OutboundManager() adapter.OutboundManager {
-	c.access.RLock()
-	defer c.access.RUnlock()
-	return c.outboundManager
+func (c *Core) withMutation(fn func(coreRuntime) error) error {
+	c.mutation.Lock()
+	defer c.mutation.Unlock()
+	return c.withRuntime(fn)
 }

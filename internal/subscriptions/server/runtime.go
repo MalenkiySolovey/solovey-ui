@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"io"
 	"net"
 	"net/http"
@@ -32,29 +33,26 @@ type Settings interface {
 	GetSubPort() (int, error)
 }
 
-type BaseRoutes func(*gin.RouterGroup)
+type BaseRoutes func(*gin.RouterGroup, gin.HandlerFunc)
 type FormatHandlersFactory func() FormatHandlers
 
 type RuntimeServer struct {
 	httpServer *http.Server
 	listener   net.Listener
-	ctx        context.Context
-	cancel     context.CancelFunc
 	running    atomic.Bool
 
 	settings      Settings
 	baseRoutes    BaseRoutes
 	formatFactory FormatHandlersFactory
+	rateLimiter   *RateLimiter
 }
 
 func NewRuntimeServer(settings Settings, baseRoutes BaseRoutes, formatFactory FormatHandlersFactory) *RuntimeServer {
-	ctx, cancel := context.WithCancel(context.Background())
 	return &RuntimeServer{
-		ctx:           ctx,
-		cancel:        cancel,
 		settings:      settings,
 		baseRoutes:    baseRoutes,
 		formatFactory: formatFactory,
+		rateLimiter:   NewRateLimiter(),
 	}
 }
 
@@ -99,7 +97,7 @@ func (s *RuntimeServer) InitRouter() (*gin.Engine, error) {
 	}
 
 	if s.baseRoutes != nil {
-		s.baseRoutes(engine.Group(subPath))
+		s.baseRoutes(engine.Group(subPath), s.rateLimiter.Middleware())
 	}
 	if subPath != "/" {
 		if err := s.registerFormatRoute(engine, registeredFormats, "/json/", "json"); err != nil {
@@ -146,13 +144,13 @@ func (s *RuntimeServer) registerFormatRoute(engine *gin.Engine, registered map[s
 	if s.formatFactory != nil {
 		handlers = s.formatFactory()
 	}
-	return RegisterFormatRoute(engine, registered, path, format, handlers)
+	return RegisterFormatRoute(engine, registered, path, format, handlers, s.rateLimiter)
 }
 
 func (s *RuntimeServer) Start() (err error) {
 	defer func() {
 		if err != nil {
-			_ = s.Stop()
+			err = errors.Join(err, s.Stop())
 		}
 	}()
 
@@ -177,6 +175,10 @@ func (s *RuntimeServer) Start() (err error) {
 	if err != nil {
 		return err
 	}
+	subDomain, err := s.settings.GetSubDomain()
+	if err != nil {
+		return err
+	}
 
 	listenAddr := net.JoinHostPort(listen, strconv.Itoa(port))
 	listenResult, err := bind.ListenWithFallbackResult(listenAddr, listen, strconv.Itoa(port))
@@ -184,6 +186,7 @@ func (s *RuntimeServer) Start() (err error) {
 		return err
 	}
 	listener := listenResult.Listener
+	s.listener = listener
 	if listenResult.Fallback {
 		if hook := currentHooks().ListenFallbackAudit; hook != nil {
 			hook("sub", listenResult.RequestedAddr, listenResult.FallbackAddr, listenResult.BindError)
@@ -193,14 +196,13 @@ func (s *RuntimeServer) Start() (err error) {
 	if certFile != "" || keyFile != "" {
 		cert, err := tls.LoadX509KeyPair(certFile, keyFile)
 		if err != nil {
-			_ = listener.Close()
 			return err
 		}
 		tlsConfig := &tls.Config{
 			Certificates: []tls.Certificate{cert},
 			MinVersion:   tls.VersionTLS12,
 		}
-		listener = autohttps.NewAutoHttpsListener(listener)
+		listener = autohttps.NewAutoHttpsListener(listener, subDomain)
 		listener = tls.NewListener(listener, tlsConfig)
 	}
 
@@ -238,25 +240,20 @@ func (s *RuntimeServer) Stop() error {
 		err = s.httpServer.Shutdown(shutdownCtx)
 		cancelShutdown()
 		if err != nil {
-			s.cancel()
 			if s.listener != nil {
-				_ = s.listener.Close()
+				err = errors.Join(err, s.listener.Close())
 			}
 			return err
 		}
 	} else if s.listener != nil {
 		err = s.listener.Close()
 		if err != nil {
-			s.cancel()
 			return err
 		}
 	}
-	s.cancel()
+	s.httpServer = nil
+	s.listener = nil
 	return nil
-}
-
-func (s *RuntimeServer) Context() context.Context {
-	return s.ctx
 }
 
 // ListenerReady exposes only lifecycle state; it never derives or probes a

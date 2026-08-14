@@ -113,11 +113,9 @@ func TestValidateIPCertPort(t *testing.T) {
 
 func TestValidateIPCertSettingInput(t *testing.T) {
 	valid := map[string]string{
-		settingcatalog.IPCertEnabledKey:       "true",
-		settingcatalog.IPCertTargetIPKey:      "8.8.8.8",
-		settingcatalog.IPCertEmailKey:         "admin@example.com",
-		settingcatalog.IPCertChallengePortKey: "80",
-		settingcatalog.IPCertApplyTargetKey:   "inbound:42",
+		settingcatalog.IPCertTargetIPKey:    "8.8.8.8",
+		settingcatalog.IPCertEmailKey:       "admin@example.com",
+		settingcatalog.IPCertApplyTargetKey: "inbound:42",
 	}
 	for key, value := range valid {
 		if err := ValidateIPCertSettingInput(key, value); err != nil {
@@ -126,11 +124,9 @@ func TestValidateIPCertSettingInput(t *testing.T) {
 	}
 
 	invalid := map[string]string{
-		settingcatalog.IPCertEnabledKey:       "yes",
-		settingcatalog.IPCertTargetIPKey:      "127.0.0.1",
-		settingcatalog.IPCertEmailKey:         "not-an-email",
-		settingcatalog.IPCertChallengePortKey: "70000",
-		settingcatalog.IPCertApplyTargetKey:   "inbound:0",
+		settingcatalog.IPCertTargetIPKey:    "127.0.0.1",
+		settingcatalog.IPCertEmailKey:       "not-an-email",
+		settingcatalog.IPCertApplyTargetKey: "inbound:0",
 	}
 	for key, value := range invalid {
 		if err := ValidateIPCertSettingInput(key, value); err == nil {

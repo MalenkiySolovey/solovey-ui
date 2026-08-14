@@ -87,14 +87,6 @@ func ActiveIDs() (map[string]struct{}, error) {
 	return ids, nil
 }
 
-func ActiveIDsCached() (map[string]struct{}, error) {
-	ids, err := activeIDsCachedSnapshot()
-	if err != nil {
-		return nil, err
-	}
-	return cloneIDs(ids), nil
-}
-
 func IsActiveCached(id string) (bool, error) {
 	ids, err := activeIDsCachedSnapshot()
 	if err != nil {

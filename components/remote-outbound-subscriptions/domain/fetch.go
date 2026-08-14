@@ -3,6 +3,7 @@
 package remote
 
 import (
+	"context"
 	"net/url"
 	"regexp"
 	"strings"
@@ -35,6 +36,25 @@ type FetchedSubscription struct {
 	Attempts  []FetchAttempt
 }
 
+// Complete reports whether every requested representation was fetched and
+// parsed. A direct parse has no attempts and is complete by construction.
+// Multi-variant fetches with even one failed variant are useful for upserts,
+// but must not authorize deleting previously observed connections.
+func (f *FetchedSubscription) Complete() bool {
+	if f == nil {
+		return false
+	}
+	if len(f.Attempts) == 0 {
+		return true
+	}
+	for _, attempt := range f.Attempts {
+		if attempt.Error != "" || len(attempt.Formats) == 0 {
+			return false
+		}
+	}
+	return true
+}
+
 type CollectionSnapshot struct {
 	Formats  []FormatResult `json:"formats,omitempty"`
 	Attempts []FetchAttempt `json:"attempts,omitempty"`
@@ -53,8 +73,11 @@ type fetchCandidate struct {
 
 var fetchSubscriptionData = subexternal.Fetch
 var fetchSubscriptionDataWithUserAgent = subexternal.FetchWithUserAgent
+var fetchSubscriptionDataContext = subexternal.FetchContext
+var fetchSubscriptionDataWithUserAgentContext = subexternal.FetchWithUserAgentContext
 
 const maxFetchErrorBytes = 4 << 10
+const MaxFetchedOutbounds = 4096
 
 var (
 	fetchErrorURLPattern    = regexp.MustCompile(`https?://[^\s"'<>]+`)
@@ -71,19 +94,24 @@ func ValidateSubscriptionURL(rawURL string) error {
 	return nil
 }
 
-func FetchOutbounds(rawURL string) ([]map[string]interface{}, error) {
-	fetched, err := FetchSubscription(rawURL)
-	if err != nil {
-		return nil, err
-	}
-	return fetched.Outbounds, nil
-}
-
 func FetchSubscription(rawURL string) (*FetchedSubscription, error) {
 	return FetchSubscriptionWithOptions(rawURL, FetchOptions{})
 }
 
 func FetchSubscriptionWithOptions(rawURL string, options FetchOptions) (*FetchedSubscription, error) {
+	return fetchSubscriptionWithOptions(rawURL, options, fetchCandidateData)
+}
+
+func FetchSubscriptionWithOptionsContext(ctx context.Context, rawURL string, options FetchOptions) (*FetchedSubscription, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	return fetchSubscriptionWithOptions(rawURL, options, func(candidate fetchCandidate) (string, error) {
+		return fetchCandidateDataContext(ctx, candidate)
+	})
+}
+
+func fetchSubscriptionWithOptions(rawURL string, options FetchOptions, fetch func(fetchCandidate) (string, error)) (*FetchedSubscription, error) {
 	if rawURL == "" {
 		return nil, common.NewError("no url")
 	}
@@ -96,7 +124,7 @@ func FetchSubscriptionWithOptions(rawURL string, options FetchOptions) (*Fetched
 	seenFormats := map[string]struct{}{}
 	for _, candidate := range candidates {
 		attempt := FetchAttempt{Variant: candidate.Variant}
-		data, err := fetchCandidateData(candidate)
+		data, err := fetch(candidate)
 		if err != nil {
 			attempt.Error = sanitizeFetchError(err)
 			attempts = append(attempts, attempt)
@@ -123,7 +151,11 @@ func FetchSubscriptionWithOptions(rawURL string, options FetchOptions) (*Fetched
 	if len(fetchedParts) == 0 {
 		return nil, firstFetchAttemptError(attempts)
 	}
-	return mergeFetchedSubscriptions(attempts, fetchedParts...), nil
+	merged := mergeFetchedSubscriptions(attempts, fetchedParts...)
+	if len(merged.Outbounds) > MaxFetchedOutbounds {
+		return nil, common.NewError("remote subscription contains too many outbounds")
+	}
+	return merged, nil
 }
 
 func hasNewFormat(formats []string, seen map[string]struct{}) bool {
@@ -137,14 +169,6 @@ func hasNewFormat(formats []string, seen map[string]struct{}) bool {
 		}
 	}
 	return false
-}
-
-func ParseFetchedOutbounds(data string) ([]map[string]interface{}, error) {
-	fetched, err := ParseFetchedSubscription(data)
-	if err != nil {
-		return nil, err
-	}
-	return fetched.Outbounds, nil
 }
 
 func ParseFetchedSubscription(data string) (*FetchedSubscription, error) {
@@ -183,6 +207,9 @@ func ParseFetchedSubscriptionWithOptions(data string, options FetchOptions) (*Fe
 	outbounds := canonical.SnapshotOutbounds(snapshot)
 	if len(outbounds) == 0 {
 		return nil, firstFormatError(formats)
+	}
+	if len(outbounds) > MaxFetchedOutbounds {
+		return nil, common.NewError("remote subscription contains too many outbounds")
 	}
 	return &FetchedSubscription{Outbounds: outbounds, Snapshot: snapshot, Formats: formats}, nil
 }
@@ -236,6 +263,13 @@ func fetchCandidateData(candidate fetchCandidate) (string, error) {
 		return fetchSubscriptionData(candidate.URL)
 	}
 	return fetchSubscriptionDataWithUserAgent(candidate.URL, candidate.UserAgent)
+}
+
+func fetchCandidateDataContext(ctx context.Context, candidate fetchCandidate) (string, error) {
+	if strings.TrimSpace(candidate.UserAgent) == "" {
+		return fetchSubscriptionDataContext(ctx, candidate.URL)
+	}
+	return fetchSubscriptionDataWithUserAgentContext(ctx, candidate.URL, candidate.UserAgent)
 }
 
 func fetchConversionPolicy(options FetchOptions) subconversion.Policy {

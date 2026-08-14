@@ -3,6 +3,7 @@
 package importxui
 
 import (
+	"context"
 	"encoding/json"
 	"path/filepath"
 	"strings"
@@ -10,7 +11,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -21,7 +22,7 @@ type clusterEXUIUser struct {
 	password string
 }
 
-func TestIssue8ResetRequiredPlanItemsCarryAdminMode(t *testing.T) {
+func TestResetRequiredPlanItemsCarryAdminMode(t *testing.T) {
 	src := setupClusterEImportDB(t, []clusterEXUIUser{{
 		id:       1,
 		username: "xui-admin",
@@ -45,7 +46,7 @@ func TestIssue8ResetRequiredPlanItemsCarryAdminMode(t *testing.T) {
 	}
 }
 
-func TestIssue2ResetRequiredCreatesForceResetWithoutGeneratedPassword(t *testing.T) {
+func TestResetRequiredCreatesForceResetWithoutGeneratedPassword(t *testing.T) {
 	src := setupClusterEImportDB(t, []clusterEXUIUser{{
 		id:       1,
 		username: "xui-admin",
@@ -67,12 +68,12 @@ func TestIssue2ResetRequiredCreatesForceResetWithoutGeneratedPassword(t *testing
 	if !stored.ForcePasswordReset {
 		t.Fatalf("reset_required user should require reset: %#v", stored)
 	}
-	if ok, _ := common.CheckPassword(stored.Password, "source-secret"); !ok {
+	if ok, _, err := passwordutil.Verify(context.Background(), stored.Password, "source-secret"); err != nil || !ok {
 		t.Fatal("reset_required create should store the source password")
 	}
 }
 
-func TestIssue2ResetRequiredMergeAndReplaceKeepUserRowsStable(t *testing.T) {
+func TestResetRequiredMergeAndReplaceKeepUserRowsStable(t *testing.T) {
 	for _, tc := range []struct {
 		name           string
 		strategy       Strategy
@@ -88,7 +89,7 @@ func TestIssue2ResetRequiredMergeAndReplaceKeepUserRowsStable(t *testing.T) {
 				username: "admin",
 				password: "source-secret",
 			}})
-			localHash, err := common.HashPassword("local-secret")
+			localHash, err := passwordutil.Hash(context.Background(), "local-secret")
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -118,17 +119,17 @@ func TestIssue2ResetRequiredMergeAndReplaceKeepUserRowsStable(t *testing.T) {
 			if !after.ForcePasswordReset {
 				t.Fatalf("reset_required should set force reset: %#v", after)
 			}
-			if ok, _ := common.CheckPassword(after.Password, "local-secret"); ok != tc.wantLocalPass {
+			if ok, _, err := passwordutil.Verify(context.Background(), after.Password, "local-secret"); err != nil || ok != tc.wantLocalPass {
 				t.Fatalf("local password validity=%v, want %v", ok, tc.wantLocalPass)
 			}
-			if ok, _ := common.CheckPassword(after.Password, "source-secret"); ok != tc.wantSourcePass {
+			if ok, _, err := passwordutil.Verify(context.Background(), after.Password, "source-secret"); err != nil || ok != tc.wantSourcePass {
 				t.Fatalf("source password validity=%v, want %v", ok, tc.wantSourcePass)
 			}
 		})
 	}
 }
 
-func TestIssue2NewPasswordClearsForceResetAndReturnsGeneratedAdmin(t *testing.T) {
+func TestNewPasswordClearsForceResetAndReturnsGeneratedAdmin(t *testing.T) {
 	src := setupClusterEImportDB(t, []clusterEXUIUser{{
 		id:       1,
 		username: "admin",
@@ -157,7 +158,7 @@ func TestIssue2NewPasswordClearsForceResetAndReturnsGeneratedAdmin(t *testing.T)
 	if after.ForcePasswordReset {
 		t.Fatalf("new_password should clear force reset: %#v", after)
 	}
-	if ok, _ := common.CheckPassword(after.Password, report.GeneratedAdmins[0].Password); !ok {
+	if ok, _, err := passwordutil.Verify(context.Background(), after.Password, report.GeneratedAdmins[0].Password); err != nil || !ok {
 		t.Fatal("stored password does not match generated password")
 	}
 }

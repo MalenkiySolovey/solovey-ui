@@ -39,19 +39,19 @@ func ApplyPaidOrderGrant(db *gorm.DB, orderID uint, chargeID string, raw []byte,
 		if err := tx.Where("id = ?", orderID).First(&order).Error; err != nil {
 			return err
 		}
-		var tariff paid.Tariff
-		if err := tx.Where("id = ?", order.TariffId).First(&tariff).Error; err != nil {
+		grant, err := grantForOrder(tx, order)
+		if err != nil {
 			return err
-		}
-		if tariff.Price <= 0 && tariff.StarsAmount <= 0 {
-			return fmt.Errorf("tariff has no price")
 		}
 		var client model.Client
 		if err := tx.Where("id = ?", order.ClientId).First(&client).Error; err != nil {
 			return err
 		}
 
-		updates, orderUpdates := paid.BuildPaidClientUpdates(client, tariff, now)
+		updates, orderUpdates, err := paid.BuildPaidClientUpdates(client, grant, now)
+		if err != nil {
+			return err
+		}
 		if len(orderUpdates) > 0 {
 			if err := tx.Model(&paid.PaymentOrder{}).Where("id = ?", orderID).
 				Updates(orderUpdates).Error; err != nil {
@@ -99,8 +99,8 @@ func FinalizeRefundGrant(db *gorm.DB, orderID uint, revoke bool, now int64, acto
 		if err := tx.Where("id = ?", orderID).First(&order).Error; err != nil {
 			return err
 		}
-		var tariff paid.Tariff
-		if err := tx.Where("id = ?", order.TariffId).First(&tariff).Error; err != nil {
+		grant, err := grantForOrder(tx, order)
+		if err != nil {
 			return err
 		}
 		var client model.Client
@@ -108,17 +108,18 @@ func FinalizeRefundGrant(db *gorm.DB, orderID uint, revoke bool, now int64, acto
 			return err
 		}
 		restoreLiveUsage := true
-		if tariff.AddTrafficBytes > 0 {
+		if grant.AddTrafficBytes > 0 {
 			var newerTrafficOrders int64
 			if err := tx.Model(&paid.PaymentOrder{}).
 				Where("client_id = ? AND id > ? AND status = ?", order.ClientId, order.Id, paid.StatusPaid).
-				Where("tariff_id IN (?)", tx.Model(&paid.Tariff{}).Select("id").Where("add_traffic_bytes > 0")).
+				Where("(grant_snapshot = ? AND grant_traffic_bytes > 0) OR (grant_snapshot = ? AND tariff_id IN (?))",
+					true, false, tx.Model(&paid.Tariff{}).Select("id").Where("add_traffic_bytes > 0")).
 				Count(&newerTrafficOrders).Error; err != nil {
 				return err
 			}
 			restoreLiveUsage = newerTrafficOrders == 0
 		}
-		updates := paid.BuildRefundClientUpdates(client, order, tariff, now, restoreLiveUsage)
+		updates := paid.BuildRefundClientUpdates(client, order, grant, now, restoreLiveUsage)
 		if len(updates) == 0 {
 			return nil
 		}
@@ -140,6 +141,23 @@ func FinalizeRefundGrant(db *gorm.DB, orderID uint, revoke bool, now int64, acto
 		return nil
 	})
 	return inboundIDs, err
+}
+
+func grantForOrder(tx *gorm.DB, order paid.PaymentOrder) (paid.Tariff, error) {
+	if order.GrantSnapshot {
+		if order.Amount <= 0 || order.GrantAddDays < 0 || order.GrantTraffic < 0 {
+			return paid.Tariff{}, fmt.Errorf("payment order grant snapshot is invalid")
+		}
+		return paid.Tariff{AddDays: order.GrantAddDays, AddTrafficBytes: order.GrantTraffic}, nil
+	}
+	var tariff paid.Tariff
+	if err := tx.Where("id = ?", order.TariffId).First(&tariff).Error; err != nil {
+		return paid.Tariff{}, err
+	}
+	if tariff.Price <= 0 && tariff.StarsAmount <= 0 {
+		return paid.Tariff{}, fmt.Errorf("tariff has no price")
+	}
+	return tariff, nil
 }
 
 func JSONString(s string) json.RawMessage {

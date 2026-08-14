@@ -12,41 +12,43 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
-func runApp() {
-	app := app.NewApp()
-	service.SetInProcessRestart(app.RestartApp)
+func runApp() int {
+	application := app.NewApp()
+	service.SetInProcessRestart(application.RestartApp)
 
-	err := app.Init()
+	err := application.Init()
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		return 1
 	}
 
-	err = app.Start()
+	err = application.Start()
 	if err != nil {
-		log.Fatal(err)
+		log.Print(err)
+		application.Stop()
+		return 1
 	}
 
 	sigCh := make(chan os.Signal, 1)
 	// Trap shutdown signals
-	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGTERM)
+	signal.Notify(sigCh, os.Interrupt, syscall.SIGHUP, syscall.SIGTERM)
+	defer signal.Stop(sigCh)
 	for {
 		sig := <-sigCh
 
 		switch sig {
 		case syscall.SIGHUP:
-			app.RestartApp()
+			application.RestartApp()
 		default:
-			app.Stop()
-			return
+			application.Stop()
+			return 0
 		}
 	}
 }
 
 func main() {
 	if len(os.Args) < 2 {
-		runApp()
-		return
-	} else {
-		cmd.ParseCmd()
+		os.Exit(runApp())
 	}
+	os.Exit(cmd.ParseCmd())
 }

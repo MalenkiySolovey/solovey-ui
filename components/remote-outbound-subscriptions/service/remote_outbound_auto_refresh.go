@@ -41,7 +41,7 @@ func StartRemoteOutboundAutoRefresh(runtime *coreservice.Runtime) {
 			case <-ctx.Done():
 				return
 			case <-ticker.C:
-				if _, err := service.RefreshDueSubscriptions("system"); err != nil {
+				if _, err := service.RefreshDueSubscriptionsContext(ctx, "system"); err != nil && ctx.Err() == nil {
 					logger.Warning("remote subscription auto refresh scan failed: ", err)
 				}
 			}
@@ -50,11 +50,12 @@ func StartRemoteOutboundAutoRefresh(runtime *coreservice.Runtime) {
 }
 
 func StopRemoteOutboundAutoRefresh(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	remoteOutboundAutoMu.Lock()
 	stop := remoteOutboundAutoStop
 	done := remoteOutboundAutoDone
-	remoteOutboundAutoStop = nil
-	remoteOutboundAutoDone = nil
 	remoteOutboundAutoMu.Unlock()
 
 	if stop == nil {
@@ -63,8 +64,25 @@ func StopRemoteOutboundAutoRefresh(ctx context.Context) error {
 	stop()
 	select {
 	case <-done:
+		remoteOutboundAutoMu.Lock()
+		if remoteOutboundAutoDone == done {
+			remoteOutboundAutoStop = nil
+			remoteOutboundAutoDone = nil
+		}
+		remoteOutboundAutoMu.Unlock()
 		return nil
 	case <-ctx.Done():
-		return ctx.Err()
+		select {
+		case <-done:
+			remoteOutboundAutoMu.Lock()
+			if remoteOutboundAutoDone == done {
+				remoteOutboundAutoStop = nil
+				remoteOutboundAutoDone = nil
+			}
+			remoteOutboundAutoMu.Unlock()
+			return nil
+		default:
+			return ctx.Err()
+		}
 	}
 }

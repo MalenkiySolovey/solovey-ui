@@ -19,21 +19,21 @@ type Inbound struct {
 
 func (i *Inbound) UnmarshalJSON(data []byte) error {
 	var err error
-	var raw map[string]interface{}
-	if err = json.Unmarshal(data, &raw); err != nil {
+	raw, err := decodeJSONObject(data)
+	if err != nil {
 		return err
 	}
 
 	// Extract fixed fields and store the rest in Options
-	if val, exists := raw["id"].(float64); exists {
-		i.Id = uint(val)
+	if err := optionalUint(raw, "id", &i.Id); err != nil {
+		return err
 	}
 	delete(raw, "id")
-	if val, exists := raw["sortOrder"].(float64); exists {
-		i.SortOrder = int(val)
+	if err := optionalInt(raw, "sortOrder", &i.SortOrder); err != nil {
+		return err
 	}
-	if val, exists := raw["sort_order"].(float64); exists {
-		i.SortOrder = int(val)
+	if err := optionalInt(raw, "sort_order", &i.SortOrder); err != nil {
+		return err
 	}
 	delete(raw, "sortOrder")
 	delete(raw, "sort_order")
@@ -43,19 +43,25 @@ func (i *Inbound) UnmarshalJSON(data []byte) error {
 	delete(raw, "tag")
 
 	// TlsId
-	if val, exists := raw["tls_id"].(float64); exists {
-		i.TlsId = uint(val)
+	if err := optionalUint(raw, "tls_id", &i.TlsId); err != nil {
+		return err
 	}
 	delete(raw, "tls_id")
 	delete(raw, "tls")
 	delete(raw, "users")
 
 	// Addrs
-	i.Addrs, _ = json.MarshalIndent(raw["addrs"], "", "  ")
+	i.Addrs, err = json.MarshalIndent(raw["addrs"], "", "  ")
+	if err != nil {
+		return err
+	}
 	delete(raw, "addrs")
 
 	// OutJson
-	i.OutJson, _ = json.MarshalIndent(raw["out_json"], "", "  ")
+	i.OutJson, err = json.MarshalIndent(raw["out_json"], "", "  ")
+	if err != nil {
+		return err
+	}
 	delete(raw, "out_json")
 
 	// Remaining fields

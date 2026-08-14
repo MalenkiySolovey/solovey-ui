@@ -16,6 +16,9 @@ const (
 	Magic       = "SUI-TGBKP\x00"
 	Version     = byte(1)
 	KDFArgon2ID = byte(1)
+	// LegacyMaxBytes bounds the whole-buffer v1 format while retaining
+	// compatibility with the historical 50 MiB Telegram backup limit.
+	LegacyMaxBytes = int64(64 << 20)
 
 	magicSize     = 10
 	versionSize   = 1

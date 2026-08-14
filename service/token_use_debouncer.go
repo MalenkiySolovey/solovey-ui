@@ -68,7 +68,7 @@ func StopTokenUseDebouncer(ctx context.Context) error {
 	if debouncer == nil {
 		return ctx.Err()
 	}
-	return debouncer.flushNow(ctx, true)
+	return debouncer.flushNow(ctx, true, true)
 }
 
 func (d *tokenUseDebouncer) Record(id uint, ip string, ts int64) {
@@ -128,12 +128,12 @@ func (d *tokenUseDebouncer) flushTimer(epoch uint64) {
 }
 
 func (d *tokenUseDebouncer) Flush(ctx context.Context) error {
-	return d.flushNow(ctx, false)
+	return d.flushNow(ctx, false, true)
 }
 
-func (d *tokenUseDebouncer) flushNow(ctx context.Context, force bool) error {
+func (d *tokenUseDebouncer) flushNow(ctx context.Context, bypassGate bool, requeueOnError bool) error {
 	var releaseFlush func()
-	if !force {
+	if !bypassGate {
 		var ok bool
 		releaseFlush, ok = beginTokenUseFlush()
 		if !ok {
@@ -160,7 +160,7 @@ func (d *tokenUseDebouncer) flushNow(ctx context.Context, force bool) error {
 	err := d.write(updates)
 	if err == nil {
 		d.closeFailureCircuit()
-	} else if !force {
+	} else if requeueOnError {
 		d.requeueAfterWriteError(updates, time.Now())
 	}
 	if ctxErr := ctx.Err(); ctxErr != nil {

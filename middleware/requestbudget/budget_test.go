@@ -71,6 +71,10 @@ func TestRegistryMechanicallyDeclaresEveryAdminAPIRoute(t *testing.T) {
 	if read.BodyClass != BodyNone || read.MaxBodyBytes != 0 {
 		t.Fatalf("GET route must remain bodyless: %#v", read)
 	}
+	bearer, _ := registry.Lookup(http.MethodPost, "/app/apiv2/components/:id/apply")
+	if bearer.Authentication != "bearer_token" {
+		t.Fatalf("apiv2 authentication policy=%q, want bearer_token", bearer.Authentication)
+	}
 }
 
 func TestClassifyUsesExactBodyClassesAndHighRiskActionBindings(t *testing.T) {
@@ -81,7 +85,7 @@ func TestClassifyUsesExactBodyClassesAndHighRiskActionBindings(t *testing.T) {
 
 	remove := classify(http.MethodPost, "/api/update/components/:id/remove")
 	if remove.BodyClass != BodyAuthTiny || remove.MaxBodyBytes != AuthTinyBytes ||
-		remove.ActionScope != "component_remove" || remove.StepUpOperation != "drop_data" {
+		remove.ActionScope != "component_remove" || remove.StepUpOperation != "" {
 		t.Fatalf("component remove policy=%#v", remove)
 	}
 	asset := classify(http.MethodPost, "/api/components/fixture-sites/sites/:id/assets")

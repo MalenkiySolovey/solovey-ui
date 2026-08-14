@@ -3,6 +3,7 @@
 package remotesubservice
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -72,8 +73,14 @@ func (s *Service) SaveSubscription(input remotesub.RemoteOutboundSubscription, e
 	if input.Name == "" {
 		return nil, common.NewError("subscription name can not be empty")
 	}
+	if len([]rune(input.Name)) > 120 {
+		return nil, common.NewError("subscription name is too long")
+	}
 	if input.Url == "" {
 		return nil, common.NewError("subscription url can not be empty")
+	}
+	if len(input.Url) > 8192 {
+		return nil, common.NewError("subscription url is too long")
 	}
 	if err := remotesub.ValidateSubscriptionURL(input.Url); err != nil {
 		return nil, common.NewError("subscription url is not allowed: ", err)
@@ -214,12 +221,12 @@ func (s *Service) DeleteSubscription(id uint, loginUser string) error {
 	s.invalidateRemoteOutboundData(loginUser, coreRestart)
 	return nil
 }
-func (s *Service) RefreshSubscription(id uint, loginUser string) (*remotesub.RefreshResult, error) {
+func (s *Service) RefreshSubscriptionContext(ctx context.Context, id uint, loginUser string) (*remotesub.RefreshResult, error) {
 	refreshMu.Lock()
 	defer refreshMu.Unlock()
-	return s.refreshSubscription(id, loginUser)
+	return s.refreshSubscription(ctx, id, loginUser)
 }
-func (s *Service) refreshSubscription(id uint, loginUser string) (*remotesub.RefreshResult, error) {
+func (s *Service) refreshSubscription(ctx context.Context, id uint, loginUser string) (*remotesub.RefreshResult, error) {
 	if id == 0 {
 		return nil, common.NewError("subscription id is required")
 	}
@@ -228,7 +235,7 @@ func (s *Service) refreshSubscription(id uint, loginUser string) (*remotesub.Ref
 	if err := db.First(&subscription, id).Error; err != nil {
 		return nil, err
 	}
-	fetched, fetchErr := remotesub.FetchSubscriptionWithOptions(subscription.Url, s.fetchOptions())
+	fetched, fetchErr := remotesub.FetchSubscriptionWithOptionsContext(ctx, subscription.Url, s.fetchOptions())
 	now := time.Now().Unix()
 	if fetchErr != nil {
 		// Best-effort: persist the last error for the UI even if this update

@@ -29,29 +29,33 @@ func WritePreImportBackup(now int64) (string, error) {
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", fmt.Errorf("xui-import: %w", err)
 	}
-	path := ""
+	path, err := publishPreImportBackup(staged, dir, now)
+	if err != nil {
+		return "", err
+	}
+	logger.Info("xui-import: pre-import backup saved to ", path)
+	prunePreImportBackups(dir, preImportBackupRetention)
+	return path, nil
+}
+
+// publishPreImportBackup uses a hard link as an atomic no-replace publish.
+// PrepareExport stages in the database directory, so the link stays on one
+// filesystem. Unlike rename, this cannot overwrite a backup produced by a
+// concurrent CLI or panel process in the same second.
+func publishPreImportBackup(staged, dir string, now int64) (string, error) {
 	for suffix := 0; suffix < 100; suffix++ {
 		name := fmt.Sprintf("s-ui-pre-xui-import-%d.db", now)
 		if suffix > 0 {
 			name = fmt.Sprintf("s-ui-pre-xui-import-%d-%02d.db", now, suffix)
 		}
 		candidate := filepath.Join(dir, name)
-		if _, statErr := os.Lstat(candidate); os.IsNotExist(statErr) {
-			path = candidate
-			break
-		} else if statErr != nil {
-			return "", fmt.Errorf("xui-import: %w", statErr)
+		if err := os.Link(staged, candidate); err == nil {
+			return candidate, nil
+		} else if !os.IsExist(err) {
+			return "", fmt.Errorf("xui-import: %w", err)
 		}
 	}
-	if path == "" {
-		return "", errors.New("xui-import: pre-import backup name inventory is exhausted")
-	}
-	if err := os.Rename(staged, path); err != nil {
-		return "", fmt.Errorf("xui-import: %w", err)
-	}
-	logger.Info("xui-import: pre-import backup saved to ", path)
-	prunePreImportBackups(dir, preImportBackupRetention)
-	return path, nil
+	return "", errors.New("xui-import: pre-import backup name inventory is exhausted")
 }
 
 // preImportBackupRetention bounds how many s-ui-pre-xui-import-*.db files are

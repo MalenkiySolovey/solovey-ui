@@ -12,6 +12,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	"github.com/gofrs/uuid/v5"
 
 	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -43,7 +44,7 @@ func vlessSettings(emails ...string) string {
 	for i, email := range emails {
 		clients = append(clients, map[string]any{
 			"email":   email,
-			"id":      deterministicUUID(email),
+			"id":      deterministicFixtureUUID(email),
 			"flow":    "xtls-rprx-vision",
 			"enable":  true,
 			"subId":   "sub-" + email,
@@ -53,6 +54,10 @@ func vlessSettings(emails ...string) string {
 	}
 	raw, _ := json.Marshal(map[string]any{"clients": clients, "decryption": "none"})
 	return string(raw)
+}
+
+func deterministicFixtureUUID(seed string) string {
+	return uuid.NewV5(uuid.NamespaceDNS, seed).String()
 }
 
 func trojanSettings(emails ...string) string {

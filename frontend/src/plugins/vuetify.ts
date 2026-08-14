@@ -9,6 +9,8 @@ import 'vuetify/styles/main.css'
 
 import colors from 'vuetify/util/colors'
 import { fa, en, vi, zhHans, zhHant, ru } from 'vuetify/locale'
+import { currentLocale } from '@/locales'
+import { readThemePreference } from '@/uiMode/theme'
 
 // Composables
 import { createVuetify } from 'vuetify'
@@ -45,7 +47,7 @@ export default createVuetify({
     // Default to dark when the user has made no explicit choice, so the Nexus UI
     // opens in the dark "technical" look of the reference even on light-OS hosts.
     // An explicit stored choice (light/dark/system) is always respected.
-    defaultTheme: localStorage.getItem('theme') ?? 'dark',
+    defaultTheme: readThemePreference(),
     themes: {
       light: {
         colors: {
@@ -224,7 +226,7 @@ export default createVuetify({
     },
   },
   locale: {
-    locale: localStorage.getItem("locale") ?? 'en',
+    locale: currentLocale(),
     fallback: 'en',
     messages: { en, fa, vi, zhHans, zhHant, ru },
   },

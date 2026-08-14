@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	telegramservice "github.com/MalenkiySolovey/solovey-ui/components/telegram/service"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -73,15 +74,44 @@ func TestTelegramBackupSchedulerNoopWhenTelegramDisabled(t *testing.T) {
 	}
 }
 
+func TestTelegramBackupSchedulerStopsWhenSettingIsInvalid(t *testing.T) {
+	initDatabase(t)
+	registerTelegramSettingsForTest(t)
+	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	updateTelegramBackupSchedulerSettings(t, map[string]string{
+		"telegramEnabled":       "true",
+		"telegramBackupEnabled": "true",
+		"telegramBackupCron":    "*/5 * * * *",
+	})
+	scheduler := NewTelegramBackupScheduler(testEntryScheduler{Cron: cron.New()}, nil)
+	scheduler.Run()
+	if scheduler.entryID == 0 {
+		t.Fatal("backup scheduler did not establish the initial job")
+	}
+	updateTelegramBackupSchedulerSettings(t, map[string]string{"telegramBackupEnabled": "invalid"})
+	scheduler.Run()
+	if scheduler.entryID != 0 || scheduler.currentSpec != "" {
+		t.Fatalf("backup scheduler retained a job after a settings failure: %#v", scheduler)
+	}
+}
+
 func TestTelegramBackupJobUsesScheduledTrigger(t *testing.T) {
 	initDatabase(t)
 	registerTelegramSettingsForTest(t)
 	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
-	job := NewTelegramBackupJob(nil)
+	runtime := service.NewRuntimeWithCoreProvider(nil)
+	job := NewTelegramBackupJob(nil, func(record telegramservice.AuditRecord) error {
+		return (&service.AuditService{Runtime: runtime}).Record(service.AuditEvent{
+			Actor: record.Actor, Event: record.Event, Resource: record.Resource,
+			Severity: record.Severity, Details: record.Details,
+		})
+	})
 	job.Run()
-	if err := service.StopAuditWriter(context.Background()); err != nil {
+	if err := runtime.StopAuditWriter(context.Background()); err != nil {
 		t.Fatal(err)
 	}
 	var event model.AuditEvent

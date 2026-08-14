@@ -118,6 +118,25 @@ func (d DurableResourceManifestV1) Validate(ownerID, ownerVersion string) error 
 	if !d.Declared() {
 		return nil
 	}
+	// Validate declarations before normalization. Normalization is allowed to
+	// sort canonical data, but must never hide duplicate ownership claims.
+	if err := validateUniqueIdentifiers(ownerID, "table", d.Tables, databaseTablePattern); err != nil {
+		return err
+	}
+	if err := validateUniqueIdentifiers(ownerID, "setting", d.Settings, durableKeyPattern); err != nil {
+		return err
+	}
+	if err := validateUniqueIdentifiers(ownerID, "secret", d.Secrets, durableKeyPattern); err != nil {
+		return err
+	}
+	seenDeclaredFiles := make(map[string]struct{}, len(d.Files))
+	for _, file := range d.Files {
+		clean := path.Clean(strings.ReplaceAll(file.Path, "\\", "/"))
+		if _, duplicate := seenDeclaredFiles[clean]; duplicate {
+			return fmt.Errorf("component %q durable file path %q is duplicated", ownerID, file.Path)
+		}
+		seenDeclaredFiles[clean] = struct{}{}
+	}
 	normalized := d.Normalized(ownerVersion)
 	if normalized.Schema != DurableResourceSchemaV1 || normalized.SchemaVersion == "" || normalized.MigrationVersion == "" ||
 		normalized.IndexPolicy != IndexPolicyOwnedTables || normalized.BackupCodec != BackupCodecSQLiteOwner ||

@@ -1,6 +1,10 @@
 package schema
 
-import "sort"
+import (
+	"fmt"
+	"sort"
+	"strconv"
+)
 
 type FieldType string
 
@@ -122,15 +126,39 @@ func (s Schema) PublicFields() []Field {
 	return public
 }
 
-func (s Schema) FieldsByPage(page string) []Field {
-	fields := s.PublicFields()
-	filtered := make([]Field, 0, len(fields))
-	for _, field := range fields {
-		if field.Page == page {
-			filtered = append(filtered, field)
-		}
+// ValidateScalar is the authoritative backend enforcement for scalar field
+// metadata. UI consumers receive the same Type/Min/Max/Options contract via
+// Field, so bounds and enum membership cannot drift between representations.
+func (s Schema) ValidateScalar(key string, value string) error {
+	field, ok := s.Field(key)
+	if !ok {
+		return fmt.Errorf("unknown setting key: %s", key)
 	}
-	return filtered
+	switch field.Type {
+	case FieldTypeBool:
+		if _, err := strconv.ParseBool(value); err != nil {
+			return fmt.Errorf("invalid boolean setting: %s", key)
+		}
+	case FieldTypeInt:
+		parsed, err := strconv.Atoi(value)
+		if err != nil {
+			return fmt.Errorf("invalid integer setting: %s", key)
+		}
+		if field.Min != nil && parsed < *field.Min {
+			return fmt.Errorf("setting %s must be at least %d", key, *field.Min)
+		}
+		if field.Max != nil && parsed > *field.Max {
+			return fmt.Errorf("setting %s must be at most %d", key, *field.Max)
+		}
+	case FieldTypeEnum:
+		for _, option := range field.Options {
+			if value == option {
+				return nil
+			}
+		}
+		return fmt.Errorf("invalid enum setting: %s", key)
+	}
+	return nil
 }
 
 func fieldsByKey(fields []Field) map[string]Field {

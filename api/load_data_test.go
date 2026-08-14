@@ -15,7 +15,7 @@ import (
 
 func TestLoadDataIncludesSubscriptionURIOverrides(t *testing.T) {
 	settingService := initSessionTestDB(t)
-	service.NewConfigService(coreruntime.NewCore())
+	service.SetDefaultRuntime(service.NewRuntime(coreruntime.NewCore()))
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}

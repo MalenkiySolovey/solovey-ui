@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
   clearCSRFToken: vi.fn(),
   pushError: vi.fn(),
   pushSuccess: vi.fn(),
-  routerPush: vi.fn(),
+  navigateToLogin: vi.fn(),
 }))
 
 vi.mock('@/plugins/api', () => ({
@@ -16,10 +16,8 @@ vi.mock('@/plugins/api', () => ({
   },
 }))
 
-vi.mock('@/router', () => ({
-  default: {
-    push: mocks.routerPush,
-  },
+vi.mock('@/plugins/loginNavigation', () => ({
+  navigateToLogin: mocks.navigateToLogin,
 }))
 
 vi.mock('@/locales', () => ({
@@ -91,7 +89,17 @@ describe('HttpUtils regression anchors', () => {
     expect(mocks.pushError).toHaveBeenCalledWith({ title: 'invalidLogin' })
     expect(mocks.clearCSRFToken).toHaveBeenCalledTimes(1)
     expect(mocks.apiPost).not.toHaveBeenCalled()
-    expect(mocks.routerPush).toHaveBeenCalledWith('/login')
+    expect(mocks.navigateToLogin).toHaveBeenCalledTimes(1)
+  })
+
+  it('preserves falsey response payloads', async () => {
+    const { default: HttpUtils } = await loadHttpUtils()
+    mocks.apiGet
+      .mockResolvedValueOnce({ data: { success: true, msg: '', obj: false } })
+      .mockResolvedValueOnce({ data: { success: true, msg: '', obj: 0 } })
+
+    await expect(HttpUtils.get('api/flag')).resolves.toMatchObject({ obj: false })
+    await expect(HttpUtils.get('api/count')).resolves.toMatchObject({ obj: 0 })
   })
 
   it('handles Invalid login errors from CSRF loading as a local logout', async () => {
@@ -103,7 +111,7 @@ describe('HttpUtils regression anchors', () => {
     expect(msg).toEqual({ success: false, msg: 'Invalid login', obj: null })
     expect(mocks.pushError).toHaveBeenCalledWith({ title: 'invalidLogin' })
     expect(mocks.clearCSRFToken).toHaveBeenCalledTimes(1)
-    expect(mocks.routerPush).toHaveBeenCalledWith('/login')
+    expect(mocks.navigateToLogin).toHaveBeenCalledTimes(1)
   })
 
   it('handles repeated Invalid login responses only once until reset', async () => {
@@ -116,14 +124,14 @@ describe('HttpUtils regression anchors', () => {
 
     expect(mocks.pushError).toHaveBeenCalledTimes(1)
     expect(mocks.clearCSRFToken).toHaveBeenCalledTimes(1)
-    expect(mocks.routerPush).toHaveBeenCalledTimes(1)
+    expect(mocks.navigateToLogin).toHaveBeenCalledTimes(1)
 
     mod.resetInvalidLoginHandling()
     await HttpUtils.get('api/load')
 
     expect(mocks.pushError).toHaveBeenCalledTimes(2)
     expect(mocks.clearCSRFToken).toHaveBeenCalledTimes(2)
-    expect(mocks.routerPush).toHaveBeenCalledTimes(2)
+    expect(mocks.navigateToLogin).toHaveBeenCalledTimes(2)
   })
 
   it('does not retry HTTP 401 responses in the current axios-based contract', async () => {

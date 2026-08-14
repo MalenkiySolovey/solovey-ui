@@ -151,7 +151,7 @@ func assertAPIV2TokenFailureStatus(t *testing.T, router *gin.Engine, req *http.R
 	}
 }
 
-func TestSecurityAuthZImportXUISharedRegistryPreservesAuthSurfacesIssue35(t *testing.T) {
+func TestSecurityAuthZImportXUISharedRegistryPreservesAuthSurfaces(t *testing.T) {
 	initSessionTestDB(t)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()

@@ -2,11 +2,66 @@ package service
 
 import (
 	"context"
+	"errors"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 )
+
+func TestAuditWriterExtraRetriesTransientWriteFailure(t *testing.T) {
+	sentinel := errors.New("temporary audit storage failure")
+	var attempts atomic.Int32
+	wrote := make(chan []model.AuditEvent, 1)
+	writer := newAuditWriter(10, 1, time.Hour, func(events []model.AuditEvent) error {
+		if attempts.Add(1) == 1 {
+			return sentinel
+		}
+		wrote <- append([]model.AuditEvent(nil), events...)
+		return nil
+	})
+	t.Cleanup(func() {
+		if err := writer.Stop(context.Background()); err != nil {
+			t.Error(err)
+		}
+	})
+
+	writer.Enqueue(model.AuditEvent{Event: "retry_me"})
+	select {
+	case events := <-wrote:
+		if attempts.Load() < 2 || len(events) != 1 || events[0].Event != "retry_me" {
+			t.Fatalf("unexpected retried batch: attempts=%d events=%#v", attempts.Load(), events)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("transiently failed audit batch was not retried")
+	}
+}
+
+func TestAuditWriterExtraStopReportsPersistentWriteFailure(t *testing.T) {
+	sentinel := errors.New("persistent audit storage failure")
+	attempted := make(chan struct{}, 1)
+	writer := newAuditWriter(10, 1, time.Hour, func([]model.AuditEvent) error {
+		select {
+		case attempted <- struct{}{}:
+		default:
+		}
+		return sentinel
+	})
+	writer.Enqueue(model.AuditEvent{Event: "cannot_persist"})
+	select {
+	case <-attempted:
+	case <-time.After(time.Second):
+		t.Fatal("audit write was not attempted")
+	}
+	if err := writer.Stop(context.Background()); !errors.Is(err, sentinel) {
+		t.Fatalf("Stop error=%v, want %v", err, sentinel)
+	}
+	pending := writer.drainPending()
+	if len(pending) != 1 || pending[0].Event != "cannot_persist" {
+		t.Fatalf("failed shutdown write was not retained for the next writer: %#v", pending)
+	}
+}
 
 func TestAuditWriterExtraOverflowIncrementsDroppedTotal(t *testing.T) {
 	auditDroppedTotal.Store(0)

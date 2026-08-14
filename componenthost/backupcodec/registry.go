@@ -99,97 +99,131 @@ func (e *Error) Unwrap() error {
 type exportEntry struct {
 	name  string
 	codec ExportCodec
+	token uint64
 }
 
 type importEntry struct {
 	name  string
 	codec ImportCodec
+	token uint64
 }
 
 var codecs = struct {
 	sync.RWMutex
-	exports map[string]ExportCodec
-	imports map[string]ImportCodec
+	exports   map[string]exportEntry
+	imports   map[string]importEntry
+	nextToken uint64
 }{
-	exports: map[string]ExportCodec{},
-	imports: map[string]ImportCodec{},
+	exports: map[string]exportEntry{},
+	imports: map[string]importEntry{},
 }
 
 const (
 	maxCodecs                 = 64
 	maxImportPassphraseFields = 8
 	maxImportFieldNameBytes   = 64
+	maxImportHeaderBytes      = 4096
+	maxImportFieldsTotal      = 64
 )
 
-func RegisterExport(name string, codec ExportCodec) func() {
-	if name == "" || codec.Selected == nil || codec.Encode == nil && codec.EncodeStream == nil {
-		panic(fmt.Errorf("backup export codec %q is incomplete", name))
+func RegisterExport(name string, codec ExportCodec) (func(), error) {
+	if !validCodecName(name) || codec.Selected == nil || codec.Encode == nil && codec.EncodeStream == nil {
+		return nil, fmt.Errorf("backup export codec %q is incomplete", name)
 	}
 	codecs.Lock()
 	defer codecs.Unlock()
 	if _, exists := codecs.exports[name]; exists {
-		panic(fmt.Errorf("backup export codec %q already registered", name))
+		return nil, fmt.Errorf("backup export codec %q already registered", name)
 	}
 	if len(codecs.exports) >= maxCodecs {
-		panic("backup export codec capacity exceeded")
+		return nil, errors.New("backup export codec capacity exceeded")
 	}
-	codecs.exports[name] = codec
-	return unregisterExport(name)
+	codecs.nextToken++
+	token := codecs.nextToken
+	codecs.exports[name] = exportEntry{name: name, codec: codec, token: token}
+	return unregisterExport(name, token), nil
 }
 
-func RegisterImport(name string, codec ImportCodec) func() {
-	if name == "" || codec.HeaderBytes <= 0 || codec.Match == nil || codec.Decode == nil && codec.DecodeStream == nil {
-		panic(fmt.Errorf("backup import codec %q is incomplete", name))
+func RegisterImport(name string, codec ImportCodec) (func(), error) {
+	if !validCodecName(name) || codec.HeaderBytes <= 0 || codec.HeaderBytes > maxImportHeaderBytes || codec.Match == nil || codec.Decode == nil && codec.DecodeStream == nil {
+		return nil, fmt.Errorf("backup import codec %q is incomplete", name)
 	}
-	codec.PassphraseFields = normalizedPassphraseFields(name, codec.PassphraseFields)
+	fields, err := normalizedPassphraseFields(name, codec.PassphraseFields)
+	if err != nil {
+		return nil, err
+	}
+	codec.PassphraseFields = fields
 	codecs.Lock()
 	defer codecs.Unlock()
 	if _, exists := codecs.imports[name]; exists {
-		panic(fmt.Errorf("backup import codec %q already registered", name))
+		return nil, fmt.Errorf("backup import codec %q already registered", name)
 	}
 	if len(codecs.imports) >= maxCodecs {
-		panic("backup import codec capacity exceeded")
+		return nil, errors.New("backup import codec capacity exceeded")
 	}
-	codecs.imports[name] = codec
-	return unregisterImport(name)
-}
-
-func unregisterExport(name string) func() {
-	var once sync.Once
-	return func() {
-		once.Do(func() {
-			codecs.Lock()
-			delete(codecs.exports, name)
-			codecs.Unlock()
-		})
-	}
-}
-
-func unregisterImport(name string) func() {
-	var once sync.Once
-	return func() {
-		once.Do(func() {
-			codecs.Lock()
-			delete(codecs.imports, name)
-			codecs.Unlock()
-		})
-	}
-}
-
-func ResetForTest() {
-	codecs.Lock()
-	codecs.exports = map[string]ExportCodec{}
-	codecs.imports = map[string]ImportCodec{}
-	codecs.Unlock()
-}
-
-func SelectedExport(c *gin.Context) (string, ExportCodec, bool) {
-	for _, entry := range exportSnapshot() {
-		if entry.codec.Selected(c) {
-			return entry.name, entry.codec, true
+	unique := make(map[string]struct{})
+	for _, entry := range codecs.imports {
+		for _, field := range entry.codec.PassphraseFields {
+			unique[field] = struct{}{}
 		}
 	}
-	return "", ExportCodec{}, false
+	for _, field := range codec.PassphraseFields {
+		unique[field] = struct{}{}
+	}
+	if len(unique) > maxImportFieldsTotal {
+		return nil, errors.New("backup import passphrase field capacity exceeded")
+	}
+	codecs.nextToken++
+	token := codecs.nextToken
+	codecs.imports[name] = importEntry{name: name, codec: codec, token: token}
+	return unregisterImport(name, token), nil
+}
+
+func unregisterExport(name string, token uint64) func() {
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			codecs.Lock()
+			if current, ok := codecs.exports[name]; ok && current.token == token {
+				delete(codecs.exports, name)
+			}
+			codecs.Unlock()
+		})
+	}
+}
+
+func unregisterImport(name string, token uint64) func() {
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			codecs.Lock()
+			if current, ok := codecs.imports[name]; ok && current.token == token {
+				delete(codecs.imports, name)
+			}
+			codecs.Unlock()
+		})
+	}
+}
+
+func SelectedExport(c *gin.Context) (string, ExportCodec, bool, error) {
+	var selected *exportEntry
+	for _, entry := range exportSnapshot() {
+		matches, panicked := safeExportSelection(entry.codec, c)
+		if panicked {
+			return "", ExportCodec{}, false, NewError(http.StatusInternalServerError, "backup_codec_failed", nil)
+		}
+		if matches {
+			if selected != nil {
+				return "", ExportCodec{}, false, NewError(http.StatusBadRequest, "backup_codec_ambiguous", nil)
+			}
+			copy := entry
+			selected = &copy
+		}
+	}
+	if selected == nil {
+		return "", ExportCodec{}, false, nil
+	}
+	return selected.name, selected.codec, true, nil
 }
 
 func ExportRequested(c *gin.Context) bool {
@@ -217,13 +251,25 @@ func MaxImportHeaderBytes() int {
 	return maxSize
 }
 
-func MatchingImport(header []byte) (string, ImportCodec, bool) {
+func MatchingImport(header []byte) (string, ImportCodec, bool, error) {
+	var selected *importEntry
 	for _, entry := range importSnapshot() {
-		if len(header) >= entry.codec.HeaderBytes && entry.codec.Match(header[:entry.codec.HeaderBytes]) {
-			return entry.name, entry.codec, true
+		matches, panicked := safeImportMatch(entry.codec, header)
+		if panicked {
+			return "", ImportCodec{}, false, NewError(http.StatusInternalServerError, "backup_codec_failed", nil)
+		}
+		if matches {
+			if selected != nil {
+				return "", ImportCodec{}, false, NewError(http.StatusBadRequest, "backup_codec_ambiguous", nil)
+			}
+			copy := entry
+			selected = &copy
 		}
 	}
-	return "", ImportCodec{}, false
+	if selected == nil {
+		return "", ImportCodec{}, false, nil
+	}
+	return selected.name, selected.codec, true, nil
 }
 
 // ImportPassphraseFields returns the bounded union of component-owned secret
@@ -248,7 +294,14 @@ func ImportPassphraseFields() []string {
 func HTTPError(err error, fallbackClass string) (int, string) {
 	var codecErr *Error
 	if errors.As(err, &codecErr) {
-		return codecErr.Status, codecErr.Class
+		status, class := codecErr.Status, codecErr.Class
+		if status < 400 || status > 599 {
+			status = http.StatusInternalServerError
+		}
+		if !validErrorClass(class) {
+			class = "failed"
+		}
+		return status, class
 	}
 	if fallbackClass == "" {
 		fallbackClass = "failed"
@@ -273,8 +326,8 @@ func hasRequestedValue(values []string) bool {
 func exportSnapshot() []exportEntry {
 	codecs.RLock()
 	entries := make([]exportEntry, 0, len(codecs.exports))
-	for name, codec := range codecs.exports {
-		entries = append(entries, exportEntry{name: name, codec: codec})
+	for _, entry := range codecs.exports {
+		entries = append(entries, entry)
 	}
 	codecs.RUnlock()
 	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
@@ -284,33 +337,80 @@ func exportSnapshot() []exportEntry {
 func importSnapshot() []importEntry {
 	codecs.RLock()
 	entries := make([]importEntry, 0, len(codecs.imports))
-	for name, codec := range codecs.imports {
-		entries = append(entries, importEntry{name: name, codec: codec})
+	for _, entry := range codecs.imports {
+		entries = append(entries, entry)
 	}
 	codecs.RUnlock()
 	sort.Slice(entries, func(i, j int) bool { return entries[i].name < entries[j].name })
 	return entries
 }
 
-func normalizedPassphraseFields(codecName string, fields []string) []string {
+func safeExportSelection(codec ExportCodec, c *gin.Context) (selected, panicked bool) {
+	defer func() {
+		if recover() != nil {
+			selected, panicked = false, true
+		}
+	}()
+	return codec.Selected(c), false
+}
+
+func safeImportMatch(codec ImportCodec, header []byte) (matched, panicked bool) {
+	if len(header) < codec.HeaderBytes {
+		return false, false
+	}
+	defer func() {
+		if recover() != nil {
+			matched, panicked = false, true
+		}
+	}()
+	return codec.Match(header[:codec.HeaderBytes]), false
+}
+
+func validCodecName(value string) bool {
+	if value == "" || len(value) > 64 {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '-' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validErrorClass(value string) bool {
+	if value == "" || len(value) > 64 {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '_' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func normalizedPassphraseFields(codecName string, fields []string) ([]string, error) {
 	if len(fields) > maxImportPassphraseFields {
-		panic(fmt.Errorf("backup import codec %q declares too many passphrase fields", codecName))
+		return nil, fmt.Errorf("backup import codec %q declares too many passphrase fields", codecName)
 	}
 	normalized := make([]string, 0, len(fields))
 	seen := map[string]struct{}{}
 	for _, field := range fields {
 		field = strings.TrimSpace(field)
 		if !validImportFieldName(field) {
-			panic(fmt.Errorf("backup import codec %q has invalid passphrase field %q", codecName, field))
+			return nil, fmt.Errorf("backup import codec %q has invalid passphrase field %q", codecName, field)
 		}
 		if _, exists := seen[field]; exists {
-			panic(fmt.Errorf("backup import codec %q repeats passphrase field %q", codecName, field))
+			return nil, fmt.Errorf("backup import codec %q repeats passphrase field %q", codecName, field)
 		}
 		seen[field] = struct{}{}
 		normalized = append(normalized, field)
 	}
 	sort.Strings(normalized)
-	return normalized
+	return normalized, nil
 }
 
 func validImportFieldName(field string) bool {

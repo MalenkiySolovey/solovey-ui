@@ -42,11 +42,6 @@ func parseSighupTimeoutEnv() time.Duration {
 	return time.Duration(parsed) * time.Second
 }
 
-func SetSighupTimeoutForTest(timeout time.Duration) {
-	sighupTimeout = timeout
-	sighupTimeoutOnce.Do(func() {})
-}
-
 func SendSighup() error {
 	if sendSighupHook != nil {
 		return sendSighupHook()

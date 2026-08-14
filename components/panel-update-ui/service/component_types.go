@@ -11,14 +11,11 @@ const (
 )
 
 type Inventory struct {
-	BinaryProfile  string            `json:"binaryProfile"`
-	ReleaseVersion string            `json:"releaseVersion,omitempty"`
-	ReleaseSource  string            `json:"releaseSource,omitempty"`
-	ReleaseError   string            `json:"releaseError,omitempty"`
-	Components     []ComponentStatus `json:"components"`
-	Installed      []ComponentStatus `json:"installed"`
-	Available      []ComponentStatus `json:"available"`
-	Unavailable    []ComponentStatus `json:"unavailable"`
+	BinaryProfile string            `json:"binaryProfile"`
+	Components    []ComponentStatus `json:"components"`
+	Installed     []ComponentStatus `json:"installed"`
+	Available     []ComponentStatus `json:"available"`
+	Unavailable   []ComponentStatus `json:"unavailable"`
 }
 
 type ComponentStatus struct {

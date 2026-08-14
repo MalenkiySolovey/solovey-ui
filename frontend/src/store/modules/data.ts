@@ -51,10 +51,20 @@ export interface InboundDraftStatus {
   expiresAt: number
 }
 
+let loadDataInFlight: Promise<void> | undefined
+
+const readReloadItems = (): string[] => {
+  try {
+    return localStorage.getItem('reloadItems')?.split(',').filter(Boolean) ?? []
+  } catch {
+    return []
+  }
+}
+
 const Data = defineStore('Data', {
   state: () => ({ 
     lastLoad: 0,
-    reloadItems: localStorage.getItem("reloadItems")?.split(',')?? <string[]>[],
+    reloadItems: readReloadItems(),
     subURI: "",
     subJsonURI: "",
     subClashURI: "",
@@ -75,30 +85,41 @@ const Data = defineStore('Data', {
   }),
   actions: {
     async loadData() {
-      const msg = await HttpUtils.get('api/load', this.lastLoad >0 ? {lu: this.lastLoad} : {} )
-      if(msg.success) {
-        this.onlines = msg.obj.onlines
-        if (msg.obj.lastLog) {
-          const logLevel = actionableLogLevel(String(msg.obj.lastLog))
+      if (loadDataInFlight) return loadDataInFlight
 
-          if (logLevel === 'error') {
-            push.error({
-              title: i18n.global.t('error.core'),
-              duration: 8000,
-              message: msg.obj.lastLog
-            })
-          } else if (logLevel === 'warning') {
-            push.warning({
-              title: i18n.global.t('warning'),
-              duration: 6000,
-              message: msg.obj.lastLog
-            })
+      const request = (async () => {
+        const msg = await HttpUtils.get('api/load', this.lastLoad > 0 ? { lu: this.lastLoad } : {})
+        if (msg.success) {
+          this.onlines = msg.obj.onlines
+          if (msg.obj.lastLog) {
+            const logLevel = actionableLogLevel(String(msg.obj.lastLog))
+
+            if (logLevel === 'error') {
+              push.error({
+                title: i18n.global.t('error.core'),
+                duration: 8000,
+                message: msg.obj.lastLog
+              })
+            } else if (logLevel === 'warning') {
+              push.warning({
+                title: i18n.global.t('warning'),
+                duration: 6000,
+                message: msg.obj.lastLog
+              })
+            }
+          }
+
+          if (msg.obj.config) {
+            this.setNewData(msg.obj)
           }
         }
-        
-        if (msg.obj.config) {
-          this.setNewData(msg.obj)
-        }
+      })()
+
+      loadDataInFlight = request
+      try {
+        await request
+      } finally {
+        if (loadDataInFlight === request) loadDataInFlight = undefined
       }
     },
     setNewData(data: any) {

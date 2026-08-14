@@ -1,6 +1,7 @@
 package sqlite
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -30,6 +31,10 @@ func TestBatchSizeRespectsSQLiteVariableBudget(t *testing.T) {
 	}
 
 	rows := make([]model.Client, batch)
+	for index := range rows {
+		rows[index].Name = fmt.Sprintf("client-%d", index)
+		rows[index].SubSecret = fmt.Sprintf("secret-%d", index)
+	}
 	if err := DB().CreateInBatches(&rows, batch).Error; err != nil {
 		t.Fatalf("CreateInBatches with safe batch failed: %v", err)
 	}

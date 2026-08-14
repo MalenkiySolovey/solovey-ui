@@ -3,7 +3,7 @@ package netentity
 import "testing"
 
 func TestFetchUsersRejectsUnsupportedInboundTypeBeforeSQL(t *testing.T) {
-	_, err := (&InboundService{}).fetchUsersByCondition(nil, "vmess'); DROP TABLE clients; --", "1=1", map[string]interface{}{})
+	_, err := (&InboundService{}).fetchUsers(nil, "vmess'); DROP TABLE clients; --", map[string]interface{}{}, 1)
 	if err == nil {
 		t.Fatal("unsupported inbound type should be rejected before SQL execution")
 	}
@@ -20,7 +20,7 @@ func TestFetchUsersRejectsUnexpectedJSONFieldBeforeSQL(t *testing.T) {
 			delete(userJSONField, inboundType)
 		}
 	})
-	if _, err := (&InboundService{}).fetchUsersByCondition(nil, inboundType, "1=1", map[string]interface{}{}); err == nil {
+	if _, err := (&InboundService{}).fetchUsers(nil, inboundType, map[string]interface{}{}, 1); err == nil {
 		t.Fatal("unexpected JSON field should be rejected before SQL execution")
 	}
 }

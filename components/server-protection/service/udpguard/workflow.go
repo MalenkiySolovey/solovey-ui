@@ -145,6 +145,7 @@ type Controller struct {
 	Firewall   *protectionfirewall.Workflow
 	Baseline   *protectionfirewall.BaselineService
 	Probes     *componenthealth.ProtocolProbeRegistryV1
+	Transports *hostresources.InboundTransportRegistryV2
 	Now        func() time.Time
 }
 
@@ -160,6 +161,13 @@ func (c *Controller) probes() *componenthealth.ProtocolProbeRegistryV1 {
 		return c.Probes
 	}
 	return componenthealth.DefaultProtocolProbesV1
+}
+
+func (c *Controller) transports() *hostresources.InboundTransportRegistryV2 {
+	if c != nil && c.Transports != nil {
+		return c.Transports
+	}
+	return hostresources.DefaultInboundTransportsV2
 }
 
 func (c *Controller) ready() error {
@@ -385,7 +393,7 @@ func (c *Controller) statusState(ctx context.Context, refresh bool) (StatusV1, p
 		return StatusV1{}, protectionfirewall.BaselineState{}, err
 	}
 	now := c.now()
-	facts, err := hostresources.DefaultInboundTransportsV2.Facts(ctx, now)
+	facts, err := c.transports().Facts(ctx, now)
 	if err != nil {
 		return StatusV1{}, protectionfirewall.BaselineState{}, err
 	}

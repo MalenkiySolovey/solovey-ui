@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v2026.2.1"
+        default: "v2026.3.0"
         type: string
   push:
     tags:
@@ -18,6 +18,7 @@ permissions:
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository }}
+  RELEASE_TAG_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
 
 jobs:
   build:
@@ -35,6 +36,14 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Validate release tag against source version
+        run: |
+          set -euo pipefail
+          VERSION="${RELEASE_TAG_INPUT#v}"
+          EXPECTED_VERSION="$(tr -d '\r\n' < config/identity/version)"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
+          [ "$VERSION" = "$EXPECTED_VERSION" ] || { echo "release tag $RELEASE_TAG_INPUT does not match source version $EXPECTED_VERSION" >&2; exit 1; }
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
 
@@ -48,11 +57,7 @@ jobs:
       - name: Normalize release tag
         id: vars
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
+          TAG="${RELEASE_TAG_INPUT}"
           case "$TAG" in
             v*) echo "tag=$TAG" >> "$GITHUB_OUTPUT" ;;
             *) echo "tag=v$TAG" >> "$GITHUB_OUTPUT" ;;
@@ -106,11 +111,7 @@ jobs:
       - name: Normalize release tag
         id: vars
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
+          TAG="${RELEASE_TAG_INPUT}"
           case "$TAG" in
             v*) echo "tag=$TAG" >> "$GITHUB_OUTPUT" ;;
             *) echo "tag=v$TAG" >> "$GITHUB_OUTPUT" ;;

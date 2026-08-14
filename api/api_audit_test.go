@@ -144,6 +144,18 @@ func TestGetSecurityAuditFiltersEventAndSeverity(t *testing.T) {
 	}
 }
 
+func TestGetSecurityAuditRejectsUnknownQueryFields(t *testing.T) {
+	resetRateLimitState()
+	settingService := initSessionTestDB(t)
+	router, cookies := newAuthenticatedTestRouter(t, settingService, func(router *gin.Engine) {
+		router.GET("/api/security/audit", (&ApiService{}).coreTelemetryHandler().GetSecurityAudit)
+	})
+	recorder := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/security/audit?rawCommand=1", nil), cookies...)
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("unknown audit query status=%d body=%s", recorder.Code, recorder.Body.String())
+	}
+}
+
 func TestGetSecurityAuditFiltersDateRange(t *testing.T) {
 	resetRateLimitState()
 	settingService := initSessionTestDB(t)

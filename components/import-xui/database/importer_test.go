@@ -148,20 +148,29 @@ func TestImport_Clients_AggregateByEmail(t *testing.T) {
 	}
 }
 
-func TestImport_Clients_DefaultsDeterministic(t *testing.T) {
+func TestImport_Clients_DefaultCredentialsUseFreshEntropy(t *testing.T) {
 	src1, _ := setupImportTestDB(t)
 	if _, err := importForTest(src1, testImportOptions{Strategy: StrategyMerge}); err != nil {
 		t.Fatal(err)
 	}
-	config1 := append([]byte(nil), clientByName(t, "AndPh1").Config...)
+	var config1 map[string]map[string]any
+	if err := json.Unmarshal(clientByName(t, "AndPh1").Config, &config1); err != nil {
+		t.Fatal(err)
+	}
 
 	src2, _ := setupImportTestDB(t)
 	if _, err := importForTest(src2, testImportOptions{Strategy: StrategyMerge}); err != nil {
 		t.Fatal(err)
 	}
-	config2 := clientByName(t, "AndPh1").Config
-	if string(config1) != string(config2) {
-		t.Fatal("deterministic client config changed between fresh imports")
+	var config2 map[string]map[string]any
+	if err := json.Unmarshal(clientByName(t, "AndPh1").Config, &config2); err != nil {
+		t.Fatal(err)
+	}
+	if config1["mixed"]["password"] == config2["mixed"]["password"] {
+		t.Fatal("generated client credentials were reused across fresh imports")
+	}
+	if config1["vless"]["uuid"] != config2["vless"]["uuid"] {
+		t.Fatal("source vless credential was not preserved")
 	}
 }
 
@@ -418,7 +427,7 @@ func addDuplicateClientToInbound(t *testing.T, src string, email string, inbound
 		ID     string `json:"id"`
 		Flow   string `json:"flow"`
 		SubID  string `json:"subId"`
-	}{Email: email, Enable: &enabled, ID: deterministicUUID(email + ":duplicate"), Flow: "xtls-rprx-vision", SubID: "duplicate-sub"})
+	}{Email: email, Enable: &enabled, ID: deterministicFixtureUUID(email + ":duplicate"), Flow: "xtls-rprx-vision", SubID: "duplicate-sub"})
 	next, err := json.MarshalIndent(settings, "", "  ")
 	if err != nil {
 		t.Fatal(err)

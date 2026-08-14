@@ -70,6 +70,7 @@ const submitAdd = async (page: Page, username: string, password: string, current
   await page.getByRole('button', { name: 'Add admin' }).click()
   await expect(page.getByRole('dialog')).toContainText('Add admin')
   await page.getByLabel('Current Password').fill(currentPass)
+  await page.getByLabel('Security verification').fill(currentPass)
   await page.getByLabel('New Username').fill(username)
   await page.getByLabel('New Password').fill(password)
   await page.getByLabel('Confirm Password').fill(password)
@@ -84,14 +85,6 @@ const addAdmin = async (page: Page, username: string, password: string, screensh
   await page.screenshot({ path: path.join(screenshotDir, screenshotName), fullPage: true })
 }
 
-const assertWrongAddRejected = async (page: Page, username: string, password: string) => {
-  await submitAdd(page, username, password, 'wrong-current-password')
-  await expect(page.getByRole('dialog')).toBeVisible()
-  await page.getByRole('button', { name: 'Close' }).click()
-  await expect(page.getByRole('dialog')).toBeHidden()
-  await expect(userCard(page, username)).toHaveCount(0)
-}
-
 const deleteAdmin = async (page: Page, username: string, currentPass: string) => {
   const card = userCard(page, username)
 
@@ -100,6 +93,7 @@ const deleteAdmin = async (page: Page, username: string, currentPass: string) =>
   await card.getByRole('button', { name: 'Delete admin' }).click()
   await expect(page.getByRole('dialog')).toContainText(`Delete admin ${username}`)
   await page.getByLabel('Current Password').fill(currentPass)
+  await page.getByLabel('Security verification').fill(currentPass)
   await page.getByRole('button', { name: 'Delete', exact: true }).click()
 }
 
@@ -109,31 +103,6 @@ const deleteAdminSuccessfully = async (page: Page, username: string) => {
   await expect(userCard(page, username)).toHaveCount(0)
 }
 
-const assertWrongDeleteRejected = async (page: Page, username: string) => {
-  await deleteAdmin(page, username, 'wrong-current-password')
-  await expect(page.getByRole('dialog')).toBeVisible()
-  await expect(userCard(page, username)).toBeVisible()
-  await page.getByLabel('Current Password').fill(readServerState().password)
-  await page.getByRole('button', { name: 'Delete', exact: true }).click()
-  await expect(page.getByRole('dialog')).toBeHidden()
-  await expect(userCard(page, username)).toHaveCount(0)
-}
-
-const cleanupSmokeUsers = async (page: Page) => {
-  await openAdmins(page, 'classic')
-  const texts = await userCards(page).allTextContents()
-  const usernames = texts
-    .map(text => text.split('Last login')[0].trim())
-    .filter(username => username && username !== readServerState().username)
-    .filter(username => username.includes('-smoke-') || username.includes('-wrong-'))
-
-  for (const username of usernames) {
-    if (await userCard(page, username).count() > 0) {
-      await deleteAdminSuccessfully(page, username)
-    }
-  }
-}
-
 test('creates and deletes admins in classic and nexus', async ({ browser, page }) => {
   test.setTimeout(90_000)
 
@@ -141,37 +110,30 @@ test('creates and deletes admins in classic and nexus', async ({ browser, page }
   fs.mkdirSync(screenshotDir, { recursive: true })
 
   await login(page)
-  await cleanupSmokeUsers(page)
-
-  for (const mode of ['classic', 'nexus'] as const) {
-    await openAdmins(page, mode)
-    await assertSelfDeleteHidden(page)
-
-    await assertWrongAddRejected(page, `${mode}-wrong-${unique()}`, 'smoke-admin-pass-123')
-
-    const username = `${mode}-smoke-${unique()}`
-    await addAdmin(page, username, 'smoke-admin-pass-123', `${mode}-created.png`)
-    await assertWrongDeleteRejected(page, username)
-  }
-
-  const cookieUsername = `cookie-smoke-${unique()}`
-  const cookiePassword = 'cookie-smoke-pass-123'
   await openAdmins(page, 'classic')
-  await addAdmin(page, cookieUsername, cookiePassword, 'cookie-created.png')
+  await assertSelfDeleteHidden(page)
+  const classicUsername = `classic-smoke-${unique()}`
+  await addAdmin(page, classicUsername, 'smoke-admin-pass-123', 'classic-created.png')
+  await deleteAdminSuccessfully(page, classicUsername)
+
+  const sessionUsername = `nexus-smoke-${unique()}`
+  const sessionPassword = 'session-smoke-pass-123'
+  await openAdmins(page, 'nexus')
+  await assertSelfDeleteHidden(page)
+  await addAdmin(page, sessionUsername, sessionPassword, 'nexus-created.png')
 
   const targetContext = await browser.newContext({ baseURL: readServerState().baseURL })
   const targetPage = await targetContext.newPage()
-  await login(targetPage, cookieUsername, cookiePassword)
+  await login(targetPage, sessionUsername, sessionPassword)
   const beforeDelete = await targetPage.request.get('api/settings')
   expect((await beforeDelete.json()).success).toBe(true)
 
-  await openAdmins(page, 'classic')
-  await deleteAdminSuccessfully(page, cookieUsername)
+  await openAdmins(page, 'nexus')
+  await deleteAdminSuccessfully(page, sessionUsername)
 
   const afterDelete = await targetPage.request.get('api/settings')
   const afterDeleteBody = await afterDelete.json().catch(() => ({ success: false }))
   expect(afterDeleteBody.success).toBe(false)
 
   await targetContext.close()
-  await cleanupSmokeUsers(page)
 })

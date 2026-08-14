@@ -2,6 +2,7 @@ package backup
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"io"
@@ -13,6 +14,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/database/sqliteident"
+	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
@@ -84,18 +86,11 @@ func exportTables(sourceDB *gorm.DB) ([]backupTable, error) {
 	for _, table := range tables {
 		seen[table.name] = struct{}{}
 	}
-	for _, table := range contributedBackupTables(sourceDB) {
-		if _, ok := seen[table.name]; ok {
-			continue
-		}
-		seen[table.name] = struct{}{}
-		tables = append(tables, table)
-	}
-	opaque, err := installedOwnerTables(sourceDB, seen)
+	owned, err := installedOwnerTables(sourceDB, seen)
 	if err != nil {
 		return nil, err
 	}
-	tables = append(tables, opaque...)
+	tables = append(tables, owned...)
 	return tables, nil
 }
 
@@ -167,7 +162,18 @@ func PrepareExportContext(ctx context.Context, exclude string) (string, func(), 
 	if sourceDB == nil {
 		return "", nil, common.NewError("database is not initialized")
 	}
-	tables, err := exportTables(sourceDB)
+	sourceSnapshot := sourceDB.WithContext(ctx).Begin(&sql.TxOptions{ReadOnly: true})
+	if sourceSnapshot.Error != nil {
+		return "", nil, sourceSnapshot.Error
+	}
+	defer func() { _ = sourceSnapshot.Rollback().Error }()
+	// Force SQLite to establish the read snapshot before any table is copied.
+	// Every subsequent source query therefore observes one database revision.
+	var snapshotMarker int
+	if err := sourceSnapshot.Raw("SELECT COUNT(*) FROM sqlite_master").Scan(&snapshotMarker).Error; err != nil {
+		return "", nil, err
+	}
+	tables, err := exportTables(sourceSnapshot)
 	if err != nil {
 		return "", nil, err
 	}
@@ -188,9 +194,9 @@ func PrepareExportContext(ctx context.Context, exclude string) (string, func(), 
 		if excludedTables[table.name] {
 			continue
 		}
-		tableSource := sourceDB
+		tableSource := sourceSnapshot
 		if table.name == "tls" {
-			tableSource = sourceDB.Where("id <> ?", 0)
+			tableSource = sourceSnapshot.Where("id <> ?", 0)
 		}
 		if table.opaque {
 			err = copyOpaqueTable(ctx, tableSource, backupDB, table.name)
@@ -201,7 +207,7 @@ func PrepareExportContext(ctx context.Context, exclude string) (string, func(), 
 			return "", nil, err
 		}
 	}
-	if err := dbsqlite.EnsureNoTLSRow(backupDB); err != nil {
+	if err := entitytls.EnsureSentinel(backupDB); err != nil {
 		return "", nil, err
 	}
 	if err := writeBackupManifest(ctx, backupDB, tables, excludedTables); err != nil {
@@ -347,8 +353,15 @@ func copyOpaqueTable(ctx context.Context, sourceDB, backupDB *gorm.DB, tableName
 	}); err != nil {
 		return err
 	}
+	var triggerCount int64
+	if err := sourceDB.WithContext(ctx).Raw("SELECT COUNT(*) FROM sqlite_master WHERE tbl_name = ? AND type = 'trigger'", tableName).Scan(&triggerCount).Error; err != nil {
+		return err
+	}
+	if triggerCount != 0 {
+		return errors.New("opaque backup table contains unsupported executable triggers")
+	}
 	var definitions []string
-	if err := sourceDB.WithContext(ctx).Raw("SELECT sql FROM sqlite_master WHERE tbl_name = ? AND type IN ('index','trigger') AND sql IS NOT NULL ORDER BY type, name", tableName).Scan(&definitions).Error; err != nil {
+	if err := sourceDB.WithContext(ctx).Raw("SELECT sql FROM sqlite_master WHERE tbl_name = ? AND type = 'index' AND sql IS NOT NULL ORDER BY name", tableName).Scan(&definitions).Error; err != nil {
 		return err
 	}
 	if len(definitions) > 256 {

@@ -26,15 +26,6 @@ func (s Schema) Keys() []string {
 	return s.catalog.Keys()
 }
 
-func (s Schema) Defaults() map[string]string {
-	defaults := make(map[string]string)
-	for _, key := range s.catalog.Keys() {
-		value, _ := s.catalog.Default(key)
-		defaults[key] = value
-	}
-	return defaults
-}
-
 func (s Schema) Default(key string) (string, bool) {
 	return s.catalog.Default(key)
 }

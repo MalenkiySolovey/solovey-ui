@@ -8,6 +8,7 @@ import MigrationResultStep from '../components/MigrationResultStep.vue'
 
 type PlanItem = {
   rowKey?: string
+  originalDstTag?: string
   kind: string
   srcId: any
   srcTag?: string
@@ -71,9 +72,6 @@ export default defineComponent({
     strategyItems(): any[] {
       return ['merge', 'replace', 'skip'].map(value => ({ value, title: this.$t(`migrateXui.actions.${value}`) }))
     },
-    actionItems(): any[] {
-      return ['create', 'merge', 'replace', 'skip'].map(value => ({ value, title: this.$t(`migrateXui.actions.${value}`) }))
-    },
     adminModeItems(): any[] {
       return ['skip', 'new_password', 'reset_required'].map(value => ({ value, title: this.$t(`migrateXui.adminModes.${value}`) }))
     },
@@ -121,7 +119,6 @@ export default defineComponent({
       return JSON.stringify(this.report?.summary ?? {}, null, 2)
     },
     generatedAdmins(): any[] {
-      if (Array.isArray(this.report?.generatedAdmins)) return this.report.generatedAdmins
       if (Array.isArray(this.report?.generated_admins)) return this.report.generated_admins
       return []
     },
@@ -164,6 +161,7 @@ export default defineComponent({
       plan.items = (plan.items ?? []).map((item, index) => ({
         ...item,
         rowKey: `${item.kind}:${String(item.srcId)}:${index}`,
+        originalDstTag: item.dstTag,
       }))
       this.plan = plan
       this.clearGeneratedAdminsTimer()
@@ -191,7 +189,16 @@ export default defineComponent({
       this.step = 3
       const formData = new FormData()
       formData.append('db', this.selectedFile)
-      formData.append('plan', JSON.stringify(this.plan))
+      const submittedPlan = {
+        ...this.plan,
+        items: this.plan.items.map((item) => {
+          const submitted = { ...item }
+          delete submitted.rowKey
+          delete submitted.originalDstTag
+          return submitted
+        }),
+      }
+      formData.append('plan', JSON.stringify(submittedPlan))
       const msg = await applyXuiMigration(formData, stepUp.token)
       if (!msg.success) {
         this.step = 2
@@ -208,7 +215,7 @@ export default defineComponent({
       await Data().loadData()
     },
     async rollback() {
-      if (!this.report?.backupPath) return
+      if (!this.report?.backup_path) return
       this.rollbackError = ''
       const stepUp = await acquireStepUpToken(
         'backup.restore',
@@ -222,7 +229,7 @@ export default defineComponent({
       }
       this.rollbackLoading = true
       try {
-        const msg = await rollbackXuiMigration(this.report.backupPath, stepUp.token)
+        const msg = await rollbackXuiMigration(this.report.backup_path, stepUp.token)
         if (!msg.success) {
           this.rollbackError = msg.msg || this.$t('migrateXui.rollbackFailedFallback')
           return
@@ -269,12 +276,36 @@ export default defineComponent({
     clearGeneratedAdmins() {
       this.clearGeneratedAdminsTimer()
       if (this.report) {
-        this.report.generatedAdmins = []
+        this.report.generated_admins = []
       }
       this.generatedAdminsRevealed = false
     },
     setImport(item: PlanItem, enabled: boolean) {
-      item.action = enabled ? (item.conflict ? this.strategy : 'create') : 'skip'
+      if (this.isWarningOnlyItem(item)) {
+        item.action = 'skip'
+        return
+      }
+      item.action = enabled
+        ? (item.dstTag !== item.originalDstTag ? 'create' : (item.conflict ? this.strategy : 'create'))
+        : 'skip'
+    },
+    isWarningOnlyItem(item: PlanItem): boolean {
+      return item.previewJson === null && item.action === 'skip'
+    },
+    isRenameablePlanItem(item: PlanItem): boolean {
+      return ['tls', 'inbound', 'endpoint', 'client', 'admin'].includes(item.kind)
+    },
+    actionItemsFor(item: PlanItem): any[] {
+      let values: string[]
+      if (this.isWarningOnlyItem(item)) values = ['skip']
+      else if (item.dstTag !== item.originalDstTag) values = ['create', 'skip']
+      else if (item.kind === 'historical' || item.kind === 'routing') values = ['create', 'skip']
+      else values = item.conflict ? ['merge', 'replace', 'skip'] : ['create', 'skip']
+      return values.map(value => ({ value, title: this.$t(`migrateXui.actions.${value}`) }))
+    },
+    destinationChanged(item: PlanItem) {
+      if (item.dstTag !== item.originalDstTag) item.action = 'create'
+      else item.action = item.conflict ? this.strategy : 'create'
     },
     rowItem(item: any): PlanItem {
       return item?.raw ?? item
@@ -302,7 +333,7 @@ export default defineComponent({
     },
     markdownReport(): string {
       const summary = this.report?.summary ?? {}
-      const lines = ['# Panel import report', '', `Backup: ${this.report?.backupPath || '-'}`, '']
+      const lines = ['# Panel import report', '', `Backup: ${this.report?.backup_path || '-'}`, '']
       for (const [key, value] of Object.entries(summary)) {
         lines.push(`## ${key}`, '```json', JSON.stringify(value, null, 2), '```', '')
       }

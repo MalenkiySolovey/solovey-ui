@@ -3,7 +3,9 @@
 package service
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -24,15 +26,32 @@ func initRemoteOutboundTestDB(t *testing.T) {
 	initRemoteOutboundTestDBWithHooks(t, true)
 }
 
+func newTestRemoteOutboundService() *RemoteOutboundService {
+	return &RemoteOutboundService{Runtime: coreservice.NewRuntimeWithCoreProvider(nil)}
+}
+
+func TestRemoteOutboundMutationFailsClosedWithoutRuntime(t *testing.T) {
+	initRemoteOutboundTestDB(t)
+
+	_, err := (&RemoteOutboundService{}).SaveSubscription(remotesub.RemoteOutboundSubscription{
+		Name: "No runtime", Url: "https://example.com/subscription", Enabled: true,
+	}, true, "test")
+	if err == nil || !strings.Contains(err.Error(), "runtime is unavailable") {
+		t.Fatalf("SaveSubscription() error = %v, want unavailable runtime", err)
+	}
+	var count int64
+	if err := dbsqlite.DB().Model(&remotesub.RemoteOutboundSubscription{}).
+		Where("name = ?", "No runtime").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 0 {
+		t.Fatalf("runtime-less mutation persisted %d rows", count)
+	}
+}
+
 func initRemoteOutboundTestDBWithHooks(t *testing.T, registerHooks bool) {
 	t.Helper()
 	initSettingTestDB(t)
-	coreservice.ResetOutboundSaveHooksForTest()
-	outboundentities.ResetDeleteHooksForTest()
-	outboundentities.ResetMetadataAnnotatorsForTest()
-	t.Cleanup(coreservice.ResetOutboundSaveHooksForTest)
-	t.Cleanup(outboundentities.ResetDeleteHooksForTest)
-	t.Cleanup(outboundentities.ResetMetadataAnnotatorsForTest)
 	if err := remotesub.EnsureSchema(dbsqlite.DB()); err != nil {
 		t.Fatalf("remote subscription schema: %v", err)
 	}
@@ -289,7 +308,7 @@ func TestRemoteOutboundSubscriptionDeleteBlocksReferencedOutbound(t *testing.T) 
 		t.Fatal(err)
 	}
 
-	service := &RemoteOutboundService{}
+	service := newTestRemoteOutboundService()
 	if err := service.DeleteSubscription(subscription.Id, "test"); err == nil || !strings.Contains(err.Error(), "still referenced") {
 		t.Fatalf("referenced subscription outbound delete should be blocked, got %v", err)
 	}
@@ -387,7 +406,7 @@ func TestRemoteOutboundSubscriptionDeleteBlocksConfigReferences(t *testing.T) {
 			subscription, _, _, _ := createSyncedRemoteOutboundFixture(t, "Remote", "ros-", "ros-node")
 			seedRemoteOutboundConfig(t, tc.config)
 
-			err := (&RemoteOutboundService{}).DeleteSubscription(subscription.Id, "test")
+			err := newTestRemoteOutboundService().DeleteSubscription(subscription.Id, "test")
 			if err == nil {
 				t.Fatal("referenced subscription delete should be blocked")
 			}
@@ -432,7 +451,7 @@ func TestRemoteOutboundRetagKeepsUnicodeAndUpdatesLinkedOutbound(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := (&RemoteOutboundService{}).SaveSubscription(remotesub.RemoteOutboundSubscription{
+	_, err := newTestRemoteOutboundService().SaveSubscription(remotesub.RemoteOutboundSubscription{
 		Id:        subscription.Id,
 		Name:      subscription.Name,
 		Url:       subscription.Url,
@@ -466,7 +485,7 @@ func TestRemoteOutboundSaveRejectsUnsafeURLBeforePersisting(t *testing.T) {
 	initRemoteOutboundTestDB(t)
 	db := dbsqlite.DB()
 
-	_, err := (&RemoteOutboundService{}).SaveSubscription(remotesub.RemoteOutboundSubscription{
+	_, err := newTestRemoteOutboundService().SaveSubscription(remotesub.RemoteOutboundSubscription{
 		Name:    "Unsafe",
 		Url:     "http://127.0.0.1/sub.txt",
 		Enabled: true,
@@ -501,7 +520,7 @@ func TestRemoteOutboundAutoRefreshUsesInternalRefreshWithoutDeadlock(t *testing.
 
 	done := make(chan error, 1)
 	go func() {
-		_, err := (&RemoteOutboundService{}).RefreshDueSubscriptions("test")
+		_, err := newTestRemoteOutboundService().RefreshDueSubscriptions("test")
 		done <- err
 	}()
 
@@ -515,10 +534,54 @@ func TestRemoteOutboundAutoRefreshUsesInternalRefreshWithoutDeadlock(t *testing.
 	}
 }
 
+func TestRemoteOutboundAutoRefreshStopRetainsTimedOutLifecycleForRetry(t *testing.T) {
+	workerCtx, cancelWorker := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	remoteOutboundAutoMu.Lock()
+	previousStop := remoteOutboundAutoStop
+	previousDone := remoteOutboundAutoDone
+	remoteOutboundAutoStop = cancelWorker
+	remoteOutboundAutoDone = done
+	remoteOutboundAutoMu.Unlock()
+	t.Cleanup(func() {
+		cancelWorker()
+		remoteOutboundAutoMu.Lock()
+		remoteOutboundAutoStop = previousStop
+		remoteOutboundAutoDone = previousDone
+		remoteOutboundAutoMu.Unlock()
+	})
+
+	timedOut, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := StopRemoteOutboundAutoRefresh(timedOut); !errors.Is(err, context.Canceled) {
+		t.Fatalf("StopRemoteOutboundAutoRefresh error = %v, want context cancellation", err)
+	}
+	if workerCtx.Err() == nil {
+		t.Fatal("timed-out Stop did not cancel the worker")
+	}
+	remoteOutboundAutoMu.Lock()
+	retained := remoteOutboundAutoDone == done && remoteOutboundAutoStop != nil
+	remoteOutboundAutoMu.Unlock()
+	if !retained {
+		t.Fatal("timed-out Stop discarded lifecycle state required for retry")
+	}
+
+	close(done)
+	if err := StopRemoteOutboundAutoRefresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	remoteOutboundAutoMu.Lock()
+	cleared := remoteOutboundAutoDone == nil && remoteOutboundAutoStop == nil
+	remoteOutboundAutoMu.Unlock()
+	if !cleared {
+		t.Fatal("successful retry retained stopped worker state")
+	}
+}
+
 func TestRemoteOutboundGroupsAreManyToManyAndFallbackToDefault(t *testing.T) {
 	initRemoteOutboundTestDB(t)
 	db := dbsqlite.DB()
-	service := &RemoteOutboundService{}
+	service := newTestRemoteOutboundService()
 
 	subscription, defaultGroup := createRemoteOutboundSubscriptionFixture(t, "Remote", "ros-")
 	groupA, err := service.SaveGroup(remotesub.RemoteOutboundGroup{SubscriptionId: subscription.Id, Name: "Client", Enabled: true}, true, "test")
@@ -565,7 +628,7 @@ func TestRemoteOutboundGroupsAreManyToManyAndFallbackToDefault(t *testing.T) {
 func TestRemoteOutboundBulkGroupCreatesMissingGroupPerSubscription(t *testing.T) {
 	initRemoteOutboundTestDB(t)
 	db := dbsqlite.DB()
-	service := &RemoteOutboundService{}
+	service := newTestRemoteOutboundService()
 
 	subA, _ := createRemoteOutboundSubscriptionFixture(t, "Remote A", "a-")
 	subB, _ := createRemoteOutboundSubscriptionFixture(t, "Remote B", "b-")
@@ -597,7 +660,7 @@ func TestRemoteOutboundBulkGroupCreatesMissingGroupPerSubscription(t *testing.T)
 func TestRemoteOutboundBulkGroupRequiresSubscriptions(t *testing.T) {
 	initRemoteOutboundTestDB(t)
 
-	_, err := (&RemoteOutboundService{}).SaveGroupForAllSubscriptions("Shared", "test")
+	_, err := newTestRemoteOutboundService().SaveGroupForAllSubscriptions("Shared", "test")
 	if err == nil || !strings.Contains(err.Error(), "no remote subscriptions") {
 		t.Fatalf("empty bulk group should fail clearly, got %v", err)
 	}
@@ -606,7 +669,7 @@ func TestRemoteOutboundBulkGroupRequiresSubscriptions(t *testing.T) {
 func TestRemoteOutboundDefaultGroupMembershipCanBeCleared(t *testing.T) {
 	initRemoteOutboundTestDB(t)
 	db := dbsqlite.DB()
-	service := &RemoteOutboundService{}
+	service := newTestRemoteOutboundService()
 
 	_, defaultGroup := createRemoteOutboundSubscriptionFixture(t, "Remote", "ros-")
 	connection := remotesub.RemoteOutboundConnection{
@@ -648,7 +711,7 @@ func TestRemoteOutboundDefaultGroupMembershipCanBeCleared(t *testing.T) {
 func TestRemoteOutboundSharedGroupDoesNotDuplicateOrUnsyncEarly(t *testing.T) {
 	initRemoteOutboundTestDB(t)
 	db := dbsqlite.DB()
-	service := &RemoteOutboundService{}
+	service := newTestRemoteOutboundService()
 
 	subscription, _ := createRemoteOutboundSubscriptionFixture(t, "Remote", "ros-")
 	groupA, err := service.SaveGroup(remotesub.RemoteOutboundGroup{SubscriptionId: subscription.Id, Name: "Client", Enabled: true}, true, "test")

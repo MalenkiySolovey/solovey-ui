@@ -35,7 +35,7 @@
           />
           <DatePicker
             v-model="sincePickerInput"
-            :locale="locale"
+            :locale="currentLocale()"
             element="audit-since-filter"
             compact-time
             type="datetime"
@@ -62,7 +62,7 @@
           />
           <DatePicker
             v-model="untilPickerInput"
-            :locale="locale"
+            :locale="currentLocale()"
             element="audit-until-filter"
             compact-time
             type="datetime"
@@ -169,7 +169,7 @@
 </template>
 
 <script lang="ts" setup>
-import { i18n, locale } from '@/locales'
+import { currentLocale, dateLocale, i18n } from '@/locales'
 import { loadAuditEvents } from '@/shared/composables/useAuditOperations'
 import DatePicker from 'vue3-persian-datetime-picker'
 import { computed, onMounted, ref } from 'vue'
@@ -293,7 +293,7 @@ const dateInputToUnix = (value: Date | string): number => {
 
 const formatFilterDate = (value: number): string => {
   if (!value) return ''
-  return new Date(value * 1000).toLocaleString(locale)
+  return new Date(value * 1000).toLocaleString(dateLocale())
 }
 
 const clearSince = (vm: { visible: boolean }) => {
@@ -324,7 +324,7 @@ const previousPage = () => {
 
 const dateFormatted = (value: number): string => {
   if (!value) return '-'
-  return new Date(value * 1000).toLocaleString(locale)
+  return new Date(value * 1000).toLocaleString(dateLocale())
 }
 
 const formatDetails = (details: unknown): string => {

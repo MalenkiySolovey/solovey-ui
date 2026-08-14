@@ -79,11 +79,17 @@ func (s *Supervisor) Migrate(ctx context.Context) error {
 				return migrator.Migrate(ctx, lifecycle.Context{Host: s.host})
 			})
 		}
-		if finishErr := componentmigrations.FinishStep(dbsqlite.DB(), step, migrationErr); finishErr != nil {
+		finishErr := componentmigrations.FinishStep(dbsqlite.DB(), step, migrationErr)
+		if finishErr != nil {
 			joined = errors.Join(joined, finishErr)
 		}
 		if migrationErr != nil {
 			joined = errors.Join(joined, migrationErr)
+			continue
+		}
+		if finishErr != nil {
+			// The authoritative journal did not reach APPLIED. Never publish the
+			// compatibility row as if the migration had committed successfully.
 			continue
 		}
 		if err := componentmigrations.RecordApplied(dbsqlite.DB(), component.Manifest); err != nil {
@@ -106,11 +112,15 @@ func (s *Supervisor) DropData(ctx context.Context, componentID string) error {
 	}
 
 	var joined error
-	if dropper, ok := component.Lifecycle.(lifecycle.DataDropper); ok {
+	dropper, canDrop := component.Lifecycle.(lifecycle.DataDropper)
+	if component.Manifest.Database.Declared() && !canDrop {
+		return fmt.Errorf("component %q declares durable data but has no data-drop lifecycle", componentID)
+	}
+	if canDrop {
 		if err := safeCall(component.Manifest.ID, "drop data", func() error {
 			return dropper.DropData(ctx, lifecycle.Context{Host: s.host})
 		}); err != nil {
-			joined = errors.Join(joined, err)
+			return err
 		}
 	}
 	if db := dbsqlite.DB(); db != nil {
@@ -151,7 +161,7 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 		runningByID[component.Manifest.ID] = component
 	}
 
-	var stopFailed []registry.Component
+	stopFailed := make(map[string]struct{})
 	for i := len(s.running) - 1; i >= 0; i-- {
 		component := s.running[i]
 		if _, ok := activeByID[component.Manifest.ID]; ok {
@@ -161,7 +171,7 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 			return component.Lifecycle.Stop(ctx)
 		}); err != nil {
 			joined = errors.Join(joined, err)
-			stopFailed = append(stopFailed, component)
+			stopFailed[component.Manifest.ID] = struct{}{}
 		}
 	}
 
@@ -179,7 +189,13 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 		}
 		nextRunning = append(nextRunning, component)
 	}
-	nextRunning = append(nextRunning, stopFailed...)
+	// Preserve the original start order for inactive components whose Stop
+	// failed, so a later reconciliation retries them deterministically.
+	for _, component := range s.running {
+		if _, failed := stopFailed[component.Manifest.ID]; failed {
+			nextRunning = append(nextRunning, component)
+		}
+	}
 	s.running = nextRunning
 	state.InvalidateActiveCache()
 	return joined
@@ -248,15 +264,23 @@ func (s *Supervisor) Stop(ctx context.Context) error {
 	defer s.mu.Unlock()
 
 	var joined error
+	failed := make(map[string]struct{})
 	for i := len(s.running) - 1; i >= 0; i-- {
 		component := s.running[i]
 		if err := safeCall(component.Manifest.ID, "stop", func() error {
 			return component.Lifecycle.Stop(ctx)
 		}); err != nil {
 			joined = errors.Join(joined, err)
+			failed[component.Manifest.ID] = struct{}{}
 		}
 	}
-	s.running = nil
+	remaining := make([]registry.Component, 0, len(failed))
+	for _, component := range s.running {
+		if _, stopFailed := failed[component.Manifest.ID]; stopFailed {
+			remaining = append(remaining, component)
+		}
+	}
+	s.running = remaining
 	return joined
 }
 

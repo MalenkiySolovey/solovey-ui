@@ -18,15 +18,16 @@ type InboundTransportCapabilityProviderV2 interface {
 type InboundTransportRegistryV2 struct {
 	mu        sync.RWMutex
 	next      uint64
-	providers map[uint64]InboundTransportCapabilityProviderV2
+	providers map[uint64]identifiedProvider[InboundTransportCapabilityProviderV2]
 }
 
 func NewInboundTransportRegistryV2() *InboundTransportRegistryV2 {
-	return &InboundTransportRegistryV2{providers: make(map[uint64]InboundTransportCapabilityProviderV2)}
+	return &InboundTransportRegistryV2{providers: make(map[uint64]identifiedProvider[InboundTransportCapabilityProviderV2])}
 }
 
 func (r *InboundTransportRegistryV2) Register(provider InboundTransportCapabilityProviderV2) (func(), error) {
-	if r == nil || provider == nil || !boundedToken(provider.ProviderID(), 128) {
+	providerID, ok := stableProviderID(provider, boundedToken)
+	if r == nil || !ok {
 		return nil, errors.New("inbound_transport_provider_v2_invalid")
 	}
 	r.mu.Lock()
@@ -35,13 +36,13 @@ func (r *InboundTransportRegistryV2) Register(provider InboundTransportCapabilit
 		return nil, errors.New("inbound_transport_provider_v2_capacity_exceeded")
 	}
 	for _, current := range r.providers {
-		if current.ProviderID() == provider.ProviderID() {
+		if current.id == providerID {
 			return nil, errors.New("inbound_transport_provider_v2_duplicate")
 		}
 	}
 	r.next++
 	id := r.next
-	r.providers[id] = provider
+	r.providers[id] = identifiedProvider[InboundTransportCapabilityProviderV2]{id: providerID, provider: provider}
 	var once sync.Once
 	return func() { once.Do(func() { r.mu.Lock(); delete(r.providers, id); r.mu.Unlock() }) }, nil
 }
@@ -51,21 +52,23 @@ func (r *InboundTransportRegistryV2) Facts(ctx context.Context, now time.Time) (
 		return nil, errors.New("inbound_transport_registry_v2_unavailable")
 	}
 	r.mu.RLock()
-	providers := make([]InboundTransportCapabilityProviderV2, 0, len(r.providers))
+	providers := make([]identifiedProvider[InboundTransportCapabilityProviderV2], 0, len(r.providers))
 	for _, provider := range r.providers {
 		providers = append(providers, provider)
 	}
 	r.mu.RUnlock()
-	sort.Slice(providers, func(i, j int) bool { return providers[i].ProviderID() < providers[j].ProviderID() })
+	sort.Slice(providers, func(i, j int) bool { return providers[i].id < providers[j].id })
 	result := make([]InboundTransportCapabilityV2, 0)
 	seen := map[string]bool{}
-	for _, provider := range providers {
-		facts, err := provider.InboundTransportCapabilitiesV2(ctx, now)
+	for _, entry := range providers {
+		facts, err := callResourceProvider(ctx, DefaultTimeoutForFrontingProviderV1, func(callCtx context.Context) ([]InboundTransportCapabilityV2, error) {
+			return entry.provider.InboundTransportCapabilitiesV2(callCtx, now)
+		})
 		if err != nil {
-			return nil, err
+			return nil, errors.New("inbound_transport_provider_v2_unavailable")
 		}
 		for _, fact := range facts {
-			if fact.ProviderID != provider.ProviderID() || seen[fact.ResourceID] || fact.Validate(now) != nil {
+			if fact.ProviderID != entry.id || seen[fact.ResourceID] || fact.Validate(now) != nil {
 				return nil, errors.New("inbound_transport_provider_v2_fact_invalid")
 			}
 			seen[fact.ResourceID] = true

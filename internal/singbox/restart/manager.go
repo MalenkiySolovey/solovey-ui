@@ -98,7 +98,10 @@ func (m *Manager) armRestartTimer(delay time.Duration) {
 		m.mu.Lock()
 		self := timer
 		m.mu.Unlock()
-		defer m.endPending(self)
+		// Sending SIGHUP may synchronously run the in-process restart adapter on
+		// Windows. Release scheduler ownership first so that restart can acquire
+		// the same manager instead of silently skipping its core start.
+		m.endPending(self)
 		if err := m.signal(); err != nil {
 			logger.Error("send signal SIGHUP failed:", err)
 		}

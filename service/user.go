@@ -96,14 +96,6 @@ func (s *UserService) UpdateFirstUser(username string, password string) error {
 	return db.Save(user).Error
 }
 
-func (s *UserService) Login(username string, password string, remoteIP string) (string, error) {
-	result, err := s.Authenticate(context.Background(), username, password, remoteIP)
-	if err != nil {
-		return "", err
-	}
-	return result.Username(), nil
-}
-
 // Authenticate verifies one password and transactionally upgrades compatible
 // legacy hashes. A successful migration increments the credential generation;
 // it never clears a forced-reset flag.
@@ -193,13 +185,19 @@ func (s *UserService) CheckUser(username string, password string, remoteIP strin
 	if dbsqlite.IsNotFound(err) {
 		// Equalize timing with the wrong-password path so a missing username is
 		// not distinguishable by response latency (user enumeration).
-		common.EqualizeLoginTiming(password)
+		if err := passwordutil.EqualizeUnknown(context.Background(), password); err != nil {
+			logger.Warning("equalize unknown login timing: ", err)
+		}
 		return nil, false
 	} else if err != nil {
 		logger.Warning("check user err:", err, " IP: ", remoteIP)
 		return nil, false
 	}
-	ok, needsMigration := common.CheckPassword(user.Password, password)
+	ok, needsMigration, verifyErr := passwordutil.Verify(context.Background(), user.Password, password)
+	if verifyErr != nil {
+		logger.Warning("verify user password: ", verifyErr)
+		return nil, false
+	}
 	if !ok {
 		return nil, false
 	}
@@ -249,15 +247,6 @@ func (s *UserService) GetUsers() (*[]model.User, error) {
 		return nil, err
 	}
 	return &users, nil
-}
-
-func (s *UserService) UserExists(username string) (bool, error) {
-	if username == "" {
-		return false, nil
-	}
-	var count int64
-	err := dbsqlite.DB().Model(model.User{}).Where("username = ?", username).Count(&count).Error
-	return count > 0, err
 }
 
 func (s *UserService) AddUser(actorUsername string, currentPass string, newUsername string, newPassword string) (*model.User, error) {
@@ -362,7 +351,10 @@ func (s *UserService) ChangePass(username string, oldPass string, newUser string
 		if err := tx.Model(model.User{}).Where("username = ?", username).First(user).Error; err != nil {
 			return err
 		}
-		ok, _ := common.CheckPassword(user.Password, oldPass)
+		ok, _, err := passwordutil.Verify(context.Background(), user.Password, oldPass)
+		if err != nil {
+			return err
+		}
 		if !ok {
 			return common.NewError("wrong user or password")
 		}
@@ -619,7 +611,10 @@ func (s *UserService) checkUserPassword(tx *gorm.DB, username string, password s
 	} else if err != nil {
 		return err
 	}
-	ok, _ := common.CheckPassword(user.Password, password)
+	ok, _, err := passwordutil.Verify(context.Background(), user.Password, password)
+	if err != nil {
+		return err
+	}
 	if !ok {
 		return common.NewError("wrong user or password")
 	}

@@ -1,14 +1,15 @@
 package ipmonitor
 
 import (
+	"crypto/rand"
 	"database/sql"
+	"encoding/base64"
 	"errors"
 	"strconv"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -64,11 +65,18 @@ func getInstallSalt() ([]byte, error) {
 	var setting model.Setting
 	err := db.Model(model.Setting{}).Where("key = ?", "installSalt").First(&setting).Error
 	if dbsqlite.IsNotFound(err) {
-		setting = model.Setting{Key: "installSalt", Value: common.Random(32)}
+		raw := make([]byte, 32)
+		if _, randomErr := rand.Read(raw); randomErr != nil {
+			return nil, randomErr
+		}
+		setting = model.Setting{Key: "installSalt", Value: base64.RawStdEncoding.EncodeToString(raw)}
 		err = db.Create(&setting).Error
 	}
 	if err != nil {
 		return nil, err
+	}
+	if len(setting.Value) < 32 {
+		return nil, errors.New("install salt is invalid")
 	}
 	ipHashSalt.value = []byte(setting.Value)
 	return append([]byte(nil), ipHashSalt.value...), nil
@@ -199,30 +207,79 @@ func Flush() error {
 	if db == nil {
 		return nil
 	}
-	snapshot := takePendingSnapshot()
-	if len(snapshot) == 0 {
+	batch := BeginFlush()
+	if batch.Empty() {
 		return nil
 	}
+	committed := false
+	defer func() {
+		if !committed {
+			batch.Requeue()
+		}
+	}()
 	tx := db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			tx.Rollback()
 			panic(recovered)
 		}
 	}()
-	if err := flushSnapshot(tx, snapshot); err != nil {
+	if err := batch.WriteTo(tx); err != nil {
 		tx.Rollback()
 		return err
 	}
-	return tx.Commit().Error
+	if err := tx.Commit().Error; err != nil {
+		return err
+	}
+	batch.Commit()
+	committed = true
+	return nil
 }
 
-func FlushTo(tx *gorm.DB) error {
-	snapshot := takePendingSnapshot()
-	if len(snapshot) == 0 {
+type FlushBatch struct {
+	snapshot map[string]map[string]pendingIP
+}
+
+// BeginFlush transfers current observations to one transaction-owned batch.
+// The caller must call Requeue if the surrounding transaction does not commit.
+func BeginFlush() *FlushBatch {
+	return &FlushBatch{snapshot: takePendingSnapshot()}
+}
+
+func (b *FlushBatch) Empty() bool {
+	return b == nil || len(b.snapshot) == 0
+}
+
+func (b *FlushBatch) WriteTo(tx *gorm.DB) error {
+	if b.Empty() {
 		return nil
 	}
-	return flushSnapshot(tx, snapshot)
+	return flushSnapshot(tx, b.snapshot)
+}
+
+func (b *FlushBatch) Requeue() {
+	if b.Empty() {
+		return
+	}
+	requeuePendingSnapshot(b.snapshot)
+	b.snapshot = nil
+}
+
+// Commit publishes the persisted IPs to the enforcement cache only after the
+// database transaction that owns this batch has committed.
+func (b *FlushBatch) Commit() {
+	if b.Empty() {
+		return
+	}
+	for clientName, observations := range b.snapshot {
+		for ipHash := range observations {
+			cacheAddIP(clientName, ipHash)
+		}
+	}
+	b.snapshot = nil
 }
 
 func takePendingSnapshot() map[string]map[string]pendingIP {
@@ -231,6 +288,22 @@ func takePendingSnapshot() map[string]map[string]pendingIP {
 	snapshot := pending.byClient
 	pending.byClient = map[string]map[string]pendingIP{}
 	return snapshot
+}
+
+func requeuePendingSnapshot(snapshot map[string]map[string]pendingIP) {
+	pending.Lock()
+	defer pending.Unlock()
+	for clientName, observations := range snapshot {
+		if pending.byClient[clientName] == nil {
+			pending.byClient[clientName] = make(map[string]pendingIP, len(observations))
+		}
+		for ipHash, observation := range observations {
+			current, exists := pending.byClient[clientName][ipHash]
+			if !exists || observation.lastSeen > current.lastSeen {
+				pending.byClient[clientName][ipHash] = observation
+			}
+		}
+	}
 }
 
 func flushSnapshot(tx *gorm.DB, snapshot map[string]map[string]pendingIP) error {
@@ -245,7 +318,6 @@ func flushSnapshot(tx *gorm.DB, snapshot map[string]map[string]pendingIP) error 
 				ClientName: clientName, IPHash: ipHash, IPDisplay: item.display,
 				FirstSeen: item.lastSeen, LastSeen: item.lastSeen,
 			})
-			cacheAddIP(clientName, ipHash)
 		}
 	}
 	if len(rows) == 0 {

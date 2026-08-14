@@ -154,7 +154,12 @@ const itemsPerPageStorageKey = (): string =>
   props.storageKey ? `${ITEMS_PER_PAGE_KEY}:${props.storageKey}` : ITEMS_PER_PAGE_KEY
 
 const readItemsPerPage = (): number => {
-  const stored = Number(localStorage.getItem(itemsPerPageStorageKey()))
+  let stored = 0
+  try {
+    stored = Number(localStorage.getItem(itemsPerPageStorageKey()))
+  } catch {
+    // Use the default when storage is unavailable.
+  }
 
   return Number.isFinite(stored) && stored > 0 ? stored : 10
 }

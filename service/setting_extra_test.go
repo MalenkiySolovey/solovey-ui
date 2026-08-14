@@ -44,7 +44,7 @@ func TestValidateOptionalHTTPURLRejectsUserInfo(t *testing.T) {
 	}
 }
 
-func TestValidateOptionalHTTPURLRejectsUnsafePartsIssue30(t *testing.T) {
+func TestValidateOptionalHTTPURLRejectsUnsafeParts(t *testing.T) {
 	tests := []struct {
 		name    string
 		value   string

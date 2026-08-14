@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -78,7 +79,48 @@ func newSecurityCSRFTestRouter(t *testing.T, settingService *service.SettingServ
 	})
 	handler := &APIHandler{}
 	handler.initRouter(router.Group("/api"))
+	router.POST("/test/csrf-protected", handler.csrfMiddleware, func(c *gin.Context) {
+		c.Status(http.StatusNoContent)
+	})
 	return router
+}
+
+func TestSecurityCSRFFetchIsStableAcrossConcurrentSessionConsumers(t *testing.T) {
+	settingService := initSessionTestDB(t)
+	router := newSecurityCSRFTestRouter(t, settingService)
+	login := performCSRFRequest(router, http.MethodGet, "/login", "")
+	if login.Code != http.StatusNoContent {
+		t.Fatalf("login returned %d", login.Code)
+	}
+
+	cookies := login.Result().Cookies()
+	start := make(chan struct{})
+	results := make(chan *httptest.ResponseRecorder, 2)
+	for range 2 {
+		go func() {
+			<-start
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodGet, "/api/csrf", nil)
+			for _, cookieValue := range cookies {
+				request.AddCookie(cookieValue)
+			}
+			router.ServeHTTP(recorder, request)
+			results <- recorder
+		}()
+	}
+	close(start)
+	first := <-results
+	second := <-results
+	firstToken := securityCSRFTokenFromRecorder(t, first)
+	secondToken := securityCSRFTokenFromRecorder(t, second)
+	if secondToken != firstToken {
+		t.Fatal("a concurrent CSRF fetch invalidated an unexpired session token")
+	}
+	responseCookies := appendUpdatedCSRFCookies(cookies, second.Result().Cookies())
+	response := performCSRFRequest(router, http.MethodPost, "/test/csrf-protected", firstToken, responseCookies...)
+	if response.Code != http.StatusNoContent {
+		t.Fatalf("first token failed after concurrent fetch: status=%d body=%s", response.Code, response.Body.String())
+	}
 }
 
 func TestSecurityCSRFMatrixRejectsMissingExpiredAndRotatedTokens(t *testing.T) {
@@ -156,6 +198,14 @@ func issueSecurityCSRFToken(t *testing.T, router *gin.Engine, cookies []*http.Co
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("csrf endpoint returned %d body=%s", recorder.Code, recorder.Body.String())
 	}
+	return securityCSRFTokenFromRecorder(t, recorder), appendUpdatedCSRFCookies(cookies, recorder.Result().Cookies())
+}
+
+func securityCSRFTokenFromRecorder(t *testing.T, recorder *httptest.ResponseRecorder) string {
+	t.Helper()
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("csrf endpoint returned %d body=%s", recorder.Code, recorder.Body.String())
+	}
 	var msg Msg
 	if err := json.Unmarshal(recorder.Body.Bytes(), &msg); err != nil {
 		t.Fatal(err)
@@ -168,5 +218,5 @@ func issueSecurityCSRFToken(t *testing.T, router *gin.Engine, cookies []*http.Co
 	if !ok || strings.TrimSpace(token) == "" {
 		t.Fatalf("missing csrf token: %#v", obj)
 	}
-	return token, appendUpdatedCSRFCookies(cookies, recorder.Result().Cookies())
+	return token
 }

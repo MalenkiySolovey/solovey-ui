@@ -24,8 +24,6 @@
       "fallback_html_redirects",
       "fallback_html_assets",
       "fallback_html_publishes",
-      "fallback_html_node_publications",
-      "fallback_html_node_endpoints",
       "fallback_html_publish_files",
       "fallback_html_publish_redirects",
       "fallback_html_safety_reports",

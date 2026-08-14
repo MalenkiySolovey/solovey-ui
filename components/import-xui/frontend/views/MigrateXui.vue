@@ -175,6 +175,7 @@
             <template #item.import="{ item }">
               <v-checkbox-btn
                 :model-value="rowItem(item).action !== 'skip'"
+                :disabled="isWarningOnlyItem(rowItem(item))"
                 @update:model-value="setImport(rowItem(item), Boolean($event))"
               ></v-checkbox-btn>
             </template>
@@ -188,13 +189,15 @@
               <v-text-field
                 v-model="rowItem(item).dstTag"
                 density="compact"
+                :disabled="!isRenameablePlanItem(rowItem(item))"
                 hide-details
+                @update:model-value="destinationChanged(rowItem(item))"
               ></v-text-field>
             </template>
             <template #item.action="{ item }">
               <v-select
                 v-model="rowItem(item).action"
-                :items="actionItems"
+                :items="actionItemsFor(rowItem(item))"
                 density="compact"
                 hide-details
               ></v-select>
@@ -256,7 +259,9 @@
             <v-col cols="12" sm="4">{{ activeProgress?.currentTag || activeProgress?.currentName || '-' }}</v-col>
           </v-row>
         </v-card>
-      </v-window-item>      <MigrationResultStep
+      </v-window-item>
+
+      <MigrationResultStep
         :summary-text="summaryText"
         :report="report"
         :rollback-loading="rollbackLoading"

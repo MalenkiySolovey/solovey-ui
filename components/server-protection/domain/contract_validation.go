@@ -119,23 +119,6 @@ func SignalKindKnown(category SignalCategory, kind string) bool {
 	}
 }
 
-func DefaultSignalScope(category SignalCategory) DecisionScope {
-	switch category {
-	case SignalCategoryPanelAuth:
-		return ScopePanelAuth
-	case SignalCategoryPanelAPI:
-		return ScopePanelAPI
-	case SignalCategorySubscription:
-		return ScopeSubscription
-	case SignalCategorySSHAuth:
-		return ScopeSSH
-	case SignalCategoryHostSurface, SignalCategoryHostResource:
-		return ScopeHostWide
-	default:
-		return ScopeEndpoint
-	}
-}
-
 func validateScopeShape(value SignalScopeV2) bool {
 	if !validScope(value.Scope) {
 		return false

@@ -5,12 +5,17 @@ package importxui
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
+	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"gorm.io/gorm"
 )
@@ -25,21 +30,26 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 	if err := checkContext(opts.Context); err != nil {
 		return report, fmt.Errorf("xui-import: %w", err)
 	}
-	hash, err := source.Hash(srcPath)
+	db := dbsqlite.DB()
+	if db == nil {
+		return report, fmt.Errorf("xui-import: destination database is not initialized")
+	}
+	validatedPlan, err := validateSubmittedPlan(opts.Context, db, srcPath, plan)
 	if err != nil {
 		return report, fmt.Errorf("xui-import: %w", err)
 	}
-	if plan.Source.Hash != "" && plan.Source.Hash != hash {
-		return report, fmt.Errorf("xui-import: %w", ErrPlanStale)
-	}
+	plan = validatedPlan
 	src, err := source.Open(srcPath)
 	if err != nil {
 		return report, fmt.Errorf("xui-import: %w", err)
 	}
 	defer src.Close()
-	db := dbsqlite.DB()
-	if db == nil {
-		return report, fmt.Errorf("xui-import: destination database is not initialized")
+	hash, err := source.Hash(srcPath)
+	if err != nil {
+		return report, fmt.Errorf("xui-import: %w", err)
+	}
+	if plan.Source.Hash != hash {
+		return report, fmt.Errorf("xui-import: %w", ErrPlanStale)
 	}
 	var backupPath string
 	if !opts.DryRun && !opts.SkipBackup {
@@ -51,7 +61,7 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 		if err != nil {
 			return report, err
 		}
-		report.BackupPath = backupPath
+		report.BackupPath = filepath.Base(backupPath)
 	}
 	tx := db.Begin()
 	if tx.Error != nil {
@@ -80,6 +90,15 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 	if err := state.run(opts.Context, tx, src, opts); err != nil {
 		return report, fmt.Errorf("xui-import: %w", err)
 	}
+	if planTouchesRuntime(plan) {
+		candidate, err := service.NewSingBoxConfigBuilder(nil).BuildFromDB(tx, "")
+		if err != nil {
+			return report, fmt.Errorf("xui-import: build candidate configuration: %w", err)
+		}
+		if err := singboxvalidation.ValidateConfig(candidate); err != nil && !validationRequiresReleaseBuildTag(err) {
+			return report, fmt.Errorf("xui-import: validate candidate configuration: %w", err)
+		}
+	}
 	if opts.DryRun {
 		return report, nil
 	}
@@ -88,9 +107,26 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 	}
 	committed = true
 	if err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)").Error; err != nil {
-		return report, fmt.Errorf("xui-import: %w", err)
+		report.warn("destination_wal_checkpoint_deferred")
 	}
 	return report, nil
+}
+
+func validationRequiresReleaseBuildTag(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "is not included in this build")
+}
+
+func planTouchesRuntime(plan MigrationPlan) bool {
+	for _, item := range plan.Items {
+		if item.Action == ActionSkip {
+			continue
+		}
+		switch item.Kind {
+		case KindTLS, KindInbound, KindEndpoint, KindClient, KindRouting:
+			return true
+		}
+	}
+	return false
 }
 
 type applyState struct {
@@ -185,6 +221,9 @@ func (s *applyState) applyTLS(ctx context.Context, tx *gorm.DB, src *source.Data
 		if item.DstTag != "" {
 			record.Name = item.DstTag
 		}
+		if err := identity.ValidateName(record.Name); err != nil {
+			return err
+		}
 		existing, found, err := mapping.FindExistingRealityTLS(tx, *spec)
 		if err != nil {
 			return err
@@ -254,6 +293,9 @@ func (s *applyState) applyPlainTLS(tx *gorm.DB, row source.InboundRow) error {
 	}
 	if item.DstTag != "" {
 		record.Name = item.DstTag
+	}
+	if err := identity.ValidateName(record.Name); err != nil {
+		return err
 	}
 	existing, found, err := mapping.FindExistingPlainTLS(tx, *spec)
 	if err != nil {

@@ -11,9 +11,12 @@ import (
 	sb "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/log"
+	"github.com/sagernet/sing/service"
 )
 
 type Core struct {
+	lifecycle         sync.RWMutex
+	mutation          sync.Mutex
 	access            sync.RWMutex
 	ctx               context.Context
 	isRunning         bool
@@ -25,6 +28,8 @@ type Core struct {
 	router            adapter.Router
 	factory           log.Factory
 	ipObserver        tracker.IPObserver
+	statsTracker      *tracker.StatsTracker
+	connTracker       *tracker.ConnTracker
 	managerGeneration uint64
 	effectiveInbounds map[string]InboundRuntimeRecord
 }
@@ -48,5 +53,6 @@ func NewCore(observers ...tracker.IPObserver) *Core {
 	if len(observers) > 0 {
 		core.ipObserver = observers[0]
 	}
+	core.ctx = service.ContextWith(core.ctx, core)
 	return core
 }

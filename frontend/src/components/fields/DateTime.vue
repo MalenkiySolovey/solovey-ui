@@ -41,7 +41,7 @@
 
 <script lang="ts">
 import DatePicker from 'vue3-persian-datetime-picker'
-import { i18n, locale } from '@/locales'
+import { currentLocale, dateLocale, i18n } from '@/locales'
 
 export default {
   props: ['expiry'],
@@ -55,12 +55,12 @@ export default {
   components: { DatePicker },
   computed: {
     locale() {
-      return locale
+      return currentLocale()
     },
     dateFormatted() {
       if (this.expDate == 0) return i18n.global.t('unlimited')
       const date = new Date(this.expDate*1000)
-      return date.toLocaleString(locale)
+      return date.toLocaleString(dateLocale())
     },
     expDate() {
       return parseInt(this.expiry?? 0)

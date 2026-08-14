@@ -41,8 +41,9 @@ var allowCache = struct {
 
 var allowCacheRefresh = struct {
 	sync.Mutex
-	inFlight map[string]struct{}
-}{inFlight: map[string]struct{}{}}
+	generation uint64
+	inFlight   map[string]uint64
+}{inFlight: map[string]uint64{}}
 
 var securityEvents = struct {
 	sync.Mutex
@@ -69,12 +70,12 @@ func ResetCaches() {
 	pending.byClient = map[string]map[string]pendingIP{}
 	pending.Unlock()
 
+	allowCacheRefresh.Lock()
+	allowCacheRefresh.generation++
+	allowCacheRefresh.inFlight = map[string]uint64{}
 	allowCache.Lock()
 	allowCache.byClient = map[string]allowCacheEntry{}
 	allowCache.Unlock()
-
-	allowCacheRefresh.Lock()
-	allowCacheRefresh.inFlight = map[string]struct{}{}
 	allowCacheRefresh.Unlock()
 
 	securityEvents.Lock()

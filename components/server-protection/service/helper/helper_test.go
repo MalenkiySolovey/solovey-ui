@@ -273,48 +273,7 @@ func TestOperationDoesNotRunWhenAuditIsUnavailable(t *testing.T) {
 	}
 }
 
-func TestProcessExitMapping(t *testing.T) {
-	cases := map[int]string{
-		ExitOK: "ok", ExitInvalidRequest: "invalid_request", ExitMissingCapability: "missing_capability",
-		ExitTimeout: "timeout", ExitInternal: "internal_error", 127: "process_failed",
-	}
-	for code, expected := range cases {
-		if got := MapProcessExit(code); got != expected {
-			t.Fatalf("exit %d mapped to %q, want %q", code, got, expected)
-		}
-	}
-}
-
-func TestTrustedBinaryAndVersionPolicies(t *testing.T) {
-	installRoot := t.TempDir()
-	name := "solovey-protect-helper"
-	if runtime.GOOS == "windows" {
-		name += ".exe"
-	}
-	binaryPath := filepath.Join(installRoot, name)
-	if err := os.WriteFile(binaryPath, []byte("fixture"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	binary, err := NewTrustedBinary(installRoot, binaryPath)
-	if err != nil {
-		t.Fatalf("allowlisted helper binary was rejected: %v", err)
-	}
-	if binary.IdentityRevision() == "" || binary.Verify() != nil {
-		t.Fatal("allowlisted helper binary identity was not pinned")
-	}
-	if err := os.WriteFile(binaryPath, []byte("replacement"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if !errors.Is(binary.Verify(), ErrHelperIdentityMismatch) {
-		t.Fatal("helper executable replacement retained the pinned identity")
-	}
-	wrongName := filepath.Join(installRoot, "arbitrary-command")
-	if err := os.WriteFile(wrongName, []byte("fixture"), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := NewTrustedBinary(installRoot, wrongName); err == nil {
-		t.Fatal("arbitrary binary name was accepted")
-	}
+func TestHelperVersionPolicy(t *testing.T) {
 	if !compatibleHelperVersion("1.5.9") || compatibleHelperVersion("1.4.9") || compatibleHelperVersion("1.5") {
 		t.Fatal("helper major/minor compatibility policy is incorrect")
 	}
@@ -334,7 +293,7 @@ func TestContractEngineDoesNotInventUnavailableMutationBackends(t *testing.T) {
 	}
 }
 
-func TestManagedNFTTableAndLoopbackProbeAreStrict(t *testing.T) {
+func TestManagedNFTTableIsStrict(t *testing.T) {
 	root := testManagedRoot(t)
 	request := Request{
 		ProtocolVersion: ProtocolVersion,
@@ -344,15 +303,6 @@ func TestManagedNFTTableAndLoopbackProbeAreStrict(t *testing.T) {
 	}
 	if err := request.Validate(root); err == nil || !strings.Contains(err.Error(), "solovey_protection") {
 		t.Fatalf("arbitrary nft table was not rejected: %v", err)
-	}
-	probe := Request{
-		ProtocolVersion: ProtocolVersion,
-		Correlation:     request.Correlation,
-		Operation:       OperationListenerProbe,
-		ListenerProbe:   &ListenerProbeRequest{Purpose: ProbeFrontingHealth, Network: "tcp", Address: "8.8.8.8", Port: 443},
-	}
-	if err := probe.Validate(root); err == nil || !strings.Contains(err.Error(), "loopback") {
-		t.Fatalf("non-loopback probe was not rejected: %v", err)
 	}
 }
 

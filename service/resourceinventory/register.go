@@ -1,6 +1,7 @@
 package resourceinventory
 
 import (
+	"context"
 	"errors"
 	"sync"
 
@@ -10,6 +11,24 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 	"gorm.io/gorm"
 )
+
+type coreResourceContributor struct {
+	contributors []hostresources.ResourceContributor
+}
+
+func (coreResourceContributor) Owner() string { return "core" }
+
+func (contributor coreResourceContributor) ListProtectableResources(ctx context.Context) ([]hostresources.ProtectableResource, error) {
+	resources := make([]hostresources.ProtectableResource, 0)
+	for _, current := range contributor.contributors {
+		values, err := current.ListProtectableResources(ctx)
+		if err != nil {
+			return nil, err
+		}
+		resources = append(resources, values...)
+	}
+	return resources, nil
+}
 
 func RegisterCoreContributors(settings *coreservice.SettingService, db *gorm.DB, control *coreinboundcontrol.Service) (func(), error) {
 	if control == nil {
@@ -67,10 +86,23 @@ func RegisterCoreContributors(settings *coreservice.SettingService, db *gorm.DB,
 		unregisterFronting()
 		return nil, errors.Join(errors.New("register core local proxy probe provider"), err)
 	}
+	unregisterResources, err := hostresources.Register(coreResourceContributor{contributors: []hostresources.ResourceContributor{
+		panelContributor{settings: settings},
+		subscriptionContributor{settings: settings},
+		inboundContributor{db: db, control: control},
+	}})
+	if err != nil {
+		unregisterLocalProxyProbe()
+		unregisterUDPProbe()
+		unregisterTransport()
+		unregisterIngress()
+		unregisterInterception()
+		unregisterLocalProxy()
+		unregisterFronting()
+		return nil, errors.Join(errors.New("register core resource contributor"), err)
+	}
 	unregister := []func(){
-		hostresources.Register(panelContributor{settings: settings}),
-		hostresources.Register(subscriptionContributor{settings: settings}),
-		hostresources.Register(inboundContributor{db: db, control: control}),
+		unregisterResources,
 		unregisterFronting,
 		unregisterLocalProxy,
 		unregisterInterception,

@@ -17,6 +17,6 @@ func xuiRollbackBackupPath(c *gin.Context) string {
 	return backupPath
 }
 
-func validateRollbackPath(path string) error {
-	return dbimport.ValidateRollbackBackupPath(path, configstorage.GetDBPath())
+func resolveRollbackPath(reference string) (string, error) {
+	return dbimport.ResolveRollbackBackupPath(reference, configstorage.GetDBPath())
 }

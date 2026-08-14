@@ -26,7 +26,7 @@
 </template>
 
 <script lang="ts" setup>
-import ManualSortButton from '@/components/ManualSortButton.vue'
+import ManualSortButton from '@/shared/ui/ManualSortButton.vue'
 import type { ManualSortDirection } from '@/shared/dnd/manualReorder'
 
 withDefaults(defineProps<{

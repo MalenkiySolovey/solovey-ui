@@ -37,6 +37,29 @@ type fakeReconciler struct {
 	validationErr error
 }
 
+type blockingListStore struct {
+	Store
+	mu      sync.Mutex
+	calls   int
+	blocked chan struct{}
+	release chan struct{}
+	once    sync.Once
+}
+
+func (s *blockingListStore) ListOperationLocks(ctx context.Context, states []string) ([]protectionrepository.OperationLockModel, error) {
+	s.mu.Lock()
+	s.calls++
+	call := s.calls
+	s.mu.Unlock()
+	// A synchronous Recover performs the complete list and the final
+	// non-terminal check. Block only the runner's next recovery pass.
+	if call > 2 {
+		s.once.Do(func() { close(s.blocked) })
+		<-s.release
+	}
+	return s.Store.ListOperationLocks(ctx, states)
+}
+
 func (r *fakeReconciler) Reconcile(_ context.Context, operation protectionrepository.OperationLockModel) (ReconcileDecision, error) {
 	r.calls++
 	r.seen = append(r.seen, operation)
@@ -96,7 +119,7 @@ func TestHeartbeatRenewsLeaseWithoutRotatingFence(t *testing.T) {
 	repo := operationTestRepository(t)
 	m := operationTestManager(t, repo, Options{InstanceID: "heartbeat-owner", PID: 111})
 	request := acquireFixture("heartbeat-stable-fence")
-	request.Kind = KindPortHandoff
+	request.Kind = KindFirewall
 	acquired, err := m.Acquire(context.Background(), request)
 	if err != nil {
 		t.Fatal(err)
@@ -116,29 +139,29 @@ func TestHeartbeatRenewsLeaseWithoutRotatingFence(t *testing.T) {
 	if first.Revision != applying.Revision || second.Revision != applying.Revision {
 		t.Fatalf("heartbeat rotated fence: applying=%d first=%d second=%d", applying.Revision, first.Revision, second.Revision)
 	}
-	if err := m.ValidateHelperLock(context.Background(), second.OperationID, "heartbeat-owner", KindPortHandoff, second.Revision); err != nil {
+	if err := m.ValidateHelperLock(context.Background(), second.OperationID, "heartbeat-owner", KindFirewall, second.Revision); err != nil {
 		t.Fatalf("stable heartbeat fence rejected: %v", err)
 	}
 }
 
 func TestRecoveryBackendDispatchesByOperationKind(t *testing.T) {
 	defaultRecovery := &fakeRecovery{}
-	portRecovery := &fakeRecovery{}
+	frontingRecovery := &fakeRecovery{}
 	m := NewManager(nil, Options{Recovery: defaultRecovery})
-	if err := m.SetRecoveryForKind(KindPortHandoff, portRecovery); err != nil {
+	if err := m.SetRecoveryForKind(KindFronting, frontingRecovery); err != nil {
 		t.Fatal(err)
 	}
-	if m.recoveryForKind(KindPortHandoff) != portRecovery {
-		t.Fatal("port handoff did not receive its kind-scoped recovery backend")
+	if m.recoveryForKind(KindFronting) != frontingRecovery {
+		t.Fatal("fronting did not receive its kind-scoped recovery backend")
 	}
 	if m.recoveryForKind(KindFirewall) != defaultRecovery {
 		t.Fatal("default firewall recovery backend changed")
 	}
 	m.started = true
-	if err := m.SetRecoveryForKind(KindPortHandoff, &fakeRecovery{}); err != nil {
+	if err := m.SetRecoveryForKind(KindFronting, &fakeRecovery{}); err != nil {
 		t.Fatalf("idempotent kind registration while running: %v", err)
 	}
-	if err := m.SetRecoveryForKind(KindFronting, &fakeRecovery{}); err == nil {
+	if err := m.SetRecoveryForKind(KindNativeFallback, &fakeRecovery{}); err == nil {
 		t.Fatal("new kind recovery backend was installed while running")
 	}
 }
@@ -651,6 +674,41 @@ func TestHelperLockValidationUsesPersistedFencing(t *testing.T) {
 		if err := validate(); !errors.Is(err, ErrFenced) {
 			t.Fatalf("%s was not fenced: %v", name, err)
 		}
+	}
+}
+
+func TestStopTimeoutRetainsRunnerFenceUntilRetryDrainsIt(t *testing.T) {
+	repo := operationTestRepository(t)
+	store := &blockingListStore{Store: repo, blocked: make(chan struct{}), release: make(chan struct{})}
+	manager := NewManager(store, Options{InstanceID: "stop-retry", PID: 911, HeartbeatEvery: time.Hour, RecoveryEvery: time.Millisecond})
+	if err := manager.Start(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-store.blocked:
+	case <-time.After(time.Second):
+		t.Fatal("recovery runner did not enter the blocking store")
+	}
+	stopCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := manager.Stop(stopCtx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("timed out Stop error = %v", err)
+	}
+	if err := manager.Start(context.Background()); !errors.Is(err, ErrFenced) {
+		t.Fatalf("Start crossed a still-draining runner: %v", err)
+	}
+	if _, err := manager.Acquire(context.Background(), acquireFixture("stop-fenced")); !errors.Is(err, ErrFenced) {
+		t.Fatalf("Acquire crossed a still-draining runner: %v", err)
+	}
+	close(store.release)
+	if err := manager.Stop(context.Background()); err != nil {
+		t.Fatalf("retry Stop: %v", err)
+	}
+	if err := manager.Start(context.Background()); err != nil {
+		t.Fatalf("Start after completed drain: %v", err)
+	}
+	if err := manager.Stop(context.Background()); err != nil {
+		t.Fatalf("final Stop: %v", err)
 	}
 }
 

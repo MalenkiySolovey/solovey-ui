@@ -126,7 +126,7 @@ import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
-import ManualSortButton from '@/components/ManualSortButton.vue'
+import ManualSortButton from '@/shared/ui/ManualSortButton.vue'
 import type { Column } from '@/components/nexus/data/dataTableColumns'
 import NexusDataTable from '@/components/nexus/data/NexusDataTable.vue'
 import RowActions from '@/components/nexus/data/RowActions.vue'

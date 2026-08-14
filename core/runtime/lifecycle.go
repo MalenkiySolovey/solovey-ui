@@ -1,16 +1,27 @@
 package runtime
 
 import (
+	"errors"
+
 	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 
 	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing/service"
 )
 
 func (c *Core) Start(sbConfig []byte) error {
+	c.lifecycle.Lock()
+	defer c.lifecycle.Unlock()
+
+	c.access.RLock()
+	alreadyRunning := c.isRunning || c.instance != nil
+	ctx := c.ctx
+	c.access.RUnlock()
+	if alreadyRunning {
+		return ErrAlreadyRunning
+	}
+
 	var opt option.Options
-	ctx := c.GetCtx()
 	err := opt.UnmarshalJSONContext(ctx, sbConfig)
 	if err != nil {
 		// Returning the error is essential: otherwise a zero/partial option set can
@@ -30,11 +41,8 @@ func (c *Core) Start(sbConfig []byte) error {
 
 	err = instance.Start()
 	if err != nil {
-		_ = instance.Close()
-		return err
+		return errors.Join(err, instance.Close())
 	}
-
-	ctx = service.ContextWith(ctx, c)
 
 	c.access.Lock()
 	c.managerGeneration++
@@ -48,6 +56,8 @@ func (c *Core) Start(sbConfig []byte) error {
 	c.endpointManager = instance.Endpoint()
 	c.router = instance.Router()
 	c.factory = instance.LogFactory()
+	c.statsTracker = instance.StatsTracker()
+	c.connTracker = instance.ConnTracker()
 	c.effectiveInbounds = make(map[string]InboundRuntimeRecord, len(opt.Inbounds))
 	for _, inboundOptions := range opt.Inbounds {
 		record, recorded := inboundRuntimeRecord(ctx, inboundOptions, generation)
@@ -61,6 +71,9 @@ func (c *Core) Start(sbConfig []byte) error {
 }
 
 func (c *Core) Stop() error {
+	c.lifecycle.Lock()
+	defer c.lifecycle.Unlock()
+
 	c.access.Lock()
 	c.isRunning = false
 	if c.instance == nil {
@@ -75,6 +88,8 @@ func (c *Core) Stop() error {
 	c.endpointManager = nil
 	c.router = nil
 	c.factory = nil
+	c.statsTracker = nil
+	c.connTracker = nil
 	c.effectiveInbounds = make(map[string]InboundRuntimeRecord)
 	c.access.Unlock()
 	err := instance.Close()

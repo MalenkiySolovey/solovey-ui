@@ -2,10 +2,10 @@ import type { Router, RouteRecordRaw } from 'vue-router'
 import Data from '@/store/modules/data'
 import { componentEntries } from 'virtual:solovey-component-entries'
 import { componentRoutes, registeredComponents, registerComponent, unregisterComponent } from './registry'
+import { loadComponentLocaleMessages } from './locales'
 
 type ComponentEntryModule = { register: () => void; unregister?: () => void }
 type ComponentEntryLoader = () => Promise<ComponentEntryModule>
-type ComponentLocaleModule = typeof import('./locales')
 
 const bundledEntries = componentEntries as Record<string, ComponentEntryLoader>
 
@@ -15,11 +15,31 @@ const entryByID = new Map<string, ComponentEntryLoader>(
 
 const loadedEntries = new Map<string, ComponentEntryModule>()
 const routeRemovers = new Map<string, () => void>()
-let componentLocaleModule: Promise<ComponentLocaleModule> | undefined
+let syncInFlight: Promise<void> | undefined
+let syncRequested = false
 
 export const componentSystemBundledIDs = () => [...entryByID.keys()].sort()
 
-export const syncEnabledComponents = async (router: Router) => {
+export const syncEnabledComponents = (router: Router): Promise<void> => {
+  syncRequested = true
+  if (syncInFlight) return syncInFlight
+
+  const request = (async () => {
+    while (syncRequested) {
+      syncRequested = false
+      await syncEnabledComponentsOnce(router)
+    }
+  })()
+
+  const pending = request.finally(() => {
+    if (syncInFlight === pending) syncInFlight = undefined
+    if (syncRequested) void syncEnabledComponents(router)
+  })
+  syncInFlight = pending
+  return syncInFlight
+}
+
+const syncEnabledComponentsOnce = async (router: Router) => {
   const data = Data()
   if (!data.componentsLoaded) return
 
@@ -36,7 +56,6 @@ export const syncEnabledComponents = async (router: Router) => {
     }
   }
 
-  const { loadComponentLocaleMessages } = await loadComponentLocales()
   for (const id of enabled) {
     if (!loadedEntries.has(id)) {
       const loader = entryByID.get(id)
@@ -61,11 +80,6 @@ const unloadComponent = (id: string) => {
   if (module?.unregister) module.unregister()
   else unregisterComponent(id)
   loadedEntries.delete(id)
-}
-
-const loadComponentLocales = () => {
-  componentLocaleModule ??= import('./locales')
-  return componentLocaleModule
 }
 
 const syncComponentRoutes = (router: Router) => {

@@ -3,6 +3,7 @@ package client
 
 import (
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -76,8 +77,14 @@ func (s *Service) DepleteClients() (inboundIds []uint, err error) {
 
 	dt := time.Now().Unix()
 	db := clientDatabase()
+	if db == nil {
+		return nil, errors.New("client database is not initialized")
+	}
 
 	tx := db.Begin()
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
 	defer func() {
 		if err == nil {
 			err = tx.Commit().Error

@@ -9,6 +9,7 @@ import (
 
 	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
@@ -18,15 +19,16 @@ const broadcastMaxRunes = 4096
 
 // Broadcast sends a custom announcement to every bound Telegram user. It runs
 // sequentially with a small throttle. Returns counts of sent/failed messages.
-func Broadcast(ctx context.Context, text string) (sent int, failed int, err error) {
+func Broadcast(ctx context.Context, runtime *service.Runtime, text string) (sent int, failed int, err error) {
 	if strings.TrimSpace(text) == "" {
 		return 0, 0, common.NewError("message is empty")
 	}
 	text = truncateRunes(text, broadcastMaxRunes)
-	b, err := newSenderBot()
+	b, err := newSenderBot(runtime)
 	if err != nil {
 		return 0, 0, err
 	}
+	defer b.closeIdleConnections()
 	users, err := paidstore.ListTelegramUserIDs(dbsqlite.DB())
 	if err != nil {
 		return 0, 0, err

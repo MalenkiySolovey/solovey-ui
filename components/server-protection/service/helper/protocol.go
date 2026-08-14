@@ -28,6 +28,27 @@ const (
 	MaxArtifactBytes      = 512 << 10
 )
 
+type boundedBuffer struct {
+	buffer    bytes.Buffer
+	limit     int
+	truncated bool
+}
+
+func (b *boundedBuffer) Write(value []byte) (int, error) {
+	original := len(value)
+	remaining := b.limit - b.buffer.Len()
+	if remaining <= 0 {
+		b.truncated = b.truncated || original > 0
+		return original, nil
+	}
+	if len(value) > remaining {
+		value = value[:remaining]
+		b.truncated = true
+	}
+	_, _ = b.buffer.Write(value)
+	return original, nil
+}
+
 type Operation string
 
 const (
@@ -42,7 +63,6 @@ const (
 	OperationNginxReload          Operation = "nginx.reload"
 	OperationNginxVerify          Operation = "nginx.active.verify"
 	OperationNginxRestore         Operation = "nginx.revision.restore"
-	OperationListenerProbe        Operation = "listener.probe"
 	OperationListenerOwnerObserve Operation = "listener.owner.observe"
 	OperationSSHRecoveryObserve   Operation = "recovery.ssh.observe"
 	OperationArtifact             Operation = "artifact.manage"
@@ -52,7 +72,7 @@ var allowedOperations = map[Operation]struct{}{
 	OperationCapabilities: {}, OperationNFTValidate: {}, OperationNFTApply: {},
 	OperationNFTRollback: {}, OperationNginxDetectVersion: {}, OperationNginxValidate: {},
 	OperationNginxInstall: {}, OperationNginxSwitch: {}, OperationNginxReload: {},
-	OperationNginxVerify: {}, OperationNginxRestore: {}, OperationListenerProbe: {}, OperationListenerOwnerObserve: {}, OperationSSHRecoveryObserve: {}, OperationArtifact: {},
+	OperationNginxVerify: {}, OperationNginxRestore: {}, OperationListenerOwnerObserve: {}, OperationSSHRecoveryObserve: {}, OperationArtifact: {},
 }
 
 type ErrorCode string
@@ -65,7 +85,7 @@ const (
 	CodeValidationFailed  ErrorCode = "validation_failed"
 	CodeTimeout           ErrorCode = "timeout"
 	CodeCanceled          ErrorCode = "canceled"
-	CodeProcessFailed     ErrorCode = "process_failed"
+	CodeTransportFailed   ErrorCode = "transport_failed"
 	CodeInternal          ErrorCode = "internal_error"
 )
 
@@ -91,7 +111,6 @@ type Request struct {
 	NginxReload          *NginxReloadRequest          `json:"nginx_reload,omitempty"`
 	NginxVerify          *NginxVerifyRequest          `json:"nginx_verify,omitempty"`
 	NginxRestore         *NginxRestoreRequest         `json:"nginx_restore,omitempty"`
-	ListenerProbe        *ListenerProbeRequest        `json:"listener_probe,omitempty"`
 	ListenerOwnerObserve *ListenerOwnerObserveRequest `json:"listener_owner_observe,omitempty"`
 	SSHRecoveryObserve   *SSHRecoveryObserveRequest   `json:"ssh_recovery_observe,omitempty"`
 	Artifact             *ArtifactRequest             `json:"artifact,omitempty"`
@@ -176,23 +195,6 @@ type NginxListener struct {
 	Port    int    `json:"port"`
 }
 
-type ProbePurpose string
-
-const (
-	ProbeFirewallHealth ProbePurpose = "firewall_health"
-	ProbeFrontingHealth ProbePurpose = "fronting_health"
-	ProbePortHandoff    ProbePurpose = "port_handoff"
-)
-
-type ListenerProbeRequest struct {
-	Purpose       ProbePurpose  `json:"purpose"`
-	Network       string        `json:"network"`
-	Address       string        `json:"address"`
-	Port          int           `json:"port"`
-	ExpectedOwner ListenerOwner `json:"expected_owner,omitempty"`
-	ExpectedPID   int           `json:"expected_pid,omitempty"`
-}
-
 type ListenerOwnerObserveRequest struct {
 	ResourceID                         string `json:"resource_id"`
 	Network                            string `json:"network"`
@@ -213,13 +215,6 @@ type SSHRecoveryObserveRequest struct {
 	SinceUnixMicros int64 `json:"since_unix_micros"`
 	MaxEvents       int   `json:"max_events"`
 }
-
-type ListenerOwner string
-
-const (
-	ListenerOwnerSingBox ListenerOwner = "sing_box"
-	ListenerOwnerPanel   ListenerOwner = "panel"
-)
 
 type ArtifactScope string
 
@@ -302,13 +297,6 @@ type SSHRecoveryResult struct {
 	Observations     []SSHRecoveryObservation `json:"observations"`
 }
 
-type ListenerProbeResult struct {
-	Reachable    bool          `json:"reachable"`
-	OwnerMatched bool          `json:"owner_matched"`
-	OwnerClass   ListenerOwner `json:"owner_class,omitempty"`
-	Detail       string        `json:"detail,omitempty"`
-}
-
 type NginxVersionResult struct {
 	Detected bool           `json:"detected"`
 	Version  string         `json:"version,omitempty"`
@@ -371,7 +359,6 @@ type Response struct {
 	Capabilities  *CapabilitiesResult         `json:"capabilities,omitempty"`
 	NginxVersion  *NginxVersionResult         `json:"nginx_version,omitempty"`
 	Nginx         *NginxResult                `json:"nginx,omitempty"`
-	ListenerProbe *ListenerProbeResult        `json:"listener_probe,omitempty"`
 	ListenerOwner *ListenerOwnerObserveResult `json:"listener_owner,omitempty"`
 	SSHRecovery   *SSHRecoveryResult          `json:"ssh_recovery,omitempty"`
 	Artifact      *ArtifactResult             `json:"artifact,omitempty"`
@@ -390,25 +377,6 @@ func DecodeRequest(reader io.Reader) (Request, error) {
 		return Request{}, fmt.Errorf("decode helper request: %w", err)
 	}
 	return request, nil
-}
-
-func DecodeResponse(data []byte) (Response, error) {
-	var response Response
-	if err := decodeStrict(data, &response); err != nil {
-		return Response{}, fmt.Errorf("decode helper response: %w", err)
-	}
-	return response, nil
-}
-
-func EncodeRequest(request Request) ([]byte, error) {
-	data, err := json.Marshal(request)
-	if err != nil {
-		return nil, err
-	}
-	if len(data) > MaxRequestBytes {
-		return nil, errors.New("helper request exceeds 1 MiB")
-	}
-	return data, nil
 }
 
 func (r Request) Validate(root ManagedRoot) error {
@@ -436,7 +404,7 @@ func (r Request) UnlockedReadOnly() bool {
 
 func (r Request) validatePayloadShape() error {
 	present := 0
-	for _, value := range []any{r.Capabilities, r.NFTValidate, r.NFTApply, r.NFTRollback, r.NginxDetectVersion, r.NginxValidate, r.NginxInstall, r.NginxSwitch, r.NginxReload, r.NginxVerify, r.NginxRestore, r.ListenerProbe, r.ListenerOwnerObserve, r.SSHRecoveryObserve, r.Artifact} {
+	for _, value := range []any{r.Capabilities, r.NFTValidate, r.NFTApply, r.NFTRollback, r.NginxDetectVersion, r.NginxValidate, r.NginxInstall, r.NginxSwitch, r.NginxReload, r.NginxVerify, r.NginxRestore, r.ListenerOwnerObserve, r.SSHRecoveryObserve, r.Artifact} {
 		if !isNilPayload(value) {
 			present++
 		}
@@ -455,7 +423,6 @@ func (r Request) validatePayloadShape() error {
 		(r.Operation == OperationNginxReload && r.NginxReload != nil) ||
 		(r.Operation == OperationNginxVerify && r.NginxVerify != nil) ||
 		(r.Operation == OperationNginxRestore && r.NginxRestore != nil) ||
-		(r.Operation == OperationListenerProbe && r.ListenerProbe != nil) ||
 		(r.Operation == OperationListenerOwnerObserve && r.ListenerOwnerObserve != nil) ||
 		(r.Operation == OperationSSHRecoveryObserve && r.SSHRecoveryObserve != nil) ||
 		(r.Operation == OperationArtifact && r.Artifact != nil)
@@ -488,8 +455,6 @@ func isNilPayload(value any) bool {
 	case *NginxVerifyRequest:
 		return v == nil
 	case *NginxRestoreRequest:
-		return v == nil
-	case *ListenerProbeRequest:
 		return v == nil
 	case *ListenerOwnerObserveRequest:
 		return v == nil
@@ -582,36 +547,6 @@ func (r Request) validatePayload(root ManagedRoot) error {
 			return errors.New("nginx restore revisions must differ")
 		}
 		return nil
-	case OperationListenerProbe:
-		if r.ListenerProbe.Purpose != ProbeFirewallHealth && r.ListenerProbe.Purpose != ProbeFrontingHealth && r.ListenerProbe.Purpose != ProbePortHandoff {
-			return errors.New("listener probe purpose is not allowlisted")
-		}
-		if r.ListenerProbe.Network != "tcp" && (r.ListenerProbe.Network != "udp" || r.ListenerProbe.Purpose == ProbePortHandoff) {
-			return errors.New("listener probe network must be tcp or udp")
-		}
-		address, err := netip.ParseAddr(strings.TrimSpace(r.ListenerProbe.Address))
-		if err != nil || address.IsUnspecified() || address.IsMulticast() {
-			return errors.New("listener probe address must be an exact unicast IP")
-		}
-		if r.ListenerProbe.Purpose != ProbePortHandoff && !address.IsLoopback() {
-			return errors.New("health listener probe address must be a loopback IP")
-		}
-		if r.ListenerProbe.Port < 1 || r.ListenerProbe.Port > 65535 {
-			return errors.New("listener probe port must be between 1 and 65535")
-		}
-		if r.ListenerProbe.Purpose == ProbePortHandoff && r.ListenerProbe.ExpectedOwner != ListenerOwnerSingBox && r.ListenerProbe.ExpectedOwner != ListenerOwnerPanel {
-			return errors.New("port handoff listener owner is not allowlisted")
-		}
-		if r.ListenerProbe.Purpose == ProbePortHandoff && r.ListenerProbe.ExpectedPID <= 0 {
-			return errors.New("port handoff listener PID is required")
-		}
-		if r.ListenerProbe.Purpose != ProbePortHandoff && r.ListenerProbe.ExpectedOwner != "" {
-			return errors.New("listener owner is valid only for port handoff")
-		}
-		if r.ListenerProbe.Purpose != ProbePortHandoff && r.ListenerProbe.ExpectedPID != 0 {
-			return errors.New("listener PID is valid only for port handoff")
-		}
-		return nil
 	case OperationListenerOwnerObserve:
 		request := r.ListenerOwnerObserve
 		if !correlationPattern.MatchString(request.ResourceID) || request.Network != "tcp" && request.Network != "udp" || request.Port < 1 || request.Port > 65535 {
@@ -696,14 +631,6 @@ func (r Request) RequiredLockKind() (string, error) {
 	case OperationNFTValidate, OperationNFTApply, OperationNFTRollback:
 		return "firewall", nil
 	case OperationNginxDetectVersion, OperationNginxValidate, OperationNginxInstall, OperationNginxSwitch, OperationNginxReload, OperationNginxVerify, OperationNginxRestore:
-		return "fronting", nil
-	case OperationListenerProbe:
-		if r.ListenerProbe != nil && r.ListenerProbe.Purpose == ProbeFirewallHealth {
-			return "firewall", nil
-		}
-		if r.ListenerProbe != nil && r.ListenerProbe.Purpose == ProbePortHandoff {
-			return "port_handoff", nil
-		}
 		return "fronting", nil
 	case OperationArtifact:
 		if r.Artifact != nil && r.Artifact.Scope == ArtifactScopeNFT {

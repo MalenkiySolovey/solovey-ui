@@ -49,3 +49,14 @@ func TestExternalHTTPClientDialerAllowsWhenOptedIn(t *testing.T) {
 	}
 	conn.Close()
 }
+
+func TestExternalHTTPClientDoesNotUseEnvironmentProxy(t *testing.T) {
+	client := newExternalHTTPClient()
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("expected configured *http.Transport")
+	}
+	if transport.Proxy != nil {
+		t.Fatal("untrusted subscription fetch must resolve and dial its target directly")
+	}
+}

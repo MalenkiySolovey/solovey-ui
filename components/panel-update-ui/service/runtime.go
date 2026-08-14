@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"strconv"
@@ -23,7 +24,6 @@ type RuntimeManager struct {
 	Catalog       Catalog
 	Reconcile     func(context.Context) error
 	Migrate       func(context.Context) error
-	DropData      func(context.Context, string) error
 	Timeout       time.Duration
 }
 
@@ -33,7 +33,6 @@ func NewRuntimeManager(configService *coreservice.ConfigService) RuntimeManager 
 		Catalog:       NewCatalog(),
 		Reconcile:     coreservice.ReconcileComponents,
 		Migrate:       coreservice.MigrateComponents,
-		DropData:      coreservice.DropComponentData,
 		Timeout:       10 * time.Second,
 	}
 }
@@ -46,7 +45,7 @@ func (m RuntimeManager) Disable(ctx OperationContext, id string) (ComponentStatu
 	return m.setEnabled(ctx, id, false)
 }
 
-func (m RuntimeManager) Install(ctx OperationContext, id string) (ComponentStatus, error) {
+func (m RuntimeManager) Install(_ OperationContext, id string) (ComponentStatus, error) {
 	if err := manifest.ValidateID(id); err != nil {
 		return ComponentStatus{}, err
 	}
@@ -63,41 +62,31 @@ func (m RuntimeManager) Install(ctx OperationContext, id string) (ComponentStatu
 		}
 		return ComponentStatus{}, fmt.Errorf("component %q cannot be installed in this runtime profile", id)
 	}
-	item, ok := findManifest(registeredManifests(), id)
+	_, ok := findManifest(registeredManifests(), id)
 	if !ok {
 		return ComponentStatus{}, fmt.Errorf("component is not available in this binary: %s", id)
-	}
-	if err := m.ensureComponentPack(ctx, item); err != nil {
-		return ComponentStatus{}, err
 	}
 	if _, err := installstate.SetInstalled(installstate.DefaultPath(), registeredManifests(), id, true); err != nil {
 		return ComponentStatus{}, err
 	}
-	rollback := true
-	defer func() {
-		if rollback {
-			_, _ = installstate.SetInstalled(installstate.DefaultPath(), registeredManifests(), id, false)
-		}
-	}()
 	if err := m.migrate(); err != nil {
+		if _, rollbackErr := installstate.SetInstalled(installstate.DefaultPath(), registeredManifests(), id, false); rollbackErr != nil {
+			return ComponentStatus{}, errors.Join(err, fmt.Errorf("restore component install state: %w", rollbackErr))
+		}
 		return ComponentStatus{}, err
 	}
 	if err := m.reconcile(); err != nil {
-		return ComponentStatus{}, err
+		return ComponentStatus{}, m.compensateInstalledState(id, false, err)
 	}
-	rollback = false
 	return componentByID(id)
 }
 
-func (m RuntimeManager) Remove(ctx OperationContext, id string, deleteData bool) (ComponentStatus, error) {
+func (m RuntimeManager) Remove(ctx OperationContext, id string) (ComponentStatus, error) {
 	if err := manifest.ValidateID(id); err != nil {
 		return ComponentStatus{}, err
 	}
 	if id == UpdateComponentID {
 		return ComponentStatus{}, fmt.Errorf("component %q cannot remove itself", id)
-	}
-	if deleteData {
-		return ComponentStatus{}, fmt.Errorf("component data removal requires the core Drop Data preview and guarded execution API")
 	}
 	status, err := m.catalog().StatusByID(id)
 	if err != nil {
@@ -116,10 +105,7 @@ func (m RuntimeManager) Remove(ctx OperationContext, id string, deleteData bool)
 		return ComponentStatus{}, err
 	}
 	if err := m.reconcile(); err != nil {
-		return ComponentStatus{}, err
-	}
-	if err := removeComponentPack(id); err != nil {
-		return ComponentStatus{}, err
+		return ComponentStatus{}, m.compensateInstalledState(id, true, err)
 	}
 	return componentByID(id)
 }
@@ -144,18 +130,38 @@ func (m RuntimeManager) setEnabled(ctx OperationContext, id string, enabled bool
 	if err != nil {
 		return ComponentStatus{}, err
 	}
-	configService := m.ConfigService
-	if configService == nil {
-		configService = &coreservice.ConfigService{}
+	if m.ConfigService == nil {
+		return ComponentStatus{}, errors.New("component settings authority is unavailable")
 	}
-	if _, err := configService.Save("settings", "set", payload, "", ctx.Actor, ctx.Hostname); err != nil {
+	if _, err := m.ConfigService.Save("settings", "set", payload, "", ctx.Actor, ctx.Hostname); err != nil {
 		return ComponentStatus{}, err
 	}
 	if err := m.reconcile(); err != nil {
-		return ComponentStatus{}, err
+		rollbackPayload, marshalErr := json.Marshal(map[string]string{
+			enabledstate.SettingKey(id): strconv.FormatBool(status.Enabled),
+		})
+		if marshalErr != nil {
+			return ComponentStatus{}, errors.Join(err, marshalErr)
+		}
+		_, saveErr := m.ConfigService.Save("settings", "set", rollbackPayload, "", ctx.Actor, ctx.Hostname)
+		reconcileErr := m.reconcile()
+		return ComponentStatus{}, errors.Join(err, wrapCompensationError("restore component enabled state", saveErr), wrapCompensationError("reconcile restored component state", reconcileErr))
 	}
 	state.InvalidateActiveCache()
 	return componentByID(id)
+}
+
+func (m RuntimeManager) compensateInstalledState(id string, installed bool, cause error) error {
+	_, stateErr := installstate.SetInstalled(installstate.DefaultPath(), registeredManifests(), id, installed)
+	reconcileErr := m.reconcile()
+	return errors.Join(cause, wrapCompensationError("restore component install state", stateErr), wrapCompensationError("reconcile restored component state", reconcileErr))
+}
+
+func wrapCompensationError(operation string, err error) error {
+	if err == nil {
+		return nil
+	}
+	return fmt.Errorf("%s: %w", operation, err)
 }
 
 func (m RuntimeManager) reconcile() error {
@@ -190,43 +196,8 @@ func (m RuntimeManager) migrate() error {
 	return migrate(ctx)
 }
 
-func (m RuntimeManager) dropData(id string) error {
-	dropData := m.DropData
-	if dropData == nil {
-		dropData = coreservice.DropComponentData
-	}
-	timeout := m.Timeout
-	if timeout <= 0 {
-		timeout = 10 * time.Second
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	return dropData(ctx, id)
-}
-
 func (m RuntimeManager) catalog() Catalog {
-	if m.Catalog.ReleaseManifestFile == "" && m.Catalog.ReleaseManifestURL == "" && m.Catalog.HTTPClient == nil {
-		return NewCatalog()
-	}
 	return m.Catalog
-}
-
-func (m RuntimeManager) ensureComponentPack(_ OperationContext, item manifest.Manifest) error {
-	artifact, url, err := m.catalog().componentBundleArtifact()
-	if err != nil || url == "" {
-		return ensureManifestOnlyPack(item)
-	}
-	client := m.catalog().HTTPClient
-	if client == nil {
-		client = NewCatalog().HTTPClient
-	}
-	timeout := m.Timeout
-	if timeout <= 0 {
-		timeout = 10 * time.Second
-	}
-	downloadCtx, cancel := context.WithTimeout(context.Background(), timeout)
-	defer cancel()
-	return installComponentPackFromBundle(downloadCtx, client, url, artifact.SHA256, item.ID)
 }
 
 func componentByID(id string) (ComponentStatus, error) {
@@ -246,7 +217,7 @@ func componentByID(id string) (ComponentStatus, error) {
 }
 
 func statusesForManifests(manifests []manifest.Manifest) ([]ComponentStatus, error) {
-	installed, enabled, err := componentRuntimeState(registeredManifests())
+	installed, enabled, err := componentRuntimeState(manifests)
 	if err != nil {
 		return nil, err
 	}

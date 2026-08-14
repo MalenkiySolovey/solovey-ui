@@ -186,8 +186,8 @@
     <v-col cols="12">
       <v-data-table
         :headers="headers"
-        :items="filterSettings.enabled ? filterSettings.filteredClients : clients"
-        :hide-default-footer="filterSettings.enabled ? filterSettings.filteredClients.length<=10 : clients.length<=10"
+        :items="filterSettings.enabled ? filteredClients : clients"
+        :hide-default-footer="filterSettings.enabled ? filteredClients.length<=10 : clients.length<=10"
         :items-per-page="itemPerPage"
         @update:items-per-page="setItemPerPage($event)"
         hide-no-data
@@ -227,7 +227,7 @@
         </template>
         <template v-slot:item.expiry="{ item }">
           <div class="text-start">
-            <v-tooltip v-if="item.expiry>0" activator="parent" location="top" :text="new Date(item.expiry * 1000).toLocaleString(locale)" />
+            <v-tooltip v-if="item.expiry>0" activator="parent" location="top" :text="new Date(item.expiry * 1000).toLocaleString(dateLocale())" />
             <v-chip
               size="small"
               :color="item.expiry==0 ? 'success' : item.expiry<=Date.now()/1000? 'error': ''"
@@ -237,7 +237,7 @@
         </template>
         <template v-slot:item.online="{ item }">
           <div class="text-start">
-            <template v-if="isOnline(item.name).value">
+            <template v-if="isOnline(item.name)">
               <v-chip density="comfortable" size="small" color="success" variant="flat">{{ $t('online') }}</v-chip>
             </template>
             <template v-else>-</template>
@@ -301,7 +301,7 @@
 </template>
 <style lang="scss" src="./Clients.scss"></style>
 <script lang="ts" setup>
-import ManualSortButton from '@/components/ManualSortButton.vue'
+import ManualSortButton from '@/shared/ui/ManualSortButton.vue'
 import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
 import ClientModal from '@/layouts/modals/Client.vue'
 import ClientAddBulk from '@/layouts/modals/ClientAddBulk.vue'
@@ -311,7 +311,7 @@ import ClientDoctor from '@/layouts/modals/ClientDoctor.vue'
 import Stats from '@/layouts/modals/Stats.vue'
 import IpHistoryModal from '@/components/security/IpHistoryModal.vue'
 import ClientsNexusList from '@/views/clients/ClientsNexusList.vue'
-import { useClientsPage } from '@/shared/composables/pages/useClientsPage'
+import { useClientsPage } from '@/features/useClientsPage'
 
-const { actionMenu, addBulk, addBulkModal, clearFilter, clientRowProps, clientSelectMode, clients, closeAddBulk, closeDoctor, closeEditBulk, closeModal, closeQrCode, closeStats, delClient, delClientsBulk, deleteSelectedClients, delOverlay, doFilter, doctor, dragClient, dragSelectedClients, editBulk, editBulkModal, enableTraffic, filterItems, filterMenu, filterSettings, formatSize, groups, headers, inboundTags, inbounds, ipModal, isOnline, itemPerPage, locale, modal, mode, moveClient, onClientIpsCleared, onlineUsers, percent, percentColor, qrcode, remainedDays, resetClientTraffic, selectedClientCount, selectedClientIds, setItemPerPage, showClientIps, showDoctor, showModal, showQrCode, showStats, smAndDown, sortClientsByName, stats, toggleClientSelectMode } = useClientsPage()
+const { actionMenu, addBulk, addBulkModal, clearFilter, clientRowProps, clientSelectMode, clients, closeAddBulk, closeDoctor, closeEditBulk, closeModal, closeQrCode, closeStats, dateLocale, delClient, delClientsBulk, deleteSelectedClients, delOverlay, doFilter, doctor, dragClient, dragSelectedClients, editBulk, editBulkModal, enableTraffic, filterItems, filterMenu, filterSettings, filteredClients, formatSize, groups, headers, inboundTags, inbounds, ipModal, isOnline, itemPerPage, modal, mode, moveClient, onClientIpsCleared, onlineUsers, percent, percentColor, qrcode, remainedDays, resetClientTraffic, selectedClientCount, selectedClientIds, setItemPerPage, showClientIps, showDoctor, showModal, showQrCode, showStats, smAndDown, sortClientsByName, stats, toggleClientSelectMode } = useClientsPage()
 </script>

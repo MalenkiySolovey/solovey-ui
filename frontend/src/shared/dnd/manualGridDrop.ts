@@ -1,4 +1,4 @@
-﻿import type { ManualDropPosition } from '@/shared/dnd/manualDrag'
+﻿import type { ManualDropPosition } from './manualDropTypes'
 
 interface ManualGridCellMetrics {
   cell: HTMLElement

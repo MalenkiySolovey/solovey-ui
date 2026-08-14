@@ -1,6 +1,6 @@
 import type { Component } from 'vue'
 import type { RouteMeta } from 'vue-router'
-import type { LocaleCode, LocaleMessages } from '@/locales'
+import type { LocaleCode, LocaleMessages } from '@/locales/types'
 
 export type SlotName =
   | 'sidebar:nav'

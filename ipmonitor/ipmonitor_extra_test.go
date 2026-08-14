@@ -28,7 +28,7 @@ func TestLoadCacheEntryFailsClosedOnClientIPReadError(t *testing.T) {
 	if _, ok := loadCacheEntry("alice", now); ok {
 		t.Fatal("ClientIP read error should fail closed and avoid caching an incomplete allow entry")
 	}
-	if refreshClient("alice", now) {
+	if refreshClientForGeneration("alice", now, allowCacheRefresh.generation) {
 		t.Fatal("refreshClient should not cache an entry when loadCacheEntry fails")
 	}
 	if _, ok := cachedClient("alice", now); ok {

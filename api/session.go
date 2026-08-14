@@ -100,13 +100,28 @@ func SetLoginSecurity(c *gin.Context, spec service.LoginSessionSpec) error {
 		SameSite: resolveCookieSameSite(&service.SettingService{}),
 		MaxAge:   cookieMaxAge,
 	}
+	sessionRef, err := common.SecureRandom(32)
+	if err != nil {
+		return common.NewError("Unable to establish session")
+	}
+	sessionGenerationRevision := service.SessionGenerationRevision(spec.SessionGeneration)
+	if sessionGenerationRevision == "" {
+		// Historical installations may intentionally retain an empty global
+		// generation until the first guarded security transition. New sessions
+		// still need an immutable per-session revision for exact step-up and
+		// realtime binding during that compatibility window.
+		revision, err := common.SecureRandom(32)
+		if err != nil {
+			return common.NewError("Unable to establish session")
+		}
+		sessionGenerationRevision = service.SessionGenerationRevision(revision)
+	}
 
 	s := sessions.Default(c)
 	s.Set(service.SessionLoginUserKey, spec.Username)
 	if spec.SessionGeneration != "" {
 		s.Set(service.SessionGenerationKey, spec.SessionGeneration)
 	}
-	sessionRef := common.Random(32)
 	s.Set(service.SessionUserIDKey, uint64(spec.UserID))
 	s.Set(service.SessionRefKey, sessionRef)
 	s.Set(service.SessionAuthStateKey, spec.AuthState)
@@ -137,14 +152,6 @@ func SetLoginSecurity(c *gin.Context, spec service.LoginSessionSpec) error {
 	s.Set(service.SessionClientPrefixKey, spec.ClientPrefix)
 	s.Set(service.SessionUserAgentHashKey, spec.UserAgentHash)
 	s.Set(service.SessionDeviceLabelKey, spec.DeviceLabel)
-	sessionGenerationRevision := service.SessionGenerationRevision(spec.SessionGeneration)
-	if sessionGenerationRevision == "" {
-		// Historical installations may intentionally retain an empty global
-		// generation until the first guarded security transition. New sessions
-		// still need an immutable per-session revision for exact step-up and
-		// realtime binding during that compatibility window.
-		sessionGenerationRevision = service.SessionGenerationRevision(common.Random(32))
-	}
 	s.Set(service.SessionGenerationRevisionKey, sessionGenerationRevision)
 	if spec.PreAuthChallengeRevision != "" {
 		s.Set(service.SessionPreAuthChallengeRevision, spec.PreAuthChallengeRevision)

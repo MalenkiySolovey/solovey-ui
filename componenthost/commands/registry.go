@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"io"
 	"sort"
+	"strings"
 	"sync"
 )
 
@@ -31,10 +32,13 @@ var commands = struct {
 }
 
 func Register(command Command) func() {
-	if command.Name == "" {
+	if !validCommandName(command.Name) {
 		panic("optional command name is required")
 	}
-	if command.UsageLine == "" {
+	trimmedUsage := strings.TrimSpace(command.UsageLine)
+	if trimmedUsage == "" || len(command.UsageLine) > 256 ||
+		strings.ContainsAny(command.UsageLine, "\x00\r\n\t") ||
+		(trimmedUsage != command.Name && !strings.HasPrefix(trimmedUsage, command.Name+" ")) {
 		panic(fmt.Errorf("optional command %q usage line is required", command.Name))
 	}
 	if command.Run == nil {
@@ -55,12 +59,15 @@ func Register(command Command) func() {
 	commands.entries[command.Name] = registeredCommand{command: command, token: token}
 	commands.Unlock()
 
+	var once sync.Once
 	return func() {
-		commands.Lock()
-		if current, ok := commands.entries[command.Name]; ok && current.token == token {
-			delete(commands.entries, command.Name)
-		}
-		commands.Unlock()
+		once.Do(func() {
+			commands.Lock()
+			if current, ok := commands.entries[command.Name]; ok && current.token == token {
+				delete(commands.entries, command.Name)
+			}
+			commands.Unlock()
+		})
 	}
 }
 
@@ -80,13 +87,32 @@ func Run(name string, args []string, stdin io.Reader, stdout io.Writer, stderr i
 	if !ok {
 		return 0, false
 	}
-	return entry.command.Run(args, stdin, stdout, stderr, getenv), true
+	return safeRun(entry.command.Run, args, stdin, stdout, stderr, getenv), true
 }
 
-func ResetForTest() {
-	commands.Lock()
-	commands.entries = map[string]registeredCommand{}
-	commands.Unlock()
+func safeRun(runner Runner, args []string, stdin io.Reader, stdout io.Writer, stderr io.Writer, getenv func(string) string) (code int) {
+	defer func() {
+		if recover() != nil {
+			code = 1
+			if stderr != nil {
+				_, _ = io.WriteString(stderr, "optional command failed\n")
+			}
+		}
+	}()
+	return runner(args, stdin, stdout, stderr, getenv)
+}
+
+func validCommandName(value string) bool {
+	if value == "" || len(value) > 64 {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || character == '-' {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func commandSnapshot() []Command {

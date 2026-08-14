@@ -15,9 +15,7 @@ import (
 )
 
 const (
-	assetUploadReadLimit       = 1024*1024 + 1
-	legacySelfStealBodyLimit   = 64 * 1024
-	legacySelfStealRetiredCode = "legacy_self_steal_retired"
+	assetUploadReadLimit = 1024*1024 + 1
 )
 
 type Deps struct {
@@ -73,7 +71,6 @@ func RegisterRoutes(group *gin.RouterGroup, deps Deps) {
 	routes.DELETE("/sites/:id/pages/:pageId", handler.deletePage)
 	routes.POST("/sites/:id/path/validate", handler.validatePath)
 	routes.POST("/sites/:id/safety", handler.safety)
-	routes.POST("/sites/:id/self-steal/draft", handler.createSelfStealDraft)
 	routes.POST("/sites/:id/preview", handler.preview)
 	routes.POST("/sites/:id/publish", handler.publish)
 	routes.POST("/sites/:id/rollback", handler.rollback)
@@ -112,7 +109,7 @@ func (h Handler) ports(c *gin.Context) {
 	if !h.deps.RequireScope(c, "publicSite", "admin", "read", "write", "public-site") {
 		return
 	}
-	result, err := h.deps.Service.PortCandidates()
+	result, err := h.deps.Service.PortCandidates(c.Request.Context())
 	h.deps.JSONObj(c, result, err)
 }
 
@@ -630,32 +627,6 @@ func (h Handler) safety(c *gin.Context) {
 	}
 	result, err := h.deps.Service.Safety(id)
 	h.deps.JSONObj(c, result, err)
-}
-
-func (h Handler) createSelfStealDraft(c *gin.Context) {
-	if !h.deps.RequireScope(c, "publicSite", "admin", "write", "public-site") {
-		return
-	}
-	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, legacySelfStealBodyLimit)
-	if _, err := io.Copy(io.Discard, c.Request.Body); err != nil {
-		c.AbortWithStatusJSON(http.StatusRequestEntityTooLarge, gin.H{
-			"success": false,
-			"msg":     legacySelfStealRetiredCode,
-			"obj": gin.H{
-				"code":    legacySelfStealRetiredCode,
-				"message": "Native fallback is managed through the protection workflow.",
-			},
-		})
-		return
-	}
-	c.JSON(http.StatusGone, gin.H{
-		"success": false,
-		"msg":     legacySelfStealRetiredCode,
-		"obj": gin.H{
-			"code":    legacySelfStealRetiredCode,
-			"message": "Native fallback is managed through the protection workflow.",
-		},
-	})
 }
 
 func (h Handler) preview(c *gin.Context) {

@@ -179,15 +179,6 @@ func CloneOutboundMap(input map[string]interface{}) map[string]interface{} {
 	return cloned
 }
 
-func CloneRawMessage(input json.RawMessage) json.RawMessage {
-	if input == nil {
-		return nil
-	}
-	cloned := make([]byte, len(input))
-	copy(cloned, input)
-	return cloned
-}
-
 func JSONRawEqual(left json.RawMessage, right json.RawMessage) bool {
 	var leftValue any
 	var rightValue any
@@ -275,11 +266,15 @@ func TrimTag(value string) string {
 func NormalizeUpdateInterval(value int64) int64 {
 	const defaultInterval = int64(24 * 60 * 60)
 	const minInterval = int64(5 * 60)
+	const maxInterval = int64(365 * 24 * 60 * 60)
 	if value <= 0 {
 		return defaultInterval
 	}
 	if value < minInterval {
 		return minInterval
+	}
+	if value > maxInterval {
+		return maxInterval
 	}
 	return value
 }

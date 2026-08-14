@@ -307,13 +307,3 @@ func writeFileAtomic(path string, data []byte, perm os.FileMode) (err error) {
 	}
 	return os.Chmod(path, perm)
 }
-
-func setGeositeRuSmartDownloaderForTest(fn geositeRuSmartDownloader) func() {
-	previous := downloadGeositeRuSmart
-	if fn == nil {
-		downloadGeositeRuSmart = downloadGeositeRuSmartHTTP
-	} else {
-		downloadGeositeRuSmart = fn
-	}
-	return func() { downloadGeositeRuSmart = previous }
-}

@@ -25,7 +25,6 @@ type ThresholdWindow[K comparable] struct {
 	maxKeys   int
 	gcEvery   time.Duration
 	lastGC    time.Time
-	janitor   *janitor
 }
 
 func NewThresholdWindow[K comparable](window time.Duration, threshold, maxKeys int, gcEvery time.Duration) *ThresholdWindow[K] {
@@ -33,7 +32,6 @@ func NewThresholdWindow[K comparable](window time.Duration, threshold, maxKeys i
 		panic("ratelimit: invalid threshold window configuration")
 	}
 	l := &ThresholdWindow[K]{entries: make(map[K]thresholdEntry), window: window, threshold: threshold, maxKeys: maxKeys, gcEvery: gcEvery}
-	l.janitor = startJanitor(gcEvery, l.PruneAt)
 	return l
 }
 
@@ -60,22 +58,6 @@ func (l *ThresholdWindow[K]) AddAt(key K, now time.Time) ThresholdDecision {
 	}
 	l.entries[key] = entry
 	return ThresholdDecision{Count: entry.count, Triggered: trigger}
-}
-
-func (l *ThresholdWindow[K]) ResetAll() {
-	l.mu.Lock()
-	l.entries = make(map[K]thresholdEntry)
-	l.mu.Unlock()
-}
-
-func (l *ThresholdWindow[K]) PruneAt(now time.Time) {
-	l.mu.Lock()
-	l.pruneLocked(now)
-	l.mu.Unlock()
-}
-
-func (l *ThresholdWindow[K]) Close() {
-	l.janitor.close()
 }
 
 func (l *ThresholdWindow[K]) pruneLocked(now time.Time) {

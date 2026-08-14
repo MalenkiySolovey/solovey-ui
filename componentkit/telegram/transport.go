@@ -74,6 +74,9 @@ func (c *BotClient) Do(ctx context.Context, httpMethod, method string, query url
 	if c == nil || c.http == nil {
 		return APIResponse{}, ErrNetwork
 	}
+	if ctx == nil || !validBotToken(c.token) || !validMethod(method) || (httpMethod != http.MethodGet && httpMethod != http.MethodPost) {
+		return APIResponse{}, ErrRequest
+	}
 	u := botAPIBase + "/bot" + c.token + "/" + method
 	if len(query) > 0 {
 		u += "?" + query.Encode()
@@ -90,7 +93,13 @@ func (c *BotClient) Do(ctx context.Context, httpMethod, method string, query url
 		return APIResponse{}, ErrNetwork
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, maxTelegramResponseBytes))
+	data, readErr := io.ReadAll(io.LimitReader(resp.Body, maxTelegramResponseBytes+1))
+	if readErr != nil {
+		return APIResponse{}, ErrNetwork
+	}
+	if len(data) > maxTelegramResponseBytes {
+		return APIResponse{}, ErrRequest
+	}
 	return APIResponse{StatusCode: resp.StatusCode, Body: data}, nil
 }
 
@@ -108,11 +117,37 @@ func ParseResponse(method string, data []byte) (json.RawMessage, error) {
 		return nil, fmt.Errorf("telegram %s: malformed response", method)
 	}
 	if !response.OK {
-		apiErr := &APIError{Method: method, Code: response.ErrorCode, Description: response.Description}
+		apiErr := &APIError{Method: method, Code: response.ErrorCode, Description: Caption(response.Description)}
 		if response.Parameters != nil {
 			apiErr.RetryAfter = response.Parameters.RetryAfter
 		}
 		return nil, apiErr
 	}
 	return response.Result, nil
+}
+
+func validBotToken(value string) bool {
+	if value == "" || len(value) > 128 {
+		return false
+	}
+	for index, character := range value {
+		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' || character >= '0' && character <= '9' || character == '_' || character == '-' || index > 0 && character == ':' {
+			continue
+		}
+		return false
+	}
+	return true
+}
+
+func validMethod(value string) bool {
+	if value == "" || len(value) > 64 {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' || character >= '0' && character <= '9' || character == '_' {
+			continue
+		}
+		return false
+	}
+	return true
 }

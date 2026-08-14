@@ -28,6 +28,9 @@ func (s *Service) SaveGroup(input remotesub.RemoteOutboundGroup, enabledProvided
 	if input.Name == "" {
 		return nil, common.NewError("group name can not be empty")
 	}
+	if len([]rune(input.Name)) > 120 {
+		return nil, common.NewError("group name is too long")
+	}
 	if !enabledProvided && input.Id == 0 {
 		input.Enabled = true
 	}
@@ -81,6 +84,9 @@ func (s *Service) SaveGroupForAllSubscriptions(name string, loginUser string) (*
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, common.NewError("group name can not be empty")
+	}
+	if len([]rune(name)) > 120 {
+		return nil, common.NewError("group name is too long")
 	}
 	now := time.Now().Unix()
 	result := BulkGroupResult{Name: name}
@@ -184,6 +190,9 @@ func (s *Service) MoveConnectionToGroup(connectionID uint, groupID uint, loginUs
 func (s *Service) SetGroupConnections(groupID uint, connectionIDs []uint, loginUser string) error {
 	if groupID == 0 {
 		return common.NewError("group id is required")
+	}
+	if len(connectionIDs) > remotesub.MaxFetchedOutbounds {
+		return common.NewError("too many group connections")
 	}
 	coreRestart := false
 	err := dbsqlite.DB().Transaction(func(tx *gorm.DB) error {

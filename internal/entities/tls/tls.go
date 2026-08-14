@@ -2,9 +2,12 @@ package entitytls
 
 import (
 	"encoding/json"
+	"fmt"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveidentity"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )
@@ -23,19 +26,19 @@ var supportedSaveActions = []SaveAction{
 	ActionDel,
 }
 
+type CascadeHooks interface {
+	UpdateLinksByInboundChange(tx *gorm.DB, inbounds *[]model.Inbound, hostname string, oldTag string) error
+	UpdateInboundOutJSONs(tx *gorm.DB, inboundIDs []uint, hostname string) error
+	RestartInbounds(tx *gorm.DB, ids []uint) error
+	RestartServices(tx *gorm.DB, ids []uint) error
+}
+
 type SaveRequest struct {
 	Tx       *gorm.DB
 	Action   string
 	Data     json.RawMessage
 	Hostname string
 	Hooks    CascadeHooks
-}
-
-type CascadeHooks interface {
-	UpdateLinksByInboundChange(tx *gorm.DB, inbounds *[]model.Inbound, hostname string, oldTag string) error
-	UpdateInboundOutJSONs(tx *gorm.DB, inboundIDs []uint, hostname string) error
-	RestartInbounds(tx *gorm.DB, ids []uint) error
-	RestartServices(tx *gorm.DB, ids []uint) error
 }
 
 func GetAll(db *gorm.DB) ([]model.Tls, error) {
@@ -45,28 +48,6 @@ func GetAll(db *gorm.DB) ([]model.Tls, error) {
 		return nil, err
 	}
 	return tlsConfigs, nil
-}
-
-func Save(req SaveRequest) error {
-	action, ok := ParseAction(req.Action)
-	if !ok {
-		return nil
-	}
-	switch action {
-	case ActionNew:
-		_, err := SaveConfig(req.Tx, req.Data)
-		return err
-	case ActionEdit:
-		tls, err := SaveConfig(req.Tx, req.Data)
-		if err != nil {
-			return err
-		}
-		return ApplyEditCascade(req.Tx, tls.Id, req.Hostname, req.Hooks)
-	case ActionDel:
-		return Delete(req.Tx, req.Data)
-	default:
-		return nil
-	}
 }
 
 func ParseAction(action string) (SaveAction, bool) {
@@ -87,9 +68,43 @@ func SupportedActionStrings() []string {
 	return actions
 }
 
-func SaveConfig(tx *gorm.DB, data json.RawMessage) (model.Tls, error) {
+func Save(req SaveRequest) error {
+	action, ok := ParseAction(req.Action)
+	if !ok {
+		return common.NewErrorf("unknown action: %s", req.Action)
+	}
+	switch action {
+	case ActionNew, ActionEdit:
+		tls, err := saveConfig(req.Tx, string(action), req.Data)
+		if err != nil {
+			return err
+		}
+		if action == ActionEdit {
+			return ApplyEditCascade(req.Tx, tls.Id, req.Hostname, req.Hooks)
+		}
+		return nil
+	case ActionDel:
+		return Delete(req.Tx, req.Data)
+	default:
+		return common.NewErrorf("unknown action: %s", req.Action)
+	}
+}
+
+func saveConfig(tx *gorm.DB, action string, data json.RawMessage) (model.Tls, error) {
 	var tls model.Tls
 	if err := json.Unmarshal(data, &tls); err != nil {
+		return tls, err
+	}
+	if err := saveidentity.Validate(tx, action, tls.Id, &model.Tls{}); err != nil {
+		return tls, err
+	}
+	if err := entityidentity.ValidateName(tls.Name); err != nil {
+		return tls, err
+	}
+	if err := validateJSONObject("TLS server", tls.Server); err != nil {
+		return tls, err
+	}
+	if err := validateJSONObject("TLS client", tls.Client); err != nil {
 		return tls, err
 	}
 	ApplySelfSignedPublicKeyPin(&tls)
@@ -104,6 +119,55 @@ func SaveConfig(tx *gorm.DB, data json.RawMessage) (model.Tls, error) {
 		return tls, err
 	}
 	return tls, nil
+}
+
+func validateJSONObject(label string, data json.RawMessage) error {
+	var value map[string]interface{}
+	if len(data) == 0 || json.Unmarshal(data, &value) != nil || value == nil {
+		return common.NewError(label + " must be a JSON object")
+	}
+	return nil
+}
+
+// ValidateStored verifies TLS rows imported by migration or restore. The
+// sentinel row is storage metadata and is intentionally excluded.
+func ValidateStored(db *gorm.DB) error {
+	if db == nil {
+		return common.NewError("TLS persistence is unavailable")
+	}
+	var rows []model.Tls
+	if err := db.Where("id > 0").Order("id").Find(&rows).Error; err != nil {
+		return fmt.Errorf("load stored TLS rows: %w", err)
+	}
+	for _, row := range rows {
+		if err := entityidentity.ValidateName(row.Name); err != nil {
+			return fmt.Errorf("stored TLS row %d: %w", row.Id, err)
+		}
+		if err := validateJSONObject("TLS server", row.Server); err != nil {
+			return fmt.Errorf("stored TLS row %d: %w", row.Id, err)
+		}
+		if err := validateJSONObject("TLS client", row.Client); err != nil {
+			return fmt.Errorf("stored TLS row %d: %w", row.Id, err)
+		}
+	}
+	return nil
+}
+
+// EnsureSentinel owns the storage sentinel referenced by entities that do not
+// use TLS. Migration, bootstrap and backup all call this one implementation.
+func EnsureSentinel(db *gorm.DB) error {
+	if db == nil {
+		return common.NewError("TLS persistence is unavailable")
+	}
+	if !db.Migrator().HasTable(&model.Tls{}) ||
+		!db.Migrator().HasColumn(&model.Tls{}, "server") ||
+		!db.Migrator().HasColumn(&model.Tls{}, "client") {
+		return nil
+	}
+	return db.Exec(
+		"INSERT OR IGNORE INTO tls(id, name, server, client) VALUES(0, ?, ?, ?)",
+		"__none__", []byte("{}"), []byte("{}"),
+	).Error
 }
 
 func ApplyEditCascade(tx *gorm.DB, tlsID uint, hostname string, hooks CascadeHooks) error {
@@ -137,7 +201,7 @@ func RefreshInboundsUsingTLS(tx *gorm.DB, tlsID uint, hostname string, hooks Cas
 
 func RestartServicesUsingTLS(tx *gorm.DB, tlsID uint, hooks CascadeHooks) error {
 	var serviceIDs []uint
-	if err := tx.Model(model.Service{}).Where("tls_id = ?", tlsID).Scan(&serviceIDs).Error; err != nil {
+	if err := tx.Model(model.Service{}).Where("tls_id = ?", tlsID).Pluck("id", &serviceIDs).Error; err != nil {
 		return err
 	}
 	if len(serviceIDs) == 0 {
@@ -161,6 +225,9 @@ func Delete(tx *gorm.DB, data json.RawMessage) error {
 	var id uint
 	if err := json.Unmarshal(data, &id); err != nil {
 		return err
+	}
+	if id == 0 {
+		return common.NewError("tls id is required")
 	}
 	if err := EnsureNotInUse(tx, id); err != nil {
 		return err

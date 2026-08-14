@@ -28,6 +28,6 @@ func (m Manager) Install(ctx OperationContext, id string) (ComponentStatus, erro
 	return m.Runtime.Install(ctx, id)
 }
 
-func (m Manager) Remove(ctx OperationContext, id string, deleteData bool) (ComponentStatus, error) {
-	return m.Runtime.Remove(ctx, id, deleteData)
+func (m Manager) Remove(ctx OperationContext, id string) (ComponentStatus, error) {
+	return m.Runtime.Remove(ctx, id)
 }

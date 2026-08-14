@@ -5,6 +5,7 @@ package paidsubscriptions
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"sync"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
@@ -17,6 +18,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/robfig/cron/v3"
 	"gorm.io/gorm"
@@ -68,83 +70,97 @@ func (*component) DropData(context.Context, lifecycle.Context) error {
 
 func (c *component) Start(_ context.Context, ctx lifecycle.Context) error {
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	if c.started {
-		c.mu.Unlock()
 		return nil
 	}
+	if ctx.Host.Scheduler == nil {
+		return errors.New("paid-subscriptions scheduler is unavailable")
+	}
+	if ctx.Host.API.Runtime == nil {
+		return errors.New("paid-subscriptions runtime is unavailable")
+	}
+	runtime := ctx.Host.API.Runtime
 	c.started = true
 	var rollback []func()
 	if c.unregisterTelegramActions == nil {
-		c.unregisterTelegramActions = paidadmin.RegisterTelegramActions(paidtelegram.Broadcast, paidtelegram.RefundOrder)
+		c.unregisterTelegramActions = paidadmin.RegisterTelegramActions(
+			func(ctx context.Context, text string) (int, int, error) {
+				return paidtelegram.Broadcast(ctx, runtime, text)
+			},
+			func(ctx context.Context, orderID uint, revoke bool) (string, error) {
+				return paidtelegram.RefundOrder(ctx, runtime, orderID, revoke)
+			},
+		)
 		rollback = append(rollback, c.unregisterTelegramActions)
 	}
 	if c.unregisterSettingContribution == nil {
 		c.unregisterSettingContribution = registerSettingContribution()
 		rollback = append(rollback, c.unregisterSettingContribution)
 	}
-	c.mu.Unlock()
-	if ctx.Host.Scheduler != nil {
-		entryID, err := ctx.Host.Scheduler.AddJob("@every 20s", paymentPollJob{})
-		if err != nil {
-			c.rollbackStartHooks(rollback)
-			return err
+	entryID, err := ctx.Host.Scheduler.AddJob("@every 20s", paymentPollJob{runtime: runtime})
+	if err != nil {
+		c.started = false
+		c.unregisterTelegramActions = nil
+		c.unregisterSettingContribution = nil
+		for i := len(rollback) - 1; i >= 0; i-- {
+			if rollback[i] != nil {
+				rollback[i]()
+			}
 		}
-		c.mu.Lock()
-		c.scheduler = ctx.Host.Scheduler
-		c.paymentPollEntryID = entryID
-		c.mu.Unlock()
+		return err
 	}
-	paidtelegram.StartBot(ctx.Host.API.Runtime)
+	c.scheduler = ctx.Host.Scheduler
+	c.paymentPollEntryID = entryID
+	paidtelegram.StartBot(runtime)
 	return nil
-}
-
-func (c *component) rollbackStartHooks(rollback []func()) {
-	c.mu.Lock()
-	c.started = false
-	c.unregisterTelegramActions = nil
-	c.unregisterSettingContribution = nil
-	c.mu.Unlock()
-	for i := len(rollback) - 1; i >= 0; i-- {
-		if rollback[i] != nil {
-			rollback[i]()
-		}
-	}
 }
 
 func (c *component) Stop(ctx context.Context) error {
 	c.mu.Lock()
-	c.started = false
+	defer c.mu.Unlock()
 	scheduler := c.scheduler
 	unregisterSettingContribution := c.unregisterSettingContribution
 	unregisterTelegramActions := c.unregisterTelegramActions
 	entryID := c.paymentPollEntryID
-	c.scheduler = nil
-	c.unregisterSettingContribution = nil
-	c.unregisterTelegramActions = nil
-	c.paymentPollEntryID = 0
-	c.mu.Unlock()
 	if scheduler != nil && entryID != 0 {
-		scheduler.RemoveJob(entryID)
+		if err := scheduler.RemoveJobAndWait(ctx, entryID); err != nil {
+			return err
+		}
 	}
-	err := paidtelegram.StopBot(ctx)
+	if err := paidtelegram.StopBot(ctx); err != nil {
+		return err
+	}
 	if unregisterSettingContribution != nil {
 		unregisterSettingContribution()
 	}
 	if unregisterTelegramActions != nil {
 		unregisterTelegramActions()
 	}
-	return err
+	c.started = false
+	c.scheduler = nil
+	c.unregisterSettingContribution = nil
+	c.unregisterTelegramActions = nil
+	c.paymentPollEntryID = 0
+	return nil
 }
 
 func paidAdminDeps(host componenthost.APIDeps) paidadmin.Deps {
 	return paidadmin.Deps{
-		LoginUser: host.Auth.LoginUser,
-		Audit:     host.Audit.Audit,
+		RequireScope: host.Auth.RequireScope,
+		LoginUser:    host.Auth.LoginUser,
+		Audit:        host.Audit.Audit,
 	}
 }
 
-type paymentPollJob struct{}
+type paymentPollJob struct {
+	runtime *service.Runtime
+}
 
-func (paymentPollJob) Run() {
-	paidtelegram.PollOnce(context.Background())
+func (j paymentPollJob) Run() {
+	paidtelegram.PollOnce(context.Background(), j.runtime)
+}
+
+func (j paymentPollJob) RunContext(ctx context.Context) {
+	paidtelegram.PollOnce(ctx, j.runtime)
 }

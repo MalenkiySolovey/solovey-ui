@@ -133,6 +133,26 @@ func TestNativeAdvancedProfileFailsClosedWithoutSeparateRuntime(t *testing.T) {
 	}
 }
 
+func TestDeploymentStatusFailsWhenObservedPostureCannotPersist(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:deployment-posture-failure?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	now := time.Unix(1_800_000_000, 0).UTC()
+	provider := &fakeProvider{current: domain.NativeLegacyRoot, now: now}
+	manager := NewManager(NewRepository(db), provider)
+	manager.Now = func() time.Time { return now }
+
+	if _, err := manager.Status(context.Background()); err == nil {
+		t.Fatal("Status succeeded without durable deployment state storage")
+	}
+}
+
 func TestDeploymentFailureExecutesOneExactRollback(t *testing.T) {
 	manager, provider, _ := deploymentFixture(t)
 	preview, _ := manager.Preview(context.Background(), domain.NativeHardened, true)
@@ -256,32 +276,6 @@ func TestDeploymentStartupAndRestoreReconciliationAreFailClosed(t *testing.T) {
 	recovery, err := manager.Repository.Recovery(context.Background())
 	if err != nil || recovery.OperationID != operation.OperationID || recovery.State != domain.StateManualRecoveryRequired {
 		t.Fatalf("recovery operation=%#v err=%v", recovery, err)
-	}
-}
-
-func TestDeploymentDropDataRejectsActiveAuthority(t *testing.T) {
-	manager, provider, db := deploymentFixture(t)
-	operation := domain.Operation{Schema: domain.SchemaV1, OperationID: "deployment-operation:active", IdempotencyKey: "deployment-idem-active",
-		State: domain.StateApplying, FromProfile: domain.NativeLegacyRoot, TargetProfile: domain.NativeHardened,
-		ExpectedPosture: provider.posture(domain.NativeLegacyRoot).Revision, ExpectedManagement: readyManagement().Revision,
-		Revision: 3, CreatedAt: provider.now.Unix(), UpdatedAt: provider.now.Unix()}
-	operation.BindingRevision = domain.OperationBinding(operation)
-	if err := manager.Repository.Create(context.Background(), operation, "active"); err != nil {
-		t.Fatal(err)
-	}
-	if err := manager.Repository.DropData(context.Background()); !errors.Is(err, ErrOperationConflict) {
-		t.Fatalf("active Drop Data err=%v", err)
-	}
-	operation.State = domain.StateManualRecoveryRequired
-	operation.Revision++
-	operation.Reasons = []string{"operator_recovery_required"}
-	operation.BindingRevision = domain.OperationBinding(operation)
-	db.Exec("DELETE FROM deployment_operations_v1")
-	if err := manager.Repository.Create(context.Background(), operation, "manual"); err != nil {
-		t.Fatal(err)
-	}
-	if err := manager.Repository.DropData(context.Background()); !errors.Is(err, ErrOperationConflict) {
-		t.Fatalf("manual recovery Drop Data err=%v", err)
 	}
 }
 

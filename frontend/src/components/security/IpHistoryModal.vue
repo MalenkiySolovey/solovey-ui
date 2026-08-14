@@ -60,9 +60,9 @@
 
 <script lang="ts" setup>
 import { computed, ref, watch } from 'vue'
-import { locale } from '@/locales'
+import { dateLocale } from '@/locales'
 import { ClientIPHistoryRow, displayIP, hasRawIPRows } from '@/components/security/ipHistory'
-import { clearClientIPHistory, fetchClientIPHistory } from '@/shared/composables/useIpHistory'
+import { clearClientIPHistory, fetchClientIPHistory } from '@/features/useIpHistory'
 
 const props = withDefaults(defineProps<{
   visible: boolean
@@ -139,6 +139,6 @@ const cancelShowRaw = () => {
 
 const formatTime = (value: number) => {
   if (!value) return '-'
-  return new Date(value * 1000).toLocaleString(locale)
+  return new Date(value * 1000).toLocaleString(dateLocale())
 }
 </script>

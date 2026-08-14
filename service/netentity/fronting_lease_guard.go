@@ -5,6 +5,8 @@ import (
 	"errors"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
+	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 
 	"gorm.io/gorm"
 )
@@ -17,12 +19,12 @@ var (
 )
 
 func guardInboundFrontingLease(tx *gorm.DB, action string, data json.RawMessage) error {
-	if tx == nil || action == string(inboundSaveActionNew) {
+	if tx == nil || action == string(entityinbounds.ActionNew) {
 		return nil
 	}
 	var inboundID uint
 	switch action {
-	case string(inboundSaveActionEdit):
+	case string(entityinbounds.ActionEdit):
 		var identity struct {
 			ID uint `json:"id"`
 		}
@@ -30,7 +32,7 @@ func guardInboundFrontingLease(tx *gorm.DB, action string, data json.RawMessage)
 			return err
 		}
 		inboundID = identity.ID
-	case string(inboundSaveActionDel):
+	case string(entityinbounds.ActionDel):
 		var tag string
 		if err := json.Unmarshal(data, &tag); err != nil {
 			return err
@@ -45,12 +47,12 @@ func guardInboundFrontingLease(tx *gorm.DB, action string, data json.RawMessage)
 }
 
 func guardTLSFrontingLease(tx *gorm.DB, action string, data json.RawMessage) error {
-	if tx == nil || action == string(tlsSaveActionNew) {
+	if tx == nil || action == string(entitytls.ActionNew) {
 		return nil
 	}
 	var tlsID uint
 	switch action {
-	case string(tlsSaveActionEdit):
+	case string(entitytls.ActionEdit):
 		var identity struct {
 			ID uint `json:"id"`
 		}
@@ -58,7 +60,7 @@ func guardTLSFrontingLease(tx *gorm.DB, action string, data json.RawMessage) err
 			return err
 		}
 		tlsID = identity.ID
-	case string(tlsSaveActionDel):
+	case string(entitytls.ActionDel):
 		if err := json.Unmarshal(data, &tlsID); err != nil {
 			return err
 		}

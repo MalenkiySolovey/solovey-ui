@@ -21,6 +21,9 @@ func NewPendingOrder(client *model.Client, tariff *paid.Tariff, kind paidprovide
 		IdempotencyKey: idempotencyKey,
 		CreatedAt:      now,
 		ExpiresAt:      now + int64(ttlMinutes)*60,
+		GrantAddDays:   tariff.AddDays,
+		GrantTraffic:   tariff.AddTrafficBytes,
+		GrantSnapshot:  true,
 	}
 }
 
@@ -58,9 +61,16 @@ func FindOrderByPayload(db *gorm.DB, payload string) (*paid.PaymentOrder, error)
 	return &order, nil
 }
 
-func MarkOrderFailed(db *gorm.DB, id uint) {
-	_ = db.Model(&paid.PaymentOrder{}).Where("id = ? AND status = ?", id, paid.StatusPending).
-		Update("status", paid.StatusFailed).Error
+func MarkOrderFailed(db *gorm.DB, id uint) error {
+	result := db.Model(&paid.PaymentOrder{}).Where("id = ? AND status = ?", id, paid.StatusPending).
+		Update("status", paid.StatusFailed)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrOrderAlreadyFinalized
+	}
+	return nil
 }
 
 func ExpireStaleOrders(db *gorm.DB, now int64) error {

@@ -241,7 +241,7 @@ func (p SSHPostureV1) Validate(now time.Time) error {
 		}
 	}
 	for _, endpoint := range p.Endpoints {
-		if endpoint.ServiceKind != hostresources.ManagementSSH || !hostresources.ManagementEndpointCurrent(endpoint) {
+		if endpoint.ServiceKind != hostresources.ManagementSSH || !hostresources.ManagementEndpointCurrent(endpoint, now) {
 			return NewError("posture", ReasonEndpointAmbiguous)
 		}
 	}
@@ -397,8 +397,8 @@ type PreservationInput struct {
 func BuildPreservationPlan(input PreservationInput) ManagementPreservationPlanV1 {
 	now := input.Now.UTC()
 	plan := ManagementPreservationPlanV1{Schema: PreservationSchemaV1, WatchdogAvailable: input.Watchdog}
-	plan.BeforeEndpoints = currentEndpoints(input.Before)
-	plan.AfterEndpoints = currentEndpoints(input.After)
+	plan.BeforeEndpoints = currentEndpoints(input.Before, now)
+	plan.AfterEndpoints = currentEndpoints(input.After, now)
 	afterIDs := make(map[string]bool, len(plan.AfterEndpoints))
 	for _, endpoint := range plan.AfterEndpoints {
 		afterIDs[endpoint.ID] = true
@@ -572,11 +572,11 @@ func BindingDigest(candidate CandidateV1) string {
 		candidate.ConfigurationRevision, candidate.Preservation.Revision, candidate.EarliestSafetyExpiry})
 }
 
-func currentEndpoints(values []hostresources.ManagementEndpointV1) []hostresources.ManagementEndpointV1 {
+func currentEndpoints(values []hostresources.ManagementEndpointV1, now time.Time) []hostresources.ManagementEndpointV1 {
 	result := make([]hostresources.ManagementEndpointV1, 0, len(values))
 	seen := map[string]bool{}
 	for _, value := range values {
-		if hostresources.ManagementEndpointCurrent(value) && !seen[value.ID] {
+		if hostresources.ManagementEndpointCurrent(value, now) && !seen[value.ID] {
 			seen[value.ID] = true
 			result = append(result, value)
 		}

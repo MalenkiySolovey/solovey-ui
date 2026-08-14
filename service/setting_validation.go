@@ -29,12 +29,6 @@ func (s *SettingService) validateSettingInput(key string, value string) error {
 	if enabledstate.IsSettingKey(key) {
 		return enabledstate.ValidateSettingValue(value)
 	}
-	if err := settingsvalidation.ValidateSessionSettingInput(key, value); err != nil {
-		return err
-	}
-	if err := settingsvalidation.ValidateRuntimeSettingInput(key, value); err != nil {
-		return err
-	}
 	if err := settingsvalidation.ValidateSubscriptionSettingInput(key, value); err != nil {
 		return err
 	}

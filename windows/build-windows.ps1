@@ -15,6 +15,14 @@ if ($Help) {
     exit 0
 }
 
+$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $scriptDir ".."))
+Set-Location -LiteralPath $repoRoot
+
+if ($Architecture -notin @("amd64", "386", "arm64")) {
+    throw "Unsupported Windows architecture: $Architecture"
+}
+
 Write-Host "Building Solovey UI for Windows ($Architecture)..." -ForegroundColor Green
 
 # Check if Go is installed
@@ -51,12 +59,13 @@ Push-Location frontend
 
 try {
     Write-Host "Installing dependencies..." -ForegroundColor Cyan
-    npm install
+    npm ci
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to install frontend dependencies"
     }
 
     Write-Host "Building frontend..." -ForegroundColor Cyan
+    $env:SOLOVEY_UI_PROFILE = "full"
     npm run build
     if ($LASTEXITCODE -ne 0) {
         throw "Failed to build frontend"
@@ -70,11 +79,24 @@ try {
 
 Pop-Location
 
+Remove-Item Env:SOLOVEY_UI_PROFILE -ErrorAction SilentlyContinue
+node scripts/check-frontend-profile.mjs --profile full --dist frontend/dist
+if ($LASTEXITCODE -ne 0) {
+    throw "Frontend profile validation failed"
+}
+
+Write-Host "Generating full-profile component imports..." -ForegroundColor Yellow
+node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
+if ($LASTEXITCODE -ne 0) {
+    throw "Failed to generate component imports"
+}
+
 # Create web/html directory
 Write-Host "Creating web/html directory..." -ForegroundColor Yellow
 if (!(Test-Path "web\html")) {
     New-Item -ItemType Directory -Path "web\html" -Force | Out-Null
 }
+Get-ChildItem -LiteralPath "web\html" -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
 
 # Copy frontend build files
 Write-Host "Copying frontend build files..." -ForegroundColor Yellow
@@ -95,16 +117,13 @@ if ($NoCGO) {
     Write-Host "Building with CGO..." -ForegroundColor Yellow
 }
 
-# Build command
-$buildCmd = "go build -ldflags `"-w -s`" -tags `"with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale`" -o sui.exe main.go"
-
 try {
-    Invoke-Expression $buildCmd
+    go build -ldflags "-w -s -checklinkname=0" -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale" -o sui.exe main.go
     if ($LASTEXITCODE -ne 0) {
         if (!$NoCGO) {
             Write-Host "CGO build failed, trying without CGO..." -ForegroundColor Yellow
             $env:CGO_ENABLED = "0"
-            Invoke-Expression $buildCmd
+            go build -ldflags "-w -s -checklinkname=0" -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale" -o sui.exe main.go
             if ($LASTEXITCODE -ne 0) {
                 throw "Failed to build backend even without CGO"
             }

@@ -5,6 +5,7 @@ package observabilityextra
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"sync"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
@@ -49,10 +50,10 @@ func (c *component) Start(_ context.Context, ctx lifecycle.Context) error {
 		return nil
 	}
 	if ctx.Host.Scheduler == nil {
-		c.started = true
-		return nil
+		return errors.New("observability-extra scheduler is unavailable")
 	}
-	entryID, err := ctx.Host.Scheduler.AddJob("@every 2s", jobs.NewSamplingJob())
+	sampler := &service.ObservabilityService{ServerService: service.NewServerService(ctx.Host.API.Runtime)}
+	entryID, err := ctx.Host.Scheduler.AddJob("@every 2s", jobs.NewSamplingJob(sampler))
 	if err != nil {
 		return err
 	}
@@ -62,24 +63,26 @@ func (c *component) Start(_ context.Context, ctx lifecycle.Context) error {
 	return nil
 }
 
-func (c *component) Stop(context.Context) error {
+func (c *component) Stop(ctx context.Context) error {
 	c.mu.Lock()
-	c.started = false
+	defer c.mu.Unlock()
 	scheduler := c.scheduler
 	entryID := c.entryID
+	if scheduler != nil && entryID != 0 {
+		if err := scheduler.RemoveJobAndWait(ctx, entryID); err != nil {
+			return err
+		}
+	}
+	c.started = false
 	c.scheduler = nil
 	c.entryID = 0
-	c.mu.Unlock()
-	if scheduler != nil && entryID != 0 {
-		scheduler.RemoveJob(entryID)
-	}
 	return nil
 }
 
 func observabilityExtraDeps(host componenthost.APIDeps) observabilityhttp.Deps {
 	return observabilityhttp.Deps{
-		ObservabilityService:   service.ObservabilityService{ServerService: service.NewServerService(host.Runtime)},
-		AuditService:           service.AuditService{Runtime: host.Runtime},
+		ObservabilityService:   &service.ObservabilityService{ServerService: service.NewServerService(host.Runtime)},
+		AuditService:           &service.AuditService{Runtime: host.Runtime},
 		RequireScope:           host.Auth.RequireScope,
 		RequireAuditAdminScope: host.Auth.RequireAuditAdminScope,
 		JSONObj:                host.HTTP.JSONObj,

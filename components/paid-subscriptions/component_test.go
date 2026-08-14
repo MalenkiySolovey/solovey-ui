@@ -16,10 +16,15 @@ import (
 	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/robfig/cron/v3"
 )
 
 func TestManifestDurableSettingsMatchRuntimeOwnership(t *testing.T) {
+	wantTables := []string{"paidsub_bindings", "payment_orders", "tariffs"}
+	if !slices.Equal(componentManifest.Database.Tables, wantTables) {
+		t.Fatalf("manifest tables = %v, runtime ownership = %v", componentManifest.Database.Tables, wantTables)
+	}
 	secrets := paidsettings.EncryptedKeys()
 	wantSecrets := make([]string, 0, len(secrets))
 	for key := range secrets {
@@ -41,6 +46,12 @@ func TestManifestDurableSettingsMatchRuntimeOwnership(t *testing.T) {
 	}
 }
 
+func TestPaidSubClientCapCannotDisableAutoRegisterProtection(t *testing.T) {
+	if err := validatePaidSubSettingInput(paidsettings.MaxClientsKey, "0", service.StoredSecretMarker); err == nil {
+		t.Fatal("paidSubMaxClients accepted a disabled client cap")
+	}
+}
+
 type paidTrackingScheduler struct {
 	added   int
 	removed int
@@ -52,12 +63,21 @@ func (s *paidTrackingScheduler) AddJob(string, cron.Job) (cron.EntryID, error) {
 }
 func (*paidTrackingScheduler) Schedule(cron.Schedule, cron.Job) cron.EntryID { return 0 }
 func (s *paidTrackingScheduler) RemoveJob(cron.EntryID)                      { s.removed++ }
+func (s *paidTrackingScheduler) RemoveJobAndWait(context.Context, cron.EntryID) error {
+	s.removed++
+	return nil
+}
 
 func TestPaidComponentStartIsIdempotent(t *testing.T) {
 	initPaidComponentTestDB(t)
 	scheduler := &paidTrackingScheduler{}
 	c := &component{}
-	host := lifecycle.Context{Host: componenthost.Deps{Scheduler: scheduler}}
+	host := lifecycle.Context{Host: componenthost.Deps{
+		Scheduler: scheduler,
+		API: componenthost.APIDeps{
+			Runtime: service.NewRuntimeWithCoreProvider(nil),
+		},
+	}}
 	if err := c.Start(context.Background(), host); err != nil {
 		t.Fatal(err)
 	}
@@ -75,6 +95,29 @@ func TestPaidComponentStartIsIdempotent(t *testing.T) {
 	}
 	if scheduler.removed != 1 {
 		t.Fatalf("repeated Stop removed %d jobs", scheduler.removed)
+	}
+}
+
+func TestPaidComponentStartFailsWithoutScheduler(t *testing.T) {
+	initPaidComponentTestDB(t)
+	c := &component{}
+	if err := c.Start(context.Background(), lifecycle.Context{}); err == nil {
+		t.Fatal("Start should fail when payment polling cannot be scheduled")
+	}
+	if c.started || c.unregisterSettingContribution != nil || c.unregisterTelegramActions != nil {
+		t.Fatal("failed Start retained component runtime state")
+	}
+}
+
+func TestPaidComponentStartFailsWithoutRuntime(t *testing.T) {
+	initPaidComponentTestDB(t)
+	c := &component{}
+	host := lifecycle.Context{Host: componenthost.Deps{Scheduler: &paidTrackingScheduler{}}}
+	if err := c.Start(context.Background(), host); err == nil {
+		t.Fatal("Start should fail without the injected host runtime")
+	}
+	if c.started || c.unregisterSettingContribution != nil || c.unregisterTelegramActions != nil {
+		t.Fatal("failed Start retained component runtime state")
 	}
 }
 

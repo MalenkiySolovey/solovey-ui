@@ -3,7 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -42,12 +41,12 @@ func TestStatsServiceSaveStatsWithEmptyStats(t *testing.T) {
 	}
 }
 
-func TestStatsServiceSaveStatsCommitFailureAuditsAndReturnsIssue26(t *testing.T) {
+func TestStatsServiceSaveStatsCommitFailureAuditsAndReturns(t *testing.T) {
 	initSettingTestDB(t)
 	seedStatsBenchClients(t, 1)
 
-	realtime.CloseAll("issue26_reset")
-	t.Cleanup(func() { realtime.CloseAll("issue26_done") })
+	realtime.CloseAll("stats-commit-test-reset")
+	t.Cleanup(func() { realtime.CloseAll("stats-commit-test-done") })
 	ch := make(chan realtime.Event, 4)
 	unregister := realtime.Register(&realtime.ClientHandle{
 		User:   "admin",
@@ -56,20 +55,37 @@ func TestStatsServiceSaveStatsCommitFailureAuditsAndReturnsIssue26(t *testing.T)
 	})
 	defer unregister()
 
-	commitErr := errors.New("issue26 sentinel commit failure")
-	prevCommit := commitStatsTransaction
-	commitStatsTransaction = func(tx *gorm.DB) error {
-		_ = tx.Rollback().Error
-		return commitErr
+	db := dbsqlite.DB()
+	if err := db.Exec("CREATE TABLE stats_commit_parent (id INTEGER PRIMARY KEY)").Error; err != nil {
+		t.Fatal(err)
 	}
-	t.Cleanup(func() { commitStatsTransaction = prevCommit })
+	if err := db.Exec("CREATE TABLE stats_commit_child (parent_id INTEGER, FOREIGN KEY(parent_id) REFERENCES stats_commit_parent(id) DEFERRABLE INITIALLY DEFERRED)").Error; err != nil {
+		t.Fatal(err)
+	}
+	callbackName := "test-force-stats-deferred-commit-failure"
+	injected := false
+	if err := db.Callback().Create().After("gorm:create").Register(callbackName, func(tx *gorm.DB) {
+		if injected || tx.Statement == nil || tx.Statement.Table != "stats" {
+			return
+		}
+		injected = true
+		if err := tx.Exec("INSERT INTO stats_commit_child(parent_id) VALUES (1)").Error; err != nil {
+			tx.AddError(err)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Callback().Create().Remove(callbackName) })
 
 	tracker := coretracker.NewStatsTracker()
 	seedSyntheticUserStatsForBench(t, tracker, 1)
 	statsService := &StatsService{Runtime: NewRuntime(syntheticStatsCoreForBench(t, tracker))}
 
-	if err := statsService.SaveStats(true); !errors.Is(err, commitErr) {
-		t.Fatalf("SaveStats error=%v, want %v", err, commitErr)
+	if err := statsService.SaveStats(true); err == nil || !strings.Contains(strings.ToLower(err.Error()), "foreign key") {
+		t.Fatalf("SaveStats error=%v, want deferred foreign-key commit failure", err)
+	}
+	if !injected {
+		t.Fatal("deferred commit failure was not injected through the stats create transaction")
 	}
 	if err := statsService.Runtime.StopAuditWriter(context.Background()); err != nil {
 		t.Fatal(err)
@@ -86,12 +102,12 @@ func TestStatsServiceSaveStatsCommitFailureAuditsAndReturnsIssue26(t *testing.T)
 	if err := json.Unmarshal(audit.Details, &details); err != nil {
 		t.Fatal(err)
 	}
-	if details["reason"] != "commit_failed" || strings.Contains(string(audit.Details), commitErr.Error()) {
+	if details["reason"] != "commit_failed" || strings.Contains(strings.ToLower(string(audit.Details)), "foreign key") {
 		t.Fatalf("unexpected audit details: %#v", details)
 	}
 
-	expectStatsCommitFailedWarningIssue26(t, ch)
-	expectNoStatsRealtimeEventsIssue26(t, ch)
+	expectStatsCommitFailedWarning(t, ch)
+	expectNoStatsRealtimeEvents(t, ch)
 
 	var statsRows int64
 	if err := dbsqlite.DB().Model(model.Stats{}).Count(&statsRows).Error; err != nil {
@@ -99,6 +115,10 @@ func TestStatsServiceSaveStatsCommitFailureAuditsAndReturnsIssue26(t *testing.T)
 	}
 	if statsRows != 0 {
 		t.Fatalf("stats rows committed after failed commit: %d", statsRows)
+	}
+	restored := tracker.GetStats()
+	if len(restored) != 2 || restored[0].Traffic+restored[1].Traffic != 3 {
+		t.Fatalf("failed commit did not restore drained stats: %#v", restored)
 	}
 }
 
@@ -217,7 +237,7 @@ func TestStatsServiceDownsampleStatsBucketsExtra(t *testing.T) {
 	}
 }
 
-func expectStatsCommitFailedWarningIssue26(t *testing.T, ch <-chan realtime.Event) {
+func expectStatsCommitFailedWarning(t *testing.T, ch <-chan realtime.Event) {
 	t.Helper()
 	select {
 	case event := <-ch:
@@ -233,7 +253,7 @@ func expectStatsCommitFailedWarningIssue26(t *testing.T, ch <-chan realtime.Even
 	}
 }
 
-func expectNoStatsRealtimeEventsIssue26(t *testing.T, ch <-chan realtime.Event) {
+func expectNoStatsRealtimeEvents(t *testing.T, ch <-chan realtime.Event) {
 	t.Helper()
 	select {
 	case event := <-ch:

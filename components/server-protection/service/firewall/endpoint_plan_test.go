@@ -19,7 +19,7 @@ func TestEndpointPlanDeterministicConservativeCandidate(t *testing.T) {
 	now := time.Unix(1000, 0).UTC()
 	resource := endpointResourceFixture()
 	graph := protectionresources.BuildSocketOwnershipGraph(protectionresources.SocketGraphInput{Resources: []hostresources.ProtectableResource{resource}, Surfaces: []hostsurface.HostSurfaceFactV1{endpointSurfaceFixture(resource, now)}, Now: now})
-	management := hostresources.ManagementEndpointV1{Schema: hostresources.ManagementEndpointSchemaV1, ID: "management:panel", Network: hostresources.NetworkTCP, Family: hostresources.AddressFamilyIPv4, Bind: "192.0.2.5", Port: 443, ServiceKind: hostresources.ManagementPanel, Exposure: hostresources.EndpointIntentPublic, Owner: "panel", ResourceID: resource.ID, RecoveryPolicy: "fresh_independent_path_required", Source: "fixture", ConfidenceBP: 10000, ObservedAt: now.Unix(), ConfigurationRevision: strings.Repeat("c", 64)}
+	management := hostresources.ManagementEndpointV1{Schema: hostresources.ManagementEndpointSchemaV1, ID: "management:panel", Network: hostresources.NetworkTCP, Family: hostresources.AddressFamilyIPv4, Bind: "192.0.2.5", Port: 443, ServiceKind: hostresources.ManagementPanel, Exposure: hostresources.EndpointIntentPublic, Owner: "panel", ResourceID: resource.ID, RecoveryPolicy: "fresh_independent_path_required", Purpose: "administrative_access", ConfiguredIntent: true, Source: "fixture", ConfidenceBP: 10000, ObservedAt: now.Unix(), ExpiresAt: now.Add(90 * time.Second).Unix(), ConfigurationRevision: strings.Repeat("c", 64)}
 	recovery := hostresources.RecoveryPathV1{Schema: hostresources.RecoveryPathSchemaV1, ID: "recovery:panel", Kind: string(hostresources.ManagementPanel), EndpointID: management.ID, PrincipalID: "principal:hash", SourcePrefix: "198.51.100.0/24", VerificationMethod: "fresh_panel_login", VerifiedAt: now.Add(-time.Minute).Unix(), ExpiresAt: now.Add(time.Hour).Unix(), IndependenceClass: "independent_reconnect", VerificationState: "verified", SourceRevision: strings.Repeat("a", 64), ConfigurationRevision: management.ConfigurationRevision}
 	actions := []EndpointActionInput{
 		endpointActionFixture(graph, resource, strings.Repeat("a", 64), domain.SignalSubjectV2{Type: "ip", Value: "203.0.113.10"}, domain.IntentTemporaryBlock, now, now.Add(10*time.Minute), "native"),
@@ -211,7 +211,7 @@ func TestEndpointPlanUnknownOwnerIsAdvisoryButFreshRecoveryStillGatesMutation(t 
 	surface.OwnershipMode = hostsurface.OwnershipUnmanaged
 	surface.DesiredOwner = ""
 	graph := protectionresources.BuildSocketOwnershipGraph(protectionresources.SocketGraphInput{Resources: []hostresources.ProtectableResource{resource}, Surfaces: []hostsurface.HostSurfaceFactV1{surface}, Now: now})
-	management := hostresources.ManagementEndpointV1{Schema: hostresources.ManagementEndpointSchemaV1, ID: "management:panel", Network: hostresources.NetworkTCP, Family: hostresources.AddressFamilyIPv4, Bind: "192.0.2.5", Port: 443, ServiceKind: hostresources.ManagementPanel, ResourceID: resource.ID, ConfidenceBP: 10000, ObservedAt: now.Unix(), ConfigurationRevision: resource.Capabilities.ConfigRevision}
+	management := hostresources.ManagementEndpointV1{Schema: hostresources.ManagementEndpointSchemaV1, ID: "management:panel", Network: hostresources.NetworkTCP, Family: hostresources.AddressFamilyIPv4, Bind: "192.0.2.5", Port: 443, ServiceKind: hostresources.ManagementPanel, Exposure: hostresources.EndpointIntentPublic, Owner: "panel", ResourceID: resource.ID, RecoveryPolicy: "fresh_independent_path_required", Purpose: "administrative_access", ConfiguredIntent: true, Source: "fixture", ConfidenceBP: 10000, ObservedAt: now.Unix(), ExpiresAt: now.Add(90 * time.Second).Unix(), ConfigurationRevision: resource.Capabilities.ConfigRevision}
 	input := EndpointPlanInput{Graph: graph, Resources: []hostresources.ProtectableResource{resource}, Management: []hostresources.ManagementEndpointV1{management}, TrustedSources: []string{"198.51.100.0/24"}, Now: now}
 	plan := BuildEndpointPlan(input)
 	if plan.ApplyBlocked || !plan.BaselineEligibility.CandidateEligible || plan.BaselineEligibility.MutationReady || !slices.Contains(plan.BaselineEligibility.AdvisoryCodes, "resource_apply_blocked") || !slices.Contains(plan.BaselineEligibility.MutationReasonCodes, "fresh_recovery_path_missing") {
@@ -234,7 +234,9 @@ func TestEndpointPlanRequiresCurrentSSHAndFamilyScopedTrustedSource(t *testing.T
 		Schema: hostresources.ManagementEndpointSchemaV1, ID: "management:ssh:primary",
 		Network: hostresources.NetworkTCP, Family: hostresources.AddressFamilyIPv4, Bind: "0.0.0.0", Port: 22,
 		ServiceKind: hostresources.ManagementSSH, ResourceID: "core:ssh:primary", Source: "host-surface",
-		ConfidenceBP: 10000, ObservedAt: now.Unix(), ConfigurationRevision: strings.Repeat("e", 64),
+		Exposure: hostresources.EndpointIntentPublic, Owner: "sshd", RecoveryPolicy: "fresh_independent_path_required",
+		Purpose: "administrative_access", ObservedListener: true,
+		ConfidenceBP: 10000, ObservedAt: now.Unix(), ExpiresAt: now.Add(90 * time.Second).Unix(), ConfigurationRevision: strings.Repeat("e", 64),
 	}
 	wrongFamily := BuildEndpointPlan(EndpointPlanInput{Resources: []hostresources.ProtectableResource{resource}, Management: []hostresources.ManagementEndpointV1{ssh}, TrustedSources: []string{"2001:db8::/64"}, RequireSSHKeep: true, Now: now})
 	if wrongFamily.BaselineEligibility.CandidateEligible || !slices.Contains(wrongFamily.BaselineEligibility.ReasonCodes, "management_trusted_source_missing") {

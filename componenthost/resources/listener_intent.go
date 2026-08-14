@@ -141,7 +141,12 @@ func normalizeConfiguredListenIntents(resource ProtectableResource) (ConfiguredL
 			return primary, nil, false
 		}
 	}
-	return values[0], values, true
+	for _, value := range values {
+		if value.Network == primary.Network {
+			return value, values, true
+		}
+	}
+	return primary, nil, false
 }
 
 func validAdditionalListenIntent(resource ProtectableResource, value ConfiguredListenIntentV1) bool {

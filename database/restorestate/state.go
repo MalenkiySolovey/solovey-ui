@@ -126,13 +126,6 @@ func FinalizeCommitted(databasePath string) error {
 	return os.Remove(MarkerPath(databasePath))
 }
 
-func Commit(databasePath string) error {
-	if err := MarkCommitted(databasePath); err != nil {
-		return err
-	}
-	return FinalizeCommitted(databasePath)
-}
-
 func CancelStaged(databasePath string) error {
 	marker, err := readMarker(databasePath)
 	if err != nil {

@@ -1,26 +1,6 @@
 import { expect, test, type Page } from '@playwright/test'
-import fs from 'node:fs'
-import path from 'node:path'
 
-import { csrfToken, login, serverStatePath } from './helpers'
-
-const serverStateMatchesPasswordFile = () => {
-  if (!fs.existsSync(serverStatePath)) return false
-  try {
-    const state = JSON.parse(fs.readFileSync(serverStatePath, 'utf8')) as {
-      dbDir?: string
-      password?: string
-    }
-    if (!state.dbDir || !state.password) return false
-
-    const passwordPath = path.join(state.dbDir, 'initial-admin.txt')
-    if (!fs.existsSync(passwordPath)) return false
-
-    return fs.readFileSync(passwordPath, 'utf8').trim() === state.password
-  } catch {
-    return false
-  }
-}
+import { csrfToken, login, mutationHeaders } from './helpers'
 
 const chooseSelectOption = async (page: Page, testId: string, value: string) => {
   const select = page.getByTestId(testId)
@@ -32,7 +12,7 @@ const chooseSelectOption = async (page: Page, testId: string, value: string) => 
 const createClient = async (page: Page, name: string) => {
   const token = await csrfToken(page)
   const response = await page.request.post('api/save', {
-    headers: { 'X-CSRF-Token': token },
+    headers: mutationHeaders(token),
     form: {
       object: 'clients',
       action: 'new',
@@ -52,13 +32,6 @@ const createClient = async (page: Page, name: string) => {
 
 test('personal ops pack doctor presets delivery and client diagnosis smoke', async ({ page }) => {
   test.setTimeout(90_000)
-  const startedAt = Date.now()
-
-  await expect.poll(() => {
-    if (!fs.existsSync(serverStatePath)) return false
-    return fs.statSync(serverStatePath).mtimeMs >= startedAt - 30_000
-      || serverStateMatchesPasswordFile()
-  }, { timeout: 30_000 }).toBe(true)
 
   await login(page)
 

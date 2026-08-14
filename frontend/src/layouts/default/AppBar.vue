@@ -49,6 +49,7 @@ import { useI18n } from 'vue-i18n'
 import { languages, setI18nLocale } from '@/locales'
 import UiModeControl from '@/components/UiModeControl.vue'
 import { computed } from 'vue'
+import { readThemePreference, writeThemePreference } from '@/uiMode/theme'
 
 defineProps(['isMobile'])
 
@@ -72,11 +73,9 @@ const themes = [
 ]
 
 const changeTheme = (th: string) => {
-  theme.change(th)
-  localStorage.setItem('theme', th)
+  theme.change(writeThemePreference(th))
 }
 const isActiveTheme = (th: string) => {
-  const current = localStorage.getItem('theme') ?? 'system'
-  return current == th
+  return readThemePreference() == th
 }
 </script>

@@ -48,61 +48,68 @@ func allowPrivateExternalURLs() bool {
 // address but the subsequent connection is steered to a private one.
 func getExternalHTTPClient() *http.Client {
 	externalHTTPClientOnce.Do(func() {
-		dialer := &net.Dialer{
-			Timeout:   10 * time.Second,
-			KeepAlive: 30 * time.Second,
-		}
-		transport := &http.Transport{
-			Proxy: http.ProxyFromEnvironment,
-			DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
-				if allowPrivateExternalURLs() {
-					return dialer.DialContext(ctx, network, addr)
-				}
-				host, port, err := net.SplitHostPort(addr)
-				if err != nil {
-					return nil, err
-				}
-				if addr, err := netip.ParseAddr(host); err == nil {
-					if isBlockedExternalAddr(addr) {
-						return nil, errBlockedExternalAddress
-					}
-					return dialer.DialContext(ctx, network, net.JoinHostPort(addr.String(), port))
-				}
-				ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
-				if err != nil {
-					return nil, err
-				}
-				var lastErr error
-				for _, ip := range ips {
-					addr, ok := netip.AddrFromSlice(ip.IP)
-					if !ok || isBlockedExternalAddr(addr) {
-						lastErr = errBlockedExternalAddress
-						continue
-					}
-					conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(addr.String(), port))
-					if err == nil {
-						return conn, nil
-					}
-					lastErr = err
-				}
-				if lastErr == nil {
-					lastErr = errBlockedExternalAddress
-				}
-				return nil, lastErr
-			},
-			TLSHandshakeTimeout:   10 * time.Second,
-			ResponseHeaderTimeout: 10 * time.Second,
-			IdleConnTimeout:       90 * time.Second,
-			MaxIdleConns:          10,
-			MaxIdleConnsPerHost:   2,
-		}
-		externalHTTPClient = &http.Client{
-			Timeout:       15 * time.Second,
-			Transport:     transport,
-			CheckRedirect: externalRedirectPolicy,
-		}
+		externalHTTPClient = newExternalHTTPClient()
 	})
 	return externalHTTPClient
+}
+
+func newExternalHTTPClient() *http.Client {
+	dialer := &net.Dialer{
+		Timeout:   10 * time.Second,
+		KeepAlive: 30 * time.Second,
+	}
+	transport := &http.Transport{
+		// These URLs are untrusted and require target-IP validation at the
+		// actual dial boundary. An environment proxy would move DNS resolution
+		// behind the proxy and bypass that rebinding defense.
+		Proxy: nil,
+		DialContext: func(ctx context.Context, network, addr string) (net.Conn, error) {
+			if allowPrivateExternalURLs() {
+				return dialer.DialContext(ctx, network, addr)
+			}
+			host, port, err := net.SplitHostPort(addr)
+			if err != nil {
+				return nil, err
+			}
+			if addr, err := netip.ParseAddr(host); err == nil {
+				if isBlockedExternalAddr(addr) {
+					return nil, errBlockedExternalAddress
+				}
+				return dialer.DialContext(ctx, network, net.JoinHostPort(addr.String(), port))
+			}
+			ips, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+			if err != nil {
+				return nil, err
+			}
+			var lastErr error
+			for _, ip := range ips {
+				addr, ok := netip.AddrFromSlice(ip.IP)
+				if !ok || isBlockedExternalAddr(addr) {
+					lastErr = errBlockedExternalAddress
+					continue
+				}
+				conn, err := dialer.DialContext(ctx, network, net.JoinHostPort(addr.String(), port))
+				if err == nil {
+					return conn, nil
+				}
+				lastErr = err
+			}
+			if lastErr == nil {
+				lastErr = errBlockedExternalAddress
+			}
+			return nil, lastErr
+		},
+		TLSHandshakeTimeout:   10 * time.Second,
+		ResponseHeaderTimeout: 10 * time.Second,
+		IdleConnTimeout:       90 * time.Second,
+		MaxIdleConns:          10,
+		MaxIdleConnsPerHost:   2,
+	}
+	return &http.Client{
+		Timeout:       15 * time.Second,
+		Transport:     transport,
+		CheckRedirect: externalRedirectPolicy,
+	}
 }
 
 func externalRedirectPolicy(req *http.Request, via []*http.Request) error {
@@ -122,16 +129,27 @@ func externalRedirectPolicy(req *http.Request, via []*http.Request) error {
 }
 
 func Fetch(rawURL string) (string, error) {
-	return FetchWithUserAgent(rawURL, "")
+	return FetchWithUserAgentContext(context.Background(), rawURL, "")
 }
 
 func FetchWithUserAgent(rawURL string, userAgent string) (string, error) {
-	if err := ValidateURL(rawURL); err != nil {
+	return FetchWithUserAgentContext(context.Background(), rawURL, userAgent)
+}
+
+func FetchContext(ctx context.Context, rawURL string) (string, error) {
+	return FetchWithUserAgentContext(ctx, rawURL, "")
+}
+
+func FetchWithUserAgentContext(ctx context.Context, rawURL string, userAgent string) (string, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	if err := ValidateURLContext(ctx, rawURL); err != nil {
 		logger.Warning("sub: invalid external URL:", err)
 		return "", err
 	}
 
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, rawURL, nil)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, rawURL, nil)
 	if err != nil {
 		return "", err
 	}
@@ -178,6 +196,13 @@ func FetchOutbounds(url string) ([]map[string]interface{}, error) {
 }
 
 func ValidateURL(rawURL string) error {
+	return ValidateURLContext(context.Background(), rawURL)
+}
+
+func ValidateURLContext(ctx context.Context, rawURL string) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		return err
@@ -201,7 +226,7 @@ func ValidateURL(rawURL string) error {
 		}
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
 	if err != nil {

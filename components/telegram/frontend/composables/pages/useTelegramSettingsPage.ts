@@ -88,7 +88,10 @@ export const useTelegramSettingsPage = () => {
   })
 
   onUnmounted(() => {
-    backupRunController.value?.abort()
+    const controller = backupRunController.value
+    backupRunController.value = null
+    backupRunLoading.value = false
+    controller?.abort()
   })
 
   const setData = (data: TelegramSettingsMap) => {
@@ -241,6 +244,9 @@ export const useTelegramSettingsPage = () => {
     backupRunController.value = controller
     backupRunLoading.value = true
     const msg = await HttpUtils.post('api/telegram/backup/run', {}, { signal: controller.signal })
+    if (backupRunController.value !== controller) {
+      return
+    }
     backupRunStatus.value = {
       success: msg.success,
       timestamp: new Date().toLocaleString(),

@@ -76,7 +76,9 @@ func (s *Service) RestoreCheckpoint(ctx context.Context, request RestoreCheckpoi
 		}
 		observation, err := s.mutation.Runtime.ApplyInbound(ctx, payload.InboundDatabaseID)
 		if err != nil || validateRuntimeObservation(candidate, observation, expectedOptionsDigest) != nil {
-			s.markRestoreFailed(row.ID)
+			if markErr := s.markRestoreFailed(row.ID); markErr != nil {
+				return adapterFailure(ErrorAmbiguousResult)
+			}
 			if ctx.Err() != nil {
 				return adapterFailure(ErrorAmbiguousResult)
 			}
@@ -163,10 +165,11 @@ func (s *Service) restoreCandidate(ctx context.Context, tx *gorm.DB, inbound mod
 	return candidate, changed, expectedOptionsDigest, nil
 }
 
-func (s *Service) markRestoreFailed(checkpointID string) {
-	_ = s.db.Model(&model.InboundFallbackCheckpoint{}).
+func (s *Service) markRestoreFailed(checkpointID string) error {
+	result := s.db.Model(&model.InboundFallbackCheckpoint{}).
 		Where("id = ? AND state = ?", checkpointID, checkpointStateRestoredCommitted).
 		Update("state", checkpointStateRestoreFailed).Error
+	return result
 }
 
 func (s *Service) ReleaseCheckpoint(ctx context.Context, request ReleaseCheckpointRequestV1) (CheckpointReleaseV1, error) {

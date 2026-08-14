@@ -20,8 +20,6 @@ const (
 	maxDoctorSnapshots      = 64
 )
 
-func NewRepository(db *gorm.DB) Repository { return Repository{DB: func() *gorm.DB { return db }} }
-
 func (r Repository) db() (*gorm.DB, error) {
 	if r.DB == nil || r.DB() == nil {
 		return nil, errors.New("deployment repository database is unavailable")
@@ -37,7 +35,9 @@ func (r Repository) SavePosture(ctx context.Context, posture domain.Posture, tru
 	now := time.Now().UTC().Unix()
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var existing model.DeploymentState
-		_ = tx.Where("scope = ?", "global").Take(&existing).Error
+		if err := tx.Where("scope = ?", "global").Take(&existing).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+			return err
+		}
 		profile, _ := domain.Lookup(posture.Profile)
 		desired, generated, generatedRevision := existing.DesiredProfile, existing.GeneratedProfile, existing.GeneratedRevision
 		if desired == "" {
@@ -64,10 +64,6 @@ func (r Repository) State(ctx context.Context) (model.DeploymentState, error) {
 	var row model.DeploymentState
 	err = db.WithContext(ctx).Where("scope = ?", "global").Take(&row).Error
 	return row, err
-}
-
-func (r Repository) Create(ctx context.Context, operation domain.Operation, event string) error {
-	return r.create(ctx, operation, event, false)
 }
 
 func (r Repository) Admit(ctx context.Context, operation domain.Operation, event string) error {
@@ -284,37 +280,6 @@ func (r Repository) MarkRestoredUntrusted(ctx context.Context) error {
 			operation := domain.Operation{OperationID: row.OperationID, Revision: nextRevision, State: domain.StateManualRecoveryRequired}
 			journal := journalRow(operation, "restore_invalidated_live_authority", "restored_state_requires_fresh_doctor", time.Unix(updatedAt, 0).UTC())
 			if err := tx.Create(&journal).Error; err != nil {
-				return err
-			}
-		}
-		return nil
-	})
-}
-
-func (r Repository) DropData(ctx context.Context) error {
-	db, err := r.db()
-	if err != nil {
-		return err
-	}
-	var authority int64
-	if err := db.WithContext(ctx).Model(&model.DeploymentOperation{}).
-		Where("state NOT IN ? OR checkpoint_ref <> '' OR broker_receipt <> '' OR restored_untrusted = ?", []string{string(domain.StateCommitted), string(domain.StateRolledBack)}, true).
-		Count(&authority).Error; err != nil {
-		return err
-	}
-	if authority != 0 {
-		return ErrOperationConflict
-	}
-	var stateAuthority int64
-	if err := db.WithContext(ctx).Model(&model.DeploymentState{}).Where("trusted = ? OR verified_profile <> ''", true).Count(&stateAuthority).Error; err != nil {
-		return err
-	}
-	if stateAuthority != 0 {
-		return ErrOperationConflict
-	}
-	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		for _, table := range []any{&model.DeploymentDoctorSnapshot{}, &model.DeploymentJournal{}, &model.DeploymentOperation{}, &model.DeploymentState{}} {
-			if err := tx.Session(&gorm.Session{AllowGlobalUpdate: true}).Delete(table).Error; err != nil {
 				return err
 			}
 		}

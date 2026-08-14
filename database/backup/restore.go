@@ -154,7 +154,9 @@ func cleanupRestoreFile(path string) {
 }
 
 func rollbackImportedDB(dbPath, stage string, cause error) error {
-	_ = dbsqlite.Close()
+	if err := dbsqlite.Close(); err != nil {
+		return common.NewErrorf("Error %s (%v) and closing imported db for rollback failed: %v; restore recovery remains pending", stage, cause, err)
+	}
 	if err := restorestate.Rollback(dbPath); err != nil {
 		return common.NewErrorf("Error %s (%v) and restoring fallback failed: %v", stage, cause, err)
 	}

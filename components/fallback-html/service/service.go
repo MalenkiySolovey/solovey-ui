@@ -11,8 +11,10 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/fallback-html/authority"
 	fallbackdomain "github.com/MalenkiySolovey/solovey-ui/components/fallback-html/domain"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
@@ -22,9 +24,10 @@ import (
 type Service struct {
 	db               *gorm.DB
 	runtime          *Runtime
-	nodeClient       NodeClient
 	templateHTTP     *http.Client
 	remoteCatalogURL string
+	resourceSnapshot func(context.Context) hostresources.ResourceSnapshot
+	templateMu       sync.RWMutex
 }
 
 type SiteInput struct {
@@ -84,7 +87,7 @@ func New(db *gorm.DB, runtime *Runtime) *Service {
 	if runtime == nil {
 		runtime = DefaultRuntime
 	}
-	return &Service{db: db, runtime: runtime, nodeClient: NewHTTPNodeClient(nil)}
+	return &Service{db: db, runtime: runtime, resourceSnapshot: hostresources.Snapshot}
 }
 
 func HandleRestorePostOpen(ctx context.Context, db *gorm.DB) error {
@@ -201,16 +204,18 @@ func (s *Service) SaveSite(input SiteInput, actor string) (fallbackdomain.Site, 
 	if err != nil {
 		return site, err
 	}
+	runtimeChanged := false
 	err = authority.WithMutationLock(func() error {
-		return s.db.Transaction(func(tx *gorm.DB) error {
+		transactionErr := s.db.Transaction(func(tx *gorm.DB) error {
 			if input.ID != 0 {
 				if err := tx.First(&site, input.ID).Error; err != nil {
 					return err
 				}
-				if input.Enabled != nil && !*input.Enabled && site.Enabled {
+				if input.Enabled != nil && *input.Enabled != site.Enabled {
 					if err := guardSiteTargetMutation(tx, site.ID); err != nil {
 						return err
 					}
+					runtimeChanged = true
 				}
 			} else {
 				site = fallbackdomain.Site{
@@ -238,13 +243,24 @@ func (s *Service) SaveSite(input SiteInput, actor string) (fallbackdomain.Site, 
 					return err
 				}
 			}
-			return recordEvent(tx, site.ID, actor, "site_saved", map[string]any{"name": site.Name})
+			if err := recordEvent(tx, site.ID, actor, "site_saved", map[string]any{"name": site.Name}); err != nil {
+				return err
+			}
+			if runtimeChanged {
+				return s.runtime.Rebuild(tx)
+			}
+			return nil
 		})
+		if transactionErr != nil && runtimeChanged {
+			if restoreErr := s.runtime.Rebuild(s.db); restoreErr != nil {
+				return errors.Join(transactionErr, fmt.Errorf("restore fallback-html runtime after rollback: %w", restoreErr))
+			}
+		}
+		return transactionErr
 	})
 	if err != nil {
 		return site, err
 	}
-	_ = s.runtime.Rebuild(s.db)
 	return s.GetSite(site.ID)
 }
 
@@ -296,14 +312,15 @@ func (s *Service) ListPages(siteID uint) ([]fallbackdomain.Page, error) {
 }
 
 func (s *Service) DeleteSite(id uint, actor string) error {
-	return s.guardedSiteMutation(id, func(tx *gorm.DB) error {
+	if err := s.guardedRuntimeMutation(id, func(tx *gorm.DB) error {
 		if err := recordEvent(tx, id, actor, "site_deleted", nil); err != nil {
 			return err
 		}
 		return tx.Delete(&fallbackdomain.Site{}, id).Error
-	}, func() error {
-		return errors.Join(RemoveSiteStorage(id), s.runtime.Rebuild(s.db))
-	})
+	}); err != nil {
+		return err
+	}
+	return RemoveSiteStorage(id)
 }
 
 func (s *Service) ValidatePath(siteID uint, input PathValidationInput) (PathValidationResult, error) {

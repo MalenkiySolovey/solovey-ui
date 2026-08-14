@@ -1,6 +1,7 @@
 package backup
 
 import (
+	"context"
 	"fmt"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"os"
@@ -14,6 +15,26 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestCopyOpaqueTableRejectsExecutableTriggers(t *testing.T) {
+	source, err := gorm.Open(sqlite.Open("file:opaque-trigger-source?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	destination, err := gorm.Open(sqlite.Open("file:opaque-trigger-destination?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := source.Exec("CREATE TABLE opaque_rows (id INTEGER PRIMARY KEY, value TEXT)").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := source.Exec("CREATE TRIGGER opaque_rows_trigger AFTER INSERT ON opaque_rows BEGIN UPDATE opaque_rows SET value='changed' WHERE id=NEW.id; END").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := copyOpaqueTable(context.Background(), source, destination, "opaque_rows"); err == nil || !strings.Contains(err.Error(), "triggers") {
+		t.Fatalf("opaque trigger was accepted: %v", err)
+	}
+}
 
 // closeMainDB closes the global *gorm.DB so Windows can release file locks
 // before t.TempDir() cleanup tries to delete the database file. It also

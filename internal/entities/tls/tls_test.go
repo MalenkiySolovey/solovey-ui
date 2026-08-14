@@ -60,23 +60,17 @@ func TestParseAction(t *testing.T) {
 	}
 }
 
-func TestSaveKeepsUnknownActionNoopCompatibility(t *testing.T) {
-	if err := Save(SaveRequest{Action: "mystery"}); err != nil {
-		t.Fatalf("unknown TLS action should stay a no-op for compatibility, got %v", err)
-	}
-}
-
 func TestSaveConfigKeepsExistingSortOrder(t *testing.T) {
 	db := newTLSDB(t)
-	tls := model.Tls{Name: "existing", SortOrder: 7}
+	tls := model.Tls{Name: "existing", SortOrder: 7, Server: json.RawMessage(`{}`), Client: json.RawMessage(`{}`)}
 	if err := db.Create(&tls).Error; err != nil {
 		t.Fatal(err)
 	}
-	payload, err := json.Marshal(model.Tls{Id: tls.Id, Name: "renamed"})
+	payload, err := json.Marshal(model.Tls{Id: tls.Id, Name: "renamed", Server: json.RawMessage(`{}`), Client: json.RawMessage(`{}`)})
 	if err != nil {
 		t.Fatal(err)
 	}
-	saved, err := SaveConfig(db, payload)
+	saved, err := saveConfig(db, string(ActionEdit), payload)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -143,6 +137,54 @@ func TestDeleteRemovesUnusedTLS(t *testing.T) {
 	}
 	if count != 0 {
 		t.Fatalf("TLS row should be deleted, count=%d", count)
+	}
+}
+
+func TestDeleteRejectsSentinelAndIgnoresMissingTLS(t *testing.T) {
+	db := newTLSDB(t)
+	sentinel, err := json.Marshal(uint(0))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Delete(db, sentinel); err == nil {
+		t.Fatal("protected TLS sentinel was deleted")
+	}
+	missing, err := json.Marshal(uint(999))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := Delete(db, missing); err != nil {
+		t.Fatalf("idempotent delete rejected missing TLS: %v", err)
+	}
+}
+
+func TestValidateStoredRejectsMalformedTLS(t *testing.T) {
+	db := newTLSDB(t)
+	if err := db.Exec(
+		"INSERT INTO tls(id, name, server, client) VALUES(?, ?, ?, ?)",
+		1, "valid-name", []byte("[]"), []byte("{}"),
+	).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateStored(db); err == nil {
+		t.Fatal("ValidateStored accepted a non-object TLS server")
+	}
+}
+
+func TestEnsureSentinelIsIdempotent(t *testing.T) {
+	db := newTLSDB(t)
+	if err := EnsureSentinel(db); err != nil {
+		t.Fatal(err)
+	}
+	if err := EnsureSentinel(db); err != nil {
+		t.Fatal(err)
+	}
+	var count int64
+	if err := db.Model(&model.Tls{}).Where("id = ? AND name = ?", 0, "__none__").Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("TLS sentinel count = %d, want 1", count)
 	}
 }
 

@@ -16,6 +16,7 @@ import (
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/robfig/cron/v3"
 )
 
@@ -52,11 +53,18 @@ func (s *telegramTrackingScheduler) AddJob(string, cron.Job) (cron.EntryID, erro
 }
 func (*telegramTrackingScheduler) Schedule(cron.Schedule, cron.Job) cron.EntryID { return 0 }
 func (s *telegramTrackingScheduler) RemoveJob(cron.EntryID)                      { s.removed++ }
+func (s *telegramTrackingScheduler) RemoveJobAndWait(context.Context, cron.EntryID) error {
+	s.removed++
+	return nil
+}
 
 func TestTelegramComponentStartIsIdempotent(t *testing.T) {
 	scheduler := &telegramTrackingScheduler{}
 	c := &component{}
-	host := lifecycle.Context{Host: componenthost.Deps{Scheduler: scheduler}}
+	host := lifecycle.Context{Host: componenthost.Deps{
+		Scheduler: scheduler,
+		API:       componenthost.APIDeps{Runtime: service.NewRuntimeWithCoreProvider(nil)},
+	}}
 	if err := c.Start(context.Background(), host); err != nil {
 		t.Fatal(err)
 	}
@@ -74,6 +82,30 @@ func TestTelegramComponentStartIsIdempotent(t *testing.T) {
 	}
 	if scheduler.removed != 3 {
 		t.Fatalf("repeated Stop removed %d jobs", scheduler.removed)
+	}
+}
+
+func TestTelegramComponentStartRequiresSchedulerWithoutRetainedState(t *testing.T) {
+	c := &component{}
+	if err := c.start(context.Background(), nil, nil); err == nil {
+		t.Fatal("Start accepted a missing scheduler")
+	}
+	if c.started || c.notifier != nil || c.scheduler != nil || len(c.entryIDs) != 0 ||
+		c.unregisterEvent != nil || c.unregisterContribution != nil || c.unregisterBackupCodecs != nil ||
+		c.unregisterSettings != nil || c.unregisterLogCategory != nil || c.unregisterTokenScope != nil {
+		t.Fatalf("failed Start retained component state: %#v", c)
+	}
+}
+
+func TestTelegramComponentStartRequiresRuntimeWithoutRetainedState(t *testing.T) {
+	c := &component{}
+	if err := c.start(context.Background(), &telegramTrackingScheduler{}, nil); err == nil {
+		t.Fatal("Start accepted a missing runtime")
+	}
+	if c.started || c.notifier != nil || c.scheduler != nil || len(c.entryIDs) != 0 ||
+		c.unregisterEvent != nil || c.unregisterContribution != nil || c.unregisterBackupCodecs != nil ||
+		c.unregisterSettings != nil || c.unregisterLogCategory != nil || c.unregisterTokenScope != nil {
+		t.Fatalf("failed Start retained component state: %#v", c)
 	}
 }
 

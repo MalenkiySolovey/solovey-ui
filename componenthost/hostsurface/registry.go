@@ -3,6 +3,7 @@ package hostsurface
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"net/netip"
 	"sort"
 	"strings"
@@ -27,32 +28,43 @@ const (
 type Registry struct {
 	mu        sync.RWMutex
 	next      uint64
-	providers map[uint64]Provider
+	providers map[uint64]providerEntry
 	last      Snapshot
 	now       func() time.Time
 	flightMu  sync.Mutex
 	inFlight  chan struct{}
 }
 
-func NewRegistry() *Registry {
-	return &Registry{providers: make(map[uint64]Provider), now: time.Now}
+type providerEntry struct {
+	token    uint64
+	sourceID string
+	provider Provider
 }
 
-func (r *Registry) Register(provider Provider) func() {
-	if provider == nil {
-		return func() {}
+func NewRegistry() *Registry {
+	return &Registry{providers: make(map[uint64]providerEntry), now: time.Now}
+}
+
+func (r *Registry) Register(provider Provider) (func(), error) {
+	sourceID, ok := providerSourceID(provider)
+	if !ok {
+		return nil, errors.New("host surface provider is invalid")
 	}
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, current := range r.providers {
+		if current.sourceID == sourceID {
+			return nil, errors.New("host surface provider is already registered: " + sourceID)
+		}
+	}
 	if len(r.providers) >= maxProviders {
-		r.mu.Unlock()
-		panic("host surface provider registry capacity exceeded")
+		return nil, errors.New("host surface provider registry capacity exceeded")
 	}
 	id := r.next
 	r.next++
-	r.providers[id] = provider
-	r.mu.Unlock()
+	r.providers[id] = providerEntry{token: id, sourceID: sourceID, provider: provider}
 	var once sync.Once
-	return func() { once.Do(func() { r.mu.Lock(); delete(r.providers, id); r.mu.Unlock() }) }
+	return func() { once.Do(func() { r.mu.Lock(); delete(r.providers, id); r.mu.Unlock() }) }, nil
 }
 
 func (r *Registry) Snapshot() Snapshot {
@@ -62,6 +74,9 @@ func (r *Registry) Snapshot() Snapshot {
 }
 
 func (r *Registry) Reconcile(ctx context.Context) Snapshot {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	r.flightMu.Lock()
 	if r.inFlight != nil {
 		done := r.inFlight
@@ -84,17 +99,12 @@ func (r *Registry) Reconcile(ctx context.Context) Snapshot {
 	}()
 
 	r.mu.RLock()
-	providers := make([]Provider, 0, len(r.providers))
+	providers := make([]providerEntry, 0, len(r.providers))
 	for _, provider := range r.providers {
 		providers = append(providers, provider)
 	}
 	r.mu.RUnlock()
-	sort.Slice(providers, func(i, j int) bool { return providers[i].SourceID() < providers[j].SourceID() })
-	providerCounts := make(map[string]int, len(providers))
-	for _, provider := range providers {
-		providerCounts[provider.SourceID()]++
-	}
-	ambiguousProviders := make(map[string]bool)
+	sort.Slice(providers, func(i, j int) bool { return providers[i].sourceID < providers[j].sourceID })
 
 	now := r.now().UTC()
 	result := Snapshot{GeneratedAt: now.Unix(), Facts: []HostSurfaceFactV1{}}
@@ -103,19 +113,8 @@ func (r *Registry) Reconcile(ctx context.Context) Snapshot {
 		result.Facts = append(result.Facts, unknownFact("hostsurface", "hostsurface_provider_absent", now))
 	}
 	limits := DefaultLimits()
-	for _, provider := range providers {
-		if providerCounts[provider.SourceID()] > 1 {
-			if !ambiguousProviders[provider.SourceID()] {
-				if len(result.Facts) >= limits.MaxSockets {
-					result.Truncated = true
-					result.ReasonCodes = append(result.ReasonCodes, "inventory_truncated")
-					break
-				}
-				result.Facts = append(result.Facts, unknownFact(provider.SourceID(), "hostsurface_provider_ambiguous", now))
-				ambiguousProviders[provider.SourceID()] = true
-			}
-			continue
-		}
+	for _, entry := range providers {
+		provider := entry.provider
 		remaining := limits.MaxSockets - len(result.Facts)
 		if remaining <= 0 {
 			result.Truncated = true
@@ -126,17 +125,15 @@ func (r *Registry) Reconcile(ctx context.Context) Snapshot {
 		providerLimits.MaxSockets = remaining
 		providerTimeout := limits.Timeout
 		if configured, ok := provider.(observationTimeoutProvider); ok {
-			requested := configured.ObservationTimeout()
+			requested := safeObservationTimeout(configured)
 			if requested > providerTimeout && requested <= maxProviderObservationTimeout {
 				providerTimeout = requested
 			}
 		}
 		providerLimits.Timeout = providerTimeout
-		providerCtx, cancel := context.WithTimeout(ctx, providerTimeout)
-		observation, err := provider.Observe(providerCtx, providerLimits)
-		cancel()
+		observation, err := observeProvider(ctx, provider, providerLimits, providerTimeout)
 		if err != nil {
-			result.Facts = append(result.Facts, unknownFact(provider.SourceID(), "hostsurface_provider_unavailable", now))
+			result.Facts = append(result.Facts, unknownFact(entry.sourceID, "hostsurface_provider_unavailable", now))
 			continue
 		}
 		if len(observation.Facts) > remaining {
@@ -149,7 +146,7 @@ func (r *Registry) Reconcile(ctx context.Context) Snapshot {
 			fact.Schema = SchemaV1
 			fact.Source = strings.TrimSpace(fact.Source)
 			if fact.Source == "" {
-				fact.Source = provider.SourceID()
+				fact.Source = entry.sourceID
 			}
 			if fact.FirstSeen == 0 {
 				fact.FirstSeen = now.Unix()
@@ -174,7 +171,7 @@ func (r *Registry) Reconcile(ctx context.Context) Snapshot {
 		result.Truncated = result.Truncated || observation.Truncated
 		result.ReasonCodes = append(result.ReasonCodes, observation.ReasonCodes...)
 		if observation.OwnerObservationRevision != "" {
-			ownerRevisions = append(ownerRevisions, provider.SourceID()+":"+observation.OwnerObservationRevision)
+			ownerRevisions = append(ownerRevisions, entry.sourceID+":"+observation.OwnerObservationRevision)
 		}
 	}
 	result.ReasonCodes = normalizeReasons(result.ReasonCodes)
@@ -187,6 +184,55 @@ func (r *Registry) Reconcile(ctx context.Context) Snapshot {
 	r.last = cloneSnapshot(result)
 	r.mu.Unlock()
 	return cloneSnapshot(result)
+}
+
+func providerSourceID(provider Provider) (sourceID string, ok bool) {
+	if provider == nil {
+		return "", false
+	}
+	defer func() {
+		if recover() != nil {
+			sourceID, ok = "", false
+		}
+	}()
+	sourceID = strings.TrimSpace(provider.SourceID())
+	return sourceID, safeFactToken(sourceID, 128)
+}
+
+func safeObservationTimeout(provider observationTimeoutProvider) (timeout time.Duration) {
+	defer func() {
+		if recover() != nil {
+			timeout = 0
+		}
+	}()
+	return provider.ObservationTimeout()
+}
+
+func observeProvider(ctx context.Context, provider Provider, limits Limits, timeout time.Duration) (Observation, error) {
+	providerCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	type result struct {
+		observation Observation
+		err         error
+	}
+	done := make(chan result, 1)
+	go func() {
+		value := result{}
+		defer func() {
+			if recover() != nil {
+				value.observation = Observation{}
+				value.err = errors.New("host surface provider panicked")
+			}
+			done <- value
+		}()
+		value.observation, value.err = provider.Observe(providerCtx, limits)
+	}()
+	select {
+	case value := <-done:
+		return value.observation, value.err
+	case <-providerCtx.Done():
+		return Observation{}, providerCtx.Err()
+	}
 }
 
 func unknownFact(source, reason string, now time.Time) HostSurfaceFactV1 {
@@ -464,6 +510,6 @@ func cloneServiceFact(value ServiceFact) ServiceFact {
 
 var Default = NewRegistry()
 
-func Register(provider Provider) func()      { return Default.Register(provider) }
-func Reconcile(ctx context.Context) Snapshot { return Default.Reconcile(ctx) }
-func CurrentSnapshot() Snapshot              { return Default.Snapshot() }
+func Register(provider Provider) (func(), error) { return Default.Register(provider) }
+func Reconcile(ctx context.Context) Snapshot     { return Default.Reconcile(ctx) }
+func CurrentSnapshot() Snapshot                  { return Default.Snapshot() }

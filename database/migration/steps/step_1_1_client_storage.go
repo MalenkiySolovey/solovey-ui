@@ -38,25 +38,30 @@ func migrateClientSchema(db *gorm.DB) error {
 					Id   uint
 					Data string
 				}, 0)
-				db.Model(model.Client{}).Select("id", cname+" as data").Scan(&oldData)
+				if err := db.Model(model.Client{}).Select("id", cname+" as data").Scan(&oldData).Error; err != nil {
+					return err
+				}
 				for _, data := range oldData {
 					var newData []byte
 					switch cname {
 					case "inbounds":
 						inbounds := strings.Split(data.Data, ",")
-						newData, _ = json.MarshalIndent(inbounds, "", "  ")
+						newData, err = json.MarshalIndent(inbounds, "", "  ")
 					case "config":
 						jsonData := map[string]interface{}{}
 						if err := json.Unmarshal([]byte(data.Data), &jsonData); err != nil {
-							continue
+							return fmt.Errorf("decode legacy client %d config: %w", data.Id, err)
 						}
-						newData, _ = json.MarshalIndent(jsonData, "", "  ")
+						newData, err = json.MarshalIndent(jsonData, "", "  ")
 					case "links":
 						jsonData := make([]interface{}, 0)
 						if err := json.Unmarshal([]byte(data.Data), &jsonData); err != nil {
-							continue
+							return fmt.Errorf("decode legacy client %d links: %w", data.Id, err)
 						}
-						newData, _ = json.MarshalIndent(jsonData, "", "  ")
+						newData, err = json.MarshalIndent(jsonData, "", "  ")
+					}
+					if err != nil {
+						return fmt.Errorf("encode legacy client %d %s: %w", data.Id, cname, err)
 					}
 					err = db.Model(model.Client{}).Where("id = ?", data.Id).UpdateColumn(cname, newData).Error
 					if err != nil {
@@ -66,7 +71,7 @@ func migrateClientSchema(db *gorm.DB) error {
 			}
 		}
 	}
-	return nil
+	return rows.Err()
 }
 
 func deleteOldWebSecret(db *gorm.DB) error {

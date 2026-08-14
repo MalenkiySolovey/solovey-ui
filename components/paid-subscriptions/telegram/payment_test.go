@@ -3,15 +3,53 @@
 package telegram
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"testing"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
+	paidprovider "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
+	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
+
+func TestCreateOrderRejectsInvalidTTLBeforePersistence(t *testing.T) {
+	db := openTestDB(t)
+	if err := ensureTestSchema(db); err != nil {
+		t.Fatalf("EnsureSchema: %v", err)
+	}
+	settings := []model.Setting{
+		{Key: paidsettings.StarsEnabledKey, Value: "true"},
+		{Key: paidsettings.OrderTTLMinutesKey, Value: "invalid"},
+	}
+	if err := db.Create(&settings).Error; err != nil {
+		t.Fatalf("create settings: %v", err)
+	}
+
+	client := model.Client{Id: 7, Name: "ttl-test", Inbounds: json.RawMessage("[]")}
+	tariff := paid.Tariff{Id: 11, Name: "Stars", StarsAmount: 25, Enabled: true}
+	_, _, err := newPaymentCoordinator().CreateOrder(
+		context.Background(),
+		&client,
+		&tariff,
+		paidprovider.ProviderStars,
+		42,
+	)
+	if err == nil {
+		t.Fatal("expected invalid order TTL to be rejected")
+	}
+
+	var count int64
+	if err := db.Model(&paid.PaymentOrder{}).Count(&count).Error; err != nil {
+		t.Fatalf("count payment orders: %v", err)
+	}
+	if count != 0 {
+		t.Fatalf("payment orders persisted with invalid TTL: %d", count)
+	}
+}
 
 func TestApplyPaidOrderIdempotentRenewal(t *testing.T) {
 	db := openTestDB(t)

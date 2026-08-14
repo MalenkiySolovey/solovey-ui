@@ -25,6 +25,10 @@ assert_executable() {
     [[ -x "$1" ]] || fail "expected file to be executable: $1"
 }
 
+assert_not_exists() {
+    [[ ! -e "$1" && ! -L "$1" ]] || fail "expected file to be absent: $1"
+}
+
 assert_contains() {
     local file="$1"
     local pattern="$2"
@@ -42,11 +46,7 @@ SH
 printf 'fake manager\n'
 SH
 
-    cat > "${SRC}/solovey-protect-helper" <<'SH'
-#!/usr/bin/env bash
-printf 'fake restricted helper\n'
-SH
-	for name in solovey-privileged-broker solovey-ssh-proof solovey-broker-manifest; do
+	for name in solovey-privileged-broker solovey-ssh-proof solovey-broker-manifest solovey-owner-manifest; do
 		cat > "${SRC}/${name}" <<SH
 #!/usr/bin/env bash
 printf 'fake ${name}\n'
@@ -78,8 +78,9 @@ go=go version go1.25.0 linux/amd64
 sing_box=v1.12.0
 INFO
 
-    chmod +x "${SRC}/solovey-ui" "${SRC}/solovey-ui.sh" "${SRC}/solovey-protect-helper" \
+    chmod +x "${SRC}/solovey-ui" "${SRC}/solovey-ui.sh" \
 		"${SRC}/solovey-privileged-broker" "${SRC}/solovey-ssh-proof" "${SRC}/solovey-broker-manifest"
+	chmod +x "${SRC}/solovey-owner-manifest"
 }
 
 write_component_fixture() {
@@ -116,10 +117,10 @@ assert_archive_contract() {
     tar -xzf "${artifact}" -C "${EXTRACT}"
     assert_executable "${EXTRACT}/solovey-ui/solovey-ui"
     assert_executable "${EXTRACT}/solovey-ui/solovey-ui.sh"
-    assert_executable "${EXTRACT}/solovey-ui/solovey-protect-helper"
 	assert_executable "${EXTRACT}/solovey-ui/solovey-privileged-broker"
 	assert_executable "${EXTRACT}/solovey-ui/solovey-ssh-proof"
 	assert_executable "${EXTRACT}/solovey-ui/solovey-broker-manifest"
+	assert_executable "${EXTRACT}/solovey-ui/solovey-owner-manifest"
     assert_file "${EXTRACT}/solovey-ui/solovey-ui.service"
     assert_file "${EXTRACT}/solovey-ui/BUILD_INFO.txt"
     assert_contains "${EXTRACT}/solovey-ui/BUILD_INFO.txt" '^app=solovey-ui$'
@@ -133,8 +134,8 @@ assert_archive_contract() {
 solovey-ui/
 solovey-ui/BUILD_INFO.txt
 solovey-ui/solovey-broker-manifest
+solovey-ui/solovey-owner-manifest
 solovey-ui/solovey-privileged-broker
-solovey-ui/solovey-protect-helper
 solovey-ui/solovey-ssh-proof
 solovey-ui/solovey-ui
 solovey-ui/solovey-ui.service
@@ -173,6 +174,7 @@ assert_core_archive_contract() {
 	assert_executable "${EXTRACT}/solovey-ui/solovey-privileged-broker"
 	assert_executable "${EXTRACT}/solovey-ui/solovey-ssh-proof"
 	assert_executable "${EXTRACT}/solovey-ui/solovey-broker-manifest"
+	assert_not_exists "${EXTRACT}/solovey-ui/solovey-owner-manifest"
     assert_file "${EXTRACT}/solovey-ui/solovey-ui.service"
     assert_file "${EXTRACT}/solovey-ui/BUILD_INFO.txt"
     assert_contains "${EXTRACT}/solovey-ui/BUILD_INFO.txt" '^profile=core$'
@@ -223,10 +225,10 @@ write_component_fixture
 bash "${ROOT}/scripts/release-package-linux.sh" \
     --target linux-amd64 \
     --binary "${SRC}/solovey-ui" \
-    --helper "${SRC}/solovey-protect-helper" \
 	--broker "${SRC}/solovey-privileged-broker" \
 	--proof "${SRC}/solovey-ssh-proof" \
 	--manifest-writer "${SRC}/solovey-broker-manifest" \
+	--owner-manifest-writer "${SRC}/solovey-owner-manifest" \
     --manager "${SRC}/solovey-ui.sh" \
     --service "${SRC}/solovey-ui.service" \
 	--systemd-dir "${ROOT}/deploy/systemd" \
@@ -241,6 +243,7 @@ bash "${ROOT}/scripts/release-package-linux.sh" \
 	--broker "${SRC}/solovey-privileged-broker" \
 	--proof "${SRC}/solovey-ssh-proof" \
 	--manifest-writer "${SRC}/solovey-broker-manifest" \
+	--owner-manifest-writer "${SRC}/solovey-owner-manifest" \
     --manager "${SRC}/solovey-ui.sh" \
     --service "${SRC}/solovey-ui.service" \
 	--systemd-dir "${ROOT}/deploy/systemd" \

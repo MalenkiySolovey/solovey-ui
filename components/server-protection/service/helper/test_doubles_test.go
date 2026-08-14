@@ -72,25 +72,6 @@ func (m *MockInvoker) Invoke(ctx context.Context, request Request) (Response, In
 	return responseError(request, CodeMissingCapability, "mock_response_missing"), InvocationFacts{ExitClass: "mock"}, nil
 }
 
-type FakeListenerExecutor struct {
-	Requests []ListenerProbeRequest
-	Results  []ListenerProbeResult
-	Err      error
-}
-
-func (f *FakeListenerExecutor) Probe(_ context.Context, request ListenerProbeRequest) (*ListenerProbeResult, error) {
-	f.Requests = append(f.Requests, request)
-	if f.Err != nil {
-		return nil, f.Err
-	}
-	if len(f.Results) == 0 {
-		return &ListenerProbeResult{Reachable: true, OwnerMatched: true, OwnerClass: request.ExpectedOwner, Detail: "fake_listener_reachable"}, nil
-	}
-	result := f.Results[0]
-	f.Results = f.Results[1:]
-	return &result, nil
-}
-
 type FakeNginxExecutor struct {
 	mu                sync.Mutex
 	Support           NginxSupport
@@ -241,14 +222,10 @@ func (f *FakeNginxExecutor) Restore(_ context.Context, _ Correlation, r NginxRes
 	return &NginxResult{Revision: r.PreviousRevision, SHA256: r.ExpectedSHA256, PreviousRevision: current, PreviousSHA256: sha}, nil
 }
 
-func newContractEngineWithExecutors(root ManagedRoot, executor NFTExecutor, listener ListenerExecutor) ContractEngine {
-	return ContractEngine{root: root, executor: executor, listenerExecutor: listener}
-}
-
 func newContractEngineWithExecutor(root ManagedRoot, executor NFTExecutor) ContractEngine {
 	return ContractEngine{root: root, executor: executor}
 }
 
-func newContractEngineWithBackends(root ManagedRoot, nft NFTExecutor, nginx NginxExecutor, listener ListenerExecutor) ContractEngine {
-	return ContractEngine{root: root, executor: nft, nginxExecutor: nginx, listenerExecutor: listener}
+func newContractEngineWithBackends(root ManagedRoot, nft NFTExecutor, nginx NginxExecutor) ContractEngine {
+	return ContractEngine{root: root, executor: nft, nginxExecutor: nginx}
 }

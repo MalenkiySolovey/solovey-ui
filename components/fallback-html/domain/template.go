@@ -8,6 +8,7 @@ import (
 	stdhtml "html"
 	"html/template"
 	"net/url"
+	"regexp"
 	"strings"
 	"time"
 
@@ -472,9 +473,15 @@ func validateStaticHTMLURL(tag string, attr string, value string) error {
 	if value == "" || strings.HasPrefix(value, "#") {
 		return nil
 	}
+	if strings.Contains(value, "\\") {
+		return errors.New("static html templates must not use backslashes in URLs")
+	}
 	parsed, err := url.Parse(value)
 	if err != nil {
 		return err
+	}
+	if (parsed.Host != "" && parsed.Scheme == "") || strings.HasPrefix(value, "//") {
+		return errors.New("static html templates must not use protocol-relative URLs")
 	}
 	if !parsed.IsAbs() {
 		return nil
@@ -491,9 +498,40 @@ func validateStaticHTMLURL(tag string, attr string, value string) error {
 }
 
 func containsExternalCSSURL(value string) bool {
-	lower := strings.ToLower(value)
-	return strings.Contains(lower, "url(http://") || strings.Contains(lower, "url(https://") || strings.Contains(lower, "@import")
+	return ValidateStaticCSS(value) != nil
 }
+
+// ValidateStaticCSS rejects every CSS construct that can initiate a network
+// request. Fallback pages may only refer to component-owned relative assets.
+func ValidateStaticCSS(value string) error {
+	if strings.Contains(value, "\\") {
+		return errors.New("static css must not use escaped URL syntax")
+	}
+	withoutComments := staticCSSCommentPattern.ReplaceAllString(value, "")
+	if staticCSSImportPattern.MatchString(withoutComments) {
+		return errors.New("static css must not use @import")
+	}
+	for _, match := range staticCSSURLPattern.FindAllStringSubmatch(withoutComments, -1) {
+		raw := strings.TrimSpace(match[1])
+		if len(raw) >= 2 && ((raw[0] == '\'' && raw[len(raw)-1] == '\'') || (raw[0] == '"' && raw[len(raw)-1] == '"')) {
+			raw = strings.TrimSpace(raw[1 : len(raw)-1])
+		}
+		if raw == "" || strings.HasPrefix(raw, "#") {
+			continue
+		}
+		parsed, err := url.Parse(raw)
+		if err != nil || parsed.IsAbs() || parsed.Host != "" || strings.HasPrefix(raw, "//") {
+			return errors.New("static css must not load external URLs")
+		}
+	}
+	return nil
+}
+
+var (
+	staticCSSCommentPattern = regexp.MustCompile(`(?s)/\*.*?\*/`)
+	staticCSSImportPattern  = regexp.MustCompile(`(?i)@import\b`)
+	staticCSSURLPattern     = regexp.MustCompile(`(?is)\burl\s*\(\s*([^)]*)\)`)
+)
 
 var allowedHTMLTags = map[string]bool{
 	"a": true, "blockquote": true, "br": true, "code": true, "em": true, "h2": true, "h3": true,

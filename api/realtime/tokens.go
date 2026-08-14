@@ -117,7 +117,7 @@ func consumeBoundWSToken(token string) (service.RealtimeSessionBinding, bool) {
 	delete(wsTokens.tokens, matchedKey)
 	now := time.Now()
 	matchedExpiresAt := time.Unix(0, matchedExpiresAtUnixNano)
-	if matched != 1 || now.After(matchedExpiresAt) {
+	if matched != 1 || !now.Before(matchedExpiresAt) {
 		return service.RealtimeSessionBinding{}, false
 	}
 	return bindings[matchedUserIndex-1], true
@@ -157,7 +157,7 @@ func scheduleWSTokenSweepLocked() {
 
 func sweepWSTokensLocked(now time.Time) {
 	for token, data := range wsTokens.tokens {
-		if now.After(data.expiresAt) {
+		if !now.Before(data.expiresAt) {
 			delete(wsTokens.tokens, token)
 		}
 	}

@@ -420,7 +420,7 @@ const applyCandidate = async () => {
 
 const refreshCandidate = async () => {
   const operationId = candidate.value?.operationId
-  if (!operationId) return
+  if (!operationId || candidateRefreshing.value) return
   candidateRefreshing.value = true
   const [candidateResponse, reconnectResponse, timelineResponse] = await Promise.all([
     getSSHCandidate(operationId), getSSHReconnectState(operationId), getSSHTimeline(operationId),
@@ -492,6 +492,7 @@ const formatTime = (unix: number) => unix > 0 ? new Intl.DateTimeFormat(undefine
 onMounted(() => {
   void loadAll()
   candidateTimer = window.setInterval(() => {
+    if (document.hidden) return
     if (candidate.value && !terminalCandidateStates.has(candidate.value.state)) void refreshCandidate()
   }, 5000)
 })

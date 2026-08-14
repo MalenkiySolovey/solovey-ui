@@ -6,7 +6,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/http"
 	"strings"
+	"time"
 
 	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
 	paidcore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
@@ -38,9 +40,16 @@ func isAlreadyRefunded(err error) bool {
 // the resolved client; amounts are snapshotted server-side from the tariff.
 type paymentCoordinator struct {
 	setting paidSettings
+	runtime *service.Runtime
 }
 
-func newPaymentCoordinator() *paymentCoordinator { return &paymentCoordinator{} }
+func newPaymentCoordinator(runtime ...*service.Runtime) *paymentCoordinator {
+	coordinator := &paymentCoordinator{}
+	if len(runtime) > 0 {
+		coordinator.runtime = runtime[0]
+	}
+	return coordinator
+}
 
 // providerByKind builds a configured provider if it is enabled and has its
 // token set; otherwise nil.
@@ -73,7 +82,9 @@ func (p *paymentCoordinator) providerByKind(kind paidprovider.ProviderKind) paid
 		if on, _ := s.GetPaidSubCryptoBotEnabled(); on {
 			if tok, _ := s.GetPaidSubCryptoBotToken(); tok != "" {
 				return paidprovider.NewCryptoBotProvider(tok, paidprovider.CryptoBotDeps{
-					NewHTTPClient: newPaidSubHTTPClient,
+					NewHTTPClient: func(timeout time.Duration) (*http.Client, error) {
+						return newPaidSubHTTPClient(p.runtime, timeout)
+					},
 					Notify: func(event string, details map[string]string) {
 						service.NotifyPanelEvent(event, details)
 					},
@@ -132,18 +143,33 @@ func (p *paymentCoordinator) CreateOrder(ctx context.Context, client *model.Clie
 		amount = tariff.Price
 		currency = tariff.Currency
 	}
-	ttlMin, _ := p.setting.GetPaidSubOrderTTLMinutes()
+	ttlMin, err := p.setting.GetPaidSubOrderTTLMinutes()
+	if err != nil || ttlMin < 1 {
+		return nil, nil, fmt.Errorf("invalid paid subscription order TTL")
+	}
 	now := nowUnix()
-	order := paidstore.NewPendingOrder(client, tariff, kind, amount, currency, tgUserId, common.Random(32), now, ttlMin)
+	payload, err := common.SecureRandom(32)
+	if err != nil {
+		return nil, nil, err
+	}
+	order := paidstore.NewPendingOrder(client, tariff, kind, amount, currency, tgUserId, payload, now, ttlMin)
 	db := dbsqlite.DB()
 	if err := db.Create(order).Error; err != nil {
 		return nil, nil, err
 	}
 	inv, err := prov.CreateInvoice(ctx, order, tariff, client)
 	if err != nil {
-		return nil, nil, err
+		return nil, nil, errors.Join(err, paidstore.MarkOrderFailed(db, order.Id))
 	}
-	_ = paidstore.SaveInvoiceResult(db, order.Id, inv)
+	if inv == nil {
+		return nil, nil, errors.Join(
+			errors.New("provider returned an empty invoice"),
+			paidstore.MarkOrderFailed(db, order.Id),
+		)
+	}
+	if err := paidstore.SaveInvoiceResult(db, order.Id, inv); err != nil {
+		return nil, nil, errors.Join(err, paidstore.MarkOrderFailed(db, order.Id))
+	}
 	return order, inv, nil
 }
 
@@ -155,8 +181,8 @@ func (p *paymentCoordinator) findOrderByPayload(payload string) (*paidcore.Payme
 	return paidstore.FindOrderByPayload(dbsqlite.DB(), payload)
 }
 
-func (p *paymentCoordinator) markFailed(id uint) {
-	paidstore.MarkOrderFailed(dbsqlite.DB(), id)
+func (p *paymentCoordinator) markFailed(id uint) error {
+	return paidstore.MarkOrderFailed(dbsqlite.DB(), id)
 }
 
 // ApplyPaidOrder finalizes a pending order and renews the client exactly once.
@@ -177,11 +203,11 @@ func (p *paymentCoordinator) ApplyPaidOrder(orderID uint, chargeID string, raw [
 	// Post-commit: re-add the (re-enabled) user to its inbounds in the running
 	// core. A restart failure does not roll back the paid renewal (logged).
 	if len(result.InboundIDs) > 0 {
-		if rErr := (&service.InboundService{}).RestartInbounds(dbsqlite.DB(), result.InboundIDs); rErr != nil {
+		if rErr := (&service.InboundService{Runtime: p.runtime}).RestartInbounds(dbsqlite.DB(), result.InboundIDs); rErr != nil {
 			logger.Warning("paidsub: restart inbounds after renewal failed: ", rErr)
 		}
 	}
-	_ = (&service.AuditService{}).Record(service.AuditEvent{
+	_ = (&service.AuditService{Runtime: p.runtime}).Record(service.AuditEvent{
 		Actor:    "PaidSubBot",
 		Event:    "paidsub_paid",
 		Resource: "paidsub",
@@ -234,11 +260,11 @@ func (p *paymentCoordinator) finalizeRefund(orderID uint, revoke bool) error {
 		return err
 	}
 	if len(inboundIds) > 0 {
-		if rErr := (&service.InboundService{}).RestartInbounds(dbsqlite.DB(), inboundIds); rErr != nil {
+		if rErr := (&service.InboundService{Runtime: p.runtime}).RestartInbounds(dbsqlite.DB(), inboundIds); rErr != nil {
 			logger.Warning("paidsub: restart inbounds after refund failed: ", rErr)
 		}
 	}
-	_ = (&service.AuditService{}).Record(service.AuditEvent{
+	_ = (&service.AuditService{Runtime: p.runtime}).Record(service.AuditEvent{
 		Actor:    "PaidSubBot",
 		Event:    "paidsub_refunded",
 		Resource: "paidsub",
@@ -268,10 +294,11 @@ func (p *paymentCoordinator) refundOrder(ctx context.Context, orderID uint, revo
 		return "", errRefundNotApplicable
 	}
 	if order.Provider == string(paidprovider.ProviderStars) {
-		sender, err := newSenderBot()
+		sender, err := newSenderBot(p.runtime)
 		if err != nil {
 			return "", err
 		}
+		defer sender.closeIdleConnections()
 		charge := strings.TrimPrefix(order.ProviderChargeID, "tg:")
 		if charge == "" {
 			return "", fmt.Errorf("order has no Stars charge id")
@@ -295,8 +322,8 @@ func (p *paymentCoordinator) refundOrder(ctx context.Context, orderID uint, revo
 // RefundOrder performs the admin-facing refund operation. Telegram Stars need
 // the bot transport; other providers are finalized locally after an external
 // dashboard refund.
-func RefundOrder(ctx context.Context, orderID uint, revoke bool) (string, error) {
-	return newPaymentCoordinator().refundOrder(ctx, orderID, revoke)
+func RefundOrder(ctx context.Context, runtime *service.Runtime, orderID uint, revoke bool) (string, error) {
+	return newPaymentCoordinator(runtime).refundOrder(ctx, orderID, revoke)
 }
 
 // ---- bot purchase flow ----

@@ -150,7 +150,7 @@ platform=linux/amd64
 sing_box=v-test
 INFO
     cp "${ROOT}/solovey-ui.service" "${release_dir}/solovey-ui.service"
-    for name in solovey-privileged-broker solovey-ssh-proof solovey-broker-manifest; do
+    for name in solovey-privileged-broker solovey-ssh-proof solovey-broker-manifest solovey-owner-manifest; do
         cat > "${release_dir}/${name}" <<'SH'
 #!/usr/bin/env bash
 exit 0
@@ -162,7 +162,7 @@ SH
         printf 'fixture deployment asset %s\n' "${unit}" > "${release_dir}/systemd/${unit}"
     done
     chmod +x "${release_dir}/solovey-ui" "${release_dir}/solovey-ui.sh" "${release_dir}/solovey-privileged-broker" \
-        "${release_dir}/solovey-ssh-proof" "${release_dir}/solovey-broker-manifest"
+		"${release_dir}/solovey-ssh-proof" "${release_dir}/solovey-broker-manifest" "${release_dir}/solovey-owner-manifest"
 
     tar -czf "${artifact}" -C "${FIXTURE}/release" solovey-ui
     (cd "${FIXTURE}" && sha256sum "$(basename "${artifact}")" > "$(basename "${artifact}").sha256")

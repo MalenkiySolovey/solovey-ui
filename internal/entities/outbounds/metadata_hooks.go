@@ -65,12 +65,6 @@ func annotateMetadata(tx *gorm.DB, outbounds []map[string]interface{}) error {
 	return nil
 }
 
-func ResetMetadataAnnotatorsForTest() {
-	metadataAnnotators.Lock()
-	metadataAnnotators.entries = map[string]registeredMetadataAnnotator{}
-	metadataAnnotators.Unlock()
-}
-
 type metadataAnnotatorEntry struct {
 	name string
 	fn   MetadataAnnotator

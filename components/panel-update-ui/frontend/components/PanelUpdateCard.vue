@@ -9,7 +9,7 @@
     </div>
 
     <section class="panel-update__components">
-      <div class="panel-update__section-title">Panel version</div>
+      <div class="panel-update__section-title">{{ $t('panelUpdateComponent.panelVersion') }}</div>
       <div class="panel-update__panel-card">
         <div class="panel-update__row">
           <v-btn-toggle v-model="channel" color="primary" density="comfortable" divided mandatory variant="outlined">
@@ -40,46 +40,6 @@
       {{ $t('update.assetUnavailable') }}
     </v-alert>
 
-    <v-sheet v-if="status?.updateAvailable && status.releaseNotes" class="panel-update__notes" rounded>
-      <div class="panel-update__notes-title">{{ $t('update.releaseNotes') }}</div>
-      <div class="panel-update__notes-body">
-        <template v-for="(block, index) in releaseNoteBlocks" :key="index">
-          <component
-            :is="headingTag(block.level)"
-            v-if="block.type === 'heading'"
-            class="panel-update__notes-heading"
-          >
-            <template v-for="(segment, segmentIndex) in block.inline" :key="segmentIndex">
-              <code v-if="segment.type === 'code'">{{ segment.text }}</code>
-              <strong v-else-if="segment.type === 'strong'">{{ segment.text }}</strong>
-              <span v-else>{{ segment.text }}</span>
-            </template>
-          </component>
-          <p v-else-if="block.type === 'paragraph'" class="panel-update__notes-paragraph">
-            <template v-for="(segment, segmentIndex) in block.inline" :key="segmentIndex">
-              <code v-if="segment.type === 'code'">{{ segment.text }}</code>
-              <strong v-else-if="segment.type === 'strong'">{{ segment.text }}</strong>
-              <span v-else>{{ segment.text }}</span>
-            </template>
-          </p>
-          <component
-            :is="block.ordered ? 'ol' : 'ul'"
-            v-else-if="block.type === 'list'"
-            class="panel-update__notes-list"
-          >
-            <li v-for="(item, itemIndex) in block.items" :key="itemIndex">
-              <template v-for="(segment, segmentIndex) in item" :key="segmentIndex">
-                <code v-if="segment.type === 'code'">{{ segment.text }}</code>
-                <strong v-else-if="segment.type === 'strong'">{{ segment.text }}</strong>
-                <span v-else>{{ segment.text }}</span>
-              </template>
-            </li>
-          </component>
-          <pre v-else-if="block.type === 'code'" class="panel-update__notes-code"><code>{{ block.text }}</code></pre>
-          <v-divider v-else-if="block.type === 'rule'" class="my-3" />
-        </template>
-      </div>
-    </v-sheet>
 
     <div v-if="jobActive" class="panel-update__progress">
       <v-progress-linear color="primary" indeterminate rounded />
@@ -98,19 +58,13 @@
     <v-divider />
 
     <section class="panel-update__components">
-      <div class="panel-update__section-title">Component catalog</div>
+      <div class="panel-update__section-title">{{ $t('panelUpdateComponent.componentCatalog') }}</div>
       <div class="panel-update__catalog-card">
-        <span>Binary profile: <strong>{{ componentInventory?.binaryProfile || 'unknown' }}</strong></span>
-        <span v-if="componentInventory?.releaseVersion">GitHub catalog: <strong>{{ componentInventory.releaseVersion }}</strong></span>
-        <span v-else>GitHub catalog: <strong>not loaded</strong></span>
-        <span v-if="componentInventory?.releaseSource" class="panel-update__component-meta">{{ componentInventory.releaseSource }}</span>
+        <span>{{ $t('panelUpdateComponent.binaryProfile') }}: <strong>{{ componentInventory?.binaryProfile || $t('panelUpdateComponent.unknown') }}</strong></span>
+        <span>{{ $t('panelUpdateComponent.authority') }}: <strong>{{ $t('panelUpdateComponent.runningBinary') }}</strong></span>
       </div>
-      <v-alert v-if="componentInventory?.releaseError" density="compact" type="warning" variant="tonal">
-        GitHub component catalog could not be loaded: {{ componentInventory.releaseError }}
-      </v-alert>
-
-      <div class="panel-update__section-title">Installed components</div>
-      <div v-if="installedComponents.length === 0" class="panel-update__empty">No installed components.</div>
+      <div class="panel-update__section-title">{{ $t('panelUpdateComponent.installedComponents') }}</div>
+      <div v-if="installedComponents.length === 0" class="panel-update__empty">{{ $t('panelUpdateComponent.noneInstalled') }}</div>
       <div
         v-for="component in installedComponents"
         :key="component.id"
@@ -122,10 +76,10 @@
         </div>
         <div class="panel-update__component-actions">
           <v-chip :color="component.active ? 'success' : 'warning'" density="compact" label size="small">
-            {{ component.active ? 'Enabled' : 'Disabled' }}
+            {{ component.active ? $t('panelUpdateComponent.enabled') : $t('panelUpdateComponent.disabled') }}
           </v-chip>
           <v-chip v-if="component.locked" color="info" density="compact" label size="small">
-            Locked
+            {{ $t('panelUpdateComponent.locked') }}
           </v-chip>
           <v-btn
             v-if="component.active && !component.locked"
@@ -135,7 +89,7 @@
             :loading="isComponentAction(component, 'disable')"
             @click="setComponentEnabled(component, false)"
           >
-            Disable
+            {{ $t('panelUpdateComponent.disable') }}
           </v-btn>
           <v-btn
             v-else-if="!component.locked"
@@ -146,7 +100,7 @@
             :loading="isComponentAction(component, 'enable')"
             @click="setComponentEnabled(component, true)"
           >
-            Enable
+            {{ $t('panelUpdateComponent.enable') }}
           </v-btn>
           <v-btn
             v-if="component.removable && !component.locked"
@@ -157,13 +111,13 @@
             :loading="isComponentAction(component, 'remove')"
             @click="openComponentRemoveConfirm(component)"
           >
-            Remove
+            {{ $t('panelUpdateComponent.remove') }}
           </v-btn>
         </div>
       </div>
 
-      <div class="panel-update__section-title">Available for this build</div>
-      <div v-if="availableComponents.length === 0" class="panel-update__empty">No bundled components are waiting for install.</div>
+      <div class="panel-update__section-title">{{ $t('panelUpdateComponent.availableForBuild') }}</div>
+      <div v-if="availableComponents.length === 0" class="panel-update__empty">{{ $t('panelUpdateComponent.noneAvailable') }}</div>
       <div
         v-for="component in availableComponents"
         :key="component.id"
@@ -181,12 +135,12 @@
           :loading="isComponentAction(component, 'install')"
           @click="setComponentInstalled(component, true)"
         >
-          {{ component.installable ? 'Install' : 'Unavailable' }}
+          {{ component.installable ? $t('panelUpdateComponent.install') : $t('panelUpdateComponent.unavailable') }}
         </v-btn>
       </div>
 
-      <div class="panel-update__section-title">Not available in this profile</div>
-      <div v-if="unavailableComponents.length === 0" class="panel-update__empty">No unavailable components detected.</div>
+      <div class="panel-update__section-title">{{ $t('panelUpdateComponent.unavailableForProfile') }}</div>
+      <div v-if="unavailableComponents.length === 0" class="panel-update__empty">{{ $t('panelUpdateComponent.noneUnavailable') }}</div>
       <div
         v-for="component in unavailableComponents"
         :key="component.id"
@@ -200,7 +154,7 @@
           </div>
         </div>
         <v-btn disabled size="small" variant="tonal">
-          {{ component.compatible ? 'Not bundled' : 'Requires newer panel' }}
+          {{ component.compatible ? $t('panelUpdateComponent.notBundled') : $t('panelUpdateComponent.requiresNewerPanel') }}
         </v-btn>
       </div>
     </section>
@@ -223,37 +177,25 @@
 
     <v-dialog v-model="componentRemoveConfirm" max-width="460">
       <v-card>
-        <v-card-title>Remove component</v-card-title>
+        <v-card-title>{{ $t('panelUpdateComponent.removeTitle') }}</v-card-title>
         <v-card-text>
           <v-alert class="mb-3" density="compact" type="warning" variant="tonal">
-            Component footprint will be removed from this panel profile. Database data stays intact.
+            {{ $t('panelUpdateComponent.removeWarning') }}
           </v-alert>
-          <p class="mb-3">Confirm removing <strong>{{ componentRemoveTarget?.name }}</strong>. Deleting its data requires a fresh security verification.</p>
+          <p class="mb-3">{{ $t('panelUpdateComponent.removeConfirm', { name: componentRemoveTarget?.name }) }}</p>
           <v-text-field
             v-model="componentRemovePassword"
             autocomplete="current-password"
             density="comfortable"
-            :hint="componentRemoveDeleteData ? $t('security.stepUpCredentialHint') : undefined"
-            :label="componentRemoveDeleteData ? $t('security.stepUpCredential') : 'Password'"
-            :persistent-hint="componentRemoveDeleteData"
+            :label="$t('panelUpdateComponent.password')"
             type="password"
             variant="outlined"
           />
-          <v-checkbox
-            v-model="componentRemoveDeleteData"
-            color="error"
-            density="compact"
-            hide-details
-            label="Also delete component database data"
-          />
-          <div class="panel-update__component-meta">
-            Keep this unchecked to remove only the component footprint. Database rows stay available for reinstall.
-          </div>
         </v-card-text>
         <v-card-actions>
           <v-spacer />
           <v-btn variant="text" @click="componentRemoveConfirm = false">{{ $t('cancel') }}</v-btn>
-          <v-btn color="error" :disabled="!componentRemovePassword" :loading="!!componentAction" @click="removeComponent">Remove</v-btn>
+          <v-btn color="error" :disabled="!componentRemovePassword" :loading="!!componentAction" @click="removeComponent">{{ $t('panelUpdateComponent.remove') }}</v-btn>
         </v-card-actions>
       </v-card>
     </v-dialog>
@@ -261,11 +203,11 @@
 </template>
 
 <script lang="ts" setup>
-import { computed } from 'vue'
-
-import { parseMarkdownBlocks } from '@/plugins/markdown'
 import { usePanelUpdate } from '../composables/usePanelUpdate'
 import type { ComponentCatalogStatus } from '../types'
+import { useI18n } from 'vue-i18n'
+
+const { t } = useI18n()
 
 const {
   applying,
@@ -277,7 +219,6 @@ const {
   componentAction,
   componentInventory,
   componentRemoveConfirm,
-  componentRemoveDeleteData,
   componentRemovePassword,
   componentRemoveTarget,
   confirm,
@@ -294,18 +235,16 @@ const {
   unavailableComponents,
 } = usePanelUpdate()
 
-const releaseNoteBlocks = computed(() => parseMarkdownBlocks(status.value?.releaseNotes || ''))
-const headingTag = (level = 3) => `h${Math.min(Math.max(level + 2, 4), 6)}`
 const isComponentAction = (component: ComponentCatalogStatus, action: string) => componentAction.value === `${component.id}:${action}`
 const componentMeta = (component: ComponentCatalogStatus) => {
   const parts = [component.id]
-  if (component.version) parts.push(`current ${component.version}`)
-  if (component.latestVersion && component.latestVersion !== component.version) parts.push(`latest ${component.latestVersion}`)
-  if (component.requiredPanelVersion || component.since) parts.push(`requires panel ${component.requiredPanelVersion || component.since}`)
+  if (component.version) parts.push(`${t('panelUpdateComponent.current')} ${component.version}`)
+  if (component.latestVersion && component.latestVersion !== component.version) parts.push(`${t('panelUpdateComponent.latest')} ${component.latestVersion}`)
+  if (component.requiredPanelVersion || component.since) parts.push(`${t('panelUpdateComponent.requiresPanel')} ${component.requiredPanelVersion || component.since}`)
   parts.push(component.delivery)
-  if (!component.compatible) parts.push('incompatible')
+  if (!component.compatible) parts.push(t('panelUpdateComponent.incompatible'))
   if (component.locked && component.lockedReason) parts.push(component.lockedReason)
-  else if (!component.installable && !component.removable && !component.availableInBinary) parts.push('release-only')
+  else if (!component.installable && !component.removable && !component.availableInBinary) parts.push(t('panelUpdateComponent.releaseOnly'))
   return parts.join(' / ')
 }
 </script>
@@ -318,18 +257,6 @@ const componentMeta = (component: ComponentCatalogStatus) => {
 .panel-update__row, .panel-update__versions { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; }
 .panel-update__row { justify-content: space-between; }
 .panel-update__versions { font-size: 0.9rem; }
-.panel-update__notes { background: rgba(var(--v-theme-surface-variant), 0.18); max-height: 220px; overflow: auto; padding: 12px; }
-.panel-update__notes-title { font-size: 0.8rem; font-weight: 600; margin-bottom: 6px; opacity: 0.8; }
-.panel-update__notes-body { font-size: 0.84rem; line-height: 1.5; word-break: break-word; }
-.panel-update__notes-heading { font-size: 0.92rem; font-weight: 650; margin: 10px 0 4px; }
-.panel-update__notes-heading:first-child,
-.panel-update__notes-paragraph:first-child,
-.panel-update__notes-list:first-child,
-.panel-update__notes-code:first-child { margin-top: 0; }
-.panel-update__notes-paragraph { margin: 0 0 8px; }
-.panel-update__notes-list { margin: 0 0 8px 18px; padding: 0; }
-.panel-update__notes-code { background: rgba(var(--v-theme-on-surface), 0.08); border-radius: 6px; margin: 0 0 8px; overflow: auto; padding: 8px; }
-.panel-update__notes-body code { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 0.82em; }
 .panel-update__progress { display: grid; gap: 6px; }
 .panel-update__actions { display: flex; justify-content: flex-end; }
 .panel-update__components { display: grid; gap: 10px; min-width: 0; }

@@ -3,8 +3,7 @@ package steps
 import (
 	"encoding/json"
 	"errors"
-	"os"
-	"path/filepath"
+	"fmt"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 
@@ -18,33 +17,20 @@ type InboundData struct {
 	OutJson json.RawMessage
 }
 
-func moveJsonToDb(db *gorm.DB) error {
-	binFolderPath := os.Getenv("SUI_BIN_FOLDER")
-	if binFolderPath == "" {
-		binFolderPath = "bin"
-	}
-	dir, err := filepath.Abs(filepath.Dir(os.Args[0]))
-	if err != nil {
-		return err
-	}
-	configPath := dir + "/" + binFolderPath + "/config.json"
-	// #nosec G703 -- configPath derives from the operator-set SUI_BIN_FOLDER under the app dir.
-	if _, err := os.Stat(configPath); errors.Is(err, os.ErrNotExist) {
+func moveJSONToDB(db *gorm.DB, data []byte) error {
+	if len(data) == 0 {
 		return nil
 	}
-
-	// #nosec G304 G703 -- configPath derives from the operator-set SUI_BIN_FOLDER under the app dir.
-	data, err := os.ReadFile(configPath)
-	if err != nil {
-		return err
-	}
 	var oldConfig map[string]interface{}
-	err = json.Unmarshal(data, &oldConfig)
-	if err != nil {
+	if err := json.Unmarshal(data, &oldConfig); err != nil {
 		return err
 	}
+	var err error
 
-	oldInbounds := oldConfig["inbounds"].([]interface{})
+	oldInbounds, ok := oldConfig["inbounds"].([]interface{})
+	if !ok {
+		return errors.New("legacy config inbounds must be an array")
+	}
 	if err := db.Migrator().DropTable(&model.Inbound{}); err != nil {
 		return err
 	}
@@ -52,7 +38,10 @@ func moveJsonToDb(db *gorm.DB) error {
 		return err
 	}
 	for _, inbound := range oldInbounds {
-		inbObj, _ := inbound.(map[string]interface{})
+		inbObj, ok := inbound.(map[string]interface{})
+		if !ok {
+			return errors.New("legacy config inbound must be an object")
+		}
 		tag, _ := inbObj["tag"].(string)
 		if tlsObj, ok := inbObj["tls"]; ok {
 			var tls_id uint
@@ -65,7 +54,10 @@ func moveJsonToDb(db *gorm.DB) error {
 			if tls_id > 0 {
 				inbObj["tls_id"] = tls_id
 			} else {
-				tls_server, _ := json.MarshalIndent(tlsObj, "", "  ")
+				tls_server, marshalErr := json.MarshalIndent(tlsObj, "", "  ")
+				if marshalErr != nil {
+					return fmt.Errorf("encode legacy TLS for inbound %q: %w", tag, marshalErr)
+				}
 				if len(tls_server) > 5 {
 					newTls := &model.Tls{
 						Name:   tag,
@@ -82,7 +74,9 @@ func moveJsonToDb(db *gorm.DB) error {
 		}
 
 		var inbData InboundData
-		db.Raw("select id,addrs,out_json from inbound_data where tag = ?", tag).Find(&inbData)
+		if err := db.Raw("select id,addrs,out_json from inbound_data where tag = ?", tag).Find(&inbData).Error; err != nil {
+			return err
+		}
 		if inbData.Id > 0 {
 			inbObj["out_json"] = inbData.OutJson
 			var addrs []map[string]interface{}
@@ -117,7 +111,10 @@ func moveJsonToDb(db *gorm.DB) error {
 		delete(inbObj, "sniff_override_destination")
 		delete(inbObj, "sniff_timeout")
 		delete(inbObj, "domain_strategy")
-		inbJson, _ := json.Marshal(inbObj)
+		inbJson, err := json.Marshal(inbObj)
+		if err != nil {
+			return fmt.Errorf("encode legacy inbound %q: %w", tag, err)
+		}
 
 		var newInbound model.Inbound
 		err = newInbound.UnmarshalJSON(inbJson)
@@ -134,7 +131,10 @@ func moveJsonToDb(db *gorm.DB) error {
 	blockOutboundTags := []string{}
 	dnsOutboundTags := []string{}
 
-	oldOutbounds := oldConfig["outbounds"].([]interface{})
+	oldOutbounds, ok := oldConfig["outbounds"].([]interface{})
+	if !ok {
+		return errors.New("legacy config outbounds must be an array")
+	}
 	if err := db.Migrator().DropTable(&model.Outbound{}, &model.Endpoint{}); err != nil {
 		return err
 	}
@@ -142,8 +142,15 @@ func moveJsonToDb(db *gorm.DB) error {
 		return err
 	}
 	for _, outbound := range oldOutbounds {
-		outType, _ := outbound.(map[string]interface{})["type"].(string)
-		outboundRaw, _ := json.MarshalIndent(outbound, "", "  ")
+		outboundObject, ok := outbound.(map[string]interface{})
+		if !ok {
+			return errors.New("legacy config outbound must be an object")
+		}
+		outType, _ := outboundObject["type"].(string)
+		outboundRaw, err := json.MarshalIndent(outboundObject, "", "  ")
+		if err != nil {
+			return fmt.Errorf("encode legacy outbound: %w", err)
+		}
 		if outType == "wireguard" { // Check if it is Entrypoint
 			var newEntrypoint model.Endpoint
 			err = newEntrypoint.UnmarshalJSON(outboundRaw)
@@ -166,7 +173,10 @@ func moveJsonToDb(db *gorm.DB) error {
 				if err := json.Unmarshal(newOutbound.Options, &options); err == nil {
 					delete(options, "override_address")
 					delete(options, "override_port")
-					newOutbound.Options, _ = json.Marshal(options)
+					newOutbound.Options, err = json.Marshal(options)
+					if err != nil {
+						return fmt.Errorf("encode legacy direct outbound options: %w", err)
+					}
 				}
 			}
 
@@ -190,7 +200,10 @@ func moveJsonToDb(db *gorm.DB) error {
 		if rules, hasRules := routingRules["rules"].([]interface{}); hasRules {
 			hasDns := false
 			for index, rule := range rules {
-				ruleObj, _ := rule.(map[string]interface{})
+				ruleObj, ok := rule.(map[string]interface{})
+				if !ok {
+					return errors.New("legacy routing rule must be an object")
+				}
 				isBlock := false
 				isDns := false
 				outboundTag, _ := ruleObj["outbound"].(string)
@@ -225,10 +238,15 @@ func moveJsonToDb(db *gorm.DB) error {
 	}
 
 	// Remove v2rayapi and clashapi from experimental config
-	experimental := oldConfig["experimental"].(map[string]interface{})
-	delete(experimental, "v2ray_api")
-	delete(experimental, "clash_api")
-	oldConfig["experimental"] = experimental
+	if experimentalValue, exists := oldConfig["experimental"]; exists {
+		experimental, ok := experimentalValue.(map[string]interface{})
+		if !ok {
+			return errors.New("legacy config experimental must be an object")
+		}
+		delete(experimental, "v2ray_api")
+		delete(experimental, "clash_api")
+		oldConfig["experimental"] = experimental
+	}
 
 	// Save the other configs
 	var otherConfigs json.RawMessage
@@ -261,7 +279,7 @@ func migrateTls(db *gorm.DB) error {
 		var tlsClient map[string]interface{}
 		err = json.Unmarshal(tls.Client, &tlsClient)
 		if err != nil {
-			continue
+			return fmt.Errorf("decode legacy TLS client %d: %w", tls.Id, err)
 		}
 		for key := range tlsClient {
 			switch key {
@@ -271,7 +289,10 @@ func migrateTls(db *gorm.DB) error {
 				delete(tlsClient, key)
 			}
 		}
-		tlsConfig[index].Client, _ = json.MarshalIndent(tlsClient, "", "  ")
+		tlsConfig[index].Client, err = json.MarshalIndent(tlsClient, "", "  ")
+		if err != nil {
+			return fmt.Errorf("encode legacy TLS client %d: %w", tls.Id, err)
+		}
 	}
 
 	return db.Save(&tlsConfig).Error
@@ -302,17 +323,23 @@ func migrateClients(db *gorm.DB) error {
 		if err != nil {
 			return err
 		}
-		oldClients[index].Inbounds, _ = json.Marshal(inbound_ids)
+		oldClients[index].Inbounds, err = json.Marshal(inbound_ids)
+		if err != nil {
+			return fmt.Errorf("encode legacy client %d inbound ids: %w", oldClient.Id, err)
+		}
 	}
 	return db.Save(oldClients).Error
 }
 
 func migrateChanges(db *gorm.DB) error {
+	if !db.Migrator().HasTable(&model.Changes{}) || !db.Migrator().HasColumn(&model.Changes{}, "index") {
+		return nil
+	}
 	return db.Migrator().DropColumn(&model.Changes{}, "index")
 }
 
-func importLegacyConfigObjects(db *gorm.DB) error {
-	err := moveJsonToDb(db)
+func importLegacyConfigObjects(db *gorm.DB, legacyConfig []byte) error {
+	err := moveJSONToDB(db, legacyConfig)
 	if err != nil {
 		return err
 	}

@@ -61,7 +61,7 @@ func (reader InventoryManagementReader) ResolveIsolation(ctx context.Context, re
 		result.ReasonCodes = append(result.ReasonCodes, "management_reachability_unknown")
 	}
 	for _, endpoint := range management {
-		if !hostresources.ManagementEndpointCurrent(endpoint) {
+		if !hostresources.ManagementEndpointCurrent(endpoint, now) {
 			result.State = "UNKNOWN"
 			result.ReasonCodes = append(result.ReasonCodes, "management_reachability_unknown")
 			continue

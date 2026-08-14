@@ -22,8 +22,9 @@ import (
 // handlers need (auth identity + audit), injected by the api package so the
 // module stays decoupled from api internals.
 type Deps struct {
-	LoginUser func(*gin.Context) string
-	Audit     func(c *gin.Context, actor, event, resource, severity string, details map[string]any)
+	RequireScope func(*gin.Context, string, ...string) bool
+	LoginUser    func(*gin.Context) string
+	Audit        func(c *gin.Context, actor, event, resource, severity string, details map[string]any)
 }
 
 type apiHandlers struct {
@@ -85,6 +86,9 @@ type broadcastRequest struct {
 
 // broadcast sends a custom announcement to all bound Telegram users.
 func (h *apiHandlers) broadcast(c *gin.Context) {
+	if !h.requireScope(c, "write") {
+		return
+	}
 	var req broadcastRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respFail(c, "invalid request")
@@ -111,6 +115,9 @@ func (h *apiHandlers) broadcast(c *gin.Context) {
 // status reports module health hints for the admin UI (whether the secretbox
 // env key is configured — payment tokens are better protected when it is).
 func (h *apiHandlers) status(c *gin.Context) {
+	if !h.requireScope(c, "read", "write") {
+		return
+	}
 	respOK(c, map[string]any{
 		"secretboxKeySet": strings.TrimSpace(os.Getenv("SUI_SECRETBOX_KEY")) != "",
 	})
@@ -147,6 +154,9 @@ func (h *apiHandlers) audit(c *gin.Context, event string, details map[string]any
 // listBindings returns every client with its Telegram binding (tgUserId 0 = not
 // bound), so the admin can manage the tg↔client mapping on the feature page.
 func (h *apiHandlers) listBindings(c *gin.Context) {
+	if !h.requireScope(c, "read", "write") {
+		return
+	}
 	rows, err := paidstore.ListBindingRows(dbsqlite.DB())
 	if err != nil {
 		respFail(c, err.Error())
@@ -162,6 +172,9 @@ type setBindingRequest struct {
 
 // setBinding maps (or, when tgUserId<=0, unmaps) a Telegram user to a client.
 func (h *apiHandlers) setBinding(c *gin.Context) {
+	if !h.requireScope(c, "write") {
+		return
+	}
 	var req setBindingRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respFail(c, "invalid request")
@@ -198,6 +211,9 @@ func (h *apiHandlers) setBinding(c *gin.Context) {
 }
 
 func (h *apiHandlers) listTariffs(c *gin.Context) {
+	if !h.requireScope(c, "read", "write") {
+		return
+	}
 	rows, err := paidstore.ListTariffs(dbsqlite.DB())
 	if err != nil {
 		respFail(c, err.Error())
@@ -212,6 +228,9 @@ type saveTariffRequest struct {
 }
 
 func (h *apiHandlers) saveTariff(c *gin.Context) {
+	if !h.requireScope(c, "write") {
+		return
+	}
 	var req saveTariffRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respFail(c, "invalid request")
@@ -238,6 +257,9 @@ func (h *apiHandlers) saveTariff(c *gin.Context) {
 // listOrders returns recent payment orders (read-only history) enriched with the
 // client's name/desc via a LEFT JOIN (a deleted client yields empty name/desc).
 func (h *apiHandlers) listOrders(c *gin.Context) {
+	if !h.requireScope(c, "read", "write") {
+		return
+	}
 	rows, err := paidstore.ListOrderRows(dbsqlite.DB(), 200)
 	if err != nil {
 		respFail(c, err.Error())
@@ -256,6 +278,9 @@ type refundRequest struct {
 // (the admin refunds the money in the provider's own dashboard). Revoke rolls
 // back the granted days/traffic (admin's per-refund choice).
 func (h *apiHandlers) refund(c *gin.Context) {
+	if !h.requireScope(c, "write") {
+		return
+	}
 	var req refundRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
 		respFail(c, "invalid request")
@@ -279,7 +304,19 @@ func (h *apiHandlers) refund(c *gin.Context) {
 	respOK(c, map[string]any{"status": status})
 }
 
-var errTelegramActionsUnavailable = errors.New("telegram component is not available")
+func (h *apiHandlers) requireScope(c *gin.Context, scopes ...string) bool {
+	if h == nil || h.deps.RequireScope == nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, apiMsg{
+			Success: false,
+			Msg:     "paid subscription service is unavailable",
+			Obj:     nil,
+		})
+		return false
+	}
+	return h.deps.RequireScope(c, "paidSubscriptions", append([]string{"admin"}, scopes...)...)
+}
+
+var errTelegramActionsUnavailable = errors.New("paid subscription bot is unavailable")
 
 func telegramBroadcast() BroadcastFunc {
 	telegramActions.RLock()

@@ -1,7 +1,7 @@
 import { createI18n } from 'vue-i18n'
+import type { LocaleCode, LocaleMessages } from './types'
 
-export type LocaleCode = 'en' | 'fa' | 'vi' | 'zhHans' | 'zhHant' | 'ru'
-export type LocaleMessages = Record<string, unknown>
+export type { LocaleCode, LocaleMessages } from './types'
 
 export const DEFAULT_LOCALE: LocaleCode = 'en'
 
@@ -16,6 +16,13 @@ const localeLoaders: Record<LocaleCode, () => Promise<{ default: LocaleMessages 
 
 const supportedLocales = new Set<LocaleCode>(Object.keys(localeLoaders) as LocaleCode[])
 const loadedLocales = new Set<LocaleCode>()
+let loadLocaleExtensions: (localeCode: LocaleCode) => Promise<void> = async () => {}
+
+export const configureLocaleExtensions = (
+  loader: (localeCode: LocaleCode) => Promise<void>,
+) => {
+  loadLocaleExtensions = loader
+}
 
 export const normalizeLocale = (value?: string | null): LocaleCode => {
   if (value && supportedLocales.has(value as LocaleCode)) {
@@ -81,8 +88,7 @@ export const loadInitialLocaleMessages = () => loadLocaleMessages(initialLocale)
 
 export const setI18nLocale = async (localeCode: string) => {
   const normalized = await loadLocaleMessages(localeCode)
-  const { loadActiveComponentLocaleMessages } = await import('@/componentSystem/locales')
-  await loadActiveComponentLocaleMessages(normalized)
+  await loadLocaleExtensions(normalized)
   i18n.global.locale.value = normalized
   storageSet('locale', normalized)
   return normalized
@@ -98,16 +104,19 @@ export const mergeLocaleMessages = async (localeCode: string, messages: LocaleMe
   return normalized
 }
 
-export const locale = (() => {
-  switch (initialLocale) {
+export const currentLocale = (): LocaleCode => normalizeLocale(String(i18n.global.locale.value))
+
+export const dateLocale = (): string => {
+  const localeCode = currentLocale()
+  switch (localeCode) {
     case 'zhHans':
       return 'zh-cn'
     case 'zhHant':
       return 'zh-tw'
     default:
-      return initialLocale
+      return localeCode
   }
-})()
+}
 
 export const languages = [
   { title: 'English', value: 'en' },

@@ -44,6 +44,9 @@ func EnsureSchema(db *gorm.DB) error {
 			created_at INTEGER NOT NULL DEFAULT 0,
 			paid_at INTEGER NOT NULL DEFAULT 0,
 			expires_at INTEGER NOT NULL DEFAULT 0,
+			grant_add_days INTEGER NOT NULL DEFAULT 0,
+			grant_traffic_bytes INTEGER NOT NULL DEFAULT 0,
+			grant_snapshot INTEGER NOT NULL DEFAULT 0,
 			granted_up INTEGER NOT NULL DEFAULT 0,
 			granted_down INTEGER NOT NULL DEFAULT 0
 		)`,
@@ -63,6 +66,9 @@ func EnsureSchema(db *gorm.DB) error {
 	}
 	mig := db.Migrator()
 	for _, c := range []struct{ column, ddl string }{
+		{"grant_add_days", `ALTER TABLE payment_orders ADD COLUMN grant_add_days INTEGER NOT NULL DEFAULT 0`},
+		{"grant_traffic_bytes", `ALTER TABLE payment_orders ADD COLUMN grant_traffic_bytes INTEGER NOT NULL DEFAULT 0`},
+		{"grant_snapshot", `ALTER TABLE payment_orders ADD COLUMN grant_snapshot INTEGER NOT NULL DEFAULT 0`},
 		{"granted_up", `ALTER TABLE payment_orders ADD COLUMN granted_up INTEGER NOT NULL DEFAULT 0`},
 		{"granted_down", `ALTER TABLE payment_orders ADD COLUMN granted_down INTEGER NOT NULL DEFAULT 0`},
 	} {

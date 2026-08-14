@@ -21,7 +21,7 @@ Required safety confirmation:
 
 Optional environment:
   SOLOVEY_UI_REPO=MalenkiySolovey/solovey-ui
-  SOLOVEY_UI_SMOKE_VERSION=v1.5.10-beta7-solovey.1
+  SOLOVEY_UI_SMOKE_VERSION=v2026.3.0
   SOLOVEY_UI_SMOKE_PURGE_AFTER=1
 
 Usage:

@@ -44,7 +44,7 @@ import RuleVue from '@/layouts/modals/Rule.vue'
 import RulesetVue from '@/layouts/modals/Ruleset.vue'
 import RulesetImport from '@/layouts/modals/RulesetImport.vue'
 import RuleImport from '@/layouts/modals/RuleImport.vue'
-import type { RulesPage } from '@/shared/composables/pages/useRulesPage'
+import type { RulesPage } from '@/features/useRulesPage'
 
 const props = defineProps<{ page: RulesPage }>()
 const { clients, closeImportRule, closeImportRulesets, closeRuleModal, closeRulesetModal, importRulesModal, importRulesetsModal, inboundTags, outboundTags, ruleModal, rules, rulesetModal, rulesetTags, rulesets, saveImportRule, saveImportRulesets, saveRuleModal, saveRulesetModal } = props.page

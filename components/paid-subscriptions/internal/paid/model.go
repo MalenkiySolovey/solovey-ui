@@ -33,6 +33,9 @@ type PaymentOrder struct {
 	CreatedAt        int64  `json:"createdAt" gorm:"column:created_at;index;not null;default:0"`
 	PaidAt           int64  `json:"paidAt" gorm:"column:paid_at;not null;default:0"`
 	ExpiresAt        int64  `json:"expiresAt" gorm:"column:expires_at;index;not null;default:0"`
+	GrantAddDays     int    `json:"-" gorm:"column:grant_add_days;not null;default:0"`
+	GrantTraffic     int64  `json:"-" gorm:"column:grant_traffic_bytes;not null;default:0"`
+	GrantSnapshot    bool   `json:"-" gorm:"column:grant_snapshot;not null;default:false"`
 	GrantedUp        int64  `json:"-" gorm:"column:granted_up;not null;default:0"`
 	GrantedDown      int64  `json:"-" gorm:"column:granted_down;not null;default:0"`
 }

@@ -54,7 +54,7 @@ func TestDecryptPrimarySecretboxCandidateDoesNotAuditFallback(t *testing.T) {
 	}
 }
 
-func TestLegacySecretboxFallbackDoesNotAuditAfterFix_XFAILIssue17(t *testing.T) {
+func TestLegacySecretboxFallbackDoesNotAudit(t *testing.T) {
 	settingService := initSettingTestDB(t)
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
@@ -84,6 +84,6 @@ func TestLegacySecretboxFallbackDoesNotAuditAfterFix_XFAILIssue17(t *testing.T) 
 		t.Fatal(err)
 	}
 	if count != 0 {
-		t.Fatalf("legacy fallback should not write audit noise after issue 17 fix, got %d", count)
+		t.Fatalf("legacy fallback should not write audit noise after the compatibility fix, got %d", count)
 	}
 }

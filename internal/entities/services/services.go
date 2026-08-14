@@ -2,10 +2,14 @@ package services
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveidentity"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
@@ -64,10 +68,29 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 	return servicesJSON, nil
 }
 
+func ValidateStored(db *gorm.DB) error {
+	if db == nil {
+		return common.NewError("service persistence is unavailable")
+	}
+	if !db.Migrator().HasTable(&model.Service{}) {
+		return nil
+	}
+	var rows []model.Service
+	if err := db.Order("id").Find(&rows).Error; err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if err := jsonvalue.OptionalObject("service options", row.Options); err != nil {
+			return fmt.Errorf("stored service row %d: %w", row.Id, err)
+		}
+	}
+	return nil
+}
+
 func Save(tx *gorm.DB, act string, data json.RawMessage) (*singboxapply.Change, error) {
 	switch act {
 	case "new", "edit":
-		return saveUpsert(tx, data)
+		return saveUpsert(tx, act, data)
 	case "del":
 		return saveDelete(tx, data)
 	default:
@@ -75,9 +98,15 @@ func Save(tx *gorm.DB, act string, data json.RawMessage) (*singboxapply.Change, 
 	}
 }
 
-func saveUpsert(tx *gorm.DB, data json.RawMessage) (*singboxapply.Change, error) {
+func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply.Change, error) {
 	var srv model.Service
 	if err := srv.UnmarshalJSON(data); err != nil {
+		return nil, err
+	}
+	if err := saveidentity.Validate(tx, action, srv.Id, &model.Service{}); err != nil {
+		return nil, err
+	}
+	if err := entityidentity.ValidateTypeTag(srv.Type, srv.Tag); err != nil {
 		return nil, err
 	}
 
@@ -110,6 +139,9 @@ func saveUpsert(tx *gorm.DB, data json.RawMessage) (*singboxapply.Change, error)
 func saveDelete(tx *gorm.DB, data json.RawMessage) (*singboxapply.Change, error) {
 	var tag string
 	if err := json.Unmarshal(data, &tag); err != nil {
+		return nil, err
+	}
+	if err := entityidentity.ValidateTag(tag); err != nil {
 		return nil, err
 	}
 	if err := tx.Where("tag = ?", tag).Delete(model.Service{}).Error; err != nil {

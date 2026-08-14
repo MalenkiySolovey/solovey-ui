@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -19,6 +20,7 @@ import (
 
 const cryptoBotBase = "https://pay.crypt.bot"
 const maxProviderResponseBytes = 1 << 20
+const maxCryptoBotPollBatch = 100
 
 type cryptoBotProvider struct {
 	token         string
@@ -67,14 +69,26 @@ func (p *cryptoBotProvider) CreateInvoice(ctx context.Context, order *paid.Payme
 
 func (p *cryptoBotProvider) Poll(ctx context.Context, pending []paid.PaymentOrder) ([]PollResult, error) {
 	idToOrder := map[string]paid.PaymentOrder{}
+	duplicateIDs := map[string]struct{}{}
 	var ids []string
 	for _, order := range pending {
 		ref := ExtractProviderRef(order.ProviderPayload)
 		if ref == "" {
 			continue
 		}
+		if _, duplicate := duplicateIDs[ref]; duplicate {
+			continue
+		}
+		if _, exists := idToOrder[ref]; exists {
+			delete(idToOrder, ref)
+			duplicateIDs[ref] = struct{}{}
+			continue
+		}
 		idToOrder[ref] = order
 		ids = append(ids, ref)
+		if len(ids) == maxCryptoBotPollBatch {
+			break
+		}
 	}
 	if len(ids) == 0 {
 		return nil, nil
@@ -101,22 +115,14 @@ func (p *cryptoBotProvider) Poll(ctx context.Context, pending []paid.PaymentOrde
 		if !ok {
 			continue
 		}
-		if item.Amount != "" {
-			want := fmt.Sprintf("%.2f", float64(order.Amount)/100.0)
-			got := item.Amount
-			if paid, err := strconv.ParseFloat(item.Amount, 64); err == nil {
-				got = fmt.Sprintf("%.2f", paid)
+		if !cryptoBotPaymentMatches(order, item.Amount, item.Fiat) {
+			logger.Warning("paidsub: cryptobot paid amount/currency mismatch; refusing order ", order.Id)
+			if p.notify != nil {
+				p.notify("paidsub_payment_mismatch", map[string]string{
+					"orderId": fmt.Sprintf("%d", order.Id),
+				})
 			}
-			currencyMismatch := item.Fiat != "" && !strings.EqualFold(item.Fiat, order.Currency)
-			if got != want || currencyMismatch {
-				logger.Warning("paidsub: cryptobot paid amount/currency mismatch; refusing order ", order.Id)
-				if p.notify != nil {
-					p.notify("paidsub_payment_mismatch", map[string]string{
-						"orderId": fmt.Sprintf("%d", order.Id),
-					})
-				}
-				continue
-			}
+			continue
 		}
 		results = append(results, PollResult{
 			OrderID:          order.Id,
@@ -124,6 +130,46 @@ func (p *cryptoBotProvider) Poll(ctx context.Context, pending []paid.PaymentOrde
 		})
 	}
 	return results, nil
+}
+
+func cryptoBotPaymentMatches(order paid.PaymentOrder, amount string, currency string) bool {
+	minor, err := parseDecimalMinorUnits(amount)
+	return err == nil && minor == order.Amount && strings.TrimSpace(currency) != "" && strings.EqualFold(currency, order.Currency)
+}
+
+func parseDecimalMinorUnits(value string) (int64, error) {
+	value = strings.TrimSpace(value)
+	parts := strings.Split(value, ".")
+	if value == "" || len(parts) > 2 || parts[0] == "" {
+		return 0, fmt.Errorf("invalid payment amount")
+	}
+	for _, part := range parts {
+		if part == "" && len(parts) == 2 {
+			return 0, fmt.Errorf("invalid payment amount")
+		}
+		for _, char := range part {
+			if char < '0' || char > '9' {
+				return 0, fmt.Errorf("invalid payment amount")
+			}
+		}
+	}
+	fraction := ""
+	if len(parts) == 2 {
+		fraction = parts[1]
+	}
+	if len(fraction) > 2 {
+		return 0, fmt.Errorf("payment amount has too many fractional digits")
+	}
+	fraction += strings.Repeat("0", 2-len(fraction))
+	whole, err := strconv.ParseInt(parts[0], 10, 64)
+	if err != nil || whole > (math.MaxInt64-99)/100 {
+		return 0, fmt.Errorf("payment amount is out of range")
+	}
+	cents, err := strconv.ParseInt(fraction, 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("invalid payment amount")
+	}
+	return whole*100 + cents, nil
 }
 
 func (p *cryptoBotProvider) call(ctx context.Context, method, path string, body any, out any) error {
@@ -134,6 +180,10 @@ func (p *cryptoBotProvider) call(ctx context.Context, method, path string, body 
 	if err != nil {
 		return err
 	}
+	if client == nil {
+		return fmt.Errorf("cryptobot: HTTP client is unavailable")
+	}
+	defer client.CloseIdleConnections()
 	var reader io.Reader
 	if body != nil {
 		bb, err := json.Marshal(body)
@@ -155,7 +205,13 @@ func (p *cryptoBotProvider) call(ctx context.Context, method, path string, body 
 		return fmt.Errorf("cryptobot: network error")
 	}
 	defer resp.Body.Close()
-	data, _ := io.ReadAll(io.LimitReader(resp.Body, maxProviderResponseBytes))
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxProviderResponseBytes+1))
+	if err != nil {
+		return fmt.Errorf("cryptobot: response read failed")
+	}
+	if len(data) > maxProviderResponseBytes {
+		return fmt.Errorf("cryptobot: response is too large")
+	}
 	var env struct {
 		OK     bool            `json:"ok"`
 		Result json.RawMessage `json:"result"`

@@ -26,7 +26,7 @@ func initIPMonitorTestDB(t *testing.T) {
 	allowCache.byClient = map[string]allowCacheEntry{}
 	allowCache.Unlock()
 	allowCacheRefresh.Lock()
-	allowCacheRefresh.inFlight = map[string]struct{}{}
+	allowCacheRefresh.inFlight = map[string]uint64{}
 	allowCacheRefresh.Unlock()
 	securityEvents.Lock()
 	securityEvents.lastEmittedAt = map[string]time.Time{}
@@ -124,6 +124,52 @@ func TestRecordFlushAndClear(t *testing.T) {
 	}
 	if len(rows) != 0 {
 		t.Fatalf("expected cleared history, got %d rows", len(rows))
+	}
+}
+
+func TestFlushBatchPublishesCacheOnlyAfterCommit(t *testing.T) {
+	initIPMonitorTestDB(t)
+	if err := dbsqlite.DB().Create(&model.Client{
+		Enable: true, Name: "alice", LimitIP: 2, IPLimitMode: ModeEnforce,
+		Inbounds: []byte("[]"), Links: []byte("[]"),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	warmUpIPMonitorForTest(t)
+	Record("alice", "198.51.100.10")
+	batch := BeginFlush()
+	allowCache.Lock()
+	allowCache.byClient["alice"] = allowCacheEntry{limit: 2, mode: ModeEnforce, ips: map[string]struct{}{}, expiresAt: time.Now().Add(time.Minute)}
+	allowCache.Unlock()
+	tx := dbsqlite.DB().Begin()
+	defer func() { _ = tx.Rollback().Error }()
+	if err := batch.WriteTo(tx); err != nil {
+		t.Fatal(err)
+	}
+	entry, ok := cachedClient("alice", time.Now())
+	if !ok {
+		t.Fatal("warm enforcement cache disappeared")
+	}
+	if len(entry.ips) != 0 {
+		t.Fatalf("uncommitted IP leaked into enforcement cache: %#v", entry.ips)
+	}
+	if err := tx.Rollback().Error; err != nil {
+		t.Fatal(err)
+	}
+	batch.Requeue()
+
+	batch = BeginFlush()
+	tx = dbsqlite.DB().Begin()
+	if err := batch.WriteTo(tx); err != nil {
+		t.Fatal(err)
+	}
+	if err := tx.Commit().Error; err != nil {
+		t.Fatal(err)
+	}
+	batch.Commit()
+	entry, ok = cachedClient("alice", time.Now())
+	if !ok || len(entry.ips) != 1 {
+		t.Fatalf("committed IP was not published to enforcement cache: %#v", entry)
 	}
 }
 
@@ -543,7 +589,7 @@ func TestResetCachesClearsSaltAndAllowState(t *testing.T) {
 	}
 	allowCache.Unlock()
 	allowCacheRefresh.Lock()
-	allowCacheRefresh.inFlight = map[string]struct{}{"alice": {}}
+	allowCacheRefresh.inFlight = map[string]uint64{"alice": 0}
 	allowCacheRefresh.Unlock()
 	securityEvents.Lock()
 	securityEvents.lastEmittedAt = map[string]time.Time{"alice|reject": time.Now()}

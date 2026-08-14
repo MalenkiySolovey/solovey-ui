@@ -81,7 +81,7 @@
 </template>
 
 <script lang="ts">
-import { i18n } from '@/locales'
+import { dateLocale, i18n } from '@/locales'
 import { loadChanges } from '@/shared/composables/useOperationsData'
 
 export default {
@@ -106,9 +106,12 @@ export default {
   methods: {
     async loadData() {
       this.loading = true
-      const data = await loadChanges(this.user, this.key, this.chngCount)
-      if (data.success) {
-        this.changes = data.obj?? []
+      try {
+        const data = await loadChanges(this.user, this.key, this.chngCount)
+        if (data.success) {
+          this.changes = data.obj?? []
+        }
+      } finally {
         this.loading = false
       }
     },
@@ -119,15 +122,7 @@ export default {
   },
   computed: {
     locale() {
-      const l = i18n.global.locale.value
-      switch (l) {
-        case "zhHans":
-          return "zh-cn"
-        case "zhHant":
-          return "zh-tw"
-        default:
-          return l
-      }
+      return dateLocale()
     },
   },
   watch: {

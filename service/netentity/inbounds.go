@@ -126,9 +126,5 @@ func (a inboundCoreAdapter) CloseInboundConnections(tag string) {
 	if a.core == nil {
 		return
 	}
-	if instance := a.core.GetInstance(); instance != nil {
-		if tracker := instance.ConnTracker(); tracker != nil {
-			tracker.CloseConnByInbound(tag)
-		}
-	}
+	a.core.CloseInboundConnections(tag)
 }

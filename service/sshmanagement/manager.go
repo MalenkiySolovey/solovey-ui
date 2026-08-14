@@ -19,6 +19,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
+	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"gorm.io/gorm"
 )
 
@@ -103,10 +104,6 @@ func NewManager(repository Repository, provider Provider) *Manager {
 		WatchdogAvailable: true}
 }
 
-func DefaultManager() *Manager {
-	return NewManager(Repository{DB: dbsqlite.DB}, UnavailableProvider{})
-}
-
 func DefaultManagerWithProvider(provider Provider) *Manager {
 	return NewManager(Repository{DB: dbsqlite.DB}, provider)
 }
@@ -165,6 +162,8 @@ func (m *Manager) ReconnectState(ctx context.Context, operationID string) (map[s
 		"required": candidate.State == domain.StateReconnectRequired, "expiresAt": candidate.ReconnectExpiresAt}
 	if challenge, challengeErr := m.Repository.Challenge(ctx, operationID); challengeErr == nil {
 		result["consumed"] = challenge.ConsumedAt != 0
+	} else if candidate.State == domain.StateReconnectRequired || !errors.Is(challengeErr, gorm.ErrRecordNotFound) {
+		return nil, challengeErr
 	}
 	return result, nil
 }
@@ -268,10 +267,12 @@ func (m *Manager) Start(ctx context.Context, request StartRequestV1) (StartResul
 		ConfigurationRevision: preview.Posture.ConfigurationRevision, EarliestSafetyExpiry: preview.Preservation.EarliestSafetyExpiry,
 		CreatedAt: now.Unix(), UpdatedAt: now.Unix()}
 	candidate.BindingDigest = domain.BindingDigest(candidate)
+	if err := m.Repository.SavePosture(ctx, *preview.Posture, now); err != nil {
+		return StartResultV1{}, err
+	}
 	if err := m.Repository.CreateCandidateWithJournal(ctx, candidate, "draft_created", "", now); err != nil {
 		return StartResultV1{}, repositoryConflict(err)
 	}
-	_ = m.Repository.SavePosture(ctx, *preview.Posture, now)
 	m.emitAudit(ctx, candidate, "draft_created", "")
 	candidate, err = m.advance(ctx, candidate, domain.StatePreflighted, "preflight_completed", "")
 	if err != nil {
@@ -497,7 +498,9 @@ func (m *Manager) StartWatchdog(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			_ = m.ReconcileExpired(ctx)
+			if err := m.ReconcileExpired(ctx); err != nil {
+				logger.Warning("SSH management watchdog reconciliation failed")
+			}
 		}
 	}
 }

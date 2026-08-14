@@ -16,7 +16,7 @@ func (a *ApiService) telemetryDeps() telemetryhttp.Deps {
 		DiagnosticsService:     a.DiagnosticsService,
 		DoctorService:          a.DoctorService,
 		AuditService:           a.AuditService,
-		VersionService:         a.VersionService,
+		Update:                 a.Update,
 		RequireScope:           a.requireTokenScopeAny,
 		JSONObj:                jsonObj,
 		JSONMsg:                jsonMsg,

@@ -122,7 +122,10 @@ func migrationInstallSalt(db *gorm.DB) ([]byte, error) {
 	if salt != "" {
 		return []byte(salt), nil
 	}
-	salt = common.Random(32)
+	salt, err = common.SecureRandom(32)
+	if err != nil {
+		return nil, err
+	}
 	var count int64
 	if err := db.Raw("SELECT COUNT(*) FROM settings WHERE key = ?", "installSalt").Scan(&count).Error; err != nil {
 		return nil, err

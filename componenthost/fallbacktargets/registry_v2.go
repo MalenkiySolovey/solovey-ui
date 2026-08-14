@@ -37,14 +37,13 @@ func (r *Registry) RegisterV2(provider ProviderV2) (func(), error) {
 		return func() {}, errors.New("fallback_target_provider_v2_capacity_exceeded")
 	}
 	for _, registered := range r.v2Providers {
-		registeredID, registeredPanicked := safeProviderIDV2(registered)
-		if !registeredPanicked && registeredID == providerID {
+		if registered.id == providerID {
 			return func() {}, errors.New("duplicate_fallback_target_provider_v2_id")
 		}
 	}
 	id := r.next
 	r.next++
-	r.v2Providers[id] = provider
+	r.v2Providers[id] = providerV2Entry{id: providerID, provider: provider}
 	var once sync.Once
 	return func() { once.Do(func() { r.mu.Lock(); delete(r.v2Providers, id); r.mu.Unlock() }) }, nil
 }
@@ -58,10 +57,9 @@ func (r *Registry) ProviderV2(providerID string) (ProviderV2, bool) {
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	for _, provider := range r.v2Providers {
-		registeredID, panicked := safeProviderIDV2(provider)
-		if !panicked && registeredID == providerID {
-			return provider, true
+	for _, entry := range r.v2Providers {
+		if entry.id == providerID {
+			return entry.provider, true
 		}
 	}
 	return nil, false
@@ -69,15 +67,13 @@ func (r *Registry) ProviderV2(providerID string) (ProviderV2, bool) {
 
 func (r *Registry) SnapshotV2(ctx context.Context, now time.Time) RegistrySnapshotV2 {
 	r.mu.RLock()
-	providers := make([]ProviderV2, 0, len(r.v2Providers))
-	for _, provider := range r.v2Providers {
-		providers = append(providers, provider)
+	providers := make([]providerV2Entry, 0, len(r.v2Providers))
+	for _, entry := range r.v2Providers {
+		providers = append(providers, entry)
 	}
 	r.mu.RUnlock()
 	sort.Slice(providers, func(i, j int) bool {
-		left, _ := safeProviderIDV2(providers[i])
-		right, _ := safeProviderIDV2(providers[j])
-		return left < right
+		return providers[i].id < providers[j].id
 	})
 	result := RegistrySnapshotV2{GeneratedAt: now.UTC().Unix(), Targets: []FallbackTargetV2{}}
 	if len(providers) == 0 {
@@ -86,7 +82,7 @@ func (r *Registry) SnapshotV2(ctx context.Context, now time.Time) RegistrySnapsh
 	}
 	targetsSeen := make(map[string]struct{}, min(MaxTargetsV2, len(providers)))
 	endpointsSeen := make(map[string]struct{}, min(MaxTargetsV2, len(providers)))
-	for _, provider := range providers {
+	for _, entry := range providers {
 		if err := ctx.Err(); err != nil {
 			result.ReasonCodes = append(result.ReasonCodes, registryContextReasonV2(err))
 			break
@@ -96,11 +92,7 @@ func (r *Registry) SnapshotV2(ctx context.Context, now time.Time) RegistrySnapsh
 			result.ReasonCodes = append(result.ReasonCodes, "fallback_target_inventory_v2_truncated")
 			break
 		}
-		providerID, panicked := safeProviderIDV2(provider)
-		if panicked || !validOpaqueID(providerID, MaxOpaqueIDLengthV2) {
-			result.ReasonCodes = append(result.ReasonCodes, "fallback_target_provider_v2_invalid")
-			continue
-		}
+		providerID, provider := entry.id, entry.provider
 		providerCtx, cancel := context.WithTimeout(ctx, DefaultProviderTimeoutV2)
 		inventory, providerError, inventoryPanicked := safeInventoryV2(providerCtx, provider, InventoryV2Request{Limit: uint32(MaxTargetsV2 - len(result.Targets))})
 		deadlineError := providerCtx.Err()
@@ -195,23 +187,20 @@ func (r *Registry) ListReservationsV2(ctx context.Context, query ListReservation
 		return RegistryReservationsV2{}, err
 	}
 	r.mu.RLock()
-	providers := make([]ProviderV2, 0, len(r.v2Providers))
-	for _, provider := range r.v2Providers {
-		providerID, panicked := safeProviderIDV2(provider)
-		if query.ProviderID == "" || (!panicked && providerID == query.ProviderID) {
-			providers = append(providers, provider)
+	providers := make([]providerV2Entry, 0, len(r.v2Providers))
+	for _, entry := range r.v2Providers {
+		if query.ProviderID == "" || entry.id == query.ProviderID {
+			providers = append(providers, entry)
 		}
 	}
 	r.mu.RUnlock()
 	sort.Slice(providers, func(i, j int) bool {
-		left, _ := safeProviderIDV2(providers[i])
-		right, _ := safeProviderIDV2(providers[j])
-		return left < right
+		return providers[i].id < providers[j].id
 	})
 	result := RegistryReservationsV2{Reservations: []ProviderTargetReservationV1{}}
 	seen := make(map[string]struct{}, min(MaxReservationsV2, len(providers)))
 	resultLimit := min(int(query.Limit), MaxReservationsV2)
-	for _, provider := range providers {
+	for _, entry := range providers {
 		if err := ctx.Err(); err != nil {
 			result.ReasonCodes = append(result.ReasonCodes, registryContextReasonV2(err))
 			break
@@ -221,11 +210,7 @@ func (r *Registry) ListReservationsV2(ctx context.Context, query ListReservation
 			result.ReasonCodes = append(result.ReasonCodes, "provider_target_reservation_inventory_truncated")
 			break
 		}
-		providerID, panicked := safeProviderIDV2(provider)
-		if panicked || !validOpaqueID(providerID, MaxOpaqueIDLengthV2) {
-			result.ReasonCodes = append(result.ReasonCodes, "fallback_target_provider_v2_invalid")
-			continue
-		}
+		providerID, provider := entry.id, entry.provider
 		providerQuery := query
 		providerQuery.ProviderID = providerID
 		providerQuery.Limit = uint32(resultLimit - len(result.Reservations))
@@ -316,27 +301,53 @@ func safeProviderIDV2(provider ProviderV2) (providerID string, panicked bool) {
 }
 
 func safeInventoryV2(ctx context.Context, provider ProviderV2, request InventoryV2Request) (inventory InventoryV2Result, providerError *ProviderContractError, panicked bool) {
-	defer func() {
-		if recover() != nil {
-			inventory = InventoryV2Result{}
-			providerError = nil
-			panicked = true
-		}
+	type response struct {
+		inventory     InventoryV2Result
+		providerError *ProviderContractError
+		panicked      bool
+	}
+	result := make(chan response, 1)
+	go func() {
+		value := response{}
+		defer func() {
+			if recover() != nil {
+				value = response{panicked: true}
+			}
+			result <- value
+		}()
+		value.inventory, value.providerError = provider.InventoryV2(ctx, request)
 	}()
-	inventory, providerError = provider.InventoryV2(ctx, request)
-	return inventory, providerError, false
+	select {
+	case value := <-result:
+		return value.inventory, value.providerError, value.panicked
+	case <-ctx.Done():
+		return InventoryV2Result{}, nil, false
+	}
 }
 
 func safeListReservationsV2(ctx context.Context, provider ProviderV2, query ListReservationsQueryV1) (result ListReservationsResultV1, providerError *ProviderContractError, panicked bool) {
-	defer func() {
-		if recover() != nil {
-			result = ListReservationsResultV1{}
-			providerError = nil
-			panicked = true
-		}
+	type response struct {
+		result        ListReservationsResultV1
+		providerError *ProviderContractError
+		panicked      bool
+	}
+	resultCh := make(chan response, 1)
+	go func() {
+		value := response{}
+		defer func() {
+			if recover() != nil {
+				value = response{panicked: true}
+			}
+			resultCh <- value
+		}()
+		value.result, value.providerError = provider.ListReservations(ctx, query)
 	}()
-	result, providerError = provider.ListReservations(ctx, query)
-	return result, providerError, false
+	select {
+	case value := <-resultCh:
+		return value.result, value.providerError, value.panicked
+	case <-ctx.Done():
+		return ListReservationsResultV1{}, nil, false
+	}
 }
 
 func canonicalRegistryReasonsV2(values []string) []string {

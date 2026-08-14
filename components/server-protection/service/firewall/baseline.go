@@ -15,8 +15,12 @@ import (
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	managementregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/management"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
+	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
+	protectionpolicy "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/policy"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
+	protectionresponse "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/response"
 )
 
 const FirewallBaselineSnapshotBindingSchemaV1 = "solovey-ui/firewall-baseline-snapshot-binding/v1"
@@ -62,11 +66,128 @@ type BaselineState struct {
 }
 
 type BaselineService struct {
-	Repository *protectionrepository.Repository
+	Repository   *protectionrepository.Repository
+	Capabilities BaselineCapabilitySource
 }
+
+type BaselineCapabilitySource interface {
+	Capabilities(context.Context) (*protectionhelper.CapabilitiesResult, error)
+}
+
+type BaselineCapabilityAssessment struct {
+	CapabilityRevision   string `json:"capabilityRevision,omitempty"`
+	TTLRequired          bool   `json:"ttlRequired"`
+	TTLSupported         bool   `json:"ttlSupported"`
+	RateRequired         bool   `json:"rateRequired"`
+	RateSupported        bool   `json:"rateSupported"`
+	CandidateSupported   bool   `json:"candidateSupported"`
+	AdvancedState        string `json:"advancedState"`
+	Consequence          string `json:"acceptanceConsequence"`
+	SSHRecoverySupported bool   `json:"sshRecoverySupported"`
+	SSHVerifierRevision  string `json:"sshVerifierRevision,omitempty"`
+}
+
+type DecisionResolutionPreview struct {
+	Resolution                  protectionresponse.Resolution          `json:"resolution"`
+	ManagementGuard             protectionpolicy.ManagementGuardResult `json:"managementGuard"`
+	BindingRevision             string                                 `json:"bindingRevision"`
+	BaselineEligibilityRevision string                                 `json:"baselineEligibilityRevision"`
+	EndpointRevision            string                                 `json:"endpointRevision"`
+	ResourceRevision            string                                 `json:"resourceRevision"`
+	ConfigurationRevision       string                                 `json:"configurationRevision"`
+	Actual                      string                                 `json:"actual"`
+}
+
+var ErrUnknownBaselineEndpoint = errors.New("decision target is absent from the configured endpoint inventory")
 
 func NewBaselineService(repository *protectionrepository.Repository) *BaselineService {
 	return &BaselineService{Repository: repository}
+}
+
+func (s *BaselineService) CapabilityAssessment(ctx context.Context, plan FirewallPlan) BaselineCapabilityAssessment {
+	if s == nil || s.Capabilities == nil {
+		return AssessBaselineCapabilities(plan, nil)
+	}
+	capabilities, err := s.Capabilities.Capabilities(ctx)
+	if err != nil {
+		return AssessBaselineCapabilities(plan, nil)
+	}
+	return AssessBaselineCapabilities(plan, capabilities)
+}
+
+func AssessBaselineCapabilities(plan FirewallPlan, capabilities *protectionhelper.CapabilitiesResult) BaselineCapabilityAssessment {
+	result := BaselineCapabilityAssessment{AdvancedState: "DEFERRED_UNPROVEN", Consequence: "BASELINE_BLOCKED"}
+	for _, endpoint := range plan.Endpoints {
+		for _, contribution := range endpoint.Contributions {
+			result.TTLRequired = true
+			if contribution.Intent == domain.IntentSoftGraylist || contribution.Intent == domain.IntentRateLimit || contribution.Intent == domain.IntentTemporaryQuarantine {
+				result.RateRequired = true
+			}
+		}
+	}
+	if capabilities == nil || !capabilities.NFT.Available || !protectionhelper.CapabilityAvailable(capabilities, protectionhelper.OperationNFTValidate) {
+		return result
+	}
+	result.CapabilityRevision = capabilities.Revision
+	result.SSHRecoverySupported = capabilities.SSHRecovery.Available && protectionhelper.CapabilityAvailable(capabilities, protectionhelper.OperationSSHRecoveryObserve) && domain.ValidExactRevision(capabilities.SSHRecovery.VerifierRevision)
+	if result.SSHRecoverySupported {
+		result.SSHVerifierRevision = capabilities.SSHRecovery.VerifierRevision
+	}
+	result.TTLSupported = capabilities.NFT.TTLSet
+	result.RateSupported = capabilities.NFT.RateLimit
+	result.CandidateSupported = (!result.TTLRequired || result.TTLSupported) && (!result.RateRequired || result.RateSupported)
+	if result.TTLSupported && result.RateSupported {
+		result.AdvancedState = "SUPPORTED_BY_READ_ONLY_CHECK"
+	} else if result.CandidateSupported {
+		result.Consequence = "BASELINE_ONLY_ADVANCED_SCENARIOS_NOT_SHIPPED"
+	}
+	if result.CandidateSupported && result.Consequence == "BASELINE_BLOCKED" {
+		result.Consequence = "CURRENT_CANDIDATE_SUPPORTED"
+	}
+	return result
+}
+
+// ResolveDecisionPreview owns the single policy-to-capability resolution path
+// for the current endpoint-managed baseline. HTTP adapters only validate and
+// serialize its typed result.
+func (s *BaselineService) ResolveDecisionPreview(ctx context.Context, decision domain.ProtectionDecisionV2, expectedBindingRevision string, now time.Time) (DecisionResolutionPreview, error) {
+	if now.IsZero() {
+		now = time.Now().UTC()
+	} else {
+		now = now.UTC()
+	}
+	if err := decision.Validate(now); err != nil {
+		return DecisionResolutionPreview{}, err
+	}
+	state, err := s.Snapshot(ctx, true, nil)
+	if err != nil {
+		return DecisionResolutionPreview{}, err
+	}
+	if !domain.ValidExactRevision(expectedBindingRevision) || expectedBindingRevision != state.Binding.Revision {
+		return DecisionResolutionPreview{}, ErrPlanRevision
+	}
+	resource, endpoint, found := BaselineTarget(state, decision.Scope.TargetResourceID)
+	if !found {
+		return DecisionResolutionPreview{}, ErrUnknownBaselineEndpoint
+	}
+	guard := protectionpolicy.EvaluateManagementGuard(protectionpolicy.ManagementGuardInput{
+		Scope: decision.Scope, Subject: decision.Subject, EndpointKey: endpoint.Key,
+		Management: state.Management, RecoveryPaths: state.Recovery, TrustedSources: state.Trusted,
+		MayRestrictTraffic: decision.RequestedIntent != domain.IntentObserve, Now: now,
+	})
+	resolution := protectionresponse.Resolve(protectionresponse.ResolveInput{
+		Decision: decision, Strategy: endpoint.Strategy,
+		ActionScopeRevision: EndpointActionScopeRevision(state.Plan.Resources), EndpointRevision: endpoint.EndpointRevision,
+		ResourceRevision: EndpointActionResourceRevision(resource), ConfigurationRevision: resource.Capabilities.ConfigRevision,
+		BaselineApplyBlocked: state.Plan.ApplyBlocked || !state.Plan.BaselineEligibility.CandidateEligible,
+		EndpointKnown:        endpoint.EndpointRevision != "", Guard: guard, Now: now,
+	})
+	return DecisionResolutionPreview{
+		Resolution: resolution, ManagementGuard: guard, BindingRevision: state.Binding.Revision,
+		BaselineEligibilityRevision: state.Plan.BaselineEligibility.Revision, EndpointRevision: endpoint.EndpointRevision,
+		ResourceRevision:      hostresources.Revision(CanonicalPlanResources([]hostresources.ProtectableResource{resource})),
+		ConfigurationRevision: resource.Capabilities.ConfigRevision, Actual: "NOT_APPLIED",
+	}, nil
 }
 
 func (s *BaselineService) Snapshot(ctx context.Context, refresh bool, selected map[string]struct{}) (BaselineState, error) {

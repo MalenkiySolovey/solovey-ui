@@ -143,8 +143,6 @@ func (o HelperOwnerObserver) ObserveOwner(ctx context.Context, resource hostreso
 
 func ownerExecutionFailure(ctx context.Context, response protectionhelper.Response, err error) OwnerAvailability {
 	switch {
-	case errors.Is(err, protectionhelper.ErrHelperIdentityMismatch) || response.Reason == "helper_identity_mismatch":
-		return OwnerHelperIdentityMismatch
 	case errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) || response.Code == protectionhelper.CodeTimeout || response.Reason == "timeout":
 		return OwnerObservationTimeout
 	case response.Reason == "helper_version_mismatch":

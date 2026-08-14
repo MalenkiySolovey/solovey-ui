@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -65,12 +66,12 @@ func (recorder *nativeFallbackRecorder) Rollback(context.Context, protectionnati
 	return protectionnativefallback.WorkflowResultV1{}, nil
 }
 
-type nativeResourceContributor struct{}
+type nativeResourceContributor struct{ owner string }
 
-func (nativeResourceContributor) Owner() string { return "native-api-fixture" }
-func (nativeResourceContributor) ListProtectableResources(context.Context) ([]hostresources.ProtectableResource, error) {
+func (c nativeResourceContributor) Owner() string { return c.owner }
+func (c nativeResourceContributor) ListProtectableResources(context.Context) ([]hostresources.ProtectableResource, error) {
 	return []hostresources.ProtectableResource{{
-		ID: "core:inbound:1", Kind: "inbound", Owner: "core", Name: "fixture-native", InboundTag: "fixture-native",
+		ID: "core:inbound:1", Kind: "inbound", Owner: c.owner, Name: "fixture-native", InboundTag: "fixture-native",
 		Capabilities: hostresources.ProtectableResourceCapabilities{Known: true, ConfigRevision: strings.Repeat("c", 64)},
 	}}, nil
 }
@@ -78,7 +79,11 @@ func (nativeResourceContributor) ListProtectableResources(context.Context) ([]ho
 func newNativeFallbackRouter(t *testing.T, scope string, native nativeFallbackService) (*gin.Engine, *[]auditEvent, *protectionrepository.Repository) {
 	t.Helper()
 	_, audits, manager, repository, _ := newProtectionAPIRouterWithDB(t, scope, protectionfronting.NewNginxAdapter())
-	unregister := hostresources.Register(nativeResourceContributor{})
+	owner := "native-api-" + strconv.FormatUint(fixtureContributorSequence.Add(1), 10)
+	unregister, err := hostresources.Register(nativeResourceContributor{owner: owner})
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(unregister)
 	router := gin.New()
 	RegisterRoutes(router.Group("/api"), Deps{

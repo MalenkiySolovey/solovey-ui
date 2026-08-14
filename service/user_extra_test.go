@@ -1,15 +1,30 @@
 package service
 
 import (
+	"context"
 	"strconv"
 	"strings"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 	"golang.org/x/crypto/bcrypt"
 )
+
+func authenticateUsernameForTest(s *UserService, username, password, remoteIP string) (string, error) {
+	result, err := s.Authenticate(context.Background(), username, password, remoteIP)
+	if err != nil {
+		return "", err
+	}
+	return result.Username(), nil
+}
+
+func userExistsForTest(username string) (bool, error) {
+	var count int64
+	err := dbsqlite.DB().Model(&model.User{}).Where("username = ?", username).Count(&count).Error
+	return count > 0, err
+}
 
 func TestUserServiceLoginHappyWrongAndLastLogin(t *testing.T) {
 	initSettingTestDB(t)
@@ -18,14 +33,14 @@ func TestUserServiceLoginHappyWrongAndLastLogin(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	username, err := userService.Login("admin", "correct-password", "203.0.113.10")
+	username, err := authenticateUsernameForTest(userService, "admin", "correct-password", "203.0.113.10")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if username != "admin" {
 		t.Fatalf("unexpected login username %q", username)
 	}
-	if _, err := userService.Login("admin", "wrong-password", "203.0.113.11"); err == nil {
+	if _, err := authenticateUsernameForTest(userService, "admin", "wrong-password", "203.0.113.11"); err == nil {
 		t.Fatal("wrong password should be rejected")
 	}
 
@@ -36,10 +51,6 @@ func TestUserServiceLoginHappyWrongAndLastLogin(t *testing.T) {
 	if !strings.Contains(user.LastLogins, "203.0.113.10") {
 		t.Fatalf("last login IP was not recorded: %q", user.LastLogins)
 	}
-}
-
-func TestUserServiceLoginLockedDocumentedAtAPILayer(t *testing.T) {
-	t.Skip("Login lockout is enforced by api checkLoginRateLimit, not UserService.Login; keep service unit boundary unchanged")
 }
 
 func TestUserServiceAddTokenScopePersistenceAndInvalidScope(t *testing.T) {
@@ -107,7 +118,7 @@ func TestUserServiceHashAPITokenDeterministicWithStableInstallSalt(t *testing.T)
 	}
 }
 
-func TestUserServiceMigrateLegacyTokensKeepsDisabledIssue27(t *testing.T) {
+func TestUserServiceMigrateLegacyTokensKeepsDisabled(t *testing.T) {
 	initSettingTestDB(t)
 	userService := &UserService{}
 	legacy := model.Tokens{
@@ -149,7 +160,7 @@ func TestUserServiceMigrateLegacyTokensKeepsDisabledIssue27(t *testing.T) {
 	}
 }
 
-func TestIssue9UpdateFirstUserClearsForcePasswordReset(t *testing.T) {
+func TestUpdateFirstUserClearsForcePasswordReset(t *testing.T) {
 	initSettingTestDB(t)
 	userService := &UserService{}
 	var admin model.User
@@ -171,12 +182,12 @@ func TestIssue9UpdateFirstUserClearsForcePasswordReset(t *testing.T) {
 	if stored.ForcePasswordReset {
 		t.Fatalf("UpdateFirstUser should clear force reset: %#v", stored)
 	}
-	if ok, _ := common.CheckPassword(stored.Password, "updated-password-value"); !ok {
+	if ok, _, err := passwordutil.Verify(context.Background(), stored.Password, "updated-password-value"); err != nil || !ok {
 		t.Fatal("updated password does not validate")
 	}
 }
 
-func TestIssue9ChangePassClearsForcePasswordReset(t *testing.T) {
+func TestChangePassClearsForcePasswordReset(t *testing.T) {
 	initSettingTestDB(t)
 	userService := &UserService{}
 	if err := userService.UpdateFirstUser("admin", "old-password-value"); err != nil {
@@ -204,7 +215,7 @@ func TestIssue9ChangePassClearsForcePasswordReset(t *testing.T) {
 	if stored.ForcePasswordReset {
 		t.Fatalf("ChangePass should clear force reset: %#v", stored)
 	}
-	if ok, _ := common.CheckPassword(stored.Password, "new-password-value"); !ok {
+	if ok, _, err := passwordutil.Verify(context.Background(), stored.Password, "new-password-value"); err != nil || !ok {
 		t.Fatal("new password does not validate")
 	}
 }
@@ -228,7 +239,7 @@ func TestLoginPasswordHashMigrationPreservesForcePasswordReset(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := userService.Login("admin", "legacy-password", "203.0.113.20"); err != nil {
+	if _, err := authenticateUsernameForTest(userService, "admin", "legacy-password", "203.0.113.20"); err != nil {
 		t.Fatal(err)
 	}
 
@@ -286,10 +297,10 @@ func TestUserServiceAddUserRequiresCurrentPasswordAndStoresHash(t *testing.T) {
 	if created.Username != "new-admin" {
 		t.Fatalf("username was not normalized: %#v", created)
 	}
-	if created.Password == "new-password-value" || !common.IsPasswordHash(created.Password) {
+	if created.Password == "new-password-value" || !passwordutil.IsEncoded(created.Password) {
 		t.Fatalf("password must be stored as hash only: %q", created.Password)
 	}
-	if ok, _ := common.CheckPassword(created.Password, "new-password-value"); !ok {
+	if ok, _, err := passwordutil.Verify(context.Background(), created.Password, "new-password-value"); err != nil || !ok {
 		t.Fatal("stored password hash does not validate")
 	}
 	if created.ForcePasswordReset {
@@ -298,7 +309,7 @@ func TestUserServiceAddUserRequiresCurrentPasswordAndStoresHash(t *testing.T) {
 	if _, err := userService.AddUser("admin", "wrong-password", "denied-admin", "new-password-value"); err == nil {
 		t.Fatal("wrong current password should be rejected")
 	}
-	exists, err := userService.UserExists("denied-admin")
+	exists, err := userExistsForTest("denied-admin")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -334,7 +345,7 @@ func TestUserServiceDeleteUserRejectsSelfAndDeletesTokens(t *testing.T) {
 	if _, err := userService.DeleteUser("admin", "wrong-password", strconv.FormatUint(uint64(target.Id), 10)); err == nil {
 		t.Fatal("wrong current password should be rejected")
 	}
-	exists, err := userService.UserExists("delete-me")
+	exists, err := userExistsForTest("delete-me")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -349,7 +360,7 @@ func TestUserServiceDeleteUserRejectsSelfAndDeletesTokens(t *testing.T) {
 	if result.User.Username != "delete-me" || result.DeletedTokenCount != 1 {
 		t.Fatalf("unexpected delete result: %#v", result)
 	}
-	exists, err = userService.UserExists("delete-me")
+	exists, err = userExistsForTest("delete-me")
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -2,6 +2,7 @@ export default {
   "migrateXui": {
     "backupAction": {
       "title": "Di chuyển từ compatible panel",
+      "hint": "Nhập nhanh được áp dụng ngay. Trình hướng dẫn đầy đủ cho phép xem trước, kiểm tra xung đột và chọn chính xác dữ liệu cần chuyển.",
       "button": "Chọn cơ sở dữ liệu compatible panel…",
       "dryRun": "Chạy thử (chỉ xem trước)",
       "strategy": "Chiến lược xung đột",
@@ -48,6 +49,8 @@ export default {
     "warnings": "Cảnh báo",
     "back": "Quay lại",
     "apply": "Áp dụng kế hoạch",
+    "applyFailed": "Nhập thất bại",
+    "applyFailedFallback": "Không thể áp dụng quá trình di chuyển.",
     "progressTitle": "Đang áp dụng di chuyển",
     "current": "Hiện tại",
     "resultTitle": "Kết quả di chuyển",
@@ -55,8 +58,15 @@ export default {
     "downloadJson": "Tải JSON",
     "downloadMarkdown": "Tải Markdown",
     "restore": "Khôi phục cơ sở dữ liệu trước",
+    "rollbackFailed": "Khôi phục thất bại",
+    "rollbackFailedFallback": "Không thể khôi phục cơ sở dữ liệu trước.",
+    "rollbackHealthTimeout": "Đã khôi phục xong nhưng bảng điều khiển chưa sẵn sàng kịp thời. Hãy kiểm tra dịch vụ rồi tải lại trang thủ công.",
     "generatedAdmins": "Quản trị viên đã tạo",
     "passwordShownOnce": "Các mật khẩu này chỉ hiển thị một lần và không được lưu trong audit.",
+    "passwordsHidden": "Mật khẩu đã tạo được ẩn cho đến khi bạn chủ động hiển thị.",
+    "revealGeneratedAdmins": "Hiển thị mật khẩu",
+    "hideGeneratedAdmins": "Ẩn mật khẩu",
+    "clearGeneratedAdmins": "Xóa mật khẩu",
     "actions": {
       "create": "Tạo",
       "merge": "Gộp",

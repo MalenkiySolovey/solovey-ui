@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestRuntimeCoreStartCooldownConcurrentAccessRaceAnchorIssue20(t *testing.T) {
+func TestRuntimeCoreStartCooldownConcurrentAccessRaceAnchor(t *testing.T) {
 	r := NewRuntimeWithCoreProvider(nil)
 
 	const (
@@ -35,7 +35,7 @@ func TestRuntimeCoreStartCooldownConcurrentAccessRaceAnchorIssue20(t *testing.T)
 	wg.Wait()
 }
 
-func TestRuntimeCoreStartCooldownActiveAfterFailureIssue20(t *testing.T) {
+func TestRuntimeCoreStartCooldownActiveAfterFailure(t *testing.T) {
 	r := NewRuntimeWithCoreProvider(nil)
 
 	r.markCoreStartFailed()

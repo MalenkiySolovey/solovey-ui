@@ -52,7 +52,7 @@ func TestAdminCreateDeleteFlowRequiresCurrentPasswordAndAudits(t *testing.T) {
 		"password":    {"denied-password"},
 	})
 	assertAdminFlowMsgSuccess(t, deniedCreate, false)
-	if exists, err := (&service.UserService{}).UserExists("denied-admin"); err != nil {
+	if exists, err := adminFlowUserExists("denied-admin"); err != nil {
 		t.Fatal(err)
 	} else if exists {
 		t.Fatal("wrong current password should not create an admin")
@@ -88,7 +88,7 @@ func TestAdminCreateDeleteFlowRequiresCurrentPasswordAndAudits(t *testing.T) {
 		"id":          {strconv.FormatUint(uint64(admin.Id), 10)},
 	})
 	assertAdminFlowMsgSuccess(t, selfDelete, false)
-	if exists, err := (&service.UserService{}).UserExists("admin"); err != nil {
+	if exists, err := adminFlowUserExists("admin"); err != nil {
 		t.Fatal(err)
 	} else if !exists {
 		t.Fatal("self delete must not remove the current admin")
@@ -100,7 +100,7 @@ func TestAdminCreateDeleteFlowRequiresCurrentPasswordAndAudits(t *testing.T) {
 		"id":          {strconv.FormatUint(uint64(target.Id), 10)},
 	})
 	assertAdminFlowMsgSuccess(t, deleteTarget, true)
-	if exists, err := (&service.UserService{}).UserExists("delete-me"); err != nil {
+	if exists, err := adminFlowUserExists("delete-me"); err != nil {
 		t.Fatal(err)
 	} else if exists {
 		t.Fatal("target admin should be deleted")
@@ -136,11 +136,19 @@ func TestAdminCreateDeleteFlowRequiresCurrentPasswordAndAudits(t *testing.T) {
 	}
 }
 
+func adminFlowUserExists(username string) (bool, error) {
+	var count int64
+	err := dbsqlite.DB().Model(&model.User{}).Where("username = ?", username).Count(&count).Error
+	return count > 0, err
+}
+
 func newAdminFlowRouter(t *testing.T) (*gin.Engine, *APIv2Handler) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	store := cookie.NewStore([]byte("test-secret"))
+	store.Options(sessions.Options{Path: "/", HttpOnly: true, Secure: true})
+	router.Use(sessions.Sessions("s-ui", store))
 	apiv2 := NewAPIv2Handler(router.Group("/apiv2"))
 	NewAPIHandler(router.Group("/api"), apiv2)
 	return router, apiv2
@@ -186,6 +194,11 @@ func adminFlowStepUp(t *testing.T, router *gin.Engine, jar *integrationCookieJar
 	req.Header.Set("X-Requested-With", "XMLHttpRequest")
 	req.Header.Set(csrfHeader, csrf)
 	recorder := performIntegrationRequest(router, req, jar)
+	for _, responseCookie := range recorder.Result().Cookies() {
+		if responseCookie.Name == "s-ui" && responseCookie.Secure {
+			t.Fatal("step-up upgraded an HTTP session cookie to Secure")
+		}
+	}
 	msg := assertAdminFlowMsgSuccess(t, recorder, true)
 	obj, ok := msg.Obj.(map[string]any)
 	if !ok {

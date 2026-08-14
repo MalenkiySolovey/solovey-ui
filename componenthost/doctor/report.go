@@ -85,8 +85,14 @@ func InspectWith(options Options) Report {
 		}
 	}
 
-	migrations := componentMigrations(options.DB)
-	enabledSettings, invalidEnabledSettings := componentEnabledSettings(options.DB)
+	migrations, migrationsErr := componentMigrations(options.DB)
+	if migrationsErr != nil {
+		report.Issues = append(report.Issues, Issue{Severity: "error", Message: "component migration inventory is unavailable"})
+	}
+	enabledSettings, invalidEnabledSettings, enabledSettingsErr := componentEnabledSettings(options.DB)
+	if enabledSettingsErr != nil {
+		report.Issues = append(report.Issues, Issue{Severity: "error", Message: "component enabled-setting inventory is unavailable"})
+	}
 	for _, key := range invalidEnabledSettings {
 		report.Issues = append(report.Issues, Issue{
 			Severity: "warn",
@@ -178,7 +184,7 @@ func InspectWith(options Options) Report {
 		if rawEnabled, ok := enabledSettings[id]; ok {
 			if !row.Available {
 				if _, err := strconv.ParseBool(rawEnabled); err != nil {
-					row.Issues = append(row.Issues, Issue{Severity: "error", Message: "enabled setting is invalid: " + err.Error()})
+					row.Issues = append(row.Issues, Issue{Severity: "error", Message: "enabled setting is invalid"})
 				}
 				row.Issues = append(row.Issues, Issue{
 					Severity: "warn",
@@ -281,38 +287,38 @@ func componentEnabled(db *gorm.DB, item manifest.Manifest, available bool) (bool
 		return item.DefaultEnabled, nil
 	}
 	if err != nil {
-		return false, &Issue{Severity: "error", Message: "failed to read enabled setting: " + err.Error()}
+		return false, &Issue{Severity: "error", Message: "failed to read enabled setting"}
 	}
 	enabled, err := strconv.ParseBool(setting.Value)
 	if err != nil {
-		return false, &Issue{Severity: "error", Message: "enabled setting is invalid: " + err.Error()}
+		return false, &Issue{Severity: "error", Message: "enabled setting is invalid"}
 	}
 	return enabled, nil
 }
 
-func componentMigrations(db *gorm.DB) map[string][]string {
+func componentMigrations(db *gorm.DB) (map[string][]string, error) {
 	result := map[string][]string{}
 	if db == nil || !db.Migrator().HasTable(&model.ComponentMigration{}) {
-		return result
+		return result, nil
 	}
 	var rows []model.ComponentMigration
 	if err := db.Order("component_id asc, version asc").Find(&rows).Error; err != nil {
-		return result
+		return result, err
 	}
 	for _, row := range rows {
 		result[row.ComponentID] = append(result[row.ComponentID], row.Version)
 	}
-	return result
+	return result, nil
 }
 
-func componentEnabledSettings(db *gorm.DB) (map[string]string, []string) {
+func componentEnabledSettings(db *gorm.DB) (map[string]string, []string, error) {
 	result := map[string]string{}
 	if db == nil || !db.Migrator().HasTable(&model.Setting{}) {
-		return result, nil
+		return result, nil, nil
 	}
 	var rows []model.Setting
 	if err := db.Model(model.Setting{}).Where(`"key" LIKE ?`, "%.enabled").Find(&rows).Error; err != nil {
-		return result, nil
+		return result, nil, err
 	}
 	var invalid []string
 	for _, row := range rows {
@@ -324,5 +330,5 @@ func componentEnabledSettings(db *gorm.DB) (map[string]string, []string) {
 		result[id] = row.Value
 	}
 	sort.Strings(invalid)
-	return result, invalid
+	return result, invalid, nil
 }

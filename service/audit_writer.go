@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -14,6 +15,7 @@ const (
 	auditQueueCapacity = 4096
 	auditBatchSize     = 64
 	auditFlushInterval = 200 * time.Millisecond
+	auditRetryInterval = 100 * time.Millisecond
 
 	// Coverage-gap signal: once this many audit events have been dropped since
 	// the last marker (and the window has elapsed), emit one synchronous warn
@@ -42,6 +44,7 @@ type auditWriter struct {
 	done    chan struct{}
 	started bool
 	stopped bool
+	stopErr error
 }
 
 func newAuditWriter(capacity int, batchSize int, flushInterval time.Duration, write func([]model.AuditEvent) error) *auditWriter {
@@ -78,12 +81,8 @@ func (r *Runtime) StopAuditWriter(ctx context.Context) error {
 	}
 
 	err := writer.Stop(ctx)
-	r.replaceAuditWriterIfCurrent(writer)
+	r.replaceAuditWriterIfCurrent(writer, writer.drainPending())
 	return err
-}
-
-func AuditDroppedTotal() uint64 {
-	return auditDroppedTotal.Load()
 }
 
 func (w *auditWriter) Enqueue(event model.AuditEvent) {
@@ -190,7 +189,10 @@ func (w *auditWriter) Stop(ctx context.Context) error {
 
 	select {
 	case <-done:
-		return nil
+		w.mu.Lock()
+		err := w.stopErr
+		w.mu.Unlock()
+		return err
 	case <-ctx.Done():
 		return ctx.Err()
 	}
@@ -205,7 +207,7 @@ func (w *auditWriter) run() {
 			case <-w.notify:
 				continue
 			case <-w.stopCh:
-				w.flushRemaining()
+				w.recordStopError(w.flushRemaining())
 				return
 			}
 		}
@@ -224,13 +226,20 @@ func (w *auditWriter) run() {
 				flush = true
 			case <-w.stopCh:
 				stopTimer(timer)
-				w.writeBatch(batch)
-				w.flushRemaining()
+				if err := w.writeBatch(batch); err != nil {
+					w.restoreBatch(batch)
+					w.recordStopError(err)
+					return
+				}
+				w.recordStopError(w.flushRemaining())
 				return
 			}
 		}
 		stopTimer(timer)
-		w.writeBatch(batch)
+		if !w.writeBatchUntilStop(batch) {
+			w.recordStopError(w.flushRemaining())
+			return
+		}
 	}
 }
 
@@ -251,23 +260,82 @@ func (w *auditWriter) popBatch(limit int) []model.AuditEvent {
 	return batch
 }
 
-func (w *auditWriter) flushRemaining() {
+func (w *auditWriter) flushRemaining() error {
+	var result error
 	for {
 		batch := w.popBatch(w.batchSize)
 		if len(batch) == 0 {
-			return
+			return result
 		}
-		w.writeBatch(batch)
+		if err := w.writeBatch(batch); err != nil {
+			w.restoreBatch(batch)
+			return errors.Join(result, err)
+		}
 	}
 }
 
-func (w *auditWriter) writeBatch(batch []model.AuditEvent) {
+func (w *auditWriter) writeBatch(batch []model.AuditEvent) error {
 	if len(batch) == 0 || w.write == nil {
-		return
+		return nil
 	}
 	if err := w.write(batch); err != nil {
 		logger.Warning("audit writer flush failed:", err)
+		return err
 	}
+	return nil
+}
+
+func (w *auditWriter) writeBatchUntilStop(batch []model.AuditEvent) bool {
+	for {
+		err := w.writeBatch(batch)
+		if err == nil {
+			return true
+		}
+		timer := time.NewTimer(auditRetryInterval)
+		select {
+		case <-timer.C:
+			continue
+		case <-w.stopCh:
+			stopTimer(timer)
+			w.restoreBatch(batch)
+			w.recordStopError(err)
+			return false
+		}
+	}
+}
+
+func (w *auditWriter) restoreBatch(batch []model.AuditEvent) {
+	if len(batch) == 0 {
+		return
+	}
+	w.mu.Lock()
+	combined := make([]model.AuditEvent, 0, min(w.capacity, len(batch)+len(w.queue)))
+	combined = append(combined, batch...)
+	combined = append(combined, w.queue...)
+	if len(combined) > w.capacity {
+		auditDroppedTotal.Add(uint64(len(combined) - w.capacity))
+		combined = combined[:w.capacity]
+	}
+	w.queue = combined
+	w.mu.Unlock()
+}
+
+func (w *auditWriter) drainPending() []model.AuditEvent {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+	pending := append([]model.AuditEvent(nil), w.queue...)
+	clear(w.queue)
+	w.queue = nil
+	return pending
+}
+
+func (w *auditWriter) recordStopError(err error) {
+	if err == nil {
+		return
+	}
+	w.mu.Lock()
+	w.stopErr = errors.Join(w.stopErr, err)
+	w.mu.Unlock()
 }
 
 func (w *auditWriter) signalLocked() {

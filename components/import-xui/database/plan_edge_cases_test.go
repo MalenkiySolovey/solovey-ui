@@ -47,7 +47,7 @@ func TestApplyExtraReturnsErrBusyWhenApplyLockHeld(t *testing.T) {
 	}
 }
 
-func TestIssue6ApplyWireguardNoPeersCountsEndpointSkip(t *testing.T) {
+func TestApplyWireguardNoPeersCountsEndpointSkip(t *testing.T) {
 	initPlanExtraMainDB(t)
 	src := createPlanExtraSource(t, []planExtraInbound{{
 		id:       1,
@@ -79,7 +79,7 @@ func TestIssue6ApplyWireguardNoPeersCountsEndpointSkip(t *testing.T) {
 	}
 }
 
-func TestIssue6ImportWireguardNoPeersCountsEndpointSkip(t *testing.T) {
+func TestImportWireguardNoPeersCountsEndpointSkip(t *testing.T) {
 	initPlanExtraMainDB(t)
 	src := createPlanExtraSource(t, []planExtraInbound{{
 		id:       1,

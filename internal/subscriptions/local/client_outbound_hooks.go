@@ -84,13 +84,6 @@ func ClientOutboundContributorsVersion() uint64 {
 	return clientOutboundContributors.version.Load()
 }
 
-func ResetClientOutboundContributorsForTest() {
-	clientOutboundContributors.Lock()
-	clientOutboundContributors.entries = map[string]registeredClientOutboundContributor{}
-	clientOutboundContributors.version.Add(1)
-	clientOutboundContributors.Unlock()
-}
-
 type clientOutboundContributorEntry struct {
 	name string
 	fn   ClientOutboundContributor

@@ -21,18 +21,18 @@ import (
 
 func TestFirewallBaselineCapabilityAssessmentKeepsUnprovenAdvancedPrimitivesHonest(t *testing.T) {
 	capabilities := &protectionhelper.CapabilitiesResult{Revision: strings.Repeat("a", 64), NFT: protectionhelper.NFTSupport{PlatformKnown: true, Linux: true, Available: true}, Capabilities: []protectionhelper.Capability{{Operation: protectionhelper.OperationNFTValidate, Available: true}}}
-	baseline := assessFirewallBaselineCapabilities(protectionfirewall.FirewallPlan{}, capabilities)
+	baseline := protectionfirewall.AssessBaselineCapabilities(protectionfirewall.FirewallPlan{}, capabilities)
 	if !baseline.CandidateSupported || baseline.TTLSupported || baseline.RateSupported || baseline.AdvancedState != "DEFERRED_UNPROVEN" || baseline.Consequence != "BASELINE_ONLY_ADVANCED_SCENARIOS_NOT_SHIPPED" {
 		t.Fatalf("unproven advanced capabilities were overstated or blocked the primitive-free baseline: %#v", baseline)
 	}
 	timed := protectionfirewall.FirewallPlan{Endpoints: []protectionfirewall.EndpointPolicy{{Contributions: []protectionfirewall.EndpointContribution{{Intent: domain.IntentTemporaryBlock}}}}}
-	blocked := assessFirewallBaselineCapabilities(timed, capabilities)
+	blocked := protectionfirewall.AssessBaselineCapabilities(timed, capabilities)
 	if blocked.CandidateSupported || !blocked.TTLRequired || blocked.Consequence != "BASELINE_BLOCKED" {
 		t.Fatalf("mandatory unsupported TTL primitive did not block candidate: %#v", blocked)
 	}
 	capabilities.NFT.TTLSet, capabilities.NFT.RateLimit = true, true
 	rate := protectionfirewall.FirewallPlan{Endpoints: []protectionfirewall.EndpointPolicy{{Contributions: []protectionfirewall.EndpointContribution{{Intent: domain.IntentRateLimit}}}}}
-	supported := assessFirewallBaselineCapabilities(rate, capabilities)
+	supported := protectionfirewall.AssessBaselineCapabilities(rate, capabilities)
 	if !supported.CandidateSupported || !supported.TTLRequired || !supported.RateRequired || supported.AdvancedState != "SUPPORTED_BY_READ_ONLY_CHECK" {
 		t.Fatalf("proven mandatory primitives were not accepted: %#v", supported)
 	}
@@ -148,13 +148,5 @@ func TestDirectDatabaseRecoveryFixtureCannotSatisfyProductionVerification(t *tes
 	}
 	if len(paths) != 0 || invalid != 0 {
 		t.Fatalf("unsealed direct database row became production recovery proof: paths=%d invalid=%d", len(paths), invalid)
-	}
-	row.ID = 0
-	if err := repository.UpsertRecoveryPath(context.Background(), row); err != nil {
-		t.Fatal(err)
-	}
-	_, paths, invalid, err = handler.managementContracts(context.Background(), []hostresources.ProtectableResource{resource}, hostfacts.Snapshot{}, now)
-	if err != nil || len(paths) != 0 || invalid != 0 {
-		t.Fatalf("retired component repository became neutral recovery authority: paths=%d invalid=%d err=%v", len(paths), invalid, err)
 	}
 }

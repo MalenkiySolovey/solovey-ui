@@ -1,5 +1,5 @@
 table inet solovey_protection {
-  comment "solovey-revision:92e96e039e6941d680a55ae35fa7bf3ce476fb10d379aeae1ea4ca8e013b7e64"
+  comment "solovey-revision:ac44fb69423507ef73b2b30a688a184fbe9c71df1d16f53363a907aa7440fd13"
   set solovey_gray4_9e687d4fec8b {
     type ipv4_addr
     flags interval,timeout

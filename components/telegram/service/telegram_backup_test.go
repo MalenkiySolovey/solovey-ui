@@ -45,6 +45,13 @@ func TestTelegramBackupRunOnceDisabledAndMissingPassphrase(t *testing.T) {
 	}
 }
 
+func TestTelegramBackupRunOnceWithoutSettingsFailsClosed(t *testing.T) {
+	result := (&telegramservice.TelegramBackupService{}).RunOnce(context.Background(), telegramservice.TelegramBackupTriggerManual)
+	if result.Success || result.ErrorClass != "settings" {
+		t.Fatalf("nil settings result = %#v, want settings failure", result)
+	}
+}
+
 func TestTelegramBackupWeakPassphraseValidation(t *testing.T) {
 	settingService := initSettingTestDB(t)
 	if _, err := settingService.GetAllSetting(); err != nil {
@@ -104,7 +111,7 @@ func TestTelegramBackupRunOnceSuccessSendsEnvelopeAndAuditsSizes(t *testing.T) {
 	}
 }
 
-func TestTelegramBackupRunOnceOversizeSkipsSendAndAuditRedactsIssue25(t *testing.T) {
+func TestTelegramBackupRunOnceOversizeSkipsSendAndAuditRedacts(t *testing.T) {
 	passphrase := "correct horse battery staple"
 	settingService := initSettingTestDB(t)
 	configureTelegramBackupSettings(t, settingService, telegramBackupSettings{

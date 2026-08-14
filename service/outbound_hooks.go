@@ -65,12 +65,6 @@ func runOutboundSaveHooks(tx *gorm.DB) error {
 	return nil
 }
 
-func ResetOutboundSaveHooksForTest() {
-	outboundSaveHooks.Lock()
-	outboundSaveHooks.entries = map[string]registeredOutboundSaveHook{}
-	outboundSaveHooks.Unlock()
-}
-
 type outboundSaveHookEntry struct {
 	name string
 	fn   OutboundSaveHook

@@ -24,7 +24,7 @@ func TestRunWritesBackupFile(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { closeDB(t) })
-	if err := dbsqlite.DB().Create(&model.Client{Name: "cli-backup", Inbounds: []byte("[]"), Links: []byte("[]"), Config: []byte("{}")}).Error; err != nil {
+	if err := dbsqlite.DB().Create(&model.Client{Name: "cli-backup", SubSecret: "cli-backup-secret", Inbounds: []byte("[]"), Links: []byte("[]"), Config: []byte("{}")}).Error; err != nil {
 		t.Fatal(err)
 	}
 	if err := dbsqlite.Close(); err != nil {

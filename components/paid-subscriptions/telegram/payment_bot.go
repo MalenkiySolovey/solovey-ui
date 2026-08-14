@@ -110,8 +110,8 @@ func (b *Bot) startPurchase(ctx context.Context, chatID int64, tgID int64, t *pa
 // order owned by someone else (order-id enumeration/probing on the public bot).
 // In practice this is rate-bounded by the bot's per-user command limiter, so it
 // leaves a trace without flooding the audit log. MITRE T1110/T1499.
-func auditCrossUserOrderAccess(tgID int64, orderID uint, action string) {
-	_ = (&service.AuditService{}).Record(service.AuditEvent{
+func auditCrossUserOrderAccess(runtime *service.Runtime, tgID int64, orderID uint, action string) {
+	_ = (&service.AuditService{Runtime: runtime}).Record(service.AuditEvent{
 		Actor:    fmt.Sprintf("tg:%d", tgID),
 		Event:    "paidsub_cross_user_access",
 		Resource: "paidsub",
@@ -126,7 +126,7 @@ func (b *Bot) handleManualPaid(ctx context.Context, chatID int64, tgID int64, or
 		return
 	}
 	if order.TelegramUserId != tgID {
-		auditCrossUserOrderAccess(tgID, orderID, "manual_paid") // never act on another user's order
+		auditCrossUserOrderAccess(b.runtime, tgID, orderID, "manual_paid") // never act on another user's order
 		return
 	}
 	service.NotifyPanelEvent("paidsub_manual_claim", map[string]string{
@@ -165,7 +165,9 @@ func (b *Bot) handleSuccessfulPayment(ctx context.Context, m *tgMessage) {
 	}
 	if sp.TotalAmount != order.Amount || !strings.EqualFold(sp.Currency, order.Currency) {
 		logger.Warning("paidsub: payment amount/currency mismatch; refusing renewal")
-		b.payments.markFailed(order.Id)
+		if err := b.payments.markFailed(order.Id); err != nil {
+			logger.Warning("paidsub: mark mismatched payment failed: ", err)
+		}
 		service.NotifyPanelEvent("paidsub_payment_mismatch", map[string]string{
 			"orderId": fmt.Sprintf("%d", order.Id),
 		})
@@ -175,7 +177,9 @@ func (b *Bot) handleSuccessfulPayment(ctx context.Context, m *tgMessage) {
 	// for (the payload + pending status are the primary gate).
 	if order.TelegramUserId != 0 && m.From.ID != order.TelegramUserId {
 		logger.Warning("paidsub: successful_payment from unexpected telegram user; refusing renewal")
-		b.payments.markFailed(order.Id)
+		if err := b.payments.markFailed(order.Id); err != nil {
+			logger.Warning("paidsub: mark unexpected payer failed: ", err)
+		}
 		service.NotifyPanelEvent("paidsub_payment_mismatch", map[string]string{
 			"orderId": fmt.Sprintf("%d", order.Id),
 		})

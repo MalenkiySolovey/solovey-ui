@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 	"unsafe"
@@ -10,7 +11,9 @@ import (
 )
 
 type recordingConfigCoreLifecycle struct {
-	calls []string
+	calls      []string
+	startErr   error
+	restartErr error
 }
 
 func (r *recordingConfigCoreLifecycle) startCoreLocked(force bool) error {
@@ -19,12 +22,12 @@ func (r *recordingConfigCoreLifecycle) startCoreLocked(force bool) error {
 	} else {
 		r.calls = append(r.calls, "start")
 	}
-	return nil
+	return r.startErr
 }
 
 func (r *recordingConfigCoreLifecycle) restartCoreLocked() error {
 	r.calls = append(r.calls, "restart")
-	return nil
+	return r.restartErr
 }
 
 func TestApplyCoreSaveEffectLockedFallsBackToFullRestartAfterPartialReloadError(t *testing.T) {
@@ -38,7 +41,9 @@ func TestApplyCoreSaveEffectLockedFallsBackToFullRestartAfterPartialReloadError(
 		coreLifecycle:     lifecycle,
 	}
 
-	service.applyCoreSaveEffectLocked(plan)
+	if err := service.applyCoreSaveEffectLocked(plan); err != nil {
+		t.Fatal(err)
+	}
 
 	if !reflect.DeepEqual(lifecycle.calls, []string{"restart"}) {
 		t.Fatalf("lifecycle calls = %#v, want full restart fallback", lifecycle.calls)
@@ -55,7 +60,9 @@ func TestApplyCoreSaveEffectLockedStartsStoppedCoreForObjectChange(t *testing.T)
 		coreLifecycle: lifecycle,
 	}
 
-	service.applyCoreSaveEffectLocked(plan)
+	if err := service.applyCoreSaveEffectLocked(plan); err != nil {
+		t.Fatal(err)
+	}
 
 	if !reflect.DeepEqual(lifecycle.calls, []string{"start:force"}) {
 		t.Fatalf("lifecycle calls = %#v, want forced start for stopped core", lifecycle.calls)
@@ -72,10 +79,25 @@ func TestApplyCoreSaveEffectLockedUsesFullRestartForRestartPlan(t *testing.T) {
 		coreLifecycle: lifecycle,
 	}
 
-	service.applyCoreSaveEffectLocked(plan)
+	if err := service.applyCoreSaveEffectLocked(plan); err != nil {
+		t.Fatal(err)
+	}
 
 	if !reflect.DeepEqual(lifecycle.calls, []string{"restart"}) {
 		t.Fatalf("lifecycle calls = %#v, want full restart for restart plan", lifecycle.calls)
+	}
+}
+
+func TestApplyCoreSaveEffectLockedReturnsRestartFailure(t *testing.T) {
+	plan := newConfigSavePlan(singboxapply.ObjectConfig.String())
+	plan.RequireCoreRestart("config changed")
+	want := errors.New("restart failed")
+	lifecycle := &recordingConfigCoreLifecycle{restartErr: want}
+	service := &ConfigService{Runtime: NewRuntime(runningCoreForConfigSaveTest(t)), coreLifecycle: lifecycle}
+
+	err := service.applyCoreSaveEffectLocked(plan)
+	if !errors.Is(err, want) {
+		t.Fatalf("restart failure was not returned: %v", err)
 	}
 }
 

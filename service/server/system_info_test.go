@@ -7,7 +7,7 @@ import (
 	gopsnet "github.com/shirou/gopsutil/v4/net"
 )
 
-func TestGetSystemInfoHandlesShortInterfaceDataIssue23(t *testing.T) {
+func TestGetSystemInfoHandlesShortInterfaceData(t *testing.T) {
 	original := systemInfoInterfaces
 	systemInfoInterfaces = func() (gopsnet.InterfaceStatList, error) {
 		return gopsnet.InterfaceStatList{
@@ -89,7 +89,7 @@ func TestGetSystemInfoHandlesShortInterfaceDataIssue23(t *testing.T) {
 	}
 }
 
-func TestGetSystemInfoFiltersNonPublicAddressesIssue24(t *testing.T) {
+func TestGetSystemInfoFiltersNonPublicAddresses(t *testing.T) {
 	original := systemInfoInterfaces
 	systemInfoInterfaces = func() (gopsnet.InterfaceStatList, error) {
 		return gopsnet.InterfaceStatList{

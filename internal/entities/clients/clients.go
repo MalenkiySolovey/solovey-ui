@@ -2,12 +2,16 @@ package entityclients
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
+
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveidentity"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
-	"strings"
 )
 
 type SaveAction string
@@ -31,10 +35,11 @@ var supportedSaveActions = []SaveAction{
 }
 
 type SaveRequest struct {
-	Tx       *gorm.DB
-	Action   string
-	Data     json.RawMessage
-	Hostname string
+	Tx        *gorm.DB
+	Action    string
+	Data      json.RawMessage
+	Hostname  string
+	SaveBatch func(tx *gorm.DB, slice any) error
 }
 type Link map[string]any
 
@@ -72,6 +77,48 @@ func GetAll(db *gorm.DB) (*[]model.Client, error) {
 		return nil, err
 	}
 	return &clients, nil
+}
+
+// ValidateStored verifies subscription identities that entered through
+// migration or restore instead of the client save authority.
+func ValidateStored(db *gorm.DB) error {
+	if db == nil {
+		return common.NewError("client persistence is unavailable")
+	}
+	if !db.Migrator().HasTable(&model.Client{}) {
+		return nil
+	}
+	var clients []struct {
+		ID        uint
+		SubSecret string
+		Config    json.RawMessage
+		Inbounds  json.RawMessage
+		Links     json.RawMessage
+	}
+	if err := db.Model(&model.Client{}).Select("id", "sub_secret", "config", "inbounds", "links").Order("id").Scan(&clients).Error; err != nil {
+		return fmt.Errorf("load stored client subscription identities: %w", err)
+	}
+	seen := make(map[string]uint, len(clients))
+	for _, client := range clients {
+		secret := strings.TrimSpace(client.SubSecret)
+		if secret == "" || secret != client.SubSecret {
+			return fmt.Errorf("stored client row %d has an invalid subscription secret", client.ID)
+		}
+		if previous, exists := seen[secret]; exists {
+			return fmt.Errorf("stored client row %d duplicates subscription secret owned by client row %d", client.ID, previous)
+		}
+		seen[secret] = client.ID
+		if err := jsonvalue.OptionalObject("client config", client.Config); err != nil {
+			return fmt.Errorf("stored client row %d: %w", client.ID, err)
+		}
+		if err := jsonvalue.OptionalArray("client inbounds", client.Inbounds); err != nil {
+			return fmt.Errorf("stored client row %d: %w", client.ID, err)
+		}
+		if err := jsonvalue.OptionalArray("client links", client.Links); err != nil {
+			return fmt.Errorf("stored client row %d: %w", client.ID, err)
+		}
+	}
+	return nil
 }
 func Save(req SaveRequest) ([]uint, error) {
 	action, ok := ParseAction(req.Action)
@@ -116,6 +163,12 @@ func saveSingle(req SaveRequest, editing bool) ([]uint, error) {
 	if err := json.Unmarshal(req.Data, &client); err != nil {
 		return nil, err
 	}
+	if err := validateClientSaveBatch(req.Tx, []*model.Client{&client}, editing); err != nil {
+		return nil, err
+	}
+	if err := reconcileClientIPIdentity(req.Tx, &client, editing); err != nil {
+		return nil, err
+	}
 	if err := PrepareSubSecret(req.Tx, &client, editing); err != nil {
 		return nil, err
 	}
@@ -151,6 +204,14 @@ func saveAddedBulk(req SaveRequest) ([]uint, error) {
 	if len(clients) == 0 {
 		return inboundIDs, nil
 	}
+	if err := validateClientSaveBatch(req.Tx, clients, false); err != nil {
+		return nil, err
+	}
+	for _, client := range clients {
+		if err := reconcileClientIPIdentity(req.Tx, client, false); err != nil {
+			return nil, err
+		}
+	}
 	if err := json.Unmarshal(clients[0].Inbounds, &inboundIDs); err != nil {
 		return nil, err
 	}
@@ -170,7 +231,10 @@ func saveAddedBulk(req SaveRequest) ([]uint, error) {
 	if err := UpdateLinksWithFixedInbounds(req.Tx, clients, req.Hostname); err != nil {
 		return nil, err
 	}
-	if err := dbsqlite.SaveInBatches(req.Tx, clients); err != nil {
+	if req.SaveBatch == nil {
+		return nil, common.NewError("client batch persistence is unavailable")
+	}
+	if err := req.SaveBatch(req.Tx, clients); err != nil {
 		return nil, err
 	}
 	return inboundIDs, nil
@@ -179,6 +243,14 @@ func saveEditedBulk(req SaveRequest) ([]uint, error) {
 	var clients []*model.Client
 	if err := json.Unmarshal(req.Data, &clients); err != nil {
 		return nil, err
+	}
+	if err := validateClientSaveBatch(req.Tx, clients, true); err != nil {
+		return nil, err
+	}
+	for _, client := range clients {
+		if err := reconcileClientIPIdentity(req.Tx, client, true); err != nil {
+			return nil, err
+		}
 	}
 	var inboundIDs []uint
 	for _, client := range clients {
@@ -203,10 +275,97 @@ func saveEditedBulk(req SaveRequest) ([]uint, error) {
 			return nil, err
 		}
 	}
-	if err := dbsqlite.SaveInBatches(req.Tx, clients); err != nil {
+	if req.SaveBatch == nil {
+		return nil, common.NewError("client batch persistence is unavailable")
+	}
+	if err := req.SaveBatch(req.Tx, clients); err != nil {
 		return nil, err
 	}
 	return inboundIDs, nil
+}
+
+func validateClientSaveBatch(tx *gorm.DB, clients []*model.Client, editing bool) error {
+	if tx == nil {
+		return common.NewError("client database is unavailable")
+	}
+	if len(clients) == 0 {
+		return nil
+	}
+	byName := make(map[string]uint, len(clients))
+	names := make([]string, 0, len(clients))
+	for _, client := range clients {
+		if client == nil {
+			return common.NewError("client payload is invalid")
+		}
+		client.Name = strings.TrimSpace(client.Name)
+		if err := entityidentity.ValidateName(client.Name); err != nil {
+			return err
+		}
+		if err := jsonvalue.OptionalObject("client config", client.Config); err != nil {
+			return err
+		}
+		if err := jsonvalue.OptionalArray("client inbounds", client.Inbounds); err != nil {
+			return err
+		}
+		if err := jsonvalue.OptionalArray("client links", client.Links); err != nil {
+			return err
+		}
+		action := "new"
+		if editing {
+			action = "edit"
+		}
+		if err := saveidentity.Validate(tx, action, client.Id, &model.Client{}); err != nil {
+			return err
+		}
+		if _, duplicate := byName[client.Name]; duplicate {
+			return common.NewError("client name already exists")
+		}
+		byName[client.Name] = client.Id
+		names = append(names, client.Name)
+	}
+	var existing []model.Client
+	if err := tx.Model(model.Client{}).Select("id, name").Where("name IN ?", names).Find(&existing).Error; err != nil {
+		return err
+	}
+	for _, stored := range existing {
+		if byName[stored.Name] != stored.Id {
+			return common.NewError("client name already exists")
+		}
+	}
+	return nil
+}
+
+func reconcileClientIPIdentity(tx *gorm.DB, client *model.Client, editing bool) error {
+	if !editing {
+		// A deleted client's observations must never be inherited by a newly
+		// created client that happens to reuse the same display name.
+		return tx.Where("client_name = ?", client.Name).Delete(&model.ClientIP{}).Error
+	}
+	var oldName string
+	if err := tx.Model(model.Client{}).Select("name").Where("id = ?", client.Id).Scan(&oldName).Error; err != nil {
+		return err
+	}
+	if oldName == client.Name {
+		return nil
+	}
+	if err := tx.Where("client_name = ?", client.Name).Delete(&model.ClientIP{}).Error; err != nil {
+		return err
+	}
+	return tx.Model(&model.ClientIP{}).Where("client_name = ?", oldName).Update("client_name", client.Name).Error
+}
+
+func deleteClientIPHistory(tx *gorm.DB, clientIDs []uint) error {
+	if len(clientIDs) == 0 {
+		return nil
+	}
+	var names []string
+	if err := tx.Model(model.Client{}).Where("id IN ?", clientIDs).Pluck("name", &names).Error; err != nil {
+		return err
+	}
+	if len(names) == 0 {
+		return nil
+	}
+	return tx.Where("client_name IN ?", names).Delete(&model.ClientIP{}).Error
 }
 func saveDeletedBulk(req SaveRequest) ([]uint, error) {
 	var ids []uint
@@ -220,6 +379,9 @@ func saveDeletedBulk(req SaveRequest) ([]uint, error) {
 			return nil, err
 		}
 		inboundIDs = common.UnionUintArray(inboundIDs, clientInbounds)
+	}
+	if err := deleteClientIPHistory(req.Tx, ids); err != nil {
+		return nil, err
 	}
 	if err := req.Tx.Where("id in ?", ids).Delete(model.Client{}).Error; err != nil {
 		return nil, err
@@ -235,6 +397,9 @@ func saveDeleted(req SaveRequest) ([]uint, error) {
 	if err != nil {
 		return nil, err
 	}
+	if err := deleteClientIPHistory(req.Tx, []uint{id}); err != nil {
+		return nil, err
+	}
 	if err := req.Tx.Where("id = ?", id).Delete(model.Client{}).Error; err != nil {
 		return nil, err
 	}
@@ -243,9 +408,6 @@ func saveDeleted(req SaveRequest) ([]uint, error) {
 func PrepareSubSecret(tx *gorm.DB, client *model.Client, preserveExisting bool) error {
 	if client.IPLimitMode == "" {
 		client.IPLimitMode = "monitor"
-	}
-	if client.SubSecret != "" {
-		return nil
 	}
 	if preserveExisting && client.Id > 0 {
 		var old model.Client
@@ -257,10 +419,60 @@ func PrepareSubSecret(tx *gorm.DB, client *model.Client, preserveExisting bool) 
 			return nil
 		}
 	}
+	// The generic save payload is not an authority for subscription secrets.
+	// New clients always receive a server-generated secret; edits preserve the
+	// persisted secret and rotation uses the dedicated operation.
 	secret, err := common.RandomUUID()
 	if err != nil {
 		return err
 	}
 	client.SubSecret = secret
 	return nil
+}
+
+// EnsureSubSecret atomically backfills a missing legacy client secret. It is
+// shared by every subscription lookup so there is one mutation authority for
+// this persisted identity.
+func EnsureSubSecret(tx *gorm.DB, client *model.Client) error {
+	if tx == nil || client == nil || client.Id == 0 {
+		return common.NewError("client subscription identity is unavailable")
+	}
+	if client.SubSecret != "" {
+		return nil
+	}
+	secret, err := common.RandomUUID()
+	if err != nil {
+		return err
+	}
+	result := tx.Model(model.Client{}).
+		Where("id = ? AND (sub_secret IS NULL OR sub_secret = '')", client.Id).
+		Update("sub_secret", secret)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 1 {
+		client.SubSecret = secret
+		return nil
+	}
+	return tx.Model(model.Client{}).Select("sub_secret").Where("id = ?", client.Id).First(client).Error
+}
+
+// RotateSubSecret is the sole explicit mutation path for an existing client's
+// subscription identity.
+func RotateSubSecret(tx *gorm.DB, clientID uint) (string, error) {
+	if tx == nil || clientID == 0 {
+		return "", common.NewError("invalid client id")
+	}
+	var client model.Client
+	if err := tx.Model(model.Client{}).Select("id, name").Where("id = ?", clientID).First(&client).Error; err != nil {
+		return "", err
+	}
+	newSecret, err := common.RandomUUID()
+	if err != nil {
+		return "", err
+	}
+	if err := tx.Model(model.Client{}).Where("id = ?", client.Id).Update("sub_secret", newSecret).Error; err != nil {
+		return "", err
+	}
+	return client.Name, nil
 }

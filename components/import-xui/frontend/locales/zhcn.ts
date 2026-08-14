@@ -2,6 +2,7 @@ export default {
   "migrateXui": {
     "backupAction": {
       "title": "从 compatible panel 迁移",
+      "hint": "快速导入会立即应用。完整向导可预览、检查冲突并准确选择要迁移的内容。",
       "button": "选择 compatible panel 数据库…",
       "dryRun": "试运行（仅预览）",
       "strategy": "冲突策略",
@@ -48,6 +49,8 @@ export default {
     "warnings": "警告",
     "back": "返回",
     "apply": "应用计划",
+    "applyFailed": "导入失败",
+    "applyFailedFallback": "无法应用迁移。",
     "progressTitle": "正在应用迁移",
     "current": "当前",
     "resultTitle": "迁移结果",
@@ -55,8 +58,15 @@ export default {
     "downloadJson": "下载 JSON",
     "downloadMarkdown": "下载 Markdown",
     "restore": "恢复旧数据库",
+    "rollbackFailed": "恢复失败",
+    "rollbackFailedFallback": "无法恢复旧数据库。",
+    "rollbackHealthTimeout": "恢复已完成，但面板未能及时就绪。请检查服务后手动刷新页面。",
     "generatedAdmins": "已生成管理员",
     "passwordShownOnce": "这些密码只显示一次，不会写入审计。",
+    "passwordsHidden": "生成的密码在您主动显示之前保持隐藏。",
+    "revealGeneratedAdmins": "显示密码",
+    "hideGeneratedAdmins": "隐藏密码",
+    "clearGeneratedAdmins": "清除密码",
     "actions": {
       "create": "创建",
       "merge": "合并",

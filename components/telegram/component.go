@@ -5,6 +5,7 @@ package telegram
 import (
 	"context"
 	_ "embed"
+	"errors"
 	"net/http"
 	"strings"
 	"sync"
@@ -70,6 +71,14 @@ func (c *component) start(ctx context.Context, scheduler componenthost.Scheduler
 		c.mu.Unlock()
 		return nil
 	}
+	if scheduler == nil {
+		c.mu.Unlock()
+		return errors.New("telegram scheduler is unavailable")
+	}
+	if runtime == nil {
+		c.mu.Unlock()
+		return errors.New("telegram runtime is unavailable")
+	}
 	c.started = true
 	if c.notifier == nil {
 		c.notifier = newTelegramNotifier(runtime)
@@ -88,10 +97,16 @@ func (c *component) start(ctx context.Context, scheduler componenthost.Scheduler
 		c.unregisterContribution = registerSettingContribution()
 	}
 	if c.unregisterBackupCodecs == nil {
-		c.unregisterBackupCodecs = registerBackupCodecs()
+		unregister, err := registerBackupCodecs()
+		if err != nil {
+			c.mu.Unlock()
+			_ = c.Stop(ctx)
+			return err
+		}
+		c.unregisterBackupCodecs = unregister
 	}
 	if c.unregisterSettings == nil {
-		c.unregisterSettings = registerSettingsObserver()
+		c.unregisterSettings = registerSettingsObserver(runtime)
 	}
 	if c.unregisterLogCategory == nil {
 		c.unregisterLogCategory = diagnostics.RegisterLogCategory(diagnostics.LogCategoryContribution{
@@ -107,17 +122,13 @@ func (c *component) start(ctx context.Context, scheduler componenthost.Scheduler
 			return []string{"telegram"}
 		})
 	}
-	c.mu.Unlock()
-	if scheduler == nil {
-		return nil
-	}
 	runtimeJobs, err := startTelegramRuntimeJobs(scheduler, runtime)
 	if err != nil {
+		c.mu.Unlock()
 		_ = c.Stop(ctx)
 		return err
 	}
 
-	c.mu.Lock()
 	c.scheduler = runtimeJobs.scheduler
 	c.entryIDs = runtimeJobs.entryIDs
 	c.reportScheduler = runtimeJobs.reportScheduler
@@ -128,7 +139,8 @@ func (c *component) start(ctx context.Context, scheduler componenthost.Scheduler
 
 func (c *component) Stop(ctx context.Context) error {
 	c.mu.Lock()
-	c.started = false
+	defer c.mu.Unlock()
+
 	scheduler := c.scheduler
 	unregisterEvent := c.unregisterEvent
 	unregisterContribution := c.unregisterContribution
@@ -140,6 +152,31 @@ func (c *component) Stop(ctx context.Context) error {
 	entryIDs := append([]cron.EntryID(nil), c.entryIDs...)
 	reportScheduler := c.reportScheduler
 	backupScheduler := c.backupScheduler
+	if err := (telegramRuntimeJobs{
+		scheduler:       scheduler,
+		entryIDs:        entryIDs,
+		reportScheduler: reportScheduler,
+		backupScheduler: backupScheduler,
+	}).stop(ctx); err != nil {
+		return err
+	}
+	if notifier != nil {
+		if err := notifier.Stop(ctx); err != nil {
+			return err
+		}
+	}
+
+	callUnregisters(
+		unregisterEvent,
+		unregisterBackupCodecs,
+		unregisterSettings,
+		unregisterLogCategory,
+		unregisterTokenScope,
+		unregisterContribution,
+	)
+	telegramservice.ResetHTTPClient()
+
+	c.started = false
 	c.scheduler = nil
 	c.unregisterEvent = nil
 	c.unregisterContribution = nil
@@ -151,25 +188,6 @@ func (c *component) Stop(ctx context.Context) error {
 	c.entryIDs = nil
 	c.reportScheduler = nil
 	c.backupScheduler = nil
-	c.mu.Unlock()
-
-	telegramRuntimeJobs{
-		scheduler:       scheduler,
-		entryIDs:        entryIDs,
-		reportScheduler: reportScheduler,
-		backupScheduler: backupScheduler,
-	}.stop()
-	callUnregisters(
-		unregisterEvent,
-		unregisterBackupCodecs,
-		unregisterSettings,
-		unregisterLogCategory,
-		unregisterTokenScope,
-		unregisterContribution,
-	)
-	if notifier != nil {
-		return notifier.Stop(ctx)
-	}
 	return nil
 }
 
@@ -192,7 +210,9 @@ func startTelegramRuntimeJobs(scheduler componenthost.Scheduler, runtime *servic
 		scheduler:       scheduler,
 		entryIDs:        make([]cron.EntryID, 0, 3),
 		reportScheduler: jobs.NewTelegramReportScheduler(scheduler),
-		backupScheduler: jobs.NewTelegramBackupScheduler(scheduler, runtimeAdapter{Runtime: runtime}),
+		backupScheduler: jobs.NewTelegramBackupScheduler(scheduler, runtimeAdapter{Runtime: runtime}, func(record telegramservice.AuditRecord) error {
+			return recordTelegramBackupAudit(runtime, record)
+		}),
 	}
 	runtimeJobs.reportScheduler.Run()
 	runtimeJobs.backupScheduler.Run()
@@ -205,7 +225,7 @@ func startTelegramRuntimeJobs(scheduler componenthost.Scheduler, runtime *servic
 		{spec: "@every 1m", job: runtimeJobs.backupScheduler},
 	} {
 		if err := runtimeJobs.add(job.spec, job.job); err != nil {
-			runtimeJobs.stop()
+			_ = runtimeJobs.stop(context.Background())
 			return telegramRuntimeJobs{}, err
 		}
 	}
@@ -221,19 +241,25 @@ func (j *telegramRuntimeJobs) add(spec string, job cron.Job) error {
 	return nil
 }
 
-func (j telegramRuntimeJobs) stop() {
+func (j telegramRuntimeJobs) stop(ctx context.Context) error {
+	if j.scheduler != nil {
+		for i := len(j.entryIDs) - 1; i >= 0; i-- {
+			if err := j.scheduler.RemoveJobAndWait(ctx, j.entryIDs[i]); err != nil {
+				return err
+			}
+		}
+	}
 	if j.reportScheduler != nil {
-		j.reportScheduler.Stop()
+		if err := j.reportScheduler.StopContext(ctx); err != nil {
+			return err
+		}
 	}
 	if j.backupScheduler != nil {
-		j.backupScheduler.Stop()
+		if err := j.backupScheduler.StopContext(ctx); err != nil {
+			return err
+		}
 	}
-	if j.scheduler == nil {
-		return
-	}
-	for i := len(j.entryIDs) - 1; i >= 0; i-- {
-		j.scheduler.RemoveJob(j.entryIDs[i])
-	}
+	return nil
 }
 
 func callUnregisters(unregisters ...func()) {
@@ -262,15 +288,17 @@ func telegramDeps(host componenthost.APIDeps) telegramhttp.Deps {
 }
 
 func newTelegramNotifier(runtime *service.Runtime) *telegramservice.Notifier {
-	return telegramservice.NewNotifier(
+	return telegramservice.NewNotifierContext(
 		telegramservice.QueueCapacity,
-		func(text string) telegramservice.Result {
+		func(ctx context.Context, text string) telegramservice.Result {
 			return (&telegramservice.Service{
 				Runtime:  runtimeAdapter{Runtime: runtime},
 				Settings: telegramsettings.Reader{},
-			}).Send(text)
+			}).SendContext(ctx, text)
 		},
-		recordTelegramNotifierAudit,
+		func(event string, details map[string]any) {
+			recordTelegramNotifierAudit(runtime, event, details)
+		},
 	)
 }
 
@@ -282,8 +310,8 @@ func (a runtimeAdapter) CoreHTTPClient(tag string, timeout time.Duration) (*http
 	return service.NewOutboundHTTPClientForRuntime(a.Runtime, tag, timeout)
 }
 
-func recordTelegramNotifierAudit(event string, details map[string]any) {
-	if err := (&service.AuditService{}).Record(service.AuditEvent{
+func recordTelegramNotifierAudit(runtime *service.Runtime, event string, details map[string]any) {
+	if err := (&service.AuditService{Runtime: runtime}).Record(service.AuditEvent{
 		Event:    event,
 		Resource: "notifier",
 		Severity: service.AuditSeverityWarn,
@@ -291,4 +319,14 @@ func recordTelegramNotifierAudit(event string, details map[string]any) {
 	}); err != nil {
 		logger.Warning("telegram notifier audit failed:", err)
 	}
+}
+
+func recordTelegramBackupAudit(runtime *service.Runtime, record telegramservice.AuditRecord) error {
+	return (&service.AuditService{Runtime: runtime}).Record(service.AuditEvent{
+		Actor:    record.Actor,
+		Event:    record.Event,
+		Resource: record.Resource,
+		Severity: record.Severity,
+		Details:  record.Details,
+	})
 }

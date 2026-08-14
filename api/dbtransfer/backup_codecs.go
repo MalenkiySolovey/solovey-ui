@@ -18,16 +18,12 @@ func NewBackupCodecError(status int, class string, err error) error {
 	return backupcodec.NewError(status, class, err)
 }
 
-func RegisterBackupExportCodec(name string, codec BackupExportCodec) func() {
+func RegisterBackupExportCodec(name string, codec BackupExportCodec) (func(), error) {
 	return backupcodec.RegisterExport(name, codec)
 }
 
-func RegisterBackupImportCodec(name string, codec BackupImportCodec) func() {
+func RegisterBackupImportCodec(name string, codec BackupImportCodec) (func(), error) {
 	return backupcodec.RegisterImport(name, codec)
-}
-
-func ResetBackupCodecsForTest() {
-	backupcodec.ResetForTest()
 }
 
 type backupExportCodecEntry struct {
@@ -40,9 +36,9 @@ type backupImportCodecEntry struct {
 	codec BackupImportCodec
 }
 
-func selectedBackupExportCodec(c *gin.Context) (backupExportCodecEntry, bool) {
-	name, codec, ok := backupcodec.SelectedExport(c)
-	return backupExportCodecEntry{name: name, codec: codec}, ok
+func selectedBackupExportCodec(c *gin.Context) (backupExportCodecEntry, bool, error) {
+	name, codec, ok, err := backupcodec.SelectedExport(c)
+	return backupExportCodecEntry{name: name, codec: codec}, ok, err
 }
 
 func backupExportCodecRequested(c *gin.Context) bool {
@@ -57,9 +53,9 @@ func backupImportPassphraseFields() []string {
 	return backupcodec.ImportPassphraseFields()
 }
 
-func matchingBackupImportCodec(header []byte) (backupImportCodecEntry, bool) {
-	name, codec, ok := backupcodec.MatchingImport(header)
-	return backupImportCodecEntry{name: name, codec: codec}, ok
+func matchingBackupImportCodec(header []byte) (backupImportCodecEntry, bool, error) {
+	name, codec, ok, err := backupcodec.MatchingImport(header)
+	return backupImportCodecEntry{name: name, codec: codec}, ok, err
 }
 
 func backupCodecHTTPError(err error, fallbackClass string) (int, string) {

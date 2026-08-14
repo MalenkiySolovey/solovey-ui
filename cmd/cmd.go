@@ -16,7 +16,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 )
 
-func ParseCmd() {
+func ParseCmd() int {
 	var showVersion bool
 	flag.BoolVar(&showVersion, "v", false, "show version")
 
@@ -44,6 +44,8 @@ func ParseCmd() {
 	settingCmd.IntVar(&subPort, "subPort", 0, "set sub port")
 	settingCmd.StringVar(&subPath, "subPath", "", "set sub path")
 	migrateCmd.BoolVar(&repairFKOrphans, "repair-fk-orphans", false, "delete safe foreign-key orphans during migration")
+	var legacyConfigPath string
+	migrateCmd.StringVar(&legacyConfigPath, "legacy-config", "", "explicit pre-1.2 config.json to import")
 
 	adminCmd.BoolVar(&adminShow, "show", false, "show first admin credentials")
 	adminCmd.BoolVar(&adminReset, "reset", false, "reset first admin credentials")
@@ -85,76 +87,94 @@ func ParseCmd() {
 				}
 			}
 		}
-		return
+		return 0
 	}
 	args := flag.Args()
 	if len(args) == 0 {
 		flag.Usage()
-		return
+		return 0
 	}
 
 	if exitCode, handled := optionalcmd.Run(args[0], args[1:], os.Stdin, os.Stdout, os.Stderr, os.Getenv); handled {
-		os.Exit(exitCode)
+		return exitCode
 	}
 
 	switch args[0] {
 	case "admin":
 		err := adminCmd.Parse(args[1:])
 		if err != nil {
-			fmt.Println(err)
-			return
+			fmt.Fprintln(os.Stderr, err)
+			return 1
 		}
 		switch {
 		case adminShow:
-			admincmd.Show()
+			err = admincmd.Show()
 		case adminReset:
-			admincmd.Reset()
+			err = admincmd.Reset()
 		default:
-			admincmd.Update(username, password)
-			admincmd.Show()
+			if err = admincmd.Update(username, password); err == nil {
+				err = admincmd.Show()
+			}
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
 		}
 
 	case "backup":
-		os.Exit(backupcmd.Run(args[1:], os.Stdout, os.Stderr))
+		return backupcmd.Run(args[1:], os.Stdout, os.Stderr)
 
 	case "uri":
-		settingscmd.PanelURI()
+		if err := settingscmd.PanelURI(); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
+		}
 
 	case "migrate":
 		if err := migrateCmd.Parse(args[1:]); err != nil {
-			fmt.Println(err)
-			return
+			fmt.Fprintln(os.Stderr, err)
+			return 1
 		}
-		if err := migration.MigrateDbWithOptions(migration.Options{RepairForeignKeyOrphans: repairFKOrphans}); err != nil {
-			fmt.Println("migrate failed:", err)
-			os.Exit(1)
+		if err := migration.MigrateDbWithOptions(migration.Options{
+			RepairForeignKeyOrphans: repairFKOrphans,
+			LegacyConfigPath:        legacyConfigPath,
+		}); err != nil {
+			fmt.Fprintln(os.Stderr, "migrate failed:", err)
+			return 1
 		}
 
 	case "ip-cert":
-		os.Exit(ipcertcmd.Run(args[1:]))
+		return ipcertcmd.Run(args[1:])
 
 	case "doctor":
-		os.Exit(componentdoctorcmd.Run(args[1:], os.Stdout))
+		return componentdoctorcmd.Run(args[1:], os.Stdout)
 
 	case "setting":
 		err := settingCmd.Parse(args[1:])
 		if err != nil {
-			fmt.Println(err)
-			return
+			fmt.Fprintln(os.Stderr, err)
+			return 1
 		}
 		switch {
 		case settingShow:
-			settingscmd.Show()
+			err = settingscmd.Show()
 		case settingReset:
-			settingscmd.Reset()
+			err = settingscmd.Reset()
 		case settingClearDomain:
-			settingscmd.ClearWebDomain()
+			err = settingscmd.ClearWebDomain()
 		default:
-			settingscmd.Update(port, path, subPort, subPath)
-			settingscmd.Show()
+			if err = settingscmd.Update(port, path, subPort, subPath); err == nil {
+				err = settingscmd.Show()
+			}
+		}
+		if err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 1
 		}
 	default:
-		fmt.Println("Invalid subcommands")
+		fmt.Fprintln(os.Stderr, "Invalid subcommands")
 		flag.Usage()
+		return 1
 	}
+	return 0
 }

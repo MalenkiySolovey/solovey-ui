@@ -2,6 +2,7 @@ package common
 
 import (
 	crand "crypto/rand"
+	"errors"
 	"math/big"
 	mrand "math/rand"
 	"sync"
@@ -22,7 +23,10 @@ var (
 	fallbackMu   = sync.Mutex{}
 )
 
-func Random(n int) string {
+// RandomSuffix returns a best-effort alphanumeric suffix for non-sensitive
+// display names. Credentials, tokens, salts, and identifiers that authorize an
+// operation must use SecureRandom instead.
+func RandomSuffix(n int) string {
 	if n <= 0 || len(allSeq) == 0 {
 		return ""
 	}
@@ -40,6 +44,26 @@ func Random(n int) string {
 		result[i] = allSeq[int(num.Int64())]
 	}
 	return string(result)
+}
+
+// SecureRandom returns exactly n alphanumeric characters from crypto/rand.
+// Authentication credentials, tokens, salts, and session identifiers must use
+// this function so entropy failure is returned instead of falling back to a
+// predictable pseudo-random generator.
+func SecureRandom(n int) (string, error) {
+	if n <= 0 || len(allSeq) == 0 {
+		return "", errors.New("secure random length is invalid")
+	}
+	result := make([]rune, n)
+	maximum := big.NewInt(int64(len(allSeq)))
+	for index := range result {
+		value, err := crand.Int(crand.Reader, maximum)
+		if err != nil {
+			return "", err
+		}
+		result[index] = allSeq[int(value.Int64())]
+	}
+	return string(result), nil
 }
 
 func RandomInt(n int) int {

@@ -2,10 +2,15 @@ package entityinbounds
 
 import (
 	"encoding/json"
+
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveidentity"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
+	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )
@@ -43,8 +48,14 @@ func SupportedActionStrings() []string {
 	return actions
 }
 func saveNew(req SaveRequest) (*singboxapply.Change, error) {
-	inbound, err := SaveConfig(req.Tx, req.Data, req.Hostname)
+	inbound, err := DecodeForSave(req.Tx, req.Data)
 	if err != nil {
+		return nil, err
+	}
+	if err := saveidentity.Validate(req.Tx, string(ActionNew), inbound.Id, &model.Inbound{}); err != nil {
+		return nil, err
+	}
+	if err := FillAndSave(req.Tx, &inbound, req.Hostname); err != nil {
 		return nil, err
 	}
 	if req.ClientHooks != nil {
@@ -57,6 +68,9 @@ func saveNew(req SaveRequest) (*singboxapply.Change, error) {
 func saveEdited(req SaveRequest) (*singboxapply.Change, error) {
 	inbound, err := DecodeForSave(req.Tx, req.Data)
 	if err != nil {
+		return nil, err
+	}
+	if err := saveidentity.Validate(req.Tx, string(ActionEdit), inbound.Id, &model.Inbound{}); err != nil {
 		return nil, err
 	}
 	oldTag, err := TagByID(req.Tx, inbound.Id)
@@ -82,19 +96,15 @@ func saveEdited(req SaveRequest) (*singboxapply.Change, error) {
 	}
 	return CoreChangeForSavedRow(req.Tx, inbound.Id, inbound.Tag, oldTag)
 }
-func SaveConfig(tx *gorm.DB, data json.RawMessage, hostname string) (model.Inbound, error) {
-	inbound, err := DecodeForSave(tx, data)
-	if err != nil {
-		return inbound, err
-	}
-	if err := FillAndSave(tx, &inbound, hostname); err != nil {
-		return inbound, err
-	}
-	return inbound, nil
-}
 func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 	var inbound model.Inbound
 	if err := inbound.UnmarshalJSON(data); err != nil {
+		return inbound, err
+	}
+	if err := entityidentity.ValidateTypeTag(inbound.Type, inbound.Tag); err != nil {
+		return inbound, err
+	}
+	if err := validateJSONShape(inbound); err != nil {
 		return inbound, err
 	}
 	if inbound.TlsId > 0 {
@@ -103,6 +113,40 @@ func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 		}
 	}
 	return inbound, nil
+}
+
+func validateJSONShape(inbound model.Inbound) error {
+	if err := jsonvalue.OptionalObject("inbound options", inbound.Options); err != nil {
+		return err
+	}
+	if err := jsonvalue.OptionalArray("inbound addresses", inbound.Addrs); err != nil {
+		return err
+	}
+	if len(inbound.Addrs) > 0 {
+		if err := suburi.ValidateAddresses(inbound.Addrs); err != nil {
+			return err
+		}
+	}
+	return jsonvalue.OptionalObject("inbound outbound config", inbound.OutJson)
+}
+
+func ValidateStored(db *gorm.DB) error {
+	if db == nil {
+		return common.NewError("inbound persistence is unavailable")
+	}
+	if !db.Migrator().HasTable(&model.Inbound{}) {
+		return nil
+	}
+	var rows []model.Inbound
+	if err := db.Order("id").Find(&rows).Error; err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if err := validateJSONShape(row); err != nil {
+			return common.NewErrorf("stored inbound row %d: %v", row.Id, err)
+		}
+	}
+	return nil
 }
 func FillAndSave(tx *gorm.DB, inbound *model.Inbound, hostname string) error {
 	if err := FillOutboundJSON(inbound, hostname); err != nil {
@@ -123,6 +167,9 @@ func TagByID(tx *gorm.DB, id uint) (string, error) {
 func saveDeleted(req SaveRequest) (*singboxapply.Change, error) {
 	var tag string
 	if err := json.Unmarshal(req.Data, &tag); err != nil {
+		return nil, err
+	}
+	if err := entityidentity.ValidateTag(tag); err != nil {
 		return nil, err
 	}
 	refs, err := tagrefs.Inbound(req.Tx, tag)

@@ -130,7 +130,7 @@ func TestTokenUseDebouncerKeepsLatestUseUntilFlush(t *testing.T) {
 	}
 }
 
-func TestTokenUseDebouncerTimerFailureOpensCircuitIssue28(t *testing.T) {
+func TestTokenUseDebouncerTimerFailureOpensCircuit(t *testing.T) {
 	resumeTokenUseFlush()
 	t.Cleanup(resumeTokenUseFlush)
 	errFlush := errors.New("timer flush failed")
@@ -211,7 +211,7 @@ func TestTokenUseDebouncerTimerFailureOpensCircuitIssue28(t *testing.T) {
 	}
 }
 
-func TestTokenUseDebouncerKeepsLatestAfterTimerFailureIssue28(t *testing.T) {
+func TestTokenUseDebouncerKeepsLatestAfterTimerFailure(t *testing.T) {
 	resumeTokenUseFlush()
 	t.Cleanup(resumeTokenUseFlush)
 	errFlush := errors.New("timer flush failed")
@@ -264,7 +264,7 @@ func TestTokenUseDebouncerKeepsLatestAfterTimerFailureIssue28(t *testing.T) {
 	}
 }
 
-func TestTokenUseDebouncerTimerFailureInvalidatesConcurrentNormalTimerIssue28(t *testing.T) {
+func TestTokenUseDebouncerTimerFailureInvalidatesConcurrentNormalTimer(t *testing.T) {
 	resumeTokenUseFlush()
 	t.Cleanup(resumeTokenUseFlush)
 	errFlush := errors.New("timer flush failed")
@@ -356,7 +356,7 @@ func TestTokenUseDebouncerTimerFailureInvalidatesConcurrentNormalTimerIssue28(t 
 	}
 }
 
-func TestTokenUseDebouncerManualFlushBypassesCircuitIssue28(t *testing.T) {
+func TestTokenUseDebouncerManualFlushBypassesCircuit(t *testing.T) {
 	resumeTokenUseFlush()
 	t.Cleanup(resumeTokenUseFlush)
 	attempts := 0
@@ -397,7 +397,7 @@ func TestTokenUseDebouncerManualFlushBypassesCircuitIssue28(t *testing.T) {
 	}
 }
 
-func TestTokenUseDebouncerForceFlushFailureDoesNotRetryIssue28(t *testing.T) {
+func TestTokenUseDebouncerForceFlushFailureDoesNotRetry(t *testing.T) {
 	resumeTokenUseFlush()
 	t.Cleanup(resumeTokenUseFlush)
 	errFlush := errors.New("force flush failed")
@@ -409,7 +409,7 @@ func TestTokenUseDebouncerForceFlushFailureDoesNotRetryIssue28(t *testing.T) {
 	})
 
 	debouncer.Record(7, "198.51.100.7", 700)
-	if err := debouncer.flushNow(context.Background(), true); !errors.Is(err, errFlush) {
+	if err := debouncer.flushNow(context.Background(), true, false); !errors.Is(err, errFlush) {
 		t.Fatalf("force flush error = %v, want %v", err, errFlush)
 	}
 	debouncer.mu.Lock()
@@ -425,6 +425,31 @@ func TestTokenUseDebouncerForceFlushFailureDoesNotRetryIssue28(t *testing.T) {
 	}
 	if timer != nil {
 		t.Fatal("force flush failure scheduled retry timer")
+	}
+}
+
+func TestTokenUseDebouncerShutdownFlushFailurePreservesPendingUpdate(t *testing.T) {
+	resumeTokenUseFlush()
+	t.Cleanup(resumeTokenUseFlush)
+	errFlush := errors.New("shutdown flush failed")
+	debouncer := newTokenUseDebouncer(time.Hour, func(map[uint]tokenUseUpdate) error {
+		return errFlush
+	})
+	t.Cleanup(func() {
+		stopTokenUseDebouncerTimer(debouncer)
+	})
+
+	debouncer.Record(7, "198.51.100.7", 700)
+	if err := debouncer.flushNow(context.Background(), true, true); !errors.Is(err, errFlush) {
+		t.Fatalf("shutdown flush error = %v, want %v", err, errFlush)
+	}
+	debouncer.mu.Lock()
+	pending := debouncer.pending[7]
+	circuitUntil := debouncer.circuitUntil
+	timer := debouncer.timer
+	debouncer.mu.Unlock()
+	if pending.ip != "198.51.100.7" || pending.ts != 700 || circuitUntil.IsZero() || timer == nil {
+		t.Fatalf("shutdown failure did not preserve retry state: pending=%#v circuit=%v timer=%v", pending, circuitUntil, timer)
 	}
 }
 

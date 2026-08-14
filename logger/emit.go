@@ -17,10 +17,7 @@ func SanitizeMessage(message string) string {
 }
 
 func Debug(args ...interface{}) { logPanel(slog.LevelDebug, fmt.Sprint(args...)) }
-func Debugf(format string, args ...interface{}) {
-	logPanel(slog.LevelDebug, fmt.Sprintf(format, args...))
-}
-func Info(args ...interface{}) { logPanel(slog.LevelInfo, fmt.Sprint(args...)) }
+func Info(args ...interface{})  { logPanel(slog.LevelInfo, fmt.Sprint(args...)) }
 func Infof(format string, args ...interface{}) {
 	logPanel(slog.LevelInfo, fmt.Sprintf(format, args...))
 }
@@ -29,9 +26,6 @@ func Warningf(format string, args ...interface{}) {
 	logPanel(slog.LevelWarn, fmt.Sprintf(format, args...))
 }
 func Error(args ...interface{}) { logPanel(slog.LevelError, fmt.Sprint(args...)) }
-func Errorf(format string, args ...interface{}) {
-	logPanel(slog.LevelError, fmt.Sprintf(format, args...))
-}
 
 func CoreDebug(args ...interface{})   { logCore("DEBUG", fmt.Sprint(args...)) }
 func CoreInfo(args ...interface{})    { logCore("INFO", fmt.Sprint(args...)) }

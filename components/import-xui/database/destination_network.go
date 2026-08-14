@@ -7,11 +7,15 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 
 	"gorm.io/gorm"
 )
 
 func applyInbound(tx *gorm.DB, inbound *model.Inbound, strategy Strategy, report *Report) (uint, bool, bool, error) {
+	if err := identity.ValidateTypeTag(inbound.Type, inbound.Tag); err != nil {
+		return 0, false, false, err
+	}
 	var existing model.Inbound
 	err := tx.Where("tag = ?", inbound.Tag).First(&existing).Error
 	if err != nil && !dbsqlite.IsNotFound(err) {
@@ -54,6 +58,15 @@ func applyInbound(tx *gorm.DB, inbound *model.Inbound, strategy Strategy, report
 }
 
 func applyEndpoint(tx *gorm.DB, endpoint *model.Endpoint, strategy Strategy, report *Report) (bool, error) {
+	if err := identity.ValidateTypeTag(endpoint.Type, endpoint.Tag); err != nil {
+		return false, err
+	}
+	if err := identity.EnsureOutboundTagAvailable(tx, endpoint.Tag, 0, endpoint.Id); err != nil {
+		var existing model.Endpoint
+		if lookupErr := tx.Where("tag = ?", endpoint.Tag).First(&existing).Error; lookupErr != nil {
+			return false, err
+		}
+	}
 	var existing model.Endpoint
 	err := tx.Where("tag = ?", endpoint.Tag).First(&existing).Error
 	if err != nil && !dbsqlite.IsNotFound(err) {

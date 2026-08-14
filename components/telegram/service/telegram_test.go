@@ -402,7 +402,7 @@ func TestTelegramNotifierRetriesAndAuditsFailure(t *testing.T) {
 	}
 }
 
-func TestTelegramNotifierStopCancelsBackoffIssue22(t *testing.T) {
+func TestTelegramNotifierStopCancelsBackoff(t *testing.T) {
 	firstSend := make(chan struct{})
 	var attempts atomic.Int32
 	var firstOnce sync.Once
@@ -414,7 +414,7 @@ func TestTelegramNotifierStopCancelsBackoffIssue22(t *testing.T) {
 	}, nil)
 	notifier.Backoff = []time.Duration{time.Hour}
 
-	notifier.Enqueue(telegramservice.Notification{Event: "issue22", Text: "message"})
+	notifier.Enqueue(telegramservice.Notification{Event: "backoff-cancellation", Text: "message"})
 	waitForTestChannel(t, firstSend, time.Second, "first telegram send did not start")
 
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
@@ -428,6 +428,60 @@ func TestTelegramNotifierStopCancelsBackoffIssue22(t *testing.T) {
 	}
 	if got := attempts.Load(); got != 1 {
 		t.Fatalf("Stop should prevent a retry after backoff cancellation, got %d sends", got)
+	}
+}
+
+func TestTelegramNotifierStopCancelsInFlightSend(t *testing.T) {
+	sendStarted := make(chan struct{})
+	sendCanceled := make(chan struct{})
+	notifier := telegramservice.NewNotifierContext(1, func(ctx context.Context, _ string) telegramservice.Result {
+		close(sendStarted)
+		<-ctx.Done()
+		close(sendCanceled)
+		return telegramservice.Result{ErrorClass: "network"}
+	}, nil)
+	notifier.Backoff = nil
+	notifier.Enqueue(telegramservice.Notification{Event: "shutdown", Text: "message"})
+	waitForTestChannel(t, sendStarted, time.Second, "telegram send did not start")
+
+	stopCtx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if err := notifier.Stop(stopCtx); err != nil {
+		t.Fatal(err)
+	}
+	waitForTestChannel(t, sendCanceled, time.Second, "telegram send did not observe lifecycle cancellation")
+}
+
+func TestTelegramNotifierStopDiscardsQueuedWork(t *testing.T) {
+	firstStarted := make(chan struct{})
+	var delivered atomic.Int32
+	notifier := telegramservice.NewNotifierContext(4, func(ctx context.Context, text string) telegramservice.Result {
+		if delivered.Add(1) == 1 {
+			close(firstStarted)
+			<-ctx.Done()
+		}
+		return telegramservice.Result{ErrorClass: "network"}
+	}, nil)
+	notifier.Backoff = nil
+	notifier.Enqueue(telegramservice.Notification{Event: "first", Text: "first"})
+	waitForTestChannel(t, firstStarted, time.Second, "first telegram send did not start")
+	notifier.Enqueue(telegramservice.Notification{Event: "queued", Text: "queued"})
+
+	if err := notifier.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := delivered.Load(); got != 1 {
+		t.Fatalf("Stop delivered queued work after cancellation: sends=%d", got)
+	}
+	if got := notifier.QueueLen(); got != 0 {
+		t.Fatalf("Stop retained %d queued notifications", got)
+	}
+}
+
+func TestTelegramServiceWithoutSettingsFailsClosed(t *testing.T) {
+	result := (&telegramservice.Service{}).TestTelegram()
+	if result.Success || result.ErrorClass != "settings" {
+		t.Fatalf("nil settings result = %#v, want settings failure", result)
 	}
 }
 

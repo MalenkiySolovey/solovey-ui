@@ -11,5 +11,13 @@ export function register() {
         order: 10,
       },
     ],
+    locales: {
+      en: () => import('./locales/en'),
+      fa: () => import('./locales/fa'),
+      vi: () => import('./locales/vi'),
+      zhHans: () => import('./locales/zhcn'),
+      zhHant: () => import('./locales/zhtw'),
+      ru: () => import('./locales/ru'),
+    },
   })
 }

@@ -29,7 +29,7 @@ func TestValidateRollbackPathRejectsSymlinkEscape(t *testing.T) {
 	if err := os.Symlink(outside, symlink); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
-	if err := validateRollbackPath(symlink); err == nil {
+	if _, err := resolveRollbackPath(filepath.Base(symlink)); err == nil {
 		t.Fatal("expected symlink rollback path to be rejected")
 	}
 }
@@ -41,12 +41,16 @@ func TestValidateRollbackPathAllowsRealBackupInDatabaseDir(t *testing.T) {
 	if err := os.WriteFile(backup, []byte("SQLite format 3\x00"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if err := validateRollbackPath(backup); err != nil {
+	resolved, err := resolveRollbackPath(filepath.Base(backup))
+	if err != nil {
 		t.Fatalf("expected rollback path to be accepted: %v", err)
+	}
+	if resolved != backup {
+		t.Fatalf("resolved backup=%q, want %q", resolved, backup)
 	}
 }
 
-func TestCleanupStaleXUIUploadsRemovesOnlyOldImportDirsIssue38(t *testing.T) {
+func TestCleanupStaleXUIUploadsRemovesOnlyOldImportDirs(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
 	oldTime := now.Add(-xuiUploadTempMaxAge - time.Minute)
@@ -103,7 +107,7 @@ func TestCleanupStaleXUIUploadsRemovesOnlyOldImportDirsIssue38(t *testing.T) {
 	}
 }
 
-func TestSaveXUIUploadTriggersStaleCleanupIssue38(t *testing.T) {
+func TestSaveXUIUploadTriggersStaleCleanup(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
 	resetXUIUploadCleanupForTest()
@@ -152,7 +156,7 @@ func TestSaveXUIUploadTriggersStaleCleanupIssue38(t *testing.T) {
 	}
 }
 
-func TestSaveXUIUploadCleanupIsFailSoftIssue38(t *testing.T) {
+func TestSaveXUIUploadCleanupIsFailSoft(t *testing.T) {
 	root := t.TempDir()
 	now := time.Date(2026, 5, 25, 12, 0, 0, 0, time.UTC)
 	resetXUIUploadCleanupForTest()

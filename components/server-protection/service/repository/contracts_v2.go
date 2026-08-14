@@ -3,8 +3,6 @@ package repository
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,11 +16,6 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
-
-var RecoveryPathProducerRevision = func() string {
-	sum := sha256.Sum256([]byte("server-protection/recovery-path-writer/v1"))
-	return hex.EncodeToString(sum[:])
-}()
 
 type ContractFilter struct {
 	PageQuery
@@ -185,67 +178,6 @@ func appendUniqueReason(values []string, reason string) []string {
 	}
 	return append(values, reason)
 }
-func (r *Repository) ListRecoveryPaths(ctx context.Context, page PageQuery) ([]RecoveryPathModel, int64, error) {
-	query, err := r.query(ctx, &RecoveryPathModel{})
-	if err != nil {
-		return nil, 0, err
-	}
-	var total int64
-	if err = query.Count(&total).Error; err != nil {
-		return nil, 0, err
-	}
-	var items []RecoveryPathModel
-	err = query.Order("expires_at DESC, id DESC").Offset(page.Offset()).Limit(page.Limit).Find(&items).Error
-	return items, total, err
-}
-
-func (r *Repository) UpsertRecoveryPath(ctx context.Context, value RecoveryPathModel) error {
-	query, err := r.query(ctx, &RecoveryPathModel{})
-	if err != nil {
-		return err
-	}
-	value.ProducerRevision = RecoveryPathProducerRevision
-	table := RecoveryPathModel{}.TableName()
-	return query.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "recovery_path_id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"kind", "endpoint_id", "principal_id", "source_prefix", "verification_method", "verified_at", "expires_at", "independence_class", "verification_state", "reason_codes_json", "source_revision", "configuration_revision", "producer_revision"}),
-		Where:     clause.Where{Exprs: []clause.Expression{clause.Expr{SQL: table + ".verification_state <> ? OR " + table + ".source_revision <> ? OR " + table + ".configuration_revision <> ? OR " + table + ".expires_at <= ?", Vars: []any{"verified", value.SourceRevision, value.ConfigurationRevision, value.VerifiedAt + 5*60}}}},
-	}).Create(&value).Error
-}
-
-func (r *Repository) InvalidateRecoveryPaths(ctx context.Context, kind, principalID, reason string) error {
-	if reason == "" {
-		return errors.New("recovery path invalidation reason is required")
-	}
-	query, err := r.query(ctx, &RecoveryPathModel{})
-	if err != nil {
-		return err
-	}
-	query = query.Where("verification_state = ?", "verified")
-	if kind != "" {
-		query = query.Where("kind = ?", kind)
-	}
-	if principalID != "" {
-		query = query.Where("principal_id = ?", principalID)
-	}
-	reasons, _ := json.Marshal([]string{reason})
-	return query.Updates(map[string]any{"verification_state": "invalidated", "reason_codes_json": reasons}).Error
-}
-
-func (r *Repository) InvalidateRecoveryPathsBySourceRevision(ctx context.Context, kind, currentRevision, reason string) error {
-	if kind == "" || currentRevision == "" || reason == "" {
-		return errors.New("recovery path source-revision invalidation is incomplete")
-	}
-	query, err := r.query(ctx, &RecoveryPathModel{})
-	if err != nil {
-		return err
-	}
-	reasons, _ := json.Marshal([]string{reason})
-	return query.Model(&RecoveryPathModel{}).
-		Where("kind = ? AND verification_state = ? AND source_revision <> ?", kind, "verified", currentRevision).
-		Updates(map[string]any{"verification_state": "invalidated", "reason_codes_json": reasons}).Error
-}
-
 func migrateV2Compatibility(db *gorm.DB) error {
 	if db == nil {
 		return nil

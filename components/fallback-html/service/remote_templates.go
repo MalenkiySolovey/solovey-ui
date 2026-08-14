@@ -3,6 +3,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -29,7 +30,11 @@ const (
 	defaultRemoteTemplateCatalogURL = "https://raw.githubusercontent.com/MalenkiySolovey/solovey-fallback-pages/main/templates/catalog.json"
 	remoteTemplateHTTPTimeout       = 15 * time.Second
 	maxRemoteTemplateFileBytes      = 1024 * 1024
+	maxRemoteCatalogTemplates       = 128
+	maxRemoteTemplateFiles          = 128
 )
+
+var remoteTemplateIDPattern = regexp.MustCompile(`^[a-z0-9][a-z0-9-]{0,63}$`)
 
 type RemoteTemplateCatalog struct {
 	CatalogURL string               `json:"catalogUrl"`
@@ -122,6 +127,9 @@ func (s *Service) ListRemoteTemplateCatalog(ctx context.Context) (RemoteTemplate
 }
 
 func (s *Service) InstallRemoteTemplate(ctx context.Context, templateID string, actor string) (RemoteTemplateView, error) {
+	s.templateMu.Lock()
+	defer s.templateMu.Unlock()
+
 	templateID = strings.TrimSpace(templateID)
 	if templateID == "" {
 		return RemoteTemplateView{}, errors.New("remote template id is required")
@@ -154,29 +162,43 @@ func (s *Service) InstallRemoteTemplate(ctx context.Context, templateID string, 
 	if err := validateRemoteManifest(templateID, manifest); err != nil {
 		return RemoteTemplateView{}, err
 	}
-	if err := s.downloadRemoteTemplateFiles(ctx, manifestURL, manifest); err != nil {
+	stagedRoot, err := s.downloadRemoteTemplateFiles(ctx, manifestURL, manifest)
+	if err != nil {
+		return RemoteTemplateView{}, err
+	}
+	defer func() { _ = os.RemoveAll(stagedRoot) }()
+	root := templateRoot(manifest.ID)
+	previousRoot, hadPrevious, err := replaceTemplateRoot(root, stagedRoot)
+	if err != nil {
 		return RemoteTemplateView{}, err
 	}
 	now := time.Now().Unix()
 	source := fallbackdomain.TemplateSource{TemplateID: manifest.ID}
-	err = s.db.Where("template_id = ?", manifest.ID).Assign(fallbackdomain.TemplateSource{
-		TemplateID:         manifest.ID,
-		Name:               manifest.Name,
-		Source:             remoteSourceLabel(manifest.Source),
-		License:            manifest.License,
-		ContentTypeProfile: manifest.ContentTypeProfile,
-		CatalogURL:         catalogURL,
-		ManifestURL:        manifestURL,
-		ManifestJSON:       raw,
-		Installed:          true,
-		CreatedAt:          now,
-		UpdatedAt:          now,
-	}).FirstOrCreate(&source).Error
+	err = s.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("template_id = ?", manifest.ID).Assign(fallbackdomain.TemplateSource{
+			TemplateID:         manifest.ID,
+			Name:               manifest.Name,
+			Source:             remoteSourceLabel(manifest.Source),
+			License:            manifest.License,
+			ContentTypeProfile: manifest.ContentTypeProfile,
+			CatalogURL:         catalogURL,
+			ManifestURL:        manifestURL,
+			ManifestJSON:       raw,
+			Installed:          true,
+			UpdatedAt:          now,
+		}).Attrs(fallbackdomain.TemplateSource{CreatedAt: now}).FirstOrCreate(&source).Error; err != nil {
+			return err
+		}
+		return recordEvent(tx, 0, actor, "remote_template_installed", map[string]any{"templateId": manifest.ID})
+	})
 	if err != nil {
+		if restoreErr := restoreTemplateRoot(root, previousRoot, hadPrevious); restoreErr != nil {
+			return RemoteTemplateView{}, errors.Join(err, fmt.Errorf("restore previous remote template: %w", restoreErr))
+		}
 		return RemoteTemplateView{}, err
 	}
-	if err := recordEvent(s.db, 0, actor, "remote_template_installed", map[string]any{"templateId": manifest.ID}); err != nil {
-		return RemoteTemplateView{}, err
+	if hadPrevious {
+		_ = os.RemoveAll(previousRoot)
 	}
 	return RemoteTemplateView{
 		ID:                 manifest.ID,
@@ -192,6 +214,9 @@ func (s *Service) InstallRemoteTemplate(ctx context.Context, templateID string, 
 }
 
 func (s *Service) DeleteRemoteTemplate(templateID string, actor string) error {
+	s.templateMu.Lock()
+	defer s.templateMu.Unlock()
+
 	templateID = strings.TrimSpace(templateID)
 	if templateID == "" {
 		return errors.New("remote template id is required")
@@ -204,7 +229,9 @@ func (s *Service) DeleteRemoteTemplate(templateID string, actor string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.RemoveAll(templateRoot(templateID)); err != nil {
+	root := templateRoot(templateID)
+	stagedRoot, hadFiles, err := stageTemplateRoot(root)
+	if err != nil {
 		return err
 	}
 	err = s.db.Transaction(func(tx *gorm.DB) error {
@@ -232,10 +259,22 @@ func (s *Service) DeleteRemoteTemplate(templateID string, actor string) error {
 		}
 		return recordEvent(tx, 0, actor, "remote_template_deleted", map[string]any{"templateId": templateID})
 	})
-	return err
+	if err != nil {
+		if restoreErr := restoreTemplateRoot(root, stagedRoot, hadFiles); restoreErr != nil {
+			return errors.Join(err, fmt.Errorf("restore deleted remote template: %w", restoreErr))
+		}
+		return err
+	}
+	if hadFiles {
+		_ = os.RemoveAll(stagedRoot)
+	}
+	return nil
 }
 
 func (s *Service) createSiteFromInstalledTemplate(templateID string, actor string) (fallbackdomain.Site, bool, error) {
+	s.templateMu.RLock()
+	defer s.templateMu.RUnlock()
+
 	pkg, ok, err := s.installedTemplatePackage(templateID)
 	if err != nil || !ok {
 		return fallbackdomain.Site{}, ok, err
@@ -557,6 +596,22 @@ func (s *Service) fetchRemoteCatalog(ctx context.Context, catalogURL string) (re
 	if len(catalog.Templates) == 0 {
 		return catalog, errors.New("fallback template catalog is empty")
 	}
+	if len(catalog.Templates) > maxRemoteCatalogTemplates {
+		return catalog, fmt.Errorf("fallback template catalog contains more than %d templates", maxRemoteCatalogTemplates)
+	}
+	seen := make(map[string]struct{}, len(catalog.Templates))
+	for _, ref := range catalog.Templates {
+		if !remoteTemplateIDPattern.MatchString(ref.ID) {
+			return catalog, fmt.Errorf("invalid fallback template id %q", ref.ID)
+		}
+		if _, exists := seen[ref.ID]; exists {
+			return catalog, fmt.Errorf("fallback template catalog lists id %q more than once", ref.ID)
+		}
+		seen[ref.ID] = struct{}{}
+		if strings.TrimSpace(ref.Manifest) == "" {
+			return catalog, fmt.Errorf("fallback template %q has no manifest", ref.ID)
+		}
+	}
 	return catalog, nil
 }
 
@@ -566,7 +621,7 @@ func (s *Service) fetchRemoteManifest(ctx context.Context, manifestURL string) (
 		return remoteTemplateManifest{}, nil, err
 	}
 	var manifest remoteTemplateManifest
-	if err := json.Unmarshal(data, &manifest); err != nil {
+	if err := decodeRemoteJSON(data, &manifest); err != nil {
 		return remoteTemplateManifest{}, nil, err
 	}
 	return manifest, data, nil
@@ -577,7 +632,23 @@ func (s *Service) fetchJSON(ctx context.Context, rawURL string, out any) error {
 	if err != nil {
 		return err
 	}
-	return json.Unmarshal(data, out)
+	return decodeRemoteJSON(data, out)
+}
+
+func decodeRemoteJSON(data []byte, out any) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(out); err != nil {
+		return err
+	}
+	var trailing any
+	if err := decoder.Decode(&trailing); !errors.Is(err, io.EOF) {
+		if err == nil {
+			return errors.New("remote fallback template JSON contains multiple documents")
+		}
+		return err
+	}
+	return nil
 }
 
 func (s *Service) fetchBytes(ctx context.Context, rawURL string) ([]byte, error) {
@@ -610,12 +681,15 @@ func readLimitedResponse(response *http.Response, limit int64) ([]byte, error) {
 	return data, nil
 }
 
-func (s *Service) downloadRemoteTemplateFiles(ctx context.Context, manifestURL string, manifest remoteTemplateManifest) error {
+func (s *Service) downloadRemoteTemplateFiles(ctx context.Context, manifestURL string, manifest remoteTemplateManifest) (string, error) {
 	root := templateRoot(manifest.ID)
-	tempRoot := root + ".tmp"
-	_ = os.RemoveAll(tempRoot)
-	if err := ensureOwnedDir(tempRoot, tempRoot); err != nil {
-		return err
+	parent := filepath.Dir(root)
+	if err := ensureOwnedDir(storageRoot(), parent); err != nil {
+		return "", err
+	}
+	tempRoot, err := os.MkdirTemp(parent, "."+safeArchiveName(manifest.ID)+"-download-*")
+	if err != nil {
+		return "", err
 	}
 	cleanup := true
 	defer func() {
@@ -625,45 +699,94 @@ func (s *Service) downloadRemoteTemplateFiles(ctx context.Context, manifestURL s
 	}()
 	manifestData, err := json.MarshalIndent(manifest, "", "  ")
 	if err != nil {
-		return err
+		return "", err
 	}
 	manifestData = append(manifestData, '\n')
 	if err := writeOwnedNewFile(tempRoot, filepath.Join(tempRoot, "manifest.json"), manifestData, 0o640); err != nil {
-		return err
+		return "", err
 	}
 	for _, item := range append(append([]string{}, manifest.Pages...), manifest.Assets...) {
 		clean, err := cleanRemoteTemplateFilePath(item)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if isDecoyInteractivityAsset(clean) {
 			continue
 		}
 		fileURL, err := resolveRemoteTemplateURL(manifestURL, clean)
 		if err != nil {
-			return err
+			return "", err
 		}
 		data, err := s.fetchBytes(ctx, fileURL)
 		if err != nil {
-			return err
+			return "", err
 		}
 		if path.Ext(clean) == ".html" {
 			html := rewriteTemplateAssetReferences(clean, string(data), nil)
 			if err := fallbackdomain.ValidateDecoyTemplateHTML(html); err != nil {
-				return err
+				return "", err
 			}
 		} else if _, _, err := validateAssetFile(path.Base(clean), data); err != nil {
-			return err
+			return "", err
 		}
 		if err := writeOwnedNewFile(tempRoot, filepath.Join(tempRoot, filepath.FromSlash(clean)), data, 0o640); err != nil {
-			return err
+			return "", err
 		}
 	}
-	_ = os.RemoveAll(root)
-	if err := os.Rename(tempRoot, root); err != nil {
+	cleanup = false
+	return tempRoot, nil
+}
+
+func replaceTemplateRoot(root, stagedRoot string) (string, bool, error) {
+	previousRoot, hadPrevious, err := stageTemplateRoot(root)
+	if err != nil {
+		return "", false, err
+	}
+	if err := os.Rename(stagedRoot, root); err != nil {
+		if restoreErr := restoreTemplateRoot(root, previousRoot, hadPrevious); restoreErr != nil {
+			return "", false, errors.Join(err, restoreErr)
+		}
+		return "", false, err
+	}
+	return previousRoot, hadPrevious, nil
+}
+
+func stageTemplateRoot(root string) (string, bool, error) {
+	info, err := os.Lstat(root)
+	if errors.Is(err, os.ErrNotExist) {
+		return "", false, nil
+	}
+	if err != nil {
+		return "", false, err
+	}
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return "", false, fmt.Errorf("refusing non-directory remote template storage %s", root)
+	}
+	temporary, err := os.CreateTemp(filepath.Dir(root), "."+filepath.Base(root)+"-previous-*")
+	if err != nil {
+		return "", false, err
+	}
+	previousRoot := temporary.Name()
+	if err := temporary.Close(); err != nil {
+		_ = os.Remove(previousRoot)
+		return "", false, err
+	}
+	if err := os.Remove(previousRoot); err != nil {
+		return "", false, err
+	}
+	if err := os.Rename(root, previousRoot); err != nil {
+		return "", false, err
+	}
+	return previousRoot, true, nil
+}
+
+func restoreTemplateRoot(root, previousRoot string, hadPrevious bool) error {
+	if err := os.RemoveAll(root); err != nil {
 		return err
 	}
-	cleanup = false
+	if hadPrevious {
+		return os.Rename(previousRoot, root)
+	}
 	return nil
 }
 
@@ -690,14 +813,17 @@ func validateRemoteManifest(expectedID string, manifest remoteTemplateManifest) 
 	if manifest.Schema != "solovey-ui/fallback-decoy-template/v1" {
 		return fmt.Errorf("unsupported fallback template schema %q", manifest.Schema)
 	}
-	if strings.TrimSpace(manifest.ID) == "" || manifest.ID != expectedID {
+	if !remoteTemplateIDPattern.MatchString(manifest.ID) || manifest.ID != expectedID {
 		return fmt.Errorf("fallback template id mismatch: %q != %q", manifest.ID, expectedID)
 	}
-	if strings.TrimSpace(manifest.Name) == "" {
+	if strings.TrimSpace(manifest.Name) == "" || len(manifest.Name) > 120 {
 		return errors.New("fallback template name is required")
 	}
 	if len(manifest.Pages) == 0 {
 		return errors.New("fallback template must include pages")
+	}
+	if len(manifest.Pages)+len(manifest.Assets) > maxRemoteTemplateFiles {
+		return fmt.Errorf("fallback template declares more than %d files", maxRemoteTemplateFiles)
 	}
 	seen := make(map[string]struct{}, len(manifest.Pages)+len(manifest.Assets))
 	for _, item := range manifest.Pages {

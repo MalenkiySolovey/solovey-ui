@@ -8,25 +8,6 @@ import (
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 )
 
-func TestConfigSaveHandlersCoverSupportedObjects(t *testing.T) {
-	want := []string{
-		"clients",
-		"config",
-		"endpoints",
-		"inbounds",
-		"outbounds",
-		"services",
-		"settings",
-		"tls",
-	}
-	if got := singboxapply.SupportedObjectStrings(); !reflect.DeepEqual(got, want) {
-		t.Fatalf("supported config save objects = %#v, want %#v", got, want)
-	}
-	if got := singboxapply.MutationHandlerObjectStrings(); !reflect.DeepEqual(got, want) {
-		t.Fatalf("config save mutation handlers = %#v, want %#v", got, want)
-	}
-}
-
 func TestParseConfigSaveObject(t *testing.T) {
 	object, ok := singboxapply.ParseObject("clients")
 	if !ok {

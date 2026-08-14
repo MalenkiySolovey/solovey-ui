@@ -5,11 +5,19 @@
   "since": "2026.3.0",
   "delivery": "in-process",
   "defaultEnabled": false,
+  "frontend": {
+    "entries": [
+      "frontend/index.ts"
+    ]
+  },
   "tokenScopes": [
     "server-protection:read",
     "server-protection:write",
     "server-protection:apply"
   ],
+  "privilegedBroker": {
+    "entries": ["brokerplugin"]
+  },
   "database": {
 	"schema": "solovey.durable-resource/v1",
 	"schemaVersion": "1",

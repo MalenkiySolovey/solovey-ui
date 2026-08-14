@@ -30,12 +30,13 @@ type TokenInMemory struct {
 
 type APIv2Handler struct {
 	ApiService
-	auth      *authhttp.Handler
-	config    *confighttp.Handler
-	db        *dbtransferhttp.Handler
-	telemetry *telemetryhttp.Handler
-	tokensMu  sync.RWMutex
-	tokens    map[string]TokenInMemory
+	auth       *authhttp.Handler
+	config     *confighttp.Handler
+	db         *dbtransferhttp.Handler
+	telemetry  *telemetryhttp.Handler
+	loadTokens func() ([]byte, error)
+	tokensMu   sync.RWMutex
+	tokens     map[string]TokenInMemory
 }
 
 const (
@@ -60,6 +61,7 @@ func NewAPIv2Handler(g *gin.RouterGroup, options ...Option) *APIv2Handler {
 	a.config = a.configHandler()
 	a.db = a.dbTransferHandler()
 	a.telemetry = a.coreTelemetryHandler()
+	a.loadTokens = a.auth.LoadTokens
 	a.ReloadTokens()
 	a.initRouter(g)
 	return a
@@ -84,22 +86,23 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 // apiV2ActionScopes maps each apiv2 dispatcher action to the API-token scopes
 // permitted to invoke it. "admin" is always allowed (added in enforceActionScope)
 // and is also the default token scope, so this only constrains tokens an admin
-// deliberately narrowed. Actions that enforce their own scope inside the handler
-// (getdb, importdb, rotateSubSecret) are intentionally omitted, as are the
-// separately-registered component routes and security/audit.
-// Browser sessions carry no token scope and are allowed through by
-// requireTokenScopeAny.
+// deliberately narrowed. Every dispatcher action is listed even when the
+// destination handler repeats the same check; an accidentally added action
+// must fail closed until its scope policy is explicit. Separately registered
+// component, security, and audit routes retain their own scope gates.
 var apiV2ActionScopes = map[string][]string{
 	// State mutations and active probes require write.
-	"save":          {"write"},
-	"reorder":       {"write"},
-	"restartApp":    {"write"},
-	"restartSb":     {"write"},
-	"checkOutbound": {"write"},
-	"getCertPing":   {"write"},
-	"resetTraffic":  {"write"},
-	"linkConvert":   {"read", "write"},
-	"subConvert":    {"read", "write"},
+	"save":            {"write"},
+	"reorder":         {"write"},
+	"restartApp":      {"write"},
+	"restartSb":       {"write"},
+	"checkOutbound":   {"write"},
+	"getCertPing":     {"write"},
+	"resetTraffic":    {"write"},
+	"importdb":        {"database"},
+	"rotateSubSecret": {"write"},
+	"linkConvert":     {"read", "write"},
+	"subConvert":      {"read", "write"},
 	// Config / identity / secret reads — component scopes are excluded.
 	"load":          {"read", "write"},
 	"inbounds":      {"read", "write"},
@@ -119,16 +122,17 @@ var apiV2ActionScopes = map[string][]string{
 	"status":  {"read", "write", "observability"},
 	"onlines": {"read", "write", "observability"},
 	"logs":    {"read", "write", "observability"},
+	"getdb":   {"database"},
 }
 
 // enforceActionScope applies the per-action scope policy for the apiv2 action
-// dispatchers. Actions absent from the policy map are allowed through (they
-// either self-gate inside the handler or are intentionally open), as are browser
-// sessions that carry no token scope. On denial it writes a 403 and returns false.
+// dispatchers. Actions absent from the policy map fail closed for bearer-token
+// requests. On denial it writes a 403 and returns false.
 func (a *APIv2Handler) enforceActionScope(c *gin.Context, action string) bool {
 	allowed, ok := apiV2ActionScopes[action]
 	if !ok {
-		return true
+		c.AbortWithStatusJSON(http.StatusForbidden, Msg{Success: false, Msg: "API token scope policy is not declared"})
+		return false
 	}
 	return a.ApiService.requireTokenScopeAny(c, action, append([]string{"admin"}, allowed...)...)
 }
@@ -216,7 +220,7 @@ func (a *APIv2Handler) findUsername(c *gin.Context) string {
 		logger.Warning("unable to hash API token:", err)
 		return ""
 	}
-	now := time.Now().Unix()
+	now := apiTokenNow().Unix()
 	a.tokensMu.RLock()
 	defer a.tokensMu.RUnlock()
 	t, ok := a.tokens[tokenHash]
@@ -226,7 +230,7 @@ func (a *APIv2Handler) findUsername(c *gin.Context) string {
 	if !t.Enabled {
 		return ""
 	}
-	if t.Expiry > 0 && t.Expiry < now {
+	if t.Expiry > 0 && t.Expiry <= now {
 		return ""
 	}
 	if legacyHeader {
@@ -267,14 +271,22 @@ func (a *APIv2Handler) checkToken(c *gin.Context) {
 }
 
 func (a *APIv2Handler) ReloadTokens() {
-	tokens, err := a.auth.LoadTokens()
+	loader := a.loadTokens
+	if loader == nil {
+		a.replaceTokenSnapshot(nil)
+		logger.Error("unable to load tokens: token loader is unavailable")
+		return
+	}
+	tokens, err := loader()
 	if err != nil {
+		a.replaceTokenSnapshot(nil)
 		logger.Error("unable to load tokens: ", err)
 		return
 	}
 	var loaded []TokenInMemory
 	if len(tokens) > 0 {
 		if err := json.Unmarshal(tokens, &loaded); err != nil {
+			a.replaceTokenSnapshot(nil)
 			logger.Error("unable to load tokens: ", err)
 			return
 		}
@@ -283,8 +295,15 @@ func (a *APIv2Handler) ReloadTokens() {
 	for _, t := range loaded {
 		newMap[t.TokenHash] = t
 	}
+	a.replaceTokenSnapshot(newMap)
+}
+
+func (a *APIv2Handler) replaceTokenSnapshot(tokens map[string]TokenInMemory) {
+	if tokens == nil {
+		tokens = map[string]TokenInMemory{}
+	}
 	a.tokensMu.Lock()
-	a.tokens = newMap
+	a.tokens = tokens
 	a.tokensMu.Unlock()
 }
 

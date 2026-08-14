@@ -16,7 +16,3 @@ func TestIntegrationStatsPipelineNilCoreSmoke(t *testing.T) {
 		t.Fatalf("SaveStats with nil core should be a no-op, got %v", err)
 	}
 }
-
-func TestIntegrationStatsPipelineRealtimeWithTestCore_XFAIL(t *testing.T) {
-	t.Skip("XFAIL: требуется test-core или hook для подмены core.Core/Box.StatsTracker без запуска sing-box")
-}

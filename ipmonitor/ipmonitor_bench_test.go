@@ -87,7 +87,7 @@ func BenchmarkAllow(b *testing.B) {
 	}
 }
 
-func TestIPMonitorAllowAnchorIssue18(t *testing.T) {
+func TestIPMonitorAllowWarmupAndLookupBudget(t *testing.T) {
 	initIPMonitorPerfDB(t)
 	names := seedIPMonitorPerfClients(t, 1000, 5)
 	start := time.Now()
@@ -101,7 +101,7 @@ func TestIPMonitorAllowAnchorIssue18(t *testing.T) {
 	if Allow(names[0], ipMonitorPerfNewIP(0)) {
 		t.Fatal("new IP over enforce limit should be rejected")
 	}
-	t.Logf("issue18 anchor: warmup=%s clients=%d ips_per_client=%d", warmup, len(names), 5)
+	t.Logf("performance anchor: warmup=%s clients=%d ips_per_client=%d", warmup, len(names), 5)
 }
 
 func initIPMonitorPerfDB(tb testing.TB) {

@@ -2,6 +2,7 @@ package outbounds
 
 import (
 	"encoding/json"
+	"fmt"
 	"strings"
 	"time"
 
@@ -110,8 +111,8 @@ type FailoverGroup struct {
 	Enabled     bool
 }
 
-// LoadFailoverGroups skips malformed legacy rows so one bad group cannot stop
-// health management for all valid groups.
+// LoadFailoverGroups fails closed if persisted failover metadata is malformed;
+// silently omitting a group would make runtime routing diverge from storage.
 func LoadFailoverGroups(db *gorm.DB) ([]FailoverGroup, error) {
 	var rows []model.Outbound
 	if err := db.Model(model.Outbound{}).Where("type = ?", FailoverType).Find(&rows).Error; err != nil {
@@ -121,8 +122,11 @@ func LoadFailoverGroups(db *gorm.DB) ([]FailoverGroup, error) {
 	directTag := DirectFallbackTag(db)
 	for _, row := range rows {
 		opts, err := parseFailoverOptions(row.Options)
-		if err != nil || len(opts.Outbounds) == 0 {
-			continue
+		if err != nil {
+			return nil, fmt.Errorf("decode stored failover outbound %q: %w", row.Tag, err)
+		}
+		if len(opts.Outbounds) == 0 {
+			return nil, fmt.Errorf("stored failover outbound %q has no members", row.Tag)
 		}
 		groups = append(groups, FailoverGroup{
 			Tag:         row.Tag,

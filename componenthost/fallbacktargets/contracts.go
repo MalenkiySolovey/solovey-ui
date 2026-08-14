@@ -23,8 +23,6 @@ const (
 	// MaxReferenceLeases bounds neutral and persistent lease stores. Capacity
 	// exhaustion fails closed instead of growing an unbounded decision map.
 	MaxReferenceLeases = 4096
-	providerTimeout    = 5 * time.Second
-	maxProvidersV1     = 128
 )
 
 type Readiness string
@@ -135,100 +133,66 @@ type Snapshot struct {
 type Registry struct {
 	mu          sync.RWMutex
 	next        uint64
-	providers   map[uint64]Provider
-	v2Providers map[uint64]ProviderV2
+	v2Providers map[uint64]providerV2Entry
+}
+
+type providerV2Entry struct {
+	id       string
+	provider ProviderV2
 }
 
 func NewRegistry() *Registry {
-	return &Registry{providers: make(map[uint64]Provider), v2Providers: make(map[uint64]ProviderV2)}
+	return &Registry{v2Providers: make(map[uint64]providerV2Entry)}
 }
 
-func (r *Registry) Register(provider Provider) func() {
+func (r *Registry) Register(provider Provider) (func(), error) {
 	if provider == nil {
-		return func() {}
+		return func() {}, errors.New("fallback_target_provider_invalid")
 	}
-	r.mu.Lock()
-	if len(r.providers) >= maxProvidersV1 {
-		r.mu.Unlock()
-		panic("fallback target provider v1 registry capacity exceeded")
+	registered := ProviderV2(legacyProviderV2{Provider: provider})
+	if current, ok := provider.(ProviderV2); ok {
+		registered = current
 	}
-	id := r.next
-	r.next++
-	r.providers[id] = provider
-	r.mu.Unlock()
-	var once sync.Once
-	return func() { once.Do(func() { r.mu.Lock(); delete(r.providers, id); r.mu.Unlock() }) }
+	return r.RegisterV2(registered)
 }
 
 func (r *Registry) Snapshot(ctx context.Context, now time.Time) Snapshot {
-	r.mu.RLock()
-	providers := make([]Provider, 0, len(r.providers))
-	for _, provider := range r.providers {
-		providers = append(providers, provider)
+	v2 := r.SnapshotV2(ctx, now)
+	result := Snapshot{GeneratedAt: v2.GeneratedAt, Targets: make([]TargetV1, 0, len(v2.Targets)), ReasonCodes: normalizeReasons(v2.ReasonCodes)}
+	for _, target := range v2.Targets {
+		result.Targets = append(result.Targets, targetV1FromV2(target))
 	}
-	r.mu.RUnlock()
-	sort.Slice(providers, func(i, j int) bool { return providers[i].ProviderID() < providers[j].ProviderID() })
-	result := Snapshot{GeneratedAt: now.UTC().Unix(), Targets: []TargetV1{}}
-	if len(providers) == 0 {
-		result.ReasonCodes = []string{"fallback_target_provider_absent"}
-		return result
-	}
-	seen := map[string]struct{}{}
-	for _, provider := range providers {
-		if len(result.Targets) >= maxTargets {
-			result.ReasonCodes = append(result.ReasonCodes, "fallback_target_inventory_truncated")
-			break
-		}
-		providerID := strings.TrimSpace(provider.ProviderID())
-		if !validOpaqueID(providerID, 128) {
-			providerID = opaqueID("provider", providerID)
-			result.ReasonCodes = append(result.ReasonCodes, "fallback_target_provider_identity_invalid")
-		}
-		providerCtx, cancel := context.WithTimeout(ctx, providerTimeout)
-		items, err := provider.ListTargets(providerCtx)
-		cancel()
-		if err != nil {
-			result.ReasonCodes = append(result.ReasonCodes, "fallback_target_provider_unavailable")
-			continue
-		}
-		remaining := maxTargets - len(result.Targets)
-		if len(items) > remaining {
-			items = items[:remaining]
-			result.ReasonCodes = append(result.ReasonCodes, "fallback_target_inventory_truncated")
-		}
-		for _, target := range items {
-			target.Schema = TargetSchemaV1
-			target = sanitizeTarget(target)
-			if target.Identity.ProviderID == "" {
-				target.Identity.ProviderID = providerID
-			} else if target.Identity.ProviderID != providerID {
-				target.Readiness = ReadinessUnknown
-				target.ReasonCodes = append(target.ReasonCodes, "fallback_target_provider_identity_mismatch")
-			}
-			key := target.Identity.ProviderID + "\x00" + target.Identity.TargetID
-			if _, ok := seen[key]; ok {
-				result.ReasonCodes = append(result.ReasonCodes, "duplicate_fallback_target_id")
-				continue
-			}
-			seen[key] = struct{}{}
-			target.ReasonCodes = normalizeReasons(target.ReasonCodes)
-			if err := validateTarget(target, now); err != nil {
-				target.Readiness = ReadinessUnknown
-				target.ReasonCodes = normalizeReasons(append(target.ReasonCodes, "fallback_target_invalid"))
-			}
-			if target.ExpiresAt > 0 && target.ExpiresAt <= now.UTC().Unix() {
-				target.Readiness = ReadinessStale
-				target.ReasonCodes = normalizeReasons(append(target.ReasonCodes, "fallback_target_stale"))
-			}
-			result.Targets = append(result.Targets, target)
-		}
-	}
-	sort.Slice(result.Targets, func(i, j int) bool {
-		a, b := result.Targets[i].Identity, result.Targets[j].Identity
-		return a.ProviderID+"\x00"+a.TargetID < b.ProviderID+"\x00"+b.TargetID
-	})
-	result.ReasonCodes = normalizeReasons(result.ReasonCodes)
 	return result
+}
+
+func targetV1FromV2(target FallbackTargetV2) TargetV1 {
+	tls := hostresources.CapabilityUnknown
+	switch target.Endpoint.TransportSecurity {
+	case TransportSecurityPlaintext:
+		tls = hostresources.CapabilityNo
+	case TransportSecurityTLS:
+		tls = hostresources.CapabilityYes
+	}
+	expiresAt := target.Health.ExpiresAt
+	if target.Capacity.ExpiresAt < expiresAt {
+		expiresAt = target.Capacity.ExpiresAt
+	}
+	reasons := append([]string(nil), target.Health.ReasonCodes...)
+	reasons = append(reasons, target.Capacity.ReasonCodes...)
+	return TargetV1{Schema: TargetSchemaV1, Identity: target.Identity, PublishRevision: target.Publish.Revision,
+		ContentDigest: target.Publish.ContentDigest, Endpoint: EndpointCapability{EndpointID: target.Endpoint.EndpointID,
+			Network: target.Endpoint.Network, Family: target.Endpoint.AddressFamily, Bind: target.Endpoint.Address,
+			Port: target.Endpoint.Port, TLS: tls, Local: target.Endpoint.Local, CanReachManagement: target.Endpoint.CanReachManagement},
+		Readiness: target.Health.Readiness, ProviderHealthRevision: projectedProviderHealthRevision(target), ObservedAt: target.Health.ObservedAt,
+		ExpiresAt: expiresAt, Source: target.Source, ConfidenceBP: target.ConfidenceBP, ReasonCodes: normalizeReasons(reasons)}
+}
+
+func projectedProviderHealthRevision(target FallbackTargetV2) string {
+	const legacyPrefix = "legacy-v1:"
+	if strings.HasPrefix(target.ProviderRevision, legacyPrefix) {
+		return strings.TrimPrefix(target.ProviderRevision, legacyPrefix)
+	}
+	return target.Health.Revision
 }
 
 func (r *Registry) Resolve(ctx context.Context, ref TargetReferenceV1, now time.Time) (TargetV1, error) {
@@ -457,53 +421,6 @@ func normalizeReasons(values []string) []string {
 	return out
 }
 
-func sanitizeTarget(target TargetV1) TargetV1 {
-	invalid := false
-	if !validOpaqueID(target.Identity.ProviderID, 128) && target.Identity.ProviderID != "" {
-		target.Identity.ProviderID = opaqueID("provider", target.Identity.ProviderID)
-		invalid = true
-	}
-	if !validOpaqueID(target.Identity.TargetID, 128) {
-		target.Identity.TargetID = opaqueID("target", target.Identity.TargetID)
-		invalid = true
-	}
-	if !validOpaqueID(target.PublishRevision, 128) {
-		target.PublishRevision = opaqueID("publish", target.PublishRevision)
-		invalid = true
-	}
-	if !isSHA256(target.ContentDigest) {
-		target.ContentDigest = ""
-		invalid = true
-	}
-	if !validOpaqueID(target.Endpoint.EndpointID, 128) {
-		target.Endpoint.EndpointID = opaqueID("endpoint", target.Endpoint.EndpointID)
-		invalid = true
-	}
-	if strings.ContainsAny(target.Endpoint.Bind, "/\\?#&={}[]<>\"'\r\n\t ") {
-		target.Endpoint.Bind = "*"
-		target.Endpoint.Family = hostresources.AddressFamilyUnknown
-		invalid = true
-	}
-	if !validOpaqueID(target.ProviderHealthRevision, 128) {
-		target.ProviderHealthRevision = opaqueID("health", target.ProviderHealthRevision)
-		invalid = true
-	}
-	if !validOpaqueID(target.Source, 128) {
-		target.Source = "unknown"
-		invalid = true
-	}
-	target.ReasonCodes = normalizeReasons(target.ReasonCodes)
-	if invalid {
-		target.ReasonCodes = normalizeReasons(append(target.ReasonCodes, "fallback_target_invalid"))
-	}
-	return target
-}
-
-func opaqueID(prefix, value string) string {
-	sum := sha256.Sum256([]byte(strings.TrimSpace(value)))
-	return prefix + ":" + hex.EncodeToString(sum[:16])
-}
-
 type MemoryStore struct {
 	mu     sync.Mutex
 	leases map[string]ReferenceLeaseV1
@@ -539,5 +456,3 @@ func (s *MemoryStore) LoadLease(_ context.Context, id string) (ReferenceLeaseV1,
 }
 
 var Default = NewRegistry()
-
-func Register(provider Provider) func() { return Default.Register(provider) }

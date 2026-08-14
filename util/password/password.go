@@ -53,24 +53,6 @@ var commonPasswords = loadCommonPasswords(commonPasswordsText)
 // share the same two Argon2id memory reservations and never build a wait queue.
 var slots = make(chan struct{}, 2)
 
-type Parameters struct {
-	MemoryKiB   uint32
-	Time        uint32
-	Parallelism uint8
-	SaltBytes   uint32
-	KeyBytes    uint32
-}
-
-func CurrentParameters() Parameters {
-	return Parameters{
-		MemoryKiB:   ArgonMemoryKiB,
-		Time:        ArgonTime,
-		Parallelism: ArgonParallelism,
-		SaltBytes:   ArgonSaltBytes,
-		KeyBytes:    ArgonKeyBytes,
-	}
-}
-
 func ValidateNew(value string) error {
 	if !utf8.ValidString(value) {
 		return ErrPasswordUTF8

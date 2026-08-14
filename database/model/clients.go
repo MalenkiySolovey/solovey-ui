@@ -7,7 +7,7 @@ type Client struct {
 	SortOrder   int             `json:"sortOrder" form:"sortOrder" gorm:"column:sort_order;default:0;not null;index"`
 	Enable      bool            `json:"enable" form:"enable"`
 	Name        string          `json:"name" form:"name"`
-	SubSecret   string          `json:"subSecret,omitempty" form:"subSecret" gorm:"index"`
+	SubSecret   string          `json:"subSecret,omitempty" form:"subSecret"`
 	Config      json.RawMessage `json:"config,omitempty" form:"config"`
 	Inbounds    json.RawMessage `json:"inbounds" form:"inbounds"`
 	Links       json.RawMessage `json:"links,omitempty" form:"links"`

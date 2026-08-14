@@ -65,12 +65,6 @@ func runDeleteHooks(tx *gorm.DB, tag string) error {
 	return nil
 }
 
-func ResetDeleteHooksForTest() {
-	deleteHooks.Lock()
-	deleteHooks.entries = map[string]registeredDeleteHook{}
-	deleteHooks.Unlock()
-}
-
 type deleteHookEntry struct {
 	name string
 	fn   DeleteHook

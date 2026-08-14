@@ -1,7 +1,9 @@
 package commands
 
 import (
+	"fmt"
 	"io"
+	"strings"
 	"testing"
 )
 
@@ -16,9 +18,7 @@ func testCommand(name string) Command {
 }
 
 func TestRegisterRejectsDuplicateName(t *testing.T) {
-	ResetForTest()
-	t.Cleanup(ResetForTest)
-	Register(testCommand("one"))
+	t.Cleanup(Register(testCommand("one")))
 
 	defer func() {
 		if recover() == nil {
@@ -29,11 +29,9 @@ func TestRegisterRejectsDuplicateName(t *testing.T) {
 }
 
 func TestStaleCleanupDoesNotRemoveNewRegistration(t *testing.T) {
-	ResetForTest()
-	t.Cleanup(ResetForTest)
 	cleanupOld := Register(testCommand("one"))
-	ResetForTest()
-	Register(testCommand("one"))
+	cleanupOld()
+	t.Cleanup(Register(testCommand("one")))
 
 	cleanupOld()
 	if _, ok := Run("one", nil, nil, io.Discard, io.Discard, func(string) string { return "" }); !ok {
@@ -42,10 +40,8 @@ func TestStaleCleanupDoesNotRemoveNewRegistration(t *testing.T) {
 }
 
 func TestRegisterBoundsCardinality(t *testing.T) {
-	ResetForTest()
-	t.Cleanup(ResetForTest)
 	for index := 0; index < maxRegisteredCommands; index++ {
-		Register(testCommand(string(rune(index + 1))))
+		t.Cleanup(Register(testCommand(fmt.Sprintf("command-%03d", index))))
 	}
 
 	defer func() {
@@ -54,4 +50,15 @@ func TestRegisterBoundsCardinality(t *testing.T) {
 		}
 	}()
 	Register(testCommand("overflow"))
+}
+
+func TestRunContainsOptionalCommandPanic(t *testing.T) {
+	t.Cleanup(Register(Command{Name: "panic", UsageLine: "panic", Run: func([]string, io.Reader, io.Writer, io.Writer, func(string) string) int {
+		panic("secret")
+	}}))
+	var stderr strings.Builder
+	code, ok := Run("panic", nil, nil, io.Discard, &stderr, func(string) string { return "" })
+	if !ok || code == 0 || strings.Contains(stderr.String(), "secret") {
+		t.Fatalf("panicking command was not contained: code=%d stderr=%q", code, stderr.String())
+	}
 }

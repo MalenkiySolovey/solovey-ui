@@ -46,6 +46,10 @@ func (s *trackingScheduler) AddJob(spec string, _ cron.Job) (cron.EntryID, error
 }
 func (*trackingScheduler) Schedule(cron.Schedule, cron.Job) cron.EntryID { return 0 }
 func (s *trackingScheduler) RemoveJob(id cron.EntryID)                   { s.removed = append(s.removed, id) }
+func (s *trackingScheduler) RemoveJobAndWait(_ context.Context, id cron.EntryID) error {
+	s.removed = append(s.removed, id)
+	return nil
+}
 
 func serverProtectionLifecycleContext(scheduler componenthost.Scheduler) lifecycle.Context {
 	return lifecycle.Context{Host: componenthost.Deps{
@@ -119,7 +123,7 @@ func TestDisabledComponentDoesNotStartRecoveryOrCreateArtifactRoot(t *testing.T)
 	hooks.Lock()
 	hooks.operationManager = nil
 	hooks.artifactStorage = nil
-	_ = ensureOperationManagerLocked()
+	_ = ensureOperationManagerLocked(nil)
 	hooks.operationManager = nil
 	hooks.Unlock()
 	if _, err := os.Stat(filepath.Join(dir, ".runtime", "server-protection")); !errors.Is(err, os.ErrNotExist) {
@@ -144,8 +148,6 @@ func TestComponentRuntimeRootProducerUsesVersionedContractShape(t *testing.T) {
 }
 
 func TestLifecycleKeepsInstalledOwnerBackupWhileRuntimeScopesFollowStartStop(t *testing.T) {
-	coreservice.ResetAPITokenScopeProvidersForTest()
-	t.Cleanup(coreservice.ResetAPITokenScopeProvidersForTest)
 	dir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", dir)
 	markServerProtectionInstalled(t, dir)

@@ -2,6 +2,7 @@ package resources
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
 	"strings"
@@ -19,10 +20,12 @@ const (
 	MaxAdvertisedEndpointsPerResource = 16
 	maxResourceStringValues           = 32
 	maxContributors                   = 128
+	resourceContributorTimeout        = 5 * time.Second
 )
 
 type registeredContributor struct {
 	id          uint64
+	owner       string
 	contributor ResourceContributor
 }
 
@@ -34,7 +37,7 @@ type cachedSnapshot struct {
 type Registry struct {
 	mu           sync.RWMutex
 	nextID       uint64
-	contributors map[uint64]ResourceContributor
+	contributors map[uint64]registeredContributor
 	cacheTTL     time.Duration
 	cache        *cachedSnapshot
 	now          func() time.Time
@@ -45,26 +48,31 @@ func NewRegistry(cacheTTL time.Duration) *Registry {
 		cacheTTL = defaultCacheTTL
 	}
 	return &Registry{
-		contributors: make(map[uint64]ResourceContributor),
+		contributors: make(map[uint64]registeredContributor),
 		cacheTTL:     cacheTTL,
 		now:          time.Now,
 	}
 }
 
-func (r *Registry) Register(contributor ResourceContributor) func() {
-	if contributor == nil {
-		return func() {}
+func (r *Registry) Register(contributor ResourceContributor) (func(), error) {
+	owner, ok := contributorOwner(contributor)
+	if !ok {
+		return nil, errors.New("resource contributor is invalid")
 	}
 	r.mu.Lock()
+	defer r.mu.Unlock()
+	for _, current := range r.contributors {
+		if current.owner == owner {
+			return nil, fmt.Errorf("resource contributor owner %q is already registered", owner)
+		}
+	}
 	if len(r.contributors) >= maxContributors {
-		r.mu.Unlock()
-		panic("resource contributor registry capacity exceeded")
+		return nil, errors.New("resource contributor registry capacity exceeded")
 	}
 	id := r.nextID
 	r.nextID++
-	r.contributors[id] = contributor
+	r.contributors[id] = registeredContributor{id: id, owner: owner, contributor: contributor}
 	r.cache = nil
-	r.mu.Unlock()
 	var once sync.Once
 	return func() {
 		once.Do(func() {
@@ -73,13 +81,7 @@ func (r *Registry) Register(contributor ResourceContributor) func() {
 			r.cache = nil
 			r.mu.Unlock()
 		})
-	}
-}
-
-func (r *Registry) Invalidate() {
-	r.mu.Lock()
-	r.cache = nil
-	r.mu.Unlock()
+	}, nil
 }
 
 func (r *Registry) Snapshot(ctx context.Context) ResourceSnapshot {
@@ -99,8 +101,8 @@ func (r *Registry) snapshot(ctx context.Context, refresh bool) ResourceSnapshot 
 		return value
 	}
 	contributors := make([]registeredContributor, 0, len(r.contributors))
-	for id, contributor := range r.contributors {
-		contributors = append(contributors, registeredContributor{id: id, contributor: contributor})
+	for _, contributor := range r.contributors {
+		contributors = append(contributors, contributor)
 	}
 	r.mu.RUnlock()
 	sort.Slice(contributors, func(i, j int) bool { return contributors[i].id < contributors[j].id })
@@ -110,10 +112,7 @@ func (r *Registry) snapshot(ctx context.Context, refresh bool) ResourceSnapshot 
 	truncated := false
 	invalidFacts := false
 	for contributorIndex, registered := range contributors {
-		owner := strings.TrimSpace(registered.contributor.Owner())
-		if !validResourceIdentifier(owner) {
-			owner = "unknown"
-		}
+		owner := registered.owner
 		items, err := listContributor(ctx, registered.contributor)
 		if err != nil {
 			// Contributor failures are exposed through the read-only inventory API.
@@ -299,6 +298,19 @@ func (r *Registry) snapshot(ctx context.Context, refresh bool) ResourceSnapshot 
 	return cloneSnapshot(snapshot)
 }
 
+func contributorOwner(contributor ResourceContributor) (owner string, ok bool) {
+	if contributor == nil {
+		return "", false
+	}
+	defer func() {
+		if recover() != nil {
+			owner, ok = "", false
+		}
+	}()
+	owner = strings.TrimSpace(contributor.Owner())
+	return owner, validResourceIdentifier(owner)
+}
+
 func validResourceIdentifier(value string) bool {
 	value = strings.TrimSpace(value)
 	if value == "" || len(value) > 256 || strings.ContainsAny(value, "/\\?#&={}[]<>\"'\r\n\t ") {
@@ -433,12 +445,7 @@ func normalizeCapability(value CapabilityValue) CapabilityValue {
 }
 
 func listContributor(ctx context.Context, contributor ResourceContributor) (items []ProtectableResource, err error) {
-	defer func() {
-		if recovered := recover(); recovered != nil {
-			err = fmt.Errorf("resource contributor panicked: %v", recovered)
-		}
-	}()
-	return contributor.ListProtectableResources(ctx)
+	return callResourceProvider(ctx, resourceContributorTimeout, contributor.ListProtectableResources)
 }
 
 func cloneSnapshot(value ResourceSnapshot) ResourceSnapshot {
@@ -476,7 +483,6 @@ func cloneResource(value ProtectableResource) ProtectableResource {
 
 var Default = NewRegistry(defaultCacheTTL)
 
-func Register(contributor ResourceContributor) func() { return Default.Register(contributor) }
-func Snapshot(ctx context.Context) ResourceSnapshot   { return Default.Snapshot(ctx) }
-func Refresh(ctx context.Context) ResourceSnapshot    { return Default.Refresh(ctx) }
-func Invalidate()                                     { Default.Invalidate() }
+func Register(contributor ResourceContributor) (func(), error) { return Default.Register(contributor) }
+func Snapshot(ctx context.Context) ResourceSnapshot            { return Default.Snapshot(ctx) }
+func Refresh(ctx context.Context) ResourceSnapshot             { return Default.Refresh(ctx) }

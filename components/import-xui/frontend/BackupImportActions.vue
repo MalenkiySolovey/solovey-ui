@@ -18,7 +18,7 @@
       />
     </v-col>
     <v-col cols="12" sm="auto" align-self="center">
-      <v-btn color="primary" @click="migrate()" hide-details>{{ $t('migrateXui.backupAction.button') }}</v-btn>
+      <v-btn color="primary" :loading="loading" :disabled="loading" @click="migrate()" hide-details>{{ $t('migrateXui.backupAction.button') }}</v-btn>
     </v-col>
     <v-col cols="12" sm="auto" align-self="center">
       <v-btn variant="tonal" prepend-icon="mdi-open-in-new" @click="openFullMigration()" hide-details>
@@ -59,8 +59,10 @@ const router = useRouter()
 const dryRun = ref(true)
 const strategy = ref('merge')
 const report = ref<null | Record<string, any>>(null)
+const loading = ref(false)
 
 const migrate = () => {
+  if (loading.value) return
   const fileInput = document.createElement('input')
   fileInput.type = 'file'
   fileInput.accept = '.db'
@@ -70,24 +72,28 @@ const migrate = () => {
     const dbFile = inputElement.files ? inputElement.files[0] : null
 
     if (!dbFile) return
-    const formData = new FormData()
-    formData.append('db', dbFile)
-    formData.append('dryRun', dryRun.value ? '1' : '0')
-    formData.append('strategy', strategy.value)
+    loading.value = true
+    try {
+      const formData = new FormData()
+      formData.append('db', dbFile)
+      formData.append('dryRun', dryRun.value ? '1' : '0')
+      formData.append('strategy', strategy.value)
 
-    let stepUpToken = ''
-    if (!dryRun.value) {
-      stepUpToken = await props.ctx?.acquireDatabaseImportStepUp?.() ?? ''
-      if (!stepUpToken) return
-    }
-    const uploadMsg = await importXuiDatabase(formData, stepUpToken)
-    if (uploadMsg.success) {
-      report.value = uploadMsg.obj
+      let stepUpToken = ''
       if (!dryRun.value) {
-        props.ctx?.close?.()
-        await new Promise(resolve => setTimeout(resolve, 1000))
-        location.reload()
+        stepUpToken = await props.ctx?.acquireDatabaseImportStepUp?.() ?? ''
+        if (!stepUpToken) return
       }
+      const uploadMsg = await importXuiDatabase(formData, stepUpToken)
+      if (uploadMsg.success) {
+        report.value = uploadMsg.obj
+        if (!dryRun.value) {
+          props.ctx?.close?.()
+          location.reload()
+        }
+      }
+    } finally {
+      loading.value = false
     }
   })
 

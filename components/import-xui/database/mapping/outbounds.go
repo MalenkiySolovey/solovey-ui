@@ -75,13 +75,19 @@ func outboundsFromXray(ob xrayOutbound) ([]model.Outbound, []string) {
 		return nil, []string{fmt.Sprintf("outbound %s: %s has no server; skipped", tag, proto)}
 	}
 
-	stream := parseOutboundStream(ob)
+	stream, err := parseOutboundStream(ob)
+	if err != nil {
+		return nil, []string{fmt.Sprintf("outbound %s: %v; skipped", tag, err)}
+	}
 	carriesStream := proto == "vmess" || proto == "vless" || proto == "trojan" || proto == "http"
 	var warnings []string
 
 	var tlsBlock map[string]any
 	var transport map[string]any
 	if carriesStream {
+		if !supportedMappedTransport(stream.Network) {
+			return nil, []string{fmt.Sprintf("outbound %s: transport %q is unsupported; skipped", tag, stream.Network)}
+		}
 		var w []string
 		tlsBlock, w = mapOutboundClientTLS(tag, stream)
 		warnings = append(warnings, w...)
@@ -100,6 +106,9 @@ func outboundsFromXray(ob xrayOutbound) ([]model.Outbound, []string) {
 		server := strings.TrimSpace(srv.Address)
 		if server == "" {
 			return nil, []string{fmt.Sprintf("outbound %s: missing server address; skipped", outTag)}
+		}
+		if srv.Port <= 0 || srv.Port > 65535 {
+			return nil, []string{fmt.Sprintf("outbound %s: server port is invalid; skipped", outTag)}
 		}
 		opts["server"] = server
 		opts["server_port"] = srv.Port

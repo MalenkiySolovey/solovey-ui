@@ -39,7 +39,11 @@ func (a *Handler) IssueWSToken(c *gin.Context) {
 	}
 	now := time.Now()
 	expiresAt := now.Add(wsTokenTTL)
-	token := common.Random(32)
+	token, err := common.SecureRandom(32)
+	if err != nil {
+		a.JSONMsg(c, "wsToken", err)
+		return
+	}
 	binding := service.RealtimeSessionBinding{Username: user}
 	if a.SessionBinding != nil {
 		resolved, ok := a.SessionBinding(c)

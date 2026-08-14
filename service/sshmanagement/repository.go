@@ -20,8 +20,6 @@ type Repository struct {
 	DB func() *gorm.DB
 }
 
-func NewRepository(db *gorm.DB) Repository { return Repository{DB: func() *gorm.DB { return db }} }
-
 func (r Repository) db() (*gorm.DB, error) {
 	if r.DB == nil || r.DB() == nil {
 		return nil, errors.New("ssh management database is unavailable")

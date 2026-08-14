@@ -18,10 +18,7 @@ const (
 )
 
 // rehashLegacyPasswords scans the users table and rewrites any password field
-// that is not already a bcrypt hash. The wire format from `common.HashPassword`
-// stores the bcrypt blob behind a `bcrypt:` prefix; raw `$2[aby]$...` blobs
-// (which old backups never had, but might appear via manual edits) are also
-// considered hashed.
+// that is not already an encoded password hash.
 func rehashLegacyPasswords(tx *gorm.DB) error {
 	var users []model.User
 	if err := tx.Model(model.User{}).Find(&users).Error; err != nil {
@@ -31,7 +28,7 @@ func rehashLegacyPasswords(tx *gorm.DB) error {
 		if user.Password == "" {
 			continue
 		}
-		if common.IsPasswordHash(user.Password) {
+		if passwordutil.IsEncoded(user.Password) {
 			continue
 		}
 		if isLegacyDefaultAdmin(user) {
@@ -61,7 +58,10 @@ func isLegacyDefaultAdmin(user model.User) bool {
 }
 
 func rotateLegacyDefaultAdminPassword(tx *gorm.DB, user model.User) error {
-	password := common.Random(24)
+	password, err := common.SecureRandom(24)
+	if err != nil {
+		return err
+	}
 	hashed, err := passwordutil.Hash(context.Background(), password)
 	if err != nil {
 		return err

@@ -231,7 +231,7 @@ func (h Handler) posture(c *gin.Context) {
 func recoveryState(paths []hostresources.RecoveryPathV1, management []hostresources.ManagementEndpointV1, now time.Time) string {
 	current := make(map[string]hostresources.ManagementServiceKind, len(management))
 	for _, endpoint := range management {
-		if hostresources.ManagementEndpointCurrent(endpoint) {
+		if hostresources.ManagementEndpointCurrent(endpoint, now) {
 			current[endpoint.ID] = endpoint.ServiceKind
 		}
 	}

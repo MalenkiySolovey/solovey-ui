@@ -31,6 +31,16 @@ func TestPrepareClientSubSecretGeneratesUUIDV4(t *testing.T) {
 
 func TestRotateSubSecretChangesExistingClientSecret(t *testing.T) {
 	initSettingTestDB(t)
+	invalidated := false
+	subscriptionOutputCacheInvalidator.Lock()
+	previousInvalidator := subscriptionOutputCacheInvalidator.fn
+	subscriptionOutputCacheInvalidator.fn = func() { invalidated = true }
+	subscriptionOutputCacheInvalidator.Unlock()
+	t.Cleanup(func() {
+		subscriptionOutputCacheInvalidator.Lock()
+		subscriptionOutputCacheInvalidator.fn = previousInvalidator
+		subscriptionOutputCacheInvalidator.Unlock()
+	})
 	client := model.Client{
 		Enable:    true,
 		Name:      "alice",
@@ -59,5 +69,8 @@ func TestRotateSubSecretChangesExistingClientSecret(t *testing.T) {
 	}
 	if !uuidV4Pattern.MatchString(stored.SubSecret) {
 		t.Fatalf("rotated sub secret is not uuid-v4: %q", stored.SubSecret)
+	}
+	if !invalidated {
+		t.Fatal("subscription caches were not invalidated after secret rotation")
 	}
 }

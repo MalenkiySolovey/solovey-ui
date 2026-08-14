@@ -84,7 +84,7 @@ func (m *Manager) recordPanelLogin(ctx context.Context, fields map[string]string
 	}
 	current := make([]hostresources.ManagementEndpointV1, 0, 1)
 	for _, endpoint := range m.endpoints(ctx, now) {
-		if endpoint.ServiceKind == hostresources.ManagementPanel && endpoint.Family == family && hostresources.ManagementEndpointCurrent(endpoint) {
+		if endpoint.ServiceKind == hostresources.ManagementPanel && endpoint.Family == family && hostresources.ManagementEndpointCurrent(endpoint, now) {
 			current = append(current, endpoint)
 		}
 	}

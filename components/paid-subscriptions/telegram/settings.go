@@ -4,6 +4,7 @@ package telegram
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -153,12 +154,24 @@ func (s *paidSettings) GetPaidSubOutboundTag() (string, error) {
 	return s.GetComponentSettingString(paidsettings.OutboundTagKey)
 }
 
-func newPaidSubHTTPClient(timeout time.Duration) (*http.Client, error) {
+func newPaidSubHTTPClient(runtime *service.Runtime, timeout time.Duration) (*http.Client, error) {
 	settings := &paidSettings{}
-	mode, _ := settings.GetPaidSubTransportMode()
+	mode, err := settings.GetPaidSubTransportMode()
+	if err != nil {
+		return nil, fmt.Errorf("read paid subscription transport mode: %w", err)
+	}
 	if mode == "outbound" {
-		tag, _ := settings.GetPaidSubOutboundTag()
-		return service.NewOutboundHTTPClient(tag, timeout)
+		tag, err := settings.GetPaidSubOutboundTag()
+		if err != nil {
+			return nil, fmt.Errorf("read paid subscription outbound tag: %w", err)
+		}
+		if runtime == nil {
+			return nil, fmt.Errorf("paid subscription runtime is unavailable")
+		}
+		return service.NewOutboundHTTPClientForRuntime(runtime, tag, timeout)
+	}
+	if mode != "proxy" {
+		return nil, fmt.Errorf("unsupported paid subscription transport mode")
 	}
 	cfg, err := settings.paidSubProxyConfig()
 	if err != nil {

@@ -8,31 +8,28 @@ import (
 	"gorm.io/gorm"
 )
 
-func dropDeprecatedTables() error {
-	return nil
-}
-
-func ensureNoTLSRow() error {
-	return EnsureNoTLSRow(db)
-}
-
-func EnsureNoTLSRow(target *gorm.DB) error {
-	if target == nil {
-		return nil
+func ensureIndexes(database *gorm.DB) error {
+	if database == nil {
+		return fmt.Errorf("database is unavailable while ensuring indexes")
 	}
-	return target.Exec(
-		"INSERT OR IGNORE INTO tls(id, name, server, client) VALUES(0, ?, ?, ?)",
-		"__none__", []byte("{}"), []byte("{}"),
-	).Error
-}
+	var duplicateSetting struct {
+		Key   string
+		Count int64
+	}
+	if err := database.Raw(`
+SELECT key, COUNT(*) AS count
+FROM settings
+GROUP BY key
+HAVING COUNT(*) > 1
+ORDER BY key
+LIMIT 1
+`).Scan(&duplicateSetting).Error; err != nil {
+		return fmt.Errorf("inspect setting-key uniqueness: %w", err)
+	}
+	if duplicateSetting.Count > 1 {
+		return fmt.Errorf("stored settings duplicate key %q", duplicateSetting.Key)
+	}
 
-func ensureIndexes() error {
-	if err := db.Exec("DROP INDEX IF EXISTS idx_client_ips_client_ip").Error; err != nil {
-		return err
-	}
-	if err := db.Exec("DELETE FROM settings WHERE id NOT IN (SELECT MIN(id) FROM settings GROUP BY key)").Error; err != nil {
-		return err
-	}
 	indexes := []string{
 		"CREATE UNIQUE INDEX IF NOT EXISTS idx_settings_key ON settings(key)",
 		"CREATE INDEX IF NOT EXISTS idx_stats_lookup ON stats(date_time, resource, tag)",
@@ -42,8 +39,8 @@ func ensureIndexes() error {
 		"CREATE INDEX IF NOT EXISTS idx_audit_events_lookup ON audit_events(date_time, actor, event)",
 		"CREATE INDEX IF NOT EXISTS idx_audit_events_event_dt ON audit_events(event, date_time DESC)",
 		"CREATE INDEX IF NOT EXISTS idx_audit_events_severity_dt ON audit_events(severity, date_time DESC)",
-		"CREATE INDEX IF NOT EXISTS idx_clients_name ON clients(name)",
-		"CREATE INDEX IF NOT EXISTS idx_clients_sub_secret ON clients(sub_secret)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_name ON clients(name)",
+		"CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_sub_secret ON clients(sub_secret) WHERE sub_secret IS NOT NULL AND sub_secret != ''",
 		"CREATE INDEX IF NOT EXISTS idx_clients_sort_order ON clients(sort_order, id)",
 		"CREATE INDEX IF NOT EXISTS idx_inbounds_sort_order ON inbounds(sort_order, id)",
 		"CREATE INDEX IF NOT EXISTS idx_inbound_drafts_status_expires ON inbound_drafts(status, expires_at, id)",
@@ -55,12 +52,23 @@ func ensureIndexes() error {
 		"CREATE INDEX IF NOT EXISTS idx_client_ips_client_legacy_ip ON client_ips(client_name, ip) WHERE ip IS NOT NULL AND ip != ''",
 		"CREATE INDEX IF NOT EXISTS idx_client_ips_last_seen ON client_ips(last_seen)",
 	}
-	for _, query := range indexes {
-		if err := db.Exec(query).Error; err != nil {
-			return err
+	return database.Transaction(func(tx *gorm.DB) error {
+		for _, name := range []string{
+			"idx_client_ips_client_ip",
+			"idx_clients_name",
+			"idx_clients_sub_secret",
+		} {
+			if err := tx.Exec("DROP INDEX IF EXISTS " + name).Error; err != nil {
+				return fmt.Errorf("drop superseded index %s: %w", name, err)
+			}
 		}
-	}
-	return nil
+		for _, query := range indexes {
+			if err := tx.Exec(query).Error; err != nil {
+				return err
+			}
+		}
+		return nil
+	})
 }
 
 func ensureSortOrders() error {

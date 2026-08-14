@@ -3,6 +3,7 @@
 package remotesubservice
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -14,6 +15,13 @@ import (
 var refreshMu sync.Mutex
 
 func (s *Service) RefreshDueSubscriptions(loginUser string) (int, error) {
+	return s.RefreshDueSubscriptionsContext(context.Background(), loginUser)
+}
+
+func (s *Service) RefreshDueSubscriptionsContext(ctx context.Context, loginUser string) (int, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	refreshMu.Lock()
 	defer refreshMu.Unlock()
 
@@ -23,7 +31,10 @@ func (s *Service) RefreshDueSubscriptions(loginUser string) (int, error) {
 	}
 	refreshed := 0
 	for _, subscription := range subscriptions {
-		if _, err := s.refreshSubscription(subscription.Id, loginUser); err != nil {
+		if err := ctx.Err(); err != nil {
+			return refreshed, err
+		}
+		if _, err := s.refreshSubscription(ctx, subscription.Id, loginUser); err != nil {
 			logger.Warning("remote subscription auto refresh failed: ", subscription.Name, ": ", err)
 			continue
 		}

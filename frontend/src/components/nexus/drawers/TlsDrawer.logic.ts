@@ -1,5 +1,5 @@
 import { defineComponent } from 'vue'
-import TlsEditor from '@/shared/composables/useTlsEditor'
+import TlsEditor from '@/features/useTlsEditor'
 import EntityDrawer from './EntityDrawer.vue'
 
 export default defineComponent({

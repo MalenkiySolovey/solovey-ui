@@ -45,12 +45,10 @@ func TestLinkGeneratorTUICDefaultsUDPRelayMode(t *testing.T) {
 	}
 }
 
-// TestLinkGeneratorMalformedAddrsDoesNotPanic feeds an addr map missing
-// server/remark and carrying non-bool tls.enabled / non-string alpn elements.
-// Before the comma-ok hardening (Q4) these tripped interface-conversion panics
-// in the subscription request goroutine; now every link type degrades to a
-// partial/empty link instead.
-func TestLinkGeneratorMalformedAddrsDoesNotPanic(t *testing.T) {
+// TestLinkGeneratorRejectsMalformedAddrs verifies that imported or restored
+// address data cannot be persisted as a partial link with an empty host or
+// port. The boundary must return an error without panicking.
+func TestLinkGeneratorRejectsMalformedAddrs(t *testing.T) {
 	malformedAddrs := json.RawMessage(`[
 		{"tls":{"enabled":"yes"}},
 		{"tls":{"enabled":true,"alpn":[123],"reality":{"enabled":"yes"}}}
@@ -77,9 +75,56 @@ func TestLinkGeneratorMalformedAddrsDoesNotPanic(t *testing.T) {
 				OutJson: json.RawMessage(`{}`),
 				Options: json.RawMessage(`{"listen_port":443,"method":"aes-128-gcm"}`),
 			}
-			// The assertion is simply that this does not panic; a malformed
-			// addr may legitimately yield empty or partial links.
-			_ = Generate(clientConfig, inbound, "example.com")
+			if _, err := Generate(clientConfig, inbound, "example.com"); err == nil {
+				t.Fatal("malformed address was accepted")
+			}
+		})
+	}
+}
+
+func TestLinkGeneratorRejectsMissingCredentials(t *testing.T) {
+	inbound := roundTripInbound(
+		"naive",
+		"naive-in",
+		`{"listen_port":443}`,
+		`{}`,
+		`[{"server":"naive.example.com","server_port":443,"remark":"-node"}]`,
+	)
+	if _, err := Generate(json.RawMessage(`{"naive":{}}`), inbound, "fallback.example.com"); err == nil {
+		t.Fatal("link generator accepted missing Naive credentials")
+	}
+}
+
+func TestLinkGeneratorProducesParseableLinksForEverySupportedType(t *testing.T) {
+	clientConfig := json.RawMessage(`{
+		"socks":{"username":"user","password":"secret"},
+		"http":{"username":"user","password":"secret"},
+		"shadowsocks":{"password":"secret"},
+		"naive":{"username":"user","password":"secret"},
+		"hysteria":{"auth_str":"secret"},
+		"hysteria2":{"password":"secret"},
+		"anytls":{"password":"secret"},
+		"tuic":{"uuid":"11111111-1111-4111-8111-111111111111","password":"secret"},
+		"vless":{"uuid":"11111111-1111-4111-8111-111111111111"},
+		"trojan":{"password":"secret"},
+		"vmess":{"uuid":"11111111-1111-4111-8111-111111111111"}
+	}`)
+	for _, inboundType := range SupportedInboundTypes {
+		t.Run(inboundType, func(t *testing.T) {
+			inbound := roundTripInbound(
+				inboundType,
+				inboundType+"-in",
+				`{"listen_port":443,"method":"aes-128-gcm"}`,
+				`{}`,
+				`[{"server":"node.example.com","server_port":443,"remark":"-node"}]`,
+			)
+			links, err := Generate(clientConfig, inbound, "fallback.example.com")
+			if err != nil {
+				t.Fatal(err)
+			}
+			if len(links) == 0 {
+				t.Fatal("generator returned no links")
+			}
 		})
 	}
 }
@@ -156,7 +201,7 @@ func TestLinkGeneratorRoundTripCommonProtocols(t *testing.T) {
 				"type":                   "vmess",
 				"tag":                    "vmess-in-ws",
 				"server":                 "vmess.example.com",
-				"server_port":            "443",
+				"server_port":            443,
 				"uuid":                   "22222222-2222-4222-8222-222222222222",
 				"tls.enabled":            true,
 				"transport.type":         "ws",
@@ -250,7 +295,10 @@ func TestLinkGeneratorRoundTripCommonProtocols(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			links := Generate(clientConfig, tt.inbound, "fallback.example.com")
+			links, err := Generate(clientConfig, tt.inbound, "fallback.example.com")
+			if err != nil {
+				t.Fatal(err)
+			}
 			if len(links) != 1 {
 				t.Fatalf("expected one generated link, got %d: %#v", len(links), links)
 			}
@@ -282,12 +330,18 @@ func TestLinkGeneratorDeterministicMultiAddressOrder(t *testing.T) {
 		]`,
 	)
 
-	first := Generate(clientConfig, inbound, "fallback.example.com")
+	first, err := Generate(clientConfig, inbound, "fallback.example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(first) != 2 {
 		t.Fatalf("expected two generated links, got %d: %#v", len(first), first)
 	}
 	for i := 0; i < 5; i++ {
-		next := Generate(clientConfig, inbound, "fallback.example.com")
+		next, err := Generate(clientConfig, inbound, "fallback.example.com")
+		if err != nil {
+			t.Fatal(err)
+		}
 		if !reflect.DeepEqual(next, first) {
 			t.Fatalf("generated links changed on run %d:\nfirst=%#v\nnext=%#v", i+1, first, next)
 		}
@@ -301,6 +355,52 @@ func TestLinkGeneratorDeterministicMultiAddressOrder(t *testing.T) {
 		}
 		if tag != wantTags[i] {
 			t.Fatalf("link %d tag = %q, want %q; links=%#v", i, tag, wantTags[i], first)
+		}
+	}
+}
+
+func TestLinkGeneratorBracketsIPv6Address(t *testing.T) {
+	inbound := roundTripInbound(
+		"trojan",
+		"ipv6-in",
+		`{"listen_port":443}`,
+		`{}`,
+		`[{"server":"2001:db8::1","server_port":443,"remark":"-v6"}]`,
+	)
+	links, err := Generate(json.RawMessage(`{"trojan":{"password":"secret"}}`), inbound, "fallback.example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
+	parsed, err := url.Parse(links[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if parsed.Hostname() != "2001:db8::1" || parsed.Port() != "443" {
+		t.Fatalf("IPv6 endpoint was not bracketed correctly: %s", links[0])
+	}
+}
+
+func TestEmptyAddressesUseConfiguredFallback(t *testing.T) {
+	for _, raw := range []json.RawMessage{nil, json.RawMessage(`null`), json.RawMessage(`[]`)} {
+		if err := ValidateAddresses(raw); err != nil {
+			t.Fatalf("ValidateAddresses(%q): %v", raw, err)
+		}
+		inbound := &model.Inbound{
+			Type:    "trojan",
+			Tag:     "fallback",
+			Addrs:   raw,
+			Options: json.RawMessage(`{"listen_port":443}`),
+		}
+		links, err := Generate(json.RawMessage(`{"trojan":{"password":"secret"}}`), inbound, "fallback.example.com")
+		if err != nil {
+			t.Fatalf("Generate with addresses %q: %v", raw, err)
+		}
+		parsed, err := url.Parse(links[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if parsed.Hostname() != "fallback.example.com" || parsed.Port() != "443" {
+			t.Fatalf("fallback endpoint = %q, want fallback.example.com:443", parsed.Host)
 		}
 	}
 }
@@ -365,7 +465,10 @@ func generateTUICLinkForTest(t *testing.T, outJSON string) string {
 		}`),
 	}
 
-	links := Generate(clientConfig, inbound, "example.com")
+	links, err := Generate(clientConfig, inbound, "example.com")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(links) != 1 {
 		t.Fatalf("expected one generated link, got %d: %#v", len(links), links)
 	}

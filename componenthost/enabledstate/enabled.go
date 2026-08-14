@@ -1,6 +1,7 @@
 package enabledstate
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 
@@ -37,33 +38,62 @@ func ValidateSettingValue(value string) error {
 }
 
 func Enabled(item manifest.Manifest) (bool, error) {
-	if err := manifest.ValidateID(item.ID); err != nil {
-		return false, err
-	}
-	db := dbsqlite.DB()
-	if db == nil {
-		return item.DefaultEnabled, nil
-	}
-	var setting model.Setting
-	err := db.Model(model.Setting{}).Where("key = ?", SettingKey(item.ID)).First(&setting).Error
-	if dbsqlite.IsNotFound(err) {
-		return item.DefaultEnabled, nil
-	}
+	ids, err := EnabledIDs([]manifest.Manifest{item})
 	if err != nil {
 		return false, err
 	}
-	return strconv.ParseBool(setting.Value)
+	_, enabled := ids[item.ID]
+	return enabled, nil
 }
 
 func EnabledIDs(available []manifest.Manifest) (map[string]struct{}, error) {
 	ids := make(map[string]struct{}, len(available))
+	defaults := make(map[string]bool, len(available))
+	keys := make([]string, 0, len(available))
 	for _, item := range available {
-		enabled, err := Enabled(item)
-		if err != nil {
+		if err := manifest.ValidateID(item.ID); err != nil {
 			return nil, err
 		}
-		if enabled {
+		if _, duplicate := defaults[item.ID]; duplicate {
+			return nil, fmt.Errorf("component %q is duplicated in enabled-state input", item.ID)
+		}
+		defaults[item.ID] = item.DefaultEnabled
+		keys = append(keys, SettingKey(item.ID))
+		if item.DefaultEnabled {
 			ids[item.ID] = struct{}{}
+		}
+	}
+	if len(keys) == 0 || dbsqlite.DB() == nil {
+		return ids, nil
+	}
+
+	// Read the whole enabled set in one database snapshot. Per-component reads
+	// both create an N+1 hot path and can combine values from different commits.
+	var settings []model.Setting
+	if err := dbsqlite.DB().Model(model.Setting{}).Where("key IN ?", keys).Find(&settings).Error; err != nil {
+		return nil, err
+	}
+	seen := make(map[string]struct{}, len(settings))
+	for _, setting := range settings {
+		id, ok := ComponentIDFromSettingKey(setting.Key)
+		if !ok {
+			return nil, fmt.Errorf("enabled setting key %q is invalid", setting.Key)
+		}
+		if _, requested := defaults[id]; !requested {
+			return nil, fmt.Errorf("enabled setting key %q was not requested", setting.Key)
+		}
+		if _, duplicate := seen[id]; duplicate {
+			return nil, fmt.Errorf("component %q has duplicate enabled settings", id)
+		}
+		seen[id] = struct{}{}
+		enabled, err := strconv.ParseBool(setting.Value)
+		if err != nil {
+			return nil, fmt.Errorf("component %q enabled setting is invalid: %w", id, err)
+		}
+		if enabled {
+			ids[id] = struct{}{}
+		} else {
+			delete(ids, id)
 		}
 	}
 	return ids, nil

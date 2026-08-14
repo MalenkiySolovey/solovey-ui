@@ -2,6 +2,7 @@ package observation
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"testing"
 	"time"
@@ -13,6 +14,44 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func TestWorkerStopDeadlineIsRetryableWithoutBlockingPastDeadline(t *testing.T) {
+	worker := NewWorker()
+	release := make(chan struct{})
+	done := make(chan struct{})
+	worker.running.Store(true)
+	worker.done = done
+	worker.cancel = func() {}
+	go func() {
+		<-release
+		worker.running.Store(false)
+		close(done)
+	}()
+
+	stopCtx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if err := worker.Stop(stopCtx); !errors.Is(err, context.Canceled) {
+		t.Fatalf("timed out Stop error = %v", err)
+	}
+	worker.mu.Lock()
+	retained := worker.done == done && worker.stopping
+	worker.mu.Unlock()
+	if !retained {
+		t.Fatal("timed out Stop forgot the still-running worker")
+	}
+	if err := worker.Start(protectionrepository.New(nil)); !errors.Is(err, ErrWorkerStopping) {
+		t.Fatalf("Start while Stop is incomplete = %v", err)
+	}
+	close(release)
+	if err := worker.Stop(context.Background()); err != nil {
+		t.Fatalf("retry Stop: %v", err)
+	}
+	worker.mu.Lock()
+	defer worker.mu.Unlock()
+	if worker.done != nil || worker.stopping || worker.repository != nil || worker.sub != nil {
+		t.Fatal("completed retry did not clear worker ownership")
+	}
+}
 
 type workerResourceContributor struct{}
 
@@ -48,7 +87,10 @@ func TestWorkerFinalFlushPersistsSanitizedEventsAndStopsIntake(t *testing.T) {
 	if err := repository.SaveSettings(context.Background(), settings); err != nil {
 		t.Fatal(err)
 	}
-	unregisterResource := hostresources.Register(workerResourceContributor{})
+	unregisterResource, err := hostresources.Register(workerResourceContributor{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer unregisterResource()
 	resource := hostresources.Refresh(context.Background()).Resources[0]
 	now := time.Now().Unix()

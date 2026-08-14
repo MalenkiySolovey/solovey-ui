@@ -31,7 +31,7 @@ func TestObservedSSHInventoryPreservesAmbiguityAndTopology(t *testing.T) {
 	if !value.ObservedListener || value.ConfiguredIntent || !value.Wildcard || !value.DualStack || len(value.ReasonCodes) != 1 || value.ReasonCodes[0] != "owner_ambiguous" {
 		t.Fatalf("endpoint=%#v", value)
 	}
-	if hostresources.ManagementEndpointCurrent(value) {
+	if hostresources.ManagementEndpointCurrent(value, now) {
 		t.Fatal("ambiguous listener was accepted as current")
 	}
 }
@@ -60,11 +60,17 @@ func (f evidenceFixture) RecoveryPaths(context.Context, time.Time) ([]hostresour
 
 func TestEvidenceRegistryFailsClosedOnDuplicateAndProviderFailure(t *testing.T) {
 	registry := NewEvidenceRegistry()
-	registry.Register(evidenceFixture{id: "duplicate", paths: nil})
-	registry.Register(evidenceFixture{id: "duplicate", paths: nil})
-	registry.Register(evidenceFixture{id: "failed", err: errors.New("unavailable")})
+	if _, err := registry.Register(evidenceFixture{id: "duplicate", paths: nil}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := registry.Register(evidenceFixture{id: "duplicate", paths: nil}); err == nil {
+		t.Fatal("duplicate evidence authority was accepted")
+	}
+	if _, err := registry.Register(evidenceFixture{id: "failed", err: errors.New("unavailable")}); err != nil {
+		t.Fatal(err)
+	}
 	snapshot := registry.Snapshot(context.Background(), time.Unix(10_000, 0).UTC())
-	if !hasReason(snapshot.ReasonCodes, "evidence_provider_ambiguous") || !hasReason(snapshot.ReasonCodes, "evidence_provider_unavailable") {
+	if !hasReason(snapshot.ReasonCodes, "evidence_provider_unavailable") {
 		t.Fatalf("snapshot=%#v", snapshot)
 	}
 }

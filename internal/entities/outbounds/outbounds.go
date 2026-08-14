@@ -6,7 +6,10 @@ import (
 	"os"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveidentity"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
@@ -86,10 +89,34 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 	return outboundsJSON, nil
 }
 
+func ValidateStored(db *gorm.DB) error {
+	if db == nil {
+		return common.NewError("outbound persistence is unavailable")
+	}
+	if !db.Migrator().HasTable(&model.Outbound{}) {
+		return nil
+	}
+	var rows []model.Outbound
+	if err := db.Order("id").Find(&rows).Error; err != nil {
+		return err
+	}
+	for _, row := range rows {
+		if err := jsonvalue.OptionalObject("outbound options", row.Options); err != nil {
+			return fmt.Errorf("stored outbound row %d: %w", row.Id, err)
+		}
+		if row.Type == FailoverType {
+			if err := validateFailoverGroup(db, row); err != nil {
+				return fmt.Errorf("stored outbound row %d: %w", row.Id, err)
+			}
+		}
+	}
+	return nil
+}
+
 func Save(tx *gorm.DB, act string, data json.RawMessage) (*singboxapply.Change, error) {
 	switch act {
 	case "new", "edit":
-		return saveUpsert(tx, data)
+		return saveUpsert(tx, act, data)
 	case "del":
 		return saveDelete(tx, data)
 	default:
@@ -97,9 +124,18 @@ func Save(tx *gorm.DB, act string, data json.RawMessage) (*singboxapply.Change, 
 	}
 }
 
-func saveUpsert(tx *gorm.DB, data json.RawMessage) (*singboxapply.Change, error) {
-	var outbound model.Outbound
-	if err := outbound.UnmarshalJSON(data); err != nil {
+func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply.Change, error) {
+	outbound, err := decodeSaveOutbound(data)
+	if err != nil {
+		return nil, err
+	}
+	if err := saveidentity.Validate(tx, action, outbound.Id, &model.Outbound{}); err != nil {
+		return nil, err
+	}
+	if err := entityidentity.ValidateTypeTag(outbound.Type, outbound.Tag); err != nil {
+		return nil, err
+	}
+	if err := entityidentity.EnsureOutboundTagAvailable(tx, outbound.Tag, outbound.Id, 0); err != nil {
 		return nil, err
 	}
 	if outbound.Type == FailoverType {
@@ -165,6 +201,9 @@ func tagByID(tx *gorm.DB, id uint) (string, error) {
 func saveDelete(tx *gorm.DB, data json.RawMessage) (*singboxapply.Change, error) {
 	var tag string
 	if err := json.Unmarshal(data, &tag); err != nil {
+		return nil, err
+	}
+	if err := entityidentity.ValidateTag(tag); err != nil {
 		return nil, err
 	}
 	ownID, err := IDByTag(tx, tag)

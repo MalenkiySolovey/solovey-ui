@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v2026.2.1"
+        default: "v2026.3.0"
         type: string
   push:
     tags:
@@ -17,6 +17,7 @@ permissions:
 
 env:
   NODE_VERSION: "25"
+  RELEASE_TAG_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   CRONET_GO_VERSION: "v148.0.7778.96-1"
   CRONET_GO_COMMIT: "e7f6f6f5b7ce226f686f6cb5d068a63da6657ccd"
   CRONET_GO_REPO: https://github.com/sagernet/cronet-go.git
@@ -29,11 +30,39 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Validate release tag against source version
+        run: |
+          set -euo pipefail
+          VERSION="${RELEASE_TAG_INPUT#v}"
+          EXPECTED_VERSION="$(tr -d '\r\n' < config/identity/version)"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
+          [ "$VERSION" = "$EXPECTED_VERSION" ] || { echo "release tag $RELEASE_TAG_INPUT does not match source version $EXPECTED_VERSION" >&2; exit 1; }
+
       - name: Shell syntax
-        run: bash -n install.sh solovey-ui.sh scripts/release-package-linux.sh scripts/release-package-components.sh scripts/server-smoke-debian.sh tests/installer/install-update.sh tests/installer/migrate-from-sui.sh tests/installer/rollback.sh tests/installer/release-package.sh tests/installer/manager-cookie-key.sh
+        run: bash -n install.sh solovey-ui.sh scripts/release-package-linux.sh scripts/release-package-components.sh scripts/server-smoke-debian.sh tests/installer/backup.sh tests/installer/doctor.sh tests/installer/install-update.sh tests/installer/migrate-from-sui.sh tests/installer/rollback.sh tests/installer/release-manifest.sh tests/installer/release-package.sh tests/installer/manager-cookie-key.sh tests/installer/systemd-contracts.sh
+
+      - name: Validate deployment contracts
+        env:
+          SOLOVEY_UI_IMAGE_DIGEST: aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+          SOLOVEY_UI_PANEL_PORT: "2095"
+          SOLOVEY_UI_PUBLIC_TCP_PORT: "443"
+          SOLOVEY_UI_PUBLIC_UDP_PORT: "443"
+        run: |
+          bash tests/installer/systemd-contracts.sh
+          docker compose -f docker-compose.yml config >/dev/null
+          docker compose -f deploy/docker/docker-compose.bridge.yml config >/dev/null
+          docker compose -f deploy/docker/docker-compose.network-advanced.yml config >/dev/null
 
       - name: release package integration
         run: bash tests/installer/release-package.sh
+
+      - name: signed release manifest integration
+        run: bash tests/installer/release-manifest.sh
 
       - name: install/update integration
         run: bash tests/installer/install-update.sh
@@ -46,6 +75,12 @@ jobs:
 
       - name: cookie key rotation integration
         run: bash tests/installer/manager-cookie-key.sh
+
+      - name: backup integration
+        run: bash tests/installer/backup.sh
+
+      - name: doctor integration
+        run: bash tests/installer/doctor.sh
 
   build-frontend:
     runs-on: ubuntu-latest
@@ -75,12 +110,16 @@ jobs:
 
       - name: Frontend utility script syntax
         run: |
+          node --check scripts/audit/validate-workflows.js
           node --check scripts/component-frontend-manifest.mjs
           node --check scripts/check-frontend-profile.mjs
           node --check scripts/extract-component-frontend.mjs
           node --check scripts/generate-component-imports.mjs
           node --check scripts/release-manifest.mjs
           node --check scripts/write-component-installed-metadata.mjs
+
+      - name: Validate workflow contracts
+        run: node scripts/audit/validate-workflows.js
 
       - name: Frontend lint
         working-directory: frontend
@@ -177,9 +216,9 @@ jobs:
           - { platform: arm64, arch: arm64, bootlin: aarch64, naive: true }
           - { platform: armv7, arch: arm, goarm: "7", bootlin: armv7-eabihf, naive: true }
           - { platform: armv6, arch: arm, goarm: "6", bootlin: armv6-eabihf, naive: true }
-          - { platform: armv5, arch: arm, goarm: "5", bootlin: armv5-eabi, naive: false }
+          - { platform: armv5, arch: arm, goarm: "5", bootlin: armv5-eabi, bootlin_archive: armv5-eabi--musl--stable-2025.08-1.tar.xz, bootlin_sha256: 8cdb4ad70c6b5a66427fa3315fe3ddde1c19c90232674dec59045e04d2a36cf1, naive: false }
           - { platform: "386", arch: "386", bootlin: x86-i686, naive: true }
-          - { platform: s390x, arch: s390x, bootlin: s390x-z13, naive: false }
+          - { platform: s390x, arch: s390x, bootlin: s390x-z13, bootlin_archive: s390x-z13--musl--stable-2025.08-1.tar.xz, bootlin_sha256: 23f536ff2bf1a9d3b93210465471996bc7c918fbb5702a277d8e1e42ffab8559, naive: false }
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -250,11 +289,7 @@ jobs:
         id: build_meta
         run: |
           set -e
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            PANEL_VERSION="${{ inputs.tag }}"
-          else
-            PANEL_VERSION="${GITHUB_REF_NAME}"
-          fi
+          PANEL_VERSION="${RELEASE_TAG_INPUT}"
           case "$PANEL_VERSION" in
             v*) ;;
             *) PANEL_VERSION="v${PANEL_VERSION}" ;;
@@ -269,14 +304,17 @@ jobs:
         run: |
           set -e
           BOOTLIN_ARCH="${{ matrix.bootlin }}"
-          echo "Resolving Bootlin musl toolchain for arch=$BOOTLIN_ARCH (platform=${{ matrix.platform }})"
+          TARBALL_NAME="${{ matrix.bootlin_archive }}"
+          TARBALL_SHA256="${{ matrix.bootlin_sha256 }}"
+          echo "Using pinned Bootlin musl toolchain for arch=$BOOTLIN_ARCH (platform=${{ matrix.platform }})"
           TARBALL_BASE="${{ env.BOOTLIN_BASE_URL }}/$BOOTLIN_ARCH/tarballs/"
-          TARBALL_URL=$(curl -fsSL "$TARBALL_BASE" | grep -oE "${BOOTLIN_ARCH}--musl--stable-[^\"]+\\.tar\\.xz" | sort -r | head -n1)
-          [ -z "$TARBALL_URL" ] && { echo "Bootlin musl toolchain not found for arch=$BOOTLIN_ARCH" >&2; exit 1; }
-          echo "Downloading: $TARBALL_URL"
+          echo "Downloading: $TARBALL_NAME"
           cd /tmp
-          curl -fL -sS -o "$(basename "$TARBALL_URL")" "$TARBALL_BASE/$TARBALL_URL"
-          tar -xf "$(basename "$TARBALL_URL")"
+          curl --fail --location --silent --show-error \
+            --proto '=https' --tlsv1.2 --connect-timeout 20 --retry 3 --retry-all-errors \
+            -o "$TARBALL_NAME" "$TARBALL_BASE/$TARBALL_NAME"
+          echo "$TARBALL_SHA256  $TARBALL_NAME" | sha256sum -c -
+          tar -xf "$TARBALL_NAME"
           TOOLCHAIN_DIR=$(find . -maxdepth 1 -type d -name "${BOOTLIN_ARCH}--musl--stable-*" | head -n1)
           TOOLCHAIN_DIR="$(realpath "$TOOLCHAIN_DIR")"
           BIN_DIR="$TOOLCHAIN_DIR/bin"
@@ -306,16 +344,15 @@ jobs:
           mkdir -p web/html
           cp -a .release/frontend-full/. web/html/
           go build -ldflags="$PANEL_LDFLAGS" -tags "$BUILD_TAGS" -o solovey-ui main.go
-          go build -ldflags="-w -s -linkmode external -extldflags '-static'" -o solovey-protect-helper ./components/server-protection/cmd/solovey-protect-helper
           go build -ldflags="-w -s -linkmode external -extldflags '-static'" -o solovey-privileged-broker ./cmd/solovey-privileged-broker
           go build -ldflags="-w -s -linkmode external -extldflags '-static'" -o solovey-ssh-proof ./cmd/solovey-ssh-proof
           go build -ldflags="-w -s -linkmode external -extldflags '-static'" -o solovey-broker-manifest ./cmd/solovey-broker-manifest
+          go build -ldflags="-w -s -linkmode external -extldflags '-static'" -o solovey-owner-manifest ./components/server-protection/cmd/solovey-owner-manifest
           rm -rf web/html
           mkdir -p web/html
           cp -a .release/frontend-core/. web/html/
           go build -ldflags="$PANEL_LDFLAGS" -tags "${BUILD_TAGS},minimal" -o solovey-ui-core main.go
           file solovey-ui
-          file solovey-protect-helper
           file solovey-ui-core
           ldd solovey-ui 2>/dev/null || echo "Static binary confirmed"
           ldd solovey-ui-core 2>/dev/null || echo "Static core binary confirmed"
@@ -343,7 +380,6 @@ jobs:
           bash scripts/release-package-linux.sh \
             --target linux-${{ matrix.platform }} \
             --binary ./solovey-ui \
-            --helper ./solovey-protect-helper \
             --manager ./solovey-ui.sh \
             --service ./solovey-ui.service \
             --build-info ./BUILD_INFO.full.txt \
@@ -384,11 +420,7 @@ jobs:
       - name: Normalize release tag
         id: vars
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
+          TAG="${RELEASE_TAG_INPUT}"
           case "$TAG" in
             v*) echo "tag=$TAG" >> "$GITHUB_OUTPUT" ;;
             *) TAG="v$TAG"; echo "tag=$TAG" >> "$GITHUB_OUTPUT" ;;

@@ -62,11 +62,35 @@ func TestValidateDecoyTemplateHTMLRejectsUnsafeContent(t *testing.T) {
 		`<form action="https://example.com"><input></form>`,
 		`<input name="password">`,
 		`<script src="https://example.com/app.js"></script>`,
+		`<img src="//example.com/tracker.png">`,
 		`<style>@import url(https://example.com/site.css);</style>`,
+		`<style>body { background: url( "//example.com/tracker.png" ); }</style>`,
+		`<style>body { background: url( /* bypass */ https://example.com/tracker.png ); }</style>`,
 		`<!--[if lte IE 8]><script src="legacy.js"></script><![endif]-->`,
 	} {
 		if err := ValidateDecoyTemplateHTML(fmt.Sprintf(base, content)); err == nil {
 			t.Fatalf("unsafe static template was accepted: %s", content)
+		}
+	}
+}
+
+func TestValidateStaticCSSAllowsOnlyRelativeAssets(t *testing.T) {
+	for _, value := range []string{
+		`body { background: url('../assets/background.webp') }`,
+		`svg { fill: url(#gradient) }`,
+	} {
+		if err := ValidateStaticCSS(value); err != nil {
+			t.Fatalf("safe CSS was rejected: %q: %v", value, err)
+		}
+	}
+	for _, value := range []string{
+		`body { background: url( https://example.com/a.png ) }`,
+		`body { background: url("//example.com/a.png") }`,
+		`@IMPORT "https://example.com/a.css";`,
+		`body { background: u\72l(https://example.com/a.png) }`,
+	} {
+		if err := ValidateStaticCSS(value); err == nil {
+			t.Fatalf("external CSS URL was accepted: %q", value)
 		}
 	}
 }

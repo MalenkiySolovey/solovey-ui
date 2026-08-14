@@ -1,6 +1,6 @@
 import { defineComponent } from 'vue'
 import { oTls, defaultOutTls } from '@/types/tls'
-import HttpUtils from '@/plugins/httputil'
+import { fetchCertificatePin as requestCertificatePin } from '@/shared/composables/useServerOperations'
 
 export default defineComponent({
   props: ['outbound'],
@@ -197,13 +197,12 @@ export default defineComponent({
       if (!server) return
       this.certPingLoading = true
       try {
-        const msg = await HttpUtils.post('api/getCertPing', {
+        const leafHash = await requestCertificatePin({
           server,
           port: this.$props.outbound?.server_port ?? 443,
           serverName: this.tls.server_name ?? '',
         })
-        const leafHash = msg.obj?.leafHash
-        if (!msg.success || typeof leafHash !== 'string' || leafHash.length === 0) return
+        if (!leafHash) return
         if (!this.tls.certificate_public_key_sha256) {
           this.$props.outbound.tls.certificate_public_key_sha256 = []
         }

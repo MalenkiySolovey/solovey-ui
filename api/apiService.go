@@ -24,7 +24,6 @@ type ApiService struct {
 	ServerService      service.ServerService
 	AuditService       service.AuditService
 	DiagnosticsService service.DiagnosticsService
-	VersionService     service.VersionService
 	DoctorService      service.DoctorService
 	Deployment         *deploymentservice.Manager
 	SSHManagement      *sshmanagementservice.Manager

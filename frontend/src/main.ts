@@ -25,8 +25,9 @@ import { configureManualOrderPersistence } from '@/shared/dnd/manualReorder'
 import { registerPlugins } from '@/plugins'
 
 // Locale
-import { i18n, loadInitialLocaleMessages } from '@/locales'
+import { configureLocaleExtensions, i18n, loadInitialLocaleMessages } from '@/locales'
 import { syncEnabledComponents } from '@/componentSystem/loader'
+import { loadActiveComponentLocaleMessages } from '@/componentSystem/locales'
 
 // Notivue
 import { createNotivue } from 'notivue'
@@ -45,6 +46,7 @@ const notivue = createNotivue({
 })
 
 const bootstrap = async () => {
+  configureLocaleExtensions(loadActiveComponentLocaleMessages)
   await loadInitialLocaleMessages()
 
   const loading = ref(false)

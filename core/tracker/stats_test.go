@@ -5,12 +5,19 @@ import (
 	"errors"
 	"net"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
 	M "github.com/sagernet/sing/common/metadata"
 )
+
+func (c *StatsTracker) getReadCounters(inbound, outbound, user string) ([]*atomic.Int64, []*atomic.Int64) {
+	c.access.Lock()
+	defer c.access.Unlock()
+	return c.getReadCountersLocked(inbound, outbound, user)
+}
 
 func TestStatsTrackerResetPreservesConcurrentCounterPointers(t *testing.T) {
 	tracker := NewStatsTracker()
@@ -73,6 +80,18 @@ func TestStatsTrackerRejectsConnectionThroughIPObserver(t *testing.T) {
 	}
 	if _, err := raw.Read(nil); !errors.Is(err, net.ErrClosed) {
 		t.Fatalf("rejected connection was not closed: %v", err)
+	}
+}
+
+func TestStatsTrackerAcceptsMissingOutboundMetadata(t *testing.T) {
+	tracker := NewStatsTracker()
+	raw := newBlockingTestConn()
+	wrapped := tracker.RoutedConnection(context.Background(), raw, adapter.InboundContext{Inbound: "in"}, nil, nil)
+	if wrapped == nil {
+		t.Fatal("missing outbound metadata produced a nil connection")
+	}
+	if err := wrapped.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
 

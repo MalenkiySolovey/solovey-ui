@@ -1,6 +1,7 @@
 // Package deploymentidentity defines the production-owned identity contract
 // used by components that must bind runtime observations to one exact active
-// application deployment. It deliberately contains no lab integration.
+// application deployment. It deliberately contains no environment-specific
+// orchestration integration.
 package deploymentidentity
 
 import (

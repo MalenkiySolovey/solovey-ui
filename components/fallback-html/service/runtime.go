@@ -6,12 +6,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/sha256"
+	"crypto/tls"
 	"encoding/hex"
 	"errors"
 	"fmt"
 	"net"
 	"net/http"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -39,7 +41,7 @@ type Runtime struct {
 	mu         sync.Mutex
 	db         *gorm.DB
 	unregister func()
-	listeners  map[string]*http.Server
+	listeners  map[string]*runtimeListener
 	limiter    *ratelimit.FixedWindow[string]
 	snapshot   atomic.Value // *snapshot
 }
@@ -77,8 +79,23 @@ type publishedRedirect struct {
 	external   bool
 }
 
+type standaloneTargetConfig struct {
+	key         string
+	address     string
+	tls         bool
+	certFile    string
+	keyFile     string
+	tlsRevision string
+	certificate *tls.Certificate
+}
+
+type runtimeListener struct {
+	config standaloneTargetConfig
+	server *http.Server
+}
+
 func NewRuntime() *Runtime {
-	r := &Runtime{limiter: newPublicSiteLimiter(), listeners: map[string]*http.Server{}}
+	r := &Runtime{limiter: newPublicSiteLimiter(), listeners: map[string]*runtimeListener{}}
 	r.snapshot.Store((*snapshot)(nil))
 	return r
 }
@@ -88,9 +105,19 @@ func (r *Runtime) Start(db *gorm.DB) error {
 	defer r.mu.Unlock()
 	r.db = db
 	if r.unregister == nil {
-		r.unregister = publicsurface.Register("fallback-public-site", r)
+		unregister, err := publicsurface.Register("fallback-public-site", r)
+		if err != nil {
+			return err
+		}
+		r.unregister = unregister
 	}
-	return r.rebuildLocked()
+	if err := r.rebuildLocked(); err != nil {
+		r.unregister()
+		r.unregister = nil
+		r.db = nil
+		return err
+	}
+	return nil
 }
 
 func (r *Runtime) Stop() {
@@ -222,62 +249,181 @@ func (r *Runtime) activeStandaloneTargets(siteID uint) ([]fallbackdomain.Runtime
 }
 
 func (r *Runtime) applyStandaloneTargetsLocked(targets []fallbackdomain.RuntimeTarget) error {
-	r.stopStandaloneLocked()
-	next := map[string]*http.Server{}
+	desired := make(map[string]standaloneTargetConfig, len(targets))
 	for _, target := range targets {
-		if target.Port <= 0 {
+		config, ok, err := standaloneConfigForTarget(target)
+		if err != nil {
+			return err
+		}
+		if !ok {
 			continue
 		}
-		listen := strings.TrimSpace(target.Listen)
-		if listen == "" {
-			listen = "127.0.0.1"
+		if _, duplicate := desired[config.key]; duplicate {
+			return fmt.Errorf("fallback-html runtime target %s is duplicated", config.address)
 		}
-		certFile, keyFile := "", ""
-		if target.TLS {
-			certFile, keyFile = runtimeTLSFiles()
-			if certFile == "" || keyFile == "" {
-				for _, server := range next {
-					_ = server.Close()
-				}
-				return fmt.Errorf("fallback-html cannot publish TLS target %s:%d: panel certificate and key are required", listen, target.Port)
+		desired[config.key] = config
+	}
+
+	next := make(map[string]*runtimeListener, len(desired))
+	started := make([]*runtimeListener, 0, len(desired))
+	closed := make(map[string]*runtimeListener)
+	rollback := func(cause error) error {
+		for _, state := range started {
+			_ = state.server.Close()
+		}
+		restored := make(map[string]*runtimeListener, len(r.listeners))
+		for key, state := range r.listeners {
+			restored[key] = state
+		}
+		var restoreErr error
+		for key, state := range closed {
+			replacement, err := r.startStandaloneLocked(state.config)
+			if err != nil {
+				delete(restored, key)
+				restoreErr = errors.Join(restoreErr, fmt.Errorf("restore listener %s: %w", state.config.address, err))
+				continue
 			}
+			restored[key] = replacement
 		}
-		address := net.JoinHostPort(listen, strconv.Itoa(target.Port))
-		listener, err := net.Listen("tcp", address)
+		r.listeners = restored
+		return errors.Join(cause, restoreErr)
+	}
+
+	for key, config := range desired {
+		current := r.listeners[key]
+		if current != nil && sameStandaloneConfig(current.config, config) {
+			next[key] = current
+			continue
+		}
+		if current != nil {
+			continue
+		}
+		state, err := r.startStandaloneLocked(config)
 		if err != nil {
-			for _, server := range next {
-				_ = server.Close()
-			}
-			return fmt.Errorf("fallback-html cannot publish on %s: %w", address, err)
+			return rollback(fmt.Errorf("fallback-html cannot publish on %s: %w", config.address, err))
 		}
-		server := &http.Server{
-			Addr:              address,
-			Handler:           http.HandlerFunc(r.serveHTTPPublic),
-			ReadHeaderTimeout: 5 * time.Second,
+		started = append(started, state)
+		next[key] = state
+	}
+
+	for key, config := range desired {
+		current := r.listeners[key]
+		if current == nil || sameStandaloneConfig(current.config, config) {
+			continue
 		}
-		key := runtimeTargetKey(listen, target.Port)
-		next[key] = server
-		go func(server *http.Server, listener net.Listener, tls bool, certFile string, keyFile string) {
-			if tls {
-				_ = server.ServeTLS(listener, certFile, keyFile)
-				return
-			}
-			_ = server.Serve(listener)
-		}(server, listener, target.TLS, certFile, keyFile)
+		_ = current.server.Close()
+		closed[key] = current
+		state, err := r.startStandaloneLocked(config)
+		if err != nil {
+			return rollback(fmt.Errorf("fallback-html cannot replace listener %s: %w", config.address, err))
+		}
+		started = append(started, state)
+		next[key] = state
+	}
+
+	for key, state := range r.listeners {
+		if next[key] != state {
+			_ = state.server.Close()
+		}
 	}
 	r.listeners = next
 	return nil
 }
 
+func standaloneConfigForTarget(target fallbackdomain.RuntimeTarget) (standaloneTargetConfig, bool, error) {
+	if target.Port <= 0 {
+		return standaloneTargetConfig{}, false, nil
+	}
+	listen := strings.TrimSpace(target.Listen)
+	if listen == "" {
+		listen = "127.0.0.1"
+	}
+	config := standaloneTargetConfig{
+		key:     runtimeTargetKey(listen, target.Port),
+		address: net.JoinHostPort(listen, strconv.Itoa(target.Port)),
+		tls:     target.TLS,
+	}
+	if !target.TLS {
+		return config, true, nil
+	}
+	config.certFile, config.keyFile = runtimeTLSFiles()
+	if config.certFile == "" || config.keyFile == "" {
+		return standaloneTargetConfig{}, false, fmt.Errorf("fallback-html cannot publish TLS target %s: panel certificate and key are required", config.address)
+	}
+	certificate, revision, err := loadRuntimeTLSMaterial(config.certFile, config.keyFile)
+	if err != nil {
+		return standaloneTargetConfig{}, false, fmt.Errorf("fallback-html TLS target %s is invalid: %w", config.address, err)
+	}
+	config.certificate = &certificate
+	config.tlsRevision = revision
+	return config, true, nil
+}
+
+func loadRuntimeTLSMaterial(certFile, keyFile string) (tls.Certificate, string, error) {
+	certificate, err := tls.LoadX509KeyPair(certFile, keyFile)
+	if err != nil {
+		return tls.Certificate{}, "", err
+	}
+	certInfo, err := os.Stat(certFile)
+	if err != nil {
+		return tls.Certificate{}, "", err
+	}
+	keyInfo, err := os.Stat(keyFile)
+	if err != nil {
+		return tls.Certificate{}, "", err
+	}
+	revision := fmt.Sprintf("%d:%d:%d:%d", certInfo.Size(), certInfo.ModTime().UnixNano(), keyInfo.Size(), keyInfo.ModTime().UnixNano())
+	return certificate, revision, nil
+}
+
+func sameStandaloneConfig(left, right standaloneTargetConfig) bool {
+	return left.key == right.key && left.address == right.address && left.tls == right.tls &&
+		left.certFile == right.certFile && left.keyFile == right.keyFile && left.tlsRevision == right.tlsRevision
+}
+
+func (r *Runtime) startStandaloneLocked(config standaloneTargetConfig) (*runtimeListener, error) {
+	listener, err := net.Listen("tcp", config.address)
+	if err != nil {
+		return nil, err
+	}
+	server := &http.Server{
+		Addr:              config.address,
+		Handler:           http.HandlerFunc(r.serveHTTPPublic),
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	state := &runtimeListener{config: config, server: server}
+	go func() {
+		var serveErr error
+		if config.tls {
+			server.TLSConfig = &tls.Config{
+				Certificates: []tls.Certificate{*config.certificate},
+				MinVersion:   tls.VersionTLS12,
+			}
+			serveErr = server.ServeTLS(listener, "", "")
+		} else {
+			serveErr = server.Serve(listener)
+		}
+		if serveErr == nil || errors.Is(serveErr, http.ErrServerClosed) {
+			return
+		}
+		r.mu.Lock()
+		if r.listeners[config.key] == state {
+			delete(r.listeners, config.key)
+		}
+		r.mu.Unlock()
+	}()
+	return state, nil
+}
+
 func (r *Runtime) stopStandaloneLocked() {
 	if len(r.listeners) == 0 {
-		r.listeners = map[string]*http.Server{}
+		r.listeners = map[string]*runtimeListener{}
 		return
 	}
-	for _, server := range r.listeners {
-		_ = server.Close()
+	for _, state := range r.listeners {
+		_ = state.server.Close()
 	}
-	r.listeners = map[string]*http.Server{}
+	r.listeners = map[string]*runtimeListener{}
 }
 
 func runtimeTLSFiles() (string, string) {

@@ -310,7 +310,7 @@
 </template>
 
 <script lang="ts" setup>
-import ManualSortButton from '@/components/ManualSortButton.vue'
+import ManualSortButton from '@/shared/ui/ManualSortButton.vue'
 import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
 import ClassicConfigCard from '@/shared/ui/ClassicConfigCard.vue'
 import CollapsibleSectionHeader from '@/shared/ui/CollapsibleSectionHeader.vue'
@@ -324,7 +324,7 @@ import NexusBadge from '@/components/nexus/primitives/Badge.vue'
 import EmptyState from '@/components/nexus/primitives/EmptyState.vue'
 import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
-import { useDnsPage } from '@/shared/composables/pages/useDnsPage'
+import { useDnsPage } from '@/features/useDnsPage'
 
 const { actionDnsRuleKeys, appConfig, applyPresetConfig, clients, closeDnsModal, closeDnsRuleModal, confirm, delDns, delDnsOverlay, delDnsRule, delDnsRuleOverlay, deleteSelectedDnsRules, deleteSelectedDnsServers, dns, dnsModal, dnsRuleDrag, dnsRuleModal, dnsRuleRows, dnsRuleSelectMode, dnsRules, dnsServerDrag, dnsServerRows, dnsServerSelectMode, dnsServerTags, dnsServersExpanded, finalDns, handleRuleAction, handleServerAction, inboundTags, isDnsRuleSelected, isDnsServerSelected, loading, mode, moveDnsRulesTo, moveDnsServersTo, moveDnsRuleTo, moveDnsServerTo, nexus, onDnsRuleDrop, onDnsServerDrop, outboundTags, presetSourceLabel, regionalPresetDrawer, rslvdTags, ruleActions, ruleColumns, ruleSets, saveConfig, saveDnsModal, saveDnsRuleModal, search, selectedDnsRuleIndexes, selectedDnsServerIndexes, serverActions, serverColumns, showDnsModal, showDnsRuleModal, sortDnsServersByName, stateChange, subtitle, t, toggleDnsRuleSelectMode, toggleDnsRuleSelection, toggleDnsServerSelectMode, toggleDnsServerSelection, tsTags } = useDnsPage()
 const indexKeys = (rows: unknown[]): number[] => rows.map((_, rowIndex) => rowIndex)

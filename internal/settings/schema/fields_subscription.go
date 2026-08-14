@@ -22,7 +22,7 @@ func subscriptionFieldMetadata() []Field {
 		{Key: settingcatalog.SubTitleKey, Page: PageSettings, Group: GroupSubscription, Type: FieldTypeString, LabelKey: "setting.subTitle", Advanced: true, Order: 160},
 		{Key: settingcatalog.SubSupportURLKey, Page: PageSettings, Group: GroupSubscription, Type: FieldTypeURL, LabelKey: "setting.subSupportUrl", Advanced: true, Order: 170},
 		{Key: settingcatalog.SubProfileURLKey, Page: PageSettings, Group: GroupSubscription, Type: FieldTypeURL, LabelKey: "setting.subProfileUrl", Advanced: true, Order: 180},
-		{Key: settingcatalog.SubRateLimitPerIPKey, Page: PageSettings, Group: GroupSubscription, Type: FieldTypeInt, LabelKey: "setting.subRateLimitPerIP", Min: intPtr(0), Advanced: true, Order: 190},
+		{Key: settingcatalog.SubRateLimitPerIPKey, Page: PageSettings, Group: GroupSubscription, Type: FieldTypeInt, LabelKey: "setting.subRateLimitPerIP", Min: intPtr(1), Max: intPtr(10000), Advanced: true, Order: 190},
 		{Key: settingcatalog.SubNameInRemarkKey, Page: PageSettings, Group: GroupSubscription, Type: FieldTypeBool, LabelKey: "setting.subNameInRemark", Advanced: true, Order: 200},
 		{Key: settingcatalog.SubAnnounceKey, Page: PageSettings, Group: GroupSubscription, Type: FieldTypeText, LabelKey: "setting.subAnnounce", Advanced: true, Order: 210},
 

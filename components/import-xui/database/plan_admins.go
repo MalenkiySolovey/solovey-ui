@@ -4,13 +4,13 @@ package importxui
 
 import (
 	"context"
-	"strconv"
-	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 
 	"gorm.io/gorm"
 )
@@ -67,6 +67,9 @@ func (s *applyState) applyAdmins(ctx context.Context, tx *gorm.DB, src *source.D
 			continue
 		}
 		username := firstSet(item.DstTag, user.Username)
+		if err := identity.ValidateName(username); err != nil {
+			return err
+		}
 		mode := AdminMode(firstSet(item.AdminMode, string(AdminModeNewPassword)))
 		if err := mode.Validate(); err != nil {
 			return err
@@ -75,8 +78,11 @@ func (s *applyState) applyAdmins(ctx context.Context, tx *gorm.DB, src *source.D
 		case AdminModeSkip:
 			continue
 		case AdminModeNewPassword:
-			password := deterministicSeq(username+":admin:"+strconv.FormatInt(time.Now().UnixNano(), 10), 16)
-			hash, err := common.HashPassword(password)
+			password, err := common.SecureRandom(24)
+			if err != nil {
+				return err
+			}
+			hash, err := passwordutil.Hash(ctx, password)
 			if err != nil {
 				return err
 			}
@@ -85,7 +91,7 @@ func (s *applyState) applyAdmins(ctx context.Context, tx *gorm.DB, src *source.D
 			}
 			s.report.GeneratedAdmins = append(s.report.GeneratedAdmins, GeneratedAdmin{Username: username, Password: password})
 		case AdminModeResetRequired:
-			hash, err := sourceAdminPasswordHash(user.Password)
+			hash, err := sourceAdminPasswordHash(ctx, user.Password)
 			if err != nil {
 				return err
 			}
@@ -107,11 +113,11 @@ func firstSet(values ...string) string {
 	return ""
 }
 
-func sourceAdminPasswordHash(password string) (string, error) {
-	if common.IsPasswordHash(password) {
+func sourceAdminPasswordHash(ctx context.Context, password string) (string, error) {
+	if passwordutil.IsEncoded(password) {
 		return password, nil
 	}
-	return common.HashPassword(password)
+	return passwordutil.Hash(ctx, password)
 }
 
 func upsertUserWithPassword(tx *gorm.DB, username string, passwordHash string, action string, forcePasswordReset bool) error {

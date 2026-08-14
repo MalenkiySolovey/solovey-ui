@@ -45,13 +45,17 @@ describe('locale loading', () => {
   })
 
   it('loads and stores locales when changed', async () => {
-    const { i18n, setI18nLocale } = await import('./index')
+    const { configureLocaleExtensions, dateLocale, i18n, setI18nLocale } = await import('./index')
+    const loadExtensions = vi.fn().mockResolvedValue(undefined)
+    configureLocaleExtensions(loadExtensions)
 
     const selectedLocale = await setI18nLocale('zhHans')
 
     expect(selectedLocale).toBe('zhHans')
     expect(storage.get('locale')).toBe('zhHans')
     expect(i18n.global.locale.value).toBe('zhHans')
+    expect(dateLocale()).toBe('zh-cn')
+    expect(loadExtensions).toHaveBeenCalledWith('zhHans')
     expect(i18n.global.availableLocales).toEqual(expect.arrayContaining(['en', 'zhHans']))
   })
 

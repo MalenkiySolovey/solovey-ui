@@ -26,12 +26,12 @@
                 </v-row>
               </v-card-title>
               <v-divider></v-divider>
-              <v-row v-for="items in menuItems" density="compact">
+              <v-row v-for="items in menuItems" :key="items.title" density="compact">
                 <v-col cols="12">
                   <v-card :subtitle="items.title" variant="flat">
                     <v-card-text>
                       <v-row density="compact">
-                        <v-col cols="12" md="6" lg="3" v-for="item in items.value">
+                        <v-col cols="12" md="6" lg="3" v-for="item in items.value" :key="item.value">
                           <v-switch
                           density="compact"
                           v-model="reloadItems"
@@ -120,7 +120,7 @@
                   </v-col>
                   <v-col cols="3">{{ $t('main.info.uptime') }}</v-col>
                   <v-col cols="9" v-tooltip:top="$t('main.info.startupTime')
-                    + ': ' + new Date((tilesData.sys?.bootTime || 0) * 1000).toLocaleString(locale)">
+                    + ': ' + new Date((tilesData.sys?.bootTime || 0) * 1000).toLocaleString(dateLocale())">
                     {{ HumanReadable.formatSecond((Date.now()/1000) - tilesData.sys?.bootTime) }}
                   </v-col>
                 </v-row>
@@ -158,21 +158,21 @@
                       <v-chip density="compact" color="primary" variant="flat" v-if="Data().onlines.user">
                         <v-tooltip activator="parent" location="top" overflow="auto">
                           <span v-text="$t('pages.clients')" style="font-weight: bold;"></span><br/>
-                          <span v-for="user in Data().onlines.user">{{ user }}<br /></span>
+                          <span v-for="user in Data().onlines.user" :key="user">{{ user }}<br /></span>
                         </v-tooltip>
                         {{ Data().onlines.user?.length }}
                       </v-chip>
                       <v-chip density="compact" color="success" variant="flat" v-if="Data().onlines.inbound">
                         <v-tooltip activator="parent" location="top" :text="$t('pages.inbounds')">
                           <span v-text="$t('pages.inbounds')" style="font-weight: bold;"></span><br/>
-                          <span v-for="i in Data().onlines.inbound">{{ i }}<br /></span>
+                          <span v-for="i in Data().onlines.inbound" :key="i">{{ i }}<br /></span>
                         </v-tooltip>
                         {{ Data().onlines.inbound?.length }}
                       </v-chip>
                       <v-chip density="compact" color="info" variant="flat" v-if="Data().onlines.outbound">
                         <v-tooltip activator="parent" location="top" :text="$t('pages.outbounds')">
                           <span v-text="$t('pages.outbounds')" style="font-weight: bold;"></span><br/>
-                          <span v-for="o in Data().onlines.outbound">{{ o }}<br /></span>
+                          <span v-for="o in Data().onlines.outbound" :key="o">{{ o }}<br /></span>
                         </v-tooltip>
                         {{ Data().onlines.outbound?.length }}
                       </v-chip>
@@ -194,7 +194,7 @@ import Data from '@/store/modules/data'
 import Gauge from '@/components/tiles/Gauge.vue'
 import History from '@/components/tiles/History.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
-import { i18n, locale } from '@/locales'
+import { dateLocale, i18n } from '@/locales'
 import LogVue from '@/layouts/modals/Logs.vue'
 import Backup from '@/layouts/modals/Backup.vue'
 import UsageStats from '@/layouts/modals/UsageStats.vue'
@@ -233,7 +233,11 @@ const reloadItems = computed({
     if (Data().reloadItems.length == 0 && v.length>0) startTimer()
     if (Data().reloadItems.length > 0 && v.length == 0) stopTimer()
     Data().reloadItems = v
-    v.length>0 ? localStorage.setItem("reloadItems",v.join(',')) : localStorage.removeItem("reloadItems")
+    try {
+      v.length > 0 ? localStorage.setItem('reloadItems', v.join(',')) : localStorage.removeItem('reloadItems')
+    } catch {
+      // Keep the selected tiles in Pinia when storage is unavailable.
+    }
   }
 })
 
@@ -250,10 +254,17 @@ const reloadSys = async () => {
 }
 
 let intervalId: ReturnType<typeof setInterval> | null = null
+let reloadPending = false
 
 const startTimer = () => {
+  if (intervalId) return
   intervalId = setInterval(() => {
-    reloadData()
+    if (document.hidden) return
+    if (reloadPending) return
+    reloadPending = true
+    void reloadData().finally(() => {
+      reloadPending = false
+    })
   }, 2000)
 }
 
@@ -266,11 +277,14 @@ const stopTimer = () => {
 
 onMounted(async () => {
   loading.value = true
-  if (Data().reloadItems.length != 0) {
-    await reloadData()
-    startTimer()
+  try {
+    if (Data().reloadItems.length != 0) {
+      await reloadData()
+      startTimer()
+    }
+  } finally {
+    loading.value = false
   }
-  loading.value = false
 })
 
 onBeforeUnmount(() => {
@@ -285,7 +299,10 @@ const usageStatsModal = ref({ visible: false })
 
 const restartSingbox = async () => {
   loading.value = true
-  await restartSingBox()
-  loading.value = false
+  try {
+    await restartSingBox()
+  } finally {
+    loading.value = false
+  }
 }
 </script>

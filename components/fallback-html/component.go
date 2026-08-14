@@ -38,7 +38,6 @@ var runtimeHooks = struct {
 	unregisterBackup    func()
 	unregisterResources func()
 	unregisterHealth    func()
-	unregisterTargets   func()
 	unregisterTargetsV2 func()
 	restoreHookName     string
 }{}
@@ -61,6 +60,9 @@ func (component) Migrate(ctx context.Context, _ lifecycle.Context) error {
 }
 
 func (component) MigrateStaged(ctx context.Context, db *gorm.DB) error {
+	if db == nil {
+		return errors.New("fallback-html database is unavailable")
+	}
 	if err := fallbackdomain.EnsureSchema(db); err != nil {
 		return err
 	}
@@ -135,8 +137,6 @@ func registerRuntimeHooks() error {
 			{Name: "fallback_html_redirects", Model: &fallbackdomain.Redirect{}},
 			{Name: "fallback_html_assets", Model: &fallbackdomain.Asset{}},
 			{Name: "fallback_html_publishes", Model: &fallbackdomain.Publish{}},
-			{Name: "fallback_html_node_publications", Model: &fallbackdomain.NodePublication{}},
-			{Name: "fallback_html_node_endpoints", Model: &fallbackdomain.NodeEndpoint{}},
 			{Name: "fallback_html_publish_files", Model: &fallbackdomain.PublishFile{}},
 			{Name: "fallback_html_publish_redirects", Model: &fallbackdomain.PublishRedirect{}},
 			{Name: "fallback_html_safety_reports", Model: &fallbackdomain.SafetyReport{}},
@@ -150,7 +150,11 @@ func registerRuntimeHooks() error {
 		})
 	}
 	if runtimeHooks.unregisterResources == nil {
-		runtimeHooks.unregisterResources = hostresources.Register(publicSiteResourceContributor{db: dbsqlite.DB()})
+		unregister, err := hostresources.Register(publicSiteResourceContributor{db: dbsqlite.DB()})
+		if err != nil {
+			return err
+		}
+		runtimeHooks.unregisterResources = unregister
 	}
 	if runtimeHooks.unregisterHealth == nil {
 		unregister, err := componenthealth.Register(fallbackHealthChecker{runtime: fallbackservice.DefaultRuntime})
@@ -158,9 +162,6 @@ func registerRuntimeHooks() error {
 			return err
 		}
 		runtimeHooks.unregisterHealth = unregister
-	}
-	if runtimeHooks.unregisterTargets == nil {
-		runtimeHooks.unregisterTargets = neutralfallback.Register(targetProvider{db: dbsqlite.DB(), runtime: fallbackservice.DefaultRuntime})
 	}
 	if runtimeHooks.unregisterTargetsV2 == nil {
 		unregister, err := neutralfallback.Default.RegisterV2(targetProvider{db: dbsqlite.DB(), runtime: fallbackservice.DefaultRuntime})
@@ -192,10 +193,6 @@ func unregisterRuntimeHooks() {
 	if runtimeHooks.unregisterHealth != nil {
 		runtimeHooks.unregisterHealth()
 		runtimeHooks.unregisterHealth = nil
-	}
-	if runtimeHooks.unregisterTargets != nil {
-		runtimeHooks.unregisterTargets()
-		runtimeHooks.unregisterTargets = nil
 	}
 	if runtimeHooks.unregisterTargetsV2 != nil {
 		runtimeHooks.unregisterTargetsV2()

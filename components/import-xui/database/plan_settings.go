@@ -4,11 +4,11 @@ package importxui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"gorm.io/gorm"
@@ -73,6 +73,8 @@ func (s *applyState) applySettings(ctx context.Context, tx *gorm.DB, src *source
 	if err != nil {
 		return err
 	}
+	selected := make(map[string]string)
+	var progressTargets []string
 	for _, setting := range settings {
 		if err := checkContext(ctx); err != nil {
 			return err
@@ -85,12 +87,23 @@ func (s *applyState) applySettings(ctx context.Context, tx *gorm.DB, src *source
 		if item.Action == ActionSkip {
 			continue
 		}
-		if item.DstTag != "" {
-			target = item.DstTag
+		if item.DstTag != "" && item.DstTag != target {
+			return ErrPlanInvalid
 		}
-		if err := upsertSetting(tx, target, setting.Value); err != nil {
-			return err
-		}
+		selected[target] = setting.Value
+		progressTargets = append(progressTargets, target)
+	}
+	if len(selected) == 0 {
+		return nil
+	}
+	raw, err := json.Marshal(selected)
+	if err != nil {
+		return err
+	}
+	if err := (&service.SettingService{}).Save(tx, raw); err != nil {
+		return err
+	}
+	for _, target := range progressTargets {
 		s.progress("settings", target)
 	}
 	return nil
@@ -182,16 +195,4 @@ func mapSettingKey(key string) (string, bool) {
 	}
 	target, ok = service.CurrentSettingImportAliases()[key]
 	return target, ok
-}
-
-func upsertSetting(tx *gorm.DB, key string, value string) error {
-	var setting model.Setting
-	err := tx.Where("key = ?", key).First(&setting).Error
-	if err != nil && !dbsqlite.IsNotFound(err) {
-		return err
-	}
-	if dbsqlite.IsNotFound(err) {
-		return tx.Create(&model.Setting{Key: key, Value: value}).Error
-	}
-	return tx.Model(&setting).Update("value", value).Error
 }

@@ -120,7 +120,7 @@ func saveUpload(c *gin.Context) (*Upload, error) {
 				_ = os.RemoveAll(dir)
 				return nil, err
 			}
-			size, copyErr := io.Copy(out, part)
+			size, copyErr := io.Copy(out, io.LimitReader(part, MaxFieldBytes+1))
 			closeErr := out.Close()
 			if copyErr != nil {
 				_ = os.RemoveAll(dir)
@@ -129,6 +129,10 @@ func saveUpload(c *gin.Context) (*Upload, error) {
 			if closeErr != nil {
 				_ = os.RemoveAll(dir)
 				return nil, closeErr
+			}
+			if size > MaxFieldBytes {
+				_ = os.RemoveAll(dir)
+				return nil, &xuiFieldTooLargeError{Field: "plan", Limit: MaxFieldBytes}
 			}
 			upload.PlanPath = path
 			upload.PlanSize = size

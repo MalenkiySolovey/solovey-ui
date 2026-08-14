@@ -179,6 +179,7 @@ import { isNexusEnabled } from '@/uiMode/featureGate'
 import { UI_PALETTES, useUiPalette } from '@/uiMode/palette'
 import type { UiMode } from '@/uiMode/types'
 import { useUiMode } from '@/uiMode/useUiMode'
+import { readThemePreference, writeThemePreference } from '@/uiMode/theme'
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute } from 'vue-router'
@@ -230,15 +231,11 @@ const themes = [
 ]
 
 const changeTheme = (nextTheme: string) => {
-  theme.change(nextTheme)
-  localStorage.setItem('theme', nextTheme)
+  theme.change(writeThemePreference(nextTheme))
 }
 
 const isActiveTheme = (value: string) => {
-  // Mirror vuetify.ts defaultTheme: no stored choice → dark.
-  const currentTheme = localStorage.getItem('theme') ?? 'dark'
-
-  return currentTheme === value
+  return readThemePreference() === value
 }
 
 const toggleMode = () => setMode(nextMode.value)

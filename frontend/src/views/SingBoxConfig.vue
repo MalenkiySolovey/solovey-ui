@@ -59,7 +59,7 @@
 <script lang="ts" setup>
 import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
-import { useSingBoxConfigPage } from '@/shared/composables/pages/useSingBoxConfigPage'
+import { useSingBoxConfigPage } from '@/features/useSingBoxConfigPage'
 
 const { configText, copyConfig, nexus, refreshConfig, refreshing } = useSingBoxConfigPage()
 </script>

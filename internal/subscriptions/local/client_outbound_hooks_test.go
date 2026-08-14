@@ -3,8 +3,6 @@ package local
 import "testing"
 
 func TestClientOutboundContributorStaleCleanupPreservesNewRegistration(t *testing.T) {
-	ResetClientOutboundContributorsForTest()
-	t.Cleanup(ResetClientOutboundContributorsForTest)
 	oldCleanup := RegisterClientOutboundContributor("test.generation", func(ClientOutboundContributionContext, *OutboundSet) error { return nil })
 	oldCleanup()
 	newCleanup := RegisterClientOutboundContributor("test.generation", func(ClientOutboundContributionContext, *OutboundSet) error { return nil })

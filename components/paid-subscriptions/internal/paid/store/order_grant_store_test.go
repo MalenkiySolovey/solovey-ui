@@ -126,3 +126,46 @@ func TestRefundOlderTrafficOrderPreservesCurrentWindow(t *testing.T) {
 		t.Fatalf("relative rollback wrong: %#v", got)
 	}
 }
+
+func TestPaidOrderGrantAndRefundUseImmutablePurchaseSnapshot(t *testing.T) {
+	db := newPaidDB(t)
+	now := int64(1_700_000_000)
+	client := model.Client{Name: "snapshot", Expiry: now, Volume: 100, Inbounds: json.RawMessage(`[]`)}
+	if err := db.Create(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+	tariff := paid.Tariff{Name: "Original", Price: 1000, Currency: "RUB", AddDays: 10, AddTrafficBytes: 500}
+	if err := db.Create(&tariff).Error; err != nil {
+		t.Fatal(err)
+	}
+	order := NewPendingOrder(&client, &tariff, provider.ProviderStripe, tariff.Price, tariff.Currency, 1, "snapshot-order", now, 30)
+	if err := db.Create(order).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Model(&tariff).Updates(map[string]any{"add_days": 90, "add_traffic_bytes": 9000}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ApplyPaidOrderGrant(db, order.Id, "snapshot-charge", nil, now, "test"); err != nil {
+		t.Fatal(err)
+	}
+	var granted model.Client
+	if err := db.First(&granted, client.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if granted.Expiry != now+10*86400 || granted.Volume != 600 {
+		t.Fatalf("grant followed mutable tariff instead of order snapshot: %#v", granted)
+	}
+	if err := db.Model(&tariff).Updates(map[string]any{"add_days": 1, "add_traffic_bytes": 1}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := FinalizeRefundGrant(db, order.Id, true, now+1, "test"); err != nil {
+		t.Fatal(err)
+	}
+	var refunded model.Client
+	if err := db.First(&refunded, client.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if refunded.Expiry != now+1 || refunded.Volume != 100 {
+		t.Fatalf("refund followed mutable tariff instead of order snapshot: %#v", refunded)
+	}
+}

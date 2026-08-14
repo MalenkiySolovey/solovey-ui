@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -187,8 +186,11 @@ func (m *Manager) Preview(ctx context.Context, ownerID string) (Preview, error) 
 		if migrationErr != nil {
 			preview.Blockers = append(preview.Blockers, "owner_migration_observation_failed")
 		}
-		preview.LeaseCount = activeOwnerLeases(db.WithContext(ctx), ownerID, now)
-		if preview.LeaseCount > 0 {
+		leaseCount, leaseErr := activeOwnerLeases(db.WithContext(ctx), ownerID, now)
+		preview.LeaseCount = leaseCount
+		if leaseErr != nil {
+			preview.Blockers = append(preview.Blockers, "owner_lease_observation_failed")
+		} else if preview.LeaseCount > 0 {
 			preview.Blockers = append(preview.Blockers, "active_owner_leases")
 		}
 		if blocker := m.globalOperationBlocker(ctx); blocker != "" {
@@ -462,14 +464,14 @@ func (m *Manager) recovery(ctx context.Context, operation model.DataLifecycleOpe
 	return recovery, cause
 }
 
-func activeOwnerLeases(db *gorm.DB, ownerID string, now time.Time) int64 {
+func activeOwnerLeases(db *gorm.DB, ownerID string, now time.Time) (int64, error) {
 	if db == nil || !db.Migrator().HasTable(&model.InboundEndpointLease{}) {
-		return 0
+		return 0, nil
 	}
 	var count int64
-	_ = db.Model(&model.InboundEndpointLease{}).Where("(provider_id = ? OR holder_id = ? OR resource_id LIKE ?) AND released_at_unix = 0 AND expires_at_unix > ?",
+	err := db.Model(&model.InboundEndpointLease{}).Where("(provider_id = ? OR holder_id = ? OR resource_id LIKE ?) AND released_at_unix = 0 AND expires_at_unix > ?",
 		ownerID, ownerID, ownerID+":%", now.Unix()).Count(&count).Error
-	return count
+	return count, err
 }
 
 func externalAuthority(ctx context.Context, component componentregistry.Component, db *gorm.DB, now time.Time) (string, []string) {
@@ -725,5 +727,3 @@ func ReasonCode(err error) string {
 		return "data_lifecycle_failed"
 	}
 }
-
-func (m *Manager) String() string { return fmt.Sprintf("data-lifecycle(%s)", m.Root) }

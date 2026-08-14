@@ -16,6 +16,15 @@ func TestCoreResourcesRequireInitializedConfigService(t *testing.T) {
 	}
 }
 
+func TestApplicationStartRequiresInitializationAndStopIsSafe(t *testing.T) {
+	application := NewApp()
+	if err := application.Start(); err == nil {
+		t.Fatal("Start accepted an uninitialized application")
+	}
+	application.Stop()
+	application.Stop()
+}
+
 func TestCoreResourcesUseApplicationConfigServiceAndRegisterOnce(t *testing.T) {
 	application := NewApp()
 	application.configService = service.NewConfigServiceWithRuntime(nil)

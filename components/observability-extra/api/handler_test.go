@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -86,6 +87,22 @@ func TestGetObservabilityHistoryRequiresObservabilityScope(t *testing.T) {
 	}
 }
 
+func TestGetObservabilityHistoryFailsClosedWithoutDependencies(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, handler := range []*Handler{
+		NewHandler(Deps{}),
+		NewHandler(Deps{RequireScope: func(*gin.Context, string, ...string) bool { return true }}),
+	} {
+		router := gin.New()
+		router.GET("/api/observability/history", handler.GetObservabilityHistory)
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/observability/history", nil))
+		if recorder.Code != http.StatusServiceUnavailable {
+			t.Fatalf("status=%d body=%s, want 503", recorder.Code, recorder.Body.String())
+		}
+	}
+}
+
 func newObservabilityAPITestRouter(actor string, scope string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
@@ -109,7 +126,7 @@ func newObservabilityAPITestRouter(actor string, scope string) *gin.Engine {
 		JSONObj: func(c *gin.Context, obj interface{}, err error) {
 			c.JSON(http.StatusOK, Envelope{Success: err == nil, Obj: obj})
 		},
-		ObservabilityService: service.ObservabilityService{},
+		ObservabilityService: &service.ObservabilityService{},
 	})
 	router.GET("/api/observability/history", handler.GetObservabilityHistory)
 	return router
@@ -117,21 +134,20 @@ func newObservabilityAPITestRouter(actor string, scope string) *gin.Engine {
 
 func initObservabilityAPITestDB(t *testing.T) {
 	t.Helper()
+	_ = dbsqlite.Close()
 	if err := dbsqlite.Init(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}
 		t.Fatal(err)
 	}
-	testDB := dbsqlite.DB()
+	if err := dbhooks.ResetCaches(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	(&service.AuditService{}).ResetDenialAggregation()
 	t.Cleanup(func() {
 		flushObservabilityAPIAudit(t)
-		if testDB != nil {
-			if sqlDB, err := testDB.DB(); err == nil {
-				_ = sqlDB.Close()
-				time.Sleep(25 * time.Millisecond)
-			}
-		}
+		_ = dbsqlite.Close()
 	})
 }
 

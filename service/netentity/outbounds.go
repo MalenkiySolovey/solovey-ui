@@ -22,11 +22,6 @@ func (o *OutboundService) GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 	return entityoutbounds.GetAllConfig(db)
 }
 
-func (s *OutboundService) Save(tx *gorm.DB, act string, data json.RawMessage) error {
-	_, err := s.SaveWithCoreChange(tx, act, data)
-	return err
-}
-
 func (s *OutboundService) SaveWithCoreChange(tx *gorm.DB, act string, data json.RawMessage) (*singboxapply.Change, error) {
 	return entityoutbounds.Save(tx, act, data)
 }

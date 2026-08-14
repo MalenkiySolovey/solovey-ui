@@ -21,6 +21,28 @@ export default [
     },
   },
   {
+    files: ['src/shared/**/*.{ts,tsx,vue}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: ['@/components/**', '@/features/**', '@/views/**', '@/layouts/**'],
+          message: 'Shared frontend code must not depend on feature or presentation layers.',
+        }],
+      }],
+    },
+  },
+  {
+    files: ['src/features/**/*.{ts,tsx,vue}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        patterns: [{
+          group: ['@/views/**', '@/layouts/**'],
+          message: 'Feature controllers must not select concrete presentation components.',
+        }],
+      }],
+    },
+  },
+  {
     rules: {
       'vue/multi-word-component-names': 'off',
       '@typescript-eslint/no-explicit-any': 'off',

@@ -39,6 +39,9 @@ func ResetRateLimits() {
 }
 
 func (a *Handler) beginRequest(c *gin.Context) (context.Context, context.CancelFunc, bool) {
+	if !a.requireBaseDependencies(c, true) {
+		return c.Request.Context(), func() {}, false
+	}
 	if !a.RequireScope(c, "database", "admin") {
 		return c.Request.Context(), func() {}, false
 	}
@@ -48,6 +51,33 @@ func (a *Handler) beginRequest(c *gin.Context) (context.Context, context.CancelF
 	ctx, cancel := context.WithTimeout(c.Request.Context(), xuiRequestTimeout)
 	c.Request = c.Request.WithContext(ctx)
 	return ctx, cancel, true
+}
+
+func (a *Handler) requireBaseDependencies(c *gin.Context, requireObjectResponse bool) bool {
+	available := a != nil && a.RequireScope != nil && a.Audit != nil && a.Actor != nil && a.RemoteIP != nil
+	if requireObjectResponse {
+		available = available && a.JSONObj != nil
+	}
+	if available {
+		return true
+	}
+	c.AbortWithStatusJSON(http.StatusServiceUnavailable, Envelope{Success: false, Msg: "Compatible panel import is unavailable"})
+	return false
+}
+
+func (a *Handler) requireMutationDependencies(c *gin.Context) bool {
+	if a != nil && a.ConfigChanged != nil {
+		return true
+	}
+	c.AbortWithStatusJSON(http.StatusServiceUnavailable, Envelope{Success: false, Msg: "Compatible panel import is unavailable"})
+	return false
+}
+
+func (a *Handler) hostname(c *gin.Context) string {
+	if a == nil || a.Hostname == nil {
+		return ""
+	}
+	return a.Hostname(c)
 }
 
 func (a *Handler) requireMutationStepUp(c *gin.Context) bool {

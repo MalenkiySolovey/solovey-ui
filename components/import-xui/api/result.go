@@ -73,6 +73,8 @@ func xuiImportSafeMessage(class string) string {
 		return "Compatible panel import is busy"
 	case "plan_stale":
 		return "Compatible panel import plan is stale"
+	case "plan_invalid":
+		return "Compatible panel import plan is invalid"
 	case "not_sqlite":
 		return "Compatible panel database is invalid"
 	default:
@@ -90,6 +92,8 @@ func xuiImportErrorClass(err error) string {
 		return "busy"
 	case errors.Is(err, dbimport.ErrPlanStale), strings.Contains(err.Error(), "plan_stale"):
 		return "plan_stale"
+	case errors.Is(err, dbimport.ErrPlanInvalid), strings.Contains(err.Error(), "plan_invalid"):
+		return "plan_invalid"
 	case strings.Contains(err.Error(), "not_sqlite"), strings.Contains(strings.ToLower(err.Error()), "sqlite"):
 		return "not_sqlite"
 	default:

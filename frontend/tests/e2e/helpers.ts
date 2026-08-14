@@ -1,4 +1,5 @@
 import { expect, type Page } from '@playwright/test'
+import { createHash } from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -15,27 +16,22 @@ export const e2eResultDir = path.join(repoRoot, 'tests', 'baseline', 'e2e')
 export const serverStatePath = path.join(e2eResultDir, 'e2e-server', 'state.json')
 const fallbackE2EWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH ?? '/e2e-panel/')
 
-const sleepSync = (ms: number) => {
-  Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms)
-}
-
 export const readServerState = (): E2EServerState => {
-  const deadline = Date.now() + 120_000
-  while (Date.now() < deadline) {
-    if (fs.existsSync(serverStatePath)) {
-      const state = JSON.parse(fs.readFileSync(serverStatePath, 'utf8')) as E2EServerState
-      if (state.password) return state
-    }
-    if (process.env.SUI_E2E_PASSWORD) break
-    sleepSync(250)
+  if (fs.existsSync(serverStatePath)) {
+    const state = JSON.parse(fs.readFileSync(serverStatePath, 'utf8')) as E2EServerState
+    testPasswordAvailable(state)
+    return state
   }
-  return {
+
+  const state = {
     baseURL: process.env.SUI_E2E_BASE_URL ?? `http://127.0.0.1:3000${fallbackE2EWebPath}`,
     backendURL: process.env.SUI_E2E_BACKEND_URL ?? `http://127.0.0.1:2095${fallbackE2EWebPath}`,
     username: process.env.SUI_E2E_USERNAME ?? 'admin',
     password: process.env.SUI_E2E_PASSWORD ?? '',
     dbDir: process.env.SUI_E2E_DB_DIR ?? path.join(e2eResultDir, 'e2e-db'),
   }
+  testPasswordAvailable(state)
+  return state
 }
 
 function normalizeWebPath(value: string): string {
@@ -58,13 +54,21 @@ export const login = async (page: Page) => {
   const inputs = page.locator('input')
   await inputs.nth(0).fill(state.username)
   await inputs.nth(1).fill(state.password)
+  const loginResponsePromise = page.waitForResponse(response => (
+    response.request().method() === 'POST' && response.url() === new URL('api/login', state.baseURL).toString()
+  ))
   await page.locator('button[type="submit"]').click()
-  await expect.poll(async () => {
-    const response = await page.request.get('api/settings')
-    const body = await response.json().catch(() => ({ success: false }))
-    return body.success === true
-  }).toBe(true)
-  await page.goto('')
+  const loginResponse = await loginResponsePromise
+  const loginBody = await loginResponse.json().catch(() => ({ success: false, msg: 'invalid login response' }))
+  expect(loginResponse.ok(), loginBody.msg).toBeTruthy()
+  expect(loginBody.success, loginBody.msg).toBe(true)
+  expect(loginBody.obj?.state).toBe('authenticated')
+  await expect(page).toHaveURL(state.baseURL)
+
+  const settingsResponse = await page.request.get('api/settings')
+  const settingsBody = await settingsResponse.json().catch(() => ({ success: false, msg: 'invalid settings response' }))
+  expect(settingsResponse.ok(), settingsBody.msg).toBeTruthy()
+  expect(settingsBody.success, settingsBody.msg).toBe(true)
 }
 
 export const csrfToken = async (page: Page) => {
@@ -76,10 +80,38 @@ export const csrfToken = async (page: Page) => {
   return body.obj.token as string
 }
 
+export const mutationHeaders = (token?: string) => ({
+  Origin: new URL(readServerState().baseURL).origin,
+  'X-Requested-With': 'XMLHttpRequest',
+  ...(token ? { 'X-CSRF-Token': token } : {}),
+})
+
+export const stepUpMutationHeaders = async (page: Page, operationKind: string, target: string) => {
+  const csrf = await csrfToken(page)
+  const response = await page.request.post('api/v1/security/step-up', {
+    headers: mutationHeaders(csrf),
+    data: {
+      method: 'password',
+      credential: readServerState().password,
+      operationKind,
+      targetDigest: createHash('sha256').update(target).digest('hex'),
+    },
+  })
+  const body = await response.json().catch(() => ({ success: false, msg: response.statusText() }))
+  expect(response.ok(), body.msg).toBeTruthy()
+  expect(body.success, body.msg).toBe(true)
+  expect(typeof body.obj?.token).toBe('string')
+
+  return {
+    ...mutationHeaders(await csrfToken(page)),
+    'X-Step-Up-Token': body.obj.token as string,
+  }
+}
+
 export const enableComponent = async (page: Page, id: string) => {
   const token = await csrfToken(page)
   const response = await page.request.post(`api/update/components/${id}/enable`, {
-    headers: { 'X-CSRF-Token': token },
+    headers: mutationHeaders(token),
   })
   const body = await response.json().catch(() => ({ success: false, msg: response.statusText() }))
   expect(response.ok(), body.msg).toBeTruthy()

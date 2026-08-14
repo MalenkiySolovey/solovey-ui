@@ -262,7 +262,7 @@ func classify(method, route string) Policy {
 	databaseImportRoute := strings.Contains(lower, "/import-")
 	restoreRoute := strings.Contains(lower, "/v1/operations/data/restore")
 	if strings.Contains(lower, "/apiv2/") {
-		policy.Authentication = "browser_or_bearer"
+		policy.Authentication = "bearer_token"
 	}
 	if strings.HasSuffix(lower, "/login") || strings.HasSuffix(lower, "/csrf") {
 		policy.Authentication = "public_preauth"
@@ -315,7 +315,6 @@ func classify(method, route string) Policy {
 		policy.AuditPolicy = "security"
 	case strings.Contains(lower, "/update/components/") && strings.HasSuffix(lower, "/remove"):
 		policy.ActionScope = "component_remove"
-		policy.StepUpOperation = "drop_data"
 		policy.AuditPolicy = "security"
 	case strings.HasSuffix(lower, "/v1/security/sessions/adopt-bounded"):
 		policy.ActionScope = "session_policy_adopt"

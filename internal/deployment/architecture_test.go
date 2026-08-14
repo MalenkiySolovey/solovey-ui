@@ -28,8 +28,8 @@ func TestDeploymentArchitectureKeepsDomainBrokerAndLabBoundaries(t *testing.T) {
 	})
 	forEachProductionGoFile(t, serviceRoot, func(path string, imports []string, source string) {
 		for _, imported := range imports {
-			if strings.HasPrefix(imported, deploymentModule+"/components/server-protection") {
-				t.Fatalf("deployment service delegates ownership to server-protection: %s imports %s", path, imported)
+			if strings.HasPrefix(imported, deploymentModule+"/components/") {
+				t.Fatalf("deployment service delegates ownership to an optional component: %s imports %s", path, imported)
 			}
 		}
 		assertNoDeploymentTestDoubleOrLabDependency(t, path, source)

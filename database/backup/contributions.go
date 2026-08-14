@@ -3,8 +3,6 @@ package backup
 import (
 	"strings"
 	"sync"
-
-	"gorm.io/gorm"
 )
 
 // TableContribution describes a component-owned table that should be included
@@ -70,27 +68,4 @@ func RegisterTables(owner string, tables []TableContribution) func() {
 		}
 		backupTableRegistry.tables = dst
 	}
-}
-
-func contributedBackupTables(sourceDB *gorm.DB) []backupTable {
-	if sourceDB == nil {
-		return nil
-	}
-	backupTableRegistry.RLock()
-	registered := append([]registeredBackupTable(nil), backupTableRegistry.tables...)
-	backupTableRegistry.RUnlock()
-
-	tables := make([]backupTable, 0, len(registered))
-	seen := make(map[string]struct{}, len(registered))
-	for _, registeredTable := range registered {
-		table := registeredTable.table
-		if _, ok := seen[table.name]; ok {
-			continue
-		}
-		seen[table.name] = struct{}{}
-		if sourceDB.Migrator().HasTable(table.name) {
-			tables = append(tables, table)
-		}
-	}
-	return tables
 }

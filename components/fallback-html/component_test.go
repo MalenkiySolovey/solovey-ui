@@ -295,7 +295,7 @@ func TestManifestDeclaresExactFallbackHTMLTables(t *testing.T) {
 	}
 	want := []string{
 		"fallback_html_sites", "fallback_html_pages", "fallback_html_redirects", "fallback_html_assets",
-		"fallback_html_publishes", "fallback_html_node_publications", "fallback_html_node_endpoints",
+		"fallback_html_publishes",
 		"fallback_html_publish_files", "fallback_html_publish_redirects", "fallback_html_safety_reports",
 		"fallback_html_template_sources", "fallback_html_self_steal_drafts", "fallback_html_runtime_targets",
 		"fallback_html_external_resources", "fallback_html_events", authority.ReservationTable, authority.ReservationReplayTable,

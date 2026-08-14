@@ -20,10 +20,6 @@ func newLogRingBuffer(capacity int) *logRingBuffer {
 	return &logRingBuffer{items: make([]bufferedLog, 0, capacity)}
 }
 
-func addToBuffer(source, level, message string) {
-	addToBufferAt(source, parseSlogLevel(level), message, time.Now())
-}
-
 func addToBufferAt(source string, level slog.Level, message string, at time.Time) {
 	if at.IsZero() {
 		at = time.Now()
@@ -34,10 +30,6 @@ func addToBufferAt(source string, level slog.Level, message string, at time.Time
 		time: at.Format("2006/01/02 15:04:05"), at: at,
 		level: level, source: source, log: message,
 	})
-}
-
-func Logs(count int, level string) []string {
-	return FilteredLogs(count, level, "", "")
 }
 
 func FilteredLogs(count int, level, source, filter string) []string {

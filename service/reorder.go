@@ -2,6 +2,7 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 	"strings"
 	"time"
 
@@ -24,7 +25,13 @@ func (s *ConfigService) Reorder(obj string, data json.RawMessage, loginUser stri
 	plan := newConfigSavePlan(primaryReorderObject(obj))
 
 	db := dbsqlite.DB()
+	if db == nil {
+		return nil, errors.New("configuration database is not initialized")
+	}
 	tx := db.Begin()
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
 	committed := false
 	defer func() {
 		if !committed {
@@ -47,13 +54,14 @@ func (s *ConfigService) Reorder(obj string, data json.RawMessage, loginUser stri
 	if err := s.recordConfigChange(tx, loginUser, obj, "reorder", data); err != nil {
 		return nil, err
 	}
-	s.setLastUpdate(time.Now().Unix())
-
 	if err := tx.Commit().Error; err != nil {
 		return plan.Objects(), err
 	}
 	committed = true
-	s.applyConfigSaveEffects(plan, nil)
+	s.setLastUpdate(time.Now().Unix())
+	if err := s.applyConfigSaveEffects(plan, nil); err != nil {
+		return plan.Objects(), err
+	}
 	return plan.Objects(), nil
 }
 

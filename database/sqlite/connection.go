@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"os"
@@ -16,6 +17,35 @@ import (
 	"gorm.io/gorm"
 	gormlogger "gorm.io/gorm/logger"
 )
+
+func prepareForInit() error {
+	dbMu.Lock()
+	defer dbMu.Unlock()
+	if db == nil {
+		return nil
+	}
+	pool, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("inspect active database: %w", err)
+	}
+	if err := pool.Ping(); err == nil {
+		return errors.New("database is already initialized")
+	} else if !isClosedPoolError(err) {
+		return fmt.Errorf("check active database: %w", err)
+	}
+	// Compatibility with legacy callers that closed the exposed sql.DB
+	// directly. Detach only a handle proven permanently closed.
+	db = nil
+	activeDBPath = ""
+	return nil
+}
+
+func isClosedPoolError(err error) bool {
+	// database/sql does not export its dbClosed sentinel. Drivers may return
+	// either sql.ErrConnDone or the stable database/sql sentinel text after a
+	// caller closes an exposed *sql.DB directly.
+	return errors.Is(err, sql.ErrConnDone) || err.Error() == "sql: database is closed"
+}
 
 var (
 	dbMu         sync.RWMutex

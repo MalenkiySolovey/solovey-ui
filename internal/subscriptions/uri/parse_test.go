@@ -172,7 +172,7 @@ func TestGetOutboundVmessBase64(t *testing.T) {
 	expect := map[string]interface{}{
 		"type":                   "vmess",
 		"server":                 "vmess.example.com",
-		"server_port":            "443",
+		"server_port":            443,
 		"uuid":                   "22222222-2222-4222-8222-222222222222",
 		"tls.enabled":            true,
 		"tls.server_name":        "vmess.example.com",
@@ -193,6 +193,47 @@ func TestGetOutboundVmessBase64(t *testing.T) {
 func TestGetOutboundRejectsUnsupportedLink(t *testing.T) {
 	if _, _, err := Parse("ftp://example.com", 0); err == nil {
 		t.Fatal("unsupported link returned nil error")
+	}
+}
+
+func TestParseUsesDefaultPortWithoutDroppingHost(t *testing.T) {
+	outbound, _, err := Parse("vless://11111111-1111-4111-8111-111111111111@example.com?security=tls#node", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if (*outbound)["server"] != "example.com" || (*outbound)["server_port"] != 443 {
+		t.Fatalf("default endpoint = %#v:%#v, want example.com:443", (*outbound)["server"], (*outbound)["server_port"])
+	}
+}
+
+func TestParseRejectsInvalidEndpointOrCredential(t *testing.T) {
+	for _, link := range []string{
+		"vless://11111111-1111-4111-8111-111111111111@example.com:0#node",
+		"vless://example.com:443#node",
+		"tuic://11111111-1111-4111-8111-111111111111@example.com:443#node",
+	} {
+		if _, _, err := Parse(link, 0); err == nil {
+			t.Fatalf("invalid link was accepted: %s", link)
+		}
+	}
+}
+
+func TestVmessFalseAllowInsecureStaysSecure(t *testing.T) {
+	raw, err := json.Marshal(map[string]interface{}{
+		"ps": "node", "add": "example.com", "port": "443",
+		"id": "11111111-1111-4111-8111-111111111111", "net": "tcp",
+		"tls": "tls", "allowInsecure": false,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outbound, _, err := Parse("vmess://"+uricodec.Encode(raw), 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	tlsConfig, _ := (*outbound)["tls"].(map[string]interface{})
+	if tlsConfig["insecure"] == true {
+		t.Fatal("allowInsecure=false was interpreted as enabled")
 	}
 }
 
@@ -232,5 +273,30 @@ func TestGetOutboundShadowsocksBase64UserInfo(t *testing.T) {
 	}
 	if got := (*outbound)["password"]; got != "secret:with:colons" {
 		t.Fatalf("password = %#v", got)
+	}
+}
+
+func TestParseRejectsEmptyShadowsocksAndNaiveCredentials(t *testing.T) {
+	for _, link := range []string{
+		"ss://chacha20-ietf-poly1305:@example.com:8388#empty-password",
+		"naive+https://user@example.com:443#missing-password",
+		"naive+https://:password@example.com:443#missing-user",
+	} {
+		if _, _, err := Parse(link, 0); err == nil {
+			t.Fatalf("link with missing credentials was accepted: %s", link)
+		}
+	}
+}
+
+func TestParseNaiveUsesDefaultPortAndValidatesExplicitPort(t *testing.T) {
+	outbound, _, err := Parse("naive+https://user:password@example.com#node", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if (*outbound)["server"] != "example.com" || (*outbound)["server_port"] != 443 {
+		t.Fatalf("naive endpoint = %#v:%#v", (*outbound)["server"], (*outbound)["server_port"])
+	}
+	if _, _, err := Parse("naive+https://user:password@example.com:70000#node", 0); err == nil {
+		t.Fatal("out-of-range naive port was accepted")
 	}
 }

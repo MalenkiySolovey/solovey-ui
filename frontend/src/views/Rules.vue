@@ -346,7 +346,7 @@
 </template>
 
 <script lang="ts" setup>
-import ManualSortButton from '@/components/ManualSortButton.vue'
+import ManualSortButton from '@/shared/ui/ManualSortButton.vue'
 import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
 import ClassicConfigCard from '@/shared/ui/ClassicConfigCard.vue'
 import CollapsibleSectionHeader from '@/shared/ui/CollapsibleSectionHeader.vue'
@@ -360,7 +360,7 @@ import NexusBadge from '@/components/nexus/primitives/Badge.vue'
 import EmptyState from '@/components/nexus/primitives/EmptyState.vue'
 import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
-import { useRulesPage } from '@/shared/composables/pages/useRulesPage'
+import { useRulesPage } from '@/features/useRulesPage'
 
 const page = useRulesPage()
 const { actionKeys, actionMenu, appConfig, applyPresetConfig, confirm, defaultFallbackDelayMs, deleteSelectedRules, deleteSelectedRulesets, delRule, delRuleOverlay, delRuleset, delRulesetOverlay, findProcess, handleRuleAction, handleRulesetAction, isRuleSelected, isRulesetSelected, loading, mode, moveRulesTo, moveRulesetsTo, moveRuleTo, moveRulesetTo, networkTypes, nexus, onRuleDrop, onRulesetDrop, outboundTags, overrideAndroidVpn, presetSourceLabel, regionalPresetDrawer, route, routeDefaultNetworkStrategy, routeMark, routePreset, routePresets, ruleActions, ruleColumns, ruleDrag, ruleRows, ruleSelectMode, rules, rulesetActions, rulesetColumns, rulesetDrag, rulesetRows, rulesetSelectMode, rulesets, rulesetsExpanded, saveConfig, search, selectedRuleIndexes, selectedRulesetIndexes, showImportRule, showImportRulesets, showRuleModal, showRulesetModal, sortRulesetsByName, stateChange, subtitle, toggleRuleSelectMode, toggleRuleSelection, toggleRulesetSelectMode, toggleRulesetSelection } = page

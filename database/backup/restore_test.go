@@ -19,7 +19,7 @@ import (
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -388,10 +388,10 @@ func TestRestoreAdaptsLegacyBackup(t *testing.T) {
 	if stored == "" {
 		t.Fatal("imported admin user is missing")
 	}
-	if !common.IsPasswordHash(stored) {
+	if !passwordutil.IsEncoded(stored) {
 		t.Fatalf("imported password was not rehashed; got plaintext: %q", stored)
 	}
-	if ok, _ := common.CheckPassword(stored, "legacy-secret"); !ok {
+	if ok, _, err := passwordutil.Verify(context.Background(), stored, "legacy-secret"); err != nil || !ok {
 		t.Fatal("rehashed password no longer validates the legacy plaintext")
 	}
 
@@ -446,7 +446,7 @@ func TestRestoreRejectsCorruptSQLiteBackup(t *testing.T) {
 	}
 }
 
-func TestRestoreAcceptsVersionedBackupWithoutConfigIssue12(t *testing.T) {
+func TestRestoreAcceptsVersionedBackupWithoutConfig(t *testing.T) {
 	dbDir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", dbDir)
 	livePath := configstorage.GetDBPath()

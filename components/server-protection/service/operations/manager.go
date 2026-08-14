@@ -11,7 +11,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"net/netip"
 	"os"
 	"strings"
 	"sync"
@@ -38,21 +37,19 @@ const (
 
 	KindFirewall       = "firewall"
 	KindFronting       = "fronting"
-	KindPortHandoff    = "port_handoff"
 	KindNode           = "node"
 	KindNativeFallback = "native_fallback"
 	KindLocalProxy     = "local_proxy"
 )
 
 var (
-	ErrConflict              = protectionrepository.ErrOperationConflict
-	ErrFenced                = protectionrepository.ErrOperationFenced
-	ErrRevisionConflict      = protectionrepository.ErrRevisionConflict
-	ErrConfirmationRequired  = errors.New("explicit operation confirmation is required")
-	ErrAuditUnavailable      = errors.New("operation audit recorder is unavailable")
-	ErrCapabilityUnavailable = errors.New("system mutation capability is unavailable")
-	ErrRecoveryUnavailable   = errors.New("automatic rollback capability is unavailable")
-	globalProcessMutex       sync.Mutex
+	ErrConflict             = protectionrepository.ErrOperationConflict
+	ErrFenced               = protectionrepository.ErrOperationFenced
+	ErrRevisionConflict     = protectionrepository.ErrRevisionConflict
+	ErrConfirmationRequired = errors.New("explicit operation confirmation is required")
+	ErrAuditUnavailable     = errors.New("operation audit recorder is unavailable")
+	ErrRecoveryUnavailable  = errors.New("automatic rollback capability is unavailable")
+	globalProcessMutex      sync.Mutex
 )
 
 type Store interface {
@@ -156,13 +153,6 @@ type PrepareRequest struct {
 	Confirmation string
 }
 
-type ConfirmActionRequest struct {
-	OperationID  string
-	Action       string
-	Actor        string
-	Confirmation string
-}
-
 type ForgetStateRequest struct {
 	OperationID  string
 	Revision     int
@@ -218,8 +208,8 @@ func (m *Manager) SetRecovery(recovery Recovery) error {
 }
 
 // SetRecoveryForKind installs a typed recovery backend for one operation
-// family. It prevents port-handoff recovery from being routed through the
-// already configured firewall backend.
+// family so independent workflows cannot be routed through the default
+// firewall backend.
 func (m *Manager) SetRecoveryForKind(kind string, recovery Recovery) error {
 	if !validKind(kind) || recovery == nil {
 		return errors.New("valid operation kind and recovery backend are required")
@@ -304,37 +294,14 @@ func (m *Manager) validateHelperLock(ctx context.Context, operationID, instanceI
 	return nil
 }
 
-// ValidateHelperListener binds a helper probe to the exact socket recorded in
-// the active fenced port-handoff lock. It prevents the typed probe from being
-// repurposed as an arbitrary network scanner.
-func (m *Manager) ValidateHelperListener(ctx context.Context, operationID, instanceID string, revision int, network, address string, port, expectedPID int) error {
-	if network != "tcp" {
-		return ErrFenced
-	}
-	if err := m.ValidateHelperLock(ctx, operationID, instanceID, KindPortHandoff, revision); err != nil {
-		return err
-	}
-	m.mu.Lock()
-	active := m.active
-	m.mu.Unlock()
-	if active == nil || active.LockedByPID == nil || *active.LockedByPID != expectedPID || active.Protocol != network || canonicalFenceAddress(active.Listen) != canonicalFenceAddress(address) || active.Port == nil || *active.Port != port {
-		return ErrFenced
-	}
-	return nil
-}
-
-func canonicalFenceAddress(value string) string {
-	address, err := netip.ParseAddr(strings.Trim(strings.TrimSpace(value), "[]"))
-	if err != nil {
-		return strings.TrimSpace(value)
-	}
-	return address.Unmap().String()
-}
-
 func (m *Manager) Start(ctx context.Context) error {
 	m.mu.Lock()
 	if m.started {
+		stopping := m.stopped
 		m.mu.Unlock()
+		if stopping {
+			return ErrFenced
+		}
 		return nil
 	}
 	m.mu.Unlock()
@@ -360,6 +327,9 @@ func (m *Manager) Start(ctx context.Context) error {
 }
 
 func (m *Manager) Stop(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	m.mu.Lock()
 	if !m.started {
 		m.stopped = true
@@ -370,20 +340,39 @@ func (m *Manager) Stop(ctx context.Context) error {
 		return nil
 	}
 	stop, done := m.stop, m.done
-	m.started = false
+	firstStop := !m.stopped
 	m.stopped = true
-	m.stop = nil
-	m.done = nil
 	m.active = nil
 	clear(m.recoveredSuspect)
 	m.releaseGateLocked()
 	m.mu.Unlock()
-	stop()
+	if firstStop && stop != nil {
+		stop()
+	}
+	finish := func() {
+		m.mu.Lock()
+		if m.done == done {
+			m.started = false
+			m.stop = nil
+			m.done = nil
+		}
+		m.mu.Unlock()
+	}
 	select {
 	case <-done:
+		finish()
 		return nil
 	case <-ctx.Done():
-		return ctx.Err()
+		// Prefer successful completion if the runner and the caller deadline
+		// became ready together. Otherwise retain the runner identity so a
+		// later Stop can finish draining it; Start remains fenced meanwhile.
+		select {
+		case <-done:
+			finish()
+			return nil
+		default:
+			return ctx.Err()
+		}
 	}
 }
 
@@ -552,23 +541,6 @@ func (m *Manager) Prepare(ctx context.Context, request PrepareRequest) (AcquireR
 	request.Acquire.InitialState = StatePrepared
 	request.Acquire.PlanRevision = request.PlanRevision
 	return m.Acquire(ctx, request.Acquire)
-}
-
-func (m *Manager) ConfirmUnavailableAction(ctx context.Context, request ConfirmActionRequest) error {
-	action := strings.TrimSpace(request.Action)
-	if action != "apply" && action != "rollback" {
-		return errors.New("unsupported confirmed action")
-	}
-	if request.Confirmation != strings.ToUpper(action)+" SERVER PROTECTION "+request.OperationID {
-		return ErrConfirmationRequired
-	}
-	if _, err := m.store.OperationByID(ctx, request.OperationID); err != nil {
-		return err
-	}
-	if err := m.auditAction(ctx, request.Actor, "server_protection."+action, request.OperationID, "missing_capability"); err != nil {
-		return err
-	}
-	return ErrCapabilityUnavailable
 }
 
 func (m *Manager) ForgetState(ctx context.Context, request ForgetStateRequest) (protectionrepository.OperationLockModel, error) {
@@ -936,7 +908,7 @@ func newID(prefix string) string {
 }
 
 func validKind(kind string) bool {
-	return kind == KindFirewall || kind == KindFronting || kind == KindPortHandoff || kind == KindNode ||
+	return kind == KindFirewall || kind == KindFronting || kind == KindNode ||
 		kind == KindNativeFallback || kind == KindLocalProxy
 }
 

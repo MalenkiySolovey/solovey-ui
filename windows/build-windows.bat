@@ -3,7 +3,7 @@ setlocal enabledelayedexpansion
 
 echo Building Solovey UI for Windows...
 
-cd /d "%~dp0"
+cd /d "%~dp0.."
 
 REM Check if Go is installed
 go version >nul 2>&1
@@ -25,15 +25,18 @@ if errorlevel 1 (
 
 echo Building frontend...
 cd frontend
-call npm install
+call npm ci
 if errorlevel 1 (
     echo Error: Failed to install frontend dependencies
     pause
     exit /b 1
 )
 
+set "SOLOVEY_UI_PROFILE=full"
 call npm run build
-if errorlevel 1 (
+set "FRONTEND_BUILD_EXIT=%ERRORLEVEL%"
+set "SOLOVEY_UI_PROFILE="
+if not "%FRONTEND_BUILD_EXIT%"=="0" (
     echo Error: Failed to build frontend
     pause
     exit /b 1
@@ -41,8 +44,24 @@ if errorlevel 1 (
 
 cd ..
 
+node scripts\check-frontend-profile.mjs --profile full --dist frontend\dist
+if errorlevel 1 (
+    echo Error: Frontend profile validation failed
+    pause
+    exit /b 1
+)
+
+echo Generating full-profile component imports...
+node scripts\generate-component-imports.mjs --profile full --out app\components_generated.go
+if errorlevel 1 (
+    echo Error: Failed to generate component imports
+    pause
+    exit /b 1
+)
+
 echo Creating web/html directory...
-if not exist "web\html" mkdir "web\html"
+if exist "web\html" rmdir /s /q "web\html"
+mkdir "web\html"
 
 echo Copying frontend build files...
 xcopy "frontend\dist\*" "web\html\" /E /Y /Q
@@ -53,11 +72,11 @@ set GOOS=windows
 set GOARCH=amd64
 
 REM Try to build with CGO first
-go build -ldflags "-w -s" -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale" -o sui.exe main.go
+go build -ldflags "-w -s -checklinkname=0" -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale" -o sui.exe main.go
 if errorlevel 1 (
     echo Warning: CGO build failed, trying without CGO...
     set CGO_ENABLED=0
-    go build -ldflags "-w -s" -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale" -o sui.exe main.go
+    go build -ldflags "-w -s -checklinkname=0" -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale" -o sui.exe main.go
     if errorlevel 1 (
         echo Error: Failed to build backend
         pause

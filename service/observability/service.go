@@ -70,12 +70,17 @@ func newObservabilityStore() *observabilityStore {
 	}
 }
 func resetObservabilityCaches() {
-	observabilityMemoryCapCache = newObservabilityMemoryCapCache(time.Now)
+	observabilityMemoryCapCache.refreshMu.Lock()
+	observabilityMemoryCapCache.capMB.Store(observabilityDefaultMemoryCapMB)
+	observabilityMemoryCapCache.expiresAtUnixNano.Store(0)
+	observabilityMemoryCapCache.refreshMu.Unlock()
+	fresh := newObservabilityStore()
 	observabilityHistory.mu.Lock()
-	observabilityHistory.lastMemoryWarnCapMB = 0
-	observabilityHistory.lastMemoryWarnUnix = 0
-	observabilityHistory.lastAppliedMemoryCap = observabilityDefaultMemoryCapMB
-	observabilityHistory.applyCaps(capsForObservabilityMemory(observabilityDefaultMemoryCapMB), observabilityDefaultMemoryCapMB)
+	observabilityHistory.samples = fresh.samples
+	observabilityHistory.core = fresh.core
+	observabilityHistory.lastMemoryWarnCapMB = fresh.lastMemoryWarnCapMB
+	observabilityHistory.lastMemoryWarnUnix = fresh.lastMemoryWarnUnix
+	observabilityHistory.lastAppliedMemoryCap = fresh.lastAppliedMemoryCap
 	observabilityHistory.mu.Unlock()
 }
 func (s *Service) CurrentObservabilitySample() ObservabilitySample {

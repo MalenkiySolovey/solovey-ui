@@ -17,7 +17,7 @@ import (
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 
 	"github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"
@@ -186,7 +186,7 @@ func ensureRealtimePerfSessionUser(tb testing.TB, username string) bool {
 	if count > 0 {
 		return true
 	}
-	passwordHash, err := common.HashPassword("realtime-perf-password")
+	passwordHash, err := passwordutil.Hash(context.Background(), "realtime-perf-password")
 	if err != nil {
 		tb.Logf("hash session user password failed: %v", err)
 		return false

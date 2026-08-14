@@ -61,38 +61,46 @@ func CheckConnectionRecords(ctx context.Context, connections []RemoteOutboundCon
 	return CheckConnectionRecordsWithDB(ctx, nil, connections, target)
 }
 func CheckConnectionRecordsWithDB(ctx context.Context, db *gorm.DB, connections []RemoteOutboundConnection, target string) []CheckResult {
-	results := make([]CheckResult, len(connections))
-	sem := make(chan struct{}, checkConcurrency)
-	var wg sync.WaitGroup
-
-	for i, connection := range connections {
-		wg.Add(1)
-		go func(index int, item RemoteOutboundConnection) {
-			defer wg.Done()
-
-			select {
-			case sem <- struct{}{}:
-				defer func() { <-sem }()
-			case <-ctx.Done():
-				results[index] = CheckResult{
-					ConnectionId: item.Id,
-					OutboundTag:  item.OutboundTag,
-					Error:        coreruntime.ClassifyOutboundCheckError(ctx.Err()),
-				}
-				return
-			}
-
-			checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-			defer cancel()
-			results[index] = *CheckConnectionRecordWithDB(checkCtx, db, item, target)
-		}(i, connection)
+	if ctx == nil {
+		ctx = context.Background()
 	}
-
+	results := make([]CheckResult, len(connections))
+	if len(connections) == 0 {
+		return results
+	}
+	workerCount := min(checkConcurrency, len(connections))
+	jobs := make(chan int)
+	var wg sync.WaitGroup
+	for range workerCount {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for index := range jobs {
+				item := connections[index]
+				if err := ctx.Err(); err != nil {
+					results[index] = cancelledCheckResult(item, err)
+					continue
+				}
+				checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				results[index] = *CheckConnectionRecordWithDB(checkCtx, db, item, target)
+				cancel()
+			}
+		}()
+	}
+	for index := range connections {
+		jobs <- index
+	}
+	close(jobs)
 	wg.Wait()
 	return results
 }
-func CheckConnectionRecord(ctx context.Context, connection RemoteOutboundConnection, target string) *CheckResult {
-	return CheckConnectionRecordWithDB(ctx, nil, connection, target)
+
+func cancelledCheckResult(connection RemoteOutboundConnection, err error) CheckResult {
+	return CheckResult{
+		ConnectionId: connection.Id,
+		OutboundTag:  connection.OutboundTag,
+		Error:        coreruntime.ClassifyOutboundCheckError(err),
+	}
 }
 func CheckConnectionRecordWithDB(ctx context.Context, db *gorm.DB, connection RemoteOutboundConnection, target string) *CheckResult {
 	result := &CheckResult{
@@ -108,9 +116,6 @@ func CheckConnectionRecordWithDB(ctx context.Context, db *gorm.DB, connection Re
 		result.Error = result.Result.Error
 	}
 	return result
-}
-func CheckConnectionWithTempCore(ctx context.Context, connection RemoteOutboundConnection, target string) coreruntime.CheckOutboundResult {
-	return CheckConnectionWithTempCoreDB(ctx, nil, connection, target)
 }
 func CheckConnectionWithTempCoreDB(ctx context.Context, db *gorm.DB, connection RemoteOutboundConnection, target string) (result coreruntime.CheckOutboundResult) {
 	defer func() {
@@ -181,6 +186,9 @@ func checkTempCoreConfig(db *gorm.DB, connection RemoteOutboundConnection) (temp
 	}, nil
 }
 func checkTempCoreOutboundTags(ctx context.Context, instance *coreruntime.Core, tags []string, target string) coreruntime.CheckOutboundResult {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	tags = uniqueCheckTags(tags)
 	if len(tags) == 0 {
 		return coreruntime.CheckOutboundResult{Error: coreruntime.CheckOutboundErrorInvalidRequest}
@@ -189,37 +197,35 @@ func checkTempCoreOutboundTags(ctx context.Context, instance *coreruntime.Core, 
 		return instance.CheckOutbound(ctx, tags[0], target)
 	}
 
-	type tagResult struct {
-		tag    string
-		result coreruntime.CheckOutboundResult
-	}
-	results := make(chan tagResult, len(tags))
-	sem := make(chan struct{}, checkConcurrency)
+	results := make([]coreruntime.CheckOutboundResult, len(tags))
+	workerCount := min(checkConcurrency, len(tags))
+	jobs := make(chan int)
 	var wg sync.WaitGroup
-	for _, tag := range tags {
+	for range workerCount {
 		wg.Add(1)
-		go func(outboundTag string) {
+		go func() {
 			defer wg.Done()
-			select {
-			case sem <- struct{}{}:
-				defer func() { <-sem }()
-			case <-ctx.Done():
-				results <- tagResult{tag: outboundTag, result: coreruntime.CheckOutboundResult{Error: coreruntime.ClassifyOutboundCheckError(ctx.Err())}}
-				return
+			for index := range jobs {
+				if err := ctx.Err(); err != nil {
+					results[index] = coreruntime.CheckOutboundResult{Error: coreruntime.ClassifyOutboundCheckError(err)}
+					continue
+				}
+				results[index] = instance.CheckOutbound(ctx, tags[index], target)
 			}
-			results <- tagResult{tag: outboundTag, result: instance.CheckOutbound(ctx, outboundTag, target)}
-		}(tag)
+		}()
 	}
+	for index := range tags {
+		jobs <- index
+	}
+	close(jobs)
 	wg.Wait()
-	close(results)
 
 	var best coreruntime.CheckOutboundResult
-	for item := range results {
-		if item.result.OK {
-			if !best.OK || item.result.Delay < best.Delay {
-				best = item.result
+	for _, result := range results {
+		if result.OK {
+			if !best.OK || result.Delay < best.Delay {
+				best = result
 			}
-			continue
 		}
 	}
 	if best.OK {

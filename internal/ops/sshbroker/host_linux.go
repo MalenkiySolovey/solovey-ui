@@ -324,8 +324,8 @@ func (h *Host) verifyHandler(ctx context.Context, envelope broker.Request, _ bro
 
 func (h *Host) observe(ctx context.Context) (ObservationV1, error) {
 	now := h.time()
-	binaryData, err := os.ReadFile(h.sshd)
-	if err != nil || len(binaryData) == 0 || len(binaryData) > 256<<20 {
+	binaryData, _, _, err := secureRootFile(h.sshd, 256<<20)
+	if err != nil || len(binaryData) == 0 {
 		return ObservationV1{}, errors.New("selected sshd binary is unavailable")
 	}
 	binaryRevision := domain.Revision(binaryData)

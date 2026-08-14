@@ -58,8 +58,9 @@ func (c *component) Stop(context.Context) error {
 }
 
 func importXUIDeps(host componenthost.APIDeps) importxuihttp.Deps {
+	configService := service.NewConfigServiceWithRuntime(host.Runtime)
 	return importxuihttp.Deps{
-		AuditService:  service.AuditService{Runtime: host.Runtime},
+		AuditHistory:  &service.AuditService{Runtime: host.Runtime},
 		RequireScope:  host.Auth.RequireScope,
 		RequireStepUp: host.Auth.RequireStepUp,
 		Audit:         host.Audit.Audit,
@@ -68,5 +69,13 @@ func importXUIDeps(host componenthost.APIDeps) importxuihttp.Deps {
 		Hostname:      host.Request.Hostname,
 		JSONObj:       host.HTTP.JSONObj,
 		JSONMsg:       host.HTTP.JSONMsg,
+		ConfigChanged: func() {
+			configService.ApplyComponentConfigChangeEffects(service.ComponentConfigChangeEffects{
+				PrimaryObject:  "config",
+				IncludeObjects: []string{"inbounds", "outbounds", "endpoints", "tls", "clients", "settings"},
+				CoreRestart:    true,
+				RestartReason:  "compatible panel import",
+			})
+		},
 	}
 }

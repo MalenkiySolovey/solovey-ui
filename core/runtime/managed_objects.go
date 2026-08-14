@@ -1,177 +1,124 @@
 package runtime
 
 import (
+	"errors"
+
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/option"
 )
 
 func (c *Core) AddInbound(config []byte) error {
-	rt, ok := c.runtime()
-	if !ok {
-		return common.NewError("sing-box is not running")
-	}
-	var err error
-	var inbound_config option.Inbound
-	err = inbound_config.UnmarshalJSONContext(rt.ctx, config)
-	if err != nil {
-		return err
-	}
-
-	err = rt.inboundManager.Create(
-		rt.ctx,
-		rt.router,
-		rt.factory.NewLogger("inbound/"+inbound_config.Type+"["+inbound_config.Tag+"]"),
-		inbound_config.Tag,
-		inbound_config.Type,
-		inbound_config.Options)
-	if err != nil {
-		return err
-	}
-	record, recorded := inboundRuntimeRecord(rt.ctx, inbound_config, 0)
-	if !recorded {
-		_ = rt.inboundManager.Remove(inbound_config.Tag)
-		return common.NewError("record effective inbound")
-	}
-	c.access.Lock()
-	if c.isRunning && c.inboundManager == rt.inboundManager {
+	return c.withMutation(func(rt coreRuntime) error {
+		var inboundConfig option.Inbound
+		if err := inboundConfig.UnmarshalJSONContext(rt.ctx, config); err != nil {
+			return err
+		}
+		if err := rt.inboundManager.Create(
+			rt.ctx,
+			rt.router,
+			rt.factory.NewLogger("inbound/"+inboundConfig.Type+"["+inboundConfig.Tag+"]"),
+			inboundConfig.Tag,
+			inboundConfig.Type,
+			inboundConfig.Options); err != nil {
+			return err
+		}
+		record, recorded := inboundRuntimeRecord(rt.ctx, inboundConfig, 0)
+		if !recorded {
+			return errors.Join(errors.New("record effective inbound"), rt.inboundManager.Remove(inboundConfig.Tag))
+		}
+		c.access.Lock()
 		if c.effectiveInbounds == nil {
 			c.effectiveInbounds = make(map[string]InboundRuntimeRecord)
 		}
 		record.ManagerGeneration = c.managerGeneration
-		c.effectiveInbounds[inbound_config.Tag] = record
-	}
-	c.access.Unlock()
-
-	return nil
+		c.effectiveInbounds[inboundConfig.Tag] = record
+		c.access.Unlock()
+		return nil
+	})
 }
 
 func (c *Core) RemoveInbound(tag string) error {
-	rt, ok := c.runtime()
-	if !ok {
-		return common.NewError("sing-box is not running")
-	}
-	logger.Info("remove inbound: ", tag)
-	if err := rt.inboundManager.Remove(tag); err != nil {
-		return err
-	}
-	c.access.Lock()
-	if c.effectiveInbounds != nil {
-		delete(c.effectiveInbounds, tag)
-	}
-	c.access.Unlock()
-	return nil
+	return c.withMutation(func(rt coreRuntime) error {
+		logger.Info("remove inbound: ", tag)
+		if err := rt.inboundManager.Remove(tag); err != nil {
+			return err
+		}
+		c.access.Lock()
+		if c.effectiveInbounds != nil {
+			delete(c.effectiveInbounds, tag)
+		}
+		c.access.Unlock()
+		return nil
+	})
 }
 
 func (c *Core) AddOutbound(config []byte) error {
-	rt, ok := c.runtime()
-	if !ok {
-		return common.NewError("sing-box is not running")
-	}
-	var err error
-	var outbound_config option.Outbound
-
-	err = outbound_config.UnmarshalJSONContext(rt.ctx, config)
-	if err != nil {
-		return err
-	}
-
-	outboundCtx := adapter.WithContext(rt.ctx, &adapter.InboundContext{
-		Outbound: outbound_config.Tag,
+	return c.withMutation(func(rt coreRuntime) error {
+		var outboundConfig option.Outbound
+		if err := outboundConfig.UnmarshalJSONContext(rt.ctx, config); err != nil {
+			return err
+		}
+		outboundCtx := adapter.WithContext(rt.ctx, &adapter.InboundContext{Outbound: outboundConfig.Tag})
+		return rt.outboundManager.Create(
+			outboundCtx,
+			rt.router,
+			rt.factory.NewLogger("outbound/"+outboundConfig.Type+"["+outboundConfig.Tag+"]"),
+			outboundConfig.Tag,
+			outboundConfig.Type,
+			outboundConfig.Options)
 	})
-
-	err = rt.outboundManager.Create(
-		outboundCtx,
-		rt.router,
-		rt.factory.NewLogger("outbound/"+outbound_config.Type+"["+outbound_config.Tag+"]"),
-		outbound_config.Tag,
-		outbound_config.Type,
-		outbound_config.Options)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 func (c *Core) RemoveOutbound(tag string) error {
-	rt, ok := c.runtime()
-	if !ok {
-		return common.NewError("sing-box is not running")
-	}
-	logger.Info("remove outbound: ", tag)
-	return rt.outboundManager.Remove(tag)
+	return c.withMutation(func(rt coreRuntime) error {
+		logger.Info("remove outbound: ", tag)
+		return rt.outboundManager.Remove(tag)
+	})
 }
 
 func (c *Core) AddEndpoint(config []byte) error {
-	rt, ok := c.runtime()
-	if !ok {
-		return common.NewError("sing-box is not running")
-	}
-	var err error
-	var endpoint_config option.Endpoint
-
-	err = endpoint_config.UnmarshalJSONContext(rt.ctx, config)
-	if err != nil {
-		return err
-	}
-
-	err = rt.endpointManager.Create(
-		rt.ctx,
-		rt.router,
-		rt.factory.NewLogger("endpoint/"+endpoint_config.Type+"["+endpoint_config.Tag+"]"),
-		endpoint_config.Tag,
-		endpoint_config.Type,
-		endpoint_config.Options)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return c.withMutation(func(rt coreRuntime) error {
+		var endpointConfig option.Endpoint
+		if err := endpointConfig.UnmarshalJSONContext(rt.ctx, config); err != nil {
+			return err
+		}
+		return rt.endpointManager.Create(
+			rt.ctx,
+			rt.router,
+			rt.factory.NewLogger("endpoint/"+endpointConfig.Type+"["+endpointConfig.Tag+"]"),
+			endpointConfig.Tag,
+			endpointConfig.Type,
+			endpointConfig.Options)
+	})
 }
 
 func (c *Core) RemoveEndpoint(tag string) error {
-	rt, ok := c.runtime()
-	if !ok {
-		return common.NewError("sing-box is not running")
-	}
-	logger.Info("remove endpoint: ", tag)
-	return rt.endpointManager.Remove(tag)
+	return c.withMutation(func(rt coreRuntime) error {
+		logger.Info("remove endpoint: ", tag)
+		return rt.endpointManager.Remove(tag)
+	})
 }
 
 func (c *Core) AddService(config []byte) error {
-	rt, ok := c.runtime()
-	if !ok {
-		return common.NewError("sing-box is not running")
-	}
-	var err error
-	var srv_config option.Service
-
-	err = srv_config.UnmarshalJSONContext(rt.ctx, config)
-	if err != nil {
-		return err
-	}
-
-	err = rt.serviceManager.Create(
-		rt.ctx,
-		rt.factory.NewLogger("service/"+srv_config.Type+"["+srv_config.Tag+"]"),
-		srv_config.Tag,
-		srv_config.Type,
-		srv_config.Options)
-	if err != nil {
-		return err
-	}
-
-	return nil
+	return c.withMutation(func(rt coreRuntime) error {
+		var serviceConfig option.Service
+		if err := serviceConfig.UnmarshalJSONContext(rt.ctx, config); err != nil {
+			return err
+		}
+		return rt.serviceManager.Create(
+			rt.ctx,
+			rt.factory.NewLogger("service/"+serviceConfig.Type+"["+serviceConfig.Tag+"]"),
+			serviceConfig.Tag,
+			serviceConfig.Type,
+			serviceConfig.Options)
+	})
 }
 
 func (c *Core) RemoveService(tag string) error {
-	rt, ok := c.runtime()
-	if !ok {
-		return common.NewError("sing-box is not running")
-	}
-	logger.Info("remove service: ", tag)
-	return rt.serviceManager.Remove(tag)
+	return c.withMutation(func(rt coreRuntime) error {
+		logger.Info("remove service: ", tag)
+		return rt.serviceManager.Remove(tag)
+	})
 }

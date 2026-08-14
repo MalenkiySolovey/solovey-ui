@@ -12,6 +12,15 @@ import (
 
 type failingProvider struct{}
 
+func registerHostProvider(t *testing.T, registry *Registry, provider Provider) func() {
+	t.Helper()
+	unregister, err := registry.Register(provider)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return unregister
+}
+
 func (failingProvider) SourceID() string { return "fixture" }
 func (failingProvider) Observe(context.Context, Limits) (Observation, error) {
 	return Observation{}, errors.New("offline")
@@ -19,11 +28,15 @@ func (failingProvider) Observe(context.Context, Limits) (Observation, error) {
 
 type unsafeProvider struct{}
 
-func (unsafeProvider) SourceID() string { return `/var/lib/private/provider` }
+func (unsafeProvider) SourceID() string { return "fixture" }
 func (unsafeProvider) Observe(context.Context, Limits) (Observation, error) {
 	pid := 10
 	return Observation{Facts: []HostSurfaceFactV1{{ID: `/secret/id`, Bind: `/secret/socket`, Process: ProcessFact{PID: &pid, StartTime: `/secret/start`, ExeDigest: `/secret/exe`}, Source: `/secret/source`, ReasonCodes: []string{`/secret/reason`}}}}, nil
 }
+
+type invalidSourceProvider struct{ unsafeProvider }
+
+func (invalidSourceProvider) SourceID() string { return `/var/lib/private/provider` }
 
 type blockingProvider struct {
 	calls   atomic.Int32
@@ -46,7 +59,7 @@ func (p *blockingProvider) Observe(context.Context, Limits) (Observation, error)
 func TestRegistryCoalescesReconciliationAndDeepClonesProcessIdentity(t *testing.T) {
 	registry := NewRegistry()
 	provider := &blockingProvider{started: make(chan struct{}, 1), release: make(chan struct{})}
-	registry.Register(provider)
+	registerHostProvider(t, registry, provider)
 	results := make(chan Snapshot, 2)
 	go func() { results <- registry.Reconcile(context.Background()) }()
 	<-provider.started
@@ -97,8 +110,8 @@ func (p manyFactsProvider) Observe(_ context.Context, limits Limits) (Observatio
 
 func TestRegistryAppliesSocketCapAcrossProviders(t *testing.T) {
 	registry := NewRegistry()
-	registry.Register(manyFactsProvider{source: "a"})
-	registry.Register(manyFactsProvider{source: "b"})
+	registerHostProvider(t, registry, manyFactsProvider{source: "a"})
+	registerHostProvider(t, registry, manyFactsProvider{source: "b"})
 	snapshot := registry.Reconcile(context.Background())
 	if len(snapshot.Facts) != DefaultLimits().MaxSockets || !snapshot.Truncated {
 		t.Fatalf("global socket cap not enforced: facts=%d truncated=%t", len(snapshot.Facts), snapshot.Truncated)
@@ -119,11 +132,13 @@ func (p countedProvider) Observe(context.Context, Limits) (Observation, error) {
 func TestRegistryRejectsMultipleProvidersWithTheSameProductionIdentity(t *testing.T) {
 	registry := NewRegistry()
 	var calls atomic.Int32
-	registry.Register(countedProvider{source: "fixture-protection:linux-hostsurface", calls: &calls})
-	registry.Register(countedProvider{source: "fixture-protection:linux-hostsurface", calls: &calls})
+	registerHostProvider(t, registry, countedProvider{source: "fixture-protection:linux-hostsurface", calls: &calls})
+	if _, err := registry.Register(countedProvider{source: "fixture-protection:linux-hostsurface", calls: &calls}); err == nil {
+		t.Fatal("duplicate host-surface authority was accepted")
+	}
 	snapshot := registry.Reconcile(context.Background())
-	if calls.Load() != 0 || len(snapshot.Facts) != 1 || snapshot.Facts[0].Classification != ClassificationUnknownOwner || !strings.Contains(strings.Join(snapshot.Facts[0].ReasonCodes, ","), "hostsurface_provider_ambiguous") {
-		t.Fatalf("ambiguous provider identity was selected: calls=%d snapshot=%#v", calls.Load(), snapshot)
+	if calls.Load() != 1 || len(snapshot.Facts) != 0 {
+		t.Fatalf("valid provider was displaced after duplicate rejection: calls=%d snapshot=%#v", calls.Load(), snapshot)
 	}
 }
 
@@ -155,7 +170,7 @@ func TestRegistryAllowsOnlyTheBoundedOwnerObservationBudget(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			registry := NewRegistry()
 			provider := &budgetProvider{requested: test.requested}
-			registry.Register(provider)
+			registerHostProvider(t, registry, provider)
 			_ = registry.Reconcile(context.Background())
 			if provider.observed != test.want {
 				t.Fatalf("provider budget=%s want=%s", provider.observed, test.want)
@@ -166,7 +181,10 @@ func TestRegistryAllowsOnlyTheBoundedOwnerObservationBudget(t *testing.T) {
 
 func TestRegistryDoesNotExposeProviderPathsOrFreeFormIDs(t *testing.T) {
 	registry := NewRegistry()
-	registry.Register(unsafeProvider{})
+	if _, err := registry.Register(invalidSourceProvider{}); err == nil {
+		t.Fatal("unsafe provider identity was accepted")
+	}
+	registerHostProvider(t, registry, unsafeProvider{})
 	snapshot := registry.Reconcile(context.Background())
 	payload, _ := json.Marshal(snapshot)
 	if strings.Contains(string(payload), "/secret/") || strings.Contains(string(payload), "/var/lib/private") {
@@ -183,7 +201,7 @@ func TestRegistryProviderAbsenceAndFailureAreExplicitUnknown(t *testing.T) {
 	if len(snapshot.Facts) != 1 || snapshot.Facts[0].Classification != ClassificationUnknownOwner || len(snapshot.Facts[0].ReasonCodes) == 0 {
 		t.Fatalf("absence snapshot = %#v", snapshot)
 	}
-	registry.Register(failingProvider{})
+	registerHostProvider(t, registry, failingProvider{})
 	snapshot = registry.Reconcile(context.Background())
 	if len(snapshot.Facts) != 1 || snapshot.Facts[0].Source != "fixture" || len(snapshot.Facts[0].ReasonCodes) == 0 {
 		t.Fatalf("failure snapshot = %#v", snapshot)

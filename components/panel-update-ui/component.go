@@ -32,24 +32,19 @@ func init() {
 }
 
 func panelUpdateDeps(host componenthost.APIDeps) panelupdatehttp.Deps {
-	componentManager := panelupdateservice.NewManager(panelupdateservice.NewRuntimeManager(&service.ConfigService{}))
+	componentManager := panelupdateservice.NewManager(panelupdateservice.NewRuntimeManager(service.NewConfigServiceWithRuntime(host.Runtime)))
 	return panelupdatehttp.Deps{
-		Settings:         &service.SettingService{},
-		Versions:         &service.VersionService{},
-		Manager:          panelupdateservice.NewUpdateManager(),
 		Components:       componentManager,
 		ComponentManager: componentManager,
 		LoginUser:        host.Auth.LoginUser,
 		RemoteIP:         host.Request.RemoteIP,
 		Hostname:         host.Request.Hostname,
 		RequireScope:     host.Auth.RequireScope,
-		RequireStepUp:    host.Auth.RequireStepUp,
 		CheckPassword:    host.Auth.CheckPassword,
 		CheckRateLimit:   host.Rate.CheckLoginRateLimit,
 		RecordFailure:    host.Rate.RecordLoginFailure,
 		ResetFailures:    host.Rate.ResetLoginFailures,
 		UserKey:          host.Rate.LoginRateLimitUserKey,
-		AllowCheck:       host.Update.AllowForcedUpdateCheck,
 		Audit:            host.Audit.Audit,
 		JSONObj:          host.HTTP.JSONObj,
 		JSONMsg:          host.HTTP.JSONMsg,

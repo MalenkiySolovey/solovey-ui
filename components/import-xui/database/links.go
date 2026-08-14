@@ -60,7 +60,11 @@ func localLinkEntries(tx *gorm.DB, config json.RawMessage, inboundsJSON json.Raw
 	}
 	entries := make([]map[string]string, 0, len(inbounds))
 	for i := range inbounds {
-		for _, uri := range suburi.Generate(config, &inbounds[i], hostname) {
+		generated, err := suburi.Generate(config, &inbounds[i], hostname)
+		if err != nil {
+			return nil, err
+		}
+		for _, uri := range generated {
 			entries = append(entries, map[string]string{
 				"remark": inbounds[i].Tag,
 				"type":   "local",

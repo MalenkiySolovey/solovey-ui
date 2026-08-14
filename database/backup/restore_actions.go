@@ -4,7 +4,6 @@ import (
 	"context"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/hooks"
-	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
@@ -23,13 +22,6 @@ var restoreProtectedPostActionHook func(context.Context) error
 
 func importRollbackProtectedPostActions(dbPath string) []importPostAction {
 	return []importPostAction{
-		{
-			stage:           "migrating imported db",
-			rollbackOnError: true,
-			run: func(context.Context) error {
-				return migration.MigrateDb()
-			},
-		},
 		{
 			stage:           "opening imported db",
 			rollbackOnError: true,

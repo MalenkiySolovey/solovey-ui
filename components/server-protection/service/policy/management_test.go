@@ -91,7 +91,7 @@ func TestManagementGuardRejectsStaleEndpointRevisionAndWrongSourceFamily(t *test
 }
 
 func managementFixture(now time.Time) hostresources.ManagementEndpointV1 {
-	return hostresources.ManagementEndpointV1{Schema: hostresources.ManagementEndpointSchemaV1, ID: "management:panel", Network: hostresources.NetworkTCP, Family: hostresources.AddressFamilyIPv4, Bind: "192.0.2.5", Port: 443, ServiceKind: hostresources.ManagementPanel, Exposure: hostresources.EndpointIntentPublic, Owner: "panel", ResourceID: "core:panel:web", RecoveryPolicy: "fresh_independent_path_required", Source: "fixture", ConfidenceBP: 10000, ObservedAt: now.Unix(), ConfigurationRevision: strings.Repeat("c", 64)}
+	return hostresources.ManagementEndpointV1{Schema: hostresources.ManagementEndpointSchemaV1, ID: "management:panel", Network: hostresources.NetworkTCP, Family: hostresources.AddressFamilyIPv4, Bind: "192.0.2.5", Port: 443, ServiceKind: hostresources.ManagementPanel, Exposure: hostresources.EndpointIntentPublic, Owner: "panel", ResourceID: "core:panel:web", RecoveryPolicy: "fresh_independent_path_required", Purpose: "administrative_access", ConfiguredIntent: true, Source: "fixture", ConfidenceBP: 10000, ObservedAt: now.Unix(), ExpiresAt: now.Add(90 * time.Second).Unix(), ConfigurationRevision: strings.Repeat("c", 64)}
 }
 
 func recoveryFixture(endpointID, sourcePrefix string, now time.Time) hostresources.RecoveryPathV1 {

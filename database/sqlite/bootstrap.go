@@ -2,11 +2,15 @@ package sqlite
 
 import (
 	"context"
-	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 
+	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entityvalidation "github.com/MalenkiySolovey/solovey-ui/internal/entities"
+	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
+	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
@@ -16,27 +20,41 @@ import (
 
 var adaptToCurrentVersion = adapt
 
-func Init(dbPath string) error {
+func Init(dbPath string) (err error) {
+	if err := prepareForInit(); err != nil {
+		return err
+	}
+	if err := migration.MigratePathIfExists(dbPath, migration.Options{}); err != nil {
+		return fmt.Errorf("migrate database before open: %w", err)
+	}
 	if err := preflightSupportedVersion(dbPath); err != nil {
 		return err
 	}
 	if err := open(dbPath); err != nil {
 		return err
 	}
-	if err := ensureDefaultOutbound(gormDefaultOutboundStore{db: db}); err != nil {
-		return err
-	}
+	initialized := false
+	defer func() {
+		if !initialized {
+			if closeErr := Close(); closeErr != nil {
+				err = errors.Join(err, fmt.Errorf("close failed database initialization: %w", closeErr))
+			}
+		}
+	}()
 	if err := db.AutoMigrate(schemaModels()...); err != nil {
 		return err
 	}
-	if err := dropDeprecatedTables(); err != nil {
+	if err := entityoutbounds.EnsureDefault(db); err != nil {
+		return fmt.Errorf("ensure default outbound: %w", err)
+	}
+	if err := entitytls.EnsureSentinel(db); err != nil {
 		return err
 	}
-	if err := ensureNoTLSRow(); err != nil {
-		return err
+	if err := entityvalidation.ValidateStored(db); err != nil {
+		return fmt.Errorf("validate stored entities: %w", err)
 	}
-	if err := ensureIndexes(); err != nil {
-		return err
+	if err := ensureIndexes(db); err != nil {
+		return fmt.Errorf("ensure database indexes: %w", err)
 	}
 	if err := ensureInitialAdmin(dbPath); err != nil {
 		return err
@@ -47,6 +65,7 @@ func Init(dbPath string) error {
 	if err := ensureSortOrders(); err != nil {
 		return fmt.Errorf("sort-order backfill failed: %w", err)
 	}
+	initialized = true
 	return nil
 }
 
@@ -78,7 +97,10 @@ func ensureInitialAdmin(dbPath string) error {
 		return nil
 	}
 
-	password := common.Random(24)
+	password, err := common.SecureRandom(24)
+	if err != nil {
+		return err
+	}
 	passwordHash, err := passwordutil.Hash(context.Background(), password)
 	if err != nil {
 		return err
@@ -112,28 +134,4 @@ func ensureInitialAdmin(dbPath string) error {
 	}
 	notifyInitialAdminPasswordSaved(passwordPath)
 	return nil
-}
-
-type defaultOutboundStore interface {
-	HasTable(value any) bool
-	CreateTable(values ...any) error
-	Create(value any) error
-}
-
-type gormDefaultOutboundStore struct{ db *gorm.DB }
-
-func (s gormDefaultOutboundStore) HasTable(value any) bool { return s.db.Migrator().HasTable(value) }
-func (s gormDefaultOutboundStore) CreateTable(values ...any) error {
-	return s.db.Migrator().CreateTable(values...)
-}
-func (s gormDefaultOutboundStore) Create(value any) error { return s.db.Create(value).Error }
-
-func ensureDefaultOutbound(store defaultOutboundStore) error {
-	if store.HasTable(&model.Outbound{}) {
-		return nil
-	}
-	if err := store.CreateTable(&model.Outbound{}); err != nil {
-		return err
-	}
-	return store.Create(&[]model.Outbound{{Type: "direct", Tag: "direct", Options: json.RawMessage(`{}`)}})
 }

@@ -52,9 +52,6 @@ func connectionOutboundConfig(connection RemoteOutboundConnection, tagMap map[st
 	}
 	return data, nil
 }
-func ConnectionOutboundMap(connection RemoteOutboundConnection) (map[string]interface{}, error) {
-	return connectionOutboundMap(connection, nil)
-}
 func connectionOutboundMap(connection RemoteOutboundConnection, tagMap map[string]string) (map[string]interface{}, error) {
 	rawConfig, err := connectionOutboundConfig(connection, tagMap)
 	if err != nil {

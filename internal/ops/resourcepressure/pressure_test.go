@@ -44,15 +44,16 @@ func TestEvaluatorHysteresisRecoveryStalenessAndNoWriteStormRevision(t *testing.
 		t.Fatalf("recovery window not entered: %#v", got)
 	}
 	recoveryStarted := now
+	var recovered Snapshot
 	for now.Sub(recoveryStarted) < RecoveryWindow {
 		now = now.Add(SampleInterval)
-		got := evaluator.Evaluate(now, signal(now, .5))
-		if now.Sub(recoveryStarted) < RecoveryWindow && got.State != StateRecovering {
-			t.Fatalf("recovery window exited early at %s: %#v", now.Sub(recoveryStarted), got)
+		recovered = evaluator.Evaluate(now, signal(now, .5))
+		if now.Sub(recoveryStarted) < RecoveryWindow && recovered.State != StateRecovering {
+			t.Fatalf("recovery window exited early at %s: %#v", now.Sub(recoveryStarted), recovered)
 		}
 	}
-	if got := evaluator.Current(); got.State != StateNormal || got.Revision != 6 {
-		t.Fatalf("normal was not confirmed: %#v", got)
+	if recovered.State != StateNormal || recovered.Revision != 6 {
+		t.Fatalf("normal was not confirmed: %#v", recovered)
 	}
 	expired := signal(now, .5)
 	now = now.Add(DefaultFreshness + SampleInterval)

@@ -19,14 +19,16 @@ type ClashService struct {
 
 func (s *ClashService) GetClash(subID string) (*string, []string, error) {
 	now := time.Now()
+	enabled, err := s.SettingService.GetSubClashEnable()
+	if err != nil {
+		return nil, nil, err
+	}
+	if !enabled {
+		return nil, nil, common.NewError("clash subscription disabled")
+	}
 	cacheKey := "clash:" + subID + ":clientHooks=" + strconv.FormatUint(localsub.ClientOutboundContributorsVersion(), 10)
 	if body, headers, ok := subscriptionCacheGet(cacheKey, now); ok {
 		return &body, headers, nil
-	}
-
-	enabled, err := s.SettingService.GetSubClashEnable()
-	if err == nil && !enabled {
-		return nil, nil, common.NewError("clash subscription disabled")
 	}
 
 	client, inbounds, err := loadClientData(subID)
@@ -55,7 +57,11 @@ func (s *ClashService) GetClash(subID string) (*string, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	headers := safeSubscriptionHeaders(buildClientHeaders(client, subserver.CachedDisplaySettings(&s.SettingService, now)))
+	displaySettings, err := subserver.CachedDisplaySettings(&s.SettingService, now)
+	if err != nil {
+		return nil, nil, err
+	}
+	headers := safeSubscriptionHeaders(buildClientHeaders(client, displaySettings))
 	subscriptionCacheSet(cacheKey, result, headers, now)
 	return &result, headers, nil
 }

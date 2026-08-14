@@ -40,6 +40,7 @@ func newBot() *Bot {
 func newBotWithRuntime(runtime *service.Runtime) *Bot {
 	bot := newBot()
 	bot.runtime = runtime
+	bot.payments = newPaymentCoordinator(runtime)
 	return bot
 }
 
@@ -70,11 +71,12 @@ func StartBot(runtime *service.Runtime) {
 
 // StopBot signals the receiver to stop and waits up to ctx for it to finish.
 func StopBot(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	botMu.Lock()
 	cancel := botCancel
 	done := botDone
-	botCancel = nil
-	botDone = nil
 	botMu.Unlock()
 	if cancel == nil {
 		return nil
@@ -85,6 +87,12 @@ func StopBot(ctx context.Context) error {
 	}
 	select {
 	case <-done:
+		botMu.Lock()
+		if botDone == done {
+			botCancel = nil
+			botDone = nil
+		}
+		botMu.Unlock()
 		return nil
 	case <-ctx.Done():
 		return ctx.Err()
@@ -93,20 +101,30 @@ func StopBot(ctx context.Context) error {
 
 // newSenderBot builds a Bot ready to SEND (not poll) — used by the payment poll
 // job to notify users out-of-band. Returns an error if the bot token is unset.
-func newSenderBot() (*Bot, error) {
-	b := newBot()
+func newSenderBot(runtime ...*service.Runtime) (*Bot, error) {
+	var hostRuntime *service.Runtime
+	if len(runtime) > 0 {
+		hostRuntime = runtime[0]
+	}
+	b := newBotWithRuntime(hostRuntime)
 	token, err := b.setting.GetPaidSubBotToken()
 	if err != nil || token == "" {
 		return nil, fmt.Errorf("paidsub: bot token not configured")
 	}
 	poll, _ := b.setting.GetPaidSubBotPollSeconds()
-	client, err := newPaidSubHTTPClient(time.Duration(poll+10) * time.Second)
+	client, err := newPaidSubHTTPClient(b.runtime, time.Duration(poll+10)*time.Second)
 	if err != nil {
 		return nil, err
 	}
 	b.client = client
 	b.token = token
 	return b, nil
+}
+
+func (b *Bot) closeIdleConnections() {
+	if b != nil && b.client != nil {
+		b.client.CloseIdleConnections()
+	}
 }
 
 // sleepCtx sleeps for d or until ctx is cancelled. Returns true if cancelled.
@@ -123,6 +141,11 @@ func sleepCtx(ctx context.Context, d time.Duration) bool {
 
 func (b *Bot) run(ctx context.Context, done chan struct{}) {
 	defer close(done)
+	defer func() {
+		if b.client != nil {
+			b.client.CloseIdleConnections()
+		}
+	}()
 	backoff := time.Second
 	const maxBackoff = 60 * time.Second
 	for {
@@ -144,7 +167,7 @@ func (b *Bot) run(ctx context.Context, done chan struct{}) {
 			continue
 		}
 		poll, _ := b.setting.GetPaidSubBotPollSeconds()
-		client, err := newPaidSubHTTPClient(time.Duration(poll+10) * time.Second)
+		client, err := newPaidSubHTTPClient(b.runtime, time.Duration(poll+10)*time.Second)
 		if err != nil {
 			logger.Warning("paidsub: build http client: ", err)
 			if sleepCtx(ctx, backoff) {
@@ -162,7 +185,15 @@ func (b *Bot) run(ctx context.Context, done chan struct{}) {
 		b.client = client
 		b.token = token
 
-		offset, _ := b.setting.GetPaidSubUpdateOffset()
+		offset, err := b.setting.GetPaidSubUpdateOffset()
+		if err != nil || offset < 0 {
+			logger.Warning("paidsub: read update offset: invalid persisted value")
+			if sleepCtx(ctx, backoff) {
+				return
+			}
+			backoff = nextBackoff(backoff, maxBackoff)
+			continue
+		}
 		updates, err := b.getUpdates(ctx, offset, poll)
 		if err != nil {
 			if ctx.Err() != nil {

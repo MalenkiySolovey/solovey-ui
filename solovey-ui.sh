@@ -13,6 +13,7 @@ SERVICE_FILE="${SOLOVEY_UI_SYSTEMD_SERVICE:-/etc/systemd/system/${SERVICE_NAME}.
 SYSTEMD_UNIT_ROOT="${SOLOVEY_UI_SYSTEMD_UNIT_ROOT:-${SERVICE_FILE%/*}}"
 SYSTEMD_PROFILE_ROOT="${SOLOVEY_UI_SYSTEMD_PROFILE_ROOT:-/usr/local/lib/${APP_NAME}/systemd}"
 ENV_DIR="${SOLOVEY_UI_ENV_DIR:-/etc/${APP_NAME}}"
+DEPLOYMENT_MARKER="${SOLOVEY_UI_DEPLOYMENT_MARKER:-${ENV_DIR}/deployment-profile}"
 HARDENED_DATA_ROOT="${SOLOVEY_UI_HARDENED_DATA_ROOT:-/var/lib/${APP_NAME}}"
 BROKER_STATE_ROOT="${SOLOVEY_UI_BROKER_STATE_ROOT:-/var/lib/${APP_NAME}-broker}"
 BACKUP_ROOT="${SOLOVEY_UI_BACKUP_ROOT:-/var/backups/${APP_NAME}}"
@@ -96,7 +97,65 @@ show_log() {
 
 run_binary() {
     need_binary
-    "${BIN_PATH}" "$@"
+    local profile db_folder env_file key value
+    profile="$(deployment_profile)"
+    db_folder="$(database_dir "${profile}")"
+    env_file="${ENV_DIR}/secretbox.env"
+
+    if [[ -f "${env_file}" ]]; then
+        while IFS='=' read -r key value || [[ -n "${key}" ]]; do
+            case "${key}" in
+                SUI_SECRETBOX_KEY|SUI_COOKIE_KEY)
+                    export "${key}=${value}"
+                    ;;
+            esac
+        done < "${env_file}"
+    fi
+
+    if [[ "${profile}" != "native-legacy-root" && "${EUID}" -eq 0 && "${SOLOVEY_UI_ALLOW_NON_ROOT:-0}" != "1" ]]; then
+        command -v runuser >/dev/null 2>&1 || fail "runuser is required for ${profile} CLI commands"
+        id -u solovey-ui >/dev/null 2>&1 || fail "service user solovey-ui is unavailable"
+        export SUI_DB_FOLDER="${db_folder}"
+        runuser -u solovey-ui -- "${BIN_PATH}" "$@"
+        return
+    fi
+
+    SUI_DB_FOLDER="${db_folder}" "${BIN_PATH}" "$@"
+}
+
+deployment_profile() {
+    local installed=""
+    if [[ -f "${DEPLOYMENT_MARKER}" ]]; then
+        installed="$(tr -d '\r\n' < "${DEPLOYMENT_MARKER}")"
+        case "${installed}" in
+            native-hardened|native-network-advanced|native-legacy-root)
+                printf '%s\n' "${installed}"
+                return
+                ;;
+            *)
+                fail "invalid deployment profile marker: ${DEPLOYMENT_MARKER}"
+                ;;
+        esac
+    fi
+
+    if [[ -f "${INSTALL_DIR}/db/${APP_NAME}.db" ]]; then
+        printf '%s\n' native-legacy-root
+    else
+        printf '%s\n' native-hardened
+    fi
+}
+
+database_dir() {
+    local profile="${1:-$(deployment_profile)}"
+    if [[ "${profile}" == "native-legacy-root" ]]; then
+        printf '%s\n' "${INSTALL_DIR}/db"
+    else
+        printf '%s\n' "${HARDENED_DATA_ROOT}/db"
+    fi
+}
+
+database_path() {
+    printf '%s/%s.db\n' "$(database_dir)" "${APP_NAME}"
 }
 
 menu_header() {
@@ -327,7 +386,8 @@ doctor_sqlite_scalar() {
 }
 
 doctor_database_report() {
-    local db="${INSTALL_DIR}/db/${APP_NAME}.db"
+    local db
+    db="$(database_path)"
     doctor_section "database"
 
     if [[ ! -f "${db}" ]]; then
@@ -362,7 +422,8 @@ doctor_database_report() {
 }
 
 doctor_settings_report() {
-    local db="${INSTALL_DIR}/db/${APP_NAME}.db"
+    local db
+    db="$(database_path)"
     doctor_section "panel settings"
 
     if ! command -v sqlite3 >/dev/null 2>&1 || [[ ! -f "${db}" ]]; then
@@ -380,7 +441,8 @@ doctor_settings_report() {
 }
 
 doctor_port_report() {
-    local db="${INSTALL_DIR}/db/${APP_NAME}.db"
+    local db
+    db="$(database_path)"
     doctor_section "listening ports"
 
     if ! command -v ss >/dev/null 2>&1; then
@@ -469,7 +531,7 @@ run_full_doctor_report() {
     doctor_system_report
 
     if [[ -x "${BIN_PATH}" ]]; then
-        doctor_run_command "binary version" "${BIN_PATH}" -v
+        doctor_run_command "binary version" run_binary -v
     else
         doctor_warn "binary version skipped: ${BIN_PATH} is not executable"
     fi
@@ -505,7 +567,7 @@ run_doctor() {
     doctor_require_executable "manager script" "${INSTALL_DIR}/${APP_NAME}.sh"
     doctor_require_executable "CLI command" "${CLI_PATH}"
     doctor_require_file "systemd service file" "${SERVICE_FILE}"
-    doctor_require_file "database" "${INSTALL_DIR}/db/${APP_NAME}.db"
+    doctor_require_file "database" "$(database_path)"
     doctor_require_file "secret env" "${ENV_DIR}/secretbox.env"
 
     if [[ -f "${ENV_DIR}/secretbox.env" ]] && grep -Eq '^SUI_SECRETBOX_KEY=' "${ENV_DIR}/secretbox.env" 2>/dev/null; then

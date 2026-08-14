@@ -3,18 +3,20 @@ package sub
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 	sublocal "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/local"
 	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
-	"github.com/gofrs/uuid/v5"
 	"gorm.io/gorm"
 )
 
@@ -24,6 +26,13 @@ type SubService struct {
 
 func (s *SubService) GetSubs(subId string) (*string, []string, error) {
 	now := time.Now()
+	enabled, err := s.SettingService.GetSubLinkEnable()
+	if err != nil {
+		return nil, nil, err
+	}
+	if !enabled {
+		return nil, nil, common.NewError("raw link subscription disabled")
+	}
 	cacheKey := "base:" + subId
 	if body, headers, ok := subscriptionCacheGet(cacheKey, now); ok {
 		return &body, headers, nil
@@ -34,7 +43,10 @@ func (s *SubService) GetSubs(subId string) (*string, []string, error) {
 		return nil, nil, err
 	}
 
-	cfg := subserver.CachedDisplaySettings(&s.SettingService, now)
+	cfg, err := subserver.CachedDisplaySettings(&s.SettingService, now)
+	if err != nil {
+		return nil, nil, err
+	}
 
 	clientInfo := ""
 	if cfg.ShowInfo {
@@ -58,24 +70,23 @@ func (s *SubService) GetSubs(subId string) (*string, []string, error) {
 }
 
 func resolveClientLinks(rawLinks json.RawMessage, mode sublocal.LinkMode, clientInfo string) []string {
-	enabled, err := (&service.SettingService{}).GetSubLinkEnable()
-	if err == nil && !enabled {
-		return nil
-	}
 	return sublocal.ResolveClientLinks(rawLinks, mode, clientInfo)
 }
 
 func (j *SubService) getClientBySubId(subId string) (*model.Client, error) {
 	db := dbsqlite.DB()
 	client := &model.Client{}
-	err := db.Model(model.Client{}).Where("enable = true and sub_secret = ?", subId).First(client).Error
+	err := findUniqueEnabledClient(db, "sub_secret", subId, client)
 	if err == nil {
-		return client, j.ensureClientSubSecret(db, client)
+		return client, entityclients.EnsureSubSecret(db, client)
 	}
 	if !dbsqlite.IsNotFound(err) {
 		return nil, err
 	}
-	required, _ := j.SettingService.GetSubSecretRequired()
+	required, err := j.SettingService.GetSubSecretRequired()
+	if err != nil {
+		return nil, err
+	}
 	if required {
 		return nil, gorm.ErrRecordNotFound
 	}
@@ -84,12 +95,34 @@ func (j *SubService) getClientBySubId(subId string) (*model.Client, error) {
 	// fallback allows unauthenticated enumeration of other clients' configs by
 	// name. Warn whenever it actually serves a config so the operator is aware
 	// the insecure mode is on (enable required sub-secrets to close it).
-	err = db.Model(model.Client{}).Where("enable = true and name = ?", subId).First(client).Error
+	err = findUniqueEnabledClient(db, "name", subId, client)
 	if err != nil {
 		return nil, err
 	}
 	logger.Warning("sub: served config via legacy name lookup (subSecretRequired is OFF) — enable required sub-secrets to prevent name-based enumeration")
-	return client, j.ensureClientSubSecret(db, client)
+	return client, entityclients.EnsureSubSecret(db, client)
+}
+
+func findUniqueEnabledClient(db *gorm.DB, column, value string, destination *model.Client) error {
+	if db == nil || destination == nil {
+		return errors.New("client lookup is unavailable")
+	}
+	if column != "sub_secret" && column != "name" {
+		return errors.New("client lookup column is invalid")
+	}
+	var matches []model.Client
+	if err := db.Model(model.Client{}).Where("enable = true AND "+column+" = ?", value).Limit(2).Find(&matches).Error; err != nil {
+		return err
+	}
+	switch len(matches) {
+	case 0:
+		return gorm.ErrRecordNotFound
+	case 1:
+		*destination = matches[0]
+		return nil
+	default:
+		return errors.New("ambiguous client subscription identity")
+	}
 }
 
 func loadClientData(subID string) (*model.Client, []*model.Inbound, error) {
@@ -149,16 +182,4 @@ func (s *SubService) formatTraffic(trafficBytes int64) string {
 	} else {
 		return fmt.Sprintf("%.2fEB", float64(trafficBytes)/float64(1024*1024*1024*1024*1024))
 	}
-}
-
-func (s *SubService) ensureClientSubSecret(db *gorm.DB, client *model.Client) error {
-	if client.SubSecret != "" {
-		return nil
-	}
-	secret, err := uuid.NewV4()
-	if err != nil {
-		return err
-	}
-	client.SubSecret = secret.String()
-	return db.Model(model.Client{}).Where("id = ?", client.Id).Update("sub_secret", client.SubSecret).Error
 }

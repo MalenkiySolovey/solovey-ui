@@ -164,13 +164,17 @@ func (r *Runtime) auditDenialAggregator() *auditsvc.DenialAggregator {
 	return aggregator
 }
 
-func (r *Runtime) replaceAuditWriterIfCurrent(current *auditWriter) {
+func (r *Runtime) replaceAuditWriterIfCurrent(current *auditWriter, pending []model.AuditEvent) {
 	if r == nil {
 		return
 	}
 	r.mu.Lock()
 	if r.auditWriter == current {
-		r.auditWriter = newAuditWriter(auditQueueCapacity, auditBatchSize, auditFlushInterval, writeAuditEvents)
+		replacement := newAuditWriter(auditQueueCapacity, auditBatchSize, auditFlushInterval, writeAuditEvents)
+		for _, event := range pending {
+			replacement.push(event)
+		}
+		r.auditWriter = replacement
 	}
 	r.mu.Unlock()
 }
@@ -194,7 +198,7 @@ func (r *Runtime) resetTokenUseDebouncer() {
 	r.mu.Lock()
 	current := r.tokenUse
 	if current != nil {
-		if err := current.flushNow(context.Background(), true); err != nil {
+		if err := current.flushNow(context.Background(), true, false); err != nil {
 			logger.Warning("token use flush before reset failed:", err)
 		}
 	}

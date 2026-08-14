@@ -7,7 +7,6 @@ import (
 	"mime/multipart"
 	"net/http"
 	"os"
-	"time"
 
 	dbimport "github.com/MalenkiySolovey/solovey-ui/components/import-xui/database"
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
@@ -32,8 +31,10 @@ func (a *Handler) ImportXui(c *gin.Context) {
 	defer os.RemoveAll(upload.Dir)
 
 	dryRun := upload.Fields["dryRun"] == "1"
-	if !dryRun && !a.requireMutationStepUp(c) {
-		return
+	if !dryRun {
+		if !a.requireMutationStepUp(c) || !a.requireMutationDependencies(c) {
+			return
+		}
 	}
 	strategy := dbimport.Strategy(upload.Fields["strategy"])
 	if strategy == "" {
@@ -44,16 +45,6 @@ func (a *Handler) ImportXui(c *gin.Context) {
 		xuiImportError(c, err)
 		return
 	}
-	var backupPath string
-	if !dryRun {
-		var err error
-		backupPath, err = dbimport.WritePreImportBackup(time.Now().Unix())
-		if err != nil {
-			a.recordImportFailure(c, err, upload.SHA256)
-			xuiImportError(c, err)
-			return
-		}
-	}
 	plan, err := dbimport.Plan(upload.Path, dbimport.PlanOptions{
 		Context:   ctx,
 		Strategy:  strategy,
@@ -62,11 +53,10 @@ func (a *Handler) ImportXui(c *gin.Context) {
 	var report *dbimport.Report
 	if err == nil {
 		report, err = dbimport.Apply(upload.Path, *plan, dbimport.ApplyOptions{
-			Context:    ctx,
-			DryRun:     dryRun,
-			SkipBackup: true,
-			SkipAudit:  true,
-			Hostname:   a.Hostname(c),
+			Context:   ctx,
+			DryRun:    dryRun,
+			SkipAudit: true,
+			Hostname:  a.hostname(c),
 		})
 	}
 	if err != nil {
@@ -74,9 +64,9 @@ func (a *Handler) ImportXui(c *gin.Context) {
 		xuiImportError(c, err)
 		return
 	}
-	report.BackupPath = backupPath
 	if !dryRun {
 		a.recordImportSuccess(c, report, upload.SHA256)
+		a.ConfigChanged()
 	}
 	a.JSONObj(c, report, nil)
 }
@@ -132,6 +122,9 @@ func (a *Handler) ImportXuiApply(c *gin.Context) {
 	if !a.requireMutationStepUp(c) {
 		return
 	}
+	if !a.requireMutationDependencies(c) {
+		return
+	}
 	extendSlowRequestDeadlines(c)
 	upload, err := saveUpload(c)
 	if err != nil {
@@ -150,7 +143,7 @@ func (a *Handler) ImportXuiApply(c *gin.Context) {
 	report, err := dbimport.Apply(upload.Path, plan, dbimport.ApplyOptions{
 		Context:   ctx,
 		SkipAudit: true,
-		Hostname:  a.Hostname(c),
+		Hostname:  a.hostname(c),
 		OnProgress: func(progress dbimport.Progress) {
 			realtime.Publish(realtime.TopicComponentProgress, realtime.ComponentProgress{
 				ComponentID: "import-xui",
@@ -164,10 +157,17 @@ func (a *Handler) ImportXuiApply(c *gin.Context) {
 		return
 	}
 	a.recordImportSuccess(c, report, upload.SHA256)
+	a.ConfigChanged()
 	a.JSONObj(c, report, nil)
 }
 
 func (a *Handler) ImportXuiRollback(c *gin.Context) {
+	if !a.requireBaseDependencies(c, false) || a.JSONMsg == nil {
+		if !c.IsAborted() {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, Envelope{Success: false, Msg: "Compatible panel import is unavailable"})
+		}
+		return
+	}
 	if !a.RequireScope(c, "database", "admin") {
 		return
 	}
@@ -177,13 +177,15 @@ func (a *Handler) ImportXuiRollback(c *gin.Context) {
 	if !a.requireMutationStepUp(c) {
 		return
 	}
-	backupPath := xuiRollbackBackupPath(c)
-	if err := validateRollbackPath(backupPath); err != nil {
+	backupReference := xuiRollbackBackupPath(c)
+	backupPath, err := resolveRollbackPath(backupReference)
+	if err != nil {
 		a.recordRollbackInvalidBackup(c)
 		xuiImportError(c, err)
 		return
 	}
-	// #nosec G304 -- backupPath is constrained to the per-request upload temp directory.
+	// #nosec G304 -- backupPath is resolved from a basename-only reference
+	// under the configured database directory and rejects symlinks.
 	file, err := os.Open(backupPath)
 	if err != nil {
 		a.recordImportFailure(c, err, "")
@@ -196,18 +198,24 @@ func (a *Handler) ImportXuiRollback(c *gin.Context) {
 		xuiImportError(c, err)
 		return
 	}
-	a.recordRollbackSuccess(c, backupPath)
+	a.recordRollbackSuccess(c, backupReference)
 	realtime.Publish(realtime.TopicConfigInvalidated, nil)
 	a.JSONMsg(c, "import-xui", nil)
 }
 
 func (a *Handler) ImportXuiReports(c *gin.Context) {
+	if !a.requireBaseDependencies(c, true) || a.AuditHistory == nil {
+		if !c.IsAborted() {
+			c.AbortWithStatusJSON(http.StatusServiceUnavailable, Envelope{Success: false, Msg: "Compatible panel import is unavailable"})
+		}
+		return
+	}
 	if !a.RequireScope(c, "database", "admin") {
 		return
 	}
 	if !a.enforceRateLimit(c) {
 		return
 	}
-	events, err := a.AuditService.ListByEvents(50, []string{"panel_import", "panel_import_failed", "panel_import_rollback"})
+	events, err := a.AuditHistory.ListByEvents(50, []string{"panel_import", "panel_import_failed", "panel_import_rollback"})
 	a.JSONObj(c, events, err)
 }

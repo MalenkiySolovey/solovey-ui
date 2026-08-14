@@ -6,7 +6,6 @@ import (
 	"errors"
 	"os"
 	"runtime"
-	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -42,6 +41,8 @@ type Manager struct {
 	now       func() time.Time
 	current   domain.Snapshot
 	started   bool
+	cancel    context.CancelFunc
+	done      chan struct{}
 }
 
 var shared = newDefaultManager()
@@ -50,8 +51,7 @@ func Shared() *Manager { return shared }
 
 func newDefaultManager() *Manager {
 	evaluator, _ := domain.NewEvaluator(domain.DefaultThresholds())
-	return &Manager{evaluator: evaluator, collector: SystemCollector{}, repo: Repository{DB: dbsqlite.DB},
-		now: time.Now, current: domain.Snapshot{State: domain.StateUnknown, ReasonCodes: []string{"pressure_not_observed"}}}
+	return NewManager(evaluator, SystemCollector{}, Repository{DB: dbsqlite.DB})
 }
 
 func NewManager(evaluator *domain.Evaluator, collector Collector, repository Repository) *Manager {
@@ -74,26 +74,60 @@ func (m *Manager) Start(ctx context.Context) {
 		m.mu.Unlock()
 		return
 	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	runCtx, cancel := context.WithCancel(ctx)
+	done := make(chan struct{})
 	m.started = true
+	m.cancel = cancel
+	m.done = done
 	m.mu.Unlock()
-	_ = m.Observe(ctx)
+	_ = m.Observe(runCtx)
 	go func() {
+		defer close(done)
 		ticker := time.NewTicker(PollInterval)
 		defer ticker.Stop()
 		for {
 			select {
-			case <-ctx.Done():
+			case <-runCtx.Done():
 				m.mu.Lock()
-				m.started = false
+				if m.done == done {
+					m.started = false
+					m.cancel = nil
+					m.done = nil
+				}
 				m.mu.Unlock()
 				return
 			case <-ticker.C:
-				observeCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+				observeCtx, stopObserve := context.WithTimeout(runCtx, 5*time.Second)
 				_ = m.Observe(observeCtx)
-				cancel()
+				stopObserve()
 			}
 		}
 	}()
+}
+
+func (m *Manager) Stop(ctx context.Context) error {
+	if m == nil {
+		return nil
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	m.mu.RLock()
+	cancel, done := m.cancel, m.done
+	m.mu.RUnlock()
+	if cancel == nil || done == nil {
+		return nil
+	}
+	cancel()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 func (m *Manager) Observe(ctx context.Context) error {
@@ -104,13 +138,17 @@ func (m *Manager) Observe(ctx context.Context) error {
 	defer m.observeMu.Unlock()
 	now := m.now()
 	snapshot := m.evaluator.Evaluate(now, m.collector.Collect(ctx, now))
-	m.mu.Lock()
+	m.mu.RLock()
 	previous := m.current
+	m.mu.RUnlock()
+	if snapshot.State != previous.State || snapshot.Revision != previous.Revision {
+		if err := m.persist(ctx, previous, snapshot); err != nil {
+			return err
+		}
+	}
+	m.mu.Lock()
 	m.current = snapshot
 	m.mu.Unlock()
-	if snapshot.State != previous.State || snapshot.Revision != previous.Revision {
-		return m.persist(ctx, previous, snapshot)
-	}
 	return nil
 }
 
@@ -171,15 +209,6 @@ func prunePersistedTransitions(tx *gorm.DB) error {
 		return nil
 	}
 	return tx.Where("sequence < ?", floor).Delete(&model.ResourcePressureTransition{}).Error
-}
-
-func transitionRetentionCutoff(sequences []uint64, keep int) uint64 {
-	if keep <= 0 || len(sequences) <= keep {
-		return 0
-	}
-	copySequences := append([]uint64(nil), sequences...)
-	sort.Slice(copySequences, func(i, j int) bool { return copySequences[i] > copySequences[j] })
-	return copySequences[keep-1]
 }
 
 func firstReason(reasons []string) string {

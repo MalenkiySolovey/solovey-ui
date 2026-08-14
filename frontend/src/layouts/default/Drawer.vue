@@ -26,7 +26,7 @@
         v-for="item in menu"
         :key="item.title"
         :to="item.path"
-        :active="router.currentRoute.value.path == item.path">
+        :active="route.path == item.path">
         <template v-slot:prepend>
           <v-icon :icon="item.icon"></v-icon>
         </template>
@@ -41,12 +41,13 @@
 
 <script lang="ts" setup>
 import { computed } from 'vue'
-import router from '@/router'
+import { useRoute } from 'vue-router'
 import { logout } from '@/shared/composables/useAuthOperations'
 import logoUrl from '@/assets/logo.png'
 import { classicMenuItems } from '@/componentSystem/navigation'
 
 const props = defineProps(['isMobile','displayDrawer'])
+const route = useRoute()
 
 const showDrawer = computed((): boolean => {
   return props.displayDrawer

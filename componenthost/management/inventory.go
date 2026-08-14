@@ -162,7 +162,7 @@ func Effective(value hostresources.RecoveryPathV1, endpoints []hostresources.Man
 			matches = append(matches, endpoint)
 		}
 	}
-	if len(matches) != 1 || !strings.EqualFold(value.Kind, string(matches[0].ServiceKind)) || !hostresources.ManagementEndpointCurrent(matches[0]) {
+	if len(matches) != 1 || !strings.EqualFold(value.Kind, string(matches[0].ServiceKind)) || !hostresources.ManagementEndpointCurrent(matches[0], now) {
 		value.VerificationState = "invalidated"
 		value.ReasonCodes = appendReason(value.ReasonCodes, "management_endpoint_unavailable")
 		return value

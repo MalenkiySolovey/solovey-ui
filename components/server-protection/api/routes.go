@@ -72,8 +72,6 @@ type nativeFallbackService interface {
 type operationService interface {
 	List(context.Context) ([]protectionrepository.OperationLockModel, error)
 	ForceUnlock(context.Context, protectionoperations.ForceUnlockRequest) (protectionrepository.OperationLockModel, error)
-	Prepare(context.Context, protectionoperations.PrepareRequest) (protectionoperations.AcquireResult, error)
-	ConfirmUnavailableAction(context.Context, protectionoperations.ConfirmActionRequest) error
 	ForgetState(context.Context, protectionoperations.ForgetStateRequest) (protectionrepository.OperationLockModel, error)
 }
 
@@ -161,7 +159,4 @@ func RegisterRoutes(group *gin.RouterGroup, deps Deps) {
 	routes.POST("/operations/:operationId/forget-state", handler.forgetState)
 	routes.POST("/firewall/apply", handler.firewallApply)
 	routes.POST("/firewall/rollback", handler.firewallRollback)
-	routes.POST("/ports/prepare", handler.prepareOperation)
-	routes.POST("/ports/apply", handler.confirmUnavailable("apply"))
-	routes.POST("/ports/rollback", handler.confirmUnavailable("rollback"))
 }

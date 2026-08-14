@@ -175,14 +175,12 @@ func (s *Service) PrunePublishes(siteID uint, input PrunePublishesInput, actor s
 	}
 
 	var removeIDs []uint
-	var removeVersions []string
 	var removeRoots []string
 	for _, publish := range publishes {
 		if keepIDs[publish.ID] {
 			continue
 		}
 		removeIDs = append(removeIDs, publish.ID)
-		removeVersions = append(removeVersions, publish.Version)
 		removeRoots = append(removeRoots, publish.RootDir)
 	}
 	if len(removeIDs) == 0 {
@@ -191,9 +189,6 @@ func (s *Service) PrunePublishes(siteID uint, input PrunePublishesInput, actor s
 
 	err := s.guardedSiteMutation(siteID, func(tx *gorm.DB) error {
 		if err := tx.First(&fallbackdomain.Site{}, siteID).Error; err != nil {
-			return err
-		}
-		if err := tx.Where("site_id = ? AND publish_version IN ?", siteID, removeVersions).Delete(&fallbackdomain.NodePublication{}).Error; err != nil {
 			return err
 		}
 		if err := tx.Where("publish_id IN ?", removeIDs).Delete(&fallbackdomain.PublishRedirect{}).Error; err != nil {
@@ -311,7 +306,7 @@ func (s *Service) PublishSite(siteID uint, actor string) (PublishResult, error) 
 		_ = os.RemoveAll(root)
 		return PublishResult{}, err
 	}
-	err = s.guardedSiteMutation(siteID, func(tx *gorm.DB) error {
+	err = s.guardedRuntimeMutation(siteID, func(tx *gorm.DB) error {
 		if err := tx.Model(&fallbackdomain.Publish{}).Where("site_id = ?", siteID).Update("active", false).Error; err != nil {
 			return err
 		}
@@ -340,7 +335,7 @@ func (s *Service) PublishSite(siteID uint, actor string) (PublishResult, error) 
 			return err
 		}
 		return recordEvent(tx, siteID, actor, "site_published", map[string]any{"version": version, "files": len(files)})
-	}, func() error { return s.runtime.Rebuild(s.db) })
+	})
 	if err != nil {
 		_ = os.RemoveAll(root)
 		return PublishResult{}, err
@@ -391,7 +386,7 @@ func (s *Service) RollbackSite(siteID uint, input RollbackInput, actor string) (
 		return PublishResult{}, err
 	}
 	now := time.Now().Unix()
-	err = s.guardedSiteMutation(siteID, func(tx *gorm.DB) error {
+	err = s.guardedRuntimeMutation(siteID, func(tx *gorm.DB) error {
 		if err := tx.Model(&fallbackdomain.Publish{}).Where("site_id = ?", siteID).Update("active", false).Error; err != nil {
 			return err
 		}
@@ -402,7 +397,7 @@ func (s *Service) RollbackSite(siteID uint, input RollbackInput, actor string) (
 			return err
 		}
 		return recordEvent(tx, siteID, actor, "site_rollback", map[string]any{"version": publish.Version, "files": len(publish.Files)})
-	}, func() error { return s.runtime.Rebuild(s.db) })
+	})
 	if err != nil {
 		return PublishResult{}, err
 	}
@@ -428,7 +423,7 @@ func (s *Service) ensureNoActiveGinPublishConflict(siteID uint) error {
 }
 
 func (s *Service) UnpublishSite(siteID uint, actor string) error {
-	return s.guardedSiteMutation(siteID, func(tx *gorm.DB) error {
+	return s.guardedRuntimeMutation(siteID, func(tx *gorm.DB) error {
 		if err := tx.Model(&fallbackdomain.Publish{}).Where("site_id = ?", siteID).Update("active", false).Error; err != nil {
 			return err
 		}
@@ -436,7 +431,7 @@ func (s *Service) UnpublishSite(siteID uint, actor string) error {
 			return err
 		}
 		return recordEvent(tx, siteID, actor, "site_unpublished", nil)
-	}, func() error { return s.runtime.Rebuild(s.db) })
+	})
 }
 
 func buildPublishFiles(root string, site fallbackdomain.Site) ([]fallbackdomain.PublishFile, error) {

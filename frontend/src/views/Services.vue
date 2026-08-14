@@ -143,7 +143,7 @@
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
 import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
-import ManualSortButton from '@/components/ManualSortButton.vue'
+import ManualSortButton from '@/shared/ui/ManualSortButton.vue'
 import { Srv } from '@/types/services'
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'

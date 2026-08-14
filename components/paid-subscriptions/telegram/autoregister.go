@@ -33,7 +33,12 @@ func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *tgUser, l
 	}
 
 	// Per-user /start rate limit (anti-DoS for registration).
-	maxStart, _ := b.setting.GetPaidSubStartRateLimitPerMin()
+	maxStart, err := b.setting.GetPaidSubStartRateLimitPerMin()
+	if err != nil {
+		logger.Warning("paidsub: read auto-register rate limit: ", err)
+		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		return true
+	}
 	if !b.startLimiter.AllowWithLimit(from.ID, maxStart).Allowed {
 		_ = b.sendMessage(ctx, chatID, tr(l, "rate_limited"), nil)
 		return true
@@ -48,19 +53,23 @@ func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *tgUser, l
 	db := dbsqlite.DB()
 
 	// Global cap on auto-registered clients (anti-DoS).
-	if maxClients, _ := b.setting.GetPaidSubMaxClients(); maxClients > 0 {
-		var cnt int64
-		if err := db.Model(&paidcore.Binding{}).Count(&cnt).Error; err != nil {
-			// Fail closed: if the anti-DoS cap cannot be evaluated, refuse rather
-			// than risk unbounded auto-registration.
-			logger.Warning("paidsub: count bindings for cap failed: ", err)
-			_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
-			return true
-		}
-		if cnt >= int64(maxClients) {
-			_ = b.sendMessage(ctx, chatID, tr(l, "reg_full"), nil)
-			return true
-		}
+	maxClients, err := b.setting.GetPaidSubMaxClients()
+	if err != nil || maxClients < 1 {
+		logger.Warning("paidsub: invalid auto-register client cap")
+		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		return true
+	}
+	var cnt int64
+	if err := db.Model(&paidcore.Binding{}).Count(&cnt).Error; err != nil {
+		// Fail closed: if the anti-DoS cap cannot be evaluated, refuse rather
+		// than risk unbounded auto-registration.
+		logger.Warning("paidsub: count bindings for cap failed: ", err)
+		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		return true
+	}
+	if cnt >= int64(maxClients) {
+		_ = b.sendMessage(ctx, chatID, tr(l, "reg_full"), nil)
+		return true
 	}
 
 	name := b.uniqueClientName(db, from.ID)
@@ -71,8 +80,13 @@ func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *tgUser, l
 		return true
 	}
 
-	trialDays, _ := b.setting.GetPaidSubTrialDays()
-	trialGB, _ := b.setting.GetPaidSubTrialVolumeGB()
+	trialDays, daysErr := b.setting.GetPaidSubTrialDays()
+	trialGB, volumeErr := b.setting.GetPaidSubTrialVolumeGB()
+	if daysErr != nil || volumeErr != nil || trialDays < 0 || trialGB < 0 {
+		logger.Warning("paidsub: invalid auto-register trial limits")
+		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		return true
+	}
 	var expiry int64
 	if trialDays > 0 {
 		expiry = nowUnix() + int64(trialDays)*86400
@@ -119,8 +133,10 @@ func (b *Bot) tryAutoRegister(ctx context.Context, chatID int64, from *tgUser, l
 	}
 	if err := paidstore.SetBinding(db, created.Id, from.ID, nowUnix()); err != nil {
 		logger.Warning("paidsub: auto-register bind failed: ", err)
+		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
+		return true
 	}
-	_ = (&service.AuditService{}).Record(service.AuditEvent{
+	_ = (&service.AuditService{Runtime: b.runtime}).Record(service.AuditEvent{
 		Actor:    "PaidSubBot",
 		Event:    "paidsub_registered",
 		Resource: "paidsub",
@@ -141,9 +157,9 @@ func (b *Bot) uniqueClientName(db *gorm.DB, tgID int64) string {
 		if cnt == 0 {
 			return name
 		}
-		name = base + "_" + common.Random(4)
+		name = base + "_" + common.RandomSuffix(4)
 	}
-	return base + "_" + common.Random(8)
+	return base + "_" + common.RandomSuffix(8)
 }
 
 // generateClientConfig builds a full per-protocol client config, mirroring the
@@ -151,7 +167,10 @@ func (b *Bot) uniqueClientName(db *gorm.DB, tgID int64) string {
 // works on any assigned inbound type. Both shadowsocks key lengths are emitted
 // (32-byte for legacy/2022-256, 16-byte for 2022-blake3-aes-128-gcm).
 func generateClientConfig(name string) (json.RawMessage, error) {
-	mixedPassword := common.Random(10)
+	mixedPassword, err := common.SecureRandom(10)
+	if err != nil {
+		return nil, err
+	}
 	ss32, err := randomSSPassword(32)
 	if err != nil {
 		return nil, err

@@ -4,7 +4,6 @@ package health
 import (
 	"context"
 	"errors"
-	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -40,8 +39,9 @@ type Checker interface {
 type Matcher interface{ Matches(string) bool }
 
 type registeredChecker struct {
-	token   uint64
-	checker Checker
+	token      uint64
+	resourceID string
+	checker    Checker
 }
 
 type Registry struct {
@@ -53,10 +53,10 @@ type Registry struct {
 func NewRegistry() *Registry { return &Registry{checkers: make(map[string]registeredChecker)} }
 
 func (r *Registry) Register(checker Checker) (func(), error) {
-	if checker == nil || strings.TrimSpace(checker.ResourceID()) == "" {
+	id, ok := checkerResourceID(checker)
+	if !ok {
 		return nil, errors.New("health checker and resource id are required")
 	}
-	id := strings.TrimSpace(checker.ResourceID())
 	r.mu.Lock()
 	if _, exists := r.checkers[id]; exists {
 		r.mu.Unlock()
@@ -68,7 +68,7 @@ func (r *Registry) Register(checker Checker) (func(), error) {
 	}
 	token := r.nextToken
 	r.nextToken++
-	r.checkers[id] = registeredChecker{token: token, checker: checker}
+	r.checkers[id] = registeredChecker{token: token, resourceID: id, checker: checker}
 	r.mu.Unlock()
 	var once sync.Once
 	return func() {
@@ -84,6 +84,9 @@ func (r *Registry) Register(checker Checker) (func(), error) {
 
 func (r *Registry) Check(ctx context.Context, resourceID string) Result {
 	resourceID = strings.TrimSpace(resourceID)
+	if !healthToken(resourceID, 256) {
+		return Result{Status: StatusMissingCapability, Check: "internal_health", FactCode: "health_check_resource_invalid"}
+	}
 	r.mu.RLock()
 	entry, exact := r.checkers[resourceID]
 	checker := entry.checker
@@ -91,7 +94,7 @@ func (r *Registry) Check(ctx context.Context, resourceID string) Result {
 	if !exact {
 		for _, registered := range r.checkers {
 			candidate := registered.checker
-			if matcher, ok := candidate.(Matcher); ok && matcher.Matches(resourceID) {
+			if matcher, ok := candidate.(Matcher); ok && safeHealthMatch(matcher, resourceID) {
 				if checker != nil {
 					ambiguous = true
 					break
@@ -129,28 +132,40 @@ func (r *Registry) Check(ctx context.Context, resourceID string) Result {
 	}
 }
 
-func (r *Registry) CheckAll(ctx context.Context, resourceIDs []string) []Result {
-	ids := append([]string(nil), resourceIDs...)
-	sort.Strings(ids)
-	result := make([]Result, 0, len(ids))
-	for _, id := range ids {
-		result = append(result, r.Check(ctx, id))
-	}
-	return result
-}
-
 func normalize(resourceID string, result Result) Result {
 	result.ResourceID = resourceID
 	if result.Status != StatusOK && result.Status != StatusDegraded && result.Status != StatusMissingCapability {
 		result.Status = StatusDegraded
 	}
-	if result.Check == "" {
+	if !healthToken(result.Check, 64) {
 		result.Check = "internal_health"
 	}
-	if result.FactCode == "" {
+	if !healthToken(result.FactCode, 64) {
 		result.FactCode = "health_check_failed"
 	}
 	return result
+}
+
+func checkerResourceID(checker Checker) (id string, ok bool) {
+	if checker == nil {
+		return "", false
+	}
+	defer func() {
+		if recover() != nil {
+			id, ok = "", false
+		}
+	}()
+	id = strings.TrimSpace(checker.ResourceID())
+	return id, healthToken(id, 256)
+}
+
+func safeHealthMatch(matcher Matcher, resourceID string) (matched bool) {
+	defer func() {
+		if recover() != nil {
+			matched = false
+		}
+	}()
+	return matcher.Matches(resourceID)
 }
 
 var Default = NewRegistry()

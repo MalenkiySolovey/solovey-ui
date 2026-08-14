@@ -265,6 +265,9 @@ type FallbackTargetLeaseModel struct {
 
 func (FallbackTargetLeaseModel) TableName() string { return "server_protection_fallback_target_leases" }
 
+// RecoveryPathModel is a read-only compatibility schema. Startup migration
+// quarantines old component-owned proofs; current recovery evidence is owned
+// by the neutral management registry and sshmanagement service.
 type RecoveryPathModel struct {
 	ID                    uint   `gorm:"primaryKey;autoIncrement"`
 	RecoveryPathID        string `gorm:"column:recovery_path_id;not null;uniqueIndex"`
@@ -285,6 +288,9 @@ type RecoveryPathModel struct {
 
 func (RecoveryPathModel) TableName() string { return "server_protection_recovery_paths_v1" }
 
+// PortOperationModel is retained only to migrate, protect, and explicitly
+// retire journals written by the disabled pre-release handoff engine. No
+// production service creates or advances these rows.
 type PortOperationModel struct {
 	ID                       uint            `gorm:"primaryKey;autoIncrement"`
 	OperationID              string          `gorm:"not null;uniqueIndex"`

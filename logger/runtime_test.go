@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 	"unicode/utf8"
 )
 
@@ -14,7 +15,7 @@ func TestLogRingBufferOverflowKeepsNewestEntries(t *testing.T) {
 	resetLogBufferForTest(t)
 
 	for i := 0; i < logBufferCapacity+5; i++ {
-		addToBuffer("panel", "INFO", fmt.Sprintf("msg-%05d", i))
+		addToBufferAt("panel", slog.LevelInfo, fmt.Sprintf("msg-%05d", i), time.Now())
 	}
 
 	logs := FilteredLogs(logBufferCapacity+100, "DEBUG", "", "")
@@ -41,7 +42,7 @@ func TestLogRingBufferConcurrentReadWrite(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 			for i := 0; i < perWriter; i++ {
-				addToBuffer("panel", "INFO", fmt.Sprintf("writer-%02d-%03d", id, i))
+				addToBufferAt("panel", slog.LevelInfo, fmt.Sprintf("writer-%02d-%03d", id, i), time.Now())
 			}
 		}(writer)
 	}
@@ -96,13 +97,13 @@ func TestInitInstallsSlogDefault(t *testing.T) {
 	resetLogBufferForTest(t)
 
 	Init(LevelDebug)
-	slog.Default().Info("default slog ready", slog.String("phase", "p4"))
+	slog.Default().Info("default slog ready", slog.String("state", "ready"))
 
 	logs := FilteredLogs(10, "DEBUG", "panel", "default slog ready")
 	if len(logs) != 1 {
 		t.Fatalf("expected default slog entry, got %#v", logs)
 	}
-	if !strings.Contains(logs[0], "phase=p4") {
+	if !strings.Contains(logs[0], "state=ready") {
 		t.Fatalf("default slog attrs were not formatted: %q", logs[0])
 	}
 }
@@ -163,7 +164,7 @@ func BenchmarkLogRingBufferAppendOverflow(b *testing.B) {
 	resetLogBufferForBenchmark(b)
 
 	for i := 0; i < b.N; i++ {
-		addToBuffer("panel", "INFO", "benchmark")
+		addToBufferAt("panel", slog.LevelInfo, "benchmark", time.Now())
 	}
 }
 

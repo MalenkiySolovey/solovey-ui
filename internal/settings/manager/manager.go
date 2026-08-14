@@ -2,9 +2,9 @@ package manager
 
 import (
 	"encoding/json"
+	"errors"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	settingsschema "github.com/MalenkiySolovey/solovey-ui/internal/settings/schema"
 	settingsstore "github.com/MalenkiySolovey/solovey-ui/internal/settings/store"
@@ -60,6 +60,21 @@ func (m Manager) GetAll() (map[string]string, error) {
 		}
 		allSetting[setting.Key] = setting.Value
 	}
+	for _, key := range settingcatalog.SortedKeys(allSetting) {
+		if settingsschema.IsSecretPresenceMarker(key) {
+			continue
+		}
+		if _, known := m.Schema.Default(key); known {
+			if err := m.Schema.ValidateScalar(key, allSetting[key]); err != nil {
+				return nil, err
+			}
+		}
+	}
+	if m.Hooks.ValidateAll != nil {
+		if err := m.Hooks.ValidateAll(allSetting); err != nil {
+			return nil, err
+		}
+	}
 	m.Schema.HideInternal(allSetting)
 	return allSetting, nil
 }
@@ -86,7 +101,7 @@ func (m Manager) Find(key string) (*model.Setting, error) {
 
 func (m Manager) GetString(key string) (string, error) {
 	setting, err := m.Find(key)
-	if dbsqlite.IsNotFound(err) {
+	if errors.Is(err, gorm.ErrRecordNotFound) {
 		value, ok := m.defaultValue(key)
 		if !ok {
 			return "", common.NewErrorf("key <%v> not in defaultValueMap", key)
@@ -109,10 +124,16 @@ func (m Manager) SetString(key string, value string) error {
 	if err != nil {
 		return err
 	}
+	if err := m.validateDirectWrite(key, value); err != nil {
+		return err
+	}
 	return settingsstore.UpsertValue(db, key, value)
 }
 
 func (m Manager) SetEncryptedString(key string, value string) error {
+	if !m.Schema.Encrypted(key) {
+		return common.NewError("setting is not encrypted: ", key)
+	}
 	if m.Secret == nil {
 		return common.NewError("settings secret codec is not configured")
 	}
@@ -130,6 +151,16 @@ func (m Manager) Save(tx *gorm.DB, data json.RawMessage) error {
 	}
 	if err = m.validateSaveKeys(settings); err != nil {
 		return err
+	}
+	for _, key := range settingcatalog.SortedKeys(settings) {
+		if settingsschema.IsSecretPresenceMarker(key) {
+			continue
+		}
+		if _, known := m.Schema.Default(key); known {
+			if err = m.Schema.ValidateScalar(key, settings[key]); err != nil {
+				return err
+			}
+		}
 	}
 	if m.Hooks.ValidateAll != nil {
 		if err = m.Hooks.ValidateAll(settings); err != nil {
@@ -233,6 +264,16 @@ func (m Manager) db() (*gorm.DB, error) {
 		return nil, common.NewError("database is not initialized")
 	}
 	return db, nil
+}
+
+func (m Manager) validateDirectWrite(key string, value string) error {
+	if _, known := m.Schema.Default(key); known {
+		return m.Schema.ValidateScalar(key, value)
+	}
+	if m.Hooks.CanSaveKey != nil && m.Hooks.CanSaveKey(key) {
+		return nil
+	}
+	return common.NewError("invalid setting key: ", key)
 }
 
 func (m Manager) defaultValue(key string) (string, bool) {

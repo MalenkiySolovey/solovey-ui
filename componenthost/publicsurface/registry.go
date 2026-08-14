@@ -1,7 +1,9 @@
 package publicsurface
 
 import (
+	"errors"
 	"net/http"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -39,20 +41,20 @@ func init() {
 
 // Register installs a public surface handler and returns an unregister
 // function. Owner is only a registry key; the web package does not interpret it.
-func Register(owner string, handler Handler) func() {
-	if owner == "" || handler == nil {
-		panic("public surface owner and handler are required")
+func Register(owner string, handler Handler) (func(), error) {
+	if !validOwner(owner) || handler == nil {
+		return nil, errors.New("public surface owner and handler are required")
 	}
 	registry.Lock()
 	for _, entry := range registry.entries {
 		if entry.owner == owner {
 			registry.Unlock()
-			panic("public surface owner is already registered: " + owner)
+			return nil, errors.New("public surface owner is already registered: " + owner)
 		}
 	}
 	if len(registry.entries) >= maxPublicSurfaceHandlers {
 		registry.Unlock()
-		panic("public surface handler capacity exceeded")
+		return nil, errors.New("public surface handler capacity exceeded")
 	}
 	registry.entries = append(registry.entries, handlerEntry{owner: owner, handler: handler})
 	storeSnapshotLocked()
@@ -66,7 +68,7 @@ func Register(owner string, handler Handler) func() {
 			storeSnapshotLocked()
 			registry.Unlock()
 		})
-	}
+	}, nil
 }
 
 // Serve asks the current immutable handler snapshot to handle the NoRoute
@@ -74,11 +76,33 @@ func Register(owner string, handler Handler) func() {
 func Serve(c *gin.Context, ctx Context) bool {
 	entries, _ := registry.snapshot.Load().([]handlerEntry)
 	for _, entry := range entries {
-		if entry.handler.ServePublic(c, ctx) {
+		if safeServe(entry.handler, c, ctx) {
 			return true
 		}
 	}
 	return false
+}
+
+func safeServe(handler Handler, c *gin.Context, ctx Context) (handled bool) {
+	defer func() {
+		if recover() != nil {
+			handled = false
+		}
+	}()
+	return handler.ServePublic(c, ctx)
+}
+
+func validOwner(value string) bool {
+	if value == "" || len(value) > 64 {
+		return false
+	}
+	for _, character := range value {
+		if character >= 'a' && character <= 'z' || character >= '0' && character <= '9' || strings.ContainsRune("-._", character) {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 // Handled404 emits a deliberately plain fallback response when no public

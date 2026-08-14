@@ -533,6 +533,35 @@ func TestPreviewIsZeroWritePrepareOnlyReservesAndRestartCancelsPrepared(t *testi
 	}
 }
 
+func TestLeaseRenewerExitsImmediatelyWhenDefaultOffHasNoActiveLease(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0).UTC()
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "local-proxy-idle.db")), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := db.AutoMigrate(&protectionrepository.OperationLockModel{}, &protectionrepository.LocalProxyStateV1Model{}); err != nil {
+		t.Fatal(err)
+	}
+	repository := protectionrepository.New(db)
+	manager := protectionoperations.NewManager(repository, protectionoperations.Options{InstanceID: "local-proxy-idle-test", PID: 4242, Now: func() time.Time { return now }})
+	controller := &Controller{Repository: repository, Operations: manager, Providers: hostresources.NewLocalProxyRegistryV1(), Probes: componenthealth.NewLocalProxyProbeRegistryV1(), Now: func() time.Time { return now }}
+	done := make(chan struct{})
+	go func() {
+		RunLeaseRenewer(context.Background(), controller, make(chan struct{}))
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(time.Second):
+		t.Fatal("default-off lease renewer retained a timer or goroutine without an active lease")
+	}
+}
+
 func TestRestartDistrustsActiveHistoryAndRetainsFreshMarkerOnHealthFailure(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0).UTC()
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "local-proxy-restart.db")), &gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})

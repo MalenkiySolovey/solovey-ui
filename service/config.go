@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"sync"
 	"time"
 
@@ -39,12 +40,6 @@ type SingBoxConfig struct {
 	Endpoints    []json.RawMessage `json:"endpoints"`
 	Route        json.RawMessage   `json:"route"`
 	Experimental json.RawMessage   `json:"experimental"`
-}
-
-func NewConfigService(core *coreruntime.Core) *ConfigService {
-	runtime := NewRuntime(core)
-	SetDefaultRuntime(runtime)
-	return NewConfigServiceWithRuntime(runtime)
 }
 
 func NewConfigServiceWithRuntime(runtime *Runtime) *ConfigService {
@@ -183,7 +178,7 @@ func (s *ConfigService) CheckOutbound(tag string, link string) coreruntime.Check
 	if coreInstance == nil || !coreInstance.IsRunning() {
 		return coreruntime.CheckOutboundResult{Error: coreruntime.CheckOutboundErrorCoreUnavailable}
 	}
-	return coreInstance.CheckOutbound(coreInstance.GetCtx(), tag, link)
+	return coreInstance.CheckOutbound(context.Background(), tag, link)
 }
 
 func (s *ConfigService) CheckOutboundWithContext(ctx context.Context, tag string, link string) coreruntime.CheckOutboundResult {
@@ -209,7 +204,13 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 	}
 
 	db := configDatabase()
+	if db == nil {
+		return nil, errors.New("configuration database is not initialized")
+	}
 	tx := db.Begin()
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
 	committed := false
 	defer func() {
 		if recovered := recover(); recovered != nil {
@@ -230,14 +231,15 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 		return nil, err
 	}
 
-	s.setLastUpdate(time.Now().Unix())
-
 	if err = tx.Commit().Error; err != nil {
 		return plan.Objects(), err
 	}
 	committed = true
+	s.setLastUpdate(time.Now().Unix())
 
-	s.applyConfigSaveEffects(plan, afterCommitEffects)
+	if err = s.applyConfigSaveEffects(plan, afterCommitEffects); err != nil {
+		return plan.Objects(), err
+	}
 	if componentSettingsChanged {
 		reconcileCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()

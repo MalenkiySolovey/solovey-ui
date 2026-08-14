@@ -64,12 +64,6 @@ func RegisterConfigSaveObserver(name string, observer ConfigSaveObserver) func()
 	}
 }
 
-func resetConfigSaveObserversForTest() {
-	configSaveObservers.Lock()
-	configSaveObservers.entries = map[string]registeredConfigSaveObserver{}
-	configSaveObservers.Unlock()
-}
-
 func (s *ConfigService) prepareConfigSaveObserverEffects(obj string, data json.RawMessage, loginUser string) ([]ConfigSaveAfterCommit, error) {
 	observers := configSaveObserverSnapshot()
 	if len(observers) == 0 {

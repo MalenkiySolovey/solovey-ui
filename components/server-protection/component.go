@@ -62,11 +62,15 @@ var hooks = struct {
 	nativeFallbackWorkflow *protectionnativefallback.Workflow
 	localProxyController   *protectionlocalproxy.Controller
 	localProxyCancel       context.CancelFunc
+	localProxyDone         chan struct{}
+	localProxyWake         chan struct{}
 	helperClient           *protectionhelper.Client
+	runtime                *coreservice.Runtime
 	artifactCleanupID      cron.EntryID
 	artifactScheduler      componenthost.Scheduler
 	unregisterHostSurface  func()
 	hostSurfaceCancel      context.CancelFunc
+	hostSurfaceDone        chan struct{}
 	restoreHookRegistered  bool
 }{}
 
@@ -124,6 +128,13 @@ func (component) InspectDropAuthority(_ context.Context, db *gorm.DB, _ time.Tim
 func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) error {
 	hooks.Lock()
 	defer hooks.Unlock()
+	if lifecycleCtx.Host.API.Runtime == nil {
+		return errors.New("server-protection runtime is unavailable")
+	}
+	if hooks.runtime != nil && hooks.runtime != lifecycleCtx.Host.API.Runtime {
+		return errors.New("server-protection runtime changed while the component is active")
+	}
+	hooks.runtime = lifecycleCtx.Host.API.Runtime
 	if hooks.unregisterBackup == nil {
 		tables := protectionrepository.BackupTableModels()
 		contributions := make([]dbbackup.TableContribution, 0, len(tables))
@@ -175,14 +186,24 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 		} else {
 			provider = protectionhostsurface.NewProvider(protectionhostsurface.UnavailableOwnerObserver{Availability: ownerAvailabilityForHelperError(helperErr)})
 		}
-		hooks.unregisterHostSurface = hostfacts.Register(provider)
-		reconcileCtx, cancel := context.WithCancel(ctx)
+		unregisterHostSurface, registerErr := hostfacts.Register(provider)
+		if registerErr != nil {
+			cleanupHooksLocked()
+			return registerErr
+		}
+		hooks.unregisterHostSurface = unregisterHostSurface
+		reconcileCtx, cancel := context.WithCancel(context.Background())
 		hooks.hostSurfaceCancel = cancel
-		go protectionhostsurface.RunReconciler(reconcileCtx, nil)
+		hooks.hostSurfaceDone = make(chan struct{})
+		done := hooks.hostSurfaceDone
+		go func() {
+			defer close(done)
+			protectionhostsurface.RunReconciler(reconcileCtx, nil)
+		}()
 	}
 	hooks.artifactPruner = protectionartifacts.NewPruner(storage, repository, nil)
 	pruner := hooks.artifactPruner
-	manager := ensureOperationManagerLocked()
+	manager := ensureOperationManagerLocked(hooks.runtime)
 	recovery := protectionoperations.Recovery(protectionartifacts.OperationRecovery{Storage: storage, Repository: repository})
 	if workflow, workflowErr := ensureFirewallWorkflowLocked(); workflowErr == nil {
 		recovery = protectionfirewall.BackendRecovery{Helper: workflow.Helper, Manager: manager, Storage: storage, Repository: repository, Health: workflow.RollbackHealth, Workflow: workflow}
@@ -226,11 +247,7 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 		cleanupHooksLocked()
 		return err
 	}
-	if hooks.localProxyCancel == nil {
-		renewCtx, cancel := context.WithCancel(ctx)
-		hooks.localProxyCancel = cancel
-		go protectionlocalproxy.RunLeaseRenewer(renewCtx, localProxyController)
-	}
+	startLocalProxyRenewerLocked(localProxyController)
 	if err := protectionobservation.DefaultWorker.Start(protectionrepository.New(dbsqlite.DB())); err != nil {
 		_ = manager.Stop(context.Background())
 		hooks.operationManager = nil
@@ -258,33 +275,58 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 }
 
 func (component) Stop(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	hooks.Lock()
+	localProxyCancel, localProxyDone := hooks.localProxyCancel, hooks.localProxyDone
+	hostSurfaceCancel, hostSurfaceDone := hooks.hostSurfaceCancel, hooks.hostSurfaceDone
+	scheduler, cleanupID := hooks.artifactScheduler, hooks.artifactCleanupID
+	manager := hooks.operationManager
+	hooks.Unlock()
+
+	if localProxyCancel != nil {
+		localProxyCancel()
+	}
+	if hostSurfaceCancel != nil {
+		hostSurfaceCancel()
+	}
+	var schedulerErr error
+	if scheduler != nil && cleanupID != 0 {
+		schedulerErr = scheduler.RemoveJobAndWait(ctx, cleanupID)
+	}
+	localProxyErr := waitForBackground(ctx, localProxyDone)
+	hostSurfaceErr := waitForBackground(ctx, hostSurfaceDone)
 	workerErr := protectionobservation.DefaultWorker.Stop(ctx)
+	var operationErr error
+	if manager != nil {
+		operationErr = manager.Stop(ctx)
+	}
+	if err := errors.Join(schedulerErr, localProxyErr, hostSurfaceErr, workerErr, operationErr); err != nil {
+		return err
+	}
+
 	hooks.Lock()
 	defer hooks.Unlock()
-	var operationErr error
-	if hooks.operationManager != nil {
-		operationErr = hooks.operationManager.Stop(ctx)
-		hooks.operationManager = nil
-	}
-	if hooks.artifactScheduler != nil && hooks.artifactCleanupID != 0 {
-		hooks.artifactScheduler.RemoveJob(hooks.artifactCleanupID)
-	}
-	hooks.artifactCleanupID = 0
-	hooks.artifactScheduler = nil
-	hooks.artifactPruner = nil
-	hooks.artifactStorage = nil
-	hooks.firewallWorkflow = nil
-	hooks.frontingWorkflow = nil
-	hooks.frontingSemanticSource = nil
-	hooks.nativeFallbackWorkflow = nil
-	hooks.localProxyController = nil
-	if hooks.localProxyCancel != nil {
-		hooks.localProxyCancel()
-		hooks.localProxyCancel = nil
-	}
-	hooks.helperClient = nil
 	cleanupHooksLocked()
-	return errors.Join(workerErr, operationErr)
+	return nil
+}
+
+func waitForBackground(ctx context.Context, done <-chan struct{}) error {
+	if done == nil {
+		return nil
+	}
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		select {
+		case <-done:
+			return nil
+		default:
+			return ctx.Err()
+		}
+	}
 }
 
 func (component) DropData(ctx context.Context, _ lifecycle.Context) error {
@@ -307,7 +349,10 @@ func (component) DropData(ctx context.Context, _ lifecycle.Context) error {
 func protectionDeps(host componenthost.APIDeps) protectionapi.Deps {
 	hooks.Lock()
 	defer hooks.Unlock()
-	manager := ensureOperationManagerLocked()
+	if hooks.runtime == nil {
+		hooks.runtime = host.Runtime
+	}
+	manager := ensureOperationManagerLocked(hooks.runtime)
 	workflow, _ := ensureFirewallWorkflowLocked()
 	frontingWorkflow, _ := ensureFrontingWorkflowLocked()
 	if hooks.frontingSemanticSource == nil {
@@ -321,6 +366,9 @@ func protectionDeps(host componenthost.APIDeps) protectionapi.Deps {
 	}
 	repository := protectionrepository.New(dbsqlite.DB())
 	baseline := protectionfirewall.NewBaselineService(repository)
+	if workflow != nil {
+		baseline.Capabilities = workflow
+	}
 	return protectionapi.Deps{
 		Repository:        repository,
 		RequireScope:      host.Auth.RequireScope,
@@ -334,6 +382,7 @@ func protectionDeps(host componenthost.APIDeps) protectionapi.Deps {
 		Baseline:          baseline,
 		UDPGuard: &protectionudpguard.Controller{
 			Repository: repository, Operations: manager, Firewall: workflow, Baseline: baseline,
+			Transports: hostresources.DefaultInboundTransportsV2,
 		},
 		Fronting:       frontingAdapter,
 		FrontingV2:     &protectionfronting.SemanticServiceV2{Workflow: frontingWorkflow, Repository: repository, Source: hooks.frontingSemanticSource},
@@ -343,18 +392,20 @@ func protectionDeps(host componenthost.APIDeps) protectionapi.Deps {
 	}
 }
 
-func ensureOperationManagerLocked() *protectionoperations.Manager {
+func ensureOperationManagerLocked(runtime *coreservice.Runtime) *protectionoperations.Manager {
 	if hooks.operationManager != nil {
 		return hooks.operationManager
 	}
 	repository := protectionrepository.New(dbsqlite.DB())
-	options := protectionoperations.Options{
-		Audit: func(_ context.Context, event protectionoperations.AuditEvent) error {
-			return (&coreservice.AuditService{}).Record(coreservice.AuditEvent{
+	options := protectionoperations.Options{}
+	if runtime != nil {
+		auditService := &coreservice.AuditService{Runtime: runtime}
+		options.Audit = func(_ context.Context, event protectionoperations.AuditEvent) error {
+			return auditService.Record(coreservice.AuditEvent{
 				Actor: event.Actor, Event: event.Event, Resource: "server-protection",
 				Severity: coreservice.AuditSeverityWarn, Details: event.Details,
 			})
-		},
+		}
 	}
 	if hooks.artifactStorage != nil {
 		options.Recovery = protectionartifacts.OperationRecovery{Storage: hooks.artifactStorage, Repository: repository}
@@ -383,7 +434,7 @@ func ensureFirewallWorkflowLocked() (*protectionfirewall.Workflow, error) {
 	if err != nil {
 		return nil, err
 	}
-	manager := ensureOperationManagerLocked()
+	manager := ensureOperationManagerLocked(hooks.runtime)
 	client, err := ensureHelperClientLocked()
 	if err != nil {
 		return nil, errors.Join(protectionfirewall.ErrMissingCapability, err)
@@ -412,7 +463,7 @@ func ensureFrontingWorkflowLocked() (*protectionfronting.Workflow, error) {
 	if err != nil {
 		return nil, err
 	}
-	manager := ensureOperationManagerLocked()
+	manager := ensureOperationManagerLocked(hooks.runtime)
 	client, err := ensureHelperClientLocked()
 	if err != nil {
 		return nil, errors.Join(protectionfronting.ErrMissingCapability, err)
@@ -470,7 +521,7 @@ func ensureNativeFallbackWorkflowLocked(runtime *coreservice.Runtime) (*protecti
 		Management: protectionnativefallback.InventoryManagementReader{},
 	}
 	workflow := &protectionnativefallback.Workflow{
-		Operations: ensureOperationManagerLocked(), Journal: repository, Planner: planner, Core: coreControl,
+		Operations: ensureOperationManagerLocked(hooks.runtime), Journal: repository, Planner: planner, Core: coreControl,
 		Providers: neutralfallback.Default, Artifacts: protectionartifacts.Service{Storage: storage, Store: repository}, Marker: storage,
 	}
 	hooks.nativeFallbackWorkflow = workflow
@@ -482,10 +533,46 @@ func ensureLocalProxyControllerLocked() *protectionlocalproxy.Controller {
 		return hooks.localProxyController
 	}
 	hooks.localProxyController = &protectionlocalproxy.Controller{
-		Repository: protectionrepository.New(dbsqlite.DB()), Operations: ensureOperationManagerLocked(),
+		Repository: protectionrepository.New(dbsqlite.DB()), Operations: ensureOperationManagerLocked(hooks.runtime),
 		Providers: hostresources.DefaultLocalProxiesV1, Probes: componenthealth.DefaultLocalProxyProbesV1,
+		LeaseActivityChanged: notifyLocalProxyLeaseActivity,
 	}
 	return hooks.localProxyController
+}
+
+func notifyLocalProxyLeaseActivity() {
+	hooks.Lock()
+	defer hooks.Unlock()
+	if hooks.runtime == nil || hooks.localProxyController == nil {
+		return
+	}
+	startLocalProxyRenewerLocked(hooks.localProxyController)
+}
+
+func startLocalProxyRenewerLocked(controller *protectionlocalproxy.Controller) {
+	if hooks.localProxyDone != nil {
+		select {
+		case <-hooks.localProxyDone:
+			hooks.localProxyCancel = nil
+			hooks.localProxyDone = nil
+			hooks.localProxyWake = nil
+		default:
+			select {
+			case hooks.localProxyWake <- struct{}{}:
+			default:
+			}
+			return
+		}
+	}
+	renewCtx, cancel := context.WithCancel(context.Background())
+	hooks.localProxyCancel = cancel
+	hooks.localProxyDone = make(chan struct{})
+	hooks.localProxyWake = make(chan struct{}, 1)
+	done, wake := hooks.localProxyDone, hooks.localProxyWake
+	go func() {
+		defer close(done)
+		protectionlocalproxy.RunLeaseRenewer(renewCtx, controller, wake)
+	}()
 }
 
 func ensureHelperClientLocked() (*protectionhelper.Client, error) {
@@ -508,7 +595,7 @@ func ensureHelperClientLocked() (*protectionhelper.Client, error) {
 		}
 		return nil, helperClientAvailabilityError{Availability: availability, Cause: fmt.Errorf("privileged broker unavailable: %s", reason)}
 	}
-	client, err := protectionhelper.NewClient(root, ensureOperationManagerLocked(), invoker, helperAuditRecorder{})
+	client, err := protectionhelper.NewClient(root, ensureOperationManagerLocked(hooks.runtime), invoker, helperAuditRecorder{runtime: hooks.runtime})
 	if err != nil {
 		return nil, helperClientAvailabilityError{Availability: protectionhostsurface.OwnerObserverNotRegistered, Cause: err}
 	}
@@ -532,10 +619,15 @@ func ownerAvailabilityForHelperError(err error) protectionhostsurface.OwnerAvail
 	return protectionhostsurface.OwnerObserverNotRegistered
 }
 
-type helperAuditRecorder struct{}
+type helperAuditRecorder struct {
+	runtime *coreservice.Runtime
+}
 
-func (helperAuditRecorder) RecordHelperAudit(_ context.Context, event protectionhelper.AuditEvent) error {
-	return (&coreservice.AuditService{}).Record(coreservice.AuditEvent{Actor: "system", Event: "server_protection.helper", Resource: "server-protection", Severity: coreservice.AuditSeverityInfo, Details: map[string]any{
+func (r helperAuditRecorder) RecordHelperAudit(_ context.Context, event protectionhelper.AuditEvent) error {
+	if r.runtime == nil {
+		return errors.New("server-protection audit runtime is unavailable")
+	}
+	return (&coreservice.AuditService{Runtime: r.runtime}).Record(coreservice.AuditEvent{Actor: "system", Event: "server_protection.helper", Resource: "server-protection", Severity: coreservice.AuditSeverityInfo, Details: map[string]any{
 		"phase": event.Phase, "operation": event.Operation, "operation_id": event.OperationID, "lock_revision": event.LockRevision,
 		"ok": event.OK, "code": event.Code, "exit_class": event.ExitClass,
 	}})
@@ -550,6 +642,10 @@ func cleanupHooksLocked() {
 		hooks.hostSurfaceCancel()
 		hooks.hostSurfaceCancel = nil
 	}
+	if hooks.hostSurfaceDone != nil {
+		<-hooks.hostSurfaceDone
+		hooks.hostSurfaceDone = nil
+	}
 	if hooks.unregisterHostSurface != nil {
 		hooks.unregisterHostSurface()
 		hooks.unregisterHostSurface = nil
@@ -558,6 +654,11 @@ func cleanupHooksLocked() {
 		hooks.localProxyCancel()
 		hooks.localProxyCancel = nil
 	}
+	if hooks.localProxyDone != nil {
+		<-hooks.localProxyDone
+		hooks.localProxyDone = nil
+	}
+	hooks.localProxyWake = nil
 	if hooks.unregisterBackup != nil {
 		hooks.unregisterBackup()
 		hooks.unregisterBackup = nil
@@ -570,4 +671,16 @@ func cleanupHooksLocked() {
 		hooks.unregisterTokenScope()
 		hooks.unregisterTokenScope = nil
 	}
+	hooks.operationManager = nil
+	hooks.artifactStorage = nil
+	hooks.artifactPruner = nil
+	hooks.firewallWorkflow = nil
+	hooks.frontingWorkflow = nil
+	hooks.frontingSemanticSource = nil
+	hooks.nativeFallbackWorkflow = nil
+	hooks.localProxyController = nil
+	hooks.helperClient = nil
+	hooks.artifactCleanupID = 0
+	hooks.artifactScheduler = nil
+	hooks.runtime = nil
 }

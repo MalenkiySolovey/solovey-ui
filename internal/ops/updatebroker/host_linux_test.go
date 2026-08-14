@@ -13,6 +13,25 @@ import (
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 )
 
+func TestOwnerManifestRunsOnlyTheActivatedReleaseWriter(t *testing.T) {
+	if os.Geteuid() != 0 {
+		t.Skip("root-owned writer execution contract")
+	}
+	root := t.TempDir()
+	marker := filepath.Join(root, "called")
+	writer := filepath.Join(root, "solovey-owner-manifest")
+	script := "#!/bin/sh\nprintf '%s' ok > '" + marker + "'\n"
+	if err := os.WriteFile(writer, []byte(script), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := writeOwnerManifest(context.Background(), root, "full"); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(marker); err != nil || string(data) != "ok" {
+		t.Fatalf("owner writer marker=%q err=%v", data, err)
+	}
+}
+
 func TestBrokerDiskStateAndStoredReleaseIdentityFailClosed(t *testing.T) {
 	host := NewHost()
 	host.StatePath = filepath.Join(t.TempDir(), "update-state.json")
@@ -72,6 +91,34 @@ func TestStageRejectsArtifactOutsideDeclaredSet(t *testing.T) {
 	var public *broker.PublicError
 	if !errors.As(err, &public) || public.Code != broker.CodeInvalidRequest {
 		t.Fatalf("undeclared artifact error=%v", err)
+	}
+}
+
+func TestObserveFailsClosedWhenVerifiedStateCannotBePersisted(t *testing.T) {
+	executable, err := os.Executable()
+	if err != nil {
+		t.Fatal(err)
+	}
+	host := NewHost()
+	host.ReleaseRoot = filepath.Dir(filepath.Dir(executable))
+	host.StatePath = filepath.Join(t.TempDir(), "update-state.json")
+	state := diskState{ActiveRelease: filepath.Base(filepath.Dir(executable)), ActiveSequence: 9, ActiveDigest: updateDigest("manifest")}
+	if err := host.saveState(state); err != nil {
+		t.Fatal(err)
+	}
+	host.saveStateFn = func(diskState) error { return errors.New("disk full") }
+
+	_, err = host.observe(context.Background(), broker.Request{}, broker.PeerIdentity{PID: os.Getpid(), Executable: executable})
+	var public *broker.PublicError
+	if !errors.As(err, &public) || public.Code != broker.CodeExecution {
+		t.Fatalf("observe persistence error = %v", err)
+	}
+	persisted, loadErr := host.loadState()
+	if loadErr != nil {
+		t.Fatal(loadErr)
+	}
+	if persisted.VerifiedSequence != 0 || persisted.VerifiedDigest != "" {
+		t.Fatalf("uncommitted verified state escaped to disk: %#v", persisted)
 	}
 }
 

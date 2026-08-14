@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -81,7 +82,7 @@ func TestAPIV2LegacyTokenHeaderEmitsSunset(t *testing.T) {
 	}
 }
 
-func TestAPIV2LegacyTokenHeaderRejectedAfterSunsetIssue34(t *testing.T) {
+func TestAPIV2LegacyTokenHeaderRejectedAfterSunset(t *testing.T) {
 	withAPITokenNow(t, legacyTokenHeaderSunsetAt.Add(time.Second))
 	router := newAPIV2TokenTestRouter(t)
 
@@ -107,7 +108,7 @@ func TestAPIV2LegacyTokenHeaderRejectedAfterSunsetIssue34(t *testing.T) {
 	}
 }
 
-func TestAPIV2BearerTokenAcceptedAfterLegacySunsetIssue34(t *testing.T) {
+func TestAPIV2BearerTokenAcceptedAfterLegacySunset(t *testing.T) {
 	withAPITokenNow(t, legacyTokenHeaderSunsetAt.Add(time.Second))
 	router := newAPIV2TokenTestRouter(t)
 
@@ -127,5 +128,45 @@ func TestAPIV2BearerTokenAcceptedAfterLegacySunsetIssue34(t *testing.T) {
 	}
 	if !msg.Success {
 		t.Fatalf("bearer token request failed after legacy sunset: %s", msg.Msg)
+	}
+}
+
+func TestAPIV2TokenExpiresAtExactBoundary(t *testing.T) {
+	now := time.Unix(1_900_000_000, 0)
+	withAPITokenNow(t, now)
+	initSessionTestDB(t)
+	if err := dbsqlite.DB().Create(&model.Tokens{
+		Desc: "boundary", Token: "boundary-token", Expiry: now.Unix(), UserId: 1,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	NewAPIv2Handler(router.Group("/apiv2"))
+	recorder := performAPIV2TokenRequest(router, "Authorization", "Bearer boundary-token")
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("token at its expiry boundary returned %d, want 401", recorder.Code)
+	}
+}
+
+func TestAPIV2ReloadTokensFailsClosedOnLoaderError(t *testing.T) {
+	initSessionTestDB(t)
+	if err := dbsqlite.DB().Create(&model.Tokens{
+		Desc: "reload", Token: "reload-token", Expiry: 0, UserId: 1,
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	handler := NewAPIv2Handler(router.Group("/apiv2"))
+	if recorder := performAPIV2TokenRequest(router, "Authorization", "Bearer reload-token"); recorder.Code != http.StatusOK {
+		t.Fatalf("baseline token returned %d", recorder.Code)
+	}
+	handler.loadTokens = func() ([]byte, error) { return nil, errors.New("load failed") }
+	handler.ReloadTokens()
+	if recorder := performAPIV2TokenRequest(router, "Authorization", "Bearer reload-token"); recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("stale token survived failed reload: status=%d", recorder.Code)
 	}
 }

@@ -8,7 +8,9 @@ func ipCertFieldMetadata() []Field {
 		{Key: settingcatalog.IPCertTargetIPKey, Page: PageIPCert, Group: GroupIPCertPublic, Type: FieldTypeString, LabelKey: "ipCert.targetIp", Order: 20},
 		{Key: settingcatalog.IPCertEmailKey, Page: PageIPCert, Group: GroupIPCertPublic, Type: FieldTypeString, LabelKey: "ipCert.email", Order: 30},
 		{Key: settingcatalog.IPCertChallengePortKey, Page: PageIPCert, Group: GroupIPCertPublic, Type: FieldTypeInt, LabelKey: "ipCert.challengePort", Min: intPtr(1), Max: intPtr(65535), Order: 40},
-		{Key: settingcatalog.IPCertApplyTargetKey, Page: PageIPCert, Group: GroupIPCertPublic, Type: FieldTypeEnum, LabelKey: "ipCert.applyTarget", Options: []string{"panel", "subscription", "both"}, Order: 50},
+		// Apply targets are either "panel" or the dynamic form "inbound:<id>";
+		// a fixed enum cannot represent the authoritative validation contract.
+		{Key: settingcatalog.IPCertApplyTargetKey, Page: PageIPCert, Group: GroupIPCertPublic, Type: FieldTypeString, LabelKey: "ipCert.applyTarget", Order: 50},
 
 		{Key: settingcatalog.IPCertAccountKeyKey, Page: PageIPCert, Group: GroupIPCertInternal, Type: FieldTypeSecret, LabelKey: "ipCert.accountKey", Order: 10},
 		{Key: settingcatalog.IPCertAccountRegistrationKey, Page: PageIPCert, Group: GroupIPCertInternal, Type: FieldTypeJSON, LabelKey: "ipCert.accountRegistration", Order: 20},

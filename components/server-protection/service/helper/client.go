@@ -15,10 +15,6 @@ type readLockValidator interface {
 	ValidateHelperReadLock(context.Context, string, string, string, int) error
 }
 
-type listenerLockValidator interface {
-	ValidateHelperListener(context.Context, string, string, int, string, string, int, int) error
-}
-
 type InvocationFacts struct {
 	ExitClass       string
 	StdoutTruncated bool
@@ -117,27 +113,12 @@ func (c *Client) ExecuteWithMetadata(ctx context.Context, request Request) (Resp
 			c.recordAudit(ctx, request, response, InvocationFacts{ExitClass: "not_started"}, started)
 			return response, metadata, fmt.Errorf("operation lock validation failed: %w", err)
 		}
-		if request.Operation == OperationListenerProbe && request.ListenerProbe != nil && request.ListenerProbe.Purpose == ProbePortHandoff {
-			validator, ok := c.locks.(listenerLockValidator)
-			if !ok {
-				response := responseError(request, CodeMissingCapability, "exact_listener_fence_required")
-				c.recordAudit(ctx, request, response, InvocationFacts{ExitClass: "not_started"}, started)
-				return response, metadata, errors.New("operation lock cannot validate exact listener identity")
-			}
-			if err := validator.ValidateHelperListener(ctx, request.Correlation.OperationID, request.Correlation.InstanceID, request.Correlation.LockRevision, request.ListenerProbe.Network, request.ListenerProbe.Address, request.ListenerProbe.Port, request.ListenerProbe.ExpectedPID); err != nil {
-				response := responseError(request, CodeMissingCapability, "exact_listener_fence_required")
-				c.recordAudit(ctx, request, response, InvocationFacts{ExitClass: "not_started"}, started)
-				return response, metadata, fmt.Errorf("exact listener lock validation failed: %w", err)
-			}
-		}
 	}
 
 	capabilities, facts, err := c.negotiate(ctx, request.Correlation.InstanceID)
 	if err != nil {
 		code, reason := CodeMissingCapability, "helper_version_mismatch"
-		if errors.Is(err, ErrHelperIdentityMismatch) {
-			reason = "helper_identity_mismatch"
-		} else if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			code, reason = CodeTimeout, "timeout"
 		} else if errors.Is(err, context.Canceled) || errors.Is(ctx.Err(), context.Canceled) {
 			code, reason = CodeCanceled, "canceled"
@@ -176,11 +157,9 @@ func (c *Client) ExecuteWithMetadata(ctx context.Context, request Request) (Resp
 	defer cancel()
 	response, facts, err := c.invoker.Invoke(invokeCtx, request)
 	if err != nil {
-		code := CodeProcessFailed
-		reason := "helper_process_failed"
-		if errors.Is(err, ErrHelperIdentityMismatch) {
-			reason = "helper_identity_mismatch"
-		} else if errors.Is(err, context.DeadlineExceeded) || errors.Is(invokeCtx.Err(), context.DeadlineExceeded) {
+		code := CodeTransportFailed
+		reason := "helper_transport_failed"
+		if errors.Is(err, context.DeadlineExceeded) || errors.Is(invokeCtx.Err(), context.DeadlineExceeded) {
 			code, reason = CodeTimeout, "timeout"
 		} else if errors.Is(err, context.Canceled) || errors.Is(invokeCtx.Err(), context.Canceled) {
 			code, reason = CodeCanceled, "canceled"

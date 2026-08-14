@@ -65,6 +65,11 @@ func TestEnsureSchemaIdempotent(t *testing.T) {
 			t.Fatalf("table %q missing after paid.EnsureSchema", table)
 		}
 	}
+	for _, column := range []string{"grant_add_days", "grant_traffic_bytes", "grant_snapshot"} {
+		if !db.Migrator().HasColumn(&paid.PaymentOrder{}, column) {
+			t.Fatalf("payment_orders column %q missing after paid.EnsureSchema", column)
+		}
+	}
 }
 
 // TestPaymentOrdersTelegramIndex pins O-1: order history is queried by

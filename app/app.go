@@ -15,6 +15,7 @@ import (
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
+	versionpolicy "github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/cronjob/scheduler"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
@@ -37,6 +38,9 @@ import (
 )
 
 type APP struct {
+	lifecycle   sync.Mutex
+	initialized bool
+	started     bool
 	service.SettingService
 	configService *service.ConfigService
 	webServer     *web.Server
@@ -53,7 +57,20 @@ func NewApp() *APP {
 	return &APP{}
 }
 
-func (a *APP) Init() error {
+func (a *APP) Init() (err error) {
+	a.lifecycle.Lock()
+	defer a.lifecycle.Unlock()
+	if a.initialized {
+		return nil
+	}
+	defer func() {
+		if err != nil {
+			a.cleanupInitialization()
+		}
+	}()
+	if err := versionpolicy.ValidateReleaseVersion(configidentity.GetVersion()); err != nil {
+		return errors.New("invalid embedded release version: " + err.Error())
+	}
 	log.Printf("%v %v", configidentity.GetName(), configidentity.GetVersion())
 
 	a.initLog()
@@ -68,16 +85,7 @@ func (a *APP) Init() error {
 		return databaseStatErr
 	}
 
-	// Run schema migrations against the on-disk DB before opening it. This
-	// turns the upgrade flow into a one-step procedure: drop in the new
-	// binary, restart, and the panel adapts the legacy schema in place. The
-	// run is a no-op if the database is already at the current version or if
-	// it does not yet exist (first install).
-	if err := migration.MigrateDb(); err != nil {
-		return err
-	}
-
-	err := dbsqlite.Init(configstorage.GetDBPath())
+	err = dbsqlite.Init(configstorage.GetDBPath())
 	if err != nil {
 		return err
 	}
@@ -92,11 +100,12 @@ func (a *APP) Init() error {
 
 	// Init Setting
 	if _, err := a.SettingService.GetAllSetting(); err != nil {
-		logger.Warning("failed to initialize settings: ", err)
+		return errors.New("initialize settings: " + err.Error())
 	}
 	// Re-seal any secret settings still encrypted under a DB-derived key once an
 	// out-of-database SUI_SECRETBOX_KEY is configured. No-op without the env key,
-	// idempotent, and fail-safe per row; a failure here must not block startup.
+	// idempotent, and transactional across the secret set. A failure leaves the
+	// existing ciphertext intact and is reported without blocking startup.
 	if n, err := a.SettingService.ResealSecretSettings(); err != nil {
 		logger.Warning("failed to re-seal secret settings: ", err)
 	} else if n > 0 {
@@ -140,10 +149,27 @@ func (a *APP) Init() error {
 		logger.Warning("failed to migrate components: ", err)
 	}
 
+	a.initialized = true
 	return nil
 }
 
 func (a *APP) Start() error {
+	a.lifecycle.Lock()
+	defer a.lifecycle.Unlock()
+	if a.started {
+		return nil
+	}
+	if !a.initialized {
+		return errors.New("application is not initialized")
+	}
+	if err := a.start(); err != nil {
+		return err
+	}
+	a.started = true
+	return nil
+}
+
+func (a *APP) start() (err error) {
 	if err := a.registerResources(); err != nil {
 		return err
 	}
@@ -164,16 +190,37 @@ func (a *APP) Start() error {
 	if err != nil {
 		return err
 	}
+	schedulerStarted := true
+	webStarted := false
+	subStarted := false
+	defer func() {
+		if err == nil {
+			return
+		}
+		if subStarted {
+			_ = a.subServer.Stop()
+		}
+		if webStarted {
+			_ = a.webServer.Stop()
+		}
+		if schedulerStarted {
+			stopCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			_ = a.cronScheduler.Stop(stopCtx)
+			cancel()
+		}
+	}()
 
 	err = a.webServer.Start()
 	if err != nil {
 		return err
 	}
+	webStarted = true
 
 	err = a.subServer.Start()
 	if err != nil {
 		return err
 	}
+	subStarted = true
 
 	// Optional in-process components self-register behind the component
 	// supervisor. This keeps app free of direct optional-domain imports while
@@ -197,43 +244,114 @@ func (a *APP) Start() error {
 }
 
 func (a *APP) Stop() {
+	a.lifecycle.Lock()
+	defer a.lifecycle.Unlock()
+	if !a.initialized && a.runtime == nil {
+		return
+	}
+	if a.initialized || a.runtime != nil {
+		a.stop()
+	}
+	if a.initialized {
+		if err := dbsqlite.Close(); err != nil {
+			logger.Warning("close database err:", err)
+		}
+		a.initialized = false
+	}
+	service.SetDefaultRuntime(nil)
+	a.configService = nil
+	a.webServer = nil
+	a.subServer = nil
+	a.cronScheduler = nil
+	a.core = nil
+	a.runtime = nil
+	a.components = nil
+}
+
+func (a *APP) stop() {
 	service.StopRestartManager()
-	a.cronScheduler.Stop()
-	err := a.subServer.Stop()
-	if err != nil {
-		logger.Warning("stop Sub Server err:", err)
+	if a.cronScheduler != nil {
+		stopCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		if err := a.cronScheduler.Stop(stopCtx); err != nil {
+			logger.Warning("stop cron scheduler err:", err)
+		}
+		cancel()
 	}
-	err = a.webServer.Stop()
-	if err != nil {
-		logger.Warning("stop Web Server err:", err)
+	if a.subServer != nil {
+		if err := a.subServer.Stop(); err != nil {
+			logger.Warning("stop Sub Server err:", err)
+		}
 	}
-	err = a.configService.StopCore()
-	if err != nil {
-		logger.Warning("stop Core err:", err)
+	if a.webServer != nil {
+		if err := a.webServer.Stop(); err != nil {
+			logger.Warning("stop Web Server err:", err)
+		}
+	}
+	a.stopHookRegistrations()
+	componentsCtx, componentsCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	if a.components != nil {
+		if err := a.components.Stop(componentsCtx); err != nil {
+			logger.Warning("stop components err:", err)
+		}
+	}
+	componentsCancel()
+	if a.configService != nil {
+		if err := a.configService.StopCore(); err != nil {
+			logger.Warning("stop Core err:", err)
+		}
 	}
 	tokenCtx, tokenCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer tokenCancel()
 	if err := service.StopTokenUseDebouncer(tokenCtx); err != nil {
 		logger.Warning("stop token use debouncer err:", err)
 	}
-	componentsCtx, componentsCancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer componentsCancel()
-	if err := a.components.Stop(componentsCtx); err != nil {
-		logger.Warning("stop components err:", err)
-	}
+	tokenCancel()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
 	if err := service.StopAuditWriter(ctx); err != nil {
 		logger.Warning("stop audit writer err:", err)
 	}
+	cancel()
+	a.stopResourceRegistrations()
+	a.started = false
+}
+
+func (a *APP) cleanupRegistrations() {
+	a.stopHookRegistrations()
+	a.stopResourceRegistrations()
+}
+
+func (a *APP) stopHookRegistrations() {
 	if a.stopCoreHooks != nil {
 		a.stopCoreHooks()
 		a.stopCoreHooks = nil
 	}
+}
+
+func (a *APP) stopResourceRegistrations() {
 	if a.stopResources != nil {
 		a.stopResources()
 		a.stopResources = nil
 	}
+}
+
+func (a *APP) cleanupInitialization() {
+	if a.runtime != nil {
+		a.stop()
+	} else {
+		a.cleanupRegistrations()
+	}
+	if err := dbsqlite.Close(); err != nil {
+		logger.Warning("close database after initialization failure:", err)
+	}
+	service.SetDefaultRuntime(nil)
+	a.configService = nil
+	a.webServer = nil
+	a.subServer = nil
+	a.cronScheduler = nil
+	a.core = nil
+	a.runtime = nil
+	a.components = nil
+	a.initialized = false
+	a.started = false
 }
 
 func (a *APP) initLog() {
@@ -304,6 +422,12 @@ func (a *APP) registerCoreHooks() error {
 		stopIPMonitor()
 		return err
 	}
+	stopClientIPCache := service.RegisterConfigSaveObserver("core.ipmonitor.client_identity", func(ctx service.ConfigSaveObserverContext) (service.ConfigSaveAfterCommit, error) {
+		if ctx.Object != "clients" {
+			return nil, nil
+		}
+		return ipmonitor.ResetCaches, nil
+	})
 	sshManager := sshmanagementservice.Shared()
 	sshManager.Audit = func(_ context.Context, event sshmanagementservice.AuditEventV1) {
 		_ = (&service.AuditService{}).Record(service.AuditEvent{Actor: "system", Event: "ssh_management_" + event.Event,
@@ -311,7 +435,13 @@ func (a *APP) registerCoreHooks() error {
 				"operationId": event.OperationID, "state": event.State, "reasonCode": event.ReasonCode, "revision": event.Revision,
 			}})
 	}
-	stopSSHEvidence := managementregistry.RegisterEvidenceProvider(sshManager)
+	stopSSHEvidence, err := managementregistry.RegisterEvidenceProvider(sshManager)
+	if err != nil {
+		stopClientIPCache()
+		stopSubscriptions()
+		stopIPMonitor()
+		return err
+	}
 	stopSSHPanelEvents := service.RegisterPanelEventNotifier("core:ssh-management-recovery", func(event string, fields map[string]string) {
 		if err := sshManager.HandlePanelEvent(event, fields); err != nil {
 			logger.Warning("SSH management panel recovery observation failed")
@@ -370,7 +500,11 @@ func (a *APP) registerCoreHooks() error {
 	if err := sshManager.ReconcileStartup(watchdogCtx); err != nil {
 		logger.Warning("SSH management startup reconciliation requires attention")
 	}
-	go sshManager.StartWatchdog(watchdogCtx)
+	sshWatchdogDone := make(chan struct{})
+	go func() {
+		defer close(sshWatchdogDone)
+		sshManager.StartWatchdog(watchdogCtx)
+	}()
 	deploymentManager := deploymentservice.Shared()
 	deploymentManager.Health = func(ctx context.Context, _ time.Time) deploymentservice.RuntimeHealth {
 		panel := componenthealth.Check(ctx, "core:panel:web")
@@ -403,8 +537,24 @@ func (a *APP) registerCoreHooks() error {
 	a.stopCoreHooks = func() {
 		once.Do(func() {
 			stopSSHWatchdog()
+			stopCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if err := pressureService.Shared().Stop(stopCtx); err != nil {
+				logger.Warning("resource pressure watcher did not stop cleanly:", err)
+			}
+			select {
+			case <-sshWatchdogDone:
+			case <-stopCtx.Done():
+				logger.Warning("SSH management watchdog did not stop cleanly:", stopCtx.Err())
+			}
+			cancel()
+			sshManager.Audit = nil
+			updateManager.SetAdmissionCheck(nil)
+			updateManager.SetHealthCheck(nil)
+			deploymentManager.Health = nil
+			deploymentManager.Audit = nil
 			stopSSHPanelEvents()
 			stopSSHEvidence()
+			stopClientIPCache()
 			stopSubscriptions()
 			stopIPMonitor()
 		})
@@ -413,8 +563,15 @@ func (a *APP) registerCoreHooks() error {
 }
 
 func (a *APP) RestartApp() {
-	a.Stop()
-	if err := a.Start(); err != nil {
-		logger.Warning("failed to restart app: ", err)
+	a.lifecycle.Lock()
+	defer a.lifecycle.Unlock()
+	if !a.initialized || !a.started {
+		return
 	}
+	a.stop()
+	if err := a.start(); err != nil {
+		logger.Warning("failed to restart app: ", err)
+		return
+	}
+	a.started = true
 }

@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/auditquery"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	observabilitysvc "github.com/MalenkiySolovey/solovey-ui/service/observability"
@@ -15,8 +16,8 @@ import (
 )
 
 type Deps struct {
-	ObservabilityService   service.ObservabilityService
-	AuditService           service.AuditService
+	ObservabilityService   ObservabilityHistory
+	AuditService           AuditHistory
 	RequireScope           func(*gin.Context, string, ...string) bool
 	RequireAuditAdminScope func(*gin.Context) bool
 	JSONObj                func(*gin.Context, interface{}, error)
@@ -29,8 +30,8 @@ type Deps struct {
 }
 
 type Handler struct {
-	ObservabilityService   service.ObservabilityService
-	AuditService           service.AuditService
+	ObservabilityService   ObservabilityHistory
+	AuditService           AuditHistory
 	RequireScope           func(*gin.Context, string, ...string) bool
 	RequireAuditAdminScope func(*gin.Context) bool
 	JSONObj                func(*gin.Context, interface{}, error)
@@ -40,6 +41,16 @@ type Handler struct {
 	AuditRateLimitKey      func(string, string) string
 	AuditRateLimitWindow   time.Duration
 	Audit                  func(*gin.Context, string, string, string, string, map[string]any)
+}
+
+type ObservabilityHistory interface {
+	HistoryForBucketSince(observabilitysvc.ObservabilityBucket, int64) ([]observabilitysvc.ObservabilitySample, error)
+	CoreHistoryForBucketSince(observabilitysvc.ObservabilityBucket, int64) ([]observabilitysvc.CoreSample, error)
+	MetricHistory(observabilitysvc.ObservabilityMetric, observabilitysvc.ObservabilityBucket, int64) ([]observabilitysvc.ObservabilityMetricSample, error)
+}
+
+type AuditHistory interface {
+	ListPageFiltered(uint64, int, string, string, int64, int64) ([]model.AuditEvent, uint64, error)
 }
 
 func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
@@ -75,7 +86,15 @@ type Envelope struct {
 }
 
 func (h *Handler) GetSecurityAudit(c *gin.Context) {
-	if h.RequireAuditAdminScope == nil || !h.RequireAuditAdminScope(c) {
+	if h.RequireAuditAdminScope == nil {
+		c.JSON(http.StatusServiceUnavailable, Envelope{Success: false, Msg: "audit: security boundary unavailable"})
+		return
+	}
+	if !h.RequireAuditAdminScope(c) {
+		return
+	}
+	if h.AuditService == nil || h.JSONObj == nil {
+		c.JSON(http.StatusServiceUnavailable, Envelope{Success: false, Msg: "audit: service unavailable"})
 		return
 	}
 	if !h.enforceAuditEndpointRateLimit(c) {
@@ -140,7 +159,7 @@ func (h *Handler) enforceAuditEndpointRateLimit(c *gin.Context) bool {
 }
 
 func (h *Handler) GetObservabilityHistory(c *gin.Context) {
-	if !h.RequireScope(c, "observability", "observability", "admin") {
+	if !h.requireObservabilityScope(c) {
 		return
 	}
 	bucket, since, ok := parseObservabilityQuery(c)
@@ -169,7 +188,7 @@ func (h *Handler) GetObservabilityHistory(c *gin.Context) {
 }
 
 func (h *Handler) GetCoreHistory(c *gin.Context) {
-	if !h.RequireScope(c, "observability", "observability", "admin") {
+	if !h.requireObservabilityScope(c) {
 		return
 	}
 	if c.Query("metric") != "" {
@@ -185,6 +204,21 @@ func (h *Handler) GetCoreHistory(c *gin.Context) {
 		"bucket":  bucket,
 		"samples": samples,
 	}, err)
+}
+
+func (h *Handler) requireObservabilityScope(c *gin.Context) bool {
+	if h.RequireScope == nil {
+		c.JSON(http.StatusServiceUnavailable, Envelope{Success: false, Msg: "observability: security boundary unavailable"})
+		return false
+	}
+	if !h.RequireScope(c, "observability", "observability", "admin") {
+		return false
+	}
+	if h.ObservabilityService == nil || h.JSONObj == nil {
+		c.JSON(http.StatusServiceUnavailable, Envelope{Success: false, Msg: "observability: service unavailable"})
+		return false
+	}
+	return true
 }
 
 func parseObservabilityQuery(c *gin.Context) (observabilitysvc.ObservabilityBucket, int64, bool) {

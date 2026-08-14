@@ -43,6 +43,29 @@ func TestConnTrackerResetWaitsForBlockedRead(t *testing.T) {
 	}
 }
 
+func TestConnTrackerCloseByInboundReleasesIdleTracking(t *testing.T) {
+	tracker := NewConnTracker()
+	raw := newBlockingTestConn()
+	wrapped := tracker.RoutedConnection(context.Background(), raw, adapter.InboundContext{Inbound: "in"}, nil, nil)
+
+	if closed := tracker.CloseConnByInbound("in"); closed != 1 {
+		t.Fatalf("closed connections = %d, want 1", closed)
+	}
+	tracker.access.Lock()
+	connectionCount := len(tracker.connections)
+	active := tracker.inflight.Active()
+	tracker.access.Unlock()
+	if connectionCount != 0 || active != 0 {
+		t.Fatalf("idle connection tracking leaked: connections=%d active=%d", connectionCount, active)
+	}
+	if err := wrapped.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if active = tracker.inflight.Active(); active != 0 {
+		t.Fatalf("idempotent wrapper close changed active tracking: %d", active)
+	}
+}
+
 type blockingTestConn struct {
 	readStarted chan struct{}
 	closed      chan struct{}

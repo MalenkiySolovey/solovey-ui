@@ -11,11 +11,11 @@ import (
 	"time"
 
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
+	hostmanagement "github.com/MalenkiySolovey/solovey-ui/componenthost/management"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
-	protectionrecoverypath "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/recoverypath"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 
@@ -147,9 +147,6 @@ func TestMVPAPIRouteSnapshot(t *testing.T) {
 		"POST /api/components/server-protection/operations/:operationId/forget-state",
 		"POST /api/components/server-protection/firewall/apply",
 		"POST /api/components/server-protection/firewall/rollback",
-		"POST /api/components/server-protection/ports/prepare",
-		"POST /api/components/server-protection/ports/apply",
-		"POST /api/components/server-protection/ports/rollback",
 	} {
 		if !routes[route] {
 			t.Fatalf("missing component route %s", route)
@@ -242,7 +239,7 @@ func TestFirewallBaselineResolverTargetingDoesNotRequireListenerOwner(t *testing
 
 func TestRecoveryStateRequiresFreshProofForExactCurrentEndpoint(t *testing.T) {
 	now := time.Unix(1_000, 0).UTC()
-	endpoint := hostresources.ManagementEndpointV1{Schema: hostresources.ManagementEndpointSchemaV1, ID: "management:panel:web", Network: hostresources.NetworkTCP, Family: hostresources.AddressFamilyIPv4, Port: 443, ServiceKind: hostresources.ManagementPanel, ConfidenceBP: 10000, ObservedAt: now.Unix(), ConfigurationRevision: strings.Repeat("c", 64)}
+	endpoint := hostresources.ManagementEndpointV1{Schema: hostresources.ManagementEndpointSchemaV1, ID: "management:panel:web", Network: hostresources.NetworkTCP, Family: hostresources.AddressFamilyIPv4, Bind: "192.0.2.5", Port: 443, ServiceKind: hostresources.ManagementPanel, Exposure: hostresources.EndpointIntentPublic, Owner: "panel", ResourceID: "core:panel:web", RecoveryPolicy: "fresh_independent_path_required", Purpose: "administrative_access", ConfiguredIntent: true, Source: "fixture", ConfidenceBP: 10000, ObservedAt: now.Unix(), ExpiresAt: now.Add(90 * time.Second).Unix(), ConfigurationRevision: strings.Repeat("c", 64)}
 	path := hostresources.RecoveryPathV1{Schema: hostresources.RecoveryPathSchemaV1, ID: "recovery:one", Kind: string(hostresources.ManagementPanel), EndpointID: endpoint.ID, PrincipalID: "principal:hash", VerificationMethod: "fresh_panel_login", VerifiedAt: now.Add(-time.Minute).Unix(), ExpiresAt: now.Add(time.Hour).Unix(), IndependenceClass: "independent_reconnect", VerificationState: "verified", SourceRevision: strings.Repeat("a", 64), ConfigurationRevision: endpoint.ConfigurationRevision}
 	if got := recoveryState([]hostresources.RecoveryPathV1{path}, []hostresources.ManagementEndpointV1{endpoint}, now); got != "fresh_independent_path_present" {
 		t.Fatalf("exact fresh recovery proof rejected: %s", got)
@@ -259,13 +256,13 @@ func TestRecoveryStateRequiresFreshProofForExactCurrentEndpoint(t *testing.T) {
 }
 
 func TestSSHIdentificationUsesExactUnitOrResourceIdentity(t *testing.T) {
-	if !protectionrecoverypath.IsSSHSurface(hostfacts.HostSurfaceFactV1{Service: hostfacts.ServiceFact{SystemdUnit: "sshd.service"}}) ||
-		!protectionrecoverypath.IsSSHSurface(hostfacts.HostSurfaceFactV1{Service: hostfacts.ServiceFact{SystemdUnit: "sshd@tenant.service"}}) ||
-		!protectionrecoverypath.IsSSHSurface(hostfacts.HostSurfaceFactV1{RegisteredResourceID: "core:ssh:primary"}) {
+	if !hostmanagement.IsSSHSurface(hostfacts.HostSurfaceFactV1{Service: hostfacts.ServiceFact{SystemdUnit: "sshd.service"}}) ||
+		!hostmanagement.IsSSHSurface(hostfacts.HostSurfaceFactV1{Service: hostfacts.ServiceFact{SystemdUnit: "sshd@tenant.service"}}) ||
+		!hostmanagement.IsSSHSurface(hostfacts.HostSurfaceFactV1{RegisteredResourceID: "core:ssh:primary"}) {
 		t.Fatal("exact SSH identity was rejected")
 	}
 	for _, value := range []string{"not-sshd.service", "backup-ssh-agent.service", "ssh.service.evil"} {
-		if protectionrecoverypath.IsSSHSurface(hostfacts.HostSurfaceFactV1{Service: hostfacts.ServiceFact{SystemdUnit: value}}) {
+		if hostmanagement.IsSSHSurface(hostfacts.HostSurfaceFactV1{Service: hostfacts.ServiceFact{SystemdUnit: value}}) {
 			t.Fatalf("substring-only SSH identity accepted: %q", value)
 		}
 	}

@@ -20,7 +20,7 @@ func TestShowAdminDoesNotPrintPasswordHash(t *testing.T) {
 		}
 	})
 
-	stdout, _ := captureCmdOutput(t, Show)
+	stdout, _ := captureCmdOutput(t, func() { _ = Show() })
 	if strings.Contains(stdout, "go-sqlite3 requires cgo") {
 		t.Skip(stdout)
 	}

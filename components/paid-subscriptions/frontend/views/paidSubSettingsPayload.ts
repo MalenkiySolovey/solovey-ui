@@ -1,7 +1,7 @@
 import {
   pickSettingsByDefaults,
   type SettingsMap,
-} from '@/views/settingsPayload'
+} from '@/features/settingsPayload'
 
 export type PaidSubSettingsMap = SettingsMap
 

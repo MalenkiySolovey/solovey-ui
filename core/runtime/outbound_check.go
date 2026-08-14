@@ -33,27 +33,30 @@ func (c *Core) CheckOutbound(ctx context.Context, tag string, link string) (resu
 			result = CheckOutboundResult{Error: CheckOutboundErrorFailed}
 		}
 	}()
-	outboundManager := c.OutboundManager()
-	if outboundManager == nil {
+	err := c.withRuntime(func(current coreRuntime) error {
+		ob, ok := current.outboundManager.Outbound(tag)
+		if !ok {
+			result.Error = CheckOutboundErrorNotFound
+			return nil
+		}
+
+		probeCtx, cancel := context.WithTimeout(ctx, checkTimeout)
+		defer cancel()
+
+		delay, probeErr := urltest.URLTest(probeCtx, link, ob)
+		if probeErr != nil {
+			result.Error = ClassifyOutboundCheckError(probeErr)
+			return nil
+		}
+		result.OK = true
+		result.Delay = delay
+		return nil
+	})
+	if errors.Is(err, ErrCoreUnavailable) {
 		result.Error = CheckOutboundErrorCoreUnavailable
-		return result
+	} else if err != nil {
+		result.Error = CheckOutboundErrorFailed
 	}
-	ob, ok := outboundManager.Outbound(tag)
-	if !ok {
-		result.Error = CheckOutboundErrorNotFound
-		return result
-	}
-
-	ctx, cancel := context.WithTimeout(ctx, checkTimeout)
-	defer cancel()
-
-	delay, err := urltest.URLTest(ctx, link, ob)
-	if err != nil {
-		result.Error = ClassifyOutboundCheckError(err)
-		return result
-	}
-	result.OK = true
-	result.Delay = delay
 	return result
 }
 

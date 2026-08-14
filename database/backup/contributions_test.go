@@ -75,6 +75,48 @@ func TestExportSkipsUnregisteredComponentTables(t *testing.T) {
 	}
 }
 
+func TestExportSkipsRegisteredTableWithoutInstalledOwner(t *testing.T) {
+	dbPath := initBackupContributionDB(t)
+	if err := dbsqlite.DB().AutoMigrate(&backupContributionRow{}); err != nil {
+		t.Fatal(err)
+	}
+	unregister := RegisterTables("inactive-component", []TableContribution{
+		{Name: "component_backup_rows", Model: &backupContributionRow{}},
+	})
+	t.Cleanup(unregister)
+
+	backupDB := openContributionBackup(t, dbPath)
+	if backupDB.Migrator().HasTable("component_backup_rows") {
+		t.Fatal("registration without installed ownership leaked into backup")
+	}
+}
+
+func TestExportRejectsTypedRegistrationOwnerMismatch(t *testing.T) {
+	initBackupContributionDB(t)
+	owner := componentmanifest.Manifest{
+		ID: "expected-owner", Name: "Expected owner", Version: "1", Delivery: componentmanifest.DeliveryInProcess,
+		Database: componentmanifest.Database{Tables: []string{"component_backup_rows"}},
+	}.Normalized()
+	durableowner.Register(owner)
+	installedPath := filepath.Join(t.TempDir(), "installed.json")
+	t.Setenv(installstate.InstalledFileEnv, installedPath)
+	if err := installstate.Store(installedPath, installstate.Metadata{Version: 1, Components: []installstate.InstalledComponent{{
+		ID: owner.ID, Delivery: owner.Delivery, Installed: true,
+	}}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.DB().AutoMigrate(&backupContributionRow{}); err != nil {
+		t.Fatal(err)
+	}
+	unregister := RegisterTables("wrong-owner", []TableContribution{
+		{Name: "component_backup_rows", Model: &backupContributionRow{}},
+	})
+	t.Cleanup(unregister)
+	if _, err := Export(""); err == nil || !strings.Contains(err.Error(), "owner mismatch") {
+		t.Fatalf("typed registration owner mismatch was accepted: %v", err)
+	}
+}
+
 func initBackupContributionDB(t *testing.T) string {
 	t.Helper()
 	dbDir := t.TempDir()

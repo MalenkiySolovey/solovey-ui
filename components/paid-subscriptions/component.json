@@ -12,13 +12,13 @@
   },
   "database": {
 	"schema": "solovey.durable-resource/v1",
-	"schemaVersion": "1",
-	"migrationVersion": "1",
+	"schemaVersion": "2",
+	"migrationVersion": "2",
 	"indexPolicy": "ALL_OWNED_TABLE_INDEXES",
     "tables": [
-      "paid_subscription_tariffs",
-      "paid_subscription_bindings",
-	  "paid_subscription_orders"
+	  "paidsub_bindings",
+	  "payment_orders",
+	  "tariffs"
 	],
 	"settings": [
 	  "paidSubAutoInbounds", "paidSubAutoRegister", "paidSubBotPollSeconds", "paidSubCryptoBotEnabled",
@@ -38,6 +38,6 @@
 	"dropPostcondition": "DECLARED_RESOURCES_ABSENT_V1",
 	"redactionClass": "SENSITIVE",
 	"portabilityClass": "PORTABLE",
-	"compatibilityRange": {"minimumSchema": "1", "maximumSchema": "1"}
+	"compatibilityRange": {"minimumSchema": "1", "maximumSchema": "2"}
   }
 }

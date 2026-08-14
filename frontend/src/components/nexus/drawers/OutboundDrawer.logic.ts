@@ -1,5 +1,5 @@
 import { defineComponent } from 'vue'
-import OutboundEditor from '@/shared/composables/useOutboundEditor'
+import OutboundEditor from '@/features/useOutboundEditor'
 import EntityDrawer from './EntityDrawer.vue'
 import FormSection from './FormSection.vue'
 

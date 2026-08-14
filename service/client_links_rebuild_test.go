@@ -89,7 +89,7 @@ func TestUpdateClientsOnInboundAddKeepsOtherInboundLinks(t *testing.T) {
 	client := model.Client{
 		Name:     "add-client",
 		Inbounds: json.RawMessage(`[]`),
-		Config:   json.RawMessage(`{}`),
+		Config:   json.RawMessage(`{"trojan":{"password":"secret"}}`),
 		Links: json.RawMessage(`[
 			{"remark":"in-A","type":"local","uri":"drop-local-A"},
 			{"remark":"in-A","type":"external","uri":"drop-ext-A"},
@@ -126,7 +126,7 @@ func TestUpdateLinksByInboundChangeKeepsNonLocalAndOtherTags(t *testing.T) {
 	client := model.Client{
 		Name:     "change-client",
 		Inbounds: json.RawMessage(fmt.Sprintf("[%d]", inbound.Id)),
-		Config:   json.RawMessage(`{}`),
+		Config:   json.RawMessage(`{"trojan":{"password":"secret"}}`),
 		Links: json.RawMessage(`[
 			{"remark":"new-tag","type":"local","uri":"drop-new-local"},
 			{"remark":"old-tag","type":"local","uri":"drop-old-local"},
@@ -163,7 +163,7 @@ func TestUpdateLinksWithFixedInboundsKeepsNonLocal(t *testing.T) {
 	client := &model.Client{
 		Name:     "fixed-client",
 		Inbounds: json.RawMessage(fmt.Sprintf("[%d]", inbound.Id)),
-		Config:   json.RawMessage(`{}`),
+		Config:   json.RawMessage(`{"trojan":{"password":"secret"}}`),
 		Links: json.RawMessage(`[
 			{"remark":"fix-tag","type":"local","uri":"drop-local"},
 			{"remark":"whatever","type":"external","uri":"keep-external"}

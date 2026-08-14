@@ -32,13 +32,10 @@ func TestValidateSubscriptionPaths(t *testing.T) {
 
 func TestValidateSubscriptionSettingInput(t *testing.T) {
 	valid := map[string]string{
-		settingcatalog.SubJsonEnableKey:     "false",
-		settingcatalog.SubXrayEnableKey:     "true",
-		settingcatalog.SubXrayURIKey:        "https://xray.example/sub/",
-		settingcatalog.SubSupportURLKey:     "https://example.com/support",
-		settingcatalog.SubRateLimitPerIPKey: "120",
-		settingcatalog.SubJsonFragmentKey:   `{"enabled":true}`,
-		settingcatalog.SubJsonNoisesKey:     `[{"type":"rand"}]`,
+		settingcatalog.SubXrayURIKey:      "https://xray.example/sub/",
+		settingcatalog.SubSupportURLKey:   "https://example.com/support",
+		settingcatalog.SubJsonFragmentKey: `{"enabled":true}`,
+		settingcatalog.SubJsonNoisesKey:   `[{"type":"rand"}]`,
 	}
 	for key, value := range valid {
 		if err := ValidateSubscriptionSettingInput(key, value); err != nil {
@@ -47,11 +44,9 @@ func TestValidateSubscriptionSettingInput(t *testing.T) {
 	}
 
 	invalid := map[string]string{
-		settingcatalog.SubJsonEnableKey:     "sometimes",
-		settingcatalog.SubSupportURLKey:     "ftp://example.com/support",
-		settingcatalog.SubRateLimitPerIPKey: "0",
-		settingcatalog.SubJsonFragmentKey:   "enabled",
-		settingcatalog.SubJsonNoisesKey:     `{"type":"rand"}`,
+		settingcatalog.SubSupportURLKey:   "ftp://example.com/support",
+		settingcatalog.SubJsonFragmentKey: "enabled",
+		settingcatalog.SubJsonNoisesKey:   `{"type":"rand"}`,
 	}
 	for key, value := range invalid {
 		if err := ValidateSubscriptionSettingInput(key, value); err == nil {

@@ -2,6 +2,7 @@ export default {
   "migrateXui": {
     "backupAction": {
       "title": "مهاجرت از compatible panel",
+      "hint": "وارد کردن سریع بلافاصله اعمال می‌شود. راهنمای کامل امکان پیش‌نمایش، بررسی تعارض‌ها و انتخاب دقیق موارد انتقال را فراهم می‌کند.",
       "button": "انتخاب پایگاه داده compatible panel…",
       "dryRun": "اجرای آزمایشی (فقط پیش‌نمایش)",
       "strategy": "راهبرد تعارض",
@@ -48,6 +49,8 @@ export default {
     "warnings": "هشدارها",
     "back": "بازگشت",
     "apply": "اعمال برنامه",
+    "applyFailed": "وارد کردن ناموفق بود",
+    "applyFailedFallback": "اعمال مهاجرت ممکن نشد.",
     "progressTitle": "اعمال مهاجرت",
     "current": "فعلی",
     "resultTitle": "نتیجه مهاجرت",
@@ -55,8 +58,15 @@ export default {
     "downloadJson": "دریافت JSON",
     "downloadMarkdown": "دریافت Markdown",
     "restore": "بازیابی پایگاه داده قبلی",
+    "rollbackFailed": "بازیابی ناموفق بود",
+    "rollbackFailedFallback": "بازیابی پایگاه داده قبلی ممکن نشد.",
+    "rollbackHealthTimeout": "بازیابی پایان یافت، اما پنل به‌موقع آماده نشد. پس از بررسی سرویس، صفحه را دستی تازه‌سازی کنید.",
     "generatedAdmins": "ادمین‌های ایجاد شده",
     "passwordShownOnce": "این گذرواژه‌ها فقط یک‌بار نمایش داده می‌شوند و در audit ذخیره نمی‌شوند.",
+    "passwordsHidden": "گذرواژه‌های ایجادشده تا زمان نمایش صریح پنهان هستند.",
+    "revealGeneratedAdmins": "نمایش گذرواژه‌ها",
+    "hideGeneratedAdmins": "پنهان کردن گذرواژه‌ها",
+    "clearGeneratedAdmins": "پاک کردن گذرواژه‌ها",
     "actions": {
       "create": "ایجاد",
       "merge": "ادغام",

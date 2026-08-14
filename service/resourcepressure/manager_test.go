@@ -122,6 +122,71 @@ func TestManagerSerializesObservationCycles(t *testing.T) {
 	}
 }
 
+func TestManagerPublishesSnapshotOnlyAfterDurableWrite(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "pressure-retry.db")),
+		&gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	evaluator, err := domain.NewEvaluator([]domain.Threshold{{ID: "fixture.used_ratio", Direction: domain.HigherIsWorse,
+		Warning: .8, Constrained: .9, Critical: .96, Required: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_800_000_000, 0)
+	manager := NewManager(evaluator, &fixtureCollector{value: .2}, Repository{DB: func() *gorm.DB { return db }})
+	manager.now = func() time.Time { return now }
+
+	if err := manager.Observe(context.Background()); err == nil {
+		t.Fatal("Observe succeeded without durable pressure tables")
+	}
+	if got := manager.Current(); got.Revision != 0 || got.ReasonCodes[0] != "pressure_not_observed" {
+		t.Fatalf("failed persistence published snapshot: %#v", got)
+	}
+	if err := db.AutoMigrate(&model.ResourcePressureState{}, &model.ResourcePressureTransition{}); err != nil {
+		t.Fatal(err)
+	}
+	now = now.Add(domain.SampleInterval)
+	if err := manager.Observe(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if got := manager.Current(); got.Revision == 0 {
+		t.Fatalf("successful retry did not publish snapshot: %#v", got)
+	}
+}
+
+func TestManagerCanRestartAfterStop(t *testing.T) {
+	evaluator, err := domain.NewEvaluator([]domain.Threshold{{ID: "fixture.used_ratio", Direction: domain.HigherIsWorse,
+		Warning: .8, Constrained: .9, Critical: .96, Required: true}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := NewManager(evaluator, &fixtureCollector{value: .2}, Repository{})
+	manager.Start(context.Background())
+	manager.mu.RLock()
+	firstDone := manager.done
+	manager.mu.RUnlock()
+	if err := manager.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+
+	manager.Start(context.Background())
+	manager.mu.RLock()
+	secondDone := manager.done
+	manager.mu.RUnlock()
+	if secondDone == nil || secondDone == firstDone {
+		t.Fatal("Start after Stop did not create a new lifecycle generation")
+	}
+	if err := manager.Stop(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestSystemCollectorInventoryIsBoundedUniqueAndExplicit(t *testing.T) {
 	now := time.Now().UTC()
 	signals := (SystemCollector{}).Collect(context.Background(), now)
@@ -175,17 +240,19 @@ func TestBoundedTempFilesystemUsesRatioWithoutPermanentCriticalState(t *testing.
 		t.Fatal(err)
 	}
 	now := time.Unix(1_800_000_000, 0)
+	var observed domain.Snapshot
 	for range 2 {
 		bytesSignal.ObservedAt, bytesSignal.ExpiresAt = now.Unix(), now.Add(domain.DefaultFreshness).Unix()
 		ratioSignal := domain.Signal{ID: "filesystem.temp.free_ratio", Status: domain.ProviderSupported,
 			Value: float64(free) / float64(total), Unit: "ratio", ObservedAt: now.Unix(), ExpiresAt: now.Add(domain.DefaultFreshness).Unix()}
-		if got := evaluator.Evaluate(now, []domain.Signal{ratioSignal, bytesSignal}); got.State == domain.StateCritical {
-			t.Fatalf("bounded healthy tmpfs became critical: %#v", got)
+		observed = evaluator.Evaluate(now, []domain.Signal{ratioSignal, bytesSignal})
+		if observed.State == domain.StateCritical {
+			t.Fatalf("bounded healthy tmpfs became critical: %#v", observed)
 		}
 		now = now.Add(domain.SampleInterval)
 	}
-	if got := evaluator.Current(); got.State != domain.StateNormal {
-		t.Fatalf("bounded healthy tmpfs did not establish normal pressure: %#v", got)
+	if observed.State != domain.StateNormal {
+		t.Fatalf("bounded healthy tmpfs did not establish normal pressure: %#v", observed)
 	}
 }
 
@@ -217,19 +284,6 @@ func TestPersistedTransitionRetentionKeepsNewestAuthority(t *testing.T) {
 	if len(retained) != MaxPersistedTransitions || retained[0].Sequence != 38 ||
 		retained[len(retained)-1].Sequence != uint64(len(rows)) {
 		t.Fatalf("retention=%d first=%d last=%d", len(retained), retained[0].Sequence, retained[len(retained)-1].Sequence)
-	}
-}
-
-func BenchmarkResourcePressureRetentionPlanning(b *testing.B) {
-	sequences := make([]uint64, MaxPersistedTransitions*2)
-	for index := range sequences {
-		sequences[index] = uint64(len(sequences) - index)
-	}
-	b.ReportAllocs()
-	for index := 0; index < b.N; index++ {
-		if cutoff := transitionRetentionCutoff(sequences, MaxPersistedTransitions); cutoff != MaxPersistedTransitions+1 {
-			b.Fatalf("cutoff=%d", cutoff)
-		}
 	}
 }
 

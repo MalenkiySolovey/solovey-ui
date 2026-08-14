@@ -38,14 +38,14 @@ func TestBucketsAreBoundedByDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(samples) != DefaultBucketCap(ObservabilityBucket2s) || samples[0].DateTime != 50 {
+	if len(samples) != observabilityDefaultBucketCaps[ObservabilityBucket2s] || samples[0].DateTime != 50 {
 		t.Fatalf("unexpected bounded samples: len=%d first=%d", len(samples), samples[0].DateTime)
 	}
 	core, err := service.CoreHistoryForBucket(ObservabilityBucket5m)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(core) != DefaultBucketCap(ObservabilityBucket5m) || core[0].DateTime != 206 {
+	if len(core) != observabilityDefaultBucketCaps[ObservabilityBucket5m] || core[0].DateTime != 206 {
 		t.Fatalf("unexpected bounded core samples: len=%d first=%d", len(core), core[0].DateTime)
 	}
 	if _, err := service.HistoryForBucket(ObservabilityBucket("10s")); err == nil {
@@ -56,7 +56,7 @@ func TestBucketsAreBoundedByDefault(t *testing.T) {
 func TestMemoryCapShrinksBuckets(t *testing.T) {
 	resetStore(t)
 	service := &Service{Settings: &fixedSettings{capMB: 1}}
-	expected := CapsForMemory(1)[ObservabilityBucket2s]
+	expected := capsForObservabilityMemory(1)[ObservabilityBucket2s]
 	for i := 0; i < 350; i++ {
 		if err := service.RecordObservabilitySample(ObservabilityBucket2s, testSample(i)); err != nil {
 			t.Fatal(err)
@@ -96,10 +96,37 @@ func TestMemoryCapCacheRefreshesAfterTTL(t *testing.T) {
 	}
 }
 
+func TestResetObservabilityCachesClearsHistoryAndInvalidatesCap(t *testing.T) {
+	resetStore(t)
+	settings := &fixedSettings{capMB: 1}
+	service := &Service{Settings: settings}
+	if err := service.RecordObservabilitySample(ObservabilityBucket2s, testSample(1)); err != nil {
+		t.Fatal(err)
+	}
+	if err := service.RecordCoreSample(ObservabilityBucket2s, CoreSample{DateTime: 1}); err != nil {
+		t.Fatal(err)
+	}
+	resetObservabilityCaches()
+	samples, err := service.HistoryForBucket(ObservabilityBucket2s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	core, err := service.CoreHistoryForBucket(ObservabilityBucket2s)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(samples) != 0 || len(core) != 0 {
+		t.Fatalf("reset retained history: samples=%v core=%v", samples, core)
+	}
+	if observabilityMemoryCapCache.expiresAtUnixNano.Load() != 0 {
+		t.Fatal("reset retained the memory-cap cache TTL")
+	}
+}
+
 func BenchmarkHistoryForBucketRead(b *testing.B) {
 	resetStore(b)
 	service := &Service{Settings: &fixedSettings{capMB: DefaultMemoryCapMB}}
-	for i := 0; i < DefaultBucketCap(ObservabilityBucket2s); i++ {
+	for i := 0; i < observabilityDefaultBucketCaps[ObservabilityBucket2s]; i++ {
 		_ = service.RecordObservabilitySample(ObservabilityBucket2s, testSample(i))
 	}
 	b.ReportAllocs()

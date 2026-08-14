@@ -3,7 +3,6 @@ package uri
 import (
 	"encoding/json"
 	"fmt"
-	"net"
 	"net/url"
 	"strconv"
 	"strings"
@@ -21,6 +20,18 @@ func vmess(data string, i int) (*map[string]interface{}, string, error) {
 	err = json.Unmarshal(dataByte, &dataJson)
 	if err != nil {
 		return nil, "", err
+	}
+	server, ok := dataJson["add"].(string)
+	if !ok || strings.TrimSpace(server) == "" {
+		return nil, "", common.NewError("Invalid vmess server")
+	}
+	port, err := parsePortValue(dataJson["port"])
+	if err != nil {
+		return nil, "", err
+	}
+	uuid, ok := dataJson["id"].(string)
+	if !ok || strings.TrimSpace(uuid) == "" {
+		return nil, "", common.NewError("Invalid vmess uuid")
 	}
 	transport := map[string]interface{}{}
 	tp_net, _ := dataJson["net"].(string)
@@ -69,7 +80,7 @@ func vmess(data string, i int) (*map[string]interface{}, string, error) {
 		tls["enabled"] = true
 		tls_sni, _ := dataJson["sni"].(string)
 		tls_alpn, _ := dataJson["alpn"].(string)
-		_, tls_insecure := dataJson["allowInsecure"]
+		tls_insecure := truthyJSONValue(dataJson["allowInsecure"])
 		tls_fp, _ := dataJson["fp"].(string)
 		if len(tls_sni) > 0 {
 			tls["server_name"] = tls_sni
@@ -98,9 +109,9 @@ func vmess(data string, i int) (*map[string]interface{}, string, error) {
 	vmess := map[string]interface{}{
 		"type":        "vmess",
 		"tag":         tag,
-		"server":      dataJson["add"],
-		"server_port": dataJson["port"],
-		"uuid":        dataJson["id"],
+		"server":      server,
+		"server_port": port,
+		"uuid":        uuid,
 		"security":    "auto",
 		"alter_id":    alter_id,
 		"tls":         tls,
@@ -109,16 +120,22 @@ func vmess(data string, i int) (*map[string]interface{}, string, error) {
 	return &vmess, tag, err
 }
 func vless(u *url.URL, i int) (*map[string]interface{}, string, error) {
-	query, _ := url.ParseQuery(u.RawQuery)
+	query, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return nil, "", common.NewError("invalid vless query")
+	}
 	security := query.Get("security")
-	host, portStr, _ := net.SplitHostPort(u.Host)
 	port := 80
-	if len(portStr) > 0 {
-		port, _ = strconv.Atoi(portStr)
-	} else {
-		if security == "tls" || security == "reality" {
-			port = 443
-		}
+	if security == "tls" || security == "reality" {
+		port = 443
+	}
+	host, port, err := parseEndpoint(u, port)
+	if err != nil {
+		return nil, "", err
+	}
+	uuid, err := requiredUsername(u, "vless uuid")
+	if err != nil {
+		return nil, "", err
 	}
 	tp_type := query.Get("type")
 	tag := u.Fragment
@@ -130,7 +147,7 @@ func vless(u *url.URL, i int) (*map[string]interface{}, string, error) {
 		"tag":         tag,
 		"server":      host,
 		"server_port": port,
-		"uuid":        u.User.Username(),
+		"uuid":        uuid,
 		"flow":        query.Get("flow"),
 		"tls":         getTls(security, &query),
 		"transport":   getTransport(tp_type, &query),
@@ -138,16 +155,22 @@ func vless(u *url.URL, i int) (*map[string]interface{}, string, error) {
 	return &vless, tag, nil
 }
 func trojan(u *url.URL, i int) (*map[string]interface{}, string, error) {
-	query, _ := url.ParseQuery(u.RawQuery)
+	query, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return nil, "", common.NewError("invalid trojan query")
+	}
 	security := query.Get("security")
-	host, portStr, _ := net.SplitHostPort(u.Host)
 	port := 80
-	if len(portStr) > 0 {
-		port, _ = strconv.Atoi(portStr)
-	} else {
-		if security == "tls" || security == "reality" {
-			port = 443
-		}
+	if security == "tls" || security == "reality" {
+		port = 443
+	}
+	host, port, err := parseEndpoint(u, port)
+	if err != nil {
+		return nil, "", err
+	}
+	password, err := requiredUsername(u, "trojan password")
+	if err != nil {
+		return nil, "", err
 	}
 	tp_type := query.Get("type")
 	tag := u.Fragment
@@ -159,18 +182,20 @@ func trojan(u *url.URL, i int) (*map[string]interface{}, string, error) {
 		"tag":         tag,
 		"server":      host,
 		"server_port": port,
-		"password":    u.User.Username(),
+		"password":    password,
 		"tls":         getTls(security, &query),
 		"transport":   getTransport(tp_type, &query),
 	}
 	return &trojan, tag, nil
 }
 func hy(u *url.URL, i int) (*map[string]interface{}, string, error) {
-	query, _ := url.ParseQuery(u.RawQuery)
-	host, portStr, _ := net.SplitHostPort(u.Host)
-	port := 443
-	if len(portStr) > 0 {
-		port, _ = strconv.Atoi(portStr)
+	query, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return nil, "", common.NewError("invalid hysteria query")
+	}
+	host, port, err := parseEndpoint(u, 443)
+	if err != nil {
+		return nil, "", err
 	}
 	security := query.Get("security")
 	if len(security) == 0 {
@@ -208,11 +233,17 @@ func hy(u *url.URL, i int) (*map[string]interface{}, string, error) {
 	return &hy, tag, nil
 }
 func hy2(u *url.URL, i int) (*map[string]interface{}, string, error) {
-	query, _ := url.ParseQuery(u.RawQuery)
-	host, portStr, _ := net.SplitHostPort(u.Host)
-	port := 443
-	if len(portStr) > 0 {
-		port, _ = strconv.Atoi(portStr)
+	query, err := url.ParseQuery(u.RawQuery)
+	if err != nil {
+		return nil, "", common.NewError("invalid hysteria2 query")
+	}
+	host, port, err := parseEndpoint(u, 443)
+	if err != nil {
+		return nil, "", err
+	}
+	password, err := requiredUsername(u, "hysteria2 password")
+	if err != nil {
+		return nil, "", err
 	}
 	security := query.Get("security")
 	if len(security) == 0 {
@@ -227,7 +258,7 @@ func hy2(u *url.URL, i int) (*map[string]interface{}, string, error) {
 		"tag":         tag,
 		"server":      host,
 		"server_port": port,
-		"password":    u.User.Username(),
+		"password":    password,
 		"tls":         getTls(security, &query),
 	}
 	down, _ := strconv.Atoi(query.Get("downmbps"))

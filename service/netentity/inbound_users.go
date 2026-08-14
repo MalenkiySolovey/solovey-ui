@@ -57,10 +57,6 @@ func (s *InboundService) AddUsers(db *gorm.DB, inboundJSON []byte, inboundID uin
 	return s.addUsers(db, inboundJSON, inboundID, inboundType)
 }
 
-func (s *InboundService) FetchUsersByCondition(db *gorm.DB, inboundType, condition string, inbound map[string]interface{}, args ...interface{}) ([]json.RawMessage, error) {
-	return s.fetchUsersByCondition(db, inboundType, condition, inbound, args...)
-}
-
 func (s *InboundService) addUsers(db *gorm.DB, inboundJson []byte, inboundId uint, inboundType string) ([]byte, error) {
 	if !s.hasUser(inboundType) {
 		return inboundJson, nil
@@ -80,7 +76,7 @@ func (s *InboundService) addUsers(db *gorm.DB, inboundJson []byte, inboundId uin
 		delete(inbound, "password")
 	}
 
-	inbound["users"], err = s.fetchUsersByCondition(db, inboundType, clientHasInboundCondition, inbound, inboundId)
+	inbound["users"], err = s.fetchUsers(db, inboundType, inbound, inboundId)
 	if err != nil {
 		return nil, err
 	}
@@ -88,7 +84,7 @@ func (s *InboundService) addUsers(db *gorm.DB, inboundJson []byte, inboundId uin
 	return json.Marshal(inbound)
 }
 
-func (s *InboundService) fetchUsersByCondition(db *gorm.DB, inboundType string, condition string, inbound map[string]interface{}, args ...interface{}) ([]json.RawMessage, error) {
+func (s *InboundService) fetchUsers(db *gorm.DB, inboundType string, inbound map[string]interface{}, inboundID uint) ([]json.RawMessage, error) {
 	if inboundType == "shadowtls" {
 		version, _ := inbound["version"].(float64)
 		if int(version) < 3 {
@@ -111,11 +107,10 @@ func (s *InboundService) fetchUsersByCondition(db *gorm.DB, inboundType string, 
 	}
 
 	var users []string
-	// `field` is constrained to a static allow-list above, so embedding it
-	// directly into the JSON path is safe. The dynamic condition is fed
-	// through the query parameter slot to remain SQL-injection free.
-	query := fmt.Sprintf(`SELECT json_extract(clients.config, '$.%s') FROM clients WHERE enable = true AND %s ORDER BY clients.sort_order, clients.id`, field, condition)
-	err := db.Raw(query, args...).Scan(&users).Error
+	// Both SQL fragments are static allow-listed values; inboundID remains a
+	// bound parameter. Callers cannot inject an alternate WHERE condition.
+	query := fmt.Sprintf(`SELECT json_extract(clients.config, '$.%s') FROM clients WHERE enable = true AND %s ORDER BY clients.sort_order, clients.id`, field, clientHasInboundCondition)
+	err := db.Raw(query, inboundID).Scan(&users).Error
 	if err != nil {
 		return nil, err
 	}

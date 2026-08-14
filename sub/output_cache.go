@@ -6,6 +6,7 @@ import (
 	"time"
 
 	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
+	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
@@ -69,6 +70,7 @@ func subscriptionCacheSet(key string, body string, headers []string, now time.Ti
 
 func ClearSubscriptionOutputCache() {
 	subscriptionOutputCache.mu.Lock()
-	defer subscriptionOutputCache.mu.Unlock()
 	subscriptionOutputCache.entries = map[string]subscriptionOutputCacheEntry{}
+	subscriptionOutputCache.mu.Unlock()
+	subserver.ResetDisplaySettingsCache()
 }

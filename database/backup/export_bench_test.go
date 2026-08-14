@@ -11,6 +11,7 @@ import (
 
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"gorm.io/driver/sqlite"
@@ -95,7 +96,7 @@ func prepareBackupBenchFixture(b *testing.B, rowsPerTable int) string {
 	if err := db.AutoMigrate(models...); err != nil {
 		b.Fatal(err)
 	}
-	if err := dbsqlite.EnsureNoTLSRow(db); err != nil {
+	if err := entitytls.EnsureSentinel(db); err != nil {
 		b.Fatal(err)
 	}
 	if err := seedBackupBenchSmallTables(db); err != nil {

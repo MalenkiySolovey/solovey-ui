@@ -28,26 +28,20 @@ func (stub *componentManagerStepUpStub) Install(panelupdateservice.OperationCont
 	return panelupdateservice.ComponentStatus{}, nil
 }
 
-func (stub *componentManagerStepUpStub) Remove(_ panelupdateservice.OperationContext, id string, deleteData bool) (panelupdateservice.ComponentStatus, error) {
+func (stub *componentManagerStepUpStub) Remove(_ panelupdateservice.OperationContext, id string) (panelupdateservice.ComponentStatus, error) {
 	stub.removeCalls++
 	return panelupdateservice.ComponentStatus{ID: id, Installed: false}, nil
 }
 
-func TestComponentDropDataRequiresExactStepUpBeforeRemoval(t *testing.T) {
+func TestComponentRemoveFailsClosedWithoutReauthenticationBoundary(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	manager := &componentManagerStepUpStub{}
-	var operation, target string
 	router := gin.New()
 	RegisterRoutes(router.Group("/api"), Deps{
 		ComponentManager: manager,
 		RequireScope:     func(*gin.Context, string, ...string) bool { return true },
-		RequireStepUp: func(c *gin.Context, gotOperation, gotTarget string) bool {
-			operation, target = gotOperation, gotTarget
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"success": false, "msg": "denied"})
-			return false
-		},
-		LoginUser: func(*gin.Context) string { return "admin" },
-		RemoteIP:  func(*gin.Context) string { return "192.0.2.1" },
+		LoginUser:        func(*gin.Context) string { return "admin" },
+		RemoteIP:         func(*gin.Context) string { return "192.0.2.1" },
 		JSONMsg: func(c *gin.Context, msg string, err error) {
 			c.JSON(http.StatusOK, gin.H{"success": err == nil, "msg": msg})
 		},
@@ -59,17 +53,14 @@ func TestComponentDropDataRequiresExactStepUpBeforeRemoval(t *testing.T) {
 	request := httptest.NewRequest(
 		http.MethodPost,
 		"/api/update/components/telegram/remove",
-		strings.NewReader(`{"deleteData":true}`),
+		strings.NewReader(`{"password":"credential"}`),
 	)
 	request.Header.Set("Content-Type", "application/json")
 	recorder := httptest.NewRecorder()
 	router.ServeHTTP(recorder, request)
 
-	if recorder.Code != http.StatusForbidden || manager.removeCalls != 0 {
-		t.Fatalf("drop-data response=%d calls=%d body=%s", recorder.Code, manager.removeCalls, recorder.Body.String())
-	}
-	if operation != "drop_data" || target != "component:telegram" {
-		t.Fatalf("step-up binding operation=%q target=%q", operation, target)
+	if recorder.Code != http.StatusServiceUnavailable || manager.removeCalls != 0 {
+		t.Fatalf("remove response=%d calls=%d body=%s", recorder.Code, manager.removeCalls, recorder.Body.String())
 	}
 }
 
@@ -127,6 +118,7 @@ func TestComponentsEndpointReturnsUpdateCatalogInventory(t *testing.T) {
 				},
 			},
 		},
+		RequireScope: func(*gin.Context, string, ...string) bool { return true },
 		JSONObj: func(context *gin.Context, value any, err error) {
 			if err != nil {
 				context.JSON(http.StatusOK, gin.H{"success": false, "msg": err.Error()})
@@ -158,5 +150,22 @@ func TestComponentsEndpointReturnsUpdateCatalogInventory(t *testing.T) {
 	}
 	if response.Obj.Unavailable[0].ID != "future-component" || response.Obj.Unavailable[0].UnavailableReason == "" {
 		t.Fatalf("unavailable component metadata was not exposed: %#v", response.Obj.Unavailable)
+	}
+}
+
+func TestComponentsEndpointFailsClosedWithoutScopeBoundary(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	RegisterRoutes(router.Group("/api"), Deps{
+		Components: componentCatalogStub{},
+		JSONObj: func(context *gin.Context, value any, err error) {
+			context.JSON(http.StatusOK, gin.H{"success": err == nil, "obj": value})
+		},
+	})
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/update/components", nil))
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("response=%d body=%s, want fail-closed 503", recorder.Code, recorder.Body.String())
 	}
 }

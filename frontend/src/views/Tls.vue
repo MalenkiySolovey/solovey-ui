@@ -153,7 +153,7 @@
 import TlsVue from '@/layouts/modals/Tls.vue'
 import Data from '@/store/modules/data'
 import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
-import ManualSortButton from '@/components/ManualSortButton.vue'
+import ManualSortButton from '@/shared/ui/ManualSortButton.vue'
 import { computed, defineAsyncComponent, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Inbound } from '@/types/inbounds'

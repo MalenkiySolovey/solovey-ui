@@ -110,6 +110,56 @@ func TestManagerSaveRejectsUnknownAndInternalKeys(t *testing.T) {
 	}
 }
 
+func TestManagerGetAllRejectsInvalidStoredValue(t *testing.T) {
+	db := newManagerTestDB(t)
+	schema := settingsschema.New(map[string]string{"enabled": "true"}, nil, nil)
+	manager := Manager{
+		DB:     func() *gorm.DB { return db },
+		Schema: schema,
+		Hooks: Hooks{ValidateAll: func(settings map[string]string) error {
+			if settings["enabled"] == "false" {
+				return gorm.ErrInvalidValue
+			}
+			return nil
+		}},
+	}
+	if err := db.Create(&model.Setting{Key: "enabled", Value: "not-a-boolean"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.GetAll(); err == nil || !strings.Contains(err.Error(), "invalid boolean") {
+		t.Fatalf("GetAll invalid stored scalar error = %v", err)
+	}
+	if err := db.Model(&model.Setting{}).Where("key = ?", "enabled").Update("value", "false").Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.GetAll(); err == nil {
+		t.Fatal("GetAll accepted a stored value rejected by the family validator")
+	}
+}
+
+func TestManagerDirectWritesRequireKnownKeysAndScalarValidation(t *testing.T) {
+	db := newManagerTestDB(t)
+	manager := newTestManager(db)
+	if err := manager.SetString("unknown", "value"); err == nil {
+		t.Fatal("direct write accepted an unknown setting")
+	}
+
+	manager.Schema = settingsschema.New(
+		map[string]string{"port": "2095"},
+		nil,
+		nil,
+		settingsschema.Field{Key: "port", Type: settingsschema.FieldTypeInt, Min: intPointer(1), Max: intPointer(65535)},
+	)
+	if err := manager.SetString("port", "not-a-port"); err == nil {
+		t.Fatal("direct write bypassed scalar validation")
+	}
+	if err := manager.SetString("port", "443"); err != nil {
+		t.Fatalf("valid direct write failed: %v", err)
+	}
+}
+
+func intPointer(value int) *int { return &value }
+
 func TestManagerGetAllSkipsRowsOutsideActiveSchema(t *testing.T) {
 	db := newManagerTestDB(t)
 	manager := newTestManager(db)

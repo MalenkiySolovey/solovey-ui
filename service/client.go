@@ -59,7 +59,12 @@ func (s *ClientService) ResetTraffic(id string) (model.Client, error) {
 
 func (s *ClientService) RotateSubSecret(id string) (string, error) {
 	backend := s.backend()
-	return backend.RotateSubSecret(id)
+	name, err := backend.RotateSubSecret(id)
+	if err != nil {
+		return "", err
+	}
+	InvalidateSubscriptionCaches()
+	return name, nil
 }
 
 func (s *ClientService) UpdateClientsOnInboundAdd(tx *gorm.DB, initialIDs string, inboundID uint, hostname string) error {

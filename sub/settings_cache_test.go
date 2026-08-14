@@ -1,6 +1,7 @@
 package sub
 
 import (
+	"errors"
 	"testing"
 	"time"
 
@@ -29,18 +30,18 @@ func TestCachedDisplaySettingsReusesSnapshotWithinTTL(t *testing.T) {
 
 	setSubTitle(t, "first")
 	base := time.Unix(1_700_000_000, 0)
-	if got := subserver.CachedDisplaySettings(ss, base); got.Title != "first" {
+	if got, err := subserver.CachedDisplaySettings(ss, base); err != nil || got.Title != "first" {
 		t.Fatalf("cold read title = %q, want %q", got.Title, "first")
 	}
 
 	// A change within the TTL window must not be observed: the snapshot is reused.
 	setSubTitle(t, "second")
-	if got := subserver.CachedDisplaySettings(ss, base.Add(subserver.DisplaySettingsTTL-time.Second)); got.Title != "first" {
+	if got, err := subserver.CachedDisplaySettings(ss, base.Add(subserver.DisplaySettingsTTL-time.Second)); err != nil || got.Title != "first" {
 		t.Fatalf("within-TTL read title = %q, want cached %q", got.Title, "first")
 	}
 
 	// Once the TTL elapses the database is read again and the new value appears.
-	if got := subserver.CachedDisplaySettings(ss, base.Add(subserver.DisplaySettingsTTL+time.Second)); got.Title != "second" {
+	if got, err := subserver.CachedDisplaySettings(ss, base.Add(subserver.DisplaySettingsTTL+time.Second)); err != nil || got.Title != "second" {
 		t.Fatalf("post-TTL read title = %q, want refreshed %q", got.Title, "second")
 	}
 }
@@ -57,13 +58,32 @@ func TestResetDisplaySettingsCacheForcesReread(t *testing.T) {
 
 	setSubTitle(t, "alpha")
 	base := time.Unix(1_700_000_000, 0)
-	if got := subserver.CachedDisplaySettings(ss, base); got.Title != "alpha" {
+	if got, err := subserver.CachedDisplaySettings(ss, base); err != nil || got.Title != "alpha" {
 		t.Fatalf("cold read title = %q, want %q", got.Title, "alpha")
 	}
 
 	setSubTitle(t, "beta")
-	subserver.ResetDisplaySettingsCacheForTest()
-	if got := subserver.CachedDisplaySettings(ss, base); got.Title != "beta" {
+	subserver.ResetDisplaySettingsCache()
+	if got, err := subserver.CachedDisplaySettings(ss, base); err != nil || got.Title != "beta" {
 		t.Fatalf("after reset title = %q, want re-read %q", got.Title, "beta")
+	}
+}
+
+type failingDisplaySettingsReader struct{ err error }
+
+func (r failingDisplaySettingsReader) GetSubShowInfo() (bool, error)     { return false, r.err }
+func (r failingDisplaySettingsReader) GetSubNameInRemark() (bool, error) { return false, r.err }
+func (r failingDisplaySettingsReader) GetSubUpdates() (int, error)       { return 0, r.err }
+func (r failingDisplaySettingsReader) GetSubTitle() (string, error)      { return "", r.err }
+func (r failingDisplaySettingsReader) GetSubSupportUrl() (string, error) { return "", r.err }
+func (r failingDisplaySettingsReader) GetSubProfileUrl() (string, error) { return "", r.err }
+func (r failingDisplaySettingsReader) GetSubAnnounce() (string, error)   { return "", r.err }
+func (r failingDisplaySettingsReader) GetSubEncode() (bool, error)       { return false, r.err }
+
+func TestCachedDisplaySettingsPropagatesRefreshFailure(t *testing.T) {
+	subserver.ResetDisplaySettingsCache()
+	want := errors.New("settings unavailable")
+	if _, err := subserver.CachedDisplaySettings(failingDisplaySettingsReader{err: want}, time.Now()); !errors.Is(err, want) {
+		t.Fatalf("refresh error = %v, want %v", err, want)
 	}
 }

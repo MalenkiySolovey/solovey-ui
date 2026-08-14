@@ -64,12 +64,25 @@ func (b *telegramBackupSecretBag) zero() {
 }
 
 func ContextWithTelegramBackupActor(ctx context.Context, actor string) context.Context {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	return context.WithValue(ctx, telegramBackupActorContextKey{}, actor)
 }
 
 func (s *TelegramBackupService) RunOnce(ctx context.Context, trigger string) (result TelegramBackupResult) {
 	trigger = normalizeTelegramBackupTrigger(trigger)
 	result.Trigger = trigger
+	if s == nil {
+		result.ErrorClass = "internal"
+		return result
+	}
+	if ctx == nil {
+		ctx = context.Background()
+		result.ErrorClass = "internal"
+		s.recordTelegramBackupRunAudit(telegramBackupActor(ctx, trigger), result)
+		return result
+	}
 	actor := telegramBackupActor(ctx, trigger)
 	if !telegramBackupRunMu.TryLock() {
 		result.ErrorClass = "concurrent_run"
@@ -86,6 +99,10 @@ func (s *TelegramBackupService) RunOnce(ctx context.Context, trigger string) (re
 
 	if err := ctx.Err(); err != nil {
 		result.ErrorClass = "internal"
+		return result
+	}
+	if s.Settings == nil {
+		result.ErrorClass = "settings"
 		return result
 	}
 	telegramEnabled, err := s.Settings.GetTelegramEnabled()
@@ -131,7 +148,7 @@ func (s *TelegramBackupService) RunOnce(ctx context.Context, trigger string) (re
 	}
 	result.ExcludedTables = backup.ParseExcludes(exclude)
 	maxSizeMB, err := s.Settings.GetTelegramBackupMaxSizeMB()
-	if err != nil {
+	if err != nil || maxSizeMB < 1 || maxSizeMB > 50 {
 		result.ErrorClass = "settings"
 		return result
 	}

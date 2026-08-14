@@ -11,7 +11,7 @@ func TestInboundRuntimeRecordBindsCompleteTypedOptionsAndGeneration(t *testing.T
 		Type: "http", Tag: "tracked-inbound",
 		Options: &option.HTTPMixedInboundOptions{ListenOptions: option.ListenOptions{ListenPort: 18080}},
 	}
-	ctx := NewCore().GetCtx()
+	ctx := NewCore().ctx
 	first, ok := inboundRuntimeRecord(ctx, base, 7)
 	if !ok || first.Tag != base.Tag || first.Type != base.Type || first.OptionsDigest == "" || first.ManagerGeneration != 7 {
 		t.Fatalf("record = %#v, ok=%v", first, ok)

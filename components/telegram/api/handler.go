@@ -66,10 +66,10 @@ func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
 }
 
 func (a *Handler) TestTelegram(c *gin.Context) {
-	if !a.RequireScope(c, "telegram", "admin") {
+	if !a.requireScope(c, "telegram", "admin") {
 		return
 	}
-	result := a.Telegram.TestTelegram()
+	result := a.Telegram.TestTelegramContext(c.Request.Context())
 	severity := service.AuditSeverityInfo
 	details := map[string]any{
 		"success": result.Success,
@@ -91,7 +91,7 @@ func (a *Handler) RunTelegramBackup(c *gin.Context) {
 }
 
 func (a *Handler) runTelegramBackupManual(c *gin.Context) {
-	if !a.RequireScope(c, "telegram", "telegram", "admin") {
+	if !a.requireScope(c, "telegram", "telegram", "admin") {
 		return
 	}
 	if !a.enforceTelegramBackupManualRateLimit(c) {
@@ -135,6 +135,19 @@ func (a *Handler) runTelegramBackupManual(c *gin.Context) {
 			"trigger":    telegramservice.TelegramBackupTriggerManual,
 		},
 	})
+}
+
+func (a *Handler) requireScope(c *gin.Context, action string, scopes ...string) bool {
+	if a == nil || a.Telegram == nil || a.Telegram.Settings == nil || a.RequireScope == nil || a.Actor == nil ||
+		a.RemoteIP == nil || a.CheckRateLimit == nil || a.Audit == nil || a.JSONObj == nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, Envelope{
+			Success: false,
+			Msg:     "telegram service is unavailable",
+			Obj:     nil,
+		})
+		return false
+	}
+	return a.RequireScope(c, action, scopes...)
 }
 
 func (a *Handler) enforceTelegramBackupManualRateLimit(c *gin.Context) bool {

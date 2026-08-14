@@ -1,6 +1,7 @@
 package maintenance
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -51,6 +52,18 @@ func TestHistoryRetentionJobPrunesAuditEventsAndClientIPs(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := dbsqlite.DB().Create(&[]model.StepUpGrant{
+		{Digest: strings.Repeat("a", 64), Revision: strings.Repeat("b", 64), UserID: 1, SessionRef: "expired-session",
+			SessionGenerationRevision: strings.Repeat("c", 64), CredentialGeneration: 1, MFAGeneration: 1,
+			OperationKind: "test.expired", TargetDigest: strings.Repeat("d", 64), Assurance: "password",
+			CreatedAt: oldTime, ExpiresAt: oldTime},
+		{Digest: strings.Repeat("e", 64), Revision: strings.Repeat("f", 64), UserID: 1, SessionRef: "current-session",
+			SessionGenerationRevision: strings.Repeat("1", 64), CredentialGeneration: 1, MFAGeneration: 1,
+			OperationKind: "test.current", TargetDigest: strings.Repeat("2", 64), Assurance: "password",
+			CreatedAt: recentTime, ExpiresAt: now.Add(time.Hour).Unix()},
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
 
 	NewHistoryRetentionJob().Run()
 
@@ -67,6 +80,13 @@ func TestHistoryRetentionJobPrunesAuditEventsAndClientIPs(t *testing.T) {
 	}
 	if len(clientIPs) != 1 || clientIPs[0].IP != "198.51.100.11" {
 		t.Fatalf("unexpected client IPs after GC: %#v", clientIPs)
+	}
+	var grants []model.StepUpGrant
+	if err := dbsqlite.DB().Order("operation_kind asc").Find(&grants).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(grants) != 1 || grants[0].OperationKind != "test.current" {
+		t.Fatalf("unexpected step-up grants after GC: %#v", grants)
 	}
 }
 

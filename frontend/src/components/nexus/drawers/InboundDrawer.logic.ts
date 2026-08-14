@@ -1,5 +1,5 @@
 import { defineComponent } from 'vue'
-import InboundEditor from '@/shared/composables/useInboundEditor'
+import InboundEditor from '@/features/useInboundEditor'
 import EntityDrawer from './EntityDrawer.vue'
 import FormSection from './FormSection.vue'
 

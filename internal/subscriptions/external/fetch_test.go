@@ -1,10 +1,19 @@
 package external
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 )
+
+func TestFetchContextHonorsPreCanceledRequest(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := FetchContext(ctx, "https://example.com/subscription"); err == nil {
+		t.Fatal("pre-canceled subscription fetch should fail")
+	}
+}
 
 func TestValidateExternalURLRejectsUnsafeTargets(t *testing.T) {
 	tests := []string{

@@ -45,18 +45,18 @@ func parseStreamSettings(row source.InboundRow) (xuiStreamSettings, error) {
 }
 
 // parseOutboundStream decodes an Xray outbound's streamSettings into the shared
-// xuiStreamSettings shape. An absent/invalid block yields a zero (tcp/none)
-// stream because outbound import reports malformed proxy settings elsewhere.
-func parseOutboundStream(ob xrayOutbound) xuiStreamSettings {
+// xuiStreamSettings shape. Malformed transport/TLS data is rejected instead of
+// silently turning the outbound into plain TCP.
+func parseOutboundStream(ob xrayOutbound) (xuiStreamSettings, error) {
 	var stream xuiStreamSettings
 	if len(ob.StreamSettings) == 0 {
-		return stream
+		return stream, nil
 	}
 	if err := json.Unmarshal(ob.StreamSettings, &stream); err != nil {
-		return xuiStreamSettings{}
+		return xuiStreamSettings{}, fmt.Errorf("decode outbound stream settings: %w", err)
 	}
 	normalizeStreamSettings(&stream)
-	return stream
+	return stream, nil
 }
 
 func normalizeStreamSettings(stream *xuiStreamSettings) {

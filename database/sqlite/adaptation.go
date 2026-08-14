@@ -9,8 +9,7 @@ import "github.com/MalenkiySolovey/solovey-ui/util/common"
 //  1. Any remaining default admin/admin state is rotated to a random password
 //     saved through the initial-admin.txt mechanism.
 //  2. Other plaintext admin/user passwords are rehashed with bcrypt.
-//  3. Indexes added by this fork are (re-)created if missing.
-//  4. The `settings.version` row is updated to the current version so that
+//  3. The `settings.version` row is updated to the current version so that
 //     `database/migration` skips running again on the next startup.
 //
 // All steps are idempotent: running the function multiple times is safe.
@@ -21,9 +20,6 @@ import "github.com/MalenkiySolovey/solovey-ui/util/common"
 func adapt() error {
 	if db == nil {
 		return common.NewError("sqlite.Adapt: database not initialized")
-	}
-	if err := ensureIndexes(); err != nil {
-		return err
 	}
 	if err := rehashLegacyPasswords(db); err != nil {
 		return err

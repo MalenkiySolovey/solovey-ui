@@ -47,7 +47,7 @@ func TestValidateTariffRejectsNegativeValues(t *testing.T) {
 	if err := ValidateTariff(&paid.Tariff{Price: -1}); err == nil {
 		t.Fatal("negative price accepted")
 	}
-	if err := ValidateTariff(&paid.Tariff{StarsAmount: 1, AddDays: 0}); err != nil {
+	if err := ValidateTariff(&paid.Tariff{Name: "Stars", StarsAmount: 1, AddDays: 0}); err != nil {
 		t.Fatalf("valid tariff rejected: %v", err)
 	}
 }

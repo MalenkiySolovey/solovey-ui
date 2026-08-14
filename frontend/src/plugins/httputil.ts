@@ -1,9 +1,9 @@
 import axios from 'axios'
 import api from './api'
 import { i18n } from '@/locales'
-import router from '@/router'
 import { push } from 'notivue'
 import { clearCSRFToken } from '@/store/csrf'
+import { navigateToLogin } from './loginNavigation'
 
 let invalidLoginHandled = false
 
@@ -43,7 +43,7 @@ function _handleMsg(msg: any): void {
 
 export const localLogout = () => {
   clearCSRFToken()
-  router.push('/login')
+  void navigateToLogin()
 }
 
 export const resetInvalidLoginHandling = () => {
@@ -54,7 +54,7 @@ export const logout = async () => {
   const response = await HttpUtils.post('api/logout', null)
   clearCSRFToken()
   if(response.success){
-    router.push('/login')
+    void navigateToLogin()
   }
 }
 
@@ -74,7 +74,7 @@ function _respToMsg(resp: any): Msg {
     return { success: true, msg: "", obj: null }
   } else if (isMsg(data)) {
     if (data.hasOwnProperty('success')) {
-        return { success: data.success, msg: data.msg, obj: data.obj || null }
+        return { success: data.success, msg: data.msg, obj: data.obj ?? null }
     } else {
         return data
     }

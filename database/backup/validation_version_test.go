@@ -10,7 +10,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func openVersionedBackupProbeIssue12(t *testing.T, name string) *gorm.DB {
+func openVersionedBackupProbe(t *testing.T, name string) *gorm.DB {
 	t.Helper()
 	probe, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), name)), &gorm.Config{})
 	if err != nil {
@@ -27,8 +27,8 @@ func openVersionedBackupProbeIssue12(t *testing.T, name string) *gorm.DB {
 	return probe
 }
 
-func TestValidateVersionedBackupConfigSoftensMissingConfigIssue12(t *testing.T) {
-	probe := openVersionedBackupProbeIssue12(t, "versioned-no-config.db")
+func TestValidateVersionedBackupConfigSoftensMissingConfig(t *testing.T) {
+	probe := openVersionedBackupProbe(t, "versioned-no-config.db")
 	if err := probe.Create(&model.Setting{Key: "version", Value: "1.5.5-beta3"}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -38,8 +38,8 @@ func TestValidateVersionedBackupConfigSoftensMissingConfigIssue12(t *testing.T) 
 	}
 }
 
-func TestValidateVersionedBackupConfigUntouchedWhenConfigPresentIssue12(t *testing.T) {
-	probe := openVersionedBackupProbeIssue12(t, "versioned-with-config.db")
+func TestValidateVersionedBackupConfigUntouchedWhenConfigPresent(t *testing.T) {
+	probe := openVersionedBackupProbe(t, "versioned-with-config.db")
 	if err := probe.Create(&model.Setting{Key: "version", Value: "1.5.5-beta3"}).Error; err != nil {
 		t.Fatal(err)
 	}
@@ -52,8 +52,8 @@ func TestValidateVersionedBackupConfigUntouchedWhenConfigPresentIssue12(t *testi
 	}
 }
 
-func TestValidateVersionedBackupConfigIgnoresUnversionedIssue12(t *testing.T) {
-	probe := openVersionedBackupProbeIssue12(t, "unversioned.db")
+func TestValidateVersionedBackupConfigIgnoresUnversioned(t *testing.T) {
+	probe := openVersionedBackupProbe(t, "unversioned.db")
 
 	if err := validateVersionedBackupConfig(probe); err != nil {
 		t.Fatalf("unversioned backup should always pass; got %v", err)

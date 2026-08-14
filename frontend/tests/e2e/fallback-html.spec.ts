@@ -1,6 +1,6 @@
 import { expect, test, type APIResponse, type Page } from '@playwright/test'
 import { createHash } from 'node:crypto'
-import { csrfToken, enableComponent, login, readServerState, writeJSONArtifact } from './helpers'
+import { csrfToken, enableComponent, login, mutationHeaders, readServerState, writeJSONArtifact } from './helpers'
 
 type APIEnvelope<T> = {
   success: boolean
@@ -38,7 +38,7 @@ const assertAPIObj = async <T>(response: APIResponse) => {
 const componentPost = async <T>(page: Page, path: string, data?: unknown) => {
   const token = await csrfToken(page)
   return assertAPIObj<T>(await page.request.post(`${componentAPI}${path}`, {
-    headers: { 'X-CSRF-Token': token },
+    headers: mutationHeaders(token),
     data: data ?? {},
   }))
 }
@@ -51,7 +51,7 @@ const cleanupSite = async (page: Page, siteID?: number) => {
   if (!siteID) return
   const token = await csrfToken(page).catch(() => '')
   if (!token) return
-  const headers = { 'X-CSRF-Token': token }
+  const headers = mutationHeaders(token)
   await page.request.post(`${componentAPI}/sites/${siteID}/unpublish`, { headers }).catch(() => undefined)
   await page.request.delete(`${componentAPI}/sites/${siteID}`, { headers }).catch(() => undefined)
 }

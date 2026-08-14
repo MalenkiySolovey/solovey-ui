@@ -191,6 +191,38 @@ func TestBrokerDispatchIsSingleWriterIdempotentAndRedacted(t *testing.T) {
 	}
 }
 
+func TestBrokerMutationPanicIsDurablyClassifiedForRecovery(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "solovey-ui-broker-panic")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := openTestJournal(root, "boot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	registry := NewRegistry()
+	verb := Verb("deployment.test.panic")
+	if err := registry.Register(verb, Definition{Role: RolePanel, Mutation: true, Handler: func(context.Context, Request, PeerIdentity) (any, error) {
+		panic("secret mutation panic")
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(registry, journal, StaticAttestor{Peer: PeerIdentity{Revision: Digest([]byte("peer"))}}, "boot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_900_000_000, 0).UTC()
+	server.Now = func() time.Time { return now }
+	request := brokerMutationRequest(t, now, 1, "idem-panic")
+	request.Verb = verb
+	//lint:ignore SA1012 This test verifies that the protocol boundary safely handles a missing context.
+	first := server.Handle(nil, request, PeerIdentity{Revision: Digest([]byte("peer"))})
+	second := server.Handle(context.Background(), request, PeerIdentity{Revision: Digest([]byte("peer"))})
+	if first.Code != CodeRecoveryRequired || strings.Contains(first.Message, "secret") || !second.Replay || second.Code != CodeRecoveryRequired {
+		t.Fatalf("panic responses were not safely durable: first=%#v second=%#v", first, second)
+	}
+}
+
 func TestProductionVerbVocabularyHasNoGenericEscapeHatch(t *testing.T) {
 	verbs := []Verb{VerbCapabilities, VerbSSHObserve, VerbSSHStage, VerbSSHValidate, VerbSSHReload, VerbSSHArm, VerbSSHRestore,
 		VerbSSHInspect, VerbSSHVerify, VerbSSHProof, VerbDeploymentObserve, VerbDeploymentDoctor, VerbDeploymentPrepare,

@@ -4,7 +4,10 @@ import "testing"
 
 func TestObservationRegistryIsNonBlockingAndCountsDrops(t *testing.T) {
 	registry := newObservationRegistry()
-	subscription, unregister := registry.Subscribe(1)
+	subscription, unregister, err := registry.Subscribe(1)
+	if err != nil {
+		t.Fatal(err)
+	}
 	observation := Observation{ResourceID: "resource-one", ResourceKind: "public_site", PathClass: "scanner_path", MethodClass: "get", StatusClass: "4xx", UserAgentClass: "ua_scanner", BytesClass: "small", DurationClass: "fast"}
 	if accepted, dropped := registry.Emit(observation); accepted != 1 || dropped != 0 {
 		t.Fatalf("first emit = %d/%d", accepted, dropped)
@@ -35,9 +38,24 @@ func TestPublicClassifiersNeverReturnRawInput(t *testing.T) {
 
 func TestObservationSubscriptionBufferIsBounded(t *testing.T) {
 	registry := newObservationRegistry()
-	subscription, unregister := registry.Subscribe(maxObservationBuffer * 100)
+	subscription, unregister, err := registry.Subscribe(maxObservationBuffer * 100)
+	if err != nil {
+		t.Fatal(err)
+	}
 	defer unregister()
 	if capacity := cap(subscription.channel); capacity != maxObservationBuffer {
 		t.Fatalf("subscription buffer capacity = %d", capacity)
+	}
+}
+
+func TestObservationSubscribersAreBounded(t *testing.T) {
+	registry := newObservationRegistry()
+	for index := 0; index < maxObservationSubscribers; index++ {
+		if _, _, err := registry.Subscribe(1); err != nil {
+			t.Fatalf("subscriber %d: %v", index, err)
+		}
+	}
+	if _, _, err := registry.Subscribe(1); err == nil {
+		t.Fatal("observation registry accepted an unbounded subscriber")
 	}
 }

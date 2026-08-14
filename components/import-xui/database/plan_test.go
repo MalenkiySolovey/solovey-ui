@@ -128,11 +128,15 @@ func TestApply_EmitsProgressAndRecordsRollbackPath(t *testing.T) {
 	if report.BackupPath == "" {
 		t.Fatal("backup path was not recorded")
 	}
-	if _, err := os.Stat(report.BackupPath); err != nil {
+	backupPath, err := ResolveRollbackBackupPath(report.BackupPath, dbPath)
+	if err != nil {
 		t.Fatal(err)
 	}
-	if filepath.Dir(report.BackupPath) != filepath.Dir(dbPath) {
-		t.Fatalf("backup path should be next to s-ui db: %s", report.BackupPath)
+	if _, err := os.Stat(backupPath); err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(backupPath) != filepath.Dir(dbPath) {
+		t.Fatalf("backup should be next to s-ui db: %s", backupPath)
 	}
 }
 

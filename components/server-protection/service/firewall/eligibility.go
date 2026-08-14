@@ -100,7 +100,7 @@ func evaluateFirewallBaselineEligibility(resources []hostresources.ProtectableRe
 			Network: endpoint.Network, AddressFamily: endpoint.Family, BindAddress: endpoint.Bind, Port: endpoint.Port,
 		}
 		managementKeys[endpoint.ResourceID+"\x00"+endpointKeyString(key)] = endpoint
-		if !managementEndpointUsable(endpoint) {
+		if !managementEndpointUsable(endpoint, now) {
 			result.ManagementPreserved = false
 			result.ReasonCodes = append(result.ReasonCodes, "management_endpoint_inventory_incomplete")
 		}
@@ -164,17 +164,8 @@ func evaluateFirewallBaselineEligibility(resources []hostresources.ProtectableRe
 	return result
 }
 
-func managementEndpointUsable(endpoint hostresources.ManagementEndpointV1) bool {
-	if endpoint.Schema != hostresources.ManagementEndpointSchemaV1 || !exactHexRevision(endpoint.ConfigurationRevision) || endpoint.ConfidenceBP <= 0 || endpoint.ObservedAt <= 0 || endpoint.Port == 0 || endpoint.Network == hostresources.NetworkUnknown || endpoint.Family == hostresources.AddressFamilyUnknown {
-		return false
-	}
-	for _, reason := range endpoint.ReasonCodes {
-		lower := strings.ToLower(strings.TrimSpace(reason))
-		if strings.Contains(lower, "unknown") || strings.Contains(lower, "stale") || strings.Contains(lower, "truncated") || strings.Contains(lower, "ambiguous") || strings.Contains(lower, "unavailable") || strings.Contains(lower, "invalid") || strings.Contains(lower, "not_verified") {
-			return false
-		}
-	}
-	return true
+func managementEndpointUsable(endpoint hostresources.ManagementEndpointV1, now time.Time) bool {
+	return hostresources.ManagementEndpointCurrent(endpoint, now)
 }
 
 func hasScopedTrustedSource(endpoint hostresources.ManagementEndpointV1, trusted []string) bool {

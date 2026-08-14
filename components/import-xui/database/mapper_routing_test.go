@@ -204,14 +204,20 @@ func TestEnsureDirectOutbound_SkipsWhenSeededInDB(t *testing.T) {
 	mapped := map[string]any{"route": map[string]any{"rules": []any{map[string]any{"outbound": mapping.DirectOutboundTag}}}}
 
 	// Seed present (the normal destination): nothing must be injected.
-	if got := ensureDirectOutbound(db, nil, mapped); len(got) != 0 {
+	if got, err := ensureDirectOutbound(db, nil, mapped); err != nil || len(got) != 0 {
+		if err != nil {
+			t.Fatal(err)
+		}
 		t.Errorf("with a seeded direct outbound, ensureDirectOutbound must inject nothing, got %d", len(got))
 	}
 	// Seed removed: a direct outbound must be injected so the reference resolves.
 	if err := db.Where("tag = ?", mapping.DirectOutboundTag).Delete(&model.Outbound{}).Error; err != nil {
 		t.Fatal(err)
 	}
-	got := ensureDirectOutbound(db, nil, mapped)
+	got, err := ensureDirectOutbound(db, nil, mapped)
+	if err != nil {
+		t.Fatal(err)
+	}
 	if len(got) != 1 || got[0].Tag != mapping.DirectOutboundTag || got[0].Type != mapping.DirectOutboundTag {
 		t.Errorf("with no direct outbound, ensureDirectOutbound must inject one, got %#v", got)
 	}
@@ -456,13 +462,16 @@ func TestApply_RoutingMergesIntoLiveConfig(t *testing.T) {
 		t.Errorf("dns server not merged into live config: %v", dns)
 	}
 
-	// Re-import must be idempotent: the scheduled sync re-applies routing every
-	// run, so applying the same plan again must not grow rules, rule sets, or DNS
-	// servers (sing-box also rejects a config with duplicate rule-set tags).
+	// Re-import after a fresh preview must be idempotent and must not grow rules,
+	// rule sets, or DNS servers (sing-box rejects duplicate rule-set tags).
 	firstRuleCount := len(route["rules"].([]any))
 	firstRuleSetCount := len(route["rule_set"].([]any))
 	firstDNSServerCount := len(dns["servers"].([]any))
-	if _, err := Apply(src, *plan, ApplyOptions{}); err != nil {
+	replan, err := Plan(src, PlanOptions{Strategy: StrategyMerge, IncludeRouting: true})
+	if err != nil {
+		t.Fatalf("second plan: %v", err)
+	}
+	if _, err := Apply(src, *replan, ApplyOptions{}); err != nil {
 		t.Fatalf("second apply: %v", err)
 	}
 	var cfg2 model.Setting

@@ -40,7 +40,9 @@ func TestLeaseAcquireRenewReleaseAndStale(t *testing.T) {
 	now := time.Unix(1_000, 0).UTC()
 	registry := NewRegistry()
 	target := readyTarget(now)
-	registry.Register(fixtureProvider{target: target})
+	if _, err := registry.Register(fixtureProvider{target: target}); err != nil {
+		t.Fatal(err)
+	}
 	store := NewMemoryStore()
 	manager := LeaseManager{Registry: registry, Store: store, Now: func() time.Time { return now }}
 	ref := TargetReferenceV1{ProviderID: "fixture-provider", TargetID: "site:1", PublishRevision: "publish-1", ContentDigest: strings.Repeat("a", 64), ApprovedLocalEndpointID: "endpoint:1", ProviderHealthRevision: "health-1"}
@@ -76,7 +78,9 @@ func TestMissingStaleAndUnsafeTargetsFailClosed(t *testing.T) {
 	}()} {
 		t.Run(name, func(t *testing.T) {
 			registry := NewRegistry()
-			registry.Register(fixtureProvider{target: target})
+			if _, err := registry.Register(fixtureProvider{target: target}); err != nil {
+				t.Fatal(err)
+			}
 			manager := LeaseManager{Registry: registry, Store: NewMemoryStore(), Now: func() time.Time { return now }}
 			if _, err := manager.Acquire(context.Background(), "decision:1", ref, time.Minute); err == nil {
 				t.Fatal("unsafe target acquired")
@@ -84,7 +88,9 @@ func TestMissingStaleAndUnsafeTargetsFailClosed(t *testing.T) {
 		})
 	}
 	registry := NewRegistry()
-	registry.Register(fixtureProvider{err: errors.New("offline")})
+	if _, err := registry.Register(fixtureProvider{err: errors.New("offline")}); err != nil {
+		t.Fatal(err)
+	}
 	if _, err := registry.Resolve(context.Background(), ref, now); err == nil {
 		t.Fatal("missing provider target resolved")
 	}
@@ -92,7 +98,9 @@ func TestMissingStaleAndUnsafeTargetsFailClosed(t *testing.T) {
 	pathTarget := readyTarget(now)
 	pathTarget.Identity.TargetID = `../../secret/site`
 	pathTarget.Source = `/var/lib/private/target.json`
-	registry.Register(fixtureProvider{target: pathTarget})
+	if _, err := registry.Register(fixtureProvider{target: pathTarget}); err != nil {
+		t.Fatal(err)
+	}
 	payload, _ := json.Marshal(registry.Snapshot(context.Background(), now))
 	if strings.Contains(string(payload), "../") || strings.Contains(string(payload), "/var/lib/private") {
 		t.Fatalf("invalid target leaked provider paths: %s", payload)
@@ -103,7 +111,9 @@ func TestRenewMarksPersistedLeaseStaleWhenTargetIdentityChanges(t *testing.T) {
 	now := time.Unix(1_000, 0).UTC()
 	provider := &mutableProvider{target: readyTarget(now)}
 	registry := NewRegistry()
-	registry.Register(provider)
+	if _, err := registry.Register(provider); err != nil {
+		t.Fatal(err)
+	}
 	store := NewMemoryStore()
 	manager := LeaseManager{Registry: registry, Store: store, Now: func() time.Time { return now }}
 	ref := TargetReferenceV1{ProviderID: "fixture-provider", TargetID: "site:1", PublishRevision: "publish-1", ContentDigest: strings.Repeat("a", 64), ApprovedLocalEndpointID: "endpoint:1", ProviderHealthRevision: "health-1"}

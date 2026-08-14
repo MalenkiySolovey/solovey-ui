@@ -28,7 +28,10 @@ func TestNoRouteDelegatesOutsideAdminBaseToPublicSurface(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	db := initWebRouterTestDB(t)
 	setWebRouterSetting(t, db, "webPath", "/secret-panel/")
-	unregister := publicsurface.Register("web-test-public", webTestPublicHandler{})
+	unregister, err := publicsurface.Register("web-test-public", webTestPublicHandler{})
+	if err != nil {
+		t.Fatal(err)
+	}
 	t.Cleanup(unregister)
 
 	server, err := NewServer()

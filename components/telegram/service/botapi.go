@@ -15,7 +15,11 @@ import (
 )
 
 func (s *Service) TestTelegram() Result {
-	return s.Send("Solovey UI Telegram notification test")
+	return s.TestTelegramContext(context.Background())
+}
+
+func (s *Service) TestTelegramContext(ctx context.Context) Result {
+	return s.SendContext(ctx, "Solovey UI Telegram notification test")
 }
 
 func (s *Service) SendDocument(filename string, data []byte, caption string) Result {
@@ -23,16 +27,19 @@ func (s *Service) SendDocument(filename string, data []byte, caption string) Res
 }
 
 func (s *Service) SendDocumentStream(ctx context.Context, filename string, source io.Reader, caption string) Result {
-	if ctx == nil || source == nil {
+	if s == nil || ctx == nil || source == nil {
 		return Result{ErrorClass: "payload"}
 	}
 	credentials, result := s.telegramBotCredentials()
 	if !result.Success {
 		return result
 	}
-	client, err := s.HTTPClient()
+	client, requestOwned, err := s.httpClient()
 	if err != nil {
 		return Result{ErrorClass: "proxy"}
+	}
+	if requestOwned {
+		defer client.CloseIdleConnections()
 	}
 
 	bodyReader, bodyWriter := io.Pipe()
@@ -67,10 +74,6 @@ func (s *Service) SendDocumentStream(ctx context.Context, filename string, sourc
 	return Result{Success: true}
 }
 
-func WriteDocumentMultipart(writer *multipart.Writer, chatID string, filename string, data []byte, caption string) error {
-	return WriteDocumentMultipartStream(writer, chatID, filename, bytes.NewReader(data), caption)
-}
-
 func WriteDocumentMultipartStream(writer *multipart.Writer, chatID string, filename string, source io.Reader, caption string) error {
 	if source == nil {
 		return errors.New("document source is unavailable")
@@ -92,19 +95,29 @@ func WriteDocumentMultipartStream(writer *multipart.Writer, chatID string, filen
 }
 
 func (s *Service) Send(text string) Result {
+	return s.SendContext(context.Background(), text)
+}
+
+func (s *Service) SendContext(ctx context.Context, text string) Result {
+	if s == nil || ctx == nil {
+		return Result{ErrorClass: "request"}
+	}
 	credentials, result := s.telegramBotCredentials()
 	if !result.Success {
 		return result
 	}
-	client, err := s.HTTPClient()
+	client, requestOwned, err := s.httpClient()
 	if err != nil {
 		return Result{ErrorClass: "proxy"}
+	}
+	if requestOwned {
+		defer client.CloseIdleConnections()
 	}
 	payload := map[string]string{
 		"chat_id": credentials.ChatID,
 		"text":    redact.String(text),
 	}
-	response, err := integrationtelegram.NewBotClient(credentials.Token, client).DoJSON(context.Background(), "sendMessage", payload)
+	response, err := integrationtelegram.NewBotClient(credentials.Token, client).DoJSON(ctx, "sendMessage", payload)
 	if err != nil {
 		return Result{ErrorClass: TransportErrorClass(err)}
 	}

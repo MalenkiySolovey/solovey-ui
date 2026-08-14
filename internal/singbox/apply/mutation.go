@@ -40,10 +40,6 @@ func ApplyMutation(executor MutationExecutor, req MutationRequest, plan *Plan) e
 	return NewMutationRouter(executor).Apply(req, plan)
 }
 
-func MutationHandlerObjectStrings() []string {
-	return SupportedObjectStrings()
-}
-
 type mutationHandlerFunc func(MutationExecutor, MutationRequest, *Plan) error
 
 func mutationHandler(executor MutationExecutor, handler mutationHandlerFunc) Handler {

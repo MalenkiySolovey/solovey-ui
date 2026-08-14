@@ -14,23 +14,6 @@ type ListenResult struct {
 	BindError     error
 }
 
-// ListenWithFallback opens a TCP listener on `addr`. When `host` is a literal
-// IP that the host kernel cannot bind (the typical "EADDRNOTAVAIL" error
-// after restoring a backup from another machine), the function logs a
-// warning and retries on IPv4 loopback. This keeps the panel reachable locally
-// without silently widening an intentionally restricted bind to every interface.
-//
-// `host` is the bare host portion (no port) used by the caller to build
-// `addr`; pass an empty string when the address is already an "any"
-// address or when no fallback is desired.
-func ListenWithFallback(addr, host string, port string) (net.Listener, error) {
-	result, err := ListenWithFallbackResult(addr, host, port)
-	if err != nil {
-		return nil, err
-	}
-	return result.Listener, nil
-}
-
 func ListenWithFallbackResult(addr, host string, port string) (ListenResult, error) {
 	result := ListenResult{RequestedAddr: addr}
 	listener, err := net.Listen("tcp", addr)

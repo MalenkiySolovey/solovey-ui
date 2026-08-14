@@ -19,14 +19,16 @@ type XrayService struct {
 
 func (s *XrayService) GetXray(subID string) (*string, []string, error) {
 	now := time.Now()
+	enabled, err := s.SettingService.GetSubXrayEnable()
+	if err != nil {
+		return nil, nil, err
+	}
+	if !enabled {
+		return nil, nil, common.NewError("xray subscription disabled")
+	}
 	cacheKey := "xray:" + subID + ":clientHooks=" + strconv.FormatUint(localsub.ClientOutboundContributorsVersion(), 10)
 	if body, headers, ok := subscriptionCacheGet(cacheKey, now); ok {
 		return &body, headers, nil
-	}
-
-	enabled, err := s.SettingService.GetSubXrayEnable()
-	if err == nil && !enabled {
-		return nil, nil, common.NewError("xray subscription disabled")
 	}
 	client, inbounds, err := loadClientData(subID)
 	if err != nil {
@@ -49,7 +51,11 @@ func (s *XrayService) GetXray(subID string) (*string, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
-	headers := safeSubscriptionHeaders(buildClientHeaders(client, subserver.CachedDisplaySettings(&s.SettingService, now)))
+	displaySettings, err := subserver.CachedDisplaySettings(&s.SettingService, now)
+	if err != nil {
+		return nil, nil, err
+	}
+	headers := safeSubscriptionHeaders(buildClientHeaders(client, displaySettings))
 	subscriptionCacheSet(cacheKey, result, headers, now)
 	return &result, headers, nil
 }

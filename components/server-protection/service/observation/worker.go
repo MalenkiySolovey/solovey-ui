@@ -25,6 +25,8 @@ const (
 	finalFlushLimit  = 2 * time.Second
 )
 
+var ErrWorkerStopping = errors.New("server-protection observation worker is stopping")
+
 type Status struct {
 	Running        bool   `json:"running"`
 	Received       uint64 `json:"received"`
@@ -45,6 +47,7 @@ type Worker struct {
 	unregister  func()
 	cancel      context.CancelFunc
 	done        chan struct{}
+	stopping    bool
 	running     atomic.Bool
 	received    atomic.Uint64
 	persisted   atomic.Uint64
@@ -68,6 +71,9 @@ func (w *Worker) Start(repository *protectionrepository.Repository) error {
 	}
 	w.mu.Lock()
 	defer w.mu.Unlock()
+	if w.stopping || w.done != nil && !w.running.Load() {
+		return ErrWorkerStopping
+	}
 	if w.running.Load() {
 		return nil
 	}
@@ -79,7 +85,10 @@ func (w *Worker) Start(repository *protectionrepository.Repository) error {
 		w.repository = repository
 		return nil
 	}
-	subscription, unregister := publicsurface.SubscribeObservations(settings.ObservationBufferSize)
+	subscription, unregister, err := publicsurface.SubscribeObservations(settings.ObservationBufferSize)
+	if err != nil {
+		return err
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	w.repository = repository
 	w.sub = subscription
@@ -94,14 +103,24 @@ func (w *Worker) Start(repository *protectionrepository.Repository) error {
 }
 
 func (w *Worker) Stop(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	w.mu.Lock()
 	if !w.running.Load() {
-		w.repository = nil
+		w.repository, w.sub, w.unregister, w.cancel, w.done = nil, nil, nil, nil, nil
+		w.stopping = false
 		w.mu.Unlock()
 		return nil
 	}
-	unregister, cancel, done := w.unregister, w.cancel, w.done
-	w.unregister, w.cancel = nil, nil
+	done := w.done
+	var unregister func()
+	var cancel context.CancelFunc
+	if !w.stopping {
+		w.stopping = true
+		unregister, cancel = w.unregister, w.cancel
+		w.unregister, w.cancel = nil, nil
+	}
 	w.mu.Unlock()
 	if unregister != nil {
 		unregister()
@@ -112,15 +131,25 @@ func (w *Worker) Stop(ctx context.Context) error {
 	select {
 	case <-done:
 		w.mu.Lock()
-		w.repository, w.sub, w.done = nil, nil, nil
+		if w.done == done {
+			w.repository, w.sub, w.done = nil, nil, nil
+			w.stopping = false
+		}
 		w.mu.Unlock()
 		return nil
 	case <-ctx.Done():
-		<-done
-		w.mu.Lock()
-		w.repository, w.sub, w.done = nil, nil, nil
-		w.mu.Unlock()
-		return ctx.Err()
+		select {
+		case <-done:
+			w.mu.Lock()
+			if w.done == done {
+				w.repository, w.sub, w.done = nil, nil, nil
+				w.stopping = false
+			}
+			w.mu.Unlock()
+			return nil
+		default:
+			return ctx.Err()
+		}
 	}
 }
 
@@ -141,8 +170,11 @@ func (w *Worker) Status() Status {
 }
 
 func (w *Worker) run(ctx context.Context, settings domain.Settings) {
-	defer close(w.done)
-	defer w.running.Store(false)
+	done := w.done
+	defer func() {
+		w.running.Store(false)
+		close(done)
+	}()
 	flushTicker := time.NewTicker(time.Duration(settings.ObservationFlushIntervalMS) * time.Millisecond)
 	purgeTicker := time.NewTicker(10 * time.Minute)
 	defer flushTicker.Stop()

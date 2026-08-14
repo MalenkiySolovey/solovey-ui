@@ -18,7 +18,6 @@ type SlidingWindow[K comparable] struct {
 	maxKeys int
 	gcEvery time.Duration
 	lastGC  time.Time
-	janitor *janitor
 }
 
 func NewSlidingWindow[K comparable](window time.Duration, limit, maxKeys int, gcEvery time.Duration) *SlidingWindow[K] {
@@ -29,7 +28,6 @@ func NewSlidingWindow[K comparable](window time.Duration, limit, maxKeys int, gc
 		panic("ratelimit: max keys must be positive")
 	}
 	l := &SlidingWindow[K]{entries: make(map[K]slidingEntry), window: window, limit: limit, maxKeys: maxKeys, gcEvery: gcEvery}
-	l.janitor = startJanitor(gcEvery, l.PruneAt)
 	return l
 }
 
@@ -39,10 +37,6 @@ func (l *SlidingWindow[K]) Allow(key K) Decision {
 
 func (l *SlidingWindow[K]) AllowAt(key K, now time.Time) Decision {
 	return l.AllowWithLimitAt(key, l.limit, now)
-}
-
-func (l *SlidingWindow[K]) AllowWithLimit(key K, limit int) Decision {
-	return l.AllowWithLimitAt(key, limit, time.Now())
 }
 
 func (l *SlidingWindow[K]) AllowWithLimitAt(key K, limit int, now time.Time) Decision {
@@ -68,32 +62,10 @@ func (l *SlidingWindow[K]) AllowWithLimitAt(key K, limit int, now time.Time) Dec
 	return Decision{Allowed: true, Count: len(entry.timestamps)}
 }
 
-func (l *SlidingWindow[K]) Reset(key K) {
-	l.mu.Lock()
-	delete(l.entries, key)
-	l.mu.Unlock()
-}
-
 func (l *SlidingWindow[K]) ResetAll() {
 	l.mu.Lock()
 	l.entries = make(map[K]slidingEntry)
 	l.mu.Unlock()
-}
-
-func (l *SlidingWindow[K]) Len() int {
-	l.mu.Lock()
-	defer l.mu.Unlock()
-	return len(l.entries)
-}
-
-func (l *SlidingWindow[K]) PruneAt(now time.Time) {
-	l.mu.Lock()
-	l.pruneLocked(now)
-	l.mu.Unlock()
-}
-
-func (l *SlidingWindow[K]) Close() {
-	l.janitor.close()
 }
 
 func (l *SlidingWindow[K]) pruneLocked(now time.Time) {

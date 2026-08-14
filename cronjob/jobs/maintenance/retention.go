@@ -11,6 +11,7 @@ import (
 type HistoryRetentionJob struct {
 	settings *service.SettingService
 	audit    *service.AuditService
+	stepUp   *service.StepUpService
 	pruneIPs func(int64) (int64, error)
 	now      func() time.Time
 }
@@ -19,12 +20,16 @@ func NewHistoryRetentionJob() *HistoryRetentionJob {
 	return &HistoryRetentionJob{
 		settings: &service.SettingService{},
 		audit:    &service.AuditService{},
+		stepUp:   &service.StepUpService{},
 		pruneIPs: ipmonitor.PruneOlderThan,
 		now:      time.Now,
 	}
 }
 
 func (s *HistoryRetentionJob) Run() {
+	if _, err := s.stepUp.DeleteExpired(); err != nil {
+		logger.Warning("Deleting expired step-up grants failed: ", err)
+	}
 	auditRetentionDays, err := s.settings.GetAuditRetentionDays()
 	if err != nil {
 		logger.Warning("Reading audit retention failed: ", err)

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"sort"
 	"strings"
 	"sync"
@@ -26,10 +27,6 @@ var (
 	onlineResources   = &onlines{}
 	onlineResourcesMu sync.RWMutex
 )
-
-var commitStatsTransaction = func(tx *gorm.DB) error {
-	return tx.Commit().Error
-}
 
 type StatsService struct {
 	Runtime *Runtime
@@ -100,15 +97,14 @@ func (s *StatsService) SaveStats(enableTraffic bool) (err error) {
 	if coreInstance == nil || !coreInstance.IsRunning() {
 		return nil
 	}
-	box := coreInstance.GetInstance()
-	if box == nil {
-		return nil
-	}
-	st := box.StatsTracker()
-	if st == nil {
-		return nil
-	}
-	stats := statsModels(st.GetStats())
+	_, err = coreInstance.ConsumeStats(func(samples []coretracker.Stat) error {
+		return s.saveStatsSamples(enableTraffic, samples)
+	})
+	return err
+}
+
+func (s *StatsService) saveStatsSamples(enableTraffic bool, samples []coretracker.Stat) (err error) {
+	stats := statsModels(samples)
 
 	currentOnlines := onlines{}
 
@@ -124,14 +120,22 @@ func (s *StatsService) SaveStats(enableTraffic bool) (err error) {
 	}
 
 	db := dbsqlite.DB()
+	if db == nil {
+		return errors.New("database is not initialized")
+	}
 	tx := db.Begin()
+	if tx.Error != nil {
+		return tx.Error
+	}
+	ipBatch := ipmonitor.BeginFlush()
+	transactionCommitted := false
 	publishOnCommit := false
 	publishOnlines := onlines{}
 	var publishStats []model.Stats
 	clientDeltas := map[string]clientTrafficDelta{}
 	defer func() {
 		if err == nil {
-			if commitErr := commitStatsTransaction(tx); commitErr != nil {
+			if commitErr := tx.Commit().Error; commitErr != nil {
 				err = commitErr
 				if auditErr := (&AuditService{Runtime: s.runtime()}).Record(AuditEvent{
 					Actor:    "system",
@@ -149,11 +153,16 @@ func (s *StatsService) SaveStats(enableTraffic bool) (err error) {
 				})
 				return
 			}
+			transactionCommitted = true
+			ipBatch.Commit()
 			if publishOnCommit {
 				publishStatsRealtime(publishOnlines, publishStats)
 			}
 		} else {
 			tx.Rollback()
+		}
+		if !transactionCommitted {
+			ipBatch.Requeue()
 		}
 	}()
 
@@ -191,12 +200,12 @@ func (s *StatsService) SaveStats(enableTraffic bool) (err error) {
 	publishStats = append([]model.Stats(nil), stats...)
 
 	if !enableTraffic {
-		return ipmonitor.FlushTo(tx)
+		return ipBatch.WriteTo(tx)
 	}
 	if err := dbsqlite.CreateInBatches(tx, &stats); err != nil {
 		return err
 	}
-	return ipmonitor.FlushTo(tx)
+	return ipBatch.WriteTo(tx)
 }
 
 func statsModels(samples []coretracker.Stat) []model.Stats {

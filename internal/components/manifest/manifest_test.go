@@ -5,6 +5,24 @@ import (
 	"testing"
 )
 
+func TestFromJSONRejectsUnknownFieldsDuplicateClaimsAndMissingReleaseMetadata(t *testing.T) {
+	base := `{"id":"fixture","name":"Fixture","version":"1","since":"v1","delivery":"in-process"}`
+	if _, err := FromJSON([]byte(base)); err != nil {
+		t.Fatal(err)
+	}
+	for _, payload := range []string{
+		`{"id":"fixture","name":"Fixture","version":"1","since":"v1","delivery":"in-process","unknown":true}`,
+		`{"id":"fixture","name":"Fixture","version":"1","since":"v1","delivery":"in-process","tokenScopes":["one","one"]}`,
+		`{"id":"fixture","name":"Fixture","version":"1","since":"v1","delivery":"in-process","database":{"tables":["fixture_rows","fixture_rows"]}}`,
+		`{"id":"fixture","name":"Fixture","delivery":"in-process"}`,
+		base + base,
+	} {
+		if _, err := FromJSON([]byte(payload)); err == nil {
+			t.Fatalf("invalid manifest was accepted: %s", payload)
+		}
+	}
+}
+
 func TestManifestValidate(t *testing.T) {
 	valid := Manifest{
 		ID:          "remote-subscriptions",

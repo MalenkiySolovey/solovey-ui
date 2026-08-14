@@ -151,9 +151,8 @@ func TestAdminAPIRouteSecurityInventoryIsComplete(t *testing.T) {
 		}
 	}
 	optionalStepUp := map[string]string{
-		"/api/import-xui/apply":             "backup.restore",
-		"/api/import-xui/rollback":          "backup.restore",
-		"/api/update/components/:id/remove": "drop_data",
+		"/api/import-xui/apply":    "backup.restore",
+		"/api/import-xui/rollback": "backup.restore",
 	}
 	for path, operation := range optionalStepUp {
 		if !routeExists(router, http.MethodPost, path) {

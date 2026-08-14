@@ -2,6 +2,8 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
+	"fmt"
 	"sync"
 	"time"
 
@@ -44,12 +46,14 @@ func invalidateSubscriptionOutputCache() {
 	}
 }
 
-func newConfigSavePlan(primaryObject string) configSavePlan {
-	return configSavePlan{Plan: singboxapply.NewPlan(primaryObject)}
+// InvalidateSubscriptionCaches discards derived public subscription output
+// after a committed mutation that does not use the config-save transaction.
+func InvalidateSubscriptionCaches() {
+	invalidateSubscriptionOutputCache()
 }
 
-func (p *configSavePlan) IncludeSaveObjects(objects ...singboxapply.Object) {
-	p.Plan.IncludeSaveObjects(objects...)
+func newConfigSavePlan(primaryObject string) configSavePlan {
+	return configSavePlan{Plan: singboxapply.NewPlan(primaryObject)}
 }
 
 func (s *ConfigService) recordConfigChange(tx *gorm.DB, loginUser string, obj string, act string, data json.RawMessage) error {
@@ -96,39 +100,39 @@ func (s *ConfigService) ApplyComponentConfigChangeEffects(effects ComponentConfi
 	plan := newConfigSavePlan(primaryObject)
 	plan.IncludeObjects(effects.IncludeObjects...)
 	plan.RequireCoreRestart(effects.RestartReason)
-	s.applyConfigSaveEffects(plan, nil)
+	if err := s.applyConfigSaveEffects(plan, nil); err != nil {
+		logger.Error("sing-box component configuration sync failed: ", err)
+	}
 }
 
-func (s *ConfigService) applyConfigSaveEffects(plan configSavePlan, afterCommitEffects []ConfigSaveAfterCommit) {
+func (s *ConfigService) applyConfigSaveEffects(plan configSavePlan, afterCommitEffects []ConfigSaveAfterCommit) error {
 	for _, effect := range afterCommitEffects {
 		if effect != nil {
 			effect()
 		}
 	}
 	realtime.Publish(realtime.TopicConfigInvalidated, nil)
-	invalidateSubscriptionOutputCache()
-	s.applyCoreSaveEffect(plan)
+	InvalidateSubscriptionCaches()
+	return s.applyCoreSaveEffect(plan)
 }
 
-func (s *ConfigService) applyCoreSaveEffect(plan configSavePlan) {
+func (s *ConfigService) applyCoreSaveEffect(plan configSavePlan) error {
 	if s.coreInstance() == nil {
-		return
+		return nil
 	}
 	manager := s.runtime().restart()
 	if manager == nil {
-		logger.Warning("sing-box post-save sync skipped: restart manager not initialized")
-		return
+		return errors.New("sing-box post-save sync is unavailable: restart manager is not initialized")
 	}
-	_ = manager.RunBlocking(func() error {
-		s.applyCoreSaveEffectLocked(plan)
-		return nil
+	return manager.RunBlocking(func() error {
+		return s.applyCoreSaveEffectLocked(plan)
 	})
 }
 
-func (s *ConfigService) applyCoreSaveEffectLocked(plan configSavePlan) {
+func (s *ConfigService) applyCoreSaveEffectLocked(plan configSavePlan) error {
 	coreInstance := s.coreInstance()
 	if coreInstance == nil {
-		return
+		return nil
 	}
 	lifecycle := s.configCoreLifecycle()
 	if plan.RequiresCoreRestart() {
@@ -137,32 +141,34 @@ func (s *ConfigService) applyCoreSaveEffectLocked(plan configSavePlan) {
 		}
 		if coreInstance.IsRunning() {
 			if restartErr := lifecycle.restartCoreLocked(); restartErr != nil {
-				logger.Warning("sing-box restart after save failed: ", restartErr)
+				return fmt.Errorf("restart sing-box after committed configuration change: %w", restartErr)
 			}
 		} else {
 			if startErr := lifecycle.startCoreLocked(true); startErr != nil {
-				logger.Warning("sing-box start after save failed: ", startErr)
+				return fmt.Errorf("start sing-box after committed configuration change: %w", startErr)
 			}
 		}
-		return
+		return nil
 	}
 	if !coreInstance.IsRunning() {
 		if startErr := lifecycle.startCoreLocked(true); startErr != nil {
-			logger.Warning("sing-box start after save failed: ", startErr)
+			return fmt.Errorf("start sing-box after committed configuration change: %w", startErr)
 		}
-		return
+		return nil
 	}
 	if !plan.HasObjectChanges() {
-		return
+		return nil
 	}
 	if err := s.applyObjectChangesLocked(plan); err == nil {
-		return
+		return nil
 	} else {
 		logger.Warning("sing-box partial reload after save failed: ", err)
+		if restartErr := lifecycle.restartCoreLocked(); restartErr != nil {
+			return errors.Join(fmt.Errorf("apply committed sing-box object changes: %w", err),
+				fmt.Errorf("restart sing-box after failed partial reload: %w", restartErr))
+		}
 	}
-	if restartErr := lifecycle.restartCoreLocked(); restartErr != nil {
-		logger.Error("sing-box restart after failed partial reload also failed; core may be out of sync: ", restartErr)
-	}
+	return nil
 }
 
 func (s *ConfigService) applyObjectChangesLocked(plan configSavePlan) error {

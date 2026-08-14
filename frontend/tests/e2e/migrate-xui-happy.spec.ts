@@ -1,11 +1,15 @@
 import { expect, test, type Page } from '@playwright/test'
 
-import { login } from './helpers'
+import { login, readServerState } from './helpers'
 
 const syntheticDbFile = {
   name: 'x-ui.db',
   mimeType: 'application/octet-stream',
   buffer: Buffer.from('SQLite format 3\0'),
+}
+
+const fillSecurityVerification = async (page: Page) => {
+  await page.getByTestId('migrate-xui-security-credential').locator('input').fill(readServerState().password)
 }
 
 const uploadSyntheticDb = async (page: Page) => {
@@ -26,17 +30,14 @@ const expectImportPage = async (page: Page) => {
   await expect(page.getByRole('heading', { name: 'Panel database import' })).toBeVisible()
 }
 
-// XFAIL: пункты 43, 44, 45, 46 реестра; полный happy path требует test-db/x-ui.db и test-db/s-ui.db.
-test.skip('upload synthetic db, build plan, apply, download JSON/Markdown report, and rollback', async () => {})
-
-test('Issue43 shows inline apply failure on review step', async ({ page }) => {
+test('shows inline apply failure on review step', async ({ page }) => {
   await login(page)
   await page.route('**/api/import-xui/plan', async route => route.fulfill({
     json: {
       success: true,
       msg: '',
       obj: {
-        source: { hash: 'issue43-hash' },
+        source: { hash: 'apply-failure-hash' },
         defaults: {},
         items: [
           {
@@ -60,6 +61,7 @@ test('Issue43 shows inline apply failure on review step', async ({ page }) => {
   await expectImportPage(page)
   await uploadSyntheticDb(page)
   await page.getByRole('button', { name: 'Build plan' }).click()
+  await fillSecurityVerification(page)
   await page.getByRole('button', { name: 'Apply plan' }).click()
 
   await expect(page.getByTestId('migrate-xui-apply-error')).toBeVisible()
@@ -67,7 +69,7 @@ test('Issue43 shows inline apply failure on review step', async ({ page }) => {
   await expect(page.getByText('Review migration plan')).toBeVisible()
 })
 
-test('Issue44 waits for rollback database health before reload', async ({ page }) => {
+test('waits for rollback database health before reload', async ({ page }) => {
   let healthCalls = 0
   await login(page)
   await page.route('**/api/import-xui/plan', async route => route.fulfill({
@@ -75,7 +77,7 @@ test('Issue44 waits for rollback database health before reload', async ({ page }
       success: true,
       msg: '',
       obj: {
-        source: { hash: 'issue44-hash' },
+        source: { hash: 'rollback-health-hash' },
         defaults: {},
         items: [
           {
@@ -96,7 +98,7 @@ test('Issue44 waits for rollback database health before reload', async ({ page }
       success: true,
       msg: '',
       obj: {
-        backupPath: 's-ui-pre-xui-import-test.db',
+        backup_path: 's-ui-pre-xui-import-100.db',
         summary: { inbounds: { created: 1 } },
       },
     },
@@ -115,17 +117,16 @@ test('Issue44 waits for rollback database health before reload', async ({ page }
   await expectImportPage(page)
   await uploadSyntheticDb(page)
   await page.getByRole('button', { name: 'Build plan' }).click()
+  await fillSecurityVerification(page)
   await page.getByRole('button', { name: 'Apply plan' }).click()
   await expect(page.getByText('Migration result')).toBeVisible()
+  await fillSecurityVerification(page)
   await page.getByRole('button', { name: 'Restore previous database' }).click()
 
   await expect.poll(() => healthCalls).toBeGreaterThan(0)
 })
 
-// XFAIL: пункт 45 реестра; generated admin password должен быть скрыт до явного reveal.
-test.skip('generated admin password is shown once via reveal pattern, not raw JSON in DOM', async () => {})
-
-test('Issue45 hides generated admin passwords until reveal and auto-clears them', async ({ page }) => {
+test('hides generated admin passwords until reveal and auto-clears them', async ({ page }) => {
   await page.addInitScript(() => {
     const nativeSetTimeout = window.setTimeout
     window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: any[]) => {
@@ -139,7 +140,7 @@ test('Issue45 hides generated admin passwords until reveal and auto-clears them'
       success: true,
       msg: '',
       obj: {
-        source: { hash: 'issue45-hash' },
+        source: { hash: 'generated-admin-hash' },
         defaults: {},
         items: [
           {
@@ -160,10 +161,10 @@ test('Issue45 hides generated admin passwords until reveal and auto-clears them'
       success: true,
       msg: '',
       obj: {
-        backupPath: 's-ui-pre-xui-import-test.db',
+        backup_path: 's-ui-pre-xui-import-101.db',
         summary: { admins: { created: 1 } },
-        generatedAdmins: [
-          { username: 'migrated-admin', password: 'issue45-secret-password' },
+        generated_admins: [
+          { username: 'migrated-admin', password: 'generated-secret-password' },
         ],
       },
     },
@@ -173,18 +174,19 @@ test('Issue45 hides generated admin passwords until reveal and auto-clears them'
   await expectImportPage(page)
   await uploadSyntheticDb(page)
   await page.getByRole('button', { name: 'Build plan' }).click()
+  await fillSecurityVerification(page)
   await page.getByRole('button', { name: 'Apply plan' }).click()
   await expect(page.getByText('Migration result')).toBeVisible()
-  await expect(page.locator('body')).not.toContainText('issue45-secret-password')
+  await expect(page.locator('body')).not.toContainText('generated-secret-password')
   await expect(page.getByTestId('migrate-xui-generated-admins-hidden')).toBeVisible()
 
   await page.getByRole('button', { name: 'Reveal passwords' }).click()
-  await expect(page.locator('body')).toContainText('issue45-secret-password')
-  await expect(page.locator('body')).not.toContainText('issue45-secret-password', { timeout: 5000 })
+  await expect(page.locator('body')).toContainText('generated-secret-password')
+  await expect(page.locator('body')).not.toContainText('generated-secret-password', { timeout: 5000 })
   await expect(page.getByTestId('migrate-xui-generated-admins')).toBeHidden()
 })
 
-test('Issue46 sends reset_required adminMode when building a plan', async ({ page }) => {
+test('sends reset_required adminMode when building a plan', async ({ page }) => {
   let planRequestBody = ''
   await login(page)
   await page.route('**/api/import-xui/plan', async route => {
@@ -194,7 +196,7 @@ test('Issue46 sends reset_required adminMode when building a plan', async ({ pag
         success: true,
         msg: '',
         obj: {
-          source: { hash: 'issue46-hash' },
+          source: { hash: 'reset-required-hash' },
           defaults: { adminMode: 'reset_required' },
           items: [
             {

@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"strings"
 )
@@ -16,13 +15,12 @@ type ContractEngine struct {
 	root                  ManagedRoot
 	executor              NFTExecutor
 	nginxExecutor         NginxExecutor
-	listenerExecutor      ListenerExecutor
 	listenerOwnerExecutor ListenerOwnerExecutor
 	sshRecoveryExecutor   SSHRecoveryExecutor
 }
 
 func NewContractEngine(root ManagedRoot) ContractEngine {
-	return ContractEngine{root: root, executor: newSystemNFTExecutor(), nginxExecutor: newSystemNginxExecutor(root), listenerExecutor: systemListenerExecutor{}, listenerOwnerExecutor: newSystemListenerOwnerExecutor(), sshRecoveryExecutor: newSystemSSHRecoveryExecutor()}
+	return ContractEngine{root: root, executor: newSystemNFTExecutor(), nginxExecutor: newSystemNginxExecutor(root), listenerOwnerExecutor: newSystemListenerOwnerExecutor(), sshRecoveryExecutor: newSystemSSHRecoveryExecutor()}
 }
 
 func (e ContractEngine) Handle(request Request) Response {
@@ -77,8 +75,6 @@ func (e ContractEngine) HandleContext(ctx context.Context, request Request) Resp
 		response.Nginx, err = e.nginxExecutor.Verify(ctx, request.Correlation, *request.NginxVerify)
 	case OperationNginxRestore:
 		response.Nginx, err = e.nginxExecutor.Restore(ctx, request.Correlation, *request.NginxRestore)
-	case OperationListenerProbe:
-		response.ListenerProbe, err = e.listenerExecutor.Probe(ctx, *request.ListenerProbe)
 	case OperationListenerOwnerObserve:
 		response.ListenerOwner, err = e.listenerOwnerExecutor.Observe(ctx, *request.ListenerOwnerObserve)
 	case OperationSSHRecoveryObserve:
@@ -133,14 +129,6 @@ func (e ContractEngine) capabilities(ctx context.Context) *CapabilitiesResult {
 					result.Capabilities[index].Available = true
 					result.Capabilities[index].Reason = ""
 				}
-			}
-		}
-	}
-	if e.listenerExecutor != nil {
-		for index := range result.Capabilities {
-			if result.Capabilities[index].Operation == OperationListenerProbe {
-				result.Capabilities[index].Available = true
-				result.Capabilities[index].Reason = ""
 			}
 		}
 	}
@@ -383,7 +371,7 @@ func (e ContractEngine) rollback(ctx context.Context, correlation Correlation, r
 
 func DefaultCapabilities() *CapabilitiesResult {
 	capabilities := make([]Capability, 0, len(allowedOperations))
-	for _, operation := range []Operation{OperationCapabilities, OperationNFTValidate, OperationNFTApply, OperationNFTRollback, OperationNginxDetectVersion, OperationNginxValidate, OperationNginxInstall, OperationNginxSwitch, OperationNginxReload, OperationNginxVerify, OperationNginxRestore, OperationListenerProbe, OperationListenerOwnerObserve, OperationSSHRecoveryObserve, OperationArtifact} {
+	for _, operation := range []Operation{OperationCapabilities, OperationNFTValidate, OperationNFTApply, OperationNFTRollback, OperationNginxDetectVersion, OperationNginxValidate, OperationNginxInstall, OperationNginxSwitch, OperationNginxReload, OperationNginxVerify, OperationNginxRestore, OperationListenerOwnerObserve, OperationSSHRecoveryObserve, OperationArtifact} {
 		available := operation == OperationCapabilities
 		reason := "missing_capability"
 		if available {
@@ -404,27 +392,6 @@ func setCapabilityRevision(result *CapabilitiesResult) {
 	copy.Revision = ""
 	data, _ := json.Marshal(copy)
 	result.Revision = sha256Hex(data)
-}
-
-func ServeOnce(input io.Reader, output io.Writer, root ManagedRoot) int {
-	request, err := DecodeRequest(input)
-	if err != nil {
-		response := Response{ProtocolVersion: ProtocolVersion, HelperVersion: HelperVersion, Code: CodeInvalidRequest, Reason: "invalid_json_request"}
-		_ = json.NewEncoder(output).Encode(response)
-		return ExitInvalidRequest
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeoutFor(request.Operation))
-	defer cancel()
-	response := NewContractEngine(root).HandleContext(ctx, request)
-	if err := json.NewEncoder(output).Encode(response); err != nil {
-		return ExitInternal
-	}
-	return ExitCodeForResponse(response)
-}
-
-func SmokeResponse(instanceID string) Response {
-	request := Request{ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "smoke", InstanceID: instanceID}, Operation: OperationCapabilities, Capabilities: &CapabilitiesRequest{}}
-	return Response{ProtocolVersion: ProtocolVersion, HelperVersion: HelperVersion, Correlation: request.Correlation, Operation: request.Operation, OK: true, Capabilities: DefaultCapabilities()}
 }
 
 func CapabilityAvailable(result *CapabilitiesResult, operation Operation) bool {

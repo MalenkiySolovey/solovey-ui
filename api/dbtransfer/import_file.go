@@ -154,7 +154,12 @@ func (a *Handler) prepareDatabaseImportFile(c *gin.Context, file multipart.File)
 		a.JSONMsg(c, "", readErr)
 		return preparedDatabaseImportFile{}, false
 	}
-	codec, ok := matchingBackupImportCodec(header[:n])
+	codec, ok, codecErr := matchingBackupImportCodec(header[:n])
+	if codecErr != nil {
+		a.respondDatabaseImportFailure(c, codecErr)
+		a.JSONMsg(c, "", codecErr)
+		return preparedDatabaseImportFile{}, false
+	}
 	if !ok {
 		return preparedDatabaseImportFile{file: file}, true
 	}

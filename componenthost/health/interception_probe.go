@@ -77,15 +77,21 @@ type InterceptionProbeProviderV1 interface {
 type InterceptionProbeRegistryV1 struct {
 	mu        sync.RWMutex
 	next      uint64
-	providers map[uint64]InterceptionProbeProviderV1
+	providers map[uint64]interceptionProbeProviderEntry
+}
+
+type interceptionProbeProviderEntry struct {
+	id       string
+	provider InterceptionProbeProviderV1
 }
 
 func NewInterceptionProbeRegistryV1() *InterceptionProbeRegistryV1 {
-	return &InterceptionProbeRegistryV1{providers: map[uint64]InterceptionProbeProviderV1{}}
+	return &InterceptionProbeRegistryV1{providers: map[uint64]interceptionProbeProviderEntry{}}
 }
 
 func (r *InterceptionProbeRegistryV1) Register(provider InterceptionProbeProviderV1) (func(), error) {
-	if r == nil || provider == nil || !healthToken(provider.ProviderID(), 128) {
+	providerID, ok := interceptionProbeProviderID(provider)
+	if r == nil || !ok {
 		return func() {}, errors.New("interception_probe_provider_v1_invalid")
 	}
 	r.mu.Lock()
@@ -94,13 +100,13 @@ func (r *InterceptionProbeRegistryV1) Register(provider InterceptionProbeProvide
 		return func() {}, errors.New("interception_probe_provider_v1_capacity_exceeded")
 	}
 	for _, current := range r.providers {
-		if current.ProviderID() == provider.ProviderID() {
+		if current.id == providerID {
 			return func() {}, errors.New("interception_probe_provider_v1_duplicate")
 		}
 	}
 	id := r.next
 	r.next++
-	r.providers[id] = provider
+	r.providers[id] = interceptionProbeProviderEntry{id: providerID, provider: provider}
 	var once sync.Once
 	return func() {
 		once.Do(func() {
@@ -124,41 +130,97 @@ func (r *InterceptionProbeRegistryV1) Probe(ctx context.Context, request Interce
 	if request.Validate() != nil {
 		return InterceptionProbeObservationV1{}, errors.New("interception_probe_request_v1_invalid")
 	}
+	timeout := time.Until(time.Unix(request.DeadlineAt, 0))
+	if timeout <= 0 || timeout > 30*time.Second {
+		return InterceptionProbeObservationV1{}, errors.New("interception_probe_request_v1_deadline_invalid")
+	}
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	callCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
 	providers := r.snapshot()
-	selected := make([]InterceptionProbeProviderV1, 0, 1)
-	for _, provider := range providers {
-		if provider.SupportsInterceptionProbeV1(request.Target) {
-			selected = append(selected, provider)
+	selected := make([]interceptionProbeProviderEntry, 0, 1)
+	for _, entry := range providers {
+		if callSupportsInterceptionProbe(callCtx, entry.provider, request.Target) {
+			selected = append(selected, entry)
 		}
 	}
 	if len(selected) != 1 {
 		return InterceptionProbeObservationV1{}, errors.New("interception_probe_provider_v1_missing_or_ambiguous")
 	}
-	timeout := time.Until(time.Unix(request.DeadlineAt, 0))
-	if timeout <= 0 || timeout > 30*time.Second {
-		return InterceptionProbeObservationV1{}, errors.New("interception_probe_request_v1_deadline_invalid")
+	observation, err, completed := callInterceptionProbe(callCtx, selected[0].provider, request)
+	if !completed {
+		return InterceptionProbeObservationV1{}, errors.New("interception_probe_provider_v1_timeout")
 	}
-	callCtx, cancel := context.WithTimeout(ctx, timeout)
-	observation, err := selected[0].ProbeInterceptionV1(callCtx, request)
-	cancel()
-	if err != nil || observation.ProviderID != selected[0].ProviderID() || observation.Validate(request) != nil {
+	if err != nil || observation.ProviderID != selected[0].id || observation.Validate(request) != nil {
 		return InterceptionProbeObservationV1{}, errors.New("interception_probe_observation_v1_invalid")
 	}
 	return observation, nil
 }
 
-func (r *InterceptionProbeRegistryV1) snapshot() []InterceptionProbeProviderV1 {
+func (r *InterceptionProbeRegistryV1) snapshot() []interceptionProbeProviderEntry {
 	if r == nil {
 		return nil
 	}
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	result := make([]InterceptionProbeProviderV1, 0, len(r.providers))
+	result := make([]interceptionProbeProviderEntry, 0, len(r.providers))
 	for _, provider := range r.providers {
 		result = append(result, provider)
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].ProviderID() < result[j].ProviderID() })
+	sort.Slice(result, func(i, j int) bool { return result[i].id < result[j].id })
 	return result
+}
+
+func interceptionProbeProviderID(provider InterceptionProbeProviderV1) (id string, ok bool) {
+	if provider == nil {
+		return "", false
+	}
+	defer func() {
+		if recover() != nil {
+			id, ok = "", false
+		}
+	}()
+	id = strings.TrimSpace(provider.ProviderID())
+	return id, healthToken(id, 128)
+}
+
+func callSupportsInterceptionProbe(ctx context.Context, provider InterceptionProbeProviderV1, target InterceptionProbeTargetV1) bool {
+	result := make(chan bool, 1)
+	go func() {
+		defer func() { _ = recover() }()
+		result <- provider.SupportsInterceptionProbeV1(target)
+	}()
+	select {
+	case supported := <-result:
+		return supported
+	case <-ctx.Done():
+		return false
+	}
+}
+
+func callInterceptionProbe(ctx context.Context, provider InterceptionProbeProviderV1, request InterceptionProbeRequestV1) (InterceptionProbeObservationV1, error, bool) {
+	type response struct {
+		value InterceptionProbeObservationV1
+		err   error
+	}
+	result := make(chan response, 1)
+	go func() {
+		defer func() {
+			if recover() != nil {
+				result <- response{err: errors.New("interception_probe_provider_v1_failed")}
+			}
+		}()
+		value, err := provider.ProbeInterceptionV1(ctx, request)
+		result <- response{value: value, err: err}
+	}()
+	select {
+	case value := <-result:
+		return value.value, value.err, true
+	case <-ctx.Done():
+		return InterceptionProbeObservationV1{}, ctx.Err(), false
+	}
 }
 
 func (t InterceptionProbeTargetV1) Validate() error {

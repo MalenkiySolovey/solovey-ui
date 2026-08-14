@@ -4,20 +4,61 @@ import (
 	"context"
 	"errors"
 	"testing"
+
+	coretracker "github.com/MalenkiySolovey/solovey-ui/core/tracker"
 )
 
 func TestCoreManagersAreUnavailableWhenStopped(t *testing.T) {
 	c := NewCore()
 
-	if c.Router() != nil {
-		t.Fatal("router must be nil before core starts")
+	if err := c.withRuntime(func(coreRuntime) error { return nil }); !errors.Is(err, ErrCoreUnavailable) {
+		t.Fatalf("stopped runtime error = %v, want %v", err, ErrCoreUnavailable)
 	}
-	if c.OutboundManager() != nil {
-		t.Fatal("outbound manager must be nil before core starts")
+	if available, err := c.ConsumeStats(func([]coretracker.Stat) error { return nil }); available || err != nil {
+		t.Fatalf("stopped stats result = (%v, %v), want (false, nil)", available, err)
 	}
-	if _, ok := c.runtime(); ok {
-		t.Fatal("runtime must be unavailable before core starts")
+}
+
+func TestConsumeStatsRestoresFailedBatchToOwningTracker(t *testing.T) {
+	stats := coretracker.NewStatsTracker()
+	stats.RestoreStats([]coretracker.Stat{
+		{Resource: "user", Tag: "alice", Direction: false, Traffic: 7},
+		{Resource: "user", Tag: "alice", Direction: true, Traffic: 11},
+	})
+	c := NewCore()
+	c.access.Lock()
+	c.isRunning = true
+	c.statsTracker = stats
+	c.access.Unlock()
+
+	sentinel := errors.New("persist failed")
+	available, err := c.ConsumeStats(func(samples []coretracker.Stat) error {
+		if got := totalTraffic(samples); got != 18 {
+			t.Fatalf("consumed traffic = %d, want 18", got)
+		}
+		return sentinel
+	})
+	if !available || !errors.Is(err, sentinel) {
+		t.Fatalf("failed consumption result = (%v, %v)", available, err)
 	}
+
+	available, err = c.ConsumeStats(func(samples []coretracker.Stat) error {
+		if got := totalTraffic(samples); got != 18 {
+			t.Fatalf("restored traffic = %d, want 18", got)
+		}
+		return nil
+	})
+	if !available || err != nil {
+		t.Fatalf("restored consumption result = (%v, %v)", available, err)
+	}
+}
+
+func totalTraffic(samples []coretracker.Stat) int64 {
+	var total int64
+	for _, sample := range samples {
+		total += sample.Traffic
+	}
+	return total
 }
 
 func TestClassifyOutboundCheckErrorUsesStableClasses(t *testing.T) {
@@ -56,10 +97,10 @@ func TestNewCoreContextsDoNotInterfere(t *testing.T) {
 	first.ctx = context.WithValue(first.ctx, key, "first")
 	first.access.Unlock()
 
-	if got := first.GetCtx().Value(key); got != "first" {
+	if got := first.ctx.Value(key); got != "first" {
 		t.Fatalf("first context value=%v", got)
 	}
-	if got := second.GetCtx().Value(key); got != nil {
+	if got := second.ctx.Value(key); got != nil {
 		t.Fatalf("second core observed first context value: %v", got)
 	}
 }

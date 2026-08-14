@@ -172,7 +172,7 @@
 <script lang="ts" setup>
 import Data from '@/store/modules/data'
 import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
-import ManualSortButton from '@/components/ManualSortButton.vue'
+import ManualSortButton from '@/shared/ui/ManualSortButton.vue'
 import EndpointVue from '@/layouts/modals/Endpoint.vue'
 import Stats from '@/layouts/modals/Stats.vue'
 import QrCode from '@/layouts/modals/WgQrCode.vue'

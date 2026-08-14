@@ -29,7 +29,7 @@ func TestIntegrationImportXUIFullFixturePlanApply(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(fmt.Sprintf("%s_%s", tc.strategy, tc.adminMode), func(t *testing.T) {
-			src, _ := setupImportTestDB(t)
+			src, dbPath := setupImportTestDB(t)
 			plan, err := Plan(src, PlanOptions{
 				Strategy:        tc.strategy,
 				IncludeSettings: true,
@@ -47,7 +47,11 @@ func TestIntegrationImportXUIFullFixturePlanApply(t *testing.T) {
 			if report.BackupPath == "" {
 				t.Fatal("Apply did not return backupPath")
 			}
-			if _, err := os.Stat(report.BackupPath); err != nil {
+			backupPath, err := ResolveRollbackBackupPath(report.BackupPath, dbPath)
+			if err != nil {
+				t.Fatalf("backup reference is invalid: %v", err)
+			}
+			if _, err := os.Stat(backupPath); err != nil {
 				t.Fatalf("backupPath file is not available: %v", err)
 			}
 			var audit model.AuditEvent

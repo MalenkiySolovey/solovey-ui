@@ -82,7 +82,7 @@ func EvaluateManagementGuard(input ManagementGuardInput) ManagementGuardResult {
 	result.State = ManagementGuardAllowed
 	for _, endpoint := range matched {
 		result.ProtectedEndpointIDs = append(result.ProtectedEndpointIDs, endpoint.ID)
-		if !hostresources.ManagementEndpointCurrent(endpoint) {
+		if !hostresources.ManagementEndpointCurrent(endpoint, now) {
 			result.State = ManagementGuardUnknown
 			result.ActionAllowed = false
 			result.ReasonCodes = append(result.ReasonCodes, "management_endpoint_unknown")

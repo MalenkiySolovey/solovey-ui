@@ -25,10 +25,14 @@ func DecodeLinks(clientID uint, raw json.RawMessage, operation string) ([]Link, 
 	}
 	return links, true
 }
-func BuildLinksForInbounds(config json.RawMessage, inbounds []model.Inbound, hostname string) []Link {
+func BuildLinksForInbounds(config json.RawMessage, inbounds []model.Inbound, hostname string) ([]Link, error) {
 	links := []Link{}
 	for i := range inbounds {
-		for _, uri := range suburi.Generate(config, &inbounds[i], hostname) {
+		generated, err := suburi.Generate(config, &inbounds[i], hostname)
+		if err != nil {
+			return nil, err
+		}
+		for _, uri := range generated {
 			links = append(links, Link{
 				"remark": inbounds[i].Tag,
 				"type":   "local",
@@ -36,14 +40,17 @@ func BuildLinksForInbounds(config json.RawMessage, inbounds []model.Inbound, hos
 			})
 		}
 	}
-	return links
+	return links, nil
 }
 func RebuildLinks(clientID uint, config, rawLinks json.RawMessage, inbounds []model.Inbound, hostname string, keep func(link Link) bool, operation string) (json.RawMessage, bool, error) {
 	clientLinks, ok := DecodeLinks(clientID, rawLinks, operation)
 	if !ok {
 		return nil, false, nil
 	}
-	newClientLinks := BuildLinksForInbounds(config, inbounds, hostname)
+	newClientLinks, err := BuildLinksForInbounds(config, inbounds, hostname)
+	if err != nil {
+		return nil, true, err
+	}
 	for _, clientLink := range clientLinks {
 		if keep(clientLink) {
 			newClientLinks = append(newClientLinks, clientLink)

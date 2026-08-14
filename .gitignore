@@ -69,6 +69,7 @@ PANEL_VERSION_SOURCES.md
 config/identity/*.local.md
 app/components_generated.go
 cmd/optional_commands_generated.go
+cmd/solovey-privileged-broker/components_generated.go
 
 # Editor directories and files
 .idea

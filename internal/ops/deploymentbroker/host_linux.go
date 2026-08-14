@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"os/exec"
@@ -257,7 +258,9 @@ func (h *Host) rollbackCheckpoint(ctx context.Context, checkpoint checkpointV1) 
 		if err := transitionAuthorityMatches(checkpoint); err != nil {
 			return domain.Posture{}, err
 		}
-		_, _ = h.run(ctx, "stop", "solovey-ui.service")
+		if _, err := h.run(ctx, "stop", "solovey-ui.service"); err != nil {
+			return domain.Posture{}, fmt.Errorf("stop panel before deployment rollback: %w", err)
+		}
 		if err := restoreMigratedData(checkpoint); err != nil {
 			return domain.Posture{}, err
 		}
@@ -925,13 +928,6 @@ func checkpointMarkerMatches(checkpoint checkpointV1) error {
 		return errors.New("deployment marker metadata differs from checkpoint")
 	}
 	return nil
-}
-
-func selectedAuthorityMatches(profile domain.ProfileID) error {
-	if err := selectedUnitMatches(profile); err != nil {
-		return err
-	}
-	return selectedMarkerMatches(profile)
 }
 
 func selectedUnitMatches(profile domain.ProfileID) error {

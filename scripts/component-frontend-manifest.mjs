@@ -28,7 +28,13 @@ export function readComponentFrontendEntries(componentsDir) {
     if (!Array.isArray(entries)) {
       throw new Error(`component ${manifest.id} frontend.entries must be an array`)
     }
-    if (entries.length === 0) continue
+    if (entries.length === 0) {
+      const frontendDir = path.join(componentsDir, entry.name, 'frontend')
+      if (containsFrontendSource(frontendDir)) {
+        throw new Error(`component ${manifest.id} has frontend source but does not declare frontend.entries`)
+      }
+      continue
+    }
 
     for (const frontendEntry of entries) {
       if (typeof frontendEntry !== 'string' || !frontendEntryPattern.test(frontendEntry)) {
@@ -43,4 +49,14 @@ export function readComponentFrontendEntries(componentsDir) {
 
 export function flattenComponentFrontendEntries(entriesByComponent) {
   return Object.values(entriesByComponent).flat()
+}
+
+function containsFrontendSource(directory) {
+  if (!fs.existsSync(directory)) return false
+  for (const entry of fs.readdirSync(directory, { withFileTypes: true })) {
+    const candidate = path.join(directory, entry.name)
+    if (entry.isDirectory() && containsFrontendSource(candidate)) return true
+    if (entry.isFile() && /\.(ts|vue)$/.test(entry.name) && !/\.(spec|test)\.ts$/.test(entry.name)) return true
+  }
+  return false
 }

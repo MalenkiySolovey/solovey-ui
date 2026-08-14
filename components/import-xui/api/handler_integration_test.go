@@ -60,9 +60,12 @@ func TestCompatiblePanelMutationsRequireExactStepUp(t *testing.T) {
 			c.AbortWithStatusJSON(http.StatusForbidden, Envelope{Success: false, Msg: "denied"})
 			return false
 		},
-		Audit:    func(*gin.Context, string, string, string, string, map[string]any) {},
-		Actor:    func(*gin.Context) string { return "admin" },
-		RemoteIP: func(*gin.Context) string { return "192.0.2.1" },
+		Audit:         func(*gin.Context, string, string, string, string, map[string]any) {},
+		Actor:         func(*gin.Context) string { return "admin" },
+		RemoteIP:      func(*gin.Context) string { return "192.0.2.1" },
+		JSONObj:       func(*gin.Context, interface{}, error) {},
+		JSONMsg:       func(*gin.Context, string, error) {},
+		ConfigChanged: func() {},
 	})
 	gatewayRouter := gin.New()
 	gatewayRouter.POST("/api/import-xui", gateway.ImportXui)
@@ -96,7 +99,7 @@ func newImportXUIAPITestRouter(actor string, scope string) *gin.Engine {
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	handler := NewHandler(Deps{
-		AuditService: service.AuditService{},
+		AuditHistory: &service.AuditService{},
 		RequireScope: func(c *gin.Context, resource string, allowed ...string) bool {
 			for _, allowedScope := range allowed {
 				if scope == allowedScope {
@@ -134,6 +137,7 @@ func newImportXUIAPITestRouter(actor string, scope string) *gin.Engine {
 		JSONMsg: func(c *gin.Context, msg string, err error) {
 			c.JSON(http.StatusOK, Envelope{Success: err == nil, Msg: msg})
 		},
+		ConfigChanged: func() {},
 	})
 	router.POST("/api/import-xui", handler.ImportXui)
 	return router

@@ -1,6 +1,7 @@
 package publicsurface
 
 import (
+	"errors"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -21,7 +22,10 @@ type Observation struct {
 	ObservedAt     int64  `json:"observedAt"`
 }
 
-const maxObservationBuffer = 4096
+const (
+	maxObservationBuffer      = 4096
+	maxObservationSubscribers = 64
+)
 
 type Subscription struct {
 	channel  chan Observation
@@ -47,7 +51,7 @@ func newObservationRegistry() *observationRegistry {
 	return r
 }
 
-func (r *observationRegistry) Subscribe(buffer int) (*Subscription, func()) {
+func (r *observationRegistry) Subscribe(buffer int) (*Subscription, func(), error) {
 	if buffer < 1 {
 		buffer = 1
 	}
@@ -56,6 +60,10 @@ func (r *observationRegistry) Subscribe(buffer int) (*Subscription, func()) {
 	}
 	subscription := &Subscription{channel: make(chan Observation, buffer)}
 	r.mu.Lock()
+	if len(r.entries) >= maxObservationSubscribers {
+		r.mu.Unlock()
+		return nil, nil, errors.New("public observation subscriber capacity exceeded")
+	}
 	id := r.nextID
 	r.nextID++
 	r.entries[id] = subscription
@@ -69,7 +77,7 @@ func (r *observationRegistry) Subscribe(buffer int) (*Subscription, func()) {
 			r.storeLocked()
 			r.mu.Unlock()
 		})
-	}
+	}, nil
 }
 
 func (r *observationRegistry) Emit(value Observation) (accepted, dropped int) {
@@ -120,7 +128,7 @@ func boundedToken(value string, limit int) bool {
 
 var observations = newObservationRegistry()
 
-func SubscribeObservations(buffer int) (*Subscription, func()) {
+func SubscribeObservations(buffer int) (*Subscription, func(), error) {
 	return observations.Subscribe(buffer)
 }
 

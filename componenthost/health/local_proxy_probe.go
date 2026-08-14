@@ -17,6 +17,7 @@ const (
 	LocalProxyProbeObservationSchemaV1 = "solovey-ui/local-proxy-probe-observation/v1"
 	MaxLocalProxyProbeDurationV1       = 5 * time.Second
 	MaxLocalProxyProbeFreshnessV1      = time.Minute
+	MaxLocalProxyProbeProvidersV1      = 128
 )
 
 type LocalProxyProbeTargetV1 struct {
@@ -108,35 +109,44 @@ type LocalProxyProbeProviderV1 interface {
 
 type LocalProxyProbeRegistryV1 struct {
 	mu             sync.Mutex
-	providers      map[string]LocalProxyProbeProviderV1
+	providers      map[string]localProxyProbeProviderEntry
 	lastGeneration map[string]uint64
 	lastProbeID    map[string]string
 	nonce          atomic.Uint64
 }
 
+type localProxyProbeProviderEntry struct {
+	id       string
+	instance string
+	provider LocalProxyProbeProviderV1
+}
+
 func NewLocalProxyProbeRegistryV1() *LocalProxyProbeRegistryV1 {
 	return &LocalProxyProbeRegistryV1{
-		providers: map[string]LocalProxyProbeProviderV1{}, lastGeneration: map[string]uint64{}, lastProbeID: map[string]string{},
+		providers: map[string]localProxyProbeProviderEntry{}, lastGeneration: map[string]uint64{}, lastProbeID: map[string]string{},
 	}
 }
 
 func (r *LocalProxyProbeRegistryV1) Register(provider LocalProxyProbeProviderV1) (func(), error) {
-	if r == nil || provider == nil || strings.TrimSpace(provider.ProviderID()) == "" || strings.TrimSpace(provider.ProviderInstance()) == "" {
+	id, instance, ok := localProxyProbeProviderIdentity(provider)
+	if r == nil || !ok {
 		return nil, errors.New("local_proxy_probe_provider_invalid")
 	}
-	id, instance := provider.ProviderID(), provider.ProviderInstance()
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if _, exists := r.providers[id]; exists {
 		return nil, errors.New("local_proxy_probe_provider_duplicate")
 	}
-	r.providers[id] = provider
+	if len(r.providers) >= MaxLocalProxyProbeProvidersV1 {
+		return nil, errors.New("local_proxy_probe_provider_capacity_exceeded")
+	}
+	r.providers[id] = localProxyProbeProviderEntry{id: id, instance: instance, provider: provider}
 	var once sync.Once
 	return func() {
 		once.Do(func() {
 			r.mu.Lock()
 			defer r.mu.Unlock()
-			if current := r.providers[id]; current != nil && current.ProviderInstance() == instance {
+			if current, exists := r.providers[id]; exists && current.instance == instance {
 				delete(r.providers, id)
 				for key := range r.lastGeneration {
 					if strings.HasPrefix(key, instance+"|") {
@@ -150,12 +160,17 @@ func (r *LocalProxyProbeRegistryV1) Register(provider LocalProxyProbeProviderV1)
 }
 
 func (r *LocalProxyProbeRegistryV1) Capability(ctx context.Context, target LocalProxyProbeTargetV1) LocalProxyProbeCapabilityV1 {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	callCtx, cancel := context.WithTimeout(ctx, MaxLocalProxyProbeDurationV1)
+	defer cancel()
 	providers := r.snapshotProviders()
 	var selected LocalProxyProbeCapabilityV1
 	count := 0
-	for _, provider := range providers {
-		value := provider.Capability(ctx, target)
-		if value.Available {
+	for _, entry := range providers {
+		value, ok := callLocalProxyProbeCapability(callCtx, entry.provider, target)
+		if ok && value.ProviderID == entry.id && value.ProviderInstance == entry.instance && value.Available {
 			selected, count = value, count+1
 		}
 	}
@@ -178,8 +193,8 @@ func (r *LocalProxyProbeRegistryV1) ProbeFresh(ctx context.Context, request Loca
 	}
 	key := capability.ProviderInstance + "|" + request.Target.ResourceID + "|" + request.Target.EndpointID + "|" + string(request.Target.Protocol)
 	r.mu.Lock()
-	provider := r.providers[capability.ProviderID]
-	if provider == nil || provider.ProviderInstance() != capability.ProviderInstance {
+	entry, exists := r.providers[capability.ProviderID]
+	if !exists || entry.instance != capability.ProviderInstance {
 		r.mu.Unlock()
 		return LocalProxyProbeObservationV1{}, errors.New("local_proxy_probe_unavailable")
 	}
@@ -199,7 +214,10 @@ func (r *LocalProxyProbeRegistryV1) ProbeFresh(ctx context.Context, request Loca
 	})
 	probeCtx, cancel := context.WithTimeout(ctx, MaxLocalProxyProbeDurationV1)
 	defer cancel()
-	value, err := provider.Probe(probeCtx, request)
+	value, err, completed := callLocalProxyProbe(probeCtx, entry.provider, request)
+	if !completed {
+		return LocalProxyProbeObservationV1{}, errors.New("local_proxy_probe_timeout")
+	}
 	if err != nil {
 		return LocalProxyProbeObservationV1{}, err
 	}
@@ -215,15 +233,65 @@ func (r *LocalProxyProbeRegistryV1) ProbeFresh(ctx context.Context, request Loca
 	return value, nil
 }
 
-func (r *LocalProxyProbeRegistryV1) snapshotProviders() []LocalProxyProbeProviderV1 {
+func (r *LocalProxyProbeRegistryV1) snapshotProviders() []localProxyProbeProviderEntry {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	result := make([]LocalProxyProbeProviderV1, 0, len(r.providers))
+	result := make([]localProxyProbeProviderEntry, 0, len(r.providers))
 	for _, provider := range r.providers {
 		result = append(result, provider)
 	}
-	sort.Slice(result, func(i, j int) bool { return result[i].ProviderID() < result[j].ProviderID() })
+	sort.Slice(result, func(i, j int) bool { return result[i].id < result[j].id })
 	return result
+}
+
+func localProxyProbeProviderIdentity(provider LocalProxyProbeProviderV1) (id, instance string, ok bool) {
+	if provider == nil {
+		return "", "", false
+	}
+	defer func() {
+		if recover() != nil {
+			id, instance, ok = "", "", false
+		}
+	}()
+	id, instance = strings.TrimSpace(provider.ProviderID()), strings.TrimSpace(provider.ProviderInstance())
+	return id, instance, healthToken(id, 128) && healthToken(instance, 128)
+}
+
+func callLocalProxyProbeCapability(ctx context.Context, provider LocalProxyProbeProviderV1, target LocalProxyProbeTargetV1) (LocalProxyProbeCapabilityV1, bool) {
+	result := make(chan LocalProxyProbeCapabilityV1, 1)
+	go func() {
+		defer func() { _ = recover() }()
+		result <- provider.Capability(ctx, target)
+	}()
+	select {
+	case value := <-result:
+		return value, true
+	case <-ctx.Done():
+		return LocalProxyProbeCapabilityV1{}, false
+	}
+}
+
+func callLocalProxyProbe(ctx context.Context, provider LocalProxyProbeProviderV1, request LocalProxyProbeRequestV1) (LocalProxyProbeObservationV1, error, bool) {
+	type response struct {
+		value LocalProxyProbeObservationV1
+		err   error
+	}
+	result := make(chan response, 1)
+	go func() {
+		defer func() {
+			if recover() != nil {
+				result <- response{err: errors.New("local_proxy_probe_failed")}
+			}
+		}()
+		value, err := provider.Probe(ctx, request)
+		result <- response{value: value, err: err}
+	}()
+	select {
+	case value := <-result:
+		return value.value, value.err, true
+	case <-ctx.Done():
+		return LocalProxyProbeObservationV1{}, ctx.Err(), false
+	}
 }
 
 func FinalizeLocalProxyProbeCapabilityV1(value LocalProxyProbeCapabilityV1) LocalProxyProbeCapabilityV1 {

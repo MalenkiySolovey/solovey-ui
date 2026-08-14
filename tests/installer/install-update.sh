@@ -15,6 +15,7 @@ ENV_DIR="${TARGET}/etc/solovey-ui"
 SERVICE_FILE="${TARGET}/etc/systemd/system/solovey-ui.service"
 CLI_PATH="${TARGET}/usr/bin/solovey-ui"
 BACKUP_ROOT="${TARGET}/var/backups/solovey-ui"
+OWNER_CONTRACT="${ENV_DIR}/application-owner-contract.json"
 
 mkdir -p "${FAKEBIN}" "${FIXTURE}" "${LOG_DIR}" "${TARGET}"
 
@@ -274,7 +275,7 @@ SH
         printf 'sing_box=v-test-%s\n' "${version}"
     } > "${release_dir}/BUILD_INFO.txt"
     printf 'service %s\n' "${version}" > "${release_dir}/solovey-ui.service"
-	for name in solovey-privileged-broker solovey-ssh-proof solovey-broker-manifest; do
+	for name in solovey-privileged-broker solovey-ssh-proof solovey-broker-manifest solovey-owner-manifest; do
 		cat > "${release_dir}/${name}" <<SH
 #!/usr/bin/env bash
 printf '%s\n' "${version}:${name}" >> "\${TEST_INSTALLER_LOG}/binary.log"
@@ -286,12 +287,13 @@ SH
 		solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket solovey-ui.sysusers solovey-ui.tmpfiles; do
 		printf 'deployment asset %s %s\n' "${version}" "${unit}" > "${release_dir}/systemd/${unit}"
 	done
-    chmod +x "${release_dir}/solovey-ui" "${release_dir}/solovey-ui.sh" "${release_dir}/solovey-privileged-broker" \
-		"${release_dir}/solovey-ssh-proof" "${release_dir}/solovey-broker-manifest"
+	chmod +x "${release_dir}/solovey-ui" "${release_dir}/solovey-ui.sh" "${release_dir}/solovey-privileged-broker" \
+		"${release_dir}/solovey-ssh-proof" "${release_dir}/solovey-broker-manifest" "${release_dir}/solovey-owner-manifest"
 
     tar -czf "${artifact}" -C "${release_root}" solovey-ui
     (cd "${release_root}" && sha256sum "$(basename "${artifact}")" > "$(basename "${artifact}").sha256")
     sed -i 's/^profile=full$/profile=core/' "${release_dir}/BUILD_INFO.txt"
+	rm -f "${release_dir}/solovey-owner-manifest"
     tar -czf "${core_artifact}" -C "${release_root}" solovey-ui
     (cd "${release_root}" && sha256sum "$(basename "${core_artifact}")" > "$(basename "${core_artifact}").sha256")
 
@@ -342,6 +344,7 @@ run_installer() {
 	SOLOVEY_UI_SYSTEMD_UNIT_ROOT="${TARGET}/etc/systemd/system" \
 	SOLOVEY_UI_SYSTEMD_PROFILE_ROOT="${TARGET}/usr/local/lib/solovey-ui/systemd" \
 	SOLOVEY_UI_DEPLOYMENT_MARKER="${ENV_DIR}/deployment-profile" \
+	SOLOVEY_UI_APPLICATION_OWNER_CONTRACT="${OWNER_CONTRACT}" \
 	SOLOVEY_UI_HARDENED_DATA_ROOT="${TARGET}/var/lib/solovey-ui" \
     SOLOVEY_UI_ENV_DIR="${ENV_DIR}" \
     SOLOVEY_UI_BACKUP_ROOT="${BACKUP_ROOT}" \
@@ -355,13 +358,14 @@ assert_fresh_install() {
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^sing_box=v-test-v1$'
 	assert_contains "${SERVICE_FILE}" 'solovey-ui-native-hardened.service'
 	assert_contains "${ENV_DIR}/deployment-profile" '^native-hardened$'
-	for name in solovey-privileged-broker solovey-ssh-proof solovey-broker-manifest; do
+	for name in solovey-privileged-broker solovey-ssh-proof solovey-broker-manifest solovey-owner-manifest; do
 		assert_file "${INSTALL_DIR}/${name}"
 	done
 	for unit in solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket; do
 		assert_file "${TARGET}/etc/systemd/system/${unit}"
 	done
 	assert_contains "${LOG_DIR}/binary.log" '^v1:solovey-broker-manifest$'
+	assert_contains "${LOG_DIR}/binary.log" '^v1:solovey-owner-manifest$'
 	assert_contains "${LOG_DIR}/systemctl.log" '^enable solovey-privileged-broker.socket solovey-privileged-proof.socket$'
 	if [[ "$(uname -s)" == Linux ]]; then
 		[[ "$(stat -Lc '%a' "${INSTALL_DIR}/solovey-ssh-proof")" == 2755 ]] || fail "SSH proof helper is not installed setgid 2755"
@@ -499,7 +503,8 @@ assert_custom_component_selection() {
 
 assert_auto_core_component_selection() {
     rm -rf "${TARGET}"
-    mkdir -p "${TARGET}"
+    mkdir -p "${ENV_DIR}"
+	printf 'stale owner contract\n' > "${OWNER_CONTRACT}"
     reset_logs
 
     run_installer v1 --without all
@@ -507,6 +512,9 @@ assert_auto_core_component_selection() {
     assert_component_packs false false false
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^profile=core$'
     assert_contains "${LOG_DIR}/binary.log" '^v1:migrate$'
+	assert_not_exists "${INSTALL_DIR}/solovey-owner-manifest"
+	assert_not_exists "${OWNER_CONTRACT}"
+	assert_not_contains "${LOG_DIR}/binary.log" 'solovey-owner-manifest'
 }
 
 assert_minimal_profile_alias() {

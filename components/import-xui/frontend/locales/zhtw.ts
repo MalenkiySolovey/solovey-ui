@@ -2,6 +2,7 @@ export default {
   "migrateXui": {
     "backupAction": {
       "title": "從 compatible panel 遷移",
+      "hint": "快速匯入會立即套用。完整精靈可預覽、檢查衝突並準確選擇要遷移的內容。",
       "button": "選擇 compatible panel 資料庫…",
       "dryRun": "試運行（僅預覽）",
       "strategy": "衝突策略",
@@ -48,6 +49,8 @@ export default {
     "warnings": "警告",
     "back": "返回",
     "apply": "套用計劃",
+    "applyFailed": "匯入失敗",
+    "applyFailedFallback": "無法套用遷移。",
     "progressTitle": "正在套用遷移",
     "current": "目前",
     "resultTitle": "遷移結果",
@@ -55,8 +58,15 @@ export default {
     "downloadJson": "下載 JSON",
     "downloadMarkdown": "下載 Markdown",
     "restore": "恢復舊資料庫",
+    "rollbackFailed": "恢復失敗",
+    "rollbackFailedFallback": "無法恢復舊資料庫。",
+    "rollbackHealthTimeout": "恢復已完成，但面板未能及時就緒。請檢查服務後手動重新整理頁面。",
     "generatedAdmins": "已產生管理員",
     "passwordShownOnce": "這些密碼只顯示一次，不會寫入稽核。",
+    "passwordsHidden": "產生的密碼在您主動顯示之前會保持隱藏。",
+    "revealGeneratedAdmins": "顯示密碼",
+    "hideGeneratedAdmins": "隱藏密碼",
+    "clearGeneratedAdmins": "清除密碼",
     "actions": {
       "create": "建立",
       "merge": "合併",

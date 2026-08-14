@@ -86,40 +86,6 @@ func makeOperationView(item protectionrepository.OperationLockModel) operationVi
 	}
 }
 
-type prepareOperationInput struct {
-	Kind           string `json:"kind"`
-	ResourceID     string `json:"resourceId"`
-	Protocol       string `json:"protocol"`
-	Listen         string `json:"listen"`
-	Port           *int   `json:"port"`
-	PlanRevision   string `json:"planRevision"`
-	IdempotencyKey string `json:"idempotencyKey"`
-	Confirmation   string `json:"confirmation"`
-}
-
-func (h Handler) prepareOperation(c *gin.Context) {
-	if !h.applyAllowed(c) {
-		return
-	}
-	if h.deps.Operations == nil {
-		writeError(c, http.StatusServiceUnavailable, "operation_service_unavailable", nil)
-		return
-	}
-	var input prepareOperationInput
-	if err := c.ShouldBindJSON(&input); err != nil {
-		writeError(c, http.StatusBadRequest, "validation_error", err)
-		return
-	}
-	result, err := h.deps.Operations.Prepare(c.Request.Context(), protectionoperations.PrepareRequest{
-		PlanRevision: strings.TrimSpace(input.PlanRevision), Confirmation: input.Confirmation,
-		Acquire: protectionoperations.AcquireRequest{
-			Kind: strings.TrimSpace(input.Kind), ResourceID: strings.TrimSpace(input.ResourceID), Protocol: strings.TrimSpace(input.Protocol),
-			Listen: strings.TrimSpace(input.Listen), Port: input.Port, IdempotencyKey: strings.TrimSpace(input.IdempotencyKey), Actor: h.actor(c),
-		},
-	})
-	writeOperationError(c, result, err, h.deps.JSONObj)
-}
-
 type confirmOperationInput struct {
 	OperationID  string `json:"operationId"`
 	Confirmation string `json:"confirmation"`
@@ -230,36 +196,6 @@ func (h Handler) firewallRollback(c *gin.Context) {
 	h.deps.JSONObj(c, result, nil)
 }
 
-func (h Handler) confirmUnavailable(action string) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if !h.applyAllowed(c) {
-			return
-		}
-		if h.deps.Operations == nil {
-			writeError(c, http.StatusServiceUnavailable, "operation_service_unavailable", nil)
-			return
-		}
-		var input confirmOperationInput
-		if err := c.ShouldBindJSON(&input); err != nil {
-			writeError(c, http.StatusBadRequest, "validation_error", err)
-			return
-		}
-		err := h.deps.Operations.ConfirmUnavailableAction(c.Request.Context(), protectionoperations.ConfirmActionRequest{
-			OperationID: strings.TrimSpace(input.OperationID), Action: action, Actor: h.actor(c), Confirmation: input.Confirmation,
-		})
-		switch {
-		case errors.Is(err, protectionoperations.ErrConfirmationRequired):
-			writeError(c, http.StatusBadRequest, "confirmation_required", err)
-		case errors.Is(err, protectionoperations.ErrCapabilityUnavailable):
-			writeError(c, http.StatusConflict, "missing_capability", err)
-		case errors.Is(err, protectionrepository.ErrRecordNotFound):
-			writeError(c, http.StatusNotFound, "not_found", err)
-		default:
-			h.deps.JSONObj(c, nil, err)
-		}
-	}
-}
-
 type forgetStateInput struct {
 	Revision     int    `json:"revision"`
 	Confirmation string `json:"confirmation"`
@@ -292,19 +228,6 @@ func (h Handler) forgetState(c *gin.Context) {
 		writeError(c, http.StatusNotFound, "not_found", err)
 	default:
 		h.deps.JSONObj(c, item, err)
-	}
-}
-
-func writeOperationError(c *gin.Context, value any, err error, write func(*gin.Context, interface{}, error)) {
-	switch {
-	case errors.Is(err, protectionoperations.ErrConfirmationRequired):
-		writeError(c, http.StatusBadRequest, "confirmation_required", err)
-	case errors.Is(err, protectionoperations.ErrConflict):
-		writeError(c, http.StatusConflict, "operation_conflict", err)
-	case err != nil:
-		write(c, nil, err)
-	default:
-		write(c, value, nil)
 	}
 }
 

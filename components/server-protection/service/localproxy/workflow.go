@@ -31,11 +31,12 @@ type Service interface {
 }
 
 type Controller struct {
-	Repository *protectionrepository.Repository
-	Operations operationManager
-	Providers  *hostresources.LocalProxyRegistryV1
-	Probes     *componenthealth.LocalProxyProbeRegistryV1
-	Now        func() time.Time
+	Repository           *protectionrepository.Repository
+	Operations           operationManager
+	Providers            *hostresources.LocalProxyRegistryV1
+	Probes               *componenthealth.LocalProxyProbeRegistryV1
+	Now                  func() time.Time
+	LeaseActivityChanged func()
 }
 
 func (c *Controller) ready() error {
@@ -219,7 +220,7 @@ func (c *Controller) Apply(ctx context.Context, input ApplyRequestV1) (ResultV1,
 	if err := c.persistState(ctx, plan, healthing, fenced, StateHealth, marker, nil, false); err != nil {
 		return c.reconcileAfterAmbiguity(ctx, plan, healthing, fenced, marker, err)
 	}
-	boundary := time.Now().UTC().UnixNano()
+	boundary := c.currentTime().UnixNano()
 	health, healthErr := c.probeAll(ctx, plan, healthing, fenced, marker, boundary)
 	if healthErr != nil {
 		result, rollbackErr := c.rollbackFailedApply(ctx, plan, healthing, fenced, marker, health)
@@ -251,6 +252,7 @@ func (c *Controller) Apply(ctx context.Context, input ApplyRequestV1) (ResultV1,
 		return ResultV1{}, err
 	}
 	complete = true
+	c.notifyLeaseActivityChanged()
 	return result, nil
 }
 
@@ -328,7 +330,14 @@ func (c *Controller) Disable(ctx context.Context, input DisableRequestV1) (Resul
 		return ResultV1{}, err
 	}
 	complete = true
+	c.notifyLeaseActivityChanged()
 	return result, nil
+}
+
+func (c *Controller) notifyLeaseActivityChanged() {
+	if c != nil && c.LeaseActivityChanged != nil {
+		c.LeaseActivityChanged()
+	}
 }
 
 func (c *Controller) probeAll(ctx context.Context, plan PlanV1, operation protectionrepository.OperationLockModel, lease hostresources.LocalProxyGuardLeaseV1, marker string, boundary int64) ([]componenthealth.LocalProxyProbeObservationV1, error) {
@@ -552,34 +561,36 @@ func (c *Controller) replayCompleted(ctx context.Context, action, key, requestDi
 	return result, true, err
 }
 
-func (c *Controller) RenewActive(ctx context.Context) error {
+func (c *Controller) RenewActive(ctx context.Context) (bool, error) {
 	if err := c.ready(); err != nil {
-		return err
+		return false, err
 	}
 	states, err := c.Repository.LocalProxyStates(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	now := c.currentTime()
+	active := false
 	for _, state := range states {
 		if state.ActualState != string(StateAppliedExperimental) || !state.GuardingProviderLease {
 			continue
 		}
 		plan, lease, err := c.resolveStoredPlanAndLease(ctx, state, false, false)
 		if err != nil {
-			_ = c.markRenewalRecovery(ctx, state)
+			active = c.markRenewalRecovery(ctx, state) != nil || active
 			continue
 		}
 		if lease.State != hostresources.EndpointLeaseActive {
-			_ = c.markRenewalRecovery(ctx, state)
+			active = c.markRenewalRecovery(ctx, state) != nil || active
 			continue
 		}
 		if lease.ExpiresAt > now.Add(5*time.Minute).Unix() {
+			active = true
 			continue
 		}
 		provider, ok := c.Providers.Provider(plan.ExactReference.ProviderID)
 		if !ok {
-			_ = c.markRenewalRecovery(ctx, state)
+			active = c.markRenewalRecovery(ctx, state) != nil || active
 			continue
 		}
 		renewed, err := provider.RenewLocalProxyGuardLease(ctx, hostresources.MutateLocalProxyGuardLeaseRequestV1{
@@ -591,15 +602,17 @@ func (c *Controller) RenewActive(ctx context.Context) error {
 			FreshnessSeconds: uint32(hostresources.MaxLocalProxyLeaseFreshnessV1 / time.Second),
 		})
 		if err != nil {
-			_ = c.markRenewalRecovery(ctx, state)
+			active = c.markRenewalRecovery(ctx, state) != nil || active
 			continue
 		}
 		operation, operationErr := c.Repository.OperationByID(ctx, state.LatestOperationID)
 		if operationErr != nil || c.persistState(ctx, plan, operation, renewed, StateAppliedExperimental, state.MarkerRevision, decodeHealth(state.HealthJSON), false) != nil {
-			_ = c.markRenewalRecovery(ctx, state)
+			active = c.markRenewalRecovery(ctx, state) != nil || active
+			continue
 		}
+		active = true
 	}
-	return nil
+	return active, nil
 }
 
 func (c *Controller) markRenewalRecovery(ctx context.Context, state protectionrepository.LocalProxyStateV1Model) error {
@@ -625,19 +638,27 @@ func decodeHealth(content []byte) []componenthealth.LocalProxyProbeObservationV1
 	return result
 }
 
-func RunLeaseRenewer(ctx context.Context, controller *Controller) {
+func RunLeaseRenewer(ctx context.Context, controller *Controller, trigger <-chan struct{}) {
 	if controller == nil {
 		return
 	}
-	_ = controller.RenewActive(ctx)
-	ticker := time.NewTicker(5 * time.Minute)
-	defer ticker.Stop()
 	for {
+		active, err := controller.RenewActive(ctx)
+		if err == nil && !active {
+			return
+		}
+		timer := time.NewTimer(5 * time.Minute)
 		select {
 		case <-ctx.Done():
+			if !timer.Stop() {
+				<-timer.C
+			}
 			return
-		case <-ticker.C:
-			_ = controller.RenewActive(ctx)
+		case <-trigger:
+			if !timer.Stop() {
+				<-timer.C
+			}
+		case <-timer.C:
 		}
 	}
 }

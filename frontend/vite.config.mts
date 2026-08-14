@@ -14,6 +14,7 @@ const frontendRoot = fileURLToPath(new URL('.', import.meta.url))
 const repoRoot = path.resolve(frontendRoot, '..')
 const bundledComponentIDs = resolveBundledComponentIDs()
 const e2eWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH || '/e2e-panel/')
+const apiProxyTarget = isE2E ? process.env.SUI_E2E_BACKEND_ORIGIN || 'http://localhost:2095' : 'http://localhost:2095'
 const apiProxyPath = isE2E ? `${e2eWebPath}api` : '/app/api'
 
 export default defineConfig({
@@ -106,8 +107,8 @@ export default defineConfig({
     port: 3000,
     proxy: {
       [apiProxyPath]: {
-        target: 'http://localhost:2095',
-        changeOrigin: true,
+        target: apiProxyTarget,
+        changeOrigin: !isE2E,
       },
     },
   }

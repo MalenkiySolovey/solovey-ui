@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v2026.2.1"
+        default: "v2026.3.0"
         type: string
   push:
     tags:
@@ -17,6 +17,7 @@ permissions:
 
 env:
   NODE_VERSION: "25"
+  RELEASE_TAG_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   TAGS: "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0,with_tailscale"
   LIBCRONET_BASE_URL: "https://github.com/SagerNet/cronet-go/releases/download/v148.0.7778.96-1"
 
@@ -30,6 +31,14 @@ jobs:
           submodules: recursive
           fetch-depth: 1
 
+      - name: Validate release tag against source version
+        run: |
+          set -euo pipefail
+          VERSION="${RELEASE_TAG_INPUT#v}"
+          EXPECTED_VERSION="$(tr -d '\r\n' < config/identity/version)"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
+          [ "$VERSION" = "$EXPECTED_VERSION" ] || { echo "release tag $RELEASE_TAG_INPUT does not match source version $EXPECTED_VERSION" >&2; exit 1; }
+
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
@@ -42,7 +51,10 @@ jobs:
         run: |
           cd frontend
           npm ci
-          npm run build
+          SOLOVEY_UI_PROFILE=full npm run build
+
+      - name: Check full frontend profile
+        run: node scripts/check-frontend-profile.mjs --profile full --dist frontend/dist
 
       - name: Upload frontend build artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -64,6 +76,23 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Validate Windows scripts and service contract
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          $parseErrors = @()
+          Get-ChildItem windows -Filter *.ps1 -File | ForEach-Object {
+            $tokens = $null
+            $fileErrors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($_.FullName, [ref]$tokens, [ref]$fileErrors) | Out-Null
+            $parseErrors += $fileErrors
+          }
+          if ($parseErrors.Count -ne 0) {
+            $parseErrors | Format-List
+            exit 1
+          }
+          [xml](Get-Content windows/s-ui-windows.xml -Raw) | Out-Null
 
       - name: Download frontend build artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -94,11 +123,11 @@ jobs:
           go env GOOS GOARCH
 
           node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
-          go build -ldflags="-w -s -checklinkname=0" -tags "${{ env.TAGS }}" -o solovey-ui.exe main.go
-          file solovey-ui.exe
+          go build -ldflags="-w -s -checklinkname=0" -tags "${{ env.TAGS }}" -o sui.exe main.go
+          file sui.exe
 
           mkdir solovey-ui-windows
-          cp solovey-ui.exe solovey-ui-windows/
+          cp sui.exe solovey-ui-windows/
           cp -r windows/* solovey-ui-windows/
 
       - name: Download libcronet-go
@@ -131,11 +160,17 @@ jobs:
         run: |
           zip -r "solovey-ui-windows-${{ matrix.arch }}.zip" solovey-ui-windows
 
+      - name: Write package checksum
+        shell: bash
+        run: sha256sum "solovey-ui-windows-${{ matrix.arch }}.zip" > "solovey-ui-windows-${{ matrix.arch }}.zip.sha256"
+
       - name: Upload build artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: solovey-ui-windows-${{ matrix.arch }}
-          path: ./solovey-ui-windows-${{ matrix.arch }}.zip
+          path: |
+            ./solovey-ui-windows-${{ matrix.arch }}.zip
+            ./solovey-ui-windows-${{ matrix.arch }}.zip.sha256
           retention-days: 1
 
   publish-windows:
@@ -146,11 +181,7 @@ jobs:
       - name: Normalize release tag
         id: vars
         run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            TAG="${{ inputs.tag }}"
-          else
-            TAG="${GITHUB_REF_NAME}"
-          fi
+          TAG="${RELEASE_TAG_INPUT}"
           case "$TAG" in
             v*) echo "tag=$TAG" >> "$GITHUB_OUTPUT" ;;
             *) echo "tag=v$TAG" >> "$GITHUB_OUTPUT" ;;

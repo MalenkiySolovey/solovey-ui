@@ -122,7 +122,7 @@ func TestWorkflowIdempotencyUnknownSSHAndRollbackFailure(t *testing.T) {
 	if err != nil || !second.Joined || second.Operation.OperationID != first.Operation.OperationID {
 		t.Fatalf("idempotency = %#v, %v", second, err)
 	}
-	mock.Responses[protectionhelper.OperationNFTRollback] = protectionhelper.Response{OK: false, Code: protectionhelper.CodeProcessFailed}
+	mock.Responses[protectionhelper.OperationNFTRollback] = protectionhelper.Response{OK: false, Code: protectionhelper.CodeTransportFailed}
 	mock.FailAfter[protectionhelper.OperationNFTApply] = errors.New("injected post-mutation apply observation failure")
 	bundles := 0
 	workflow.Recovery = MockRecovery{Bundle: func(context.Context, protectionrepository.OperationLockModel, string) error { bundles++; return nil }}

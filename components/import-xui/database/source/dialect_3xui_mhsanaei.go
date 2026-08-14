@@ -11,6 +11,13 @@ import (
 
 type Dialect3XUIMHSanaei struct{}
 
+const (
+	maxSourceRows      = 100_000
+	maxSourceIdentity  = 256
+	maxSourceSecret    = 4 << 10
+	maxSourceJSONBytes = 8 << 20
+)
+
 func (Dialect3XUIMHSanaei) Name() string {
 	return "dialect_3xui_mhsanaei"
 }
@@ -59,7 +66,7 @@ func (Dialect3XUIMHSanaei) ReadInbounds(db *sql.DB) ([]InboundRow, error) {
 	// #nosec G202 -- projection is assembled solely from the fixed column
 	// allow-list above (quoted via sqliteident.Quote) and literal defaults; no
 	// external input reaches the SQL string.
-	rows, err := db.Query("SELECT " + projection + " FROM inbounds ORDER BY id")
+	rows, err := db.Query("SELECT "+projection+" FROM inbounds ORDER BY id LIMIT ?", maxSourceRows+1)
 	if err != nil {
 		return nil, err
 	}
@@ -85,10 +92,18 @@ func (Dialect3XUIMHSanaei) ReadInbounds(db *sql.DB) ([]InboundRow, error) {
 		row.StreamSettings = nullJSON(streamSettings)
 		row.Tag = strings.TrimSpace(nullString(tag))
 		row.Sniffing = nullJSON(sniffing)
+		if len(row.Tag) > maxSourceIdentity || len(row.Remark) > maxSourceIdentity || len(row.Listen) > maxSourceIdentity ||
+			len(row.Protocol) > maxSourceIdentity || len(row.Settings) > maxSourceJSONBytes ||
+			len(row.StreamSettings) > maxSourceJSONBytes || len(row.Sniffing) > maxSourceJSONBytes {
+			return nil, fmt.Errorf("source inbound row exceeds limits")
+		}
 		if row.Tag == "" {
 			row.Tag = fmt.Sprintf("inbound-%d", row.Port)
 		}
 		result = append(result, row)
+		if len(result) > maxSourceRows {
+			return nil, fmt.Errorf("source inbound count exceeds limit")
+		}
 	}
 	return result, rows.Err()
 }
@@ -116,7 +131,7 @@ func (Dialect3XUIMHSanaei) ReadClients(db *sql.DB) ([]ClientTraffic, error) {
 	// #nosec G202 -- projection is assembled solely from the fixed column
 	// allow-list above (quoted via sqliteident.Quote) and literal defaults; no
 	// external input reaches the SQL string.
-	rows, err := db.Query("SELECT " + projection + " FROM client_traffics ORDER BY id")
+	rows, err := db.Query("SELECT "+projection+" FROM client_traffics ORDER BY id LIMIT ?", maxSourceRows+1)
 	if err != nil {
 		return nil, err
 	}
@@ -134,7 +149,13 @@ func (Dialect3XUIMHSanaei) ReadClients(db *sql.DB) ([]ClientTraffic, error) {
 		}
 		row.Enable = !enable.Valid || enable.Int64 != 0
 		row.Email = strings.TrimSpace(nullString(email))
+		if len(row.Email) > maxSourceIdentity {
+			return nil, fmt.Errorf("source client identity exceeds limit")
+		}
 		result = append(result, row)
+		if len(result) > maxSourceRows {
+			return nil, fmt.Errorf("source client count exceeds limit")
+		}
 	}
 	return result, rows.Err()
 }
@@ -144,7 +165,7 @@ func (Dialect3XUIMHSanaei) ReadSettings(db *sql.DB) ([]Setting, error) {
 	if err != nil || !exists {
 		return nil, err
 	}
-	rows, err := db.Query("SELECT id, key, value FROM settings ORDER BY id")
+	rows, err := db.Query("SELECT id, key, value FROM settings ORDER BY id LIMIT ?", maxSourceRows+1)
 	if err != nil {
 		return nil, err
 	}
@@ -158,7 +179,13 @@ func (Dialect3XUIMHSanaei) ReadSettings(db *sql.DB) ([]Setting, error) {
 		}
 		row.Key = strings.TrimSpace(nullString(key))
 		row.Value = nullString(value)
+		if len(row.Key) > maxSourceIdentity || len(row.Value) > maxSourceJSONBytes {
+			return nil, fmt.Errorf("source setting exceeds limit")
+		}
 		result = append(result, row)
+		if len(result) > maxSourceRows {
+			return nil, fmt.Errorf("source setting count exceeds limit")
+		}
 	}
 	return result, rows.Err()
 }
@@ -168,7 +195,7 @@ func (Dialect3XUIMHSanaei) ReadUsers(db *sql.DB) ([]User, error) {
 	if err != nil || !exists {
 		return nil, err
 	}
-	rows, err := db.Query("SELECT id, username, password FROM users ORDER BY id")
+	rows, err := db.Query("SELECT id, username, password FROM users ORDER BY id LIMIT ?", maxSourceRows+1)
 	if err != nil {
 		return nil, err
 	}
@@ -182,8 +209,14 @@ func (Dialect3XUIMHSanaei) ReadUsers(db *sql.DB) ([]User, error) {
 		}
 		row.Username = strings.TrimSpace(nullString(username))
 		row.Password = nullString(password)
+		if len(row.Username) > maxSourceIdentity || len(row.Password) > maxSourceSecret {
+			return nil, fmt.Errorf("source user exceeds limit")
+		}
 		if row.Username != "" {
 			result = append(result, row)
+			if len(result) > maxSourceRows {
+				return nil, fmt.Errorf("source user count exceeds limit")
+			}
 		}
 	}
 	return result, rows.Err()
@@ -194,7 +227,7 @@ func (Dialect3XUIMHSanaei) ReadOutboundTraffics(db *sql.DB) ([]OutboundTraffic, 
 	if err != nil || !exists {
 		return nil, err
 	}
-	rows, err := db.Query("SELECT id, tag, up, down FROM outbound_traffics ORDER BY id")
+	rows, err := db.Query("SELECT id, tag, up, down FROM outbound_traffics ORDER BY id LIMIT ?", maxSourceRows+1)
 	if err != nil {
 		return nil, err
 	}
@@ -207,7 +240,13 @@ func (Dialect3XUIMHSanaei) ReadOutboundTraffics(db *sql.DB) ([]OutboundTraffic, 
 			return nil, err
 		}
 		row.Tag = strings.TrimSpace(nullString(tag))
+		if len(row.Tag) > maxSourceIdentity {
+			return nil, fmt.Errorf("source outbound identity exceeds limit")
+		}
 		result = append(result, row)
+		if len(result) > maxSourceRows {
+			return nil, fmt.Errorf("source outbound count exceeds limit")
+		}
 	}
 	return result, rows.Err()
 }

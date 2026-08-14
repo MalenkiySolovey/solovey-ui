@@ -6,6 +6,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -43,5 +44,23 @@ func TestDecodeXUIApplyPlanReadsInlineField(t *testing.T) {
 	}
 	if plan.Source.Hash != "inline-hash" {
 		t.Fatalf("plan source hash=%q, want inline-hash", plan.Source.Hash)
+	}
+}
+
+func TestDecodeXUIApplyPlanRejectsUnknownBrowserFields(t *testing.T) {
+	_, err := decodeXUIApplyPlanReader(strings.NewReader(`{
+		"items":[{"kind":"inbound","srcId":1,"dstTag":"inbound-1","action":"create","conflict":false,"previewJson":{},"rowKey":"ui-only"}],
+		"defaults":{"strategy":"merge","includeSettings":false,"adminMode":"skip","onlyNew":false,"includeHistory":false,"includeRouting":false},
+		"source":{"hash":"hash"}
+	}`))
+	if err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("expected unknown-field rejection, got %v", err)
+	}
+}
+
+func TestDecodeXUIApplyPlanRejectsTrailingDocument(t *testing.T) {
+	_, err := decodeXUIApplyPlanReader(strings.NewReader(`{"source":{"hash":"one"}} {"source":{"hash":"two"}}`))
+	if err == nil || !strings.Contains(err.Error(), "multiple migration plans") {
+		t.Fatalf("expected multiple-document rejection, got %v", err)
 	}
 }

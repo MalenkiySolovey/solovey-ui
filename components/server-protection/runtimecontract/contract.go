@@ -1,6 +1,6 @@
 // Package runtimecontract defines the versioned filesystem and lifecycle
-// contract for server-protection runtime state. It contains no lab or host
-// integration and is safe for deployment verifiers to import.
+// contract for server-protection runtime state. It contains no external host
+// orchestration and is safe for deployment verifiers to import.
 package runtimecontract
 
 import (

@@ -13,10 +13,6 @@ import (
 
 func ValidateIPCertSettingInput(key string, value string) error {
 	switch key {
-	case settingcatalog.IPCertEnabledKey:
-		if _, err := strconv.ParseBool(value); err != nil {
-			return common.NewError("invalid boolean setting: ", key)
-		}
 	case settingcatalog.IPCertTargetIPKey:
 		if strings.TrimSpace(value) == "" {
 			return nil
@@ -26,10 +22,6 @@ func ValidateIPCertSettingInput(key string, value string) error {
 		}
 	case settingcatalog.IPCertEmailKey:
 		if err := ValidateIPCertEmail(value, false); err != nil {
-			return err
-		}
-	case settingcatalog.IPCertChallengePortKey:
-		if err := ValidateIntRange(key, value, 1, 65535); err != nil {
 			return err
 		}
 	case settingcatalog.IPCertApplyTargetKey:

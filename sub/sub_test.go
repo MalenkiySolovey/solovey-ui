@@ -13,6 +13,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 	sublocal "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/local"
 	subserver "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/server"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -24,9 +25,8 @@ var subUUIDV4Pattern = regexp.MustCompile(`^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}
 
 func initSubTestDB(t *testing.T) {
 	t.Helper()
-	subserver.ResetDisplaySettingsCacheForTest()
+	subserver.ResetDisplaySettingsCache()
 	ClearSubscriptionOutputCache()
-	sublocal.ResetClientOutboundContributorsForTest()
 	// Mirror the production wiring (app.go) so the subscription rate limiter reads
 	// the configured per-IP limit from settings without the server package
 	// importing the service layer.
@@ -129,6 +129,40 @@ func TestGetClientBySubIdCanDisableLegacyName(t *testing.T) {
 	}
 }
 
+func TestGetClientBySubIdFailsClosedOnSecretPolicyReadError(t *testing.T) {
+	initSubTestDB(t)
+	if err := dbsqlite.DB().Create(&model.Client{
+		Enable: true, Name: "legacy-name", Inbounds: []byte("[]"), Links: []byte("[]"),
+	}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.DB().Migrator().DropTable(&model.Setting{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&SubService{}).getClientBySubId("legacy-name"); err == nil || dbsqlite.IsNotFound(err) {
+		t.Fatalf("settings failure did not fail closed: %v", err)
+	}
+}
+
+func TestGetClientBySubIdRejectsAmbiguousIdentity(t *testing.T) {
+	initSubTestDB(t)
+	// Simulate storage corruption after startup. Normal writes cannot create
+	// this state because SQLite owns a unique subscription-secret index.
+	if err := dbsqlite.DB().Exec("DROP INDEX idx_clients_sub_secret").Error; err != nil {
+		t.Fatal(err)
+	}
+	clients := []model.Client{
+		{Enable: true, Name: "first", SubSecret: "duplicate", Inbounds: []byte("[]"), Links: []byte("[]")},
+		{Enable: true, Name: "second", SubSecret: "duplicate", Inbounds: []byte("[]"), Links: []byte("[]")},
+	}
+	if err := dbsqlite.DB().Create(&clients).Error; err != nil {
+		t.Fatal(err)
+	}
+	if _, err := (&SubService{}).getClientBySubId("duplicate"); err == nil || dbsqlite.IsNotFound(err) {
+		t.Fatalf("ambiguous subscription identity was accepted: %v", err)
+	}
+}
+
 func TestEnsureClientSubSecretGeneratesUUIDV4(t *testing.T) {
 	initSubTestDB(t)
 	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
@@ -144,7 +178,7 @@ func TestEnsureClientSubSecretGeneratesUUIDV4(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := (&SubService{}).ensureClientSubSecret(dbsqlite.DB(), &client); err != nil {
+	if err := entityclients.EnsureSubSecret(dbsqlite.DB(), &client); err != nil {
 		t.Fatal(err)
 	}
 	if !subUUIDV4Pattern.MatchString(client.SubSecret) {
@@ -162,7 +196,8 @@ func TestEnsureClientSubSecretGeneratesUUIDV4(t *testing.T) {
 
 func TestSubSecretRequiredReturns404ForLegacyNameURL(t *testing.T) {
 	initSubTestDB(t)
-	subserver.ResetRateLimitForTest()
+	limiter := subserver.NewRateLimiter()
+	t.Cleanup(limiter.Close)
 	settingService := &service.SettingService{}
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
@@ -183,7 +218,7 @@ func TestSubSecretRequiredReturns404ForLegacyNameURL(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	NewSubHandler(router.Group(""))
+	newSubHandler(router.Group(""), limiter.Middleware())
 
 	legacyRecorder := httptest.NewRecorder()
 	router.ServeHTTP(legacyRecorder, httptest.NewRequest(http.MethodGet, "/legacy-name", nil))
@@ -223,7 +258,10 @@ func TestSubscriptionHeadersUseConfiguredTitleAndURLs(t *testing.T) {
 		}
 	}
 
-	cfg := subserver.CachedDisplaySettings(&service.SettingService{}, time.Now())
+	cfg, err := subserver.CachedDisplaySettings(&service.SettingService{}, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
 	headers := buildClientHeaders(&model.Client{Name: "alice"}, cfg)
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
@@ -263,8 +301,11 @@ func TestSubscriptionEnableSettingsDisableFormats(t *testing.T) {
 	}
 
 	links := json.RawMessage(`[{"type":"external","uri":"https://example.com/sub"}]`)
-	if got := resolveClientLinks(links, sublocal.LinkModeAll, ""); len(got) != 0 {
-		t.Fatalf("link subscriptions should be disabled, got %#v", got)
+	if got := resolveClientLinks(links, sublocal.LinkModeAll, ""); len(got) != 1 {
+		t.Fatalf("raw output setting must not remove external links from other formats, got %#v", got)
+	}
+	if _, _, err := (&SubService{}).GetSubs("missing"); err == nil {
+		t.Fatal("raw link subscription should be disabled before client lookup")
 	}
 	if _, _, err := (&JSONService{}).GetJSON("missing"); err == nil {
 		t.Fatal("json subscription should be disabled before client lookup")
@@ -279,7 +320,6 @@ func TestSubscriptionEnableSettingsDisableFormats(t *testing.T) {
 
 func TestSubServerServesDefaultAndCustomFormatPaths(t *testing.T) {
 	initSubTestDB(t)
-	subserver.ResetRateLimitForTest()
 	settingService := &service.SettingService{}
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
@@ -347,7 +387,8 @@ func TestSubServerServesDefaultAndCustomFormatPaths(t *testing.T) {
 
 func TestSubHandlerLinkDisableReturns404ForBaseSubscription(t *testing.T) {
 	initSubTestDB(t)
-	subserver.ResetRateLimitForTest()
+	limiter := subserver.NewRateLimiter()
+	t.Cleanup(limiter.Close)
 	settingService := &service.SettingService{}
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
@@ -369,7 +410,7 @@ func TestSubHandlerLinkDisableReturns404ForBaseSubscription(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	NewSubHandler(router.Group("/sub"))
+	newSubHandler(router.Group("/sub"), limiter.Middleware())
 
 	for _, method := range []string{http.MethodGet, http.MethodHead} {
 		recorder := httptest.NewRecorder()
@@ -389,7 +430,6 @@ func TestSubHandlerLinkDisableReturns404ForBaseSubscription(t *testing.T) {
 
 func TestSubHandlerXrayDisableReturns404ForGetAndHead(t *testing.T) {
 	initSubTestDB(t)
-	subserver.ResetRateLimitForTest()
 	settingService := &service.SettingService{}
 	if _, err := settingService.GetAllSetting(); err != nil {
 		t.Fatal(err)
@@ -516,5 +556,5 @@ func setSubTestSetting(t *testing.T, key string, value string) {
 	if err := dbsqlite.DB().Model(model.Setting{}).Where("key = ?", key).Update("value", value).Error; err != nil {
 		t.Fatal(err)
 	}
-	subserver.ResetDisplaySettingsCacheForTest()
+	subserver.ResetDisplaySettingsCache()
 }

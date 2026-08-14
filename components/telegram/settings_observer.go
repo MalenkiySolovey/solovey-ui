@@ -11,11 +11,13 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
-func registerSettingsObserver() func() {
-	return service.RegisterConfigSaveObserver(id, telegramBackupPassphraseAuditObserver)
+func registerSettingsObserver(runtime *service.Runtime) func() {
+	return service.RegisterConfigSaveObserver(id, func(ctx service.ConfigSaveObserverContext) (service.ConfigSaveAfterCommit, error) {
+		return telegramBackupPassphraseAuditObserver(runtime, ctx)
+	})
 }
 
-func telegramBackupPassphraseAuditObserver(ctx service.ConfigSaveObserverContext) (service.ConfigSaveAfterCommit, error) {
+func telegramBackupPassphraseAuditObserver(runtime *service.Runtime, ctx service.ConfigSaveObserverContext) (service.ConfigSaveAfterCommit, error) {
 	if ctx.Object != "settings" {
 		return nil, nil
 	}
@@ -37,7 +39,7 @@ func telegramBackupPassphraseAuditObserver(ctx service.ConfigSaveObserverContext
 	}
 	configured := newPassphrase != ""
 	return func() {
-		if err := (&service.AuditService{}).Record(service.AuditEvent{
+		if err := (&service.AuditService{Runtime: runtime}).Record(service.AuditEvent{
 			Actor:    ctx.LoginUser,
 			Event:    "tg_backup_passphrase_changed",
 			Resource: "database",

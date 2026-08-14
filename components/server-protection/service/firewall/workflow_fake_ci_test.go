@@ -411,7 +411,7 @@ func TestFakeCIStateMachine(t *testing.T) {
 			t.Fatal(err)
 		}
 		mock.Responses[protectionhelper.OperationNFTApply] = protectionhelper.Response{OK: true, NFT: &protectionhelper.NFTResult{AppliedRevision: "stale"}}
-		mock.Responses[protectionhelper.OperationNFTRollback] = protectionhelper.Response{OK: false, Code: protectionhelper.CodeProcessFailed}
+		mock.Responses[protectionhelper.OperationNFTRollback] = protectionhelper.Response{OK: false, Code: protectionhelper.CodeTransportFailed}
 		result, err := workflow.Apply(context.Background(), ApplyInput{OperationID: prepared.Operation.OperationID, Plan: plan, Resources: plan.Resources, Confirmation: "APPLY SERVER PROTECTION " + prepared.Operation.OperationID})
 		if err == nil || result.State != protectionoperations.StateRollbackFailed || bundles != 1 {
 			t.Fatalf("result=%#v err=%v", result, err)
@@ -433,7 +433,7 @@ func TestFakeCIStateMachine(t *testing.T) {
 			t.Fatal(err)
 		}
 		mock.FailAfter[protectionhelper.OperationNFTApply] = errors.New("injected post-mutation apply observation failure")
-		mock.Responses[protectionhelper.OperationNFTRollback] = protectionhelper.Response{OK: false, Code: protectionhelper.CodeProcessFailed}
+		mock.Responses[protectionhelper.OperationNFTRollback] = protectionhelper.Response{OK: false, Code: protectionhelper.CodeTransportFailed}
 		result, err := workflow.Apply(context.Background(), ApplyInput{OperationID: prepared.Operation.OperationID, Plan: plan, Confirmation: "APPLY SERVER PROTECTION " + prepared.Operation.OperationID})
 		item, loadErr := store.OperationByID(context.Background(), prepared.Operation.OperationID)
 		if err == nil || loadErr != nil || result.State != protectionoperations.StateRollingBack || item.State != protectionoperations.StateRollingBack {
@@ -581,7 +581,7 @@ func TestFakeCITransitionFailureInjection(t *testing.T) {
 				mock.FailAfter[protectionhelper.OperationNFTApply] = errors.New("injected post-mutation apply observation failure")
 			}
 			if fixture.helperRollbackFailure {
-				mock.Responses[protectionhelper.OperationNFTRollback] = protectionhelper.Response{OK: false, Code: protectionhelper.CodeProcessFailed}
+				mock.Responses[protectionhelper.OperationNFTRollback] = protectionhelper.Response{OK: false, Code: protectionhelper.CodeTransportFailed}
 			}
 			if _, err := workflow.Apply(context.Background(), ApplyInput{OperationID: prepared.Operation.OperationID, Plan: plan, Resources: plan.Resources, Confirmation: "APPLY SERVER PROTECTION " + prepared.Operation.OperationID}); err == nil {
 				t.Fatal("injected transition failure reported success")

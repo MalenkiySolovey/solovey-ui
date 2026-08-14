@@ -1,6 +1,7 @@
 package server
 
 import (
+	"fmt"
 	"sync"
 	"time"
 )
@@ -45,29 +46,49 @@ var displaySettingsCache = struct {
 }{}
 
 // CachedDisplaySettings returns the display settings snapshot, reading it from
-// the database at most once per DisplaySettingsTTL. Getter errors keep the same
-// zero-value behavior as the legacy inline subscription path.
-func CachedDisplaySettings(ss DisplaySettingsReader, now time.Time) DisplaySettings {
+// the database at most once per DisplaySettingsTTL. A failed refresh is never
+// cached: callers must not silently replace persisted presentation settings
+// with zero values for the lifetime of the cache.
+func CachedDisplaySettings(ss DisplaySettingsReader, now time.Time) (DisplaySettings, error) {
 	displaySettingsCache.Lock()
 	defer displaySettingsCache.Unlock()
 	if now.Before(displaySettingsCache.expiresAt) {
-		return displaySettingsCache.value
+		return displaySettingsCache.value, nil
 	}
 	var v DisplaySettings
-	v.ShowInfo, _ = ss.GetSubShowInfo()
-	v.NameInRemark, _ = ss.GetSubNameInRemark()
-	v.Updates, _ = ss.GetSubUpdates()
-	v.Title, _ = ss.GetSubTitle()
-	v.SupportURL, _ = ss.GetSubSupportUrl()
-	v.ProfileURL, _ = ss.GetSubProfileUrl()
-	v.Announce, _ = ss.GetSubAnnounce()
-	v.Encode, _ = ss.GetSubEncode()
+	var err error
+	if v.ShowInfo, err = ss.GetSubShowInfo(); err != nil {
+		return DisplaySettings{}, fmt.Errorf("read subShowInfo: %w", err)
+	}
+	if v.NameInRemark, err = ss.GetSubNameInRemark(); err != nil {
+		return DisplaySettings{}, fmt.Errorf("read subNameInRemark: %w", err)
+	}
+	if v.Updates, err = ss.GetSubUpdates(); err != nil {
+		return DisplaySettings{}, fmt.Errorf("read subUpdates: %w", err)
+	}
+	if v.Title, err = ss.GetSubTitle(); err != nil {
+		return DisplaySettings{}, fmt.Errorf("read subTitle: %w", err)
+	}
+	if v.SupportURL, err = ss.GetSubSupportUrl(); err != nil {
+		return DisplaySettings{}, fmt.Errorf("read subSupportUrl: %w", err)
+	}
+	if v.ProfileURL, err = ss.GetSubProfileUrl(); err != nil {
+		return DisplaySettings{}, fmt.Errorf("read subProfileUrl: %w", err)
+	}
+	if v.Announce, err = ss.GetSubAnnounce(); err != nil {
+		return DisplaySettings{}, fmt.Errorf("read subAnnounce: %w", err)
+	}
+	if v.Encode, err = ss.GetSubEncode(); err != nil {
+		return DisplaySettings{}, fmt.Errorf("read subEncode: %w", err)
+	}
 	displaySettingsCache.value = v
 	displaySettingsCache.expiresAt = now.Add(DisplaySettingsTTL)
-	return v
+	return v, nil
 }
 
-func ResetDisplaySettingsCacheForTest() {
+// ResetDisplaySettingsCache invalidates the presentation snapshot after a
+// committed settings change or database restore.
+func ResetDisplaySettingsCache() {
 	displaySettingsCache.Lock()
 	defer displaySettingsCache.Unlock()
 	displaySettingsCache.value = DisplaySettings{}

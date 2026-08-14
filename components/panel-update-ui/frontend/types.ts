@@ -17,9 +17,6 @@ export interface ComponentCatalogStatus extends RuntimeComponentStatus {
 
 export interface ComponentCatalogInventory {
   binaryProfile: string
-  releaseVersion?: string
-  releaseSource?: string
-  releaseError?: string
   components: ComponentCatalogStatus[]
   installed: ComponentCatalogStatus[]
   available: ComponentCatalogStatus[]

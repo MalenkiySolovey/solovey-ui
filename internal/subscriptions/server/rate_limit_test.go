@@ -16,28 +16,30 @@ func TestCanonicalClientIPUnmapsIPv4MappedIPv6(t *testing.T) {
 }
 
 func TestRateLimitGCSweepsExpiredBuckets(t *testing.T) {
-	ResetRateLimitForTest()
+	limiter := NewRateLimiter()
+	t.Cleanup(limiter.Close)
 	now := time.Now()
 
-	subscriptionRateLimiter.AllowAt("expired", now.Add(-RateLimitWindow-time.Second))
-	subscriptionRateLimiter.AllowAt("active", now.Add(-10*time.Second))
-	subscriptionRateLimiter.PruneAt(now)
-	if got := subscriptionRateLimiter.Len(); got != 1 {
+	limiter.limiter.AllowAt("expired", now.Add(-RateLimitWindow-time.Second))
+	limiter.limiter.AllowAt("active", now.Add(-10*time.Second))
+	limiter.limiter.PruneAt(now)
+	if got := limiter.limiter.Len(); got != 1 {
 		t.Fatalf("rate-limit bucket count=%d, want one active bucket", got)
 	}
-	if decision := subscriptionRateLimiter.AllowAt("active", now); decision.Count != 2 {
+	if decision := limiter.limiter.AllowAt("active", now); decision.Count != 2 {
 		t.Fatalf("active bucket was not preserved: %#v", decision)
 	}
 }
 
 func TestRateLimitBucketCapEvictsOverflow(t *testing.T) {
-	ResetRateLimitForTest()
+	limiter := NewRateLimiter()
+	t.Cleanup(limiter.Close)
 	now := time.Now()
 
 	for i := 0; i < RateLimitMaxKeys+17; i++ {
-		subscriptionRateLimiter.AllowAt(fmt.Sprintf("198.51.100.%d", i), now)
+		limiter.limiter.AllowAt(fmt.Sprintf("198.51.100.%d", i), now)
 	}
-	count := subscriptionRateLimiter.Len()
+	count := limiter.limiter.Len()
 
 	if count != RateLimitMaxKeys {
 		t.Fatalf("rate-limit bucket count=%d, want %d", count, RateLimitMaxKeys)

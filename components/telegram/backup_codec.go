@@ -18,14 +18,17 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func registerBackupCodecs() func() {
-	unregisterExport := backupcodec.RegisterExport(id, backupcodec.ExportCodec{
+func registerBackupCodecs() (func(), error) {
+	unregisterExport, err := backupcodec.RegisterExport(id, backupcodec.ExportCodec{
 		Selected:     telegramBackupExportSelected,
 		Preflight:    telegramBackupExportPreflight,
 		Encode:       encodeTelegramBackupEnvelope,
 		EncodeStream: encodeTelegramBackupEnvelopeStream,
 	})
-	unregisterImport := backupcodec.RegisterImport(id, backupcodec.ImportCodec{
+	if err != nil {
+		return nil, err
+	}
+	unregisterImport, err := backupcodec.RegisterImport(id, backupcodec.ImportCodec{
 		HeaderBytes:       len(backupenvelope.Magic),
 		PassphraseFields:  []string{"telegramBackupPassphrase"},
 		Match:             backupenvelope.IsEnvelope,
@@ -33,6 +36,10 @@ func registerBackupCodecs() func() {
 		DecodeStream:      decodeTelegramBackupEnvelopeStream,
 		FailureAuditEvent: "tg_backup_restore_failed",
 	})
+	if err != nil {
+		unregisterExport()
+		return nil, err
+	}
 
 	var once sync.Once
 	return func() {
@@ -40,7 +47,7 @@ func registerBackupCodecs() func() {
 			unregisterImport()
 			unregisterExport()
 		})
-	}
+	}, nil
 }
 
 func encodeTelegramBackupEnvelopeStream(ctx backupcodec.ExportStreamContext) (backupcodec.ExportResult, error) {
@@ -137,9 +144,8 @@ func decodeTelegramBackupEnvelopeStream(ctx backupcodec.ImportStreamContext) err
 		}
 		return nil
 	}
-	const legacyEnvelopeMaxBytes = 32 << 20
-	payload, err := io.ReadAll(io.LimitReader(ctx.Source, legacyEnvelopeMaxBytes+1))
-	if err != nil || len(payload) > legacyEnvelopeMaxBytes {
+	payload, err := io.ReadAll(io.LimitReader(ctx.Source, backupenvelope.LegacyMaxBytes+1))
+	if err != nil || int64(len(payload)) > backupenvelope.LegacyMaxBytes {
 		common.WipeBytes(payload)
 		return backupcodec.NewError(http.StatusBadRequest, "decryption_failed", errors.Join(err, errors.New("legacy envelope exceeds memory bound")))
 	}
