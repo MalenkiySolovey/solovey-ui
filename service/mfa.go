@@ -114,7 +114,7 @@ func (s *MFAService) BeginEnrollment(userID uint, username string) (MFAEnrollmen
 		if current.ActiveSecretCiphertext != "" {
 			state = MFAStateActivePendingRotation
 		}
-	} else if err != nil && !dbsqlite.IsNotFound(err) {
+	} else if !dbsqlite.IsNotFound(err) {
 		return MFAEnrollment{}, err
 	}
 	factor := model.AdminMFAFactor{

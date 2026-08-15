@@ -835,7 +835,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 			writerDone <- db.Create(&model.Setting{Key: "test-session-writer", Value: "committed"}).Error
 		}()
 		if err := <-writerDone; err != nil {
-			tx.AddError(err)
+			_ = tx.AddError(err)
 		}
 	}); err != nil {
 		t.Fatal(err)

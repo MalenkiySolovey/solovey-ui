@@ -200,7 +200,6 @@ func composeFirewall(values []ManagedFirewallContributionV1) (FirewallCompositio
 		if fallbackRevision == "" {
 			return FirewallCompositionV1{}, fmt.Errorf("%w: baseline contribution and UDP fallback are absent", ErrCompositionInvalid)
 		}
-		hasBaseline = true
 	}
 	for _, value := range ordered {
 		if value.Kind != ContributionKindUDPDirect {

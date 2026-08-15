@@ -11,7 +11,10 @@ param(
 
     [string]$SkipReason = "",
 
-    [switch]$ContinueOnError
+    [switch]$ContinueOnError,
+
+    [ValidateRange(0, 255)]
+    [int]$ExpectedFailureExitCode = 0
 )
 
 $ErrorActionPreference = "Stop"
@@ -88,6 +91,7 @@ $start = Get-Date
 $exitCode = 0
 $output = ""
 $status = "passed"
+$expectedFailure = $false
 
 if ($SkipReason -ne "") {
     $status = "skipped"
@@ -106,7 +110,12 @@ if ($SkipReason -ne "") {
             $exitCode = 0
         }
         if ($exitCode -ne 0) {
-            $status = "failed"
+            if ($ExpectedFailureExitCode -gt 0 -and $exitCode -eq $ExpectedFailureExitCode) {
+                $status = "xfail"
+                $expectedFailure = $true
+            } else {
+                $status = "failed"
+            }
         }
     } catch {
         $exitCode = 127
@@ -124,6 +133,7 @@ $header = @(
     "# WorkingDirectory: $resolvedWorkingDirectory",
     "# Status: $status",
     "# ExitCode: $exitCode",
+    "# ExpectedFailure: $($expectedFailure.ToString().ToLowerInvariant())",
     "# Started: $($start.ToString('o'))",
     "# Finished: $($end.ToString('o'))",
     ""
@@ -134,6 +144,8 @@ Set-Content -LiteralPath $txtPath -Value ($header + $output) -Encoding UTF8
 $escapedOutput = Escape-Xml $output
 if ($status -eq "skipped") {
     $junit = "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`n<testsuite name=`"$Name`" tests=`"1`" failures=`"0`" errors=`"0`" skipped=`"1`" time=`"$duration`">`n  <testcase classname=`"baseline.$Group`" name=`"$Name`" time=`"$duration`">`n    <skipped message=`"skipped`">$escapedOutput</skipped>`n  </testcase>`n</testsuite>`n"
+} elseif ($status -eq "xfail") {
+    $junit = "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`n<testsuite name=`"$Name`" tests=`"1`" failures=`"0`" errors=`"0`" skipped=`"1`" time=`"$duration`">`n  <testcase classname=`"baseline.$Group`" name=`"$Name`" time=`"$duration`">`n    <skipped message=`"expected failure`">XFAIL: expected exit code $ExpectedFailureExitCode</skipped>`n    <system-out>$escapedOutput</system-out>`n  </testcase>`n</testsuite>`n"
 } elseif ($exitCode -eq 0) {
     $junit = "<?xml version=`"1.0`" encoding=`"UTF-8`"?>`n<testsuite name=`"$Name`" tests=`"1`" failures=`"0`" errors=`"0`" skipped=`"0`" time=`"$duration`">`n  <testcase classname=`"baseline.$Group`" name=`"$Name`" time=`"$duration`">`n    <system-out>$escapedOutput</system-out>`n  </testcase>`n</testsuite>`n"
 } else {
@@ -142,7 +154,7 @@ if ($status -eq "skipped") {
 
 Set-Content -LiteralPath $xmlPath -Value $junit -Encoding UTF8
 
-if ($exitCode -ne 0 -and -not $ContinueOnError) {
+if ($exitCode -ne 0 -and -not $ContinueOnError -and -not $expectedFailure) {
     exit $exitCode
 }
 

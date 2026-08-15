@@ -60,14 +60,12 @@ func (r *Repository) StoreGraylistEvaluation(ctx context.Context, state domain.G
 }
 
 func storeGraylistEvaluationTx(tx *gorm.DB, state domain.GraylistStateV2, expectedRevision uint64, model GraylistStateV2Model, payload []byte) (bool, error) {
-	changed := false
 	var current GraylistStateV2Model
 	loadErr := tx.Where("state_id = ?", state.StateID).First(&current).Error
 	if errors.Is(loadErr, gorm.ErrRecordNotFound) {
 		if expectedRevision != 0 || state.Revision == 0 {
 			return false, errors.New("graylist revision conflict")
 		}
-		changed = true
 		if err := tx.Create(&model).Error; err != nil {
 			return false, err
 		}
@@ -103,8 +101,7 @@ func storeGraylistEvaluationTx(tx *gorm.DB, state domain.GraylistStateV2, expect
 	if result.RowsAffected != 1 {
 		return false, errors.New("graylist revision conflict")
 	}
-	changed = true
-	return changed, nil
+	return true, nil
 }
 
 func pruneGraylistStatesV2(tx *gorm.DB, limit int) error {

@@ -70,7 +70,7 @@ function escapeHtml(value) {
 fs.mkdirSync(outDir, { recursive: true });
 
 const junitFiles = walk(baselineDir)
-  .filter((file) => file.endsWith('.junit.xml'))
+  .filter((file) => file.endsWith('.junit.xml') && !file.startsWith(`${outDir}${path.sep}`))
   .sort();
 
 const byGroup = new Map();
@@ -101,8 +101,11 @@ for (const file of junitFiles) {
   }
 
   const txtFile = file.replace(/\.junit\.xml$/, '.txt');
-  const markerText = `${xml}\n${read(txtFile)}`;
-  const xfail = countMarkers(markerText, /\b(XFAIL|expected[- ]fail|fixme)\b/gi);
+  const txt = read(txtFile);
+  const xfail = Math.max(
+    countMarkers(xml, /<skipped\b[^>]*message="expected failure"/gi),
+    countMarkers(txt, /^# Status: xfail$/gim),
+  );
   const red = failures + errors;
   const green = Math.max(0, tests - red - skipped);
   const group = groupOf(file);
@@ -216,13 +219,20 @@ const html = `<!doctype html>
 
 fs.writeFileSync(path.join(outDir, 'summary.html'), html);
 
+const aggregateFailed = totals.red > 0;
 const junit = `<?xml version="1.0" encoding="UTF-8"?>
-<testsuite name="audit-aggregate" tests="1" failures="0" errors="0" skipped="0">
-  <testcase classname="audit.aggregate" name="aggregate" />
+<testsuite name="audit-aggregate" tests="1" failures="${aggregateFailed ? 1 : 0}" errors="0" skipped="0">
+  <testcase classname="audit.aggregate" name="aggregate">${aggregateFailed ? `
+    <failure message="unexpected audit failures">${totals.red} unexpected audit result(s)</failure>` : ''}
+  </testcase>
 </testsuite>
 `;
 fs.writeFileSync(path.join(outDir, 'aggregate.junit.xml'), junit);
 
 console.log(`Audit dashboard written to ${path.relative(root, path.join(outDir, 'summary.html')).replace(/\\/g, '/')}`);
 console.log(`Totals: green=${totals.green} red=${totals.red} skipped=${totals.skipped} xfail=${totals.xfail}`);
+if (aggregateFailed) {
+  console.error(`Unexpected audit failures: ${totals.red}`);
+  process.exitCode = 1;
+}
 NODE

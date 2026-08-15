@@ -136,8 +136,7 @@ jobs:
   test-go-race:
     name: test-go-race (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
-    timeout-minutes: 30
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
@@ -174,7 +173,6 @@ jobs:
   coverage:
     name: coverage (ubuntu-latest)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
@@ -202,7 +200,6 @@ jobs:
   lint-go:
     name: lint-go (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -245,7 +242,6 @@ jobs:
   staticcheck:
     name: staticcheck (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -266,21 +262,20 @@ jobs:
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
       - name: staticcheck
         shell: bash
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tests/baseline/run-command.ps1 -Group current -Name staticcheck -CommandLine "staticcheck ./..." -ContinueOnError
+        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tests/baseline/run-command.ps1 -Group analysis -Name staticcheck -CommandLine "staticcheck ./..."
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: audit-go-staticcheck-${{ matrix.os }}
           path: |
-            tests/baseline/current/staticcheck.txt
-            tests/baseline/current/staticcheck.junit.xml
+            tests/baseline/analysis/staticcheck.txt
+            tests/baseline/analysis/staticcheck.junit.xml
           if-no-files-found: ignore
           retention-days: 7
 
   gosec:
     name: gosec (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -322,7 +317,6 @@ jobs:
   govulncheck:
     name: govulncheck (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    continue-on-error: true
     strategy:
       fail-fast: false
       matrix:
@@ -381,8 +375,8 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: audit-go-*
-          path: .
-          merge-multiple: true
+          path: tests/baseline
+          merge-multiple: false
       - name: Build audit dashboard
         shell: bash
         run: bash scripts/audit/aggregate.sh

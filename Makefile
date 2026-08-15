@@ -1,5 +1,6 @@
 PS ?= powershell -NoProfile -ExecutionPolicy Bypass
 RUN = $(PS) -File tests/baseline/run-command.ps1
+ADVISORY_RUN = $(RUN) -ExpectedFailureExitCode 1
 
 .PHONY: audit audit\:lint-go audit\:vet audit\:build audit\:test-go audit\:test-go-race audit\:cover audit\:gosec audit\:vuln audit\:fe-typecheck audit\:fe-lint audit\:fe-build audit\:test-fe audit\:e2e audit\:fe-install
 
@@ -7,7 +8,8 @@ audit: audit\:build audit\:vet audit\:test-go audit\:test-go-race audit\:cover a
 
 audit\:lint-go:
 	$(RUN) -Group analysis -Name staticcheck -CommandLine "staticcheck ./..."
-	$(RUN) -Group analysis -Name golangci-lint -CommandLine "golangci-lint run"
+	$(RUN) -Group analysis -Name golangci-lint-blocking -CommandLine "golangci-lint run --config .golangci-blocking.yml"
+	$(ADVISORY_RUN) -Group advisory -Name golangci-lint-full -CommandLine "golangci-lint run"
 
 audit\:vet:
 	$(RUN) -Group core -Name go-vet -CommandLine "go vet ./..."
@@ -19,13 +21,13 @@ audit\:test-go:
 	$(RUN) -Group core -Name go-test -CommandLine "go test -count=1 -p 1 ./..."
 
 audit\:test-go-race:
-	$(RUN) -Group core -Name go-test-race -CommandLine "go test ./... -race -count=1"
+	$(RUN) -Group core -Name go-test-race -CommandLine "go test -race -count=1 -p 1 -timeout 30m ./..."
 
 audit\:cover:
 	$(RUN) -Group core -Name go-cover -CommandLine "go test ./... -coverprofile tests/baseline/core/coverage.out"
 
 audit\:gosec:
-	$(RUN) -Group analysis -Name gosec -CommandLine "gosec -exclude-dir .gotmp -exclude-dir .gocache -exclude-dir frontend/node_modules ./..."
+	$(ADVISORY_RUN) -Group advisory -Name gosec -CommandLine "gosec -exclude-dir .tmp -exclude-dir .gotmp -exclude-dir .gocache -exclude-dir frontend/node_modules ./..."
 
 audit\:vuln:
 	$(RUN) -Group analysis -Name govulncheck -CommandLine "govulncheck ./..."

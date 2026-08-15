@@ -45,7 +45,9 @@ func TestOrderStoreHistoryAndExpiry(t *testing.T) {
 		t.Fatalf("history len=%d", len(orders))
 	}
 
-	MarkOrderFailed(db, fresh.Id)
+	if err := MarkOrderFailed(db, fresh.Id); err != nil {
+		t.Fatal(err)
+	}
 	gotFresh, _ = GetOrder(db, fresh.Id)
 	if gotFresh.Status != paid.StatusFailed {
 		t.Fatalf("MarkOrderFailed status=%s", gotFresh.Status)

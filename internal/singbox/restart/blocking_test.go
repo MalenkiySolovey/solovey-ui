@@ -49,30 +49,33 @@ func TestRestartManagerRunBlockingWaitsForInFlightOperation(t *testing.T) {
 	}
 }
 
-func TestRestartManagerRunBlockingWaitsForPendingSighup(t *testing.T) {
-	signaled := make(chan struct{})
-	manager := NewManager(30*time.Millisecond, func() error {
-		close(signaled)
-		return nil
-	})
-
+func TestRestartManagerRunBlockingWaitsForPendingRestart(t *testing.T) {
+	manager := NewManager(time.Hour, func() error { return nil })
 	if err := manager.SendSighup(); err != nil {
 		t.Fatal(err)
 	}
 
-	ran := false
-	if err := manager.RunBlocking(func() error {
-		ran = true
-		return nil
-	}); err != nil {
+	ran := make(chan struct{})
+	done := make(chan error, 1)
+	go func() {
+		done <- manager.RunBlocking(func() error {
+			close(ran)
+			return nil
+		})
+	}()
+	select {
+	case <-ran:
+		t.Fatal("runBlocking executed while a restart timer was pending")
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	manager.CancelPending()
+	if err := <-done; err != nil {
 		t.Fatal(err)
 	}
-	if !ran {
-		t.Fatal("runBlocking operation did not run after the pending SIGHUP fired")
-	}
 	select {
-	case <-signaled:
+	case <-ran:
 	default:
-		t.Fatal("runBlocking proceeded before the pending SIGHUP fired")
+		t.Fatal("runBlocking operation did not run after the pending restart was canceled")
 	}
 }

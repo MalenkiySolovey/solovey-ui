@@ -23,7 +23,9 @@ type retryStopLifecycle struct {
 }
 
 func (l *retryStopLifecycle) Stop(ctx context.Context) error {
-	l.recordingLifecycle.Stop(ctx)
+	if err := l.recordingLifecycle.Stop(ctx); err != nil {
+		return err
+	}
 	if l.failures > 0 {
 		l.failures--
 		return errors.New("stop failed")

@@ -70,7 +70,7 @@ func TestStatsServiceSaveStatsCommitFailureAuditsAndReturns(t *testing.T) {
 		}
 		injected = true
 		if err := tx.Exec("INSERT INTO stats_commit_child(parent_id) VALUES (1)").Error; err != nil {
-			tx.AddError(err)
+			_ = tx.AddError(err)
 		}
 	}); err != nil {
 		t.Fatal(err)

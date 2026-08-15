@@ -25,6 +25,7 @@ func TestRedirectUsesConfiguredAuthorityAndRelativeRequestTarget(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	t.Cleanup(func() { _ = response.Body.Close() })
 	if got, want := response.Header.Get("Location"), "https://panel.example.test:8443/escaped%2Fpath?q=1"; got != want {
 		t.Fatalf("Location = %q, want %q", got, want)
 	}
