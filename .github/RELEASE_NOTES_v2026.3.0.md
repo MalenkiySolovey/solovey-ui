@@ -1,6 +1,6 @@
-# Solovey UI 2026.3.0
+# Solovey UI v2026.3.0
 
-Compared with `v2026.2.1`.
+Compared with `v2026.2.3`.
 
 ## English
 
