@@ -1332,7 +1332,7 @@ func TestRemoteTemplateFilesystemRestoresWhenDatabaseTransactionFails(t *testing
 
 	if err := db.Callback().Create().Before("gorm:create").Register("test:reject-remote-template-event", func(tx *gorm.DB) {
 		if tx.Statement.Table == (fallbackdomain.Event{}).TableName() {
-			tx.AddError(errors.New("injected event failure"))
+			_ = tx.AddError(errors.New("injected event failure"))
 		}
 	}); err != nil {
 		t.Fatalf("register failure callback: %v", err)

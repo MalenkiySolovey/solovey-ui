@@ -10,7 +10,11 @@ import (
 
 func TestSafeHTTPClientRejectsUnsafeRequestBeforeDial(t *testing.T) {
 	client := NewHTTPClient(time.Second, "http", "https")
-	response, err := client.Get("http://127.0.0.1:1/")
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://127.0.0.1:1/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Do(request)
 	if response != nil {
 		_ = response.Body.Close()
 	}
