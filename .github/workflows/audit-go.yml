@@ -35,6 +35,8 @@ jobs:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+      - name: Generate backend component imports
+        run: node scripts/generate-component-imports.mjs --profile full
       - name: Ensure make on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -72,6 +74,8 @@ jobs:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+      - name: Generate backend component imports
+        run: node scripts/generate-component-imports.mjs --profile full
       - name: Ensure make on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -106,6 +110,8 @@ jobs:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+      - name: Generate backend component imports
+        run: node scripts/generate-component-imports.mjs --profile full
       - name: Ensure make on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -143,6 +149,8 @@ jobs:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+      - name: Generate backend component imports
+        run: node scripts/generate-component-imports.mjs --profile full
       - name: Ensure make on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -174,6 +182,8 @@ jobs:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+      - name: Generate backend component imports
+        run: node scripts/generate-component-imports.mjs --profile full
       - name: make audit:cover
         shell: bash
         run: make audit:cover PS="${MAKE_PS}"
@@ -204,6 +214,8 @@ jobs:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+      - name: Generate backend component imports
+        run: node scripts/generate-component-imports.mjs --profile full
       - name: Ensure make on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -245,6 +257,8 @@ jobs:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+      - name: Generate backend component imports
+        run: node scripts/generate-component-imports.mjs --profile full
       - name: Install staticcheck
         shell: bash
         run: |
@@ -278,6 +292,8 @@ jobs:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+      - name: Generate backend component imports
+        run: node scripts/generate-component-imports.mjs --profile full
       - name: Ensure make on Windows
         if: runner.os == 'Windows'
         shell: pwsh
@@ -318,6 +334,8 @@ jobs:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+      - name: Generate backend component imports
+        run: node scripts/generate-component-imports.mjs --profile full
       - name: Ensure make on Windows
         if: runner.os == 'Windows'
         shell: pwsh

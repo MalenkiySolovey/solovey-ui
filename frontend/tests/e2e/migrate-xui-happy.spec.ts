@@ -130,7 +130,7 @@ test('hides generated admin passwords until reveal and auto-clears them', async 
   await page.addInitScript(() => {
     const nativeSetTimeout = window.setTimeout
     window.setTimeout = ((handler: TimerHandler, timeout?: number, ...args: any[]) => {
-      const adjusted = typeof timeout === 'number' && timeout >= 60000 ? 1500 : timeout
+      const adjusted = timeout === 5 * 60 * 1000 ? 5000 : timeout
       return nativeSetTimeout(handler, adjusted, ...args)
     }) as typeof window.setTimeout
   })
@@ -182,7 +182,7 @@ test('hides generated admin passwords until reveal and auto-clears them', async 
 
   await page.getByRole('button', { name: 'Reveal passwords' }).click()
   await expect(page.locator('body')).toContainText('generated-secret-password')
-  await expect(page.locator('body')).not.toContainText('generated-secret-password', { timeout: 5000 })
+  await expect(page.locator('body')).not.toContainText('generated-secret-password', { timeout: 7000 })
   await expect(page.getByTestId('migrate-xui-generated-admins')).toBeHidden()
 })
 

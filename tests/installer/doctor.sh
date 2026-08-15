@@ -100,7 +100,11 @@ SH
 }
 
 create_current_install() {
-    printf 'not a real sqlite database\n' > "${INSTALL_DIR}/db/solovey-ui.db"
+    if command -v sqlite3 >/dev/null 2>&1; then
+        sqlite3 "${INSTALL_DIR}/db/solovey-ui.db" 'CREATE TABLE settings (key TEXT, value TEXT);'
+    else
+        printf 'sqlite3 unavailable in test environment\n' > "${INSTALL_DIR}/db/solovey-ui.db"
+    fi
     printf 'SUI_SECRETBOX_KEY=current-secret\n' > "${ENV_DIR}/secretbox.env"
     printf 'current service\n' > "${SERVICE_FILE}"
     cat > "${INSTALL_DIR}/solovey-ui" <<'SH'
@@ -151,8 +155,13 @@ assert_full_report() {
     assert_contains "${file}" '^== listening ports ==$'
     assert_contains "${file}" '^== network basics ==$'
     assert_contains "${file}" '^== recent warnings/errors ==$'
-    assert_contains "${file}" 'sqlite3 not found; DB quick_check and counters skipped'
-    assert_contains "${file}" 'settings report skipped: sqlite3/database unavailable'
+    if command -v sqlite3 >/dev/null 2>&1; then
+        assert_contains "${file}" 'sqlite quick_check=ok'
+        assert_contains "${file}" 'no panel/subscription settings found'
+    else
+        assert_contains "${file}" 'sqlite3 not found; DB quick_check and counters skipped'
+        assert_contains "${file}" 'settings report skipped: sqlite3/database unavailable'
+    fi
     assert_contains "${file}" 'ss not found; listening port checks skipped'
     assert_contains "${file}" '^\[solovey-ui\] doctor checks passed$'
 }

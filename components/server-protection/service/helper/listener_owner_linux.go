@@ -178,7 +178,7 @@ func observeSystemdService(ctx context.Context, contract deploymentidentity.Appl
 		return systemdOwnerSnapshot{}, errors.New("bounded systemd owner observation failed")
 	}
 	values := map[string]string{}
-	for _, line := range strings.Split(string(stdout.buffer.Bytes()), "\n") {
+	for _, line := range strings.Split(stdout.buffer.String(), "\n") {
 		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
 		if !ok || values[key] != "" {
 			continue
