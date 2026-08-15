@@ -16,7 +16,7 @@ func (systemPIDProbe) Alive(pid int) (bool, error) {
 		}
 		return false, err
 	}
-	defer windows.CloseHandle(handle)
+	defer func() { _ = windows.CloseHandle(handle) }()
 	var exitCode uint32
 	if err := windows.GetExitCodeProcess(handle, &exitCode); err != nil {
 		return false, err
