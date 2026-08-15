@@ -6,8 +6,6 @@ import (
 	"io"
 	"testing"
 
-	"time"
-
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
@@ -121,19 +119,31 @@ func TestHeaderParsingKnownAndUnknownKDF(t *testing.T) {
 	}
 }
 
-func TestTelegramBackupKDFMeetsMinimumDuration(t *testing.T) {
-	start := time.Now()
+func TestTelegramBackupKDFMeetsMinimumCost(t *testing.T) {
+	if defaultKDFParams.MemoryKiB < 64*1024 || defaultKDFParams.Iterations < 3 || defaultKDFParams.Parallelism < 1 {
+		t.Fatalf("Argon2id defaults are below the security floor: %#v", defaultKDFParams)
+	}
 	key := deriveKey(
 		[]byte("correct horse battery staple"),
 		bytes.Repeat([]byte{1}, saltSize),
 		defaultKDFParams,
 	)
-	elapsed := time.Since(start)
-	common.WipeBytes(key)
-	if elapsed < 100*time.Millisecond {
-		t.Fatalf("Argon2id KDF completed too quickly: %s", elapsed)
+	if len(key) != keySize {
+		t.Fatalf("unexpected key length: %d", len(key))
 	}
-	t.Logf("Argon2id KDF duration: %s", elapsed)
+	common.WipeBytes(key)
+
+	for name, params := range map[string]KDFParams{
+		"memory":      {MemoryKiB: argon2MemoryKiB - 1, Iterations: argon2Iterations, Parallelism: argon2Parallelism},
+		"iterations":  {MemoryKiB: argon2MemoryKiB, Iterations: argon2Iterations - 1, Parallelism: argon2Parallelism},
+		"parallelism": {MemoryKiB: argon2MemoryKiB, Iterations: argon2Iterations, Parallelism: argon2Parallelism - 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateKDFParams(params); !errors.Is(err, ErrInvalidEnvelope) {
+				t.Fatalf("expected KDF downgrade rejection, got %v", err)
+			}
+		})
+	}
 }
 
 func BenchmarkTelegramBackupKDF(b *testing.B) {

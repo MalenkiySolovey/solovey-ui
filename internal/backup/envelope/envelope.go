@@ -33,10 +33,13 @@ const (
 		saltSize +
 		nonceSize
 
-	argon2MemoryKiB   = 64 * 1024
-	argon2Iterations  = 3
-	argon2Parallelism = 1
-	keySize           = 32
+	argon2MemoryKiB          = 64 * 1024
+	argon2Iterations         = 3
+	argon2Parallelism        = 1
+	maximumArgon2MemoryKiB   = 1024 * 1024
+	maximumArgon2Iterations  = 16
+	maximumArgon2Parallelism = 4
+	keySize                  = 32
 )
 
 var (
@@ -202,13 +205,13 @@ func deriveKey(passphrase []byte, salt []byte, params KDFParams) []byte {
 }
 
 func validateKDFParams(params KDFParams) error {
-	if params.MemoryKiB < argon2MemoryKiB || params.MemoryKiB > 1024*1024 {
+	if params.MemoryKiB < argon2MemoryKiB || params.MemoryKiB > maximumArgon2MemoryKiB {
 		return ErrInvalidEnvelope
 	}
-	if params.Iterations == 0 || params.Iterations > 16 {
+	if params.Iterations < argon2Iterations || params.Iterations > maximumArgon2Iterations {
 		return ErrInvalidEnvelope
 	}
-	if params.Parallelism == 0 || params.Parallelism > 4 {
+	if params.Parallelism < argon2Parallelism || params.Parallelism > maximumArgon2Parallelism {
 		return ErrInvalidEnvelope
 	}
 	return nil
