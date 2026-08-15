@@ -22,8 +22,8 @@
   profile checks.
 - Preserved upgrade compatibility and existing core panel behavior with
   broader migration, installer, packaging, architecture, and regression tests.
-- Limited Windows release archives to the functional x64 CGO/SQLite profile;
-  Linux and Docker architecture coverage remains unchanged.
+- Kept both Windows x64 and ARM64 release archives on native runners with the
+  required CGO-backed SQLite runtime; Linux and Docker coverage is unchanged.
 - Kept host-bound advanced protection modes experimental or inspection-only
   where separate external acceptance is still required.
 

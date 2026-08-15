@@ -94,14 +94,19 @@ function validateReleaseContracts() {
   const windowsSource = fs.readFileSync(windowsPath, 'utf8');
   const windowsWorkflow = YAML.parse(windowsSource);
   const windowsTargets = windowsWorkflow?.jobs?.['build-windows']?.strategy?.matrix?.include;
+  const expectedWindowsTargets = [
+    { arch: 'amd64', runner: 'windows-latest', cgo: '1' },
+    { arch: 'arm64', runner: 'windows-11-arm', cgo: '1' },
+  ];
   if (
     !Array.isArray(windowsTargets) ||
-    windowsTargets.length !== 1 ||
-    windowsTargets[0]?.arch !== 'amd64' ||
-    windowsTargets[0]?.runner !== 'windows-latest' ||
-    String(windowsTargets[0]?.cgo) !== '1'
+    windowsTargets.length !== expectedWindowsTargets.length ||
+    expectedWindowsTargets.some((expected, index) => {
+      const actual = windowsTargets[index];
+      return actual?.arch !== expected.arch || actual?.runner !== expected.runner || String(actual?.cgo) !== expected.cgo;
+    })
   ) {
-    throw new Error('windows.yml: shipped Windows target must be amd64 on windows-latest with CGO enabled');
+    throw new Error('windows.yml: Windows amd64 and arm64 release targets must use native runners with CGO enabled');
   }
   if (/CGO_ENABLED\s*=\s*["']?0|\bNoCGO\b/.test(windowsSource)) {
     throw new Error('windows.yml: a non-CGO Windows release path is forbidden because SQLite would be nonfunctional');
@@ -149,5 +154,9 @@ function validateReleaseContracts() {
     throw new Error('docker.yml: publishing must be disabled in preflight_only mode');
   }
 
-  console.log(`ok release contracts (Go ${goVersion}, Windows amd64/cgo)`);
+  if (!windowsSource.includes('go test ./database/sqlite')) {
+    throw new Error('windows.yml: Windows release builds must exercise the CGO-backed SQLite runtime');
+  }
+
+  console.log(`ok release contracts (Go ${goVersion}, Windows amd64+arm64/cgo)`);
 }

@@ -5,10 +5,11 @@ param(
 )
 
 if ($Help) {
-    Write-Host "Usage: .\build-windows.ps1 [-Architecture amd64] [-Help]"
-    Write-Host "Supported release architecture: amd64"
+    Write-Host "Usage: .\build-windows.ps1 [-Architecture <amd64|arm64>] [-Help]"
+    Write-Host "Supported release architectures: amd64, arm64"
     Write-Host "Examples:"
     Write-Host "  .\build-windows.ps1"
+    Write-Host "  .\build-windows.ps1 -Architecture arm64 # run on native Windows ARM64"
     exit 0
 }
 
@@ -16,7 +17,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $scriptDir ".."))
 Set-Location -LiteralPath $repoRoot
 
-if ($Architecture -ne "amd64") {
+if ($Architecture -notin @("amd64", "arm64")) {
     throw "Unsupported Windows architecture: $Architecture"
 }
 
@@ -29,6 +30,10 @@ try {
         throw "Go not found"
     }
     Write-Host "Go version: $goVersion" -ForegroundColor Green
+    $goHostArchitecture = (go env GOHOSTARCH).Trim()
+    if ($goHostArchitecture -ne $Architecture) {
+        throw "CGO release builds must run natively: target $Architecture, host $goHostArchitecture"
+    }
 } catch {
     Write-Host "Error: Go is not installed or not in PATH" -ForegroundColor Red
     Write-Host "Please install Go from https://golang.org/dl/" -ForegroundColor Yellow

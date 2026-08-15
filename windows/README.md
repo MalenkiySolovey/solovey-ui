@@ -15,5 +15,6 @@ This directory contains Windows service and build helpers for Solovey UI.
 - `build-windows.ps1`: PowerShell build helper.
 
 Run installation helpers from an elevated terminal. Windows release packages
-are supported on x64 only and use the CGO-backed SQLite runtime. ARM64 is not
-shipped because the current SQLite provider has no functional non-CGO runtime.
+are supported on x64 and ARM64 and use the CGO-backed SQLite runtime. Release
+builds run natively on their target architecture so SQLite persistence is
+functional in both packages.

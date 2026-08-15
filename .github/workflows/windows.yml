@@ -76,6 +76,7 @@ jobs:
       matrix:
         include:
           - { arch: amd64, runner: windows-latest, cgo: "1" }
+          - { arch: arm64, runner: windows-11-arm, cgo: "1" }
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Check out repository
@@ -124,7 +125,12 @@ jobs:
 
           echo "Building for Windows ${{ matrix.arch }}"
           go version
-          go env GOOS GOARCH
+          go env GOOS GOARCH GOHOSTARCH CC
+          gcc --version
+
+          # Exercise the real SQLite runtime on the native target before
+          # packaging so a CGO-disabled stub can never become a release asset.
+          go test ./database/sqlite
 
           node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
           go build -ldflags="-w -s -checklinkname=0" -tags "${{ env.TAGS }}" -o sui.exe main.go
@@ -139,6 +145,7 @@ jobs:
         run: |
           case "${{ matrix.arch }}" in
             amd64) CRONET_SHA256="c7434cfa93c3041321dd19111c4de6c52b8a9531a65661ba45425d3c51ec69e2" ;;
+            arm64) CRONET_SHA256="fc9e3bae0b326d83092a5de2c04d8b4139dc5c1ba576a035dee4bde780a3c95f" ;;
             *) echo "no pinned libcronet sha256 for arch ${{ matrix.arch }}" >&2; exit 1 ;;
           esac
           curl --fail --location --silent --show-error \
