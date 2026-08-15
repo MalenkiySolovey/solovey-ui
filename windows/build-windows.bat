@@ -71,21 +71,14 @@ set CGO_ENABLED=1
 set GOOS=windows
 set GOARCH=amd64
 
-REM Try to build with CGO first
+REM SQLite persistence requires CGO; never publish a stub-backed binary.
 go build -ldflags "-w -s -checklinkname=0" -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale" -o sui.exe main.go
 if errorlevel 1 (
-    echo Warning: CGO build failed, trying without CGO...
-    set CGO_ENABLED=0
-    go build -ldflags "-w -s -checklinkname=0" -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale" -o sui.exe main.go
-    if errorlevel 1 (
-        echo Error: Failed to build backend
-        pause
-        exit /b 1
-    )
-    echo Built without CGO (some features may be limited)
-) else (
-    echo Built with CGO
+    echo Error: Failed to build backend with the required CGO SQLite runtime
+    pause
+    exit /b 1
 )
+echo Built with CGO
 
 echo Build completed successfully!
 echo Output: sui.exe

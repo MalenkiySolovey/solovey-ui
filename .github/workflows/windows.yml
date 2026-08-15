@@ -8,6 +8,11 @@ on:
         required: true
         default: "v2026.3.0"
         type: string
+      preflight_only:
+        description: "Build Windows release package without publishing"
+        required: true
+        default: true
+        type: boolean
   push:
     tags:
       - "v*"
@@ -71,7 +76,6 @@ jobs:
       matrix:
         include:
           - { arch: amd64, runner: windows-latest, cgo: "1" }
-          - { arch: arm64, runner: ubuntu-latest, cgo: "0" }
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Check out repository
@@ -135,7 +139,6 @@ jobs:
         run: |
           case "${{ matrix.arch }}" in
             amd64) CRONET_SHA256="c7434cfa93c3041321dd19111c4de6c52b8a9531a65661ba45425d3c51ec69e2" ;;
-            arm64) CRONET_SHA256="fc9e3bae0b326d83092a5de2c04d8b4139dc5c1ba576a035dee4bde780a3c95f" ;;
             *) echo "no pinned libcronet sha256 for arch ${{ matrix.arch }}" >&2; exit 1 ;;
           esac
           curl --fail --location --silent --show-error \
@@ -176,6 +179,7 @@ jobs:
   publish-windows:
     name: Publish Windows artifacts
     needs: build-windows
+    if: github.event_name == 'push' || inputs.preflight_only == false
     runs-on: ubuntu-latest
     steps:
       - name: Normalize release tag

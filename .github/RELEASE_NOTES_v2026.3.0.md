@@ -11,6 +11,7 @@ Compared with `v2026.2.3`.
 - Consolidated component registration, manifests, commands, settings, backup codecs, health, and resource contracts into one deterministic full/core composition model.
 - Expanded the frontend for security, deployment, operations, SSH management, and component-owned routes and locales, with additional accessibility and profile checks.
 - Preserved upgrade compatibility and existing core behavior with broader migration, installer, packaging, architecture, and regression tests.
+- Windows release archives are published for x64 with the required CGO-backed SQLite runtime; Linux and Docker architecture coverage is unchanged.
 - Kept host-bound advanced protection modes experimental or inspection-only where separate external acceptance is still required.
 
 ## Русский
@@ -22,4 +23,5 @@ Compared with `v2026.2.3`.
 - Регистрация компонентов, манифесты, команды, настройки, backup-кодеки, health- и resource-контракты сведены в единую детерминированную модель full/core.
 - Интерфейс расширен для безопасности, развёртывания, эксплуатации, управления SSH и маршрутов и локалей компонентов; добавлены проверки доступности и профилей.
 - Совместимость обновлений и поведение ядра сохранены и покрыты расширенными тестами миграции, установщика, упаковки, архитектур и регрессий.
+- Архив Windows публикуется для x64 с обязательным CGO-backed SQLite runtime; набор архитектур Linux и Docker не изменился.
 - Продвинутые host-bound режимы защиты остаются экспериментальными или inspection-only там, где требуется отдельная внешняя приёмка.

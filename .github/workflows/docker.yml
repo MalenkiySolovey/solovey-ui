@@ -8,6 +8,11 @@ on:
         required: true
         default: "v2026.3.0"
         type: string
+      preflight_only:
+        description: "Build release images without publishing"
+        required: true
+        default: true
+        type: boolean
   push:
     tags:
       - "v*"
@@ -48,6 +53,7 @@ jobs:
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
 
       - name: Log in to GHCR
+        if: github.event_name == 'push' || inputs.preflight_only == false
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
         with:
           registry: ghcr.io
@@ -67,7 +73,20 @@ jobs:
         id: image
         run: echo "name=${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
 
+      - name: Preflight Docker image
+        if: github.event_name == 'workflow_dispatch' && inputs.preflight_only == true
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        with:
+          context: .
+          file: Dockerfile
+          platforms: ${{ matrix.platform }}
+          push: false
+          tags: ${{ steps.image.outputs.name }}:preflight-${{ matrix.platform_name }}
+          cache-from: type=gha,scope=docker-${{ matrix.platform_name }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.platform_name }}
+
       - name: Build and push Docker image by digest
+        if: github.event_name == 'push' || inputs.preflight_only == false
         id: build
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
@@ -80,12 +99,14 @@ jobs:
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.platform_name }}
 
       - name: Export image digest
+        if: github.event_name == 'push' || inputs.preflight_only == false
         run: |
           mkdir -p "${RUNNER_TEMP}/digests"
           DIGEST="${{ steps.build.outputs.digest }}"
           touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
 
       - name: Upload image digest
+        if: github.event_name == 'push' || inputs.preflight_only == false
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: docker-digest-${{ matrix.platform_name }}
@@ -97,6 +118,7 @@ jobs:
     name: publish-manifest
     runs-on: ubuntu-24.04
     needs: build
+    if: github.event_name == 'push' || inputs.preflight_only == false
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4

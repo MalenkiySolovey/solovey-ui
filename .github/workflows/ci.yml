@@ -136,10 +136,14 @@ jobs:
           node --check scripts/extract-component-frontend.mjs
           node --check scripts/generate-component-imports.mjs
           node --check scripts/release-manifest.mjs
+          node --check scripts/release-preflight.mjs
+          node --check scripts/release-preflight.test.mjs
           node --check scripts/write-component-installed-metadata.mjs
 
       - name: Validate workflow contracts
-        run: node scripts/audit/validate-workflows.js
+        run: |
+          node --test scripts/release-preflight.test.mjs
+          node scripts/audit/validate-workflows.js
 
       - name: Frontend lint
         working-directory: frontend

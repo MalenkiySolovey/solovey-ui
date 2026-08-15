@@ -1,17 +1,14 @@
 # PowerShell script for building Solovey UI on Windows
 param(
     [string]$Architecture = "amd64",
-    [switch]$NoCGO,
     [switch]$Help
 )
 
 if ($Help) {
-    Write-Host "Usage: .\build-windows.ps1 [-Architecture <arch>] [-NoCGO] [-Help]"
-    Write-Host "Architectures: amd64, 386, arm64"
+    Write-Host "Usage: .\build-windows.ps1 [-Architecture amd64] [-Help]"
+    Write-Host "Supported release architecture: amd64"
     Write-Host "Examples:"
-    Write-Host "  .\build-windows.ps1                    # Build for amd64 with CGO"
-    Write-Host "  .\build-windows.ps1 -Architecture 386 # Build for 32-bit Windows"
-    Write-Host "  .\build-windows.ps1 -NoCGO            # Build without CGO"
+    Write-Host "  .\build-windows.ps1"
     exit 0
 }
 
@@ -19,7 +16,7 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $scriptDir ".."))
 Set-Location -LiteralPath $repoRoot
 
-if ($Architecture -notin @("amd64", "386", "arm64")) {
+if ($Architecture -ne "amd64") {
     throw "Unsupported Windows architecture: $Architecture"
 }
 
@@ -108,35 +105,15 @@ Write-Host "Building backend..." -ForegroundColor Yellow
 # Set environment variables
 $env:GOOS = "windows"
 $env:GOARCH = $Architecture
-
-if ($NoCGO) {
-    $env:CGO_ENABLED = "0"
-    Write-Host "Building without CGO..." -ForegroundColor Yellow
-} else {
-    $env:CGO_ENABLED = "1"
-    Write-Host "Building with CGO..." -ForegroundColor Yellow
-}
+$env:CGO_ENABLED = "1"
+Write-Host "Building with the required CGO-backed SQLite runtime..." -ForegroundColor Yellow
 
 try {
     go build -ldflags "-w -s -checklinkname=0" -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale" -o sui.exe main.go
     if ($LASTEXITCODE -ne 0) {
-        if (!$NoCGO) {
-            Write-Host "CGO build failed, trying without CGO..." -ForegroundColor Yellow
-            $env:CGO_ENABLED = "0"
-            go build -ldflags "-w -s -checklinkname=0" -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale" -o sui.exe main.go
-            if ($LASTEXITCODE -ne 0) {
-                throw "Failed to build backend even without CGO"
-            }
-            Write-Host "Built without CGO (some features may be limited)" -ForegroundColor Yellow
-        } else {
-            throw "Failed to build backend"
-        }
+        throw "Failed to build backend with the required CGO SQLite runtime"
     } else {
-        if ($env:CGO_ENABLED -eq "1") {
-            Write-Host "Built successfully with CGO" -ForegroundColor Green
-        } else {
-            Write-Host "Built successfully without CGO" -ForegroundColor Green
-        }
+        Write-Host "Built successfully with CGO" -ForegroundColor Green
     }
 } catch {
     Write-Host "Error: $_" -ForegroundColor Red

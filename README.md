@@ -208,7 +208,7 @@ GitHub Releases publish:
 - core Linux archives: `solovey-ui-core-linux-<arch>.tar.gz`
 - component bundle: `solovey-ui-components.tar.gz`
 - signed release manifest: `solovey-ui-release.json`
-- Windows archives: `solovey-ui-windows-<arch>.zip`
+- Windows x64 archive: `solovey-ui-windows-amd64.zip`
 - checksums for every archive
 
 Docker images are published to GHCR for release tags. The Compose contracts
@@ -448,7 +448,7 @@ GitHub Releases публикует:
 - базовые Linux-архивы: `solovey-ui-core-linux-<arch>.tar.gz`
 - архив компонентов: `solovey-ui-components.tar.gz`
 - подписанный манифест релиза: `solovey-ui-release.json`
-- архивы Windows: `solovey-ui-windows-<arch>.zip`
+- архив Windows x64: `solovey-ui-windows-amd64.zip`
 - контрольные суммы для каждого архива
 
 Образы Docker публикуются в GHCR для релизных тегов. Compose-контракты требуют
