@@ -111,6 +111,16 @@ function validateReleaseContracts() {
   if (/CGO_ENABLED\s*=\s*["']?0|\bNoCGO\b/.test(windowsSource)) {
     throw new Error('windows.yml: a non-CGO Windows release path is forbidden because SQLite would be nonfunctional');
   }
+  const windowsBuildSteps = windowsWorkflow?.jobs?.['build-windows']?.steps ?? [];
+  const arm64Toolchain = windowsBuildSteps.find((step) => String(step.uses ?? '').startsWith('msys2/setup-msys2@'));
+  if (
+    !arm64Toolchain ||
+    !String(arm64Toolchain.if ?? '').includes("matrix.arch == 'arm64'") ||
+    arm64Toolchain.with?.msystem !== 'CLANGARM64' ||
+    arm64Toolchain.with?.install !== 'mingw-w64-clang-aarch64-clang'
+  ) {
+    throw new Error('windows.yml: Windows arm64 must install the native MSYS2 CLANGARM64 toolchain');
+  }
   if (!String(windowsWorkflow?.jobs?.['publish-windows']?.if ?? '').includes('preflight_only')) {
     throw new Error('windows.yml: publishing must be disabled in preflight_only mode');
   }

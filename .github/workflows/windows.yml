@@ -116,17 +116,35 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
 
+      - name: Set up native ARM64 C toolchain
+        id: msys2
+        if: matrix.arch == 'arm64'
+        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884 # v2
+        with:
+          msystem: CLANGARM64
+          update: true
+          install: mingw-w64-clang-aarch64-clang
+          path-type: inherit
+
       - name: Build Solovey UI
         shell: bash
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
         run: |
           export CGO_ENABLED=${{ matrix.cgo }}
           export GOOS=windows
           export GOARCH=${{ matrix.arch }}
+          if [ "${{ matrix.arch }}" = "arm64" ]; then
+            export PATH="$(cygpath -u "$MSYS2_LOCATION")/clangarm64/bin:$PATH"
+            export CC=clang
+          else
+            export CC=gcc
+          fi
 
           echo "Building for Windows ${{ matrix.arch }}"
           go version
           go env GOOS GOARCH GOHOSTARCH CC
-          gcc --version
+          "$CC" --version
 
           # Exercise the real SQLite runtime on the native target before
           # packaging so a CGO-disabled stub can never become a release asset.
