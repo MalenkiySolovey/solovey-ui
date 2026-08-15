@@ -76,7 +76,9 @@ func TestNginxDetectionMultipleAndSymlink(t *testing.T) {
 		t.Skipf("symlink unavailable: %v", err)
 	}
 	report := (&NginxAdapter{Config: NginxConfig{Platform: "linux", CandidatePaths: []string{link}, ConfigRoot: "/etc/nginx", ControlledInclude: "/etc/nginx/solovey.conf"}, Runner: &fakeProbe{result: ProbeResult{Stderr: []byte("nginx version: nginx/1.25\nconfigure arguments: --with-stream --with-stream_ssl_preread_module"), ExitCode: 0}}}).Capability(context.Background())
-	if report.Binary.TargetPath != first || report.State != StateSupported {
+	firstInfo, firstErr := os.Stat(first)
+	targetInfo, targetErr := os.Stat(report.Binary.TargetPath)
+	if firstErr != nil || targetErr != nil || !os.SameFile(firstInfo, targetInfo) || report.State != StateSupported {
 		t.Fatalf("symlink report = %#v", report)
 	}
 }

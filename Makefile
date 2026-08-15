@@ -16,7 +16,7 @@ audit\:build:
 	$(RUN) -Group core -Name go-build -CommandLine "go build ./..."
 
 audit\:test-go:
-	$(RUN) -Group core -Name go-test -CommandLine "go test ./..."
+	$(RUN) -Group core -Name go-test -CommandLine "go test -count=1 -p 1 ./..."
 
 audit\:test-go-race:
 	$(RUN) -Group core -Name go-test-race -CommandLine "go test ./... -race -count=1"

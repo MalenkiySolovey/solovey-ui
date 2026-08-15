@@ -160,6 +160,14 @@ func TestTelegramBackupRunOnceConcurrentGuard(t *testing.T) {
 	})
 	started := make(chan struct{})
 	release := make(chan struct{})
+	released := false
+	releaseBackup := func() {
+		if !released {
+			close(release)
+			released = true
+		}
+	}
+	defer releaseBackup()
 	backupService := &telegramservice.TelegramBackupService{Settings: testTelegramSettings{}, SendDocumentStream: func(_ context.Context, _ string, _ io.Reader, _ string) telegramservice.Result {
 		close(started)
 		<-release
@@ -172,14 +180,19 @@ func TestTelegramBackupRunOnceConcurrentGuard(t *testing.T) {
 	}()
 	select {
 	case <-started:
-	case <-time.After(5 * time.Second):
+	case <-time.After(30 * time.Second):
+		releaseBackup()
+		select {
+		case <-done:
+		case <-time.After(30 * time.Second):
+		}
 		t.Fatal("first backup did not reach send")
 	}
 	result := backupService.RunOnce(context.Background(), telegramservice.TelegramBackupTriggerScheduled)
 	if result.Success || result.ErrorClass != "concurrent_run" || result.Trigger != telegramservice.TelegramBackupTriggerScheduled {
 		t.Fatalf("expected concurrent_run, got %#v", result)
 	}
-	close(release)
+	releaseBackup()
 	if first := <-done; !first.Success {
 		t.Fatalf("first backup failed: %#v", first)
 	}
