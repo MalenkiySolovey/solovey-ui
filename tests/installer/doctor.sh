@@ -162,7 +162,11 @@ assert_full_report() {
         assert_contains "${file}" 'sqlite3 not found; DB quick_check and counters skipped'
         assert_contains "${file}" 'settings report skipped: sqlite3/database unavailable'
     fi
-    assert_contains "${file}" 'ss not found; listening port checks skipped'
+    if command -v ss >/dev/null 2>&1; then
+        assert_contains "${file}" 'no web/sub ports found in settings; printing listening sockets for solovey-ui'
+    else
+        assert_contains "${file}" 'ss not found; listening port checks skipped'
+    fi
     assert_contains "${file}" '^\[solovey-ui\] doctor checks passed$'
 }
 
