@@ -50,11 +50,21 @@ func TestFrontingBackendReferenceExactFreshAndRedacted(t *testing.T) {
 			if first != second || first.CanonicalReferenceRevision == "" || ResolveExactFrontingBackendV1(first, fact, now) != nil {
 				t.Fatalf("reference mismatch: %#v %#v", first, second)
 			}
-			encoded, _ := json.Marshal(first)
-			for _, forbidden := range []string{test.address, "9443", "hostname", "proxy_pass", "path"} {
+			encoded, err := json.Marshal(first)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var decoded any
+			if err := json.Unmarshal(encoded, &decoded); err != nil {
+				t.Fatal(err)
+			}
+			for _, forbidden := range []string{test.address, "hostname", "proxy_pass", "path"} {
 				if strings.Contains(string(encoded), forbidden) {
 					t.Fatalf("reference leaked %q: %s", forbidden, encoded)
 				}
+			}
+			if jsonContainsNumber(decoded, float64(fact.port)) {
+				t.Fatalf("reference leaked backend port %d: %s", fact.port, encoded)
 			}
 		})
 	}
@@ -67,6 +77,26 @@ func TestFrontingBackendReferenceExactFreshAndRedacted(t *testing.T) {
 	if _, err := ReferenceFrontingBackendV1(reconstructed, ProxyModeOff, now); err == nil {
 		t.Fatal("outward fact was reconstructed into a destination-bearing reference")
 	}
+}
+
+func jsonContainsNumber(value any, wanted float64) bool {
+	switch typed := value.(type) {
+	case float64:
+		return typed == wanted
+	case []any:
+		for _, item := range typed {
+			if jsonContainsNumber(item, wanted) {
+				return true
+			}
+		}
+	case map[string]any:
+		for _, item := range typed {
+			if jsonContainsNumber(item, wanted) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func TestFrontingBackendReferenceRevisionIgnoresOnlyObservationTime(t *testing.T) {

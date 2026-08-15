@@ -423,11 +423,25 @@ func TestPlannerV2DeterministicReadOnlyEligibilityAndExpiry(t *testing.T) {
 	if first.CanonicalPlanDigest != second.CanonicalPlanDigest || first.ExpiresAt != input.Inventory[0].ExpiresAt {
 		t.Fatalf("plan not deterministic/earliest expiry: %#v %#v", first, second)
 	}
-	encoded, _ := json.Marshal(first)
-	for _, forbidden := range []string{"127.0.0.1", "9443", "proxy_pass", "stream.conf", "candidate", "nginx -V"} {
+	endpoint, err := hostresources.ResolveFrontingBackendEndpointV1(input.BackendReferences[0], input.Inventory[0], now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	encoded, err := json.Marshal(first)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded any
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{endpoint.Address.String(), "proxy_pass", "stream.conf", "candidate", "nginx -V"} {
 		if strings.Contains(string(encoded), forbidden) {
 			t.Fatalf("plan leaked %q: %s", forbidden, encoded)
 		}
+	}
+	if jsonContainsNumberV2(decoded, float64(endpoint.Port)) {
+		t.Fatalf("plan leaked backend port %d: %s", endpoint.Port, encoded)
 	}
 	input.Runtime = readyRuntimeIdentityV2(t, now, []string{"--with-stream"}, nil)
 	input.DesiredStrategy = StrategySNIPreread
@@ -613,6 +627,26 @@ func containsReasonV2(values []string, wanted string) bool {
 	for _, value := range values {
 		if value == wanted {
 			return true
+		}
+	}
+	return false
+}
+
+func jsonContainsNumberV2(value any, wanted float64) bool {
+	switch typed := value.(type) {
+	case float64:
+		return typed == wanted
+	case []any:
+		for _, item := range typed {
+			if jsonContainsNumberV2(item, wanted) {
+				return true
+			}
+		}
+	case map[string]any:
+		for _, item := range typed {
+			if jsonContainsNumberV2(item, wanted) {
+				return true
+			}
 		}
 	}
 	return false
