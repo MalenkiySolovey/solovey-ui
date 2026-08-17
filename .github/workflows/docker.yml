@@ -73,6 +73,19 @@ jobs:
         id: image
         run: echo "name=${IMAGE_NAME,,}" >> "$GITHUB_OUTPUT"
 
+      - name: Validate release trust root
+        env:
+          SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
+        run: |
+          set -euo pipefail
+          [ -n "$SUI_RELEASE_TRUST_ROOTS_B64" ] || { echo "SUI_RELEASE_TRUST_ROOTS_B64 repository variable is required" >&2; exit 1; }
+          node --input-type=module - <<'NODE'
+          const encoded = process.env.SUI_RELEASE_TRUST_ROOTS_B64;
+          let roots;
+          try { roots = JSON.parse(Buffer.from(encoded, 'base64').toString('utf8')); } catch { throw new Error('SUI_RELEASE_TRUST_ROOTS_B64 is not valid base64 JSON'); }
+          if (!Array.isArray(roots) || roots.length === 0 || roots.length > 8) throw new Error('SUI_RELEASE_TRUST_ROOTS_B64 must contain one to eight roots');
+          NODE
+
       - name: Preflight Docker image
         if: github.event_name == 'workflow_dispatch' && inputs.preflight_only == true
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
@@ -82,6 +95,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: false
           tags: ${{ steps.image.outputs.name }}:preflight-${{ matrix.platform_name }}
+          build-args: |
+            SUI_RELEASE_TRUST_ROOTS_B64=${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
           cache-from: type=gha,scope=docker-${{ matrix.platform_name }}
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.platform_name }}
 
@@ -95,6 +110,8 @@ jobs:
           platforms: ${{ matrix.platform }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
           tags: ${{ steps.image.outputs.name }}
+          build-args: |
+            SUI_RELEASE_TRUST_ROOTS_B64=${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
           cache-from: type=gha,scope=docker-${{ matrix.platform_name }}
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.platform_name }}
 

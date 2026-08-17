@@ -16,6 +16,7 @@ WORKDIR /app
 ARG TARGETARCH
 ARG TARGETVARIANT
 ARG CRONET_GO_ASSET_TAG=v148.0.7778.96-1
+ARG SUI_RELEASE_TRUST_ROOTS_B64
 ENV CGO_ENABLED=1 CGO_CFLAGS="-D_LARGEFILE64_SOURCE" GOARCH=$TARGETARCH CC=gcc
 RUN apk add --no-cache gcc musl-dev libc-dev make git wget bash ca-certificates
 RUN --mount=type=cache,id=solovey-ui-go-build,target=/root/.cache/go-build,sharing=locked \
@@ -39,7 +40,7 @@ COPY --from=front-builder /app/generated/optional_commands_generated.go /app/cmd
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 RUN set -e; \
     if [ "$TARGETARCH" = "arm" ]; then export GOARM=7; [ "$TARGETVARIANT" = "v6" ] && export GOARM=6; fi; \
-    go build -ldflags="-w -s -checklinkname=0" \
+    go build -ldflags="-w -s -checklinkname=0 -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=$SUI_RELEASE_TRUST_ROOTS_B64" \
     -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0,with_tailscale" \
     -o solovey-ui main.go
 

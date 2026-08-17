@@ -163,6 +163,15 @@ function validateReleaseContracts() {
   if (!String(dockerWorkflow?.jobs?.publish?.if ?? '').includes('preflight_only')) {
     throw new Error('docker.yml: publishing must be disabled in preflight_only mode');
   }
+  if (!/^ARG\s+SUI_RELEASE_TRUST_ROOTS_B64\s*$/m.test(dockerfile) ||
+      !dockerfile.includes('config/update.ReleaseTrustRootsBase64=$SUI_RELEASE_TRUST_ROOTS_B64')) {
+    throw new Error('Dockerfile: production images must embed the configured public release trust roots');
+  }
+  const dockerSource = fs.readFileSync(path.join(workflowDir, 'docker.yml'), 'utf8');
+  if ((dockerSource.match(/SUI_RELEASE_TRUST_ROOTS_B64=\$\{\{ vars\.SUI_RELEASE_TRUST_ROOTS_B64 \}\}/g) ?? []).length < 2 ||
+      !dockerSource.includes('Validate release trust root')) {
+    throw new Error('docker.yml: both release image build paths must receive the public trust roots');
+  }
 
   if (!windowsSource.includes('go test ./database/sqlite')) {
     throw new Error('windows.yml: Windows release builds must exercise the CGO-backed SQLite runtime');
