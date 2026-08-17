@@ -685,7 +685,7 @@ func secureExecutableRevision(path string) (string, error) {
 		Size, MTimeSec, MTimeNSec int64
 		CTimeSec, CTimeNSec       int64
 		UID, GID, Mode, LinkCount uint32
-	}{filepath.Base(path), uint64(stat.Dev), stat.Ino, stat.Size, stat.Mtim.Sec, stat.Mtim.Nsec, stat.Ctim.Sec, stat.Ctim.Nsec,
+	}{filepath.Base(path), uint64(stat.Dev), stat.Ino, stat.Size, int64(stat.Mtim.Sec), int64(stat.Mtim.Nsec), int64(stat.Ctim.Sec), int64(stat.Ctim.Nsec),
 		stat.Uid, stat.Gid, stat.Mode, uint32(stat.Nlink)}), nil
 }
 
