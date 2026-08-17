@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	sshmanagementservice "github.com/MalenkiySolovey/solovey-ui/service/sshmanagement"
 	"github.com/gin-gonic/gin"
@@ -98,7 +97,7 @@ func TestSSHOperationIDsAreTypedAndBounded(t *testing.T) {
 func sshManagementTestRouter(t *testing.T) (*gin.Engine, []*http.Cookie) {
 	t.Helper()
 	initAPITestDB(t, filepath.Join(t.TempDir(), "ssh-management.db"))
-	t.Cleanup(func() { _ = dbsqlite.Close() })
+	t.Cleanup(func() { closeAPITestDB(t) })
 	settings := &service.SettingService{}
 	router, cookies := newAuthenticatedTestRouter(t, settings, func(router *gin.Engine) {
 		handler := &APIHandler{ApiService: NewApiService()}

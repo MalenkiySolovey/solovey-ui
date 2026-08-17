@@ -8,7 +8,6 @@ import (
 	"strings"
 	"testing"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )
@@ -80,7 +79,7 @@ func TestUpdateAliasDTOsRejectUnknownFieldsAndUnboundedAuthority(t *testing.T) {
 func updateTestRouter(t *testing.T) (*gin.Engine, []*http.Cookie) {
 	t.Helper()
 	initAPITestDB(t, filepath.Join(t.TempDir(), "update-api.db"))
-	t.Cleanup(func() { _ = dbsqlite.Close() })
+	t.Cleanup(func() { closeAPITestDB(t) })
 	router, cookies := newAuthenticatedTestRouter(t, &service.SettingService{}, func(router *gin.Engine) {
 		handler := &APIHandler{ApiService: NewApiService()}
 		handler.registerUpdateRoutes(router.Group("/api"))

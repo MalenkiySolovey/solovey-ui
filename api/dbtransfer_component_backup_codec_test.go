@@ -8,7 +8,6 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
 
@@ -168,14 +167,7 @@ func withNoopSighup(t *testing.T) {
 	t.Helper()
 	backup.SetSendSighupHook(func() error { return nil })
 	t.Cleanup(func() { backup.SetSendSighupHook(nil) })
-	t.Cleanup(func() {
-		if db := dbsqlite.DB(); db != nil {
-			if sqlDB, err := db.DB(); err == nil {
-				_ = sqlDB.Close()
-				time.Sleep(25 * time.Millisecond)
-			}
-		}
-	})
+	t.Cleanup(func() { closeAPITestDB(t) })
 }
 
 func setRestoreMarker(value string) error {

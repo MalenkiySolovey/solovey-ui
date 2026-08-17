@@ -6,7 +6,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -24,16 +23,7 @@ func initSessionTestDB(t *testing.T) *service.SettingService {
 	databaseFolder := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", databaseFolder)
 	initAPITestDB(t, configstorage.GetDBPath())
-	testDB := dbsqlite.DB()
-	t.Cleanup(func() {
-		stopTokenUseDebouncerBeforeAPITestDBInit(t)
-		if testDB != nil {
-			if sqlDB, err := testDB.DB(); err == nil {
-				_ = sqlDB.Close()
-				time.Sleep(25 * time.Millisecond)
-			}
-		}
-	})
+	t.Cleanup(func() { closeAPITestDB(t) })
 	return &service.SettingService{}
 }
 

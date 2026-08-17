@@ -200,24 +200,12 @@ func ensureRealtimePerfSessionUser(tb testing.TB, username string) bool {
 
 func initAPIRealtimePerfDB(tb testing.TB) {
 	tb.Helper()
-	stopTokenUseDebouncerBeforeAPITestDBInit(tb)
-	if db := dbsqlite.DB(); db != nil {
-		if sqlDB, err := db.DB(); err == nil {
-			_ = sqlDB.Close()
-			time.Sleep(25 * time.Millisecond)
-		}
-	}
 	dir := tb.TempDir()
 	tb.Setenv("SUI_DB_FOLDER", dir)
 	initAPITestDB(tb, filepath.Join(dir, "s-ui.db"))
 	dbsqlite.DB().Config.Logger = gormlogger.Discard
 	tb.Cleanup(func() {
-		stopTokenUseDebouncerBeforeAPITestDBInit(tb)
-		if db := dbsqlite.DB(); db != nil {
-			if sqlDB, err := db.DB(); err == nil {
-				_ = sqlDB.Close()
-			}
-		}
+		closeAPITestDB(tb)
 		realtime.CloseAll("benchmark_done")
 	})
 }

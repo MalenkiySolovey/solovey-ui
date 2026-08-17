@@ -9,7 +9,6 @@ import (
 	"strings"
 	"testing"
 
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"
 	"github.com/gin-gonic/gin"
@@ -83,7 +82,7 @@ func TestDeploymentMigrationRequiresStepUpBeforeProviderCall(t *testing.T) {
 func deploymentTestRouter(t *testing.T) (*gin.Engine, []*http.Cookie) {
 	t.Helper()
 	initAPITestDB(t, filepath.Join(t.TempDir(), "deployment.db"))
-	t.Cleanup(func() { _ = dbsqlite.Close() })
+	t.Cleanup(func() { closeAPITestDB(t) })
 	settings := &service.SettingService{}
 	router, cookies := newAuthenticatedTestRouter(t, settings, func(router *gin.Engine) {
 		apiService := NewApiService()

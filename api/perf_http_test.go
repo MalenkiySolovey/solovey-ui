@@ -119,26 +119,12 @@ func newAPIPerfRouter(tb testing.TB) *gin.Engine {
 
 func initAPIPerfDB(tb testing.TB) {
 	tb.Helper()
-	stopTokenUseDebouncerBeforeAPITestDBInit(tb)
-	if db := dbsqlite.DB(); db != nil {
-		if sqlDB, err := db.DB(); err == nil {
-			_ = sqlDB.Close()
-			time.Sleep(25 * time.Millisecond)
-		}
-	}
 	resetRateLimitState()
 	dir := tb.TempDir()
 	tb.Setenv("SUI_DB_FOLDER", dir)
 	initAPITestDB(tb, filepath.Join(dir, "s-ui.db"))
 	dbsqlite.DB().Config.Logger = gormlogger.Discard
-	tb.Cleanup(func() {
-		stopTokenUseDebouncerBeforeAPITestDBInit(tb)
-		if db := dbsqlite.DB(); db != nil {
-			if sqlDB, err := db.DB(); err == nil {
-				_ = sqlDB.Close()
-			}
-		}
-	})
+	tb.Cleanup(func() { closeAPITestDB(tb) })
 }
 
 func seedAPIPerfData(tb testing.TB) {
