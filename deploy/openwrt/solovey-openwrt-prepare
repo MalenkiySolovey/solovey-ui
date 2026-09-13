@@ -1,0 +1,81 @@
+#!/bin/sh
+
+# One deployment-owned preparation operation for every live OpenWrt start.
+# APK's generated default_postinst may start the service before the package
+# specific body, so this helper must establish all persistent/security
+# contracts before the init script opens a procd instance.  It is deliberately
+# idempotent for installs, upgrades and repeated service starts.
+set -eu
+
+[ "$(id -u)" = 0 ] || exit 1
+id -u solovey-ui >/dev/null 2>&1 || exit 1
+id -g solovey-ui >/dev/null 2>&1 || exit 1
+
+if [ -e /etc/solovey-ui ]; then
+	[ -d /etc/solovey-ui ] && [ ! -L /etc/solovey-ui ] || exit 1
+else
+	mkdir -m 0711 /etc/solovey-ui || exit 1
+fi
+chown root:root /etc/solovey-ui || exit 1
+chmod 0711 /etc/solovey-ui || exit 1
+
+if [ ! -e /etc/solovey-ui/db ]; then
+	mkdir -m 0700 /etc/solovey-ui/db || exit 1
+fi
+[ -d /etc/solovey-ui/db ] && [ ! -L /etc/solovey-ui/db ] || exit 1
+chown solovey-ui:solovey-ui /etc/solovey-ui/db || exit 1
+chmod 0700 /etc/solovey-ui/db || exit 1
+
+# A sysupgrade archive records numeric ownership from the old image. Repair
+# only the fixed preservation writer paths for the current named service
+# account; never recursively take ownership of arbitrary database contents.
+repair_preservation_file() {
+	path="$1"
+	limit="$2"
+	[ -e "$path" ] || return 0
+	[ -f "$path" ] && [ ! -L "$path" ] || exit 1
+	size="$(wc -c < "$path")" || exit 1
+	case "$size" in
+		''|*[!0-9]*) exit 1 ;;
+	esac
+	[ "$size" -gt 0 ] && [ "$size" -le "$limit" ] || exit 1
+	chown solovey-ui:solovey-ui "$path" || exit 1
+	chmod 0600 "$path" || exit 1
+}
+
+preservation_root=/etc/solovey-ui/db/sysupgrade-preservation
+if [ -e "$preservation_root" ]; then
+	[ -d "$preservation_root" ] && [ ! -L "$preservation_root" ] || exit 1
+	chown solovey-ui:solovey-ui "$preservation_root" || exit 1
+	chmod 0700 "$preservation_root" || exit 1
+	repair_preservation_file "$preservation_root/database.db" 536870912
+	repair_preservation_file "$preservation_root/metadata.json" 16384
+fi
+
+if [ -e /run/solovey-ui ]; then
+	[ -d /run/solovey-ui ] && [ ! -L /run/solovey-ui ] || exit 1
+else
+	mkdir -m 0750 /run/solovey-ui || exit 1
+fi
+chown root:solovey-ui /run/solovey-ui || exit 1
+chmod 0750 /run/solovey-ui || exit 1
+
+if [ -e /run/solovey-ui/diagnostics ]; then
+	[ -d /run/solovey-ui/diagnostics ] && [ ! -L /run/solovey-ui/diagnostics ] || exit 1
+else
+	mkdir -m 0700 /run/solovey-ui/diagnostics || exit 1
+fi
+chown root:root /run/solovey-ui/diagnostics || exit 1
+chmod 0700 /run/solovey-ui/diagnostics || exit 1
+
+if [ -e /run/solovey-ui/server-protection ]; then
+	[ -d /run/solovey-ui/server-protection ] && [ ! -L /run/solovey-ui/server-protection ] || exit 1
+else
+	mkdir -m 0700 /run/solovey-ui/server-protection || exit 1
+fi
+chown solovey-ui:solovey-ui /run/solovey-ui/server-protection || exit 1
+chmod 0700 /run/solovey-ui/server-protection || exit 1
+
+/usr/lib/solovey-ui/solovey-openwrt-durability || exit 1
+/usr/lib/solovey-ui/solovey-openwrt-owner-manifest || exit 1
+/usr/lib/solovey-ui/solovey-openwrt-broker-manifest || exit 1

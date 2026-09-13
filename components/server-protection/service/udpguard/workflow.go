@@ -20,6 +20,7 @@ const (
 	CodeRevisionDrift           = "BLOCKED_REVISION_DRIFT"
 	CodeExperimentalAckRequired = "EXPERIMENTAL_ACK_REQUIRED"
 	CodeIdempotencyConflict     = "IDEMPOTENCY_CONFLICT"
+	CodeIdempotencyExpired      = "IDEMPOTENCY_KEY_EXPIRED"
 	CodeAmbiguousResult         = "AMBIGUOUS_RESULT"
 	CodeOperationNotFound       = "OPERATION_NOT_FOUND"
 	CodeInternalFailure         = "INTERNAL_FAILURE"
@@ -229,6 +230,12 @@ func (c *Controller) Prepare(ctx context.Context, actor string, input PrepareReq
 		Plan: candidate, Actor: actor, IdempotencyKey: strings.TrimSpace(input.IdempotencyKey),
 		Confirmation: "PREPARE SERVER PROTECTION " + candidate.Revision,
 	})
+	if result.Operation.OperationID != "" && result.Operation.Revision > 0 {
+		if bindErr := c.Repository.BindUDPGuardReceiptOperation(context.WithoutCancel(ctx), receipt.ID, result.Operation.OperationID, result.Operation.Revision); bindErr != nil {
+			_ = c.Repository.AmbiguousUDPGuardReceipt(context.WithoutCancel(ctx), receipt.ID)
+			return PrepareResultV1{}, contractError(CodeAmbiguousResult, bindErr)
+		}
+	}
 	if err != nil {
 		_ = c.Repository.AmbiguousUDPGuardReceipt(ctx, receipt.ID)
 		return PrepareResultV1{}, err
@@ -277,6 +284,10 @@ func (c *Controller) Apply(ctx context.Context, input ApplyRequestV1) (ApplyResu
 		result, replayErr := decodeReceipt[ApplyResultV1](receipt)
 		result.Replayed = true
 		return result, replayErr
+	}
+	if err := c.Repository.BindUDPGuardReceiptOperation(ctx, receipt.ID, input.OperationID, input.OperationRevision); err != nil {
+		_ = c.Repository.AmbiguousUDPGuardReceipt(context.WithoutCancel(ctx), receipt.ID)
+		return ApplyResultV1{}, contractError(CodeAmbiguousResult, err)
 	}
 	result, err := c.Firewall.Apply(ctx, protectionfirewall.ApplyInput{
 		OperationID: input.OperationID, Plan: candidate, Resources: candidate.Resources,
@@ -330,6 +341,10 @@ func (c *Controller) Rollback(ctx context.Context, input RollbackRequestV1) (Rol
 		result, replayErr := decodeReceipt[RollbackResultV1](receipt)
 		result.Replayed = true
 		return result, replayErr
+	}
+	if err := c.Repository.BindUDPGuardReceiptOperation(ctx, receipt.ID, input.OperationID, input.OperationRevision); err != nil {
+		_ = c.Repository.AmbiguousUDPGuardReceipt(context.WithoutCancel(ctx), receipt.ID)
+		return RollbackResultV1{}, contractError(CodeAmbiguousResult, err)
 	}
 	result, err := c.Firewall.Rollback(ctx, input.OperationID, "ROLLBACK SERVER PROTECTION "+input.OperationID)
 	if err != nil {

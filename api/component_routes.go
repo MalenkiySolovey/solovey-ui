@@ -29,6 +29,7 @@ func (a *ApiService) componentAPI(requireStepUp func(*gin.Context, string, strin
 		Request: componenthost.RequestDeps{
 			Actor:          requestActor,
 			RemoteIP:       getRemoteIp,
+			ClientIdentity: RequestClientIdentity,
 			Hostname:       getHostname,
 			ValidateTarget: confighttp.ValidateOutboundCheckTarget,
 		},

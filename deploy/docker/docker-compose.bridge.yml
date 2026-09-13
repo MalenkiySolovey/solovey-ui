@@ -10,6 +10,7 @@ services:
       - "${SOLOVEY_UI_BIND_ADDRESS:-0.0.0.0}:${SOLOVEY_UI_PUBLIC_TCP_PORT:?set the explicit public TCP port}:${SOLOVEY_UI_PUBLIC_TCP_PORT}/tcp"
       - "${SOLOVEY_UI_BIND_ADDRESS:-0.0.0.0}:${SOLOVEY_UI_PUBLIC_UDP_PORT:?set the explicit public UDP port}:${SOLOVEY_UI_PUBLIC_UDP_PORT}/udp"
     environment:
+      SUI_DEPLOYMENT_KIND: docker
       SOLOVEY_DEPLOYMENT_PROFILE: docker-bridge-explicit
     labels:
       io.solovey.deployment-profile: docker-bridge-explicit

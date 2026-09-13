@@ -62,7 +62,7 @@ func TestNginxContractRejectsTraversalSymlinksAndArbitraryPayload(t *testing.T) 
 			t.Fatalf("symlink candidate accepted: %v", err)
 		}
 	}
-	malformed := Request{ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "operation-shape", InstanceID: "instance", LockRevision: 1}, Operation: OperationNginxReload, NginxReload: &NginxReloadRequest{ExpectedRevision: revision, ExpectedSHA256: candidateSHA, ExpectedBinary: identity}, Artifact: &ArtifactRequest{Scope: ArtifactScopeNginx, Action: ArtifactRemove, Path: candidatePath}}
+	malformed := Request{ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "operation-shape", InstanceID: "instance", LockRevision: 1}, Operation: OperationNginxReload, NginxReload: &NginxReloadRequest{ExpectedRevision: revision, ExpectedSHA256: candidateSHA, ExpectedBinary: identity}, NFTValidate: &NFTValidateRequest{CandidatePath: candidatePath, ExpectedRevision: revision, ExpectedSHA256: candidateSHA}}
 	if err := malformed.Validate(root); err == nil || !strings.Contains(err.Error(), "exactly one typed") {
 		t.Fatalf("arbitrary second payload accepted: %v", err)
 	}
@@ -197,7 +197,7 @@ func nginxTestRoot(t *testing.T) (ManagedRoot, string, string, string) {
 	if err := os.WriteFile(filepath.Join(rootPath, filepath.FromSlash(relative)), candidate, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	root, err := NewManagedRoot(rootPath)
+	root, err := NewManagedRoot(testRuntimeAuthorityForRoot(t, rootPath))
 	if err != nil {
 		t.Fatal(err)
 	}

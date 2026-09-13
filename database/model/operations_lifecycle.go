@@ -43,6 +43,8 @@ type UpdateOperation struct {
 	Revision           uint64 `json:"revision" gorm:"not null;default:1"`
 	RestoredUntrusted  bool   `json:"restoredUntrusted" gorm:"column:restored_untrusted;not null;default:false;index"`
 	RollbackAvailable  bool   `json:"rollbackAvailable" gorm:"column:rollback_available;not null;default:false"`
+	CleanupPending     bool   `json:"cleanupPending" gorm:"column:cleanup_pending;not null;default:false;index"`
+	CleanupReason      string `json:"cleanupReason" gorm:"column:cleanup_reason;size:96;not null"`
 	CreatedAt          int64  `json:"createdAt" gorm:"column:created_at;not null"`
 	UpdatedAt          int64  `json:"updatedAt" gorm:"column:updated_at;not null"`
 }

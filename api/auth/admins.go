@@ -56,11 +56,7 @@ func (a *Handler) ChangePass(c *gin.Context) {
 			if serr := a.SetLoginUser(c, newUsername, sessionMaxAge, newGen); serr != nil {
 				logger.Warning("re-establishing session after credential change failed:", serr)
 			} else {
-				a.NotifyEvent("login_success", map[string]string{
-					"user":            newUsername,
-					"ip":              a.RemoteIP(c),
-					"sessionRevision": sessionRevision(newGen),
-				})
+				a.NotifyEvent("session_reestablished_after_credential_change", map[string]string{"user": newUsername})
 			}
 		}
 		a.JSONMsg(c, "save", nil)

@@ -8,24 +8,27 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
-	"fmt"
+	"path"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
+	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 )
 
 const (
-	PostureSchemaV1      = "solovey-ui/ssh-posture/v1"
-	PolicySchemaV1       = "solovey-ui/ssh-managed-policy/v1"
-	PreservationSchemaV1 = "solovey-ui/management-preservation-plan/v1"
-	CandidateSchemaV1    = "solovey-ui/ssh-management-candidate/v1"
-	ChallengeSchemaV1    = "solovey-ui/ssh-reconnect-challenge/v1"
-	ManagedDropInID      = "solovey-ui-managed-ssh-policy-v1"
-	MaxPostureLifetime   = 5 * time.Minute
-	MaxRecoveryLifetime  = 15 * time.Minute
-	MaxChallengeLifetime = 10 * time.Minute
+	PostureSchemaV1              = "solovey-ui/ssh-posture/v1"
+	PolicySchemaV1               = "solovey-ui/ssh-managed-policy/v1"
+	PreservationSchemaV1         = "solovey-ui/management-preservation-plan/v1"
+	CandidateSchemaV1            = "solovey-ui/ssh-management-candidate/v1"
+	ChallengeSchemaV1            = "solovey-ui/ssh-reconnect-challenge/v1"
+	ListenerAuthoritySchemaV1    = "solovey-ui/ssh-listener-authority/v1"
+	MaxPostureLifetime           = 5 * time.Minute
+	MaxRecoveryLifetime          = 15 * time.Minute
+	MaxChallengeLifetime         = 10 * time.Minute
+	MaxListenerAuthorityLifetime = 2 * time.Minute
 )
 
 type ReasonCode string
@@ -59,6 +62,13 @@ const (
 	ReasonIdempotencyConflict       ReasonCode = "idempotency_conflict"
 	ReasonOperationStateConflict    ReasonCode = "operation_state_conflict"
 	ReasonMalformedProviderEvidence ReasonCode = "malformed_provider_evidence"
+	ReasonRecoveryIdentityUnknown   ReasonCode = "recovery_identity_unknown"
+	ReasonRecoveryIdentityInvalid   ReasonCode = "recovery_identity_invalid"
+	ReasonRecoveryEndpointAmbiguous ReasonCode = "recovery_endpoint_ambiguous"
+	ReasonRecoveryBindingStale      ReasonCode = "recovery_identity_binding_stale"
+	ReasonRecoveryEvidenceInvalid   ReasonCode = "recovery_evidence_invalid"
+	ReasonRecoveryPersistFailed     ReasonCode = "recovery_persist_failed"
+	ReasonRecoveryReauthRequired    ReasonCode = "recovery_reauthentication_required"
 )
 
 type Error struct {
@@ -109,8 +119,10 @@ type CapabilitySetV1 struct {
 type BinaryIdentityV1 struct {
 	Implementation string `json:"implementation"`
 	VersionClass   string `json:"versionClass"`
-	Digest         string `json:"digest"`
-	Selected       bool   `json:"selected"`
+	// Digest is the raw executable-content SHA-256 supplied by the executable
+	// object owner. It is intentionally the same domain as Process.ExeDigest.
+	Digest   string `json:"digest"`
+	Selected bool   `json:"selected"`
 }
 
 type ServiceIdentityV1 struct {
@@ -120,6 +132,137 @@ type ServiceIdentityV1 struct {
 	Digest  string `json:"digest"`
 }
 
+// SSHListenerAuthorityV1 is the root-observed proof that an exact SSH
+// supervisor instance owns an exact accepting socket. Configured endpoints
+// remain policy intent; consumers must not promote them to runtime ownership
+// without one of these short-lived authorities.
+type SSHListenerAuthorityV1 struct {
+	Schema      string                             `json:"schema"`
+	Revision    string                             `json:"revision"`
+	EndpointIDs []string                           `json:"endpointIds"`
+	InstanceID  string                             `json:"instanceId"`
+	Socket      hostfacts.ListenerSocketIdentityV1 `json:"socket"`
+	Process     hostfacts.ProcessFact              `json:"process"`
+	Service     hostfacts.ServiceFact              `json:"service"`
+	// BinaryRevision is the released field name for the selected executable's
+	// raw content SHA-256. It must equal Binary.Digest and Process.ExeDigest.
+	BinaryRevision        string `json:"binaryRevision"`
+	ServiceRevision       string `json:"serviceRevision"`
+	ConfigurationRevision string `json:"configurationRevision"`
+	ObservedAt            int64  `json:"observedAt"`
+	ExpiresAt             int64  `json:"expiresAt"`
+}
+
+func (a *SSHListenerAuthorityV1) Seal() {
+	if a == nil {
+		return
+	}
+	a.EndpointIDs = normalizedAuthorityEndpointIDs(a.EndpointIDs)
+	copy := *a
+	copy.Revision = ""
+	copy.ObservedAt, copy.ExpiresAt = 0, 0
+	a.Revision = Revision(copy)
+}
+
+func (a SSHListenerAuthorityV1) Valid(now time.Time) bool {
+	current := now.UTC().Unix()
+	if a.Schema != ListenerAuthoritySchemaV1 || !digest(a.Revision) || a.ObservedAt <= 0 || a.ObservedAt > current ||
+		a.ExpiresAt <= a.ObservedAt || a.ExpiresAt > a.ObservedAt+int64(MaxListenerAuthorityLifetime/time.Second) || a.ExpiresAt <= now.UTC().Unix() ||
+		!token(a.InstanceID, 128) || !digest(a.BinaryRevision) || !digest(a.ServiceRevision) || !digest(a.ConfigurationRevision) ||
+		len(a.EndpointIDs) == 0 || len(a.EndpointIDs) > 32 || !validAuthoritySocket(a.Socket) ||
+		!validAuthorityProcess(a.Process) || !validAuthorityService(a.Service, a.Process) || !authorityInstanceMatchesService(a) || a.Process.ExeDigest != a.BinaryRevision {
+		return false
+	}
+	for index, id := range a.EndpointIDs {
+		if !token(id, 256) || index > 0 && id == a.EndpointIDs[index-1] {
+			return false
+		}
+	}
+	copy := a
+	copy.Seal()
+	return copy.Revision == a.Revision && len(copy.EndpointIDs) == len(a.EndpointIDs)
+}
+
+func authorityInstanceMatchesService(value SSHListenerAuthorityV1) bool {
+	if value.Service.ProcdInstance != "" {
+		return value.Service.ProcdInstance == value.InstanceID
+	}
+	return value.Service.SystemdUnit == value.InstanceID
+}
+
+func validAuthoritySocket(value hostfacts.ListenerSocketIdentityV1) bool {
+	return value.Network == hostfacts.NetworkTCP && hostfacts.ValidListenerSocketIdentity(value)
+}
+
+func validAuthorityProcess(value hostfacts.ProcessFact) bool {
+	return value.PID != nil && value.ParentPID != nil && value.SessionID != nil && value.UID != nil && value.GID != nil &&
+		*value.PID > 1 && *value.ParentPID >= 0 && *value.SessionID >= 0 && *value.UID >= 0 && *value.GID >= 0 &&
+		numeric(value.StartTime) && digest(value.EvidenceRevision) && digest(value.ExeDigest) && value.ExeDevice != 0 && value.ExeInode != 0 &&
+		canonicalAuthorityPath(value.Executable) && safeAuthorityProvider(value.ProviderRevision) &&
+		(value.ControlGroup == "" || canonicalAuthorityPath(value.ControlGroup))
+}
+
+func validAuthorityService(value hostfacts.ServiceFact, process hostfacts.ProcessFact) bool {
+	if value.MainPID == nil || process.PID == nil || *value.MainPID != *process.PID || value.ActiveState != "active" || value.SubState != "running" ||
+		!digest(value.SupervisorRevision) || !digest(value.CgroupRevision) ||
+		value.CgroupAvailability != "available" && value.CgroupAvailability != "unavailable" ||
+		value.CgroupPolicy != "required" && value.CgroupPolicy != "optional" || value.ControlGroup != process.ControlGroup {
+		return false
+	}
+	if value.CgroupAvailability == "available" && !canonicalAuthorityPath(value.ControlGroup) || value.CgroupAvailability == "unavailable" && value.ControlGroup != "" {
+		return false
+	}
+	if value.ProcdService != "" || value.ProcdInstance != "" || len(value.ProcdCommand) != 0 {
+		if !token(value.ProcdService, 128) || !token(value.ProcdInstance, 128) || len(value.ProcdCommand) == 0 || len(value.ProcdCommand) > 64 ||
+			value.SystemdUnit != "" || value.FragmentPath != "" || value.FragmentSHA256 != "" || value.StartMonotonicUsec != 0 {
+			return false
+		}
+		for index, argument := range value.ProcdCommand {
+			if argument == "" || len(argument) > 512 || strings.ContainsAny(argument, "\x00\r\n") || index == 0 && argument != process.Executable {
+				return false
+			}
+		}
+		return (value.ProcdUser == "" || token(value.ProcdUser, 128)) && (value.ProcdGroup == "" || token(value.ProcdGroup, 128))
+	}
+	return token(value.SystemdUnit, 128) && canonicalAuthorityPath(value.FragmentPath) && digest(value.FragmentSHA256) &&
+		value.StartMonotonicUsec > 0 && canonicalAuthorityPath(value.ControlGroup)
+}
+
+func normalizedAuthorityEndpointIDs(values []string) []string {
+	result := append([]string(nil), values...)
+	sort.Strings(result)
+	return result
+}
+
+func normalizedAuthorityFamilies(values []hostfacts.Family) []hostfacts.Family {
+	seen := map[hostfacts.Family]bool{}
+	result := make([]hostfacts.Family, 0, 2)
+	for _, value := range values {
+		if (value == hostfacts.FamilyIPv4 || value == hostfacts.FamilyIPv6) && !seen[value] {
+			seen[value] = true
+			result = append(result, value)
+		}
+	}
+	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
+	return result
+}
+
+func canonicalAuthorityPath(value string) bool {
+	return strings.HasPrefix(value, "/") && path.Clean(value) == value && value != "/" && len(value) <= 512 && !strings.ContainsAny(value, "\x00\r\n\t")
+}
+
+func safeAuthorityProvider(value string) bool {
+	return value != "" && len(value) <= 128 && !strings.ContainsAny(value, "\x00\r\n\t")
+}
+
+func numeric(value string) bool {
+	_, err := strconv.ParseUint(value, 10, 64)
+	return value != "" && err == nil
+}
+
+// ConfigNodeV1 is backend-native diagnostic evidence. Kind describes the
+// provider's representation and is intentionally an open, bounded token; it
+// is not part of DesiredPolicyV1 and is not a product-wide artifact catalog.
 type ConfigNodeV1 struct {
 	ID        string `json:"id"`
 	ParentID  string `json:"parentId,omitempty"`
@@ -181,6 +324,7 @@ type SSHPostureV1 struct {
 	ConfigGraph           []ConfigNodeV1                       `json:"configGraph"`
 	MatchContexts         []MatchContextV1                     `json:"matchContexts"`
 	Endpoints             []hostresources.ManagementEndpointV1 `json:"endpoints"`
+	ListenerAuthorities   []SSHListenerAuthorityV1             `json:"listenerAuthorities,omitempty"`
 	Authentication        AuthenticationPostureV1              `json:"authentication"`
 	Forwarding            ForwardingPostureV1                  `json:"forwarding"`
 	AuthorizedKeys        AuthorizedKeysPostureV1              `json:"authorizedKeys"`
@@ -196,7 +340,7 @@ type SSHPostureV1 struct {
 }
 
 func (p SSHPostureV1) Validate(now time.Time) error {
-	if p.Schema != PostureSchemaV1 || p.ObservedAt <= 0 || p.ExpiresAt <= p.ObservedAt || p.ExpiresAt > p.ObservedAt+int64(MaxPostureLifetime/time.Second) || p.ExpiresAt <= now.UTC().Unix() {
+	if p.Schema != PostureSchemaV1 || p.ObservedAt <= 0 || p.ObservedAt > now.UTC().Unix() || p.ExpiresAt <= p.ObservedAt || p.ExpiresAt > p.ObservedAt+int64(MaxPostureLifetime/time.Second) || p.ExpiresAt <= now.UTC().Unix() {
 		return NewError("posture", ReasonPostureStale)
 	}
 	if !digest(p.SemanticRevision) || !digest(p.BinaryRevision) || !digest(p.ServiceRevision) || !digest(p.ConfigurationRevision) || !digest(p.Binary.Digest) || !digest(p.Service.Digest) {
@@ -205,7 +349,8 @@ func (p SSHPostureV1) Validate(now time.Time) error {
 	if p.SemanticRevision != PostureSemanticRevision(p) {
 		return NewError("posture", ReasonRevisionMismatch)
 	}
-	if p.Binary.Implementation != "openssh" || !token(p.Binary.VersionClass, 64) || !p.Binary.Selected || !token(p.Service.Manager, 32) || !token(p.Service.UnitID, 128) || p.Service.State != "active" ||
+	if !token(p.Binary.Implementation, 64) || !token(p.Binary.VersionClass, 64) || !p.Binary.Selected ||
+		!token(p.Service.Manager, 64) || !token(p.Service.UnitID, 128) || p.Service.State != "active" ||
 		p.Binary.Digest != p.BinaryRevision || p.Service.Digest != p.ServiceRevision {
 		return NewError("posture", ReasonPostureAmbiguous)
 	}
@@ -214,7 +359,7 @@ func (p SSHPostureV1) Validate(now time.Time) error {
 	}
 	nodes := make(map[string]ConfigNodeV1, len(p.ConfigGraph))
 	for index, node := range p.ConfigGraph {
-		if !token(node.ID, 128) || !oneOf(node.Kind, "main", "include", "managed_dropin") || !digest(node.Digest) || !oneOf(node.Owner, "root", "system", "external_managed") || !oneOf(node.ModeClass, "owner_read", "owner_read_write", "system_read") {
+		if !token(node.ID, 128) || !token(node.Kind, 64) || !digest(node.Digest) || !oneOf(node.Owner, "root", "system", "external_managed") || !oneOf(node.ModeClass, "owner_read", "owner_read_write", "system_read") {
 			return NewError("posture", ReasonMalformedProviderEvidence)
 		}
 		if node.Symlink {
@@ -224,7 +369,7 @@ func (p SSHPostureV1) Validate(now time.Time) error {
 			return NewError("posture", ReasonPostureAmbiguous)
 		}
 		if index == 0 {
-			if node.Kind != "main" || node.ParentID != "" || node.Depth != 0 {
+			if node.ParentID != "" || node.Depth != 0 {
 				return NewError("posture", ReasonPostureAmbiguous)
 			}
 		} else {
@@ -240,10 +385,36 @@ func (p SSHPostureV1) Validate(now time.Time) error {
 			return NewError("posture", ReasonUnknownMatchContext)
 		}
 	}
+	endpointIDs := make(map[string]bool, len(p.Endpoints))
 	for _, endpoint := range p.Endpoints {
-		if endpoint.ServiceKind != hostresources.ManagementSSH || !hostresources.ManagementEndpointCurrent(endpoint, now) {
+		if endpoint.ServiceKind != hostresources.ManagementSSH || !hostresources.ManagementEndpointCurrent(endpoint, now) ||
+			endpoint.ObservedAt > now.UTC().Unix() || endpoint.ConfigurationRevision != p.ConfigurationRevision {
 			return NewError("posture", ReasonEndpointAmbiguous)
 		}
+		if endpointIDs[endpoint.ID] {
+			return NewError("posture", ReasonEndpointAmbiguous)
+		}
+		endpointIDs[endpoint.ID] = true
+	}
+	if len(p.ListenerAuthorities) > 64 {
+		return NewError("posture", ReasonPostureAmbiguous)
+	}
+	claimedEndpoints := make(map[string]bool, len(endpointIDs))
+	for _, authority := range p.ListenerAuthorities {
+		if !authority.Valid(now) || authority.BinaryRevision != p.BinaryRevision || authority.ServiceRevision != p.ServiceRevision ||
+			authority.ConfigurationRevision != p.ConfigurationRevision {
+			return NewError("posture", ReasonMalformedProviderEvidence)
+		}
+		for _, id := range authority.EndpointIDs {
+			endpoint, exists := endpointByID(p.Endpoints, id)
+			if !exists || !endpointIDs[id] || claimedEndpoints[id] || !authorityCoversManagementEndpoint(authority, endpoint) {
+				return NewError("posture", ReasonEndpointAmbiguous)
+			}
+			claimedEndpoints[id] = true
+		}
+	}
+	if len(claimedEndpoints) != len(endpointIDs) {
+		return NewError("posture", ReasonEndpointAmbiguous)
 	}
 	for _, key := range p.HostKeys {
 		if !token(key.Type, 64) || !digest(key.Fingerprint) || key.Count == 0 || key.Count > 64 || !oneOf(key.Owner, "root", "system") || !oneOf(key.ModeClass, "owner_read", "owner_read_write") {
@@ -288,6 +459,15 @@ func (p SSHPostureV1) Validate(now time.Time) error {
 		return NewError("posture", p.ReasonCodes[0])
 	}
 	return nil
+}
+
+func endpointByID(values []hostresources.ManagementEndpointV1, id string) (hostresources.ManagementEndpointV1, bool) {
+	for _, value := range values {
+		if value.ID == id {
+			return value, true
+		}
+	}
+	return hostresources.ManagementEndpointV1{}, false
 }
 
 func validCapabilitySet(value CapabilitySetV1) bool {
@@ -337,37 +517,6 @@ func (p DesiredPolicyV1) DisablesPasswordPath() bool {
 	return p.PasswordAuthentication != nil && !*p.PasswordAuthentication ||
 		p.KbdInteractiveAuthentication != nil && !*p.KbdInteractiveAuthentication ||
 		p.PermitRootLogin == RootLoginNo || p.PermitRootLogin == RootLoginProhibitPassword
-}
-
-func (p DesiredPolicyV1) RenderManagedDropIn() ([]byte, error) {
-	if err := p.Validate(); err != nil {
-		return nil, err
-	}
-	lines := []string{"# Managed by Solovey UI; typed policy only."}
-	if p.MaxAuthTries != nil {
-		lines = append(lines, fmt.Sprintf("MaxAuthTries %d", *p.MaxAuthTries))
-	}
-	if p.LoginGraceTimeSeconds != nil {
-		lines = append(lines, fmt.Sprintf("LoginGraceTime %d", *p.LoginGraceTimeSeconds))
-	}
-	if p.PasswordAuthentication != nil {
-		lines = append(lines, "PasswordAuthentication "+yesNo(*p.PasswordAuthentication))
-	}
-	if p.KbdInteractiveAuthentication != nil {
-		lines = append(lines, "KbdInteractiveAuthentication "+yesNo(*p.KbdInteractiveAuthentication))
-	}
-	switch p.PermitRootLogin {
-	case RootLoginYes:
-		lines = append(lines, "PermitRootLogin yes")
-	case RootLoginNo:
-		lines = append(lines, "PermitRootLogin no")
-	case RootLoginProhibitPassword:
-		lines = append(lines, "PermitRootLogin prohibit-password")
-	}
-	if p.PubkeyAuthentication != nil {
-		lines = append(lines, "PubkeyAuthentication "+yesNo(*p.PubkeyAuthentication))
-	}
-	return []byte(strings.Join(lines, "\n") + "\n"), nil
 }
 
 type ManagementPreservationPlanV1 struct {
@@ -500,6 +649,7 @@ type CandidateV1 struct {
 	Schema                string                       `json:"schema"`
 	OperationID           string                       `json:"operationId"`
 	IdempotencyKey        string                       `json:"idempotencyKey"`
+	EndpointID            string                       `json:"endpointId"`
 	State                 CandidateState               `json:"state"`
 	Revision              uint64                       `json:"revision"`
 	Policy                DesiredPolicyV1              `json:"policy"`
@@ -518,6 +668,7 @@ type CandidateV1 struct {
 	EarliestSafetyExpiry  int64                        `json:"earliestSafetyExpiry"`
 	ReconnectExpiresAt    int64                        `json:"reconnectExpiresAt,omitempty"`
 	RollbackAttempts      uint8                        `json:"rollbackAttempts"`
+	BrokerStageReleased   bool                         `json:"brokerStageReleased"`
 	RestoredUntrusted     bool                         `json:"restoredUntrusted"`
 	ReconciledAt          int64                        `json:"reconciledAt"`
 	CreatedAt             int64                        `json:"createdAt"`
@@ -560,14 +711,27 @@ func PostureSemanticRevision(posture SSHPostureV1) string {
 		copy.Endpoints[index].ObservedAt = 0
 		copy.Endpoints[index].ExpiresAt = 0
 	}
+	copy.ListenerAuthorities = append([]SSHListenerAuthorityV1(nil), posture.ListenerAuthorities...)
+	for index := range copy.ListenerAuthorities {
+		copy.ListenerAuthorities[index].ObservedAt = 0
+		copy.ListenerAuthorities[index].ExpiresAt = 0
+	}
 	return Revision(copy)
 }
 
 func BindingDigest(candidate CandidateV1) string {
+	if candidate.EndpointID == "" {
+		return Revision(struct {
+			Schema, Operation, Candidate, Posture, Endpoint, Recovery, Provider, Binary, Service, Configuration, Preservation string
+			Expiry                                                                                                            int64
+		}{CandidateSchemaV1, candidate.OperationID, candidate.CandidateDigest, candidate.PostureRevision, candidate.EndpointRevision,
+			candidate.RecoveryRevision, candidate.ProviderRevision, candidate.BinaryRevision, candidate.ServiceRevision,
+			candidate.ConfigurationRevision, candidate.Preservation.Revision, candidate.EarliestSafetyExpiry})
+	}
 	return Revision(struct {
-		Schema, Operation, Candidate, Posture, Endpoint, Recovery, Provider, Binary, Service, Configuration, Preservation string
-		Expiry                                                                                                            int64
-	}{CandidateSchemaV1, candidate.OperationID, candidate.CandidateDigest, candidate.PostureRevision, candidate.EndpointRevision,
+		Schema, Operation, ManagedEndpoint, Candidate, Posture, Endpoint, Recovery, Provider, Binary, Service, Configuration, Preservation string
+		Expiry                                                                                                                             int64
+	}{CandidateSchemaV1, candidate.OperationID, candidate.EndpointID, candidate.CandidateDigest, candidate.PostureRevision, candidate.EndpointRevision,
 		candidate.RecoveryRevision, candidate.ProviderRevision, candidate.BinaryRevision, candidate.ServiceRevision,
 		candidate.ConfigurationRevision, candidate.Preservation.Revision, candidate.EarliestSafetyExpiry})
 }
@@ -627,11 +791,4 @@ func oneOf(value string, allowed ...string) bool {
 		}
 	}
 	return false
-}
-
-func yesNo(value bool) string {
-	if value {
-		return "yes"
-	}
-	return "no"
 }

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -65,10 +66,15 @@ func TestDropDataPreviewIsReadOnlyAndExecutionIsManifestExact(t *testing.T) {
 		Checksum: owner.Database.MigrationChecksum, State: "APPLIED", CompatibilityState: "COMPATIBLE", UpdatedAt: 1}).Error; err != nil {
 		t.Fatal(err)
 	}
+	recoveryRoot := t.TempDir()
 	manager := &Manager{DB: func() *gorm.DB { return db }, Now: func() time.Time { return time.Unix(1000, 0).UTC() },
-		Root: t.TempDir(), Enabled: func(componentmanifest.Manifest) (bool, error) { return false, nil },
-		Admit: func(string) bool { return true }, Backup: func(context.Context, model.DataLifecycleOperation) (string, error) {
-			return dataLifecycleTestDigest("drop-backup"), nil
+		Root: recoveryRoot, Enabled: func(componentmanifest.Manifest) (bool, error) { return false, nil },
+		Admit: func(string) bool { return true }, Backup: func(_ context.Context, operation model.DataLifecycleOperation) (string, error) {
+			content := []byte("drop-backup")
+			if err := os.WriteFile(filepath.Join(recoveryRoot, portableDropRecoveryFilename(operation.OperationID)), content, 0o600); err != nil {
+				return "", err
+			}
+			return dataLifecycleTestDigest(string(content)), nil
 		}}
 	manager.Drop = func(ctx context.Context, ownerID string) error {
 		item, available := durableowner.Lookup(ownerID)

@@ -16,6 +16,7 @@ import (
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
+	sptest "github.com/MalenkiySolovey/solovey-ui/testsupport/serverprotection"
 )
 
 type mapLeaseDirectoryV2 struct {
@@ -372,10 +373,7 @@ func TestSNIWorkflowV2RestartReverifiesWithoutDuplicateMutation(t *testing.T) {
 	}
 	manager := protectionoperations.NewManager(fixture.repository, protectionoperations.Options{InstanceID: "sni-fronting-v2-restart", PID: 109,
 		Now: func() time.Time { return fixture.now }, Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil }})
-	root, err := protectionhelper.NewManagedRoot(fixture.storage.Root())
-	if err != nil {
-		t.Fatal(err)
-	}
+	root := sptest.ManagedRoot(t, fixture.storage.Root())
 	client, err := protectionhelper.NewClient(root, manager, fixture.nginx, frontingAudit{})
 	if err != nil {
 		t.Fatal(err)
@@ -443,10 +441,7 @@ func restartSNIWorkflowV2(t *testing.T, fixture *sniWorkflowFixtureV2, pid int) 
 	}
 	manager := protectionoperations.NewManager(fixture.repository, protectionoperations.Options{InstanceID: "sni-fronting-v2-restart-" + fmt.Sprint(pid), PID: pid,
 		Now: func() time.Time { return fixture.now }, Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil }})
-	root, err := protectionhelper.NewManagedRoot(fixture.storage.Root())
-	if err != nil {
-		t.Fatal(err)
-	}
+	root := sptest.ManagedRoot(t, fixture.storage.Root())
 	client, err := protectionhelper.NewClient(root, manager, fixture.nginx, frontingAudit{})
 	if err != nil {
 		t.Fatal(err)

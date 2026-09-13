@@ -6,7 +6,9 @@ import (
 	"strings"
 	"time"
 
+	hostsurface "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	protectionpolicy "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/policy"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 )
 
@@ -126,7 +128,7 @@ func evaluateFirewallBaselineEligibility(resources []hostresources.ProtectableRe
 			result.ExactRevisions = false
 			result.ReasonCodes = append(result.ReasonCodes, "configuration_revision_incomplete")
 		}
-		keys, complete := hostresources.DeterministicConfiguredEndpointKeys(resource)
+		keys, complete := hostresources.PreservationEndpointKeys(resource, now)
 		if !complete {
 			result.EndpointInventoryComplete = false
 			result.ReasonCodes = append(result.ReasonCodes, "endpoint_inventory_incomplete")
@@ -147,11 +149,14 @@ func evaluateFirewallBaselineEligibility(resources []hostresources.ProtectableRe
 		}
 	}
 
-	for _, endpoint := range management {
-		if !freshRecoveryForManagement(endpoint, recovery, now) {
-			result.MutationReady = false
-			result.MutationReasonCodes = append(result.MutationReasonCodes, "fresh_recovery_path_missing")
-		}
+	// A recovery proof establishes an independent way back into the current
+	// management set; it is not a synthetic login requirement for every panel,
+	// subscription, SSH and address-family endpoint. The proof still has to be
+	// fresh and bound to one exact current endpoint/configuration. Separately,
+	// scoped trusted sources remain mandatory for every endpoint family above.
+	if len(management) > 0 && !freshRecoveryForAnyManagement(management, recovery, now) {
+		result.MutationReady = false
+		result.MutationReasonCodes = append(result.MutationReasonCodes, "fresh_recovery_path_missing")
 	}
 	if !result.EndpointInventoryComplete || !result.ManagementPreserved || !result.ExactRevisions || !result.ManagedTableOnly || !result.NoForeignMutation {
 		result.CandidateEligible = false
@@ -170,8 +175,8 @@ func managementEndpointUsable(endpoint hostresources.ManagementEndpointV1, now t
 
 func hasScopedTrustedSource(endpoint hostresources.ManagementEndpointV1, trusted []string) bool {
 	for _, value := range trusted {
-		prefix, err := netip.ParsePrefix(strings.TrimSpace(value))
-		if err == nil && prefix.Masked().String() == strings.TrimSpace(value) &&
+		prefix, err := protectionpolicy.NormalizeTrustedSource(value)
+		if err == nil && prefix.String() == strings.TrimSpace(value) &&
 			((endpoint.Family == hostresources.AddressFamilyIPv4) == prefix.Addr().Is4()) {
 			return true
 		}
@@ -188,7 +193,7 @@ func EvaluateListenerTopologyMutationEligibility(graph protectionresources.Socke
 			reasons = append(reasons, node.ReasonCodes...)
 		}
 		for _, claim := range node.ObservedClaims {
-			if claim.Ambiguous || claim.OwnerObservationRevision == "" || claim.SocketInode == "" || claim.SocketCookie == 0 {
+			if claim.Ambiguous || claim.OwnerObservationRevision == "" || claim.SocketInode == "" || !validClaimSocketProof(claim) {
 				eligible = false
 				reasons = append(reasons, "exact_listener_owner_required")
 			}
@@ -211,6 +216,17 @@ func EvaluateListenerTopologyMutationEligibility(graph protectionresources.Socke
 	return result
 }
 
+func validClaimSocketProof(claim protectionresources.SocketClaim) bool {
+	switch claim.SocketProofMethod {
+	case "", hostsurface.ListenerProofPIDFDSocketV1:
+		return claim.SocketCookie != 0
+	case hostsurface.ListenerProofProcFSV1:
+		return claim.SocketCookie == 0
+	default:
+		return false
+	}
+}
+
 func freshRecoveryForManagement(endpoint hostresources.ManagementEndpointV1, paths []hostresources.RecoveryPathV1, now time.Time) bool {
 	for _, path := range paths {
 		if path.EndpointID != endpoint.ID || !strings.EqualFold(path.Kind, string(endpoint.ServiceKind)) ||
@@ -223,6 +239,15 @@ func freshRecoveryForManagement(endpoint hostresources.ManagementEndpointV1, pat
 		prefix, err := netip.ParsePrefix(strings.TrimSpace(path.SourcePrefix))
 		if err == nil && prefix.Masked().String() == strings.TrimSpace(path.SourcePrefix) &&
 			((endpoint.Family == hostresources.AddressFamilyIPv4) == prefix.Addr().Is4()) {
+			return true
+		}
+	}
+	return false
+}
+
+func freshRecoveryForAnyManagement(endpoints []hostresources.ManagementEndpointV1, paths []hostresources.RecoveryPathV1, now time.Time) bool {
+	for _, endpoint := range endpoints {
+		if managementEndpointUsable(endpoint, now) && freshRecoveryForManagement(endpoint, paths, now) {
 			return true
 		}
 	}
@@ -242,7 +267,7 @@ func baselineGraphAdvisories(graph protectionresources.SocketOwnershipGraph) []s
 
 func isManagementResource(kind string) bool {
 	switch strings.ToLower(strings.TrimSpace(kind)) {
-	case "panel_web", "subscription":
+	case "panel_web", "subscription", "ssh_management":
 		return true
 	default:
 		return false

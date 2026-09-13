@@ -30,4 +30,11 @@ describe('SSH management reconnect safety contract', () => {
     expect(source).toContain('@media (max-width: 600px)')
     expect(source).toContain('@media (prefers-reduced-motion: reduce)')
   })
+
+  it('labels concrete backend preview separately from semantic policy', () => {
+    expect(source).toContain("t('sshManagement.backendPreview')")
+    expect(source).toContain('preview.concretePreview.label')
+    expect(source).toContain('preview.concretePreview.implementation')
+    expect(source).toContain('preview.concretePreview.representation')
+  })
 })

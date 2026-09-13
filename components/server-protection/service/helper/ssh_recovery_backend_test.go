@@ -1,64 +1,137 @@
 package helper
 
 import (
-	"encoding/json"
-	"strconv"
+	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
+
+	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
+	sshbroker "github.com/MalenkiySolovey/solovey-ui/internal/ops/sshbroker"
 )
 
-func sshJournalRow(message, unit, identifier, executable, timestamp, cursor string) []byte {
-	value, _ := json.Marshal(map[string]string{"MESSAGE": message, "_SYSTEMD_UNIT": unit, "SYSLOG_IDENTIFIER": identifier, "_EXE": executable, "__REALTIME_TIMESTAMP": timestamp, "__CURSOR": cursor})
-	return value
+type fakeSSHRecoveryOwner struct {
+	support sshbroker.RecoverySupport
+	result  *sshbroker.RecoveryResult
+	err     error
+	request sshbroker.RecoveryObserveRequest
 }
 
-func TestSSHRecoveryParserAcceptsOnlyFreshStructuredPublicKeyAuthentication(t *testing.T) {
-	now := time.Unix(30_000, 0).UTC()
-	request := SSHRecoveryObserveRequest{SinceUnixMicros: now.Add(-time.Second).UnixMicro(), MaxEvents: 8}
-	timestamp := strconv.FormatInt(now.UnixMicro(), 10)
-	rows := [][]byte{
-		sshJournalRow("Accepted publickey for admin from 198.51.100.10 port 54321 ssh2: key", "ssh.service", "sshd", "/usr/sbin/sshd", timestamp, "cursor-accepted"),
-		sshJournalRow("Accepted password for admin from 198.51.100.11 port 54322 ssh2", "ssh.service", "sshd", "/usr/sbin/sshd", timestamp, "cursor-password"),
-		sshJournalRow("session opened for user admin", "ssh.service", "sshd", "/usr/sbin/sshd", timestamp, "cursor-open"),
-		sshJournalRow("Accepted publickey for admin from 198.51.100.12 port 54323 ssh2", "unrelated-monitor.service", "monitor", "/usr/sbin/sshd", timestamp, "cursor-unrelated"),
-		sshJournalRow("Accepted publickey for admin from 198.51.100.13 port 54324 ssh2", "ssh.service", "sshd", "/tmp/sshd", timestamp, "cursor-exe"),
-	}
-	payload := append([]byte(strings.Join([]string{string(rows[0]), string(rows[1]), string(rows[2]), string(rows[3]), string(rows[4])}, "\n")), '\n')
-	observations, err := parseSSHRecoveryJournal(payload, request, now, "/usr/sbin/sshd")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(observations) != 1 {
-		t.Fatalf("accepted observation count=%d", len(observations))
-	}
-	observation := observations[0]
-	if observation.AuthenticationClass != "publickey" || observation.SourcePrefix != "198.51.100.10/32" || !strings.HasPrefix(observation.PrincipalID, "principal:") || strings.Contains(observation.PrincipalID, "admin") || observation.ObservedAt != now.Unix() || observation.ObservedAtMicros != now.UnixMicro() {
-		t.Fatalf("SSH observation leaked or lost identity binding: %#v", observation)
-	}
+func (f *fakeSSHRecoveryOwner) Detect(context.Context) sshbroker.RecoverySupport { return f.support }
+
+func (f *fakeSSHRecoveryOwner) Observe(_ context.Context, request sshbroker.RecoveryObserveRequest) (*sshbroker.RecoveryResult, error) {
+	f.request = request
+	return f.result, f.err
 }
 
-func TestSSHRecoveryParserCanonicalizesMappedAddressAndRejectsMalformedJournal(t *testing.T) {
-	now := time.Unix(40_000, 0).UTC()
-	request := SSHRecoveryObserveRequest{SinceUnixMicros: now.Add(-time.Second).UnixMicro(), MaxEvents: 1}
-	row := sshJournalRow("Accepted publickey for admin from ::ffff:192.0.2.10 port 2222 ssh2", "sshd.service", "sshd", "/usr/sbin/sshd", strconv.FormatInt(now.UnixMicro(), 10), "cursor-mapped")
-	observations, err := parseSSHRecoveryJournal(append(row, '\n'), request, now, "/usr/sbin/sshd")
-	if err != nil || len(observations) != 1 || observations[0].SourcePrefix != "192.0.2.10/32" {
-		t.Fatalf("mapped SSH address was not canonicalized: observations=%#v err=%v", observations, err)
+func TestSSHRecoveryAdapterProjectsOnlyTypedOwnerCapabilityAndFacts(t *testing.T) {
+	verifier, observer := strings.Repeat("a", 64), strings.Repeat("b", 64)
+	owner := &fakeSSHRecoveryOwner{support: sshbroker.RecoverySupport{PlatformKnown: true, Linux: true, Available: true,
+		EvidenceKind: sshbroker.LogEvidenceJournald, VerifierRevision: verifier, ObserverRevision: observer},
+		result: &sshbroker.RecoveryResult{VerifierRevision: verifier, ObserverRevision: observer, Observations: []sshbroker.RecoveryObservation{{
+			ObservationID: "recovery:" + strings.Repeat("c", 64), PrincipalID: "principal:" + strings.Repeat("d", 64),
+			SourcePrefix: "192.0.2.4/32", AuthenticationClass: "publickey", ObservedAt: 100, ObservedAtMicros: 100_000_001}}}}
+	executor := newSSHRecoveryExecutorFromOwner(owner)
+	support := executor.Detect(context.Background())
+	if !support.Available || support.EvidenceKind != SSHRecoveryEvidenceJournald || support.VerifierRevision != verifier || support.ObserverRevision != observer {
+		t.Fatalf("owner support projection changed: %#v", support)
 	}
-	if _, err := parseSSHRecoveryJournal([]byte("not-json\n"), request, now, "/usr/sbin/sshd"); err == nil {
-		t.Fatal("malformed journal JSON was accepted")
+	request := SSHRecoveryObserveRequest{SinceUnixMicros: 99_000_000, MaxEvents: 7}
+	result, err := executor.Observe(context.Background(), request)
+	if err != nil || result.VerifierRevision != verifier || result.ObserverRevision != observer || len(result.Observations) != 1 {
+		t.Fatalf("owner result projection changed: result=%#v err=%v", result, err)
+	}
+	if owner.request.SinceUnixMicros != request.SinceUnixMicros || owner.request.MaxEvents != request.MaxEvents ||
+		result.Observations[0].SourcePrefix != "192.0.2.4/32" || result.Observations[0].AuthenticationClass != "publickey" {
+		t.Fatalf("owner request/fact projection changed: request=%#v result=%#v", owner.request, result)
 	}
 }
 
-func TestSSHRecoveryVerifierRequiresLocalKeysAndStrictOwnershipChecks(t *testing.T) {
-	complete := "pubkeyauthentication yes\nauthorizedkeyscommand none\nstrictmodes yes\n"
-	if !sshPublicKeyVerifierConfigurationProven(complete) {
-		t.Fatal("complete fail-closed SSH verifier configuration was rejected")
+func TestSSHRecoveryCapabilityRequiresCompleteOwnerRevisionProjection(t *testing.T) {
+	valid := sshbroker.RecoverySupport{PlatformKnown: true, Linux: true, Available: true, EvidenceKind: sshbroker.LogEvidenceLogread,
+		VerifierRevision: strings.Repeat("a", 64), ObserverRevision: strings.Repeat("b", 64)}
+	for name, mutate := range map[string]func(*sshbroker.RecoverySupport){
+		"missing verifier": func(value *sshbroker.RecoverySupport) { value.VerifierRevision = "" },
+		"missing observer": func(value *sshbroker.RecoverySupport) { value.ObserverRevision = "" },
+		"unknown evidence": func(value *sshbroker.RecoverySupport) { value.EvidenceKind = "unknown" },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := valid
+			mutate(&candidate)
+			engine := ContractEngine{root: testManagedRoot(t), sshRecoveryExecutor: newSSHRecoveryExecutorFromOwner(&fakeSSHRecoveryOwner{support: candidate})}
+			capabilities := engine.capabilities(context.Background())
+			if CapabilityAvailable(capabilities, OperationSSHRecoveryObserve) {
+				t.Fatalf("incomplete SSH owner projection was advertised: %#v", capabilities.SSHRecovery)
+			}
+		})
 	}
-	for _, missing := range []string{"pubkeyauthentication yes\n", "authorizedkeyscommand none\n", "strictmodes yes\n"} {
-		if sshPublicKeyVerifierConfigurationProven(strings.ReplaceAll(complete, missing, "")) {
-			t.Fatalf("SSH verifier accepted configuration missing %q", strings.TrimSpace(missing))
+	engine := ContractEngine{root: testManagedRoot(t), sshRecoveryExecutor: newSSHRecoveryExecutorFromOwner(&fakeSSHRecoveryOwner{support: valid})}
+	if capabilities := engine.capabilities(context.Background()); !CapabilityAvailable(capabilities, OperationSSHRecoveryObserve) {
+		t.Fatalf("complete SSH owner projection was not advertised: %#v", capabilities.SSHRecovery)
+	}
+}
+
+func TestSSHRecoveryAdapterPropagatesOwnerFailure(t *testing.T) {
+	expected := errors.New("owner failed")
+	owner := &fakeSSHRecoveryOwner{err: expected}
+	if _, err := newSSHRecoveryExecutorFromOwner(owner).Observe(context.Background(), SSHRecoveryObserveRequest{}); !errors.Is(err, expected) {
+		t.Fatalf("owner error changed: %v", err)
+	}
+}
+
+func TestSSHRecoveryBrokerRegistrationRejectsAnUnresolvedRecord(t *testing.T) {
+	err := RegisterBrokerHandlersWithSSHComposition(broker.NewRegistry(), testManagedRoot(t), sshbroker.ResolvedSSHComposition{})
+	if err == nil {
+		t.Fatal("Server Protection accepted the zero-value unresolved SSH composition")
+	}
+}
+
+func TestSSHRecoveryTransportProjectionIsBoundedCanonicalAndRevisionComplete(t *testing.T) {
+	now := time.Unix(1_800_000_000, 500_000_000).UTC()
+	request := SSHRecoveryObserveRequest{SinceUnixMicros: now.Add(-time.Minute).UnixMicro(), MaxEvents: 2}
+	valid := &SSHRecoveryResult{VerifierRevision: strings.Repeat("a", 64), ObserverRevision: strings.Repeat("b", 64), Observations: []SSHRecoveryObservation{{
+		ObservationID: "recovery:" + strings.Repeat("c", 64), PrincipalID: "principal:" + strings.Repeat("d", 64),
+		SourcePrefix: "192.0.2.4/32", AuthenticationClass: "publickey", ObservedAt: now.Unix(), ObservedAtMicros: now.UnixMicro(),
+	}}}
+	if !ValidSSHRecoveryResult(request, valid, now) {
+		t.Fatal("complete SSH owner projection was rejected")
+	}
+	for name, mutate := range map[string]func(*SSHRecoveryResult){
+		"missing observer revision": func(result *SSHRecoveryResult) { result.ObserverRevision = "" },
+		"private principal":         func(result *SSHRecoveryResult) { result.Observations[0].PrincipalID = "alice" },
+		"noncanonical prefix":       func(result *SSHRecoveryResult) { result.Observations[0].SourcePrefix = "192.0.2.4/24" },
+		"wrong authentication":      func(result *SSHRecoveryResult) { result.Observations[0].AuthenticationClass = "password" },
+		"stale observation":         func(result *SSHRecoveryResult) { result.Observations[0].ObservedAtMicros = request.SinceUnixMicros },
+	} {
+		t.Run(name, func(t *testing.T) {
+			candidate := *valid
+			candidate.Observations = append([]SSHRecoveryObservation(nil), valid.Observations...)
+			mutate(&candidate)
+			if ValidSSHRecoveryResult(request, &candidate, now) {
+				t.Fatalf("invalid SSH recovery projection was accepted: %#v", candidate)
+			}
+		})
+	}
+}
+
+func TestCapabilityNegotiationRejectsIncompleteAdvertisedRecoveryOwner(t *testing.T) {
+	capabilities := DefaultCapabilities()
+	capabilities.SSHRecovery = SSHRecoverySupport{PlatformKnown: true, Linux: true, Available: true,
+		EvidenceKind: SSHRecoveryEvidenceJournald, VerifierRevision: strings.Repeat("a", 64)}
+	for index := range capabilities.Capabilities {
+		if capabilities.Capabilities[index].Operation == OperationSSHRecoveryObserve {
+			capabilities.Capabilities[index].Available = true
+			capabilities.Capabilities[index].Reason = ""
 		}
+	}
+	setCapabilityRevision(capabilities)
+	if ValidateCapabilities(capabilities) == nil {
+		t.Fatal("capability negotiation accepted an advertised SSH recovery owner without observer revision")
+	}
+	capabilities.SSHRecovery.ObserverRevision = strings.Repeat("b", 64)
+	setCapabilityRevision(capabilities)
+	if err := ValidateCapabilities(capabilities); err != nil {
+		t.Fatalf("complete SSH recovery owner capability was rejected: %v", err)
 	}
 }

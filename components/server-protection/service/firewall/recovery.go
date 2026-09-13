@@ -21,6 +21,11 @@ type BackendRecovery struct {
 }
 
 func (r BackendRecovery) HasMutationArtifact(ctx context.Context, operation protectionrepository.OperationLockModel) (bool, error) {
+	// A durable operator retirement can be pending without a runtime mutation
+	// marker. It resumes through the same rollback owner, never forward Apply.
+	if r.Workflow != nil && r.Workflow.retainedRollbackPending(ctx, operation) {
+		return true, nil
+	}
 	if r.Storage == nil || r.Repository == nil || !r.Storage.HasMutationMarker(operation.OperationID) {
 		return false, nil
 	}
@@ -35,6 +40,16 @@ func (r BackendRecovery) HasMutationArtifact(ctx context.Context, operation prot
 func (r BackendRecovery) AttemptRollback(ctx context.Context, operation protectionrepository.OperationLockModel) error {
 	if r.Helper == nil || r.Manager == nil || r.Storage == nil || r.Repository == nil || r.Workflow == nil {
 		return errors.New("restricted rollback backend is unavailable")
+	}
+	if r.Workflow.retainedRollbackPending(ctx, operation) {
+		snapshot, err := r.Repository.FirewallAuthority(ctx)
+		if err != nil {
+			return err
+		}
+		if snapshot.HasComposition {
+			_, err := r.Workflow.finishRollback(ctx, operation, operation.OperationID, true, false)
+			return err
+		}
 	}
 	artifact, err := r.Repository.ArtifactByOperation(ctx, operation.OperationID)
 	if err != nil {

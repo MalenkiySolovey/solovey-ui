@@ -4,9 +4,9 @@ import (
 	"context"
 	"errors"
 
-	helperinvoker "github.com/MalenkiySolovey/solovey-ui/components/server-protection/internal/normalci/helperinvoker"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	helperinvoker "github.com/MalenkiySolovey/solovey-ui/testsupport/serverprotectionhelper"
 )
 
 type testHelperInvoker = helperinvoker.Invoker

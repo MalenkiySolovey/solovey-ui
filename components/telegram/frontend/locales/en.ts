@@ -18,7 +18,7 @@ export default {
     "outboundLabel": "Outbound requires the core running",
     "noOutbounds": "No outbounds configured",
     "hint": {
-      "chatId": "Numeric Telegram chat or user ID that receives alerts. Find it via @userinfobot.",
+      "chatId": "Numeric Telegram chat or user ID that receives alerts. Find it via {'@'}userinfobot.",
       "cpuThreshold": "Send an alert when CPU stays above this percentage. Default: 90. Range 1-100.",
       "reportCron": "5-field cron schedule for periodic reports, for example 0 9 * * *. Empty disables it.",
       "transport": "How the bot reaches Telegram: proxy URL or a sing-box outbound. Default: Proxy.",

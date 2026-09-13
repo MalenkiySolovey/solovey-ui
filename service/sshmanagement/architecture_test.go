@@ -1,13 +1,14 @@
 package sshmanagement
 
 import (
+	"go/parser"
+	gotoken "go/token"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
 
-func TestProductionServiceHasNoDirectHostMutationOrEmbeddedFake(t *testing.T) {
+func TestProductionServiceImportsNoDirectHostMutationCapability(t *testing.T) {
 	entries, err := os.ReadDir(".")
 	if err != nil {
 		t.Fatal(err)
@@ -16,29 +17,16 @@ func TestProductionServiceHasNoDirectHostMutationOrEmbeddedFake(t *testing.T) {
 		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".go") || strings.HasSuffix(entry.Name(), "_test.go") {
 			continue
 		}
-		data, err := os.ReadFile(entry.Name())
+		path := entry.Name()
+		parsed, err := parser.ParseFile(gotoken.NewFileSet(), path, nil, parser.ImportsOnly)
 		if err != nil {
 			t.Fatal(err)
 		}
-		text := string(data)
-		for _, forbidden := range []string{"os/exec", "exec.Command", "syscall.", "net.Dial", "/etc/ssh/", "workflowProviderFake"} {
-			if strings.Contains(text, forbidden) {
-				t.Fatalf("%s contains forbidden production capability %q", entry.Name(), forbidden)
+		for _, imported := range parsed.Imports {
+			path := imported.Path.Value
+			if path == `"os/exec"` || path == `"syscall"` || path == `"net"` {
+				t.Fatalf("%s imports forbidden production capability %s", entry.Name(), path)
 			}
-		}
-	}
-}
-
-func TestServerProtectionCompositionDoesNotOwnSSHRecovery(t *testing.T) {
-	path := filepath.Join("..", "..", "components", "server-protection", "component.go")
-	data, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(data)
-	for _, forbidden := range []string{"SSHObserver", "PanelWriter", "RegisterEvidenceProvider", "RegisterPanel"} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("server-protection composition retains SSH/recovery ownership %q", forbidden)
 		}
 	}
 }

@@ -19,9 +19,38 @@ import (
 	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 	totputil "github.com/MalenkiySolovey/solovey-ui/util/totp"
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
+
+func TestPanelSecurityPostureEncodesEmptyProxyCollectionsAsArrays(t *testing.T) {
+	t.Setenv("SUI_TRUSTED_PROXIES", "")
+	settingService := initSessionTestDB(t)
+	if _, err := settingService.GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.DB().Model(&model.Setting{}).Where("key = ?", "webPath").Update("value", "/").Error; err != nil {
+		t.Fatal(err)
+	}
+	const password = "Account posture regression secret 2026!"
+	if err := (&service.UserService{}).UpdateFirstUser("admin", password); err != nil {
+		t.Fatal(err)
+	}
+	router, _ := newAdminFlowRouter(t)
+	jar := &integrationCookieJar{}
+	loginAdminFlowUser(t, router, jar, "admin", password)
+
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/security/posture", nil)
+	request.Header.Set("X-Requested-With", "XMLHttpRequest")
+	result := performIntegrationRequest(router, request, jar)
+	if result.Code != http.StatusOK {
+		t.Fatalf("security posture status=%d body=%s", result.Code, result.Body.String())
+	}
+	for _, arrayField := range []string{`"trustedProxyCidrs":[]`, `"warningCodes":[]`} {
+		if !strings.Contains(result.Body.String(), arrayField) {
+			t.Fatalf("security posture lost empty-array contract %s: %s", arrayField, result.Body.String())
+		}
+	}
+}
 
 func TestPanelSecurityForcedPasswordTransitionIsRestrictedStrictAndAtomic(t *testing.T) {
 	resetRateLimitState()
@@ -65,7 +94,7 @@ func TestPanelSecurityForcedPasswordTransitionIsRestrictedStrictAndAtomic(t *tes
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
 	NewAPIHandler(router.Group("/api"), nil)
 	jar := integrationCookieJar{}
 
@@ -218,7 +247,7 @@ func TestPanelSecurityRecoveryCodeCannotBypassForcedRecoveryTransition(t *testin
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
 	NewAPIHandler(router.Group("/api"), nil)
 	jar := integrationCookieJar{}
 

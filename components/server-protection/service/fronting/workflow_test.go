@@ -10,11 +10,12 @@ import (
 
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	helperinvoker "github.com/MalenkiySolovey/solovey-ui/components/server-protection/internal/normalci/helperinvoker"
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	sptest "github.com/MalenkiySolovey/solovey-ui/testsupport/serverprotection"
+	helperinvoker "github.com/MalenkiySolovey/solovey-ui/testsupport/serverprotectionhelper"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -453,14 +454,11 @@ func newFrontingFixture(t *testing.T, health HealthCheck) frontingFixture {
 	manager := protectionoperations.NewManager(repository, protectionoperations.Options{InstanceID: "fronting-test", PID: 77, Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil }})
 	t.Cleanup(func() { _ = manager.Stop(context.Background()) })
 	rootPath := filepath.Join(t.TempDir(), ".runtime", "server-protection")
-	storage, err := protectionartifacts.New(rootPath)
+	storage, err := protectionartifacts.NewWithRecoveryProjection(rootPath, sptest.SystemdRecoveryProjection())
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := protectionhelper.NewManagedRoot(rootPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	root := sptest.ManagedRoot(t, rootPath)
 	nginx := helperinvoker.NewNginx()
 	previous, previousSHA := strings.Repeat("a", 64), strings.Repeat("b", 64)
 	nginx.ActiveRevision, nginx.ActiveSHA256 = previous, previousSHA

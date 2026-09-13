@@ -67,7 +67,6 @@ const data = Data()
 const ws = Ws()
 
 const browserOnline = ref(typeof navigator === 'undefined' ? true : navigator.onLine)
-const nowSec = ref(Math.floor(Date.now() / 1000))
 const statusPayload = ref<unknown>()
 const statusLoading = ref(true)
 const statusLoaded = ref(false)
@@ -91,7 +90,7 @@ let previousNetworkSample = overviewStatusNetworkSample()
 
 const storeLoading = computed(() => data.lastLoad === 0)
 const dashboardLoading = computed(() => storeLoading.value || statusLoading.value || trafficLoading.value)
-const systemStatus = computed(() => selectSystemStatus(statusPayload.value, nowSec.value))
+const systemStatus = computed(() => selectSystemStatus(statusPayload.value))
 const systemMetrics = computed(() => overviewStatusMetrics(statusPayload.value))
 const trafficSeries = computed(() => selectTrafficSeries({
   range: trafficRange.value,
@@ -164,8 +163,6 @@ const loadStatus = async () => {
   statusRequestPending = true
   statusLoading.value = !statusLoaded.value
   const msg = await loadOverviewStatus()
-  nowSec.value = Math.floor(Date.now() / 1000)
-
   if (msg.success) {
     statusPayload.value = msg.obj
     statusLoaded.value = true

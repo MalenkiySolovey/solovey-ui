@@ -82,6 +82,9 @@ func (r *Repository) BeginUDPGuardReceipt(ctx context.Context, action, key, dige
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
+		if err := ensureReceiptKeyFreshTx(tx, receiptFamilyUDPGuard, key, now); err != nil {
+			return err
+		}
 		current = UDPGuardIdempotencyV1Model{Action: action, IdempotencyKey: key, RequestDigest: digest, Status: "PENDING", SemanticResponseJSON: json.RawMessage(`{}`), CreatedAt: now, UpdatedAt: now}
 		if err := tx.Create(&current).Error; err != nil {
 			return err
@@ -90,6 +93,21 @@ func (r *Repository) BeginUDPGuardReceipt(ctx context.Context, action, key, dige
 		return nil
 	})
 	return result, replay, err
+}
+
+func (r *Repository) BindUDPGuardReceiptOperation(ctx context.Context, id uint, operationID string, operationRevision int) error {
+	if r == nil || r.db == nil || id == 0 || operationID == "" || len(operationID) > 128 || operationRevision <= 0 {
+		return ErrUDPGuardIdempotencyConflict
+	}
+	result := r.db.WithContext(ctx).Model(&UDPGuardIdempotencyV1Model{}).Where("id = ? AND status = ?", id, "PENDING").
+		Updates(map[string]any{"operation_id": operationID, "operation_revision": operationRevision, "updated_at": time.Now().UTC().Unix()})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrUDPGuardIdempotencyConflict
+	}
+	return nil
 }
 
 func (r *Repository) CompleteUDPGuardReceipt(ctx context.Context, id uint, operationID string, operationRevision int, response any) error {

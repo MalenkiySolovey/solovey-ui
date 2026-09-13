@@ -17,22 +17,29 @@ func TestObservedSSHInventoryPreservesAmbiguityAndTopology(t *testing.T) {
 	configuration := digestFixture("config")
 	ipv6Only := false
 	surface := hostfacts.HostSurfaceFactV1{Schema: hostfacts.SchemaV1, ID: "ssh-v6", Network: hostfacts.NetworkTCP,
-		Family: hostfacts.FamilyIPv6, Bind: "::", Port: 22, Exposure: hostfacts.ExposurePublic,
-		Service: hostfacts.ServiceFact{SystemdUnit: "sshd.service"}, DesiredOwner: "system", LastSeen: now.Unix(),
+		Family: hostfacts.FamilyIPv6, Bind: "::", Port: 22, Exposure: hostfacts.ExposurePublic, SocketInode: "22", SocketCookie: 42,
+		SemanticOwner: &hostfacts.SemanticOwnerFactV1{ManagementService: hostfacts.ManagementServiceSSH, Source: "sshbroker:posture", Revision: configuration,
+			AuthorityRevision: digestFixture("authority"), Socket: hostfacts.ListenerSocketIdentityV1{Network: hostfacts.NetworkTCP, Family: hostfacts.FamilyIPv6,
+				Bind: "::", Port: 22, Inode: "22", Cookie: 42, Wildcard: true, IPv6Only: &ipv6Only, CoverageFamilies: []hostfacts.Family{hostfacts.FamilyIPv4, hostfacts.FamilyIPv6}}},
+		DesiredOwner: "system", LastSeen: now.Unix(),
 		ExpiresAt: now.Add(time.Minute).Unix(), Source: "host-surface", ConfidenceBP: 8000,
-		ConfigurationRevision: configuration, ReasonCodes: []string{"owner_ambiguous"},
-		ListenerOwner: &hostfacts.ListenerOwnerFactV1{Socket: hostfacts.ListenerSocketIdentityV1{Family: hostfacts.FamilyIPv6,
-			Wildcard: true, IPv6Only: &ipv6Only, CoverageFamilies: []hostfacts.Family{hostfacts.FamilyIPv6, hostfacts.FamilyIPv4}}}}
+		ConfigurationRevision: configuration, ReasonCodes: []string{"owner_ambiguous"}}
 	values := Endpoints(nil, hostfacts.Snapshot{Facts: []hostfacts.HostSurfaceFactV1{surface}}, now)
-	if len(values) != 1 {
+	if len(values) != 2 {
 		t.Fatalf("endpoints=%#v", values)
 	}
-	value := values[0]
-	if !value.ObservedListener || value.ConfiguredIntent || !value.Wildcard || !value.DualStack || len(value.ReasonCodes) != 1 || value.ReasonCodes[0] != "owner_ambiguous" {
-		t.Fatalf("endpoint=%#v", value)
+	families := map[hostresources.AddressFamily]bool{}
+	for _, value := range values {
+		families[value.Family] = true
+		if !value.ObservedListener || value.ConfiguredIntent || !value.Wildcard || !value.DualStack || len(value.ReasonCodes) != 1 || value.ReasonCodes[0] != "owner_ambiguous" {
+			t.Fatalf("endpoint=%#v", value)
+		}
+		if hostresources.ManagementEndpointCurrent(value, now) {
+			t.Fatal("ambiguous listener was accepted as current")
+		}
 	}
-	if hostresources.ManagementEndpointCurrent(value, now) {
-		t.Fatal("ambiguous listener was accepted as current")
+	if !families[hostresources.AddressFamilyIPv4] || !families[hostresources.AddressFamilyIPv6] {
+		t.Fatalf("dual-stack families were not both projected: %#v", values)
 	}
 }
 

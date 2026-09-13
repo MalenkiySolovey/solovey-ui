@@ -1,6 +1,14 @@
 package resources
 
-import "context"
+import (
+	"context"
+
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/deploymentidentity"
+)
+
+type ExpectedApplicationOwnerV1 = deploymentidentity.ExpectedApplicationOwnerV1
+
+const ExpectedApplicationOwnerSchemaV1 = deploymentidentity.ExpectedApplicationOwnerSchemaV1
 
 type CapabilityValue string
 
@@ -11,19 +19,19 @@ const (
 )
 
 type ProtectableResourceCapabilities struct {
-	Known                 bool                    `json:"known"`
-	AcceptsProxyProtocol  CapabilityValue         `json:"acceptsProxyProtocol"`
-	SupportsGracefulDrain CapabilityValue         `json:"supportsGracefulDrain"`
-	CanServeFallback      CapabilityValue         `json:"canServeFallback"`
-	RequiresACMEHTTP01    CapabilityValue         `json:"requiresAcmeHttp01"`
-	RequiresTLSALPN01     CapabilityValue         `json:"requiresTlsAlpn01"`
-	PublicHostnames       []string                `json:"publicHostnames,omitempty"`
-	RouteHints            []string                `json:"routeHints,omitempty"`
-	TLSMode               string                  `json:"tlsMode,omitempty"`
-	FallbackTargetID      string                  `json:"fallbackTargetId,omitempty"`
-	OwnerRevision         string                  `json:"ownerRevision,omitempty"`
-	ConfigRevision        string                  `json:"configRevision,omitempty"`
-	ExpectedListenerOwner ExpectedListenerOwnerV1 `json:"expectedListenerOwner,omitempty"`
+	Known                    bool                                          `json:"known"`
+	AcceptsProxyProtocol     CapabilityValue                               `json:"acceptsProxyProtocol"`
+	SupportsGracefulDrain    CapabilityValue                               `json:"supportsGracefulDrain"`
+	CanServeFallback         CapabilityValue                               `json:"canServeFallback"`
+	RequiresACMEHTTP01       CapabilityValue                               `json:"requiresAcmeHttp01"`
+	RequiresTLSALPN01        CapabilityValue                               `json:"requiresTlsAlpn01"`
+	PublicHostnames          []string                                      `json:"publicHostnames,omitempty"`
+	RouteHints               []string                                      `json:"routeHints,omitempty"`
+	TLSMode                  string                                        `json:"tlsMode,omitempty"`
+	FallbackTargetID         string                                        `json:"fallbackTargetId,omitempty"`
+	OwnerRevision            string                                        `json:"ownerRevision,omitempty"`
+	ConfigRevision           string                                        `json:"configRevision,omitempty"`
+	ExpectedApplicationOwner deploymentidentity.ExpectedApplicationOwnerV1 `json:"expectedApplicationOwner,omitempty"`
 }
 
 type ProtectableResource struct {
@@ -44,6 +52,8 @@ type ProtectableResource struct {
 	ListenIntent        ConfiguredListenIntentV1        `json:"listenIntent"`
 	ListenIntents       []ConfiguredListenIntentV1      `json:"listenIntents,omitempty"`
 	Endpoints           []PublicEndpoint                `json:"endpoints"`
+	SocketCoverage      *SocketCoverageV1               `json:"socketCoverage,omitempty"`
+	ManagementEndpoints []ManagementEndpointV1          `json:"managementEndpoints,omitempty"`
 	AdvertisedEndpoints []AdvertisedEndpoint            `json:"advertisedEndpoints,omitempty"`
 	Warnings            []string                        `json:"warnings,omitempty"`
 }

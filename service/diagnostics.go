@@ -86,7 +86,7 @@ func (s *DiagnosticsService) Bundle() DiagnosticsBundle {
 		Logs:        opsdiagnostics.RedactLogEntries(logs),
 		Notes: []string{
 			"Diagnostic bundle is read-only and does not include raw sing-box config, database dump, or private keys. Common secret patterns in included log messages are redacted.",
-			"Server-side journalctl/systemd/port checks are available from: sudo solovey-ui doctor --full",
+			"Installed component metadata can be checked locally with: solovey-ui doctor --components",
 		},
 	}
 }

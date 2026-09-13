@@ -1,0 +1,6 @@
+# Stable installation identity is a minimal sysupgrade input. The package-owned
+# hook prepares the two logical database preservation files before OpenWrt
+# builds its native archive.
+/etc/solovey-ui/openwrt-instance-id
+/etc/solovey-ui/db/sysupgrade-preservation/database.db
+/etc/solovey-ui/db/sysupgrade-preservation/metadata.json

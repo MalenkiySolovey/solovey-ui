@@ -12,7 +12,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
+	"time"
+
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/executableobject"
 )
 
 const managedTable = "inet solovey_protection"
@@ -25,15 +29,16 @@ const nftRateCapabilityProbe = "table inet solovey_capability_probe {\n  chain i
 // NFTSupport is explicit so an unknown platform, binary, or primitive never
 // becomes an affirmative capability by inference.
 type NFTSupport struct {
-	PlatformKnown   bool   `json:"platform_known"`
-	Linux           bool   `json:"linux"`
-	Available       bool   `json:"available"`
-	Version         string `json:"version,omitempty"`
-	TTLSet          bool   `json:"ttl_set"`
-	RateLimit       bool   `json:"rate_limit"`
-	TTLSetReason    string `json:"ttl_set_reason,omitempty"`
-	RateLimitReason string `json:"rate_limit_reason,omitempty"`
-	Reason          string `json:"reason,omitempty"`
+	BaseFirewallPresent bool   `json:"base_firewall_present"`
+	PlatformKnown       bool   `json:"platform_known"`
+	Linux               bool   `json:"linux"`
+	Available           bool   `json:"available"`
+	Version             string `json:"version,omitempty"`
+	TTLSet              bool   `json:"ttl_set"`
+	RateLimit           bool   `json:"rate_limit"`
+	TTLSetReason        string `json:"ttl_set_reason,omitempty"`
+	RateLimitReason     string `json:"rate_limit_reason,omitempty"`
+	Reason              string `json:"reason,omitempty"`
 }
 
 // NFTExecutor is the complete privileged command vocabulary. It has no method
@@ -43,27 +48,49 @@ type NFTExecutor interface {
 	CheckManagedFile(context.Context, string) error
 	ListManagedTable(context.Context) ([]byte, bool, error)
 	ApplyManagedFile(context.Context, string) error
+	DeleteManagedTable(context.Context) error
 }
 
-type systemNFTExecutor struct{ binary string }
+type systemNFTExecutor struct{ binary *executableobject.Object }
 
 func newSystemNFTExecutor() NFTExecutor {
 	if runtime.GOOS != "linux" {
 		return systemNFTExecutor{}
 	}
-	for _, candidate := range []string{"/usr/sbin/nft", "/usr/bin/nft", "/sbin/nft", "/bin/nft"} {
-		if info, err := os.Stat(candidate); err == nil && info.Mode().IsRegular() {
-			return systemNFTExecutor{binary: candidate}
+	return systemNFTExecutor{binary: openNFTExecutable([]string{"/usr/sbin/nft", "/usr/bin/nft", "/sbin/nft", "/bin/nft"})}
+}
+
+func openNFTExecutable(candidates []string) *executableobject.Object {
+	var selected *executableobject.Object
+	for _, candidate := range candidates {
+		binary, err := executableobject.Open(candidate, executableobject.Policy{
+			MaxBytes: 64 << 20, AllowSymlink: true, RequireRegular: true, RequireExecutable: true,
+			RequireRootOwner: true, ForbiddenMode: 0o022,
+			RequireTrustedAncestry: true, AncestryOwner: 0, AncestryForbiddenMode: 0o022,
+		})
+		if err != nil {
+			continue
 		}
+		if selected == nil {
+			selected = binary
+			continue
+		}
+		left, right := selected.Identity(), binary.Identity()
+		if left.Device != right.Device || left.Inode != right.Inode || left.Digest != right.Digest {
+			_ = selected.Close()
+			_ = binary.Close()
+			return nil
+		}
+		_ = binary.Close()
 	}
-	return systemNFTExecutor{}
+	return selected
 }
 
 func (e systemNFTExecutor) Detect(ctx context.Context) NFTSupport {
 	if runtime.GOOS != "linux" {
 		return NFTSupport{PlatformKnown: true, Linux: false, Reason: "linux_required"}
 	}
-	if e.binary == "" {
+	if e.binary == nil {
 		return NFTSupport{PlatformKnown: true, Linux: true, Reason: "nft_not_installed"}
 	}
 	out, _, err := e.run(ctx, "--version")
@@ -74,12 +101,19 @@ func (e systemNFTExecutor) Detect(ctx context.Context) NFTSupport {
 	if len(version) > 128 {
 		version = version[:128]
 	}
-	if _, _, err := e.run(ctx, "list", "tables"); err != nil {
+	tables, _, err := e.run(ctx, "list", "tables")
+	if err != nil {
 		return NFTSupport{PlatformKnown: true, Linux: true, Version: version, Reason: "nft_access_unavailable"}
 	}
 	_, _, ttlErr := e.runWithInput(ctx, []byte(nftTTLCapabilityProbe), nftCapabilityCheckArguments()...)
 	_, _, rateErr := e.runWithInput(ctx, []byte(nftRateCapabilityProbe), nftCapabilityCheckArguments()...)
-	return nftSupportFromPrimitiveChecks(version, ttlErr, rateErr)
+	support := nftSupportFromPrimitiveChecks(version, ttlErr, rateErr)
+	for _, line := range strings.Split(string(tables), "\n") {
+		if strings.TrimSpace(line) == "table inet fw4" {
+			support.BaseFirewallPresent = true
+		}
+	}
+	return support
 }
 
 func nftCapabilityCheckArguments() []string {
@@ -122,23 +156,75 @@ func (e systemNFTExecutor) ApplyManagedFile(ctx context.Context, path string) er
 	return err
 }
 
+func (e systemNFTExecutor) DeleteManagedTable(ctx context.Context) error {
+	_, _, err := e.run(ctx, "delete", "table", "inet", "solovey_protection")
+	return err
+}
+
+// RemoveManagedTableForPackageRemoval is the terminal package-owner cleanup
+// seam. It is deliberately narrower than the broker protocol: after the panel
+// and broker have stopped, the root-owned OpenWrt lifecycle may remove only a
+// freshly authenticated inet solovey_protection table. Absence is idempotent;
+// a same-name foreign or concurrently replaced table fails visibly.
+func RemoveManagedTableForPackageRemoval(ctx context.Context) error {
+	if runtime.GOOS != "linux" {
+		return errors.New("managed nft package cleanup requires Linux")
+	}
+	executor := newSystemNFTExecutor()
+	if system, ok := executor.(systemNFTExecutor); ok && system.binary != nil {
+		defer system.binary.Close()
+	}
+	if support := executor.Detect(ctx); !support.Available {
+		return fmt.Errorf("managed nft package cleanup is unavailable: %s", support.Reason)
+	}
+	return removeManagedTableForPackageRemoval(ctx, executor)
+}
+
+func removeManagedTableForPackageRemoval(ctx context.Context, executor NFTExecutor) error {
+	before, err := observeManagedTable(ctx, executor)
+	if err != nil {
+		return err
+	}
+	if !before.present {
+		return nil
+	}
+	if before.revision == "" || before.semanticSHA == "" || before.timedMembershipSHA == "" {
+		return errors.New("managed nft package cleanup owner is unproven")
+	}
+	if err := executor.DeleteManagedTable(ctx); err != nil {
+		return err
+	}
+	after, err := observeManagedTable(ctx, executor)
+	if err != nil {
+		return err
+	}
+	if after.present {
+		return errors.New("managed nft package cleanup did not remove the owned table")
+	}
+	return nil
+}
+
 func (e systemNFTExecutor) run(ctx context.Context, args ...string) ([]byte, []byte, error) {
 	return e.runWithInput(ctx, nil, args...)
 }
 
 func (e systemNFTExecutor) runWithInput(ctx context.Context, input []byte, args ...string) ([]byte, []byte, error) {
-	if e.binary == "" {
+	if e.binary == nil || e.binary.File() == nil || e.binary.Revalidate() != nil {
 		return nil, nil, errors.New("nft capability is unavailable")
 	}
+	bounded, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	stdout, stderr := &boundedBuffer{limit: MaxOutputBytes}, &boundedBuffer{limit: MaxOutputBytes}
-	command := exec.CommandContext(ctx, e.binary, args...)
-	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
+	command := exec.CommandContext(bounded, e.binary.ExecPath(0), args...)
+	command.Args[0] = e.binary.Label()
+	command.ExtraFiles = []*os.File{e.binary.File()}
+	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C", "TZ=UTC0"}
 	if input != nil {
 		command.Stdin = bytes.NewReader(input)
 	}
 	command.Stdout, command.Stderr = stdout, stderr
 	err := command.Run()
-	if stdout.truncated || stderr.truncated {
+	if stdout.truncated || stderr.truncated || bounded.Err() != nil {
 		return stdout.buffer.Bytes(), stderr.buffer.Bytes(), errors.New("nft output exceeded the bounded limit")
 	}
 	if err != nil {
@@ -153,7 +239,7 @@ func sha256Hex(data []byte) string {
 }
 
 func validateCandidate(data []byte, revision, expectedSHA string) error {
-	if len(data) == 0 || len(data) > MaxArtifactBytes {
+	if len(data) == 0 || len(data) > MaxManagedCandidateBytes {
 		return errors.New("candidate artifact size is invalid")
 	}
 	if sha256Hex(data) != expectedSHA {
@@ -170,7 +256,7 @@ func validateCandidate(data []byte, revision, expectedSHA string) error {
 	allowedElements := regexp.MustCompile(`^elements = \{ [0-9a-f:.,/ ]* \}$`)
 	allowedTimedElements := regexp.MustCompile(`^elements = \{ [0-9a-f:./]+ timeout [0-9]{1,5}s(, [0-9a-f:./]+ timeout [0-9]{1,5}s)* \}$`)
 	allowedSize := regexp.MustCompile(`^(size [1-9][0-9]{0,4}|timeout [1-9][0-9]{0,4}s)$`)
-	allowedEndpointJump := regexp.MustCompile(`^meta nfproto ipv([46])( ip6? saddr [0-9a-f:./]+)?( ip6? daddr [0-9a-f:.]+)? meta l4proto (tcp|udp) (tcp|udp) dport [0-9]{1,5} (counter accept|jump solovey_endpoint_[a-f0-9]{12})$`)
+	allowedEndpointJump := regexp.MustCompile(`^meta nfproto ipv([46])( ip6? saddr [0-9a-f:./]+)?( ip6? daddr [0-9a-f:.]+)? meta l4proto (tcp|udp) (tcp|udp) dport [0-9]{1,5}( meta time < [1-9][0-9]{0,11})? (counter accept|jump solovey_endpoint_[a-f0-9]{12})$`)
 	allowedEndpointAction := regexp.MustCompile(`^(ip|ip6) saddr @solovey_(gray|rate|quarantine|block)[46]_[a-f0-9]{12}( limit rate over (2|5|20)/second burst (4|10|40) packets)? counter drop$`)
 	for _, raw := range strings.Split(string(data), "\n") {
 		line := strings.TrimSpace(raw)
@@ -180,7 +266,12 @@ func validateCandidate(data []byte, revision, expectedSHA string) error {
 			destination := match[3]
 			metaProtocol := match[4]
 			portProtocol := match[5]
-			if metaProtocol != portProtocol || family == "4" && (strings.HasPrefix(source, " ip6 ") || strings.HasPrefix(destination, " ip6 ")) || family == "6" && (strings.HasPrefix(source, " ip ") || strings.HasPrefix(destination, " ip ")) {
+			expires, action := match[6], match[7]
+			expiresSeconds := int64(0)
+			if expires != "" {
+				expiresSeconds, _ = strconv.ParseInt(strings.TrimPrefix(expires, " meta time < "), 10, 64)
+			}
+			if metaProtocol != portProtocol || expires != "" && (strings.HasPrefix(action, "jump ") || expiresSeconds <= 0 || expiresSeconds > 253402300799) || family == "4" && (strings.HasPrefix(source, " ip6 ") || strings.HasPrefix(destination, " ip6 ")) || family == "6" && (strings.HasPrefix(source, " ip ") || strings.HasPrefix(destination, " ip ")) {
 				return fmt.Errorf("candidate contains a conflated endpoint family or protocol")
 			}
 			continue

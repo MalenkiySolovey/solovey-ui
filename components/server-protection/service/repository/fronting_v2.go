@@ -93,6 +93,9 @@ func (r *Repository) ClaimFrontingReceiptV2(ctx context.Context, value FrontingI
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
+		if err := ensureReceiptKeyFreshTx(tx, receiptFamilyFronting, value.IdempotencyKey, value.CreatedAt); err != nil {
+			return err
+		}
 		if err := tx.Create(&value).Error; err != nil {
 			return err
 		}
@@ -109,12 +112,27 @@ func (r *Repository) FrontingReceiptV2(ctx context.Context, action, key string) 
 	var value FrontingIdempotencyV2Model
 	err := r.db.WithContext(ctx).Where("action = ? AND idempotency_key = ?", action, key).First(&value).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if fenceErr := receiptLookupMissing(ctx, r.db, receiptFamilyFronting, key, time.Now().UTC().Unix()); fenceErr != nil {
+			return FrontingIdempotencyV2Model{}, fenceErr
+		}
 		return FrontingIdempotencyV2Model{}, ErrRecordNotFound
 	}
 	if err == nil && !ValidFrontingIdempotencyV2Model(value) {
 		return FrontingIdempotencyV2Model{}, errors.New("fronting idempotency receipt is invalid")
 	}
 	return value, err
+}
+
+func (r *Repository) AmbiguousFrontingReceiptV2(ctx context.Context, action, key, digest string, now int64) error {
+	if r == nil || r.db == nil {
+		return errors.New("server-protection repository is not initialized")
+	}
+	if now <= 0 {
+		return errors.New("fronting idempotency receipt is invalid")
+	}
+	return r.db.WithContext(ctx).Model(&FrontingIdempotencyV2Model{}).
+		Where("action = ? AND idempotency_key = ? AND request_digest = ? AND status = ?", action, key, digest, FrontingReceiptPending).
+		Updates(map[string]any{"status": FrontingReceiptAmbiguous, "updated_at": now}).Error
 }
 
 func (r *Repository) CompleteFrontingReceiptV2(ctx context.Context, action, key, digest string, operationID string, operationRevision int, response []byte, now int64) error {
@@ -205,7 +223,7 @@ func ValidFrontingIdempotencyV2Model(value FrontingIdempotencyV2Model) bool {
 	if value.Status == FrontingReceiptComplete {
 		return frontingOpaqueV2(value.OperationID, 128) && value.OperationRevision > 0
 	}
-	return value.OperationID == "" && value.OperationRevision == 0
+	return value.OperationID == "" && value.OperationRevision == 0 || frontingOpaqueV2(value.OperationID, 128) && value.OperationRevision > 0
 }
 
 func frontingStateDesiredV2(value string) bool {

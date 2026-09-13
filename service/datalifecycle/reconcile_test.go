@@ -2,6 +2,7 @@ package datalifecycle
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 	"time"
@@ -27,6 +28,13 @@ func TestStartupReconciliationClosesSafeInterruptionsAndFencesAmbiguousOnes(t *t
 	now := time.Unix(1_900_000_000, 0)
 	manager := NewManager()
 	manager.DB, manager.Now = func() *gorm.DB { return db }, func() time.Time { return now }
+	manager.Root, manager.RestoreRoot = filepath.Join(t.TempDir(), "drop"), filepath.Join(t.TempDir(), "restore")
+	if err := os.MkdirAll(manager.Root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(manager.RestoreRoot, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	operations := []model.DataLifecycleOperation{
 		reconcileFixture("restore", "RESTORE", "RESTORING", false),
 		reconcileFixture("drop-before", "DROP_DATA", "BACKUP_READY", false),
@@ -35,6 +43,18 @@ func TestStartupReconciliationClosesSafeInterruptionsAndFencesAmbiguousOnes(t *t
 	}
 	if err := db.Create(&operations).Error; err != nil {
 		t.Fatal(err)
+	}
+	for _, operation := range operations {
+		if operation.BackupRef == "" {
+			continue
+		}
+		path := filepath.Join(manager.RestoreRoot, "pre-restore-"+operation.BackupRef+".db")
+		if operation.Kind == "DROP_DATA" {
+			path = filepath.Join(manager.Root, portableDropRecoveryFilename(operation.OperationID))
+		}
+		if err := os.WriteFile(path, []byte("backup"), 0o600); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := manager.ReconcileStartup(context.Background()); err != nil {
 		t.Fatal(err)
@@ -57,6 +77,39 @@ func TestStartupReconciliationClosesSafeInterruptionsAndFencesAmbiguousOnes(t *t
 	var journals int64
 	if err := db.Model(&model.DataLifecycleJournal{}).Count(&journals).Error; err != nil || journals != int64(len(wanted)) {
 		t.Fatalf("startup reconciliation journals=%d err=%v", journals, err)
+	}
+}
+
+func TestStartupReconciliationFailsClosedWhenCommittedRecoveryReferenceCannotReopen(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "missing-reference.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sqlDB, err := db.DB(); err != nil {
+		t.Fatal(err)
+	} else {
+		t.Cleanup(func() { _ = sqlDB.Close() })
+	}
+	if err := db.AutoMigrate(&model.DataLifecycleOperation{}, &model.DataLifecycleJournal{}); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_900_100_000, 0).UTC()
+	manager := &Manager{DB: func() *gorm.DB { return db }, Now: func() time.Time { return now },
+		Root: filepath.Join(t.TempDir(), "drop"), RestoreRoot: filepath.Join(t.TempDir(), "restore")}
+	operation := reconcileFixture("missing-artifact", "DROP_DATA", "APPLIED", false)
+	operation.CreatedAt, operation.UpdatedAt = now.Unix(), now.Unix()
+	if err := db.Create(&operation).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := manager.ReconcileStartup(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	var observed model.DataLifecycleOperation
+	if err := db.First(&observed, "operation_id = ?", operation.OperationID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if observed.State != "RECOVERY_REQUIRED" || observed.ReasonCode != "data_lifecycle_recovery_backup_unavailable" || observed.Revision != operation.Revision+1 {
+		t.Fatalf("missing committed reference remained trusted: %#v", observed)
 	}
 }
 

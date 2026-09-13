@@ -15,6 +15,7 @@ import (
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	protectionudpguard "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/udpguard"
+	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 	"github.com/gin-gonic/gin"
 )
@@ -29,6 +30,7 @@ type Deps struct {
 	Repository        *protectionrepository.Repository
 	RequireScope      func(*gin.Context, string, ...string) bool
 	Actor             func(*gin.Context) string
+	ClientIdentity    func(*gin.Context) clientidentity.V1
 	Audit             func(*gin.Context, string, string, string, string, map[string]any)
 	JSONObj           func(*gin.Context, interface{}, error)
 	JSONMsg           func(*gin.Context, string, error)
@@ -141,6 +143,7 @@ func RegisterRoutes(group *gin.RouterGroup, deps Deps) {
 	routes.POST("/allowlist/ports", handler.createPortAllowlist)
 	routes.DELETE("/allowlist/ports/:id", handler.deletePortAllowlist)
 	routes.GET("/allowlist/ips", handler.ipAllowlist)
+	routes.GET("/allowlist/ips/proposal", handler.ipAllowlistProposal)
 	routes.POST("/allowlist/ips", handler.createIPAllowlist)
 	routes.DELETE("/allowlist/ips/:id", handler.deleteIPAllowlist)
 	routes.GET("/diagnostics", handler.diagnostics)

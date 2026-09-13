@@ -52,7 +52,7 @@ func TestNginxCapabilityFailsClosed(t *testing.T) {
 	}
 	for _, test := range cases {
 		t.Run(test.name, func(t *testing.T) {
-			config := test.config(NginxConfig{Platform: "linux", CandidatePaths: []string{binary}, ConfigRoot: "/etc/nginx", ManagedRoot: "/runtime/fronting", ControlledInclude: "/etc/nginx/solovey.conf"})
+			config := test.config(NginxConfig{ProbeCapability: AvailabilitySupported, CandidatePaths: []string{binary}, ConfigRoot: "/etc/nginx", ManagedRoot: "/runtime/fronting", ControlledInclude: "/etc/nginx/solovey.conf"})
 			adapter := &NginxAdapter{Config: config, Runner: &test.probe}
 			report := adapter.Capability(context.Background())
 			if report.State != test.want || report.Supported != (test.want == StateSupported) {
@@ -67,7 +67,7 @@ func TestNginxCapabilityFailsClosed(t *testing.T) {
 
 func TestNginxDetectionMultipleAndSymlink(t *testing.T) {
 	first, second := fakeBinary(t, "nginx-a"), fakeBinary(t, "nginx-b")
-	adapter := &NginxAdapter{Config: NginxConfig{Platform: "linux", CandidatePaths: []string{first, second}}, Runner: &fakeProbe{}}
+	adapter := &NginxAdapter{Config: NginxConfig{ProbeCapability: AvailabilitySupported, CandidatePaths: []string{first, second}}, Runner: &fakeProbe{}}
 	if got := adapter.Capability(context.Background()).State; got != StateMultipleBinaries {
 		t.Fatalf("state = %s", got)
 	}
@@ -75,7 +75,7 @@ func TestNginxDetectionMultipleAndSymlink(t *testing.T) {
 	if err := os.Symlink(first, link); err != nil {
 		t.Skipf("symlink unavailable: %v", err)
 	}
-	report := (&NginxAdapter{Config: NginxConfig{Platform: "linux", CandidatePaths: []string{link}, ConfigRoot: "/etc/nginx", ControlledInclude: "/etc/nginx/solovey.conf"}, Runner: &fakeProbe{result: ProbeResult{Stderr: []byte("nginx version: nginx/1.25\nconfigure arguments: --with-stream --with-stream_ssl_preread_module"), ExitCode: 0}}}).Capability(context.Background())
+	report := (&NginxAdapter{Config: NginxConfig{ProbeCapability: AvailabilitySupported, CandidatePaths: []string{link}, ConfigRoot: "/etc/nginx", ControlledInclude: "/etc/nginx/solovey.conf"}, Runner: &fakeProbe{result: ProbeResult{Stderr: []byte("nginx version: nginx/1.25\nconfigure arguments: --with-stream --with-stream_ssl_preread_module"), ExitCode: 0}}}).Capability(context.Background())
 	firstInfo, firstErr := os.Stat(first)
 	targetInfo, targetErr := os.Stat(report.Binary.TargetPath)
 	if firstErr != nil || targetErr != nil || !os.SameFile(firstInfo, targetInfo) || report.State != StateSupported {

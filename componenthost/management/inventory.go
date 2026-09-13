@@ -5,6 +5,7 @@ package management
 
 import (
 	"context"
+	"encoding/hex"
 	"net/netip"
 	"sort"
 	"strings"
@@ -26,7 +27,19 @@ func CurrentEndpoints(ctx context.Context, now time.Time) []hostresources.Manage
 func Endpoints(resources []hostresources.ProtectableResource, surfaces hostfacts.Snapshot, now time.Time) []hostresources.ManagementEndpointV1 {
 	now = now.UTC()
 	result := make([]hostresources.ManagementEndpointV1, 0)
+	projected := make(map[string]bool)
 	for _, resource := range resources {
+		if len(resource.ManagementEndpoints) > 0 {
+			// The resource's semantic owner already supplied exact management
+			// facts. Do not replace them with a surface-derived endpoint identity.
+			projected[resource.ID] = true
+			for _, endpoint := range resource.ManagementEndpoints {
+				if hostresources.ManagementEndpointBoundToResource(endpoint, resource, now) {
+					result = append(result, endpoint)
+				}
+			}
+			continue
+		}
 		kind, managed := applicationKind(resource.Kind)
 		if !managed {
 			continue
@@ -34,10 +47,13 @@ func Endpoints(resources []hostresources.ProtectableResource, surfaces hostfacts
 		result = append(result, configuredEndpoints(resource, kind, now)...)
 	}
 	for _, surface := range surfaces.Facts {
+		if projected[surface.RegisteredResourceID] {
+			continue
+		}
 		if surface.Network != hostfacts.NetworkTCP || surface.Port == 0 || surface.Family == hostfacts.FamilyUnknown || !IsSSHSurface(surface) {
 			continue
 		}
-		result = append(result, EndpointFromSurface(surface, now))
+		result = append(result, EndpointsFromSurface(surface, now)...)
 	}
 	return dedupe(result)
 }
@@ -96,16 +112,52 @@ func EndpointFromSurface(surface hostfacts.HostSurfaceFactV1, now time.Time) hos
 		RecoveryPolicy: "fresh_independent_path_required", Source: surface.Source, ObservedListener: true,
 		Wildcard: hostresources.NormalizeListen(surface.Bind).Wildcard(), DualStack: surfaceIsDualStack(surface), ConfidenceBP: surface.ConfidenceBP,
 		ObservedAt: surface.LastSeen, ExpiresAt: surface.ExpiresAt, ConfigurationRevision: configuredRevision,
-		RuntimeRevision: surfaceRuntimeRevision(surface), SemanticRevision: configuredRevision, ReasonCodes: reasons,
+		RuntimeRevision: surfaceRuntimeRevision(surface), SemanticRevision: surfaceSemanticRevision(surface), ReasonCodes: reasons,
 	}
 }
 
+// EndpointsFromSurface projects every address family proven by one exact SSH
+// socket authority. A dual-stack IPv6 socket remains one kernel socket and one
+// semantic resource, but management preservation must retain both reachable
+// endpoint families or its same-family trusted-source gate becomes incomplete.
+func EndpointsFromSurface(surface hostfacts.HostSurfaceFactV1, now time.Time) []hostresources.ManagementEndpointV1 {
+	base := EndpointFromSurface(surface, now)
+	if !IsSSHSurface(surface) || !surfaceIsDualStack(surface) {
+		return []hostresources.ManagementEndpointV1{base}
+	}
+	result := make([]hostresources.ManagementEndpointV1, 0, 2)
+	for _, family := range surface.SemanticOwner.Socket.CoverageFamilies {
+		endpoint := base
+		endpoint.DualStack = true
+		switch family {
+		case hostfacts.FamilyIPv4:
+			endpoint.Family = hostresources.AddressFamilyIPv4
+			endpoint.Bind = "0.0.0.0"
+		case hostfacts.FamilyIPv6:
+			endpoint.Family = hostresources.AddressFamilyIPv6
+			endpoint.Bind = "::"
+		default:
+			continue
+		}
+		endpoint.ID = "management:ssh:" + surface.ID + ":observed:" + string(endpoint.Family)
+		endpoint.Exposure = hostresources.EndpointIntentForBind(endpoint.Bind)
+		result = append(result, endpoint)
+	}
+	return result
+}
+
 func surfaceIsDualStack(surface hostfacts.HostSurfaceFactV1) bool {
-	if surface.ListenerOwner == nil || surface.Family != hostfacts.FamilyIPv6 || !surface.ListenerOwner.Socket.Wildcard || surface.ListenerOwner.Socket.IPv6Only == nil || *surface.ListenerOwner.Socket.IPv6Only {
+	var socket *hostfacts.ListenerSocketIdentityV1
+	if surface.ListenerOwner != nil {
+		socket = &surface.ListenerOwner.Socket
+	} else if IsSSHSurface(surface) {
+		socket = &surface.SemanticOwner.Socket
+	}
+	if socket == nil || surface.Family != hostfacts.FamilyIPv6 || !socket.Wildcard || socket.IPv6Only == nil || *socket.IPv6Only {
 		return false
 	}
 	has4, has6 := false, false
-	for _, family := range surface.ListenerOwner.Socket.CoverageFamilies {
+	for _, family := range socket.CoverageFamilies {
 		has4 = has4 || family == hostfacts.FamilyIPv4
 		has6 = has6 || family == hostfacts.FamilyIPv6
 	}
@@ -128,6 +180,9 @@ func surfaceRuntimeRevision(surface hostfacts.HostSurfaceFactV1) string {
 	if surface.ListenerOwner != nil {
 		return surface.ListenerOwner.ObservationRevision
 	}
+	if IsSSHSurface(surface) {
+		return surface.SemanticOwner.Revision
+	}
 	return ""
 }
 
@@ -135,14 +190,33 @@ func surfaceOwnerRevision(surface hostfacts.HostSurfaceFactV1) string {
 	if surface.ListenerOwner != nil {
 		return surface.ListenerOwner.Application.ResourceOwnerRevision
 	}
+	if IsSSHSurface(surface) {
+		return surface.SemanticOwner.Revision
+	}
 	return ""
 }
 
+func surfaceSemanticRevision(surface hostfacts.HostSurfaceFactV1) string {
+	if IsSSHSurface(surface) {
+		return surface.SemanticOwner.Revision
+	}
+	return surface.ConfigurationRevision
+}
+
 func IsSSHSurface(surface hostfacts.HostSurfaceFactV1) bool {
-	unit := strings.ToLower(strings.TrimSpace(surface.Service.SystemdUnit))
-	resource := strings.ToLower(strings.TrimSpace(surface.RegisteredResourceID))
-	return unit == "ssh.service" || unit == "sshd.service" || strings.HasPrefix(unit, "sshd@") && strings.HasSuffix(unit, ".service") ||
-		strings.HasPrefix(resource, "core:ssh:") || resource == "core:ssh"
+	owner := surface.SemanticOwner
+	return owner != nil && owner.ManagementService == hostfacts.ManagementServiceSSH && owner.Source != "" &&
+		exactInventoryRevision(owner.Revision) && exactInventoryRevision(owner.AuthorityRevision) &&
+		owner.Socket.Network == surface.Network && owner.Socket.Family == surface.Family && owner.Socket.Bind == surface.Bind &&
+		owner.Socket.Port == surface.Port && hostfacts.ListenerSocketIdentityMatchesSurface(owner.Socket, surface.SocketInode, surface.SocketCookie)
+}
+
+func exactInventoryRevision(value string) bool {
+	if len(value) != 64 || value != strings.ToLower(value) {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
 }
 
 // Effective applies endpoint, family, revision, operation and expiry fences to

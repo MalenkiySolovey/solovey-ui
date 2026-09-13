@@ -14,7 +14,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
 
@@ -146,7 +145,7 @@ func newAdminFlowRouter(t *testing.T) (*gin.Engine, *APIv2Handler) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	store := cookie.NewStore([]byte("test-secret"))
+	store := newAPITestSessionStore(t)
 	store.Options(sessions.Options{Path: "/", HttpOnly: true, Secure: true})
 	router.Use(sessions.Sessions("s-ui", store))
 	apiv2 := NewAPIv2Handler(router.Group("/apiv2"))

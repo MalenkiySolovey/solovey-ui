@@ -5,7 +5,6 @@ package api
 import (
 	"encoding/json"
 	"net/http"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -54,15 +53,22 @@ func TestMVPAPIInventoryProfileAndMissingApplyCapability(t *testing.T) {
 	}
 	previewResponse := requestProtectionAPI(router, http.MethodPost, "/api/components/server-protection/firewall/preview", `{"includeGeneratedNft":true}`)
 	var preview struct {
-		Backend      string   `json:"backend"`
-		WouldBlock   []string `json:"wouldBlock"`
-		GeneratedNFT string   `json:"generatedNft"`
+		Backend       string                              `json:"backend"`
+		WouldKeep     []string                            `json:"wouldKeep"`
+		WouldOpen     []string                            `json:"wouldOpen"`
+		WouldWarn     []string                            `json:"wouldWarn"`
+		WouldBlock    []string                            `json:"wouldBlock"`
+		Warnings      []string                            `json:"warnings"`
+		ProtectedKeep []hostresources.ProtectableResource `json:"protectedKeep"`
+		GeneratedNFT  string                              `json:"generatedNft"`
 	}
 	decodeProtectionObject(t, previewResponse, &preview)
-	wantBackend, wantGeneratedNFT := "unsupported", false
-	if runtime.GOOS == "linux" {
-		wantBackend, wantGeneratedNFT = "preview_only", true
+	if preview.WouldKeep == nil || preview.WouldOpen == nil || preview.WouldWarn == nil || preview.WouldBlock == nil || preview.Warnings == nil || preview.ProtectedKeep == nil {
+		t.Fatalf("firewall preview wire collection is nullable: %#v", preview)
 	}
+	// This API fixture deliberately has no injected helper capability. Linux
+	// host identity alone must not manufacture nft preview authority.
+	wantBackend, wantGeneratedNFT := "unsupported", false
 	if preview.Backend != wantBackend || len(preview.WouldBlock) != 0 || (wantGeneratedNFT != (preview.GeneratedNFT != "")) {
 		t.Fatalf("preview = %#v, want backend=%q generated=%t", preview, wantBackend, wantGeneratedNFT)
 	}

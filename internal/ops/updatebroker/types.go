@@ -36,17 +36,30 @@ type ReleaseIdentityV1 struct {
 }
 
 type ObservationV1 struct {
-	ProviderRevision  string `json:"providerRevision"`
-	InstalledSequence uint64 `json:"installedSequence"`
-	ActiveSequence    uint64 `json:"activeSequence"`
-	VerifiedSequence  uint64 `json:"verifiedSequence"`
-	InstalledDigest   string `json:"installedDigest,omitempty"`
-	ActiveDigest      string `json:"activeDigest,omitempty"`
-	VerifiedDigest    string `json:"verifiedDigest,omitempty"`
-	RollbackAvailable bool   `json:"rollbackAvailable"`
-	ManagementReady   bool   `json:"managementReady"`
-	ObservedAt        int64  `json:"observedAt"`
-	Revision          string `json:"revision"`
+	ProviderRevision               string `json:"providerRevision"`
+	InstalledSequence              uint64 `json:"installedSequence"`
+	ActiveSequence                 uint64 `json:"activeSequence"`
+	VerifiedSequence               uint64 `json:"verifiedSequence"`
+	MaxActivatedSequence           uint64 `json:"maxActivatedSequence"`
+	InstalledDigest                string `json:"installedDigest,omitempty"`
+	ActiveDigest                   string `json:"activeDigest,omitempty"`
+	VerifiedDigest                 string `json:"verifiedDigest,omitempty"`
+	MaxActivatedDigest             string `json:"maxActivatedDigest,omitempty"`
+	RollbackAvailable              bool   `json:"rollbackAvailable"`
+	RollbackOperationID            string `json:"rollbackOperationId,omitempty"`
+	RollbackManifestDigest         string `json:"rollbackManifestDigest,omitempty"`
+	RollbackRef                    string `json:"rollbackRef,omitempty"`
+	RollbackTargetSequence         uint64 `json:"rollbackTargetSequence,omitempty"`
+	RollbackTargetDigest           string `json:"rollbackTargetDigest,omitempty"`
+	PreparedRollbackAvailable      bool   `json:"preparedRollbackAvailable"`
+	PreparedRollbackOperationID    string `json:"preparedRollbackOperationId,omitempty"`
+	PreparedRollbackManifestDigest string `json:"preparedRollbackManifestDigest,omitempty"`
+	PreparedRollbackRef            string `json:"preparedRollbackRef,omitempty"`
+	PreparedRollbackTargetSequence uint64 `json:"preparedRollbackTargetSequence,omitempty"`
+	PreparedRollbackTargetDigest   string `json:"preparedRollbackTargetDigest,omitempty"`
+	ManagementReady                bool   `json:"managementReady"`
+	ObservedAt                     int64  `json:"observedAt"`
+	Revision                       string `json:"revision"`
 }
 
 type StageChunkRequestV1 struct {
@@ -65,6 +78,15 @@ type StageChunkResultV1 struct {
 	ArtifactDigest   string `json:"artifactDigest,omitempty"`
 }
 
+type ReleaseStagingRequestV1 struct {
+	ManifestDigest string `json:"manifestDigest"`
+}
+
+type ReleaseStagingResultV1 struct {
+	ProviderRevision string `json:"providerRevision"`
+	Released         bool   `json:"released"`
+}
+
 type PrepareRequestV1 struct {
 	Release                    ReleaseIdentityV1 `json:"release"`
 	ExpectedBrokerCapability   string            `json:"expectedBrokerCapability"`
@@ -75,6 +97,7 @@ type PrepareResultV1 struct {
 	ProviderRevision  string `json:"providerRevision"`
 	PreparedRef       string `json:"preparedRef"`
 	RollbackRef       string `json:"rollbackRef"`
+	RollbackAvailable bool   `json:"rollbackAvailable"`
 	ManagementReady   bool   `json:"managementReady"`
 	PreflightRevision string `json:"preflightRevision"`
 }

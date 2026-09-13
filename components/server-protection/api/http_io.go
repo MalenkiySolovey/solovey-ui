@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	"github.com/MalenkiySolovey/solovey-ui/middleware/requestbudget"
 	"github.com/gin-gonic/gin"
 )
 
@@ -26,7 +27,7 @@ func (h Handler) audit(c *gin.Context, event string, details map[string]any) {
 	}
 }
 
-func parsePage(c *gin.Context, fallback, max int) protectionrepository.PageQuery {
+func parsePage(c *gin.Context, fallback int) protectionrepository.PageQuery {
 	page := queryInt(c, "page")
 	if page < 1 {
 		page = 1
@@ -35,8 +36,8 @@ func parsePage(c *gin.Context, fallback, max int) protectionrepository.PageQuery
 	if limit < 1 {
 		limit = fallback
 	}
-	if limit > max {
-		limit = max
+	if limit > requestbudget.MaxPageSize {
+		limit = requestbudget.MaxPageSize
 	}
 	return protectionrepository.PageQuery{Page: page, Limit: limit}
 }

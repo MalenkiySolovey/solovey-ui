@@ -13,7 +13,6 @@ import (
 
 	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
 
@@ -60,7 +59,7 @@ func TestIssueWSTokenExtraRateLimit(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
 	router.GET("/login", func(c *gin.Context) {
 		generation, err := settingService.GetSessionGeneration()
 		if err != nil {
@@ -73,7 +72,7 @@ func TestIssueWSTokenExtraRateLimit(t *testing.T) {
 		}
 		c.Status(http.StatusNoContent)
 	})
-	router.GET("/api/realtime/ws-token", (&ApiService{}).realtimeHandler().IssueWSToken)
+	router.POST("/api/realtime/ws-token", (&ApiService{}).realtimeHandler().IssueWSToken)
 
 	loginRecorder := httptest.NewRecorder()
 	router.ServeHTTP(loginRecorder, httptest.NewRequest(http.MethodGet, "/login", nil))
@@ -88,7 +87,7 @@ func TestIssueWSTokenExtraRateLimit(t *testing.T) {
 		}
 	}
 	recorder := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "http://panel.example/api/realtime/ws-token", nil)
+	req := httptest.NewRequest(http.MethodPost, "http://panel.example/api/realtime/ws-token", nil)
 	req.Host = "panel.example"
 	req.RemoteAddr = "198.51.100.10:1234"
 	req.Header.Set("Origin", "http://panel.example")

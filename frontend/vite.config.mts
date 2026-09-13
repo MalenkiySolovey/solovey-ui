@@ -114,7 +114,7 @@ export default defineConfig({
   }
 })
 
-function componentEntriesPlugin(componentIDs: string[]): Plugin {
+export function componentEntriesPlugin(componentIDs: string[]): Plugin {
   const moduleID = 'virtual:solovey-component-entries'
   const resolvedModuleID = '\0' + moduleID
 

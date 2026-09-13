@@ -13,7 +13,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
 
@@ -31,7 +30,7 @@ func newSessionTestRouter(t *testing.T, settingService *service.SettingService) 
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
 	router.GET("/login", func(c *gin.Context) {
 		generation, err := settingService.GetSessionGeneration()
 		if err != nil {

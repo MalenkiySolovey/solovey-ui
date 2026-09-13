@@ -1,4 +1,5 @@
 d /run/solovey-ui 0750 root solovey-ui -
+d /run/solovey-ui/diagnostics 0700 root root -
 d /var/lib/solovey-ui 0750 solovey-ui solovey-ui -
 d /var/lib/solovey-ui/db 0700 solovey-ui solovey-ui -
 d /var/lib/solovey-ui/cert 0700 solovey-ui solovey-ui -

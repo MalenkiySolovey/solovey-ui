@@ -494,8 +494,10 @@ func (s *SemanticServiceV2) Recovery(ctx context.Context, operationID string) (F
 func (s *SemanticServiceV2) runMutation(ctx context.Context, action, key string, request any, invoke func() (WorkflowResultV2, error)) (FrontingOperationViewV2, error) {
 	digest := semanticDigestV2(request)
 	now := s.now().Unix()
+	operationID, operationRevision := frontingReceiptOperationV2(request)
 	receipt, joined, err := s.Repository.ClaimFrontingReceiptV2(ctx, protectionrepository.FrontingIdempotencyV2Model{
 		Action: action, IdempotencyKey: key, RequestDigest: digest, Status: protectionrepository.FrontingReceiptPending,
+		OperationID: operationID, OperationRevision: operationRevision,
 		ResponseJSON: []byte(`{}`), CreatedAt: now, UpdatedAt: now,
 	})
 	if err != nil {
@@ -514,6 +516,12 @@ func (s *SemanticServiceV2) runMutation(ctx context.Context, action, key string,
 		}
 		return replay, nil
 	}
+	complete := false
+	defer func() {
+		if !complete {
+			_ = s.Repository.AmbiguousFrontingReceiptV2(context.WithoutCancel(ctx), action, key, digest, s.now().Unix())
+		}
+	}()
 	result, err := invoke()
 	if err != nil {
 		return FrontingOperationViewV2{}, normalizeSemanticErrorV2(err)
@@ -530,7 +538,19 @@ func (s *SemanticServiceV2) runMutation(ctx context.Context, action, key string,
 	if err != nil || s.Repository.CompleteFrontingReceiptV2(context.WithoutCancel(ctx), action, key, digest, view.OperationID, view.OperationRevision, encoded, s.now().Unix()) != nil {
 		return FrontingOperationViewV2{}, semanticError("ambiguous_result", true)
 	}
+	complete = true
 	return view, nil
+}
+
+func frontingReceiptOperationV2(request any) (string, int) {
+	switch value := request.(type) {
+	case FrontingApplyRequestV2:
+		return value.OperationID, value.OperationRevision
+	case FrontingRollbackRequestV2:
+		return value.OperationID, value.OperationRevision
+	default:
+		return "", 0
+	}
 }
 
 func (s *SemanticServiceV2) inspectCheckpoint(ctx context.Context, operationID string) (protectionrepository.OperationLockModel, CheckpointV2, error) {
@@ -598,6 +618,8 @@ func normalizeSemanticErrorV2(err error) error {
 		return semanticError(workflow.Code, workflow.Ambiguous)
 	}
 	switch {
+	case errors.Is(err, protectionrepository.ErrIdempotencyKeyExpired), errors.Is(err, protectionrepository.ErrIdempotencyKeyInvalid):
+		return semanticError("idempotency_key_expired", false)
 	case errors.Is(err, protectionrepository.ErrRecordNotFound):
 		return semanticError("operation_not_found", false)
 	case errors.Is(err, protectionrepository.ErrRevisionConflict), errors.Is(err, protectionrepository.ErrOperationFenced):

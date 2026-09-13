@@ -35,6 +35,9 @@ func (m *Manager) ExecuteRestore(ctx context.Context, request RestoreRequest) (m
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := m.maintainLocked(ctx); err != nil {
+		return model.DataLifecycleOperation{}, result, err
+	}
 	if existing, err := m.byIdempotency(ctx, request.IdempotencyKey); err == nil {
 		if existing.Kind == "RESTORE" && existing.ExpectedRevision == request.ExpectedRehearsalRevision {
 			return existing, result, nil
@@ -56,7 +59,7 @@ func (m *Manager) ExecuteRestore(ctx context.Context, request RestoreRequest) (m
 	if _, err := request.Source.Seek(0, io.SeekStart); err != nil {
 		return model.DataLifecycleOperation{}, result, err
 	}
-	now := m.Now().UTC().Unix()
+	now := m.now().Unix()
 	manifestDigest := ""
 	if rehearsal.Manifest != nil {
 		manifestDigest = rehearsal.Manifest.BackupID
@@ -78,7 +81,7 @@ func (m *Manager) ExecuteRestore(ctx context.Context, request RestoreRequest) (m
 	if err != nil {
 		return operation, result, err
 	}
-	result, err = dbbackup.RestoreContextDetailed(ctx, request.Source)
+	result, err = dbbackup.RestoreContextDetailedWithRecoveryRoot(ctx, request.Source, m.restoreRecoveryRoot())
 	if err != nil {
 		failed, recordErr := m.fail(ctx, operation, "restore_failed", err)
 		if recordErr != nil {
@@ -87,16 +90,21 @@ func (m *Manager) ExecuteRestore(ctx context.Context, request RestoreRequest) (m
 		return failed, result, err
 	}
 	operation.BackupRef = result.RecoveryBackupRef
-	operation.State, operation.ReasonCode, operation.Revision, operation.UpdatedAt = "APPLIED", "", operation.Revision+1, m.Now().UTC().Unix()
+	operation.State, operation.ReasonCode, operation.Revision, operation.UpdatedAt = "APPLIED", "", operation.Revision+1, m.now().Unix()
 	if err := m.writeRestoredOperation(ctx, operation); err != nil {
-		return m.rollbackUnacceptedRestore(ctx, operation, result, "restore_journal_unavailable", err)
+		rolledBack, execution, rollbackErr := m.rollbackUnacceptedRestore(ctx, operation, result, "restore_journal_unavailable", err)
+		cleanupErr := m.removeUnreferencedRecoveryArtifact(ctx, "RESTORE", operation.OperationID, operation.BackupRef)
+		return rolledBack, execution, errors.Join(rollbackErr, cleanupErr)
 	}
 	cleanupPending, restartPending, err := dbbackup.CompletePendingRestore(ctx)
 	result.RecoveryCleanupPending, result.RestartPending = cleanupPending, restartPending
 	if err != nil {
-		return m.rollbackUnacceptedRestore(ctx, operation, result, "restore_acceptance_unavailable", err)
+		rolledBack, execution, rollbackErr := m.rollbackUnacceptedRestore(ctx, operation, result, "restore_acceptance_unavailable", err)
+		cleanupErr := m.removeUnreferencedRecoveryArtifact(ctx, "RESTORE", operation.OperationID, operation.BackupRef)
+		return rolledBack, execution, errors.Join(rollbackErr, cleanupErr)
 	}
-	return operation, result, nil
+	_, pruneErr := m.pruneLocked(ctx)
+	return operation, result, pruneErr
 }
 
 func (m *Manager) rollbackUnacceptedRestore(
@@ -119,7 +127,8 @@ func (m *Manager) rollbackUnacceptedRestore(
 		rolledBack.State, rolledBack.ReasonCode = "RECOVERY_REQUIRED", reason
 		return rolledBack, result, errors.Join(ErrRecoveryRequired, cause, recordErr)
 	}
-	return rolledBack, result, cause
+	_, pruneErr := m.pruneLocked(ctx)
+	return rolledBack, result, errors.Join(cause, pruneErr)
 }
 
 func (m *Manager) writeRestoredOperation(ctx context.Context, operation model.DataLifecycleOperation) error {

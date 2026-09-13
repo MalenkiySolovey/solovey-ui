@@ -27,6 +27,152 @@ const (
 	testOperationTerminal = "operation-00000000000000000000000000000008"
 )
 
+func TestStorageAcceptsDeploymentSuppliedRuntimeShape(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "run", "solovey-ui", "server-protection")
+	storage, err := New(root)
+	if err != nil {
+		t.Fatalf("deployment-supplied runtime root was rejected: %v", err)
+	}
+	if storage.Root() != filepath.Clean(root) {
+		t.Fatalf("storage root = %q, want %q", storage.Root(), filepath.Clean(root))
+	}
+}
+
+func TestInstalledStoragePublishesExactDeploymentProjection(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "run", "solovey-ui", "server-protection")
+	if err := os.MkdirAll(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := NewInstalledWithRecoveryProjection(root, RecoveryProjection{
+		Authority: "authenticated_broker", SelfRecoveryAvailable: true,
+		Action: RecoveryAction{Program: "ubus", Args: []string{"call", "service", "list", `{"name":"solovey-ui","instance":"root-broker"}`}, Purpose: "verify_privileged_broker_instance"},
+	}); err == nil {
+		t.Fatal("installed storage accepted recovery guidance without its deployment generation")
+	}
+	projection := RecoveryProjection{
+		Authority: "authenticated_broker", SelfRecoveryAvailable: true,
+		Action:            RecoveryAction{Program: "ubus", Args: []string{"call", "service", "list", `{"name":"solovey-ui","instance":"root-broker"}`}, Purpose: "verify_privileged_broker_instance"},
+		DeploymentBackend: "procd", ProjectionRevision: strings.Repeat("a", 64), OwnerContractRevision: strings.Repeat("b", 64),
+	}
+	storage, err := NewInstalledWithRecoveryProjection(root, projection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := storage.CreateEmergencyRecoveryBundle(RecoveryInput{
+		OperationID: testOperationOne, Revision: "installed-projection", State: "recovery_required", ResourceKind: "firewall", CreatedAt: 1, UpdatedAt: 2,
+	}, "projection_audit"); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(storage.Root(), "recovery", testOperationOne, "recovery-actions.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document recoveryActionDocument
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	if document.DeploymentBackend != projection.DeploymentBackend || document.ProjectionRevision != projection.ProjectionRevision ||
+		document.OwnerContractRevision != projection.OwnerContractRevision || len(document.Actions) == 0 || document.Actions[0].Program != "ubus" {
+		t.Fatalf("installed recovery projection document = %#v", document)
+	}
+}
+
+func TestRecoveryActionsUseDeploymentProjection(t *testing.T) {
+	for name, test := range map[string]struct {
+		projection RecoveryProjection
+		program    string
+		forbidden  string
+	}{
+		"systemd": {
+			projection: RecoveryProjection{Authority: "authenticated_broker", SelfRecoveryAvailable: true, Action: RecoveryAction{Program: "systemctl", Args: []string{"is-active", "solovey-privileged-broker.socket"}, Purpose: "verify_privileged_broker_socket"}},
+			program:    "systemctl",
+		},
+		"openwrt": {
+			projection: RecoveryProjection{Authority: "authenticated_broker", SelfRecoveryAvailable: true, Action: RecoveryAction{Program: "ubus", Args: []string{"call", "service", "list", `{"name":"solovey-ui","instance":"root-broker"}`}, Purpose: "verify_privileged_broker_instance"}},
+			program:    "ubus",
+			forbidden:  "systemctl",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			storage, err := newStorage(filepath.Join(t.TempDir(), ".runtime", "server-protection"), time.Now, test.projection)
+			if err != nil {
+				t.Fatal(err)
+			}
+			actions, err := storage.recoveryActions("firewall")
+			if err != nil || len(actions) != 2 || actions[0].Program != test.program {
+				t.Fatalf("recovery actions = %#v, %v", actions, err)
+			}
+			encoded, err := json.Marshal(actions)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if test.forbidden != "" && strings.Contains(string(encoded), test.forbidden) {
+				t.Fatalf("%s recovery actions contain %q: %s", name, test.forbidden, encoded)
+			}
+		})
+	}
+}
+
+func TestOperatorManagedRecoveryBundleFailsClosedWithoutSelfRecovery(t *testing.T) {
+	projection := RecoveryProjection{
+		Authority:             "external_operator",
+		SelfRecoveryAvailable: false,
+		Action: RecoveryAction{
+			Program: "operator_review",
+			Args:    []string{"container_replacement_or_restart"},
+			Purpose: "external_operator_managed_recovery",
+		},
+	}
+	storage, err := newStorage(filepath.Join(t.TempDir(), ".runtime", "server-protection"), time.Now, projection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	written, err := storage.WriteRevision(testOperationOne, "operator-managed-revision", map[string][]byte{
+		"firewall-before.nft": []byte("table inet solovey_protection {}\n"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := storage.CreateRecoveryBundle(RecoveryInput{
+		OperationID:  testOperationOne,
+		Revision:     "operator-managed-revision",
+		State:        "recovery_required",
+		ResourceKind: "firewall",
+		CreatedAt:    1,
+		UpdatedAt:    2,
+	}, written.ManifestSHA256); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(filepath.Join(storage.Root(), "recovery", testOperationOne, "recovery-actions.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var document recoveryActionDocument
+	if err := json.Unmarshal(data, &document); err != nil {
+		t.Fatal(err)
+	}
+	if document.RecoveryAuthority != "external_operator" || document.SelfRecoveryAvailable || len(document.Actions) != 2 ||
+		document.Actions[0].Program != "operator_review" || document.Actions[0].Purpose != "external_operator_managed_recovery" {
+		t.Fatalf("operator-managed recovery document = %#v", document)
+	}
+	encoded := strings.ToLower(string(data))
+	for _, forbidden := range []string{"systemctl", "ubus", "docker restart", "docker compose", "docker.sock", "/var/run/docker"} {
+		if strings.Contains(encoded, forbidden) {
+			t.Fatalf("operator-managed recovery document contains forbidden control authority %q: %s", forbidden, data)
+		}
+	}
+	for name, malformed := range map[string]RecoveryProjection{
+		"external self recovery": {Authority: "external_operator", SelfRecoveryAvailable: true, Action: projection.Action},
+		"external broker action": {Authority: "external_operator", SelfRecoveryAvailable: false, Action: RecoveryAction{Program: "systemctl", Args: []string{"restart", "panel"}, Purpose: "external_operator_managed_recovery"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := malformed.Validate(); err == nil {
+				t.Fatal("malformed operator-managed recovery projection was accepted")
+			}
+		})
+	}
+}
+
 func TestAtomicArtifactWritePublishesManifestLast(t *testing.T) {
 	storage := artifactTestStorage(t, time.Unix(1_700_000_000, 0))
 	written, err := storage.WriteRevision(testOperationOne, "revision-one", map[string][]byte{
@@ -362,6 +508,166 @@ func TestArtifactRetentionKeepsCountOrDaysWindow(t *testing.T) {
 	}
 }
 
+func TestArtifactsRevisionPublicationFaultMatrixLeavesNoInvisibleDebt(t *testing.T) {
+	steps := []string{
+		"directory_create",
+		"publication_owner_write", "publication_owner_sync", "publication_owner_rename", "publication_owner_directory_sync", "publication_owner_reopen",
+		"file_write", "file_sync", "file_rename", "file_directory_sync", "file_reopen",
+		"subsequent_file_write", "subsequent_file_sync", "subsequent_file_rename", "subsequent_file_directory_sync", "subsequent_file_reopen",
+		"manifest_write", "manifest_sync", "manifest_rename", "manifest_directory_sync", "manifest_reopen",
+		"publication_directory_sync", "revision_rename", "revisions_directory_sync", "revision_reopen",
+		"pointer_write", "pointer_sync", "pointer_rename", "pointer_directory_sync", "pointer_reopen",
+	}
+	for index, step := range steps {
+		t.Run(step, func(t *testing.T) {
+			now := time.Now().UTC()
+			storage := artifactTestStorage(t, now.Add(-time.Hour))
+			operationID := fmt.Sprintf("operation-%032x", 0x300+index)
+			revision := fmt.Sprintf("artifacts-fault-%02d", index)
+			fault := errors.New("injected publication fault")
+			storage.publicationFault = func(current string) error {
+				if current == step {
+					return fault
+				}
+				return nil
+			}
+			_, err := storage.WriteRevision(operationID, revision, map[string][]byte{
+				"a.json": []byte(`{"a":1}`),
+				"b.json": []byte(`{"b":2}`),
+			})
+			if !errors.Is(err, fault) {
+				t.Fatalf("fault %s was not returned: %v", step, err)
+			}
+			if _, statErr := os.Stat(filepath.Join(storage.Root(), "revisions", revision)); step == "pointer_write" && statErr != nil {
+				t.Fatalf("pointer fault did not leave an enumerable complete revision: %v", statErr)
+			}
+			storage.publicationFault = nil
+			if err := filepath.Walk(storage.Root(), func(path string, info os.FileInfo, err error) error {
+				if err == nil && strings.HasSuffix(info.Name(), ".tmp") {
+					t.Fatalf("temporary file survived %s: %s", step, path)
+				}
+				return err
+			}); err != nil {
+				t.Fatal(err)
+			}
+			foreign := filepath.Join(storage.Root(), "revisions", "foreign.txt")
+			if err := os.WriteFile(foreign, []byte("foreign"), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			store := &memoryMetadataStore{protected: map[string]string{}}
+			if step == "pointer_write" {
+				manifest, verifyErr := storage.VerifyRevision(revision, "")
+				if verifyErr != nil {
+					t.Fatalf("pointer fault revision verify failed: %v", verifyErr)
+				}
+				if manifest.CreatedAt <= now.Add(time.Hour).Add(-24*time.Hour).Unix() {
+					t.Fatalf("pointer fault revision was not recent enough for grace-period enumeration: manifest=%d", manifest.CreatedAt)
+				}
+			}
+			result, pruneErr := NewPruner(storage, store, func() time.Time { return now.Add(time.Hour) }).Prune(context.Background(), 1, 1)
+			if pruneErr != nil {
+				t.Fatalf("fault %s left unreclaimable debt: result=%#v err=%v", step, result, pruneErr)
+			}
+			if _, statErr := os.Stat(filepath.Join(storage.Root(), "revisions", revision)); !errors.Is(statErr, os.ErrNotExist) {
+				t.Fatalf("fault %s left revision debt after sweep: %v", step, statErr)
+			}
+			if _, statErr := os.Stat(foreign); statErr != nil {
+				t.Fatalf("fault %s removed foreign file: %v", step, statErr)
+			}
+		})
+	}
+}
+
+func TestArtifactsMetadataPublicationFailureCleansPublishedRevision(t *testing.T) {
+	storage := artifactTestStorage(t, time.Now().UTC())
+	writer := &memoryMetadataWriter{err: errors.New("injected metadata transaction failure")}
+	revision := "artifacts-metadata-failure"
+	_, err := (Service{Storage: storage, Store: writer}).WriteRevision(context.Background(), testOperationMetadata, revision, map[string][]byte{"state.json": []byte(`{"safe":true}`)})
+	if !errors.Is(err, writer.err) {
+		t.Fatalf("metadata failure = %v", err)
+	}
+	for _, path := range []string{
+		filepath.Join(storage.Root(), "revisions", revision),
+		filepath.Join(storage.Root(), "operations", testOperationMetadata),
+	} {
+		if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("metadata failure left published state %s: %v", path, statErr)
+		}
+	}
+}
+
+func TestArtifactsOwnedOrphanSweepIsBoundedForeignSafeAndRestartIdempotent(t *testing.T) {
+	now := time.Now().UTC().Add(2 * time.Hour)
+	storage := artifactTestStorage(t, now.Add(-24*time.Hour))
+	untrackedOperation := "operation-00000000000000000000000000000351"
+	untrackedRevision := "artifacts-untracked-published"
+	if _, err := storage.WriteRevision(untrackedOperation, untrackedRevision, map[string][]byte{"state.json": []byte(`{"published":true}`)}); err != nil {
+		t.Fatal(err)
+	}
+	publicationOperation := "operation-00000000000000000000000000000352"
+	publicationPath := filepath.Join(storage.Root(), "publication", publicationStageName(publicationOperation, "interrupted"))
+	if err := os.MkdirAll(publicationPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(publicationPath, "first.json"), []byte(`{"partial":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	ownerData, err := marshalPublicationOwner(publicationOperation, "interrupted")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(publicationPath, publicationOwnerName), ownerData, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	recoveryOperation := "operation-00000000000000000000000000000353"
+	recoveryPath := filepath.Join(storage.Root(), "recovery", recoveryOperation)
+	if err := os.MkdirAll(recoveryPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(recoveryPath, "summary.json"), []byte(`{"orphan":true}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	old := now.Add(-time.Hour)
+	for _, path := range []string{publicationPath, recoveryPath, filepath.Join(storage.Root(), "operations", untrackedOperation)} {
+		if err := os.Chtimes(path, old, old); err != nil {
+			t.Fatal(err)
+		}
+	}
+	foreignFile := filepath.Join(storage.Root(), "revisions", "foreign.txt")
+	if err := os.WriteFile(foreignFile, []byte("foreign"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	foreignDirectory := filepath.Join(storage.Root(), "revisions", "foreign-revision")
+	if err := os.MkdirAll(foreignDirectory, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(foreignDirectory, "manifest.json"), []byte("not-owned\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store := &memoryMetadataStore{protected: map[string]string{}}
+	first, err := NewPruner(storage, store, func() time.Time { return now }).Prune(context.Background(), 1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.DeletedOrphans < 3 {
+		t.Fatalf("owned orphan result = %#v", first)
+	}
+	for _, path := range []string{filepath.Join(storage.Root(), "revisions", untrackedRevision), publicationPath, recoveryPath, filepath.Join(storage.Root(), "operations", untrackedOperation)} {
+		if _, statErr := os.Stat(path); !errors.Is(statErr, os.ErrNotExist) {
+			t.Fatalf("owned orphan survived %s: %v", path, statErr)
+		}
+	}
+	for _, path := range []string{foreignFile, foreignDirectory} {
+		if _, statErr := os.Stat(path); statErr != nil {
+			t.Fatalf("foreign state was removed %s: %v", path, statErr)
+		}
+	}
+	second, err := NewPruner(storage, store, func() time.Time { return now }).Prune(context.Background(), 1, 1)
+	if err != nil || second.DeletedFilesets != 0 || second.DeletedOrphans != 0 || second.DeletedOperations != 0 || second.DeletedTransitions != 0 {
+		t.Fatalf("restart prune was not idempotent: %#v err=%v", second, err)
+	}
+}
+
 type memoryMetadataStore struct {
 	items     []protectionrepository.ArtifactModel
 	protected map[string]string
@@ -369,6 +675,7 @@ type memoryMetadataStore struct {
 
 type memoryMetadataWriter struct {
 	items []protectionrepository.ArtifactModel
+	err   error
 }
 
 type memoryOperationRecoveryRepository struct {
@@ -388,6 +695,9 @@ func (r *memoryOperationRecoveryRepository) SaveArtifact(_ context.Context, item
 }
 
 func (w *memoryMetadataWriter) SaveArtifact(_ context.Context, item *protectionrepository.ArtifactModel) error {
+	if w.err != nil {
+		return w.err
+	}
 	item.ID = uint(len(w.items) + 1)
 	w.items = append(w.items, *item)
 	return nil
@@ -409,9 +719,16 @@ func (s *memoryMetadataStore) DeleteArtifact(_ context.Context, id uint) error {
 	return errors.New("artifact not found")
 }
 
+func (s *memoryMetadataStore) PruneFirewallHistory(context.Context, int, int64, int64) (protectionrepository.FirewallHistoryPruneResult, error) {
+	return protectionrepository.FirewallHistoryPruneResult{}, nil
+}
+
 func artifactTestStorage(t *testing.T, now time.Time) *Storage {
 	t.Helper()
-	storage, err := NewWithClock(filepath.Join(t.TempDir(), ".runtime", "server-protection"), func() time.Time { return now })
+	projection := RecoveryProjection{Authority: "authenticated_broker", SelfRecoveryAvailable: true, Action: RecoveryAction{
+		Program: "systemctl", Args: []string{"is-active", "solovey-privileged-broker.socket"}, Purpose: "verify_privileged_broker_socket",
+	}}
+	storage, err := newStorage(filepath.Join(t.TempDir(), ".runtime", "server-protection"), func() time.Time { return now }, projection)
 	if err != nil {
 		t.Fatal(err)
 	}

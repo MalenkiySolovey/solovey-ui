@@ -56,6 +56,18 @@ func ValidateArtifact(value ArtifactIdentityV1) error {
 	return nil
 }
 
+func validateChunkAdmission(offset int64, chunkBytes int, declaredSize int64, final bool) (int64, error) {
+	if offset < 0 || chunkBytes <= 0 || chunkBytes > MaxChunkBytes || declaredSize <= 0 ||
+		offset > declaredSize || int64(chunkBytes) > declaredSize-offset {
+		return 0, errors.New("update artifact chunk exceeds its declared range")
+	}
+	accepted := offset + int64(chunkBytes)
+	if final != (accepted == declaredSize) {
+		return 0, errors.New("update artifact final boundary is invalid")
+	}
+	return accepted, nil
+}
+
 func artifactSetDigest(artifacts []ArtifactIdentityV1) string {
 	copyArtifacts := append([]ArtifactIdentityV1(nil), artifacts...)
 	sort.Slice(copyArtifacts, func(i, j int) bool {

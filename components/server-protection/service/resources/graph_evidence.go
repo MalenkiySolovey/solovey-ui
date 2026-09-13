@@ -60,7 +60,10 @@ type SocketClaimEvidenceV1 struct {
 	Key                      hostresources.PublicEndpointKey `json:"key"`
 	SocketInode              string                          `json:"socketInode,omitempty"`
 	SocketCookie             uint64                          `json:"socketCookie,omitempty"`
+	SocketProofMethod        string                          `json:"socketProofMethod,omitempty"`
 	OwnerObservationRevision string                          `json:"ownerObservationRevision,omitempty"`
+	SemanticOwnerSource      string                          `json:"semanticOwnerSource,omitempty"`
+	SemanticOwnerRevision    string                          `json:"semanticOwnerRevision,omitempty"`
 	Stale                    bool                            `json:"stale"`
 	Ambiguous                bool                            `json:"ambiguous"`
 	ReasonCodes              []string                        `json:"reasonCodes"`
@@ -73,8 +76,10 @@ type SocketOwnerObservationEvidenceV1 struct {
 	Classification            hostsurface.Classification                 `json:"classification"`
 	HostSurfaceClassification hostsurface.Classification                 `json:"hostSurfaceClassification"`
 	ListenerOwnerCurrent      bool                                       `json:"listenerOwnerCurrent"`
+	SemanticOwnerCurrent      bool                                       `json:"semanticOwnerCurrent"`
 	OwnerObservationRevision  string                                     `json:"ownerObservationRevision,omitempty"`
 	DeploymentBindingRevision string                                     `json:"deploymentBindingRevision,omitempty"`
+	SemanticOwner             *hostsurface.SemanticOwnerFactV1           `json:"semanticOwner,omitempty"`
 	Socket                    SocketIdentityEvidenceV1                   `json:"socket"`
 	Process                   *ProcessIdentityEvidenceV1                 `json:"process,omitempty"`
 	Service                   *ServiceIdentityEvidenceV1                 `json:"service,omitempty"`
@@ -83,6 +88,7 @@ type SocketOwnerObservationEvidenceV1 struct {
 }
 
 type SocketIdentityEvidenceV1 struct {
+	ProofMethod      string               `json:"proofMethod,omitempty"`
 	Network          hostsurface.Network  `json:"network"`
 	Family           hostsurface.Family   `json:"family"`
 	Bind             string               `json:"bind"`
@@ -95,6 +101,8 @@ type SocketIdentityEvidenceV1 struct {
 
 type ProcessIdentityEvidenceV1 struct {
 	PID                  *int   `json:"pid,omitempty"`
+	UID                  *int   `json:"uid,omitempty"`
+	GID                  *int   `json:"gid,omitempty"`
 	StartTime            string `json:"startTime"`
 	ExecutableSHA256     string `json:"executableSha256"`
 	ExecutablePathSHA256 string `json:"executablePathSha256"`
@@ -104,12 +112,20 @@ type ProcessIdentityEvidenceV1 struct {
 }
 
 type ServiceIdentityEvidenceV1 struct {
-	SystemdUnit        string `json:"systemdUnit"`
-	MainPID            *int   `json:"mainPid,omitempty"`
-	FragmentSHA256     string `json:"fragmentSha256"`
-	FragmentPathSHA256 string `json:"fragmentPathSha256"`
-	ControlGroupSHA256 string `json:"controlGroupSha256"`
-	StartMonotonicUsec uint64 `json:"startMonotonicUsec"`
+	ProofKind          string   `json:"proofKind"`
+	MainPID            *int     `json:"mainPid,omitempty"`
+	ActiveState        string   `json:"activeState"`
+	SubState           string   `json:"subState"`
+	SystemdUnit        string   `json:"systemdUnit,omitempty"`
+	FragmentSHA256     string   `json:"fragmentSha256,omitempty"`
+	FragmentPathSHA256 string   `json:"fragmentPathSha256,omitempty"`
+	ControlGroupSHA256 string   `json:"controlGroupSha256,omitempty"`
+	StartMonotonicUsec uint64   `json:"startMonotonicUsec,omitempty"`
+	ProcdService       string   `json:"procdService,omitempty"`
+	ProcdInstance      string   `json:"procdInstance,omitempty"`
+	ProcdCommand       []string `json:"procdCommand,omitempty"`
+	ProcdUser          string   `json:"procdUser,omitempty"`
+	ProcdGroup         string   `json:"procdGroup,omitempty"`
 }
 
 func BuildSocketOwnershipGraphEvidence(graph SocketOwnershipGraph, resources []hostresources.ProtectableResource, surfaces []hostsurface.HostSurfaceFactV1, now time.Time) (SocketOwnershipGraphEvidenceV1, error) {
@@ -273,6 +289,25 @@ func desiredClaimSources(resource hostresources.ProtectableResource, endpoints [
 func observedClaimSources(surfaces []hostsurface.HostSurfaceFactV1, now time.Time) map[string]string {
 	result := make(map[string]string)
 	for _, surface := range surfaces {
+		if exactSSHSemanticSurface(surface, now) {
+			for _, family := range surface.SemanticOwner.Socket.CoverageFamilies {
+				key := hostresources.PublicEndpointKey{Network: hostresources.Network(surface.Network), AddressFamily: hostresources.AddressFamily(family), Port: surface.Port}
+				if family == hostsurface.FamilyIPv4 {
+					key.BindAddress = "0.0.0.0"
+					if surface.Family == hostsurface.FamilyIPv4 {
+						key.BindAddress = hostresources.NormalizeListen(surface.Bind).Value
+					}
+				} else {
+					key.BindAddress = "::"
+					if surface.Family == hostsurface.FamilyIPv6 {
+						key.BindAddress = hostresources.NormalizeListen(surface.Bind).Value
+					}
+				}
+				claimID := socketClaimID(ClaimObserved, surface.RegisteredResourceID, key, surface.SemanticOwner.Revision+":"+surface.SemanticOwner.AuthorityRevision+":"+surface.ID+":"+string(family))
+				result[claimID] = surface.ID
+			}
+			continue
+		}
 		if surface.Classification == hostsurface.ClassificationManagedExact && surface.ListenerOwner != nil && surface.ListenerOwner.Valid(now) {
 			for _, family := range surface.ListenerOwner.Socket.CoverageFamilies {
 				key := hostresources.PublicEndpointKey{Network: hostresources.Network(surface.Network), AddressFamily: hostresources.AddressFamily(family), Port: surface.Port}
@@ -305,7 +340,8 @@ func buildClaimEvidence(claim SocketClaim, sourceID string) (SocketClaimEvidence
 	}
 	return SocketClaimEvidenceV1{
 		ClaimID: claim.ID, Kind: claim.Kind, SourceID: sourceID, Key: claim.Key,
-		SocketInode: claim.SocketInode, SocketCookie: claim.SocketCookie, OwnerObservationRevision: claim.OwnerObservationRevision,
+		SocketInode: claim.SocketInode, SocketCookie: claim.SocketCookie, SocketProofMethod: claim.SocketProofMethod, OwnerObservationRevision: claim.OwnerObservationRevision,
+		SemanticOwnerSource: claim.SemanticOwnerSource, SemanticOwnerRevision: claim.SemanticOwnerRevision,
 		Stale: claim.Stale, Ambiguous: claim.Ambiguous, ReasonCodes: reasons,
 	}, nil
 }
@@ -324,6 +360,31 @@ func buildOwnerObservationEvidence(surface hostsurface.HostSurfaceFactV1, now ti
 		Socket:      SocketIdentityEvidenceV1{Network: surface.Network, Family: surface.Family, Bind: surface.Bind, Port: surface.Port, Inode: surface.SocketInode, Cookie: surface.SocketCookie, CoverageFamilies: []hostsurface.Family{}},
 		ReasonCodes: reasons,
 	}
+	if exactSSHSemanticSurface(surface, now) {
+		semanticOwner := *surface.SemanticOwner
+		semanticOwner.Socket.CoverageFamilies = append([]hostsurface.Family(nil), surface.SemanticOwner.Socket.CoverageFamilies...)
+		if surface.SemanticOwner.Socket.IPv6Only != nil {
+			ipv6Only := *surface.SemanticOwner.Socket.IPv6Only
+			semanticOwner.Socket.IPv6Only = &ipv6Only
+		}
+		result.SemanticOwnerCurrent = true
+		result.SemanticOwner = &semanticOwner
+		result.OwnerObservationRevision = semanticOwner.Revision
+		result.Socket = SocketIdentityEvidenceV1{
+			ProofMethod: surface.SemanticOwner.Socket.ProofMethod, Network: surface.SemanticOwner.Socket.Network, Family: surface.SemanticOwner.Socket.Family,
+			Bind: surface.SemanticOwner.Socket.Bind, Port: surface.SemanticOwner.Socket.Port,
+			Inode: surface.SemanticOwner.Socket.Inode, Cookie: surface.SemanticOwner.Socket.Cookie,
+			IPv6Only:         surface.SemanticOwner.Socket.IPv6Only,
+			CoverageFamilies: append([]hostsurface.Family(nil), surface.SemanticOwner.Socket.CoverageFamilies...),
+		}
+		result.Process = freezeProcessIdentityEvidence(surface.Process)
+		service := freezeServiceIdentityEvidence(surface.Service)
+		if !semanticSSHServiceIdentityEvidenceValid(service) {
+			return SocketOwnerObservationEvidenceV1{}, errors.New("validated SSH semantic owner service proof cannot be frozen completely")
+		}
+		result.Service = &service
+		return result, nil
+	}
 	owner := surface.ListenerOwner
 	if owner == nil {
 		return result, nil
@@ -340,25 +401,50 @@ func buildOwnerObservationEvidence(surface hostsurface.HostSurfaceFactV1, now ti
 		return result, nil
 	}
 	result.Socket = SocketIdentityEvidenceV1{
-		Network: owner.Socket.Network, Family: owner.Socket.Family, Bind: owner.Socket.Bind, Port: owner.Socket.Port,
+		ProofMethod: owner.Socket.ProofMethod, Network: owner.Socket.Network, Family: owner.Socket.Family, Bind: owner.Socket.Bind, Port: owner.Socket.Port,
 		Inode: owner.Socket.Inode, Cookie: owner.Socket.Cookie, IPv6Only: owner.Socket.IPv6Only,
 		CoverageFamilies: append([]hostsurface.Family(nil), owner.Socket.CoverageFamilies...),
 	}
 	sort.Slice(result.Socket.CoverageFamilies, func(i, j int) bool { return result.Socket.CoverageFamilies[i] < result.Socket.CoverageFamilies[j] })
-	result.Process = &ProcessIdentityEvidenceV1{
-		PID: owner.Process.PID, StartTime: owner.Process.StartTime, ExecutableSHA256: owner.Process.ExeDigest,
-		ExecutablePathSHA256: graphEvidenceStringDigest(owner.Process.Executable), ExecutableDevice: owner.Process.ExeDevice,
-		ExecutableInode: owner.Process.ExeInode, ControlGroupSHA256: graphEvidenceStringDigest(owner.Process.ControlGroup),
+	result.Process = freezeProcessIdentityEvidence(owner.Process)
+	serviceEvidence := freezeServiceIdentityEvidence(owner.Service)
+	if !serviceIdentityEvidenceValid(serviceEvidence) {
+		return SocketOwnerObservationEvidenceV1{}, errors.New("validated listener owner service proof cannot be frozen completely")
 	}
-	result.Service = &ServiceIdentityEvidenceV1{
-		SystemdUnit: owner.Service.SystemdUnit, MainPID: owner.Service.MainPID, FragmentSHA256: owner.Service.FragmentSHA256,
-		FragmentPathSHA256: graphEvidenceStringDigest(owner.Service.FragmentPath), ControlGroupSHA256: graphEvidenceStringDigest(owner.Service.ControlGroup),
-		StartMonotonicUsec: owner.Service.StartMonotonicUsec,
-	}
+	result.Service = &serviceEvidence
 	application := owner.Application
 	result.Application = &application
 	result.DeploymentBindingRevision = hostresources.Revision(application)
 	return result, nil
+}
+
+func freezeProcessIdentityEvidence(process hostsurface.ProcessFact) *ProcessIdentityEvidenceV1 {
+	return &ProcessIdentityEvidenceV1{
+		PID: process.PID, UID: process.UID, GID: process.GID,
+		StartTime: process.StartTime, ExecutableSHA256: process.ExeDigest,
+		ExecutablePathSHA256: graphEvidenceStringDigest(process.Executable), ExecutableDevice: process.ExeDevice,
+		ExecutableInode: process.ExeInode, ControlGroupSHA256: graphEvidenceStringDigest(process.ControlGroup),
+	}
+}
+
+func freezeServiceIdentityEvidence(service hostsurface.ServiceFact) ServiceIdentityEvidenceV1 {
+	result := ServiceIdentityEvidenceV1{MainPID: service.MainPID, ActiveState: service.ActiveState, SubState: service.SubState}
+	if service.ProcdService != "" {
+		result.ProofKind = "procd"
+		result.ProcdService = service.ProcdService
+		result.ProcdInstance = service.ProcdInstance
+		result.ProcdCommand = append([]string(nil), service.ProcdCommand...)
+		result.ProcdUser = service.ProcdUser
+		result.ProcdGroup = service.ProcdGroup
+		return result
+	}
+	result.ProofKind = "systemd"
+	result.SystemdUnit = service.SystemdUnit
+	result.FragmentSHA256 = service.FragmentSHA256
+	result.FragmentPathSHA256 = graphEvidenceStringDigest(service.FragmentPath)
+	result.ControlGroupSHA256 = graphEvidenceStringDigest(service.ControlGroup)
+	result.StartMonotonicUsec = service.StartMonotonicUsec
+	return result
 }
 
 func ValidateSocketOwnershipGraphEvidence(evidence SocketOwnershipGraphEvidenceV1, graph SocketOwnershipGraph) error {
@@ -381,8 +467,8 @@ func ValidateSocketOwnershipGraphEvidence(evidence SocketOwnershipGraphEvidenceV
 		if !graphEvidenceClaimsMatch(node.DesiredClaims, graphNode.DesiredClaims) || !graphEvidenceClaimsMatch(node.ObservedClaims, graphNode.ObservedClaims) {
 			return errors.New("socket graph evidence claims do not match the frozen graph")
 		}
-		if !graphEvidenceClaimSourcesValid(node) {
-			return errors.New("socket graph evidence claim sources do not match its endpoints or HostSurface observations")
+		if err := validateGraphEvidenceClaimSources(node); err != nil {
+			return fmt.Errorf("socket graph evidence node %q claim sources do not match its endpoints or HostSurface observations: %w", node.ResourceID, err)
 		}
 		previousObservation := ""
 		for _, observation := range node.OwnerObservations {
@@ -393,7 +479,7 @@ func ValidateSocketOwnershipGraphEvidence(evidence SocketOwnershipGraphEvidenceV
 			}
 			previousObservation = observationKey
 			if observation.EvidenceSource == "no_host_surface" {
-				if observation.Classification != hostsurface.ClassificationUnobserved || observation.HostSurfaceClassification != "" || observation.SurfaceID != "" || observation.RegisteredResourceID != "" || observation.ListenerOwnerCurrent || observation.OwnerObservationRevision != "" || observation.DeploymentBindingRevision != "" || observation.Process != nil || observation.Service != nil || observation.Application != nil {
+				if observation.Classification != hostsurface.ClassificationUnobserved || observation.HostSurfaceClassification != "" || observation.SurfaceID != "" || observation.RegisteredResourceID != "" || observation.ListenerOwnerCurrent || observation.SemanticOwnerCurrent || observation.OwnerObservationRevision != "" || observation.DeploymentBindingRevision != "" || observation.SemanticOwner != nil || observation.Process != nil || observation.Service != nil || observation.Application != nil {
 					return errors.New("socket graph absent-owner observation contains mixed HostSurface facts")
 				}
 				continue
@@ -404,19 +490,105 @@ func ValidateSocketOwnershipGraphEvidence(evidence SocketOwnershipGraphEvidenceV
 			if observation.Classification == hostsurface.ClassificationManagedExact && !observation.ListenerOwnerCurrent {
 				return errors.New("socket graph MANAGED_EXACT observation is not current")
 			}
-			if observation.ListenerOwnerCurrent && (!graphEvidenceRevisionToken(observation.OwnerObservationRevision) || !graphEvidenceRevisionToken(observation.DeploymentBindingRevision) || observation.Process == nil || observation.Service == nil || observation.Application == nil) {
+			if observation.ListenerOwnerCurrent && (observation.SemanticOwnerCurrent || observation.SemanticOwner != nil) {
+				return errors.New("socket graph owner observation mixes listener and semantic ownership")
+			}
+			if observation.ListenerOwnerCurrent && (!graphEvidenceRevisionToken(observation.OwnerObservationRevision) || !graphEvidenceRevisionToken(observation.DeploymentBindingRevision) || observation.Process == nil || observation.Process.PID == nil || observation.Process.UID == nil || observation.Process.GID == nil || observation.Service == nil || !serviceIdentityEvidenceValid(*observation.Service) || observation.Application == nil) {
 				return errors.New("socket graph current owner observation has incomplete bounded identity proof")
+			}
+			if observation.SemanticOwnerCurrent {
+				if observation.ListenerOwnerCurrent || observation.HostSurfaceClassification != hostsurface.ClassificationExpectedExternal || observation.Classification != hostsurface.ClassificationUnknownOwner ||
+					observation.SemanticOwner == nil || observation.SemanticOwner.ManagementService != hostsurface.ManagementServiceSSH ||
+					!safeSemanticOwnerSource(observation.SemanticOwner.Source) || !graphEvidenceRevisionToken(observation.SemanticOwner.Revision) || !graphEvidenceRevisionToken(observation.SemanticOwner.AuthorityRevision) ||
+					!exactSemanticSocketCoverage(observation.SemanticOwner.Socket) || !semanticOwnerSocketMatchesEvidence(observation.SemanticOwner.Socket, observation.Socket) ||
+					observation.OwnerObservationRevision != observation.SemanticOwner.Revision || observation.DeploymentBindingRevision != "" || observation.Application != nil ||
+					!semanticSSHProcessIdentityEvidenceValid(observation.Process) || observation.Service == nil || !semanticSSHServiceIdentityEvidenceValid(*observation.Service) {
+					return errors.New("socket graph current SSH semantic owner observation has incomplete bounded identity proof")
+				}
+			} else if observation.SemanticOwner != nil {
+				return errors.New("socket graph noncurrent observation retains a semantic owner")
 			}
 		}
 	}
 	return nil
 }
 
-func graphEvidenceClaimSourcesValid(node SocketGraphNodeEvidenceV1) bool {
+func semanticOwnerSocketMatchesEvidence(socket hostsurface.ListenerSocketIdentityV1, evidence SocketIdentityEvidenceV1) bool {
+	if socket.ProofMethod != evidence.ProofMethod || socket.Network != evidence.Network || socket.Family != evidence.Family || socket.Bind != evidence.Bind || socket.Port != evidence.Port ||
+		socket.Inode != evidence.Inode || socket.Cookie != evidence.Cookie || len(socket.CoverageFamilies) != len(evidence.CoverageFamilies) {
+		return false
+	}
+	if (socket.IPv6Only == nil) != (evidence.IPv6Only == nil) || socket.IPv6Only != nil && *socket.IPv6Only != *evidence.IPv6Only {
+		return false
+	}
+	for index := range socket.CoverageFamilies {
+		if socket.CoverageFamilies[index] != evidence.CoverageFamilies[index] {
+			return false
+		}
+	}
+	return true
+}
+
+func safeSemanticOwnerSource(value string) bool {
+	value = strings.TrimSpace(value)
+	return value != "" && len(value) <= 128 && !strings.ContainsAny(value, "\x00\r\n\t")
+}
+
+func semanticSSHProcessIdentityEvidenceValid(value *ProcessIdentityEvidenceV1) bool {
+	return value != nil && value.PID != nil && *value.PID > 1 && value.UID != nil && *value.UID == 0 && value.GID != nil && *value.GID == 0 &&
+		value.StartTime != "" && graphEvidenceRevisionToken(value.ExecutableSHA256) && graphEvidenceRevisionToken(value.ExecutablePathSHA256) &&
+		value.ExecutableDevice != 0 && value.ExecutableInode != 0
+}
+
+func semanticSSHServiceIdentityEvidenceValid(value ServiceIdentityEvidenceV1) bool {
+	if value.ProofKind != "procd" {
+		return serviceIdentityEvidenceValid(value)
+	}
+	if value.MainPID == nil || *value.MainPID <= 1 || value.ActiveState != "active" || value.SubState != "running" ||
+		value.SystemdUnit != "" || value.FragmentSHA256 != "" || value.FragmentPathSHA256 != "" || value.ControlGroupSHA256 != "" || value.StartMonotonicUsec != 0 ||
+		value.ProcdService == "" || value.ProcdInstance == "" || len(value.ProcdCommand) == 0 || len(value.ProcdCommand) > 64 {
+		return false
+	}
+	for _, argument := range value.ProcdCommand {
+		if argument == "" || len(argument) > 512 || strings.ContainsAny(argument, "\x00\r\n") {
+			return false
+		}
+	}
+	return true
+}
+
+func serviceIdentityEvidenceValid(value ServiceIdentityEvidenceV1) bool {
+	if value.MainPID == nil || *value.MainPID <= 1 || value.ActiveState != "active" || value.SubState != "running" {
+		return false
+	}
+	switch value.ProofKind {
+	case "systemd":
+		return value.SystemdUnit != "" && graphEvidenceRevisionToken(value.FragmentSHA256) &&
+			graphEvidenceRevisionToken(value.FragmentPathSHA256) && graphEvidenceRevisionToken(value.ControlGroupSHA256) &&
+			value.StartMonotonicUsec > 0 && value.ProcdService == "" && value.ProcdInstance == "" &&
+			len(value.ProcdCommand) == 0 && value.ProcdUser == "" && value.ProcdGroup == ""
+	case "procd":
+		if value.SystemdUnit != "" || value.FragmentSHA256 != "" || value.FragmentPathSHA256 != "" ||
+			value.ControlGroupSHA256 != "" || value.StartMonotonicUsec != 0 || value.ProcdService == "" ||
+			value.ProcdInstance == "" || value.ProcdUser == "" || value.ProcdGroup == "" || len(value.ProcdCommand) == 0 || len(value.ProcdCommand) > 32 {
+			return false
+		}
+		for _, argument := range value.ProcdCommand {
+			if argument == "" || len(argument) > 1024 || strings.ContainsAny(argument, "\x00\r\n") {
+				return false
+			}
+		}
+		return true
+	default:
+		return false
+	}
+}
+
+func validateGraphEvidenceClaimSources(node SocketGraphNodeEvidenceV1) error {
 	endpointIDs := make(map[string]struct{}, len(node.Endpoints))
 	for _, endpoint := range node.Endpoints {
 		if endpoint.EndpointID == "" {
-			return false
+			return errors.New("endpoint source ID is empty")
 		}
 		endpointIDs[endpoint.EndpointID] = struct{}{}
 	}
@@ -432,24 +604,32 @@ func graphEvidenceClaimSourcesValid(node SocketGraphNodeEvidenceV1) bool {
 		}
 		resolved := "resolved:" + claim.OwnerObservationRevision + ":" + string(claim.Key.Network) + ":" + string(claim.Key.AddressFamily)
 		if claim.OwnerObservationRevision == "" || claim.SourceID != resolved || !graphEvidenceHasResolvedOwner(node.OwnerObservations, claim) {
-			return false
+			return fmt.Errorf("desired claim %q lacks its resolved current owner", claim.ClaimID)
 		}
 	}
 	for _, claim := range node.ObservedClaims {
 		observation, exists := observationsByID[claim.SourceID]
 		if !exists {
-			return false
+			return fmt.Errorf("observed claim %q lacks HostSurface source %q", claim.ClaimID, claim.SourceID)
 		}
-		if claim.OwnerObservationRevision != "" && (claim.OwnerObservationRevision != observation.OwnerObservationRevision || !observation.ListenerOwnerCurrent || observation.Classification != hostsurface.ClassificationManagedExact || claim.SocketInode != observation.Socket.Inode || claim.SocketCookie != observation.Socket.Cookie || claim.Key.Network != hostresources.Network(observation.Socket.Network) || claim.Key.Port != observation.Socket.Port || !graphEvidenceCoversFamily(observation.Socket.CoverageFamilies, claim.Key.AddressFamily)) {
-			return false
+		if claim.OwnerObservationRevision != "" {
+			listenerOwnerMatch := claim.SemanticOwnerRevision == "" && claim.SemanticOwnerSource == "" &&
+				claim.OwnerObservationRevision == observation.OwnerObservationRevision && observation.ListenerOwnerCurrent && observation.Classification == hostsurface.ClassificationManagedExact
+			semanticOwnerMatch := claim.SemanticOwnerRevision != "" && claim.SemanticOwnerSource != "" && observation.SemanticOwnerCurrent && observation.SemanticOwner != nil &&
+				claim.OwnerObservationRevision == observation.OwnerObservationRevision && claim.SemanticOwnerRevision == observation.SemanticOwner.Revision && claim.SemanticOwnerSource == observation.SemanticOwner.Source
+			if (!listenerOwnerMatch && !semanticOwnerMatch) || claim.SocketInode != observation.Socket.Inode || claim.SocketCookie != observation.Socket.Cookie || claim.SocketProofMethod != observation.Socket.ProofMethod || claim.Key.Network != hostresources.Network(observation.Socket.Network) || claim.Key.Port != observation.Socket.Port || !graphEvidenceCoversFamily(observation.Socket.CoverageFamilies, claim.Key.AddressFamily) {
+				return fmt.Errorf("observed claim %q differs from HostSurface source %q", claim.ClaimID, claim.SourceID)
+			}
 		}
 	}
-	return true
+	return nil
 }
 
 func graphEvidenceHasResolvedOwner(observations []SocketOwnerObservationEvidenceV1, claim SocketClaimEvidenceV1) bool {
 	for _, observation := range observations {
-		if observation.Classification == hostsurface.ClassificationManagedExact && observation.ListenerOwnerCurrent && observation.OwnerObservationRevision == claim.OwnerObservationRevision && claim.Key.Network == hostresources.Network(observation.Socket.Network) && claim.Key.Port == observation.Socket.Port && graphEvidenceCoversFamily(observation.Socket.CoverageFamilies, claim.Key.AddressFamily) {
+		listenerOwnerCurrent := observation.Classification == hostsurface.ClassificationManagedExact && observation.ListenerOwnerCurrent
+		semanticOwnerCurrent := observation.SemanticOwnerCurrent && observation.SemanticOwner != nil && observation.SemanticOwner.ManagementService == hostsurface.ManagementServiceSSH
+		if (listenerOwnerCurrent || semanticOwnerCurrent) && observation.OwnerObservationRevision == claim.OwnerObservationRevision && claim.Key.Network == hostresources.Network(observation.Socket.Network) && claim.Key.Port == observation.Socket.Port && graphEvidenceCoversFamily(observation.Socket.CoverageFamilies, claim.Key.AddressFamily) {
 			return true
 		}
 	}
@@ -471,7 +651,7 @@ func graphEvidenceClaimsMatch(evidence []SocketClaimEvidenceV1, claims []SocketC
 	}
 	for index, value := range evidence {
 		claim := claims[index]
-		if value.ClaimID != claim.ID || value.Kind != claim.Kind || value.SourceID == "" || value.Key != claim.Key || value.SocketInode != claim.SocketInode || value.SocketCookie != claim.SocketCookie || value.OwnerObservationRevision != claim.OwnerObservationRevision || value.Stale != claim.Stale || value.Ambiguous != claim.Ambiguous || !equalGraphEvidenceStrings(value.ReasonCodes, claim.ReasonCodes) {
+		if value.ClaimID != claim.ID || value.Kind != claim.Kind || value.SourceID == "" || value.Key != claim.Key || value.SocketInode != claim.SocketInode || value.SocketCookie != claim.SocketCookie || value.SocketProofMethod != claim.SocketProofMethod || value.OwnerObservationRevision != claim.OwnerObservationRevision || value.SemanticOwnerSource != claim.SemanticOwnerSource || value.SemanticOwnerRevision != claim.SemanticOwnerRevision || value.Stale != claim.Stale || value.Ambiguous != claim.Ambiguous || !equalGraphEvidenceStrings(value.ReasonCodes, claim.ReasonCodes) {
 			return false
 		}
 	}

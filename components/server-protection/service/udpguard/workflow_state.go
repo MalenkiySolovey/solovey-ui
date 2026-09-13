@@ -212,9 +212,16 @@ func projectOrphanedAuthority(status *StatusV1, states []protectionrepository.UD
 func (c *Controller) beginReceipt(ctx context.Context, action, key string, input any) (protectionrepository.UDPGuardIdempotencyV1Model, bool, error) {
 	receipt, replay, err := c.Repository.BeginUDPGuardReceipt(ctx, action, strings.TrimSpace(key), hostresources.Revision(input))
 	if err != nil {
-		return protectionrepository.UDPGuardIdempotencyV1Model{}, false, contractError(CodeIdempotencyConflict, err)
+		return protectionrepository.UDPGuardIdempotencyV1Model{}, false, udpReceiptError(err)
 	}
 	return receipt, replay, nil
+}
+
+func udpReceiptError(err error) error {
+	if errors.Is(err, protectionrepository.ErrIdempotencyKeyExpired) || errors.Is(err, protectionrepository.ErrIdempotencyKeyInvalid) {
+		return contractError(CodeIdempotencyExpired, err)
+	}
+	return contractError(CodeIdempotencyConflict, err)
 }
 
 func decodeReceipt[T any](receipt protectionrepository.UDPGuardIdempotencyV1Model) (T, error) {

@@ -1,6 +1,25 @@
-#!/usr/bin/env bash
+#!/bin/bash
 
 set -Eeuo pipefail
+
+# The native installer is a privileged systemd deployment owner.  Its runtime
+# tools come only from the supported base-system directories; a caller's PATH,
+# shell startup hooks, locale, or language/tool loader variables never select
+# a root command.  The existing non-root integration harness is intentionally
+# outside this production branch and cannot be enabled by a root invocation.
+readonly TRUSTED_RUNTIME_PATH='/usr/sbin:/usr/bin:/sbin:/bin'
+PRODUCTION_RUNTIME_TOOL_AUTHORITY=1
+if [[ "${EUID}" -ne 0 && "${SOLOVEY_UI_ALLOW_NON_ROOT:-0}" == "1" ]]; then
+    PRODUCTION_RUNTIME_TOOL_AUTHORITY=0
+else
+    PATH="${TRUSTED_RUNTIME_PATH}"
+    IFS=$' \t\n'
+    export PATH IFS
+    export LANG=C LC_ALL=C
+    unset BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PERL5LIB PERLLIB RUBYLIB GEM_HOME GEM_PATH \
+        LD_PRELOAD LD_LIBRARY_PATH DYLD_INSERT_LIBRARIES DYLD_LIBRARY_PATH
+    hash -r
+fi
 
 APP_NAME="solovey-ui"
 SERVICE_NAME="solovey-ui"
@@ -84,7 +103,7 @@ Options:
 
 Examples:
   bash install.sh
-  bash install.sh --version v2026.3.0
+  bash install.sh --version v2026.3.1
   bash install.sh --without component-id,another-component
   bash install.sh --with component-id
   bash install.sh --dry-run
@@ -265,7 +284,59 @@ require_root() {
 }
 
 require_command() {
-    command -v "$1" >/dev/null 2>&1 || fail "required command not found: $1"
+    local name="$1"
+    local candidate resolved
+
+    candidate="$(type -P -- "${name}" 2>/dev/null || true)"
+    [[ -n "${candidate}" ]] || fail "required native runtime tool is unavailable: ${name}"
+    if [[ "${PRODUCTION_RUNTIME_TOOL_AUTHORITY}" != "1" ]]; then
+        return 0
+    fi
+    [[ "${candidate}" == /* ]] || fail "required native runtime tool is not absolute: ${name}"
+
+    # readlink/stat are themselves fixed base-system authorities.  Validating
+    # the resolved object and every resolved ancestor prevents PATH injection,
+    # writable-directory replacement and unsafe symlink targets.
+    resolved="$(/usr/bin/readlink -f -- "${candidate}" 2>/dev/null || true)"
+    [[ "${resolved}" == /* ]] || fail "required native runtime tool cannot be resolved safely: ${name}"
+    case "${candidate}" in
+        /usr/bin/*|/usr/sbin/*|/bin/*|/sbin/*) ;;
+        *) fail "required native runtime tool candidate is outside the supported base system: ${name}" ;;
+    esac
+    validate_runtime_tool_object "${name}" "${resolved}" / 0
+}
+
+validate_runtime_tool_object() {
+    local name="$1"
+    local resolved="$2"
+    local authority_root="$3"
+    local expected_owner="$4"
+    local cursor metadata kind owner mode
+
+    if [[ "${authority_root}" == "/" ]]; then
+        [[ "${resolved}" == /* && -e "${resolved}" ]] ||
+            fail "required native runtime tool is outside its trusted ancestry: ${name}"
+    else
+        [[ "${resolved}" == "${authority_root}"/* && -e "${resolved}" ]] ||
+            fail "required native runtime tool is outside its trusted ancestry: ${name}"
+    fi
+    metadata="$(/usr/bin/stat -Lc '%F|%u|%a' -- "${resolved}" 2>/dev/null || true)"
+    IFS='|' read -r kind owner mode <<<"${metadata}"
+    [[ "${kind}" == "regular file" && "${owner}" == "${expected_owner}" && -n "${mode}" ]] ||
+        fail "required native runtime tool has unsafe ownership or type: ${name}"
+    (( (8#${mode} & 0022) == 0 && (8#${mode} & 0111) != 0 )) ||
+        fail "required native runtime tool has unsafe mode: ${name}"
+
+    cursor="${resolved%/*}"
+    while [[ -n "${cursor}" ]]; do
+        metadata="$(/usr/bin/stat -Lc '%F|%u|%a' -- "${cursor}" 2>/dev/null || true)"
+        IFS='|' read -r kind owner mode <<<"${metadata}"
+        [[ "${kind}" == "directory" && "${owner}" == "${expected_owner}" && -n "${mode}" ]] ||
+            fail "required native runtime tool has unsafe ancestry: ${name}"
+        (( (8#${mode} & 0022) == 0 )) || fail "required native runtime tool has writable ancestry: ${name}"
+        [[ "${cursor}" != "${authority_root}" ]] || break
+        cursor="${cursor%/*}"
+    done
 }
 
 component_in_list() {
@@ -575,20 +646,15 @@ secure_curl() {
 }
 
 require_tools() {
-    require_command uname
-    require_command curl
-    require_command sed
-    require_command grep
+    local tool
+    for tool in uname curl sed grep head basename mkdir chmod mv rm cp du awk df date dirname tr find sort xargs chown mktemp; do
+        require_command "${tool}"
+    done
 
     if [[ "${DRY_RUN}" != "1" ]]; then
-        require_command tar
-        require_command sha256sum
-        require_command systemctl
-		require_command systemd-sysusers
-		require_command systemd-tmpfiles
-		require_command runuser
-        require_command base64
-        require_command dd
+        for tool in tar sha256sum systemctl systemd-sysusers systemd-tmpfiles runuser base64 dd; do
+            require_command "${tool}"
+        done
         if [[ "${MIGRATE_FROM_SUI}" == "1" ]]; then
             require_command sqlite3
         fi
@@ -1385,9 +1451,15 @@ download_and_install() {
     fi
 }
 
-if [[ -n "${COMPONENT_IDS_RAW}" ]]; then
-    append_component_list "with" "${COMPONENT_IDS_RAW}"
+main() {
+    if [[ -n "${COMPONENT_IDS_RAW}" ]]; then
+        append_component_list "with" "${COMPONENT_IDS_RAW}"
+    fi
+    parse_args "$@"
+    require_tools
+    download_and_install
+}
+
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+    main "$@"
 fi
-parse_args "$@"
-require_tools
-download_and_install

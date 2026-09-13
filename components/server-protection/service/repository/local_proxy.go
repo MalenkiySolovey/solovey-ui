@@ -105,6 +105,9 @@ func (r *Repository) BeginLocalProxyReceipt(ctx context.Context, action, key, di
 		if !errors.Is(err, gorm.ErrRecordNotFound) {
 			return err
 		}
+		if err := ensureReceiptKeyFreshTx(tx, receiptFamilyLocalProxy, key, now); err != nil {
+			return err
+		}
 		current = LocalProxyIdempotencyV1Model{
 			Action: action, IdempotencyKey: key, RequestDigest: digest, Status: "PENDING",
 			SemanticResponseJSON: json.RawMessage(`{}`), CreatedAt: now, UpdatedAt: now,
@@ -128,6 +131,9 @@ func (r *Repository) ReplayLocalProxyReceipt(ctx context.Context, action, key, d
 	var current LocalProxyIdempotencyV1Model
 	err := r.db.WithContext(ctx).Where("action = ? AND idempotency_key = ?", action, key).First(&current).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		if fenceErr := receiptLookupMissing(ctx, r.db, receiptFamilyLocalProxy, key, time.Now().UTC().Unix()); fenceErr != nil {
+			return LocalProxyIdempotencyV1Model{}, false, fenceErr
+		}
 		return LocalProxyIdempotencyV1Model{}, false, nil
 	}
 	if err != nil {
@@ -141,6 +147,21 @@ func (r *Repository) ReplayLocalProxyReceipt(ctx context.Context, action, key, d
 			fmt.Errorf("%w: receipt is %s", ErrLocalProxyIdempotencyConflict, current.Status)
 	}
 	return current, true, nil
+}
+
+func (r *Repository) BindLocalProxyReceiptOperation(ctx context.Context, id uint, operationID string, operationRevision int) error {
+	if r == nil || r.db == nil || id == 0 || operationID == "" || len(operationID) > 128 || operationRevision <= 0 {
+		return ErrLocalProxyIdempotencyConflict
+	}
+	result := r.db.WithContext(ctx).Model(&LocalProxyIdempotencyV1Model{}).Where("id = ? AND status = ?", id, "PENDING").
+		Updates(map[string]any{"operation_id": operationID, "operation_revision": operationRevision, "updated_at": time.Now().UTC().Unix()})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrLocalProxyIdempotencyConflict
+	}
+	return nil
 }
 
 func (r *Repository) CompleteLocalProxyReceipt(ctx context.Context, id uint, operationID string, operationRevision int, response any) error {

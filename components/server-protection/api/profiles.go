@@ -20,7 +20,7 @@ func (h Handler) resources(c *gin.Context) {
 	}
 	refresh := queryBool(c, "refresh")
 	inventory := protectionresources.Snapshot(c.Request.Context(), refresh)
-	page := parsePage(c, 100, 500)
+	page := parsePage(c, 100)
 	kind := strings.TrimSpace(c.Query("kind"))
 	owner := strings.TrimSpace(c.Query("owner"))
 	filtered := inventory.Resources[:0]
@@ -34,16 +34,8 @@ func (h Handler) resources(c *gin.Context) {
 		filtered = append(filtered, item)
 	}
 	inventory.Resources = filtered
-	total := len(inventory.Resources)
-	start := page.Offset()
-	if start > total {
-		start = total
-	}
-	end := start + page.Limit
-	if end > total {
-		end = total
-	}
-	inventory.Resources = inventory.Resources[start:end]
+	var total int
+	inventory.Resources, total = paginate(inventory.Resources, page)
 	h.deps.JSONObj(c, gin.H{"generatedAt": inventory.GeneratedAt, "resources": inventory.Resources, "items": inventory.Resources, "collisions": inventory.Collisions, "warnings": inventory.Warnings, "errors": inventory.Errors, "page": page.Page, "limit": page.Limit, "total": total}, nil)
 }
 
@@ -82,7 +74,7 @@ func (h Handler) profiles(c *gin.Context) {
 	if !h.readAllowed(c) {
 		return
 	}
-	page := parsePage(c, 50, 200)
+	page := parsePage(c, 50)
 	items, total, err := h.deps.Repository.ListProfiles(c.Request.Context(), protectionrepository.ProfileFilter{PageQuery: page, ResourceID: strings.TrimSpace(c.Query("resource_id")), Status: strings.TrimSpace(c.Query("status"))})
 	if err != nil {
 		h.deps.JSONObj(c, nil, err)

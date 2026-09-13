@@ -3,6 +3,7 @@ package resources
 import (
 	"sort"
 	"strings"
+	"time"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 )
@@ -25,6 +26,10 @@ type Collision struct {
 }
 
 func DetectCollisions(items []hostresources.ProtectableResource) []Collision {
+	return detectCollisionsAt(items, time.Now().UTC())
+}
+
+func detectCollisionsAt(items []hostresources.ProtectableResource, now time.Time) []Collision {
 	result := make([]Collision, 0)
 	for leftIndex := 0; leftIndex < len(items); leftIndex++ {
 		left := items[leftIndex]
@@ -39,7 +44,7 @@ func DetectCollisions(items []hostresources.ProtectableResource) []Collision {
 			if documentedSharedListener(left, right) {
 				continue
 			}
-			if collision, ok := compareListeners(left, right); ok {
+			if collision, ok := compareListeners(left, right, now); ok {
 				result = append(result, collision)
 			}
 		}
@@ -52,7 +57,7 @@ func DetectCollisions(items []hostresources.ProtectableResource) []Collision {
 	return result
 }
 
-func compareListeners(left, right hostresources.ProtectableResource) (Collision, bool) {
+func compareListeners(left, right hostresources.ProtectableResource, now time.Time) (Collision, bool) {
 	leftListen := hostresources.NormalizeListen(left.Listen)
 	rightListen := hostresources.NormalizeListen(right.Listen)
 	base := Collision{
@@ -68,6 +73,9 @@ func compareListeners(left, right hostresources.ProtectableResource) (Collision,
 		return base, true
 	}
 	if ipv4IPv6WildcardPair(leftListen, rightListen) {
+		if exactSeparateSocketCoverage(left, right, now) {
+			return Collision{}, false
+		}
 		base.Code = "dual_stack_ambiguous"
 		base.Severity = CollisionWarning
 		base.Message = "IPv4 and IPv6 wildcard ownership may overlap on this host"
@@ -86,6 +94,18 @@ func compareListeners(left, right hostresources.ProtectableResource) (Collision,
 		return base, true
 	}
 	return Collision{}, false
+}
+
+func exactSeparateSocketCoverage(left, right hostresources.ProtectableResource, now time.Time) bool {
+	a, b := left.SocketCoverage, right.SocketCoverage
+	if a == nil || b == nil || !a.CurrentFor(left, now) || !b.CurrentFor(right, now) ||
+		left.Owner == "" || left.Owner != right.Owner || a.OwnerRevision != b.OwnerRevision ||
+		a.ConfigurationRevision != b.ConfigurationRevision || a.Socket.Inode == b.Socket.Inode ||
+		a.AuthorityRevision == b.AuthorityRevision {
+		return false
+	}
+	return len(a.Socket.CoverageFamilies) == 1 && len(b.Socket.CoverageFamilies) == 1 &&
+		a.Socket.CoverageFamilies[0] != b.Socket.CoverageFamilies[0]
 }
 
 func socketProtocol(value string) string {

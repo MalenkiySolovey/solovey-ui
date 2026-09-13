@@ -6,7 +6,7 @@ import "context"
 
 type unavailableListenerOwnerExecutor struct{}
 
-func newSystemListenerOwnerExecutor() ListenerOwnerExecutor {
+func newComposedListenerOwnerExecutor() ListenerOwnerExecutor {
 	return unavailableListenerOwnerExecutor{}
 }
 

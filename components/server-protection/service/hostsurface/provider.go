@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"net/netip"
+	"path"
 	"sort"
 	"strings"
 	"sync"
@@ -15,15 +16,22 @@ import (
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
+	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
 )
 
 type RawProcess struct {
-	PID             int
-	StartTime       string
-	ExecutableToken string
-	UID             int
-	SystemdUnit     string
-	ContainerCgroup string
+	PID              int
+	ParentPID        int
+	SessionID        int
+	StartTime        string
+	Executable       string
+	ExeDevice        uint64
+	ExeInode         uint64
+	UID              int
+	GID              int
+	ControlGroup     string
+	EvidenceRevision string
+	ProviderRevision string
 }
 
 type RawSocket struct {
@@ -47,6 +55,7 @@ type Provider struct {
 	Resources       func(context.Context) hostresources.ResourceSnapshot
 	ObservePlatform func(context.Context, hostfacts.Limits) (PlatformSnapshot, error)
 	OwnerObserver   OwnerObserver
+	SSHProjection   SSHProjectionSource
 	BindingRevision string
 }
 
@@ -73,6 +82,15 @@ func NewProvider(ownerObservers ...OwnerObserver) *Provider {
 	return provider
 }
 
+func NewProviderWithSSHProjection(source SSHProjectionSource, ownerObservers ...OwnerObserver) *Provider {
+	provider := NewProvider(ownerObservers...)
+	provider.SSHProjection = source
+	provider.Resources = func(ctx context.Context) hostresources.ResourceSnapshot {
+		return hostresources.SnapshotExcluding(ctx, domain.ProtectionResourceOwner)
+	}
+	return provider
+}
+
 func (*Provider) SourceID() string { return "server-protection:linux-hostsurface" }
 
 // ObservationTimeout is consumed by the neutral registry through its bounded
@@ -83,14 +101,6 @@ func (*Provider) ObservationTimeout() time.Duration { return ownerObservationTim
 func (p *Provider) Observe(ctx context.Context, limits hostfacts.Limits) (hostfacts.Observation, error) {
 	if p == nil {
 		return hostfacts.Observation{}, errors.New("hostsurface provider is nil")
-	}
-	observe := p.ObservePlatform
-	if observe == nil {
-		observe = observePlatform
-	}
-	raw, err := observe(ctx, limits)
-	if err != nil {
-		return hostfacts.Observation{}, err
 	}
 	now := time.Now
 	if p.Now != nil {
@@ -118,10 +128,10 @@ func (p *Provider) Observe(ctx context.Context, limits hostfacts.Limits) (hostfa
 			ownerStates[ownerStateKey(resource.ID, hostresources.NetworkUnknown)] = ownerState(unavailableOwnerObservation(OwnerObservationFailed, "listener_owner_listen_intent_invalid"), p.BindingRevision)
 			continue
 		}
-		expected := resource.Capabilities.ExpectedListenerOwner
+		_, expectedValid := listenerOwnerExpectationFor(resource)
 		for _, intent := range intents {
 			key := ownerStateKey(resource.ID, intent.Network)
-			if !expected.Valid() {
+			if !expectedValid {
 				ownerStates[key] = ownerState(unavailableOwnerObservation(OwnerContractMismatch, "listener_owner_expectation_missing"), p.BindingRevision)
 				continue
 			}
@@ -159,7 +169,34 @@ func (p *Provider) Observe(ctx context.Context, limits hostfacts.Limits) (hostfa
 		}
 		ownerStates = fenceOwnerInvocationSet(ownerStates)
 	}
-	return NormalizeWithOwners(raw, resources, ownerStates, now().UTC()), nil
+	// Acquire the SSH owner generation and the kernel socket surface adjacent
+	// to final normalization. Long-running non-SSH owner observations therefore
+	// cannot consume a short-lived SSH authority before it is projected.
+	sshProjection := SSHListenerProjection{}
+	sshProjectionReason := ""
+	if p.SSHProjection != nil {
+		var projectionErr error
+		sshProjection, projectionErr = p.SSHProjection.ProjectSSHListeners(ctx, now)
+		if projectionErr != nil {
+			sshProjectionReason = "ssh_owner_projection_unavailable"
+		} else {
+			resources.Resources = append(resources.Resources, sshProjection.Resources...)
+			sort.Slice(resources.Resources, func(i, j int) bool { return resources.Resources[i].ID < resources.Resources[j].ID })
+		}
+	}
+	observe := p.ObservePlatform
+	if observe == nil {
+		observe = observePlatform
+	}
+	raw, err := observe(ctx, limits)
+	if err != nil {
+		return hostfacts.Observation{}, err
+	}
+	validationTime := sshProjection.ValidatedAt
+	if validationTime.IsZero() {
+		validationTime = now().UTC()
+	}
+	return NormalizeWithOwnersAndSSH(raw, resources, ownerStates, sshProjection, sshProjectionReason, validationTime), nil
 }
 
 type ownerObservationState struct {
@@ -229,7 +266,14 @@ func Normalize(raw PlatformSnapshot, resources hostresources.ResourceSnapshot, n
 }
 
 func NormalizeWithOwners(raw PlatformSnapshot, resources hostresources.ResourceSnapshot, owners map[string]ownerObservationState, now time.Time) hostfacts.Observation {
+	return NormalizeWithOwnersAndSSH(raw, resources, owners, SSHListenerProjection{}, "", now)
+}
+
+func NormalizeWithOwnersAndSSH(raw PlatformSnapshot, resources hostresources.ResourceSnapshot, owners map[string]ownerObservationState, ssh SSHListenerProjection, sshReason string, now time.Time) hostfacts.Observation {
 	result := hostfacts.Observation{Facts: make([]hostfacts.HostSurfaceFactV1, 0, len(raw.Sockets)), Truncated: raw.Truncated, ReasonCodes: append([]string(nil), raw.ReasonCodes...)}
+	if sshReason != "" {
+		result.ReasonCodes = append(result.ReasonCodes, sshReason)
+	}
 	matchedResources := make(map[string]bool)
 	for _, socket := range raw.Sockets {
 		fact := hostfacts.HostSurfaceFactV1{
@@ -243,22 +287,49 @@ func NormalizeWithOwners(raw PlatformSnapshot, resources hostresources.ResourceS
 			}{string(socket.Network), string(socket.Family), canonicalBind(socket.Bind), socket.Port}),
 		}
 		processes := socket.Processes
-		if process, ok := verifiedSystemdSSHSocketOwner(processes); ok {
-			processes = []RawProcess{process}
-			fact.ReasonCodes = append(fact.ReasonCodes, "systemd_ssh_socket_activation_verified")
-		}
+		processEvidenceComplete := false
 		if len(processes) == 1 {
 			process := processes[0]
-			pid, uid := process.PID, process.UID
-			fact.Process = hostfacts.ProcessFact{PID: &pid, StartTime: process.StartTime, ExeDigest: digestToken(process.ExecutableToken), UID: &uid}
-			fact.Service = hostfacts.ServiceFact{SystemdUnit: safeServiceToken(process.SystemdUnit), ContainerCgroup: safeServiceToken(process.ContainerCgroup)}
-			fact.ConfidenceBP = 9000
+			pid, parent, session, uid, gid := process.PID, process.ParentPID, process.SessionID, process.UID, process.GID
+			fact.Process = hostfacts.ProcessFact{ProviderRevision: process.ProviderRevision, EvidenceRevision: process.EvidenceRevision,
+				PID: &pid, ParentPID: &parent, SessionID: &session, StartTime: process.StartTime,
+				Executable: process.Executable, ExeDevice: process.ExeDevice, ExeInode: process.ExeInode,
+				UID: &uid, GID: &gid, ControlGroup: process.ControlGroup}
+			processEvidenceComplete = completeProcessEvidence(process)
+			if processEvidenceComplete {
+				fact.Process.ExeDigest = digestToken(process.Executable + "|" + process.EvidenceRevision)
+				fact.ConfidenceBP = 9000
+			} else {
+				fact.ReasonCodes = append(fact.ReasonCodes, "process_evidence_incomplete")
+			}
 		} else if len(processes) > 1 {
 			fact.ReasonCodes = append(fact.ReasonCodes, "process_owner_ambiguous")
 		} else {
 			fact.ReasonCodes = append(fact.ReasonCodes, "process_owner_unknown")
 		}
-		if resource := matchResource(socket, resources.Resources); resource != nil {
+		sshMatched := false
+		if authority, resourceID, ok := matchSSHProjection(socket, ssh, now); ok {
+			fact.SemanticOwner = &hostfacts.SemanticOwnerFactV1{
+				ManagementService: hostfacts.ManagementServiceSSH, Source: ssh.Source, Revision: ssh.Revision,
+				AuthorityRevision: authority.Revision, Socket: authority.Socket,
+			}
+			fact.ConfigurationRevision = authority.ConfigurationRevision
+			fact.SocketInode, fact.SocketCookie = authority.Socket.Inode, authority.Socket.Cookie
+			fact.Process, fact.Service = authority.Process, authority.Service
+			fact.RegisteredResourceID, fact.DesiredOwner, fact.OwnershipMode = resourceID, domain.ProtectionResourceOwner, hostfacts.OwnershipExternalManaged
+			fact.Classification, fact.ConfidenceBP = hostfacts.ClassificationExpectedExternal, 10000
+			fact.Source = ssh.Source
+			fact.FirstSeen, fact.LastSeen, fact.ExpiresAt = authority.ObservedAt, authority.ObservedAt, authority.ExpiresAt
+			fact.ReasonCodes = withoutReasons(fact.ReasonCodes, "process_owner_unknown", "process_owner_ambiguous", "process_evidence_incomplete", "process_owner_not_verified")
+			fact.ReasonCodes = append(fact.ReasonCodes, "ssh_listener_authority_exact")
+			matchedResources[ownerStateKey(resourceID, hostresources.Network(socket.Network))] = true
+			sshMatched = true
+		}
+		if sshMatched {
+			// Exact SSH ownership and its resource binding come from the SSH
+			// semantic authority. A same-socket configured resource remains a
+			// graph collision and cannot overwrite this classification.
+		} else if resource := matchResource(socket, resources.Resources); resource != nil {
 			key := ownerStateKey(resource.ID, hostresources.Network(socket.Network))
 			matchedResources[key] = true
 			fact.RegisteredResourceID = resource.ID
@@ -285,17 +356,19 @@ func NormalizeWithOwners(raw PlatformSnapshot, resources hostresources.ResourceS
 			case ownerStateHas(state, "listener_owner_ambiguous") || ownerStateHas(state, "listener_owner_fact_invalid") || ownerStateHas(state, "listener_owner_revision_missing"):
 				fact.OwnershipMode, fact.Classification, fact.ConfidenceBP = hostfacts.OwnershipUnmanaged, hostfacts.ClassificationUnknownOwner, 0
 				fact.ReasonCodes = append(fact.ReasonCodes, state.ReasonCodes...)
-			case state.Available && len(socket.Processes) == 1:
+			case state.Available && processEvidenceComplete:
 				fact.OwnershipMode, fact.Classification, fact.ConfidenceBP = hostfacts.OwnershipUnmanaged, hostfacts.ClassificationForeign, 0
 				fact.ReasonCodes = append(fact.ReasonCodes, "listener_owner_foreign")
 			default:
 				fact.OwnershipMode, fact.Classification = hostfacts.OwnershipUnmanaged, hostfacts.ClassificationUnknownOwner
 				fact.ReasonCodes = append(fact.ReasonCodes, state.ReasonCodes...)
 				fact.ReasonCodes = append(fact.ReasonCodes, "process_owner_not_verified")
-				if fact.ConfidenceBP > 5000 || fact.ConfidenceBP == 0 {
+				if processEvidenceComplete && (fact.ConfidenceBP > 5000 || fact.ConfidenceBP == 0) {
 					fact.ConfidenceBP = 5000
 				}
 			}
+		} else if len(socket.Processes) == 1 && !processEvidenceComplete {
+			fact.Classification = hostfacts.ClassificationUnknownOwner
 		} else if fact.Exposure == hostfacts.ExposureLocal || fact.Exposure == hostfacts.ExposurePrivate {
 			fact.Classification = hostfacts.ClassificationLocalOnly
 		} else if len(socket.Processes) != 1 {
@@ -348,22 +421,64 @@ func NormalizeWithOwners(raw PlatformSnapshot, resources hostresources.ResourceS
 	return result
 }
 
+func matchSSHProjection(socket RawSocket, projection SSHListenerProjection, now time.Time) (domain.SSHListenerAuthorityV1, string, bool) {
+	if projection.Source == "" || !exactOwnerRevision(projection.Revision) || len(projection.Authorities) == 0 || len(projection.Authorities) > 64 || len(projection.ResourceIDs) != len(projection.Authorities) {
+		return domain.SSHListenerAuthorityV1{}, "", false
+	}
+	type match struct {
+		authority  domain.SSHListenerAuthorityV1
+		resourceID string
+	}
+	matches := make([]match, 0, 1)
+	for _, authority := range projection.Authorities {
+		if !authority.Valid(now) || authority.Socket.Network != socket.Network || authority.Socket.Family != socket.Family || authority.Socket.Port != socket.Port ||
+			authority.Socket.Bind != canonicalBind(socket.Bind) || authority.Socket.Inode != safeNumeric(socket.Inode) {
+			continue
+		}
+		resourceID := projection.ResourceIDs[authority.Revision]
+		if resourceID == "" || resourceID != domain.ProtectionResourceID(authority) {
+			continue
+		}
+		matches = append(matches, match{authority: authority, resourceID: resourceID})
+	}
+	if len(matches) != 1 {
+		return domain.SSHListenerAuthorityV1{}, "", false
+	}
+	return matches[0].authority, matches[0].resourceID, true
+}
+
+func withoutReasons(values []string, rejected ...string) []string {
+	blocked := make(map[string]bool, len(rejected))
+	for _, value := range rejected {
+		blocked[value] = true
+	}
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if !blocked[value] {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
 func matchingOwnerFacts(socket RawSocket, observation *protectionhelper.ListenerOwnerObserveResult, resource hostresources.ProtectableResource, now time.Time) []hostfacts.ListenerOwnerFactV1 {
 	if observation == nil {
 		return nil
 	}
+	expected, expectedValid := listenerOwnerExpectationFor(resource)
+	if !expectedValid {
+		return nil
+	}
 	result := make([]hostfacts.ListenerOwnerFactV1, 0, 1)
 	for _, fact := range observation.Facts {
-		expected, application := resource.Capabilities.ExpectedListenerOwner, fact.Application
-		if fact.Valid(now) && expected.Valid() && application.ResourceID == resource.ID &&
+		application := fact.Application
+		if fact.Valid(now) && application.ResourceID == resource.ID &&
 			application.ResourceOwnerRevision == resource.Capabilities.OwnerRevision && application.ConfigurationRevision == resource.Capabilities.ConfigRevision &&
 			application.OwnerContractRevision == expected.ContractRevision && application.InstanceID == expected.InstanceID &&
 			application.SourceRevision == expected.SourceRevision && application.ArtifactRevision == expected.ArtifactRevision &&
 			application.DeploymentID == expected.DeploymentID && application.RuntimeRootBindingRevision == expected.RuntimeRootBindingRevision &&
 			application.ExpectedExecutableSHA256 == expected.ExecutableSHA256 && application.ServiceIdentity == expected.ServiceIdentity &&
-			fact.Service.SystemdUnit == expected.SystemdUnit && fact.Service.FragmentPath == expected.ServiceFragmentPath &&
-			fact.Service.FragmentSHA256 == expected.ServiceUnitSHA256 && fact.Service.ControlGroup == expected.ServiceControlGroup &&
-			fact.Process.ControlGroup == expected.ServiceControlGroup && fact.Process.Executable == expected.ExecutablePath &&
+			fact.Process.Executable == expected.ExecutablePath &&
 			fact.Process.UID != nil && fact.Process.GID != nil && uint32(*fact.Process.UID) == expected.ProcessUID && uint32(*fact.Process.GID) == expected.ProcessGID &&
 			fact.Socket.Network == socket.Network && fact.Socket.Family == socket.Family &&
 			fact.Socket.Bind == canonicalBind(socket.Bind) && fact.Socket.Port == socket.Port && fact.Socket.Inode == socket.Inode {
@@ -383,37 +498,12 @@ func ownerStateHas(state ownerObservationState, reason string) bool {
 }
 
 func ownerStateUnavailable(state ownerObservationState) bool {
-	for _, reason := range []string{"listener_owner_capability_unavailable", "listener_owner_contract_unavailable", "listener_owner_systemd_unavailable", "listener_owner_unavailable", "listener_owner_scan_bounded", "listener_service_unavailable"} {
+	for _, reason := range []string{"listener_owner_capability_unavailable", "listener_owner_contract_unavailable", "listener_owner_systemd_unavailable", "listener_owner_procd_unavailable", "listener_owner_unavailable", "listener_owner_scan_bounded", "listener_service_unavailable"} {
 		if ownerStateHas(state, reason) {
 			return true
 		}
 	}
 	return false
-}
-
-func verifiedSystemdSSHSocketOwner(processes []RawProcess) (RawProcess, bool) {
-	if len(processes) != 2 {
-		return RawProcess{}, false
-	}
-	var sshd RawProcess
-	sshdFound, systemdFound := false, false
-	for _, process := range processes {
-		executable := strings.SplitN(process.ExecutableToken, "|", 2)[0]
-		switch {
-		case process.PID == 1 && process.UID == 0 && (executable == "/usr/lib/systemd/systemd" || executable == "/lib/systemd/systemd"):
-			systemdFound = true
-		case process.PID > 1 && process.UID == 0 && executable == "/usr/sbin/sshd" && isSSHSystemdUnit(process.SystemdUnit):
-			sshd, sshdFound = process, true
-		default:
-			return RawProcess{}, false
-		}
-	}
-	return sshd, sshdFound && systemdFound
-}
-
-func isSSHSystemdUnit(value string) bool {
-	value = strings.ToLower(strings.TrimSpace(value))
-	return value == "ssh.service" || value == "sshd.service" || strings.HasPrefix(value, "sshd@") && strings.HasSuffix(value, ".service")
 }
 
 func matchResource(socket RawSocket, resources []hostresources.ProtectableResource) *hostresources.ProtectableResource {
@@ -479,25 +569,27 @@ func digestToken(value string) string {
 	return hex.EncodeToString(sum[:])
 }
 
+func completeProcessEvidence(value RawProcess) bool {
+	return value.PID > 0 && value.ParentPID >= 0 && value.SessionID >= 0 && safeNumeric(value.StartTime) != "" &&
+		canonicalProcessExecutable(value.Executable) && value.ExeDevice != 0 && value.ExeInode != 0 && value.UID >= 0 && value.GID >= 0 &&
+		safeProcessProviderRevision(value.ProviderRevision) && exactOwnerRevision(value.EvidenceRevision)
+}
+
+func canonicalProcessExecutable(value string) bool {
+	value = strings.TrimSpace(value)
+	return len(value) > 1 && len(value) <= 512 && path.IsAbs(value) && path.Clean(value) == value && !strings.ContainsAny(value, "\x00\r\n\t")
+}
+
+func safeProcessProviderRevision(value string) bool {
+	value = strings.TrimSpace(value)
+	return value != "" && len(value) <= 128 && !strings.ContainsAny(value, "\x00\r\n\t")
+}
+
 func safeNumeric(value string) string {
 	for _, r := range value {
 		if r < '0' || r > '9' {
 			return ""
 		}
-	}
-	return value
-}
-
-func safeServiceToken(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" || len(value) > 128 {
-		return ""
-	}
-	for _, r := range value {
-		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || strings.ContainsRune("._:@+-", r) {
-			continue
-		}
-		return ""
 	}
 	return value
 }

@@ -11,7 +11,13 @@ import (
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 )
 
-const ListenerOwnerObserverRevision = "pidfd-getfd-getsockname-so-cookie-v6only-systemd-proc-v1"
+const ListenerOwnerObserverRevision = "pidfd-getfd-getsockname-so-cookie-v6only-process-evidence-systemd-procd-projection-v2"
+
+func listenerOwnerProjectionRevision(value any) string {
+	data, _ := json.Marshal(value)
+	sum := sha256.Sum256(data)
+	return hex.EncodeToString(sum[:])
+}
 
 type ListenerOwnerExecutor interface {
 	Detect(context.Context) ListenerOwnerSupport

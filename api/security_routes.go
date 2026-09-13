@@ -293,6 +293,7 @@ func (h *securityHTTP) passwordTransition(c *gin.Context) {
 		jsonMsg(c, "", err)
 		return
 	}
+	service.NotifyPanelEvent("admin_credentials_changed", map[string]string{"user": securityContext.Username})
 	if err := h.stepUp.InvalidateUser(result.UserID); err != nil {
 		jsonMsg(c, "", err)
 		return
@@ -323,7 +324,7 @@ func (h *securityHTTP) passwordTransition(c *gin.Context) {
 		jsonMsg(c, "", err)
 		return
 	}
-	if err := SetLoginSecurity(c, service.LoginSessionSpec{
+	if _, err := SetLoginSecurity(c, service.LoginSessionSpec{
 		UserID:               result.UserID,
 		Username:             result.Username,
 		AuthState:            nextAuthState,
@@ -341,6 +342,7 @@ func (h *securityHTTP) passwordTransition(c *gin.Context) {
 		jsonMsg(c, "", err)
 		return
 	}
+	service.NotifyPanelEvent("session_reestablished_after_credential_change", map[string]string{"user": result.Username})
 	h.api.recordAudit(c, result.Username, "password_transition_completed", "security", service.AuditSeverityWarn, map[string]any{
 		"initialCredentialRemoved": result.InitialCredentialRemoved,
 	})
@@ -377,6 +379,7 @@ func (h *securityHTTP) changePassword(c *gin.Context) {
 		jsonMsg(c, "", err)
 		return
 	}
+	service.NotifyPanelEvent("admin_credentials_changed", map[string]string{"user": securityContext.Username})
 	if _, err := h.sessions.RevokeOthers(result.UserID, securityContext.Ref, "credentials_changed"); err != nil {
 		jsonMsg(c, "", err)
 		return
@@ -391,7 +394,7 @@ func (h *securityHTTP) changePassword(c *gin.Context) {
 		jsonMsg(c, "", err)
 		return
 	}
-	if err := SetLoginSecurity(c, service.LoginSessionSpec{
+	if _, err := SetLoginSecurity(c, service.LoginSessionSpec{
 		UserID:               result.UserID,
 		Username:             result.Username,
 		AuthState:            service.AuthStateAuthenticated,
@@ -409,6 +412,7 @@ func (h *securityHTTP) changePassword(c *gin.Context) {
 		jsonMsg(c, "", err)
 		return
 	}
+	service.NotifyPanelEvent("session_reestablished_after_credential_change", map[string]string{"user": result.Username})
 	h.api.recordAudit(c, result.Username, "admin_credentials_changed", "security", service.AuditSeverityWarn, map[string]any{
 		"policyVersion": passwordutil.PolicyVersion,
 	})
@@ -690,6 +694,7 @@ func (h *securityHTTP) completeRecoveryTransition(c *gin.Context) {
 		jsonMsg(c, "", err)
 		return
 	}
+	service.NotifyPanelEvent("admin_credentials_changed", map[string]string{"user": securityContext.Username})
 	if _, err := h.sessions.RevokeOthers(result.UserID, securityContext.Ref, "mfa_recovery_completed"); err != nil {
 		jsonMsg(c, "", err)
 		return
@@ -704,7 +709,7 @@ func (h *securityHTTP) completeRecoveryTransition(c *gin.Context) {
 		jsonMsg(c, "", err)
 		return
 	}
-	if err := SetLoginSecurity(c, service.LoginSessionSpec{
+	if _, err := SetLoginSecurity(c, service.LoginSessionSpec{
 		UserID:               result.UserID,
 		Username:             result.Username,
 		AuthState:            service.AuthStateAuthenticated,
@@ -720,6 +725,7 @@ func (h *securityHTTP) completeRecoveryTransition(c *gin.Context) {
 		jsonMsg(c, "", err)
 		return
 	}
+	service.NotifyPanelEvent("session_reestablished_after_credential_change", map[string]string{"user": result.Username})
 	h.api.recordAudit(c, result.Username, "mfa_recovery_completed", "security", service.AuditSeverityWarn, nil)
 	jsonObj(c, gin.H{"state": service.AuthStateAuthenticated, "assurance": service.AssurancePassword}, nil)
 }
@@ -815,7 +821,7 @@ func (h *securityHTTP) reissueSession(c *gin.Context, userID uint, authState, as
 	if current, ok := GetSessionSecurityContext(c); ok {
 		lastMFAAt = current.LastMFAAt
 	}
-	return SetLoginSecurity(c, service.LoginSessionSpec{
+	_, err = SetLoginSecurity(c, service.LoginSessionSpec{
 		UserID:               user.Id,
 		Username:             user.Username,
 		AuthState:            authState,
@@ -831,6 +837,7 @@ func (h *securityHTTP) reissueSession(c *gin.Context, userID uint, authState, as
 		UserAgentHash:        service.UserAgentDigest(c.Request.UserAgent()),
 		DeviceLabel:          boundedDeviceLabel(c.Request.UserAgent()),
 	})
+	return err
 }
 
 func (h *securityHTTP) allowSecurityVerification(c *gin.Context, securityContext SessionSecurityContext, method string) bool {

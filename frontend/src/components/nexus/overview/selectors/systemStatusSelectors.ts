@@ -22,13 +22,13 @@ const seconds = (value: unknown): number => {
   return number === undefined ? 0 : Math.floor(number)
 }
 
-export const selectSystemStatus = (payload?: unknown, nowSec?: number): SystemStatus => {
+export const selectSystemStatus = (payload?: unknown): SystemStatus => {
   const status = isSelectorRecord(payload) ? payload : {}
   const sys = isSelectorRecord(status.sys) ? status.sys : {}
   const sbd = isSelectorRecord(status.sbd) ? status.sbd : {}
   const sbdStats = isSelectorRecord(sbd.stats) ? sbd.stats : {}
   const bootTime = seconds(sys.bootTime)
-  const currentTime = seconds(nowSec)
+  const uptimeSec = seconds(sys.uptimeSec)
   const singboxVersion = plainText(sbd.version)
   const singboxAlloc = nonNegativeNumber(sbdStats.Alloc)
   const singboxUptimeSec = nonNegativeNumber(sbdStats.Uptime)
@@ -38,7 +38,7 @@ export const selectSystemStatus = (payload?: unknown, nowSec?: number): SystemSt
     ipv6: plainTextList(sys.ipv6),
     appVersion: plainText(sys.appVersion) ?? '',
     bootTime,
-    uptimeSec: bootTime > 0 && currentTime > bootTime ? currentTime - bootTime : 0,
+    uptimeSec,
     singboxRunning: sbd.running === true,
   }
 

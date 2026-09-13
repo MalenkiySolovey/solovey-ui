@@ -34,6 +34,6 @@ func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
 		JSONMsg:        deps.JSONMsg,
 	}
 	realtime := g.Group("/realtime")
-	realtime.GET("/ws-token", h.IssueWSToken)
+	realtime.POST("/ws-token", h.IssueWSToken)
 	realtime.GET("/ws", h.RealtimeWS)
 }

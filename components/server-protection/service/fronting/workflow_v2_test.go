@@ -15,6 +15,7 @@ import (
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
+	sptest "github.com/MalenkiySolovey/solovey-ui/testsupport/serverprotection"
 )
 
 type fixedPlanSourceV2 struct {
@@ -923,10 +924,7 @@ func restartWorkflowV2(t *testing.T, fixture *workflowV2Fixture, pid int) (*prot
 	}
 	manager := protectionoperations.NewManager(fixture.repository, protectionoperations.Options{InstanceID: "fronting-v2-restart-" + fmt.Sprint(pid), PID: pid,
 		Now: func() time.Time { return fixture.now }, Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil }})
-	root, err := protectionhelper.NewManagedRoot(fixture.storage.Root())
-	if err != nil {
-		t.Fatal(err)
-	}
+	root := sptest.ManagedRoot(t, fixture.storage.Root())
 	client, err := protectionhelper.NewClient(root, manager, fixture.nginx, frontingAudit{})
 	if err != nil {
 		t.Fatal(err)

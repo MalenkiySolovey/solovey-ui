@@ -4,8 +4,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"strings"
+
+	protectionruntime "github.com/MalenkiySolovey/solovey-ui/components/server-protection/runtimecontract"
 )
 
 var (
@@ -13,42 +16,69 @@ var (
 )
 
 type ManagedRoot struct {
-	path string
+	path      string
+	authority protectionruntime.RuntimeRootAuthority
 }
 
-func NewManagedRoot(path string) (ManagedRoot, error) {
-	absolute, err := filepath.Abs(path)
-	if err != nil {
-		return ManagedRoot{}, err
+func NewManagedRoot(authority protectionruntime.RuntimeRootAuthority) (ManagedRoot, error) {
+	return newManagedRoot(authority, os.Lstat, filepath.EvalSymlinks)
+}
+
+func newManagedRoot(authority protectionruntime.RuntimeRootAuthority, lstat func(string) (os.FileInfo, error), eval func(string) (string, error), rechecks ...func() error) (ManagedRoot, error) {
+	if err := authority.Validate(); err != nil {
+		return ManagedRoot{}, fmt.Errorf("%w: runtime root authority is invalid", ErrManagedPathForbidden)
 	}
-	absolute = filepath.Clean(absolute)
-	if filepath.Base(absolute) != "server-protection" || filepath.Base(filepath.Dir(absolute)) != ".runtime" {
-		return ManagedRoot{}, errors.New("managed root must end in .runtime/server-protection")
+	absolute := authority.Path()
+	if !authority.Installed() {
+		var err error
+		absolute, err = filepath.Abs(absolute)
+		if err != nil {
+			return ManagedRoot{}, err
+		}
 	}
-	info, err := os.Stat(absolute)
+	absolute = cleanAuthorityPath(authority, absolute)
+	if absolute != authority.Path() {
+		return ManagedRoot{}, fmt.Errorf("%w: runtime root differs from its authority", ErrManagedPathForbidden)
+	}
+	info, err := lstat(absolute)
 	if err != nil {
 		return ManagedRoot{}, fmt.Errorf("inspect managed root: %w", err)
 	}
-	if !info.IsDir() {
-		return ManagedRoot{}, errors.New("managed root is not a directory")
+	if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+		return ManagedRoot{}, fmt.Errorf("%w: managed root is not a non-symlink directory", ErrManagedPathForbidden)
 	}
-	resolved, err := filepath.EvalSymlinks(absolute)
+	resolved, err := eval(absolute)
 	if err != nil {
 		return ManagedRoot{}, fmt.Errorf("resolve managed root: %w", err)
 	}
-	resolved = filepath.Clean(resolved)
-	if err := validateResolvedManagedRoot(resolved); err != nil {
+	resolved = cleanAuthorityPath(authority, resolved)
+	if err := validateResolvedManagedRoot(authority, resolved); err != nil {
 		return ManagedRoot{}, err
 	}
-	return ManagedRoot{path: resolved}, nil
+	recheck := authority.Recheck
+	if len(rechecks) == 1 && rechecks[0] != nil {
+		recheck = rechecks[0]
+	} else if len(rechecks) > 0 {
+		return ManagedRoot{}, fmt.Errorf("%w: runtime mount recheck is invalid", ErrManagedPathForbidden)
+	}
+	if err := recheck(); err != nil {
+		return ManagedRoot{}, fmt.Errorf("%w: runtime mount proof changed", ErrManagedPathForbidden)
+	}
+	return ManagedRoot{path: resolved, authority: authority}, nil
 }
 
-func validateResolvedManagedRoot(path string) error {
-	path = filepath.Clean(path)
-	if filepath.Base(path) != "server-protection" || filepath.Base(filepath.Dir(path)) != ".runtime" {
-		return fmt.Errorf("%w: resolved root escapes .runtime/server-protection", ErrManagedPathForbidden)
+func validateResolvedManagedRoot(authority protectionruntime.RuntimeRootAuthority, resolved string) error {
+	if err := authority.Validate(); err != nil || cleanAuthorityPath(authority, resolved) != authority.CanonicalPath() {
+		return fmt.Errorf("%w: resolved root differs from its deployment authority", ErrManagedPathForbidden)
 	}
 	return nil
+}
+
+func cleanAuthorityPath(authority protectionruntime.RuntimeRootAuthority, value string) string {
+	if authority.Installed() {
+		return pathpkg.Clean(filepath.ToSlash(value))
+	}
+	return filepath.Clean(value)
 }
 
 func (r ManagedRoot) Path() string { return r.path }
@@ -90,6 +120,9 @@ func (r ManagedRoot) ResolveNoSymlink(relative string, mustExist bool) (string, 
 func (r ManagedRoot) resolve(relative string, mustExist bool, eval func(string) (string, error)) (string, error) {
 	if r.path == "" {
 		return "", fmt.Errorf("%w: managed root is not initialized", ErrManagedPathForbidden)
+	}
+	if err := r.authority.Recheck(); err != nil {
+		return "", fmt.Errorf("%w: runtime mount proof changed", ErrManagedPathForbidden)
 	}
 	if relative == "" || len(relative) > 1024 || strings.ContainsRune(relative, 0) ||
 		strings.HasPrefix(relative, "/") || strings.HasPrefix(relative, `\`) ||

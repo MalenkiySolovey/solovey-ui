@@ -153,6 +153,7 @@ import {
 } from '../frontingLogic'
 import type { FrontingOperation, FrontingPlan, FrontingRecoveryStatus, FrontingStatusPage } from '../types'
 import { stateColor } from '../useServerProtection'
+import { receiptIdempotencyKey } from '../idempotency'
 
 const { t } = useI18n()
 const page = ref<FrontingStatusPage>()
@@ -232,7 +233,7 @@ const preview = () => run(async () => {
 const openDialog = (action: 'prepare' | 'apply' | 'rollback') => {
 	dialogAction.value = action
 	confirmation.value = ''
-	idempotencyKey.value = globalThis.crypto?.randomUUID?.() ?? `fronting-${Date.now()}-${Math.random().toString(16).slice(2)}`
+	idempotencyKey.value = receiptIdempotencyKey()
 	dialog.value = true
 }
 
@@ -268,7 +269,7 @@ const knownReasons = new Set([
 	'alpn_routing_unsupported', 'validation_unavailable', 'reload_unavailable', 'runtime_identity_stale', 'capability_stale',
 	'socket_claim_stale', 'topology_mutation_blocked', 'target_reference_stale', 'target_management_forbidden', 'lease_conflict',
 	'lease_stale', 'lease_lost', 'proxy_protocol_mismatch', 'selector_invalid', 'selector_conflict', 'default_policy_invalid',
-	'plan_expired', 'plan_digest_mismatch', 'operation_conflict', 'operation_revision_stale', 'apply_gate_disabled',
+	'plan_expired', 'plan_digest_mismatch', 'operation_conflict', 'operation_revision_stale', 'idempotency_key_expired', 'apply_gate_disabled',
 	'experimental_ack_required', 'confirmation_mismatch', 'validation_failed', 'reload_failed', 'active_revision_mismatch',
 	'listener_identity_mismatch', 'health_failed', 'rollback_failed', 'reconcile_required', 'ambiguous_result', 'operation_not_found',
 	'legacy_fronting_requires_v2_preview', 'http_terminating_not_shipped', 'udp_quic_out_of_scope',

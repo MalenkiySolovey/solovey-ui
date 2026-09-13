@@ -13,6 +13,7 @@ User=solovey-ui
 Group=solovey-ui
 WorkingDirectory=/var/lib/solovey-ui
 Environment=SUI_DB_FOLDER=/var/lib/solovey-ui/db
+Environment=SUI_DEPLOYMENT_KIND=systemd
 Environment=SUI_COMPONENTS_INSTALLED_FILE=/usr/local/solovey-ui/components/installed.json
 EnvironmentFile=-/etc/solovey-ui/secretbox.env
 ExecStart=/usr/local/solovey-ui/releases/current/solovey-ui

@@ -9,6 +9,8 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
+	"slices"
 	"sort"
 	"strings"
 	"testing"
@@ -164,6 +166,7 @@ func TestLifecycleKeepsInstalledOwnerBackupWhileRuntimeScopesFollowStartStop(t *
 	}
 
 	c := component{}
+	t.Cleanup(func() { _ = c.Stop(context.Background()) })
 	scheduler := &trackingScheduler{}
 	lifecycleCtx := serverProtectionLifecycleContext(scheduler)
 	if err := c.Migrate(context.Background(), lifecycle.Context{}); err != nil {
@@ -179,8 +182,14 @@ func TestLifecycleKeepsInstalledOwnerBackupWhileRuntimeScopesFollowStartStop(t *
 		t.Fatalf("component scope missing after Start: %v", err)
 	}
 	assertLifecycleBackupTable(t, true)
-	if len(scheduler.added) != 1 || scheduler.added[0] != "@every 1h" {
-		t.Fatalf("artifact cleanup schedule = %#v", scheduler.added)
+	wantSchedules := []string{"@every 1h"}
+	wantRemoved := []cron.EntryID{1}
+	if runtime.GOOS == "linux" {
+		wantSchedules = []string{"@every 1m", "@every 1h"}
+		wantRemoved = []cron.EntryID{1, 2}
+	}
+	if !slices.Equal(scheduler.added, wantSchedules) {
+		t.Fatalf("firewall reconciliation/artifact cleanup schedules = %#v", scheduler.added)
 	}
 
 	if err := c.Stop(context.Background()); err != nil {
@@ -193,8 +202,8 @@ func TestLifecycleKeepsInstalledOwnerBackupWhileRuntimeScopesFollowStartStop(t *
 		t.Fatal("component scope remained available after Stop")
 	}
 	assertLifecycleBackupTable(t, true)
-	if len(scheduler.removed) != 1 || scheduler.removed[0] != 1 {
-		t.Fatalf("artifact cleanup was not stopped: %#v", scheduler.removed)
+	if !slices.Equal(scheduler.removed, wantRemoved) {
+		t.Fatalf("firewall reconciliation/artifact cleanup were not stopped: %#v", scheduler.removed)
 	}
 }
 
@@ -210,6 +219,7 @@ func TestDisabledComponentStopsRecoveryRunnerAcrossEnable(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = dbsqlite.Close() })
 	c := component{}
+	t.Cleanup(func() { _ = c.Stop(context.Background()) })
 	if err := c.Migrate(context.Background(), lifecycle.Context{}); err != nil {
 		t.Fatal(err)
 	}
@@ -245,7 +255,6 @@ func TestDisabledComponentStopsRecoveryRunnerAcrossEnable(t *testing.T) {
 	if err := c.Start(context.Background(), serverProtectionLifecycleContext(nil)); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { _ = c.Stop(context.Background()) })
 	hooks.Lock()
 	after := hooks.operationManager
 	hooks.Unlock()

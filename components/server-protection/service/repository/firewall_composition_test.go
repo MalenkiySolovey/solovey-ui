@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -29,7 +30,7 @@ func TestFirewallAuthorityCommitChangesOnlyTransitionContribution(t *testing.T) 
 	if err := db.Create(&transition).Error; err != nil {
 		t.Fatal(err)
 	}
-	replacementComposition := FirewallCompositionModel{Schema: "fixture", Revision: strings.Repeat("1", 64), ManagedPlanRevision: strings.Repeat("2", 64), CandidateSHA256: strings.Repeat("3", 64), BindingsJSON: json.RawMessage(`[]`)}
+	replacementComposition := FirewallCompositionModel{Schema: "fixture", Revision: strings.Repeat("1", 64), ManagedPlanRevision: strings.Repeat("2", 64), CandidateSHA256: strings.Repeat("3", 64), CandidateSemanticSHA256: strings.Repeat("4", 64), BindingsJSON: json.RawMessage(`[]`)}
 	if err := repository.CommitFirewallAuthority(context.Background(), transition.OperationID, current.Revision, udpA.SemanticRevision, nil, replacementComposition, "ROLLED_BACK"); err != nil {
 		t.Fatal(err)
 	}
@@ -39,6 +40,9 @@ func TestFirewallAuthorityCommitChangesOnlyTransitionContribution(t *testing.T) 
 	}
 	if len(snapshot.Contributions) != 2 || snapshot.Contributions[0].ContributionID != baseline.ContributionID || snapshot.Contributions[1].ContributionID != udpB.ContributionID || snapshot.Composition.Revision != replacementComposition.Revision {
 		t.Fatalf("unrelated authority changed: %#v", snapshot)
+	}
+	if !snapshot.HasObservation || snapshot.Observation.State != "MATCHING" || snapshot.Observation.CommittedCompositionRevision != replacementComposition.Revision || snapshot.Observation.CurrentSemanticSHA256 != replacementComposition.CandidateSemanticSHA256 {
+		t.Fatalf("commit did not publish the post-mutation live observation: %#v", snapshot.Observation)
 	}
 	if err = repository.CommitFirewallAuthority(context.Background(), transition.OperationID, current.Revision, udpA.SemanticRevision, nil, replacementComposition, "ROLLED_BACK"); err == nil {
 		t.Fatal("stale composition/contribution fence was accepted")
@@ -88,5 +92,91 @@ func TestRestoredFirewallAuthorityIsRecoveryRequiredAndDropProtected(t *testing.
 		if !names[name] {
 			t.Fatalf("backup omits firewall authority table %s", name)
 		}
+	}
+}
+
+func TestFirewallObservationIsHostLocalAndCompositionFenced(t *testing.T) {
+	db := openTestDB(t)
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	repository := New(db)
+	if err := repository.RecordFirewallObservation(t.Context(), FirewallObservationModel{State: "ABSENT"}, ""); err != nil {
+		t.Fatalf("record inactive/absent: %v", err)
+	}
+	snapshot, err := repository.FirewallAuthority(t.Context())
+	if err != nil || snapshot.HasComposition || !snapshot.HasObservation || snapshot.Observation.State != "ABSENT" || snapshot.Observation.HasCommittedAuthority || snapshot.Observation.ObservedAt <= 0 {
+		t.Fatalf("inactive live observation is not durable: snapshot=%#v err=%v", snapshot, err)
+	}
+
+	composition := FirewallCompositionModel{ID: 1, Schema: "fixture", Revision: strings.Repeat("a", 64), ManagedPlanRevision: strings.Repeat("b", 64), CandidateSHA256: strings.Repeat("c", 64), CandidateSemanticSHA256: strings.Repeat("d", 64), BindingsJSON: json.RawMessage(`[]`), State: "ACTIVE", AppliedOperationID: "operation", UpdatedAt: 1}
+	if err := db.Create(&composition).Error; err != nil {
+		t.Fatal(err)
+	}
+	matching := FirewallObservationModel{State: "MATCHING", ManagedTablePresent: true, CurrentRevision: composition.ManagedPlanRevision, CurrentSemanticSHA256: composition.CandidateSemanticSHA256}
+	if err := repository.RecordFirewallObservation(t.Context(), matching, strings.Repeat("e", 64)); !errors.Is(err, ErrFirewallAuthorityConflict) {
+		t.Fatalf("stale composition revision accepted: %v", err)
+	}
+	if err := repository.RecordFirewallObservation(t.Context(), matching, composition.Revision); err != nil {
+		t.Fatalf("record matching observation: %v", err)
+	}
+	snapshot, err = repository.FirewallAuthority(t.Context())
+	if err != nil || !snapshot.HasObservation || snapshot.Observation.State != "MATCHING" || snapshot.Observation.CommittedCompositionRevision != composition.Revision || snapshot.Composition.State != "ACTIVE" {
+		t.Fatalf("live observation overwrote or detached committed authority: snapshot=%#v err=%v", snapshot, err)
+	}
+	for _, table := range BackupTableModels() {
+		if table.Name == (FirewallObservationModel{}).TableName() {
+			t.Fatal("host-local live observation entered portable backup authority")
+		}
+	}
+}
+
+func TestRetireFirewallAuthorityAfterRuntimeLossIsExactAndAtomic(t *testing.T) {
+	db := openTestDB(t)
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	repository := New(db)
+	operation := OperationLockModel{OperationID: "runtime-loss", Kind: "firewall", State: "applied", Revision: 7, LockedByInstanceID: "old-process", Actor: "admin", HeartbeatAt: 1, ExpiresAt: 2, CreatedAt: 1, UpdatedAt: 1}
+	contribution := FirewallContributionModel{ContributionID: "managed-firewall:baseline", Schema: "fixture", Kind: "BASELINE", ResourceID: "managed-table", Network: "inet", AddressFamily: "inet", SemanticRevision: strings.Repeat("a", 64), SemanticJSON: json.RawMessage(`{"baseline":true}`), AppliedOperationID: operation.OperationID, CreatedAt: 1, UpdatedAt: 1}
+	composition := FirewallCompositionModel{ID: 1, Schema: "fixture", Revision: strings.Repeat("b", 64), ManagedPlanRevision: strings.Repeat("c", 64), CandidateSHA256: strings.Repeat("d", 64), CandidateSemanticSHA256: strings.Repeat("e", 64), BindingsJSON: json.RawMessage(`[]`), State: "ACTIVE", AppliedOperationID: operation.OperationID, UpdatedAt: 1}
+	transition := FirewallContributionTransitionModel{OperationID: operation.OperationID, Schema: "fixture", ContributionID: contribution.ContributionID, PreviousJSON: json.RawMessage(`{}`), DesiredSemanticRevision: contribution.SemanticRevision, DesiredJSON: contribution.SemanticJSON, AfterCompositionRevision: composition.Revision, ManagedPlanRevision: composition.ManagedPlanRevision, CandidateSHA256: composition.CandidateSHA256, CandidateSemanticSHA256: composition.CandidateSemanticSHA256, State: "HEALTH_VERIFIED", MarkerUnixNano: 1, MutationCompletedUnixNano: 2, CreatedAt: 1, UpdatedAt: 1}
+	if err := db.Create(&operation).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&contribution).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&composition).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&transition).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.RecordFirewallObservation(t.Context(), FirewallObservationModel{State: "ABSENT"}, composition.Revision); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := repository.RetireFirewallAuthorityAfterRuntimeLoss(t.Context(), operation.OperationID, operation.Revision+1, composition.Revision); !errors.Is(err, ErrFirewallAuthorityConflict) {
+		t.Fatalf("stale operation revision was accepted: %v", err)
+	}
+	before, err := repository.FirewallAuthority(t.Context())
+	if err != nil || !before.HasComposition || len(before.Contributions) != 1 || !before.Observation.HasCommittedAuthority {
+		t.Fatalf("failed retirement was not atomic: snapshot=%#v err=%v", before, err)
+	}
+
+	if err := repository.RetireFirewallAuthorityAfterRuntimeLoss(t.Context(), operation.OperationID, operation.Revision, composition.Revision); err != nil {
+		t.Fatal(err)
+	}
+	after, err := repository.FirewallAuthority(t.Context())
+	if err != nil || after.HasComposition || len(after.Contributions) != 0 || !after.HasObservation || after.Observation.State != "ABSENT" || after.Observation.HasCommittedAuthority || after.Observation.CommittedCompositionRevision != "" {
+		t.Fatalf("runtime-loss retirement left mixed durable authority: snapshot=%#v err=%v", after, err)
+	}
+	var retiredTransition FirewallContributionTransitionModel
+	if err := db.First(&retiredTransition, "operation_id = ?", operation.OperationID).Error; err != nil || retiredTransition.State != "RETIRED_RUNTIME_LOSS" {
+		t.Fatalf("rollback transition was not retired: transition=%#v err=%v", retiredTransition, err)
+	}
+	if err := repository.RetireFirewallAuthorityAfterRuntimeLoss(t.Context(), operation.OperationID, operation.Revision, ""); err != nil {
+		t.Fatalf("exact repeated retirement was not idempotent: %v", err)
 	}
 }

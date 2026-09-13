@@ -1,34 +1,22 @@
 package sshmanagement
 
 import (
-	"strings"
 	"testing"
 	"time"
 
+	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 )
 
-func TestManagedPolicyRendersOnlySixBoundedFields(t *testing.T) {
+func TestManagedPolicyValidatesOnlySixSemanticFields(t *testing.T) {
 	tries := uint16(4)
 	grace := uint32(45)
 	disabled, enabled := false, true
 	policy := DesiredPolicyV1{Schema: PolicySchemaV1, MaxAuthTries: &tries, LoginGraceTimeSeconds: &grace,
 		PasswordAuthentication: &disabled, KbdInteractiveAuthentication: &disabled,
 		PermitRootLogin: RootLoginProhibitPassword, PubkeyAuthentication: &enabled}
-	content, err := policy.RenderManagedDropIn()
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(content)
-	for _, expected := range []string{"MaxAuthTries 4", "LoginGraceTime 45", "PasswordAuthentication no", "KbdInteractiveAuthentication no", "PermitRootLogin prohibit-password", "PubkeyAuthentication yes"} {
-		if !strings.Contains(text, expected) {
-			t.Fatalf("managed content omitted %q: %s", expected, text)
-		}
-	}
-	for _, forbidden := range []string{"Match ", "Include ", "AllowUsers", "DenyUsers", "AuthorizedKeys", "AuthenticationMethods", "Port ", "ListenAddress", "Subsystem", "Banner", "PAM"} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("managed content contains forbidden directive %q", forbidden)
-		}
+	if err := policy.Validate(); err != nil {
+		t.Fatalf("valid semantic policy rejected: %v", err)
 	}
 }
 
@@ -88,6 +76,61 @@ func TestPostureRejectsUnknownMatchUnsafeFilesAndSymlinks(t *testing.T) {
 	}
 }
 
+func TestSSHListenerAuthorityBindsExactFreshRootEvidence(t *testing.T) {
+	now := time.Unix(10_000, 0).UTC()
+	pid, parent, session, root := 784, 1, 784, 0
+	authority := SSHListenerAuthorityV1{
+		Schema: ListenerAuthoritySchemaV1, EndpointIDs: []string{"management:ssh:configured:ipv4:2222:lan:0123456789abcdef"}, InstanceID: "lan",
+		Socket: hostfacts.ListenerSocketIdentityV1{Network: hostfacts.NetworkTCP, Family: hostfacts.FamilyIPv4, Bind: "0.0.0.0", Port: 2222,
+			Inode: "22", Cookie: 42, Wildcard: true, CoverageFamilies: []hostfacts.Family{hostfacts.FamilyIPv4}},
+		Process: hostfacts.ProcessFact{ProviderRevision: "process-evidence/v2", EvidenceRevision: Revision("process"), PID: &pid, ParentPID: &parent,
+			SessionID: &session, StartTime: "123", ExeDigest: Revision("binary"), Executable: "/usr/sbin/dropbear", ExeDevice: 8, ExeInode: 42, UID: &root, GID: &root},
+		Service: hostfacts.ServiceFact{SupervisorRevision: Revision("supervisor"), CgroupAvailability: "unavailable", CgroupPolicy: "optional",
+			CgroupRevision: Revision("cgroup"), MainPID: &pid, ActiveState: "active", SubState: "running", ProcdService: "dropbear",
+			ProcdInstance: "lan", ProcdCommand: []string{"/usr/sbin/dropbear", "-F", "-p", "2222"}},
+		BinaryRevision: Revision("binary"), ServiceRevision: Revision("service"), ConfigurationRevision: Revision("configuration"),
+		ObservedAt: now.Unix(), ExpiresAt: now.Add(30 * time.Second).Unix(),
+	}
+	authority.Seal()
+	if !authority.Valid(now) {
+		t.Fatalf("exact listener authority rejected: %#v", authority)
+	}
+	t.Run("supervisor-instance-mismatch", func(t *testing.T) {
+		changed := authority
+		changed.Service.ProcdInstance = "other"
+		changed.Seal()
+		if changed.Valid(now) {
+			t.Fatal("authority was accepted for a different procd instance")
+		}
+	})
+
+	for name, mutate := range map[string]func(*SSHListenerAuthorityV1){
+		"socket-inode":  func(value *SSHListenerAuthorityV1) { value.Socket.Inode = "23" },
+		"process-start": func(value *SSHListenerAuthorityV1) { value.Process.StartTime = "124" },
+		"binary":        func(value *SSHListenerAuthorityV1) { value.Process.ExeDigest = Revision("forged") },
+		"duplicate-id": func(value *SSHListenerAuthorityV1) {
+			value.EndpointIDs = append(value.EndpointIDs, value.EndpointIDs[0])
+			value.Seal()
+		},
+		"future": func(value *SSHListenerAuthorityV1) {
+			value.ObservedAt = now.Add(time.Second).Unix()
+			value.ExpiresAt = now.Add(31 * time.Second).Unix()
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := authority
+			changed.EndpointIDs = append([]string(nil), authority.EndpointIDs...)
+			mutate(&changed)
+			if changed.Valid(now) {
+				t.Fatal("changed authority was accepted")
+			}
+		})
+	}
+	if authority.Valid(now.Add(31 * time.Second)) {
+		t.Fatal("expired listener authority was accepted")
+	}
+}
+
 func TestPreservationRejectsLastPathAndPasswordDisableWithoutTwoProofs(t *testing.T) {
 	now := time.Unix(10_000, 0).UTC()
 	posture := validPostureFixture(now)
@@ -127,8 +170,56 @@ func validPostureFixture(now time.Time) SSHPostureV1 {
 		HostKeys:       []HostKeyPostureV1{{Type: "ed25519", Fingerprint: Revision("host-key"), Count: 1, Owner: "root", ModeClass: "owner_read"}},
 		Capabilities:   capabilities,
 		ObservedAt:     now.Unix(), ExpiresAt: now.Add(5 * time.Minute).Unix(), BinaryRevision: Revision("binary"), ServiceRevision: Revision("service"), ConfigurationRevision: configuration}
+	pid, parent, session, root := 784, 1, 784, 0
+	authority := SSHListenerAuthorityV1{
+		Schema: ListenerAuthoritySchemaV1, EndpointIDs: []string{endpoint.ID}, InstanceID: "sshd.service",
+		Socket: hostfacts.ListenerSocketIdentityV1{Network: hostfacts.NetworkTCP, Family: hostfacts.FamilyIPv4, Bind: endpoint.Bind, Port: endpoint.Port,
+			Inode: "22", Cookie: 42, CoverageFamilies: []hostfacts.Family{hostfacts.FamilyIPv4}},
+		Process: hostfacts.ProcessFact{ProviderRevision: "process-evidence/v2", EvidenceRevision: Revision("process"), PID: &pid, ParentPID: &parent,
+			SessionID: &session, StartTime: "123", ExeDigest: Revision("binary"), Executable: "/usr/sbin/sshd", ExeDevice: 8, ExeInode: 42,
+			UID: &root, GID: &root, ControlGroup: "/system.slice/sshd.service"},
+		Service: hostfacts.ServiceFact{SupervisorRevision: Revision("supervisor"), CgroupAvailability: "available", CgroupPolicy: "required",
+			CgroupRevision: Revision("cgroup"), MainPID: &pid, ActiveState: "active", SubState: "running", SystemdUnit: "sshd.service",
+			FragmentPath: "/usr/lib/systemd/system/sshd.service", FragmentSHA256: Revision("fragment"), ControlGroup: "/system.slice/sshd.service", StartMonotonicUsec: 1},
+		BinaryRevision: Revision("binary"), ServiceRevision: Revision("service"), ConfigurationRevision: configuration,
+		ObservedAt: now.Unix(), ExpiresAt: now.Add(30 * time.Second).Unix(),
+	}
+	authority.Seal()
+	posture.ListenerAuthorities = []SSHListenerAuthorityV1{authority}
 	posture.SemanticRevision = PostureSemanticRevision(posture)
 	return posture
+}
+
+func TestPostureValidationDoesNotEncodeImplementationSupervisorPairs(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0).UTC()
+	posture := validPostureFixture(now)
+	posture.Service.Manager = "procd"
+	posture.Service.UnitID = "sshd"
+	posture.SemanticRevision = PostureSemanticRevision(posture)
+	if err := posture.Validate(now); err != nil {
+		t.Fatalf("OpenSSH/procd posture rejected as a domain impossibility: %v", err)
+	}
+	posture.Binary.Implementation = "dropbear"
+	posture.Service.Manager = "systemd"
+	posture.Service.UnitID = "dropbear"
+	posture.ConfigGraph = []ConfigNodeV1{{ID: "uci:dropbear", Kind: "uci_package", Order: 0, Depth: 0,
+		Digest: posture.ConfigurationRevision, Owner: "root", ModeClass: "owner_read_write"},
+		{ID: "uci:main", ParentID: "uci:dropbear", Kind: "uci_section", Order: 1, Depth: 1,
+			Digest: Revision("dropbear-main"), Owner: "root", ModeClass: "owner_read_write"}}
+	posture.SemanticRevision = PostureSemanticRevision(posture)
+	if err := posture.Validate(now); err != nil {
+		t.Fatalf("Dropbear/systemd posture rejected as a domain impossibility: %v", err)
+	}
+}
+
+func TestBackendDiagnosticConfigKindIsOpenEnded(t *testing.T) {
+	now := time.Unix(1_700_000_000, 0).UTC()
+	posture := validPostureFixture(now)
+	posture.ConfigGraph[0].Kind = "future_backend_root"
+	posture.SemanticRevision = PostureSemanticRevision(posture)
+	if err := posture.Validate(now); err != nil {
+		t.Fatalf("backend-native diagnostic kind required a semantic-domain enum change: %v", err)
+	}
 }
 
 func hasReason(values []ReasonCode, expected ReasonCode) bool {
@@ -140,7 +231,7 @@ func hasReason(values []ReasonCode, expected ReasonCode) bool {
 	return false
 }
 
-func BenchmarkRenderManagedDropIn(b *testing.B) {
+func BenchmarkDesiredPolicyValidation(b *testing.B) {
 	tries := uint16(4)
 	grace := uint32(30)
 	password, keyboard, publicKey := false, false, true
@@ -149,7 +240,7 @@ func BenchmarkRenderManagedDropIn(b *testing.B) {
 		PermitRootLogin: RootLoginProhibitPassword, PubkeyAuthentication: &publicKey}
 	b.ReportAllocs()
 	for index := 0; index < b.N; index++ {
-		if _, err := policy.RenderManagedDropIn(); err != nil {
+		if err := policy.Validate(); err != nil {
 			b.Fatal(err)
 		}
 	}

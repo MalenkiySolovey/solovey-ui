@@ -5,12 +5,17 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/deploymentidentity"
+	protectionruntime "github.com/MalenkiySolovey/solovey-ui/components/server-protection/runtimecontract"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/mountevidence"
 )
 
 func TestArbitraryOperationRejected(t *testing.T) {
@@ -35,13 +40,7 @@ func TestUnknownArgumentRejected(t *testing.T) {
 
 func TestPathTraversalRejected(t *testing.T) {
 	root := testManagedRoot(t)
-	request := Request{
-		ProtocolVersion: ProtocolVersion,
-		Correlation:     Correlation{OperationID: "op-1", InstanceID: "instance-1", LockRevision: 1},
-		Operation:       OperationArtifact,
-		Artifact:        &ArtifactRequest{Scope: ArtifactScopeNFT, Action: ArtifactWriteAtomic, Path: `..\outside`, Permissions: "0600"},
-	}
-	if err := request.Validate(root); err == nil || !strings.Contains(err.Error(), "traversal") {
+	if _, err := root.Resolve(`..\outside`, false); err == nil || !strings.Contains(err.Error(), "traversal") {
 		t.Fatalf("path traversal was not rejected: %v", err)
 	}
 }
@@ -78,17 +77,36 @@ func TestManagedRootSymlinkEscapeRejected(t *testing.T) {
 		}
 		t.Fatal(err)
 	}
-	if _, err := NewManagedRoot(rootPath); !errors.Is(err, ErrManagedPathForbidden) {
+	if _, err := NewManagedRoot(testRuntimeAuthorityForRoot(t, rootPath)); !errors.Is(err, ErrManagedPathForbidden) {
 		t.Fatalf("managed-root symlink escape was not rejected: %v", err)
 	}
 }
 
 func TestResolvedManagedRootShapeRejectsEscape(t *testing.T) {
-	if err := validateResolvedManagedRoot(filepath.Join(t.TempDir(), "outside")); !errors.Is(err, ErrManagedPathForbidden) {
+	rootPath := filepath.Join(t.TempDir(), ".runtime", "server-protection")
+	authority := testRuntimeAuthorityForRoot(t, rootPath)
+	if err := validateResolvedManagedRoot(authority, filepath.Join(t.TempDir(), "outside")); !errors.Is(err, ErrManagedPathForbidden) {
 		t.Fatalf("resolved managed-root escape was accepted: %v", err)
 	}
-	if err := validateResolvedManagedRoot(filepath.Join(t.TempDir(), ".runtime", "server-protection")); err != nil {
+	if err := validateResolvedManagedRoot(authority, rootPath); err != nil {
 		t.Fatalf("canonical managed-root shape was rejected: %v", err)
+	}
+}
+
+func TestOpenWrtInstalledAuthorityIsAcceptedAsExactManagedRoot(t *testing.T) {
+	authority := testOpenWrtRuntimeAuthority(t)
+	root, err := newManagedRoot(authority,
+		func(path string) (os.FileInfo, error) {
+			if path != protectionruntime.OpenWrtRuntimeRoot {
+				t.Fatalf("helper inspected root %q", path)
+			}
+			return managedRootDirectoryInfo{}, nil
+		},
+		func(path string) (string, error) { return path, nil },
+		func() error { return nil },
+	)
+	if err != nil || root.Path() != authority.Path() {
+		t.Fatalf("OpenWrt helper managed root = %q, authority = %#v, err = %v", root.Path(), authority, err)
 	}
 }
 
@@ -170,8 +188,9 @@ func TestTerminalReadLockIsLimitedToExactNginxVerify(t *testing.T) {
 	correlation := Correlation{OperationID: "op-terminal-read", InstanceID: "instance-terminal-read", LockRevision: 7}
 	verify := Request{ProtocolVersion: ProtocolVersion, Correlation: correlation, Operation: OperationNginxVerify, NginxVerify: &NginxVerifyRequest{
 		ExpectedRevision: revision, ExpectedSHA256: sha,
-		ExpectedBinary: BinaryIdentity{Path: "/usr/sbin/nginx", TargetPath: "/usr/sbin/nginx", Device: 1, Inode: 2},
-		Listeners:      []NginxListener{{Address: "0.0.0.0", Port: 8443}},
+		ExpectedBinary: BinaryIdentity{Path: "/usr/sbin/nginx", TargetPath: "/usr/sbin/nginx", Device: 1, Inode: 2,
+			Size: 1024, Mode: 0o755, Digest: strings.Repeat("a", 64)},
+		Listeners: []NginxListener{{Address: "0.0.0.0", Port: 8443}},
 	}}
 	if _, err := client.Execute(context.Background(), verify); !errors.Is(err, locks.readErr) || locks.readCalls != 1 || locks.strictCalls != 0 {
 		t.Fatalf("verify authorization calls read=%d strict=%d err=%v", locks.readCalls, locks.strictCalls, err)
@@ -210,14 +229,18 @@ func TestAuditContainsNoSecretsOrRawOutput(t *testing.T) {
 		t.Fatal(err)
 	}
 	secret := "super-secret-token"
+	candidatePath := "revisions/" + secret
+	if err := os.WriteFile(filepath.Join(root.Path(), filepath.FromSlash(candidatePath)), []byte("table inet solovey_protection {}\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	request := Request{
 		ProtocolVersion: ProtocolVersion,
 		Correlation:     Correlation{OperationID: "op-audit", InstanceID: "instance-audit", LockRevision: 3},
-		Operation:       OperationArtifact,
-		Artifact:        &ArtifactRequest{Scope: ArtifactScopeNFT, Action: ArtifactWriteAtomic, Path: "revisions/" + secret, Content: []byte(secret), Permissions: "0600"},
+		Operation:       OperationNFTValidate,
+		NFTValidate:     &NFTValidateRequest{CandidatePath: candidatePath, ExpectedRevision: strings.Repeat("a", 64), ExpectedSHA256: strings.Repeat("b", 64), ExpectedSemanticSHA256: strings.Repeat("c", 64), ExpectedTimedMembershipSHA256: strings.Repeat("d", 64)},
 	}
-	invoker := NewMockInvoker(availableCapabilities(OperationArtifact))
-	invoker.Responses[OperationArtifact] = Response{OK: true}
+	invoker := NewMockInvoker(availableCapabilities(OperationNFTValidate))
+	invoker.Responses[OperationNFTValidate] = Response{OK: true}
 	audit := &auditCapture{}
 	client, err := NewClient(root, allowLock{}, invoker, audit)
 	if err != nil {
@@ -274,8 +297,22 @@ func TestOperationDoesNotRunWhenAuditIsUnavailable(t *testing.T) {
 }
 
 func TestHelperVersionPolicy(t *testing.T) {
-	if !compatibleHelperVersion("1.5.9") || compatibleHelperVersion("1.4.9") || compatibleHelperVersion("1.5") {
+	if !compatibleHelperVersion("1.11.9") || compatibleHelperVersion("1.10.9") || compatibleHelperVersion("1.11") {
 		t.Fatal("helper major/minor compatibility policy is incorrect")
+	}
+}
+
+func TestManagedTableObservationIsBoundedAndReadOnly(t *testing.T) {
+	root := testManagedRoot(t)
+	request := Request{ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "observe-managed-table", InstanceID: "instance"}, Operation: OperationNFTObserve, NFTObserve: &NFTObserveRequest{}}
+	if err := request.Validate(root); err != nil {
+		t.Fatalf("read-only managed-table observation required a mutation lock: %v", err)
+	}
+	if !request.UnlockedReadOnly() {
+		t.Fatal("managed-table observation is not marked read-only")
+	}
+	if kind, err := request.RequiredLockKind(); err != nil || kind != "" {
+		t.Fatalf("managed-table observation acquired a mutation authority: kind=%q err=%v", kind, err)
 	}
 }
 
@@ -312,12 +349,85 @@ func testManagedRoot(t *testing.T) ManagedRoot {
 	if err := os.MkdirAll(path, 0o750); err != nil {
 		t.Fatal(err)
 	}
-	root, err := NewManagedRoot(path)
+	root, err := NewManagedRoot(testRuntimeAuthorityForRoot(t, path))
 	if err != nil {
 		t.Fatal(err)
 	}
 	return root
 }
+
+func testRuntimeAuthorityForRoot(t testing.TB, rootPath string) protectionruntime.RuntimeRootAuthority {
+	t.Helper()
+	base := filepath.Dir(filepath.Dir(filepath.Clean(rootPath)))
+	authority, err := protectionruntime.RootAuthorityForDatabaseFolder(filepath.Join(base, "db"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if authority.Path() != filepath.Clean(rootPath) {
+		t.Fatalf("test runtime authority = %q, root = %q", authority.Path(), rootPath)
+	}
+	return authority
+}
+
+func testOpenWrtRuntimeAuthority(t testing.TB) protectionruntime.RuntimeRootAuthority {
+	t.Helper()
+	const instance = "00112233-4455-4677-8899-aabbccddeeff"
+	source := "src-" + strings.Repeat("1", 64)
+	artifact := "art-" + strings.Repeat("2", 64)
+	deployment := "dep-" + strings.Repeat("3", 64)
+	binding, err := protectionruntime.BindOpenWrt(protectionruntime.OpenWrtInstalled(), instance, source, artifact, deployment)
+	if err != nil {
+		t.Fatal(err)
+	}
+	owner, err := deploymentidentity.NewProcdV1(instance, source, artifact, deployment, binding.ContractRevision, binding.BindingRevision,
+		"solovey-ui-panel", "solovey-ui", "panel", "/usr/lib/solovey-ui/solovey-ui", strings.Repeat("4", 64), 997, 997)
+	if err != nil {
+		t.Fatal(err)
+	}
+	runtimeRoot, err := protectionruntime.InstalledOpenWrtRuntimeRoot(owner, testOpenWrtMountProof(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected, err := deploymentidentity.ExpectedProcdApplicationOwner(owner)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projection, err := deploymentidentity.NewInstalledApplicationOwnerProjection(deploymentidentity.InstalledApplicationBackendProcd, expected)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority, err := protectionruntime.InstalledRuntimeRootAuthority(runtimeRoot, projection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return authority
+}
+
+func testOpenWrtMountProof(t testing.TB) protectionruntime.RuntimeMountProofV1 {
+	t.Helper()
+	root := protectionruntime.OpenWrtRuntimeRoot
+	fact, err := mountevidence.Parse([]byte(fmt.Sprintf("41 36 0:41 / %s rw - tmpfs tmpfs rw\n", root)), root)
+	if err == nil {
+		fact, err = mountevidence.BindStatfs(fact, root, false, 0x01021994)
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof, err := protectionruntime.NewRuntimeMountProof(root, protectionruntime.RuntimeMountVolatile, fact)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return proof
+}
+
+type managedRootDirectoryInfo struct{}
+
+func (managedRootDirectoryInfo) Name() string       { return "server-protection" }
+func (managedRootDirectoryInfo) Size() int64        { return 0 }
+func (managedRootDirectoryInfo) Mode() os.FileMode  { return os.ModeDir | 0o700 }
+func (managedRootDirectoryInfo) ModTime() time.Time { return time.Time{} }
+func (managedRootDirectoryInfo) IsDir() bool        { return true }
+func (managedRootDirectoryInfo) Sys() any           { return nil }
 
 func nginxDetectRequest() Request {
 	return Request{

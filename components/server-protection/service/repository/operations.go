@@ -14,7 +14,7 @@ var (
 )
 
 var nonTerminalOperationLockStates = []string{
-	"prepared", "applying", "health", "health_failed", "rolling_back", "lock_suspect",
+	"prepared", "applying", "health", "health_failed", "rolling_back", "lock_suspect", "restoring_runtime",
 }
 
 func NonTerminalOperationLockStates() []string {
@@ -45,7 +45,7 @@ func (r *Repository) AcquireOperationLock(ctx context.Context, input AcquireOper
 	}
 	var result OperationLockModel
 	joined := false
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := r.durableTransition(ctx, "operation_acquire", func(tx *gorm.DB) error {
 		if input.IdempotencyKey != "" {
 			err := tx.Where("idempotency_key = ?", input.IdempotencyKey).Order("id DESC").First(&result).Error
 			if err == nil {
@@ -151,9 +151,14 @@ func (r *Repository) UpdateOperationLockFenced(ctx context.Context, update Fence
 		if update.HelperRevision != nil {
 			values["helper_revision"] = *update.HelperRevision
 		}
-		result := tx.Model(&OperationLockModel{}).
-			Where("operation_id = ? AND revision = ? AND locked_by_instance_id = ? AND locked_by_pid = ? AND state IN ?", update.OperationID, update.Revision, update.InstanceID, update.PID, update.FromStates).
-			Updates(values)
+		query := tx.Model(&OperationLockModel{}).
+			Where("operation_id = ? AND revision = ? AND locked_by_instance_id = ? AND locked_by_pid = ? AND state IN ?", update.OperationID, update.Revision, update.InstanceID, update.PID, update.FromStates)
+		// Admission from PREPARED must not race the lease watchdog and revive
+		// expired authorization. Recovery and cancellation keep their own rules.
+		if update.ToState == "applying" {
+			query = query.Where("state <> ? OR expires_at > ?", "prepared", update.Now)
+		}
+		result := query.Updates(values)
 		if result.Error != nil {
 			return result.Error
 		}
@@ -203,6 +208,7 @@ type ReclaimOperationLockUpdate struct {
 	HelperRevision *string
 	Now            int64
 	ExpiresAt      int64
+	RequireIdle    bool
 }
 
 // ReclaimOperationLock creates a fresh owner/revision fence before a manual
@@ -225,6 +231,15 @@ func (r *Repository) ReclaimOperationLock(ctx context.Context, update ReclaimOpe
 		}
 		if result.RowsAffected != 1 {
 			return ErrOperationFenced
+		}
+		if update.RequireIdle {
+			var active int64
+			if err := tx.Model(&OperationLockModel{}).Where("operation_id <> ? AND state IN ?", update.OperationID, nonTerminalOperationLockStates).Count(&active).Error; err != nil {
+				return err
+			}
+			if active != 0 {
+				return ErrOperationConflict
+			}
 		}
 		return tx.Where("operation_id = ?", update.OperationID).First(&item).Error
 	})
@@ -256,7 +271,7 @@ func (r *Repository) ForceUnlockOperation(ctx context.Context, operationID strin
 		return OperationLockModel{}, errors.New("server-protection repository is not initialized")
 	}
 	var item OperationLockModel
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := r.durableTransition(ctx, "operation_force_unlock", func(tx *gorm.DB) error {
 		var current OperationLockModel
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("operation_id = ?", operationID).First(&current).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -288,7 +303,7 @@ func (r *Repository) ForgetOperationState(ctx context.Context, operationID strin
 		return OperationLockModel{}, errors.New("server-protection repository is not initialized")
 	}
 	var item OperationLockModel
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	err := r.durableTransition(ctx, "operation_forget", func(tx *gorm.DB) error {
 		var current OperationLockModel
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).Where("operation_id = ?", operationID).First(&current).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -326,4 +341,27 @@ func containsOperationState(states []string, state string) bool {
 		}
 	}
 	return false
+}
+
+// RecordRuntimeRecoveryFailure is fenced by the latest claim, including a
+// transition performed inside the semantic reconciler. Two execution failures
+// exhaust automatic continuation and retain authority for manual recovery.
+func (r *Repository) RecordRuntimeRecoveryFailure(ctx context.Context, operation OperationLockModel, attempts int, now int64) error {
+	if r == nil || r.db == nil || operation.Kind != "firewall" || operation.LockedByPID == nil || attempts < 1 {
+		return ErrOperationFenced
+	}
+	values := map[string]any{"recovery_attempts": attempts, "last_recovery_at": now, "recovery_error_code": "runtime_restore_execution_failed", "updated_at": now}
+	if attempts >= 2 {
+		values["state"] = "reconcile_required"
+		values["revision"] = operation.Revision + 1
+	}
+	result := r.db.WithContext(ctx).Model(&OperationLockModel{}).
+		Where("operation_id = ? AND revision = ? AND locked_by_instance_id = ? AND locked_by_pid = ? AND state = ?", operation.OperationID, operation.Revision, operation.LockedByInstanceID, *operation.LockedByPID, operation.State).Updates(values)
+	if result.Error != nil {
+		return persistenceError("runtime_failure_record", "fenced_autocommit_write", result.Error)
+	}
+	if result.RowsAffected != 1 {
+		return ErrOperationFenced
+	}
+	return nil
 }

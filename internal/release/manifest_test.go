@@ -281,7 +281,7 @@ func validManifest(now time.Time) Manifest {
 	return Manifest{Schema: SchemaV1, ReleaseID: "solovey-ui-main-42", Sequence: 42, Version: "2026.3.0", Channel: ChannelMain,
 		IssuedAt: now.Add(-time.Minute).Unix(), ExpiresAt: now.Add(time.Hour).Unix(), DeploymentRevision: digestFor("deployment"),
 		MinimumPanelVersion: "2026.2.0", MaximumPanelVersion: "2026.3.0",
-		MinimumCoreSchema: "1.11", MaximumCoreSchema: "1.11", TargetCoreSchema: "1.11", BrokerCapability: "broker-capabilities-1.2",
+		MinimumCoreSchema: "1.11", MaximumCoreSchema: "1.11", TargetCoreSchema: "1.11", BrokerCapability: "broker-capabilities-1.3",
 		MigrationSetDigest: digestFor("migrations"), ReleaseNotesDigest: digestFor("notes"),
 		RestartClass: "stack", RebootClass: "operator-advisory", RollbackClass: "automatic",
 		Artifacts: []Artifact{

@@ -68,7 +68,12 @@ func (h *updateHTTP) capabilities(c *gin.Context) {
 	if _, ok := requireAuthenticatedSecurityContext(c); !ok {
 		return
 	}
-	jsonObj(c, h.manager.Capabilities(c.Request.Context()), nil)
+	capabilities := h.manager.Capabilities(c.Request.Context())
+	presentation := h.api.deploymentUpdatePresentation()
+	if capabilities.Mode == updateservice.OperatorManagedMode && presentation.LegacyMode != "" {
+		capabilities = capabilities.Present(presentation.LegacyMode, presentation.LegacyReasonCodes)
+	}
+	jsonObj(c, capabilities, nil)
 }
 
 func (h *updateHTTP) status(c *gin.Context) {
@@ -79,7 +84,8 @@ func (h *updateHTTP) status(c *gin.Context) {
 	if !ok {
 		return
 	}
-	jsonObj(c, h.manager.Status(c.Request.Context(), channel), nil)
+	status := projectUpdatePresentation(h.manager.Status(c.Request.Context(), channel), h.api.deploymentUpdatePresentation())
+	jsonObj(c, status, nil)
 }
 
 func (h *updateHTTP) recovery(c *gin.Context) {

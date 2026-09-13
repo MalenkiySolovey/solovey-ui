@@ -201,6 +201,33 @@ func TestCanonicalHostPortRejectsAmbiguityAndNormalizesValidAuthority(t *testing
 	}
 }
 
+func TestCanonicalOriginAuthorityNormalizesOnlyDefaultPorts(t *testing.T) {
+	tests := []struct {
+		scheme string
+		value  string
+		want   string
+	}{
+		{scheme: "http", value: "Panel.Example.:080", want: "panel.example"},
+		{scheme: "https", value: "panel.example:443", want: "panel.example"},
+		{scheme: "https", value: "panel.example:8443", want: "panel.example:8443"},
+		{scheme: "http", value: "[2001:db8::1]:80", want: "[2001:db8::1]"},
+		{scheme: "https", value: "[2001:db8::1]:8443", want: "[2001:db8::1]:8443"},
+		{scheme: "ftp", value: "panel.example"},
+	}
+	for _, test := range tests {
+		if got := CanonicalOriginAuthority(test.scheme, test.value); got != test.want {
+			t.Errorf("CanonicalOriginAuthority(%q, %q)=%q, want %q", test.scheme, test.value, got, test.want)
+		}
+	}
+}
+
+func TestCloneConfigPreservesEmptyCollectionContract(t *testing.T) {
+	cloned := cloneConfig(Config{})
+	if cloned.TrustedProxies == nil || cloned.CanonicalCIDRs == nil || cloned.Warnings == nil {
+		t.Fatalf("empty config collections must remain JSON arrays: %#v", cloned)
+	}
+}
+
 func BenchmarkResolveBoundedProxyChain(b *testing.B) {
 	request := httptest.NewRequest("GET", "http://panel.example/api", nil)
 	request.RemoteAddr = "10.0.0.2:443"

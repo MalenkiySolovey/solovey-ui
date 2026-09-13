@@ -31,12 +31,12 @@ func TestFirewallBaselineSecurityCases33Through40(t *testing.T) {
 		assertUnknownOwnerFieldRejected(t, validListenerOwnerRequest(), "path", "../../etc/shadow")
 	})
 	t.Run("37_process_scan_is_bounded", func(t *testing.T) {
-		data, err := os.ReadFile("listener_owner_linux.go")
+		data, err := os.ReadFile("../../../../internal/ops/processevidence/descriptors_linux.go")
 		if err != nil {
 			t.Fatal(err)
 		}
 		text := string(data)
-		if !strings.Contains(text, "Readdirnames(4097)") || !strings.Contains(text, "len(names) > 4096") || strings.Contains(text, `os.ReadDir(fmt.Sprintf("/proc/%d/fd"`) {
+		if !strings.Contains(text, "Readdirnames(maxProcessDescriptors + 1)") || !strings.Contains(text, "len(names) > maxProcessDescriptors") || strings.Contains(text, `os.ReadDir(`) {
 			t.Fatal("listener owner fd discovery is not explicitly bounded")
 		}
 	})
@@ -69,6 +69,23 @@ func TestListenerOwnerObservationHasExplicitBoundedHashWindow(t *testing.T) {
 	}
 	if got := timeoutFor(OperationCapabilities); got >= timeoutFor(OperationListenerOwnerObserve) {
 		t.Fatalf("ordinary read-only timeout %s was widened with owner hashing", got)
+	}
+}
+
+func TestListenerOwnerRequestDoesNotCarrySupervisorProof(t *testing.T) {
+	root := testManagedRoot(t)
+	request := validListenerOwnerRequest()
+	if err := request.Validate(root); err != nil {
+		t.Fatalf("valid semantic listener owner request was rejected: %v", err)
+	}
+	data, err := json.Marshal(request.ListenerOwnerObserve)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{"supervisor", "expected_procd_service", "expected_procd_instance", "systemd_unit"} {
+		if bytes.Contains(data, []byte(forbidden)) {
+			t.Fatalf("semantic listener owner request contains backend proof %q: %s", forbidden, data)
+		}
 	}
 }
 

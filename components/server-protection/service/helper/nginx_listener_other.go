@@ -2,8 +2,11 @@
 
 package helper
 
-import "errors"
+import (
+	"context"
+	"errors"
+)
 
-func platformNginxOwnsListeners([]int, []NginxListener) error {
+func platformNginxOwnsListeners(context.Context, []int, []NginxListener) error {
 	return errors.New("nginx listener ownership verification requires Linux")
 }

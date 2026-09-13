@@ -99,7 +99,7 @@ const manifest = {
   minimumCoreSchema: '1.11',
   maximumCoreSchema: '1.11',
   targetCoreSchema: '1.11',
-  brokerCapability: 'broker-capabilities-1.2',
+  brokerCapability: 'broker-capabilities-1.3',
   migrationSetDigest: digestSourceSet(['database/migration/steps']),
   releaseNotesDigest: sha256(fs.readFileSync('CHANGELOG.md')),
   restartClass: 'stack',

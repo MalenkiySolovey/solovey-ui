@@ -265,6 +265,7 @@ func copyBackupTable(sourceDB *gorm.DB, backupDB *gorm.DB, modelValue any) error
 				for index := 0; index < slicePtr.Elem().Len(); index++ {
 					row := slicePtr.Elem().Index(index).Addr().Interface().(*model.DeploymentOperation)
 					row.CheckpointRef = ""
+					row.CheckpointReleased = true
 					row.BrokerReceipt = ""
 					row.RestoredUntrusted = true
 				}

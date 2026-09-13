@@ -10,6 +10,7 @@ services:
     devices:
       - /dev/net/tun:/dev/net/tun
     environment:
+      SUI_DEPLOYMENT_KIND: docker
       SOLOVEY_DEPLOYMENT_PROFILE: docker-network-advanced
     labels:
       io.solovey.deployment-profile: docker-network-advanced

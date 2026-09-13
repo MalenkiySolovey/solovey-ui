@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -55,6 +56,7 @@ type Manager struct {
 	Management func(context.Context, time.Time) ManagementPreservation
 	Health     func(context.Context, time.Time) RuntimeHealth
 	mu         sync.Mutex
+	observeMu  sync.Mutex
 }
 
 func NewManager(repository Repository, provider Provider) *Manager {
@@ -87,10 +89,32 @@ func (m *Manager) Capabilities(ctx context.Context) domain.Capabilities {
 	return m.Provider.Capabilities(ctx)
 }
 
+func (m *Manager) BrokerPresentation(ctx context.Context) BrokerPresentation {
+	if m == nil || m.Provider == nil {
+		return UnavailableProvider{}.BrokerPresentation(ctx)
+	}
+	if presenter, ok := m.Provider.(brokerPresenter); ok {
+		return presenter.BrokerPresentation(ctx)
+	}
+	return BrokerPresentation{Transport: "unavailable", PeerPosture: "provider_does_not_expose_broker"}
+}
+
+func (m *Manager) UpdatePresentation() UpdatePresentation {
+	if m == nil || m.Provider == nil {
+		return UpdatePresentation{}
+	}
+	if presenter, ok := m.Provider.(updatePresenter); ok {
+		return presenter.UpdatePresentation()
+	}
+	return UpdatePresentation{}
+}
+
 func (m *Manager) Status(ctx context.Context) (domain.Posture, error) {
 	if m == nil || m.Provider == nil {
 		return domain.Posture{}, ErrProviderUnavailable
 	}
+	m.observeMu.Lock()
+	defer m.observeMu.Unlock()
 	posture, err := m.Provider.Observe(ctx)
 	if err != nil {
 		return domain.Posture{}, err
@@ -99,7 +123,7 @@ func (m *Manager) Status(ctx context.Context) (domain.Posture, error) {
 		return domain.Posture{}, err
 	}
 	if err := m.Repository.SavePosture(ctx, posture, posture.Validate(m.now()) == nil); err != nil {
-		return domain.Posture{}, err
+		return domain.Posture{}, fmt.Errorf("%w: %v", ErrStatePersistence, err)
 	}
 	return posture, nil
 }
@@ -108,6 +132,8 @@ func (m *Manager) Doctor(ctx context.Context) (domain.DoctorReport, error) {
 	if m == nil || m.Provider == nil {
 		return domain.DoctorReport{}, ErrProviderUnavailable
 	}
+	m.observeMu.Lock()
+	defer m.observeMu.Unlock()
 	report, err := m.Provider.Doctor(ctx)
 	if err != nil {
 		return domain.DoctorReport{}, err
@@ -117,7 +143,7 @@ func (m *Manager) Doctor(ctx context.Context) (domain.DoctorReport, error) {
 	}
 	if report.Posture != nil {
 		if err := m.Repository.SavePosture(ctx, *report.Posture, report.Healthy && report.Posture.Validate(m.now()) == nil); err != nil {
-			return domain.DoctorReport{}, err
+			return domain.DoctorReport{}, fmt.Errorf("%w: %v", ErrStatePersistence, err)
 		}
 	}
 	if state, stateErr := m.Repository.State(ctx); stateErr == nil {
@@ -135,18 +161,18 @@ func (m *Manager) Doctor(ctx context.Context) (domain.DoctorReport, error) {
 			report.State = "ACTIVE_NOT_VERIFIED"
 		}
 	} else if !errors.Is(stateErr, gorm.ErrRecordNotFound) {
-		return domain.DoctorReport{}, stateErr
+		return domain.DoctorReport{}, fmt.Errorf("%w: %v", ErrStatePersistence, stateErr)
 	}
 	if recovery, recoveryErr := m.Repository.Recovery(ctx); recoveryErr == nil && (recovery.State == domain.StateManualRecoveryRequired || recovery.RestoredUntrusted) {
 		report.State = "RECOVERY_REQUIRED"
 		report.Healthy = false
 	} else if recoveryErr != nil && !errors.Is(recoveryErr, gorm.ErrRecordNotFound) {
-		return domain.DoctorReport{}, recoveryErr
+		return domain.DoctorReport{}, fmt.Errorf("%w: %v", ErrStatePersistence, recoveryErr)
 	}
 	report.Revision = ""
 	report.Revision = domain.Revision(report)
 	if err := m.Repository.SaveDoctor(ctx, report); err != nil {
-		return domain.DoctorReport{}, err
+		return domain.DoctorReport{}, fmt.Errorf("%w: %v", ErrStatePersistence, err)
 	}
 	return report, nil
 }
@@ -173,7 +199,7 @@ func (m *Manager) Preview(ctx context.Context, targetID domain.ProfileID, acknow
 	if !health.Ready {
 		preview.Reasons = append(preview.Reasons, health.Reasons...)
 	}
-	if posture.Runtime != domain.RuntimeNative || target.Runtime != domain.RuntimeNative {
+	if posture.Runtime != domain.RuntimeSystemdNative || target.Runtime != domain.RuntimeSystemdNative {
 		preview.Reasons = append(preview.Reasons, "cross_runtime_migration_not_supported")
 	}
 	if target.ID == domain.NativeLegacyRoot {
@@ -215,6 +241,9 @@ func (m *Manager) Start(ctx context.Context, request StartRequest) (domain.Opera
 	if request.IdempotencyKey == "" {
 		return domain.Operation{}, ErrUnsafeMigration
 	}
+	if err := m.reconcileCheckpointReleases(ctx); err != nil {
+		return domain.Operation{}, err
+	}
 	if replay, err := m.Repository.ByIdempotency(ctx, request.IdempotencyKey); err == nil {
 		if replay.TargetProfile != request.TargetProfile {
 			return domain.Operation{}, ErrOperationConflict
@@ -245,12 +274,20 @@ func (m *Manager) Start(ctx context.Context, request StartRequest) (domain.Opera
 	if err != nil {
 		return domain.Operation{}, err
 	}
+	lifecycle, ok := m.Provider.(CheckpointLifecycle)
+	if !ok {
+		return m.manual(ctx, operation, "checkpoint_lifecycle_unavailable")
+	}
 	checkpoint, err := m.Provider.Prepare(ctx, m.fence(operation), operation.TargetProfile)
 	if err != nil || len(checkpoint) != 64 {
 		return m.manual(ctx, operation, "prepare_failed")
 	}
-	operation.CheckpointRef = checkpoint
-	operation, err = m.advance(ctx, operation, domain.StateApplying, "checkpoint_persisted", "")
+	operation, err = m.bindCheckpoint(ctx, operation, checkpoint)
+	if err != nil {
+		return domain.Operation{}, err
+	}
+	_ = lifecycle
+	operation, err = m.advance(ctx, operation, domain.StateApplying, "apply_authorized", "")
 	if err != nil {
 		return domain.Operation{}, err
 	}
@@ -296,7 +333,7 @@ func (m *Manager) Confirm(ctx context.Context, request ConfirmRequest) (domain.O
 	if err := m.Repository.SavePosture(ctx, posture, true); err != nil {
 		return m.rollback(ctx, operation, "posture_persistence_failed")
 	}
-	return m.advance(ctx, operation, domain.StateCommitted, "migration_committed", "")
+	return m.completeTerminal(ctx, operation, domain.StateCommitted, "migration_committed", "")
 }
 
 func (m *Manager) Rollback(ctx context.Context, request ConfirmRequest) (domain.Operation, error) {
@@ -320,20 +357,55 @@ func (m *Manager) Timeline(ctx context.Context, id string) ([]model.DeploymentJo
 func (m *Manager) ReconcileStartup(ctx context.Context) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := m.reconcileCheckpointReleases(ctx); err != nil {
+		return err
+	}
 	operation, err := m.Repository.Active(ctx)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil
+		return m.Repository.PruneHistory(ctx, m.now())
 	}
 	if err != nil {
 		return err
 	}
-	if operation.RestoredUntrusted || operation.CheckpointRef == "" {
+	if operation.RestoredUntrusted {
 		_, err = m.manual(ctx, operation, "restored_or_checkpoint_missing")
+		return err
+	}
+	if operation.State == domain.StateDraft {
+		operation, err = m.advance(ctx, operation, domain.StatePreflighted, "startup_preflight_resumed", "")
+		if err != nil {
+			return err
+		}
+	}
+	if operation.State == domain.StatePreflighted && operation.CheckpointRef == "" {
+		lifecycle, ok := m.Provider.(CheckpointLifecycle)
+		if !ok {
+			_, err = m.manual(ctx, operation, "checkpoint_lifecycle_unavailable")
+			return err
+		}
+		checkpoint, recoverErr := lifecycle.RecoverPreparedCheckpoint(ctx, m.fence(operation), operation.TargetProfile)
+		if recoverErr != nil || len(checkpoint) != 64 {
+			_, err = m.manual(ctx, operation, "completed_prepare_unavailable")
+			return errors.Join(recoverErr, err)
+		}
+		operation, err = m.bindCheckpoint(ctx, operation, checkpoint)
+		if err != nil {
+			return err
+		}
+	}
+	if operation.CheckpointRef == "" {
+		_, err = m.manual(ctx, operation, "rollback_checkpoint_missing")
 		return err
 	}
 	if management := m.management(ctx); !management.Ready || management.Revision != operation.ExpectedManagement {
 		_, err = m.rollback(ctx, operation, "management_preservation_changed")
 		return err
+	}
+	if operation.State == domain.StatePreflighted {
+		operation, err = m.advance(ctx, operation, domain.StateApplying, "startup_apply_authorized", "")
+		if err != nil {
+			return err
+		}
 	}
 	if operation.State == domain.StateApplying || operation.State == domain.StateVerifying {
 		posture, verifyErr := m.Provider.Verify(ctx, m.fence(operation), operation.TargetProfile, operation.CheckpointRef)
@@ -373,7 +445,7 @@ func (m *Manager) rollback(ctx context.Context, operation domain.Operation, reas
 	if err := m.Repository.SavePosture(ctx, posture, true); err != nil {
 		return m.manual(ctx, operation, "rollback_posture_persistence_failed")
 	}
-	return m.advance(ctx, operation, domain.StateRolledBack, "rollback_verified", reason)
+	return m.completeTerminal(ctx, operation, domain.StateRolledBack, "rollback_verified", reason)
 }
 
 func (m *Manager) manual(ctx context.Context, operation domain.Operation, reason string) (domain.Operation, error) {
@@ -395,6 +467,86 @@ func (m *Manager) advance(ctx context.Context, operation domain.Operation, state
 	}
 	m.emit(ctx, operation, event, reason)
 	return operation, nil
+}
+
+func (m *Manager) bindCheckpoint(ctx context.Context, operation domain.Operation, checkpoint string) (domain.Operation, error) {
+	if operation.State != domain.StatePreflighted || operation.CheckpointRef != "" || len(checkpoint) != 64 {
+		return domain.Operation{}, ErrOperationConflict
+	}
+	previous := operation
+	operation.CheckpointRef = checkpoint
+	operation.CheckpointReleased = false
+	operation.Revision++
+	operation.UpdatedAt = m.now().Unix()
+	if err := m.Repository.Update(ctx, operation, previous.Revision, previous.State, "checkpoint_persisted", ""); err != nil {
+		return domain.Operation{}, err
+	}
+	m.emit(ctx, operation, "checkpoint_persisted", "")
+	return operation, nil
+}
+
+func (m *Manager) completeTerminal(ctx context.Context, operation domain.Operation, state domain.OperationState, event, reason string) (domain.Operation, error) {
+	terminal, err := m.advance(ctx, operation, state, event, reason)
+	if err != nil {
+		return domain.Operation{}, err
+	}
+	released, releaseErr := m.releaseCheckpoint(ctx, terminal)
+	if releaseErr != nil {
+		// The terminal database transition is authoritative. The exact row stays
+		// as cleanup debt and admission/startup retries the idempotent release.
+		m.emit(ctx, released, "checkpoint_release_pending", "checkpoint_release_failed")
+		return released, nil
+	}
+	return released, nil
+}
+
+func (m *Manager) releaseCheckpoint(ctx context.Context, operation domain.Operation) (domain.Operation, error) {
+	if operation.CheckpointReleased || operation.RestoredUntrusted || operation.CheckpointRef == "" ||
+		operation.State != domain.StateCommitted && operation.State != domain.StateRolledBack {
+		return operation, nil
+	}
+	lifecycle, ok := m.Provider.(CheckpointLifecycle)
+	if !ok {
+		return operation, ErrProviderUnavailable
+	}
+	if err := lifecycle.ReleaseCheckpoint(ctx, m.fence(operation), operation.CheckpointRef); err != nil {
+		if !isDefinitiveCheckpointReleaseFailure(err) {
+			return operation, err
+		}
+		previous := operation
+		operation.Revision++
+		operation.UpdatedAt = m.now().Unix()
+		if updateErr := m.Repository.Update(ctx, operation, previous.Revision, previous.State, "checkpoint_release_retry_scheduled", "checkpoint_release_failed"); updateErr != nil {
+			return previous, errors.Join(err, updateErr)
+		}
+		m.emit(ctx, operation, "checkpoint_release_retry_scheduled", "checkpoint_release_failed")
+		return operation, err
+	}
+	previous := operation
+	operation.CheckpointReleased = true
+	operation.Revision++
+	operation.UpdatedAt = m.now().Unix()
+	if err := m.Repository.Update(ctx, operation, previous.Revision, previous.State, "checkpoint_released", ""); err != nil {
+		return previous, err
+	}
+	m.emit(ctx, operation, "checkpoint_released", "")
+	if err := m.Repository.PruneHistory(ctx, m.now()); err != nil {
+		return operation, err
+	}
+	return operation, nil
+}
+
+func (m *Manager) reconcileCheckpointReleases(ctx context.Context) error {
+	debts, err := m.Repository.CheckpointReleaseDebts(ctx)
+	if err != nil {
+		return err
+	}
+	for _, operation := range debts {
+		if _, err := m.releaseCheckpoint(ctx, operation); err != nil {
+			return err
+		}
+	}
+	return m.Repository.PruneHistory(ctx, m.now())
 }
 
 func (m *Manager) fence(operation domain.Operation) FenceV1 {

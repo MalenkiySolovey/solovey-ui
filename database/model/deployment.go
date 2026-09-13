@@ -29,6 +29,7 @@ type DeploymentOperation struct {
 	ExpectedPosture    string `json:"expectedPosture" gorm:"column:expected_posture;size:64;not null"`
 	ExpectedManagement string `json:"expectedManagement" gorm:"column:expected_management;size:64;not null"`
 	CheckpointRef      string `json:"-" gorm:"column:checkpoint_ref;size:64"`
+	CheckpointReleased bool   `json:"checkpointReleased" gorm:"column:checkpoint_released;not null;default:false;index"`
 	BrokerReceipt      string `json:"brokerReceipt" gorm:"column:broker_receipt;size:64"`
 	Revision           uint64 `json:"revision" gorm:"not null"`
 	RestoredUntrusted  bool   `json:"restoredUntrusted" gorm:"column:restored_untrusted;not null;default:false;index"`

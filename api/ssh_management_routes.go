@@ -1,15 +1,13 @@
 package api
 
 import (
-	"errors"
 	"net/http"
+	"strconv"
 	"strings"
-	"time"
 
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
 	sshmanagementservice "github.com/MalenkiySolovey/solovey-ui/service/sshmanagement"
 	"github.com/gin-gonic/gin"
-	"gorm.io/gorm"
 )
 
 type sshManagementHTTP struct {
@@ -25,6 +23,7 @@ func (a *APIHandler) registerSSHManagementRoutes(g *gin.RouterGroup) {
 	h := &sshManagementHTTP{api: a, manager: manager}
 	group := g.Group("/v1/operations/ssh")
 	group.GET("/posture", h.posture)
+	group.GET("/current", h.current)
 	group.GET("/capabilities", h.capabilities)
 	group.GET("/endpoints", h.endpoints)
 	group.GET("/recovery", h.recovery)
@@ -43,17 +42,15 @@ func (h *sshManagementHTTP) posture(c *gin.Context) {
 	if _, ok := requireAuthenticatedSecurityContext(c); !ok {
 		return
 	}
-	posture, err := h.manager.LatestPosture(c.Request.Context())
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		jsonObj(c, gin.H{"state": "UNAVAILABLE", "fresh": false, "reasonCodes": []string{string(domain.ReasonProviderUnavailable)}, "posture": nil}, nil)
+	value := h.manager.CurrentRead(c.Request.Context())
+	jsonObj(c, gin.H{"state": value.State, "fresh": value.Fresh, "reasonCodes": value.ReasonCodes, "posture": value.Posture}, nil)
+}
+
+func (h *sshManagementHTTP) current(c *gin.Context) {
+	if _, ok := requireAuthenticatedSecurityContext(c); !ok {
 		return
 	}
-	if err != nil {
-		jsonObj(c, nil, err)
-		return
-	}
-	now := time.Now().UTC()
-	jsonObj(c, gin.H{"state": "OBSERVED", "fresh": posture.Validate(now) == nil, "posture": posture}, nil)
+	jsonObj(c, h.manager.CurrentRead(c.Request.Context()), nil)
 }
 
 func (h *sshManagementHTTP) capabilities(c *gin.Context) {
@@ -166,8 +163,21 @@ func (h *sshManagementHTTP) timeline(c *gin.Context) {
 	if !ok {
 		return
 	}
-	items, err := h.manager.Timeline(c.Request.Context(), operationID)
-	jsonObj(c, gin.H{"items": items}, err)
+	after := uint64(0)
+	limit := sshmanagementservice.HistoryRetentionPolicy().TimelinePage
+	var err error
+	if raw := c.Query("after"); raw != "" {
+		after, err = strconv.ParseUint(raw, 10, 64)
+	}
+	if raw := c.Query("limit"); err == nil && raw != "" {
+		limit, err = strconv.Atoi(raw)
+	}
+	if err != nil || limit < 1 || limit > sshmanagementservice.HistoryRetentionPolicy().TimelinePage {
+		securityBadRequest(c, "invalid timeline page")
+		return
+	}
+	page, err := h.manager.TimelinePage(c.Request.Context(), operationID, after, limit)
+	jsonObj(c, page, err)
 }
 
 type reconnectConfirmationRequest struct {

@@ -18,13 +18,14 @@ import (
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
-	helperinvoker "github.com/MalenkiySolovey/solovey-ui/components/server-protection/internal/normalci/helperinvoker"
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
 	protectionfronting "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/fronting"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
+	sptest "github.com/MalenkiySolovey/solovey-ui/testsupport/serverprotection"
+	helperinvoker "github.com/MalenkiySolovey/solovey-ui/testsupport/serverprotectionhelper"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -182,8 +183,8 @@ func TestProductionSourceExpiredAndChangedBindingsReturnPlanStale(t *testing.T) 
 	t.Run("socket topology revision", func(t *testing.T) {
 		fixture, _, plan := productionL4PlanFixture(t, now)
 		resource, surface := productionPublicResourceFixture(now)
-		resource.Capabilities.ExpectedListenerOwner.ContractRevision = strings.Repeat("d", 64)
-		surface.ListenerOwner.Application.OwnerContractRevision = resource.Capabilities.ExpectedListenerOwner.ContractRevision
+		resource.Capabilities.ExpectedApplicationOwner.ContractRevision = strings.Repeat("d", 64)
+		surface.ListenerOwner.Application.OwnerContractRevision = resource.Capabilities.ExpectedApplicationOwner.ContractRevision
 		surface.ListenerOwner.Seal()
 		snapshot := hostfacts.Snapshot{GeneratedAt: now.Unix(), Facts: []hostfacts.HostSurfaceFactV1{surface}}
 		snapshot.OwnerObservationRevision = hostfacts.OwnerObservationSetRevision(snapshot.Facts, []string{"fixture:" + surface.ListenerOwner.ObservationRevision})
@@ -273,10 +274,7 @@ func TestProductionComposedPrepareAcquiresExactLeaseAndCreatesProtectedArtifactW
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := protectionhelper.NewManagedRoot(storage.Root())
-	if err != nil {
-		t.Fatal(err)
-	}
+	root := sptest.ManagedRoot(t, storage.Root())
 	nginx := helperinvoker.NewNginx()
 	nginx.ActiveRevision, nginx.ActiveSHA256 = strings.Repeat("a", 64), strings.Repeat("b", 64)
 	nginx.Revisions[nginx.ActiveRevision] = nginx.ActiveSHA256
@@ -498,26 +496,24 @@ func productionReadyRuntimeFixture(t *testing.T, now time.Time, managementRevisi
 
 func productionPublicResourceFixture(now time.Time) (hostresources.ProtectableResource, hostfacts.HostSurfaceFactV1) {
 	ownerRevision, configRevision := strings.Repeat("b", 64), strings.Repeat("c", 64)
-	expected := hostresources.ExpectedListenerOwnerV1{
-		Schema: hostresources.ExpectedListenerOwnerSchemaV1, ContractRevision: strings.Repeat("a", 64),
+	expected := hostresources.ExpectedApplicationOwnerV1{
+		Schema: hostresources.ExpectedApplicationOwnerSchemaV1, ContractRevision: strings.Repeat("a", 64),
 		InstanceID: "00112233-4455-4677-8899-aabbccddeeff", SourceRevision: "src-" + strings.Repeat("2", 64),
 		ArtifactRevision: "art-" + strings.Repeat("3", 64), DeploymentID: "dep-" + strings.Repeat("4", 64),
 		RuntimeRootBindingRevision: strings.Repeat("5", 64), ServiceIdentity: "solovey-ui.panel",
-		SystemdUnit: "solovey-ui.service", ServiceFragmentPath: "/etc/systemd/system/solovey-ui.service",
-		ServiceUnitSHA256: strings.Repeat("7", 64), ServiceControlGroup: "/system.slice/solovey-ui.service",
 		ExecutablePath: "/usr/local/bin/solovey-ui", ExecutableSHA256: strings.Repeat("6", 64),
 	}
 	resource := hostresources.ProtectableResource{ID: "core:inbound:public", Kind: "inbound", Owner: "core", Name: "public-inbound",
 		Protocol: "stream", Listen: "192.0.2.20", Port: 443, Public: true, Source: "fixture",
-		Capabilities: hostresources.ProtectableResourceCapabilities{Known: true, OwnerRevision: ownerRevision, ConfigRevision: configRevision, ExpectedListenerOwner: expected}}
+		Capabilities: hostresources.ProtectableResourceCapabilities{Known: true, OwnerRevision: ownerRevision, ConfigRevision: configRevision, ExpectedApplicationOwner: expected}}
 	endpoint := hostresources.BuildEndpointFact(resource, hostresources.NetworkTCP, now)
 	resource.Endpoints = []hostresources.PublicEndpoint{endpoint}
 	resource.ListenIntent = hostresources.BuildConfiguredListenIntent(resource)
 	pid, parent, session, uid, gid := 100, 1, 100, 0, 0
-	process := hostfacts.ProcessFact{PID: &pid, ParentPID: &parent, SessionID: &session, StartTime: "1000", ExeDigest: expected.ExecutableSHA256,
-		Executable: expected.ExecutablePath, ExeDevice: 1, ExeInode: 2, UID: &uid, GID: &gid, ControlGroup: expected.ServiceControlGroup}
-	service := hostfacts.ServiceFact{SystemdUnit: expected.SystemdUnit, MainPID: &pid, FragmentPath: expected.ServiceFragmentPath,
-		FragmentSHA256: expected.ServiceUnitSHA256, ActiveState: "active", SubState: "running", ControlGroup: process.ControlGroup, StartMonotonicUsec: 100}
+	process := hostfacts.ProcessFact{ProviderRevision: "fixture-process-evidence/v1", EvidenceRevision: strings.Repeat("d", 64), PID: &pid, ParentPID: &parent, SessionID: &session, StartTime: "1000", ExeDigest: expected.ExecutableSHA256,
+		Executable: expected.ExecutablePath, ExeDevice: 1, ExeInode: 2, UID: &uid, GID: &gid, ControlGroup: "/system.slice/solovey-ui.service"}
+	service := hostfacts.ServiceFact{SupervisorRevision: strings.Repeat("8", 64), CgroupAvailability: "available", CgroupPolicy: "required", CgroupRevision: strings.Repeat("9", 64), SystemdUnit: "solovey-ui.service", MainPID: &pid, FragmentPath: "/etc/systemd/system/solovey-ui.service",
+		FragmentSHA256: strings.Repeat("7", 64), ActiveState: "active", SubState: "running", ControlGroup: process.ControlGroup, StartMonotonicUsec: 100}
 	owner := hostfacts.ListenerOwnerFactV1{Schema: hostfacts.ListenerOwnerFactSchemaV1,
 		Socket: hostfacts.ListenerSocketIdentityV1{Network: hostfacts.NetworkTCP, Family: hostfacts.FamilyIPv4, Bind: endpoint.Key.BindAddress,
 			Port: endpoint.Key.Port, Inode: "100", Cookie: 101, CoverageFamilies: []hostfacts.Family{hostfacts.FamilyIPv4}},

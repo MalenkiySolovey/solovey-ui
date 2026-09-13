@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -21,7 +22,6 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 	gormlogger "gorm.io/gorm/logger"
 )
@@ -71,6 +71,11 @@ func TestRealtimeWSCapacityAnchor(t *testing.T) {
 		resetRateLimitState()
 		resetRealtimeForTest()
 		conns := make([]*websocket.Conn, 0, realtimehttp.MaxConnectionsPerUser)
+		t.Cleanup(func() {
+			for _, conn := range conns {
+				_ = conn.CloseNow()
+			}
+		})
 		for i := 0; i < realtimehttp.MaxConnectionsPerUser; i++ {
 			token := fmt.Sprintf("same-user-%d", i)
 			setBoundWSTokenForTest(t, server, cookiesByUser[user], token)
@@ -78,11 +83,6 @@ func TestRealtimeWSCapacityAnchor(t *testing.T) {
 			readRealtimeEventForBench(t, conn)
 			conns = append(conns, conn)
 		}
-		t.Cleanup(func() {
-			for _, conn := range conns {
-				_ = conn.CloseNow()
-			}
-		})
 		setBoundWSTokenForTest(t, server, cookiesByUser[user], "same-user-over")
 		_, resp, err := dialRealtimeWSRaw(server, cookiesByUser[user], "same-user-over")
 		if resp != nil && resp.Body != nil {
@@ -104,6 +104,11 @@ func TestRealtimeWSCapacityAnchor(t *testing.T) {
 		resetRateLimitState()
 		resetRealtimeForTest()
 		conns := make([]*websocket.Conn, 0, realtimehttp.MaxConnectionsPerIP)
+		t.Cleanup(func() {
+			for _, conn := range conns {
+				_ = conn.CloseNow()
+			}
+		})
 		for i := 0; i < realtimehttp.MaxConnectionsPerIP; i++ {
 			user := fmt.Sprintf("benchmark-ip-%03d", i)
 			cookiesByUser[user] = loginRealtimePerfUser(t, server, user)
@@ -113,11 +118,6 @@ func TestRealtimeWSCapacityAnchor(t *testing.T) {
 			readRealtimeEventForBench(t, conn)
 			conns = append(conns, conn)
 		}
-		t.Cleanup(func() {
-			for _, conn := range conns {
-				_ = conn.CloseNow()
-			}
-		})
 		user := "benchmark-ip-over"
 		cookiesByUser[user] = loginRealtimePerfUser(t, server, user)
 		setBoundWSTokenForTest(t, server, cookiesByUser[user], "ip-token-over")
@@ -146,7 +146,20 @@ func newRealtimePerfRouter(tb testing.TB, users int) (*gin.Engine, map[string][]
 	}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	// httptest.Server.Close does not wait for hijacked WebSocket handlers.
+	// The caller closes its server first; drain those handlers before the
+	// earlier DB cleanup, including when a dial/read aborts a capacity loop.
+	var handlers sync.WaitGroup
+	router.Use(func(c *gin.Context) {
+		handlers.Add(1)
+		defer handlers.Done()
+		c.Next()
+	})
+	tb.Cleanup(func() {
+		realtime.CloseAll("benchmark_done")
+		handlers.Wait()
+	})
+	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(tb)))
 	router.GET("/login/:user", func(c *gin.Context) {
 		if !ensureRealtimePerfSessionUser(tb, c.Param("user")) {
 			c.Status(http.StatusInternalServerError)
@@ -206,7 +219,6 @@ func initAPIRealtimePerfDB(tb testing.TB) {
 	dbsqlite.DB().Config.Logger = gormlogger.Discard
 	tb.Cleanup(func() {
 		closeAPITestDB(tb)
-		realtime.CloseAll("benchmark_done")
 	})
 }
 

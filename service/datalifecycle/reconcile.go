@@ -3,7 +3,9 @@ package datalifecycle
 import (
 	"context"
 	"errors"
+	"path/filepath"
 
+	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 )
 
@@ -50,6 +52,38 @@ func (m *Manager) ReconcileStartup(ctx context.Context) error {
 	}
 	if truncated {
 		return errors.New("data lifecycle startup reconciliation inventory exceeded its bound")
+	}
+	return m.maintainLocked(ctx)
+}
+
+func (m *Manager) reconcileRecoveryReferencesLocked(ctx context.Context) error {
+	var operations []model.DataLifecycleOperation
+	if err := m.database().WithContext(ctx).Where("backup_ref != ''").Order("updated_at ASC, operation_id ASC").Find(&operations).Error; err != nil {
+		return err
+	}
+	verified := map[string]string{}
+	for _, operation := range operations {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		path, _, reopenErr := m.existingRecoveryArtifact(operation)
+		if reopenErr == nil {
+			clean := filepath.Clean(path)
+			if verified[clean] == operation.BackupRef {
+				continue
+			}
+			_, reopenErr = verifyRecoveryFile(ctx, path, operation.BackupRef, dbbackup.MaxRestoreBytes, m.filesystem())
+			if reopenErr == nil {
+				verified[clean] = operation.BackupRef
+				continue
+			}
+		}
+		if operation.State == "RECOVERY_REQUIRED" && operation.ReasonCode == "data_lifecycle_recovery_backup_unavailable" {
+			continue
+		}
+		if _, transitionErr := m.advance(ctx, operation, "RECOVERY_REQUIRED", "recovery_backup_reopen_failed", "data_lifecycle_recovery_backup_unavailable"); transitionErr != nil {
+			return errors.Join(reopenErr, transitionErr)
+		}
 	}
 	return nil
 }

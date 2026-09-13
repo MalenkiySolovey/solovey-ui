@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"os"
+	"path"
 	"runtime"
 	"strconv"
 	"strings"
@@ -14,6 +15,7 @@ import (
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/mountevidence"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/ops/resourcepressure"
 	"github.com/shirou/gopsutil/v4/disk"
 	"github.com/shirou/gopsutil/v4/mem"
@@ -229,7 +231,9 @@ func (SystemCollector) Collect(ctx context.Context, now time.Time) []domain.Sign
 	}
 	if usage, err := disk.Usage(configstorage.GetDBFolderPath()); err == nil && usage.Total > 0 {
 		add(domain.Signal{ID: "filesystem.data.free_ratio", Status: domain.ProviderSupported, Value: float64(usage.Free) / float64(usage.Total), Unit: "ratio"})
-		add(domain.Signal{ID: "filesystem.data.free_bytes", Status: domain.ProviderSupported, Value: float64(usage.Free), Unit: "bytes"})
+		add(boundedFilesystemFreeBytesSignal(
+			"filesystem.data.free_bytes", "filesystem_data_absolute_bytes_inapplicable", usage.Total, usage.Free,
+		))
 		if usage.InodesTotal > 0 {
 			add(domain.Signal{ID: "filesystem.data.free_inode_ratio", Status: domain.ProviderSupported,
 				Value: float64(usage.InodesFree) / float64(usage.InodesTotal), Unit: "ratio"})
@@ -296,36 +300,113 @@ func (SystemCollector) Collect(ctx context.Context, now time.Time) []domain.Sign
 		add(domain.Signal{ID: "psi.memory.some_avg10", Status: domain.ProviderUnsupported, ReasonCode: "psi_not_supported"})
 	}
 	for _, id := range []string{"http.active", "audit.queue.used_ratio", "operations.heavy.active", "websocket.active",
-		"background.tasks.active", "artifacts.bytes", "logs.retention.bytes", "docker.posture", "systemd.posture", "host.protection.posture"} {
+		"background.tasks.active", "artifacts.bytes", "logs.retention.bytes", "docker.posture", "deployment.posture", "host.protection.posture"} {
 		add(domain.Signal{ID: id, Status: domain.ProviderUnavailable, ReasonCode: strings.ReplaceAll(id, ".", "_") + "_unavailable"})
 	}
 	return result
 }
 
 func boundedFilesystemFreeBytesSignal(id, boundedReason string, total, free uint64) domain.Signal {
+	var absoluteWarning, ratioWarning float64
+	ratioID := strings.TrimSuffix(id, ".free_bytes") + ".free_ratio"
 	for _, threshold := range domain.DefaultThresholds() {
-		if threshold.ID != id {
-			continue
+		switch threshold.ID {
+		case id:
+			absoluteWarning = threshold.Warning
+		case ratioID:
+			ratioWarning = threshold.Warning
 		}
-		if float64(total) <= threshold.Warning {
-			return domain.Signal{ID: id, Status: domain.ProviderUnsupported, ReasonCode: boundedReason}
-		}
-		return domain.Signal{ID: id, Status: domain.ProviderSupported, Value: float64(free), Unit: "bytes"}
 	}
-	return domain.Signal{ID: id, Status: domain.ProviderUnavailable, ReasonCode: "pressure_threshold_unavailable"}
+	if absoluteWarning <= 0 || ratioWarning <= 0 {
+		return domain.Signal{ID: id, Status: domain.ProviderUnavailable, ReasonCode: "pressure_threshold_unavailable"}
+	}
+	// The absolute warning is applicable only when every ratio-healthy volume
+	// can also satisfy it. Smaller volumes are governed by the free-ratio
+	// signal, avoiding permanent pressure on healthy bounded appliances.
+	if float64(total) <= absoluteWarning/ratioWarning {
+		return domain.Signal{ID: id, Status: domain.ProviderUnsupported, ReasonCode: boundedReason}
+	}
+	return domain.Signal{ID: id, Status: domain.ProviderSupported, Value: float64(free), Unit: "bytes"}
 }
 
 func readCgroupMemory(now time.Time) domain.Signal {
-	current, currentErr := readUintFile("/sys/fs/cgroup/memory.current")
-	maximumRaw, maximumErr := os.ReadFile("/sys/fs/cgroup/memory.max")
+	return readCgroupMemoryWith(os.ReadFile)
+}
+
+func readCgroupMemoryWith(readFile func(string) ([]byte, error)) domain.Signal {
+	if readFile == nil {
+		return domain.Signal{ID: "cgroup.memory.used_ratio", Status: domain.ProviderUnavailable, ReasonCode: "cgroup_memory_limit_unavailable"}
+	}
+	before, err := readBoundedCgroupFile(readFile, "/proc/self/cgroup", 64<<10)
+	if err != nil {
+		return domain.Signal{ID: "cgroup.memory.used_ratio", Status: domain.ProviderUnavailable, ReasonCode: "cgroup_memory_leaf_unavailable"}
+	}
+	leaf, err := parseUnifiedCgroupLeaf(before)
+	if err != nil {
+		return domain.Signal{ID: "cgroup.memory.used_ratio", Status: domain.ProviderError, ReasonCode: "cgroup_memory_leaf_invalid"}
+	}
+	mountInfo, err := readBoundedCgroupFile(readFile, "/proc/self/mountinfo", mountevidence.MaxMountInfo)
+	if err != nil {
+		return domain.Signal{ID: "cgroup.memory.used_ratio", Status: domain.ProviderUnavailable, ReasonCode: "cgroup_memory_mount_unavailable"}
+	}
+	points, err := mountevidence.FilesystemMountPoints(mountInfo, "cgroup2")
+	if err != nil || len(points) != 1 {
+		return domain.Signal{ID: "cgroup.memory.used_ratio", Status: domain.ProviderError, ReasonCode: "cgroup_memory_mount_invalid"}
+	}
+	leafRoot := points[0]
+	if leaf != "/" {
+		leafRoot = path.Join(leafRoot, strings.TrimPrefix(leaf, "/"))
+	}
+	if leafRoot != points[0] && !strings.HasPrefix(leafRoot, points[0]+"/") {
+		return domain.Signal{ID: "cgroup.memory.used_ratio", Status: domain.ProviderError, ReasonCode: "cgroup_memory_leaf_invalid"}
+	}
+	currentRaw, currentErr := readBoundedCgroupFile(readFile, path.Join(leafRoot, "memory.current"), 128)
+	maximumRaw, maximumErr := readBoundedCgroupFile(readFile, path.Join(leafRoot, "memory.max"), 128)
+	after, afterErr := readBoundedCgroupFile(readFile, "/proc/self/cgroup", 64<<10)
+	if afterErr != nil || string(before) != string(after) {
+		return domain.Signal{ID: "cgroup.memory.used_ratio", Status: domain.ProviderUnavailable, ReasonCode: "cgroup_memory_leaf_changed"}
+	}
 	if currentErr != nil || maximumErr != nil || strings.TrimSpace(string(maximumRaw)) == "max" {
 		return domain.Signal{ID: "cgroup.memory.used_ratio", Status: domain.ProviderUnavailable, ReasonCode: "cgroup_memory_limit_unavailable"}
 	}
-	maximum, err := strconv.ParseUint(strings.TrimSpace(string(maximumRaw)), 10, 64)
-	if err != nil || maximum == 0 {
+	current, currentErr := strconv.ParseUint(strings.TrimSpace(string(currentRaw)), 10, 64)
+	maximum, maximumErr := strconv.ParseUint(strings.TrimSpace(string(maximumRaw)), 10, 64)
+	if currentErr != nil || maximumErr != nil || maximum == 0 {
 		return domain.Signal{ID: "cgroup.memory.used_ratio", Status: domain.ProviderError, ReasonCode: "cgroup_memory_limit_invalid"}
 	}
 	return domain.Signal{ID: "cgroup.memory.used_ratio", Status: domain.ProviderSupported, Value: float64(current) / float64(maximum), Unit: "ratio"}
+}
+
+func parseUnifiedCgroupLeaf(data []byte) (string, error) {
+	if len(data) == 0 || len(data) > 64<<10 {
+		return "", errors.New("cgroup membership is unavailable")
+	}
+	leaf := ""
+	for _, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+		parts := strings.Split(line, ":")
+		if len(parts) != 3 || strings.ContainsAny(line, "\x00\r\t") {
+			return "", errors.New("cgroup membership is malformed")
+		}
+		if parts[0] != "0" || parts[1] != "" {
+			continue
+		}
+		if leaf != "" || parts[2] == "" || !strings.HasPrefix(parts[2], "/") || path.Clean(parts[2]) != parts[2] {
+			return "", errors.New("unified cgroup leaf is malformed")
+		}
+		leaf = parts[2]
+	}
+	if leaf == "" {
+		return "", errors.New("unified cgroup leaf is absent")
+	}
+	return leaf, nil
+}
+
+func readBoundedCgroupFile(readFile func(string) ([]byte, error), name string, limit int) ([]byte, error) {
+	data, err := readFile(name)
+	if err != nil || len(data) == 0 || len(data) > limit {
+		return nil, errors.Join(errors.New("bounded cgroup fact is unavailable"), err)
+	}
+	return data, nil
 }
 
 func readPSIMemory(now time.Time) domain.Signal {

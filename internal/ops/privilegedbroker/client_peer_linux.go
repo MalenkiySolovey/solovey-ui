@@ -6,6 +6,7 @@ import (
 	"errors"
 	"net"
 	"os"
+	"path/filepath"
 	"syscall"
 
 	"golang.org/x/sys/unix"
@@ -14,6 +15,14 @@ import (
 func verifyServerConnection(connection net.Conn, socketPath string) error {
 	if socketPath != DefaultSocketPath && socketPath != ProofSocketPath {
 		return errors.New("broker socket path is not fixed")
+	}
+	parent, parentErr := os.Lstat(filepath.Dir(socketPath))
+	if parentErr != nil || !parent.IsDir() || parent.Mode()&os.ModeSymlink != 0 || parent.Mode().Perm()&0o022 != 0 {
+		return errors.New("broker socket parent ownership mode is unsafe")
+	}
+	parentStat, parentOK := parent.Sys().(*syscall.Stat_t)
+	if !parentOK || parentStat.Uid != 0 {
+		return errors.New("broker socket parent is not root-owned")
 	}
 	info, err := os.Lstat(socketPath)
 	if err != nil || info.Mode()&os.ModeSocket == 0 || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm() != 0o660 {

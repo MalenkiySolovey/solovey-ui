@@ -184,7 +184,13 @@ func (h Handler) nativeFallbackStatus(c *gin.Context) {
 		return
 	}
 	applyGate := nativeApplyGate(settings.FeatureFlags["enable_apply_beta"], settings.AdvancedAcknowledgedAt)
-	operations, err := h.deps.Repository.ListNativeFallbackOperations(ctx, nil)
+	resourceIDs := make([]string, 0, len(inventory.Resources))
+	for _, resource := range inventory.Resources {
+		if _, ok := nativeInboundID(resource.ID); ok && (resourceFilter == "" || resourceFilter == resource.ID) {
+			resourceIDs = append(resourceIDs, resource.ID)
+		}
+	}
+	operations, err := h.deps.Repository.LatestNativeFallbackOperations(ctx, resourceIDs)
 	if err != nil {
 		writeNativeError(c, err)
 		return
@@ -268,7 +274,7 @@ func (h Handler) nativeFallbackStatus(c *gin.Context) {
 		view.ReasonCodes = boundedStrings(append(append([]string{}, view.ReasonCodes...), append(view.Blocks, view.Warnings...)...), 32)
 		items = append(items, view)
 	}
-	page := parsePage(c, 50, 200)
+	page := parsePage(c, 50)
 	paged, total := paginate(items, page)
 	h.deps.JSONObj(c, gin.H{"items": paged, "page": page.Page, "limit": page.Limit, "total": total, "generatedAt": now.Unix()}, nil)
 }

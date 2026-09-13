@@ -148,7 +148,7 @@ func listenerFromSettings(value listenerSettings) hostresources.ProtectableResou
 		PathHash string
 		TLS      bool
 	}{normalized.Value, value.port, strings.ToLower(strings.TrimSpace(value.domain)), hostresources.Revision(value.path), tlsEnabled})
-	expectedOwner := expectedApplicationListenerOwner()
+	expectedOwner := expectedApplicationOwner()
 	return hostresources.ProtectableResource{
 		ID:       value.id,
 		Kind:     value.kind,
@@ -161,38 +161,29 @@ func listenerFromSettings(value listenerSettings) hostresources.ProtectableResou
 		TLS:      tlsEnabled,
 		Source:   "settings",
 		Capabilities: hostresources.ProtectableResourceCapabilities{
-			Known:                 true,
-			AcceptsProxyProtocol:  hostresources.CapabilityNo,
-			SupportsGracefulDrain: hostresources.CapabilityUnknown,
-			CanServeFallback:      value.fallback,
-			RequiresACMEHTTP01:    hostresources.CapabilityUnknown,
-			RequiresTLSALPN01:     hostresources.CapabilityUnknown,
-			PublicHostnames:       hostnames,
-			RouteHints:            routeHints,
-			TLSMode:               tlsMode(tlsEnabled),
-			OwnerRevision:         revision,
-			ConfigRevision:        revision,
-			ExpectedListenerOwner: expectedOwner,
+			Known:                    true,
+			AcceptsProxyProtocol:     hostresources.CapabilityNo,
+			SupportsGracefulDrain:    hostresources.CapabilityUnknown,
+			CanServeFallback:         value.fallback,
+			RequiresACMEHTTP01:       hostresources.CapabilityUnknown,
+			RequiresTLSALPN01:        hostresources.CapabilityUnknown,
+			PublicHostnames:          hostnames,
+			RouteHints:               routeHints,
+			TLSMode:                  tlsMode(tlsEnabled),
+			OwnerRevision:            revision,
+			ConfigRevision:           revision,
+			ExpectedApplicationOwner: expectedOwner,
 		},
 		Warnings: warnings,
 	}
 }
 
-func expectedApplicationListenerOwner() hostresources.ExpectedListenerOwnerV1 {
-	contract, err := deploymentidentity.LoadInstalled()
+func expectedApplicationOwner() deploymentidentity.ExpectedApplicationOwnerV1 {
+	expected, err := deploymentidentity.LoadExpectedApplicationOwner()
 	if err != nil {
-		return hostresources.ExpectedListenerOwnerV1{}
+		return deploymentidentity.ExpectedApplicationOwnerV1{}
 	}
-	return hostresources.ExpectedListenerOwnerV1{
-		Schema: hostresources.ExpectedListenerOwnerSchemaV1, ContractRevision: contract.Revision,
-		InstanceID: contract.InstanceID, SourceRevision: contract.SourceRevision,
-		ArtifactRevision: contract.ArtifactRevision, DeploymentID: contract.DeploymentID,
-		RuntimeRootBindingRevision: contract.RuntimeRootBindingRevision,
-		ServiceIdentity:            contract.ServiceIdentity, SystemdUnit: contract.SystemdUnit,
-		ServiceFragmentPath: contract.ServiceFragmentPath, ServiceUnitSHA256: contract.ServiceUnitSHA256,
-		ServiceControlGroup: contract.ServiceControlGroup, ExecutablePath: contract.ExecutablePath,
-		ExecutableSHA256: contract.ExecutableSHA256, ProcessUID: contract.ProcessUID, ProcessGID: contract.ProcessGID,
-	}
+	return expected
 }
 
 func tlsMode(enabled bool) string {

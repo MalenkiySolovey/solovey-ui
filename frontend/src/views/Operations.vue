@@ -15,11 +15,7 @@
       <a href="#data">{{ t('operations.dataLifecycle') }}</a>
     </nav>
 
-    <v-alert type="warning" variant="tonal" class="mb-4" role="status">
-      <strong>{{ t('operations.evidenceBoundary') }}</strong>
-      <div>{{ t('operations.evidenceBoundaryDetail') }}</div>
-    </v-alert>
-    <v-alert v-if="errorMessage" type="error" variant="tonal" class="mb-4" role="alert">
+	<v-alert v-if="errorMessage" type="error" variant="tonal" class="mb-4" role="alert">
       {{ errorMessage }}
     </v-alert>
     <v-progress-linear v-if="loading" indeterminate :aria-label="t('operations.loading')" />
@@ -66,26 +62,12 @@
                   <div><dt>{{ t('operations.desired') }}</dt><dd>{{ safe(deployment?.desiredProfile) }}</dd></div>
                   <div><dt>{{ t('operations.installed') }}</dt><dd>{{ safe(deployment?.installedProfile) }}</dd></div>
                   <div><dt>{{ t('operations.active') }}</dt><dd>{{ safe(deployment?.activeProfile) }}</dd></div>
-                  <div><dt>{{ t('operations.evidence') }}</dt><dd>{{ safe(deployment?.evidenceStatus) }}</dd></div>
-                </dl>
+			</dl>
                 <v-btn class="mt-3" variant="text" to="/deployment">{{ t('operations.openDeployment') }}</v-btn>
               </v-card-text>
             </v-card>
           </v-col>
-          <v-col cols="12" md="6" xl="3">
-            <v-card class="h-100">
-              <v-card-title>{{ t('operations.acceptance') }}</v-card-title>
-              <v-card-text>
-                <dl class="facts-grid one-column">
-                  <div><dt>{{ t('operations.normalCI') }}</dt><dd>{{ safe(summary?.evidence.normalCI) }}</dd></div>
-                  <div><dt>{{ t('operations.liveTested') }}</dt><dd>{{ safe(summary?.evidence.live) }}</dd></div>
-                  <div><dt>{{ t('operations.accepted') }}</dt><dd>{{ yesNo(summary?.evidence.accepted ?? false) }}</dd></div>
-                  <div><dt>{{ t('operations.generatedAt') }}</dt><dd>{{ formatTime(summary?.generatedAt) }}</dd></div>
-                </dl>
-              </v-card-text>
-            </v-card>
-          </v-col>
-        </v-row>
+		</v-row>
       </section>
 
       <section id="updates" class="section-block" aria-labelledby="updates-heading">

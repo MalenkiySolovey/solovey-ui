@@ -306,6 +306,12 @@ func TestPreparedOperationExpiresWithoutHeartbeat(t *testing.T) {
 		t.Fatal(err)
 	}
 	now = now.Add(2 * time.Second)
+	if err := m.ValidateHelperLock(context.Background(), acquired.Operation.OperationID, m.InstanceID(), acquired.Operation.Kind, acquired.Operation.Revision); !errors.Is(err, ErrConflict) {
+		t.Fatalf("expired prepared authority reached helper: %v", err)
+	}
+	if _, err := m.Transition(context.Background(), acquired.Operation.OperationID, acquired.Operation.Revision, StateApplying); err == nil {
+		t.Fatal("expired prepared authority was renewed by applying CAS")
+	}
 	results, err := m.Recover(context.Background())
 	if err != nil {
 		t.Fatal(err)

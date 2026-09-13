@@ -113,7 +113,7 @@ func TestPlannerU9Port53AloneIsNotAServiceProvider(t *testing.T) {
 	}
 }
 
-func TestPlannerNormalCIFailClosedMatrix160Cases(t *testing.T) {
+func TestPlannerFailClosedMatrix160Cases(t *testing.T) {
 	now := time.Unix(1000, 0)
 	classes := []hostresources.InboundTransportClass{hostresources.TransportPlainUDP, hostresources.TransportQUICNative, hostresources.TransportQUICV2Ray, hostresources.TransportTCPUDPDual, hostresources.TransportProxyUDPAssociation, hostresources.TransportDNSServiceUnknown, hostresources.TransportLocalProxy, hostresources.TransportInterception, hostresources.TransportExternalManaged, hostresources.TransportUnsupported}
 	families := []struct {

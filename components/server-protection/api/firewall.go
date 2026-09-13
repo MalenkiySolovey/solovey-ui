@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"runtime"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
@@ -27,14 +26,16 @@ func (h Handler) diagnostics(c *gin.Context) {
 	}
 	inventory := protectionresources.Snapshot(c.Request.Context(), queryBool(c, "refresh"))
 	support := domain.SupportSupported
-	capabilityReason := h.firewallCapabilityReason(c.Request.Context())
+	capability := h.firewallPreviewCapability(c.Request.Context())
+	capabilityReason := capability.Reason
 	warnings := []string{}
 	if capabilityReason != "" {
 		warnings = append(warnings, capabilityReason)
-	}
-	if runtime.GOOS != "linux" {
-		support = domain.SupportUnsupported
-		warnings = append(warnings, "firewall preview is unsupported on this operating system")
+		if capabilityReason == "linux_required" {
+			support = domain.SupportUnsupported
+		} else {
+			support = domain.SupportDegraded
+		}
 	} else if len(inventory.Errors) > 0 || len(inventory.Collisions) > 0 {
 		support = domain.SupportDegraded
 	}
@@ -58,7 +59,7 @@ func (h Handler) diagnostics(c *gin.Context) {
 		"resourceHealth": health,
 		"healthState":    healthState,
 		"warnings":       warnings,
-		"platform":       gin.H{"os": runtime.GOOS, "arch": runtime.GOARCH},
+		"platform":       gin.H{"nftAvailable": capability.Available, "capabilityRevision": capability.Revision},
 	}, nil)
 }
 
@@ -113,7 +114,7 @@ func (h Handler) firewallPreview(c *gin.Context) {
 	}
 	preview := protectionfirewall.Preview(plan, protectionfirewall.PreviewOptions{
 		IncludeGeneratedNFT: input.IncludeGeneratedNFT || input.IncludeGeneratedNFTSnake,
-		OperatingSystem:     runtime.GOOS,
+		NFTCapability:       h.firewallPreviewCapability(c.Request.Context()),
 	})
 	preview.WouldWarn = append(preview.WouldWarn, collisionWarnings(inventory.Collisions)...)
 	preview.WouldWarn = append(preview.WouldWarn, contributorWarnings(inventory.Errors)...)
@@ -142,30 +143,34 @@ func (h Handler) currentFirewallPlan(c *gin.Context, refresh bool) (protectionfi
 
 func writeFirewallWorkflowError(c *gin.Context, err error) {
 	switch {
+	case errors.Is(err, protectionfirewall.ErrRollbackFailed):
+		writeError(c, http.StatusConflict, "rollback_failed", nil)
+	case errors.Is(err, protectionoperations.ErrConflict), errors.Is(err, protectionoperations.ErrRevisionConflict):
+		writeError(c, http.StatusConflict, "operation_state_conflict", nil)
 	case errors.Is(err, protectionoperations.ErrConfirmationRequired):
-		writeError(c, http.StatusBadRequest, "confirmation_required", err)
+		writeError(c, http.StatusBadRequest, "confirmation_required", nil)
 	case errors.Is(err, protectionfirewall.ErrUnknownSSH):
-		writeError(c, http.StatusConflict, "unknown_ssh", err)
+		writeError(c, http.StatusConflict, "unknown_ssh", nil)
 	case errors.Is(err, protectionfirewall.ErrPlanRevision):
-		writeError(c, http.StatusConflict, "revision_conflict", err)
+		writeError(c, http.StatusConflict, "revision_conflict", nil)
 	case errors.Is(err, protectionfirewall.ErrUnsafeResource):
-		writeError(c, http.StatusConflict, "unsafe_resource_inventory", err)
+		writeError(c, http.StatusConflict, "unsafe_resource_inventory", nil)
 	case errors.Is(err, protectionfirewall.ErrHelperRevision):
-		writeError(c, http.StatusConflict, "helper_revision_conflict", err)
+		writeError(c, http.StatusConflict, "helper_revision_conflict", nil)
 	case errors.Is(err, protectionfirewall.ErrHealthFailed):
-		writeError(c, http.StatusConflict, "health_failed", err)
+		writeError(c, http.StatusConflict, "health_failed", nil)
 	case errors.Is(err, protectionfirewall.ErrMissingCapability):
-		writeError(c, http.StatusConflict, "missing_capability", err)
+		writeError(c, http.StatusConflict, "missing_capability", nil)
 	case errors.Is(err, protectionfirewall.ErrApplyVerify):
-		writeError(c, http.StatusConflict, "apply_verify_mismatch", err)
+		writeError(c, http.StatusConflict, "apply_verify_mismatch", nil)
 	case errors.Is(err, protectionfirewall.ErrRollbackHealth):
-		writeError(c, http.StatusConflict, "rollback_health_failed", err)
+		writeError(c, http.StatusConflict, "rollback_health_failed", nil)
 	case errors.Is(err, protectionrepository.ErrRecordNotFound):
-		writeError(c, http.StatusNotFound, "not_found", err)
+		writeError(c, http.StatusNotFound, "not_found", nil)
 	case errors.Is(err, protectionoperations.ErrFenced), errors.Is(err, protectionrepository.ErrOperationFenced):
-		writeError(c, http.StatusConflict, "operation_fenced", err)
+		writeError(c, http.StatusConflict, "operation_fenced", nil)
 	default:
-		writeError(c, http.StatusConflict, "rollback_failed", err)
+		writeError(c, http.StatusConflict, "operation_failed", nil)
 	}
 }
 
@@ -223,26 +228,33 @@ func firewallInventoryReady(inventory protectionresources.InventorySnapshot) err
 }
 
 func (h Handler) firewallCapabilityReason(ctx context.Context) string {
+	return h.firewallPreviewCapability(ctx).Reason
+}
+
+func (h Handler) firewallPreviewCapability(ctx context.Context) protectionfirewall.NFTPreviewCapability {
+	unavailable := func(reason string) protectionfirewall.NFTPreviewCapability {
+		return protectionfirewall.NFTPreviewCapability{Reason: reason}
+	}
 	if h.deps.Firewall == nil {
-		return "helper_not_installed"
+		return unavailable("helper_not_installed")
 	}
 	capabilities, err := h.deps.Firewall.Capabilities(ctx)
 	if err != nil || capabilities == nil {
-		return "helper_capability_unknown"
+		return unavailable("helper_capability_unknown")
 	}
 	if !capabilities.NFT.PlatformKnown {
-		return "platform_capability_unknown"
+		return unavailable("platform_capability_unknown")
 	}
 	if !capabilities.NFT.Linux {
-		return "linux_required"
+		return unavailable("linux_required")
 	}
 	for _, operation := range []protectionhelper.Operation{protectionhelper.OperationNFTValidate, protectionhelper.OperationNFTApply, protectionhelper.OperationNFTRollback} {
 		if !protectionhelper.CapabilityAvailable(capabilities, operation) {
 			if capabilities.NFT.Reason != "" {
-				return capabilities.NFT.Reason
+				return unavailable(capabilities.NFT.Reason)
 			}
-			return "nft_capability_missing"
+			return unavailable("nft_capability_missing")
 		}
 	}
-	return ""
+	return protectionfirewall.NFTPreviewCapability{Available: true, Revision: capabilities.Revision}
 }

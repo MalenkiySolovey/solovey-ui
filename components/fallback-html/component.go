@@ -73,7 +73,7 @@ func (component) MigrateStaged(ctx context.Context, db *gorm.DB) error {
 }
 
 func (component) RehearseRestore(ctx context.Context, db *gorm.DB) error {
-	return fallbackservice.HandleRestorePostOpen(ctx, db)
+	return fallbackservice.NormalizeRestoredData(ctx, db)
 }
 
 func (component) InspectDropAuthority(ctx context.Context, db *gorm.DB, now time.Time) lifecycle.DropAuthorityStatus {
@@ -172,8 +172,10 @@ func registerRuntimeHooks() error {
 	}
 	if runtimeHooks.restoreHookName == "" {
 		runtimeHooks.restoreHookName = id + ".restore"
-		dbhooks.RegisterImportPostOpenHook(runtimeHooks.restoreHookName, func(ctx context.Context) error {
-			return fallbackservice.HandleRestorePostOpen(ctx, dbsqlite.DB())
+		dbhooks.RegisterImportPostOpenHook(runtimeHooks.restoreHookName, func(context.Context) error {
+			// Durable owner normalization already ran in protected acceptance.
+			// This runtime-owned action must not emit a second restore event.
+			return fallbackservice.DefaultRuntime.Rebuild(dbsqlite.DB())
 		})
 	}
 	return nil

@@ -22,6 +22,7 @@ import (
 const (
 	StatePrepared          = "prepared"
 	StateApplying          = "applying"
+	StateRestoringRuntime  = "restoring_runtime"
 	StateHealth            = "health"
 	StateHealthFailed      = "health_failed"
 	StateRollingBack       = "rolling_back"
@@ -64,6 +65,7 @@ type Store interface {
 	ForceUnlockOperation(context.Context, string, int, int64) (protectionrepository.OperationLockModel, error)
 	ForgetOperationState(context.Context, string, int, int64) (protectionrepository.OperationLockModel, error)
 	MarkOperationRecovery(context.Context, string, int, int64, string) error
+	RecordRuntimeRecoveryFailure(context.Context, protectionrepository.OperationLockModel, int, int64) error
 }
 
 type PIDProbe interface {
@@ -106,6 +108,13 @@ type Reconciler interface {
 	Reconcile(context.Context, protectionrepository.OperationLockModel) (ReconcileDecision, error)
 }
 
+// ReconcileInspector can recognize a durable no-op before a new execution fence
+// is claimed. It may observe facts, but must not mutate operation or runtime
+// authority. Any continuation still crosses the normal reclaim CAS.
+type ReconcileInspector interface {
+	NeedsReconcile(context.Context, protectionrepository.OperationLockModel) (bool, error)
+}
+
 type Manager struct {
 	store Store
 	opts  Options
@@ -120,6 +129,7 @@ type Manager struct {
 	recoveredSuspect map[string]struct{}
 	recoveries       map[string]Recovery
 	reconcilers      map[string]Reconciler
+	runtimeFailures  map[string]int
 }
 
 type AcquireRequest struct {
@@ -189,7 +199,7 @@ func NewManager(store Store, options Options) *Manager {
 	if options.Lease <= 0 {
 		options.Lease = 2 * time.Minute
 	}
-	return &Manager{store: store, opts: options, recoveredSuspect: make(map[string]struct{}), recoveries: make(map[string]Recovery), reconcilers: make(map[string]Reconciler)}
+	return &Manager{store: store, opts: options, recoveredSuspect: make(map[string]struct{}), recoveries: make(map[string]Recovery), reconcilers: make(map[string]Reconciler), runtimeFailures: make(map[string]int)}
 }
 
 func (m *Manager) InstanceID() string { return m.opts.InstanceID }
@@ -285,6 +295,9 @@ func (m *Manager) validateHelperLock(ctx context.Context, operationID, instanceI
 	if err != nil {
 		return ErrFenced
 	}
+	if item.State == StatePrepared && item.ExpiresAt <= m.opts.Now().Unix() {
+		return ErrConflict
+	}
 	if item.LockedByPID == nil || *item.LockedByPID != m.opts.PID ||
 		item.LockedByInstanceID != m.opts.InstanceID || item.LockedByInstanceID != instanceID ||
 		item.Kind != kind || item.Revision != revision || item.State == StateLockSuspect ||
@@ -306,7 +319,9 @@ func (m *Manager) Start(ctx context.Context) error {
 	}
 	m.mu.Unlock()
 	if _, err := m.Recover(ctx); err != nil {
-		return err
+		if !reportRuntimeRecovery(err) {
+			return err
+		}
 	}
 
 	runCtx, cancel := context.WithCancel(context.Background())
@@ -456,6 +471,9 @@ func (m *Manager) transition(ctx context.Context, operationID string, revision i
 	if active == nil || active.OperationID != operationID {
 		return protectionrepository.OperationLockModel{}, ErrFenced
 	}
+	if toState == StateRestoringRuntime && active.Kind != KindFirewall {
+		return protectionrepository.OperationLockModel{}, ErrFenced
+	}
 	fromStates := allowedFromStates(toState)
 	if len(fromStates) == 0 {
 		return protectionrepository.OperationLockModel{}, fmt.Errorf("invalid terminal or non-terminal transition to %q", toState)
@@ -482,23 +500,31 @@ func (m *Manager) transition(ctx context.Context, operationID string, revision i
 // BeginRollback fences and reclaims a completed applied operation before a
 // manual rollback. The new owner/revision are persisted before helper use.
 func (m *Manager) BeginRollback(ctx context.Context, operationID string, revision int) (protectionrepository.OperationLockModel, error) {
-	return m.beginRollback(ctx, operationID, revision, nil)
+	return m.beginRollback(ctx, operationID, revision, StateApplied, nil)
+}
+
+// BeginReconciledRollback is called only after the semantic owner admits an
+// explicit operator rollback of retained authority. It fences the original row
+// and requires an otherwise idle durable lifecycle; it grants no helper access
+// until the owner revalidates its current semantic preconditions.
+func (m *Manager) BeginReconciledRollback(ctx context.Context, operationID string, revision int) (protectionrepository.OperationLockModel, error) {
+	return m.beginRollback(ctx, operationID, revision, StateReconcileRequired, nil)
 }
 
 // BeginRollbackWithBinding reclaims an applied operation and persists the
 // opaque rollback request binding in the same CAS.
 func (m *Manager) BeginRollbackWithBinding(ctx context.Context, operationID string, revision int, binding string) (protectionrepository.OperationLockModel, error) {
-	return m.beginRollback(ctx, operationID, revision, &binding)
+	return m.beginRollback(ctx, operationID, revision, StateApplied, &binding)
 }
 
-func (m *Manager) beginRollback(ctx context.Context, operationID string, revision int, binding *string) (protectionrepository.OperationLockModel, error) {
+func (m *Manager) beginRollback(ctx context.Context, operationID string, revision int, fromState string, binding *string) (protectionrepository.OperationLockModel, error) {
 	if m.isStopped() || !m.tryAcquireGate() {
 		return protectionrepository.OperationLockModel{}, ErrConflict
 	}
 	now := m.opts.Now()
 	item, err := m.store.ReclaimOperationLock(ctx, protectionrepository.ReclaimOperationLockUpdate{
 		OperationID: operationID, Revision: revision, InstanceID: m.opts.InstanceID, PID: m.opts.PID,
-		FromState: StateApplied, ToState: StateRollingBack, HelperRevision: binding, Now: now.Unix(), ExpiresAt: now.Add(m.opts.Lease).Unix(),
+		FromState: fromState, ToState: StateRollingBack, HelperRevision: binding, RequireIdle: fromState == StateReconcileRequired, Now: now.Unix(), ExpiresAt: now.Add(m.opts.Lease).Unix(),
 	})
 	if err != nil {
 		m.releaseGate()
@@ -610,12 +636,37 @@ func (m *Manager) Recover(ctx context.Context) ([]RecoveryResult, error) {
 	now := m.opts.Now()
 	results := make([]RecoveryResult, 0, len(items))
 	for _, item := range items {
-		if reconciler := m.reconcilerForKind(item.Kind); reconciler != nil {
+		// Fronting's kind-specific reconciler also owns an interrupted
+		// rolling-back checkpoint: it classifies the persisted mutation and
+		// fences any second rollback without invoking the helper. Firewall's
+		// runtime-loss reconciler is intentionally limited to already-applied
+		// authority, so other rolling-back records remain on the generic
+		// heartbeat/rollback path below.
+		reconcileKindState := item.State == StateApplied || item.State == StateReconcileRequired || item.State == StateRestoringRuntime ||
+			(item.State == StateRollingBack && item.Kind == KindFronting)
+		if reconciler := m.reconcilerForKind(item.Kind); reconciler != nil && reconcileKindState {
 			m.mu.Lock()
+			failures := m.runtimeFailures[item.OperationID]
 			ownedHere := m.active != nil && m.active.OperationID == item.OperationID && item.LockedByInstanceID == m.opts.InstanceID && item.LockedByPID != nil && *item.LockedByPID == m.opts.PID
 			m.mu.Unlock()
+			if failures >= 2 || item.RecoveryErrorCode == "runtime_restore_execution_failed" && item.RecoveryAttempts >= 2 {
+				results = append(results, RecoveryResult{OperationID: item.OperationID, FromState: item.State, ToState: item.State, Reason: "runtime_restore_execution_budget_exhausted"})
+				continue
+			}
 			if ownedHere {
 				continue
+			}
+			// Runtime restoration is a live mutation state, unlike an applied
+			// verification. Another process may not steal its unexpired fence.
+			if item.State == StateRestoringRuntime && item.LockedByInstanceID != m.opts.InstanceID {
+				alive, probeErr := true, errors.New("pid unavailable")
+				if item.LockedByPID != nil {
+					alive, probeErr = m.opts.PIDProbe.Alive(*item.LockedByPID)
+				}
+				if probeErr != nil || alive || now.Unix() <= item.ExpiresAt {
+					results = append(results, RecoveryResult{OperationID: item.OperationID, FromState: item.State, ToState: item.State, Reason: "runtime_restore_owner_pending"})
+					continue
+				}
 			}
 			updated, reason, reconcileErr := m.reconcileOwnedKind(ctx, item, reconciler)
 			if reconcileErr != nil {
@@ -707,6 +758,19 @@ func (m *Manager) reconcileOwnedKind(ctx context.Context, item protectionreposit
 	if !m.tryAcquireGate() {
 		return protectionrepository.OperationLockModel{}, "reconcile_gate_conflict", ErrConflict
 	}
+	var inspectionErr error
+	if inspector, ok := reconciler.(ReconcileInspector); ok {
+		needed, err := inspector.NeedsReconcile(ctx, item)
+		var runtimeErr *RuntimeRecoveryError
+		if err != nil && errors.As(err, &runtimeErr) {
+			// Persist the semantic owner's bounded execution failure under the
+			// ordinary fence. Do not call its backend after failed inspection.
+			inspectionErr = err
+		} else if err != nil || !needed {
+			m.releaseGate()
+			return item, "reconcile_unchanged", err
+		}
+	}
 	now := m.opts.Now()
 	claimed, err := m.store.ReclaimOperationLock(ctx, protectionrepository.ReclaimOperationLockUpdate{
 		OperationID: item.OperationID, Revision: item.Revision, InstanceID: m.opts.InstanceID, PID: m.opts.PID,
@@ -719,8 +783,13 @@ func (m *Manager) reconcileOwnedKind(ctx context.Context, item protectionreposit
 	m.mu.Lock()
 	m.active = &claimed
 	m.mu.Unlock()
-	decision, err := reconciler.Reconcile(ctx, claimed)
+	var decision ReconcileDecision
+	err = inspectionErr
+	if err == nil {
+		decision, err = reconciler.Reconcile(ctx, claimed)
+	}
 	if err != nil {
+		err = m.recordRuntimeExecutionFailure(ctx, claimed, err)
 		m.mu.Lock()
 		m.active = nil
 		m.releaseGateLocked()
@@ -737,9 +806,19 @@ func (m *Manager) reconcileOwnedKind(ctx context.Context, item protectionreposit
 		m.mu.Unlock()
 		return protectionrepository.OperationLockModel{}, "reconcile_decision_invalid", errors.New("kind reconciler returned an invalid terminal state")
 	}
+	// A reconciler can enter an explicit runtime-restoration state while it
+	// retains this gate. Finalize its latest fence, never the pre-mutation row.
+	m.mu.Lock()
+	if m.active != nil && m.active.OperationID == claimed.OperationID {
+		claimed = *m.active
+	}
+	m.mu.Unlock()
 	updated, err := m.store.RecoverOperationLock(ctx, protectionrepository.RecoveryOperationLockUpdate{
 		OperationID: claimed.OperationID, ExpectedRevision: claimed.Revision, FromStates: []string{claimed.State}, ToState: decision.State, Now: m.opts.Now().Unix(),
 	})
+	if err != nil && claimed.Kind == KindFirewall && claimed.State == StateRestoringRuntime {
+		err = m.recordRuntimeExecutionFailure(ctx, claimed, &RuntimeRecoveryError{Step: "runtime_operation_finalize", Cause: err})
+	}
 	m.mu.Lock()
 	m.active = nil
 	m.releaseGateLocked()
@@ -861,7 +940,9 @@ func (m *Manager) run(ctx context.Context, done chan struct{}) {
 				_, _ = m.Heartbeat(ctx, active.OperationID, active.Revision)
 			}
 		case <-recovery.C:
-			_, _ = m.Recover(ctx)
+			if _, err := m.Recover(ctx); err != nil {
+				reportRuntimeRecovery(err)
+			}
 		}
 	}
 }
@@ -870,7 +951,7 @@ func (m *Manager) tryAcquireGate() bool {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.ownsGate {
-		return true
+		return m.active == nil
 	}
 	if globalProcessMutex.TryLock() {
 		m.ownsGate = true
@@ -923,6 +1004,8 @@ func isTerminal(state string) bool {
 
 func allowedFromStates(to string) []string {
 	switch to {
+	case StateRestoringRuntime:
+		return []string{StateApplied, StateReconcileRequired}
 	case StateApplying:
 		return []string{StatePrepared}
 	case StateHealth:
@@ -951,7 +1034,7 @@ func allowedFromStates(to string) []string {
 
 func reconcileTerminalState(state string) bool {
 	switch state {
-	case StateApplied, StateRolledBack, StateRollbackFailed, StateReconcileRequired, StateCancelled:
+	case StateApplied, StateRolledBack, StateRollbackFailed, StateReconcileRequired, StateCancelled, StateForgotten:
 		return true
 	default:
 		return false

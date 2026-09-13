@@ -174,6 +174,11 @@ func (c *Client) ExecuteWithMetadata(ctx context.Context, request Request) (Resp
 		c.recordAudit(ctx, request, mismatch, facts, started)
 		return mismatch, metadata, errors.New("helper response correlation or version mismatch")
 	}
+	if response.OK && request.Operation == OperationSSHRecoveryObserve && !ValidSSHRecoveryResult(*request.SSHRecoveryObserve, response.SSHRecovery, c.now()) {
+		invalid := responseError(request, CodeValidationFailed, "ssh_recovery_projection_invalid")
+		c.recordAudit(ctx, request, invalid, facts, started)
+		return invalid, metadata, errors.New("helper SSH recovery projection is invalid")
+	}
 	if !request.UnlockedReadOnly() || !response.OK || response.SSHRecovery != nil && len(response.SSHRecovery.Observations) > 0 || request.Operation == OperationListenerOwnerObserve {
 		c.recordAudit(ctx, request, response, facts, started)
 	}

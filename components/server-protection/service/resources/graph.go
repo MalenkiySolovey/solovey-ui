@@ -48,6 +48,7 @@ type SocketClaim struct {
 	ConfigurationRevision      string                          `json:"configurationRevision,omitempty"`
 	SocketInode                string                          `json:"socketInode,omitempty"`
 	SocketCookie               uint64                          `json:"socketCookie,omitempty"`
+	SocketProofMethod          string                          `json:"socketProofMethod,omitempty"`
 	OwnerObservationRevision   string                          `json:"ownerObservationRevision,omitempty"`
 	OwnerContractRevision      string                          `json:"ownerContractRevision,omitempty"`
 	InstanceID                 string                          `json:"instanceId,omitempty"`
@@ -59,6 +60,8 @@ type SocketClaim struct {
 	ServiceIdentity            string                          `json:"serviceIdentity,omitempty"`
 	Process                    hostsurface.ProcessFact         `json:"process"`
 	Service                    hostsurface.ServiceFact         `json:"service"`
+	SemanticOwnerSource        string                          `json:"semanticOwnerSource,omitempty"`
+	SemanticOwnerRevision      string                          `json:"semanticOwnerRevision,omitempty"`
 	ObservedAt                 int64                           `json:"observedAt,omitempty"`
 	ExpiresAt                  int64                           `json:"expiresAt,omitempty"`
 	Stale                      bool                            `json:"stale"`
@@ -236,7 +239,7 @@ func graphNode(resource hostresources.ProtectableResource, surfaces []hostsurfac
 				node.ApplyBlocked = true
 				node.ReasonCodes = append(node.ReasonCodes, "stale_configuration_revision")
 			}
-			if !claimMatchesExpectedOwner(claim, resource.Capabilities.ExpectedListenerOwner) {
+			if !claimMatchesResourceOwner(claim, resource) {
 				node.ApplyBlocked = true
 				node.ReasonCodes = append(node.ReasonCodes, "listener_deployment_mismatch")
 			}
@@ -246,9 +249,15 @@ func graphNode(resource hostresources.ProtectableResource, surfaces []hostsurfac
 		node.ApplyBlocked = true
 		node.ReasonCodes = append(node.ReasonCodes, "socket_owner_unknown")
 	}
-	if !resource.Capabilities.ExpectedListenerOwner.Valid() {
+	if !resource.Capabilities.ExpectedApplicationOwner.Valid() && !isSSHProtectionResource(resource) {
 		node.ApplyBlocked = true
 		node.ReasonCodes = append(node.ReasonCodes, "listener_owner_expectation_missing")
+	} else if isSSHProtectionResource(resource) {
+		// SSH is deliberately external-managed by its semantic owner. Its exact
+		// resource/socket graph is usable by the additive firewall baseline, but
+		// it never grants Server Protection authority to mutate the SSH listener.
+		node.ApplyBlocked = true
+		node.ReasonCodes = append(node.ReasonCodes, "listener_external_managed")
 	}
 	if !resolvedFamilyCoverageComplete(resource, node.DesiredClaims) {
 		node.ApplyBlocked = true
@@ -348,41 +357,34 @@ func resolvedDesiredClaims(resource hostresources.ProtectableResource, surfaces 
 	seen := map[hostresources.PublicEndpointKey]bool{}
 	for _, intent := range intents {
 		for _, surface := range surfaces {
-			if surface.RegisteredResourceID != resource.ID || hostresources.Network(surface.Network) != intent.Network ||
-				surface.Classification != hostsurface.ClassificationManagedExact || surface.ListenerOwner == nil || !surface.ListenerOwner.Valid(now) {
+			if surface.RegisteredResourceID != resource.ID || hostresources.Network(surface.Network) != intent.Network {
+				continue
+			}
+			if isSSHProtectionResource(resource) && exactSSHSemanticSurface(surface, now) {
+				for _, family := range surface.SemanticOwner.Socket.CoverageFamilies {
+					key, ok := resolvedClaimKey(intent, family, surface.SemanticOwner.Socket.Bind)
+					if !ok || seen[key] {
+						continue
+					}
+					seen[key] = true
+					endpoint := resolvedEndpoint(resource, surface, key, surface.SemanticOwner.Revision)
+					claim := desiredClaim(resource, endpoint)
+					claim.OwnerObservationRevision = surface.SemanticOwner.Revision
+					result = append(result, claim)
+				}
+				continue
+			}
+			if surface.Classification != hostsurface.ClassificationManagedExact || surface.ListenerOwner == nil || !surface.ListenerOwner.Valid(now) {
 				continue
 			}
 			owner := surface.ListenerOwner
 			for _, family := range owner.Socket.CoverageFamilies {
-				key := hostresources.PublicEndpointKey{Network: intent.Network, AddressFamily: hostresources.AddressFamily(family), Port: intent.Port}
-				switch intent.Mode {
-				case hostresources.ListenIntentExact:
-					if len(intent.RequiredFamilies) != 1 || hostresources.AddressFamily(family) != intent.RequiredFamilies[0] || owner.Socket.Bind != intent.Address {
-						continue
-					}
-					key.BindAddress = intent.Address
-				case hostresources.ListenIntentWildcard, hostresources.ListenIntentDualStack:
-					if family == hostsurface.FamilyIPv4 {
-						key.BindAddress = "0.0.0.0"
-					} else {
-						key.BindAddress = "::"
-					}
-				default:
-					continue
-				}
-				if seen[key] {
+				key, ok := resolvedClaimKey(intent, family, owner.Socket.Bind)
+				if !ok || seen[key] {
 					continue
 				}
 				seen[key] = true
-				endpoint := hostresources.PublicEndpoint{
-					Schema: hostresources.EndpointSchemaV1, ID: "resolved:" + owner.ObservationRevision + ":" + string(intent.Network) + ":" + string(family), Key: key,
-					Intent: hostresources.EndpointIntentForBind(key.BindAddress), Protocol: string(intent.Network),
-					TLS: hostresources.CapabilityUnknown, Reality: hostresources.CapabilityUnknown,
-					AuthenticationExpected: hostresources.CapabilityUnknown, FallbackSupported: resource.Capabilities.CanServeFallback,
-					ProxyProtocol: resource.Capabilities.AcceptsProxyProtocol, ResourceID: resource.ID, Owner: resource.Owner,
-					OwnerRevision: resource.Capabilities.OwnerRevision, ConfigurationRevision: resource.Capabilities.ConfigRevision,
-					ObservedAt: surface.LastSeen, Source: surface.Source, ConfidenceBP: 10000,
-				}
+				endpoint := resolvedEndpoint(resource, surface, key, owner.ObservationRevision)
 				claim := desiredClaim(resource, endpoint)
 				claim.OwnerObservationRevision = owner.ObservationRevision
 				result = append(result, claim)
@@ -398,7 +400,70 @@ func resolvedDesiredClaims(resource hostresources.ProtectableResource, surfaces 
 	return result
 }
 
+func resolvedClaimKey(intent hostresources.ConfiguredListenIntentV1, family hostsurface.Family, observedBind string) (hostresources.PublicEndpointKey, bool) {
+	key := hostresources.PublicEndpointKey{Network: intent.Network, AddressFamily: hostresources.AddressFamily(family), Port: intent.Port}
+	switch intent.Mode {
+	case hostresources.ListenIntentExact:
+		if len(intent.RequiredFamilies) != 1 || hostresources.AddressFamily(family) != intent.RequiredFamilies[0] || observedBind != intent.Address {
+			return hostresources.PublicEndpointKey{}, false
+		}
+		key.BindAddress = intent.Address
+	case hostresources.ListenIntentWildcard, hostresources.ListenIntentDualStack:
+		if family == hostsurface.FamilyIPv4 {
+			key.BindAddress = "0.0.0.0"
+		} else if family == hostsurface.FamilyIPv6 {
+			key.BindAddress = "::"
+		} else {
+			return hostresources.PublicEndpointKey{}, false
+		}
+	default:
+		return hostresources.PublicEndpointKey{}, false
+	}
+	return key, true
+}
+
+func resolvedEndpoint(resource hostresources.ProtectableResource, surface hostsurface.HostSurfaceFactV1, key hostresources.PublicEndpointKey, observationRevision string) hostresources.PublicEndpoint {
+	return hostresources.PublicEndpoint{
+		Schema: hostresources.EndpointSchemaV1, ID: "resolved:" + observationRevision + ":" + string(key.Network) + ":" + string(key.AddressFamily), Key: key,
+		Intent: hostresources.EndpointIntentForBind(key.BindAddress), Protocol: string(key.Network),
+		TLS: hostresources.CapabilityUnknown, Reality: hostresources.CapabilityUnknown,
+		AuthenticationExpected: hostresources.CapabilityUnknown, FallbackSupported: resource.Capabilities.CanServeFallback,
+		ProxyProtocol: resource.Capabilities.AcceptsProxyProtocol, ResourceID: resource.ID, Owner: resource.Owner,
+		OwnerRevision: resource.Capabilities.OwnerRevision, ConfigurationRevision: resource.Capabilities.ConfigRevision,
+		ObservedAt: surface.LastSeen, Source: surface.Source, ConfidenceBP: 10000,
+	}
+}
+
 func observedClaims(surface hostsurface.HostSurfaceFactV1, now time.Time) []SocketClaim {
+	if exactSSHSemanticSurface(surface, now) {
+		result := make([]SocketClaim, 0, len(surface.SemanticOwner.Socket.CoverageFamilies))
+		for _, family := range surface.SemanticOwner.Socket.CoverageFamilies {
+			key := hostresources.PublicEndpointKey{Network: hostresources.Network(surface.Network), AddressFamily: hostresources.AddressFamily(family), Port: surface.Port}
+			if family == hostsurface.FamilyIPv4 {
+				key.BindAddress = "0.0.0.0"
+				if surface.Family == hostsurface.FamilyIPv4 {
+					key.BindAddress = hostresources.NormalizeListen(surface.Bind).Value
+				}
+			} else {
+				key.BindAddress = "::"
+				if surface.Family == hostsurface.FamilyIPv6 {
+					key.BindAddress = hostresources.NormalizeListen(surface.Bind).Value
+				}
+			}
+			claim := SocketClaim{
+				Kind: ClaimObserved, Key: key, ResourceID: surface.RegisteredResourceID, Owner: surface.DesiredOwner,
+				OwnerRevision: surface.SemanticOwner.Revision, ConfigurationRevision: surface.ConfigurationRevision,
+				SocketInode: surface.SocketInode, SocketCookie: surface.SocketCookie, SocketProofMethod: surface.SemanticOwner.Socket.ProofMethod, OwnerObservationRevision: surface.SemanticOwner.Revision,
+				Process: surface.Process, Service: surface.Service, ObservedAt: surface.LastSeen, ExpiresAt: surface.ExpiresAt,
+				SemanticOwnerSource: surface.SemanticOwner.Source, SemanticOwnerRevision: surface.SemanticOwner.Revision,
+				ReasonCodes: append([]string(nil), surface.ReasonCodes...),
+			}
+			claim.ReasonCodes = normalizedGraphStrings(claim.ReasonCodes)
+			claim.ID = socketClaimID(claim.Kind, claim.ResourceID, claim.Key, surface.SemanticOwner.Revision+":"+surface.SemanticOwner.AuthorityRevision+":"+surface.ID+":"+string(family))
+			result = append(result, claim)
+		}
+		return result
+	}
 	if surface.Classification == hostsurface.ClassificationManagedExact && surface.ListenerOwner != nil && surface.ListenerOwner.Valid(now) {
 		result := make([]SocketClaim, 0, len(surface.ListenerOwner.Socket.CoverageFamilies))
 		for _, family := range surface.ListenerOwner.Socket.CoverageFamilies {
@@ -418,7 +483,7 @@ func observedClaims(surface hostsurface.HostSurfaceFactV1, now time.Time) []Sock
 			claim := SocketClaim{
 				Kind: ClaimObserved, Key: key, ResourceID: surface.RegisteredResourceID, Owner: surface.DesiredOwner,
 				OwnerRevision: owner.Application.ResourceOwnerRevision, ConfigurationRevision: owner.Application.ConfigurationRevision,
-				SocketInode: owner.Socket.Inode, SocketCookie: owner.Socket.Cookie, OwnerObservationRevision: owner.ObservationRevision,
+				SocketInode: owner.Socket.Inode, SocketCookie: owner.Socket.Cookie, SocketProofMethod: owner.Socket.ProofMethod, OwnerObservationRevision: owner.ObservationRevision,
 				OwnerContractRevision: owner.Application.OwnerContractRevision, InstanceID: owner.Application.InstanceID,
 				SourceRevision: owner.Application.SourceRevision, ArtifactRevision: owner.Application.ArtifactRevision,
 				DeploymentID: owner.Application.DeploymentID, RuntimeRootBindingRevision: owner.Application.RuntimeRootBindingRevision,
@@ -467,18 +532,50 @@ func observedClaims(surface hostsurface.HostSurfaceFactV1, now time.Time) []Sock
 	return []SocketClaim{claim}
 }
 
-func claimMatchesExpectedOwner(claim SocketClaim, expected hostresources.ExpectedListenerOwnerV1) bool {
-	return expected.Valid() && !claim.Ambiguous && claim.OwnerObservationRevision != "" &&
-		claim.OwnerContractRevision == expected.ContractRevision && claim.InstanceID == expected.InstanceID &&
+func claimMatchesResourceOwner(claim SocketClaim, resource hostresources.ProtectableResource) bool {
+	if isSSHProtectionResource(resource) {
+		return claim.SemanticOwnerSource != "" && graphEvidenceRevisionToken(claim.SemanticOwnerRevision) &&
+			claim.Owner == resource.Owner && claim.OwnerRevision == resource.Capabilities.OwnerRevision &&
+			claim.ConfigurationRevision == resource.Capabilities.ConfigRevision && !claim.Ambiguous
+	}
+	expected := resource.Capabilities.ExpectedApplicationOwner
+	if !expected.Valid() || claim.Ambiguous || claim.OwnerObservationRevision == "" ||
+		claim.Process.UID == nil || claim.Process.GID == nil || claim.OwnerRevision == "" || claim.ConfigurationRevision == "" ||
+		claim.Process.Executable == "" || claim.Process.ExeDigest == "" {
+		return false
+	}
+	return claim.OwnerContractRevision == expected.ContractRevision && claim.InstanceID == expected.InstanceID &&
 		claim.SourceRevision == expected.SourceRevision && claim.ArtifactRevision == expected.ArtifactRevision &&
 		claim.DeploymentID == expected.DeploymentID && claim.RuntimeRootBindingRevision == expected.RuntimeRootBindingRevision &&
 		claim.ExpectedExecutableSHA256 == expected.ExecutableSHA256 && claim.ServiceIdentity == expected.ServiceIdentity &&
-		claim.Service.SystemdUnit == expected.SystemdUnit && claim.Service.FragmentPath == expected.ServiceFragmentPath &&
-		claim.Service.FragmentSHA256 == expected.ServiceUnitSHA256 && claim.Service.ControlGroup == expected.ServiceControlGroup &&
-		claim.Process.ControlGroup == expected.ServiceControlGroup && claim.Process.Executable == expected.ExecutablePath &&
-		claim.Process.UID != nil && claim.Process.GID != nil && uint32(*claim.Process.UID) == expected.ProcessUID && uint32(*claim.Process.GID) == expected.ProcessGID &&
-		claim.Process.ExeDigest == expected.ExecutableSHA256 &&
-		claim.OwnerRevision != "" && claim.ConfigurationRevision != ""
+		claim.Process.Executable == expected.ExecutablePath && uint32(*claim.Process.UID) == expected.ProcessUID && uint32(*claim.Process.GID) == expected.ProcessGID &&
+		claim.Process.ExeDigest == expected.ExecutableSHA256
+}
+
+func isSSHProtectionResource(resource hostresources.ProtectableResource) bool {
+	return strings.EqualFold(strings.TrimSpace(resource.Kind), "ssh_management") && strings.TrimSpace(resource.Owner) == "ssh-management"
+}
+
+func exactSSHSemanticSurface(surface hostsurface.HostSurfaceFactV1, now time.Time) bool {
+	if surface.SemanticOwner == nil || surface.SemanticOwner.ManagementService != hostsurface.ManagementServiceSSH ||
+		surface.SemanticOwner.Source == "" || !graphEvidenceRevisionToken(surface.SemanticOwner.Revision) || !graphEvidenceRevisionToken(surface.SemanticOwner.AuthorityRevision) ||
+		surface.Classification != hostsurface.ClassificationExpectedExternal || surface.OwnershipMode != hostsurface.OwnershipExternalManaged ||
+		surface.RegisteredResourceID == "" || surface.DesiredOwner != "ssh-management" || !graphEvidenceRevisionToken(surface.ConfigurationRevision) ||
+		!exactSemanticSocketCoverage(surface.SemanticOwner.Socket) ||
+		surface.SemanticOwner.Socket.Network != surface.Network || surface.SemanticOwner.Socket.Family != surface.Family ||
+		surface.SemanticOwner.Socket.Bind != surface.Bind || surface.SemanticOwner.Socket.Port != surface.Port ||
+		!hostsurface.ListenerSocketIdentityMatchesSurface(surface.SemanticOwner.Socket, surface.SocketInode, surface.SocketCookie) || len(surface.SemanticOwner.Socket.CoverageFamilies) == 0 ||
+		surface.ConfidenceBP != 10000 || surface.IsStale(now) || surface.SocketInode == "" ||
+		surface.Process.PID == nil || *surface.Process.PID <= 1 || surface.Process.UID == nil || *surface.Process.UID != 0 ||
+		surface.Process.GID == nil || *surface.Process.GID != 0 || surface.Process.StartTime == "" || !graphEvidenceRevisionToken(surface.Process.ExeDigest) ||
+		!surface.Service.IdentifiesActiveProcess(*surface.Process.PID) {
+		return false
+	}
+	return true
+}
+
+func exactSemanticSocketCoverage(socket hostsurface.ListenerSocketIdentityV1) bool {
+	return socket.Network == hostsurface.NetworkTCP && hostsurface.ValidListenerSocketIdentity(socket)
 }
 
 func resolvedFamilyCoverageComplete(resource hostresources.ProtectableResource, claims []SocketClaim) bool {

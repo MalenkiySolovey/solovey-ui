@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -15,6 +16,7 @@ import (
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	sptest "github.com/MalenkiySolovey/solovey-ui/testsupport/serverprotection"
 )
 
 // memoryOperationStore keeps the normal state-machine proof free
@@ -32,11 +34,20 @@ type memoryFirewallState struct {
 	data map[string][]byte
 }
 
+type firewallHelperFunc func(context.Context, protectionhelper.Request) (protectionhelper.Response, error)
+
+func (f firewallHelperFunc) Execute(ctx context.Context, request protectionhelper.Request) (protectionhelper.Response, error) {
+	return f(ctx, request)
+}
+
 type memoryContributionStore struct {
 	mu             sync.Mutex
 	contributions  map[string]protectionrepository.FirewallContributionModel
 	composition    protectionrepository.FirewallCompositionModel
 	hasComposition bool
+	observation    protectionrepository.FirewallObservationModel
+	hasObservation bool
+	observationErr error
 	transitions    map[string]protectionrepository.FirewallContributionTransitionModel
 }
 
@@ -46,7 +57,7 @@ func newMemoryContributionStore() *memoryContributionStore {
 func (s *memoryContributionStore) FirewallAuthority(context.Context) (protectionrepository.FirewallAuthoritySnapshot, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	result := protectionrepository.FirewallAuthoritySnapshot{Composition: s.composition, HasComposition: s.hasComposition}
+	result := protectionrepository.FirewallAuthoritySnapshot{Composition: s.composition, HasComposition: s.hasComposition, Observation: s.observation, HasObservation: s.hasObservation}
 	for _, value := range s.contributions {
 		result.Contributions = append(result.Contributions, value)
 	}
@@ -125,10 +136,16 @@ func (s *memoryContributionStore) CommitFirewallAuthority(_ context.Context, ope
 	if composition.Schema == "" {
 		s.composition = protectionrepository.FirewallCompositionModel{}
 		s.hasComposition = false
+		s.observation = protectionrepository.FirewallObservationModel{Schema: protectionrepository.FirewallObservationSchemaV1, State: FirewallLiveAbsent}
+		s.hasObservation = true
 	} else {
 		composition.State = "ACTIVE"
 		s.composition = composition
 		s.hasComposition = true
+		s.observation = protectionrepository.FirewallObservationModel{Schema: protectionrepository.FirewallObservationSchemaV1, State: FirewallLiveMatching, HasCommittedAuthority: true,
+			CommittedCompositionRevision: composition.Revision, ManagedTablePresent: true, CurrentRevision: composition.ManagedPlanRevision, CurrentSemanticSHA256: composition.CandidateSemanticSHA256,
+			CurrentTimedMembershipSHA256: composition.CandidateTimedMembershipSHA256, ExpectedTimedMembershipSHA256: composition.CandidateTimedMembershipSHA256}
+		s.hasObservation = true
 	}
 	transition.State = state
 	s.transitions[operationID] = transition
@@ -149,6 +166,53 @@ func (s *memoryContributionStore) RecordFirewallTransitionHealth(_ context.Conte
 	value.HealthCompletedUnixNano = completed
 	value.HealthExpiresUnixNano = expires
 	s.transitions[id] = value
+	return nil
+}
+
+func (s *memoryContributionStore) RecordFirewallObservation(_ context.Context, value protectionrepository.FirewallObservationModel, expected string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.observationErr != nil {
+		return s.observationErr
+	}
+	if expected == "" && s.hasComposition || expected != "" && (!s.hasComposition || s.composition.Revision != expected) {
+		return protectionrepository.ErrFirewallAuthorityConflict
+	}
+	if value.State != FirewallLiveAbsent && value.State != FirewallLiveMatching && value.State != FirewallLiveForeign && value.State != FirewallLiveDrifted && value.State != FirewallLiveUnavailable {
+		return protectionrepository.ErrFirewallAuthorityConflict
+	}
+	value.Schema = protectionrepository.FirewallObservationSchemaV1
+	value.HasCommittedAuthority = expected != ""
+	value.CommittedCompositionRevision = expected
+	s.observation, s.hasObservation = value, true
+	return nil
+}
+
+func (s *memoryContributionStore) RetireFirewallAuthorityAfterRuntimeLoss(_ context.Context, operationID string, operationRevision int, expected string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if operationID == "" || operationRevision <= 0 || !s.hasObservation || s.observation.State != FirewallLiveAbsent || s.observation.ManagedTablePresent {
+		return protectionrepository.ErrFirewallAuthorityConflict
+	}
+	if !s.hasComposition {
+		if expected != "" || len(s.contributions) != 0 || s.observation.HasCommittedAuthority {
+			return protectionrepository.ErrFirewallAuthorityConflict
+		}
+		return nil
+	}
+	if expected == "" || s.composition.Revision != expected || !s.observation.HasCommittedAuthority || s.observation.CommittedCompositionRevision != expected {
+		return protectionrepository.ErrFirewallAuthorityConflict
+	}
+	s.contributions = map[string]protectionrepository.FirewallContributionModel{}
+	s.composition = protectionrepository.FirewallCompositionModel{}
+	s.hasComposition = false
+	s.observation = protectionrepository.FirewallObservationModel{Schema: protectionrepository.FirewallObservationSchemaV1, State: FirewallLiveAbsent}
+	for id, transition := range s.transitions {
+		if transition.State == "APPLIED" || transition.State == "HEALTH_VERIFIED" {
+			transition.State = "RETIRED_RUNTIME_LOSS"
+			s.transitions[id] = transition
+		}
+	}
 	return nil
 }
 func (s *memoryContributionStore) SetFirewallTransitionState(_ context.Context, id, from, to string) error {
@@ -308,6 +372,22 @@ func (s *memoryOperationStore) MarkOperationRecovery(_ context.Context, id strin
 	return nil
 }
 
+func (s *memoryOperationStore) RecordRuntimeRecoveryFailure(_ context.Context, claimed protectionrepository.OperationLockModel, attempts int, at int64) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	item, ok := s.items[claimed.OperationID]
+	if !ok || item.Revision != claimed.Revision || item.State != claimed.State || item.LockedByInstanceID != claimed.LockedByInstanceID || item.LockedByPID == nil || claimed.LockedByPID == nil || *item.LockedByPID != *claimed.LockedByPID {
+		return protectionrepository.ErrOperationFenced
+	}
+	item.RecoveryAttempts, item.RecoveryErrorCode, item.UpdatedAt = attempts, "runtime_restore_execution_failed", at
+	item.LastRecoveryAt = &at
+	if attempts >= 2 {
+		item.State, item.Revision = "reconcile_required", item.Revision+1
+	}
+	s.items[item.OperationID] = item
+	return nil
+}
+
 func fakeContains(values []string, value string) bool {
 	for _, candidate := range values {
 		if candidate == value {
@@ -362,7 +442,7 @@ func TestFakeCIStateMachine(t *testing.T) {
 
 	t.Run("health failure rolls back", func(t *testing.T) {
 		workflow, mock, _, store := newFakeCIWorkflow(t, func(context.Context, []hostresources.ProtectableResource) []componenthealth.Result {
-			return []componenthealth.Result{{ResourceID: "panel", Status: componenthealth.StatusDegraded, FactCode: "listener_unavailable"}}
+			return []componenthealth.Result{{ResourceID: "core:panel:web", Status: componenthealth.StatusDegraded, FactCode: "listener_unavailable"}}
 		})
 		plan := applyPlan()
 		prepared, err := workflow.Prepare(context.Background(), PrepareInput{Plan: plan, Actor: "ci", IdempotencyKey: "health", Confirmation: "PREPARE SERVER PROTECTION " + plan.Revision})
@@ -389,13 +469,9 @@ func TestFakeCIStateMachine(t *testing.T) {
 			t.Run(name, func(t *testing.T) {
 				workflow, _, _, _ := newFakeCIWorkflow(t, health)
 				plan := applyPlan()
-				prepared, err := workflow.Prepare(context.Background(), PrepareInput{Plan: plan, Actor: "ci", IdempotencyKey: "health-fail-closed-" + name, Confirmation: "PREPARE SERVER PROTECTION " + plan.Revision})
-				if err != nil {
-					t.Fatal(err)
-				}
-				result, err := workflow.Apply(context.Background(), ApplyInput{OperationID: prepared.Operation.OperationID, Plan: plan, Confirmation: "APPLY SERVER PROTECTION " + prepared.Operation.OperationID})
-				if !errors.Is(err, ErrHealthFailed) || result.State != protectionoperations.StateRolledBack {
-					t.Fatalf("health false positive: result=%#v err=%v", result, err)
+				_, err := workflow.Prepare(context.Background(), PrepareInput{Plan: plan, Actor: "ci", IdempotencyKey: "health-fail-closed-" + name, Confirmation: "PREPARE SERVER PROTECTION " + plan.Revision})
+				if !errors.Is(err, ErrMissingCapability) {
+					t.Fatalf("missing health producer was not rejected: %v", err)
 				}
 			})
 		}
@@ -483,7 +559,7 @@ func TestFakeCIStateMachine(t *testing.T) {
 		}
 		requestCount := len(mock.Requests)
 		second, err := workflow.Apply(context.Background(), ApplyInput{OperationID: prepared.Operation.OperationID, Plan: plan, Resources: plan.Resources, Confirmation: "APPLY SERVER PROTECTION " + prepared.Operation.OperationID})
-		if err != nil || second.State != protectionoperations.StateApplied || len(mock.Requests) != requestCount {
+		if err != nil || second.State != protectionoperations.StateApplied || second.ActualStatus != "APPLIED" || len(mock.Requests) != requestCount+2 || mock.Requests[requestCount].Operation != protectionhelper.OperationCapabilities || mock.Requests[requestCount+1].Operation != protectionhelper.OperationNFTObserve {
 			t.Fatalf("second=%#v err=%v requests=%d/%d", second, err, requestCount, len(mock.Requests))
 		}
 	})
@@ -513,6 +589,216 @@ func TestFakeCIRestartRecoveryNeverRepeatsApply(t *testing.T) {
 		if request.Operation == protectionhelper.OperationNFTApply {
 			t.Fatal("restart recovery repeated apply")
 		}
+	}
+}
+
+func TestRuntimeLossReconcilerRetiresVolatileAuthorityAndAllowsNextApply(t *testing.T) {
+	workflow, mock, manager, store := newFakeCIWorkflow(t, nil)
+	plan := applyPlan()
+	applied := applyCompositionWorkflowPlan(t, &workflow, plan, "runtime-loss-before-reboot")
+	applyCalls := helperOperationCount(mock.Requests, protectionhelper.OperationNFTApply)
+	if err := manager.Stop(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	// Model a reboot: SQLite-backed authority survives, while /run artifacts and
+	// the kernel table do not. Startup must classify that exact absence and
+	// retire the stale rollback promise without replaying the candidate.
+	rootPath := workflow.Artifacts.(fakeArtifactService).root
+	if err := os.RemoveAll(rootPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(rootPath, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	state := workflow.State.(*memoryFirewallState)
+	state.mu.Lock()
+	state.data = map[string][]byte{}
+	state.mu.Unlock()
+	mock.ManagedTablePresent, mock.ManagedPlanRevision, mock.ManagedCandidateSHA, mock.ManagedCandidateSemantic, mock.ManagedTimedMembership = false, "", "", "", ""
+
+	restarted := protectionoperations.NewManager(store, protectionoperations.Options{
+		InstanceID: "runtime-loss-restart", PID: 88,
+		Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil },
+	})
+	t.Cleanup(func() { _ = restarted.Stop(context.Background()) })
+	client, err := protectionhelper.NewClient(sptest.ManagedRoot(t, rootPath), restarted, mock, &helperAudit{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow.Manager, workflow.Helper = restarted, client
+	if err := restarted.SetReconcilerForKind(protectionoperations.KindFirewall, RuntimeLossReconciler{Workflow: &workflow}); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	retired, err := store.OperationByID(t.Context(), applied.OperationID)
+	if err != nil || retired.State != protectionoperations.StateForgotten {
+		t.Fatalf("lost volatile authority was not terminalized: operation=%#v err=%v", retired, err)
+	}
+	snapshot, err := workflow.Contributions.FirewallAuthority(t.Context())
+	if err != nil || snapshot.HasComposition || len(snapshot.Contributions) != 0 || !snapshot.HasObservation || snapshot.Observation.State != FirewallLiveAbsent || snapshot.Observation.HasCommittedAuthority {
+		t.Fatalf("lost volatile authority remained durable: snapshot=%#v err=%v", snapshot, err)
+	}
+	if got := helperOperationCount(mock.Requests, protectionhelper.OperationNFTApply); got != applyCalls {
+		t.Fatalf("startup reconciliation replayed a candidate: apply calls %d -> %d", applyCalls, got)
+	}
+	rollbackCalls := helperOperationCount(mock.Requests, protectionhelper.OperationNFTRollback)
+	if result, rollbackErr := workflow.Rollback(t.Context(), applied.OperationID, "ROLLBACK SERVER PROTECTION "+applied.OperationID); rollbackErr == nil || result.RollbackAttempted || helperOperationCount(mock.Requests, protectionhelper.OperationNFTRollback) != rollbackCalls {
+		t.Fatalf("retired operation still presented consumable rollback: result=%#v err=%v", result, rollbackErr)
+	}
+
+	nextPlan := compositionBaselineWithTCPPort(plan, 8443)
+	next := applyCompositionWorkflowPlan(t, &workflow, nextPlan, "runtime-loss-after-reboot")
+	if next.State != protectionoperations.StateApplied || helperOperationCount(mock.Requests, protectionhelper.OperationNFTApply) != applyCalls+1 {
+		t.Fatalf("fresh post-reboot apply did not establish new authority: operation=%#v", next)
+	}
+}
+
+func TestLostFirewallEventFallbackConvergesToAbsentWithoutReplay(t *testing.T) {
+	workflow, mock, _, _ := newFakeCIWorkflow(t, nil)
+	applyCompositionWorkflowPlan(t, &workflow, applyPlan(), "lost-firewall-event")
+	applyCalls := helperOperationCount(mock.Requests, protectionhelper.OperationNFTApply)
+	mock.ManagedTablePresent, mock.ManagedPlanRevision, mock.ManagedCandidateSHA, mock.ManagedCandidateSemantic, mock.ManagedTimedMembership = false, "", "", "", ""
+
+	// This is the exact callback used by the bounded component schedule when a
+	// platform event is lost. It performs one observation and no mutation.
+	observation, err := workflow.ReconcileAuthority(t.Context())
+	if err != nil || observation.State != FirewallLiveAbsent || !observation.Persisted {
+		t.Fatalf("fallback observation did not converge: observation=%#v err=%v", observation, err)
+	}
+	if got := helperOperationCount(mock.Requests, protectionhelper.OperationNFTApply); got != applyCalls {
+		t.Fatalf("fallback replayed a candidate: apply calls %d -> %d", applyCalls, got)
+	}
+}
+
+func TestFirewallAuthorityReconciliationMatrixNeverReplaysCandidate(t *testing.T) {
+	t.Run("inactive absent and uncommitted live table", func(t *testing.T) {
+		workflow, mock, _, _ := newFakeCIWorkflow(t, nil)
+		applyCalls := helperOperationCount(mock.Requests, protectionhelper.OperationNFTApply)
+		observation, err := workflow.ReconcileAuthority(t.Context())
+		if err != nil || observation.State != FirewallLiveAbsent || observation.ManagedTablePresent || !observation.Persisted {
+			t.Fatalf("inactive/absent observation=%#v err=%v", observation, err)
+		}
+		snapshot, loadErr := workflow.Contributions.FirewallAuthority(t.Context())
+		if loadErr != nil || snapshot.HasComposition || !snapshot.HasObservation || snapshot.Observation.State != FirewallLiveAbsent || snapshot.Observation.HasCommittedAuthority {
+			t.Fatalf("inactive/absent was not durably separated: snapshot=%#v err=%v", snapshot, loadErr)
+		}
+
+		mock.ManagedTablePresent = true
+		mock.ManagedPlanRevision = strings.Repeat("a", 64)
+		mock.ManagedCandidateSemantic = strings.Repeat("b", 64)
+		mock.ManagedTimedMembership = strings.Repeat("c", 64)
+		observation, err = workflow.ReconcileAuthority(t.Context())
+		if err != nil || observation.State != FirewallLiveForeign || observation.Reason != "uncommitted_managed_table" || !observation.Persisted {
+			t.Fatalf("inactive/live table was silently adopted: observation=%#v err=%v", observation, err)
+		}
+		snapshot, _ = workflow.Contributions.FirewallAuthority(t.Context())
+		if !snapshot.HasObservation || snapshot.Observation.State != FirewallLiveForeign || snapshot.Observation.HasCommittedAuthority || !snapshot.Observation.ManagedTablePresent {
+			t.Fatalf("inactive/live table was not durably classified: %#v", snapshot.Observation)
+		}
+		if got := helperOperationCount(mock.Requests, protectionhelper.OperationNFTApply); got != applyCalls {
+			t.Fatalf("reconciliation replayed a candidate: apply calls %d -> %d", applyCalls, got)
+		}
+	})
+
+	t.Run("active matching absent drift foreign and unavailable", func(t *testing.T) {
+		workflow, mock, _, _ := newFakeCIWorkflow(t, nil)
+		applyCompositionWorkflowPlan(t, &workflow, applyPlan(), "reconcile-authority")
+		snapshot, err := workflow.Contributions.FirewallAuthority(t.Context())
+		if err != nil || !snapshot.HasComposition {
+			t.Fatalf("committed authority unavailable: %#v err=%v", snapshot, err)
+		}
+		applyCalls := helperOperationCount(mock.Requests, protectionhelper.OperationNFTApply)
+		assertObservation := func(want string, wantErr bool) AuthorityObservation {
+			t.Helper()
+			observation, reconcileErr := workflow.ReconcileAuthority(t.Context())
+			if (reconcileErr != nil) != wantErr || observation.State != want || !observation.Persisted {
+				t.Fatalf("state=%s observation=%#v err=%v", want, observation, reconcileErr)
+			}
+			current, loadErr := workflow.Contributions.FirewallAuthority(t.Context())
+			if loadErr != nil || !current.HasObservation || current.Observation.State != want || current.Observation.CommittedCompositionRevision != snapshot.Composition.Revision {
+				t.Fatalf("state=%s was not durable/bound: snapshot=%#v err=%v", want, current, loadErr)
+			}
+			if got := helperOperationCount(mock.Requests, protectionhelper.OperationNFTApply); got != applyCalls {
+				t.Fatalf("state=%s replayed candidate: apply calls %d -> %d", want, applyCalls, got)
+			}
+			return observation
+		}
+
+		mock.Responses[protectionhelper.OperationNFTObserve] = protectionhelper.Response{OK: true}
+		matching := assertObservation(FirewallLiveMatching, false)
+		if matching.CurrentRevision != snapshot.Composition.ManagedPlanRevision || matching.CurrentSemanticSHA != snapshot.Composition.CandidateSemanticSHA256 {
+			t.Fatalf("matching observation lost exact live identity: %#v", matching)
+		}
+
+		mock.ManagedTablePresent, mock.ManagedPlanRevision, mock.ManagedCandidateSemantic, mock.ManagedTimedMembership = false, "", "", ""
+		assertObservation(FirewallLiveAbsent, false)
+
+		mock.ManagedTablePresent = true
+		mock.ManagedPlanRevision = snapshot.Composition.ManagedPlanRevision
+		mock.ManagedCandidateSemantic = strings.Repeat("d", 64)
+		mock.ManagedTimedMembership = snapshot.Composition.CandidateTimedMembershipSHA256
+		assertObservation(FirewallLiveDrifted, false)
+
+		mock.Responses[protectionhelper.OperationNFTObserve] = protectionhelper.Response{OK: false, Code: protectionhelper.CodeValidationFailed, Reason: "managed_table_semantic_observation_failed"}
+		assertObservation(FirewallLiveForeign, true)
+
+		mock.Responses[protectionhelper.OperationNFTObserve] = protectionhelper.Response{OK: false, Code: protectionhelper.CodeMissingCapability, Reason: "nft_access_unavailable"}
+		unavailable := assertObservation(FirewallLiveUnavailable, true)
+		if unavailable.ManagedTablePresent {
+			t.Fatalf("helper loss was misclassified as observed presence: %#v", unavailable)
+		}
+
+		store := workflow.Contributions.(*memoryContributionStore)
+		store.observationErr = errors.New("observation persistence unavailable")
+		failed, persistErr := workflow.ReconcileAuthority(t.Context())
+		if persistErr == nil || failed.Persisted {
+			t.Fatalf("failed durable observation was presented as published: observation=%#v err=%v", failed, persistErr)
+		}
+	})
+}
+
+func TestRecordWorkflowUnavailablePersistsPreInvocationReason(t *testing.T) {
+	store := newMemoryContributionStore()
+	observation, err := RecordWorkflowUnavailable(t.Context(), store)
+	if err != nil || observation.State != FirewallLiveUnavailable || observation.Reason != FirewallReasonWorkflowUnavailable || !observation.Persisted {
+		t.Fatalf("pre-invocation workflow failure lost its reason boundary: observation=%#v err=%v", observation, err)
+	}
+	snapshot, loadErr := store.FirewallAuthority(t.Context())
+	if loadErr != nil || !snapshot.HasObservation || snapshot.Observation.State != FirewallLiveUnavailable || snapshot.Observation.Reason != FirewallReasonWorkflowUnavailable {
+		t.Fatalf("pre-invocation workflow failure was not durable: snapshot=%#v err=%v", snapshot, loadErr)
+	}
+}
+
+func TestReconcileAuthorityPersistsHelperCallFailedAfterInvocation(t *testing.T) {
+	workflow, mock, _, _ := newFakeCIWorkflow(t, nil)
+	applyCalls := helperOperationCount(mock.Requests, protectionhelper.OperationNFTApply)
+	helperFailure := errors.New("injected helper transport failure")
+	helperCalls := 0
+	workflow.Helper = firewallHelperFunc(func(_ context.Context, request protectionhelper.Request) (protectionhelper.Response, error) {
+		helperCalls++
+		if request.Operation != protectionhelper.OperationNFTObserve {
+			t.Fatalf("unexpected helper operation: %s", request.Operation)
+		}
+		return protectionhelper.Response{}, helperFailure
+	})
+
+	observation, callErr := workflow.ReconcileAuthority(t.Context())
+	if helperCalls != 1 {
+		t.Fatalf("Helper.Execute calls=%d, want 1", helperCalls)
+	}
+	if !errors.Is(callErr, helperFailure) || observation.State != FirewallLiveUnavailable || observation.Reason != FirewallReasonHelperCallFailed || !observation.Persisted {
+		t.Fatalf("helper invocation failure lost its reason boundary: observation=%#v err=%v", observation, callErr)
+	}
+	snapshot, loadErr := workflow.Contributions.FirewallAuthority(t.Context())
+	if loadErr != nil || !snapshot.HasObservation || snapshot.Observation.Reason != FirewallReasonHelperCallFailed {
+		t.Fatalf("helper invocation failure was not durable: snapshot=%#v err=%v", snapshot, loadErr)
+	}
+	if got := helperOperationCount(mock.Requests, protectionhelper.OperationNFTApply); got != applyCalls {
+		t.Fatalf("helper invocation failure replayed a candidate: apply calls %d -> %d", applyCalls, got)
 	}
 }
 
@@ -567,7 +853,7 @@ func TestFakeCITransitionFailureInjection(t *testing.T) {
 			var health HealthCheck
 			if fixture.healthFailure {
 				health = func(context.Context, []hostresources.ProtectableResource) []componenthealth.Result {
-					return []componenthealth.Result{{ResourceID: "panel", Status: componenthealth.StatusDegraded, FactCode: "injected_health_failure"}}
+					return []componenthealth.Result{{ResourceID: "core:panel:web", Status: componenthealth.StatusDegraded, FactCode: "injected_health_failure"}}
 				}
 			}
 			workflow, mock, _, store := newFakeCIWorkflow(t, health)
@@ -603,21 +889,18 @@ func newFakeCIWorkflow(t *testing.T, health HealthCheck) (Workflow, *testHelperI
 	if err := os.MkdirAll(rootPath, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	root, err := protectionhelper.NewManagedRoot(rootPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	root := sptest.ManagedRoot(t, rootPath)
 	capabilities := protectionhelper.DefaultCapabilities()
 	for i := range capabilities.Capabilities {
 		switch capabilities.Capabilities[i].Operation {
-		case protectionhelper.OperationNFTValidate, protectionhelper.OperationNFTApply, protectionhelper.OperationNFTRollback:
+		case protectionhelper.OperationNFTValidate, protectionhelper.OperationNFTObserve, protectionhelper.OperationNFTApply, protectionhelper.OperationNFTRollback:
 			capabilities.Capabilities[i].Available = true
 			capabilities.Capabilities[i].Reason = ""
 		}
 	}
 	capabilities.NFT = protectionhelper.NFTSupport{PlatformKnown: true, Linux: true, Available: true, TTLSet: true, RateLimit: true}
 	mock := newTestHelperInvoker(capabilities)
-	for _, operation := range []protectionhelper.Operation{protectionhelper.OperationNFTValidate, protectionhelper.OperationNFTApply, protectionhelper.OperationNFTRollback} {
+	for _, operation := range []protectionhelper.Operation{protectionhelper.OperationNFTValidate, protectionhelper.OperationNFTObserve, protectionhelper.OperationNFTApply, protectionhelper.OperationNFTRollback} {
 		mock.Responses[operation] = protectionhelper.Response{OK: true}
 	}
 	client, err := protectionhelper.NewClient(root, manager, mock, &helperAudit{})
@@ -634,6 +917,6 @@ func newFakeCIWorkflow(t *testing.T, health HealthCheck) (Workflow, *testHelperI
 		RollbackHealth: func(context.Context, []hostresources.ProtectableResource) []componenthealth.Result {
 			return []componenthealth.Result{{ResourceID: "rollback:panel", Status: componenthealth.StatusOK, FactCode: "listener_ready"}}
 		},
-		Contributions: contributions,
+		Contributions: contributions, Now: func() time.Time { return time.Unix(1000, 0).UTC() },
 	}, mock, manager, store
 }

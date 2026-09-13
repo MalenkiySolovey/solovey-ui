@@ -175,6 +175,21 @@ func TestMiddlewareRejectsBodylessOversizeAndUnboundedPageBeforeHandler(t *testi
 	if pageRecorder.Code != http.StatusBadRequest || reached != 0 {
 		t.Fatalf("unbounded page status=%d reached=%d", pageRecorder.Code, reached)
 	}
+
+	maximum := httptest.NewRequest(http.MethodGet, "/api/read?limit=200", nil)
+	maximumRecorder := httptest.NewRecorder()
+	router.ServeHTTP(maximumRecorder, maximum)
+	if maximumRecorder.Code != http.StatusNoContent || reached != 1 {
+		t.Fatalf("maximum legal page status=%d reached=%d", maximumRecorder.Code, reached)
+	}
+	for _, query := range []string{"limit=500", "limit=unbounded", "pageSize=0", "perPage=-1"} {
+		request := httptest.NewRequest(http.MethodGet, "/api/read?"+query, nil)
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusBadRequest || reached != 1 {
+			t.Fatalf("invalid page %q status=%d reached=%d", query, recorder.Code, reached)
+		}
+	}
 }
 
 func TestMiddlewareFailsFastOnConcurrentSessionMutation(t *testing.T) {

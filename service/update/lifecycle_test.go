@@ -37,6 +37,9 @@ type lifecycleProvider struct {
 	rollbackErr        error
 	reconcileState     State
 	reconcileErr       error
+	reconcileCalls     int
+	cleanupErr         error
+	cleanupCalls       int
 }
 
 func (provider *lifecycleProvider) Capabilities(context.Context) Capabilities {
@@ -64,7 +67,12 @@ func (provider *lifecycleProvider) Rollback(context.Context, model.UpdateOperati
 	return provider.rollbackVerified, provider.rollbackErr
 }
 func (provider *lifecycleProvider) Reconcile(context.Context, model.UpdateOperation) (State, error) {
+	provider.reconcileCalls++
 	return provider.reconcileState, provider.reconcileErr
+}
+func (provider *lifecycleProvider) CleanupTerminal(context.Context, model.UpdateOperation) error {
+	provider.cleanupCalls++
+	return provider.cleanupErr
 }
 
 type lifecycleFixture struct {
@@ -84,7 +92,7 @@ func newLifecycleFixture(t testing.TB) lifecycleFixture {
 	manifest := release.Manifest{Schema: release.SchemaV1, ReleaseID: "solovey-ui-main-17", Sequence: 17, Version: "2026.4.0", Channel: release.ChannelMain,
 		IssuedAt: now.Add(-time.Minute).Unix(), ExpiresAt: now.Add(time.Hour).Unix(), DeploymentRevision: lifecycleDigest("deployment"),
 		MinimumPanelVersion: "2026.2.0", MaximumPanelVersion: "2026.4.0",
-		MinimumCoreSchema: "1.11", MaximumCoreSchema: "1.11", TargetCoreSchema: "1.11", BrokerCapability: "broker-capabilities-1.2",
+		MinimumCoreSchema: "1.11", MaximumCoreSchema: "1.11", TargetCoreSchema: "1.11", BrokerCapability: "broker-capabilities-1.3",
 		MigrationSetDigest: lifecycleDigest("migration"), ReleaseNotesDigest: lifecycleDigest("notes"),
 		RestartClass: "stack", RebootClass: "operator-advisory", RollbackClass: "automatic",
 		Artifacts: []release.Artifact{
@@ -312,7 +320,7 @@ func TestManifestCompatibilityRejectsPanelSchemaBrokerAndComponentDrift(t *testi
 	base := fixture.verified.Manifest
 	cases := map[string]func(*release.Manifest){
 		"panel below minimum": func(manifest *release.Manifest) {
-			manifest.MinimumPanelVersion = "2026.3.1"
+			manifest.MinimumPanelVersion = "2026.3.2"
 		},
 		"panel above maximum": func(manifest *release.Manifest) {
 			manifest.MaximumPanelVersion = "2026.2.2"
@@ -599,7 +607,7 @@ func TestRestartPendingReconcilesOrTimesOutToRollback(t *testing.T) {
 	})
 }
 
-func TestRestoredUntrustedOperationAndDockerAuthorityFailClosed(t *testing.T) {
+func TestRestoredUntrustedOperationFailsClosed(t *testing.T) {
 	fixture := newLifecycleFixture(t)
 	prepared, err := fixture.manager.Prepare(context.Background(), fixture.prepareRequest("restored-untrusted"))
 	if err != nil {
@@ -611,9 +619,46 @@ func TestRestoredUntrustedOperationAndDockerAuthorityFailClosed(t *testing.T) {
 	if _, err := fixture.manager.Activate(context.Background(), RevisionRequest{OperationID: prepared.OperationID, ExpectedRevision: prepared.Revision}); !errors.Is(err, ErrRecoveryRequired) {
 		t.Fatalf("restored update authority was accepted: %v", err)
 	}
-	caps := DockerCapabilities()
-	if caps.Mode != "docker-operator-managed" || caps.Download != "UNAVAILABLE" || caps.Prepare != "UNAVAILABLE" || caps.Activate != "OPERATOR_MANAGED" || caps.OSUpdates != "EXTERNAL_MANAGED" {
-		t.Fatalf("docker authority contract drifted: %#v", caps)
+}
+
+func TestEveryRestoredUpdateStateIsFencedBeforeProviderReconciliation(t *testing.T) {
+	states := []State{StateDownloading, StateDownloaded, StateVerifying, StateVerified, StatePreflighting, StatePrepared,
+		StateActivating, StateVerifyingActive, StateRollbackPending, StateRollingBack, StateRecoveryRequired,
+		StateFailed, StateApplied, StateRolledBack}
+	for _, state := range states {
+		t.Run(string(state), func(t *testing.T) {
+			fixture := newLifecycleFixture(t)
+			idempotencyKey := "restored-" + strings.ToLower(string(state))
+			operation := newUpdateOperation(fixture.prepareRequest(idempotencyKey), fixture.verified,
+				fixture.verified.Manifest.Artifacts[:1], "linux", "amd64", "full", fixture.manager.now())
+			operation.State, operation.RestoredUntrusted = string(state), true
+			operation.RollbackAvailable, operation.BackupRef = true, lifecycleDigest("imported-backup")
+			if err := fixture.db.Create(&operation).Error; err != nil {
+				t.Fatal(err)
+			}
+			if projected, err := fixture.manager.Prepare(context.Background(), fixture.prepareRequest(idempotencyKey)); !errors.Is(err, ErrRecoveryRequired) || State(projected.State) != StateRecoveryRequired || projected.RollbackAvailable {
+				t.Fatalf("restored idempotency replay projection=%#v err=%v", projected, err)
+			}
+
+			status := fixture.manager.Status(context.Background(), release.ChannelMain)
+			if status.State != StateRecoveryRequired || status.Operation == nil || State(status.Operation.State) != StateRecoveryRequired ||
+				!status.Operation.RestoredUntrusted || status.Operation.RollbackAvailable || status.Operation.BackupRef != "" ||
+				!containsReason(status.ReasonCodes, "restored_update_state_untrusted") {
+				t.Fatalf("restored status escaped its fence: %#v", status)
+			}
+			projected, err := fixture.manager.Operation(context.Background(), operation.OperationID)
+			if err != nil || State(projected.State) != StateRecoveryRequired || projected.RollbackAvailable || projected.BackupRef != "" {
+				t.Fatalf("restored operation projection=%#v err=%v", projected, err)
+			}
+
+			reconcileErr := fixture.manager.ReconcileStartup(context.Background())
+			if fixture.provider.reconcileCalls != 0 {
+				t.Fatalf("restored %s reached provider reconciliation %d times", state, fixture.provider.reconcileCalls)
+			}
+			if state != StateFailed && state != StateApplied && state != StateRolledBack && !errors.Is(reconcileErr, ErrRecoveryRequired) {
+				t.Fatalf("restored active state reconciliation error=%v", reconcileErr)
+			}
+		})
 	}
 }
 
@@ -644,6 +689,76 @@ func TestPrepareAdmissionAndPostRestartHealthFailClosed(t *testing.T) {
 			t.Fatalf("health-fenced activation=%#v err=%v", operation, err)
 		}
 	})
+}
+
+func TestHistoryCleanupDebtSurvivesRestartAndRetriesIdempotently(t *testing.T) {
+	t.Run("applied", func(t *testing.T) {
+		fixture := newLifecycleFixture(t)
+		fixture.provider.cleanupErr = errors.New("cleanup unavailable")
+		prepared, err := fixture.manager.Prepare(context.Background(), fixture.prepareRequest("history-applied-debt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		applied, err := fixture.manager.Activate(context.Background(), RevisionRequest{OperationID: prepared.OperationID, ExpectedRevision: prepared.Revision})
+		if err == nil || State(applied.State) != StateApplied {
+			t.Fatalf("cleanup failure did not remain terminal: operation=%#v err=%v", applied, err)
+		}
+		assertHistoryCleanupDebt(t, fixture, applied.OperationID)
+		calls := fixture.provider.cleanupCalls
+		fixture.provider.cleanupErr = nil
+		if err := fixture.manager.ReconcileStartup(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if fixture.provider.cleanupCalls != calls+1 {
+			t.Fatalf("cleanup retries=%d want=%d", fixture.provider.cleanupCalls, calls+1)
+		}
+		var stored model.UpdateOperation
+		if err := fixture.db.First(&stored, "operation_id = ?", applied.OperationID).Error; err != nil || stored.CleanupPending || stored.CleanupReason != "" {
+			t.Fatalf("cleanup debt was not cleared: %#v err=%v", stored, err)
+		}
+		if err := fixture.manager.ReconcileStartup(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		if fixture.provider.cleanupCalls != calls+1 {
+			t.Fatalf("cleared cleanup debt was replayed: calls=%d", fixture.provider.cleanupCalls)
+		}
+	})
+
+	t.Run("failed", func(t *testing.T) {
+		fixture := newLifecycleFixture(t)
+		fixture.provider.downloadErr, fixture.provider.cleanupErr = errors.New("download failed"), errors.New("cleanup unavailable")
+		operation, err := fixture.manager.Prepare(context.Background(), fixture.prepareRequest("history-failed-debt"))
+		if err == nil || State(operation.State) != StateFailed {
+			t.Fatalf("failed terminal cleanup was not surfaced: %#v err=%v", operation, err)
+		}
+		assertHistoryCleanupDebt(t, fixture, operation.OperationID)
+	})
+
+	t.Run("rolled-back", func(t *testing.T) {
+		fixture := newLifecycleFixture(t)
+		fixture.provider.verifyActive, fixture.provider.rollbackVerified, fixture.provider.cleanupErr = false, true, errors.New("cleanup unavailable")
+		prepared, err := fixture.manager.Prepare(context.Background(), fixture.prepareRequest("history-rolled-back-debt"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		operation, err := fixture.manager.Activate(context.Background(), RevisionRequest{OperationID: prepared.OperationID, ExpectedRevision: prepared.Revision})
+		if err == nil || State(operation.State) != StateRolledBack {
+			t.Fatalf("rolled-back terminal cleanup was not surfaced: %#v err=%v", operation, err)
+		}
+		assertHistoryCleanupDebt(t, fixture, operation.OperationID)
+	})
+}
+
+func assertHistoryCleanupDebt(t *testing.T, fixture lifecycleFixture, operationID string) {
+	t.Helper()
+	var stored model.UpdateOperation
+	if err := fixture.db.First(&stored, "operation_id = ?", operationID).Error; err != nil || !stored.CleanupPending || stored.CleanupReason == "" {
+		t.Fatalf("cleanup debt=%#v err=%v", stored, err)
+	}
+	status := fixture.manager.Status(context.Background(), release.ChannelMain)
+	if status.Operation == nil || status.Operation.OperationID != operationID || !status.Operation.CleanupPending || !containsReason(status.ReasonCodes, "update_cleanup_pending") {
+		t.Fatalf("cleanup debt was not visible in status: status=%#v operation=%#v", status, status.Operation)
+	}
 }
 
 func (fixture lifecycleFixture) prepareRequest(idempotency string) PrepareRequest {

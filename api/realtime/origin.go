@@ -61,8 +61,9 @@ func OriginAllowedV1(originHeader string, identity clientidentity.V1, _ string) 
 	if !strings.EqualFold(originURL.Scheme, identity.DesiredScheme) {
 		return false, "scheme_mismatch"
 	}
-	originHost := clientidentity.CanonicalHostPort(originURL.Host)
-	if originHost != "" && originHost == identity.ExternalHost {
+	originHost := clientidentity.CanonicalOriginAuthority(originURL.Scheme, originURL.Host)
+	requestHost := clientidentity.CanonicalOriginAuthority(identity.DesiredScheme, identity.ExternalHost)
+	if originHost != "" && originHost == requestHost {
 		return true, "external_origin"
 	}
 	return false, "host_mismatch"

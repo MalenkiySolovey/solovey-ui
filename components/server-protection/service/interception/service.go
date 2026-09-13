@@ -3,7 +3,6 @@ package interception
 import (
 	"context"
 	"errors"
-	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -108,11 +107,19 @@ type OperationStatusV1 struct {
 }
 
 type Service struct {
-	Interceptions *hostresources.InterceptionRegistryV1
-	IngressScopes *hostresources.ForwardedIngressScopeRegistryV1
-	Health        *componenthealth.InterceptionProbeRegistryV1
-	Now           func() time.Time
-	GOOS          string
+	Interceptions    *hostresources.InterceptionRegistryV1
+	IngressScopes    *hostresources.ForwardedIngressScopeRegistryV1
+	Health           *componenthealth.InterceptionProbeRegistryV1
+	Now              func() time.Time
+	KernelCapability KernelInterceptionCapabilityV1
+}
+
+// KernelInterceptionCapabilityV1 is intentionally feature-local. It is not a
+// platform selector and cannot grant any mutation authority.
+type KernelInterceptionCapabilityV1 struct {
+	Available  bool
+	ReasonCode string
+	Revision   string
 }
 
 func New() *Service {
@@ -120,8 +127,14 @@ func New() *Service {
 		Interceptions: hostresources.DefaultInterceptionsV1,
 		IngressScopes: hostresources.DefaultIngressScopesV1,
 		Health:        componenthealth.DefaultInterceptionProbesV1,
-		Now:           time.Now, GOOS: runtime.GOOS,
+		Now:           time.Now,
 	}
+}
+
+func NewWithKernelCapability(capability KernelInterceptionCapabilityV1) *Service {
+	service := New()
+	service.KernelCapability = capability
+	return service
 }
 
 func (s *Service) currentTime() time.Time {
@@ -146,6 +159,11 @@ func (s *Service) Status(ctx context.Context) (StatusV1, error) {
 			"POST_MARKER_FORWARDED_TRAFFIC_PROBE_PROVIDER_ABSENT",
 			"TYPED_INTERCEPTION_MUTATION_NOT_SHIPPED",
 		},
+	}
+	if s != nil && s.KernelCapability.Available && strings.TrimSpace(s.KernelCapability.Revision) != "" {
+		status.GlobalReasonCodes = withoutReason(status.GlobalReasonCodes, "KERNEL_INTERCEPTION_CAPABILITY_NOT_PROVEN")
+	} else if s != nil && s.KernelCapability.ReasonCode != "" {
+		status.GlobalReasonCodes = normalizeReasons(append(status.GlobalReasonCodes, s.KernelCapability.ReasonCode))
 	}
 	if s != nil && s.Health != nil && s.Health.ProviderCount() > 0 {
 		status.HealthState = "PROVIDER_REGISTERED_MUTATION_STILL_NOT_SHIPPED"
@@ -242,8 +260,12 @@ func (s *Service) disposition(fact hostresources.InterceptionInboundFactV1, scop
 	if fact.Ownership == hostresources.InterceptionExternalManagedV1 {
 		return DispositionExternalManaged, normalizeReasons(append(reasons, "EXTERNAL_MANAGED_LISTENER"))
 	}
-	if s.GOOS != "linux" {
-		reasons = append(reasons, "LINUX_PLATFORM_REQUIRED")
+	if s == nil || !s.KernelCapability.Available || strings.TrimSpace(s.KernelCapability.Revision) == "" {
+		reason := "KERNEL_INTERCEPTION_CAPABILITY_NOT_PROVEN"
+		if s != nil && s.KernelCapability.ReasonCode != "" {
+			reason = s.KernelCapability.ReasonCode
+		}
+		reasons = append(reasons, reason)
 	}
 	if !fact.RuntimeReady {
 		reasons = append(reasons, "RUNTIME_NOT_PROVEN")

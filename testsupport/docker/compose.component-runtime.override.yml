@@ -1,0 +1,15 @@
+services:
+  solovey-ui:
+    image: ${SOLOVEY_UI_COMPONENT_TEST_IMAGE:?set the bounded component-test image}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - >-
+        mkdir -m 0700 /run/solovey-ui/server-protection &&
+        exec /test/server-protection.test
+        -test.run '^TestDockerComponentStartUsesInjectedRuntimeRoot$'
+        -test.count=1
+        -test.v
+    volumes:
+      - ${SOLOVEY_UI_COMPONENT_TEST_BINARY:?set the component-test binary}:/test/server-protection.test:ro
+      - ${SOLOVEY_UI_COMPONENT_TEST_DATA:?set the isolated data directory}:/data
+      - ${SOLOVEY_UI_COMPONENT_TEST_CERT:?set the isolated certificate directory}:/cert

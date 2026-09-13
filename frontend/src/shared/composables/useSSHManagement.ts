@@ -80,7 +80,7 @@ export interface SSHPostureEnvelope {
     observedAt: number
     expiresAt: number
     reasonCodes?: string[]
-  }
+  } | null
 }
 
 export interface PreservationPlan {
@@ -102,6 +102,13 @@ export interface SSHPreview {
   recoveryPaths: RecoveryPath[]
   preservation: PreservationPlan
   candidateDigest?: string
+  concretePreview?: {
+    implementation: string
+    format: string
+    label: string
+    representation: string
+    artifactDigest: string
+  }
   providerRevision?: string
   postureRevision?: string
   endpointRevision: string
@@ -109,6 +116,7 @@ export interface SSHPreview {
   possible: boolean
   reasonCodes?: string[]
   revision: string
+	recoveryDisposition?: { code: string; observedAt: number }
 }
 
 export interface SSHCandidate {
@@ -148,6 +156,13 @@ export interface SSHJournalEntry {
 
 const jsonOptions = { headers: { 'Content-Type': 'application/json' } }
 
+export interface SSHCurrentRead extends SSHPostureEnvelope {
+  capabilities: SSHCapabilities
+  endpoints: ManagementEndpoint[]
+  recovery: { paths: RecoveryPath[] }
+}
+
+export const getSSHCurrent = () => HttpUtils.get('api/v1/operations/ssh/current')
 export const getSSHPosture = () => HttpUtils.get('api/v1/operations/ssh/posture')
 export const getSSHCapabilities = () => HttpUtils.get('api/v1/operations/ssh/capabilities')
 export const getManagementEndpoints = () => HttpUtils.get('api/v1/operations/ssh/endpoints')

@@ -121,7 +121,7 @@
                   <v-col cols="3">{{ $t('main.info.uptime') }}</v-col>
                   <v-col cols="9" v-tooltip:top="$t('main.info.startupTime')
                     + ': ' + new Date((tilesData.sys?.bootTime || 0) * 1000).toLocaleString(dateLocale())">
-                    {{ HumanReadable.formatSecond((Date.now()/1000) - tilesData.sys?.bootTime) }}
+                    {{ HumanReadable.formatSecond(tilesData.sys?.uptimeSec) }}
                   </v-col>
                 </v-row>
               </template>

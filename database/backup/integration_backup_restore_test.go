@@ -2,6 +2,8 @@ package backup_test
 
 import (
 	"bytes"
+	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -10,13 +12,18 @@ import (
 	"testing"
 	"time"
 
+	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
+	deploymentdomain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
+	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"
+	sshservice "github.com/MalenkiySolovey/solovey-ui/service/sshmanagement"
 
 	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -69,6 +76,79 @@ func TestIntegrationBackupEnvelopeRestorePreservesBackupTableCounts(t *testing.T
 	}
 }
 
+func TestRetentionSSHRetentionBoundsBackupAndRestoreGeneration(t *testing.T) {
+	initBackupRestoreIntegrationDB(t)
+	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	for index := 0; index < sshservice.HistoryRetentionPolicy().TerminalOperations+40; index++ {
+		operationID := fmt.Sprintf("ssh-operation:retention-backup-%03d", index)
+		candidate := model.SSHManagementCandidate{OperationID: operationID, Scope: "global", IdempotencyKey: "idem:" + operationID,
+			EndpointID: "management:ssh:retention", State: string(domain.StateCommitted), Revision: 2,
+			PolicyJSON: []byte(`{"schema":"retention"}`), PreservationJSON: []byte(`{"schema":"retention"}`), CandidateDigest: domain.Revision(operationID),
+			BindingDigest: domain.Revision("binding:" + operationID), PostureRevision: domain.Revision("posture"), EndpointRevision: domain.Revision("endpoint"),
+			RecoveryRevision: domain.Revision("recovery"), ProviderRevision: domain.Revision("provider"), BinaryRevision: domain.Revision("binary"),
+			ServiceRevision: domain.Revision("service"), ConfigurationRevision: domain.Revision("configuration"), BrokerStageReleased: true,
+			ReasonCodesJSON: []byte(`[]`), CreatedAt: now.Add(-time.Duration(index) * time.Second).Unix(), UpdatedAt: now.Add(-time.Duration(index) * time.Second).Unix()}
+		if err := dbsqlite.DB().Create(&candidate).Error; err != nil {
+			t.Fatal(err)
+		}
+		journal := model.SSHManagementJournal{OperationID: operationID, Sequence: 2, State: candidate.State, Event: "candidate_committed",
+			Revision: domain.Revision(operationID + ":journal"), CreatedAt: candidate.UpdatedAt}
+		if err := dbsqlite.DB().Create(&journal).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := sshservice.Shared().Repository.PruneHistory(context.Background(), now); err != nil {
+		t.Fatal(err)
+	}
+	policy := sshservice.HistoryRetentionPolicy()
+	var liveCount int64
+	if err := dbsqlite.DB().Model(&model.SSHManagementCandidate{}).Count(&liveCount).Error; err != nil || liveCount != int64(policy.TerminalOperations) {
+		t.Fatalf("live retained candidates=%d err=%v", liveCount, err)
+	}
+	backupBytes, err := dbbackup.Export("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(backupBytes) > policy.TerminalBytes+(4<<20) {
+		t.Fatalf("bounded SSH backup bytes=%d terminal horizon=%d", len(backupBytes), policy.TerminalBytes)
+	}
+	backupPath := filepath.Join(t.TempDir(), "retention-bounded-backup.db")
+	if err := os.WriteFile(backupPath, backupBytes, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	backupDB, err := gorm.Open(gormsqlite.Open(backupPath), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var backupCount int64
+	if err := backupDB.Model(&model.SSHManagementCandidate{}).Count(&backupCount).Error; err != nil || backupCount != int64(policy.TerminalOperations) {
+		t.Fatalf("backup retained candidates=%d err=%v", backupCount, err)
+	}
+	if sqlDB, err := backupDB.DB(); err != nil {
+		t.Fatal(err)
+	} else if err := sqlDB.Close(); err != nil {
+		t.Fatal(err)
+	}
+	dbbackup.SetSendSighupHook(func() error { return nil })
+	t.Cleanup(func() { dbbackup.SetSendSighupHook(nil) })
+	if err := dbbackup.Restore(integrationMemMultipartFile{Reader: bytes.NewReader(backupBytes)}); err != nil {
+		t.Fatal(err)
+	}
+	var restoredCount, restoredUntrusted int64
+	if err := dbsqlite.DB().Model(&model.SSHManagementCandidate{}).Count(&restoredCount).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.DB().Model(&model.SSHManagementCandidate{}).Where("restored_untrusted = ?", true).Count(&restoredUntrusted).Error; err != nil {
+		t.Fatal(err)
+	}
+	if restoredCount != int64(policy.TerminalOperations) || restoredUntrusted != restoredCount {
+		t.Fatalf("restored retained candidates=%d untrusted=%d", restoredCount, restoredUntrusted)
+	}
+}
+
 func TestIntegrationRestoreInvalidCandidateLeavesLiveUntouched(t *testing.T) {
 	initBackupRestoreIntegrationDB(t)
 	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
@@ -98,6 +178,178 @@ func TestIntegrationRestoreInvalidCandidateLeavesLiveUntouched(t *testing.T) {
 	}
 	if marker != "live-before-import" {
 		t.Fatalf("fallback marker=%q, want live-before-import", marker)
+	}
+}
+
+func TestIntegrationRestoreRevokesSSHHostLocalAuthorityAcrossRestart(t *testing.T) {
+	initBackupRestoreIntegrationDB(t)
+	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	repository := sshservice.Shared().Repository
+	posture := domain.SSHPostureV1{
+		Schema: domain.PostureSchemaV1, ObservedAt: now.Unix(), ExpiresAt: now.Add(5 * time.Minute).Unix(),
+		SemanticRevision: strings.Repeat("a", 64), BinaryRevision: strings.Repeat("b", 64),
+		ServiceRevision: strings.Repeat("c", 64), ConfigurationRevision: strings.Repeat("d", 64),
+	}
+	if err := repository.SavePosture(context.Background(), posture, now); err != nil {
+		t.Fatal(err)
+	}
+	for index, kind := range []hostresources.ManagementServiceKind{
+		hostresources.ManagementPanel, hostresources.ManagementSSH, hostresources.ManagementSubscriptionAdmin, hostresources.ManagementOtherAdmin,
+	} {
+		path := integrationRecoveryPath(fmt.Sprintf("restore-kind-%d", index), kind, now)
+		if err := repository.UpsertRecoveryEvidence(context.Background(), path, now); err != nil {
+			t.Fatal(err)
+		}
+	}
+	backup, err := dbbackup.Export("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbbackup.SetSendSighupHook(func() error { return nil })
+	t.Cleanup(func() { dbbackup.SetSendSighupHook(nil) })
+	if err := dbbackup.Restore(integrationMemMultipartFile{Reader: bytes.NewReader(backup)}); err != nil {
+		t.Fatalf("Restore returned error: %v", err)
+	}
+	assertSSHHostLocalAuthorityRevoked(t, repository, now)
+
+	livePath := configstorage.GetDBPath()
+	if err := dbsqlite.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.Init(livePath); err != nil {
+		t.Fatal(err)
+	}
+	assertSSHHostLocalAuthorityRevoked(t, repository, now)
+
+	locallyObserved := posture
+	locallyObserved.ObservedAt = now.Add(time.Minute).Unix()
+	locallyObserved.ExpiresAt = now.Add(6 * time.Minute).Unix()
+	if err := repository.SavePosture(context.Background(), locallyObserved, now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	locallyVerified := integrationRecoveryPath("restore-kind-0", hostresources.ManagementPanel, now.Add(time.Minute))
+	locallyVerified.Revision = 3
+	if err := repository.UpsertRecoveryEvidence(context.Background(), locallyVerified, now.Add(time.Minute)); err != nil {
+		t.Fatal(err)
+	}
+	if rows, err := repository.RecoveryRows(context.Background(), now.Add(time.Minute)); err != nil || len(rows) != 1 || rows[0].ID != locallyVerified.ID {
+		t.Fatalf("local re-verification did not restore exactly one live row: rows=%#v err=%v", rows, err)
+	}
+	if got, err := repository.LatestPosture(context.Background()); err != nil || got.ObservedAt != locallyObserved.ObservedAt {
+		t.Fatalf("local posture re-observation unavailable: posture=%#v err=%v", got, err)
+	}
+}
+
+func TestCheckpointIntegrationRestoreKeepsTerminalDeploymentHistoryInertAcrossRestart(t *testing.T) {
+	initBackupRestoreIntegrationDB(t)
+	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC().Truncate(time.Second)
+	rows := []model.DeploymentOperation{
+		integrationDeploymentRow(now, "committed", deploymentdomain.StateCommitted),
+		integrationDeploymentRow(now.Add(time.Second), "rolled-back", deploymentdomain.StateRolledBack),
+		integrationDeploymentRow(now.Add(2*time.Second), "active", deploymentdomain.StateApplying),
+	}
+	if err := dbsqlite.DB().Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	backup, err := dbbackup.Export("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dbbackup.SetSendSighupHook(func() error { return nil })
+	t.Cleanup(func() { dbbackup.SetSendSighupHook(nil) })
+	if err := dbbackup.Restore(integrationMemMultipartFile{Reader: bytes.NewReader(backup)}); err != nil {
+		t.Fatalf("Restore returned error: %v", err)
+	}
+	assertRestoredDeploymentAuthority(t, rows)
+
+	livePath := configstorage.GetDBPath()
+	if err := dbsqlite.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.Init(livePath); err != nil {
+		t.Fatal(err)
+	}
+	assertRestoredDeploymentAuthority(t, rows)
+}
+
+func integrationDeploymentRow(now time.Time, suffix string, state deploymentdomain.OperationState) model.DeploymentOperation {
+	digest := deploymentdomain.Revision("integration-deployment-" + suffix)
+	operation := deploymentdomain.Operation{Schema: deploymentdomain.SchemaV1,
+		OperationID: "deployment-operation:integration-" + suffix, IdempotencyKey: "deployment-idem-integration-" + suffix,
+		State: state, FromProfile: deploymentdomain.NativeLegacyRoot, TargetProfile: deploymentdomain.NativeHardened,
+		ExpectedPosture: digest, ExpectedManagement: digest, CheckpointRef: digest, BrokerReceipt: digest,
+		Revision: 3, CreatedAt: now.Unix(), UpdatedAt: now.Unix()}
+	operation.BindingRevision = deploymentdomain.OperationBinding(operation)
+	return model.DeploymentOperation{OperationID: operation.OperationID, IdempotencyKey: operation.IdempotencyKey,
+		State: string(operation.State), FromProfile: string(operation.FromProfile), TargetProfile: string(operation.TargetProfile),
+		ExpectedPosture: operation.ExpectedPosture, ExpectedManagement: operation.ExpectedManagement,
+		CheckpointRef: operation.CheckpointRef, BrokerReceipt: operation.BrokerReceipt, Revision: operation.Revision,
+		CreatedAt: operation.CreatedAt, UpdatedAt: operation.UpdatedAt, ReasonsJSON: []byte(`[]`), BindingRevision: operation.BindingRevision}
+}
+
+func assertRestoredDeploymentAuthority(t *testing.T, original []model.DeploymentOperation) {
+	t.Helper()
+	var rows []model.DeploymentOperation
+	if err := dbsqlite.DB().Where("operation_id IN ?", []string{original[0].OperationID, original[1].OperationID, original[2].OperationID}).
+		Order("operation_id asc").Find(&rows).Error; err != nil || len(rows) != 3 {
+		t.Fatalf("restored deployment rows=%d err=%v", len(rows), err)
+	}
+	byID := make(map[string]model.DeploymentOperation, len(rows))
+	for _, row := range rows {
+		byID[row.OperationID] = row
+	}
+	for _, terminal := range original[:2] {
+		row := byID[terminal.OperationID]
+		if row.RestoredUntrusted || row.CheckpointRef != "" || row.BrokerReceipt != "" || !row.CheckpointReleased || row.State != terminal.State {
+			t.Fatalf("restored terminal deployment history retained live authority: %#v", row)
+		}
+	}
+	active := byID[original[2].OperationID]
+	if active.State != string(deploymentdomain.StateManualRecoveryRequired) || !active.RestoredUntrusted || active.CheckpointRef != "" ||
+		active.BrokerReceipt != "" || !active.CheckpointReleased {
+		t.Fatalf("restored unresolved deployment authority did not fail closed: %#v", active)
+	}
+	recovery, err := deploymentservice.Shared().Repository.Recovery(context.Background())
+	if err != nil || recovery.OperationID != active.OperationID || recovery.State != deploymentdomain.StateManualRecoveryRequired || !recovery.RestoredUntrusted {
+		t.Fatalf("restored live recovery projection=%#v err=%v", recovery, err)
+	}
+}
+
+func assertSSHHostLocalAuthorityRevoked(t *testing.T, repository sshservice.Repository, now time.Time) {
+	t.Helper()
+	var postureCount int64
+	if err := dbsqlite.DB().Model(&model.SSHPostureSnapshot{}).Count(&postureCount).Error; err != nil || postureCount != 0 {
+		t.Fatalf("restored posture remained authoritative: count=%d err=%v", postureCount, err)
+	}
+	if rows, err := repository.RecoveryRows(context.Background(), now); err != nil || len(rows) != 0 {
+		t.Fatalf("restored recovery remained live: rows=%d err=%v", len(rows), err)
+	}
+	var rows []model.SSHRecoveryEvidence
+	if err := dbsqlite.DB().Order("id asc").Find(&rows).Error; err != nil || len(rows) != 4 {
+		t.Fatalf("restored descriptive evidence rows=%d err=%v", len(rows), err)
+	}
+	for _, row := range rows {
+		var reasons []string
+		if row.VerificationState != "invalidated" || row.Revision != 2 || json.Unmarshal(row.ReasonCodesJSON, &reasons) != nil ||
+			len(reasons) != 1 || reasons[0] != string(domain.ReasonRestoredStateUntrusted) {
+			t.Fatalf("restored evidence retained authority: row=%#v reasons=%v", row, reasons)
+		}
+	}
+}
+
+func integrationRecoveryPath(id string, kind hostresources.ManagementServiceKind, now time.Time) hostresources.RecoveryPathV1 {
+	return hostresources.RecoveryPathV1{
+		Schema: hostresources.RecoveryPathSchemaV1, ID: "recovery:" + id, Kind: string(kind), EndpointID: "management:" + id,
+		PrincipalID: "principal:" + id, VerificationMethod: "provider_console", EvidenceProvider: "integration-provider",
+		TargetOperation: "ssh-operation:integration", VerifiedAt: now.Unix(), ExpiresAt: now.Add(10 * time.Minute).Unix(),
+		IndependenceClass: "provider_control_plane", VerificationState: "verified", OperationBound: true, Revision: 1,
+		SourceRevision: strings.Repeat("e", 64), ConfigurationRevision: strings.Repeat("f", 64), ProducerRevision: strings.Repeat("1", 64),
 	}
 }
 

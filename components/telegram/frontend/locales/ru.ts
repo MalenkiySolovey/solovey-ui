@@ -18,7 +18,7 @@ export default {
     "outboundLabel": "Outbound требует запущенного ядра",
     "noOutbounds": "Outbound не настроены",
     "hint": {
-      "chatId": "Числовой Telegram chat/user ID для уведомлений. Его можно узнать через @userinfobot.",
+      "chatId": "Числовой Telegram chat/user ID для уведомлений. Его можно узнать через {'@'}userinfobot.",
       "cpuThreshold": "Отправлять предупреждение, когда CPU выше этого порога. По умолчанию: 90. Диапазон 1-100.",
       "reportCron": "Cron из 5 полей для отчёта, например 0 9 * * *. Пусто: выключено.",
       "transport": "Способ доступа бота к Telegram: proxy URL или outbound sing-box. По умолчанию: Proxy.",

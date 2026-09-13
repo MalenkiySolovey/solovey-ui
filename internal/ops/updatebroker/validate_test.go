@@ -3,6 +3,7 @@ package updatebroker
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"math"
 	"strings"
 	"testing"
 
@@ -58,6 +59,35 @@ func TestOperationIdentityAndSemanticReferencesAreClosedAndStable(t *testing.T) 
 	if first == semanticRef("apply", operationID, manifest) ||
 		first == semanticRef("stage", operationID, updateDigest("other-manifest")) {
 		t.Fatal("semantic reference did not separate operation semantics")
+	}
+}
+
+func TestStagingChunkAdmissionIsPortableOverflowSafeAndExact(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		offset     int64
+		chunkBytes int
+		size       int64
+		final      bool
+		want       int64
+		valid      bool
+	}{
+		{"below-boundary", 0, 3, 4, false, 3, true},
+		{"exact-final-boundary", 3, 1, 4, true, 4, true},
+		{"one-above-boundary", 3, 2, 4, false, 0, false},
+		{"repeated-non-final-near-limit", 1<<30 - MaxChunkBytes - 1, MaxChunkBytes, 1 << 30, false, 1<<30 - 1, true},
+		{"near-limit-final", 1<<30 - 1, 1, 1 << 30, true, 1 << 30, true},
+		{"invalid-negative-offset", -1, 1, 4, false, 0, false},
+		{"overflow-shaped-offset", math.MaxInt64 - 1, MaxChunkBytes, math.MaxInt64, false, 0, false},
+		{"premature-final", 0, 1, 4, true, 0, false},
+		{"missing-final-at-boundary", 3, 1, 4, false, 0, false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			got, err := validateChunkAdmission(test.offset, test.chunkBytes, test.size, test.final)
+			if (err == nil) != test.valid || got != test.want {
+				t.Fatalf("accepted=%d err=%v want=%d valid=%v", got, err, test.want, test.valid)
+			}
+		})
 	}
 }
 

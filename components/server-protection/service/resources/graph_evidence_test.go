@@ -46,11 +46,30 @@ func TestSocketGraphEvidencePreservesFrozenNodeOwnerAndDualStackFacts(t *testing
 	if owner.Classification != hostsurface.ClassificationManagedExact || !owner.ListenerOwnerCurrent || owner.OwnerObservationRevision != firstSurface.ListenerOwner.ObservationRevision || owner.Socket.IPv6Only == nil || *owner.Socket.IPv6Only || !slices.Equal(owner.Socket.CoverageFamilies, []hostsurface.Family{hostsurface.FamilyIPv4, hostsurface.FamilyIPv6}) {
 		t.Fatalf("MANAGED_EXACT owner observation was weakened: %#v", owner)
 	}
-	if owner.Process == nil || owner.Service == nil || owner.Application == nil || owner.DeploymentBindingRevision == "" || owner.Application.DeploymentID != first.Capabilities.ExpectedListenerOwner.DeploymentID {
+	if owner.Process == nil || owner.Service == nil || owner.Application == nil || owner.DeploymentBindingRevision == "" || owner.Application.DeploymentID != first.Capabilities.ExpectedApplicationOwner.DeploymentID {
 		t.Fatalf("bounded process/service/deployment proof is incomplete: %#v", owner)
+	}
+	if owner.Service.ProofKind != "systemd" || owner.Service.SystemdUnit != "solovey-ui.service" || owner.Process.UID == nil || owner.Process.GID == nil {
+		t.Fatalf("Systemd acceptance proposition was not frozen: %#v", owner)
 	}
 	if evidence.GraphRevision != graph.Revision || evidence.OwnerObservationRevision != graph.OwnerObservationRevision || evidence.Revision == "" {
 		t.Fatalf("graph evidence revision binding is incomplete: %#v", evidence)
+	}
+	encoded, err := json.Marshal(evidence)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var roundTrip SocketOwnershipGraphEvidenceV1
+	if err := json.Unmarshal(encoded, &roundTrip); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateSocketOwnershipGraphEvidence(roundTrip, graph); err != nil {
+		t.Fatalf("Systemd frozen evidence did not round-trip: %v", err)
+	}
+	roundTripService := roundTrip.Nodes[0].OwnerObservations[0].Service
+	if roundTripService == nil || roundTripService.ProofKind != "systemd" || roundTripService.SystemdUnit != owner.Service.SystemdUnit ||
+		roundTripService.FragmentSHA256 != owner.Service.FragmentSHA256 || roundTripService.StartMonotonicUsec != owner.Service.StartMonotonicUsec {
+		t.Fatalf("Systemd acceptance proposition was downgraded after round-trip: %#v", roundTripService)
 	}
 }
 

@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"runtime"
 
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionhealth "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/health"
@@ -34,7 +33,8 @@ func (h Handler) status(c *gin.Context) {
 		return
 	}
 	support := domain.SupportSupported
-	if runtime.GOOS != "linux" || degradedSettings || len(inventory.Errors) > 0 || len(inventory.Collisions) > 0 {
+	capability := h.firewallPreviewCapability(c.Request.Context())
+	if !capability.Available || degradedSettings || len(inventory.Errors) > 0 || len(inventory.Collisions) > 0 {
 		support = domain.SupportDegraded
 	}
 	observationStatus := protectionobservation.Status{}
@@ -59,7 +59,7 @@ func (h Handler) status(c *gin.Context) {
 	if healthState == "missing_capability" || healthState == "degraded" {
 		support = domain.SupportDegraded
 	}
-	capabilityReason := h.firewallCapabilityReason(c.Request.Context())
+	capabilityReason := capability.Reason
 	if capabilityReason == "" && healthState != "ok" {
 		capabilityReason = "health_" + string(healthState)
 	}
@@ -85,7 +85,7 @@ func (h Handler) status(c *gin.Context) {
 			"events":     eventCount,
 			"recovery":   recoveryRequired,
 		},
-		"platform":       gin.H{"os": runtime.GOOS, "arch": runtime.GOARCH},
+		"platform":       gin.H{"nftAvailable": capability.Available, "capabilityRevision": capability.Revision},
 		"observations":   observationStatus,
 		"resourceHealth": health,
 		"healthState":    healthState,

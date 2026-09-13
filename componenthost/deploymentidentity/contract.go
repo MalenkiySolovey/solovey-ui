@@ -30,10 +30,9 @@ var (
 	identityPattern = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_.:@+-]{0,127}$`)
 )
 
-// ApplicationOwnerContractV1 is written by the production deployment owner
-// before service activation. Consumers never accept a PID, executable path or
-// systemd unit from an API/helper request; they derive those expectations from
-// this root-owned contract instead.
+// ApplicationOwnerContractV1 is the released Systemd-specific serialization.
+// Its generic name and schema are retained for installed-contract
+// compatibility; generic consumers use ExpectedApplicationOwnerV1 instead.
 type ApplicationOwnerContractV1 struct {
 	Schema                      string `json:"schema"`
 	Revision                    string `json:"revision"`
@@ -54,7 +53,7 @@ type ApplicationOwnerContractV1 struct {
 	ProcessGID                  uint32 `json:"processGid"`
 }
 
-func NewV1(instanceID, sourceRevision, artifactRevision, deploymentID, runtimeContractRevision, runtimeBindingRevision, serviceIdentity, unit, fragmentPath, unitSHA, controlGroup, executablePath, executableSHA string, uid, gid uint32) (ApplicationOwnerContractV1, error) {
+func NewSystemdV1(instanceID, sourceRevision, artifactRevision, deploymentID, runtimeContractRevision, runtimeBindingRevision, serviceIdentity, unit, fragmentPath, unitSHA, controlGroup, executablePath, executableSHA string, uid, gid uint32) (ApplicationOwnerContractV1, error) {
 	value := ApplicationOwnerContractV1{
 		Schema: SchemaV1, InstanceID: instanceID, SourceRevision: sourceRevision,
 		ArtifactRevision: artifactRevision, DeploymentID: deploymentID,

@@ -5,29 +5,32 @@ import (
 	"net/http"
 	"time"
 
+	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
-	UserService              service.UserService
-	SettingService           service.SettingService
-	NotifyEvent              func(string, map[string]string)
-	JSONObj                  func(*gin.Context, interface{}, error)
-	JSONMsg                  func(*gin.Context, string, error)
-	JSONMsgObj               func(*gin.Context, string, interface{}, error)
-	Audit                    func(*gin.Context, string, string, string, string, map[string]any)
-	LoginUser                func(*gin.Context) string
-	SetLoginUser             func(*gin.Context, string, int, string) error
-	SetLoginSecurity         func(*gin.Context, service.LoginSessionSpec) error
-	ClearSession             func(*gin.Context)
-	RemoteIP                 func(*gin.Context) string
-	CheckLoginRateLimit      func(string) error
-	RecordLoginFailure       func(string)
-	ResetLoginFailures       func(string)
-	LoginRateLimitUserKey    func(string) string
-	LoginUsernameTarpitDelay func(string) time.Duration
-	RequireStepUp            func(*gin.Context, string, string) bool
+	UserService               service.UserService
+	SettingService            service.SettingService
+	NotifyEvent               func(string, map[string]string)
+	NotifyAuthenticationEvent func(string, string, string, clientidentity.V1)
+	ClientIdentity            func(*gin.Context) clientidentity.V1
+	JSONObj                   func(*gin.Context, interface{}, error)
+	JSONMsg                   func(*gin.Context, string, error)
+	JSONMsgObj                func(*gin.Context, string, interface{}, error)
+	Audit                     func(*gin.Context, string, string, string, string, map[string]any)
+	LoginUser                 func(*gin.Context) string
+	SetLoginUser              func(*gin.Context, string, int, string) error
+	SetLoginSecurity          func(*gin.Context, service.LoginSessionSpec) (service.LoginSessionEstablishment, error)
+	ClearSession              func(*gin.Context)
+	RemoteIP                  func(*gin.Context) string
+	CheckLoginRateLimit       func(string) error
+	RecordLoginFailure        func(string)
+	ResetLoginFailures        func(string)
+	LoginRateLimitUserKey     func(string) string
+	LoginUsernameTarpitDelay  func(string) time.Duration
+	RequireStepUp             func(*gin.Context, string, string) bool
 }
 
 func (a *Handler) requireStepUp(c *gin.Context, operation, target string) bool {
@@ -44,26 +47,28 @@ func (a *Handler) requireStepUp(c *gin.Context, operation, target string) bool {
 
 // Deps contains the host capabilities required by authentication routes.
 type Deps struct {
-	UserService              service.UserService
-	SettingService           service.SettingService
-	NotifyEvent              func(string, map[string]string)
-	JSONObj                  func(*gin.Context, interface{}, error)
-	JSONMsg                  func(*gin.Context, string, error)
-	JSONMsgObj               func(*gin.Context, string, interface{}, error)
-	Audit                    func(*gin.Context, string, string, string, string, map[string]any)
-	LoginUser                func(*gin.Context) string
-	SetLoginUser             func(*gin.Context, string, int, string) error
-	SetLoginSecurity         func(*gin.Context, service.LoginSessionSpec) error
-	ClearSession             func(*gin.Context)
-	RemoteIP                 func(*gin.Context) string
-	CheckLoginRateLimit      func(string) error
-	RecordLoginFailure       func(string)
-	ResetLoginFailures       func(string)
-	LoginRateLimitUserKey    func(string) string
-	LoginUsernameTarpitDelay func(string) time.Duration
-	RequireStepUp            func(*gin.Context, string, string) bool
-	CSRF                     gin.HandlerFunc
-	ReloadTokensAfter        func(gin.HandlerFunc) gin.HandlerFunc
+	UserService               service.UserService
+	SettingService            service.SettingService
+	NotifyEvent               func(string, map[string]string)
+	NotifyAuthenticationEvent func(string, string, string, clientidentity.V1)
+	ClientIdentity            func(*gin.Context) clientidentity.V1
+	JSONObj                   func(*gin.Context, interface{}, error)
+	JSONMsg                   func(*gin.Context, string, error)
+	JSONMsgObj                func(*gin.Context, string, interface{}, error)
+	Audit                     func(*gin.Context, string, string, string, string, map[string]any)
+	LoginUser                 func(*gin.Context) string
+	SetLoginUser              func(*gin.Context, string, int, string) error
+	SetLoginSecurity          func(*gin.Context, service.LoginSessionSpec) (service.LoginSessionEstablishment, error)
+	ClearSession              func(*gin.Context)
+	RemoteIP                  func(*gin.Context) string
+	CheckLoginRateLimit       func(string) error
+	RecordLoginFailure        func(string)
+	ResetLoginFailures        func(string)
+	LoginRateLimitUserKey     func(string) string
+	LoginUsernameTarpitDelay  func(string) time.Duration
+	RequireStepUp             func(*gin.Context, string, string) bool
+	CSRF                      gin.HandlerFunc
+	ReloadTokensAfter         func(gin.HandlerFunc) gin.HandlerFunc
 }
 
 func NewHandler(deps Deps) *Handler {
@@ -71,25 +76,35 @@ func NewHandler(deps Deps) *Handler {
 	if notifyEvent == nil {
 		notifyEvent = func(string, map[string]string) {}
 	}
+	notifyAuthenticationEvent := deps.NotifyAuthenticationEvent
+	if notifyAuthenticationEvent == nil {
+		notifyAuthenticationEvent = func(string, string, string, clientidentity.V1) {}
+	}
+	clientIdentity := deps.ClientIdentity
+	if clientIdentity == nil {
+		clientIdentity = func(c *gin.Context) clientidentity.V1 { return clientidentity.ResolveRequest(c.Request) }
+	}
 	return &Handler{
-		UserService:              deps.UserService,
-		SettingService:           deps.SettingService,
-		NotifyEvent:              notifyEvent,
-		JSONObj:                  deps.JSONObj,
-		JSONMsg:                  deps.JSONMsg,
-		JSONMsgObj:               deps.JSONMsgObj,
-		Audit:                    deps.Audit,
-		LoginUser:                deps.LoginUser,
-		SetLoginUser:             deps.SetLoginUser,
-		SetLoginSecurity:         deps.SetLoginSecurity,
-		ClearSession:             deps.ClearSession,
-		RemoteIP:                 deps.RemoteIP,
-		CheckLoginRateLimit:      deps.CheckLoginRateLimit,
-		RecordLoginFailure:       deps.RecordLoginFailure,
-		ResetLoginFailures:       deps.ResetLoginFailures,
-		LoginRateLimitUserKey:    deps.LoginRateLimitUserKey,
-		LoginUsernameTarpitDelay: deps.LoginUsernameTarpitDelay,
-		RequireStepUp:            deps.RequireStepUp,
+		UserService:               deps.UserService,
+		SettingService:            deps.SettingService,
+		NotifyEvent:               notifyEvent,
+		NotifyAuthenticationEvent: notifyAuthenticationEvent,
+		ClientIdentity:            clientIdentity,
+		JSONObj:                   deps.JSONObj,
+		JSONMsg:                   deps.JSONMsg,
+		JSONMsgObj:                deps.JSONMsgObj,
+		Audit:                     deps.Audit,
+		LoginUser:                 deps.LoginUser,
+		SetLoginUser:              deps.SetLoginUser,
+		SetLoginSecurity:          deps.SetLoginSecurity,
+		ClearSession:              deps.ClearSession,
+		RemoteIP:                  deps.RemoteIP,
+		CheckLoginRateLimit:       deps.CheckLoginRateLimit,
+		RecordLoginFailure:        deps.RecordLoginFailure,
+		ResetLoginFailures:        deps.ResetLoginFailures,
+		LoginRateLimitUserKey:     deps.LoginRateLimitUserKey,
+		LoginUsernameTarpitDelay:  deps.LoginUsernameTarpitDelay,
+		RequireStepUp:             deps.RequireStepUp,
 	}
 }
 

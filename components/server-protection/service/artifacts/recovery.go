@@ -13,6 +13,67 @@ import (
 
 var safeFact = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
 
+type RecoveryAction struct {
+	Program string
+	Args    []string
+	Purpose string
+}
+
+type RecoveryProjection struct {
+	Authority             string
+	SelfRecoveryAvailable bool
+	Action                RecoveryAction
+	DeploymentBackend     string
+	ProjectionRevision    string
+	OwnerContractRevision string
+}
+
+func (p RecoveryProjection) Validate() error {
+	if p.Authority != "authenticated_broker" && p.Authority != "external_operator" ||
+		p.Authority == "authenticated_broker" != p.SelfRecoveryAvailable ||
+		!p.SelfRecoveryAvailable && p.Action.Program != "operator_review" {
+		return errors.New("recovery authority projection is malformed")
+	}
+	action := p.Action
+	if action.Program == "" || len(action.Program) > 128 || len(action.Args) == 0 || len(action.Args) > 8 ||
+		!safeActionToken(action.Program) || !safeFact.MatchString(action.Purpose) {
+		return errors.New("recovery action projection is malformed")
+	}
+	for _, arg := range action.Args {
+		if arg == "" || len(arg) > 512 || strings.ContainsAny(arg, "\x00\r\n") {
+			return errors.New("recovery action projection argument is malformed")
+		}
+	}
+	if p.DeploymentBackend != "" || p.ProjectionRevision != "" || p.OwnerContractRevision != "" {
+		if p.DeploymentBackend != "systemd" && p.DeploymentBackend != "procd" && p.DeploymentBackend != "docker" ||
+			safeSHA256(p.ProjectionRevision) == "" || p.DeploymentBackend != "docker" && safeSHA256(p.OwnerContractRevision) == "" ||
+			p.DeploymentBackend == "docker" && p.OwnerContractRevision != "" {
+			return errors.New("recovery deployment projection is malformed")
+		}
+	}
+	return nil
+}
+
+func (p RecoveryProjection) validateInstalled() error {
+	if err := p.Validate(); err != nil {
+		return err
+	}
+	if p.DeploymentBackend == "" || p.ProjectionRevision == "" {
+		return errors.New("installed recovery deployment projection is unavailable")
+	}
+	return nil
+}
+
+func safeActionToken(value string) bool {
+	for _, character := range value {
+		if !(character == '-' || character == '_' || character == '.' || character == '/' ||
+			character >= 'a' && character <= 'z' || character >= 'A' && character <= 'Z' || character >= '0' && character <= '9') {
+			return false
+		}
+	}
+	return true
+}
+
 type RecoveryInput struct {
 	OperationID               string
 	Revision                  string
@@ -194,15 +255,21 @@ func (s *Storage) CreateRecoveryBundle(input RecoveryInput, expectedManifestSHA 
 		publicManifest.PreviousTablePresent = input.PreviousTablePresent
 		publicManifest.ArtifactManifestSHA256 = safeSHA256(input.ArtifactManifestSHA256)
 	}
+	actions, err := s.recoveryActions(input.ResourceKind)
+	if err != nil {
+		return RecoveryBundle{}, err
+	}
 	values := map[string]any{
 		"summary.json": summary,
 		"health.json": struct {
 			Checks []HealthCheck `json:"checks"`
 		}{health},
 		"artifacts-manifest.json": publicManifest,
-		"recovery-actions.json": struct {
-			Actions []recoveryAction `json:"actions"`
-		}{safeRecoveryActions(input.ResourceKind)},
+		"recovery-actions.json": recoveryActionDocument{
+			RecoveryAuthority: s.recoveryProjection.Authority, SelfRecoveryAvailable: s.recoveryProjection.SelfRecoveryAvailable,
+			DeploymentBackend: s.recoveryProjection.DeploymentBackend, ProjectionRevision: s.recoveryProjection.ProjectionRevision,
+			OwnerContractRevision: s.recoveryProjection.OwnerContractRevision, Actions: actions,
+		},
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -231,21 +298,28 @@ type recoveryAction struct {
 	Purpose string   `json:"purpose"`
 }
 
-func safeFirewallRecoveryActions() []recoveryAction {
-	return []recoveryAction{
-		{Program: "systemctl", Args: []string{"is-active", "solovey-privileged-broker.socket"}, Purpose: "verify_privileged_broker_socket"},
-		{Program: "nft", Args: []string{"list", "table", "inet", "solovey_protection"}, Purpose: "inspect_managed_table_only"},
-	}
+type recoveryActionDocument struct {
+	RecoveryAuthority     string           `json:"recoveryAuthority"`
+	SelfRecoveryAvailable bool             `json:"selfRecoveryAvailable"`
+	DeploymentBackend     string           `json:"deploymentBackend,omitempty"`
+	ProjectionRevision    string           `json:"projectionRevision,omitempty"`
+	OwnerContractRevision string           `json:"ownerContractRevision,omitempty"`
+	Actions               []recoveryAction `json:"actions"`
 }
 
-func safeRecoveryActions(kind string) []recoveryAction {
-	if kind == "fronting" {
-		return []recoveryAction{
-			{Program: "systemctl", Args: []string{"is-active", "solovey-privileged-broker.socket"}, Purpose: "verify_privileged_broker_socket"},
-			{Program: "operator_review", Args: []string{"fronting_operation", "artifact_hashes", "active_revision"}, Purpose: "review_before_bounded_manual_repair"},
-		}
+func (s *Storage) recoveryActions(kind string) ([]recoveryAction, error) {
+	if s == nil {
+		return nil, errors.New("artifact storage is unavailable")
 	}
-	return safeFirewallRecoveryActions()
+	if err := s.recoveryProjection.Validate(); err != nil {
+		return nil, err
+	}
+	projected := s.recoveryProjection.Action
+	result := []recoveryAction{{Program: projected.Program, Args: append([]string(nil), projected.Args...), Purpose: projected.Purpose}}
+	if kind == "fronting" {
+		return append(result, recoveryAction{Program: "operator_review", Args: []string{"fronting_operation", "artifact_hashes", "active_revision"}, Purpose: "review_before_bounded_manual_repair"}), nil
+	}
+	return append(result, recoveryAction{Program: "nft", Args: []string{"list", "table", "inet", "solovey_protection"}, Purpose: "inspect_managed_table_only"}), nil
 }
 
 func validRevisionReference(value string) bool {
@@ -413,6 +487,10 @@ func (s *Storage) CreateEmergencyRecoveryBundle(input RecoveryInput, status stri
 		manifest.PreviousTablePresent = input.PreviousTablePresent
 		manifest.ArtifactManifestSHA256 = safeSHA256(input.ArtifactManifestSHA256)
 	}
+	actions, err := s.recoveryActions(input.ResourceKind)
+	if err != nil {
+		return RecoveryBundle{}, err
+	}
 	values := []struct {
 		name  string
 		value any
@@ -420,9 +498,11 @@ func (s *Storage) CreateEmergencyRecoveryBundle(input RecoveryInput, status stri
 		{"summary.json", summary},
 		{"health.json", health},
 		{"artifacts-manifest.json", manifest},
-		{"recovery-actions.json", struct {
-			Actions []recoveryAction `json:"actions"`
-		}{safeRecoveryActions(input.ResourceKind)}},
+		{"recovery-actions.json", recoveryActionDocument{
+			RecoveryAuthority: s.recoveryProjection.Authority, SelfRecoveryAvailable: s.recoveryProjection.SelfRecoveryAvailable,
+			DeploymentBackend: s.recoveryProjection.DeploymentBackend, ProjectionRevision: s.recoveryProjection.ProjectionRevision,
+			OwnerContractRevision: s.recoveryProjection.OwnerContractRevision, Actions: actions,
+		}},
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()

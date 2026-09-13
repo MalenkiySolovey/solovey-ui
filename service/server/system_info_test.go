@@ -138,6 +138,20 @@ func TestGetSystemInfoFiltersNonPublicAddresses(t *testing.T) {
 	}
 }
 
+func TestGetSystemInfoPublishesTargetObservedUptime(t *testing.T) {
+	originalBootTime, originalUptime := systemInfoBootTime, systemInfoUptime
+	systemInfoBootTime = func() (uint64, error) { return 1_700_000_000, nil }
+	systemInfoUptime = func() (uint64, error) { return 37, nil }
+	t.Cleanup(func() {
+		systemInfoBootTime, systemInfoUptime = originalBootTime, originalUptime
+	})
+
+	info := (&ServerService{}).GetSystemInfo()
+	if info["bootTime"] != uint64(1_700_000_000) || info["uptimeSec"] != uint64(37) {
+		t.Fatalf("system clock facts = %#v", info)
+	}
+}
+
 func containsString(values []string, want string) bool {
 	for _, value := range values {
 		if value == want {

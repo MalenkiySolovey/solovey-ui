@@ -12,8 +12,34 @@ import (
 )
 
 type Hooks struct {
-	MigrateStaged   func(context.Context, *gorm.DB) error
-	RehearseRestore func(context.Context, *gorm.DB) error
+	MigrateStaged           func(context.Context, *gorm.DB) error
+	RehearseRestore         func(context.Context, *gorm.DB) error
+	NonportableBackupTables func() []string
+}
+
+func NonportableBackupTables(ownerID string) (map[string]bool, error) {
+	item, available := Lookup(ownerID)
+	if !available {
+		return nil, fmt.Errorf("durable owner %q is unavailable", ownerID)
+	}
+	hookCatalog.RLock()
+	hook := hookCatalog.items[ownerID].NonportableBackupTables
+	hookCatalog.RUnlock()
+	result := map[string]bool{}
+	if hook == nil {
+		return result, nil
+	}
+	declared := map[string]bool{}
+	for _, table := range item.Database.Tables {
+		declared[table] = true
+	}
+	for _, table := range hook() {
+		if !declared[table] || result[table] {
+			return nil, fmt.Errorf("durable owner %q has invalid backup exclusions", ownerID)
+		}
+		result[table] = true
+	}
+	return result, nil
 }
 
 var hookCatalog = struct {

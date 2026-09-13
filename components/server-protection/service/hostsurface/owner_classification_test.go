@@ -64,10 +64,9 @@ func TestFirewallBaselineOwnerCases9Through21(t *testing.T) {
 		changed.Process.ExeInode++
 		notExact(t, classify([]hostfacts.ListenerOwnerFactV1{changed}, true))
 	})
-	t.Run("15_wrong_systemd_unit_or_cgroup_rejected", func(t *testing.T) {
+	t.Run("15_wrong_service_identity_rejected", func(t *testing.T) {
 		changed := base
-		changed.Service.SystemdUnit = "foreign.service"
-		changed.Process.ControlGroup, changed.Service.ControlGroup = "/system.slice/foreign.service", "/system.slice/foreign.service"
+		changed.Application.ServiceIdentity = "foreign-service"
 		changed.Seal()
 		notExact(t, classify([]hostfacts.ListenerOwnerFactV1{changed}, true))
 	})
@@ -77,10 +76,9 @@ func TestFirewallBaselineOwnerCases9Through21(t *testing.T) {
 		changed.Seal()
 		notExact(t, classify([]hostfacts.ListenerOwnerFactV1{changed}, true))
 	})
-	t.Run("17_same_binary_outside_managed_service_rejected", func(t *testing.T) {
+	t.Run("17_same_binary_with_wrong_owner_contract_rejected", func(t *testing.T) {
 		changed := base
-		changed.Service.SystemdUnit = "manual.service"
-		changed.Process.ControlGroup, changed.Service.ControlGroup = "/user.slice/manual.service", "/user.slice/manual.service"
+		changed.Application.OwnerContractRevision = strings.Repeat("8", 64)
 		changed.Seal()
 		notExact(t, classify([]hostfacts.ListenerOwnerFactV1{changed}, true))
 	})
@@ -129,20 +127,22 @@ func TestConfiguredWildcardFamilyDoesNotCrossMatch(t *testing.T) {
 }
 
 func firewallBaselineHostResource() hostresources.ProtectableResource {
-	expected := hostresources.ExpectedListenerOwnerV1{Schema: hostresources.ExpectedListenerOwnerSchemaV1, ContractRevision: strings.Repeat("a", 64), InstanceID: "00112233-4455-4677-8899-aabbccddeeff", SourceRevision: "src-" + strings.Repeat("2", 64), ArtifactRevision: "art-" + strings.Repeat("3", 64), DeploymentID: "dep-" + strings.Repeat("4", 64), RuntimeRootBindingRevision: strings.Repeat("5", 64), ServiceIdentity: "solovey-ui", SystemdUnit: "solovey-ui.service", ServiceFragmentPath: "/etc/systemd/system/solovey-ui.service", ServiceUnitSHA256: strings.Repeat("7", 64), ServiceControlGroup: "/system.slice/solovey-ui.service", ExecutablePath: "/usr/local/solovey-ui/releases/artifact/solovey-ui", ExecutableSHA256: strings.Repeat("6", 64)}
-	resource := hostresources.ProtectableResource{ID: "core:panel:web", Kind: "panel_web", Owner: "core", Protocol: "tcp", Listen: "192.0.2.30", Port: 443, Public: true, Capabilities: hostresources.ProtectableResourceCapabilities{Known: true, OwnerRevision: strings.Repeat("b", 64), ConfigRevision: strings.Repeat("c", 64), ExpectedListenerOwner: expected}}
+	expected := hostresources.ExpectedApplicationOwnerV1{Schema: hostresources.ExpectedApplicationOwnerSchemaV1, ContractRevision: strings.Repeat("a", 64), InstanceID: "00112233-4455-4677-8899-aabbccddeeff", SourceRevision: "src-" + strings.Repeat("2", 64), ArtifactRevision: "art-" + strings.Repeat("3", 64), DeploymentID: "dep-" + strings.Repeat("4", 64), RuntimeRootBindingRevision: strings.Repeat("5", 64), ServiceIdentity: "solovey-ui", ExecutablePath: "/usr/local/solovey-ui/releases/artifact/solovey-ui", ExecutableSHA256: strings.Repeat("6", 64)}
+	resource := hostresources.ProtectableResource{ID: "core:panel:web", Kind: "panel_web", Owner: "core", Protocol: "tcp", Listen: "192.0.2.30", Port: 443, Public: true, Capabilities: hostresources.ProtectableResourceCapabilities{Known: true, OwnerRevision: strings.Repeat("b", 64), ConfigRevision: strings.Repeat("c", 64), ExpectedApplicationOwner: expected}}
 	resource.ListenIntent = hostresources.BuildConfiguredListenIntent(resource)
 	return resource
 }
 
 func firewallBaselineRawSocket() RawSocket {
-	return RawSocket{Network: hostfacts.NetworkTCP, Family: hostfacts.FamilyIPv4, Bind: "192.0.2.30", Port: 443, Inode: "100", Processes: []RawProcess{{PID: 100, UID: 0, StartTime: "7000", ExecutableToken: "solovey-ui", SystemdUnit: "solovey-ui.service"}}}
+	process := productionProcessFixture(100, "/usr/local/solovey-ui/releases/artifact/solovey-ui", "firewall-baseline")
+	process.UID, process.GID, process.StartTime = 0, 0, "7000"
+	return RawSocket{Network: hostfacts.NetworkTCP, Family: hostfacts.FamilyIPv4, Bind: "192.0.2.30", Port: 443, Inode: "100", Processes: []RawProcess{process}}
 }
 
 func firewallBaselineOwnerFact(resource hostresources.ProtectableResource, now time.Time) hostfacts.ListenerOwnerFactV1 {
-	expected := resource.Capabilities.ExpectedListenerOwner
-	process := hostfacts.ProcessFact{PID: firewallBaselineIntPtr(100), ParentPID: firewallBaselineIntPtr(1), SessionID: firewallBaselineIntPtr(100), StartTime: "7000", ExeDigest: expected.ExecutableSHA256, Executable: "/usr/local/solovey-ui/releases/artifact/solovey-ui", ExeDevice: 1, ExeInode: 2, UID: firewallBaselineIntPtr(0), GID: firewallBaselineIntPtr(0), ControlGroup: "/system.slice/solovey-ui.service"}
-	service := hostfacts.ServiceFact{SystemdUnit: expected.SystemdUnit, MainPID: firewallBaselineIntPtr(100), FragmentPath: "/etc/systemd/system/solovey-ui.service", FragmentSHA256: expected.ServiceUnitSHA256, ActiveState: "active", SubState: "running", ControlGroup: process.ControlGroup, StartMonotonicUsec: 100}
+	expected := resource.Capabilities.ExpectedApplicationOwner
+	process := hostfacts.ProcessFact{ProviderRevision: "fixture-process-evidence/v1", EvidenceRevision: strings.Repeat("d", 64), PID: firewallBaselineIntPtr(100), ParentPID: firewallBaselineIntPtr(1), SessionID: firewallBaselineIntPtr(100), StartTime: "7000", ExeDigest: expected.ExecutableSHA256, Executable: "/usr/local/solovey-ui/releases/artifact/solovey-ui", ExeDevice: 1, ExeInode: 2, UID: firewallBaselineIntPtr(0), GID: firewallBaselineIntPtr(0), ControlGroup: "/system.slice/solovey-ui.service"}
+	service := hostfacts.ServiceFact{SupervisorRevision: strings.Repeat("8", 64), CgroupAvailability: "available", CgroupPolicy: "required", CgroupRevision: strings.Repeat("9", 64), SystemdUnit: "solovey-ui.service", MainPID: firewallBaselineIntPtr(100), FragmentPath: "/etc/systemd/system/solovey-ui.service", FragmentSHA256: strings.Repeat("7", 64), ActiveState: "active", SubState: "running", ControlGroup: process.ControlGroup, StartMonotonicUsec: 100}
 	fact := hostfacts.ListenerOwnerFactV1{Schema: hostfacts.ListenerOwnerFactSchemaV1, Socket: hostfacts.ListenerSocketIdentityV1{Network: hostfacts.NetworkTCP, Family: hostfacts.FamilyIPv4, Bind: "192.0.2.30", Port: 443, Inode: "100", Cookie: 101, CoverageFamilies: []hostfacts.Family{hostfacts.FamilyIPv4}}, Process: process, Service: service, Application: hostfacts.ListenerApplicationIdentityV1{InstanceID: expected.InstanceID, SourceRevision: expected.SourceRevision, ArtifactRevision: expected.ArtifactRevision, DeploymentID: expected.DeploymentID, OwnerContractRevision: expected.ContractRevision, RuntimeRootBindingRevision: expected.RuntimeRootBindingRevision, ExpectedExecutableSHA256: expected.ExecutableSHA256, ServiceIdentity: expected.ServiceIdentity, ResourceID: resource.ID, ResourceOwnerRevision: resource.Capabilities.OwnerRevision, ConfigurationRevision: resource.Capabilities.ConfigRevision}, ObservedAt: now.Unix(), ExpiresAt: now.Add(30 * time.Second).Unix()}
 	fact.Seal()
 	return fact

@@ -21,11 +21,15 @@ import (
 
 const (
 	ProtocolVersion       = 1
-	HelperVersion         = "1.5.1"
-	HelperContractVersion = "1.5"
+	HelperVersion         = "1.11.0"
+	HelperContractVersion = "1.11"
 	MaxRequestBytes       = 1 << 20
-	MaxOutputBytes        = 256 << 10
-	MaxArtifactBytes      = 512 << 10
+	// An accepted candidate must always fit through a subsequent bounded live
+	// observation. nft can add formatting and volatile counters to list output,
+	// so acceptance is deliberately below the transport/artifact ceilings.
+	MaxManagedCandidateBytes = 256 << 10
+	MaxOutputBytes           = 512 << 10
+	MaxArtifactBytes         = 512 << 10
 )
 
 type boundedBuffer struct {
@@ -54,6 +58,7 @@ type Operation string
 const (
 	OperationCapabilities         Operation = "capabilities"
 	OperationNFTValidate          Operation = "nft.validate"
+	OperationNFTObserve           Operation = "nft.managed_table.observe"
 	OperationNFTApply             Operation = "nft.managed_table.apply"
 	OperationNFTRollback          Operation = "nft.managed_table.rollback"
 	OperationNginxDetectVersion   Operation = "nginx.detect_version"
@@ -65,14 +70,13 @@ const (
 	OperationNginxRestore         Operation = "nginx.revision.restore"
 	OperationListenerOwnerObserve Operation = "listener.owner.observe"
 	OperationSSHRecoveryObserve   Operation = "recovery.ssh.observe"
-	OperationArtifact             Operation = "artifact.manage"
 )
 
 var allowedOperations = map[Operation]struct{}{
-	OperationCapabilities: {}, OperationNFTValidate: {}, OperationNFTApply: {},
+	OperationCapabilities: {}, OperationNFTValidate: {}, OperationNFTObserve: {}, OperationNFTApply: {},
 	OperationNFTRollback: {}, OperationNginxDetectVersion: {}, OperationNginxValidate: {},
 	OperationNginxInstall: {}, OperationNginxSwitch: {}, OperationNginxReload: {},
-	OperationNginxVerify: {}, OperationNginxRestore: {}, OperationListenerOwnerObserve: {}, OperationSSHRecoveryObserve: {}, OperationArtifact: {},
+	OperationNginxVerify: {}, OperationNginxRestore: {}, OperationListenerOwnerObserve: {}, OperationSSHRecoveryObserve: {},
 }
 
 type ErrorCode string
@@ -102,6 +106,7 @@ type Request struct {
 
 	Capabilities         *CapabilitiesRequest         `json:"capabilities,omitempty"`
 	NFTValidate          *NFTValidateRequest          `json:"nft_validate,omitempty"`
+	NFTObserve           *NFTObserveRequest           `json:"nft_observe,omitempty"`
 	NFTApply             *NFTApplyRequest             `json:"nft_apply,omitempty"`
 	NFTRollback          *NFTRollbackRequest          `json:"nft_rollback,omitempty"`
 	NginxDetectVersion   *NginxDetectVersionRequest   `json:"nginx_detect_version,omitempty"`
@@ -113,33 +118,43 @@ type Request struct {
 	NginxRestore         *NginxRestoreRequest         `json:"nginx_restore,omitempty"`
 	ListenerOwnerObserve *ListenerOwnerObserveRequest `json:"listener_owner_observe,omitempty"`
 	SSHRecoveryObserve   *SSHRecoveryObserveRequest   `json:"ssh_recovery_observe,omitempty"`
-	Artifact             *ArtifactRequest             `json:"artifact,omitempty"`
 }
 
 type CapabilitiesRequest struct{}
 
 type NFTValidateRequest struct {
-	CandidatePath    string `json:"candidate_path"`
-	ExpectedRevision string `json:"expected_revision"`
-	ExpectedSHA256   string `json:"expected_sha256"`
+	CandidateCapturedAtUnixNano   int64  `json:"candidate_captured_at_unix_nano,omitempty"`
+	CandidatePath                 string `json:"candidate_path"`
+	ExpectedRevision              string `json:"expected_revision"`
+	ExpectedSHA256                string `json:"expected_sha256"`
+	ExpectedSemanticSHA256        string `json:"expected_semantic_sha256"`
+	ExpectedTimedMembershipSHA256 string `json:"expected_timed_membership_sha256"`
 }
 
+type NFTObserveRequest struct{}
+
 type NFTApplyRequest struct {
-	CandidatePath                string `json:"candidate_path"`
-	RollbackArtifactPath         string `json:"rollback_artifact_path"`
-	ExpectedTable                string `json:"expected_table"`
-	ExpectedRevision             string `json:"expected_revision"`
-	ExpectedSHA256               string `json:"expected_sha256"`
-	ExpectedPreviousRevision     string `json:"expected_previous_revision,omitempty"`
-	ExpectedPreviousSHA256       string `json:"expected_previous_sha256,omitempty"`
-	ExpectedPreviousTablePresent bool   `json:"expected_previous_table_present"`
+	CandidateCapturedAtUnixNano           int64  `json:"candidate_captured_at_unix_nano,omitempty"`
+	CandidatePath                         string `json:"candidate_path"`
+	RollbackArtifactPath                  string `json:"rollback_artifact_path"`
+	ExpectedTable                         string `json:"expected_table"`
+	ExpectedRevision                      string `json:"expected_revision"`
+	ExpectedSHA256                        string `json:"expected_sha256"`
+	ExpectedPreviousRevision              string `json:"expected_previous_revision,omitempty"`
+	ExpectedPreviousTablePresent          bool   `json:"expected_previous_table_present"`
+	ExpectedSemanticSHA256                string `json:"expected_semantic_sha256"`
+	ExpectedPreviousSemanticSHA256        string `json:"expected_previous_semantic_sha256,omitempty"`
+	ExpectedTimedMembershipSHA256         string `json:"expected_timed_membership_sha256"`
+	ExpectedPreviousTimedMembershipSHA256 string `json:"expected_previous_timed_membership_sha256,omitempty"`
 }
 
 type NFTRollbackRequest struct {
-	RollbackArtifactPath    string `json:"rollback_artifact_path"`
-	ExpectedTable           string `json:"expected_table"`
-	ExpectedSHA256          string `json:"expected_sha256"`
-	ExpectedCurrentRevision string `json:"expected_current_revision"`
+	RollbackArtifactPath                 string `json:"rollback_artifact_path"`
+	ExpectedTable                        string `json:"expected_table"`
+	ExpectedSHA256                       string `json:"expected_sha256"`
+	ExpectedCurrentRevision              string `json:"expected_current_revision"`
+	ExpectedCurrentSemanticSHA256        string `json:"expected_current_semantic_sha256"`
+	ExpectedCurrentTimedMembershipSHA256 string `json:"expected_current_timed_membership_sha256"`
 }
 
 type NginxDetectVersionRequest struct{}
@@ -156,6 +171,11 @@ type BinaryIdentity struct {
 	TargetPath string `json:"target_path"`
 	Device     uint64 `json:"device,omitempty"`
 	Inode      uint64 `json:"inode,omitempty"`
+	Size       int64  `json:"size,omitempty"`
+	Mode       uint32 `json:"mode,omitempty"`
+	UID        uint32 `json:"uid,omitempty"`
+	GID        uint32 `json:"gid,omitempty"`
+	Digest     string `json:"digest,omitempty"`
 }
 
 type NginxInstallRequest struct {
@@ -216,31 +236,6 @@ type SSHRecoveryObserveRequest struct {
 	MaxEvents       int   `json:"max_events"`
 }
 
-type ArtifactScope string
-
-const (
-	ArtifactScopeNFT   ArtifactScope = "nft"
-	ArtifactScopeNginx ArtifactScope = "nginx"
-)
-
-type ArtifactAction string
-
-const (
-	ArtifactInspect       ArtifactAction = "inspect"
-	ArtifactWriteAtomic   ArtifactAction = "write_atomic"
-	ArtifactReplaceAtomic ArtifactAction = "replace_atomic"
-	ArtifactRemove        ArtifactAction = "remove"
-)
-
-type ArtifactRequest struct {
-	Scope       ArtifactScope  `json:"scope"`
-	Action      ArtifactAction `json:"action"`
-	Path        string         `json:"path"`
-	SourcePath  string         `json:"source_path,omitempty"`
-	Content     []byte         `json:"content,omitempty"`
-	Permissions string         `json:"permissions,omitempty"`
-}
-
 type Capability struct {
 	Operation Operation `json:"operation"`
 	Available bool      `json:"available"`
@@ -274,13 +269,21 @@ type ListenerOwnerObserveResult struct {
 	ObservationRevision string                          `json:"observation_revision"`
 }
 
+type SSHRecoveryEvidenceKind string
+
+const (
+	SSHRecoveryEvidenceJournald SSHRecoveryEvidenceKind = "journald"
+	SSHRecoveryEvidenceLogread  SSHRecoveryEvidenceKind = "logread"
+)
+
 type SSHRecoverySupport struct {
-	PlatformKnown    bool   `json:"platform_known"`
-	Linux            bool   `json:"linux"`
-	Available        bool   `json:"available"`
-	Reason           string `json:"reason,omitempty"`
-	JournalBinary    string `json:"journal_binary,omitempty"`
-	VerifierRevision string `json:"verifier_revision,omitempty"`
+	PlatformKnown    bool                    `json:"platform_known"`
+	Linux            bool                    `json:"linux"`
+	Available        bool                    `json:"available"`
+	Reason           string                  `json:"reason,omitempty"`
+	EvidenceKind     SSHRecoveryEvidenceKind `json:"evidence_kind,omitempty"`
+	VerifierRevision string                  `json:"verifier_revision,omitempty"`
+	ObserverRevision string                  `json:"observer_revision"`
 }
 
 type SSHRecoveryObservation struct {
@@ -294,6 +297,7 @@ type SSHRecoveryObservation struct {
 
 type SSHRecoveryResult struct {
 	VerifierRevision string                   `json:"verifier_revision"`
+	ObserverRevision string                   `json:"observer_revision"`
 	Observations     []SSHRecoveryObservation `json:"observations"`
 }
 
@@ -330,20 +334,22 @@ type NginxResult struct {
 	Diagnostics      []string       `json:"diagnostics,omitempty"`
 }
 
-type ArtifactResult struct {
-	Paths []string `json:"paths,omitempty"`
-}
-
 // NFTResult contains only integrity and managed-table facts. Raw nft output is
 // deliberately never returned across the helper boundary.
 type NFTResult struct {
-	ManagedTablePresent  bool   `json:"managed_table_present"`
-	AppliedRevision      string `json:"applied_revision,omitempty"`
-	CandidateSHA256      string `json:"candidate_sha256,omitempty"`
-	RollbackSHA256       string `json:"rollback_sha256,omitempty"`
-	PreviousRevision     string `json:"previous_revision,omitempty"`
-	PreviousSHA256       string `json:"previous_sha256,omitempty"`
-	PreviousTablePresent bool   `json:"previous_table_present"`
+	ManagedTablePresent           bool   `json:"managed_table_present"`
+	AppliedRevision               string `json:"applied_revision,omitempty"`
+	CandidateSHA256               string `json:"candidate_sha256,omitempty"`
+	RollbackSHA256                string `json:"rollback_sha256,omitempty"`
+	PreviousRevision              string `json:"previous_revision,omitempty"`
+	PreviousTablePresent          bool   `json:"previous_table_present"`
+	SemanticSHA256                string `json:"semantic_sha256,omitempty"`
+	PreviousSemanticSHA256        string `json:"previous_semantic_sha256,omitempty"`
+	CurrentRevision               string `json:"current_revision,omitempty"`
+	CurrentSemanticSHA256         string `json:"current_semantic_sha256,omitempty"`
+	TimedMembershipSHA256         string `json:"timed_membership_sha256,omitempty"`
+	PreviousTimedMembershipSHA256 string `json:"previous_timed_membership_sha256,omitempty"`
+	CurrentTimedMembershipSHA256  string `json:"current_timed_membership_sha256,omitempty"`
 }
 
 type Response struct {
@@ -361,7 +367,6 @@ type Response struct {
 	Nginx         *NginxResult                `json:"nginx,omitempty"`
 	ListenerOwner *ListenerOwnerObserveResult `json:"listener_owner,omitempty"`
 	SSHRecovery   *SSHRecoveryResult          `json:"ssh_recovery,omitempty"`
-	Artifact      *ArtifactResult             `json:"artifact,omitempty"`
 	NFT           *NFTResult                  `json:"nft,omitempty"`
 }
 
@@ -399,12 +404,12 @@ func (r Request) Validate(root ManagedRoot) error {
 }
 
 func (r Request) UnlockedReadOnly() bool {
-	return r.Operation == OperationCapabilities || r.Operation == OperationSSHRecoveryObserve || r.Operation == OperationListenerOwnerObserve
+	return r.Operation == OperationCapabilities || r.Operation == OperationNFTObserve || r.Operation == OperationSSHRecoveryObserve || r.Operation == OperationListenerOwnerObserve
 }
 
 func (r Request) validatePayloadShape() error {
 	present := 0
-	for _, value := range []any{r.Capabilities, r.NFTValidate, r.NFTApply, r.NFTRollback, r.NginxDetectVersion, r.NginxValidate, r.NginxInstall, r.NginxSwitch, r.NginxReload, r.NginxVerify, r.NginxRestore, r.ListenerOwnerObserve, r.SSHRecoveryObserve, r.Artifact} {
+	for _, value := range []any{r.Capabilities, r.NFTValidate, r.NFTObserve, r.NFTApply, r.NFTRollback, r.NginxDetectVersion, r.NginxValidate, r.NginxInstall, r.NginxSwitch, r.NginxReload, r.NginxVerify, r.NginxRestore, r.ListenerOwnerObserve, r.SSHRecoveryObserve} {
 		if !isNilPayload(value) {
 			present++
 		}
@@ -414,6 +419,7 @@ func (r Request) validatePayloadShape() error {
 	}
 	valid := (r.Operation == OperationCapabilities && r.Capabilities != nil) ||
 		(r.Operation == OperationNFTValidate && r.NFTValidate != nil) ||
+		(r.Operation == OperationNFTObserve && r.NFTObserve != nil) ||
 		(r.Operation == OperationNFTApply && r.NFTApply != nil) ||
 		(r.Operation == OperationNFTRollback && r.NFTRollback != nil) ||
 		(r.Operation == OperationNginxDetectVersion && r.NginxDetectVersion != nil) ||
@@ -424,8 +430,7 @@ func (r Request) validatePayloadShape() error {
 		(r.Operation == OperationNginxVerify && r.NginxVerify != nil) ||
 		(r.Operation == OperationNginxRestore && r.NginxRestore != nil) ||
 		(r.Operation == OperationListenerOwnerObserve && r.ListenerOwnerObserve != nil) ||
-		(r.Operation == OperationSSHRecoveryObserve && r.SSHRecoveryObserve != nil) ||
-		(r.Operation == OperationArtifact && r.Artifact != nil)
+		(r.Operation == OperationSSHRecoveryObserve && r.SSHRecoveryObserve != nil)
 	if !valid {
 		return errors.New("operation does not match its typed payload")
 	}
@@ -437,6 +442,8 @@ func isNilPayload(value any) bool {
 	case *CapabilitiesRequest:
 		return v == nil
 	case *NFTValidateRequest:
+		return v == nil
+	case *NFTObserveRequest:
 		return v == nil
 	case *NFTApplyRequest:
 		return v == nil
@@ -460,8 +467,6 @@ func isNilPayload(value any) bool {
 		return v == nil
 	case *SSHRecoveryObserveRequest:
 		return v == nil
-	case *ArtifactRequest:
-		return v == nil
 	default:
 		return true
 	}
@@ -473,11 +478,11 @@ func (r Request) validatePayload(root ManagedRoot) error {
 		return err
 	}
 	switch r.Operation {
-	case OperationCapabilities, OperationNginxDetectVersion:
+	case OperationCapabilities, OperationNFTObserve, OperationNginxDetectVersion:
 		return nil
 	case OperationNFTValidate:
-		if !validRevision(r.NFTValidate.ExpectedRevision) || !validSHA256(r.NFTValidate.ExpectedSHA256) {
-			return errors.New("nft validation requires a bounded revision and SHA-256")
+		if !validRevision(r.NFTValidate.ExpectedRevision) || !validSHA256(r.NFTValidate.ExpectedSHA256) || !validSHA256(r.NFTValidate.ExpectedSemanticSHA256) || !validSHA256(r.NFTValidate.ExpectedTimedMembershipSHA256) {
+			return errors.New("nft validation requires bounded candidate artifact and semantic identities")
 		}
 		return resolve(r.NFTValidate.CandidatePath, true)
 	case OperationNFTApply:
@@ -487,14 +492,14 @@ func (r Request) validatePayload(root ManagedRoot) error {
 		if err := resolve(r.NFTApply.CandidatePath, true); err != nil {
 			return err
 		}
-		if !validRevision(r.NFTApply.ExpectedRevision) || !validSHA256(r.NFTApply.ExpectedSHA256) {
-			return errors.New("nft apply requires a bounded revision and SHA-256")
+		if !validRevision(r.NFTApply.ExpectedRevision) || !validSHA256(r.NFTApply.ExpectedSHA256) || !validSHA256(r.NFTApply.ExpectedSemanticSHA256) || !validSHA256(r.NFTApply.ExpectedTimedMembershipSHA256) {
+			return errors.New("nft apply requires bounded candidate artifact and semantic identities")
 		}
 		if r.NFTApply.ExpectedPreviousTablePresent {
-			if !validRevision(r.NFTApply.ExpectedPreviousRevision) || !validSHA256(r.NFTApply.ExpectedPreviousSHA256) {
+			if !validRevision(r.NFTApply.ExpectedPreviousRevision) || !validSHA256(r.NFTApply.ExpectedPreviousSemanticSHA256) || !validSHA256(r.NFTApply.ExpectedPreviousTimedMembershipSHA256) {
 				return errors.New("nft apply previous managed-table fence is malformed")
 			}
-		} else if r.NFTApply.ExpectedPreviousRevision != "" || r.NFTApply.ExpectedPreviousSHA256 != "" {
+		} else if r.NFTApply.ExpectedPreviousRevision != "" || r.NFTApply.ExpectedPreviousSemanticSHA256 != "" || r.NFTApply.ExpectedPreviousTimedMembershipSHA256 != "" {
 			return errors.New("nft apply absent-table fence contains a previous identity")
 		}
 		return resolve(r.NFTApply.RollbackArtifactPath, false)
@@ -502,7 +507,7 @@ func (r Request) validatePayload(root ManagedRoot) error {
 		if r.NFTRollback.ExpectedTable != "inet solovey_protection" {
 			return errors.New("nft rollback is restricted to inet solovey_protection")
 		}
-		if r.NFTRollback.ExpectedSHA256 != "" && !validSHA256(r.NFTRollback.ExpectedSHA256) {
+		if r.NFTRollback.ExpectedSHA256 != "" && !validSHA256(r.NFTRollback.ExpectedSHA256) || !validSHA256(r.NFTRollback.ExpectedCurrentSemanticSHA256) || !validSHA256(r.NFTRollback.ExpectedCurrentTimedMembershipSHA256) {
 			return errors.New("nft rollback SHA-256 is malformed")
 		}
 		if !validRevision(r.NFTRollback.ExpectedCurrentRevision) {
@@ -581,34 +586,6 @@ func (r Request) validatePayload(root ManagedRoot) error {
 			return errors.New("SSH recovery observation window is invalid")
 		}
 		return nil
-	case OperationArtifact:
-		if r.Artifact.Scope != ArtifactScopeNFT && r.Artifact.Scope != ArtifactScopeNginx {
-			return errors.New("artifact scope is not allowlisted")
-		}
-		switch r.Artifact.Action {
-		case ArtifactInspect, ArtifactWriteAtomic, ArtifactReplaceAtomic, ArtifactRemove:
-		default:
-			return errors.New("artifact action is not allowlisted")
-		}
-		if len(r.Artifact.Content) > MaxArtifactBytes {
-			return errors.New("artifact content exceeds 512 KiB")
-		}
-		if r.Artifact.Permissions != "" && r.Artifact.Permissions != "0600" && r.Artifact.Permissions != "0640" {
-			return errors.New("artifact permissions are not allowlisted")
-		}
-		if err := resolve(r.Artifact.Path, r.Artifact.Action == ArtifactInspect || r.Artifact.Action == ArtifactRemove); err != nil {
-			return err
-		}
-		if r.Artifact.Action == ArtifactReplaceAtomic {
-			if r.Artifact.SourcePath == "" {
-				return errors.New("replace_atomic requires source_path")
-			}
-			return resolve(r.Artifact.SourcePath, true)
-		}
-		if r.Artifact.SourcePath != "" {
-			return errors.New("source_path is valid only for replace_atomic")
-		}
-		return nil
 	default:
 		return fmt.Errorf("operation %q is not allowlisted", r.Operation)
 	}
@@ -626,16 +603,11 @@ func prefixedRevision(value, prefix string) bool {
 
 func (r Request) RequiredLockKind() (string, error) {
 	switch r.Operation {
-	case OperationCapabilities, OperationSSHRecoveryObserve, OperationListenerOwnerObserve:
+	case OperationCapabilities, OperationNFTObserve, OperationSSHRecoveryObserve, OperationListenerOwnerObserve:
 		return "", nil
 	case OperationNFTValidate, OperationNFTApply, OperationNFTRollback:
 		return "firewall", nil
 	case OperationNginxDetectVersion, OperationNginxValidate, OperationNginxInstall, OperationNginxSwitch, OperationNginxReload, OperationNginxVerify, OperationNginxRestore:
-		return "fronting", nil
-	case OperationArtifact:
-		if r.Artifact != nil && r.Artifact.Scope == ArtifactScopeNFT {
-			return "firewall", nil
-		}
 		return "fronting", nil
 	default:
 		return "", fmt.Errorf("operation %q is not allowlisted", r.Operation)
@@ -648,6 +620,10 @@ func validateNginxRevision(revision, sha string, binary BinaryIdentity) error {
 	}
 	if !canonicalAbsolute(binary.Path) || !canonicalAbsolute(binary.TargetPath) {
 		return errors.New("nginx operation requires an exact absolute binary identity")
+	}
+	if binary.Device == 0 || binary.Inode == 0 || binary.Size <= 0 || binary.Mode&0o111 == 0 || binary.Mode&0o022 != 0 ||
+		binary.UID != 0 || binary.GID != 0 || !validSHA256(binary.Digest) {
+		return errors.New("nginx operation requires a trusted executable-object identity")
 	}
 	return nil
 }

@@ -40,6 +40,16 @@ type EndpointPlanInput struct {
 	Now            time.Time
 }
 
+// firewallMutationEvidence retains the already owned input facts needed to
+// re-evaluate authorization at the mutation boundary. It is immutable after
+// construction and is neither a canonical plan nor a persisted authority.
+type firewallMutationEvidence struct {
+	management []hostresources.ManagementEndpointV1
+	recovery   []hostresources.RecoveryPathV1
+	trusted    []string
+	requireSSH bool
+}
+
 func BuildEndpointPlan(input EndpointPlanInput) FirewallPlan {
 	now := input.Now.UTC()
 	if now.IsZero() {
@@ -55,6 +65,11 @@ func BuildEndpointPlan(input EndpointPlanInput) FirewallPlan {
 		plan.ReasonCodes = append(plan.ReasonCodes, "snapshot_input_revision_invalid")
 	}
 	actionScopeRevision := EndpointActionScopeRevision(plan.Resources)
+	plan.mutationEvidence = &firewallMutationEvidence{
+		management: append([]hostresources.ManagementEndpointV1(nil), input.Management...),
+		recovery:   append([]hostresources.RecoveryPathV1(nil), input.RecoveryPaths...),
+		trusted:    append([]string(nil), input.TrustedSources...), requireSSH: input.RequireSSHKeep,
+	}
 	sort.Slice(plan.Resources, func(i, j int) bool { return plan.Resources[i].ID < plan.Resources[j].ID })
 	managementByResource := make(map[string][]hostresources.ManagementEndpointV1)
 	managementByKey := make(map[string][]hostresources.ManagementEndpointV1)
@@ -72,7 +87,7 @@ func BuildEndpointPlan(input EndpointPlanInput) FirewallPlan {
 	plannedKeys := make(map[string]struct{})
 	for _, resource := range plan.Resources {
 		strategy := baselineStrategy(resource)
-		keys, complete := hostresources.DeterministicConfiguredEndpointKeys(resource)
+		keys, complete := hostresources.PreservationEndpointKeys(resource, now)
 		if !complete {
 			plan.ApplyBlocked = true
 			plan.ReasonCodes = append(plan.ReasonCodes, "endpoint_inventory_incomplete")
@@ -180,7 +195,12 @@ func BuildEndpointPlan(input EndpointPlanInput) FirewallPlan {
 func EndpointInputRevision(input EndpointPlanInput) string {
 	management := canonicalManagementEndpoints(input.Management)
 	for index := range management {
+		// Observation time and its rolling TTL are freshness evidence, not
+		// semantic endpoint identity. Every snapshot revalidates both before
+		// planning, so binding ExpiresAt here would make preview -> prepare
+		// conflict merely because the same listener was observed again.
 		management[index].ObservedAt = 0
+		management[index].ExpiresAt = 0
 		management[index].ReasonCodes = append([]string(nil), management[index].ReasonCodes...)
 		sort.Strings(management[index].ReasonCodes)
 	}
@@ -480,14 +500,16 @@ func exemptionSortKey(value ManagementExemption) string {
 }
 
 func dedupeExemptions(values []ManagementExemption) []ManagementExemption {
-	seen := make(map[string]struct{}, len(values))
-	result := make([]ManagementExemption, 0, len(values))
+	selected := make(map[string]ManagementExemption, len(values))
 	for _, value := range values {
 		key := endpointKeyString(value.Key) + "\x00" + value.SourcePrefix
-		if _, exists := seen[key]; exists {
-			continue
+		current, exists := selected[key]
+		if !exists || current.RecoveryPathID != "trusted-source" && (value.RecoveryPathID == "trusted-source" || value.ExpiresAt > current.ExpiresAt || value.ExpiresAt == current.ExpiresAt && value.RecoveryPathID < current.RecoveryPathID) {
+			selected[key] = value
 		}
-		seen[key] = struct{}{}
+	}
+	result := make([]ManagementExemption, 0, len(selected))
+	for _, value := range selected {
 		result = append(result, value)
 	}
 	sort.Slice(result, func(i, j int) bool { return exemptionSortKey(result[i]) < exemptionSortKey(result[j]) })
@@ -565,7 +587,7 @@ func preflightEndpointPlan(plan FirewallPlan) error {
 		}
 	}
 	for _, exemption := range plan.ManagementExemptions {
-		if exemption.EndpointID == "" || exemption.RecoveryPathID == "" || canonicalPrefix(exemption.SourcePrefix) == "" || endpointMatch(exemption.Key, exemption.SourcePrefix) == "" || (exemption.RecoveryPathID != "trusted-source" && exemption.ExpiresAt <= 0) {
+		if exemption.EndpointID == "" || exemption.RecoveryPathID == "" || canonicalPrefix(exemption.SourcePrefix) == "" || endpointMatch(exemption.Key, exemption.SourcePrefix) == "" || (exemption.RecoveryPathID != "trusted-source" && (exemption.ExpiresAt <= 0 || exemption.ExpiresAt > 253402300799)) {
 			return fmt.Errorf("%w: management exemption is not exact", ErrUnsafeResource)
 		}
 	}

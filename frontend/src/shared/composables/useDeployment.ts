@@ -7,10 +7,11 @@ export type DeploymentProfileID =
   | 'docker-host-unprivileged'
   | 'docker-bridge-explicit'
   | 'docker-network-advanced'
+  | 'package-managed-openwrt'
 
 export interface DeploymentProfile {
   id: DeploymentProfileID
-  runtime: 'native' | 'docker'
+  runtime: 'native' | 'docker' | 'package-managed'
   support: string
   freshInstallDefault: boolean
   panelRoot: boolean
@@ -21,8 +22,7 @@ export interface DeploymentProfile {
   processIdentities: string[]
   writeScopes: string[]
   serviceUnits: string[]
-  evidenceStatus: string
-  constraints?: string[]
+	constraints?: string[]
   revision: string
 }
 
@@ -74,7 +74,7 @@ export interface DeploymentPosture {
   installedProfile: DeploymentProfileID
   activeProfile: DeploymentProfileID
   verifiedProfile?: DeploymentProfileID
-  runtime: 'native' | 'docker'
+  runtime: 'native' | 'docker' | 'package-managed'
   panelUid: number
   panelGid: number
   panelRoot: boolean
@@ -102,7 +102,6 @@ export interface DeploymentStatus {
   compatibilityState: string
   doctorRevision: string
   trusted: boolean
-  evidenceStatus: string
 }
 
 export interface DeploymentFinding {
@@ -124,8 +123,7 @@ export interface DeploymentDoctor {
   installedProfile?: DeploymentProfileID
   activeProfile?: DeploymentProfileID
   verifiedProfile?: DeploymentProfileID
-  evidenceStatus: string
-  generatedAt: number
+	generatedAt: number
   revision: string
 }
 

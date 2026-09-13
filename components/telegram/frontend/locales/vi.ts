@@ -18,7 +18,7 @@ export default {
     "outboundLabel": "Outbound yêu cầu lõi đang chạy",
     "noOutbounds": "Chưa cấu hình outbound",
     "hint": {
-      "chatId": "ID số của cuộc trò chuyện hoặc người dùng Telegram nhận cảnh báo. Có thể tìm qua @userinfobot.",
+      "chatId": "ID số của cuộc trò chuyện hoặc người dùng Telegram nhận cảnh báo. Có thể tìm qua {'@'}userinfobot.",
       "cpuThreshold": "Gửi cảnh báo khi CPU duy trì trên tỷ lệ này. Mặc định: 90. Phạm vi: 1-100.",
       "reportCron": "Lịch cron 5 trường cho báo cáo, ví dụ 0 9 * * *. Để trống để tắt.",
       "transport": "Cách bot kết nối Telegram: URL proxy hoặc outbound sing-box. Mặc định: Proxy.",

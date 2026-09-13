@@ -10,7 +10,6 @@
         firewall baseline endpoint strategy
         <v-chip size="small" :color="firewallBaseline.firewallBaselineEligibility.candidateEligible ? 'success' : 'warning'">{{ firewallBaseline.status.selected }}</v-chip>
         <v-chip size="small" color="info">actual: {{ firewallBaseline.status.actual }}</v-chip>
-        <v-chip size="small" color="warning">real nftables Live: {{ firewallBaseline.realNftablesLive }}</v-chip>
       </v-card-title>
       <v-card-text>
 		<div class="text-caption mb-2">Snapshot <code>{{ firewallBaseline.snapshotBinding.revision || 'unknown' }}</code> · graph <code>{{ firewallBaseline.socketGraph.revision || 'unknown' }}</code> · kernel plan <code>{{ firewallBaseline.kernelPlan.revision || 'unknown' }}</code></div>
@@ -98,16 +97,17 @@ import { protectionAPI } from '../api'
 import { factAge, factState } from '../contractInspectionLogic'
 import type { DecisionV2, HostSurfaceFact, Inventory, FirewallBaselineSnapshot, NativeTargetInspection, PostureFacts, SignalV2 } from '../types'
 
-interface Page<T> { items: T[]; total: number; truncated?: boolean }
+interface Page<T> { items: T[]; page: number; limit: number; total: number; truncated?: boolean }
+type InventoryPage = Inventory & Page<Inventory['resources'][number]>
 const { t } = useI18n()
 const error = ref('')
 const inventory = ref<Inventory>({ generatedAt: 0, resources: [] })
-const hostSurfaces = ref<Page<HostSurfaceFact>>({ items: [], total: 0 })
-const targets = ref<NativeTargetInspection>({ items: [], targetsV2: [], page: 1, limit: 500, total: 0, totalV2: 0, generatedAt: 0, reservations: [], reservationsTruncated: false })
-const signals = ref<Page<SignalV2>>({ items: [], total: 0 })
-const decisions = ref<Page<DecisionV2>>({ items: [], total: 0 })
+const hostSurfaces = ref<Page<HostSurfaceFact>>({ items: [], page: 1, limit: 100, total: 0 })
+const targets = ref<NativeTargetInspection>({ items: [], targetsV2: [], page: 1, limit: 100, total: 0, totalV2: 0, generatedAt: 0, reservations: [], reservationsTruncated: false })
+const signals = ref<Page<SignalV2>>({ items: [], page: 1, limit: 100, total: 0 })
+const decisions = ref<Page<DecisionV2>>({ items: [], page: 1, limit: 100, total: 0 })
 const posture = ref<PostureFacts>({ managementEndpoints: [], recoveryPaths: [], recoveryState: 'unknown', capabilities: [], implemented: 'unknown', planned: 'unknown' })
-const firewallBaseline = ref<FirewallBaselineSnapshot>({ recommendations: [], socketGraph: { revision: '', generatedAt: 0, nodes: [], collisions: [], applyBlocked: true }, kernelPlan: { revision: '', inputRevision: '', graphRevision: '', mode: 'COEXISTENCE_ENDPOINT_MANAGED', applyBlocked: true, endpoints: [] }, firewallBaselineEligibility: { kind: 'FIREWALL_BASELINE_ELIGIBILITY', revision: '', candidateEligible: false, mutationReady: false, endpointInventoryComplete: false, managementPreserved: false, exactRevisions: false, managedTableOnly: true, noForeignMutation: true }, listenerTopologyMutationEligibility: { kind: 'LISTENER_TOPOLOGY_MUTATION_ELIGIBILITY', revision: '', eligible: false, graphRevision: '' }, kernelPreview: { revision: '', inputRevision: '', backend: 'preview_only', wouldKeep: [], wouldOpen: [], wouldWarn: [], wouldBlock: [], warnings: [] }, snapshotBinding: { schema: '', revision: '', runtimeRevision: '', resourceRevision: '', graphRevision: '', configurationRevision: '', policyRevision: '', recoveryRevision: '', planRevision: '', candidateSha256: '', capturedAt: 0 }, capabilityAssessment: { ttlRequired: false, ttlSupported: false, rateRequired: false, rateSupported: false, candidateSupported: false, advancedState: 'DEFERRED_UNPROVEN', acceptanceConsequence: 'BASELINE_BLOCKED', sshRecoverySupported: false }, managementGuard: { state: 'unknown', invalidRecoveryRecords: 0, recoveryPaths: [] }, status: { desired: 'COEXISTENCE_ENDPOINT_MANAGED', selected: 'OBSERVE_ONLY', actual: 'NOT_APPLIED' }, realNftablesLive: 'NOT_RUN', stabilityClaim: 'normal_ci_only' })
+const firewallBaseline = ref<FirewallBaselineSnapshot>({ recommendations: [], socketGraph: { revision: '', generatedAt: 0, nodes: [], collisions: [], applyBlocked: true }, kernelPlan: { revision: '', inputRevision: '', graphRevision: '', mode: 'COEXISTENCE_ENDPOINT_MANAGED', applyBlocked: true, endpoints: [] }, firewallBaselineEligibility: { kind: 'FIREWALL_BASELINE_ELIGIBILITY', revision: '', candidateEligible: false, mutationReady: false, endpointInventoryComplete: false, managementPreserved: false, exactRevisions: false, managedTableOnly: true, noForeignMutation: true }, listenerTopologyMutationEligibility: { kind: 'LISTENER_TOPOLOGY_MUTATION_ELIGIBILITY', revision: '', eligible: false, graphRevision: '' }, kernelPreview: { revision: '', inputRevision: '', backend: 'preview_only', wouldKeep: [], wouldOpen: [], wouldWarn: [], wouldBlock: [], warnings: [], protectedKeep: [] }, snapshotBinding: { schema: '', revision: '', runtimeRevision: '', resourceRevision: '', graphRevision: '', configurationRevision: '', policyRevision: '', recoveryRevision: '', planRevision: '', candidateSha256: '', capturedAt: 0 }, capabilityAssessment: { ttlRequired: false, ttlSupported: false, rateRequired: false, rateSupported: false, candidateSupported: false, advancedState: 'DEFERRED_UNPROVEN', acceptanceConsequence: 'BASELINE_BLOCKED', sshRecoverySupported: false }, managementGuard: { state: 'unknown', invalidRecoveryRecords: 0, recoveryPaths: [] }, status: { desired: 'COEXISTENCE_ENDPOINT_MANAGED', selected: 'OBSERVE_ONLY', actual: 'NOT_APPLIED' } })
 
 const endpointPlan = (resourceId: string) => firewallBaseline.value.kernelPlan.endpoints.find(endpoint => endpoint.resourceId === resourceId)
 const endpointRevision = (resourceId: string) => endpointPlan(resourceId)?.endpointRevision || 'unknown'
@@ -118,15 +118,22 @@ const endpointStatus = (resourceId: string) => {
 
 onMounted(async () => {
   try {
-    [inventory.value, hostSurfaces.value, targets.value, signals.value, decisions.value, posture.value, firewallBaseline.value] = await Promise.all([
-      protectionAPI.get<Inventory>('/resources', { limit: 500 }),
-      protectionAPI.get<Page<HostSurfaceFact>>('/host-surfaces', { limit: 500 }),
-      protectionAPI.nativeFallbackTargets(1, 500),
+    const [resourcePage, surfacePage, targetPage, signalPage, decisionPage, postureValue, baselineValue] = await Promise.all([
+      protectionAPI.getAllPages<Inventory['resources'][number], InventoryPage>('/resources'),
+      protectionAPI.getAllPages<HostSurfaceFact, Page<HostSurfaceFact>>('/host-surfaces'),
+      protectionAPI.nativeFallbackAllTargets(),
       protectionAPI.get<Page<SignalV2>>('/signals', { limit: 100 }),
       protectionAPI.get<Page<DecisionV2>>('/decisions', { limit: 100 }),
       protectionAPI.get<PostureFacts>('/posture', { limit: 100 }),
 	  protectionAPI.get<FirewallBaselineSnapshot>('/firewall-baseline'),
     ])
+    inventory.value = { ...resourcePage, resources: resourcePage.items }
+    hostSurfaces.value = surfacePage
+    targets.value = targetPage
+    signals.value = signalPage
+    decisions.value = decisionPage
+    posture.value = postureValue
+    firewallBaseline.value = baselineValue
   } catch (reason) { error.value = reason instanceof Error ? reason.message : String(reason) }
 })
 </script>

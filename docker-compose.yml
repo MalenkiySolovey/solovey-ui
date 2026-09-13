@@ -18,6 +18,8 @@ services:
     environment:
       SUI_DB_FOLDER: /data
       SUI_COMPONENTS_INSTALLED_FILE: /app/components/installed.json
+      SUI_DEPLOYMENT_KIND: docker
+      SUI_SERVER_PROTECTION_RUNTIME_ROOT: /run/solovey-ui/server-protection
       SOLOVEY_DEPLOYMENT_PROFILE: docker-host-unprivileged
     restart: unless-stopped
     stop_grace_period: ${SOLOVEY_UI_STOP_GRACE_PERIOD:-30s}

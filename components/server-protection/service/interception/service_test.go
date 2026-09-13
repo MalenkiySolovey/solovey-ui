@@ -86,7 +86,7 @@ func serviceFixture(t *testing.T) (*Service, hostresources.InterceptionInboundFa
 	if _, err := scopes.Register(scopeProvider{fact: scope}); err != nil {
 		t.Fatalf("register scope: %v", err)
 	}
-	return &Service{Interceptions: interceptions, IngressScopes: scopes, Now: func() time.Time { return now }, GOOS: "linux"}, fact, now
+	return &Service{Interceptions: interceptions, IngressScopes: scopes, Now: func() time.Time { return now }, KernelCapability: KernelInterceptionCapabilityV1{Available: true, Revision: digest}}, fact, now
 }
 
 func TestStatusAndPreviewRemainNonActionableDespiteExactCoreAndScope(t *testing.T) {

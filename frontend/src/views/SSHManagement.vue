@@ -142,6 +142,9 @@
           <v-alert :type="preview.possible ? 'success' : 'warning'" variant="tonal" class="mb-4">
             {{ preview.possible ? t('sshManagement.safe') : t('sshManagement.unsafe') }}
           </v-alert>
+					<v-alert v-if="preview.recoveryDisposition?.code" type="warning" variant="tonal" class="mb-4">
+						{{ recoveryDispositionMessage(preview.recoveryDisposition.code) }}
+					</v-alert>
           <dl class="facts-grid mb-4">
             <div><dt>{{ t('sshManagement.consoleVerified') }}</dt><dd>{{ yesNo(preview.preservation.consoleVerified) }}</dd></div>
             <div><dt>{{ t('sshManagement.pubkeyVerified') }}</dt><dd>{{ yesNo(preview.preservation.freshPubkeyReconnect) }}</dd></div>
@@ -150,6 +153,13 @@
             <div class="wide"><dt>{{ t('sshManagement.candidateDigest') }}</dt><dd class="digest">{{ preview.candidateDigest || 'UNAVAILABLE' }}</dd></div>
             <div class="wide"><dt>{{ t('sshManagement.reasons') }}</dt><dd>{{ reasonText(preview.reasonCodes) }}</dd></div>
           </dl>
+          <template v-if="preview.concretePreview">
+            <h3 class="text-subtitle-1 mb-2">{{ t('sshManagement.backendPreview') }}</h3>
+            <p class="text-body-2 mb-2">
+              {{ preview.concretePreview.label }} · {{ preview.concretePreview.implementation }} · {{ preview.concretePreview.format }}
+            </p>
+            <pre class="backend-preview mb-4">{{ preview.concretePreview.representation }}</pre>
+          </template>
           <h3 class="text-subtitle-1 mb-2">{{ t('sshManagement.semanticDiff') }}</h3>
           <div class="table-scroll mb-4">
             <table class="status-table">
@@ -231,11 +241,9 @@ import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { acquireStepUpToken } from '@/shared/composables/useSecurityOperations'
 import {
-  getManagementEndpoints,
-  getRecoveryPaths,
-  getSSHCapabilities,
   getSSHCandidate,
-  getSSHPosture,
+  getSSHCurrent,
+  type SSHCurrentRead,
   getSSHReconnectState,
   getSSHTimeline,
   confirmSSHReconnect,
@@ -330,6 +338,20 @@ const safeNextAction = computed(() => {
     default: return t('sshManagement.nextWait')
   }
 })
+const recoveryDispositionMessage = (code: string) => {
+  switch (code) {
+    case 'recovery_reauthentication_required':
+    case 'recovery_identity_binding_stale':
+      return t('sshManagement.recoveryReauthenticate')
+    case 'recovery_identity_unknown':
+    case 'recovery_identity_invalid':
+      return t('sshManagement.recoveryIdentityUntrusted')
+    case 'recovery_endpoint_ambiguous':
+      return t('sshManagement.recoveryEndpointUnavailable')
+    default:
+      return t('sshManagement.recoveryPersistUnavailable')
+  }
+}
 const policyDiffRows = computed(() => {
   const desired = preview.value?.policy
   const current = preview.value?.posture?.authentication
@@ -358,15 +380,13 @@ const policy = (): DesiredSSHPolicy => {
 const loadAll = async () => {
   loading.value = true
   errorMessage.value = ''
-  const [postureResponse, capabilityResponse, endpointResponse, recoveryResponse] = await Promise.all([
-    getSSHPosture(), getSSHCapabilities(), getManagementEndpoints(), getRecoveryPaths(),
-  ])
-  posture.value = messageValue<SSHPostureEnvelope>(postureResponse)
-  capabilities.value = messageValue<SSHCapabilities>(capabilityResponse)
-  endpoints.value = messageValue<{ items: ManagementEndpoint[] }>(endpointResponse)?.items ?? []
-  recoveryPaths.value = messageValue<{ items: RecoveryPath[] }>(recoveryResponse)?.items ?? []
-  const failed = [postureResponse, capabilityResponse, endpointResponse, recoveryResponse].find(response => !response.success)
-  errorMessage.value = failed?.msg ?? ''
+  const response = await getSSHCurrent()
+  const current = messageValue<SSHCurrentRead>(response)
+  posture.value = current
+  capabilities.value = current?.capabilities ?? null
+  endpoints.value = current?.endpoints ?? []
+  recoveryPaths.value = current?.recovery.paths ?? []
+  errorMessage.value = response.success ? '' : response.msg ?? ''
   loading.value = false
   liveStatus.value = errorMessage.value || t('sshManagement.refresh')
 }
@@ -507,6 +527,7 @@ onUnmounted(() => {
 .facts-grid dd { margin: 0; overflow-wrap: anywhere; }
 .facts-grid .wide { grid-column: 1 / -1; }
 .digest { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+.backend-preview { overflow: auto; max-height: 20rem; padding: .75rem; border: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); border-radius: 4px; white-space: pre-wrap; }
 .table-scroll { overflow-x: auto; }
 .status-table { width: 100%; border-collapse: collapse; }
 .status-table th, .status-table td { padding: .65rem; text-align: left; vertical-align: top; border-bottom: 1px solid rgba(var(--v-border-color), var(--v-border-opacity)); overflow-wrap: anywhere; }

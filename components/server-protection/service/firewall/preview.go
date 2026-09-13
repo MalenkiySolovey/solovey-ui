@@ -2,7 +2,6 @@ package firewall
 
 import (
 	"fmt"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -11,14 +10,10 @@ import (
 )
 
 func Preview(plan FirewallPlan, options PreviewOptions) FirewallPreview {
-	operatingSystem := strings.ToLower(strings.TrimSpace(options.OperatingSystem))
-	if operatingSystem == "" {
-		operatingSystem = runtime.GOOS
-	}
 	preview := FirewallPreview{
-		Revision: plan.Revision, InputRevision: plan.InputRevision, Backend: "preview_only", WouldKeep: []string{}, WouldOpen: append([]string(nil), plan.ExplicitOpen...),
-		WouldWarn: append([]string(nil), plan.Warnings...), WouldBlock: []string{}, Warnings: append([]string(nil), plan.Warnings...),
-		ProtectedKeep: append([]hostresources.ProtectableResource(nil), plan.Resources...),
+		Revision: plan.Revision, InputRevision: plan.InputRevision, Backend: "preview_only", WouldKeep: []string{}, WouldOpen: append([]string{}, plan.ExplicitOpen...),
+		WouldWarn: append([]string{}, plan.Warnings...), WouldBlock: []string{}, Warnings: append([]string{}, plan.Warnings...),
+		ProtectedKeep: append([]hostresources.ProtectableResource{}, plan.Resources...),
 	}
 	for _, resource := range plan.Resources {
 		if resource.Port < 1 || resource.Port > 65535 {
@@ -26,23 +21,41 @@ func Preview(plan FirewallPlan, options PreviewOptions) FirewallPreview {
 		}
 		preview.WouldKeep = append(preview.WouldKeep, fmt.Sprintf("%s %s %s:%d", resource.ID, socketProtocol(resource.Protocol), resource.Listen, resource.Port))
 	}
-	if !containsPort(plan.AllowTCPPorts, 22) {
+	if planReportsUnknownSSH(plan) {
 		preview.WouldWarn = append(preview.WouldWarn, "SSH is not represented in the keep policy")
 	}
 	sort.Strings(preview.WouldKeep)
 	sort.Strings(preview.WouldOpen)
 	preview.WouldWarn = uniqueSorted(preview.WouldWarn)
 	preview.Warnings = uniqueSorted(preview.Warnings)
-	if operatingSystem != "linux" {
+	if !options.NFTCapability.Available || strings.TrimSpace(options.NFTCapability.Revision) == "" {
+		reason := strings.TrimSpace(options.NFTCapability.Reason)
+		if reason == "" {
+			reason = "nft_capability_unknown"
+		}
 		preview.Backend = "unsupported"
-		preview.WouldWarn = uniqueSorted(append(preview.WouldWarn, "firewall preview script is unavailable on "+operatingSystem))
-		preview.Warnings = uniqueSorted(append(preview.Warnings, "non-Linux environment: inventory only"))
+		preview.WouldWarn = uniqueSorted(append(preview.WouldWarn, "firewall preview script is unavailable: "+reason))
+		preview.Warnings = uniqueSorted(append(preview.Warnings, "nft helper capability unavailable: inventory only"))
 		return preview
 	}
 	if options.IncludeGeneratedNFT {
 		preview.GeneratedNFT = RenderNFTPreview(plan)
 	}
 	return preview
+}
+
+func planReportsUnknownSSH(plan FirewallPlan) bool {
+	for _, reason := range plan.BaselineEligibility.ReasonCodes {
+		if reason == "ssh_management_endpoint_missing" {
+			return true
+		}
+	}
+	for _, warning := range plan.Warnings {
+		if strings.Contains(strings.ToLower(warning), "ssh listener is unknown") {
+			return true
+		}
+	}
+	return false
 }
 
 func RenderNFTPreview(plan FirewallPlan) string {

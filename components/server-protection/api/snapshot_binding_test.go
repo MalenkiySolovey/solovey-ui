@@ -132,6 +132,14 @@ func TestFirewallPreviewOptimisticBindingRejectsStaleAndMalformedSnapshots(t *te
 	}
 }
 
+func TestFirewallPreviewWireContractRejectsTheObservedLegacyFormBytes(t *testing.T) {
+	router, _ := newProtectionAPIRouter(t, writeScope)
+	response := requestProtectionAPI(router, http.MethodPost, "/api/components/server-protection/firewall/preview", "includeGeneratedNft=true")
+	if response.Code != http.StatusBadRequest || !strings.Contains(response.Body.String(), "invalid character 'i' looking for beginning of value") {
+		t.Fatalf("legacy form payload did not reproduce the physical wire failure: %d %s", response.Code, response.Body.String())
+	}
+}
+
 func TestDirectDatabaseRecoveryFixtureCannotSatisfyProductionVerification(t *testing.T) {
 	_, _, _, repository, db := newProtectionAPIRouterWithDB(t, readScope, protectionfronting.NewNginxAdapter())
 	now := time.Now().UTC().Truncate(time.Second)

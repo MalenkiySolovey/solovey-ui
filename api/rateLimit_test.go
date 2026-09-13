@@ -110,7 +110,7 @@ func TestEnforceWSHandshakeRateLimitReturns429AndAudits(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	req := httptest.NewRequest(http.MethodGet, "/api/realtime/ws-token", nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/realtime/ws-token", nil)
 	req.RemoteAddr = "198.51.100.10:1234"
 	c.Request = req
 

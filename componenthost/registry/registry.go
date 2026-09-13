@@ -49,6 +49,9 @@ func Register(component Component) {
 	if rehearser, ok := component.Lifecycle.(lifecycle.RestoreRehearser); ok {
 		hooks.RehearseRestore = rehearser.RehearseRestore
 	}
+	if exclusions, ok := component.Lifecycle.(lifecycle.BackupExclusions); ok {
+		hooks.NonportableBackupTables = exclusions.NonportableBackupTables
+	}
 	defaultRegistry.registerWith(component, func(item manifest.Manifest) {
 		durableowner.RegisterWithHooks(item, hooks)
 	})

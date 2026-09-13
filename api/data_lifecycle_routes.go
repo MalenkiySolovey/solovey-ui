@@ -2,7 +2,9 @@ package api
 
 import (
 	"errors"
+	"io"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -39,6 +41,7 @@ func (a *APIHandler) registerDataLifecycleRoutes(g *gin.RouterGroup) {
 	group.POST("/drop/preview", h.dropPreview)
 	group.POST("/drop", h.dropExecute)
 	group.GET("/operations/:operationId", h.operation)
+	group.GET("/operations/:operationId/recovery-backup", h.recoveryBackup)
 	group.GET("/recovery", h.recovery)
 }
 
@@ -122,6 +125,32 @@ func (h *dataLifecycleHTTP) recovery(c *gin.Context) {
 		return
 	}
 	jsonObj(c, gin.H{"required": true, "operation": operation, "reasonCodes": []string{operation.ReasonCode}}, nil)
+}
+
+func (h *dataLifecycleHTTP) recoveryBackup(c *gin.Context) {
+	securityContext, ok := requireAuthenticatedSecurityContext(c)
+	if !ok {
+		return
+	}
+	id := strings.TrimSpace(c.Param("operationId"))
+	if !safeDeploymentID(id, 96) || !strings.HasPrefix(id, "data-operation:") {
+		securityBadRequest(c, "invalid data lifecycle operation id")
+		return
+	}
+	file, artifact, err := h.manager.OpenRecoveryBackup(c.Request.Context(), id)
+	if err != nil {
+		h.writeError(c, "data_lifecycle_recovery_backup", err, nil)
+		return
+	}
+	defer file.Close()
+	h.api.recordAuditSynchronous(c, securityContext.Username, "data_recovery_backup_downloaded", "data-lifecycle", service.AuditSeverityWarn,
+		map[string]any{"operationId": artifact.OperationID, "kind": artifact.Kind, "backupRef": artifact.BackupRef, "bytes": artifact.Bytes})
+	c.Header("Content-Type", "application/octet-stream")
+	c.Header("Content-Disposition", "attachment; filename=solovey-ui_recovery_"+artifact.BackupRef[:12]+".db")
+	c.Header("Content-Length", strconv.FormatInt(artifact.Bytes, 10))
+	if _, err := io.Copy(c.Writer, file); err != nil {
+		c.Error(err) //nolint:errcheck -- response streaming has already started.
+	}
 }
 
 func (h *dataLifecycleHTTP) writeError(c *gin.Context, operation string, err error, result any) {

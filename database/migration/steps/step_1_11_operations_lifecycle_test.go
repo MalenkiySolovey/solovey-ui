@@ -9,7 +9,7 @@ import (
 )
 
 func TestOperationsLifecycleSchemaChecksumIsReviewed(t *testing.T) {
-	const reviewed = "ebc6f4aa3a1bbb9b2fca8f994efbbe2b6f0263835879a70d78737375585a9d46"
+	const reviewed = "65435b92bc139900e1d3e4bed18b5acab9e06335d053f075acab2aa610e0f975"
 	if OperationsLifecycleChecksum != reviewed {
 		t.Fatalf("1.11 schema contract changed: got %s; review it and update the pinned checksum", OperationsLifecycleChecksum)
 	}

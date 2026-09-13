@@ -47,6 +47,7 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/rotateSubSecret",
 			"/api/resetTraffic",
 			"/api/ip-monitor/:client/clear",
+			"/api/realtime/ws-token",
 		},
 		http.MethodGet: {
 			"/api/csrf",
@@ -80,7 +81,6 @@ func TestAPIHandlerRegistersLegacyActionRoutesExplicitly(t *testing.T) {
 			"/api/checkOutbound",
 			"/api/version",
 			"/api/security/audit/recent",
-			"/api/realtime/ws-token",
 			"/api/realtime/ws",
 			"/api/ip-monitor/:client",
 		},

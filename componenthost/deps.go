@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
@@ -51,6 +52,7 @@ type AuthDeps struct {
 type RequestDeps struct {
 	Actor          func(*gin.Context) string
 	RemoteIP       func(*gin.Context) string
+	ClientIdentity func(*gin.Context) clientidentity.V1
 	Hostname       func(*gin.Context) string
 	ValidateTarget func(context.Context, string) error
 }

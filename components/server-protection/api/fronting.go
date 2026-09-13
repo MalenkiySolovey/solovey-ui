@@ -230,7 +230,7 @@ func frontingErrorCode(err error) (string, int) {
 			return code, http.StatusServiceUnavailable
 		case "alpn_routing_unsupported":
 			return code, http.StatusUnprocessableEntity
-		case "runtime_identity_stale", "capability_stale", "socket_claim_stale", "topology_mutation_blocked", "target_reference_stale", "target_management_forbidden", "lease_conflict", "lease_stale", "lease_lost", "proxy_protocol_mismatch", "selector_conflict", "plan_expired", "plan_digest_mismatch", "operation_conflict", "operation_revision_stale", "apply_gate_disabled", "validation_failed", "reload_failed", "active_revision_mismatch", "listener_identity_mismatch", "health_failed", "rollback_failed", "reconcile_required", "ambiguous_result":
+		case "runtime_identity_stale", "capability_stale", "socket_claim_stale", "topology_mutation_blocked", "target_reference_stale", "target_management_forbidden", "lease_conflict", "lease_stale", "lease_lost", "proxy_protocol_mismatch", "selector_conflict", "plan_expired", "plan_digest_mismatch", "operation_conflict", "operation_revision_stale", "idempotency_key_expired", "apply_gate_disabled", "validation_failed", "reload_failed", "active_revision_mismatch", "listener_identity_mismatch", "health_failed", "rollback_failed", "reconcile_required", "ambiguous_result":
 			return code, http.StatusConflict
 		default:
 			return "internal_failure", http.StatusInternalServerError

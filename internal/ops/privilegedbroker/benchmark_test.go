@@ -3,6 +3,8 @@ package privilegedbroker
 import (
 	"bytes"
 	"context"
+	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 )
@@ -92,12 +94,17 @@ func benchmarkReadRequest(now time.Time, verb Verb) Request {
 }
 
 func TestJournalRetentionProjectionIsBoundedAndKeepsNewestAuthority(t *testing.T) {
-	rows := make([]journalRow, maxJournalRows+17)
-	for index := range rows {
-		rows[index] = journalRow{Schema: 1, Phase: "complete", IdempotencyKey: "id", FenceSequence: uint64(index + 1)}
+	rows := make([]journalRow, 0, maxJournalRows+17)
+	for index := 1; index <= maxJournalRows+17; index++ {
+		rows = append(rows, testCompletedJournalRow(uint64(index), fmt.Sprintf("retention-operation-%04d", index), fmt.Sprintf("retention-idempotency-%04d", index),
+			Verb("deployment.test.apply"), "deployment", uint64(index), json.RawMessage(`{"value":"ok"}`), false, ""))
 	}
-	kept := retainedJournalRows(rows)
-	if len(kept) != maxJournalRows/2 || kept[0].FenceSequence != uint64(len(rows)-len(kept)+1) || kept[len(kept)-1].FenceSequence != uint64(len(rows)) {
-		t.Fatalf("retention projection=%d first=%d last=%d", len(kept), kept[0].FenceSequence, kept[len(kept)-1].FenceSequence)
+	kept, _, _, err := retainedJournalProjection(rows, -1, 0, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(kept) > targetJournalRows || kept[0].Phase != "authority" || kept[0].Authority.Fences["deployment"] != maxJournalRows+17 ||
+		kept[len(kept)-1].Receipt.FenceSequence != uint64(maxJournalRows+17) {
+		t.Fatalf("retention projection=%d state=%#v last=%#v", len(kept), kept[0], kept[len(kept)-1])
 	}
 }

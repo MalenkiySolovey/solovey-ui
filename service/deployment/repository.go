@@ -16,8 +16,11 @@ import (
 type Repository struct{ DB func() *gorm.DB }
 
 const (
-	maxDeploymentOperations = 256
-	maxDoctorSnapshots      = 64
+	maxDeploymentOperations       = 256
+	maxRetainedDeploymentHistory  = 128
+	maxDeploymentHistoryBytes     = 8 << 20
+	deploymentHistoryRetentionAge = 30 * 24 * time.Hour
+	maxDoctorSnapshots            = 64
 )
 
 func (r Repository) db() (*gorm.DB, error) {
@@ -82,6 +85,9 @@ func (r Repository) create(ctx context.Context, operation domain.Operation, even
 	journal := journalRow(operation, event, "", time.Now().UTC())
 	return operationcoordination.SerializeAdmission(func() error {
 		return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := pruneDeploymentHistoryTx(tx, time.Unix(operation.UpdatedAt, 0).UTC()); err != nil {
+				return err
+			}
 			var unresolved, total int64
 			if err := tx.Model(&model.DeploymentOperation{}).Where("state NOT IN ?", []string{string(domain.StateCommitted), string(domain.StateRolledBack)}).Count(&unresolved).Error; err != nil || unresolved != 0 {
 				if err != nil {
@@ -93,6 +99,16 @@ func (r Repository) create(ctx context.Context, operation domain.Operation, even
 				return err
 			}
 			if total >= maxDeploymentOperations {
+				return ErrOperationConflict
+			}
+			var releaseDebts int64
+			if err := tx.Model(&model.DeploymentOperation{}).
+				Where("state IN ? AND checkpoint_ref <> '' AND checkpoint_released = ? AND restored_untrusted = ?",
+					[]string{string(domain.StateCommitted), string(domain.StateRolledBack)}, false, false).
+				Count(&releaseDebts).Error; err != nil {
+				return err
+			}
+			if releaseDebts != 0 {
 				return ErrOperationConflict
 			}
 			if operationcoordination.Blocker(ctx, tx, operationcoordination.DomainDeployment) != "" {
@@ -169,7 +185,8 @@ func (r Repository) Recovery(ctx context.Context) (domain.Operation, error) {
 	}
 	var row model.DeploymentOperation
 	if err := db.WithContext(ctx).
-		Where("state = ? OR restored_untrusted = ?", string(domain.StateManualRecoveryRequired), true).
+		Where("state = ? OR (restored_untrusted = ? AND state NOT IN ?)", string(domain.StateManualRecoveryRequired), true,
+			[]string{string(domain.StateCommitted), string(domain.StateRolledBack)}).
 		Order("updated_at desc, operation_id desc").Take(&row).Error; err != nil {
 		return domain.Operation{}, err
 	}
@@ -187,7 +204,7 @@ func (r Repository) Update(ctx context.Context, operation domain.Operation, expe
 	}
 	journal := journalRow(operation, event, reason, time.Now().UTC())
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		updates := map[string]any{"state": row.State, "checkpoint_ref": row.CheckpointRef, "broker_receipt": row.BrokerReceipt,
+		updates := map[string]any{"state": row.State, "checkpoint_ref": row.CheckpointRef, "checkpoint_released": row.CheckpointReleased, "broker_receipt": row.BrokerReceipt,
 			"revision": row.Revision, "restored_untrusted": row.RestoredUntrusted, "reconciled_at": row.ReconciledAt,
 			"updated_at": row.UpdatedAt, "reasons_json": row.ReasonsJSON, "binding_revision": row.BindingRevision}
 		result := tx.Model(&model.DeploymentOperation{}).Where("operation_id = ? AND revision = ? AND state = ?", operation.OperationID, expectedRevision, string(expectedState)).Updates(updates)
@@ -207,8 +224,47 @@ func (r Repository) Timeline(ctx context.Context, id string) ([]model.Deployment
 		return nil, err
 	}
 	var rows []model.DeploymentJournal
-	err = db.WithContext(ctx).Where("operation_id = ?", id).Order("sequence asc").Find(&rows).Error
+	err = db.WithContext(ctx).Where("operation_id = ?", id).Order("sequence desc, id desc").Limit(64).Find(&rows).Error
+	for left, right := 0, len(rows)-1; left < right; left, right = left+1, right-1 {
+		rows[left], rows[right] = rows[right], rows[left]
+	}
 	return rows, err
+}
+
+func (r Repository) CheckpointReleaseDebts(ctx context.Context) ([]domain.Operation, error) {
+	db, err := r.db()
+	if err != nil {
+		return nil, err
+	}
+	var rows []model.DeploymentOperation
+	if err := db.WithContext(ctx).
+		Where("state IN ? AND checkpoint_ref <> '' AND checkpoint_released = ? AND restored_untrusted = ?",
+			[]string{string(domain.StateCommitted), string(domain.StateRolledBack)}, false, false).
+		Order("updated_at asc, operation_id asc").Limit(maxDeploymentOperations + 1).Find(&rows).Error; err != nil {
+		return nil, err
+	}
+	if len(rows) > maxDeploymentOperations {
+		return nil, ErrOperationConflict
+	}
+	result := make([]domain.Operation, 0, len(rows))
+	for _, row := range rows {
+		operation, err := operationFromRow(row)
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, operation)
+	}
+	return result, nil
+}
+
+func (r Repository) PruneHistory(ctx context.Context, now time.Time) error {
+	db, err := r.db()
+	if err != nil {
+		return err
+	}
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return pruneDeploymentHistoryTx(tx, now.UTC())
+	})
 }
 
 func (r Repository) SaveDoctor(ctx context.Context, report domain.DoctorReport) error {
@@ -247,15 +303,17 @@ func (r Repository) MarkRestoredUntrusted(ctx context.Context) error {
 		if err := tx.Model(&model.DeploymentState{}).Where("1 = 1").UpdateColumn("trusted", false).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&model.DeploymentOperation{}).Where("1 = 1").UpdateColumns(map[string]any{"checkpoint_ref": "", "broker_receipt": ""}).Error; err != nil {
+		if err := tx.Model(&model.DeploymentOperation{}).
+			Where("state IN ?", []string{string(domain.StateCommitted), string(domain.StateRolledBack)}).
+			UpdateColumns(map[string]any{"checkpoint_ref": "", "checkpoint_released": true, "broker_receipt": "", "restored_untrusted": false}).Error; err != nil {
 			return err
 		}
-		var active []model.DeploymentOperation
-		if err := tx.Where("state NOT IN ?", []string{string(domain.StateCommitted), string(domain.StateRolledBack), string(domain.StateManualRecoveryRequired)}).Find(&active).Error; err != nil {
+		var unresolved []model.DeploymentOperation
+		if err := tx.Where("state NOT IN ?", []string{string(domain.StateCommitted), string(domain.StateRolledBack)}).Find(&unresolved).Error; err != nil {
 			return err
 		}
 		now := time.Now().UTC()
-		for _, row := range active {
+		for _, row := range unresolved {
 			updatedAt := now.Unix()
 			if updatedAt <= row.UpdatedAt {
 				updatedAt = row.UpdatedAt + 1
@@ -269,7 +327,7 @@ func (r Repository) MarkRestoredUntrusted(ctx context.Context) error {
 			reasons = unique(append(reasons, "restored_state_requires_fresh_doctor"))
 			encoded, _ := json.Marshal(reasons)
 			updates := map[string]any{"restored_untrusted": true, "state": string(domain.StateManualRecoveryRequired),
-				"checkpoint_ref": "", "broker_receipt": "", "revision": nextRevision, "updated_at": updatedAt, "reasons_json": encoded}
+				"checkpoint_ref": "", "checkpoint_released": true, "broker_receipt": "", "revision": nextRevision, "updated_at": updatedAt, "reasons_json": encoded}
 			result := tx.Model(&model.DeploymentOperation{}).Where("operation_id = ? AND revision = ?", row.OperationID, row.Revision).Updates(updates)
 			if result.Error != nil {
 				return result.Error
@@ -283,7 +341,7 @@ func (r Repository) MarkRestoredUntrusted(ctx context.Context) error {
 				return err
 			}
 		}
-		return nil
+		return pruneDeploymentHistoryTx(tx, now)
 	})
 }
 
@@ -295,7 +353,7 @@ func operationRow(operation domain.Operation) (model.DeploymentOperation, error)
 	return model.DeploymentOperation{OperationID: operation.OperationID, IdempotencyKey: operation.IdempotencyKey,
 		State: string(operation.State), FromProfile: string(operation.FromProfile), TargetProfile: string(operation.TargetProfile),
 		ExpectedPosture: operation.ExpectedPosture, ExpectedManagement: operation.ExpectedManagement,
-		CheckpointRef: operation.CheckpointRef, BrokerReceipt: operation.BrokerReceipt,
+		CheckpointRef: operation.CheckpointRef, CheckpointReleased: operation.CheckpointReleased, BrokerReceipt: operation.BrokerReceipt,
 		Revision: operation.Revision, RestoredUntrusted: operation.RestoredUntrusted, ReconciledAt: operation.ReconciledAt,
 		CreatedAt: operation.CreatedAt, UpdatedAt: operation.UpdatedAt, ReasonsJSON: reasons, BindingRevision: operation.BindingRevision}, nil
 }
@@ -304,7 +362,7 @@ func operationFromRow(row model.DeploymentOperation) (domain.Operation, error) {
 	operation := domain.Operation{Schema: domain.SchemaV1, OperationID: row.OperationID, IdempotencyKey: row.IdempotencyKey,
 		State: domain.OperationState(row.State), FromProfile: domain.ProfileID(row.FromProfile), TargetProfile: domain.ProfileID(row.TargetProfile),
 		ExpectedPosture: row.ExpectedPosture, ExpectedManagement: row.ExpectedManagement,
-		CheckpointRef: row.CheckpointRef, BrokerReceipt: row.BrokerReceipt,
+		CheckpointRef: row.CheckpointRef, CheckpointReleased: row.CheckpointReleased, BrokerReceipt: row.BrokerReceipt,
 		Revision: row.Revision, RestoredUntrusted: row.RestoredUntrusted, ReconciledAt: row.ReconciledAt,
 		CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, BindingRevision: row.BindingRevision}
 	if len(row.ReasonsJSON) != 0 && json.Unmarshal(row.ReasonsJSON, &operation.Reasons) != nil {
@@ -314,6 +372,53 @@ func operationFromRow(row model.DeploymentOperation) (domain.Operation, error) {
 		return domain.Operation{}, err
 	}
 	return operation, nil
+}
+
+type deploymentRetentionCandidate struct {
+	OperationID string `gorm:"column:operation_id"`
+	UpdatedAt   int64  `gorm:"column:updated_at"`
+	Bytes       int64  `gorm:"column:logical_bytes"`
+}
+
+func pruneDeploymentHistoryTx(tx *gorm.DB, now time.Time) error {
+	var candidates []deploymentRetentionCandidate
+	if err := tx.Raw(`SELECT o.operation_id, o.updated_at,
+		LENGTH(o.operation_id) + LENGTH(o.idempotency_key) + LENGTH(o.state) + LENGTH(o.from_profile) +
+		LENGTH(o.target_profile) + LENGTH(o.expected_posture) + LENGTH(o.expected_management) +
+		LENGTH(o.checkpoint_ref) + LENGTH(o.broker_receipt) + LENGTH(o.reasons_json) + LENGTH(o.binding_revision) + 96 +
+		COALESCE((SELECT SUM(LENGTH(j.operation_id) + LENGTH(j.state) + LENGTH(j.event) + LENGTH(j.reason) + LENGTH(j.revision) + 48)
+			FROM deployment_journal_v1 j WHERE j.operation_id = o.operation_id), 0) AS logical_bytes
+		FROM deployment_operations_v1 o
+		WHERE o.state IN (?, ?) AND o.checkpoint_released = ? AND o.restored_untrusted = ?
+		ORDER BY o.updated_at DESC, o.operation_id DESC`, string(domain.StateCommitted), string(domain.StateRolledBack), true, false).
+		Scan(&candidates).Error; err != nil {
+		return err
+	}
+	cutoff := now.Add(-deploymentHistoryRetentionAge).Unix()
+	keptBytes := int64(0)
+	remove := make([]string, 0)
+	for index, candidate := range candidates {
+		keep := index < maxRetainedDeploymentHistory && candidate.UpdatedAt >= cutoff && candidate.Bytes >= 0 && keptBytes+candidate.Bytes <= maxDeploymentHistoryBytes
+		if keep {
+			keptBytes += candidate.Bytes
+			continue
+		}
+		remove = append(remove, candidate.OperationID)
+	}
+	for start := 0; start < len(remove); start += 64 {
+		end := start + 64
+		if end > len(remove) {
+			end = len(remove)
+		}
+		ids := remove[start:end]
+		if err := tx.Where("operation_id IN ?", ids).Delete(&model.DeploymentJournal{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("operation_id IN ?", ids).Delete(&model.DeploymentOperation{}).Error; err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func journalRow(operation domain.Operation, event, reason string, now time.Time) model.DeploymentJournal {

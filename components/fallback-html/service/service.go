@@ -91,12 +91,25 @@ func New(db *gorm.DB, runtime *Runtime) *Service {
 }
 
 func HandleRestorePostOpen(ctx context.Context, db *gorm.DB) error {
+	if db == nil {
+		DefaultRuntime.Stop()
+		return nil
+	}
+	if err := NormalizeRestoredData(ctx, db); err != nil {
+		return err
+	}
+	return DefaultRuntime.Rebuild(db)
+}
+
+// NormalizeRestoredData only changes the supplied database. Rehearsal invokes
+// it on a disposable candidate and must never replace the live runtime's DB,
+// publication snapshot or listeners.
+func NormalizeRestoredData(ctx context.Context, db *gorm.DB) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
 	if db == nil {
-		DefaultRuntime.Stop()
-		return nil
+		return errors.New("fallback-html restore database is unavailable")
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -114,7 +127,7 @@ func HandleRestorePostOpen(ctx context.Context, db *gorm.DB) error {
 				return err
 			}
 		}
-		return DefaultRuntime.Rebuild(db)
+		return nil
 	}
 	hasPublishes := migrator.HasTable(&fallbackdomain.Publish{})
 	hasEvents := migrator.HasTable(&fallbackdomain.Event{})
@@ -157,10 +170,7 @@ func HandleRestorePostOpen(ctx context.Context, db *gorm.DB) error {
 		}
 		return nil
 	})
-	if err != nil {
-		return err
-	}
-	return DefaultRuntime.Rebuild(db)
+	return err
 }
 
 func (s *Service) ListSites() ([]fallbackdomain.Site, error) {

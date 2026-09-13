@@ -10,7 +10,6 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
-	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 )
 
@@ -110,7 +109,12 @@ func resolveComponentFrontendAssetDirs(metadataPath string) ([]string, error) {
 		return nil, nil
 	}
 
-	componentsDir := filepath.Join(filepath.Dir(configstorage.GetDBFolderPath()), "components")
+	// The installed-component metadata and the component packs are one
+	// package-owned generation. Resolve packs from that authority instead of
+	// assuming they live beside the mutable database. Package-managed OpenWrt
+	// deliberately keeps the database under /etc while immutable component
+	// assets live with installed.json under /usr/lib.
+	componentsDir := filepath.Dir(metadataPath)
 	dirs := make([]string, 0, len(metadata.Components))
 	for _, component := range metadata.Components {
 		if !component.Installed {

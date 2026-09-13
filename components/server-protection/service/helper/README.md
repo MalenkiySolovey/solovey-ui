@@ -27,10 +27,11 @@ listener-owner reconciliation binds both into the owner-observation-set
 revision. Capability or broker contract drift therefore fails closed before
 it can satisfy a frozen snapshot.
 
-`capabilities`, `ssh.recovery.observe`, and `listener.owner.observe` are
-lock-exempt read-only requests. The two observers use fixed, independently
-derived production sources and cannot accept a command, PID, proc path,
-filesystem path, binary, service unit, or raw flags from the caller. Every
+`capabilities`, `nft.managed_table.observe`, `ssh.recovery.observe`, and
+`listener.owner.observe` are lock-exempt read-only requests. The observers use
+fixed, independently derived production sources and cannot accept a command,
+PID, proc path, filesystem path, binary, service unit, table, or raw flags from
+the caller. Every
 mutating or mutation-adjacent operation requires the persisted lock proof.
 Protocol or helper contract mismatch maps to
 `missing_capability/helper_version_mismatch`.
@@ -42,6 +43,7 @@ apply rejects drift before writing or mutating an artifact.
 
 - `capabilities`
 - `nft.validate`
+- `nft.managed_table.observe`
 - `nft.managed_table.apply`
 - `nft.managed_table.rollback`
 - `nginx.detect_version`
@@ -53,21 +55,31 @@ apply rejects drift before writing or mutating an artifact.
 - `nginx.revision.restore`
 - `listener.owner.observe`
 - `ssh.recovery.observe`
-- `artifact.manage`
 
 Each operation has exactly one corresponding DTO. Unknown JSON fields,
-multiple payloads, unknown enums, arbitrary nft tables, unapproved permission
-modes and oversized artifact content are
-rejected. nft operations are restricted to `inet solovey_protection`.
+multiple payloads, unknown enums, arbitrary nft tables, invalid managed paths,
+invalid revision identities, and oversized requests are rejected. There is no
+generic artifact or filesystem mutation operation. nft operations are
+restricted to `inet solovey_protection`.
 
 ## Listener owner observation
 
-Helper `1.5.1`, contract `1.5`, keeps wire protocol version `1` and adds the
-separate read-only `listener.owner.observe` operation. Its input is limited to
+Helper `1.11.0`, contract `1.11`, keeps wire protocol version `1`; dated nft
+candidates reuse the helper's absolute-expiration materialization. The contract
+contains only the typed semantic operations listed above. The earlier
+test-oriented generic artifact vocabulary is not part of this boundary. The
+separate read-only `listener.owner.observe` operation has input limited to
 one resource ID, configured listen intent (network/mode/address/port), and
 exact instance/source/artifact/deployment/runtime-root/resource/config
 revisions. Service, executable, PID, cgroup and proc paths are derived from the
 root-owned `ApplicationOwnerContractV1`; they are never caller-selected.
+
+`ssh.recovery.observe` is only a protocol adapter over
+`sshbroker.RecoveryObserver`. The SSH owner alone selects the resolved daemon,
+service-control and log-evidence adapters, observes configuration posture, and
+returns bounded fresh public-key facts with verifier and observer revisions.
+Server Protection supplies only the time window/cardinality policy and rejects
+an incomplete, stale, noncanonical, duplicated, or out-of-order projection.
 
 On Linux the observer opens the exact systemd MainPID with `pidfd_open`,
 duplicates at most 4,096 process FDs through `pidfd_getfd`, and verifies the
@@ -101,21 +113,48 @@ path.
 The helper detects Linux, `nft` from fixed system locations, and bounded
 read-only nft netlink access. Unknown
 platform, version, or primitive support remains unavailable. Only
-`nft.validate`, `nft.managed_table.apply`, and
-`nft.managed_table.rollback` become available; nginx, listener, artifact,
-TTL-set, storm/rate, and hard-block capabilities remain unavailable.
+`nft.validate`, `nft.managed_table.observe`, `nft.managed_table.apply`, and
+`nft.managed_table.rollback` become available; nginx, listener, TTL-set,
+storm/rate, and hard-block capabilities remain unavailable.
 
 Candidate files must match the deterministic generated grammar, the requested
-revision marker, and SHA-256. The grammar can name only
+revision marker, candidate-artifact SHA-256, static semantic identity, and
+timed-membership identity. The grammar can name only
 `inet solovey_protection`, its fixed sets/chains, accept-only keep rules, and
 `policy accept`; full-ruleset flush, includes, unmanaged tables, arbitrary
 statements, raw command text, and path selection are rejected before `nft`
-runs. Validation records the exact current managed-table presence, Solovey
-revision marker, and SHA-256. Apply refuses any drift from that validated
-identity, writes the exact rollback artifact and SHA-256 sidecar, applies a
-managed-only transaction, then reads the managed table back and verifies the
-revision. Rollback verifies its recorded hash and current-revision fence and
-restores/deletes only that table.
+runs. A recovery exemption is an accept rule with a bounded absolute
+`meta time <` deadline; only the separately authenticated trusted-source
+exemption is permanent. Candidate numeric epochs and nft's quoted UTC listing
+form normalize to one semantic expression. `solovey-ui/managed-nft-semantic/v1`
+deterministically identifies the
+static policy: table/object identities, revision marker, set type/flags/size/
+default timeout, chain hook/priority/policy, and ordered rule expressions and
+verdicts. Text formatting, rule handles, counter packet/byte values, and
+decreasing remaining element lifetime are excluded. The separate
+`solovey-ui/managed-nft-timed-membership/v1` identity covers the exact members
+of every owned timeout set. Unexpected insertion and premature loss therefore
+drift, while declared natural expiry is removed from the expected membership
+at its absolute deadline. A duplicate or malformed managed object fails closed.
+
+Validation freshly observes exact managed-table presence, revision, and both
+semantic identities. Apply refuses static or timed-membership drift from the
+pre-mutation observation. Untimed state retains the bounded raw rollback
+artifact. Timed state is captured as a private authenticated rollback
+projection containing each member's original absolute deadline; rollback
+materializes only members whose deadline is still in the future, so retry,
+delay, and restart cannot extend or resurrect them. Both forms retain a
+SHA-256 sidecar. Apply then runs a managed-only transaction and freshly
+observes and proves the target identities. Rollback verifies its recorded
+artifact hash and both current semantic fences, restores/deletes only that
+table, then freshly proves the previous identities or absence. Candidate
+SHA-256, live static semantic SHA-256, live timed-membership SHA-256, and
+rollback-artifact SHA-256 are separate propositions throughout the protocol.
+Generated candidates are admitted only through the shared 256 KiB ceiling;
+the mandatory live reader and rollback capture have a 512 KiB ceiling for nft
+formatting, handles, counters, and remaining-TTL expansion. Oversized plans are
+rejected before any helper call or mutation, and a real namespace gate proves
+that near-limit accepted state remains observable.
 The broker protocol bounds each payload to 1 MiB. The panel applies fixed operation timeouts (15 seconds for ordinary
 discovery/validation, a dedicated 60 seconds for exact listener-owner hashing,
 60 seconds for apply/reload, and 120 seconds for rollback) and
@@ -124,6 +163,31 @@ phase, result code, duration, exit class and truncation flags; payloads, paths,
 content, stdout and stderr are never recorded. A redacted audit recorder is
 mandatory, and failure to record the pre-invocation attempt prevents the
 operation from reaching the broker.
+
+## Managed-table lifecycle
+
+The durable firewall composition is never treated as proof that the volatile
+kernel table still exists. Component startup observes the table before
+presenting current authority. OpenWrt firewall lifecycle events accelerate the
+same observation by restarting the panel instance, and an owner-local
+one-minute schedule is the bounded lost-event fallback on Linux. Neither path
+replays a candidate. An absent table atomically retires the active composition,
+its contributions, and its rollback transitions under the current operation
+revision fence; the operation becomes `forgotten`, so status is truthful and a
+new apply may establish a fresh generation.
+
+An exact replay of an already applied operation rebinds the immutable request
+and desired plan, recomposes the current revision, and freshly observes live
+nft authority. It succeeds without a helper mutation only when all identities
+still match. A different valid plan or missing/drifted live state is rejected;
+persisted `APPLIED` alone is never a success result.
+
+Ordinary process stop preserves fail-safe firewall state. Exact OpenWrt package
+removal is the terminal ownership event: after procd has stopped the package
+processes, the root lifecycle authenticates and deletes only
+`table inet solovey_protection`, verifies absence, and only then removes the
+runtime tree. Absence and repeated cleanup are successful; a same-name foreign
+table or a failed delete is visible and fences runtime cleanup.
 
 ## Nginx execution behavior
 
@@ -149,7 +213,7 @@ executables, and socket ownership for every expected listener. User
 `nginx.conf`, `conf.d`, `sites-enabled`, `sites-available` and arbitrary
 includes are never read, copied or mutated.
 
-Normal CI uses `MockInvoker`, a fake `NFTExecutor` and a durable fake
+Unit coverage uses `MockInvoker`, a fake `NFTExecutor` and a durable fake
 `NginxExecutor`; none can start nft or nginx.
 Production exposes this protocol only through the privileged broker; there is
 no standalone helper process adapter or helper executable in the source,

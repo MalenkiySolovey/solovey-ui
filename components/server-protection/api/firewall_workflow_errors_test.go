@@ -38,14 +38,16 @@ func TestFirewallWorkflowErrorsHaveExactConflictCodes(t *testing.T) {
 		err  error
 		code string
 	}{
-		"stale revision":   {protectionfirewall.ErrPlanRevision, "revision_conflict"},
-		"unsafe inventory": {protectionfirewall.ErrUnsafeResource, "unsafe_resource_inventory"},
-		"helper revision":  {protectionfirewall.ErrHelperRevision, "helper_revision_conflict"},
-		"missing helper":   {protectionfirewall.ErrMissingCapability, "missing_capability"},
-		"verify mismatch":  {protectionfirewall.ErrApplyVerify, "apply_verify_mismatch"},
-		"health failure":   {protectionfirewall.ErrHealthFailed, "health_failed"},
-		"rollback health":  {protectionfirewall.ErrRollbackHealth, "rollback_health_failed"},
-		"fencing mismatch": {protectionoperations.ErrFenced, "operation_fenced"},
+		"stale revision":                     {protectionfirewall.ErrPlanRevision, "revision_conflict"},
+		"unsafe inventory":                   {protectionfirewall.ErrUnsafeResource, "unsafe_resource_inventory"},
+		"helper revision":                    {protectionfirewall.ErrHelperRevision, "helper_revision_conflict"},
+		"missing helper":                     {protectionfirewall.ErrMissingCapability, "missing_capability"},
+		"verify mismatch":                    {protectionfirewall.ErrApplyVerify, "apply_verify_mismatch"},
+		"health failure":                     {protectionfirewall.ErrHealthFailed, "health_failed"},
+		"rollback health":                    {protectionfirewall.ErrRollbackHealth, "rollback_health_failed"},
+		"fencing mismatch":                   {protectionoperations.ErrFenced, "operation_fenced"},
+		"abandoned operation":                {protectionoperations.ErrConflict, "operation_state_conflict"},
+		"real rollback failure after health": {errors.Join(protectionfirewall.ErrHealthFailed, protectionfirewall.ErrRollbackFailed), "rollback_failed"},
 	} {
 		t.Run(name, func(t *testing.T) {
 			recorder := httptest.NewRecorder()
@@ -61,8 +63,8 @@ func TestFirewallWorkflowErrorsHaveExactConflictCodes(t *testing.T) {
 func TestUnknownWorkflowErrorsDoNotExposeRulesetPayload(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	ctx, _ := gin.CreateTestContext(recorder)
-	writeFirewallWorkflowError(ctx, errors.New("backend failed"))
-	if recorder.Code != http.StatusConflict || !strings.Contains(recorder.Body.String(), `"code":"rollback_failed"`) || strings.Contains(recorder.Body.String(), "table inet") {
+	writeFirewallWorkflowError(ctx, errors.New("private-path backend ruleset payload"))
+	if recorder.Code != http.StatusConflict || !strings.Contains(recorder.Body.String(), `"code":"operation_failed"`) || strings.Contains(recorder.Body.String(), "private-path") {
 		t.Fatalf("unsafe error response=%d %s", recorder.Code, recorder.Body.String())
 	}
 }

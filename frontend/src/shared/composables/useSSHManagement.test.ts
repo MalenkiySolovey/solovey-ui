@@ -9,6 +9,7 @@ vi.mock('@/plugins/httputil', () => ({
 
 import HttpUtils from '@/plugins/httputil'
 import { confirmSSHReconnect } from './useSSHManagement'
+import type { DesiredSSHPolicy, SSHPreview } from './useSSHManagement'
 
 describe('SSH reconnect confirmation API', () => {
   beforeEach(() => {
@@ -30,5 +31,22 @@ describe('SSH reconnect confirmation API', () => {
         },
       },
     )
+  })
+})
+
+describe('SSH policy and preview types', () => {
+  it('keeps desired policy semantic while concrete preview is backend-labelled', () => {
+    const policy: DesiredSSHPolicy = { schema: 'solovey-ui/ssh-managed-policy/v1', permitRootLogin: 'UNCHANGED' }
+    const preview = {
+      policy,
+      concretePreview: {
+        implementation: 'dropbear', format: 'uci_change_preview', label: 'Dropbear UCI selected-section changes',
+        representation: "set dropbear.<selected>.PasswordAuth='0'\n", artifactDigest: 'a'.repeat(64),
+      },
+    } as SSHPreview
+
+    expect(Object.keys(policy)).toEqual(['schema', 'permitRootLogin'])
+    expect(preview.concretePreview?.implementation).toBe('dropbear')
+    expect(preview.concretePreview?.format).toBe('uci_change_preview')
   })
 })

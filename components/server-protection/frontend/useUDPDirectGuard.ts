@@ -1,6 +1,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { protectionAPI } from './api'
+import { receiptIdempotencyKey } from './idempotency'
 import { udpCanPrepare, udpPlanReference } from './udpGuardLogic'
 import type { UDPGuardOperationReference, UDPGuardPlan, UDPGuardStatus } from './udpGuardTypes'
 
@@ -76,7 +77,7 @@ export const useUDPDirectGuard = () => {
 		if (!selected.value) return
 		loading.value = true
 		error.value = ''
-		const idempotencyKey = globalThis.crypto?.randomUUID?.() ?? `udp-${Date.now()}`
+		const idempotencyKey = receiptIdempotencyKey()
 		try {
 			if (action.value === 'prepare') {
 				const response = await protectionAPI.post<{ operation: UDPGuardOperationReference }>('/udp/prepare', {

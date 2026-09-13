@@ -146,7 +146,7 @@ func TestNativeCapabilitiesRequireObservedVerifiedPostureAndTargetDirectives(t *
 		t.Fatal(reasons)
 	}
 	posture := domain.Posture{Schema: domain.SchemaV1, Profile: domain.NativeLegacyRoot, InstalledProfile: domain.NativeLegacyRoot,
-		ActiveProfile: domain.NativeLegacyRoot, VerifiedProfile: domain.NativeLegacyRoot, Runtime: domain.RuntimeNative, PanelRoot: true,
+		ActiveProfile: domain.NativeLegacyRoot, VerifiedProfile: domain.NativeLegacyRoot, Runtime: domain.RuntimeSystemdNative, PanelRoot: true,
 		BrokerAvailable: true, BrokerRevision: domain.Revision("broker"), ServiceRevision: domain.Revision("service"), DataRevision: domain.Revision("data"),
 		HardeningRevision: domain.Revision("hardening"), Systemd: &facts, ObservedAt: now.Unix(), ExpiresAt: now.Add(2 * time.Minute).Unix()}
 	domain.SetPostureRevision(&posture)

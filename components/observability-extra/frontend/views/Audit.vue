@@ -43,8 +43,8 @@
             <template #submit-btn="{ submit, canSubmit }">
               <v-btn :disabled="!canSubmit" @click="submit">{{ $t('submit') }}</v-btn>
             </template>
-            <template #cancel-btn="{ vm }">
-              <v-btn @click="clearSince(vm)">{{ $t('reset') }}</v-btn>
+            <template #cancel-btn="{ vm: picker }">
+              <v-btn @click="clearSince(picker)">{{ $t('reset') }}</v-btn>
             </template>
             <template #now-btn="{ goToday }">
               <v-btn @click="goToday">{{ $t('now') }}</v-btn>
@@ -70,8 +70,8 @@
             <template #submit-btn="{ submit, canSubmit }">
               <v-btn :disabled="!canSubmit" @click="submit">{{ $t('submit') }}</v-btn>
             </template>
-            <template #cancel-btn="{ vm }">
-              <v-btn @click="clearUntil(vm)">{{ $t('reset') }}</v-btn>
+            <template #cancel-btn="{ vm: picker }">
+              <v-btn @click="clearUntil(picker)">{{ $t('reset') }}</v-btn>
             </template>
             <template #now-btn="{ goToday }">
               <v-btn @click="goToday">{{ $t('now') }}</v-btn>
@@ -296,15 +296,15 @@ const formatFilterDate = (value: number): string => {
   return new Date(value * 1000).toLocaleString(dateLocale())
 }
 
-const clearSince = (vm: { visible: boolean }) => {
+const clearSince = (picker: { visible: boolean }) => {
   sinceFilter.value = 0
-  vm.visible = false
+  picker.visible = false
   resetAndLoad()
 }
 
-const clearUntil = (vm: { visible: boolean }) => {
+const clearUntil = (picker: { visible: boolean }) => {
   untilFilter.value = 0
-  vm.visible = false
+  picker.visible = false
   resetAndLoad()
 }
 

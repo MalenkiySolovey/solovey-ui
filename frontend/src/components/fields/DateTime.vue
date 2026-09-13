@@ -26,9 +26,9 @@
           @click="submit"
         >{{ $t('submit') }}</v-btn>
       </template>
-      <template #cancel-btn="{ vm }">
+      <template #cancel-btn="{ vm: picker }">
         <v-btn
-          @click="reset(vm)"
+          @click="reset(picker)"
         >{{ $t('reset') }}</v-btn>
       </template>
       <template #now-btn="{ goToday }">
@@ -83,10 +83,10 @@ export default {
     submit() {
       this.$emit('submit',Math.floor(this.input.getTime()/1000))
     },
-    reset(vm:any) {
+    reset(picker:any) {
       this.$emit('submit',0)
       this.input = new Date()
-      vm.visible = false
+      picker.visible = false
     }
   },
   watch: {

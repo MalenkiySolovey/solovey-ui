@@ -179,7 +179,7 @@ func (provider *workflowProviderFake) Reserve(_ context.Context, request neutral
 	provider.record("provider:reserve")
 	provider.revision++
 	provider.reservation = neutralfallback.ProviderTargetReservationV1{
-		Schema: neutralfallback.ProviderTargetReservationSchemaV1, ReservationID: "reservation-one", ReservationRevision: provider.nextRevision(),
+		Schema: neutralfallback.ProviderTargetReservationSchemaV1, ReservationID: "reservation-" + request.HolderID, ReservationRevision: provider.nextRevision(),
 		HolderID: request.HolderID, Purpose: request.Purpose, ExactTargetReference: request.ExactTargetReference,
 		State: neutralfallback.ReservationReserved, IssuedAt: provider.now.Unix(), RenewedAt: provider.now.Unix(),
 		FreshnessExpiresAt: provider.now.Add(time.Duration(request.FreshnessDurationSecs) * time.Second).Unix(),
@@ -515,6 +515,70 @@ func TestPrepareRejectsExpiredPlanAndCheckpointFailureLeavesNoOrphanAuthority(t 
 			t.Fatalf("state=%s err=%v reservation=%s coreReleases=%d events=%v", result.State.ActualState, err, fixture.provider.reservation.State, fixture.core.releaseCalls, *fixture.events)
 		}
 	})
+}
+
+func TestNativeActualCancellationCyclesFeedBoundedSemanticRetention(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	fixture.core.failPrepare = true
+	for index := 0; index < 8; index++ {
+		result, err := fixture.workflow.Prepare(context.Background(), PrepareWorkflowRequestV1{
+			Actor: "admin", IdempotencyKey: fmt.Sprintf("native-cancel-%d", index),
+			Confirmation: "PREPARE NATIVE FALLBACK " + fixture.plan.PlanDigest, Plan: fixture.plan, PlanRequest: fixture.request,
+		})
+		if err == nil || result.Operation.WorkflowState != repository.NativeWorkflowCancelled || result.State.ActualState != domain.NativeActualNotApplied || fixture.provider.reservation.State != neutralfallback.ReservationReleased {
+			t.Fatalf("cycle %d operation=%#v state=%s reservation=%s err=%v", index, result.Operation, result.State.ActualState, fixture.provider.reservation.State, err)
+		}
+	}
+	result, err := fixture.repo.PruneNativeFallbackHistory(context.Background(), 2, 1, 8<<20)
+	if err != nil || result.DeletedOperations != 5 || result.DeletedLocks != 5 || result.DeletedReservations != 5 {
+		t.Fatalf("cycle retention = %#v err=%v", result, err)
+	}
+	operations, err := fixture.repo.ListNativeFallbackOperations(context.Background(), nil)
+	if err != nil || len(operations) != 3 {
+		t.Fatalf("retained cycle operations=%d err=%v", len(operations), err)
+	}
+	latest, err := fixture.repo.LatestNativeFallbackOperations(context.Background(), []string{fixture.plan.Resource.ResourceID})
+	if err != nil || len(latest) != 1 || latest[0].OperationID != operations[len(operations)-1].OperationID {
+		t.Fatalf("latest after retention=%#v err=%v operations=%#v", latest, err, operations)
+	}
+}
+
+func TestNativeActualApplyRollbackCyclesFeedBoundedSemanticRetention(t *testing.T) {
+	fixture := newWorkflowFixture(t)
+	for index := 0; index < 7; index++ {
+		prepared, err := fixture.workflow.Prepare(context.Background(), PrepareWorkflowRequestV1{
+			Actor: "admin", IdempotencyKey: fmt.Sprintf("native-prepare-rollback-%d", index),
+			Confirmation: "PREPARE NATIVE FALLBACK " + fixture.plan.PlanDigest, Plan: fixture.plan, PlanRequest: fixture.request,
+		})
+		if err != nil {
+			t.Fatalf("prepare cycle %d: %v", index, err)
+		}
+		applied, err := fixture.workflow.Apply(context.Background(), ApplyWorkflowRequestV1{
+			Actor: "admin", IdempotencyKey: fmt.Sprintf("native-apply-rollback-%d", index),
+			OperationID: prepared.Operation.OperationID, OperationRevision: prepared.Operation.Revision,
+			PlanDigest: fixture.plan.PlanDigest, ProviderReservationRevision: prepared.Operation.ProviderReservationRevision,
+			ExpectedState: domain.NativeActualPrepared, Confirmed: true,
+		})
+		if err != nil || applied.Operation.WorkflowState != repository.NativeWorkflowApplied {
+			t.Fatalf("apply cycle %d operation=%#v err=%v", index, applied.Operation, err)
+		}
+		rolledBack, err := fixture.workflow.Rollback(context.Background(), RollbackWorkflowRequestV1{
+			Actor: "admin", IdempotencyKey: fmt.Sprintf("native-rollback-%d", index), OperationID: applied.Operation.OperationID,
+			OperationRevision: applied.Operation.Revision, PlanDigest: applied.Operation.PlanDigest,
+			ProviderReservationRevision: applied.Operation.ProviderReservationRevision, Confirmed: true,
+		})
+		if err != nil || rolledBack.Operation.WorkflowState != repository.NativeWorkflowRolledBack || fixture.provider.reservation.State != neutralfallback.ReservationReleased || fixture.core.checkpoint.State != coreinboundcontrol.CheckpointStateReleased {
+			t.Fatalf("rollback cycle %d operation=%#v reservation=%s checkpoint=%s err=%v", index, rolledBack.Operation, fixture.provider.reservation.State, fixture.core.checkpoint.State, err)
+		}
+	}
+	result, err := fixture.repo.PruneNativeFallbackHistory(context.Background(), 2, 1, 8<<20)
+	if err != nil || result.DeletedOperations != 4 || result.DeletedLocks != 4 || result.DeletedReservations != 4 {
+		t.Fatalf("apply/rollback retention = %#v err=%v", result, err)
+	}
+	operations, err := fixture.repo.ListNativeFallbackOperations(context.Background(), nil)
+	if err != nil || len(operations) != 3 {
+		t.Fatalf("retained apply/rollback operations=%d err=%v", len(operations), err)
+	}
 }
 
 func TestNativeJournalRejectsIllegalAndStaleTransitionsAtomically(t *testing.T) {

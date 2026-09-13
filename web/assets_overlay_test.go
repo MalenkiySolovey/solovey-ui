@@ -139,6 +139,49 @@ func TestComponentFrontendAssetDirsUsesInstalledMetadata(t *testing.T) {
 	}
 }
 
+func TestComponentFrontendAssetDirsFollowInstalledGenerationOutsideDatabaseRoot(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv("SUI_DB_FOLDER", filepath.Join(root, "mutable-state", "db"))
+	metadataPath := filepath.Join(root, "package-generation", "components", "installed.json")
+	t.Setenv(installstate.InstalledFileEnv, metadataPath)
+
+	assetsDir := filepath.Join(filepath.Dir(metadataPath), "example", "frontend", "assets")
+	if err := os.MkdirAll(assetsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(filepath.Dir(metadataPath), "example", "component.json"), []byte(`{"id":"example"}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(assetsDir, "optional.js"), []byte("package-owned"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(metadataPath, []byte(`{
+		"version": 1,
+		"components": [
+			{"id": "example", "delivery": "in-process", "installed": true}
+		]
+	}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := componentFrontendAssetDirs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !reflect.DeepEqual(got, []string{assetsDir}) {
+		t.Fatalf("componentFrontendAssetDirs() = %#v, want package generation %#v", got, []string{assetsDir})
+	}
+
+	assets := assetsFS{embedded: fstest.MapFS{}}
+	data, err := fs.ReadFile(assets, "optional.js")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != "package-owned" {
+		t.Fatalf("component asset = %q, want package-owned", data)
+	}
+}
+
 func TestComponentFrontendAssetDirsRejectsInstalledMissingPack(t *testing.T) {
 	root := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", filepath.Join(root, "db"))

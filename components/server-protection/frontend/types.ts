@@ -9,6 +9,9 @@ export interface ProtectionStatus {
 }
 
 export interface ProtectionOperation {
+	rollbackAvailable?: boolean
+	operatorDecisionRequired?: boolean
+	operatorReason?: string
   operationId: string
   kind: string
   resourceId?: string
@@ -397,8 +400,6 @@ export interface FirewallBaselineSnapshot {
 	capabilityAssessment: { capabilityRevision?: string; ttlRequired: boolean; ttlSupported: boolean; rateRequired: boolean; rateSupported: boolean; candidateSupported: boolean; advancedState: string; acceptanceConsequence: string; sshRecoverySupported: boolean; sshVerifierRevision?: string }
 	managementGuard: { state: string; invalidRecoveryRecords: number; recoveryPaths?: PostureFacts['recoveryPaths'] }
 	status: { desired: string; selected: string; actual: string }
-	realNftablesLive: 'NOT_RUN'
-	stabilityClaim: string
 }
 
 export interface Collision {
@@ -496,6 +497,7 @@ export interface FirewallPreview {
   wouldBlock: string[]
   generatedNft?: string
   warnings: string[]
+	protectedKeep: ProtectableResource[]
 }
 
 export interface FirewallWorkflowResult {
@@ -813,4 +815,15 @@ export interface IPAllowlistEntry {
   ipCidr: string
   reason: string
   expiresAt?: number
+	broadScopeAcknowledged: boolean
+}
+
+export interface TrustedSourceProposal {
+	available: boolean
+	ipCidr?: string
+	family?: 'ipv4' | 'ipv6'
+	provenance?: 'DIRECT' | 'TRUSTED_XFF'
+	bindingRevision?: string
+	configRevision?: string
+	reasonCode?: string
 }

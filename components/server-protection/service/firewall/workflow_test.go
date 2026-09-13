@@ -3,6 +3,7 @@ package firewall
 import (
 	"context"
 	"errors"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -14,6 +15,7 @@ import (
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	sptest "github.com/MalenkiySolovey/solovey-ui/testsupport/serverprotection"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -176,15 +178,11 @@ func TestWorkflowEmptyOrIncompleteHealthCannotReportApplied(t *testing.T) {
 		},
 	} {
 		t.Run(name, func(t *testing.T) {
-			workflow, _, _, _ := newWorkflow(t, health)
+			workflow, helper, _, _ := newWorkflow(t, health)
 			plan := applyPlan()
-			prepared, err := workflow.Prepare(context.Background(), PrepareInput{Plan: plan, Actor: "tester", IdempotencyKey: "health-" + name, Confirmation: "PREPARE SERVER PROTECTION " + plan.Revision})
-			if err != nil {
-				t.Fatal(err)
-			}
-			result, err := workflow.Apply(context.Background(), ApplyInput{OperationID: prepared.Operation.OperationID, Plan: plan, Confirmation: "APPLY SERVER PROTECTION " + prepared.Operation.OperationID})
-			if !errors.Is(err, ErrHealthFailed) || result.State != protectionoperations.StateRolledBack {
-				t.Fatalf("health false positive: result=%#v err=%v", result, err)
+			_, err := workflow.Prepare(context.Background(), PrepareInput{Plan: plan, Actor: "tester", IdempotencyKey: "health-" + name, Confirmation: "PREPARE SERVER PROTECTION " + plan.Revision})
+			if !errors.Is(err, ErrMissingCapability) || helperOperationCount(helper.Requests, protectionhelper.OperationNFTApply) != 0 {
+				t.Fatalf("missing health coverage was not rejected before mutation: %v", err)
 			}
 		})
 	}
@@ -293,7 +291,7 @@ func TestWorkflowCarriesExactValidatedManagedTableFenceIntoApply(t *testing.T) {
 	if err != nil || !authority.HasComposition {
 		t.Fatalf("first authority = %#v, %v", authority, err)
 	}
-	previousRevision, previousSHA := authority.Composition.ManagedPlanRevision, authority.Composition.CandidateSHA256
+	previousRevision := authority.Composition.ManagedPlanRevision
 	secondPlan := BuildPlan(firstPlan.Resources, []protectionrepository.PortAllowlistModel{
 		{Protocol: "tcp", PortStart: 22, PortEnd: 22, Reason: "SSH"},
 		{Protocol: "tcp", PortStart: 8443, PortEnd: 8443, Reason: "second baseline"},
@@ -311,7 +309,7 @@ func TestWorkflowCarriesExactValidatedManagedTableFenceIntoApply(t *testing.T) {
 		if request.Operation != protectionhelper.OperationNFTApply {
 			continue
 		}
-		if request.NFTApply == nil || !request.NFTApply.ExpectedPreviousTablePresent || request.NFTApply.ExpectedPreviousRevision != previousRevision || request.NFTApply.ExpectedPreviousSHA256 != previousSHA {
+		if request.NFTApply == nil || !request.NFTApply.ExpectedPreviousTablePresent || request.NFTApply.ExpectedPreviousRevision != previousRevision || request.NFTApply.ExpectedPreviousSemanticSHA256 == "" {
 			t.Fatalf("apply did not carry the exact validate-time table fence: %#v", request)
 		}
 		return
@@ -339,13 +337,91 @@ func TestWorkflowRollbackHealthFailureBecomesRollbackFailed(t *testing.T) {
 	}
 }
 
+func TestSQLiteAuthoritySurvivesPhysicalRuntimeRootLossAndRetiresOnRestart(t *testing.T) {
+	workflow, mock, manager, repository, rootPath := newWorkflowWithRoot(t, nil)
+	plan := applyPlan()
+	applied := applyCompositionWorkflowPlan(t, &workflow, plan, "sqlite-runtime-loss-before-reboot")
+	applyCalls := helperOperationCount(mock.Requests, protectionhelper.OperationNFTApply)
+	if err := manager.Stop(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(rootPath); err != nil {
+		t.Fatal(err)
+	}
+	mock.ManagedTablePresent, mock.ManagedPlanRevision, mock.ManagedCandidateSHA, mock.ManagedCandidateSemantic, mock.ManagedTimedMembership = false, "", "", "", ""
+
+	storage, err := protectionartifacts.NewWithRecoveryProjection(rootPath, sptest.SystemdRecoveryProjection())
+	if err != nil {
+		t.Fatal(err)
+	}
+	restarted := protectionoperations.NewManager(repository, protectionoperations.Options{
+		InstanceID: "sqlite-runtime-loss-restart", PID: 78,
+		Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil },
+	})
+	t.Cleanup(func() { _ = restarted.Stop(context.Background()) })
+	client, err := protectionhelper.NewClient(sptest.ManagedRoot(t, rootPath), restarted, mock, &helperAudit{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	workflow.Manager, workflow.Helper = restarted, client
+	workflow.Artifacts = protectionartifacts.Service{Storage: storage, Store: repository}
+	workflow.Marker, workflow.State = storage, storage
+	if err := restarted.SetReconcilerForKind(protectionoperations.KindFirewall, RuntimeLossReconciler{Workflow: &workflow}); err != nil {
+		t.Fatal(err)
+	}
+	if err := restarted.Start(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+
+	retired, err := repository.OperationByID(t.Context(), applied.OperationID)
+	if err != nil || retired.State != protectionoperations.StateForgotten {
+		t.Fatalf("durable operation was not retired after volatile loss: operation=%#v err=%v", retired, err)
+	}
+	authority, err := repository.FirewallAuthority(t.Context())
+	if err != nil || authority.HasComposition || len(authority.Contributions) != 0 || !authority.HasObservation || authority.Observation.State != FirewallLiveAbsent || authority.Observation.HasCommittedAuthority {
+		t.Fatalf("durable authority remained mixed after volatile loss: authority=%#v err=%v", authority, err)
+	}
+	if got := helperOperationCount(mock.Requests, protectionhelper.OperationNFTApply); got != applyCalls {
+		t.Fatalf("restart replayed a candidate: apply calls %d -> %d", applyCalls, got)
+	}
+	rollbackCalls := helperOperationCount(mock.Requests, protectionhelper.OperationNFTRollback)
+	if result, rollbackErr := workflow.Rollback(t.Context(), applied.OperationID, "ROLLBACK SERVER PROTECTION "+applied.OperationID); rollbackErr == nil || result.RollbackAttempted || helperOperationCount(mock.Requests, protectionhelper.OperationNFTRollback) != rollbackCalls {
+		t.Fatalf("lost rollback artifact remained presented: result=%#v err=%v", result, rollbackErr)
+	}
+
+	nextPlan := compositionBaselineWithTCPPort(plan, 9443)
+	next := applyCompositionWorkflowPlan(t, &workflow, nextPlan, "sqlite-runtime-loss-after-reboot")
+	if next.State != protectionoperations.StateApplied || helperOperationCount(mock.Requests, protectionhelper.OperationNFTApply) != applyCalls+1 {
+		t.Fatalf("next apply could not establish a fresh generation: operation=%#v", next)
+	}
+}
+
 type deadPID struct{}
 
 func (deadPID) Alive(int) (bool, error) { return false, nil }
 
 func newWorkflow(t *testing.T, health HealthCheck) (Workflow, *testHelperInvoker, *protectionoperations.Manager, *protectionrepository.Repository) {
+	workflow, helper, manager, repository, _ := newWorkflowWithRoot(t, health)
+	return workflow, helper, manager, repository
+}
+
+type workflowDatabaseConfig struct {
+	Suffix    string
+	Configure func(*gorm.DB)
+	Open      func(string) (*gorm.DB, error)
+}
+
+func newWorkflowWithRoot(t *testing.T, health HealthCheck, configs ...workflowDatabaseConfig) (Workflow, *testHelperInvoker, *protectionoperations.Manager, *protectionrepository.Repository, string) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "workflow.db")), &gorm.Config{})
+	suffix := ""
+	if len(configs) != 0 {
+		suffix = configs[0].Suffix
+	}
+	open := func(path string) (*gorm.DB, error) { return gorm.Open(sqlite.Open(path+suffix), &gorm.Config{}) }
+	if len(configs) != 0 && configs[0].Open != nil {
+		open = configs[0].Open
+	}
+	db, err := open(filepath.Join(t.TempDir(), "workflow.db"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -357,29 +433,31 @@ func newWorkflow(t *testing.T, health HealthCheck) (Workflow, *testHelperInvoker
 	if err := protectionrepository.Migrate(db); err != nil {
 		t.Fatal(err)
 	}
+	for _, setup := range configs {
+		if setup.Configure != nil {
+			setup.Configure(db)
+		}
+	}
 	repository := protectionrepository.New(db)
 	manager := protectionoperations.NewManager(repository, protectionoperations.Options{InstanceID: "workflow", PID: 77, Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil }})
 	t.Cleanup(func() { _ = manager.Stop(context.Background()) })
 	rootPath := filepath.Join(t.TempDir(), ".runtime", "server-protection")
-	storage, err := protectionartifacts.New(rootPath)
+	storage, err := protectionartifacts.NewWithRecoveryProjection(rootPath, sptest.SystemdRecoveryProjection())
 	if err != nil {
 		t.Fatal(err)
 	}
-	root, err := protectionhelper.NewManagedRoot(rootPath)
-	if err != nil {
-		t.Fatal(err)
-	}
+	root := sptest.ManagedRoot(t, rootPath)
 	capabilities := protectionhelper.DefaultCapabilities()
 	capabilities.NFT = protectionhelper.NFTSupport{PlatformKnown: true, Linux: true, Available: true}
 	for i := range capabilities.Capabilities {
 		switch capabilities.Capabilities[i].Operation {
-		case protectionhelper.OperationNFTValidate, protectionhelper.OperationNFTApply, protectionhelper.OperationNFTRollback:
+		case protectionhelper.OperationNFTValidate, protectionhelper.OperationNFTObserve, protectionhelper.OperationNFTApply, protectionhelper.OperationNFTRollback:
 			capabilities.Capabilities[i].Available = true
 			capabilities.Capabilities[i].Reason = ""
 		}
 	}
 	mock := newTestHelperInvoker(capabilities)
-	for _, operation := range []protectionhelper.Operation{protectionhelper.OperationNFTValidate, protectionhelper.OperationNFTApply, protectionhelper.OperationNFTRollback} {
+	for _, operation := range []protectionhelper.Operation{protectionhelper.OperationNFTValidate, protectionhelper.OperationNFTObserve, protectionhelper.OperationNFTApply, protectionhelper.OperationNFTRollback} {
 		mock.Responses[operation] = protectionhelper.Response{OK: true}
 	}
 	client, err := protectionhelper.NewClient(root, manager, mock, &helperAudit{})
@@ -395,8 +473,8 @@ func newWorkflow(t *testing.T, health HealthCheck) (Workflow, *testHelperInvoker
 		RollbackHealth: func(context.Context, []hostresources.ProtectableResource) []componenthealth.Result {
 			return []componenthealth.Result{{ResourceID: "rollback:panel", Status: componenthealth.StatusOK, FactCode: "listener_ready"}}
 		},
-		Contributions: repository,
-	}, mock, manager, repository
+		Contributions: repository, Now: func() time.Time { return time.Unix(1000, 0).UTC() },
+	}, mock, manager, repository, rootPath
 }
 
 func passingHealth(_ context.Context, resources []hostresources.ProtectableResource) []componenthealth.Result {

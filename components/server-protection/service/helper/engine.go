@@ -7,6 +7,9 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
+
+	sshbroker "github.com/MalenkiySolovey/solovey-ui/internal/ops/sshbroker"
 )
 
 // ContractEngine is the privileged side of the typed protocol. Its executor
@@ -17,10 +20,22 @@ type ContractEngine struct {
 	nginxExecutor         NginxExecutor
 	listenerOwnerExecutor ListenerOwnerExecutor
 	sshRecoveryExecutor   SSHRecoveryExecutor
+	now                   func() time.Time
 }
 
 func NewContractEngine(root ManagedRoot) ContractEngine {
-	return ContractEngine{root: root, executor: newSystemNFTExecutor(), nginxExecutor: newSystemNginxExecutor(root), listenerOwnerExecutor: newSystemListenerOwnerExecutor(), sshRecoveryExecutor: newSystemSSHRecoveryExecutor()}
+	return newContractEngine(root, sshbroker.ResolvedSSHComposition{})
+}
+
+// NewContractEngineWithSSHComposition accepts only the resolved release
+// record produced by the SSH composition authority. Recovery never parses
+// deployment environment selectors or caller-supplied targets.
+func NewContractEngineWithSSHComposition(root ManagedRoot, composition sshbroker.ResolvedSSHComposition) ContractEngine {
+	return newContractEngine(root, composition)
+}
+
+func newContractEngine(root ManagedRoot, composition sshbroker.ResolvedSSHComposition) ContractEngine {
+	return ContractEngine{root: root, executor: newSystemNFTExecutor(), nginxExecutor: newSystemNginxExecutor(root), listenerOwnerExecutor: newComposedListenerOwnerExecutor(), sshRecoveryExecutor: newComposedSSHRecoveryExecutor(composition), now: time.Now}
 }
 
 func (e ContractEngine) Handle(request Request) Response {
@@ -53,6 +68,8 @@ func (e ContractEngine) HandleContext(ctx context.Context, request Request) Resp
 	switch request.Operation {
 	case OperationNFTValidate:
 		response.NFT, err = e.validate(ctx, request.Correlation, *request.NFTValidate)
+	case OperationNFTObserve:
+		response.NFT, err = e.observe(ctx)
 	case OperationNFTApply:
 		response.NFT, err = e.apply(ctx, request.Correlation, *request.NFTApply)
 	case OperationNFTRollback:
@@ -125,7 +142,7 @@ func (e ContractEngine) capabilities(ctx context.Context) *CapabilitiesResult {
 		if result.NFT.PlatformKnown && result.NFT.Linux && result.NFT.Available {
 			for index := range result.Capabilities {
 				switch result.Capabilities[index].Operation {
-				case OperationNFTValidate, OperationNFTApply, OperationNFTRollback:
+				case OperationNFTValidate, OperationNFTObserve, OperationNFTApply, OperationNFTRollback:
 					result.Capabilities[index].Available = true
 					result.Capabilities[index].Reason = ""
 				}
@@ -149,7 +166,7 @@ func (e ContractEngine) capabilities(ctx context.Context) *CapabilitiesResult {
 		result.SSHRecovery = SSHRecoverySupport{Reason: "ssh_recovery_capability_unknown"}
 	} else {
 		result.SSHRecovery = e.sshRecoveryExecutor.Detect(ctx)
-		if result.SSHRecovery.PlatformKnown && result.SSHRecovery.Linux && result.SSHRecovery.Available {
+		if validSSHRecoverySupport(result.SSHRecovery) {
 			for index := range result.Capabilities {
 				if result.Capabilities[index].Operation == OperationSSHRecoveryObserve {
 					result.Capabilities[index].Available = true
@@ -176,6 +193,16 @@ func (e ContractEngine) capabilities(ctx context.Context) *CapabilitiesResult {
 	return result
 }
 
+func validSSHRecoverySupport(value SSHRecoverySupport) bool {
+	return value.PlatformKnown && value.Linux && value.Available && validSHA256(value.VerifierRevision) &&
+		validSHA256(value.ObserverRevision) &&
+		(value.EvidenceKind == SSHRecoveryEvidenceJournald || value.EvidenceKind == SSHRecoveryEvidenceLogread)
+}
+
+func SSHRecoveryCapabilityAvailable(result *CapabilitiesResult) bool {
+	return result != nil && CapabilityAvailable(result, OperationSSHRecoveryObserve) && validSSHRecoverySupport(result.SSHRecovery)
+}
+
 func capabilityReason(result *CapabilitiesResult, operation Operation) string {
 	for _, capability := range result.Capabilities {
 		if capability.Operation == operation && capability.Reason != "" {
@@ -197,17 +224,37 @@ func (e ContractEngine) validate(ctx context.Context, correlation Correlation, r
 	if err := validateCandidate(data, request.ExpectedRevision, request.ExpectedSHA256); err != nil {
 		return nil, err
 	}
-	current, present, err := e.executor.ListManagedTable(ctx)
+	data, err = materializeManagedNFTCandidate(data, request.CandidateCapturedAtUnixNano, e.currentTime())
 	if err != nil {
 		return nil, err
 	}
-	previousRevision, previousSHA := "", ""
+	candidateSemantic, err := managedSemanticSHA(data)
+	if err != nil {
+		return nil, err
+	}
+	if request.ExpectedSemanticSHA256 != "" && request.ExpectedSemanticSHA256 != candidateSemantic {
+		return nil, errors.New("candidate semantic identity mismatch")
+	}
+	candidateMembership, err := managedTimedMembershipSHA(data)
+	if err != nil {
+		return nil, err
+	}
+	if request.ExpectedTimedMembershipSHA256 != candidateMembership {
+		return nil, errors.New("candidate timed membership identity mismatch")
+	}
+	currentState, err := observeManagedTable(ctx, e.executor)
+	if err != nil {
+		return nil, err
+	}
+	present := currentState.present
+	previousRevision := ""
+	previousSemantic := ""
 	if present {
-		previousRevision, err = managedRevision(current)
-		if err != nil {
-			return nil, fmt.Errorf("current managed table has no proven Solovey owner: %w", err)
+		previousRevision = currentState.revision
+		previousSemantic = currentState.semanticSHA
+		if previousRevision == "" || previousSemantic == "" {
+			return nil, errors.New("current managed table has no proven Solovey owner")
 		}
-		previousSHA = sha256Hex(current)
 	}
 	transaction := append([]byte(nil), data...)
 	if present {
@@ -220,7 +267,16 @@ func (e ContractEngine) validate(ctx context.Context, correlation Correlation, r
 	if err := e.executor.CheckManagedFile(ctx, transactionPath); err != nil {
 		return nil, err
 	}
-	return &NFTResult{CandidateSHA256: request.ExpectedSHA256, PreviousRevision: previousRevision, PreviousSHA256: previousSHA, PreviousTablePresent: present}, nil
+	return &NFTResult{CandidateSHA256: request.ExpectedSHA256, SemanticSHA256: candidateSemantic, TimedMembershipSHA256: candidateMembership,
+		PreviousRevision: previousRevision, PreviousSemanticSHA256: previousSemantic, PreviousTimedMembershipSHA256: currentState.timedMembershipSHA, PreviousTablePresent: present}, nil
+}
+
+func (e ContractEngine) observe(ctx context.Context) (*NFTResult, error) {
+	state, err := observeManagedTable(ctx, e.executor)
+	if err != nil {
+		return nil, err
+	}
+	return &NFTResult{ManagedTablePresent: state.present, CurrentRevision: state.revision, CurrentSemanticSHA256: state.semanticSHA, CurrentTimedMembershipSHA256: state.timedMembershipSHA}, nil
 }
 
 func (e ContractEngine) apply(ctx context.Context, correlation Correlation, request NFTApplyRequest) (*NFTResult, error) {
@@ -235,24 +291,46 @@ func (e ContractEngine) apply(ctx context.Context, correlation Correlation, requ
 	if err := validateCandidate(candidate, request.ExpectedRevision, request.ExpectedSHA256); err != nil {
 		return nil, err
 	}
-	before, present, err := e.executor.ListManagedTable(ctx)
+	candidate, err = materializeManagedNFTCandidate(candidate, request.CandidateCapturedAtUnixNano, e.currentTime())
 	if err != nil {
 		return nil, err
 	}
+	candidateSemantic, err := managedSemanticSHA(candidate)
+	if err != nil {
+		return nil, err
+	}
+	if request.ExpectedSemanticSHA256 != "" && request.ExpectedSemanticSHA256 != candidateSemantic {
+		return nil, errors.New("candidate semantic identity mismatch")
+	}
+	candidateMembership, err := managedTimedMembershipSHA(candidate)
+	if err != nil {
+		return nil, err
+	}
+	if request.ExpectedTimedMembershipSHA256 != candidateMembership {
+		return nil, errors.New("candidate timed membership identity mismatch")
+	}
+	beforeState, err := observeManagedTable(ctx, e.executor)
+	if err != nil {
+		return nil, err
+	}
+	before, present := beforeState.raw, beforeState.present
 	if present != request.ExpectedPreviousTablePresent {
 		return nil, errors.New("managed table presence changed after validation")
 	}
 	rollback := []byte("delete table inet solovey_protection\n")
 	previousRevision := ""
 	if present {
-		previousRevision, err = managedRevision(before)
-		if err != nil {
-			return nil, fmt.Errorf("current managed table is not safely restorable: %w", err)
+		previousRevision = beforeState.revision
+		if previousRevision == "" || beforeState.semanticSHA == "" {
+			return nil, errors.New("current managed table is not safely restorable")
 		}
-		if previousRevision != request.ExpectedPreviousRevision || sha256Hex(before) != request.ExpectedPreviousSHA256 {
+		if previousRevision != request.ExpectedPreviousRevision || beforeState.semanticSHA != request.ExpectedPreviousSemanticSHA256 || beforeState.timedMembershipSHA != request.ExpectedPreviousTimedMembershipSHA256 {
 			return nil, errors.New("managed table identity changed after validation")
 		}
-		rollback = append([]byte(nil), before...)
+		rollback, err = captureManagedNFTRollback(before, e.currentTime())
+		if err != nil {
+			return nil, err
+		}
 		if len(rollback) == 0 || rollback[len(rollback)-1] != '\n' {
 			rollback = append(rollback, '\n')
 		}
@@ -281,14 +359,27 @@ func (e ContractEngine) apply(ctx context.Context, correlation Correlation, requ
 	if err := e.executor.ApplyManagedFile(ctx, transactionPath); err != nil {
 		return nil, err
 	}
-	after, afterPresent, err := e.executor.ListManagedTable(ctx)
+	afterState, err := observeManagedTable(ctx, e.executor)
+	afterPresent := afterState.present
 	if err != nil || !afterPresent {
 		return nil, errors.Join(errors.New("managed table is absent after apply"), err)
 	}
+	after := afterState.raw
 	if err := verifyManagedRevision(after, request.ExpectedRevision); err != nil {
 		return nil, errors.New("managed table revision verification failed")
 	}
-	return &NFTResult{ManagedTablePresent: true, AppliedRevision: request.ExpectedRevision, CandidateSHA256: request.ExpectedSHA256, RollbackSHA256: rollbackSHA, PreviousRevision: previousRevision, PreviousSHA256: request.ExpectedPreviousSHA256, PreviousTablePresent: present}, nil
+	if request.ExpectedSemanticSHA256 != "" && afterState.semanticSHA != request.ExpectedSemanticSHA256 {
+		return nil, errors.New("managed table semantic identity verification failed")
+	}
+	if afterState.timedMembershipSHA != request.ExpectedTimedMembershipSHA256 {
+		return nil, errors.New("managed table timed membership verification failed")
+	}
+	previousSemantic := ""
+	if present {
+		previousSemantic = beforeState.semanticSHA
+	}
+	return &NFTResult{ManagedTablePresent: true, AppliedRevision: request.ExpectedRevision, CandidateSHA256: request.ExpectedSHA256, SemanticSHA256: candidateSemantic, TimedMembershipSHA256: candidateMembership,
+		RollbackSHA256: rollbackSHA, PreviousRevision: previousRevision, PreviousSemanticSHA256: previousSemantic, PreviousTimedMembershipSHA256: beforeState.timedMembershipSHA, PreviousTablePresent: present}, nil
 }
 
 func (e ContractEngine) rollback(ctx context.Context, correlation Correlation, request NFTRollbackRequest) (*NFTResult, error) {
@@ -312,19 +403,34 @@ func (e ContractEngine) rollback(ctx context.Context, correlation Correlation, r
 	if !validSHA256(expectedSHA) || (request.ExpectedSHA256 != "" && request.ExpectedSHA256 != expectedSHA) || sha256Hex(artifact) != expectedSHA {
 		return nil, errors.New("rollback artifact SHA-256 mismatch")
 	}
-	if err := validateManagedScope(artifact, true); err != nil {
-		return nil, err
-	}
-	current, present, err := e.executor.ListManagedTable(ctx)
+	materialized, _, err := materializeManagedNFTRollback(artifact, e.currentTime())
 	if err != nil {
 		return nil, err
 	}
-	desiredAbsent := strings.TrimSpace(string(artifact)) == "delete table inet solovey_protection"
+	if err := validateManagedScope(materialized, true); err != nil {
+		return nil, err
+	}
+	currentState, err := observeManagedTable(ctx, e.executor)
+	if err != nil {
+		return nil, err
+	}
+	_, present := currentState.raw, currentState.present
+	desiredAbsent := strings.TrimSpace(string(materialized)) == "delete table inet solovey_protection"
 	expectedRevision := ""
+	expectedSemantic := ""
+	expectedMembership := ""
 	if !desiredAbsent {
-		expectedRevision, err = managedRevision(artifact)
+		expectedRevision, err = managedRevision(materialized)
 		if err != nil {
 			return nil, fmt.Errorf("rollback artifact has no restorable managed revision: %w", err)
+		}
+		expectedSemantic, err = managedSemanticSHA(materialized)
+		if err != nil {
+			return nil, fmt.Errorf("rollback artifact has no restorable semantic identity: %w", err)
+		}
+		expectedMembership, err = managedTimedMembershipSHA(materialized)
+		if err != nil {
+			return nil, fmt.Errorf("rollback artifact has no restorable timed membership identity: %w", err)
 		}
 	}
 	if !present {
@@ -333,17 +439,18 @@ func (e ContractEngine) rollback(ctx context.Context, correlation Correlation, r
 		}
 		return nil, errors.New("managed table is absent before rollback")
 	}
-	currentRevision, err := managedRevision(current)
-	if err != nil {
-		return nil, fmt.Errorf("current managed table is not safely replaceable during rollback: %w", err)
+	currentRevision := currentState.revision
+	if currentRevision == "" || currentState.semanticSHA == "" {
+		return nil, errors.New("current managed table is not safely replaceable during rollback")
 	}
-	if !desiredAbsent && currentRevision == expectedRevision {
-		return &NFTResult{ManagedTablePresent: true, RollbackSHA256: expectedSHA}, nil
+	if !desiredAbsent && currentRevision == expectedRevision && currentState.semanticSHA == expectedSemantic && currentState.timedMembershipSHA == expectedMembership {
+		return &NFTResult{ManagedTablePresent: true, RollbackSHA256: expectedSHA, SemanticSHA256: expectedSemantic, TimedMembershipSHA256: expectedMembership,
+			CurrentRevision: currentRevision, CurrentSemanticSHA256: currentState.semanticSHA, CurrentTimedMembershipSHA256: currentState.timedMembershipSHA}, nil
 	}
-	if currentRevision != request.ExpectedCurrentRevision {
+	if currentRevision != request.ExpectedCurrentRevision || currentState.semanticSHA != request.ExpectedCurrentSemanticSHA256 || currentState.timedMembershipSHA != request.ExpectedCurrentTimedMembershipSHA256 {
 		return nil, errors.New("managed table current revision does not match rollback fence")
 	}
-	transaction := append([]byte(nil), artifact...)
+	transaction := append([]byte(nil), materialized...)
 	if present && !desiredAbsent {
 		transaction = append([]byte("delete table inet solovey_protection\n"), transaction...)
 	}
@@ -357,7 +464,8 @@ func (e ContractEngine) rollback(ctx context.Context, correlation Correlation, r
 	if err := e.executor.ApplyManagedFile(ctx, transactionPath); err != nil {
 		return nil, err
 	}
-	after, afterPresent, err := e.executor.ListManagedTable(ctx)
+	afterState, err := observeManagedTable(ctx, e.executor)
+	after, afterPresent := afterState.raw, afterState.present
 	if err != nil || afterPresent == desiredAbsent {
 		return nil, errors.Join(errors.New("managed table rollback verification failed"), err)
 	}
@@ -365,13 +473,27 @@ func (e ContractEngine) rollback(ctx context.Context, correlation Correlation, r
 		if err := verifyManagedRevision(after, expectedRevision); err != nil {
 			return nil, errors.New("managed table rollback revision verification failed")
 		}
+		if expectedSemantic != "" && afterState.semanticSHA != expectedSemantic {
+			return nil, errors.New("managed table rollback semantic identity verification failed")
+		}
+		if afterState.timedMembershipSHA != expectedMembership {
+			return nil, errors.New("managed table rollback timed membership verification failed")
+		}
 	}
-	return &NFTResult{ManagedTablePresent: afterPresent, RollbackSHA256: expectedSHA}, nil
+	return &NFTResult{ManagedTablePresent: afterPresent, RollbackSHA256: expectedSHA, SemanticSHA256: expectedSemantic, TimedMembershipSHA256: expectedMembership,
+		CurrentRevision: afterState.revision, CurrentSemanticSHA256: afterState.semanticSHA, CurrentTimedMembershipSHA256: afterState.timedMembershipSHA}, nil
+}
+
+func (e ContractEngine) currentTime() time.Time {
+	if e.now != nil {
+		return e.now().UTC()
+	}
+	return time.Now().UTC()
 }
 
 func DefaultCapabilities() *CapabilitiesResult {
 	capabilities := make([]Capability, 0, len(allowedOperations))
-	for _, operation := range []Operation{OperationCapabilities, OperationNFTValidate, OperationNFTApply, OperationNFTRollback, OperationNginxDetectVersion, OperationNginxValidate, OperationNginxInstall, OperationNginxSwitch, OperationNginxReload, OperationNginxVerify, OperationNginxRestore, OperationListenerOwnerObserve, OperationSSHRecoveryObserve, OperationArtifact} {
+	for _, operation := range []Operation{OperationCapabilities, OperationNFTValidate, OperationNFTObserve, OperationNFTApply, OperationNFTRollback, OperationNginxDetectVersion, OperationNginxValidate, OperationNginxInstall, OperationNginxSwitch, OperationNginxReload, OperationNginxVerify, OperationNginxRestore, OperationListenerOwnerObserve, OperationSSHRecoveryObserve} {
 		available := operation == OperationCapabilities
 		reason := "missing_capability"
 		if available {
@@ -426,6 +548,10 @@ func validateNegotiation(result *CapabilitiesResult) error {
 		}
 	}
 	if !found {
+		return fmt.Errorf("helper_version_mismatch")
+	}
+	recoveryAdvertised := CapabilityAvailable(result, OperationSSHRecoveryObserve)
+	if recoveryAdvertised != result.SSHRecovery.Available || recoveryAdvertised && !validSSHRecoverySupport(result.SSHRecovery) {
 		return fmt.Errorf("helper_version_mismatch")
 	}
 	return nil

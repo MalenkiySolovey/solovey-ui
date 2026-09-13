@@ -1,12 +1,12 @@
 openapi: 3.1.0
 info:
   title: Solovey UI operations API
-  version: 2026.3.0
+  version: 2026.3.1
   description: >-
     Authenticated, bounded operator contracts for panel security, SSH recovery,
     deployment, signed updates, resource pressure, SQLite, migrations, backup,
     restore, and durable-owner data lifecycle. This contract does not claim
-    external Live acceptance.
+    current operational verification.
 servers:
   - url: /
 security:
@@ -154,6 +154,8 @@ paths:
             schema: { $ref: "#/components/schemas/StepUpBodyRequest" }
       responses: *messageResponses
 
+  /api/v1/operations/ssh/current:
+    get: { operationId: getSSHCurrentRead, responses: *messageResponses }
   /api/v1/operations/ssh/posture:
     get: { operationId: getSSHPosture, responses: *messageResponses }
   /api/v1/operations/ssh/capabilities:
@@ -463,6 +465,21 @@ paths:
       parameters:
         - $ref: "#/components/parameters/DataOperationId"
       responses: *messageResponses
+  /api/v1/operations/data/operations/{operationId}/recovery-backup:
+    get:
+      operationId: downloadDataLifecycleRecoveryBackup
+      description: >-
+        Strictly reopens and hashes the retained logical recovery backup bound
+        to the operation. A reference outside the retained horizon is expired;
+        missing or changed bytes fail closed.
+      parameters:
+        - $ref: "#/components/parameters/DataOperationId"
+      responses:
+        "200":
+          description: Operation-bound logical SQLite recovery backup
+          content:
+            application/octet-stream:
+              schema: { type: string, contentEncoding: binary }
   /api/v1/operations/data/recovery:
     get: { operationId: getDataRecovery, responses: *messageResponses }
   /api/getdb:

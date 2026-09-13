@@ -76,6 +76,7 @@ func (a *APIHandler) operationsStatus(c *gin.Context) {
 		deploymentManager = deploymentservice.Shared()
 	}
 	update := updateManager.Status(c.Request.Context(), release.ChannelMain)
+	update = projectUpdatePresentation(update, deploymentManager.UpdatePresentation())
 	deployment, deploymentErr := deploymentManager.Status(c.Request.Context())
 	migrationState := "APPLIED"
 	var migrationRows int64
@@ -106,11 +107,27 @@ func (a *APIHandler) operationsStatus(c *gin.Context) {
 	}), nil)
 }
 
+func projectUpdatePresentation(status updateservice.LifecycleStatus, presentation deploymentservice.UpdatePresentation) updateservice.LifecycleStatus {
+	if status.Actual.Mode == updateservice.OperatorManagedMode && presentation.LegacyMode != "" {
+		status.Actual.Mode = presentation.LegacyMode
+		status.Capabilities = status.Capabilities.Present(presentation.LegacyMode, presentation.LegacyReasonCodes)
+	}
+	return status
+}
+
+func (a *APIHandler) deploymentUpdatePresentation() deploymentservice.UpdatePresentation {
+	manager := a.Deployment
+	if manager == nil {
+		manager = deploymentservice.Shared()
+	}
+	return manager.UpdatePresentation()
+}
+
 func projectOperationsStatus(input operationsStatusProjection) gin.H {
 	return gin.H{
 		"schema":      "solovey.operations-status/v1",
 		"generatedAt": input.GeneratedAt,
-		"security":    gin.H{"state": "OBSERVED_BY_SECURITY_DOMAIN", "accepted": false, "live": false},
+		"security":    gin.H{"state": "OBSERVED_BY_SECURITY_DOMAIN"},
 		"deployment":  gin.H{"state": typedAvailability(input.DeploymentErr), "posture": input.Deployment},
 		"update":      input.Update,
 		"pressure":    input.Pressure,
@@ -120,7 +137,6 @@ func projectOperationsStatus(input operationsStatusProjection) gin.H {
 		"backup":      gin.H{"state": input.BackupState, "restoreExecution": "STEP_UP_REQUIRED"},
 		"restore":     gin.H{"rehearsal": "AVAILABLE", "execution": "GLOBAL_ADMISSION_REQUIRED"},
 		"dropData":    gin.H{"state": "PREVIEW_REQUIRED", "force": false},
-		"evidence":    gin.H{"normalCI": "IN_PROGRESS", "live": "NOT_RUN", "accepted": false},
 		"reasonCodes": append([]string(nil), input.ReasonCodes...),
 	}
 }

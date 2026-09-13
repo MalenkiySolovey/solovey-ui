@@ -23,7 +23,11 @@ type ServerService struct {
 	coreStatus func() (running bool, uptime uint32)
 }
 
-var systemInfoInterfaces = net.Interfaces
+var (
+	systemInfoInterfaces = net.Interfaces
+	systemInfoBootTime   = host.BootTime
+	systemInfoUptime     = host.Uptime
+)
 
 func New(coreStatus func() (running bool, uptime uint32)) ServerService {
 	return ServerService{coreStatus: coreStatus}
@@ -198,7 +202,10 @@ func (s *ServerService) GetSystemInfo() map[string]interface{} {
 	}
 	info["ipv4"] = ipv4
 	info["ipv6"] = ipv6
-	info["bootTime"], _ = host.BootTime()
+	info["bootTime"], _ = systemInfoBootTime()
+	// Host uptime is a target-observed duration. Supplying it directly keeps
+	// the dashboard independent from browser/router wall-clock skew.
+	info["uptimeSec"], _ = systemInfoUptime()
 
 	return info
 }

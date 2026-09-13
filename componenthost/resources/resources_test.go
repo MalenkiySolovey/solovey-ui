@@ -79,7 +79,7 @@ func TestDeterministicConfiguredEndpointKeysPreserveWildcardFamiliesWithoutOwner
 	if !complete || len(keys) != 2 || keys[0].AddressFamily != AddressFamilyIPv4 || keys[0].BindAddress != "0.0.0.0" || keys[1].AddressFamily != AddressFamilyIPv6 || keys[1].BindAddress != "::" {
 		t.Fatalf("dual-family wildcard preservation = %#v, complete=%t", keys, complete)
 	}
-	resource.Capabilities.ExpectedListenerOwner = ExpectedListenerOwnerV1{}
+	resource.Capabilities.ExpectedApplicationOwner = ExpectedApplicationOwnerV1{}
 	resource.Capabilities.OwnerRevision = ""
 	if second, ok := DeterministicConfiguredEndpointKeys(resource); !ok || !reflect.DeepEqual(keys, second) {
 		t.Fatalf("listener ownership changed configuration-only endpoint claims: %#v, complete=%t", second, ok)
@@ -137,6 +137,30 @@ func TestRegistryCachesRefreshesAndClones(t *testing.T) {
 	unregister()
 	if got := registry.Snapshot(context.Background()); len(got.Resources) != 0 {
 		t.Fatalf("resources remained after unregister: %#v", got.Resources)
+	}
+}
+
+func TestSnapshotExcludingDoesNotInvokeOwnerOrPolluteSharedCache(t *testing.T) {
+	registry := NewRegistry(time.Minute)
+	ssh := &testContributor{owner: "ssh-management", items: []ProtectableResource{{
+		ID: "ssh-management:fixture", Kind: "ssh_management", Name: "SSH", Protocol: "tcp", Listen: "127.0.0.1", Port: 2222,
+		Source: "fixture", Capabilities: ProtectableResourceCapabilities{Known: true},
+	}}}
+	panel := &testContributor{owner: "core", items: []ProtectableResource{{
+		ID: "core:panel", Kind: "panel_web", Name: "Panel", Protocol: "tcp", Listen: "127.0.0.1", Port: 2095,
+		Source: "fixture", Capabilities: ProtectableResourceCapabilities{Known: true},
+	}}}
+	registerTestContributor(t, registry, ssh)
+	registerTestContributor(t, registry, panel)
+
+	filtered := registry.SnapshotExcluding(context.Background(), "ssh-management")
+	if ssh.calls != 0 || panel.calls != 1 || len(filtered.Resources) != 1 || filtered.Resources[0].Owner != "core" {
+		t.Fatalf("owner-filtered snapshot invoked or retained the excluded owner: sshCalls=%d panelCalls=%d snapshot=%#v", ssh.calls, panel.calls, filtered)
+	}
+	first := registry.Snapshot(context.Background())
+	second := registry.Snapshot(context.Background())
+	if ssh.calls != 1 || panel.calls != 2 || len(first.Resources) != 2 || len(second.Resources) != 2 {
+		t.Fatalf("filtered snapshot entered or consumed the shared cache: sshCalls=%d panelCalls=%d first=%#v second=%#v", ssh.calls, panel.calls, first, second)
 	}
 }
 

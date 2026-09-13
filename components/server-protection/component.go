@@ -18,6 +18,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	protectionapi "github.com/MalenkiySolovey/solovey-ui/components/server-protection/api"
+	protectiondeployment "github.com/MalenkiySolovey/solovey-ui/components/server-protection/deploymentadapter"
 	protectionruntime "github.com/MalenkiySolovey/solovey-ui/components/server-protection/runtimecontract"
 	protectionartifacts "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/artifacts"
 	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
@@ -35,10 +36,10 @@ import (
 	protectionudpguard "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/udpguard"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
-	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
+	sshservice "github.com/MalenkiySolovey/solovey-ui/service/sshmanagement"
 	"github.com/robfig/cron/v3"
 	"gorm.io/gorm"
 )
@@ -55,6 +56,7 @@ var hooks = struct {
 	unregisterTokenScope   func()
 	operationManager       *protectionoperations.Manager
 	artifactStorage        *protectionartifacts.Storage
+	runtimeRootAuthority   protectionruntime.RuntimeRootAuthority
 	artifactPruner         *protectionartifacts.Pruner
 	firewallWorkflow       *protectionfirewall.Workflow
 	frontingWorkflow       *protectionfronting.Workflow
@@ -67,11 +69,11 @@ var hooks = struct {
 	helperClient           *protectionhelper.Client
 	runtime                *coreservice.Runtime
 	artifactCleanupID      cron.EntryID
+	firewallReconcileID    cron.EntryID
 	artifactScheduler      componenthost.Scheduler
 	unregisterHostSurface  func()
 	hostSurfaceCancel      context.CancelFunc
 	hostSurfaceDone        chan struct{}
-	restoreHookRegistered  bool
 }{}
 
 func init() {
@@ -83,6 +85,10 @@ func init() {
 }
 
 type component struct{}
+
+func (component) NonportableBackupTables() []string {
+	return protectionrepository.NonportableBackupTables()
+}
 
 func (component) Migrate(context.Context, lifecycle.Context) error {
 	return protectionrepository.Migrate(dbsqlite.DB())
@@ -143,31 +149,6 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 		}
 		hooks.unregisterBackup = dbbackup.RegisterTables(componentID, contributions)
 	}
-	if !hooks.restoreHookRegistered {
-		dbhooks.RegisterImportPostOpenHook(componentID+":native-fallback-state", func(ctx context.Context) error {
-			now := time.Now().UTC()
-			if err := protectionrepository.ReconcileRestoredNativeFallbackRecords(ctx, dbsqlite.DB(), now); err != nil {
-				return err
-			}
-			if err := protectionrepository.ReconcileRestoredGraylistStates(ctx, dbsqlite.DB(), now); err != nil {
-				return err
-			}
-			if err := protectionrepository.ReconcileRestoredFrontingRecords(ctx, dbsqlite.DB(), now); err != nil {
-				return err
-			}
-			if err := protectionrepository.ReconcileRestoredUDPGuardRecords(ctx, dbsqlite.DB(), now); err != nil {
-				return err
-			}
-			if err := protectionrepository.ReconcileRestoredLocalProxyRecords(ctx, dbsqlite.DB(), now); err != nil {
-				return err
-			}
-			if err := protectionrepository.ReconcileRestoredFirewallAuthority(ctx, dbsqlite.DB(), now); err != nil {
-				return err
-			}
-			return protectionrepository.ReconcileLegacySelfStealProfiles(ctx, dbsqlite.DB(), now)
-		})
-		hooks.restoreHookRegistered = true
-	}
 	if hooks.unregisterTokenScope == nil {
 		hooks.unregisterTokenScope = coreservice.RegisterAPITokenScopeProvider(func() []string {
 			return append([]string(nil), componentManifest.TokenScopes...)
@@ -181,10 +162,11 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 	repository := protectionrepository.New(dbsqlite.DB())
 	if hooks.unregisterHostSurface == nil {
 		var provider *protectionhostsurface.Provider
+		sshProjection := protectionhostsurface.SSHPostureProjectionSource{Reader: sshservice.Shared()}
 		if client, helperErr := ensureHelperClientLocked(); helperErr == nil {
-			provider = protectionhostsurface.NewProvider(protectionhostsurface.HelperOwnerObserver{Helper: client})
+			provider = protectionhostsurface.NewProviderWithSSHProjection(sshProjection, protectionhostsurface.HelperOwnerObserver{Helper: client})
 		} else {
-			provider = protectionhostsurface.NewProvider(protectionhostsurface.UnavailableOwnerObserver{Availability: ownerAvailabilityForHelperError(helperErr)})
+			provider = protectionhostsurface.NewProviderWithSSHProjection(sshProjection, protectionhostsurface.UnavailableOwnerObserver{Availability: ownerAvailabilityForHelperError(helperErr)})
 		}
 		unregisterHostSurface, registerErr := hostfacts.Register(provider)
 		if registerErr != nil {
@@ -204,8 +186,9 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 	hooks.artifactPruner = protectionartifacts.NewPruner(storage, repository, nil)
 	pruner := hooks.artifactPruner
 	manager := ensureOperationManagerLocked(hooks.runtime)
+	workflow, workflowErr := ensureFirewallWorkflowLocked()
 	recovery := protectionoperations.Recovery(protectionartifacts.OperationRecovery{Storage: storage, Repository: repository})
-	if workflow, workflowErr := ensureFirewallWorkflowLocked(); workflowErr == nil {
+	if workflowErr == nil {
 		recovery = protectionfirewall.BackendRecovery{Helper: workflow.Helper, Manager: manager, Storage: storage, Repository: repository, Health: workflow.RollbackHealth, Workflow: workflow}
 	}
 	if err := manager.SetRecovery(recovery); err != nil {
@@ -243,9 +226,44 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 		cleanupHooksLocked()
 		return err
 	}
+	if workflowErr == nil {
+		if err := manager.SetReconcilerForKind(protectionoperations.KindFirewall, protectionfirewall.RuntimeLossReconciler{Workflow: workflow}); err != nil {
+			cleanupHooksLocked()
+			return err
+		}
+	}
 	if err := manager.Start(ctx); err != nil {
 		cleanupHooksLocked()
 		return err
+	}
+	if workflowErr != nil {
+		// The restricted helper can be legitimately unavailable on this host.
+		// Publish that closed state through the firewall semantic owner so an
+		// older MATCHING observation cannot survive startup as live truth.
+		if _, recordErr := protectionfirewall.RecordWorkflowUnavailable(ctx, repository); recordErr != nil {
+			_ = manager.Stop(context.Background())
+			hooks.operationManager = nil
+			cleanupHooksLocked()
+			return errors.Join(workflowErr, recordErr)
+		}
+	} else {
+		// Startup reconciliation is observation-only. A missing nft capability
+		// records UNAVAILABLE/FOREIGN/DRIFTED through the owner and never causes a
+		// candidate replay or synthetic platform emulation. Failure to persist the
+		// fresh classification must not leave an older MATCHING observation visible.
+		observation, reconciliationErr := workflow.ReconcileAuthority(ctx)
+		if reconciliationErr != nil && !observation.Persisted {
+			_ = manager.Stop(context.Background())
+			hooks.operationManager = nil
+			cleanupHooksLocked()
+			return reconciliationErr
+		}
+	}
+	// Reconcile bounded artifact/history debt on every restart after operation
+	// and firewall authority have been classified. Failure remains durable for
+	// the hourly idempotent retry and does not invent a weaker runtime state.
+	if settings, _, loadErr := repository.LoadSettings(ctx); loadErr == nil {
+		_, _ = pruner.Prune(ctx, settings.ArtifactRetentionCount, settings.ArtifactRetentionDays)
 	}
 	startLocalProxyRenewerLocked(localProxyController)
 	if err := protectionobservation.DefaultWorker.Start(protectionrepository.New(dbsqlite.DB())); err != nil {
@@ -253,6 +271,22 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 		hooks.operationManager = nil
 		cleanupHooksLocked()
 		return err
+	}
+	if lifecycleCtx.Host.Scheduler != nil && workflowErr == nil && hooks.firewallReconcileID == 0 {
+		entryID, scheduleErr := lifecycleCtx.Host.Scheduler.AddJob("@every 1m", cron.FuncJob(func() {
+			reconcileCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			_, _ = workflow.ReconcileAuthority(reconcileCtx)
+		}))
+		if scheduleErr != nil {
+			_ = protectionobservation.DefaultWorker.Stop(context.Background())
+			_ = manager.Stop(context.Background())
+			hooks.operationManager = nil
+			cleanupHooksLocked()
+			return scheduleErr
+		}
+		hooks.firewallReconcileID = entryID
+		hooks.artifactScheduler = lifecycleCtx.Host.Scheduler
 	}
 	if lifecycleCtx.Host.Scheduler != nil && hooks.artifactCleanupID == 0 {
 		entryID, scheduleErr := lifecycleCtx.Host.Scheduler.AddJob("@every 1h", cron.FuncJob(func() {
@@ -262,6 +296,10 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 			}
 		}))
 		if scheduleErr != nil {
+			if hooks.firewallReconcileID != 0 {
+				_ = lifecycleCtx.Host.Scheduler.RemoveJobAndWait(context.Background(), hooks.firewallReconcileID)
+				hooks.firewallReconcileID = 0
+			}
 			_ = protectionobservation.DefaultWorker.Stop(context.Background())
 			_ = manager.Stop(context.Background())
 			hooks.operationManager = nil
@@ -281,7 +319,7 @@ func (component) Stop(ctx context.Context) error {
 	hooks.Lock()
 	localProxyCancel, localProxyDone := hooks.localProxyCancel, hooks.localProxyDone
 	hostSurfaceCancel, hostSurfaceDone := hooks.hostSurfaceCancel, hooks.hostSurfaceDone
-	scheduler, cleanupID := hooks.artifactScheduler, hooks.artifactCleanupID
+	scheduler, cleanupID, reconcileID := hooks.artifactScheduler, hooks.artifactCleanupID, hooks.firewallReconcileID
 	manager := hooks.operationManager
 	hooks.Unlock()
 
@@ -292,8 +330,11 @@ func (component) Stop(ctx context.Context) error {
 		hostSurfaceCancel()
 	}
 	var schedulerErr error
+	if scheduler != nil && reconcileID != 0 {
+		schedulerErr = scheduler.RemoveJobAndWait(ctx, reconcileID)
+	}
 	if scheduler != nil && cleanupID != 0 {
-		schedulerErr = scheduler.RemoveJobAndWait(ctx, cleanupID)
+		schedulerErr = errors.Join(schedulerErr, scheduler.RemoveJobAndWait(ctx, cleanupID))
 	}
 	localProxyErr := waitForBackground(ctx, localProxyDone)
 	hostSurfaceErr := waitForBackground(ctx, hostSurfaceDone)
@@ -336,7 +377,11 @@ func (component) DropData(ctx context.Context, _ lifecycle.Context) error {
 	if err := protectionrepository.EnsureDropSafe(dbsqlite.DB()); err != nil {
 		return err
 	}
-	storage, err := protectionartifacts.New(artifactRootPath())
+	root, err := artifactRoot()
+	if err != nil {
+		return err
+	}
+	storage, err := protectionartifacts.New(root)
 	if err != nil {
 		return err
 	}
@@ -373,6 +418,7 @@ func protectionDeps(host componenthost.APIDeps) protectionapi.Deps {
 		Repository:        repository,
 		RequireScope:      host.Auth.RequireScope,
 		Actor:             host.Request.Actor,
+		ClientIdentity:    host.Request.ClientIdentity,
 		Audit:             host.Audit.Audit,
 		JSONObj:           host.HTTP.JSONObj,
 		JSONMsg:           host.HTTP.JSONMsg,
@@ -388,7 +434,9 @@ func protectionDeps(host componenthost.APIDeps) protectionapi.Deps {
 		FrontingV2:     &protectionfronting.SemanticServiceV2{Workflow: frontingWorkflow, Repository: repository, Source: hooks.frontingSemanticSource},
 		NativeFallback: nativeFallbackWorkflow,
 		LocalProxy:     localProxyController,
-		Interception:   protectioninterception.New(),
+		Interception: protectioninterception.NewWithKernelCapability(protectioninterception.KernelInterceptionCapabilityV1{
+			ReasonCode: "KERNEL_INTERCEPTION_CAPABILITY_NOT_PROVEN",
+		}),
 	}
 }
 
@@ -418,12 +466,46 @@ func ensureArtifactStorageLocked() (*protectionartifacts.Storage, error) {
 	if hooks.artifactStorage != nil {
 		return hooks.artifactStorage, nil
 	}
-	storage, err := protectionartifacts.New(artifactRootPath())
+	authority, err := artifactRootAuthority()
+	if err != nil {
+		return nil, err
+	}
+	var storage *protectionartifacts.Storage
+	storageRoot, err := storageRootForAuthority(authority)
+	if err != nil {
+		return nil, err
+	}
+	if authority.Installed() {
+		if err := authority.Recheck(); err != nil {
+			return nil, err
+		}
+		projection, projectionErr := artifactRecoveryProjection(authority)
+		if projectionErr != nil {
+			return nil, projectionErr
+		}
+		storage, err = protectionartifacts.NewInstalledWithRecoveryProjection(storageRoot, projection)
+	} else {
+		storage, err = protectionartifacts.New(storageRoot)
+	}
 	if err != nil {
 		return nil, err
 	}
 	hooks.artifactStorage = storage
+	hooks.runtimeRootAuthority = authority
 	return storage, nil
+}
+
+func artifactRecoveryProjection(authority protectionruntime.RuntimeRootAuthority) (protectionartifacts.RecoveryProjection, error) {
+	projection, err := protectiondeployment.RecoveryProjectionForRuntimeAuthority(authority)
+	if err != nil {
+		return protectionartifacts.RecoveryProjection{}, err
+	}
+	return protectionartifacts.RecoveryProjection{
+		Authority: string(projection.Authority), SelfRecoveryAvailable: projection.SelfRecoveryAvailable,
+		Action:            protectionartifacts.RecoveryAction{Program: projection.Action.Program, Args: projection.Action.Args, Purpose: projection.Action.Purpose},
+		DeploymentBackend: projection.DeploymentBackend, ProjectionRevision: projection.ProjectionRevision,
+		OwnerContractRevision: projection.OwnerContractRevision,
+	}, nil
 }
 
 func ensureFirewallWorkflowLocked() (*protectionfirewall.Workflow, error) {
@@ -450,6 +532,12 @@ func ensureFirewallWorkflowLocked() (*protectionfirewall.Workflow, error) {
 			return protectionhealth.Evaluate(ctx, protectionresources.Snapshot(ctx, true).Resources, nil)
 		},
 		Contributions: protectionrepository.New(dbsqlite.DB()),
+	}
+	runtimeLifecycle := protectiondeployment.FirewallRuntime{Authority: hooks.runtimeRootAuthority}
+	workflow.RuntimeStore = protectionrepository.New(dbsqlite.DB())
+	if runtimeLifecycle.Available() {
+		workflow.Runtime = runtimeLifecycle
+		workflow.CurrentRuntimeManagement = protectionfirewall.NewBaselineService(protectionrepository.New(dbsqlite.DB())).RuntimeManagement
 	}
 	hooks.firewallWorkflow = workflow
 	return workflow, nil
@@ -583,7 +671,11 @@ func ensureHelperClientLocked() (*protectionhelper.Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	root, err := protectionhelper.NewManagedRoot(storage.Root())
+	authority := hooks.runtimeRootAuthority
+	if err := authority.Validate(); err != nil || authority.CanonicalPath() != storage.Root() {
+		return nil, errors.New("Server Protection storage differs from its runtime root authority")
+	}
+	root, err := protectionhelper.NewManagedRoot(authority)
 	if err != nil {
 		return nil, err
 	}
@@ -634,7 +726,24 @@ func (r helperAuditRecorder) RecordHelperAudit(_ context.Context, event protecti
 }
 
 func artifactRootPath() string {
-	return protectionruntime.RootForDatabaseFolder(configstorage.GetDBFolderPath())
+	root, _ := artifactRoot()
+	return root
+}
+
+func artifactRoot() (string, error) {
+	authority, err := artifactRootAuthority()
+	return authority.Path(), err
+}
+
+func artifactRootAuthority() (protectionruntime.RuntimeRootAuthority, error) {
+	return protectionruntime.ResolveRootAuthority(configstorage.GetDBFolderPath())
+}
+
+func storageRootForAuthority(authority protectionruntime.RuntimeRootAuthority) (string, error) {
+	if err := authority.Validate(); err != nil {
+		return "", err
+	}
+	return authority.CanonicalPath(), nil
 }
 
 func cleanupHooksLocked() {
@@ -663,16 +772,13 @@ func cleanupHooksLocked() {
 		hooks.unregisterBackup()
 		hooks.unregisterBackup = nil
 	}
-	if hooks.restoreHookRegistered {
-		dbhooks.RegisterImportPostOpenHook(componentID+":native-fallback-state", nil)
-		hooks.restoreHookRegistered = false
-	}
 	if hooks.unregisterTokenScope != nil {
 		hooks.unregisterTokenScope()
 		hooks.unregisterTokenScope = nil
 	}
 	hooks.operationManager = nil
 	hooks.artifactStorage = nil
+	hooks.runtimeRootAuthority = protectionruntime.RuntimeRootAuthority{}
 	hooks.artifactPruner = nil
 	hooks.firewallWorkflow = nil
 	hooks.frontingWorkflow = nil
@@ -681,6 +787,7 @@ func cleanupHooksLocked() {
 	hooks.localProxyController = nil
 	hooks.helperClient = nil
 	hooks.artifactCleanupID = 0
+	hooks.firewallReconcileID = 0
 	hooks.artifactScheduler = nil
 	hooks.runtime = nil
 }

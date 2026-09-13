@@ -1,8 +1,13 @@
 package deploymentbroker
 
-import domain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
+import (
+	domain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
+	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
+)
 
-const ProviderRevision = "d3ab061844280d46ccbab0fa4596430f3f496da4dd432bb1faa759c28b3cccb7"
+// ProviderRevision binds panel requests and retained broker results to the
+// checkpoint-release and crash-consistent generation contract.
+const ProviderRevision = "ea9db96289e148feb094b6fa5f70b7bc9c4b22474cbe32dcb1c744b9b03cbd77"
 
 type EmptyV1 struct{}
 
@@ -21,6 +26,15 @@ type PrepareRequestV1 struct {
 }
 
 type PrepareResultV1 struct {
+	CheckpointRef    string `json:"checkpointRef"`
+	ProviderRevision string `json:"providerRevision"`
+}
+
+type ReleaseCheckpointRequestV1 struct {
+	CheckpointRef string `json:"checkpointRef"`
+}
+
+type ReleaseCheckpointResultV1 struct {
 	CheckpointRef    string `json:"checkpointRef"`
 	ProviderRevision string `json:"providerRevision"`
 }
@@ -55,4 +69,15 @@ type RollbackResultV1 struct {
 	Verified         bool           `json:"verified"`
 	Posture          domain.Posture `json:"posture"`
 	ProviderRevision string         `json:"providerRevision"`
+}
+
+func completedMutationLifecycle(verb broker.Verb) broker.CompletionPolicy {
+	switch verb {
+	case broker.VerbDeploymentPrepare:
+		return broker.CompletionPolicy{RetainUntilRelease: true}
+	case broker.VerbDeploymentRelease:
+		return broker.CompletionPolicy{ReleasesVerb: broker.VerbDeploymentPrepare}
+	default:
+		return broker.CompletionPolicy{}
+	}
 }

@@ -185,7 +185,8 @@ func sameOriginRequest(c *gin.Context) (bool, string) {
 	if !strings.EqualFold(origin.Scheme, expectedScheme) {
 		return false, "origin scheme mismatch"
 	}
-	if clientidentity.CanonicalHostPort(origin.Host) != identity.ExternalHost {
+	if clientidentity.CanonicalOriginAuthority(origin.Scheme, origin.Host) !=
+		clientidentity.CanonicalOriginAuthority(expectedScheme, identity.ExternalHost) {
 		return false, "origin host mismatch"
 	}
 	return true, ""

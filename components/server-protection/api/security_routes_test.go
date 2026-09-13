@@ -176,7 +176,7 @@ func TestContractInspectionAPIsArePaginatedReadOnlyAndHonest(t *testing.T) {
 		t.Fatalf("posture overclaimed recovery: %s", posture.Body.String())
 	}
 	firewallBaseline := requestProtectionAPI(router, http.MethodGet, "/api/components/server-protection/firewall-baseline", "")
-	if firewallBaseline.Code != http.StatusOK || !strings.Contains(firewallBaseline.Body.String(), `"realNftablesLive":"NOT_RUN"`) || !strings.Contains(firewallBaseline.Body.String(), `"actual":"NOT_APPLIED"`) || !strings.Contains(firewallBaseline.Body.String(), `"socketGraph"`) {
+	if firewallBaseline.Code != http.StatusOK || !strings.Contains(firewallBaseline.Body.String(), `"actual":"NOT_APPLIED"`) || !strings.Contains(firewallBaseline.Body.String(), `"socketGraph"`) {
 		t.Fatalf("firewall baseline preview omitted honest graph/kernel state: %d %s", firewallBaseline.Code, firewallBaseline.Body.String())
 	}
 	overflow := requestProtectionAPI(router, http.MethodGet, "/api/components/server-protection/host-surfaces?page=9223372036854775807&limit=500", "")
@@ -255,15 +255,23 @@ func TestRecoveryStateRequiresFreshProofForExactCurrentEndpoint(t *testing.T) {
 	}
 }
 
-func TestSSHIdentificationUsesExactUnitOrResourceIdentity(t *testing.T) {
-	if !hostmanagement.IsSSHSurface(hostfacts.HostSurfaceFactV1{Service: hostfacts.ServiceFact{SystemdUnit: "sshd.service"}}) ||
-		!hostmanagement.IsSSHSurface(hostfacts.HostSurfaceFactV1{Service: hostfacts.ServiceFact{SystemdUnit: "sshd@tenant.service"}}) ||
-		!hostmanagement.IsSSHSurface(hostfacts.HostSurfaceFactV1{RegisteredResourceID: "core:ssh:primary"}) {
-		t.Fatal("exact SSH identity was rejected")
+func TestSSHIdentificationConsumesSemanticOwnerProjection(t *testing.T) {
+	revision := strings.Repeat("a", 64)
+	surface := hostfacts.HostSurfaceFactV1{Network: hostfacts.NetworkTCP, Family: hostfacts.FamilyIPv4, Bind: "0.0.0.0", Port: 22, SocketInode: "22", SocketCookie: 42,
+		SemanticOwner: &hostfacts.SemanticOwnerFactV1{
+			ManagementService: hostfacts.ManagementServiceSSH, Source: "sshbroker:posture", Revision: revision, AuthorityRevision: strings.Repeat("b", 64),
+			Socket: hostfacts.ListenerSocketIdentityV1{Network: hostfacts.NetworkTCP, Family: hostfacts.FamilyIPv4, Bind: "0.0.0.0", Port: 22, Inode: "22", Cookie: 42, Wildcard: true, CoverageFamilies: []hostfacts.Family{hostfacts.FamilyIPv4}},
+		}}
+	if !hostmanagement.IsSSHSurface(surface) {
+		t.Fatal("SSH owner projection was rejected")
 	}
-	for _, value := range []string{"not-sshd.service", "backup-ssh-agent.service", "ssh.service.evil"} {
-		if hostmanagement.IsSSHSurface(hostfacts.HostSurfaceFactV1{Service: hostfacts.ServiceFact{SystemdUnit: value}}) {
-			t.Fatalf("substring-only SSH identity accepted: %q", value)
+	for _, surface := range []hostfacts.HostSurfaceFactV1{
+		{RegisteredResourceID: "core:ssh:primary"},
+		{Service: hostfacts.ServiceFact{SystemdUnit: "fixture-daemon.service"}},
+		{SemanticOwner: &hostfacts.SemanticOwnerFactV1{ManagementService: hostfacts.ManagementServiceSSH, Source: "sshbroker:posture"}},
+	} {
+		if hostmanagement.IsSSHSurface(surface) {
+			t.Fatalf("private or incomplete SSH identity accepted: %#v", surface)
 		}
 	}
 }

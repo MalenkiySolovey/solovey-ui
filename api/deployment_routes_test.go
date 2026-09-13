@@ -3,6 +3,8 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -13,6 +15,21 @@ import (
 	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"
 	"github.com/gin-gonic/gin"
 )
+
+func TestDeploymentReadErrorsExposeSpecificSafeStateReasons(t *testing.T) {
+	for _, test := range []struct {
+		err  error
+		want string
+	}{
+		{fmt.Errorf("wrapped: %w", deploymentservice.ErrPackagePosture), "deployment_package_posture_unavailable"},
+		{fmt.Errorf("wrapped: %w", deploymentservice.ErrStatePersistence), "deployment_state_persistence_unavailable"},
+		{errors.New("unclassified"), "deployment_internal_error"},
+	} {
+		if got := deploymentReasonCode(test.err); got != test.want {
+			t.Fatalf("reason=%q, want %q", got, test.want)
+		}
+	}
+}
 
 func TestDeploymentRoutesRequireFullBrowserAuthentication(t *testing.T) {
 	router, _ := deploymentTestRouter(t)

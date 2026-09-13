@@ -41,13 +41,14 @@ type PortAllowlistModel struct {
 func (PortAllowlistModel) TableName() string { return "server_protection_port_allowlist" }
 
 type IPAllowlistModel struct {
-	ID        uint   `gorm:"primaryKey;autoIncrement"`
-	IPCIDR    string `gorm:"column:ip_cidr;not null;uniqueIndex"`
-	Reason    string `gorm:"not null"`
-	ExpiresAt *int64
-	CreatedBy string `gorm:"not null"`
-	CreatedAt int64  `gorm:"not null"`
-	UpdatedAt int64  `gorm:"not null"`
+	ID                     uint   `gorm:"primaryKey;autoIncrement"`
+	IPCIDR                 string `gorm:"column:ip_cidr;not null;uniqueIndex"`
+	Reason                 string `gorm:"not null"`
+	ExpiresAt              *int64
+	BroadScopeAcknowledged bool   `gorm:"not null;default:false"`
+	CreatedBy              string `gorm:"not null"`
+	CreatedAt              int64  `gorm:"not null"`
+	UpdatedAt              int64  `gorm:"not null"`
 }
 
 func (IPAllowlistModel) TableName() string { return "server_protection_ip_allowlist" }
@@ -406,48 +407,78 @@ func (FirewallContributionModel) TableName() string {
 // currently authoritative. It contains contribution ids/revisions only; the
 // complete candidate remains a derived artifact.
 type FirewallCompositionModel struct {
-	ID                  uint            `gorm:"primaryKey;autoIncrement:false"`
-	Schema              string          `gorm:"not null;size:96"`
-	Revision            string          `gorm:"not null;size:64"`
-	ManagedPlanRevision string          `gorm:"not null;size:64"`
-	CandidateSHA256     string          `gorm:"not null;size:64"`
-	BindingsJSON        json.RawMessage `gorm:"column:bindings_json;not null"`
-	State               string          `gorm:"not null;size:32;index"`
-	AppliedOperationID  string          `gorm:"not null;size:128;index"`
-	UpdatedAt           int64           `gorm:"not null"`
+	Runtime                        FirewallRuntimeBinding `gorm:"embedded;embeddedPrefix:runtime_"`
+	ID                             uint                   `gorm:"primaryKey;autoIncrement:false"`
+	Schema                         string                 `gorm:"not null;size:96"`
+	Revision                       string                 `gorm:"not null;size:64"`
+	ManagedPlanRevision            string                 `gorm:"not null;size:64"`
+	CandidateSHA256                string                 `gorm:"not null;size:64"`
+	CandidateSemanticSHA256        string                 `gorm:"column:candidate_semantic_sha256;size:64"`
+	CandidateTimedMembershipSHA256 string                 `gorm:"column:candidate_timed_membership_sha256;size:64"`
+	BindingsJSON                   json.RawMessage        `gorm:"column:bindings_json;not null"`
+	State                          string                 `gorm:"not null;size:32;index"`
+	AppliedOperationID             string                 `gorm:"not null;size:128;index"`
+	UpdatedAt                      int64                  `gorm:"not null"`
 }
 
 func (FirewallCompositionModel) TableName() string {
 	return "server_protection_firewall_composition_v1"
 }
 
+// FirewallObservationModel is the last fresh, host-local observation of the
+// one Solovey-managed nft namespace. It is deliberately separate from the
+// committed composition: desired/persisted authority cannot stand in for
+// volatile kernel truth after startup, reboot, restore, or external deletion.
+type FirewallObservationModel struct {
+	ID                            uint   `gorm:"primaryKey;autoIncrement:false"`
+	Schema                        string `gorm:"not null;size:96"`
+	State                         string `gorm:"not null;size:32;index"`
+	HasCommittedAuthority         bool   `gorm:"not null"`
+	CommittedCompositionRevision  string `gorm:"size:64;index"`
+	ManagedTablePresent           bool   `gorm:"not null"`
+	CurrentRevision               string `gorm:"size:64"`
+	CurrentSemanticSHA256         string `gorm:"column:current_semantic_sha256;size:64"`
+	CurrentTimedMembershipSHA256  string `gorm:"column:current_timed_membership_sha256;size:64"`
+	ExpectedTimedMembershipSHA256 string `gorm:"column:expected_timed_membership_sha256;size:64"`
+	Reason                        string `gorm:"size:96"`
+	ObservedAt                    int64  `gorm:"not null"`
+	UpdatedAt                     int64  `gorm:"not null"`
+}
+
+func (FirewallObservationModel) TableName() string {
+	return "server_protection_firewall_observation_v1"
+}
+
 // FirewallContributionTransitionModel fences one operation's contribution.
 // Rollback restores PreviousJSON (or removes this contribution) and composes
 // it with the then-current unrelated contributions.
 type FirewallContributionTransitionModel struct {
-	OperationID               string          `gorm:"primaryKey;size:128"`
-	Schema                    string          `gorm:"not null;size:96"`
-	ContributionID            string          `gorm:"not null;size:128;index"`
-	PreviousPresent           bool            `gorm:"not null"`
-	PreviousSemanticRevision  string          `gorm:"size:64"`
-	PreviousJSON              json.RawMessage `gorm:"column:previous_json;not null"`
-	DesiredSemanticRevision   string          `gorm:"not null;size:64"`
-	DesiredJSON               json.RawMessage `gorm:"column:desired_json;not null"`
-	BeforeCompositionRevision string          `gorm:"not null;size:64"`
-	AfterCompositionRevision  string          `gorm:"not null;size:64"`
-	ManagedPlanRevision       string          `gorm:"not null;size:64"`
-	CandidateSHA256           string          `gorm:"not null;size:64"`
-	State                     string          `gorm:"not null;size:32;index"`
-	MarkerUnixNano            int64           `gorm:"not null;default:0"`
-	MutationCompletedUnixNano int64           `gorm:"not null;default:0"`
-	HealthProviderInstance    string          `gorm:"size:128"`
-	HealthGeneration          uint64          `gorm:"not null;default:0"`
-	HealthObservationRevision string          `gorm:"size:64"`
-	HealthStartedUnixNano     int64           `gorm:"not null;default:0"`
-	HealthCompletedUnixNano   int64           `gorm:"not null;default:0"`
-	HealthExpiresUnixNano     int64           `gorm:"not null;default:0"`
-	CreatedAt                 int64           `gorm:"not null"`
-	UpdatedAt                 int64           `gorm:"not null"`
+	RuntimeRetirementReason        string          `gorm:"size:96"`
+	OperationID                    string          `gorm:"primaryKey;size:128"`
+	Schema                         string          `gorm:"not null;size:96"`
+	ContributionID                 string          `gorm:"not null;size:128;index"`
+	PreviousPresent                bool            `gorm:"not null"`
+	PreviousSemanticRevision       string          `gorm:"size:64"`
+	PreviousJSON                   json.RawMessage `gorm:"column:previous_json;not null"`
+	DesiredSemanticRevision        string          `gorm:"not null;size:64"`
+	DesiredJSON                    json.RawMessage `gorm:"column:desired_json;not null"`
+	BeforeCompositionRevision      string          `gorm:"not null;size:64"`
+	AfterCompositionRevision       string          `gorm:"not null;size:64"`
+	ManagedPlanRevision            string          `gorm:"not null;size:64"`
+	CandidateSHA256                string          `gorm:"not null;size:64"`
+	CandidateSemanticSHA256        string          `gorm:"column:candidate_semantic_sha256;size:64"`
+	CandidateTimedMembershipSHA256 string          `gorm:"column:candidate_timed_membership_sha256;size:64"`
+	State                          string          `gorm:"not null;size:32;index"`
+	MarkerUnixNano                 int64           `gorm:"not null;default:0"`
+	MutationCompletedUnixNano      int64           `gorm:"not null;default:0"`
+	HealthProviderInstance         string          `gorm:"size:128"`
+	HealthGeneration               uint64          `gorm:"not null;default:0"`
+	HealthObservationRevision      string          `gorm:"size:64"`
+	HealthStartedUnixNano          int64           `gorm:"not null;default:0"`
+	HealthCompletedUnixNano        int64           `gorm:"not null;default:0"`
+	HealthExpiresUnixNano          int64           `gorm:"not null;default:0"`
+	CreatedAt                      int64           `gorm:"not null"`
+	UpdatedAt                      int64           `gorm:"not null"`
 }
 
 func (FirewallContributionTransitionModel) TableName() string {
@@ -455,11 +486,11 @@ func (FirewallContributionTransitionModel) TableName() string {
 }
 
 type NativeFallbackOperationModel struct {
-	ID                          uint            `gorm:"primaryKey;autoIncrement"`
+	ID                          uint            `gorm:"primaryKey;autoIncrement;index:idx_sp_native_resource_latest,priority:2"`
 	Schema                      string          `gorm:"not null;size:96"`
 	OperationID                 string          `gorm:"not null;uniqueIndex;size:128"`
 	Revision                    int             `gorm:"not null"`
-	ResourceID                  string          `gorm:"not null;size:256;index"`
+	ResourceID                  string          `gorm:"not null;size:256;index;index:idx_sp_native_resource_latest,priority:1"`
 	InboundDatabaseID           uint            `gorm:"not null"`
 	PlanID                      string          `gorm:"not null;size:64"`
 	PlanDigest                  string          `gorm:"not null;size:64;index"`
@@ -599,10 +630,10 @@ type FrontingIdempotencyV2Model struct {
 	RequestDigest     string          `gorm:"not null;size:64"`
 	OperationID       string          `gorm:"size:128;index"`
 	OperationRevision int             `gorm:"not null;default:0"`
-	Status            string          `gorm:"not null;size:16;index"`
+	Status            string          `gorm:"not null;size:16;index;index:idx_sp_fronting_receipt_retention,priority:1"`
 	ResponseJSON      json.RawMessage `gorm:"column:response_json;not null"`
 	CreatedAt         int64           `gorm:"not null"`
-	UpdatedAt         int64           `gorm:"not null"`
+	UpdatedAt         int64           `gorm:"not null;index:idx_sp_fronting_receipt_retention,priority:2"`
 }
 
 func (FrontingIdempotencyV2Model) TableName() string {
@@ -651,10 +682,10 @@ type UDPGuardIdempotencyV1Model struct {
 	RequestDigest        string          `gorm:"not null;size:64"`
 	OperationID          string          `gorm:"size:128;index"`
 	OperationRevision    int             `gorm:"not null;default:0"`
-	Status               string          `gorm:"not null;size:16;index"`
+	Status               string          `gorm:"not null;size:16;index;index:idx_sp_udp_receipt_retention,priority:1"`
 	SemanticResponseJSON json.RawMessage `gorm:"column:semantic_response_json;not null"`
 	CreatedAt            int64           `gorm:"not null"`
-	UpdatedAt            int64           `gorm:"not null"`
+	UpdatedAt            int64           `gorm:"not null;index:idx_sp_udp_receipt_retention,priority:2"`
 }
 
 func (UDPGuardIdempotencyV1Model) TableName() string {
@@ -701,14 +732,29 @@ type LocalProxyIdempotencyV1Model struct {
 	RequestDigest        string          `gorm:"not null;size:64"`
 	OperationID          string          `gorm:"size:128;index"`
 	OperationRevision    int             `gorm:"not null;default:0"`
-	Status               string          `gorm:"not null;size:16;index"`
+	Status               string          `gorm:"not null;size:16;index;index:idx_sp_local_proxy_receipt_retention,priority:1"`
 	SemanticResponseJSON json.RawMessage `gorm:"column:semantic_response_json;not null"`
 	CreatedAt            int64           `gorm:"not null"`
-	UpdatedAt            int64           `gorm:"not null"`
+	UpdatedAt            int64           `gorm:"not null;index:idx_sp_local_proxy_receipt_retention,priority:2"`
 }
 
 func (LocalProxyIdempotencyV1Model) TableName() string {
 	return "server_protection_local_proxy_idempotency_v1"
+}
+
+// IdempotencyReplayFenceV1Model is the bounded authority left behind when a
+// semantic receipt is pruned. Structured keys at or below ExpiredThrough and
+// missing legacy keys after LegacyExpired can never be mistaken for a fresh
+// mutation after restart or database restore.
+type IdempotencyReplayFenceV1Model struct {
+	Family         string `gorm:"primaryKey;size:32"`
+	ExpiredThrough int64  `gorm:"not null;default:0"`
+	LegacyExpired  bool   `gorm:"not null;default:false"`
+	UpdatedAt      int64  `gorm:"not null"`
+}
+
+func (IdempotencyReplayFenceV1Model) TableName() string {
+	return "server_protection_idempotency_replay_fences_v1"
 }
 
 type TableModel struct {
@@ -737,6 +783,7 @@ func TableModels() []TableModel {
 		{"server_protection_firewall_states", &FirewallStateModel{}},
 		{"server_protection_firewall_contributions_v1", &FirewallContributionModel{}},
 		{"server_protection_firewall_composition_v1", &FirewallCompositionModel{}},
+		{"server_protection_firewall_observation_v1", &FirewallObservationModel{}},
 		{"server_protection_firewall_contribution_transitions_v1", &FirewallContributionTransitionModel{}},
 		{"server_protection_native_fallback_operations", &NativeFallbackOperationModel{}},
 		{"server_protection_native_fallback_states", &NativeFallbackStateModel{}},
@@ -746,18 +793,33 @@ func TableModels() []TableModel {
 		{"server_protection_udp_guard_idempotency_v1", &UDPGuardIdempotencyV1Model{}},
 		{"server_protection_local_proxy_states_v1", &LocalProxyStateV1Model{}},
 		{"server_protection_local_proxy_idempotency_v1", &LocalProxyIdempotencyV1Model{}},
+		{"server_protection_idempotency_replay_fences_v1", &IdempotencyReplayFenceV1Model{}},
 	}
 }
 
-// BackupTableModels excludes host-local rollback artifact metadata. Recovery
-// files and their paths are meaningful only on the host that created them.
+// BackupTableModels excludes host-local rollback artifact metadata and the
+// last volatile-kernel observation. Neither path-bound recovery material nor
+// live nft truth is portable to a restored host.
 func BackupTableModels() []TableModel {
 	all := TableModels()
-	result := make([]TableModel, 0, len(all)-1)
+	result := make([]TableModel, 0, len(all)-2)
 	for _, table := range all {
-		if table.Name != "server_protection_artifacts" {
+		if !nonportableBackupTable(table.Name) {
 			result = append(result, table)
 		}
 	}
 	return result
+}
+
+func NonportableBackupTables() []string {
+	return []string{"server_protection_artifacts", "server_protection_firewall_observation_v1"}
+}
+
+func nonportableBackupTable(name string) bool {
+	for _, excluded := range NonportableBackupTables() {
+		if name == excluded {
+			return true
+		}
+	}
+	return false
 }

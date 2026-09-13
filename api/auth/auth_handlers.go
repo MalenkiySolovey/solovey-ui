@@ -67,7 +67,7 @@ func (a *Handler) Login(c *gin.Context) {
 	}
 
 	remembered, _ := strconv.ParseBool(c.Request.FormValue("remember"))
-	err = a.SetLoginSecurity(c, service.LoginSessionSpec{
+	established, err := a.SetLoginSecurity(c, service.LoginSessionSpec{
 		UserID:               authResult.UserID(),
 		Username:             loginUser,
 		AuthState:            authResult.AuthState,
@@ -96,8 +96,9 @@ func (a *Handler) Login(c *gin.Context) {
 	a.NotifyEvent("login_success", map[string]string{
 		"user":            loginUser,
 		"ip":              remoteIP,
-		"sessionRevision": sessionRevision(sessionGeneration),
+		"sessionRevision": established.AuthenticationRevision,
 	})
+	a.NotifyAuthenticationEvent("login_success", loginUser, established.AuthenticationRevision, a.ClientIdentity(c))
 
 	a.JSONMsgObj(c, "", gin.H{
 		"state":     authResult.AuthState,
@@ -114,10 +115,6 @@ func (a *Handler) Logout(c *gin.Context) {
 	}
 	a.ClearSession(c)
 	a.JSONMsg(c, "", nil)
-}
-
-func sessionRevision(generation string) string {
-	return service.SessionGenerationRevision(generation)
 }
 
 func boundedUserAgent(value string) string {

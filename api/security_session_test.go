@@ -12,7 +12,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
 
@@ -33,9 +32,9 @@ func TestLegacyUnboundedSessionHasNoServerOrCookieExpiry(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
 	router.GET("/login", func(c *gin.Context) {
-		err := SetLoginSecurity(c, service.LoginSessionSpec{
+		_, err := SetLoginSecurity(c, service.LoginSessionSpec{
 			UserID:               admin.Id,
 			Username:             admin.Username,
 			AuthState:            service.AuthStateAuthenticated,
@@ -120,7 +119,7 @@ func newSecuritySessionMaxAgeRouter(t *testing.T, settingService interface {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
 	router.GET("/login", func(c *gin.Context) {
 		generation, err := settingService.GetSessionGeneration()
 		if err != nil {
@@ -177,7 +176,7 @@ func TestSecurityTransitionRotationInvalidatesPreMetadataLegacySession(t *testin
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
 	router.GET("/legacy", func(c *gin.Context) {
 		session := sessions.Default(c)
 		session.Set(service.SessionLoginUserKey, admin.Username)
@@ -189,7 +188,7 @@ func TestSecurityTransitionRotationInvalidatesPreMetadataLegacySession(t *testin
 		c.Status(http.StatusNoContent)
 	})
 	router.GET("/current", func(c *gin.Context) {
-		if err := SetLoginSecurity(c, service.LoginSessionSpec{
+		if _, err := SetLoginSecurity(c, service.LoginSessionSpec{
 			UserID: admin.Id, Username: admin.Username,
 			AuthState: service.AuthStateAuthenticated, Assurance: service.AssurancePassword,
 			LifetimePosture: service.LifetimePostureLegacyUnbounded, SessionGeneration: generation,
@@ -249,7 +248,7 @@ func TestPreMetadataLegacySessionFailsClosedAfterDurableCredentialGenerationChan
 
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
 	router.GET("/legacy", func(c *gin.Context) {
 		session := sessions.Default(c)
 		session.Set(service.SessionLoginUserKey, "admin")

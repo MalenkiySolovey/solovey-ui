@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"errors"
+	"regexp"
 	"time"
 
 	"gorm.io/gorm"
@@ -10,10 +11,16 @@ import (
 
 var ErrFirewallAuthorityConflict = errors.New("firewall contribution authority conflict")
 
+const FirewallObservationSchemaV1 = "solovey-ui/managed-firewall-observation/v1"
+
+var firewallIdentityPattern = regexp.MustCompile(`^[0-9a-f]{64}$`)
+
 type FirewallAuthoritySnapshot struct {
 	Contributions  []FirewallContributionModel
 	Composition    FirewallCompositionModel
 	HasComposition bool
+	Observation    FirewallObservationModel
+	HasObservation bool
 }
 
 func (r *Repository) FirewallAuthority(ctx context.Context) (FirewallAuthoritySnapshot, error) {
@@ -27,6 +34,12 @@ func (r *Repository) FirewallAuthority(ctx context.Context) (FirewallAuthoritySn
 	err := r.db.WithContext(ctx).Where("id = ?", 1).First(&result.Composition).Error
 	if err == nil {
 		result.HasComposition = true
+	} else if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return FirewallAuthoritySnapshot{}, err
+	}
+	err = r.db.WithContext(ctx).Where("id = ?", 1).First(&result.Observation).Error
+	if err == nil {
+		result.HasObservation = true
 		return result, nil
 	}
 	if errors.Is(err, gorm.ErrRecordNotFound) {
@@ -106,7 +119,7 @@ func (r *Repository) CommitFirewallAuthority(ctx context.Context, operationID, e
 	if r == nil || r.db == nil {
 		return errors.New("server-protection repository is not initialized")
 	}
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	return r.durableTransition(ctx, "firewall_composition_commit", func(tx *gorm.DB) error {
 		var transition FirewallContributionTransitionModel
 		if err := tx.Where("operation_id = ?", operationID).First(&transition).Error; err != nil {
 			return err
@@ -194,9 +207,30 @@ func (r *Repository) CommitFirewallAuthority(ctx context.Context, operationID, e
 				return err
 			}
 		}
+		observation := FirewallObservationModel{ID: 1, Schema: FirewallObservationSchemaV1, State: "ABSENT", ObservedAt: now, UpdatedAt: now}
+		if composition.Schema != "" {
+			observation.State = "MATCHING"
+			observation.HasCommittedAuthority = true
+			observation.CommittedCompositionRevision = composition.Revision
+			observation.ManagedTablePresent = true
+			observation.CurrentRevision = composition.ManagedPlanRevision
+			observation.CurrentSemanticSHA256 = composition.CandidateSemanticSHA256
+			observation.CurrentTimedMembershipSHA256 = composition.CandidateTimedMembershipSHA256
+			observation.ExpectedTimedMembershipSHA256 = composition.CandidateTimedMembershipSHA256
+		}
+		if err := validateFirewallObservation(observation); err != nil {
+			return err
+		}
+		if err := tx.Save(&observation).Error; err != nil {
+			return err
+		}
+		transitionValues := map[string]any{"state": transitionState, "updated_at": now}
+		if transitionState == "ROLLED_BACK" && currentComposition.Runtime.State == "RESTORE_FAILED" {
+			transitionValues["runtime_retirement_reason"] = currentComposition.Runtime.Reason
+		}
 		update := tx.Model(&FirewallContributionTransitionModel{}).
 			Where("operation_id = ?", operationID).
-			Updates(map[string]any{"state": transitionState, "updated_at": now})
+			Updates(transitionValues)
 		if update.Error != nil {
 			return update.Error
 		}
@@ -240,6 +274,112 @@ func (r *Repository) SetFirewallTransitionState(ctx context.Context, operationID
 	return nil
 }
 
+// RecordFirewallObservation atomically fences the committed composition seen
+// by the caller and stores only the latest host-local live-kernel fact. It
+// never changes contribution or committed composition authority.
+func (r *Repository) RecordFirewallObservation(ctx context.Context, value FirewallObservationModel, expectedCompositionRevision string) error {
+	if r == nil || r.db == nil {
+		return ErrFirewallAuthorityConflict
+	}
+	return r.durableTransition(ctx, "firewall_observation", func(tx *gorm.DB) error {
+		var count int64
+		query := tx.Model(&FirewallCompositionModel{}).Where("id = ?", 1)
+		if expectedCompositionRevision != "" {
+			query = query.Where("revision = ?", expectedCompositionRevision)
+		}
+		if err := query.Count(&count).Error; err != nil {
+			return err
+		}
+		if expectedCompositionRevision == "" && count != 0 || expectedCompositionRevision != "" && count != 1 {
+			return ErrFirewallAuthorityConflict
+		}
+		now := time.Now().UTC().UnixNano()
+		value.ID = 1
+		value.Schema = FirewallObservationSchemaV1
+		value.HasCommittedAuthority = expectedCompositionRevision != ""
+		value.CommittedCompositionRevision = expectedCompositionRevision
+		value.ObservedAt = now
+		value.UpdatedAt = now
+		if err := validateFirewallObservation(value); err != nil {
+			return err
+		}
+		return tx.Save(&value).Error
+	})
+}
+
+// RetireFirewallAuthorityAfterRuntimeLoss atomically closes the durable
+// aggregate after a fresh ABSENT observation proves that the volatile kernel
+// table is gone. The operation fence is supplied by the startup reconciler.
+// Contributions are desired-state inputs only while their aggregate has live
+// authority, so retiring the aggregate also retires those inputs and every
+// transition that claimed the lost table. The operation manager terminalizes
+// each APPLIED operation separately under its own revision fence.
+func (r *Repository) RetireFirewallAuthorityAfterRuntimeLoss(ctx context.Context, operationID string, operationRevision int, expectedCompositionRevision string) error {
+	if r == nil || r.db == nil || operationID == "" || operationRevision <= 0 || expectedCompositionRevision != "" && !firewallIdentityPattern.MatchString(expectedCompositionRevision) {
+		return ErrFirewallAuthorityConflict
+	}
+	return r.durableTransition(ctx, "firewall_retirement", func(tx *gorm.DB) error {
+		var operation OperationLockModel
+		if err := tx.Where("operation_id = ? AND revision = ? AND kind = ? AND state IN ?", operationID, operationRevision, "firewall", []string{"applied", "reconcile_required", "restoring_runtime"}).First(&operation).Error; err != nil {
+			return ErrFirewallAuthorityConflict
+		}
+		var observation FirewallObservationModel
+		if err := tx.Where("id = ?", 1).First(&observation).Error; err != nil || observation.State != "ABSENT" || observation.ManagedTablePresent {
+			return ErrFirewallAuthorityConflict
+		}
+		var composition FirewallCompositionModel
+		err := tx.Where("id = ?", 1).First(&composition).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			var count int64
+			if expectedCompositionRevision != "" || observation.HasCommittedAuthority || observation.CommittedCompositionRevision != "" || tx.Model(&FirewallContributionModel{}).Count(&count).Error != nil || count != 0 {
+				return ErrFirewallAuthorityConflict
+			}
+			return nil
+		}
+		if err != nil || composition.State != "ACTIVE" || composition.Revision != expectedCompositionRevision || !observation.HasCommittedAuthority || observation.CommittedCompositionRevision != expectedCompositionRevision {
+			return ErrFirewallAuthorityConflict
+		}
+		now := time.Now().UTC().UnixNano()
+		if err := tx.Where("1 = 1").Delete(&FirewallContributionModel{}).Error; err != nil {
+			return err
+		}
+		deleted := tx.Where("id = ? AND revision = ? AND state = ?", 1, expectedCompositionRevision, "ACTIVE").Delete(&FirewallCompositionModel{})
+		if deleted.Error != nil || deleted.RowsAffected != 1 {
+			if deleted.Error != nil {
+				return deleted.Error
+			}
+			return ErrFirewallAuthorityConflict
+		}
+		if err := tx.Model(&FirewallContributionTransitionModel{}).
+			Where("state IN ?", []string{"APPLIED", "HEALTH_VERIFIED"}).
+			Updates(map[string]any{"state": "RETIRED_RUNTIME_LOSS", "runtime_retirement_reason": composition.Runtime.Reason, "updated_at": now}).Error; err != nil {
+			return err
+		}
+		retiredObservation := FirewallObservationModel{ID: 1, Schema: FirewallObservationSchemaV1, State: "ABSENT", ObservedAt: now, UpdatedAt: now}
+		if err := validateFirewallObservation(retiredObservation); err != nil {
+			return err
+		}
+		return tx.Save(&retiredObservation).Error
+	})
+}
+
+func validateFirewallObservation(value FirewallObservationModel) error {
+	allowed := map[string]bool{"ABSENT": true, "MATCHING": true, "FOREIGN": true, "DRIFTED": true, "UNAVAILABLE": true}
+	if value.Schema != FirewallObservationSchemaV1 || !allowed[value.State] || len(value.Reason) > 96 || value.ObservedAt <= 0 ||
+		value.HasCommittedAuthority != (value.CommittedCompositionRevision != "") || value.CommittedCompositionRevision != "" && !firewallIdentityPattern.MatchString(value.CommittedCompositionRevision) {
+		return ErrFirewallAuthorityConflict
+	}
+	if value.CurrentRevision != "" && !firewallIdentityPattern.MatchString(value.CurrentRevision) || value.CurrentSemanticSHA256 != "" && !firewallIdentityPattern.MatchString(value.CurrentSemanticSHA256) ||
+		value.CurrentTimedMembershipSHA256 != "" && !firewallIdentityPattern.MatchString(value.CurrentTimedMembershipSHA256) || value.ExpectedTimedMembershipSHA256 != "" && !firewallIdentityPattern.MatchString(value.ExpectedTimedMembershipSHA256) {
+		return ErrFirewallAuthorityConflict
+	}
+	if !value.ManagedTablePresent && (value.CurrentRevision != "" || value.CurrentSemanticSHA256 != "" || value.CurrentTimedMembershipSHA256 != "" || value.ExpectedTimedMembershipSHA256 != "") || value.State == "ABSENT" && value.ManagedTablePresent ||
+		value.State == "MATCHING" && (!value.HasCommittedAuthority || !value.ManagedTablePresent || value.CurrentRevision == "" || value.CurrentSemanticSHA256 == "" || (value.CurrentTimedMembershipSHA256 == "") != (value.ExpectedTimedMembershipSHA256 == "") || value.CurrentTimedMembershipSHA256 != value.ExpectedTimedMembershipSHA256) {
+		return ErrFirewallAuthorityConflict
+	}
+	return nil
+}
+
 // ReconcileRestoredFirewallAuthority never mutates the host firewall. A
 // restored aggregate is deliberately distrusted until an operator resolves
 // it against fresh managed-table evidence on this host.
@@ -247,12 +387,21 @@ func ReconcileRestoredFirewallAuthority(ctx context.Context, db *gorm.DB, now ti
 	if db == nil || !db.Migrator().HasTable(&FirewallCompositionModel{}) {
 		return nil
 	}
+	// Import owns schema replacement; resolve optional tables before the short
+	// write-first transaction so schema reads cannot create a stale snapshot.
+	hasObservation := db.Migrator().HasTable(&FirewallObservationModel{})
+	hasTransition := db.Migrator().HasTable(&FirewallContributionTransitionModel{})
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		stamp := now.UTC().UnixNano()
+		if hasObservation {
+			if err := tx.Where("id = ?", 1).Delete(&FirewallObservationModel{}).Error; err != nil {
+				return err
+			}
+		}
 		if err := tx.Model(&FirewallCompositionModel{}).Where("state = ?", "ACTIVE").Updates(map[string]any{"state": "RECOVERY_REQUIRED", "updated_at": stamp}).Error; err != nil {
 			return err
 		}
-		if !tx.Migrator().HasTable(&FirewallContributionTransitionModel{}) {
+		if !hasTransition {
 			return nil
 		}
 		return tx.Model(&FirewallContributionTransitionModel{}).

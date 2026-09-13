@@ -28,13 +28,17 @@ const (
 	DockerHost            ProfileID = "docker-host-unprivileged"
 	DockerBridge          ProfileID = "docker-bridge-explicit"
 	DockerNetworkAdvanced ProfileID = "docker-network-advanced"
+	PackageManagedOpenWrt ProfileID = "package-managed-openwrt"
 )
 
 type Runtime string
 
 const (
-	RuntimeNative Runtime = "native"
-	RuntimeDocker Runtime = "docker"
+	// RuntimeSystemdNative preserves the released "native" wire value while
+	// making its current Systemd implementation explicit in source.
+	RuntimeSystemdNative  Runtime = "native"
+	RuntimeDocker         Runtime = "docker"
+	RuntimePackageManaged Runtime = "package-managed"
 )
 
 type SupportTier string
@@ -59,36 +63,39 @@ type Profile struct {
 	ProcessIdentities   []string    `json:"processIdentities"`
 	WriteScopes         []string    `json:"writeScopes"`
 	ServiceUnits        []string    `json:"serviceUnits"`
-	EvidenceStatus      string      `json:"evidenceStatus"`
 	Constraints         []string    `json:"constraints,omitempty"`
 	Revision            string      `json:"revision"`
 }
 
 func Catalog() []Profile {
 	profiles := []Profile{
-		{ID: NativeHardened, Runtime: RuntimeNative, Support: TierRecommended, FreshInstallDefault: true, BrokerRequired: true,
+		{ID: NativeHardened, Runtime: RuntimeSystemdNative, Support: TierRecommended, FreshInstallDefault: true, BrokerRequired: true,
 			ProcessIdentities: []string{"panel-service-account", "privileged-broker-root"}, WriteScopes: []string{"panel-state", "panel-runtime", "panel-logs"},
-			ServiceUnits: []string{"solovey-ui.service", "solovey-privileged-broker.service"}, EvidenceStatus: "NORMAL_CI_VERIFIED_LIVE_NOT_RUN",
-			Constraints: []string{"high_ports_only", "no_tun", "no_transparent_proxy"}},
-		{ID: NativeNetworkAdvanced, Runtime: RuntimeNative, Support: TierExperimental, BrokerRequired: true,
+			ServiceUnits: []string{"solovey-ui.service", "solovey-privileged-broker.service"},
+			Constraints:  []string{"high_ports_only", "no_tun", "no_transparent_proxy"}},
+		{ID: NativeNetworkAdvanced, Runtime: RuntimeSystemdNative, Support: TierExperimental, BrokerRequired: true,
 			NetworkCapabilities: []string{"CAP_NET_ADMIN", "CAP_NET_BIND_SERVICE", "CAP_NET_RAW"},
 			ProcessIdentities:   []string{"panel-service-account", "privileged-broker-root"}, WriteScopes: []string{"panel-state", "panel-runtime"},
-			ServiceUnits: []string{"solovey-ui.service", "solovey-privileged-broker.service"}, EvidenceStatus: "GENERATED_UNSUPPORTED_LIVE_NOT_RUN",
-			Constraints: []string{"explicit_operator_opt_in", "tun_device", "separate_core_runtime_required"}},
-		{ID: NativeLegacyRoot, Runtime: RuntimeNative, Support: TierCompatibility, PanelRoot: true, BrokerRequired: true,
+			ServiceUnits: []string{"solovey-ui.service", "solovey-privileged-broker.service"},
+			Constraints:  []string{"explicit_operator_opt_in", "tun_device", "separate_core_runtime_required"}},
+		{ID: NativeLegacyRoot, Runtime: RuntimeSystemdNative, Support: TierCompatibility, PanelRoot: true, BrokerRequired: true,
 			ProcessIdentities: []string{"legacy-panel-root", "privileged-broker-root"}, WriteScopes: []string{"legacy-install-root"},
-			ServiceUnits: []string{"solovey-ui.service", "solovey-privileged-broker.service"}, EvidenceStatus: "COMPATIBILITY_LIVE_NOT_RUN",
-			Constraints: []string{"existing_install_compatibility_only", "not_a_fresh_install_default"}},
+			ServiceUnits: []string{"solovey-ui.service", "solovey-privileged-broker.service"},
+			Constraints:  []string{"existing_install_compatibility_only", "not_a_fresh_install_default"}},
 		{ID: DockerHost, Runtime: RuntimeDocker, Support: TierRecommended, FreshInstallDefault: true, HostNetwork: true,
 			ProcessIdentities: []string{"container-nonroot-65532"}, WriteScopes: []string{"bound-data", "bound-cert", "tmpfs-runtime"},
-			ServiceUnits: []string{}, EvidenceStatus: "GENERATED_NORMAL_CI_VERIFIED_LIVE_NOT_RUN", Constraints: []string{"broker_unavailable", "host_firewall_unmanaged"}},
+			ServiceUnits: []string{}, Constraints: []string{"broker_unavailable", "host_firewall_unmanaged"}},
 		{ID: DockerBridge, Runtime: RuntimeDocker, Support: TierSupported, ExplicitPorts: true,
 			ProcessIdentities: []string{"container-nonroot-65532"}, WriteScopes: []string{"bound-data", "bound-cert", "tmpfs-runtime"},
-			ServiceUnits: []string{}, EvidenceStatus: "GENERATED_NORMAL_CI_VERIFIED_LIVE_NOT_RUN", Constraints: []string{"explicit_tcp_udp_ports", "broker_unavailable", "host_firewall_unmanaged"}},
+			ServiceUnits: []string{}, Constraints: []string{"explicit_tcp_udp_ports", "broker_unavailable", "host_firewall_unmanaged"}},
 		{ID: DockerNetworkAdvanced, Runtime: RuntimeDocker, Support: TierExperimental, HostNetwork: true,
 			NetworkCapabilities: []string{"NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"}, ProcessIdentities: []string{"container-nonroot-65532"},
 			WriteScopes: []string{"bound-data", "bound-cert", "tmpfs-runtime", "tun-device"}, ServiceUnits: []string{},
-			EvidenceStatus: "GENERATED_EXPERIMENTAL_LIVE_NOT_RUN", Constraints: []string{"explicit_operator_opt_in", "tun_device", "broker_unavailable"}},
+			Constraints: []string{"explicit_operator_opt_in", "tun_device", "broker_unavailable"}},
+		{ID: PackageManagedOpenWrt, Runtime: RuntimePackageManaged, Support: TierSupported, FreshInstallDefault: true, BrokerRequired: true,
+			ProcessIdentities: []string{"panel-service-account", "privileged-broker-root"}, WriteScopes: []string{"package-data", "component-runtime"},
+			ServiceUnits: []string{},
+			Constraints:  []string{"package_manager_owns_lifecycle", "in_panel_migration_unavailable"}},
 	}
 	for index := range profiles {
 		copy := profiles[index]
@@ -259,7 +266,7 @@ func (p Posture) ValidateProjection(now time.Time) error {
 			return errors.New("deployment posture projection is invalid")
 		}
 	}
-	if p.Runtime == RuntimeNative {
+	if p.Runtime == RuntimeSystemdNative {
 		if p.Systemd == nil || p.Systemd.Validate(now) != nil || p.Systemd.ObservedAt != p.ObservedAt || p.Systemd.ExpiresAt != p.ExpiresAt {
 			return errors.New("native systemd actual-state projection is unavailable")
 		}
@@ -272,7 +279,7 @@ func (p Posture) ValidateProjection(now time.Time) error {
 			return errors.New("native systemd profile facts are inconsistent")
 		}
 	} else if p.Systemd != nil {
-		return errors.New("container posture cannot claim native systemd facts")
+		return errors.New("non-Systemd posture cannot claim Systemd facts")
 	}
 	if p.VerifiedProfile != "" && p.VerifiedProfile != p.ActiveProfile || p.ActiveProfile != "" && p.InstalledProfile == "" {
 		return errors.New("deployment posture projection order is invalid")
@@ -313,7 +320,6 @@ type DoctorReport struct {
 	Installed    ProfileID    `json:"installedProfile,omitempty"`
 	Active       ProfileID    `json:"activeProfile,omitempty"`
 	Verified     ProfileID    `json:"verifiedProfile,omitempty"`
-	Evidence     string       `json:"evidenceStatus"`
 	GeneratedAt  int64        `json:"generatedAt"`
 	Revision     string       `json:"revision"`
 }
@@ -329,7 +335,6 @@ func FinalizeDoctor(report DoctorReport) DoctorReport {
 	})
 	report.Healthy = true
 	report.State = "READY"
-	report.Evidence = "NORMAL_CI_VERIFIED_LIVE_NOT_RUN"
 	for _, finding := range report.Findings {
 		if finding.Severity == SeverityCritical {
 			report.Healthy = false
@@ -356,7 +361,7 @@ func (report DoctorReport) Validate(now time.Time) error {
 	copy.Revision = ""
 	if report.Schema != DoctorSchemaV1 || report.GeneratedAt <= 0 || report.GeneratedAt > now.Add(time.Minute).Unix() ||
 		!digest(report.Revision) || report.Revision != Revision(copy) || report.Capabilities.Validate() != nil ||
-		len(report.Profiles) != len(Catalog()) || len(report.Findings) > 64 || !safeCode(report.State, 64) || !safeCode(report.Evidence, 96) {
+		len(report.Profiles) != len(Catalog()) || len(report.Findings) > 64 || !safeCode(report.State, 64) {
 		return errors.New("deployment doctor report is malformed")
 	}
 	if report.Posture != nil && report.Posture.ObservedAt > report.GeneratedAt+1 {
@@ -401,6 +406,7 @@ type Operation struct {
 	ExpectedPosture    string         `json:"expectedPosture"`
 	ExpectedManagement string         `json:"expectedManagement"`
 	CheckpointRef      string         `json:"checkpointRef,omitempty"`
+	CheckpointReleased bool           `json:"checkpointReleased"`
 	BrokerReceipt      string         `json:"brokerReceipt,omitempty"`
 	Revision           uint64         `json:"revision"`
 	RestoredUntrusted  bool           `json:"restoredUntrusted"`
@@ -414,7 +420,7 @@ type Operation struct {
 func (o Operation) Validate() error {
 	from, fromOK := Lookup(o.FromProfile)
 	target, targetOK := Lookup(o.TargetProfile)
-	if o.Schema != SchemaV1 || !fromOK || !targetOK || from.Runtime != RuntimeNative || target.Runtime != RuntimeNative || o.FromProfile == o.TargetProfile {
+	if o.Schema != SchemaV1 || !fromOK || !targetOK || from.Runtime != RuntimeSystemdNative || target.Runtime != RuntimeSystemdNative || o.FromProfile == o.TargetProfile {
 		return errors.New("deployment operation profile identity is invalid")
 	}
 	if !validOperationState(o.State) || !safeID(o.OperationID, 96) || !safeID(o.IdempotencyKey, 96) || o.Revision == 0 {
@@ -452,6 +458,7 @@ func OperationBinding(operation Operation) string {
 	copy.State = ""
 	copy.Revision = 0
 	copy.CheckpointRef = ""
+	copy.CheckpointReleased = false
 	copy.BrokerReceipt = ""
 	copy.ReconciledAt = 0
 	copy.RestoredUntrusted = false

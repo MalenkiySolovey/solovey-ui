@@ -3,6 +3,7 @@ package deployment
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -18,8 +19,28 @@ type fakeProvider struct {
 	verifyFailure bool
 	applyFailure  bool
 	rollbackFail  bool
+	releaseFail   bool
 	mutations     []string
 	now           time.Time
+}
+
+type blockingReadProvider struct {
+	*fakeProvider
+	entered chan string
+	release chan struct{}
+}
+
+func (p *blockingReadProvider) Observe(context.Context) (domain.Posture, error) {
+	p.entered <- "status"
+	<-p.release
+	return p.posture(p.current), nil
+}
+
+func (p *blockingReadProvider) Doctor(ctx context.Context) (domain.DoctorReport, error) {
+	p.entered <- "doctor"
+	<-p.release
+	posture := p.posture(p.current)
+	return domain.FinalizeDoctor(domain.DoctorReport{Posture: &posture, Capabilities: p.Capabilities(ctx), GeneratedAt: p.now.Unix()}), nil
 }
 
 func (*fakeProvider) ProviderID() string { return domain.ProviderV1 }
@@ -38,6 +59,17 @@ func (p *fakeProvider) Doctor(ctx context.Context) (domain.DoctorReport, error) 
 func (p *fakeProvider) Prepare(_ context.Context, fence FenceV1, target domain.ProfileID) (string, error) {
 	p.mutations = append(p.mutations, "prepare:"+string(target)+":"+fence.OperationID)
 	return domain.Revision("checkpoint:" + fence.OperationID), nil
+}
+func (p *fakeProvider) RecoverPreparedCheckpoint(_ context.Context, fence FenceV1, target domain.ProfileID) (string, error) {
+	p.mutations = append(p.mutations, "recover-prepare:"+string(target)+":"+fence.OperationID)
+	return domain.Revision("checkpoint:" + fence.OperationID), nil
+}
+func (p *fakeProvider) ReleaseCheckpoint(_ context.Context, _ FenceV1, checkpoint string) error {
+	p.mutations = append(p.mutations, "release:"+checkpoint)
+	if p.releaseFail {
+		return definitiveCheckpointReleaseFailure(errors.New("release failed"))
+	}
+	return nil
 }
 func (p *fakeProvider) Apply(_ context.Context, _ FenceV1, target domain.ProfileID, _ string) error {
 	p.mutations = append(p.mutations, "apply:"+string(target))
@@ -120,7 +152,7 @@ func TestDeploymentMigrationHappyPathPersistsExplicitStates(t *testing.T) {
 	if err := db.Model(&model.DeploymentJournal{}).Where("operation_id = ?", operation.OperationID).Count(&journalCount).Error; err != nil || journalCount < 5 {
 		t.Fatalf("journal count=%d err=%v", journalCount, err)
 	}
-	if strings.Join(provider.mutations, ",") != "prepare:native-hardened:"+operation.OperationID+",apply:native-hardened,verify:native-hardened,verify:native-hardened" {
+	if strings.Join(provider.mutations, ",") != "prepare:native-hardened:"+operation.OperationID+",apply:native-hardened,verify:native-hardened,verify:native-hardened,release:"+operation.CheckpointRef {
 		t.Fatalf("mutations=%v", provider.mutations)
 	}
 }
@@ -134,7 +166,7 @@ func TestNativeAdvancedProfileFailsClosedWithoutSeparateRuntime(t *testing.T) {
 }
 
 func TestDeploymentStatusFailsWhenObservedPostureCannotPersist(t *testing.T) {
-	db, err := gorm.Open(sqlite.Open("file:deployment-posture-failure?mode=memory&cache=shared"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(testSQLiteDSN(t, "deployment-posture-failure")), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -150,6 +182,46 @@ func TestDeploymentStatusFailsWhenObservedPostureCannotPersist(t *testing.T) {
 
 	if _, err := manager.Status(context.Background()); err == nil {
 		t.Fatal("Status succeeded without durable deployment state storage")
+	}
+}
+
+func TestDeploymentStatusAndDoctorSerializePersistentObservations(t *testing.T) {
+	manager, provider, _ := deploymentFixture(t)
+	blocking := &blockingReadProvider{fakeProvider: provider, entered: make(chan string, 2), release: make(chan struct{})}
+	manager.Provider = blocking
+	statusDone := make(chan error, 1)
+	go func() {
+		_, err := manager.Status(context.Background())
+		statusDone <- err
+	}()
+	if entered := <-blocking.entered; entered != "status" {
+		t.Fatalf("first observation=%q", entered)
+	}
+	doctorDone := make(chan error, 1)
+	go func() {
+		_, err := manager.Doctor(context.Background())
+		doctorDone <- err
+	}()
+	select {
+	case entered := <-blocking.entered:
+		t.Fatalf("concurrent persistent observation entered provider: %q", entered)
+	case <-time.After(50 * time.Millisecond):
+	}
+	blocking.release <- struct{}{}
+	if err := <-statusDone; err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case entered := <-blocking.entered:
+		if entered != "doctor" {
+			t.Fatalf("second observation=%q", entered)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("doctor did not enter after status released the observation lane")
+	}
+	blocking.release <- struct{}{}
+	if err := <-doctorDone; err != nil {
+		t.Fatal(err)
 	}
 }
 
@@ -318,7 +390,7 @@ func BenchmarkDeploymentIdempotentFakeWorkflowReplay(b *testing.B) {
 
 func deploymentFixture(t testing.TB) (*Manager, *fakeProvider, *gorm.DB) {
 	t.Helper()
-	db, err := gorm.Open(sqlite.Open("file:"+strings.ReplaceAll(t.Name(), "/", "_")+"?mode=memory&cache=shared"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(testSQLiteDSN(t, "deployment")), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -333,6 +405,12 @@ func deploymentFixture(t testing.TB) (*Manager, *fakeProvider, *gorm.DB) {
 	manager.Management = func(context.Context, time.Time) ManagementPreservation { return readyManagement() }
 	manager.Health = func(context.Context, time.Time) RuntimeHealth { return readyRuntimeHealth() }
 	return manager, provider, db
+}
+
+func testSQLiteDSN(t testing.TB, prefix string) string {
+	t.Helper()
+	name := strings.NewReplacer("/", "_", " ", "_").Replace(t.Name())
+	return "file:" + prefix + "-" + name + "-" + strconv.FormatInt(time.Now().UnixNano(), 10) + "?mode=memory&cache=shared"
 }
 
 func readyManagement() ManagementPreservation {

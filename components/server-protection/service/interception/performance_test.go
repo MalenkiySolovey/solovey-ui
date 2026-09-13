@@ -48,7 +48,7 @@ func TestInspectionPlannerMaximumFixtureIsBounded(t *testing.T) {
 		t.Fatal(err)
 	}
 	scopes := hostresources.NewForwardedIngressScopeRegistryV1()
-	service := &Service{Interceptions: registry, IngressScopes: scopes, Now: func() time.Time { return now }, GOOS: "linux"}
+	service := &Service{Interceptions: registry, IngressScopes: scopes, Now: func() time.Time { return now }, KernelCapability: KernelInterceptionCapabilityV1{Available: true, Revision: digest}}
 
 	durations := make([]time.Duration, 20)
 	for index := range durations {

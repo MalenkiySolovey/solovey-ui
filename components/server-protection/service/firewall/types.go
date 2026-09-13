@@ -66,6 +66,10 @@ type StormLimit struct {
 }
 
 type FirewallPlan struct {
+	// Only the planner supplies current mutation evidence. It is absent from
+	// serialization and semantic identity: stored plans are recovery evidence,
+	// never fresh authorization for another Apply.
+	mutationEvidence         *firewallMutationEvidence
 	Schema                   string                              `json:"schema,omitempty"`
 	Mode                     string                              `json:"mode,omitempty"`
 	Revision                 string                              `json:"revision"`
@@ -102,5 +106,13 @@ type FirewallPreview struct {
 
 type PreviewOptions struct {
 	IncludeGeneratedNFT bool
-	OperatingSystem     string
+	NFTCapability       NFTPreviewCapability
+}
+
+// NFTPreviewCapability is the narrow helper-owned fact needed by preview.
+// Preview never infers kernel support from the panel process platform.
+type NFTPreviewCapability struct {
+	Available bool
+	Reason    string
+	Revision  string
 }

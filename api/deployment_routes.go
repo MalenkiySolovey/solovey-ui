@@ -8,6 +8,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
+	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"
 	"github.com/gin-gonic/gin"
@@ -110,9 +111,9 @@ func (h *deploymentHTTP) broker(c *gin.Context) {
 		return
 	}
 	capabilities := h.manager.Capabilities(c.Request.Context())
-	jsonObj(c, gin.H{"available": capabilities.Observe == domain.Available, "protocolRevision": domain.ProviderV1,
-		"transport": "systemd-activated-unix-peer-credentials", "peerPosture": "root-owned-pinned-client-manifest",
-		"capabilities": capabilities}, nil)
+	presentation := h.manager.BrokerPresentation(c.Request.Context())
+	jsonObj(c, gin.H{"available": presentation.Available, "protocolRevision": presentation.ProtocolRevision,
+		"transport": presentation.Transport, "peerPosture": presentation.PeerPosture, "capabilities": capabilities}, nil)
 }
 
 func (h *deploymentHTTP) capabilities(c *gin.Context) {
@@ -145,16 +146,11 @@ func (h *deploymentHTTP) status(c *gin.Context) {
 	case !state.Trusted || state.ActiveProfile == "" || state.ActiveProfile != state.VerifiedProfile:
 		statusState = "ACTIVE_NOT_VERIFIED"
 	}
-	evidence := "NORMAL_CI_VERIFIED_LIVE_NOT_RUN"
-	if profile, ok := domain.Lookup(posture.Profile); ok {
-		evidence = profile.EvidenceStatus
-	}
 	jsonObj(c, gin.H{"state": statusState, "posture": posture, "desiredProfile": state.DesiredProfile,
 		"generatedProfile": state.GeneratedProfile, "generatedRevision": state.GeneratedRevision,
 		"installedProfile": state.InstalledProfile, "activeProfile": state.ActiveProfile,
 		"verifiedProfile": state.VerifiedProfile, "compatibilityState": state.CompatibilityState,
-		"doctorRevision": state.DoctorRevision, "trusted": state.Trusted,
-		"evidenceStatus": evidence}, nil)
+		"doctorRevision": state.DoctorRevision, "trusted": state.Trusted}, nil)
 }
 
 func (h *deploymentHTTP) doctor(c *gin.Context) {
@@ -317,6 +313,10 @@ func (h *deploymentHTTP) mutateExisting(c *gin.Context, action, auditEvent strin
 
 func (h *deploymentHTTP) writeReadError(c *gin.Context, operation string, err error) {
 	code := deploymentReasonCode(err)
+	// Keep browser errors stable and non-sensitive while retaining enough
+	// server-side context to distinguish provider, package-posture and
+	// persistence failures from an unexpected internal failure.
+	logger.Warning("deployment read failed: operation=", operation, " reason=", code)
 	state := "UNAVAILABLE"
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		state = "NOT_OBSERVED"
@@ -348,6 +348,10 @@ func deploymentReasonCode(err error) string {
 		return "deployment_operation_conflict"
 	case errors.Is(err, deploymentservice.ErrUnsafeMigration):
 		return "deployment_manual_recovery_required"
+	case errors.Is(err, deploymentservice.ErrPackagePosture):
+		return "deployment_package_posture_unavailable"
+	case errors.Is(err, deploymentservice.ErrStatePersistence):
+		return "deployment_state_persistence_unavailable"
 	case errors.Is(err, gorm.ErrRecordNotFound):
 		return "deployment_not_observed"
 	default:

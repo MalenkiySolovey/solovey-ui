@@ -23,6 +23,10 @@ func installedOwnerTables(sourceDB *gorm.DB, already map[string]struct{}) ([]bac
 		if !available {
 			return nil, fmt.Errorf("installed durable owner %q is unavailable; backup fails closed", owner.ID)
 		}
+		excluded, err := durableowner.NonportableBackupTables(owner.ID)
+		if err != nil {
+			return nil, err
+		}
 		for _, tableName := range component.Database.Tables {
 			if previous := claimed[tableName]; previous != "" && previous != owner.ID {
 				return nil, fmt.Errorf("durable table %q has ambiguous owners %q and %q", tableName, previous, owner.ID)
@@ -30,6 +34,11 @@ func installedOwnerTables(sourceDB *gorm.DB, already map[string]struct{}) ([]bac
 			claimed[tableName] = owner.ID
 			if _, exists := already[tableName]; exists {
 				return nil, fmt.Errorf("durable table %q claimed by %q conflicts with an existing backup owner", tableName, owner.ID)
+			}
+			if excluded[tableName] {
+				result = append(result, backupTable{name: tableName, owner: owner.ID, alwaysExclude: true, exclusionCode: "NONPORTABLE_HOST_AUTHORITY"})
+				already[tableName] = struct{}{}
+				continue
 			}
 			if !sourceDB.Migrator().HasTable(tableName) {
 				continue

@@ -13,7 +13,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
 
@@ -155,7 +154,7 @@ func TestSecurityAuthZImportXUISharedRegistryPreservesAuthSurfaces(t *testing.T)
 	initSessionTestDB(t)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
 	apiv2 := NewAPIv2Handler(router.Group("/apiv2"))
 	NewAPIHandler(router.Group("/api"), apiv2)
 	if !routeExists(router, http.MethodPost, "/api/import-xui/plan") {

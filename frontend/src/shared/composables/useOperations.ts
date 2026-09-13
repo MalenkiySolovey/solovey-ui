@@ -268,7 +268,7 @@ export interface RestoreRehearsal {
 export interface OperationsStatus {
   schema: string
   generatedAt: number
-  security: { state: string; accepted: boolean; live: boolean }
+	security: { state: string }
   deployment: { state: string; posture: unknown }
   update: UpdatePosture
   pressure: ResourcePressurePosture['actual']
@@ -278,8 +278,7 @@ export interface OperationsStatus {
   backup: { state: string; restoreExecution: string }
   restore: { rehearsal: string; execution: string }
   dropData: { state: string; force: boolean }
-  evidence: { normalCI: string; live: string; accepted: boolean }
-  reasonCodes: string[]
+	reasonCodes: string[]
 }
 
 const jsonHeaders = { 'Content-Type': 'application/json' }

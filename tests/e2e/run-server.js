@@ -23,6 +23,7 @@ const generatedCommandPath = path.join(generatedDir, 'optional_commands_generate
 const generatedBrokerPath = path.join(generatedDir, 'broker_components_generated.go')
 const bundledZig = path.join(repoRoot, '..', '..', '.devtools', 'zig-x86_64-windows-0.16.0', 'zig.exe')
 const resolvedCC = process.env.CC || (process.platform === 'win32' && fs.existsSync(bundledZig) ? `${bundledZig} cc` : undefined)
+const goProgram = process.env.SUI_E2E_GO_PROGRAM || 'go'
 const readyTimeoutMs = Number(process.env.SUI_E2E_READY_TIMEOUT_MS || (process.env.CI ? 900000 : 300000))
 const e2eWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH || '/e2e-panel/')
 
@@ -288,7 +289,7 @@ const main = async () => {
   }
   const backend = spawnLogged(
     'backend',
-    'go',
+    goProgram,
     ['run', '-overlay', overlayPath, './tests/e2e/panel-server'],
     { cwd: repoRoot, env: backendEnv },
   )

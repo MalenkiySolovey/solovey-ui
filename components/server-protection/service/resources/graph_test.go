@@ -159,17 +159,15 @@ func TestSocketGraphSharingRequiresExplicitAdapterMultiplexingContract(t *testin
 
 func graphResource(id string, network hostresources.Network, family hostresources.AddressFamily, bind string, port uint16) hostresources.ProtectableResource {
 	ownerRevision, configRevision := strings.Repeat("b", 64), strings.Repeat("c", 64)
-	expected := hostresources.ExpectedListenerOwnerV1{
-		Schema: hostresources.ExpectedListenerOwnerSchemaV1, ContractRevision: strings.Repeat("a", 64),
+	expected := hostresources.ExpectedApplicationOwnerV1{
+		Schema: hostresources.ExpectedApplicationOwnerSchemaV1, ContractRevision: strings.Repeat("a", 64),
 		InstanceID: "00112233-4455-4677-8899-aabbccddeeff", SourceRevision: "src-" + strings.Repeat("2", 64),
 		ArtifactRevision: "art-" + strings.Repeat("3", 64), DeploymentID: "dep-" + strings.Repeat("4", 64),
 		RuntimeRootBindingRevision: strings.Repeat("5", 64), ServiceIdentity: "solovey-ui.panel",
-		SystemdUnit: "solovey-ui.service", ServiceFragmentPath: "/etc/systemd/system/solovey-ui.service",
-		ServiceUnitSHA256: strings.Repeat("7", 64), ServiceControlGroup: "/system.slice/solovey-ui.service",
 		ExecutablePath: "/usr/local/bin/solovey-ui", ExecutableSHA256: strings.Repeat("6", 64),
 	}
 	endpoint := hostresources.PublicEndpoint{Schema: hostresources.EndpointSchemaV1, ID: "endpoint:" + id, Key: hostresources.PublicEndpointKey{Network: network, AddressFamily: family, BindAddress: bind, Port: port}, Intent: hostresources.EndpointIntentPublic, Protocol: string(network), ResourceID: id, Owner: "sing-box", OwnerRevision: ownerRevision, ConfigurationRevision: configRevision, ObservedAt: 1000, Source: "fixture", ConfidenceBP: 10000}
-	resource := hostresources.ProtectableResource{ID: id, Kind: "inbound", Owner: "sing-box", Protocol: string(network), Listen: bind, Port: int(port), Public: true, Source: "fixture", Capabilities: hostresources.ProtectableResourceCapabilities{Known: true, OwnerRevision: ownerRevision, ConfigRevision: configRevision, ExpectedListenerOwner: expected}, Endpoints: []hostresources.PublicEndpoint{endpoint}, AdvertisedEndpoints: []hostresources.AdvertisedEndpoint{{ID: "advertised:" + id, HostnameOrIP: "vpn.example", Port: port, Network: network, RouteSelectors: []string{"sni:vpn.example", "alpn:h2"}}}}
+	resource := hostresources.ProtectableResource{ID: id, Kind: "inbound", Owner: "sing-box", Protocol: string(network), Listen: bind, Port: int(port), Public: true, Source: "fixture", Capabilities: hostresources.ProtectableResourceCapabilities{Known: true, OwnerRevision: ownerRevision, ConfigRevision: configRevision, ExpectedApplicationOwner: expected}, Endpoints: []hostresources.PublicEndpoint{endpoint}, AdvertisedEndpoints: []hostresources.AdvertisedEndpoint{{ID: "advertised:" + id, HostnameOrIP: "vpn.example", Port: port, Network: network, RouteSelectors: []string{"sni:vpn.example", "alpn:h2"}}}}
 	resource.ListenIntent = hostresources.BuildConfiguredListenIntent(resource)
 	return resource
 }
@@ -181,13 +179,13 @@ func graphSurface(resource hostresources.ProtectableResource, now time.Time) hos
 	if family == hostsurface.FamilyIPv6 {
 		ipv6Only = boolPtr(true)
 	}
-	process := hostsurface.ProcessFact{PID: intPtr(100), ParentPID: intPtr(1), SessionID: intPtr(100), StartTime: "1000", ExeDigest: resource.Capabilities.ExpectedListenerOwner.ExecutableSHA256, Executable: "/usr/local/bin/solovey-ui", ExeDevice: 1, ExeInode: 2, UID: intPtr(0), GID: intPtr(0), ControlGroup: "/system.slice/solovey-ui.service"}
-	service := hostsurface.ServiceFact{SystemdUnit: resource.Capabilities.ExpectedListenerOwner.SystemdUnit, MainPID: intPtr(100), FragmentPath: "/etc/systemd/system/solovey-ui.service", FragmentSHA256: resource.Capabilities.ExpectedListenerOwner.ServiceUnitSHA256, ActiveState: "active", SubState: "running", ControlGroup: process.ControlGroup, StartMonotonicUsec: 100}
+	process := hostsurface.ProcessFact{ProviderRevision: "fixture-process-evidence/v1", EvidenceRevision: strings.Repeat("d", 64), PID: intPtr(100), ParentPID: intPtr(1), SessionID: intPtr(100), StartTime: "1000", ExeDigest: resource.Capabilities.ExpectedApplicationOwner.ExecutableSHA256, Executable: "/usr/local/bin/solovey-ui", ExeDevice: 1, ExeInode: 2, UID: intPtr(0), GID: intPtr(0), ControlGroup: "/system.slice/solovey-ui.service"}
+	service := hostsurface.ServiceFact{SupervisorRevision: strings.Repeat("8", 64), CgroupAvailability: "available", CgroupPolicy: "required", CgroupRevision: strings.Repeat("9", 64), SystemdUnit: "solovey-ui.service", MainPID: intPtr(100), FragmentPath: "/etc/systemd/system/solovey-ui.service", FragmentSHA256: strings.Repeat("7", 64), ActiveState: "active", SubState: "running", ControlGroup: process.ControlGroup, StartMonotonicUsec: 100}
 	fact := hostsurface.ListenerOwnerFactV1{
 		Schema:  hostsurface.ListenerOwnerFactSchemaV1,
 		Socket:  hostsurface.ListenerSocketIdentityV1{Network: hostsurface.Network(endpoint.Key.Network), Family: family, Bind: endpoint.Key.BindAddress, Port: endpoint.Key.Port, Inode: "100", Cookie: 101, Wildcard: hostresources.NormalizeListen(endpoint.Key.BindAddress).Wildcard(), IPv6Only: ipv6Only, CoverageFamilies: []hostsurface.Family{family}},
 		Process: process, Service: service,
-		Application: hostsurface.ListenerApplicationIdentityV1{InstanceID: resource.Capabilities.ExpectedListenerOwner.InstanceID, SourceRevision: resource.Capabilities.ExpectedListenerOwner.SourceRevision, ArtifactRevision: resource.Capabilities.ExpectedListenerOwner.ArtifactRevision, DeploymentID: resource.Capabilities.ExpectedListenerOwner.DeploymentID, OwnerContractRevision: resource.Capabilities.ExpectedListenerOwner.ContractRevision, RuntimeRootBindingRevision: resource.Capabilities.ExpectedListenerOwner.RuntimeRootBindingRevision, ExpectedExecutableSHA256: resource.Capabilities.ExpectedListenerOwner.ExecutableSHA256, ServiceIdentity: resource.Capabilities.ExpectedListenerOwner.ServiceIdentity, ResourceID: resource.ID, ResourceOwnerRevision: resource.Capabilities.OwnerRevision, ConfigurationRevision: resource.Capabilities.ConfigRevision},
+		Application: hostsurface.ListenerApplicationIdentityV1{InstanceID: resource.Capabilities.ExpectedApplicationOwner.InstanceID, SourceRevision: resource.Capabilities.ExpectedApplicationOwner.SourceRevision, ArtifactRevision: resource.Capabilities.ExpectedApplicationOwner.ArtifactRevision, DeploymentID: resource.Capabilities.ExpectedApplicationOwner.DeploymentID, OwnerContractRevision: resource.Capabilities.ExpectedApplicationOwner.ContractRevision, RuntimeRootBindingRevision: resource.Capabilities.ExpectedApplicationOwner.RuntimeRootBindingRevision, ExpectedExecutableSHA256: resource.Capabilities.ExpectedApplicationOwner.ExecutableSHA256, ServiceIdentity: resource.Capabilities.ExpectedApplicationOwner.ServiceIdentity, ResourceID: resource.ID, ResourceOwnerRevision: resource.Capabilities.OwnerRevision, ConfigurationRevision: resource.Capabilities.ConfigRevision},
 		ObservedAt:  now.Unix(), ExpiresAt: now.Add(30 * time.Second).Unix(),
 	}
 	fact.Seal()

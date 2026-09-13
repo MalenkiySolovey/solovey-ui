@@ -1,11 +1,14 @@
 import { defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import { fileURLToPath, URL } from 'node:url'
+import { componentEntriesPlugin } from './vite.config.mts'
 
 const componentProfile = process.env.SOLOVEY_UI_PROFILE === 'core' ? 'core' : 'full'
 
 export default defineConfig({
-  plugins: [vue()],
+  // Loader tests provide a synthetic virtual catalog. Product composition is
+  // owned and verified by component manifests plus package metadata.
+  plugins: [componentEntriesPlugin([]), vue()],
   define: {
     __SOLOVEY_UI_COMPONENT_PROFILE__: JSON.stringify(componentProfile),
   },

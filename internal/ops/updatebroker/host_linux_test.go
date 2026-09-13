@@ -17,7 +17,11 @@ func TestOwnerManifestRunsOnlyTheActivatedReleaseWriter(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("root-owned writer execution contract")
 	}
-	root := t.TempDir()
+	root, err := os.MkdirTemp("/", "solovey-owner-writer-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(root) })
 	marker := filepath.Join(root, "called")
 	writer := filepath.Join(root, "solovey-owner-manifest")
 	script := "#!/bin/sh\nprintf '%s' ok > '" + marker + "'\n"

@@ -48,6 +48,12 @@ export const reconnectDelayForRetry = (retry: number) => {
 
 export const wsProtocolsForToken = (token: string) => ['sui.realtime', `sui.token.${token}`]
 
+export const requestWSToken = async (): Promise<string | null> => {
+  const tokenResponse = await HttpUtils.post('api/realtime/ws-token', null)
+  const token = tokenResponse.obj?.token
+  return tokenResponse.success && typeof token === 'string' ? token : null
+}
+
 export class WsRuntime {
   state: WsConnectionState = 'degraded'
   private ws: WsLike | null = null
@@ -277,11 +283,7 @@ const Ws = defineStore('Ws', {
     ensureRuntime() {
       if (!this.runtime) {
         this.runtime = new WsRuntime({
-          getToken: async () => {
-            const tokenResponse = await HttpUtils.get('api/realtime/ws-token')
-            const token = tokenResponse.obj?.token
-            return tokenResponse.success && typeof token === 'string' ? token : null
-          },
+          getToken: requestWSToken,
           createSocket: (url, token) => new WebSocket(url, wsProtocolsForToken(token)),
           loadData: () => Data().loadData(),
           onState: (state) => {

@@ -18,7 +18,7 @@ export default {
     "outboundLabel": "出站连接需要核心正在运行",
     "noOutbounds": "未配置出站",
     "hint": {
-      "chatId": "接收通知的 Telegram 聊天或用户数字 ID，可通过 @userinfobot 查询。",
+      "chatId": "接收通知的 Telegram 聊天或用户数字 ID，可通过 {'@'}userinfobot 查询。",
       "cpuThreshold": "CPU 持续高于此百分比时发送通知。默认：90。范围：1-100。",
       "reportCron": "定期报告的 5 字段 cron，例如 0 9 * * *。留空表示关闭。",
       "transport": "机器人访问 Telegram 的方式：代理 URL 或 sing-box 出站。默认：代理。",

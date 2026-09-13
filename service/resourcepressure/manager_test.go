@@ -44,6 +44,85 @@ func (collector *overlapDetectingCollector) Collect(_ context.Context, now time.
 		ObservedAt: now.Unix(), ExpiresAt: now.Add(time.Minute).Unix()}}
 }
 
+func TestCgroupMemoryReadsCurrentUnifiedLeafAndRoot(t *testing.T) {
+	mounts := []byte("50 36 0:50 / /sys/fs/cgroup rw,nosuid,nodev,noexec - cgroup2 cgroup rw\n")
+	for _, test := range []struct {
+		name    string
+		leaf    string
+		current string
+		maximum string
+		want    float64
+	}{
+		{name: "nested leaf", leaf: "/system.slice/solovey-ui.service", current: "25\n", maximum: "100\n", want: 0.25},
+		{name: "root leaf", leaf: "/", current: "2\n", maximum: "8\n", want: 0.25},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			leafRoot := "/sys/fs/cgroup"
+			if test.leaf != "/" {
+				leafRoot += test.leaf
+			}
+			files := map[string][]byte{
+				"/proc/self/cgroup":          []byte("0::" + test.leaf + "\n"),
+				"/proc/self/mountinfo":       mounts,
+				leafRoot + "/memory.current": []byte(test.current),
+				leafRoot + "/memory.max":     []byte(test.maximum),
+			}
+			signal := readCgroupMemoryWith(func(name string) ([]byte, error) {
+				value, ok := files[name]
+				if !ok {
+					return nil, fmt.Errorf("unexpected cgroup path %s", name)
+				}
+				return value, nil
+			})
+			if signal.Status != domain.ProviderSupported || signal.Value != test.want {
+				t.Fatalf("signal = %#v", signal)
+			}
+		})
+	}
+}
+
+func TestCgroupMemoryRejectsUnboundedMalformedAndMovingLeaf(t *testing.T) {
+	mounts := []byte("50 36 0:50 / /sys/fs/cgroup rw - cgroup2 cgroup rw\n")
+	tests := []struct {
+		name       string
+		membership []string
+		maximum    string
+		status     domain.ProviderStatus
+		reason     string
+	}{
+		{name: "unbounded", membership: []string{"0::/panel\n", "0::/panel\n"}, maximum: "max\n", status: domain.ProviderUnavailable, reason: "cgroup_memory_limit_unavailable"},
+		{name: "malformed", membership: []string{"0:memory:/panel\n"}, maximum: "100\n", status: domain.ProviderError, reason: "cgroup_memory_leaf_invalid"},
+		{name: "moving", membership: []string{"0::/panel\n", "0::/other\n"}, maximum: "100\n", status: domain.ProviderUnavailable, reason: "cgroup_memory_leaf_changed"},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			membershipRead := 0
+			signal := readCgroupMemoryWith(func(name string) ([]byte, error) {
+				switch name {
+				case "/proc/self/cgroup":
+					index := membershipRead
+					if index >= len(test.membership) {
+						index = len(test.membership) - 1
+					}
+					membershipRead++
+					return []byte(test.membership[index]), nil
+				case "/proc/self/mountinfo":
+					return mounts, nil
+				case "/sys/fs/cgroup/panel/memory.current":
+					return []byte("25\n"), nil
+				case "/sys/fs/cgroup/panel/memory.max":
+					return []byte(test.maximum), nil
+				default:
+					return nil, fmt.Errorf("unexpected cgroup path %s", name)
+				}
+			})
+			if signal.Status != test.status || signal.ReasonCode != test.reason {
+				t.Fatalf("signal = %#v", signal)
+			}
+		})
+	}
+}
+
 func TestManagerPersistsOnlyTransitionsAndDistrustsRestoredPressure(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "pressure.db")),
 		&gorm.Config{Logger: logger.Default.LogMode(logger.Silent)})
@@ -216,43 +295,55 @@ func TestSystemCollectorInventoryIsBoundedUniqueAndExplicit(t *testing.T) {
 	}
 }
 
-func TestBoundedTempFilesystemUsesRatioWithoutPermanentCriticalState(t *testing.T) {
-	const total = uint64(64 << 20)
-	const free = uint64(60 << 20)
-	bytesSignal := boundedFilesystemFreeBytesSignal(
-		"filesystem.temp.free_bytes", "filesystem_temp_absolute_bytes_inapplicable", total, free,
-	)
-	if bytesSignal.Status != domain.ProviderUnsupported || bytesSignal.ReasonCode != "filesystem_temp_absolute_bytes_inapplicable" {
-		t.Fatalf("bounded tmpfs absolute provider=%#v", bytesSignal)
+func TestBoundedFilesystemUsesRatioWithoutPermanentPressure(t *testing.T) {
+	const total = uint64(2_090_624 * 1024)
+	const free = uint64(1_624_158_208)
+	for _, test := range []struct {
+		id     string
+		reason string
+	}{
+		{id: "filesystem.data.free_bytes", reason: "filesystem_data_absolute_bytes_inapplicable"},
+		{id: "filesystem.temp.free_bytes", reason: "filesystem_temp_absolute_bytes_inapplicable"},
+	} {
+		bytesSignal := boundedFilesystemFreeBytesSignal(test.id, test.reason, total, free)
+		if bytesSignal.Status != domain.ProviderUnsupported || bytesSignal.ReasonCode != test.reason {
+			t.Fatalf("bounded filesystem absolute provider=%#v", bytesSignal)
+		}
 	}
 	largeSignal := boundedFilesystemFreeBytesSignal(
-		"filesystem.temp.free_bytes", "filesystem_temp_absolute_bytes_inapplicable", 4<<30, 3<<30,
+		"filesystem.data.free_bytes", "filesystem_data_absolute_bytes_inapplicable", 16<<30, 3<<30,
 	)
 	if largeSignal.Status != domain.ProviderSupported || largeSignal.Value != float64(3<<30) {
-		t.Fatalf("ordinary temp filesystem absolute provider=%#v", largeSignal)
+		t.Fatalf("ordinary large filesystem absolute provider=%#v", largeSignal)
 	}
 
 	evaluator, err := domain.NewEvaluator([]domain.Threshold{
-		{ID: "filesystem.temp.free_ratio", Direction: domain.LowerIsWorse, Warning: .20, Constrained: .10, Critical: .05},
-		{ID: "filesystem.temp.free_bytes", Direction: domain.LowerIsWorse, Warning: 2 << 30, Constrained: 1 << 30, Critical: 512 << 20},
+		{ID: "filesystem.data.free_ratio", Direction: domain.LowerIsWorse, Warning: .20, Constrained: .10, Critical: .05, Required: true},
+		{ID: "filesystem.data.free_bytes", Direction: domain.LowerIsWorse, Warning: 2 << 30, Constrained: 1 << 30, Critical: 512 << 20, Required: true},
+		{ID: "filesystem.data.free_inode_ratio", Direction: domain.LowerIsWorse, Warning: .10, Constrained: .05, Critical: .02},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	now := time.Unix(1_800_000_000, 0)
 	var observed domain.Snapshot
+	bytesSignal := boundedFilesystemFreeBytesSignal(
+		"filesystem.data.free_bytes", "filesystem_data_absolute_bytes_inapplicable", total, free,
+	)
 	for range 2 {
 		bytesSignal.ObservedAt, bytesSignal.ExpiresAt = now.Unix(), now.Add(domain.DefaultFreshness).Unix()
-		ratioSignal := domain.Signal{ID: "filesystem.temp.free_ratio", Status: domain.ProviderSupported,
+		ratioSignal := domain.Signal{ID: "filesystem.data.free_ratio", Status: domain.ProviderSupported,
 			Value: float64(free) / float64(total), Unit: "ratio", ObservedAt: now.Unix(), ExpiresAt: now.Add(domain.DefaultFreshness).Unix()}
-		observed = evaluator.Evaluate(now, []domain.Signal{ratioSignal, bytesSignal})
+		inodeSignal := domain.Signal{ID: "filesystem.data.free_inode_ratio", Status: domain.ProviderSupported,
+			Value: .7968, Unit: "ratio", ObservedAt: now.Unix(), ExpiresAt: now.Add(domain.DefaultFreshness).Unix()}
+		observed = evaluator.Evaluate(now, []domain.Signal{ratioSignal, bytesSignal, inodeSignal})
 		if observed.State == domain.StateCritical {
-			t.Fatalf("bounded healthy tmpfs became critical: %#v", observed)
+			t.Fatalf("bounded healthy data filesystem became critical: %#v", observed)
 		}
 		now = now.Add(domain.SampleInterval)
 	}
 	if observed.State != domain.StateNormal {
-		t.Fatalf("bounded healthy tmpfs did not establish normal pressure: %#v", observed)
+		t.Fatalf("bounded healthy data filesystem did not establish normal pressure: %#v", observed)
 	}
 }
 

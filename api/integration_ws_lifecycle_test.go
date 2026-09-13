@@ -20,7 +20,6 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
 
@@ -231,7 +230,7 @@ func newIntegrationWSRouterWithOptions(t *testing.T, options ...realtimehttp.Opt
 	}
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
 	router.GET("/login/:user", func(c *gin.Context) {
 		if !ensureIntegrationWSSessionUser(t, c.Param("user")) {
 			c.Status(http.StatusInternalServerError)
@@ -248,7 +247,7 @@ func newIntegrationWSRouterWithOptions(t *testing.T, options ...realtimehttp.Opt
 		}
 		c.Status(http.StatusNoContent)
 	})
-	router.GET("/api/realtime/ws-token", (&ApiService{}).realtimeHandler().IssueWSToken)
+	router.POST("/api/realtime/ws-token", (&ApiService{}).realtimeHandler().IssueWSToken)
 	router.GET("/api/realtime/ws", (&ApiService{}).realtimeHandler().RealtimeWSWithOptions(options...))
 	return router
 }
@@ -292,7 +291,7 @@ func loginIntegrationWSUser(t *testing.T, router *gin.Engine, user string) []*ht
 
 func issueIntegrationWSToken(t *testing.T, server *httptest.Server, cookies []*http.Cookie) string {
 	t.Helper()
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/api/realtime/ws-token", nil)
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, server.URL+"/api/realtime/ws-token", nil)
 	if err != nil {
 		t.Fatal(err)
 	}

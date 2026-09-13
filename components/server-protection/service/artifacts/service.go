@@ -37,5 +37,9 @@ func (s Service) WriteRevision(ctx context.Context, operationID, revision string
 		_ = s.Storage.Remove(filepathSlash("operations", operationID))
 		return protectionrepository.ArtifactModel{}, err
 	}
+	// The DB row is now the authoritative owner reference; remove the
+	// pre-metadata marker so future orphan sweeps cannot classify a live set as
+	// unpublished debt.
+	_ = s.Storage.removePublicationOwner(written.RelativePath)
 	return item, nil
 }

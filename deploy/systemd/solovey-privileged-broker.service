@@ -12,7 +12,7 @@ Type=simple
 User=root
 Group=root
 WorkingDirectory=/var/lib/solovey-ui-broker
-ExecStart=/usr/local/solovey-ui/releases/current/solovey-privileged-broker
+ExecStart=/usr/local/solovey-ui/releases/current/solovey-privileged-broker --transport=systemd-activated --ssh-implementation=openssh --ssh-service-control=systemd --ssh-log-evidence=journald --deployment-backend=systemd-native --update-mode=native-self-managed
 Restart=on-failure
 RestartSec=3s
 TimeoutStartSec=30s

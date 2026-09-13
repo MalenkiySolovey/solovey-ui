@@ -36,6 +36,7 @@ main
 *.exe
 *.zip
 *.test.exe
+*.test
 s-ui-windows/
 solovey-ui-windows/
 sui-*.exe
@@ -48,6 +49,7 @@ windows/solovey-ui-*.exe
 # Local audit/test scratch output
 test-results/
 verify-*.txt
+.artifacts/
 
 # Local Go build/cache/telemetry scratch dirs (workspace-local sandbox runs)
 .gocache/

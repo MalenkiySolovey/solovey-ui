@@ -221,3 +221,22 @@ func TestStableIDIgnoresTransientProcessIdentity(t *testing.T) {
 		t.Fatal("facts from distinct neutral sources shared an ID")
 	}
 }
+
+type crossingOwnerProvider struct{ clock *time.Time }
+
+func (crossingOwnerProvider) SourceID() string { return "crossing-owner" }
+func (p crossingOwnerProvider) Observe(context.Context, Limits) (Observation, error) {
+	*p.clock = p.clock.Add(time.Second)
+	owner := procdOwnerFactFixture(*p.clock)
+	return Observation{Facts: []HostSurfaceFactV1{{Schema: SchemaV1, Network: owner.Socket.Network, Family: owner.Socket.Family, Bind: owner.Socket.Bind, Port: owner.Socket.Port, SocketInode: owner.Socket.Inode, SocketCookie: owner.Socket.Cookie, Exposure: ExposurePublic, Process: owner.Process, Service: owner.Service, ListenerOwner: &owner, RegisteredResourceID: owner.Application.ResourceID, DesiredOwner: "panel", ConfigurationRevision: owner.Application.ConfigurationRevision, OwnershipMode: OwnershipManaged, Classification: ClassificationManagedExact, FirstSeen: owner.ObservedAt, LastSeen: owner.ObservedAt, ExpiresAt: owner.ExpiresAt, Source: "crossing-owner", ConfidenceBP: 10000}}}, nil
+}
+func TestRegistryValidatesListenerAuthorityAfterProviderObservation(t *testing.T) {
+	now := time.Unix(1000, 0).UTC()
+	registry := NewRegistry()
+	registry.now = func() time.Time { return now }
+	registerHostProvider(t, registry, crossingOwnerProvider{clock: &now})
+	snapshot := registry.Reconcile(context.Background())
+	if len(snapshot.Facts) != 1 || snapshot.Facts[0].Classification != ClassificationManagedExact || snapshot.GeneratedAt != 1001 {
+		t.Fatalf("new authority rejected against old time: %#v", snapshot)
+	}
+}

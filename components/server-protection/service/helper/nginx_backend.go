@@ -16,6 +16,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/executableobject"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/processevidence"
 )
 
 const (
@@ -42,9 +45,15 @@ type NginxExecutor interface {
 	Restore(context.Context, Correlation, NginxRestoreRequest) (*NginxResult, error)
 }
 
-type systemNginxExecutor struct{ root ManagedRoot }
+type systemNginxExecutor struct {
+	root   ManagedRoot
+	binary *executableobject.Object
+}
 
-func newSystemNginxExecutor(root ManagedRoot) NginxExecutor { return &systemNginxExecutor{root: root} }
+func newSystemNginxExecutor(root ManagedRoot) NginxExecutor {
+	binary, _ := openSystemNginxExecutable()
+	return &systemNginxExecutor{root: root, binary: binary}
+}
 
 func (e *systemNginxExecutor) Detect(ctx context.Context) NginxSupport {
 	result := NginxSupport{PlatformKnown: true, Linux: runtime.GOOS == "linux", Reason: "nginx_linux_required"}
@@ -61,7 +70,10 @@ func (e *systemNginxExecutor) Detect(ctx context.Context) NginxSupport {
 		result.Reason = "controlled_nginx_config_unavailable"
 		return result
 	}
-	identity, version, modules, err := detectSystemNginx(ctx)
+	if e.binary == nil {
+		e.binary, err = openSystemNginxExecutable()
+	}
+	identity, version, modules, err := detectSystemNginx(ctx, e.binary)
 	if err != nil {
 		result.Reason = safeNginxReason(err)
 		return result
@@ -92,7 +104,7 @@ func (e *systemNginxExecutor) DetectVersion(ctx context.Context) (*NginxVersionR
 	if !support.Available {
 		return nil, errors.New(support.Reason)
 	}
-	_, version, modules, err := detectSystemNginx(ctx)
+	_, version, modules, err := detectSystemNginx(ctx, e.binary)
 	if err != nil {
 		return nil, err
 	}
@@ -119,7 +131,7 @@ func (e *systemNginxExecutor) Validate(ctx context.Context, correlation Correlat
 		return nil, err
 	}
 	args := []string{"-t", "-q", "-p", testDir + string(filepath.Separator), "-c", testConfig}
-	stdout, stderr, err := runNginxBounded(ctx, support.Binary.TargetPath, args)
+	stdout, stderr, err := runNginxBounded(ctx, e.binary, args)
 	if err != nil {
 		return nil, fmt.Errorf("nginx candidate validation failed: %s", boundedDiagnostic(stdout, stderr))
 	}
@@ -257,7 +269,7 @@ func (e *systemNginxExecutor) Reload(ctx context.Context, correlation Correlatio
 		return nil, err
 	}
 	args := []string{"-s", "reload", "-p", managed + string(filepath.Separator), "-c", support.ControlledConfig}
-	stdout, stderr, err := runNginxBounded(ctx, support.Binary.TargetPath, args)
+	stdout, stderr, err := runNginxBounded(ctx, e.binary, args)
 	if err != nil {
 		return nil, fmt.Errorf("typed nginx reload failed: %s", boundedDiagnostic(stdout, stderr))
 	}
@@ -306,7 +318,7 @@ func (e *systemNginxExecutor) Verify(ctx context.Context, _ Correlation, request
 		return nil, err
 	}
 	owners := append([]int{pid}, workers...)
-	if err := platformNginxOwnsListeners(owners, request.Listeners); err != nil {
+	if err := platformNginxOwnsListeners(ctx, owners, request.Listeners); err != nil {
 		return nil, err
 	}
 	return &NginxResult{Revision: request.ExpectedRevision, SHA256: request.ExpectedSHA256, Binary: support.Binary, MasterPID: pid, WorkerPIDs: workers, ListenersMatched: true, Diagnostics: []string{"active_revision_verified", "process_identity_verified", "listeners_verified"}}, nil
@@ -476,26 +488,45 @@ func readRevisionSHA(dir string) (string, error) {
 	return sha, nil
 }
 
-func detectSystemNginx(ctx context.Context) (BinaryIdentity, string, []string, error) {
-	identities := map[string]BinaryIdentity{}
-	for _, path := range []string{"/usr/sbin/nginx", "/usr/local/sbin/nginx", "/usr/bin/nginx", "/usr/local/bin/nginx"} {
-		identity, err := nginxBinaryIdentity(path)
-		if errors.Is(err, os.ErrNotExist) {
+func openSystemNginxExecutable() (*executableobject.Object, error) {
+	return openNginxExecutableCandidates([]string{"/usr/sbin/nginx", "/usr/local/sbin/nginx", "/usr/bin/nginx", "/usr/local/bin/nginx"})
+}
+
+func openNginxExecutableCandidates(candidates []string) (*executableobject.Object, error) {
+	var selected *executableobject.Object
+	for _, path := range candidates {
+		object, err := executableobject.Open(path, executableobject.Policy{
+			MaxBytes: 256 << 20, AllowSymlink: true, RequireRegular: true, RequireExecutable: true,
+			RequireRootOwner: true, ForbiddenMode: 0o022,
+			RequireTrustedAncestry: true, AncestryOwner: 0, AncestryForbiddenMode: 0o022,
+		})
+		if err != nil {
 			continue
 		}
-		if err != nil {
-			return BinaryIdentity{}, "", nil, err
+		if selected == nil {
+			selected = object
+			continue
 		}
-		identities[identity.TargetPath] = identity
+		left, right := selected.Identity(), object.Identity()
+		if left.Device != right.Device || left.Inode != right.Inode || left.Digest != right.Digest {
+			_ = object.Close()
+			_ = selected.Close()
+			return nil, errors.New("nginx executable authority is ambiguous")
+		}
+		_ = object.Close()
 	}
-	if len(identities) != 1 {
-		return BinaryIdentity{}, "", nil, errors.New("nginx binary identity is missing or ambiguous")
+	if selected == nil {
+		return nil, errors.New("nginx executable authority is unavailable")
 	}
-	var identity BinaryIdentity
-	for _, value := range identities {
-		identity = value
+	return selected, nil
+}
+
+func detectSystemNginx(ctx context.Context, object *executableobject.Object) (BinaryIdentity, string, []string, error) {
+	if object == nil || object.Revalidate() != nil {
+		return BinaryIdentity{}, "", nil, errors.New("nginx executable authority is unavailable")
 	}
-	stdout, stderr, err := runNginxBounded(ctx, identity.TargetPath, []string{"-V"})
+	identity := nginxBinaryIdentity(object)
+	stdout, stderr, err := runNginxBounded(ctx, object, []string{"-V"})
 	if err != nil {
 		return BinaryIdentity{}, "", nil, err
 	}
@@ -515,20 +546,13 @@ func detectSystemNginx(ctx context.Context) (BinaryIdentity, string, []string, e
 	return identity, versionMatch[1], modules, nil
 }
 
-func nginxBinaryIdentity(path string) (BinaryIdentity, error) {
-	info, err := os.Stat(path)
-	if err != nil {
-		return BinaryIdentity{}, err
+func nginxBinaryIdentity(object *executableobject.Object) BinaryIdentity {
+	if object == nil {
+		return BinaryIdentity{}
 	}
-	if !info.Mode().IsRegular() {
-		return BinaryIdentity{}, errors.New("nginx binary is not regular")
-	}
-	target, err := filepath.EvalSymlinks(path)
-	if err != nil {
-		return BinaryIdentity{}, err
-	}
-	device, inode := platformFileIdentity(info)
-	return BinaryIdentity{Path: filepath.Clean(path), TargetPath: filepath.Clean(target), Device: device, Inode: inode}, nil
+	identity := object.Identity()
+	return BinaryIdentity{Path: identity.Label, TargetPath: identity.ResolvedPath, Device: identity.Device, Inode: identity.Inode,
+		Size: identity.Size, Mode: uint32(identity.Mode.Perm()), UID: identity.UID, GID: identity.GID, Digest: identity.Digest}
 }
 
 func nginxProcess(identity BinaryIdentity, managed string) (int, []int, error) {
@@ -540,8 +564,8 @@ func nginxProcess(identity BinaryIdentity, managed string) (int, []int, error) {
 	if err != nil || pid <= 0 {
 		return 0, nil, errors.New("managed nginx pid is invalid")
 	}
-	exe, err := os.Readlink(filepath.Join("/proc", strconv.Itoa(pid), "exe"))
-	if err != nil || filepath.Clean(exe) != identity.TargetPath {
+	process, err := processevidence.Observe(pid)
+	if err != nil || process.ExeDevice != identity.Device || process.ExeInode != identity.Inode {
 		return 0, nil, errors.New("nginx master binary identity mismatch")
 	}
 	children, err := os.ReadFile(filepath.Join("/proc", strconv.Itoa(pid), "task", strconv.Itoa(pid), "children"))
@@ -552,8 +576,8 @@ func nginxProcess(identity BinaryIdentity, managed string) (int, []int, error) {
 	for _, field := range strings.Fields(string(children)) {
 		child, parseErr := strconv.Atoi(field)
 		if parseErr == nil && child > 0 {
-			childExe, identityErr := os.Readlink(filepath.Join("/proc", strconv.Itoa(child), "exe"))
-			if identityErr != nil || filepath.Clean(childExe) != identity.TargetPath {
+			childProcess, identityErr := processevidence.Observe(child)
+			if identityErr != nil || childProcess.ExeDevice != identity.Device || childProcess.ExeInode != identity.Inode {
 				return 0, nil, errors.New("nginx worker binary identity mismatch")
 			}
 			workers = append(workers, child)
@@ -566,12 +590,20 @@ func nginxProcess(identity BinaryIdentity, managed string) (int, []int, error) {
 	return pid, workers, nil
 }
 
-func runNginxBounded(ctx context.Context, binary string, args []string) ([]byte, []byte, error) {
+func runNginxBounded(ctx context.Context, binary *executableobject.Object, args []string) ([]byte, []byte, error) {
+	if binary == nil || binary.File() == nil || binary.Revalidate() != nil {
+		return nil, nil, errors.New("nginx executable authority is unavailable")
+	}
+	bounded, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
 	stdout, stderr := &boundedWriter{limit: nginxOutputLimit}, &boundedWriter{limit: nginxOutputLimit}
-	command := exec.CommandContext(ctx, binary, args...)
+	command := exec.CommandContext(bounded, binary.ExecPath(0), args...)
+	command.Args[0] = binary.Label()
+	command.ExtraFiles = []*os.File{binary.File()}
+	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C"}
 	command.Stdout, command.Stderr = stdout, stderr
 	err := command.Run()
-	if stdout.exceeded || stderr.exceeded {
+	if stdout.exceeded || stderr.exceeded || bounded.Err() != nil {
 		return stdout.Bytes(), stderr.Bytes(), errNginxOutputLimit
 	}
 	return stdout.Bytes(), stderr.Bytes(), err

@@ -9,7 +9,7 @@ export default { deployment: {
   title: 'Deployment and privileged broker', subtitle: 'Inspect generated, installed, active, and verified deployment state without exposing raw host controls.',
   loading: 'Loading deployment status…', refresh: 'Refresh status', posture: 'Deployment posture', notObserved: 'No fresh verified deployment posture is available.',
   kind: 'Deployment kind', desired: 'Desired profile', generated: 'Generated profile', installed: 'Installed profile', active: 'Active profile', verified: 'Verified profile',
-  compatibility: 'Compatibility state', evidence: 'Evidence status', identities: 'Process identities', capabilities: 'Capability summary', writeScopes: 'Writable scope summary',
+  compatibility: 'Compatibility state', identities: 'Process identities', capabilities: 'Capability summary', writeScopes: 'Writable scope summary',
   processIdentity: 'Panel process identity', rootProcess: 'Panel runs as root', hardening: 'Hardening revision', observed: 'Observed at', broker: 'Privileged broker',
   available: 'Available', unavailable: 'Unavailable', protocol: 'Protocol revision', transport: 'Bounded transport', peerPosture: 'Peer posture',
   migrationCapability: 'Migration capability', rollbackCapability: 'Rollback capability', reasons: 'Reason codes', doctor: 'Deployment doctor', healthy: 'Verified healthy',

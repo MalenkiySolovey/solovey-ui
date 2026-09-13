@@ -13,14 +13,13 @@
           <v-alert v-if="!status" type="warning" variant="tonal">{{ t('deployment.notObserved') }}</v-alert>
           <dl v-else class="facts-grid">
             <div><dt>{{ t('deployment.kind') }}</dt><dd>{{ status.posture.runtime }}</dd></div>
-			<div><dt>{{ t('deployment.state') }}</dt><dd>{{ safe(status.state) }}</dd></div>
+            <div><dt>{{ t('deployment.state') }}</dt><dd>{{ safe(status.state) }}</dd></div>
             <div><dt>{{ t('deployment.desired') }}</dt><dd>{{ status.desiredProfile }}</dd></div>
             <div><dt>{{ t('deployment.generated') }}</dt><dd>{{ status.generatedProfile }}</dd></div>
             <div><dt>{{ t('deployment.installed') }}</dt><dd>{{ status.installedProfile }}</dd></div>
             <div><dt>{{ t('deployment.active') }}</dt><dd>{{ status.activeProfile }}</dd></div>
             <div><dt>{{ t('deployment.verified') }}</dt><dd>{{ status.verifiedProfile }}</dd></div>
             <div><dt>{{ t('deployment.compatibility') }}</dt><dd>{{ status.compatibilityState }}</dd></div>
-			<div><dt>{{ t('deployment.evidence') }}</dt><dd>{{ safe(status.evidenceStatus) }}</dd></div>
             <div><dt>{{ t('deployment.processIdentity') }}</dt><dd>UID {{ status.posture.panelUid }} / GID {{ status.posture.panelGid }}</dd></div>
             <div><dt>{{ t('deployment.rootProcess') }}</dt><dd>{{ yesNo(status.posture.panelRoot) }}</dd></div>
             <div><dt>{{ t('deployment.hardening') }}</dt><dd class="digest">{{ status.posture.hardeningRevision }}</dd></div>
@@ -40,9 +39,8 @@
         </v-card-text></v-card></v-col>
       </v-row>
 
-      <v-card v-if="status?.posture.runtime === 'native'" class="mt-5"><v-card-title>{{ t('deployment.systemdActual') }}</v-card-title><v-card-text>
-        <v-alert v-if="!status.posture.systemd" type="warning" variant="tonal">{{ t('deployment.systemdUnavailable') }}</v-alert>
-        <template v-else>
+      <v-card v-if="status?.posture.systemd" class="mt-5"><v-card-title>{{ t('deployment.systemdActual') }}</v-card-title><v-card-text>
+        <template>
           <dl class="facts-grid">
             <div><dt>{{ t('deployment.systemdVersion') }}</dt><dd>{{ status.posture.systemd.version }}</dd></div>
             <div><dt>{{ t('deployment.directiveSupport') }}</dt><dd>{{ status.posture.systemd.directiveSupport }}</dd></div>
@@ -75,7 +73,7 @@
 
       <v-card class="mt-5"><v-card-title>{{ t('deployment.doctor') }}</v-card-title><v-card-text>
         <v-chip :color="doctor?.healthy ? 'success' : 'warning'" class="mb-3">{{ doctor?.healthy ? t('deployment.healthy') : t('deployment.attention') }}</v-chip>
-		<dl class="facts-grid mb-3"><div><dt>{{ t('deployment.state') }}</dt><dd>{{ safe(doctor?.state) }}</dd></div><div><dt>{{ t('deployment.evidence') }}</dt><dd>{{ safe(doctor?.evidenceStatus) }}</dd></div></dl>
+		<dl class="facts-grid mb-3"><div><dt>{{ t('deployment.state') }}</dt><dd>{{ safe(doctor?.state) }}</dd></div></dl>
         <div class="table-scroll"><table class="status-table"><thead><tr><th>{{ t('deployment.severity') }}</th><th>{{ t('deployment.finding') }}</th><th>{{ t('deployment.nextAction') }}</th></tr></thead><tbody>
           <tr v-for="finding in doctor?.findings ?? []" :key="finding.code"><td>{{ finding.severity }}</td><td>{{ finding.code }}</td><td>{{ finding.remediation }}</td></tr>
           <tr v-if="!doctor?.findings?.length"><td colspan="3">{{ t('deployment.noFindings') }}</td></tr>
@@ -83,12 +81,12 @@
       </v-card-text></v-card>
 
       <v-card class="mt-5"><v-card-title>{{ t('deployment.profiles') }}</v-card-title><v-card-text class="table-scroll">
-        <table class="status-table"><thead><tr><th>{{ t('deployment.profile') }}</th><th>{{ t('deployment.kind') }}</th><th>{{ t('deployment.support') }}</th><th>{{ t('deployment.network') }}</th><th>{{ t('deployment.identities') }}</th><th>{{ t('deployment.capabilities') }}</th><th>{{ t('deployment.writeScopes') }}</th><th>{{ t('deployment.evidence') }}</th><th>{{ t('deployment.constraints') }}</th></tr></thead><tbody>
-          <tr v-for="profile in profiles" :key="profile.id"><td>{{ profile.id }}</td><td>{{ profile.runtime }}</td><td>{{ profile.support }}</td><td>{{ profile.hostNetwork ? 'host' : profile.explicitPorts ? 'bridge-explicit' : 'native' }}</td><td>{{ reasons(profile.processIdentities) }}</td><td>{{ reasons(profile.networkCapabilities) }}</td><td>{{ reasons(profile.writeScopes) }}</td><td>{{ safe(profile.evidenceStatus) }}</td><td>{{ reasons(profile.constraints) }}</td></tr>
+		<table class="status-table"><thead><tr><th>{{ t('deployment.profile') }}</th><th>{{ t('deployment.kind') }}</th><th>{{ t('deployment.support') }}</th><th>{{ t('deployment.network') }}</th><th>{{ t('deployment.identities') }}</th><th>{{ t('deployment.capabilities') }}</th><th>{{ t('deployment.writeScopes') }}</th><th>{{ t('deployment.constraints') }}</th></tr></thead><tbody>
+		  <tr v-for="profile in profiles" :key="profile.id"><td>{{ profile.id }}</td><td>{{ profile.runtime }}</td><td>{{ profile.support }}</td><td>{{ profile.hostNetwork ? 'host' : profile.explicitPorts ? 'bridge-explicit' : profile.runtime }}</td><td>{{ reasons(profile.processIdentities) }}</td><td>{{ reasons(profile.networkCapabilities) }}</td><td>{{ reasons(profile.writeScopes) }}</td><td>{{ reasons(profile.constraints) }}</td></tr>
         </tbody></table>
       </v-card-text></v-card>
 
-      <v-card class="mt-5"><v-card-title>{{ t('deployment.migration') }}</v-card-title><v-card-subtitle>{{ t('deployment.migrationWarning') }}</v-card-subtitle><v-card-text>
+      <v-card v-if="capabilities?.migrate === 'AVAILABLE'" class="mt-5"><v-card-title>{{ t('deployment.migration') }}</v-card-title><v-card-subtitle>{{ t('deployment.migrationWarning') }}</v-card-subtitle><v-card-text>
         <v-select v-model="targetProfile" :items="migrationTargets" item-title="id" item-value="id" :label="t('deployment.target')" />
         <v-checkbox v-model="acknowledged" :label="t('deployment.acknowledge')" />
         <v-btn color="primary" :loading="working" @click="runPreview">{{ t('deployment.preview') }}</v-btn>
@@ -100,6 +98,7 @@
           <v-btn color="warning" :disabled="!canMigrate" :loading="working" @click="startMigration">{{ t('deployment.start') }}</v-btn>
         </template>
       </v-card-text></v-card>
+      <v-alert v-else type="info" variant="tonal" class="mt-5">{{ reasons(capabilities?.reasons) }}</v-alert>
 
       <v-alert v-if="recovery?.required && !operation" type="error" variant="tonal" class="mt-5" role="alert">{{ t('deployment.manualRecovery') }}</v-alert>
       <v-card v-if="operation" class="mt-5"><v-card-title>{{ t('deployment.operation') }}</v-card-title><v-card-text>
@@ -142,18 +141,22 @@ const canMigrate = computed(() => Boolean(preview.value?.possible && typedConfir
 
 const loadAll = async () => {
   loading.value = true; errorMessage.value = ''
-  const [profilesResponse, statusResponse, doctorResponse, brokerResponse, capabilitiesResponse, recoveryResponse] = await Promise.all([
-    getDeploymentProfiles(), getDeploymentStatus(), getDeploymentDoctor(), getDeploymentBroker(), getDeploymentCapabilities(), getDeploymentRecovery(),
+  const [profilesResponse, brokerResponse, capabilitiesResponse, recoveryResponse] = await Promise.all([
+    getDeploymentProfiles(), getDeploymentBroker(), getDeploymentCapabilities(), getDeploymentRecovery(),
   ])
+  // Status and doctor both persist a bounded observation. Keep those two
+  // writes ordered even when the surrounding read-only cards load together.
+  const statusResponse = await getDeploymentStatus()
+  const doctorResponse = await getDeploymentDoctor()
   profiles.value = deploymentMessage<{ items: DeploymentProfile[] }>(profilesResponse)?.items ?? []
   status.value = deploymentMessage<DeploymentStatus>(statusResponse)
   doctor.value = deploymentMessage<DeploymentDoctor>(doctorResponse)
   broker.value = deploymentMessage<DeploymentBroker>(brokerResponse)
   capabilities.value = deploymentMessage<DeploymentCapabilities>(capabilitiesResponse)
-	recovery.value = deploymentMessage<DeploymentRecovery>(recoveryResponse)
-	if (!operation.value && recovery.value?.operation) operation.value = recovery.value.operation
-	if (operation.value) await refreshOperation()
-  errorMessage.value = [profilesResponse, brokerResponse, capabilitiesResponse, recoveryResponse].find(item => !item.success)?.msg ?? ''
+  recovery.value = deploymentMessage<DeploymentRecovery>(recoveryResponse)
+  if (!operation.value && recovery.value?.operation) operation.value = recovery.value.operation
+  if (operation.value) await refreshOperation()
+  errorMessage.value = [profilesResponse, statusResponse, doctorResponse, brokerResponse, capabilitiesResponse, recoveryResponse].find(item => !item.success)?.msg ?? ''
   loading.value = false; liveStatus.value = errorMessage.value || t('deployment.refresh')
 }
 const runPreview = async () => {

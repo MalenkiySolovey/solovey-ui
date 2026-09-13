@@ -1,6 +1,7 @@
 import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { protectionAPI } from './api'
+import { receiptIdempotencyKey } from './idempotency'
 import {
 	localProxyCanApply, localProxyCanDisable, localProxyCanPrepare, localProxyPlanReference, localProxyStateFor,
 } from './localProxyLogic'
@@ -9,7 +10,7 @@ import type { LocalProxyPlan, LocalProxyState, LocalProxyStatus } from './localP
 type LocalProxyAction = 'prepare' | 'apply' | 'disable'
 
 const message = (reason: unknown): string => reason instanceof Error ? reason.message : String(reason)
-const idempotency = () => globalThis.crypto?.randomUUID?.() ?? `local-proxy-${Date.now()}`
+const idempotency = receiptIdempotencyKey
 
 export const useLocalProxyGuard = () => {
 	const { t } = useI18n()

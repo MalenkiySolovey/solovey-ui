@@ -20,19 +20,32 @@ import (
 )
 
 const (
-	ProtocolVersion    = 1
-	CapabilityRevision = "broker-capabilities-1.2"
-	MaxRequestBytes    = 1 << 20
-	MaxResponseBytes   = 256 << 10
-	MaxArtifactBytes   = 512 << 10
-	MaxFrameBytes      = MaxRequestBytes
-	MaxJSONDepth       = 64
-	MaxJSONMembers     = 4096
-	DefaultSocketPath  = "/run/solovey-ui/privileged-broker.sock"
-	ProofSocketPath    = "/run/solovey-ui/privileged-proof.sock"
-	DefaultManifest    = "/etc/solovey-ui/broker-clients.json"
-	DefaultJournalRoot = "/var/lib/solovey-ui-broker"
+	ProtocolVersion      = 1
+	CapabilityRevision   = "broker-capabilities-1.3"
+	MaxRequestBytes      = 1 << 20
+	MaxResponseBytes     = 256 << 10
+	MaxArtifactBytes     = 512 << 10
+	MaxFrameBytes        = MaxRequestBytes
+	MaxJSONDepth         = 64
+	MaxJSONMembers       = 4096
+	DefaultSocketPath    = "/run/solovey-ui/privileged-broker.sock"
+	ProofSocketPath      = "/run/solovey-ui/privileged-proof.sock"
+	StandaloneSocketRoot = "/run/solovey-ui"
+	RuntimeManifestPath  = StandaloneSocketRoot + "/broker-clients.json"
+	DefaultManifest      = "/etc/solovey-ui/broker-clients.json"
+	DefaultJournalRoot   = "/var/lib/solovey-ui-broker"
 )
+
+// TransportMode is a deployment-owned choice. It is intentionally closed:
+// absence or failure of systemd activation never selects standalone mode.
+type TransportMode string
+
+const (
+	SystemdActivated TransportMode = "SYSTEMD_ACTIVATED"
+	StandaloneOwned  TransportMode = "STANDALONE_OWNED"
+)
+
+func (m TransportMode) Valid() bool { return m == SystemdActivated || m == StandaloneOwned }
 
 type Role string
 
@@ -46,25 +59,30 @@ type Verb string
 const (
 	VerbCapabilities Verb = "broker.capabilities.observe"
 
-	VerbSSHObserve  Verb = "ssh.posture.observe"
-	VerbSSHStage    Verb = "ssh.dropin.stage"
-	VerbSSHValidate Verb = "ssh.dropin.validate"
-	VerbSSHReload   Verb = "ssh.service.reload"
-	VerbSSHArm      Verb = "ssh.reconnect.arm"
-	VerbSSHRestore  Verb = "ssh.dropin.restore"
-	VerbSSHInspect  Verb = "ssh.dropin.inspect"
-	VerbSSHVerify   Verb = "ssh.reconnect.verify"
-	VerbSSHProof    Verb = "ssh.reconnect.proof"
+	VerbSSHObserve      Verb = "ssh.posture.observe"
+	VerbSSHPrepare      Verb = "ssh.policy.prepare"
+	VerbSSHStage        Verb = "ssh.dropin.stage"
+	VerbSSHRecoverStage Verb = "ssh.dropin.stage.recover"
+	VerbSSHReleaseStage Verb = "ssh.dropin.stage.release"
+	VerbSSHValidate     Verb = "ssh.dropin.validate"
+	VerbSSHReload       Verb = "ssh.service.reload"
+	VerbSSHArm          Verb = "ssh.reconnect.arm"
+	VerbSSHRestore      Verb = "ssh.dropin.restore"
+	VerbSSHInspect      Verb = "ssh.dropin.inspect"
+	VerbSSHVerify       Verb = "ssh.reconnect.verify"
+	VerbSSHProof        Verb = "ssh.reconnect.proof"
 
 	VerbDeploymentObserve  Verb = "deployment.posture.observe"
 	VerbDeploymentDoctor   Verb = "deployment.doctor.observe"
 	VerbDeploymentPrepare  Verb = "deployment.migration.prepare"
+	VerbDeploymentRelease  Verb = "deployment.checkpoint.release"
 	VerbDeploymentApply    Verb = "deployment.migration.apply"
 	VerbDeploymentVerify   Verb = "deployment.migration.verify"
 	VerbDeploymentRollback Verb = "deployment.migration.rollback"
 
 	VerbUpdateObserve  Verb = "update.release.observe"
 	VerbUpdateStage    Verb = "update.artifact.stage"
+	VerbUpdateRelease  Verb = "update.staging.release"
 	VerbUpdatePrepare  Verb = "update.release.prepare"
 	VerbUpdateActivate Verb = "update.release.activate"
 	VerbUpdateVerify   Verb = "update.release.verify"
@@ -155,27 +173,54 @@ type Response struct {
 }
 
 type PeerIdentity struct {
-	PID              int      `json:"pid"`
-	UID              uint32   `json:"uid"`
-	GID              uint32   `json:"gid"`
-	Groups           []uint32 `json:"groups,omitempty"`
-	Executable       string   `json:"executable"`
-	ExecutableDigest string   `json:"executableDigest"`
-	Device           uint64   `json:"device"`
-	Inode            uint64   `json:"inode"`
-	StartTime        string   `json:"startTime"`
-	CgroupUnit       string   `json:"cgroupUnit"`
-	BootID           string   `json:"bootId"`
-	ManifestRevision string   `json:"manifestRevision"`
-	Revision         string   `json:"revision"`
+	PID                     int          `json:"pid"`
+	UID                     uint32       `json:"uid"`
+	GID                     uint32       `json:"gid"`
+	Groups                  []uint32     `json:"groups,omitempty"`
+	Executable              string       `json:"executable"`
+	ExecutableDigest        string       `json:"executableDigest"`
+	Device                  uint64       `json:"device"`
+	Inode                   uint64       `json:"inode"`
+	ExecutableSize          int64        `json:"executableSize"`
+	ExecutableMode          uint32       `json:"executableMode"`
+	ExecutableUID           uint32       `json:"executableUid"`
+	ExecutableGID           uint32       `json:"executableGid"`
+	StartTime               string       `json:"startTime"`
+	CgroupUnit              string       `json:"cgroupUnit"`
+	CgroupAvailability      string       `json:"cgroupAvailability"`
+	CgroupPolicy            CgroupPolicy `json:"cgroupPolicy"`
+	CgroupRevision          string       `json:"cgroupRevision"`
+	CgroupAuthorityRevision string       `json:"cgroupAuthorityRevision"`
+	SupervisorCgroup        string       `json:"supervisorCgroup,omitempty"`
+	Supervisor              string       `json:"supervisor,omitempty"`
+	ProcdService            string       `json:"procdService,omitempty"`
+	ProcdInstance           string       `json:"procdInstance,omitempty"`
+	SupervisorRelation      string       `json:"supervisorRelation,omitempty"`
+	SupervisorPID           int          `json:"supervisorPid,omitempty"`
+	SupervisorStart         string       `json:"supervisorStart,omitempty"`
+	ManifestClient          string       `json:"manifestClient,omitempty"`
+	CapabilitiesOnly        bool         `json:"capabilitiesOnly,omitempty"`
+	BootID                  string       `json:"bootId"`
+	ManifestRevision        string       `json:"manifestRevision"`
+	Revision                string       `json:"revision"`
+	livenessFD              int
+	hasLiveness             bool
+}
+
+type WriterCredentials struct {
+	PID int
+	UID uint32
+	GID uint32
 }
 
 type Handler func(context.Context, Request, PeerIdentity) (any, error)
 
 type Definition struct {
-	Role     Role
-	Mutation bool
-	Handler  Handler
+	Role                       Role
+	Mutation                   bool
+	RetainResultUntilRelease   bool
+	ReleasesRetainedResultVerb Verb
+	Handler                    Handler
 }
 
 type Registry struct{ definitions map[Verb]Definition }
@@ -184,7 +229,9 @@ func NewRegistry() *Registry { return &Registry{definitions: make(map[Verb]Defin
 
 func (r *Registry) Register(verb Verb, definition Definition) error {
 	if r == nil || !validVerb(string(verb)) || definition.Handler == nil ||
-		definition.Role != RolePanel && definition.Role != RoleSSHProof {
+		definition.Role != RolePanel && definition.Role != RoleSSHProof ||
+		(!definition.Mutation && (definition.RetainResultUntilRelease || definition.ReleasesRetainedResultVerb != "")) ||
+		(definition.ReleasesRetainedResultVerb != "" && !validVerb(string(definition.ReleasesRetainedResultVerb))) {
 		return errors.New("invalid broker handler definition")
 	}
 	if _, exists := r.definitions[verb]; exists {

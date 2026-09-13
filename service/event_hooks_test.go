@@ -57,3 +57,30 @@ func TestPanelEventNotifierRegistryBoundsCardinality(t *testing.T) {
 	}()
 	RegisterPanelEventNotifier("test.capacity.overflow", func(string, map[string]string) {})
 }
+
+func TestPanelAuthenticationEventNotifierStaleCleanupAndTypedDelivery(t *testing.T) {
+	const name = "test.authentication-cleanup-generation"
+	cleanupOld := RegisterPanelAuthenticationEventNotifier(name, func(PanelAuthenticationEventV1) {})
+	cleanupOld()
+	var got PanelAuthenticationEventV1
+	cleanupNew := RegisterPanelAuthenticationEventNotifier(name, func(event PanelAuthenticationEventV1) { got = event })
+	t.Cleanup(cleanupNew)
+
+	cleanupOld()
+	want := PanelAuthenticationEventV1{Event: "login_success", User: "administrator", SessionRevision: "session-revision"}
+	NotifyPanelAuthenticationEvent(want)
+	if got.Event != want.Event || got.User != want.User || got.SessionRevision != want.SessionRevision {
+		t.Fatalf("typed authentication event=%#v", got)
+	}
+}
+
+func TestPanelAuthenticationEventNotifierRejectsDuplicateName(t *testing.T) {
+	cleanup := RegisterPanelAuthenticationEventNotifier("test.authentication-duplicate", func(PanelAuthenticationEventV1) {})
+	t.Cleanup(cleanup)
+	defer func() {
+		if recover() == nil {
+			t.Fatal("duplicate typed notifier registration did not panic")
+		}
+	}()
+	RegisterPanelAuthenticationEventNotifier("test.authentication-duplicate", func(PanelAuthenticationEventV1) {})
+}

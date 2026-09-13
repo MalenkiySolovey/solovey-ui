@@ -47,7 +47,8 @@ func (c *Controller) activeHealthFence(ctx context.Context, fence protectionfire
 	}
 	authority, err := c.Repository.FirewallAuthority(ctx)
 	if err != nil || !authority.HasComposition || authority.Composition.State != "ACTIVE" ||
-		authority.Composition.Revision != fence.CompositionRevision || authority.Composition.ManagedPlanRevision != fence.ManagedPlanRevision {
+		authority.Composition.Revision != fence.CompositionRevision || authority.Composition.ManagedPlanRevision != fence.ManagedPlanRevision ||
+		!matchingLiveAuthority(authority) {
 		return false
 	}
 	for _, contribution := range authority.Contributions {
@@ -106,8 +107,16 @@ func healthProofState(state protectionrepository.UDPGuardStateV1Model, transitio
 		transition.HealthExpiresUnixNano == state.HealthExpiresUnixNano && transition.HealthStartedUnixNano >= transition.MutationCompletedUnixNano &&
 		transition.HealthCompletedUnixNano >= transition.HealthStartedUnixNano && transition.HealthExpiresUnixNano > transition.HealthCompletedUnixNano &&
 		transition.HealthExpiresUnixNano-transition.HealthCompletedUnixNano <= componenthealth.MaxProtocolProbeFreshness.Nanoseconds() && authority.HasComposition &&
-		authority.Composition.State == "ACTIVE" && authority.Composition.Revision == state.CompositionRevision && authority.Composition.ManagedPlanRevision == state.ManagedPlanRevision
+		authority.Composition.State == "ACTIVE" && authority.Composition.Revision == state.CompositionRevision && authority.Composition.ManagedPlanRevision == state.ManagedPlanRevision &&
+		matchingLiveAuthority(authority)
 	return exact, exact && state.HealthExpiresUnixNano > now.UTC().UnixNano()
+}
+
+func matchingLiveAuthority(authority protectionrepository.FirewallAuthoritySnapshot) bool {
+	return authority.HasComposition && authority.HasObservation && authority.Observation.State == protectionfirewall.FirewallLiveMatching &&
+		authority.Observation.HasCommittedAuthority && authority.Observation.CommittedCompositionRevision == authority.Composition.Revision &&
+		authority.Observation.ManagedTablePresent && authority.Observation.CurrentRevision == authority.Composition.ManagedPlanRevision &&
+		authority.Observation.CurrentSemanticSHA256 == authority.Composition.CandidateSemanticSHA256
 }
 
 func validRevision(value string) bool {

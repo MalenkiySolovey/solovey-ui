@@ -7,15 +7,17 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"time"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 
 const (
 	FirewallContributionSchemaV1 = "solovey-ui/managed-firewall-contribution/v1"
-	FirewallCompositionSchemaV1  = "solovey-ui/managed-firewall-composition/v1"
-	FirewallTransitionSchemaV1   = "solovey-ui/managed-firewall-transition/v1"
+	FirewallCompositionSchemaV2  = "solovey-ui/managed-firewall-composition/v2"
+	FirewallTransitionSchemaV2   = "solovey-ui/managed-firewall-transition/v2"
 	ContributionKindBaseline     = "BASELINE"
 	ContributionKindUDPDirect    = "UDP_DIRECT_GUARDED"
 	BaselineContributionID       = "managed-firewall:baseline"
@@ -46,13 +48,15 @@ type compositionBinding struct {
 	SemanticRevision string `json:"semanticRevision"`
 }
 
-type FirewallCompositionV1 struct {
-	Schema       string               `json:"schema"`
-	Revision     string               `json:"revision"`
-	Plan         FirewallPlan         `json:"-"`
-	PlanRevision string               `json:"planRevision"`
-	CandidateSHA string               `json:"candidateSha256"`
-	Bindings     []compositionBinding `json:"bindings"`
+type FirewallCompositionV2 struct {
+	Schema                      string               `json:"schema"`
+	Revision                    string               `json:"revision"`
+	Plan                        FirewallPlan         `json:"-"`
+	PlanRevision                string               `json:"planRevision"`
+	CandidateSHA                string               `json:"candidateSha256"`
+	CandidateSemanticSHA        string               `json:"candidateSemanticSha256,omitempty"`
+	CandidateTimedMembershipSHA string               `json:"candidateTimedMembershipSha256,omitempty"`
+	Bindings                    []compositionBinding `json:"bindings"`
 }
 
 type FirewallContributionStore interface {
@@ -64,6 +68,8 @@ type FirewallContributionStore interface {
 	CommitFirewallAuthority(context.Context, string, string, string, *protectionrepository.FirewallContributionModel, protectionrepository.FirewallCompositionModel, string) error
 	RecordFirewallTransitionHealth(context.Context, string, string, uint64, string, int64, int64, int64) error
 	SetFirewallTransitionState(context.Context, string, string, string) error
+	RecordFirewallObservation(context.Context, protectionrepository.FirewallObservationModel, string) error
+	RetireFirewallAuthorityAfterRuntimeLoss(context.Context, string, int, string) error
 }
 
 func contributionFromPlan(plan FirewallPlan) (ManagedFirewallContributionV1, error) {
@@ -132,12 +138,37 @@ func cloneFirewallPlan(plan FirewallPlan) FirewallPlan {
 	data, _ := json.Marshal(plan)
 	var result FirewallPlan
 	_ = json.Unmarshal(data, &result)
+	// Owner-local copies may retain immutable current evidence. JSON storage
+	// intentionally cannot revive that authority after a restart.
+	result.mutationEvidence = plan.mutationEvidence
 	return result
 }
 
 func finalizeContribution(value ManagedFirewallContributionV1) ManagedFirewallContributionV1 {
-	value.SemanticRevision = ""
-	value.SemanticRevision = hostresources.Revision(value)
+	// Storage retains observations for diagnostics and recovery. Identity uses
+	// the plan owner's canonical fact, not the observation-rich stored plan.
+	// A separate domain also prevents legacy whole-object hashes from being
+	// silently reinterpreted as current semantic authority.
+	planRevision := func(plan *FirewallPlan) string {
+		if plan == nil {
+			return ""
+		}
+		return firewallPlanRevision(*plan)
+	}
+	value.SemanticRevision = hostresources.Revision(struct {
+		Schema           string
+		ContributionID   string
+		Kind             string
+		ResourceID       string
+		EndpointID       string
+		Network          hostresources.Network
+		AddressFamily    hostresources.AddressFamily
+		Baseline         string
+		BaselineFallback string
+		UDPPolicy        *UDPFlowPolicyV1
+	}{"solovey-ui/firewall-contribution-identity/v2", value.ContributionID,
+		value.Kind, value.ResourceID, value.EndpointID, value.Network, value.AddressFamily,
+		planRevision(value.Baseline), planRevision(value.BaselineFallback), value.UDPPolicy})
 	return value
 }
 
@@ -171,7 +202,7 @@ func validateContribution(value ManagedFirewallContributionV1) error {
 	return nil
 }
 
-func composeFirewall(values []ManagedFirewallContributionV1) (FirewallCompositionV1, error) {
+func composeFirewall(values []ManagedFirewallContributionV1) (FirewallCompositionV2, error) {
 	ordered := append([]ManagedFirewallContributionV1(nil), values...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].ContributionID < ordered[j].ContributionID })
 	seen := map[string]bool{}
@@ -181,7 +212,7 @@ func composeFirewall(values []ManagedFirewallContributionV1) (FirewallCompositio
 	bindings := make([]compositionBinding, 0, len(ordered))
 	for _, value := range ordered {
 		if err := validateContribution(value); err != nil || seen[value.ContributionID] {
-			return FirewallCompositionV1{}, ErrCompositionInvalid
+			return FirewallCompositionV2{}, ErrCompositionInvalid
 		}
 		seen[value.ContributionID] = true
 		bindings = append(bindings, compositionBinding{value.ContributionID, value.Kind, value.SemanticRevision})
@@ -192,13 +223,13 @@ func composeFirewall(values []ManagedFirewallContributionV1) (FirewallCompositio
 			if fallbackRevision == "" {
 				plan, fallbackRevision = fallback, fallback.Revision
 			} else if fallback.Revision != fallbackRevision {
-				return FirewallCompositionV1{}, fmt.Errorf("%w: UDP contributions disagree on their baseline fallback", ErrCompositionInvalid)
+				return FirewallCompositionV2{}, fmt.Errorf("%w: UDP contributions disagree on their baseline fallback", ErrCompositionInvalid)
 			}
 		}
 	}
 	if !hasBaseline {
 		if fallbackRevision == "" {
-			return FirewallCompositionV1{}, fmt.Errorf("%w: baseline contribution and UDP fallback are absent", ErrCompositionInvalid)
+			return FirewallCompositionV2{}, fmt.Errorf("%w: baseline contribution and UDP fallback are absent", ErrCompositionInvalid)
 		}
 	}
 	for _, value := range ordered {
@@ -211,15 +242,23 @@ func composeFirewall(values []ManagedFirewallContributionV1) (FirewallCompositio
 		var err error
 		plan, err = AttachUDPFlowPolicy(plan, value.EndpointID, policy)
 		if err != nil {
-			return FirewallCompositionV1{}, err
+			return FirewallCompositionV2{}, err
 		}
 	}
 	if err := Preflight(plan); err != nil {
-		return FirewallCompositionV1{}, err
+		return FirewallCompositionV2{}, err
 	}
 	candidate := RenderManagedNFT(plan)
-	result := FirewallCompositionV1{Schema: FirewallCompositionSchemaV1, Plan: plan, PlanRevision: plan.Revision,
-		CandidateSHA: artifactSHA([]byte(candidate)), Bindings: bindings}
+	semanticSHA, err := protectionhelper.ManagedSemanticSHA256([]byte(candidate))
+	if err != nil {
+		return FirewallCompositionV2{}, err
+	}
+	timedMembershipSHA, err := protectionhelper.ManagedTimedMembershipSHA256([]byte(candidate))
+	if err != nil {
+		return FirewallCompositionV2{}, err
+	}
+	result := FirewallCompositionV2{Schema: FirewallCompositionSchemaV2, Plan: plan, PlanRevision: plan.Revision,
+		CandidateSHA: artifactSHA([]byte(candidate)), CandidateSemanticSHA: semanticSHA, CandidateTimedMembershipSHA: timedMembershipSHA, Bindings: bindings}
 	result.Revision = hostresources.Revision(struct {
 		Schema, PlanRevision string
 		Bindings             []compositionBinding
@@ -244,18 +283,35 @@ func contributionFromModel(model protectionrepository.FirewallContributionModel)
 	var value ManagedFirewallContributionV1
 	if len(model.SemanticJSON) == 0 || len(model.SemanticJSON) > 2<<20 || json.Unmarshal(model.SemanticJSON, &value) != nil ||
 		validateContribution(value) != nil || model.ContributionID != value.ContributionID || model.SemanticRevision != value.SemanticRevision ||
-		model.Kind != value.Kind || model.ResourceID != value.ResourceID || model.EndpointID != value.EndpointID {
+		model.Schema != value.Schema || model.Network != string(value.Network) || model.AddressFamily != string(value.AddressFamily) || model.Kind != value.Kind || model.ResourceID != value.ResourceID || model.EndpointID != value.EndpointID {
 		return ManagedFirewallContributionV1{}, ErrCompositionInvalid
 	}
 	return value, nil
+}
+
+func matchesCommittedComposition(value FirewallCompositionV2, model protectionrepository.FirewallCompositionModel) bool {
+	var bindings []compositionBinding
+	return model.Schema == FirewallCompositionSchemaV2 && json.Unmarshal(model.BindingsJSON, &bindings) == nil &&
+		hostresources.Revision(bindings) == hostresources.Revision(value.Bindings) && value.Revision == model.Revision && value.PlanRevision == model.ManagedPlanRevision &&
+		value.CandidateSHA == model.CandidateSHA256 && value.CandidateSemanticSHA == model.CandidateSemanticSHA256 && value.CandidateTimedMembershipSHA == model.CandidateTimedMembershipSHA256
 }
 
 func contributionsFromSnapshot(snapshot protectionrepository.FirewallAuthoritySnapshot) ([]ManagedFirewallContributionV1, error) {
 	if snapshot.HasComposition && snapshot.Composition.State != "ACTIVE" {
 		return nil, ErrContributionConflict
 	}
-	values := make([]ManagedFirewallContributionV1, 0, len(snapshot.Contributions))
-	for _, model := range snapshot.Contributions {
+	if snapshot.HasComposition && (!snapshot.HasObservation || snapshot.Observation.State != FirewallLiveMatching || !snapshot.Observation.HasCommittedAuthority ||
+		snapshot.Observation.CommittedCompositionRevision != snapshot.Composition.Revision || snapshot.Observation.CurrentRevision != snapshot.Composition.ManagedPlanRevision ||
+		snapshot.Observation.CurrentSemanticSHA256 != snapshot.Composition.CandidateSemanticSHA256 || snapshot.Observation.CurrentTimedMembershipSHA256 == "" ||
+		snapshot.Observation.CurrentTimedMembershipSHA256 != snapshot.Observation.ExpectedTimedMembershipSHA256) {
+		return nil, ErrContributionConflict
+	}
+	return contributionsFromModels(snapshot.Contributions)
+}
+
+func contributionsFromModels(models []protectionrepository.FirewallContributionModel) ([]ManagedFirewallContributionV1, error) {
+	values := make([]ManagedFirewallContributionV1, 0, len(models))
+	for _, model := range models {
 		value, err := contributionFromModel(model)
 		if err != nil {
 			return nil, err
@@ -263,6 +319,25 @@ func contributionsFromSnapshot(snapshot protectionrepository.FirewallAuthoritySn
 		values = append(values, value)
 	}
 	return values, nil
+}
+
+func expectedTimedMembershipSHA(values []ManagedFirewallContributionV1, now time.Time) (string, error) {
+	composition, err := composeFirewall(values)
+	if err != nil {
+		return "", err
+	}
+	plan := cloneFirewallPlan(composition.Plan)
+	cutoff := now.UTC().Unix()
+	for endpointIndex := range plan.Endpoints {
+		kept := plan.Endpoints[endpointIndex].Contributions[:0]
+		for _, contribution := range plan.Endpoints[endpointIndex].Contributions {
+			if contribution.ExpiresAt > cutoff {
+				kept = append(kept, contribution)
+			}
+		}
+		plan.Endpoints[endpointIndex].Contributions = kept
+	}
+	return protectionhelper.ManagedTimedMembershipSHA256([]byte(RenderManagedNFT(plan)))
 }
 
 // EffectiveBaselineAuthorityRevision returns the exact baseline plan revision
@@ -282,7 +357,7 @@ func EffectiveBaselineAuthorityRevision(snapshot protectionrepository.FirewallAu
 		return "", nil
 	}
 	composition, err := composeFirewall(values)
-	if err != nil || composition.Revision != snapshot.Composition.Revision || composition.PlanRevision != snapshot.Composition.ManagedPlanRevision || composition.CandidateSHA != snapshot.Composition.CandidateSHA256 {
+	if err != nil || composition.Revision != snapshot.Composition.Revision || composition.PlanRevision != snapshot.Composition.ManagedPlanRevision || composition.CandidateSHA != snapshot.Composition.CandidateSHA256 || composition.CandidateSemanticSHA != snapshot.Composition.CandidateSemanticSHA256 || composition.CandidateTimedMembershipSHA != snapshot.Composition.CandidateTimedMembershipSHA256 {
 		return "", errors.Join(ErrCompositionInvalid, err)
 	}
 	baselineRevision := ""
@@ -336,13 +411,13 @@ func replaceContribution(values []ManagedFirewallContributionV1, replacement *Ma
 	return result
 }
 
-func compositionModel(value FirewallCompositionV1) (protectionrepository.FirewallCompositionModel, error) {
+func compositionModel(value FirewallCompositionV2) (protectionrepository.FirewallCompositionModel, error) {
 	bindings, err := json.Marshal(value.Bindings)
-	if err != nil || len(bindings) > 256<<10 || value.Schema != FirewallCompositionSchemaV1 || value.Revision == "" || value.PlanRevision == "" || value.CandidateSHA == "" {
+	if err != nil || len(bindings) > 256<<10 || value.Schema != FirewallCompositionSchemaV2 || value.Revision == "" || value.PlanRevision == "" || value.CandidateSHA == "" || value.CandidateSemanticSHA == "" || value.CandidateTimedMembershipSHA == "" {
 		return protectionrepository.FirewallCompositionModel{}, ErrCompositionInvalid
 	}
 	return protectionrepository.FirewallCompositionModel{Schema: value.Schema, Revision: value.Revision, ManagedPlanRevision: value.PlanRevision,
-		CandidateSHA256: value.CandidateSHA, BindingsJSON: bindings, State: "ACTIVE"}, nil
+		CandidateSHA256: value.CandidateSHA, CandidateSemanticSHA256: value.CandidateSemanticSHA, CandidateTimedMembershipSHA256: value.CandidateTimedMembershipSHA, BindingsJSON: bindings, State: "ACTIVE"}, nil
 }
 
 func contributionJSON(value ManagedFirewallContributionV1) json.RawMessage {

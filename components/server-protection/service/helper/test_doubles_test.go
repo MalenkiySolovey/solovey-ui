@@ -6,6 +6,7 @@ import (
 	"path"
 	"strings"
 	"sync"
+	"time"
 
 	protectionruntime "github.com/MalenkiySolovey/solovey-ui/components/server-protection/runtimecontract"
 )
@@ -56,13 +57,10 @@ func (m *MockInvoker) Invoke(ctx context.Context, request Request) (Response, In
 		if response.OK && response.NFT == nil {
 			switch request.Operation {
 			case OperationNFTValidate:
-				response.NFT = &NFTResult{CandidateSHA256: request.NFTValidate.ExpectedSHA256}
+				response.NFT = &NFTResult{CandidateSHA256: request.NFTValidate.ExpectedSHA256, SemanticSHA256: request.NFTValidate.ExpectedSemanticSHA256, TimedMembershipSHA256: request.NFTValidate.ExpectedTimedMembershipSHA256}
 			case OperationNFTApply:
 				rollbackSHA := strings.Repeat("a", 64)
-				if request.NFTApply.ExpectedPreviousTablePresent {
-					rollbackSHA = request.NFTApply.ExpectedPreviousSHA256
-				}
-				response.NFT = &NFTResult{ManagedTablePresent: true, AppliedRevision: request.NFTApply.ExpectedRevision, CandidateSHA256: request.NFTApply.ExpectedSHA256, RollbackSHA256: rollbackSHA, PreviousRevision: request.NFTApply.ExpectedPreviousRevision, PreviousSHA256: request.NFTApply.ExpectedPreviousSHA256, PreviousTablePresent: request.NFTApply.ExpectedPreviousTablePresent}
+				response.NFT = &NFTResult{ManagedTablePresent: true, AppliedRevision: request.NFTApply.ExpectedRevision, CandidateSHA256: request.NFTApply.ExpectedSHA256, SemanticSHA256: request.NFTApply.ExpectedSemanticSHA256, TimedMembershipSHA256: request.NFTApply.ExpectedTimedMembershipSHA256, RollbackSHA256: rollbackSHA, PreviousRevision: request.NFTApply.ExpectedPreviousRevision, PreviousSemanticSHA256: request.NFTApply.ExpectedPreviousSemanticSHA256, PreviousTimedMembershipSHA256: request.NFTApply.ExpectedPreviousTimedMembershipSHA256, PreviousTablePresent: request.NFTApply.ExpectedPreviousTablePresent}
 			case OperationNFTRollback:
 				response.NFT = &NFTResult{RollbackSHA256: strings.Repeat("a", 64)}
 			}
@@ -90,7 +88,8 @@ type FakeNginxExecutor struct {
 
 func NewFakeNginxExecutor() *FakeNginxExecutor {
 	managedRoot := path.Join(protectionruntime.Installed().RuntimeRoot, "nginx")
-	identity := BinaryIdentity{Path: "/usr/sbin/nginx", TargetPath: "/usr/sbin/nginx", Device: 1, Inode: 2}
+	identity := BinaryIdentity{Path: "/usr/sbin/nginx", TargetPath: "/usr/sbin/nginx", Device: 1, Inode: 2,
+		Size: 1024, Mode: 0o755, Digest: strings.Repeat("a", 64)}
 	return &FakeNginxExecutor{Support: NginxSupport{PlatformKnown: true, Linux: true, Available: true, Binary: identity, ManagedRoot: managedRoot, ControlledConfig: path.Join(managedRoot, "loader.conf"), MasterPID: 100}, Version: NginxVersionResult{Detected: true, Version: "1.26.0", Modules: []string{"ssl_preread", "stream"}, Binary: identity}, Revisions: map[string]string{}, RevisionListeners: map[string][]NginxListener{}, Fail: map[Operation]error{}, FailSequence: map[Operation][]error{}, FailAfter: map[Operation]error{}, Reloaded: map[string]NginxResult{}}
 }
 
@@ -223,7 +222,7 @@ func (f *FakeNginxExecutor) Restore(_ context.Context, _ Correlation, r NginxRes
 }
 
 func newContractEngineWithExecutor(root ManagedRoot, executor NFTExecutor) ContractEngine {
-	return ContractEngine{root: root, executor: executor}
+	return ContractEngine{root: root, executor: executor, now: time.Now}
 }
 
 func newContractEngineWithBackends(root ManagedRoot, nft NFTExecutor, nginx NginxExecutor) ContractEngine {

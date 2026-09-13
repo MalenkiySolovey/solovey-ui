@@ -81,7 +81,7 @@ func (c *Controller) Prepare(ctx context.Context, actor string, input PrepareReq
 	}
 	receipt, replay, err := c.Repository.BeginLocalProxyReceipt(ctx, "prepare", input.IdempotencyKey, requestDigest)
 	if err != nil {
-		return ResultV1{}, err
+		return ResultV1{}, localProxyReceiptError(err)
 	}
 	if replay {
 		return replayLocalProxyResult(receipt)
@@ -103,6 +103,9 @@ func (c *Controller) Prepare(ctx context.Context, actor string, input PrepareReq
 	operation := acquired.Operation
 	if acquired.Joined {
 		return ResultV1{}, serviceError(CodeStateInvalid)
+	}
+	if err := c.Repository.BindLocalProxyReceiptOperation(context.WithoutCancel(ctx), receipt.ID, operation.OperationID, operation.Revision); err != nil {
+		return ResultV1{}, errors.Join(serviceError(CodeInternalFailure), err)
 	}
 	provider, ok := c.Providers.Provider(plan.ExactReference.ProviderID)
 	if !ok {
@@ -172,7 +175,7 @@ func (c *Controller) Apply(ctx context.Context, input ApplyRequestV1) (ResultV1,
 	}
 	receipt, replay, err := c.Repository.BeginLocalProxyReceipt(ctx, "apply", input.IdempotencyKey, requestDigest)
 	if err != nil {
-		return ResultV1{}, err
+		return ResultV1{}, localProxyReceiptError(err)
 	}
 	if replay {
 		return replayLocalProxyResult(receipt)
@@ -183,6 +186,9 @@ func (c *Controller) Apply(ctx context.Context, input ApplyRequestV1) (ResultV1,
 			_ = c.Repository.AmbiguousLocalProxyReceipt(context.WithoutCancel(ctx), receipt.ID)
 		}
 	}()
+	if err := c.Repository.BindLocalProxyReceiptOperation(context.WithoutCancel(ctx), receipt.ID, operation.OperationID, operation.Revision); err != nil {
+		return ResultV1{}, errors.Join(serviceError(CodeInternalFailure), err)
+	}
 	applying, err := c.Operations.Transition(ctx, operation.OperationID, operation.Revision, protectionoperations.StateApplying)
 	if err != nil {
 		return ResultV1{}, err
@@ -288,7 +294,7 @@ func (c *Controller) Disable(ctx context.Context, input DisableRequestV1) (Resul
 	}
 	receipt, replay, err := c.Repository.BeginLocalProxyReceipt(ctx, "disable", input.IdempotencyKey, requestDigest)
 	if err != nil {
-		return ResultV1{}, err
+		return ResultV1{}, localProxyReceiptError(err)
 	}
 	if replay {
 		return replayLocalProxyResult(receipt)
@@ -299,6 +305,9 @@ func (c *Controller) Disable(ctx context.Context, input DisableRequestV1) (Resul
 			_ = c.Repository.AmbiguousLocalProxyReceipt(context.WithoutCancel(ctx), receipt.ID)
 		}
 	}()
+	if err := c.Repository.BindLocalProxyReceiptOperation(context.WithoutCancel(ctx), receipt.ID, operation.OperationID, operation.Revision); err != nil {
+		return ResultV1{}, errors.Join(serviceError(CodeInternalFailure), err)
+	}
 	rolling, err := c.Operations.BeginRollback(ctx, operation.OperationID, operation.Revision)
 	if err != nil {
 		return ResultV1{}, err
@@ -554,11 +563,19 @@ func replayLocalProxyResult(receipt protectionrepository.LocalProxyIdempotencyV1
 
 func (c *Controller) replayCompleted(ctx context.Context, action, key, requestDigest string) (ResultV1, bool, error) {
 	receipt, replay, err := c.Repository.ReplayLocalProxyReceipt(ctx, action, key, requestDigest)
+	err = localProxyReceiptError(err)
 	if err != nil || !replay {
 		return ResultV1{}, false, err
 	}
 	result, err := replayLocalProxyResult(receipt)
 	return result, true, err
+}
+
+func localProxyReceiptError(err error) error {
+	if errors.Is(err, protectionrepository.ErrIdempotencyKeyExpired) || errors.Is(err, protectionrepository.ErrIdempotencyKeyInvalid) {
+		return errors.Join(serviceError(CodeIdempotencyExpired), err)
+	}
+	return err
 }
 
 func (c *Controller) RenewActive(ctx context.Context) (bool, error) {

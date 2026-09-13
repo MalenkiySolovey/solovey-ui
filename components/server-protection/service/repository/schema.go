@@ -150,7 +150,7 @@ func ensureDropSafe(db *gorm.DB) error {
 		return ensureNativeDropSafe(db)
 	}
 	var count int64
-	dangerous := []string{"prepared", "applying", "health", "applied", "health_failed", "rolling_back", "rollback_failed", "lock_suspect"}
+	dangerous := []string{"prepared", "applying", "health", "applied", "health_failed", "rolling_back", "rollback_failed", "lock_suspect", "restoring_runtime"}
 	if err := db.Model(&PortOperationModel{}).Where("state IN ?", dangerous).Count(&count).Error; err != nil {
 		return err
 	}
@@ -181,7 +181,7 @@ func ensureFirewallContributionDropSafe(db *gorm.DB) error {
 	}
 	if db.Migrator().HasTable(&FirewallCompositionModel{}) {
 		var count int64
-		if err := db.Model(&FirewallCompositionModel{}).Where("state IN ?", []string{"ACTIVE", "RECOVERY_REQUIRED"}).Count(&count).Error; err != nil {
+		if err := db.Model(&FirewallCompositionModel{}).Where("state IN ?", []string{"ACTIVE", "MATCHING", "ABSENT", "FOREIGN", "DRIFTED", "UNAVAILABLE", "RECOVERY_REQUIRED"}).Count(&count).Error; err != nil {
 			return err
 		}
 		if count > 0 {

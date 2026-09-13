@@ -6,17 +6,25 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 )
 
 type nftTimedElement struct {
-	Prefix string
-	TTL    int64
+	Prefix    string
+	TTL       int64
+	ExpiresAt int64
 }
 
 func renderEndpointManagedNFT(plan FirewallPlan, managed bool) string {
+	return renderEndpointManagedNFTAt(plan, managed, time.Time{})
+}
+
+// An observation-time projection retains static topology. Only timed members
+// already expired under the committed absolute deadline can disappear.
+func renderEndpointManagedNFTAt(plan FirewallPlan, managed bool, at time.Time) string {
 	var output strings.Builder
 	output.WriteString("table inet solovey_protection {\n")
 	if managed {
@@ -25,7 +33,7 @@ func renderEndpointManagedNFT(plan FirewallPlan, managed bool) string {
 		output.WriteString("\"\n")
 	}
 	for _, endpoint := range plan.Endpoints {
-		writeEndpointSets(&output, endpoint, plan)
+		writeEndpointSetsAt(&output, endpoint, plan, at)
 	}
 	output.WriteString("  chain solovey_input {\n")
 	output.WriteString("    type filter hook input priority -5; policy accept;\n")
@@ -35,6 +43,10 @@ func renderEndpointManagedNFT(plan FirewallPlan, managed bool) string {
 		if rule := endpointMatch(exemption.Key, exemption.SourcePrefix); rule != "" {
 			output.WriteString("    ")
 			output.WriteString(rule)
+			if exemption.RecoveryPathID != "trusted-source" {
+				output.WriteString(" meta time < ")
+				output.WriteString(strconv.FormatInt(exemption.ExpiresAt, 10))
+			}
 			output.WriteString(" counter accept\n")
 		}
 	}
@@ -58,10 +70,25 @@ func renderEndpointManagedNFT(plan FirewallPlan, managed bool) string {
 }
 
 func writeEndpointSets(output *strings.Builder, endpoint EndpointPolicy, plan FirewallPlan) {
+	writeEndpointSetsAt(output, endpoint, plan, time.Time{})
+}
+
+func writeEndpointSetsAt(output *strings.Builder, endpoint EndpointPolicy, plan FirewallPlan, at time.Time) {
 	grouped := endpointElements(endpoint, plan)
+	current := grouped
+	if !at.IsZero() {
+		active := endpoint
+		active.Contributions = nil
+		for _, contribution := range endpoint.Contributions {
+			if contribution.ExpiresAt > at.Unix() {
+				active.Contributions = append(active.Contributions, contribution)
+			}
+		}
+		current = endpointElements(active, plan)
+	}
 	for _, intent := range []domain.ResponseIntent{domain.IntentSoftGraylist, domain.IntentRateLimit, domain.IntentTemporaryQuarantine, domain.IntentTemporaryBlock} {
-		elements := grouped[intent]
-		if len(elements) == 0 {
+		elements := current[intent]
+		if len(grouped[intent]) == 0 {
 			continue
 		}
 		name := endpointSetName(intent, endpoint)
@@ -82,7 +109,9 @@ func writeEndpointSets(output *strings.Builder, endpoint EndpointPolicy, plan Fi
 		output.WriteString("    timeout ")
 		output.WriteString(strconv.Itoa(plan.Limits.DefaultTTLSeconds))
 		output.WriteString("s\n")
-		output.WriteString("    elements = { ")
+		if len(elements) > 0 {
+			output.WriteString("    elements = { ")
+		}
 		for index, element := range elements {
 			if index > 0 {
 				output.WriteString(", ")
@@ -91,8 +120,16 @@ func writeEndpointSets(output *strings.Builder, endpoint EndpointPolicy, plan Fi
 			output.WriteString(" timeout ")
 			output.WriteString(strconv.FormatInt(element.TTL, 10))
 			output.WriteString("s")
+			if !at.IsZero() {
+				remaining := time.Unix(element.ExpiresAt, 0).Sub(at).Milliseconds()
+				output.WriteString(" expires ")
+				output.WriteString(strconv.FormatInt(remaining, 10))
+				output.WriteString("ms")
+			}
 		}
-		output.WriteString(" }\n")
+		if len(elements) > 0 {
+			output.WriteString(" }\n")
+		}
 		output.WriteString("  }\n")
 	}
 }
@@ -145,7 +182,7 @@ func endpointElements(endpoint EndpointPolicy, plan FirewallPlan) map[domain.Res
 		if ttl > int64(plan.Limits.MaxTTLSeconds) {
 			ttl = int64(plan.Limits.MaxTTLSeconds)
 		}
-		result[contribution.Intent] = append(result[contribution.Intent], nftTimedElement{Prefix: contribution.Subject, TTL: ttl})
+		result[contribution.Intent] = append(result[contribution.Intent], nftTimedElement{Prefix: contribution.Subject, TTL: ttl, ExpiresAt: contribution.ExpiresAt})
 	}
 	for intent := range result {
 		sort.Slice(result[intent], func(i, j int) bool {

@@ -40,6 +40,42 @@ func TestOperationAPIRequiresExplicitForceUnlockConfirmation(t *testing.T) {
 	}
 }
 
+func TestRetainedOperationDoesNotGrantRollbackAuthorization(t *testing.T) {
+	for _, scope := range []string{readScope, writeScope, applyScope} {
+		t.Run(scope, func(t *testing.T) {
+			router, _, manager := newProtectionAPIRouterWithOperations(t, scope)
+			acquired, err := manager.Acquire(t.Context(), protectionoperations.AcquireRequest{Kind: protectionoperations.KindFirewall, ResourceID: "managed-table:inet:solovey_protection", IdempotencyKey: "retained-auth", Actor: "tester"})
+			if err != nil {
+				t.Fatal(err)
+			}
+			retained, err := manager.Transition(t.Context(), acquired.Operation.OperationID, acquired.Operation.Revision, protectionoperations.StateReconcileRequired)
+			if err != nil {
+				t.Fatal(err)
+			}
+			path := "/api/components/server-protection/firewall/rollback"
+			body := `{"operationId":"` + retained.OperationID + `","confirmation":"ROLLBACK SERVER PROTECTION ` + retained.OperationID + `"}`
+			response := requestProtectionAPI(router, http.MethodPost, path, body)
+			if scope != applyScope {
+				if response.Code != http.StatusForbidden {
+					t.Fatalf("scope authorized retained rollback: %d", response.Code)
+				}
+			} else {
+				if response.Code != http.StatusConflict || !strings.Contains(response.Body.String(), "missing_capability") {
+					t.Fatal("retained operation bypassed advanced policy")
+				}
+				wrong := requestProtectionAPI(router, http.MethodPost, path, `{"operationId":"`+retained.OperationID+`","confirmation":"wrong"}`)
+				if wrong.Code != http.StatusBadRequest || !strings.Contains(wrong.Body.String(), "confirmation_required") {
+					t.Fatal("retained operation bypassed confirmation")
+				}
+			}
+			items, err := manager.List(t.Context())
+			if err != nil || len(items) != 1 || items[0].State != retained.State || items[0].Revision != retained.Revision {
+				t.Fatal("rejected route changed durable operation")
+			}
+		})
+	}
+}
+
 func TestOperationAPIConfirmationAndAuditChoreography(t *testing.T) {
 	router, audits, manager := newProtectionAPIRouterWithOperations(t, applyScope)
 	prepared, err := manager.Acquire(context.Background(), protectionoperations.AcquireRequest{

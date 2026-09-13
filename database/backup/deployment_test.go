@@ -35,6 +35,9 @@ func TestDeploymentBackupPreservesSemanticHistoryAndScrubsLiveAuthority(t *testi
 	if copied.CheckpointRef != "" || copied.BrokerReceipt != "" {
 		t.Fatalf("live deployment authority leaked into backup: %#v", copied)
 	}
+	if !copied.CheckpointReleased {
+		t.Fatalf("scrubbed deployment checkpoint remained cleanup debt in backup: %#v", copied)
+	}
 	if copied.State != operation.State || string(copied.ReasonsJSON) != string(operation.ReasonsJSON) {
 		t.Fatalf("safe deployment recovery metadata was not preserved: %#v", copied)
 	}

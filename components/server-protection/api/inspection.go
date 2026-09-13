@@ -38,7 +38,7 @@ func (h Handler) hostSurfaces(c *gin.Context) {
 		}
 		filtered = append(filtered, fact)
 	}
-	page := parsePage(c, 100, 500)
+	page := parsePage(c, 100)
 	items, total := paginate(filtered, page)
 	h.deps.JSONObj(c, gin.H{"items": items, "page": page.Page, "limit": page.Limit, "total": total, "generatedAt": snapshot.GeneratedAt, "truncated": snapshot.Truncated, "reasonCodes": snapshot.ReasonCodes}, nil)
 }
@@ -50,7 +50,7 @@ func (h Handler) targetCapabilities(c *gin.Context) {
 	now := time.Now().UTC()
 	snapshotV1 := neutralfallback.Default.Snapshot(c.Request.Context(), now)
 	snapshotV2 := neutralfallback.Default.SnapshotV2(c.Request.Context(), now)
-	page := parsePage(c, 100, 500)
+	page := parsePage(c, 100)
 	type legacyTargetView struct {
 		Identity    neutralfallback.TargetIdentity `json:"identity"`
 		EndpointID  string                         `json:"endpointId"`
@@ -155,7 +155,7 @@ func (h Handler) signalsV2(c *gin.Context) {
 	if !h.readAllowed(c) {
 		return
 	}
-	page := parsePage(c, 100, 500)
+	page := parsePage(c, 100)
 	rows, total, err := h.deps.Repository.ListSignalsV2(c.Request.Context(), protectionrepository.ContractFilter{PageQuery: page, Scope: strings.TrimSpace(c.Query("scope")), Kind: strings.TrimSpace(c.Query("kind")), ResourceID: strings.TrimSpace(c.Query("resource_id"))})
 	if err != nil {
 		h.deps.JSONObj(c, nil, err)
@@ -182,7 +182,7 @@ func (h Handler) decisionsV2(c *gin.Context) {
 	if !h.readAllowed(c) {
 		return
 	}
-	page := parsePage(c, 100, 500)
+	page := parsePage(c, 100)
 	rows, total, err := h.deps.Repository.ListDecisionsV2(c.Request.Context(), protectionrepository.ContractFilter{PageQuery: page, Scope: strings.TrimSpace(c.Query("scope"))})
 	if err != nil {
 		h.deps.JSONObj(c, nil, err)
@@ -261,6 +261,9 @@ func paginate[T any](values []T, page protectionrepository.PageQuery) ([]T, int)
 	end := start + page.Limit
 	if end > total {
 		end = total
+	}
+	if start == end {
+		return []T{}, total
 	}
 	return values[start:end], total
 }

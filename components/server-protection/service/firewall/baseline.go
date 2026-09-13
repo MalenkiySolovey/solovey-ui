@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"net/netip"
 	"sort"
 	"strings"
 	"time"
@@ -21,6 +20,7 @@ import (
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 	protectionresponse "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/response"
+	sshservice "github.com/MalenkiySolovey/solovey-ui/service/sshmanagement"
 )
 
 const FirewallBaselineSnapshotBindingSchemaV1 = "solovey-ui/firewall-baseline-snapshot-binding/v1"
@@ -68,6 +68,8 @@ type BaselineState struct {
 type BaselineService struct {
 	Repository   *protectionrepository.Repository
 	Capabilities BaselineCapabilitySource
+	SSH          *sshservice.Manager
+	Now          func() time.Time
 }
 
 type BaselineCapabilitySource interface {
@@ -101,7 +103,7 @@ type DecisionResolutionPreview struct {
 var ErrUnknownBaselineEndpoint = errors.New("decision target is absent from the configured endpoint inventory")
 
 func NewBaselineService(repository *protectionrepository.Repository) *BaselineService {
-	return &BaselineService{Repository: repository}
+	return &BaselineService{Repository: repository, SSH: sshservice.Shared()}
 }
 
 func (s *BaselineService) CapabilityAssessment(ctx context.Context, plan FirewallPlan) BaselineCapabilityAssessment {
@@ -129,7 +131,7 @@ func AssessBaselineCapabilities(plan FirewallPlan, capabilities *protectionhelpe
 		return result
 	}
 	result.CapabilityRevision = capabilities.Revision
-	result.SSHRecoverySupported = capabilities.SSHRecovery.Available && protectionhelper.CapabilityAvailable(capabilities, protectionhelper.OperationSSHRecoveryObserve) && domain.ValidExactRevision(capabilities.SSHRecovery.VerifierRevision)
+	result.SSHRecoverySupported = protectionhelper.SSHRecoveryCapabilityAvailable(capabilities) && domain.ValidExactRevision(capabilities.SSHRecovery.VerifierRevision)
 	if result.SSHRecoverySupported {
 		result.SSHVerifierRevision = capabilities.SSHRecovery.VerifierRevision
 	}
@@ -194,7 +196,9 @@ func (s *BaselineService) Snapshot(ctx context.Context, refresh bool, selected m
 	if s == nil || s.Repository == nil {
 		return BaselineState{}, errors.New("firewall baseline repository is unavailable")
 	}
-	now := time.Now().UTC()
+	if s.SSH != nil {
+		ctx = s.SSH.WithCurrentPosture(ctx)
+	}
 	inventory := protectionresources.Snapshot(ctx, refresh)
 	if err := InventoryReady(inventory); err != nil {
 		return BaselineState{}, err
@@ -214,6 +218,17 @@ func (s *BaselineService) Snapshot(ctx context.Context, refresh bool, selected m
 	}
 
 	surfaceSnapshot := hostfacts.CurrentSnapshot()
+	// A caller-requested refresh must include host surfaces as well as the
+	// configured resource registry. Firewall preview is a safety boundary: it
+	// must consume the current semantic SSH projection, not race a background
+	// reconciliation or reuse an empty startup snapshot.
+	if refresh || surfaceSnapshot.GeneratedAt == 0 {
+		surfaceSnapshot = hostfacts.Reconcile(ctx)
+	}
+	now := time.Now().UTC()
+	if s.Now != nil {
+		now = s.Now().UTC()
+	}
 	targets := make(map[string]protectionresources.LocalTargetStatus)
 	targetSnapshot := neutralfallback.Default.Snapshot(ctx, now)
 	for _, resource := range resources {
@@ -320,11 +335,11 @@ func (s *BaselineService) PolicyInputs(ctx context.Context, now time.Time) ([]st
 		if item.ExpiresAt != nil && *item.ExpiresAt <= now.Unix() {
 			continue
 		}
-		prefix, parseErr := netip.ParsePrefix(strings.TrimSpace(item.IPCIDR))
-		if parseErr != nil || prefix.Masked().String() != strings.TrimSpace(item.IPCIDR) {
+		validated, validationErr := protectionpolicy.ValidateTrustedSource(item.IPCIDR, item.BroadScopeAcknowledged, "TRUST BROAD SOURCE "+strings.TrimSpace(item.IPCIDR))
+		if validationErr != nil || validated.Prefix.String() != strings.TrimSpace(item.IPCIDR) {
 			return nil, nil, errors.New("active trusted source is invalid")
 		}
-		trusted = append(trusted, prefix.String())
+		trusted = append(trusted, validated.Prefix.String())
 	}
 	sort.Strings(trusted)
 	// Legacy graylist rows are record-only compatibility data. Kernel planning

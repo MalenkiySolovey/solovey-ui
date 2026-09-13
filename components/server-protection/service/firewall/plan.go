@@ -56,15 +56,14 @@ func BuildPlan(resources []hostresources.ProtectableResource, ports []protection
 				tcp[port] = struct{}{}
 			}
 		}
-		if protocol == "tcp" && (start <= 22 && end >= 22 || strings.Contains(strings.ToLower(item.Reason), "ssh")) {
+		if protocol == "tcp" && strings.Contains(strings.ToLower(item.Reason), "ssh") {
 			hasExplicitSSH = true
 		}
 		listen := hostresources.NormalizeListen(item.Listen).Value
 		plan.ExplicitOpen = append(plan.ExplicitOpen, protocol+" "+listen+":"+portRange(start, end)+" ("+boundedReason(item.Reason)+")")
 	}
 	if !hasExplicitSSH {
-		tcp[22] = struct{}{}
-		plan.Warnings = append(plan.Warnings, "SSH listener is unknown; TCP port 22 is kept only as an unverified fallback, add an explicit keep entry")
+		plan.Warnings = append(plan.Warnings, "SSH listener is unknown; add an explicit semantic management endpoint or TCP keep entry")
 	}
 	plan.AllowTCPPorts = sortedPorts(tcp)
 	plan.AllowUDPPorts = sortedPorts(udp)

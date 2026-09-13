@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -37,13 +38,16 @@ func TestSecurityEventRequestFieldsUseOnlyAllowedMetadata(t *testing.T) {
 	}
 }
 
-func TestPanelRecoverySessionRevisionIsDeterministicAndDoesNotExposeGeneration(t *testing.T) {
-	generation := "session-generation-secret"
-	revision := sessionRevision(generation)
-	if len(revision) != 64 || revision != sessionRevision(generation) || revision == generation {
-		t.Fatalf("session generation was not converted to an exact opaque revision: %q", revision)
+func TestPanelRecoverySessionRevisionIsBoundToConcreteSessionWithoutExposingReference(t *testing.T) {
+	ref := "concrete-server-session-reference"
+	revision := service.SessionAuthenticationRevision(ref)
+	if len(revision) != 64 || revision != service.SessionAuthenticationRevision(ref) || revision == ref {
+		t.Fatalf("session reference was not converted to an exact opaque revision: %q", revision)
 	}
-	if sessionRevision("") != "" {
-		t.Fatal("missing session generation became verified recovery metadata")
+	if revision == service.SessionAuthenticationRevision("another-server-session-reference") {
+		t.Fatal("distinct server sessions share one recovery revision")
+	}
+	if service.SessionAuthenticationRevision("") != "" {
+		t.Fatal("missing session reference became verified recovery metadata")
 	}
 }

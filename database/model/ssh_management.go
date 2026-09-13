@@ -20,6 +20,7 @@ type SSHManagementCandidate struct {
 	OperationID           string `json:"operationId" gorm:"column:operation_id;primaryKey;size:64"`
 	Scope                 string `json:"-" gorm:"size:16;not null;default:global;index"`
 	IdempotencyKey        string `json:"-" gorm:"column:idempotency_key;size:96;not null;uniqueIndex"`
+	EndpointID            string `json:"endpointId" gorm:"column:endpoint_id;size:256;not null;default:''"`
 	State                 string `json:"state" gorm:"size:40;not null;index"`
 	Revision              uint64 `json:"revision" gorm:"not null"`
 	PolicyJSON            []byte `json:"policy" gorm:"column:policy_json;type:blob;not null"`
@@ -38,6 +39,7 @@ type SSHManagementCandidate struct {
 	EarliestSafetyExpiry  int64  `json:"earliestSafetyExpiry" gorm:"column:earliest_safety_expiry;not null;index"`
 	ReconnectExpiresAt    int64  `json:"reconnectExpiresAt" gorm:"column:reconnect_expires_at;default:0;not null;index"`
 	RollbackAttempts      uint8  `json:"rollbackAttempts" gorm:"column:rollback_attempts;default:0;not null"`
+	BrokerStageReleased   bool   `json:"brokerStageReleased" gorm:"column:broker_stage_released;default:false;not null;index"`
 	RestoredUntrusted     bool   `json:"restoredUntrusted" gorm:"column:restored_untrusted;default:false;not null;index"`
 	ReconciledAt          int64  `json:"reconciledAt" gorm:"column:reconciled_at;default:0;not null;index"`
 	ReasonCodesJSON       []byte `json:"reasonCodes" gorm:"column:reason_codes_json;type:blob;not null"`
@@ -87,29 +89,32 @@ type SSHReconnectChallenge struct {
 func (SSHReconnectChallenge) TableName() string { return "ssh_reconnect_challenges_v1" }
 
 type SSHRecoveryEvidence struct {
-	ID                    string `json:"id" gorm:"primaryKey;size:256"`
-	Kind                  string `json:"kind" gorm:"size:32;not null;index"`
-	EndpointID            string `json:"endpointId" gorm:"column:endpoint_id;size:256;not null;index"`
-	PrincipalID           string `json:"principalId" gorm:"column:principal_id;size:256;not null"`
-	SourcePrefix          string `json:"sourcePrefix" gorm:"column:source_prefix;size:96"`
-	VerificationMethod    string `json:"verificationMethod" gorm:"column:verification_method;size:64;not null"`
-	EvidenceProvider      string `json:"evidenceProvider" gorm:"column:evidence_provider;size:128"`
-	TargetOperation       string `json:"targetOperation" gorm:"column:target_operation;size:64;index"`
-	VerifiedAt            int64  `json:"verifiedAt" gorm:"column:verified_at;not null"`
-	ExpiresAt             int64  `json:"expiresAt" gorm:"column:expires_at;not null;index"`
-	IndependenceClass     string `json:"independenceClass" gorm:"column:independence_class;size:64;not null"`
-	VerificationState     string `json:"verificationState" gorm:"column:verification_state;size:32;not null;index"`
-	OperationBound        bool   `json:"operationBound" gorm:"column:operation_bound;not null"`
-	SingleUse             bool   `json:"singleUse" gorm:"column:single_use;not null"`
-	ConsumedAt            int64  `json:"consumedAt" gorm:"column:consumed_at;default:0;not null"`
-	Revision              uint64 `json:"revision" gorm:"not null"`
-	ReasonCodesJSON       []byte `json:"reasonCodes" gorm:"column:reason_codes_json;type:blob;not null"`
-	SourceRevision        string `json:"sourceRevision" gorm:"column:source_revision;size:64;not null"`
-	ConfigurationRevision string `json:"configurationRevision" gorm:"column:configuration_revision;size:64;not null"`
-	ServiceRevision       string `json:"serviceRevision" gorm:"column:service_revision;size:64"`
-	BinaryRevision        string `json:"binaryRevision" gorm:"column:binary_revision;size:64"`
-	ProducerRevision      string `json:"producerRevision" gorm:"column:producer_revision;size:64;not null"`
-	UpdatedAt             int64  `json:"updatedAt" gorm:"column:updated_at;not null"`
+	ID                            string `json:"id" gorm:"primaryKey;size:256"`
+	Kind                          string `json:"kind" gorm:"size:32;not null;index"`
+	EndpointID                    string `json:"endpointId" gorm:"column:endpoint_id;size:256;not null;index"`
+	PrincipalID                   string `json:"principalId" gorm:"column:principal_id;size:256;not null"`
+	SourcePrefix                  string `json:"sourcePrefix" gorm:"column:source_prefix;size:96"`
+	VerificationMethod            string `json:"verificationMethod" gorm:"column:verification_method;size:64;not null"`
+	EvidenceProvider              string `json:"evidenceProvider" gorm:"column:evidence_provider;size:128"`
+	TargetOperation               string `json:"targetOperation" gorm:"column:target_operation;size:64;index"`
+	VerifiedAt                    int64  `json:"verifiedAt" gorm:"column:verified_at;not null"`
+	ExpiresAt                     int64  `json:"expiresAt" gorm:"column:expires_at;not null;index"`
+	IndependenceClass             string `json:"independenceClass" gorm:"column:independence_class;size:64;not null"`
+	VerificationState             string `json:"verificationState" gorm:"column:verification_state;size:32;not null;index"`
+	OperationBound                bool   `json:"operationBound" gorm:"column:operation_bound;not null"`
+	SingleUse                     bool   `json:"singleUse" gorm:"column:single_use;not null"`
+	ConsumedAt                    int64  `json:"consumedAt" gorm:"column:consumed_at;default:0;not null"`
+	Revision                      uint64 `json:"revision" gorm:"not null"`
+	ReasonCodesJSON               []byte `json:"reasonCodes" gorm:"column:reason_codes_json;type:blob;not null"`
+	SourceRevision                string `json:"sourceRevision" gorm:"column:source_revision;size:64;not null"`
+	ConfigurationRevision         string `json:"configurationRevision" gorm:"column:configuration_revision;size:64;not null"`
+	ServiceRevision               string `json:"serviceRevision" gorm:"column:service_revision;size:64"`
+	BinaryRevision                string `json:"binaryRevision" gorm:"column:binary_revision;size:64"`
+	ProducerRevision              string `json:"producerRevision" gorm:"column:producer_revision;size:64;not null"`
+	ClientIdentityBindingRevision string `json:"clientIdentityBindingRevision" gorm:"column:client_identity_binding_revision;size:64"`
+	ClientIdentityConfigRevision  string `json:"clientIdentityConfigRevision" gorm:"column:client_identity_config_revision;size:64;index"`
+	ClientIdentityProvenance      string `json:"clientIdentityProvenance" gorm:"column:client_identity_provenance;size:32"`
+	UpdatedAt                     int64  `json:"updatedAt" gorm:"column:updated_at;not null"`
 }
 
 func (SSHRecoveryEvidence) TableName() string { return "ssh_recovery_evidence_v1" }

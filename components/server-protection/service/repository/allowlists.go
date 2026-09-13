@@ -54,6 +54,15 @@ func (r *Repository) CreateIPAllowlist(ctx context.Context, item *IPAllowlistMod
 	return r.db.WithContext(ctx).Create(item).Error
 }
 
+func (r *Repository) IPAllowlistExists(ctx context.Context, prefix string) (bool, error) {
+	if r == nil || r.db == nil {
+		return false, errors.New("server-protection repository is not initialized")
+	}
+	var count int64
+	err := r.db.WithContext(ctx).Model(&IPAllowlistModel{}).Where("ip_cidr = ?", prefix).Count(&count).Error
+	return count != 0, err
+}
+
 func (r *Repository) DeleteIPAllowlist(ctx context.Context, id uint) error {
 	return r.deleteByID(ctx, &IPAllowlistModel{}, id)
 }

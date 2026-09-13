@@ -33,9 +33,20 @@ func TestHealthProofStateBindsAuthorityMutationAndFreshness(t *testing.T) {
 		AfterCompositionRevision: state.CompositionRevision, ManagedPlanRevision: state.ManagedPlanRevision, MarkerUnixNano: now.Add(-3 * time.Second).UnixNano(), MutationCompletedUnixNano: now.Add(-2 * time.Second).UnixNano(),
 		HealthProviderInstance: state.HealthProviderInstance, HealthGeneration: state.HealthGeneration, HealthObservationRevision: state.HealthObservationRevision,
 		HealthStartedUnixNano: state.HealthStartedUnixNano, HealthCompletedUnixNano: state.HealthCompletedUnixNano, HealthExpiresUnixNano: state.HealthExpiresUnixNano}
-	authority := protectionrepository.FirewallAuthoritySnapshot{HasComposition: true, Composition: protectionrepository.FirewallCompositionModel{State: "ACTIVE", Revision: revision, ManagedPlanRevision: revision}}
+	authority := protectionrepository.FirewallAuthoritySnapshot{HasComposition: true, Composition: protectionrepository.FirewallCompositionModel{State: "ACTIVE", Revision: revision, ManagedPlanRevision: revision, CandidateSemanticSHA256: revision},
+		HasObservation: true, Observation: protectionrepository.FirewallObservationModel{State: protectionfirewall.FirewallLiveMatching, HasCommittedAuthority: true,
+			CommittedCompositionRevision: revision, ManagedTablePresent: true, CurrentRevision: revision, CurrentSemanticSHA256: revision}}
 	if exact, fresh := healthProofState(state, transition, authority, now); !exact || !fresh {
 		t.Fatalf("valid health proof rejected: exact=%v fresh=%v", exact, fresh)
+	}
+	absent := authority
+	absent.Observation = protectionrepository.FirewallObservationModel{State: protectionfirewall.FirewallLiveAbsent, HasCommittedAuthority: true, CommittedCompositionRevision: revision}
+	if exact, fresh := healthProofState(state, transition, absent, now); exact || fresh {
+		t.Fatalf("ABSENT live authority retained matching dependent health: exact=%v fresh=%v", exact, fresh)
+	}
+	retired := protectionrepository.FirewallAuthoritySnapshot{HasObservation: true, Observation: protectionrepository.FirewallObservationModel{State: protectionfirewall.FirewallLiveAbsent}}
+	if exact, fresh := healthProofState(state, transition, retired, now); exact || fresh {
+		t.Fatalf("retired live authority retained matching dependent health: exact=%v fresh=%v", exact, fresh)
 	}
 	staleState := state
 	staleState.HealthExpiresUnixNano = now.Add(-time.Nanosecond).UnixNano()

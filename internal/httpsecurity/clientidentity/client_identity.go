@@ -63,12 +63,53 @@ func BindingRevision(identity V1) string {
 		"actualScheme=" + identity.ActualScheme,
 		"desiredScheme=" + identity.DesiredScheme,
 		"schemeSource=" + identity.SchemeSource,
-		"externalHost=" + CanonicalHostPort(identity.ExternalHost),
+		"externalHost=" + CanonicalOriginAuthority(identity.DesiredScheme, identity.ExternalHost),
 		"configRevision=" + identity.ConfigRevision,
 		"forwardedValid=" + strconv.FormatBool(identity.ForwardedValid),
 	}, "\n") + "\n"
 	sum := sha256.Sum256([]byte(material))
 	return hex.EncodeToString(sum[:])
+}
+
+// ValidForSecurityGrant accepts only a fully resolved direct client or a
+// bounded client selected through an explicitly trusted proxy chain.
+func ValidForSecurityGrant(identity V1) bool {
+	client := CanonicalIP(identity.ClientIP)
+	peer := CanonicalIP(identity.TransportPeer)
+	if identity.Version != 1 || !identity.ForwardedValid || client == "" || peer == "" ||
+		identity.ClientIP != client || identity.TransportPeer != peer ||
+		identity.ClientPrefix != PrivacyPrefix(client) || !revisionToken(identity.ConfigRevision) ||
+		CanonicalHostPort(identity.ExternalHost) != identity.ExternalHost ||
+		CanonicalOriginAuthority(identity.DesiredScheme, identity.ExternalHost) == "" ||
+		(identity.ActualScheme != "http" && identity.ActualScheme != "https") {
+		return false
+	}
+	switch identity.Provenance {
+	case ProvenanceDirect:
+		return client == peer && identity.TrustedProxyHops == 0 && identity.SchemeSource == "transport" && identity.ActualScheme == identity.DesiredScheme
+	case ProvenanceTrustedXFF:
+		if identity.TrustedProxyHops <= 0 || identity.TrustedProxyHops > MaxForwardedHops || client == peer {
+			return false
+		}
+		switch identity.SchemeSource {
+		case "transport":
+			return identity.ActualScheme == identity.DesiredScheme
+		case "trusted_x_forwarded_proto":
+			return identity.DesiredScheme == "http" || identity.DesiredScheme == "https"
+		default:
+			return false
+		}
+	default:
+		return false
+	}
+}
+
+func revisionToken(value string) bool {
+	if len(value) != 64 || value != strings.ToLower(value) {
+		return false
+	}
+	_, err := hex.DecodeString(value)
+	return err == nil
 }
 
 var configCache struct {
@@ -190,6 +231,10 @@ func ParseConfig(raw string) Config {
 		if parsedPrefix, err := netip.ParsePrefix(item); err == nil {
 			address := parsedPrefix.Addr()
 			bits := parsedPrefix.Bits()
+			if address.Zone() != "" {
+				addWarning("invalid_trusted_proxy_entry")
+				continue
+			}
 			if address.Is4In6() {
 				if bits < 96 {
 					addWarning("invalid_trusted_proxy_entry")
@@ -203,7 +248,7 @@ func ParseConfig(raw string) Config {
 			}
 			prefix = netip.PrefixFrom(address, bits).Masked()
 			prefixes = append(prefixes, prefix)
-		} else if address, err := netip.ParseAddr(item); err == nil {
+		} else if address, err := netip.ParseAddr(item); err == nil && address.Zone() == "" {
 			address = address.Unmap()
 			prefix = netip.PrefixFrom(address, address.BitLen())
 			prefixes = append(prefixes, prefix)
@@ -299,6 +344,34 @@ func CanonicalHostPort(value string) string {
 	return canonicalHostname(value)
 }
 
+// CanonicalOriginAuthority canonicalizes an HTTP(S) authority and removes an
+// explicit default port. Origin and Host therefore share one comparison rule:
+// http://panel and http://panel:80 are equivalent, while non-default ports
+// remain part of the authority.
+func CanonicalOriginAuthority(scheme string, value string) string {
+	authority := CanonicalHostPort(value)
+	if authority == "" {
+		return ""
+	}
+	var defaultPort string
+	switch strings.ToLower(strings.TrimSpace(scheme)) {
+	case "http":
+		defaultPort = "80"
+	case "https":
+		defaultPort = "443"
+	default:
+		return ""
+	}
+	host, port, err := net.SplitHostPort(authority)
+	if err != nil || port != defaultPort {
+		return authority
+	}
+	if address, parseErr := netip.ParseAddr(host); parseErr == nil && address.Is6() {
+		return "[" + host + "]"
+	}
+	return host
+}
+
 func canonicalHostname(value string) string {
 	value = strings.TrimSuffix(strings.ToLower(strings.TrimSpace(strings.Trim(value, "[]"))), ".")
 	if value == "" {
@@ -373,9 +446,9 @@ func splitRemoteIP(value string) string {
 
 func cloneConfig(config Config) Config {
 	return Config{
-		TrustedProxies: append([]netip.Prefix(nil), config.TrustedProxies...),
-		CanonicalCIDRs: append([]string(nil), config.CanonicalCIDRs...),
-		Warnings:       append([]string(nil), config.Warnings...),
+		TrustedProxies: append([]netip.Prefix{}, config.TrustedProxies...),
+		CanonicalCIDRs: append([]string{}, config.CanonicalCIDRs...),
+		Warnings:       append([]string{}, config.Warnings...),
 		Source:         config.Source,
 		Revision:       config.Revision,
 	}

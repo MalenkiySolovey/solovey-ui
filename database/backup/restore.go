@@ -39,8 +39,15 @@ func RestoreContext(ctx context.Context, file multipart.File) error {
 }
 
 func RestoreContextDetailed(ctx context.Context, file io.ReadSeeker) (RestoreExecutionResult, error) {
+	return RestoreContextDetailedWithRecoveryRoot(ctx, file, filepath.Join(configstorage.GetDBFolderPath(), "recovery", "restore"))
+}
+
+// RestoreContextDetailedWithRecoveryRoot keeps the recovery-file location an
+// injected owner fact for data-lifecycle filesystem tests while preserving the
+// configured database root as the production default.
+func RestoreContextDetailedWithRecoveryRoot(ctx context.Context, file io.ReadSeeker, recoveryRoot string) (RestoreExecutionResult, error) {
 	result := RestoreExecutionResult{}
-	if ctx == nil {
+	if ctx == nil || strings.TrimSpace(recoveryRoot) == "" {
 		return result, common.NewError("Restore context is required")
 	}
 	rehearsal, rehearsalErr := Rehearse(ctx, file)
@@ -68,7 +75,7 @@ func RestoreContextDetailed(ctx context.Context, file io.ReadSeeker) (RestoreExe
 	if err := restorestate.EnsureIdle(dbPath); err != nil {
 		return result, common.NewErrorf("Database restore recovery is required: %v", err)
 	}
-	if result.RecoveryBackupRef, err = preservePreRestoreBackup(ctx); err != nil {
+	if result.RecoveryBackupRef, err = preservePreRestoreBackupAt(ctx, recoveryRoot, productionRestoreRecoveryFileOps); err != nil {
 		return result, common.NewErrorf("Error preserving pre-restore recovery backup: %v", err)
 	}
 	if err := stageBackupToFile(ctx, file, tempPath); err != nil {
@@ -108,7 +115,7 @@ func RestoreContextDetailed(ctx context.Context, file io.ReadSeeker) (RestoreExe
 	rollback := func(stage string, cause error) error {
 		return rollbackImportedDB(dbPath, stage, cause)
 	}
-	if err := runImportPostActions(ctx, importRollbackProtectedPostActions(dbPath), rollback); err != nil {
+	if err := runImportPostActions(ctx, importRollbackProtectedPostActions(dbPath, rehearsal.Owners), rollback); err != nil {
 		return result, err
 	}
 	return result, nil
@@ -194,6 +201,10 @@ func stageBackupToFile(ctx context.Context, src io.Reader, dst string) error {
 }
 
 func preservePreRestoreBackup(ctx context.Context) (string, error) {
+	return preservePreRestoreBackupAt(ctx, filepath.Join(configstorage.GetDBFolderPath(), "recovery", "restore"), productionRestoreRecoveryFileOps)
+}
+
+func preservePreRestoreBackupAt(ctx context.Context, directory string, ops restoreRecoveryFileOps) (string, error) {
 	path, cleanup, err := PrepareExportContext(ctx, "")
 	if err != nil {
 		return "", err
@@ -204,11 +215,10 @@ func preservePreRestoreBackup(ctx context.Context) (string, error) {
 		return "", err
 	}
 	defer input.Close()
-	directory := filepath.Join(configstorage.GetDBFolderPath(), "recovery", "restore")
-	if err := os.MkdirAll(directory, 0o700); err != nil {
+	if err := ensureRestoreRecoveryDirectory(directory, ops); err != nil {
 		return "", err
 	}
-	temporary, err := os.CreateTemp(directory, "pre-restore-*.partial")
+	temporary, err := ops.createTemp(directory, "pre-restore-*.partial")
 	if err != nil {
 		return "", err
 	}
@@ -217,21 +227,38 @@ func preservePreRestoreBackup(ctx context.Context) (string, error) {
 	written, copyErr := copyContext(ctx, io.MultiWriter(temporary, hash), io.LimitReader(input, MaxRestoreBytes+1))
 	syncErr, closeErr := temporary.Sync(), temporary.Close()
 	if copyErr != nil || syncErr != nil || closeErr != nil || written <= 0 || written > MaxRestoreBytes {
-		_ = os.Remove(temporaryPath)
+		_ = ops.remove(temporaryPath)
 		return "", errors.Join(copyErr, syncErr, closeErr, errors.New("pre-restore backup exceeded bounds"))
 	}
 	digest := hex.EncodeToString(hash.Sum(nil))
 	destination := filepath.Join(directory, "pre-restore-"+digest+".db")
-	if _, statErr := os.Stat(destination); statErr == nil {
-		_ = os.Remove(temporaryPath)
+	if _, statErr := ops.stat(destination); statErr == nil {
+		_ = ops.remove(temporaryPath)
+		if _, err := verifyRestoreRecoveryFile(ctx, destination, digest, ops); err != nil {
+			return "", err
+		}
 		return digest, nil
 	} else if !errors.Is(statErr, os.ErrNotExist) {
-		_ = os.Remove(temporaryPath)
+		_ = ops.remove(temporaryPath)
 		return "", statErr
 	}
-	if err := os.Rename(temporaryPath, destination); err != nil {
-		_ = os.Remove(temporaryPath)
+	if err := ops.rename(temporaryPath, destination); err != nil {
+		_ = ops.remove(temporaryPath)
 		return "", err
+	}
+	if err := ops.syncDirectory(directory); err != nil {
+		removeErr := ops.remove(destination)
+		if removeErr == nil {
+			removeErr = ops.syncDirectory(directory)
+		}
+		return "", errors.Join(err, removeErr)
+	}
+	if _, err := verifyRestoreRecoveryFile(ctx, destination, digest, ops); err != nil {
+		removeErr := ops.remove(destination)
+		if removeErr == nil {
+			removeErr = ops.syncDirectory(directory)
+		}
+		return "", errors.Join(err, removeErr)
 	}
 	return digest, nil
 }

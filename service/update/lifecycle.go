@@ -22,6 +22,7 @@ import (
 	operationcoordination "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
+	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 )
@@ -72,6 +73,24 @@ type Capabilities struct {
 	Reboot      string   `json:"reboot"`
 	ReasonCodes []string `json:"reasonCodes"`
 	Revision    string   `json:"revision"`
+}
+
+// Present applies a deployment-owned compatibility alias to a copy of the
+// capability posture. It changes no provider authority or lifecycle choice.
+func (c Capabilities) Present(mode string, reasonCodes []string) Capabilities {
+	if !safeID(mode, 64) {
+		return c
+	}
+	for _, reason := range reasonCodes {
+		if !safeID(reason, 96) {
+			return c
+		}
+	}
+	c.Mode = mode
+	c.ReasonCodes = append([]string(nil), reasonCodes...)
+	c.Revision = ""
+	c.Revision = semanticDigest(c)
+	return c
 }
 
 type CheckResult struct {
@@ -161,6 +180,21 @@ type terminalCleaner interface {
 	CleanupTerminal(context.Context, model.UpdateOperation) error
 }
 
+const (
+	updateTerminalHistoryCount = 128
+	updateTerminalHistoryAge   = 90 * 24 * time.Hour
+	updateTerminalJournalCount = 1024
+	updateHistoryLogicalBytes  = 8 << 20
+)
+
+// databaseRollbackCoordinator is deliberately optional and owner-local. A
+// self-managed broker is the only provider that can install the exact logical
+// SQLite snapshot; the lifecycle coordinates the durable rebind around it.
+type databaseRollbackCoordinator interface {
+	CompleteDatabaseRollback(context.Context) error
+	AbortDatabaseRollback() error
+}
+
 type PreflightResult struct {
 	RollbackAvailable bool
 	BackupRef         string
@@ -171,10 +205,7 @@ type UnavailableProvider struct{ Mode string }
 func (p UnavailableProvider) Capabilities(context.Context) Capabilities {
 	mode := p.Mode
 	if mode == "" {
-		mode = "native"
-	}
-	if mode == "docker-operator-managed" {
-		return DockerCapabilities()
+		mode = "unavailable"
 	}
 	result := Capabilities{Mode: mode, Check: "AVAILABLE", Download: "UNAVAILABLE", Prepare: "UNAVAILABLE",
 		Activate: "UNAVAILABLE", Rollback: "UNAVAILABLE", OSUpdates: "EXTERNAL_MANAGED", Reboot: "OPERATOR_ADVISORY",
@@ -238,19 +269,31 @@ func newSharedLifecycle() *LifecycleManager {
 			RedirectOrigins:    []string{"https://release-assets.githubusercontent.com"}},
 	}
 	fetcher := release.Fetcher{}
-	var provider Provider = UnavailableProvider{Mode: "unsupported-platform"}
-	if runtime.GOOS == "linux" {
-		if IsDockerRuntime() {
-			provider = UnavailableProvider{Mode: "docker-operator-managed"}
-		} else {
-			brokerProvider := NewBrokerProvider(nil, fetcher, sources[release.ChannelMain])
-			brokerProvider.Sources = sources
-			provider = brokerProvider
-		}
-	}
+	brokerProvider := NewBrokerProvider(nil, fetcher, sources[release.ChannelMain])
+	brokerProvider.Sources = sources
+	lifecycle := deploymentservice.RuntimeUpdateLifecycle()
+	// Deployment owns the neutral lifecycle fact. The native broker bridge
+	// remains responsible for rejecting unsupported host execution; host GOOS
+	// must not mask package- or operator-managed semantics during composition.
+	var selfManaged Provider = brokerProvider
+	provider := providerForUpdateLifecycle(lifecycle, selfManaged)
 	manager := NewLifecycleManager(Repository{DB: dbsqlite.DB}, provider, fetcher, sources[release.ChannelMain], trust)
 	manager.sources = sources
 	return manager
+}
+
+func providerForUpdateLifecycle(lifecycle deploymentservice.UpdateLifecycle, selfManaged Provider) Provider {
+	switch lifecycle {
+	case deploymentservice.UpdateLifecyclePackageManaged:
+		return NewPackageManagedProvider()
+	case deploymentservice.UpdateLifecycleOperatorManaged:
+		return NewOperatorManagedProvider()
+	case deploymentservice.UpdateLifecycleSelfManaged:
+		if selfManaged != nil {
+			return selfManaged
+		}
+	}
+	return UnavailableProvider{Mode: "unsupported-platform"}
 }
 
 func NewLifecycleManager(repo Repository, provider Provider, fetcher ReleaseClient, source release.Source, trust release.TrustStore) *LifecycleManager {
@@ -345,18 +388,25 @@ func (m *LifecycleManager) Status(ctx context.Context, channel release.Channel) 
 		}
 	}
 	if operation, err := m.repo.activeOrRecovery(ctx); err == nil {
-		if !validPersistedOperation(operation) {
+		switch {
+		case operation.RestoredUntrusted:
+			operation = restoredOperationRecoveryProjection(operation)
+			result.ReasonCodes = append(result.ReasonCodes, "restored_update_state_untrusted")
+		case !validPersistedOperation(operation):
 			operation = operationRecoveryProjection(operation)
 		}
 		result.Operation = &operation
 		result.State = State(operation.State)
-		if operation.RestoredUntrusted {
-			result.State = StateRecoveryRequired
-			result.ReasonCodes = append(result.ReasonCodes, "restored_update_state_untrusted")
+		if operation.CleanupPending {
+			result.ReasonCodes = append(result.ReasonCodes, "update_cleanup_pending")
 		}
 	} else if errors.Is(err, gorm.ErrRecordNotFound) {
 		if latest, latestErr := m.repo.latest(ctx); latestErr == nil {
-			if !validPersistedOperation(latest) {
+			switch {
+			case latest.RestoredUntrusted:
+				latest = restoredOperationRecoveryProjection(latest)
+				result.ReasonCodes = append(result.ReasonCodes, "restored_update_state_untrusted")
+			case !validPersistedOperation(latest):
 				latest = operationRecoveryProjection(latest)
 			}
 			result.Operation = &latest
@@ -412,6 +462,12 @@ func (m *LifecycleManager) Prepare(ctx context.Context, request PrepareRequest) 
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if existing, err := m.repo.byIdempotency(ctx, request.IdempotencyKey); err == nil {
+		if existing.RestoredUntrusted {
+			return restoredOperationRecoveryProjection(existing), ErrRecoveryRequired
+		}
+		if !validPersistedOperation(existing) {
+			return operationRecoveryProjection(existing), ErrRecoveryRequired
+		}
 		if existing.Sequence == request.ExpectedSequence && existing.ManifestDigest == request.ExpectedManifestDigest {
 			return existing, nil
 		}
@@ -599,8 +655,13 @@ func (m *LifecycleManager) Operation(ctx context.Context, id string) (model.Upda
 		return model.UpdateOperation{}, errors.New("invalid update operation id")
 	}
 	operation, err := m.repo.operation(ctx, id)
-	if err == nil && !validPersistedOperation(operation) {
-		return operationRecoveryProjection(operation), nil
+	if err == nil {
+		if operation.RestoredUntrusted {
+			return restoredOperationRecoveryProjection(operation), nil
+		}
+		if !validPersistedOperation(operation) {
+			return operationRecoveryProjection(operation), nil
+		}
 	}
 	return operation, err
 }
@@ -614,8 +675,13 @@ func (m *LifecycleManager) Timeline(ctx context.Context, id string, after uint64
 
 func (m *LifecycleManager) ActiveOrRecovery(ctx context.Context) (model.UpdateOperation, error) {
 	operation, err := m.repo.activeOrRecovery(ctx)
-	if err == nil && !validPersistedOperation(operation) {
-		return operationRecoveryProjection(operation), nil
+	if err == nil {
+		if operation.RestoredUntrusted {
+			return restoredOperationRecoveryProjection(operation), nil
+		}
+		if !validPersistedOperation(operation) {
+			return operationRecoveryProjection(operation), nil
+		}
 	}
 	return operation, err
 }
@@ -626,6 +692,23 @@ func (m *LifecycleManager) ReconcileStartup(ctx context.Context) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if debt, debtErr := m.repo.cleanupDebt(ctx); debtErr == nil {
+		if cleaner, ok := m.provider.(terminalCleaner); ok {
+			if cleanupErr := cleaner.CleanupTerminal(ctx, debt); cleanupErr != nil {
+				return cleanupErr
+			}
+			if clearErr := m.repo.clearCleanupDebt(ctx, debt); clearErr != nil {
+				return clearErr
+			}
+			if pruneErr := m.repo.pruneHistory(ctx); pruneErr != nil {
+				return pruneErr
+			}
+		} else {
+			return ErrProviderUnavailable
+		}
+	} else if !errors.Is(debtErr, gorm.ErrRecordNotFound) {
+		return debtErr
+	}
 	operation, err := m.repo.active(ctx)
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		return nil
@@ -634,6 +717,13 @@ func (m *LifecycleManager) ReconcileStartup(ctx context.Context) error {
 		return err
 	}
 	if !validPersistedOperation(operation) {
+		return ErrRecoveryRequired
+	}
+	if operation.RestoredUntrusted {
+		operation.RollbackAvailable = false
+		if _, updateErr := m.advance(ctx, operation, StateRecoveryRequired, "restored_update_authority_fenced", "restored_update_state_untrusted"); updateErr != nil {
+			return updateErr
+		}
 		return ErrRecoveryRequired
 	}
 	state, reconcileErr := m.provider.Reconcile(ctx, operation)
@@ -672,6 +762,9 @@ func (m *LifecycleManager) ReconcileStartup(ctx context.Context) error {
 	operation, err = m.advance(ctx, operation, state, "startup_reconciled", "")
 	if err == nil && state == StateApplied {
 		err = m.cleanupTerminal(ctx, operation)
+	}
+	if err == nil {
+		err = m.repo.pruneHistory(ctx)
 	}
 	return err
 }
@@ -810,11 +903,32 @@ func (m *LifecycleManager) performRollback(ctx context.Context, operation model.
 	}
 	verified, rollbackErr := m.provider.Rollback(ctx, operation)
 	if rollbackErr != nil || !verified {
+		if coordinator, ok := m.provider.(databaseRollbackCoordinator); ok {
+			_ = coordinator.AbortDatabaseRollback()
+		}
 		recovery, updateErr := m.advance(ctx, operation, StateRecoveryRequired, "update_rollback_ambiguous", "update_rollback_ambiguous")
 		if updateErr != nil {
 			return recovery, updateErr
 		}
 		return recovery, ErrRecoveryRequired
+	}
+	if coordinator, ok := m.provider.(databaseRollbackCoordinator); ok {
+		operation, err = m.repo.rebindRestoredRollback(ctx, operation, reason)
+		if err != nil {
+			_ = coordinator.AbortDatabaseRollback()
+			recovery, updateErr := m.repo.markRollbackRecovery(ctx, operation, "update_rollback_rebind_failed")
+			if updateErr != nil {
+				return recovery, updateErr
+			}
+			return recovery, ErrRecoveryRequired
+		}
+		if err := coordinator.CompleteDatabaseRollback(ctx); err != nil {
+			return operation, err
+		}
+		if err := m.cleanupTerminal(ctx, operation); err != nil {
+			return operation, err
+		}
+		return operation, nil
 	}
 	operation.RollbackAvailable = false
 	rolledBack, err := m.advance(ctx, operation, StateRolledBack, "update_rolled_back", reason)
@@ -835,9 +949,14 @@ func rollbackAllowedFrom(state State) bool {
 
 func (m *LifecycleManager) cleanupTerminal(ctx context.Context, operation model.UpdateOperation) error {
 	if cleaner, ok := m.provider.(terminalCleaner); ok {
-		return cleaner.CleanupTerminal(ctx, operation)
+		if err := cleaner.CleanupTerminal(ctx, operation); err != nil {
+			if debtErr := m.repo.recordCleanupDebt(ctx, operation, err.Error()); debtErr != nil {
+				return errors.Join(err, debtErr)
+			}
+			return err
+		}
 	}
-	return nil
+	return m.repo.pruneHistory(ctx)
 }
 
 func (m *LifecycleManager) advance(ctx context.Context, operation model.UpdateOperation, state State, event, reason string) (model.UpdateOperation, error) {
@@ -977,7 +1096,7 @@ func (r Repository) activeOrRecovery(ctx context.Context) (model.UpdateOperation
 		return model.UpdateOperation{}, err
 	}
 	var row model.UpdateOperation
-	err = db.Where("state = ? OR state NOT IN ?", string(StateRecoveryRequired), []string{string(StateApplied), string(StateRolledBack), string(StateFailed)}).
+	err = db.Where("cleanup_pending = ? OR state = ? OR state NOT IN ?", true, string(StateRecoveryRequired), []string{string(StateApplied), string(StateRolledBack), string(StateFailed)}).
 		Order("updated_at DESC").First(&row).Error
 	return row, err
 }
@@ -1041,7 +1160,7 @@ func (r Repository) update(ctx context.Context, operation model.UpdateOperation,
 	return db.Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&model.UpdateOperation{}).Where("operation_id = ? AND revision = ? AND state = ?", operation.OperationID, expectedRevision, expectedState).
 			Updates(map[string]any{"state": operation.State, "reason_code": operation.ReasonCode, "revision": operation.Revision,
-				"rollback_available": operation.RollbackAvailable, "backup_ref": operation.BackupRef, "updated_at": operation.UpdatedAt})
+				"rollback_available": operation.RollbackAvailable, "backup_ref": operation.BackupRef, "cleanup_pending": operation.CleanupPending, "cleanup_reason": operation.CleanupReason, "updated_at": operation.UpdatedAt})
 		if result.Error != nil {
 			return result.Error
 		}
@@ -1050,6 +1169,239 @@ func (r Repository) update(ctx context.Context, operation model.UpdateOperation,
 		}
 		return tx.Create(journalFor(operation, event, operation.ReasonCode)).Error
 	})
+}
+
+func (r Repository) rebindRestoredRollback(ctx context.Context, operation model.UpdateOperation, reason string) (model.UpdateOperation, error) {
+	db, err := r.db(ctx)
+	if err != nil {
+		return operation, err
+	}
+	var rebound model.UpdateOperation
+	err = db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.First(&rebound, "operation_id = ?", operation.OperationID).Error; err != nil {
+			return err
+		}
+		if !rebound.RestoredUntrusted || rebound.OperationID != operation.OperationID || rebound.Sequence != operation.Sequence ||
+			rebound.ReleaseID != operation.ReleaseID || rebound.ManifestDigest != operation.ManifestDigest || rebound.ArtifactSetDigest != operation.ArtifactSetDigest ||
+			rebound.DeploymentRevision != operation.DeploymentRevision || rebound.MigrationSetDigest != operation.MigrationSetDigest ||
+			rebound.BinaryProfile != operation.BinaryProfile || rebound.Channel != operation.Channel || !validPersistedOperation(rebound) {
+			return ErrRecoveryRequired
+		}
+		rebound.State, rebound.ReasonCode, rebound.Revision, rebound.UpdatedAt = string(StateRolledBack), reason, rebound.Revision+1, operation.UpdatedAt
+		rebound.RestoredUntrusted, rebound.RollbackAvailable, rebound.BackupRef = false, false, ""
+		rebound.CleanupPending, rebound.CleanupReason = false, ""
+		if err := tx.Save(&rebound).Error; err != nil {
+			return err
+		}
+		return tx.Create(journalFor(rebound, "update_rolled_back", reason)).Error
+	})
+	return rebound, err
+}
+
+func (r Repository) markRollbackRecovery(ctx context.Context, operation model.UpdateOperation, reason string) (model.UpdateOperation, error) {
+	db, err := r.db(ctx)
+	if err != nil {
+		return operation, err
+	}
+	var recovery model.UpdateOperation
+	err = db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.First(&recovery, "operation_id = ?", operation.OperationID).Error; err != nil {
+			return err
+		}
+		recovery.State, recovery.ReasonCode, recovery.Revision, recovery.UpdatedAt = string(StateRecoveryRequired), reason, recovery.Revision+1, operation.UpdatedAt
+		recovery.RestoredUntrusted, recovery.RollbackAvailable, recovery.BackupRef = false, false, ""
+		recovery.CleanupPending, recovery.CleanupReason = false, ""
+		if err := tx.Save(&recovery).Error; err != nil {
+			return err
+		}
+		return tx.Create(journalFor(recovery, "update_rollback_recovery_required", reason)).Error
+	})
+	return recovery, err
+}
+
+func (r Repository) cleanupDebt(ctx context.Context) (model.UpdateOperation, error) {
+	db, err := r.db(ctx)
+	if err != nil {
+		return model.UpdateOperation{}, err
+	}
+	var operation model.UpdateOperation
+	err = db.Where("cleanup_pending = ?", true).Order("updated_at ASC, operation_id ASC").First(&operation).Error
+	return operation, err
+}
+
+func (r Repository) recordCleanupDebt(ctx context.Context, operation model.UpdateOperation, reason string) error {
+	db, err := r.db(ctx)
+	if err != nil {
+		return err
+	}
+	if !safeID(reason, 96) {
+		reason = "terminal_cleanup_failed"
+	}
+	now := time.Now().Unix()
+	if now < operation.UpdatedAt {
+		now = operation.UpdatedAt
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.UpdateOperation{}).Where("operation_id = ? AND revision = ? AND state = ?", operation.OperationID, operation.Revision, operation.State).
+			Updates(map[string]any{"cleanup_pending": true, "cleanup_reason": reason, "revision": operation.Revision + 1, "updated_at": now})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrRevisionMismatch
+		}
+		operation.CleanupPending, operation.CleanupReason, operation.Revision, operation.UpdatedAt = true, reason, operation.Revision+1, now
+		return tx.Create(journalFor(operation, "update_cleanup_debt_recorded", reason)).Error
+	})
+}
+
+func (r Repository) clearCleanupDebt(ctx context.Context, operation model.UpdateOperation) error {
+	db, err := r.db(ctx)
+	if err != nil {
+		return err
+	}
+	now := time.Now().Unix()
+	if now < operation.UpdatedAt {
+		now = operation.UpdatedAt
+	}
+	return db.Transaction(func(tx *gorm.DB) error {
+		result := tx.Model(&model.UpdateOperation{}).Where("operation_id = ? AND revision = ? AND cleanup_pending = ?", operation.OperationID, operation.Revision, true).
+			Updates(map[string]any{"cleanup_pending": false, "cleanup_reason": "", "revision": operation.Revision + 1, "updated_at": now})
+		if result.Error != nil {
+			return result.Error
+		}
+		if result.RowsAffected != 1 {
+			return ErrRevisionMismatch
+		}
+		operation.CleanupPending, operation.CleanupReason, operation.Revision, operation.UpdatedAt = false, "", operation.Revision+1, now
+		return tx.Create(journalFor(operation, "update_cleanup_debt_cleared", "")).Error
+	})
+}
+
+func (r Repository) pruneHistory(ctx context.Context) error {
+	db, err := r.db(ctx)
+	if err != nil {
+		return err
+	}
+	var operations []model.UpdateOperation
+	if err := db.Order("updated_at DESC, operation_id DESC").Find(&operations).Error; err != nil {
+		return err
+	}
+	var releases []model.UpdateReleaseState
+	if err := db.Find(&releases).Error; err != nil {
+		return err
+	}
+	keep := make(map[string]bool, len(operations))
+	latestApplied := make(map[string]string)
+	for _, operation := range operations {
+		state := State(operation.State)
+		if state != StateApplied && state != StateRolledBack && state != StateFailed {
+			keep[operation.OperationID] = true
+		}
+		if operation.RestoredUntrusted || operation.CleanupPending {
+			keep[operation.OperationID] = true
+		}
+		if state == StateApplied && latestApplied[operation.Channel] == "" {
+			latestApplied[operation.Channel] = operation.OperationID
+		}
+	}
+	for _, releaseState := range releases {
+		for _, operation := range operations {
+			if operation.Channel == releaseState.Channel && operation.Sequence == releaseState.LastAppliedSequence &&
+				operation.ManifestDigest == releaseState.ManifestDigest && releaseState.LastAppliedSequence > 0 {
+				keep[operation.OperationID] = true
+			}
+		}
+	}
+	for _, id := range latestApplied {
+		keep[id] = true
+	}
+	now := time.Now()
+	type candidate struct {
+		operation model.UpdateOperation
+		bytes     int64
+	}
+	var terminal []candidate
+	for _, operation := range operations {
+		state := State(operation.State)
+		if keep[operation.OperationID] || state != StateApplied && state != StateRolledBack && state != StateFailed {
+			continue
+		}
+		terminal = append(terminal, candidate{operation: operation, bytes: updateOperationLogicalBytes(operation)})
+	}
+	// Operations are newest-first; prune the oldest first while enforcing the
+	// count, age, and logical-byte horizons. Current closure rows are excluded.
+	var totalBytes int64
+	for _, item := range terminal {
+		totalBytes += item.bytes
+	}
+	remove := make(map[string]bool)
+	for index := len(terminal) - 1; index >= 0; index-- {
+		item := terminal[index]
+		if len(terminal)-len(remove) <= updateTerminalHistoryCount && now.Sub(time.Unix(item.operation.UpdatedAt, 0)) <= updateTerminalHistoryAge && totalBytes <= updateHistoryLogicalBytes {
+			continue
+		}
+		remove[item.operation.OperationID] = true
+		totalBytes -= item.bytes
+	}
+	if len(remove) > 0 {
+		err = db.Transaction(func(tx *gorm.DB) error {
+			for id := range remove {
+				if err := tx.Where("operation_id = ?", id).Delete(&model.UpdateJournal{}).Error; err != nil {
+					return err
+				}
+				if err := tx.Where("operation_id = ?", id).Delete(&model.UpdateOperation{}).Error; err != nil {
+					return err
+				}
+			}
+			for id := range remove {
+				delete(keep, id)
+			}
+			return nil
+		})
+		if err != nil {
+			return err
+		}
+	}
+	return r.pruneJournals(ctx, db, keep, operations)
+}
+
+func (r Repository) pruneJournals(ctx context.Context, db *gorm.DB, keep map[string]bool, operations []model.UpdateOperation) error {
+	var journals []model.UpdateJournal
+	if err := db.Order("sequence DESC").Find(&journals).Error; err != nil {
+		return err
+	}
+	var totalBytes int64
+	for _, journal := range journals {
+		totalBytes += updateJournalLogicalBytes(journal)
+	}
+	remove := make([]uint64, 0)
+	for index := len(journals) - 1; index >= 0; index-- {
+		journal := journals[index]
+		if keep[journal.OperationID] {
+			continue
+		}
+		if len(journals)-len(remove) <= updateTerminalJournalCount && time.Since(time.Unix(journal.CreatedAt, 0)) <= updateTerminalHistoryAge && totalBytes <= updateHistoryLogicalBytes {
+			continue
+		}
+		remove = append(remove, journal.Sequence)
+		totalBytes -= updateJournalLogicalBytes(journal)
+	}
+	if len(remove) == 0 {
+		return nil
+	}
+	return db.Where("sequence IN ?", remove).Delete(&model.UpdateJournal{}).Error
+}
+
+func updateOperationLogicalBytes(operation model.UpdateOperation) int64 {
+	return int64(len(operation.OperationID) + len(operation.IdempotencyKey) + len(operation.State) + len(operation.Channel) +
+		len(operation.ReleaseID) + len(operation.Version) + len(operation.ManifestDigest) + len(operation.ArtifactSetDigest) +
+		len(operation.Platform) + len(operation.Arch) + len(operation.BinaryProfile) + len(operation.DeploymentRevision) +
+		len(operation.BrokerCapability) + len(operation.MigrationSetDigest) + len(operation.BackupRef) + len(operation.ReasonCode) + len(operation.CleanupReason) + 128)
+}
+
+func updateJournalLogicalBytes(journal model.UpdateJournal) int64 {
+	return int64(len(journal.OperationID) + len(journal.State) + len(journal.Event) + len(journal.ReasonCode) + len(journal.SemanticHash) + 64)
 }
 
 func (r Repository) progress(ctx context.Context, id string, bytes int64) error {
@@ -1085,7 +1437,7 @@ func (r Repository) completeApplied(ctx context.Context, operation model.UpdateO
 		result := tx.Model(&model.UpdateOperation{}).
 			Where("operation_id = ? AND revision = ? AND state = ?", operation.OperationID, expectedRevision, expectedState).
 			Updates(map[string]any{"state": operation.State, "reason_code": operation.ReasonCode, "revision": operation.Revision,
-				"rollback_available": operation.RollbackAvailable, "backup_ref": operation.BackupRef, "updated_at": operation.UpdatedAt})
+				"rollback_available": operation.RollbackAvailable, "backup_ref": operation.BackupRef, "cleanup_pending": operation.CleanupPending, "cleanup_reason": operation.CleanupReason, "updated_at": operation.UpdatedAt})
 		if result.Error != nil {
 			return result.Error
 		}
@@ -1180,7 +1532,8 @@ func validPersistedOperation(operation model.UpdateOperation) bool {
 		operation.BytesTotal <= 0 || operation.BytesTotal > release.MaxReleaseSetBytes ||
 		operation.BytesCompleted < 0 || operation.BytesCompleted > operation.BytesTotal ||
 		operation.CreatedAt <= 0 || operation.UpdatedAt < operation.CreatedAt ||
-		(operation.ReasonCode != "" && !safeID(operation.ReasonCode, 96)) {
+		(operation.ReasonCode != "" && !safeID(operation.ReasonCode, 96)) ||
+		(operation.CleanupReason != "" && !safeID(operation.CleanupReason, 96)) || (!operation.CleanupPending && operation.CleanupReason != "") {
 		return false
 	}
 	if _, ok := versionpolicy.CompareVersions(operation.Version, operation.Version); !ok {
@@ -1201,6 +1554,17 @@ func operationRecoveryProjection(operation model.UpdateOperation) model.UpdateOp
 	operation.ReasonCode = "update_operation_state_invalid"
 	operation.RestoredUntrusted = true
 	operation.RollbackAvailable = false
+	operation.CleanupPending, operation.CleanupReason = false, ""
+	return operation
+}
+
+func restoredOperationRecoveryProjection(operation model.UpdateOperation) model.UpdateOperation {
+	operation.State = string(StateRecoveryRequired)
+	operation.ReasonCode = "restored_update_state_untrusted"
+	operation.RestoredUntrusted = true
+	operation.RollbackAvailable = false
+	operation.BackupRef = ""
+	operation.CleanupPending, operation.CleanupReason = false, ""
 	return operation
 }
 
@@ -1210,6 +1574,10 @@ func ReasonCode(err error) string {
 		return "release_signing_unavailable"
 	case errors.Is(err, ErrProviderUnavailable):
 		return "update_provider_unavailable"
+	case errors.Is(err, ErrOperatorManaged):
+		return "update_operator_managed"
+	case errors.Is(err, ErrPackageManaged):
+		return "update_package_managed"
 	case errors.Is(err, ErrRevisionMismatch):
 		return "update_revision_mismatch"
 	case errors.Is(err, ErrOperationConflict):

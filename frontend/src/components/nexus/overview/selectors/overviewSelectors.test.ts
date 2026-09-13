@@ -91,6 +91,7 @@ describe('overview selectors', () => {
         ipv6: ['2001:db8::10/64'],
         appVersion: '1.6.0',
         bootTime: 1710000000,
+        uptimeSec: 120,
       },
       sbd: {
         running: true,
@@ -100,7 +101,7 @@ describe('overview selectors', () => {
           Uptime: 73,
         },
       },
-    }, 1710000120)).toEqual({
+    })).toEqual({
       ipv4: ['192.0.2.10/24'],
       ipv6: ['2001:db8::10/64'],
       appVersion: '1.6.0',
@@ -111,6 +112,10 @@ describe('overview selectors', () => {
       singboxAlloc: 4096,
       singboxUptimeSec: 73,
     })
+
+    expect(selectSystemStatus({
+      sys: { bootTime: 1710000000, uptimeSec: 37 },
+    })).toMatchObject({ bootTime: 1710000000, uptimeSec: 37 })
   })
 
   it('selects top client rows and grouped inbound protocol summaries', () => {
@@ -318,7 +323,7 @@ describe('overview selectors', () => {
           Alloc: -1,
         },
       },
-    }, 100)).toEqual({
+    })).toEqual({
       ipv4: ['192.0.2.4'],
       ipv6: [],
       appVersion: 'next',

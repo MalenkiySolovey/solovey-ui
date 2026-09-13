@@ -11,6 +11,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	managementregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/management"
+	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	componentsupervisor "github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
@@ -376,11 +377,22 @@ func (a *APP) registerResources() error {
 	if a.configService == nil {
 		return errors.New("core resource registration requires initialized config service")
 	}
-	stop, err := resourceinventory.RegisterCoreContributors(&a.SettingService, dbsqlite.DB(), a.configService.CoreInboundControl())
+	stopCore, err := resourceinventory.RegisterCoreContributors(&a.SettingService, dbsqlite.DB(), a.configService.CoreInboundControl())
 	if err != nil {
 		return err
 	}
-	a.stopResources = stop
+	stopSSH, err := hostresources.Register(sshmanagementservice.ProtectionResourceContributor{Reader: sshmanagementservice.Shared()})
+	if err != nil {
+		stopCore()
+		return err
+	}
+	var once sync.Once
+	a.stopResources = func() {
+		once.Do(func() {
+			stopSSH()
+			stopCore()
+		})
+	}
 	return nil
 }
 
@@ -445,6 +457,11 @@ func (a *APP) registerCoreHooks() error {
 	stopSSHPanelEvents := service.RegisterPanelEventNotifier("core:ssh-management-recovery", func(event string, fields map[string]string) {
 		if err := sshManager.HandlePanelEvent(event, fields); err != nil {
 			logger.Warning("SSH management panel recovery observation failed")
+		}
+	})
+	stopSSHAuthenticationEvents := service.RegisterPanelAuthenticationEventNotifier("core:ssh-management-recovery", func(event service.PanelAuthenticationEventV1) {
+		if err := sshManager.HandlePanelAuthenticationEvent(event.Event, event.User, event.SessionRevision, event.ClientIdentity); err != nil {
+			logger.Warning("SSH management authenticated recovery observation failed")
 		}
 	})
 	watchdogCtx, stopSSHWatchdog := context.WithCancel(context.Background())
@@ -553,6 +570,7 @@ func (a *APP) registerCoreHooks() error {
 			deploymentManager.Health = nil
 			deploymentManager.Audit = nil
 			stopSSHPanelEvents()
+			stopSSHAuthenticationEvents()
 			stopSSHEvidence()
 			stopClientIPCache()
 			stopSubscriptions()

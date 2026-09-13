@@ -3,6 +3,7 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"path/filepath"
@@ -166,6 +167,115 @@ func TestArtifactProtectionIncludesHealthAndReconcileRequired(t *testing.T) {
 	protected, err := New(db).ProtectedArtifactOperations(context.Background())
 	if err != nil || len(protected) != 2 || protected["operation-artifact-guard-0"] != "health" || protected["operation-artifact-guard-1"] != "reconcile_required" {
 		t.Fatalf("protected=%#v err=%v", protected, err)
+	}
+}
+
+func TestArtifactsFirewallArtifactProtectionUsesExactLiveReferenceClosure(t *testing.T) {
+	db := openTestDB(t)
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC).Unix()
+	operationID := func(value int) string { return fmt.Sprintf("operation-%032x", value) }
+	current := operationID(0x101)
+	otherLive := operationID(0x102)
+	superseded := operationID(0x103)
+	manualRecovery := operationID(0x104)
+	ambiguous := operationID(0x105)
+	nonFirewall := operationID(0x106)
+	pid := 42
+	for _, operation := range []OperationLockModel{
+		{OperationID: current, Kind: "firewall", State: "applied", Revision: 1, LockedByPID: &pid, LockedByInstanceID: "instance", Actor: "admin", HeartbeatAt: now, ExpiresAt: now, CreatedAt: now - 100, UpdatedAt: now - 100},
+		{OperationID: otherLive, Kind: "firewall", State: "rolled_back", Revision: 2, LockedByPID: &pid, LockedByInstanceID: "instance", Actor: "admin", HeartbeatAt: now, ExpiresAt: now, CreatedAt: now - 90, UpdatedAt: now - 90},
+		{OperationID: superseded, Kind: "firewall", State: "applied", Revision: 3, LockedByPID: &pid, LockedByInstanceID: "instance", Actor: "admin", HeartbeatAt: now, ExpiresAt: now, CreatedAt: now - 80, UpdatedAt: now - 80},
+		{OperationID: manualRecovery, Kind: "firewall", State: "rollback_failed", Revision: 4, LockedByPID: &pid, LockedByInstanceID: "instance", Actor: "admin", HeartbeatAt: now, ExpiresAt: now, CreatedAt: now - 70, UpdatedAt: now - 70},
+		{OperationID: ambiguous, Kind: "firewall", State: "abandoned", Revision: 5, LockedByPID: &pid, LockedByInstanceID: "instance", Actor: "admin", HeartbeatAt: now, ExpiresAt: now, CreatedAt: now - 60, UpdatedAt: now - 60},
+		{OperationID: nonFirewall, Kind: "fronting", State: "applied", Revision: 6, LockedByPID: &pid, LockedByInstanceID: "instance", Actor: "admin", HeartbeatAt: now, ExpiresAt: now, CreatedAt: now - 50, UpdatedAt: now - 50},
+	} {
+		if err := db.Create(&operation).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Create(&FirewallContributionModel{ContributionID: "baseline", Schema: "fixture", Kind: "BASELINE", ResourceID: "managed-table", Network: "inet", AddressFamily: "inet", SemanticRevision: strings.Repeat("a", 64), SemanticJSON: json.RawMessage(`{}`), AppliedOperationID: current, CreatedAt: now, UpdatedAt: now}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&FirewallContributionModel{ContributionID: "other", Schema: "fixture", Kind: "UDP_DIRECT_GUARDED", ResourceID: "resource", Network: "udp", AddressFamily: "ipv4", SemanticRevision: strings.Repeat("b", 64), SemanticJSON: json.RawMessage(`{}`), AppliedOperationID: otherLive, CreatedAt: now, UpdatedAt: now}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&FirewallCompositionModel{ID: 1, Schema: "fixture", Revision: strings.Repeat("c", 64), ManagedPlanRevision: strings.Repeat("d", 64), CandidateSHA256: strings.Repeat("e", 64), BindingsJSON: json.RawMessage(`[]`), State: "ACTIVE", AppliedOperationID: current, UpdatedAt: now}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&FirewallContributionTransitionModel{OperationID: ambiguous, Schema: "fixture", ContributionID: "baseline", PreviousJSON: json.RawMessage(`{}`), DesiredSemanticRevision: strings.Repeat("f", 64), DesiredJSON: json.RawMessage(`{}`), ManagedPlanRevision: strings.Repeat("1", 64), CandidateSHA256: strings.Repeat("2", 64), State: "MUTATING", CreatedAt: now, UpdatedAt: now}).Error; err != nil {
+		t.Fatal(err)
+	}
+	protected, err := New(db).ProtectedArtifactOperations(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, operationID := range []string{current, otherLive, manualRecovery, ambiguous, nonFirewall} {
+		if _, ok := protected[operationID]; !ok {
+			t.Fatalf("live closure omitted %s: %#v", operationID, protected)
+		}
+	}
+	if _, ok := protected[superseded]; ok {
+		t.Fatalf("superseded applied firewall operation remained protected: %#v", protected)
+	}
+}
+
+func TestArtifactsFirewallHistoryPruneBoundsSafeTerminalRows(t *testing.T) {
+	db := openTestDB(t)
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	now := time.Date(2026, 8, 30, 12, 0, 0, 0, time.UTC)
+	pid := 42
+	makeOperation := func(value int, state string, updatedAt int64) OperationLockModel {
+		return OperationLockModel{OperationID: fmt.Sprintf("operation-%032x", value), Kind: "firewall", State: state, Revision: value, LockedByPID: &pid, LockedByInstanceID: "instance", Actor: "admin", HeartbeatAt: updatedAt, ExpiresAt: updatedAt, CreatedAt: updatedAt, UpdatedAt: updatedAt}
+	}
+	current := makeOperation(0x201, "applied", now.Add(-100*24*time.Hour).Unix())
+	superseded := makeOperation(0x202, "applied", now.Add(-90*24*time.Hour).Unix())
+	recent := makeOperation(0x203, "cancelled", now.Add(-time.Hour).Unix())
+	overBytes := makeOperation(0x204, "rolled_back", now.Add(-30*time.Minute).Unix())
+	for _, operation := range []OperationLockModel{current, superseded, recent, overBytes} {
+		if err := db.Create(&operation).Error; err != nil {
+			t.Fatal(err)
+		}
+		transition := FirewallContributionTransitionModel{OperationID: operation.OperationID, Schema: "fixture", ContributionID: "baseline", PreviousJSON: json.RawMessage(`{}`), DesiredSemanticRevision: strings.Repeat("a", 64), DesiredJSON: json.RawMessage(`{}`), ManagedPlanRevision: strings.Repeat("b", 64), CandidateSHA256: strings.Repeat("c", 64), State: "CANCELLED", CreatedAt: operation.CreatedAt, UpdatedAt: operation.UpdatedAt}
+		if operation.State == "applied" {
+			transition.State = "APPLIED"
+		} else if operation.State == "rolled_back" {
+			transition.State = "ROLLED_BACK"
+		}
+		if operation.OperationID == overBytes.OperationID {
+			transition.DesiredJSON = json.RawMessage(`{"padding":"` + strings.Repeat("x", 4096) + `"}`)
+		}
+		if err := db.Create(&transition).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Create(&FirewallContributionModel{ContributionID: "baseline", Schema: "fixture", Kind: "BASELINE", ResourceID: "managed-table", Network: "inet", AddressFamily: "inet", SemanticRevision: strings.Repeat("d", 64), SemanticJSON: json.RawMessage(`{}`), AppliedOperationID: current.OperationID, CreatedAt: now.Unix(), UpdatedAt: now.Unix()}).Error; err != nil {
+		t.Fatal(err)
+	}
+	result, err := New(db).PruneFirewallHistory(context.Background(), 1, now.Add(-30*24*time.Hour).Unix(), 2048)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.DeletedOperations != 2 || result.DeletedTransitions != 2 {
+		t.Fatalf("history prune result = %#v", result)
+	}
+	for _, operationID := range []string{current.OperationID, recent.OperationID} {
+		if err := db.First(&OperationLockModel{}, "operation_id = ?", operationID).Error; err != nil {
+			t.Fatalf("preserved operation %s missing: %v", operationID, err)
+		}
+	}
+	for _, operationID := range []string{superseded.OperationID, overBytes.OperationID} {
+		if err := db.First(&OperationLockModel{}, "operation_id = ?", operationID).Error; !errors.Is(err, gorm.ErrRecordNotFound) {
+			t.Fatalf("prunable operation %s survived: %v", operationID, err)
+		}
+	}
+	second, err := New(db).PruneFirewallHistory(context.Background(), 1, now.Add(-30*24*time.Hour).Unix(), 2048)
+	if err != nil || second.DeletedOperations != 0 || second.DeletedTransitions != 0 {
+		t.Fatalf("second history prune was not idempotent: %#v err=%v", second, err)
 	}
 }
 

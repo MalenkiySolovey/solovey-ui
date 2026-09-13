@@ -10,7 +10,7 @@
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/MalenkiySolovey/solovey-ui"></a>
 </p>
 
-Current version: `2026.3.0`
+Current version: `2026.3.1`
 
 Solovey UI is a GPL-3.0 panel for managing a `sing-box` server through a web
 interface and command-line tool. The core panel includes the required runtime
@@ -52,7 +52,7 @@ sudo solovey-ui status
 Install a specific release:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.3.0
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.3.1
 ```
 
 Default paths:
@@ -121,7 +121,7 @@ chooses the smallest binary profile that can satisfy the selected component set.
 | `telegram` | Telegram notifications, bot transport, backup delivery, and related settings. | Receive operational alerts and backups outside the panel. |
 | `observability-extra` | Additional runtime sampling, observability views, and related metrics. | Inspect runtime behavior beyond the base diagnostics. |
 | `fallback-html` | Default-disabled managed fallback HTML sites, pages, redirects, assets, and publication records. | Prepare an explicit fallback site without enabling it automatically. |
-| `server-protection` | Default-disabled host-bound protection, fronting, firewall-composition, UDP guard, and recovery workflows. | Inspect or stage experimental protection capabilities; external Live acceptance remains separate and is not implied by installation. |
+| `server-protection` | Default-disabled host-bound protection, fronting, firewall-composition, UDP guard, and recovery workflows. | Inspect or stage experimental protection capabilities; installation alone does not establish current operational readiness. |
 
 Installed components can be disabled without deleting data. Removing a component
 removes its runtime files and unregisters its routes, jobs, and hooks. Data
@@ -141,7 +141,7 @@ sudo systemctl status solovey-ui --no-pager
 Update to a specific tag:
 
 ```bash
-sudo solovey-ui update --version v2026.3.0
+sudo solovey-ui update --version v2026.3.1
 ```
 
 ## Backup And Restore
@@ -239,7 +239,7 @@ The project remains licensed under GNU GPL v3.0.
   <b>Персональная панель для sing-box с модульной средой выполнения, установщиком с учётом компонентов и встроенными инструментами администрирования.</b>
 </p>
 
-Текущая версия: `2026.3.0`
+Текущая версия: `2026.3.1`
 
 Solovey UI — панель GPL-3.0 для управления сервером `sing-box` через веб-интерфейс
 и командную строку. Базовое ядро включает обязательные части среды выполнения:
@@ -287,7 +287,7 @@ sudo solovey-ui status
 Установка конкретного релиза:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.3.0
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.3.1
 ```
 
 Пути по умолчанию:
@@ -380,7 +380,7 @@ sudo systemctl status solovey-ui --no-pager
 Обновление до конкретного тега:
 
 ```bash
-sudo solovey-ui update --version v2026.3.0
+sudo solovey-ui update --version v2026.3.1
 ```
 
 ## Резервное копирование и восстановление

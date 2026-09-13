@@ -141,6 +141,38 @@ func (r *Repository) ListNativeFallbackOperations(ctx context.Context, states []
 	return items, query.Order("created_at ASC, id ASC").Find(&items).Error
 }
 
+// LatestNativeFallbackOperations returns at most one semantic operation for
+// each explicitly requested resource. Status callers must never load the
+// unbounded historical journal merely to project its current operation.
+func (r *Repository) LatestNativeFallbackOperations(ctx context.Context, resourceIDs []string) ([]NativeFallbackOperationModel, error) {
+	if r == nil || r.db == nil {
+		return nil, errors.New("server-protection repository is not initialized")
+	}
+	if len(resourceIDs) == 0 {
+		return []NativeFallbackOperationModel{}, nil
+	}
+	if len(resourceIDs) > neutralfallback.MaxTargetsV2 {
+		return nil, errors.New("native fallback latest-operation query is too large")
+	}
+	unique := make([]string, 0, len(resourceIDs))
+	seen := make(map[string]struct{}, len(resourceIDs))
+	for _, resourceID := range resourceIDs {
+		if !domain.ValidContractID(resourceID, 256) {
+			return nil, errors.New("native fallback resource identity is invalid")
+		}
+		if _, exists := seen[resourceID]; exists {
+			continue
+		}
+		seen[resourceID] = struct{}{}
+		unique = append(unique, resourceID)
+	}
+	subquery := r.db.WithContext(ctx).Model(&NativeFallbackOperationModel{}).
+		Select("MAX(id)").Where("resource_id IN ?", unique).Group("resource_id")
+	var items []NativeFallbackOperationModel
+	err := r.db.WithContext(ctx).Where("id IN (?)", subquery).Order("resource_id ASC, id DESC").Find(&items).Error
+	return items, err
+}
+
 func (r *Repository) ReservationMirror(ctx context.Context, operationID string) (FallbackTargetLeaseModel, error) {
 	var item FallbackTargetLeaseModel
 	err := r.db.WithContext(ctx).Where("operation_id = ?", operationID).Order("id DESC").First(&item).Error

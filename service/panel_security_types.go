@@ -97,6 +97,13 @@ type LoginSessionSpec struct {
 	LegacyMaxAge             time.Duration
 }
 
+// LoginSessionEstablishment is emitted only after the concrete server-side
+// session has been persisted. AuthenticationRevision identifies that exact
+// session without exposing its bearer reference or the global generation.
+type LoginSessionEstablishment struct {
+	AuthenticationRevision string
+}
+
 type RealtimeSessionBinding struct {
 	UserID                    uint
 	Username                  string
@@ -134,6 +141,14 @@ func SessionGenerationRevision(generation string) string {
 		return ""
 	}
 	sum := sha256.Sum256([]byte(generation))
+	return hex.EncodeToString(sum[:])
+}
+
+func SessionAuthenticationRevision(sessionRef string) string {
+	if sessionRef == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte("panel-session-authentication/v1\x00" + sessionRef))
 	return hex.EncodeToString(sum[:])
 }
 

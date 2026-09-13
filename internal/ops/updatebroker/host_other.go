@@ -2,6 +2,12 @@
 
 package updatebroker
 
-import broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
+import (
+	"errors"
 
-func RegisterHandlers(*broker.Registry) error { return nil }
+	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
+)
+
+func registerNativeHandlers(*broker.Registry) error {
+	return broker.StartupFailure("update", "update.lifecycle", "native-self-managed", "linux_required", errors.New("native update broker operations require Linux"))
+}

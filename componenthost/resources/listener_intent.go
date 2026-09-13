@@ -2,15 +2,11 @@ package resources
 
 import (
 	"net/netip"
-	"path"
 	"sort"
 	"strings"
 )
 
-const (
-	ConfiguredListenIntentSchemaV1 = "solovey-ui/configured-listen-intent/v1"
-	ExpectedListenerOwnerSchemaV1  = "solovey-ui/expected-listener-owner/v1"
-)
+const ConfiguredListenIntentSchemaV1 = "solovey-ui/configured-listen-intent/v1"
 
 type ListenIntentMode string
 
@@ -32,27 +28,6 @@ type ConfiguredListenIntentV1 struct {
 	Port                  uint16           `json:"port"`
 	RequiredFamilies      []AddressFamily  `json:"requiredFamilies,omitempty"`
 	ConfigurationRevision string           `json:"configurationRevision"`
-}
-
-// ExpectedListenerOwnerV1 is the non-secret subset of the active deployment
-// contract that a resource binds into its inventory revision.
-type ExpectedListenerOwnerV1 struct {
-	Schema                     string `json:"schema"`
-	ContractRevision           string `json:"contractRevision"`
-	InstanceID                 string `json:"instanceId"`
-	SourceRevision             string `json:"sourceRevision"`
-	ArtifactRevision           string `json:"artifactRevision"`
-	DeploymentID               string `json:"deploymentId"`
-	RuntimeRootBindingRevision string `json:"runtimeRootBindingRevision"`
-	ServiceIdentity            string `json:"serviceIdentity"`
-	SystemdUnit                string `json:"systemdUnit"`
-	ServiceFragmentPath        string `json:"serviceFragmentPath"`
-	ServiceUnitSHA256          string `json:"serviceUnitSha256"`
-	ServiceControlGroup        string `json:"serviceControlGroup"`
-	ExecutablePath             string `json:"executablePath"`
-	ExecutableSHA256           string `json:"executableSha256"`
-	ProcessUID                 uint32 `json:"processUid"`
-	ProcessGID                 uint32 `json:"processGid"`
 }
 
 // DeterministicConfiguredEndpointKeys expands configuration intent into the
@@ -243,20 +218,6 @@ func normalizedFamilies(values []AddressFamily) []AddressFamily {
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
 	return result
-}
-
-func (e ExpectedListenerOwnerV1) Valid() bool {
-	return e.Schema == ExpectedListenerOwnerSchemaV1 && validHex64(e.ContractRevision) &&
-		validHex64(e.RuntimeRootBindingRevision) && validHex64(e.ServiceUnitSHA256) && validHex64(e.ExecutableSHA256) &&
-		strings.HasPrefix(e.SourceRevision, "src-") && len(e.SourceRevision) == 68 && validHex64(strings.TrimPrefix(e.SourceRevision, "src-")) &&
-		strings.HasPrefix(e.ArtifactRevision, "art-") && len(e.ArtifactRevision) == 68 && validHex64(strings.TrimPrefix(e.ArtifactRevision, "art-")) &&
-		strings.HasPrefix(e.DeploymentID, "dep-") && len(e.DeploymentID) == 68 && validHex64(strings.TrimPrefix(e.DeploymentID, "dep-")) &&
-		safeEndpointToken(e.InstanceID) != "" && safeEndpointToken(e.ServiceIdentity) != "" && safeEndpointToken(e.SystemdUnit) != "" &&
-		canonicalExpectedPath(e.ServiceFragmentPath) && canonicalExpectedPath(e.ServiceControlGroup) && canonicalExpectedPath(e.ExecutablePath)
-}
-
-func canonicalExpectedPath(value string) bool {
-	return value != "" && value != "/" && len(value) <= 512 && strings.HasPrefix(value, "/") && path.Clean(value) == value && !strings.ContainsAny(value, "\x00\r\n\t")
 }
 
 func validHex64(value string) bool {

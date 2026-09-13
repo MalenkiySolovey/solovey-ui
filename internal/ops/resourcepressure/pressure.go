@@ -174,6 +174,12 @@ func (e *Evaluator) classify(now time.Time, signals []Signal, exitThresholds boo
 	reasons := make([]string, 0, 4)
 	for _, threshold := range e.Thresholds {
 		signal, exists := byID[threshold.ID]
+		// UNSUPPORTED is an affirmative applicability fact, not a failed
+		// observation. This lets a complementary required ratio govern bounded
+		// filesystems where an absolute-byte threshold has no safe meaning.
+		if exists && signal.Status == ProviderUnsupported {
+			continue
+		}
 		if !exists || signal.Status != ProviderSupported || signal.ExpiresAt <= now.Unix() {
 			if threshold.Required {
 				worst = maxState(worst, StateWarning)

@@ -8,6 +8,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -23,7 +24,7 @@ type memoryJournal struct{}
 func (memoryJournal) Begin(Request, PeerIdentity, string, time.Time) (*Response, *Receipt, error) {
 	return nil, nil, nil
 }
-func (memoryJournal) Commit(_ Request, receipt *Receipt, response Response, _ time.Time) (Response, error) {
+func (memoryJournal) Commit(_ Request, receipt *Receipt, response Response, _ CompletionPolicy, _ time.Time) (Response, error) {
 	response.Receipt = receipt
 	return response, nil
 }
@@ -109,9 +110,20 @@ func TestBrokerJournalReplayFenceRecoveryAndRestart(t *testing.T) {
 	if err != nil || replay != nil || receipt == nil {
 		t.Fatalf("begin replay=%v receipt=%v err=%v", replay, receipt, err)
 	}
-	response, err := journal.Commit(request, receipt, successResponse(request), now.Add(time.Second))
+	response, err := journal.Commit(request, receipt, successResponse(request), CompletionPolicy{}, now.Add(time.Second))
 	if err != nil || response.Receipt == nil {
 		t.Fatal(err)
+	}
+	if journal.rows[0].Receipt == nil || journal.rows[0].Receipt.Outcome != "active" || validateJournalRow(journal.rows[0]) != nil {
+		t.Fatal("committing a mutation changed its persisted active receipt")
+	}
+	restartedAuthority, err := openTestJournal(root, "boot-two")
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority, err := restartedAuthority.CompletedMutation(request.OperationID, request.Verb, request.Fence.Resource)
+	if err != nil || !authority.OK || authority.OperationID != request.OperationID || authority.Verb != request.Verb {
+		t.Fatalf("completed mutation authority=%#v err=%v", authority, err)
 	}
 	replay, _, err = journal.Begin(request, peer, digest, now.Add(2*time.Second))
 	if err != nil || replay == nil || !replay.Replay {
@@ -145,6 +157,41 @@ func TestBrokerJournalReplayFenceRecoveryAndRestart(t *testing.T) {
 	otherDigest := Digest(append(canonicalRequestAuthority(other), other.Payload...))
 	if _, _, err := restarted.Begin(other, peer, otherDigest, now); publicCode(err) != CodeRecoveryRequired {
 		t.Fatalf("second writer bypassed unresolved authority code=%v err=%v", publicCode(err), err)
+	}
+}
+
+func TestBrokerJournalRejectsCorruptCompletedMutationAuthority(t *testing.T) {
+	root := filepath.Join(t.TempDir(), "solovey-ui-broker")
+	if err := os.Mkdir(root, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	journal, err := openTestJournal(root, "boot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Unix(1_900_000_000, 0).UTC()
+	request := brokerMutationRequest(t, now, 1, "idem-authority")
+	peer := PeerIdentity{Revision: Digest([]byte("peer"))}
+	requestDigest := Digest(append(canonicalRequestAuthority(request), request.Payload...))
+	_, receipt, err := journal.Begin(request, peer, requestDigest, now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	payload, payloadDigest, err := MarshalPayload(struct {
+		Checkpoint string `json:"checkpoint"`
+	}{Checkpoint: "server-owned"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response := successResponse(request)
+	response.Payload, response.PayloadDigest = payload, payloadDigest
+	if _, err := journal.Commit(request, receipt, response, CompletionPolicy{}, now.Add(time.Second)); err != nil {
+		t.Fatal(err)
+	}
+	complete := journal.rows[len(journal.rows)-1]
+	complete.Payload = json.RawMessage(`{"checkpoint":"modified"}`)
+	if validateJournalRow(complete) == nil {
+		t.Fatal("modified completed-mutation payload retained broker authority")
 	}
 }
 
@@ -224,9 +271,9 @@ func TestBrokerMutationPanicIsDurablyClassifiedForRecovery(t *testing.T) {
 }
 
 func TestProductionVerbVocabularyHasNoGenericEscapeHatch(t *testing.T) {
-	verbs := []Verb{VerbCapabilities, VerbSSHObserve, VerbSSHStage, VerbSSHValidate, VerbSSHReload, VerbSSHArm, VerbSSHRestore,
+	verbs := []Verb{VerbCapabilities, VerbSSHObserve, VerbSSHStage, VerbSSHRecoverStage, VerbSSHReleaseStage, VerbSSHValidate, VerbSSHReload, VerbSSHArm, VerbSSHRestore,
 		VerbSSHInspect, VerbSSHVerify, VerbSSHProof, VerbDeploymentObserve, VerbDeploymentDoctor, VerbDeploymentPrepare,
-		VerbDeploymentApply, VerbDeploymentVerify, VerbDeploymentRollback}
+		VerbDeploymentRelease, VerbDeploymentApply, VerbDeploymentVerify, VerbDeploymentRollback}
 	for _, verb := range verbs {
 		value := string(verb)
 		for _, forbidden := range []string{"command", "argv", "environment", "filesystem", "service.start", "service.stop", "docker"} {
@@ -272,7 +319,7 @@ func TestManifestMatchingRejectsIdentityDriftAndAcceptsSetgidProof(t *testing.T)
 	}
 	for name, mutate := range map[string]func(*PeerIdentity){
 		"uid": func(p *PeerIdentity) { p.UID++ }, "gid": func(p *PeerIdentity) { p.GID++ },
-		"executable": func(p *PeerIdentity) { p.Executable = "/tmp/replaced" }, "digest": func(p *PeerIdentity) { p.ExecutableDigest = Digest([]byte("replaced")) },
+		"digest": func(p *PeerIdentity) { p.ExecutableDigest = Digest([]byte("replaced")) },
 		"device": func(p *PeerIdentity) { p.Device++ }, "inode": func(p *PeerIdentity) { p.Inode++ }, "cgroup": func(p *PeerIdentity) { p.CgroupUnit = "wrong.service" },
 	} {
 		t.Run(name, func(t *testing.T) {
@@ -282,6 +329,11 @@ func TestManifestMatchingRejectsIdentityDriftAndAcceptsSetgidProof(t *testing.T)
 				t.Fatal("identity drift accepted")
 			}
 		})
+	}
+	labelDrift := panel
+	labelDrift.Executable = "/diagnostic/path/changed"
+	if _, ok := manifest.matching(RolePanel, labelDrift); !ok {
+		t.Fatal("non-authoritative executable label rejected an exact mapped object")
 	}
 	proof := PeerIdentity{UID: 2002, GID: 1001, Executable: "/usr/local/solovey-ui/solovey-ssh-proof", ExecutableDigest: digest, Device: 7, Inode: 12}
 	if _, ok := manifest.matching(RoleSSHProof, proof); !ok {
@@ -313,6 +365,7 @@ func TestBrokerAuditIsSafeAndAggregatesRepeatedDenials(t *testing.T) {
 	server.Audit = func(event AuditEvent) { events = append(events, event) }
 	request := brokerMutationRequest(t, now, 1, "idem-audit")
 	request.Verb = "host.command.run"
+	request.OperationID = "secret/operation/identifier"
 	request.Purpose = "secret-do-not-log"
 	for range 7 {
 		response := server.Handle(context.Background(), request, peer)
@@ -327,9 +380,85 @@ func TestBrokerAuditIsSafeAndAggregatesRepeatedDenials(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, forbidden := range []string{"secret-do-not-log", "payload", "/root", "argv", "environment"} {
+	for _, forbidden := range []string{"secret-do-not-log", "secret/operation/identifier", "host.command.run", "payload", "/root", "argv", "environment"} {
 		if strings.Contains(string(encoded), forbidden) {
 			t.Fatalf("audit leaked forbidden value %q: %s", forbidden, encoded)
+		}
+	}
+	for _, event := range events {
+		if event.Verb != "unknown" || event.OperationReference != "invalid" || event.Phase != AuditPhaseDispatchGate {
+			t.Fatalf("audit vocabulary is not closed: %+v", event)
+		}
+	}
+}
+
+func TestAuditVocabularyNormalizesEveryExternalField(t *testing.T) {
+	event := AuditEvent{Verb: "../../private", OwnerDomain: "/root", OperationReference: "token/value", PeerRole: "attacker",
+		PeerRevision: "/private/path", PeerAttestation: "custom/private", ResultClass: "custom-result", DurationClass: "123 seconds",
+		RevisionTransition: "private-revision", RecoveryClass: "private-recovery", Phase: "private-phase"}
+	server := &Server{Now: time.Now, denials: map[string]uint64{}, Audit: func(got AuditEvent) {
+		encoded, _ := json.Marshal(got)
+		for _, forbidden := range []string{"../../private", "/root", "token/value", "attacker", "/private/path", "custom/private", "custom-result", "123 seconds", "private-revision", "private-recovery", "private-phase"} {
+			if strings.Contains(string(encoded), forbidden) {
+				t.Fatalf("audit sanitizer leaked %q: %s", forbidden, encoded)
+			}
+		}
+		if got.Verb != "invalid" || got.OperationReference != "invalid" || got.PeerRole != "unknown" ||
+			got.PeerAttestation != string(PeerAttestationInternalFailure) || got.Phase != AuditPhaseDispatchGate {
+			t.Fatalf("unexpected normalized event: %+v", got)
+		}
+	}}
+	server.emitAudit(event, false)
+}
+
+func TestSerializedClosedDenialMatrixContainsOnlyBoundedTokens(t *testing.T) {
+	classes := []PeerAttestationClass{
+		PeerAttestationCredentialsUnavailable, PeerAttestationUIDGIDMismatch, PeerAttestationExecutableMismatch,
+		PeerAttestationRoleNotAuthorized, PeerAttestationManifestAmbiguous, PeerAttestationNamespaceMismatch,
+		PeerAttestationProcessMismatch, PeerAttestationStartIdentityMismatch, PeerAttestationBootMismatch,
+		PeerAttestationSupervisionMismatch, PeerAttestationCgroupPolicyMismatch, PeerAttestationLivenessUnavailable,
+		PeerAttestationConnectorDeath, PeerAttestationWriterMismatch, PeerAttestationGenerationMismatch,
+		PeerAttestationInternalFailure,
+	}
+	phases := []AuditPhase{AuditPhaseInitialAttestation, AuditPhaseRequestReceive, AuditPhaseFinalRecheck, AuditPhaseDispatchGate}
+	var serialized [][]byte
+	server := &Server{Now: time.Now, denials: map[string]uint64{}, Audit: func(event AuditEvent) {
+		data, err := json.Marshal(event)
+		if err != nil {
+			t.Fatal(err)
+		}
+		serialized = append(serialized, data)
+	}}
+	for _, class := range classes {
+		for _, phase := range phases {
+			server.emitAudit(AuditEvent{
+				Verb: "../../attacker-command", OperationReference: "operation/private\nsecret", PeerRole: "attacker-role",
+				PeerRevision: "/proc/4242/exe", PeerAttestation: string(class), ResultClass: "denied_peer",
+				DurationClass: "123.456 seconds", RevisionTransition: "/sys/fs/cgroup/private",
+				RecoveryClass: "token=secret", Phase: phase, OwnerDomain: "/root/private",
+			}, false)
+		}
+	}
+	if len(serialized) != len(classes)*len(phases) {
+		t.Fatalf("serialized denial rows=%d", len(serialized))
+	}
+	for index, encoded := range serialized {
+		class := classes[index/len(phases)]
+		phase := phases[index%len(phases)]
+		var event AuditEvent
+		if err := json.Unmarshal(encoded, &event); err != nil {
+			t.Fatal(err)
+		}
+		if event.Verb != "invalid" || event.OperationReference != "invalid" || event.PeerRole != "unknown" ||
+			event.PeerRevision != "" || event.PeerAttestation != string(class) || event.Phase != phase ||
+			event.OwnerDomain != "broker" || event.ResultClass != "denied_peer" ||
+			event.DurationClass != "not_measured" || event.RevisionTransition != "none" || event.RecoveryClass != "none" {
+			t.Fatalf("row %d escaped closed vocabulary: %+v", index, event)
+		}
+		for _, secret := range []string{"attacker-command", "operation/private", "secret", "attacker-role", "/proc/4242", "/sys/fs/cgroup", "/root/private", "123.456"} {
+			if bytes.Contains(encoded, []byte(secret)) {
+				t.Fatalf("row %d leaked %q: %s", index, secret, encoded)
+			}
 		}
 	}
 }
@@ -339,6 +468,35 @@ func TestBrokerAuditNormalizesUnknownResultCodes(t *testing.T) {
 	event := server.auditEvent(Request{}, PeerIdentity{}, Response{Code: ErrorCode("attacker-value")}, time.Millisecond)
 	if event.ResultClass != "denied_"+string(CodeInternal) {
 		t.Fatalf("unexpected audit result class %q", event.ResultClass)
+	}
+}
+
+func TestCapabilityOnlyManifestClientCannotInvokePanelAuthority(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Register(VerbDeploymentObserve, Definition{Role: RolePanel, Handler: func(context.Context, Request, PeerIdentity) (any, error) {
+		return struct{}{}, nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	server, err := NewServer(registry, memoryJournal{}, StaticAttestor{Peer: PeerIdentity{Revision: Digest([]byte("peer"))}}, "boot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	now := time.Now().UTC()
+	server.Now = func() time.Time { return now }
+	peer := PeerIdentity{Revision: Digest([]byte("readiness")), CapabilitiesOnly: true, ManifestClient: "broker-readiness"}
+	request := brokerReadRequest(t, now, VerbDeploymentObserve)
+	if response := server.Handle(context.Background(), request, peer); response.Code != CodeUnauthorized {
+		t.Fatalf("capability-only peer invoked panel authority: %#v", response)
+	}
+	request = brokerReadRequest(t, now, VerbCapabilities)
+	response := server.Handle(context.Background(), request, peer)
+	if !response.OK {
+		t.Fatalf("capability probe failed: %#v", response)
+	}
+	var capabilities CapabilitiesV1
+	if err := DecodePayload(response.Payload, &capabilities); err != nil || !slices.Equal(capabilities.Verbs, []Verb{VerbCapabilities}) {
+		t.Fatalf("capability-only projection=%#v err=%v", capabilities, err)
 	}
 }
 
@@ -418,17 +576,9 @@ func publicCode(err error) ErrorCode {
 }
 
 func openTestJournal(root, bootID string) (*FileJournal, error) {
-	journal := &FileJournal{root: root, path: filepath.Join(root, journalFileName), bootID: bootID,
-		replays: make(map[string]replayRecord), fences: make(map[string]uint64), unresolved: make(map[string]Receipt)}
-	file, err := os.Open(journal.path)
-	if errors.Is(err, os.ErrNotExist) {
-		return journal, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	if err := journal.loadRows(file); err != nil {
+	journal := &FileJournal{root: root, path: filepath.Join(root, journalFileName), bootID: bootID, fs: realJournalFilesystem()}
+	journal.installRows(nil, newJournalIndexes(), 0)
+	if err := journal.load(false); err != nil {
 		return nil, err
 	}
 	return journal, nil

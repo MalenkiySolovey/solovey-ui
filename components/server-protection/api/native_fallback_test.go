@@ -20,6 +20,7 @@ import (
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 	"github.com/gin-gonic/gin"
+	"gorm.io/gorm"
 )
 
 type nativeFallbackRecorder struct {
@@ -77,8 +78,13 @@ func (c nativeResourceContributor) ListProtectableResources(context.Context) ([]
 }
 
 func newNativeFallbackRouter(t *testing.T, scope string, native nativeFallbackService) (*gin.Engine, *[]auditEvent, *protectionrepository.Repository) {
+	router, audits, repository, _ := newNativeFallbackRouterWithDB(t, scope, native)
+	return router, audits, repository
+}
+
+func newNativeFallbackRouterWithDB(t *testing.T, scope string, native nativeFallbackService) (*gin.Engine, *[]auditEvent, *protectionrepository.Repository, *gorm.DB) {
 	t.Helper()
-	_, audits, manager, repository, _ := newProtectionAPIRouterWithDB(t, scope, protectionfronting.NewNginxAdapter())
+	_, audits, manager, repository, db := newProtectionAPIRouterWithDB(t, scope, protectionfronting.NewNginxAdapter())
 	owner := "native-api-" + strconv.FormatUint(fixtureContributorSequence.Add(1), 10)
 	unregister, err := hostresources.Register(nativeResourceContributor{owner: owner})
 	if err != nil {
@@ -108,7 +114,7 @@ func newNativeFallbackRouter(t *testing.T, scope string, native nativeFallbackSe
 			c.JSON(http.StatusOK, gin.H{"success": err == nil, "msg": msg + errorString(err), "obj": nil})
 		},
 	})
-	return router, audits, repository
+	return router, audits, repository, db
 }
 
 func TestNativeFallbackRouteScopeAndMethodMatrix(t *testing.T) {
@@ -230,6 +236,31 @@ func TestNativeFallbackMissingStateIsNotAppliedAndAuditIsBounded(t *testing.T) {
 	}
 }
 
+func TestNativeFallbackStatusProjectsOnlyLatestRequestedOperation(t *testing.T) {
+	recorder := &nativeFallbackRecorder{}
+	router, _, _, db := newNativeFallbackRouterWithDB(t, readScope, recorder)
+	older := nativeAPIOperationRow("native-status-old", 1)
+	newer := nativeAPIOperationRow("native-status-new", 2)
+	for _, row := range []protectionrepository.NativeFallbackOperationModel{older, newer} {
+		if err := db.Create(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	state := protectionrepository.NativeFallbackStateModel{
+		ResourceID: "core:inbound:1", Schema: domain.NativeFallbackStateSchemaV1, InboundDatabaseID: 1,
+		LatestPlanID: newer.PlanID, LatestPlanDigest: newer.PlanDigest, OperationID: newer.OperationID, OperationRevision: "1",
+		DesiredState: string(domain.NativeFallbackDesired), SelectedVariant: string(domain.NativeFallbackTrojanDefaultTCP),
+		ActualState: string(domain.NativeActualRolledBack), ReasonCodesJSON: []byte(`[]`), CreatedAt: 1, UpdatedAt: 2,
+	}
+	if err := db.Create(&state).Error; err != nil {
+		t.Fatal(err)
+	}
+	response := requestProtectionAPI(router, http.MethodGet, "/api/components/server-protection/native-fallback/status?resource_id=core:inbound:1", "")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"operationId":"native-status-new"`) || strings.Contains(response.Body.String(), "native-status-old") {
+		t.Fatalf("latest status response=%d body=%s", response.Code, response.Body.String())
+	}
+}
+
 func TestNativeFallbackErrorCodesRemainSemanticAndBounded(t *testing.T) {
 	cases := map[string]string{
 		"target_reference_stale":       "target_reference_stale",
@@ -295,5 +326,18 @@ func nativeTestReference() neutralfallback.FallbackTargetReferenceV2 {
 		PublishRevision: "publish", ContentDigest: strings.Repeat("1", 64), EndpointID: "endpoint",
 		EndpointRevision: strings.Repeat("2", 64), ProviderHealthRevision: strings.Repeat("3", 64),
 		CapacityRevision: strings.Repeat("4", 64), ProviderRevision: "provider-revision",
+	}
+}
+
+func nativeAPIOperationRow(operationID string, updatedAt int64) protectionrepository.NativeFallbackOperationModel {
+	digest := strings.Repeat("a", 64)
+	return protectionrepository.NativeFallbackOperationModel{
+		Schema: protectionrepository.NativeFallbackOperationSchemaV1, OperationID: operationID, Revision: 1,
+		ResourceID: "core:inbound:1", InboundDatabaseID: 1, PlanID: digest, PlanDigest: digest, PlanJSON: []byte(`{}`),
+		RuntimeIdentityRevision: digest, CapabilityResolverRevision: digest, BeforeConfigurationRevision: digest,
+		ExpectedAfterRevision: digest, BeforeEffectiveRevision: digest, TargetReferenceJSON: []byte(`{}`), TargetRevision: digest,
+		ProviderRevision: "provider", EndpointRevision: digest, PublishRevision: "publish", HealthRevision: digest,
+		CapacityRevision: digest, WorkflowState: protectionrepository.NativeWorkflowRolledBack, HealthFactsJSON: []byte(`{}`),
+		ReasonCodesJSON: []byte(`[]`), RecoveryBundleJSON: []byte(`{}`), CreatedAt: updatedAt, UpdatedAt: updatedAt,
 	}
 }

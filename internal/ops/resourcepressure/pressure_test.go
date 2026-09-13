@@ -88,6 +88,35 @@ func TestPressureAdmissionPreservesSecurityStatusAndRecovery(t *testing.T) {
 	}
 }
 
+func TestEvaluatorDistinguishesInapplicableFromUnavailableRequiredSignal(t *testing.T) {
+	thresholds := []Threshold{
+		{ID: "disk.free_ratio", Direction: LowerIsWorse, Warning: .20, Constrained: .10, Critical: .05, Required: true},
+		{ID: "disk.free_bytes", Direction: LowerIsWorse, Warning: 2 << 30, Constrained: 1 << 30, Critical: 512 << 20, Required: true},
+	}
+	now := time.Unix(1_800_000_000, 0)
+	evaluate := func(bytesStatus ProviderStatus) Snapshot {
+		evaluator, err := NewEvaluator(thresholds)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var snapshot Snapshot
+		for range 2 {
+			snapshot = evaluator.Evaluate(now, []Signal{
+				{ID: "disk.free_ratio", Status: ProviderSupported, Value: .75, Unit: "ratio", ObservedAt: now.Unix(), ExpiresAt: now.Add(DefaultFreshness).Unix()},
+				{ID: "disk.free_bytes", Status: bytesStatus, ReasonCode: "absolute_bytes_inapplicable", ObservedAt: now.Unix(), ExpiresAt: now.Add(DefaultFreshness).Unix()},
+			})
+			now = now.Add(SampleInterval)
+		}
+		return snapshot
+	}
+	if snapshot := evaluate(ProviderUnsupported); snapshot.State != StateNormal {
+		t.Fatalf("inapplicable absolute threshold created pressure: %#v", snapshot)
+	}
+	if snapshot := evaluate(ProviderUnavailable); snapshot.State != StateWarning {
+		t.Fatalf("unavailable required threshold failed open: %#v", snapshot)
+	}
+}
+
 func TestPressureRejectsUnsafeThresholdsAndNumericSignals(t *testing.T) {
 	for _, threshold := range []Threshold{
 		{ID: "unsafe.ratio", Direction: HigherIsWorse, Warning: .8, Constrained: .9, Critical: 1.1},

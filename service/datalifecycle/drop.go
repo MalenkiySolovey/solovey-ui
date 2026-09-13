@@ -73,14 +73,19 @@ type ExecuteRequest struct {
 }
 
 type Manager struct {
-	mu      sync.Mutex
-	DB      func() *gorm.DB
-	Now     func() time.Time
-	Drop    func(context.Context, string) error
-	Root    string
-	Enabled func(componentmanifest.Manifest) (bool, error)
-	Admit   func(string) bool
-	Backup  func(context.Context, model.DataLifecycleOperation) (string, error)
+	mu   sync.Mutex
+	DB   func() *gorm.DB
+	Now  func() time.Time
+	Drop func(context.Context, string) error
+	Root string
+	// RestoreRoot is the owner-local persistent directory containing logical
+	// pre-restore recovery snapshots. It is injected in filesystem tests and
+	// otherwise follows the configured database root.
+	RestoreRoot string
+	Enabled     func(componentmanifest.Manifest) (bool, error)
+	Admit       func(string) bool
+	Backup      func(context.Context, model.DataLifecycleOperation) (string, error)
+	recoveryOps *recoveryFileOps
 }
 
 var shared = NewManager()
@@ -89,8 +94,9 @@ func Shared() *Manager { return shared }
 
 func NewManager() *Manager {
 	return &Manager{DB: dbsqlite.DB, Now: time.Now, Drop: coreservice.DropComponentData,
-		Root:    filepath.Join(configstorage.GetDBFolderPath(), "recovery", "drop-data"),
-		Enabled: enabledstate.Enabled, Admit: func(class string) bool { return pressureService.Shared().Admission(class).Allowed }}
+		Root:        filepath.Join(configstorage.GetDBFolderPath(), "recovery", "drop-data"),
+		RestoreRoot: filepath.Join(configstorage.GetDBFolderPath(), "recovery", "restore"),
+		Enabled:     enabledstate.Enabled, Admit: func(class string) bool { return pressureService.Shared().Admission(class).Allowed }}
 }
 
 func (m *Manager) Preview(ctx context.Context, ownerID string) (Preview, error) {
@@ -221,6 +227,9 @@ func (m *Manager) Execute(ctx context.Context, request ExecuteRequest) (model.Da
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if err := m.maintainLocked(ctx); err != nil {
+		return model.DataLifecycleOperation{}, err
+	}
 	if existing, err := m.byIdempotency(ctx, request.IdempotencyKey); err == nil {
 		if existing.OwnerID == request.OwnerID && existing.ExpectedRevision == request.ExpectedPreviewRevision {
 			return existing, nil
@@ -269,8 +278,7 @@ func (m *Manager) Execute(ctx context.Context, request ExecuteRequest) (model.Da
 		}
 		return m.fail(ctx, operation, "pre_drop_backup_failed", err)
 	}
-	operation.BackupRef = backupRef
-	operation, err = m.advance(ctx, operation, "BACKUP_READY", "pre_drop_backup_ready", "")
+	operation, err = m.commitBackupReady(ctx, operation, backupRef)
 	if err != nil {
 		return operation, err
 	}
@@ -289,7 +297,12 @@ func (m *Manager) Execute(ctx context.Context, request ExecuteRequest) (model.Da
 	if err != nil || !dropPostcondition(post) {
 		return m.recovery(ctx, operation, "owner_drop_postcondition_failed", err)
 	}
-	return m.advance(ctx, operation, "APPLIED", "owner_data_dropped", "")
+	applied, err := m.advance(ctx, operation, "APPLIED", "owner_data_dropped", "")
+	if err != nil {
+		return applied, err
+	}
+	_, pruneErr := m.pruneLocked(ctx)
+	return applied, pruneErr
 }
 
 func (m *Manager) Operation(ctx context.Context, id string) (model.DataLifecycleOperation, error) {
@@ -342,33 +355,13 @@ func (m *Manager) preDropBackup(ctx context.Context, operation model.DataLifecyc
 		return "", err
 	}
 	defer cleanup()
-	if err := os.MkdirAll(m.Root, 0o700); err != nil {
-		return "", err
-	}
-	destination := filepath.Join(m.Root, operation.OperationID+".db")
-	temporary := destination + ".partial"
-	_ = os.Remove(temporary)
 	input, err := os.Open(path)
 	if err != nil {
 		return "", err
 	}
 	defer input.Close()
-	output, err := os.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600)
-	if err != nil {
-		return "", err
-	}
-	hash := sha256.New()
-	written, copyErr := copyWithContext(ctx, io.MultiWriter(output, hash), io.LimitReader(input, 512<<20+1))
-	syncErr, closeErr := output.Sync(), output.Close()
-	if copyErr != nil || syncErr != nil || closeErr != nil || written > 512<<20 {
-		_ = os.Remove(temporary)
-		return "", errors.Join(copyErr, syncErr, closeErr, errors.New("pre-drop backup exceeded bounds"))
-	}
-	if err := os.Rename(temporary, destination); err != nil {
-		_ = os.Remove(temporary)
-		return "", err
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
+	destination := filepath.Join(m.dropRecoveryRoot(), portableDropRecoveryFilename(operation.OperationID))
+	return publishRecoveryFile(ctx, input, destination, dbbackup.MaxRestoreBytes, m.filesystem())
 }
 
 func (m *Manager) database() *gorm.DB {
@@ -392,11 +385,28 @@ func (m *Manager) admitted(class string) bool {
 	return m.Admit(class)
 }
 
+func (m *Manager) now() time.Time {
+	if m == nil || m.Now == nil {
+		return time.Now().UTC()
+	}
+	return m.Now().UTC()
+}
+
 func (m *Manager) backup(ctx context.Context, operation model.DataLifecycleOperation) (string, error) {
 	if m.Backup != nil {
 		return m.Backup(ctx, operation)
 	}
 	return m.preDropBackup(ctx, operation)
+}
+
+func (m *Manager) commitBackupReady(ctx context.Context, operation model.DataLifecycleOperation, backupRef string) (model.DataLifecycleOperation, error) {
+	operation.BackupRef = backupRef
+	ready, err := m.advance(ctx, operation, "BACKUP_READY", "pre_drop_backup_ready", "")
+	if err == nil {
+		return ready, nil
+	}
+	cleanupErr := m.removeUnreferencedRecoveryArtifact(ctx, "DROP_DATA", operation.OperationID, backupRef)
+	return ready, errors.Join(err, cleanupErr)
 }
 
 func (m *Manager) globalOperationBlocker(ctx context.Context) string {
@@ -449,7 +459,8 @@ func (m *Manager) fail(ctx context.Context, operation model.DataLifecycleOperati
 	if err != nil {
 		return failed, err
 	}
-	return failed, cause
+	_, pruneErr := m.pruneLocked(ctx)
+	return failed, errors.Join(cause, pruneErr)
 }
 
 func (m *Manager) recovery(ctx context.Context, operation model.DataLifecycleOperation, reason string, cause error) (model.DataLifecycleOperation, error) {
@@ -723,6 +734,10 @@ func ReasonCode(err error) string {
 		return "data_lifecycle_revision_mismatch"
 	case errors.Is(err, ErrRecoveryRequired):
 		return "data_lifecycle_recovery_required"
+	case errors.Is(err, ErrRecoveryBackupExpired):
+		return "data_lifecycle_recovery_backup_expired"
+	case errors.Is(err, ErrRecoveryBackupUnavailable):
+		return "data_lifecycle_recovery_backup_unavailable"
 	default:
 		return "data_lifecycle_failed"
 	}

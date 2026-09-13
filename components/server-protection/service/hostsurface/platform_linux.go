@@ -7,17 +7,15 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"net/netip"
 	"os"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
-	"syscall"
 
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
+	processevidence "github.com/MalenkiySolovey/solovey-ui/internal/ops/processevidence"
 )
 
 func observePlatform(ctx context.Context, limits hostfacts.Limits) (PlatformSnapshot, error) {
@@ -186,20 +184,15 @@ func socketOwners(ctx context.Context, sockets []RawSocket, maxPIDs int) (map[st
 		if ctx.Err() != nil {
 			break
 		}
-		fdNames, fdTruncated, err := readDirNamesBounded(fmt.Sprintf("/proc/%d/fd", pid), 4096)
+		descriptors, err := processevidence.ObserveDescriptorSnapshot(pid)
 		if err != nil {
+			if errors.Is(err, processevidence.ErrDescriptorInventoryBound) {
+				truncated = true
+			}
 			continue
 		}
-		if fdTruncated {
-			truncated = true
-		}
 		process, loaded := RawProcess{}, false
-		for _, fd := range fdNames {
-			link, err := os.Readlink(filepath.Join("/proc", strconv.Itoa(pid), "fd", fd))
-			if err != nil || !strings.HasPrefix(link, "socket:[") {
-				continue
-			}
-			inode := strings.TrimSuffix(strings.TrimPrefix(link, "socket:["), "]")
+		for _, inode := range descriptors.SocketInodes {
 			if _, ok := wanted[inode]; !ok {
 				continue
 			}
@@ -241,60 +234,12 @@ func readDirNamesBounded(path string, limit int) ([]string, bool, error) {
 }
 
 func readProcess(pid int) RawProcess {
-	result := RawProcess{PID: pid, UID: -1}
-	if stat, err := os.Stat(fmt.Sprintf("/proc/%d", pid)); err == nil {
-		if sys, ok := stat.Sys().(*syscall.Stat_t); ok {
-			result.UID = int(sys.Uid)
-		}
+	fact, err := processevidence.Observe(pid)
+	if err != nil {
+		return RawProcess{PID: pid, UID: -1, GID: -1}
 	}
-	if data, _, err := readBounded(fmt.Sprintf("/proc/%d/stat", pid), 8192); err == nil {
-		result.StartTime = procStartTime(string(data))
-	}
-	if exe, err := os.Readlink(fmt.Sprintf("/proc/%d/exe", pid)); err == nil {
-		if stat, statErr := os.Stat(exe); statErr == nil {
-			result.ExecutableToken = fmt.Sprintf("%s|%d|%d", exe, stat.Size(), stat.ModTime().UnixNano())
-		}
-	}
-	if data, _, err := readBounded(fmt.Sprintf("/proc/%d/cgroup", pid), 4096); err == nil {
-		parseCgroup(string(data), &result)
-	}
-	return result
-}
-
-func procStartTime(value string) string {
-	closing := strings.LastIndex(value, ")")
-	if closing < 0 || closing+1 >= len(value) {
-		return ""
-	}
-	// Fields after the comm closing parenthesis start at field 3 (state), so
-	// field 22 (starttime) is index 19 in this suffix. The comm itself may
-	// contain spaces or parentheses and must not be split with Fields.
-	fields := strings.Fields(value[closing+1:])
-	if len(fields) <= 19 {
-		return ""
-	}
-	for _, r := range fields[19] {
-		if r < '0' || r > '9' {
-			return ""
-		}
-	}
-	return fields[19]
-}
-
-func parseCgroup(value string, result *RawProcess) {
-	for _, line := range strings.Split(value, "\n") {
-		parts := strings.SplitN(line, ":", 3)
-		if len(parts) != 3 {
-			continue
-		}
-		path := parts[2]
-		for _, segment := range strings.Split(path, "/") {
-			if strings.HasSuffix(segment, ".service") && len(segment) <= 128 {
-				result.SystemdUnit = segment
-			}
-			if strings.Contains(segment, "docker") || strings.Contains(segment, "libpod") || strings.Contains(segment, "containerd") {
-				result.ContainerCgroup = segment
-			}
-		}
-	}
+	cgroup, _ := processevidence.UnifiedCgroup(fact)
+	return RawProcess{PID: fact.PID, ParentPID: fact.ParentPID, SessionID: fact.SessionID, StartTime: fact.StartTime,
+		Executable: fact.Executable, ExeDevice: fact.ExeDevice, ExeInode: fact.ExeInode, UID: fact.UID, GID: fact.GID,
+		ControlGroup: cgroup, ProviderRevision: fact.ProviderRevision, EvidenceRevision: fact.Revision}
 }

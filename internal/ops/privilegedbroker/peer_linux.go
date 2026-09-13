@@ -3,14 +3,10 @@
 package privilegedbroker
 
 import (
-	"bufio"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"path/filepath"
@@ -18,137 +14,190 @@ import (
 	"strings"
 	"syscall"
 
+	processevidence "github.com/MalenkiySolovey/solovey-ui/internal/ops/processevidence"
 	"golang.org/x/sys/unix"
 )
 
 const maxPeerExecutableBytes int64 = 512 << 20
 
-type ManifestAttestor struct{ Manifest Manifest }
+type ManifestAttestor struct {
+	Manifest    Manifest
+	supervision peerSupervisionAttestor
+}
 
-func (a ManifestAttestor) Attest(_ context.Context, connection *net.UnixConn, role Role) (PeerIdentity, error) {
+func NewManifestAttestor(manifest Manifest) (ManifestAttestor, error) {
+	proof, err := manifest.SupervisorProof()
+	if err != nil {
+		return ManifestAttestor{}, err
+	}
+	supervision, err := newPeerSupervisionAttestor(proof)
+	if err != nil {
+		return ManifestAttestor{}, err
+	}
+	return ManifestAttestor{Manifest: manifest, supervision: supervision}, nil
+}
+
+func (a ManifestAttestor) Attest(ctx context.Context, connection *net.UnixConn, role Role) (PeerIdentity, error) {
 	if connection == nil {
-		return PeerIdentity{}, errors.New("broker peer connection is absent")
+		return PeerIdentity{}, attestationFailure(PeerAttestationCredentialsUnavailable, errors.New("broker peer connection is absent"))
 	}
 	var credential *unix.Ucred
 	raw, err := connection.SyscallConn()
 	if err != nil {
-		return PeerIdentity{}, err
+		return PeerIdentity{}, attestationFailure(PeerAttestationCredentialsUnavailable, err)
 	}
 	var socketErr error
 	if err := raw.Control(func(fd uintptr) {
 		credential, socketErr = unix.GetsockoptUcred(int(fd), unix.SOL_SOCKET, unix.SO_PEERCRED)
 	}); err != nil {
-		return PeerIdentity{}, err
+		return PeerIdentity{}, attestationFailure(PeerAttestationCredentialsUnavailable, err)
 	}
 	if socketErr != nil || credential == nil || credential.Pid <= 1 {
-		return PeerIdentity{}, errors.New("broker peer credentials are unavailable")
+		return PeerIdentity{}, attestationFailure(PeerAttestationCredentialsUnavailable, errors.New("broker peer credentials are unavailable"))
 	}
-	identity, err := inspectPeer(int(credential.Pid), uint32(credential.Uid), uint32(credential.Gid), a.Manifest.Revision)
+	partial := PeerIdentity{PID: int(credential.Pid), UID: uint32(credential.Uid), GID: uint32(credential.Gid)}
+	pidfd, err := unix.PidfdOpen(int(credential.Pid), 0)
 	if err != nil {
-		return PeerIdentity{}, err
+		return partial, attestationFailure(PeerAttestationLivenessUnavailable, errors.New("broker peer pidfd authority is unavailable"))
 	}
-	if _, ok := a.Manifest.matching(role, identity); !ok {
-		return PeerIdentity{}, errors.New("broker peer does not match the release manifest")
+	identity, err := a.inspect(ctx, int(credential.Pid), uint32(credential.Uid), uint32(credential.Gid), role)
+	if err != nil {
+		_ = unix.Close(pidfd)
+		return identity, err
+	}
+	identity.livenessFD = pidfd
+	identity.hasLiveness = true
+	if err := peerAlive(identity); err != nil {
+		_ = unix.Close(pidfd)
+		return identity, err
 	}
 	return identity, nil
 }
 
-func (a ManifestAttestor) Recheck(_ context.Context, expected PeerIdentity, role Role) error {
-	actual, err := inspectPeer(expected.PID, expected.UID, expected.GID, a.Manifest.Revision)
-	if err != nil || actual.Revision != expected.Revision {
-		return errors.New("broker peer changed after initial attestation")
+func (a ManifestAttestor) Recheck(ctx context.Context, expected PeerIdentity, role Role) error {
+	if err := peerAlive(expected); err != nil {
+		return err
 	}
-	if _, ok := a.Manifest.matching(role, actual); !ok {
-		return errors.New("broker peer no longer matches the release manifest")
+	actual, err := a.inspect(ctx, expected.PID, expected.UID, expected.GID, role)
+	if err != nil {
+		return err
+	}
+	if actual.BootID != expected.BootID {
+		return attestationFailure(PeerAttestationBootMismatch, errors.New("broker peer boot identity changed after initial attestation"))
+	}
+	if actual.StartTime != expected.StartTime {
+		return attestationFailure(PeerAttestationStartIdentityMismatch, errors.New("broker peer start identity changed after initial attestation"))
+	}
+	if actual.ManifestRevision != expected.ManifestRevision {
+		return attestationFailure(PeerAttestationGenerationMismatch, errors.New("broker peer manifest generation changed after initial attestation"))
+	}
+	if actual.ExecutableDigest != expected.ExecutableDigest || actual.Device != expected.Device || actual.Inode != expected.Inode ||
+		actual.ExecutableSize != expected.ExecutableSize || actual.ExecutableMode != expected.ExecutableMode ||
+		actual.ExecutableUID != expected.ExecutableUID || actual.ExecutableGID != expected.ExecutableGID {
+		return attestationFailure(PeerAttestationExecutableMismatch, errors.New("broker peer mapped executable object changed after initial attestation"))
+	}
+	if actual.CgroupAvailability != expected.CgroupAvailability || actual.CgroupPolicy != expected.CgroupPolicy ||
+		actual.CgroupRevision != expected.CgroupRevision || actual.CgroupAuthorityRevision != expected.CgroupAuthorityRevision ||
+		actual.CgroupUnit != expected.CgroupUnit || actual.SupervisorCgroup != expected.SupervisorCgroup {
+		return attestationFailure(PeerAttestationCgroupPolicyMismatch, errors.New("broker peer cgroup authority changed after initial attestation"))
+	}
+	if actual.Supervisor != expected.Supervisor || actual.ProcdService != expected.ProcdService ||
+		actual.ProcdInstance != expected.ProcdInstance || actual.SupervisorRelation != expected.SupervisorRelation ||
+		actual.SupervisorPID != expected.SupervisorPID || actual.SupervisorStart != expected.SupervisorStart {
+		return attestationFailure(PeerAttestationSupervisionMismatch, errors.New("broker peer supervision identity changed after initial attestation"))
+	}
+	if actual.Revision != expected.Revision {
+		return attestationFailure(PeerAttestationProcessMismatch, errors.New("broker peer changed after initial attestation"))
+	}
+	return peerAlive(expected)
+}
+
+func (a ManifestAttestor) VerifyWriter(_ context.Context, expected PeerIdentity, writer WriterCredentials) error {
+	if writer.PID != expected.PID || writer.UID != expected.UID || writer.GID != expected.GID {
+		return attestationFailure(PeerAttestationWriterMismatch, errors.New("broker request writer differs from connector identity"))
+	}
+	return peerAlive(expected)
+}
+
+func (ManifestAttestor) ClosePeer(identity PeerIdentity) {
+	if identity.hasLiveness && identity.livenessFD >= 0 {
+		_ = unix.Close(identity.livenessFD)
+	}
+}
+
+func peerAlive(identity PeerIdentity) error {
+	if !identity.hasLiveness || identity.livenessFD < 0 {
+		return attestationFailure(PeerAttestationLivenessUnavailable, errors.New("broker peer pidfd is unavailable"))
+	}
+	if err := unix.PidfdSendSignal(identity.livenessFD, 0, nil, 0); err != nil {
+		return attestationFailure(PeerAttestationConnectorDeath, errors.New("broker peer connector is no longer alive"))
 	}
 	return nil
 }
 
-func inspectPeer(pid int, uid, gid uint32, manifestRevision string) (PeerIdentity, error) {
-	root := filepath.Join("/proc", strconv.Itoa(pid))
-	status, err := os.ReadFile(filepath.Join(root, "status"))
+func (a ManifestAttestor) inspect(ctx context.Context, pid int, uid, gid uint32, role Role) (PeerIdentity, error) {
+	identity, err := inspectCommonPeer(pid, uid, gid, a.Manifest.Revision)
 	if err != nil {
-		return PeerIdentity{}, err
+		return identity, err
 	}
-	groups, err := validateStatus(status, uid, gid)
+	candidates := a.Manifest.commonMatching(role, identity)
+	if len(candidates) != 1 {
+		return identity, attestationFailure(a.Manifest.commonMismatchClass(role, identity), errors.New("broker peer manifest identity is absent or ambiguous"))
+	}
+	client := candidates[0]
+	if a.supervision == nil {
+		return identity, attestationFailure(PeerAttestationSupervisionMismatch, errors.New("broker supervisor proof adapter is unavailable"))
+	}
+	identity, err = a.supervision.Bind(ctx, identity, client, a.Manifest.Revision)
 	if err != nil {
-		return PeerIdentity{}, err
+		return identity, err
 	}
-	if err := validateInitialUserNamespace(root); err != nil {
-		return PeerIdentity{}, err
-	}
-	executable, err := os.Readlink(filepath.Join(root, "exe"))
-	if err != nil || strings.HasSuffix(executable, " (deleted)") || !filepath.IsAbs(executable) {
-		return PeerIdentity{}, errors.New("broker peer executable is unstable")
-	}
-	executable = filepath.Clean(executable)
-	info, err := os.Stat(executable)
-	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > maxPeerExecutableBytes {
-		return PeerIdentity{}, errors.New("broker peer executable is invalid")
-	}
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok {
-		return PeerIdentity{}, errors.New("broker peer executable identity is unavailable")
-	}
-	digest, err := fileDigest(executable, info.Size())
-	if err != nil {
-		return PeerIdentity{}, err
-	}
-	startTime, err := processStartTime(root)
-	if err != nil {
-		return PeerIdentity{}, err
-	}
-	bootIDBytes, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
-	if err != nil {
-		return PeerIdentity{}, err
-	}
-	bootID := strings.TrimSpace(string(bootIDBytes))
-	if !safeIdentifier("boot-" + bootID) {
-		return PeerIdentity{}, errors.New("broker peer boot identity is invalid")
-	}
-	cgroup, err := processCgroupUnit(root)
-	if err != nil {
-		return PeerIdentity{}, err
-	}
-	identity := PeerIdentity{PID: pid, UID: uid, GID: gid, Groups: groups, Executable: executable, ExecutableDigest: digest,
-		Device: uint64(stat.Dev), Inode: stat.Ino, StartTime: startTime, CgroupUnit: cgroup,
-		BootID: bootID, ManifestRevision: manifestRevision}
+	identity.ManifestClient = client.Name
+	identity.CapabilitiesOnly = client.CapabilitiesOnly
 	identity.Revision = peerRevision(identity)
+	if _, ok := a.Manifest.matching(role, identity); !ok {
+		return identity, attestationFailure(PeerAttestationSupervisionMismatch, errors.New("broker peer does not match the release manifest"))
+	}
 	return identity, nil
 }
 
-func validateStatus(data []byte, uid, gid uint32) ([]uint32, error) {
-	wantedUID, wantedGID := strconv.FormatUint(uint64(uid), 10), strconv.FormatUint(uint64(gid), 10)
-	uidOK, gidOK := false, false
-	groups := make([]uint32, 0, 8)
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
-	for scanner.Scan() {
-		fields := strings.Fields(scanner.Text())
-		if len(fields) == 0 {
-			continue
-		}
-		switch strings.TrimSuffix(fields[0], ":") {
-		case "Uid":
-			uidOK = len(fields) == 5 && fields[1] == wantedUID && fields[2] == wantedUID && fields[3] == wantedUID && fields[4] == wantedUID
-		case "Gid":
-			gidOK = len(fields) == 5 && fields[1] == wantedGID && fields[2] == wantedGID && fields[3] == wantedGID && fields[4] == wantedGID
-		case "Groups":
-			if len(fields) > 65 {
-				return nil, errors.New("broker peer has too many supplementary groups")
-			}
-			for _, value := range fields[1:] {
-				parsed, parseErr := strconv.ParseUint(value, 10, 32)
-				if parseErr != nil {
-					return nil, errors.New("broker peer supplementary group is malformed")
-				}
-				groups = append(groups, uint32(parsed))
-			}
-		}
+func inspectCommonPeer(pid int, uid, gid uint32, manifestRevision string) (PeerIdentity, error) {
+	identity := PeerIdentity{PID: pid, UID: uid, GID: gid, ManifestRevision: manifestRevision}
+	root := filepath.Join("/proc", strconv.Itoa(pid))
+	evidence, err := processevidence.Observe(pid)
+	if err != nil {
+		return identity, attestationFailure(PeerAttestationProcessMismatch, err)
 	}
-	if !uidOK || !gidOK {
-		return nil, errors.New("broker peer UID or GID identity changed")
+	identity.Groups = evidence.Groups
+	identity.Executable = evidence.Executable
+	identity.ExecutableDigest = evidence.ExeDigest
+	identity.Device, identity.Inode = evidence.ExeDevice, evidence.ExeInode
+	identity.ExecutableSize, identity.ExecutableMode = evidence.ExeSize, evidence.ExeMode
+	identity.ExecutableUID, identity.ExecutableGID = evidence.ExeUID, evidence.ExeGID
+	identity.StartTime = evidence.StartTime
+	if uint32(evidence.UID) != uid || uint32(evidence.GID) != gid {
+		return identity, attestationFailure(PeerAttestationUIDGIDMismatch, errors.New("broker peer UID or GID identity changed"))
 	}
-	return groups, scanner.Err()
+	if err := validateInitialUserNamespace(root); err != nil {
+		return identity, attestationFailure(PeerAttestationNamespaceMismatch, err)
+	}
+	executable := evidence.Executable
+	if evidence.ExeSize <= 0 || evidence.ExeSize > maxPeerExecutableBytes || evidence.ExeMode&unix.S_IFMT != unix.S_IFREG ||
+		evidence.ExeMode&0o111 == 0 || evidence.ExeMode&0o022 != 0 || evidence.ExeUID != 0 || evidence.ExeGID != 0 ||
+		!digestPattern.MatchString(evidence.ExeDigest) || evidence.ExeDevice == 0 || evidence.ExeInode == 0 {
+		return identity, attestationFailure(PeerAttestationExecutableMismatch, errors.New("broker peer executable is invalid"))
+	}
+	bootIDBytes, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
+	if err != nil {
+		return identity, attestationFailure(PeerAttestationBootMismatch, err)
+	}
+	bootID := strings.TrimSpace(string(bootIDBytes))
+	if !safeIdentifier("boot-" + bootID) {
+		return identity, attestationFailure(PeerAttestationBootMismatch, errors.New("broker peer boot identity is invalid"))
+	}
+	identity.Executable = executable
+	identity.BootID = bootID
+	return identity, nil
 }
 
 func validateInitialUserNamespace(root string) error {
@@ -167,58 +216,6 @@ func validateInitialUserNamespace(root string) error {
 		}
 	}
 	return nil
-}
-
-func processStartTime(root string) (string, error) {
-	data, err := os.ReadFile(filepath.Join(root, "stat"))
-	if err != nil {
-		return "", err
-	}
-	close := strings.LastIndexByte(string(data), ')')
-	if close < 0 {
-		return "", errors.New("broker peer process stat is malformed")
-	}
-	fields := strings.Fields(string(data)[close+1:])
-	if len(fields) <= 19 {
-		return "", errors.New("broker peer process start time is absent")
-	}
-	if _, err := strconv.ParseUint(fields[19], 10, 64); err != nil {
-		return "", errors.New("broker peer process start time is malformed")
-	}
-	return fields[19], nil
-}
-
-func processCgroupUnit(root string) (string, error) {
-	data, err := os.ReadFile(filepath.Join(root, "cgroup"))
-	if err != nil {
-		return "", err
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		parts := strings.SplitN(line, ":", 3)
-		if len(parts) != 3 {
-			continue
-		}
-		for _, element := range strings.Split(parts[2], "/") {
-			if (strings.HasSuffix(element, ".service") || strings.HasSuffix(element, ".scope")) && safeIdentifier(element) {
-				return element, nil
-			}
-		}
-	}
-	return "", errors.New("broker peer systemd service identity is absent")
-}
-
-func fileDigest(path string, size int64) (string, error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	hash := sha256.New()
-	written, err := io.Copy(hash, io.LimitReader(file, maxPeerExecutableBytes+1))
-	if err != nil || written != size {
-		return "", errors.New("broker peer executable changed while hashing")
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
 func peerRevision(identity PeerIdentity) string {

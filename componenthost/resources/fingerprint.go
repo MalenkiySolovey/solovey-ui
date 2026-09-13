@@ -6,41 +6,43 @@ import (
 	"encoding/json"
 	"sort"
 	"strings"
+
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/deploymentidentity"
 )
 
 type fingerprintInput struct {
-	Kind             string                     `json:"kind"`
-	Owner            string                     `json:"owner"`
-	Protocol         string                     `json:"protocol"`
-	Listen           string                     `json:"listen"`
-	Port             int                        `json:"port"`
-	TLSEnabled       bool                       `json:"tls_enabled"`
-	TLSMode          string                     `json:"tls_mode,omitempty"`
-	PublicHostnames  []string                   `json:"public_hostnames,omitempty"`
-	FallbackTargetID string                     `json:"fallback_target,omitempty"`
-	OwnerRevision    string                     `json:"owner_revision,omitempty"`
-	ConfigRevision   string                     `json:"config_revision,omitempty"`
-	ListenIntent     ConfiguredListenIntentV1   `json:"listen_intent"`
-	ListenIntents    []ConfiguredListenIntentV1 `json:"listen_intents,omitempty"`
-	ExpectedOwner    ExpectedListenerOwnerV1    `json:"expected_owner,omitempty"`
+	Kind                     string                                        `json:"kind"`
+	Owner                    string                                        `json:"owner"`
+	Protocol                 string                                        `json:"protocol"`
+	Listen                   string                                        `json:"listen"`
+	Port                     int                                           `json:"port"`
+	TLSEnabled               bool                                          `json:"tls_enabled"`
+	TLSMode                  string                                        `json:"tls_mode,omitempty"`
+	PublicHostnames          []string                                      `json:"public_hostnames,omitempty"`
+	FallbackTargetID         string                                        `json:"fallback_target,omitempty"`
+	OwnerRevision            string                                        `json:"owner_revision,omitempty"`
+	ConfigRevision           string                                        `json:"config_revision,omitempty"`
+	ListenIntent             ConfiguredListenIntentV1                      `json:"listen_intent"`
+	ListenIntents            []ConfiguredListenIntentV1                    `json:"listen_intents,omitempty"`
+	ExpectedApplicationOwner deploymentidentity.ExpectedApplicationOwnerV1 `json:"expected_application_owner,omitempty"`
 }
 
 func Fingerprint(resource ProtectableResource) string {
 	input := fingerprintInput{
-		Kind:             normalizeToken(resource.Kind),
-		Owner:            normalizeToken(resource.Owner),
-		Protocol:         normalizeToken(resource.Protocol),
-		Listen:           NormalizeListen(resource.Listen).Value,
-		Port:             resource.Port,
-		TLSEnabled:       resource.TLS,
-		TLSMode:          normalizeToken(resource.Capabilities.TLSMode),
-		PublicHostnames:  normalizedStrings(resource.Capabilities.PublicHostnames, true),
-		FallbackTargetID: strings.TrimSpace(resource.Capabilities.FallbackTargetID),
-		OwnerRevision:    strings.TrimSpace(resource.Capabilities.OwnerRevision),
-		ConfigRevision:   strings.TrimSpace(resource.Capabilities.ConfigRevision),
-		ListenIntent:     resource.ListenIntent,
-		ListenIntents:    resource.ListenIntents,
-		ExpectedOwner:    resource.Capabilities.ExpectedListenerOwner,
+		Kind:                     normalizeToken(resource.Kind),
+		Owner:                    normalizeToken(resource.Owner),
+		Protocol:                 normalizeToken(resource.Protocol),
+		Listen:                   NormalizeListen(resource.Listen).Value,
+		Port:                     resource.Port,
+		TLSEnabled:               resource.TLS,
+		TLSMode:                  normalizeToken(resource.Capabilities.TLSMode),
+		PublicHostnames:          normalizedStrings(resource.Capabilities.PublicHostnames, true),
+		FallbackTargetID:         strings.TrimSpace(resource.Capabilities.FallbackTargetID),
+		OwnerRevision:            strings.TrimSpace(resource.Capabilities.OwnerRevision),
+		ConfigRevision:           strings.TrimSpace(resource.Capabilities.ConfigRevision),
+		ListenIntent:             resource.ListenIntent,
+		ListenIntents:            resource.ListenIntents,
+		ExpectedApplicationOwner: resource.Capabilities.ExpectedApplicationOwner,
 	}
 	payload, _ := json.Marshal(input)
 	sum := sha256.Sum256(payload)

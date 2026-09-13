@@ -127,7 +127,7 @@ func newPatchFixture(t *testing.T, inbound model.Inbound) *patchFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if err = db.AutoMigrate(&model.Tls{}, &model.Inbound{}, &model.InboundFallbackCheckpoint{}); err != nil {
+	if err = db.AutoMigrate(&model.Tls{}, &model.Inbound{}, &model.Client{}, &model.InboundFallbackCheckpoint{}); err != nil {
 		t.Fatal(err)
 	}
 	if inbound.Tls != nil {

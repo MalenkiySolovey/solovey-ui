@@ -10,12 +10,13 @@ import (
 )
 
 const (
-	ProviderID       = "solovey-privileged-broker/ssh/v1"
-	ManagedDropIn    = "/etc/ssh/sshd_config.d/90-solovey-ui.conf"
-	MainConfig       = "/etc/ssh/sshd_config"
-	TicketRoot       = "/var/lib/solovey-ui-broker/ssh-proof"
-	MaxDropInBytes   = 16 << 10
-	ProviderRevision = "9c1a55a11564bf5d5310e3c629dc663ace3693fb62b169820655d7dff9c957bc"
+	ProviderID         = "solovey-privileged-broker/ssh/v1"
+	ManagedDropIn      = "/etc/ssh/sshd_config.d/90-solovey-ui.conf"
+	MainConfig         = "/etc/ssh/sshd_config"
+	TicketRoot         = "/var/lib/solovey-ui-broker/ssh-proof"
+	MaxDropInBytes     = 16 << 10
+	ProviderRevision   = "5806ad0d4332084439e5bf4bdfff4480c57177d907b79dc5e5b254696d91bec9"
+	MaxCheckpointBytes = 64 << 10
 )
 
 type EmptyV1 struct{}
@@ -35,19 +36,47 @@ type PriorArtifactV1 struct {
 	Digest    string `json:"digest"`
 }
 
+type PrepareRequestV1 struct {
+	Policy domain.DesiredPolicyV1 `json:"policy"`
+}
+
+type PreparedPolicyV1 struct {
+	Implementation string `json:"implementation"`
+	Format         string `json:"format"`
+	Label          string `json:"label"`
+	Representation string `json:"representation"`
+	ArtifactDigest string `json:"artifactDigest"`
+}
+
 type StageRequestV1 struct {
-	ManagedContent []byte `json:"managedContent"`
+	Policy                 domain.DesiredPolicyV1 `json:"policy"`
+	ExpectedArtifactDigest string                 `json:"expectedArtifactDigest"`
+	EndpointID             string                 `json:"endpointId"`
 }
 
 type StageResultV1 struct {
 	ArtifactDigest        string          `json:"artifactDigest"`
+	EndpointID            string          `json:"endpointId"`
 	Prior                 PriorArtifactV1 `json:"prior"`
 	ProviderRevision      string          `json:"providerRevision"`
 	ConfigurationRevision string          `json:"configurationRevision"`
 }
 
+// RecoverStageRequestV1 asks only for the broker-journal result of this exact
+// operation/endpoint/artifact stage. It grants no host mutation authority.
+type RecoverStageRequestV1 struct {
+	EndpointID             string `json:"endpointId"`
+	ExpectedArtifactDigest string `json:"expectedArtifactDigest"`
+}
+
+type ReleaseStageRequestV1 struct {
+	EndpointID             string `json:"endpointId"`
+	ExpectedArtifactDigest string `json:"expectedArtifactDigest"`
+}
+
 type ValidationRequestV1 struct {
 	ArtifactDigest string `json:"artifactDigest"`
+	EndpointID     string `json:"endpointId"`
 }
 
 type ValidationResultV1 struct {
@@ -60,6 +89,8 @@ type ValidationResultV1 struct {
 
 type ReloadRequestV1 struct {
 	ArtifactDigest string `json:"artifactDigest"`
+	EndpointID     string `json:"endpointId"`
+	Recovery       bool   `json:"recovery,omitempty"`
 }
 
 type ReloadResultV1 struct {
@@ -79,6 +110,7 @@ type ArmRequestV1 struct {
 
 type RestoreRequestV1 struct {
 	ExpectedCurrentArtifactDigest string          `json:"expectedCurrentArtifactDigest"`
+	EndpointID                    string          `json:"endpointId"`
 	Prior                         PriorArtifactV1 `json:"prior"`
 }
 
@@ -105,6 +137,10 @@ type VerifyRequestV1 struct {
 	EndpointID          string `json:"endpointId"`
 	PrincipalID         string `json:"principalId"`
 	AuthenticationClass string `json:"authenticationClass"`
+}
+
+type InspectRequestV1 struct {
+	EndpointID string `json:"endpointId"`
 }
 
 type VerifyResultV1 struct {

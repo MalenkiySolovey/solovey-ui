@@ -14,6 +14,7 @@ import type {
   ProtectionSettings,
   ProtectionStatus,
   ProtectableResource,
+	TrustedSourceProposal,
 } from './types'
 
 interface Page<T> { items: T[]; page: number; limit: number; total: number }
@@ -35,9 +36,10 @@ export function useServerProtection() {
   const firewallPreview = ref<FirewallPreview>()
   const portAllowlist = ref<PortAllowlistEntry[]>([])
   const ipAllowlist = ref<IPAllowlistEntry[]>([])
+	const trustedSourceProposal = ref<TrustedSourceProposal>()
 	const operations = ref<OperationsState>({ items: [], recoveryRequired: 0, confirmationTemplates: {} })
-  const newPort = ref({ protocol: 'tcp' as 'tcp' | 'udp', listen: '*', portStart: 22, portEnd: 22, reason: 'SSH administration' })
-  const newIP = ref({ ipCidr: '', reason: 'Administrator address' })
+  const newPort = ref({ protocol: 'tcp' as 'tcp' | 'udp', listen: '*', portStart: 0, portEnd: 0, reason: '' })
+  const newIP = ref({ ipCidr: '', reason: 'Administrator address', broadScopeAcknowledged: false, confirmation: '' })
   const loadedTabs = new Set<string>()
 
   const profileByResource = computed(() => new Map(profiles.value.map(profile => [profile.resourceId, profile])))
@@ -66,12 +68,14 @@ export function useServerProtection() {
     settingsRevision.value = response.revision
   }
   const loadAllowlists = async () => {
-    const [ports, ips] = await Promise.all([
+    const [ports, ips, proposal] = await Promise.all([
       protectionAPI.get<Page<PortAllowlistEntry>>('/allowlist/ports', { limit: 200 }),
       protectionAPI.get<Page<IPAllowlistEntry>>('/allowlist/ips', { limit: 200 }),
+			protectionAPI.get<TrustedSourceProposal>('/allowlist/ips/proposal'),
     ])
     portAllowlist.value = ports.items
     ipAllowlist.value = ips.items
+		trustedSourceProposal.value = proposal
   }
 	const loadOperations = async () => { operations.value = await protectionAPI.get<OperationsState>('/operations') }
   const loadInitial = () => run(async () => {
@@ -159,8 +163,15 @@ export function useServerProtection() {
   const addIPAllowlist = () => run(async () => {
     await protectionAPI.post('/allowlist/ips', newIP.value)
     newIP.value.ipCidr = ''
+		newIP.value.broadScopeAcknowledged = false
+		newIP.value.confirmation = ''
     await loadAllowlists()
   })
+
+	const useTrustedSourceProposal = () => {
+		if (!trustedSourceProposal.value?.available || !trustedSourceProposal.value.ipCidr) return
+		newIP.value.ipCidr = trustedSourceProposal.value.ipCidr
+	}
 
   const removeIPAllowlist = (id: number) => run(async () => {
     await protectionAPI.delete(`/allowlist/ips/${id}`)
@@ -207,9 +218,9 @@ export function useServerProtection() {
 
   return {
 			 tab, loading, error, status, inventory, profiles, events, graylist, diagnostics, settings, operations,
-    firewallMessage, firewallPreview, portAllowlist, ipAllowlist, newPort, newIP, profileByResource, activateTab, refreshResources, createProfile, setProfileEnabled,
+    firewallMessage, firewallPreview, portAllowlist, ipAllowlist, trustedSourceProposal, newPort, newIP, profileByResource, activateTab, refreshResources, createProfile, setProfileEnabled,
     removeProfile, clearEvents, clearGraylist, requestFirewallPreview, saveSettings, refreshDiagnostics,
-			 addPortAllowlist, removePortAllowlist, addIPAllowlist, removeIPAllowlist, runMockFirewallWorkflow, rollbackMockOperation,
+			 addPortAllowlist, removePortAllowlist, addIPAllowlist, removeIPAllowlist, useTrustedSourceProposal, runMockFirewallWorkflow, rollbackMockOperation,
   }
 }
 
@@ -218,7 +229,7 @@ export function stateColor(value?: string): string {
 		case 'supported': case 'active': case 'ok': case 'APPLIED': case 'ROLLED_BACK': case 'MANAGED_ENGINE_READY': return 'success'
 		case 'degraded': case 'stale': case 'warning': case 'prepared': case 'abandoned': case 'PREPARED': case 'APPLYING': case 'HEALTH': case 'ROLLING_BACK': case 'DEGRADED': return 'warning'
 		case 'unsupported': case 'error': case 'rollback_failed': case 'health_failed': case 'ROLLBACK_FAILED': case 'RECONCILE_REQUIRED': return 'error'
-		case 'applying': case 'rolling_back': case 'lock_suspect': return 'warning'
+		case 'applying': case 'rolling_back': case 'restoring_runtime': case 'lock_suspect': return 'warning'
     case 'missing_capability': case 'preview_only': return 'info'
     default: return 'grey'
   }

@@ -12,17 +12,19 @@ import (
 const MaxProviderRequestDuration = 5 * time.Second
 
 // Provider is deliberately narrower than a command/file/service API. Each
-// method represents one semantic step for the single managed SSH drop-in.
+// method represents one semantic step for the selected adapter's managed SSH
+// policy artifact.
 type Provider interface {
 	ProviderID() string
 	Capabilities(context.Context) domain.CapabilitySetV1
 	Observe(context.Context) (ObservationV1, error)
-	StageManagedDropIn(context.Context, StageRequestV1) (StageResultV1, error)
-	ValidateManagedDropIn(context.Context, ValidationRequestV1) (ValidationResultV1, error)
+	PreparePolicy(context.Context, PrepareRequestV1) (PreparedPolicyV1, error)
+	StageManagedPolicy(context.Context, StageRequestV1) (StageResultV1, error)
+	ValidateManagedPolicy(context.Context, ValidationRequestV1) (ValidationResultV1, error)
 	ReloadSelectedService(context.Context, ReloadRequestV1) (ReloadResultV1, error)
 	VerifyReconnect(context.Context, ReconnectProofV1) (ReconnectResultV1, error)
-	RestoreManagedDropIn(context.Context, RestoreRequestV1) (RestoreResultV1, error)
-	InspectManagedDropIn(context.Context, InspectRequestV1) (InspectResultV1, error)
+	RestoreManagedPolicy(context.Context, RestoreRequestV1) (RestoreResultV1, error)
+	InspectManagedPolicy(context.Context, InspectRequestV1) (InspectResultV1, error)
 }
 
 // ReconnectArmer is the production out-of-band reconnect extension. Providers use
@@ -30,6 +32,15 @@ type Provider interface {
 // layer continues to omit the verifier entirely.
 type ReconnectArmer interface {
 	ArmReconnect(context.Context, ReconnectProofV1, int64) error
+}
+
+// CompletedStageLifecycle is the narrow cross-store lifecycle extension a
+// mutation provider must implement before the manager permits host staging.
+// Recovery reads the committed broker-owned generation; release durably
+// retires that authority after the database has reached a safe terminal state.
+type CompletedStageLifecycle interface {
+	RecoverCompletedStage(context.Context, RecoverStageRequestV1) (StageResultV1, error)
+	ReleaseCompletedStage(context.Context, ReleaseStageRequestV1) error
 }
 
 type ObservationV1 struct {
@@ -42,6 +53,7 @@ type ObservationV1 struct {
 // services, commands, arguments or environment.
 type ProviderFenceV1 struct {
 	OperationID                   string
+	EndpointID                    string
 	CandidateRevision             uint64
 	FencingToken                  string
 	CandidateDigest               string
@@ -54,7 +66,7 @@ type ProviderFenceV1 struct {
 
 func (f ProviderFenceV1) Validate(now time.Time) error {
 	deadline := time.Unix(f.DeadlineAt, 0).UTC()
-	if !safeIdentifier(f.OperationID, 64) || f.CandidateRevision == 0 || !providerDigest(f.FencingToken) ||
+	if !safeIdentifier(f.OperationID, 64) || !safeIdentifier(f.EndpointID, 256) || f.CandidateRevision == 0 || !providerDigest(f.FencingToken) ||
 		!providerDigest(f.CandidateDigest) || !providerDigest(f.ExpectedProviderRevision) || !providerDigest(f.ExpectedBinaryRevision) ||
 		!providerDigest(f.ExpectedServiceRevision) || !providerDigest(f.ExpectedConfigurationRevision) ||
 		!deadline.After(now.UTC().Add(-time.Second)) || deadline.After(now.UTC().Add(MaxProviderRequestDuration)) {
@@ -81,20 +93,52 @@ type PriorArtifactV1 struct {
 	Digest    string `json:"digest"`
 }
 
+// PreparedPolicyV1 is a concrete, backend-labelled representation produced by
+// the selected SSH implementation adapter. The generic transaction manager
+// treats Representation as diagnostic preview data and binds mutations only to
+// ArtifactDigest.
+type PreparedPolicyV1 struct {
+	Implementation string `json:"implementation"`
+	Format         string `json:"format"`
+	Label          string `json:"label"`
+	Representation string `json:"representation"`
+	ArtifactDigest string `json:"artifactDigest"`
+}
+
+type PrepareRequestV1 struct {
+	Policy domain.DesiredPolicyV1
+}
+
 type StageRequestV1 struct {
-	Fence          ProviderFenceV1
-	ManagedContent []byte
+	Fence                  ProviderFenceV1
+	EndpointID             string
+	Policy                 domain.DesiredPolicyV1
+	ExpectedArtifactDigest string
 }
 
 type StageResultV1 struct {
 	ArtifactDigest        string
+	EndpointID            string
 	Prior                 PriorArtifactV1
 	ProviderRevision      string
 	ConfigurationRevision string
 }
 
+type RecoverStageRequestV1 struct {
+	Fence                  ProviderFenceV1
+	EndpointID             string
+	ExpectedArtifactDigest string
+}
+
+type ReleaseStageRequestV1 struct {
+	Fence                  ProviderFenceV1
+	EndpointID             string
+	ExpectedArtifactDigest string
+}
+
 type ValidationRequestV1 struct {
 	Fence          ProviderFenceV1
+	EndpointID     string
 	ArtifactDigest string
 }
 
@@ -108,7 +152,9 @@ type ValidationResultV1 struct {
 
 type ReloadRequestV1 struct {
 	Fence          ProviderFenceV1
+	EndpointID     string
 	ArtifactDigest string
+	Recovery       bool
 }
 
 type ReloadResultV1 struct {
@@ -139,6 +185,7 @@ type ReconnectResultV1 struct {
 
 type RestoreRequestV1 struct {
 	Fence                         ProviderFenceV1
+	EndpointID                    string
 	ExpectedCurrentArtifactDigest string
 	Prior                         PriorArtifactV1
 }
@@ -150,7 +197,8 @@ type RestoreResultV1 struct {
 }
 
 type InspectRequestV1 struct {
-	Fence ProviderFenceV1
+	Fence      ProviderFenceV1
+	EndpointID string
 }
 
 type InspectResultV1 struct {
@@ -186,10 +234,13 @@ func unavailable(operation string) error {
 func (UnavailableProvider) Observe(context.Context) (ObservationV1, error) {
 	return ObservationV1{}, unavailable("observe")
 }
-func (UnavailableProvider) StageManagedDropIn(context.Context, StageRequestV1) (StageResultV1, error) {
+func (UnavailableProvider) PreparePolicy(context.Context, PrepareRequestV1) (PreparedPolicyV1, error) {
+	return PreparedPolicyV1{}, unavailable("prepare")
+}
+func (UnavailableProvider) StageManagedPolicy(context.Context, StageRequestV1) (StageResultV1, error) {
 	return StageResultV1{}, unavailable("stage")
 }
-func (UnavailableProvider) ValidateManagedDropIn(context.Context, ValidationRequestV1) (ValidationResultV1, error) {
+func (UnavailableProvider) ValidateManagedPolicy(context.Context, ValidationRequestV1) (ValidationResultV1, error) {
 	return ValidationResultV1{}, unavailable("validate")
 }
 func (UnavailableProvider) ReloadSelectedService(context.Context, ReloadRequestV1) (ReloadResultV1, error) {
@@ -198,9 +249,9 @@ func (UnavailableProvider) ReloadSelectedService(context.Context, ReloadRequestV
 func (UnavailableProvider) VerifyReconnect(context.Context, ReconnectProofV1) (ReconnectResultV1, error) {
 	return ReconnectResultV1{}, unavailable("reconnect")
 }
-func (UnavailableProvider) RestoreManagedDropIn(context.Context, RestoreRequestV1) (RestoreResultV1, error) {
+func (UnavailableProvider) RestoreManagedPolicy(context.Context, RestoreRequestV1) (RestoreResultV1, error) {
 	return RestoreResultV1{}, unavailable("restore")
 }
-func (UnavailableProvider) InspectManagedDropIn(context.Context, InspectRequestV1) (InspectResultV1, error) {
+func (UnavailableProvider) InspectManagedPolicy(context.Context, InspectRequestV1) (InspectResultV1, error) {
 	return InspectResultV1{}, unavailable("inspect")
 }

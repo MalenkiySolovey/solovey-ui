@@ -389,16 +389,28 @@ func rehearseMigrationsAndOwners(ctx context.Context, staged string, statuses []
 	if err := cloneRestoreFile(ctx, staged, copyPath); err != nil {
 		return statuses, err
 	}
-	if err := migration.MigratePath(copyPath, migration.Options{}); err != nil {
+	return migrateAndNormalizeRestoreOwners(ctx, copyPath, statuses)
+}
+
+// Rehearsal migrates a private candidate. Execution applies the same owner
+// normalization after open, within the existing rollback-protected boundary.
+func migrateAndNormalizeRestoreOwners(ctx context.Context, candidate string, statuses []RestoreOwnerStatus) ([]RestoreOwnerStatus, error) {
+	statuses = append([]RestoreOwnerStatus(nil), statuses...)
+	if err := migration.MigratePath(candidate, migration.Options{}); err != nil {
 		return statuses, err
 	}
-	db, err := gorm.Open(gormsqlite.Open(copyPath+"?_busy_timeout=10000&_foreign_keys=on"), &gorm.Config{Logger: gormlogger.Discard})
+	db, err := gorm.Open(gormsqlite.Open(candidate+"?_busy_timeout=10000&_foreign_keys=on"), &gorm.Config{Logger: gormlogger.Discard})
 	if err != nil {
 		return statuses, err
 	}
 	if sqlDB, sqlErr := db.DB(); sqlErr == nil {
 		defer sqlDB.Close()
 	}
+	return normalizeRestoredOwners(ctx, db, statuses)
+}
+
+func normalizeRestoredOwners(ctx context.Context, db *gorm.DB, statuses []RestoreOwnerStatus) ([]RestoreOwnerStatus, error) {
+	statuses = append([]RestoreOwnerStatus(nil), statuses...)
 	for index := range statuses {
 		status := &statuses[index]
 		if status.ID == "core" {

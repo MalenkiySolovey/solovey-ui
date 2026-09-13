@@ -3,18 +3,18 @@
 package main
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/user"
 	"path/filepath"
 	"strconv"
+	"syscall"
 
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/executableobject"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -52,7 +52,7 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	manifest, err := broker.FinalizeManifest(broker.Manifest{Schema: 1, Clients: []broker.ClientManifest{panel, legacy, proof}})
+	manifest, err := broker.FinalizeManifest(broker.Manifest{Schema: broker.ManifestSchemaSystemd, Clients: []broker.ClientManifest{panel, legacy, proof}})
 	if err != nil {
 		fatal(err)
 	}
@@ -60,46 +60,128 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o750); err != nil {
-		fatal(err)
-	}
-	temporary := manifestPath + ".incoming"
-	if err := os.WriteFile(temporary, append(data, '\n'), 0o640); err != nil {
-		fatal(err)
-	}
-	if err := os.Chown(temporary, 0, 0); err != nil {
-		_ = os.Remove(temporary)
-		fatal(err)
-	}
-	if err := os.Rename(temporary, manifestPath); err != nil {
-		_ = os.Remove(temporary)
+	if err := installManifest(manifestPath, append(data, '\n'), realManifestFilesystem(), true); err != nil {
 		fatal(err)
 	}
 }
 
-func client(name, path string, uid, gid uint32, anyIdentity bool, role broker.Role) (broker.ClientManifest, error) {
-	resolved, err := filepath.EvalSymlinks(path)
-	if err != nil || !filepath.IsAbs(resolved) {
-		return broker.ClientManifest{}, fmt.Errorf("broker client release link is invalid: %s", path)
+type manifestFile interface {
+	io.Writer
+	Name() string
+	Chmod(os.FileMode) error
+	Chown(int, int) error
+	Sync() error
+	Close() error
+}
+
+// manifestFilesystem is command-local. It exists only to prove the ordered
+// publication transaction and must not become a shared persistence manager.
+type manifestFilesystem struct {
+	lstat         func(string) (os.FileInfo, error)
+	createTemp    func(string, string) (manifestFile, error)
+	remove        func(string) error
+	rename        func(string, string) error
+	syncDirectory func(string) error
+}
+
+func realManifestFilesystem() manifestFilesystem {
+	return manifestFilesystem{
+		lstat: os.Lstat,
+		createTemp: func(directory, pattern string) (manifestFile, error) {
+			return os.CreateTemp(directory, pattern)
+		},
+		remove: os.Remove,
+		rename: os.Rename,
+		syncDirectory: func(path string) error {
+			directory, err := os.Open(path)
+			if err != nil {
+				return err
+			}
+			return errors.Join(directory.Sync(), directory.Close())
+		},
 	}
-	file, err := os.Open(resolved)
+}
+
+func (f manifestFilesystem) valid() bool {
+	return f.lstat != nil && f.createTemp != nil && f.remove != nil && f.rename != nil && f.syncDirectory != nil
+}
+
+func installManifest(path string, data []byte, fs manifestFilesystem, validateOwnership bool) error {
+	path = filepath.Clean(path)
+	if !fs.valid() || !filepath.IsAbs(path) || filepath.Base(path) != "broker-clients.json" || len(data) == 0 || len(data) > 256<<10 {
+		return errors.New("broker manifest publication contract is invalid")
+	}
+	directory := filepath.Dir(path)
+	parent, err := fs.lstat(directory)
+	if err != nil || parent == nil || !parent.IsDir() || parent.Mode()&os.ModeSymlink != 0 || parent.Mode().Perm()&0o022 != 0 {
+		return errors.New("broker manifest parent is unsafe")
+	}
+	if validateOwnership {
+		stat, ok := parent.Sys().(*syscall.Stat_t)
+		if !ok || stat.Uid != 0 || stat.Gid != 0 {
+			return errors.New("broker manifest parent ownership is unsafe")
+		}
+	}
+	file, err := fs.createTemp(directory, ".broker-clients-*.incoming")
 	if err != nil {
-		return broker.ClientManifest{}, err
+		return err
 	}
-	hash := sha256.New()
-	if _, err := file.WriteTo(hash); err != nil {
+	temporary := file.Name()
+	published := false
+	defer func() {
 		_ = file.Close()
-		return broker.ClientManifest{}, err
+		if !published {
+			_ = fs.remove(temporary)
+		}
+	}()
+	if err := file.Chmod(0o640); err != nil {
+		return err
+	}
+	if validateOwnership {
+		if err := file.Chown(0, 0); err != nil {
+			return err
+		}
+	}
+	written, err := file.Write(data)
+	if err != nil {
+		return err
+	}
+	if written != len(data) {
+		return io.ErrShortWrite
+	}
+	if err := file.Sync(); err != nil {
+		return err
 	}
 	if err := file.Close(); err != nil {
+		return err
+	}
+	if err := fs.rename(temporary, path); err != nil {
+		return err
+	}
+	published = true
+	if err := fs.syncDirectory(directory); err != nil {
+		return err
+	}
+	return nil
+}
+
+func client(name, path string, uid, gid uint32, anyIdentity bool, role broker.Role) (broker.ClientManifest, error) {
+	object, err := executableobject.Open(path, executableobject.Policy{
+		MaxBytes: 512 << 20, AllowSymlink: true, RequireRegular: true, RequireExecutable: true,
+		RequireRootOwner: true, ForbiddenMode: 0o022,
+		RequireTrustedAncestry: true, AncestryOwner: 0, AncestryForbiddenMode: 0o022,
+	})
+	if err != nil {
+		return broker.ClientManifest{}, fmt.Errorf("broker client executable is unsafe: %s", path)
+	}
+	defer object.Close()
+	if err := object.Revalidate(); err != nil {
 		return broker.ClientManifest{}, err
 	}
-	var stat unix.Stat_t
-	if err := unix.Stat(resolved, &stat); err != nil || stat.Uid != 0 || stat.Mode&0o022 != 0 || stat.Mode&unix.S_IFMT != unix.S_IFREG {
-		return broker.ClientManifest{}, fmt.Errorf("broker client executable is unsafe: %s", resolved)
-	}
-	result := broker.ClientManifest{Name: name, UID: uid, GID: gid, Executable: resolved,
-		ExecutableDigest: hex.EncodeToString(hash.Sum(nil)), Device: uint64(stat.Dev), Inode: stat.Ino, Roles: []broker.Role{role}}
+	identity := object.Identity()
+	result := broker.ClientManifest{Name: name, UID: uid, GID: gid, Executable: identity.ResolvedPath,
+		ExecutableDigest: identity.Digest, Device: identity.Device, Inode: identity.Inode, Roles: []broker.Role{role},
+		CgroupPolicy: broker.CgroupRequired, CgroupAuthorityRevision: broker.CgroupAuthorityRevisionV1}
 	if anyIdentity {
 		result.AnyNonRootUID = true
 		result.AnyGID = true

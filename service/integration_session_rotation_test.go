@@ -15,10 +15,10 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	panelweb "github.com/MalenkiySolovey/solovey-ui/web"
 
 	"github.com/coder/websocket"
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
 
@@ -106,7 +106,11 @@ func newSessionRotationIntegrationRouter(t *testing.T, settingService *service.S
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	store, err := panelweb.NewSQLiteSessionStore(dbsqlite.DB(), []byte("session-rotation-test-key-32-byte"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	router.Use(sessions.Sessions("s-ui", store))
 	router.GET("/login/:user", func(c *gin.Context) {
 		generation, err := settingService.GetSessionGeneration()
 		if err != nil {
@@ -135,12 +139,42 @@ func loginSessionRotationUser(t *testing.T, router *gin.Engine, user string) []*
 
 func issueSessionRotationWSToken(t *testing.T, server *httptest.Server, cookies []*http.Cookie) string {
 	t.Helper()
-	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/api/realtime/ws-token", nil)
+	csrfReq, err := http.NewRequestWithContext(context.Background(), http.MethodGet, server.URL+"/api/csrf", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	csrfReq.Header.Set("Cookie", sessionRotationCookieHeader(cookies))
+	csrfResp, err := server.Client().Do(csrfReq)
+	if err != nil {
+		t.Fatal(err)
+	}
+	csrfBody, err := io.ReadAll(csrfResp.Body)
+	csrfResp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if csrfResp.StatusCode != http.StatusOK {
+		t.Fatalf("csrf status=%d body=%s", csrfResp.StatusCode, string(csrfBody))
+	}
+	var csrfMsg struct {
+		Obj struct {
+			Token string `json:"token"`
+		} `json:"obj"`
+	}
+	if err := json.Unmarshal(csrfBody, &csrfMsg); err != nil {
+		t.Fatal(err)
+	}
+	if csrfMsg.Obj.Token == "" {
+		t.Fatalf("csrf response did not contain a token: %s", string(csrfBody))
+	}
+
+	req, err := http.NewRequestWithContext(context.Background(), http.MethodPost, server.URL+"/api/realtime/ws-token", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	req.Header.Set("Cookie", sessionRotationCookieHeader(cookies))
 	req.Header.Set("Origin", server.URL)
+	req.Header.Set("X-CSRF-Token", csrfMsg.Obj.Token)
 	resp, err := server.Client().Do(req)
 	if err != nil {
 		t.Fatal(err)

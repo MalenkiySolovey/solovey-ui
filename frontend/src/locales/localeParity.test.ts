@@ -1,4 +1,7 @@
 import { describe, expect, it } from 'vitest'
+import type { LocaleMessage } from '@intlify/core-base'
+import { baseCompile } from '@intlify/message-compiler'
+import { createI18n, type VueMessageType } from 'vue-i18n'
 
 import en from './en'
 import fa from './fa'
@@ -44,12 +47,52 @@ const componentMessagesFor = (locale: string): Record<string, unknown>[] =>
     .sort(([left], [right]) => left.localeCompare(right))
     .map(([, messages]) => messages)
 
+const messageStrings = (value: unknown, path = ''): Array<{ path: string; value: string }> => {
+  if (typeof value === 'string') return [{ path, value }]
+  if (Array.isArray(value)) {
+    return value.flatMap((entry, index) => messageStrings(entry, `${path}[${index}]`))
+  }
+  if (!value || typeof value !== 'object') return []
+  return Object.entries(value as Record<string, unknown>).flatMap(([key, entry]) =>
+    messageStrings(entry, path ? `${path}.${key}` : key),
+  )
+}
+
 const enFull = withOptionalMessages(en, ...componentMessagesFor('en'))
 const faFull = withOptionalMessages(fa, ...componentMessagesFor('fa'))
 const ruFull = withOptionalMessages(ru, ...componentMessagesFor('ru'))
 const viFull = withOptionalMessages(vi, ...componentMessagesFor('vi'))
 const zhcnFull = withOptionalMessages(zhcn, ...componentMessagesFor('zhcn'))
 const zhtwFull = withOptionalMessages(zhtw, ...componentMessagesFor('zhtw'))
+
+describe('optional component locale compiler contract', () => {
+  for (const [modulePath, messages] of Object.entries(componentLocaleModules).sort(([left], [right]) => left.localeCompare(right))) {
+    it(`${modulePath} compiles every message with the production compiler`, () => {
+      const failures = messageStrings(messages).flatMap((message) => {
+        const errors: string[] = []
+        baseCompile(message.value, {
+          onError: error => errors.push(`${error.code}: ${error.message}`),
+        })
+        return errors.map(error => `${message.path}: ${error}`)
+      })
+      expect(failures).toEqual([])
+    })
+  }
+
+  it('renders Telegram bot mentions literally in every shipped locale', () => {
+    for (const [modulePath, messages] of Object.entries(componentLocaleModules)) {
+      if (!modulePath.includes('/telegram/frontend/locales/')) continue
+      const locale = modulePath.match(/\/locales\/([^/]+)\.ts$/)?.[1]
+      expect(locale).toBeTruthy()
+      const renderer = createI18n({
+        legacy: false,
+        locale,
+        messages: { [locale!]: messages as LocaleMessage<VueMessageType> },
+      })
+      expect(renderer.global.t('telegram.hint.chatId')).toContain('@userinfobot')
+    }
+  })
+})
 
 describe('en/ru locale key parity', () => {
   const enKeys = new Set(flatten(enFull as Record<string, unknown>))

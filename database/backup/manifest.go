@@ -110,18 +110,18 @@ func writeBackupManifest(ctx context.Context, db *gorm.DB, tables []backupTable,
 			Mode: mode, ResourceManifest: &resources})
 	}
 	for _, table := range tables {
+		owner := table.owner
+		if owner == "" {
+			owner = "core"
+		}
 		if table.alwaysExclude {
 			schemaDigest, contentDigest := excludedTableDigests(table.name, table.exclusionCode)
-			manifest.Tables = append(manifest.Tables, BackupTableManifest{Owner: "core", Name: table.name, Rows: 0,
+			manifest.Tables = append(manifest.Tables, BackupTableManifest{Owner: owner, Name: table.name, Rows: 0,
 				SchemaDigest: schemaDigest, ContentDigest: contentDigest, Excluded: true, ExclusionCode: table.exclusionCode})
 			continue
 		}
 		if !db.Migrator().HasTable(table.name) {
 			continue
-		}
-		owner := table.owner
-		if owner == "" {
-			owner = "core"
 		}
 		mode := "TYPED"
 		if table.opaque {

@@ -8,6 +8,6 @@ import (
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 )
 
-func RegisterHandlers(*broker.Registry) error {
-	return errors.New("native deployment broker operations require Linux")
+func registerSystemdHandlers(*broker.Registry, broker.CompletedMutationAuthority) error {
+	return broker.StartupFailure("deployment", "service.supervision", "systemd", "linux_required", errors.New("native deployment broker operations require Linux"))
 }

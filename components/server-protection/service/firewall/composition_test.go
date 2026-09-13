@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"testing"
@@ -11,6 +12,7 @@ import (
 
 	hostsurface "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
@@ -183,6 +185,82 @@ func TestEffectiveBaselineAuthorityRevisionDetectsDesiredBaselineDrift(t *testin
 	}
 }
 
+func TestTimedMembershipAuthorityDetectsInsertionAndEarlyLossButAllowsNaturalExpiry(t *testing.T) {
+	workflow, helper, _, _ := newFakeCIWorkflow(t, nil)
+	now := time.Unix(1000, 0).UTC()
+	workflow.Now = func() time.Time { return now }
+	plan := compositionEndpointPlan(t)
+	actionID := strings.Repeat("a", 64)
+	plan.Endpoints[0].Contributions = []EndpointContribution{{ContributionID: actionID, ActionID: actionID, ActionIDs: []string{actionID}, RefCount: 1,
+		Subject: "192.0.2.1/32", Intent: domain.IntentTemporaryBlock, ExpiresAt: now.Add(30 * time.Second).Unix(), TTLSeconds: 30, SourceClass: "native", SourceClasses: []string{"native"}}}
+	plan.Revision = firewallPlanRevision(plan)
+	applyCompositionWorkflowPlan(t, &workflow, plan, "timed-membership-authority")
+	snapshot, err := workflow.Contributions.FirewallAuthority(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, err := contributionsFromModels(snapshot.Contributions)
+	if err != nil {
+		t.Fatal(err)
+	}
+	assertState := func(want, reason string) {
+		t.Helper()
+		observation, observeErr := workflow.ReconcileAuthority(t.Context())
+		if observeErr != nil || observation.State != want || observation.Reason != reason || !observation.Persisted {
+			t.Fatalf("observation=%#v want=%s/%s err=%v", observation, want, reason, observeErr)
+		}
+	}
+	assertState(FirewallLiveMatching, "")
+
+	expiredMembership, err := expectedTimedMembershipSHA(values, now.Add(time.Minute))
+	if err != nil || expiredMembership == helper.ManagedTimedMembership {
+		t.Fatalf("fixture did not separate live and expired membership: live=%s expired=%s err=%v", helper.ManagedTimedMembership, expiredMembership, err)
+	}
+	helper.ManagedTimedMembership = strings.Repeat("f", 64)
+	assertState(FirewallLiveDrifted, "timed_membership_drift")
+
+	// Losing the expected member before its deadline is equally drifted.
+	helper.ManagedTimedMembership = expiredMembership
+	assertState(FirewallLiveDrifted, "timed_membership_drift")
+
+	// Once the declared deadline passes, the exact same empty kernel
+	// membership is expected and the static owner/rule identity stays stable.
+	now = now.Add(time.Minute)
+	assertState(FirewallLiveMatching, "")
+}
+
+func TestPreflightRejectsUnobservableProjectionBeforeWorkflowMutation(t *testing.T) {
+	workflow, helper, _, _ := newFakeCIWorkflow(t, nil)
+	plan := compositionEndpointPlan(t)
+	contributions := make([]EndpointContribution, 0, DefaultDynamicSetSize)
+	for index := 0; index < DefaultDynamicSetSize; index++ {
+		identity := fmt.Sprintf("%064x", index+1)
+		contributions = append(contributions, EndpointContribution{ContributionID: identity, ActionID: identity, ActionIDs: []string{identity}, RefCount: 1,
+			Subject: fmt.Sprintf("198.18.%d.%d/32", index/256, index%256), Intent: domain.IntentTemporaryBlock, ExpiresAt: 2000, TTLSeconds: 1000, SourceClass: "native", SourceClasses: []string{"native"}})
+	}
+	plan.Endpoints[0].Contributions = append([]EndpointContribution(nil), contributions...)
+	plan.Endpoints[1].Contributions = append([]EndpointContribution(nil), contributions...)
+	ipv6Contributions := make([]EndpointContribution, 0, DefaultDynamicSetSize)
+	for index := 0; index < DefaultDynamicSetSize; index++ {
+		identity := fmt.Sprintf("%064x", index+DefaultDynamicSetSize+1)
+		ipv6Contributions = append(ipv6Contributions, EndpointContribution{ContributionID: identity, ActionID: identity, ActionIDs: []string{identity}, RefCount: 1,
+			Subject: fmt.Sprintf("2001:db8:%x::1/128", index), Intent: domain.IntentTemporaryBlock, ExpiresAt: 2000, TTLSeconds: 1000, SourceClass: "native", SourceClasses: []string{"native"}})
+	}
+	plan.Endpoints[2].Contributions = ipv6Contributions
+	plan.Revision = firewallPlanRevision(plan)
+	if size := len(RenderManagedNFT(plan)); size <= protectionhelper.MaxManagedCandidateBytes {
+		t.Fatalf("oversize fixture is only %d bytes", size)
+	}
+	before := len(helper.Requests)
+	_, err := workflow.Apply(t.Context(), ApplyInput{OperationID: "unobservable-projection", Plan: plan, Confirmation: "APPLY SERVER PROTECTION unobservable-projection"})
+	if err == nil || !errors.Is(err, ErrUnsafeResource) {
+		t.Fatalf("unobservable candidate was not rejected by preflight: %v", err)
+	}
+	if len(helper.Requests) != before {
+		t.Fatalf("oversize rejection crossed the helper boundary: requests %d -> %d", before, len(helper.Requests))
+	}
+}
+
 func TestWorkflowComposesAndRollsBackOnlyOwnedContribution(t *testing.T) {
 	workflow, _, _, _ := newFakeCIWorkflow(t, nil)
 	authority := workflow.Contributions.(*memoryContributionStore)
@@ -313,7 +391,7 @@ func TestRestartFinalizesCommittedEmptyRollbackWithoutSecondMutation(t *testing.
 	}
 }
 
-func TestCheckpointV1OperationRemainsExactlyRollbackableWithoutBecomingAuthority(t *testing.T) {
+func TestCheckpointV1WithoutSemanticIdentityFailsClosedWithoutMutation(t *testing.T) {
 	workflow, helper, _, _ := newFakeCIWorkflow(t, nil)
 	authority := workflow.Contributions.(*memoryContributionStore)
 	baseline := compositionEndpointPlan(t)
@@ -339,12 +417,15 @@ func TestCheckpointV1OperationRemainsExactlyRollbackableWithoutBecomingAuthority
 	delete(authority.transitions, operation.OperationID)
 	authority.mu.Unlock()
 
-	if _, err = workflow.Rollback(t.Context(), operation.OperationID, "ROLLBACK SERVER PROTECTION "+operation.OperationID); err != nil {
-		t.Fatalf("exact legacy rollback failed: %v", err)
+	applyCalls := helperOperationCount(helper.Requests, protectionhelper.OperationNFTApply)
+	rollbackCalls := helperOperationCount(helper.Requests, protectionhelper.OperationNFTRollback)
+	if _, err = workflow.Rollback(t.Context(), operation.OperationID, "ROLLBACK SERVER PROTECTION "+operation.OperationID); err == nil {
+		t.Fatal("legacy raw-only checkpoint was treated as semantic live authority")
 	}
 	snapshot, err := authority.FirewallAuthority(t.Context())
-	if err != nil || snapshot.HasComposition || len(snapshot.Contributions) != 0 || helper.ManagedTablePresent {
-		t.Fatalf("legacy rollback fabricated authority or retained table: snapshot=%#v helperPresent=%v err=%v", snapshot, helper.ManagedTablePresent, err)
+	if err != nil || snapshot.HasComposition || len(snapshot.Contributions) != 0 || !helper.ManagedTablePresent ||
+		helperOperationCount(helper.Requests, protectionhelper.OperationNFTApply) != applyCalls || helperOperationCount(helper.Requests, protectionhelper.OperationNFTRollback) != rollbackCalls {
+		t.Fatalf("legacy checkpoint mutated or fabricated authority: snapshot=%#v helperPresent=%v err=%v", snapshot, helper.ManagedTablePresent, err)
 	}
 }
 
@@ -396,6 +477,8 @@ func TestRestartRollbackReconcilesAlreadyComposedTargetWithoutDuplicateMutation(
 	helper.ManagedTablePresent = true
 	helper.ManagedPlanRevision = targetComposition.PlanRevision
 	helper.ManagedCandidateSHA = targetComposition.CandidateSHA
+	helper.ManagedCandidateSemantic = targetComposition.CandidateSemanticSHA
+	helper.ManagedTimedMembership = targetComposition.CandidateTimedMembershipSHA
 	applyCalls := helperOperationCount(helper.Requests, protectionhelper.OperationNFTApply)
 	firstRecovery, err := workflow.finishRollback(t.Context(), rolling, checkpoint.ArtifactRevision, true, false)
 	if err != nil {
@@ -471,6 +554,7 @@ func TestRestartRecoveryRollsBackExactUncommittedForwardContribution(t *testing.
 	helper.ManagedTablePresent = true
 	helper.ManagedPlanRevision = after.PlanRevision
 	helper.ManagedCandidateSHA = after.CandidateSHA
+	helper.ManagedCandidateSemantic = after.CandidateSemanticSHA
 	applyCalls := helperOperationCount(helper.Requests, protectionhelper.OperationNFTApply)
 	result, err := workflow.rollback(t.Context(), applying, "", true)
 	if err != nil || result.State != protectionoperations.StateRolledBack {
@@ -674,6 +758,11 @@ func applyCompositionWorkflowPlan(t *testing.T, workflow *Workflow, plan Firewal
 	if err != nil || result.ActualStatus != "APPLIED" {
 		t.Fatalf("apply %s: result=%#v err=%v", key, result, err)
 	}
+	if contribution.Kind == ContributionKindUDPDirect {
+		if _, replayErr := workflow.Apply(t.Context(), input); replayErr != nil {
+			t.Fatalf("health-verified contribution replay: %v", replayErr)
+		}
+	}
 	operation, err := workflow.operation(t.Context(), prepared.Operation.OperationID)
 	if err != nil {
 		t.Fatal(err)
@@ -737,16 +826,20 @@ func compositionAuthoritySnapshot(t *testing.T, values []ManagedFirewallContribu
 		}
 		models = append(models, model)
 	}
-	return protectionrepository.FirewallAuthoritySnapshot{Contributions: models, Composition: compositionRow, HasComposition: true}
+	observation := protectionrepository.FirewallObservationModel{Schema: protectionrepository.FirewallObservationSchemaV1, State: FirewallLiveMatching,
+		HasCommittedAuthority: true, CommittedCompositionRevision: compositionRow.Revision, ManagedTablePresent: true,
+		CurrentRevision: compositionRow.ManagedPlanRevision, CurrentSemanticSHA256: compositionRow.CandidateSemanticSHA256,
+		CurrentTimedMembershipSHA256: compositionRow.CandidateTimedMembershipSHA256, ExpectedTimedMembershipSHA256: compositionRow.CandidateTimedMembershipSHA256}
+	return protectionrepository.FirewallAuthoritySnapshot{Contributions: models, Composition: compositionRow, HasComposition: true, Observation: observation, HasObservation: true}
 }
 
 func compositionEndpointPlan(t *testing.T) FirewallPlan {
 	t.Helper()
 	now := time.Unix(1000, 0).UTC()
 	configRevision, ownerRevision := strings.Repeat("c", 64), strings.Repeat("b", 64)
-	expected := endpointResourceFixture().Capabilities.ExpectedListenerOwner
-	resource4 := hostresources.ProtectableResource{ID: "core:inbound:composition4", Kind: "inbound", Owner: "core", Protocol: "stream", Listen: "192.0.2.8", Port: 443, Public: true, Source: "fixture", Capabilities: hostresources.ProtectableResourceCapabilities{Known: true, OwnerRevision: ownerRevision, ConfigRevision: configRevision, ExpectedListenerOwner: expected}}
-	resource6 := hostresources.ProtectableResource{ID: "core:inbound:composition6", Kind: "inbound", Owner: "core", Protocol: "udp", Listen: "2001:db8::8", Port: 443, Public: true, Source: "fixture", Capabilities: hostresources.ProtectableResourceCapabilities{Known: true, OwnerRevision: ownerRevision, ConfigRevision: configRevision, ExpectedListenerOwner: expected}}
+	expected := endpointResourceFixture().Capabilities.ExpectedApplicationOwner
+	resource4 := hostresources.ProtectableResource{ID: "core:inbound:composition4", Kind: "inbound", Owner: "core", Protocol: "stream", Listen: "192.0.2.8", Port: 443, Public: true, Source: "fixture", Capabilities: hostresources.ProtectableResourceCapabilities{Known: true, OwnerRevision: ownerRevision, ConfigRevision: configRevision, ExpectedApplicationOwner: expected}}
+	resource6 := hostresources.ProtectableResource{ID: "core:inbound:composition6", Kind: "inbound", Owner: "core", Protocol: "udp", Listen: "2001:db8::8", Port: 443, Public: true, Source: "fixture", Capabilities: hostresources.ProtectableResourceCapabilities{Known: true, OwnerRevision: ownerRevision, ConfigRevision: configRevision, ExpectedApplicationOwner: expected}}
 	resources := []hostresources.ProtectableResource{resource4, resource6}
 	keys := [][]hostresources.PublicEndpointKey{{
 		{Network: hostresources.NetworkTCP, AddressFamily: hostresources.AddressFamilyIPv4, BindAddress: "192.0.2.8", Port: 443},
@@ -774,10 +867,10 @@ func compositionEndpointPlan(t *testing.T) FirewallPlan {
 }
 
 func compositionOwnerSurface(resource hostresources.ProtectableResource, key hostresources.PublicEndpointKey, index int, now time.Time) hostsurface.HostSurfaceFactV1 {
-	expected := resource.Capabilities.ExpectedListenerOwner
+	expected := resource.Capabilities.ExpectedApplicationOwner
 	pid := 100 + index
-	process := hostsurface.ProcessFact{PID: &pid, ParentPID: endpointIntPtr(1), SessionID: &pid, StartTime: "1000", ExeDigest: expected.ExecutableSHA256, Executable: expected.ExecutablePath, ExeDevice: 1, ExeInode: uint64(2 + index), UID: endpointIntPtr(0), GID: endpointIntPtr(0), ControlGroup: expected.ServiceControlGroup}
-	service := hostsurface.ServiceFact{SystemdUnit: expected.SystemdUnit, MainPID: &pid, FragmentPath: expected.ServiceFragmentPath, FragmentSHA256: expected.ServiceUnitSHA256, ActiveState: "active", SubState: "running", ControlGroup: expected.ServiceControlGroup, StartMonotonicUsec: uint64(100 + index)}
+	process := hostsurface.ProcessFact{ProviderRevision: "fixture-process-evidence/v1", EvidenceRevision: strings.Repeat("d", 64), PID: &pid, ParentPID: endpointIntPtr(1), SessionID: &pid, StartTime: "1000", ExeDigest: expected.ExecutableSHA256, Executable: expected.ExecutablePath, ExeDevice: 1, ExeInode: uint64(2 + index), UID: endpointIntPtr(0), GID: endpointIntPtr(0), ControlGroup: "/system.slice/solovey-ui.service"}
+	service := hostsurface.ServiceFact{SupervisorRevision: strings.Repeat("8", 64), CgroupAvailability: "available", CgroupPolicy: "required", CgroupRevision: strings.Repeat("9", 64), SystemdUnit: "solovey-ui.service", MainPID: &pid, FragmentPath: "/etc/systemd/system/solovey-ui.service", FragmentSHA256: strings.Repeat("7", 64), ActiveState: "active", SubState: "running", ControlGroup: process.ControlGroup, StartMonotonicUsec: uint64(100 + index)}
 	fact := hostsurface.ListenerOwnerFactV1{Schema: hostsurface.ListenerOwnerFactSchemaV1,
 		Socket:  hostsurface.ListenerSocketIdentityV1{Network: hostsurface.Network(key.Network), Family: hostsurface.Family(key.AddressFamily), Bind: key.BindAddress, Port: key.Port, Inode: string(rune(1000 + index)), Cookie: uint64(2000 + index), CoverageFamilies: []hostsurface.Family{hostsurface.Family(key.AddressFamily)}},
 		Process: process, Service: service,

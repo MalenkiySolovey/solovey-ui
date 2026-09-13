@@ -49,29 +49,56 @@ type ManagementEndpointV1 struct {
 }
 
 type RecoveryPathV1 struct {
-	Schema                string   `json:"schema"`
-	ID                    string   `json:"id"`
-	Kind                  string   `json:"kind"`
-	EndpointID            string   `json:"endpointId"`
-	PrincipalID           string   `json:"principalId"`
-	SourcePrefix          string   `json:"sourcePrefix,omitempty"`
-	VerificationMethod    string   `json:"verificationMethod"`
-	EvidenceProvider      string   `json:"evidenceProvider,omitempty"`
-	TargetOperation       string   `json:"targetOperation,omitempty"`
-	VerifiedAt            int64    `json:"verifiedAt"`
-	ExpiresAt             int64    `json:"expiresAt"`
-	IndependenceClass     string   `json:"independenceClass"`
-	VerificationState     string   `json:"verificationState"`
-	OperationBound        bool     `json:"operationBound"`
-	SingleUse             bool     `json:"singleUse"`
-	ConsumedAt            int64    `json:"consumedAt,omitempty"`
-	Revision              uint64   `json:"revision,omitempty"`
-	ReasonCodes           []string `json:"reasonCodes,omitempty"`
-	SourceRevision        string   `json:"sourceRevision"`
-	ConfigurationRevision string   `json:"configurationRevision"`
-	ServiceRevision       string   `json:"serviceRevision,omitempty"`
-	BinaryRevision        string   `json:"binaryRevision,omitempty"`
-	ProducerRevision      string   `json:"producerRevision"`
+	Schema                        string   `json:"schema"`
+	ID                            string   `json:"id"`
+	Kind                          string   `json:"kind"`
+	EndpointID                    string   `json:"endpointId"`
+	PrincipalID                   string   `json:"principalId"`
+	SourcePrefix                  string   `json:"sourcePrefix,omitempty"`
+	VerificationMethod            string   `json:"verificationMethod"`
+	EvidenceProvider              string   `json:"evidenceProvider,omitempty"`
+	TargetOperation               string   `json:"targetOperation,omitempty"`
+	VerifiedAt                    int64    `json:"verifiedAt"`
+	ExpiresAt                     int64    `json:"expiresAt"`
+	IndependenceClass             string   `json:"independenceClass"`
+	VerificationState             string   `json:"verificationState"`
+	OperationBound                bool     `json:"operationBound"`
+	SingleUse                     bool     `json:"singleUse"`
+	ConsumedAt                    int64    `json:"consumedAt,omitempty"`
+	Revision                      uint64   `json:"revision,omitempty"`
+	ReasonCodes                   []string `json:"reasonCodes,omitempty"`
+	SourceRevision                string   `json:"sourceRevision"`
+	ConfigurationRevision         string   `json:"configurationRevision"`
+	ServiceRevision               string   `json:"serviceRevision,omitempty"`
+	BinaryRevision                string   `json:"binaryRevision,omitempty"`
+	ProducerRevision              string   `json:"producerRevision"`
+	ClientIdentityBindingRevision string   `json:"clientIdentityBindingRevision,omitempty"`
+	ClientIdentityConfigRevision  string   `json:"clientIdentityConfigRevision,omitempty"`
+	ClientIdentityProvenance      string   `json:"clientIdentityProvenance,omitempty"`
+}
+
+// ManagementEndpointBoundToResource validates an owner's existing projection;
+// it does not discover endpoints from ports, process names or host surfaces.
+func ManagementEndpointBoundToResource(endpoint ManagementEndpointV1, resource ProtectableResource, now time.Time) bool {
+	if !ManagementEndpointCurrent(endpoint, now) || endpoint.ObservedAt > now.Unix() || len(endpoint.ReasonCodes) > 32 ||
+		endpoint.Owner != resource.Owner || endpoint.ResourceID != resource.ID ||
+		endpoint.OwnerRevision != resource.Capabilities.OwnerRevision || endpoint.ConfigurationRevision != resource.Capabilities.ConfigRevision {
+		return false
+	}
+	if coverage := resource.SocketCoverage; coverage != nil {
+		if !coverage.CurrentFor(resource, now) || endpoint.RuntimeRevision != coverage.AuthorityRevision ||
+			endpoint.ObservedAt != coverage.ObservedAt || endpoint.ExpiresAt > coverage.ExpiresAt {
+			return false
+		}
+		keys, _ := PreservationEndpointKeys(resource, now)
+		for _, key := range keys {
+			if key.Network == endpoint.Network && key.AddressFamily == endpoint.Family && key.BindAddress == endpoint.Bind && key.Port == endpoint.Port {
+				return true
+			}
+		}
+		return false
+	}
+	return true
 }
 
 func ManagementEndpointFromResource(resource ProtectableResource, kind ManagementServiceKind, now time.Time) ManagementEndpointV1 {
@@ -177,6 +204,14 @@ func RecoveryPathValid(value RecoveryPathV1, now time.Time) bool {
 		if revision != "" && !validManagementRevision(revision) {
 			return false
 		}
+	}
+	for _, revision := range []string{value.ClientIdentityBindingRevision, value.ClientIdentityConfigRevision} {
+		if revision != "" && !validManagementRevision(revision) {
+			return false
+		}
+	}
+	if value.ClientIdentityProvenance != "" && value.ClientIdentityProvenance != "DIRECT" && value.ClientIdentityProvenance != "TRUSTED_XFF" {
+		return false
 	}
 	if (value.OperationBound || value.SingleUse) && (value.ExpiresAt-value.VerifiedAt > int64((15*time.Minute)/time.Second) || value.Revision == 0) {
 		return false

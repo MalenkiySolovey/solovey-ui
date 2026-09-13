@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v2026.3.0"
+        default: "v2026.3.1"
         type: string
       preflight_only:
         description: "Validate and build release artifacts without publishing"
@@ -377,22 +377,26 @@ jobs:
         run: |
           set -e
           [ -n "$SUI_RELEASE_TRUST_ROOTS_B64" ] || { echo "SUI_RELEASE_TRUST_ROOTS_B64 repository variable is required" >&2; exit 1; }
+          printf '%s' "$SUI_RELEASE_TRUST_ROOTS_B64" > /tmp/solovey-release-trust-roots.b64
           node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
-          BUILD_TAGS="with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale"
-          [ "${{ matrix.naive }}" = "true" ] && BUILD_TAGS="${BUILD_TAGS},with_naive_outbound,with_musl"
-          PANEL_LDFLAGS="-w -s -checklinkname=0 -linkmode external -extldflags '-static' -X github.com/MalenkiySolovey/solovey-ui/config/update.ArtifactPlatform=${{ matrix.platform }} -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=${SUI_RELEASE_TRUST_ROOTS_B64}"
+          export GOOS=linux GOARCH="${{ matrix.arch }}" CGO_ENABLED=1
+          export CXX="${CXX:-$CC}"
+          NAIVE_ARGS=()
+          [ "${{ matrix.naive }}" = "true" ] && NAIVE_ARGS+=(--naive)
           rm -rf web/html
           mkdir -p web/html
           cp -a .release/frontend-full/. web/html/
-          go build -ldflags="$PANEL_LDFLAGS" -tags "$BUILD_TAGS" -o solovey-ui main.go
-          go build -ldflags="-w -s -linkmode external -extldflags '-static'" -o solovey-privileged-broker ./cmd/solovey-privileged-broker
-          go build -ldflags="-w -s -linkmode external -extldflags '-static'" -o solovey-ssh-proof ./cmd/solovey-ssh-proof
-          go build -ldflags="-w -s -linkmode external -extldflags '-static'" -o solovey-broker-manifest ./cmd/solovey-broker-manifest
-          go build -ldflags="-w -s -linkmode external -extldflags '-static'" -o solovey-owner-manifest ./components/server-protection/cmd/solovey-owner-manifest
+          bash scripts/build-linux-target.sh --mode release --profile full \
+            --out .release/linux-full --platform "${{ matrix.platform }}" \
+            --trust-roots-file /tmp/solovey-release-trust-roots.b64 "${NAIVE_ARGS[@]}"
+          cp -a .release/linux-full/. ./
           rm -rf web/html
           mkdir -p web/html
           cp -a .release/frontend-core/. web/html/
-          go build -ldflags="$PANEL_LDFLAGS" -tags "${BUILD_TAGS},minimal" -o solovey-ui-core main.go
+          bash scripts/build-linux-target.sh --mode release --profile core \
+            --out .release/linux-core --platform "${{ matrix.platform }}" \
+            --trust-roots-file /tmp/solovey-release-trust-roots.b64 "${NAIVE_ARGS[@]}"
+          cp -a .release/linux-core/solovey-ui-core ./solovey-ui-core
           file solovey-ui
           file solovey-ui-core
           ldd solovey-ui 2>/dev/null || echo "Static binary confirmed"

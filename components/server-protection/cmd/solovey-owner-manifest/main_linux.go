@@ -48,7 +48,22 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	if err := atomicRootFile(deploymentidentity.InstalledContractPath, append(data, '\n'), 0o400); err != nil {
+	if err := atomicRootFile(deploymentidentity.InstalledContractPath, append(data, '\n'), 0o444); err != nil {
+		fatal(err)
+	}
+	mountProof, err := protectionruntime.ObserveRuntimeMount(protectionruntime.Installed().RuntimeRoot, protectionruntime.RuntimeMountPersistent)
+	if err != nil {
+		fatal(err)
+	}
+	runtimeRoot, err := protectionruntime.InstalledSystemdRuntimeRoot(contract, mountProof)
+	if err != nil {
+		fatal(err)
+	}
+	runtimeData, err := json.Marshal(runtimeRoot)
+	if err != nil {
+		fatal(err)
+	}
+	if err := atomicRootFile(protectionruntime.InstalledRuntimeRootPath, append(runtimeData, '\n'), 0o444); err != nil {
 		fatal(err)
 	}
 }
@@ -91,7 +106,7 @@ func installedContract() (deploymentidentity.ApplicationOwnerContractV1, error) 
 	sourceRevision := "src-" + digestString(commit)
 	artifactRevision := "art-" + executableSHA
 	deploymentID := "dep-" + digestString(strings.Join([]string{instanceID, sourceRevision, artifactRevision, profile, fragmentSHA, executable}, "\x00"))
-	return protectionruntime.ApplicationOwner(protectionruntime.ApplicationOwnerInput{
+	return protectionruntime.SystemdApplicationOwner(protectionruntime.SystemdApplicationOwnerInput{
 		InstanceID: instanceID, SourceRevision: sourceRevision, ArtifactRevision: artifactRevision, DeploymentID: deploymentID,
 		ServiceIdentity: serviceIdentity, SystemdUnit: serviceUnit, ServiceFragmentPath: fragment,
 		ServiceUnitSHA256: fragmentSHA, ServiceControlGroup: serviceCgroup, ExecutablePath: executable,
@@ -240,8 +255,9 @@ func regularRootDigest(name string, limit int64) (string, error) {
 }
 
 func atomicRootFile(name string, data []byte, mode os.FileMode) error {
-	if err := os.MkdirAll(filepath.Dir(name), 0o750); err != nil {
-		return err
+	parent, err := os.Lstat(filepath.Dir(name))
+	if err != nil || !parent.IsDir() || parent.Mode()&os.ModeSymlink != 0 || parent.Mode().Perm()&0o022 != 0 {
+		return errors.New("owner contract parent is unsafe")
 	}
 	temporary := name + ".incoming"
 	_ = os.Remove(temporary)

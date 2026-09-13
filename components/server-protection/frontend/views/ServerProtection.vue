@@ -138,11 +138,20 @@
               <v-expansion-panel>
                 <v-expansion-panel-title>{{ t('serverProtection.ipAllowlist') }}</v-expansion-panel-title>
                 <v-expansion-panel-text>
+					<v-alert v-if="trustedSourceProposal?.available" type="info" variant="tonal" class="mb-3">
+						{{ t('serverProtection.trustedSourceProposal', { source: trustedSourceProposal.ipCidr, provenance: trustedSourceProposal.provenance }) }}
+						<v-btn class="ms-2" size="small" variant="outlined" @click="useTrustedSourceProposal">{{ t('serverProtection.useProposal') }}</v-btn>
+					</v-alert>
+					<v-alert v-else-if="trustedSourceProposal?.reasonCode" type="warning" variant="tonal" class="mb-3">
+						{{ t('serverProtection.trustedSourceProposalUnavailable') }} · {{ trustedSourceProposal.reasonCode }}
+					</v-alert>
                   <v-row align="center">
                     <v-col cols="12" sm="5"><v-text-field v-model="newIP.ipCidr" :label="t('serverProtection.ipCidr')" /></v-col>
                     <v-col cols="12" sm="5"><v-text-field v-model="newIP.reason" :label="t('serverProtection.reason')" /></v-col>
                     <v-col cols="12" sm="2"><v-btn prepend-icon="mdi-plus" color="primary" variant="tonal" @click="addIPAllowlist">{{ t('serverProtection.addKeep') }}</v-btn></v-col>
                   </v-row>
+					<v-checkbox v-model="newIP.broadScopeAcknowledged" :label="t('serverProtection.broadSourceAcknowledgement')" />
+					<v-text-field v-if="newIP.broadScopeAcknowledged" v-model="newIP.confirmation" :label="t('serverProtection.broadSourceConfirmation')" :hint="t('serverProtection.broadSourceConfirmationHint', { source: newIP.ipCidr || '<CIDR>' })" persistent-hint />
                   <v-chip v-for="item in ipAllowlist" :key="item.id" class="me-2 mb-2" closable @click:close="removeIPAllowlist(item.id)">{{ item.ipCidr }} - {{ item.reason }}</v-chip>
                 </v-expansion-panel-text>
               </v-expansion-panel>
@@ -201,7 +210,8 @@
 						<v-chip :color="stateColor(operation.state)" size="small">{{ operation.state }}</v-chip>
 						<v-chip v-if="operation.recoveryBundleAvailable" color="info" size="small">{{ t('serverProtection.bundlePreserved') }}</v-chip>
 					<span v-if="operation.recoveryAttempts" class="text-caption">{{ t('serverProtection.recoveryAttempts', { count: operation.recoveryAttempts }) }}</span>
-					<v-btn v-if="operation.kind === 'firewall' && operation.state === 'applied'" size="small" variant="tonal" color="warning" @click="rollbackMockOperation(operation.operationId)">{{ t('serverProtection.rollbackMock') }}</v-btn>
+					<span v-if="operation.operatorDecisionRequired" class="text-caption">{{ t(operation.operatorReason === 'firewall_restore_expired' ? 'serverProtection.restoreExpired' : 'serverProtection.restoreNeedsReview') }}</span>
+					<v-btn v-if="operation.rollbackAvailable" size="small" variant="tonal" color="warning" @click="rollbackMockOperation(operation.operationId)">{{ t('serverProtection.rollbackMock') }}</v-btn>
 					</v-card-text>
 				</v-card>
 				<v-expansion-panels class="mt-3">
@@ -247,9 +257,9 @@ import './ServerProtection.scss'
 const { t } = useI18n()
 const {
   tab, loading, error, status, inventory, profiles, events, graylist, diagnostics, settings, operations,
-  firewallMessage, firewallPreview, portAllowlist, ipAllowlist, newPort, newIP, profileByResource, activateTab, refreshResources, createProfile, setProfileEnabled,
+  firewallMessage, firewallPreview, portAllowlist, ipAllowlist, trustedSourceProposal, newPort, newIP, profileByResource, activateTab, refreshResources, createProfile, setProfileEnabled,
   removeProfile, clearEvents, clearGraylist, requestFirewallPreview, saveSettings, refreshDiagnostics,
-  addPortAllowlist, removePortAllowlist, addIPAllowlist, removeIPAllowlist,
+  addPortAllowlist, removePortAllowlist, addIPAllowlist, removeIPAllowlist, useTrustedSourceProposal,
 		runMockFirewallWorkflow, rollbackMockOperation,
 } = useServerProtection()
 </script>

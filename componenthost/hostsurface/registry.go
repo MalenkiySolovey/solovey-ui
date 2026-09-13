@@ -132,6 +132,10 @@ func (r *Registry) Reconcile(ctx context.Context) Snapshot {
 		}
 		providerLimits.Timeout = providerTimeout
 		observation, err := observeProvider(ctx, provider, providerLimits, providerTimeout)
+		// The provider may have created its listener authority during Observe.
+		// Sanitization must never compare that fact with the invocation's start.
+		now = r.now().UTC()
+		result.GeneratedAt = now.Unix()
 		if err != nil {
 			result.Facts = append(result.Facts, unknownFact(entry.sourceID, "hostsurface_provider_unavailable", now))
 			continue
@@ -384,11 +388,22 @@ func sanitizeFact(fact HostSurfaceFactV1, now time.Time) HostSurfaceFactV1 {
 	}
 	if fact.ListenerOwner != nil {
 		owner := *fact.ListenerOwner
-		owner.Socket.CoverageFamilies = append([]Family(nil), fact.ListenerOwner.Socket.CoverageFamilies...)
+		owner.Socket = cloneListenerSocketIdentity(fact.ListenerOwner.Socket)
 		fact.ListenerOwner = &owner
 		if !owner.Valid(time.Unix(owner.ObservedAt, 0).UTC()) {
 			invalid = true
 		}
+	}
+	if fact.SemanticOwner != nil {
+		semanticOwner := *fact.SemanticOwner
+		semanticOwner.Socket = cloneListenerSocketIdentity(fact.SemanticOwner.Socket)
+		fact.SemanticOwner = &semanticOwner
+		if !validSemanticOwnerFact(fact) {
+			invalid = true
+		}
+	}
+	if fact.ListenerOwner != nil && fact.SemanticOwner != nil {
+		invalid = true
 	}
 	if fact.Classification == ClassificationManagedExact && (fact.ListenerOwner == nil || !fact.ListenerOwner.Valid(now) || fact.IsStale(now)) {
 		invalid = true
@@ -412,6 +427,18 @@ func sanitizeFact(fact HostSurfaceFactV1, now time.Time) HostSurfaceFactV1 {
 		fact.ReasonCodes = append(fact.ReasonCodes, "hostsurface_fact_invalid")
 	}
 	return fact
+}
+
+func validSemanticOwnerFact(fact HostSurfaceFactV1) bool {
+	owner := fact.SemanticOwner
+	if owner == nil || owner.ManagementService != ManagementServiceSSH || !safeFactToken(owner.Source, 128) ||
+		!sha256Token(owner.Revision) || !sha256Token(owner.AuthorityRevision) || !validOwnerSocket(owner.Socket) {
+		return false
+	}
+	return fact.Network == owner.Socket.Network && fact.Family == owner.Socket.Family && fact.Bind == owner.Socket.Bind && fact.Port == owner.Socket.Port &&
+		ListenerSocketIdentityMatchesSurface(owner.Socket, fact.SocketInode, fact.SocketCookie) && fact.Source == owner.Source &&
+		fact.Classification == ClassificationExpectedExternal && fact.OwnershipMode == OwnershipExternalManaged && fact.ConfidenceBP == 10000 &&
+		fact.RegisteredResourceID != "" && fact.DesiredOwner == "ssh-management" && sha256Token(fact.ConfigurationRevision)
 }
 
 func safeFactToken(value string, limit int) bool {
@@ -466,10 +493,25 @@ func cloneFact(value HostSurfaceFactV1) HostSurfaceFactV1 {
 	result.Service = cloneServiceFact(value.Service)
 	if value.ListenerOwner != nil {
 		owner := *value.ListenerOwner
-		owner.Socket.CoverageFamilies = append([]Family(nil), value.ListenerOwner.Socket.CoverageFamilies...)
+		owner.Socket = cloneListenerSocketIdentity(value.ListenerOwner.Socket)
 		owner.Process = cloneProcessFact(value.ListenerOwner.Process)
 		owner.Service = cloneServiceFact(value.ListenerOwner.Service)
 		result.ListenerOwner = &owner
+	}
+	if value.SemanticOwner != nil {
+		owner := *value.SemanticOwner
+		owner.Socket = cloneListenerSocketIdentity(value.SemanticOwner.Socket)
+		result.SemanticOwner = &owner
+	}
+	return result
+}
+
+func cloneListenerSocketIdentity(value ListenerSocketIdentityV1) ListenerSocketIdentityV1 {
+	result := value
+	result.CoverageFamilies = append([]Family(nil), value.CoverageFamilies...)
+	if value.IPv6Only != nil {
+		copy := *value.IPv6Only
+		result.IPv6Only = &copy
 	}
 	return result
 }

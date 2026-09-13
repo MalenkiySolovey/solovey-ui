@@ -3,10 +3,16 @@
 package hostsurface
 
 import (
+	"context"
+	"net"
+	"os"
 	"strings"
 	"testing"
+	"time"
 
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
+	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	processevidence "github.com/MalenkiySolovey/solovey-ui/internal/ops/processevidence"
 )
 
 func TestParseProcNetExcludesConnectedUDPClientPorts(t *testing.T) {
@@ -21,11 +27,36 @@ func TestParseProcNetExcludesConnectedUDPClientPorts(t *testing.T) {
 	}
 }
 
-func TestProcStartTimeHandlesSpacesAndParenthesesInComm(t *testing.T) {
-	// state is field 3 and starttime is field 22.
-	suffix := []string{"S", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12", "13", "14", "15", "16", "17", "18", "424242", "20"}
-	value := "123 (worker name) with paren) " + strings.Join(suffix, " ")
-	if got := procStartTime(value); got != "424242" {
-		t.Fatalf("starttime = %q", got)
+func TestObservePlatformProjectsRealProcSocketProcessEvidence(t *testing.T) {
+	listener, err := net.Listen("tcp4", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer listener.Close()
+	port := uint16(listener.Addr().(*net.TCPAddr).Port)
+
+	snapshot, err := observePlatform(context.Background(), hostfacts.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	var observed *RawSocket
+	for index := range snapshot.Sockets {
+		candidate := &snapshot.Sockets[index]
+		if candidate.Network == hostfacts.NetworkTCP && candidate.Family == hostfacts.FamilyIPv4 && candidate.Bind == "127.0.0.1" && candidate.Port == port {
+			observed = candidate
+			break
+		}
+	}
+	if observed == nil || len(observed.Processes) != 1 {
+		t.Fatalf("real listener process projection was not found: port=%d observed=%#v", port, observed)
+	}
+	process := observed.Processes[0]
+	if process.PID != os.Getpid() || process.ProviderRevision != processevidence.RevisionV2 || !completeProcessEvidence(process) {
+		t.Fatalf("real /proc process projection is incomplete: %#v", process)
+	}
+
+	result := Normalize(PlatformSnapshot{Sockets: []RawSocket{*observed}}, hostresources.ResourceSnapshot{}, time.Now().UTC())
+	if len(result.Facts) != 1 || result.Facts[0].Classification != hostfacts.ClassificationLocalOnly || result.Facts[0].ConfidenceBP != 9000 || result.Facts[0].Process.EvidenceRevision != process.EvidenceRevision {
+		t.Fatalf("real process projection did not survive owner normalization: %#v", result)
 	}
 }

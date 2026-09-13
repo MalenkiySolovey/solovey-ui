@@ -44,6 +44,12 @@ func Init(dbPath string) (err error) {
 	if err := db.AutoMigrate(schemaModels()...); err != nil {
 		return err
 	}
+	if err := ensureSSHRetentionCompatibility(db); err != nil {
+		return fmt.Errorf("ensure SSH retention compatibility: %w", err)
+	}
+	if err := ensureDeploymentRetentionCompatibility(db); err != nil {
+		return fmt.Errorf("ensure deployment retention compatibility: %w", err)
+	}
 	if err := entityoutbounds.EnsureDefault(db); err != nil {
 		return fmt.Errorf("ensure default outbound: %w", err)
 	}
@@ -67,6 +73,25 @@ func Init(dbPath string) (err error) {
 	}
 	initialized = true
 	return nil
+}
+
+func ensureSSHRetentionCompatibility(database *gorm.DB) error {
+	// A durable ROLLED_BACK transition means the managed artifact was exactly
+	// restored. Older schemas had no explicit release bit; the restore itself
+	// is therefore the compatibility proof that no stage authority remains.
+	return database.Model(&model.SSHManagementCandidate{}).
+		Where("state = ? AND broker_stage_released = ?", "ROLLED_BACK", false).
+		Update("broker_stage_released", true).Error
+}
+
+func ensureDeploymentRetentionCompatibility(database *gorm.DB) error {
+	// Rows without a checkpoint reference cannot carry broker cleanup debt.
+	// This is idempotent and does not disturb a successfully released row that
+	// retains its historical digest, or an older terminal row whose checkpoint
+	// still needs the new typed release path.
+	return database.Model(&model.DeploymentOperation{}).
+		Where("checkpoint_ref = ? AND checkpoint_released = ?", "", false).
+		Update("checkpoint_released", true).Error
 }
 
 func schemaModels() []any {

@@ -13,7 +13,20 @@ import (
 
 const ListenerOwnerFactSchemaV1 = "solovey-ui/listener-owner-fact/v1"
 
+const MaxListenerOwnerFactLifetime = 2 * time.Minute
+
+const (
+	// ListenerProofPIDFDSocketV1 is the stronger socket identity obtained from
+	// a duplicated descriptor. It includes SO_COOKIE and, for IPv6, V6ONLY.
+	ListenerProofPIDFDSocketV1 = "pidfd_getfd_socket/v1"
+	// ListenerProofProcFSV1 binds a stable process fd socket inode to a stable
+	// entry in that process' network-namespace socket table. The kernel table
+	// does not expose SO_COOKIE or IPV6_V6ONLY, so neither may be inferred.
+	ListenerProofProcFSV1 = "procfs_fd_inode_socket_table/v1"
+)
+
 type ListenerSocketIdentityV1 struct {
+	ProofMethod      string   `json:"proofMethod,omitempty"`
 	Network          Network  `json:"network"`
 	Family           Family   `json:"family"`
 	Bind             string   `json:"bind"`
@@ -68,12 +81,21 @@ func (f *ListenerOwnerFactV1) Seal() {
 
 func (f ListenerOwnerFactV1) Valid(now time.Time) bool {
 	if f.Schema != ListenerOwnerFactSchemaV1 || !hex64(f.ObservationRevision) || f.ObservedAt <= 0 ||
-		f.ExpiresAt <= f.ObservedAt || f.ExpiresAt > f.ObservedAt+60 || f.ExpiresAt <= now.UTC().Unix() {
+		f.ExpiresAt <= f.ObservedAt || f.ExpiresAt > f.ObservedAt+int64(MaxListenerOwnerFactLifetime/time.Second) || f.ExpiresAt <= now.UTC().Unix() {
 		return false
 	}
 	copy := f
 	copy.Seal()
-	if copy.ObservationRevision != f.ObservationRevision || !validOwnerSocket(f.Socket) || !validOwnerProcess(f.Process) || !validOwnerService(f.Service) || !validOwnerApplication(f.Application) {
+	if copy.ObservationRevision != f.ObservationRevision || !validOwnerSocket(f.Socket) || !validOwnerApplication(f.Application) {
+		return false
+	}
+	if procdOwnerService(f.Service) {
+		return validProcdOwnerProcess(f.Process) && validProcdOwnerService(f.Service) &&
+			f.Process.PID != nil && f.Service.MainPID != nil && *f.Process.PID == *f.Service.MainPID &&
+			f.Process.ControlGroup == f.Service.ControlGroup &&
+			f.Process.ExeDigest == f.Application.ExpectedExecutableSHA256
+	}
+	if !validOwnerProcess(f.Process) || !validOwnerService(f.Service) {
 		return false
 	}
 	return f.Process.PID != nil && f.Service.MainPID != nil && *f.Process.PID == *f.Service.MainPID &&
@@ -81,7 +103,23 @@ func (f ListenerOwnerFactV1) Valid(now time.Time) bool {
 }
 
 func validOwnerSocket(value ListenerSocketIdentityV1) bool {
-	if value.Network != NetworkTCP && value.Network != NetworkUDP || value.Family != FamilyIPv4 && value.Family != FamilyIPv6 || value.Port == 0 || value.Cookie == 0 || !numericToken(value.Inode) {
+	return ValidListenerSocketIdentity(value)
+}
+
+// ValidListenerSocketIdentity validates the evidence promised by the stated
+// proof method. An empty method is accepted only for the legacy cookie-bearing
+// representation, preserving already sealed v1 facts and fixtures.
+func ValidListenerSocketIdentity(value ListenerSocketIdentityV1) bool {
+	method := value.ProofMethod
+	if method == "" && value.Cookie != 0 {
+		method = ListenerProofPIDFDSocketV1
+	}
+	if method != ListenerProofPIDFDSocketV1 && method != ListenerProofProcFSV1 ||
+		value.Network != NetworkTCP && value.Network != NetworkUDP || value.Family != FamilyIPv4 && value.Family != FamilyIPv6 ||
+		value.Port == 0 || !numericToken(value.Inode) {
+		return false
+	}
+	if method == ListenerProofPIDFDSocketV1 && value.Cookie == 0 || method == ListenerProofProcFSV1 && value.Cookie != 0 {
 		return false
 	}
 	address, err := netip.ParseAddr(value.Bind)
@@ -95,6 +133,9 @@ func validOwnerSocket(value ListenerSocketIdentityV1) bool {
 	if value.Family == FamilyIPv4 {
 		return len(families) == 1 && families[0] == FamilyIPv4 && value.IPv6Only == nil
 	}
+	if method == ListenerProofProcFSV1 {
+		return value.IPv6Only == nil && len(families) == 1 && families[0] == FamilyIPv6
+	}
 	if value.IPv6Only == nil {
 		return false
 	}
@@ -104,9 +145,27 @@ func validOwnerSocket(value ListenerSocketIdentityV1) bool {
 	return value.Wildcard && len(families) == 2 && families[0] == FamilyIPv4 && families[1] == FamilyIPv6
 }
 
+// ListenerSocketIdentityMatchesSurface verifies the identity fields a
+// host-surface observation can carry. Procfs evidence intentionally has no
+// cookie; pidfd evidence requires an exact non-zero cookie match.
+func ListenerSocketIdentityMatchesSurface(value ListenerSocketIdentityV1, inode string, cookie uint64) bool {
+	if !ValidListenerSocketIdentity(value) || value.Inode != inode {
+		return false
+	}
+	method := value.ProofMethod
+	if method == "" {
+		method = ListenerProofPIDFDSocketV1
+	}
+	if method == ListenerProofProcFSV1 {
+		return cookie == 0
+	}
+	return value.Cookie != 0 && value.Cookie == cookie
+}
+
 func validOwnerProcess(value ProcessFact) bool {
 	if value.PID == nil || value.ParentPID == nil || value.SessionID == nil || value.UID == nil || value.GID == nil ||
 		*value.PID <= 1 || *value.ParentPID < 0 || *value.SessionID < 0 || *value.UID < 0 || *value.GID < 0 ||
+		!validProcessEvidenceProjection(value) ||
 		!numericToken(value.StartTime) || !hex64(value.ExeDigest) || value.ExeDevice == 0 || value.ExeInode == 0 ||
 		!canonicalOwnerPath(value.Executable) || !canonicalOwnerPath(value.ControlGroup) {
 		return false
@@ -115,9 +174,60 @@ func validOwnerProcess(value ProcessFact) bool {
 }
 
 func validOwnerService(value ServiceFact) bool {
-	return safeFactToken(value.SystemdUnit, 128) && value.MainPID != nil && *value.MainPID > 1 &&
+	return !procdOwnerService(value) && safeFactToken(value.SystemdUnit, 128) && value.MainPID != nil && *value.MainPID > 1 &&
 		canonicalOwnerPath(value.FragmentPath) && hex64(value.FragmentSHA256) && value.ActiveState == "active" && value.SubState == "running" &&
-		canonicalOwnerPath(value.ControlGroup) && value.StartMonotonicUsec > 0
+		canonicalOwnerPath(value.ControlGroup) && value.StartMonotonicUsec > 0 && validSupervisorProjection(value, true)
+}
+
+func procdOwnerService(value ServiceFact) bool {
+	return value.ProcdService != "" || value.ProcdInstance != "" || len(value.ProcdCommand) != 0 || value.ProcdUser != "" || value.ProcdGroup != ""
+}
+
+func validProcdOwnerProcess(value ProcessFact) bool {
+	if value.PID == nil || value.ParentPID == nil || value.SessionID == nil || value.UID == nil || value.GID == nil ||
+		*value.PID <= 1 || *value.ParentPID < 0 || *value.SessionID < 0 || *value.UID < 0 || *value.GID < 0 ||
+		!validProcessEvidenceProjection(value) ||
+		!numericToken(value.StartTime) || !hex64(value.ExeDigest) || value.ExeDevice == 0 || value.ExeInode == 0 ||
+		!canonicalOwnerPath(value.Executable) {
+		return false
+	}
+	return value.ControlGroup == "" || canonicalOwnerPath(value.ControlGroup)
+}
+
+func validProcessEvidenceProjection(value ProcessFact) bool {
+	provider := strings.TrimSpace(value.ProviderRevision)
+	return provider != "" && len(provider) <= 128 && !strings.ContainsAny(provider, "\x00\r\n\t") && hex64(value.EvidenceRevision)
+}
+
+func validProcdOwnerService(value ServiceFact) bool {
+	if value.SystemdUnit != "" || value.FragmentPath != "" || value.FragmentSHA256 != "" || value.StartMonotonicUsec != 0 || value.ContainerCgroup != "" ||
+		!safeFactToken(value.ProcdService, 128) || !safeFactToken(value.ProcdInstance, 128) ||
+		!safeFactToken(value.ProcdUser, 128) || !safeFactToken(value.ProcdGroup, 128) ||
+		value.MainPID == nil || *value.MainPID <= 1 || value.ActiveState != "active" || value.SubState != "running" ||
+		len(value.ProcdCommand) == 0 || len(value.ProcdCommand) > 16 {
+		return false
+	}
+	if !validSupervisorProjection(value, value.CgroupAvailability == "available") {
+		return false
+	}
+	for index, argument := range value.ProcdCommand {
+		if argument == "" || len(argument) > 512 || strings.ContainsAny(argument, "\x00\r\n") || index == 0 && !canonicalOwnerPath(argument) {
+			return false
+		}
+	}
+	return true
+}
+
+func validSupervisorProjection(value ServiceFact, cgroupRequired bool) bool {
+	if !hex64(value.SupervisorRevision) || !hex64(value.CgroupRevision) ||
+		value.CgroupAvailability != "available" && value.CgroupAvailability != "unavailable" ||
+		value.CgroupPolicy != "required" && value.CgroupPolicy != "optional" {
+		return false
+	}
+	if cgroupRequired || value.CgroupAvailability == "available" {
+		return canonicalOwnerPath(value.ControlGroup)
+	}
+	return value.ControlGroup == ""
 }
 
 func validOwnerApplication(value ListenerApplicationIdentityV1) bool {

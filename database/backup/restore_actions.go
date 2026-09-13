@@ -20,13 +20,21 @@ type importRollbackFunc func(stage string, cause error) error
 // prove exact rollback after the imported database has been installed/opened.
 var restoreProtectedPostActionHook func(context.Context) error
 
-func importRollbackProtectedPostActions(dbPath string) []importPostAction {
+func importRollbackProtectedPostActions(dbPath string, owners []RestoreOwnerStatus) []importPostAction {
 	return []importPostAction{
 		{
 			stage:           "opening imported db",
 			rollbackOnError: true,
 			run: func(context.Context) error {
 				return dbsqlite.Init(dbPath)
+			},
+		},
+		{
+			stage:           "normalizing installed restore owners",
+			rollbackOnError: true,
+			run: func(ctx context.Context) error {
+				_, err := normalizeRestoredOwners(ctx, dbsqlite.DB(), owners)
+				return err
 			},
 		},
 		{

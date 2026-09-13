@@ -62,7 +62,7 @@ func TestPlannerThousandFactPerformanceAndNoGoroutineLeak(t *testing.T) {
 	}
 }
 
-func BenchmarkPlanner1000Facts(b *testing.B) {
+func BenchmarkPlannepublication00Facts(b *testing.B) {
 	planner, request := thousandFactPlanner(b)
 	b.ReportAllocs()
 	b.ResetTimer()

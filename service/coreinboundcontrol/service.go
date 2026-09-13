@@ -3,11 +3,14 @@ package coreinboundcontrol
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"gorm.io/gorm"
 )
+
+var ErrAuthenticationMembershipUnavailable = errors.New("inbound authentication membership unavailable")
 
 type Service struct {
 	db        *gorm.DB
@@ -135,11 +138,11 @@ func authenticationCountsDB(ctx context.Context, db *gorm.DB, inboundIDs []uint)
 	if len(inboundIDs) == 0 {
 		return result, nil
 	}
-	// Older bounded control-plane fixtures predate client membership storage.
-	// An absent table is exact legacy zero membership; any error from an
-	// existing table remains fail-closed below.
-	if db == nil || !db.Migrator().HasTable(&model.Client{}) {
-		return result, nil
+	if db == nil {
+		return nil, fmt.Errorf("%w: database is unavailable", ErrAuthenticationMembershipUnavailable)
+	}
+	if !db.Migrator().HasTable(&model.Client{}) {
+		return nil, fmt.Errorf("%w: clients table is absent", ErrAuthenticationMembershipUnavailable)
 	}
 	wanted := make(map[uint]bool, len(inboundIDs))
 	for _, id := range inboundIDs {

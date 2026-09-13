@@ -33,7 +33,23 @@ type dockerRuntimeFacts struct {
 
 func NewDockerProvider() *DockerProvider { return &DockerProvider{now: time.Now} }
 
+func init() {
+	registerRuntimeProvider("docker", func() Provider { return NewDockerProvider() })
+}
+
 func (*DockerProvider) ProviderID() string { return "local-docker-posture/v1" }
+func (*DockerProvider) UpdateLifecycle() UpdateLifecycle {
+	return UpdateLifecycleOperatorManaged
+}
+
+func (*DockerProvider) UpdatePresentation() UpdatePresentation {
+	return UpdatePresentation{LegacyMode: "docker-operator-managed",
+		LegacyReasonCodes: []string{"docker_runtime_operator_managed", "docker_socket_not_used"}}
+}
+
+func (*DockerProvider) BrokerPresentation(context.Context) BrokerPresentation {
+	return BrokerPresentation{Transport: "external-container-operator", PeerPosture: "broker_unavailable"}
+}
 
 func (*DockerProvider) Capabilities(context.Context) domain.Capabilities {
 	result := domain.Capabilities{Observe: domain.Available, Doctor: domain.Available, Migrate: domain.Unavailable,
@@ -85,8 +101,8 @@ func (p *DockerProvider) Observe(context.Context) (domain.Posture, error) {
 		HardeningRevision: domain.Revision(facts), ObservedAt: now.Unix(), ExpiresAt: now.Add(2 * time.Minute).Unix(), Reasons: reasons}
 	// The panel intentionally has no docker.sock or daemon API. It can prove
 	// in-container hardening, but cannot attest daemon mode or host/bridge
-	// topology. Those remain explicit unknown facts until an external Live
-	// inspector supplies evidence; normal CI must not claim them verified.
+	// topology. Those remain explicit unknown facts until an operational
+	// inspector supplies current evidence.
 	if len(reasons) == 0 {
 		posture.VerifiedProfile = profileID
 	}
@@ -146,13 +162,6 @@ func DetectedDocker() bool {
 	data, _ := os.ReadFile("/proc/1/cgroup")
 	text := strings.ToLower(string(data))
 	return strings.Contains(text, "docker") || strings.Contains(text, "containerd") || strings.Contains(text, "podman")
-}
-
-func RuntimeProvider() Provider {
-	if DetectedDocker() {
-		return NewDockerProvider()
-	}
-	return NewBrokerProvider(nil)
 }
 
 func parseProcStatus(data []byte) map[string]string {

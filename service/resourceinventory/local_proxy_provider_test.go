@@ -171,11 +171,13 @@ func exactLocalProxySurfaceFixture(resource hostresources.ProtectableResource, n
 	hexA, hexB := strings.Repeat("a", 64), strings.Repeat("b", 64)
 	pid, parent, session, uid, gid := 100, 1, 100, 0, 0
 	process := hostsurface.ProcessFact{
+		ProviderRevision: "fixture-process-evidence/v1", EvidenceRevision: hexB,
 		PID: &pid, ParentPID: &parent, SessionID: &session, StartTime: "1000",
 		ExeDigest: hexA, Executable: "/usr/local/bin/solovey-ui",
 		ExeDevice: 1, ExeInode: 2, UID: &uid, GID: &gid, ControlGroup: "/system.slice/solovey-ui.service",
 	}
 	service := hostsurface.ServiceFact{
+		SupervisorRevision: hexA, CgroupAvailability: "available", CgroupPolicy: "required", CgroupRevision: hexB,
 		SystemdUnit: "solovey-ui.service", MainPID: &pid, FragmentPath: "/etc/systemd/system/solovey-ui.service",
 		FragmentSHA256: hexB, ActiveState: "active", SubState: "running",
 		ControlGroup: process.ControlGroup, StartMonotonicUsec: 100,

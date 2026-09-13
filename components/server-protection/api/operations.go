@@ -44,6 +44,13 @@ func (h Handler) operations(c *gin.Context) {
 			recoveryRequired++
 		}
 		view := makeOperationView(item)
+		if h.deps.Firewall != nil && item.Kind == protectionoperations.KindFirewall {
+			status := h.deps.Firewall.OperatorStatus(c.Request.Context(), item)
+			view.RollbackAvailable, view.OperatorDecisionRequired, view.OperatorReason = status.RollbackAvailable, status.DecisionRequired, status.Reason
+			if status.DecisionRequired {
+				recoveryRequired++
+			}
+		}
 		view.RecoveryBundleAvailable = bundleAvailable[item.OperationID]
 		views = append(views, view)
 	}
@@ -60,20 +67,23 @@ func (h Handler) operations(c *gin.Context) {
 }
 
 type operationView struct {
-	OperationID             string `json:"operationId"`
-	Kind                    string `json:"kind"`
-	ResourceID              string `json:"resourceId,omitempty"`
-	Protocol                string `json:"protocol,omitempty"`
-	Listen                  string `json:"listen,omitempty"`
-	Port                    *int   `json:"port,omitempty"`
-	State                   string `json:"state"`
-	Revision                int    `json:"revision"`
-	PlanRevision            string `json:"planRevision,omitempty"`
-	RecoveryAttempts        int    `json:"recoveryAttempts"`
-	RecoveryErrorCode       string `json:"recoveryErrorCode,omitempty"`
-	RecoveryBundleAvailable bool   `json:"recoveryBundleAvailable"`
-	CreatedAt               int64  `json:"createdAt"`
-	UpdatedAt               int64  `json:"updatedAt"`
+	RollbackAvailable        bool   `json:"rollbackAvailable"`
+	OperatorDecisionRequired bool   `json:"operatorDecisionRequired"`
+	OperatorReason           string `json:"operatorReason,omitempty"`
+	OperationID              string `json:"operationId"`
+	Kind                     string `json:"kind"`
+	ResourceID               string `json:"resourceId,omitempty"`
+	Protocol                 string `json:"protocol,omitempty"`
+	Listen                   string `json:"listen,omitempty"`
+	Port                     *int   `json:"port,omitempty"`
+	State                    string `json:"state"`
+	Revision                 int    `json:"revision"`
+	PlanRevision             string `json:"planRevision,omitempty"`
+	RecoveryAttempts         int    `json:"recoveryAttempts"`
+	RecoveryErrorCode        string `json:"recoveryErrorCode,omitempty"`
+	RecoveryBundleAvailable  bool   `json:"recoveryBundleAvailable"`
+	CreatedAt                int64  `json:"createdAt"`
+	UpdatedAt                int64  `json:"updatedAt"`
 }
 
 func makeOperationView(item protectionrepository.OperationLockModel) operationView {
@@ -157,7 +167,7 @@ func (h Handler) firewallApply(c *gin.Context) {
 		return
 	}
 	result, err := h.deps.Firewall.Apply(c.Request.Context(), protectionfirewall.ApplyInput{OperationID: strings.TrimSpace(input.OperationID), Plan: plan, Resources: resources, Confirmation: input.Confirmation})
-	h.audit(c, "server_protection_firewall_apply", map[string]any{"operationId": result.OperationID, "state": result.State, "rollbackAttempted": result.RollbackAttempted})
+	h.audit(c, "server_protection_firewall_apply", map[string]any{"operationId": result.OperationID, "state": result.State, "rollbackAttempted": result.RollbackAttempted, "reasonCodes": result.ReasonCodes, "health": result.Health})
 	if err != nil {
 		writeFirewallWorkflowError(c, err)
 		return

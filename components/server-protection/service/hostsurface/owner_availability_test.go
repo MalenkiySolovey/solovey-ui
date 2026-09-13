@@ -114,7 +114,7 @@ func TestProviderWiringInvocationAndSnapshotFences(t *testing.T) {
 	var calls int
 	observer := HelperOwnerObserver{Now: func() time.Time { return now }, Helper: ownerExecutorFunc(func(_ context.Context, request protectionhelper.Request) (protectionhelper.Response, protectionhelper.ExecutionMetadata, error) {
 		calls++
-		if request.ListenerOwnerObserve.ResourceID != resource.ID || request.ListenerOwnerObserve.ExpectedDeploymentID != resource.Capabilities.ExpectedListenerOwner.DeploymentID || request.ListenerOwnerObserve.ExpectedConfigurationRevision != resource.Capabilities.ConfigRevision {
+		if request.ListenerOwnerObserve.ResourceID != resource.ID || request.ListenerOwnerObserve.ExpectedDeploymentID != resource.Capabilities.ExpectedApplicationOwner.DeploymentID || request.ListenerOwnerObserve.ExpectedConfigurationRevision != resource.Capabilities.ConfigRevision {
 			t.Fatalf("owner request escaped the frozen resource binding: %#v", request.ListenerOwnerObserve)
 		}
 		return testOwnerResponse(testOwnerResult([]hostfacts.ListenerOwnerFactV1{firewallBaselineOwnerFact(resource, now)})), metadata, nil
@@ -253,7 +253,7 @@ func TestOwnerObserverNeverAcceptsManualInputsMutationOrSecretDiagnostics(t *tes
 func testOwnerMetadata(resource hostresources.ProtectableResource) protectionhelper.ExecutionMetadata {
 	return protectionhelper.ExecutionMetadata{
 		HelperIdentityRevision: strings.Repeat("d", 64), CapabilityRevision: strings.Repeat("e", 64),
-		ListenerOwnerContractRevision: resource.Capabilities.ExpectedListenerOwner.ContractRevision,
+		ListenerOwnerContractRevision: resource.Capabilities.ExpectedApplicationOwner.ContractRevision,
 		ListenerOwnerObserverRevision: strings.Repeat("f", 64),
 	}
 }

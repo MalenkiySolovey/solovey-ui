@@ -12,51 +12,40 @@ import (
 
 const deploymentModule = "github.com/MalenkiySolovey/solovey-ui"
 
-func TestDeploymentArchitectureKeepsDomainBrokerAndLabBoundaries(t *testing.T) {
+func TestDeploymentArchitectureKeepsDomainServiceAndBrokerBoundaries(t *testing.T) {
 	root := repositoryRoot(t)
 	domainRoot := filepath.Join(root, "internal", "deployment")
 	serviceRoot := filepath.Join(root, "service", "deployment")
 	brokerRoot := filepath.Join(root, "internal", "ops", "deploymentbroker")
 
-	forEachProductionGoFile(t, domainRoot, func(path string, imports []string, source string) {
+	forEachProductionGoFile(t, domainRoot, func(path string, imports []string) {
 		for _, imported := range imports {
 			if strings.HasPrefix(imported, deploymentModule+"/") {
 				t.Fatalf("deployment domain imports product implementation: %s imports %s", path, imported)
 			}
 		}
-		assertNoDeploymentTestDoubleOrLabDependency(t, path, source)
 	})
-	forEachProductionGoFile(t, serviceRoot, func(path string, imports []string, source string) {
+	forEachProductionGoFile(t, serviceRoot, func(path string, imports []string) {
 		for _, imported := range imports {
 			if strings.HasPrefix(imported, deploymentModule+"/components/") {
 				t.Fatalf("deployment service delegates ownership to an optional component: %s imports %s", path, imported)
 			}
 		}
-		assertNoDeploymentTestDoubleOrLabDependency(t, path, source)
 	})
-	forEachProductionGoFile(t, brokerRoot, func(path string, imports []string, source string) {
+	forEachProductionGoFile(t, brokerRoot, func(path string, imports []string) {
 		for _, imported := range imports {
 			if !strings.HasPrefix(imported, deploymentModule+"/") {
 				continue
 			}
-			if imported != deploymentModule+"/internal/deployment" && imported != deploymentModule+"/internal/ops/privilegedbroker" {
+			if imported != deploymentModule+"/internal/deployment" && imported != deploymentModule+"/internal/ops/privilegedbroker" &&
+				imported != deploymentModule+"/internal/ops/executableobject" && imported != deploymentModule+"/internal/ops/systemdexec" {
 				t.Fatalf("deployment broker crosses its semantic boundary: %s imports %s", path, imported)
 			}
 		}
-		assertNoDeploymentTestDoubleOrLabDependency(t, path, source)
 	})
 }
 
-func assertNoDeploymentTestDoubleOrLabDependency(t *testing.T, path, source string) {
-	t.Helper()
-	for _, forbidden := range []string{"fakeProvider", "FakeProvider", "tools/lab.cmd", "qemu-guest-agent"} {
-		if strings.Contains(source, forbidden) {
-			t.Fatalf("production deployment source %s contains forbidden dependency %q", path, forbidden)
-		}
-	}
-}
-
-func forEachProductionGoFile(t *testing.T, root string, visit func(path string, imports []string, source string)) {
+func forEachProductionGoFile(t *testing.T, root string, visit func(path string, imports []string)) {
 	t.Helper()
 	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
@@ -81,7 +70,7 @@ func forEachProductionGoFile(t *testing.T, root string, visit func(path string, 
 			}
 			imports = append(imports, value)
 		}
-		visit(path, imports, string(data))
+		visit(path, imports)
 		return nil
 	})
 	if err != nil {

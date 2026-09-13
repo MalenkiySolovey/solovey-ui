@@ -8,6 +8,7 @@ import (
 	"runtime"
 
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
+	sshbroker "github.com/MalenkiySolovey/solovey-ui/internal/ops/sshbroker"
 )
 
 const brokerVerbPrefix = "server-protection."
@@ -66,14 +67,27 @@ func (b *BrokerInvoker) HelperIdentityRevision() string {
 }
 
 func RegisterBrokerHandlers(registry *broker.Registry, root ManagedRoot) error {
+	return registerBrokerHandlers(registry, root, sshbroker.ResolvedSSHComposition{})
+}
+
+// RegisterBrokerHandlersWithSSHComposition binds recovery to the exact
+// registered SSH composition selected by the privileged broker root.
+func RegisterBrokerHandlersWithSSHComposition(registry *broker.Registry, root ManagedRoot, composition sshbroker.ResolvedSSHComposition) error {
+	if !composition.Valid() {
+		return errors.New("server-protection SSH composition is not an exact registered release record")
+	}
+	return registerBrokerHandlers(registry, root, composition)
+}
+
+func registerBrokerHandlers(registry *broker.Registry, root ManagedRoot, composition sshbroker.ResolvedSSHComposition) error {
 	if registry == nil || root.Path() == "" {
 		return errors.New("server-protection broker dependencies are required")
 	}
-	engine := NewContractEngine(root)
-	for _, operation := range []Operation{OperationCapabilities, OperationNFTValidate, OperationNFTApply, OperationNFTRollback,
+	engine := NewContractEngineWithSSHComposition(root, composition)
+	for _, operation := range []Operation{OperationCapabilities, OperationNFTValidate, OperationNFTObserve, OperationNFTApply, OperationNFTRollback,
 		OperationNginxDetectVersion, OperationNginxValidate, OperationNginxInstall, OperationNginxSwitch,
 		OperationNginxReload, OperationNginxVerify, OperationNginxRestore,
-		OperationListenerOwnerObserve, OperationSSHRecoveryObserve, OperationArtifact} {
+		OperationListenerOwnerObserve, OperationSSHRecoveryObserve} {
 		operation := operation
 		verb, _, _ := brokerVerb(operation)
 		definition := broker.Definition{Role: broker.RolePanel, Mutation: !unlockedOperation(operation)}
@@ -95,14 +109,14 @@ func RegisterBrokerHandlers(registry *broker.Registry, root ManagedRoot) error {
 }
 
 func unlockedOperation(operation Operation) bool {
-	return operation == OperationCapabilities || operation == OperationSSHRecoveryObserve || operation == OperationListenerOwnerObserve
+	return operation == OperationCapabilities || operation == OperationNFTObserve || operation == OperationSSHRecoveryObserve || operation == OperationListenerOwnerObserve
 }
 
 func brokerVerb(operation Operation) (broker.Verb, int, bool) {
-	operations := []Operation{OperationCapabilities, OperationNFTValidate, OperationNFTApply, OperationNFTRollback,
+	operations := []Operation{OperationCapabilities, OperationNFTValidate, OperationNFTObserve, OperationNFTApply, OperationNFTRollback,
 		OperationNginxDetectVersion, OperationNginxValidate, OperationNginxInstall, OperationNginxSwitch,
 		OperationNginxReload, OperationNginxVerify, OperationNginxRestore,
-		OperationListenerOwnerObserve, OperationSSHRecoveryObserve, OperationArtifact}
+		OperationListenerOwnerObserve, OperationSSHRecoveryObserve}
 	for index, candidate := range operations {
 		if candidate == operation {
 			return broker.Verb(brokerVerbPrefix + string(operation)), index + 1, true

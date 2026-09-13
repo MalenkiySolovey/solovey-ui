@@ -21,16 +21,23 @@ type Migrator interface {
 	Migrate(context.Context, Context) error
 }
 
-// StagedMigrator runs the owner's migration against a disposable restore copy.
-// It must not consult or mutate the process-global database.
+// StagedMigrator runs the owner's migration against the supplied restore
+// candidate during rehearsal and rollback-protected acceptance. It must not
+// consult or mutate a database other than the supplied handle.
 type StagedMigrator interface {
 	MigrateStaged(context.Context, *gorm.DB) error
 }
 
 // RestoreRehearser runs owner-specific restore normalization and postconditions
-// against a disposable copy before the live database can be quiesced.
+// on the supplied candidate, both in rehearsal and before restore acceptance.
 type RestoreRehearser interface {
 	RehearseRestore(context.Context, *gorm.DB) error
+}
+
+// BackupExclusions declares host-local tables whose schema is recreated by
+// the owner migration. Exclusions apply even when the runtime is disabled.
+type BackupExclusions interface {
+	NonportableBackupTables() []string
 }
 
 type DataDropper interface {

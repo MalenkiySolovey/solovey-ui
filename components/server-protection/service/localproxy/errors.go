@@ -29,6 +29,7 @@ const (
 	CodeStateInvalid                  = "STATE_INVALID"
 	CodeOperationNotFound             = "OPERATION_NOT_FOUND"
 	CodeOperationConflict             = "OPERATION_CONFLICT"
+	CodeIdempotencyExpired            = "IDEMPOTENCY_KEY_EXPIRED"
 	CodeHealthFailed                  = "HEALTH_FAILED"
 	CodeRecoveryRequired              = "RECOVERY_REQUIRED"
 	CodeInternalFailure               = "INTERNAL_FAILURE"

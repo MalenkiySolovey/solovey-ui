@@ -27,7 +27,7 @@ func SetLoginUser(c *gin.Context, userName string, maxAge int, sessionGeneration
 	if maxAge > 0 {
 		lifetimePosture = service.LifetimePostureLegacyExplicit
 	}
-	return SetLoginSecurity(c, service.LoginSessionSpec{
+	_, err := SetLoginSecurity(c, service.LoginSessionSpec{
 		UserID:               user.Id,
 		Username:             user.Username,
 		AuthState:            service.AuthStateAuthenticated,
@@ -42,9 +42,10 @@ func SetLoginUser(c *gin.Context, userName string, maxAge int, sessionGeneration
 		DeviceLabel:          boundedDeviceLabel(c.Request.UserAgent()),
 		LegacyMaxAge:         time.Duration(maxAge) * time.Minute,
 	})
+	return err
 }
 
-func SetLoginSecurity(c *gin.Context, spec service.LoginSessionSpec) error {
+func SetLoginSecurity(c *gin.Context, spec service.LoginSessionSpec) (service.LoginSessionEstablishment, error) {
 	now := spec.Now
 	if now.IsZero() {
 		now = time.Now()
@@ -102,7 +103,7 @@ func SetLoginSecurity(c *gin.Context, spec service.LoginSessionSpec) error {
 	}
 	sessionRef, err := common.SecureRandom(32)
 	if err != nil {
-		return common.NewError("Unable to establish session")
+		return service.LoginSessionEstablishment{}, common.NewError("Unable to establish session")
 	}
 	sessionGenerationRevision := service.SessionGenerationRevision(spec.SessionGeneration)
 	if sessionGenerationRevision == "" {
@@ -112,7 +113,7 @@ func SetLoginSecurity(c *gin.Context, spec service.LoginSessionSpec) error {
 		// realtime binding during that compatibility window.
 		revision, err := common.SecureRandom(32)
 		if err != nil {
-			return common.NewError("Unable to establish session")
+			return service.LoginSessionEstablishment{}, common.NewError("Unable to establish session")
 		}
 		sessionGenerationRevision = service.SessionGenerationRevision(revision)
 	}
@@ -164,9 +165,11 @@ func SetLoginSecurity(c *gin.Context, spec service.LoginSessionSpec) error {
 
 	if err := s.Save(); err != nil {
 		logger.Warning("failed to establish server-side session:", err)
-		return common.NewError("Unable to establish session")
+		return service.LoginSessionEstablishment{}, common.NewError("Unable to establish session")
 	}
-	return nil
+	return service.LoginSessionEstablishment{
+		AuthenticationRevision: service.SessionAuthenticationRevision(sessionRef),
+	}, nil
 }
 
 func GetLoginUser(c *gin.Context) string {
@@ -215,14 +218,8 @@ func sessionUserValid(s sessions.Session, username string) bool {
 		return false
 	}
 	if ref, ok := s.Get(service.SessionRefKey).(string); ok && ref != "" && credentialOK && mfaOK {
-		_, validationErr := (&service.SecuritySessionService{}).Validate(ref, user.Id, credentialGeneration, mfaGeneration)
-		if validationErr != nil && !dbsqlite.IsNotFound(validationErr) {
-			// CookieStore is retained only in unit/integration fixtures. The
-			// production SQLite store always creates the metadata row.
-			var count int64
-			if countErr := dbsqlite.DB().Model(&model.SecuritySession{}).Where("ref = ?", ref).Count(&count).Error; countErr != nil || count > 0 {
-				return false
-			}
+		if _, err := (&service.SecuritySessionService{}).Validate(ref, user.Id, credentialGeneration, mfaGeneration); err != nil {
+			return false
 		}
 	}
 	return true

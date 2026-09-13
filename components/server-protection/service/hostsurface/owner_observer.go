@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/deploymentidentity"
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
@@ -71,8 +72,8 @@ func (o HelperOwnerObserver) ObserveOwner(ctx context.Context, resource hostreso
 	if o.Helper == nil {
 		return unavailableOwnerObservation(OwnerObserverNotRegistered)
 	}
-	expected := resource.Capabilities.ExpectedListenerOwner
-	if !expected.Valid() {
+	expected, ok := listenerOwnerExpectationFor(resource)
+	if !ok {
 		return unavailableOwnerObservation(OwnerContractMismatch, "listener_owner_expectation_missing")
 	}
 	if resource.ListenIntent.Schema != hostresources.ConfiguredListenIntentSchemaV1 {
@@ -167,7 +168,7 @@ func availabilityForOwnerReasons(reasons []string) OwnerAvailability {
 			return OwnerObservationStale
 		case "listener_owner_ambiguous":
 			return OwnerObservationAmbiguous
-		case "listener_owner_capability_unavailable", "listener_owner_systemd_unavailable", "listener_owner_unavailable", "listener_owner_scan_bounded", "listener_service_unavailable", "listener_process_identity_mismatch":
+		case "listener_owner_capability_unavailable", "listener_owner_systemd_unavailable", "listener_owner_procd_unavailable", "listener_owner_unavailable", "listener_owner_scan_bounded", "listener_service_unavailable", "listener_process_identity_mismatch":
 			return OwnerObservationFailed
 		}
 	}
@@ -175,7 +176,11 @@ func availabilityForOwnerReasons(reasons []string) OwnerAvailability {
 }
 
 func validateOwnerFact(fact hostfacts.ListenerOwnerFactV1, resource hostresources.ProtectableResource, now time.Time) (OwnerAvailability, string) {
-	expected, application := resource.Capabilities.ExpectedListenerOwner, fact.Application
+	expected, ok := listenerOwnerExpectationFor(resource)
+	if !ok {
+		return OwnerContractMismatch, "listener_owner_contract_mismatch"
+	}
+	application := fact.Application
 	if fact.ExpiresAt <= now.Unix() {
 		return OwnerObservationStale, "listener_owner_stale"
 	}
@@ -187,9 +192,7 @@ func validateOwnerFact(fact hostfacts.ListenerOwnerFactV1, resource hostresource
 	}
 	if application.OwnerContractRevision != expected.ContractRevision || application.RuntimeRootBindingRevision != expected.RuntimeRootBindingRevision ||
 		application.ExpectedExecutableSHA256 != expected.ExecutableSHA256 || application.ServiceIdentity != expected.ServiceIdentity ||
-		fact.Service.SystemdUnit != expected.SystemdUnit || fact.Service.FragmentPath != expected.ServiceFragmentPath ||
-		fact.Service.FragmentSHA256 != expected.ServiceUnitSHA256 || fact.Service.ControlGroup != expected.ServiceControlGroup ||
-		fact.Process.ControlGroup != expected.ServiceControlGroup || fact.Process.Executable != expected.ExecutablePath ||
+		fact.Process.Executable != expected.ExecutablePath ||
 		fact.Process.UID == nil || fact.Process.GID == nil || uint32(*fact.Process.UID) != expected.ProcessUID || uint32(*fact.Process.GID) != expected.ProcessGID {
 		return OwnerContractMismatch, "listener_owner_contract_mismatch"
 	}
@@ -197,6 +200,11 @@ func validateOwnerFact(fact hostfacts.ListenerOwnerFactV1, resource hostresource
 		return OwnerObservationFailed, "listener_owner_fact_invalid"
 	}
 	return OwnerObservationSuccess, ""
+}
+
+func listenerOwnerExpectationFor(resource hostresources.ProtectableResource) (deploymentidentity.ExpectedApplicationOwnerV1, bool) {
+	expected := resource.Capabilities.ExpectedApplicationOwner
+	return expected, expected.Valid()
 }
 
 func unavailableOwnerObservation(availability OwnerAvailability, reasons ...string) OwnerObservation {

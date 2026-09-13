@@ -5,7 +5,7 @@ vi.mock('axios', () => ({
 }))
 
 vi.mock('@/plugins/httputil', () => ({
-  default: { get: vi.fn() },
+  default: { get: vi.fn(), post: vi.fn() },
 }))
 
 vi.mock('@/store/modules/data', () => ({
@@ -13,8 +13,9 @@ vi.mock('@/store/modules/data', () => ({
 }))
 
 import axios from 'axios'
+import HttpUtils from '@/plugins/httputil'
 import { clearCSRFToken, getCSRFToken } from './csrf'
-import { reconnectDelayForRetry, WsLike, WsRuntime, wsProtocolsForToken } from './ws'
+import { reconnectDelayForRetry, requestWSToken, WsLike, WsRuntime, wsProtocolsForToken } from './ws'
 
 class FakeSocket implements WsLike {
   onopen: ((event?: any) => void) | null = null
@@ -115,6 +116,13 @@ describe('WsRuntime fallback', () => {
 
   it('formats websocket protocols with explicit token prefix', () => {
     expect(wsProtocolsForToken('abc123')).toEqual(['sui.realtime', 'sui.token.abc123'])
+  })
+
+  it('requests the authenticated websocket token through the CSRF-protected POST path', async () => {
+    vi.mocked(HttpUtils.post).mockResolvedValue({ success: true, msg: '', obj: { token: 'ws-token' } })
+
+    await expect(requestWSToken()).resolves.toBe('ws-token')
+    expect(HttpUtils.post).toHaveBeenCalledWith('api/realtime/ws-token', null)
   })
 
   it('clears csrf token after session-rotated websocket close', async () => {

@@ -21,7 +21,7 @@ func TestPreviewIsDeterministicAndNonEnforcing(t *testing.T) {
 	if left.Revision == "" || left.Revision != right.Revision {
 		t.Fatalf("plan revisions = %q / %q", left.Revision, right.Revision)
 	}
-	preview := Preview(left, PreviewOptions{OperatingSystem: "linux", IncludeGeneratedNFT: true})
+	preview := Preview(left, PreviewOptions{NFTCapability: NFTPreviewCapability{Available: true, Revision: strings.Repeat("a", 64)}, IncludeGeneratedNFT: true})
 	if preview.Backend != "preview_only" || len(preview.WouldBlock) != 0 || len(preview.ProtectedKeep) != 3 {
 		t.Fatalf("preview = %#v", preview)
 	}
@@ -41,18 +41,26 @@ func TestPreviewIsDeterministicAndNonEnforcing(t *testing.T) {
 	}
 }
 
-func TestNonLinuxPreviewReturnsInventoryWithoutScript(t *testing.T) {
+func TestUnavailableNFTCapabilityReturnsInventoryWithoutScript(t *testing.T) {
 	plan := BuildPlan([]hostresources.ProtectableResource{{ID: "core:panel:web", Protocol: "http", Listen: "127.0.0.1", Port: 2095}}, nil, nil)
-	preview := Preview(plan, PreviewOptions{OperatingSystem: "windows", IncludeGeneratedNFT: true})
+	preview := Preview(plan, PreviewOptions{NFTCapability: NFTPreviewCapability{Reason: "nft_helper_absent"}, IncludeGeneratedNFT: true})
 	if preview.Backend != "unsupported" || preview.GeneratedNFT != "" || len(preview.ProtectedKeep) != 1 || len(preview.WouldBlock) != 0 {
 		t.Fatalf("preview = %#v", preview)
 	}
 }
 
-func TestPlanKeepsCommonSSHAsWarningOnlyFallback(t *testing.T) {
+func TestPreviewFailsClosedWithoutInjectedCapability(t *testing.T) {
 	plan := BuildPlan(nil, nil, nil)
-	if !containsPort(plan.AllowTCPPorts, 22) {
-		t.Fatalf("TCP keep ports = %#v", plan.AllowTCPPorts)
+	preview := Preview(plan, PreviewOptions{IncludeGeneratedNFT: true})
+	if preview.Backend != "unsupported" || preview.GeneratedNFT != "" || !strings.Contains(strings.Join(preview.Warnings, " "), "capability unavailable") {
+		t.Fatalf("preview without capability = %#v", preview)
+	}
+}
+
+func TestPlanDoesNotInventAnSSHPortWhenSemanticOwnerIsUnknown(t *testing.T) {
+	plan := BuildPlan(nil, nil, nil)
+	if len(plan.AllowTCPPorts) != 0 {
+		t.Fatalf("invented TCP keep ports = %#v", plan.AllowTCPPorts)
 	}
 	if len(plan.Warnings) == 0 || !strings.Contains(plan.Warnings[0], "SSH") {
 		t.Fatalf("warnings = %#v", plan.Warnings)

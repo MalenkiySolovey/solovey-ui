@@ -10,7 +10,7 @@ import (
 
 func TestProfileCatalogIsDeterministicExplicitAndCapabilityHonest(t *testing.T) {
 	first, second := Catalog(), Catalog()
-	if Revision(first) != Revision(second) || len(first) != 6 {
+	if Revision(first) != Revision(second) || len(first) != 7 {
 		t.Fatalf("catalog is not deterministic: %#v %#v", first, second)
 	}
 	fresh := map[Runtime]ProfileID{}
@@ -32,7 +32,7 @@ func TestProfileCatalogIsDeterministicExplicitAndCapabilityHonest(t *testing.T) 
 			t.Fatalf("default profile has excess capabilities: %#v", profile)
 		}
 	}
-	if fresh[RuntimeNative] != NativeHardened || fresh[RuntimeDocker] != DockerHost {
+	if fresh[RuntimeSystemdNative] != NativeHardened || fresh[RuntimeDocker] != DockerHost || fresh[RuntimePackageManaged] != PackageManagedOpenWrt {
 		t.Fatalf("fresh defaults=%v", fresh)
 	}
 }
@@ -40,13 +40,15 @@ func TestProfileCatalogIsDeterministicExplicitAndCapabilityHonest(t *testing.T) 
 func TestSystemdProfilesAndBrokerHaveBoundedAuthority(t *testing.T) {
 	root := repositoryRoot(t)
 	mainUnit := readArtifact(t, filepath.Join(root, "solovey-ui.service"))
-	if !strings.Contains(mainUnit, "Environment=SUI_COMPONENTS_INSTALLED_FILE=/usr/local/solovey-ui/components/installed.json") {
+	if !strings.Contains(mainUnit, "Environment=SUI_COMPONENTS_INSTALLED_FILE=/usr/local/solovey-ui/components/installed.json") ||
+		!strings.Contains(mainUnit, "Environment=SUI_DEPLOYMENT_KIND=systemd") {
 		t.Fatal("primary native service unit does not bind shipped installed-component metadata")
 	}
 	hardened := readArtifact(t, filepath.Join(root, "deploy", "systemd", "solovey-ui-native-hardened.service"))
 	for _, required := range []string{"User=solovey-ui", "Group=solovey-ui", "NoNewPrivileges=true", "ProtectSystem=strict", "ProtectHome=true",
 		"PrivateDevices=true", "RestrictNamespaces=true", "CapabilityBoundingSet=\n", "AmbientCapabilities=\n", "TasksMax=4096",
 		"Environment=SUI_COMPONENTS_INSTALLED_FILE=/usr/local/solovey-ui/components/installed.json",
+		"Environment=SUI_DEPLOYMENT_KIND=systemd",
 		"Requires=solovey-privileged-broker.socket solovey-privileged-proof.socket"} {
 		if !strings.Contains(hardened, required) {
 			t.Fatalf("hardened unit misses %q", required)
@@ -60,21 +62,29 @@ func TestSystemdProfilesAndBrokerHaveBoundedAuthority(t *testing.T) {
 	advanced := readArtifact(t, filepath.Join(root, "deploy", "systemd", "solovey-ui-native-network-advanced.service"))
 	if !strings.Contains(advanced, "generated contract; unavailable") || !strings.Contains(advanced, "CapabilityBoundingSet=\n") ||
 		!strings.Contains(advanced, "Environment=SUI_COMPONENTS_INSTALLED_FILE=/usr/local/solovey-ui/components/installed.json") ||
+		!strings.Contains(advanced, "Environment=SUI_DEPLOYMENT_KIND=systemd") ||
 		strings.Contains(advanced, "CAP_NET_ADMIN") || strings.Contains(advanced, "DeviceAllow=/dev/net/tun") || strings.Contains(advanced, "CAP_SYS_ADMIN") {
 		t.Fatal("advanced native contract grants network authority to the panel")
 	}
 	legacy := readArtifact(t, filepath.Join(root, "deploy", "systemd", "solovey-ui-native-legacy-root.service"))
 	if !strings.Contains(legacy, "User=root") || !strings.Contains(legacy, "native-legacy-root compatibility") || !strings.Contains(legacy, "Requires=solovey-privileged-broker.socket") ||
-		!strings.Contains(legacy, "Environment=SUI_COMPONENTS_INSTALLED_FILE=/usr/local/solovey-ui/components/installed.json") {
+		!strings.Contains(legacy, "Environment=SUI_COMPONENTS_INSTALLED_FILE=/usr/local/solovey-ui/components/installed.json") ||
+		!strings.Contains(legacy, "Environment=SUI_DEPLOYMENT_KIND=systemd") {
 		t.Fatal("legacy profile is not explicit broker-backed compatibility")
 	}
 	brokerUnit := readArtifact(t, filepath.Join(root, "deploy", "systemd", "solovey-privileged-broker.service"))
-	for _, required := range []string{"ExecStart=/usr/local/solovey-ui/releases/current/solovey-privileged-broker", "TasksMax=128", "LimitNOFILE=4096",
+	for _, required := range []string{"ExecStart=/usr/local/solovey-ui/releases/current/solovey-privileged-broker --transport=systemd-activated --ssh-implementation=openssh --ssh-service-control=systemd --ssh-log-evidence=journald --deployment-backend=systemd-native --update-mode=native-self-managed",
+		"TasksMax=128", "LimitNOFILE=4096",
 		"ReadWritePaths=/var/lib/solovey-ui-broker /var/lib/solovey-ui /usr/local/solovey-ui/releases", "-/etc/nginx -/run/nginx -/var/lib/nginx -/var/log/nginx", "/etc/systemd/system", "ProtectSystem=strict",
 		"CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_NET_ADMIN CAP_NET_RAW CAP_SETGID CAP_SETUID CAP_SYS_PTRACE",
 		"AmbientCapabilities=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_NET_ADMIN CAP_NET_RAW CAP_SETGID CAP_SETUID CAP_SYS_PTRACE"} {
 		if !strings.Contains(brokerUnit, required) {
 			t.Fatalf("broker unit misses %q", required)
+		}
+	}
+	for _, forbidden := range []string{"SOLOVEY_UI_SSH_IMPLEMENTATION", "SOLOVEY_UI_SSH_SERVICE_CONTROL", "SOLOVEY_UI_SSH_LOG_EVIDENCE", "SOLOVEY_UI_SSH_JOURNALD_UNITS"} {
+		if strings.Contains(brokerUnit, forbidden) {
+			t.Fatalf("broker unit retains redundant environment composition authority %q", forbidden)
 		}
 	}
 	if strings.Contains(brokerUnit, "CAP_SYS_ADMIN") || strings.Contains(brokerUnit, "ExecStart=/bin/") {
@@ -112,6 +122,16 @@ func TestDockerProfilesHaveNoRootControlPath(t *testing.T) {
 		"stop_grace_period:", "max-size: \"10m\"", "@sha256:", "healthcheck:", "SUI_COMPONENTS_INSTALLED_FILE: /app/components/installed.json"} {
 		if !strings.Contains(base, required) {
 			t.Fatalf("default Compose misses %q", required)
+		}
+	}
+	if !strings.Contains(base, "SUI_SERVER_PROTECTION_RUNTIME_ROOT: /run/solovey-ui/server-protection") {
+		t.Fatal("default Compose does not inject the deployment-owned component runtime root")
+	}
+	entrypoint := readArtifact(t, filepath.Join(root, "entrypoint.sh"))
+	for _, required := range []string{`RUNTIME_ROOT="${SUI_SERVER_PROTECTION_RUNTIME_ROOT:-}"`,
+		`[ "$RUNTIME_ROOT" = "/run/solovey-ui/server-protection" ]`, `mkdir -m 0700 "$RUNTIME_ROOT"`, `chmod 0700 "$RUNTIME_ROOT"`} {
+		if !strings.Contains(entrypoint, required) {
+			t.Fatalf("Docker entrypoint misses runtime-root creator fact %q", required)
 		}
 	}
 	dockerfile := readArtifact(t, filepath.Join(root, "Dockerfile"))

@@ -8,7 +8,6 @@ import (
 	"testing"
 
 	"github.com/gin-contrib/sessions"
-	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
 )
 
@@ -16,7 +15,7 @@ func TestImportXUIRoutesUseSharedRegistry(t *testing.T) {
 	initSessionTestDB(t)
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(sessions.Sessions("s-ui", cookie.NewStore([]byte("test-secret"))))
+	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
 	apiv2 := NewAPIv2Handler(router.Group("/apiv2"))
 	NewAPIHandler(router.Group("/api"), apiv2)
 

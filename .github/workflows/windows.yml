@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v2026.3.0"
+        default: "v2026.3.1"
         type: string
       preflight_only:
         description: "Build Windows release package without publishing"

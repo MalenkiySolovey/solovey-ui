@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/deploymentidentity"
 )
 
 const (
@@ -85,23 +87,40 @@ func (r *Registry) Register(contributor ResourceContributor) (func(), error) {
 }
 
 func (r *Registry) Snapshot(ctx context.Context) ResourceSnapshot {
-	return r.snapshot(ctx, false)
+	return r.snapshot(ctx, false, nil)
 }
 
 func (r *Registry) Refresh(ctx context.Context) ResourceSnapshot {
-	return r.snapshot(ctx, true)
+	return r.snapshot(ctx, true, nil)
 }
 
-func (r *Registry) snapshot(ctx context.Context, refresh bool) ResourceSnapshot {
+// SnapshotExcluding obtains a fresh owner-filtered view without invoking the
+// excluded contributors. Filtered snapshots are request-scoped and never
+// enter the shared cache, allowing a semantic owner to supply one coherent
+// generation through a dedicated projection.
+func (r *Registry) SnapshotExcluding(ctx context.Context, owners ...string) ResourceSnapshot {
+	excluded := make(map[string]bool, len(owners))
+	for _, owner := range owners {
+		if owner = strings.TrimSpace(owner); owner != "" {
+			excluded[owner] = true
+		}
+	}
+	return r.snapshot(ctx, true, excluded)
+}
+
+func (r *Registry) snapshot(ctx context.Context, refresh bool, excluded map[string]bool) ResourceSnapshot {
 	now := r.now()
 	r.mu.RLock()
-	if !refresh && r.cache != nil && now.Before(r.cache.expiresAt) {
+	if len(excluded) == 0 && !refresh && r.cache != nil && now.Before(r.cache.expiresAt) {
 		value := cloneSnapshot(r.cache.value)
 		r.mu.RUnlock()
 		return value
 	}
 	contributors := make([]registeredContributor, 0, len(r.contributors))
 	for _, contributor := range r.contributors {
+		if excluded[contributor.owner] {
+			continue
+		}
 		contributors = append(contributors, contributor)
 	}
 	r.mu.RUnlock()
@@ -126,6 +145,10 @@ func (r *Registry) snapshot(ctx context.Context, refresh bool) ResourceSnapshot 
 			if len(snapshot.Resources) >= MaxResourceFacts {
 				truncated = true
 				break
+			}
+			if len(item.ManagementEndpoints) > 32 {
+				snapshot.Errors = append(snapshot.Errors, ResourceError{Owner: owner, Message: "management endpoint projection is unbounded"})
+				continue
 			}
 			item = cloneResource(item)
 			resourceInvalid := false
@@ -207,9 +230,9 @@ func (r *Registry) snapshot(ctx context.Context, refresh bool) ResourceSnapshot 
 			item.Capabilities.OwnerRevision = optionalResourceToken(item.Capabilities.OwnerRevision, 128)
 			item.Capabilities.ConfigRevision = optionalResourceToken(item.Capabilities.ConfigRevision, 128)
 			resourceInvalid = resourceInvalid || (originalTLSMode != "" && item.Capabilities.TLSMode == "") || (originalFallbackTargetID != "" && item.Capabilities.FallbackTargetID == "") || (originalOwnerRevision != "" && item.Capabilities.OwnerRevision == "") || (originalConfigRevision != "" && item.Capabilities.ConfigRevision == "")
-			if expected := item.Capabilities.ExpectedListenerOwner; expected.Schema != "" && !expected.Valid() {
-				item.Capabilities.ExpectedListenerOwner = ExpectedListenerOwnerV1{}
-				item.Warnings = append(item.Warnings, "expected listener owner contract is invalid")
+			if expected := item.Capabilities.ExpectedApplicationOwner; expected.Schema != "" && !expected.Valid() {
+				item.Capabilities.ExpectedApplicationOwner = deploymentidentity.ExpectedApplicationOwnerV1{}
+				item.Warnings = append(item.Warnings, "expected application owner contract is invalid")
 				resourceInvalid = true
 			}
 			if item.Port < 1 || item.Port > 65535 {
@@ -253,6 +276,19 @@ func (r *Registry) snapshot(ctx context.Context, refresh bool) ResourceSnapshot 
 			if advertisedTruncated {
 				truncated = true
 			}
+			projectionTime := r.now().UTC()
+			if item.SocketCoverage != nil && !item.SocketCoverage.CurrentFor(item, projectionTime) {
+				item.SocketCoverage = nil
+				item.ManagementEndpoints = nil
+				resourceInvalid = true
+			}
+			for _, endpoint := range item.ManagementEndpoints {
+				if !ManagementEndpointBoundToResource(endpoint, item, projectionTime) {
+					item.ManagementEndpoints = nil
+					resourceInvalid = true
+					break
+				}
+			}
 			if resourceInvalid {
 				item.Capabilities.Known = false
 				invalidFacts = true
@@ -292,9 +328,11 @@ func (r *Registry) snapshot(ctx context.Context, refresh bool) ResourceSnapshot 
 	})
 	sort.Slice(snapshot.Errors, func(i, j int) bool { return snapshot.Errors[i].Owner < snapshot.Errors[j].Owner })
 
-	r.mu.Lock()
-	r.cache = &cachedSnapshot{value: cloneSnapshot(snapshot), expiresAt: now.Add(r.cacheTTL)}
-	r.mu.Unlock()
+	if len(excluded) == 0 {
+		r.mu.Lock()
+		r.cache = &cachedSnapshot{value: cloneSnapshot(snapshot), expiresAt: now.Add(r.cacheTTL)}
+		r.mu.Unlock()
+	}
 	return cloneSnapshot(snapshot)
 }
 
@@ -461,6 +499,15 @@ func cloneSnapshot(value ResourceSnapshot) ResourceSnapshot {
 
 func cloneResource(value ProtectableResource) ProtectableResource {
 	result := value
+	if value.SocketCoverage != nil {
+		coverage := *value.SocketCoverage
+		coverage.Socket.CoverageFamilies = append(coverage.Socket.CoverageFamilies[:0:0], coverage.Socket.CoverageFamilies...)
+		if value.SocketCoverage.Socket.IPv6Only != nil {
+			only := *value.SocketCoverage.Socket.IPv6Only
+			coverage.Socket.IPv6Only = &only
+		}
+		result.SocketCoverage = &coverage
+	}
 	result.Warnings = append([]string(nil), value.Warnings...)
 	result.Capabilities.PublicHostnames = append([]string(nil), value.Capabilities.PublicHostnames...)
 	result.Capabilities.RouteHints = append([]string(nil), value.Capabilities.RouteHints...)
@@ -468,6 +515,10 @@ func cloneResource(value ProtectableResource) ProtectableResource {
 	result.ListenIntents = append([]ConfiguredListenIntentV1(nil), value.ListenIntents...)
 	for index := range result.ListenIntents {
 		result.ListenIntents[index].RequiredFamilies = append([]AddressFamily(nil), value.ListenIntents[index].RequiredFamilies...)
+	}
+	result.ManagementEndpoints = append([]ManagementEndpointV1(nil), value.ManagementEndpoints...)
+	for index := range result.ManagementEndpoints {
+		result.ManagementEndpoints[index].ReasonCodes = append([]string(nil), value.ManagementEndpoints[index].ReasonCodes...)
 	}
 	result.Endpoints = append([]PublicEndpoint(nil), value.Endpoints...)
 	for endpoint := range result.Endpoints {
@@ -486,3 +537,6 @@ var Default = NewRegistry(defaultCacheTTL)
 func Register(contributor ResourceContributor) (func(), error) { return Default.Register(contributor) }
 func Snapshot(ctx context.Context) ResourceSnapshot            { return Default.Snapshot(ctx) }
 func Refresh(ctx context.Context) ResourceSnapshot             { return Default.Refresh(ctx) }
+func SnapshotExcluding(ctx context.Context, owners ...string) ResourceSnapshot {
+	return Default.SnapshotExcluding(ctx, owners...)
+}

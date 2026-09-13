@@ -6,7 +6,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"runtime"
 	"time"
 
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
@@ -29,7 +28,7 @@ func (h Handler) firewallBaselinePlan(c *gin.Context) {
 		h.deps.JSONObj(c, nil, err)
 		return
 	}
-	preview := protectionfirewall.Preview(state.Plan, protectionfirewall.PreviewOptions{IncludeGeneratedNFT: queryBool(c, "include_generated_nft"), OperatingSystem: runtime.GOOS})
+	preview := protectionfirewall.Preview(state.Plan, protectionfirewall.PreviewOptions{IncludeGeneratedNFT: queryBool(c, "include_generated_nft"), NFTCapability: h.firewallPreviewCapability(c.Request.Context())})
 	capability := h.baselineService().CapabilityAssessment(c.Request.Context(), state.Plan)
 	recommendations := make([]gin.H, 0, len(state.Graph.Nodes))
 	for _, node := range state.Graph.Nodes {
@@ -48,8 +47,6 @@ func (h Handler) firewallBaselinePlan(c *gin.Context) {
 		"capabilityAssessment":                capability,
 		"managementGuard":                     gin.H{"managementEndpoints": state.Management, "recoveryPaths": state.Recovery, "invalidRecoveryRecords": state.InvalidRecovery, "state": recoveryState(state.Recovery, state.Management, time.Now().UTC())},
 		"status":                              gin.H{"desired": "COEXISTENCE_ENDPOINT_MANAGED", "selected": map[bool]string{true: "OBSERVE_ONLY", false: "PLANNED"}[!state.Plan.BaselineEligibility.CandidateEligible], "actual": "NOT_APPLIED"},
-		"realNftablesLive":                    "NOT_RUN",
-		"stabilityClaim":                      "normal_ci_only",
 	}, nil)
 }
 

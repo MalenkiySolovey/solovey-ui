@@ -9,6 +9,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/events"
+	protectionpolicy "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/policy"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/scoring"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -110,11 +111,11 @@ func (r *Repository) ActiveIPAllowlist(ctx context.Context, now time.Time) ([]ne
 	}
 	result := make([]netip.Prefix, 0, len(items))
 	for _, item := range items {
-		prefix, err := netip.ParsePrefix(item.IPCIDR)
+		validated, err := protectionpolicy.ValidateTrustedSource(item.IPCIDR, item.BroadScopeAcknowledged, "TRUST BROAD SOURCE "+item.IPCIDR)
 		if err != nil {
-			continue
+			return nil, errors.New("active trusted source is invalid")
 		}
-		result = append(result, prefix.Masked())
+		result = append(result, validated.Prefix)
 	}
 	return result, nil
 }

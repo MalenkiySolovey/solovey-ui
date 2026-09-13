@@ -52,6 +52,7 @@ func inboundResourceAt(snapshot coreinboundcontrol.InboundFallbackSnapshotV1, ob
 	warnings = uniqueStrings(warnings)
 	canFallback := capabilityValue(snapshot.Capability.Disposition)
 	protocol := protocolForNetwork(snapshot.Listener.Network, snapshot.Type)
+	expectedOwner := expectedApplicationOwner()
 	resource := hostresources.ProtectableResource{
 		ID:         snapshot.ResourceID,
 		Kind:       "inbound",
@@ -65,16 +66,16 @@ func inboundResourceAt(snapshot coreinboundcontrol.InboundFallbackSnapshotV1, ob
 		Source:     "inbounds",
 		InboundTag: snapshot.Tag,
 		Capabilities: hostresources.ProtectableResourceCapabilities{
-			Known:                 configurationKnown(snapshot),
-			AcceptsProxyProtocol:  inboundProxyProtocol(snapshot),
-			SupportsGracefulDrain: hostresources.CapabilityUnknown,
-			CanServeFallback:      canFallback,
-			RequiresACMEHTTP01:    hostresources.CapabilityUnknown,
-			RequiresTLSALPN01:     hostresources.CapabilityUnknown,
-			TLSMode:               tlsMode(snapshot.TLS.Enabled),
-			OwnerRevision:         snapshot.ConfigurationRevision,
-			ConfigRevision:        snapshot.ConfigurationRevision,
-			ExpectedListenerOwner: expectedApplicationListenerOwner(),
+			Known:                    configurationKnown(snapshot),
+			AcceptsProxyProtocol:     inboundProxyProtocol(snapshot),
+			SupportsGracefulDrain:    hostresources.CapabilityUnknown,
+			CanServeFallback:         canFallback,
+			RequiresACMEHTTP01:       hostresources.CapabilityUnknown,
+			RequiresTLSALPN01:        hostresources.CapabilityUnknown,
+			TLSMode:                  tlsMode(snapshot.TLS.Enabled),
+			OwnerRevision:            snapshot.ConfigurationRevision,
+			ConfigRevision:           snapshot.ConfigurationRevision,
+			ExpectedApplicationOwner: expectedOwner,
 		},
 		Warnings: warnings,
 	}

@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
-	"runtime"
 	"sort"
 	"strings"
 	"time"
@@ -31,7 +30,7 @@ type NginxConfig struct {
 	ExternalManaged   bool
 	DynamicModules    map[string]bool
 	ModuleRoots       []string
-	Platform          string // test seam; production defaults to runtime.GOOS.
+	ProbeCapability   Availability
 	Timeout           time.Duration
 	StdoutLimit       int
 	StderrLimit       int
@@ -66,8 +65,8 @@ func (a *NginxAdapter) Capability(ctx context.Context) CapabilityReport {
 	}
 	config := normalizedConfig(a.Config)
 	report := baseReport(config)
-	if config.Platform != "linux" {
-		return unsupportedReport(report, StateUnsupported, "nginx stream detection requires Linux")
+	if config.ProbeCapability != AvailabilitySupported {
+		return unsupportedReport(report, StateUnsupported, "nginx binary inspection capability is unavailable")
 	}
 	path, identity, state, reason := resolveBinary(config)
 	if state != "" {
@@ -152,16 +151,15 @@ func normalizedConfig(value NginxConfig) NginxConfig {
 	if value.StderrLimit <= 0 {
 		value.StderrLimit = 64 * 1024
 	}
-	if len(value.CandidatePaths) == 0 {
+	// Candidate discovery belongs only to the explicit preview/config seam.
+	// Production composition leaves ProbeCapability unsupported and consumes
+	// the restricted helper's injected BinaryIdentity through Workflow.
+	if value.ProbeCapability == AvailabilitySupported && len(value.CandidatePaths) == 0 {
 		value.CandidatePaths = []string{"/usr/sbin/nginx", "/usr/local/sbin/nginx", "/usr/bin/nginx", "/usr/local/bin/nginx"}
 	}
 	value.ConfigRoot = strings.TrimSpace(value.ConfigRoot)
 	value.ManagedRoot = strings.TrimSpace(value.ManagedRoot)
 	value.ControlledInclude = strings.TrimSpace(value.ControlledInclude)
-	value.Platform = strings.ToLower(strings.TrimSpace(value.Platform))
-	if value.Platform == "" {
-		value.Platform = runtime.GOOS
-	}
 	return value
 }
 
