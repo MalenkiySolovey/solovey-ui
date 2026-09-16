@@ -41,7 +41,7 @@ start_service() {
 	procd_set_param user solovey-ui
 	procd_set_param group solovey-ui
 	procd_set_param env \
-		SUI_DB_FOLDER=/etc/solovey-ui/db \
+		SUI_DB_FOLDER="$("$SOLOVEY_ROOT/solovey-openwrt-durability" database-folder)" \
 		SUI_DEPLOYMENT_KIND=openwrt-package-managed \
 		SUI_COMPONENTS_INSTALLED_FILE=/usr/lib/solovey-ui/components/installed.json
 	procd_set_param respawn 3600 5 5

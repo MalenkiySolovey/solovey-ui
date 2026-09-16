@@ -7,7 +7,33 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+
+	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 )
+
+func TestPreImportRecoveryIgnoresExternalExportStaging(t *testing.T) {
+	initCompatDest(t)
+	// Ordinary export staging can be on another filesystem or unavailable.
+	// Recovery publication must retain its own same-filesystem directory.
+	blocked := filepath.Join(t.TempDir(), "not-a-directory")
+	if err := os.WriteFile(blocked, []byte("unrelated"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("SUI_STAGING_FOLDER", blocked)
+	name, err := WritePreImportBackup(1700000000)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if filepath.Dir(name) != configstorage.GetDBFolderPath() {
+		t.Fatal("recovery backup escaped database filesystem")
+	}
+	if info, err := os.Stat(name); err != nil || info.Size() == 0 {
+		t.Fatal("logical recovery backup was not published")
+	}
+	if data, err := os.ReadFile(blocked); err != nil || string(data) != "unrelated" {
+		t.Fatal("external staging was touched")
+	}
+}
 
 // TestPrunePreImportBackups_KeepsNewest guards the runaway-backup fix: a slow
 // import that the client resubmits used to leave dozens of

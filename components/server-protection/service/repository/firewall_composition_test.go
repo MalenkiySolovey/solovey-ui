@@ -95,6 +95,77 @@ func TestRestoredFirewallAuthorityIsRecoveryRequiredAndDropProtected(t *testing.
 	}
 }
 
+func TestRestoreClosesAbandonedFirewallPreparationsWithoutHidingMutationAuthority(t *testing.T) {
+	db := openTestDB(t)
+	if err := Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"abandoned", "already_normalized", "mutation_marked", "live_reference", "still_prepared"} {
+		state := "abandoned"
+		if id == "still_prepared" {
+			state = "prepared"
+		}
+		if err := db.Create(&OperationLockModel{OperationID: id, IdempotencyKey: id, Kind: "firewall", State: state, Revision: 1}).Error; err != nil {
+			t.Fatal(err)
+		}
+		transition := FirewallContributionTransitionModel{OperationID: id, State: "PREPARED", UpdatedAt: 1,
+			PreviousJSON: json.RawMessage(`{}`), DesiredJSON: json.RawMessage(`{}`)}
+		if id == "already_normalized" {
+			transition.State = "RECOVERY_REQUIRED"
+		}
+		if id == "mutation_marked" {
+			transition.MarkerUnixNano = 1
+		}
+		if err := db.Create(&transition).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Create(&FirewallContributionModel{ContributionID: "retained", AppliedOperationID: "live_reference", SemanticJSON: json.RawMessage(`{}`)}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := ReconcileRestoredFirewallAuthority(t.Context(), db, time.Unix(1000, 0)); err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"abandoned", "already_normalized", "mutation_marked", "live_reference", "still_prepared"} {
+		var transition FirewallContributionTransitionModel
+		if err := db.First(&transition, "operation_id = ?", id).Error; err != nil {
+			t.Fatal(err)
+		}
+		want := "RECOVERY_REQUIRED"
+		if id == "abandoned" || id == "already_normalized" {
+			want = "CANCELLED"
+		}
+		if transition.State != want {
+			t.Fatalf("%s state=%s want=%s", id, transition.State, want)
+		}
+	}
+	protected, err := protectedArtifactOperations(db)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if protected["abandoned"] != "" || protected["already_normalized"] != "" || protected["mutation_marked"] == "" || protected["live_reference"] == "" {
+		t.Fatalf("restore retention closure=%v", protected)
+	}
+	// The startup path also repairs previously normalized r24 history and is
+	// idempotent; terminalization never rewrites an already closed row.
+	if err := db.Model(&FirewallContributionTransitionModel{}).Where("operation_id = ?", "already_normalized").Update("state", "RECOVERY_REQUIRED").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := ReconcileAbandonedFirewallTransitions(t.Context(), db, time.Unix(2000, 0)); err != nil {
+		t.Fatal(err)
+	}
+	if err := ReconcileAbandonedFirewallTransitions(t.Context(), db, time.Unix(3000, 0)); err != nil {
+		t.Fatal(err)
+	}
+	var terminal FirewallContributionTransitionModel
+	if err := db.First(&terminal, "operation_id = ?", "already_normalized").Error; err != nil {
+		t.Fatal(err)
+	}
+	if terminal.State != "CANCELLED" || terminal.UpdatedAt != time.Unix(2000, 0).UnixNano() {
+		t.Fatal("startup normalization is not idempotent")
+	}
+}
+
 func TestFirewallObservationIsHostLocalAndCompositionFenced(t *testing.T) {
 	db := openTestDB(t)
 	if err := Migrate(db); err != nil {

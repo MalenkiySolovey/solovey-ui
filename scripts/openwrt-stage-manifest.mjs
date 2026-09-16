@@ -9,6 +9,7 @@ import {
   sha256,
   verifySourceFingerprint,
 } from './openwrt-package-source-fingerprint.mjs'
+import { proveInstalledUnixTextAssets } from './openwrt-unix-text-assets.mjs'
 
 export const stageManifestSchema = 'solovey-ui/openwrt-target-stage/v2'
 
@@ -88,6 +89,8 @@ export function createStageManifest(stageRoot, sourceRoot) {
   const directories = entries.filter(entry => entry.type === 'directory')
   const payloadFileDigest = sha256(canonical(files))
   const payloadTreeDigest = sha256(canonical(entries))
+  const unixTextAssets = proveInstalledUnixTextAssets(payloadRoot)
+  const unixTextAssetDigest = sha256(canonical(unixTextAssets))
   assertGoAuthorityBinding(payloadRoot, sourceFingerprintDocument)
   const buildInfoPath = path.join(payloadRoot, 'usr/lib/solovey-ui/BUILD_INFO.txt')
   const buildInfo = parseBuildInfo(fs.readFileSync(buildInfoPath, 'utf8'))
@@ -100,6 +103,7 @@ export function createStageManifest(stageRoot, sourceRoot) {
     buildIdentity: sourceFingerprintDocument.build.identity,
     buildInfoSha256: sha256(fs.readFileSync(buildInfoPath)),
     payloadTreeDigest,
+    unixTextAssetDigest,
     target,
   }
   return {
@@ -117,6 +121,11 @@ export function createStageManifest(stageRoot, sourceRoot) {
       directoryCount: directories.length,
       fileDigest: payloadFileDigest,
       treeDigest: payloadTreeDigest,
+    },
+    unixTextAssets: {
+      assets: unixTextAssets,
+      assetCount: unixTextAssets.length,
+      digest: unixTextAssetDigest,
     },
     stageIdentity: sha256(canonical(identityMaterial)),
   }
@@ -147,6 +156,13 @@ export function verifyStageManifest(manifest, stageRoot, sourceRoot) {
   const payloadTreeDigest = sha256(canonical(records))
   if (manifest.payload.fileDigest !== payloadFileDigest) throw new Error('stage payload file digest mismatch')
   if (manifest.payload.treeDigest !== payloadTreeDigest) throw new Error('stage payload tree digest mismatch')
+  const unixTextAssets = proveInstalledUnixTextAssets(payloadRoot)
+  const unixTextAssetDigest = sha256(canonical(unixTextAssets))
+  if (manifest.unixTextAssets?.assetCount !== unixTextAssets.length ||
+      manifest.unixTextAssets?.digest !== unixTextAssetDigest ||
+      canonical(manifest.unixTextAssets?.assets) !== canonical(unixTextAssets)) {
+    throw new Error('stage Unix text asset proof mismatch')
+  }
 
   assertGoAuthorityBinding(payloadRoot, fingerprint)
   if (manifest.sourceFingerprint !== fingerprint.sourceFingerprint) throw new Error('stage/source fingerprint mismatch')
@@ -165,6 +181,7 @@ export function verifyStageManifest(manifest, stageRoot, sourceRoot) {
     buildIdentity: manifest.buildIdentity,
     buildInfoSha256: manifest.buildInfoSha256,
     payloadTreeDigest,
+    unixTextAssetDigest,
     target: manifest.target,
   }))
   if (manifest.stageIdentity !== stageIdentity) throw new Error('stage identity mismatch')

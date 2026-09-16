@@ -153,7 +153,7 @@ func installRuntimePreparationFixture(t testing.TB, fixture *pinnedLifecycleRoot
 		t.Fatal(err)
 	}
 	fixture.writeMode(t, "/usr/lib/solovey-ui/solovey-openwrt-prepare", prepare, 0o755)
-	fixture.write(t, "/usr/lib/solovey-ui/solovey-openwrt-durability", "#!/bin/sh\nexit 0\n")
+	fixture.write(t, "/usr/lib/solovey-ui/solovey-openwrt-durability", "#!/bin/sh\n[ \"${1:-}\" != database-folder ] || { printf '%s\\n' /etc/solovey-ui/db; exit 0; }\nexit 0\n")
 	fixture.writeMode(t, "/etc/passwd", []byte("root:x:0:0:root:/root:/bin/ash\nsolovey-ui:x:32768:32768:Solovey UI:/etc/solovey-ui:/sbin/nologin\n"), 0o644)
 	fixture.writeMode(t, "/etc/group", []byte("root:x:0:\nsolovey-ui:x:32768:\n"), 0o644)
 	fixture.writeMode(t, "/etc/nsswitch.conf", []byte("passwd: files\ngroup: files\n"), 0o644)

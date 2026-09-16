@@ -26,10 +26,19 @@ func assetRoot(siteID uint) string {
 }
 
 func templateRoot(templateID string) string {
-	return filepath.Join(storageRoot(), "templates", safeArchiveName(templateID))
+	return filepath.Join(templateCacheRoot(), safeArchiveName(templateID))
+}
+
+func templateCacheRoot() string {
+	return configstorage.CachePath(filepath.Join("fallback-html", "templates"))
 }
 
 func RemoveStorage() error {
+	if templateCacheRoot() != filepath.Join(storageRoot(), "templates") {
+		if err := os.RemoveAll(templateCacheRoot()); err != nil {
+			return err
+		}
+	}
 	if root := storageRoot(); root != "" {
 		return os.RemoveAll(root)
 	}

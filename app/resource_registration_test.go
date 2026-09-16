@@ -3,6 +3,8 @@ package app
 import (
 	"testing"
 
+	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 )
 
@@ -26,6 +28,11 @@ func TestApplicationStartRequiresInitializationAndStopIsSafe(t *testing.T) {
 }
 
 func TestCoreResourcesUseApplicationConfigServiceAndRegisterOnce(t *testing.T) {
+	t.Setenv("SUI_DB_FOLDER", t.TempDir())
+	if err := dbsqlite.Init(configstorage.GetDBPath()); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = dbsqlite.Close() })
 	application := NewApp()
 	application.configService = service.NewConfigServiceWithRuntime(nil)
 	control := application.configService.CoreInboundControl()

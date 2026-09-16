@@ -1,0 +1,6 @@
+{
+  "schema": "solovey-ui/deployment-storage/v1",
+  "durableRoot": "/opt/solovey-ui",
+  "proofClass": "DIRECT_PERSISTENT_MOUNT",
+  "mountPoint": "/opt"
+}

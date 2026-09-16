@@ -39,7 +39,7 @@ func NewBrokerProvider(client *broker.Client, fetcher release.Fetcher, source re
 	}
 	return &BrokerProvider{Client: client, Fetcher: fetcher, Source: source,
 		Sources: map[release.Channel]release.Source{release.ChannelMain: source, release.ChannelBeta: source},
-		Root:    filepath.Join(configstorage.GetDBFolderPath(), "update-cache"), backupOps: productionUpdateBackupOps}
+		Root:    configstorage.CachePath("update-cache"), backupOps: productionUpdateBackupOps}
 }
 
 func (p *BrokerProvider) Capabilities(ctx context.Context) Capabilities {

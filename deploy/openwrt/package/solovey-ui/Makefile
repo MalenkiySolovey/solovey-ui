@@ -26,7 +26,7 @@ endif
 
 PKG_NAME:=solovey-ui
 PKG_VERSION:=$(shell sed -n '1p' $(SOLOVEY_UI_SOURCE_DIR)/config/identity/version)
-PKG_RELEASE:=21
+PKG_RELEASE:=25
 PKG_SOURCE_DATE:=$(SOLOVEY_UI_SOURCE_DATE)
 PKG_LICENSE:=GPL-3.0-only
 PKG_LICENSE_FILES:=LICENSE
@@ -73,6 +73,13 @@ endef
 define Package/solovey-ui/postinst
 #!/bin/sh
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
+# The installed core service must boot. default_postinst starts an upgrade
+# without enabling it, so recovery from an incomplete install needs this fence.
+# Preserve existing registration without disable/enable churn; rc.common owns it.
+if ! /etc/init.d/solovey-ui enabled; then
+	/etc/init.d/solovey-ui enable || exit 1
+	/etc/init.d/solovey-ui enabled || exit 1
+fi
 /usr/lib/solovey-ui/solovey-openwrt-lifecycle reconcile
 endef
 
@@ -81,7 +88,11 @@ define Package/solovey-ui/preinst
 [ -n "$${IPKG_INSTROOT}" ] && exit 0
 [ "$${PKG_UPGRADE:-0}" = 1 ] || exit 0
 if [ -x /etc/init.d/solovey-ui ]; then
-	/etc/init.d/solovey-ui stop || exit 1
+	installed_init_first_line=$$(sed -n '1p' /etc/init.d/solovey-ui) || exit 1
+	case "$$installed_init_first_line" in
+		*"$$(printf '\r')") ;; # r22 CRLF recovery; process drain below remains authoritative.
+		*) /etc/init.d/solovey-ui stop || exit 1 ;;
+	esac
 fi
 attempt=0
 while [ "$$attempt" -lt 30 ]; do

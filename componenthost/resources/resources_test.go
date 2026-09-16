@@ -45,6 +45,37 @@ func (c *testContributor) ListProtectableResources(context.Context) ([]Protectab
 	return append([]ProtectableResource(nil), c.items...), c.err
 }
 
+type replacedContributor struct{ entered, release chan struct{} }
+
+func (replacedContributor) Owner() string { return "core" }
+func (c replacedContributor) ListProtectableResources(context.Context) ([]ProtectableResource, error) {
+	close(c.entered)
+	<-c.release
+	return nil, errors.New("closed old database")
+}
+
+func TestReplacedContributorCannotOverwriteCurrentInventoryCache(t *testing.T) {
+	registry := NewRegistry(time.Minute)
+	old := replacedContributor{make(chan struct{}), make(chan struct{})}
+	remove := registerTestContributor(t, registry, old)
+	done := make(chan ResourceSnapshot, 1)
+	go func() { done <- registry.Refresh(t.Context()) }()
+	<-old.entered
+	remove()
+	current := &testContributor{owner: "core"}
+	registerTestContributor(t, registry, current)
+	if snapshot := registry.Refresh(t.Context()); len(snapshot.Errors) != 0 {
+		t.Fatal(snapshot.Errors)
+	}
+	close(old.release)
+	if snapshot := <-done; len(snapshot.Errors) == 0 {
+		t.Fatal("obsolete observation accepted")
+	}
+	if snapshot := registry.Snapshot(t.Context()); len(snapshot.Errors) != 0 || current.calls != 1 {
+		t.Fatal("old contributor overwrote the current generation cache")
+	}
+}
+
 func TestNormalizeListen(t *testing.T) {
 	tests := []struct {
 		input  string

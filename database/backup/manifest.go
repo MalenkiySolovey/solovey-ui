@@ -75,9 +75,10 @@ type BackupManifest struct {
 	Owners             []BackupOwnerManifest `json:"owners"`
 	Tables             []BackupTableManifest `json:"tables"`
 	Compatibility      string                `json:"compatibility"`
+	Files              *FileBackupManifest   `json:"files,omitempty"`
 }
 
-func writeBackupManifest(ctx context.Context, db *gorm.DB, tables []backupTable, excluded map[string]bool) error {
+func writeBackupManifest(ctx context.Context, db *gorm.DB, tables []backupTable, excluded map[string]bool, files ...*FileBackupManifest) error {
 	if ctx == nil || db == nil || len(tables) == 0 || len(tables) > MaxBackupTables {
 		return errors.New("backup manifest input is invalid")
 	}
@@ -89,6 +90,12 @@ func writeBackupManifest(ctx context.Context, db *gorm.DB, tables []backupTable,
 		CoreSchema: "1.11", SQLiteModule: dbsqlite.SQLiteModuleVersion, SQLiteRuntime: runtimeStatus.RuntimeVersion,
 		SQLiteSourceID: runtimeStatus.SourceID, Encryption: "INNER_PLAINTEXT", MaxBytes: 512 << 20,
 		Compatibility: "EXACT_OR_FORWARD_MIGRATABLE", Owners: []BackupOwnerManifest{{ID: "core", Installed: true, Available: true, Mode: "TYPED"}}}
+	if len(files) > 1 {
+		return errors.New("ambiguous logical file manifest")
+	}
+	if len(files) == 1 {
+		manifest.Files = files[0]
+	}
 	ownerModes := map[string]string{"core": "TYPED"}
 	ownerAvailability := map[string]bool{"core": true}
 	installedOwners, err := installstate.InstalledComponents()
@@ -257,6 +264,12 @@ func LoadAndVerifyManifest(ctx context.Context, db *gorm.DB) (BackupManifest, er
 	allowedTables := make(map[string]bool, len(seen))
 	for name := range seen {
 		allowedTables[name] = true
+	}
+	if manifest.Files != nil {
+		if err := verifyOwnerFiles(ctx, db, manifest.Files); err != nil {
+			return BackupManifest{}, err
+		}
+		allowedTables[BackupFileTable] = true
 	}
 	if err := validateSQLiteObjectInventory(ctx, db, allowedTables, true); err != nil {
 		return BackupManifest{}, err

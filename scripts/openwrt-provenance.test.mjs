@@ -7,7 +7,7 @@ import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import { fileURLToPath } from 'node:url'
 import { verifyApkRootfs } from './openwrt-apk-rootfs.mjs'
-import { createApkMetadataProof } from './openwrt-apk-metadata.mjs'
+import { createApkMetadataProof, proveApkLifecycleScripts } from './openwrt-apk-metadata.mjs'
 import {
   createSourceFingerprint,
   enumerateSourcePaths,
@@ -36,6 +36,10 @@ import {
   createPackageHostToolProof,
   verifyPackageHostToolProof,
 } from './openwrt-package-host-tools.mjs'
+import {
+  assertUnixLF,
+  classifyUnixLineEndings,
+} from './openwrt-unix-text-assets.mjs'
 
 const scriptRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const openWrtRuntimeDependencies = Object.freeze(['dropbear', 'libc', 'logd', 'nftables', 'procd', 'ubus', 'uci'])
@@ -46,6 +50,31 @@ test.after(() => {
     makeWritableRecursively(root)
     fs.rmSync(root, { recursive: true, force: true })
   }
+})
+
+test('Unix package text contract rejects CRLF, mixed EOL and rc.common carriage returns', () => {
+  assert.deepEqual(classifyUnixLineEndings(Buffer.from('#!/bin/sh\nexit 0\n')), {
+    classification: 'LF_ONLY', lf: 2, crlf: 0, bareLF: 2, bareCR: 0,
+  })
+  assert.equal(classifyUnixLineEndings(Buffer.from('#!/bin/sh\r\nexit 0\r\n')).classification, 'CRLF')
+  assert.equal(classifyUnixLineEndings(Buffer.from('#!/bin/sh\nexit 0\r\n')).classification, 'MIXED_EOL')
+  assert.equal(classifyUnixLineEndings(Buffer.from('#!/bin/sh\rexit 0\n')).classification, 'MIXED_EOL')
+  assert.throws(() => assertUnixLF(Buffer.from('#!/bin/sh\r\n'), 'CRLF fixture'), /found CRLF/)
+  assert.throws(() => assertUnixLF(Buffer.from('#!\/bin\/sh \/etc\/rc.common\r\n'), 'rc.common fixture'), /found CRLF/)
+  assert.throws(() => assertUnixLF(Buffer.from('#!/bin/sh\nexit 0\r\n'), 'mixed fixture'), /found MIXED_EOL/)
+})
+
+test('APK lifecycle proof rejects CRLF bytes', () => {
+  const valid = apkMetadataDump()
+  assert.equal(proveApkLifecycleScripts(valid).scriptCount, 5)
+  assert.throws(() => proveApkLifecycleScripts(valid.replace('#!/bin/sh\n', '#!/bin/sh\r\n')), /must be LF-only/)
+})
+
+test('stage creation rejects a CRLF shipping script before manifest publication', () => {
+  const fixture = makeStage()
+  fs.rmSync(path.join(fixture.stage, 'STAGE_MANIFEST.json'))
+  fs.writeFileSync(stagePath(fixture.stage, 'etc/init.d/solovey-ui'), '#!/bin/sh /etc/rc.common\r\n')
+  assert.throws(() => createStageManifest(fixture.stage, fixture.source), /installed Unix asset etc\/init\.d\/solovey-ui must be LF-only/)
 })
 
 test('OpenWrt target profiles resolve coordinates and reject cross-target assumptions', () => {
@@ -718,6 +747,22 @@ function apkMetadataDump(maintainer = 'MalenkiySolovey', architecture = 'x86_64'
     '        size: 10',
     '      - name: second',
     '        size: 20',
+    'scripts:',
+    '  pre-install: |',
+    '    #!/bin/sh',
+    '    exit 0',
+    '  post-install: |',
+    '    #!/bin/sh',
+    '    exit 0',
+    '  pre-upgrade: |',
+    '    #!/bin/sh',
+    '    exit 0',
+    '  post-upgrade: |',
+    '    #!/bin/sh',
+    '    exit 0',
+    '  pre-deinstall: |',
+    '    #!/bin/sh',
+    '    exit 0',
     '',
   ].join('\n')
 }
@@ -741,6 +786,7 @@ function makeSource() {
   write(root, 'scripts/openwrt-stage-build.sh', '#!/bin/sh\n')
   write(root, 'scripts/openwrt-stage-manifest.mjs', '// manifest owner\n')
   write(root, 'scripts/openwrt-package-source-fingerprint.mjs', '// fingerprint owner\n')
+  write(root, 'scripts/openwrt-unix-text-assets.mjs', '// Unix text asset owner\n')
   write(root, 'app/components_generated.go', generatedGo())
   write(root, 'cmd/optional_commands_generated.go', generatedGo('cmd'))
   write(root, 'cmd/solovey-privileged-broker/components_generated.go', generatedGo('main'))

@@ -5,7 +5,6 @@ import (
 	"io"
 	"mime/multipart"
 	"os"
-	"path/filepath"
 
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
@@ -47,7 +46,7 @@ func (a *Handler) prepareBackupCodecRestoreFile(c *gin.Context, source multipart
 }
 
 func (a *Handler) prepareStreamBackupCodecRestoreFile(c *gin.Context, source multipart.File, codec backupImportCodecEntry) (preparedDatabaseImportFile, bool) {
-	directory := filepath.Join(configstorage.GetDBFolderPath(), "restore-staging")
+	directory := configstorage.StagingPath("restore-staging")
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		a.respondBackupRestoreDecryptionFailed(c, codec.codec.FailureAuditEvent)
 		return preparedDatabaseImportFile{}, false

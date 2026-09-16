@@ -12,6 +12,14 @@ import (
 )
 
 func Observe(target string) (Fact, error) {
+	return observe(target, Parse)
+}
+
+func ObserveUniqueMount(target string) (Fact, error) {
+	return observe(target, ParseUniqueMount)
+}
+
+func observe(target string, parse func([]byte, string) (Fact, error)) (Fact, error) {
 	logical := filepath.ToSlash(filepath.Clean(target))
 	if !canonicalAbsolute(logical) {
 		return Fact{}, ErrUnavailable
@@ -30,7 +38,7 @@ func Observe(target string) (Fact, error) {
 	if readErr != nil || closeErr != nil || len(data) == 0 || len(data) > MaxMountInfo {
 		return Fact{}, errors.Join(ErrUnavailable, readErr, closeErr)
 	}
-	fact, err := Parse(data, resolved)
+	fact, err := parse(data, resolved)
 	if err != nil {
 		return Fact{}, err
 	}

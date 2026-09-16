@@ -391,8 +391,15 @@ func ReconcileRestoredFirewallAuthority(ctx context.Context, db *gorm.DB, now ti
 	// write-first transaction so schema reads cannot create a stale snapshot.
 	hasObservation := db.Migrator().HasTable(&FirewallObservationModel{})
 	hasTransition := db.Migrator().HasTable(&FirewallContributionTransitionModel{})
+	hasOperations := db.Migrator().HasTable(&OperationLockModel{})
+	hasContributions := db.Migrator().HasTable(&FirewallContributionModel{})
 	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		stamp := now.UTC().UnixNano()
+		if hasTransition && hasOperations && hasContributions {
+			if err := reconcileAbandonedFirewallTransitions(tx, stamp); err != nil {
+				return err
+			}
+		}
 		if hasObservation {
 			if err := tx.Where("id = ?", 1).Delete(&FirewallObservationModel{}).Error; err != nil {
 				return err
@@ -408,4 +415,32 @@ func ReconcileRestoredFirewallAuthority(ctx context.Context, db *gorm.DB, now ti
 			Where("state IN ?", []string{"PREPARED", "MUTATING", "APPLIED", "HEALTH_VERIFIED", "ROLLING_BACK"}).
 			Updates(map[string]any{"state": "RECOVERY_REQUIRED", "updated_at": stamp}).Error
 	})
+}
+
+// ReconcileAbandonedFirewallTransitions closes only proven pre-mutation
+// history. Restore used to distrust even these abandoned preparations, making
+// them permanent recovery/retention roots. Startup also repairs that historical
+// normalization without adopting or changing any host firewall authority.
+func ReconcileAbandonedFirewallTransitions(ctx context.Context, db *gorm.DB, now time.Time) error {
+	if db == nil {
+		return errors.New("firewall history database is unavailable")
+	}
+	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		return reconcileAbandonedFirewallTransitions(tx, now.UTC().UnixNano())
+	})
+}
+
+func reconcileAbandonedFirewallTransitions(tx *gorm.DB, stamp int64) error {
+	abandoned := tx.Model(&OperationLockModel{}).Select("operation_id").
+		Where("kind = ? AND state IN ?", "firewall", []string{"abandoned", "cancelled"})
+	contributions := tx.Model(&FirewallContributionModel{}).Select("applied_operation_id").Where("applied_operation_id <> ''")
+	composition := tx.Model(&FirewallCompositionModel{}).Select("applied_operation_id").Where("applied_operation_id <> ''")
+	return tx.Model(&FirewallContributionTransitionModel{}).
+		Where("state IN ?", []string{"PREPARED", "RECOVERY_REQUIRED"}).
+		Where("marker_unix_nano = 0 AND mutation_completed_unix_nano = 0").
+		Where("health_generation = 0 AND health_started_unix_nano = 0 AND health_completed_unix_nano = 0 AND health_expires_unix_nano = 0").
+		Where("COALESCE(health_provider_instance, '') = '' AND COALESCE(health_observation_revision, '') = ''").
+		Where("operation_id IN (?)", abandoned).
+		Where("operation_id NOT IN (?) AND operation_id NOT IN (?)", contributions, composition).
+		Updates(map[string]any{"state": "CANCELLED", "updated_at": stamp}).Error
 }

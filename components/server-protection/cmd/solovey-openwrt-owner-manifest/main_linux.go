@@ -121,7 +121,11 @@ func buildCommit(name string) (string, error) {
 }
 
 func loadOrCreateInstanceID() (string, error) {
-	if data, err := boundedRootFile(openwrt.DefaultOpenWrtInstanceIDPath, 128, 0o400); err == nil {
+	selection, err := openwrt.LoadStorageSelection()
+	if err != nil {
+		return "", err
+	}
+	if data, err := boundedRootFile(selection.InstanceIDPath(), 128, 0o400); err == nil {
 		value := strings.TrimSpace(string(data))
 		if validUUID(value) {
 			return value, nil
@@ -134,7 +138,7 @@ func loadOrCreateInstanceID() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	if err := atomicRootFile(openwrt.DefaultOpenWrtInstanceIDPath, []byte(value+"\n"), 0o400); err != nil {
+	if err := atomicRootFile(selection.InstanceIDPath(), []byte(value+"\n"), 0o400); err != nil {
 		return "", err
 	}
 	return value, nil

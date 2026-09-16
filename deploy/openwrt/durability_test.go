@@ -97,10 +97,15 @@ func TestDatabaseDurabilityFailClosedTopology(t *testing.T) {
 		"volatile-backing":    strings.Replace(durabilityMounts, "- f2fs /dev/loop0", "- tmpfs tmpfs", 1),
 		"unsupported-backing": strings.Replace(durabilityMounts, "- f2fs /dev/loop0", "- ntfs3 /dev/loop0", 1),
 		"missing-backing":     strings.Split(durabilityMounts, "\n")[0] + "\n",
-		"read-only-backing":   strings.Replace(durabilityMounts, " / /overlay rw,", " / /overlay ro,", 1),
-		"nested-upper":        durabilityMounts + "42 40 0:42 / /overlay/upper rw - tmpfs tmpfs rw\n",
-		"nested-work":         durabilityMounts + "42 40 0:42 / /overlay/work rw - ext4 /dev/other rw\n",
-		"nested-database":     durabilityMounts + "42 36 0:42 / /etc/solovey-ui/db rw - overlay overlayfs:/overlay rw,upperdir=/overlay/upper,workdir=/overlay/work\n",
+		// Source/image/live witness: an initramfs can leave an opaque upper
+		// filesystem after switch_root. Its labels and a separate persistent
+		// /opt mount do not establish the database's current backing identity.
+		"initramfs-hidden-upper": "34 1 0:27 / / rw,noatime - overlay overlay rw,lowerdir=/root,upperdir=/data/root,workdir=/data/work\n" +
+			"44 34 179:106 / /opt rw,relatime - ext4 /dev/persistent rw\n",
+		"read-only-backing": strings.Replace(durabilityMounts, " / /overlay rw,", " / /overlay ro,", 1),
+		"nested-upper":      durabilityMounts + "42 40 0:42 / /overlay/upper rw - tmpfs tmpfs rw\n",
+		"nested-work":       durabilityMounts + "42 40 0:42 / /overlay/work rw - ext4 /dev/other rw\n",
+		"nested-database":   durabilityMounts + "42 36 0:42 / /etc/solovey-ui/db rw - overlay overlayfs:/overlay rw,upperdir=/overlay/upper,workdir=/overlay/work\n",
 	}
 	for name, mounts := range cases {
 		t.Run(name, func(t *testing.T) {

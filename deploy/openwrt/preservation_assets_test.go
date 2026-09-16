@@ -110,16 +110,16 @@ func TestPackagePostInstallOwnsAndRepairsPersistentLayout(t *testing.T) {
 		"id -g solovey-ui",
 		"chown root:root /etc/solovey-ui",
 		"chmod 0711 /etc/solovey-ui",
-		"chown solovey-ui:solovey-ui /etc/solovey-ui/db",
-		"chmod 0700 /etc/solovey-ui/db",
-		"preservation_root=/etc/solovey-ui/db/sysupgrade-preservation",
+		`chown solovey-ui:solovey-ui "$database_folder"`,
+		`chmod 0700 "$database_folder"`,
+		`preservation_root="$database_folder/sysupgrade-preservation"`,
 		`[ -d "$preservation_root" ] && [ ! -L "$preservation_root" ]`,
 		`repair_preservation_file "$preservation_root/database.db" 536870912`,
 		`repair_preservation_file "$preservation_root/metadata.json" 16384`,
 		`chown solovey-ui:solovey-ui "$path"`,
 		`chmod 0600 "$path"`,
 		"[ -d /etc/solovey-ui ] && [ ! -L /etc/solovey-ui ]",
-		"[ -d /etc/solovey-ui/db ] && [ ! -L /etc/solovey-ui/db ]",
+		`[ -d "$database_folder" ] && [ ! -L "$database_folder" ]`,
 	} {
 		if !strings.Contains(content, required) {
 			t.Fatalf("package lifecycle is missing persistent contract %q", required)

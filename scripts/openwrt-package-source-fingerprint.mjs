@@ -41,6 +41,7 @@ const targetBuildScripts = new Set([
   'scripts/openwrt-stage-build.sh',
   'scripts/openwrt-stage-manifest.mjs',
   'scripts/openwrt-target-profile.sh',
+  'scripts/openwrt-unix-text-assets.mjs',
   'scripts/write-component-installed-metadata.mjs',
 ])
 

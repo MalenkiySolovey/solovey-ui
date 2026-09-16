@@ -9,7 +9,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -136,7 +135,7 @@ func Rehearse(ctx context.Context, source io.ReadSeeker) (RestoreRehearsal, erro
 			}
 		}
 		if len(result.ReasonCodes) == 0 {
-			statuses, migrationErr := rehearseMigrationsAndOwners(ctx, staged, result.Owners)
+			statuses, migrationErr := rehearseMigrationsAndOwners(ctx, staged, result.Owners, manifest.Files)
 			result.Owners = statuses
 			if migrationErr != nil {
 				result.MigrationPlan = "FAILED"
@@ -246,7 +245,7 @@ func stageRehearsalFile(ctx context.Context, source io.ReadSeeker) (string, func
 	if _, err := source.Seek(0, io.SeekStart); err != nil {
 		return "", nil, "", 0, err
 	}
-	directory := filepath.Join(configstorage.GetDBFolderPath(), "restore-rehearsal")
+	directory := configstorage.StagingPath("restore-rehearsal")
 	if err := os.MkdirAll(directory, 0o700); err != nil {
 		return "", nil, "", 0, err
 	}
@@ -382,19 +381,19 @@ func schemaSemver(value string) string {
 	return value
 }
 
-func rehearseMigrationsAndOwners(ctx context.Context, staged string, statuses []RestoreOwnerStatus) ([]RestoreOwnerStatus, error) {
+func rehearseMigrationsAndOwners(ctx context.Context, staged string, statuses []RestoreOwnerStatus, files ...*FileBackupManifest) ([]RestoreOwnerStatus, error) {
 	copyPath := staged + ".migration"
 	cleanup := func() { cleanupRestoreFile(copyPath) }
 	defer cleanup()
 	if err := cloneRestoreFile(ctx, staged, copyPath); err != nil {
 		return statuses, err
 	}
-	return migrateAndNormalizeRestoreOwners(ctx, copyPath, statuses)
+	return migrateAndNormalizeRestoreOwners(ctx, copyPath, statuses, files...)
 }
 
 // Rehearsal migrates a private candidate. Execution applies the same owner
 // normalization after open, within the existing rollback-protected boundary.
-func migrateAndNormalizeRestoreOwners(ctx context.Context, candidate string, statuses []RestoreOwnerStatus) ([]RestoreOwnerStatus, error) {
+func migrateAndNormalizeRestoreOwners(ctx context.Context, candidate string, statuses []RestoreOwnerStatus, files ...*FileBackupManifest) ([]RestoreOwnerStatus, error) {
 	statuses = append([]RestoreOwnerStatus(nil), statuses...)
 	if err := migration.MigratePath(candidate, migration.Options{}); err != nil {
 		return statuses, err
@@ -405,6 +404,13 @@ func migrateAndNormalizeRestoreOwners(ctx context.Context, candidate string, sta
 	}
 	if sqlDB, sqlErr := db.DB(); sqlErr == nil {
 		defer sqlDB.Close()
+	}
+	var fileManifest *FileBackupManifest
+	if len(files) == 1 {
+		fileManifest = files[0]
+	}
+	if err := restoreOwnerFiles(ctx, db, fileManifest, false); err != nil {
+		return statuses, err
 	}
 	return normalizeRestoredOwners(ctx, db, statuses)
 }

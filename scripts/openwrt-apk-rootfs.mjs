@@ -6,6 +6,7 @@ import process from 'node:process'
 import { fileURLToPath } from 'node:url'
 import { canonical, sha256 } from './openwrt-package-source-fingerprint.mjs'
 import { stageManifestSchema } from './openwrt-stage-manifest.mjs'
+import { proveInstalledUnixTextAssets } from './openwrt-unix-text-assets.mjs'
 
 export const apkRootfsProofSchema = 'solovey-ui/openwrt-apk-rootfs-proof/v1'
 
@@ -50,6 +51,10 @@ export function verifyApkRootfs(manifest, rootfs, apkSha256) {
   }
 
   verifyPackageMetadata(rootfs, expectedStageEntries)
+  const unixTextAssets = proveInstalledUnixTextAssets(rootfs)
+  if (canonical(manifest.unixTextAssets?.assets) !== canonical(unixTextAssets)) {
+    throw new Error('APK installed Unix text assets differ from the canonical LF stage proof')
+  }
   const rootfsIdentity = sha256(canonical(actualStageEntries))
   const material = {
     schema: apkRootfsProofSchema,
@@ -59,6 +64,11 @@ export function verifyApkRootfs(manifest, rootfs, apkSha256) {
     rootfsIdentity,
     fileCount: actualStageEntries.filter(entry => entry.type === 'file').length,
     directoryCount: actualStageEntries.filter(entry => entry.type === 'directory').length,
+    unixTextAssets: {
+      assets: unixTextAssets,
+      assetCount: unixTextAssets.length,
+      digest: sha256(canonical(unixTextAssets)),
+    },
     packageMetadata: {
       model: 'apk-tools-v3-generated-package-registration',
       paths: metadataEntries.map(entry => entry.path),

@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"database/sql"
 	"encoding/json"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,7 +34,7 @@ func TestAPKV3MixedRegistrationRecovery(t *testing.T) {
 	if err != nil || !strings.Contains(string(version), "apk-tools 3.0.5") {
 		t.Fatalf("apk authority: %s %v", version, err)
 	}
-	for _, scenario := range []string{"clean-install", "clean-upgrade", "mixed-r17-registration-r18-payload", "same-version-reinstall"} {
+	for _, scenario := range []string{"clean-install", "clean-upgrade", "mixed-r22-registration-r23-payload", "same-version-reinstall", "broken-r22-script-state"} {
 		t.Run(scenario, func(t *testing.T) {
 			f := newPinnedLifecycleRoot(t, pinnedOpenWrtSourceRoot(t))
 			f.write(t, "/etc/apk/arch", "x86_64\n")
@@ -100,12 +101,30 @@ func TestAPKV3MixedRegistrationRecovery(t *testing.T) {
 			poison := writeScript("old-script", "echo OLD_SCRIPT_EXECUTED >> /events\nexit 77")
 			pre := writeScript("new-pre", "echo candidate:pre >> /events\n"+f.preUpgradeScript(t))
 			post := writeScript("new-post", f.postUpgradeScript(t)+"\nstatus=$?\n[ $status = 0 ] || exit $status\necho candidate:post-complete >> /events")
+			oldPayload := payload
+			if scenario == "broken-r22-script-state" {
+				oldPayload = filepath.Join(work, "broken-r22-payload")
+				if err := os.CopyFS(oldPayload, os.DirFS(payload)); err != nil {
+					t.Fatal(err)
+				}
+				brokenInit := filepath.Join(oldPayload, "etc", "init.d", "solovey-ui")
+				if err := os.WriteFile(brokenInit, []byte("#!/bin/sh /etc/rc.common\r\nexit 0\r\n"), 0755); err != nil {
+					t.Fatal(err)
+				}
+			}
 			makePackage := func(version string, old bool) string {
 				archive := filepath.Join(work, "solovey-ui-"+version+".apk")
-				args := []string{"mkpkg", "--info", "name:solovey-ui", "--info", "version:" + version, "--info", "arch:x86_64", "--files", payload, "--output", archive}
+				packagePayload := payload
+				if old {
+					packagePayload = oldPayload
+				}
+				args := []string{"mkpkg", "--info", "name:solovey-ui", "--info", "version:" + version, "--info", "arch:x86_64", "--files", packagePayload, "--output", archive}
 				if old {
 					for _, kind := range []string{"pre-upgrade", "post-upgrade", "pre-deinstall", "post-deinstall"} {
 						args = append(args, "--script", kind+":"+poison)
+					}
+					if scenario == "broken-r22-script-state" {
+						args = append(args, "--script", "post-install:"+poison)
 					}
 				} else {
 					args = append(args, "--script", "pre-upgrade:"+pre, "--script", "post-upgrade:"+post, "--script", "post-install:"+post)
@@ -115,8 +134,8 @@ func TestAPKV3MixedRegistrationRecovery(t *testing.T) {
 				}
 				return archive
 			}
-			old := makePackage("2026.3.1-r17", true)
-			candidate := makePackage("2026.3.1-r19", false)
+			old := makePackage("2026.3.1-r22", true)
+			candidate := makePackage("2026.3.1-r23", false)
 			if scenario == "same-version-reinstall" {
 				old = candidate
 			}
@@ -128,7 +147,15 @@ func TestAPKV3MixedRegistrationRecovery(t *testing.T) {
 				}
 				return string(out)
 			}
-			if scenario != "clean-install" {
+			if scenario == "broken-r22-script-state" {
+				// Construct the already-observed physical boundary: r22 is registered,
+				// its CRLF payload is unpacked, and APK records failed script state.
+				// This is isolated fixture setup only; product recovery below is one
+				// ordinary higher-release transaction with no database workaround.
+				runAPK("add", "--initdb", "--no-scripts", old)
+				setPackageScriptState(t, f.hostPath("/lib/apk/db/installed"), "solovey-ui", "f:S", "f:sS")
+				assertPackageScriptState(t, f.hostPath("/lib/apk/db/installed"), "solovey-ui", "f:sS")
+			} else if scenario != "clean-install" {
 				runAPK("add", "--initdb", "--no-scripts", old)
 			} else {
 				runAPK("add", "--initdb")
@@ -152,7 +179,7 @@ func TestAPKV3MixedRegistrationRecovery(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if scenario == "mixed-r17-registration-r18-payload" {
+			if scenario == "mixed-r22-registration-r23-payload" {
 				for _, name := range paths {
 					if strings.HasPrefix(name, "/usr/lib/") {
 						data, _ := os.ReadFile(f.hostPath(name))
@@ -166,14 +193,27 @@ func TestAPKV3MixedRegistrationRecovery(t *testing.T) {
 			if scenario == "same-version-reinstall" {
 				transaction = append(transaction, "--force-reinstall")
 			}
-			runAPK(append(append([]string{}, transaction...), "--simulate", candidate)...)
+			simulationArgs := append(append([]string{}, transaction...), "--simulate", candidate)
+			if scenario == "broken-r22-script-state" {
+				all := append([]string{"--root", f.root, "--arch", "x86_64", "--allow-untrusted", "--repositories-file", "/dev/null"}, simulationArgs...)
+				out, err := exec.Command(apk, all...).CombinedOutput()
+				var exitErr *exec.ExitError
+				if !errors.As(err, &exitErr) || exitErr.ExitCode() != 1 || !strings.Contains(string(out), "Upgrading solovey-ui (2026.3.1-r22 -> 2026.3.1-r23)") {
+					t.Fatalf("broken-state simulation differential: %v\n%s", err, out)
+				}
+			} else {
+				runAPK(simulationArgs...)
+			}
 			if f.events(t) != "" {
 				t.Fatal("simulation ran hooks")
 			}
 			runAPK(append(transaction, candidate)...)
 			installed := runAPK("list", "--installed", "solovey-ui")
-			if !strings.Contains(installed, "2026.3.1-r19") {
+			if !strings.Contains(installed, "2026.3.1-r23") {
 				t.Fatalf("registration=%s", installed)
+			}
+			if scenario == "broken-r22-script-state" {
+				assertPackageScriptState(t, f.hostPath("/lib/apk/db/installed"), "solovey-ui", "f:S")
 			}
 			for name, want := range expected {
 				data, err := os.ReadFile(f.hostPath(name))
@@ -236,4 +276,53 @@ func TestAPKV3ProductionDurabilityDecision(t *testing.T) {
 	if _, err := recheckDatabaseDurabilityProof(decoded, 1, env, func(string) (uint64, error) { return 4096, nil }); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func assertPackageScriptState(t testing.TB, databasePath, packageName, expected string) {
+	t.Helper()
+	data, err := os.ReadFile(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	record, _, _ := packageDatabaseRecord(string(data), packageName)
+	if record == "" {
+		t.Fatalf("package %s is absent from %s", packageName, databasePath)
+	}
+	if !strings.Contains("\n"+record+"\n", "\n"+expected+"\n") {
+		t.Fatalf("package %s state does not contain %s:\n%s", packageName, expected, record)
+	}
+}
+
+func setPackageScriptState(t testing.TB, databasePath, packageName, oldState, newState string) {
+	t.Helper()
+	data, err := os.ReadFile(databasePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(data)
+	record, start, end := packageDatabaseRecord(text, packageName)
+	if record == "" {
+		t.Fatalf("package %s is absent from %s", packageName, databasePath)
+	}
+	oldLine := "\n" + oldState + "\n"
+	withEnvelope := "\n" + record + "\n"
+	if strings.Count(withEnvelope, oldLine) != 1 {
+		t.Fatalf("package %s fixture state does not contain exactly one %s line:\n%s", packageName, oldState, record)
+	}
+	replacement := strings.TrimSuffix(strings.TrimPrefix(strings.Replace(withEnvelope, oldLine, "\n"+newState+"\n", 1), "\n"), "\n")
+	if err := os.WriteFile(databasePath, []byte(text[:start]+replacement+text[end:]), 0644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func packageDatabaseRecord(database, packageName string) (string, int, int) {
+	start := strings.Index(database, "P:"+packageName+"\n")
+	if start < 0 {
+		return "", -1, -1
+	}
+	end := len(database)
+	if offset := strings.Index(database[start:], "\n\n"); offset >= 0 {
+		end = start + offset
+	}
+	return database[start:end], start, end
 }

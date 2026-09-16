@@ -13,6 +13,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/MalenkiySolovey/solovey-ui/util/redact"
+	"gorm.io/gorm"
 )
 
 type ConfigService struct {
@@ -28,6 +29,7 @@ type ConfigService struct {
 	coreLifecycle        configCoreLifecycle
 	coreInboundControlMu sync.Mutex
 	coreInboundControl   *coreinboundcontrol.Service
+	coreInboundControlDB *gorm.DB
 }
 
 type SingBoxConfig struct {

@@ -19,12 +19,26 @@ fi
 chown root:root /etc/solovey-ui || exit 1
 chmod 0711 /etc/solovey-ui || exit 1
 
-if [ ! -e /etc/solovey-ui/db ]; then
-	mkdir -m 0700 /etc/solovey-ui/db || exit 1
+# Deployment setup proves an explicitly selected mount before creating state.
+# With no selection the helper retains the accepted stock database folder.
+/usr/lib/solovey-ui/solovey-openwrt-durability prepare-storage || exit 1
+database_folder="$(/usr/lib/solovey-ui/solovey-openwrt-durability database-folder)" || exit 1
+if [ ! -e "$database_folder" ]; then
+	mkdir -m 0700 "$database_folder" || exit 1
 fi
-[ -d /etc/solovey-ui/db ] && [ ! -L /etc/solovey-ui/db ] || exit 1
-chown solovey-ui:solovey-ui /etc/solovey-ui/db || exit 1
-chmod 0700 /etc/solovey-ui/db || exit 1
+[ -d "$database_folder" ] && [ ! -L "$database_folder" ] || exit 1
+chown solovey-ui:solovey-ui "$database_folder" || exit 1
+chmod 0700 "$database_folder" || exit 1
+
+# Only explicit external-storage deployments select independent cache/staging.
+if [ -e /etc/solovey-ui/deployment-storage.json ]; then
+	for temporary in /tmp/solovey-ui /tmp/solovey-ui/cache /tmp/solovey-ui/staging; do
+		if [ ! -e "$temporary" ]; then mkdir -m 0700 "$temporary" || exit 1; fi
+		[ -d "$temporary" ] && [ ! -L "$temporary" ] || exit 1
+		chown solovey-ui:solovey-ui "$temporary" || exit 1
+		chmod 0700 "$temporary" || exit 1
+	done
+fi
 
 # A sysupgrade archive records numeric ownership from the old image. Repair
 # only the fixed preservation writer paths for the current named service
@@ -43,7 +57,7 @@ repair_preservation_file() {
 	chmod 0600 "$path" || exit 1
 }
 
-preservation_root=/etc/solovey-ui/db/sysupgrade-preservation
+preservation_root="$database_folder/sysupgrade-preservation"
 if [ -e "$preservation_root" ]; then
 	[ -d "$preservation_root" ] && [ ! -L "$preservation_root" ] || exit 1
 	chown solovey-ui:solovey-ui "$preservation_root" || exit 1

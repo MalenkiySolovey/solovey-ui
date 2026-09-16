@@ -20,7 +20,7 @@ type importRollbackFunc func(stage string, cause error) error
 // prove exact rollback after the imported database has been installed/opened.
 var restoreProtectedPostActionHook func(context.Context) error
 
-func importRollbackProtectedPostActions(dbPath string, owners []RestoreOwnerStatus) []importPostAction {
+func importRollbackProtectedPostActions(dbPath string, owners []RestoreOwnerStatus, files ...*FileBackupManifest) []importPostAction {
 	return []importPostAction{
 		{
 			stage:           "opening imported db",
@@ -29,6 +29,13 @@ func importRollbackProtectedPostActions(dbPath string, owners []RestoreOwnerStat
 				return dbsqlite.Init(dbPath)
 			},
 		},
+		{stage: "restoring logical owner files", rollbackOnError: true, run: func(ctx context.Context) error {
+			var m *FileBackupManifest
+			if len(files) == 1 {
+				m = files[0]
+			}
+			return restoreOwnerFiles(ctx, dbsqlite.DB(), m, true)
+		}},
 		{
 			stage:           "normalizing installed restore owners",
 			rollbackOnError: true,
@@ -69,8 +76,9 @@ func importFinalPostActions() []importPostAction {
 		{
 			stage: "restarting app",
 			run: func(context.Context) error {
-				// main.go traps SIGHUP and re-runs app.Init -> Start, where
-				// migration is a no-op against the now-current imported DB.
+				// main.go traps SIGHUP and runs app.RestartApp (stop/start).
+				// Mandatory database owner rebinding has already completed in
+				// the protected cache-reset phase before candidate acceptance.
 				return SendSighup()
 			},
 		},

@@ -19,7 +19,11 @@ func RefreshDatabaseDurabilityProof() (DatabaseDurabilityProofV3, error) {
 	if os.Geteuid() != 0 {
 		return DatabaseDurabilityProofV3{}, errors.New("OpenWrt durability proof writer requires root")
 	}
-	proof, err := createDatabaseDurabilityProof(DefaultDatabaseFolder, productionDurabilityEnvironment())
+	selection, err := LoadStorageSelection()
+	if err != nil {
+		return DatabaseDurabilityProofV3{}, err
+	}
+	proof, err := createDatabaseDurabilityProof(selection.DatabaseFolder(), productionDurabilityEnvironmentFor(selection))
 	if err != nil {
 		return DatabaseDurabilityProofV3{}, err
 	}
@@ -64,22 +68,30 @@ func LoadDatabaseDurabilityProof() (DatabaseDurabilityProofV3, error) {
 	if err := decoder.Decode(&proof); err != nil || decoder.Decode(&struct{}{}) != io.EOF || proof.Validate() != nil {
 		return DatabaseDurabilityProofV3{}, ErrUnprovenDurableState
 	}
+	selection, err := LoadStorageSelection()
+	if err != nil || proof.DatabaseFolder != selection.DatabaseFolder() || (proof.Storage != nil && *proof.Storage != selection) || (proof.Storage == nil && !selection.IsDefault()) {
+		return DatabaseDurabilityProofV3{}, ErrUnprovenDurableState
+	}
 	return proof, nil
 }
 
 func InspectDatabaseDurableState(required uint64) (DurableStateEvidence, error) {
-	if configstorage.GetDBFolderPath() != DefaultDatabaseFolder {
+	selection, err := LoadStorageSelection()
+	if err != nil {
+		return DurableStateEvidence{}, err
+	}
+	if configstorage.GetDBFolderPath() != selection.DatabaseFolder() {
 		return DurableStateEvidence{}, ErrUnprovenDurableState
 	}
 	proof, err := LoadDatabaseDurabilityProof()
 	if err != nil {
 		return DurableStateEvidence{}, err
 	}
-	evidence, err := recheckDatabaseDurabilityProof(proof, required, productionDurabilityEnvironment(), mountevidence.AvailableBytes)
+	evidence, err := recheckDatabaseDurabilityProof(proof, required, productionDurabilityEnvironmentFor(selection), mountevidence.AvailableBytes)
 	if err != nil {
 		return DurableStateEvidence{}, err
 	}
-	if err := syncPreservationDirectory(DefaultDatabaseFolder); err != nil {
+	if err := syncPreservationDirectory(selection.DatabaseFolder()); err != nil {
 		return DurableStateEvidence{}, err
 	}
 	databasePath := configstorage.GetDBPath()
@@ -102,9 +114,18 @@ func InspectDatabaseDurableState(required uint64) (DurableStateEvidence, error) 
 }
 
 func productionDurabilityEnvironment() durabilityEnvironment {
+	return productionDurabilityEnvironmentFor(StorageSelection{})
+}
+
+func productionDurabilityEnvironmentFor(selection StorageSelection) durabilityEnvironment {
+	observe := mountevidence.Observe
+	if !selection.IsDefault() {
+		observe = mountevidence.ObserveUniqueMount
+	}
 	return durabilityEnvironment{
-		Observe: mountevidence.Observe, ObserveLabel: mountevidence.ObserveOverlayLabel,
+		Observe: observe, ObserveLabel: mountevidence.ObserveOverlayLabel,
 		PersistenceAuthority: selectedPersistenceAuthority(),
+		Storage:              selection, ObserveBlockSource: observeBlockSource,
 	}
 }
 

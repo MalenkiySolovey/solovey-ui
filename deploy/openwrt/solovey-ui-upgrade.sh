@@ -1,3 +1,11 @@
+# A selected external durable mount has an explicit Solovey logical backup
+# contract. Vendor firmware replacement and native /etc archives are unqualified.
+# Fail before archive/firmware actions; stock integration below is unchanged.
+if [ -e /etc/solovey-ui/deployment-storage.json ] || [ -L /etc/solovey-ui/deployment-storage.json ]; then
+	echo "Selected Solovey storage requires explicit logical backup/restore; native firmware preservation is not qualified" >&2
+	exit 1
+fi
+
 # Sourced by OpenWrt /lib/upgrade after sysupgrade_init_conffiles is selected.
 # Preparation is deliberately prepended so keep.d discovery sees the newly
 # completed logical snapshot and metadata.

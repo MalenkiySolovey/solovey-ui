@@ -10,8 +10,10 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
+	"github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/database/restorestate"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
@@ -115,7 +117,7 @@ func RestoreContextDetailedWithRecoveryRoot(ctx context.Context, file io.ReadSee
 	rollback := func(stage string, cause error) error {
 		return rollbackImportedDB(dbPath, stage, cause)
 	}
-	if err := runImportPostActions(ctx, importRollbackProtectedPostActions(dbPath, rehearsal.Owners), rollback); err != nil {
+	if err := runImportPostActions(ctx, importRollbackProtectedPostActions(dbPath, rehearsal.Owners, rehearsal.Manifest.Files), rollback); err != nil {
 		return result, err
 	}
 	return result, nil
@@ -152,7 +154,7 @@ func AbortPendingRestore() error {
 	if err := dbsqlite.Init(dbPath); err != nil {
 		return common.NewErrorf("Error reopening exact fallback db: %v", err)
 	}
-	return nil
+	return resetReopenedDatabaseCaches()
 }
 
 func cleanupRestoreFile(path string) {
@@ -174,7 +176,18 @@ func reopenLiveDBAfterImportError(dbPath, stage string, cause error) error {
 	if err := dbsqlite.Init(dbPath); err != nil {
 		return common.NewErrorf("Error %s (%v) and reopening live db failed: %v", stage, cause, err)
 	}
+	if err := resetReopenedDatabaseCaches(); err != nil {
+		return common.NewErrorf("Error %s (%v) and rebinding live database owners failed: %v", stage, cause, err)
+	}
 	return common.NewErrorf("Error %s: %v", stage, cause)
+}
+
+func resetReopenedDatabaseCaches() error {
+	// The rejected import may have exhausted its request context. Recovery of
+	// the reopened fallback has its own bounded lifetime.
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return hooks.ResetCaches(ctx)
 }
 
 func stageBackupToFile(ctx context.Context, src io.Reader, dst string) error {

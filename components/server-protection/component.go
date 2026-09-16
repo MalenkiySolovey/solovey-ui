@@ -137,6 +137,9 @@ func (component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) erro
 	if lifecycleCtx.Host.API.Runtime == nil {
 		return errors.New("server-protection runtime is unavailable")
 	}
+	if err := protectionrepository.ReconcileAbandonedFirewallTransitions(ctx, dbsqlite.DB(), time.Now().UTC()); err != nil {
+		return err
+	}
 	if hooks.runtime != nil && hooks.runtime != lifecycleCtx.Host.API.Runtime {
 		return errors.New("server-protection runtime changed while the component is active")
 	}

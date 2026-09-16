@@ -39,6 +39,7 @@ type cachedSnapshot struct {
 type Registry struct {
 	mu           sync.RWMutex
 	nextID       uint64
+	generation   uint64
 	contributors map[uint64]registeredContributor
 	cacheTTL     time.Duration
 	cache        *cachedSnapshot
@@ -74,12 +75,14 @@ func (r *Registry) Register(contributor ResourceContributor) (func(), error) {
 	id := r.nextID
 	r.nextID++
 	r.contributors[id] = registeredContributor{id: id, owner: owner, contributor: contributor}
+	r.generation++
 	r.cache = nil
 	var once sync.Once
 	return func() {
 		once.Do(func() {
 			r.mu.Lock()
 			delete(r.contributors, id)
+			r.generation++
 			r.cache = nil
 			r.mu.Unlock()
 		})
@@ -116,6 +119,7 @@ func (r *Registry) snapshot(ctx context.Context, refresh bool, excluded map[stri
 		r.mu.RUnlock()
 		return value
 	}
+	generation := r.generation
 	contributors := make([]registeredContributor, 0, len(r.contributors))
 	for _, contributor := range r.contributors {
 		if excluded[contributor.owner] {
@@ -328,11 +332,16 @@ func (r *Registry) snapshot(ctx context.Context, refresh bool, excluded map[stri
 	})
 	sort.Slice(snapshot.Errors, func(i, j int) bool { return snapshot.Errors[i].Owner < snapshot.Errors[j].Owner })
 
-	if len(excluded) == 0 {
-		r.mu.Lock()
+	r.mu.Lock()
+	if generation != r.generation {
+		// A database restore may replace registrations while a contributor is
+		// reading. Never publish that obsolete bundle as current or recache it.
+		snapshot.Resources = []ProtectableResource{}
+		snapshot.Errors = append(snapshot.Errors, ResourceError{Owner: "registry", Message: "resource contributors changed during observation"})
+	} else if len(excluded) == 0 {
 		r.cache = &cachedSnapshot{value: cloneSnapshot(snapshot), expiresAt: now.Add(r.cacheTTL)}
-		r.mu.Unlock()
 	}
+	r.mu.Unlock()
 	return cloneSnapshot(snapshot)
 }
 

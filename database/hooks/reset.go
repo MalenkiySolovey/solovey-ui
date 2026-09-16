@@ -2,20 +2,32 @@ package hooks
 
 import (
 	"context"
+	"fmt"
 	"sort"
 	"sync"
 )
 
 var resetHooks = struct {
 	sync.Mutex
-	byName map[string]func()
+	byName map[string]func(context.Context) error
 }{
-	byName: map[string]func(){},
+	byName: map[string]func(context.Context) error{},
 }
 
 const maxResetHooks = 128
 
 func RegisterResetHook(name string, fn func()) {
+	if fn == nil {
+		RegisterContextResetHook(name, nil)
+		return
+	}
+	RegisterContextResetHook(name, func(context.Context) error { fn(); return nil })
+}
+
+// RegisterContextResetHook lets a cached runtime owner reject restoration when
+// it cannot bind to the opened database. Reset is also safe after rollback;
+// unlike import post-open hooks, it must not normalize restored durable data.
+func RegisterContextResetHook(name string, fn func(context.Context) error) {
 	if name == "" {
 		return
 	}
@@ -41,17 +53,19 @@ func ResetCaches(ctx context.Context) error {
 		names = append(names, name)
 	}
 	sort.Strings(names)
-	hooks := make([]func(), 0, len(names))
+	hooks := make([]func(context.Context) error, 0, len(names))
 	for _, name := range names {
 		hooks = append(hooks, resetHooks.byName[name])
 	}
 	resetHooks.Unlock()
 
-	for _, hook := range hooks {
+	for index, hook := range hooks {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
-		hook()
+		if err := hook(ctx); err != nil {
+			return fmt.Errorf("reset database cache %s: %w", names[index], err)
+		}
 	}
 	return ctx.Err()
 }

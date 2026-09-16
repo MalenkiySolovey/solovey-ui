@@ -65,10 +65,22 @@ func run(arguments []string) error {
 }
 
 func configurePackageEnvironment() error {
+	selection, err := openwrt.LoadStorageSelection()
+	if err != nil {
+		return err
+	}
 	expected := map[string]string{
-		"SUI_DB_FOLDER":                 openwrt.DefaultDatabaseFolder,
+		"SUI_DB_FOLDER":                 selection.DatabaseFolder(),
 		"SUI_DEPLOYMENT_KIND":           "openwrt-package-managed",
 		"SUI_COMPONENTS_INSTALLED_FILE": openwrt.DefaultInstallRoot + "/components/installed.json",
+		"SUI_LOGICAL_FILE_BACKUP":       "",
+		"SUI_CACHE_FOLDER":              "",
+		"SUI_STAGING_FOLDER":            "",
+	}
+	if !selection.IsDefault() {
+		expected["SUI_LOGICAL_FILE_BACKUP"] = "OWNER_FILES_V1"
+		expected["SUI_CACHE_FOLDER"] = openwrt.DefaultTemporaryRoot + "/cache"
+		expected["SUI_STAGING_FOLDER"] = openwrt.DefaultTemporaryRoot + "/staging"
 	}
 	for name, value := range expected {
 		if current := os.Getenv(name); current != "" && current != value {
@@ -102,14 +114,23 @@ func panelEntry() error {
 }
 
 func packageExecEnvironment() []string {
-	return []string{
+	environment := []string{
 		"PATH=/usr/sbin:/usr/bin:/sbin:/bin",
 		"LANG=C",
 		"LC_ALL=C",
-		"SUI_DB_FOLDER=" + openwrt.DefaultDatabaseFolder,
+		"SUI_DB_FOLDER=" + os.Getenv("SUI_DB_FOLDER"),
 		"SUI_DEPLOYMENT_KIND=openwrt-package-managed",
 		"SUI_COMPONENTS_INSTALLED_FILE=" + openwrt.DefaultInstallRoot + "/components/installed.json",
 	}
+	if value := os.Getenv("SUI_LOGICAL_FILE_BACKUP"); value != "" {
+		environment = append(environment, "SUI_LOGICAL_FILE_BACKUP="+value)
+	}
+	for _, name := range []string{"SUI_CACHE_FOLDER", "SUI_STAGING_FOLDER"} {
+		if value := os.Getenv(name); value != "" {
+			environment = append(environment, name+"="+value)
+		}
+	}
+	return environment
 }
 
 func validateCurrentPackageAuthority(requireBrokerManifest bool) error {
@@ -236,6 +257,13 @@ func cleanupPackageRuntime(root string, expectedUID uint32) error {
 }
 
 func restorePreservedDatabase() error {
+	selection, err := openwrt.LoadStorageSelection()
+	if err != nil {
+		return err
+	}
+	if !selection.IsDefault() {
+		return nil
+	} // Explicit logical restore owns this deployment; firmware preservation is unqualified.
 	if os.Geteuid() == 0 {
 		return errors.New("database restoration must run as the package service account")
 	}
@@ -253,7 +281,7 @@ func runRestoreAsPanel() error {
 		return errors.New("OpenWrt package account is invalid")
 	}
 	command := exec.Command(openwrt.LifecycleExecutablePath, "restore") // #nosec G204 -- fixed package lifecycle command.
-	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C", "SUI_DB_FOLDER=" + openwrt.DefaultDatabaseFolder,
+	command.Env = []string{"PATH=/usr/sbin:/usr/bin:/sbin:/bin", "LANG=C", "LC_ALL=C", "SUI_DB_FOLDER=" + os.Getenv("SUI_DB_FOLDER"),
 		"SUI_DEPLOYMENT_KIND=openwrt-package-managed", "SUI_COMPONENTS_INSTALLED_FILE=" + openwrt.DefaultInstallRoot + "/components/installed.json"}
 	command.Dir = "/"
 	command.SysProcAttr = &syscall.SysProcAttr{Credential: &syscall.Credential{Uid: uint32(uid), Gid: uint32(gid), Groups: []uint32{uint32(gid)}}}

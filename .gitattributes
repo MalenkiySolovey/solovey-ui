@@ -4,3 +4,8 @@
 Dockerfile text eol=lf
 *.service text eol=lf
 .github/workflows/*.yml text eol=lf
+
+# Extensionless Unix assets copied into the OpenWrt package.
+deploy/openwrt/solovey-ui.init text eol=lf
+deploy/openwrt/solovey-openwrt-prepare text eol=lf
+deploy/openwrt/solovey-ui.keep text eol=lf

@@ -35,7 +35,7 @@ type geositeRuSmartDownloader func(ctx context.Context, sourceURL string) ([]byt
 var downloadGeositeRuSmart geositeRuSmartDownloader = downloadGeositeRuSmartHTTP
 
 func managedRuSmartRuleSetPath() string {
-	return filepath.Join(configstorage.GetDBFolderPath(), filepath.FromSlash(managedRuSmartRuleSetRelativePath))
+	return configstorage.CachePath(filepath.FromSlash(managedRuSmartRuleSetRelativePath))
 }
 
 func managedRuSmartDatPath() string {

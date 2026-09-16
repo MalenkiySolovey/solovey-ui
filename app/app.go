@@ -19,6 +19,7 @@ import (
 	versionpolicy "github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/cronjob/scheduler"
+	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/database/restorestate"
@@ -43,15 +44,16 @@ type APP struct {
 	initialized bool
 	started     bool
 	service.SettingService
-	configService *service.ConfigService
-	webServer     *web.Server
-	subServer     *sub.Server
-	cronScheduler *scheduler.Scheduler
-	core          *coreruntime.Core
-	runtime       *service.Runtime
-	components    *componentsupervisor.Supervisor
-	stopResources func()
-	stopCoreHooks func()
+	configService     *service.ConfigService
+	webServer         *web.Server
+	subServer         *sub.Server
+	cronScheduler     *scheduler.Scheduler
+	core              *coreruntime.Core
+	runtime           *service.Runtime
+	components        *componentsupervisor.Supervisor
+	stopResources     func()
+	stopCoreHooks     func()
+	stopDatabaseHooks func()
 }
 
 func NewApp() *APP {
@@ -151,6 +153,8 @@ func (a *APP) Init() (err error) {
 	}
 
 	a.initialized = true
+	dbhooks.RegisterContextResetHook("app.resource_owners", a.resetDatabaseResourceOwners)
+	a.stopDatabaseHooks = func() { dbhooks.RegisterContextResetHook("app.resource_owners", nil) }
 	return nil
 }
 
@@ -247,6 +251,7 @@ func (a *APP) start() (err error) {
 func (a *APP) Stop() {
 	a.lifecycle.Lock()
 	defer a.lifecycle.Unlock()
+	a.stopDatabaseHookRegistrations()
 	if !a.initialized && a.runtime == nil {
 		return
 	}
@@ -335,6 +340,7 @@ func (a *APP) stopResourceRegistrations() {
 }
 
 func (a *APP) cleanupInitialization() {
+	a.stopDatabaseHookRegistrations()
 	if a.runtime != nil {
 		a.stop()
 	} else {

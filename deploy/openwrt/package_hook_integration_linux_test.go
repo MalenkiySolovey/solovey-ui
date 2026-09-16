@@ -595,7 +595,8 @@ func newPackageHookModelWithOptions(t *testing.T, manifestReal bool) *packageHoo
 	model.writeFile(t, init, strings.Join([]string{
 		"#!/bin/sh",
 		"case \"$1\" in",
-		"  enable) echo enable >> \"$SUI_MODEL_EVENTS\" ;;",
+		"  enable) echo enable >> \"$SUI_MODEL_EVENTS\"; touch \"$SUI_MODEL_META/enabled\" ;;",
+		"  enabled) test -f \"$SUI_MODEL_META/enabled\" ;;",
 		startLine,
 		"  stop) echo stop >> \"$SUI_MODEL_EVENTS\" ;;",
 		"  *) exit 1 ;;",

@@ -74,7 +74,8 @@ printf 'preservation-identity-diagnostic\n'
 	fresh.writeMode(t, "/usr/lib/solovey-ui/solovey-openwrt-prepare", prepare, 0o755)
 	fresh.writeMode(t, "/etc/passwd", []byte("root:x:0:0:root:/root:/bin/ash\nsolovey-ui:x:27111:27111:Solovey UI:/etc/solovey-ui:/sbin/nologin\n"), 0o644)
 	fresh.writeMode(t, "/etc/group", []byte("root:x:0:\nsolovey-ui:x:27111:\n"), 0o644)
-	for _, name := range []string{"solovey-openwrt-durability", "solovey-openwrt-owner-manifest", "solovey-openwrt-broker-manifest"} {
+	fresh.write(t, "/usr/lib/solovey-ui/solovey-openwrt-durability", "#!/bin/sh\n[ \"${1:-}\" != database-folder ] || { printf '%s\\n' /etc/solovey-ui/db; exit 0; }\nexit 0\n")
+	for _, name := range []string{"solovey-openwrt-owner-manifest", "solovey-openwrt-broker-manifest"} {
 		fresh.write(t, "/usr/lib/solovey-ui/"+name, "#!/bin/sh\nexit 0\n")
 	}
 	if err := os.MkdirAll(fresh.hostPath("/run"), 0o755); err != nil {

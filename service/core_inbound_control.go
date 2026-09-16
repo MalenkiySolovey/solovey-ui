@@ -23,6 +23,16 @@ func (s *ConfigService) CoreInboundControl() *coreinboundcontrol.Service {
 	}
 	s.coreInboundControlMu.Lock()
 	defer s.coreInboundControlMu.Unlock()
+	// A logical restore (including rollback) opens a new database object while
+	// this ConfigService survives the application's internal stop/start.
+	db := configDatabase()
+	if s.coreInboundControlDB != db {
+		s.coreInboundControl = nil
+		s.coreInboundControlDB = db
+	}
+	if db == nil {
+		return nil
+	}
 	if s.coreInboundControl != nil {
 		return s.coreInboundControl
 	}
@@ -30,7 +40,7 @@ func (s *ConfigService) CoreInboundControl() *coreinboundcontrol.Service {
 	if coreInstance := s.coreInstance(); coreInstance != nil {
 		effective = coreInstance
 	}
-	s.coreInboundControl = coreinboundcontrol.NewWithMutations(configDatabase(), effective, coreinboundcontrol.MutationDependencies{
+	s.coreInboundControl = coreinboundcontrol.NewWithMutations(db, effective, coreinboundcontrol.MutationDependencies{
 		Coordinator: configCoreMutationCoordinator{runtime: s.runtime()},
 		Runtime:     configCoreMutationRuntime{service: s},
 		Hooks:       configCoreMutationHooks{service: s},

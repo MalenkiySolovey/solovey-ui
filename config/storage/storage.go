@@ -28,3 +28,21 @@ func GetDBFolderPath() string {
 func GetDBPath() string {
 	return filepath.Join(GetDBFolderPath(), fmt.Sprintf("%s.db", identity.GetName()))
 }
+
+// CachePath and StagingPath consume optional deployment path facts. Existing
+// deployments retain their paths; these functions assign no platform semantics.
+func CachePath(relative string) string {
+	root := os.Getenv("SUI_CACHE_FOLDER")
+	if root == "" {
+		root = GetDBFolderPath()
+	}
+	return filepath.Join(root, relative)
+}
+
+func StagingPath(relative string) string {
+	root := os.Getenv("SUI_STAGING_FOLDER")
+	if root == "" {
+		root = GetDBFolderPath()
+	}
+	return filepath.Join(root, relative)
+}

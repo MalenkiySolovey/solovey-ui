@@ -4,6 +4,10 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
+import {
+  packageUnixTextAssets,
+  verifySourceUnixTextAssets,
+} from './openwrt-unix-text-assets.mjs'
 
 const scriptRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const sourceRoot = path.resolve(argumentValue('--source-root') ?? scriptRoot)
@@ -28,6 +32,8 @@ const packageHostTools = read('scripts/openwrt-package-host-tools.mjs')
 const packageProcess = read('scripts/openwrt-package-process.sh')
 const releaseWorkflow = read('.github/workflows/release.yml')
 const evidenceOperator = read('cmd/solovey-evidence/main.go')
+
+verifySourceUnixTextAssets(sourceRoot)
 
 const executables = [
   ['solovey-ui', 'main.go'],
@@ -79,6 +85,10 @@ assert.match(stageProducer, /frontend-runtime-closure\.mjs/)
 assert.match(stageProducer, /bash scripts\/build-linux-target\.sh --mode openwrt/)
 assert.match(stageProducer, /openwrt-stage-manifest\.mjs" create/)
 assert.match(stageProducer, /openwrt-stage-manifest\.mjs" verify/)
+for (const asset of packageUnixTextAssets) {
+  const installContract = `install -m ${asset.mode} "$snapshot/${asset.source}" "$payload/${asset.installed}"`
+  assert.ok(stageProducer.includes(installContract), `stage producer does not install ${asset.source} through the Unix text asset contract`)
+}
 assert.match(stageProducer, /--target-profile/)
 assert.match(packageDriver, /--target-profile/)
 assert.match(packageDriver, /openwrt-target-profile\.sh/)
@@ -158,6 +168,8 @@ for (const field of ['name', 'version', 'release', 'architecture', 'license', 'o
 }
 assert.match(apkMetadata, /sum-of-adb-path-file-sizes/)
 assert.match(apkMetadata, /MalenkiySolovey/)
+assert.match(apkMetadata, /proveApkLifecycleScripts/)
+assert.match(apkMetadata, /APK adbdump and lifecycle scripts/)
 
 assert.match(fingerprint, /sourceFingerprintSchema = 'solovey-ui\/openwrt-package-source-fingerprint\/v4'/)
 assert.match(fingerprint, /scripts\/openwrt-go-authority\.mjs/)
@@ -171,6 +183,7 @@ assert.match(fingerprint, /buildIdentity/)
 assert.doesNotMatch(fingerprint, /git ls-files|git status|\.gitignore|trackedDiffSha256|baseHead|originMain|releaseTagBase/)
 
 assert.match(stageManifest, /stageManifestSchema = 'solovey-ui\/openwrt-target-stage\/v2'/)
+assert.match(stageManifest, /proveInstalledUnixTextAssets/)
 for (const field of ['path', 'type', 'sha256', 'size', 'mode', 'kind', 'architecture']) {
   assert.match(stageManifest, new RegExp(`\\b${field}\\b`))
 }
@@ -191,6 +204,7 @@ assert.match(goAuthority, /exact-openwrt-target-package-dependencies/)
 assert.match(goAuthority, /Go toolchain proof differs from the tree that will be executed/)
 assert.match(apkRootfs, /APK installed rootfs differs from the canonical stage/)
 assert.match(apkRootfs, /apk-tools-v3-generated-package-registration/)
+assert.match(apkRootfs, /proveInstalledUnixTextAssets/)
 
 assert.match(releaseWorkflow, /bash scripts\/build-linux-target\.sh --mode release --profile full/)
 assert.match(releaseWorkflow, /bash scripts\/build-linux-target\.sh --mode release --profile core/)
@@ -216,12 +230,17 @@ assert.match(preparation, /chmod 0750 \/run\/solovey-ui/)
 assert.match(preparation, /chown solovey-ui:solovey-ui \/run\/solovey-ui\/server-protection/)
 assert.match(preparation, /chmod 0700 \/run\/solovey-ui\/server-protection/)
 assert.match(preparation, /solovey-openwrt-durability \|\| exit 1/)
+assert.match(preparation, /solovey-openwrt-durability prepare-storage \|\| exit 1/)
+assert.match(preparation, /database_folder="\$\(\/usr\/lib\/solovey-ui\/solovey-openwrt-durability database-folder\)" \|\| exit 1/)
+assert.ok(preparation.indexOf('durability prepare-storage') < preparation.indexOf('mkdir -m 0700 "$database_folder"'))
+assert.match(preparation, /chown solovey-ui:solovey-ui "\$database_folder"/)
+assert.match(preparation, /chmod 0700 "\$database_folder"/)
 assert.match(preparation, /id -u solovey-ui/)
 assert.match(preparation, /id -g solovey-ui/)
 assert.match(preparation, /chown root:root \/etc\/solovey-ui/)
 assert.match(preparation, /chmod 0711 \/etc\/solovey-ui/)
 assert.doesNotMatch(preparation, /chown root:solovey-ui \/etc\/solovey-ui/)
-assert.match(preparation, /preservation_root=\/etc\/solovey-ui\/db\/sysupgrade-preservation/)
+assert.match(preparation, /preservation_root="\$database_folder\/sysupgrade-preservation"/)
 assert.match(preparation, /repair_preservation_file "\$preservation_root\/database\.db" 536870912/)
 assert.match(preparation, /repair_preservation_file "\$preservation_root\/metadata\.json" 16384/)
 assert.match(preparation, /chown solovey-ui:solovey-ui "\$path"/)
@@ -233,9 +252,14 @@ assert.match(initScript, /"\$SOLOVEY_PREPARE" \|\| return 1/)
 assert.match(initScript, /SOLOVEY_LIFECYCLE=\$SOLOVEY_ROOT\/solovey-openwrt-lifecycle/)
 assert.match(initScript, /"\$SOLOVEY_LIFECYCLE" startup-restore \|\| return 1/)
 assert.ok(initScript.indexOf('startup-restore') < initScript.indexOf('procd_open_instance root-broker'))
-assert.doesNotMatch(recipe, /\/etc\/init\.d\/solovey-ui (?:enable|start)/)
+// Package ownership converges core boot registration through rc.common;
+// service startup remains owned by the existing generation reconciler.
+assert.doesNotMatch(recipe, /\/etc\/init\.d\/solovey-ui (?:start|disable)\b/)
+assert.match(recipe, /if ! \/etc\/init\.d\/solovey-ui enabled; then\n\t\/etc\/init\.d\/solovey-ui enable \|\| exit 1\n\t\/etc\/init\.d\/solovey-ui enabled \|\| exit 1\nfi\n\/usr\/lib\/solovey-ui\/solovey-openwrt-lifecycle reconcile/)
 assert.match(recipe, /Package\/solovey-ui\/preinst/)
 assert.match(recipe, /PKG_UPGRADE/)
+assert.match(recipe, /installed_init_first_line=\$\$\(sed -n '1p' \/etc\/init\.d\/solovey-ui\)/)
+assert.match(recipe, /\*"\$\$\(printf '\\r'\)"\) ;; # r22 CRLF recovery/)
 assert.match(recipe, /solovey-openwrt-lifecycle reconcile/)
 assert.match(recipe, /Package\/solovey-ui\/prerm/)
 assert.match(recipe, /solovey-openwrt-lifecycle pre-remove/)

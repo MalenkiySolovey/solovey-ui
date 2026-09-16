@@ -58,7 +58,7 @@ func TestProcdInitTopologyKeepsRootBrokerAndUnprivilegedPanelSeparate(t *testing
 	for _, required := range []string{
 		"USE_PROCD=1", "procd_open_instance root-broker", `solovey-openwrt-lifecycle" broker-entry`,
 		"procd_open_instance panel", `solovey-openwrt-lifecycle" panel-entry`, "procd_set_param user solovey-ui",
-		"procd_set_param group solovey-ui", "SUI_DB_FOLDER=/etc/solovey-ui/db", "procd_set_param respawn",
+		"procd_set_param group solovey-ui", `SUI_DB_FOLDER="$("$SOLOVEY_ROOT/solovey-openwrt-durability" database-folder)"`, "procd_set_param respawn",
 		`"$SOLOVEY_PREPARE" || return 1`,
 	} {
 		if !strings.Contains(content, required) {

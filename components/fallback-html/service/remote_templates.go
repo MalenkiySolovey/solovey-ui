@@ -117,7 +117,7 @@ func (s *Service) ListRemoteTemplateCatalog(ctx context.Context) (RemoteTemplate
 			Source:             remoteSourceLabel(manifest.Source),
 			ContentTypeProfile: manifest.ContentTypeProfile,
 			ManifestURL:        manifestURL,
-			Installed:          len(source.ManifestJSON) > 0,
+			Installed:          len(source.ManifestJSON) > 0 && cachedTemplateAvailable(manifest.ID),
 			InstalledAt:        source.UpdatedAt,
 			Notes:              manifest.Notes,
 		})
@@ -298,6 +298,9 @@ func (s *Service) installedTemplatePackage(templateID string) (installedTemplate
 	}
 	if err := validateRemoteManifest(templateID, manifest); err != nil {
 		return installedTemplatePackage{}, false, err
+	}
+	if !cachedTemplateAvailable(templateID) {
+		return installedTemplatePackage{}, false, nil
 	}
 	return installedTemplatePackage{Manifest: manifest, Raw: source.ManifestJSON}, true, nil
 }
@@ -684,7 +687,7 @@ func readLimitedResponse(response *http.Response, limit int64) ([]byte, error) {
 func (s *Service) downloadRemoteTemplateFiles(ctx context.Context, manifestURL string, manifest remoteTemplateManifest) (string, error) {
 	root := templateRoot(manifest.ID)
 	parent := filepath.Dir(root)
-	if err := ensureOwnedDir(storageRoot(), parent); err != nil {
+	if err := ensureOwnedDir(templateCacheRoot(), parent); err != nil {
 		return "", err
 	}
 	tempRoot, err := os.MkdirTemp(parent, "."+safeArchiveName(manifest.ID)+"-download-*")
@@ -995,4 +998,14 @@ func builtInTemplateDefinition(templateID string) (fallbackdomain.TemplateDefini
 		}
 	}
 	return fallbackdomain.TemplateDefinition{}, fmt.Errorf("unknown fallback-html template %q", templateID)
+}
+
+// A separately injected template cache is reconstructable from the saved source.
+// Its absence after reboot must not be advertised as an installed local package.
+func cachedTemplateAvailable(templateID string) bool {
+	if templateCacheRoot() == filepath.Join(storageRoot(), "templates") {
+		return true
+	}
+	info, err := os.Lstat(filepath.Join(templateRoot(templateID), "manifest.json"))
+	return err == nil && info.Mode().IsRegular()
 }

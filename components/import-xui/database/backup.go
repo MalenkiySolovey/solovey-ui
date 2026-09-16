@@ -3,6 +3,7 @@
 package importxui
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"os"
@@ -20,12 +21,12 @@ func WritePreImportBackup(now int64) (string, error) {
 	if now == 0 {
 		now = time.Now().Unix()
 	}
-	staged, cleanup, err := backup.PrepareExport("")
+	dir := filepath.Dir(configstorage.GetDBPath())
+	staged, cleanup, err := backup.PrepareExportContextInDirectory(context.Background(), "", dir)
 	if err != nil {
 		return "", fmt.Errorf("xui-import: %w", err)
 	}
 	defer cleanup()
-	dir := filepath.Dir(configstorage.GetDBPath())
 	if err := os.MkdirAll(dir, 0o750); err != nil {
 		return "", fmt.Errorf("xui-import: %w", err)
 	}
@@ -39,7 +40,7 @@ func WritePreImportBackup(now int64) (string, error) {
 }
 
 // publishPreImportBackup uses a hard link as an atomic no-replace publish.
-// PrepareExport stages in the database directory, so the link stays on one
+// The recovery owner explicitly stages in the database directory, so the link stays on one
 // filesystem. Unlike rename, this cannot overwrite a backup produced by a
 // concurrent CLI or panel process in the same second.
 func publishPreImportBackup(staged, dir string, now int64) (string, error) {

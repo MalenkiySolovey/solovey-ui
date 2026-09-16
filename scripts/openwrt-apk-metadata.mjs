@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { canonical, sha256 } from './openwrt-package-source-fingerprint.mjs'
 import { stageManifestSchema } from './openwrt-stage-manifest.mjs'
 import { packageHostToolProofSchema } from './openwrt-package-host-tools.mjs'
+import { assertUnixLF } from './openwrt-unix-text-assets.mjs'
 
 export const apkMetadataProofSchema = 'solovey-ui/openwrt-apk-metadata-proof/v1'
 
@@ -69,6 +70,7 @@ export function createApkMetadataProof(adbDump, context) {
     if (!/^[0-9a-f]{64}$/.test(value ?? '')) throw new Error(`${name} is invalid`)
   }
   const metadata = parseApkMetadata(adbDump)
+  const lifecycleScripts = proveApkLifecycleScripts(adbDump)
   const packageArchitecture = context.packageArchitecture ?? 'x86_64'
   if (!/^[a-z0-9_]+$/.test(packageArchitecture)) throw new Error('expected package architecture is invalid')
   const release = parseRelease(context.release)
@@ -81,6 +83,7 @@ export function createApkMetadataProof(adbDump, context) {
     packageHostToolIdentity: context.packageHostToolIdentity,
     apkSha256: context.apkSha256,
     metadataIdentity,
+    lifecycleScripts,
   }
   return {
     schema: apkMetadataProofSchema,
@@ -91,8 +94,36 @@ export function createApkMetadataProof(adbDump, context) {
     apkSha256: context.apkSha256,
     metadata,
     metadataIdentity,
+    lifecycleScripts,
     proofIdentity: sha256(canonical(proofMaterial)),
   }
+}
+
+export function proveApkLifecycleScripts(adbDump) {
+  if (typeof adbDump !== 'string') throw new Error('APK adbdump input is unavailable')
+  assertUnixLF(Buffer.from(adbDump, 'utf8'), 'APK adbdump and lifecycle scripts')
+  const lines = adbDump.split('\n')
+  const scriptsIndex = lines.indexOf('scripts:')
+  if (scriptsIndex < 0) throw new Error('APK adbdump omits lifecycle scripts')
+  const scripts = []
+  for (let index = scriptsIndex + 1; index < lines.length;) {
+    const header = /^  ([a-z][a-z-]*): \|$/.exec(lines[index])
+    if (!header) break
+    const name = header[1]
+    const body = []
+    index += 1
+    while (index < lines.length && lines[index].startsWith('    ')) {
+      body.push(lines[index].slice(4))
+      index += 1
+    }
+    const bytes = Buffer.from(`${body.join('\n')}\n`, 'utf8')
+    assertUnixLF(bytes, `APK lifecycle script ${name}`)
+    scripts.push({ name, size: bytes.length, sha256: sha256(bytes), lineEndings: 'LF_ONLY', firstLineTerminatorHex: '0a' })
+  }
+  const expected = ['post-install', 'post-upgrade', 'pre-deinstall', 'pre-install', 'pre-upgrade']
+  const actual = scripts.map(script => script.name).sort()
+  if (canonical(actual) !== canonical(expected)) throw new Error(`APK lifecycle script set mismatch: ${actual.join(', ')}`)
+  return { scripts: scripts.sort((left, right) => left.name.localeCompare(right.name)), scriptCount: scripts.length }
 }
 
 export function parseApkMetadata(adbDump) {

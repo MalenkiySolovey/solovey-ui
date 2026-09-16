@@ -261,6 +261,30 @@ func Parse(data []byte, target string) (Fact, error) {
 	return selected, nil
 }
 
+// ParseUniqueMount requires a single record at the selected mount point.
+// Callers requiring an unambiguous deployment mount can reject stacked mounts
+// without changing Parse's existing mount-selection contract.
+func ParseUniqueMount(data []byte, target string) (Fact, error) {
+	selected, err := Parse(data, target)
+	if err != nil {
+		return Fact{}, err
+	}
+	count := 0
+	for _, line := range strings.Split(strings.TrimSuffix(string(data), "\n"), "\n") {
+		f, err := parseLine(line, target)
+		if err != nil {
+			return Fact{}, err
+		}
+		if f.MountPoint == selected.MountPoint {
+			count++
+		}
+	}
+	if count != 1 {
+		return Fact{}, ErrUnavailable
+	}
+	return selected, nil
+}
+
 // FilesystemMountPoints returns every canonical mount point for one exact
 // filesystem type after validating the complete bounded mountinfo inventory.
 func FilesystemMountPoints(data []byte, filesystem string) ([]string, error) {

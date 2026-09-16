@@ -100,7 +100,7 @@ func TestOpenWrtPackageHooksOwnGenerationTransition(t *testing.T) {
 		strings.Index(preinst, `[ "$${PKG_UPGRADE:-0}" = 1 ] || exit 0`) < 0 {
 		t.Fatal("OpenWrt preinst does not fail closed for staged roots and non-upgrade installs")
 	}
-	requireOrdered(t, preinst, `[ "$${PKG_UPGRADE:-0}" = 1 ] || exit 0`, `/etc/init.d/solovey-ui stop`, `attempt=0`, `attempt=$$((attempt + 1))`, `exit 1`)
+	requireOrdered(t, preinst, `[ "$${PKG_UPGRADE:-0}" = 1 ] || exit 0`, `installed_init_first_line=$$(sed -n '1p' /etc/init.d/solovey-ui)`, `*"$$(printf '\r')")`, `/etc/init.d/solovey-ui stop`, `attempt=0`, `attempt=$$((attempt + 1))`, `exit 1`)
 	if !strings.Contains(preinst, `-lt 30`) || !strings.Contains(preinst, `sleep 1`) {
 		t.Fatal("OpenWrt preinst process drain is not bounded")
 	}

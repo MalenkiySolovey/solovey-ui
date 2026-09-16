@@ -118,11 +118,17 @@ func PrepareExport(exclude string) (string, func(), error) {
 }
 
 func PrepareExportContext(ctx context.Context, exclude string) (string, func(), error) {
+	return PrepareExportContextInDirectory(ctx, exclude, configstorage.StagingPath(""))
+}
+
+// PrepareExportContextInDirectory lets a recovery owner keep its logical export
+// on the filesystem required by its atomic publication operation. The directory
+// is a trusted owner input, never a path from the backup being restored.
+func PrepareExportContextInDirectory(ctx context.Context, exclude, dir string) (string, func(), error) {
 	if ctx == nil {
 		return "", nil, errors.New("backup context is required")
 	}
 	excludedTables := parseBackupExcludes(exclude)
-	dir := configstorage.GetDBFolderPath()
 	if dir == "" {
 		return "", nil, errors.New("backup staging directory is unavailable")
 	}
@@ -210,7 +216,11 @@ func PrepareExportContext(ctx context.Context, exclude string) (string, func(), 
 	if err := entitytls.EnsureSentinel(backupDB); err != nil {
 		return "", nil, err
 	}
-	if err := writeBackupManifest(ctx, backupDB, tables, excludedTables); err != nil {
+	files, err := exportOwnerFiles(ctx, sourceSnapshot, backupDB)
+	if err != nil {
+		return "", nil, err
+	}
+	if err := writeBackupManifest(ctx, backupDB, tables, excludedTables, files); err != nil {
 		return "", nil, err
 	}
 	if err := walCheckpointWithFallback(backupDB); err != nil {

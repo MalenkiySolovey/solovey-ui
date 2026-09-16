@@ -44,6 +44,7 @@ type DatabaseDurabilityProofV3 struct {
 	ProofClass     string                  `json:"proofClass"`
 	DatabaseMount  mountevidence.Fact      `json:"databaseMount"`
 	Overlay        *FSToolsOverlayEvidence `json:"overlay,omitempty"`
+	Storage        *StorageSelection       `json:"storage,omitempty"`
 }
 
 type FSToolsOverlayEvidence struct {
@@ -62,12 +63,23 @@ type durabilityEnvironment struct {
 	Observe              mountObserver
 	ObserveLabel         overlayLabelObserver
 	PersistenceAuthority PersistenceAuthority
+	Storage              StorageSelection
+	ObserveBlockSource   func(mountevidence.Fact) error
 }
 
 func (proof DatabaseDurabilityProofV3) Validate() error {
-	if proof.Schema != DatabaseDurabilitySchemaV3 || proof.DatabaseFolder != DefaultDatabaseFolder ||
+	if proof.Schema != DatabaseDurabilitySchemaV3 || !canonicalAbsolute(proof.DatabaseFolder) ||
 		proof.Persistence != PersistenceProven || proof.DatabaseMount.Validate() != nil ||
 		proof.DatabaseMount.Target != proof.DatabaseFolder || !proof.DatabaseMount.Writable() {
+		return ErrUnprovenDurableState
+	}
+	if proof.Storage == nil {
+		if proof.DatabaseFolder != DefaultDatabaseFolder {
+			return ErrUnprovenDurableState
+		}
+	} else if proof.Storage.IsDefault() || proof.Storage.Validate() != nil ||
+		proof.DatabaseFolder != proof.Storage.DatabaseFolder() || proof.ProofClass != DirectPersistentMount ||
+		!selectedDirectMount(*proof.Storage, proof.DatabaseMount) {
 		return ErrUnprovenDurableState
 	}
 	switch proof.ProofClass {
@@ -105,14 +117,24 @@ func (proof DatabaseDurabilityProofV3) revision() string {
 }
 
 func createDatabaseDurabilityProof(databaseFolder string, environment durabilityEnvironment) (DatabaseDurabilityProofV3, error) {
-	if databaseFolder != DefaultDatabaseFolder || environment.Observe == nil {
+	if environment.Storage.Validate() != nil || databaseFolder != environment.Storage.DatabaseFolder() || environment.Observe == nil {
 		return DatabaseDurabilityProofV3{}, ErrUnprovenDurableState
 	}
-	primary, err := environment.Observe(databaseFolder)
+	var primary mountevidence.Fact
+	var err error
+	if environment.Storage.IsDefault() {
+		primary, err = environment.Observe(databaseFolder)
+	} else {
+		primary, err = validateSelectedMount(environment.Storage, databaseFolder, environment)
+	}
 	if err != nil {
 		return DatabaseDurabilityProofV3{}, errors.Join(ErrUnprovenDurableState, err)
 	}
 	proof := DatabaseDurabilityProofV3{DatabaseFolder: databaseFolder, DatabaseMount: primary, Persistence: PersistenceProven}
+	if !environment.Storage.IsDefault() {
+		selection := environment.Storage
+		proof.Storage = &selection
+	}
 	if primary.Filesystem == "overlay" {
 		proof.ProofClass = PinnedFSToolsOverlay
 		proof.Overlay, err = observeFSToolsOverlay(primary, environment)
@@ -185,11 +207,46 @@ func recheckDatabaseDurabilityProof(proof DatabaseDurabilityProofV3, required ui
 	if err != nil {
 		return DurableStateEvidence{}, err
 	}
+	if !environment.Storage.IsDefault() {
+		fenced, err := createDatabaseDurabilityProof(proof.DatabaseFolder, environment)
+		if err != nil || fenced.Revision != current.Revision {
+			return DurableStateEvidence{}, errors.Join(ErrUnprovenDurableState, err)
+		}
+	}
 	evidence := DurableStateEvidence{MountPath: proof.DatabaseMount.MountPoint, Persistent: true, AvailableBytes: bytes, RequiredBytes: required}
-	if err := DefaultProfile().ValidateDurableState(evidence); err != nil {
+	if err := environment.Storage.Profile().ValidateDurableState(evidence); err != nil {
 		return DurableStateEvidence{}, err
 	}
 	return evidence, nil
+}
+
+func selectedDirectMount(s StorageSelection, f mountevidence.Fact) bool {
+	magic := map[string]int64{"ext2": 0xef53, "ext3": 0xef53, "ext4": 0xef53, "f2fs": 0xf2f52010, "btrfs": 0x9123683e, "xfs": 0x58465342}
+	return s.Validate() == nil && !s.IsDefault() && durableWritableMount(f) &&
+		magic[f.Filesystem] != 0 && f.FilesystemMagic == magic[f.Filesystem] &&
+		f.ResolvedTarget == f.Target && f.Root == "/" && f.MountPoint == s.MountPoint &&
+		!strings.HasPrefix(f.Device, "0:") && strings.HasPrefix(f.Source, "/dev/")
+}
+
+func validateSelectedMount(s StorageSelection, target string, env durabilityEnvironment) (mountevidence.Fact, error) {
+	if env.Observe == nil || env.ObserveBlockSource == nil {
+		return mountevidence.Fact{}, ErrUnprovenDurableState
+	}
+	first, err := env.Observe(target)
+	if err != nil || first.Target != target || !selectedDirectMount(s, first) {
+		return mountevidence.Fact{}, errors.Join(ErrUnprovenDurableState, err)
+	}
+	if err := env.ObserveBlockSource(first); err != nil {
+		return mountevidence.Fact{}, errors.Join(ErrUnprovenDurableState, err)
+	}
+	second, err := env.Observe(target)
+	if err != nil || second.Revision != first.Revision {
+		return mountevidence.Fact{}, errors.Join(ErrUnprovenDurableState, err)
+	}
+	if err := env.ObserveBlockSource(second); err != nil {
+		return mountevidence.Fact{}, errors.Join(ErrUnprovenDurableState, err)
+	}
+	return first, nil
 }
 
 func validOverlayMount(fact mountevidence.Fact) bool {
