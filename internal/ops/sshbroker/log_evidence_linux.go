@@ -118,10 +118,6 @@ func resolveTrustedOpenWrtLogreadOwnedBy(publicPath, uboxPath string, ancestry f
 	return chooseTrustedOpenWrtLogreadOwnedBy(facts, publicPath, uboxPath, owner)
 }
 
-func inspectLogreadCandidate(path string) (logreadCandidateFacts, error) {
-	return inspectLogreadCandidateWithAncestry(path, trustedLogreadPath)
-}
-
 func inspectLogreadCandidateWithAncestry(path string, ancestry func(string) bool) (logreadCandidateFacts, error) {
 	linkInfo, err := os.Lstat(path)
 	if err != nil {

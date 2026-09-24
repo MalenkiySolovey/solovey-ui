@@ -25,7 +25,7 @@ func (h ProtectionHealth) Check(ctx context.Context, planned []hostresources.Pro
 	if manager, ok := h.Reader.(*Manager); ok {
 		ctx = manager.WithCurrentPosture(ctx)
 	}
-	current, err := (ProtectionResourceContributor{Reader: h.Reader, Now: h.Now}).ListProtectableResources(ctx)
+	current, err := ProtectionResourceContributor(h).ListProtectableResources(ctx)
 	results := make([]componenthealth.Result, 0, len(planned))
 	for _, resource := range planned {
 		result := componenthealth.Result{ResourceID: resource.ID, Status: componenthealth.StatusDegraded, Check: "ssh_listener_authority", FactCode: "ssh_listener_authority_unavailable"}

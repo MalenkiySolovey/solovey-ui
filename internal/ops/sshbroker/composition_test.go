@@ -155,6 +155,9 @@ func TestResolvedSSHCompositionProjectionsAreDefensive(t *testing.T) {
 	units := resolved.logTarget.journaldUnitList()
 	units[0] = "attacker.service"
 	units = append(units, "another-attacker.service")
+	if len(units) != 3 {
+		t.Fatal("projection append fixture did not extend its private copy")
+	}
 	copied := resolved
 	copied.serviceTarget.systemdUnits[0] = "attacker.service"
 	copied.logTarget.journaldUnits[0] = "attacker.service"

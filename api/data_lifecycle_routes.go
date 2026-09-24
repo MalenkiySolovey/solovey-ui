@@ -149,7 +149,7 @@ func (h *dataLifecycleHTTP) recoveryBackup(c *gin.Context) {
 	c.Header("Content-Disposition", "attachment; filename=solovey-ui_recovery_"+artifact.BackupRef[:12]+".db")
 	c.Header("Content-Length", strconv.FormatInt(artifact.Bytes, 10))
 	if _, err := io.Copy(c.Writer, file); err != nil {
-		c.Error(err) //nolint:errcheck -- response streaming has already started.
+		_ = c.Error(err) // The response stream has already started.
 	}
 }
 

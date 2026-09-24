@@ -105,10 +105,6 @@ func ensureTicketRoot() error {
 	return productionProofTicketStore().ensureRoot()
 }
 
-func ticketPath(operationID string) string {
-	return ticketPathFor(TicketRoot, operationID)
-}
-
 func ticketPathFor(root, operationID string) string {
 	sum := sha256.Sum256([]byte(operationID))
 	return filepath.Join(root, hex.EncodeToString(sum[:])+".json")

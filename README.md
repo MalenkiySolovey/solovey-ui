@@ -12,6 +12,16 @@
 
 Current version: `2026.3.1`
 
+The source version becomes installable after its complete official release is
+published. The canonical release workflow builds Linux full/core archives and
+components, Windows packages and Docker images; its default preflight mode builds
+and verifies candidates without publishing. Archive targets are defined in
+`scripts/release-targets.json`. Naive/Cronet requires a supported target library;
+ARMv5, ARMv6 and s390x builds omit that protocol. All seven Linux targets retain
+full and core panel profiles.
+The maintainer transaction is documented in
+[Release contract](.github/RELEASE_CONTRACT.md).
+
 Solovey UI is a GPL-3.0 panel for managing a `sing-box` server through a web
 interface and command-line tool. The core panel includes the required runtime
 parts: users, inbounds, outbounds, routing, DNS, TLS, services, backups,

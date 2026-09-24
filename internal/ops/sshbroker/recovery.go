@@ -172,7 +172,7 @@ func parseOpenSSHRecoveryJournal(data []byte, request RecoveryObserveRequest, no
 
 func parseDropbearRecoveryLog(data []byte, request RecoveryObserveRequest, now time.Time, processMatches func(int) bool) ([]RecoveryObservation, error) {
 	if len(data) == 0 || len(data) > maxRecoveryEvidenceBytes || bytes.IndexByte(data, 0) >= 0 || processMatches == nil || validateRecoveryObserveRequest(request, now) != nil {
-		return nil, errors.New("Dropbear recovery evidence is malformed or unbounded")
+		return nil, errors.New("dropbear recovery evidence is malformed or unbounded")
 	}
 	result := make([]RecoveryObservation, 0)
 	seen := map[string]bool{}
@@ -182,7 +182,7 @@ func parseDropbearRecoveryLog(data []byte, request RecoveryObserveRequest, now t
 	for scanner.Scan() {
 		records++
 		if records > maxRecoveryLogRecords || len(scanner.Bytes()) > 4096 {
-			return nil, errors.New("Dropbear recovery record bound was exceeded")
+			return nil, errors.New("dropbear recovery record bound was exceeded")
 		}
 		match := dropbearLogPattern.FindStringSubmatch(scanner.Text())
 		if match == nil {

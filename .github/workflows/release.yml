@@ -19,6 +19,12 @@ on:
 
 permissions:
   contents: write
+  packages: write
+
+# A release and its mutable channel pointer have one writer at a time.
+concurrency:
+  group: solovey-release-publication
+  cancel-in-progress: false
 
 env:
   NODE_VERSION: "25"
@@ -29,9 +35,27 @@ env:
   BOOTLIN_BASE_URL: https://toolchains.bootlin.com/downloads/releases/toolchains
 
 jobs:
+  build-docker:
+    needs: [assemble-linux, build-windows]
+    uses: ./.github/workflows/docker.yml
+    with:
+      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      preflight_only: ${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only }}
+    secrets: inherit
+
+  build-windows:
+    needs: release-preflight
+    uses: ./.github/workflows/windows.yml
+    with:
+      tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+      preflight_only: true
+    secrets: inherit
+
   release-preflight:
     name: Release preflight
     runs-on: ubuntu-latest
+    outputs:
+      linux-matrix: ${{ steps.targets.outputs.linux-matrix }}
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -61,6 +85,16 @@ jobs:
           set -euo pipefail
           RELEASE_SEQUENCE="$((GITHUB_RUN_NUMBER * 1000 + GITHUB_RUN_ATTEMPT))"
           node scripts/release-preflight.mjs --tag "$RELEASE_TAG_INPUT" --sequence "$RELEASE_SEQUENCE"
+
+      - name: Read canonical Linux targets
+        id: targets
+        run: node -e 'const fs=require("fs"); const targets=require("./scripts/release-targets.json"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "linux-matrix="+JSON.stringify({include:targets.linux})+"\n")'
+
+      - name: Verify immutable publication identity before any registry write
+        if: github.event_name == 'push' || inputs.preflight_only == false
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-publish-gate.mjs before "$RELEASE_TAG_INPUT"
 
   test-installer:
     needs: release-preflight
@@ -99,6 +133,11 @@ jobs:
 
       - name: release package integration
         run: bash tests/installer/release-package.sh
+
+      - name: Semantic release resolution and complete release verification
+        run: |
+          bash tests/installer/latest-release.sh
+          node --test scripts/release-verify.test.mjs scripts/release-target.test.mjs scripts/release-publish-gate.test.mjs scripts/release-source.test.mjs
 
       - name: signed release manifest integration
         run: bash tests/installer/release-manifest.sh
@@ -246,20 +285,13 @@ jobs:
   build-linux:
     name: Build-${{ matrix.platform }}
     needs:
+      - release-preflight
       - build-frontend
       - component-profile-checks
       - test-installer
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - { platform: amd64, arch: amd64, bootlin: x86-64, naive: true }
-          - { platform: arm64, arch: arm64, bootlin: aarch64, naive: true }
-          - { platform: armv7, arch: arm, goarm: "7", bootlin: armv7-eabihf, naive: true }
-          - { platform: armv6, arch: arm, goarm: "6", bootlin: armv6-eabihf, naive: true }
-          - { platform: armv5, arch: arm, goarm: "5", bootlin: armv5-eabi, bootlin_archive: armv5-eabi--musl--stable-2025.08-1.tar.xz, bootlin_sha256: 8cdb4ad70c6b5a66427fa3315fe3ddde1c19c90232674dec59045e04d2a36cf1, naive: false }
-          - { platform: "386", arch: "386", bootlin: x86-i686, naive: true }
-          - { platform: s390x, arch: s390x, bootlin: s390x-z13, bootlin_archive: s390x-z13--musl--stable-2025.08-1.tar.xz, bootlin_sha256: 23f536ff2bf1a9d3b93210465471996bc7c918fbb5702a277d8e1e42ffab8559, naive: false }
+      matrix: ${{ fromJSON(needs.release-preflight.outputs.linux-matrix) }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -289,7 +321,7 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
 
       - name: Clone cronet-go (naive platforms)
-        if: matrix.naive
+        if: matrix.naive && matrix.compiler != 'bootlin'
         run: |
           set -e
           git init ~/cronet-go
@@ -300,7 +332,7 @@ jobs:
           git -C ~/cronet-go submodule update --init --recursive --depth=1
 
       - name: Regenerate Debian keyring (cronet sysroot)
-        if: matrix.naive
+        if: matrix.naive && matrix.compiler != 'bootlin'
         run: |
           set -e
           rm -f ~/cronet-go/naiveproxy/src/build/linux/sysroot_scripts/keyring.gpg
@@ -308,7 +340,7 @@ jobs:
           GPG_TTY=/dev/null ./naiveproxy/src/build/linux/sysroot_scripts/generate_keyring.sh
 
       - name: Build cronet library and set toolchain environment
-        if: matrix.naive
+        if: matrix.naive && matrix.compiler != 'bootlin'
         run: |
           set -e
           cd ~/cronet-go
@@ -336,12 +368,14 @@ jobs:
             *) PANEL_VERSION="v${PANEL_VERSION}" ;;
           esac
           SING_BOX_VERSION="$(go list -m -f '{{.Version}}' github.com/sagernet/sing-box)"
+          SOURCE_FINGERPRINT="$(node scripts/release-source.mjs .)"
           [ -n "$SING_BOX_VERSION" ] || { echo "sing-box module version is empty" >&2; exit 1; }
           echo "panel_version=$PANEL_VERSION" >> "$GITHUB_OUTPUT"
           echo "sing_box_version=$SING_BOX_VERSION" >> "$GITHUB_OUTPUT"
+          echo "source_fingerprint=$SOURCE_FINGERPRINT" >> "$GITHUB_OUTPUT"
 
-      - name: Set up Bootlin musl (non-naive platforms)
-        if: ${{ matrix.naive != true }}
+      - name: Set up pinned Bootlin musl compiler
+        if: ${{ matrix.naive != true || matrix.compiler == 'bootlin' }}
         run: |
           set -e
           BOOTLIN_ARCH="${{ matrix.bootlin }}"
@@ -406,6 +440,7 @@ jobs:
             echo "profile=full"
             echo "version=${{ steps.build_meta.outputs.panel_version }}"
             echo "commit=${GITHUB_SHA}"
+            echo "source_fingerprint=${{ steps.build_meta.outputs.source_fingerprint }}"
             echo "platform=linux/${{ matrix.platform }}"
             echo "go=$(go version)"
             echo "sing_box=${{ steps.build_meta.outputs.sing_box_version }}"
@@ -415,6 +450,7 @@ jobs:
             echo "profile=core"
             echo "version=${{ steps.build_meta.outputs.panel_version }}"
             echo "commit=${GITHUB_SHA}"
+            echo "source_fingerprint=${{ steps.build_meta.outputs.source_fingerprint }}"
             echo "platform=linux/${{ matrix.platform }}"
             echo "go=$(go version)"
             echo "sing_box=${{ steps.build_meta.outputs.sing_box_version }}"
@@ -452,11 +488,14 @@ jobs:
             ./solovey-ui-core-linux-${{ matrix.platform }}.tar.gz.sha256
           retention-days: 1
 
-  publish-linux:
-    name: Publish Linux artifacts
+  assemble-linux:
+    name: Assemble and verify complete Linux release
     needs: build-linux
-    if: github.event_name == 'push' || inputs.preflight_only == false
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.vars.outputs.tag }}
+      prerelease: ${{ steps.vars.outputs.prerelease }}
+      notes_path: ${{ steps.vars.outputs.notes_path }}
     steps:
       - name: Check out repository (for release notes)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -473,7 +512,7 @@ jobs:
           esac
           echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
           case "$TAG" in
-            *-alpha*|*-beta*|*-rc*|*-pre*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
+            *-*) echo "prerelease=true" >> "$GITHUB_OUTPUT" ;;
             *) echo "prerelease=false" >> "$GITHUB_OUTPUT" ;;
           esac
           NOTES_FILE=".github/RELEASE_NOTES_${TAG}.md"
@@ -522,16 +561,75 @@ jobs:
             --assets-dir release-assets \
             --components-dir .release/components
 
+      - name: Verify complete signed release set
+        env:
+          SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
+        run: node scripts/release-verify.mjs release-assets "$RELEASE_TAG_INPUT"
+
+      - name: Retain complete release candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: complete-linux-release
+          path: release-assets/
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-linux:
+    name: Publish complete verified release
+    needs: [assemble-linux, build-windows, build-docker]
+    if: github.event_name == 'push' || inputs.preflight_only == false
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release notes
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Download verified complete candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: complete-linux-release
+          path: release-assets
+
+      - name: Verify candidate at publication boundary
+        env:
+          SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
+        run: node scripts/release-verify.mjs release-assets "$RELEASE_TAG_INPUT"
+
+      - name: Download Windows candidates
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: solovey-ui-windows-*
+          path: windows-assets
+          merge-multiple: true
+
+      - name: Verify complete Windows candidates
+        run: node scripts/release-verify.mjs windows-assets "$RELEASE_TAG_INPUT" --windows
+
+      - name: Refuse immutable release overwrite
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/release-publish-gate.mjs before "$RELEASE_TAG_INPUT"
+
       - name: Publish to current repository Release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
         with:
-          tag_name: ${{ steps.vars.outputs.tag }}
-          name: Solovey UI ${{ steps.vars.outputs.tag }}
+          tag_name: ${{ needs.assemble-linux.outputs.tag }}
+          name: Solovey UI ${{ needs.assemble-linux.outputs.tag }}
           target_commitish: ${{ github.sha }}
-          prerelease: ${{ steps.vars.outputs.prerelease == 'true' }}
-          body_path: ${{ steps.vars.outputs.notes_path }}
+          prerelease: ${{ needs.assemble-linux.outputs.prerelease == 'true' }}
+          body_path: ${{ needs.assemble-linux.outputs.notes_path }}
+          draft: true
           fail_on_unmatched_files: true
-          files: release-assets/*
+          files: |
+            release-assets/*
+            windows-assets/*
+
+      - name: Publish fully uploaded immutable version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ needs.assemble-linux.outputs.tag }}
+        run: |
+          node scripts/release-publish-gate.mjs uploaded "$RELEASE_TAG" release-assets windows-assets
+          gh release edit "$RELEASE_TAG" --draft=false
 
       - name: Publish signed channel release set
         env:
@@ -539,10 +637,10 @@ jobs:
         run: |
           set -euo pipefail
           CHANNEL=main
-          [ "${{ steps.vars.outputs.prerelease }}" = "true" ] && CHANNEL=beta
+          [ "${{ needs.assemble-linux.outputs.prerelease }}" = "true" ] && CHANNEL=beta
           CHANNEL_TAG="channel-${CHANNEL}"
           if ! gh release view "$CHANNEL_TAG" >/dev/null 2>&1; then
-            CREATE_ARGS=(--target "$GITHUB_SHA" --title "Solovey UI ${CHANNEL} signed channel" --notes "Signed, expiring Solovey UI ${CHANNEL} release-set pointer. Artifact trust is established only by solovey-ui-release.json.")
+            CREATE_ARGS=(--target "$GITHUB_SHA" --latest=false --title "Solovey UI ${CHANNEL} signed channel" --notes "Signed, expiring Solovey UI ${CHANNEL} release-set pointer. Artifact trust is established only by solovey-ui-release.json.")
             [ "$CHANNEL" = beta ] && CREATE_ARGS+=(--prerelease)
             gh release create "$CHANNEL_TAG" "${CREATE_ARGS[@]}"
           fi

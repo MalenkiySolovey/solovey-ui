@@ -96,8 +96,8 @@ func TestOpenWrtPackageHooksOwnGenerationTransition(t *testing.T) {
 	lifecycle := pinnedSource(t, sourceRoot, "cmd/solovey-openwrt-lifecycle/main_linux.go")
 
 	preinst := definitionBody(t, packageMakefile, "Package/solovey-ui/preinst")
-	if strings.Index(preinst, `[ -n "$${IPKG_INSTROOT}" ] && exit 0`) < 0 ||
-		strings.Index(preinst, `[ "$${PKG_UPGRADE:-0}" = 1 ] || exit 0`) < 0 {
+	if !strings.Contains(preinst, `[ -n "$${IPKG_INSTROOT}" ] && exit 0`) ||
+		!strings.Contains(preinst, `[ "$${PKG_UPGRADE:-0}" = 1 ] || exit 0`) {
 		t.Fatal("OpenWrt preinst does not fail closed for staged roots and non-upgrade installs")
 	}
 	requireOrdered(t, preinst, `[ "$${PKG_UPGRADE:-0}" = 1 ] || exit 0`, `installed_init_first_line=$$(sed -n '1p' /etc/init.d/solovey-ui)`, `*"$$(printf '\r')")`, `/etc/init.d/solovey-ui stop`, `attempt=0`, `attempt=$$((attempt + 1))`, `exit 1`)

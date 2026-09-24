@@ -51,6 +51,9 @@ done
 [[ -n "$out" && -n "$platform" && -f "$trust_roots_file" ]] || fail 'output, platform and trust-roots file are required'
 [[ "${GOOS:-}" == 'linux' && -n "${GOARCH:-}" && "${CGO_ENABLED:-}" == '1' ]] || fail 'GOOS=linux, GOARCH and CGO_ENABLED=1 are required'
 [[ -n "${CC:-}" && -n "${CXX:-}" ]] || fail 'CC and CXX are required'
+if [[ "$mode" == 'release' ]]; then
+	node "$(dirname "${BASH_SOURCE[0]}")/release-target.mjs" "$platform" "$naive" || fail 'release target identity is invalid'
+fi
 go_program=$(command -v go) || fail 'go is unavailable'
 go_program=$(readlink -f "$go_program")
 if [[ "$mode" == 'openwrt' ]]; then

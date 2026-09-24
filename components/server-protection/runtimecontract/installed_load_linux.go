@@ -102,10 +102,10 @@ func ResolveRootAuthority(databaseFolder string) (RuntimeRootAuthority, error) {
 		profileID := domain.ProfileID(strings.TrimSpace(os.Getenv("SOLOVEY_DEPLOYMENT_PROFILE")))
 		profile, ok := domain.Lookup(profileID)
 		if !ok || profile.Runtime != domain.RuntimeDocker {
-			return RuntimeRootAuthority{}, errors.New("Docker Server Protection deployment profile is unavailable")
+			return RuntimeRootAuthority{}, errors.New("docker server protection deployment profile is unavailable")
 		}
 		if os.Getenv("SUI_SERVER_PROTECTION_RUNTIME_ROOT") != DockerRuntimeRoot {
-			return RuntimeRootAuthority{}, errors.New("Docker Server Protection runtime root injection is absent or non-canonical")
+			return RuntimeRootAuthority{}, errors.New("docker server protection runtime root injection is absent or non-canonical")
 		}
 		mount, err := ObserveRuntimeMount(DockerRuntimeRoot, RuntimeMountVolatile)
 		if err != nil {
@@ -144,7 +144,7 @@ func recheckRuntimeRootAuthority(authority RuntimeRootAuthority) error {
 		if os.Getenv("SUI_DEPLOYMENT_KIND") != "docker" || os.Getenv("SUI_SERVER_PROTECTION_RUNTIME_ROOT") != DockerRuntimeRoot ||
 			!ok || profile.Runtime != domain.RuntimeDocker || authority.dockerProfileID != "" &&
 			(string(profile.ID) != authority.dockerProfileID || profile.Revision != authority.dockerProfileRevision) {
-			return errors.New("Docker Server Protection deployment projection changed")
+			return errors.New("docker server protection deployment projection changed")
 		}
 	default:
 		return errors.New("installed Server Protection deployment backend is unavailable")

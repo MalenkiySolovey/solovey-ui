@@ -1,6 +1,14 @@
 name: Build Solovey UI for Windows
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      preflight_only:
+        default: true
+        type: boolean
   workflow_dispatch:
     inputs:
       tag:
@@ -13,16 +21,13 @@ on:
         required: true
         default: true
         type: boolean
-  push:
-    tags:
-      - "v*"
 
 permissions:
-  contents: write
+  contents: read
 
 env:
   NODE_VERSION: "25"
-  RELEASE_TAG_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  RELEASE_TAG_INPUT: ${{ inputs.tag || github.ref_name }}
   TAGS: "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0,with_tailscale"
   LIBCRONET_BASE_URL: "https://github.com/SagerNet/cronet-go/releases/download/v148.0.7778.96-1"
 
@@ -130,7 +135,10 @@ jobs:
         shell: bash
         env:
           MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+          SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
         run: |
+          set -euo pipefail
+          [ -n "$SUI_RELEASE_TRUST_ROOTS_B64" ] || { echo "release trust roots are required" >&2; exit 1; }
           export CGO_ENABLED=${{ matrix.cgo }}
           export GOOS=windows
           export GOARCH=${{ matrix.arch }}
@@ -151,7 +159,7 @@ jobs:
           go test ./database/sqlite
 
           node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
-          go build -ldflags="-w -s -checklinkname=0" -tags "${{ env.TAGS }}" -o sui.exe main.go
+          go build -trimpath -buildvcs=false -ldflags="-buildid= -w -s -checklinkname=0 -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=$SUI_RELEASE_TRUST_ROOTS_B64" -tags "${{ env.TAGS }}" -o sui.exe main.go
           file sui.exe
 
           mkdir solovey-ui-windows
@@ -200,34 +208,3 @@ jobs:
             ./solovey-ui-windows-${{ matrix.arch }}.zip
             ./solovey-ui-windows-${{ matrix.arch }}.zip.sha256
           retention-days: 1
-
-  publish-windows:
-    name: Publish Windows artifacts
-    needs: build-windows
-    if: github.event_name == 'push' || inputs.preflight_only == false
-    runs-on: ubuntu-latest
-    steps:
-      - name: Normalize release tag
-        id: vars
-        run: |
-          TAG="${RELEASE_TAG_INPUT}"
-          case "$TAG" in
-            v*) echo "tag=$TAG" >> "$GITHUB_OUTPUT" ;;
-            *) echo "tag=v$TAG" >> "$GITHUB_OUTPUT" ;;
-          esac
-
-      - name: Download Windows build artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          pattern: solovey-ui-windows-*
-          path: release-assets
-          merge-multiple: true
-
-      - name: Publish to current repository Release
-        uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
-        with:
-          tag_name: ${{ steps.vars.outputs.tag }}
-          name: Solovey UI ${{ steps.vars.outputs.tag }}
-          target_commitish: ${{ github.sha }}
-          fail_on_unmatched_files: true
-          files: release-assets/*

@@ -85,7 +85,7 @@ func (o *recoveryObserver) Observe(ctx context.Context, request RecoveryObserveR
 		observations, err = parseOpenSSHRecoveryJournal(data, request, now, o.host.sshd.Label(), journal.units)
 	case ImplementationDropbear:
 		if o.host.dropbear == nil {
-			return nil, errors.New("Dropbear recovery projection is unavailable")
+			return nil, errors.New("dropbear recovery projection is unavailable")
 		}
 		observations, err = parseDropbearRecoveryLog(data, request, now, func(pid int) bool {
 			fact, observeErr := processevidence.Observe(pid)
@@ -153,7 +153,7 @@ func (o *recoveryObserver) openSSHVerifierRevision(ctx context.Context) (string,
 
 func (o *recoveryObserver) dropbearVerifierRevision() (string, error) {
 	if o.host.dropbear == nil {
-		return "", errors.New("Dropbear recovery verifier is unavailable")
+		return "", errors.New("dropbear recovery verifier is unavailable")
 	}
 	files, err := recoveryVerifierInventory([]string{"/etc/config/dropbear", "/etc/dropbear/authorized_keys", "/etc/passwd", o.host.logs.executable(), o.host.dropbear.dropbear.Label()})
 	if err != nil {

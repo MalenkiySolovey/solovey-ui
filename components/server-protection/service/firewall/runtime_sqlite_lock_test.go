@@ -62,8 +62,12 @@ func runtimeReadonlyFence(t *testing.T, db *gorm.DB) func() {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() {
-		db.Callback().Update().Remove("runtime:readonly")
-		db.Callback().Update().Remove("runtime:readonly_reset")
+		if err := db.Callback().Update().Remove("runtime:readonly"); err != nil {
+			t.Errorf("remove readonly callback: %v", err)
+		}
+		if err := db.Callback().Update().Remove("runtime:readonly_reset"); err != nil {
+			t.Errorf("remove readonly reset callback: %v", err)
+		}
 	})
 	return func() {
 		var code sqlite3.Error
@@ -114,7 +118,11 @@ func runtimeConcurrentAuditBarrier(t *testing.T, db *gorm.DB, operationID string
 	}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Callback().Create().Remove("runtime:audit_writer") })
+	t.Cleanup(func() {
+		if err := db.Callback().Create().Remove("runtime:audit_writer"); err != nil {
+			t.Errorf("remove audit writer callback: %v", err)
+		}
+	})
 	if err := db.Callback().Query().After("gorm:query").Register("runtime:read_barrier", func(tx *gorm.DB) {
 		operation, ok := tx.Statement.Dest.(*repository.OperationLockModel)
 		reader, inTx := tx.Statement.ConnPool.(*sql.Tx)
@@ -136,7 +144,11 @@ func runtimeConcurrentAuditBarrier(t *testing.T, db *gorm.DB, operationID string
 	}); err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { db.Callback().Query().Remove("runtime:read_barrier") })
+	t.Cleanup(func() {
+		if err := db.Callback().Query().Remove("runtime:read_barrier"); err != nil {
+			t.Errorf("remove read barrier callback: %v", err)
+		}
+	})
 	return func() {
 		if !fired {
 			t.Fatal("runtime fence barrier not reached")

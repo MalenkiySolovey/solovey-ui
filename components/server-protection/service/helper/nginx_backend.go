@@ -72,6 +72,10 @@ func (e *systemNginxExecutor) Detect(ctx context.Context) NginxSupport {
 	}
 	if e.binary == nil {
 		e.binary, err = openSystemNginxExecutable()
+		if err != nil {
+			result.Reason = safeNginxReason(err)
+			return result
+		}
 	}
 	identity, version, modules, err := detectSystemNginx(ctx, e.binary)
 	if err != nil {

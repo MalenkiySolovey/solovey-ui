@@ -292,14 +292,6 @@ func ResolveRegisteredSSHComposition(composition Composition) (ResolvedSSHCompos
 	return resolved, nil
 }
 
-// registered reports whether all concrete adapters needed by this deployment
-// profile are shipped in the current release. This is a construction-catalog
-// decision, deliberately separate from dimension and policy validation.
-func (c Composition) registered() bool {
-	_, err := ResolveRegisteredSSHComposition(c)
-	return err == nil
-}
-
 func (c Composition) validateRegistered() error {
 	_, err := ResolveRegisteredSSHComposition(c)
 	return err

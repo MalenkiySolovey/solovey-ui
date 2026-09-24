@@ -561,14 +561,6 @@ func (h *Host) observe(ctx context.Context) (ObservationV1, error) {
 	return ObservationV1{Posture: posture, ProviderRevision: ProviderRevision}, nil
 }
 
-func (h *Host) serviceIdentity(ctx context.Context) (string, string, error) {
-	observation, err := h.service.Observe(ctx)
-	if err != nil {
-		return "", "", err
-	}
-	return observation.ID, observation.Revision, nil
-}
-
 type openSSHSystemdEvidence struct {
 	UnitID             string
 	MainPID            int

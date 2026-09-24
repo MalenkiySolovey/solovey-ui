@@ -486,7 +486,7 @@ components_bundle_artifact_name() {
 component_manifest_string_field() {
     local manifest="$1"
     local field="$2"
-    sed -nE "s/.*\"${field}\"[[:space:]]*:[[:space:]]*\"([^\"]+)\".*/\\1/p" "${manifest}" | head -n 1
+    json_string_field "${field}" < "${manifest}"
 }
 
 validate_component_pack_manifest() {
@@ -676,6 +676,100 @@ detect_arch() {
     esac
 }
 
+# Bootstrap has awk, but no application binary or language-runtime JSON parser.
+# Validate the whole bounded JSON document before returning one top-level ASCII
+# string. Nested fields and text inside strings never establish field authority.
+# Kept inline because install.sh is also fetched and run as a standalone script.
+json_string_field() {
+    LC_ALL=C awk -v wanted="$1" '
+        function invalid() { bad=1; exit 1 }
+        function ws() { while (substr(doc,pos,1) ~ /^[ \t\r\n]$/) pos++ }
+        function string(    c,e,h,n,i,b,width,nextbyte,result) {
+            if (substr(doc,pos++,1) != "\"") invalid()
+            result=""
+            while (pos <= length(doc)) {
+                c=substr(doc,pos++,1)
+                if (c == "\"") { value=result; return }
+                b=byte[c]
+                if (b < 32) invalid()
+                if (b >= 128) {
+                    width=(b >= 194 && b <= 223) ? 2 : (b >= 224 && b <= 239) ? 3 : (b >= 240 && b <= 244) ? 4 : 0
+                    if (!width) invalid()
+                    for (i=1;i<width;i++) {
+                        nextbyte=byte[substr(doc,pos+i-1,1)]
+                        if (nextbyte < 128 || nextbyte > 191) invalid()
+                        if (i == 1 && ((b == 224 && nextbyte < 160) || (b == 237 && nextbyte > 159) || (b == 240 && nextbyte < 144) || (b == 244 && nextbyte > 143))) invalid()
+                    }
+                    c=c substr(doc,pos,width-1); pos+=width-1
+                } else if (c == "\\") {
+                    e=substr(doc,pos++,1)
+                    if (e == "u") {
+                        h=substr(doc,pos,4)
+                        if (length(h) != 4 || h ~ /[^0-9a-fA-F]/) invalid()
+                        pos+=4; n=0
+                        for (i=1;i<=4;i++) n=n*16+index("0123456789abcdef",tolower(substr(h,i,1)))-1
+                        # Only printable ASCII is a supported returned identity.
+                        c=(n >= 32 && n <= 126) ? sprintf("%c",n) : sprintf("%c",1)
+                    } else if (e == "\"" || e == "\\" || e == "/") c=e
+                    else if (e ~ /^[bfnrt]$/) c=sprintf("%c",1)
+                    else invalid()
+                }
+                result=result c
+            }
+            invalid()
+        }
+        function object(depth,    key,c,selected) {
+            pos++; ws()
+            if (substr(doc,pos,1) == "}") { pos++; return }
+            while (1) {
+                string(); key=value; ws()
+                if (substr(doc,pos++,1) != ":") invalid()
+                ws(); selected=(depth == 1 && key == wanted)
+                if (selected && (seen++ || substr(doc,pos,1) != "\"")) invalid()
+                parse(depth)
+                if (selected) answer=value
+                ws(); c=substr(doc,pos++,1)
+                if (c == "}") return
+                if (c != ",") invalid()
+                ws()
+            }
+        }
+        function array(depth,    c) {
+            pos++; ws()
+            if (substr(doc,pos,1) == "]") { pos++; return }
+            while (1) {
+                parse(depth); ws(); c=substr(doc,pos++,1)
+                if (c == "]") return
+                if (c != ",") invalid()
+                ws()
+            }
+        }
+        function parse(depth,    c,rest) {
+            if (++depth > 64) invalid()
+            ws(); c=substr(doc,pos,1)
+            if (c == "{") object(depth)
+            else if (c == "[") array(depth)
+            else if (c == "\"") string()
+            else {
+                rest=substr(doc,pos)
+                if (match(rest,/^(true|false|null)/)) pos+=RLENGTH
+                else if (match(rest,/^-?(0|[1-9][0-9]*)(\.[0-9]+)?([eE][+-]?[0-9]+)?/)) pos+=RLENGTH
+                else invalid()
+            }
+        }
+        BEGIN { for (i=1;i<256;i++) byte[sprintf("%c",i)]=i }
+        { if (length(doc)+length($0)+1 > 1048576) invalid(); doc=doc $0 "\n" }
+        END {
+            if (bad) exit 1
+            pos=1; ws()
+            if (substr(doc,pos,1) != "{") invalid()
+            parse(0); ws()
+            if (pos <= length(doc) || seen != 1 || answer == "" || answer ~ /[^ -~]/) invalid()
+            print answer
+        }
+    '
+}
+
 latest_version() {
     local tag
     tag="$(
@@ -683,10 +777,9 @@ latest_version() {
             -H "Accept: application/vnd.github+json" \
             -H "User-Agent: ${APP_NAME}-installer" \
             "${GITHUB_API}" |
-        sed -nE 's/^[[:space:]]*"tag_name"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/p' |
-        head -n 1
-    )"
-    [[ -n "${tag}" ]] || fail "could not resolve latest release from ${GITHUB_API}"
+        json_string_field tag_name
+    )" || fail "could not resolve latest release from ${GITHUB_API}"
+    [[ "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9a-z-]+(\.[0-9a-z-]+)*)?$ ]] || fail "invalid latest release tag from ${GITHUB_API}"
     printf '%s\n' "${tag}"
 }
 
@@ -805,6 +898,10 @@ cleanup_incomplete_backup() {
 
 backup_systemd_assets() {
 	local target="$1" unit state
+	if [[ "${DRY_RUN}" == "1" ]]; then
+		log "would back up systemd assets to ${target}/systemd-assets"
+		return 0
+	fi
 	mkdir -p "${target}/systemd-assets/units" || return 1
 	if [[ -d "${SYSTEMD_PROFILE_ROOT}" ]]; then
 		copy_backup_path "${SYSTEMD_PROFILE_ROOT}" "${target}/systemd-assets/profiles" "${target}" || return 1
@@ -1355,6 +1452,17 @@ verify_systemd_profile_support() {
 	(( version >= 249 )) || fail "native-hardened requires systemd 249 or newer; no legacy-root fallback is selected for a fresh install"
 }
 
+verify_release_checksum() {
+    local artifact="$1" expected
+    local -a lines
+    mapfile -t lines < "${artifact}.sha256"
+    [[ "${#lines[@]}" == 1 ]] || fail "checksum must bind exactly one artifact: ${artifact}"
+    [[ "${lines[0]}" =~ ^([[:xdigit:]]{64})[[:space:]][\ \*](.+)$ ]] || fail "malformed checksum for ${artifact}"
+    expected="${BASH_REMATCH[1]}"
+    [[ "${BASH_REMATCH[2]}" == "${artifact}" ]] || fail "checksum artifact identity mismatch: ${artifact}"
+    printf '%s  %s\n' "${expected}" "${artifact}" | sha256sum -c -
+}
+
 download_and_install() {
     local platform artifact version url checksum_url components_artifact components_url components_checksum_url tmp_dir payload_dir install_status
     platform="$(detect_arch)"
@@ -1417,9 +1525,9 @@ download_and_install() {
     log "verifying checksum"
     (
         cd "${tmp_dir}"
-        sha256sum -c "${artifact}.sha256"
+        verify_release_checksum "${artifact}"
         if any_component_installed; then
-            sha256sum -c "${components_artifact}.sha256"
+            verify_release_checksum "${components_artifact}"
         fi
     )
 

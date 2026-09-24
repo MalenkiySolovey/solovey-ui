@@ -49,7 +49,11 @@ function validateUses(value, file, location = '$') {
     if (key === 'uses' && typeof child === 'string') {
       if (child.startsWith('./')) {
         const actionPath = path.resolve(process.cwd(), child);
-        if (!fs.existsSync(path.join(actionPath, 'action.yml')) && !fs.existsSync(path.join(actionPath, 'action.yaml'))) {
+        if (child.startsWith('./.github/workflows/')) {
+          if (!fs.existsSync(actionPath) || !YAML.parse(fs.readFileSync(actionPath, 'utf8'))?.on?.workflow_call) {
+            throw new Error(`${file}:${childLocation}: reusable workflow must declare workflow_call`);
+          }
+        } else if (!fs.existsSync(path.join(actionPath, 'action.yml')) && !fs.existsSync(path.join(actionPath, 'action.yaml'))) {
           throw new Error(`${file}:${childLocation}: local action is missing action.yml`);
         }
       } else if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+@[0-9a-f]{40}$/.test(child)) {
@@ -121,8 +125,8 @@ function validateReleaseContracts() {
   ) {
     throw new Error('windows.yml: Windows arm64 must install the native MSYS2 CLANGARM64 toolchain');
   }
-  if (!String(windowsWorkflow?.jobs?.['publish-windows']?.if ?? '').includes('preflight_only')) {
-    throw new Error('windows.yml: publishing must be disabled in preflight_only mode');
+  if (windowsWorkflow?.jobs?.['publish-windows'] || windowsWorkflow?.on?.push || !windowsWorkflow?.on?.workflow_call) {
+    throw new Error('windows.yml: build-only reusable workflow must not publish a partial release');
   }
   for (const helper of ['windows/build-windows.ps1', 'windows/build-windows.bat']) {
     const source = fs.readFileSync(path.join(process.cwd(), helper), 'utf8');
@@ -134,6 +138,11 @@ function validateReleaseContracts() {
   const releasePath = path.join(workflowDir, 'release.yml');
   const releaseSource = fs.readFileSync(releasePath, 'utf8');
   const releaseWorkflow = YAML.parse(releaseSource);
+  if (releaseWorkflow?.jobs?.['build-windows']?.uses !== './.github/workflows/windows.yml' ||
+      !releaseWorkflow?.jobs?.['publish-linux']?.needs?.includes('build-windows') ||
+      !releaseSource.includes('Verify complete Windows candidates')) {
+    throw new Error('release.yml: complete Windows candidates must be verified before the single release publication');
+  }
   const preflight = releaseWorkflow?.jobs?.['release-preflight'];
   if (!preflight || !preflight.steps?.some((step) => typeof step.run === 'string' && step.run.includes('scripts/release-preflight.mjs'))) {
     throw new Error('release.yml: release-preflight job must execute scripts/release-preflight.mjs');

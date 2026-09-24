@@ -16,7 +16,7 @@ func TestPanelRecoveryBindsDirectAndTrustedProxyIdentity(t *testing.T) {
 		trusted bool
 	}{{"direct", false}, {"trusted-xff", true}} {
 		t.Run(test.name, func(t *testing.T) {
-			identity := recoveryDirectIdentity("198.51.100.7", "panel.example")
+			var identity clientidentity.V1
 			if test.trusted {
 				t.Setenv("SUI_TRUSTED_PROXIES", "10.0.0.0/8")
 				identity = recoveryTrustedProxyIdentity(t)

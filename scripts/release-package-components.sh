@@ -106,7 +106,9 @@ package_components() {
 
     [[ "${found}" == "1" ]] || fail "no component packs found in ${components_dir}"
 
-    tar -czf "${out_dir}/${artifact}" -C "${tmp_dir}" components
+    LC_ALL=C tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
+        --mode='u+rwX,go+rX,go-w' --format=gnu -cf - -C "${tmp_dir}" components |
+        gzip -n > "${out_dir}/${artifact}"
     checksum="${artifact}.sha256"
     (
         cd "${out_dir}"

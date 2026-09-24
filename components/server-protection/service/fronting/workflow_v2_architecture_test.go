@@ -24,7 +24,6 @@ func TestWorkflowV2ReusesRestrictedEngineAndHasNoPublicOrDynamicDestinationSurfa
 	api := parseArchitectureFile(t, apiPath)
 	assertNoForbiddenIdentifiers(t, api, apiPath, map[string]bool{"PrepareV2": true, "ApplyV2": true})
 	assertAnyIdentifiers(t, []string{apiPath}, []string{"frontingSemanticService", "FrontingStrategyPlanV2", "frontingApplyConfigured"})
-	return
 }
 
 func TestSNIPrereadRendererHasNoSecondEngineOrDynamicActionSurface(t *testing.T) {

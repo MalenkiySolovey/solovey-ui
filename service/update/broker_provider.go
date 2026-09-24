@@ -433,20 +433,6 @@ func (reader *updateContextReader) Read(buffer []byte) (int, error) {
 	return reader.reader.Read(buffer)
 }
 
-func boundedFileDigest(path string, limit int64) (string, error) {
-	file, err := os.Open(path) // #nosec G304 -- caller supplies an internal generated cache path.
-	if err != nil {
-		return "", err
-	}
-	defer file.Close()
-	hash := sha256.New()
-	written, err := io.Copy(hash, io.LimitReader(file, limit+1))
-	if err != nil || written <= 0 || written > limit {
-		return "", errors.Join(err, errors.New("bounded file digest rejected input"))
-	}
-	return hex.EncodeToString(hash.Sum(nil)), nil
-}
-
 func (p *BrokerProvider) validateDatabaseRollback(ctx context.Context, operation model.UpdateOperation) (*os.File, error) {
 	if p == nil || filepath.Base(filepath.Clean(p.Root)) != "update-cache" || !safeID(operation.OperationID, 96) || !validDigest(operation.BackupRef) {
 		return nil, ErrRecoveryRequired

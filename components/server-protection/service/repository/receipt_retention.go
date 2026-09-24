@@ -248,7 +248,6 @@ func inspectReceiptKeyV1(key string) (issued int64, structured bool, malformed b
 	if !strings.HasPrefix(key, receiptKeyV1Prefix) {
 		return 0, false, false
 	}
-	structured = true
 	rest := strings.TrimPrefix(key, receiptKeyV1Prefix)
 	separator := strings.IndexByte(rest, '.')
 	if separator < 1 || separator == len(rest)-1 {

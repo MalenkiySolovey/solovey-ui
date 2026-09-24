@@ -34,7 +34,11 @@ func TestDurableTransitionReservesWriterBeforeAuthorityRead(t *testing.T) {
 	if _, err := competitor.ExecContext(t.Context(), "PRAGMA busy_timeout=0"); err != nil {
 		t.Fatal(err)
 	}
-	defer competitor.ExecContext(t.Context(), "PRAGMA busy_timeout=10000")
+	defer func() {
+		if _, err := competitor.ExecContext(t.Context(), "PRAGMA busy_timeout=10000"); err != nil {
+			t.Errorf("restore SQLite busy timeout: %v", err)
+		}
+	}()
 	repo := New(db)
 	rollback := errors.New("rollback probe")
 	for _, abort := range []bool{false, true} {

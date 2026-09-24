@@ -1,5 +1,7 @@
 //go:build linux
 
+//lint:file-ignore ST1005 Dropbear is the canonical upstream product name in these operator-facing errors.
+
 package sshbroker
 
 import (

@@ -203,8 +203,10 @@ type PeerIdentity struct {
 	BootID                  string       `json:"bootId"`
 	ManifestRevision        string       `json:"manifestRevision"`
 	Revision                string       `json:"revision"`
-	livenessFD              int
-	hasLiveness             bool
+	//lint:ignore U1000 Linux pidfd attestation owns this platform-specific field.
+	livenessFD int
+	//lint:ignore U1000 Linux pidfd attestation owns this platform-specific field.
+	hasLiveness bool
 }
 
 type WriterCredentials struct {

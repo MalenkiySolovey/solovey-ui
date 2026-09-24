@@ -676,7 +676,7 @@ func ensureHelperClientLocked() (*protectionhelper.Client, error) {
 	}
 	authority := hooks.runtimeRootAuthority
 	if err := authority.Validate(); err != nil || authority.CanonicalPath() != storage.Root() {
-		return nil, errors.New("Server Protection storage differs from its runtime root authority")
+		return nil, errors.New("server protection storage differs from its runtime root authority")
 	}
 	root, err := protectionhelper.NewManagedRoot(authority)
 	if err != nil {

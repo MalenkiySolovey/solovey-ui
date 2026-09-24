@@ -65,12 +65,6 @@ func ManifestPathForTransport(mode TransportMode) (string, error) {
 	}
 }
 
-// openStandaloneTransportAt is a package-local test seam. Production has no
-// caller-controlled socket path surface.
-func openStandaloneTransportAt(socketRoot string, socketGID uint32) (*ListenerSet, error) {
-	return openStandaloneListeners(socketRoot, socketGID)
-}
-
 // ParseTransportArgs accepts only the two fixed deployment spellings. It is
 // used by the broker command, not by API or remote callers.
 func ParseTransportArgs(args []string) (TransportMode, error) {

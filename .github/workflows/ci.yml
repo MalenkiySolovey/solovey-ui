@@ -43,6 +43,11 @@ jobs:
       - name: release package integration
         run: bash tests/installer/release-package.sh
 
+      - name: Semantic release resolution and complete release verification
+        run: |
+          bash tests/installer/latest-release.sh
+          node --test scripts/release-verify.test.mjs scripts/release-target.test.mjs scripts/release-publish-gate.test.mjs scripts/release-source.test.mjs
+
       - name: signed release manifest integration
         run: bash tests/installer/release-manifest.sh
       - name: privileged broker Linux builds

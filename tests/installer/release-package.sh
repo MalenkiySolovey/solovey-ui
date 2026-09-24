@@ -222,6 +222,7 @@ EOF
 
 write_fixture
 write_component_fixture
+package_fixtures() {
 bash "${ROOT}/scripts/release-package-linux.sh" \
     --target linux-amd64 \
     --binary "${SRC}/solovey-ui" \
@@ -258,5 +259,17 @@ bash "${ROOT}/scripts/release-package-components.sh" \
     --out-dir "${OUT}" >/dev/null
 
 assert_component_bundle_contract
+}
+
+package_fixtures
+cp -a "${OUT}" "${TMP}/first-output"
+cp -a "${SRC}" "${TMP}/independent-source"
+SRC="${TMP}/independent-source"
+find "${SRC}" -exec touch -h -t 202001010000 {} +
+OUT="${TMP}/independent-output"
+(umask 077; package_fixtures)
+for asset in "${TMP}/first-output/"*; do
+    cmp "$asset" "${OUT}/$(basename "$asset")" || fail 'archive identity changed with build root, mtime or umask'
+done
 
 printf 'PASS: release package integration\n'

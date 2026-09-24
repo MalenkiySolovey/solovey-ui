@@ -213,7 +213,10 @@ package_release() {
 		chmod 755 "${payload}/solovey-owner-manifest"
 	fi
 
-    tar -czf "${out_dir}/${artifact}" -C "${tmp_dir}" "${APP_NAME}"
+    # Archive identity must not depend on checkout times, uid or caller umask.
+    LC_ALL=C tar --sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner \
+        --mode='u+rwX,go+rX,go-w' --format=gnu -cf - -C "${tmp_dir}" "${APP_NAME}" |
+        gzip -n > "${out_dir}/${artifact}"
     (
         cd "${out_dir}"
         sha256sum "${artifact}" > "${checksum}"

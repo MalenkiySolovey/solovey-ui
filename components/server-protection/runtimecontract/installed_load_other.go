@@ -21,7 +21,7 @@ func LoadInstalledRuntimeRootAuthority() (RuntimeRootAuthority, error) {
 
 func ResolveRootAuthority(databaseFolder string) (RuntimeRootAuthority, error) {
 	if os.Getenv("SUI_DEPLOYMENT_KIND") == "docker" {
-		return RuntimeRootAuthority{}, errors.New("Docker Server Protection runtime root proof is supported only on Linux")
+		return RuntimeRootAuthority{}, errors.New("docker server protection runtime root proof is supported only on Linux")
 	}
 	return resolveRootAuthority(databaseFolder, LoadInstalledRuntimeRoot, func() (deploymentidentity.InstalledApplicationOwnerProjection, error) {
 		return deploymentidentity.InstalledApplicationOwnerProjection{}, deploymentidentity.ErrExpectedApplicationOwnerUnavailable

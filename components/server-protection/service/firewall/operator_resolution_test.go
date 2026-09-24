@@ -2,11 +2,13 @@ package firewall
 
 import (
 	"testing"
+	"time"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	helper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	operations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 	"gorm.io/gorm"
 )
 
@@ -107,6 +109,16 @@ func assertFreshLifecycleAfterRetirement(t *testing.T, workflow Workflow, baseli
 	id := prepared.Operation.OperationID
 	applied, err := workflow.Apply(t.Context(), ApplyInput{OperationID: id, Plan: current.Plan, Confirmation: "APPLY SERVER PROTECTION " + id})
 	if err != nil || applied.State != operations.StateApplied {
+		if evidence := current.Plan.mutationEvidence; evidence != nil {
+			now := workflow.now()
+			eligibility := evaluateFirewallBaselineEligibility(current.Plan.Resources, current.Plan.Endpoints,
+				evidence.management, evidence.recovery, evidence.trusted,
+				protectionresources.SocketOwnershipGraph{}, evidence.requireSSH, now)
+			t.Logf("fresh lifecycle admission at %s: reasons=%v mutationReasons=%v", now.Format(time.RFC3339Nano), eligibility.ReasonCodes, eligibility.MutationReasonCodes)
+			for _, endpoint := range evidence.management {
+				t.Logf("management validity: kind=%s observed=%d expires=%d", endpoint.ServiceKind, endpoint.ObservedAt, endpoint.ExpiresAt)
+			}
+		}
 		t.Fatalf("fresh normal Apply after resolution: %v", err)
 	}
 	if err := workflow.Manager.SetReconcilerForKind(operations.KindFirewall, RuntimeLossReconciler{Workflow: &workflow}); err != nil {

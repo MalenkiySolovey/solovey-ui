@@ -213,10 +213,6 @@ func stageBackupToFile(ctx context.Context, src io.Reader, dst string) error {
 	return nil
 }
 
-func preservePreRestoreBackup(ctx context.Context) (string, error) {
-	return preservePreRestoreBackupAt(ctx, filepath.Join(configstorage.GetDBFolderPath(), "recovery", "restore"), productionRestoreRecoveryFileOps)
-}
-
 func preservePreRestoreBackupAt(ctx context.Context, directory string, ops restoreRecoveryFileOps) (string, error) {
 	path, cleanup, err := PrepareExportContext(ctx, "")
 	if err != nil {

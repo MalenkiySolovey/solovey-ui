@@ -234,19 +234,6 @@ func normalizedAuthorityEndpointIDs(values []string) []string {
 	return result
 }
 
-func normalizedAuthorityFamilies(values []hostfacts.Family) []hostfacts.Family {
-	seen := map[hostfacts.Family]bool{}
-	result := make([]hostfacts.Family, 0, 2)
-	for _, value := range values {
-		if (value == hostfacts.FamilyIPv4 || value == hostfacts.FamilyIPv6) && !seen[value] {
-			seen[value] = true
-			result = append(result, value)
-		}
-	}
-	sort.Slice(result, func(i, j int) bool { return result[i] < result[j] })
-	return result
-}
-
 func canonicalAuthorityPath(value string) bool {
 	return strings.HasPrefix(value, "/") && path.Clean(value) == value && value != "/" && len(value) <= 512 && !strings.ContainsAny(value, "\x00\r\n\t")
 }

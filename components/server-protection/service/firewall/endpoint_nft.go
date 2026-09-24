@@ -69,10 +69,6 @@ func renderEndpointManagedNFTAt(plan FirewallPlan, managed bool, at time.Time) s
 	return output.String()
 }
 
-func writeEndpointSets(output *strings.Builder, endpoint EndpointPolicy, plan FirewallPlan) {
-	writeEndpointSetsAt(output, endpoint, plan, time.Time{})
-}
-
 func writeEndpointSetsAt(output *strings.Builder, endpoint EndpointPolicy, plan FirewallPlan, at time.Time) {
 	grouped := endpointElements(endpoint, plan)
 	current := grouped

@@ -124,7 +124,7 @@ func (a RuntimeRootAuthority) Validate() error {
 			if a.mount.Policy != RuntimeMountVolatile || a.root != DockerRuntimeRoot ||
 				(a.dockerProfileID == "") != (a.dockerProfileRevision == "") ||
 				a.dockerProfileRevision != "" && !revisionPattern.MatchString(a.dockerProfileRevision) {
-				return errors.New("Docker Server Protection deployment projection is malformed")
+				return errors.New("docker server protection deployment projection is malformed")
 			}
 		default:
 			return errors.New("installed Server Protection deployment backend is unavailable")
@@ -138,7 +138,7 @@ func (a RuntimeRootAuthority) Validate() error {
 		return nil
 	}
 	if a.root == "" || !filepath.IsAbs(a.root) || filepath.Clean(a.root) != a.root {
-		return errors.New("Server Protection runtime root authority is malformed")
+		return errors.New("server protection runtime root authority is malformed")
 	}
 	return nil
 }
@@ -186,20 +186,20 @@ func (proof RuntimeMountProofV1) Validate() error {
 	if proof.Schema != RuntimeMountProofSchemaV1 || !canonicalLinuxAbsolute(proof.Root) || proof.Root == "/" ||
 		proof.Mount.Validate() != nil || proof.Mount.Target != proof.Root ||
 		!sameOwnerLocalRoot(proof.Root, proof.Mount.ResolvedTarget) || !proof.Mount.Writable() || proof.Revision != proof.revision() {
-		return errors.New("Server Protection runtime mount proof is malformed")
+		return errors.New("server protection runtime mount proof is malformed")
 	}
 	filesystem := strings.ToLower(proof.Mount.Filesystem)
 	switch proof.Policy {
 	case RuntimeMountVolatile:
 		if filesystem != "tmpfs" && filesystem != "ramfs" {
-			return errors.New("Server Protection volatile runtime root is not on a volatile filesystem")
+			return errors.New("server protection volatile runtime root is not on a volatile filesystem")
 		}
 	case RuntimeMountPersistent:
 		if !openwrt.ApprovedPersistentFilesystem(filesystem) {
-			return errors.New("Server Protection persistent runtime root is not on an approved filesystem")
+			return errors.New("server protection persistent runtime root is not on an approved filesystem")
 		}
 	default:
-		return errors.New("Server Protection runtime mount policy is unsupported")
+		return errors.New("server protection runtime mount policy is unsupported")
 	}
 	return nil
 }
@@ -245,7 +245,7 @@ func DockerRuntimeRootAuthority(mount RuntimeMountProofV1) (RuntimeRootAuthority
 
 func dockerRuntimeRootAuthority(mount RuntimeMountProofV1, profileID, profileRevision string) (RuntimeRootAuthority, error) {
 	if mount.Policy != RuntimeMountVolatile || mount.Root != DockerRuntimeRoot || mount.Validate() != nil {
-		return RuntimeRootAuthority{}, errors.New("Docker Server Protection runtime root proof is invalid")
+		return RuntimeRootAuthority{}, errors.New("docker server protection runtime root proof is invalid")
 	}
 	authority := RuntimeRootAuthority{root: DockerRuntimeRoot, installed: true, mount: mount,
 		backend: DeploymentBackendDocker, dockerProfileID: profileID, dockerProfileRevision: profileRevision}
@@ -275,7 +275,7 @@ func InstalledSystemdRuntimeRoot(contract deploymentidentity.ApplicationOwnerCon
 	runtimePolicy := Installed()
 	revision, err := runtimePolicy.Revision()
 	if err != nil || contract.Validate() != nil || contract.RuntimeRootContractRevision != revision {
-		return InstalledRuntimeRootV1{}, errors.New("Systemd runtime root proof does not match its installed owner contract")
+		return InstalledRuntimeRootV1{}, errors.New("systemd runtime root proof does not match its installed owner contract")
 	}
 	return newInstalledRuntimeRoot(runtimePolicy.RuntimeRoot, revision, contract.RuntimeRootBindingRevision, contract.Revision,
 		contract.InstanceID, contract.SourceRevision, contract.ArtifactRevision, contract.DeploymentID, runtimePolicy.DirectoryMode, mount)

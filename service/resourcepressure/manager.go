@@ -433,14 +433,6 @@ func readPSIMemory(now time.Time) domain.Signal {
 	return domain.Signal{ID: "psi.memory.some_avg10", Status: domain.ProviderError, ReasonCode: "psi_memory_invalid"}
 }
 
-func readUintFile(path string) (uint64, error) {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return 0, err
-	}
-	return strconv.ParseUint(strings.TrimSpace(string(raw)), 10, 64)
-}
-
 func processOpenFileLimit() (uint64, error) {
 	if runtime.GOOS != "linux" {
 		return 0, errors.New("process limits are unsupported")

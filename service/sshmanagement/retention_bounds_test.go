@@ -106,7 +106,7 @@ func TestRetentionPruneInterruptionRollsBackAndRestartRetryIsIdempotent(t *testi
 		t.Fatal(err)
 	}
 	const callback = "retention:interrupt-prune-delete"
-	if err := db.Callback().Delete().Before("gorm:delete").Register(callback, func(tx *gorm.DB) { tx.AddError(errors.New("injected prune interruption")) }); err != nil {
+	if err := db.Callback().Delete().Before("gorm:delete").Register(callback, func(tx *gorm.DB) { _ = tx.AddError(errors.New("injected prune interruption")) }); err != nil {
 		t.Fatal(err)
 	}
 	if err := manager.Repository.PruneHistory(context.Background(), *now); err == nil {
@@ -116,7 +116,9 @@ func TestRetentionPruneInterruptionRollsBackAndRestartRetryIsIdempotent(t *testi
 	if err := db.Model(&model.SSHManagementCandidate{}).Count(&afterFault).Error; err != nil || afterFault != before {
 		t.Fatalf("partial prune survived interruption: before=%d after=%d err=%v", before, afterFault, err)
 	}
-	db.Callback().Delete().Remove(callback)
+	if err := db.Callback().Delete().Remove(callback); err != nil {
+		t.Fatal(err)
+	}
 	if err := manager.Repository.PruneHistory(context.Background(), *now); err != nil {
 		t.Fatal(err)
 	}

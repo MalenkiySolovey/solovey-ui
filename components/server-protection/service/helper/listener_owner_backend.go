@@ -13,12 +13,6 @@ import (
 
 const ListenerOwnerObserverRevision = "pidfd-getfd-getsockname-so-cookie-v6only-process-evidence-systemd-procd-projection-v2"
 
-func listenerOwnerProjectionRevision(value any) string {
-	data, _ := json.Marshal(value)
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
-}
-
 type ListenerOwnerExecutor interface {
 	Detect(context.Context) ListenerOwnerSupport
 	Observe(context.Context, ListenerOwnerObserveRequest) (*ListenerOwnerObserveResult, error)

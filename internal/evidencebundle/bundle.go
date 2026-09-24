@@ -615,56 +615,6 @@ func writeRecord(root string, record *Record) error {
 	return writeExclusive(filepath.Join(root, recordsDirectory, name), append(data, '\n'))
 }
 
-func inspectRecords(root string, contract Contract, failures int) (Manifest, error) {
-	manifest := Manifest{SchemaVersion: SchemaVersion, RunID: contract.RunID, SourceIdentity: contract.SourceIdentity,
-		ArtifactSHA256: contract.ArtifactSHA256, Target: contract.Target, Scenarios: append([]Scenario(nil), contract.Scenarios...),
-		FailureCount: failures, Completeness: "PASS", Redaction: "PASS", SecretScan: "PASS"}
-	if failures < 1 || failures > MaxFailures {
-		manifest.Completeness = "FAIL"
-		return manifest, errors.New("capture failure count is outside bounds")
-	}
-	var result error
-	for sequence := 1; sequence <= failures; sequence++ {
-		for _, group := range groups {
-			name := fmt.Sprintf("%02d-%s.json", sequence, group)
-			data, err := readBounded(filepath.Join(root, recordsDirectory, name), MaxRecordBytes)
-			if err != nil {
-				manifest.Completeness = "FAIL"
-				result = errors.Join(result, fmt.Errorf("missing required record %s: %w", name, err))
-				continue
-			}
-			var record Record
-			if err := decodeExact(data, &record); err != nil {
-				manifest.Completeness = "FAIL"
-				result = errors.Join(result, err)
-				continue
-			}
-			want := record.RecordHash
-			record.RecordHash = ""
-			canonical, _ := json.Marshal(record)
-			if want == "" || digest(canonical) != want || record.RunID != contract.RunID || record.SchemaVersion != SchemaVersion ||
-				record.FailureSequence != sequence || record.Group != group || !containsScenario(contract.Scenarios, record.Scenario) {
-				manifest.Completeness = "FAIL"
-				result = errors.Join(result, fmt.Errorf("record authority or integrity mismatch: %s", name))
-			}
-			record.RecordHash = want
-			if err := normalizeRecord(&record); err != nil || record.State == StateCaptureError || record.State == StateUnstable {
-				manifest.Completeness = "FAIL"
-				result = errors.Join(result, fmt.Errorf("record %s is not successful", name), err)
-			}
-			if record.Redaction != "PASS" {
-				manifest.Redaction = "FAIL"
-			}
-			if record.SecretScan != "PASS" {
-				manifest.SecretScan = "FAIL"
-			}
-			manifest.Records = append(manifest.Records, RecordSeal{FailureSequence: sequence, Group: group,
-				Filename: filepath.ToSlash(filepath.Join(recordsDirectory, name)), SHA256: digest(data)})
-		}
-	}
-	return manifest, result
-}
-
 func validateContract(contract Contract) error {
 	if contract.SchemaVersion != SchemaVersion || !safeID.MatchString(contract.RunID) || !hexDigest.MatchString(contract.SourceIdentity) ||
 		!hexDigest.MatchString(contract.SourceFingerprint) || contract.SourceIdentity != contract.SourceFingerprint ||
@@ -990,34 +940,4 @@ func sameEpochSeals(left, right []EpochSeal) bool {
 	a, _ := json.Marshal(left)
 	b, _ := json.Marshal(right)
 	return string(a) == string(b)
-}
-
-func rejectUnexpectedFiles(root string, seals []RecordSeal) error {
-	expected := map[string]bool{armFilename: true, manifestFilename: true, recordsDirectory: true}
-	entries, err := os.ReadDir(root)
-	if err != nil {
-		return err
-	}
-	for _, entry := range entries {
-		if !expected[entry.Name()] {
-			return fmt.Errorf("unexpected bundle entry %q", entry.Name())
-		}
-	}
-	recordExpected := make(map[string]bool, len(seals))
-	for _, seal := range seals {
-		recordExpected[filepath.Base(seal.Filename)] = true
-	}
-	recordEntries, err := os.ReadDir(filepath.Join(root, recordsDirectory))
-	if err != nil {
-		return err
-	}
-	for _, entry := range recordEntries {
-		if entry.IsDir() || !recordExpected[entry.Name()] {
-			return fmt.Errorf("unexpected record %q", entry.Name())
-		}
-	}
-	if len(recordEntries) != len(recordExpected) {
-		return errors.New("record cardinality differs from manifest")
-	}
-	return nil
 }

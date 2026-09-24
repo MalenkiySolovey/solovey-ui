@@ -199,6 +199,7 @@ func (m Manifest) matching(role Role, identity PeerIdentity) (ClientManifest, bo
 	return ClientManifest{}, false
 }
 
+//lint:ignore U1000 Linux peer attestation owns this platform-specific classifier.
 func (m Manifest) commonMismatchClass(role Role, identity PeerIdentity) PeerAttestationClass {
 	roleClients := make([]ClientManifest, 0, len(m.Clients))
 	for _, client := range m.Clients {

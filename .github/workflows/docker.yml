@@ -1,6 +1,14 @@
 name: Docker Image CI
 
 on:
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      preflight_only:
+        default: true
+        type: boolean
   workflow_dispatch:
     inputs:
       tag:
@@ -13,9 +21,6 @@ on:
         required: true
         default: true
         type: boolean
-  push:
-    tags:
-      - "v*"
 
 permissions:
   contents: read
@@ -23,11 +28,25 @@ permissions:
 
 env:
   IMAGE_NAME: ghcr.io/${{ github.repository }}
-  RELEASE_TAG_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+  RELEASE_TAG_INPUT: ${{ inputs.tag || github.ref_name }}
 
 jobs:
+  publication-authority:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Require canonical release owner for publication
+        env:
+          CALLER_WORKFLOW: ${{ github.workflow }}
+          PREFLIGHT_ONLY: ${{ inputs.preflight_only }}
+        run: |
+          if [ "$PREFLIGHT_ONLY" != true ] && [ "$CALLER_WORKFLOW" != 'Release Solovey UI' ]; then
+            echo 'Docker publication belongs to release.yml; standalone Docker runs must use preflight_only=true' >&2
+            exit 1
+          fi
+
   build:
     name: build-${{ matrix.platform_name }}
+    needs: publication-authority
     strategy:
       fail-fast: false
       matrix:
@@ -53,7 +72,7 @@ jobs:
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
 
       - name: Log in to GHCR
-        if: github.event_name == 'push' || inputs.preflight_only == false
+        if: inputs.preflight_only == false
         uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4
         with:
           registry: ghcr.io
@@ -87,7 +106,7 @@ jobs:
           NODE
 
       - name: Preflight Docker image
-        if: github.event_name == 'workflow_dispatch' && inputs.preflight_only == true
+        if: inputs.preflight_only == true
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
           context: .
@@ -101,7 +120,7 @@ jobs:
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.platform_name }}
 
       - name: Build and push Docker image by digest
-        if: github.event_name == 'push' || inputs.preflight_only == false
+        if: inputs.preflight_only == false
         id: build
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
@@ -116,14 +135,14 @@ jobs:
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.platform_name }}
 
       - name: Export image digest
-        if: github.event_name == 'push' || inputs.preflight_only == false
+        if: inputs.preflight_only == false
         run: |
           mkdir -p "${RUNNER_TEMP}/digests"
           DIGEST="${{ steps.build.outputs.digest }}"
           touch "${RUNNER_TEMP}/digests/${DIGEST#sha256:}"
 
       - name: Upload image digest
-        if: github.event_name == 'push' || inputs.preflight_only == false
+        if: inputs.preflight_only == false
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: docker-digest-${{ matrix.platform_name }}
@@ -135,7 +154,7 @@ jobs:
     name: publish-manifest
     runs-on: ubuntu-24.04
     needs: build
-    if: github.event_name == 'push' || inputs.preflight_only == false
+    if: inputs.preflight_only == false
     steps:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
@@ -176,8 +195,10 @@ jobs:
             [ -f "$digest_file" ] || continue
             DIGESTS="${DIGESTS} ${{ steps.image.outputs.name }}@sha256:${digest_file}"
           done
-          [ -n "$DIGESTS" ] || { echo "no image digests were downloaded" >&2; exit 1; }
+          [ "$(find . -maxdepth 1 -type f | wc -l)" = 2 ] || { echo "complete amd64/arm64 image digests are required" >&2; exit 1; }
+          CHANNEL=latest
+          case "${{ steps.vars.outputs.tag }}" in *-*) CHANNEL=beta ;; esac
           docker buildx imagetools create \
             -t "${{ steps.image.outputs.name }}:${{ steps.vars.outputs.tag }}" \
-            -t "${{ steps.image.outputs.name }}:latest" \
+            -t "${{ steps.image.outputs.name }}:${CHANNEL}" \
             $DIGESTS

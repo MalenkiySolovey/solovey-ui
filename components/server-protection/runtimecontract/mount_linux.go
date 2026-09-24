@@ -27,17 +27,17 @@ func recheckRuntimeMount(proof RuntimeMountProofV1) error {
 
 func recheckRuntimeMountWithObserver(proof RuntimeMountProofV1, observe func(string) (mountevidence.Fact, error)) error {
 	if proof.Validate() != nil {
-		return errors.New("Server Protection runtime mount proof is invalid")
+		return errors.New("server protection runtime mount proof is invalid")
 	}
 	if observe == nil {
-		return errors.New("Server Protection runtime mount observer is unavailable")
+		return errors.New("server protection runtime mount observer is unavailable")
 	}
 	if err := validateRuntimeRootBoundary(proof.Root); err != nil {
-		return errors.Join(errors.New("Server Protection runtime root boundary changed"), err)
+		return errors.Join(errors.New("server protection runtime root boundary changed"), err)
 	}
 	current, err := observe(proof.Root)
 	if err != nil || current.Revision != proof.Mount.Revision {
-		return errors.Join(errors.New("Server Protection runtime mount identity changed"), err)
+		return errors.Join(errors.New("server protection runtime mount identity changed"), err)
 	}
 	return nil
 }
@@ -46,7 +46,7 @@ func validateRuntimeRootBoundary(root string) error {
 	for _, candidate := range []string{filepath.Clean(root), filepath.Dir(filepath.Clean(root))} {
 		info, err := os.Lstat(candidate)
 		if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return errors.Join(errors.New("Server Protection runtime root owner boundary is unsafe"), err)
+			return errors.Join(errors.New("server protection runtime root owner boundary is unsafe"), err)
 		}
 	}
 	return nil
