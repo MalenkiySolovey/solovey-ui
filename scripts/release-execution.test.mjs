@@ -1,0 +1,77 @@
+import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import { createRequire } from 'node:module'
+import test from 'node:test'
+
+const require = createRequire(import.meta.url)
+const YAML = require('../frontend/node_modules/yaml')
+const read = name => YAML.parse(fs.readFileSync(`.github/workflows/${name}.yml`, 'utf8'))
+const release = read('release')
+const productRef = '${{ needs.release-preflight.outputs.product-commit }}'
+const checkouts = job => job.steps?.filter(step => step.uses?.startsWith('actions/checkout@')) ?? []
+
+test('orchestrator is validated before immutable product checkout and resolution', () => {
+  const job = release.jobs['release-preflight']
+  assert.deepEqual(checkouts(job).map(step => step.with.ref), [
+    '${{ github.sha }}', 'refs/tags/${{ env.RELEASE_TAG_INPUT }}',
+  ])
+  const validation = job.steps.findIndex(step => step.run?.includes('release-execution.test.mjs'))
+  const product = job.steps.findIndex(step => step.name === 'Check out immutable product source')
+  const resolution = job.steps.findIndex(step => step.id === 'product')
+  assert.ok(validation < product && product < resolution)
+  assert.match(job.steps[resolution].run, /git rev-parse HEAD/)
+  assert.match(job.steps[resolution].run, /node scripts\/release-source.mjs/)
+  const gate = job.steps.find(step => step.run?.includes('release-publish-gate.mjs before'))
+  assert.equal(gate.if, undefined)
+  assert.equal(gate.env.PRODUCT_COMMIT, '${{ steps.product.outputs.commit }}')
+})
+
+test('every product checkout and reusable build is bound to resolved product source', () => {
+  for (const [name, job] of Object.entries(release.jobs)) {
+    if (name === 'release-preflight') continue
+    assert.ok([job.needs].flat().includes('release-preflight'), name)
+    for (const checkout of checkouts(job)) assert.equal(checkout.with.ref, productRef, name)
+    if (job.uses) assert.equal(job.with.source_commit, productRef, name)
+  }
+  for (const name of ['windows', 'docker']) {
+    const workflow = read(name)
+    assert.equal(workflow.on.workflow_call.inputs.source_commit.required, true)
+    for (const job of Object.values(workflow.jobs)) {
+      for (const checkout of checkouts(job)) {
+        assert.equal(checkout.with.ref, "${{ inputs.source_commit || format('refs/tags/{0}', inputs.tag) }}")
+      }
+    }
+  }
+})
+
+test('publication gates and metadata use product identity while preflight cannot publish', () => {
+  const job = release.jobs['publish-linux']
+  assert.match(job.if, /inputs.preflight_only == false/)
+  for (const step of job.steps) {
+    if (step.run?.includes('release-publish-gate.mjs')) assert.equal(step.env.PRODUCT_COMMIT, productRef)
+    if (step.uses?.startsWith('softprops/action-gh-release@')) assert.equal(step.with.target_commitish, productRef)
+  }
+  const build = release.jobs['build-linux'].steps.map(step => step.run ?? '').join('\n')
+  assert.ok(!build.includes('commit=${GITHUB_SHA}'))
+  assert.ok(build.includes(`commit=${productRef}`))
+  assert.ok(build.includes('needs.release-preflight.outputs.source-fingerprint'))
+  assert.equal(release.jobs['build-docker'].with.preflight_only,
+    "${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only }}")
+})
+
+test('ordinary coverage plus privileged package retains the complete original test surface', () => {
+  const steps = release.jobs['component-profile-checks'].steps
+  const ordinary = steps.find(step => step.name === 'Component profile tests').run
+  assert.match(ordinary, /go list \.\/internal\/components\/\.\.\. \.\/components\/\.\.\. \.\/api \.\/app \.\/web/)
+  assert.match(ordinary, /\[ "\$package" = "\$PRIVILEGED_PACKAGE" \] \|\| ORDINARY_PACKAGES/)
+  assert.match(ordinary, /go test -p 1 -count=1 "\$\{ORDINARY_PACKAGES\[@\]\}"/)
+  assert.match(ordinary, /go test -p 1 -tags minimal -count=1/)
+  assert.ok(!ordinary.includes('sudo'))
+  const privileged = steps.find(step => step.name === 'Privileged OpenWrt composition package').run
+  assert.match(privileged, /go test -c .* \.\/components\/server-protection\/cmd\/solovey-openwrt-owner-manifest/)
+  assert.match(privileged, /sudo -n .* -test.v -test.count=1/)
+  assert.match(privileged, /grep -q '\^--- PASS: TestOpenWrtWriterFeedsInstalledLoaderAndBrokerHelperComposition /)
+  assert.match(privileged, /! grep -q -- '--- SKIP:'/)
+  assert.ok(!privileged.includes('-test.run'))
+  assert.ok(!steps.some(step => step['continue-on-error']))
+})

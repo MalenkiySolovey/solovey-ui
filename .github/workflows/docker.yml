@@ -3,6 +3,10 @@ name: Docker Image CI
 on:
   workflow_call:
     inputs:
+      source_commit:
+        description: Immutable product commit resolved by the canonical release owner
+        required: true
+        type: string
       tag:
         required: true
         type: string
@@ -58,15 +62,18 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ inputs.source_commit || format('refs/tags/{0}', inputs.tag) }}
           submodules: recursive
 
       - name: Validate release tag against source version
+        id: source
         run: |
           set -euo pipefail
           VERSION="${RELEASE_TAG_INPUT#v}"
           EXPECTED_VERSION="$(tr -d '\r\n' < config/identity/version)"
           [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
           [ "$VERSION" = "$EXPECTED_VERSION" ] || { echo "release tag $RELEASE_TAG_INPUT does not match source version $EXPECTED_VERSION" >&2; exit 1; }
+          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
@@ -113,6 +120,7 @@ jobs:
           file: Dockerfile
           platforms: ${{ matrix.platform }}
           push: false
+          labels: org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
           tags: ${{ steps.image.outputs.name }}:preflight-${{ matrix.platform_name }}
           build-args: |
             SUI_RELEASE_TRUST_ROOTS_B64=${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
@@ -128,6 +136,7 @@ jobs:
           file: Dockerfile
           platforms: ${{ matrix.platform }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+          labels: org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
           tags: ${{ steps.image.outputs.name }}
           build-args: |
             SUI_RELEASE_TRUST_ROOTS_B64=${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}

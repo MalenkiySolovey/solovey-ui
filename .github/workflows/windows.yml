@@ -3,6 +3,10 @@ name: Build Solovey UI for Windows
 on:
   workflow_call:
     inputs:
+      source_commit:
+        description: Immutable product commit resolved by the canonical release owner
+        required: true
+        type: string
       tag:
         required: true
         type: string
@@ -38,6 +42,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ inputs.source_commit || format('refs/tags/{0}', inputs.tag) }}
           submodules: recursive
           fetch-depth: 1
 
@@ -86,6 +91,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.source_commit || format('refs/tags/{0}', inputs.tag) }}
 
       - name: Validate Windows scripts and service contract
         if: runner.os == 'Windows'
@@ -165,6 +172,13 @@ jobs:
           mkdir solovey-ui-windows
           cp sui.exe solovey-ui-windows/
           cp -r windows/* solovey-ui-windows/
+          {
+            echo "version=$RELEASE_TAG_INPUT"
+            echo "commit=$(git rev-parse HEAD)"
+            echo "source_fingerprint=$(node scripts/release-source.mjs .)"
+            echo "platform=windows/${{ matrix.arch }}"
+            echo "profile=full"
+          } > solovey-ui-windows/BUILD_INFO.txt
 
       - name: Download libcronet-go
         shell: bash

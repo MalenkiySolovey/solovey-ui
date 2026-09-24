@@ -36,11 +36,12 @@ env:
 
 jobs:
   build-docker:
-    needs: [assemble-linux, build-windows]
+    needs: [release-preflight, assemble-linux, build-windows]
     uses: ./.github/workflows/docker.yml
     with:
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       preflight_only: ${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only }}
+      source_commit: ${{ needs.release-preflight.outputs.product-commit }}
     secrets: inherit
 
   build-windows:
@@ -49,6 +50,7 @@ jobs:
     with:
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
       preflight_only: true
+      source_commit: ${{ needs.release-preflight.outputs.product-commit }}
     secrets: inherit
 
   release-preflight:
@@ -56,9 +58,13 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       linux-matrix: ${{ steps.targets.outputs.linux-matrix }}
+      product-commit: ${{ steps.product.outputs.commit }}
+      source-fingerprint: ${{ steps.product.outputs.fingerprint }}
     steps:
-      - name: Check out repository
+      - name: Check out release orchestrator
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -75,6 +81,22 @@ jobs:
           node --check scripts/release-preflight.test.mjs
           node --test scripts/release-preflight.test.mjs
           node scripts/audit/validate-workflows.js
+          node --test scripts/release-execution.test.mjs
+
+      - name: Check out immutable product source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: refs/tags/${{ env.RELEASE_TAG_INPUT }}
+
+      - name: Resolve immutable product identity
+        id: product
+        run: |
+          set -euo pipefail
+          COMMIT="$(git rev-parse HEAD)"
+          FINGERPRINT="$(node scripts/release-source.mjs .)"
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "fingerprint=$FINGERPRINT" >> "$GITHUB_OUTPUT"
+          printf 'Product commit: %s\nSource fingerprint: %s\nOrchestrator commit: %s\n' "$COMMIT" "$FINGERPRINT" "$GITHUB_SHA"
 
       - name: Validate configured release authority
         env:
@@ -91,10 +113,10 @@ jobs:
         run: node -e 'const fs=require("fs"); const targets=require("./scripts/release-targets.json"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "linux-matrix="+JSON.stringify({include:targets.linux})+"\n")'
 
       - name: Verify immutable publication identity before any registry write
-        if: github.event_name == 'push' || inputs.preflight_only == false
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/release-publish-gate.mjs before "$RELEASE_TAG_INPUT"
+          PRODUCT_COMMIT: ${{ steps.product.outputs.commit }}
+        run: env GITHUB_SHA="$PRODUCT_COMMIT" node scripts/release-publish-gate.mjs before "$RELEASE_TAG_INPUT"
 
   test-installer:
     needs: release-preflight
@@ -102,6 +124,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.release-preflight.outputs.product-commit }}
 
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
@@ -167,6 +191,7 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ needs.release-preflight.outputs.product-commit }}
           submodules: recursive
           fetch-depth: 1
 
@@ -252,6 +277,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.release-preflight.outputs.product-commit }}
 
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
@@ -268,8 +295,27 @@ jobs:
 
       - name: Component profile tests
         run: |
-          go test -p 1 -count=1 ./internal/components/... ./components/... ./api ./app ./web
+          set -euo pipefail
+          PRIVILEGED_PACKAGE="$(go list ./components/server-protection/cmd/solovey-openwrt-owner-manifest)"
+          go list ./internal/components/... ./components/... ./api ./app ./web > "$RUNNER_TEMP/component-packages.txt"
+          mapfile -t PACKAGES < "$RUNNER_TEMP/component-packages.txt"
+          ORDINARY_PACKAGES=()
+          for package in "${PACKAGES[@]}"; do
+            [ "$package" = "$PRIVILEGED_PACKAGE" ] || ORDINARY_PACKAGES+=("$package")
+          done
+          go test -p 1 -count=1 "${ORDINARY_PACKAGES[@]}"
           go test -p 1 -tags minimal -count=1 ./internal/components/... ./api ./app ./web
+
+      # Compile as the runner user; only this namespace/chroot integration
+      # package executes with privilege. All its tests and assertions run.
+      - name: Privileged OpenWrt composition package
+        run: |
+          set -euo pipefail
+          test "$(go env CGO_ENABLED)" = 1
+          go test -c -o "$RUNNER_TEMP/openwrt-composition.test" ./components/server-protection/cmd/solovey-openwrt-owner-manifest
+          sudo -n "$RUNNER_TEMP/openwrt-composition.test" -test.v -test.count=1 2>&1 | tee "$RUNNER_TEMP/openwrt-composition.log"
+          grep -q '^--- PASS: TestOpenWrtWriterFeedsInstalledLoaderAndBrokerHelperComposition ' "$RUNNER_TEMP/openwrt-composition.log"
+          ! grep -q -- '--- SKIP:' "$RUNNER_TEMP/openwrt-composition.log"
 
       - name: Minimal dependency boundary
         run: |
@@ -296,6 +342,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.release-preflight.outputs.product-commit }}
 
       - name: Download full frontend build artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -369,6 +417,7 @@ jobs:
           esac
           SING_BOX_VERSION="$(go list -m -f '{{.Version}}' github.com/sagernet/sing-box)"
           SOURCE_FINGERPRINT="$(node scripts/release-source.mjs .)"
+          [ "$SOURCE_FINGERPRINT" = "${{ needs.release-preflight.outputs.source-fingerprint }}" ] || { echo "product source fingerprint changed" >&2; exit 1; }
           [ -n "$SING_BOX_VERSION" ] || { echo "sing-box module version is empty" >&2; exit 1; }
           echo "panel_version=$PANEL_VERSION" >> "$GITHUB_OUTPUT"
           echo "sing_box_version=$SING_BOX_VERSION" >> "$GITHUB_OUTPUT"
@@ -439,7 +488,7 @@ jobs:
             echo "app=solovey-ui"
             echo "profile=full"
             echo "version=${{ steps.build_meta.outputs.panel_version }}"
-            echo "commit=${GITHUB_SHA}"
+            echo "commit=${{ needs.release-preflight.outputs.product-commit }}"
             echo "source_fingerprint=${{ steps.build_meta.outputs.source_fingerprint }}"
             echo "platform=linux/${{ matrix.platform }}"
             echo "go=$(go version)"
@@ -449,7 +498,7 @@ jobs:
             echo "app=solovey-ui"
             echo "profile=core"
             echo "version=${{ steps.build_meta.outputs.panel_version }}"
-            echo "commit=${GITHUB_SHA}"
+            echo "commit=${{ needs.release-preflight.outputs.product-commit }}"
             echo "source_fingerprint=${{ steps.build_meta.outputs.source_fingerprint }}"
             echo "platform=linux/${{ matrix.platform }}"
             echo "go=$(go version)"
@@ -490,7 +539,7 @@ jobs:
 
   assemble-linux:
     name: Assemble and verify complete Linux release
-    needs: build-linux
+    needs: [release-preflight, build-linux]
     runs-on: ubuntu-latest
     outputs:
       tag: ${{ steps.vars.outputs.tag }}
@@ -500,6 +549,7 @@ jobs:
       - name: Check out repository (for release notes)
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
+          ref: ${{ needs.release-preflight.outputs.product-commit }}
           fetch-depth: 1
 
       - name: Normalize release tag
@@ -576,12 +626,14 @@ jobs:
 
   publish-linux:
     name: Publish complete verified release
-    needs: [assemble-linux, build-windows, build-docker]
+    needs: [release-preflight, assemble-linux, build-windows, build-docker]
     if: github.event_name == 'push' || inputs.preflight_only == false
     runs-on: ubuntu-latest
     steps:
       - name: Check out release notes
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.release-preflight.outputs.product-commit }}
 
       - name: Download verified complete candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -607,14 +659,15 @@ jobs:
       - name: Refuse immutable release overwrite
         env:
           GH_TOKEN: ${{ github.token }}
-        run: node scripts/release-publish-gate.mjs before "$RELEASE_TAG_INPUT"
+          PRODUCT_COMMIT: ${{ needs.release-preflight.outputs.product-commit }}
+        run: env GITHUB_SHA="$PRODUCT_COMMIT" node scripts/release-publish-gate.mjs before "$RELEASE_TAG_INPUT"
 
       - name: Publish to current repository Release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
         with:
           tag_name: ${{ needs.assemble-linux.outputs.tag }}
           name: Solovey UI ${{ needs.assemble-linux.outputs.tag }}
-          target_commitish: ${{ github.sha }}
+          target_commitish: ${{ needs.release-preflight.outputs.product-commit }}
           prerelease: ${{ needs.assemble-linux.outputs.prerelease == 'true' }}
           body_path: ${{ needs.assemble-linux.outputs.notes_path }}
           draft: true
@@ -626,21 +679,23 @@ jobs:
       - name: Publish fully uploaded immutable version
         env:
           GH_TOKEN: ${{ github.token }}
+          PRODUCT_COMMIT: ${{ needs.release-preflight.outputs.product-commit }}
           RELEASE_TAG: ${{ needs.assemble-linux.outputs.tag }}
         run: |
-          node scripts/release-publish-gate.mjs uploaded "$RELEASE_TAG" release-assets windows-assets
+          env GITHUB_SHA="$PRODUCT_COMMIT" node scripts/release-publish-gate.mjs uploaded "$RELEASE_TAG" release-assets windows-assets
           gh release edit "$RELEASE_TAG" --draft=false
 
       - name: Publish signed channel release set
         env:
           GH_TOKEN: ${{ github.token }}
+          PRODUCT_COMMIT: ${{ needs.release-preflight.outputs.product-commit }}
         run: |
           set -euo pipefail
           CHANNEL=main
           [ "${{ needs.assemble-linux.outputs.prerelease }}" = "true" ] && CHANNEL=beta
           CHANNEL_TAG="channel-${CHANNEL}"
           if ! gh release view "$CHANNEL_TAG" >/dev/null 2>&1; then
-            CREATE_ARGS=(--target "$GITHUB_SHA" --latest=false --title "Solovey UI ${CHANNEL} signed channel" --notes "Signed, expiring Solovey UI ${CHANNEL} release-set pointer. Artifact trust is established only by solovey-ui-release.json.")
+            CREATE_ARGS=(--target "$PRODUCT_COMMIT" --latest=false --title "Solovey UI ${CHANNEL} signed channel" --notes "Signed, expiring Solovey UI ${CHANNEL} release-set pointer. Artifact trust is established only by solovey-ui-release.json.")
             [ "$CHANNEL" = beta ] && CREATE_ARGS+=(--prerelease)
             gh release create "$CHANNEL_TAG" "${CREATE_ARGS[@]}"
           fi
