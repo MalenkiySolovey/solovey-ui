@@ -24,7 +24,21 @@ try {
   let ref = (await read(`git/ref/tags/${encodeURIComponent(tag)}`)).object
   for (let depth = 0; ref?.type === 'tag' && depth < 4; depth++) ref = (await read(`git/tags/${ref.sha}`)).object
   if (ref?.type !== 'commit' || ref.sha !== commit) throw new Error('immutable release tag does not point to the tested commit')
-  const release = await read(`releases/tags/${encodeURIComponent(tag)}`, true)
+  let release = await read(`releases/tags/${encodeURIComponent(tag)}`, true)
+  // GitHub's by-tag endpoint can omit drafts, even for an authenticated writer.
+  // Resolve the exact draft through the authenticated inventory; ambiguity fails.
+  if (!release) {
+    const matches = []
+    for (let page = 1; page <= 10; page++) {
+      const batch = await read(`releases?per_page=100&page=${page}`)
+      if (!Array.isArray(batch)) throw new Error('release inventory is invalid')
+      matches.push(...batch.filter(item => item.tag_name === tag))
+      if (batch.length < 100) break
+      if (page === 10) throw new Error('release inventory exceeds bound')
+    }
+    if (matches.length > 1) throw new Error('ambiguous release tag')
+    release = matches[0] ?? null
+  }
   if (release && (!release.draft || release.target_commitish !== commit)) throw new Error('existing release is public or belongs to another source; refusing overwrite')
   if (mode === 'uploaded') {
     if (!release || directories.length === 0) throw new Error('uploaded draft and local candidate directories are required')

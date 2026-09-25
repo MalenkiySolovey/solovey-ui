@@ -27,7 +27,7 @@ assert.equal(run.conclusion, 'failure')
 assert.notEqual(String(run.id), process.env.GITHUB_RUN_ID)
 execFileSync('git', ['merge-base', '--is-ancestor', run.head_sha, process.env.GITHUB_SHA])
 assert.equal(execFileSync('git', ['rev-parse', 'HEAD'], { encoding: 'utf8' }).trim(), commit)
-execFileSync(process.execPath, ['scripts/release-publish-gate.mjs', 'before', tag], {
+execFileSync(process.execPath, [path.join(process.env.RUNNER_TEMP, 'release-publish-gate.mjs'), 'before', tag], {
   stdio: 'inherit', env: { ...process.env, GITHUB_SHA: commit },
 })
 for (const [name, directory] of [

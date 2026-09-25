@@ -34,6 +34,7 @@ concurrency:
 
 env:
   NODE_VERSION: "25"
+  SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
   RELEASE_TAG_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
   CRONET_GO_VERSION: "v148.0.7778.96-1"
   CRONET_GO_COMMIT: "e7f6f6f5b7ce226f686f6cb5d068a63da6657ccd"
@@ -43,7 +44,7 @@ env:
 jobs:
   build-docker:
     if: inputs.resume_run_id == ''
-    needs: [release-preflight, assemble-linux, build-windows]
+    needs: [release-preflight, assemble-linux, build-windows, verify-openwrt]
     uses: ./.github/workflows/docker.yml
     with:
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
@@ -90,6 +91,7 @@ jobs:
           node --test scripts/release-preflight.test.mjs
           node scripts/audit/validate-workflows.js
           node --test scripts/release-execution.test.mjs
+          cp scripts/release-publish-gate.mjs "$RUNNER_TEMP/release-publish-gate.mjs"
 
       - name: Check out immutable product source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -124,7 +126,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PRODUCT_COMMIT: ${{ steps.product.outputs.commit }}
-        run: env GITHUB_SHA="$PRODUCT_COMMIT" node scripts/release-publish-gate.mjs before "$RELEASE_TAG_INPUT"
+        run: env GITHUB_SHA="$PRODUCT_COMMIT" node "$RUNNER_TEMP/release-publish-gate.mjs" before "$RELEASE_TAG_INPUT"
 
   test-installer:
     needs: release-preflight
@@ -644,7 +646,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
       - name: Retain execution-only recovery verifier
-        run: cp scripts/release-resume.mjs "$RUNNER_TEMP/release-resume.mjs"
+        run: cp scripts/release-resume.mjs scripts/release-publish-gate.mjs "$RUNNER_TEMP/"
       - name: Check out immutable product source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -671,19 +673,102 @@ jobs:
           path: windows-assets/*
           if-no-files-found: error
 
+  build-openwrt:
+    name: Canonical OpenWrt ${{ matrix.profile }}
+    needs: [release-preflight, test-installer, build-frontend, component-profile-checks]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: [x86-64, rockchip-armv8]
+    steps:
+      - name: Check out release orchestrator
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+      - name: Retain execution adapters
+        run: cp scripts/release-openwrt.mjs scripts/release-openwrt-build.sh "$RUNNER_TEMP/"
+      - name: Check out immutable product source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.release-preflight.outputs.product-commit }}
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+      - name: Prepare native SDK executor
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential gawk gettext libncurses-dev libssl-dev python3 rsync unzip zstd file
+      - name: Execute immutable canonical package producer and admission
+        env:
+          SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
+        run: bash "$RUNNER_TEMP/release-openwrt-build.sh" "${{ matrix.profile }}" "${{ needs.release-preflight.outputs.product-commit }}"
+      - name: Retain APK and complete producer evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: openwrt-${{ matrix.profile }}
+          path: openwrt-candidate/
+          if-no-files-found: error
+          retention-days: 7
+
+  verify-openwrt:
+    name: Verify complete OpenWrt and FriendlyWrt candidate
+    needs: [release-preflight, build-openwrt]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out release orchestrator
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+      - name: Retain release admission verifier
+        run: cp scripts/release-openwrt.mjs "$RUNNER_TEMP/"
+      - name: Check out immutable product source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.release-preflight.outputs.product-commit }}
+      - name: Download canonical APK candidates
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          pattern: openwrt-*
+          path: openwrt-candidate
+          merge-multiple: true
+      - name: Copy immutable FriendlyWrt descriptor and verify complete set
+        run: |
+          cp deploy/friendlywrt/deployment-storage.json openwrt-candidate/assets/solovey-ui-friendlywrt-storage.json
+          (cd openwrt-candidate/assets && sha256sum solovey-ui-friendlywrt-storage.json > solovey-ui-friendlywrt-storage.json.sha256)
+          node "$RUNNER_TEMP/release-openwrt.mjs" verify openwrt-candidate "${{ needs.release-preflight.outputs.product-commit }}"
+      - name: Retain complete verified OpenWrt candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: complete-openwrt-release
+          path: openwrt-candidate/
+          if-no-files-found: error
+          retention-days: 7
+
   publish-linux:
     name: Publish complete verified release
-    needs: [release-preflight, assemble-linux, build-windows, build-docker, resume-candidate, test-installer, build-frontend, component-profile-checks]
+    needs: [release-preflight, assemble-linux, build-windows, build-docker, resume-candidate, test-installer, build-frontend, component-profile-checks, verify-openwrt]
     if: >-
       always() && !cancelled() &&
       (github.event_name == 'push' || inputs.preflight_only == false) &&
       needs.release-preflight.result == 'success' && needs.test-installer.result == 'success' &&
       needs.build-frontend.result == 'success' && needs.component-profile-checks.result == 'success' &&
+      needs.verify-openwrt.result == 'success' &&
       ((inputs.resume_run_id != '' && needs.resume-candidate.result == 'success') ||
        (inputs.resume_run_id == '' && needs.assemble-linux.result == 'success' &&
         needs.build-windows.result == 'success' && needs.build-docker.result == 'success'))
     runs-on: ubuntu-latest
     steps:
+      - name: Check out release orchestrator
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+      - name: Retain publication execution gates
+        run: |
+          cp scripts/release-publish-gate.mjs scripts/release-openwrt.mjs "$RUNNER_TEMP/"
+          cp .github/RELEASE_OPENWRT_ASSETS.md "$RUNNER_TEMP/RELEASE_OPENWRT_ASSETS.md"
       - name: Check out release notes
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -710,17 +795,28 @@ jobs:
       - name: Verify complete Windows candidates
         run: node scripts/release-verify.mjs windows-assets "$RELEASE_TAG_INPUT" --windows
 
+      - name: Download complete OpenWrt candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: complete-openwrt-release
+          path: openwrt-candidate
+      - name: Verify OpenWrt admission at publication boundary
+        run: node "$RUNNER_TEMP/release-openwrt.mjs" verify openwrt-candidate "${{ needs.release-preflight.outputs.product-commit }}"
+
       - name: Refuse immutable release overwrite
         env:
           GH_TOKEN: ${{ github.token }}
           PRODUCT_COMMIT: ${{ needs.release-preflight.outputs.product-commit }}
-        run: env GITHUB_SHA="$PRODUCT_COMMIT" node scripts/release-publish-gate.mjs before "$RELEASE_TAG_INPUT"
+        run: env GITHUB_SHA="$PRODUCT_COMMIT" node "$RUNNER_TEMP/release-publish-gate.mjs" before "$RELEASE_TAG_INPUT"
 
       - name: Resolve immutable release notes
         id: notes
         run: |
           NOTES_FILE=".github/RELEASE_NOTES_${RELEASE_TAG_INPUT}.md"
-          if [ -f "$NOTES_FILE" ]; then echo "path=$NOTES_FILE" >> "$GITHUB_OUTPUT"; fi
+          : > "$RUNNER_TEMP/release-notes.md"
+          if [ -f "$NOTES_FILE" ]; then cat "$NOTES_FILE" >> "$RUNNER_TEMP/release-notes.md"; fi
+          cat "$RUNNER_TEMP/RELEASE_OPENWRT_ASSETS.md" >> "$RUNNER_TEMP/release-notes.md"
+          echo "path=$RUNNER_TEMP/release-notes.md" >> "$GITHUB_OUTPUT"
 
       - name: Publish to current repository Release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
@@ -735,6 +831,7 @@ jobs:
           files: |
             release-assets/*
             windows-assets/*
+            openwrt-candidate/assets/*
 
       - name: Publish fully uploaded immutable version
         env:
@@ -742,7 +839,7 @@ jobs:
           PRODUCT_COMMIT: ${{ needs.release-preflight.outputs.product-commit }}
           RELEASE_TAG: ${{ env.RELEASE_TAG_INPUT }}
         run: |
-          env GITHUB_SHA="$PRODUCT_COMMIT" node scripts/release-publish-gate.mjs uploaded "$RELEASE_TAG" release-assets windows-assets
+          env GITHUB_SHA="$PRODUCT_COMMIT" node "$RUNNER_TEMP/release-publish-gate.mjs" uploaded "$RELEASE_TAG" release-assets windows-assets openwrt-candidate/assets
           gh release edit "$RELEASE_TAG" --draft=false
 
       - name: Publish signed channel release set

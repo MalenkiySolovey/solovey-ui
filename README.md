@@ -134,8 +134,10 @@ chooses the smallest binary profile that can satisfy the selected component set.
 | `server-protection` | Default-disabled host-bound protection, fronting, firewall-composition, UDP guard, and recovery workflows. | Inspect or stage experimental protection capabilities; installation alone does not establish current operational readiness. |
 
 Installed components can be disabled without deleting data. Removing a component
-removes its runtime files and unregisters its routes, jobs, and hooks. Data
-deletion is a separate explicit action when the component supports it.
+changes installed inventory and reconciles/stops its runtime activity. Neither
+operation removes compiled Go code from a full executable or package-owned APK
+bytes. Durable data remains; Drop Data is a separate explicit operation when
+supported. See the [component packaging contract](docs/component-packaging.md).
 
 The update UI component protects itself: it cannot remove or disable its own
 management surface from inside that same surface.
@@ -219,7 +221,19 @@ GitHub Releases publish:
 - component bundle: `solovey-ui-components.tar.gz`
 - signed release manifest: `solovey-ui-release.json`
 - Windows archives: `solovey-ui-windows-<arch>.zip` (`amd64`, `arm64`)
-- checksums for every archive
+- OpenWrt 25.12.5 full APKs: `solovey-ui-openwrt-x86-64.apk`,
+  `solovey-ui-openwrt-rockchip-armv8.apk`
+- FriendlyWrt deployment descriptor: `solovey-ui-friendlywrt-storage.json`
+- `.sha256` sidecars for archives, APKs, descriptor and release manifest
+
+FriendlyWrt 25.12 on the qualified NanoPi R76S uses the **same** rockchip/armv8
+OpenWrt APK plus the descriptor and actual `/opt` mount proof. There is no
+FriendlyWrt package fork. SD, eMMC, NVMe and USB do not define APK identity;
+changed persistence topology needs deployment qualification, not another APK.
+Building these profiles does not physically qualify every board.
+`solovey-ui-release.json` signs the generic Linux/component update set; it does
+not cover APKs, the descriptor or Windows ZIPs. APK admission checks the canonical
+SDK/Go, source-fingerprint, metadata and extracted-rootfs evidence and hashes.
 
 Docker images are published to GHCR for release tags. The Compose contracts
 require `SOLOVEY_UI_IMAGE_DIGEST` to pin the exact release image; review the
@@ -372,9 +386,10 @@ bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/m
 | `server-protection` | Отключённые по умолчанию и привязанные к хосту процессы защиты, fronting, композиции firewall, UDP guard и восстановления. | Проверять или подготавливать экспериментальные возможности защиты; установка не означает отдельную внешнюю Live-приёмку. |
 
 Установленные компоненты можно отключать без удаления данных. Удаление компонента
-удаляет его файлы среды выполнения и снимает регистрацию его маршрутов, заданий
-и обработчиков. Удаление данных — отдельное явное действие, если компонент его
-поддерживает.
+меняет installed inventory и останавливает runtime через reconciliation.
+Эти операции не вырезают Go-код из полного executable и не удаляют байты APK.
+Durable data сохраняются; Drop Data — отдельная явная операция, если она
+поддерживается. См. [контракт упаковки компонентов](docs/component-packaging.md).
 
 Компонент интерфейса обновлений защищает сам себя: его нельзя удалить или
 отключить из его же поверхности управления.
@@ -459,6 +474,10 @@ GitHub Releases публикует:
 - архив компонентов: `solovey-ui-components.tar.gz`
 - подписанный манифест релиза: `solovey-ui-release.json`
 - архивы Windows: `solovey-ui-windows-<arch>.zip` (`amd64`, `arm64`)
+- APK OpenWrt: `solovey-ui-openwrt-x86-64.apk`, `solovey-ui-openwrt-rockchip-armv8.apk`
+- descriptor FriendlyWrt: `solovey-ui-friendlywrt-storage.json`
+- `.sha256` для APK и descriptor; FriendlyWrt использует тот же OpenWrt APK,
+  без fork по дистрибутиву или носителю SD/eMMC/NVMe/USB
 - контрольные суммы для каждого архива
 
 Образы Docker публикуются в GHCR для релизных тегов. Compose-контракты требуют

@@ -30,6 +30,7 @@ function fixture(t) {
   const replies = {
     'git/ref/tags/v2030.1.0': { status: 200, body: { object: { type: 'commit', sha: commit } } },
     'releases/tags/v2030.1.0': { status: 404 },
+    'releases?per_page=100&page=1': { status: 200, body: [] },
   }
   const run = mode => spawnSync(process.execPath, ['--import', pathToFileURL(preload).href, 'scripts/release-publish-gate.mjs', mode, 'v2030.1.0', assets], {
     env: { ...process.env, GITHUB_REPOSITORY: 'owner/repo', GITHUB_SHA: commit, GH_TOKEN: 'test-placeholder', TEST_REPLIES: JSON.stringify(replies) }, encoding: 'utf8',
@@ -58,5 +59,19 @@ test('draft promotion requires the exact uploaded complete byte inventory', t =>
   replies[endpoint].body = [{ ...asset, digest: 'sha256:' + '0'.repeat(64) }]
   assert.notEqual(run('uploaded').status, 0)
   replies[endpoint].body = [{ ...asset, state: 'starter' }]
+  assert.notEqual(run('uploaded').status, 0)
+})
+
+
+test('draft omitted by tag endpoint is verified through authenticated inventory', t => {
+  const { run, replies, asset } = fixture(t)
+  const draft = { id: 2, tag_name: 'v2030.1.0', draft: true, target_commitish: commit }
+  replies['releases?per_page=100&page=1'].body = [draft]
+  replies['releases/2/assets?per_page=100&page=1'] = { status: 200, body: [asset] }
+  assert.equal(run('uploaded').status, 0)
+  draft.target_commitish = 'b'.repeat(40)
+  assert.notEqual(run('before').status, 0)
+  draft.target_commitish = commit
+  replies['releases?per_page=100&page=1'].body.push({ ...draft, id: 3 })
   assert.notEqual(run('uploaded').status, 0)
 })

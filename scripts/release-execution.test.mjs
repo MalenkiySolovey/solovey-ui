@@ -21,7 +21,7 @@ test('orchestrator is validated before immutable product checkout and resolution
   assert.ok(validation < product && product < resolution)
   assert.match(job.steps[resolution].run, /git rev-parse HEAD/)
   assert.match(job.steps[resolution].run, /node scripts\/release-source.mjs/)
-  const gate = job.steps.find(step => step.run?.includes('release-publish-gate.mjs before'))
+  const gate = job.steps.find(step => step.run?.includes('release-publish-gate.mjs" before'))
   assert.equal(gate.if, undefined)
   assert.equal(gate.env.PRODUCT_COMMIT, '${{ steps.product.outputs.commit }}')
 })
@@ -30,7 +30,7 @@ test('every product checkout and reusable build is bound to resolved product sou
   for (const [name, job] of Object.entries(release.jobs)) {
     if (name === 'release-preflight') continue
     assert.ok([job.needs].flat().includes('release-preflight'), name)
-    if (name === 'resume-candidate') {
+    if (['resume-candidate', 'build-openwrt', 'verify-openwrt', 'publish-linux'].includes(name)) {
       assert.deepEqual(checkouts(job).map(step => step.with.ref), ['${{ github.sha }}', productRef])
       continue
     }
@@ -74,7 +74,7 @@ test('publication gates and metadata use product identity while preflight cannot
   const job = release.jobs['publish-linux']
   assert.match(job.if, /inputs.preflight_only == false/)
   for (const step of job.steps) {
-    if (step.run?.includes('release-publish-gate.mjs')) assert.equal(step.env.PRODUCT_COMMIT, productRef)
+    if (step.run?.includes('node "$RUNNER_TEMP/release-publish-gate.mjs"')) assert.equal(step.env.PRODUCT_COMMIT, productRef)
     if (step.uses?.startsWith('softprops/action-gh-release@')) assert.equal(step.with.target_commitish, productRef)
   }
   const build = release.jobs['build-linux'].steps.map(step => step.run ?? '').join('\n')
@@ -100,4 +100,19 @@ test('ordinary coverage plus privileged package retains the complete original te
   assert.match(privileged, /! grep -q -- '--- SKIP:'/)
   assert.ok(!privileged.includes('-test.run'))
   assert.ok(!steps.some(step => step['continue-on-error']))
+})
+
+
+test('canonical OpenWrt packages and FriendlyWrt bytes are mandatory even during recovery', () => {
+  const build = release.jobs['build-openwrt']
+  assert.deepEqual(build.strategy.matrix.profile, ['x86-64', 'rockchip-armv8'])
+  assert.equal(build.if, undefined)
+  const adapter = fs.readFileSync('scripts/release-openwrt-build.sh', 'utf8')
+  assert.match(adapter, /scripts\/openwrt-package-build.sh/)
+  assert.match(adapter, /openwrt_target_profile_load/)
+  assert.ok(!adapter.includes('SOLOVEY_UI_COMPONENT_IDS'))
+  const verify = release.jobs['verify-openwrt']
+  assert.ok(verify.steps.some(step => step.run?.includes('cp deploy/friendlywrt/deployment-storage.json')))
+  assert.ok(release.jobs['publish-linux'].if.includes("needs.verify-openwrt.result == 'success'"))
+  assert.ok(release.jobs['build-docker'].needs.includes('verify-openwrt'))
 })
