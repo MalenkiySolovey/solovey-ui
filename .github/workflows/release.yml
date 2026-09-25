@@ -13,11 +13,17 @@ on:
         required: true
         default: true
         type: boolean
+      resume_run_id:
+        description: "Completed canonical run whose verified artifacts finish an interrupted publication"
+        required: false
+        default: ""
+        type: string
   push:
     tags:
       - "v*"
 
 permissions:
+  actions: read
   contents: write
   packages: write
 
@@ -36,6 +42,7 @@ env:
 
 jobs:
   build-docker:
+    if: inputs.resume_run_id == ''
     needs: [release-preflight, assemble-linux, build-windows]
     uses: ./.github/workflows/docker.yml
     with:
@@ -45,6 +52,7 @@ jobs:
     secrets: inherit
 
   build-windows:
+    if: inputs.resume_run_id == ''
     needs: release-preflight
     uses: ./.github/workflows/windows.yml
     with:
@@ -329,6 +337,7 @@ jobs:
         run: go build -tags minimal -o /tmp/solovey-ui-core main.go
 
   build-linux:
+    if: inputs.resume_run_id == ''
     name: Build-${{ matrix.platform }}
     needs:
       - release-preflight
@@ -624,10 +633,55 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+  resume-candidate:
+    name: Verify interrupted publication candidate
+    if: inputs.resume_run_id != ''
+    needs: release-preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out recovery orchestrator
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+      - name: Retain execution-only recovery verifier
+        run: cp scripts/release-resume.mjs "$RUNNER_TEMP/release-resume.mjs"
+      - name: Check out immutable product source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.release-preflight.outputs.product-commit }}
+          fetch-depth: 0
+      - name: Verify source run, signed bytes, Windows checksums and existing registry
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+          PRODUCT_COMMIT: ${{ needs.release-preflight.outputs.product-commit }}
+          PRODUCT_FINGERPRINT: ${{ needs.release-preflight.outputs.source-fingerprint }}
+          SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
+        run: node "$RUNNER_TEMP/release-resume.mjs"
+      - name: Retain verified Linux candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: complete-linux-release
+          path: release-assets/*
+          if-no-files-found: error
+      - name: Retain verified Windows candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: solovey-ui-windows-recovered
+          path: windows-assets/*
+          if-no-files-found: error
+
   publish-linux:
     name: Publish complete verified release
-    needs: [release-preflight, assemble-linux, build-windows, build-docker]
-    if: github.event_name == 'push' || inputs.preflight_only == false
+    needs: [release-preflight, assemble-linux, build-windows, build-docker, resume-candidate, test-installer, build-frontend, component-profile-checks]
+    if: >-
+      always() && !cancelled() &&
+      (github.event_name == 'push' || inputs.preflight_only == false) &&
+      needs.release-preflight.result == 'success' && needs.test-installer.result == 'success' &&
+      needs.build-frontend.result == 'success' && needs.component-profile-checks.result == 'success' &&
+      ((inputs.resume_run_id != '' && needs.resume-candidate.result == 'success') ||
+       (inputs.resume_run_id == '' && needs.assemble-linux.result == 'success' &&
+        needs.build-windows.result == 'success' && needs.build-docker.result == 'success'))
     runs-on: ubuntu-latest
     steps:
       - name: Check out release notes
@@ -662,14 +716,20 @@ jobs:
           PRODUCT_COMMIT: ${{ needs.release-preflight.outputs.product-commit }}
         run: env GITHUB_SHA="$PRODUCT_COMMIT" node scripts/release-publish-gate.mjs before "$RELEASE_TAG_INPUT"
 
+      - name: Resolve immutable release notes
+        id: notes
+        run: |
+          NOTES_FILE=".github/RELEASE_NOTES_${RELEASE_TAG_INPUT}.md"
+          if [ -f "$NOTES_FILE" ]; then echo "path=$NOTES_FILE" >> "$GITHUB_OUTPUT"; fi
+
       - name: Publish to current repository Release
         uses: softprops/action-gh-release@b4309332981a82ec1c5618f44dd2e27cc8bfbfda # v3
         with:
-          tag_name: ${{ needs.assemble-linux.outputs.tag }}
-          name: Solovey UI ${{ needs.assemble-linux.outputs.tag }}
+          tag_name: ${{ env.RELEASE_TAG_INPUT }}
+          name: Solovey UI ${{ env.RELEASE_TAG_INPUT }}
           target_commitish: ${{ needs.release-preflight.outputs.product-commit }}
-          prerelease: ${{ needs.assemble-linux.outputs.prerelease == 'true' }}
-          body_path: ${{ needs.assemble-linux.outputs.notes_path }}
+          prerelease: ${{ contains(env.RELEASE_TAG_INPUT, '-') }}
+          body_path: ${{ steps.notes.outputs.path }}
           draft: true
           fail_on_unmatched_files: true
           files: |
@@ -680,7 +740,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           PRODUCT_COMMIT: ${{ needs.release-preflight.outputs.product-commit }}
-          RELEASE_TAG: ${{ needs.assemble-linux.outputs.tag }}
+          RELEASE_TAG: ${{ env.RELEASE_TAG_INPUT }}
         run: |
           env GITHUB_SHA="$PRODUCT_COMMIT" node scripts/release-publish-gate.mjs uploaded "$RELEASE_TAG" release-assets windows-assets
           gh release edit "$RELEASE_TAG" --draft=false
@@ -692,7 +752,7 @@ jobs:
         run: |
           set -euo pipefail
           CHANNEL=main
-          [ "${{ needs.assemble-linux.outputs.prerelease }}" = "true" ] && CHANNEL=beta
+          [[ "$RELEASE_TAG_INPUT" == *-* ]] && CHANNEL=beta
           CHANNEL_TAG="channel-${CHANNEL}"
           if ! gh release view "$CHANNEL_TAG" >/dev/null 2>&1; then
             CREATE_ARGS=(--target "$PRODUCT_COMMIT" --latest=false --title "Solovey UI ${CHANNEL} signed channel" --notes "Signed, expiring Solovey UI ${CHANNEL} release-set pointer. Artifact trust is established only by solovey-ui-release.json.")

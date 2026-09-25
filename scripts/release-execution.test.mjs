@@ -30,6 +30,10 @@ test('every product checkout and reusable build is bound to resolved product sou
   for (const [name, job] of Object.entries(release.jobs)) {
     if (name === 'release-preflight') continue
     assert.ok([job.needs].flat().includes('release-preflight'), name)
+    if (name === 'resume-candidate') {
+      assert.deepEqual(checkouts(job).map(step => step.with.ref), ['${{ github.sha }}', productRef])
+      continue
+    }
     for (const checkout of checkouts(job)) assert.equal(checkout.with.ref, productRef, name)
     if (job.uses) assert.equal(job.with.source_commit, productRef, name)
   }
@@ -42,6 +46,28 @@ test('every product checkout and reusable build is bound to resolved product sou
       }
     }
   }
+})
+
+test('Windows producer writes canonical checksum bytes and verifies the pair before eligibility', () => {
+  const workflow = read('windows')
+  const checksum = workflow.jobs['build-windows'].steps.find(step => step.name === 'Write package checksum')
+  assert.match(checksum.run, /createReadStream\(name\)/)
+  assert.ok(checksum.run.includes("${hash.digest('hex')}  ${name}\\n"))
+  const gate = workflow.jobs['verify-windows']
+  assert.equal(gate.needs, 'build-windows')
+  assert.ok(gate.steps.some(step => step.run?.includes('scripts/release-verify.mjs windows-assets')))
+  assert.equal(gate.if, undefined)
+})
+
+test('interrupted publication recovery is gated and never rebuilds or overwrites registry', () => {
+  assert.equal(release.jobs['build-linux'].if, "inputs.resume_run_id == ''")
+  assert.equal(release.jobs['build-docker'].if, "inputs.resume_run_id == ''")
+  assert.equal(release.jobs['build-windows'].if, "inputs.resume_run_id == ''")
+  const recovery = release.jobs['resume-candidate']
+  assert.equal(recovery.if, "inputs.resume_run_id != ''")
+  assert.ok(recovery.steps.some(step => step.run?.includes('release-resume.mjs')))
+  assert.ok(release.jobs['publish-linux'].if.includes("needs.resume-candidate.result == 'success'"))
+  assert.ok(release.jobs['publish-linux'].if.includes("needs.build-docker.result == 'success'"))
 })
 
 test('publication gates and metadata use product identity while preflight cannot publish', () => {
