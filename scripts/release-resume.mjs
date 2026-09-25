@@ -67,7 +67,7 @@ for target in targets['linux']:
   assert fields['profile']==profile and fields['platform']=='linux/'+target['platform']
 for arch in targets['windows']:
  with zipfile.ZipFile('windows-assets/solovey-ui-windows-'+arch+'.zip') as archive:
-  names=[name for name in archive.namelist() if name.endswith('/BUILD_INFO.txt')]
+  names=[name for name in archive.namelist() if name.replace(chr(92),'/')=='solovey-ui-windows/BUILD_INFO.txt']
   assert len(names)==1
   fields=dict(line.split('=',1) for line in archive.read(names[0]).decode().splitlines() if '=' in line)
   assert fields['commit']==commit and fields['source_fingerprint']==fingerprint and fields['version']==tag
