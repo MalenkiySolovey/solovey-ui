@@ -10,7 +10,7 @@ enabled policy, active lifecycle and durable data are separate facts.
 | Generic Linux custom selection | Any selected in-process component requires the full binary, including other compiled optional backend code; no custom public binary per selection | Installer copies selected packs, removes unselected pack directories, and writes selected inventory |
 | OpenWrt APK | Canonical producer builds full backend and core embedded frontend | All component frontend packs and full initial inventory are package-owned under `/usr/lib/solovey-ui`; runtime state does not rewrite APK bytes |
 | FriendlyWrt | Same OpenWrt APK for the appropriate target | Same package plus deployment storage injection; no package fork |
-| Windows full | One full executable per architecture; optional Go backend and full frontend are compiled/embedded | No separately extracted component packs in the ZIP; runtime installed/enabled state gates activation |
+| Windows full | One full executable per architecture; optional Go backend and full frontend are compiled/embedded | No separately extracted component packs or initial `installed.json` in the ZIP; runtime installed/enabled state gates activation |
 
 **Disable** preserves installed inventory and durable data, changes enabled
 policy and reconciles lifecycle. **Remove** removes the component from installed
@@ -18,6 +18,13 @@ runtime inventory and reconciles/stops activity while preserving durable data.
 Owner-specific readiness, routes, jobs and runtime access follow reconciliation
 and active-state checks. Installed and enabled do not alone prove active or
 operationally ready. Defaults can leave components disabled.
+
+In particular, a fresh Windows ZIP contains full code but does not establish
+optional installed inventory. `InstalledIDs` returns an empty set when metadata
+is absent; existing explicit metadata remains authoritative on an existing
+deployment. Full binary availability must not be described as all components
+installed, enabled or active. This release audit documents that current behavior
+without changing Windows initialization or component runtime semantics.
 
 The runtime Remove operation does not delete compiled Go code, embedded frontend
 or package-owned pack bytes. Physical omission/deletion is claimed only for an
@@ -29,7 +36,7 @@ Source authority: `install.sh` (`resolve_binary_profile`, component pack
 installation), `scripts/generate-component-imports.mjs`,
 `scripts/openwrt-stage-build.sh`, `.github/workflows/windows.yml`,
 `components/panel-update-ui/service/runtime.go`, and the installstate,
-enabledstate and lifecycle owners under `internal/components/`.
+enabledstate and lifecycle owners under `componenthost/`.
 
 ## OpenWrt release mapping
 
