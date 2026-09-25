@@ -844,7 +844,7 @@ jobs:
           RELEASE_TAG: ${{ env.RELEASE_TAG_INPUT }}
         run: |
           env GITHUB_SHA="$PRODUCT_COMMIT" node "$RUNNER_TEMP/release-publish-gate.mjs" uploaded "$RELEASE_TAG" release-assets windows-assets openwrt-candidate/assets
-          gh release edit "$RELEASE_TAG" --draft=false
+          gh release edit "$RELEASE_TAG" --draft=false --notes-file "$RUNNER_TEMP/release-notes.md"
 
       - name: Publish signed channel release set
         env:
