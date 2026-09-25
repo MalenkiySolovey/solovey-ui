@@ -31,7 +31,7 @@ export PATH="$work/go/go/bin:$PATH"
 (
   cd "$work/cronet"
   go run ./cmd/build-naive --target="linux/$OPENWRT_GOARCH" --libc=musl download-toolchain
-  go run ./cmd/build-naive --target="linux/$OPENWRT_GOARCH" --libc=musl env > "$work/compiler.env"
+  go run ./cmd/build-naive --target="linux/$OPENWRT_GOARCH" --libc=musl env --export > "$work/compiler.env"
 )
 # This is the pinned project's existing toolchain environment producer.
 source "$work/compiler.env"
