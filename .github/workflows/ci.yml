@@ -1,6 +1,7 @@
 name: CI
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
     branches:
@@ -93,16 +94,22 @@ jobs:
       - name: Generate backend component imports
         run: node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
 
+      - name: Materialize pinned OpenWrt test references
+        run: node scripts/release-openwrt-references.mjs .github/build-inputs/OPENWRT_REFERENCE_LOCK.md --test-references
+
+      - name: Install privileged fixture tools
+        run: sudo apt-get update && sudo apt-get install -y busybox-static
+
       - name: Go vet
         run: go vet ./...
 
       - name: Go race tests
-        run: go test -race -timeout=10m ./...
+        run: node scripts/go-test.mjs -race -timeout=10m -- ./...
 
       - name: Component profile tests
         run: |
-          go test -p 1 -count=1 ./internal/components/... ./components/... ./api ./app ./web
-          go test -p 1 -tags minimal -count=1 ./internal/components/... ./api ./app ./web
+          node scripts/go-test.mjs -p 1 -count=1 -- ./internal/components/... ./components/... ./api ./app ./web
+          node scripts/go-test.mjs -p 1 -tags minimal -count=1 -- ./internal/components/... ./api ./app ./web
 
       - name: Minimal dependency boundary
         run: |

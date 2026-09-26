@@ -18,13 +18,13 @@ audit\:build:
 	$(RUN) -Group core -Name go-build -CommandLine "go build ./..."
 
 audit\:test-go:
-	$(RUN) -Group core -Name go-test -CommandLine "go test -count=1 -p 1 ./..."
+	$(RUN) -Group core -Name go-test -CommandLine "node scripts/go-test.mjs -count=1 -p 1 -timeout 30m -- ./..."
 
 audit\:test-go-race:
-	$(RUN) -Group core -Name go-test-race -CommandLine "go test -race -count=1 -p 1 -timeout 30m ./..."
+	$(RUN) -Group core -Name go-test-race -CommandLine "node scripts/go-test.mjs -race -count=1 -p 1 -timeout 30m -- ./..."
 
 audit\:cover:
-	$(RUN) -Group core -Name go-cover -CommandLine "go test ./... -coverprofile tests/baseline/core/coverage.out"
+	$(RUN) -Group core -Name go-cover -CommandLine "node scripts/go-test.mjs -coverprofile tests/baseline/core/coverage.out -- ./..."
 
 audit\:gosec:
 	$(ADVISORY_RUN) -Group advisory -Name gosec -CommandLine "gosec -exclude-dir .tmp -exclude-dir .gotmp -exclude-dir .gocache -exclude-dir frontend/node_modules ./..."

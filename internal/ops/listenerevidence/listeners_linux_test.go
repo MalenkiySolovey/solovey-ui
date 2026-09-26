@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -380,6 +381,10 @@ func TestObserveAcceptingTCPFallsBackWhenKernelDeniesPidfdGetfd(t *testing.T) {
 
 func installPidfdGetfdDenyFilter(t *testing.T) {
 	t.Helper()
+	// no_new_privs is thread-local. Keep installation on that thread, then
+	// synchronize the filter so a Go goroutine migration cannot escape it.
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	filter := []unix.SockFilter{
 		{Code: unix.BPF_LD | unix.BPF_W | unix.BPF_ABS, K: 0},
 		{Code: unix.BPF_JMP | unix.BPF_JEQ | unix.BPF_K, Jf: 1, K: unix.SYS_PIDFD_GETFD},
@@ -390,9 +395,9 @@ func installPidfdGetfdDenyFilter(t *testing.T) {
 	if err := unix.Prctl(unix.PR_SET_NO_NEW_PRIVS, 1, 0, 0, 0); err != nil {
 		t.Fatal(err)
 	}
-	_, _, errno := unix.Syscall(unix.SYS_SECCOMP, unix.SECCOMP_SET_MODE_FILTER, 0, uintptr(unsafe.Pointer(&program)))
-	if errno != 0 {
-		t.Fatalf("install pidfd_getfd seccomp filter: %v", errno)
+	failedThread, _, errno := unix.Syscall(unix.SYS_SECCOMP, unix.SECCOMP_SET_MODE_FILTER, unix.SECCOMP_FILTER_FLAG_TSYNC, uintptr(unsafe.Pointer(&program)))
+	if errno != 0 || failedThread != 0 {
+		t.Fatalf("install synchronized pidfd_getfd seccomp filter: thread=%d errno=%v", failedThread, errno)
 	}
 }
 

@@ -389,9 +389,9 @@ func (f *pinnedLifecycleRoot) hostPath(name string) string {
 
 func pinnedOpenWrtSourceRoot(t testing.TB) string {
 	t.Helper()
-	root := filepath.Clean(filepath.Join("..", "..", "..", "..", ".tmp", "openwrt-v25.12.5"))
+	root := filepath.Clean(filepath.Join("..", "..", "..", "..", "upstreams", "openwrt-openwrt-25.12.5"))
 	if _, err := os.Stat(root); os.IsNotExist(err) {
-		t.Skip("pinned OpenWrt v25.12.5 source checkout is not present")
+		t.Fatal("materialize canonical pinned OpenWrt references before qualification")
 	} else if err != nil {
 		t.Fatal(err)
 	}

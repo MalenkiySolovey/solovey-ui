@@ -119,6 +119,11 @@ jobs:
           if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
             choco install make -y --no-progress
           }
+      - name: Materialize pinned OpenWrt test references
+        run: node scripts/release-openwrt-references.mjs .github/build-inputs/OPENWRT_REFERENCE_LOCK.md --test-references
+      - name: Install privileged fixture tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y busybox-static
       - name: make audit:test-go
         shell: bash
         run: make audit:test-go PS="${MAKE_PS}"
@@ -157,6 +162,16 @@ jobs:
           if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
             choco install make -y --no-progress
           }
+      - name: Materialize pinned OpenWrt test references
+        run: node scripts/release-openwrt-references.mjs .github/build-inputs/OPENWRT_REFERENCE_LOCK.md --test-references
+      - name: Install privileged fixture tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y busybox-static
+      - name: Materialize pinned OpenWrt test references
+        run: node scripts/release-openwrt-references.mjs .github/build-inputs/OPENWRT_REFERENCE_LOCK.md --test-references
+      - name: Install privileged fixture tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y busybox-static
       - name: make audit:test-go-race
         shell: bash
         run: make audit:test-go-race PS="${MAKE_PS}"
@@ -182,6 +197,11 @@ jobs:
           cache-dependency-path: go.sum
       - name: Generate backend component imports
         run: node scripts/generate-component-imports.mjs --profile full
+      - name: Materialize pinned OpenWrt test references
+        run: node scripts/release-openwrt-references.mjs .github/build-inputs/OPENWRT_REFERENCE_LOCK.md --test-references
+      - name: Install privileged fixture tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y busybox-static
       - name: make audit:cover
         shell: bash
         run: make audit:cover PS="${MAKE_PS}"
