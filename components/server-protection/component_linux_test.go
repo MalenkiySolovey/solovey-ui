@@ -41,10 +41,10 @@ func TestLinuxProductionHelperCompositionWithoutBrokerPersistsHelperCallFailed(t
 
 	c := component{}
 	t.Cleanup(func() { _ = c.Stop(context.Background()) })
-	if err := c.Migrate(context.Background(), serverProtectionLifecycleContext(nil)); err != nil {
+	if err := c.Migrate(context.Background(), serverProtectionLifecycleContext(t, nil)); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
-	if err := c.Start(context.Background(), serverProtectionLifecycleContext(nil)); err != nil {
+	if err := c.Start(context.Background(), serverProtectionLifecycleContext(t, nil)); err != nil {
 		t.Fatalf("Start: %v", err)
 	}
 

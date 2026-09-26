@@ -53,9 +53,21 @@ func (s *trackingScheduler) RemoveJobAndWait(_ context.Context, id cron.EntryID)
 	return nil
 }
 
-func serverProtectionLifecycleContext(scheduler componenthost.Scheduler) lifecycle.Context {
+func serverProtectionLifecycleContext(t *testing.T, scheduler componenthost.Scheduler) lifecycle.Context {
+	t.Helper()
+	runtime := coreservice.NewRuntime(nil)
+	t.Cleanup(func() {
+		// Stop producers, then drain this fixture's asynchronous audit writer
+		// before a later test installs a different global database.
+		if err := (component{}).Stop(context.Background()); err != nil {
+			t.Errorf("stop component before audit drain: %v", err)
+		}
+		if err := runtime.StopAuditWriter(context.Background()); err != nil {
+			t.Errorf("drain fixture audit writer: %v", err)
+		}
+	})
 	return lifecycle.Context{Host: componenthost.Deps{
-		API:       componenthost.APIDeps{Runtime: coreservice.NewRuntime(nil)},
+		API:       componenthost.APIDeps{Runtime: runtime},
 		Scheduler: scheduler,
 	}}
 }
@@ -168,7 +180,7 @@ func TestLifecycleKeepsInstalledOwnerBackupWhileRuntimeScopesFollowStartStop(t *
 	c := component{}
 	t.Cleanup(func() { _ = c.Stop(context.Background()) })
 	scheduler := &trackingScheduler{}
-	lifecycleCtx := serverProtectionLifecycleContext(scheduler)
+	lifecycleCtx := serverProtectionLifecycleContext(t, scheduler)
 	if err := c.Migrate(context.Background(), lifecycle.Context{}); err != nil {
 		t.Fatalf("Migrate: %v", err)
 	}
@@ -223,7 +235,7 @@ func TestDisabledComponentStopsRecoveryRunnerAcrossEnable(t *testing.T) {
 	if err := c.Migrate(context.Background(), lifecycle.Context{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Start(context.Background(), serverProtectionLifecycleContext(nil)); err != nil {
+	if err := c.Start(context.Background(), serverProtectionLifecycleContext(t, nil)); err != nil {
 		t.Fatal(err)
 	}
 	hooks.Lock()
@@ -252,7 +264,7 @@ func TestDisabledComponentStopsRecoveryRunnerAcrossEnable(t *testing.T) {
 	}
 	hooks.Unlock()
 
-	if err := c.Start(context.Background(), serverProtectionLifecycleContext(nil)); err != nil {
+	if err := c.Start(context.Background(), serverProtectionLifecycleContext(t, nil)); err != nil {
 		t.Fatal(err)
 	}
 	hooks.Lock()
@@ -332,7 +344,7 @@ func TestContractV2RecordsRoundTripThroughComponentBackup(t *testing.T) {
 	if err := c.Migrate(context.Background(), lifecycle.Context{}); err != nil {
 		t.Fatal(err)
 	}
-	if err := c.Start(context.Background(), serverProtectionLifecycleContext(nil)); err != nil {
+	if err := c.Start(context.Background(), serverProtectionLifecycleContext(t, nil)); err != nil {
 		t.Fatal(err)
 	}
 	t.Cleanup(func() { _ = c.Stop(context.Background()) })

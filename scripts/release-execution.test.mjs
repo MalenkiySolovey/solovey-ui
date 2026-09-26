@@ -10,6 +10,16 @@ const release = read('release')
 const productRef = '${{ needs.release-preflight.outputs.product-commit }}'
 const checkouts = job => job.steps?.filter(step => step.uses?.startsWith('actions/checkout@')) ?? []
 
+test('CI and publication execute the native installer ownership contract', () => {
+  for (const job of [read('ci').jobs.installer, release.jobs['test-installer']]) {
+    assert.ok(job.steps.some(step => step.uses?.startsWith('actions/setup-go@')))
+    const gate = job.steps.find(step => step.run === 'bash tests/installer/native-ownership.sh')
+    assert.ok(gate)
+    assert.equal(gate.if, undefined)
+    assert.equal(gate['continue-on-error'], undefined)
+  }
+})
+
 test('orchestrator is validated before immutable product checkout and resolution', () => {
   const job = release.jobs['release-preflight']
   assert.deepEqual(checkouts(job).map(step => step.with.ref), [

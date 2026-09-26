@@ -14,11 +14,16 @@ var ErrUnavailable = errors.New("coherent executable-object security is unavaila
 // Policy describes only filesystem/object propositions. It deliberately has no
 // command, argv, environment, or semantic-owner fields.
 type Policy struct {
-	MaxBytes               int64
-	AllowSymlink           bool
-	RequireRegular         bool
-	RequireExecutable      bool
-	RequireRootOwner       bool
+	MaxBytes          int64
+	AllowSymlink      bool
+	RequireRegular    bool
+	RequireExecutable bool
+	RequireRootOwner  bool
+	// RequiredOwner is an exact UID/GID constraint, mutually exclusive with
+	// RequireRootOwner (which continues to require UID 0 and GID 0).
+	RequiredOwner *Ownership
+	// RequiredMode, when nonzero, binds permissions and set-ID/sticky bits.
+	RequiredMode           os.FileMode
 	ForbiddenMode          os.FileMode
 	RequireTrustedAncestry bool
 	AncestryOwner          uint32
@@ -36,6 +41,11 @@ type Policy struct {
 	// that intentionally keep using an already-open object across pathname
 	// replacement leave this false.
 	RequireStablePath bool
+}
+
+type Ownership struct {
+	UID uint32
+	GID uint32
 }
 
 type Identity struct {

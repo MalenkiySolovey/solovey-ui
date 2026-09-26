@@ -10,7 +10,7 @@
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/MalenkiySolovey/solovey-ui"></a>
 </p>
 
-Current version: `2026.3.1`
+Current version: `2026.3.2`
 
 The source version becomes installable after its complete official release is
 published. The canonical release workflow builds Linux full/core archives and
@@ -62,7 +62,7 @@ sudo solovey-ui status
 Install a specific release:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.3.1
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.3.2
 ```
 
 Default paths:
@@ -153,7 +153,7 @@ sudo systemctl status solovey-ui --no-pager
 Update to a specific tag:
 
 ```bash
-sudo solovey-ui update --version v2026.3.1
+sudo solovey-ui update --version v2026.3.2
 ```
 
 ## Backup And Restore
@@ -263,7 +263,7 @@ The project remains licensed under GNU GPL v3.0.
   <b>Персональная панель для sing-box с модульной средой выполнения, установщиком с учётом компонентов и встроенными инструментами администрирования.</b>
 </p>
 
-Текущая версия: `2026.3.1`
+Текущая версия: `2026.3.2`
 
 Solovey UI — панель GPL-3.0 для управления сервером `sing-box` через веб-интерфейс
 и командную строку. Базовое ядро включает обязательные части среды выполнения:
@@ -311,7 +311,7 @@ sudo solovey-ui status
 Установка конкретного релиза:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.3.1
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.3.2
 ```
 
 Пути по умолчанию:
@@ -405,7 +405,7 @@ sudo systemctl status solovey-ui --no-pager
 Обновление до конкретного тега:
 
 ```bash
-sudo solovey-ui update --version v2026.3.1
+sudo solovey-ui update --version v2026.3.2
 ```
 
 ## Резервное копирование и восстановление

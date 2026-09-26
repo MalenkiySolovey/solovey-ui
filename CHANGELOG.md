@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026.3.2
+
+- Fixed native Linux installation rejecting its own SSH reconnect proof helper.
+  Installer, broker manifest, live peer attestation and native updates now agree
+  on root ownership, the exact dedicated socket group and setgid permissions.
+  Existing root:root executable trust remains strict.
+- Added real Linux installer/manifest and setgid socket regression gates to CI
+  and release qualification, including unsafe ownership and permission cases.
+- Included post-2026.3.1 persistence-policy build isolation, capability-aware
+  qualification, and synchronous restore/session-rotation audit completion.
+
 ## 2026.3.0
 
 - Added the disabled-by-default Server Protection component with endpoint and

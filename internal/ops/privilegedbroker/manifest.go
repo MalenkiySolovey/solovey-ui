@@ -215,8 +215,8 @@ func (m Manifest) commonMismatchClass(role Role, identity PeerIdentity) PeerAtte
 	}
 	accountMatches := make([]ClientManifest, 0, len(roleClients))
 	for _, client := range roleClients {
-		uidMatches := client.UID == identity.UID || client.AnyNonRootUID && identity.UID != 0
-		gidMatches := client.GID == identity.GID || client.AnyGID && (client.RequiredGroup == identity.GID || containsGroup(identity.Groups, client.RequiredGroup))
+		uidMatches := !client.AnyNonRootUID && client.UID == identity.UID || client.AnyNonRootUID && identity.UID != 0
+		gidMatches := !client.AnyGID && client.GID == identity.GID || client.AnyGID && (client.RequiredGroup == identity.GID || containsGroup(identity.Groups, client.RequiredGroup))
 		if uidMatches && gidMatches {
 			accountMatches = append(accountMatches, client)
 		}
@@ -240,8 +240,8 @@ func (m Manifest) commonMatching(role Role, identity PeerIdentity) []ClientManif
 		for _, candidate := range client.Roles {
 			roleAllowed = roleAllowed || candidate == role
 		}
-		uidMatches := client.UID == identity.UID || client.AnyNonRootUID && identity.UID != 0
-		gidMatches := client.GID == identity.GID || client.AnyGID && (client.RequiredGroup == identity.GID || containsGroup(identity.Groups, client.RequiredGroup))
+		uidMatches := !client.AnyNonRootUID && client.UID == identity.UID || client.AnyNonRootUID && identity.UID != 0
+		gidMatches := !client.AnyGID && client.GID == identity.GID || client.AnyGID && (client.RequiredGroup == identity.GID || containsGroup(identity.Groups, client.RequiredGroup))
 		if roleAllowed && uidMatches && gidMatches &&
 			client.ExecutableDigest == identity.ExecutableDigest && client.Device == identity.Device && client.Inode == identity.Inode {
 			result = append(result, client)
