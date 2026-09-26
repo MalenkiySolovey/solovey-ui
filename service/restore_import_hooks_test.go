@@ -59,6 +59,10 @@ func TestRestoreImportServicePostOpenActionsEnsuresDefaultsRotatesAndAudits(t *t
 		t.Fatalf("unexpected restore audit event: %#v", event)
 	}
 	details := string(event.Details)
+	var rotationCount int64
+	if err := db.Model(&model.AuditEvent{}).Where("event = ?", "ws_tokens_invalidated").Count(&rotationCount).Error; err != nil || rotationCount != 1 {
+		t.Fatalf("completed session rotation audit count=%d, want 1: %v", rotationCount, err)
+	}
 	for _, expected := range []string{
 		`"encryptedSettingsResealed":0`,
 		`"sessionRotated":true`,

@@ -73,12 +73,16 @@ func TestIntegrationBackupEnvelopeRestorePreservesBackupTableCounts(t *testing.T
 	}
 	after := integrationBackupTableCounts(t)
 	expected := maps.Clone(before)
-	// Restore preserves the backed-up rows and completes one new audit record
+	// Restore preserves the backed-up rows and completes both new audit records
 	// before returning, while the imported candidate still owns the database.
-	expected["audit_events"]++
+	expected["audit_events"] += 2
 	var restoreAuditCount int64
 	if err := dbsqlite.DB().Model(&model.AuditEvent{}).Where("event = ?", "db_restore_post_actions").Count(&restoreAuditCount).Error; err != nil || restoreAuditCount != 1 {
 		t.Fatalf("restore audit count=%d, want 1: %v", restoreAuditCount, err)
+	}
+	var rotationAuditCount int64
+	if err := dbsqlite.DB().Model(&model.AuditEvent{}).Where("event = ?", "ws_tokens_invalidated").Count(&rotationAuditCount).Error; err != nil || rotationAuditCount != 1 {
+		t.Fatalf("rotation audit count=%d, want 1: %v", rotationAuditCount, err)
 	}
 	if !reflect.DeepEqual(expected, after) {
 		t.Fatalf("backup table counts changed after restore:\nbefore=%v\nexpected=%v\nafter=%v", before, expected, after)
