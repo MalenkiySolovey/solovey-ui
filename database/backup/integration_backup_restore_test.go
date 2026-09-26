@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"maps"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -71,8 +72,16 @@ func TestIntegrationBackupEnvelopeRestorePreservesBackupTableCounts(t *testing.T
 		t.Fatalf("Restore returned error: %v", err)
 	}
 	after := integrationBackupTableCounts(t)
-	if !reflect.DeepEqual(before, after) {
-		t.Fatalf("backup table counts changed after restore:\nbefore=%v\nafter=%v", before, after)
+	expected := maps.Clone(before)
+	// Restore preserves the backed-up rows and completes one new audit record
+	// before returning, while the imported candidate still owns the database.
+	expected["audit_events"]++
+	var restoreAuditCount int64
+	if err := dbsqlite.DB().Model(&model.AuditEvent{}).Where("event = ?", "db_restore_post_actions").Count(&restoreAuditCount).Error; err != nil || restoreAuditCount != 1 {
+		t.Fatalf("restore audit count=%d, want 1: %v", restoreAuditCount, err)
+	}
+	if !reflect.DeepEqual(expected, after) {
+		t.Fatalf("backup table counts changed after restore:\nbefore=%v\nexpected=%v\nafter=%v", before, expected, after)
 	}
 }
 

@@ -318,7 +318,9 @@ func TestPinnedOpenWrtProviderResolutionAcceptsAnExistingJSONVariant(t *testing.
 	if err := os.WriteFile(metadataPath, []byte(metadata), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(perl, filepath.Join(openwrtRoot, "scripts", "package-metadata.pl"), "config", metadataPath)
+	// A relative, slash-separated script path lets both native and MSYS Perl
+	// resolve FindBin to the pinned scripts directory and load metadata.pm.
+	command := exec.Command(perl, "scripts/package-metadata.pl", "config", filepath.ToSlash(metadataPath))
 	command.Dir = openwrtRoot
 	generated, err := command.CombinedOutput()
 	if err != nil {
