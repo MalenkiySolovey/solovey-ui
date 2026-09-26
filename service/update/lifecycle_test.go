@@ -7,12 +7,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
+	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	"gorm.io/driver/sqlite"
@@ -318,12 +320,23 @@ func TestAppliedRollbackRejectsNewerAuthorityOrAnotherActiveOperation(t *testing
 func TestManifestCompatibilityRejectsPanelSchemaBrokerAndComponentDrift(t *testing.T) {
 	fixture := newLifecycleFixture(t)
 	base := fixture.verified.Manifest
+	current := configidentity.GetVersion()
+	var major, minor, patch int
+	if n, err := fmt.Sscanf(current, "%d.%d.%d", &major, &minor, &patch); err != nil || n != 3 {
+		t.Fatalf("parse current panel version %q: %v", current, err)
+	}
+	base.MinimumPanelVersion, base.MaximumPanelVersion = current, current
+	if err := validateManifestCompatibility(base); err != nil {
+		t.Fatalf("inclusive current panel version boundary: %v", err)
+	}
 	cases := map[string]func(*release.Manifest){
 		"panel below minimum": func(manifest *release.Manifest) {
-			manifest.MinimumPanelVersion = "2026.3.2"
+			manifest.MinimumPanelVersion = fmt.Sprintf("%d.%d.%d", major, minor, patch+1)
+			manifest.MaximumPanelVersion = manifest.MinimumPanelVersion
 		},
 		"panel above maximum": func(manifest *release.Manifest) {
-			manifest.MaximumPanelVersion = "2026.2.2"
+			manifest.MaximumPanelVersion = fmt.Sprintf("%d.%d.%d", major-1, minor, patch)
+			manifest.MinimumPanelVersion = manifest.MaximumPanelVersion
 		},
 		"core outside maximum": func(manifest *release.Manifest) {
 			manifest.MaximumCoreSchema = "1.10"

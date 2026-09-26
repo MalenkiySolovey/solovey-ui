@@ -88,7 +88,7 @@ func assertComponentRuntimeExecutionFailureKeepsRecoveryAndSchedules(t *testing.
 	hooks.operationManager, hooks.firewallWorkflow = manager, workflow
 	hooks.Unlock()
 	scheduler := &trackingScheduler{}
-	if err := c.Start(t.Context(), serverProtectionLifecycleContext(scheduler)); err != nil {
+	if err := c.Start(t.Context(), serverProtectionLifecycleContext(t, scheduler)); err != nil {
 		t.Fatalf("runtime execution destroyed component: %v", err)
 	}
 	stored, err := repo.OperationByID(t.Context(), row.OperationID)
