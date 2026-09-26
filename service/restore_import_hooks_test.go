@@ -6,6 +6,7 @@ import (
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
@@ -13,6 +14,18 @@ import (
 
 func TestRestoreImportServicePostOpenActionsEnsuresDefaultsRotatesAndAudits(t *testing.T) {
 	settingService := initSettingTestDB(t)
+	previousRuntime := DefaultRuntime()
+	restoreRuntime := NewRuntimeWithCoreProvider(nil)
+	// Keep asynchronous events queued so the test proves the restore hook's
+	// database write has completed before the candidate may be rolled back.
+	restoreRuntime.auditWriter = newAuditWriter(auditQueueCapacity, auditBatchSize, time.Hour, writeAuditEvents)
+	SetDefaultRuntime(restoreRuntime)
+	t.Cleanup(func() {
+		if err := restoreRuntime.StopAuditWriter(context.Background()); err != nil {
+			t.Error(err)
+		}
+		SetDefaultRuntime(previousRuntime)
+	})
 	db := dbsqlite.DB()
 	if err := db.Where("key IN ?", []string{"secret", "sessionGeneration"}).Delete(&model.Setting{}).Error; err != nil {
 		t.Fatal(err)
@@ -38,7 +51,6 @@ func TestRestoreImportServicePostOpenActionsEnsuresDefaultsRotatesAndAudits(t *t
 		t.Fatal("session generation was not rotated")
 	}
 
-	flushAuditForTest(t)
 	var event model.AuditEvent
 	if err := db.Where("event = ?", "db_restore_post_actions").Order("id desc").First(&event).Error; err != nil {
 		t.Fatal(err)
@@ -47,6 +59,10 @@ func TestRestoreImportServicePostOpenActionsEnsuresDefaultsRotatesAndAudits(t *t
 		t.Fatalf("unexpected restore audit event: %#v", event)
 	}
 	details := string(event.Details)
+	var rotationCount int64
+	if err := db.Model(&model.AuditEvent{}).Where("event = ?", "ws_tokens_invalidated").Count(&rotationCount).Error; err != nil || rotationCount != 1 {
+		t.Fatalf("completed session rotation audit count=%d, want 1: %v", rotationCount, err)
+	}
 	for _, expected := range []string{
 		`"encryptedSettingsResealed":0`,
 		`"sessionRotated":true`,

@@ -71,7 +71,7 @@ func loadRootOwnedContract(name string, target any) error {
 	}
 	var after *syscall.Stat_t
 	afterOK := false
-	if statErr == nil && afterInfo != nil {
+	if afterInfo != nil {
 		after, afterOK = afterInfo.Sys().(*syscall.Stat_t)
 	}
 	if !afterOK || before.Dev != after.Dev || before.Ino != after.Ino || before.Size != after.Size || before.Mtim != after.Mtim {

@@ -10,7 +10,7 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/deploymentidentity"
-	openwrt "github.com/MalenkiySolovey/solovey-ui/deploy/openwrt"
+	"github.com/MalenkiySolovey/solovey-ui/deploy/openwrt/persistencepolicy"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/mountevidence"
 )
 
@@ -195,7 +195,7 @@ func (proof RuntimeMountProofV1) Validate() error {
 			return errors.New("server protection volatile runtime root is not on a volatile filesystem")
 		}
 	case RuntimeMountPersistent:
-		if !openwrt.ApprovedPersistentFilesystem(filesystem) {
+		if !persistencepolicy.ApprovedPersistentFilesystem(filesystem) {
 			return errors.New("server protection persistent runtime root is not on an approved filesystem")
 		}
 	default:

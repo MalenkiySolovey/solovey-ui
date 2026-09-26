@@ -1,0 +1,23 @@
+{
+  "linuxRootPackages": {
+    "cmd/solovey-evidence": "root-owned evidence recording",
+    "cmd/solovey-privileged-broker": "root-owned diagnostic capture",
+    "cmd/solovey-broker-manifest": "root-owned installed contracts",
+    "cmd/solovey-openwrt-broker-manifest": "root-owned procd contracts",
+    "componenthost/deploymentidentity": "root-owned contract loading",
+    "components/server-protection": "real privileged broker process",
+    "components/server-protection/cmd/solovey-openwrt-owner-manifest": "mount namespace and chroot composition",
+    "components/server-protection/service/helper": "root executable and nft authority fixtures",
+    "deploy/openwrt": "pinned platform chroot and mount fixtures",
+    "internal/deployment": "native root-owned installation fixtures",
+    "internal/evidencebundle": "root-owned evidence recording and verification",
+    "internal/ops/deploymentbroker": "durable checkpoint ownership",
+    "internal/ops/executableobject": "root-owned executable objects",
+    "internal/ops/privilegedbroker": "root-owned executable and real peer credentials",
+    "internal/ops/procdexec": "root executable ownership",
+    "internal/ops/sshbroker": "root-owned tickets and executable authority",
+    "internal/ops/systemdexec": "root executable ownership",
+    "internal/ops/updatebroker": "root-owned publication files",
+    "service/deployment": "real root-owned OpenWrt package provider"
+  }
+}

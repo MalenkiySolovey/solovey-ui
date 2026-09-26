@@ -30,7 +30,7 @@ test('every product checkout and reusable build is bound to resolved product sou
   for (const [name, job] of Object.entries(release.jobs)) {
     if (name === 'release-preflight') continue
     assert.ok([job.needs].flat().includes('release-preflight'), name)
-    if (['resume-candidate', 'build-openwrt', 'verify-openwrt', 'publish-linux'].includes(name)) {
+    if (['resume-candidate', 'build-openwrt', 'verify-openwrt', 'publish-linux', 'component-profile-checks'].includes(name)) {
       assert.deepEqual(checkouts(job).map(step => step.with.ref), ['${{ github.sha }}', productRef])
       continue
     }
@@ -86,21 +86,14 @@ test('publication gates and metadata use product identity while preflight cannot
     "${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only }}")
 })
 
-test('ordinary coverage plus privileged package retains the complete original test surface', () => {
+test('release uses the shared capability owner with the complete original package selection', () => {
   const steps = release.jobs['component-profile-checks'].steps
-  const ordinary = steps.find(step => step.name === 'Component profile tests').run
-  assert.match(ordinary, /go list \.\/internal\/components\/\.\.\. \.\/components\/\.\.\. \.\/api \.\/app \.\/web/)
-  assert.match(ordinary, /\[ "\$package" = "\$PRIVILEGED_PACKAGE" \] \|\| ORDINARY_PACKAGES/)
-  assert.match(ordinary, /go test -p 1 -count=1 "\$\{ORDINARY_PACKAGES\[@\]\}"/)
-  assert.match(ordinary, /go test -p 1 -tags minimal -count=1/)
-  assert.ok(!ordinary.includes('sudo'))
-  const privileged = steps.find(step => step.name === 'Privileged OpenWrt composition package').run
-  assert.match(privileged, /go test -c .* \.\/components\/server-protection\/cmd\/solovey-openwrt-owner-manifest/)
-  assert.match(privileged, /sudo -n .* -test.v -test.count=1/)
-  assert.match(privileged, /grep -q '\^--- PASS: TestOpenWrtWriterFeedsInstalledLoaderAndBrokerHelperComposition /)
-  assert.match(privileged, /! grep -q -- '--- SKIP:'/)
-  assert.ok(!privileged.includes('-test.run'))
-  assert.ok(!steps.some(step => step['continue-on-error']))
+  const run = steps.find(step => step.name === 'Component profile tests').run
+  assert.ok(run.includes('go-test.mjs" -p 1 -count=1 -v -- ./internal/components/... ./components/... ./api ./app ./web'))
+  assert.ok(run.includes('go-test.mjs" -p 1 -tags minimal -count=1 -- ./internal/components/... ./api ./app ./web'))
+  const preserve = steps.findIndex(step => step.name === 'Preserve test execution owner')
+  assert.ok(preserve < steps.findIndex(step => step.name === 'Check out repository'))
+  assert.ok(steps[preserve].run.includes('go-test-capabilities.json'))
 })
 
 

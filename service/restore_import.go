@@ -97,7 +97,10 @@ func recordRestoreImportPostOpenAudit(result restoreImportPostOpenResult) {
 	if dbsqlite.DB() == nil {
 		return
 	}
-	if err := (&AuditService{}).Record(AuditEvent{
+	// The candidate is still rollback-authorized. Finish this write before
+	// returning: a queued write could otherwise reach the reopened fallback
+	// and race its schema initialization after AbortPendingRestore.
+	if err := (&AuditService{}).RecordSynchronous(AuditEvent{
 		Actor:    "system",
 		Event:    "db_restore_post_actions",
 		Resource: "database",

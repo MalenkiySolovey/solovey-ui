@@ -12,9 +12,9 @@ const pinnedOpenWrtCommit = "f0a60eee2fe051741c643ea6118718aae1ef17fb"
 const pinnedFirewall4Commit = "b6e5157527d361f99ad52eaa6da273cb0f2dfd59"
 
 func TestPinnedOpenWrt2512APKLifecycleAndSysupgradeSemantics(t *testing.T) {
-	root := filepath.Clean(filepath.Join("..", "..", "..", "..", ".tmp", "openwrt-v25.12.5"))
+	root := filepath.Clean(filepath.Join("..", "..", "..", "..", "upstreams", "openwrt-openwrt-25.12.5"))
 	if _, err := os.Stat(root); os.IsNotExist(err) {
-		t.Skip("pinned OpenWrt v25.12.5 source checkout is not present")
+		t.Fatal("materialize canonical pinned OpenWrt references before qualification")
 	} else if err != nil {
 		t.Fatal(err)
 	}
@@ -163,9 +163,9 @@ func TestOpenWrtPackageHooksOwnGenerationTransition(t *testing.T) {
 
 func TestOpenWrtRuntimeDependenciesUseProviderCapabilities(t *testing.T) {
 	workspaceRoot := filepath.Clean(filepath.Join("..", "..", "..", ".."))
-	openwrtRoot := filepath.Join(workspaceRoot, ".tmp", "openwrt-v25.12.5")
+	openwrtRoot := filepath.Join(workspaceRoot, "upstreams", "openwrt-openwrt-25.12.5")
 	if _, err := os.Stat(openwrtRoot); os.IsNotExist(err) {
-		t.Skip("pinned OpenWrt v25.12.5 source checkout is not present")
+		t.Fatal("materialize canonical pinned OpenWrt references before qualification")
 	} else if err != nil {
 		t.Fatal(err)
 	}
@@ -179,7 +179,7 @@ func TestOpenWrtRuntimeDependenciesUseProviderCapabilities(t *testing.T) {
 		t.Fatalf("pinned OpenWrt source revision = %q, %v", strings.TrimSpace(string(output)), err)
 	}
 
-	packageRecipe := pinnedSource(t, workspaceRoot, "workbench/s-ui-personal/deploy/openwrt/package/solovey-ui/Makefile")
+	packageRecipe := pinnedSource(t, filepath.Join("..", ".."), "deploy/openwrt/package/solovey-ui/Makefile")
 	dependencies := packageDependencies(t, packageRecipe, "solovey-ui")
 	wantDependencies := []string{"+procd", "+dropbear", "+ubus", "+uci", "+logd", "+nftables"}
 	if strings.Join(dependencies, " ") != strings.Join(wantDependencies, " ") {
@@ -258,9 +258,9 @@ func TestPinnedOpenWrtProviderResolutionAcceptsAnExistingJSONVariant(t *testing.
 		t.Skip("pinned OpenWrt package metadata execution requires Perl")
 	}
 	workspaceRoot := filepath.Clean(filepath.Join("..", "..", "..", ".."))
-	openwrtRoot := filepath.Join(workspaceRoot, ".tmp", "openwrt-v25.12.5")
+	openwrtRoot := filepath.Join(workspaceRoot, "upstreams", "openwrt-openwrt-25.12.5")
 	if _, err := os.Stat(openwrtRoot); os.IsNotExist(err) {
-		t.Skip("pinned OpenWrt v25.12.5 source checkout is not present")
+		t.Fatal("materialize canonical pinned OpenWrt references before qualification")
 	} else if err != nil {
 		t.Fatal(err)
 	}
@@ -273,7 +273,7 @@ func TestPinnedOpenWrtProviderResolutionAcceptsAnExistingJSONVariant(t *testing.
 		t.Fatalf("pinned OpenWrt source revision = %q, %v", strings.TrimSpace(string(output)), err)
 	}
 
-	packageRecipe := pinnedSource(t, workspaceRoot, "workbench/s-ui-personal/deploy/openwrt/package/solovey-ui/Makefile")
+	packageRecipe := pinnedSource(t, filepath.Join("..", ".."), "deploy/openwrt/package/solovey-ui/Makefile")
 	dependencies := packageDependencies(t, packageRecipe, "solovey-ui")
 	if !containsString(dependencies, "+nftables") {
 		t.Fatal("Solovey package does not consume the provider-level nftables capability")
@@ -318,7 +318,9 @@ func TestPinnedOpenWrtProviderResolutionAcceptsAnExistingJSONVariant(t *testing.
 	if err := os.WriteFile(metadataPath, []byte(metadata), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(perl, filepath.Join(openwrtRoot, "scripts", "package-metadata.pl"), "config", metadataPath)
+	// A relative, slash-separated script path lets both native and MSYS Perl
+	// resolve FindBin to the pinned scripts directory and load metadata.pm.
+	command := exec.Command(perl, "scripts/package-metadata.pl", "config", filepath.ToSlash(metadataPath))
 	command.Dir = openwrtRoot
 	generated, err := command.CombinedOutput()
 	if err != nil {
@@ -340,11 +342,11 @@ func TestPinnedOpenWrtProviderResolutionAcceptsAnExistingJSONVariant(t *testing.
 
 func TestPinnedFirewall4CoexistenceAndExternalLossSemantics(t *testing.T) {
 	workspaceRoot := filepath.Clean(filepath.Join("..", "..", "..", ".."))
-	openwrtRoot := filepath.Join(workspaceRoot, ".tmp", "openwrt-v25.12.5")
-	firewall4Root := filepath.Join(workspaceRoot, ".tmp", "firewall4-b6e515")
+	openwrtRoot := filepath.Join(workspaceRoot, "upstreams", "openwrt-openwrt-25.12.5")
+	firewall4Root := filepath.Join(workspaceRoot, "upstreams", "openwrt-firewall4-25.12.5-pinned")
 	for _, root := range []string{openwrtRoot, firewall4Root} {
 		if _, err := os.Stat(root); os.IsNotExist(err) {
-			t.Skip("pinned OpenWrt/firewall4 source checkout is not present")
+			t.Fatal("materialize canonical pinned OpenWrt/firewall4 test references before qualification")
 		} else if err != nil {
 			t.Fatal(err)
 		}

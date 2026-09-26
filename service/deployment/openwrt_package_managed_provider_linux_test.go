@@ -31,6 +31,21 @@ func TestOpenWrtPackageManagedProviderLoadsRealExclusiveFacts(t *testing.T) {
 	if err := os.Chmod(filepath.Join(root, "etc/solovey-ui"), 0o750); err != nil {
 		t.Fatal(err)
 	}
+	// Restore the subprocess root after the real fixture so Go's coverage
+	// runtime can flush its counters to the original output directory.
+	originalRoot, err := os.Open("/")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer originalRoot.Close()
+	defer func() {
+		if err := originalRoot.Chdir(); err != nil {
+			t.Fatal(err)
+		}
+		if err := syscall.Chroot("."); err != nil {
+			t.Fatal(err)
+		}
+	}()
 	if err := syscall.Chroot(root); err != nil {
 		t.Fatal(err)
 	}

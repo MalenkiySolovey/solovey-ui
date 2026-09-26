@@ -160,7 +160,7 @@ func observeProcessSocketsWith(ctx context.Context, pid int, network hostfacts.N
 		diagnostic.Stage, diagnostic.ErrnoClass = "pidfd_open", errnoClass(err)
 		return Observation{}, listenerError(ReasonPIDFDAuthority, diagnostic)
 	}
-	defer environment.closeFD(pidfd)
+	defer func() { _ = environment.closeFD(pidfd) }() // Cleanup cannot alter the completed observation.
 
 	var last error
 	for attempt := 0; attempt < maxObservationRetries; attempt++ {

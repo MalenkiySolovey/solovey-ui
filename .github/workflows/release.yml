@@ -285,6 +285,16 @@ jobs:
     needs: release-preflight
     runs-on: ubuntu-latest
     steps:
+      - name: Check out test execution owner
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Preserve test execution owner
+        run: |
+          mkdir -p "$RUNNER_TEMP/test-executor"
+          cp scripts/go-test.mjs scripts/go-test-capabilities.json scripts/go-test-root-exec.sh "$RUNNER_TEMP/test-executor/"
+
       - name: Check out repository
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -305,27 +315,8 @@ jobs:
 
       - name: Component profile tests
         run: |
-          set -euo pipefail
-          PRIVILEGED_PACKAGE="$(go list ./components/server-protection/cmd/solovey-openwrt-owner-manifest)"
-          go list ./internal/components/... ./components/... ./api ./app ./web > "$RUNNER_TEMP/component-packages.txt"
-          mapfile -t PACKAGES < "$RUNNER_TEMP/component-packages.txt"
-          ORDINARY_PACKAGES=()
-          for package in "${PACKAGES[@]}"; do
-            [ "$package" = "$PRIVILEGED_PACKAGE" ] || ORDINARY_PACKAGES+=("$package")
-          done
-          go test -p 1 -count=1 "${ORDINARY_PACKAGES[@]}"
-          go test -p 1 -tags minimal -count=1 ./internal/components/... ./api ./app ./web
-
-      # Compile as the runner user; only this namespace/chroot integration
-      # package executes with privilege. All its tests and assertions run.
-      - name: Privileged OpenWrt composition package
-        run: |
-          set -euo pipefail
-          test "$(go env CGO_ENABLED)" = 1
-          go test -c -o "$RUNNER_TEMP/openwrt-composition.test" ./components/server-protection/cmd/solovey-openwrt-owner-manifest
-          sudo -n "$RUNNER_TEMP/openwrt-composition.test" -test.v -test.count=1 2>&1 | tee "$RUNNER_TEMP/openwrt-composition.log"
-          grep -q '^--- PASS: TestOpenWrtWriterFeedsInstalledLoaderAndBrokerHelperComposition ' "$RUNNER_TEMP/openwrt-composition.log"
-          ! grep -q -- '--- SKIP:' "$RUNNER_TEMP/openwrt-composition.log"
+          node "$RUNNER_TEMP/test-executor/go-test.mjs" -p 1 -count=1 -v -- ./internal/components/... ./components/... ./api ./app ./web
+          node "$RUNNER_TEMP/test-executor/go-test.mjs" -p 1 -tags minimal -count=1 -- ./internal/components/... ./api ./app ./web
 
       - name: Minimal dependency boundary
         run: |
