@@ -43,11 +43,10 @@ func main() {
 	if err != nil {
 		fatal(err)
 	}
-	proof, err := client("ssh-proof", proofPath, 0, 0, true, broker.RoleSSHProof)
+	proof, err := client("ssh-proof", proofPath, 0, uint32(gid64), true, broker.RoleSSHProof)
 	if err != nil {
 		fatal(err)
 	}
-	proof.RequiredGroup = uint32(gid64)
 	legacy, err := client("panel-legacy-root", panelPath, 0, 0, false, broker.RolePanel)
 	if err != nil {
 		fatal(err)
@@ -166,28 +165,28 @@ func installManifest(path string, data []byte, fs manifestFilesystem, validateOw
 }
 
 func client(name, path string, uid, gid uint32, anyIdentity bool, role broker.Role) (broker.ClientManifest, error) {
-	object, err := executableobject.Open(path, executableobject.Policy{
-		MaxBytes: 512 << 20, AllowSymlink: true, RequireRegular: true, RequireExecutable: true,
-		RequireRootOwner: true, ForbiddenMode: 0o022,
-		RequireTrustedAncestry: true, AncestryOwner: 0, AncestryForbiddenMode: 0o022,
-	})
+	result := broker.ClientManifest{Name: name, UID: uid, GID: gid, Roles: []broker.Role{role},
+		CgroupPolicy: broker.CgroupRequired, CgroupAuthorityRevision: broker.CgroupAuthorityRevisionV1}
+	if anyIdentity {
+		result.UID, result.GID = 0, 0
+		result.AnyNonRootUID, result.AnyGID, result.RequiredGroup = true, true, gid
+	} else {
+		result.CgroupUnit = "solovey-ui.service"
+	}
+	policy, err := broker.SystemdClientExecutablePolicy(result)
 	if err != nil {
-		return broker.ClientManifest{}, fmt.Errorf("broker client executable is unsafe: %s", path)
+		return broker.ClientManifest{}, err
+	}
+	object, err := executableobject.Open(path, policy)
+	if err != nil {
+		return broker.ClientManifest{}, fmt.Errorf("broker client executable is unsafe: %s: %w", path, err)
 	}
 	defer object.Close()
 	if err := object.Revalidate(); err != nil {
 		return broker.ClientManifest{}, err
 	}
 	identity := object.Identity()
-	result := broker.ClientManifest{Name: name, UID: uid, GID: gid, Executable: identity.ResolvedPath,
-		ExecutableDigest: identity.Digest, Device: identity.Device, Inode: identity.Inode, Roles: []broker.Role{role},
-		CgroupPolicy: broker.CgroupRequired, CgroupAuthorityRevision: broker.CgroupAuthorityRevisionV1}
-	if anyIdentity {
-		result.AnyNonRootUID = true
-		result.AnyGID = true
-	} else {
-		result.CgroupUnit = "solovey-ui.service"
-	}
+	result.Executable, result.ExecutableDigest, result.Device, result.Inode = identity.ResolvedPath, identity.Digest, identity.Device, identity.Inode
 	return result, nil
 }
 

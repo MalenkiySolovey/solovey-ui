@@ -1358,8 +1358,7 @@ install_payload() {
 	# broker. Remove a legacy standalone-helper link left by older releases.
 	run rm -f "${INSTALL_DIR}/solovey-protect-helper" || return
 	install_systemd_profiles "${payload_dir}/systemd" || return
-	run chown root:solovey-ui "${CURRENT_RELEASE_DIR}/solovey-ssh-proof" || return
-	run chmod 2755 "${CURRENT_RELEASE_DIR}/solovey-ssh-proof" || return
+	install_ssh_proof_permissions "${CURRENT_RELEASE_DIR}/solovey-ssh-proof" || return
     run ln -sf "${MANAGER_PATH}" "${CLI_PATH}" || return
     copy_legacy_secretbox_env || return
     create_secretbox_env || return
@@ -1406,6 +1405,14 @@ detect_deployment_profile() {
 		TARGET_DB="${HARDENED_DATA_ROOT}/db/${APP_NAME}.db"
 	fi
 	log "deployment profile: ${DEPLOYMENT_PROFILE}"
+}
+
+# Deployment owns the file; the native broker validates this exact group/mode
+# contract. Keep chown before chmod because chown can clear the setgid bit.
+install_ssh_proof_permissions() {
+	local path="$1" group="${2:-solovey-ui}"
+	run chown "root:${group}" "${path}" || return
+	run chmod 2755 "${path}" || return
 }
 
 install_systemd_profiles() {

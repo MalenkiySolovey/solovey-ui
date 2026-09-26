@@ -24,6 +24,13 @@ type Object struct {
 }
 
 func Open(label string, policy Policy) (*Object, error) {
+	if policy.RequiredOwner != nil {
+		owner := *policy.RequiredOwner
+		policy.RequiredOwner = &owner // Freeze caller-owned policy memory.
+	}
+	if err := validatePolicy(policy); err != nil {
+		return nil, err
+	}
 	if label == "" || !filepath.IsAbs(label) || filepath.Clean(label) != label {
 		return nil, errors.New("executable candidate path is invalid")
 	}
@@ -130,6 +137,9 @@ func (o *Object) capture(label, resolved string) error {
 }
 
 func validateStat(stat unix.Stat_t, policy Policy) error {
+	if err := validatePolicy(policy); err != nil {
+		return err
+	}
 	if policy.RequireRegular && stat.Mode&unix.S_IFMT != unix.S_IFREG {
 		return errors.New("executable candidate is not a regular file")
 	}
@@ -138,6 +148,24 @@ func validateStat(stat unix.Stat_t, policy Policy) error {
 	}
 	if policy.RequireRootOwner && (stat.Uid != 0 || stat.Gid != 0) {
 		return errors.New("executable candidate is not root-owned")
+	}
+	if owner := policy.RequiredOwner; owner != nil && (stat.Uid != owner.UID || stat.Gid != owner.GID) {
+		return errors.New("executable candidate ownership differs from its exact policy")
+	}
+	if policy.RequiredMode != 0 {
+		mode := os.FileMode(stat.Mode & 0o777)
+		if stat.Mode&unix.S_ISUID != 0 {
+			mode |= os.ModeSetuid
+		}
+		if stat.Mode&unix.S_ISGID != 0 {
+			mode |= os.ModeSetgid
+		}
+		if stat.Mode&unix.S_ISVTX != 0 {
+			mode |= os.ModeSticky
+		}
+		if mode != policy.RequiredMode {
+			return errors.New("executable candidate mode differs from its exact policy")
+		}
 	}
 	if os.FileMode(stat.Mode).Perm()&policy.ForbiddenMode != 0 {
 		return errors.New("executable candidate is writable by an untrusted class")
@@ -149,6 +177,27 @@ func validateStat(stat unix.Stat_t, policy Policy) error {
 		return errors.New("executable candidate object identity is unavailable")
 	}
 	return nil
+}
+
+func validatePolicy(policy Policy) error {
+	if policy.RequireRootOwner && policy.RequiredOwner != nil ||
+		policy.RequiredMode & ^(os.ModePerm|os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
+		return errors.New("executable object policy is ambiguous or invalid")
+	}
+	return nil
+}
+
+// ValidateMetadata applies the same leaf constraints to descriptor-bound process
+// evidence. It does not establish ancestry, path binding or content identity.
+func ValidateMetadata(identity Identity, policy Policy) error {
+	if policy.MaxBytes <= 0 {
+		policy.MaxBytes = defaultMaxBytes
+	}
+	if policy.ForbiddenMode == 0 {
+		policy.ForbiddenMode = 0o022
+	}
+	return validateStat(unix.Stat_t{Mode: uint32(identity.Mode), Uid: identity.UID, Gid: identity.GID,
+		Size: identity.Size, Dev: identity.Device, Ino: identity.Inode}, policy)
 }
 
 func fstat(file *os.File) (unix.Stat_t, error) {

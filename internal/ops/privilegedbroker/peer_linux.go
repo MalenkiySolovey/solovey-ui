@@ -14,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/executableobject"
 	processevidence "github.com/MalenkiySolovey/solovey-ui/internal/ops/processevidence"
 	"golang.org/x/sys/unix"
 )
@@ -136,7 +137,11 @@ func peerAlive(identity PeerIdentity) error {
 }
 
 func (a ManifestAttestor) inspect(ctx context.Context, pid int, uid, gid uint32, role Role) (PeerIdentity, error) {
-	identity, err := inspectCommonPeer(pid, uid, gid, a.Manifest.Revision)
+	policy, err := a.Manifest.peerExecutablePolicy(role)
+	if err != nil {
+		return PeerIdentity{}, attestationFailure(PeerAttestationExecutableMismatch, err)
+	}
+	identity, err := inspectCommonPeerWithPolicy(pid, uid, gid, a.Manifest.Revision, policy)
 	if err != nil {
 		return identity, err
 	}
@@ -162,6 +167,11 @@ func (a ManifestAttestor) inspect(ctx context.Context, pid int, uid, gid uint32,
 }
 
 func inspectCommonPeer(pid int, uid, gid uint32, manifestRevision string) (PeerIdentity, error) {
+	return inspectCommonPeerWithPolicy(pid, uid, gid, manifestRevision, executableobject.Policy{
+		MaxBytes: maxPeerExecutableBytes, RequireRegular: true, RequireExecutable: true, RequireRootOwner: true, ForbiddenMode: 0o022})
+}
+
+func inspectCommonPeerWithPolicy(pid int, uid, gid uint32, manifestRevision string, policy executableobject.Policy) (PeerIdentity, error) {
 	identity := PeerIdentity{PID: pid, UID: uid, GID: gid, ManifestRevision: manifestRevision}
 	root := filepath.Join("/proc", strconv.Itoa(pid))
 	evidence, err := processevidence.Observe(pid)
@@ -182,8 +192,9 @@ func inspectCommonPeer(pid int, uid, gid uint32, manifestRevision string) (PeerI
 		return identity, attestationFailure(PeerAttestationNamespaceMismatch, err)
 	}
 	executable := evidence.Executable
-	if evidence.ExeSize <= 0 || evidence.ExeSize > maxPeerExecutableBytes || evidence.ExeMode&unix.S_IFMT != unix.S_IFREG ||
-		evidence.ExeMode&0o111 == 0 || evidence.ExeMode&0o022 != 0 || evidence.ExeUID != 0 || evidence.ExeGID != 0 ||
+	metadata := executableobject.Identity{Size: evidence.ExeSize, Mode: os.FileMode(evidence.ExeMode),
+		UID: evidence.ExeUID, GID: evidence.ExeGID, Device: evidence.ExeDevice, Inode: evidence.ExeInode}
+	if executableobject.ValidateMetadata(metadata, policy) != nil ||
 		!digestPattern.MatchString(evidence.ExeDigest) || evidence.ExeDevice == 0 || evidence.ExeInode == 0 {
 		return identity, attestationFailure(PeerAttestationExecutableMismatch, errors.New("broker peer executable is invalid"))
 	}

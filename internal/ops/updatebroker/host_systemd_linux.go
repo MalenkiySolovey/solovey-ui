@@ -262,7 +262,7 @@ func (h *Host) prepare(_ context.Context, envelope broker.Request, _ broker.Peer
 		if current, linkErr := os.Readlink(filepath.Join(h.ReleaseRoot, "current")); linkErr == nil {
 			candidate := filepath.Base(current)
 			identity, identityErr := loadReleaseIdentity(filepath.Join(h.ReleaseRoot, candidate))
-			if candidate == current && identityErr == nil && verifyReleaseExecutables(filepath.Join(h.ReleaseRoot, candidate)) == nil {
+			if candidate == current && identityErr == nil && h.verifyReleaseExecutables(filepath.Join(h.ReleaseRoot, candidate)) == nil {
 				state.ActiveRelease, state.ActiveSequence, state.ActiveDigest = candidate, identity.Sequence, identity.ManifestDigest
 			}
 		}
@@ -284,7 +284,7 @@ func (h *Host) prepare(_ context.Context, envelope broker.Request, _ broker.Peer
 	} else if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return nil, broker.Failure(broker.CodeExecution, "prepared release target is unsafe")
 	} else if stored, err := loadReleaseIdentity(finalRoot); err != nil || !sameReleaseIdentity(stored, request.Release, true) ||
-		verifyPreparedReleaseExecutables(finalRoot, request.Release.BinaryProfile) != nil || verifyReleaseTree(finalRoot) != nil {
+		h.verifyPreparedReleaseExecutables(finalRoot, request.Release.BinaryProfile) != nil || verifyReleaseTree(finalRoot) != nil {
 		return nil, broker.Failure(broker.CodeRevision, "prepared release identity changed")
 	}
 	if !preparedReplay {
@@ -316,7 +316,7 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 	releaseName := releaseDirectoryName(request.Release)
 	releaseRoot := filepath.Join(h.ReleaseRoot, releaseName)
 	stored, identityErr := loadReleaseIdentity(releaseRoot)
-	if err := verifyPreparedReleaseExecutables(releaseRoot, request.Release.BinaryProfile); err != nil || identityErr != nil || !sameReleaseIdentity(stored, request.Release, false) {
+	if err := h.verifyPreparedReleaseExecutables(releaseRoot, request.Release.BinaryProfile); err != nil || identityErr != nil || !sameReleaseIdentity(stored, request.Release, false) {
 		return nil, broker.Failure(broker.CodeExecution, "prepared release is unavailable")
 	}
 	state, err := h.loadState()
@@ -427,7 +427,7 @@ func (h *Host) rollback(ctx context.Context, envelope broker.Request, peer broke
 	rollbackRoot := filepath.Join(h.ReleaseRoot, rollbackRelease)
 	previousRelease := state.ActiveRelease
 	rollbackProfile, profileErr := releaseBinaryProfile(rollbackRoot)
-	if err := verifyReleaseExecutables(rollbackRoot); err != nil || h.activateLink(rollbackRelease) != nil || h.rewriteClientManifest(rollbackRoot) != nil ||
+	if err := h.verifyReleaseExecutables(rollbackRoot); err != nil || h.activateLink(rollbackRelease) != nil || h.rewriteClientManifest(rollbackRoot) != nil ||
 		profileErr != nil || h.OwnerManifest == nil || h.OwnerManifest(ctx, rollbackRoot, rollbackProfile) != nil {
 		h.restoreActivation(ctx, previousRelease)
 		return nil, broker.Failure(broker.CodeExecution, "update rollback could not be committed")
@@ -759,7 +759,7 @@ func (h *Host) restoreActivation(_ context.Context, releaseName string) {
 	defer cancel()
 	root := filepath.Join(h.ReleaseRoot, releaseName)
 	profile, profileErr := releaseBinaryProfile(root)
-	if verifyReleaseExecutables(root) != nil || profileErr != nil || h.activateLink(releaseName) != nil || h.rewriteClientManifest(root) != nil || h.OwnerManifest == nil {
+	if h.verifyReleaseExecutables(root) != nil || profileErr != nil || h.activateLink(releaseName) != nil || h.rewriteClientManifest(root) != nil || h.OwnerManifest == nil {
 		return
 	}
 	_ = h.OwnerManifest(cleanupContext, root, profile)
@@ -887,8 +887,7 @@ func (h *Host) rewriteClientManifest(releaseRoot string) error {
 			}
 		}
 		path := filepath.Join(releaseRoot, binary)
-		object, err := executableobject.Open(path, executableobject.Policy{MaxBytes: 256 << 20, RequireRegular: true, RequireExecutable: true,
-			RequireRootOwner: true, ForbiddenMode: 0o022, RequireTrustedAncestry: true, AncestryOwner: 0, AncestryForbiddenMode: 0o022})
+		object, err := openDeployedClient(path, *entry)
 		if err != nil {
 			return err
 		}
@@ -1388,6 +1387,10 @@ func verifyPreparedReleaseExecutables(root, profile string) error {
 	if err := verifyReleaseExecutables(root); err != nil {
 		return err
 	}
+	return verifyReleaseOwnerWriter(root, profile)
+}
+
+func verifyReleaseOwnerWriter(root, profile string) error {
 	ownerWriter := filepath.Join(root, "solovey-owner-manifest")
 	if profile == "core" {
 		if _, err := os.Lstat(ownerWriter); !errors.Is(err, os.ErrNotExist) {
@@ -1440,7 +1443,7 @@ func safeReleaseExecutable(name string) bool {
 		return false
 	}
 	stat, ok := info.Sys().(*syscall.Stat_t)
-	return ok && stat.Uid == 0 && stat.Gid == 0
+	return ok && stat.Uid == 0 && stat.Gid == 0 && info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) == 0
 }
 
 func loadReleaseIdentity(root string) (ReleaseIdentityV1, error) {
