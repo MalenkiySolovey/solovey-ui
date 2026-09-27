@@ -625,6 +625,19 @@ test('same rootfs with changed APK Maintainer fails independent metadata provena
   )
 })
 
+test('APK beta metadata binds the exact SemVer candidate without accepting a stable identity', () => {
+  const context = {
+    version: '2026.3.2-beta.2',
+    sourceFingerprint: '1'.repeat(64), stageIdentity: '2'.repeat(64),
+    packageHostToolIdentity: '3'.repeat(64), apkSha256: '4'.repeat(64), release: 1,
+  }
+  const dump = apkMetadataDump().replace('2026.3.0-r1', '2026.3.2_beta2-r1')
+  assert.equal(createApkMetadataProof(dump, context).metadata.fullVersion, '2026.3.2_beta2-r1')
+  for (const version of ['2026.3.2', '2026.3.2-beta.1', '2026.3.2-beta.02', '2026.3.2.patch1']) {
+    assert.throws(() => createApkMetadataProof(dump, { ...context, version }))
+  }
+})
+
 test('APK metadata requires the provider-neutral OpenWrt runtime capability closure', () => {
   const context = {
     version: '2026.3.0',

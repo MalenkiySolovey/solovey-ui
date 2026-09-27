@@ -21,6 +21,16 @@ const allowedRootFields = new Set([
   'maxSequence',
 ])
 
+export function validateReleaseTrain(version, train) {
+  // Promotion is a reviewed policy change backed by platform evidence.
+  // It cannot happen accidentally by selecting the next stable patch tag.
+  if (train?.stage !== 'qualification' || train.candidateBase !== '2026.3.2' ||
+      train.stableBaseline !== '2026.3.1') throw new Error('release train requires a reviewed policy transition')
+  if (!/^2026\.3\.2-beta\.[1-9][0-9]*$/.test(version)) {
+    throw new Error('platform acceptance is pending; publish 2026.3.2-beta.N, keeping stable 2026.3.1')
+  }
+}
+
 export function validateReleaseSigning({
   trustRootsBase64,
   signingKeyID,
@@ -137,6 +147,7 @@ function main() {
     const sequence = Number(args.get('--sequence'))
     const sourceVersion = fs.readFileSync(path.join(process.cwd(), 'config', 'identity', 'version'), 'utf8').trim()
     if (tag !== `v${sourceVersion}`) throw new Error(`release tag does not match source version ${sourceVersion}`)
+    validateReleaseTrain(sourceVersion, JSON.parse(fs.readFileSync('scripts/release-train.json', 'utf8')))
     const result = validateReleaseSigning({
       trustRootsBase64: process.env.SUI_RELEASE_TRUST_ROOTS_B64 ?? '',
       signingKeyID: process.env.SUI_RELEASE_SIGNING_KEY_ID ?? '',

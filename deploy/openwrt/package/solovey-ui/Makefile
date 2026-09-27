@@ -25,7 +25,10 @@ $(error SOLOVEY_UI_NODE_PROGRAM must name the stage-bound Node executable)
 endif
 
 PKG_NAME:=solovey-ui
-PKG_VERSION:=$(shell sed -n '1p' $(SOLOVEY_UI_SOURCE_DIR)/config/identity/version)
+PKG_VERSION:=$(shell $(SOLOVEY_UI_NODE_PROGRAM) $(SOLOVEY_UI_SOURCE_DIR)/scripts/openwrt-package-version.mjs $(SOLOVEY_UI_SOURCE_DIR)/config/identity/version)
+ifeq ($(PKG_VERSION),)
+$(error Solovey UI package version is invalid)
+endif
 PKG_RELEASE:=25
 PKG_SOURCE_DATE:=$(SOLOVEY_UI_SOURCE_DATE)
 PKG_LICENSE:=GPL-3.0-only

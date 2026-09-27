@@ -8,6 +8,7 @@ import { canonical, sha256 } from './openwrt-package-source-fingerprint.mjs'
 import { stageManifestSchema } from './openwrt-stage-manifest.mjs'
 import { packageHostToolProofSchema } from './openwrt-package-host-tools.mjs'
 import { assertUnixLF } from './openwrt-unix-text-assets.mjs'
+import { apkPackageVersion } from './openwrt-package-version.mjs'
 
 export const apkMetadataProofSchema = 'solovey-ui/openwrt-apk-metadata-proof/v1'
 
@@ -35,7 +36,7 @@ function runCLI() {
   const args = parseArgs(process.argv.slice(2))
   const sourceRoot = path.resolve(required(args, 'source-root'))
   const version = fs.readFileSync(path.join(sourceRoot, 'config/identity/version'), 'utf8').trim()
-  if (!/^[0-9]+\.[0-9]+\.[0-9]+$/.test(version)) throw new Error('source package version is invalid')
+  apkPackageVersion(version)
   const release = readPackageRelease(sourceRoot)
   const stageManifest = JSON.parse(fs.readFileSync(path.resolve(required(args, 'stage-manifest')), 'utf8'))
   const packageToolProof = JSON.parse(fs.readFileSync(path.resolve(required(args, 'package-tool-proof')), 'utf8'))
@@ -60,7 +61,7 @@ function runCLI() {
 }
 
 export function createApkMetadataProof(adbDump, context) {
-  if (!context || !/^[0-9]+\.[0-9]+\.[0-9]+$/.test(context.version ?? '')) throw new Error('expected package version is invalid')
+  const packageVersion = apkPackageVersion(context?.version)
   for (const [name, value] of [
     ['source fingerprint', context.sourceFingerprint],
     ['stage identity', context.stageIdentity],
@@ -74,7 +75,7 @@ export function createApkMetadataProof(adbDump, context) {
   const packageArchitecture = context.packageArchitecture ?? 'x86_64'
   if (!/^[a-z0-9_]+$/.test(packageArchitecture)) throw new Error('expected package architecture is invalid')
   const release = parseRelease(context.release)
-  verifyExpectedMetadata(metadata, context.version, packageArchitecture, release)
+  verifyExpectedMetadata(metadata, packageVersion, packageArchitecture, release)
   const metadataIdentity = sha256(canonical({ schema: apkMetadataProofSchema, metadata }))
   const proofMaterial = {
     schema: apkMetadataProofSchema,

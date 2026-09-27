@@ -152,6 +152,14 @@ func TestInstalledNativeOwnerContract(t *testing.T) {
 				t.Fatal(err)
 			}
 			command := exec.Command(os.Args[0], "-test.run=^TestInstalledNativeOwnerContract$")
+			// The instrumented child exits after chroot. Its coverage runtime
+			// needs writable paths inside that filesystem, not the host go-build tree.
+			if testing.CoverMode() != "" {
+				if err := os.MkdirAll(filepath.Join(root, "tmp/coverage"), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				command.Args = append(command.Args, "-test.gocoverdir=/tmp/coverage")
+			}
 			command.Env = append(os.Environ(), "SOLOVEY_OWNER_TEST_ROOT="+root)
 			if output, err := command.CombinedOutput(); err != nil {
 				t.Fatalf("installed contract: %v\n%s", err, output)

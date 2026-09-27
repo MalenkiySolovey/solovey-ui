@@ -83,7 +83,10 @@ test('interrupted publication recovery is gated and never rebuilds or overwrites
 test('publication gates and metadata use product identity while preflight cannot publish', () => {
   const job = release.jobs['publish-linux']
   assert.match(job.if, /inputs.preflight_only == false/)
-  assert.ok(job.steps.some(step => step.run?.includes('gh release edit "$RELEASE_TAG" --draft=false --notes-file "$RUNNER_TEMP/release-notes.md"')))
+  const publish = job.steps.find(step => step.run?.includes('gh release edit "$RELEASE_TAG"'))?.run ?? ''
+  assert.ok(publish.includes('PUBLISH_ARGS=(--draft=false --notes-file "$RUNNER_TEMP/release-notes.md")'))
+  assert.ok(publish.includes('[[ "$RELEASE_TAG" == *-* ]] && PUBLISH_ARGS+=(--prerelease --latest=false)'))
+  assert.ok(publish.includes('gh release edit "$RELEASE_TAG" "${PUBLISH_ARGS[@]}"'))
   for (const step of job.steps) {
     if (step.run?.includes('node "$RUNNER_TEMP/release-publish-gate.mjs"')) assert.equal(step.env.PRODUCT_COMMIT, productRef)
     if (step.uses?.startsWith('softprops/action-gh-release@')) assert.equal(step.with.target_commitish, productRef)

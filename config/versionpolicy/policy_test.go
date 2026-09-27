@@ -49,6 +49,10 @@ func TestCompareVersionsUsesSemverPrecedence(t *testing.T) {
 		want  int
 	}{
 		{left: "v1.5.10", right: "1.5.2", want: 1},
+		{left: "2026.3.1", right: "2026.3.2-beta.1", want: -1},
+		{left: "2026.3.2-beta.1", right: "2026.3.2-beta.2", want: -1},
+		{left: "2026.3.2-beta.2", right: "2026.3.2-beta.10", want: -1},
+		{left: "2026.3.2-beta.10", right: "2026.3.2", want: -1},
 		{left: "1.5.2", right: "1.5.2-beta-hotfix2", want: 1},
 		{left: "1.5.2-rc.2", right: "1.5.2-rc.1", want: 1},
 		{left: "1.5.2-alpha.1", right: "1.5.2-alpha.beta", want: -1},

@@ -1,0 +1,11 @@
+{
+  "stableBaseline": "2026.3.1",
+  "candidateBase": "2026.3.2",
+  "stage": "qualification",
+  "pendingAcceptance": [
+    "Debian 13 generic/native Linux",
+    "OpenWrt 25.12.5",
+    "FriendlyWrt 25.12 compatibility",
+    "Every other currently claimed supported platform contract"
+  ]
+}

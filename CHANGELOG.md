@@ -1,6 +1,6 @@
 # Changelog
 
-## 2026.3.3
+## 2026.3.2-beta.2
 
 - Fixed native application-owner validation rejecting correct Linux filesystem
   ownership because it used the wrong stat type. Identity publication now sets
