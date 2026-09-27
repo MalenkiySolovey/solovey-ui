@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026.3.3
+
+- Fixed native application-owner validation rejecting correct Linux filesystem
+  ownership because it used the wrong stat type. Identity publication now sets
+  exact metadata before rename, with safe path and expected/actual diagnostics.
+- Failed native installations restore previous files, DB presence, service and
+  socket activity, and persistent/runtime enablement. Snapshots follow writer
+  quiescence; ordinary errors and termination signals roll back. Interrupted or
+  incomplete recovery retains a durable fence against unsafe retries.
+- Added real Linux ownership and systemd rollback regressions. SSH proof's exact
+  dedicated-group 2755 contract and OpenWrt/FriendlyWrt lifecycles are preserved.
+
 ## 2026.3.2
 
 - Fixed native Linux installation rejecting its own SSH reconnect proof helper.

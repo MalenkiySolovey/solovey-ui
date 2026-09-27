@@ -62,6 +62,7 @@ verify-*.txt
 /docs/*
 !/docs/operations-api.yaml
 !/docs/component-packaging.md
+!/docs/native-installer-transaction.md
 dc42e16-files.txt
 tests/baseline/*
 !tests/baseline/run-command.ps1
