@@ -15,10 +15,10 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/deploymentidentity"
 	protectionruntime "github.com/MalenkiySolovey/solovey-ui/components/server-protection/runtimecontract"
-	"golang.org/x/sys/unix"
 )
 
 const (
@@ -212,11 +212,14 @@ func boundedRootFile(name string, limit int64, mode os.FileMode) ([]byte, error)
 		if err != nil {
 			return nil, err
 		}
-		return nil, errors.New("identity input file is unsafe")
+		return nil, fmt.Errorf("identity input %q: unsafe type/size/mode; expected regular uid=0 gid=0 mode=%04o, actual mode=%s size=%d", name, mode, info.Mode(), info.Size())
 	}
-	stat, ok := info.Sys().(*unix.Stat_t)
-	if !ok || stat.Uid != 0 || stat.Gid != 0 {
-		return nil, errors.New("identity input ownership is unsafe")
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok {
+		return nil, fmt.Errorf("identity input %q: ownership metadata unavailable (%T)", name, info.Sys())
+	}
+	if stat.Uid != 0 || stat.Gid != 0 {
+		return nil, fmt.Errorf("identity input %q: ownership is unsafe; expected uid=0 gid=0 mode=%04o, actual uid=%d gid=%d mode=%04o", name, mode, stat.Uid, stat.Gid, info.Mode().Perm())
 	}
 	file, err := os.Open(name)
 	if err != nil {
@@ -226,7 +229,7 @@ func boundedRootFile(name string, limit int64, mode os.FileMode) ([]byte, error)
 	after, statErr := file.Stat()
 	closeErr := file.Close()
 	if readErr != nil || statErr != nil || closeErr != nil || int64(len(data)) > limit || !os.SameFile(info, after) {
-		return nil, errors.New("identity input changed while reading")
+		return nil, fmt.Errorf("identity input %q: changed while reading", name)
 	}
 	return data, nil
 }
@@ -236,7 +239,7 @@ func regularRootDigest(name string, limit int64) (string, error) {
 	if err != nil || !info.Mode().IsRegular() || info.Mode()&os.ModeSymlink != 0 || info.Size() <= 0 || info.Size() > limit || info.Mode().Perm()&0o022 != 0 {
 		return "", errors.New("file is unsafe")
 	}
-	stat, ok := info.Sys().(*unix.Stat_t)
+	stat, ok := info.Sys().(*syscall.Stat_t)
 	if !ok || stat.Uid != 0 || stat.Gid != 0 {
 		return "", errors.New("file ownership is unsafe")
 	}
@@ -259,11 +262,23 @@ func atomicRootFile(name string, data []byte, mode os.FileMode) error {
 	if err != nil || !parent.IsDir() || parent.Mode()&os.ModeSymlink != 0 || parent.Mode().Perm()&0o022 != 0 {
 		return errors.New("owner contract parent is unsafe")
 	}
-	temporary := name + ".incoming"
-	_ = os.Remove(temporary)
-	file, err := os.OpenFile(temporary, os.O_CREATE|os.O_EXCL|os.O_WRONLY, mode)
+	stat, ok := parent.Sys().(*syscall.Stat_t)
+	if !ok || stat.Uid != 0 {
+		return errors.New("owner contract parent ownership is unsafe")
+	}
+	file, err := os.CreateTemp(filepath.Dir(name), ".owner-incoming-*")
 	if err != nil {
 		return err
+	}
+	temporary := file.Name()
+	defer os.Remove(temporary)
+	// Apply metadata on the open object before publishing it, independent of
+	// umask, effective GID and parent setgid inheritance.
+	if err := file.Chown(0, 0); err != nil {
+		return errors.Join(err, file.Close())
+	}
+	if err := file.Chmod(mode); err != nil {
+		return errors.Join(err, file.Close())
 	}
 	_, writeErr := file.Write(data)
 	syncErr := file.Sync()
@@ -271,10 +286,6 @@ func atomicRootFile(name string, data []byte, mode os.FileMode) error {
 	if writeErr != nil || syncErr != nil || closeErr != nil {
 		_ = os.Remove(temporary)
 		return errors.Join(writeErr, syncErr, closeErr)
-	}
-	if err := os.Chown(temporary, 0, 0); err != nil {
-		_ = os.Remove(temporary)
-		return err
 	}
 	if err := os.Rename(temporary, name); err != nil {
 		_ = os.Remove(temporary)

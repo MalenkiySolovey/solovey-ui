@@ -1439,9 +1439,11 @@ configure_deployment_profile() {
 	rm -f "${incoming}"
 	ln -s "${target}" "${incoming}" || return
 	mv -Tf "${incoming}" "${SYSTEMD_SERVICE}" || return
-	printf '%s\n' "${DEPLOYMENT_PROFILE}" > "${DEPLOYMENT_MARKER}.incoming"
-	chmod 0644 "${DEPLOYMENT_MARKER}.incoming"
-	mv -f "${DEPLOYMENT_MARKER}.incoming" "${DEPLOYMENT_MARKER}"
+	local marker_incoming
+	marker_incoming="$(mktemp "${DEPLOYMENT_MARKER}.incoming.XXXXXX")" || return
+	printf '%s\n' "${DEPLOYMENT_PROFILE}" > "${marker_incoming}" &&
+		chown 0:0 "${marker_incoming}" && chmod 0644 "${marker_incoming}" &&
+		mv -f "${marker_incoming}" "${DEPLOYMENT_MARKER}" || { rm -f "${marker_incoming}"; return 1; }
 }
 
 verify_systemd_profile_support() {
