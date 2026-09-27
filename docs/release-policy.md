@@ -34,6 +34,16 @@ FriendlyWrt's version-independent storage descriptor stays byte-for-byte intact.
 Existing databases marked 2026.3.2 remain newer than beta candidates; never
 weaken the downgrade guard or relabel their history during this migration.
 
+`release-history-migration.yml` is a bounded one-time correction owner. Its
+default dry run verifies the rebuilt beta.1, frozen original/stable identities,
+registry authority and a fresh signed stable envelope before any external write.
+Execution restores the exact existing v3.1 registry index and unchanged Linux
+payloads to stable transport, with a new monotonic manifest sequence. It retires
+the misclassified v3.2 release/tag/registry version only after replacement
+verification. Original source/release/trust identities remain in
+`.github/release-history/v2026.3.2/`. This exception does not loosen ordinary
+public-release overwrite protection. Subsequent releases use the normal pipeline.
+
 Version source of truth:
 
 - `config/identity/version` contains the application release version.

@@ -12,7 +12,7 @@
 - Added real Linux ownership and systemd rollback regressions. SSH proof's exact
   dedicated-group 2755 contract and OpenWrt/FriendlyWrt lifecycles are preserved.
 
-## 2026.3.2
+## 2026.3.2-beta.1 (historically published as 2026.3.2)
 
 - Fixed native Linux installation rejecting its own SSH reconnect proof helper.
   Installer, broker manifest, live peer attestation and native updates now agree
