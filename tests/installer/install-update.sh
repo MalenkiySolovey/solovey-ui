@@ -179,6 +179,24 @@ set -Eeuo pipefail
 
 printf '%s\n' "$*" >> "${TEST_INSTALLER_LOG}/systemctl.log"
 case "${1:-}" in
+    show)
+        active=inactive load=not-found
+        [[ ! -f "${TEST_SERVICE_FILE}" ]] || { active=active; load=loaded; }
+        state="${TEST_INSTALLER_LOG}/state-${2%.service}"
+        [[ ! -f "${state}" ]] || active="$(cat "${state}")"
+        if [[ "$*" == *--value* ]]; then
+            case "$*" in *LoadState*) echo "$load" ;; *ActiveState*) echo "$active" ;; *UnitFileState*) echo '' ;; esac
+        else
+            printf 'LoadState=%s\nActiveState=%s\nUnitFileState=\n' "$load" "$active"
+        fi
+        ;;
+    stop|start|restart)
+        action="$1"; shift
+        for unit in "$@"; do
+            state=active; [[ $action != stop ]] || state=inactive
+            printf '%s\n' "$state" > "${TEST_INSTALLER_LOG}/state-${unit%.service}"
+        done
+        ;;
     --version)
 		echo "systemd ${TEST_SYSTEMD_VERSION:-255} (${TEST_SYSTEMD_VERSION:-255}.1-test)"
         exit 0
@@ -229,19 +247,19 @@ fi
 exec /usr/bin/df "$@"
 SH
 
-    cat > "${FAKEBIN}/cp" <<'SH'
+    cat > "${FAKEBIN}/mv" <<'SH'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-if [[ "${TEST_FAIL_INSTALL_RESTORE_CP:-0}" == "1" && "${1:-}" == "-a" && "${2:-}" == *"/app" && "${3:-}" == *"/.solovey-ui.restoring."* ]]; then
-    echo "simulated install rollback restore copy failure" >&2
+if [[ "${TEST_FAIL_INSTALL_RESTORE_CP:-0}" == "1" && "${1:-}" == "-T" && "${2:-}" == *".pre-install."* && "${2:-}" != *.failed && "${3:-}" == */solovey-ui ]]; then
+    echo "simulated install rollback restore rename failure" >&2
     exit 43
 fi
 
-exec /usr/bin/cp "$@"
+exec /usr/bin/mv "$@"
 SH
 
-    chmod +x "${FAKEBIN}/curl" "${FAKEBIN}/systemctl" "${FAKEBIN}/df" "${FAKEBIN}/cp" \
+    chmod +x "${FAKEBIN}/curl" "${FAKEBIN}/systemctl" "${FAKEBIN}/df" "${FAKEBIN}/mv" \
 		"${FAKEBIN}/systemd-sysusers" "${FAKEBIN}/systemd-tmpfiles" "${FAKEBIN}/chown" "${FAKEBIN}/runuser"
 }
 
@@ -342,6 +360,7 @@ run_installer() {
     SOLOVEY_UI_CLI_PATH="${CLI_PATH}" \
     SOLOVEY_UI_SYSTEMD_SERVICE="${SERVICE_FILE}" \
 	SOLOVEY_UI_SYSTEMD_UNIT_ROOT="${TARGET}/etc/systemd/system" \
+	SOLOVEY_UI_SYSTEMD_RUNTIME_UNIT_ROOT="${TARGET}/run/systemd/system" \
 	SOLOVEY_UI_SYSTEMD_PROFILE_ROOT="${TARGET}/usr/local/lib/solovey-ui/systemd" \
 	SOLOVEY_UI_DEPLOYMENT_MARKER="${ENV_DIR}/deployment-profile" \
 	SOLOVEY_UI_APPLICATION_OWNER_CONTRACT="${OWNER_CONTRACT}" \
@@ -394,7 +413,7 @@ assert_update_install() {
     assert_component_metadata full true true true
     assert_component_packs true true true
     assert_contains "${LOG_DIR}/binary.log" '^v2:migrate$'
-    assert_contains "${LOG_DIR}/systemctl.log" '^stop solovey-ui$'
+    assert_contains "${LOG_DIR}/systemctl.log" '^stop solovey-ui.service$'
     assert_contains "${LOG_DIR}/systemctl.log" '^restart solovey-ui$'
 
     local backup_dir
@@ -462,7 +481,7 @@ assert_failed_rollback_copy_is_non_destructive() {
         fail "installer succeeded despite forced rollback restore failure"
     fi
 
-    assert_contains "${output}" 'rollback restore failed while copying'
+    assert_contains "${output}" 'rollback restore failed while returning original application tree'
     assert_contains "${output}" 'rollback after failed install failed'
     assert_contains "${INSTALL_DIR}/solovey-ui.sh" 'manager v3'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^version=v3$'

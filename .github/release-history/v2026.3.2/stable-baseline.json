@@ -1,0 +1,217 @@
+{
+  "id": 396189874,
+  "tag_name": "v2026.3.1",
+  "target_commitish": "5a48a020e9ac62da03d223b2cf325d470cee88db",
+  "assets": [
+    {
+      "name": "solovey-ui-components.tar.gz",
+      "size": 135760,
+      "digest": "sha256:c3b5ca86a4fbde93de46c20b451779d2324fa5cb1434c292d35f6d8e4f4b5e42"
+    },
+    {
+      "name": "solovey-ui-components.tar.gz.sha256",
+      "size": 95,
+      "digest": "sha256:e4202f04459ad0a2a09699f6ec0a182ecfae684e43591fbd6052ee9842c42402"
+    },
+    {
+      "name": "solovey-ui-core-linux-386.tar.gz",
+      "size": 45477242,
+      "digest": "sha256:101b268603d0797efa87b0bdcc9af0fb838b9780f1ffe28c9dd46b4f99301dfa"
+    },
+    {
+      "name": "solovey-ui-core-linux-386.tar.gz.sha256",
+      "size": 99,
+      "digest": "sha256:494bbe6e6f868415ab314b29b4536259b0f6f6a532cf95c0aafbd450766b98c3"
+    },
+    {
+      "name": "solovey-ui-core-linux-amd64.tar.gz",
+      "size": 47398995,
+      "digest": "sha256:a7186d9a89d7e668353e2cef24f6ee9baa41a52e21db674543d07d2abb501317"
+    },
+    {
+      "name": "solovey-ui-core-linux-amd64.tar.gz.sha256",
+      "size": 101,
+      "digest": "sha256:8bfa5407df2917311ce0879edef582a07602c30414cfb4a7b218aa401950719b"
+    },
+    {
+      "name": "solovey-ui-core-linux-arm64.tar.gz",
+      "size": 43179202,
+      "digest": "sha256:5a677d97086fc575457cd0fdedb3cb12ad8cf8309b9ca9ffe7b8c5227f782eb4"
+    },
+    {
+      "name": "solovey-ui-core-linux-arm64.tar.gz.sha256",
+      "size": 101,
+      "digest": "sha256:6a1c7a0ada47f35f1f12a9cf732bc170298b8c89a3ff3c5c455a20077f86c543"
+    },
+    {
+      "name": "solovey-ui-core-linux-armv5.tar.gz",
+      "size": 39727081,
+      "digest": "sha256:92cc5f1936f5be24e0ef9811a2ad8dec480f7d9f8d57f76afeca228445e0e544"
+    },
+    {
+      "name": "solovey-ui-core-linux-armv5.tar.gz.sha256",
+      "size": 101,
+      "digest": "sha256:43c5044437ee6686328f150bf3a7fe15e471ef1b6a65c25940d687bce9468103"
+    },
+    {
+      "name": "solovey-ui-core-linux-armv6.tar.gz",
+      "size": 39692148,
+      "digest": "sha256:ec26dc7a3263510f695386210bc5a64b691c5c492f57cb14babd9a5f0ec57223"
+    },
+    {
+      "name": "solovey-ui-core-linux-armv6.tar.gz.sha256",
+      "size": 101,
+      "digest": "sha256:efc150afa26763af76f84c77ecbde0dfc81cd6b343d5fb8b4f6d1b255c3c2d73"
+    },
+    {
+      "name": "solovey-ui-core-linux-armv7.tar.gz",
+      "size": 44031842,
+      "digest": "sha256:866144c47fbdf045ea0e42048f57d01148a79d2bde72a038b578645afd20b91e"
+    },
+    {
+      "name": "solovey-ui-core-linux-armv7.tar.gz.sha256",
+      "size": 101,
+      "digest": "sha256:b5613337fed90c516018a9fb1862a6c9db01f9dd1edad3d2266d2831d23ca630"
+    },
+    {
+      "name": "solovey-ui-core-linux-s390x.tar.gz",
+      "size": 41584913,
+      "digest": "sha256:ca8c5b7bfeddcae8835adb5ec956c8532537ad1eaa713e053c1e334b3c8f9c98"
+    },
+    {
+      "name": "solovey-ui-core-linux-s390x.tar.gz.sha256",
+      "size": 101,
+      "digest": "sha256:ced597df5bee4f4fff8306ecebe03b93bb84e247658e3e06882385b0b9b15866"
+    },
+    {
+      "name": "solovey-ui-friendlywrt-storage.json",
+      "size": 154,
+      "digest": "sha256:8443dc510ed483716e3cea0ee0f2a4dee270d68d778e43ff3a28c9353f0ff5ce"
+    },
+    {
+      "name": "solovey-ui-friendlywrt-storage.json.sha256",
+      "size": 102,
+      "digest": "sha256:244a92edb7589b5a831a367fddc7c131339e4bfe9b50ca0874c18969ae782902"
+    },
+    {
+      "name": "solovey-ui-linux-386.tar.gz",
+      "size": 59068335,
+      "digest": "sha256:508af60bf83b9816f38bfcd3ca7f58d89d28dc4c46c13ec8966325cc87932e7d"
+    },
+    {
+      "name": "solovey-ui-linux-386.tar.gz.sha256",
+      "size": 94,
+      "digest": "sha256:904f7687fed2731617a379829ff13b4ba6b0f30810fb9d40c4a189c33b2a1349"
+    },
+    {
+      "name": "solovey-ui-linux-amd64.tar.gz",
+      "size": 61748980,
+      "digest": "sha256:e6840c70f4676144442bf476129a64065275b502baf97d3f0d40aefc73e676e3"
+    },
+    {
+      "name": "solovey-ui-linux-amd64.tar.gz.sha256",
+      "size": 96,
+      "digest": "sha256:1f01a42e2abab3d160d704caab6dccbcefb724b31fed8e500f5af621f15c1855"
+    },
+    {
+      "name": "solovey-ui-linux-arm64.tar.gz",
+      "size": 56095245,
+      "digest": "sha256:e98bcfef1b52d1b376ce1fe9c73e332d1dc5324e91f7450193f437b2fa4b6bad"
+    },
+    {
+      "name": "solovey-ui-linux-arm64.tar.gz.sha256",
+      "size": 96,
+      "digest": "sha256:da10c34f9b9d429f484ae8fbce6f79bb277d7866fe2d1f814061649c6bd7b5db"
+    },
+    {
+      "name": "solovey-ui-linux-armv5.tar.gz",
+      "size": 53174965,
+      "digest": "sha256:f5018f4312c075c904f87f9c1dde9b2b11d604848315bcafb1f90c3203d726c1"
+    },
+    {
+      "name": "solovey-ui-linux-armv5.tar.gz.sha256",
+      "size": 96,
+      "digest": "sha256:fb9c2cdf3042ce13081ccb371f6deb28fed3ec2bceeca1785951127cc629da1f"
+    },
+    {
+      "name": "solovey-ui-linux-armv6.tar.gz",
+      "size": 53127646,
+      "digest": "sha256:14047f2025c91ec3a2d856785d3904a588721cb98c3e93d4123713cbee9b8d9a"
+    },
+    {
+      "name": "solovey-ui-linux-armv6.tar.gz.sha256",
+      "size": 96,
+      "digest": "sha256:8e42a5da2387f9a7abba3c1d5ab73fc887e246fc937c91cf9fc301200c47fa7f"
+    },
+    {
+      "name": "solovey-ui-linux-armv7.tar.gz",
+      "size": 57454047,
+      "digest": "sha256:30a6204bef95dc7ffcc6e58d80489a31f82d6a7e724d7b8cc75a38ca9b544406"
+    },
+    {
+      "name": "solovey-ui-linux-armv7.tar.gz.sha256",
+      "size": 96,
+      "digest": "sha256:b0d2d35e7a411686057bd8854f0be089108c7ce62028edf168bc273a8a6d188c"
+    },
+    {
+      "name": "solovey-ui-linux-s390x.tar.gz",
+      "size": 55586271,
+      "digest": "sha256:eb1cc33875fdace00828277491c1d5749592f4d57ab9405aaf15660bbed5350b"
+    },
+    {
+      "name": "solovey-ui-linux-s390x.tar.gz.sha256",
+      "size": 96,
+      "digest": "sha256:75dfa86f12eff4d417c52528903eb25cd7c0e4fe7d3ea3d360e1a14c51b2c6fc"
+    },
+    {
+      "name": "solovey-ui-openwrt-rockchip-armv8.apk",
+      "size": 125847607,
+      "digest": "sha256:39b07a9d41a9abc57cfd87a394decc08caf7b7c3881742cb4a9a293955dbfa55"
+    },
+    {
+      "name": "solovey-ui-openwrt-rockchip-armv8.apk.sha256",
+      "size": 104,
+      "digest": "sha256:bdbd7decf7f3d51745981a09f49fcd5a8e3eb11fe524629800327d1d7f8e336a"
+    },
+    {
+      "name": "solovey-ui-openwrt-x86-64.apk",
+      "size": 138956463,
+      "digest": "sha256:1ace7f82610de4401825a1c4dc1655bb8a8cbdfbe406e67aae6ea4c6c21e3829"
+    },
+    {
+      "name": "solovey-ui-openwrt-x86-64.apk.sha256",
+      "size": 96,
+      "digest": "sha256:48f1637eb5882cedbf4a7659147c16955811a08eb4430fdabc394dbe083f0e07"
+    },
+    {
+      "name": "solovey-ui-release.json",
+      "size": 6503,
+      "digest": "sha256:0b120d7acaba2757e3e8aa8854919d4c24e02558bb062be53103d3421812e405"
+    },
+    {
+      "name": "solovey-ui-release.json.sha256",
+      "size": 90,
+      "digest": "sha256:71f4e6f49edd19575896ebf3fec1d0ff5fb6cddd1ab27efe766125427bd8011a"
+    },
+    {
+      "name": "solovey-ui-windows-amd64.zip",
+      "size": 34259041,
+      "digest": "sha256:45ac9b86d9b3a12b51b6be2bbda42c5017bd80b6e7e5194fbea928b2a8d7938b"
+    },
+    {
+      "name": "solovey-ui-windows-amd64.zip.sha256",
+      "size": 95,
+      "digest": "sha256:2433503a458d714dbb4d85f76444b1967e5679735ae13dd8df69882596649771"
+    },
+    {
+      "name": "solovey-ui-windows-arm64.zip",
+      "size": 30768793,
+      "digest": "sha256:bd2de197f324b664e3730cf2cbe3b526970be7902dbe692aeebcb256dc0efd2f"
+    },
+    {
+      "name": "solovey-ui-windows-arm64.zip.sha256",
+      "size": 95,
+      "digest": "sha256:154bc82a661b3c601b4c57171fee162a497ba6d046f912d945a0176138313f25"
+    }
+  ]
+}

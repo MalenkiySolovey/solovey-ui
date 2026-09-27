@@ -19,7 +19,7 @@ function fixture(t) {
   const now = Math.floor(Date.now() / 1000)
   const version = fs.readFileSync('config/identity/version', 'utf8').trim()
   const roots = [{ keyId: 'unit-test-only', publicKey: Buffer.from(publicKey.export({ format: 'jwk' }).x, 'base64url').toString('base64'), state: 'ACTIVE', notBefore: now - 60, notAfter: now + 86400, minSequence: 1 }]
-  execFileSync(process.execPath, ['scripts/release-manifest.mjs', '--assets-dir', dir, '--version', version, '--sequence', '10', '--issued-at', String(now), '--channel', 'main', '--key-id', roots[0].keyId], {
+  execFileSync(process.execPath, ['scripts/release-manifest.mjs', '--assets-dir', dir, '--version', version, '--sequence', '10', '--issued-at', String(now), '--channel', version.includes('-') ? 'beta' : 'main', '--key-id', roots[0].keyId], {
     env: { ...process.env, SUI_RELEASE_SIGNING_PRIVATE_KEY_B64: privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64') }, stdio: 'pipe',
   })
   const options = { version, trustRootsBase64: Buffer.from(JSON.stringify(roots)).toString('base64'), now }

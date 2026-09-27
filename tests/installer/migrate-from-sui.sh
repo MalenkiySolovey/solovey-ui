@@ -84,6 +84,13 @@ set -Eeuo pipefail
 
 printf '%s\n' "$*" >> "${TEST_INSTALLER_LOG}/systemctl.log"
 case "${1:-}" in
+    show)
+        if [[ "$*" == *--value* ]]; then
+            case "$*" in *LoadState*) echo loaded ;; *ActiveState*) echo inactive ;; *UnitFileState*) echo '' ;; esac
+        else
+            printf 'LoadState=loaded\nActiveState=inactive\nUnitFileState=\n'
+        fi
+        ;;
     list-unit-files)
         exit 0
         ;;
@@ -208,6 +215,7 @@ run_installer() {
     SOLOVEY_UI_CLI_PATH="${TARGET}/usr/bin/solovey-ui" \
     SOLOVEY_UI_SYSTEMD_SERVICE="${TARGET}/etc/systemd/system/solovey-ui.service" \
     SOLOVEY_UI_SYSTEMD_UNIT_ROOT="${TARGET}/etc/systemd/system" \
+    SOLOVEY_UI_SYSTEMD_RUNTIME_UNIT_ROOT="${TARGET}/run/systemd/system" \
     SOLOVEY_UI_SYSTEMD_PROFILE_ROOT="${TARGET}/usr/local/lib/solovey-ui/systemd" \
     SOLOVEY_UI_DEPLOYMENT_MARKER="${TARGET}/etc/solovey-ui/deployment-profile" \
     SOLOVEY_UI_HARDENED_DATA_ROOT="${TARGET}/var/lib/solovey-ui" \

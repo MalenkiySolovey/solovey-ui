@@ -34,6 +34,7 @@ const targetBuildScripts = new Set([
   'scripts/openwrt-apk-rootfs.mjs',
   'scripts/openwrt-package-build.sh',
   'scripts/openwrt-package-host-tools.mjs',
+  'scripts/openwrt-package-version.mjs',
   'scripts/openwrt-package-process.sh',
   'scripts/openwrt-package-source-fingerprint.mjs',
   'scripts/openwrt-persistence-authority.mjs',

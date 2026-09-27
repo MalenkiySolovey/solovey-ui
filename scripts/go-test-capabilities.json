@@ -6,6 +6,7 @@
     "cmd/solovey-openwrt-broker-manifest": "root-owned procd contracts",
     "componenthost/deploymentidentity": "root-owned contract loading",
     "components/server-protection": "real privileged broker process",
+    "components/server-protection/cmd/solovey-owner-manifest": "real native identity ownership and atomic publication",
     "components/server-protection/cmd/solovey-openwrt-owner-manifest": "mount namespace and chroot composition",
     "components/server-protection/service/helper": "root executable and nft authority fixtures",
     "deploy/openwrt": "pinned platform chroot and mount fixtures",

@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v2026.3.2"
+        default: "v2026.3.2-beta.2"
         type: string
       preflight_only:
         description: "Validate and build release artifacts without publishing"
@@ -18,6 +18,12 @@ on:
         required: false
         default: ""
         type: string
+      history_migration:
+        description: "One-time historical migration; verify before execute"
+        required: false
+        default: "none"
+        type: choice
+        options: [none, verify, execute]
   push:
     tags:
       - "v*"
@@ -42,6 +48,13 @@ env:
   BOOTLIN_BASE_URL: https://toolchains.bootlin.com/downloads/releases/toolchains
 
 jobs:
+  history-migration:
+    if: inputs.history_migration == 'verify' || inputs.history_migration == 'execute'
+    uses: ./.github/workflows/release-history-migration.yml
+    with:
+      execute: ${{ inputs.history_migration == 'execute' }}
+    secrets: inherit
+
   build-docker:
     if: inputs.resume_run_id == ''
     needs: [release-preflight, assemble-linux, build-windows, verify-openwrt]
@@ -63,6 +76,7 @@ jobs:
     secrets: inherit
 
   release-preflight:
+    if: inputs.history_migration != 'verify' && inputs.history_migration != 'execute'
     name: Release preflight
     runs-on: ubuntu-latest
     outputs:
@@ -843,7 +857,9 @@ jobs:
           RELEASE_TAG: ${{ env.RELEASE_TAG_INPUT }}
         run: |
           env GITHUB_SHA="$PRODUCT_COMMIT" node "$RUNNER_TEMP/release-publish-gate.mjs" uploaded "$RELEASE_TAG" release-assets windows-assets openwrt-candidate/assets
-          gh release edit "$RELEASE_TAG" --draft=false --notes-file "$RUNNER_TEMP/release-notes.md"
+          PUBLISH_ARGS=(--draft=false --notes-file "$RUNNER_TEMP/release-notes.md")
+          [[ "$RELEASE_TAG" == *-* ]] && PUBLISH_ARGS+=(--prerelease --latest=false)
+          gh release edit "$RELEASE_TAG" "${PUBLISH_ARGS[@]}"
 
       - name: Publish signed channel release set
         env:

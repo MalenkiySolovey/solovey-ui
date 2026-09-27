@@ -56,12 +56,15 @@ verify-*.txt
 .gotmp/
 .appdata/
 .audit/
+/.migration/
 
 # Local documentation and development notes
 /doc/
 /docs/*
 !/docs/operations-api.yaml
 !/docs/component-packaging.md
+!/docs/native-installer-transaction.md
+!/docs/release-policy.md
 dc42e16-files.txt
 tests/baseline/*
 !tests/baseline/run-command.ps1
