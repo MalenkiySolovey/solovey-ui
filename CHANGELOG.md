@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026.3.2-beta.1
+
+- Metadata-only rebuild of historical v2026.3.2 as a qualification prerelease.
+- No beta.2 ownership/transaction remediation is included.
+
+
 ## 2026.3.2
 
 - Fixed native Linux installation rejecting its own SSH reconnect proof helper.

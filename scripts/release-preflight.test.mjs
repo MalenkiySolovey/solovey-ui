@@ -2,7 +2,17 @@ import assert from 'node:assert/strict'
 import { generateKeyPairSync } from 'node:crypto'
 import test from 'node:test'
 
-import { validateReleaseSigning } from './release-preflight.mjs'
+import { validateReleaseSigning, validateReleaseTrain } from './release-preflight.mjs'
+
+test('qualification train cannot accidentally publish a stable patch', () => {
+  const train = { stableBaseline: '2026.3.1', candidateBase: '2026.3.2', stage: 'qualification' }
+  for (const version of ['2026.3.2-beta.1', '2026.3.2-beta.2', '2026.3.2-beta.10']) {
+    assert.doesNotThrow(() => validateReleaseTrain(version, train))
+  }
+  for (const version of ['2026.3.1', '2026.3.2', '2026.3.3', '2026.3.2-beta.01', '2026.3.1.patch1']) {
+    assert.throws(() => validateReleaseTrain(version, train), /acceptance is pending/)
+  }
+})
 
 function fixture(overrides = {}) {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519')
