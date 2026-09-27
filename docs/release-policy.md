@@ -35,7 +35,10 @@ Existing databases marked 2026.3.2 remain newer than beta candidates; never
 weaken the downgrade guard or relabel their history during this migration.
 
 `release-history-migration.yml` is a bounded one-time correction owner. Its
-default dry run verifies the rebuilt beta.1, frozen original/stable identities,
+entry point is the canonical `release.yml` dispatch with `history_migration`
+set to `verify` or `execute`; the normal default is `none`. This keeps migration
+under the same single-writer release concurrency lock and permits verification
+before main integration. The dry run verifies rebuilt beta.1, frozen original/stable identities,
 registry authority and a fresh signed stable envelope before any external write.
 Execution restores the exact existing v3.1 registry index and unchanged Linux
 payloads to stable transport, with a new monotonic manifest sequence. It retires

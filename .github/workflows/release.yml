@@ -18,6 +18,12 @@ on:
         required: false
         default: ""
         type: string
+      history_migration:
+        description: "One-time historical migration; verify before execute"
+        required: false
+        default: "none"
+        type: choice
+        options: [none, verify, execute]
   push:
     tags:
       - "v*"
@@ -42,6 +48,13 @@ env:
   BOOTLIN_BASE_URL: https://toolchains.bootlin.com/downloads/releases/toolchains
 
 jobs:
+  history-migration:
+    if: inputs.history_migration == 'verify' || inputs.history_migration == 'execute'
+    uses: ./.github/workflows/release-history-migration.yml
+    with:
+      execute: ${{ inputs.history_migration == 'execute' }}
+    secrets: inherit
+
   build-docker:
     if: inputs.resume_run_id == ''
     needs: [release-preflight, assemble-linux, build-windows, verify-openwrt]
@@ -63,6 +76,7 @@ jobs:
     secrets: inherit
 
   release-preflight:
+    if: inputs.history_migration != 'verify' && inputs.history_migration != 'execute'
     name: Release preflight
     runs-on: ubuntu-latest
     outputs:

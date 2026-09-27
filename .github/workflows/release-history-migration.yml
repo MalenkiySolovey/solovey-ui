@@ -1,21 +1,14 @@
 name: One-time 2026.3.2 release history migration
 
 on:
-  workflow_dispatch:
+  workflow_call:
     inputs:
       execute:
-        description: Restore the stable baseline and retire the misclassified original after beta.1 verification
         type: boolean
         required: true
-        default: false
-
 permissions:
   contents: write
   packages: write
-
-concurrency:
-  group: solovey-release-publication
-  cancel-in-progress: false
 
 jobs:
   migrate:
