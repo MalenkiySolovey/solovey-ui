@@ -64,6 +64,12 @@ BINARY_PROFILE=""
 REQUIRE_CORE=0
 VERSION=""
 BACKUP_PATH=""
+TRANSACTION_DIR=""
+TRANSACTION_PHASE=""
+RETAIN_BACKUP=1
+SYSTEMD_RUNTIME_UNIT_ROOT="${SOLOVEY_UI_SYSTEMD_RUNTIME_UNIT_ROOT:-/run/systemd/system}"
+BROKER_UNITS=(solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket)
+TRANSACTION_UNITS=("${BROKER_UNITS[1]}" "${BROKER_UNITS[2]}" "${BROKER_UNITS[0]}" "${SERVICE_NAME}.service")
 DOWNLOAD_TMP_DIR=""
 COMPONENT_PAYLOAD_DIR=""
 CURL_CONNECT_TIMEOUT="${SOLOVEY_UI_CURL_CONNECT_TIMEOUT:-20}"
@@ -86,7 +92,7 @@ Options:
   --dry-run              Print planned operations without changing the system.
   --non-interactive, -y   Disable prompts. Currently the installer is prompt-free.
   --backup               Always create a backup before installing.
-  --no-backup            Skip backup creation.
+  --no-backup            Do not retain a backup after success (rollback snapshot is mandatory).
   --profile <full|minimal|core>
                          Component footprint profile. Default: full.
                          "core" is accepted as an alias for "minimal".
@@ -652,7 +658,7 @@ require_tools() {
     done
 
     if [[ "${DRY_RUN}" != "1" ]]; then
-        for tool in tar sha256sum systemctl systemd-sysusers systemd-tmpfiles runuser base64 dd; do
+        for tool in tar sha256sum systemctl systemd-sysusers systemd-tmpfiles runuser base64 dd sync; do
             require_command "${tool}"
         done
         if [[ "${MIGRATE_FROM_SUI}" == "1" ]]; then
@@ -849,7 +855,7 @@ estimate_backup_size_kb() {
 	total=$((total + size))
 	size="$(backup_path_size_kb "${SYSTEMD_PROFILE_ROOT}")"
 	total=$((total + size))
-	for unit in solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket; do
+	for unit in "${BROKER_UNITS[@]}"; do
 		size="$(backup_path_size_kb "${SYSTEMD_UNIT_ROOT}/${unit}")"
 		total=$((total + size))
 	done
@@ -909,9 +915,9 @@ backup_systemd_assets() {
 	else
 		printf 'profiles=absent\n' >> "${target}/systemd-assets/inventory.txt"
 	fi
-	for unit in solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket; do
+	for unit in "${BROKER_UNITS[@]}"; do
 		state=absent
-		if [[ -f "${SYSTEMD_UNIT_ROOT}/${unit}" ]]; then
+		if [[ -e "${SYSTEMD_UNIT_ROOT}/${unit}" || -L "${SYSTEMD_UNIT_ROOT}/${unit}" ]]; then
 			copy_backup_path "${SYSTEMD_UNIT_ROOT}/${unit}" "${target}/systemd-assets/units/${unit}" "${target}" || return 1
 			state=present
 		fi
@@ -968,7 +974,7 @@ backup_existing() {
     if [[ -d "${ENV_DIR}" ]]; then
         copy_backup_path "${ENV_DIR}" "${target}/etc" "${target}"
     fi
-	if [[ -f "${SYSTEMD_SERVICE}" ]]; then
+	if [[ -e "${SYSTEMD_SERVICE}" || -L "${SYSTEMD_SERVICE}" ]]; then
 		copy_backup_path "${SYSTEMD_SERVICE}" "${target}/${SERVICE_NAME}.service" "${target}"
 	fi
 	if [[ -d "${HARDENED_DATA_ROOT}" ]]; then
@@ -1011,6 +1017,169 @@ backup_existing() {
             fail "backup failed while writing manifest; removed incomplete backup ${target}"
         fi
     fi
+}
+
+# The native installer owns one transaction. A durable directory is also its
+# exclusion fence: an interrupted transaction must be inspected/recovered, never
+# silently overwritten by another install. No new product runtime is involved.
+transaction_phase() {
+    printf '%s\n' "$1" > "${TRANSACTION_DIR}/phase.incoming" || return
+    sync -f "${TRANSACTION_DIR}/phase.incoming" || return
+    mv -f "${TRANSACTION_DIR}/phase.incoming" "${TRANSACTION_DIR}/phase" || return
+    sync -f "${TRANSACTION_DIR}" || return
+    TRANSACTION_PHASE="$1"
+}
+
+capture_install_runtime() {
+    local unit fields key value active load enabled
+    : > "${TRANSACTION_DIR}/runtime" || return
+    for unit in "${TRANSACTION_UNITS[@]}"; do
+        fields="$(systemctl show "${unit}" -p LoadState -p ActiveState -p UnitFileState)" || return
+        active="" load="" enabled=""
+        while IFS='=' read -r key value; do
+            case "${key}" in
+                LoadState) load="${value}" ;;
+                ActiveState) active="${value}" ;;
+                UnitFileState) enabled="${value}" ;;
+            esac
+        done <<< "${fields}"
+        case "${load}" in loaded|not-found|masked) ;; *) fail "cannot snapshot ${unit}: load state ${load}" ;; esac
+        case "${active}" in active|inactive|failed) ;; *) fail "cannot snapshot ${unit}: transitional state ${active}" ;; esac
+        printf '%s\t%s\t%s\t%s\n' "${unit}" "${active}" "${load}" "${enabled:-absent}" >> "${TRANSACTION_DIR}/runtime" || return
+    done
+}
+
+# Preserve exact enablement/alias/mask links, including runtime-only links.
+# systemctl disable/enable is not an inverse: it may remove pre-existing aliases.
+transaction_link_names() {
+    printf '%s\n' "${TRANSACTION_UNITS[@]}" "${SERVICE_NAME}-native-hardened.service" "${SERVICE_NAME}-native-legacy-root.service" "${SERVICE_NAME}-native-network-advanced.service"
+}
+
+snapshot_install_links() {
+    local root kind name path relative
+    for kind in persistent runtime; do
+        root="${SYSTEMD_UNIT_ROOT}"
+        [[ "${kind}" != runtime ]] || root="${SYSTEMD_RUNTIME_UNIT_ROOT}"
+        mkdir -p "${TRANSACTION_DIR}/links/${kind}" || return
+        [[ -d "${root}" ]] || continue
+        while read -r name; do
+            while IFS= read -r -d '' path; do
+                relative="${path#"${root}/"}"
+                mkdir -p "$(dirname "${TRANSACTION_DIR}/links/${kind}/${relative}")" || return
+                cp -a "${path}" "${TRANSACTION_DIR}/links/${kind}/${relative}" || return
+            done < <(find "${root}" -type l -name "${name}" -print0)
+        done < <(transaction_link_names)
+    done
+}
+
+restore_install_links() {
+    local root kind name path
+    for kind in persistent runtime; do
+        root="${SYSTEMD_UNIT_ROOT}"
+        [[ "${kind}" != runtime ]] || root="${SYSTEMD_RUNTIME_UNIT_ROOT}"
+        if [[ -d "${root}" ]]; then
+            while read -r name; do
+                while IFS= read -r -d '' path; do rm -f "${path}" || return; done < <(find "${root}" -type l -name "${name}" -print0)
+            done < <(transaction_link_names)
+        fi
+        mkdir -p "${root}" || return
+        cp -a "${TRANSACTION_DIR}/links/${kind}/." "${root}/" || return
+    done
+}
+
+quiesce_install_runtime() {
+    local unit active load enabled
+    # Sockets first, then all writers, before taking or restoring any snapshot.
+    while IFS=$'\t' read -r unit active load enabled; do
+        if [[ "$(systemctl show "${unit}" -p LoadState --value)" != not-found ]]; then
+            systemctl stop "${unit}" || return
+        fi
+    done < "${TRANSACTION_DIR}/runtime"
+}
+
+restore_install_runtime() {
+    local unit active load enabled actual
+    # Dependency order: sockets, broker, panel. Never start an originally
+    # inactive unit; verify after dependency activation rather than assuming it.
+    while IFS=$'\t' read -r unit active load enabled; do
+        [[ "${active}" != active ]] || systemctl start "${unit}" || return
+    done < "${TRANSACTION_DIR}/runtime"
+    while IFS=$'\t' read -r unit active load enabled; do
+        actual="$(systemctl show "${unit}" -p ActiveState --value)" || return
+        if [[ "${active}" == active ]]; then
+            [[ "${actual}" == active ]] || return 1
+        else
+            [[ "${actual}" == inactive || "${actual}" == failed ]] || return 1
+        fi
+        actual="$(systemctl show "${unit}" -p UnitFileState --value)" || return
+        [[ "${actual:-absent}" == "${enabled}" ]] || return 1
+    done < "${TRANSACTION_DIR}/runtime"
+}
+
+begin_install_transaction() {
+    local mode="${BACKUP_MODE}"
+    mkdir -p "${BACKUP_ROOT}" || return
+    local directory="${BACKUP_ROOT}/.install-transaction"
+    mkdir -m 700 "${directory}" || fail "unfinished or concurrent native installation: ${directory}; preserve and inspect its snapshot before retrying"
+    TRANSACTION_DIR="${directory}"
+    if [[ "${MIGRATE_FROM_SUI}" == 1 ]]; then
+        TRANSACTION_UNITS+=("${LEGACY_SERVICE_NAME}.service")
+        [[ ! -x "${LEGACY_DIR}/bin/sing-box" ]] || TRANSACTION_UNITS+=(sing-box.service)
+    fi
+    capture_install_runtime || return
+    snapshot_install_links || return
+    transaction_phase captured || return
+    quiesce_install_runtime || return
+    [[ "${mode}" != never && ( "${mode}" != auto || "${MIGRATE_FROM_SUI}" == 1 || -d "${INSTALL_DIR}" || -d "${ENV_DIR}" || -e "${SYSTEMD_SERVICE}" || -L "${SYSTEMD_SERVICE}" ) ]] || RETAIN_BACKUP=0
+    BACKUP_MODE=always
+    backup_existing || return
+    BACKUP_MODE="${mode}"
+    # These explicit absence facts authorize removing only transaction-created
+    # installer-owned paths. Never infer absence from a missing backup payload.
+    local path key
+    for key in app etc hardened-data service cli; do
+        case "${key}" in
+            app) path="${INSTALL_DIR}" ;; etc) path="${ENV_DIR}" ;;
+            hardened-data) path="${HARDENED_DATA_ROOT}" ;; service) path="${SYSTEMD_SERVICE}" ;;
+            cli) path="${CLI_PATH}" ;;
+        esac
+        if [[ -e "${path}" || -L "${path}" ]]; then
+            printf '%s=present\n' "${key}" >> "${TRANSACTION_DIR}/paths"
+            [[ "${key}" != cli ]] || cp -a "${path}" "${BACKUP_PATH}/cli" || return
+        else
+            printf '%s=absent\n' "${key}" >> "${TRANSACTION_DIR}/paths"
+        fi
+    done
+    printf '%s\n' "${BACKUP_PATH}" > "${TRANSACTION_DIR}/backup"
+    sync -f "${BACKUP_PATH}" || return
+    transaction_phase mutating
+}
+
+finish_install_transaction() {
+    local status="$1"
+    trap - EXIT INT TERM HUP
+    if [[ -n "${TRANSACTION_DIR}" ]]; then
+        if [[ "${status}" == 0 ]]; then
+            transaction_phase committed || status=1
+        fi
+        if [[ "${status}" != 0 && "${TRANSACTION_PHASE}" == mutating ]]; then
+            warn "install failed; rolling back from ${BACKUP_PATH}"
+            if restore_current_install_backup "${BACKUP_PATH}"; then
+                warn "rollback after failed install completed"
+                transaction_phase rolled-back || status=1
+            else
+                warn "rollback after failed install failed; units remain stopped where possible; inspect ${TRANSACTION_DIR}"
+            fi
+        elif [[ "${status}" != 0 && "${TRANSACTION_PHASE}" == captured ]]; then
+            if restore_install_runtime; then transaction_phase rolled-back || status=1; else quiesce_install_runtime || true; fi
+        fi
+        if [[ "${TRANSACTION_PHASE}" == committed || "${TRANSACTION_PHASE}" == rolled-back ]]; then
+            rm -rf "${TRANSACTION_DIR}"
+            if [[ "${status}" == 0 && "${RETAIN_BACKUP}" == 0 ]]; then rm -rf "${BACKUP_PATH}"; fi
+        fi
+    fi
+    [[ -z "${DOWNLOAD_TMP_DIR}" ]] || rm -rf "${DOWNLOAD_TMP_DIR}"
+    exit "${status}"
 }
 
 append_backup_build_info() {
@@ -1067,34 +1236,48 @@ restore_backup_dir() {
     rm -rf "${previous}"
 }
 
-backup_has_current_install_payload() {
-    local backup="$1"
-    [[ -d "${backup}/app" || -d "${backup}/etc" || -f "${backup}/${SERVICE_NAME}.service" ]]
-}
-
 restore_current_install_backup() {
     local backup="$1"
-
-    backup_has_current_install_payload "${backup}" || return 1
-
-    systemctl stop "${SERVICE_NAME}" >/dev/null 2>&1 || true
+    [[ -f "${TRANSACTION_DIR}/paths" && -f "${backup}/manifest.txt" ]] || return 1
+    quiesce_install_runtime || return 1
+    local key state path
+    while IFS='=' read -r key state; do
+        [[ "${state}" != present ]] || case "${key}" in
+            app|etc|hardened-data) [[ -d "${backup}/${key}" ]] || return 1 ;;
+            service) [[ -e "${backup}/${SERVICE_NAME}.service" || -L "${backup}/${SERVICE_NAME}.service" ]] || return 1 ;;
+            cli) [[ -e "${backup}/cli" || -L "${backup}/cli" ]] || return 1 ;;
+            *) return 1 ;;
+        esac
+    done < "${TRANSACTION_DIR}/paths"
     restore_backup_dir "${backup}/app" "${INSTALL_DIR}" || return 1
     restore_backup_dir "${backup}/etc" "${ENV_DIR}" || return 1
 	restore_backup_dir "${backup}/hardened-data" "${HARDENED_DATA_ROOT}" || return 1
 	restore_systemd_assets "${backup}" || return 1
 
-    if [[ -f "${backup}/${SERVICE_NAME}.service" ]]; then
+    if [[ -f "${backup}/${SERVICE_NAME}.service" || -L "${backup}/${SERVICE_NAME}.service" ]]; then
         mkdir -p "$(dirname "${SYSTEMD_SERVICE}")"
+        rm -f "${SYSTEMD_SERVICE}" || return 1
         cp -a "${backup}/${SERVICE_NAME}.service" "${SYSTEMD_SERVICE}" || return 1
     fi
-
-    if [[ -f "${INSTALL_DIR}/${APP_NAME}.sh" ]]; then
-        mkdir -p "$(dirname "${CLI_PATH}")"
-        ln -sf "${INSTALL_DIR}/${APP_NAME}.sh" "${CLI_PATH}" || return 1
-    fi
-
+    while IFS='=' read -r key state; do
+        case "${key}" in
+            app) path="${INSTALL_DIR}" ;; etc) path="${ENV_DIR}" ;;
+            hardened-data) path="${HARDENED_DATA_ROOT}" ;; service) path="${SYSTEMD_SERVICE}" ;;
+            cli) path="${CLI_PATH}" ;; *) return 1 ;;
+        esac
+        case "${state}" in
+            absent) rm -rf "${path}" || return 1 ;;
+            present)
+                if [[ "${key}" == cli ]]; then
+                    rm -f "${path}" || return 1
+                    cp -a "${backup}/cli" "${path}" || return 1
+                fi ;;
+            *) return 1 ;;
+        esac
+    done < "${TRANSACTION_DIR}/paths"
+    restore_install_links || return 1
     systemctl daemon-reload || return 1
-    systemctl restart "${SERVICE_NAME}" || return 1
+    restore_install_runtime || { quiesce_install_runtime; return 1; }
 }
 
 restore_systemd_assets() {
@@ -1108,10 +1291,11 @@ restore_systemd_assets() {
 	else
 		return 1
 	fi
-	for unit in solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket; do
+	for unit in "${BROKER_UNITS[@]}"; do
 		state="$(sed -n "s/^${unit}=//p" "${inventory}" | head -n 1)"
-		if [[ "${state}" == present && -f "${backup}/systemd-assets/units/${unit}" ]]; then
+		if [[ "${state}" == present && ( -e "${backup}/systemd-assets/units/${unit}" || -L "${backup}/systemd-assets/units/${unit}" ) ]]; then
 			mkdir -p "${SYSTEMD_UNIT_ROOT}" || return 1
+			rm -f "${SYSTEMD_UNIT_ROOT}/${unit}" || return 1
 			cp -a "${backup}/systemd-assets/units/${unit}" "${SYSTEMD_UNIT_ROOT}/${unit}" || return 1
 		elif [[ "${state}" == absent ]]; then
 			rm -f "${SYSTEMD_UNIT_ROOT}/${unit}" || return 1
@@ -1119,27 +1303,6 @@ restore_systemd_assets() {
 			return 1
 		fi
 	done
-}
-
-rollback_failed_install() {
-    local status="$1"
-
-    if [[ -z "${BACKUP_PATH}" || ! -f "${BACKUP_PATH}/manifest.txt" ]]; then
-        warn "install failed; no previous Solovey UI backup is available for automatic rollback"
-        return "${status}"
-    fi
-    if ! backup_has_current_install_payload "${BACKUP_PATH}"; then
-        warn "install failed; backup has no previous Solovey UI payload to restore: ${BACKUP_PATH}"
-        return "${status}"
-    fi
-
-    warn "install failed; rolling back from ${BACKUP_PATH}"
-    if restore_current_install_backup "${BACKUP_PATH}"; then
-        warn "rollback after failed install completed"
-    else
-        warn "rollback after failed install failed; inspect backup: ${BACKUP_PATH}"
-    fi
-    return "${status}"
 }
 
 env_file_has_key() {
@@ -1316,8 +1479,6 @@ install_payload() {
 
 	detect_deployment_profile
 	verify_systemd_profile_support || return
-    stop_existing_service || return
-    stop_legacy_service_for_migration || return
 
 	release_digest="$(
 		cd "${payload_dir}"
@@ -1516,11 +1677,13 @@ download_and_install() {
 
     require_root
     validate_legacy_migration_ready
-    backup_existing
 
     tmp_dir="$(mktemp -d)"
     DOWNLOAD_TMP_DIR="${tmp_dir}"
-    trap 'if [[ -n "${DOWNLOAD_TMP_DIR:-}" ]]; then rm -rf "${DOWNLOAD_TMP_DIR}"; fi' EXIT
+    trap 'finish_install_transaction "$?"' EXIT
+    trap 'exit 130' INT
+    trap 'exit 143' TERM
+    trap 'exit 129' HUP
 
     log "downloading ${url}"
     secure_curl -o "${tmp_dir}/${artifact}" "${url}"
@@ -1551,14 +1714,14 @@ download_and_install() {
         validate_component_payload
     fi
 
-    install_status=0
-    install_payload "${payload_dir}" || install_status=$?
-    if [[ "${install_status}" != "0" ]]; then
-        rollback_failed_install "${install_status}"
-    fi
+    begin_install_transaction
+    stop_legacy_service_for_migration
+    # Do not invoke this function in an OR/if list: Bash would suppress errexit
+    # throughout its body, including metadata publication and migration.
+    install_payload "${payload_dir}"
 
     log "${APP_NAME} ${version} is installed and running"
-    if [[ -n "${BACKUP_PATH}" ]]; then
+    if [[ -n "${BACKUP_PATH}" && "${RETAIN_BACKUP}" == 1 ]]; then
         log "backup: ${BACKUP_PATH}"
     fi
     if [[ -f "${TARGET_DB%/*}/initial-admin.txt" ]]; then

@@ -96,3 +96,66 @@ func TestIdentityPublicationIgnoresUmaskAndSetgid(t *testing.T) {
 		}
 	}
 }
+
+// Run the complete installed identity chain in a child chroot, retaining real
+// stat/chown and account lookup semantics without touching host product paths.
+func TestInstalledNativeOwnerContract(t *testing.T) {
+	if root := os.Getenv("SOLOVEY_OWNER_TEST_ROOT"); root != "" {
+		if err := syscall.Chroot(root); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chdir("/"); err != nil {
+			t.Fatal(err)
+		}
+		first, err := installedContract()
+		if err != nil {
+			t.Fatal(err)
+		}
+		second, err := installedContract()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if first.InstanceID != second.InstanceID {
+			t.Fatal("instance identity changed on replay")
+		}
+		return
+	}
+	if os.Geteuid() != 0 {
+		t.Skip("real root-owned installation required")
+	}
+	for _, profile := range []string{"native-hardened", "native-legacy-root"} {
+		t.Run(profile, func(t *testing.T) {
+			root := t.TempDir()
+			write := func(path, value string, mode os.FileMode) {
+				t.Helper()
+				path = filepath.Join(root, path)
+				if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+					t.Fatal(err)
+				}
+				if err := atomicRootFile(path, []byte(value), mode); err != nil {
+					t.Fatal(err)
+				}
+			}
+			write(profileMarker, profile+"\n", 0o644)
+			write("/etc/passwd", "root:x:0:0:root:/root:/bin/sh\nsolovey-ui:x:12345:12345::/:/bin/false\n", 0o644)
+			write("/etc/group", "root:x:0:\nsolovey-ui:x:12345:\n", 0o644)
+			write(profileRoot+"/solovey-ui-"+profile+".service", "[Service]\nExecStart=/panel\n", 0o644)
+			write(releaseRoot+"/fixture/BUILD_INFO.txt", "commit="+strings.Repeat("a", 40)+"\n", 0o644)
+			write(releaseRoot+"/fixture/solovey-ui", "fixture executable identity\n", 0o755)
+			if err := os.MkdirAll(filepath.Join(root, filepath.Dir(serviceLink)), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink(profileRoot+"/solovey-ui-"+profile+".service", filepath.Join(root, serviceLink)); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink("fixture", filepath.Join(root, currentRelease)); err != nil {
+				t.Fatal(err)
+			}
+			command := exec.Command(os.Args[0], "-test.run=^TestInstalledNativeOwnerContract$")
+			command.Env = append(os.Environ(), "SOLOVEY_OWNER_TEST_ROOT="+root)
+			if output, err := command.CombinedOutput(); err != nil {
+				t.Fatalf("installed contract: %v\n%s", err, output)
+			}
+		})
+	}
+}

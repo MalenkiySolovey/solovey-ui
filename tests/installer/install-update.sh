@@ -179,6 +179,24 @@ set -Eeuo pipefail
 
 printf '%s\n' "$*" >> "${TEST_INSTALLER_LOG}/systemctl.log"
 case "${1:-}" in
+    show)
+        active=inactive load=not-found
+        [[ ! -f "${TEST_SERVICE_FILE}" ]] || { active=active; load=loaded; }
+        state="${TEST_INSTALLER_LOG}/state-${2%.service}"
+        [[ ! -f "${state}" ]] || active="$(cat "${state}")"
+        if [[ "$*" == *--value* ]]; then
+            case "$*" in *LoadState*) echo "$load" ;; *ActiveState*) echo "$active" ;; *UnitFileState*) echo '' ;; esac
+        else
+            printf 'LoadState=%s\nActiveState=%s\nUnitFileState=\n' "$load" "$active"
+        fi
+        ;;
+    stop|start|restart)
+        action="$1"; shift
+        for unit in "$@"; do
+            state=active; [[ $action != stop ]] || state=inactive
+            printf '%s\n' "$state" > "${TEST_INSTALLER_LOG}/state-${unit%.service}"
+        done
+        ;;
     --version)
 		echo "systemd ${TEST_SYSTEMD_VERSION:-255} (${TEST_SYSTEMD_VERSION:-255}.1-test)"
         exit 0
@@ -342,6 +360,7 @@ run_installer() {
     SOLOVEY_UI_CLI_PATH="${CLI_PATH}" \
     SOLOVEY_UI_SYSTEMD_SERVICE="${SERVICE_FILE}" \
 	SOLOVEY_UI_SYSTEMD_UNIT_ROOT="${TARGET}/etc/systemd/system" \
+	SOLOVEY_UI_SYSTEMD_RUNTIME_UNIT_ROOT="${TARGET}/run/systemd/system" \
 	SOLOVEY_UI_SYSTEMD_PROFILE_ROOT="${TARGET}/usr/local/lib/solovey-ui/systemd" \
 	SOLOVEY_UI_DEPLOYMENT_MARKER="${ENV_DIR}/deployment-profile" \
 	SOLOVEY_UI_APPLICATION_OWNER_CONTRACT="${OWNER_CONTRACT}" \
@@ -394,7 +413,7 @@ assert_update_install() {
     assert_component_metadata full true true true
     assert_component_packs true true true
     assert_contains "${LOG_DIR}/binary.log" '^v2:migrate$'
-    assert_contains "${LOG_DIR}/systemctl.log" '^stop solovey-ui$'
+    assert_contains "${LOG_DIR}/systemctl.log" '^stop solovey-ui.service$'
     assert_contains "${LOG_DIR}/systemctl.log" '^restart solovey-ui$'
 
     local backup_dir
