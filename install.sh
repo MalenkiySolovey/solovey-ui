@@ -66,6 +66,7 @@ VERSION=""
 BACKUP_PATH=""
 TRANSACTION_DIR=""
 TRANSACTION_PHASE=""
+PRESERVED_INSTALL_DIR=""
 RETAIN_BACKUP=1
 SYSTEMD_RUNTIME_UNIT_ROOT="${SOLOVEY_UI_SYSTEMD_RUNTIME_UNIT_ROOT:-/run/systemd/system}"
 BROKER_UNITS=(solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket)
@@ -658,7 +659,7 @@ require_tools() {
     done
 
     if [[ "${DRY_RUN}" != "1" ]]; then
-        for tool in tar sha256sum systemctl systemd-sysusers systemd-tmpfiles runuser base64 dd sync; do
+        for tool in tar sha256sum systemctl systemd-sysusers systemd-tmpfiles runuser base64 dd sync rmdir; do
             require_command "${tool}"
         done
         if [[ "${MIGRATE_FROM_SUI}" == "1" ]]; then
@@ -1152,7 +1153,23 @@ begin_install_transaction() {
     done
     printf '%s\n' "${BACKUP_PATH}" > "${TRANSACTION_DIR}/backup"
     sync -f "${BACKUP_PATH}" || return
-    transaction_phase mutating
+    if [[ -d "${INSTALL_DIR}" ]]; then
+        # Broker authorization binds executable inodes. A copy-only rollback
+        # would restore bytes but invalidate the restored broker manifest.
+        # Keep the original tree on its own filesystem and mutate a copy.
+        PRESERVED_INSTALL_DIR="$(mktemp -d "${INSTALL_DIR}.pre-install.XXXXXX")" || return
+        rmdir "${PRESERVED_INSTALL_DIR}" || return
+        printf '%s\n' "${PRESERVED_INSTALL_DIR}" > "${TRANSACTION_DIR}/preserved-app" || return
+        sync -f "${TRANSACTION_DIR}" || return
+    fi
+    transaction_phase mutating || return
+    if [[ -n "${PRESERVED_INSTALL_DIR}" ]]; then
+        if ! mv -T "${INSTALL_DIR}" "${PRESERVED_INSTALL_DIR}"; then
+            transaction_phase captured || return
+            return 1
+        fi
+        cp -a "${PRESERVED_INSTALL_DIR}" "${INSTALL_DIR}" || return
+    fi
 }
 
 finish_install_transaction() {
@@ -1174,6 +1191,7 @@ finish_install_transaction() {
             if restore_install_runtime; then transaction_phase rolled-back || status=1; else quiesce_install_runtime || true; fi
         fi
         if [[ "${TRANSACTION_PHASE}" == committed || "${TRANSACTION_PHASE}" == rolled-back ]]; then
+            [[ -z "${PRESERVED_INSTALL_DIR}" ]] || rm -rf "${PRESERVED_INSTALL_DIR}"
             rm -rf "${TRANSACTION_DIR}"
             if [[ "${status}" == 0 && "${RETAIN_BACKUP}" == 0 ]]; then rm -rf "${BACKUP_PATH}"; fi
         fi
@@ -1249,7 +1267,20 @@ restore_current_install_backup() {
             *) return 1 ;;
         esac
     done < "${TRANSACTION_DIR}/paths"
-    restore_backup_dir "${backup}/app" "${INSTALL_DIR}" || return 1
+    if [[ -n "${PRESERVED_INSTALL_DIR}" && -d "${PRESERVED_INSTALL_DIR}" ]]; then
+        local failed_tree="${PRESERVED_INSTALL_DIR}.failed"
+        if [[ -e "${INSTALL_DIR}" ]]; then mv -T "${INSTALL_DIR}" "${failed_tree}" || return 1; fi
+        if ! mv -T "${PRESERVED_INSTALL_DIR}" "${INSTALL_DIR}"; then
+            [[ ! -e "${failed_tree}" ]] || mv -T "${failed_tree}" "${INSTALL_DIR}" || true
+            warn "rollback restore failed while returning original application tree; existing data was left unchanged"
+            return 1
+        fi
+        rm -rf "${failed_tree}" || return 1
+    elif [[ -d "${backup}/app" ]]; then
+        # A snapshot without the original object tree cannot re-establish the
+        # inode-bound broker authority. Keep the recovery fence and units off.
+        return 1
+    fi
     restore_backup_dir "${backup}/etc" "${ENV_DIR}" || return 1
 	restore_backup_dir "${backup}/hardened-data" "${HARDENED_DATA_ROOT}" || return 1
 	restore_systemd_assets "${backup}" || return 1

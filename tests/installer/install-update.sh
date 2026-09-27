@@ -247,19 +247,19 @@ fi
 exec /usr/bin/df "$@"
 SH
 
-    cat > "${FAKEBIN}/cp" <<'SH'
+    cat > "${FAKEBIN}/mv" <<'SH'
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-if [[ "${TEST_FAIL_INSTALL_RESTORE_CP:-0}" == "1" && "${1:-}" == "-a" && "${2:-}" == *"/app" && "${3:-}" == *"/.solovey-ui.restoring."* ]]; then
-    echo "simulated install rollback restore copy failure" >&2
+if [[ "${TEST_FAIL_INSTALL_RESTORE_CP:-0}" == "1" && "${1:-}" == "-T" && "${2:-}" == *".pre-install."* && "${2:-}" != *.failed && "${3:-}" == */solovey-ui ]]; then
+    echo "simulated install rollback restore rename failure" >&2
     exit 43
 fi
 
-exec /usr/bin/cp "$@"
+exec /usr/bin/mv "$@"
 SH
 
-    chmod +x "${FAKEBIN}/curl" "${FAKEBIN}/systemctl" "${FAKEBIN}/df" "${FAKEBIN}/cp" \
+    chmod +x "${FAKEBIN}/curl" "${FAKEBIN}/systemctl" "${FAKEBIN}/df" "${FAKEBIN}/mv" \
 		"${FAKEBIN}/systemd-sysusers" "${FAKEBIN}/systemd-tmpfiles" "${FAKEBIN}/chown" "${FAKEBIN}/runuser"
 }
 
@@ -481,7 +481,7 @@ assert_failed_rollback_copy_is_non_destructive() {
         fail "installer succeeded despite forced rollback restore failure"
     fi
 
-    assert_contains "${output}" 'rollback restore failed while copying'
+    assert_contains "${output}" 'rollback restore failed while returning original application tree'
     assert_contains "${output}" 'rollback after failed install failed'
     assert_contains "${INSTALL_DIR}/solovey-ui.sh" 'manager v3'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^version=v3$'

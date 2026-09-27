@@ -59,6 +59,8 @@ for activity in inactive active; do
             mkdir -p "$TMP/app" "$TMP/etc" "$TMP/data/db"
             [[ $failure != absent-data ]] || rm -rf "$TMP/data"
             printf 'old release\n' > "$TMP/app/BUILD_INFO.txt"
+            cp /bin/true "$TMP/app/solovey-ui"
+            before_inode="$(stat -c '%d:%i' "$TMP/app/solovey-ui")"
             ln -s "$TMP/app/manager" "$TMP/cli" 2>/dev/null || true
             if [[ $activity == active ]]; then
                 systemctl start "$PANEL" "$BROKER"
@@ -101,6 +103,7 @@ for activity in inactive active; do
                 [[ $(systemctl is-enabled "$unit" || true) == "$enablement" ]]
             done
             [[ $(cat "$TMP/app/BUILD_INFO.txt") == 'old release' ]]
+            [[ $(stat -c '%d:%i' "$TMP/app/solovey-ui") == "$before_inode" ]]
             if [[ $activity == inactive ]]; then [[ ! -e "$TMP/data/db/panel.db" ]]; else [[ -f "$TMP/data/db/panel.db" ]]; fi
             [[ $failure != absent-data || ! -e "$TMP/data" ]]
             [[ ! -e "$TMP/backups/.install-transaction" ]]

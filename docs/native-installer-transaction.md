@@ -4,7 +4,13 @@ The standalone systemd installer owns its installation transaction. Before
 changing an installation it records service/socket activity and exact persistent
 and runtime enablement/alias/mask links. It stops socket activation and all
 application/broker writers, then snapshots the release tree (including current),
-configuration, hardened data, unit/profile files and CLI. Explicit absence facts
+configuration, hardened data, unit/profile files and CLI. It preserves the
+original application tree on the same filesystem and mutates a copy, so rollback
+also restores the device/inode identities bound by the broker client manifest.
+The installation directory must be renameable within its parent; a mountpoint
+that cannot be renamed is rejected before candidate mutation. Copy/staging
+failure restores the preserved original rather than publishing partial files.
+Explicit absence facts
 distinguish a fresh path from a lost or incomplete backup.
 
 An ordinary error, explicit exit, INT, TERM or HUP restores those files and links,
