@@ -39,6 +39,16 @@ test('orchestrator is validated before immutable product checkout and resolution
 test('every product checkout and reusable build is bound to resolved product source', () => {
   for (const [name, job] of Object.entries(release.jobs)) {
     if (name === 'release-preflight') continue
+    if (name === 'history-migration') {
+      // This bounded historical transport correction builds no product. It
+      // verifies its own fixed original/replacement identities before mutation.
+      assert.equal(job.uses, './.github/workflows/release-history-migration.yml')
+      assert.equal(job.if, "inputs.history_migration == 'verify' || inputs.history_migration == 'execute'")
+      assert.equal(job.with.execute, "${{ inputs.history_migration == 'execute' }}")
+      assert.equal(release.on.workflow_dispatch.inputs.history_migration.default, 'none')
+      assert.equal(release.jobs['release-preflight'].if, "inputs.history_migration != 'verify' && inputs.history_migration != 'execute'")
+      continue
+    }
     assert.ok([job.needs].flat().includes('release-preflight'), name)
     if (['resume-candidate', 'build-openwrt', 'verify-openwrt', 'publish-linux', 'component-profile-checks'].includes(name)) {
       assert.deepEqual(checkouts(job).map(step => step.with.ref), ['${{ github.sha }}', productRef])
