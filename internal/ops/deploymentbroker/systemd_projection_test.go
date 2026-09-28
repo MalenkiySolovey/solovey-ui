@@ -51,7 +51,7 @@ func TestSystemdObservationRequestsEveryProjectedProperty(t *testing.T) {
 
 func TestSystemdActualStateProjectionHandlesOrderingAndLegacy(t *testing.T) {
 	properties := hardenedSystemdProperties()
-	properties["RestrictAddressFamilies"] = "AF_UNIX AF_INET6 AF_INET"
+	properties["RestrictAddressFamilies"] = "AF_NETLINK AF_UNIX AF_INET6 AF_INET"
 	properties["ReadWritePaths"] = "/usr/local/solovey-ui/cert /var/lib/solovey-ui /usr/local/solovey-ui/.runtime/server-protection"
 	if reasons := systemdProfileReasons(domain.NativeHardened, properties, hardenedWritePaths()); len(reasons) != 0 {
 		t.Fatalf("set ordering changed semantic result: %v", reasons)
@@ -182,7 +182,7 @@ func hardenedSystemdProperties() map[string]string {
 		"ProtectKernelModules": "yes", "ProtectKernelLogs": "yes", "ProtectControlGroups": "yes", "ProtectClock": "yes", "ProtectHostname": "yes",
 		"RestrictNamespaces": "yes", "RestrictRealtime": "yes", "RestrictSUIDSGID": "yes", "LockPersonality": "yes", "MemoryDenyWriteExecute": "yes",
 		"SystemCallArchitectures": "native", "CapabilityBoundingSet": "", "AmbientCapabilities": "", "UMask": "0077",
-		"RestrictAddressFamilies": "AF_INET AF_INET6 AF_UNIX", "ReadWritePaths": "/var/lib/solovey-ui /usr/local/solovey-ui/.runtime/server-protection /usr/local/solovey-ui/cert",
+		"RestrictAddressFamilies": strings.TrimSpace(systemdPanelAddressFamilies), "ReadWritePaths": "/var/lib/solovey-ui /usr/local/solovey-ui/.runtime/server-protection /usr/local/solovey-ui/cert",
 		"ReadOnlyPaths": "/etc/solovey-ui", "LimitNOFILE": "1048576", "TasksMax": "4096", "MemoryHigh": "805306368", "MemoryMax": "1073741824",
 		"CPUQuotaPerSecUSec": "2s", "Restart": "on-failure", "RestartUSec": "5s", "WatchdogUSec": "0", "TimeoutStartUSec": "45s", "TimeoutStopUSec": "30s",
 	}
