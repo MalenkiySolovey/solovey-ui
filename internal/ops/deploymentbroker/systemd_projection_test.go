@@ -1,6 +1,8 @@
 package deploymentbroker
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -8,6 +10,45 @@ import (
 
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 )
+
+func TestSystemdRuntimeFamiliesAgreeWithPackagedUnits(t *testing.T) {
+	// Independent semantic requirement: management/proxy, broker IPC and the
+	// pinned embedded runtime's Linux route/link monitor, with no broader family.
+	required := []string{"AF_INET", "AF_INET6", "AF_UNIX", "AF_NETLINK"}
+	if !sameWords(systemdPanelAddressFamilies, required) {
+		t.Fatalf("main-runtime address families=%q, want %v", systemdPanelAddressFamilies, required)
+	}
+	for _, name := range []string{"solovey-ui.service", "deploy/systemd/solovey-ui-native-hardened.service", "deploy/systemd/solovey-ui-native-network-advanced.service"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "..", filepath.FromSlash(name)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var directives []string
+		for _, line := range strings.Split(string(data), "\n") {
+			if value, ok := strings.CutPrefix(line, "RestrictAddressFamilies="); ok {
+				directives = append(directives, value)
+			}
+		}
+		if len(directives) != 1 || !sameWords(directives[0], required) {
+			t.Fatalf("%s runtime families=%v", name, directives)
+		}
+		for _, directive := range []string{"User=solovey-ui", "Group=solovey-ui", "CapabilityBoundingSet=", "AmbientCapabilities=", "NoNewPrivileges=true"} {
+			if !slices.Contains(strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n"), directive) {
+				t.Fatalf("%s misses %q", name, directive)
+			}
+		}
+	}
+}
+
+func TestSystemdProjectionRejectsMissingAndExcessRuntimeFamilies(t *testing.T) {
+	for _, families := range []string{"AF_INET AF_INET6 AF_UNIX", "", "AF_INET AF_INET6 AF_UNIX AF_NETLINK AF_PACKET", "~AF_PACKET"} {
+		properties := hardenedSystemdProperties()
+		properties["RestrictAddressFamilies"] = families
+		if !slices.Contains(systemdProfileReasons(domain.NativeHardened, properties, hardenedWritePaths()), "systemd_address_families_mismatch") {
+			t.Fatalf("incompatible runtime families accepted: %q", families)
+		}
+	}
+}
 
 func TestSystemdActualStateProjectionRequiresExactHardenedAuthority(t *testing.T) {
 	properties := hardenedSystemdProperties()

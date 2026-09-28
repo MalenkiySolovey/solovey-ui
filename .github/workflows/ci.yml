@@ -49,6 +49,9 @@ jobs:
       - name: release package integration
         run: bash tests/installer/release-package.sh
 
+      - name: Real systemd main-runtime socket sandbox
+        run: bash tests/installer/systemd-runtime.sh
+
       - name: Semantic release resolution and complete release verification
         run: |
           bash tests/installer/latest-release.sh
