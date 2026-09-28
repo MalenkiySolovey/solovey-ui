@@ -16,3 +16,18 @@ func TestAuthorityLoadFailureKeepsCausePrivate(t *testing.T) {
 		t.Fatal("bounded diagnostic lost classification, exposed cause, or broke internal chaining")
 	}
 }
+
+func TestLocalMountProofCannotLeakIntoOtherDeploymentAuthorities(t *testing.T) {
+	proof := testRuntimeMountProof(t, DockerRuntimeRoot, RuntimeMountVolatile)
+	authority, err := DockerRuntimeRootAuthority(proof)
+	if err != nil {
+		t.Fatal(err)
+	}
+	authority.localMount = &proof
+	if authority.Validate() == nil {
+		t.Fatal("Docker authority accepted a systemd process-local proof")
+	}
+	if (RuntimeRootAuthority{root: "/development", localMount: &proof}).Validate() == nil {
+		t.Fatal("development authority accepted an installed process-local proof")
+	}
+}

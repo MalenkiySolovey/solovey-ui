@@ -109,6 +109,10 @@ func (a RuntimeRootAuthority) ProjectionRevision() string {
 }
 
 func (a RuntimeRootAuthority) Validate() error {
+	if a.localMount != nil && (!a.installed || a.backend != DeploymentBackendSystemd ||
+		a.localMount.Validate() != nil || a.localMount.Policy != RuntimeMountPersistent || a.localMount.Root != a.root) {
+		return errors.New("systemd local runtime mount authority is malformed")
+	}
 	if a.installed {
 		if !canonicalLinuxAbsolute(a.root) || a.root == "/" || a.mount.Validate() != nil || a.mount.Root != a.root ||
 			!canonicalLinuxAbsolute(a.CanonicalPath()) || a.CanonicalPath() == "/" {
