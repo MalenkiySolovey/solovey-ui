@@ -545,6 +545,7 @@ jobs:
             --profile core \
             --target linux-${{ matrix.platform }} \
             --binary ./solovey-ui-core \
+            --broker .release/linux-core/solovey-privileged-broker \
             --manager ./solovey-ui.sh \
             --service ./solovey-ui.service \
             --build-info ./BUILD_INFO.core.txt \

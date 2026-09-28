@@ -22,11 +22,11 @@ func bindManagedRoot(authority protectionruntime.RuntimeRootAuthority, construct
 func RegisterBrokerHandlers(registry *broker.Registry, composition sshbroker.ResolvedSSHComposition) error {
 	authority, err := protectionruntime.LoadInstalledRuntimeRootAuthority()
 	if err != nil {
-		return err
+		return broker.StartupFailure("server-protection", "server_protection.handlers", "installed", protectionruntime.AuthorityLoadFailureStage(err), err)
 	}
 	root, err := bindManagedRoot(authority, protectionhelper.NewManagedRoot)
 	if err != nil {
-		return err
+		return broker.StartupFailure("server-protection", "server_protection.handlers", "installed", "managed_root_invalid", err)
 	}
 	return protectionhelper.RegisterBrokerHandlersWithSSHComposition(registry, root, composition)
 }

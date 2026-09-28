@@ -19,6 +19,8 @@ cleanup() {
   rm -rf -- "$build_root"
 }
 trap cleanup EXIT
+go test -c -o "$build_root/runtime-mount.test" ./components/server-protection/runtimecontract
+"${privileged[@]}" env SOLOVEY_TEST_NATIVE_MOUNT=1 "$build_root/runtime-mount.test" -test.run '^TestNativeRuntimeMountNamespace$'
 CGO_ENABLED=0 go build -o "$build_root/probe" tests/installer/systemd-runtime-probe.go
 # PrivateTmp hides /tmp and /var/tmp; ProtectHome hides runner home directories.
 # Install only this diagnostic binary in a unique root-owned runtime directory.

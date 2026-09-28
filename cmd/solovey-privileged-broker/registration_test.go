@@ -44,9 +44,8 @@ func (fixture *registrationFixture) registrars() handlerRegistrars {
 			if !composition.Valid() {
 				return errors.New("invalid SSH projection")
 			}
-			if err := fixture.require("server-protection", "firewall.manage", "nft", "nft"); err != nil {
-				return err
-			}
+			// Optional nft availability is discovered by the operation owner;
+			// it is not a prerequisite for broker handler registration.
 			return register(registry, "test.server-protection")
 		},
 		ssh: func(registry *broker.Registry, composition sshbroker.ResolvedSSHComposition, _ broker.CompletedMutationAuthority) error {

@@ -74,14 +74,16 @@ func RegisterBrokerHandlers(registry *broker.Registry, root ManagedRoot) error {
 // registered SSH composition selected by the privileged broker root.
 func RegisterBrokerHandlersWithSSHComposition(registry *broker.Registry, root ManagedRoot, composition sshbroker.ResolvedSSHComposition) error {
 	if !composition.Valid() {
-		return errors.New("server-protection SSH composition is not an exact registered release record")
+		return broker.StartupFailure("server-protection", "server_protection.handlers", "installed", "ssh_composition_invalid",
+			errors.New("server-protection SSH composition is not an exact registered release record"))
 	}
 	return registerBrokerHandlers(registry, root, composition)
 }
 
 func registerBrokerHandlers(registry *broker.Registry, root ManagedRoot, composition sshbroker.ResolvedSSHComposition) error {
 	if registry == nil || root.Path() == "" {
-		return errors.New("server-protection broker dependencies are required")
+		return broker.StartupFailure("server-protection", "server_protection.handlers", "installed", "handler_dependencies_invalid",
+			errors.New("server-protection broker dependencies are required"))
 	}
 	engine := NewContractEngineWithSSHComposition(root, composition)
 	for _, operation := range []Operation{OperationCapabilities, OperationNFTValidate, OperationNFTObserve, OperationNFTApply, OperationNFTRollback,
@@ -102,7 +104,8 @@ func registerBrokerHandlers(registry *broker.Registry, root ManagedRoot, composi
 			return engine.HandleContext(ctx, request), nil
 		}
 		if err := registry.Register(verb, definition); err != nil {
-			return fmt.Errorf("register %s: %w", operation, err)
+			return broker.StartupFailure("server-protection", "server_protection.handlers", "installed", "verb_registration_failed",
+				fmt.Errorf("register %s: %w", operation, err))
 		}
 	}
 	return nil

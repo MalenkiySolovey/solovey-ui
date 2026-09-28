@@ -64,9 +64,13 @@ type InstalledRuntimeRootV1 struct {
 // database layout. Consumers can inspect the selected path but cannot forge a
 // different authority by constructing this value themselves.
 type RuntimeRootAuthority struct {
-	root                  string
-	installed             bool
-	mount                 RuntimeMountProofV1
+	root      string
+	installed bool
+	mount     RuntimeMountProofV1
+	// Systemd creates a private mount namespace after the installer seals the
+	// host proof. Retain that process-local proof separately from deployment
+	// identity, so later remounts remain fenced without rewriting the manifest.
+	localMount            *RuntimeMountProofV1
 	backend               DeploymentBackend
 	installedRoot         InstalledRuntimeRootV1
 	ownerProjection       deploymentidentity.InstalledApplicationOwnerProjection
