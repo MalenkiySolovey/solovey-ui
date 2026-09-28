@@ -6,7 +6,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v2026.3.2-beta.3"
+        default: "v2026.3.2-beta.4"
         type: string
       preflight_only:
         description: "Validate and build release artifacts without publishing"
@@ -545,6 +545,7 @@ jobs:
             --profile core \
             --target linux-${{ matrix.platform }} \
             --binary ./solovey-ui-core \
+            --broker .release/linux-core/solovey-privileged-broker \
             --manager ./solovey-ui.sh \
             --service ./solovey-ui.service \
             --build-info ./BUILD_INFO.core.txt \

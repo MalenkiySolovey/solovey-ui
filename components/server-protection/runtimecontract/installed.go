@@ -64,9 +64,13 @@ type InstalledRuntimeRootV1 struct {
 // database layout. Consumers can inspect the selected path but cannot forge a
 // different authority by constructing this value themselves.
 type RuntimeRootAuthority struct {
-	root                  string
-	installed             bool
-	mount                 RuntimeMountProofV1
+	root      string
+	installed bool
+	mount     RuntimeMountProofV1
+	// Systemd creates a private mount namespace after the installer seals the
+	// host proof. Retain that process-local proof separately from deployment
+	// identity, so later remounts remain fenced without rewriting the manifest.
+	localMount            *RuntimeMountProofV1
 	backend               DeploymentBackend
 	installedRoot         InstalledRuntimeRootV1
 	ownerProjection       deploymentidentity.InstalledApplicationOwnerProjection
@@ -105,6 +109,10 @@ func (a RuntimeRootAuthority) ProjectionRevision() string {
 }
 
 func (a RuntimeRootAuthority) Validate() error {
+	if a.localMount != nil && (!a.installed || a.backend != DeploymentBackendSystemd ||
+		a.localMount.Validate() != nil || a.localMount.Policy != RuntimeMountPersistent || a.localMount.Root != a.root) {
+		return errors.New("systemd local runtime mount authority is malformed")
+	}
 	if a.installed {
 		if !canonicalLinuxAbsolute(a.root) || a.root == "/" || a.mount.Validate() != nil || a.mount.Root != a.root ||
 			!canonicalLinuxAbsolute(a.CanonicalPath()) || a.CanonicalPath() == "/" {

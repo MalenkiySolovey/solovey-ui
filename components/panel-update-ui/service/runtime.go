@@ -264,6 +264,13 @@ func statusForManifest(item manifest.Manifest, isInstalled bool, isEnabled bool)
 	if !compatible {
 		unavailableReason = fmt.Sprintf("requires panel %s or newer", required)
 	}
+	mutable := installstate.RuntimeMutable()
+	if !mutable && !locked {
+		lockedReason = installstate.ErrPackageManaged.Error()
+		if !isInstalled {
+			unavailableReason = lockedReason
+		}
+	}
 	return ComponentStatus{
 		ID:                item.ID,
 		Name:              item.Name,
@@ -278,8 +285,8 @@ func statusForManifest(item manifest.Manifest, isInstalled bool, isEnabled bool)
 		Compatible:        compatible,
 		Locked:            locked,
 		LockedReason:      lockedReason,
-		Installable:       !isInstalled && compatible && !locked,
-		Removable:         isInstalled && !locked,
+		Installable:       !isInstalled && compatible && !locked && mutable,
+		Removable:         isInstalled && !locked && mutable,
 		Installed:         isInstalled,
 		Enabled:           isEnabled,
 		Active:            isInstalled && isEnabled,

@@ -17,6 +17,16 @@ import (
 
 const InstalledFileEnv = "SUI_COMPONENTS_INSTALLED_FILE"
 
+// Deployment injects package ownership; portable/Windows runtime inventory
+// remains mutable. Unknown policies fail closed, without host OS detection.
+const ManagementEnv = "SUI_COMPONENTS_MANAGEMENT"
+
+var ErrPackageManaged = errors.New("component inventory is managed by the deployment installer")
+
+func RuntimeMutable() bool {
+	return os.Getenv(ManagementEnv) == "" || os.Getenv(ManagementEnv) == "runtime"
+}
+
 const (
 	InstalledMetadataVersion  = 1
 	MaxInstalledMetadataBytes = 1 << 20
@@ -209,6 +219,9 @@ func SetInstalled(path string, available []manifest.Manifest, id string, install
 }
 
 func Store(path string, metadata Metadata) error {
+	if !RuntimeMutable() {
+		return ErrPackageManaged
+	}
 	if path == "" {
 		return errors.New("component installed metadata path is empty")
 	}

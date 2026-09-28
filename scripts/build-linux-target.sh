@@ -82,6 +82,7 @@ panel_name='solovey-ui'
 "$go_program" build -trimpath -buildvcs=false -ldflags="$panel_ldflags" -tags "$tags" -o "$out/$panel_name" main.go
 
 if [[ "$profile" == 'core' ]]; then
+	"$go_program" build -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -tags minimal -o "$out/solovey-privileged-broker" ./cmd/solovey-privileged-broker
 	chmod 0755 "$out/$panel_name"
 	echo "[build-linux-target] built $mode $profile target in $out"
 	exit 0

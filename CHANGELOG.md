@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026.3.2-beta.4
+
+- Native installation explicitly publishes root-owned, service-group-readable
+  component packs and inventory. Secret creation no longer leaks its umask;
+  installer-managed inventory disables unsupported panel install/remove writes.
+- Native broker startup binds sealed runtime mount authority to the equivalent
+  systemd sandbox backing directory, retaining strict later mount rechecks.
+  Startup failures expose bounded owner-local stages without nested error data.
+- Core Linux releases now include a minimal broker that does not require absent
+  optional component authority. Added real nonroot component migration/routes,
+  systemd namespace and full broker graph/socket regression coverage.
+
 ## 2026.3.2-beta.2
 
 - Fixed native application-owner validation rejecting correct Linux filesystem

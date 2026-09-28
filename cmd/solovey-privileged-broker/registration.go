@@ -1,7 +1,6 @@
 package main
 
 import (
-	serverprotectionbroker "github.com/MalenkiySolovey/solovey-ui/components/server-protection/brokerplugin"
 	deploymentbroker "github.com/MalenkiySolovey/solovey-ui/internal/ops/deploymentbroker"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	sshbroker "github.com/MalenkiySolovey/solovey-ui/internal/ops/sshbroker"
@@ -23,7 +22,7 @@ type handlerRegistrars struct {
 func productionHandlerRegistrars() handlerRegistrars {
 	return handlerRegistrars{
 		contributed:      broker.RegisterContributedHandlers,
-		serverProtection: serverprotectionbroker.RegisterBrokerHandlers,
+		serverProtection: registerServerProtection,
 		ssh:              sshbroker.RegisterHandlersFromResolved,
 		deployment:       deploymentbroker.RegisterHandlers,
 		update:           updatebroker.RegisterHandlers,

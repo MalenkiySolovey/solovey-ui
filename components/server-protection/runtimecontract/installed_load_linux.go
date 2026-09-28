@@ -81,18 +81,22 @@ func loadInstalledRuntimeRoot() (InstalledRuntimeRootV1, error) {
 func LoadInstalledRuntimeRootAuthority() (RuntimeRootAuthority, error) {
 	projection, err := deploymentidentity.LoadInstalledApplicationOwnerProjection()
 	if err != nil {
-		return RuntimeRootAuthority{}, err
+		return RuntimeRootAuthority{}, &authorityLoadError{"application_owner_load_failed", err}
 	}
 	runtimeRoot, err := loadInstalledRuntimeRoot()
 	if err != nil {
-		return RuntimeRootAuthority{}, err
+		return RuntimeRootAuthority{}, &authorityLoadError{"runtime_root_load_failed", err}
 	}
 	authority, err := InstalledRuntimeRootAuthority(runtimeRoot, projection)
 	if err != nil {
-		return RuntimeRootAuthority{}, err
+		return RuntimeRootAuthority{}, &authorityLoadError{"runtime_root_binding_invalid", err}
+	}
+	authority, err = bindInstalledRuntimeMount(authority)
+	if err != nil {
+		return RuntimeRootAuthority{}, &authorityLoadError{"runtime_mount_binding_invalid", err}
 	}
 	if err := authority.Recheck(); err != nil {
-		return RuntimeRootAuthority{}, err
+		return RuntimeRootAuthority{}, &authorityLoadError{"runtime_authority_recheck_failed", err}
 	}
 	return authority, nil
 }
@@ -125,6 +129,10 @@ func ResolveRootAuthority(databaseFolder string) (RuntimeRootAuthority, error) {
 		return RuntimeRootAuthority{}, err
 	}
 	if authority.Installed() {
+		authority, err = bindInstalledRuntimeMount(authority)
+		if err != nil {
+			return RuntimeRootAuthority{}, err
+		}
 		if err := authority.Recheck(); err != nil {
 			return RuntimeRootAuthority{}, err
 		}
@@ -137,7 +145,12 @@ func recheckRuntimeRootAuthority(authority RuntimeRootAuthority) error {
 	case DeploymentBackendSystemd, DeploymentBackendProcd:
 		return recheckRetainedInstalledProjection(authority,
 			deploymentidentity.LoadInstalledApplicationOwnerProjection, loadInstalledRuntimeRoot,
-			func() error { return recheckRuntimeMount(authority.mount) })
+			func() error {
+				if authority.localMount != nil {
+					return recheckRuntimeMount(*authority.localMount)
+				}
+				return recheckRuntimeMount(authority.mount)
+			})
 	case DeploymentBackendDocker:
 		profileID := domain.ProfileID(strings.TrimSpace(os.Getenv("SOLOVEY_DEPLOYMENT_PROFILE")))
 		profile, ok := domain.Lookup(profileID)
