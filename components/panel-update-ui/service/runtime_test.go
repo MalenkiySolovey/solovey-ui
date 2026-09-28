@@ -12,7 +12,7 @@ func TestInstallerOwnedInventoryStillAllowsEnabledPolicy(t *testing.T) {
 	t.Setenv(installstate.ManagementEnv, "installer")
 	for _, installed := range []bool{true, false} {
 		status := statusForManifest(manifest.Manifest{ID: "telegram"}, installed, true)
-		if status.Installable || status.Removable || status.Locked || status.Enabled != true || status.Installed != installed {
+		if status.Installable || status.Removable || status.Locked || !status.Enabled || status.Installed != installed {
 			t.Fatalf("incorrect installer-managed capabilities: %+v", status)
 		}
 		if status.LockedReason != installstate.ErrPackageManaged.Error() {

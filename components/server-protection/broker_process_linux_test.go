@@ -116,7 +116,7 @@ func TestBuiltBrokerProductionCompositionFirstDenialAuthorizationAndShutdown(t *
 	}
 	t.Cleanup(func() { _ = os.RemoveAll(runtimeRoot) })
 	createdFacilities := make([]string, 0, 2)
-	for _, facility := range []string{"/usr/sbin/sshd"} {
+	for _, facility := range []string{"/usr/sbin/nft", "/usr/sbin/sshd"} {
 		if _, err := os.Lstat(facility); errors.Is(err, os.ErrNotExist) {
 			if err := os.WriteFile(facility, []byte("#!/bin/sh\nexit 0\n"), 0o555); err != nil {
 				t.Fatal(err)
@@ -190,11 +190,8 @@ func TestBuiltBrokerProductionCompositionFirstDenialAuthorizationAndShutdown(t *
 		t.Fatal(err)
 	}
 	arguments := "--transport=systemd-activated --ssh-implementation=openssh --ssh-service-control=systemd --ssh-log-evidence=journald --deployment-backend=systemd-native --update-mode=native-self-managed"
-	// Clone the mount namespace and bind the same runtime directory, as the
-	// native systemd sandbox does. The installer-sealed host mount IDs must
-	// not be mistaken for the broker's process-local mount generation.
-	wrapper := "mount --bind /usr/local/solovey-ui/.runtime/server-protection /usr/local/solovey-ui/.runtime/server-protection; LISTEN_PID=$$; export LISTEN_PID; exec \"$SUI_BROKER_BINARY\" " + arguments
-	command := exec.Command("/usr/bin/unshare", "--mount", "--propagation", "private", "/bin/sh", "-ec", wrapper)
+	wrapper := "LISTEN_PID=$$; export LISTEN_PID; exec \"$SUI_BROKER_BINARY\" " + arguments
+	command := exec.Command("/bin/sh", "-c", wrapper)
 	command.Env = []string{"LANG=C", "LC_ALL=C", "SUI_BROKER_BINARY=" + brokerPath, "LISTEN_FDS=2", "LISTEN_FDNAMES=main:proof"}
 	command.ExtraFiles = []*os.File{mainFile, proofFile}
 	var brokerOutput bytes.Buffer

@@ -3,8 +3,10 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -12,6 +14,7 @@ import (
 	"strings"
 	"syscall"
 	"testing"
+	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/deploymentidentity"
 	protectionruntime "github.com/MalenkiySolovey/solovey-ui/components/server-protection/runtimecontract"
@@ -148,7 +151,7 @@ func runNativeInstalledGraph(t *testing.T) {
 	if !slices.Contains(registry.Verbs(broker.RoleSSHProof), broker.VerbSSHProof) {
 		t.Fatal("proof handler absent")
 	}
-	assertServerConstruction(t, registry)
+	assertNativeGraphSockets(t, registry, journal)
 	authority, err := protectionruntime.LoadInstalledRuntimeRootAuthority()
 	if err != nil {
 		t.Fatal(err)
@@ -171,5 +174,76 @@ func runNativeInstalledGraph(t *testing.T) {
 	var diagnostic *broker.StartupDiagnosticError
 	if !errors.As(err, &diagnostic) || diagnostic.Reason != "runtime_root_load_failed" || errors.Unwrap(diagnostic) == nil {
 		t.Fatalf("integrity failure did not remain bounded and fail closed: %v", err)
+	}
+}
+
+// The production graph and framed transports run in the isolated child process.
+// Peer attestation is a fixture here; its real OS identity gates are covered by
+// privilegedbroker's peer/process transport tests.
+type nativeGraphAttestor struct{ startupAttestor }
+
+func (nativeGraphAttestor) Attest(context.Context, *net.UnixConn, broker.Role) (broker.PeerIdentity, error) {
+	return broker.PeerIdentity{BootID: "fixture-boot", Revision: broker.Digest([]byte("fixture-peer"))}, nil
+}
+
+func assertNativeGraphSockets(t *testing.T, registry *broker.Registry, journal broker.Journal) {
+	t.Helper()
+	server, err := broker.NewServer(registry, journal, nativeGraphAttestor{}, "fixture-boot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	if err := os.MkdirAll(broker.StandaloneSocketRoot, 0o750); err != nil {
+		t.Fatal(err)
+	}
+	for _, role := range []broker.Role{broker.RolePanel, broker.RoleSSHProof} {
+		path := broker.NewClient(role).SocketPath
+		listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: path, Net: "unix"})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Chmod(path, 0o660); err != nil {
+			t.Fatal(err)
+		}
+		// Prepare credentials before clients race the Serve goroutine startup.
+		raw, err := listener.SyscallConn()
+		if err != nil {
+			t.Fatal(err)
+		}
+		var optionErr error
+		if err := raw.Control(func(fd uintptr) {
+			optionErr = syscall.SetsockoptInt(int(fd), syscall.SOL_SOCKET, syscall.SO_PASSCRED, 1)
+		}); err != nil || optionErr != nil {
+			t.Fatalf("activate credential socket: %v %v", err, optionErr)
+		}
+		done := make(chan error, 1)
+		go func() { done <- server.Serve(ctx, listener, role) }()
+		t.Cleanup(func() {
+			cancel()
+			_ = listener.Close()
+			server.ShutdownConnections()
+			server.WaitConnections()
+			if err := <-done; err != nil && !errors.Is(err, net.ErrClosed) {
+				t.Error(err)
+			}
+		})
+		for range 3 {
+			client := broker.NewClient(role)
+			client.SocketPath, client.BootID = path, "fixture-boot"
+			var capabilities broker.CapabilitiesV1
+			_, err := client.Invoke(ctx, broker.Call{Verb: broker.VerbCapabilities, OperationID: "socket-readiness", Timeout: time.Second, Payload: struct{}{}}, &capabilities)
+			if role == broker.RolePanel {
+				if err != nil || !slices.Contains(capabilities.Verbs, broker.VerbSSHObserve) || !slices.Contains(capabilities.Verbs, broker.VerbDeploymentObserve) || !slices.Contains(capabilities.Verbs, broker.VerbUpdateObserve) {
+					t.Fatalf("main socket production capabilities: %v %+v", err, capabilities)
+				}
+			} else {
+				// The proof socket must respond and enforce its narrower role.
+				var failure *broker.PublicError
+				if !errors.As(err, &failure) || failure.Code != broker.CodeInvalidRequest {
+					t.Fatalf("proof socket role boundary: %v", err)
+				}
+			}
+		}
 	}
 }
