@@ -1,12 +1,41 @@
 package installstate
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 )
+
+func TestInstallerOwnedInventoryCannotBeRewrittenByRuntime(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "installed.json")
+	metadata := Metadata{Version: 1, Profile: "core"}
+	if err := Store(path, metadata); err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, policy := range []string{"installer", "unknown"} {
+		t.Run(policy, func(t *testing.T) {
+			t.Setenv(ManagementEnv, policy)
+			if RuntimeMutable() || !errors.Is(Store(path, Metadata{Version: 1, Profile: "full"}), ErrPackageManaged) {
+				t.Fatal("deployment-owned inventory admitted runtime mutation")
+			}
+			loaded, exists, err := Load(path)
+			if err != nil || !exists || loaded.Profile != "core" {
+				t.Fatalf("read: %v %v", exists, err)
+			}
+			after, err := os.ReadFile(path)
+			if err != nil || string(after) != string(before) {
+				t.Fatal("denied store changed inventory")
+			}
+		})
+	}
+}
 
 func TestInstalledIDsEmptyWhenMetadataMissing(t *testing.T) {
 	t.Setenv(InstalledFileEnv, filepath.Join(t.TempDir(), "missing.json"))

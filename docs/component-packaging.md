@@ -32,6 +32,18 @@ actual minimal binary or the generic Linux installer's selected pack file
 operations. Drop Data is a separate explicitly authorized owner operation.
 The update UI cannot disable/remove itself through its own management surface.
 
+Native systemd deployments explicitly inject `SUI_COMPONENTS_MANAGEMENT=installer`.
+Their pack directory and inventory are one installer-owned generation:
+`root:solovey-ui`, directories `0750`, data/metadata files `0640`. The panel
+can read the selected inventory and change enabled policy in its database;
+runtime Install/Remove are unavailable. Use the native installer's component
+selection to change the installed generation. Atomic metadata publication sets
+ownership/mode before rename, and transaction rollback restores the saved generation.
+The service cannot replace metadata or pack assets. The secretbox creation
+umask is scoped to its function's subshell. Portable runtime inventory retains
+its existing process-owned `0600` atomic-write contract; native permissions
+are not imposed on Docker, Windows or OpenWrt package production.
+
 Source authority: `install.sh` (`resolve_binary_profile`, component pack
 installation), `scripts/generate-component-imports.mjs`,
 `scripts/openwrt-stage-build.sh`, `.github/workflows/windows.yml`,

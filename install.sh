@@ -547,10 +547,21 @@ safe_extract_tar() {
     tar -xzf "${archive}" -C "${target}"
 }
 
+# Native packs and their inventory are installer-owned configuration. The
+# service group may consume them, but cannot replace either trusted object.
+prepare_component_directory() {
+    local dir="${INSTALL_DIR}/components" group="${1:-solovey-ui}"
+    [[ ! -L "${dir}" ]] || fail "component directory must not be a symlink"
+    mkdir -p "${dir}" || return
+    chown "root:${group}" "${dir}" || return
+    chmod 0750 "${dir}"
+}
+
 write_component_metadata() {
+    local group="${1:-solovey-ui}"
     local dir="${INSTALL_DIR}/components"
     local path="${dir}/installed.json"
-    local tmp="${path}.tmp.$$"
+    local tmp
     local id comma index total_installed
 
     if [[ "${DRY_RUN}" == "1" ]]; then
@@ -558,7 +569,8 @@ write_component_metadata() {
         return 0
     fi
 
-    mkdir -p "${dir}" || return
+    prepare_component_directory "${group}" || return
+    tmp="$(mktemp "${path}.tmp.XXXXXX")" || return
     {
         printf '{\n'
         printf '  "version": 1,\n'
@@ -579,13 +591,14 @@ write_component_metadata() {
         done
         printf '  ]\n'
         printf '}\n'
-    } > "${tmp}" || return
-    chmod 600 "${tmp}" || return
-    mv "${tmp}" "${path}"
+    } > "${tmp}" || { rm -f "${tmp}"; return 1; }
+    chown "root:${group}" "${tmp}" && chmod 0640 "${tmp}" && sync -f "${tmp}" &&
+        mv -f "${tmp}" "${path}" || { rm -f "${tmp}"; return 1; }
+    sync -f "${dir}"
 }
 
 install_component_pack_dir() {
-    local id="$1"
+    local id="$1" group="${2:-solovey-ui}"
     local source="${COMPONENT_PAYLOAD_DIR}/${id}"
     local target="${INSTALL_DIR}/components/${id}"
     local incoming="${target}.incoming.$$"
@@ -598,6 +611,15 @@ install_component_pack_dir() {
 
     rm -rf "${incoming}" "${previous}"
     cp -a "${source}" "${incoming}" || { rm -rf "${incoming}"; return 1; }
+    # Packs contain data, never executable helpers or mutable service state.
+    # Reject links/special objects before applying the native read contract.
+    if [[ -n "$(find "${incoming}" ! -type d ! -type f -print -quit)" ]]; then
+        rm -rf "${incoming}"
+        fail "component pack contains unsupported filesystem objects"
+    fi
+    chown -R "root:${group}" "${incoming}" &&
+        find "${incoming}" -type d -exec chmod 0750 {} + &&
+        find "${incoming}" -type f -exec chmod 0640 {} + || { rm -rf "${incoming}"; return 1; }
     if [[ -e "${target}" ]]; then
         mv "${target}" "${previous}" || { rm -rf "${incoming}"; return 1; }
     fi
@@ -619,7 +641,7 @@ install_component_packs() {
         return 0
     fi
 
-    mkdir -p "${INSTALL_DIR}/components" || return
+    prepare_component_directory || return
 
     for id in "${COMPONENT_IDS[@]}"; do
         if component_installed "${id}"; then
@@ -1376,13 +1398,13 @@ copy_legacy_secretbox_env() {
     run chmod 600 "${SECRETBOX_ENV_FILE}"
 }
 
-create_secretbox_env() {
+create_secretbox_env() (
     local key secret
 
     if [[ ! -f "${SECRETBOX_ENV_FILE}" ]]; then
         log "creating ${SECRETBOX_ENV_FILE}"
     fi
-    run mkdir -p "${ENV_DIR}"
+    run mkdir -p "${ENV_DIR}" || return
 
     if [[ "${DRY_RUN}" == "1" ]]; then
         log "would ensure SUI_SECRETBOX_KEY and SUI_COOKIE_KEY in ${SECRETBOX_ENV_FILE}"
@@ -1390,17 +1412,18 @@ create_secretbox_env() {
     fi
 
     umask 077
-    touch "${SECRETBOX_ENV_FILE}"
+    touch "${SECRETBOX_ENV_FILE}" || return
+    chmod 600 "${SECRETBOX_ENV_FILE}" || return
     for key in SUI_SECRETBOX_KEY SUI_COOKIE_KEY; do
         if grep -Eq "^${key}=" "${SECRETBOX_ENV_FILE}" 2>/dev/null; then
             continue
         fi
         secret="$(dd if=/dev/urandom bs=32 count=1 2>/dev/null | base64 | tr -d '\n')"
         [[ -n "${secret}" ]] || fail "failed to generate ${key}"
-        printf '%s=%s\n' "${key}" "${secret}" >> "${SECRETBOX_ENV_FILE}"
+        printf '%s=%s\n' "${key}" "${secret}" >> "${SECRETBOX_ENV_FILE}" || return
     done
     chmod 600 "${SECRETBOX_ENV_FILE}"
-}
+)
 
 atomic_install_file() {
     local source="$1"
@@ -1521,11 +1544,16 @@ install_payload() {
 	release_staging="${release_root}.incoming.$$"
 	current_incoming="${RELEASES_DIR}/.current-${release_id}.$$"
 	run mkdir -p "${INSTALL_DIR}" "${INSTALL_DIR}/db" "${RELEASES_DIR}" "${ENV_DIR}" "${SYSTEMD_SERVICE%/*}" "${CLI_PATH%/*}" "${SYSTEMD_PROFILE_ROOT}" || return
+	# Public executable ancestry must remain traversable independently of the
+	# invoking administrator's umask; component data has its narrower contract.
+	run chown 0:0 "${INSTALL_DIR}" "${RELEASES_DIR}" || return
+	run chmod 0755 "${INSTALL_DIR}" "${RELEASES_DIR}" || return
 	if [[ ! -d "${release_root}" ]]; then
 		run rm -rf "${release_staging}" || return
 		run mkdir -p "${release_staging}" || return
 		run cp -a "${payload_dir}/." "${release_staging}/" || return
 		run chown -R 0:0 "${release_staging}" || return
+		run chmod 0755 "${release_staging}" || return
 		run chmod 755 "${release_staging}/${APP_NAME}" "${release_staging}/${APP_NAME}.sh" \
 			"${release_staging}/solovey-privileged-broker" "${release_staging}/solovey-ssh-proof" \
 			"${release_staging}/solovey-broker-manifest" || return
@@ -1568,9 +1596,9 @@ install_payload() {
 		run rm -f "${APPLICATION_OWNER_CONTRACT}" || return
 	fi
 	if [[ "${DEPLOYMENT_PROFILE}" == "native-legacy-root" ]]; then
-		run env SUI_DB_FOLDER="${INSTALL_DIR}/db" "${BIN_PATH}" migrate || return
+		run env SUI_DB_FOLDER="${INSTALL_DIR}/db" SUI_COMPONENTS_INSTALLED_FILE="${INSTALL_DIR}/components/installed.json" SUI_COMPONENTS_MANAGEMENT=installer "${BIN_PATH}" migrate || return
 	else
-		run runuser -u solovey-ui -- env SUI_DB_FOLDER="${HARDENED_DATA_ROOT}/db" "${BIN_PATH}" migrate || return
+		run runuser -u solovey-ui -- env SUI_DB_FOLDER="${HARDENED_DATA_ROOT}/db" SUI_COMPONENTS_INSTALLED_FILE="${INSTALL_DIR}/components/installed.json" SUI_COMPONENTS_MANAGEMENT=installer "${BIN_PATH}" migrate || return
 	fi
     run systemctl enable "${SERVICE_NAME}" || return
     run systemctl restart "${SERVICE_NAME}" || return

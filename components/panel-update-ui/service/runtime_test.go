@@ -3,7 +3,23 @@ package service
 import (
 	"strings"
 	"testing"
+
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
+	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 )
+
+func TestInstallerOwnedInventoryStillAllowsEnabledPolicy(t *testing.T) {
+	t.Setenv(installstate.ManagementEnv, "installer")
+	for _, installed := range []bool{true, false} {
+		status := statusForManifest(manifest.Manifest{ID: "telegram"}, installed, true)
+		if status.Installable || status.Removable || status.Locked || status.Enabled != true || status.Installed != installed {
+			t.Fatalf("incorrect installer-managed capabilities: %+v", status)
+		}
+		if status.LockedReason != installstate.ErrPackageManaged.Error() {
+			t.Fatal("missing bounded lifecycle reason")
+		}
+	}
+}
 
 func TestRuntimeManagerProtectsUpdateComponentFromSelfManagement(t *testing.T) {
 	manager := RuntimeManager{}
