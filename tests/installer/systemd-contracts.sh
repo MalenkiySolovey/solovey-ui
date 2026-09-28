@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repository_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+node "${repository_root}/scripts/generate-systemd-policy.mjs" --check
 fixture_root="$(mktemp -d)"
 trap 'rm -rf "${fixture_root}"' EXIT
 

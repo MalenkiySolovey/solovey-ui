@@ -133,7 +133,7 @@ func systemdProfileReasons(profile domain.ProfileID, properties map[string]strin
 			reasons = append(reasons, "systemd_"+safePropertyCode(key)+"_mismatch")
 		}
 	}
-	if !sameWords(properties["RestrictAddressFamilies"], []string{"AF_INET", "AF_INET6", "AF_UNIX"}) {
+	if !sameWords(properties["RestrictAddressFamilies"], strings.Fields(systemdPanelAddressFamilies)) {
 		reasons = append(reasons, "systemd_address_families_mismatch")
 	}
 	if len(expectedWritePaths) == 0 || !samePaths(properties["ReadWritePaths"], expectedWritePaths) {

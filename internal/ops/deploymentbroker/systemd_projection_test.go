@@ -1,6 +1,8 @@
 package deploymentbroker
 
 import (
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -8,6 +10,45 @@ import (
 
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 )
+
+func TestSystemdRuntimeFamiliesAgreeWithPackagedUnits(t *testing.T) {
+	// Independent semantic requirement: management/proxy, broker IPC and the
+	// pinned embedded runtime's Linux route/link monitor, with no broader family.
+	required := []string{"AF_INET", "AF_INET6", "AF_UNIX", "AF_NETLINK"}
+	if !sameWords(systemdPanelAddressFamilies, required) {
+		t.Fatalf("main-runtime address families=%q, want %v", systemdPanelAddressFamilies, required)
+	}
+	for _, name := range []string{"solovey-ui.service", "deploy/systemd/solovey-ui-native-hardened.service", "deploy/systemd/solovey-ui-native-network-advanced.service"} {
+		data, err := os.ReadFile(filepath.Join("..", "..", "..", filepath.FromSlash(name)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		var directives []string
+		for _, line := range strings.Split(string(data), "\n") {
+			if value, ok := strings.CutPrefix(line, "RestrictAddressFamilies="); ok {
+				directives = append(directives, value)
+			}
+		}
+		if len(directives) != 1 || !sameWords(directives[0], required) {
+			t.Fatalf("%s runtime families=%v", name, directives)
+		}
+		for _, directive := range []string{"User=solovey-ui", "Group=solovey-ui", "CapabilityBoundingSet=", "AmbientCapabilities=", "NoNewPrivileges=true"} {
+			if !slices.Contains(strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n"), directive) {
+				t.Fatalf("%s misses %q", name, directive)
+			}
+		}
+	}
+}
+
+func TestSystemdProjectionRejectsMissingAndExcessRuntimeFamilies(t *testing.T) {
+	for _, families := range []string{"AF_INET AF_INET6 AF_UNIX", "", "AF_INET AF_INET6 AF_UNIX AF_NETLINK AF_PACKET", "~AF_PACKET"} {
+		properties := hardenedSystemdProperties()
+		properties["RestrictAddressFamilies"] = families
+		if !slices.Contains(systemdProfileReasons(domain.NativeHardened, properties, hardenedWritePaths()), "systemd_address_families_mismatch") {
+			t.Fatalf("incompatible runtime families accepted: %q", families)
+		}
+	}
+}
 
 func TestSystemdActualStateProjectionRequiresExactHardenedAuthority(t *testing.T) {
 	properties := hardenedSystemdProperties()
@@ -51,7 +92,7 @@ func TestSystemdObservationRequestsEveryProjectedProperty(t *testing.T) {
 
 func TestSystemdActualStateProjectionHandlesOrderingAndLegacy(t *testing.T) {
 	properties := hardenedSystemdProperties()
-	properties["RestrictAddressFamilies"] = "AF_UNIX AF_INET6 AF_INET"
+	properties["RestrictAddressFamilies"] = "AF_NETLINK AF_UNIX AF_INET6 AF_INET"
 	properties["ReadWritePaths"] = "/usr/local/solovey-ui/cert /var/lib/solovey-ui /usr/local/solovey-ui/.runtime/server-protection"
 	if reasons := systemdProfileReasons(domain.NativeHardened, properties, hardenedWritePaths()); len(reasons) != 0 {
 		t.Fatalf("set ordering changed semantic result: %v", reasons)
@@ -182,7 +223,7 @@ func hardenedSystemdProperties() map[string]string {
 		"ProtectKernelModules": "yes", "ProtectKernelLogs": "yes", "ProtectControlGroups": "yes", "ProtectClock": "yes", "ProtectHostname": "yes",
 		"RestrictNamespaces": "yes", "RestrictRealtime": "yes", "RestrictSUIDSGID": "yes", "LockPersonality": "yes", "MemoryDenyWriteExecute": "yes",
 		"SystemCallArchitectures": "native", "CapabilityBoundingSet": "", "AmbientCapabilities": "", "UMask": "0077",
-		"RestrictAddressFamilies": "AF_INET AF_INET6 AF_UNIX", "ReadWritePaths": "/var/lib/solovey-ui /usr/local/solovey-ui/.runtime/server-protection /usr/local/solovey-ui/cert",
+		"RestrictAddressFamilies": strings.TrimSpace(systemdPanelAddressFamilies), "ReadWritePaths": "/var/lib/solovey-ui /usr/local/solovey-ui/.runtime/server-protection /usr/local/solovey-ui/cert",
 		"ReadOnlyPaths": "/etc/solovey-ui", "LimitNOFILE": "1048576", "TasksMax": "4096", "MemoryHigh": "805306368", "MemoryMax": "1073741824",
 		"CPUQuotaPerSecUSec": "2s", "Restart": "on-failure", "RestartUSec": "5s", "WatchdogUSec": "0", "TimeoutStartUSec": "45s", "TimeoutStopUSec": "30s",
 	}
