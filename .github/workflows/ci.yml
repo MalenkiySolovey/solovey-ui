@@ -55,6 +55,9 @@ jobs:
       - name: Real systemd cross-UID broker pidfd attestation
         run: bash tests/installer/broker-pidfd-runtime.sh
 
+      - name: Real systemd cross-UID broker request transport
+        run: bash tests/installer/broker-request-runtime.sh
+
       - name: Semantic release resolution and complete release verification
         run: |
           bash tests/installer/latest-release.sh

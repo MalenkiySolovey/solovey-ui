@@ -46,11 +46,11 @@ func preparePeerConnection(connection *net.UnixConn) error {
 
 func readPeerRequest(connection *net.UnixConn, target *Request, limit int) (WriterCredentials, error) {
 	if connection == nil || target == nil || limit <= 0 {
-		return WriterCredentials{}, errors.New("broker credential frame target is invalid")
+		return WriterCredentials{}, requestReadFailure(receiveTargetInvalid, nil)
 	}
 	raw, err := connection.SyscallConn()
 	if err != nil {
-		return WriterCredentials{}, err
+		return WriterCredentials{}, requestReadFailure(receiveUnavailable, err)
 	}
 
 	frame := make([]byte, 0, limit+4)
@@ -61,7 +61,7 @@ func readPeerRequest(connection *net.UnixConn, target *Request, limit int) (Writ
 		err = raw.Read(func(fd uintptr) bool {
 			remaining := limit + 4 - len(frame)
 			if remaining <= 0 {
-				receiveErr = errors.New("broker credential frame exceeds its bound")
+				receiveErr = requestReadFailure(frameOversized, nil)
 				return true
 			}
 			payload := make([]byte, remaining)
@@ -71,14 +71,10 @@ func readPeerRequest(connection *net.UnixConn, target *Request, limit int) (Writ
 				return false
 			}
 			if recvErr != nil {
-				receiveErr = recvErr
+				receiveErr = requestReadFailure(receiveFailed, recvErr)
 				return true
 			}
-			if n == 0 || flags&(unix.MSG_CTRUNC|unix.MSG_TRUNC) != 0 {
-				receiveErr = errors.New("broker credential frame is incomplete")
-				return true
-			}
-			credentials, credentialErr := credentialsFromControl(oob[:oobn])
+			credentials, credentialErr := receivedRequestCredentials(n, flags, oob[:oobn], len(frame) > 0)
 			if credentialErr != nil {
 				receiveErr = credentialErr
 				return true
@@ -86,65 +82,110 @@ func readPeerRequest(connection *net.UnixConn, target *Request, limit int) (Writ
 			if writer.PID == 0 {
 				writer = credentials
 			} else if writer != credentials {
-				receiveErr = errors.New("broker request has multiple writer identities")
+				receiveErr = requestReadFailure(writerChanged, nil)
 				return true
 			}
 			frame = append(frame, payload[:n]...)
 			if len(frame) >= 4 && expected == 0 {
 				length := int(binary.BigEndian.Uint32(frame[:4]))
-				if length <= 0 || length > limit {
-					receiveErr = errors.New("broker frame length is invalid")
+				if length <= 0 {
+					receiveErr = requestReadFailure(frameLengthInvalid, nil)
+					return true
+				}
+				if length > limit {
+					receiveErr = requestReadFailure(frameOversized, nil)
 					return true
 				}
 				expected = length + 4
 			}
 			if expected > 0 && len(frame) > expected {
-				receiveErr = errors.New("multiple broker request frames are forbidden")
+				receiveErr = requestReadFailure(frameMultiple, nil)
 			}
 			return true
 		})
-		if err != nil || receiveErr != nil {
-			return WriterCredentials{}, errors.Join(err, receiveErr)
+		if err != nil {
+			return WriterCredentials{}, requestReadFailure(receiveFailed, err)
+		}
+		if receiveErr != nil {
+			return WriterCredentials{}, receiveErr
 		}
 	}
 	if writer.PID <= 1 || len(frame) != expected {
-		return WriterCredentials{}, errors.New("broker request writer credentials are unavailable")
+		return WriterCredentials{}, requestReadFailure(credentialsMissing, nil)
 	}
 	if err := decodeStrict(frame[4:], target); err != nil {
-		return WriterCredentials{}, err
+		return WriterCredentials{}, requestReadFailure(frameDecodeInvalid, err)
 	}
 	return writer, nil
 }
 
-func credentialsFromControl(oob []byte) (WriterCredentials, error) {
-	messages, err := unix.ParseSocketControlMessage(oob)
-	if err != nil {
-		return WriterCredentials{}, errors.New("broker request control message is malformed")
+func receivedRequestCredentials(n, flags int, oob []byte, partial bool) (WriterCredentials, error) {
+	// recvmsg may install the descriptors that fit even when MSG_CTRUNC is
+	// set. Consume and close all delivered SCM_RIGHTS before any rejection.
+	writer, err := credentialsFromControl(oob)
+	if flags&unix.MSG_CTRUNC != 0 {
+		return WriterCredentials{}, requestReadFailure(controlTruncated, nil)
 	}
+	if flags&unix.MSG_TRUNC != 0 {
+		return WriterCredentials{}, requestReadFailure(frameTruncated, nil)
+	}
+	if n == 0 {
+		class := receiveEmpty
+		if partial {
+			class = frameIncomplete
+		}
+		return WriterCredentials{}, requestReadFailure(class, nil)
+	}
+	return writer, err
+}
+
+func credentialsFromControl(oob []byte) (WriterCredentials, error) {
 	var result WriterCredentials
 	credentials := 0
-	for index := range messages {
-		message := &messages[index]
+	var failure error
+	for len(oob) > 0 {
+		if len(oob) < unix.CmsgLen(0) {
+			return WriterCredentials{}, requestReadFailure(controlMalformed, nil)
+		}
+		header, data, remainder, err := unix.ParseOneSocketControlMessage(oob)
+		if err != nil {
+			return WriterCredentials{}, requestReadFailure(controlMalformed, nil)
+		}
+		oob = remainder
+		message := &unix.SocketControlMessage{Header: header, Data: data}
 		if message.Header.Level == unix.SOL_SOCKET && message.Header.Type == unix.SCM_RIGHTS {
 			if descriptors, parseErr := unix.ParseUnixRights(message); parseErr == nil {
 				for _, descriptor := range descriptors {
 					_ = unix.Close(descriptor)
 				}
 			}
-			return WriterCredentials{}, errors.New("broker request descriptor transfer is forbidden")
+			failure = requestReadFailure(descriptorForbidden, nil)
+			continue
 		}
 		if message.Header.Level != unix.SOL_SOCKET || message.Header.Type != unix.SCM_CREDENTIALS {
-			return WriterCredentials{}, errors.New("broker request control message is unsupported")
+			failure = requestReadFailure(controlUnsupported, nil)
+			continue
+		}
+		if len(data) != unix.SizeofUcred {
+			failure = requestReadFailure(credentialsMalformed, nil)
+			continue
 		}
 		credential, err := unix.ParseUnixCredentials(message)
 		if err != nil || credential.Pid <= 1 {
-			return WriterCredentials{}, errors.New("broker request writer credentials are malformed")
+			failure = requestReadFailure(credentialsMalformed, nil)
+			continue
 		}
 		credentials++
 		result = WriterCredentials{PID: int(credential.Pid), UID: uint32(credential.Uid), GID: uint32(credential.Gid)}
 	}
+	if failure != nil {
+		return WriterCredentials{}, failure
+	}
+	if credentials == 0 {
+		return WriterCredentials{}, requestReadFailure(credentialsMissing, nil)
+	}
 	if credentials != 1 {
-		return WriterCredentials{}, errors.New("broker request writer credentials are ambiguous")
+		return WriterCredentials{}, requestReadFailure(credentialsAmbiguous, nil)
 	}
 	return result, nil
 }

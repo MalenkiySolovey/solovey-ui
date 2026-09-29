@@ -1,5 +1,19 @@
 # Changelog
 
+## 2026.3.2-beta.6
+
+- Linux broker clients accept the root PID1 identity of systemd-created Unix
+  listeners. Previously the client closed before sending its request, leaving
+  the broker with an empty receive and unavailable Deployment/SSH/Update paths.
+- Request receive failures retain closed, payload-free diagnostic classes.
+  Rejected truncated descriptor transfers now close every delivered descriptor.
+  Frame bounds, strict JSON, per-request writer checks and pidfd liveness remain.
+- CI now exercises real socket activation with a nonroot production client,
+  production server/attestor and the unchanged broker capability policy across
+  three cold starts and 24 requests. CAP_KILL remains absent.
+- Physical Debian13 beta.5-to-beta.6 upgrade and clean-install qualification
+  remain separate gates. Stable/latest remains 2026.3.1.
+
 ## 2026.3.2-beta.4
 
 - Native installation explicitly publishes root-owned, service-group-readable
