@@ -52,6 +52,9 @@ jobs:
       - name: Real systemd main-runtime socket sandbox
         run: bash tests/installer/systemd-runtime.sh
 
+      - name: Real systemd cross-UID broker pidfd attestation
+        run: bash tests/installer/broker-pidfd-runtime.sh
+
       - name: Semantic release resolution and complete release verification
         run: |
           bash tests/installer/latest-release.sh
