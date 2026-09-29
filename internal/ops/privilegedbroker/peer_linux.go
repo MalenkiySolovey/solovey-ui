@@ -130,7 +130,23 @@ func peerAlive(identity PeerIdentity) error {
 	if !identity.hasLiveness || identity.livenessFD < 0 {
 		return attestationFailure(PeerAttestationLivenessUnavailable, errors.New("broker peer pidfd is unavailable"))
 	}
-	if err := unix.PidfdSendSignal(identity.livenessFD, 0, nil, 0); err != nil {
+	// Observe the held task reference without requesting signal authority:
+	// signal 0 still requires matching UIDs or CAP_KILL. A live cross-UID
+	// connector must work under the broker's existing capability boundary.
+	fds := []unix.PollFd{{Fd: int32(identity.livenessFD), Events: unix.POLLIN}}
+	n, err := unix.Poll(fds, 0)
+	if err != nil {
+		return attestationFailure(PeerAttestationLivenessUnavailable, errors.New("broker peer pidfd observation failed"))
+	}
+	events := fds[0].Revents
+	// POLLNVAL/POLLERR and unknown flags are observation failures, not proof
+	// of death. POLLIN reports process exit; newer kernels also report HUP
+	// after reaping. The original pidfd remains authoritative across PID reuse.
+	if events & ^int16(unix.POLLIN|unix.POLLHUP) != 0 ||
+		(n == 0 && events != 0) || (n != 0 && (n != 1 || events == 0)) {
+		return attestationFailure(PeerAttestationLivenessUnavailable, errors.New("broker peer pidfd observation is invalid"))
+	}
+	if events&(unix.POLLIN|unix.POLLHUP) != 0 {
 		return attestationFailure(PeerAttestationConnectorDeath, errors.New("broker peer connector is no longer alive"))
 	}
 	return nil
