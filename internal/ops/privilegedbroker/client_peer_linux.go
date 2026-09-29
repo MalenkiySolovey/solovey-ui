@@ -47,7 +47,10 @@ func verifyServerConnection(connection net.Conn, socketPath string) error {
 	}); err != nil {
 		return err
 	}
-	if socketErr != nil || credential == nil || credential.Uid != 0 || credential.Pid <= 1 {
+	// SO_PEERCRED identifies the listener's creator, not the accepting worker.
+	// A root-owned systemd-activated listener therefore reports PID 1. The
+	// fixed path and root-only directory above remain the endpoint authority.
+	if socketErr != nil || credential == nil || credential.Uid != 0 || credential.Pid <= 0 {
 		return errors.New("broker server peer is not the root service")
 	}
 	return nil

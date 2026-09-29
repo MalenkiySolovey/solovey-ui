@@ -252,7 +252,7 @@ func (s *Server) serveConnection(ctx context.Context, connection *net.UnixConn, 
 	if err != nil {
 		event := s.auditEvent(request, peer, failureResponse(request, CodeInvalidRequest, "broker request is malformed"), time.Since(started))
 		event.Phase = AuditPhaseRequestReceive
-		s.emitDiagnostic(event, peer, writer)
+		s.emitDiagnostic(event, peer, writer, handlerDiagnosticFromError(err))
 		s.emitAudit(event, true)
 		_ = WriteFrame(connection, failureResponse(request, CodeInvalidRequest, "broker request is malformed"), MaxResponseBytes)
 		return
