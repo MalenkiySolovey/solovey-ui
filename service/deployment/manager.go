@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -123,7 +122,7 @@ func (m *Manager) Status(ctx context.Context) (domain.Posture, error) {
 		return domain.Posture{}, err
 	}
 	if err := m.Repository.SavePosture(ctx, posture, posture.Validate(m.now()) == nil); err != nil {
-		return domain.Posture{}, fmt.Errorf("%w: %v", ErrStatePersistence, err)
+		return domain.Posture{}, err
 	}
 	return posture, nil
 }
@@ -143,7 +142,7 @@ func (m *Manager) Doctor(ctx context.Context) (domain.DoctorReport, error) {
 	}
 	if report.Posture != nil {
 		if err := m.Repository.SavePosture(ctx, *report.Posture, report.Healthy && report.Posture.Validate(m.now()) == nil); err != nil {
-			return domain.DoctorReport{}, fmt.Errorf("%w: %v", ErrStatePersistence, err)
+			return domain.DoctorReport{}, err
 		}
 	}
 	if state, stateErr := m.Repository.State(ctx); stateErr == nil {
@@ -161,18 +160,18 @@ func (m *Manager) Doctor(ctx context.Context) (domain.DoctorReport, error) {
 			report.State = "ACTIVE_NOT_VERIFIED"
 		}
 	} else if !errors.Is(stateErr, gorm.ErrRecordNotFound) {
-		return domain.DoctorReport{}, fmt.Errorf("%w: %v", ErrStatePersistence, stateErr)
+		return domain.DoctorReport{}, stateErr
 	}
 	if recovery, recoveryErr := m.Repository.Recovery(ctx); recoveryErr == nil && (recovery.State == domain.StateManualRecoveryRequired || recovery.RestoredUntrusted) {
 		report.State = "RECOVERY_REQUIRED"
 		report.Healthy = false
 	} else if recoveryErr != nil && !errors.Is(recoveryErr, gorm.ErrRecordNotFound) {
-		return domain.DoctorReport{}, fmt.Errorf("%w: %v", ErrStatePersistence, recoveryErr)
+		return domain.DoctorReport{}, recoveryErr
 	}
 	report.Revision = ""
 	report.Revision = domain.Revision(report)
 	if err := m.Repository.SaveDoctor(ctx, report); err != nil {
-		return domain.DoctorReport{}, fmt.Errorf("%w: %v", ErrStatePersistence, err)
+		return domain.DoctorReport{}, err
 	}
 	return report, nil
 }

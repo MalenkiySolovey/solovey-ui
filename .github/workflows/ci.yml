@@ -58,6 +58,12 @@ jobs:
       - name: Real systemd cross-UID broker request transport
         run: bash tests/installer/broker-request-runtime.sh
 
+      - name: Real native and Docker Doctor persistence
+        run: |
+          node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
+          sudo env PATH="$PATH" GOMODCACHE="$(go env GOMODCACHE)" GOCACHE="$(go env GOCACHE)" bash tests/installer/deployment-persistence-runtime.sh
+          bash tests/installer/docker-deployment-persistence.sh
+
       - name: Semantic release resolution and complete release verification
         run: |
           bash tests/installer/latest-release.sh
