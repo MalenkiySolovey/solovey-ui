@@ -94,11 +94,11 @@ func TestDoctorPersistenceFailureStagesAndAtomicRollback(t *testing.T) {
 			if err := db.Callback().Query().Before("gorm:query").Register("failure", func(tx *gorm.DB) {
 				if tx.Statement.Table == "deployment_state_v1" {
 					if stage == "state_read" {
-						tx.AddError(fault)
+						_ = tx.AddError(fault)
 					}
 				}
 				if stage == "recovery_read" && tx.Statement.Table == "deployment_operations_v1" {
-					tx.AddError(fault)
+					_ = tx.AddError(fault)
 				}
 			}); err != nil {
 				t.Fatal(err)

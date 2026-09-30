@@ -60,7 +60,7 @@ func TestDoctorPersistenceWALConcurrentWriter(t *testing.T) {
 		armed = false
 		_, err := writer.Exec("INSERT INTO settings(key,value) VALUES(?,?)", "deployment-wal-regression", "bounded-test-value")
 		if err != nil {
-			tx.AddError(err)
+			_ = tx.AddError(err)
 			return
 		}
 		writes++

@@ -130,7 +130,7 @@ func TestDeploymentSystemdPersistenceClient(t *testing.T) {
 		}
 		_, err := pool.Exec("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", "deployment-runtime-writer", fmt.Sprint(commits))
 		if err != nil {
-			tx.AddError(err)
+			_ = tx.AddError(err)
 			return
 		}
 		commits++
