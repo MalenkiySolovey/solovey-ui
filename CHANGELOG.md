@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026.3.2-beta.7
+
+- Deployment posture persistence uses a write-first atomic UPSERT, removing the
+  real WAL read-to-write upgrade race reproduced as SQLITE_BUSY_SNAPSHOT (517).
+  Desired/generated intent and durable Doctor authority remain preserved.
+- Authenticated persistence diagnostics expose only bounded stage, storage class
+  and SQLite codes. Required state and snapshot writes remain fail-closed.
+- Doctor retention preserves its current revision target within the existing
+  64-snapshot bound, including duplicate or older report replay.
+- Added real WAL, systemd broker-to-API, package-managed and Docker persistence
+  regressions. Physical beta.6-to-beta.7 upgrade acceptance remains separate;
+  stable/latest remains 2026.3.1.
+
 ## 2026.3.2-beta.6
 
 - Linux broker clients accept the root PID1 identity of systemd-created Unix
