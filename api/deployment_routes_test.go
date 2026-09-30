@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,10 +12,39 @@ import (
 	"strings"
 	"testing"
 
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	domain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"
 	"github.com/gin-gonic/gin"
 )
+
+func TestDeploymentPersistenceHTTPDiagnosticRedactsStorageDetails(t *testing.T) {
+	initAPITestDB(t, filepath.Join(t.TempDir(), "diagnostic.db"))
+	t.Cleanup(func() { closeAPITestDB(t) })
+	if err := dbsqlite.DB().Exec(`CREATE TRIGGER diagnostic_failure BEFORE INSERT ON deployment_doctor_snapshots_v1
+		BEGIN SELECT RAISE(ABORT, 'private-storage-detail'); END`).Error; err != nil {
+		t.Fatal(err)
+	}
+	err := (deploymentservice.Repository{DB: dbsqlite.DB}).SaveDoctor(context.Background(), domain.DoctorReport{})
+	if err == nil {
+		t.Fatal("expected real SQLite constraint")
+	}
+	response := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(response)
+	(&deploymentHTTP{}).writeReadError(ctx, "deployment_doctor", err)
+	body := response.Body.String()
+	for _, expected := range []string{"deployment_state_persistence_unavailable", `"stage":"doctor_save"`, `"class":"constraint"`, `"sqliteExtendedCode":1811`} {
+		if !strings.Contains(body, expected) {
+			t.Fatalf("missing safe diagnostic %s", expected)
+		}
+	}
+	for _, private := range []string{"private-storage-detail", "INSERT", "diagnostic.db", "payload_json"} {
+		if strings.Contains(body, private) {
+			t.Fatal("public diagnostic leaked storage detail")
+		}
+	}
+}
 
 func TestDeploymentReadErrorsExposeSpecificSafeStateReasons(t *testing.T) {
 	for _, test := range []struct {

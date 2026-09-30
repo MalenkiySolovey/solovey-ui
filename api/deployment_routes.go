@@ -317,11 +317,18 @@ func (h *deploymentHTTP) writeReadError(c *gin.Context, operation string, err er
 	// server-side context to distinguish provider, package-posture and
 	// persistence failures from an unexpected internal failure.
 	logger.Warning("deployment read failed: operation=", operation, " reason=", code)
+	public := gin.H{"operation": operation, "reasonCode": code}
+	if diagnostic, ok := deploymentservice.PersistenceFailure(err); ok {
+		public["persistence"] = diagnostic
+		logger.Warning("deployment persistence failed: stage=", diagnostic.Stage, " class=", diagnostic.Class,
+			" sqlite=", diagnostic.SQLiteCode, " extended=", diagnostic.SQLiteExtendedCode)
+	}
 	state := "UNAVAILABLE"
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		state = "NOT_OBSERVED"
 	}
-	c.JSON(http.StatusOK, Msg{Success: false, Msg: code, Obj: gin.H{"state": state, "operation": operation, "reasonCode": code}})
+	public["state"] = state
+	c.JSON(http.StatusOK, Msg{Success: false, Msg: code, Obj: public})
 }
 
 func (h *deploymentHTTP) writeMutationError(c *gin.Context, operation string, err error, result domain.Operation) {

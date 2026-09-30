@@ -30,36 +30,33 @@ func (r Repository) db() (*gorm.DB, error) {
 	return r.DB(), nil
 }
 
-func (r Repository) SavePosture(ctx context.Context, posture domain.Posture, trusted bool) error {
+func (r Repository) SavePosture(ctx context.Context, posture domain.Posture, trusted bool) (result error) {
+	defer func() { result = persistenceFailure(postureSave, result) }()
 	db, err := r.db()
 	if err != nil {
 		return err
 	}
 	now := time.Now().UTC().Unix()
-	return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		var existing model.DeploymentState
-		if err := tx.Where("scope = ?", "global").Take(&existing).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return err
-		}
-		profile, _ := domain.Lookup(posture.Profile)
-		desired, generated, generatedRevision := existing.DesiredProfile, existing.GeneratedProfile, existing.GeneratedRevision
-		if desired == "" {
-			desired = string(posture.Profile)
-		}
-		if generated == "" {
-			generated, generatedRevision = string(posture.Profile), profile.Revision
-		}
-		installed, active, verified := posture.InstalledProfile, posture.ActiveProfile, posture.VerifiedProfile
-		row := model.DeploymentState{Scope: "global", ProfileID: string(posture.Profile), DesiredProfile: desired,
-			GeneratedProfile: generated, GeneratedRevision: generatedRevision, InstalledProfile: string(installed),
-			ActiveProfile: string(active), VerifiedProfile: string(verified), CompatibilityState: compatibilityState(profile),
-			DoctorRevision: existing.DoctorRevision, Runtime: string(posture.Runtime), PostureRevision: posture.Revision,
-			Trusted: trusted, ObservedAt: posture.ObservedAt, UpdatedAt: now}
-		return tx.Save(&row).Error
-	})
+	profile, _ := domain.Lookup(posture.Profile)
+	row := model.DeploymentState{Scope: "global", ProfileID: string(posture.Profile), DesiredProfile: string(posture.Profile),
+		GeneratedProfile: string(posture.Profile), GeneratedRevision: profile.Revision, InstalledProfile: string(posture.InstalledProfile),
+		ActiveProfile: string(posture.ActiveProfile), VerifiedProfile: string(posture.VerifiedProfile), CompatibilityState: compatibilityState(profile),
+		Runtime: string(posture.Runtime), PostureRevision: posture.Revision, Trusted: trusted, ObservedAt: posture.ObservedAt, UpdatedAt: now}
+	// Write first: a deferred SELECT followed by Save cannot upgrade a stale WAL
+	// snapshot after another panel writer commits (SQLITE_BUSY_SNAPSHOT). Resolve
+	// initialization against the row at the atomic write point, preserving both
+	// migration intent and the independently persisted doctor authority.
+	updates := clause.AssignmentColumns([]string{"profile_id", "installed_profile", "active_profile", "verified_profile",
+		"compatibility_state", "runtime", "posture_revision", "trusted", "observed_at", "updated_at"})
+	for _, field := range []string{"desired_profile", "generated_profile", "generated_revision"} {
+		updates = append(updates, clause.Assignment{Column: clause.Column{Name: field},
+			Value: gorm.Expr("CASE WHEN " + field + " = '' THEN excluded." + field + " ELSE " + field + " END")})
+	}
+	return db.WithContext(ctx).Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "scope"}}, DoUpdates: updates}).Create(&row).Error
 }
 
-func (r Repository) State(ctx context.Context) (model.DeploymentState, error) {
+func (r Repository) State(ctx context.Context) (state model.DeploymentState, result error) {
+	defer func() { result = persistenceFailure(stateRead, result) }()
 	db, err := r.db()
 	if err != nil {
 		return model.DeploymentState{}, err
@@ -178,7 +175,8 @@ func (r Repository) Active(ctx context.Context) (domain.Operation, error) {
 // Recovery returns the newest operation whose durable state still requires
 // operator attention. Manual recovery is terminal for serialization purposes,
 // so it must not be inferred from Active.
-func (r Repository) Recovery(ctx context.Context) (domain.Operation, error) {
+func (r Repository) Recovery(ctx context.Context) (operation domain.Operation, result error) {
+	defer func() { result = persistenceFailure(recoveryRead, result) }()
 	db, err := r.db()
 	if err != nil {
 		return domain.Operation{}, err
@@ -267,7 +265,8 @@ func (r Repository) PruneHistory(ctx context.Context, now time.Time) error {
 	})
 }
 
-func (r Repository) SaveDoctor(ctx context.Context, report domain.DoctorReport) error {
+func (r Repository) SaveDoctor(ctx context.Context, report domain.DoctorReport) (result error) {
+	defer func() { result = persistenceFailure(doctorSave, result) }()
 	db, err := r.db()
 	if err != nil {
 		return err
@@ -288,9 +287,12 @@ func (r Repository) SaveDoctor(ctx context.Context, report domain.DoctorReport) 
 		if err := tx.Model(&model.DeploymentState{}).Where("scope = ?", "global").Updates(map[string]any{"doctor_revision": report.Revision, "updated_at": time.Now().UTC().Unix()}).Error; err != nil {
 			return err
 		}
+		// The current authority must survive even when its deterministic report
+		// is replayed after newer history or the observation clock moves back.
 		return tx.Exec(`DELETE FROM deployment_doctor_snapshots_v1 WHERE id NOT IN (
-			SELECT id FROM deployment_doctor_snapshots_v1 ORDER BY generated_at DESC, id DESC LIMIT ?
-		)`, maxDoctorSnapshots).Error
+			SELECT id FROM deployment_doctor_snapshots_v1
+			ORDER BY (revision = ?) DESC, generated_at DESC, id DESC LIMIT ?
+		)`, report.Revision, maxDoctorSnapshots).Error
 	})
 }
 
