@@ -959,7 +959,7 @@ uninstall() {
     systemctl disable "${SERVICE_NAME}" >/dev/null 2>&1 || true
 	systemctl disable --now solovey-privileged-broker.socket solovey-privileged-proof.socket solovey-privileged-broker.service >/dev/null 2>&1 || true
     rm -f "${SERVICE_FILE}" "${CLI_PATH}" "${SYSTEMD_UNIT_ROOT}/solovey-privileged-broker.service" \
-		"${SYSTEMD_UNIT_ROOT}/solovey-privileged-broker.socket" "${SYSTEMD_UNIT_ROOT}/solovey-privileged-proof.socket"
+		"${SYSTEMD_UNIT_ROOT}/solovey-privileged-broker.socket" "${SYSTEMD_UNIT_ROOT}/solovey-privileged-proof.socket" "${SYSTEMD_TMPFILES_CONFIG}"
 	rm -rf "${SYSTEMD_PROFILE_ROOT}"
     systemctl daemon-reload
 

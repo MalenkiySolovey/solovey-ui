@@ -131,6 +131,8 @@ EOF
 
 run_rollback() {
     local requested="${1:-latest}"
+    local args=(rollback "${requested}")
+    [[ "${requested}" != uninstall ]] || args=(uninstall)
     PATH="${FAKEBIN}:${PATH}" \
     TEST_INSTALLER_LOG="${LOG_DIR}" \
     TEST_FAIL_RESTORE_CP="${TEST_FAIL_RESTORE_CP:-}" \
@@ -145,7 +147,7 @@ run_rollback() {
 	SOLOVEY_UI_BROKER_STATE_ROOT="${BROKER_STATE_ROOT}" \
     SOLOVEY_UI_ENV_DIR="${ENV_DIR}" \
     SOLOVEY_UI_BACKUP_ROOT="${BACKUP_ROOT}" \
-    "${BASH:-bash}" "${ROOT}/solovey-ui.sh" rollback "${requested}"
+    "${BASH:-bash}" "${ROOT}/solovey-ui.sh" "${args[@]}"
 }
 
 run_version() {
@@ -242,5 +244,7 @@ assert_doctor
 assert_failed_restore_leaves_current_install
 run_rollback 20260101T000000Z
 assert_rollback
+run_rollback uninstall
+[[ ! -e "${TARGET}/etc/tmpfiles.d/solovey-ui.conf" && ! -L "${TARGET}/etc/tmpfiles.d/solovey-ui.conf" ]] || fail "uninstall left a boot registration"
 
 printf 'PASS: installer rollback integration\n'
