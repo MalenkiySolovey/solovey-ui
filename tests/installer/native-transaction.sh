@@ -73,7 +73,7 @@ for activity in inactive active; do
                 SERVICE_NAME="$3"; SERVICE_NAME="${SERVICE_NAME%.service}"
                 SYSTEMD_SERVICE="/run/systemd/system/$3"
                 SYSTEMD_UNIT_ROOT=/etc/systemd/system; SYSTEMD_RUNTIME_UNIT_ROOT=/run/systemd/system
-                SYSTEMD_PROFILE_ROOT="$2/profiles"
+                SYSTEMD_PROFILE_ROOT="$2/profiles"; SYSTEMD_TMPFILES_CONFIG="$2/tmpfiles.conf"
                 INSTALL_DIR="$2/app"; ENV_DIR="$2/etc"; HARDENED_DATA_ROOT="$2/data"
                 CLI_PATH="$2/cli"; BACKUP_ROOT="$2/backups"
                 TRANSACTION_UNITS=("$4" "$5" "$6" "$3")
@@ -84,6 +84,7 @@ for activity in inactive active; do
                 if bash -c '\''source "$1/install.sh"; BACKUP_ROOT="$2/backups"; begin_install_transaction'\'' fence "$1" "$2" > "$2/fence-result" 2>&1; then exit 99; fi
                 grep -q "unfinished or concurrent native installation" "$2/fence-result"
                 printf "new release\n" > "$INSTALL_DIR/BUILD_INFO.txt"
+                printf "new boot registration\n" > "$SYSTEMD_TMPFILES_CONFIG"
                 mkdir -p "$HARDENED_DATA_ROOT/db"
                 systemctl enable --runtime "$3" "$4" "$5"
                 if [[ "$7" == after-migration ]]; then
@@ -107,6 +108,7 @@ for activity in inactive active; do
             if [[ $activity == inactive ]]; then [[ ! -e "$TMP/data/db/panel.db" ]]; else [[ -f "$TMP/data/db/panel.db" ]]; fi
             [[ $failure != absent-data || ! -e "$TMP/data" ]]
             [[ ! -e "$TMP/backups/.install-transaction" ]]
+            [[ ! -e "$TMP/tmpfiles.conf" ]]
             printf 'PASS: native rollback %s %s %s\n' "$activity" "$enablement" "$failure"
         done
     done

@@ -362,6 +362,7 @@ run_installer() {
 	SOLOVEY_UI_SYSTEMD_UNIT_ROOT="${TARGET}/etc/systemd/system" \
 	SOLOVEY_UI_SYSTEMD_RUNTIME_UNIT_ROOT="${TARGET}/run/systemd/system" \
 	SOLOVEY_UI_SYSTEMD_PROFILE_ROOT="${TARGET}/usr/local/lib/solovey-ui/systemd" \
+	SOLOVEY_UI_SYSTEMD_TMPFILES_CONFIG="${TARGET}/etc/tmpfiles.d/solovey-ui.conf" \
 	SOLOVEY_UI_DEPLOYMENT_MARKER="${ENV_DIR}/deployment-profile" \
 	SOLOVEY_UI_APPLICATION_OWNER_CONTRACT="${OWNER_CONTRACT}" \
 	SOLOVEY_UI_HARDENED_DATA_ROOT="${TARGET}/var/lib/solovey-ui" \
@@ -371,6 +372,7 @@ run_installer() {
 }
 
 assert_fresh_install() {
+    [[ "$(readlink "${TARGET}/etc/tmpfiles.d/solovey-ui.conf")" == "${TARGET}/usr/local/lib/solovey-ui/systemd/solovey-ui.tmpfiles" ]] || fail "boot tmpfiles registration missing"
     assert_contains "${INSTALL_DIR}/solovey-ui.sh" 'manager v1'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^version=v1$'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^profile=full$'
@@ -401,6 +403,7 @@ assert_fresh_install() {
 }
 
 assert_update_install() {
+    [[ "$(readlink "${TARGET}/etc/tmpfiles.d/solovey-ui.conf")" == "${TARGET}/usr/local/lib/solovey-ui/systemd/solovey-ui.tmpfiles" ]] || fail "updated boot tmpfiles registration missing"
     assert_contains "${INSTALL_DIR}/solovey-ui.sh" 'manager v2'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^version=v2$'
     assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^profile=full$'

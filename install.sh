@@ -34,6 +34,7 @@ CLI_PATH="${SOLOVEY_UI_CLI_PATH:-/usr/bin/${APP_NAME}}"
 SYSTEMD_SERVICE="${SOLOVEY_UI_SYSTEMD_SERVICE:-/etc/systemd/system/${SERVICE_NAME}.service}"
 SYSTEMD_UNIT_ROOT="${SOLOVEY_UI_SYSTEMD_UNIT_ROOT:-${SYSTEMD_SERVICE%/*}}"
 SYSTEMD_PROFILE_ROOT="${SOLOVEY_UI_SYSTEMD_PROFILE_ROOT:-/usr/local/lib/${APP_NAME}/systemd}"
+SYSTEMD_TMPFILES_CONFIG="${SOLOVEY_UI_SYSTEMD_TMPFILES_CONFIG:-/etc/tmpfiles.d/${APP_NAME}.conf}"
 DEPLOYMENT_MARKER="${SOLOVEY_UI_DEPLOYMENT_MARKER:-/etc/${APP_NAME}/deployment-profile}"
 APPLICATION_OWNER_CONTRACT="${SOLOVEY_UI_APPLICATION_OWNER_CONTRACT:-/etc/${APP_NAME}/application-owner-contract.json}"
 HARDENED_DATA_ROOT="${SOLOVEY_UI_HARDENED_DATA_ROOT:-/var/lib/${APP_NAME}}"
@@ -932,6 +933,12 @@ backup_systemd_assets() {
 		return 0
 	fi
 	mkdir -p "${target}/systemd-assets/units" || return 1
+	state=absent
+	if [[ -e "${SYSTEMD_TMPFILES_CONFIG}" || -L "${SYSTEMD_TMPFILES_CONFIG}" ]]; then
+		copy_backup_path "${SYSTEMD_TMPFILES_CONFIG}" "${target}/systemd-assets/tmpfiles.conf" "${target}" || return 1
+		state=present
+	fi
+	printf 'tmpfiles=%s\n' "${state}" >> "${target}/systemd-assets/inventory.txt"
 	if [[ -d "${SYSTEMD_PROFILE_ROOT}" ]]; then
 		copy_backup_path "${SYSTEMD_PROFILE_ROOT}" "${target}/systemd-assets/profiles" "${target}" || return 1
 		printf 'profiles=present\n' >> "${target}/systemd-assets/inventory.txt"
@@ -1336,6 +1343,17 @@ restore_current_install_backup() {
 restore_systemd_assets() {
 	local backup="$1" inventory="${backup}/systemd-assets/inventory.txt" unit state
 	[[ -f "${inventory}" ]] || return 0
+	state="$(sed -n 's/^tmpfiles=//p' "${inventory}")"
+	case "${state}" in
+		present)
+			[[ -e "${backup}/systemd-assets/tmpfiles.conf" || -L "${backup}/systemd-assets/tmpfiles.conf" ]] || return 1
+			mkdir -p "${SYSTEMD_TMPFILES_CONFIG%/*}" || return 1
+			rm -f "${SYSTEMD_TMPFILES_CONFIG}" || return 1
+			cp -a "${backup}/systemd-assets/tmpfiles.conf" "${SYSTEMD_TMPFILES_CONFIG}" || return 1 ;;
+		absent) rm -f "${SYSTEMD_TMPFILES_CONFIG}" || return 1 ;;
+		"") ;; # Older backups did not own a boot registration.
+		*) return 1 ;;
+	esac
 	state="$(sed -n 's/^profiles=//p' "${inventory}" | head -n 1)"
 	if [[ "${state}" == present ]]; then
 		restore_backup_dir "${backup}/systemd-assets/profiles" "${SYSTEMD_PROFILE_ROOT}" || return 1
@@ -1646,7 +1664,14 @@ install_systemd_profiles() {
 	atomic_install_file "${source}/solovey-privileged-broker.socket" "${SYSTEMD_UNIT_ROOT}/solovey-privileged-broker.socket" 644 || return
 	atomic_install_file "${source}/solovey-privileged-proof.socket" "${SYSTEMD_UNIT_ROOT}/solovey-privileged-proof.socket" 644 || return
 	run systemd-sysusers "${source}/solovey-ui.sysusers" || return
-	run systemd-tmpfiles --create "${source}/solovey-ui.tmpfiles" || return
+	# Keep one directory policy, discovered by tmpfiles during every boot. Merely
+	# applying the release payload once leaves /run ownership lost after reboot.
+	local incoming="${SYSTEMD_TMPFILES_CONFIG}.incoming.$$"
+	run mkdir -p "${SYSTEMD_TMPFILES_CONFIG%/*}" || return
+	run rm -f "${incoming}" || return
+	run ln -s "${SYSTEMD_PROFILE_ROOT}/solovey-ui.tmpfiles" "${incoming}" || return
+	run mv -Tf "${incoming}" "${SYSTEMD_TMPFILES_CONFIG}" || return
+	run systemd-tmpfiles --create "${SYSTEMD_TMPFILES_CONFIG}" || return
 }
 
 configure_deployment_profile() {
