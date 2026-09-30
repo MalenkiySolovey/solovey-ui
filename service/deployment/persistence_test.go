@@ -91,10 +91,8 @@ func TestDoctorPersistenceFailureStagesAndAtomicRollback(t *testing.T) {
 				t.Fatal(err)
 			}
 			fault := sqlite3.Error{Code: sqlite3.ErrIoErr, ExtendedCode: sqlite3.ErrIoErrRead}
-			queryCount := 0
 			if err := db.Callback().Query().Before("gorm:query").Register("failure", func(tx *gorm.DB) {
 				if tx.Statement.Table == "deployment_state_v1" {
-					queryCount++
 					if stage == "state_read" {
 						tx.AddError(fault)
 					}
@@ -131,7 +129,6 @@ func TestDoctorPersistenceFailureStagesAndAtomicRollback(t *testing.T) {
 					t.Fatal("partial doctor pointer persisted")
 				}
 			}
-			_ = queryCount
 		})
 	}
 }

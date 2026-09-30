@@ -107,4 +107,17 @@ func TestDoctorPersistenceWALConcurrentWriter(t *testing.T) {
 	if _, err := manager.Doctor(ctx); err != nil {
 		t.Fatal(err)
 	}
+	if err := dbsqlite.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.Init(path); err != nil {
+		t.Fatal(err)
+	}
+	var reopened model.DeploymentState
+	if err := dbsqlite.DB().Where("scope = ?", "global").Take(&reopened).Error; err != nil || reopened.DoctorRevision != report.Revision {
+		t.Fatalf("reopened authority mismatch: %v", err)
+	}
+	if err := dbsqlite.DB().Where("revision = ?", reopened.DoctorRevision).Take(&model.DeploymentDoctorSnapshot{}).Error; err != nil {
+		t.Fatal(err)
+	}
 }
