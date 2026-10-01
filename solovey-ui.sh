@@ -12,6 +12,7 @@ CLI_PATH="${SOLOVEY_UI_CLI_PATH:-/usr/bin/${APP_NAME}}"
 SERVICE_FILE="${SOLOVEY_UI_SYSTEMD_SERVICE:-/etc/systemd/system/${SERVICE_NAME}.service}"
 SYSTEMD_UNIT_ROOT="${SOLOVEY_UI_SYSTEMD_UNIT_ROOT:-${SERVICE_FILE%/*}}"
 SYSTEMD_PROFILE_ROOT="${SOLOVEY_UI_SYSTEMD_PROFILE_ROOT:-/usr/local/lib/${APP_NAME}/systemd}"
+SYSTEMD_TMPFILES_CONFIG="${SOLOVEY_UI_SYSTEMD_TMPFILES_CONFIG:-/etc/tmpfiles.d/${APP_NAME}.conf}"
 ENV_DIR="${SOLOVEY_UI_ENV_DIR:-/etc/${APP_NAME}}"
 DEPLOYMENT_MARKER="${SOLOVEY_UI_DEPLOYMENT_MARKER:-${ENV_DIR}/deployment-profile}"
 HARDENED_DATA_ROOT="${SOLOVEY_UI_HARDENED_DATA_ROOT:-/var/lib/${APP_NAME}}"
@@ -721,6 +722,12 @@ backup_local() {
 backup_systemd_assets() {
 	local target="$1" unit state
 	mkdir -p "${target}/systemd-assets/units"
+	state=absent
+	if [[ -e "${SYSTEMD_TMPFILES_CONFIG}" || -L "${SYSTEMD_TMPFILES_CONFIG}" ]]; then
+		backup_copy_or_fail "${SYSTEMD_TMPFILES_CONFIG}" "${target}/systemd-assets/tmpfiles.conf" "${target}"
+		state=present
+	fi
+	printf 'tmpfiles=%s\n' "${state}" >> "${target}/systemd-assets/inventory.txt"
 	if [[ -d "${SYSTEMD_PROFILE_ROOT}" ]]; then
 		backup_copy_or_fail "${SYSTEMD_PROFILE_ROOT}" "${target}/systemd-assets/profiles" "${target}"
 		printf 'profiles=present\n' >> "${target}/systemd-assets/inventory.txt"
@@ -867,6 +874,17 @@ restore_backup_dir() {
 restore_systemd_assets() {
 	local backup="$1" inventory="${backup}/systemd-assets/inventory.txt" unit state
 	[[ -f "${inventory}" ]] || return 0
+	state="$(sed -n 's/^tmpfiles=//p' "${inventory}")"
+	case "${state}" in
+		present)
+			[[ -e "${backup}/systemd-assets/tmpfiles.conf" || -L "${backup}/systemd-assets/tmpfiles.conf" ]] || fail "rollback tmpfiles registration is missing"
+			mkdir -p "${SYSTEMD_TMPFILES_CONFIG%/*}"
+			rm -f "${SYSTEMD_TMPFILES_CONFIG}"
+			cp -a "${backup}/systemd-assets/tmpfiles.conf" "${SYSTEMD_TMPFILES_CONFIG}" ;;
+		absent) rm -f "${SYSTEMD_TMPFILES_CONFIG}" ;;
+		"") ;; # Older backups did not own a boot registration.
+		*) fail "rollback tmpfiles registration inventory is invalid" ;;
+	esac
 	state="$(sed -n 's/^profiles=//p' "${inventory}" | head -n 1)"
 	if [[ "${state}" == present ]]; then
 		restore_backup_dir "${backup}/systemd-assets/profiles" "${SYSTEMD_PROFILE_ROOT}"
@@ -941,7 +959,7 @@ uninstall() {
     systemctl disable "${SERVICE_NAME}" >/dev/null 2>&1 || true
 	systemctl disable --now solovey-privileged-broker.socket solovey-privileged-proof.socket solovey-privileged-broker.service >/dev/null 2>&1 || true
     rm -f "${SERVICE_FILE}" "${CLI_PATH}" "${SYSTEMD_UNIT_ROOT}/solovey-privileged-broker.service" \
-		"${SYSTEMD_UNIT_ROOT}/solovey-privileged-broker.socket" "${SYSTEMD_UNIT_ROOT}/solovey-privileged-proof.socket"
+		"${SYSTEMD_UNIT_ROOT}/solovey-privileged-broker.socket" "${SYSTEMD_UNIT_ROOT}/solovey-privileged-proof.socket" "${SYSTEMD_TMPFILES_CONFIG}"
 	rm -rf "${SYSTEMD_PROFILE_ROOT}"
     systemctl daemon-reload
 

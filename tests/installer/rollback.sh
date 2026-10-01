@@ -92,6 +92,9 @@ SH
 	mkdir -p "${HARDENED_DATA_ROOT}/db" "${SYSTEMD_PROFILE_ROOT}"
 	printf 'current hardened db\n' > "${HARDENED_DATA_ROOT}/db/solovey-ui.db"
 	printf 'current hardened profile\n' > "${SYSTEMD_PROFILE_ROOT}/solovey-ui-native-hardened.service"
+	mkdir -p "${TARGET}/etc/tmpfiles.d"
+	printf 'current tmpfiles policy\n' > "${SYSTEMD_PROFILE_ROOT}/solovey-ui.tmpfiles"
+	ln -sfn "${SYSTEMD_PROFILE_ROOT}/solovey-ui.tmpfiles" "${TARGET}/etc/tmpfiles.d/solovey-ui.conf"
 	for unit in solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket; do
 		printf 'current %s\n' "${unit}" > "${SYSTEMD_UNIT_ROOT}/${unit}"
 	done
@@ -110,6 +113,9 @@ create_backup() {
 	printf 'restored hardened db\n' > "${backup}/hardened-data/db/solovey-ui.db"
 	printf 'restored hardened profile\n' > "${backup}/systemd-assets/profiles/solovey-ui-native-hardened.service"
 	printf 'profiles=present\n' > "${backup}/systemd-assets/inventory.txt"
+	printf 'tmpfiles=present\n' >> "${backup}/systemd-assets/inventory.txt"
+	printf 'restored tmpfiles policy\n' > "${backup}/systemd-assets/profiles/solovey-ui.tmpfiles"
+	ln -s "${SYSTEMD_PROFILE_ROOT}/solovey-ui.tmpfiles" "${backup}/systemd-assets/tmpfiles.conf"
 	for unit in solovey-privileged-broker.service solovey-privileged-broker.socket solovey-privileged-proof.socket; do
 		printf 'restored %s\n' "${unit}" > "${backup}/systemd-assets/units/${unit}"
 		printf '%s=present\n' "${unit}" >> "${backup}/systemd-assets/inventory.txt"
@@ -125,6 +131,8 @@ EOF
 
 run_rollback() {
     local requested="${1:-latest}"
+    local args=(rollback "${requested}")
+    [[ "${requested}" != uninstall ]] || args=(uninstall)
     PATH="${FAKEBIN}:${PATH}" \
     TEST_INSTALLER_LOG="${LOG_DIR}" \
     TEST_FAIL_RESTORE_CP="${TEST_FAIL_RESTORE_CP:-}" \
@@ -134,11 +142,12 @@ run_rollback() {
     SOLOVEY_UI_SYSTEMD_SERVICE="${SERVICE_FILE}" \
 	SOLOVEY_UI_SYSTEMD_UNIT_ROOT="${SYSTEMD_UNIT_ROOT}" \
 	SOLOVEY_UI_SYSTEMD_PROFILE_ROOT="${SYSTEMD_PROFILE_ROOT}" \
+	SOLOVEY_UI_SYSTEMD_TMPFILES_CONFIG="${TARGET}/etc/tmpfiles.d/solovey-ui.conf" \
 	SOLOVEY_UI_HARDENED_DATA_ROOT="${HARDENED_DATA_ROOT}" \
 	SOLOVEY_UI_BROKER_STATE_ROOT="${BROKER_STATE_ROOT}" \
     SOLOVEY_UI_ENV_DIR="${ENV_DIR}" \
     SOLOVEY_UI_BACKUP_ROOT="${BACKUP_ROOT}" \
-    "${BASH:-bash}" "${ROOT}/solovey-ui.sh" rollback "${requested}"
+    "${BASH:-bash}" "${ROOT}/solovey-ui.sh" "${args[@]}"
 }
 
 run_version() {
@@ -156,6 +165,7 @@ run_doctor() {
     SOLOVEY_UI_SYSTEMD_SERVICE="${SERVICE_FILE}" \
 	SOLOVEY_UI_SYSTEMD_UNIT_ROOT="${SYSTEMD_UNIT_ROOT}" \
 	SOLOVEY_UI_SYSTEMD_PROFILE_ROOT="${SYSTEMD_PROFILE_ROOT}" \
+	SOLOVEY_UI_SYSTEMD_TMPFILES_CONFIG="${TARGET}/etc/tmpfiles.d/solovey-ui.conf" \
 	SOLOVEY_UI_HARDENED_DATA_ROOT="${HARDENED_DATA_ROOT}" \
 	SOLOVEY_UI_BROKER_STATE_ROOT="${BROKER_STATE_ROOT}" \
     SOLOVEY_UI_ENV_DIR="${ENV_DIR}" \
@@ -185,6 +195,7 @@ assert_doctor() {
 }
 
 assert_rollback() {
+    assert_contains "${TARGET}/etc/tmpfiles.d/solovey-ui.conf" '^restored tmpfiles policy$'
     assert_contains "${INSTALL_DIR}/db/solovey-ui.db" '^restored db$'
     assert_contains "${ENV_DIR}/secretbox.env" '^restored env$'
     assert_contains "${SERVICE_FILE}" '^restored service$'
@@ -201,6 +212,8 @@ assert_rollback() {
     safety_backup="$(find "${BACKUP_ROOT}" -mindepth 1 -maxdepth 1 -type d ! -name '20260101T000000Z' | head -n 1)"
     [[ -n "${safety_backup}" ]] || fail "safety backup was not created"
     assert_file "${safety_backup}/manifest.txt"
+    [[ -L "${safety_backup}/systemd-assets/tmpfiles.conf" ]] || fail "registration not preserved in safety backup"
+    assert_contains "${safety_backup}/systemd-assets/inventory.txt" '^tmpfiles=present$'
     assert_contains "${safety_backup}/manifest.txt" '^build_version=current$'
     assert_contains "${safety_backup}/manifest.txt" '^build_sing_box=v-current$'
     assert_contains "${safety_backup}/app/db/solovey-ui.db" '^current db$'
@@ -231,5 +244,7 @@ assert_doctor
 assert_failed_restore_leaves_current_install
 run_rollback 20260101T000000Z
 assert_rollback
+run_rollback uninstall
+[[ ! -e "${TARGET}/etc/tmpfiles.d/solovey-ui.conf" && ! -L "${TARGET}/etc/tmpfiles.d/solovey-ui.conf" ]] || fail "uninstall left a boot registration"
 
 printf 'PASS: installer rollback integration\n'

@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026.3.2-beta.8
+
+- Native installation registers the existing tmpfiles policy for boot, preserving
+  root:panel 0750 socket-parent ownership after volatile runtime state is cleared.
+  This repairs the reproduced EACCES before first-request broker activation.
+- Backups, failed-install rollback, management rollback and uninstall include the
+  boot registration. Panel capabilities and broker authentication are unchanged.
+- Native regression now installs through the production owner and checks boot
+  policy discovery and two authenticated Status calls before Doctor/SQLite gates.
+  Physical beta.7-to-beta.8 acceptance remains separate; stable stays 2026.3.1.
+
 ## 2026.3.2-beta.7
 
 - Deployment posture persistence uses a write-first atomic UPSERT, removing the

@@ -217,6 +217,7 @@ run_installer() {
     SOLOVEY_UI_SYSTEMD_UNIT_ROOT="${TARGET}/etc/systemd/system" \
     SOLOVEY_UI_SYSTEMD_RUNTIME_UNIT_ROOT="${TARGET}/run/systemd/system" \
     SOLOVEY_UI_SYSTEMD_PROFILE_ROOT="${TARGET}/usr/local/lib/solovey-ui/systemd" \
+    SOLOVEY_UI_SYSTEMD_TMPFILES_CONFIG="${TARGET}/etc/tmpfiles.d/solovey-ui.conf" \
     SOLOVEY_UI_DEPLOYMENT_MARKER="${TARGET}/etc/solovey-ui/deployment-profile" \
     SOLOVEY_UI_HARDENED_DATA_ROOT="${TARGET}/var/lib/solovey-ui" \
     SOLOVEY_UI_ENV_DIR="${TARGET}/etc/solovey-ui" \

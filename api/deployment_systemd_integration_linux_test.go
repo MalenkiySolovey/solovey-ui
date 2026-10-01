@@ -109,10 +109,29 @@ func TestDeploymentSystemdPersistenceClient(t *testing.T) {
 	if os.Geteuid() == 0 {
 		t.Fatal("panel must be nonroot")
 	}
-	initAPITestDB(t, filepath.Join(t.TempDir(), "panel.db"))
+	processStatus, err := os.ReadFile("/proc/self/status")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, field := range []string{"CapInh:", "CapPrm:", "CapEff:", "CapBnd:", "CapAmb:"} {
+		if !strings.Contains(string(processStatus), field+"\t0000000000000000") {
+			t.Fatalf("panel capability field %s is not zero", field)
+		}
+	}
+	if !strings.Contains(string(processStatus), "NoNewPrivs:\t1") {
+		t.Fatal("panel NoNewPrivileges missing")
+	}
+	if os.Getenv("SUI_DB_FOLDER") != "/var/lib/solovey-ui/db" {
+		t.Fatal("installed database injection missing")
+	}
+	initAPITestDB(t, filepath.Join(os.Getenv("SUI_DB_FOLDER"), "solovey-ui.db"))
 	t.Cleanup(func() { closeAPITestDB(t) })
 	db := dbsqlite.DB()
-	manager := deploymentservice.NewManager(deploymentservice.Repository{DB: dbsqlite.DB}, deploymentservice.NewSystemdBrokerProvider(nil))
+	provider := deploymentservice.RuntimeProvider()
+	if _, ok := provider.(*deploymentservice.SystemdBrokerProvider); !ok {
+		t.Fatalf("installed provider injection selected %T", provider)
+	}
+	manager := deploymentservice.NewManager(deploymentservice.Repository{DB: dbsqlite.DB}, provider)
 	router, cookies := newAuthenticatedTestRouter(t, &service.SettingService{}, func(router *gin.Engine) {
 		apiService := NewApiService()
 		apiService.Deployment = manager
@@ -122,6 +141,18 @@ func TestDeploymentSystemdPersistenceClient(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// These are the first broker-backed requests. No capability/Doctor probe or
+	// test dial may activate the broker before the ordinary authenticated Status.
+	for call := 0; call < 2; call++ {
+		response := deploymentRequest(router, cookies, http.MethodGet, "/api/v1/operations/deployment/status", "")
+		var result struct {
+			Success bool `json:"success"`
+		}
+		if err := json.Unmarshal(response.Body.Bytes(), &result); err != nil || response.Code != http.StatusOK || !result.Success {
+			t.Fatalf("cold Status call %d failed: http=%d", call+1, response.Code)
+		}
+	}
+	t.Log("FIRST_STATUS_AND_SECOND_STATUS=PASS")
 	commits := 0
 	// A second real WAL connection commits at every posture write boundary.
 	if err := db.Callback().Create().Before("gorm:create").Register("deployment_wal_writer", func(tx *gorm.DB) {
