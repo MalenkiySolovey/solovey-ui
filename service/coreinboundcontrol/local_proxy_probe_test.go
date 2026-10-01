@@ -3,6 +3,7 @@ package coreinboundcontrol
 import (
 	"encoding/json"
 	"net"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -128,11 +129,36 @@ func TestLocalProxyProbePerformsAuthenticatedSOCKSHTTPAndMixedTransactions(t *te
 					!observation.MissingAuthenticationDenied || !observation.InvalidAuthenticationDenied ||
 					!observation.ExactTarget || !observation.ExactSink ||
 					strings.Contains(string(encoded), username) || password != "" && strings.Contains(string(encoded), password) ||
-					strings.Contains(string(encoded), "127.0.0.1") || strings.Contains(string(encoded), strconv.Itoa(port)) {
+					strings.Contains(string(encoded), "127.0.0.1") || containsProxyPortToken(string(encoded), port) {
 					t.Fatalf("unsafe or incomplete %s observation: %s", protocol, encoded)
 				}
 			}
 		})
+	}
+}
+
+func containsProxyPortToken(value string, port int) bool {
+	// Port digits inside a revision or timestamp do not expose a listener address.
+	return regexp.MustCompile(`(?:^|[^[:alnum:]])` + strconv.Itoa(port) + `(?:$|[^[:alnum:]])`).MatchString(value)
+}
+
+func TestProxyPortLeakCheckDistinguishesTokensFromRevisionAndTimestampDigits(t *testing.T) {
+	const port = 42123
+	for _, value := range []string{
+		`{"revision":"abc42123def","startedUnixNano":1790842123123456789}`,
+		`{"revision":"42123abcdef"}`,
+	} {
+		if !strings.Contains(value, strconv.Itoa(port)) || containsProxyPortToken(value, port) {
+			t.Fatalf("revision/timestamp collision was treated as a port leak: %s", value)
+		}
+	}
+	for _, value := range []string{
+		`{"port":42123}`, `{"port":"42123"}`, `{"address":"127.0.0.1:42123"}`,
+		`{"url":"http://localhost:42123/path"}`, `{"address":"[::1]:42123"}`,
+	} {
+		if !containsProxyPortToken(value, port) {
+			t.Fatalf("port token was not detected: %s", value)
+		}
 	}
 }
 
