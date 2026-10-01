@@ -55,6 +55,16 @@ func TestNativeRuntimeMountNamespace(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// A fresh service namespace must also bind an authority whose install-boot
+	// filesystem tuning presentation is no longer emitted by the current boot.
+	proof.Mount.SuperOptions = append(proof.Mount.SuperOptions, "mb_optimize_scan=0")
+	if err := proof.Mount.Seal(); err != nil {
+		t.Fatal(err)
+	}
+	proof, err = NewRuntimeMountProof(root, RuntimeMountPersistent, proof.Mount)
+	if err != nil {
+		t.Fatal(err)
+	}
 	data, err := json.Marshal(proof)
 	if err != nil {
 		t.Fatal(err)
