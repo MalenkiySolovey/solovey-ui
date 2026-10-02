@@ -12,6 +12,10 @@
 - Added the exact beta.8 negative-control regression, production cold handler
   registration, real Systemd namespace binding and adversarial backing checks.
   Physical beta.8-to-beta.9 acceptance remains separate; stable stays 2026.3.1.
+- Root installer recovery now clears failed installer-owned systemd units after
+  successful replacement and migration, so the broken release's start limit
+  cannot reject the repaired broker's first socket activation. Database and
+  rollback ownership remain unchanged; the broker is not prestarted.
 
 ## 2026.3.2-beta.8
 

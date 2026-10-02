@@ -1618,6 +1618,21 @@ install_payload() {
 	else
 		run runuser -u solovey-ui -- env SUI_DB_FOLDER="${HARDENED_DATA_ROOT}/db" SUI_COMPONENTS_INSTALLED_FILE="${INSTALL_DIR}/components/installed.json" SUI_COMPONENTS_MANAGEMENT=installer "${BIN_PATH}" migrate || return
 	fi
+    activate_install_runtime || return
+}
+
+activate_install_runtime() {
+    local unit
+    # A replaced release must not inherit the failed release's activation
+    # counters. Reset only installer-owned units after policy generation and
+    # migration succeed; the broker still starts on the first socket request.
+    for unit in "${BROKER_UNITS[@]}" "${SERVICE_NAME}.service"; do
+        # Fresh, never-loaded units have no failure budget to reset, and
+        # systemctl reset-failed rejects them even when their unit files exist.
+        if systemctl is-failed --quiet "${unit}"; then
+            run systemctl reset-failed "${unit}" || return
+        fi
+    done
     run systemctl enable "${SERVICE_NAME}" || return
     run systemctl restart "${SERVICE_NAME}" || return
 }
