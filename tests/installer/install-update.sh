@@ -396,6 +396,7 @@ assert_fresh_install() {
     assert_contains "${ENV_DIR}/secretbox.env" '^SUI_COOKIE_KEY='
     assert_contains "${LOG_DIR}/binary.log" '^v1:migrate$'
     assert_contains "${LOG_DIR}/systemctl.log" '^enable solovey-ui$'
+    assert_contains "${LOG_DIR}/systemctl.log" '^reset-failed solovey-privileged-broker.service$'
     assert_contains "${LOG_DIR}/systemctl.log" '^restart solovey-ui$'
     assert_component_metadata full true true true
     assert_component_packs true true true

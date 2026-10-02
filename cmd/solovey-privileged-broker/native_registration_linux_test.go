@@ -25,6 +25,14 @@ import (
 // Execute all actual production registrars, using the existing child-chroot
 // fixture pattern. No host install paths, services or firewall are mutated.
 func TestNativeInstalledProductionHandlerGraph(t *testing.T) {
+	runNativeInstalledProductionHandlerGraph(t)
+}
+
+func TestNativeColdBootProductionHandlerGraph(t *testing.T) {
+	runNativeInstalledProductionHandlerGraph(t)
+}
+
+func runNativeInstalledProductionHandlerGraph(t *testing.T) {
 	if root := os.Getenv("SOLOVEY_NATIVE_GRAPH_ROOT"); root != "" {
 		if err := syscall.Mount("", "/", "", syscall.MS_PRIVATE|syscall.MS_REC, ""); err != nil {
 			t.Fatal(err)
@@ -71,7 +79,7 @@ func TestNativeInstalledProductionHandlerGraph(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "usr/sbin/sshd"), data, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	command := exec.Command(os.Args[0], "-test.run=^TestNativeInstalledProductionHandlerGraph$", "-test.v")
+	command := exec.Command(os.Args[0], "-test.run=^"+t.Name()+"$", "-test.v")
 	command.Env = append(os.Environ(), "SOLOVEY_NATIVE_GRAPH_ROOT="+root)
 	command.SysProcAttr = &syscall.SysProcAttr{Cloneflags: syscall.CLONE_NEWNS}
 	if testing.CoverMode() != "" {
@@ -107,6 +115,24 @@ func runNativeInstalledGraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	coldBoot := t.Name() == "TestNativeColdBootProductionHandlerGraph"
+	if coldBoot {
+		// Persist the preboot allocation-tuning presentation captured on the
+		// clean beta8 fixture. The real current mount is the same backing;
+		// only this superblock option differs. Do not prewarm registration.
+		if slices.Contains(proof.Mount.SuperOptions, "mb_optimize_scan=0") {
+			t.Fatal("executor already has the preboot option")
+		}
+		fact := proof.Mount
+		fact.SuperOptions = append(slices.Clone(fact.SuperOptions), "mb_optimize_scan=0")
+		if err := fact.Seal(); err != nil {
+			t.Fatal(err)
+		}
+		proof, err = protectionruntime.NewRuntimeMountProof(root, protectionruntime.RuntimeMountPersistent, fact)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 	installed, err := protectionruntime.InstalledSystemdRuntimeRoot(owner, proof)
 	if err != nil {
 		t.Fatal(err)
@@ -120,15 +146,17 @@ func runNativeInstalledGraph(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	previous, err := protectionruntime.LoadInstalledRuntimeRootAuthority()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := syscall.Mount(root, root, "", syscall.MS_BIND, ""); err != nil {
-		t.Fatal(err)
-	}
-	if previous.Recheck() == nil {
-		t.Fatal("existing process authority accepted a changed mount generation")
+	if !coldBoot {
+		previous, err := protectionruntime.LoadInstalledRuntimeRootAuthority()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := syscall.Mount(root, root, "", syscall.MS_BIND, ""); err != nil {
+			t.Fatal(err)
+		}
+		if previous.Recheck() == nil {
+			t.Fatal("existing process authority accepted a changed mount generation")
+		}
 	}
 	composition, err := parseRuntimeComposition([]string{"--transport=systemd-activated", "--ssh-implementation=openssh", "--ssh-service-control=systemd", "--ssh-log-evidence=journald", "--deployment-backend=systemd-native", "--update-mode=native-self-managed"})
 	if err != nil {
@@ -166,6 +194,22 @@ func runNativeInstalledGraph(t *testing.T) {
 		Correlation: protectionhelper.Correlation{OperationID: "fixture-operation", InstanceID: owner.InstanceID}})
 	if !capability.OK || capability.Capabilities == nil || capability.Capabilities.NFT.Available || capability.Capabilities.NFT.Reason == "" {
 		t.Fatalf("missing optional nft must be bounded capability state: %+v", capability)
+	}
+	if coldBoot {
+		// An actual replacement mount after successful cold binding must still
+		// revoke the retained authority. This namespace belongs to the child.
+		if err := syscall.Mount("tmpfs", root, "tmpfs", 0, "mode=0700"); err != nil {
+			t.Fatal(err)
+		}
+		if authority.Recheck() == nil {
+			t.Fatal("cold-bound authority accepted a substituted filesystem")
+		}
+		if _, err := protectionruntime.LoadInstalledRuntimeRootAuthority(); err == nil {
+			t.Fatal("new process accepted substituted volatile backing")
+		}
+		if err := syscall.Unmount(root, 0); err != nil {
+			t.Fatal(err)
+		}
 	}
 	if err := os.Chmod(protectionruntime.InstalledRuntimeRootPath, 0o666); err != nil {
 		t.Fatal(err)

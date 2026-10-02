@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026.3.2-beta.9
+
+- Server Protection's Systemd runtime authority now separates persistent backing
+  identity and access policy from filesystem tuning emitted by a particular boot.
+  This repairs the reproduced clean beta.8 cold broker registration failure when
+  `mb_optimize_scan=0` disappears from mountinfo after reboot.
+- Device, filesystem, source, resolved backing path, writable state and superblock
+  access/security policy remain checked. The complete bound process-local mount
+  proof and installed owner generation are still rechecked before use.
+- Added the exact beta.8 negative-control regression, production cold handler
+  registration, real Systemd namespace binding and adversarial backing checks.
+  Physical beta.8-to-beta.9 acceptance remains separate; stable stays 2026.3.1.
+- Root installer recovery now clears failed installer-owned systemd units after
+  successful replacement and migration, so the broken release's start limit
+  cannot reject the repaired broker's first socket activation. Database and
+  rollback ownership remain unchanged; the broker is not prestarted.
+
 ## 2026.3.2-beta.8
 
 - Native installation registers the existing tmpfiles policy for boot, preserving

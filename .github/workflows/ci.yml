@@ -58,6 +58,9 @@ jobs:
       - name: Real systemd cross-UID broker request transport
         run: bash tests/installer/broker-request-runtime.sh
 
+      - name: Real native installer recovery from start limit
+        run: bash tests/installer/native-activation-recovery.sh
+
       - name: Real native and Docker Doctor persistence
         run: |
           node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
