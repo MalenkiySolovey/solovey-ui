@@ -49,14 +49,12 @@ windows/solovey-ui-*.exe
 # Local audit/test scratch output
 test-results/
 verify-*.txt
-.artifacts/
 
-# Local Go build/cache/telemetry scratch dirs (workspace-local sandbox runs)
+# Local Go build/cache/telemetry scratch dirs
 .gocache/
 .gotmp/
 .appdata/
 .audit/
-/.migration/
 
 # Local documentation and development notes
 /doc/
@@ -65,7 +63,6 @@ verify-*.txt
 !/docs/component-packaging.md
 !/docs/native-installer-transaction.md
 !/docs/release-policy.md
-dc42e16-files.txt
 tests/baseline/*
 !tests/baseline/run-command.ps1
 tests/baseline/e2e/tmp/
@@ -81,12 +78,5 @@ cmd/solovey-privileged-broker/components_generated.go
 .idea
 .vscode
 
-# Local workspace specs/state
-.kiro/
-.claude/settings.local.json
-
 # Local import fixtures with real production data
 test-db/
-
-# Local recovery snapshots (corrupt backups from rename-module incident)
-.tools-recovery/

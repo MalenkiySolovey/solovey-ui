@@ -1,21 +1,36 @@
 # Solovey UI 2026.3.2
 
-This patch fixes the native Linux installer stopping at broker manifest creation
-after installing the SSH reconnect proof helper. The helper remains owned by
-root with the dedicated `solovey-ui` group and setgid mode 2755. Manifest creation,
-runtime peer authentication and native updates now validate that exact contract
-without granting root group identity or relaxing other executable policies.
+This stable release improves deployment reliability, persistent storage and
+privileged operations while preserving existing configuration and database
+ownership.
 
-CI and release qualification execute the real installer ownership operation and
-manifest writer, with unsafe ownership/mode cases and a real non-root setgid
-socket regression. Full and core native update paths preserve the same contract.
+- Native Linux deployments run the panel without root privileges or effective
+  capabilities, with hardened systemd services and a constrained privileged
+  broker. Cold socket activation, executable ownership, boot-time runtime
+  directories and failed-install recovery are consistent across supported
+  native deployments, including Debian 12, Debian 13 and Ubuntu 26.04.
+- OpenWrt 25.12.5 provides package-managed full deployments for x86/64 and
+  rockchip/armv8. Both panel and broker enforce kernel `no_new_privs` before
+  process handoff. Persistent storage admission rejects unsupported or
+  inconsistent backing and preserves the package manager's lifecycle ownership.
+- FriendlyWrt 25.12.5 on NanoPi R76S uses the rockchip package with the supplied
+  storage descriptor and an admitted persistent `/opt` mount. Firmware
+  replacement, storage-media changes and other boards require their own
+  supported deployment contract.
+- Deployment Status and Doctor retain durable, bounded observations through
+  restart and reboot. SQLite write contention and native sandbox mount binding
+  no longer prevent broker-backed status and component registration.
+- SSH management supports native OpenSSH and package-managed Dropbear through
+  their existing owner-local service and recovery contracts. Signed updates
+  retain fail-closed manifest, compatibility, sequence and artifact verification.
+- Backup and restore preserve logical database and registered owner-file
+  contracts, with integrity checks, restore rehearsal and durable audit records.
+  All eight optional components retain their installation, data and lifecycle
+  behavior, including Server Protection's capability-based enforcement and
+  recovery.
 
-This release also includes the accepted post-2026.3.1 persistence-policy build
-isolation, shared capability-aware qualification and synchronous completion of
-restore and session-rotation audit records before database handoff.
-
-The Debian 13/Armbian physical failure on 2026.3.1 is recorded. Physical recovery
-and clean-install qualification of this patch are separate follow-up gates; this
-release does not claim those physical tests have already passed. Existing
-OpenWrt/FriendlyWrt ownership and deployment contracts are preserved.
-
+Linux full/core archives, the component bundle, Windows amd64/arm64 packages,
+Docker amd64/arm64 images, OpenWrt packages and the FriendlyWrt storage descriptor
+are published through the complete release transaction. Exact SHA-256 sidecars
+accompany downloadable assets; the signed release manifest authorizes the
+generic Linux and component update set.

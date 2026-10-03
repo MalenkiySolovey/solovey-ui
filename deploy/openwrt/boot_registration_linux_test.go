@@ -101,7 +101,7 @@ func TestAPKV3BootRegistrationLifecycle(t *testing.T) {
 	}
 	pinned := pinnedOpenWrtSourceRoot(t)
 	assertPinnedOpenWrtRevision(t, pinned)
-	for _, scenario := range []string{"clean-install", "enabled-upgrade", "broken-r22-through-r23", "current-r23-service-down", "same-version-replacement"} {
+	for _, scenario := range []string{"clean-install", "enabled-upgrade", "failed-script-through-unregistered-upgrade", "unregistered-service-down", "same-version-replacement"} {
 		t.Run(scenario, func(t *testing.T) {
 			f := newPinnedLifecycleRoot(t, pinned)
 			f.write(t, "/etc/apk/arch", "x86_64\n")
@@ -142,7 +142,7 @@ func TestAPKV3BootRegistrationLifecycle(t *testing.T) {
 				for _, kind := range []string{"post-install", "pre-upgrade", "post-upgrade", "pre-deinstall"} {
 					body := scripts[kind]
 					if historical && (kind == "post-install" || kind == "post-upgrade") {
-						// Exact r23 package-specific postinst, after the pinned platform prefix.
+						// Unregistered package-specific postinst, after the pinned platform prefix.
 						prefix := strings.Split(f.postInstallScript(t), packagePostInstallBody(t))[0]
 						body = prefix + "[ -n \"${IPKG_INSTROOT}\" ] && exit 0\n/usr/lib/solovey-ui/solovey-openwrt-lifecycle reconcile\n"
 						if kind == "post-upgrade" {
@@ -168,7 +168,7 @@ func TestAPKV3BootRegistrationLifecycle(t *testing.T) {
 				}
 				return string(out)
 			}
-			candidate := makePackage("r24", false, false)
+			candidate := makePackage("r3", false, false)
 			// The fixture preloads init for shell-only tests. APK must own its
 			// initial extraction; otherwise /etc protection creates .apk-new.
 			if err := os.Remove(f.hostPath("/etc/init.d/solovey-ui")); err != nil {
@@ -178,20 +178,20 @@ func TestAPKV3BootRegistrationLifecycle(t *testing.T) {
 			switch scenario {
 			case "clean-install":
 				runAPK(true, "add", "--initdb")
-			case "broken-r22-through-r23":
-				runAPK(false, "add", "--initdb", makePackage("r22", true, true))
+			case "failed-script-through-unregistered-upgrade":
+				runAPK(false, "add", "--initdb", makePackage("r1", true, true))
 				f.assertBootRegistration(t, false)
-				runAPK(true, "add", "--upgrade", makePackage("r23", false, true))
+				runAPK(true, "add", "--upgrade", makePackage("r2", false, true))
 				f.assertBootRegistration(t, false)
 				if countEvent(f.events(t), "instance:panel") == 0 {
-					t.Fatal("r23 defect witness did not start runtime")
+					t.Fatal("unregistered-package witness did not start runtime")
 				}
-				t.Log("r22 CRLF install -> normal r23 upgrade: runtime started, boot registration ABSENT")
-			case "current-r23-service-down":
-				runAPK(true, "add", "--initdb", "--no-scripts", makePackage("r23", false, true))
+				t.Log("CRLF install -> normal unregistered upgrade: runtime started, boot registration ABSENT")
+			case "unregistered-service-down":
+				runAPK(true, "add", "--initdb", "--no-scripts", makePackage("r2", false, true))
 				f.assertBootRegistration(t, false)
 			case "enabled-upgrade":
-				runAPK(true, "add", "--initdb", makePackage("r23", false, true))
+				runAPK(true, "add", "--initdb", makePackage("r2", false, true))
 				before = f.assertBootRegistration(t, true)
 			case "same-version-replacement":
 				runAPK(true, "add", "--initdb", candidate)
@@ -205,7 +205,7 @@ func TestAPKV3BootRegistrationLifecycle(t *testing.T) {
 			runAPK(true, append(args, candidate)...)
 			after := f.assertBootRegistration(t, true)
 			assertPackageScriptState(t, f.hostPath("/lib/apk/db/installed"), "solovey-ui", "f:S")
-			if !strings.Contains(runAPK(true, "list", "--installed", "solovey-ui"), "2026.3.1-r24") {
+			if !strings.Contains(runAPK(true, "list", "--installed", "solovey-ui"), "2026.3.1-r3") {
 				t.Fatal("candidate not registered")
 			}
 			events := f.events(t)

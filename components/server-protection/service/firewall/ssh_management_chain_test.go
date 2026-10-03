@@ -467,7 +467,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 		expectedEndpoints = 4
 	}
 	if err != nil || len(ready.Management) != expectedEndpoints || len(ready.Plan.Endpoints) != expectedEndpoints || !ready.Plan.BaselineEligibility.MutationReady {
-		t.Fatalf("R13 six-endpoint baseline: management=%d endpoints=%d err=%v", len(ready.Management), len(ready.Plan.Endpoints), err)
+		t.Fatalf("six-endpoint baseline: management=%d endpoints=%d err=%v", len(ready.Management), len(ready.Plan.Endpoints), err)
 	}
 
 	// Renew only observation lifetimes: the public preview binding must survive.
@@ -492,7 +492,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 	ready = renewed
 	preview = Preview(ready.Plan, PreviewOptions{IncludeGeneratedNFT: true, NFTCapability: NFTPreviewCapability{Available: true, Revision: hostresources.Revision("fixture-capability")}})
 	if preview.Revision != ready.Plan.Revision || preview.GeneratedNFT != RenderNFTPreview(ready.Plan) {
-		t.Fatal("fresh R13 preview did not bind the candidate")
+		t.Fatal("fresh preview did not bind the candidate")
 	}
 	if exactHealth {
 		if len(ready.Plan.Resources) != 4 {
@@ -575,7 +575,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 	if helperOperationCount(helper.Requests, protectionhelper.OperationNFTApply) != 0 || helperOperationCount(helper.Requests, protectionhelper.OperationNFTRollback) != 0 {
 		t.Fatal("Prepare mutated firewall")
 	}
-	// R13-MUT-001: refresh AFTER Prepare, through the real SSH, resource,
+	// Refresh after Prepare, through the real SSH, resource,
 	// management and baseline owners, then exercise the persisted workflow.
 	current, err := baseline.Snapshot(context.Background(), true, nil)
 	if err != nil {
@@ -598,7 +598,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 	// Prove the old whole-object algorithm rejects this very production shape.
 	beforeContribution.SemanticRevision, afterContribution.SemanticRevision = "", ""
 	if hostresources.Revision(beforeContribution) == hostresources.Revision(afterContribution) {
-		t.Fatal("fixture does not reproduce the old R13 whole-object divergence")
+		t.Fatal("fixture does not reproduce the whole-object divergence")
 	}
 	operationID := prepared.Operation.OperationID
 	storage := workflow.State.(*protectionartifacts.Storage)
@@ -633,7 +633,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 		return
 	}
 	if err != nil || applied.State != protectionoperations.StateApplied {
-		t.Fatalf("R13 renewed Apply: state=%s err=%v", applied.State, err)
+		t.Fatalf("renewed Apply: state=%s err=%v", applied.State, err)
 	}
 	checkpoint, err := workflow.loadCheckpoint(operationID)
 	if err != nil || checkpoint.ContributionRevision != ContributionRevision(current.Plan) || checkpoint.PlanRevision != applied.PlanRevision {
@@ -732,7 +732,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 			t.Fatal(err)
 		}
 		restarted := protectionoperations.NewManager(repo, protectionoperations.Options{InstanceID: "committed-boot-B", PID: 78, Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil }})
-		if scenario == "sqlite_stuck_r16" || scenario == "sqlite_expired_reconcile" {
+		if scenario == "sqlite_expired_upgrade" || scenario == "sqlite_expired_reconcile" {
 			original, err := repo.OperationByID(t.Context(), operationID)
 			if err != nil {
 				t.Fatal(err)
@@ -753,7 +753,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 			if err := startupDB.Model(&protectionrepository.OperationLockModel{}).Where("operation_id = ?", operationID).Updates(map[string]any{"state": stuckState, "expires_at": time.Now().Add(-time.Hour).Unix()}).Error; err != nil {
 				t.Fatal(err)
 			}
-			restarted = protectionoperations.NewManager(repo, protectionoperations.Options{InstanceID: "stuck-r16-upgrade", PID: 78, PIDProbe: stoppedRuntimePID{}, Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil }})
+			restarted = protectionoperations.NewManager(repo, protectionoperations.Options{InstanceID: "expired-upgrade", PID: 78, PIDProbe: stoppedRuntimePID{}, Audit: func(context.Context, protectionoperations.AuditEvent) error { return nil }})
 		}
 		t.Cleanup(func() { _ = restarted.Stop(context.Background()) })
 		client, clientErr := protectionhelper.NewClient(sptest.ManagedRoot(t, rootPath), restarted, helper, &helperAudit{})
@@ -914,7 +914,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 			}
 			return
 		}
-		if scenario == "sqlite_stuck_r16" || scenario == "sqlite_expired_reconcile" {
+		if scenario == "sqlite_expired_upgrade" || scenario == "sqlite_expired_reconcile" {
 			stableRevision := 0
 			var stableRuntime protectionrepository.FirewallRuntimeBinding
 			for attempt := 0; attempt < 3; attempt++ {
@@ -930,7 +930,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 				stableRevision = original.Revision
 				stableRuntime = retained.Composition.Runtime
 				if err != nil || opErr != nil || !retained.HasComposition || len(retained.Contributions) != 1 || retained.Composition.Revision != before.Revision || retained.Composition.AppliedOperationID != operationID || retained.Composition.Runtime.State != "RESTORE_FAILED" || retained.Composition.Runtime.Reason != "boot_restore_deadline_expired" || retained.Composition.Runtime.MutationAt != 0 || retained.Composition.Runtime.HealthAt != 0 || original.State != protectionoperations.StateReconcileRequired || helper.ManagedTablePresent || helperOperationCount(helper.Requests, protectionhelper.OperationNFTApply) != 1 || helperOperationCount(helper.Requests, protectionhelper.OperationNFTRollback) != 0 {
-					t.Fatalf("stuck R16 recovery lost truthful retained authority: runtime=%+v state=%s err=%v/%v", retained.Composition.Runtime, original.State, err, opErr)
+					t.Fatalf("expired-attempt recovery lost truthful retained authority: runtime=%+v state=%s err=%v/%v", retained.Composition.Runtime, original.State, err, opErr)
 				}
 				if _, err := workflow.ReconcileAuthority(t.Context()); err != nil {
 					t.Fatal(err)
@@ -939,7 +939,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 					t.Fatal(err)
 				}
 			}
-			t.Log("stuck-R16: expired attempt terminalized without mutation, row deletion, operation replacement or false health; repeated reconciliation stays safe")
+			t.Log("expired attempt terminalized without mutation, row deletion, operation replacement or false health; repeated reconciliation stays safe")
 			if scenario == "sqlite_expired_reconcile" {
 				original, err := repo.OperationByID(t.Context(), operationID)
 				if err != nil || !workflow.CanResolveByRollback(t.Context(), original) {
@@ -1070,7 +1070,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 	}
 	rolled, err := workflow.Rollback(context.Background(), operationID, "ROLLBACK SERVER PROTECTION "+operationID)
 	if err != nil || rolled.State != protectionoperations.StateRolledBack {
-		t.Fatalf("R13 normal rollback: state=%s err=%v", rolled.State, err)
+		t.Fatalf("normal rollback: state=%s err=%v", rolled.State, err)
 	}
 	authority, err = repo.FirewallAuthority(context.Background())
 	if err != nil || authority.HasComposition || len(authority.Contributions) != 0 || helperOperationCount(helper.Requests, protectionhelper.OperationNFTRollback) != 1 {

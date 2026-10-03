@@ -32,7 +32,7 @@ type Policy struct {
 	// AllowRootOwnedStickyAncestry permits an otherwise forbidden group/world
 	// write boundary only when both the leaf and every non-sticky ancestor are
 	// required to be root-owned and non-writable. This models a root-owned
-	// sticky runtime boundary such as OpenWrt's /tmp without changing the
+	// sticky runtime directory without changing the
 	// stronger default used by executable callers.
 	AllowRootOwnedStickyAncestry bool
 

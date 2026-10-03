@@ -17,16 +17,26 @@ make audit:fe-build
 make audit:test-fe
 ```
 
-Soft diagnostic checks:
+Additional blocking checks:
 
 ```sh
 make audit:test-go-race
 make audit:lint-go
 make audit:gosec
 make audit:vuln
-go test -tags=chaos ./tests/chaos/... -count=1 -timeout 30m
+```
+
+Run benchmarks separately when a change affects performance:
+
+```sh
 go test ./... -bench=. -benchmem -run=^$ -benchtime=2s
 ```
+
+Linux process/socket contracts use `bash scripts/native-linux-contract.sh`.
+Pinned OpenWrt capability checks use
+`node scripts/openwrt-listener-capability-contract.mjs`. These source and host
+checks protect platform contracts; supported hardware/storage combinations are
+documented with their deployment owner.
 
 Frontend setup:
 

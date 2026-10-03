@@ -44,7 +44,7 @@ export const packageExecutionEnvironment = Object.freeze({
   ],
   recursiveMake: 'GNU Make $(MAKE) derives from the absolute /usr/bin/make parent invocation',
   sdkVariables: 'OpenWrt-owned after top-level Make starts',
-  trustedBase: 'openwrt-builder base OS absolute executables and fixed directories',
+  trustedBase: 'build host base OS absolute executables and fixed directories',
 })
 
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
