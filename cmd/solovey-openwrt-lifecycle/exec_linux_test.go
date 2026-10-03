@@ -3,6 +3,7 @@
 package main
 
 import (
+	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -119,9 +120,13 @@ func runPackageExecHelper(t *testing.T, executable, mode string, credential *sys
 	if credential != nil {
 		command.SysProcAttr = &syscall.SysProcAttr{Credential: credential}
 	}
-	output, err := command.CombinedOutput()
+	// Coverage-instrumented subprocesses may emit runtime diagnostics on
+	// stderr. Only stdout carries the observation protocol.
+	var diagnostics bytes.Buffer
+	command.Stderr = &diagnostics
+	output, err := command.Output()
 	if err != nil {
-		t.Fatalf("kernel helper %s: %v, %s", mode, err, output)
+		t.Fatalf("kernel helper %s: %v, %s%s", mode, err, output, diagnostics.String())
 	}
 	var result packageExecObservation
 	if err := json.Unmarshal(output, &result); err != nil {
