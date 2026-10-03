@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026.3.2-beta.10
+
+- OpenWrt's lifecycle owner sets and verifies kernel `no_new_privs` before
+  broker and panel handoff. Both direct procd entrypoints retain their PID,
+  credentials, fixed package authority and environment; readiness's subsequent
+  exec inherits the bit. Kernel set/readback failures prevent launch.
+- Real Linux regressions cover root and nonroot identities, all observed target
+  threads, two exec hops and fail-closed syscall failures. Canonical APK and
+  release qualification remain separate gates from these focused tests.
+- The failed beta.9 R76S canary run remains failed. A new clean qualification
+  must prove both real kernel bits before the remaining acceptance path,
+  reboot and two 600-second stability windows. Stable remains 2026.3.1.
+
 ## 2026.3.2-beta.9
 
 - Server Protection's Systemd runtime authority now separates persistent backing

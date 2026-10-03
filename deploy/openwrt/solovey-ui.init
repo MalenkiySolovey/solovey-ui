@@ -25,6 +25,8 @@ start_service() {
 	[ -x "$SOLOVEY_LIFECYCLE" ] || return 1
 	"$SOLOVEY_LIFECYCLE" startup-restore || return 1
 
+	# These direct-exec instances enforce no_new_privs in their lifecycle
+	# entrypoints; procd's bare flag alone only records intent without ujail.
 	procd_open_instance root-broker
 	procd_set_param command "$SOLOVEY_ROOT/solovey-openwrt-lifecycle" broker-entry
 	procd_set_param user root

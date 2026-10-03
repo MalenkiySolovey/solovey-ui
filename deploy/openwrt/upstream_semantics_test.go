@@ -148,9 +148,9 @@ func TestOpenWrtPackageHooksOwnGenerationTransition(t *testing.T) {
 		{name: "panelEntry"},
 	} {
 		body := functionBody(t, lifecycle, "func "+function.name+"() error")
-		if !strings.Contains(body, "syscall.Exec(") || !strings.Contains(body, "packageExecEnvironment()") ||
+		if !strings.Contains(body, "return execPackageProcess(") || !strings.Contains(body, "packageExecEnvironment()") ||
 			strings.Contains(body, "os.Environ()") || strings.Contains(body, "runFixed(") || strings.Contains(body, "os.Mkdir") || strings.Contains(body, "os.Chown") || strings.Contains(body, "os.Chmod") {
-			t.Fatalf("direct %s respawn entrypoint is not validation-only and exec-only", function.name)
+			t.Fatalf("direct %s respawn entrypoint does not validate authority and use the hardened package exec", function.name)
 		}
 	}
 	environment := functionBody(t, lifecycle, "func packageExecEnvironment() []string")
