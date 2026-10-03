@@ -100,7 +100,7 @@ func brokerEntry() error {
 	if err := validateCurrentPackageAuthority(true); err != nil {
 		return err
 	}
-	return syscall.Exec(openwrt.BrokerExecutablePath, brokerArguments, packageExecEnvironment())
+	return execPackageProcess(openwrt.BrokerExecutablePath, brokerArguments, packageExecEnvironment())
 }
 
 func panelEntry() error {
@@ -110,7 +110,7 @@ func panelEntry() error {
 	if err := validateCurrentPackageAuthority(false); err != nil {
 		return err
 	}
-	return syscall.Exec(openwrt.ReadinessExecutablePath, []string{openwrt.ReadinessExecutablePath}, packageExecEnvironment())
+	return execPackageProcess(openwrt.ReadinessExecutablePath, []string{openwrt.ReadinessExecutablePath}, packageExecEnvironment())
 }
 
 func packageExecEnvironment() []string {
