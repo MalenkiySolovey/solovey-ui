@@ -10,7 +10,8 @@
   <a href="LICENSE"><img alt="License" src="https://img.shields.io/github/license/MalenkiySolovey/solovey-ui"></a>
 </p>
 
-Stable baseline: `2026.3.1`. Qualification candidate: `2026.3.2-beta.2` (prerelease).
+Install the latest stable version from the official releases. Prereleases require
+an explicit version selection and do not replace the default stable channel.
 
 The source version becomes installable after its complete official release is
 published. The canonical release workflow builds Linux full/core archives and

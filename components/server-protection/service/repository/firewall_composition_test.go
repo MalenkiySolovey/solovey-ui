@@ -146,7 +146,7 @@ func TestRestoreClosesAbandonedFirewallPreparationsWithoutHidingMutationAuthorit
 	if protected["abandoned"] != "" || protected["already_normalized"] != "" || protected["mutation_marked"] == "" || protected["live_reference"] == "" {
 		t.Fatalf("restore retention closure=%v", protected)
 	}
-	// The startup path also repairs previously normalized r24 history and is
+	// The startup path also repairs previously normalized runtime history and is
 	// idempotent; terminalization never rewrites an already closed row.
 	if err := db.Model(&FirewallContributionTransitionModel{}).Where("operation_id = ?", "already_normalized").Update("state", "RECOVERY_REQUIRED").Error; err != nil {
 		t.Fatal(err)

@@ -1,63 +1,53 @@
-# OpenWrt database persistence admission
+# OpenWrt database persistence contract
 
-V3 is the canonical deployment-owned proof. It proves that the fixed database
-folder is on admitted persistent storage; it does not prove an APK transaction
-committed, hardware power-loss safety, or a wall-clock bound on kernel I/O.
+Deployment owns admission of the database directory to persistent storage.
+The canonical V3 proof binds the selected storage identity and current mount
+evidence. It does not assert a completed package transaction, hardware power-loss
+safety, or a wall-clock bound on kernel I/O.
 
-## One fact, one owner
+## Ownership
 
-The canonical platform provenance owner is the workspace OpenWrt reference lock
-(A1/A2) and its pinned OpenWrt fstools recipe. Build target profiles select that
-release. `scripts/openwrt-persistence-authority.mjs` generates the typed owner-local
-`persistence_authority_generated.go` projection and verifies the lock, local HEADs,
-recipe and release profiles. Stage construction checks projection drift before
-source materialization. Go qualification independently checks the same chain.
-The generated file is included in the shipping source fingerprint.
+The pinned OpenWrt source lock and fstools recipe select the platform authority.
+`scripts/openwrt-persistence-authority.mjs` projects it into the deployment-owned
+generated Go contract. Package staging checks source/projection drift before
+materialization; the generated contract participates in the source fingerprint.
 
-The runtime consumes this deployment-selected identity. It never looks up a
-version, board, distribution, upstream checkout or global platform manager.
-`deploy/openwrt` owns persistence admission; policy-free `mountevidence` owns
-current Linux mount observations. Storage owners retain file/database write
-and publication barriers. The APK owner retains its own transaction mechanics.
+Runtime admission consumes that injected authority. It does not inspect an
+upstream checkout, detect a distribution, or select a global platform manager.
+`deploy/openwrt` owns admission; policy-free `internal/ops/mountevidence` owns
+current Linux mount observations. Database and file owners retain their own
+write/publication barriers. The package manager owns package transactions.
 
-## Explicit proof classes
+## Supported storage classes
 
-- `DIRECT_PERSISTENT_MOUNT`: writable mount with an approved filesystem from
-  the existing shared OpenWrt persistence policy; no overlay fields.
-- `PINNED_FSTOOLS_OVERLAY`: writable overlay root, exact fstools persistent
-  source and upper/work labels, selected typed platform authority, and a current
-  writable direct `/overlay` mount in the approved filesystem family. Visible
-  upper/work labels must resolve without redirection to that same mount. Opaque
-  labels are permitted because mount-time paths need not remain reachable.
+- `DIRECT_PERSISTENT_MOUNT`: a writable direct mount using an approved persistent
+  filesystem, without overlay proof fields.
+- `PINNED_FSTOOLS_OVERLAY`: a writable root overlay with the exact selected
+  fstools source and upper/work labels, backed by a current writable direct
+  `/overlay` mount in the approved filesystem family. Visible labels must resolve
+  without redirection to that same backing mount. Opaque mount-time labels are
+  admitted only through the pinned platform contract.
 
-Root and backing mount revisions are fenced across observation; every consumer
-reobserves the topology and verifies root/backing continuity plus capacity.
-V3 validation checks the same semantics as production. Missing/unknown classes,
-legacy V2 proofs, volatile/read-only/unsupported backing, absent authority,
-contradictory or nested mount evidence and drift fail closed. Preparation writes
-a fresh V3 proof before starting services, replacing old persisted V2 metadata.
+The shared persistent filesystem policy admits ext2, ext3, ext4, f2fs, ubifs,
+jffs2, btrfs and xfs. Admission also requires sufficient capacity and consistent
+mount topology; the filesystem name alone does not authorize persistence.
+FriendlyWrt's selected direct `/opt` mode additionally uses its deployment-owned
+[storage descriptor](../friendlywrt/README.md).
 
-Unknown noncanonical overlay topology now fails closed without trying physical
-FIEMAP/writeback. A physical mapping alone is neither a platform contract nor a
-bounded persistence decision. No package/service consumer can inject or call
-`ProbeOverlayBacking`; no substitute timeout, worker, retry or background helper
-is used. The neutral historical probe remains unused by production callers.
+## Fail-closed admission
 
-## Physical defect and evidence boundary
+Root and backing revisions are fenced across observation. Every consumer
+reobserves topology and checks continuity and capacity. Missing authority,
+unknown proof classes, legacy V2 proofs, volatile/read-only/unsupported backing,
+contradictory or nested mount evidence, path redirection and generation drift
+are rejected. Preparation publishes a fresh V3 proof before service launch.
 
-r18 unconditionally created a probe file, file-synced it, requested FIEMAP and
-called `SYS_SYNCFS` before consuming fstools persistence. Validation and recheck
-also required the probe. Physical F2FS entered uninterruptible checkpoint I/O in
-post-upgrade and prevented APK registration from committing. The earlier claim
-that this probing path was bounded was incorrect.
+Admission never substitutes physical block mapping for platform authority and
+does not issue FIEMAP or whole-filesystem sync operations to infer overlay
+durability. Normal file/database fsync and the package manager's own transaction
+barriers remain their respective owners' responsibility. Userspace timeouts
+cannot guarantee progress of kernel filesystem I/O.
 
-V3 removes that unnecessary whole-filesystem operation from Solovey admission.
-Normal file/database fsync and APK's own post-registration sync remain. Their
-physical execution and full recovery are separately qualified on OpenWrt; a
-userspace timeout cannot guarantee kernel filesystem progress. Source/host gates
-must not be represented as a physical F2FS recovery PASS.
-
-Remediation evidence: workspace `.artifacts/r18-package-durability-remediation/`.
-Final physical V3 recovery and subsequent exact r21 fresh-root installation are
-accepted in the [canonical support baseline](../../../../Разное/OS/CROSS_PLATFORM_ARCHITECTURE.md#8-openwrt-support-baseline).
-The historical source-only qualification above is not the final support status.
+Changing the backing filesystem or mount topology requires validating the new
+deployment storage contract. A successful source build does not establish
+hardware durability or firmware-replacement preservation.

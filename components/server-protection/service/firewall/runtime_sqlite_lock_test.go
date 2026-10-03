@@ -19,8 +19,8 @@ func TestRuntimeSQLiteConcurrentAuditLifecycle(t *testing.T) {
 	assertCurrentSSHProductionLifecycle(t, true, "", "sqlite_concurrent_audit")
 }
 
-func TestRuntimeSQLiteStuckR16Upgrade(t *testing.T) {
-	assertCurrentSSHProductionLifecycle(t, true, "", "sqlite_stuck_r16")
+func TestRuntimeSQLiteExpiredUpgradeRecovery(t *testing.T) {
+	assertCurrentSSHProductionLifecycle(t, true, "", "sqlite_expired_upgrade")
 }
 
 func TestRuntimeSQLitePersistenceFailureBeforeMutation(t *testing.T) {

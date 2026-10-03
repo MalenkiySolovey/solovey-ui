@@ -1,107 +1,50 @@
 # Changelog
 
+## 2026.3.2
+
+- Improved stable native/systemd and package/procd deployments, persistent storage admission, cold broker activation and recovery across supported Linux platforms.
+- Preserved nonroot panel execution, zero effective capabilities and kernel no_new_privs enforcement, including package-managed deployments.
+- Improved durable Deployment Status and Doctor persistence, backup/restore owner registration and all eight optional component lifecycles.
+- Hardened browser request serialization against inherited Axios options while preserving the panel's normal form wire format.
+- Cleaned product documentation and reusable validation tooling without changing qualified platform, storage, privilege or update-trust contracts.
+
 ## 2026.3.2-beta.10
 
-- OpenWrt's lifecycle owner sets and verifies kernel `no_new_privs` before
-  broker and panel handoff. Both direct procd entrypoints retain their PID,
-  credentials, fixed package authority and environment; readiness's subsequent
-  exec inherits the bit. Kernel set/readback failures prevent launch.
-- Real Linux regressions cover root and nonroot identities, all observed target
-  threads, two exec hops and fail-closed syscall failures. Canonical APK and
-  release qualification remain separate gates from these focused tests.
-- The failed beta.9 R76S canary run remains failed. A new clean qualification
-  must prove both real kernel bits before the remaining acceptance path,
-  reboot and two 600-second stability windows. Stable remains 2026.3.1.
+- Enforce and verify kernel no_new_privs before package-managed panel and broker handoff; syscall failures prevent launch.
 
 ## 2026.3.2-beta.9
 
-- Server Protection's Systemd runtime authority now separates persistent backing
-  identity and access policy from filesystem tuning emitted by a particular boot.
-  This repairs the reproduced clean beta.8 cold broker registration failure when
-  `mb_optimize_scan=0` disappears from mountinfo after reboot.
-- Device, filesystem, source, resolved backing path, writable state and superblock
-  access/security policy remain checked. The complete bound process-local mount
-  proof and installed owner generation are still rechecked before use.
-- Added the exact beta.8 negative-control regression, production cold handler
-  registration, real Systemd namespace binding and adversarial backing checks.
-  Physical beta.8-to-beta.9 acceptance remains separate; stable stays 2026.3.1.
-- Root installer recovery now clears failed installer-owned systemd units after
-  successful replacement and migration, so the broken release's start limit
-  cannot reject the repaired broker's first socket activation. Database and
-  rollback ownership remain unchanged; the broker is not prestarted.
+- Preserve native runtime mount authority across equivalent filesystem tuning and recover installer-owned services from failed start limits.
+- Retain exact backing, ownership, access and process-generation checks before broker-backed operations.
 
 ## 2026.3.2-beta.8
 
-- Native installation registers the existing tmpfiles policy for boot, preserving
-  root:panel 0750 socket-parent ownership after volatile runtime state is cleared.
-  This repairs the reproduced EACCES before first-request broker activation.
-- Backups, failed-install rollback, management rollback and uninstall include the
-  boot registration. Panel capabilities and broker authentication are unchanged.
-- Native regression now installs through the production owner and checks boot
-  policy discovery and two authenticated Status calls before Doctor/SQLite gates.
-  Physical beta.7-to-beta.8 acceptance remains separate; stable stays 2026.3.1.
+- Register the packaged native tmpfiles policy for every boot and preserve its state through install rollback and uninstall.
 
 ## 2026.3.2-beta.7
 
-- Deployment posture persistence uses a write-first atomic UPSERT, removing the
-  real WAL read-to-write upgrade race reproduced as SQLITE_BUSY_SNAPSHOT (517).
-  Desired/generated intent and durable Doctor authority remain preserved.
-- Authenticated persistence diagnostics expose only bounded stage, storage class
-  and SQLite codes. Required state and snapshot writes remain fail-closed.
-- Doctor retention preserves its current revision target within the existing
-  64-snapshot bound, including duplicate or older report replay.
-- Added real WAL, systemd broker-to-API, package-managed and Docker persistence
-  regressions. Physical beta.6-to-beta.7 upgrade acceptance remains separate;
-  stable/latest remains 2026.3.1.
+- Avoid SQLite WAL read-to-write contention when persisting Deployment Status and Doctor observations.
+- Keep bounded persistence diagnostics and preserve the current Doctor report during history retention.
 
 ## 2026.3.2-beta.6
 
-- Linux broker clients accept the root PID1 identity of systemd-created Unix
-  listeners. Previously the client closed before sending its request, leaving
-  the broker with an empty receive and unavailable Deployment/SSH/Update paths.
-- Request receive failures retain closed, payload-free diagnostic classes.
-  Rejected truncated descriptor transfers now close every delivered descriptor.
-  Frame bounds, strict JSON, per-request writer checks and pidfd liveness remain.
-- CI now exercises real socket activation with a nonroot production client,
-  production server/attestor and the unchanged broker capability policy across
-  three cold starts and 24 requests. CAP_KILL remains absent.
-- Physical Debian13 beta.5-to-beta.6 upgrade and clean-install qualification
-  remain separate gates. Stable/latest remains 2026.3.1.
+- Support root PID1 peers on systemd-created broker listeners while retaining per-request credential and pidfd checks.
+- Close descriptors delivered with rejected truncated transfers and retain bounded receive diagnostics.
 
 ## 2026.3.2-beta.4
 
-- Native installation explicitly publishes root-owned, service-group-readable
-  component packs and inventory. Secret creation no longer leaks its umask;
-  installer-managed inventory disables unsupported panel install/remove writes.
-- Native broker startup binds sealed runtime mount authority to the equivalent
-  systemd sandbox backing directory, retaining strict later mount rechecks.
-  Startup failures expose bounded owner-local stages without nested error data.
-- Core Linux releases now include a minimal broker that does not require absent
-  optional component authority. Added real nonroot component migration/routes,
-  systemd namespace and full broker graph/socket regression coverage.
+- Publish service-group-readable native component packs and retain broker authority across equivalent systemd sandbox mounts.
+- Include a minimal broker in core releases without requiring absent optional component authority.
 
 ## 2026.3.2-beta.2
 
-- Fixed native application-owner validation rejecting correct Linux filesystem
-  ownership because it used the wrong stat type. Identity publication now sets
-  exact metadata before rename, with safe path and expected/actual diagnostics.
-- Failed native installations restore previous files, DB presence, service and
-  socket activity, and persistent/runtime enablement. Snapshots follow writer
-  quiescence; ordinary errors and termination signals roll back. Interrupted or
-  incomplete recovery retains a durable fence against unsafe retries.
-- Added real Linux ownership and systemd rollback regressions. SSH proof's exact
-  dedicated-group 2755 contract and OpenWrt/FriendlyWrt lifecycles are preserved.
+- Correct native filesystem-owner validation and publish exact metadata before identity-file rename.
+- Restore prior database presence, service/socket activity and enablement on failed installations; interrupted recovery fails closed.
 
-## 2026.3.2-beta.1 (historically published as 2026.3.2)
+## 2026.3.2-beta.1
 
-- Fixed native Linux installation rejecting its own SSH reconnect proof helper.
-  Installer, broker manifest, live peer attestation and native updates now agree
-  on root ownership, the exact dedicated socket group and setgid permissions.
-  Existing root:root executable trust remains strict.
-- Added real Linux installer/manifest and setgid socket regression gates to CI
-  and release qualification, including unsafe ownership and permission cases.
-- Included post-2026.3.1 persistence-policy build isolation, capability-aware
-  qualification, and synchronous restore/session-rotation audit completion.
+- Align native installation, manifest creation, peer attestation and updates with the dedicated-group setgid SSH proof helper contract.
+- Preserve persistence-policy isolation and durable restore/session-rotation audit completion.
 
 ## 2026.3.0
 

@@ -14,6 +14,25 @@ test('qualification train cannot accidentally publish a stable patch', () => {
   }
 })
 
+test('stable train admits only its accepted stable identity', () => {
+  const train = {
+    stableBaseline: '2026.3.2', candidateBase: '2026.3.2', stage: 'stable',
+    previousStable: '2026.3.1', acceptedPrerelease: '2026.3.2-beta.10', pendingAcceptance: [],
+  }
+  assert.doesNotThrow(() => validateReleaseTrain('2026.3.2', train))
+  for (const version of ['2026.3.1', '2026.3.3', '2026.3.2-beta.10']) {
+    assert.throws(() => validateReleaseTrain(version, train), /coherent accepted release train/)
+  }
+  for (const mutation of [
+    { stableBaseline: '2026.3.1' }, { previousStable: '2026.3.2' },
+    { acceptedPrerelease: '2026.3.2-beta.9' }, { pendingAcceptance: ['platform'] },
+    { pendingAcceptance: undefined },
+  ]) {
+    assert.throws(() => validateReleaseTrain('2026.3.2', { ...train, ...mutation }), /coherent accepted release train/)
+  }
+  assert.throws(() => validateReleaseTrain('2026.3.2', { ...train, stage: 'unknown' }), /reviewed policy transition/)
+})
+
 function fixture(overrides = {}) {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519')
   const now = new Date('2026-08-15T00:00:00Z')

@@ -42,10 +42,12 @@ func TestTrackedTreeExcludesLocalArtifacts(t *testing.T) {
 }
 
 func localArtifactReason(path string) string {
+	if directory, _, nested := strings.Cut(path, "/"); nested && strings.HasPrefix(directory, ".") && directory != ".github" {
+		return "local hidden workspace directory"
+	}
 	for prefix, reason := range map[string]string{
-		".artifacts/":                 "generated audit output",
-		".claude/":                    "local tool state",
-		".codex/":                     "local tool state",
+		".audit/":                     "generated audit output",
+		".cache/":                     "local cache",
 		".gotmp/":                     "temporary Go workspace",
 		".runtime/":                   "local runtime state",
 		".tmp/":                       "temporary workspace",
@@ -73,8 +75,6 @@ func localArtifactReason(path string) string {
 		return "local configuration or secret state"
 	case "coverage.out":
 		return "generated coverage output"
-	case "goal-objective.md":
-		return "workspace goal attachment"
 	}
 	if strings.HasSuffix(base, ".test") {
 		return "compiled Go test binary"

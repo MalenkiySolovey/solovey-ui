@@ -93,7 +93,7 @@ define Package/solovey-ui/preinst
 if [ -x /etc/init.d/solovey-ui ]; then
 	installed_init_first_line=$$(sed -n '1p' /etc/init.d/solovey-ui) || exit 1
 	case "$$installed_init_first_line" in
-		*"$$(printf '\r')") ;; # r22 CRLF recovery; process drain below remains authoritative.
+		*"$$(printf '\r')") ;; # CRLF script recovery; process drain below remains authoritative.
 		*) /etc/init.d/solovey-ui stop || exit 1 ;;
 	esac
 fi

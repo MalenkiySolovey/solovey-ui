@@ -381,8 +381,8 @@ func parseOptions(value string) ([]string, error) {
 }
 
 // Mount and superblock options are filesystem-specific. Unlike the pathname
-// fields, Linux may emit a literal backslash in an option (WSL's 9p drvfs
-// superblock is one real example). Decode kernel octal escapes when present,
+// fields, Linux may emit a literal backslash in a filesystem-specific option.
+// Decode kernel octal escapes when present,
 // but retain other literal backslashes instead of rejecting an otherwise valid
 // mount inventory.
 func unescapeOption(value string) (string, error) {

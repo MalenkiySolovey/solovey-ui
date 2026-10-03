@@ -43,7 +43,7 @@ func TestRealProcessFenceUsesRawExecutableContentIdentityAndObjectGeneration(t *
 		t.Fatal(err)
 	}
 	if identity.Digest == "" || rawFileContentSHA256(raw) != identity.Digest || domain.Revision(raw) == identity.Digest {
-		t.Fatalf("fixture did not preserve the physical R11 domain divergence: raw=%s json=%s", identity.Digest, domain.Revision(raw))
+		t.Fatalf("raw executable identity must differ from the JSON domain revision: raw=%s json=%s", identity.Digest, domain.Revision(raw))
 	}
 
 	first := startProcessIdentityChild(t, object)

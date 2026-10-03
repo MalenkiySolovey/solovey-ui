@@ -49,4 +49,5 @@ executable consumers still require root:root.
 
 `tests/installer/native-ownership.sh` gates actual Linux ownership and complete
 native manifest identity consumption plus real systemd rollback fixtures. The
-fixtures prove host lifecycle semantics, not physical Debian/OpenWrt acceptance.
+fixtures verify native lifecycle semantics; storage admission remains bound to
+the deployment's actual filesystem and supervisor capabilities.

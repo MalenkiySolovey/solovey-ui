@@ -259,7 +259,7 @@ assert.match(recipe, /if ! \/etc\/init\.d\/solovey-ui enabled; then\n\t\/etc\/in
 assert.match(recipe, /Package\/solovey-ui\/preinst/)
 assert.match(recipe, /PKG_UPGRADE/)
 assert.match(recipe, /installed_init_first_line=\$\$\(sed -n '1p' \/etc\/init\.d\/solovey-ui\)/)
-assert.match(recipe, /\*"\$\$\(printf '\\r'\)"\) ;; # r22 CRLF recovery/)
+assert.match(recipe, /\*"\$\$\(printf '\\r'\)"\) ;; # CRLF script recovery/)
 assert.match(recipe, /solovey-openwrt-lifecycle reconcile/)
 assert.match(recipe, /Package\/solovey-ui\/prerm/)
 assert.match(recipe, /solovey-openwrt-lifecycle pre-remove/)

@@ -88,8 +88,8 @@ func TestSystemdSSHProofSetgidPeer(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	// WSL supplies real process/socket evidence; the existing systemd projection
-	// unit tests own service/scope parsing. No physical systemd claim is made.
+	// This fixture supplies real process/socket evidence; systemd projection
+	// unit tests separately own service/scope parsing.
 	attestor.supervision = systemdSupervisionAttestor{readCgroup: func(int) (systemdCgroupEvidence, error) {
 		return systemdCgroupEvidence{unit: "session-proof.scope", availability: processevidence.CgroupAvailable, revision: strings.Repeat("a", 64)}, nil
 	}}
