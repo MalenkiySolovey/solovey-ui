@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 2026.3.2
 
 - Improved stable native/systemd and package/procd deployments, persistent storage admission, cold broker activation and recovery across supported Linux platforms.
 - Preserved nonroot panel execution, zero effective capabilities and kernel no_new_privs enforcement, including package-managed deployments.

@@ -22,10 +22,19 @@ const allowedRootFields = new Set([
 ])
 
 export function validateReleaseTrain(version, train) {
-  // Promotion is a reviewed policy change backed by platform evidence.
-  // It cannot happen accidentally by selecting the next stable patch tag.
-  if (train?.stage !== 'qualification' || train.candidateBase !== '2026.3.2' ||
-      train.stableBaseline !== '2026.3.1') throw new Error('release train requires a reviewed policy transition')
+  // Both channels require an explicit, coherent release policy.
+  if (train?.candidateBase !== '2026.3.2') throw new Error('release train requires a reviewed policy transition')
+  if (train.stage === 'stable') {
+    if (train.stableBaseline !== train.candidateBase || train.previousStable !== '2026.3.1' ||
+        train.acceptedPrerelease !== '2026.3.2-beta.10' || !Array.isArray(train.pendingAcceptance) ||
+        train.pendingAcceptance.length !== 0 || version !== train.candidateBase) {
+      throw new Error('stable release requires a coherent accepted release train and exact stable version')
+    }
+    return
+  }
+  if (train.stage !== 'qualification' || train.stableBaseline !== '2026.3.1') {
+    throw new Error('release train requires a reviewed policy transition')
+  }
   if (!/^2026\.3\.2-beta\.[1-9][0-9]*$/.test(version)) {
     throw new Error('platform acceptance is pending; publish 2026.3.2-beta.N, keeping stable 2026.3.1')
   }

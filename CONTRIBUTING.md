@@ -22,9 +22,11 @@ Additional blocking checks:
 ```sh
 make audit:test-go-race
 make audit:lint-go
-make audit:gosec
 make audit:vuln
 ```
+
+The blocking lint configuration is `.golangci-blocking.yml`. The broader lint
+report and `make audit:gosec` retain advisory findings for review.
 
 Run benchmarks separately when a change affects performance:
 

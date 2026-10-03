@@ -1,4 +1,4 @@
-// The release set is a product contract; workflows and local qualification call
+// The release set is a product contract; workflows and operator tools call
 // the same completeness, digest and signature checks before publication.
 import crypto from 'node:crypto'
 import fs from 'node:fs'
