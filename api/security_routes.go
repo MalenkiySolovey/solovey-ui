@@ -293,6 +293,7 @@ func (h *securityHTTP) passwordTransition(c *gin.Context) {
 		jsonMsg(c, "", err)
 		return
 	}
+	h.api.reloadTokens()
 	service.NotifyPanelEvent("admin_credentials_changed", map[string]string{"user": securityContext.Username})
 	if err := h.stepUp.InvalidateUser(result.UserID); err != nil {
 		jsonMsg(c, "", err)
@@ -379,6 +380,7 @@ func (h *securityHTTP) changePassword(c *gin.Context) {
 		jsonMsg(c, "", err)
 		return
 	}
+	h.api.reloadTokens()
 	service.NotifyPanelEvent("admin_credentials_changed", map[string]string{"user": securityContext.Username})
 	if _, err := h.sessions.RevokeOthers(result.UserID, securityContext.Ref, "credentials_changed"); err != nil {
 		jsonMsg(c, "", err)
@@ -694,6 +696,7 @@ func (h *securityHTTP) completeRecoveryTransition(c *gin.Context) {
 		jsonMsg(c, "", err)
 		return
 	}
+	h.api.reloadTokens()
 	service.NotifyPanelEvent("admin_credentials_changed", map[string]string{"user": securityContext.Username})
 	if _, err := h.sessions.RevokeOthers(result.UserID, securityContext.Ref, "mfa_recovery_completed"); err != nil {
 		jsonMsg(c, "", err)

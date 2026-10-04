@@ -33,6 +33,7 @@ func (a *Handler) AddToken(c *gin.Context) {
 	scope := c.DefaultPostForm("scope", "admin")
 	token, err := a.UserService.AddToken(loginUser, expiryInt, desc, scope)
 	if err == nil {
+		a.ReloadTokens()
 		a.Audit(c, loginUser, "api_token_created", "api_token", service.AuditSeverityWarn, map[string]any{
 			"desc":   desc,
 			"expiry": expiryInt,
@@ -47,8 +48,9 @@ func (a *Handler) DeleteToken(c *gin.Context) {
 	if !a.requireStepUp(c, "token.revoke", "token:"+tokenId) {
 		return
 	}
-	err := a.UserService.DeleteToken(tokenId)
+	err := a.UserService.DeleteToken(a.LoginUser(c), tokenId)
 	if err == nil {
+		a.ReloadTokens()
 		a.Audit(c, a.LoginUser(c), "api_token_deleted", "api_token", service.AuditSeverityWarn, map[string]any{
 			"id": tokenId,
 		})
@@ -66,8 +68,9 @@ func (a *Handler) SetTokenEnabled(c *gin.Context) {
 		a.JSONMsg(c, "", err)
 		return
 	}
-	err = a.UserService.SetTokenEnabled(id, enabled)
+	err = a.UserService.SetTokenEnabled(a.LoginUser(c), id, enabled)
 	if err == nil {
+		a.ReloadTokens()
 		a.Audit(c, a.LoginUser(c), "api_token_enabled_changed", "api_token", service.AuditSeverityWarn, map[string]any{
 			"id":      id,
 			"enabled": enabled,

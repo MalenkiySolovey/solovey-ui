@@ -61,7 +61,7 @@ func (a *APIHandler) cachedAuthExemptPaths() map[string]struct{} {
 func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	authDeps := a.authDeps()
 	authDeps.CSRF = a.ApiService.GetCSRF
-	authDeps.ReloadTokensAfter = a.reloadTokensAfter
+	authDeps.ReloadTokens = a.reloadTokens
 	authDeps.RequireStepUp = a.requireStepUpAction
 	authhttp.RegisterRoutes(g, authDeps)
 	a.registerSecurityRoutes(g)
@@ -102,11 +102,8 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 
 }
 
-func (a *APIHandler) reloadTokensAfter(handler gin.HandlerFunc) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		handler(c)
-		if a.apiv2 != nil {
-			a.apiv2.ReloadTokens()
-		}
+func (a *APIHandler) reloadTokens() {
+	if a.apiv2 != nil {
+		a.apiv2.ReloadTokens()
 	}
 }

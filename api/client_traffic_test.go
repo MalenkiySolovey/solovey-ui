@@ -15,6 +15,7 @@ import (
 
 func TestAPIV2ResetTrafficRequiresWriteScopeAndPreservesClient(t *testing.T) {
 	initSessionTestDB(t)
+	completeTokenOwnerResetForTest(t)
 	client := model.Client{
 		Enable:    true,
 		Name:      "alice",
