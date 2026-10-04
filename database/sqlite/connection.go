@@ -18,26 +18,43 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 )
 
-func prepareForInit() error {
-	dbMu.Lock()
-	defer dbMu.Unlock()
-	if db == nil {
-		return nil
+func prepareForInit(ctx context.Context) error {
+	dbMu.RLock()
+	current, generation := db, activeGeneration
+	owner := maintenance
+	contextOwner := maintenanceFrom(ctx)
+	expiredContext := contextOwner != nil && (contextOwner != owner || contextOwner.expired)
+	dbMu.RUnlock()
+	if expiredContext {
+		return ErrRetired
 	}
-	pool, err := db.DB()
+	if owner != nil && !IsMaintenanceContext(ctx) {
+		return ErrMaintenance
+	}
+	if current == nil {
+		return finishRetiredGeneration(ctx, generation)
+	}
+	pool, err := current.DB()
 	if err != nil {
 		return fmt.Errorf("inspect active database: %w", err)
 	}
-	if err := pool.Ping(); err == nil {
+	if err := pool.PingContext(ctx); err == nil {
 		return errors.New("database is already initialized")
 	} else if !isClosedPoolError(err) {
 		return fmt.Errorf("check active database: %w", err)
 	}
 	// Compatibility with legacy callers that closed the exposed sql.DB
 	// directly. Detach only a handle proven permanently closed.
-	db = nil
-	activeDBPath = ""
-	return nil
+	dbMu.Lock()
+	if db == current {
+		db, activeDBPath = nil, ""
+		if generation != nil {
+			generation.phase = generationRetired
+		}
+		changedLocked()
+	}
+	dbMu.Unlock()
+	return finishRetiredGeneration(ctx, generation)
 }
 
 func isClosedPoolError(err error) bool {
@@ -51,6 +68,7 @@ var (
 	dbMu         sync.RWMutex
 	db           *gorm.DB
 	activeDBPath string
+	initMu       sync.Mutex
 )
 
 const (
@@ -74,6 +92,10 @@ type dbPoolSetter interface {
 }
 
 func open(dbPath string) error {
+	return openContext(context.Background(), dbPath)
+}
+
+func openContext(ctx context.Context, dbPath string) error {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0o750); err != nil {
 		return err
 	}
@@ -87,23 +109,37 @@ func open(dbPath string) error {
 		separator = "&"
 	}
 	dsn := dbPath + separator + "_busy_timeout=10000&_journal_mode=WAL&_synchronous=NORMAL&_foreign_keys=on"
-	openedDB, err := gorm.Open(sqlite.Open(dsn), &gorm.Config{Logger: gormLog})
+	generation := &generation{cfg: resolvedDBPoolConfig(), initializing: true}
+	dbMu.RLock()
+	owner := maintenance
+	dbMu.RUnlock()
+	if owner != nil {
+		if !IsMaintenanceContext(ctx) {
+			return ErrMaintenance
+		}
+		generation.phase = generationPrivate
+	}
+	sqlDB := sql.OpenDB(&generationConnector{dsn: dsn, generation: generation})
+	generation.pool = sqlDB
+	openedDB, err := gorm.Open(sqlite.New(sqlite.Config{DSN: dsn, Conn: sqlDB}), &gorm.Config{Logger: gormLog})
 	if err != nil {
+		_ = sqlDB.Close()
 		return err
 	}
-
-	sqlDB, err := openedDB.DB()
-	if err != nil {
-		return err
+	applyDBPoolConfig(sqlDB, generation.cfg)
+	if owner != nil {
+		sqlDB.SetMaxIdleConns(0)
 	}
-	applyDBPoolConfig(sqlDB, resolvedDBPoolConfig())
 	if configlogging.IsDebug() {
 		openedDB = openedDB.Debug()
 	}
 
 	dbMu.Lock()
+	generation.initializing = false
 	db = openedDB
 	activeDBPath = dbPath
+	activeGeneration = generation
+	changedLocked()
 	dbMu.Unlock()
 	return nil
 }
@@ -142,6 +178,9 @@ func applyDBPoolConfig(pool dbPoolSetter, cfg dbPoolConfig) {
 func DB() *gorm.DB {
 	dbMu.RLock()
 	defer dbMu.RUnlock()
+	if db == nil && maintenance != nil {
+		return maintenance.gap
+	}
 	return db
 }
 
@@ -151,65 +190,147 @@ func currentDatabasePath() string {
 	return activeDBPath
 }
 
-// Close atomically detaches and closes the active database connection.
+// Close retires the active generation. A successful close means its actual
+// connections and finite operations have ended, including borrowed sql.Conn.
 func Close() error {
-	dbMu.Lock()
-	current := db
-	db = nil
-	activeDBPath = ""
-	dbMu.Unlock()
-	if current == nil {
-		return nil
-	}
-	sqlDB, err := current.DB()
-	if err != nil {
-		return err
-	}
-	return sqlDB.Close()
+	return CloseContext(context.Background())
 }
 
-// CloseForFileSwap detaches the live handle, proves a non-busy TRUNCATE
-// checkpoint, and closes every pooled connection before a restore renames the
-// database file. If the checkpoint cannot be proven, the still-open handle is
-// reattached and no file mutation is allowed.
+// CloseContext preserves a private restore scope when the owner closes a
+// rejected candidate. Terminal shutdown expires that scope as well.
+func CloseContext(ctx context.Context) error {
+	if ctx == nil {
+		return errors.New("sqlite close context is required")
+	}
+	dbMu.Lock()
+	if owner := maintenanceFrom(ctx); owner != nil && (owner != maintenance || owner.expired) {
+		dbMu.Unlock()
+		return ErrRetired
+	}
+	current, generation, owner := db, activeGeneration, maintenance
+	db = nil
+	activeDBPath = ""
+	if generation != nil {
+		generation.phase = generationRetired
+	}
+	changedLocked()
+	dbMu.Unlock()
+	var closeErr error
+	if current != nil {
+		sqlDB, err := current.DB()
+		if err != nil {
+			closeErr = err
+		} else {
+			closeErr = sqlDB.Close()
+		}
+	}
+	if owner != nil && maintenanceFrom(ctx) != owner {
+		owner.End()
+	}
+	return errors.Join(closeErr, finishRetiredGeneration(ctx, generation))
+}
+
+// CloseForFileSwap freezes admissions, drains actual connection lifetimes,
+// proves a non-busy TRUNCATE checkpoint and permanently retires the pool.
+// Cancellation/checkpoint failure restores the original still-live generation.
 func CloseForFileSwap(ctx context.Context) error {
 	if ctx == nil {
 		return errors.New("sqlite file-swap context is required")
 	}
+	if !IsMaintenanceContext(ctx) {
+		owner, err := BeginMaintenance(ctx)
+		if err != nil {
+			return err
+		}
+		defer owner.End()
+		ctx = owner.Context(ctx)
+	}
+	drainCtx, cancel := context.WithTimeout(ctx, maintenanceDrainTimeout)
+	defer cancel()
 	dbMu.Lock()
-	current, currentPath := db, activeDBPath
-	db, activeDBPath = nil, ""
-	dbMu.Unlock()
+	current, generation := db, activeGeneration
 	if current == nil {
+		dbMu.Unlock()
 		return errors.New("sqlite database is unavailable for file swap")
 	}
+	previousPhase := generation.phase
+	generation.phase = generationDraining
+	changedLocked()
+	dbMu.Unlock()
 	sqlDB, err := current.DB()
 	if err != nil {
-		reattach(current, currentPath)
+		resumeGeneration(generation, previousPhase)
 		return err
 	}
+	// With idle connections removed, database/sql closes each driver connection
+	// only after its supported Rows/Tx/Conn/Raw resources have released it.
+	sqlDB.SetMaxIdleConns(0)
+	if err := waitGeneration(drainCtx, generation, true); err != nil {
+		resumeGeneration(generation, previousPhase)
+		return fmt.Errorf("drain sqlite connections before file swap: %w", err)
+	}
 	var busy, logFrames, checkpointed int
-	if err := sqlDB.QueryRowContext(ctx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &logFrames, &checkpointed); err != nil {
-		reattach(current, currentPath)
+	if err := sqlDB.QueryRowContext(drainCtx, "PRAGMA wal_checkpoint(TRUNCATE)").Scan(&busy, &logFrames, &checkpointed); err != nil {
+		resumeGeneration(generation, previousPhase)
 		return fmt.Errorf("sqlite WAL checkpoint failed before file swap: %w", err)
 	}
 	if busy != 0 {
-		reattach(current, currentPath)
+		resumeGeneration(generation, previousPhase)
 		return fmt.Errorf("sqlite WAL checkpoint is busy before file swap: busy=%d log=%d checkpointed=%d",
 			busy, logFrames, checkpointed)
 	}
-	if err := sqlDB.Close(); err != nil {
-		return fmt.Errorf("close sqlite database for file swap: %w", err)
+	for {
+		if err := waitGeneration(drainCtx, generation, true); err != nil {
+			resumeGeneration(generation, previousPhase)
+			return err
+		}
+		dbMu.Lock()
+		if generation.connections != 0 {
+			dbMu.Unlock()
+			continue
+		}
+		generation.phase = generationRetired
+		db, activeDBPath = nil, ""
+		changedLocked()
+		dbMu.Unlock()
+		break
 	}
-	return nil
+	return errors.Join(sqlDB.Close(), finishRetiredGeneration(drainCtx, generation))
 }
 
-func reattach(database *gorm.DB, path string) {
+func resumeGeneration(generation *generation, phase generationPhase) {
+	if phase == generationPrivate {
+		generation.pool.SetMaxIdleConns(0)
+	} else {
+		applyDBPoolConfig(generation.pool, generation.cfg)
+	}
 	dbMu.Lock()
 	defer dbMu.Unlock()
-	if db == nil {
-		db, activeDBPath = database, path
+	if activeGeneration == generation && generation.phase != generationRetired {
+		generation.phase = phase
+		changedLocked()
 	}
+}
+
+func finishRetiredGeneration(ctx context.Context, generation *generation) error {
+	if generation == nil {
+		return nil
+	}
+	drainCtx, cancel := context.WithTimeout(ctx, maintenanceDrainTimeout)
+	defer cancel()
+	if err := waitGeneration(drainCtx, generation, true); err != nil {
+		return err
+	}
+	if err := waitGeneration(drainCtx, generation, false); err != nil {
+		return err
+	}
+	dbMu.Lock()
+	defer dbMu.Unlock()
+	if activeGeneration == generation && generation.phase == generationRetired {
+		activeGeneration = nil
+		changedLocked()
+	}
+	return nil
 }
 
 func IsNotFound(err error) bool {

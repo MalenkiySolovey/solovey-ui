@@ -426,14 +426,14 @@ func normalizeRestoredOwners(ctx context.Context, db *gorm.DB, statuses []Restor
 		if !status.Included || !status.Available || status.Compatibility != "COMPATIBLE" {
 			continue
 		}
-		if err := durableowner.RunStagedRestore(ctx, status.ID, db); err != nil {
+		if err := durableowner.RunStagedRestore(ctx, status.ID, db.WithContext(ctx)); err != nil {
 			status.HookStatus = "FAILED"
 			return statuses, err
 		}
 		status.HookStatus = "PASSED"
 	}
 	var foreignKeyViolations int64
-	if err := db.Raw("SELECT COUNT(*) FROM pragma_foreign_key_check").Scan(&foreignKeyViolations).Error; err != nil || foreignKeyViolations != 0 {
+	if err := db.WithContext(ctx).Raw("SELECT COUNT(*) FROM pragma_foreign_key_check").Scan(&foreignKeyViolations).Error; err != nil || foreignKeyViolations != 0 {
 		return statuses, errors.Join(err, errors.New("staged restore foreign-key postcondition failed"))
 	}
 	return statuses, nil

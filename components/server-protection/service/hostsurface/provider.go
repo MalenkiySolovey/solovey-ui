@@ -16,6 +16,7 @@ import (
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
 )
 
@@ -102,6 +103,11 @@ func (p *Provider) Observe(ctx context.Context, limits hostfacts.Limits) (hostfa
 	if p == nil {
 		return hostfacts.Observation{}, errors.New("hostsurface provider is nil")
 	}
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return hostfacts.Observation{}, err
+	}
+	defer release()
 	now := time.Now
 	if p.Now != nil {
 		now = p.Now

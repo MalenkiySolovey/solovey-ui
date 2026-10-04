@@ -18,10 +18,24 @@ import (
 	"gorm.io/gorm"
 )
 
-var adaptToCurrentVersion = adapt
+var adaptToCurrentVersion = adaptDatabase
 
 func Init(dbPath string) (err error) {
-	if err := prepareForInit(); err != nil {
+	return InitContext(context.Background(), dbPath)
+}
+
+// InitContext keeps a restore owner's temporary authority on local sessions.
+// The published/cached base handle always has an ordinary background context.
+func InitContext(ctx context.Context, dbPath string) (err error) {
+	if ctx == nil {
+		return errors.New("sqlite initialization context is required")
+	}
+	initMu.Lock()
+	defer initMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if err := prepareForInit(ctx); err != nil {
 		return err
 	}
 	if err := migration.MigratePathIfExists(dbPath, migration.Options{}); err != nil {
@@ -30,45 +44,46 @@ func Init(dbPath string) (err error) {
 	if err := preflightSupportedVersion(dbPath); err != nil {
 		return err
 	}
-	if err := open(dbPath); err != nil {
+	if err := openContext(ctx, dbPath); err != nil {
 		return err
 	}
+	database := DB().WithContext(ctx)
 	initialized := false
 	defer func() {
 		if !initialized {
-			if closeErr := Close(); closeErr != nil {
+			if closeErr := CloseContext(ctx); closeErr != nil {
 				err = errors.Join(err, fmt.Errorf("close failed database initialization: %w", closeErr))
 			}
 		}
 	}()
-	if err := db.AutoMigrate(schemaModels()...); err != nil {
+	if err := database.AutoMigrate(schemaModels()...); err != nil {
 		return err
 	}
-	if err := ensureSSHRetentionCompatibility(db); err != nil {
+	if err := ensureSSHRetentionCompatibility(database); err != nil {
 		return fmt.Errorf("ensure SSH retention compatibility: %w", err)
 	}
-	if err := ensureDeploymentRetentionCompatibility(db); err != nil {
+	if err := ensureDeploymentRetentionCompatibility(database); err != nil {
 		return fmt.Errorf("ensure deployment retention compatibility: %w", err)
 	}
-	if err := entityoutbounds.EnsureDefault(db); err != nil {
+	if err := entityoutbounds.EnsureDefault(database); err != nil {
 		return fmt.Errorf("ensure default outbound: %w", err)
 	}
-	if err := entitytls.EnsureSentinel(db); err != nil {
+	if err := entitytls.EnsureSentinel(database); err != nil {
 		return err
 	}
-	if err := entityvalidation.ValidateStored(db); err != nil {
+	if err := entityvalidation.ValidateStored(database); err != nil {
 		return fmt.Errorf("validate stored entities: %w", err)
 	}
-	if err := ensureIndexes(db); err != nil {
+	if err := ensureIndexes(database); err != nil {
 		return fmt.Errorf("ensure database indexes: %w", err)
 	}
-	if err := ensureInitialAdmin(dbPath); err != nil {
+	if err := ensureInitialAdmin(database, dbPath); err != nil {
 		return err
 	}
-	if err := adaptToCurrentVersion(); err != nil {
+	if err := adaptToCurrentVersion(database); err != nil {
 		return fmt.Errorf("post-migration adapt failed: %w", err)
 	}
-	if err := ensureSortOrders(); err != nil {
+	if err := ensureSortOrders(database); err != nil {
 		return fmt.Errorf("sort-order backfill failed: %w", err)
 	}
 	initialized = true
@@ -111,9 +126,9 @@ func schemaModels() []any {
 	}
 }
 
-func ensureInitialAdmin(dbPath string) error {
+func ensureInitialAdmin(database *gorm.DB, dbPath string) error {
 	var count int64
-	if err := db.Model(&model.User{}).Count(&count).Error; err != nil {
+	if err := database.Model(&model.User{}).Count(&count).Error; err != nil {
 		return err
 	}
 	passwordPath := initialAdminPasswordPath(dbPath)
@@ -126,14 +141,14 @@ func ensureInitialAdmin(dbPath string) error {
 	if err != nil {
 		return err
 	}
-	passwordHash, err := passwordutil.Hash(context.Background(), password)
+	passwordHash, err := passwordutil.Hash(database.Statement.Context, password)
 	if err != nil {
 		return err
 	}
 	if err := writeInitialAdminPassword(passwordPath, password); err != nil {
 		return err
 	}
-	if err := db.Transaction(func(tx *gorm.DB) error {
+	if err := database.Transaction(func(tx *gorm.DB) error {
 		if err := tx.Create(&model.User{
 			Username:              "admin",
 			Password:              passwordHash,

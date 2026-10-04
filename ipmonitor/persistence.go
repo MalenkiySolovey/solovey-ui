@@ -1,6 +1,7 @@
 package ipmonitor
 
 import (
+	"context"
 	"crypto/rand"
 	"database/sql"
 	"encoding/base64"
@@ -215,6 +216,11 @@ func loadWarmUpEntries(now time.Time) (map[string]allowCacheEntry, error) {
 }
 
 func Flush() error {
+	_, release, err := dbsqlite.AcquireOperation(context.Background())
+	if err != nil {
+		return err
+	}
+	defer release()
 	db := dbsqlite.DB()
 	if db == nil {
 		return nil

@@ -86,7 +86,7 @@ func (m *Manager) ExecuteRestore(ctx context.Context, request RestoreRequest) (m
 	}
 	result, err = dbbackup.RestoreContextDetailedWithRecoveryRoot(ctx, request.Source, m.restoreRecoveryRoot())
 	if err != nil {
-		failed, recordErr := m.fail(ctx, operation, "restore_failed", err)
+		failed, recordErr := m.fail(result.DatabaseContext(ctx), operation, "restore_failed", err)
 		if recordErr != nil {
 			return failed, result, errors.Join(err, recordErr)
 		}
@@ -94,7 +94,7 @@ func (m *Manager) ExecuteRestore(ctx context.Context, request RestoreRequest) (m
 	}
 	operation.BackupRef = result.RecoveryBackupRef
 	operation.State, operation.ReasonCode, operation.Revision, operation.UpdatedAt = "APPLIED", "", operation.Revision+1, m.now().Unix()
-	if err := m.writeRestoredOperation(ctx, operation); err != nil {
+	if err := m.writeRestoredOperation(result.DatabaseContext(ctx), operation); err != nil {
 		rolledBack, execution, rollbackErr := m.rollbackUnacceptedRestore(ctx, operation, result, "restore_journal_unavailable", err)
 		cleanupErr := m.removeUnreferencedRecoveryArtifact(ctx, "RESTORE", operation.OperationID, operation.BackupRef)
 		return rolledBack, execution, errors.Join(rollbackErr, cleanupErr)

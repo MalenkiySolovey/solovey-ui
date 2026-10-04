@@ -13,6 +13,7 @@ import (
 
 	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/middleware/databaseoperation"
 	domainmiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/domain"
 	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/security"
 	"github.com/MalenkiySolovey/solovey-ui/network/autohttps"
@@ -80,6 +81,7 @@ func (s *RuntimeServer) InitRouter() (*gin.Engine, error) {
 		engine.Use(domainmiddleware.Validator(subDomain))
 	}
 	engine.Use(securitymiddleware.Subscriptions())
+	engine.Use(databaseoperation.Middleware())
 	engine.Use(gzip.Gzip(gzip.DefaultCompression))
 
 	registeredFormats := map[string]string{}

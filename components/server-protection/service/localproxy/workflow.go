@@ -12,6 +12,7 @@ import (
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 type operationManager interface {
@@ -579,6 +580,11 @@ func localProxyReceiptError(err error) error {
 }
 
 func (c *Controller) RenewActive(ctx context.Context) (bool, error) {
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return false, err
+	}
+	defer release()
 	if err := c.ready(); err != nil {
 		return false, err
 	}

@@ -1,6 +1,9 @@
 package sqlite
 
-import "github.com/MalenkiySolovey/solovey-ui/util/common"
+import (
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	"gorm.io/gorm"
+)
 
 // Adapt performs idempotent post-migration adjustments that
 // ensure a database imported from an older Solovey UI version is fully usable on the
@@ -18,16 +21,20 @@ import "github.com/MalenkiySolovey/solovey-ui/util/common"
 // Init (so AutoMigrate already ran), but before the panel
 // starts serving traffic.
 func adapt() error {
-	if db == nil {
+	return adaptDatabase(DB())
+}
+
+func adaptDatabase(database *gorm.DB) error {
+	if database == nil {
 		return common.NewError("sqlite.Adapt: database not initialized")
 	}
-	if err := rehashLegacyPasswords(db); err != nil {
+	if err := rehashLegacyPasswords(database); err != nil {
 		return err
 	}
-	if err := backfillTLSClientPins(db); err != nil {
+	if err := backfillTLSClientPins(database); err != nil {
 		return err
 	}
-	if err := bumpVersionSetting(db); err != nil {
+	if err := bumpVersionSetting(database); err != nil {
 		return err
 	}
 	return nil

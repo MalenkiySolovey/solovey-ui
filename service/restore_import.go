@@ -23,12 +23,16 @@ func runRestoreImportServicePostOpenActions(ctx context.Context) error {
 	if ctx == nil {
 		ctx = context.Background()
 	}
-	settingService := &SettingService{}
+	database := dbsqlite.DB()
+	if database == nil {
+		return common.NewError("restore database is unavailable")
+	}
+	settingService := &SettingService{database: database.WithContext(ctx)}
 	result := restoreImportPostOpenResult{}
 	if err := runRestoreImportServicePostOpenActionList(ctx, settingService, &result, restoreImportServicePostOpenActions()); err != nil {
 		return err
 	}
-	recordRestoreImportPostOpenAudit(result)
+	recordRestoreImportPostOpenAudit(ctx, result)
 	return nil
 }
 
@@ -93,14 +97,14 @@ func rotateRestoreImportSessions(ctx context.Context, settingService *SettingSer
 	return ctx.Err()
 }
 
-func recordRestoreImportPostOpenAudit(result restoreImportPostOpenResult) {
+func recordRestoreImportPostOpenAudit(ctx context.Context, result restoreImportPostOpenResult) {
 	if dbsqlite.DB() == nil {
 		return
 	}
 	// The candidate is still rollback-authorized. Finish this write before
 	// returning: a queued write could otherwise reach the reopened fallback
 	// and race its schema initialization after AbortPendingRestore.
-	if err := (&AuditService{}).RecordSynchronous(AuditEvent{
+	if err := (&AuditService{}).RecordSynchronousContext(ctx, AuditEvent{
 		Actor:    "system",
 		Event:    "db_restore_post_actions",
 		Resource: "database",

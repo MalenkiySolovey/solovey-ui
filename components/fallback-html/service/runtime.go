@@ -111,7 +111,7 @@ func (r *Runtime) Start(db *gorm.DB) error {
 		}
 		r.unregister = unregister
 	}
-	if err := r.rebuildLocked(); err != nil {
+	if err := r.rebuildLocked(r.db); err != nil {
 		r.unregister()
 		r.unregister = nil
 		r.db = nil
@@ -136,12 +136,21 @@ func (r *Runtime) Stop() {
 }
 
 func (r *Runtime) Rebuild(db *gorm.DB) error {
+	return r.RebuildContext(context.Background(), db)
+}
+
+// RebuildContext uses the restore capability only for temporary reads; the
+// cached base DB remains ordinary after acceptance or exact fallback recovery.
+func (r *Runtime) RebuildContext(ctx context.Context, db *gorm.DB) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if db != nil {
 		r.db = db
 	}
-	return r.rebuildLocked()
+	if r.db == nil {
+		return r.rebuildLocked(nil)
+	}
+	return r.rebuildLocked(r.db.WithContext(ctx))
 }
 
 func (r *Runtime) Status() RuntimeStatus {
@@ -157,14 +166,14 @@ func (r *Runtime) Status() RuntimeStatus {
 	}
 }
 
-func (r *Runtime) rebuildLocked() error {
-	if r.db == nil {
+func (r *Runtime) rebuildLocked(database *gorm.DB) error {
+	if database == nil {
 		r.stopStandaloneLocked()
 		r.snapshot.Store((*snapshot)(nil))
 		return nil
 	}
 	var publish fallbackdomain.Publish
-	err := r.db.
+	err := database.
 		Preload("Files").
 		Preload("Redirects").
 		Joins("JOIN fallback_html_sites ON fallback_html_sites.id = fallback_html_publishes.site_id").
@@ -185,7 +194,7 @@ func (r *Runtime) rebuildLocked() error {
 		redirects: make(map[string]publishedRedirect, len(publish.Redirects)),
 	}
 	var resources []fallbackdomain.ExternalResource
-	if err := r.db.Where("site_id = ? AND allowed = ?", publish.SiteID, true).Find(&resources).Error; err != nil {
+	if err := database.Where("site_id = ? AND allowed = ?", publish.SiteID, true).Find(&resources).Error; err != nil {
 		return err
 	}
 	next.csp = publicSiteCSP(resources)
@@ -222,7 +231,7 @@ func (r *Runtime) rebuildLocked() error {
 			external:   redirect.External,
 		}
 	}
-	targets, err := r.activeStandaloneTargets(publish.SiteID)
+	targets, err := r.activeStandaloneTargets(database, publish.SiteID)
 	if err != nil {
 		return err
 	}
@@ -240,9 +249,9 @@ func (r *Runtime) Owns(listen string, port int) bool {
 	return ok
 }
 
-func (r *Runtime) activeStandaloneTargets(siteID uint) ([]fallbackdomain.RuntimeTarget, error) {
+func (r *Runtime) activeStandaloneTargets(database *gorm.DB, siteID uint) ([]fallbackdomain.RuntimeTarget, error) {
 	var targets []fallbackdomain.RuntimeTarget
-	if err := r.db.Where("site_id = ? AND kind = ?", siteID, "standalone").Find(&targets).Error; err != nil {
+	if err := database.Where("site_id = ? AND kind = ?", siteID, "standalone").Find(&targets).Error; err != nil {
 		return nil, err
 	}
 	return targets, nil

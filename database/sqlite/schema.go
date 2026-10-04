@@ -71,19 +71,19 @@ LIMIT 1
 	})
 }
 
-func ensureSortOrders() error {
+func ensureSortOrders(database *gorm.DB) error {
 	for _, table := range []string{
 		"inbounds", "clients", "outbounds", "endpoints", "services", "tls", "users",
 	} {
-		if err := ensureTableSortOrder(table); err != nil {
+		if err := ensureTableSortOrder(database, table); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func ensureTableSortOrder(table string) error {
-	if !db.Migrator().HasTable(table) || !db.Migrator().HasColumn(table, "sort_order") {
+func ensureTableSortOrder(database *gorm.DB, table string) error {
+	if !database.Migrator().HasTable(table) || !database.Migrator().HasColumn(table, "sort_order") {
 		return nil
 	}
 
@@ -92,7 +92,7 @@ func ensureTableSortOrder(table string) error {
 		ID        int64
 		SortOrder int
 	}{}
-	if err := db.Raw(fmt.Sprintf("SELECT id, sort_order FROM %s ORDER BY sort_order ASC, id ASC", quotedTable)).Scan(&rows).Error; err != nil {
+	if err := database.Raw(fmt.Sprintf("SELECT id, sort_order FROM %s ORDER BY sort_order ASC, id ASC", quotedTable)).Scan(&rows).Error; err != nil {
 		return err
 	}
 	needsBackfill := false
@@ -106,7 +106,7 @@ func ensureTableSortOrder(table string) error {
 		return nil
 	}
 
-	return db.Transaction(func(tx *gorm.DB) error {
+	return database.Transaction(func(tx *gorm.DB) error {
 		query := fmt.Sprintf("UPDATE %s SET sort_order = ? WHERE id = ?", quotedTable)
 		for index, row := range rows {
 			if err := tx.Exec(query, index+1, row.ID).Error; err != nil {

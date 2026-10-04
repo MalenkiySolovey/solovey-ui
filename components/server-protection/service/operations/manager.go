@@ -17,6 +17,7 @@ import (
 	"time"
 
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 const (
@@ -537,6 +538,11 @@ func (m *Manager) beginRollback(ctx context.Context, operationID string, revisio
 }
 
 func (m *Manager) Heartbeat(ctx context.Context, operationID string, revision int) (protectionrepository.OperationLockModel, error) {
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return protectionrepository.OperationLockModel{}, err
+	}
+	defer release()
 	if m.isStopped() {
 		return protectionrepository.OperationLockModel{}, ErrFenced
 	}
@@ -622,6 +628,11 @@ func (m *Manager) ForceUnlock(ctx context.Context, request ForceUnlockRequest) (
 }
 
 func (m *Manager) Recover(ctx context.Context) ([]RecoveryResult, error) {
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return nil, err
+	}
+	defer release()
 	all, err := m.store.ListOperationLocks(ctx, nil)
 	if err != nil {
 		return nil, err

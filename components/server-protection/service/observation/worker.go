@@ -17,6 +17,7 @@ import (
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/scoring"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 )
 
 const (
@@ -236,6 +237,11 @@ func (w *Worker) flush(ctx context.Context, batch []publicsurface.Observation) {
 }
 
 func (w *Worker) processBatch(ctx context.Context, observations []publicsurface.Observation) (int, error) {
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer release()
 	settings, _, err := w.repository.LoadSettings(ctx)
 	if err != nil || !settings.Enabled {
 		return 0, err
@@ -363,6 +369,12 @@ func (w *Worker) processBatch(ctx context.Context, observations []publicsurface.
 }
 
 func (w *Worker) purge(ctx context.Context) {
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		w.lastError.Store(err.Error())
+		return
+	}
+	defer release()
 	settings, _, err := w.repository.LoadSettings(ctx)
 	if err != nil {
 		w.lastError.Store(err.Error())

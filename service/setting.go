@@ -1,6 +1,10 @@
 package service
 
+import "gorm.io/gorm"
+
 type SettingService struct {
+	// Only a temporary restore-local service supplies a context-bound DB.
+	database *gorm.DB
 }
 
 func (s *SettingService) GetAllSetting() (*map[string]string, error) {

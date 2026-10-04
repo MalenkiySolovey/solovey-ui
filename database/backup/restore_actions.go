@@ -25,8 +25,8 @@ func importRollbackProtectedPostActions(dbPath string, owners []RestoreOwnerStat
 		{
 			stage:           "opening imported db",
 			rollbackOnError: true,
-			run: func(context.Context) error {
-				return dbsqlite.Init(dbPath)
+			run: func(ctx context.Context) error {
+				return dbsqlite.InitContext(ctx, dbPath)
 			},
 		},
 		{stage: "restoring logical owner files", rollbackOnError: true, run: func(ctx context.Context) error {

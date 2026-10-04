@@ -32,6 +32,11 @@ const cryptoBotPollGraceSeconds int64 = 24 * 60 * 60
 // pending set — otherwise a late-but-valid payment would be silently lost
 // (money taken, no grant, no recovery).
 func PollOnce(ctx context.Context, runtime *service.Runtime) {
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return
+	}
+	defer release()
 	setting := paidSettings{}
 	if enabled, err := setting.GetPaidSubEnabled(); err != nil || !enabled {
 		return

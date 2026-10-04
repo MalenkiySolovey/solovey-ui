@@ -8,6 +8,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/cronjob/jobs/maintenance"
 	runtimejobs "github.com/MalenkiySolovey/solovey-ui/cronjob/jobs/runtime"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/robfig/cron/v3"
 )
 
@@ -264,8 +265,13 @@ func (j *managedJob) Run() {
 	j.active.Add(1)
 	j.mu.Unlock()
 	defer j.active.Done()
+	ctx, release, err := dbsqlite.AcquireOperation(j.ctx)
+	if err != nil {
+		return
+	}
+	defer release()
 	if job, ok := j.job.(contextJob); ok {
-		job.RunContext(j.ctx)
+		job.RunContext(ctx)
 		return
 	}
 	j.job.Run()

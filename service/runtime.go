@@ -9,6 +9,7 @@ import (
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/restart"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	auditsvc "github.com/MalenkiySolovey/solovey-ui/service/audit"
@@ -190,6 +191,10 @@ func (r *Runtime) tokenUseDebouncer() *tokenUseDebouncer {
 }
 
 func (r *Runtime) resetTokenUseDebouncer() {
+	r.resetTokenUseDebouncerContext(context.Background())
+}
+
+func (r *Runtime) resetTokenUseDebouncerContext(ctx context.Context) {
 	if r == nil {
 		return
 	}
@@ -198,9 +203,14 @@ func (r *Runtime) resetTokenUseDebouncer() {
 	r.mu.Lock()
 	current := r.tokenUse
 	if current != nil {
-		if err := current.flushNow(context.Background(), true, false); err != nil {
-			logger.Warning("token use flush before reset failed:", err)
+		if !dbsqlite.IsMaintenanceContext(ctx) {
+			if err := current.flushNow(ctx, true, false); err != nil {
+				logger.Warning("token use flush before reset failed:", err)
+			}
 		}
+		// Numeric token IDs queued on the prior generation cannot be applied
+		// to an imported table. Retire even stale references to this debouncer.
+		current.retire()
 	}
 	r.tokenUse = newTokenUseDebouncer(tokenUseFlushInterval, flushTokenUseUpdates)
 	r.mu.Unlock()
@@ -254,8 +264,9 @@ var (
 )
 
 func init() {
-	dbhooks.RegisterResetHook("service.token_use_debouncer", func() {
-		DefaultRuntime().resetTokenUseDebouncer()
+	dbhooks.RegisterContextResetHook("service.token_use_debouncer", func(ctx context.Context) error {
+		DefaultRuntime().resetTokenUseDebouncerContext(ctx)
+		return nil
 	})
 }
 

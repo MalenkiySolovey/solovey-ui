@@ -34,6 +34,7 @@ type tokenUseDebouncer struct {
 	failureBackoff time.Duration
 	circuitUntil   time.Time
 	flush          func(map[uint]tokenUseUpdate) error
+	retired        bool
 }
 
 func newTokenUseDebouncer(interval time.Duration, flush func(map[uint]tokenUseUpdate) error) *tokenUseDebouncer {
@@ -77,12 +78,15 @@ func (d *tokenUseDebouncer) Record(id uint, ip string, ts int64) {
 	}
 	d.mu.Lock()
 	defer d.mu.Unlock()
+	if d.retired {
+		return
+	}
 	d.pending[id] = tokenUseUpdate{ip: ip, ts: ts}
 	d.scheduleLocked()
 }
 
 func (d *tokenUseDebouncer) scheduleLocked() {
-	if d.timer != nil {
+	if d.retired || d.timer != nil {
 		return
 	}
 	now := time.Now()
@@ -145,6 +149,10 @@ func (d *tokenUseDebouncer) flushNow(ctx context.Context, bypassGate bool, reque
 		return err
 	}
 	d.mu.Lock()
+	if d.retired {
+		d.mu.Unlock()
+		return nil
+	}
 	d.epoch++
 	if d.timer != nil {
 		d.timer.Stop()
@@ -172,13 +180,25 @@ func (d *tokenUseDebouncer) flushNow(ctx context.Context, bypassGate bool, reque
 func (d *tokenUseDebouncer) takePending(epoch uint64) map[uint]tokenUseUpdate {
 	d.mu.Lock()
 	defer d.mu.Unlock()
-	if epoch != d.epoch {
+	if d.retired || epoch != d.epoch {
 		return nil
 	}
 	updates := d.pending
 	d.pending = make(map[uint]tokenUseUpdate)
 	d.timer = nil
 	return updates
+}
+
+func (d *tokenUseDebouncer) retire() {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.retired = true
+	d.epoch++
+	if d.timer != nil {
+		d.timer.Stop()
+		d.timer = nil
+	}
+	d.pending = make(map[uint]tokenUseUpdate)
 }
 
 func (d *tokenUseDebouncer) write(updates map[uint]tokenUseUpdate) error {
@@ -314,6 +334,11 @@ func resumeTokenUseFlush() {
 }
 
 func flushTokenUseUpdates(updates map[uint]tokenUseUpdate) error {
+	_, release, err := dbsqlite.AcquireOperation(context.Background())
+	if err != nil {
+		return err
+	}
+	defer release()
 	db := dbsqlite.DB()
 	if db == nil || len(updates) == 0 {
 		return nil
