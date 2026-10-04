@@ -129,6 +129,13 @@ func (s *StatsService) saveStatsSamples(enableTraffic bool, samples []coretracke
 	}
 	ipBatch := ipmonitor.BeginFlush()
 	transactionCommitted := false
+	// Complete the IP observation batch even when commit failure returns early
+	// from the transaction defer. A failed batch must remain flushable.
+	defer func() {
+		if !transactionCommitted {
+			ipBatch.Requeue()
+		}
+	}()
 	publishOnCommit := false
 	publishOnlines := onlines{}
 	var publishStats []model.Stats
@@ -160,9 +167,6 @@ func (s *StatsService) saveStatsSamples(enableTraffic bool, samples []coretracke
 			}
 		} else {
 			tx.Rollback()
-		}
-		if !transactionCommitted {
-			ipBatch.Requeue()
 		}
 	}()
 

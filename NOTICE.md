@@ -41,3 +41,11 @@ installer, and networking projects. No production code was copied from those
 comparison sources. GPL/AGPL and unknown-license comparison sources are
 reference-only unless a later change explicitly records a compatible transfer
 and updates this notice.
+
+The IP-01/IP-02 policy loading and atomic admission changes independently adapt
+behavior reviewed in deposist/s-ui-x v1.5.12-beta6
+(`08814445d1497bc8b52bdc3af2eda784a5ea26cb`), primarily witnessed by
+`590b08af39537ab4c85441513743c2360bbc187d` in its IP monitor and tracker.
+No upstream implementation or tests were copied. Solovey's IP monitor retains
+policy, privacy and persistence ownership; its tracker uses an injected atomic
+observer. This records a partial behavioral adaptation, not full S-UI-X parity.

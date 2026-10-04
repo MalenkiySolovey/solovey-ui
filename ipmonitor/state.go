@@ -5,6 +5,7 @@ import (
 	"time"
 
 	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -32,18 +33,16 @@ type allowCacheEntry struct {
 var pending = struct {
 	sync.Mutex
 	byClient map[string]map[string]pendingIP
-}{byClient: map[string]map[string]pendingIP{}}
+	flushing map[*FlushBatch]struct{}
+}{byClient: map[string]map[string]pendingIP{}, flushing: map[*FlushBatch]struct{}{}}
 
 var allowCache = struct {
 	sync.Mutex
 	byClient map[string]allowCacheEntry
+	revision uint64
 }{byClient: map[string]allowCacheEntry{}}
 
-var allowCacheRefresh = struct {
-	sync.Mutex
-	generation uint64
-	inFlight   map[string]uint64
-}{inFlight: map[string]uint64{}}
+var allowCacheRefresh singleflight.Group
 
 var securityEvents = struct {
 	sync.Mutex
@@ -66,28 +65,25 @@ func init() {
 }
 
 func ResetCaches() {
+	// Privacy and policy move to the new database together. Source preparation
+	// never holds these mutexes while acquiring allowCache or pending.
+	ipHashSalt.Lock()
+	ipPrivacySettings.Lock()
+	allowCache.Lock()
 	pending.Lock()
 	pending.byClient = map[string]map[string]pendingIP{}
-	pending.Unlock()
-
-	allowCacheRefresh.Lock()
-	allowCacheRefresh.generation++
-	allowCacheRefresh.inFlight = map[string]uint64{}
-	allowCache.Lock()
+	pending.flushing = map[*FlushBatch]struct{}{}
+	allowCache.revision++
 	allowCache.byClient = map[string]allowCacheEntry{}
+	ipHashSalt.value = nil
+	ipPrivacySettings.showRaw = false
+	ipPrivacySettings.expiresAt = time.Time{}
+	pending.Unlock()
 	allowCache.Unlock()
-	allowCacheRefresh.Unlock()
+	ipPrivacySettings.Unlock()
+	ipHashSalt.Unlock()
 
 	securityEvents.Lock()
 	securityEvents.lastEmittedAt = map[string]time.Time{}
 	securityEvents.Unlock()
-
-	ipHashSalt.Lock()
-	ipHashSalt.value = nil
-	ipHashSalt.Unlock()
-
-	ipPrivacySettings.Lock()
-	ipPrivacySettings.showRaw = false
-	ipPrivacySettings.expiresAt = time.Time{}
-	ipPrivacySettings.Unlock()
 }

@@ -4,10 +4,6 @@ package ipmonitor
 // package import the other.
 type Observer struct{}
 
-func (Observer) Allow(clientName, ip string) bool {
-	return Allow(clientName, ip)
-}
-
-func (Observer) Record(clientName, ip string) {
-	Record(clientName, ip)
+func (Observer) ObserveAndAllow(clientName, ip string) bool {
+	return ObserveAndAllow(clientName, ip)
 }

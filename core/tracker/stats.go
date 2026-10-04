@@ -98,12 +98,9 @@ func (c *StatsTracker) loadOrCreateCounter(obj *map[string]Counter, name string)
 
 func (c *StatsTracker) RoutedConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound) net.Conn {
 	sourceIP := sourceIPFromMetadata(metadata)
-	if c.observer != nil && !c.observer.Allow(metadata.User, sourceIP) {
+	if c.observer != nil && !c.observer.ObserveAndAllow(metadata.User, sourceIP) {
 		_ = conn.Close()
 		return conn
-	}
-	if c.observer != nil {
-		c.observer.Record(metadata.User, sourceIP)
 	}
 	outbound := ""
 	if matchOutbound != nil {
@@ -115,12 +112,9 @@ func (c *StatsTracker) RoutedConnection(ctx context.Context, conn net.Conn, meta
 
 func (c *StatsTracker) RoutedPacketConnection(ctx context.Context, conn network.PacketConn, metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound) network.PacketConn {
 	sourceIP := sourceIPFromMetadata(metadata)
-	if c.observer != nil && !c.observer.Allow(metadata.User, sourceIP) {
+	if c.observer != nil && !c.observer.ObserveAndAllow(metadata.User, sourceIP) {
 		_ = conn.Close()
 		return conn
-	}
-	if c.observer != nil {
-		c.observer.Record(metadata.User, sourceIP)
 	}
 	outbound := ""
 	if matchOutbound != nil {

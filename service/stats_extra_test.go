@@ -11,6 +11,7 @@ import (
 	coretracker "github.com/MalenkiySolovey/solovey-ui/core/tracker"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/ipmonitor"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	"gorm.io/gorm"
 )
@@ -44,6 +45,14 @@ func TestStatsServiceSaveStatsWithEmptyStats(t *testing.T) {
 func TestStatsServiceSaveStatsCommitFailureAuditsAndReturns(t *testing.T) {
 	initSettingTestDB(t)
 	seedStatsBenchClients(t, 1)
+	ipmonitor.ResetCaches()
+	t.Cleanup(ipmonitor.ResetCaches)
+	if err := dbsqlite.DB().Model(&model.Client{}).Where("name = ?", "user-0000").Updates(map[string]any{"limit_ip": 1, "ip_limit_mode": ipmonitor.ModeEnforce}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !ipmonitor.ObserveAndAllow("user-0000", "198.51.100.1") {
+		t.Fatal("initial source was not admitted")
+	}
 
 	realtime.CloseAll("stats-commit-test-reset")
 	t.Cleanup(func() { realtime.CloseAll("stats-commit-test-done") })
@@ -119,6 +128,17 @@ func TestStatsServiceSaveStatsCommitFailureAuditsAndReturns(t *testing.T) {
 	restored := tracker.GetStats()
 	if len(restored) != 2 || restored[0].Traffic+restored[1].Traffic != 3 {
 		t.Fatalf("failed commit did not restore drained stats: %#v", restored)
+	}
+	ipmonitor.InvalidateAllCache()
+	if ipmonitor.ObserveAndAllow("user-0000", "198.51.100.2") {
+		t.Fatal("failed stats commit lost the accepted IP reservation")
+	}
+	if err := ipmonitor.Flush(); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := ipmonitor.History("user-0000", 10)
+	if err != nil || len(rows) != 1 {
+		t.Fatalf("failed stats commit did not requeue a flushable IP observation: rows=%d err=%v", len(rows), err)
 	}
 }
 
