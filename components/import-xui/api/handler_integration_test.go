@@ -9,11 +9,11 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -60,12 +60,13 @@ func TestCompatiblePanelMutationsRequireExactStepUp(t *testing.T) {
 			c.AbortWithStatusJSON(http.StatusForbidden, Envelope{Success: false, Msg: "denied"})
 			return false
 		},
-		Audit:         func(*gin.Context, string, string, string, string, map[string]any) {},
-		Actor:         func(*gin.Context) string { return "admin" },
-		RemoteIP:      func(*gin.Context) string { return "192.0.2.1" },
-		JSONObj:       func(*gin.Context, interface{}, error) {},
-		JSONMsg:       func(*gin.Context, string, error) {},
-		ConfigChanged: func() {},
+		Audit:                func(*gin.Context, string, string, string, string, map[string]any) {},
+		Actor:                func(*gin.Context) string { return "admin" },
+		RemoteIP:             func(*gin.Context) string { return "192.0.2.1" },
+		JSONObj:              func(*gin.Context, interface{}, error) {},
+		JSONMsg:              func(*gin.Context, string, error) {},
+		ConfigChanged:        func() {},
+		AuthorizationChanged: func() {},
 	})
 	gatewayRouter := gin.New()
 	gatewayRouter.POST("/api/import-xui", gateway.ImportXui)
@@ -137,7 +138,8 @@ func newImportXUIAPITestRouter(actor string, scope string) *gin.Engine {
 		JSONMsg: func(c *gin.Context, msg string, err error) {
 			c.JSON(http.StatusOK, Envelope{Success: err == nil, Msg: msg})
 		},
-		ConfigChanged: func() {},
+		ConfigChanged:        func() {},
+		AuthorizationChanged: func() {},
 	})
 	router.POST("/api/import-xui", handler.ImportXui)
 	return router
@@ -172,7 +174,9 @@ func newImportXUIUploadRequest(t *testing.T, path string, content []byte, dryRun
 
 func initImportXUIAPITestDB(t *testing.T) {
 	t.Helper()
-	if err := dbsqlite.Init(filepath.Join(t.TempDir(), "s-ui.db")); err != nil {
+	databaseFolder := t.TempDir()
+	t.Setenv("SUI_DB_FOLDER", databaseFolder)
+	if err := dbsqlite.Init(configstorage.GetDBPath()); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
 			t.Skip(err)
 		}

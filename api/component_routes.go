@@ -13,10 +13,11 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (a *ApiService) componentAPI(requireStepUp func(*gin.Context, string, string) bool) componenthost.APIDeps {
+func (a *ApiService) componentAPI(requireStepUp func(*gin.Context, string, string) bool, authorizationChanged func()) componenthost.APIDeps {
 	return componenthost.APIDeps{
 		Runtime: a.Runtime,
 		Auth: componenthost.AuthDeps{
+			AuthorizationChanged:   authorizationChanged,
 			RequireScope:           a.requireTokenScopeAny,
 			RequireAuditAdminScope: a.requireAuditAdminScope,
 			RequireStepUp:          requireStepUp,

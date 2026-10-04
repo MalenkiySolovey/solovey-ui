@@ -30,6 +30,20 @@ func TestDatabaseImportFailsClosedWithoutBrowserStepUpCapability(t *testing.T) {
 	}
 }
 
+func TestDatabaseImportFailsClosedWithoutAuthorizationCompletion(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(recorder)
+	c.Request = httptest.NewRequest(http.MethodPost, "/api/importdb", nil)
+	handler := NewHandler(Deps{
+		RequireScope:  func(*gin.Context, string, ...string) bool { return true },
+		RequireStepUp: func(*gin.Context, string, string) bool { return true },
+	})
+	handler.ImportDb(c)
+	if recorder.Code != http.StatusServiceUnavailable {
+		t.Fatalf("missing completion status=%d", recorder.Code)
+	}
+}
+
 func TestValidateDatabaseImportMultipartBoundsPartsFieldsAndFiles(t *testing.T) {
 	valid := &multipart.Form{
 		Value: map[string][]string{"backupPassphrase": {"bounded secret"}},

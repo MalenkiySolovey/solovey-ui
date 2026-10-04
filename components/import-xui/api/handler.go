@@ -15,30 +15,32 @@ type AuditHistory interface {
 }
 
 type Handler struct {
-	AuditHistory  AuditHistory
-	RequireScope  func(*gin.Context, string, ...string) bool
-	RequireStepUp func(*gin.Context, string, string) bool
-	Audit         func(*gin.Context, string, string, string, string, map[string]any)
-	Actor         func(*gin.Context) string
-	RemoteIP      func(*gin.Context) string
-	Hostname      func(*gin.Context) string
-	JSONObj       func(*gin.Context, interface{}, error)
-	JSONMsg       func(*gin.Context, string, error)
-	ConfigChanged func()
+	AuthorizationChanged func()
+	AuditHistory         AuditHistory
+	RequireScope         func(*gin.Context, string, ...string) bool
+	RequireStepUp        func(*gin.Context, string, string) bool
+	Audit                func(*gin.Context, string, string, string, string, map[string]any)
+	Actor                func(*gin.Context) string
+	RemoteIP             func(*gin.Context) string
+	Hostname             func(*gin.Context) string
+	JSONObj              func(*gin.Context, interface{}, error)
+	JSONMsg              func(*gin.Context, string, error)
+	ConfigChanged        func()
 }
 
 // Deps contains the host capabilities required by compatible panel import routes.
 type Deps struct {
-	AuditHistory  AuditHistory
-	RequireScope  func(*gin.Context, string, ...string) bool
-	RequireStepUp func(*gin.Context, string, string) bool
-	Audit         func(*gin.Context, string, string, string, string, map[string]any)
-	Actor         func(*gin.Context) string
-	RemoteIP      func(*gin.Context) string
-	Hostname      func(*gin.Context) string
-	JSONObj       func(*gin.Context, interface{}, error)
-	JSONMsg       func(*gin.Context, string, error)
-	ConfigChanged func()
+	AuthorizationChanged func()
+	AuditHistory         AuditHistory
+	RequireScope         func(*gin.Context, string, ...string) bool
+	RequireStepUp        func(*gin.Context, string, string) bool
+	Audit                func(*gin.Context, string, string, string, string, map[string]any)
+	Actor                func(*gin.Context) string
+	RemoteIP             func(*gin.Context) string
+	Hostname             func(*gin.Context) string
+	JSONObj              func(*gin.Context, interface{}, error)
+	JSONMsg              func(*gin.Context, string, error)
+	ConfigChanged        func()
 }
 
 type Upload struct {
@@ -71,16 +73,17 @@ var RouteSpecs = []RouteSpec{
 
 func NewHandler(deps Deps) *Handler {
 	return &Handler{
-		AuditHistory:  deps.AuditHistory,
-		RequireScope:  deps.RequireScope,
-		RequireStepUp: deps.RequireStepUp,
-		Audit:         deps.Audit,
-		Actor:         deps.Actor,
-		RemoteIP:      deps.RemoteIP,
-		Hostname:      deps.Hostname,
-		JSONObj:       deps.JSONObj,
-		JSONMsg:       deps.JSONMsg,
-		ConfigChanged: deps.ConfigChanged,
+		AuthorizationChanged: deps.AuthorizationChanged,
+		AuditHistory:         deps.AuditHistory,
+		RequireScope:         deps.RequireScope,
+		RequireStepUp:        deps.RequireStepUp,
+		Audit:                deps.Audit,
+		Actor:                deps.Actor,
+		RemoteIP:             deps.RemoteIP,
+		Hostname:             deps.Hostname,
+		JSONObj:              deps.JSONObj,
+		JSONMsg:              deps.JSONMsg,
+		ConfigChanged:        deps.ConfigChanged,
 	}
 }
 

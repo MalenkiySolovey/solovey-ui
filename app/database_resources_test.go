@@ -12,6 +12,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	datalifecycle "github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
+	"gorm.io/gorm"
 )
 
 func TestLogicalRestoreRebindsApplicationResourceOwners(t *testing.T) {
@@ -83,9 +84,11 @@ func TestLogicalRestoreRebindsApplicationResourceOwners(t *testing.T) {
 			// Host resource pressure is independently qualified. This fixture
 			// admits the logical transaction without starting host watchers.
 			manager.Admit = func(string) bool { return true }
+			accepted := 0
 			operation, result, err := manager.ExecuteRestore(context.Background(), datalifecycle.RestoreRequest{
 				ExpectedRehearsalRevision: rehearsal.Revision, IdempotencyKey: "restore-resource-generation",
 				Confirmation: datalifecycle.RestoreConfirmation(rehearsal.Revision), Acknowledged: true, Source: bytes.NewReader(backup),
+				OnAccepted: func() { accepted++ },
 			})
 			if reject {
 				if err == nil || operation.State == "APPLIED" {
@@ -93,6 +96,13 @@ func TestLogicalRestoreRebindsApplicationResourceOwners(t *testing.T) {
 				}
 			} else if err != nil || operation.State != "APPLIED" || result.RestartPending || result.RecoveryCleanupPending {
 				t.Fatalf("restore: state=%s restart=%v cleanup=%v err=%v", operation.State, result.RestartPending, result.RecoveryCleanupPending, err)
+			}
+			wantAccepted := 1
+			if reject {
+				wantAccepted = 0
+			}
+			if accepted != wantAccepted {
+				t.Fatalf("accepted callbacks=%d want=%d", accepted, wantAccepted)
 			}
 			if dbsqlite.DB() == oldDB {
 				t.Fatal("restore did not replace the database object")
@@ -127,6 +137,53 @@ func TestLogicalRestoreRebindsApplicationResourceOwners(t *testing.T) {
 			}
 			checkResources()
 		})
+	}
+}
+
+func TestRestoreAcceptanceSignalSurvivesPruneErrorAndIsNotReplayed(t *testing.T) {
+	t.Setenv("SUI_DB_FOLDER", t.TempDir())
+	application := NewApp()
+	if err := application.Init(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(application.Stop)
+	dbbackup.SetSendSighupHook(func() error { return errors.New("restart deferred") })
+	t.Cleanup(func() { dbbackup.SetSendSighupHook(nil) })
+	backup, err := dbbackup.Export("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	rehearsal, err := dbbackup.Rehearse(t.Context(), bytes.NewReader(backup))
+	if err != nil || !rehearsal.Possible {
+		t.Fatal("rehearsal failed", err)
+	}
+	manager := datalifecycle.NewManager()
+	manager.Admit = func(string) bool { return true }
+	accepted, failPrune := 0, false
+	manager.DB = func() *gorm.DB {
+		if failPrune {
+			return nil
+		}
+		return dbsqlite.DB()
+	}
+	request := datalifecycle.RestoreRequest{
+		ExpectedRehearsalRevision: rehearsal.Revision, IdempotencyKey: "restore-accepted-before-prune",
+		Confirmation: datalifecycle.RestoreConfirmation(rehearsal.Revision), Acknowledged: true, Source: bytes.NewReader(backup),
+		OnAccepted: func() { accepted++; failPrune = true },
+	}
+	operation, result, err := manager.ExecuteRestore(t.Context(), request)
+	if err == nil || operation.State != "APPLIED" || accepted != 1 || !result.RestartPending {
+		t.Fatalf("accepted restore state=%s callbacks=%d restart=%v error=%v", operation.State, accepted, result.RestartPending, err)
+	}
+	failPrune = false
+	var stored model.DataLifecycleOperation
+	if err := dbsqlite.DB().First(&stored, "operation_id = ?", operation.OperationID).Error; err != nil || stored.State != "APPLIED" {
+		t.Fatal("acceptance was not durable", err)
+	}
+	request.Source = bytes.NewReader(backup)
+	replayed, _, err := manager.ExecuteRestore(t.Context(), request)
+	if err != nil || replayed.OperationID != operation.OperationID || accepted != 1 {
+		t.Fatalf("idempotent restore callbacks=%d error=%v", accepted, err)
 	}
 }
 

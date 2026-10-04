@@ -68,3 +68,14 @@ the pinned S-UI-X target above. Witnesses are
 `service/geosite_ru_smart.go`). Solovey uses the existing validation, config
 storage and geosite owners with the official sing-box v1.13.14 grammar.
 No upstream code or tests were copied; these are partial behavioral adaptations.
+
+TOK-04 and IMPORT-01 independently adapt import-completion authorization
+refresh and checked source SQLite handle extraction from the same pinned
+target. Witnesses are `590b08af39537ab4c85441513743c2360bbc187d`
+(`api/apiHandler.go`, `api/apiHandler_routes_test.go`) and
+`9bcf2cd2fc27a995138a419e7566e6f3778ecffe`
+(`database/importxui/source.go`, `database/importxui/history_routing.go`).
+Solovey retains component-owned import transactions and the host's token
+snapshot owner; native restore signals durable acceptance before optional
+retention. Source connections enforce their read-only untrusted boundary.
+No upstream implementation or tests were copied.

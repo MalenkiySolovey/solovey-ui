@@ -59,6 +59,7 @@ func TestImportDbRequiresAdminScopeAndAuditsFailure(t *testing.T) {
 
 func databaseImportTestHandler() gin.HandlerFunc {
 	handler := (&ApiService{}).dbTransferHandler()
+	handler.AuthorizationChanged = func() {}
 	handler.RequireStepUp = func(*gin.Context, string, string) bool { return true }
 	manager := datalifecycle.NewManager()
 	manager.Admit = func(string) bool { return true }

@@ -76,6 +76,7 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	confighttp.RegisterRoutes(g, configDeps)
 
 	dbTransferDeps := a.dbTransferDeps()
+	dbTransferDeps.AuthorizationChanged = a.reloadTokens
 	dbTransferDeps.RequireStepUp = a.requireStepUpAction
 	dbTransferDeps.EnforceStepUpHeader = true
 	dbtransferhttp.RegisterRoutes(g, dbTransferDeps)
@@ -86,7 +87,7 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	})
 
 	a.registerComponentStatusRoutes(g)
-	registerComponentAPIRoutes(g, a.componentAPI(a.requireStepUpAction))
+	registerComponentAPIRoutes(g, a.componentAPI(a.requireStepUpAction, a.reloadTokens))
 
 	realtimehttp.RegisterRoutes(g, realtimehttp.Deps{
 		SettingService: a.SettingService,

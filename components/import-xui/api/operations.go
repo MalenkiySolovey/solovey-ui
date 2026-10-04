@@ -65,6 +65,7 @@ func (a *Handler) ImportXui(c *gin.Context) {
 		return
 	}
 	if !dryRun {
+		a.AuthorizationChanged()
 		a.recordImportSuccess(c, report, upload.SHA256)
 		a.ConfigChanged()
 	}
@@ -156,6 +157,7 @@ func (a *Handler) ImportXuiApply(c *gin.Context) {
 		xuiImportError(c, err)
 		return
 	}
+	a.AuthorizationChanged()
 	a.recordImportSuccess(c, report, upload.SHA256)
 	a.ConfigChanged()
 	a.JSONObj(c, report, nil)
@@ -175,6 +177,9 @@ func (a *Handler) ImportXuiRollback(c *gin.Context) {
 		return
 	}
 	if !a.requireMutationStepUp(c) {
+		return
+	}
+	if !a.requireMutationDependencies(c) {
 		return
 	}
 	backupReference := xuiRollbackBackupPath(c)
@@ -198,6 +203,7 @@ func (a *Handler) ImportXuiRollback(c *gin.Context) {
 		xuiImportError(c, err)
 		return
 	}
+	a.AuthorizationChanged()
 	a.recordRollbackSuccess(c, backupReference)
 	realtime.Publish(realtime.TopicConfigInvalidated, nil)
 	a.JSONMsg(c, "import-xui", nil)

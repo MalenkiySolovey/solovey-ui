@@ -42,6 +42,9 @@ type APIDeps struct {
 }
 
 type AuthDeps struct {
+	// AuthorizationChanged refreshes the host's authorization snapshot after
+	// a feature has committed a change to account or token authority.
+	AuthorizationChanged   func()
 	RequireScope           func(*gin.Context, string, ...string) bool
 	RequireAuditAdminScope func(*gin.Context) bool
 	RequireStepUp          func(*gin.Context, string, string) bool
