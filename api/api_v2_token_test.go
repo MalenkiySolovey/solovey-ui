@@ -18,6 +18,7 @@ import (
 func newAPIV2TokenTestRouter(t *testing.T) *gin.Engine {
 	t.Helper()
 	initSessionTestDB(t)
+	completeTokenOwnerResetForTest(t)
 	if err := dbsqlite.DB().Create(&model.Tokens{
 		Desc:   "legacy",
 		Token:  "legacy-token",
@@ -135,6 +136,7 @@ func TestAPIV2TokenExpiresAtExactBoundary(t *testing.T) {
 	now := time.Unix(1_900_000_000, 0)
 	withAPITokenNow(t, now)
 	initSessionTestDB(t)
+	completeTokenOwnerResetForTest(t)
 	if err := dbsqlite.DB().Create(&model.Tokens{
 		Desc: "boundary", Token: "boundary-token", Expiry: now.Unix(), UserId: 1,
 	}).Error; err != nil {
@@ -152,6 +154,7 @@ func TestAPIV2TokenExpiresAtExactBoundary(t *testing.T) {
 
 func TestAPIV2ReloadTokensFailsClosedOnLoaderError(t *testing.T) {
 	initSessionTestDB(t)
+	completeTokenOwnerResetForTest(t)
 	if err := dbsqlite.DB().Create(&model.Tokens{
 		Desc: "reload", Token: "reload-token", Expiry: 0, UserId: 1,
 	}).Error; err != nil {

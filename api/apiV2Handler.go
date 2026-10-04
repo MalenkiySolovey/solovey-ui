@@ -30,13 +30,14 @@ type TokenInMemory struct {
 
 type APIv2Handler struct {
 	ApiService
-	auth       *authhttp.Handler
-	config     *confighttp.Handler
-	db         *dbtransferhttp.Handler
-	telemetry  *telemetryhttp.Handler
-	loadTokens func() ([]byte, error)
-	tokensMu   sync.RWMutex
-	tokens     map[string]TokenInMemory
+	auth          *authhttp.Handler
+	config        *confighttp.Handler
+	db            *dbtransferhttp.Handler
+	telemetry     *telemetryhttp.Handler
+	loadTokens    func() ([]byte, error)
+	tokensMu      sync.RWMutex
+	tokens        map[string]TokenInMemory
+	tokenRevision uint64
 }
 
 const (
@@ -222,8 +223,9 @@ func (a *APIv2Handler) findUsername(c *gin.Context) string {
 	}
 	now := apiTokenNow().Unix()
 	a.tokensMu.RLock()
-	defer a.tokensMu.RUnlock()
 	t, ok := a.tokens[tokenHash]
+	revision := a.tokenRevision
+	a.tokensMu.RUnlock()
 	if !ok {
 		return ""
 	}
@@ -233,17 +235,30 @@ func (a *APIv2Handler) findUsername(c *gin.Context) string {
 	if t.Expiry > 0 && t.Expiry <= now {
 		return ""
 	}
+	principal, err := a.UserService.AuthorizeAPIToken(c.Request.Context(), t.ID, tokenHash, now)
+	if err != nil {
+		return ""
+	}
+	// A reload clears authorization immediately. A decision that began before
+	// that boundary cannot authorize from the earlier snapshot after it.
+	a.tokensMu.RLock()
+	current, exists := a.tokens[tokenHash]
+	currentRevision := a.tokenRevision
+	a.tokensMu.RUnlock()
+	if revision != currentRevision || !exists || current.ID != t.ID {
+		return ""
+	}
 	if legacyHeader {
 		c.Header("Deprecation", "true")
 		c.Header("Sunset", legacyTokenHeaderSunset)
-		a.recordAudit(c, t.Username, "legacy_token_header_used", "api_token", service.AuditSeverityWarn, map[string]any{
-			"tokenPrefix": t.TokenPrefix,
+		a.recordAudit(c, principal.Username, "legacy_token_header_used", "api_token", service.AuditSeverityWarn, map[string]any{
+			"tokenPrefix": principal.TokenPrefix,
 			"sunset":      legacyTokenHeaderSunset,
 		})
 	}
 	_ = a.UserService.RecordTokenUse(t.ID, getRemoteIp(c))
-	c.Set(apiTokenScopeKey, t.Scope)
-	return t.Username
+	c.Set(apiTokenScopeKey, principal.Scope)
+	return principal.Username
 }
 
 func (a *APIv2Handler) checkToken(c *gin.Context) {
@@ -271,22 +286,24 @@ func (a *APIv2Handler) checkToken(c *gin.Context) {
 }
 
 func (a *APIv2Handler) ReloadTokens() {
+	a.tokensMu.Lock()
+	a.tokenRevision++
+	revision := a.tokenRevision
+	a.tokens = map[string]TokenInMemory{}
+	a.tokensMu.Unlock()
 	loader := a.loadTokens
 	if loader == nil {
-		a.replaceTokenSnapshot(nil)
 		logger.Error("unable to load tokens: token loader is unavailable")
 		return
 	}
 	tokens, err := loader()
 	if err != nil {
-		a.replaceTokenSnapshot(nil)
 		logger.Error("unable to load tokens: ", err)
 		return
 	}
 	var loaded []TokenInMemory
 	if len(tokens) > 0 {
 		if err := json.Unmarshal(tokens, &loaded); err != nil {
-			a.replaceTokenSnapshot(nil)
 			logger.Error("unable to load tokens: ", err)
 			return
 		}
@@ -295,15 +312,10 @@ func (a *APIv2Handler) ReloadTokens() {
 	for _, t := range loaded {
 		newMap[t.TokenHash] = t
 	}
-	a.replaceTokenSnapshot(newMap)
-}
-
-func (a *APIv2Handler) replaceTokenSnapshot(tokens map[string]TokenInMemory) {
-	if tokens == nil {
-		tokens = map[string]TokenInMemory{}
-	}
 	a.tokensMu.Lock()
-	a.tokens = tokens
+	if a.tokenRevision == revision {
+		a.tokens = newMap
+	}
 	a.tokensMu.Unlock()
 }
 

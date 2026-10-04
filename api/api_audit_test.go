@@ -380,6 +380,7 @@ func TestGetSecurityAuditRateLimitKeyUsesActorAndCanonicalIP(t *testing.T) {
 func TestAPIV2SecurityAuditRequiresAdminScope(t *testing.T) {
 	resetRateLimitState()
 	initSessionTestDB(t)
+	completeTokenOwnerResetForTest(t)
 	readToken, err := (&service.UserService{}).AddToken("admin", 0, "read audit", "read")
 	if err != nil {
 		t.Fatal(err)

@@ -40,6 +40,7 @@ func (a *Handler) ChangePass(c *gin.Context) {
 	currentUser := a.LoginUser(c)
 	err := a.UserService.ChangePass(currentUser, oldPass, newUsername, newPass)
 	if err == nil {
+		a.ReloadTokens()
 		logger.Info("change user credentials success")
 		a.Audit(c, currentUser, "admin_credentials_changed", "admin", service.AuditSeverityWarn, map[string]any{
 			"newUsername": newUsername,
@@ -109,6 +110,7 @@ func (a *Handler) DeleteAdmin(c *gin.Context) {
 	)
 	if err == nil {
 		logger.Info("admin user deleted successfully")
+		a.ReloadTokens()
 		a.Audit(c, loginUser, "admin_deleted", "admin", service.AuditSeverityWarn, map[string]any{
 			"targetUserId":      result.User.Id,
 			"username":          result.User.Username,

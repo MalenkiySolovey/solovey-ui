@@ -66,6 +66,10 @@ func TestPanelSecurityForcedPasswordTransitionIsRestrictedStrictAndAtomic(t *tes
 	if err := (&service.UserService{}).UpdateFirstUser("admin", oldPassword); err != nil {
 		t.Fatal(err)
 	}
+	apiToken, err := (&service.UserService{}).AddToken("admin", 0, "reset transition fixture", "read")
+	if err != nil {
+		t.Fatal(err)
+	}
 	if _, err := (&service.UserService{}).AddUser(
 		"admin",
 		oldPassword,
@@ -95,7 +99,11 @@ func TestPanelSecurityForcedPasswordTransitionIsRestrictedStrictAndAtomic(t *tes
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.Use(sessions.Sessions("s-ui", newAPITestSessionStore(t)))
-	NewAPIHandler(router.Group("/api"), nil)
+	apiv2 := NewAPIv2Handler(router.Group("/apiv2"))
+	NewAPIHandler(router.Group("/api"), apiv2)
+	if res := performAPIV2TokenRequest(router, "Authorization", "Bearer "+apiToken); res.Code != http.StatusUnauthorized {
+		t.Fatalf("reset-required owner token status=%d, want 401", res.Code)
+	}
 	jar := integrationCookieJar{}
 
 	preauth := performIntegrationRequest(router, httptest.NewRequest(http.MethodGet, "/api/csrf", nil), &jar)
@@ -185,6 +193,14 @@ func TestPanelSecurityForcedPasswordTransitionIsRestrictedStrictAndAtomic(t *tes
 	transition.Header.Set(csrfHeader, csrfToken)
 	transitionResult := performIntegrationRequest(router, transition, &jar)
 	assertIntegrationState(t, transitionResult, service.AuthStateAuthenticated)
+	if res := performAPIV2TokenRequest(router, "Authorization", "Bearer "+apiToken); res.Code != http.StatusOK {
+		t.Fatalf("completed transition token status=%d, want 200", res.Code)
+	}
+	for _, token := range apiv2.tokens {
+		if token.Username != "security-admin" {
+			t.Fatal("completed transition retained stale token principal")
+		}
+	}
 
 	var changed model.User
 	if err := dbsqlite.DB().Where("username = ?", "security-admin").First(&changed).Error; err != nil {

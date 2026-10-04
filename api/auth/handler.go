@@ -31,6 +31,7 @@ type Handler struct {
 	LoginRateLimitUserKey     func(string) string
 	LoginUsernameTarpitDelay  func(string) time.Duration
 	RequireStepUp             func(*gin.Context, string, string) bool
+	ReloadTokens              func()
 }
 
 func (a *Handler) requireStepUp(c *gin.Context, operation, target string) bool {
@@ -68,10 +69,14 @@ type Deps struct {
 	LoginUsernameTarpitDelay  func(string) time.Duration
 	RequireStepUp             func(*gin.Context, string, string) bool
 	CSRF                      gin.HandlerFunc
-	ReloadTokensAfter         func(gin.HandlerFunc) gin.HandlerFunc
+	ReloadTokens              func()
 }
 
 func NewHandler(deps Deps) *Handler {
+	reloadTokens := deps.ReloadTokens
+	if reloadTokens == nil {
+		reloadTokens = func() {}
+	}
 	notifyEvent := deps.NotifyEvent
 	if notifyEvent == nil {
 		notifyEvent = func(string, map[string]string) {}
@@ -105,6 +110,7 @@ func NewHandler(deps Deps) *Handler {
 		LoginRateLimitUserKey:     deps.LoginRateLimitUserKey,
 		LoginUsernameTarpitDelay:  deps.LoginUsernameTarpitDelay,
 		RequireStepUp:             deps.RequireStepUp,
+		ReloadTokens:              reloadTokens,
 	}
 }
 
@@ -114,15 +120,15 @@ func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
 	g.POST("/login", h.Login)
 	g.POST("/changePass", h.ChangePass)
 	g.POST("/addAdmin", h.AddAdmin)
-	g.POST("/deleteAdmin", deps.ReloadTokensAfter(h.DeleteAdmin))
+	g.POST("/deleteAdmin", h.DeleteAdmin)
 	g.POST("/logoutAllAdmins", h.LogoutAllAdmins)
 
 	g.GET("/csrf", deps.CSRF)
 	g.POST("/logout", h.Logout)
 	g.GET("/users", h.GetUsers)
 
-	g.POST("/addToken", deps.ReloadTokensAfter(h.AddToken))
-	g.POST("/deleteToken", deps.ReloadTokensAfter(h.DeleteToken))
-	g.POST("/setTokenEnabled", deps.ReloadTokensAfter(h.SetTokenEnabled))
+	g.POST("/addToken", h.AddToken)
+	g.POST("/deleteToken", h.DeleteToken)
+	g.POST("/setTokenEnabled", h.SetTokenEnabled)
 	g.GET("/tokens", h.GetTokens)
 }

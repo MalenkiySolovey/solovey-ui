@@ -49,3 +49,12 @@ behavior reviewed in deposist/s-ui-x v1.5.12-beta6
 No upstream implementation or tests were copied. Solovey's IP monitor retains
 policy, privacy and persistence ownership; its tracker uses an injected atomic
 observer. This records a partial behavioral adaptation, not full S-UI-X parity.
+
+TOK-01/TOK-02/TOK-03 independently adapt token ownership, reset-policy denial
+and successful account-mutation authorization refresh from the same pinned
+S-UI-X target, witnessed by `590b08af39537ab4c85441513743c2360bbc187d`
+in `service/user.go`, `api/apiService.go`, `api/apiV2Handler.go` and
+`api/apiHandler.go`. Solovey retains its account/token semantic owner, hashed
+token storage, scoped permissions, typed sessions and step-up policy. Its
+authoritative request check and revision-fenced snapshot refresh are native
+implementations; no upstream implementation or tests were copied.

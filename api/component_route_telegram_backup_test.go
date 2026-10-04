@@ -24,6 +24,7 @@ func init() {
 
 func TestComponentRouteTelegramBackupRequiresComponentOrAdminScope(t *testing.T) {
 	initSessionTestDB(t)
+	completeTokenOwnerResetForTest(t)
 	prepareComponentRouteMetadata(t)
 	registerTelegramSettingsContributionForTest(t)
 	readToken, err := (&service.UserService{}).AddToken("admin", 0, "read backup", "read")
@@ -62,6 +63,7 @@ func TestComponentRouteTelegramBackupRequiresComponentOrAdminScope(t *testing.T)
 
 func TestComponentRouteTelegramBackupDisabledFailureAuditsWithoutKey(t *testing.T) {
 	initSessionTestDB(t)
+	completeTokenOwnerResetForTest(t)
 	prepareComponentRouteMetadata(t)
 	registerTelegramSettingsContributionForTest(t)
 	adminToken, err := (&service.UserService{}).AddToken("admin", 0, "admin backup", "admin")
@@ -104,6 +106,7 @@ func TestComponentRouteTelegramBackupManualRoutesShareRateLimitBucket(t *testing
 	resetRateLimitState()
 	t.Cleanup(resetRateLimitState)
 	settingService := initSessionTestDB(t)
+	completeTokenOwnerResetForTest(t)
 	adminToken, err := (&service.UserService{}).AddToken("admin", 0, "admin backup", "admin")
 	if err != nil {
 		t.Fatal(err)

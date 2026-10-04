@@ -18,6 +18,7 @@ import (
 
 func TestAPIV2RotateSubSecretRequiresWriteScopeAndAudits(t *testing.T) {
 	initSessionTestDB(t)
+	completeTokenOwnerResetForTest(t)
 	client := model.Client{
 		Enable:    true,
 		Name:      "alice",

@@ -21,6 +21,9 @@ import (
 
 func TestIntegrationSubSecretRotateReloadsClientAndPublishesRealtime(t *testing.T) {
 	initSubSecretIntegrationDB(t)
+	if err := dbsqlite.DB().Model(&model.User{}).Where("id = ?", 1).Update("force_password_reset", false).Error; err != nil {
+		t.Fatal(err)
+	}
 	client := model.Client{
 		Enable:    true,
 		Name:      "alice",

@@ -1,9 +1,11 @@
 package service
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"sort"
 	"strings"
 	"sync"
@@ -28,6 +30,39 @@ var coreAPITokenScopes = []string{
 	"update",
 	"database",
 	"observability",
+}
+
+var ErrTokenNotFound = errors.New("token not found")
+
+// APITokenAuthorization is the current principal and permission of a stored
+// token. A cached token is only a candidate; the durable owner decides whether
+// it still authorizes this request.
+type APITokenAuthorization struct {
+	ID          uint
+	TokenPrefix string
+	Scope       string
+	Username    string
+}
+
+func (s *UserService) AuthorizeAPIToken(ctx context.Context, id uint, hash string, now int64) (APITokenAuthorization, error) {
+	var authorization APITokenAuthorization
+	db := dbsqlite.DB()
+	if db == nil || id == 0 || hash == "" {
+		return authorization, ErrTokenNotFound
+	}
+	err := db.WithContext(ctx).Table("tokens").
+		Select("tokens.id, tokens.token_prefix, tokens.scope, users.username").
+		Joins("JOIN users ON users.id = tokens.user_id").
+		Where("tokens.id = ? AND tokens.token_hash = ? AND tokens.enabled = ? AND (tokens.expiry = 0 OR tokens.expiry > ?) AND users.force_password_reset = ?", id, hash, true, now, false).
+		Take(&authorization).Error
+	if err != nil {
+		return APITokenAuthorization{}, err
+	}
+	if authorization.Username == "" || !apiTokenScopeAllowed(normalizeTokenScope(authorization.Scope)) {
+		return APITokenAuthorization{}, ErrTokenNotFound
+	}
+	authorization.Scope = normalizeTokenScope(authorization.Scope)
+	return authorization, nil
 }
 
 var apiTokenScopeProviders = struct {
@@ -107,7 +142,7 @@ func (s *UserService) LoadTokens() ([]byte, error) {
 	}
 	var result []map[string]interface{}
 	for _, t := range tokens {
-		if t.User == nil {
+		if t.User == nil || t.User.ForcePasswordReset || t.User.Username == "" {
 			continue
 		}
 		result = append(result, map[string]interface{}{
@@ -187,18 +222,34 @@ func (s *UserService) AddToken(username string, expiry int64, desc string, scope
 	return plainToken, nil
 }
 
-func (s *UserService) DeleteToken(id string) error {
+func (s *UserService) DeleteToken(username, id string) error {
 	db := dbsqlite.DB()
-	return db.Model(model.Tokens{}).Where("id = ?", id).Delete(&model.Tokens{}).Error
+	result := db.Where("id = ? AND user_id IN (?)", id,
+		db.Model(&model.User{}).Select("id").Where("username = ?", username)).Delete(&model.Tokens{})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrTokenNotFound
+	}
+	return nil
 }
 
-func (s *UserService) SetTokenEnabled(id string, enabled bool) error {
-	return dbsqlite.DB().Model(model.Tokens{}).
-		Where("id = ?", id).
+func (s *UserService) SetTokenEnabled(username, id string, enabled bool) error {
+	db := dbsqlite.DB()
+	result := db.Model(&model.Tokens{}).
+		Where("id = ? AND user_id IN (?)", id, db.Model(&model.User{}).Select("id").Where("username = ?", username)).
 		Updates(map[string]interface{}{
 			"enabled":    enabled,
 			"updated_at": time.Now().Unix(),
-		}).Error
+		})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrTokenNotFound
+	}
+	return nil
 }
 
 func (s *UserService) RecordTokenUse(id uint, ip string) error {

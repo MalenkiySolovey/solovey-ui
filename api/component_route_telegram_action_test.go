@@ -17,6 +17,7 @@ import (
 
 func TestComponentRouteTelegramActionRequiresAdminScope(t *testing.T) {
 	initSessionTestDB(t)
+	completeTokenOwnerResetForTest(t)
 	prepareComponentRouteMetadata(t)
 	registerTelegramSettingsContributionForTest(t)
 	readToken, err := (&service.UserService{}).AddToken("admin", 0, "read telegram", "read")
@@ -46,6 +47,7 @@ func TestComponentRouteTelegramActionRequiresAdminScope(t *testing.T) {
 
 func TestComponentRouteTelegramActionAuditsWithoutSecrets(t *testing.T) {
 	initSessionTestDB(t)
+	completeTokenOwnerResetForTest(t)
 	prepareComponentRouteMetadata(t)
 	registerTelegramSettingsContributionForTest(t)
 	adminToken, err := (&service.UserService{}).AddToken("admin", 0, "admin telegram", "admin")
