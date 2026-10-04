@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/url"
@@ -92,15 +93,22 @@ func Open(path string) (*Database, error) {
 	if err != nil {
 		return nil, err
 	}
-	db, err := gorm.Open(gormsqlite.Open(dsn), &gorm.Config{Logger: gormlogger.Discard})
+	sqlDB := sql.OpenDB(sourceConnector{dsn: dsn})
+	opened := false
+	defer func() {
+		if !opened {
+			_ = sqlDB.Close()
+		}
+	}()
+	db, err := gorm.Open(gormsqlite.New(gormsqlite.Config{Conn: sqlDB}), &gorm.Config{Logger: gormlogger.Discard})
 	if err != nil {
 		return nil, err
 	}
 	src := &Database{db: db}
 	if err := src.validate(); err != nil {
-		src.Close()
 		return nil, err
 	}
+	opened = true
 	return src, nil
 }
 
@@ -123,25 +131,20 @@ func SQLiteReadOnlyURI(path string) (string, error) {
 	values := url.Values{}
 	values.Set("mode", "ro")
 	values.Set("immutable", "1")
-	values.Add("_pragma", "query_only(true)")
-	values.Add("_pragma", "trusted_schema(OFF)")
+	values.Set("_query_only", "true")
 	u.RawQuery = values.Encode()
 	return u.String(), nil
 }
 
 func (s *Database) Close() {
-	if s == nil || s.db == nil {
-		return
-	}
-	sqlDB, err := s.db.DB()
-	if err == nil {
+	sqlDB, err := s.sqlDB()
+	if err == nil && sqlDB != nil {
 		_ = sqlDB.Close()
 	}
 }
 
 func (s *Database) validate() error {
-	_ = s.db.Exec("PRAGMA trusted_schema=OFF").Error
-	sqlDB, err := s.db.DB()
+	sqlDB, err := s.sqlDB()
 	if err != nil {
 		return err
 	}
@@ -153,7 +156,7 @@ func (s *Database) validate() error {
 		if ok {
 			s.dialect = dialect
 			var result string
-			if err := s.db.Raw("PRAGMA quick_check(1)").Scan(&result).Error; err != nil {
+			if err := sqlDB.QueryRow("PRAGMA quick_check(1)").Scan(&result); err != nil {
 				return err
 			}
 			if result != "ok" {
@@ -180,7 +183,14 @@ func Hash(path string) (string, error) {
 }
 
 func (s *Database) EachInbound(fn func(InboundRow) error) error {
-	rows, err := s.dialect.ReadInbounds(s.sqlDB())
+	sqlDB, err := s.readDB()
+	if err != nil {
+		return err
+	}
+	if fn == nil {
+		return errors.New("source inbound callback is unavailable")
+	}
+	rows, err := s.dialect.ReadInbounds(sqlDB)
 	if err != nil {
 		return err
 	}
@@ -193,6 +203,9 @@ func (s *Database) EachInbound(fn func(InboundRow) error) error {
 }
 
 func (s *Database) EachClientTraffic(fn func(ClientTraffic) error) error {
+	if fn == nil {
+		return errors.New("source client callback is unavailable")
+	}
 	rows, err := s.Clients()
 	if err != nil {
 		return err
@@ -206,11 +219,19 @@ func (s *Database) EachClientTraffic(fn func(ClientTraffic) error) error {
 }
 
 func (s *Database) Clients() ([]ClientTraffic, error) {
-	return s.dialect.ReadClients(s.sqlDB())
+	sqlDB, err := s.readDB()
+	if err != nil {
+		return nil, err
+	}
+	return s.dialect.ReadClients(sqlDB)
 }
 
 func (s *Database) InboundCount() (int, error) {
-	rows, err := s.dialect.ReadInbounds(s.sqlDB())
+	sqlDB, err := s.readDB()
+	if err != nil {
+		return 0, err
+	}
+	rows, err := s.dialect.ReadInbounds(sqlDB)
 	if err != nil {
 		return 0, err
 	}
@@ -218,7 +239,11 @@ func (s *Database) InboundCount() (int, error) {
 }
 
 func (s *Database) Settings() ([]Setting, error) {
-	return s.dialect.ReadSettings(s.sqlDB())
+	sqlDB, err := s.readDB()
+	if err != nil {
+		return nil, err
+	}
+	return s.dialect.ReadSettings(sqlDB)
 }
 
 type User struct {
@@ -228,23 +253,57 @@ type User struct {
 }
 
 func (s *Database) Users() ([]User, error) {
-	return s.dialect.ReadUsers(s.sqlDB())
+	sqlDB, err := s.readDB()
+	if err != nil {
+		return nil, err
+	}
+	return s.dialect.ReadUsers(sqlDB)
 }
 
 func (s *Database) OutboundTraffics() ([]OutboundTraffic, error) {
-	return s.dialect.ReadOutboundTraffics(s.sqlDB())
+	sqlDB, err := s.readDB()
+	if err != nil {
+		return nil, err
+	}
+	return s.dialect.ReadOutboundTraffics(sqlDB)
 }
 
 func (s *Database) XrayConfig() (string, error) {
-	return s.dialect.ReadXrayConfig(s.sqlDB())
+	sqlDB, err := s.readDB()
+	if err != nil {
+		return "", err
+	}
+	return s.dialect.ReadXrayConfig(sqlDB)
 }
 
-func (s *Database) sqlDB() *sql.DB {
+var ErrSourceUnavailable = errors.New("source database is unavailable")
+
+func (s *Database) sqlDB() (*sql.DB, error) {
+	if s == nil || s.db == nil || s.db.Config == nil {
+		return nil, ErrSourceUnavailable
+	}
+	if s.db.Error != nil {
+		return nil, fmt.Errorf("source database: %w", s.db.Error)
+	}
 	sqlDB, err := s.db.DB()
 	if err != nil {
-		return nil
+		return nil, fmt.Errorf("source database handle: %w", err)
 	}
-	return sqlDB
+	if sqlDB == nil {
+		return nil, ErrSourceUnavailable
+	}
+	return sqlDB, nil
+}
+
+func (s *Database) readDB() (*sql.DB, error) {
+	sqlDB, err := s.sqlDB()
+	if err != nil {
+		return nil, err
+	}
+	if s.dialect == nil {
+		return nil, ErrDialectUnknown
+	}
+	return sqlDB, nil
 }
 
 func nullString(v sql.NullString) string {
@@ -283,12 +342,16 @@ func ValidateSQLiteSource(path string) error {
 		return err
 	}
 	defer src.Close()
+	sqlDB, err := src.readDB()
+	if err != nil {
+		return err
+	}
 	var result string
-	if err := src.db.Raw("PRAGMA integrity_check").Scan(&result).Error; err != nil {
+	if err := sqlDB.QueryRow("PRAGMA integrity_check").Scan(&result); err != nil {
 		return err
 	}
 	if result != "ok" {
-		return fmt.Errorf("invalid sqlite integrity: %s", result)
+		return errors.New("invalid sqlite integrity")
 	}
 	return nil
 }

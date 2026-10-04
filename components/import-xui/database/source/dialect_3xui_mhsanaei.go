@@ -23,6 +23,9 @@ func (Dialect3XUIMHSanaei) Name() string {
 }
 
 func (Dialect3XUIMHSanaei) Detect(db *sql.DB) (bool, error) {
+	if db == nil {
+		return false, ErrSourceUnavailable
+	}
 	for _, table := range []string{"inbounds", "client_traffics"} {
 		var count int64
 		if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = ?", table).Scan(&count); err != nil {
@@ -268,6 +271,9 @@ func (d Dialect3XUIMHSanaei) ReadXrayConfig(db *sql.DB) (string, error) {
 }
 
 func tableExistsSQL(db *sql.DB, table string) (bool, error) {
+	if db == nil {
+		return false, ErrSourceUnavailable
+	}
 	var count int64
 	if err := db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name = ?", table).Scan(&count); err != nil {
 		return false, err

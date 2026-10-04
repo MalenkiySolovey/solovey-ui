@@ -26,6 +26,9 @@ import (
 // lower-case spec name, otherwise selectColumns would wrongly substitute a
 // default for a column that actually exists.
 func tableColumns(db *sql.DB, table string) (map[string]struct{}, error) {
+	if db == nil {
+		return nil, ErrSourceUnavailable
+	}
 	rows, err := db.Query(fmt.Sprintf("SELECT * FROM %s LIMIT 0", sqliteident.Quote(table)))
 	if err != nil {
 		return nil, err

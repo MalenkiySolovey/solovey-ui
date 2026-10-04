@@ -66,7 +66,7 @@ func (a *Handler) requireBaseDependencies(c *gin.Context, requireObjectResponse 
 }
 
 func (a *Handler) requireMutationDependencies(c *gin.Context) bool {
-	if a != nil && a.ConfigChanged != nil {
+	if a != nil && a.ConfigChanged != nil && a.AuthorizationChanged != nil {
 		return true
 	}
 	c.AbortWithStatusJSON(http.StatusServiceUnavailable, Envelope{Success: false, Msg: "Compatible panel import is unavailable"})

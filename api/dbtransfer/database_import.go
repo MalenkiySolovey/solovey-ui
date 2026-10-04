@@ -32,6 +32,10 @@ func (a *Handler) ImportDb(c *gin.Context) {
 		})
 		return
 	}
+	if a.AuthorizationChanged == nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"success": false, "msg": "Database restore is unavailable", "obj": nil})
+		return
+	}
 	prepared, ok := a.openDatabaseImportFile(c)
 	if !ok {
 		return
@@ -67,6 +71,7 @@ func (a *Handler) ImportDb(c *gin.Context) {
 	operation, result, err := manager.ExecuteRestore(c.Request.Context(), datalifecycle.RestoreRequest{
 		ExpectedRehearsalRevision: expected, IdempotencyKey: idempotencyKey, Confirmation: confirmation,
 		Acknowledged: true, Source: prepared.MultipartFile(),
+		OnAccepted: a.AuthorizationChanged,
 	})
 	if err != nil {
 		a.respondDatabaseImportFailure(c, err)

@@ -18,6 +18,9 @@ type RestoreRequest struct {
 	Confirmation              string
 	Acknowledged              bool
 	Source                    io.ReadSeeker
+	// OnAccepted runs once for a newly accepted restore, before optional
+	// retention work. A later cleanup error cannot undo durable acceptance.
+	OnAccepted func()
 }
 
 func RestoreConfirmation(revision string) string {
@@ -102,6 +105,9 @@ func (m *Manager) ExecuteRestore(ctx context.Context, request RestoreRequest) (m
 		rolledBack, execution, rollbackErr := m.rollbackUnacceptedRestore(ctx, operation, result, "restore_acceptance_unavailable", err)
 		cleanupErr := m.removeUnreferencedRecoveryArtifact(ctx, "RESTORE", operation.OperationID, operation.BackupRef)
 		return rolledBack, execution, errors.Join(rollbackErr, cleanupErr)
+	}
+	if request.OnAccepted != nil {
+		request.OnAccepted()
 	}
 	_, pruneErr := m.pruneLocked(ctx)
 	return operation, result, pruneErr
