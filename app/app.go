@@ -444,7 +444,7 @@ func (a *APP) registerCoreHooks() error {
 		if ctx.Object != "clients" {
 			return nil, nil
 		}
-		return ipmonitor.ResetCaches, nil
+		return ipmonitor.InvalidateAllCache, nil
 	})
 	sshManager := sshmanagementservice.Shared()
 	sshManager.Audit = func(_ context.Context, event sshmanagementservice.AuditEventV1) {

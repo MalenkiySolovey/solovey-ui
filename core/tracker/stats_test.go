@@ -75,7 +75,7 @@ func TestStatsTrackerRejectsConnectionThroughIPObserver(t *testing.T) {
 	if wrapped != raw {
 		t.Fatal("rejected connection should return the closed original connection")
 	}
-	if observer.allowedClient != "alice" || observer.recorded {
+	if observer.allowedClient != "alice" || observer.calls != 1 {
 		t.Fatalf("unexpected observer calls: %#v", observer)
 	}
 	if _, err := raw.Read(nil); !errors.Is(err, net.ErrClosed) {
@@ -98,16 +98,13 @@ func TestStatsTrackerAcceptsMissingOutboundMetadata(t *testing.T) {
 type testIPObserver struct {
 	allow         bool
 	allowedClient string
-	recorded      bool
+	calls         int
 }
 
-func (o *testIPObserver) Allow(clientName, ip string) bool {
+func (o *testIPObserver) ObserveAndAllow(clientName, ip string) bool {
 	o.allowedClient = clientName
+	o.calls++
 	return o.allow
-}
-
-func (o *testIPObserver) Record(clientName, ip string) {
-	o.recorded = true
 }
 
 func TestStatsTrackerResetWaitsForInflightRead(t *testing.T) {

@@ -19,25 +19,7 @@ import (
 
 func initIPMonitorTestDB(t *testing.T) {
 	t.Helper()
-	pending.Lock()
-	pending.byClient = map[string]map[string]pendingIP{}
-	pending.Unlock()
-	allowCache.Lock()
-	allowCache.byClient = map[string]allowCacheEntry{}
-	allowCache.Unlock()
-	allowCacheRefresh.Lock()
-	allowCacheRefresh.inFlight = map[string]uint64{}
-	allowCacheRefresh.Unlock()
-	securityEvents.Lock()
-	securityEvents.lastEmittedAt = map[string]time.Time{}
-	securityEvents.Unlock()
-	ipHashSalt.Lock()
-	ipHashSalt.value = nil
-	ipHashSalt.Unlock()
-	ipPrivacySettings.Lock()
-	ipPrivacySettings.showRaw = false
-	ipPrivacySettings.expiresAt = time.Time{}
-	ipPrivacySettings.Unlock()
+	ResetCaches()
 	realtime.CloseAll("test_reset")
 	tempDir := makeIPMonitorTempDir(t, "s-ui-ipmonitor-test-")
 	t.Setenv("SUI_DB_FOLDER", tempDir)
@@ -504,7 +486,7 @@ func TestWarmUpLoadsActiveEnforceClients(t *testing.T) {
 	}
 }
 
-func TestAllowFailOpenOnCacheMissAndRefreshesAsync(t *testing.T) {
+func TestAllowColdCacheRejectsBeforeReturning(t *testing.T) {
 	initIPMonitorTestDB(t)
 	if err := dbsqlite.DB().Create(&model.Client{
 		Enable:      true,
@@ -525,12 +507,9 @@ func TestAllowFailOpenOnCacheMissAndRefreshesAsync(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if !Allow("alice", "198.51.100.11") {
-		t.Fatal("cache miss should fail open while async refresh starts")
+	if Allow("alice", "198.51.100.11") {
+		t.Fatal("cold cache must reject a forbidden source before returning")
 	}
-	waitForIPMonitorCondition(t, time.Second, func() bool {
-		return !Allow("alice", "198.51.100.11")
-	})
 }
 
 func TestAllowCacheConcurrent10K(t *testing.T) {
@@ -588,9 +567,7 @@ func TestResetCachesClearsSaltAndAllowState(t *testing.T) {
 		"alice": {limit: 1, mode: ModeEnforce, ips: map[string]struct{}{"hash": {}}, expiresAt: time.Now().Add(time.Minute)},
 	}
 	allowCache.Unlock()
-	allowCacheRefresh.Lock()
-	allowCacheRefresh.inFlight = map[string]uint64{"alice": 0}
-	allowCacheRefresh.Unlock()
+
 	securityEvents.Lock()
 	securityEvents.lastEmittedAt = map[string]time.Time{"alice|reject": time.Now()}
 	securityEvents.Unlock()
@@ -610,9 +587,7 @@ func TestResetCachesClearsSaltAndAllowState(t *testing.T) {
 	allowCache.Lock()
 	allowCount := len(allowCache.byClient)
 	allowCache.Unlock()
-	allowCacheRefresh.Lock()
-	refreshCount := len(allowCacheRefresh.inFlight)
-	allowCacheRefresh.Unlock()
+
 	securityEvents.Lock()
 	securityCount := len(securityEvents.lastEmittedAt)
 	securityEvents.Unlock()
@@ -624,9 +599,9 @@ func TestResetCachesClearsSaltAndAllowState(t *testing.T) {
 	privacyExpired := ipPrivacySettings.expiresAt.IsZero()
 	ipPrivacySettings.Unlock()
 
-	if pendingCount != 0 || allowCount != 0 || refreshCount != 0 || securityCount != 0 || saltLen != 0 || showRaw || !privacyExpired {
-		t.Fatalf("reset did not clear caches: pending=%d allow=%d refresh=%d security=%d salt=%d showRaw=%v privacyExpired=%v",
-			pendingCount, allowCount, refreshCount, securityCount, saltLen, showRaw, privacyExpired)
+	if pendingCount != 0 || allowCount != 0 || securityCount != 0 || saltLen != 0 || showRaw || !privacyExpired {
+		t.Fatalf("reset did not clear caches: pending=%d allow=%d security=%d salt=%d showRaw=%v privacyExpired=%v",
+			pendingCount, allowCount, securityCount, saltLen, showRaw, privacyExpired)
 	}
 }
 
@@ -635,18 +610,6 @@ func warmUpIPMonitorForTest(t *testing.T) {
 	if err := WarmUp(); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func waitForIPMonitorCondition(t *testing.T, timeout time.Duration, condition func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(timeout)
-	for time.Now().Before(deadline) {
-		if condition() {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal("condition was not met before timeout")
 }
 
 type countingGormLogger struct {

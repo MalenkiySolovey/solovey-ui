@@ -126,11 +126,14 @@ func loadCacheEntry(clientName string, now time.Time) (allowCacheEntry, bool) {
 		return allowCacheEntry{}, false
 	}
 	if !client.Enable {
-		return allowCacheEntry{}, false
+		return allowCacheEntry{expiresAt: now.Add(allowCacheTTL)}, true
 	}
 	entry := allowCacheEntry{
 		limit: client.LimitIP, mode: client.IPLimitMode,
 		ips: map[string]struct{}{}, expiresAt: now.Add(allowCacheTTL),
+	}
+	if entry.mode != ModeEnforce || entry.limit <= 0 {
+		return entry, true
 	}
 	rows := make([]model.ClientIP, 0)
 	if err := db.Model(model.ClientIP{}).Select("ip, ip_hash").Where("client_name = ?", clientName).Find(&rows).Error; err != nil {
@@ -139,8 +142,17 @@ func loadCacheEntry(clientName string, now time.Time) (allowCacheEntry, bool) {
 	}
 	for _, row := range rows {
 		ipHash := row.IPHash
-		if ipHash == "" {
-			ipHash = hashLegacyIPValue(row.IP)
+		if ipHash == "" && row.IP != "" {
+			if looksLikeSHA256Hex(row.IP) {
+				ipHash = row.IP
+			} else {
+				var err error
+				ipHash, err = hashIP(row.IP)
+				if err != nil {
+					logLoadCacheError("legacy source", err)
+					return allowCacheEntry{}, false
+				}
+			}
 		}
 		if ipHash != "" {
 			entry.ips[ipHash] = struct{}{}
@@ -246,7 +258,14 @@ type FlushBatch struct {
 // BeginFlush transfers current observations to one transaction-owned batch.
 // The caller must call Requeue if the surrounding transaction does not commit.
 func BeginFlush() *FlushBatch {
-	return &FlushBatch{snapshot: takePendingSnapshot()}
+	pending.Lock()
+	defer pending.Unlock()
+	batch := &FlushBatch{snapshot: pending.byClient}
+	pending.byClient = map[string]map[string]pendingIP{}
+	if !batch.Empty() {
+		pending.flushing[batch] = struct{}{}
+	}
+	return batch
 }
 
 func (b *FlushBatch) Empty() bool {
@@ -264,7 +283,12 @@ func (b *FlushBatch) Requeue() {
 	if b.Empty() {
 		return
 	}
-	requeuePendingSnapshot(b.snapshot)
+	pending.Lock()
+	defer pending.Unlock()
+	if _, current := pending.flushing[b]; current {
+		requeuePendingSnapshotLocked(b.snapshot)
+		delete(pending.flushing, b)
+	}
 	b.snapshot = nil
 }
 
@@ -274,25 +298,27 @@ func (b *FlushBatch) Commit() {
 	if b.Empty() {
 		return
 	}
+	allowCache.Lock()
+	defer allowCache.Unlock()
+	pending.Lock()
+	defer pending.Unlock()
+	if _, current := pending.flushing[b]; !current {
+		b.snapshot = nil
+		return
+	}
+	// A precommit history loader must not replace accepted knowledge after
+	// transaction-owned observations disappear from the admission union.
+	allowCache.revision++
 	for clientName, observations := range b.snapshot {
 		for ipHash := range observations {
-			cacheAddIP(clientName, ipHash)
+			cacheAddIPLocked(clientName, ipHash)
 		}
 	}
+	delete(pending.flushing, b)
 	b.snapshot = nil
 }
 
-func takePendingSnapshot() map[string]map[string]pendingIP {
-	pending.Lock()
-	defer pending.Unlock()
-	snapshot := pending.byClient
-	pending.byClient = map[string]map[string]pendingIP{}
-	return snapshot
-}
-
-func requeuePendingSnapshot(snapshot map[string]map[string]pendingIP) {
-	pending.Lock()
-	defer pending.Unlock()
+func requeuePendingSnapshotLocked(snapshot map[string]map[string]pendingIP) {
 	for clientName, observations := range snapshot {
 		if pending.byClient[clientName] == nil {
 			pending.byClient[clientName] = make(map[string]pendingIP, len(observations))
