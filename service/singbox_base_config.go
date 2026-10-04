@@ -5,6 +5,8 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
+	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
 	"gorm.io/gorm"
 )
 
@@ -65,5 +67,12 @@ func (s SingBoxBaseConfigStore) Changed(tx *gorm.DB, config json.RawMessage) (bo
 }
 
 func normalizeSingBoxBaseConfig(config json.RawMessage) (string, error) {
+	findings, err := singboxvalidation.ValidateRuleConditions(config)
+	if err != nil {
+		return "", err
+	}
+	for _, finding := range findings {
+		logger.Warningf("config rule validation: %s [%s]: %s", finding.Path, finding.Code, finding.Message)
+	}
 	return singboxconfig.NormalizeBaseConfig(config)
 }

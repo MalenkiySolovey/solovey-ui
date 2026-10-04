@@ -16,6 +16,9 @@ func NewDryChecker() DryChecker {
 }
 
 func (DryChecker) ValidateConfig(sbConfig []byte) error {
+	if _, err := ValidateRuleConditions(sbConfig); err != nil {
+		return err
+	}
 	var opt option.Options
 	ctx := context.Background()
 	ctx = sb.Context(

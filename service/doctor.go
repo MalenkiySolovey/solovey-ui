@@ -38,7 +38,29 @@ func (s *DoctorService) Run(hostname string) opsdoctor.Report {
 	configService := NewConfigServiceWithRuntime(s.runtime())
 	serverService := NewServerService(s.runtime())
 
-	rawConfig, err := configService.GetConfig("")
+	baseConfig, err := configService.SettingService.GetConfig()
+	if err != nil {
+		items = append(items, opsdoctor.Error("config-build", "Build sing-box config", "Unable to build configuration.", "Fix database/config rows before restarting sing-box.", nil))
+		return opsdoctor.FinishReport(start, items)
+	}
+	fatalConditions := false
+	for i, finding := range singboxvalidation.AnalyzeRuleConditions([]byte(baseConfig)) {
+		severity := opsdoctor.SeverityWarn
+		if finding.Severity == singboxvalidation.RuleSeverityError {
+			severity = opsdoctor.SeverityError
+			fatalConditions = true
+		}
+		items = append(items, opsdoctor.Item{
+			ID: fmt.Sprintf("rule-conditions-%d", i), Title: "Rule conditions", Severity: severity,
+			Message: finding.Message, Action: "Open the indicated rule path and fix or remove the rule.", Details: finding,
+		})
+	}
+	if fatalConditions {
+		// Diagnose historical invalid state before assembly can prepare rule-set
+		// files or official decoding can recurse through an unbounded tree.
+		return opsdoctor.FinishReport(start, items)
+	}
+	rawConfig, err := configService.GetConfig(baseConfig)
 	if err != nil {
 		items = append(items, opsdoctor.Error("config-build", "Build sing-box config", "Unable to build configuration.", "Fix database/config rows before restarting sing-box.", nil))
 		return opsdoctor.FinishReport(start, items)

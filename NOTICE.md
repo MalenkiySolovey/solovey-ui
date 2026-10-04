@@ -58,3 +58,13 @@ in `service/user.go`, `api/apiService.go`, `api/apiV2Handler.go` and
 token storage, scoped permissions, typed sessions and step-up policy. Its
 authoritative request check and revision-fenced snapshot refresh are native
 implementations; no upstream implementation or tests were copied.
+
+RULE-01/RULE-02 and GEO-01 independently adapt bounded rule-condition
+validation, shared Doctor findings and pre-narrowing geosite enum checks from
+the pinned S-UI-X target above. Witnesses are
+`590b08af39537ab4c85441513743c2360bbc187d` (`core/rule_conditions.go`,
+`service/config.go`, `service/doctor.go`) and
+`4d2fc76e12a7b972c3126c6000bc57bdd50ec959` (`service/geosite_v2ray.go`,
+`service/geosite_ru_smart.go`). Solovey uses the existing validation, config
+storage and geosite owners with the official sing-box v1.13.14 grammar.
+No upstream code or tests were copied; these are partial behavioral adaptations.
