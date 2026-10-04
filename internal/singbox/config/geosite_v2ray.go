@@ -92,6 +92,9 @@ func parseV2RayDomain(data []byte) (v2rayDomain, error) {
 			if n < 0 {
 				return v2rayDomain{}, protowire.ParseError(n)
 			}
+			if typ > uint64(v2rayDomainTypeFull) {
+				return v2rayDomain{}, common.NewError("unsupported geosite domain type")
+			}
 			domain.Type = int32(typ)
 		case 2:
 			if wireType == protowire.BytesType {
