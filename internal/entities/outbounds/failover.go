@@ -7,12 +7,13 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )
 
 const (
-	FailoverType              = "failover"
+	FailoverType              = entitytypes.Failover
 	DirectTag                 = "direct"
 	FailoverFinalDirect       = "direct"
 	FailoverFinalReject       = "reject"

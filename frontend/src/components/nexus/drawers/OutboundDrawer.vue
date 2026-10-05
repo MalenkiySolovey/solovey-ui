@@ -1,6 +1,7 @@
 <template>
   <entity-drawer
     :dirty="dirty"
+    :save-disabled="!capabilityState.allowed"
     :loading="loading"
     :model-value="visible"
     :saving="loading"
@@ -10,11 +11,12 @@
     @save="saveChanges"
   >
     <form-section icon="lucide:sliders-horizontal" :title="$t('form.sections.configuration')">
+      <CapabilityNotice :state="capabilityState" />
       <v-row>
         <v-col cols="12" sm="6">
           <v-select
             hide-details
-            :items="Object.keys(outTypes).map((key,index) => ({title: key, value: Object.values(outTypes)[index]}))"
+            :items="typeChoices"
             :label="$t('type')"
             v-model="outbound.type"
             @update:modelValue="changeType">

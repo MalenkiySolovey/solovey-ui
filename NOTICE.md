@@ -103,3 +103,15 @@ same owner contributions; panel aliases remain entity-owned. WireGuard is
 directly registered, and official OOM support is retained. Pinned official
 sing-box v1.13.14 sources are secondary implementation authority. No upstream
 implementation or tests were copied; full parity remains v1.5.10.
+
+CAP-02/CAP-03/CAP-04 independently adapt eligibility-aware save, runtime
+selection and diagnostics from pinned S-UI-X v1.5.12-beta6. Behavioral witnesses
+are `590b08af39537ab4c85441513743c2360bbc187d` and
+`ccd7cc47437b2caed630f217a30811ecaf4eee88` (`service/config.go`, entity
+services, capability save/projection tests, `service/doctor.go` and Doctor
+capability tests). Solovey entity, reference and diagnostic owners consume the
+same narrow registration facts; they retain persistence, runtime and UI
+behavior. Stored WARP identity maps to the official WireGuard endpoint without
+renaming storage. Pinned sing-box v1.13.14 default endpoint, Tailscale DNS and
+DERP lifetimes require full restart for references captured at initialization.
+No upstream implementation or tests were copied; full parity remains v1.5.10.

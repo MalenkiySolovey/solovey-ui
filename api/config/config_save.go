@@ -5,7 +5,6 @@ import (
 	"time"
 
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-
 	"github.com/gin-gonic/gin"
 )
 
@@ -42,7 +41,9 @@ func (a *Handler) Save(c *gin.Context, loginUser string) {
 		if a.handleSettingsSaveError(c, loginUser, obj, err) {
 			return
 		}
-		a.JSONMsg(c, "save", err)
+		if !a.handleCapabilitySaveError(c, err) {
+			a.JSONMsg(c, "save", err)
+		}
 		return
 	}
 	// Save (incl. any synchronous core restart) succeeded and the row is

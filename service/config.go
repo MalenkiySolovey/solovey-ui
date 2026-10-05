@@ -8,6 +8,7 @@ import (
 	"time"
 
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
+	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
@@ -140,6 +141,13 @@ func (s *ConfigService) RestartCore() error {
 }
 
 func (s *ConfigService) restartCoreLocked() error {
+	if s.coreInstance() == nil {
+		return common.NewError("core not initialized")
+	}
+	// Reject an unavailable dependency before stopping the currently running core.
+	if _, err := s.GetConfig(""); err != nil {
+		return err
+	}
 	if err := s.stopCoreLocked(); err != nil {
 		return err
 	}
@@ -228,6 +236,11 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 
 	if err = s.applyConfigSaveMutation(tx, &plan, obj, act, data, initUsers, hostname); err != nil {
 		return nil, err
+	}
+	if obj != "settings" && (plan.HasObjectChanges() || plan.RequiresCoreRestart()) {
+		if _, err = runtimeprojection.ValidateReferences(tx, nil); err != nil {
+			return nil, err
+		}
 	}
 	if err = s.recordConfigChange(tx, loginUser, obj, act, data); err != nil {
 		return nil, err

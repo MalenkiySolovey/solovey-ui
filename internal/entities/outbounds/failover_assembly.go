@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
@@ -51,7 +52,7 @@ func AssembleFailoverOutboundsForCore(outbound model.Outbound, directTag string)
 		members = append(members, finalTag)
 	}
 	selector := map[string]any{
-		"type":      "selector",
+		"type":      entitytypes.RuntimeType("outbounds", FailoverType),
 		"tag":       outbound.Tag,
 		"outbounds": members,
 		"default":   opts.Outbounds[0],

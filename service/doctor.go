@@ -35,12 +35,13 @@ func (s *DoctorService) runtime() *Runtime {
 func (s *DoctorService) Run(hostname string) opsdoctor.Report {
 	start := time.Now()
 	var items []opsdoctor.Item
+	items = append(items, opsdoctor.CapabilityChecks(dbsqlite.DB())...)
 	configService := NewConfigServiceWithRuntime(s.runtime())
 	serverService := NewServerService(s.runtime())
 
 	baseConfig, err := configService.SettingService.GetConfig()
 	if err != nil {
-		items = append(items, opsdoctor.Error("config-build", "Build sing-box config", "Unable to build configuration.", "Fix database/config rows before restarting sing-box.", nil))
+		items = append(items, opsdoctor.ConfigBuildFailure(err))
 		return opsdoctor.FinishReport(start, items)
 	}
 	fatalConditions := false
@@ -62,7 +63,7 @@ func (s *DoctorService) Run(hostname string) opsdoctor.Report {
 	}
 	rawConfig, err := configService.GetConfig(baseConfig)
 	if err != nil {
-		items = append(items, opsdoctor.Error("config-build", "Build sing-box config", "Unable to build configuration.", "Fix database/config rows before restarting sing-box.", nil))
+		items = append(items, opsdoctor.ConfigBuildFailure(err))
 		return opsdoctor.FinishReport(start, items)
 	}
 	items = append(items, opsdoctor.OK("config-build", "Build sing-box config", "Full sing-box config was assembled from database rows.", nil))

@@ -1,18 +1,20 @@
 <template>
   <form-shell
     :dirty="dirty"
+    :save-disabled="!capabilityState.allowed"
     :loading="loading"
     :title="$t('actions.' + title) + ' ' + $t('objects.endpoint')"
     @close="closeModal"
     @save="saveChanges"
   >
-        <v-row>
+        <CapabilityNotice :state="capabilityState" />
+      <v-row>
           <v-col cols="12" sm="6" md="4">
             <v-select
             hide-details
             :disabled="endpoint.id > 0"
             :label="$t('type')"
-            :items="Object.keys(epTypes).map((key,index) => ({title: key, value: Object.values(epTypes)[index]}))"
+            :items="typeChoices"
             v-model="endpoint.type"
             @update:modelValue="changeType">
             </v-select>
@@ -45,6 +47,8 @@ import { generateKeypair } from '@/shared/composables/useKeypairs'
 import { push } from 'notivue'
 import { i18n } from '@/locales'
 import Data from '@/store/modules/data'
+import CapabilityNotice from '@/components/fields/CapabilityNotice.vue'
+import { capabilityEditState, capabilityTypeChoices, type CapabilityChoice, type CapabilityEditState } from '@/types/capabilityEditors'
 import FormShell from '@/components/nexus/drawers/FormShell.vue'
 export default {
   props: ['visible', 'data', 'id', 'tags'],
@@ -53,6 +57,7 @@ export default {
     return {
       endpoint: createEndpoint("wireguard",{ "tag": "" }),
       title: "add",
+      storedCapabilityType: "",
       tab: "t1",
       loading: false,
       epTypes: EpTypes,
@@ -60,6 +65,12 @@ export default {
     }
   },
   computed: {
+    capabilityState(): CapabilityEditState {
+      return capabilityEditState(Data().capabilities, "endpoints", this.endpoint.type, this.storedCapabilityType)
+    },
+    typeChoices(): CapabilityChoice[] {
+      return capabilityTypeChoices(Data().capabilities, "endpoints", this.epTypes, this.storedCapabilityType)
+    },
     dirty(): boolean {
       return this.snapshot !== '' && JSON.stringify(this.endpoint) !== this.snapshot
     },
@@ -68,6 +79,7 @@ export default {
     async updateData(id: number) {
       if (id > 0) {
         const newData = JSON.parse(this.$props.data)
+        this.storedCapabilityType = newData.type
         this.endpoint = createEndpoint(newData.type, newData)
         this.title = "edit"
       }
@@ -76,6 +88,7 @@ export default {
         this.endpoint.listen_port = RandomUtil.randomIntRange(10000, 60000)
         this.changeType()
         this.title = "add"
+        this.storedCapabilityType = ""
       }
       this.tab = "t1"
       this.snapshot = JSON.stringify(this.endpoint)
@@ -118,7 +131,7 @@ export default {
       this.$emit('close')
     },
     async saveChanges() {
-      if (!this.$props.visible || this.loading) return
+      if (!this.$props.visible || this.loading || !this.capabilityState.allowed) return
       
       // check duplicate tag
       const isDuplicatedTag = Data().checkTag("endpoint",this.endpoint.id, this.endpoint.tag)
@@ -213,6 +226,6 @@ export default {
       }
     },
   },
-  components: { FormShell, Dial, Wireguard, Warp, TailscaleVue }
+  components: { CapabilityNotice, FormShell, Dial, Wireguard, Warp, TailscaleVue }
 }
 </script>

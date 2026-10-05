@@ -7,7 +7,7 @@ import (
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
-	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveidentity"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveeligibility"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
@@ -52,7 +52,7 @@ func saveNew(req SaveRequest) (*singboxapply.Change, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := saveidentity.Validate(req.Tx, string(ActionNew), inbound.Id, &model.Inbound{}); err != nil {
+	if err := saveeligibility.Validate(req.Tx, string(ActionNew), inbound.Id, &model.Inbound{}, "inbounds", inbound.Type); err != nil {
 		return nil, err
 	}
 	if err := FillAndSave(req.Tx, &inbound, req.Hostname); err != nil {
@@ -70,7 +70,7 @@ func saveEdited(req SaveRequest) (*singboxapply.Change, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := saveidentity.Validate(req.Tx, string(ActionEdit), inbound.Id, &model.Inbound{}); err != nil {
+	if err := saveeligibility.Validate(req.Tx, string(ActionEdit), inbound.Id, &model.Inbound{}, "inbounds", inbound.Type); err != nil {
 		return nil, err
 	}
 	oldTag, err := TagByID(req.Tx, inbound.Id)

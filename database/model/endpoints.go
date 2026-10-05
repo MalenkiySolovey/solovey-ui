@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+
 	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 )
 
@@ -63,7 +64,9 @@ func (o Endpoint) MarshalJSON() ([]byte, error) {
 		}
 
 		for k, v := range restFields {
-			combined[k] = v
+			if _, fixed := combined[k]; !fixed {
+				combined[k] = v
+			}
 		}
 	}
 

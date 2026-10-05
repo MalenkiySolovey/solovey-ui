@@ -6,12 +6,13 @@
       </v-card-title>
       <v-divider></v-divider>
       <v-card-text style="padding: 0 16px; overflow-y: scroll;">
-        <v-row>
+        <CapabilityNotice :state="capabilityState" />
+      <v-row>
           <v-col cols="12" sm="6" md="4">
             <v-select
             hide-details
             :label="$t('type')"
-            :items="Object.keys(srvTypes).map((key,index) => ({title: key, value: Object.values(srvTypes)[index]}))"
+            :items="typeChoices"
             v-model="srv.type"
             @update:modelValue="changeType">
             </v-select>
@@ -40,7 +41,7 @@
           color="primary"
           variant="tonal"
           :loading="loading"
-          :disabled="loading"
+          :disabled="loading || !capabilityState.allowed"
           @click="saveChanges"
         >
           {{ $t('actions.save') }}

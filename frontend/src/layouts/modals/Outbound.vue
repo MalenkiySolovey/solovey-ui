@@ -16,12 +16,13 @@
           </v-tabs>
           <v-window v-model="tab">
             <v-window-item value="t1">
-              <v-row>
+              <CapabilityNotice :state="capabilityState" />
+      <v-row>
                 <v-col cols="12" sm="6" md="4">
                   <v-select
                   hide-details
                   :label="$t('type')"
-                  :items="Object.keys(outTypes).map((key,index) => ({title: key, value: Object.values(outTypes)[index]}))"
+                  :items="typeChoices"
                   v-model="outbound.type"
                   @update:modelValue="changeType">
                   </v-select>
@@ -97,7 +98,7 @@
           color="primary"
           variant="tonal"
           :loading="loading"
-          :disabled="loading"
+          :disabled="loading || !capabilityState.allowed"
           @click="saveChanges"
         >
           {{ $t('actions.save') }}
