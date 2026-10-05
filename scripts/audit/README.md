@@ -25,7 +25,7 @@ Linux then applies the existing ordinary/root capability routing and root
 executor. An empty shard does not invoke Go; an empty universe fails.
 
 `go-test-shard-weights.json` records platform/race package durations from the
-linked successful main audit. Missing or newly added packages receive weight 1
+linked successful audit. Missing or newly added packages receive weight 1
 and are still tested. Weights never select or exclude packages. To rebalance,
 use package seconds from complete command logs and review per-shard job and
 queue times as well: package seconds exclude build/setup/queue overhead. Keep
