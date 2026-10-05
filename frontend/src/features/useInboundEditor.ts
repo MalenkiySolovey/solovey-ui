@@ -22,6 +22,8 @@ import Transport from '@/components/fields/Transport.vue'
 import AddrVue from '@/components/fields/Addr.vue'
 import OutJsonVue from '@/components/subscription/OutJson.vue'
 import Data from '@/store/modules/data'
+import CapabilityNotice from '@/components/fields/CapabilityNotice.vue'
+import { capabilityEditState, capabilityTypeChoices, type CapabilityChoice, type CapabilityEditState } from '@/types/capabilityEditors'
 export default defineComponent({
   props: ['visible', 'id', 'inTags', 'tlsConfigs', 'draftInbound', 'draftId'],
   emits: ['close'],
@@ -29,6 +31,7 @@ export default defineComponent({
     return {
       inbound: createInbound("direct",{ id:0, "tag": "" }),
       title: "add",
+      storedCapabilityType: "",
       loading: false,
       snapshot: "",
       side: "s",
@@ -78,6 +81,7 @@ export default defineComponent({
       this.loading = true
       const inboundArray = await Data().loadInbounds([id])
       this.inbound = inboundArray[0]
+      this.storedCapabilityType = this.inbound.type
       if (this.HasInData.includes(this.inbound.type) && this.inbound.out_json == null) {
         this.inbound.out_json = {}
       }
@@ -105,6 +109,7 @@ export default defineComponent({
           delete this.inbound.out_json
         }
         this.title = "add"
+        this.storedCapabilityType = ""
         this.loading = false
         this.snapshot = JSON.stringify(this.inbound)
       }
@@ -139,7 +144,7 @@ export default defineComponent({
     },
     async saveChanges() {
       // Guard against double-submit (button is also :disabled while loading).
-      if (!this.$props.visible || this.loading) return
+      if (!this.$props.visible || this.loading || !this.capabilityState.allowed) return
       // check duplicate tag
       const isDuplicatedTag = Data().checkTag("inbound", this.inbound.id, this.inbound.tag)
       if (isDuplicatedTag) return
@@ -174,6 +179,12 @@ export default defineComponent({
     },
   },
   computed: {
+    capabilityState(): CapabilityEditState {
+      return capabilityEditState(Data().capabilities, "inbounds", this.inbound.type, this.storedCapabilityType)
+    },
+    typeChoices(): CapabilityChoice[] {
+      return capabilityTypeChoices(Data().capabilities, "inbounds", this.inTypes, this.storedCapabilityType)
+    },
     dirty(): boolean {
       return this.snapshot !== "" && JSON.stringify(this.inbound) !== this.snapshot
     },
@@ -214,7 +225,7 @@ export default defineComponent({
       }
     },
   },
-  components: {
+  components: { CapabilityNotice,
     Listen, InTls, Hysteria2, Naive, Direct, Shadowsocks,
     Users, Hysteria, ShadowTls, TProxy, Multiplex, Tuic, Tun,
     Trojan, AnyTls, Transport, AddrVue, OutJsonVue, Dial, DomainResolver

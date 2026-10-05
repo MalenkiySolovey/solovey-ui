@@ -9,7 +9,8 @@ import (
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
-	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveidentity"
+	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveeligibility"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
@@ -48,7 +49,9 @@ func GetAll(db *gorm.DB) (*[]map[string]interface{}, error) {
 				return nil, err
 			}
 			for k, v := range restFields {
-				epData[k] = v
+				if _, fixed := epData[k]; !fixed {
+					epData[k] = v
+				}
 			}
 		}
 		data = append(data, epData)
@@ -64,6 +67,9 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 		return nil, err
 	}
 	for _, endpoint := range rows {
+		if !runtimeprojection.Included("endpoints", endpoint.Type) {
+			continue
+		}
 		endpointJSON, err := endpoint.MarshalJSON()
 		if err != nil {
 			return nil, err
@@ -111,7 +117,7 @@ func saveUpsert(tx *gorm.DB, act string, data json.RawMessage, warp WarpHooks) (
 	if err := endpoint.UnmarshalJSON(data); err != nil {
 		return nil, err
 	}
-	if err := saveidentity.Validate(tx, act, endpoint.Id, &model.Endpoint{}); err != nil {
+	if err := saveeligibility.Validate(tx, act, endpoint.Id, &model.Endpoint{}, "endpoints", endpoint.Type); err != nil {
 		return nil, err
 	}
 	if err := entityidentity.ValidateTypeTag(endpoint.Type, endpoint.Tag); err != nil {
@@ -131,7 +137,7 @@ func saveUpsert(tx *gorm.DB, act string, data json.RawMessage, warp WarpHooks) (
 			}
 		} else {
 			var oldLicense string
-			if err := tx.Model(model.Endpoint{}).Select("json_extract(ext, '$.license_key')").Where("id = ?", endpoint.Id).Find(&oldLicense).Error; err != nil {
+			if err := tx.Model(model.Endpoint{}).Select("COALESCE(json_extract(ext, '$.license_key'), '')").Where("id = ?", endpoint.Id).Find(&oldLicense).Error; err != nil {
 				return nil, err
 			}
 			if err := warp.SetWarpLicense(oldLicense, &endpoint); err != nil {
@@ -146,7 +152,7 @@ func saveUpsert(tx *gorm.DB, act string, data json.RawMessage, warp WarpHooks) (
 	}
 	renamed := oldTag != "" && oldTag != endpoint.Tag
 	if renamed {
-		refs, err := tagrefs.Outbound(tx, oldTag, 0, endpoint.Id)
+		refs, err := tagrefs.Endpoint(tx, oldTag, endpoint.Id)
 		if err != nil {
 			return nil, err
 		}
@@ -163,7 +169,7 @@ func saveUpsert(tx *gorm.DB, act string, data json.RawMessage, warp WarpHooks) (
 		return nil, err
 	}
 
-	refs, err := tagrefs.Outbound(tx, endpoint.Tag, 0, endpoint.Id)
+	refs, err := tagrefs.Endpoint(tx, endpoint.Tag, endpoint.Id)
 	if err != nil {
 		return nil, err
 	}
@@ -201,7 +207,7 @@ func saveDelete(tx *gorm.DB, data json.RawMessage) (*singboxapply.Change, error)
 	if err != nil {
 		return nil, err
 	}
-	refs, err := tagrefs.Outbound(tx, tag, 0, ownID)
+	refs, err := tagrefs.Endpoint(tx, tag, ownID)
 	if err != nil {
 		return nil, err
 	}
@@ -224,20 +230,49 @@ func Restart(tx *gorm.DB, ids []uint, core Core) error {
 	if core == nil || !core.IsRunning() {
 		return nil
 	}
+	if _, err := runtimeprojection.ValidateReferences(tx, nil); err != nil {
+		return err
+	}
 	var rows []*model.Endpoint
 	if err := tx.Model(model.Endpoint{}).Where("id IN ?", ids).Find(&rows).Error; err != nil {
 		return err
 	}
-	for _, endpoint := range rows {
-		if err := core.RemoveEndpoint(endpoint.Tag); err != nil && err != os.ErrInvalid {
-			return err
+	type prepared struct {
+		tag     string
+		configs []json.RawMessage
+	}
+	ready := []prepared{}
+	// Complete capability/serialization preflight for the whole batch before
+	// the first removal. Unavailable historical rows do not mutate live state.
+	for _, row := range rows {
+		if !runtimeprojection.Included("endpoints", row.Type) {
+			continue
 		}
-		endpointConfig, err := endpoint.MarshalJSON()
+		refs, err := tagrefs.Endpoint(tx, row.Tag, row.Id)
 		if err != nil {
 			return err
 		}
-		if err := core.AddEndpoint(endpointConfig); err != nil {
+		if eager := tagrefs.Eager(refs); len(eager) > 0 {
+			return &tagrefs.ReloadRejection{Tag: row.Tag, References: eager}
+		}
+		config, err := row.MarshalJSON()
+		if err != nil {
 			return err
+		}
+		configs := []json.RawMessage{config}
+		ready = append(ready, prepared{row.Tag, configs})
+	}
+
+	for _, row := range ready {
+		if err := core.RemoveEndpoint(row.tag); err != nil && err != os.ErrInvalid {
+			return err
+		}
+
+		for _, config := range row.configs {
+
+			if err := core.AddEndpoint(config); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

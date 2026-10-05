@@ -2,10 +2,12 @@ package entityinbounds
 
 import (
 	"encoding/json"
+	"os"
+
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
+	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	"gorm.io/gorm"
-	"os"
 )
 
 func UpdateOutJSONs(tx *gorm.DB, inboundIDs []uint, hostname string) error {
@@ -34,6 +36,9 @@ func GetAllConfig(db *gorm.DB, hooks UserHooks) ([]json.RawMessage, error) {
 		return nil, err
 	}
 	for _, inbound := range inbounds {
+		if !runtimeprojection.Included("inbounds", inbound.Type) {
+			continue
+		}
 		inboundJSON, err := inbound.MarshalJSON()
 		if err != nil {
 			return nil, err
@@ -52,34 +57,54 @@ func Restart(tx *gorm.DB, ids []uint, core Core, hooks UserHooks) error {
 	if core == nil || !core.IsRunning() {
 		return nil
 	}
-	var inbounds []*model.Inbound
-	err := tx.Model(model.Inbound{}).Preload("Tls").Where("id in ?", ids).Find(&inbounds).Error
-	if err != nil {
+	if _, err := runtimeprojection.ValidateReferences(tx, nil); err != nil {
 		return err
 	}
-	for _, inbound := range inbounds {
-		err = core.RemoveInbound(inbound.Tag)
-		if err != nil && err != os.ErrInvalid {
-			return err
+	var rows []*model.Inbound
+	if err := tx.Model(model.Inbound{}).Preload("Tls").Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return err
+	}
+	type prepared struct {
+		tag     string
+		configs []json.RawMessage
+	}
+	ready := []prepared{}
+	// Complete capability/serialization preflight for the whole batch before
+	// the first removal. Unavailable historical rows do not mutate live state.
+	for _, row := range rows {
+		if !runtimeprojection.Included("inbounds", row.Type) {
+			continue
 		}
-		core.CloseInboundConnections(inbound.Tag)
-		inboundConfig, err := inbound.MarshalJSON()
+
+		config, err := row.MarshalJSON()
 		if err != nil {
 			return err
 		}
 		if hooks != nil {
-			inboundConfig, err = hooks.AddUsers(tx, inboundConfig, inbound.Id, inbound.Type)
+			config, err = hooks.AddUsers(tx, config, row.Id, row.Type)
 			if err != nil {
 				return err
 			}
 		}
-		err = core.AddInbound(inboundConfig)
-		if err != nil {
+		configs := []json.RawMessage{config}
+		ready = append(ready, prepared{row.Tag, configs})
+	}
+
+	for _, row := range ready {
+		if err := core.RemoveInbound(row.tag); err != nil && err != os.ErrInvalid {
 			return err
+		}
+		core.CloseInboundConnections(row.tag)
+		for _, config := range row.configs {
+
+			if err := core.AddInbound(config); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
 }
+
 func RemoveFromCore(tags []string, core Core) error {
 	if core == nil || !core.IsRunning() {
 		return nil

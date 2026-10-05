@@ -26,6 +26,8 @@ import Failover from '@/components/protocols/Failover.vue'
 import { convertOutboundLink } from '@/shared/composables/useOutboundConversion'
 import AnyTls from '@/components/protocols/AnyTls.vue'
 import Data from '@/store/modules/data'
+import CapabilityNotice from '@/components/fields/CapabilityNotice.vue'
+import { capabilityEditState, capabilityTypeChoices, type CapabilityChoice, type CapabilityEditState } from '@/types/capabilityEditors'
 export default defineComponent({
   props: ['visible', 'data', 'id', 'tags'],
   emits: ['close'],
@@ -33,6 +35,7 @@ export default defineComponent({
     return {
       outbound: createOutbound("direct",{ "tag": "" }),
       title: "add",
+      storedCapabilityType: "",
       tab: "t1",
       link: "",
       loading: false,
@@ -46,12 +49,14 @@ export default defineComponent({
     updateData(id: number) {
       if (id > 0) {
         const newData = JSON.parse(this.$props.data)
+        this.storedCapabilityType = newData.type
         this.outbound = createOutbound(newData.type, newData)
         this.title = "edit"
       }
       else {
         this.outbound = createOutbound("direct",{ tag: "direct-" + RandomUtil.randomSeq(3) })
         this.title = "add"
+        this.storedCapabilityType = ""
       }
       this.tab = "t1"
       this.snapshot = JSON.stringify(this.outbound)
@@ -69,7 +74,7 @@ export default defineComponent({
     },
     async saveChanges() {
       // Guard against double-submit (button is also :disabled while loading).
-      if (!this.$props.visible || this.loading) return
+      if (!this.$props.visible || this.loading || !this.capabilityState.allowed) return
       // check duplicate tag
       const isDuplicatedTag = Data().checkTag("outbound",this.$props.id, this.outbound.tag)
       if (isDuplicatedTag) return
@@ -98,6 +103,12 @@ export default defineComponent({
     }
   },
   computed: {
+    capabilityState(): CapabilityEditState {
+      return capabilityEditState(Data().capabilities, "outbounds", this.outbound.type, this.storedCapabilityType)
+    },
+    typeChoices(): CapabilityChoice[] {
+      return capabilityTypeChoices(Data().capabilities, "outbounds", this.outTypes, this.storedCapabilityType)
+    },
     dirty(): boolean {
       return this.snapshot !== "" && JSON.stringify(this.outbound) !== this.snapshot
     },
@@ -109,7 +120,7 @@ export default defineComponent({
       }
     },
   },
-  components: { Dial, Multiplex, Transport, OutTLS,
+  components: { CapabilityNotice, Dial, Multiplex, Transport, OutTLS,
     Direct, Socks, Http, Shadowsocks, Vmess, Trojan,
     Wireguard, Hysteria, Naive, ShadowTls, Vless, Tuic,
     Hysteria2, AnyTls, Tor, Ssh, Selector, UrlTest, Failover }

@@ -7,6 +7,8 @@ import OomKiller from '@/components/services/OomKiller.vue'
 import InTLS from '@/components/tls/InTLS.vue'
 import SSMapi from '@/components/services/SSMAPI.vue'
 import Data from '@/store/modules/data'
+import CapabilityNotice from '@/components/fields/CapabilityNotice.vue'
+import { capabilityEditState, capabilityTypeChoices, type CapabilityChoice, type CapabilityEditState } from '@/types/capabilityEditors'
 export default defineComponent({
   props: ['visible', 'data', 'id', 'inTags', 'tsTags', 'ssTags', 'tlsConfigs'],
   emits: ['close'],
@@ -14,6 +16,7 @@ export default defineComponent({
     return {
       srv: createSrv("derp",{ "tag": "" }),
       title: "add",
+      storedCapabilityType: "",
       tab: "t1",
       loading: false,
       snapshot: "",
@@ -26,6 +29,7 @@ export default defineComponent({
     async updateData(id: number) {
       if (id > 0) {
         const newData = JSON.parse(this.$props.data)
+        this.storedCapabilityType = newData.type
         this.srv = createSrv(newData.type, newData)
         this.title = "edit"
       }
@@ -37,6 +41,7 @@ export default defineComponent({
           listen_port: port,
         })
         this.title = "add"
+        this.storedCapabilityType = ""
       }
       this.tab = "t1"
       this.snapshot = JSON.stringify(this.srv)
@@ -56,7 +61,7 @@ export default defineComponent({
     },
     async saveChanges() {
       // Guard against double-submit (button is also :disabled while loading).
-      if (!this.$props.visible || this.loading) return
+      if (!this.$props.visible || this.loading || !this.capabilityState.allowed) return
 
       // check duplicate tag
       const isDuplicatedTag = Data().checkTag("service",this.srv.id, this.srv.tag)
@@ -73,6 +78,12 @@ export default defineComponent({
     },
   },
   computed: {
+    capabilityState(): CapabilityEditState {
+      return capabilityEditState(Data().capabilities, "services", this.srv.type, this.storedCapabilityType)
+    },
+    typeChoices(): CapabilityChoice[] {
+      return capabilityTypeChoices(Data().capabilities, "services", this.srvTypes, this.storedCapabilityType)
+    },
     dirty(): boolean {
       return this.snapshot !== "" && JSON.stringify(this.srv) !== this.snapshot
     },
@@ -84,5 +95,5 @@ export default defineComponent({
       }
     },
   },
-  components: { Listen, InTLS, Derp, OomKiller, SSMapi },
+  components: { CapabilityNotice, Listen, InTLS, Derp, OomKiller, SSMapi },
 })

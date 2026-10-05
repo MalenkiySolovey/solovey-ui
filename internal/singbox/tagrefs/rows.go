@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 )
 
 func ssmServersOf(row model.Service) map[string]string {
@@ -62,7 +63,7 @@ func optionsMapOf(options json.RawMessage) map[string]any {
 func scanOutboundRowsForTag(rows []model.Outbound, tag string, excludeID uint) []TagReference {
 	var refs []TagReference
 	for _, row := range rows {
-		if row.Id == excludeID {
+		if excludeID != 0 && row.Id == excludeID {
 			continue
 		}
 		opts := optionsMapOf(row.Options)
@@ -75,7 +76,7 @@ func scanOutboundRowsForTag(rows []model.Outbound, tag string, excludeID uint) [
 				Locator: fmt.Sprintf("outbound %q (detour)", row.Tag),
 			})
 		}
-		if row.Type != "selector" && row.Type != "urltest" && row.Type != "failover" {
+		if row.Type != "selector" && row.Type != "urltest" && row.Type != entitytypes.Failover {
 			continue
 		}
 		if members, _ := opts["outbounds"].([]any); containsTag(members, tag) {
@@ -83,6 +84,11 @@ func scanOutboundRowsForTag(rows []model.Outbound, tag string, excludeID uint) [
 				Kind:    "group member",
 				Locator: fmt.Sprintf("%s %q (outbounds list)", row.Type, row.Tag),
 			})
+		}
+		if row.Type == entitytypes.Failover {
+			if final, _ := opts["final"].(string); final == tag && final != "direct" && final != "reject" {
+				refs = append(refs, TagReference{Kind: "group final", Locator: fmt.Sprintf("%s %q (final)", row.Type, row.Tag)})
+			}
 		}
 		if def, _ := opts["default"].(string); def == tag {
 			refs = append(refs, TagReference{
@@ -106,7 +112,7 @@ func containsTag(members []any, tag string) bool {
 func scanEndpointRowsForTag(rows []model.Endpoint, tag string, excludeID uint) []TagReference {
 	var refs []TagReference
 	for _, row := range rows {
-		if row.Id == excludeID {
+		if excludeID != 0 && row.Id == excludeID {
 			continue
 		}
 		opts := optionsMapOf(row.Options)

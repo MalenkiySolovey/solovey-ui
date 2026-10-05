@@ -9,7 +9,8 @@ import (
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
-	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveidentity"
+	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveeligibility"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
@@ -42,7 +43,9 @@ func GetAll(db *gorm.DB) (*[]map[string]interface{}, error) {
 				return nil, err
 			}
 			for k, v := range restFields {
-				srvData[k] = v
+				if _, fixed := srvData[k]; !fixed {
+					srvData[k] = v
+				}
 			}
 		}
 
@@ -59,6 +62,9 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 		return nil, err
 	}
 	for _, srv := range rows {
+		if !runtimeprojection.Included("services", srv.Type) {
+			continue
+		}
 		srvJSON, err := srv.MarshalJSON()
 		if err != nil {
 			return nil, err
@@ -103,7 +109,7 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 	if err := srv.UnmarshalJSON(data); err != nil {
 		return nil, err
 	}
-	if err := saveidentity.Validate(tx, action, srv.Id, &model.Service{}); err != nil {
+	if err := saveeligibility.Validate(tx, action, srv.Id, &model.Service{}, "services", srv.Type); err != nil {
 		return nil, err
 	}
 	if err := entityidentity.ValidateTypeTag(srv.Type, srv.Tag); err != nil {
@@ -175,23 +181,43 @@ func Restart(tx *gorm.DB, ids []uint, core Core) error {
 	if core == nil || !core.IsRunning() {
 		return nil
 	}
-	var rows []*model.Service
-	err := tx.Model(model.Service{}).Preload("Tls").Where("id in ?", ids).Find(&rows).Error
-	if err != nil {
+	if _, err := runtimeprojection.ValidateReferences(tx, nil); err != nil {
 		return err
 	}
-	for _, srv := range rows {
-		err = core.RemoveService(srv.Tag)
-		if err != nil && err != os.ErrInvalid {
-			return err
+	var rows []*model.Service
+	if err := tx.Model(model.Service{}).Preload("Tls").Where("id IN ?", ids).Find(&rows).Error; err != nil {
+		return err
+	}
+	type prepared struct {
+		tag     string
+		configs []json.RawMessage
+	}
+	ready := []prepared{}
+	// Complete capability/serialization preflight for the whole batch before
+	// the first removal. Unavailable historical rows do not mutate live state.
+	for _, row := range rows {
+		if !runtimeprojection.Included("services", row.Type) {
+			continue
 		}
-		srvConfig, err := srv.MarshalJSON()
+
+		config, err := row.MarshalJSON()
 		if err != nil {
 			return err
 		}
-		err = core.AddService(srvConfig)
-		if err != nil {
+		configs := []json.RawMessage{config}
+		ready = append(ready, prepared{row.Tag, configs})
+	}
+
+	for _, row := range ready {
+		if err := core.RemoveService(row.tag); err != nil && err != os.ErrInvalid {
 			return err
+		}
+
+		for _, config := range row.configs {
+
+			if err := core.AddService(config); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

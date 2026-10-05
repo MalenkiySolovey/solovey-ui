@@ -3,7 +3,7 @@
     :dirty="dirty"
     :loading="loading"
     :model-value="visible"
-    :save-disabled="!validate"
+    :save-disabled="!validate || !capabilityState.allowed"
     :saving="loading"
     :title="$t('actions.' + title) + ' ' + $t('objects.inbound')"
     :width="720"
@@ -11,11 +11,12 @@
     @save="saveChanges"
   >
     <form-section icon="lucide:zap" :title="$t('form.sections.basic')">
+      <CapabilityNotice :state="capabilityState" />
       <v-row>
         <v-col cols="12" sm="6">
           <v-select
             hide-details
-            :items="Object.keys(inTypes).map((key,index) => ({title: key, value: Object.values(inTypes)[index]}))"
+            :items="typeChoices"
             :label="$t('type')"
             v-model="inbound.type"
             @update:modelValue="changeType">

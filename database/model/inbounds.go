@@ -86,7 +86,9 @@ func (i Inbound) MarshalJSON() ([]byte, error) {
 		}
 
 		for k, v := range restFields {
-			combined[k] = v
+			if _, fixed := combined[k]; !fixed {
+				combined[k] = v
+			}
 		}
 	}
 
@@ -110,7 +112,9 @@ func (i Inbound) MarshalFull() (*map[string]interface{}, error) {
 		}
 
 		for k, v := range restFields {
-			combined[k] = v
+			if _, fixed := combined[k]; !fixed {
+				combined[k] = v
+			}
 		}
 	}
 	return &combined, nil

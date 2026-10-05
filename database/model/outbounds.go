@@ -76,7 +76,9 @@ func (o Outbound) MarshalJSON() ([]byte, error) {
 		}
 
 		for k, v := range restFields {
-			combined[k] = v
+			if _, fixed := combined[k]; !fixed {
+				combined[k] = v
+			}
 		}
 	}
 

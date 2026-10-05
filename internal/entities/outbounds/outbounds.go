@@ -9,7 +9,8 @@ import (
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
-	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveidentity"
+	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveeligibility"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
@@ -42,7 +43,9 @@ func GetAll(db *gorm.DB) (*[]map[string]interface{}, error) {
 				return nil, err
 			}
 			for k, v := range restFields {
-				outData[k] = v
+				if _, fixed := outData[k]; !fixed {
+					outData[k] = v
+				}
 			}
 		}
 		data = append(data, outData)
@@ -63,6 +66,9 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 	directTag := DirectFallbackTag(db)
 	failoverRejectSupportAdded := false
 	for _, outbound := range rows {
+		if !runtimeprojection.Included("outbounds", outbound.Type) {
+			continue
+		}
 		if outbound.Type == FailoverType {
 			configs, err := AssembleFailoverOutboundsForCore(*outbound, directTag)
 			if err != nil {
@@ -129,7 +135,7 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 	if err != nil {
 		return nil, err
 	}
-	if err := saveidentity.Validate(tx, action, outbound.Id, &model.Outbound{}); err != nil {
+	if err := saveeligibility.Validate(tx, action, outbound.Id, &model.Outbound{}, "outbounds", outbound.Type); err != nil {
 		return nil, err
 	}
 	if err := entityidentity.ValidateTypeTag(outbound.Type, outbound.Tag); err != nil {
@@ -236,37 +242,55 @@ func Restart(tx *gorm.DB, ids []uint, core Core) error {
 	if core == nil || !core.IsRunning() {
 		return nil
 	}
+	if _, err := runtimeprojection.ValidateReferences(tx, nil); err != nil {
+		return err
+	}
 	var rows []*model.Outbound
 	if err := tx.Model(model.Outbound{}).Where("id IN ?", ids).Find(&rows).Error; err != nil {
 		return err
 	}
-	failoverRejectSupportAdded := false
-	for _, outbound := range rows {
-		if err := core.RemoveOutbound(outbound.Tag); err != nil && err != os.ErrInvalid {
+	type prepared struct {
+		tag     string
+		configs []json.RawMessage
+	}
+	ready := []prepared{}
+	// Complete capability/serialization preflight for the whole batch before
+	// the first removal. Unavailable historical rows do not mutate live state.
+	for _, row := range rows {
+		if !runtimeprojection.Included("outbounds", row.Type) {
+			continue
+		}
+
+		var configs []json.RawMessage
+		if row.Type == FailoverType {
+			var err error
+			configs, err = AssembleFailoverOutboundsForCore(*row, DirectFallbackTag(tx))
+			if err != nil {
+				return err
+			}
+		} else {
+			config, err := row.MarshalJSON()
+			if err != nil {
+				return err
+			}
+			configs = []json.RawMessage{config}
+		}
+		ready = append(ready, prepared{row.Tag, configs})
+	}
+	rejectAdded := false
+	for _, row := range ready {
+		if err := core.RemoveOutbound(row.tag); err != nil && err != os.ErrInvalid {
 			return err
 		}
-		var outboundConfigs []json.RawMessage
-		if outbound.Type == FailoverType {
-			configs, err := AssembleFailoverOutboundsForCore(*outbound, DirectFallbackTag(tx))
-			if err != nil {
-				return err
-			}
-			outboundConfigs = configs
-		} else {
-			config, err := outbound.MarshalJSON()
-			if err != nil {
-				return err
-			}
-			outboundConfigs = []json.RawMessage{config}
-		}
-		for _, outboundConfig := range outboundConfigs {
-			if isFailoverRejectSupportConfig(outboundConfig) {
-				if failoverRejectSupportAdded {
+
+		for _, config := range row.configs {
+			if isFailoverRejectSupportConfig(config) {
+				if rejectAdded {
 					continue
 				}
-				failoverRejectSupportAdded = true
+				rejectAdded = true
 			}
-			if err := core.AddOutbound(outboundConfig); err != nil {
+			if err := core.AddOutbound(config); err != nil {
 				return err
 			}
 		}

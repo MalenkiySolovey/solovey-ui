@@ -1,4 +1,5 @@
 ﻿export default {
+  capability: { waiting: "Waiting for runtime capability information. Reload data if it does not arrive.", unavailable: "This type is unavailable in the current binary or entity context. Choose an available type before saving.", historical: "This historical type is unavailable in the current binary. Same-type edits remain possible; the entity stays excluded from runtime. Remove its references before applying changes." },
   "nav": {
     "groups": {
       "proxy": "Proxy",
