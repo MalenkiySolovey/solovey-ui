@@ -108,6 +108,7 @@ var apiV2ActionScopes = map[string][]string{
 	"subConvert":      {"read", "write"},
 	// Config / identity / secret reads — component scopes are excluded.
 	"load":          {"read", "write"},
+	"capabilities":  {"read", "write"},
 	"inbounds":      {"read", "write"},
 	"inboundDrafts": {"read", "write"},
 	"outbounds":     {"read", "write"},
@@ -182,6 +183,8 @@ func (a *APIv2Handler) getHandler(c *gin.Context) {
 	switch action {
 	case "load":
 		a.config.LoadData(c)
+	case "capabilities":
+		a.config.GetCapabilities(c)
 	case "inbounds", "inboundDrafts", "outbounds", "endpoints", "services", "tls", "clients", "config":
 		err := a.config.LoadPartialData(c, []string{action})
 		if err != nil {

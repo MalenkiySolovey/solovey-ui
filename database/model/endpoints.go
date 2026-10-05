@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 )
 
 type Endpoint struct {
@@ -52,12 +53,7 @@ func (o *Endpoint) UnmarshalJSON(data []byte) error {
 func (o Endpoint) MarshalJSON() ([]byte, error) {
 	// Combine fixed fields and dynamic fields into one map
 	combined := make(map[string]interface{})
-	switch o.Type {
-	case "warp":
-		combined["type"] = "wireguard"
-	default:
-		combined["type"] = o.Type
-	}
+	combined["type"] = entitytypes.RuntimeType("endpoints", o.Type)
 	combined["tag"] = o.Tag
 
 	if o.Options != nil {

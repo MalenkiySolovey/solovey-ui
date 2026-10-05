@@ -15,6 +15,8 @@ import (
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
+const supportsTailscale = false
+
 func registerTailscaleEndpoint(registry *endpoint.Registry) {
 	endpoint.Register[option.TailscaleEndpointOptions](registry, C.TypeTailscale, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.TailscaleEndpointOptions) (adapter.Endpoint, error) {
 		return nil, E.New(`Tailscale is not included in this build, rebuild with -tags with_tailscale`)

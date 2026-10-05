@@ -2,6 +2,7 @@ package registry
 
 import (
 	"github.com/sagernet/sing-box/adapter/outbound"
+	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/protocol/anytls"
 	"github.com/sagernet/sing-box/protocol/block"
 	"github.com/sagernet/sing-box/protocol/direct"
@@ -23,28 +24,31 @@ import (
 
 func OutboundRegistry() *outbound.Registry {
 	registry := outbound.NewRegistry()
-
-	direct.RegisterOutbound(registry)
-	block.RegisterOutbound(registry)
-
-	group.RegisterSelector(registry)
-	group.RegisterURLTest(registry)
-
-	socks.RegisterOutbound(registry)
-	http.RegisterOutbound(registry)
-	shadowsocks.RegisterOutbound(registry)
-	vmess.RegisterOutbound(registry)
-	trojan.RegisterOutbound(registry)
-	registerNaiveOutbound(registry)
-	tor.RegisterOutbound(registry)
-	ssh.RegisterOutbound(registry)
-	shadowtls.RegisterOutbound(registry)
-	vless.RegisterOutbound(registry)
-	anytls.RegisterOutbound(registry)
-
-	hysteria.RegisterOutbound(registry)
-	tuic.RegisterOutbound(registry)
-	hysteria2.RegisterOutbound(registry)
-
+	for _, entry := range outboundDeclarations() {
+		entry.register(registry)
+	}
 	return registry
+}
+
+func outboundDeclarations() []declaration[*outbound.Registry] {
+	return []declaration[*outbound.Registry]{
+		{typeName: "direct", buildTag: "", compiled: true, register: direct.RegisterOutbound},
+		{typeName: "block", buildTag: "", compiled: true, register: block.RegisterOutbound},
+		{typeName: "selector", buildTag: "", compiled: true, register: group.RegisterSelector},
+		{typeName: "urltest", buildTag: "", compiled: true, register: group.RegisterURLTest},
+		{typeName: "socks", buildTag: "", compiled: true, register: socks.RegisterOutbound},
+		{typeName: "http", buildTag: "", compiled: true, register: http.RegisterOutbound},
+		{typeName: "shadowsocks", buildTag: "", compiled: true, register: shadowsocks.RegisterOutbound},
+		{typeName: "vmess", buildTag: "", compiled: true, register: vmess.RegisterOutbound},
+		{typeName: "trojan", buildTag: "", compiled: true, register: trojan.RegisterOutbound},
+		{typeName: "naive", buildTag: "with_naive_outbound", compiled: SupportsNaiveOutbound, register: registerNaiveOutbound},
+		{typeName: "tor", buildTag: "", compiled: true, register: tor.RegisterOutbound},
+		{typeName: "ssh", buildTag: "", compiled: true, register: ssh.RegisterOutbound},
+		{typeName: "shadowtls", buildTag: "", compiled: true, register: shadowtls.RegisterOutbound},
+		{typeName: "vless", buildTag: "", compiled: true, register: vless.RegisterOutbound},
+		{typeName: "anytls", buildTag: "", compiled: true, register: anytls.RegisterOutbound},
+		{typeName: "hysteria", buildTag: "with_quic", compiled: C.WithQUIC, register: hysteria.RegisterOutbound},
+		{typeName: "tuic", buildTag: "with_quic", compiled: C.WithQUIC, register: tuic.RegisterOutbound},
+		{typeName: "hysteria2", buildTag: "with_quic", compiled: C.WithQUIC, register: hysteria2.RegisterOutbound},
+	}
 }
