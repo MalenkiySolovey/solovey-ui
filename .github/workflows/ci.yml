@@ -181,6 +181,7 @@ jobs:
       - name: Validate workflow contracts
         run: |
           node --test scripts/release-preflight.test.mjs
+          node --test scripts/audit/go-shards.test.mjs
           node scripts/audit/validate-workflows.js
 
       - name: Frontend lint

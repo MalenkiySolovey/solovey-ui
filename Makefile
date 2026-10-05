@@ -1,6 +1,8 @@
 PS ?= powershell -NoProfile -ExecutionPolicy Bypass
 RUN = $(PS) -File tests/baseline/run-command.ps1
 ADVISORY_RUN = $(RUN) -ExpectedFailureExitCode 1
+GO_TEST_ARGS ?=
+GO_TEST_NAME_SUFFIX ?=
 
 .PHONY: audit audit\:lint-go audit\:vet audit\:build audit\:test-go audit\:test-go-race audit\:cover audit\:gosec audit\:vuln audit\:fe-typecheck audit\:fe-lint audit\:fe-build audit\:test-fe audit\:e2e audit\:fe-install
 
@@ -18,10 +20,10 @@ audit\:build:
 	$(RUN) -Group core -Name go-build -CommandLine "go build ./..."
 
 audit\:test-go:
-	$(RUN) -Group core -Name go-test -CommandLine "node scripts/go-test.mjs -count=1 -p 1 -timeout 30m -- ./..."
+	$(RUN) -Group core -Name go-test$(GO_TEST_NAME_SUFFIX) -CommandLine "node scripts/go-test.mjs $(GO_TEST_ARGS) -count=1 -p 1 -timeout 30m -- ./..."
 
 audit\:test-go-race:
-	$(RUN) -Group core -Name go-test-race -CommandLine "node scripts/go-test.mjs -race -count=1 -p 1 -timeout 30m -- ./..."
+	$(RUN) -Group core -Name go-test-race$(GO_TEST_NAME_SUFFIX) -CommandLine "node scripts/go-test.mjs $(GO_TEST_ARGS) -race -count=1 -p 1 -timeout 30m -- ./..."
 
 audit\:cover:
 	$(RUN) -Group core -Name go-cover -CommandLine "node scripts/go-test.mjs -coverprofile tests/baseline/core/coverage.out -- ./..."

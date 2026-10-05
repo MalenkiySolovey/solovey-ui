@@ -102,7 +102,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [ubuntu-latest]
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
@@ -110,6 +110,8 @@ jobs:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+      - name: Verify Go test executor
+        run: node --test scripts/go-test.test.mjs
       - name: Generate backend component imports
         run: node scripts/generate-component-imports.mjs --profile full
       - name: Ensure make on Windows
@@ -138,14 +140,16 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
-  test-go-race:
-    name: test-go-race (${{ matrix.os }})
+  test-go-windows-shard:
+    name: test-go-shard (${{ matrix.os }}, ${{ matrix.shard }}/4)
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:
-        os: [ubuntu-latest, windows-latest]
+        os: [windows-latest]
+        shard: [1, 2, 3, 4]
+    env:
+      SHARD_INDEX: ${{ matrix.shard }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
@@ -153,6 +157,8 @@ jobs:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
+      - name: Verify Go test executor
+        run: node --test scripts/go-test.test.mjs
       - name: Generate backend component imports
         run: node scripts/generate-component-imports.mjs --profile full
       - name: Ensure make on Windows
@@ -167,6 +173,71 @@ jobs:
       - name: Install privileged fixture tools
         if: runner.os == 'Linux'
         run: sudo apt-get update && sudo apt-get install -y busybox-static
+      - name: make audit:test-go
+        shell: bash
+        run: make audit:test-go PS="${MAKE_PS}" GO_TEST_ARGS="--shard-index ${SHARD_INDEX} --shard-total 4" GO_TEST_NAME_SUFFIX="-shard-${SHARD_INDEX}-of-4"
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: audit-go-test-${{ matrix.os }}-shard-${{ matrix.shard }}-of-4
+          path: |
+            tests/baseline/*/*.txt
+            tests/baseline/*/*.junit.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  test-go-windows:
+    name: test-go (windows-latest)
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [test-go-windows-shard]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Require every shard to succeed
+        shell: pwsh
+        env:
+          SHARD_RESULT: ${{ needs['test-go-windows-shard'].result }}
+        run: ./tests/baseline/run-command.ps1 -Group core -Name go-test-windows-gate -CommandLine 'test "$SHARD_RESULT" = success'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: audit-go-test-windows-latest-gate
+          path: |
+            tests/baseline/core/go-test-windows-gate.txt
+            tests/baseline/core/go-test-windows-gate.junit.xml
+          if-no-files-found: error
+          retention-days: 7
+
+  test-go-race-linux-shard:
+    name: test-go-race-shard (${{ matrix.os }}, ${{ matrix.shard }}/4)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        shard: [1, 2, 3, 4]
+    env:
+      SHARD_INDEX: ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+      - name: Verify Go test executor
+        run: node --test scripts/go-test.test.mjs
+      - name: Generate backend component imports
+        run: node scripts/generate-component-imports.mjs --profile full
+      - name: Ensure make on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
+            choco install make -y --no-progress
+          }
       - name: Materialize pinned OpenWrt test references
         run: node scripts/release-openwrt-references.mjs .github/build-inputs/OPENWRT_REFERENCE_LOCK.md --test-references
       - name: Install privileged fixture tools
@@ -174,15 +245,106 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y busybox-static
       - name: make audit:test-go-race
         shell: bash
-        run: make audit:test-go-race PS="${MAKE_PS}"
+        run: make audit:test-go-race PS="${MAKE_PS}" GO_TEST_ARGS="--shard-index ${SHARD_INDEX} --shard-total 4" GO_TEST_NAME_SUFFIX="-shard-${SHARD_INDEX}-of-4"
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
-          name: audit-go-race-${{ matrix.os }}
+          name: audit-go-race-${{ matrix.os }}-shard-${{ matrix.shard }}-of-4
           path: |
             tests/baseline/*/*.txt
             tests/baseline/*/*.junit.xml
           if-no-files-found: ignore
+          retention-days: 7
+
+  test-go-race-windows-shard:
+    name: test-go-race-shard (${{ matrix.os }}, ${{ matrix.shard }}/4)
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest]
+        shard: [1, 2, 3, 4]
+    env:
+      SHARD_INDEX: ${{ matrix.shard }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+      - name: Verify Go test executor
+        run: node --test scripts/go-test.test.mjs
+      - name: Generate backend component imports
+        run: node scripts/generate-component-imports.mjs --profile full
+      - name: Ensure make on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          if (-not (Get-Command make -ErrorAction SilentlyContinue)) {
+            choco install make -y --no-progress
+          }
+      - name: Materialize pinned OpenWrt test references
+        run: node scripts/release-openwrt-references.mjs .github/build-inputs/OPENWRT_REFERENCE_LOCK.md --test-references
+      - name: Install privileged fixture tools
+        if: runner.os == 'Linux'
+        run: sudo apt-get update && sudo apt-get install -y busybox-static
+      - name: make audit:test-go-race
+        shell: bash
+        run: make audit:test-go-race PS="${MAKE_PS}" GO_TEST_ARGS="--shard-index ${SHARD_INDEX} --shard-total 4" GO_TEST_NAME_SUFFIX="-shard-${SHARD_INDEX}-of-4"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: audit-go-race-${{ matrix.os }}-shard-${{ matrix.shard }}-of-4
+          path: |
+            tests/baseline/*/*.txt
+            tests/baseline/*/*.junit.xml
+          if-no-files-found: ignore
+          retention-days: 7
+
+  test-go-race-linux:
+    name: test-go-race (ubuntu-latest)
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [test-go-race-linux-shard]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Require every shard to succeed
+        shell: pwsh
+        env:
+          SHARD_RESULT: ${{ needs['test-go-race-linux-shard'].result }}
+        run: ./tests/baseline/run-command.ps1 -Group core -Name go-test-race-linux-gate -CommandLine 'test "$SHARD_RESULT" = success'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: audit-go-race-ubuntu-latest-gate
+          path: |
+            tests/baseline/core/go-test-race-linux-gate.txt
+            tests/baseline/core/go-test-race-linux-gate.junit.xml
+          if-no-files-found: error
+          retention-days: 7
+
+  test-go-race-windows:
+    name: test-go-race (windows-latest)
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [test-go-race-windows-shard]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - name: Require every shard to succeed
+        shell: pwsh
+        env:
+          SHARD_RESULT: ${{ needs['test-go-race-windows-shard'].result }}
+        run: ./tests/baseline/run-command.ps1 -Group core -Name go-test-race-windows-gate -CommandLine 'test "$SHARD_RESULT" = success'
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        if: always()
+        with:
+          name: audit-go-race-windows-latest-gate
+          path: |
+            tests/baseline/core/go-test-race-windows-gate.txt
+            tests/baseline/core/go-test-race-windows-gate.junit.xml
+          if-no-files-found: error
           retention-days: 7
 
   coverage:
@@ -383,7 +545,12 @@ jobs:
       - build
       - vet
       - test-go
-      - test-go-race
+      - test-go-windows
+      - test-go-race-linux
+      - test-go-race-windows
+      - test-go-windows-shard
+      - test-go-race-linux-shard
+      - test-go-race-windows-shard
       - coverage
       - lint-go
       - staticcheck
