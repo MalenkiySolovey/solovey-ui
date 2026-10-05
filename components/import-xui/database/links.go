@@ -8,7 +8,6 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
-
 	"gorm.io/gorm"
 )
 
@@ -54,7 +53,7 @@ func localLinkEntries(tx *gorm.DB, config json.RawMessage, inboundsJSON json.Raw
 	}
 	var inbounds []model.Inbound
 	if err := tx.Model(model.Inbound{}).Preload("Tls").
-		Where("id in ? and type in ?", inboundIDs, suburi.SupportedInboundTypes).
+		Where("id in ? and type in ?", inboundIDs, suburi.EligibleInboundTypes()).
 		Find(&inbounds).Error; err != nil {
 		return nil, err
 	}

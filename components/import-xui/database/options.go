@@ -5,6 +5,8 @@ package importxui
 import (
 	"context"
 	"fmt"
+
+	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 )
 
 type Strategy string
@@ -16,13 +18,14 @@ const (
 )
 
 type PlanOptions struct {
-	Context         context.Context
-	Strategy        Strategy
-	IncludeSettings bool
-	AdminMode       AdminMode
-	OnlyNew         bool
-	IncludeHistory  bool
-	IncludeRouting  bool
+	TargetCapabilities *entitycapabilities.Snapshot `json:"-"`
+	Context            context.Context
+	Strategy           Strategy
+	IncludeSettings    bool
+	AdminMode          AdminMode
+	OnlyNew            bool
+	IncludeHistory     bool
+	IncludeRouting     bool
 }
 
 func (o PlanOptions) normalized() (PlanOptions, error) {
@@ -45,13 +48,14 @@ func (o PlanOptions) normalized() (PlanOptions, error) {
 }
 
 type ApplyOptions struct {
-	Context    context.Context
-	DryRun     bool
-	SkipBackup bool
-	SkipAudit  bool
-	OnlyNew    bool
-	Now        func() int64
-	OnProgress func(Progress)
+	TargetCapabilities *entitycapabilities.Snapshot `json:"-"`
+	Context            context.Context
+	DryRun             bool
+	SkipBackup         bool
+	SkipAudit          bool
+	OnlyNew            bool
+	Now                func() int64
+	OnProgress         func(Progress)
 	// Hostname is baked into migrated client subscription links.
 	Hostname string
 }

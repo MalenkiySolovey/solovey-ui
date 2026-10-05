@@ -15,6 +15,10 @@ func (s *planningState) planTLS(ctx context.Context, tx *gorm.DB, src *source.Da
 		if err := checkContext(ctx); err != nil {
 			return err
 		}
+		_, _, reason := sourceInboundCapability(s.capabilities, row.Protocol)
+		if reason != "" {
+			return nil
+		}
 		spec, warnings, err := mapping.ExtractReality(row)
 		if err != nil {
 			return err

@@ -115,3 +115,16 @@ behavior. Stored WARP identity maps to the official WireGuard endpoint without
 renaming storage. Pinned sing-box v1.13.14 default endpoint, Tailscale DNS and
 DERP lifetimes require full restart for references captured at initialization.
 No upstream implementation or tests were copied; full parity remains v1.5.10.
+
+CAP-05/CAP-06 independently adapt capability-aware import and local client
+delivery from the same pinned target. The behavioral witness is
+`590b08af39537ab4c85441513743c2360bbc187d`
+(`database/importxui/{plan.go,importer.go,report.go}`,
+`core/capabilities/{capabilities.go,protocols.json}`, `util/genLink.go`).
+Solovey captures target facts for canonical import planning, preserves source
+mapping and transaction ownership, and reports excluded objects explicitly.
+Inbound owners provide immutable credential/delivery schema; local adapters
+consume serving-inbound availability while portable codecs retain encoding.
+Official sing-box v1.13.14 validates option-dependent candidates before import
+commit. No upstream implementation or tests were copied; the full parity
+boundary remains v1.5.10.

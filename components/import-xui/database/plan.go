@@ -11,7 +11,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-
+	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	"gorm.io/gorm"
 )
 
@@ -58,15 +58,16 @@ type PlanSource struct {
 }
 
 type PlanItem struct {
-	Kind        string          `json:"kind"`
-	SrcID       any             `json:"srcId"`
-	SrcTag      string          `json:"srcTag,omitempty"`
-	DstTag      string          `json:"dstTag"`
-	Action      string          `json:"action"`
-	Conflict    bool            `json:"conflict"`
-	AdminMode   string          `json:"adminMode,omitempty"`
-	PreviewJSON json.RawMessage `json:"previewJson"`
-	Warnings    []string        `json:"warnings,omitempty"`
+	Unsupported []UnsupportedObject `json:"unsupported,omitempty"`
+	Kind        string              `json:"kind"`
+	SrcID       any                 `json:"srcId"`
+	SrcTag      string              `json:"srcTag,omitempty"`
+	DstTag      string              `json:"dstTag"`
+	Action      string              `json:"action"`
+	Conflict    bool                `json:"conflict"`
+	AdminMode   string              `json:"adminMode,omitempty"`
+	PreviewJSON json.RawMessage     `json:"previewJson"`
+	Warnings    []string            `json:"warnings,omitempty"`
 }
 
 type Progress struct {
@@ -79,6 +80,7 @@ type Progress struct {
 }
 
 type planningState struct {
+	capabilities     entitycapabilities.Snapshot
 	report           *Report
 	realityByKey     map[string]*mapping.RealitySpec
 	realityBySource  map[int64]*mapping.RealitySpec
@@ -113,6 +115,7 @@ func Plan(srcPath string, opts PlanOptions) (*MigrationPlan, error) {
 	}
 	tx := db.Session(&gorm.Session{})
 	state := &planningState{
+		capabilities:     targetCapabilities(opts.TargetCapabilities),
 		report:           &Report{},
 		realityByKey:     map[string]*mapping.RealitySpec{},
 		realityBySource:  map[int64]*mapping.RealitySpec{},
@@ -161,7 +164,7 @@ func Plan(srcPath string, opts PlanOptions) (*MigrationPlan, error) {
 		}
 	}
 	if opts.IncludeRouting {
-		if err := planRouting(opts.Context, src, plan); err != nil {
+		if err := planRouting(opts.Context, src, plan, state.capabilities); err != nil {
 			return nil, fmt.Errorf("xui-import: %w", err)
 		}
 	} else if err := planRoutingDisabledNotice(opts.Context, src, plan); err != nil {

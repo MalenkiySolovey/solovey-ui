@@ -3,11 +3,13 @@ package entityclients
 import (
 	"bytes"
 	"encoding/json"
+	"strings"
+
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"gorm.io/gorm"
-	"strings"
 )
 
 func LinkString(link Link, key string) string {
@@ -28,6 +30,9 @@ func DecodeLinks(clientID uint, raw json.RawMessage, operation string) ([]Link, 
 func BuildLinksForInbounds(config json.RawMessage, inbounds []model.Inbound, hostname string) ([]Link, error) {
 	links := []Link{}
 	for i := range inbounds {
+		if !clientfacts.CanDeliver(inbounds[i].Type, "uri") {
+			continue
+		}
 		generated, err := suburi.Generate(config, &inbounds[i], hostname)
 		if err != nil {
 			return nil, err
@@ -74,7 +79,7 @@ func UpdateLinksWithFixedInbounds(tx *gorm.DB, clients []*model.Client, hostname
 		if !cached {
 			if len(inboundIDs) > 0 {
 				if err := tx.Model(model.Inbound{}).Preload("Tls").
-					Where("id in ? and type in ?", inboundIDs, suburi.SupportedInboundTypes).
+					Where("id in ? and type in ?", inboundIDs, suburi.EligibleInboundTypes()).
 					Find(&inbounds).Error; err != nil {
 					return err
 				}
@@ -110,7 +115,7 @@ func PreviewWithLocalLinks(db *gorm.DB, clients *[]model.Client, hostname string
 		if !cached {
 			if len(inboundIDs) > 0 {
 				if err := db.Model(model.Inbound{}).Preload("Tls").
-					Where("id in ? and type in ?", inboundIDs, suburi.SupportedInboundTypes).
+					Where("id in ? and type in ?", inboundIDs, suburi.EligibleInboundTypes()).
 					Find(&inbounds).Error; err != nil {
 					return err
 				}

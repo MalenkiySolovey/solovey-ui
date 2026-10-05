@@ -13,7 +13,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	"github.com/MalenkiySolovey/solovey-ui/service"
-
 	"gorm.io/gorm"
 )
 
@@ -22,6 +21,9 @@ import (
 func createNewEndpoints(tx *gorm.DB, endpoints []model.Endpoint, report *Report) error {
 	for i := range endpoints {
 		ep := &endpoints[i]
+		if err := checkImportedCapability("endpoints", ep.Type); err != nil {
+			return err
+		}
 		if err := identity.ValidateTypeTag(ep.Type, ep.Tag); err != nil {
 			return err
 		}
@@ -57,6 +59,9 @@ func createNewEndpoints(tx *gorm.DB, endpoints []model.Endpoint, report *Report)
 func createNewOutbounds(tx *gorm.DB, outbounds []model.Outbound, report *Report) error {
 	for i := range outbounds {
 		ob := &outbounds[i]
+		if err := checkImportedCapability("outbounds", ob.Type); err != nil {
+			return err
+		}
 		if err := identity.ValidateTypeTag(ob.Type, ob.Tag); err != nil {
 			return err
 		}
@@ -144,6 +149,9 @@ func (s *applyState) applyRouting(ctx context.Context, tx *gorm.DB, src *source.
 		return err
 	}
 	endpoints, outbounds, targets, outboundWarnings := mapping.MapXrayOutbounds(xrayConfig)
+	if issues := routingCapabilityIssues(s.capabilities, endpoints, outbounds); len(issues) > 0 {
+		return fmt.Errorf("CAPABILITY_REFERENCE_UNAVAILABLE: routing target eligibility changed; refresh import preview")
+	}
 	s.report.warnAll(outboundWarnings)
 	mapped, warnings, mappedCount, manualCount := mapping.MapXrayRouting(xrayConfig, targets)
 	outbounds, err = ensureDirectOutbound(tx, outbounds, mapped)

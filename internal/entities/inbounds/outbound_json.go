@@ -4,15 +4,14 @@ import (
 	"bytes"
 	"encoding/json"
 
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
-
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
 // Fill Inbound's out_json
 func FillOutboundJSON(i *model.Inbound, hostname string) error {
-	switch i.Type {
-	case "direct", "tun", "redirect", "tproxy":
+	if fact, ok := clientfacts.Resolve(i.Type); !ok || !fact.JSON {
 		return nil
 	}
 	outJson := make(map[string]interface{})

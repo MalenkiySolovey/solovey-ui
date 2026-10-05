@@ -5,52 +5,16 @@ import (
 	"fmt"
 	"strings"
 
+	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
-
 	"gorm.io/gorm"
 )
 
 const clientHasInboundCondition = "? IN (SELECT json_each.value FROM json_each(clients.inbounds))"
 
 func (s *InboundService) hasUser(inboundType string) bool {
-	_, ok := userJSONField[inboundType]
+	_, ok := clientfacts.UserField(inboundType)
 	return ok
-}
-
-// userJSONField maps an inbound type to the JSON path used inside
-// clients.config to locate per-user data. Do not extend this map without a
-// positive list for both the inbound type and the JSON field value.
-var userJSONField = map[string]string{
-	"mixed":         "mixed",
-	"socks":         "socks",
-	"http":          "http",
-	"shadowsocks":   "shadowsocks",
-	"shadowsocks16": "shadowsocks",
-	"vmess":         "vmess",
-	"trojan":        "trojan",
-	"naive":         "naive",
-	"hysteria":      "hysteria",
-	"shadowtls":     "shadowtls",
-	"tuic":          "tuic",
-	"hysteria2":     "hysteria2",
-	"vless":         "vless",
-	"anytls":        "anytls",
-}
-
-var allowedUserJSONFields = map[string]struct{}{
-	"mixed":       {},
-	"socks":       {},
-	"http":        {},
-	"shadowsocks": {},
-	"vmess":       {},
-	"trojan":      {},
-	"naive":       {},
-	"hysteria":    {},
-	"shadowtls":   {},
-	"tuic":        {},
-	"hysteria2":   {},
-	"vless":       {},
-	"anytls":      {},
 }
 
 func (s *InboundService) AddUsers(db *gorm.DB, inboundJSON []byte, inboundID uint, inboundType string) ([]byte, error) {
@@ -98,12 +62,9 @@ func (s *InboundService) fetchUsers(db *gorm.DB, inboundType string, inbound map
 		}
 	}
 
-	field, ok := userJSONField[inboundType]
+	field, ok := clientfacts.UserField(inboundType)
 	if !ok {
 		return nil, common.NewErrorf("unsupported inbound type for user lookup: %s", inboundType)
-	}
-	if _, ok := allowedUserJSONFields[field]; !ok {
-		return nil, common.NewErrorf("unsupported user JSON field for user lookup: %s", field)
 	}
 
 	var users []string

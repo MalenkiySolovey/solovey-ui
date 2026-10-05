@@ -11,7 +11,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-
 	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -230,7 +229,7 @@ func TestApply_DNSOnlyConfigIsNotSkipped(t *testing.T) {
 	initCompatDest(t)
 	dir := makeImportXUITempDir(t)
 	src := filepath.Join(dir, "x-ui.db")
-	buildCompatSource(t, forkVariant, src)
+	buildRuntimeCompatSource(t, forkVariant, src)
 
 	db, err := gorm.Open(gormsqlite.Open(src), &gorm.Config{})
 	if err != nil {
@@ -292,7 +291,7 @@ func TestApply_BlackholeRejectAndDirectResolves(t *testing.T) {
 	}
 	dir := makeImportXUITempDir(t)
 	src := filepath.Join(dir, "x-ui.db")
-	buildCompatSource(t, forkVariant, src)
+	buildRuntimeCompatSource(t, forkVariant, src)
 
 	db, err := gorm.Open(gormsqlite.Open(src), &gorm.Config{})
 	if err != nil {
@@ -404,7 +403,7 @@ func TestApply_RoutingMergesIntoLiveConfig(t *testing.T) {
 	initCompatDest(t)
 	dir := makeImportXUITempDir(t)
 	src := filepath.Join(dir, "x-ui.db")
-	buildCompatSource(t, forkVariant, src)
+	buildRuntimeCompatSource(t, forkVariant, src)
 
 	db, err := gorm.Open(gormsqlite.Open(src), &gorm.Config{})
 	if err != nil {

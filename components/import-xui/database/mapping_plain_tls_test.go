@@ -12,7 +12,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-
 	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -110,13 +109,13 @@ func TestApply_PlainTLSInlineCert_CreatesTLSRecord(t *testing.T) {
 	initCompatDest(t)
 	dir := makeImportXUITempDir(t)
 	src := filepath.Join(dir, "x-ui.db")
-	buildCompatSource(t, forkVariant, src)
+	buildRuntimeCompatSource(t, forkVariant, src)
 
 	db, err := gorm.Open(gormsqlite.Open(src), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	stream := `{"network":"tcp","security":"tls","tlsSettings":{"serverName":"tls.example.com","certificates":[{"certificate":["` + inlineCert + `"],"key":["` + inlineKey + `"]}]}}`
+	stream := runtimeTLSFixtureStream(t, "tls.example.com")
 	settings := `{"clients":[{"email":"tlsuser","id":"11111111-1111-1111-1111-111111111111"}]}`
 	if err := db.Exec(
 		"INSERT INTO inbounds(user_id, up, down, total, remark, enable, expiry_time, listen, port, protocol, settings, stream_settings, tag, sniffing) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -160,13 +159,13 @@ func TestApply_PlainTLSInlineCert_DedupSharedCert(t *testing.T) {
 	initCompatDest(t)
 	dir := makeImportXUITempDir(t)
 	src := filepath.Join(dir, "x-ui.db")
-	buildCompatSource(t, forkVariant, src)
+	buildRuntimeCompatSource(t, forkVariant, src)
 
 	db, err := gorm.Open(gormsqlite.Open(src), &gorm.Config{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	stream := `{"network":"tcp","security":"tls","tlsSettings":{"serverName":"shared.example.com","certificates":[{"certificate":["` + inlineCert + `"],"key":["` + inlineKey + `"]}]}}`
+	stream := runtimeTLSFixtureStream(t, "shared.example.com")
 	rows := []struct {
 		tag, email, id string
 		port           int

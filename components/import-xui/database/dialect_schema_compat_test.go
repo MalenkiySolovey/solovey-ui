@@ -13,7 +13,6 @@ import (
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/gofrs/uuid/v5"
-
 	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -232,7 +231,7 @@ func TestImport_SchemaWithoutAllTime(t *testing.T) {
 			initCompatDest(t)
 			dir := makeImportXUITempDir(t)
 			src := filepath.Join(dir, "x-ui.db")
-			buildCompatSource(t, variant, src)
+			buildRuntimeCompatSource(t, variant, src)
 
 			plan, err := Plan(src, PlanOptions{
 				Strategy:        StrategyMerge,
@@ -249,15 +248,15 @@ func TestImport_SchemaWithoutAllTime(t *testing.T) {
 				t.Fatalf("Apply failed (regression: %v)", err)
 			}
 
-			// 2 routable inbounds (vless+reality, trojan) and 1 wireguard endpoint.
+			// 2 routable TLS inbounds; the no-peers WireGuard fixture is excluded.
 			if got := report.Summary.Inbounds.Imported; got != 2 {
 				t.Fatalf("inbounds imported = %d, want 2; report=%#v", got, report.Summary.Inbounds)
 			}
-			if got := report.Summary.Endpoints.Imported; got != 1 {
-				t.Fatalf("endpoints imported = %d, want 1", got)
+			if got := report.Summary.Endpoints.Imported; got != 0 {
+				t.Fatalf("endpoints imported = %d, want 0", got)
 			}
 			if report.Summary.TLS.Created == 0 {
-				t.Fatalf("expected reality TLS row to be created")
+				t.Fatalf("expected TLS row to be created")
 			}
 
 			db := dbsqlite.DB()
@@ -268,8 +267,8 @@ func TestImport_SchemaWithoutAllTime(t *testing.T) {
 				}
 			}
 			var wg int64
-			if err := db.Model(model.Endpoint{}).Where("tag = ?", "inbound-12555").Count(&wg).Error; err != nil || wg != 1 {
-				t.Fatalf("wireguard endpoint missing (count=%d, err=%v)", wg, err)
+			if err := db.Model(model.Endpoint{}).Where("tag = ?", "inbound-12555").Count(&wg).Error; err != nil || wg != 0 {
+				t.Fatalf("no-peers endpoint was persisted (count=%d, err=%v)", wg, err)
 			}
 			for _, email := range []string{"alice", "bob", "carol"} {
 				var n int64
