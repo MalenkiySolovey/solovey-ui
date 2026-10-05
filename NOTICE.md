@@ -128,3 +128,12 @@ consume serving-inbound availability while portable codecs retain encoding.
 Official sing-box v1.13.14 validates option-dependent candidates before import
 commit. No upstream implementation or tests were copied; the full parity
 boundary remains v1.5.10.
+
+PAID-02/PAID-03 independently adapt legacy purchase fail-closed handling and
+recoverable provider invoice intent from deposist/s-ui-x v1.5.12-beta6
+08814445d1497bc8b52bdc3af2eda784a5ea26cb, introducing witness
+590b08af39537ab4c85441513743c2360bbc187d (paidsub model/schema/payment and
+schema/cryptobot_order tests). Solovey retains its component-owned immutable
+grant snapshot, schema, injected database lifetime and provider transport;
+durable constraints arbitrate creation and application. No upstream code or
+tests were copied; full parity remains v1.5.10.

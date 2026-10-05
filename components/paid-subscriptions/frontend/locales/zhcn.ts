@@ -1,5 +1,11 @@
 export default {
   "paidSub": {
+    "orderStates": {
+      "invoice_creating": "Creating invoice",
+      "recoverable": "Awaiting reconciliation",
+      "manual_review": "Needs review",
+      "reviewHint": "This order awaits reconciliation or administrator review."
+    },
     "title": "Paid Subscriptions",
     "experimental": "实验性",
     "secretboxWarning": "在生产环境中，请设置 SUI_SECRETBOX_KEY 环境变量，以便使用保存在数据库之外的密钥加密支付令牌。",

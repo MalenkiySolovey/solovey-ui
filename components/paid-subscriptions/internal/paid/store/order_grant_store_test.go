@@ -29,6 +29,7 @@ func TestApplyPaidOrderGrantAndRefundAreAtomicDomainOperations(t *testing.T) {
 		t.Fatal(err)
 	}
 	order := paid.PaymentOrder{
+		GrantSnapshot: true, GrantAddDays: tariff.AddDays, GrantTraffic: tariff.AddTrafficBytes,
 		ClientId:       client.Id,
 		TariffId:       tariff.Id,
 		Provider:       string(provider.ProviderStripe),
@@ -95,7 +96,7 @@ func TestRefundOlderTrafficOrderPreservesCurrentWindow(t *testing.T) {
 		t.Fatal(err)
 	}
 	apply := func(key string) uint {
-		order := paid.PaymentOrder{ClientId: client.Id, TariffId: tariff.Id, Provider: string(provider.ProviderStripe), Amount: 100, Currency: "RUB", Status: paid.StatusPending, IdempotencyKey: key}
+		order := paid.PaymentOrder{GrantSnapshot: true, GrantAddDays: tariff.AddDays, GrantTraffic: tariff.AddTrafficBytes, ClientId: client.Id, TariffId: tariff.Id, Provider: string(provider.ProviderStripe), Amount: 100, Currency: "RUB", Status: paid.StatusPending, IdempotencyKey: key}
 		if err := db.Create(&order).Error; err != nil {
 			t.Fatal(err)
 		}

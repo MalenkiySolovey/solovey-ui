@@ -2,11 +2,13 @@ package store
 
 import (
 	"encoding/json"
+	"errors"
 
 	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	paidprovider "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 )
 
 func NewPendingOrder(client *model.Client, tariff *paid.Tariff, kind paidprovider.ProviderKind, amount int64, currency string, tgUserID int64, idempotencyKey string, now int64, ttlMinutes int) *paid.PaymentOrder {
@@ -27,19 +29,64 @@ func NewPendingOrder(client *model.Client, tariff *paid.Tariff, kind paidprovide
 	}
 }
 
+// CreateInvoiceIntent arbitrates an active purchase durably, across coordinator
+// instances and restarts. The insert is the first write; its unique constraint
+// decides who may perform the non-idempotent remote create.
+func CreateInvoiceIntent(db *gorm.DB, order *paid.PaymentOrder) (*paid.PaymentOrder, bool, error) {
+	order.Status = paid.StatusInvoiceCreating
+	res := db.Clauses(clause.OnConflict{DoNothing: true}).Create(order)
+	if res.Error != nil {
+		return nil, false, res.Error
+	}
+	if res.RowsAffected == 1 {
+		return order, true, nil
+	}
+	var existing paid.PaymentOrder
+	err := db.Where("client_id = ? AND tariff_id = ? AND telegram_user_id = ? AND provider = ? AND status IN ?",
+		order.ClientId, order.TariffId, order.TelegramUserId, order.Provider,
+		[]string{paid.StatusInvoiceCreating, paid.StatusRecoverable, paid.StatusPending}).First(&existing).Error
+	return &existing, false, err
+}
+
+func ActiveCryptoBotOrder(db *gorm.DB, clientID, tariffID uint, tgID int64) (*paid.PaymentOrder, error) {
+	var order paid.PaymentOrder
+	err := db.Where("client_id = ? AND tariff_id = ? AND telegram_user_id = ? AND provider = 'cryptobot' AND status IN ?",
+		clientID, tariffID, tgID, []string{paid.StatusPending, paid.StatusInvoiceCreating, paid.StatusRecoverable, paid.StatusManualReview}).Order("id").First(&order).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, nil
+	}
+	return &order, err
+}
+
+func MarkInvoiceRecoverable(db *gorm.DB, id uint) error {
+	return db.Model(&paid.PaymentOrder{}).Where("id = ? AND status = ?", id, paid.StatusInvoiceCreating).
+		Updates(map[string]any{"status": paid.StatusRecoverable, "review_reason": "invoice_creation_uncertain"}).Error
+}
+
 func SaveInvoiceResult(db *gorm.DB, orderID uint, invoice *paidprovider.Invoice) error {
-	updates := map[string]any{}
+	if invoice == nil {
+		return errors.New("provider returned an empty invoice")
+	}
+	updates := map[string]any{"status": paid.StatusPending, "review_reason": ""}
 	if invoice.PayURL != "" {
 		updates["external_url"] = invoice.PayURL
 	}
 	if invoice.ProviderRef != "" {
+		updates["provider_ref"] = invoice.ProviderRef
 		ref, _ := json.Marshal(map[string]string{"ref": invoice.ProviderRef})
 		updates["provider_payload"] = ref
 	}
 	if len(updates) == 0 {
 		return nil
 	}
-	return db.Model(&paid.PaymentOrder{}).Where("id = ?", orderID).Updates(updates).Error
+	result := db.Model(&paid.PaymentOrder{}).Where("id = ? AND status IN ? AND (provider_ref = '' OR provider_ref = ?)", orderID, []string{paid.StatusPending, paid.StatusInvoiceCreating}, invoice.ProviderRef).Updates(updates)
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrOrderAlreadyFinalized
+	}
+	return nil
 }
 
 func GetOrder(db *gorm.DB, id uint) (*paid.PaymentOrder, error) {

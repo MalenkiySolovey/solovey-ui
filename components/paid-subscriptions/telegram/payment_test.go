@@ -81,6 +81,7 @@ func TestApplyPaidOrderIdempotentRenewal(t *testing.T) {
 	order := paid.PaymentOrder{
 		ClientId: client.Id, TariffId: tariff.Id, Provider: "yookassa",
 		Amount: 10000, Currency: "RUB", Status: paid.StatusPending,
+		GrantSnapshot: true, GrantAddDays: tariff.AddDays, GrantTraffic: tariff.AddTrafficBytes,
 		TelegramUserId: 42, IdempotencyKey: "key-1", CreatedAt: time.Now().Unix(),
 	}
 	if err := db.Create(&order).Error; err != nil {
@@ -152,7 +153,7 @@ func TestApplyPaidOrderRejectsZeroPriceTariff(t *testing.T) {
 	// Price 0 and StarsAmount 0 → must never grant a renewal.
 	tariff := paid.Tariff{Name: "Free", Price: 0, StarsAmount: 0, Currency: "RUB", AddDays: 30, Enabled: true}
 	db.Create(&tariff)
-	order := paid.PaymentOrder{ClientId: client.Id, TariffId: tariff.Id, Provider: "yookassa", Amount: 0, Currency: "RUB", Status: paid.StatusPending, IdempotencyKey: "zero"}
+	order := paid.PaymentOrder{GrantSnapshot: true, GrantAddDays: tariff.AddDays, GrantTraffic: tariff.AddTrafficBytes, ClientId: client.Id, TariffId: tariff.Id, Provider: "yookassa", Amount: 0, Currency: "RUB", Status: paid.StatusPending, IdempotencyKey: "zero"}
 	db.Create(&order)
 
 	ps := newPaymentCoordinator()
@@ -222,7 +223,7 @@ func TestExpireStalePolledOrders(t *testing.T) {
 	// Created well before the grace window -> reaped as abandoned.
 	old := paid.PaymentOrder{ClientId: 1, TariffId: 1, Provider: "cryptobot", Amount: 1, Currency: "RUB", Status: paid.StatusPending, IdempotencyKey: "cb-old", CreatedAt: now - grace - 10}
 	// Recent cryptobot order within grace -> stays pending (poll keeps trying).
-	recent := paid.PaymentOrder{ClientId: 1, TariffId: 1, Provider: "cryptobot", Amount: 1, Currency: "RUB", Status: paid.StatusPending, IdempotencyKey: "cb-recent", CreatedAt: now - 10}
+	recent := paid.PaymentOrder{ClientId: 1, TariffId: 2, Provider: "cryptobot", Amount: 1, Currency: "RUB", Status: paid.StatusPending, IdempotencyKey: "cb-recent", CreatedAt: now - 10}
 	db.Create(&old)
 	db.Create(&recent)
 
@@ -283,7 +284,7 @@ func TestFinalizeRefundRevokeRollsBackOnce(t *testing.T) {
 	db.Create(&client)
 	tariff := paid.Tariff{Name: "M", Price: 10000, Currency: "RUB", AddDays: 30, AddTrafficBytes: 1 << 30, Enabled: true}
 	db.Create(&tariff)
-	order := paid.PaymentOrder{ClientId: client.Id, TariffId: tariff.Id, Provider: "yookassa", Amount: 10000, Currency: "RUB", Status: paid.StatusPaid, TelegramUserId: 7, IdempotencyKey: "r1"}
+	order := paid.PaymentOrder{GrantSnapshot: true, GrantAddDays: tariff.AddDays, GrantTraffic: tariff.AddTrafficBytes, ClientId: client.Id, TariffId: tariff.Id, Provider: "yookassa", Amount: 10000, Currency: "RUB", Status: paid.StatusPaid, TelegramUserId: 7, IdempotencyKey: "r1"}
 	db.Create(&order)
 
 	ps := newPaymentCoordinator()
@@ -329,7 +330,7 @@ func TestFinalizeRefundNoRevokeKeepsClient(t *testing.T) {
 	db.Create(&client)
 	tariff := paid.Tariff{Name: "M", Price: 10000, Currency: "RUB", AddDays: 30, AddTrafficBytes: 1 << 30, Enabled: true}
 	db.Create(&tariff)
-	order := paid.PaymentOrder{ClientId: client.Id, TariffId: tariff.Id, Provider: "yookassa", Amount: 10000, Currency: "RUB", Status: paid.StatusPaid, TelegramUserId: 8, IdempotencyKey: "r2"}
+	order := paid.PaymentOrder{GrantSnapshot: true, GrantAddDays: tariff.AddDays, GrantTraffic: tariff.AddTrafficBytes, ClientId: client.Id, TariffId: tariff.Id, Provider: "yookassa", Amount: 10000, Currency: "RUB", Status: paid.StatusPaid, TelegramUserId: 8, IdempotencyKey: "r2"}
 	db.Create(&order)
 
 	ps := newPaymentCoordinator()
@@ -359,7 +360,7 @@ func TestFinalizeRefundFloorsExpiryAndVolume(t *testing.T) {
 	db.Create(&client)
 	tariff := paid.Tariff{Name: "Y", Price: 1, Currency: "RUB", AddDays: 365, AddTrafficBytes: 1 << 30, Enabled: true}
 	db.Create(&tariff)
-	order := paid.PaymentOrder{ClientId: client.Id, TariffId: tariff.Id, Provider: "yookassa", Amount: 1, Currency: "RUB", Status: paid.StatusPaid, TelegramUserId: 9, IdempotencyKey: "r3"}
+	order := paid.PaymentOrder{GrantSnapshot: true, GrantAddDays: tariff.AddDays, GrantTraffic: tariff.AddTrafficBytes, ClientId: client.Id, TariffId: tariff.Id, Provider: "yookassa", Amount: 1, Currency: "RUB", Status: paid.StatusPaid, TelegramUserId: 9, IdempotencyKey: "r3"}
 	db.Create(&order)
 
 	ps := newPaymentCoordinator()

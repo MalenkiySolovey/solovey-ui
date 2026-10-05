@@ -44,7 +44,7 @@ func TestRefundOrderNonStarsMarksManualAndRevokes(t *testing.T) {
 	db.Create(&client)
 	tariff := paid.Tariff{Name: "M", Price: 10000, Currency: "RUB", AddDays: 30, AddTrafficBytes: 1 << 30, Enabled: true}
 	db.Create(&tariff)
-	order := paid.PaymentOrder{ClientId: client.Id, TariffId: tariff.Id, Provider: "yookassa", Amount: 10000, Currency: "RUB", Status: paid.StatusPaid, TelegramUserId: 7, IdempotencyKey: "man"}
+	order := paid.PaymentOrder{GrantSnapshot: true, GrantAddDays: tariff.AddDays, GrantTraffic: tariff.AddTrafficBytes, ClientId: client.Id, TariffId: tariff.Id, Provider: "yookassa", Amount: 10000, Currency: "RUB", Status: paid.StatusPaid, TelegramUserId: 7, IdempotencyKey: "man"}
 	db.Create(&order)
 
 	ps := newPaymentCoordinator()
@@ -80,7 +80,7 @@ func TestRefundOrderNonStarsNoRevokeKeepsClient(t *testing.T) {
 	db.Create(&client)
 	tariff := paid.Tariff{Name: "M", Price: 10000, Currency: "RUB", AddDays: 30, AddTrafficBytes: 1 << 30, Enabled: true}
 	db.Create(&tariff)
-	order := paid.PaymentOrder{ClientId: client.Id, TariffId: tariff.Id, Provider: "stripe", Amount: 10000, Currency: "RUB", Status: paid.StatusPaid, TelegramUserId: 7, IdempotencyKey: "man2"}
+	order := paid.PaymentOrder{GrantSnapshot: true, GrantAddDays: tariff.AddDays, GrantTraffic: tariff.AddTrafficBytes, ClientId: client.Id, TariffId: tariff.Id, Provider: "stripe", Amount: 10000, Currency: "RUB", Status: paid.StatusPaid, TelegramUserId: 7, IdempotencyKey: "man2"}
 	db.Create(&order)
 
 	ps := newPaymentCoordinator()
@@ -103,7 +103,7 @@ func TestRefundOrderDoubleRefundIsNotApplicable(t *testing.T) {
 	if err := ensureTestSchema(db); err != nil {
 		t.Fatalf("EnsureSchema: %v", err)
 	}
-	order := paid.PaymentOrder{ClientId: 1, TariffId: 1, Provider: "yookassa", Amount: 10000, Currency: "RUB", Status: paid.StatusPaid, TelegramUserId: 7, IdempotencyKey: "dbl"}
+	order := paid.PaymentOrder{ClientId: 1, TariffId: 1, Provider: "yookassa", Amount: 10000, Currency: "RUB", Status: paid.StatusPaid, TelegramUserId: 7, GrantSnapshot: true, IdempotencyKey: "dbl"}
 	db.Create(&order)
 
 	ps := newPaymentCoordinator()
@@ -149,7 +149,7 @@ func TestRefundOrderStarsRequiresBotToken(t *testing.T) {
 	if err := ensureTestSchema(db); err != nil {
 		t.Fatalf("EnsureSchema: %v", err)
 	}
-	order := paid.PaymentOrder{ClientId: 1, TariffId: 1, Provider: string(provider.ProviderStars), Amount: 100, Currency: "XTR", Status: paid.StatusPaid, TelegramUserId: 7, ProviderChargeID: "tg:charge", IdempotencyKey: "st"}
+	order := paid.PaymentOrder{ClientId: 1, TariffId: 1, Provider: string(provider.ProviderStars), Amount: 100, Currency: "XTR", Status: paid.StatusPaid, TelegramUserId: 7, GrantSnapshot: true, ProviderChargeID: "tg:charge", IdempotencyKey: "st"}
 	db.Create(&order)
 
 	ps := newPaymentCoordinator()
@@ -178,7 +178,7 @@ func TestRefundRestoresUsageCounters(t *testing.T) {
 	db.Create(&client)
 	tariff := paid.Tariff{Name: "M", Price: 10000, Currency: "RUB", AddTrafficBytes: 1 << 30, Enabled: true}
 	db.Create(&tariff)
-	order := paid.PaymentOrder{ClientId: client.Id, TariffId: tariff.Id, Provider: "yookassa", Amount: 10000, Currency: "RUB", Status: paid.StatusPending, TelegramUserId: 7, IdempotencyKey: "ctr"}
+	order := paid.PaymentOrder{GrantSnapshot: true, GrantAddDays: tariff.AddDays, GrantTraffic: tariff.AddTrafficBytes, ClientId: client.Id, TariffId: tariff.Id, Provider: "yookassa", Amount: 10000, Currency: "RUB", Status: paid.StatusPending, TelegramUserId: 7, IdempotencyKey: "ctr"}
 	db.Create(&order)
 
 	ps := newPaymentCoordinator()

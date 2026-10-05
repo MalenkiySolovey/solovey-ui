@@ -154,6 +154,10 @@ func (b *Bot) handleRefundRequest(ctx context.Context, chatID int64, tgID int64,
 		_ = b.sendMessage(ctx, chatID, tr(l, "refund_not_eligible"), b.backToPaymentKeyboard(l))
 		return
 	}
+	if err := paidstore.ValidateOrderGrant(*order); err != nil {
+		_ = b.sendMessage(ctx, chatID, tr(l, "refund_not_eligible"), b.backToPaymentKeyboard(l))
+		return
+	}
 	if order.Provider != string(paidprovider.ProviderStars) {
 		service.NotifyPanelEvent("paidsub_refund_request", map[string]string{
 			"orderId":  fmt.Sprintf("%d", order.Id),

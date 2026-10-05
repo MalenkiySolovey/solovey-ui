@@ -1,5 +1,11 @@
 export default {
   "paidSub": {
+    "orderStates": {
+      "invoice_creating": "Creating invoice",
+      "recoverable": "Awaiting reconciliation",
+      "manual_review": "Needs review",
+      "reviewHint": "This order awaits reconciliation or administrator review."
+    },
     "title": "Paid Subscriptions",
     "experimental": "thử nghiệm",
     "secretboxWarning": "Trong môi trường production, hãy đặt biến SUI_SECRETBOX_KEY để mã hóa token thanh toán bằng khóa nằm ngoài cơ sở dữ liệu.",

@@ -1,5 +1,11 @@
 export default {
   "paidSub": {
+    "orderStates": {
+      "invoice_creating": "Creating invoice",
+      "recoverable": "Awaiting reconciliation",
+      "manual_review": "Needs review",
+      "reviewHint": "This order awaits reconciliation or administrator review."
+    },
     "title": "Paid Subscriptions",
     "experimental": "آزمایشی",
     "secretboxWarning": "برای محیط عملیاتی، متغیر SUI_SECRETBOX_KEY را تنظیم کنید تا توکن‌های پرداخت با کلیدی خارج از پایگاه داده رمزگذاری شوند.",

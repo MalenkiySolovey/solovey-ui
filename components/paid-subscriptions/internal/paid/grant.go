@@ -11,6 +11,9 @@ func BuildPaidClientUpdates(client model.Client, tariff Tariff, now int64) (clie
 	clientUpdates = map[string]any{"enable": true}
 	orderUpdates = map[string]any{}
 	if tariff.AddDays > 0 {
+		if int64(tariff.AddDays) > math.MaxInt64/86400 {
+			return nil, nil, fmt.Errorf("paid subscription duration would overflow")
+		}
 		base := client.Expiry
 		if base < now {
 			base = now
