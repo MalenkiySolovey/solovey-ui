@@ -85,5 +85,5 @@ func (s *SettingService) recordSecretboxFallback(key string, candidate string) {
 }
 
 func (s *SettingService) ResealSecretSettings() (int, error) {
-	return settingsmanager.ResealSecretSettings(settingsDatabase(), s.settingsSecretCodec(), currentEncryptedSettingKeys())
+	return settingsmanager.ResealSecretSettings(s.settingDatabase(), s.settingsSecretCodec(), currentEncryptedSettingKeys())
 }

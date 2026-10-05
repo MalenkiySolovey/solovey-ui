@@ -84,8 +84,9 @@ func TestRollbackExactDatabaseRollbackRestoresLogicalGenerationBeforeRebind(t *t
 		t.Fatalf("restore result=%#v err=%v", restored, err)
 	}
 	provider.restorePending = true
+	provider.restoredDatabase = restored
 	repository := Repository{DB: dbsqlite.DB}
-	operation, err = repository.rebindRestoredRollback(context.Background(), operation, "rollback_exact_database_rollback")
+	operation, err = repository.rebindRestoredRollback(provider.DatabaseRollbackContext(context.Background()), operation, "rollback_exact_database_rollback")
 	if err != nil {
 		t.Fatal(err)
 	}

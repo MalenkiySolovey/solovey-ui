@@ -128,6 +128,11 @@ func PrepareExportContextInDirectory(ctx context.Context, exclude, dir string) (
 	if ctx == nil {
 		return "", nil, errors.New("backup context is required")
 	}
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return "", nil, err
+	}
+	defer release()
 	excludedTables := parseBackupExcludes(exclude)
 	if dir == "" {
 		return "", nil, errors.New("backup staging directory is unavailable")

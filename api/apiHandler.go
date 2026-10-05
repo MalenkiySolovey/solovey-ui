@@ -9,6 +9,7 @@ import (
 	failoverhttp "github.com/MalenkiySolovey/solovey-ui/api/failover"
 	realtimehttp "github.com/MalenkiySolovey/solovey-ui/api/realtime"
 	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
+	"github.com/MalenkiySolovey/solovey-ui/middleware/databaseoperation"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
@@ -33,6 +34,7 @@ func NewAPIHandler(g *gin.RouterGroup, a2 *APIv2Handler, options ...Option) {
 }
 
 func (a *APIHandler) initRouter(g *gin.RouterGroup) {
+	g.Use(databaseoperation.Middleware())
 	a.csrfLoginPath = a.cachedCSRFLoginPath()
 	a.authExemptPaths = a.cachedAuthExemptPaths()
 	g.Use(a.requestAuthorityMiddleware)

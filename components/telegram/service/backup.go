@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 
 	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
@@ -83,6 +84,12 @@ func (s *TelegramBackupService) RunOnce(ctx context.Context, trigger string) (re
 		s.recordTelegramBackupRunAudit(telegramBackupActor(ctx, trigger), result)
 		return result
 	}
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		result.ErrorClass = "maintenance"
+		return result
+	}
+	defer release()
 	actor := telegramBackupActor(ctx, trigger)
 	if !telegramBackupRunMu.TryLock() {
 		result.ErrorClass = "concurrent_run"

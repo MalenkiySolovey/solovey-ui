@@ -530,6 +530,11 @@ func (m *Manager) Rollback(ctx context.Context, request RollbackRequestV1) (doma
 }
 
 func (m *Manager) ReconcileExpired(ctx context.Context) error {
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if err := m.reconcileCompletedStageReleases(ctx); err != nil {

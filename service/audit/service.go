@@ -53,6 +53,10 @@ func New(enqueue func(model.AuditEvent), aggregators ...*DenialAggregator) Servi
 }
 
 func (s *Service) Record(event Event, synchronous bool) error {
+	return s.RecordContext(context.Background(), event, synchronous)
+}
+
+func (s *Service) RecordContext(ctx context.Context, event Event, synchronous bool) error {
 	if !synchronous && s != nil && s.aggregator != nil {
 		emit, count := s.aggregator.Observe(event, time.Now())
 		if !emit {
@@ -73,7 +77,12 @@ func (s *Service) Record(event Event, synchronous bool) error {
 		return err
 	}
 	if synchronous {
-		return WriteEvents([]model.AuditEvent{record})
+		if ctx == nil {
+			return errors.New("audit write context is unavailable")
+		}
+		writeCtx, cancel := context.WithTimeout(ctx, AuditWriteTimeout)
+		defer cancel()
+		return WriteEventsContext(writeCtx, []model.AuditEvent{record})
 	}
 	if s != nil && s.enqueue != nil {
 		s.enqueue(record)

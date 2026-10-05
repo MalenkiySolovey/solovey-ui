@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 	"sort"
 	"strings"
@@ -93,6 +94,11 @@ const (
 )
 
 func (s *StatsService) SaveStats(enableTraffic bool) (err error) {
+	_, release, err := dbsqlite.AcquireOperation(context.Background())
+	if err != nil {
+		return err
+	}
+	defer release()
 	coreInstance := s.runtime().Core()
 	if coreInstance == nil || !coreInstance.IsRunning() {
 		return nil

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"strconv"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -10,6 +11,20 @@ import (
 
 func settingsDatabase() *gorm.DB {
 	return dbsqlite.DB()
+}
+
+func (s *SettingService) settingDatabase() *gorm.DB {
+	if s != nil && s.database != nil {
+		return s.database
+	}
+	return settingsDatabase()
+}
+
+func (s *SettingService) settingContext() context.Context {
+	if s != nil && s.database != nil {
+		return s.database.Statement.Context
+	}
+	return context.Background()
 }
 
 func settingNotFound(err error) bool {

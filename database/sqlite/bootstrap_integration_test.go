@@ -247,7 +247,7 @@ func TestInitReturnsAdaptError(t *testing.T) {
 	sentinel := errors.New("adapt failure")
 
 	previousAdapt := adaptToCurrentVersion
-	adaptToCurrentVersion = func() error {
+	adaptToCurrentVersion = func(*gorm.DB) error {
 		return sentinel
 	}
 	t.Cleanup(func() {
@@ -358,7 +358,7 @@ func TestInitBackfillsSortOrderColumns(t *testing.T) {
 		}
 	}
 
-	if err := ensureSortOrders(); err != nil {
+	if err := ensureSortOrders(DB()); err != nil {
 		t.Fatal(err)
 	}
 

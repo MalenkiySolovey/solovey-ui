@@ -1,7 +1,6 @@
 package repository
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"time"
@@ -65,7 +64,7 @@ func Migrate(db *gorm.DB) error {
 	if err := quarantineLegacyRecoveryEvidence(db); err != nil {
 		return err
 	}
-	return ReconcileLegacySelfStealProfiles(context.Background(), db, time.Now().UTC())
+	return ReconcileLegacySelfStealProfiles(db.Statement.Context, db, time.Now().UTC())
 }
 
 // quarantineLegacyRecoveryEvidence moves compatibility observations only when

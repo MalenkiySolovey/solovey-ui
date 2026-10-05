@@ -9,7 +9,7 @@ import (
 func (s *SettingService) settingsManager(auditFallback ...bool) settingsmanager.Manager {
 	auditSecretFallback := len(auditFallback) > 0 && auditFallback[0]
 	return settingsmanager.Manager{
-		DB:           settingsDatabase,
+		DB:           s.settingDatabase,
 		Schema:       currentSettingsSchema(),
 		DefaultValue: defaultSettingValue,
 		Secret:       settingSecretCodec{service: s, auditFallback: auditSecretFallback},

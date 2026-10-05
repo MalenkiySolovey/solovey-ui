@@ -31,6 +31,7 @@ type BrokerProvider struct {
 	backupOps                updateBackupOps
 	observeRollbackAuthority func(context.Context, model.UpdateOperation) (contract.ObservationV1, error)
 	restorePending           bool
+	restoredDatabase         backupdb.RestoreExecutionResult
 }
 
 func NewBrokerProvider(client *broker.Client, fetcher release.Fetcher, source release.Source) *BrokerProvider {
@@ -523,7 +524,15 @@ func (p *BrokerProvider) Rollback(ctx context.Context, operation model.UpdateOpe
 		return false, errors.Join(err, ErrRecoveryRequired)
 	}
 	p.restorePending = true
+	p.restoredDatabase = restored
 	return true, nil
+}
+
+func (p *BrokerProvider) DatabaseRollbackContext(ctx context.Context) context.Context {
+	if p != nil && p.restorePending {
+		return p.restoredDatabase.DatabaseContext(ctx)
+	}
+	return ctx
 }
 
 func (p *BrokerProvider) CompleteDatabaseRollback(ctx context.Context) error {
@@ -533,6 +542,7 @@ func (p *BrokerProvider) CompleteDatabaseRollback(ctx context.Context) error {
 	_, _, err := backupdb.CompletePendingRestore(ctx)
 	if err == nil {
 		p.restorePending = false
+		p.restoredDatabase = backupdb.RestoreExecutionResult{}
 	}
 	return err
 }
@@ -544,6 +554,7 @@ func (p *BrokerProvider) AbortDatabaseRollback() error {
 	err := backupdb.AbortPendingRestore()
 	if err == nil {
 		p.restorePending = false
+		p.restoredDatabase = backupdb.RestoreExecutionResult{}
 	}
 	return err
 }

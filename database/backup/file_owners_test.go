@@ -96,16 +96,18 @@ func TestLogicalFilesActualExportRehearsalRestoreAndRollback(t *testing.T) {
 		t.Fatal("failed file restore did not preserve exact live DB")
 	}
 	failPublication = false
-	if _, err := RestoreContextDetailed(ctx, bytes.NewReader(data)); err != nil {
+	restored, err := RestoreContextDetailed(ctx, bytes.NewReader(data))
+	if err != nil {
 		t.Fatal(err)
 	}
-	if err := dbsqlite.DB().Where("key = ?", "logical-fixture").First(&setting).Error; err != nil || setting.Value != "snapshot" {
+	candidate := dbsqlite.DB().WithContext(restored.DatabaseContext(ctx))
+	if err := candidate.Where("key = ?", "logical-fixture").First(&setting).Error; err != nil || setting.Value != "snapshot" {
 		t.Fatal("logical DB state was not restored")
 	}
 	if publicationCalls != 2 {
 		t.Fatalf("unexpected publications %d", publicationCalls)
 	}
-	if dbsqlite.DB().Migrator().HasTable(BackupFileTable) {
+	if candidate.Migrator().HasTable(BackupFileTable) {
 		t.Fatal("restored payload retained a duplicate file authority")
 	}
 	if err := AbortPendingRestore(); err != nil {

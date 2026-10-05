@@ -11,6 +11,7 @@ import (
 	"time"
 
 	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/ratelimit"
@@ -147,80 +148,71 @@ func (b *Bot) run(ctx context.Context, done chan struct{}) {
 		}
 	}()
 	backoff := time.Second
-	const maxBackoff = 60 * time.Second
 	for {
 		if ctx.Err() != nil {
 			return
 		}
-		enabled, err := b.setting.GetPaidSubEnabled()
-		if err != nil || !enabled {
-			if sleepCtx(ctx, 5*time.Second) {
-				return
-			}
-			continue
-		}
-		token, err := b.setting.GetPaidSubBotToken()
-		if err != nil || token == "" {
-			if sleepCtx(ctx, 5*time.Second) {
-				return
-			}
-			continue
-		}
-		poll, _ := b.setting.GetPaidSubBotPollSeconds()
-		client, err := newPaidSubHTTPClient(b.runtime, time.Duration(poll+10)*time.Second)
-		if err != nil {
-			logger.Warning("paidsub: build http client: ", err)
-			if sleepCtx(ctx, backoff) {
-				return
-			}
-			backoff = nextBackoff(backoff, maxBackoff)
-			continue
-		}
-		// Close the previous client's idle keep-alive connections before
-		// replacing it; a discarded *http.Transport (proxy/outbound mode) does
-		// not auto-close them, so rebuilding every loop would leak sockets.
-		if b.client != nil && b.client != client {
-			b.client.CloseIdleConnections()
-		}
-		b.client = client
-		b.token = token
-
-		offset, err := b.setting.GetPaidSubUpdateOffset()
-		if err != nil || offset < 0 {
-			logger.Warning("paidsub: read update offset: invalid persisted value")
-			if sleepCtx(ctx, backoff) {
-				return
-			}
-			backoff = nextBackoff(backoff, maxBackoff)
-			continue
-		}
-		updates, err := b.getUpdates(ctx, offset, poll)
-		if err != nil {
-			if ctx.Err() != nil {
-				return
-			}
-			wait := b.classifyError(err, backoff)
-			if sleepCtx(ctx, wait) {
-				return
-			}
-			backoff = nextBackoff(backoff, maxBackoff)
-			continue
-		}
-		backoff = time.Second
-
-		maxID := offset
-		for i := range updates {
-			b.handleUpdate(ctx, &updates[i])
-			if updates[i].UpdateID >= maxID {
-				maxID = updates[i].UpdateID + 1
-			}
-		}
-		if maxID != offset {
-			if err := b.setting.SetPaidSubUpdateOffset(maxID); err != nil {
-				logger.Warning("paidsub: persist offset: ", err)
-			}
+		var wait time.Duration
+		wait, backoff = b.pollIteration(ctx, backoff)
+		if ctx.Err() != nil || (wait > 0 && sleepCtx(ctx, wait)) {
+			return
 		}
 	}
+}
+
+// One finite iteration owns token/config/offset reads, provider I/O, handling
+// and offset writes on a single DB generation. Backoff owns no DB admission.
+func (b *Bot) pollIteration(ctx context.Context, backoff time.Duration) (time.Duration, time.Duration) {
+	const maxBackoff = 60 * time.Second
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return 5 * time.Second, backoff
+	}
+	defer release()
+	enabled, err := b.setting.GetPaidSubEnabled()
+	if err != nil || !enabled {
+		return 5 * time.Second, backoff
+	}
+	token, err := b.setting.GetPaidSubBotToken()
+	if err != nil || token == "" {
+		return 5 * time.Second, backoff
+	}
+	poll, _ := b.setting.GetPaidSubBotPollSeconds()
+	client, err := newPaidSubHTTPClient(b.runtime, time.Duration(poll+10)*time.Second)
+	if err != nil {
+		logger.Warning("paidsub: build http client: ", err)
+		return backoff, nextBackoff(backoff, maxBackoff)
+	}
+	// Retain the existing transport cleanup when replacing each poll client.
+	if b.client != nil && b.client != client {
+		b.client.CloseIdleConnections()
+	}
+	b.client, b.token = client, token
+	offset, err := b.setting.GetPaidSubUpdateOffset()
+	if err != nil || offset < 0 {
+		logger.Warning("paidsub: read update offset: invalid persisted value")
+		return backoff, nextBackoff(backoff, maxBackoff)
+	}
+	updates, err := b.getUpdates(ctx, offset, poll)
+	if err != nil {
+		if ctx.Err() != nil {
+			return 0, backoff
+		}
+		return b.classifyError(err, backoff), nextBackoff(backoff, maxBackoff)
+	}
+	maxID := offset
+	for i := range updates {
+		b.handleUpdate(ctx, &updates[i])
+		if updates[i].UpdateID >= maxID {
+			maxID = updates[i].UpdateID + 1
+		}
+	}
+	if maxID != offset {
+		if err := b.setting.SetPaidSubUpdateOffset(maxID); err != nil {
+			logger.Warning("paidsub: persist offset: ", err)
+		}
+	}
+	return 0, time.Second
 }
 
 func nextBackoff(cur, max time.Duration) time.Duration {

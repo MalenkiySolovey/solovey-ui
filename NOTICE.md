@@ -79,3 +79,14 @@ Solovey retains component-owned import transactions and the host's token
 snapshot owner; native restore signals durable acceptance before optional
 retention. Source connections enforce their read-only untrusted boundary.
 No upstream implementation or tests were copied.
+
+RESTORE-01 independently adapts live database operation quiescence from the
+same pinned target, witnessed by `590b08af39537ab4c85441513743c2360bbc187d`
+(`database/db.go`, `database/backup.go`, `paidsub/payment.go`,
+`paidsub/poll.go`, `service/user.go`,
+`database/integration_backup_restore_test.go`). Solovey's SQLite owner drains
+finite semantic operations and actual driver connection lifetimes, rejects
+retired handles, and supplies an expiring private restore context. Existing
+backup and feature owners retain durable acceptance, exact rollback and
+context-aware rebinding. Schema, steady SQLite settings and deployment/storage
+contracts are retained. No upstream implementation or tests were copied.

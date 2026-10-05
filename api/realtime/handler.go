@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	realtime "github.com/MalenkiySolovey/solovey-ui/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 
@@ -114,6 +115,7 @@ func (a *Handler) realtimeWS(c *gin.Context, config Config) {
 		return
 	}
 
+	dbsqlite.ReleaseOperation(c.Request.Context())
 	conn, err := websocket.Accept(c.Writer, c.Request, &websocket.AcceptOptions{
 		Subprotocols: []string{Subprotocol},
 	})

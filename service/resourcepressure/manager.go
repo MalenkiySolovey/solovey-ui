@@ -136,6 +136,11 @@ func (m *Manager) Observe(ctx context.Context) error {
 	if m == nil || m.evaluator == nil || m.collector == nil {
 		return errors.New("resource pressure manager is unavailable")
 	}
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return err
+	}
+	defer release()
 	m.observeMu.Lock()
 	defer m.observeMu.Unlock()
 	now := m.now()

@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
@@ -29,6 +30,43 @@ type RestoreExecutionResult struct {
 	RecoveryBackupRef      string           `json:"recoveryBackupRef"`
 	RecoveryCleanupPending bool             `json:"recoveryCleanupPending"`
 	RestartPending         bool             `json:"restartPending"`
+	maintenance            *dbsqlite.Maintenance
+}
+
+// DatabaseContext lets the restore caller persist its operation authority
+// against the private candidate. It is temporary and is never a cached DB.
+func (r RestoreExecutionResult) DatabaseContext(ctx context.Context) context.Context {
+	if r.maintenance != nil && r.maintenance.Active() {
+		return r.maintenance.Context(ctx)
+	}
+	return ctx
+}
+
+var pendingRestoreMaintenance = struct {
+	sync.Mutex
+	owner *dbsqlite.Maintenance
+}{}
+
+func pendingMaintenance() *dbsqlite.Maintenance {
+	pendingRestoreMaintenance.Lock()
+	defer pendingRestoreMaintenance.Unlock()
+	owner := pendingRestoreMaintenance.owner
+	if owner != nil && owner.Active() {
+		return owner
+	}
+	return nil
+}
+
+func finishMaintenance(owner *dbsqlite.Maintenance) {
+	if owner == nil {
+		return
+	}
+	pendingRestoreMaintenance.Lock()
+	if pendingRestoreMaintenance.owner == owner {
+		pendingRestoreMaintenance.owner = nil
+	}
+	pendingRestoreMaintenance.Unlock()
+	owner.End()
 }
 
 func RestoreContext(ctx context.Context, file multipart.File) error {
@@ -77,6 +115,25 @@ func RestoreContextDetailedWithRecoveryRoot(ctx context.Context, file io.ReadSee
 	if err := restorestate.EnsureIdle(dbPath); err != nil {
 		return result, common.NewErrorf("Database restore recovery is required: %v", err)
 	}
+	owner, err := dbsqlite.BeginMaintenance(ctx)
+	if err != nil {
+		return result, err
+	}
+	result.maintenance = owner
+	pendingRestoreMaintenance.Lock()
+	pendingRestoreMaintenance.owner = owner
+	pendingRestoreMaintenance.Unlock()
+	ctx = owner.Context(ctx)
+	keepPrivate := false
+	defer func() {
+		if !keepPrivate {
+			finishMaintenance(owner)
+		}
+	}()
+	// Repeat under the same maintenance admission that owns the staging path.
+	if err := restorestate.EnsureIdle(dbPath); err != nil {
+		return result, err
+	}
 	if result.RecoveryBackupRef, err = preservePreRestoreBackupAt(ctx, recoveryRoot, productionRestoreRecoveryFileOps); err != nil {
 		return result, common.NewErrorf("Error preserving pre-restore recovery backup: %v", err)
 	}
@@ -93,29 +150,31 @@ func RestoreContextDetailedWithRecoveryRoot(ctx context.Context, file io.ReadSee
 	}
 	if err := dbsqlite.CloseForFileSwap(ctx); err != nil {
 		cancelErr := restorestate.CancelStaged(dbPath)
-		if dbsqlite.DB() == nil {
-			return result, reopenLiveDBAfterImportError(dbPath, "closing live db for restore", errors.Join(err, cancelErr))
+		if !dbsqlite.IsOpen() {
+			keepPrivate = true
+			return result, reopenLiveDBAfterImportError(ctx, dbPath, "closing live db for restore", errors.Join(err, cancelErr))
 		}
 		return result, common.NewErrorf("Error closing live db for restore: %v", errors.Join(err, cancelErr))
 	}
+	keepPrivate = true
 	if err := restorestate.Transition(dbPath, restorestate.StateStaged, restorestate.StateLiveMovePending); err != nil {
-		return result, reopenLiveDBAfterImportError(dbPath, "journaling live database move", err)
+		return result, reopenLiveDBAfterImportError(ctx, dbPath, "journaling live database move", err)
 	}
 	if err := os.Rename(dbPath, fallbackPath); err != nil {
 		recoverErr := restorestate.Recover(dbPath)
-		return result, reopenLiveDBAfterImportError(dbPath, "backing up live db file", errors.Join(err, recoverErr))
+		return result, reopenLiveDBAfterImportError(ctx, dbPath, "backing up live db file", errors.Join(err, recoverErr))
 	}
 	cleanupBackupSidecars(dbPath)
 	if err := restorestate.Transition(dbPath, restorestate.StateLiveMovePending, restorestate.StateCandidatePending); err != nil {
-		return result, rollbackImportedDB(dbPath, "journaling imported database install", err)
+		return result, rollbackImportedDB(ctx, dbPath, "journaling imported database install", err)
 	}
 	if err := os.Rename(tempPath, dbPath); err != nil {
-		return result, rollbackImportedDB(dbPath, "installing imported db file", err)
+		return result, rollbackImportedDB(ctx, dbPath, "installing imported db file", err)
 	}
 	cleanupBackupSidecars(dbPath)
 
 	rollback := func(stage string, cause error) error {
-		return rollbackImportedDB(dbPath, stage, cause)
+		return rollbackImportedDB(ctx, dbPath, stage, cause)
 	}
 	if err := runImportPostActions(ctx, importRollbackProtectedPostActions(dbPath, rehearsal.Owners, rehearsal.Manifest.Files), rollback); err != nil {
 		return result, err
@@ -132,6 +191,9 @@ func CompletePendingRestore(ctx context.Context) (cleanupPending, restartPending
 	if err := restorestate.MarkCommitted(dbPath); err != nil {
 		return false, false, common.NewErrorf("Error accepting imported database: %v", err)
 	}
+	// The protected rebind and caller authority write have completed. Publish
+	// before restart so no background owner waits for a scope held by restart.
+	finishMaintenance(pendingMaintenance())
 	if err := restorestate.FinalizeCommitted(dbPath); err != nil {
 		cleanupPending = true
 	}
@@ -144,17 +206,23 @@ func CompletePendingRestore(ctx context.Context) (cleanupPending, restartPending
 // AbortPendingRestore returns to the exact pre-restore database while the
 // candidate is still rollback-authorized.
 func AbortPendingRestore() error {
+	ctx, cancel := restoreRecoveryContext(context.Background())
+	defer cancel()
 	dbPath := configstorage.GetDBPath()
-	if err := dbsqlite.Close(); err != nil {
+	if err := dbsqlite.CloseContext(ctx); err != nil {
 		return common.NewErrorf("Error closing rejected imported db: %v", err)
 	}
 	if err := restorestate.Rollback(dbPath); err != nil {
 		return common.NewErrorf("Error restoring exact fallback db: %v", err)
 	}
-	if err := dbsqlite.Init(dbPath); err != nil {
+	if err := dbsqlite.InitContext(ctx, dbPath); err != nil {
 		return common.NewErrorf("Error reopening exact fallback db: %v", err)
 	}
-	return resetReopenedDatabaseCaches()
+	if err := resetReopenedDatabaseCaches(ctx); err != nil {
+		return err
+	}
+	finishMaintenance(pendingMaintenance())
+	return nil
 }
 
 func cleanupRestoreFile(path string) {
@@ -162,33 +230,42 @@ func cleanupRestoreFile(path string) {
 	cleanupBackupSidecars(path)
 }
 
-func rollbackImportedDB(dbPath, stage string, cause error) error {
-	if err := dbsqlite.Close(); err != nil {
+func rollbackImportedDB(ctx context.Context, dbPath, stage string, cause error) error {
+	recoveryCtx, cancel := restoreRecoveryContext(ctx)
+	defer cancel()
+	if err := dbsqlite.CloseContext(recoveryCtx); err != nil {
 		return common.NewErrorf("Error %s (%v) and closing imported db for rollback failed: %v; restore recovery remains pending", stage, cause, err)
 	}
 	if err := restorestate.Rollback(dbPath); err != nil {
 		return common.NewErrorf("Error %s (%v) and restoring fallback failed: %v", stage, cause, err)
 	}
-	return reopenLiveDBAfterImportError(dbPath, stage, cause)
+	return reopenLiveDBAfterImportError(recoveryCtx, dbPath, stage, cause)
 }
 
-func reopenLiveDBAfterImportError(dbPath, stage string, cause error) error {
-	if err := dbsqlite.Init(dbPath); err != nil {
+func reopenLiveDBAfterImportError(ctx context.Context, dbPath, stage string, cause error) error {
+	recoveryCtx, cancel := restoreRecoveryContext(ctx)
+	defer cancel()
+	if err := dbsqlite.InitContext(recoveryCtx, dbPath); err != nil {
 		return common.NewErrorf("Error %s (%v) and reopening live db failed: %v", stage, cause, err)
 	}
-	if err := resetReopenedDatabaseCaches(); err != nil {
+	if err := resetReopenedDatabaseCaches(recoveryCtx); err != nil {
 		return common.NewErrorf("Error %s (%v) and rebinding live database owners failed: %v", stage, cause, err)
 	}
+	finishMaintenance(pendingMaintenance())
 	return common.NewErrorf("Error %s: %v", stage, cause)
 }
 
-func resetReopenedDatabaseCaches() error {
+func restoreRecoveryContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	// The rejected import may have exhausted its request context. Recovery of
 	// the reopened fallback has its own bounded lifetime.
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	return hooks.ResetCaches(ctx)
+	recoveryCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if owner := pendingMaintenance(); owner != nil {
+		recoveryCtx = owner.Context(recoveryCtx)
+	}
+	return recoveryCtx, cancel
 }
+
+func resetReopenedDatabaseCaches(ctx context.Context) error { return hooks.ResetCaches(ctx) }
 
 func stageBackupToFile(ctx context.Context, src io.Reader, dst string) error {
 	out, err := os.Create(dst) // #nosec G304 -- internal staging path.

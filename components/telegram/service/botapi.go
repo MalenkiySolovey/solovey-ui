@@ -11,6 +11,7 @@ import (
 	"net/http"
 
 	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/util/redact"
 )
 
@@ -30,6 +31,11 @@ func (s *Service) SendDocumentStream(ctx context.Context, filename string, sourc
 	if s == nil || ctx == nil || source == nil {
 		return Result{ErrorClass: "payload"}
 	}
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return Result{ErrorClass: "maintenance"}
+	}
+	defer release()
 	credentials, result := s.telegramBotCredentials()
 	if !result.Success {
 		return result
@@ -102,6 +108,11 @@ func (s *Service) SendContext(ctx context.Context, text string) Result {
 	if s == nil || ctx == nil {
 		return Result{ErrorClass: "request"}
 	}
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return Result{ErrorClass: "maintenance"}
+	}
+	defer release()
 	credentials, result := s.telegramBotCredentials()
 	if !result.Success {
 		return result

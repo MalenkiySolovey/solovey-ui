@@ -122,7 +122,7 @@ func (s *SettingService) RotateSessionGeneration() (string, error) {
 	invalidated := invalidateWSTokensForSessionRotation()
 	// Rotation also runs inside restore's rollback-protected post-open hook.
 	// Complete its audit against this database generation before returning.
-	if err := (&AuditService{}).RecordSynchronous(AuditEvent{
+	if err := (&AuditService{}).RecordSynchronousContext(s.settingContext(), AuditEvent{
 		Actor:    "system",
 		Event:    "ws_tokens_invalidated",
 		Resource: "realtime",

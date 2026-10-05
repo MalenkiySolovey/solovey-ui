@@ -1,6 +1,8 @@
 package service
 
 import (
+	"context"
+
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	auditsvc "github.com/MalenkiySolovey/solovey-ui/service/audit"
 )
@@ -44,6 +46,11 @@ func (s *AuditService) Record(event AuditEvent) error {
 func (s *AuditService) RecordSynchronous(event AuditEvent) error {
 	backend := s.backend()
 	return backend.Record(auditsvc.Event(event), true)
+}
+
+func (s *AuditService) RecordSynchronousContext(ctx context.Context, event AuditEvent) error {
+	backend := s.backend()
+	return backend.RecordContext(ctx, auditsvc.Event(event), true)
 }
 
 func (s *AuditService) RecordListenFallback(component, requestedAddr, fallbackAddr string, bindErr error) error {

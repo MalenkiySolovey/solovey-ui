@@ -21,6 +21,7 @@ import (
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/httpconn"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/middleware/databaseoperation"
 	domainmiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/domain"
 	requestbudget "github.com/MalenkiySolovey/solovey-ui/middleware/requestbudget"
 	securitymiddleware "github.com/MalenkiySolovey/solovey-ui/middleware/security"
@@ -116,6 +117,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		return requestbudget.PressureDecision{Allowed: decision.Allowed, Reason: decision.ReasonCode, RetryAfter: decision.RetryAfter}
 	})
 	engine.Use(requestbudget.Middleware(budgetRegistry, s.recordRequestBudgetRejection))
+	engine.Use(databaseoperation.Middleware())
 
 	cookieKeys, err := s.settingService.GetCookieKeys()
 	if err != nil {

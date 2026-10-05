@@ -913,7 +913,13 @@ func (m *LifecycleManager) performRollback(ctx context.Context, operation model.
 		return recovery, ErrRecoveryRequired
 	}
 	if coordinator, ok := m.provider.(databaseRollbackCoordinator); ok {
-		operation, err = m.repo.rebindRestoredRollback(ctx, operation, reason)
+		databaseCtx := ctx
+		if owner, ok := m.provider.(interface {
+			DatabaseRollbackContext(context.Context) context.Context
+		}); ok {
+			databaseCtx = owner.DatabaseRollbackContext(ctx)
+		}
+		operation, err = m.repo.rebindRestoredRollback(databaseCtx, operation, reason)
 		if err != nil {
 			_ = coordinator.AbortDatabaseRollback()
 			recovery, updateErr := m.repo.markRollbackRecovery(ctx, operation, "update_rollback_rebind_failed")

@@ -24,6 +24,11 @@ func (s *Service) RefreshDueSubscriptionsContext(ctx context.Context, loginUser 
 	}
 	refreshMu.Lock()
 	defer refreshMu.Unlock()
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer release()
 
 	subscriptions, err := remotesub.DueSubscriptions(dbsqlite.DB(), time.Now().Unix())
 	if err != nil {

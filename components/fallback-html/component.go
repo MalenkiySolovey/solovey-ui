@@ -172,12 +172,38 @@ func registerRuntimeHooks() error {
 	}
 	if runtimeHooks.restoreHookName == "" {
 		runtimeHooks.restoreHookName = id + ".restore"
-		dbhooks.RegisterImportPostOpenHook(runtimeHooks.restoreHookName, func(context.Context) error {
-			// Durable owner normalization already ran in protected acceptance.
-			// This runtime-owned action must not emit a second restore event.
-			return fallbackservice.DefaultRuntime.Rebuild(dbsqlite.DB())
-		})
+		dbhooks.RegisterContextResetHook(runtimeHooks.restoreHookName, rebindDatabaseOwners)
 	}
+	return nil
+}
+
+// Reset is required for both accepted candidate and exact fallback. Rebind
+// the already registered provider/resource owners as well as runtime queries.
+func rebindDatabaseOwners(ctx context.Context) error {
+	runtimeHooks.Lock()
+	defer runtimeHooks.Unlock()
+	database := dbsqlite.DB()
+	if err := fallbackservice.DefaultRuntime.RebuildContext(ctx, database); err != nil {
+		return err
+	}
+	if runtimeHooks.unregisterResources != nil {
+		runtimeHooks.unregisterResources()
+		runtimeHooks.unregisterResources = nil
+	}
+	if runtimeHooks.unregisterTargetsV2 != nil {
+		runtimeHooks.unregisterTargetsV2()
+		runtimeHooks.unregisterTargetsV2 = nil
+	}
+	unregister, err := hostresources.Register(publicSiteResourceContributor{db: database})
+	if err != nil {
+		return err
+	}
+	runtimeHooks.unregisterResources = unregister
+	unregister, err = neutralfallback.Default.RegisterV2(targetProvider{db: database, runtime: fallbackservice.DefaultRuntime})
+	if err != nil {
+		return err
+	}
+	runtimeHooks.unregisterTargetsV2 = unregister
 	return nil
 }
 
@@ -201,7 +227,7 @@ func unregisterRuntimeHooks() {
 		runtimeHooks.unregisterTargetsV2 = nil
 	}
 	if runtimeHooks.restoreHookName != "" {
-		dbhooks.RegisterImportPostOpenHook(runtimeHooks.restoreHookName, nil)
+		dbhooks.RegisterContextResetHook(runtimeHooks.restoreHookName, nil)
 		runtimeHooks.restoreHookName = ""
 	}
 }
