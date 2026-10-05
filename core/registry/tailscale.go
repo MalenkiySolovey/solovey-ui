@@ -10,6 +10,8 @@ import (
 	"github.com/sagernet/sing-box/service/derp"
 )
 
+const supportsTailscale = true
+
 func registerTailscaleEndpoint(registry *endpoint.Registry) {
 	tailscale.RegisterEndpoint(registry)
 }

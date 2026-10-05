@@ -2,6 +2,7 @@ package config
 
 import (
 	"encoding/json"
+	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
@@ -22,6 +23,7 @@ func (a *Handler) LoadData(c *gin.Context) {
 
 func (a *Handler) GetData(c *gin.Context) (interface{}, error) {
 	data := make(map[string]interface{})
+	data["capabilities"] = entitycapabilities.Current()
 	lu := c.Query("lu")
 	isUpdated, err := a.ConfigService.CheckChanges(lu)
 	if err != nil {

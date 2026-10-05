@@ -32,6 +32,7 @@ func TestSecurityAuthZAPIV2ActionScopeGate(t *testing.T) {
 		{"resetTraffic", []string{"write"}},
 		{"linkConvert", []string{"read", "write"}},
 		{"settings", []string{"read", "write"}},
+		{"capabilities", []string{"read", "write"}},
 		{"users", []string{"read", "write"}},
 		{"keypairs", []string{"read", "write"}},
 		{"clients", []string{"read", "write"}},

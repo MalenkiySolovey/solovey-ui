@@ -112,6 +112,7 @@ func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
 	g.GET("/singbox-config", h.GetSingboxConfig)
 	g.GET("/checkOutbound", h.GetCheckOutbound)
 
+	g.GET("/capabilities", h.GetCapabilities)
 	g.GET("/load", h.LoadData)
 	for _, action := range []string{"inbounds", "inboundDrafts", "outbounds", "endpoints", "services", "tls", "clients", "config"} {
 		action := action

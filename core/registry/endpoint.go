@@ -7,9 +7,15 @@ import (
 
 func EndpointRegistry() *endpoint.Registry {
 	registry := endpoint.NewRegistry()
-
-	wireguard.RegisterEndpoint(registry)
-	registerTailscaleEndpoint(registry)
-
+	for _, entry := range endpointDeclarations() {
+		entry.register(registry)
+	}
 	return registry
+}
+
+func endpointDeclarations() []declaration[*endpoint.Registry] {
+	return []declaration[*endpoint.Registry]{
+		{typeName: "wireguard", buildTag: "", compiled: true, register: wireguard.RegisterEndpoint},
+		{typeName: "tailscale", buildTag: tailscaleBuildTag, compiled: supportsTailscale, register: registerTailscaleEndpoint},
+	}
 }

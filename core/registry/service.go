@@ -9,12 +9,17 @@ import (
 
 func ServiceRegistry() *service.Registry {
 	registry := service.NewRegistry()
-
-	resolved.RegisterService(registry)
-	ssmapi.RegisterService(registry)
-
-	registerDERPService(registry)
-	oomkiller.RegisterService(registry)
-
+	for _, entry := range serviceDeclarations() {
+		entry.register(registry)
+	}
 	return registry
+}
+
+func serviceDeclarations() []declaration[*service.Registry] {
+	return []declaration[*service.Registry]{
+		{typeName: "resolved", platform: "linux", compiled: supportsResolved, register: resolved.RegisterService},
+		{typeName: "ssm-api", buildTag: "", compiled: true, register: ssmapi.RegisterService},
+		{typeName: "derp", buildTag: tailscaleBuildTag, compiled: supportsTailscale, register: registerDERPService},
+		{typeName: "oom-killer", buildTag: "", compiled: true, register: oomkiller.RegisterService},
+	}
 }

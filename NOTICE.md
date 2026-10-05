@@ -90,3 +90,16 @@ retired handles, and supplies an expiring private restore context. Existing
 backup and feature owners retain durable acceptance, exact rollback and
 context-aware rebinding. Schema, steady SQLite settings and deployment/storage
 contracts are retained. No upstream implementation or tests were copied.
+
+CAP-01 independently adapts actual allowed/build-available type projection
+from the same pinned S-UI-X target. Exact behavioral witnesses are
+`4d2fc76e12a7b972c3126c6000bc57bdd50ec959`,
+`590b08af39537ab4c85441513743c2360bbc187d`,
+`d5717d95253d4cc1dfbf60894b0c7f08390253ad` and
+`08814445d1497bc8b52bdc3af2eda784a5ea26cb`
+(`core/capabilities/*`, `api/apiHandler.go`, frontend typed projections).
+Solovey keeps official runtime registrations and compiled eligibility in the
+same owner contributions; panel aliases remain entity-owned. WireGuard is
+directly registered, and official OOM support is retained. Pinned official
+sing-box v1.13.14 sources are secondary implementation authority. No upstream
+implementation or tests were copied; full parity remains v1.5.10.

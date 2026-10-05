@@ -5,6 +5,7 @@ import { i18n } from '@/locales'
 import { Inbound } from '@/types/inbounds'
 import { Client } from '@/types/clients'
 import { actionableLogLevel } from './dataLogLevel'
+import { readRuntimeCapabilities, type RuntimeCapabilities } from '@/types/runtimeCapabilities'
 
 export interface FailoverMemberStatus {
   tag: string
@@ -72,6 +73,7 @@ const Data = defineStore('Data', {
     enableTraffic: false,
     onlines: {inbound: <string[]>[], outbound: <string[]>[], user: <string[]>[]},
     config: <any>{},
+    capabilities: undefined as RuntimeCapabilities | undefined,
     inbounds: <any[]>[],
     inboundDrafts: <InboundDraftStatus[]>[],
     outbounds: <any[]>[],
@@ -90,6 +92,7 @@ const Data = defineStore('Data', {
       const request = (async () => {
         const msg = await HttpUtils.get('api/load', this.lastLoad > 0 ? { lu: this.lastLoad } : {})
         if (msg.success) {
+          this.capabilities = readRuntimeCapabilities(msg.obj.capabilities)
           this.onlines = msg.obj.onlines
           if (msg.obj.lastLog) {
             const logLevel = actionableLogLevel(String(msg.obj.lastLog))
@@ -123,6 +126,7 @@ const Data = defineStore('Data', {
       }
     },
     setNewData(data: any) {
+      if (Object.hasOwn(data, 'capabilities')) this.capabilities = readRuntimeCapabilities(data.capabilities)
       this.lastLoad = Math.floor((new Date()).getTime()/1000)
       if (data.subURI) this.subURI = data.subURI
       if (Object.hasOwn(data, 'subJsonURI')) this.subJsonURI = data.subJsonURI
