@@ -2,8 +2,21 @@
   "source": {
     "run": "https://github.com/MalenkiySolovey/solovey-ui/actions/runs/37253197476",
     "commit": "461a462785134541a4a89a6c74efc4a97e1501a7",
-    "unit": "rounded-up package test seconds; packages <= 5s or unseen default to 1",
-    "note": "Observed full four-shard audit, first attempt. Rebalance the Windows repository straggler using runner-isolated timings. Build/setup/queue time is not captured by package test seconds; weights affect allocation only."
+    "unit": "rounded-up package test seconds (win32-race uses a two-run mean); packages <= 5s or unseen default to 1",
+    "note": "Observed full four-shard audit, first attempt. Rebalance the Windows repository straggler using runner-isolated timings. Build/setup/queue time is not captured by package test seconds; weights affect allocation only.",
+    "raceRebalance": {
+      "runs": [
+        {
+          "url": "https://github.com/MalenkiySolovey/solovey-ui/actions/runs/37253197476",
+          "commit": "461a462785134541a4a89a6c74efc4a97e1501a7"
+        },
+        {
+          "url": "https://github.com/MalenkiySolovey/solovey-ui/actions/runs/37255579238",
+          "commit": "12d4afe37cf89ecc2b3318179b32fc5b9744a4ac"
+        }
+      ],
+      "rule": "Windows race package durations vary substantially across isolated runners. Average the two complete attempt-1 observations instead of chasing a single-run outlier. Other profiles retain their qualified allocation."
+    }
   },
   "profiles": {
     "win32": {
@@ -35,35 +48,36 @@
     },
     "win32-race": {
       "api": 196,
-      "app": 37,
-      "components/fallback-html": 58,
-      "components/fallback-html/service": 18,
-      "components/import-xui/api": 18,
-      "components/import-xui/database": 76,
-      "components/paid-subscriptions/telegram": 8,
-      "components/remote-outbound-subscriptions/service": 10,
-      "components/server-protection": 70,
-      "components/server-protection/api": 321,
-      "components/server-protection/service/artifacts": 32,
-      "components/server-protection/service/firewall": 301,
-      "components/server-protection/service/fronting": 463,
-      "components/server-protection/service/nativefallback": 8,
-      "components/server-protection/service/observation": 11,
-      "components/server-protection/service/operations": 162,
-      "components/server-protection/service/repository": 268,
+      "app": 38,
+      "cmd/internal/backup": 6,
+      "components/fallback-html": 44,
+      "components/fallback-html/service": 25,
+      "components/import-xui/api": 20,
+      "components/import-xui/database": 61,
+      "components/paid-subscriptions/telegram": 7,
+      "components/remote-outbound-subscriptions/service": 11,
+      "components/server-protection": 76,
+      "components/server-protection/api": 220,
+      "components/server-protection/service/artifacts": 38,
+      "components/server-protection/service/firewall": 260,
+      "components/server-protection/service/fronting": 458,
+      "components/server-protection/service/nativefallback": 9,
+      "components/server-protection/service/observation": 8,
+      "components/server-protection/service/operations": 108,
+      "components/server-protection/service/repository": 299,
       "components/server-protection/service/udpguard": 7,
-      "components/telegram/service": 41,
-      "database/backup": 225,
-      "database/sqlite": 40,
-      "deploy/openwrt": 92,
+      "components/telegram/service": 30,
+      "database/backup": 291,
+      "database/sqlite": 35,
+      "deploy/openwrt": 100,
       "internal/backup/envelope": 16,
       "internal/evidencebundle": 6,
-      "internal/ops/privilegedbroker": 71,
+      "internal/ops/privilegedbroker": 70,
       "internal/singbox/validation": 6,
-      "ipmonitor": 25,
-      "service": 84,
-      "service/datalifecycle": 7,
-      "service/update": 36,
+      "ipmonitor": 27,
+      "service": 80,
+      "service/datalifecycle": 11,
+      "service/update": 74,
       "sub": 9,
       "web": 7
     },
