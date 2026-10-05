@@ -39,7 +39,7 @@ func TestRefundRacingUncommittedGrantWaitsForCompleteApplication(t *testing.T) {
 			select {
 			case <-resume:
 			case <-ctx.Done():
-				tx.AddError(ctx.Err())
+				_ = tx.AddError(ctx.Err())
 			}
 		}
 	}); err != nil {

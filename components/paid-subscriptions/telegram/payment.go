@@ -369,11 +369,18 @@ func (p *paymentCoordinator) refundOrder(ctx context.Context, orderID uint, revo
 		if err != nil {
 			return "", err
 		}
-		claimed, err := paidstore.ClaimStarsRefund(dbsqlite.DB(), orderID, revoke, token, nowUnix())
+		refundDB := dbsqlite.DB()
+		claimed, err := paidstore.ClaimStarsRefund(refundDB, orderID, revoke, token, nowUnix())
 		if err != nil {
 			return "", err
 		}
-		defer paidstore.ReleaseRefundClaim(dbsqlite.DB(), orderID, token)
+		defer func() {
+			if err := paidstore.ReleaseRefundClaim(refundDB, orderID, token); err != nil {
+				// Keep the durable lease and intent recoverable; do not expose
+				// private claim/provider details or undo a committed refund.
+				logger.Warning("paidsub: refund claim release deferred to lease expiry, order ", orderID)
+			}
+		}()
 		sender, err := newSenderBot(p.runtime)
 		if err != nil {
 			return "", err
@@ -388,7 +395,7 @@ func (p *paymentCoordinator) refundOrder(ctx context.Context, orderID uint, revo
 		if err := sender.refundStarPayment(ctx, claimed.TelegramUserId, charge); err != nil && !isAlreadyRefunded(err) {
 			return "", fmt.Errorf("stars refund failed")
 		}
-		inbounds, err := paidstore.FinalizeClaimedRefundGrant(dbsqlite.DB(), orderID, token, nowUnix(), "PaidSubBot")
+		inbounds, err := paidstore.FinalizeClaimedRefundGrant(refundDB, orderID, token, nowUnix(), "PaidSubBot")
 		if err != nil {
 			return "", err
 		}
