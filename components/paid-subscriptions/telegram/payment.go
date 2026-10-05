@@ -124,10 +124,43 @@ func (p *paymentCoordinator) enabledProvidersForTariff(t *paidcore.Tariff) []pai
 // CreateOrder snapshots the price from the tariff, persists a pending order, and
 // asks the provider to prepare an invoice.
 func (p *paymentCoordinator) CreateOrder(ctx context.Context, client *model.Client, tariff *paidcore.Tariff, kind paidprovider.ProviderKind, tgUserId int64) (*paidcore.PaymentOrder, *paidprovider.Invoice, error) {
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer release()
+	db := dbsqlite.DB()
+	if client == nil || tariff == nil || client.Id == 0 || tariff.Id == 0 {
+		return nil, nil, fmt.Errorf("purchase identity is missing")
+	}
 	prov := p.providerByKind(kind)
 	if prov == nil {
 		return nil, nil, fmt.Errorf("provider not available")
 	}
+	if kind == paidprovider.ProviderCryptoBot {
+		existing, err := paidstore.ActiveCryptoBotOrder(db, client.Id, tariff.Id, tgUserId)
+		if err != nil {
+			return nil, nil, err
+		}
+		if existing != nil {
+			return reusableInvoice(existing)
+		}
+	}
+	ttlMin, err := p.setting.GetPaidSubOrderTTLMinutes()
+	if err != nil || ttlMin < 1 {
+		return nil, nil, fmt.Errorf("invalid paid subscription order TTL")
+	}
+	// Caller supplies identifiers only. Re-resolve authoritative facts before
+	// creating the immutable purchase, including stale/forged caller structs.
+	tariff, err = paidstore.GetTariff(db, tariff.Id)
+	if err != nil || !tariff.Enabled {
+		return nil, nil, fmt.Errorf("tariff is unavailable")
+	}
+	var resolvedClient model.Client
+	if err := db.First(&resolvedClient, client.Id).Error; err != nil {
+		return nil, nil, err
+	}
+	client = &resolvedClient
 	var amount int64
 	var currency string
 	if kind == paidprovider.ProviderStars {
@@ -143,34 +176,56 @@ func (p *paymentCoordinator) CreateOrder(ctx context.Context, client *model.Clie
 		amount = tariff.Price
 		currency = tariff.Currency
 	}
-	ttlMin, err := p.setting.GetPaidSubOrderTTLMinutes()
-	if err != nil || ttlMin < 1 {
-		return nil, nil, fmt.Errorf("invalid paid subscription order TTL")
-	}
 	now := nowUnix()
 	payload, err := common.SecureRandom(32)
 	if err != nil {
 		return nil, nil, err
 	}
 	order := paidstore.NewPendingOrder(client, tariff, kind, amount, currency, tgUserId, payload, now, ttlMin)
-	db := dbsqlite.DB()
-	if err := db.Create(order).Error; err != nil {
+	if err := paidstore.ValidateOrderGrant(*order); err != nil {
 		return nil, nil, err
 	}
-	inv, err := prov.CreateInvoice(ctx, order, tariff, client)
-	if err != nil {
-		return nil, nil, errors.Join(err, paidstore.MarkOrderFailed(db, order.Id))
+	if kind == paidprovider.ProviderCryptoBot {
+		var created bool
+		order, created, err = paidstore.CreateInvoiceIntent(db, order)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !created {
+			return reusableInvoice(order)
+		}
+	} else if err := db.Create(order).Error; err != nil {
+		return nil, nil, err
 	}
-	if inv == nil {
-		return nil, nil, errors.Join(
-			errors.New("provider returned an empty invoice"),
-			paidstore.MarkOrderFailed(db, order.Id),
-		)
+	_ = (&service.AuditService{Runtime: p.runtime}).Record(service.AuditEvent{Actor: "PaidSubBot", Event: "paidsub_order_created", Resource: "paidsub", Severity: service.AuditSeverityInfo, Details: map[string]any{"orderId": order.Id, "provider": order.Provider}})
+	inv, err := prov.CreateInvoice(ctx, order, tariff, client)
+	if err == nil && inv == nil {
+		err = errors.New("provider returned an empty invoice")
+	}
+	if err == nil && kind == paidprovider.ProviderCryptoBot && (inv.ProviderRef == "" || inv.PayURL == "") {
+		err = errors.New("provider returned an incomplete invoice")
+	}
+	if err != nil {
+		if kind == paidprovider.ProviderCryptoBot {
+			return order, nil, errors.Join(err, paidstore.MarkInvoiceRecoverable(db, order.Id))
+		}
+		return nil, nil, errors.Join(err, paidstore.MarkOrderFailed(db, order.Id))
 	}
 	if err := paidstore.SaveInvoiceResult(db, order.Id, inv); err != nil {
+		if kind == paidprovider.ProviderCryptoBot {
+			return order, nil, errors.Join(err, paidstore.MarkInvoiceRecoverable(db, order.Id))
+		}
 		return nil, nil, errors.Join(err, paidstore.MarkOrderFailed(db, order.Id))
 	}
+	order.Status, order.ProviderRef, order.ExternalURL = paidcore.StatusPending, inv.ProviderRef, inv.PayURL
 	return order, inv, nil
+}
+
+func reusableInvoice(order *paidcore.PaymentOrder) (*paidcore.PaymentOrder, *paidprovider.Invoice, error) {
+	if order.Status != paidcore.StatusPending || !order.GrantSnapshot || order.ProviderRef == "" || order.ExternalURL == "" {
+		return order, nil, fmt.Errorf("existing invoice requires reconciliation or manual review")
+	}
+	return order, &paidprovider.Invoice{Method: paidprovider.InvoiceURL, PayURL: order.ExternalURL, ProviderRef: order.ProviderRef, Payload: order.IdempotencyKey}, nil
 }
 
 func (p *paymentCoordinator) getOrder(id uint) (*paidcore.PaymentOrder, error) {
@@ -281,6 +336,11 @@ func (p *paymentCoordinator) finalizeRefund(orderID uint, revoke bool) error {
 // only marks the order refunded (status "refunded_manual"). revoke is the
 // admin's per-refund choice to roll back the granted days/traffic.
 func (p *paymentCoordinator) refundOrder(ctx context.Context, orderID uint, revoke bool) (string, error) {
+	ctx, release, err := dbsqlite.AcquireOperation(ctx)
+	if err != nil {
+		return "", err
+	}
+	defer release()
 	order, err := p.getOrder(orderID)
 	if err != nil {
 		return "", err
@@ -293,7 +353,13 @@ func (p *paymentCoordinator) refundOrder(ctx context.Context, orderID uint, revo
 	if order.Amount <= 0 {
 		return "", errRefundNotApplicable
 	}
+	if err := paidstore.ValidateOrderGrant(*order); err != nil {
+		return "", errRefundNotApplicable
+	}
 	if order.Provider == string(paidprovider.ProviderStars) {
+		if !strings.HasPrefix(order.ProviderChargeID, "tg:") || strings.TrimPrefix(order.ProviderChargeID, "tg:") == "" {
+			return "", errRefundNotApplicable
+		}
 		sender, err := newSenderBot(p.runtime)
 		if err != nil {
 			return "", err

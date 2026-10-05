@@ -125,6 +125,12 @@ export default {
     "transportModes": {
       "proxy": "Proxy",
       "outbound": "Outbound (sing-box)"
+    },
+    "orderStates": {
+      "invoice_creating": "Creating invoice",
+      "recoverable": "Awaiting reconciliation",
+      "manual_review": "Needs review",
+      "reviewHint": "This order awaits reconciliation or administrator review."
     }
   }
 }

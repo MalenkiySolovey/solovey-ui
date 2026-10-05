@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 
 	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -20,6 +21,9 @@ type AppliedOrderResult struct {
 
 func ApplyPaidOrderGrant(db *gorm.DB, orderID uint, chargeID string, raw []byte, now int64, actor string) (AppliedOrderResult, error) {
 	var result AppliedOrderResult
+	if chargeID == "" {
+		return result, fmt.Errorf("payment charge identity is empty")
+	}
 	err := db.Transaction(func(tx *gorm.DB) error {
 		res := tx.Model(&paid.PaymentOrder{}).
 			Where("id = ? AND status = ?", orderID, paid.StatusPending).
@@ -27,7 +31,6 @@ func ApplyPaidOrderGrant(db *gorm.DB, orderID uint, chargeID string, raw []byte,
 				"status":             paid.StatusPaid,
 				"paid_at":            now,
 				"provider_charge_id": chargeID,
-				"provider_payload":   raw,
 			})
 		if res.Error != nil {
 			return res.Error
@@ -39,6 +42,8 @@ func ApplyPaidOrderGrant(db *gorm.DB, orderID uint, chargeID string, raw []byte,
 		if err := tx.Where("id = ?", orderID).First(&order).Error; err != nil {
 			return err
 		}
+		// Keep the durable invoice reference; arbitrary confirmation payloads
+		// are neither financial authority nor necessary durable audit evidence.
 		grant, err := grantForOrder(tx, order)
 		if err != nil {
 			return err
@@ -93,7 +98,12 @@ func FinalizeRefundGrant(db *gorm.DB, orderID uint, revoke bool, now int64, acto
 			return ErrOrderAlreadyFinalized
 		}
 		if !revoke {
-			return nil
+			var order paid.PaymentOrder
+			if err := tx.First(&order, orderID).Error; err != nil {
+				return err
+			}
+			_, err := grantForOrder(tx, order)
+			return err
 		}
 		var order paid.PaymentOrder
 		if err := tx.Where("id = ?", orderID).First(&order).Error; err != nil {
@@ -112,8 +122,7 @@ func FinalizeRefundGrant(db *gorm.DB, orderID uint, revoke bool, now int64, acto
 			var newerTrafficOrders int64
 			if err := tx.Model(&paid.PaymentOrder{}).
 				Where("client_id = ? AND id > ? AND status = ?", order.ClientId, order.Id, paid.StatusPaid).
-				Where("(grant_snapshot = ? AND grant_traffic_bytes > 0) OR (grant_snapshot = ? AND tariff_id IN (?))",
-					true, false, tx.Model(&paid.Tariff{}).Select("id").Where("add_traffic_bytes > 0")).
+				Where("grant_snapshot = ? AND grant_traffic_bytes > 0", true).
 				Count(&newerTrafficOrders).Error; err != nil {
 				return err
 			}
@@ -143,21 +152,19 @@ func FinalizeRefundGrant(db *gorm.DB, orderID uint, revoke bool, now int64, acto
 	return inboundIDs, err
 }
 
-func grantForOrder(tx *gorm.DB, order paid.PaymentOrder) (paid.Tariff, error) {
+func ValidateOrderGrant(order paid.PaymentOrder) error {
+	_, err := grantForOrder(nil, order)
+	return err
+}
+
+func grantForOrder(_ *gorm.DB, order paid.PaymentOrder) (paid.Tariff, error) {
 	if order.GrantSnapshot {
-		if order.Amount <= 0 || order.GrantAddDays < 0 || order.GrantTraffic < 0 {
+		if order.Amount <= 0 || order.GrantAddDays < 0 || int64(order.GrantAddDays) > math.MaxInt64/86400 || order.GrantTraffic < 0 {
 			return paid.Tariff{}, fmt.Errorf("payment order grant snapshot is invalid")
 		}
 		return paid.Tariff{AddDays: order.GrantAddDays, AddTrafficBytes: order.GrantTraffic}, nil
 	}
-	var tariff paid.Tariff
-	if err := tx.Where("id = ?", order.TariffId).First(&tariff).Error; err != nil {
-		return paid.Tariff{}, err
-	}
-	if tariff.Price <= 0 && tariff.StarsAmount <= 0 {
-		return paid.Tariff{}, fmt.Errorf("tariff has no price")
-	}
-	return tariff, nil
+	return paid.Tariff{}, fmt.Errorf("payment order requires manual review: purchase snapshot missing")
 }
 
 func JSONString(s string) json.RawMessage {

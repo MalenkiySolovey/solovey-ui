@@ -125,6 +125,12 @@ export default {
     "transportModes": {
       "proxy": "Proxy",
       "outbound": "Outbound (sing-box)"
+    },
+    "orderStates": {
+      "invoice_creating": "Создание счёта",
+      "recoverable": "Ожидает сверки",
+      "manual_review": "Требуется проверка",
+      "reviewHint": "Заказ ожидает сверки или проверки администратором."
     }
   }
 }

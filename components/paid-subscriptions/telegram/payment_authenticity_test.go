@@ -64,7 +64,7 @@ func TestHandlePreCheckoutApprovesValidOrder(t *testing.T) {
 	if err := ensureTestSchema(db); err != nil {
 		t.Fatalf("EnsureSchema: %v", err)
 	}
-	db.Create(&paid.PaymentOrder{ClientId: 1, TariffId: 1, Provider: string(provider.ProviderStars), Amount: 100, Currency: "XTR", Status: paid.StatusPending, TelegramUserId: 7, IdempotencyKey: "pc-ok"})
+	db.Create(&paid.PaymentOrder{GrantSnapshot: true, ClientId: 1, TariffId: 1, Provider: string(provider.ProviderStars), Amount: 100, Currency: "XTR", Status: paid.StatusPending, TelegramUserId: 7, IdempotencyKey: "pc-ok"})
 
 	rt := &recordingTransport{}
 	b := newTestBot(rt)
@@ -126,7 +126,7 @@ func TestHandleSuccessfulPaymentAppliesRenewalOnMatch(t *testing.T) {
 	db.Create(&client)
 	tariff := paid.Tariff{Name: "Stars", StarsAmount: 100, Currency: "XTR", AddDays: 30, Enabled: true}
 	db.Create(&tariff)
-	order := paid.PaymentOrder{ClientId: client.Id, TariffId: tariff.Id, Provider: string(provider.ProviderStars), Amount: 100, Currency: "XTR", Status: paid.StatusPending, TelegramUserId: 7, IdempotencyKey: "sp-ok"}
+	order := paid.PaymentOrder{GrantSnapshot: true, GrantAddDays: tariff.AddDays, GrantTraffic: tariff.AddTrafficBytes, ClientId: client.Id, TariffId: tariff.Id, Provider: string(provider.ProviderStars), Amount: 100, Currency: "XTR", Status: paid.StatusPending, TelegramUserId: 7, IdempotencyKey: "sp-ok"}
 	db.Create(&order)
 
 	rt := &recordingTransport{}

@@ -12,8 +12,8 @@
   },
   "database": {
 	"schema": "solovey.durable-resource/v1",
-	"schemaVersion": "2",
-	"migrationVersion": "2",
+	"schemaVersion": "3",
+	"migrationVersion": "3",
 	"indexPolicy": "ALL_OWNED_TABLE_INDEXES",
     "tables": [
 	  "paidsub_bindings",
@@ -38,6 +38,6 @@
 	"dropPostcondition": "DECLARED_RESOURCES_ABSENT_V1",
 	"redactionClass": "SENSITIVE",
 	"portabilityClass": "PORTABLE",
-	"compatibilityRange": {"minimumSchema": "1", "maximumSchema": "2"}
+	"compatibilityRange": {"minimumSchema": "1", "maximumSchema": "3"}
   }
 }

@@ -141,6 +141,7 @@ func (b *Bot) handleManualPaid(ctx context.Context, chatID int64, tgID int64, or
 func (b *Bot) handlePreCheckout(ctx context.Context, q *tgPreCheckoutQuery) {
 	order, err := b.payments.findOrderByPayload(q.InvoicePayload)
 	ok := err == nil &&
+		telegramNativeOrder(order) && order.GrantSnapshot &&
 		order.Status == paidcore.StatusPending &&
 		q.TotalAmount == order.Amount &&
 		strings.EqualFold(q.Currency, order.Currency) &&
@@ -161,6 +162,9 @@ func (b *Bot) handleSuccessfulPayment(ctx context.Context, m *tgMessage) {
 	order, err := b.payments.findOrderByPayload(sp.InvoicePayload)
 	if err != nil {
 		logger.Warning("paidsub: successful_payment for unknown order")
+		return
+	}
+	if !telegramNativeOrder(order) {
 		return
 	}
 	if sp.TotalAmount != order.Amount || !strings.EqualFold(sp.Currency, order.Currency) {
@@ -189,6 +193,9 @@ func (b *Bot) handleSuccessfulPayment(ctx context.Context, m *tgMessage) {
 	if charge == "" {
 		charge = sp.ProviderPaymentChargeID
 	}
+	if charge == "" {
+		return
+	}
 	applied, _, err := b.payments.ApplyPaidOrder(order.Id, "tg:"+charge, nil)
 	if err != nil {
 		logger.Warning("paidsub: apply paid order failed: ", err)
@@ -198,6 +205,14 @@ func (b *Bot) handleSuccessfulPayment(ctx context.Context, m *tgMessage) {
 	if applied {
 		_ = b.sendMessage(ctx, m.Chat.ID, tr(l, "pay_success"), b.menuKeyboard(l))
 	}
+}
+
+func telegramNativeOrder(order *paidcore.PaymentOrder) bool {
+	switch paidprovider.ProviderKind(order.Provider) {
+	case paidprovider.ProviderStars, paidprovider.ProviderYooKassa, paidprovider.ProviderStripe, paidprovider.ProviderPayMaster:
+		return true
+	}
+	return false
 }
 
 // ---- helpers ----

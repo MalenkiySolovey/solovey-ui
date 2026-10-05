@@ -29,6 +29,9 @@ type PaymentOrder struct {
 	IdempotencyKey   string `json:"-" gorm:"column:idempotency_key;uniqueIndex;not null"`
 	ProviderChargeID string `json:"-" gorm:"column:provider_charge_id;index"`
 	ProviderPayload  []byte `json:"-" gorm:"column:provider_payload"`
+	ProviderRef      string `json:"-" gorm:"column:provider_ref;not null;default:''"`
+	ReviewReason     string `json:"reviewReason" gorm:"column:review_reason;not null;default:''"`
+	LegacyResolved   bool   `json:"-" gorm:"column:legacy_resolved;not null;default:false"`
 	ExternalURL      string `json:"externalUrl" gorm:"column:external_url"`
 	CreatedAt        int64  `json:"createdAt" gorm:"column:created_at;index;not null;default:0"`
 	PaidAt           int64  `json:"paidAt" gorm:"column:paid_at;not null;default:0"`
@@ -53,9 +56,12 @@ type Binding struct {
 func (Binding) TableName() string { return "paidsub_bindings" }
 
 const (
-	StatusPending  = "pending"
-	StatusPaid     = "paid"
-	StatusFailed   = "failed"
-	StatusExpired  = "expired"
-	StatusRefunded = "refunded"
+	StatusPending         = "pending"
+	StatusPaid            = "paid"
+	StatusFailed          = "failed"
+	StatusExpired         = "expired"
+	StatusRefunded        = "refunded"
+	StatusInvoiceCreating = "invoice_creating"
+	StatusRecoverable     = "recoverable"
+	StatusManualReview    = "manual_review"
 )

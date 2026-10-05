@@ -87,7 +87,7 @@ export const paidSubTransportModes = () => [
 ]
 
 export const paidSubOrderStatusTone = (status: string): 'info' | 'success' | 'warning' | 'error' =>
-  status === 'paid' ? 'success' : status === 'pending' ? 'warning' : status === 'failed' ? 'error' : 'info'
+  status === 'paid' ? 'success' : ['pending', 'invoice_creating', 'recoverable', 'manual_review'].includes(status) ? 'warning' : status === 'failed' ? 'error' : 'info'
 
 export const paidSubOrderStatusColor = (status: string) =>
-  ({ paid: 'success', pending: 'warning', failed: 'error', expired: 'grey', canceled: 'grey', refunded: 'info' } as any)[status] || 'grey'
+  ({ paid: 'success', pending: 'warning', invoice_creating: 'warning', recoverable: 'warning', manual_review: 'warning', failed: 'error', expired: 'grey', canceled: 'grey', refunded: 'info' } as any)[status] || 'grey'

@@ -1,5 +1,11 @@
 export default {
   "paidSub": {
+    "orderStates": {
+      "invoice_creating": "Creating invoice",
+      "recoverable": "Awaiting reconciliation",
+      "manual_review": "Needs review",
+      "reviewHint": "This order awaits reconciliation or administrator review."
+    },
     "title": "Paid Subscriptions",
     "experimental": "實驗性",
     "secretboxWarning": "在正式環境中，請設定 SUI_SECRETBOX_KEY 環境變數，以便使用保存在資料庫之外的金鑰加密付款權杖。",

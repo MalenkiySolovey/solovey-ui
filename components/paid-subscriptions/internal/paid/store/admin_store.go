@@ -42,6 +42,7 @@ type OrderRow struct {
 	Amount         int64  `json:"amount"`
 	Currency       string `json:"currency"`
 	Status         string `json:"status"`
+	ReviewReason   string `json:"reviewReason"`
 	TelegramUserId int64  `json:"telegramUserId"`
 	CreatedAt      int64  `json:"createdAt"`
 	ClientName     string `json:"clientName"`
@@ -54,7 +55,7 @@ func ListOrderRows(db *gorm.DB, limit int) ([]OrderRow, error) {
 	}
 	var rows []OrderRow
 	err := db.Table("payment_orders o").
-		Select("o.id as id, o.client_id as client_id, o.provider as provider, o.amount as amount, o.currency as currency, o.status as status, o.telegram_user_id as telegram_user_id, o.created_at as created_at, c.name as client_name, c.desc as client_desc").
+		Select("o.id as id, o.client_id as client_id, o.provider as provider, o.amount as amount, o.currency as currency, o.status as status, o.review_reason as review_reason, o.telegram_user_id as telegram_user_id, o.created_at as created_at, c.name as client_name, c.desc as client_desc").
 		Joins("LEFT JOIN clients c ON c.id = o.client_id").
 		Order("o.id desc").
 		Limit(limit).

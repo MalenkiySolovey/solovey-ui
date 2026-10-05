@@ -1,11 +1,21 @@
 package paid
 
-import "gorm.io/gorm"
+import (
+	"encoding/json"
+	"strconv"
+	"strings"
+
+	"gorm.io/gorm"
+)
 
 // EnsureSchema creates the paid-subscription tables and indexes idempotently.
 // The package owns these tables because the paid subscription module is still
 // optional and should not leak schema details into HTTP/bot adapters.
 func EnsureSchema(db *gorm.DB) error {
+	return db.Transaction(ensureSchema)
+}
+
+func ensureSchema(db *gorm.DB) error {
 	stmts := []string{
 		`CREATE TABLE IF NOT EXISTS paidsub_bindings (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -71,6 +81,9 @@ func EnsureSchema(db *gorm.DB) error {
 		{"grant_snapshot", `ALTER TABLE payment_orders ADD COLUMN grant_snapshot INTEGER NOT NULL DEFAULT 0`},
 		{"granted_up", `ALTER TABLE payment_orders ADD COLUMN granted_up INTEGER NOT NULL DEFAULT 0`},
 		{"granted_down", `ALTER TABLE payment_orders ADD COLUMN granted_down INTEGER NOT NULL DEFAULT 0`},
+		{"provider_ref", `ALTER TABLE payment_orders ADD COLUMN provider_ref TEXT NOT NULL DEFAULT ''`},
+		{"review_reason", `ALTER TABLE payment_orders ADD COLUMN review_reason TEXT NOT NULL DEFAULT ''`},
+		{"legacy_resolved", `ALTER TABLE payment_orders ADD COLUMN legacy_resolved INTEGER NOT NULL DEFAULT 0`},
 	} {
 		if mig.HasColumn(&PaymentOrder{}, c.column) {
 			continue
@@ -79,7 +92,78 @@ func EnsureSchema(db *gorm.DB) error {
 			return err
 		}
 	}
+	if err := migrateOrders(db); err != nil {
+		return err
+	}
+	for _, ddl := range []string{
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_orders_ref ON payment_orders(provider, provider_ref) WHERE provider_ref != ''`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_payment_orders_active_purchase ON payment_orders(client_id, tariff_id, telegram_user_id, provider) WHERE provider = 'cryptobot' AND status IN ('pending','invoice_creating','recoverable')`,
+	} {
+		if err := db.Exec(ddl).Error; err != nil {
+			return err
+		}
+	}
 	return nil
+}
+
+// GrantSnapshot is the existing purchase proof. Migration never invents one
+// from today's tariff, and never deletes the original financial evidence.
+func migrateOrders(db *gorm.DB) error {
+	if err := db.Model(&PaymentOrder{}).Where("grant_snapshot = 0 AND legacy_resolved = 0 AND status = ?", StatusPaid).
+		Updates(map[string]any{"status": StatusManualReview, "review_reason": "legacy_snapshot_missing"}).Error; err != nil {
+		return err
+	}
+	if err := db.Model(&PaymentOrder{}).Where("grant_snapshot = 0 AND legacy_resolved = 0 AND provider = 'cryptobot' AND status IN ?", []string{StatusPending, StatusFailed, StatusExpired, StatusInvoiceCreating}).
+		Updates(map[string]any{"status": StatusRecoverable, "review_reason": "legacy_snapshot_missing"}).Error; err != nil {
+		return err
+	}
+	if err := db.Model(&PaymentOrder{}).Where("grant_snapshot = 0 AND legacy_resolved = 0 AND provider <> 'cryptobot' AND status IN ?", []string{StatusPending, StatusInvoiceCreating}).
+		Updates(map[string]any{"status": StatusManualReview, "review_reason": "legacy_snapshot_missing"}).Error; err != nil {
+		return err
+	}
+	// Bounded batches extract only already-stored invoice identity, never purchase
+	// facts. Conflicting identities are quarantined before the unique index exists.
+	var cursor uint
+	for {
+		var rows []PaymentOrder
+		if err := db.Where("provider = 'cryptobot' AND id > ?", cursor).Order("id").Limit(256).Find(&rows).Error; err != nil {
+			return err
+		}
+		if len(rows) == 0 {
+			break
+		}
+		for _, row := range rows {
+			cursor = row.Id
+			if row.ProviderRef != "" || row.ReviewReason == "provider_identity_conflict" {
+				continue
+			}
+			var saved struct {
+				Ref string `json:"ref"`
+			}
+			_ = json.Unmarshal(row.ProviderPayload, &saved)
+			ref := saved.Ref
+			if ref == "" && strings.HasPrefix(row.ProviderChargeID, "cryptobot:") {
+				ref = strings.TrimPrefix(row.ProviderChargeID, "cryptobot:")
+			}
+			id, err := strconv.ParseInt(ref, 10, 64)
+			if err != nil || id <= 0 || strconv.FormatInt(id, 10) != ref {
+				continue
+			}
+			if err := db.Model(&PaymentOrder{}).Where("id = ?", row.Id).Update("provider_ref", ref).Error; err != nil {
+				return err
+			}
+		}
+	}
+	if err := db.Exec(`UPDATE payment_orders SET status = 'manual_review', review_reason = 'provider_identity_conflict', provider_ref = ''
+		WHERE provider_ref != '' AND (provider, provider_ref) IN
+		(SELECT provider, provider_ref FROM payment_orders WHERE provider_ref != '' GROUP BY provider, provider_ref HAVING COUNT(*) > 1)`).Error; err != nil {
+		return err
+	}
+	return db.Exec(`UPDATE payment_orders SET status = 'manual_review', review_reason = 'active_purchase_conflict'
+		WHERE provider = 'cryptobot' AND status IN ('pending','invoice_creating','recoverable') AND
+		(client_id, tariff_id, telegram_user_id, provider) IN
+		(SELECT client_id, tariff_id, telegram_user_id, provider FROM payment_orders WHERE provider = 'cryptobot'
+		AND status IN ('pending','invoice_creating','recoverable') GROUP BY client_id, tariff_id, telegram_user_id, provider HAVING COUNT(*) > 1)`).Error
 }
 
 func DropSchema(db *gorm.DB) error {

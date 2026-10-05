@@ -21,7 +21,8 @@
           </template>
           <template #col.amount="{ item }">{{ formatMoney(item.amount, item.currency) }}</template>
           <template #col.status="{ item }">
-            <status-badge :label="item.status" :tone="orderStatusTone(item.status)" />
+            <status-badge :label="orderLabel(item.status)" :tone="orderStatusTone(item.status)" />
+            <div v-if="item.reviewReason" class="text-caption">{{ $t('paidSub.orderStates.reviewHint') }}</div>
           </template>
           <template #col.createdAt="{ item }">{{ item.createdAt ? new Date(item.createdAt * 1000).toLocaleString() : '' }}</template>
           <template #actions="{ item }">
@@ -46,7 +47,8 @@
           </template>
           <template #item.amount="{ item }">{{ formatMoney(item.amount, item.currency) }}</template>
           <template #item.status="{ item }">
-            <v-chip :color="orderStatusColor(item.status)" size="small" variant="flat">{{ item.status }}</v-chip>
+            <v-chip :color="orderStatusColor(item.status)" size="small" variant="flat">{{ orderLabel(item.status) }}</v-chip>
+            <div v-if="item.reviewReason" class="text-caption">{{ $t('paidSub.orderStates.reviewHint') }}</div>
           </template>
           <template #item.createdAt="{ item }">{{ item.createdAt ? new Date(item.createdAt * 1000).toLocaleString() : '' }}</template>
           <template #item.actions="{ item }">
@@ -129,12 +131,15 @@
 </template>
 
 <script lang="ts" setup>
+import { i18n } from '@/locales'
 import SettingsSecretField from '@/components/settings/SettingsSecretField.vue'
 import NexusDataTable from '@/components/nexus/data/NexusDataTable.vue'
 import RowActions from '@/components/nexus/data/RowActions.vue'
 import EmptyState from '@/components/nexus/primitives/EmptyState.vue'
 import StatusBadge from '@/components/nexus/primitives/StatusBadge.vue'
 import type { PaidSubscriptionsPage } from '../composables/pages/usePaidSubscriptionsPage'
+
+const orderLabel = (status: string) => ['invoice_creating', 'recoverable', 'manual_review'].includes(status) ? i18n.global.t(`paidSub.orderStates.${status}`) : status
 
 const props = defineProps<{ page: PaidSubscriptionsPage }>()
 const { enabled, formatMoney, handleOrderAction, loading, nexus, openRefund, orderActions, orderColumns, orderHeaders, orderStatusColor, orderStatusTone, orders, ordersLoading, outboundOptions, saveSettings, settings, transportModes } = props.page
