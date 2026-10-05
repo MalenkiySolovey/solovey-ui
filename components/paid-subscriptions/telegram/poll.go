@@ -81,12 +81,15 @@ func pollCryptoBot(ctx context.Context, runtime *service.Runtime, ps *paymentCoo
 	if len(pending) == 0 {
 		return
 	}
+	if len(pending) > 100 {
+		pending = pending[:100]
+	}
 	results, err := poller.Poll(ctx, pending)
 	if err != nil {
 		logger.Warning("paidsub: cryptobot poll: ", err)
 		return
 	}
-	for _, r := range results {
+	for _, r := range results.Paid {
 		applied, tgID, err := ps.ApplyPaidOrder(r.OrderID, r.ProviderChargeID, r.RawPayload)
 		if err != nil {
 			logger.Warning("paidsub: apply polled order: ", err)
@@ -95,6 +98,9 @@ func pollCryptoBot(ctx context.Context, runtime *service.Runtime, ps *paymentCoo
 		if applied && tgID > 0 {
 			notifyPaid(ctx, runtime, tgID)
 		}
+	}
+	if err := paidstore.ReviewProviderOrders(dbsqlite.DB(), results.ReviewOrderIDs); err != nil {
+		logger.Warning("paidsub: review polled orders: ", err)
 	}
 }
 

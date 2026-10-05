@@ -49,7 +49,7 @@ func TestProviderNetworkIterationsRetainOriginalDatabaseAdmission(t *testing.T) 
 				}
 				body := `{"ok":true,"result":[{"update_id":4}]}`
 				if kind == "payment_poll" {
-					body = `{"ok":true,"result":{"items":[{"invoice_id":41,"status":"paid","amount":"1.00","fiat":"RUB"}]}}`
+					body = `{"ok":true,"result":{"items":[{"invoice_id":41,"status":"paid","amount":"1.00","fiat":"RUB","currency_type":"fiat","payload":"network-poll-fixture"}]}}`
 				}
 				return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body)), Request: r}, nil
 			})

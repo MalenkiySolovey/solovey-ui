@@ -55,6 +55,12 @@ type PollResult struct {
 	RawPayload       []byte
 }
 
+type PollOutcome struct {
+	Paid             []PollResult
+	TerminalOrderIDs []uint
+	ReviewOrderIDs   []uint
+}
+
 // PaymentProvider prepares invoices and declares how it confirms.
 type PaymentProvider interface {
 	Kind() ProviderKind
@@ -64,7 +70,7 @@ type PaymentProvider interface {
 
 // PollingProvider is implemented by providers confirmed via polling.
 type PollingProvider interface {
-	Poll(ctx context.Context, pending []paid.PaymentOrder) ([]PollResult, error)
+	Poll(ctx context.Context, pending []paid.PaymentOrder) (PollOutcome, error)
 }
 
 func ProviderTitle(kind ProviderKind, language string) string {
@@ -114,11 +120,11 @@ func (p *telegramProvider) CreateInvoice(ctx context.Context, order *paid.Paymen
 	if p.kind == ProviderStars {
 		inv.Currency = "XTR"
 		inv.ProviderToken = ""
-		inv.Prices = []LabeledPrice{{Label: tariff.Name, Amount: tariff.StarsAmount}}
+		inv.Prices = []LabeledPrice{{Label: tariff.Name, Amount: order.Amount}}
 	} else {
 		inv.Currency = order.Currency
 		inv.ProviderToken = p.token
-		inv.Prices = []LabeledPrice{{Label: tariff.Name, Amount: tariff.Price}}
+		inv.Prices = []LabeledPrice{{Label: tariff.Name, Amount: order.Amount}}
 	}
 	return inv, nil
 }
