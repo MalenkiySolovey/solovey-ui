@@ -24,7 +24,7 @@ func TestRenderExternalURLReplacesSafeServerSidePlaceholders(t *testing.T) {
 
 func TestTelegramProviderInvoiceShape(t *testing.T) {
 	provider := NewTelegramProvider(ProviderStars, "")
-	invoice, err := provider.CreateInvoice(context.Background(), &paid.PaymentOrder{IdempotencyKey: "payload"}, &paid.Tariff{Name: "Month", StarsAmount: 50}, &model.Client{})
+	invoice, err := provider.CreateInvoice(context.Background(), &paid.PaymentOrder{IdempotencyKey: "payload", Amount: 50}, &paid.Tariff{Name: "Month", StarsAmount: 999}, &model.Client{})
 	if err != nil {
 		t.Fatal(err)
 	}

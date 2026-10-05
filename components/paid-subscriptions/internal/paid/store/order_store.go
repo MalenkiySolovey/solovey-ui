@@ -120,6 +120,15 @@ func MarkOrderFailed(db *gorm.DB, id uint) error {
 	return nil
 }
 
+func ReviewProviderOrders(db *gorm.DB, ids []uint) error {
+	if len(ids) == 0 {
+		return nil
+	}
+	return db.Model(&paid.PaymentOrder{}).Where("id IN ? AND status IN ?", ids,
+		[]string{paid.StatusPending, paid.StatusInvoiceCreating, paid.StatusRecoverable}).
+		Updates(map[string]any{"status": paid.StatusManualReview, "review_reason": "provider_metadata_or_identity_conflict"}).Error
+}
+
 func ExpireStaleOrders(db *gorm.DB, now int64) error {
 	return db.Model(&paid.PaymentOrder{}).
 		Where("status = ? AND provider <> ? AND expires_at > 0 AND expires_at < ?",

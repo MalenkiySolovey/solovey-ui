@@ -137,3 +137,11 @@ schema/cryptobot_order tests). Solovey retains its component-owned immutable
 grant snapshot, schema, injected database lifetime and provider transport;
 durable constraints arbitrate creation and application. No upstream code or
 tests were copied; full parity remains v1.5.10.
+
+PAID-07/PAID-08/PAID-09 independently adapt exact provider payment metadata,
+invoice identity and bounded failure handling from that frozen target
+(`paidsub/provider_cryptobot.go`, `payment_authenticity_test.go`,
+`provider_cryptobot_reconcile_test.go`; witness `590b08af39537ab4c85441513743c2360bbc187d`).
+The existing Solovey provider adapter retains injected transport and consumes
+immutable purchase facts; normalized outcomes stay inside paid-subscriptions.
+No upstream implementation or tests were copied; full parity remains v1.5.10.
