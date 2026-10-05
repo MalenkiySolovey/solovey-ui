@@ -3,11 +3,12 @@
 package importxui
 
 type Report struct {
-	Summary         Summary          `json:"summary"`
-	Warnings        []string         `json:"warnings"`
-	ByInbound       []InboundStat    `json:"by_inbound"`
-	BackupPath      string           `json:"backup_path,omitempty"`
-	GeneratedAdmins []GeneratedAdmin `json:"generated_admins,omitempty"`
+	Unsupported     []UnsupportedObject `json:"unsupported,omitempty"`
+	Summary         Summary             `json:"summary"`
+	Warnings        []string            `json:"warnings"`
+	ByInbound       []InboundStat       `json:"by_inbound"`
+	BackupPath      string              `json:"backup_path,omitempty"`
+	GeneratedAdmins []GeneratedAdmin    `json:"generated_admins,omitempty"`
 }
 
 type Summary struct {

@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"gorm.io/gorm"
 )
@@ -21,7 +22,7 @@ var ErrPlanInvalid = errors.New("plan_invalid")
 // set of rows are rebuilt from the uploaded database and current destination;
 // the caller may only choose a valid action and, for explicitly renameable
 // entity kinds, a valid destination identity.
-func validateSubmittedPlan(ctx context.Context, db *gorm.DB, srcPath string, submitted MigrationPlan) (MigrationPlan, error) {
+func validateSubmittedPlan(ctx context.Context, db *gorm.DB, srcPath string, submitted MigrationPlan, injected ...*entitycapabilities.Snapshot) (MigrationPlan, error) {
 	if db == nil || strings.TrimSpace(submitted.Source.Hash) == "" {
 		return MigrationPlan{}, ErrPlanInvalid
 	}
@@ -33,14 +34,19 @@ func validateSubmittedPlan(ctx context.Context, db *gorm.DB, srcPath string, sub
 	if err := adminMode.Validate(); err != nil {
 		return MigrationPlan{}, fmt.Errorf("%w: %v", ErrPlanInvalid, err)
 	}
+	var target *entitycapabilities.Snapshot
+	if len(injected) > 0 {
+		target = injected[0]
+	}
 	canonical, err := Plan(srcPath, PlanOptions{
-		Context:         ctx,
-		Strategy:        strategy,
-		IncludeSettings: submitted.Defaults.IncludeSettings,
-		AdminMode:       adminMode,
-		OnlyNew:         submitted.Defaults.OnlyNew,
-		IncludeHistory:  submitted.Defaults.IncludeHistory,
-		IncludeRouting:  submitted.Defaults.IncludeRouting,
+		TargetCapabilities: target,
+		Context:            ctx,
+		Strategy:           strategy,
+		IncludeSettings:    submitted.Defaults.IncludeSettings,
+		AdminMode:          adminMode,
+		OnlyNew:            submitted.Defaults.OnlyNew,
+		IncludeHistory:     submitted.Defaults.IncludeHistory,
+		IncludeRouting:     submitted.Defaults.IncludeRouting,
 	})
 	if err != nil {
 		return MigrationPlan{}, err

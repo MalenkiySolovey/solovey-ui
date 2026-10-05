@@ -8,7 +8,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-
 	"gorm.io/gorm"
 )
 
@@ -16,6 +15,15 @@ func (s *planningState) planInboundsEndpoints(ctx context.Context, tx *gorm.DB, 
 	return src.EachInbound(func(row source.InboundRow) error {
 		if err := checkContext(ctx); err != nil {
 			return err
+		}
+		_, fact, reason := sourceInboundCapability(s.capabilities, row.Protocol)
+		if reason != "" {
+			kind := KindInbound
+			if row.Protocol == "wireguard" {
+				kind = KindEndpoint
+			}
+			plan.Items = append(plan.Items, unsupportedCapabilityItem(kind, row.ID, row.Tag, row.Protocol, reason, fact))
+			return nil
 		}
 		if row.Protocol == "wireguard" {
 			endpoint, warnings, err := mapping.MapWireguardEndpoint(row)
@@ -54,7 +62,9 @@ func (s *planningState) planInboundsEndpoints(ctx context.Context, tx *gorm.DB, 
 			return err
 		}
 		if mapped.Inbound.Type == "" {
-			plan.Items = append(plan.Items, warningOnlyItem(KindInbound, row.ID, row.Tag, row.Tag, mapped.Warnings))
+			item := unsupportedCapabilityItem(KindInbound, row.ID, row.Tag, row.Protocol, "IMPORT_MAPPING_UNSUPPORTED", fact)
+			item.Warnings = append(item.Warnings, mapped.Warnings...)
+			plan.Items = append(plan.Items, item)
 			return nil
 		}
 		preview, err := mapped.Inbound.MarshalFull()

@@ -12,10 +12,15 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
-var SupportedInboundTypes = []string{"socks", "http", "mixed", "shadowsocks", "naive", "hysteria", "hysteria2", "anytls", "tuic", "vless", "trojan", "vmess"}
+// SupportedInboundTypes is the portable URI schema, independent of this
+// server's build. Delivery selection uses EligibleInboundTypes instead.
+var SupportedInboundTypes = clientfacts.URITypes(false)
+
+func EligibleInboundTypes() []string { return clientfacts.URITypes(true) }
 
 type LinkParam struct {
 	Key   string

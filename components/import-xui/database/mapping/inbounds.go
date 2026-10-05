@@ -141,7 +141,9 @@ func MapInbound(row source.InboundRow, tlsID uint, reality *RealitySpec, server 
 	}, nil
 }
 
-func inboundType(protocol string) string {
+// InboundType exposes this adapter's existing source-to-target mapping. Build
+// eligibility remains with the runtime capability owner.
+func InboundType(protocol string) string {
 	switch strings.ToLower(strings.TrimSpace(protocol)) {
 	case "vless":
 		return "vless"
@@ -159,6 +161,8 @@ func inboundType(protocol string) string {
 		return ""
 	}
 }
+
+func inboundType(protocol string) string { return InboundType(protocol) }
 
 func listenAddress(value string) string {
 	value = strings.TrimSpace(value)

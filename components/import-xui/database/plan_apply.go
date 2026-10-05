@@ -6,17 +6,16 @@ import (
 	"context"
 	"fmt"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 	"github.com/MalenkiySolovey/solovey-ui/service"
-
 	"gorm.io/gorm"
 )
 
@@ -34,11 +33,12 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 	if db == nil {
 		return report, fmt.Errorf("xui-import: destination database is not initialized")
 	}
-	validatedPlan, err := validateSubmittedPlan(opts.Context, db, srcPath, plan)
+	validatedPlan, err := validateSubmittedPlan(opts.Context, db, srcPath, plan, opts.TargetCapabilities)
 	if err != nil {
 		return report, fmt.Errorf("xui-import: %w", err)
 	}
 	plan = validatedPlan
+	report.Unsupported = unsupportedObjects(plan)
 	src, err := source.Open(srcPath)
 	if err != nil {
 		return report, fmt.Errorf("xui-import: %w", err)
@@ -74,6 +74,7 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 		}
 	}()
 	state := &applyState{
+		capabilities:     targetCapabilities(opts.TargetCapabilities),
 		report:           report,
 		plan:             normalizePlan(plan),
 		realityByKey:     map[string]*mapping.RealitySpec{},
@@ -95,7 +96,7 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 		if err != nil {
 			return report, fmt.Errorf("xui-import: build candidate configuration: %w", err)
 		}
-		if err := singboxvalidation.ValidateConfig(candidate); err != nil && !validationRequiresReleaseBuildTag(err) {
+		if err := singboxvalidation.ValidateConfig(candidate); err != nil {
 			return report, fmt.Errorf("xui-import: validate candidate configuration: %w", err)
 		}
 	}
@@ -112,10 +113,6 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 	return report, nil
 }
 
-func validationRequiresReleaseBuildTag(err error) bool {
-	return err != nil && strings.Contains(err.Error(), "is not included in this build")
-}
-
 func planTouchesRuntime(plan MigrationPlan) bool {
 	for _, item := range plan.Items {
 		if item.Action == ActionSkip {
@@ -130,6 +127,7 @@ func planTouchesRuntime(plan MigrationPlan) bool {
 }
 
 type applyState struct {
+	capabilities     entitycapabilities.Snapshot
 	report           *Report
 	plan             map[string]PlanItem
 	realityByKey     map[string]*mapping.RealitySpec
@@ -186,6 +184,10 @@ func (s *applyState) applyTLS(ctx context.Context, tx *gorm.DB, src *source.Data
 	return src.EachInbound(func(row source.InboundRow) error {
 		if err := checkContext(ctx); err != nil {
 			return err
+		}
+		_, _, reason := sourceInboundCapability(s.capabilities, row.Protocol)
+		if reason != "" {
+			return nil
 		}
 		spec, warnings, err := mapping.ExtractReality(row)
 		if err != nil {
@@ -333,6 +335,15 @@ func (s *applyState) applyInboundsEndpoints(ctx context.Context, tx *gorm.DB, sr
 		if err := checkContext(ctx); err != nil {
 			return err
 		}
+		_, _, reason := sourceInboundCapability(s.capabilities, row.Protocol)
+		if reason != "" {
+			if row.Protocol == "wireguard" {
+				s.report.Summary.Endpoints.Skipped++
+			} else {
+				s.report.Summary.Inbounds.Skipped++
+			}
+			return nil
+		}
 		if row.Protocol == "wireguard" {
 			endpoint, warnings, err := mapping.MapWireguardEndpoint(row)
 			if err != nil {
@@ -346,6 +357,9 @@ func (s *applyState) applyInboundsEndpoints(ctx context.Context, tx *gorm.DB, sr
 			}
 			if item.DstTag != "" {
 				endpoint.Tag = item.DstTag
+			}
+			if err := checkImportedCapability("endpoints", endpoint.Type); err != nil {
+				return err
 			}
 			imported, err := applyEndpointAction(tx, endpoint, item.Action, s.report)
 			if err != nil {
@@ -377,6 +391,9 @@ func (s *applyState) applyInboundsEndpoints(ctx context.Context, tx *gorm.DB, sr
 		}
 		if item.DstTag != "" {
 			mapped.Inbound.Tag = item.DstTag
+		}
+		if err := checkImportedCapability("inbounds", mapped.Inbound.Type); err != nil {
+			return err
 		}
 		dstID, imported, skipped, err := applyInboundAction(tx, &mapped.Inbound, item.Action, s.report)
 		if err != nil {

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 )
 
@@ -44,7 +45,7 @@ func BuildInboundOutbounds(clientConfig json.RawMessage, inbounds []*model.Inbou
 
 	set := &OutboundSet{}
 	for _, inbound := range inbounds {
-		if inbound == nil || len(inbound.OutJson) < 5 {
+		if inbound == nil || !clientfacts.CanDeliver(inbound.Type, "json") || len(inbound.OutJson) < 5 {
 			continue
 		}
 		outbound, err := inboundOutboundConfig(configs, inbound)
