@@ -31,21 +31,45 @@ func NewPendingOrder(client *model.Client, tariff *paid.Tariff, kind paidprovide
 
 // CreateInvoiceIntent arbitrates an active purchase durably, across coordinator
 // instances and restarts. The insert is the first write; its unique constraint
-// decides who may perform the non-idempotent remote create.
+// decides who may perform the non-idempotent remote create. Manual-review
+// holds are serialized too, including legacy collisions outside that index.
 func CreateInvoiceIntent(db *gorm.DB, order *paid.PaymentOrder) (*paid.PaymentOrder, bool, error) {
 	order.Status = paid.StatusInvoiceCreating
-	res := db.Clauses(clause.OnConflict{DoNothing: true}).Create(order)
-	if res.Error != nil {
-		return nil, false, res.Error
-	}
-	if res.RowsAffected == 1 {
-		return order, true, nil
-	}
-	var existing paid.PaymentOrder
-	err := db.Where("client_id = ? AND tariff_id = ? AND telegram_user_id = ? AND provider = ? AND status IN ?",
-		order.ClientId, order.TariffId, order.TelegramUserId, order.Provider,
-		[]string{paid.StatusInvoiceCreating, paid.StatusRecoverable, paid.StatusPending}).First(&existing).Error
-	return &existing, false, err
+	var resolved *paid.PaymentOrder
+	created := false
+	err := db.Transaction(func(tx *gorm.DB) error {
+		// This first write acquires SQLite's writer before inspecting the hold.
+		// Multiple quarantined legacy rows may exist, so they cannot all enter
+		// the active-purchase unique index. Do not turn this into an unprotected
+		// read followed by insert, or retain this transaction across network I/O.
+		hold := tx.Model(&paid.PaymentOrder{}).Where("client_id = ? AND tariff_id = ? AND telegram_user_id = ? AND provider = ? AND status = ?",
+			order.ClientId, order.TariffId, order.TelegramUserId, order.Provider, paid.StatusManualReview).Update("status", paid.StatusManualReview)
+		if hold.Error != nil {
+			return hold.Error
+		}
+		if hold.RowsAffected > 0 {
+			var err error
+			resolved, err = ActiveCryptoBotOrder(tx, order.ClientId, order.TariffId, order.TelegramUserId)
+			return err
+		}
+		res := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(order)
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 1 {
+			resolved, created = order, true
+			return nil
+		}
+		var existing paid.PaymentOrder
+		if err := tx.Where("client_id = ? AND tariff_id = ? AND telegram_user_id = ? AND provider = ? AND status IN ?",
+			order.ClientId, order.TariffId, order.TelegramUserId, order.Provider,
+			[]string{paid.StatusInvoiceCreating, paid.StatusRecoverable, paid.StatusPending}).First(&existing).Error; err != nil {
+			return err
+		}
+		resolved = &existing
+		return nil
+	})
+	return resolved, created, err
 }
 
 func ActiveCryptoBotOrder(db *gorm.DB, clientID, tariffID uint, tgID int64) (*paid.PaymentOrder, error) {
@@ -136,14 +160,6 @@ func ExpireStaleOrders(db *gorm.DB, now int64) error {
 		Update("status", paid.StatusExpired).Error
 }
 
-func ExpireStalePolledOrders(db *gorm.DB, now int64, graceSeconds int64) error {
-	cutoff := now - graceSeconds
-	return db.Model(&paid.PaymentOrder{}).
-		Where("status = ? AND provider = ? AND created_at > 0 AND created_at < ?",
-			paid.StatusPending, string(paidprovider.ProviderCryptoBot), cutoff).
-		Update("status", paid.StatusExpired).Error
-}
-
 func OrdersForTelegramUser(db *gorm.DB, tgUserID int64, limit int) ([]paid.PaymentOrder, error) {
 	if tgUserID <= 0 {
 		return nil, nil
@@ -166,7 +182,7 @@ func RefundableOrdersForTelegramUser(db *gorm.DB, tgUserID int64, limit int) ([]
 		limit = 20
 	}
 	var orders []paid.PaymentOrder
-	if err := db.Where("telegram_user_id = ? AND status = ?", tgUserID, paid.StatusPaid).
+	if err := db.Where("telegram_user_id = ? AND status IN ?", tgUserID, []string{paid.StatusPaid, paid.StatusRefundPending}).
 		Order("id desc").Limit(limit).Find(&orders).Error; err != nil {
 		return nil, err
 	}

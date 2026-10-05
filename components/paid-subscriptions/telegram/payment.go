@@ -30,8 +30,9 @@ var errRefundNotApplicable = errors.New("order is not refundable")
 // failure — and must not be reported to the admin/user as "refund failed".
 func isAlreadyRefunded(err error) bool {
 	var apiErr *integrationtelegram.APIError
-	if errors.As(err, &apiErr) {
-		return strings.Contains(strings.ToUpper(apiErr.Description), "ALREADY_REFUNDED")
+	if errors.As(err, &apiErr) && apiErr.Code == 400 {
+		reason := strings.TrimPrefix(strings.ToUpper(strings.TrimSpace(apiErr.Description)), "BAD REQUEST: ")
+		return reason == "CHARGE_ALREADY_REFUNDED" || reason == "STAR_PAYMENT_ALREADY_REFUNDED"
 	}
 	return false
 }
@@ -254,6 +255,14 @@ func (p *paymentCoordinator) ApplyPaidOrder(orderID uint, chargeID string, raw [
 	if err != nil {
 		return false, 0, err
 	}
+	p.afterPaidCommit(result, orderID)
+	return result.Applied, result.TelegramUserID, nil
+}
+
+func (p *paymentCoordinator) afterPaidCommit(result paidstore.AppliedOrderResult, orderID uint) {
+	if !result.Applied {
+		return
+	}
 
 	// Post-commit: re-add the (re-enabled) user to its inbounds in the running
 	// core. A restart failure does not roll back the paid renewal (logged).
@@ -269,24 +278,14 @@ func (p *paymentCoordinator) ApplyPaidOrder(orderID uint, chargeID string, raw [
 		Severity: service.AuditSeverityInfo,
 		Details:  map[string]any{"orderId": orderID},
 	})
-	return result.Applied, result.TelegramUserID, nil
 }
 
 // ExpireStaleOrders marks pending non-polled orders past their TTL as expired.
 // Polled providers (CryptoBot) are deliberately EXCLUDED: their confirmation is
 // out-of-band, so a payment can land after the short local TTL and must remain
-// pending to be caught by the next poll. They are reaped instead by
-// ExpireStalePolledOrders on a long grace window.
+// pending until an authenticated provider outcome is available.
 func (p *paymentCoordinator) ExpireStaleOrders() error {
 	return paidstore.ExpireStaleOrders(dbsqlite.DB(), nowUnix())
-}
-
-// ExpireStalePolledOrders reaps pending polled-provider (CryptoBot) orders whose
-// creation is older than graceSeconds — a hard ceiling far beyond the local
-// order TTL so a late out-of-band payment is still caught by polling, while
-// genuinely abandoned invoices do not accumulate forever.
-func (p *paymentCoordinator) ExpireStalePolledOrders(graceSeconds int64) error {
-	return paidstore.ExpireStalePolledOrders(dbsqlite.DB(), nowUnix(), graceSeconds)
 }
 
 // ---- order history & refunds ----
@@ -314,6 +313,11 @@ func (p *paymentCoordinator) finalizeRefund(orderID uint, revoke bool) error {
 	if err != nil {
 		return err
 	}
+	p.afterRefundCommit(inboundIds, orderID, revoke)
+	return nil
+}
+
+func (p *paymentCoordinator) afterRefundCommit(inboundIds []uint, orderID uint, revoke bool) {
 	if len(inboundIds) > 0 {
 		if rErr := (&service.InboundService{Runtime: p.runtime}).RestartInbounds(dbsqlite.DB(), inboundIds); rErr != nil {
 			logger.Warning("paidsub: restart inbounds after refund failed: ", rErr)
@@ -326,7 +330,6 @@ func (p *paymentCoordinator) finalizeRefund(orderID uint, revoke bool) error {
 		Severity: service.AuditSeverityInfo,
 		Details:  map[string]any{"orderId": orderID, "revoke": revoke},
 	})
-	return nil
 }
 
 // RefundOrder is the admin-initiated refund (panel Orders tab). For Stars it
@@ -341,11 +344,13 @@ func (p *paymentCoordinator) refundOrder(ctx context.Context, orderID uint, revo
 		return "", err
 	}
 	defer release()
+	ctx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
 	order, err := p.getOrder(orderID)
 	if err != nil {
 		return "", err
 	}
-	if order.Status != paidcore.StatusPaid {
+	if order.Status != paidcore.StatusPaid && order.Status != paidcore.StatusRefundPending {
 		return "", errRefundNotApplicable
 	}
 	// Defensive: a paid order always has Amount > 0 (CreateOrder rejects zero),
@@ -360,24 +365,45 @@ func (p *paymentCoordinator) refundOrder(ctx context.Context, orderID uint, revo
 		if !strings.HasPrefix(order.ProviderChargeID, "tg:") || strings.TrimPrefix(order.ProviderChargeID, "tg:") == "" {
 			return "", errRefundNotApplicable
 		}
+		token, err := common.SecureRandom(32)
+		if err != nil {
+			return "", err
+		}
+		refundDB := dbsqlite.DB()
+		claimed, err := paidstore.ClaimStarsRefund(refundDB, orderID, revoke, token, nowUnix())
+		if err != nil {
+			return "", err
+		}
+		defer func() {
+			if err := paidstore.ReleaseRefundClaim(refundDB, orderID, token); err != nil {
+				// Keep the durable lease and intent recoverable; do not expose
+				// private claim/provider details or undo a committed refund.
+				logger.Warning("paidsub: refund claim release deferred to lease expiry, order ", orderID)
+			}
+		}()
 		sender, err := newSenderBot(p.runtime)
 		if err != nil {
 			return "", err
 		}
 		defer sender.closeIdleConnections()
-		charge := strings.TrimPrefix(order.ProviderChargeID, "tg:")
+		charge := strings.TrimPrefix(claimed.ProviderChargeID, "tg:")
 		if charge == "" {
 			return "", fmt.Errorf("order has no Stars charge id")
 		}
 		// An "already refunded" response means a concurrent refund (e.g. the bot
 		// path) returned the money first — treat it as success, not a failure.
-		if err := sender.refundStarPayment(ctx, order.TelegramUserId, charge); err != nil && !isAlreadyRefunded(err) {
+		if err := sender.refundStarPayment(ctx, claimed.TelegramUserId, charge); err != nil && !isAlreadyRefunded(err) {
 			return "", fmt.Errorf("stars refund failed")
 		}
-		if err := p.finalizeRefund(orderID, revoke); err != nil && !errors.Is(err, errAlreadyApplied) {
+		inbounds, err := paidstore.FinalizeClaimedRefundGrant(refundDB, orderID, token, nowUnix(), "PaidSubBot")
+		if err != nil {
 			return "", err
 		}
+		p.afterRefundCommit(inbounds, orderID, claimed.RefundRevoke)
 		return "refunded", nil
+	}
+	if order.Status != paidcore.StatusPaid {
+		return "", errRefundNotApplicable
 	}
 	if err := p.finalizeRefund(orderID, revoke); err != nil && !errors.Is(err, errAlreadyApplied) {
 		return "", err

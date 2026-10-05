@@ -127,6 +127,7 @@ export default {
       "outbound": "Outbound (sing-box)"
     },
     "orderStates": {
+      "refund_pending": "Возврат ожидает завершения",
       "invoice_creating": "Создание счёта",
       "recoverable": "Ожидает сверки",
       "manual_review": "Требуется проверка",

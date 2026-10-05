@@ -14,7 +14,7 @@ func TestExistingSchemaUpgradePreservesFinancialEvidence(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	for _, column := range []string{"provider_ref", "review_reason", "legacy_resolved"} {
+	for _, column := range []string{"provider_ref", "review_reason", "legacy_resolved", "refund_revoke", "refund_claim", "refund_claim_until"} {
 		if err := db.Migrator().DropColumn(&paid.PaymentOrder{}, column); err != nil {
 			t.Fatal(err)
 		}
@@ -77,5 +77,81 @@ func TestLegacyDuplicateInvoiceReferencesRemainReviewEvidence(t *testing.T) {
 		if row.Status != paid.StatusManualReview || row.ReviewReason != "provider_identity_conflict" || row.ProviderRef != "" || string(row.ProviderPayload) != `{"ref":"41"}` {
 			t.Fatal("duplicate identity automatically resolved")
 		}
+	}
+}
+
+func TestSchemaThreeUpgradeQuarantinesRevivedPurchaseCollision(t *testing.T) {
+	db := newPaidDB(t)
+	for index, state := range []string{paid.StatusPending, paid.StatusExpired} {
+		order := paid.PaymentOrder{ClientId: 1, TariffId: 1, Provider: "cryptobot", Amount: 100, Currency: "RUB", Status: state, IdempotencyKey: fmt.Sprint("old-active-", index), GrantSnapshot: true, ProviderRef: fmt.Sprint(41 + index)}
+		if err := db.Create(&order).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for range 2 {
+		if err := paid.EnsureSchema(db); err != nil {
+			t.Fatal("upgrade violated existing active index", err)
+		}
+	}
+	var rows []paid.PaymentOrder
+	if err := db.Find(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, row := range rows {
+		if row.Status != paid.StatusManualReview || !row.GrantSnapshot || row.ReviewReason != "active_purchase_conflict" {
+			t.Fatal("historical potentially paid purchase lost", row)
+		}
+	}
+}
+
+func TestSchemaFourFailureRollsBackDDLIndexesAndFinancialEvidence(t *testing.T) {
+	db := newPaidDB(t)
+	order := paid.PaymentOrder{ClientId: 1, TariffId: 1, Provider: "cryptobot", Amount: 100, Currency: "RUB", Status: paid.StatusExpired, IdempotencyKey: "migration-rollback", ProviderRef: "41", ProviderPayload: []byte(`{"ref":"41"}`), GrantSnapshot: true}
+	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, table := range []string{"paidsub_provider_cursors", "paidsub_invoice_cancellations"} {
+		if err := db.Exec("DROP TABLE " + table).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	for _, column := range []string{"refund_revoke", "refund_claim", "refund_claim_until"} {
+		if err := db.Exec("ALTER TABLE payment_orders DROP COLUMN " + column).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Exec(`CREATE TRIGGER reject_migration BEFORE UPDATE ON payment_orders BEGIN SELECT RAISE(ABORT,'migration rollback fixture'); END`).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := paid.EnsureSchema(db); err == nil {
+		t.Fatal("migration failure accepted")
+	}
+	for _, table := range []string{"paidsub_provider_cursors", "paidsub_invoice_cancellations"} {
+		if db.Migrator().HasTable(table) {
+			t.Fatal("partial migration table committed", table)
+		}
+	}
+	for _, column := range []string{"refund_revoke", "refund_claim", "refund_claim_until"} {
+		if db.Migrator().HasColumn(&paid.PaymentOrder{}, column) {
+			t.Fatal("partial migration column committed", column)
+		}
+	}
+	var indexes int64
+	if err := db.Raw("SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name IN ('idx_payment_orders_ref','idx_payment_orders_active_purchase')").Scan(&indexes).Error; err != nil || indexes != 2 {
+		t.Fatal("original indexes not restored", indexes, err)
+	}
+	got, err := GetOrder(db, order.Id)
+	if err != nil || got.Status != paid.StatusExpired || got.ProviderRef != "41" || got.ReviewReason != "" || string(got.ProviderPayload) != `{"ref":"41"}` {
+		t.Fatal("partial historical classification committed", got, err)
+	}
+	if err := db.Exec("DROP TRIGGER reject_migration").Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := paid.EnsureSchema(db); err != nil {
+		t.Fatal("safe retry failed", err)
+	}
+	got, err = GetOrder(db, order.Id)
+	if err != nil || got.Status != paid.StatusRecoverable || !db.Migrator().HasTable("paidsub_provider_cursors") || !db.Migrator().HasColumn(&paid.PaymentOrder{}, "refund_claim") {
+		t.Fatal("migration retry incomplete", got, err)
 	}
 }

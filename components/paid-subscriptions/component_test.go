@@ -21,7 +21,7 @@ import (
 )
 
 func TestManifestDurableSettingsMatchRuntimeOwnership(t *testing.T) {
-	wantTables := []string{"paidsub_bindings", "payment_orders", "tariffs"}
+	wantTables := []string{"paidsub_bindings", "paidsub_invoice_cancellations", "paidsub_provider_cursors", "payment_orders", "tariffs"}
 	if !slices.Equal(componentManifest.Database.Tables, wantTables) {
 		t.Fatalf("manifest tables = %v, runtime ownership = %v", componentManifest.Database.Tables, wantTables)
 	}
@@ -134,7 +134,7 @@ func TestPaidDropDataRemovesOwnedTablesAndSettings(t *testing.T) {
 	if err := c.DropData(context.Background(), lifecycle.Context{}); err != nil {
 		t.Fatal(err)
 	}
-	for _, table := range []string{"paidsub_bindings", "tariffs", "payment_orders"} {
+	for _, table := range componentManifest.Database.Tables {
 		if dbsqlite.DB().Migrator().HasTable(table) {
 			t.Fatalf("paid DropData left table %s", table)
 		}

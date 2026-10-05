@@ -17,6 +17,10 @@ func EnsureSchema(db *gorm.DB) error {
 
 func ensureSchema(db *gorm.DB) error {
 	stmts := []string{
+		`CREATE TABLE IF NOT EXISTS paidsub_provider_cursors (kind TEXT PRIMARY KEY, after_id INTEGER NOT NULL DEFAULT 0)`,
+		`CREATE TABLE IF NOT EXISTS paidsub_invoice_cancellations (id INTEGER PRIMARY KEY AUTOINCREMENT, order_id INTEGER NOT NULL, ref TEXT NOT NULL, completed INTEGER NOT NULL DEFAULT 0)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_paidsub_cancel_ref ON paidsub_invoice_cancellations(ref)`,
+		`CREATE INDEX IF NOT EXISTS idx_paidsub_cancel_pending ON paidsub_invoice_cancellations(completed, id)`,
 		`CREATE TABLE IF NOT EXISTS paidsub_bindings (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			client_id INTEGER NOT NULL,
@@ -84,11 +88,22 @@ func ensureSchema(db *gorm.DB) error {
 		{"provider_ref", `ALTER TABLE payment_orders ADD COLUMN provider_ref TEXT NOT NULL DEFAULT ''`},
 		{"review_reason", `ALTER TABLE payment_orders ADD COLUMN review_reason TEXT NOT NULL DEFAULT ''`},
 		{"legacy_resolved", `ALTER TABLE payment_orders ADD COLUMN legacy_resolved INTEGER NOT NULL DEFAULT 0`},
+		{"refund_revoke", `ALTER TABLE payment_orders ADD COLUMN refund_revoke INTEGER NOT NULL DEFAULT 0`},
+		{"refund_claim", `ALTER TABLE payment_orders ADD COLUMN refund_claim TEXT NOT NULL DEFAULT ''`},
+		{"refund_claim_until", `ALTER TABLE payment_orders ADD COLUMN refund_claim_until INTEGER NOT NULL DEFAULT 0`},
 	} {
 		if mig.HasColumn(&PaymentOrder{}, c.column) {
 			continue
 		}
 		if err := db.Exec(c.ddl).Error; err != nil {
+			return err
+		}
+	}
+	// Reclassification may reveal old purchase/ref collisions. Drop only these
+	// owned indexes within the migration transaction, quarantine, then recreate;
+	// other writers never observe an unconstrained committed database.
+	for _, ddl := range []string{"DROP INDEX IF EXISTS idx_payment_orders_active_purchase", "DROP INDEX IF EXISTS idx_payment_orders_ref"} {
+		if err := db.Exec(ddl).Error; err != nil {
 			return err
 		}
 	}
@@ -109,6 +124,12 @@ func ensureSchema(db *gorm.DB) error {
 // GrantSnapshot is the existing purchase proof. Migration never invents one
 // from today's tariff, and never deletes the original financial evidence.
 func migrateOrders(db *gorm.DB) error {
+	// Older local TTL/failure transitions did not prove external nonpayment.
+	// Only explicit terminal-provider evidence may keep these orders terminal.
+	if err := db.Model(&PaymentOrder{}).Where("provider = 'cryptobot' AND legacy_resolved = 0 AND review_reason = '' AND status IN ?", []string{StatusExpired, StatusFailed}).
+		Updates(map[string]any{"status": StatusRecoverable, "review_reason": "historical_provider_outcome_uncertain"}).Error; err != nil {
+		return err
+	}
 	if err := db.Model(&PaymentOrder{}).Where("grant_snapshot = 0 AND legacy_resolved = 0 AND status = ?", StatusPaid).
 		Updates(map[string]any{"status": StatusManualReview, "review_reason": "legacy_snapshot_missing"}).Error; err != nil {
 		return err
@@ -171,6 +192,8 @@ func DropSchema(db *gorm.DB) error {
 		return nil
 	}
 	for _, table := range []string{
+		"paidsub_invoice_cancellations",
+		"paidsub_provider_cursors",
 		"payment_orders",
 		"tariffs",
 		"paidsub_bindings",

@@ -124,6 +124,9 @@ func (p *cryptoBotProvider) Poll(ctx context.Context, pending []paid.PaymentOrde
 			return PollOutcome{}, errors.New("cryptobot: invalid response identity")
 		}
 		byInvoice[ref] = append(byInvoice[ref], item)
+		if len(byRef[ref]) == 0 && len(byInvoice[ref]) > 1 {
+			return PollOutcome{}, errors.New("cryptobot: repeated response identity")
+		}
 	}
 	for _, ref := range ids {
 		orders, found := byRef[ref], byInvoice[ref]
@@ -270,12 +273,13 @@ func (p *cryptoBotProvider) call(ctx context.Context, method, path string, body 
 	var env struct {
 		OK     bool            `json:"ok"`
 		Result json.RawMessage `json:"result"`
+		Error  json.RawMessage `json:"error"`
 	}
 	if json.Unmarshal(data, &env) != nil {
 		return errors.New("cryptobot: malformed response")
 	}
 	if !env.OK {
-		return errors.New("cryptobot: API rejected request")
+		return cryptoAPIError(env.Error)
 	}
 	if len(env.Result) == 0 || bytes.Equal(bytes.TrimSpace(env.Result), []byte("null")) {
 		return errors.New("cryptobot: result is missing")

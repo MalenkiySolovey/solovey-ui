@@ -4,7 +4,6 @@ package telegram
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"strings"
 
@@ -138,7 +137,7 @@ func (b *Bot) cmdRefundMenu(ctx context.Context, chatID int64, tgID int64, l lan
 }
 
 // handleRefundRequest processes a refund button. Stars are refunded
-// programmatically (claim-and-rollback FIRST, then return the money); every
+// programmatically through the shared payment coordinator; every
 // other provider cannot be refunded via the Bot API, so it sends the admin a
 // request. It never acts on another user's order.
 func (b *Bot) handleRefundRequest(ctx context.Context, chatID int64, tgID int64, orderID uint, l lang) {
@@ -150,7 +149,7 @@ func (b *Bot) handleRefundRequest(ctx context.Context, chatID int64, tgID int64,
 		auditCrossUserOrderAccess(b.runtime, tgID, orderID, "refund")
 		return
 	}
-	if order.Status != paidcore.StatusPaid {
+	if order.Status != paidcore.StatusPaid && order.Status != paidcore.StatusRefundPending {
 		_ = b.sendMessage(ctx, chatID, tr(l, "refund_not_eligible"), b.backToPaymentKeyboard(l))
 		return
 	}
@@ -175,26 +174,13 @@ func (b *Bot) handleRefundRequest(ctx context.Context, chatID int64, tgID int64,
 		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
 		return
 	}
-	charge := strings.TrimPrefix(order.ProviderChargeID, "tg:")
-	// Return the MONEY FIRST, then finalize state (mirrors the admin RefundOrder
-	// path). This way a transient Telegram failure leaves the order paid and
-	// retryable, instead of revoking the grant + marking refunded while the money
-	// was never returned. An "already refunded" response means a concurrent
-	// refund (e.g. the admin panel) returned it first — treat as success.
-	if rerr := b.refundStarPayment(ctx, order.TelegramUserId, charge); rerr != nil && !isAlreadyRefunded(rerr) {
+	if _, rerr := b.payments.refundOrder(ctx, order.Id, revoke); rerr != nil {
 		logger.Warning("paidsub: refundStarPayment failed; manual refund needed")
 		service.NotifyPanelEvent("paidsub_refund_failed", map[string]string{
 			"orderId":  fmt.Sprintf("%d", order.Id),
 			"clientId": fmt.Sprintf("%d", order.ClientId),
 		})
 		_ = b.sendMessage(ctx, chatID, tr(l, "refund_requested"), b.backToPaymentKeyboard(l))
-		return
-	}
-	// Money returned (or already refunded): finalize the order + optional
-	// rollback. A double refund is a safe no-op (errAlreadyApplied).
-	if err := b.payments.finalizeRefund(order.Id, revoke); err != nil && !errors.Is(err, errAlreadyApplied) {
-		logger.Warning("paidsub: finalize refund failed after money returned: ", err)
-		_ = b.sendMessage(ctx, chatID, tr(l, "error"), nil)
 		return
 	}
 	service.NotifyPanelEvent("paidsub_refunded", map[string]string{

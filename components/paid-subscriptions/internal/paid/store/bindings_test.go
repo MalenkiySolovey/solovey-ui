@@ -23,6 +23,9 @@ func newPaidDB(t *testing.T) *gorm.DB {
 	if err := db.AutoMigrate(&model.Client{}, &model.Changes{}, &paid.Binding{}, &paid.Tariff{}, &paid.PaymentOrder{}); err != nil {
 		t.Fatal(err)
 	}
+	if err := paid.EnsureSchema(db); err != nil {
+		t.Fatal(err)
+	}
 	return db
 }
 

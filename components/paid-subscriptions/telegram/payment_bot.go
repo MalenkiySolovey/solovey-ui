@@ -190,10 +190,13 @@ func (b *Bot) handleSuccessfulPayment(ctx context.Context, m *tgMessage) {
 		return
 	}
 	charge := sp.TelegramPaymentChargeID
-	if charge == "" {
+	if charge == "" && order.Provider != string(paidprovider.ProviderStars) {
 		charge = sp.ProviderPaymentChargeID
 	}
 	if charge == "" {
+		if err := paidstore.ReviewProviderOrders(dbsqlite.DB(), []uint{order.Id}); err != nil {
+			logger.Warning("paidsub: review missing payment charge: ", err)
+		}
 		return
 	}
 	applied, _, err := b.payments.ApplyPaidOrder(order.Id, "tg:"+charge, nil)

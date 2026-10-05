@@ -79,6 +79,28 @@ func TestHandlePreCheckoutApprovesValidOrder(t *testing.T) {
 	}
 }
 
+func TestStarsCallbackCannotSubstituteNonTelegramRefundCharge(t *testing.T) {
+	db := openTestDB(t)
+	if err := ensureTestSchema(db); err != nil {
+		t.Fatal(err)
+	}
+	client := model.Client{Id: 1, Name: "charge-owner", Volume: 100}
+	if err := db.Create(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+	order := paid.PaymentOrder{ClientId: 1, TariffId: 1, Provider: "stars", Currency: "XTR", Amount: 10, Status: paid.StatusPending, IdempotencyKey: "missing-tg-charge", TelegramUserId: 7, GrantSnapshot: true, GrantTraffic: 100}
+	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+	b := newTestBot(&recordingTransport{})
+	b.handleSuccessfulPayment(context.Background(), &tgMessage{From: &tgUser{ID: 7}, Chat: tgChat{ID: 7}, SuccessfulPayment: &tgSuccessfulPayment{InvoicePayload: order.IdempotencyKey, Currency: "XTR", TotalAmount: 10, ProviderPaymentChargeID: "different-provider-charge"}})
+	db.First(&order, order.Id)
+	db.First(&client, 1)
+	if order.Status != paid.StatusManualReview || client.Volume != 100 || order.ProviderChargeID != "" {
+		t.Fatal("wrong provider charge granted/refundable")
+	}
+}
+
 // TestHandlePreCheckoutRejectsInvalid asserts the pre-checkout gate refuses any
 // query whose amount/currency does not match the trusted order, whose order is
 // no longer pending, or whose payload is unknown (T1).
