@@ -70,7 +70,9 @@ function escapeHtml(value) {
 fs.mkdirSync(outDir, { recursive: true });
 
 const junitFiles = walk(baselineDir)
-  .filter((file) => file.endsWith('.junit.xml') && !file.startsWith(`${outDir}${path.sep}`))
+  // Downloaded prior dashboards are derived outputs, not independent tests.
+  // Including them makes a previous failure recur forever after a rerun.
+  .filter((file) => file.endsWith('.junit.xml') && path.basename(file) !== 'aggregate.junit.xml' && !file.startsWith(`${outDir}${path.sep}`))
   .sort();
 
 const byGroup = new Map();
