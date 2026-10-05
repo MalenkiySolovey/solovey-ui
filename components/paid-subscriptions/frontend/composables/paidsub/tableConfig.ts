@@ -46,7 +46,7 @@ export const paidSubTariffActions = (): RowAction[] => [
 ]
 
 export const paidSubOrderActions = (item: any): RowAction[] => [
-  { key: 'refund', labelKey: 'paidSub.orders.refund', icon: 'lucide:rotate-ccw', inline: true, hidden: item.status !== 'paid' },
+  { key: 'refund', labelKey: 'paidSub.orders.refund', icon: 'lucide:rotate-ccw', inline: true, hidden: !['paid', 'refund_pending'].includes(item.status) },
 ]
 
 export const paidSubBindingHeaders = () => [
@@ -87,7 +87,7 @@ export const paidSubTransportModes = () => [
 ]
 
 export const paidSubOrderStatusTone = (status: string): 'info' | 'success' | 'warning' | 'error' =>
-  status === 'paid' ? 'success' : ['pending', 'invoice_creating', 'recoverable', 'manual_review'].includes(status) ? 'warning' : status === 'failed' ? 'error' : 'info'
+  status === 'paid' ? 'success' : ['pending', 'invoice_creating', 'recoverable', 'manual_review', 'refund_pending'].includes(status) ? 'warning' : status === 'failed' ? 'error' : 'info'
 
 export const paidSubOrderStatusColor = (status: string) =>
-  ({ paid: 'success', pending: 'warning', invoice_creating: 'warning', recoverable: 'warning', manual_review: 'warning', failed: 'error', expired: 'grey', canceled: 'grey', refunded: 'info' } as any)[status] || 'grey'
+  ({ paid: 'success', pending: 'warning', invoice_creating: 'warning', recoverable: 'warning', manual_review: 'warning', refund_pending: 'warning', failed: 'error', expired: 'grey', canceled: 'grey', refunded: 'info' } as any)[status] || 'grey'

@@ -32,6 +32,9 @@ type PaymentOrder struct {
 	ProviderRef      string `json:"-" gorm:"column:provider_ref;not null;default:''"`
 	ReviewReason     string `json:"reviewReason" gorm:"column:review_reason;not null;default:''"`
 	LegacyResolved   bool   `json:"-" gorm:"column:legacy_resolved;not null;default:false"`
+	RefundRevoke     bool   `json:"refundRevoke" gorm:"column:refund_revoke;not null;default:false"`
+	RefundClaim      string `json:"-" gorm:"column:refund_claim;not null;default:''"`
+	RefundClaimUntil int64  `json:"-" gorm:"column:refund_claim_until;not null;default:0"`
 	ExternalURL      string `json:"externalUrl" gorm:"column:external_url"`
 	CreatedAt        int64  `json:"createdAt" gorm:"column:created_at;index;not null;default:0"`
 	PaidAt           int64  `json:"paidAt" gorm:"column:paid_at;not null;default:0"`
@@ -44,6 +47,22 @@ type PaymentOrder struct {
 }
 
 func (PaymentOrder) TableName() string { return "payment_orders" }
+
+type ProviderCursor struct {
+	Kind    string `gorm:"primaryKey"`
+	AfterID uint   `gorm:"column:after_id;not null;default:0"`
+}
+
+func (ProviderCursor) TableName() string { return "paidsub_provider_cursors" }
+
+type InvoiceCancellation struct {
+	Id        uint   `gorm:"primaryKey;autoIncrement"`
+	OrderID   uint   `gorm:"column:order_id;not null"`
+	Ref       string `gorm:"not null;uniqueIndex"`
+	Completed bool   `gorm:"not null;default:false"`
+}
+
+func (InvoiceCancellation) TableName() string { return "paidsub_invoice_cancellations" }
 
 type Binding struct {
 	Id        uint  `json:"id" gorm:"primaryKey;autoIncrement"`
@@ -64,4 +83,5 @@ const (
 	StatusInvoiceCreating = "invoice_creating"
 	StatusRecoverable     = "recoverable"
 	StatusManualReview    = "manual_review"
+	StatusRefundPending   = "refund_pending"
 )

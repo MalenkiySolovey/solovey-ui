@@ -22,7 +22,7 @@
           <template #col.amount="{ item }">{{ formatMoney(item.amount, item.currency) }}</template>
           <template #col.status="{ item }">
             <status-badge :label="orderLabel(item.status)" :tone="orderStatusTone(item.status)" />
-            <div v-if="item.reviewReason" class="text-caption">{{ $t('paidSub.orderStates.reviewHint') }}</div>
+            <div v-if="item.reviewReason || item.cancellationPending" class="text-caption">{{ $t('paidSub.orderStates.reviewHint') }}</div>
           </template>
           <template #col.createdAt="{ item }">{{ item.createdAt ? new Date(item.createdAt * 1000).toLocaleString() : '' }}</template>
           <template #actions="{ item }">
@@ -48,11 +48,11 @@
           <template #item.amount="{ item }">{{ formatMoney(item.amount, item.currency) }}</template>
           <template #item.status="{ item }">
             <v-chip :color="orderStatusColor(item.status)" size="small" variant="flat">{{ orderLabel(item.status) }}</v-chip>
-            <div v-if="item.reviewReason" class="text-caption">{{ $t('paidSub.orderStates.reviewHint') }}</div>
+            <div v-if="item.reviewReason || item.cancellationPending" class="text-caption">{{ $t('paidSub.orderStates.reviewHint') }}</div>
           </template>
           <template #item.createdAt="{ item }">{{ item.createdAt ? new Date(item.createdAt * 1000).toLocaleString() : '' }}</template>
           <template #item.actions="{ item }">
-            <v-btn v-if="item.status === 'paid'" size="small" variant="text" color="warning" @click="openRefund(item)">{{ $t('paidSub.orders.refund') }}</v-btn>
+            <v-btn v-if="['paid', 'refund_pending'].includes(item.status)" size="small" variant="text" color="warning" @click="openRefund(item)">{{ $t('paidSub.orders.refund') }}</v-btn>
           </template>
         </v-data-table>
       </v-window-item>

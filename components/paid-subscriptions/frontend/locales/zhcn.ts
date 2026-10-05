@@ -1,6 +1,7 @@
 export default {
   "paidSub": {
     "orderStates": {
+      "refund_pending": "Refund pending",
       "invoice_creating": "Creating invoice",
       "recoverable": "Awaiting reconciliation",
       "manual_review": "Needs review",

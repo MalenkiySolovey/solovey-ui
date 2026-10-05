@@ -159,8 +159,8 @@ func TestRefundOrderStarsRequiresBotToken(t *testing.T) {
 	}
 	var o paid.PaymentOrder
 	db.Where("id = ?", order.Id).First(&o)
-	if o.Status != paid.StatusPaid {
-		t.Errorf("order must remain paid when Stars refund fails, got %s", o.Status)
+	if o.Status != paid.StatusRefundPending || o.RefundClaim != "" {
+		t.Errorf("uncertain refund must retain retryable intent and release claim, got %s", o.Status)
 	}
 }
 

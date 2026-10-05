@@ -86,27 +86,39 @@ func ApplyPaidOrderGrant(db *gorm.DB, orderID uint, chargeID string, raw []byte,
 }
 
 func FinalizeRefundGrant(db *gorm.DB, orderID uint, revoke bool, now int64, actor string) ([]uint, error) {
+	return finalizeRefundGrant(db, orderID, paid.StatusPaid, "", revoke, now, actor)
+}
+
+func FinalizeClaimedRefundGrant(db *gorm.DB, orderID uint, token string, now int64, actor string) ([]uint, error) {
+	if token == "" {
+		return nil, ErrRefundInProgress
+	}
+	return finalizeRefundGrant(db, orderID, paid.StatusRefundPending, token, false, now, actor)
+}
+
+func finalizeRefundGrant(db *gorm.DB, orderID uint, status, token string, revoke bool, now int64, actor string) ([]uint, error) {
 	var inboundIDs []uint
 	err := db.Transaction(func(tx *gorm.DB) error {
-		res := tx.Model(&paid.PaymentOrder{}).
-			Where("id = ? AND status = ?", orderID, paid.StatusPaid).
-			Update("status", paid.StatusRefunded)
+		query := tx.Model(&paid.PaymentOrder{}).Where("id = ? AND status = ?", orderID, status)
+		if token != "" {
+			query = query.Where("refund_claim = ?", token)
+		}
+		res := query.Updates(map[string]any{"status": paid.StatusRefunded, "refund_claim": "", "refund_claim_until": 0})
 		if res.Error != nil {
 			return res.Error
 		}
 		if res.RowsAffected != 1 {
 			return ErrOrderAlreadyFinalized
 		}
-		if !revoke {
-			var order paid.PaymentOrder
-			if err := tx.First(&order, orderID).Error; err != nil {
-				return err
-			}
-			_, err := grantForOrder(tx, order)
-			return err
-		}
 		var order paid.PaymentOrder
 		if err := tx.Where("id = ?", orderID).First(&order).Error; err != nil {
+			return err
+		}
+		if token != "" {
+			revoke = order.RefundRevoke
+		}
+		if !revoke {
+			_, err := grantForOrder(tx, order)
 			return err
 		}
 		grant, err := grantForOrder(tx, order)
@@ -121,7 +133,7 @@ func FinalizeRefundGrant(db *gorm.DB, orderID uint, revoke bool, now int64, acto
 		if grant.AddTrafficBytes > 0 {
 			var newerTrafficOrders int64
 			if err := tx.Model(&paid.PaymentOrder{}).
-				Where("client_id = ? AND id > ? AND status = ?", order.ClientId, order.Id, paid.StatusPaid).
+				Where("client_id = ? AND id > ? AND status IN ?", order.ClientId, order.Id, []string{paid.StatusPaid, paid.StatusRefundPending}).
 				Where("grant_snapshot = ? AND grant_traffic_bytes > 0", true).
 				Count(&newerTrafficOrders).Error; err != nil {
 				return err

@@ -31,6 +31,17 @@ func TestPaidOrderBackupStagedRestoreAndDisabledLifecyclePreserveIntent(t *testi
 	if err := dbsqlite.DB().Create(&order).Error; err != nil {
 		t.Fatal(err)
 	}
+	queue := paid.InvoiceCancellation{OrderID: order.Id, Ref: "42"}
+	if err := dbsqlite.DB().Create(&queue).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.DB().Create(&paid.ProviderCursor{Kind: "cancel", AfterID: queue.Id}).Error; err != nil {
+		t.Fatal(err)
+	}
+	refund := paid.PaymentOrder{ClientId: 2, TariffId: 1, Provider: "stars", Amount: 10, Currency: "XTR", Status: paid.StatusRefundPending, IdempotencyKey: "backup-refund", GrantSnapshot: true, RefundRevoke: true, RefundClaim: "prior-process", RefundClaimUntil: 100, ProviderChargeID: "tg:original"}
+	if err := dbsqlite.DB().Create(&refund).Error; err != nil {
+		t.Fatal(err)
+	}
 	if err := c.Stop(context.Background()); err != nil {
 		t.Fatal(err)
 	}
@@ -59,5 +70,17 @@ func TestPaidOrderBackupStagedRestoreAndDisabledLifecyclePreserveIntent(t *testi
 	}
 	if got.Status != order.Status || got.ProviderRef != "41" || got.IdempotencyKey != order.IdempotencyKey || got.GrantAddDays != 2 || !got.GrantSnapshot {
 		t.Fatal("backup/staged migration changed financial authority")
+	}
+	var restoredQueue paid.InvoiceCancellation
+	var restoredCursor paid.ProviderCursor
+	var restoredRefund paid.PaymentOrder
+	if err := staged.First(&restoredQueue, queue.Id).Error; err != nil || restoredQueue.Ref != "42" || restoredQueue.Completed {
+		t.Fatal("cancellation work lost", err)
+	}
+	if err := staged.Where("kind = 'cancel'").First(&restoredCursor).Error; err != nil || restoredCursor.AfterID != queue.Id {
+		t.Fatal("cursor lost", err)
+	}
+	if err := staged.First(&restoredRefund, refund.Id).Error; err != nil || restoredRefund.Status != paid.StatusRefundPending || !restoredRefund.RefundRevoke || restoredRefund.ProviderChargeID != "tg:original" {
+		t.Fatal("refund intent lost", err)
 	}
 }

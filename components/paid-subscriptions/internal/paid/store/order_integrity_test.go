@@ -148,6 +148,41 @@ func TestConcurrentInvoiceIntentHasOneDurableCreator(t *testing.T) {
 	}
 }
 
+func TestManualReviewHoldSurvivesConcurrentInvoiceIntentRetries(t *testing.T) {
+	db := concurrentPaidDB(t)
+	history := paid.PaymentOrder{ClientId: 1, TariffId: 1, TelegramUserId: 7, Provider: "cryptobot", Amount: 100, Currency: "RUB", Status: paid.StatusManualReview, IdempotencyKey: "review-history"}
+	if err := db.Create(&history).Error; err != nil {
+		t.Fatal(err)
+	}
+	start := make(chan struct{})
+	done := make(chan error, 8)
+	var ready sync.WaitGroup
+	ready.Add(8)
+	for i := range 8 {
+		go func() {
+			ready.Done()
+			<-start
+			attempt := &paid.PaymentOrder{ClientId: 1, TariffId: 1, TelegramUserId: 7, Provider: "cryptobot", Amount: 100, Currency: "RUB", GrantSnapshot: true, IdempotencyKey: fmt.Sprint("review-retry-", i)}
+			got, created, err := CreateInvoiceIntent(db, attempt)
+			if err == nil && (created || got == nil || got.Id != history.Id || got.Status != paid.StatusManualReview) {
+				err = errors.New("manual review hold bypassed")
+			}
+			done <- err
+		}()
+	}
+	ready.Wait()
+	close(start)
+	for range 8 {
+		if err := <-done; err != nil {
+			t.Fatal(err)
+		}
+	}
+	var count int64
+	if err := db.Model(&paid.PaymentOrder{}).Count(&count).Error; err != nil || count != 1 {
+		t.Fatal("review retry created new purchase", count, err)
+	}
+}
+
 func TestConcurrentConfirmationsAndFailedCommitGrantOnce(t *testing.T) {
 	db := concurrentPaidDB(t)
 	client := model.Client{Name: "once", Volume: 10}

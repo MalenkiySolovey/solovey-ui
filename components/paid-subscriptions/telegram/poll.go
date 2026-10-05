@@ -15,22 +15,10 @@ import (
 
 var pollMu sync.Mutex
 
-// cryptoBotPollGraceSeconds is the long hard-TTL after which an abandoned
-// (never-paid) CryptoBot order is reaped. Polled orders are deliberately
-// excluded from the short order-TTL ExpireStaleOrders (see PollOnce) so a
-// payment confirmed out-of-band AFTER the local TTL is still caught by the next
-// poll; this generous window only cleans up invoices that were never paid.
 const cryptoBotPollGraceSeconds int64 = 24 * 60 * 60
 
-// PollOnce polls out-of-band providers (CryptoBot) for confirmations and then
-// expires stale pending orders. It is single-flight: overlapping ticks are
-// skipped so a paid invoice is never applied twice (the RowsAffected guard +
-// partial unique index are the final defense).
-//
-// Ordering matters: the poll runs BEFORE any expiry pass so a payment confirmed
-// after the local order TTL is applied before it could be moved out of the
-// pending set — otherwise a late-but-valid payment would be silently lost
-// (money taken, no grant, no recovery).
+// PollOnce retains the admitted DB generation throughout bounded provider work.
+// The mutex reduces overlap; durable state guards arbitrate financial changes.
 func PollOnce(ctx context.Context, runtime *service.Runtime) {
 	ctx, release, err := dbsqlite.AcquireOperation(ctx)
 	if err != nil {
@@ -45,62 +33,129 @@ func PollOnce(ctx context.Context, runtime *service.Runtime) {
 		return
 	}
 	defer pollMu.Unlock()
-
 	ps := newPaymentCoordinator(runtime)
-
-	// 1. Confirm out-of-band payments first (before any expiry can hide them).
 	pollCryptoBot(ctx, runtime, ps)
-
-	// 2. Expire non-polled providers on the short order TTL.
-	if err := ps.ExpireStaleOrders(); err != nil {
-		logger.Warning("paidsub: expire stale orders: ", err)
+	if ctx.Err() != nil {
+		return
 	}
-	// 3. Reap abandoned CryptoBot invoices only after a long grace window.
-	if err := ps.ExpireStalePolledOrders(cryptoBotPollGraceSeconds); err != nil {
-		logger.Warning("paidsub: expire stale polled orders: ", err)
+	if err := ps.ExpireStaleOrders(); err != nil {
+		logger.Warning("paidsub: expire local orders: ", err)
 	}
 }
 
-// pollCryptoBot loads pending CryptoBot orders and applies any the provider
-// reports as paid. Errors are logged and swallowed (best-effort per tick).
 func pollCryptoBot(ctx context.Context, runtime *service.Runtime, ps *paymentCoordinator) {
 	prov := ps.providerByKind(paidprovider.ProviderCryptoBot)
-	if prov == nil {
-		return
-	}
 	poller, ok := prov.(paidprovider.PollingProvider)
 	if !ok {
 		return
 	}
+	reconciler, _ := prov.(paidprovider.ReconciliationProvider)
+	runCryptoBotWork(ctx, runtime, ps, poller, reconciler)
+}
 
-	pending, err := paidstore.PendingOrdersByProvider(dbsqlite.DB(), paidprovider.ProviderCryptoBot)
-	if err != nil {
-		logger.Warning("paidsub: poll load pending: ", err)
-		return
-	}
-	if len(pending) == 0 {
-		return
-	}
-	if len(pending) > 100 {
-		pending = pending[:100]
-	}
-	results, err := poller.Poll(ctx, pending)
-	if err != nil {
-		logger.Warning("paidsub: cryptobot poll: ", err)
-		return
-	}
-	for _, r := range results.Paid {
-		applied, tgID, err := ps.ApplyPaidOrder(r.OrderID, r.ProviderChargeID, r.RawPayload)
+func runCryptoBotWork(ctx context.Context, runtime *service.Runtime, ps *paymentCoordinator, poller paidprovider.PollingProvider, reconciler paidprovider.ReconciliationProvider) {
+	db := dbsqlite.DB()
+	seen := make(map[uint]bool)
+	// Ten batches, each at most100. A persistent cursor wraps deterministically;
+	// transient low-ID failures cannot starve higher IDs or survive a restart reset.
+	for batch := 0; batch < 10 && ctx.Err() == nil; batch++ {
+		orders, err := paidstore.WorkOrders(db, "poll", 100)
 		if err != nil {
-			logger.Warning("paidsub: apply polled order: ", err)
-			continue
+			logger.Warning("paidsub: load poll work: ", err)
+			break
 		}
-		if applied && tgID > 0 {
-			notifyPaid(ctx, runtime, tgID)
+		if len(orders) == 0 || seen[orders[0].Id] {
+			break
+		}
+		for _, order := range orders {
+			seen[order.Id] = true
+		}
+		outcome, err := poller.Poll(ctx, orders)
+		if ctx.Err() != nil {
+			return
+		}
+		if err != nil {
+			logger.Warning("paidsub: provider poll unavailable: ", err)
+		} else {
+			for _, result := range outcome.Paid {
+				applied, tgID, err := ps.ApplyPaidOrder(result.OrderID, result.ProviderChargeID, nil)
+				if err != nil {
+					logger.Warning("paidsub: apply provider payment: ", err)
+					continue
+				}
+				if applied && tgID > 0 {
+					notifyPaid(ctx, runtime, tgID)
+				}
+			}
+			if err := paidstore.ReviewProviderOrders(db, outcome.ReviewOrderIDs); err != nil {
+				logger.Warning("paidsub: review provider work: ", err)
+			}
+			if err := paidstore.ExpireVerifiedProviderOrders(db, outcome.TerminalOrderIDs, nowUnix(), cryptoBotPollGraceSeconds); err != nil {
+				logger.Warning("paidsub: expire verified invoices: ", err)
+			}
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		if err := paidstore.AdvanceProviderCursor(db, "poll", orders[len(orders)-1].Id); err != nil {
+			logger.Warning("paidsub: persist poll cursor: ", err)
+			break
 		}
 	}
-	if err := paidstore.ReviewProviderOrders(dbsqlite.DB(), results.ReviewOrderIDs); err != nil {
-		logger.Warning("paidsub: review polled orders: ", err)
+	if reconciler == nil || ctx.Err() != nil {
+		return
+	}
+	unresolved, err := paidstore.WorkOrders(db, "reconcile", 100)
+	if err != nil {
+		logger.Warning("paidsub: load recovery work: ", err)
+	} else if len(unresolved) > 0 {
+		recovered, err := reconciler.Reconcile(ctx, unresolved)
+		if ctx.Err() != nil {
+			return
+		}
+		if err != nil {
+			logger.Warning("paidsub: provider reconciliation unavailable: ", err)
+		} else {
+			for _, result := range recovered {
+				applied, err := paidstore.RecoverProviderOrder(db, result, nowUnix(), cryptoBotPollGraceSeconds)
+				if err != nil {
+					logger.Warning("paidsub: persist provider recovery: ", err)
+					continue
+				}
+				ps.afterPaidCommit(applied, result.OrderID)
+				if applied.Applied && applied.TelegramUserID > 0 {
+					notifyPaid(ctx, runtime, applied.TelegramUserID)
+				}
+			}
+		}
+		if ctx.Err() != nil {
+			return
+		}
+		if err := paidstore.AdvanceProviderCursor(db, "reconcile", unresolved[len(unresolved)-1].Id); err != nil {
+			logger.Warning("paidsub: persist recovery cursor: ", err)
+		}
+	}
+	work, err := paidstore.CancellationWork(db, 100)
+	if err != nil {
+		logger.Warning("paidsub: load cancellation work: ", err)
+		return
+	}
+	for _, item := range work {
+		resolved, err := reconciler.CancelInvoice(ctx, item.Ref)
+		if ctx.Err() != nil {
+			return
+		}
+		if err != nil {
+			logger.Warning("paidsub: cancellation remains queued: ", err)
+		} else if resolved {
+			if err := paidstore.CompleteCancellation(db, item.Id); err != nil {
+				logger.Warning("paidsub: persist cancellation: ", err)
+			}
+		}
+		if err := paidstore.AdvanceProviderCursor(db, "cancel", item.Id); err != nil {
+			logger.Warning("paidsub: persist cancellation cursor: ", err)
+			return
+		}
 	}
 }
 

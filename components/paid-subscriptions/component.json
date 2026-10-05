@@ -12,11 +12,13 @@
   },
   "database": {
 	"schema": "solovey.durable-resource/v1",
-	"schemaVersion": "3",
-	"migrationVersion": "3",
+	"schemaVersion": "4",
+	"migrationVersion": "4",
 	"indexPolicy": "ALL_OWNED_TABLE_INDEXES",
     "tables": [
 	  "paidsub_bindings",
+      "paidsub_invoice_cancellations",
+      "paidsub_provider_cursors",
 	  "payment_orders",
 	  "tariffs"
 	],
@@ -38,6 +40,6 @@
 	"dropPostcondition": "DECLARED_RESOURCES_ABSENT_V1",
 	"redactionClass": "SENSITIVE",
 	"portabilityClass": "PORTABLE",
-	"compatibilityRange": {"minimumSchema": "1", "maximumSchema": "3"}
+	"compatibilityRange": {"minimumSchema": "1", "maximumSchema": "4"}
   }
 }

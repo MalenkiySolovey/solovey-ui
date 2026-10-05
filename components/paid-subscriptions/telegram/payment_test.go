@@ -11,6 +11,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	paidprovider "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
+	paidstore "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/store"
 	paidsettings "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
@@ -213,23 +214,22 @@ func TestExpireStaleOrders(t *testing.T) {
 	_ = dbsqlite.DB()
 }
 
-func TestExpireStalePolledOrders(t *testing.T) {
+func TestExpireOnlyVerifiedTerminalPolledOrdersAfterGrace(t *testing.T) {
 	db := openTestDB(t)
 	if err := ensureTestSchema(db); err != nil {
 		t.Fatalf("EnsureSchema: %v", err)
 	}
 	now := time.Now().Unix()
 	grace := int64(3600)
-	// Created well before the grace window -> reaped as abandoned.
+	// Only these IDs have an authenticated terminal provider outcome.
 	old := paid.PaymentOrder{ClientId: 1, TariffId: 1, Provider: "cryptobot", Amount: 1, Currency: "RUB", Status: paid.StatusPending, IdempotencyKey: "cb-old", CreatedAt: now - grace - 10}
 	// Recent cryptobot order within grace -> stays pending (poll keeps trying).
 	recent := paid.PaymentOrder{ClientId: 1, TariffId: 2, Provider: "cryptobot", Amount: 1, Currency: "RUB", Status: paid.StatusPending, IdempotencyKey: "cb-recent", CreatedAt: now - 10}
 	db.Create(&old)
 	db.Create(&recent)
 
-	ps := newPaymentCoordinator()
-	if err := ps.ExpireStalePolledOrders(grace); err != nil {
-		t.Fatalf("ExpireStalePolledOrders: %v", err)
+	if err := paidstore.ExpireVerifiedProviderOrders(db, []uint{old.Id, recent.Id}, now, grace); err != nil {
+		t.Fatalf("ExpireVerifiedProviderOrders: %v", err)
 	}
 	var o, r paid.PaymentOrder
 	db.Where("idempotency_key = ?", "cb-old").First(&o)

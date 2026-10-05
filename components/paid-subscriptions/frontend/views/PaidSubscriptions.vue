@@ -120,6 +120,7 @@
         </v-alert>
         <v-switch
           v-model="refundEdit.revoke"
+		  :disabled="refundEdit.pending"
           color="primary"
           hide-details
           :label="$t('paidSub.refund.revoke')"

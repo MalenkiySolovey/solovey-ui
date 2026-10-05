@@ -145,3 +145,13 @@ invoice identity and bounded failure handling from that frozen target
 The existing Solovey provider adapter retains injected transport and consumes
 immutable purchase facts; normalized outcomes stay inside paid-subscriptions.
 No upstream implementation or tests were copied; full parity remains v1.5.10.
+
+PAID-04/PAID-05/PAID-06 and the remaining PAID-03 recovery boundary independently
+adapt bounded provider reconciliation, persistent fair work rotation, legacy
+invoice cancellation and terminal-only expiry from the same frozen target
+(`paidsub/poll.go`, `provider_cryptobot.go`, `provider_cryptobot_reconcile_test.go`,
+`payment.go`; witness `590b08af39537ab4c85441513743c2360bbc187d`). Solovey's paid
+component owns recovery/application transactions, cancellation and cursor tables,
+and recoverable refund intent; its existing adapters and injected database
+lifetime retain external operations. No upstream implementation or tests were
+copied, and full parity remains v1.5.10.

@@ -246,12 +246,12 @@ export const usePaidSubscriptionsPage = () => {
 
   const refundBusy = ref(false)
 
-  const refundEdit = ref<{ id: number; provider: string; amount: number; currency: string; revoke: boolean }>({
+  const refundEdit = ref<{ id: number; provider: string; amount: number; currency: string; revoke: boolean; pending?: boolean }>({
     id: 0, provider: '', amount: 0, currency: '', revoke: true,
   })
 
   const openRefund = (item: any) => {
-    refundEdit.value = { id: item.id, provider: item.provider, amount: item.amount, currency: item.currency, revoke: true }
+    refundEdit.value = { id: item.id, provider: item.provider, amount: item.amount, currency: item.currency, revoke: item.status === 'refund_pending' ? item.refundRevoke : true, pending: item.status === 'refund_pending' }
     refundDialog.value = true
   }
 
