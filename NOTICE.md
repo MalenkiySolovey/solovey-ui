@@ -201,3 +201,13 @@ tracker changes, witnessed by 87c1fd049aeb2a7d9046656c801a4e643e73099a,
 the existing Solovey owners. No upstream application source or tests were copied.
 Module licenses and source notices remain authoritative; the complete parity
 boundary remains v1.5.10 until deployment qualification is accepted.
+
+Completed source and bounded physical qualification close the frozen
+deposist/s-ui-x v1.5.12-beta6 parity boundary
+08814445d1497bc8b52bdc3af2eda784a5ea26cb. All 44 implementation units are
+complete with sing-box v1.13.18. The existing Solovey owners were validated for
+TCP/UDP admission and tracker restart, SQLite restore lifetime and authority,
+WARP/WireGuard save/apply/reapply, and installed paid-component persistence with
+synthetic nonmonetary state on FriendlyWrt 25.12.5. Earlier v1.5.10 boundaries
+above record integration history. No upstream application source or tests were
+copied; existing module licenses and notices remain authoritative.
