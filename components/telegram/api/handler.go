@@ -4,6 +4,8 @@
 package telegramapi
 
 import (
+	"encoding/json"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -61,8 +63,44 @@ func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
 	}
 	group := g.Group("/telegram")
 	group.POST("/test", h.TestTelegram)
+	group.POST("/detect-chat", h.DetectChat)
 	group.POST("/backup", h.BackupToTelegram)
 	group.POST("/backup/run", h.RunTelegramBackup)
+}
+
+func (a *Handler) DetectChat(c *gin.Context) {
+	if !a.requireScope(c, "telegram", "admin") {
+		return
+	}
+	var request struct {
+		Token string `json:"token"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(c.Writer, c.Request.Body, 4096))
+	decoder.DisallowUnknownFields()
+	err := decoder.Decode(&request)
+	var trailing any
+	if err == nil && decoder.Decode(&trailing) != io.EOF {
+		err = io.ErrUnexpectedEOF
+	}
+	result := telegramservice.DiscoveryResult{ErrorClass: "request"}
+	if err == nil {
+		if request.Token == service.StoredSecretMarker {
+			request.Token = ""
+		}
+		result = a.Telegram.DetectChatContext(c.Request.Context(), request.Token)
+	}
+	severity := service.AuditSeverityInfo
+	details := map[string]any{"success": result.Success}
+	if !result.Success {
+		severity = service.AuditSeverityWarn
+		details["errorClass"] = result.ErrorClass
+	}
+	a.Audit(c, a.Actor(c), "telegram_chat_discovery", "telegram", severity, details)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, Envelope{Success: false, Obj: result})
+		return
+	}
+	a.JSONObj(c, result, nil)
 }
 
 func (a *Handler) TestTelegram(c *gin.Context) {

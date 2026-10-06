@@ -1,5 +1,25 @@
 export default {
   "telegram": {
+    "detectChat": "Detect chat",
+    "chatDetected": "Detected chat: {chatId}. Save to apply it.",
+    "saveResponseInvalid": "The save response did not contain current settings. Test was not sent.",
+    "settingsUnavailable": "Saved settings are unavailable. Reload them before changing or testing this draft.",
+    "reloadSettings": "Reload settings",
+    "discoveryErrors": {
+  "request": "Invalid discovery request or response size.",
+  "maintenance": "Database maintenance is in progress.",
+  "settings": "Telegram settings could not be read.",
+  "missing_token": "Supply a bot token or save one first.",
+  "proxy": "The configured transport is unavailable.",
+  "canceled": "Discovery was canceled.",
+  "timeout": "Discovery timed out.",
+  "network": "Telegram could not be reached.",
+  "unauthorized": "Telegram rejected the bot token.",
+  "rate_limited": "Telegram rate limit reached. Try again later.",
+  "telegram_error": "Telegram rejected discovery. Check the bot configuration.",
+  "response": "Telegram returned an invalid or excessive update batch.",
+  "no_chat": "No supported chat was found in this update batch. Send a message to the bot first."
+},
     "title": "Telegram",
     "enabled": "Enabled",
     "botToken": "Bot Token",
@@ -18,6 +38,7 @@ export default {
     "outboundLabel": "Outbound requires the core running",
     "noOutbounds": "No outbounds configured",
     "hint": {
+      "detectChat": "Send a message to the bot, then detect a chat from recent pending updates. Discovery uses the saved transport settings and fills this draft.",
       "chatId": "Numeric Telegram chat or user ID that receives alerts. Find it via {'@'}userinfobot.",
       "cpuThreshold": "Send an alert when CPU stays above this percentage. Default: 90. Range 1-100.",
       "reportCron": "5-field cron schedule for periodic reports, for example 0 9 * * *. Empty disables it.",

@@ -1,5 +1,25 @@
 export default {
   "telegram": {
+    "detectChat": "尋找聊天",
+    "chatDetected": "已找到聊天：{chatId}。儲存後生效。",
+    "saveResponseInvalid": "儲存回應未包含目前設定，未傳送測試。",
+    "settingsUnavailable": "已儲存的設定無法使用。修改或測試草稿前，請重新載入設定。",
+    "reloadSettings": "重新載入設定",
+    "discoveryErrors": {
+  "request": "尋找請求無效或回應過大。",
+  "maintenance": "資料庫正在維護。",
+  "settings": "無法讀取 Telegram 設定。",
+  "missing_token": "請輸入機器人權杖或先儲存權杖。",
+  "proxy": "設定的傳輸無法使用。",
+  "canceled": "尋找已取消。",
+  "timeout": "尋找逾時。",
+  "network": "無法連線 Telegram。",
+  "unauthorized": "Telegram 拒絕了機器人權杖。",
+  "rate_limited": "已達 Telegram 請求限制，請稍後重試。",
+  "telegram_error": "Telegram 拒絕了尋找，請檢查機器人設定。",
+  "response": "Telegram 傳回的更新批次無效或過大。",
+  "no_chat": "此批次沒有支援的聊天，請先向機器人傳送訊息。"
+},
     "title": "Telegram",
     "enabled": "啟用",
     "botToken": "Bot Token",
@@ -18,6 +38,7 @@ export default {
     "outboundLabel": "出站連線需要核心正在執行",
     "noOutbounds": "尚未設定出站",
     "hint": {
+      "detectChat": "先向機器人傳送訊息，再從近期待處理更新中尋找聊天。尋找使用已儲存的傳輸設定，並填入目前草稿。",
       "chatId": "接收通知的 Telegram 聊天或使用者數字 ID，可透過 {'@'}userinfobot 查詢。",
       "cpuThreshold": "CPU 持續高於此百分比時傳送通知。預設：90。範圍：1-100。",
       "reportCron": "定期報告的 5 欄位 cron，例如 0 9 * * *。留空表示關閉。",

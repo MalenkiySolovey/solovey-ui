@@ -42,6 +42,9 @@ func TestTelegramComponentRoutesPresentInFullProfile(t *testing.T) {
 	if !routeExists(router, http.MethodPost, "/api/telegram/test") {
 		t.Fatal("full profile must register POST /api/telegram/test")
 	}
+	if !routeExists(router, http.MethodPost, "/api/telegram/detect-chat") {
+		t.Fatal("full profile must register POST /api/telegram/detect-chat")
+	}
 	if !routeExists(router, http.MethodGet, "/api/paidsub/status") {
 		t.Fatal("full profile must register GET /api/paidsub/status")
 	}

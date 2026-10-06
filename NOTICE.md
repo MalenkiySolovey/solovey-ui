@@ -174,3 +174,9 @@ Wave 5 editor/presentation adaptation independently uses behavioral witnesses
 Scope: shared save explanations, core navigation projections, traffic timezone,
 inbound guidance/address identity and selected technical labels. No literal
 source, test or translation transfer; full parity boundary remains v1.5.10.
+
+Wave 5 Telegram component behavior is independently adapted from the frozen
+deposist/s-ui-x v1.5.12-beta6 target (08814445d1497bc8b52bdc3af2eda784a5ea26cb),
+witness 42baef5bed45a9a5b91d728e7e2250b524e4a41b (GPL-3.0): bounded chat discovery
+and save-before-Test settings lifecycle. No literal source/tests/translations
+transferred; paid-subscriptions ownership and full parity boundary stay unchanged.

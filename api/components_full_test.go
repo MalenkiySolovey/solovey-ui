@@ -219,6 +219,13 @@ func registerRemoteOutboundFixtureRoutes(g *gin.RouterGroup, deps componenthost.
 
 func registerTelegramFixtureRoutes(g *gin.RouterGroup, deps componenthost.APIDeps) error {
 	group := g.Group("/telegram")
+	group.POST("/detect-chat", func(c *gin.Context) {
+		if !deps.Auth.RequireScope(c, "telegram", "admin") {
+			return
+		}
+		deps.Audit.Audit(c, deps.Request.Actor(c), "telegram_chat_discovery", "telegram", service.AuditSeverityWarn, map[string]any{"success": false, "errorClass": "missing_token"})
+		c.JSON(http.StatusOK, Msg{Success: true, Obj: gin.H{"success": false, "errorClass": "missing_token"}})
+	})
 	group.POST("/test", func(c *gin.Context) {
 		if !deps.Auth.RequireScope(c, "telegram", "admin") {
 			return

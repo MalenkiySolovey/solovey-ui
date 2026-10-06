@@ -16,7 +16,7 @@ func TestRoutesFailClosedWhenHostDependenciesAreMissing(t *testing.T) {
 	api := router.Group("/api")
 	RegisterRoutes(api, Deps{})
 
-	for _, path := range []string{"/api/telegram/test", "/api/telegram/backup", "/api/telegram/backup/run"} {
+	for _, path := range []string{"/api/telegram/test", "/api/telegram/detect-chat", "/api/telegram/backup", "/api/telegram/backup/run"} {
 		recorder := httptest.NewRecorder()
 		request := httptest.NewRequest(http.MethodPost, path, nil)
 		router.ServeHTTP(recorder, request)

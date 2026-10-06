@@ -41,6 +41,9 @@ func TestComponentRoutesRespectInstalledMetadata(t *testing.T) {
 	handler := &APIHandler{}
 	handler.initRouter(router.Group("/api"))
 
+	if !routeExists(router, http.MethodPost, "/api/telegram/detect-chat") {
+		t.Fatal("installed discovery route is missing")
+	}
 	if !routeExists(router, http.MethodPost, "/api/telegram/test") {
 		t.Fatal("installed telegram component route is missing")
 	}
@@ -97,6 +100,9 @@ func TestComponentRoutesRespectEnabledSetting(t *testing.T) {
 	handler := &APIHandler{}
 	handler.initRouter(router.Group("/api"))
 
+	if !routeExists(router, http.MethodPost, "/api/telegram/detect-chat") {
+		t.Fatal("installed discovery route is missing")
+	}
 	if !routeExists(router, http.MethodPost, "/api/telegram/test") {
 		t.Fatal("installed disabled telegram component route should remain registered")
 	}
@@ -112,6 +118,11 @@ func TestComponentRoutesRespectEnabledSetting(t *testing.T) {
 
 	bareRouter := gin.New()
 	registerComponentAPIRoutes(bareRouter.Group("/api"), componenthost.APIDeps{})
+	discoveryRecorder := httptest.NewRecorder()
+	bareRouter.ServeHTTP(discoveryRecorder, httptest.NewRequest(http.MethodPost, "/api/telegram/detect-chat", strings.NewReader(`{}`)))
+	if discoveryRecorder.Code != http.StatusConflict {
+		t.Fatalf("disabled discovery status = %d", discoveryRecorder.Code)
+	}
 
 	recorder := httptest.NewRecorder()
 	request := httptest.NewRequest(http.MethodPost, "/api/telegram/test", strings.NewReader(`{}`))
