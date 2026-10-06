@@ -1,9 +1,9 @@
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
 import { i18n } from '@/locales'
 import HttpUtils from '@/plugins/httputil'
 import { FindDiff } from '@/plugins/utils'
 import { push } from 'notivue'
-import { normalizeSecretFields, stripSecretPlaceholders } from '@/components/settings/settingsSecretField'
+import { normalizeSecretFields, stripSecretPlaceholders, STORED_SECRET_PLACEHOLDER } from '@/components/settings/settingsSecretField'
 import {
   parseTelegramBackupSchedule,
   serializeTelegramBackupSchedule,
@@ -33,8 +33,21 @@ export const useTelegramSettingsPage = () => {
   const defaultTelegramSettings: TelegramSettingsMap = telegramSettingsDefaults
 
   const loading = ref(false)
+  const settingsReady = ref(false)
 
   const testLoading = ref(false)
+
+  type DiscoveryResult = TelegramResult & { chatId?: string }
+  const discoveryLoading = ref(false)
+  const discoveryResult = ref<DiscoveryResult | null>(null)
+  const busy = computed(() => loading.value || testLoading.value || discoveryLoading.value)
+  const pageController = new AbortController()
+  let saveController: AbortController | undefined
+  let testController: AbortController | undefined
+  let discoveryController: AbortController | undefined
+  let disposed = false
+  let draftGeneration = 0
+  let actionGeneration = 0
 
   const backupRunLoading = ref(false)
 
@@ -58,13 +71,29 @@ export const useTelegramSettingsPage = () => {
 
   const telegramBackupAdvancedCron = ref('')
 
+  watch(settings, () => {
+    draftGeneration++
+    testResult.value = null
+    discoveryResult.value = null
+    testController?.abort()
+    discoveryController?.abort()
+  }, { deep: true, flush: 'sync' })
+
   const loadData = async () => {
+    const generation = draftGeneration
     loading.value = true
-    const msg = await HttpUtils.get('api/settings')
-    if (msg.success) {
-      setData(msg.obj ?? {})
-    }
-    loading.value = false
+    try {
+      const msg = await HttpUtils.get('api/settings', {}, { signal: pageController.signal })
+      if (!disposed && generation === draftGeneration && msg.success && msg.obj && typeof msg.obj === 'object' && !Array.isArray(msg.obj)) {
+        setData(msg.obj)
+        settingsReady.value = true
+      }
+    } finally { if (!disposed) loading.value = false }
+  }
+
+  const reloadSettings = async () => {
+    if (busy.value || disposed || settingsReady.value) return
+    await loadData()
   }
 
   const transportModes = computed(() => [
@@ -75,9 +104,9 @@ export const useTelegramSettingsPage = () => {
   const outboundOptions = ref<{ title: string; value: string }[]>([])
 
   const loadOutbounds = async () => {
-    const msg = await HttpUtils.get('api/outbounds')
+    const msg = await HttpUtils.get('api/outbounds', {}, { signal: pageController.signal })
     const list = msg?.obj?.outbounds
-    if (msg.success && Array.isArray(list)) {
+    if (!disposed && msg.success && Array.isArray(list)) {
       outboundOptions.value = list.map((o: any) => ({ title: `${o.tag} (${o.type})`, value: o.tag }))
     }
   }
@@ -88,15 +117,26 @@ export const useTelegramSettingsPage = () => {
   })
 
   onUnmounted(() => {
+    disposed = true
+    actionGeneration++
+    draftGeneration++
+    pageController.abort()
+    saveController?.abort()
+    testController?.abort()
+    discoveryController?.abort()
+    loading.value = false
+    testLoading.value = false
+    discoveryLoading.value = false
     const controller = backupRunController.value
     backupRunController.value = null
     backupRunLoading.value = false
     controller?.abort()
   })
 
+  const normalizedSettings = (data: TelegramSettingsMap) => pickTelegramSettings(normalizeSecretFields({ ...defaultTelegramSettings, ...data }))
+
   const setData = (data: TelegramSettingsMap) => {
-    const normalized = normalizeSecretFields({ ...defaultTelegramSettings, ...data })
-    settings.value = pickTelegramSettings(normalized)
+    settings.value = normalizedSettings(data)
     syncTelegramBackupScheduleFromCron(settings.value.telegramBackupCron)
     oldSettings.value = { ...settings.value }
   }
@@ -199,43 +239,87 @@ export const useTelegramSettingsPage = () => {
     updateTelegramBackupCronFromSchedule()
   }
 
-  const save = async () => {
-    if (telegramBackupScheduleErrors.value.length > 0 || telegramBackupPassphraseErrors.value.length > 0) {
-      return
-    }
+  // The same validated persistence path serves Save and save-before-Test.
+  // A saved baseline may advance while a newer draft remains untouched.
+  const saveCurrentSettings = async (): Promise<{ generation: number } | undefined> => {
+    if (disposed || !settingsReady.value || telegramBackupScheduleErrors.value.length > 0 || telegramBackupPassphraseErrors.value.length > 0) return
+    const generation = draftGeneration
+    const controller = new AbortController()
+    saveController = controller
     loading.value = true
-    const payload = stripSecretPlaceholders(
-      pickTelegramSettings(settings.value),
-      { preserve: ['telegramBackupPassphrase'] },
-    )
-    if (payload.telegramEnabled !== 'true') {
-      delete payload.telegramBackupEnabled
-      delete payload.telegramBackupPassphrase
-      delete payload.telegramBackupPassphraseHasSecret
-      delete payload.telegramBackupCron
-      delete payload.telegramBackupExcludeTables
-      delete payload.telegramBackupMaxSizeMB
+    try {
+      const payload = stripSecretPlaceholders(pickTelegramSettings(settings.value), { preserve: ['telegramBackupPassphrase'] })
+      if (payload.telegramEnabled !== 'true') {
+        for (const key of ['telegramBackupEnabled', 'telegramBackupPassphrase', 'telegramBackupPassphraseHasSecret', 'telegramBackupCron', 'telegramBackupExcludeTables', 'telegramBackupMaxSizeMB']) delete payload[key]
+      }
+      const msg = await HttpUtils.post('api/save', { object: 'settings', action: 'set', data: JSON.stringify(payload) }, { signal: controller.signal })
+      if (disposed || controller.signal.aborted || !msg.success) return
+      if (!msg.obj?.settings || typeof msg.obj.settings !== 'object' || Array.isArray(msg.obj.settings)) {
+        push.error({ message: i18n.global.t('telegram.saveResponseInvalid') })
+        return
+      }
+      const persisted = normalizedSettings(msg.obj.settings)
+      oldSettings.value = { ...persisted }
+      push.success({ title: i18n.global.t('success'), duration: 5000, message: i18n.global.t('actions.set') + ' ' + i18n.global.t('telegram.title') })
+      if (generation !== draftGeneration) return
+      setData(persisted)
+      return { generation: draftGeneration }
+    } finally {
+      if (saveController === controller) saveController = undefined
+      if (!disposed) loading.value = false
     }
-    const msg = await HttpUtils.post('api/save', { object: 'settings', action: 'set', data: JSON.stringify(payload) })
-    if (msg.success) {
-      push.success({
-        title: i18n.global.t('success'),
-        duration: 5000,
-        message: i18n.global.t('actions.set') + ' ' + i18n.global.t('telegram.title'),
-      })
-      setData(msg.obj.settings)
-    }
-    loading.value = false
+  }
+
+  const save = async (): Promise<boolean> => {
+    if (busy.value || !settingsReady.value || disposed) return false
+    return !!await saveCurrentSettings()
   }
 
   const testTelegram = async () => {
+    if (busy.value || !settingsReady.value || disposed) return
+    const action = ++actionGeneration
+    let generation = draftGeneration
+    let controller: AbortController | undefined
     testLoading.value = true
     testResult.value = null
-    const msg = await HttpUtils.post('api/telegram/test', {})
-    if (msg.success) {
-      testResult.value = msg.obj as TelegramResult
+    try {
+      if (stateChange.value) {
+        const saved = await saveCurrentSettings()
+        if (!saved || saved.generation !== draftGeneration || disposed) return
+        generation = saved.generation
+      }
+      if (generation !== draftGeneration || disposed) return
+      controller = new AbortController()
+      testController = controller
+      const msg = await HttpUtils.post('api/telegram/test', {}, { signal: controller.signal })
+      if (!disposed && !controller.signal.aborted && action === actionGeneration && generation === draftGeneration && msg.success) testResult.value = msg.obj as TelegramResult
+    } finally {
+      if (testController === controller) testController = undefined
+      if (!disposed && action === actionGeneration) testLoading.value = false
     }
-    testLoading.value = false
+  }
+
+  const detectTelegramChat = async () => {
+    if (busy.value || !settingsReady.value || disposed) return
+    const action = ++actionGeneration
+    const generation = draftGeneration
+    const controller = new AbortController()
+    discoveryController = controller
+    discoveryLoading.value = true
+    discoveryResult.value = null
+    const token = settings.value.telegramBotToken
+    try {
+      const msg = await HttpUtils.post('api/telegram/detect-chat', token && token !== STORED_SECRET_PLACEHOLDER ? { token } : {}, { signal: controller.signal })
+      if (disposed || controller.signal.aborted || action !== actionGeneration || generation !== draftGeneration) return
+      const result = msg.obj as DiscoveryResult | undefined
+      if (msg.success && result?.success && typeof result.chatId === 'string' && /^-?[1-9]\d*$/.test(result.chatId)) {
+        settings.value.telegramChatID = result.chatId
+        discoveryResult.value = result
+      } else discoveryResult.value = { success: false, errorClass: result?.errorClass ?? 'request' }
+    } finally {
+      if (discoveryController === controller) discoveryController = undefined
+      if (!disposed && action === actionGeneration) discoveryLoading.value = false
+    }
   }
 
   const sendTelegramBackupNow = async () => {
@@ -261,6 +345,12 @@ export const useTelegramSettingsPage = () => {
   })
 
   return {
+    settingsReady,
+    reloadSettings,
+    busy,
+    discoveryLoading,
+    discoveryResult,
+    detectTelegramChat,
     backupRunLoading,
     backupRunStatus,
     handleTelegramBackupScheduleModeChange,

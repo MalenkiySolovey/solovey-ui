@@ -1,8 +1,13 @@
 <template>
-  <v-card :loading="loading">
+  <v-card :loading="busy">
     <v-card-title>{{ $t('telegram.title') }}</v-card-title>
     <v-divider></v-divider>
     <v-card-text>
+      <v-alert v-if="!settingsReady && !loading" type="warning" variant="tonal" role="status" class="mb-3">
+        {{ $t('telegram.settingsUnavailable') }}
+        <v-btn :disabled="busy" @click="reloadSettings">{{ $t('telegram.reloadSettings') }}</v-btn>
+      </v-alert>
+      <fieldset :disabled="busy || !settingsReady" style="border: 0; margin: 0; padding: 0; min-width: 0">
       <v-alert type="warning" variant="tonal" density="compact" class="mb-4">
         {{ $t('telegram.securityWarning') }}
       </v-alert>
@@ -29,6 +34,7 @@
         <v-col cols="12" sm="6" md="4">
           <v-text-field class="setting-info-field" v-model="settings.telegramChatID" :label="$t('telegram.chatId')" placeholder="123456789" persistent-placeholder hide-details>
             <template #append-inner><SettingInfo :text="$t('telegram.hint.chatId')" /></template>
+            <template #append><v-btn :disabled="busy || !settingsReady" :loading="discoveryLoading" :aria-label="$t('telegram.detectChat')" @click="detectTelegramChat">{{ $t('telegram.detectChat') }}</v-btn><SettingInfo :text="$t('telegram.hint.detectChat')" /></template>
           </v-text-field>
         </v-col>
         <v-col cols="12" sm="6" md="4">
@@ -232,19 +238,23 @@
           </v-col>
         </v-row>
       </section>
+      <p class="text-caption">{{ $t('telegram.hint.detectChat') }}</p>
+      <div v-if="discoveryResult" role="status" aria-live="polite" class="mb-3">
+        {{ discoveryResult.success ? $t('telegram.chatDetected', { chatId: discoveryResult.chatId }) : $t('telegram.discoveryErrors.' + discoveryErrorClass) }}
+      </div>
       <v-row align="center">
         <v-col cols="auto">
           <v-btn
             color="primary"
             :loading="loading"
-            :disabled="!stateChange || telegramBackupScheduleErrors.length > 0 || telegramBackupPassphraseErrors.length > 0"
+            :disabled="busy || !settingsReady || !stateChange || telegramBackupScheduleErrors.length > 0 || telegramBackupPassphraseErrors.length > 0"
             @click="save"
           >
             {{ $t('actions.save') }}
           </v-btn>
         </v-col>
         <v-col cols="auto">
-          <v-btn variant="outlined" color="primary" :loading="testLoading" @click="testTelegram">
+          <v-btn variant="outlined" color="primary" :loading="testLoading" :disabled="busy || !settingsReady" @click="testTelegram">
             <v-icon icon="mdi-send-check-outline" class="me-2" />
             {{ $t('actions.test') }}
           </v-btn>
@@ -255,16 +265,20 @@
           </v-chip>
         </v-col>
       </v-row>
+      </fieldset>
     </v-card-text>
   </v-card>
 </template>
 
 <script lang="ts" setup>
 import SettingsSecretField from '@/components/settings/SettingsSecretField.vue'
+import { computed } from 'vue'
 import SettingInfo from '@/components/settings/SettingInfo.vue'
 import { useTelegramSettingsPage } from '../composables/pages/useTelegramSettingsPage'
 
-const { backupRunLoading, backupRunStatus, handleTelegramBackupScheduleModeChange, loading, outboundOptions, save, sendTelegramBackupNow, settings, stateChange, telegramBackupAdvancedCron, telegramBackupCustomMax, telegramBackupCustomUnit, telegramBackupCustomValue, telegramBackupEnabled, telegramBackupExcludeTableOptions, telegramBackupExcludeTables, telegramBackupMaxSizeMB, telegramBackupPassphraseErrors, telegramBackupScheduleErrors, telegramBackupScheduleMode, telegramBackupScheduleOptions, telegramBackupScheduleUnitOptions, telegramCpuThreshold, telegramEnabled, telegramNotifyCpu, telegramReport, testLoading, testResult, testTelegram, transportModes, updateTelegramBackupCronFromSchedule } = useTelegramSettingsPage()
+const { settingsReady, reloadSettings, busy, discoveryLoading, discoveryResult, detectTelegramChat, backupRunLoading, backupRunStatus, handleTelegramBackupScheduleModeChange, loading, outboundOptions, save, sendTelegramBackupNow, settings, stateChange, telegramBackupAdvancedCron, telegramBackupCustomMax, telegramBackupCustomUnit, telegramBackupCustomValue, telegramBackupEnabled, telegramBackupExcludeTableOptions, telegramBackupExcludeTables, telegramBackupMaxSizeMB, telegramBackupPassphraseErrors, telegramBackupScheduleErrors, telegramBackupScheduleMode, telegramBackupScheduleOptions, telegramBackupScheduleUnitOptions, telegramCpuThreshold, telegramEnabled, telegramNotifyCpu, telegramReport, testLoading, testResult, testTelegram, transportModes, updateTelegramBackupCronFromSchedule } = useTelegramSettingsPage()
+const discoveryClasses = ['request', 'maintenance', 'settings', 'missing_token', 'proxy', 'canceled', 'timeout', 'network', 'unauthorized', 'rate_limited', 'telegram_error', 'response', 'no_chat']
+const discoveryErrorClass = computed(() => discoveryClasses.includes(discoveryResult.value?.errorClass ?? '') ? discoveryResult.value!.errorClass : 'request')
 </script>
 
 <style scoped lang="scss" src="./TelegramSettings.scss"></style>
