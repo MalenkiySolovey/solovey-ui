@@ -63,6 +63,7 @@ verify-*.txt
 !/docs/component-packaging.md
 !/docs/native-installer-transaction.md
 !/docs/release-policy.md
+!/docs/build-reliability.md
 tests/baseline/*
 !tests/baseline/run-command.ps1
 tests/baseline/e2e/tmp/

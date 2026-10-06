@@ -2,13 +2,14 @@ FROM --platform=$BUILDPLATFORM node:alpine@sha256:3ad34ca6292aec4a91d8ddeb9229e2
 WORKDIR /app
 COPY frontend/ ./frontend/
 COPY components/ ./components/
-COPY scripts/component-frontend-manifest.mjs scripts/extract-component-frontend.mjs scripts/generate-component-imports.mjs scripts/write-component-installed-metadata.mjs ./scripts/
+COPY scripts/component-frontend-manifest.mjs scripts/extract-component-frontend.mjs scripts/generate-component-imports.mjs scripts/write-component-installed-metadata.mjs scripts/frontend-assets.mjs scripts/frontend-runtime-closure.mjs ./scripts/
 RUN cd frontend \
     && npm ci \
     && SOLOVEY_UI_PROFILE=full npm run build \
     && cd .. \
     && node scripts/extract-component-frontend.mjs --dist frontend/dist --components-dir components --out-dir component-packs --prune-dist \
     && node scripts/write-component-installed-metadata.mjs --components-dir component-packs --out component-packs/installed.json --profile full --binary full \
+    && node scripts/frontend-assets.mjs publish --dist frontend/dist --destination web/html --components-dir component-packs \
     && node scripts/generate-component-imports.mjs --profile full --out generated/components_generated.go --cmd-out generated/optional_commands_generated.go
 
 FROM --platform=$TARGETPLATFORM golang:1.26.6-alpine@sha256:af8d6740070b8906d12eae1c3e3ea0957fb63f492051ea05e354c38ef9fe88df AS backend-builder
@@ -34,7 +35,7 @@ RUN --mount=type=cache,id=solovey-ui-go-build,target=/root/.cache/go-build,shari
     echo "${CRONET_SHA256}  ./libcronet.so" | sha256sum -c -; \
     chmod 755 ./libcronet.so
 COPY . .
-COPY --from=front-builder /app/frontend/dist/ /app/web/html/
+COPY --from=front-builder /app/web/html/ /app/web/html/
 COPY --from=front-builder /app/generated/components_generated.go /app/app/components_generated.go
 COPY --from=front-builder /app/generated/optional_commands_generated.go /app/cmd/optional_commands_generated.go
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]

@@ -423,10 +423,8 @@ if ($Build -or !(Test-Path $webIndex)) {
             Pop-Location
         }
 
-        $webHtml = Join-Path $repoRoot "web\html"
-        New-Item -ItemType Directory -Force -Path $webHtml | Out-Null
-        Get-ChildItem -LiteralPath $webHtml -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
-        Copy-Item -Path (Join-Path $repoRoot "frontend\dist\*") -Destination $webHtml -Recurse -Force
+        & node (Join-Path $repoRoot 'scripts/frontend-assets.mjs') publish --dist (Join-Path $repoRoot 'frontend/dist') --destination (Join-Path $repoRoot 'web/html')
+        if ($LASTEXITCODE -ne 0) { throw 'Frontend asset publication failed' }
     }
 }
 

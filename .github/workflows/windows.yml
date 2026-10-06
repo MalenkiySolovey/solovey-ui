@@ -30,7 +30,6 @@ permissions:
   contents: read
 
 env:
-  NODE_VERSION: "25"
   RELEASE_TAG_INPUT: ${{ inputs.tag || github.ref_name }}
   TAGS: "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0,with_tailscale"
   LIBCRONET_BASE_URL: "https://github.com/SagerNet/cronet-go/releases/download/v148.0.7778.96-1"
@@ -57,7 +56,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: frontend/.node-version
           registry-url: "https://registry.npmjs.org"
           cache: "npm"
           cache-dependency-path: frontend/package-lock.json
@@ -76,6 +75,7 @@ jobs:
         with:
           name: frontend-dist
           path: frontend/dist
+          include-hidden-files: true
           retention-days: 1
 
   build-windows:
@@ -115,7 +115,7 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: frontend-dist
-          path: web/html
+          path: .release/frontend
 
       - name: Set up Go
         uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
@@ -126,7 +126,10 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version-file: frontend/.node-version
+
+      - name: Publish verified frontend assets
+        run: node scripts/frontend-assets.mjs publish --dist .release/frontend --destination web/html
 
       - name: Set up native ARM64 C toolchain
         id: msys2

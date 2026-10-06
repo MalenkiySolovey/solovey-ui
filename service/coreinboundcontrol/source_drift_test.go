@@ -45,7 +45,8 @@ func TestModuleFilesAndShippedProfilesMatchPinnedIdentity(t *testing.T) {
 	assertContains("go.mod", PinnedSingBoxModule+" "+PinnedSingBoxVersion, PinnedUTLSModule+" "+PinnedUTLSVersion)
 	assertContains("go.sum", PinnedSingBoxModule+" "+PinnedSingBoxVersion+" "+PinnedSingBoxModuleSum,
 		PinnedUTLSModule+" "+PinnedUTLSVersion+" "+PinnedUTLSModuleSum)
-	for _, path := range []string{"build.sh", "Dockerfile", filepath.Join("windows", "build-windows.bat"),
+	assertContains(filepath.Join("windows", "build-windows.bat"), "build-windows.ps1", "%*")
+	for _, path := range []string{"build.sh", "Dockerfile",
 		filepath.Join("windows", "build-windows.ps1"), filepath.Join("scripts", "dev", "start-panel.ps1")} {
 		assertContains(path, "with_utls")
 	}

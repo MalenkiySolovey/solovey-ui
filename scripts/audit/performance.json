@@ -1,0 +1,9 @@
+{
+  "packages": ["./api", "./core/tracker", "./service", "./componenthost/resources"],
+  "tags": "",
+  "benchtime": "1s",
+  "samples": 6,
+  "gomaxprocs": 2,
+  "regressionThreshold": 0.2,
+  "policy": "ADVISORY"
+}

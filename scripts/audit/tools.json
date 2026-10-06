@@ -1,0 +1,7 @@
+{
+  "staticcheck": {"module": "honnef.co/go/tools", "package": "honnef.co/go/tools/cmd/staticcheck", "version": "v0.8.1"},
+  "golangci-lint": {"module": "github.com/golangci/golangci-lint", "package": "github.com/golangci/golangci-lint/cmd/golangci-lint", "version": "v1.64.8"},
+  "gosec": {"module": "github.com/securego/gosec/v2", "package": "github.com/securego/gosec/v2/cmd/gosec", "version": "v2.29.0"},
+  "govulncheck": {"module": "golang.org/x/vuln", "package": "golang.org/x/vuln/cmd/govulncheck", "version": "v1.8.0"},
+  "benchstat": {"module": "golang.org/x/perf", "package": "golang.org/x/perf/cmd/benchstat", "version": "v0.0.0-20260929162123-406019bb8b68"}
+}
