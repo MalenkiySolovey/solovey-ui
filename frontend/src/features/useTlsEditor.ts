@@ -1,4 +1,6 @@
 import { defineComponent } from 'vue'
+import SaveGuardNotice from '@/components/fields/SaveGuardNotice.vue'
+import { entitySaveReasons, type SaveReason } from './entitySaveReview'
 import { tls, iTls, defaultInTls, oTls, defaultOutTls } from '@/types/tls'
 import AcmeVue from '@/components/tls/Acme.vue'
 import EchVue from '@/components/tls/Ech.vue'
@@ -7,7 +9,7 @@ import { i18n } from '@/locales'
 import RandomUtil from '@/plugins/randomUtil'
 import { generateKeypair, parseRealityKeypair, parseTLSKeypair } from '@/shared/composables/useKeypairs'
 export default defineComponent({
-  props: ['visible', 'data', 'id'],
+  props: ['visible', 'data', 'id', 'saving'],
   emits: ['close', 'save'],
   data() {
     return {
@@ -106,9 +108,8 @@ export default defineComponent({
       this.$emit('close')
     },
     saveChanges() {
-      this.loading = true
+      if (!this.$props.visible || this.saveReasons.length > 0) return
       this.$emit('save', this.tls)
-      this.loading = false
     },
     async genSelfSigned(){
       this.loading = true
@@ -151,6 +152,10 @@ export default defineComponent({
     }
   },
   computed: {
+    busy(): boolean { return this.loading || !!this.$props.saving },
+    saveReasons(): SaveReason[] {
+      return entitySaveReasons({ identity: this.tls.name, port: this.server_port, requiresPort: !!this.inTls.reality?.enabled, pending: this.busy })
+    },
     dirty(): boolean {
       return this.snapshot !== "" && JSON.stringify(this.tls) !== this.snapshot
     },
@@ -293,5 +298,5 @@ export default defineComponent({
       }
     },
   },
-  components: { AcmeVue, EchVue }
+  components: { SaveGuardNotice, AcmeVue, EchVue }
 })

@@ -1,42 +1,24 @@
 import { computed } from 'vue'
+import { coreNavigation, type NavigationCountKey, type NavigationSection } from '@/navigation/core'
 import { navItems } from './registry'
 import type { NavItem } from './types'
 
-export interface ClassicMenuItem {
-  title: string
-  icon: string
-  path: string
-  order: number
-}
+export interface ClassicMenuItem { title: string; icon: string; path: string; order: number }
+export interface NexusMenuItem { title: string; icon: string; path: string; singBoxSettings?: boolean; countKey?: NavigationCountKey }
+export interface NexusMenuGroup { labelKey?: string; items: NexusMenuItem[] }
 
-const coreClassicMenuItems: ClassicMenuItem[] = [
-  { title: 'pages.home', icon: 'mdi-home', path: '/', order: 0 },
-  { title: 'pages.inbounds', icon: 'mdi-cloud-download', path: '/inbounds', order: 10 },
-  { title: 'pages.clients', icon: 'mdi-account-multiple', path: '/clients', order: 20 },
-  { title: 'pages.outbounds', icon: 'mdi-cloud-upload', path: '/outbounds', order: 30 },
-  { title: 'pages.endpoints', icon: 'mdi-cloud-tags', path: '/endpoints', order: 40 },
-  { title: 'pages.services', icon: 'mdi-server', path: '/services', order: 50 },
-  { title: 'pages.tls', icon: 'mdi-certificate', path: '/tls', order: 60 },
-  { title: 'pages.rules', icon: 'mdi-routes', path: '/rules', order: 61 },
-  { title: 'pages.dns', icon: 'mdi-dns', path: '/dns', order: 62 },
-  { title: 'pages.singBoxConfig', icon: 'mdi-code-json', path: '/sing-box-config', order: 63 },
-  { title: 'pages.admins', icon: 'mdi-account-tie', path: '/admins', order: 100 },
-  { title: 'pages.security', icon: 'mdi-account-lock-outline', path: '/security', order: 110 },
-  { title: 'pages.sshManagement', icon: 'mdi-server-network', path: '/ssh-management', order: 120 },
-	{ title: 'pages.deployment', icon: 'mdi-server-security', path: '/deployment', order: 125 },
-  { title: 'pages.operations', icon: 'mdi-shield-sync-outline', path: '/operations', order: 127 },
-  { title: 'pages.settings', icon: 'mdi-cog', path: '/settings', order: 130 },
-  { title: 'pages.support', icon: 'mdi-heart-outline', path: '/support', order: 140 },
-]
-
-const toClassicItem = (item: NavItem): ClassicMenuItem => ({
-  title: item.title,
-  icon: item.icon,
-  path: item.path,
-  order: item.order ?? 1000,
-})
-
+const toClassicItem = (item: NavItem): ClassicMenuItem => ({ title: item.title, icon: item.icon, path: item.path, order: item.order ?? 1000 })
+const toNexusItem = (item: NavItem): NexusMenuItem => ({ title: item.title, icon: item.nexusIcon ?? item.icon, path: item.path, singBoxSettings: item.singBoxSettings, countKey: item.countKey as NavigationCountKey | undefined })
 export const classicMenuItems = computed<ClassicMenuItem[]>(() =>
-  [...coreClassicMenuItems, ...navItems.value.map(toClassicItem)]
-    .sort((a, b) => a.order - b.order),
+  [...coreNavigation, ...navItems.value].map(toClassicItem).sort((a, b) => a.order - b.order),
 )
+
+const sections: NavigationSection[] = ['dashboard', 'proxy', 'network', 'integrations', 'system']
+export const nexusMenuGroups = computed<NexusMenuGroup[]>(() => sections.map(section => {
+  const core = coreNavigation.filter(item => item.section === section)
+  const contributed = navItems.value.filter(item => item.section === section)
+    .sort((a, b) => (a.order ?? 1000) - (b.order ?? 1000)).map(toNexusItem)
+  const items = core.flatMap(item => item.nexusContributionsAfter ? [toNexusItem(item), ...contributed] : [toNexusItem(item)])
+  if (!core.some(item => item.nexusContributionsAfter)) items.push(...contributed)
+  return { labelKey: section === 'dashboard' ? undefined : 'nav.groups.' + section, items }
+}).filter(group => group.items.length > 0))

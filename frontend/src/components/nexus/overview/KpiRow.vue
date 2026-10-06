@@ -32,6 +32,13 @@
               </v-list-item>
             </v-list>
           </v-menu>
+          <v-autocomplete
+            v-model="trafficTimeZone"
+            :items="timeZoneChoices"
+            :label="$t('nexus.overview.kpi.timeZone')"
+            :aria-label="$t('nexus.overview.kpi.timeZone')"
+            density="compact" hide-details style="min-width: 200px; max-width: 280px"
+          />
         </div>
       </template>
 
@@ -76,6 +83,7 @@
 
 <script lang="ts" setup>
 import { computed } from 'vue'
+import { trafficTimeZoneOptions } from './trafficTimeZone'
 import { useI18n } from 'vue-i18n'
 
 import AreaSeries from '@/components/nexus/primitives/AreaSeries.vue'
@@ -95,14 +103,20 @@ const props = defineProps<{
   status: SystemStatus
   traffic: TrafficSeries
   trafficRange: TrafficRange
+  trafficTimeZone: string
   wsState: WsConnectionState
 }>()
 
 const emit = defineEmits<{
   'update:trafficRange': [value: TrafficRange]
+  'update:trafficTimeZone': [value: string]
 }>()
 
 const { n, t } = useI18n()
+
+const trafficTimeZone = computed({ get: () => props.trafficTimeZone, set: (value: string) => emit('update:trafficTimeZone', value) })
+const zones = trafficTimeZoneOptions()
+const timeZoneChoices = computed(() => zones.map(value => ({ value, title: value === 'system' ? t('nexus.overview.kpi.systemTimeZone') : value })))
 
 const trafficRange = computed({
   get: () => props.trafficRange,

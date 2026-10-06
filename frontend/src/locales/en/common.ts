@@ -1,5 +1,19 @@
-﻿export default {
-  capability: { waiting: "Waiting for runtime capability information. Reload data if it does not arrive.", unavailable: "This type is unavailable in the current binary or entity context. Choose an available type before saving.", historical: "This historical type is unavailable in the current binary. Same-type edits remain possible; the entity stays excluded from runtime. Remove its references before applying changes." },
+export default {
+  capability: {
+    "unknown": "This type is not recognized by the current runtime. Review the type before saving.",
+    "contextUnsupported": "This type is not supported in this entity context. Choose a supported type.", waiting: "Waiting for runtime capability information. Reload data if it does not arrive.", unavailable: "This type is unavailable in the current binary or entity context. Choose an available type before saving.", historical: "This historical type is unavailable in the current binary. Same-type edits remain possible; the entity stays excluded from runtime. Remove its references before applying changes." },
+  inboundGuidance: {
+  "title": "Protocol setup guidance",
+  "vless": "Use matching client identifiers on the server and client.",
+  "vmess": "Match the client identifier and security settings on both ends.",
+  "trojan": "Match the password and configured TLS settings on both ends.",
+  "shadowsocks": "Match the cipher and password on both ends.",
+  "socks": "Configure clients to use this SOCKS listener. Restrict who can reach an unencrypted proxy.",
+  "http": "Configure clients to use this HTTP proxy listener and its selected authentication settings.",
+  "tlsSelected": "Use client TLS settings that match the selected server TLS configuration.",
+  "tlsOptional": "TLS is optional here. Review encryption and client compatibility before exposing the listener.",
+  "transport": "Match the transport type and its path, host or service settings on the client."
+},
   "nav": {
     "groups": {
       "proxy": "Proxy",
@@ -24,6 +38,11 @@
     "nextPage": "Next page"
   },
   "form": {
+    "saveIdentity": "Enter a nonblank name or tag before saving.",
+    "savePortRequired": "Enter the required port.",
+    "savePortInvalid": "Use a whole-number port from 1 to 65535.",
+    "saveTls": "Choose TLS settings required by this protocol.",
+    "savePending": "Wait for the current operation to finish.",
     "unsavedChanges": "Unsaved changes",
     "leaveTitle": "Discard changes?",
     "leaveConfirm": "You have unsaved changes. Discard them?",
@@ -220,6 +239,8 @@
     },
     "overview": {
       "kpi": {
+    "timeZone": "Traffic time zone",
+    "systemTimeZone": "System time zone",
         "liveTraffic": "Live traffic",
         "liveTrafficDelta": "down + up",
         "trafficStats": "Traffic statistics",
@@ -501,6 +522,7 @@
     }
   },
   "types": {
+    "ssmApi": "Shadowsocks API",
     "un": "Username",
     "pw": "Password",
     "direct": {
@@ -508,6 +530,18 @@
       "overridePort": "Override Port"
     },
     "hy": {
+    "disableMtuDiscovery": "Disable MTU discovery",
+    "recvWindow": "Receive window",
+    "recvWindowConn": "Connection receive window",
+    "recvWindowClient": "Client receive window",
+    "maxConnClient": "Maximum client connections",
+    "masquerade": "Hysteria2 masquerade",
+    "authFailureServer": "HTTP/3 server on authentication failure",
+    "fileRoot": "File server root directory",
+    "httpCode": "HTTP status code",
+    "targetUrl": "Target URL",
+    "rewriteHost": "Rewrite Host",
+    "content": "Content",
       "obfs": "Obfuscated Password",
       "auth": "Authentication Password",
       "hyOptions": "Hysteria Options",
@@ -553,6 +587,11 @@
       "authLen": "Encryptrd Length"
     },
     "wg": {
+    "deviceId": "Device ID",
+    "accessToken": "Access token",
+    "licenseKey": "License key",
+    "reserved": "Reserved bytes",
+    "qrCode": "WireGuard QR code",
       "privKey": "Private Key",
       "pubKey": "Peer Public Key",
       "psk": "Pre-Shared Key",
@@ -625,6 +664,7 @@
       "options": "DERP Options"
     },
     "anytls": {
+    "paddingScheme": "Padding scheme",
       "idleInterval": "Idle Session Check Interval",
       "idleTimeout": "Idle Session Timeout",
       "minIdle": "Minimum Idle Session"

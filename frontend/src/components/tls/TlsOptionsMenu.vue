@@ -18,7 +18,7 @@
           <v-list-item><v-switch v-model="optionKtls" color="primary" :label="$t('tls.ktls')" hide-details /></v-list-item>
         </template>
         <v-list-item v-else>
-          <v-switch v-model="optionTime" color="primary" label="Max Time Difference" hide-details />
+          <v-switch v-model="optionTime" color="primary" :label="$t('tls.maxTimeDifference')" hide-details />
         </v-list-item>
       </v-list>
     </v-card>

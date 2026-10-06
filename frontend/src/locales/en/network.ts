@@ -36,6 +36,8 @@ export default {
     "detourText": "Forward to outbound"
   },
   "transport": {
+    "maxEarlyData": "Maximum early data",
+    "earlyDataHeaderName": "Early data header name",
     "enable": "Enable Transport",
     "host": "Host",
     "hosts": "Hosts",
@@ -61,6 +63,10 @@ export default {
     "delay": "Delay"
   },
   "tls": {
+    "fingerprint": "Fingerprint",
+    "shortIds": "Short IDs",
+    "shortId": "Short ID",
+    "maxTimeDifference": "Maximum time difference",
     "enable": "Enable TLS",
     "usePath": "Use Path",
     "useText": "Use Text",

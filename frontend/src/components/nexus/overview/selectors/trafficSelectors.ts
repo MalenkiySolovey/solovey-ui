@@ -1,4 +1,5 @@
 import { isSelectorRecord, nonNegativeNumber } from './selectorUtils'
+import { trafficLabelFormatter } from '../trafficTimeZone'
 
 export interface TrafficSeries {
   labels: string[]
@@ -13,6 +14,8 @@ export interface TrafficSelectorInput {
   range?: unknown
   stats?: readonly unknown[] | null
   summary?: unknown
+  timeZone?: unknown
+  locale?: string
 }
 
 export type TrafficRange = '1h' | '6h' | '12h' | '24h' | '7d' | '30d'
@@ -42,11 +45,6 @@ const isTrafficRange = (value: unknown): value is TrafficRange => {
     || value === '30d'
 }
 
-const trafficLabel = (dateTime: number): string => {
-  const date = new Date(dateTime * 1000)
-  return Number.isNaN(date.getTime()) ? String(dateTime) : date.toISOString()
-}
-
 const summaryBucketStart = (bucket: unknown, fallback: number): number => {
   return isSelectorRecord(bucket) ? nonNegativeNumber(bucket.startTime) ?? fallback : fallback
 }
@@ -56,6 +54,7 @@ const summaryBucketTraffic = (bucket: unknown, key: 'download' | 'upload'): numb
 }
 
 export const selectTrafficSeries = (input?: TrafficSelectorInput | null): TrafficSeries => {
+  const trafficLabel = trafficLabelFormatter(input?.timeZone, input?.locale)
   const range = isTrafficRange(input?.range) ? input.range : defaultRange
   const summary = isSelectorRecord(input?.summary) ? input.summary : undefined
   const summaryBuckets = Array.isArray(summary?.buckets) ? summary.buckets : undefined

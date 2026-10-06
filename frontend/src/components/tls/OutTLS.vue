@@ -169,7 +169,7 @@
         <v-col cols="12" md="6">
           <v-select
             hide-details
-            label="Fingerprint"
+            :label="$t('tls.fingerprint')"
             :items="fingerprints"
             v-model="tls.utls.fingerprint">
           </v-select>
@@ -185,7 +185,7 @@
         </v-col>
         <v-col cols="12" md="4">
           <v-text-field
-            label="Short ID"
+            :label="$t('tls.shortId')"
             hide-details
             v-model="tls.reality.short_id">
           </v-text-field>

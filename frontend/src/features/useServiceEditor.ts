@@ -8,6 +8,8 @@ import InTLS from '@/components/tls/InTLS.vue'
 import SSMapi from '@/components/services/SSMAPI.vue'
 import Data from '@/store/modules/data'
 import CapabilityNotice from '@/components/fields/CapabilityNotice.vue'
+import SaveGuardNotice from '@/components/fields/SaveGuardNotice.vue'
+import { entitySaveReasons, type SaveReason } from './entitySaveReview'
 import { capabilityEditState, capabilityTypeChoices, type CapabilityChoice, type CapabilityEditState } from '@/types/capabilityEditors'
 export default defineComponent({
   props: ['visible', 'data', 'id', 'inTags', 'tsTags', 'ssTags', 'tlsConfigs'],
@@ -61,7 +63,7 @@ export default defineComponent({
     },
     async saveChanges() {
       // Guard against double-submit (button is also :disabled while loading).
-      if (!this.$props.visible || this.loading || !this.capabilityState.allowed) return
+      if (!this.$props.visible || this.saveReasons.length > 0) return
 
       // check duplicate tag
       const isDuplicatedTag = Data().checkTag("service",this.srv.id, this.srv.tag)
@@ -78,6 +80,9 @@ export default defineComponent({
     },
   },
   computed: {
+    saveReasons(): SaveReason[] {
+      return entitySaveReasons({ identity: this.srv.tag, port: this.srv.listen_port, requiresPort: !this.NoListen.includes(this.srv.type), pending: this.loading, capability: this.capabilityState })
+    },
     capabilityState(): CapabilityEditState {
       return capabilityEditState(Data().capabilities, "services", this.srv.type, this.storedCapabilityType)
     },
@@ -95,5 +100,5 @@ export default defineComponent({
       }
     },
   },
-  components: { CapabilityNotice, Listen, InTLS, Derp, OomKiller, SSMapi },
+  components: { SaveGuardNotice, CapabilityNotice, Listen, InTLS, Derp, OomKiller, SSMapi },
 })
