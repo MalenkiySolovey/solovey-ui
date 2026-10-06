@@ -32,7 +32,7 @@ Project lineage and retained attribution:
 - [Sub-Store](https://github.com/sub-store-org/Sub-Store)
 
 The current networking runtime uses
-[SagerNet/sing-box](https://github.com/SagerNet/sing-box) v1.13.14 through the
+[SagerNet/sing-box](https://github.com/SagerNet/sing-box) v1.13.18 through the
 Go module dependency declared by this repository. Dependency source and
 license notices remain authoritative for that code.
 
@@ -189,3 +189,15 @@ adapted from deposist/s-ui-x v1.5.12-beta6
 590b08af39537ab4c85441513743c2360bbc187d. Existing Solovey component manifests,
 runtime closure and platform package owners retain their contracts. No upstream
 source or tests were copied; the complete parity boundary remains v1.5.10.
+
+The networking dependency update uses official sing-box v1.13.18 source
+45ca32dcb966f07f97fc888fe8586e359dbe8405 and sing v0.8.13 source
+7c349dacf402256d3a7029746073b05d2ead584a through their Go modules. The latter
+adds reviewed UDP/cancellation and untrusted-length/succinct-set hardening beyond
+the core's v0.8.12 minimum. Frozen deposist/s-ui-x v1.5.12-beta6 dependency and
+tracker changes, witnessed by 87c1fd049aeb2a7d9046656c801a4e643e73099a,
+590b08af39537ab4c85441513743c2360bbc187d and
+9bcf2cd2fc27a995138a419e7566e6f3778ecffe, informed independent revalidation of
+the existing Solovey owners. No upstream application source or tests were copied.
+Module licenses and source notices remain authoritative; the complete parity
+boundary remains v1.5.10 until deployment qualification is accepted.

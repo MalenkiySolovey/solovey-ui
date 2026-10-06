@@ -4,18 +4,21 @@ import "strings"
 
 const (
 	TrackerValidatedSingBoxModule  = "github.com/sagernet/sing-box"
-	TrackerValidatedSingBoxVersion = "v1.13.14"
+	TrackerValidatedSingBoxVersion = "v1.13.18"
 	TrackerRevalidationPolicyName  = "sing-box tracker revalidation policy"
 )
 
 var TrackerRevalidationChecks = []string{
-	"RoutedConnection signature still matches sing-box adapter.RouterConnectionTracker",
-	"RoutedPacketConnection signature still matches sing-box adapter.RouterConnectionTracker",
+	"RoutedConnection signature still matches sing-box adapter.ConnectionTracker",
+	"RoutedPacketConnection signature still matches sing-box adapter.ConnectionTracker",
 	"wrapped TCP connections always call Done exactly once on Close or terminal I/O error",
 	"wrapped packet connections always call Done exactly once on Close or terminal I/O error",
-	"Reset closes tracked connections and waits for active wrappers before replacing tracker state",
+	"Reset fences the old connection generation before closing and draining its wrappers",
 	"StatsTracker keeps counter pointers stable across Reset for already wrapped connections",
 	"source IP extraction from adapter.InboundContext still uses metadata.Source.Addr",
+	"atomic IP admission is invoked exactly once before tracking each TCP or packet connection",
+	"old wrappers cannot update counters or remove connections in a new core generation",
+	"runtime health and stats projections belong to the current core generation",
 }
 
 type TrackerRevalidationStatus struct {

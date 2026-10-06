@@ -35,8 +35,8 @@ concurrency:
 env:
   SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
   RELEASE_TAG_INPUT: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
-  CRONET_GO_VERSION: "v148.0.7778.96-1"
-  CRONET_GO_COMMIT: "e7f6f6f5b7ce226f686f6cb5d068a63da6657ccd"
+  CRONET_GO_VERSION: "v150.0.7871.63-1"
+  CRONET_GO_COMMIT: "7e27f60f7f04a1c762b6bb69b4a44d7b24cd7a5d"
   CRONET_GO_REPO: https://github.com/sagernet/cronet-go.git
   BOOTLIN_BASE_URL: https://toolchains.bootlin.com/downloads/releases/toolchains
 

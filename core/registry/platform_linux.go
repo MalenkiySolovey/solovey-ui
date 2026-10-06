@@ -2,5 +2,5 @@
 
 package registry
 
-// Official resolved has a real constructor only on Linux in pinned 1.13.14.
+// The pinned official resolved transport has a real constructor only on Linux.
 const supportsResolved = true

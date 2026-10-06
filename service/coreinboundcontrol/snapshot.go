@@ -156,7 +156,7 @@ func populateTypedShapes(snapshot *InboundFallbackSnapshotV1, inbound model.Inbo
 	}
 	snapshot.Listener.Port = listenOptions.ListenPort
 	snapshot.Listener.Network = listenerNetworkForType(snapshot.Type)
-	//lint:ignore SA1019 Pinned sing-box v1.13.14 still reads this compatibility field in common/listener/listener_tcp.go.
+	//lint:ignore SA1019 Pinned sing-box still reads this compatibility field in common/listener/listener_tcp.go.
 	snapshot.Listener.ProxyProtocol = listenOptions.ProxyProtocol
 
 	switch typed := parsed.Options.(type) {
