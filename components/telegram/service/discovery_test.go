@@ -134,8 +134,11 @@ func TestDiscoveryStoredFallbackAndMissingToken(t *testing.T) {
 	if (&telegramservice.Service{}).DetectChatContext(context.Background(), discoveryTestToken).ErrorClass != "settings" {
 		t.Fatal("missing settings must fail closed")
 	}
-	if service.DetectChatContext(nil, discoveryTestToken).ErrorClass != "request" {
-		t.Fatal("nil context must fail closed")
+	// Invalid inputs are fixtures: the boundary must reject a missing context.
+	for _, requestContext := range []context.Context{nil} {
+		if service.DetectChatContext(requestContext, discoveryTestToken).ErrorClass != "request" {
+			t.Fatal("nil context must fail closed")
+		}
 	}
 }
 
