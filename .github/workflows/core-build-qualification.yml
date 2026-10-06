@@ -1,0 +1,18 @@
+name: Core build qualification
+
+on:
+  push:
+    branches: [qualification-core-build]
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  docker:
+    uses: ./.github/workflows/docker.yml
+    with:
+      source_commit: 61c851f93daeee162f11348be0653d8d5d313922
+      tag: v2026.3.2
+      preflight_only: true
+    secrets: inherit
