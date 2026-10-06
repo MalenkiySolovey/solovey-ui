@@ -1,18 +1,319 @@
 name: Core build qualification
-
 on:
   push:
-    branches: [qualification-core-build]
-
+    branches:
+      - qualification-core-build
 permissions:
   contents: read
-  packages: write
-
+env:
+  SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
+  RELEASE_TAG_INPUT: v2026.3.2
+  CRONET_GO_VERSION: v150.0.7871.63-1
+  CRONET_GO_COMMIT: 7e27f60f7f04a1c762b6bb69b4a44d7b24cd7a5d
+  CRONET_GO_REPO: https://github.com/sagernet/cronet-go.git
+  BOOTLIN_BASE_URL: https://toolchains.bootlin.com/downloads/releases/toolchains
 jobs:
-  docker:
-    uses: ./.github/workflows/docker.yml
-    with:
-      source_commit: 61c851f93daeee162f11348be0653d8d5d313922
-      tag: v2026.3.2
-      preflight_only: true
-    secrets: inherit
+  release-preflight:
+    name: Read immutable build inputs
+    runs-on: ubuntu-24.04
+    outputs:
+      product-commit: ${{ steps.source.outputs.commit }}
+      source-fingerprint: ${{ steps.source.outputs.fingerprint }}
+      linux-matrix: ${{ steps.targets.outputs.linux-matrix }}
+    steps:
+      - name: Check out exact core source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: 61c851f93daeee162f11348be0653d8d5d313922
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: frontend/.node-version
+      - name: Read immutable source identity
+        id: source
+        run: |-
+          set -euo pipefail
+          COMMIT="$(git rev-parse HEAD)"
+          [ "$COMMIT" = "61c851f93daeee162f11348be0653d8d5d313922" ]
+          echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
+          echo "fingerprint=$(node scripts/release-source.mjs .)" >> "$GITHUB_OUTPUT"
+      - name: Read canonical Linux targets
+        id: targets
+        run: node -e 'const fs=require("fs"); const targets=require("./scripts/release-targets.json"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "linux-matrix="+JSON.stringify({include:targets.linux})+"\n")'
+  build-frontend:
+    needs: release-preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ needs.release-preflight.outputs.product-commit }}
+          submodules: recursive
+          fetch-depth: 1
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: frontend/.node-version
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies (strict)
+        working-directory: frontend
+        run: npm ci
+      - name: Frontend utility script syntax
+        run: |
+          node --check scripts/audit/validate-workflows.js
+          node --check scripts/component-frontend-manifest.mjs
+          node --check scripts/check-frontend-profile.mjs
+          node --check scripts/extract-component-frontend.mjs
+          node --check scripts/generate-component-imports.mjs
+          node --check scripts/release-manifest.mjs
+          node --check scripts/write-component-installed-metadata.mjs
+      - name: Validate workflow contracts
+        run: node scripts/audit/validate-workflows.js
+      - name: Frontend lint
+        working-directory: frontend
+        run: npm run lint
+      - name: Frontend unit tests
+        working-directory: frontend
+        run: npm run test
+      - name: Build full frontend
+        working-directory: frontend
+        run: SOLOVEY_UI_PROFILE=full npm run build
+      - name: Check full frontend profile
+        run: node scripts/check-frontend-profile.mjs --profile full --dist frontend/dist
+      - name: Extract optional component frontend packs
+        run: node scripts/extract-component-frontend.mjs --dist frontend/dist --components-dir components --out-dir .release/components --prune-dist
+      - name: Verify split frontend asset contract
+        run: |
+          node scripts/write-component-installed-metadata.mjs --components-dir .release/components --out .release/components/installed.json --profile full --binary full
+          node scripts/frontend-assets.mjs verify --dist frontend/dist --components-dir .release/components
+      - name: Upload full frontend build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: frontend-dist-full
+          path: frontend/dist/
+          include-hidden-files: true
+          retention-days: 1
+      - name: Upload component frontend packs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: component-frontend-packs
+          path: .release/components/
+          retention-days: 1
+      - name: Build core frontend
+        working-directory: frontend
+        run: SOLOVEY_UI_PROFILE=core npm run build
+      - name: Check core frontend profile
+        run: node scripts/check-frontend-profile.mjs --profile core --dist frontend/dist
+      - name: Upload core frontend build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: frontend-dist-core
+          path: frontend/dist/
+          include-hidden-files: true
+          retention-days: 1
+  build-linux:
+    name: Build-${{ matrix.platform }}
+    needs:
+      - release-preflight
+      - build-frontend
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.release-preflight.outputs.linux-matrix) }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ needs.release-preflight.outputs.product-commit }}
+      - name: Download full frontend build artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: frontend-dist-full
+          path: .release/frontend-full
+      - name: Download component asset contract
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: component-frontend-packs
+          path: .release/components
+      - name: Download core frontend build artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: frontend-dist-core
+          path: .release/frontend-core
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          cache: false
+          go-version-file: go.mod
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: frontend/.node-version
+      - name: Clone cronet-go (naive platforms)
+        if: matrix.naive && matrix.compiler != 'bootlin'
+        run: |
+          set -e
+          git init ~/cronet-go
+          git -C ~/cronet-go remote add origin ${{ env.CRONET_GO_REPO }}
+          git -C ~/cronet-go fetch --depth=1 origin "${{ env.CRONET_GO_VERSION }}"
+          git -C ~/cronet-go checkout FETCH_HEAD
+          test "$(git -C ~/cronet-go rev-parse HEAD)" = "${{ env.CRONET_GO_COMMIT }}"
+          git -C ~/cronet-go submodule update --init --recursive --depth=1
+      - name: Regenerate Debian keyring (cronet sysroot)
+        if: matrix.naive && matrix.compiler != 'bootlin'
+        run: |
+          set -e
+          rm -f ~/cronet-go/naiveproxy/src/build/linux/sysroot_scripts/keyring.gpg
+          cd ~/cronet-go
+          GPG_TTY=/dev/null ./naiveproxy/src/build/linux/sysroot_scripts/generate_keyring.sh
+      - name: Build cronet library and set toolchain environment
+        if: matrix.naive && matrix.compiler != 'bootlin'
+        run: |
+          set -e
+          cd ~/cronet-go
+          go run ./cmd/build-naive --target=linux/${{ matrix.arch }} --libc=musl download-toolchain
+          go run ./cmd/build-naive --target=linux/${{ matrix.arch }} --libc=musl env | while IFS= read -r line; do
+            line="${line#export }"
+            [[ -z "$line" ]] && continue
+            echo "$line" >> $GITHUB_ENV
+          done
+      - name: Set Go build environment
+        run: |
+          echo "CGO_ENABLED=1" >> $GITHUB_ENV
+          echo "GOOS=linux" >> $GITHUB_ENV
+          echo "GOARCH=${{ matrix.arch }}" >> $GITHUB_ENV
+          if [ -n "${{ matrix.goarm }}" ]; then echo "GOARM=${{ matrix.goarm }}" >> $GITHUB_ENV; fi
+      - name: Resolve build metadata
+        id: build_meta
+        run: |
+          set -e
+          PANEL_VERSION="${RELEASE_TAG_INPUT}"
+          case "$PANEL_VERSION" in
+            v*) ;;
+            *) PANEL_VERSION="v${PANEL_VERSION}" ;;
+          esac
+          SING_BOX_VERSION="$(go list -m -f '{{.Version}}' github.com/sagernet/sing-box)"
+          SOURCE_FINGERPRINT="$(node scripts/release-source.mjs .)"
+          [ "$SOURCE_FINGERPRINT" = "${{ needs.release-preflight.outputs.source-fingerprint }}" ] || { echo "product source fingerprint changed" >&2; exit 1; }
+          [ -n "$SING_BOX_VERSION" ] || { echo "sing-box module version is empty" >&2; exit 1; }
+          echo "panel_version=$PANEL_VERSION" >> "$GITHUB_OUTPUT"
+          echo "sing_box_version=$SING_BOX_VERSION" >> "$GITHUB_OUTPUT"
+          echo "source_fingerprint=$SOURCE_FINGERPRINT" >> "$GITHUB_OUTPUT"
+      - name: Set up pinned Bootlin musl compiler
+        if: ${{ matrix.naive != true || matrix.compiler == 'bootlin' }}
+        run: |
+          set -e
+          BOOTLIN_ARCH="${{ matrix.bootlin }}"
+          TARBALL_NAME="${{ matrix.bootlin_archive }}"
+          TARBALL_SHA256="${{ matrix.bootlin_sha256 }}"
+          echo "Using pinned Bootlin musl toolchain for arch=$BOOTLIN_ARCH (platform=${{ matrix.platform }})"
+          TARBALL_BASE="${{ env.BOOTLIN_BASE_URL }}/$BOOTLIN_ARCH/tarballs/"
+          echo "Downloading: $TARBALL_NAME"
+          cd /tmp
+          curl --fail --location --silent --show-error \
+            --proto '=https' --tlsv1.2 --connect-timeout 20 --retry 3 --retry-all-errors \
+            -o "$TARBALL_NAME" "$TARBALL_BASE/$TARBALL_NAME"
+          echo "$TARBALL_SHA256  $TARBALL_NAME" | sha256sum -c -
+          tar -xf "$TARBALL_NAME"
+          TOOLCHAIN_DIR=$(find . -maxdepth 1 -type d -name "${BOOTLIN_ARCH}--musl--stable-*" | head -n1)
+          TOOLCHAIN_DIR="$(realpath "$TOOLCHAIN_DIR")"
+          BIN_DIR="$TOOLCHAIN_DIR/bin"
+          echo "PATH=$BIN_DIR:$PATH" >> $GITHUB_ENV
+          CC=$(find "$BIN_DIR" -maxdepth 1 \( -name '*-gcc.br_real' -o -name '*-gcc' \) -type f -executable 2>/dev/null | grep -v g++ | head -n1)
+          [ -z "$CC" ] && { echo "gcc not found in $BIN_DIR" >&2; exit 1; }
+          echo "CC=$(realpath "$CC")" >> $GITHUB_ENV
+          SYSROOT=""
+          F=$(find "$TOOLCHAIN_DIR" -name "libc-header-start.h" 2>/dev/null | head -1)
+          if [ -n "$F" ]; then SYSROOT=$(dirname "$(dirname "$(dirname "$(dirname "$F")")")"); fi
+          if [ -n "$SYSROOT" ] && [ -d "$SYSROOT" ]; then
+            echo "CGO_CFLAGS=--sysroot=$SYSROOT" >> $GITHUB_ENV
+            echo "CGO_LDFLAGS=--sysroot=$SYSROOT -static" >> $GITHUB_ENV
+          fi
+      - name: Build Solovey UI profiles
+        env:
+          SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
+        run: |
+          set -e
+          [ -n "$SUI_RELEASE_TRUST_ROOTS_B64" ] || { echo "SUI_RELEASE_TRUST_ROOTS_B64 repository variable is required" >&2; exit 1; }
+          printf '%s' "$SUI_RELEASE_TRUST_ROOTS_B64" > /tmp/solovey-release-trust-roots.b64
+          node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
+          export GOOS=linux GOARCH="${{ matrix.arch }}" CGO_ENABLED=1
+          export CXX="${CXX:-$CC}"
+          NAIVE_ARGS=()
+          [ "${{ matrix.naive }}" = "true" ] && NAIVE_ARGS+=(--naive)
+          node scripts/frontend-assets.mjs publish --dist .release/frontend-full --destination web/html --components-dir .release/components
+          bash scripts/build-linux-target.sh --mode release --profile full \
+            --out .release/linux-full --platform "${{ matrix.platform }}" \
+            --trust-roots-file /tmp/solovey-release-trust-roots.b64 "${NAIVE_ARGS[@]}"
+          cp -a .release/linux-full/. ./
+          node scripts/frontend-assets.mjs publish --dist .release/frontend-core --destination web/html
+          bash scripts/build-linux-target.sh --mode release --profile core \
+            --out .release/linux-core --platform "${{ matrix.platform }}" \
+            --trust-roots-file /tmp/solovey-release-trust-roots.b64 "${NAIVE_ARGS[@]}"
+          cp -a .release/linux-core/solovey-ui-core ./solovey-ui-core
+          file solovey-ui
+          file solovey-ui-core
+          ldd solovey-ui 2>/dev/null || echo "Static binary confirmed"
+          ldd solovey-ui-core 2>/dev/null || echo "Static core binary confirmed"
+          {
+            echo "app=solovey-ui"
+            echo "profile=full"
+            echo "version=${{ steps.build_meta.outputs.panel_version }}"
+            echo "commit=${{ needs.release-preflight.outputs.product-commit }}"
+            echo "source_fingerprint=${{ steps.build_meta.outputs.source_fingerprint }}"
+            echo "platform=linux/${{ matrix.platform }}"
+            echo "go=$(go version)"
+            echo "sing_box=${{ steps.build_meta.outputs.sing_box_version }}"
+          } > BUILD_INFO.full.txt
+          {
+            echo "app=solovey-ui"
+            echo "profile=core"
+            echo "version=${{ steps.build_meta.outputs.panel_version }}"
+            echo "commit=${{ needs.release-preflight.outputs.product-commit }}"
+            echo "source_fingerprint=${{ steps.build_meta.outputs.source_fingerprint }}"
+            echo "platform=linux/${{ matrix.platform }}"
+            echo "go=$(go version)"
+            echo "sing_box=${{ steps.build_meta.outputs.sing_box_version }}"
+          } > BUILD_INFO.core.txt
+      - name: Capture linked module identity
+        run: |-
+          go version -m solovey-ui > LINKED_IDENTITY.full.txt
+          go version -m solovey-ui-core > LINKED_IDENTITY.core.txt
+          sha256sum solovey-ui solovey-ui-core > LINKED_BINARY_SHA256.txt
+      - name: Package full profile
+        run: |
+          bash scripts/release-package-linux.sh \
+            --target linux-${{ matrix.platform }} \
+            --binary ./solovey-ui \
+            --manager ./solovey-ui.sh \
+            --service ./solovey-ui.service \
+            --build-info ./BUILD_INFO.full.txt \
+            --out-dir .
+      - name: Package core profile
+        run: |
+          bash scripts/release-package-linux.sh \
+            --profile core \
+            --target linux-${{ matrix.platform }} \
+            --binary ./solovey-ui-core \
+            --broker .release/linux-core/solovey-privileged-broker \
+            --manager ./solovey-ui.sh \
+            --service ./solovey-ui.service \
+            --build-info ./BUILD_INFO.core.txt \
+            --out-dir .
+      - name: Upload build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: solovey-ui-linux-${{ matrix.platform }}
+          path: |-
+            ./solovey-ui-linux-${{ matrix.platform }}.tar.gz
+            ./solovey-ui-linux-${{ matrix.platform }}.tar.gz.sha256
+            ./solovey-ui-core-linux-${{ matrix.platform }}.tar.gz
+            ./solovey-ui-core-linux-${{ matrix.platform }}.tar.gz.sha256
+
+            BUILD_INFO.full.txt
+            BUILD_INFO.core.txt
+            LINKED_IDENTITY.full.txt
+            LINKED_IDENTITY.core.txt
+            LINKED_BINARY_SHA256.txt
+          retention-days: 1
