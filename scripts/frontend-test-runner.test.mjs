@@ -5,6 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { spawnSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
+import { stripVTControlCharacters } from 'node:util'
 
 test('Vitest receives one native path, unchanged arguments and propagates exit status',t => {
   const temporary=fs.mkdtempSync(path.join(os.tmpdir(),'frontend runner '))
@@ -32,5 +33,5 @@ test('real Windows Vitest works through a drive-letter alias',{skip:process.plat
   const alias=frontend[0].toLowerCase()+frontend.slice(1)
   const result=spawnSync(process.execPath,[path.join(alias,'scripts/run-vitest.mjs'),'run','src/features/inboundGuidance.test.ts'],{cwd:os.tmpdir(),encoding:'utf8',maxBuffer:4*1024*1024})
   assert.equal(result.status,0,result.stdout+result.stderr)
-  assert.match(result.stdout,/Tests\s+[1-9]\d* passed/)
+  assert.match(stripVTControlCharacters(result.stdout),/Tests\s+[1-9]\d* passed/)
 })
