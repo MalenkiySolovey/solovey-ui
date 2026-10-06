@@ -64,6 +64,7 @@ verify-*.txt
 !/docs/native-installer-transaction.md
 !/docs/release-policy.md
 !/docs/build-reliability.md
+!/docs/sing-box-tracker-revalidation.md
 tests/baseline/*
 !tests/baseline/run-command.ps1
 tests/baseline/e2e/tmp/

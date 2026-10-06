@@ -32,7 +32,7 @@ permissions:
 env:
   RELEASE_TAG_INPUT: ${{ inputs.tag || github.ref_name }}
   TAGS: "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0,with_tailscale"
-  LIBCRONET_BASE_URL: "https://github.com/SagerNet/cronet-go/releases/download/v148.0.7778.96-1"
+  LIBCRONET_BASE_URL: "https://github.com/SagerNet/cronet-go/releases/download/v150.0.7871.63-1"
 
 jobs:
   build-frontend:
@@ -187,8 +187,8 @@ jobs:
         shell: bash
         run: |
           case "${{ matrix.arch }}" in
-            amd64) CRONET_SHA256="c7434cfa93c3041321dd19111c4de6c52b8a9531a65661ba45425d3c51ec69e2" ;;
-            arm64) CRONET_SHA256="fc9e3bae0b326d83092a5de2c04d8b4139dc5c1ba576a035dee4bde780a3c95f" ;;
+            amd64) CRONET_SHA256="257f966119ffca91d7a2ce110a4b668b865d88bf2ed5339fd06a5644b0d02823" ;;
+            arm64) CRONET_SHA256="6ffede1b32688a22467ea804da40aff6445a776358c89b70dc336a6c5b4af2ff" ;;
             *) echo "no pinned libcronet sha256 for arch ${{ matrix.arch }}" >&2; exit 1 ;;
           esac
           curl --fail --location --silent --show-error \

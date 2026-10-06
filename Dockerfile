@@ -16,7 +16,7 @@ FROM --platform=$TARGETPLATFORM golang:1.26.6-alpine@sha256:af8d6740070b8906d12e
 WORKDIR /app
 ARG TARGETARCH
 ARG TARGETVARIANT
-ARG CRONET_GO_ASSET_TAG=v148.0.7778.96-1
+ARG CRONET_GO_ASSET_TAG=v150.0.7871.63-1
 ARG SUI_RELEASE_TRUST_ROOTS_B64
 ENV CGO_ENABLED=1 CGO_CFLAGS="-D_LARGEFILE64_SOURCE" GOARCH=$TARGETARCH CC=gcc
 RUN apk add --no-cache gcc musl-dev libc-dev make git wget bash ca-certificates
@@ -24,10 +24,10 @@ RUN --mount=type=cache,id=solovey-ui-go-build,target=/root/.cache/go-build,shari
     --mount=type=cache,id=solovey-ui-go-mod,target=/go/pkg/mod,sharing=locked \
     set -e; \
     case "$TARGETARCH" in \
-      amd64) CRONET_SHA256="dc7293a929dffa695aae1a89555e7366158fa0a3f40bbe3012d445bc05c99672" ;; \
-      arm64) CRONET_SHA256="1518e73270c7b49694592bc0448ba1033a80ff4084bfb92cfa5baacec627bd9f" ;; \
-      arm) CRONET_SHA256="40deac370a3257deff8d348382ce59a3948600e3d9f211215b0c453bab5d3657" ;; \
-      386) CRONET_SHA256="0ddbd9575ce8f5b39a13115e2b7d9f60d578d4fb1a84c7baca10d89f920392d0" ;; \
+      amd64) CRONET_SHA256="9d43c2ee2410a54262e394c09da14b402e872d919ea66280c6b1f54414ab5f6a" ;; \
+      arm64) CRONET_SHA256="2d896ece1be628e5a01ce095d34996deb6d255725e013640331541ee6cf8c1db" ;; \
+      arm) CRONET_SHA256="6b879811612bfb1f758bf425d9b5795dc9f5a28e9531c6b5909078feebf1a742" ;; \
+      386) CRONET_SHA256="fbe733cb0826684469b3bc5cc9a86dac1a4c9d61eea51d2376243335a930e699" ;; \
       *) echo "unsupported target architecture" >&2; exit 1 ;; \
     esac; \
     CRONET_URL="https://github.com/SagerNet/cronet-go/releases/download/${CRONET_GO_ASSET_TAG}/libcronet-linux-${TARGETARCH}.so"; \
