@@ -27,55 +27,30 @@ jobs:
     if: ${{ github.event_name != 'pull_request' || contains(join(github.event.pull_request.labels.*.name, ','), 'run-perf') }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
           cache: true
           cache-dependency-path: go.sum
-      - name: Install benchstat
-        run: |
-          go install golang.org/x/perf/cmd/benchstat@latest
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - name: Run benchmarks
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tests/baseline/run-command.ps1 -Group current -Name bench-all -CommandLine "go test ./... -bench=. -benchmem -run=^$ -benchtime=2s" -ContinueOnError
-      - name: Compare with reference baseline
-        run: pwsh -NoProfile -ExecutionPolicy Bypass -File tests/baseline/run-command.ps1 -Group current -Name benchstat -CommandLine "benchstat tests/baseline/reference/bench-all.txt tests/baseline/current/bench-all.txt" -ContinueOnError
-      - name: Detect >20 percent ns/op regressions
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: frontend/.node-version
+      - name: Install pinned comparison tool
+        run: node scripts/audit/install-tools.mjs benchstat
+      - name: Compare isolated revisions on this runner
         id: regression
         shell: bash
+        env:
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
-          node <<'NODE'
-          const fs = require('fs');
-          const parse = (file) => {
-            const rows = new Map();
-            if (!fs.existsSync(file)) return rows;
-            for (const line of fs.readFileSync(file, 'utf8').split(/\r?\n/)) {
-              const m = line.match(/^(Benchmark\S+)\s+\d+\s+([\d.]+)\s+ns\/op/);
-              if (m) rows.set(m[1], Number(m[2]));
-            }
-            return rows;
-          };
-          const oldRows = parse('tests/baseline/reference/bench-all.txt');
-          const newRows = parse('tests/baseline/current/bench-all.txt');
-          const regressions = [];
-          for (const [name, oldNs] of oldRows) {
-            const newNs = newRows.get(name);
-            if (oldNs > 0 && newNs > oldNs * 1.2) {
-              regressions.push({ name, oldNs, newNs, ratio: newNs / oldNs });
-            }
-          }
-          fs.writeFileSync('tests/baseline/current/perf-regressions.json', JSON.stringify(regressions, null, 2) + '\n');
-          if (regressions.length > 0) {
-            console.log(`regression=true`);
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'regression=true\n');
-            for (const row of regressions.slice(0, 20)) {
-              console.log(`::warning title=Perf regression::${row.name} ${row.oldNs} -> ${row.newNs} ns/op (${row.ratio.toFixed(2)}x)`);
-            }
-          } else {
-            fs.appendFileSync(process.env.GITHUB_OUTPUT, 'regression=false\n');
-          }
-          NODE
-      - name: Comment perf warning on PR
+          set -euo pipefail
+          BASELINE_REF="${PR_BASE_SHA:-$(git rev-parse HEAD^)}"
+          CANDIDATE_REF="${PR_HEAD_SHA:-$(git rev-parse HEAD)}"
+          node scripts/audit/performance.mjs --baseline "$BASELINE_REF" --candidate "$CANDIDATE_REF" --out tests/baseline/current
+      - name: Comment advisory performance warning
         if: ${{ github.event_name == 'pull_request' && steps.regression.outputs.regression == 'true' }}
         uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
         with:
@@ -83,27 +58,23 @@ jobs:
             const fs = require('fs');
             const rows = JSON.parse(fs.readFileSync('tests/baseline/current/perf-regressions.json', 'utf8'));
             const body = [
-              'Performance warning: benchmark regressions above 20% were detected.',
+              'Advisory performance comparison: median ns/op increased by more than 20%.',
               '',
-              ...rows.slice(0, 20).map((row) => `- \`${row.name}\`: ${row.oldNs} -> ${row.newNs} ns/op (${row.ratio.toFixed(2)}x)`),
+              ...rows.slice(0, 20).map(row => `- ${row.name}: ${row.ratio.toFixed(2)}x`),
               '',
-              'This is a SOFT check; inspect `benchstat.txt` before deciding whether it is noise or a real regression.'
+              'Both revisions ran on this runner with the same toolchain, configuration and six samples. Inspect raw samples and benchstat before deciding whether a warning is noise or a regression.'
             ].join('\n');
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.issue.number,
-              body,
-            });
+            await github.rest.issues.createComment({owner: context.repo.owner, repo: context.repo.repo, issue_number: context.issue.number, body});
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         if: always()
         with:
           name: audit-perf-bench
           path: |
-            tests/baseline/current/bench-all.txt
-            tests/baseline/current/bench-all.junit.xml
+            tests/baseline/current/perf-baseline/**
+            tests/baseline/current/perf-candidate/**
+            tests/baseline/current/perf-identity.json
+            tests/baseline/current/perf-comparison.json
             tests/baseline/current/benchstat.txt
-            tests/baseline/current/benchstat.junit.xml
             tests/baseline/current/perf-regressions.json
-          if-no-files-found: ignore
+          if-no-files-found: error
           retention-days: 30

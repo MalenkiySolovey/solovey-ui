@@ -259,8 +259,9 @@ run_node "$snapshot/scripts/write-component-installed-metadata.mjs" \
 run_node "$snapshot/scripts/frontend-runtime-closure.mjs" \
 	--dist "$snapshot/frontend/dist" --components-dir "$snapshot/.release/components" \
 	--out "$snapshot/.release/components/runtime-closure.json"
-mkdir -p "$snapshot/web/html"
-cp -a "$snapshot/frontend/dist/." "$snapshot/web/html/"
+run_node "$snapshot/scripts/frontend-assets.mjs" publish \
+	--dist "$snapshot/frontend/dist" --destination "$snapshot/web/html" \
+	--components-dir "$snapshot/.release/components"
 
 go_dependency_proof="$temporary_root/GO_DEPENDENCY_AUTHORITY.json"
 (

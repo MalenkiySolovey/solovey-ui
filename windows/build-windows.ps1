@@ -1,139 +1,55 @@
-# PowerShell script for building Solovey UI on Windows
+# Native Windows build; the caller supplies the supported Go/Node/CGO toolchain.
+[CmdletBinding(PositionalBinding = $false)]
 param(
-    [string]$Architecture = "amd64",
+    [ValidateSet('amd64', 'arm64')][string]$Architecture = 'amd64',
+    [ValidateSet('full', 'core')][string]$Profile = 'full',
+    [string]$OutputPath,
     [switch]$Help
 )
 
+$ErrorActionPreference = 'Stop'
 if ($Help) {
-    Write-Host "Usage: .\build-windows.ps1 [-Architecture <amd64|arm64>] [-Help]"
-    Write-Host "Supported release architectures: amd64, arm64"
-    Write-Host "Examples:"
-    Write-Host "  .\build-windows.ps1"
-    Write-Host "  .\build-windows.ps1 -Architecture arm64 # run on native Windows ARM64"
+    Write-Host 'Usage: build-windows.ps1 [-Architecture amd64|arm64] [-Profile full|core] [-OutputPath path]'
     exit 0
 }
+$repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
+if (!$OutputPath) { $OutputPath = Join-Path $repoRoot 'sui.exe' }
+$OutputPath = [IO.Path]::GetFullPath($OutputPath)
 
-$scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
-$repoRoot = [System.IO.Path]::GetFullPath((Join-Path $scriptDir ".."))
-Set-Location -LiteralPath $repoRoot
-
-if ($Architecture -notin @("amd64", "arm64")) {
-    throw "Unsupported Windows architecture: $Architecture"
+function Invoke-Native([string]$Program, [string[]]$Arguments) {
+    & $Program @Arguments
+    if ($LASTEXITCODE -ne 0) { throw "$Program failed with exit code $LASTEXITCODE" }
 }
 
-Write-Host "Building Solovey UI for Windows ($Architecture)..." -ForegroundColor Green
-
-# Check if Go is installed
-try {
-    $goVersion = go version 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Go not found"
-    }
-    Write-Host "Go version: $goVersion" -ForegroundColor Green
-    $goHostArchitecture = (go env GOHOSTARCH).Trim()
-    if ($goHostArchitecture -ne $Architecture) {
-        throw "CGO release builds must run natively: target $Architecture, host $goHostArchitecture"
-    }
-} catch {
-    Write-Host "Error: Go is not installed or not in PATH" -ForegroundColor Red
-    Write-Host "Please install Go from https://golang.org/dl/" -ForegroundColor Yellow
-    Read-Host "Press Enter to exit"
-    exit 1
+$savedEnvironment = @{}
+foreach ($name in @('GOOS', 'GOARCH', 'CGO_ENABLED', 'SOLOVEY_UI_PROFILE')) {
+    $savedEnvironment[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
 }
-
-# Check if Node.js is installed
+Push-Location -LiteralPath $repoRoot
 try {
-    $nodeVersion = node --version 2>$null
-    if ($LASTEXITCODE -ne 0) {
-        throw "Node.js not found"
-    }
-    Write-Host "Node.js version: $nodeVersion" -ForegroundColor Green
-} catch {
-    Write-Host "Error: Node.js is not installed or not in PATH" -ForegroundColor Red
-    Write-Host "Please install Node.js from https://nodejs.org/" -ForegroundColor Yellow
-    Read-Host "Press Enter to exit"
-    exit 1
-}
-
-# Build frontend
-Write-Host "Building frontend..." -ForegroundColor Yellow
-Push-Location frontend
-
-try {
-    Write-Host "Installing dependencies..." -ForegroundColor Cyan
-    npm ci
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to install frontend dependencies"
-    }
-
-    Write-Host "Building frontend..." -ForegroundColor Cyan
-    $env:SOLOVEY_UI_PROFILE = "full"
-    npm run build
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to build frontend"
-    }
-} catch {
-    Write-Host "Error: $_" -ForegroundColor Red
+    $go = (Get-Command go -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+    $node = (Get-Command node -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+    $npm = (Get-Command npm.cmd -CommandType Application -ErrorAction Stop | Select-Object -First 1).Source
+    $hostArchitecture = (& $go env GOHOSTARCH).Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Cannot determine the native Go host architecture' }
+    if ($hostArchitecture -ne $Architecture) { throw "CGO build requires native $Architecture; Go host is $hostArchitecture" }
+    $env:GOOS = 'windows'
+    $env:GOARCH = $Architecture
+    $env:CGO_ENABLED = '1'
+    $env:SOLOVEY_UI_PROFILE = $Profile
+    Push-Location -LiteralPath (Join-Path $repoRoot 'frontend')
+    try {
+        Invoke-Native $npm @('ci')
+        Invoke-Native $npm @('run', 'build')
+    } finally { Pop-Location }
+    Invoke-Native $node @('scripts/check-frontend-profile.mjs', '--profile', $Profile, '--dist', 'frontend/dist')
+    Invoke-Native $node @('scripts/generate-component-imports.mjs', '--profile', $Profile)
+    Invoke-Native $node @('scripts/frontend-assets.mjs', 'publish', '--dist', 'frontend/dist', '--destination', 'web/html')
+    $tags = 'with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale'
+    if ($Profile -eq 'core') { $tags += ',minimal' }
+    Invoke-Native $go @('build', '-ldflags', '-w -s -checklinkname=0', '-tags', $tags, '-o', $OutputPath, 'main.go')
+    Write-Host "Built Windows $Architecture ${Profile}: $OutputPath"
+} finally {
+    foreach ($name in $savedEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name], 'Process') }
     Pop-Location
-    Read-Host "Press Enter to exit"
-    exit 1
 }
-
-Pop-Location
-
-Remove-Item Env:SOLOVEY_UI_PROFILE -ErrorAction SilentlyContinue
-node scripts/check-frontend-profile.mjs --profile full --dist frontend/dist
-if ($LASTEXITCODE -ne 0) {
-    throw "Frontend profile validation failed"
-}
-
-Write-Host "Generating full-profile component imports..." -ForegroundColor Yellow
-node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
-if ($LASTEXITCODE -ne 0) {
-    throw "Failed to generate component imports"
-}
-
-# Create web/html directory
-Write-Host "Creating web/html directory..." -ForegroundColor Yellow
-if (!(Test-Path "web\html")) {
-    New-Item -ItemType Directory -Path "web\html" -Force | Out-Null
-}
-Get-ChildItem -LiteralPath "web\html" -Force -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force
-
-# Copy frontend build files
-Write-Host "Copying frontend build files..." -ForegroundColor Yellow
-Copy-Item "frontend\dist\*" "web\html\" -Recurse -Force
-
-# Build backend
-Write-Host "Building backend..." -ForegroundColor Yellow
-
-# Set environment variables
-$env:GOOS = "windows"
-$env:GOARCH = $Architecture
-$env:CGO_ENABLED = "1"
-Write-Host "Building with the required CGO-backed SQLite runtime..." -ForegroundColor Yellow
-
-try {
-    go build -ldflags "-w -s -checklinkname=0" -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale" -o sui.exe main.go
-    if ($LASTEXITCODE -ne 0) {
-        throw "Failed to build backend with the required CGO SQLite runtime"
-    } else {
-        Write-Host "Built successfully with CGO" -ForegroundColor Green
-    }
-} catch {
-    Write-Host "Error: $_" -ForegroundColor Red
-    Read-Host "Press Enter to exit"
-    exit 1
-}
-
-Write-Host "Build completed successfully!" -ForegroundColor Green
-Write-Host "Output: sui.exe" -ForegroundColor Green
-
-# Show file info
-if (Test-Path "sui.exe") {
-    $fileInfo = Get-Item "sui.exe"
-    Write-Host "File size: $([math]::Round($fileInfo.Length / 1MB, 2)) MB" -ForegroundColor Cyan
-    Write-Host "Created: $($fileInfo.CreationTime)" -ForegroundColor Cyan
-}
-
-Read-Host "Press Enter to exit"

@@ -20,6 +20,7 @@ const topLevelInputs = new Set(['LICENSE', 'go.mod', 'go.sum', 'main.go'])
 const sourceHiddenFiles = new Set([
   'frontend/.browserslistrc',
   'frontend/.npmrc',
+  'frontend/.node-version',
 ])
 
 const targetBuildScripts = new Set([
@@ -28,6 +29,7 @@ const targetBuildScripts = new Set([
   'scripts/component-frontend-manifest.mjs',
   'scripts/extract-component-frontend.mjs',
   'scripts/frontend-runtime-closure.mjs',
+  'scripts/frontend-assets.mjs',
   'scripts/generate-component-imports.mjs',
   'scripts/openwrt-go-authority.mjs',
   'scripts/openwrt-apk-metadata.mjs',

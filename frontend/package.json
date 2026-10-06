@@ -6,9 +6,9 @@
     "dev": "vite --host",
     "build": "vue-tsc --noEmit && vite build",
     "preview": "vite preview",
-    "test": "vitest run",
+    "test": "node scripts/run-vitest.mjs run",
     "test:e2e": "playwright test",
-    "test:unit": "vitest run",
+    "test:unit": "node scripts/run-vitest.mjs run",
     "typecheck": "vue-tsc --noEmit",
     "lint": "eslint ."
   },
