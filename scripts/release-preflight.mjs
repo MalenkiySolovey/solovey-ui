@@ -23,16 +23,18 @@ const allowedRootFields = new Set([
 
 export function validateReleaseTrain(version, train) {
   // Both channels require an explicit, coherent release policy.
-  if (train?.candidateBase !== '2026.3.2') throw new Error('release train requires a reviewed policy transition')
+  if (!['2026.3.2', '2026.3.3'].includes(train?.candidateBase)) throw new Error('release train requires a reviewed policy transition')
   if (train.stage === 'stable') {
-    if (train.stableBaseline !== train.candidateBase || train.previousStable !== '2026.3.1' ||
-        train.acceptedPrerelease !== '2026.3.2-beta.10' || !Array.isArray(train.pendingAcceptance) ||
+    const previousStable = train.candidateBase === '2026.3.2' ? '2026.3.1' : '2026.3.2'
+    const acceptedPrerelease = train.candidateBase === '2026.3.2' ? '2026.3.2-beta.10' : null
+    if (train.stableBaseline !== train.candidateBase || train.previousStable !== previousStable ||
+        train.acceptedPrerelease !== acceptedPrerelease || !Array.isArray(train.pendingAcceptance) ||
         train.pendingAcceptance.length !== 0 || version !== train.candidateBase) {
       throw new Error('stable release requires a coherent accepted release train and exact stable version')
     }
     return
   }
-  if (train.stage !== 'qualification' || train.stableBaseline !== '2026.3.1') {
+  if (train.stage !== 'qualification' || train.candidateBase !== '2026.3.2' || train.stableBaseline !== '2026.3.1') {
     throw new Error('release train requires a reviewed policy transition')
   }
   if (!/^2026\.3\.2-beta\.[1-9][0-9]*$/.test(version)) {

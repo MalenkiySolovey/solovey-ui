@@ -33,6 +33,27 @@ test('stable train admits only its accepted stable identity', () => {
   assert.throws(() => validateReleaseTrain('2026.3.2', { ...train, stage: 'unknown' }), /reviewed policy transition/)
 })
 
+test('accepted stable patch rejects other versions and incomplete promotion', () => {
+  const train = {
+    stableBaseline: '2026.3.3', candidateBase: '2026.3.3', stage: 'stable',
+    previousStable: '2026.3.2', acceptedPrerelease: null, pendingAcceptance: [],
+  }
+  assert.doesNotThrow(() => validateReleaseTrain('2026.3.3', train))
+  for (const version of ['2026.3.2', '2026.3.4', '2026.3.3-beta.1', '2026.3.2-beta.10']) {
+    assert.throws(() => validateReleaseTrain(version, train), /coherent accepted release train/)
+  }
+  for (const mutation of [
+    { stableBaseline: '2026.3.2' }, { previousStable: '2026.3.1' },
+    { acceptedPrerelease: '2026.3.2-beta.10' }, { acceptedPrerelease: undefined },
+    { pendingAcceptance: ['runtime'] }, { pendingAcceptance: undefined },
+  ]) {
+    assert.throws(() => validateReleaseTrain('2026.3.3', { ...train, ...mutation }), /coherent accepted release train/)
+  }
+  for (const mutation of [{ candidateBase: '2026.3.4' }, { stage: 'qualification' }, { stage: 'unknown' }]) {
+    assert.throws(() => validateReleaseTrain('2026.3.3', { ...train, ...mutation }), /reviewed policy transition/)
+  }
+})
+
 function fixture(overrides = {}) {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519')
   const now = new Date('2026-08-15T00:00:00Z')
