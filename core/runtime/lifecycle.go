@@ -45,6 +45,7 @@ func (c *Core) Start(sbConfig []byte) error {
 	}
 
 	c.access.Lock()
+	c.probeHealth.reset()
 	c.managerGeneration++
 	generation := c.managerGeneration
 	c.ctx = ctx
@@ -75,6 +76,7 @@ func (c *Core) Stop() error {
 	defer c.lifecycle.Unlock()
 
 	c.access.Lock()
+	c.probeHealth.reset()
 	c.isRunning = false
 	if c.instance == nil {
 		c.access.Unlock()

@@ -38,6 +38,16 @@ describe('actionableLogLevel', () => {
 })
 
 describe('Data load ownership', () => {
+  it('consumes recent probe health as an online projection and replaces it with an empty snapshot', async () => {
+    const health = { direct: { tag: 'direct', source: 'manual', targetId: 'fixture-digest', status: 'healthy', delayMs: 8, checkedAt: 2000 } }
+    http.get.mockResolvedValueOnce({ success: true, obj: { onlines: { outboundHealth: health } } })
+    const store = Data()
+    await store.loadData()
+    expect(store.onlines.outboundHealth).toEqual(health)
+    http.get.mockResolvedValueOnce({ success: true, obj: { onlines: { outboundHealth: {} } } })
+    await store.loadData()
+    expect(store.onlines.outboundHealth).toEqual({})
+  })
   it('coalesces concurrent api/load refreshes into one request', async () => {
     let resolveRequest!: (value: any) => void
     http.get.mockReturnValue(new Promise(resolve => {

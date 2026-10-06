@@ -61,20 +61,28 @@ func (c *Core) AddOutbound(config []byte) error {
 			return err
 		}
 		outboundCtx := adapter.WithContext(rt.ctx, &adapter.InboundContext{Outbound: outboundConfig.Tag})
-		return rt.outboundManager.Create(
+		c.probeHealth.remove(outboundConfig.Tag)
+		if err := rt.outboundManager.Create(
 			outboundCtx,
 			rt.router,
 			rt.factory.NewLogger("outbound/"+outboundConfig.Type+"["+outboundConfig.Tag+"]"),
 			outboundConfig.Tag,
 			outboundConfig.Type,
-			outboundConfig.Options)
+			outboundConfig.Options); err != nil {
+			return err
+		}
+		return nil
 	})
 }
 
 func (c *Core) RemoveOutbound(tag string) error {
 	return c.withMutation(func(rt coreRuntime) error {
 		logger.Info("remove outbound: ", tag)
-		return rt.outboundManager.Remove(tag)
+		c.probeHealth.remove(tag)
+		if err := rt.outboundManager.Remove(tag); err != nil {
+			return err
+		}
+		return nil
 	})
 }
 
@@ -84,20 +92,28 @@ func (c *Core) AddEndpoint(config []byte) error {
 		if err := endpointConfig.UnmarshalJSONContext(rt.ctx, config); err != nil {
 			return err
 		}
-		return rt.endpointManager.Create(
+		c.probeHealth.remove(endpointConfig.Tag)
+		if err := rt.endpointManager.Create(
 			rt.ctx,
 			rt.router,
 			rt.factory.NewLogger("endpoint/"+endpointConfig.Type+"["+endpointConfig.Tag+"]"),
 			endpointConfig.Tag,
 			endpointConfig.Type,
-			endpointConfig.Options)
+			endpointConfig.Options); err != nil {
+			return err
+		}
+		return nil
 	})
 }
 
 func (c *Core) RemoveEndpoint(tag string) error {
 	return c.withMutation(func(rt coreRuntime) error {
 		logger.Info("remove endpoint: ", tag)
-		return rt.endpointManager.Remove(tag)
+		c.probeHealth.remove(tag)
+		if err := rt.endpointManager.Remove(tag); err != nil {
+			return err
+		}
+		return nil
 	})
 }
 

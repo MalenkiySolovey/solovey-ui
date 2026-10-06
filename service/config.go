@@ -181,17 +181,14 @@ func (s *ConfigService) IsCoreRunning() bool {
 }
 
 func (s *ConfigService) CheckOutbound(tag string, link string) coreruntime.CheckOutboundResult {
-	if tag == "" {
-		return coreruntime.CheckOutboundResult{Error: coreruntime.CheckOutboundErrorInvalidRequest}
-	}
-	coreInstance := s.coreInstance()
-	if coreInstance == nil || !coreInstance.IsRunning() {
-		return coreruntime.CheckOutboundResult{Error: coreruntime.CheckOutboundErrorCoreUnavailable}
-	}
-	return coreInstance.CheckOutbound(context.Background(), tag, link)
+	return s.CheckOutboundWithContext(context.Background(), tag, link)
 }
 
 func (s *ConfigService) CheckOutboundWithContext(ctx context.Context, tag string, link string) coreruntime.CheckOutboundResult {
+	return s.CheckOutboundWithSource(ctx, tag, link, coreruntime.ProbeSourceManual)
+}
+
+func (s *ConfigService) CheckOutboundWithSource(ctx context.Context, tag string, link string, source coreruntime.ProbeSource) coreruntime.CheckOutboundResult {
 	if tag == "" {
 		return coreruntime.CheckOutboundResult{Error: coreruntime.CheckOutboundErrorInvalidRequest}
 	}
@@ -199,7 +196,7 @@ func (s *ConfigService) CheckOutboundWithContext(ctx context.Context, tag string
 	if coreInstance == nil || !coreInstance.IsRunning() {
 		return coreruntime.CheckOutboundResult{Error: coreruntime.CheckOutboundErrorCoreUnavailable}
 	}
-	return coreInstance.CheckOutbound(ctx, tag, link)
+	return coreInstance.CheckOutboundWithSource(ctx, tag, link, source)
 }
 
 func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initUsers string, loginUser string, hostname string) (objs []string, err error) {

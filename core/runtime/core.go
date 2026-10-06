@@ -32,6 +32,7 @@ type Core struct {
 	connTracker       *tracker.ConnTracker
 	managerGeneration uint64
 	effectiveInbounds map[string]InboundRuntimeRecord
+	probeHealth       recentProbeHealth
 }
 
 func NewCore(observers ...tracker.IPObserver) *Core {

@@ -22,6 +22,23 @@ export interface FailoverStatusEntry {
 
 export type FailoverStatusMap = Record<string, FailoverStatusEntry>
 
+export interface OutboundHealth {
+  tag: string
+  source: 'manual' | 'failover' | 'diagnostic'
+  targetId: string
+  status: 'healthy' | 'down' | 'unknown'
+  delayMs?: number
+  error?: string
+  checkedAt: number
+}
+
+export interface OnlineSnapshot {
+  inbound?: string[]
+  outbound?: string[]
+  user?: string[]
+  outboundHealth?: Record<string, OutboundHealth>
+}
+
 export interface ComponentStatus {
   id: string
   name: string
@@ -71,7 +88,7 @@ const Data = defineStore('Data', {
     subClashURI: "",
     subXrayURI: "",
     enableTraffic: false,
-    onlines: {inbound: <string[]>[], outbound: <string[]>[], user: <string[]>[]},
+    onlines: { inbound: [], outbound: [], user: [], outboundHealth: {} } as OnlineSnapshot,
     config: <any>{},
     capabilities: undefined as RuntimeCapabilities | undefined,
     inbounds: <any[]>[],

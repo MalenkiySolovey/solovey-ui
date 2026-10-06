@@ -61,8 +61,8 @@
 <script lang="ts" setup>
 import { computed, ref, watch } from 'vue'
 import { dateLocale } from '@/locales'
-import { ClientIPHistoryRow, displayIP, hasRawIPRows } from '@/components/security/ipHistory'
-import { clearClientIPHistory, fetchClientIPHistory } from '@/features/useIpHistory'
+import { displayIP, hasRawIPRows } from '@/components/security/ipHistory'
+import { useIpHistory } from '@/features/useIpHistory'
 
 const props = withDefaults(defineProps<{
   visible: boolean
@@ -77,44 +77,27 @@ const emit = defineEmits<{
   cleared: []
 }>()
 
-const rows = ref<ClientIPHistoryRow[]>([])
-const loading = ref(false)
 const showRaw = ref(false)
 const confirmRaw = ref(false)
+const history = useIpHistory(() => [props.visible, props.client] as const, () => {
+  showRaw.value = false
+  emit('cleared')
+})
+const { rows, loading, clearHistory } = history
 
 const hasRawRows = computed(() => hasRawIPRows(rows.value))
 
-watch(() => [props.visible, props.client] as const, async ([visible, client]) => {
-  if (visible && client) {
-    await loadHistory(client)
-    return
-  }
-  if (!visible) {
+watch(() => [props.visible, props.client] as const, () => {
+  showRaw.value = false
+  confirmRaw.value = false
+}, { flush: 'sync' })
+
+const setVisible = (value: boolean) => {
+  if (!value) {
+    history.cancel()
     showRaw.value = false
     confirmRaw.value = false
   }
-}, { immediate: true })
-
-const loadHistory = async (client: string) => {
-  loading.value = true
-  showRaw.value = false
-  rows.value = []
-  const history = await fetchClientIPHistory(client)
-  if (history) rows.value = history
-  loading.value = false
-}
-
-const clearHistory = async () => {
-  loading.value = true
-  if (await clearClientIPHistory(props.client)) {
-    rows.value = []
-    showRaw.value = false
-    emit('cleared')
-  }
-  loading.value = false
-}
-
-const setVisible = (value: boolean) => {
   emit('update:visible', value)
 }
 

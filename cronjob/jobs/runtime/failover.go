@@ -202,7 +202,7 @@ func (j *FailoverJob) probeMembers(group entityoutbounds.FailoverGroup) map[stri
 			if j.probe != nil {
 				healthy = j.probe(ctx, tag, group.ProbeTarget)
 			} else {
-				healthy = j.ConfigService.CheckOutboundWithContext(ctx, tag, group.ProbeTarget).OK
+				healthy = j.ConfigService.CheckOutboundWithSource(ctx, tag, group.ProbeTarget, coreruntime.ProbeSourceFailover).OK
 			}
 			mu.Lock()
 			results[tag] = healthy

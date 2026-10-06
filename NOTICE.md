@@ -155,3 +155,14 @@ component owns recovery/application transactions, cancellation and cursor tables
 and recoverable refund intent; its existing adapters and injected database
 lifetime retain external operations. No upstream implementation or tests were
 copied, and full parity remains v1.5.10.
+
+Wave 5 HEALTH-01/FE-01/WS-02/FE-02 independently adapt bounded recent probe
+observations, stale history/socket generation fencing and Firefox preload
+recovery from deposist/s-ui-x v1.5.12-beta6
+`08814445d1497bc8b52bdc3af2eda784a5ea26cb`, behavioral witness
+`590b08af39537ab4c85441513743c2360bbc187d` (`service/health_snapshot.go`,
+`cronjob/failoverProbe.go`, `frontend/src/components/IpHistoryModal.vue`,
+`frontend/src/store/ws.ts`, `frontend/src/router/preload-error.ts`). Solovey's
+core probe runtime owns ephemeral observations, stats consumes a copy, and
+existing frontend feature/router/transport owners retain their lifecycles.
+No upstream code or tests were copied; full parity remains v1.5.10.

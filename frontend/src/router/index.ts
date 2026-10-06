@@ -8,6 +8,7 @@ import { getBaseUrl } from '@/plugins/base-url'
 import { syncEnabledComponents } from '@/componentSystem/loader'
 import { getSecurityPosture, messageObject, type SecurityPosture } from '@/shared/composables/useSecurityOperations'
 import { configureLoginNavigation } from '@/plugins/loginNavigation'
+import { createPreloadRecovery, isPreloadError } from './preloadRecovery'
 
 const routes = [
   {
@@ -133,34 +134,13 @@ configureLoginNavigation(() => router.push('/login'))
 // stops navigating and shows the broken Clients tab. Reloading once
 // fetches the new index.html with the new hashes. We use sessionStorage
 // to make sure we never enter an infinite reload loop.
-const reloadKey = 'sui:preload-error-reload'
-const reloadOnce = () => {
-  try {
-    if (sessionStorage.getItem(reloadKey) === '1') return
-    sessionStorage.setItem(reloadKey, '1')
-  } catch {
-    // sessionStorage may be disabled (private mode); fall through.
-  }
-  window.location.reload()
-}
-const isPreloadError = (err: any): boolean => {
-  if (!err) return false
-  const msg: string = err?.message ?? String(err)
-  return /Failed to fetch dynamically imported module/i.test(msg) ||
-    /Importing a module script failed/i.test(msg) ||
-    /Failed to load module script/i.test(msg) ||
-    err?.name === 'ChunkLoadError'
-}
-window.addEventListener('vite:preloadError', () => reloadOnce())
+const preloadRecovery = createPreloadRecovery(() => window.location.reload(), () => sessionStorage)
+window.addEventListener('vite:preloadError', () => preloadRecovery.reloadOnce())
 router.onError((err) => {
-  if (isPreloadError(err)) reloadOnce()
+  if (isPreloadError(err)) preloadRecovery.reloadOnce()
 })
-router.afterEach(() => {
-  try {
-    sessionStorage.removeItem(reloadKey)
-  } catch {
-    // ignore
-  }
+router.afterEach((_to, _from, failure) => {
+  if (!failure) preloadRecovery.navigationSucceeded()
 })
 
 // The session cookie is HttpOnly (set by api/session.go) so it cannot be
