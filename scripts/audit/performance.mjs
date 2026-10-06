@@ -10,10 +10,42 @@ const repo=fileURLToPath(new URL('../../',import.meta.url))
 const config=JSON.parse(fs.readFileSync(new URL('./performance.json',import.meta.url),'utf8'))
 const tool=JSON.parse(fs.readFileSync(new URL('./tools.json',import.meta.url),'utf8')).benchstat
 
+export function normalizeBenchmarks(source) {
+  const lines=[]
+  let owner='',pending=''
+  for(const line of source.split(/\r?\n/)) {
+    if(/^(?:goos|goarch|pkg|cpu): /.test(line)) {
+      if(pending)throw Error(`Missing benchmark observation: ${owner}/${pending}`)
+      if(line.startsWith('pkg: '))owner=line.slice(5).trim()
+      lines.push(line)
+      continue
+    }
+    const prefix=line.match(/^(Benchmark\S+)(?:\s+(.*))?$/)
+    let observation=line.trim()
+    if(prefix) {
+      if(pending)throw Error(`Missing benchmark observation: ${owner}/${pending}`)
+      pending=prefix[1]
+      observation=(prefix[2]??'').trim()
+    }
+    // Go writes the benchmark name before calibration. Fixture/application
+    // logging can separate it from the final numeric result on stdout.
+    const match=observation.match(/^([1-9]\d*)\s+([\d.eE+-]+)\s+ns\/op(?:\s.*)?$/)
+    if(match) {
+      if(!owner || !pending || !Number.isFinite(Number(match[2])) || Number(match[2])<=0)throw Error('Invalid benchmark observation')
+      lines.push(pending+'\t'+observation)
+      pending=''
+    } else if(pending && /^--- (?:SKIP|FAIL): Benchmark/.test(line)) {
+      throw Error(`Missing benchmark observation: ${owner}/${pending}`)
+    }
+  }
+  if(pending)throw Error(`Missing benchmark observation: ${owner}/${pending}`)
+  return lines.join('\n')+'\n'
+}
+
 export function parseBenchmarks(source) {
   const rows=new Map()
   let owner=''
-  for(const line of source.split(/\r?\n/)) {
+  for(const line of normalizeBenchmarks(source).split('\n')) {
     if(line.startsWith('pkg: '))owner=line.slice(5).trim()
     const match=line.match(/^(Benchmark\S+)\s+[1-9]\d*\s+([\d.eE+-]+)\s+ns\/op(?:\s|$)/)
     if(!match)continue
@@ -83,8 +115,11 @@ async function main() {
       run(process.execPath,[path.join(repo,'scripts/frontend-assets.mjs'),'publish','--dist',path.join(directory,'frontend/dist'),'--destination',path.join(directory,'web/html')],{cwd:directory,env,file:path.join(group,'publication.txt')})
       run('go',['test','-run=^$','-bench=.','-benchmem','-benchtime='+config.benchtime,'-count='+config.samples,'-p=1','-timeout=25m',...(config.tags?['-tags',config.tags]:[]),...config.packages],{cwd:directory,env,file:path.join(group,'benchmarks.txt')})
     }
-    const baseFile=path.join(out,'perf-baseline/benchmarks.txt'),headFile=path.join(out,'perf-candidate/benchmarks.txt')
-    const comparison=compareBenchmarks(fs.readFileSync(baseFile,'utf8'),fs.readFileSync(headFile,'utf8'))
+    const rawBase=fs.readFileSync(path.join(out,'perf-baseline/benchmarks.txt'),'utf8'),rawHead=fs.readFileSync(path.join(out,'perf-candidate/benchmarks.txt'),'utf8')
+    const baseFile=path.join(out,'perf-baseline/benchmarks-normalized.txt'),headFile=path.join(out,'perf-candidate/benchmarks-normalized.txt')
+    fs.writeFileSync(baseFile,normalizeBenchmarks(rawBase))
+    fs.writeFileSync(headFile,normalizeBenchmarks(rawHead))
+    const comparison=compareBenchmarks(rawBase,rawHead)
     run(benchstat,[baseFile,headFile],{env,file:path.join(out,'benchstat.txt')})
     fs.writeFileSync(summary,JSON.stringify({...comparison,baseline,candidate},null,2)+'\n')
     // Preserve the dashboard's existing warning projection, with raw samples

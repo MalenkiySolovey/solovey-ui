@@ -50,7 +50,9 @@ commits on one runner. Both use the same toolchain, frontend profile, Go tags,
 package set, CPU setting and six one-second samples. The representative set
 covers API requests/realtime, tracker compilation, stats/admission service work
 and resource projection. Raw outputs, setup logs, identity, pinned benchstat
-output and JSON samples/medians are retained. Missing, unequal or incomplete
+output and JSON samples/medians are retained. Interleaved calibration logs are
+normalized into complete benchmark lines for benchstat; raw output is retained.
+Missing, unequal, skipped or incomplete
 observations fail the harness visibly. Median increases above the existing 20%
 threshold are advisory; inspect samples and benchstat for noise before changing
 production code or policy.
