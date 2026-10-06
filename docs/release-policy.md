@@ -17,6 +17,9 @@ stable releases.
 release channel. Promotion requires the supported platform/storage contracts to
 remain accepted and every blocking candidate gate to pass. Source and host tests
 protect these contracts; they do not expand the supported hardware matrix.
+The accepted 2026.3.3 stable patch follows 2026.3.2 directly; its train records
+`acceptedPrerelease=null` and no pending acceptance. Preflight admits only that
+exact stable version with the coherent reviewed train.
 
 Use a dedicated branch and reviewed PR for release changes. The accepted main
 commit is the immutable release source. A new release uses a fresh monotonic

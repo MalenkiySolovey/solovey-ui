@@ -1,5 +1,15 @@
 # Changelog
 
+## 2026.3.3
+
+- Updated the networking core to sing-box v1.13.18 with reviewed supporting dependencies and Cronet 150 native artifacts, preserving newer compatible security fixes.
+- Made TCP/UDP IP admission atomic and isolated retired connection counters from new core generations after restart.
+- Strengthened token authorization, configuration validation and import completion; restore preserves admitted work on its original database generation and gives late requests bounded busy responses.
+- Unified build capabilities across save, import, client delivery and Doctor, including stored WARP normalization to WireGuard and captured endpoint restart requirements.
+- Hardened paid-subscription invoice identity, payment metadata and durable recovery, poll rotation and cancellation without changing component data ownership.
+- Improved recent health observations, websocket/history lifetime, editor guidance, traffic timezone display and Telegram discovery and save-before-Test settings.
+- Validated frontend assets before atomic publication, improved native Windows build/test path handling, and pinned audit tools with comparable same-run performance evidence.
+
 ## 2026.3.2
 
 - Improved stable native/systemd and package/procd deployments, persistent storage admission, cold broker activation and recovery across supported Linux platforms.

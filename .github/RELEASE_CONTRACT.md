@@ -43,7 +43,7 @@ Release checklist:
   pointer, not a trust root; `solovey-ui-release.json` is the signed authority.
 - Verify the public-root set embedded into the production build. An empty or
   unusable root set must remain fail-closed as `SIGNING_UNAVAILABLE`.
-- Run `go test ./config ./database ./service ./internal/release`.
+- Run `go test ./config/... ./database/... ./service ./internal/release`.
 - Run the full validation gate before publishing artifacts.
 
 ## Complete release transaction
