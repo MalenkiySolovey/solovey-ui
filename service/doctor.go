@@ -9,6 +9,8 @@ import (
 	"sync"
 	"time"
 
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
+
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	opsdoctor "github.com/MalenkiySolovey/solovey-ui/internal/ops/doctor"
@@ -230,7 +232,7 @@ func (s *DoctorService) outboundChecksTarget(configService *ConfigService, targe
 				results[index] = result{Tag: outboundTag, Error: "outbound_check_timeout", Skipped: true}
 				return
 			}
-			check := configService.CheckOutboundWithContext(ctx, outboundTag, target)
+			check := configService.CheckOutboundWithSource(ctx, outboundTag, target, coreruntime.ProbeSourceDiagnostic)
 			res := result{Tag: outboundTag, OK: check.OK, Error: check.Error, Delay: check.Delay}
 			// A probe cancelled by the doctor's own time budget is "not tested",
 			// not a genuine outbound failure — don't count it as failed.

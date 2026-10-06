@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	coretracker "github.com/MalenkiySolovey/solovey-ui/core/tracker"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
@@ -19,9 +20,10 @@ import (
 )
 
 type onlines struct {
-	Inbound  []string `json:"inbound,omitempty"`
-	User     []string `json:"user,omitempty"`
-	Outbound []string `json:"outbound,omitempty"`
+	Inbound        []string                              `json:"inbound,omitempty"`
+	User           []string                              `json:"user,omitempty"`
+	Outbound       []string                              `json:"outbound,omitempty"`
+	OutboundHealth map[string]coreruntime.OutboundHealth `json:"outboundHealth"`
 }
 
 var (
@@ -121,7 +123,7 @@ func (s *StatsService) saveStatsSamples(enableTraffic bool, samples []coretracke
 		if err := ipmonitor.Flush(); err != nil {
 			return err
 		}
-		publishStatsRealtime(currentOnlines, nil)
+		publishStatsRealtime(s.projectOnlines(currentOnlines), nil)
 		return nil
 	}
 
@@ -169,7 +171,7 @@ func (s *StatsService) saveStatsSamples(enableTraffic bool, samples []coretracke
 			transactionCommitted = true
 			ipBatch.Commit()
 			if publishOnCommit {
-				publishStatsRealtime(publishOnlines, publishStats)
+				publishStatsRealtime(s.projectOnlines(publishOnlines), publishStats)
 			}
 		} else {
 			tx.Rollback()
@@ -498,12 +500,18 @@ func (s *StatsService) downsampleStats(stats []model.Stats, maxRows int) []model
 
 func (s *StatsService) GetOnlines() (onlines, error) {
 	onlineResourcesMu.RLock()
-	defer onlineResourcesMu.RUnlock()
-	return onlines{
+	current := onlines{
 		Inbound:  append([]string(nil), onlineResources.Inbound...),
 		User:     append([]string(nil), onlineResources.User...),
 		Outbound: append([]string(nil), onlineResources.Outbound...),
-	}, nil
+	}
+	onlineResourcesMu.RUnlock()
+	return s.projectOnlines(current), nil
+}
+
+func (s *StatsService) projectOnlines(current onlines) onlines {
+	current.OutboundHealth = s.runtime().Core().OutboundHealthSnapshot()
+	return current
 }
 func (s *StatsService) DelOldStats(days int) error {
 	oldTime := time.Now().AddDate(0, 0, -(days)).Unix()

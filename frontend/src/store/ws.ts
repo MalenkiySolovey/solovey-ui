@@ -64,11 +64,15 @@ export class WsRuntime {
   private closeCount = 0
   private connectAttempt = 0
   private connectingAttempt: number | null = null
+  private stopped = false
+  private fallbackGeneration = 0
 
   constructor(private deps: WsRuntimeDeps) {}
 
   async connect() {
     if (this.ws || this.state === 'connected' || this.connectingAttempt !== null) return
+    this.stopped = false
+    this.clearReconnectTimer()
     const attempt = ++this.connectAttempt
     this.connectingAttempt = attempt
     this.setState('reconnecting')
@@ -82,31 +86,39 @@ export class WsRuntime {
       }
       const ws = this.deps.createSocket(this.wsURL(), token)
       this.ws = ws
-      this.noOpenTimer = this.setRuntimeTimeout(() => {
-        this.ws = null
-        ws.onclose = null
-        ws.close()
+      const current = () => !this.stopped && attempt === this.connectAttempt && this.ws === ws
+      const openingTimer = this.setRuntimeTimeout(() => {
+        if (!current() || this.noOpenTimer !== openingTimer) return
+        this.noOpenTimer = null
+        this.retireSocket(true)
         this.startFallback()
       }, noOpenFallbackMs)
+      this.noOpenTimer = openingTimer
       ws.onopen = () => {
+        if (!current()) return
         this.closeCount = 0
         this.clearNoOpenTimer()
         this.setState('connected')
         this.stopFallback()
       }
       ws.onmessage = (event) => {
+        if (!current()) return
+        let payload: unknown
         try {
-          this.deps.onEvent?.(JSON.parse(event.data))
+          payload = JSON.parse(event.data)
         } catch {
           // Keep realtime open when a single event is malformed.
+          return
         }
+        this.deps.onEvent?.(payload)
       }
       ws.onclose = (event) => {
+        if (!current()) return
         if (isSessionClose(event)) {
           clearCSRFToken()
         }
         this.clearNoOpenTimer()
-        this.ws = null
+        this.retireSocket(false)
         this.closeCount++
         if (this.closeCount >= closeFallbackThreshold) {
           this.startFallback()
@@ -114,12 +126,10 @@ export class WsRuntime {
         }
         this.setState('reconnecting')
         const retry = this.closeCount - 1
-        this.reconnectTimer = this.setRuntimeTimeout(() => {
-          this.reconnectTimer = null
-          void this.connect()
-        }, reconnectDelayForRetry(retry))
+        this.scheduleReconnect(reconnectDelayForRetry(retry))
       }
       ws.onerror = () => {
+        if (!current()) return
         ws.close()
       }
     } catch {
@@ -130,36 +140,35 @@ export class WsRuntime {
   }
 
   disconnect() {
+    this.stopped = true
     this.connectAttempt++
     this.connectingAttempt = null
     this.clearNoOpenTimer()
-    if (this.reconnectTimer) {
-      this.clearRuntimeTimeout(this.reconnectTimer)
-      this.reconnectTimer = null
-    }
-    if (this.ws) {
-      const ws = this.ws
-      this.ws = null
-      ws.onclose = null
-      ws.close()
-    }
+    this.clearReconnectTimer()
+    this.retireSocket(true)
     this.stopFallback()
     this.setState('degraded')
   }
 
   private startFallback() {
+    if (this.stopped) return
     this.clearNoOpenTimer()
+    this.clearReconnectTimer()
     this.setState('degraded')
     this.startOnlineRecovery()
     if (this.fallbackTimer) return
-    this.fallbackTimer = this.setRuntimeInterval(() => {
+    const generation = this.fallbackGeneration
+    const fallbackTimer = this.setRuntimeInterval(() => {
+      if (this.stopped || generation !== this.fallbackGeneration || this.fallbackTimer !== fallbackTimer) return
       void this.deps.loadData()
       if (this.reconnectTimer || this.ws) return
       void this.connect()
     }, fallbackPollMs)
+    this.fallbackTimer = fallbackTimer
   }
 
   private stopFallback() {
+    this.fallbackGeneration++
     this.stopOnlineRecovery()
     if (!this.fallbackTimer) return
     this.clearRuntimeInterval(this.fallbackTimer)
@@ -170,12 +179,11 @@ export class WsRuntime {
     if (this.onlineRecoveryHandler) return
     const events = this.deps.onlineEvents ?? (typeof window === 'undefined' ? undefined : window)
     if (!events?.addEventListener) return
+    const generation = this.fallbackGeneration
     this.onlineRecoveryHandler = () => {
+      if (this.stopped || generation !== this.fallbackGeneration) return
       if (this.reconnectTimer || this.ws) return
-      this.reconnectTimer = this.setRuntimeTimeout(() => {
-        this.reconnectTimer = null
-        void this.connect()
-      }, onlineRecoveryDelayMs)
+      this.scheduleReconnect(onlineRecoveryDelayMs)
     }
     events.addEventListener('online', this.onlineRecoveryHandler)
   }
@@ -188,9 +196,34 @@ export class WsRuntime {
   }
 
   private clearNoOpenTimer() {
-    if (!this.noOpenTimer) return
+    if (this.noOpenTimer === null) return
     this.clearRuntimeTimeout(this.noOpenTimer)
     this.noOpenTimer = null
+  }
+
+  private clearReconnectTimer() {
+    if (this.reconnectTimer === null) return
+    this.clearRuntimeTimeout(this.reconnectTimer)
+    this.reconnectTimer = null
+  }
+
+  private scheduleReconnect(delay: number) {
+    this.clearReconnectTimer()
+    const attempt = this.connectAttempt
+    const timer = this.setRuntimeTimeout(() => {
+      if (this.stopped || attempt !== this.connectAttempt || this.reconnectTimer !== timer) return
+      this.reconnectTimer = null
+      void this.connect()
+    }, delay)
+    this.reconnectTimer = timer
+  }
+
+  private retireSocket(close: boolean) {
+    const socket = this.ws
+    this.ws = null
+    if (!socket) return
+    socket.onopen = socket.onmessage = socket.onclose = socket.onerror = null
+    if (close) socket.close()
   }
 
   private setState(state: WsConnectionState) {

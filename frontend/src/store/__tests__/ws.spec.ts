@@ -340,4 +340,105 @@ describe('WsRuntime regression anchors', () => {
     expect(runtime.state).toBe('connected')
     expect(events.target.removeEventListener).toHaveBeenCalledWith('online', expect.any(Function))
   })
+
+  it('fences old socket events and preserves the replacement opening timeout', async () => {
+    const timers = new ManualTimers()
+    const sockets: FakeSocket[] = []
+    const onEvent = vi.fn()
+    const deps = runtimeDeps({
+      createSocket: vi.fn(() => { const s = new FakeSocket(); sockets.push(s); return s }),
+      onEvent, setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
+    })
+    const runtime = new WsRuntime(deps)
+    await runtime.connect()
+    const old = { open: sockets[0].onopen!, message: sockets[0].onmessage!, close: sockets[0].onclose!, error: sockets[0].onerror! }
+    old.close({ code: 1006 })
+    await runtime.connect()
+    expect(timers.timeouts).toHaveLength(1)
+    expect(timers.timeouts[0].delay).toBe(5000)
+    old.open()
+    old.message({ data: '{"type":"obsolete"}' })
+    old.close({ code: 1006 })
+    old.error()
+    expect(runtime.state).toBe('reconnecting')
+    expect(onEvent).not.toHaveBeenCalled()
+    expect(sockets[0].close).not.toHaveBeenCalled()
+    expect(timers.timeouts).toHaveLength(1)
+    expect(timers.timeouts[0].delay).toBe(5000)
+    sockets[1].onopen?.()
+    expect(runtime.state).toBe('connected')
+    expect(timers.timeouts).toHaveLength(0)
+    runtime.disconnect()
+  })
+
+  it('ignores queued opening/reconnect callbacks after socket replacement or teardown', async () => {
+    const timers = new ManualTimers()
+    const sockets: FakeSocket[] = []
+    const deps = runtimeDeps({
+      createSocket: vi.fn(() => { const s = new FakeSocket(); sockets.push(s); return s }),
+      setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
+      setInterval: timers.setInterval, clearInterval: timers.clearInterval,
+    })
+    const runtime = new WsRuntime(deps)
+    await runtime.connect()
+    const oldTimeout = timers.timeouts[0].callback
+    sockets[0].onclose?.()
+    const oldReconnect = timers.timeouts[0].callback
+    await runtime.connect()
+    oldTimeout()
+    oldReconnect()
+    await flushPromises()
+    expect(runtime.state).toBe('reconnecting')
+    expect(sockets).toHaveLength(2)
+    expect(timers.intervals).toHaveLength(0)
+    expect(timers.timeouts).toHaveLength(1)
+    const newTimeout = timers.timeouts[0].callback
+    runtime.disconnect()
+    newTimeout()
+    oldReconnect()
+    await flushPromises()
+    expect(sockets).toHaveLength(2)
+    expect(timers.timeouts).toHaveLength(0)
+    expect(timers.intervals).toHaveLength(0)
+    expect(runtime.state).toBe('degraded')
+  })
+
+  it('fences queued fallback and online callbacks when a primary connection succeeds or shuts down', async () => {
+    const timers = new ManualTimers()
+    const events = onlineEvents()
+    const socket = new FakeSocket()
+    const deps = runtimeDeps({
+      getToken: vi.fn().mockResolvedValueOnce(null).mockResolvedValue('token'),
+      createSocket: vi.fn(() => socket), onlineEvents: events.target,
+      setTimeout: timers.setTimeout, clearTimeout: timers.clearTimeout,
+      setInterval: timers.setInterval, clearInterval: timers.clearInterval,
+    })
+    const runtime = new WsRuntime(deps)
+    await runtime.connect()
+    const fallback = timers.intervals[0].callback
+    events.dispatch('online')
+    const online = timers.timeouts[0].callback
+    await runtime.connect()
+    socket.onopen?.()
+    fallback()
+    online()
+    await flushPromises()
+    expect(deps.loadData).not.toHaveBeenCalled()
+    expect(deps.getToken).toHaveBeenCalledTimes(2)
+    expect(timers.timeouts).toHaveLength(0)
+    runtime.disconnect()
+    fallback()
+    online()
+    await flushPromises()
+    expect(deps.getToken).toHaveBeenCalledTimes(2)
+    expect(timers.intervals).toHaveLength(0)
+  })
+
+  it('does not swallow a current consumer programming error as malformed JSON', async () => {
+    const socket = new FakeSocket()
+    const runtime = new WsRuntime(runtimeDeps({ createSocket: () => socket, onEvent: () => { throw new Error('consumer defect') } }))
+    await runtime.connect()
+    expect(() => socket.onmessage?.({ data: '{"type":"fixture"}' })).toThrow('consumer defect')
+    runtime.disconnect()
+  })
 })
