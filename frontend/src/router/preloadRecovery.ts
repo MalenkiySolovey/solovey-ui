@@ -20,10 +20,13 @@ export const createPreloadRecovery = (reload: () => void, storage: () => Recover
       if (attempted) return
       attempted = true
       try {
-        if (storage().getItem(reloadKey) === '1') return
-        storage().setItem(reloadKey, '1')
+        const session = storage()
+        if (session.getItem(reloadKey) === '1') return
+        session.setItem(reloadKey, '1')
+        if (session.getItem(reloadKey) !== '1') return
       } catch {
-        // Keep a fence in this router instance when session storage is disabled.
+        // A memory-only fence would disappear on reload and permit a loop.
+        return
       }
       reload()
     },

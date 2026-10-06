@@ -23,10 +23,21 @@ describe('bounded browser preload recovery', () => {
     afterReload.reloadOnce()
     expect(reload).toHaveBeenCalledTimes(2)
   })
-  it('fences repeated recovery in memory if session storage is unavailable', () => {
+  it('requires a persistent fence across new routers when session storage is unavailable', () => {
     const reload = vi.fn()
-    const recovery = createPreloadRecovery(reload, () => { throw new Error('storage disabled') })
+    const storage = () => { throw new Error('storage disabled') }
+    const recovery = createPreloadRecovery(reload, storage)
     recovery.reloadOnce(); recovery.reloadOnce()
-    expect(reload).toHaveBeenCalledTimes(1)
+    createPreloadRecovery(reload, storage).reloadOnce()
+    recovery.navigationSucceeded()
+    recovery.reloadOnce()
+    expect(reload).not.toHaveBeenCalled()
+  })
+  it('does not reload if a marker write is silently lost', () => {
+    const reload = vi.fn()
+    const storage = { getItem: () => null, setItem: () => {}, removeItem: () => {} }
+    createPreloadRecovery(reload, () => storage).reloadOnce()
+    createPreloadRecovery(reload, () => storage).reloadOnce()
+    expect(reload).not.toHaveBeenCalled()
   })
 })
