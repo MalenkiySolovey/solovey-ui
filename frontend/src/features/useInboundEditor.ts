@@ -1,4 +1,8 @@
 import { defineComponent } from 'vue'
+import { runtimeCapability } from '@/types/runtimeCapabilities'
+import { createInboundAddressKey } from './inboundAddressKeys'
+import { inboundGuidanceKeys } from './inboundGuidance'
+import InboundGuidance from '@/components/fields/InboundGuidance.vue'
 import { InTypes, createInbound, Addr, ShadowTLS } from '@/types/inbounds'
 import RandomUtil from '@/plugins/randomUtil'
 import Dial from '@/components/fields/Dial.vue'
@@ -23,6 +27,8 @@ import AddrVue from '@/components/fields/Addr.vue'
 import OutJsonVue from '@/components/subscription/OutJson.vue'
 import Data from '@/store/modules/data'
 import CapabilityNotice from '@/components/fields/CapabilityNotice.vue'
+import SaveGuardNotice from '@/components/fields/SaveGuardNotice.vue'
+import { entitySaveReasons, type SaveReason } from './entitySaveReview'
 import { capabilityEditState, capabilityTypeChoices, type CapabilityChoice, type CapabilityEditState } from '@/types/capabilityEditors'
 export default defineComponent({
   props: ['visible', 'id', 'inTags', 'tlsConfigs', 'draftInbound', 'draftId'],
@@ -31,6 +37,7 @@ export default defineComponent({
     return {
       inbound: createInbound("direct",{ id:0, "tag": "" }),
       title: "add",
+      addressKey: createInboundAddressKey(),
       storedCapabilityType: "",
       loading: false,
       snapshot: "",
@@ -144,7 +151,7 @@ export default defineComponent({
     },
     async saveChanges() {
       // Guard against double-submit (button is also :disabled while loading).
-      if (!this.$props.visible || this.loading || !this.capabilityState.allowed) return
+      if (!this.$props.visible || this.saveReasons.length > 0) return
       // check duplicate tag
       const isDuplicatedTag = Data().checkTag("inbound", this.inbound.id, this.inbound.tag)
       if (isDuplicatedTag) return
@@ -179,6 +186,9 @@ export default defineComponent({
     },
   },
   computed: {
+    saveReasons(): SaveReason[] {
+      return entitySaveReasons({ identity: this.inbound.tag, port: this.inbound.listen_port, requiresPort: this.inbound.type !== this.inTypes.Tun, pending: this.loading, capability: this.capabilityState, missingRequiredTls: this.OnlyTLS.includes(this.inbound.type) && !this.inbound.tls_id })
+    },
     capabilityState(): CapabilityEditState {
       return capabilityEditState(Data().capabilities, "inbounds", this.inbound.type, this.storedCapabilityType)
     },
@@ -188,12 +198,8 @@ export default defineComponent({
     dirty(): boolean {
       return this.snapshot !== "" && JSON.stringify(this.inbound) !== this.snapshot
     },
-    validate() {
-      if (this.inbound == undefined) return false
-      if (this.inbound.tag == "") return false
-      if (this.inbound.listen_port > 65535 || this.inbound.listen_port < 1) return false
-      if (this.OnlyTLS.includes(this.inbound.type) && this.inbound.tls_id == 0) return false
-      return true
+    guidanceHints(): string[] {
+      return inboundGuidanceKeys(runtimeCapability(Data().capabilities, "inbounds", this.inbound.type), { hasTls: this.HasTls.includes(this.inbound.type), tlsSelected: this.inbound.tls_id > 0, transport: (<any>this.inbound).transport?.type })
     },
     clients() {
       return Data().clients?? []
@@ -225,7 +231,7 @@ export default defineComponent({
       }
     },
   },
-  components: { CapabilityNotice,
+  components: { InboundGuidance, SaveGuardNotice, CapabilityNotice,
     Listen, InTls, Hysteria2, Naive, Direct, Shadowsocks,
     Users, Hysteria, ShadowTls, TProxy, Multiplex, Tuic, Tun,
     Trojan, AnyTls, Transport, AddrVue, OutJsonVue, Dial, DomainResolver

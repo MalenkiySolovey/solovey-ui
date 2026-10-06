@@ -13,7 +13,9 @@
         ></v-skeleton-loader>
       <v-card-text style="padding: 0 16px; overflow-y: scroll;">
         <v-container style="padding: 0;" :hidden="loading">
-          <CapabilityNotice :state="capabilityState" />
+          <SaveGuardNotice :reasons="saveReasons" />
+      <InboundGuidance :hints="guidanceHints" />
+      <CapabilityNotice v-if="capabilityState.allowed" :state="capabilityState" />
       <v-row>
             <v-col cols="12" sm="6" md="4">
               <v-select
@@ -95,7 +97,7 @@
                   <v-card-subtitle>{{ $t('in.multiDomain') }}
                     <v-chip color="primary" density="compact" variant="elevated" @click="add_addr"><v-icon icon="mdi-plus" /></v-chip>
                   </v-card-subtitle>
-                  <template v-for="addr,index in inbound.addrs">
+                  <template v-for="(addr, index) in inbound.addrs" :key="addressKey(addr)">
                     {{ $t('in.addr') }} #{{ (index+1) }} <v-icon icon="mdi-delete" color="error" @click="inbound.addrs?.splice(index,1)" />
                     <v-divider></v-divider>
                     <AddrVue :addr="addr" :hasTls="HasTls.includes(inbound.type)" />
@@ -127,7 +129,7 @@
           color="primary"
           variant="tonal"
           :loading="loading"
-          :disabled="loading || !capabilityState.allowed"
+          :disabled="saveReasons.length > 0"
           @click="saveChanges"
         >
           {{ $t('actions.save') }}

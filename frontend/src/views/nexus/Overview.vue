@@ -2,6 +2,7 @@
   <section class="nexus-overview">
     <kpi-row
       v-model:traffic-range="trafficRange"
+      v-model:traffic-time-zone="trafficTimeZone"
       :loading="dashboardLoading"
       :summary="kpiSummary"
       :status="systemStatus"
@@ -36,6 +37,8 @@
 
 <script lang="ts" setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import { useTrafficTimeZone } from '@/components/nexus/overview/trafficTimeZone'
 
 import KpiRow from '@/components/nexus/overview/KpiRow.vue'
 import ProtocolSummaries from '@/components/nexus/overview/ProtocolSummaries.vue'
@@ -78,6 +81,8 @@ const liveTraffic = ref<NetworkTrafficRate>({
   downloadBps: 0,
   uploadBps: 0,
 })
+const { locale } = useI18n()
+const { timeZone: trafficTimeZone } = useTrafficTimeZone()
 const trafficRange = ref<TrafficRange>('24h')
 const trafficSummary = ref<unknown>()
 const trafficLoading = ref(false)
@@ -95,6 +100,8 @@ const systemMetrics = computed(() => overviewStatusMetrics(statusPayload.value))
 const trafficSeries = computed(() => selectTrafficSeries({
   range: trafficRange.value,
   summary: trafficSummary.value,
+  timeZone: trafficTimeZone.value,
+  locale: locale.value,
 }))
 const topClients = computed(() => selectTopClients({
   clients: data.clients,

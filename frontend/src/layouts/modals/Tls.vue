@@ -6,6 +6,8 @@
       </v-card-title>
       <v-divider></v-divider>
       <v-card-text style="padding: 0 16px; overflow-y: scroll;">
+        <SaveGuardNotice :reasons="saveReasons" />
+        <fieldset :disabled="busy" style="border: 0; padding: 0; margin: 0; min-width: 0">
         <v-card class="rounded-lg">
           <v-row>
             <v-col cols="12" sm="6" md="4">
@@ -243,7 +245,7 @@
               </v-col>
               <v-col cols="12">
                 <v-text-field
-                  label="Short IDs"
+                  :label="$t('tls.shortIds')"
                   hide-details
                   append-icon="mdi-refresh"
                   @click:append="randomSID"
@@ -252,7 +254,7 @@
               </v-col>
               <v-col cols="12" sm="6" md="4" v-if="optionTime">
                 <v-text-field
-                label="Max Time Diference"
+                :label="$t('tls.maxTimeDifference')"
                 type="number"
                 min="1"
                 :suffix="$t('date.m')"
@@ -284,7 +286,7 @@
             <v-col cols="12" sm="6" md="4">
               <v-select
                 hide-details
-                label="Fingerprint"
+                :label="$t('tls.fingerprint')"
                 :items="fingerprints"
                 v-model="outTls.utls.fingerprint">
               </v-select>
@@ -311,6 +313,7 @@
         </v-card>
         <AcmeVue :tls="inTls" />
         <EchVue :iTls="inTls" :oTls="outTls" />
+        </fieldset>
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
@@ -324,7 +327,8 @@
         <v-btn
           color="primary"
           variant="tonal"
-          :loading="loading"
+          :loading="busy"
+          :disabled="saveReasons.length > 0"
           @click="saveChanges"
         >
           {{ $t('actions.save') }}

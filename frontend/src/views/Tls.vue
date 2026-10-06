@@ -1,10 +1,11 @@
-﻿<template>
+<template>
   <component
     :is="EntityForm"
     v-model="modal.visible"
     :visible="modal.visible"
     :id="modal.id"
     :data="modal.data"
+    :saving="saving"
     @close="closeModal"
     @save="saveModal"
   />
@@ -151,13 +152,13 @@
 
 <script lang="ts" setup>
 import TlsVue from '@/layouts/modals/Tls.vue'
+import { useTlsSave } from '@/features/useTlsSave'
 import Data from '@/store/modules/data'
 import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
 import ManualSortButton from '@/shared/ui/ManualSortButton.vue'
 import { computed, defineAsyncComponent, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Inbound } from '@/types/inbounds'
-import { tls } from '@/types/tls'
 import { useUiMode } from '@/uiMode/useUiMode'
 import { useManualDrag, type ManualDropPosition } from '@/shared/dnd/manualDrag'
 import {
@@ -226,10 +227,7 @@ const clone = (obj: any) => {
 const closeModal = () => {
   modal.value.visible = false
 }
-const saveModal = async (data:tls) => {
-  const success = await Data().save("tls", data.id > 0 ? "edit" : "new", data)
-  if (success) modal.value.visible = false
-}
+const { saving, saveModal } = useTlsSave(() => [modal.value.visible, modal.value.id, modal.value.data] as const, closeModal)
 
 const delTls = async (id: number) => {
   const index = tlsConfigs.value.findIndex(t => t.id == id)

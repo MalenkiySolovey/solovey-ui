@@ -27,6 +27,8 @@ import { convertOutboundLink } from '@/shared/composables/useOutboundConversion'
 import AnyTls from '@/components/protocols/AnyTls.vue'
 import Data from '@/store/modules/data'
 import CapabilityNotice from '@/components/fields/CapabilityNotice.vue'
+import SaveGuardNotice from '@/components/fields/SaveGuardNotice.vue'
+import { entitySaveReasons, type SaveReason } from './entitySaveReview'
 import { capabilityEditState, capabilityTypeChoices, type CapabilityChoice, type CapabilityEditState } from '@/types/capabilityEditors'
 export default defineComponent({
   props: ['visible', 'data', 'id', 'tags'],
@@ -74,7 +76,7 @@ export default defineComponent({
     },
     async saveChanges() {
       // Guard against double-submit (button is also :disabled while loading).
-      if (!this.$props.visible || this.loading || !this.capabilityState.allowed) return
+      if (!this.$props.visible || this.saveReasons.length > 0) return
       // check duplicate tag
       const isDuplicatedTag = Data().checkTag("outbound",this.$props.id, this.outbound.tag)
       if (isDuplicatedTag) return
@@ -103,6 +105,9 @@ export default defineComponent({
     }
   },
   computed: {
+    saveReasons(): SaveReason[] {
+      return entitySaveReasons({ identity: this.outbound.tag, port: this.outbound.server_port, requiresPort: !this.NoServer.includes(this.outbound.type), pending: this.loading, capability: this.capabilityState })
+    },
     capabilityState(): CapabilityEditState {
       return capabilityEditState(Data().capabilities, "outbounds", this.outbound.type, this.storedCapabilityType)
     },
@@ -120,7 +125,7 @@ export default defineComponent({
       }
     },
   },
-  components: { CapabilityNotice, Dial, Multiplex, Transport, OutTLS,
+  components: { SaveGuardNotice, CapabilityNotice, Dial, Multiplex, Transport, OutTLS,
     Direct, Socks, Http, Shadowsocks, Vmess, Trojan,
     Wireguard, Hysteria, Naive, ShadowTls, Vless, Tuic,
     Hysteria2, AnyTls, Tor, Ssh, Selector, UrlTest, Failover }

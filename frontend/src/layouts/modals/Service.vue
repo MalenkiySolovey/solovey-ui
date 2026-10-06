@@ -6,7 +6,8 @@
       </v-card-title>
       <v-divider></v-divider>
       <v-card-text style="padding: 0 16px; overflow-y: scroll;">
-        <CapabilityNotice :state="capabilityState" />
+        <SaveGuardNotice :reasons="saveReasons" />
+      <CapabilityNotice v-if="capabilityState.allowed" :state="capabilityState" />
       <v-row>
           <v-col cols="12" sm="6" md="4">
             <v-select
@@ -41,7 +42,7 @@
           color="primary"
           variant="tonal"
           :loading="loading"
-          :disabled="loading || !capabilityState.allowed"
+          :disabled="saveReasons.length > 0"
           @click="saveChanges"
         >
           {{ $t('actions.save') }}

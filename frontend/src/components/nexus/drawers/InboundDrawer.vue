@@ -3,7 +3,7 @@
     :dirty="dirty"
     :loading="loading"
     :model-value="visible"
-    :save-disabled="!validate || !capabilityState.allowed"
+    :save-disabled="saveReasons.length > 0"
     :saving="loading"
     :title="$t('actions.' + title) + ' ' + $t('objects.inbound')"
     :width="720"
@@ -11,7 +11,9 @@
     @save="saveChanges"
   >
     <form-section icon="lucide:zap" :title="$t('form.sections.basic')">
-      <CapabilityNotice :state="capabilityState" />
+      <SaveGuardNotice :reasons="saveReasons" />
+      <InboundGuidance :hints="guidanceHints" />
+      <CapabilityNotice v-if="capabilityState.allowed" :state="capabilityState" />
       <v-row>
         <v-col cols="12" sm="6">
           <v-select
@@ -96,7 +98,7 @@
               <v-card-subtitle>{{ $t('in.multiDomain') }}
                 <v-chip color="primary" density="compact" variant="elevated" @click="add_addr"><v-icon icon="mdi-plus" /></v-chip>
               </v-card-subtitle>
-              <template v-for="addr,index in inbound.addrs">
+              <template v-for="(addr, index) in inbound.addrs" :key="addressKey(addr)">
                 {{ $t('in.addr') }} #{{ (index+1) }} <v-icon icon="mdi-delete" color="error" @click="inbound.addrs?.splice(index,1)" />
                 <v-divider></v-divider>
                 <AddrVue :addr="addr" :hasTls="HasTls.includes(inbound.type)" />

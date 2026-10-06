@@ -36,6 +36,8 @@ export default {
     "detourText": "Переадресация на исходящий"
   },
   "transport": {
+    "maxEarlyData": "Максимальный объём ранних данных",
+    "earlyDataHeaderName": "Имя заголовка ранних данных",
     "enable": "Включить транспорт",
     "host": "Хост",
     "hosts": "Хосты",
@@ -61,6 +63,10 @@ export default {
     "delay": "Задержка"
   },
   "tls": {
+    "fingerprint": "Отпечаток",
+    "shortIds": "Короткие ID",
+    "shortId": "Короткий ID",
+    "maxTimeDifference": "Максимальная разница времени",
     "enable": "Включить TLS",
     "usePath": "Использовать путь",
     "useText": "Использовать текст",

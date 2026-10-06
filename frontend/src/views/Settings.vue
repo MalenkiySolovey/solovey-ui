@@ -12,7 +12,7 @@
     <v-tab value="t3">{{ $t('setting.jsonSub') }}</v-tab>
     <v-tab value="t4">{{ $t('setting.clashSub') }}</v-tab>
     <v-tab value="t5">{{ $t('setting.xraySub') }}</v-tab>
-    <v-tab value="basics">Basics (Singbox)</v-tab>
+    <v-tab value="basics">{{ $t('pages.basics') }} (sing-box)</v-tab>
     <v-tab value="t6">{{ $t('setting.maintenance') }}</v-tab>
     <v-tab
       v-for="item in componentSettingsTabs"

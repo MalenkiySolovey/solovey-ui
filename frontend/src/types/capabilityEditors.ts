@@ -2,7 +2,7 @@ import { runtimeCapability, type RuntimeCapabilities } from './runtimeCapabiliti
 
 export interface CapabilityEditState {
  allowed: boolean
- message?: 'capability.waiting' | 'capability.unavailable' | 'capability.historical'
+ message?: 'capability.waiting' | 'capability.unavailable' | 'capability.historical' | 'capability.unknown' | 'capability.contextUnsupported'
  reason?: string
 }
 export interface CapabilityChoice { title: string; value: string; props: { disabled: boolean } }
@@ -12,6 +12,8 @@ export interface CapabilityChoice { title: string; value: string; props: { disab
 export function capabilityEditState(snapshot: RuntimeCapabilities | undefined, category: string, type: string, storedType = ''): CapabilityEditState {
  if (!snapshot) return { allowed: false, message: 'capability.waiting' }
  const fact = runtimeCapability(snapshot, category, type)
+ if (!fact?.known) return { allowed: false, message: 'capability.unknown', reason: fact?.reason }
+ if (!fact.contextSupported) return { allowed: false, message: 'capability.contextUnsupported', reason: fact.reason }
  if (fact?.available) return { allowed: true }
  if (fact?.known && fact.contextSupported && storedType === type) return { allowed: true, message: 'capability.historical', reason: fact.reason }
  return { allowed: false, message: 'capability.unavailable', reason: fact?.reason }

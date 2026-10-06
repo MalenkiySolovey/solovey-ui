@@ -166,3 +166,11 @@ recovery from deposist/s-ui-x v1.5.12-beta6
 core probe runtime owns ephemeral observations, stats consumes a copy, and
 existing frontend feature/router/transport owners retain their lifecycles.
 No upstream code or tests were copied; full parity remains v1.5.10.
+
+Wave 5 editor/presentation adaptation independently uses behavioral witnesses
+590b08af39537ab4c85441513743c2360bbc187d and
+4d2fc76e12a7b972c3126c6000bc57bdd50ec959 from deposist/s-ui-x
+(v1.5.12-beta6, 08814445d1497bc8b52bdc3af2eda784a5ea26cb, GPL-3.0).
+Scope: shared save explanations, core navigation projections, traffic timezone,
+inbound guidance/address identity and selected technical labels. No literal
+source, test or translation transfer; full parity boundary remains v1.5.10.
