@@ -1,0 +1,19 @@
+{
+  "route": {
+    "rules": [
+      {
+        "type": "logical",
+        "mode": "or",
+        "action": "reject",
+        "rules": [
+          {
+            "action": "reject"
+          },
+          {
+            "action": "reject"
+          }
+        ]
+      }
+    ]
+  }
+}

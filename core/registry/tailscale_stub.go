@@ -1,4 +1,4 @@
-//go:build !with_tailscale
+//go:build !with_tailscale || !with_gvisor
 
 package registry
 
@@ -6,6 +6,7 @@ import (
 	"context"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/adapter/certificate"
 	"github.com/sagernet/sing-box/adapter/endpoint"
 	"github.com/sagernet/sing-box/adapter/service"
 	C "github.com/sagernet/sing-box/constant"
@@ -16,6 +17,12 @@ import (
 )
 
 const supportsTailscale = false
+
+func registerTailscaleProvider(registry *certificate.Registry) {
+	certificate.Register[option.TailscaleCertificateProviderOptions](registry, C.TypeTailscale, func(context.Context, log.ContextLogger, string, option.TailscaleCertificateProviderOptions) (adapter.CertificateProviderService, error) {
+		return nil, E.New("Tailscale certificate providers require with_tailscale and with_gvisor")
+	})
+}
 
 func registerTailscaleEndpoint(registry *endpoint.Registry) {
 	endpoint.Register[option.TailscaleEndpointOptions](registry, C.TypeTailscale, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.TailscaleEndpointOptions) (adapter.Endpoint, error) {

@@ -1,0 +1,21 @@
+{
+  "dns": {
+    "rules": [
+      {
+        "type": "logical",
+        "mode": "and",
+        "action": "reject",
+        "rules": [
+          {
+            "domain_suffix": "example",
+            "action": "reject"
+          },
+          {
+            "domain": "fixture.example",
+            "action": "reject"
+          }
+        ]
+      }
+    ]
+  }
+}

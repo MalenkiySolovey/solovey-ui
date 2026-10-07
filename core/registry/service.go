@@ -10,7 +10,9 @@ import (
 func ServiceRegistry() *service.Registry {
 	registry := service.NewRegistry()
 	for _, entry := range serviceDeclarations() {
-		entry.register(registry)
+		if entry.register != nil {
+			entry.register(registry)
+		}
 	}
 	return registry
 }
@@ -21,5 +23,9 @@ func serviceDeclarations() []declaration[*service.Registry] {
 		{typeName: "ssm-api", buildTag: "", compiled: true, register: ssmapi.RegisterService},
 		{typeName: "derp", buildTag: tailscaleBuildTag, compiled: supportsTailscale, register: registerDERPService},
 		{typeName: "oom-killer", buildTag: "", compiled: true, register: oomkiller.RegisterService},
+		{typeName: "api", productUnavailable: "PRODUCT_FEATURE_NOT_ENABLED", register: registerAPISchema},
+		{typeName: "usbip-server", buildTag: "with_usbip", productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
+		{typeName: "usbip-client", buildTag: "with_usbip", productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
+		{typeName: "hysteria-realm", buildTag: "with_quic", productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
 	}
 }

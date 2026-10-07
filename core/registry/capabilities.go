@@ -7,25 +7,27 @@ const tailscaleBuildTag = "with_tailscale,with_gvisor"
 // A declaration keeps implementation eligibility beside its registration.
 // Registered option schemas may exist even when the constructor is a stub.
 type declaration[R any] struct {
-	typeName string
-	buildTag string
-	platform string
-	compiled bool
-	register func(R)
+	typeName           string
+	buildTag           string
+	platform           string
+	compiled           bool
+	productUnavailable string
+	register           func(R)
 }
 
 type Fact struct {
-	Category   string `json:"category"`
-	Type       string `json:"type"`
-	Known      bool   `json:"known"`
-	Registered bool   `json:"registered"`
-	Compiled   bool   `json:"compiled"`
-	BuildTag   string `json:"buildTag,omitempty"`
-	Platform   string `json:"platform,omitempty"`
-	Reason     string `json:"reason,omitempty"`
+	Category           string `json:"category"`
+	Type               string `json:"type"`
+	Known              bool   `json:"known"`
+	Registered         bool   `json:"registered"`
+	Compiled           bool   `json:"compiled"`
+	SupportedByProduct bool   `json:"supportedByProduct"`
+	BuildTag           string `json:"buildTag,omitempty"`
+	Platform           string `json:"platform,omitempty"`
+	Reason             string `json:"reason,omitempty"`
 }
 
-func (f Fact) Available() bool { return f.Known && f.Registered && f.Compiled }
+func (f Fact) Available() bool { return f.Known && f.Registered && f.Compiled && f.SupportedByProduct }
 
 type optionRegistry interface{ CreateOptions(string) (any, bool) }
 
@@ -34,8 +36,10 @@ func factsFor[R optionRegistry](category string, entries []declaration[R], regis
 	for _, entry := range entries {
 		_, registered := registry.CreateOptions(entry.typeName)
 		fact := Fact{Category: category, Type: entry.typeName, Known: true,
-			Registered: registered, Compiled: entry.compiled, BuildTag: entry.buildTag, Platform: entry.platform}
-		if !fact.Compiled {
+			Registered: registered, Compiled: entry.compiled, SupportedByProduct: entry.productUnavailable == "", BuildTag: entry.buildTag, Platform: entry.platform}
+		if !fact.SupportedByProduct {
+			fact.Reason = entry.productUnavailable
+		} else if !fact.Compiled {
 			fact.Reason = "KNOWN_BUT_NOT_COMPILED"
 			if fact.Platform != "" {
 				fact.Reason = "KNOWN_BUT_UNAVAILABLE_PLATFORM"
@@ -55,6 +59,7 @@ var compiledFacts = sync.OnceValue(func() []Fact {
 	result = append(result, factsFor("endpoints", endpointDeclarations(), EndpointRegistry())...)
 	result = append(result, factsFor("services", serviceDeclarations(), ServiceRegistry())...)
 	result = append(result, factsFor("dns", dnsDeclarations(), DNSTransportRegistry())...)
+	result = append(result, factsFor("certificateProviders", certificateDeclarations(), CertificateProviderRegistry())...)
 	return result
 })
 

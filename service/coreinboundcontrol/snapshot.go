@@ -132,7 +132,7 @@ func populateTypedShapes(snapshot *InboundFallbackSnapshotV1, inbound model.Inbo
 		return err
 	}
 	ctx := sb.Context(context.Background(), coreregistry.InboundRegistry(), coreregistry.OutboundRegistry(),
-		coreregistry.EndpointRegistry(), coreregistry.DNSTransportRegistry(), coreregistry.ServiceRegistry())
+		coreregistry.EndpointRegistry(), coreregistry.DNSTransportRegistry(), coreregistry.ServiceRegistry(), coreregistry.CertificateProviderRegistry())
 	var parsed option.Inbound
 	if err = parsed.UnmarshalJSONContext(ctx, content); err != nil {
 		return err
@@ -312,7 +312,7 @@ func applyHydratedLocalProxyShape(snapshot *InboundFallbackSnapshotV1, content [
 		return nil
 	}
 	ctx := sb.Context(context.Background(), coreregistry.InboundRegistry(), coreregistry.OutboundRegistry(),
-		coreregistry.EndpointRegistry(), coreregistry.DNSTransportRegistry(), coreregistry.ServiceRegistry())
+		coreregistry.EndpointRegistry(), coreregistry.DNSTransportRegistry(), coreregistry.ServiceRegistry(), coreregistry.CertificateProviderRegistry())
 	var parsed option.Inbound
 	if err := parsed.UnmarshalJSONContext(ctx, content); err != nil {
 		return err

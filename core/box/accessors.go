@@ -1,6 +1,7 @@
 package box
 
 import (
+	"context"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/tracker"
@@ -8,6 +9,8 @@ import (
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/log"
 )
+
+func (s *Box) Context() context.Context { return s.ctx }
 
 func (s *Box) Uptime() uint32 {
 	return uint32(time.Since(s.createdAt).Seconds())

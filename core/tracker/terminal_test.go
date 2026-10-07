@@ -29,7 +29,7 @@ func TestRoutedWrappersFinishOnceAcrossTerminalIOAndClose(t *testing.T) {
 					var router adapter.ConnectionTracker
 					var group *trackerWaitGroup
 					if owner == "connection" {
-						tracker := NewConnTracker()
+						tracker := newTestConnTracker(t)
 						router, group = tracker, tracker.inflight
 					} else {
 						tracker := NewStatsTracker()

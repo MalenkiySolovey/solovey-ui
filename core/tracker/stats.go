@@ -97,31 +97,41 @@ func (c *StatsTracker) loadOrCreateCounter(obj *map[string]Counter, name string)
 }
 
 func (c *StatsTracker) RoutedConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound) net.Conn {
+	wrapped, _ := c.admitConnection(conn, metadata, matchOutbound)
+	return wrapped
+}
+
+func (c *StatsTracker) admitConnection(conn net.Conn, metadata adapter.InboundContext, matchOutbound adapter.Outbound) (net.Conn, bool) {
 	sourceIP := sourceIPFromMetadata(metadata)
 	if c.observer != nil && !c.observer.ObserveAndAllow(metadata.User, sourceIP) {
 		_ = conn.Close()
-		return conn
+		return conn, false
 	}
 	outbound := ""
 	if matchOutbound != nil {
 		outbound = matchOutbound.Tag()
 	}
 	readCounter, writeCounter, waitGroup := c.getTrackedReadCounters(metadata.Inbound, outbound, metadata.User)
-	return newStatsTrackedConn(bufio.NewInt64CounterConn(conn, readCounter, writeCounter), waitGroup)
+	return newStatsTrackedConn(bufio.NewInt64CounterConn(conn, readCounter, writeCounter), waitGroup), true
 }
 
 func (c *StatsTracker) RoutedPacketConnection(ctx context.Context, conn network.PacketConn, metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound) network.PacketConn {
+	wrapped, _ := c.admitPacketConnection(conn, metadata, matchOutbound)
+	return wrapped
+}
+
+func (c *StatsTracker) admitPacketConnection(conn network.PacketConn, metadata adapter.InboundContext, matchOutbound adapter.Outbound) (network.PacketConn, bool) {
 	sourceIP := sourceIPFromMetadata(metadata)
 	if c.observer != nil && !c.observer.ObserveAndAllow(metadata.User, sourceIP) {
 		_ = conn.Close()
-		return conn
+		return conn, false
 	}
 	outbound := ""
 	if matchOutbound != nil {
 		outbound = matchOutbound.Tag()
 	}
 	readCounter, writeCounter, waitGroup := c.getTrackedReadCounters(metadata.Inbound, outbound, metadata.User)
-	return newStatsTrackedPacketConn(bufio.NewInt64CounterPacketConn(conn, readCounter, nil, writeCounter, nil), waitGroup)
+	return newStatsTrackedPacketConn(bufio.NewInt64CounterPacketConn(conn, readCounter, nil, writeCounter, nil), waitGroup), true
 }
 
 func newStatsTrackedConn(conn net.Conn, waitGroup *trackerWaitGroup) net.Conn {

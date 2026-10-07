@@ -4,9 +4,12 @@ import (
 	"errors"
 
 	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
+	"github.com/MalenkiySolovey/solovey-ui/core/registry"
+	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/service"
 )
 
 func (c *Core) Start(sbConfig []byte) error {
@@ -20,13 +23,18 @@ func (c *Core) Start(sbConfig []byte) error {
 	if alreadyRunning {
 		return ErrAlreadyRunning
 	}
+	if _, err := singboxvalidation.ValidateRuleConditions(sbConfig); err != nil {
+		return err
+	}
+	ctx = registry.Context(ctx)
+	service.MustRegister(ctx, c)
 
 	var opt option.Options
 	err := opt.UnmarshalJSONContext(ctx, sbConfig)
 	if err != nil {
 		// Returning the error is essential: otherwise a zero/partial option set can
 		// make the caller mark the core as running while no inbound is listening.
-		logger.Error("Unmarshal config err:", err.Error())
+		logger.Error("Unable to decode core configuration")
 		return err
 	}
 
@@ -48,7 +56,8 @@ func (c *Core) Start(sbConfig []byte) error {
 	c.probeHealth.reset()
 	c.managerGeneration++
 	generation := c.managerGeneration
-	c.ctx = ctx
+	c.ctx = instance.Context()
+	c.parentContext = ctx
 	c.instance = instance
 	c.isRunning = true
 	c.inboundManager = instance.Inbound()
@@ -83,6 +92,7 @@ func (c *Core) Stop() error {
 		return nil
 	}
 	instance := c.instance
+	c.ctx = c.parentContext
 	c.instance = nil
 	c.inboundManager = nil
 	c.outboundManager = nil

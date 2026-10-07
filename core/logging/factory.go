@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"os"
+	"sync"
+	"sync/atomic"
 
 	configlogging "github.com/MalenkiySolovey/solovey-ui/config/logging"
 	suiLog "github.com/MalenkiySolovey/solovey-ui/logger"
@@ -55,9 +57,13 @@ func NewFactory(options log.Options) (log.Factory, error) {
 		logWriter,
 		logFilePath,
 	)
+	if options.PlatformWriter != nil {
+		factory.AttachPlatformWriter(options.PlatformWriter)
+	}
 	if logOptions.Level != "" {
 		logLevel, err := log.ParseLevel(logOptions.Level)
 		if err != nil {
+			_ = factory.Close()
 			return nil, common.Error("parse log level", err)
 		}
 		factory.SetLevel(logLevel)
@@ -70,13 +76,19 @@ func NewFactory(options log.Options) (log.Factory, error) {
 var _ log.Factory = (*defaultFactory)(nil)
 
 type defaultFactory struct {
-	ctx       context.Context
-	formatter log.Formatter
-	writer    io.Writer
-	file      *os.File
-	filePath  string
-	level     log.Level
-	observer  *observable.Observer[log.Entry]
+	access         sync.Mutex
+	ctx            context.Context
+	formatter      log.Formatter
+	writer         io.Writer
+	file           *os.File
+	filePath       string
+	level          atomic.Int32
+	observer       *observable.Observer[log.Entry]
+	platformWriter log.PlatformWriter
+	closed         bool
+	started        bool
+	closeOnce      sync.Once
+	closeErr       error
 }
 
 func NewDefaultFactory(
@@ -91,13 +103,21 @@ func NewDefaultFactory(
 		formatter: formatter,
 		writer:    writer,
 		filePath:  filePath,
-		level:     log.LevelTrace,
 		observer:  observable.NewObserver(subscriber, 128),
 	}
+	factory.SetLevel(log.LevelTrace)
 	return factory
 }
 
 func (f *defaultFactory) Start() error {
+	f.access.Lock()
+	defer f.access.Unlock()
+	if f.closed {
+		return os.ErrClosed
+	}
+	if f.started {
+		return nil
+	}
 	if f.filePath != "" {
 		logFile, err := filemanager.OpenFile(f.ctx, f.filePath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 		if err != nil {
@@ -106,22 +126,39 @@ func (f *defaultFactory) Start() error {
 		f.writer = logFile
 		f.file = logFile
 	}
+	f.started = true
 	return nil
 }
 
 func (f *defaultFactory) Close() error {
-	return common.Close(
-		common.PtrOrNil(f.file),
-		f.observer,
-	)
+	f.closeOnce.Do(func() {
+		f.access.Lock()
+		f.closed = true
+		f.platformWriter = nil
+		file := f.file
+		f.file = nil
+		f.access.Unlock()
+		f.closeErr = common.Close(common.PtrOrNil(file), f.observer)
+	})
+	return f.closeErr
+}
+
+// A generation owns one attachment slot. Replacing it cannot accumulate writers;
+// Close fences dispatch and releases the reference before subscriber teardown.
+func (f *defaultFactory) AttachPlatformWriter(writer log.PlatformWriter) {
+	f.access.Lock()
+	defer f.access.Unlock()
+	if !f.closed {
+		f.platformWriter = writer
+	}
 }
 
 func (f *defaultFactory) Level() log.Level {
-	return f.level
+	return log.Level(f.level.Load())
 }
 
 func (f *defaultFactory) SetLevel(level log.Level) {
-	f.level = level
+	f.level.Store(int32(level))
 }
 
 func (f *defaultFactory) Logger() log.ContextLogger {

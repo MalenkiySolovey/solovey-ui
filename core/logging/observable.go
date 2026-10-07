@@ -18,10 +18,15 @@ type observableLogger struct {
 
 func (l *observableLogger) Log(ctx context.Context, level log.Level, args []any) {
 	level = log.OverrideLevelFromContext(level, ctx)
-	if level > l.level {
+	if level > l.Level() {
 		return
 	}
 	msg := suiLog.SanitizeMessage(F.ToString(args...))
+	l.access.Lock()
+	defer l.access.Unlock()
+	if l.closed {
+		return
+	}
 	switch level {
 	case log.LevelInfo:
 		suiLog.CoreInfo(l.tag, msg)
@@ -38,6 +43,10 @@ func (l *observableLogger) Log(ctx context.Context, level log.Level, args []any)
 		Level:   level,
 		Message: msg,
 	})
+	if l.platformWriter != nil {
+		message := l.formatter.Format(ctx, level, suiLog.SanitizeMessage(l.tag), msg, time.Now())
+		l.platformWriter.WriteMessage(level, suiLog.SanitizeMessage(message))
+	}
 	if (l.filePath != "" || l.writer != os.Stderr) && l.writer != nil {
 		message := l.formatter.Format(ctx, level, l.tag, msg, time.Now())
 		_, _ = l.writer.Write([]byte(message))

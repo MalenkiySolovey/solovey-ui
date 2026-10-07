@@ -16,30 +16,34 @@ FROM --platform=$TARGETPLATFORM golang:1.26.6-alpine@sha256:af8d6740070b8906d12e
 WORKDIR /app
 ARG TARGETARCH
 ARG TARGETVARIANT
-ARG CRONET_GO_ASSET_TAG=v150.0.7871.63-1
 ARG SUI_RELEASE_TRUST_ROOTS_B64
 ENV CGO_ENABLED=1 CGO_CFLAGS="-D_LARGEFILE64_SOURCE" GOARCH=$TARGETARCH CC=gcc
 RUN apk add --no-cache gcc musl-dev libc-dev make git wget bash ca-certificates
+COPY . .
 RUN --mount=type=cache,id=solovey-ui-go-build,target=/root/.cache/go-build,sharing=locked \
     --mount=type=cache,id=solovey-ui-go-mod,target=/go/pkg/mod,sharing=locked \
     set -e; \
     case "$TARGETARCH" in \
-      amd64) CRONET_SHA256="9d43c2ee2410a54262e394c09da14b402e872d919ea66280c6b1f54414ab5f6a" ;; \
-      arm64) CRONET_SHA256="2d896ece1be628e5a01ce095d34996deb6d255725e013640331541ee6cf8c1db" ;; \
-      arm) CRONET_SHA256="6b879811612bfb1f758bf425d9b5795dc9f5a28e9531c6b5909078feebf1a742" ;; \
-      386) CRONET_SHA256="fbe733cb0826684469b3bc5cc9a86dac1a4c9d61eea51d2376243335a930e699" ;; \
+      amd64) CRONET_SHA256="23109c55b08829bb1a68682a61a64852b1bbf243753b153cbd8f6e4ea2c05294" ;; \
+      arm64) CRONET_SHA256="3c1fcfcb56261a4b318ffb6d2227b9726782edb5a894e74db2b534406db62498" ;; \
+      arm) CRONET_SHA256="e74d958fec2564e5a62b57b21feb01f4fb1eae8c3efbae2cbbf4b75b2967d165" ;; \
+      386) CRONET_SHA256="c6348c93a339d92da3bb4c90a213279171ee0862f7116e5e39f0b8d09159bb9c" ;; \
       *) echo "unsupported target architecture" >&2; exit 1 ;; \
     esac; \
-    CRONET_URL="https://github.com/SagerNet/cronet-go/releases/download/${CRONET_GO_ASSET_TAG}/libcronet-linux-${TARGETARCH}.so"; \
-    wget -q -O ./libcronet.so "$CRONET_URL"; \
+    CRONET_MODULE="github.com/sagernet/cronet-go/lib/linux_${TARGETARCH}"; \
+    go mod download "$CRONET_MODULE"; \
+    go mod verify; \
+    CRONET_DIR="$(go list -m -f '{{.Dir}}' "$CRONET_MODULE")"; \
+    cp "$CRONET_DIR/libcronet.so" ./libcronet.so; \
     echo "${CRONET_SHA256}  ./libcronet.so" | sha256sum -c -; \
     chmod 755 ./libcronet.so
-COPY . .
 COPY --from=front-builder /app/web/html/ /app/web/html/
 COPY --from=front-builder /app/generated/components_generated.go /app/app/components_generated.go
 COPY --from=front-builder /app/generated/optional_commands_generated.go /app/cmd/optional_commands_generated.go
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
-RUN set -e; \
+RUN --mount=type=cache,id=solovey-ui-go-build,target=/root/.cache/go-build,sharing=locked \
+    --mount=type=cache,id=solovey-ui-go-mod,target=/go/pkg/mod,sharing=locked \
+    set -e; \
     if [ "$TARGETARCH" = "arm" ]; then export GOARM=7; [ "$TARGETVARIANT" = "v6" ] && export GOARM=6; fi; \
     go build -ldflags="-w -s -checklinkname=0 -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=$SUI_RELEASE_TRUST_ROOTS_B64" \
     -tags "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0,with_tailscale" \

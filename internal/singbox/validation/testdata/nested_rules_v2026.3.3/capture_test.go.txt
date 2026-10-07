@@ -1,0 +1,72 @@
+package service
+
+import (
+ "context"
+ "crypto/sha256"
+ "encoding/hex"
+ "encoding/json"
+ "fmt"
+ "os"
+ "path/filepath"
+ "strings"
+ "testing"
+
+ validation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
+ "github.com/sagernet/sing-box/adapter"
+ "github.com/sagernet/sing-box/log"
+ "github.com/sagernet/sing-box/option"
+ "github.com/sagernet/sing-box/route/rule"
+)
+
+// Synthetic fixtures are CREATED and accepted only by exact v2026.3.3 code.
+// This temporary driver never enters the candidate production worktree.
+func TestCaptureNestedRuleBaseline(t *testing.T) {
+ out := os.Getenv("SOLOVEY_BASELINE_CAPTURE")
+ if out == "" { t.Fatal("capture directory required") }
+ if err := os.MkdirAll(out, 0700); err != nil { t.Fatal(err) }
+ store := NewSingBoxBaseConfigStore(initSettingTestDB(t))
+ shapes := map[string]string{
+  "and": `{"type":"logical","mode":"and","action":"reject","rules":[{"domain_suffix":"example","action":"reject"},{"domain":"fixture.example","action":"reject"}]}`,
+  "or": `{"type":"logical","mode":"or","action":"reject","rules":[{"domain":"fixture.example","action":"reject"},{"domain":"other.example","action":"reject"}]}`,
+  "invert": `{"type":"logical","mode":"or","invert":true,"action":"reject","rules":[{"domain":"fixture.example","invert":true,"action":"reject"},{"type":"logical","mode":"and","action":"reject","rules":[{"domain":"other.example","action":"reject"}]}]}`,
+  "conflicting": `{"type":"logical","mode":"or","action":"reject","rules":[{"domain":"fixture.example","action":"reject"},{"domain":"other.example","action":"route"}]}`,
+  "action-only": `{"type":"logical","mode":"or","action":"reject","rules":[{"action":"reject"},{"action":"reject"}]}`,
+  "implicit-parent": `{"type":"logical","mode":"and","rules":[{"domain":"fixture.example","action":"reject"}]}`,
+ }
+ deep := `{"domain":"fixture.example","action":"reject"}`
+ for i:=1;i<64;i++ { deep=`{"type":"logical","mode":"and","action":"reject","rules":[`+deep+`]}` }
+ shapes["depth64"] = deep
+ shapes["nodes4096"] = `{"type":"logical","mode":"or","action":"reject","rules":[`+strings.TrimSuffix(strings.Repeat(`{"action":"reject"},`,4095),",")+`]}`
+ var manifest []map[string]any
+ for _,kind:=range []string{"route","dns"} {
+  for _,name:=range []string{"and","or","invert","conflicting","action-only","implicit-parent","depth64","nodes4096"} {
+   input:=[]byte(fmt.Sprintf(`{"%s":{"rules":[%s]}}`,kind,shapes[name]))
+   if _,err:=validation.ValidateRuleConditions(input);err!=nil {t.Fatal(kind,name,err)}
+   if err:=store.Set(string(input));err!=nil {t.Fatal(kind,name,err)}
+   var opt option.Options
+   if err:=opt.UnmarshalJSONContext(context.Background(),input);err!=nil {t.Fatal(err)}
+   sourceInput:=input
+   persisted,err:=store.Get();if err!=nil {t.Fatal(err)};input=[]byte(persisted)
+   sourceSum:=sha256.Sum256(sourceInput)
+   sum:=sha256.Sum256(input)
+   row:=map[string]any{"name":kind+"-"+name,"file":kind+"-"+name+".json","sha256":hex.EncodeToString(sum[:]),"store_accepted":true,"decoder_accepted":true,"source_owner":"service/SingBoxBaseConfigStore.Set; internal/singbox/validation.ValidateRuleConditions","solovey_commit":"3523eeea9f91c091ab3f0fbdb94c3955e37798b4","sing_box":"v1.13.18","creation_command":"SOLOVEY_BASELINE_CAPTURE=<capture-dir> go test -mod=readonly -count=1 -run ^TestCaptureNestedRuleBaseline$ ./service"}
+   row["input_sha256"]=hex.EncodeToString(sourceSum[:]);row["state_class"]="PERSISTED_REACHABLE"
+   // Truth table of the actual official old match owner plus top-level action.
+   if name=="and"||name=="or"||name=="invert"||name=="depth64" {
+    var r adapter.Rule
+    var err error
+    logger:=log.NewNOPFactory().NewLogger("fixture")
+    if kind=="route" {r,err=rule.NewRule(context.Background(),logger,opt.Route.Rules[0],true)} else {r,err=rule.NewDNSRule(context.Background(),logger,opt.DNS.Rules[0],true)}
+    if err!=nil {t.Fatal(err)}
+    matches:=map[string]bool{}
+    for _,domain:=range []string{"fixture.example","other.example","neither.example","outside.invalid",""} {m:=adapter.InboundContext{Domain:domain}; matches[domain]=r.Match(&m)}
+    row["matches"]=matches; row["action"]=r.Action().Type()
+    if c,ok:=r.(interface{Close()error});ok {if err:=c.Close();err!=nil {t.Fatal(err)}}
+   }
+   if err:=os.WriteFile(filepath.Join(out,row["file"].(string)),input,0600);err!=nil {t.Fatal(err)}
+   manifest=append(manifest,row)
+  }
+ }
+ data,err:=json.MarshalIndent(manifest,"","  ");if err!=nil {t.Fatal(err)}
+ if err:=os.WriteFile(filepath.Join(out,"manifest.json"),data,0600);err!=nil {t.Fatal(err)}
+}

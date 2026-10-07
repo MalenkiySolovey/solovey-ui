@@ -17,7 +17,8 @@ func TestRuleConditionsPreserveOfficialGrammarAndReportLoss(t *testing.T) {
 		{"official interface condition", `{"route":{"rules":[{"network_is_expensive":true}]}}`, "", "", ""},
 		{"DNS loss", `{"dns":{"rules":[{}]}}`, "decoded_rule_loss", "dns.rules", RuleSeverityWarn},
 		{"route logical", `{"route":{"rules":[{"type":"logical","mode":"and","rules":[]}]}}`, "empty_logical_rule", "route.rules[0]", RuleSeverityError},
-		{"nested DNS logical", `{"dns":{"rules":[{"type":"logical","mode":"or","rules":[{"action":"reject"},{"type":"logical","mode":"and","rules":[]}]}]}}`, "empty_logical_rule", "dns.rules[0].rules[1]", RuleSeverityError},
+		// Preserve the 1.13 input; its new incompatibility is owned and localized.
+		{"nested DNS logical", `{"dns":{"rules":[{"type":"logical","mode":"or","rules":[{"action":"reject"},{"type":"logical","mode":"and","rules":[]}]}]}}`, "nested_rule_action", "dns.rules[0].rules[0].action", RuleSeverityError},
 		{"nested dropped child", `{"route":{"rules":[{"type":"logical","mode":"and","rules":[{}]}]}}`, "empty_logical_rule", "route.rules[0]", RuleSeverityError},
 		{"bad mode", `{"route":{"rules":[{"type":"logical","mode":"xor","rules":[{"domain":"fixture.example"}]}]}}`, "invalid_logical_mode", "route.rules[0].mode", RuleSeverityError},
 		{"missing mode", `{"dns":{"rules":[{"type":"logical","rules":[{"domain":"fixture.example"}]}]}}`, "invalid_logical_mode", "dns.rules[0].mode", RuleSeverityError},
@@ -65,9 +66,10 @@ func TestRuleConditionsPreserveOfficialGrammarAndReportLoss(t *testing.T) {
 func TestRuleConditionsInclusiveBudgetsBeforeOfficialDecode(t *testing.T) {
 	for _, kind := range []string{"route", "dns"} {
 		for _, depth := range []int{64, 65} {
-			root := `{"domain":"fixture.example","action":"reject"}`
+			// Old action-bearing equivalents remain immutable upgrade fixtures.
+			root := `{"domain":"fixture.example"}`
 			for i := 1; i < depth; i++ {
-				root = `{"type":"logical","mode":"and","action":"reject","rules":[` + root + `]}`
+				root = `{"type":"logical","mode":"and","rules":[` + root + `]}`
 			}
 			config := []byte(fmt.Sprintf(`{"%s":{"rules":[%s]}}`, kind, root))
 			_, err := ValidateRuleConditions(config)
@@ -83,7 +85,7 @@ func TestRuleConditionsInclusiveBudgetsBeforeOfficialDecode(t *testing.T) {
 		}
 		for _, count := range []int{4096, 4097} {
 			// Mix roots and children so a root-only budget cannot pass this test.
-			children := strings.TrimSuffix(strings.Repeat(`{"action":"reject"},`, count-1), ",")
+			children := strings.TrimSuffix(strings.Repeat(`{"domain":"fixture.example"},`, count-1), ",")
 			config := []byte(fmt.Sprintf(`{"%s":{"rules":[{"type":"logical","mode":"or","action":"reject","rules":[%s]}]}}`, kind, children))
 			_, err := ValidateRuleConditions(config)
 			if count == 4096 && err != nil {

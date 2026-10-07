@@ -5,143 +5,102 @@ import (
 	"errors"
 	"io"
 	"net"
-	"strconv"
 	"sync"
 	"sync/atomic"
 
 	"github.com/sagernet/sing-box/adapter"
+	"github.com/sagernet/sing-box/common/trafficcontrol"
 	"github.com/sagernet/sing/common/buf"
 	M "github.com/sagernet/sing/common/metadata"
 	"github.com/sagernet/sing/common/network"
 )
 
-type ConnectionInfo struct {
-	ID         string
-	Conn       net.Conn
-	PacketConn network.PacketConn
-	Inbound    string
-	Type       string // "tcp" or "udp"
-	tracking   *connectionTracking
-}
-
+// ConnTracker delegates live identities, metadata and closers to the one
+// official inventory. It owns only Solovey terminal-I/O and reset fencing.
 type ConnTracker struct {
-	access      sync.Mutex
-	connections map[string]*ConnectionInfo
-	inflight    *trackerWaitGroup
-	epoch       uint64
-	nextID      atomic.Uint64
+	access    sync.Mutex
+	inventory *trafficcontrol.Manager
+	inflight  *trackerWaitGroup
+	epoch     uint64
+	closed    bool
 }
 
-func NewConnTracker() *ConnTracker {
-	return &ConnTracker{
-		connections: make(map[string]*ConnectionInfo),
-		inflight:    newTrackerWaitGroup(),
-	}
+func NewConnTracker(inventory *trafficcontrol.Manager) *ConnTracker {
+	return &ConnTracker{inventory: inventory, inflight: newTrackerWaitGroup()}
 }
 
 func (c *ConnTracker) Reset() {
 	c.access.Lock()
-	connections := make([]*ConnectionInfo, 0, len(c.connections))
-	for _, connInfo := range c.connections {
-		connections = append(connections, connInfo)
-	}
-	c.connections = make(map[string]*ConnectionInfo)
-	c.epoch++
+	connections := c.inventory.Connections()
 	waitGroup := c.inflight
 	c.inflight = newTrackerWaitGroup()
+	c.epoch++
 	c.access.Unlock()
-	for _, connInfo := range connections {
-		closeTrackedConnection(connInfo)
+	for _, metadata := range connections {
+		if flow := c.inventory.Connection(metadata.ID); flow != nil {
+			_ = flow.Close()
+		}
 	}
 	waitForTrackerIdle("connection tracker", waitGroup, trackerResetWaitTimeout)
 }
 
-func (c *ConnTracker) generateConnectionID() string {
-	return "connection-" + strconv.FormatUint(c.nextID.Add(1), 10)
+// Close permanently retires this generation. Reset alone allows new flows in
+// the same generation; runtime shutdown must also reject late route callbacks.
+func (c *ConnTracker) Close() {
+	c.access.Lock()
+	c.closed = true
+	c.access.Unlock()
+	c.Reset()
 }
 
-func (c *ConnTracker) RoutedConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound) net.Conn {
-	connID := c.generateConnectionID()
-	connInfo := &ConnectionInfo{
-		ID:      connID,
-		Conn:    conn,
-		Inbound: metadata.Inbound,
-		Type:    "tcp",
+func (c *ConnTracker) RoutedConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, rule adapter.Rule, outbound adapter.Outbound) net.Conn {
+	c.access.Lock()
+	defer c.access.Unlock()
+	if c.closed {
+		_ = conn.Close()
+		return conn
 	}
-
-	tracking := c.trackConnection(connID, connInfo)
-	wrapped := c.createWrappedConn(conn, tracking)
-	c.replaceTrackedTCP(connID, connInfo, wrapped)
-	return wrapped
+	c.inflight.Add()
+	tracking := &connectionTracking{waitGroup: c.inflight, ready: make(chan struct{})}
+	wrapped := &wrappedConn{Conn: conn, tracking: tracking}
+	actual := c.inventory.RoutedConnection(ctx, wrapped, metadata, rule, outbound)
+	tracking.actual = actual
+	close(tracking.ready)
+	return actual
 }
 
-func (c *ConnTracker) RoutedPacketConnection(ctx context.Context, conn network.PacketConn, metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound) network.PacketConn {
-	connID := c.generateConnectionID()
-	connInfo := &ConnectionInfo{
-		ID:         connID,
-		PacketConn: conn,
-		Inbound:    metadata.Inbound,
-		Type:       "udp",
+func (c *ConnTracker) RoutedPacketConnection(ctx context.Context, conn network.PacketConn, metadata adapter.InboundContext, rule adapter.Rule, outbound adapter.Outbound) network.PacketConn {
+	c.access.Lock()
+	defer c.access.Unlock()
+	if c.closed {
+		_ = conn.Close()
+		return conn
 	}
-
-	tracking := c.trackConnection(connID, connInfo)
-	wrapped := c.createWrappedPacketConn(conn, tracking)
-	c.replaceTrackedPacket(connID, connInfo, wrapped)
-	return wrapped
+	c.inflight.Add()
+	tracking := &connectionTracking{waitGroup: c.inflight, ready: make(chan struct{})}
+	wrapped := &wrappedPacketConn{PacketConn: conn, tracking: tracking}
+	actual := c.inventory.RoutedPacketConnection(ctx, wrapped, metadata, rule, outbound)
+	tracking.actual = actual
+	close(tracking.ready)
+	return actual
 }
 
 func (c *ConnTracker) CloseConnByInbound(inbound string) int {
 	c.access.Lock()
-	connections := make([]*ConnectionInfo, 0)
-	for connID, connInfo := range c.connections {
-		if connInfo.Inbound == inbound {
-			delete(c.connections, connID)
-			connections = append(connections, connInfo)
+	connections := c.inventory.Connections()
+	c.access.Unlock()
+	closed := 0
+	for _, metadata := range connections {
+		if metadata.Metadata.Inbound == inbound {
+			if flow := c.inventory.Connection(metadata.ID); flow != nil {
+				_ = flow.Close()
+				closed++
+			}
 		}
 	}
-	c.access.Unlock()
-	for _, connInfo := range connections {
-		closeTrackedConnection(connInfo)
-	}
-	return len(connections)
+	return closed
 }
 
-func (c *ConnTracker) trackConnection(connID string, connInfo *ConnectionInfo) *connectionTracking {
-	c.access.Lock()
-	defer c.access.Unlock()
-	c.inflight.Add()
-	tracking := &connectionTracking{tracker: c, connID: connID, epoch: c.epoch, waitGroup: c.inflight}
-	connInfo.tracking = tracking
-	c.connections[connID] = connInfo
-	return tracking
-}
-
-func (c *ConnTracker) replaceTrackedTCP(connID string, expected *ConnectionInfo, wrapped net.Conn) {
-	c.access.Lock()
-	if current := c.connections[connID]; current == expected {
-		current.Conn = wrapped
-	}
-	c.access.Unlock()
-}
-
-func (c *ConnTracker) replaceTrackedPacket(connID string, expected *ConnectionInfo, wrapped network.PacketConn) {
-	c.access.Lock()
-	if current := c.connections[connID]; current == expected {
-		current.PacketConn = wrapped
-	}
-	c.access.Unlock()
-}
-
-func (c *ConnTracker) untrackConnection(connID string, epoch uint64) {
-	c.access.Lock()
-	defer c.access.Unlock()
-	if epoch != c.epoch {
-		return
-	}
-	delete(c.connections, connID)
-}
-
-// shouldUntrackIOErr reports whether err indicates the connection is done (peer closed, reset, etc.).
 func shouldUntrackIOErr(err error) bool {
 	if err == nil {
 		return false
@@ -149,123 +108,90 @@ func shouldUntrackIOErr(err error) bool {
 	if errors.Is(err, io.EOF) {
 		return true
 	}
-	var ne net.Error
-	if errors.As(err, &ne) {
-		// Temporary() is deprecated; a non-timeout net error indicates the connection is done.
-		return !ne.Timeout()
+	var networkError net.Error
+	if errors.As(err, &networkError) {
+		return !networkError.Timeout()
 	}
 	return true
 }
 
-func (c *ConnTracker) createWrappedConn(conn net.Conn, tracking *connectionTracking) *wrappedConn {
-	return &wrappedConn{
-		Conn:     conn,
-		tracking: tracking,
-	}
-}
-
-func (c *ConnTracker) createWrappedPacketConn(conn network.PacketConn, tracking *connectionTracking) *wrappedPacketConn {
-	return &wrappedPacketConn{
-		PacketConn: conn,
-		tracking:   tracking,
-	}
-}
-
 type connectionTracking struct {
-	tracker   *ConnTracker
-	connID    string
-	epoch     uint64
+	actual    io.Closer
 	waitGroup *trackerWaitGroup
-	once      sync.Once
+	finished  atomic.Bool
+	ready     chan struct{}
 }
 
 func (t *connectionTracking) done() {
-	if t == nil {
-		return
-	}
-	t.once.Do(func() {
-		t.tracker.untrackConnection(t.connID, t.epoch)
+	// The official closer calls the terminal wrapper again. CAS marks this
+	// boundary before delegation, so recursive Close cannot enter it twice.
+	if t.finished.CompareAndSwap(false, true) {
+		// The official manager publishes its tracker before RoutedConnection
+		// returns. A closer obtained from that inventory waits for binding.
+		<-t.ready
+		_ = t.actual.Close()
 		t.waitGroup.Done()
-	})
-}
-
-func closeTrackedConnection(connInfo *ConnectionInfo) {
-	if connInfo == nil {
-		return
 	}
-	if connInfo.Conn != nil {
-		_ = connInfo.Conn.Close()
-	}
-	if connInfo.PacketConn != nil {
-		_ = connInfo.PacketConn.Close()
-	}
-	connInfo.tracking.done()
 }
 
 type wrappedConn struct {
 	net.Conn
-	tracking *connectionTracking
-}
-
-func (w *wrappedConn) doUntrack() {
-	w.tracking.done()
+	tracking  *connectionTracking
+	closeOnce sync.Once
+	closeErr  error
 }
 
 func (w *wrappedConn) Read(b []byte) (int, error) {
 	n, err := w.Conn.Read(b)
 	if shouldUntrackIOErr(err) {
-		w.doUntrack()
+		w.tracking.done()
 	}
 	return n, err
 }
 
 func (w *wrappedConn) Write(b []byte) (int, error) {
 	n, err := w.Conn.Write(b)
-	if err != nil && shouldUntrackIOErr(err) {
-		w.doUntrack()
+	if shouldUntrackIOErr(err) {
+		w.tracking.done()
 	}
 	return n, err
 }
 
 func (w *wrappedConn) Close() error {
-	w.doUntrack()
-	return w.Conn.Close()
+	w.tracking.done()
+	w.closeOnce.Do(func() { w.closeErr = w.Conn.Close() })
+	return w.closeErr
 }
 
-func (w *wrappedConn) Upstream() any {
-	return w.Conn
-}
+func (w *wrappedConn) Upstream() any { return w.Conn }
 
 type wrappedPacketConn struct {
 	network.PacketConn
-	tracking *connectionTracking
+	tracking  *connectionTracking
+	closeOnce sync.Once
+	closeErr  error
 }
 
-func (w *wrappedPacketConn) doUntrack() {
-	w.tracking.done()
-}
-
-func (w *wrappedPacketConn) ReadPacket(buffer *buf.Buffer) (destination M.Socksaddr, err error) {
-	dest, err := w.PacketConn.ReadPacket(buffer)
+func (w *wrappedPacketConn) ReadPacket(buffer *buf.Buffer) (M.Socksaddr, error) {
+	destination, err := w.PacketConn.ReadPacket(buffer)
 	if shouldUntrackIOErr(err) {
-		w.doUntrack()
+		w.tracking.done()
 	}
-	return dest, err
+	return destination, err
 }
 
 func (w *wrappedPacketConn) WritePacket(buffer *buf.Buffer, destination M.Socksaddr) error {
 	err := w.PacketConn.WritePacket(buffer, destination)
-	if err != nil && shouldUntrackIOErr(err) {
-		w.doUntrack()
+	if shouldUntrackIOErr(err) {
+		w.tracking.done()
 	}
 	return err
 }
 
 func (w *wrappedPacketConn) Close() error {
-	w.doUntrack()
-	return w.PacketConn.Close()
+	w.tracking.done()
+	w.closeOnce.Do(func() { w.closeErr = w.PacketConn.Close() })
+	return w.closeErr
 }
 
-func (w *wrappedPacketConn) Upstream() any {
-	return w.PacketConn
-}
+func (w *wrappedPacketConn) Upstream() any { return w.PacketConn }
