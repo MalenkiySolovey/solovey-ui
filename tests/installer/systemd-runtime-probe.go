@@ -51,10 +51,12 @@ func run() error {
 	}
 	err = monitor.Start()
 	if len(os.Args) == 2 && os.Args[1] == "blocked" {
-		if !errors.Is(err, unix.EAFNOSUPPORT) || !strings.Contains(err.Error(), "subscribe route updates") {
-			return fmt.Errorf("expected original route subscription EAFNOSUPPORT, got %v", err)
+		// The pinned sing-tun monitor creates its route/link socket directly;
+		// the original address-family sandbox must deny that first syscall.
+		if !errors.Is(err, unix.EAFNOSUPPORT) || !strings.HasPrefix(err.Error(), "create netlink socket:") {
+			return fmt.Errorf("expected original netlink socket EAFNOSUPPORT, got %v", err)
 		}
-		fmt.Println("ORIGINAL_ROUTE_SUBSCRIPTION_EAFNOSUPPORT=PASS")
+		fmt.Println("ORIGINAL_NETLINK_SOCKET_EAFNOSUPPORT=PASS")
 		return nil
 	}
 	if err != nil {

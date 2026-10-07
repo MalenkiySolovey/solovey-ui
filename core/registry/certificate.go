@@ -34,6 +34,6 @@ func certificateDeclarations() []declaration[*certificate.Registry] {
 // Its schema is known, but the runtime cannot activate it before that boundary.
 func registerOriginCAProvider(registry *certificate.Registry) {
 	certificate.Register[option.CloudflareOriginCACertificateProviderOptions](registry, C.TypeCloudflareOriginCA, func(context.Context, log.ContextLogger, string, option.CloudflareOriginCACertificateProviderOptions) (adapter.CertificateProviderService, error) {
-		return nil, errors.New("Origin CA certificate providers are not enabled by the product")
+		return nil, errors.New("certificate providers for Origin CA are not enabled by the product")
 	})
 }
