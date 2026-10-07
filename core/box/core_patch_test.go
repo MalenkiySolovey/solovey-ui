@@ -17,7 +17,7 @@ import (
 )
 
 func TestAnyTLSClientMetadataDefaultsAndRoundTrip(t *testing.T) {
-	ctx := sb.Context(context.Background(), registry.InboundRegistry(), registry.OutboundRegistry(), registry.EndpointRegistry(), registry.DNSTransportRegistry(), registry.ServiceRegistry())
+	ctx := sb.Context(context.Background(), registry.InboundRegistry(), registry.OutboundRegistry(), registry.EndpointRegistry(), registry.DNSTransportRegistry(), registry.ServiceRegistry(), registry.CertificateProviderRegistry())
 	for _, metadata := range []string{"", "custom-client"} {
 		payload := map[string]any{"type": "anytls", "tag": "proxy", "server": "example.invalid", "server_port": 443, "tls": map[string]any{"enabled": true}}
 		if metadata != "" {

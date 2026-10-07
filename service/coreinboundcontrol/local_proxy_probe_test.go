@@ -42,7 +42,7 @@ func TestLocalProxyProbePerformsAuthenticatedSOCKSHTTPAndMixedTransactions(t *te
 				`,"users":[{"username":"` + username + `","password":"` + password + `"}]}`
 			config := []byte(`{"log":{"disabled":true},"inbounds":[{"type":"` + test.inboundType + `","tag":"` + tag + `",` +
 				strings.TrimPrefix(inboundOptions, "{") + `],"outbounds":[{"type":"direct","tag":"direct"}],"route":{"final":"direct"}}`)
-			ctx := sb.Context(t.Context(), registry.InboundRegistry(), registry.OutboundRegistry(), registry.EndpointRegistry(), registry.DNSTransportRegistry(), registry.ServiceRegistry())
+			ctx := sb.Context(t.Context(), registry.InboundRegistry(), registry.OutboundRegistry(), registry.EndpointRegistry(), registry.DNSTransportRegistry(), registry.ServiceRegistry(), registry.CertificateProviderRegistry())
 			var options option.Options
 			if err := options.UnmarshalJSONContext(ctx, config); err != nil {
 				t.Fatal(err)

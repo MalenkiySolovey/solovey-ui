@@ -11,6 +11,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 
@@ -72,6 +73,14 @@ func validateVersionedBackupConfig(probe *gorm.DB) error {
 	}
 	if configRows == 0 {
 		logger.Warning("versioned Solovey UI backup is missing settings.config; legacy or partial backup, restore will continue")
+	} else {
+		var config string
+		if err := probe.Model(&model.Setting{}).Select("value").Where("key = ?", "config").Scan(&config).Error; err != nil {
+			return err
+		}
+		if _, err := singboxvalidation.PrepareRuleUpgrade([]byte(config)); err != nil {
+			return err
+		}
 	}
 	return nil
 }

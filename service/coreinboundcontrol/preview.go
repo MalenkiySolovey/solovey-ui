@@ -241,7 +241,7 @@ func (s *Service) candidateFor(ctx context.Context, tx *gorm.DB, inbound model.I
 
 func canonicalInboundOptionsDigest(ctx context.Context, content []byte) (string, error) {
 	parseContext := sb.Context(ctx, coreregistry.InboundRegistry(), coreregistry.OutboundRegistry(),
-		coreregistry.EndpointRegistry(), coreregistry.DNSTransportRegistry(), coreregistry.ServiceRegistry())
+		coreregistry.EndpointRegistry(), coreregistry.DNSTransportRegistry(), coreregistry.ServiceRegistry(), coreregistry.CertificateProviderRegistry())
 	var inbound option.Inbound
 	if err := inbound.UnmarshalJSONContext(parseContext, content); err != nil {
 		return "", err

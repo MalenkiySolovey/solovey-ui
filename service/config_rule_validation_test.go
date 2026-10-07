@@ -36,6 +36,7 @@ func TestRuleValidationRejectsSaveBeforeCommitAndLiveEffects(t *testing.T) {
 		json.RawMessage(`{"dns":{"rules":[{"type":"logical","mode":"or","rules":[{"type":"logical","mode":"and","rules":[]}]}]}}`),
 		json.RawMessage(`{"route":{"rules":[{"type":"logical","mode":"secret-fixture-marker","rules":[{"action":"reject"}]}]}}`),
 		json.RawMessage(`{"route":{"rules":[{"password-fixture-marker":"secret-fixture-marker"}]}}`),
+		json.RawMessage(`{"route":{"rules":[{"type":"logical","mode":"or","action":"reject","rules":[{"domain":"fixture.example","action":"reject"}]}]}}`),
 	} {
 		_, err := svc.Save("config", "set", payload, "", "admin", "fixture.example")
 		var typed *singboxvalidation.RuleConditionError
@@ -106,7 +107,8 @@ func TestDoctorProjectsHistoricalRuleFindingsWithoutChangingState(t *testing.T) 
 			t.Fatal(err)
 		}
 		report := (&DoctorService{}).Run("fixture.example")
-		for _, expected := range singboxvalidation.AnalyzeRuleConditions([]byte(payload)) {
+		compatibility, _ := singboxvalidation.PrepareRuleUpgrade([]byte(payload))
+		for _, expected := range compatibility.Findings {
 			found := false
 			for _, item := range report.Items {
 				finding, ok := item.Details.(singboxvalidation.RuleFinding)

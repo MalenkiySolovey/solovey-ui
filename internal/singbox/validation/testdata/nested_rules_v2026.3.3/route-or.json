@@ -1,0 +1,21 @@
+{
+  "route": {
+    "rules": [
+      {
+        "type": "logical",
+        "mode": "or",
+        "action": "reject",
+        "rules": [
+          {
+            "domain": "fixture.example",
+            "action": "reject"
+          },
+          {
+            "domain": "other.example",
+            "action": "reject"
+          }
+        ]
+      }
+    ]
+  }
+}

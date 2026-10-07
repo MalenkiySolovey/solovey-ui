@@ -13,6 +13,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration/integrity"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration/steps"
+	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -101,6 +102,11 @@ func MigratePath(path string, options Options) error {
 		return err
 	}
 	if err := rejectFutureVersion("core schema", preflightCoreVersion, "1.11"); err != nil {
+		return err
+	}
+	// Rule compatibility is checked on a read-only pre-image before any schema
+	// transaction or destructive cutover. Projection never rewrites stored rules.
+	if err := readOnlyRuleUpgradePreflight(path); err != nil {
 		return err
 	}
 	db, err := gorm.Open(sqlite.Open(sqliteMigrationDSN(path)))
@@ -232,6 +238,40 @@ func MigratePath(path string, options Options) error {
 		fmt.Println("Warning: WAL checkpoint skipped:", err)
 	}
 	fmt.Println("Migration done!")
+	return nil
+}
+
+func readOnlyRuleUpgradePreflight(path string) error {
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	probe, err := gorm.Open(sqlite.Open(path + separator + "mode=ro&_query_only=1"))
+	if err != nil {
+		return fmt.Errorf("open rule upgrade preflight: %w", err)
+	}
+	sqlDB, err := probe.DB()
+	if err != nil {
+		return err
+	}
+	defer sqlDB.Close()
+	if !probe.Migrator().HasTable("settings") {
+		return nil
+	}
+	var value string
+	if err := probe.Table("settings").Select("value").Where("key = ?", "config").Scan(&value).Error; err != nil {
+		return err
+	}
+	if strings.TrimSpace(value) == "" {
+		return nil
+	}
+	result, err := singboxvalidation.PrepareRuleUpgrade([]byte(value))
+	if err != nil {
+		return err
+	}
+	for _, finding := range result.Findings {
+		fmt.Printf("Rule upgrade: %s [%s]: %s\n", finding.Path, finding.Code, finding.Message)
+	}
 	return nil
 }
 

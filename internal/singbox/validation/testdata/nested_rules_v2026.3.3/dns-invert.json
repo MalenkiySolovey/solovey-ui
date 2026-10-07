@@ -1,0 +1,30 @@
+{
+  "dns": {
+    "rules": [
+      {
+        "type": "logical",
+        "mode": "or",
+        "invert": true,
+        "action": "reject",
+        "rules": [
+          {
+            "domain": "fixture.example",
+            "invert": true,
+            "action": "reject"
+          },
+          {
+            "type": "logical",
+            "mode": "and",
+            "action": "reject",
+            "rules": [
+              {
+                "domain": "other.example",
+                "action": "reject"
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

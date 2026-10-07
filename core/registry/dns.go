@@ -14,7 +14,9 @@ import (
 func DNSTransportRegistry() *dns.TransportRegistry {
 	registry := dns.NewTransportRegistry()
 	for _, entry := range dnsDeclarations() {
-		entry.register(registry)
+		if entry.register != nil {
+			entry.register(registry)
+		}
 	}
 	return registry
 }
@@ -32,5 +34,7 @@ func dnsDeclarations() []declaration[*dns.TransportRegistry] {
 		{typeName: "h3", buildTag: "with_quic", compiled: C.WithQUIC, register: quic.RegisterHTTP3Transport},
 		{typeName: "dhcp", buildTag: "", compiled: true, register: dhcp.RegisterTransport},
 		{typeName: "tailscale", buildTag: tailscaleBuildTag, compiled: supportsTailscale, register: registerTailscaleTransport},
+		{typeName: "mdns", productUnavailable: "PRODUCT_FEATURE_NOT_ENABLED", register: registerMDNSSchema},
+		{typeName: "resolved", platform: "linux", productUnavailable: "PRODUCT_FEATURE_NOT_ENABLED", register: registerResolvedDNSSchema},
 	}
 }

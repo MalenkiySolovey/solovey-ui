@@ -2,8 +2,8 @@
 
 Validated dependency:
 
-- `github.com/sagernet/sing-box v1.13.18`
-- `github.com/sagernet/sing v0.8.13` (official core minimum: `v0.8.12`)
+- `github.com/sagernet/sing-box v1.14.2`
+- `github.com/sagernet/sing v0.9.6-0.20260922013354-87c33f17688f`
 
 The local `ConnTracker` and `StatsTracker` wrap sing-box routed TCP and packet
 connections. Any bump of `github.com/sagernet/sing-box` must revalidate this
@@ -17,12 +17,14 @@ Required checks:
 - RoutedPacketConnection signature still matches sing-box adapter.ConnectionTracker
 - wrapped TCP connections always call Done exactly once on Close or terminal I/O error
 - wrapped packet connections always call Done exactly once on Close or terminal I/O error
-- ConnTracker.Reset fences the old map/wait-group generation before closing and draining its wrappers
+- ConnTracker.Reset fences the old generation before closing and draining its wrappers
 - StatsTracker keeps counter pointers stable across Reset for already wrapped connections
 - source IP extraction from adapter.InboundContext still uses metadata.Source.Addr
 - atomic IP admission runs exactly once before counters or wrappers in both TCP and packet paths
 - a core restart creates new stats/connection owners; late old I/O cannot change new counters or tracking
 - runtime health and stats projections belong to the current core generation
+- one official traffic manager owns accepted TCP, packet and L3 flow identity
+- rejected TCP, packet and L3 flows never enter the accepted inventory
 
 Validation gate for a sing-box bump:
 
@@ -44,6 +46,19 @@ timeouts and concurrent repeated Close are covered in `core/tracker/terminal_tes
 These host regressions do not replace the required deployment smoke.
 
 Revalidation log:
+
+- 2026-10-07, v1.13.18 -> v1.14.2: reviewed official immutable source
+  `af6e64c3b69e6132ebaee0e1a3d24e93903f6709`, including the routed TCP,
+  packet and L3 callbacks and `common/trafficcontrol`. The official manager
+  owns the sole actual-flow inventory. Solovey retains atomic IP admission,
+  quota/stats accounting and generation fencing; admission precedes accepted
+  inventory publication. Windows behavioral and actual Stop/Start tests prove
+  accepted-once/rejected-absent, pending/stale L3 fencing, stable stats pointers
+  across Reset and terminal/close-once behavior. Native Linux race exercised
+  these same deterministic barriers. The complete current compatibility,
+  native race, dependency/security and supported profile gates are required
+  for the atomic migration PR before merge. No physical runtime acceptance
+  is inferred; deployment smoke remains a separate later proposition.
 
 - 2026-10-06, v1.13.14 -> v1.13.18: reviewed official immutable source
   `45ca32dcb966f07f97fc888fe8586e359dbe8405`. Both methods of

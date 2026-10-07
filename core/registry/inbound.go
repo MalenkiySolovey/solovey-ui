@@ -24,7 +24,9 @@ import (
 func InboundRegistry() *inbound.Registry {
 	registry := inbound.NewRegistry()
 	for _, entry := range inboundDeclarations() {
-		entry.register(registry)
+		if entry.register != nil {
+			entry.register(registry)
+		}
 	}
 	return registry
 }
@@ -45,6 +47,8 @@ func inboundDeclarations() []declaration[*inbound.Registry] {
 		{typeName: "shadowtls", buildTag: "", compiled: true, register: shadowtls.RegisterInbound},
 		{typeName: "vless", buildTag: "", compiled: true, register: vless.RegisterInbound},
 		{typeName: "anytls", buildTag: "", compiled: true, register: anytls.RegisterInbound},
+		{typeName: C.TypeSnell, productUnavailable: "PRODUCT_FEATURE_NOT_ENABLED", register: registerSnellInboundSchema},
+		{typeName: C.TypeCloudflared, buildTag: "with_cloudflared", productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
 		{typeName: "hysteria", buildTag: "with_quic", compiled: C.WithQUIC, register: hysteria.RegisterInbound},
 		{typeName: "tuic", buildTag: "with_quic", compiled: C.WithQUIC, register: tuic.RegisterInbound},
 		{typeName: "hysteria2", buildTag: "with_quic", compiled: C.WithQUIC, register: hysteria2.RegisterInbound},

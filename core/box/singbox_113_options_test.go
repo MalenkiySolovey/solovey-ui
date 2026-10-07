@@ -19,6 +19,7 @@ func TestSingBox113RepresentativeConfigUnmarshals(t *testing.T) {
 		registry.EndpointRegistry(),
 		registry.DNSTransportRegistry(),
 		registry.ServiceRegistry(),
+		registry.CertificateProviderRegistry(),
 	)
 	config := []byte(`{
   "dns": {

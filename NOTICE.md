@@ -32,9 +32,18 @@ Project lineage and retained attribution:
 - [Sub-Store](https://github.com/sub-store-org/Sub-Store)
 
 The current networking runtime uses
-[SagerNet/sing-box](https://github.com/SagerNet/sing-box) v1.13.18 through the
+[SagerNet/sing-box](https://github.com/SagerNet/sing-box) v1.14.2 through the
 Go module dependency declared by this repository. Dependency source and
 license notices remain authoritative for that code.
+
+The 1.14 runtime foundation and nested-rule compatibility adapt existing
+Solovey owners against official source
+`af6e64c3b69e6132ebaee0e1a3d24e93903f6709`. No upstream implementation or
+tests were copied. Cronet native package assets come from the selected
+`github.com/sagernet/cronet-go/lib` modules at
+`v0.0.0-20260912104006-c10c03c318db`, authenticated by Go module checksums
+and the target-specific SHA256 in the package producer. The Cronet source
+and GPL-3.0 notices remain authoritative for those assets.
 
 The project-wide architecture audit compared additional firewall, panel,
 installer, and networking projects. No production code was copied from those

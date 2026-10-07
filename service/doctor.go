@@ -47,7 +47,8 @@ func (s *DoctorService) Run(hostname string) opsdoctor.Report {
 		return opsdoctor.FinishReport(start, items)
 	}
 	fatalConditions := false
-	for i, finding := range singboxvalidation.AnalyzeRuleConditions([]byte(baseConfig)) {
+	compatibility, _ := singboxvalidation.PrepareRuleUpgrade([]byte(baseConfig))
+	for i, finding := range compatibility.Findings {
 		severity := opsdoctor.SeverityWarn
 		if finding.Severity == singboxvalidation.RuleSeverityError {
 			severity = opsdoctor.SeverityError
@@ -55,7 +56,7 @@ func (s *DoctorService) Run(hostname string) opsdoctor.Report {
 		}
 		items = append(items, opsdoctor.Item{
 			ID: fmt.Sprintf("rule-conditions-%d", i), Title: "Rule conditions", Severity: severity,
-			Message: finding.Message, Action: "Open the indicated rule path and fix or remove the rule.", Details: finding,
+			Message: finding.Message, Action: "Review the indicated rule path and its automatic or manual upgrade outcome. Original storage is preserved.", Details: finding,
 		})
 	}
 	if fatalConditions {
@@ -63,7 +64,7 @@ func (s *DoctorService) Run(hostname string) opsdoctor.Report {
 		// files or official decoding can recurse through an unbounded tree.
 		return opsdoctor.FinishReport(start, items)
 	}
-	rawConfig, err := configService.GetConfig(baseConfig)
+	rawConfig, err := configService.GetConfig("")
 	if err != nil {
 		items = append(items, opsdoctor.ConfigBuildFailure(err))
 		return opsdoctor.FinishReport(start, items)

@@ -229,7 +229,7 @@ func (p *LocalProxyProbeProviderV1) localProxyProbeConfig(ctx context.Context, s
 		return localProxyProbeConfigV1{}, err
 	}
 	parseContext := sb.Context(context.Background(), coreregistry.InboundRegistry(), coreregistry.OutboundRegistry(),
-		coreregistry.EndpointRegistry(), coreregistry.DNSTransportRegistry(), coreregistry.ServiceRegistry())
+		coreregistry.EndpointRegistry(), coreregistry.DNSTransportRegistry(), coreregistry.ServiceRegistry(), coreregistry.CertificateProviderRegistry())
 	var parsed option.Inbound
 	if err := parsed.UnmarshalJSONContext(parseContext, content); err != nil {
 		return localProxyProbeConfigV1{}, err

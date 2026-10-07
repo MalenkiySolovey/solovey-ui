@@ -8,7 +8,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/core/tracker"
 
-	sb "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing/service"
@@ -19,6 +18,7 @@ type Core struct {
 	mutation          sync.Mutex
 	access            sync.RWMutex
 	ctx               context.Context
+	parentContext     context.Context
 	isRunning         bool
 	instance          *corebox.Box
 	inboundManager    adapter.InboundManager
@@ -37,14 +37,7 @@ type Core struct {
 
 func NewCore(observers ...tracker.IPObserver) *Core {
 	ctx := context.Background()
-	ctx = sb.Context(
-		ctx,
-		registry.InboundRegistry(),
-		registry.OutboundRegistry(),
-		registry.EndpointRegistry(),
-		registry.DNSTransportRegistry(),
-		registry.ServiceRegistry(),
-	)
+	ctx = registry.Context(ctx)
 	core := &Core{
 		ctx:               ctx,
 		isRunning:         false,

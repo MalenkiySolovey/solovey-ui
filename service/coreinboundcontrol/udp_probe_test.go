@@ -30,7 +30,7 @@ func TestPlainUDPProbeProviderPerformsBoundedShadowsocksRequestResponse(t *testi
 	password := "fixture-secret-password"
 	config := []byte(strings.ReplaceAll(`{"log":{"disabled":true},"inbounds":[{"type":"shadowsocks","tag":"udp-probe-in","listen":"127.0.0.1","listen_port":PORT,"network":"udp","method":"aes-128-gcm","password":"PASSWORD"}],"outbounds":[{"type":"direct","tag":"direct"}],"route":{"final":"direct"}}`, "PORT", strconv.Itoa(port)))
 	config = []byte(strings.ReplaceAll(string(config), "PASSWORD", password))
-	ctx := sb.Context(t.Context(), registry.InboundRegistry(), registry.OutboundRegistry(), registry.EndpointRegistry(), registry.DNSTransportRegistry(), registry.ServiceRegistry())
+	ctx := sb.Context(t.Context(), registry.InboundRegistry(), registry.OutboundRegistry(), registry.EndpointRegistry(), registry.DNSTransportRegistry(), registry.ServiceRegistry(), registry.CertificateProviderRegistry())
 	var options option.Options
 	if err := options.UnmarshalJSONContext(ctx, config); err != nil {
 		t.Fatal(err)

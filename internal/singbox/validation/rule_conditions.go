@@ -22,11 +22,14 @@ const (
 // RuleFinding contains only fixed diagnostics and structural paths. Official
 // decoder errors can contain submitted values and must not cross this boundary.
 type RuleFinding struct {
-	Kind     string `json:"kind"`
-	Path     string `json:"path"`
-	Code     string `json:"code"`
-	Severity string `json:"severity"`
-	Message  string `json:"message"`
+	Kind                   string `json:"kind"`
+	Path                   string `json:"path"`
+	Code                   string `json:"code"`
+	Severity               string `json:"severity"`
+	Message                string `json:"message"`
+	MigrationOutcome       string `json:"migrationOutcome,omitempty"`
+	AutomaticAvailable     bool   `json:"automaticAvailable,omitempty"`
+	OperatorActionRequired bool   `json:"operatorActionRequired,omitempty"`
 }
 
 type RuleConditionError struct{ Finding RuleFinding }
@@ -78,6 +81,10 @@ func AnalyzeRuleConditions(config []byte) []RuleFinding {
 		if failure != nil {
 			findings = append(findings, *failure)
 			continue // Never recursively decode an over-budget tree.
+		}
+		if nested := nestedActionFindings(kind, tree, false); len(nested) > 0 {
+			findings = append(findings, nested...)
+			continue
 		}
 		ruleDocument, _ := json.Marshal(map[string]any{kind: map[string]any{"rules": raw}})
 		var options option.Options

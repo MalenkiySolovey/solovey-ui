@@ -6,18 +6,18 @@ const (
 	QUICBuildFeatureSchemaV1 = "solovey-ui/core-quic-build-feature/v1"
 
 	PinnedSingBoxModule         = "github.com/sagernet/sing-box"
-	PinnedSingBoxVersion        = "v1.13.18"
-	PinnedSingBoxModuleSum      = "h1:HQLgU9f/qAZc1KGjj7O2hw9O283YKZwDbnpIg/h8fVA="
-	PinnedSingBoxSourceRevision = "45ca32dcb966f07f97fc888fe8586e359dbe8405"
+	PinnedSingBoxVersion        = "v1.14.2"
+	PinnedSingBoxModuleSum      = "h1:uZX7iz70o7lzoltR6sElMYP7kI7PVf23r4X0HQSozXM="
+	PinnedSingBoxSourceRevision = "af6e64c3b69e6132ebaee0e1a3d24e93903f6709"
 	PinnedUTLSModule            = "github.com/metacubex/utls"
-	PinnedUTLSVersion           = "v1.8.4"
-	PinnedUTLSModuleSum         = "h1:HmL9nUApDdWSkgUyodfwF6hSjtiwCGGdyhaSpEejKpg="
-	PinnedUTLSSourceRevision    = "cf49b0864331e156689feec6363ef9bf518a5ac7"
+	PinnedUTLSVersion           = "v1.8.7"
+	PinnedUTLSModuleSum         = "h1:Cp+yWkNTFkSihETgGWq34hlVFds5HpYWVOR1xovUVTs="
+	PinnedUTLSSourceRevision    = "f7d52c22f3a8d2f510ad1470f75cb6c3fe26aa37"
 
 	CapabilityResolverRevisionV1            = "389ac746da5c21bab9f74c46310256ea020f2860734d731c9539f299741a7673"
 	BuildProfileWithUTLSRevision            = "2573ebf675608c4e589ebc062ecf46078f77244489cb5a1578ecb2b649ae0608"
 	BuildProfileWithoutUTLSRevision         = "a55ee5ad8f16d0ab527a612e4a89e2170b2751af200430a90022df99cc33192d"
-	PinnedRuntimeIdentityWithUTLSRevisionV1 = "7cbcc8a78b945cec026354054c3605bc0e931416edd44a92eab45ba04ffb0367"
+	PinnedRuntimeIdentityWithUTLSRevisionV1 = "c9d0cccd1233f7b466c966593d13c45d5d34ae98536cb25870d6ea34206b2680"
 )
 
 type ReasonCode string

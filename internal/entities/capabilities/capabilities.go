@@ -77,7 +77,7 @@ func (s Snapshot) Resolve(category, panelType string) Fact {
 	for _, fact := range s.Facts {
 		if fact.Category == category && fact.Type == panelType {
 			result = fact
-			result.Available = fact.Known && fact.ContextSupported && fact.Registered && fact.Compiled && fact.Available && fact.RuntimeType == entitytypes.RuntimeType(category, panelType)
+			result.Available = fact.Known && fact.ContextSupported && fact.Registered && fact.Compiled && fact.SupportedByProduct && fact.Available && fact.RuntimeType == entitytypes.RuntimeType(category, panelType)
 			if !result.Available && result.Reason == "" {
 				result.Reason = "CAPABILITY_SNAPSHOT_UNAVAILABLE"
 			}

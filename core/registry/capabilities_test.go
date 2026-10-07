@@ -16,7 +16,7 @@ func TestCapabilityRegistrationsAndCompiledImplementations(t *testing.T) {
 		if !fact.Known || (fact.Compiled && !fact.Registered) {
 			t.Fatalf("declaration disagrees with registry: %+v", fact)
 		}
-		if fact.Available() != (fact.Known && fact.Compiled && fact.Registered) {
+		if fact.Available() != (fact.Known && fact.Compiled && fact.Registered && fact.SupportedByProduct) {
 			t.Fatalf("incorrect availability: %+v", fact)
 		}
 		if fact != Resolve(fact.Category, fact.Type) {

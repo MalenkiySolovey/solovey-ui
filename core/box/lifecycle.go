@@ -3,179 +3,190 @@ package box
 import (
 	"errors"
 	"fmt"
+	"io"
+	"reflect"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
-
 	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/common/taskmonitor"
-	C "github.com/sagernet/sing-box/constant"
+	boxCertificate "github.com/sagernet/sing-box/adapter/certificate"
+	"github.com/sagernet/sing-box/adapter/endpoint"
+	"github.com/sagernet/sing-box/adapter/inbound"
+	"github.com/sagernet/sing-box/adapter/outbound"
+	boxService "github.com/sagernet/sing-box/adapter/service"
+	"github.com/sagernet/sing-box/dns"
 	F "github.com/sagernet/sing/common/format"
 )
 
 func (s *Box) PreStart() error {
-	err := s.preStart()
-	if err != nil {
-		// A partially initialized third-party lifecycle may panic while closing.
-		// Preserve the original startup error and keep cleanup best-effort.
-		defer func() {
-			v := recover()
-			if v != nil {
-				s.logger.Error(err.Error())
-				s.logger.Error("panic on early close: " + fmt.Sprint(v))
-			}
-		}()
-		_ = s.Close()
-		return err
+	if err := s.preStart(); err != nil {
+		return errors.Join(err, s.Close())
 	}
 	s.logger.Info("sing-box pre-started (", F.Seconds(time.Since(s.createdAt).Seconds()), "s)")
 	return nil
 }
 
 func (s *Box) Start() error {
-	err := s.start()
-	if err != nil {
-		return err
+	if err := s.start(); err != nil {
+		return errors.Join(err, s.Close())
 	}
 	s.logger.Info("sing-box started (", F.Seconds(time.Since(s.createdAt).Seconds()), "s)")
 	return nil
 }
 
-func (s *Box) preStart() error {
-	monitor := taskmonitor.New(s.logger, C.StartTimeout)
-	monitor.Start("start logger")
-	err := s.logFactory.Start()
-	monitor.Finish()
-	if err != nil {
-		return common.NewError(err, "start logger")
-	}
-	err = adapter.StartNamed(s.logger, adapter.StartStateInitialize, s.internalService) // cache-file clash-api v2ray-api
-	if err != nil {
-		return err
-	}
-	err = adapter.Start(s.logger, adapter.StartStateInitialize, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.outbound, s.inbound, s.endpoint, s.service)
-	if err != nil {
-		return err
-	}
-	err = adapter.Start(s.logger, adapter.StartStateStart, s.outbound, s.dnsTransport, s.dnsRouter, s.network, s.connection, s.router)
-	if err != nil {
-		return err
+// Initialize transfers constructed child cleanup to the manager, even when its
+// first stage fails. Before that boundary Box owns the constructed children.
+func (s *Box) startManagers(stage adapter.StartStage, owners ...adapter.Lifecycle) error {
+	for _, owner := range owners {
+		if err := s.ctx.Err(); err != nil {
+			return err
+		}
+		if stage == adapter.StartStateInitialize {
+			s.initialized[owner] = true
+		}
+		if err := adapter.Start(s.ctx, s.logger, stage, owner); err != nil {
+			return err
+		}
 	}
 	return nil
 }
 
+func (s *Box) preStart() error {
+	if err := s.logFactory.Start(); err != nil {
+		return common.NewError(err, "start logger")
+	}
+	if err := adapter.StartNamed(s.ctx, s.logger, adapter.StartStateInitialize, s.internalService); err != nil {
+		return err
+	}
+	if err := s.startManagers(adapter.StartStateInitialize, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.outbound, s.inbound, s.endpoint, s.service, s.certificateProvider); err != nil {
+		return err
+	}
+	if err := s.startManagers(adapter.StartStateStart, s.outbound, s.dnsTransport, s.network, s.connection); err != nil {
+		return err
+	}
+	if err := adapter.Start(s.ctx, s.logger, adapter.StartStateStart, s.httpClient); err != nil {
+		return err
+	}
+	return s.startManagers(adapter.StartStateStart, s.router, s.dnsRouter)
+}
+
 func (s *Box) start() error {
-	err := s.preStart()
-	if err != nil {
+	if err := s.preStart(); err != nil {
 		return err
 	}
-	err = adapter.StartNamed(s.logger, adapter.StartStateStart, s.internalService)
-	if err != nil {
+	if err := adapter.StartNamed(s.ctx, s.logger, adapter.StartStateStart, s.internalService); err != nil {
 		return err
 	}
-	err = adapter.Start(s.logger, adapter.StartStateStart, s.inbound, s.endpoint, s.service)
-	if err != nil {
+	// Provider startup precedes inbound TLS startup, which resolves references.
+	if err := s.startManagers(adapter.StartStateStart, s.endpoint, s.certificateProvider, s.inbound, s.service); err != nil {
 		return err
 	}
-	err = adapter.Start(s.logger, adapter.StartStatePostStart, s.outbound, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.inbound, s.endpoint, s.service)
-	if err != nil {
+	if err := s.startManagers(adapter.StartStatePostStart, s.outbound, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.endpoint, s.certificateProvider, s.inbound, s.service); err != nil {
 		return err
 	}
-	err = adapter.StartNamed(s.logger, adapter.StartStatePostStart, s.internalService)
-	if err != nil {
+	if err := adapter.StartNamed(s.ctx, s.logger, adapter.StartStatePostStart, s.internalService); err != nil {
 		return err
 	}
-	err = adapter.Start(s.logger, adapter.StartStateStarted, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.outbound, s.inbound, s.endpoint, s.service)
-	if err != nil {
+	if err := s.startManagers(adapter.StartStateStarted, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.outbound, s.endpoint, s.certificateProvider, s.inbound, s.service); err != nil {
 		return err
 	}
-	err = adapter.StartNamed(s.logger, adapter.StartStateStarted, s.internalService)
-	if err != nil {
-		return err
-	}
-	return nil
+	return adapter.StartNamed(s.ctx, s.logger, adapter.StartStateStarted, s.internalService)
 }
 
 func (s *Box) Close() error {
 	s.closeOnce.Do(func() {
 		close(s.done)
+		if s.cancel != nil {
+			s.cancel()
+		}
 		s.closeErr = s.close()
 	})
 	return s.closeErr
 }
 
+func absent(owner any) bool {
+	return owner == nil || reflect.ValueOf(owner).Kind() == reflect.Ptr && reflect.ValueOf(owner).IsNil()
+}
+
 func (s *Box) close() error {
-	var err error
-	s.logger.Info("closing sing-box")
-	for _, closeItem := range []struct {
-		name    string
-		service adapter.Lifecycle
+	var result error
+	closeOne := func(name string, owner io.Closer) {
+		if absent(owner) {
+			return
+		}
+		defer func() {
+			if v := recover(); v != nil {
+				result = errors.Join(result, fmt.Errorf("close %s: panic: %v", name, v))
+			}
+		}()
+		if err := owner.Close(); err != nil {
+			result = errors.Join(result, common.NewError(err, "close "+name))
+		}
+	}
+	if s.connTracker != nil {
+		s.connTracker.Close()
+	}
+	for _, item := range []struct {
+		name  string
+		owner adapter.Lifecycle
 	}{
-		{"service", s.service},
-		{"endpoint", s.endpoint},
-		{"inbound", s.inbound},
-		{"outbound", s.outbound},
-		{"router", s.router},
-		{"connection", s.connection},
-		{"dns-router", s.dnsRouter},
-		{"dns-transport", s.dnsTransport},
-		{"network", s.network},
+		{"service", s.service}, {"inbound", s.inbound}, {"certificate-provider", s.certificateProvider},
+		{"endpoint", s.endpoint}, {"outbound", s.outbound}, {"router", s.router},
+		{"connection", s.connection}, {"dns-router", s.dnsRouter},
+		{"dns-transport", s.dnsTransport}, {"network", s.network},
 	} {
-		if closeItem.service == nil {
+		if absent(item.owner) {
 			continue
 		}
-		func() {
-			defer func() {
-				if v := recover(); v != nil {
-					err = errors.Join(err, common.NewError(fmt.Errorf("panic: %v", v), "close "+closeItem.name))
-					s.logger.Error("panic closing ", closeItem.name, ": ", v)
-				}
-			}()
-			s.logger.Trace("close ", closeItem.name)
-			startTime := time.Now()
-			closeErr := closeItem.service.Close()
-			if closeErr != nil {
-				closeErr = common.NewError(closeErr, "close "+closeItem.name)
+		if !s.initialized[item.owner] {
+			for _, child := range constructedChildren(item.owner) {
+				closeOne(item.name+" child", child)
 			}
-			err = errors.Join(err, closeErr)
-			s.logger.Trace("close ", closeItem.name, " completed (", F.Seconds(time.Since(startTime).Seconds()), "s)")
-		}()
-	}
-	for _, lifecycleService := range s.internalService {
-		if lifecycleService == nil {
-			continue
 		}
-		func() {
-			defer func() {
-				if v := recover(); v != nil {
-					err = errors.Join(err, common.NewError(fmt.Errorf("panic: %v", v), "close "+lifecycleService.Name()))
-					s.logger.Error("panic closing ", lifecycleService.Name(), ": ", v)
-				}
-			}()
-			s.logger.Trace("close ", lifecycleService.Name())
-			startTime := time.Now()
-			closeErr := lifecycleService.Close()
-			if closeErr != nil {
-				closeErr = common.NewError(closeErr, "close "+lifecycleService.Name())
-			}
-			err = errors.Join(err, closeErr)
-			s.logger.Trace("close ", lifecycleService.Name(), " completed (", F.Seconds(time.Since(startTime).Seconds()), "s)")
-		}()
+		closeOne(item.name, item.owner)
 	}
-	s.logger.Trace("close logger")
-	startTime := time.Now()
-	closeErr := s.logFactory.Close()
-	if closeErr != nil {
-		closeErr = common.NewError(closeErr, "close logger")
+	closeOne("http-client", s.httpClient)
+	for _, owner := range s.internalService {
+		if !absent(owner) {
+			closeOne(owner.Name(), owner)
+		}
 	}
-	err = errors.Join(err, closeErr)
-	s.logger.Trace("close logger completed (", F.Seconds(time.Since(startTime).Seconds()), "s)")
-	s.logger.Info("sing-box closed (live time: ", F.Seconds(time.Since(s.createdAt).Seconds()), "s)")
+	closeOne("logger", s.logFactory)
 	if s.statsTracker != nil {
 		s.statsTracker.Reset()
 	}
-	if s.connTracker != nil {
-		s.connTracker.Reset()
+	return result
+}
+
+func constructedChildren(owner adapter.Lifecycle) []io.Closer {
+	var children []io.Closer
+	switch manager := owner.(type) {
+	case *endpoint.Manager:
+		for _, child := range manager.Endpoints() {
+			children = append(children, child)
+		}
+	case *inbound.Manager:
+		for _, child := range manager.Inbounds() {
+			children = append(children, child)
+		}
+	case *outbound.Manager:
+		for _, child := range manager.Outbounds() {
+			if closer, ok := child.(io.Closer); ok {
+				children = append(children, closer)
+			}
+		}
+	case *boxService.Manager:
+		for _, child := range manager.Services() {
+			children = append(children, child)
+		}
+	case *boxCertificate.Manager:
+		for _, child := range manager.CertificateProviders() {
+			children = append(children, child)
+		}
+	case *dns.TransportManager:
+		for _, child := range manager.Transports() {
+			children = append(children, child)
+		}
 	}
-	return err
+	return children
 }

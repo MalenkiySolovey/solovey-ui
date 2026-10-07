@@ -8,6 +8,8 @@ import (
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
+	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
+	"github.com/MalenkiySolovey/solovey-ui/logger"
 	"gorm.io/gorm"
 )
 
@@ -39,8 +41,9 @@ func (b SingBoxConfigBuilder) Build(data string) ([]byte, error) {
 // It is used by transactional workflows that must validate uncommitted rows
 // without temporarily exposing them through the process-wide database handle.
 type RuntimeProjection struct {
-	Config      []byte
-	Eligibility runtimeprojection.Report
+	Config            []byte
+	Eligibility       runtimeprojection.Report
+	RuleCompatibility []singboxvalidation.RuleFinding
 }
 
 func (b SingBoxConfigBuilder) BuildFromDB(db *gorm.DB, data string) ([]byte, error) {
@@ -54,7 +57,8 @@ func (b SingBoxConfigBuilder) BuildProjectionFromDB(db *gorm.DB, data string) (R
 	if db == nil {
 		return RuntimeProjection{}, errors.New("database is not initialized")
 	}
-	if len(data) == 0 {
+	stored := len(data) == 0
+	if stored {
 		var setting model.Setting
 		result := db.Model(&model.Setting{}).Where("key = ?", "config").Limit(1).Find(&setting)
 		if result.Error != nil {
@@ -65,6 +69,20 @@ func (b SingBoxConfigBuilder) BuildProjectionFromDB(db *gorm.DB, data string) (R
 		} else {
 			data = setting.Value
 		}
+	}
+	var compatibility []singboxvalidation.RuleFinding
+	if stored {
+		upgrade, err := singboxvalidation.PrepareRuleUpgrade([]byte(data))
+		compatibility = upgrade.Findings
+		if err != nil {
+			return RuntimeProjection{RuleCompatibility: compatibility}, err
+		}
+		data = string(upgrade.Candidate)
+		for _, finding := range compatibility {
+			logger.Warningf("config rule compatibility: %s [%s]: %s", finding.Path, finding.Code, finding.Message)
+		}
+	} else if _, err := singboxvalidation.ValidateRuleConditions([]byte(data)); err != nil {
+		return RuntimeProjection{}, err
 	}
 	eligibility, err := runtimeprojection.ValidateReferences(db, []byte(data))
 	if err != nil {
@@ -96,5 +114,5 @@ func (b SingBoxConfigBuilder) BuildProjectionFromDB(db *gorm.DB, data string) (R
 		Services:  services,
 		Endpoints: endpoints,
 	})
-	return RuntimeProjection{Config: config, Eligibility: eligibility}, err
+	return RuntimeProjection{Config: config, Eligibility: eligibility, RuleCompatibility: compatibility}, err
 }

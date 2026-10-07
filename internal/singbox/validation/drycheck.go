@@ -5,7 +5,6 @@ import (
 
 	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
-	sb "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/option"
 )
 
@@ -21,14 +20,7 @@ func (DryChecker) ValidateConfig(sbConfig []byte) error {
 	}
 	var opt option.Options
 	ctx := context.Background()
-	ctx = sb.Context(
-		ctx,
-		registry.InboundRegistry(),
-		registry.OutboundRegistry(),
-		registry.EndpointRegistry(),
-		registry.DNSTransportRegistry(),
-		registry.ServiceRegistry(),
-	)
+	ctx = registry.Context(ctx)
 	if err := opt.UnmarshalJSONContext(ctx, sbConfig); err != nil {
 		return err
 	}

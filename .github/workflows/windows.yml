@@ -32,7 +32,6 @@ permissions:
 env:
   RELEASE_TAG_INPUT: ${{ inputs.tag || github.ref_name }}
   TAGS: "with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0,with_tailscale"
-  LIBCRONET_BASE_URL: "https://github.com/SagerNet/cronet-go/releases/download/v150.0.7871.63-1"
 
 jobs:
   build-frontend:
@@ -183,18 +182,19 @@ jobs:
             echo "profile=full"
           } > solovey-ui-windows/BUILD_INFO.txt
 
-      - name: Download libcronet-go
+      - name: Copy module-authenticated libcronet-go
         shell: bash
         run: |
           case "${{ matrix.arch }}" in
-            amd64) CRONET_SHA256="257f966119ffca91d7a2ce110a4b668b865d88bf2ed5339fd06a5644b0d02823" ;;
-            arm64) CRONET_SHA256="6ffede1b32688a22467ea804da40aff6445a776358c89b70dc336a6c5b4af2ff" ;;
+            amd64) CRONET_SHA256="3217c6260fbca5f16072e0b79735742f40109a63bb0ff88fd6b96dd6b54a2928" ;;
+            arm64) CRONET_SHA256="a75a1b99a7e31802cf67ee14763e5cb9db6a24aaf7062f86c49f2fc1c030fcf0" ;;
             *) echo "no pinned libcronet sha256 for arch ${{ matrix.arch }}" >&2; exit 1 ;;
           esac
-          curl --fail --location --silent --show-error \
-            --proto '=https' --tlsv1.2 --connect-timeout 20 --retry 3 --retry-all-errors \
-            -o solovey-ui-windows/libcronet.dll \
-            ${{ env.LIBCRONET_BASE_URL }}/libcronet-windows-${{ matrix.arch }}.dll
+          module="github.com/sagernet/cronet-go/lib/windows_${{ matrix.arch }}"
+          go mod download "$module"
+          go mod verify
+          library_dir=$(go list -m -f '{{.Dir}}' "$module")
+          cp "$library_dir/libcronet.dll" solovey-ui-windows/libcronet.dll
           echo "${CRONET_SHA256}  solovey-ui-windows/libcronet.dll" | sha256sum -c -
 
       - name: Package on Windows

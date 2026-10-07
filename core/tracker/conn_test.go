@@ -12,7 +12,7 @@ import (
 )
 
 func TestConnTrackerResetWaitsForBlockedRead(t *testing.T) {
-	tracker := NewConnTracker()
+	tracker := newTestConnTracker(t)
 	raw := newBlockingTestConn()
 	wrapped := tracker.RoutedConnection(context.Background(), raw, adapter.InboundContext{Inbound: "in"}, nil, nil)
 
@@ -35,7 +35,7 @@ func TestConnTrackerResetWaitsForBlockedRead(t *testing.T) {
 	}
 
 	tracker.access.Lock()
-	connectionCount := len(tracker.connections)
+	connectionCount := tracker.inventory.ConnectionsLen()
 	active := tracker.inflight.Active()
 	tracker.access.Unlock()
 	if connectionCount != 0 || active != 0 {
@@ -44,7 +44,7 @@ func TestConnTrackerResetWaitsForBlockedRead(t *testing.T) {
 }
 
 func TestConnTrackerCloseByInboundReleasesIdleTracking(t *testing.T) {
-	tracker := NewConnTracker()
+	tracker := newTestConnTracker(t)
 	raw := newBlockingTestConn()
 	wrapped := tracker.RoutedConnection(context.Background(), raw, adapter.InboundContext{Inbound: "in"}, nil, nil)
 
@@ -52,7 +52,7 @@ func TestConnTrackerCloseByInboundReleasesIdleTracking(t *testing.T) {
 		t.Fatalf("closed connections = %d, want 1", closed)
 	}
 	tracker.access.Lock()
-	connectionCount := len(tracker.connections)
+	connectionCount := tracker.inventory.ConnectionsLen()
 	active := tracker.inflight.Active()
 	tracker.access.Unlock()
 	if connectionCount != 0 || active != 0 {
