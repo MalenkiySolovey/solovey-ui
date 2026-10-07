@@ -24,6 +24,9 @@ func (DryChecker) ValidateConfig(sbConfig []byte) error {
 	if _, err := singboxconfig.ValidateDNSConfig(sbConfig); err != nil {
 		return err
 	}
+	if _, err := singboxconfig.ValidateHTTPConfig(sbConfig); err != nil {
+		return err
+	}
 	if err := diagnostics.FirstError(entityinbounds.TUNDNSFindings(sbConfig)); err != nil {
 		return err
 	}

@@ -328,9 +328,11 @@ func analyzeInternalDNSReachability(root dnsObject, rules []dnsObject) []diagnos
 	if activeDNSRaw(route["default_domain_resolver"]) {
 		return nil
 	}
-	for _, kind := range []string{"outbounds", "endpoints", "dns"} {
+	for _, kind := range []string{"outbounds", "endpoints", "dns", "http_consumers"} {
 		var rows []dnsObject
-		if kind == "dns" {
+		if kind == "http_consumers" {
+			rows = coreHTTPDomainConsumers(root)
+		} else if kind == "dns" {
 			var section dnsObject
 			_ = json.Unmarshal(root["dns"], &section)
 			_ = json.Unmarshal(section["servers"], &rows)

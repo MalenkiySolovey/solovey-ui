@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -12,6 +13,7 @@ import (
 	"time"
 
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/MalenkiySolovey/solovey-ui/util/ssrf"
 	"github.com/sagernet/sing-box/common/srs"
@@ -45,20 +47,28 @@ func managedRuSmartDatPath() string {
 func managedRuleSetConfigUsesRuSmart(data json.RawMessage) (bool, error) {
 	var top struct {
 		Route struct {
-			RuleSet []struct {
-				Tag string `json:"tag"`
-			} `json:"rule_set"`
+			RuleSet []dnsObject `json:"rule_set"`
 		} `json:"route"`
 	}
 	if err := json.Unmarshal(data, &top); err != nil {
 		return false, err
 	}
-	for _, ruleSet := range top.Route.RuleSet {
-		if ruleSet.Tag == managedRuSmartRuleSetTag {
-			return true, nil
+	uses := false
+	for i, ruleSet := range top.Route.RuleSet {
+		tags, err := RuleSetTags(ruleSet["tag"])
+		if err != nil {
+			return false, err
 		}
+		if finding := managedRuSmartIdentityFinding(ruleSet, tags, fmt.Sprintf("route.rule_set[%d]", i)); finding != nil {
+			return false, diagnostics.FirstError([]diagnostics.Finding{*finding})
+		}
+		for _, tag := range tags {
+			uses = uses || tag == managedRuSmartRuleSetTag
+		}
+		initial := dnsString(ruleSet, "initial_path")
+		uses = uses || initial == managedRuSmartRuleSetRelativePath || initial == managedRuSmartRuleSetPath()
 	}
-	return false, nil
+	return uses, nil
 }
 
 func EnsureManagedRuleSetsForConfig(data json.RawMessage) error {
@@ -104,8 +114,29 @@ func rewriteManagedRuSmartRuleSet(data json.RawMessage, path string) (json.RawMe
 	changed := false
 	for _, item := range ruleSets {
 		ruleSet, ok := item.(map[string]any)
-		if !ok || stringAny(ruleSet["tag"]) != managedRuSmartRuleSetTag {
+		if !ok {
 			continue
+		}
+		if initial := stringAny(ruleSet["initial_path"]); initial == managedRuSmartRuleSetRelativePath || initial == managedRuSmartRuleSetPath() {
+			if initial != path {
+				ruleSet["initial_path"] = path
+				changed = true
+			}
+		}
+		rawTag, _ := json.Marshal(ruleSet["tag"])
+		tags, _ := RuleSetTags(rawTag)
+		managed := false
+		for _, tag := range tags {
+			managed = managed || tag == managedRuSmartRuleSetTag
+		}
+		if !managed {
+			continue
+		}
+		var owned dnsObject
+		encoded, _ := json.Marshal(ruleSet)
+		_ = json.Unmarshal(encoded, &owned)
+		if finding := managedRuSmartIdentityFinding(owned, tags, "route.rule_set"); finding != nil {
+			return data, false, diagnostics.FirstError([]diagnostics.Finding{*finding})
 		}
 		if stringAny(ruleSet["type"]) != C.RuleSetTypeLocal {
 			ruleSet["type"] = C.RuleSetTypeLocal
@@ -118,12 +149,6 @@ func rewriteManagedRuSmartRuleSet(data json.RawMessage, path string) (json.RawMe
 		if stringAny(ruleSet["path"]) != path {
 			ruleSet["path"] = path
 			changed = true
-		}
-		for _, key := range []string{"url", "download_detour", "update_interval"} {
-			if _, exists := ruleSet[key]; exists {
-				delete(ruleSet, key)
-				changed = true
-			}
 		}
 	}
 	if !changed {
@@ -141,6 +166,25 @@ func stringAny(value any) string {
 		return str
 	}
 	return ""
+}
+
+func managedRuSmartIdentityFinding(set dnsObject, tags []string, path string) *diagnostics.Finding {
+	managed := false
+	for _, tag := range tags {
+		managed = managed || tag == managedRuSmartRuleSetTag
+	}
+	if !managed {
+		return nil
+	}
+	conflict := len(tags) != 1 || dnsString(set, "type") != C.RuleSetTypeLocal || (dnsString(set, "path") != managedRuSmartRuleSetRelativePath && dnsString(set, "path") != managedRuSmartRuleSetPath()) || (dnsString(set, "format") != "" && dnsString(set, "format") != C.RuleSetFormatBinary)
+	for _, key := range []string{"url", "download_detour", "http_client", "initial_path", "update_interval", "rules"} {
+		conflict = conflict || activeDNSRaw(set[key])
+	}
+	if conflict {
+		finding := ruleSetFailure(path, "ruleset_managed_identity_conflict", "Resolve the operator definition versus the reserved local managed identity. Use a custom tag or select the managed asset explicitly; original fields are preserved.")
+		return &finding
+	}
+	return nil
 }
 
 func ensureGeositeRuSmartDirectRuleSet(ctx context.Context) (string, error) {

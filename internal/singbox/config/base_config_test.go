@@ -48,7 +48,7 @@ func TestNormalizeBaseConfigRejectsInvalidEditableSectionShapes(t *testing.T) {
 		{name: "route rules is object", config: json.RawMessage(`{"route":{"rules":{}}}`), wantErr: "config.route.rules must be a JSON array"},
 		{name: "route rule set is object", config: json.RawMessage(`{"route":{"rule_set":{}}}`), wantErr: "config.route.rule_set must be a JSON array"},
 		{name: "duplicate DNS server tag", config: json.RawMessage(`{"dns":{"servers":[{"tag":"main"},{"tag":"main"}]}}`), wantErr: `config.dns.servers has duplicate tag "main"`},
-		{name: "duplicate route rule set tag", config: json.RawMessage(`{"route":{"rule_set":[{"tag":"geo"},{"tag":"geo"}]}}`), wantErr: `config.route.rule_set has duplicate tag "geo"`},
+		{name: "duplicate route rule set tag", config: json.RawMessage(`{"route":{"rule_set":[{"tag":"geo"},{"tag":"geo"}]}}`), wantErr: `route.rule_set[1].tag [ruleset_tag_duplicate]`},
 		{name: "dns server tag is not string", config: json.RawMessage(`{"dns":{"servers":[{"tag":42}]}}`), wantErr: "config.dns.servers[0].tag must be a string"},
 		{name: "route rule set entry is not object", config: json.RawMessage(`{"route":{"rule_set":["geo"]}}`), wantErr: "config.route.rule_set must contain JSON objects"},
 	}

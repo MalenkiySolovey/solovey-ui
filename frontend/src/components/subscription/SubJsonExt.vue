@@ -61,14 +61,7 @@
     </v-row>
     <v-row v-if="enableDns">
       <v-col cols="12" sm="6" md="3" lg="2">
-        <v-select
-          hide-details
-          :label="$t('basic.routing.defaultDns')"
-          :items="dnsTags"
-          clearable
-          @click:clear="delete subJsonExt.default_domain_resolver"
-          v-model="subJsonExt.default_domain_resolver">
-        </v-select>
+        <DomainResolver :data="subJsonExt" field="default_domain_resolver" :server-tags="dnsTags" :label="$t('basic.routing.defaultDns')" />
       </v-col>
       <v-col cols="12" sm="6" md="3">
         <v-select
@@ -123,9 +116,13 @@
         </v-col>
       </v-row>
     </template>
+    <CompatibilityFindings :preview="compatibilityPreview">
+      <v-btn v-if="!compatibilityPreview?.blocked && compatibilityPreview?.subscriptionTemplate" class="mt-2" @click="applyCompatibilityPreview">Apply preview to draft</v-btn>
+    </CompatibilityFindings>
     <v-card-actions>
       <v-spacer></v-spacer>
       <v-btn @click="openEditor" variant="outlined" hide-details>{{ $t('editor') }}</v-btn>
+      <v-btn @click="previewCompatibility" :loading="compatibilityLoading" variant="outlined">Compatibility preview</v-btn>
       <v-menu v-model="menu" :close-on-content-click="false" location="start">
         <template v-slot:activator="{ props }">
           <v-btn v-bind="props" hide-details variant="tonal">{{ $t('setting.jsonSubOptions') }}</v-btn>

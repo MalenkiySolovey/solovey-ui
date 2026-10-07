@@ -1,6 +1,11 @@
 import { defineComponent } from 'vue'
 import Editor from '@/components/Editor.vue'
 import SimpleDNS from '@/components/rules/SimpleDNS.vue'
+import DomainResolver from '@/components/fields/DomainResolver.vue'
+import CompatibilityFindings from '@/components/common/CompatibilityFindings.vue'
+import HttpUtils from '@/plugins/httputil'
+import { coreConfigContract, loadCoreConfigContract, type CompatibilityPreview } from '@/types/coreConfigContract'
+import { mergeTemplateRuleSets } from './templateRuleSets'
 import { push } from 'notivue'
 import { i18n } from '@/locales'
 export default defineComponent({
@@ -10,6 +15,9 @@ export default defineComponent({
       menu: false,
       enableEditor: false,
       subJsonExt: <any>{},
+      compatibilityPreview: undefined as CompatibilityPreview | undefined,
+      compatibilityLoading: false,
+      previewSource: '',
       levels: ["trace", "debug", "info", "warn", "error", "fatal", "panic"],
       defaultLog: {
         "level": "info",
@@ -25,7 +33,7 @@ export default defineComponent({
           "mtu": 9000,
           "auto_route": true,
           "strict_route": false,
-          "endpoint_independent_nat": false,
+          "dns_mode": "disabled",
           "stack": "mixed",
           "exclude_package": [],
           "platform": {
@@ -191,30 +199,30 @@ export default defineComponent({
   computed: {
     enableLog: {
       get() :boolean { return this.subJsonExt?.log != undefined },
-      set(v:boolean) { v ? this.subJsonExt.log = this.defaultLog : delete this.subJsonExt.log }
+      set(v:boolean) { v ? this.subJsonExt.log = JSON.parse(JSON.stringify(this.defaultLog)) : delete this.subJsonExt.log }
     },
     enableDns: {
       get() :boolean { return this.subJsonExt?.dns != undefined },
       set(v:boolean) {
         if (v) {
-          this.subJsonExt.dns = this.defaultDns
+          this.subJsonExt.dns = JSON.parse(JSON.stringify(this.defaultDns))
           if (this.rules == undefined) this.subJsonExt.rules = [{ action: 'sniff' }]
           this.subJsonExt.rules.unshift({ protocol: "dns", action: "hijack-dns" })
         } else {
           delete this.subJsonExt.dns
           const rules = this.subJsonExt?.rules?.filter((r:any) => r.protocol != "dns") ?? []
           if (rules.length >= 0) this.subJsonExt.rules = rules
-          if (this.rules.length == 0) delete this.subJsonExt.rules
+          if (this.rules?.length == 0) delete this.subJsonExt.rules
         }
       }
     },
     enableInb: {
       get() :boolean { return this.subJsonExt?.inbounds != undefined },
-      set(v:boolean) { v ? this.subJsonExt.inbounds = this.defaultInb.slice() : delete this.subJsonExt.inbounds }
+      set(v:boolean) { v ? this.subJsonExt.inbounds = JSON.parse(JSON.stringify(this.defaultInb)) : delete this.subJsonExt.inbounds }
     },
     enableExp: {
       get() :boolean { return this.subJsonExt?.experimental != undefined },
-      set(v:boolean) { v ? this.subJsonExt.experimental = this.defaultExp : delete this.subJsonExt.experimental }
+      set(v:boolean) { v ? this.subJsonExt.experimental = JSON.parse(JSON.stringify(this.defaultExp)) : delete this.subJsonExt.experimental }
     },
     dns():any { return this.subJsonExt?.dns?? undefined },
     proxyDns: {
@@ -258,7 +266,7 @@ export default defineComponent({
             this.dns.rules.push({ rule_set: v, action: "route", server: "direct-dns" })
           }
         } else {
-          if (ruleIndex != -1) this.dns.rules.splice(ruleIndex,1)
+          if (ruleIndex !== undefined && ruleIndex >= 0) this.dns.rules.splice(ruleIndex,1)
         }
         this.updateRuleSets()
       }
@@ -266,7 +274,7 @@ export default defineComponent({
     inbounds():any[] { return this.subJsonExt?.inbounds?? undefined },
     platformProxy: {
       get() :boolean { return this.inbounds[0]?.platform != undefined },
-      set(v:boolean) { this.subJsonExt.inbounds[0].platform = v ? this.defaultInb[0].platform : undefined }
+      set(v:boolean) { this.subJsonExt.inbounds[0].platform = v ? JSON.parse(JSON.stringify(this.defaultInb[0].platform)) : undefined }
     },
     rules():any { return this.subJsonExt?.rules?? undefined },
     ruleToDirect: {
@@ -284,7 +292,7 @@ export default defineComponent({
             this.rules.push({ rule_set: v, action: "route", outbound: "direct" })
           }
         } else {
-          if (ruleIndex != -1) this.rules.splice(ruleIndex,1)
+          if (ruleIndex !== undefined && ruleIndex >= 0) this.rules.splice(ruleIndex,1)
         }
         this.updateRuleSets()
       }
@@ -304,7 +312,7 @@ export default defineComponent({
             this.rules.push({ rule_set: v, action: "reject" })
           }
         } else {
-          if (ruleIndex != -1) this.rules.splice(ruleIndex,1)
+          if (ruleIndex !== undefined && ruleIndex >= 0) this.rules.splice(ruleIndex,1)
         }
         this.updateRuleSets()
       }
@@ -318,16 +326,34 @@ export default defineComponent({
         this.subJsonExt = <any>{}
       }
     },
-    updateRuleSets(){
-      let tags = <string[]>[]
-      if (this.dns?.rules?.length>0) this.dns.rules.forEach((r:any) => { if (r.rule_set) tags.push(...r.rule_set) })
-      if (this.rules?.length>0) this.rules.forEach((r:any) => { if (r.rule_set) tags.push(...r.rule_set) })
-      if (tags.length>0){
-        this.subJsonExt.rule_set = this.geo.filter((g:any) => tags.includes(g.tag))
-      } else {
-        delete this.subJsonExt.rule_set
+    async updateRuleSets(){
+      await loadCoreConfigContract()
+      try {
+        if (!coreConfigContract.value) throw new Error('contract unavailable')
+        const merged = mergeTemplateRuleSets(this.subJsonExt, this.geo, coreConfigContract.value)
+        if (merged.length) this.subJsonExt.rule_set = merged
+        else delete this.subJsonExt.rule_set
+      } catch {
+        push.error({ message: 'Unable to update rule-set defaults. Existing definitions are preserved; retry after loading the editor contract.', duration: 5000 })
       }
-      if (this.rules.length == 0) delete this.subJsonExt.rules
+      if (this.rules?.length == 0) delete this.subJsonExt.rules
+    },
+    async previewCompatibility() {
+      this.compatibilityLoading = true
+      const source = JSON.stringify(this.subJsonExt)
+      try {
+        const response = await HttpUtils.post('api/config/compatibility-preview', { subscriptionTemplate: this.subJsonExt })
+        if (response.success && source === JSON.stringify(this.subJsonExt)) {
+          this.compatibilityPreview = response.obj
+          this.previewSource = source
+        }
+      } finally { this.compatibilityLoading = false }
+    },
+    applyCompatibilityPreview() {
+      const preview = this.compatibilityPreview
+      if (preview?.blocked || !preview?.subscriptionTemplate || this.previewSource !== JSON.stringify(this.subJsonExt)) return
+      this.subJsonExt = JSON.parse(JSON.stringify(preview.subscriptionTemplate))
+      this.compatibilityPreview = undefined
     },
     openEditor() {
       this.enableEditor = true
@@ -347,14 +373,16 @@ export default defineComponent({
   },
   mounted(){
     this.loadData()
+    void loadCoreConfigContract()
   },
   watch:{
     subJsonExt:{
       handler(v) {
+        if (this.previewSource !== JSON.stringify(v)) this.compatibilityPreview = undefined
         this.$props.settings.subJsonExt = Object.keys(v).length>0 ? JSON.stringify(v, null, 2) : ""
       },
       deep: true
     },
   },
-  components: { Editor, SimpleDNS }
+  components: { Editor, SimpleDNS, DomainResolver, CompatibilityFindings }
 })

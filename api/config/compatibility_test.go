@@ -50,6 +50,42 @@ func TestCompatibilityPreviewAuthorizationPrecedesReadAndParse(t *testing.T) {
 	h.PreviewCompatibility(ctx)
 }
 
+func TestSubscriptionCompatibilityPreviewIsPureAndPreservesManualSource(t *testing.T) {
+	for _, test := range []struct {
+		template string
+		blocked  bool
+	}{
+		{`{"rule_set":[{"tag":"operator","type":"remote","url":"https://operator.example/custom.srs","download_detour":"direct"}]}`, false},
+		{`{"rule_set":[{"tag":"operator","type":"remote","url":"https://operator.example/custom.srs","download_detour":"direct","http_client":{"engine":"go","version":2}}]}`, true},
+	} {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest(http.MethodPost, "/compatibility-preview", strings.NewReader(`{"subscriptionTemplate":`+test.template+`}`))
+		called := false
+		h := NewHandler(Deps{RequireScope: func(*gin.Context, string, ...string) bool { return true }, JSONObj: func(_ *gin.Context, obj any, err error) {
+			called = true
+			raw, _ := json.Marshal(obj)
+			var result struct {
+				Blocked  bool
+				Template json.RawMessage `json:"subscriptionTemplate"`
+				Findings []diagnostics.Finding
+			}
+			if err != nil || json.Unmarshal(raw, &result) != nil || result.Blocked != test.blocked {
+				t.Fatal("preview classification lost")
+			}
+			if test.blocked && (len(result.Template) > 0 || diagnostics.FirstError(result.Findings) == nil) {
+				t.Fatal("manual preview exposed candidate")
+			}
+			if !test.blocked && (!strings.Contains(string(result.Template), "custom.srs") || !strings.Contains(string(result.Template), "http_client")) {
+				t.Fatal("preview lost custom policy")
+			}
+		}})
+		h.PreviewCompatibility(ctx)
+		if !called {
+			t.Fatal("preview did not return")
+		}
+	}
+}
+
 func TestSemanticSaveReasonAndPathSurviveWrapping(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	f := diagnostics.Finding{Path: "dns.rules[2].match_response", Code: "dns_evaluate_reference_missing", Severity: diagnostics.Error, Message: "Choose an earlier evaluate tag."}

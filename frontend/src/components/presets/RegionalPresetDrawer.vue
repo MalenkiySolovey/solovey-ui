@@ -295,6 +295,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { Config } from '@/types/config'
+import HttpUtils from '@/plugins/httputil'
 import {
   applyPresets,
   computePreview,
@@ -493,12 +494,22 @@ const openPreview = () => {
   step.value = 'preview'
 }
 
-const applySelectedPresets = () => {
+const applySelectedPresets = async () => {
   try {
     const result = applyPresets(props.config, ruState, zhState, {
       proxyOutbound: proxyOutbound.value,
       directOutbound: directOutbound.value,
     })
+    const source = JSON.stringify(props.config)
+    const response = await HttpUtils.post('api/config/compatibility-preview', { config: result.config, includeHttp: true })
+    if (!response.success || response.obj?.blocked) {
+      const reason = response.obj?.findings?.find((finding: any) => finding.severity === 'error')
+      throw new Error(reason ? `${reason.path}: ${reason.message}` : 'Unable to prepare the preset. Existing draft is preserved.')
+    }
+    if (source !== JSON.stringify(props.config)) throw new Error('The draft changed during preview. Retry the preset against the current draft.')
+    if (response.obj?.http_clients) result.config.http_clients = response.obj.http_clients
+    if (response.obj?.route) result.config.route = response.obj.route
+    if (response.obj?.dns) result.config.dns = response.obj.dns
     emit('apply', result.config)
     step.value = 'success'
   } catch (error) {

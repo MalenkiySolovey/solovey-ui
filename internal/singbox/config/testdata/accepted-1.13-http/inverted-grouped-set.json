@@ -1,0 +1,29 @@
+{
+  "route": {
+    "rules": [
+      {
+        "source_ip_cidr": [
+          "192.0.2.0/24"
+        ],
+        "rule_set": [
+          "invert"
+        ],
+        "action": "reject"
+      }
+    ],
+    "rule_set": [
+      {
+        "type": "inline",
+        "tag": "invert",
+        "rules": [
+          {
+            "source_ip_cidr": [
+              "198.51.100.0/24"
+            ],
+            "invert": true
+          }
+        ]
+      }
+    ]
+  }
+}

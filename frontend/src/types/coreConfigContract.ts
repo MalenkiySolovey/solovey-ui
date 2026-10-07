@@ -9,6 +9,12 @@ export interface CoreConfigContract {
   tunDnsUnavailableModes?: Record<string, string>
   maxRuleDepth: number
   maxRuleNodes: number
+	 httpClientFields?: Record<string, string[]>
+	 httpEngines?: string[]
+	 httpVersions?: string[]
+	 httpUnavailableEngines?: Record<string, string>
+	 httpUnavailableVersions?: Record<string, string>
+	 directHttpClient?: Record<string, unknown>
 }
 export interface CompatibilityFinding {
   kind: string
@@ -25,6 +31,9 @@ export interface CompatibilityPreview {
   findings: CompatibilityFinding[] | null
   blocked: boolean
   dns?: Record<string, unknown>
+	 http_clients?: Record<string, unknown>[]
+	 route?: Record<string, unknown>
+	 subscriptionTemplate?: Record<string, unknown>
 }
 
 // Both layouts and modals share facts from the backend owner. A failed fetch

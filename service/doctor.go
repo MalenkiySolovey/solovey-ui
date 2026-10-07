@@ -72,6 +72,13 @@ func (s *DoctorService) Run(hostname string) opsdoctor.Report {
 		}
 		items = append(items, opsdoctor.Item{ID: fmt.Sprintf("dns-compatibility-%d", i), Title: "DNS compatibility", Severity: severity, Message: finding.Message, Action: "Correct the indicated path or use the compatibility preview before retrying. Original storage is preserved.", Details: finding})
 	}
+	for i, finding := range projection.HTTPCompatibility {
+		severity := opsdoctor.SeverityWarn
+		if finding.Severity == "error" {
+			severity = opsdoctor.SeverityError
+		}
+		items = append(items, opsdoctor.Item{ID: fmt.Sprintf("http-compatibility-%d", i), Title: "HTTP and rule-set compatibility", Severity: severity, Message: finding.Message, Action: "Correct the indicated path or apply an explicit compatibility preview before retrying. Original storage is preserved.", Details: finding})
+	}
 	if err != nil {
 		items = append(items, opsdoctor.ConfigBuildFailure(err))
 		return opsdoctor.FinishReport(start, items)

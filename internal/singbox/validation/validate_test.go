@@ -2,6 +2,7 @@ package validation
 
 import (
 	"fmt"
+	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	"net"
 	"testing"
 	"time"
@@ -35,6 +36,13 @@ func TestValidateConfigDoesNotBindOrDownload(t *testing.T) {
 		"outbounds":[{"type":"direct","tag":"direct"}],
 		"route":{"rules":[{"rule_set":"remote-rs","outbound":"direct"}],"rule_set":[{"type":"remote","tag":"remote-rs","format":"binary","url":"https://10.255.255.1/never.srs","download_detour":"direct"}]}
 	}`, port))
+	// Exercise the same frozen direct policy accepted from old state. Preview
+	// and validation must both remain read-only, even for an unreachable URL.
+	prepared, err := singboxconfig.PrepareHTTPUpgrade(config)
+	if err != nil {
+		t.Fatal(err)
+	}
+	config = prepared.Candidate
 
 	done := make(chan error, 1)
 	go func() { done <- ValidateConfig(config) }()

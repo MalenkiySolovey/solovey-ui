@@ -28,6 +28,7 @@ interface Route {
   default_interface?: string
   default_mark?: number
   default_domain_resolver?: DomainResolveOptions
+	default_http_client?: string
   default_network_strategy?: 'default' | 'fallback' | 'hybrid'
   default_network_type?: ('wifi' | 'cellular' | 'ethernet' | 'other')[]
   default_fallback_network_type?: ('wifi' | 'cellular' | 'ethernet' | 'other')[]
@@ -68,12 +69,14 @@ interface RouteRuleLogical {
 
 interface RouteRuleSet {
   type: string
-  tag: string
+  tag: string | string[]
   format: string
   path?: string
   url?: string
   download_detour?: string
   update_interval?: string
+	initial_path?: string
+	http_client?: string | Record<string, unknown>
 }
 
 interface Experimental {
@@ -131,6 +134,7 @@ export interface Config {
   dns: Dns
   ntp?: Ntp
   certificate?: Certificate
+	http_clients?: Record<string, unknown>[]
   inbounds: Inbound[]
   outbounds: Outbound[]
   route: Route

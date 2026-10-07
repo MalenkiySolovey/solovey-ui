@@ -74,7 +74,7 @@ import { DomainResolveOptions } from '@/types/dial'
 type ResolverObject = Exclude<DomainResolveOptions, string>
 
 export default {
-  props: ['data', 'field', 'label'],
+  props: ['data', 'field', 'label', 'serverTags'],
   data() {
     return {
       resolverDraft: undefined as ResolverObject | undefined,
@@ -89,7 +89,7 @@ export default {
         { title: this.$t('singbox.custom'), value: 'advanced' },
       ]
     },
-    dnsTags(): string[] { return Data().config.dns?.servers?.map((d:any) => d.tag).filter((tag:string) => tag?.length > 0) ?? [] },
+    dnsTags(): string[] { return this.$props.serverTags ?? Data().config.dns?.servers?.map((d:any) => d.tag).filter((tag:string) => tag?.length > 0) ?? [] },
     value(): DomainResolveOptions | undefined {
       return this.$props.data?.[this.$props.field]
     },

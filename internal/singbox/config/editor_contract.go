@@ -1,6 +1,7 @@
 package singboxconfig
 
 import (
+	"encoding/json"
 	"reflect"
 	"strings"
 
@@ -14,13 +15,19 @@ import (
 // Editors use it for field presence and action switching; validation remains
 // server-side and never relies on this catalogue as authorization.
 type CoreEditorContract struct {
-	DNSActions             map[string][]string `json:"dnsActions"`
-	DNSConditions          []string            `json:"dnsConditions"`
-	DNSCacheFields         []string            `json:"dnsCacheFields"`
-	TUNDNSModes            []string            `json:"tunDnsModes"`
-	TUNDNSUnavailableModes map[string]string   `json:"tunDnsUnavailableModes,omitempty"`
-	MaxRuleDepth           int                 `json:"maxRuleDepth"`
-	MaxRuleNodes           int                 `json:"maxRuleNodes"`
+	DNSActions              map[string][]string `json:"dnsActions"`
+	DNSConditions           []string            `json:"dnsConditions"`
+	DNSCacheFields          []string            `json:"dnsCacheFields"`
+	TUNDNSModes             []string            `json:"tunDnsModes"`
+	TUNDNSUnavailableModes  map[string]string   `json:"tunDnsUnavailableModes,omitempty"`
+	MaxRuleDepth            int                 `json:"maxRuleDepth"`
+	MaxRuleNodes            int                 `json:"maxRuleNodes"`
+	HTTPClientFields        map[string][]string `json:"httpClientFields"`
+	HTTPEngines             []string            `json:"httpEngines"`
+	HTTPVersions            []string            `json:"httpVersions"`
+	HTTPUnavailableEngines  map[string]string   `json:"httpUnavailableEngines"`
+	HTTPUnavailableVersions map[string]string   `json:"httpUnavailableVersions"`
+	DirectHTTPClient        json.RawMessage     `json:"directHttpClient"`
 }
 
 func EditorContract() CoreEditorContract {
@@ -36,7 +43,12 @@ func EditorContract() CoreEditorContract {
 		actions[action] = append(actions[action], "race")
 	}
 	dnsMode, _ := reflect.TypeFor[option.TunInboundOptions]().FieldByName("DNSMode")
-	return CoreEditorContract{DNSActions: actions, DNSConditions: jsonFields(reflect.TypeFor[option.DefaultDNSRule]()), DNSCacheFields: jsonFields(reflect.TypeFor[option.CacheFileOptions]()), TUNDNSModes: strings.Split(dnsMode.Tag.Get("enum"), ","), MaxRuleDepth: rulepolicy.MaxDepth, MaxRuleNodes: rulepolicy.MaxNodes}
+	httpType := reflect.TypeFor[option.HTTPClient]()
+	engine, _ := httpType.FieldByName("Engine")
+	version, _ := httpType.FieldByName("Version")
+	base := jsonFields(httpType)
+	httpFields := map[string][]string{"1": base, "2": append(append([]string{}, base...), jsonFields(reflect.TypeFor[option.HTTP2Options]())...), "3": append(append([]string{}, base...), jsonFields(reflect.TypeFor[option.QUICOptions]())...)}
+	return CoreEditorContract{DNSActions: actions, DNSConditions: jsonFields(reflect.TypeFor[option.DefaultDNSRule]()), DNSCacheFields: jsonFields(reflect.TypeFor[option.CacheFileOptions]()), TUNDNSModes: strings.Split(dnsMode.Tag.Get("enum"), ","), MaxRuleDepth: rulepolicy.MaxDepth, MaxRuleNodes: rulepolicy.MaxNodes, HTTPClientFields: httpFields, HTTPEngines: strings.Split(engine.Tag.Get("enum"), ","), HTTPVersions: strings.Split(version.Tag.Get("enum"), ","), HTTPUnavailableEngines: HTTPUnavailableEngines(), HTTPUnavailableVersions: HTTPUnavailableVersions(), DirectHTTPClient: ExplicitDirectHTTPClient()}
 }
 
 func jsonFields(t reflect.Type) []string {

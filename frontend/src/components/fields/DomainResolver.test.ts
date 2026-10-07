@@ -10,6 +10,11 @@ function form(source: Record<string, any>) {
 }
 
 describe('resolver draft intent', () => {
+  it('a subscription form supplies its own DNS catalogue instead of the panel catalogue', () => {
+    const owner = DomainResolver as any
+    expect(owner.computed.dnsTags.call({ $props: { serverTags: ['subscription-dns'] } })).toEqual(['subscription-dns'])
+    expect(owner.computed.dnsTags.call({ $props: { serverTags: [] } })).toEqual([])
+  })
   it('reading an absent resolver never inserts a DNS choice', () => {
     const source = {}
     const { state } = form(source)

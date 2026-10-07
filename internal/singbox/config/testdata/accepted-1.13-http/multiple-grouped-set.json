@@ -1,0 +1,33 @@
+{
+  "route": {
+    "rules": [
+      {
+        "domain_suffix": [
+          "example"
+        ],
+        "rule_set": [
+          "multi"
+        ],
+        "action": "reject"
+      }
+    ],
+    "rule_set": [
+      {
+        "type": "inline",
+        "tag": "multi",
+        "rules": [
+          {
+            "domain_suffix": [
+              "other"
+            ]
+          },
+          {
+            "ip_cidr": [
+              "192.0.2.0/24"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

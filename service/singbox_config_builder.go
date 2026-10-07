@@ -47,6 +47,7 @@ type RuntimeProjection struct {
 	Eligibility       runtimeprojection.Report
 	RuleCompatibility []singboxvalidation.RuleFinding
 	DNSCompatibility  []diagnostics.Finding
+	HTTPCompatibility []diagnostics.Finding
 }
 
 func (b SingBoxConfigBuilder) BuildFromDB(db *gorm.DB, data string) ([]byte, error) {
@@ -84,6 +85,7 @@ func (b SingBoxConfigBuilder) BuildCandidateProjectionFromDB(db *gorm.DB, data s
 			data = setting.Value
 		}
 	}
+	sourceBase := data
 	var compatibility []singboxvalidation.RuleFinding
 	if upgrade {
 		upgrade, err := singboxvalidation.PrepareRuleUpgrade([]byte(data))
@@ -122,16 +124,37 @@ func (b SingBoxConfigBuilder) BuildCandidateProjectionFromDB(db *gorm.DB, data s
 		return RuntimeProjection{}, err
 	}
 
-	config, err := singboxconfig.MergeRuntimeConfig(json.RawMessage(data), singboxconfig.RuntimeSections{
+	sections := singboxconfig.RuntimeSections{
 		Inbounds:  inbounds,
 		Outbounds: outbounds,
 		Services:  services,
 		Endpoints: endpoints,
-	})
+	}
+	config, err := singboxconfig.MergeRuntimeConfig(json.RawMessage(data), sections)
 	projection := RuntimeProjection{Config: config, Eligibility: eligibility, RuleCompatibility: compatibility}
 	if err != nil {
 		return projection, err
 	}
+	original := config
+	if sourceBase != data {
+		original, err = singboxconfig.MergeRuntimeConfig(json.RawMessage(sourceBase), sections)
+		if err != nil {
+			return projection, err
+		}
+	}
+	if upgrade {
+		upgraded, upgradeErr := singboxconfig.PrepareHTTPUpgrade(config)
+		projection.HTTPCompatibility = upgraded.Findings
+		projection.Config = upgraded.Candidate
+		err = upgradeErr
+	} else {
+		projection.HTTPCompatibility, err = singboxconfig.ValidateHTTPConfig(config)
+	}
+	if err != nil {
+		projection.Config = original
+		return projection, err
+	}
+	config = projection.Config
 	if upgrade {
 		upgraded, upgradeErr := singboxconfig.PrepareDNSUpgrade(config)
 		projection.DNSCompatibility = upgraded.Findings
@@ -145,7 +168,7 @@ func (b SingBoxConfigBuilder) BuildCandidateProjectionFromDB(db *gorm.DB, data s
 		err = diagnostics.FirstError(projection.DNSCompatibility)
 	}
 	if err != nil {
-		projection.Config = config
+		projection.Config = original
 	}
 	return projection, err
 }
