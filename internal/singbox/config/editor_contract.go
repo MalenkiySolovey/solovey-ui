@@ -1,0 +1,52 @@
+package singboxconfig
+
+import (
+	"reflect"
+	"strings"
+
+	C "github.com/sagernet/sing-box/constant"
+	"github.com/sagernet/sing-box/option"
+)
+
+// CoreEditorContract is presentation data from the pinned semantic schema.
+// Editors use it for field presence and action switching; validation remains
+// server-side and never relies on this catalogue as authorization.
+type CoreEditorContract struct {
+	DNSActions    map[string][]string `json:"dnsActions"`
+	DNSConditions []string            `json:"dnsConditions"`
+	TUNDNSModes   []string            `json:"tunDnsModes"`
+	MaxRuleDepth  int                 `json:"maxRuleDepth"`
+	MaxRuleNodes  int                 `json:"maxRuleNodes"`
+}
+
+func EditorContract() CoreEditorContract {
+	actions := map[string][]string{
+		C.RuleActionTypeRoute:        jsonFields(reflect.TypeFor[option.DNSRouteActionOptions]()),
+		C.RuleActionTypeEvaluate:     jsonFields(reflect.TypeFor[option.DNSEvaluateActionOptions]()),
+		C.RuleActionTypeRespond:      {},
+		C.RuleActionTypeRouteOptions: jsonFields(reflect.TypeFor[option.DNSRouteOptionsActionOptions]()),
+		C.RuleActionTypeReject:       jsonFields(reflect.TypeFor[option.RejectActionOptions]()),
+		C.RuleActionTypePredefined:   jsonFields(reflect.TypeFor[option.DNSRouteActionPredefined]()),
+	}
+	for action, fields := range actions {
+		actions[action] = append(fields, "race")
+	}
+	dnsMode, _ := reflect.TypeFor[option.TunInboundOptions]().FieldByName("DNSMode")
+	return CoreEditorContract{DNSActions: actions, DNSConditions: jsonFields(reflect.TypeFor[option.DefaultDNSRule]()), TUNDNSModes: strings.Split(dnsMode.Tag.Get("enum"), ","), MaxRuleDepth: 64, MaxRuleNodes: 4096}
+}
+
+func jsonFields(t reflect.Type) []string {
+	var fields []string
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if field.Anonymous && field.Type.Kind() == reflect.Struct {
+			fields = append(fields, jsonFields(field.Type)...)
+			continue
+		}
+		name := strings.Split(field.Tag.Get("json"), ",")[0]
+		if name != "" && name != "-" {
+			fields = append(fields, name)
+		}
+	}
+	return fields
+}

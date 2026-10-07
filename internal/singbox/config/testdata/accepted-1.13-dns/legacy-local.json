@@ -1,0 +1,10 @@
+{
+  "dns": {
+    "servers": [
+      {
+        "tag": "dns-a",
+        "address": "local"
+      }
+    ]
+  }
+}

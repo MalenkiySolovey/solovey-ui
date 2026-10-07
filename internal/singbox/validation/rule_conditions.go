@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -21,16 +22,7 @@ const (
 
 // RuleFinding contains only fixed diagnostics and structural paths. Official
 // decoder errors can contain submitted values and must not cross this boundary.
-type RuleFinding struct {
-	Kind                   string `json:"kind"`
-	Path                   string `json:"path"`
-	Code                   string `json:"code"`
-	Severity               string `json:"severity"`
-	Message                string `json:"message"`
-	MigrationOutcome       string `json:"migrationOutcome,omitempty"`
-	AutomaticAvailable     bool   `json:"automaticAvailable,omitempty"`
-	OperatorActionRequired bool   `json:"operatorActionRequired,omitempty"`
-}
+type RuleFinding = diagnostics.Finding
 
 type RuleConditionError struct{ Finding RuleFinding }
 

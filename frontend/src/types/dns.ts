@@ -46,20 +46,24 @@ const defaultValues: Record<DnsType, DnsServer> = {
   quic: { type: 'quic', server_port: 853, tls: {} },
   https: { type: 'https', server_port: 443, tls: {}, headers: {} },
   h3: { type: 'h3', server_port: 443, tls: {}, headers: {} },
-  predefined: { type: 'predefined', rcode: 'NOERROR' },
   dhcp: { type: 'dhcp' },
   fakeip: { type: 'fakeip', inet4_range: '198.18.0.0/15', inet6_range: 'fc00::/18' },
   tailscale: { type: 'tailscale' },
   resolved: { type: 'resolved' },
 }
 export function createDnsServer<T extends DnsServer>(type: string, json?: Partial<T>): DnsServer {
-  const defaultObject: DnsServer = { ...defaultValues[type], ...(json || {}) }
+  const defaultObject: DnsServer = JSON.parse(JSON.stringify({ ...defaultValues[type], ...(json ?? {}), type }))
   return defaultObject
 }
 
 interface generalDnsRule {
   invert: boolean
-  action: 'route' | 'route-options' | 'reject' | 'predefined'
+  action: 'route' | 'evaluate' | 'respond' | 'route-options' | 'reject' | 'predefined'
+  tag?: string
+  race?: boolean
+  speculative?: boolean
+  timeout?: string
+  disable_optimistic_cache?: boolean
   server?: string
   strategy?: string
   disable_cache?: boolean
@@ -76,6 +80,11 @@ interface generalDnsRule {
 export const actionDnsRuleKeys = [
   'invert',
   'action',
+  'tag',
+  'race',
+  'speculative',
+  'timeout',
+  'disable_optimistic_cache',
   'server',
   'strategy',
   'disable_cache',
@@ -95,6 +104,11 @@ export interface logicalDnsRule extends generalDnsRule {
 }
 
 export interface dnsRule extends generalDnsRule {
+  match_response?: boolean | string
+  response_rcode?: string | number
+  response_answer?: string[]
+  response_ns?: string[]
+  response_extra?: string[]
   inbound?: string[]
   ip_version?: 4 | 6
   query_type?: string[]

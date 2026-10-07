@@ -1,0 +1,21 @@
+{
+  "dns": {
+    "servers": [
+      {
+        "type": "udp",
+        "tag": "dns-a",
+        "server": "127.0.0.1"
+      }
+    ],
+    "rules": [
+      {
+        "ip_cidr": [
+          "192.0.2.0/24"
+        ],
+        "invert": true,
+        "server": "dns-a",
+        "strategy": "ipv4_only"
+      }
+    ]
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "experimental": {
+    "cache_file": {
+      "enabled": true,
+      "store_rdrc": false
+    }
+  }
+}

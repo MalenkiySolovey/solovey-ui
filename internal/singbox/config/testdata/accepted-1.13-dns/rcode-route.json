@@ -1,0 +1,18 @@
+{
+  "dns": {
+    "servers": [
+      {
+        "tag": "deny",
+        "address": "rcode://name_error"
+      }
+    ],
+    "rules": [
+      {
+        "domain_suffix": [
+          "example"
+        ],
+        "server": "deny"
+      }
+    ]
+  }
+}

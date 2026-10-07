@@ -74,5 +74,9 @@ func normalizeSingBoxBaseConfig(config json.RawMessage) (string, error) {
 	for _, finding := range findings {
 		logger.Warningf("config rule validation: %s [%s]: %s", finding.Path, finding.Code, finding.Message)
 	}
-	return singboxconfig.NormalizeBaseConfig(config)
+	canonical, err := singboxconfig.CanonicalDNSConfig(config)
+	if err != nil {
+		return "", err
+	}
+	return singboxconfig.NormalizeBaseConfig(canonical)
 }

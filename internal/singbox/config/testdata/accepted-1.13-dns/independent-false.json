@@ -1,0 +1,6 @@
+{
+  "dns": {
+    "independent_cache": false,
+    "servers": []
+  }
+}

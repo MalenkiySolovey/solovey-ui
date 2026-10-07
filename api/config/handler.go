@@ -113,6 +113,8 @@ func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
 	g.GET("/checkOutbound", h.GetCheckOutbound)
 
 	g.GET("/capabilities", h.GetCapabilities)
+	g.GET("/editor-contract", h.GetEditorContract)
+	g.POST("/compatibility-preview", h.PreviewCompatibility)
 	g.GET("/load", h.LoadData)
 	for _, action := range []string{"inbounds", "inboundDrafts", "outbounds", "endpoints", "services", "tls", "clients", "config"} {
 		action := action

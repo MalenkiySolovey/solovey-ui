@@ -1,5 +1,6 @@
 import { defineComponent } from 'vue'
 import Data from '@/store/modules/data'
+import { coreConfigContract, loadCoreConfigContract } from '@/types/coreConfigContract'
 
 export default defineComponent({
   props: ['data'],
@@ -9,6 +10,8 @@ export default defineComponent({
     }
   },
   computed: {
+    tunDnsModes() { return coreConfigContract.value?.tunDnsModes ?? [] },
+    dnsAddresses: listText('dns_address'),
     ruleSetTags() { return Data().config.route?.rule_set?.map((rs:any) => rs.tag) ?? [] },
     emptyAppPreset() {
       return (this.$props.data.include_package != undefined && this.$props.data.include_package.length == 0) ||
@@ -106,6 +109,7 @@ export default defineComponent({
     httpProxyBypassText: nestedListText(['platform', 'http_proxy'], 'bypass_domain'),
     httpProxyMatchText: nestedListText(['platform', 'http_proxy'], 'match_domain')
   },
+  mounted() { void loadCoreConfigContract() },
   methods: {
     applyLanDirect() {
       this.$props.data.route_exclude_address = ['10.0.0.0/8','172.16.0.0/12','192.168.0.0/16','fc00::/7','fe80::/10']

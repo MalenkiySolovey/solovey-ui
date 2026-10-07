@@ -6,8 +6,10 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 	"github.com/MalenkiySolovey/solovey-ui/logger"
 	"gorm.io/gorm"
@@ -44,6 +46,7 @@ type RuntimeProjection struct {
 	Config            []byte
 	Eligibility       runtimeprojection.Report
 	RuleCompatibility []singboxvalidation.RuleFinding
+	DNSCompatibility  []diagnostics.Finding
 }
 
 func (b SingBoxConfigBuilder) BuildFromDB(db *gorm.DB, data string) ([]byte, error) {
@@ -54,6 +57,17 @@ func (b SingBoxConfigBuilder) BuildFromDB(db *gorm.DB, data string) ([]byte, err
 // BuildProjectionFromDB provides explicit omission diagnostics and validates
 // all references against the candidate view before rule-set preparation.
 func (b SingBoxConfigBuilder) BuildProjectionFromDB(db *gorm.DB, data string) (RuntimeProjection, error) {
+	projection, err := b.BuildCandidateProjectionFromDB(db, data, len(data) == 0)
+	if err != nil {
+		return projection, err
+	}
+	projection.Config, err = singboxconfig.PrepareRuntimeAssets(projection.Config)
+	return projection, err
+}
+
+// BuildCandidateProjectionFromDB renders and analyzes the candidate without
+// preparing files, downloading assets, starting transports, or writing storage.
+func (b SingBoxConfigBuilder) BuildCandidateProjectionFromDB(db *gorm.DB, data string, upgrade bool) (RuntimeProjection, error) {
 	if db == nil {
 		return RuntimeProjection{}, errors.New("database is not initialized")
 	}
@@ -71,7 +85,7 @@ func (b SingBoxConfigBuilder) BuildProjectionFromDB(db *gorm.DB, data string) (R
 		}
 	}
 	var compatibility []singboxvalidation.RuleFinding
-	if stored {
+	if upgrade {
 		upgrade, err := singboxvalidation.PrepareRuleUpgrade([]byte(data))
 		compatibility = upgrade.Findings
 		if err != nil {
@@ -108,11 +122,27 @@ func (b SingBoxConfigBuilder) BuildProjectionFromDB(db *gorm.DB, data string) (R
 		return RuntimeProjection{}, err
 	}
 
-	config, err := singboxconfig.BuildRuntimeConfig(json.RawMessage(data), singboxconfig.RuntimeSections{
+	config, err := singboxconfig.MergeRuntimeConfig(json.RawMessage(data), singboxconfig.RuntimeSections{
 		Inbounds:  inbounds,
 		Outbounds: outbounds,
 		Services:  services,
 		Endpoints: endpoints,
 	})
-	return RuntimeProjection{Config: config, Eligibility: eligibility, RuleCompatibility: compatibility}, err
+	projection := RuntimeProjection{Config: config, Eligibility: eligibility, RuleCompatibility: compatibility}
+	if err != nil {
+		return projection, err
+	}
+	if upgrade {
+		upgraded, upgradeErr := singboxconfig.PrepareDNSUpgrade(config)
+		projection.DNSCompatibility = upgraded.Findings
+		projection.Config = upgraded.Candidate
+		err = upgradeErr
+	} else {
+		projection.DNSCompatibility, err = singboxconfig.ValidateDNSConfig(config)
+	}
+	projection.DNSCompatibility = append(projection.DNSCompatibility, entityinbounds.TUNDNSFindings(config)...)
+	if err == nil {
+		err = diagnostics.FirstError(projection.DNSCompatibility)
+	}
+	return projection, err
 }
