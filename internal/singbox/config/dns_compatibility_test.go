@@ -112,7 +112,9 @@ func TestDNSRuleModeNamespaceAndBudget(t *testing.T) {
 	}{
 		{`[{"ip_cidr":["192.0.2.0/24"],"invert":true,"server":"a","strategy":"ipv4_only"}]`, "", "dns_legacy_rule_mode_retained", false},
 		{`[{"ip_cidr":["192.0.2.0/24"],"query_type":["A"],"server":"a"}]`, "", "dns_rule_mode_conflict", true},
-		{`[{"action":"evaluate","tag":"response","server":"a","race":true},{"match_response":"response","ip_is_private":true,"action":"respond"}]`, "", "", false},
+		{`[{"action":"evaluate","tag":"response","server":"a"},{"match_response":"response","ip_is_private":true,"action":"respond","race":true}]`, "", "", false},
+		{`[{"action":"evaluate","server":"a","race":true}]`, "", "dns_race_final_action_required", true},
+		{`[{"rule_set":["ip"],"rule_set_ip_cidr_match_source":true,"server":"a"}]`, `[{"type":"inline","tag":"ip","rules":[{"ip_cidr":["192.0.2.0/24"]}]}]`, "dns_pure_ip_source_set_manual", true},
 		{`[{"match_response":"later","action":"respond"},{"action":"evaluate","tag":"later","server":"a"}]`, "", "dns_evaluate_reference_missing", true},
 		{`[{"action":"evaluate","tag":"r","server":"a"},{"action":"evaluate","tag":"r","server":"a"}]`, "", "dns_evaluate_tag_duplicate", true},
 		{`[{"action":"evaluate","server":"fake"}]`, "", "dns_evaluate_fakeip", true},
@@ -146,6 +148,12 @@ func TestDNSRuleModeNamespaceAndBudget(t *testing.T) {
 }
 
 func TestDNSNewInputRequiresExplicitUpgradeButAcceptsChosenLocalPolicy(t *testing.T) {
+	if _, err := ValidateDNSConfig([]byte(`{"experimental":{"cache_file":{"store_dns":true,"rdrc_timeout":"1h"}}}`)); err == nil {
+		t.Fatal("orphaned legacy retention intent accepted")
+	}
+	if _, err := ValidateDNSConfig([]byte(`{"experimental":{"cache_file":{"store_dns":true}}}`)); err != nil {
+		t.Fatal("explicit full persistence rejected")
+	}
 	for _, input := range []string{`{"dns":{"fakeip":null}}`, `{"dns":{"independent_cache":false}}`} {
 		if _, err := ValidateDNSConfig([]byte(input)); err == nil {
 			t.Fatal("silent upgrade on save")

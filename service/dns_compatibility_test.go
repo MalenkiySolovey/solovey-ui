@@ -61,3 +61,27 @@ func TestDNSManualProjectionPreservesSettingAndSharesReason(t *testing.T) {
 		t.Fatal("corrected retry failed")
 	}
 }
+
+func TestDNSOtherOwnerFailureDoesNotReturnPartialUpgrade(t *testing.T) {
+	initSettingTestDB(t)
+	db := dbsqlite.DB()
+	old := `{"dns":{"servers":[{"tag":"a","address":"127.0.0.1"}]}}`
+	if err := db.Create(&model.Setting{Key: "config", Value: old}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Create(&model.Inbound{Type: "tun", Tag: "old-tun", Options: json.RawMessage(`{"address":["172.19.0.1/30"]}`)}).Error; err != nil {
+		t.Fatal(err)
+	}
+	p, err := NewSingBoxConfigBuilder(nil).BuildCandidateProjectionFromDB(db, "", true)
+	var candidate struct {
+		DNS struct{ Servers []struct{ Address string } }
+	}
+	decodeErr := json.Unmarshal(p.Config, &candidate)
+	if err == nil || decodeErr != nil || len(candidate.DNS.Servers) != 1 || candidate.DNS.Servers[0].Address != "127.0.0.1" {
+		t.Fatal("blocked candidate exposed partial DNS upgrade")
+	}
+	var row model.Setting
+	if err := db.Where("key = ?", "config").Take(&row).Error; err != nil || row.Value != old {
+		t.Fatal("blocked candidate changed durable source")
+	}
+}

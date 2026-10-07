@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -14,7 +15,9 @@ func (a *Handler) GetEditorContract(c *gin.Context) {
 	if a.RequireScope != nil && !a.RequireScope(c, "config", "admin", "read", "write") {
 		return
 	}
-	a.JSONObj(c, singboxconfig.EditorContract(), nil)
+	contract := singboxconfig.EditorContract()
+	contract.TUNDNSUnavailableModes = entityinbounds.TUNDNSUnavailableModes()
+	a.JSONObj(c, contract, nil)
 }
 
 func (a *Handler) PreviewCompatibility(c *gin.Context) {

@@ -89,6 +89,7 @@ interface CacheFile {
   cache_id?: string
   store_fakeip?: boolean
   store_rdrc?: boolean
+  store_dns?: boolean
   rdrc_timeout?: string
 }
 

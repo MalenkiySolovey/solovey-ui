@@ -1,0 +1,35 @@
+{
+  "dns": {
+    "servers": [
+      {
+        "type": "udp",
+        "tag": "a",
+        "server": "127.0.0.1"
+      }
+    ],
+    "rules": [
+      {
+        "rule_set": [
+          "ip"
+        ],
+        "rule_set_ip_cidr_match_source": true,
+        "server": "a"
+      }
+    ]
+  },
+  "route": {
+    "rule_set": [
+      {
+        "type": "inline",
+        "tag": "ip",
+        "rules": [
+          {
+            "ip_cidr": [
+              "192.0.2.0/24"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -9,6 +9,7 @@ import (
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveeligibility"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
@@ -105,6 +106,9 @@ func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 		return inbound, err
 	}
 	if err := validateJSONShape(inbound); err != nil {
+		return inbound, err
+	}
+	if err := diagnostics.FirstError(TUNDNSFindings(append(append([]byte(`{"inbounds":[`), data...), []byte(`]}`)...))); err != nil {
 		return inbound, err
 	}
 	if inbound.TlsId > 0 {

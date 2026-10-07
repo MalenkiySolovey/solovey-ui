@@ -7,6 +7,7 @@ import (
 	"net/netip"
 
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/rulepolicy"
 	"github.com/sagernet/sing-box/option"
 )
 
@@ -18,25 +19,24 @@ func analyzeDNSRules(root dnsObject, rules []dnsObject, historical bool) []diagn
 		fields dnsObject
 		path   string
 		depth  int
-		root   bool
 	}
 	var nodes []node
 	for i, rule := range rules {
-		nodes = append(nodes, node{rule, fmt.Sprintf("dns.rules[%d]", i), 1, true})
+		nodes = append(nodes, node{rule, fmt.Sprintf("dns.rules[%d]", i), 1})
 	}
 	var flattened []node
 	var findings []diagnostics.Finding
 	for len(nodes) > 0 {
 		current := nodes[0]
 		nodes = nodes[1:]
-		if current.depth > 64 || len(flattened) >= 4096 {
+		if current.depth > rulepolicy.MaxDepth || len(flattened) >= rulepolicy.MaxNodes {
 			return append(findings, dnsFailure(current.path, "dns_rule_budget", "DNS rules exceed the supported depth or node budget.", diagnostics.ManualRequired))
 		}
 		flattened = append(flattened, current)
 		var children []dnsObject
 		_ = json.Unmarshal(current.fields["rules"], &children)
 		for i, child := range children {
-			nodes = append(nodes, node{child, fmt.Sprintf("%s.rules[%d]", current.path, i), current.depth + 1, false})
+			nodes = append(nodes, node{child, fmt.Sprintf("%s.rules[%d]", current.path, i), current.depth + 1})
 		}
 	}
 	legacyPaths := []string{}
@@ -51,6 +51,18 @@ func analyzeDNSRules(root dnsObject, rules []dnsObject, historical bool) []diagn
 	for _, current := range flattened {
 		rule := current.fields
 		response := activeDNSRaw(rule["match_response"])
+		if dnsBool(rule, "race") {
+			action := dnsString(rule, "action")
+			if action != "" && action != "route" && action != "respond" && action != "reject" && action != "predefined" {
+				findings = append(findings, dnsFailure(current.path+".race", "dns_race_final_action_required", "Race requires a final route, respond, reject, or predefined action.", diagnostics.ManualRequired))
+			}
+			if dnsBool(rule, "speculative") {
+				findings = append(findings, dnsFailure(current.path+".race", "dns_race_speculative_conflict", "Race and speculative cannot be combined on one rule.", diagnostics.ManualRequired))
+			}
+			if dnsString(rule, "type") != "logical" && !response {
+				findings = append(findings, dnsFailure(current.path+".race", "dns_race_response_required", "Race requires a response context.", diagnostics.ManualRequired))
+			}
+		}
 		for _, key := range []string{"ip_cidr", "ip_is_private", "ip_accept_any"} {
 			if !response && activeDNSRaw(rule[key]) {
 				legacyPaths = append(legacyPaths, current.path+"."+key)
@@ -86,13 +98,14 @@ func analyzeDNSRules(root dnsObject, rules []dnsObject, historical bool) []diagn
 				findings = append(findings, dnsFailure(current.path+".rule_set", "dns_rule_set_group_manual", "This complex or inverted rule set changes outer match-state sharing. Confirm the intended standalone or grouped policy using pinned rule-set content.", diagnostics.ManualRequired))
 			}
 			ip, nonIP, qtype := dnsHeadlessFlags(setRules)
+			if ip && !nonIP && !response && dnsBool(rule, "rule_set_ip_cidr_match_source") {
+				findings = append(findings, dnsFailure(current.path+".rule_set", "dns_pure_ip_source_set_manual", "The pinned core rejects this pure-IP source rule set in current DNS mode. Choose an explicit supported source condition; the original policy is preserved.", diagnostics.ManualRequired))
+			}
 			if qtype {
 				newPaths = append(newPaths, current.path+".rule_set")
 			}
 			if ip && !response && !dnsBool(rule, "rule_set_ip_cidr_match_source") {
 				legacyPaths = append(legacyPaths, current.path+".rule_set")
-			}
-			if ip && !nonIP && response { /* official response namespace below */
 			}
 		}
 	}
@@ -213,7 +226,7 @@ func dnsInlineRuleSet(root dnsObject, tag string) (dnsObject, bool) {
 }
 func dnsHeadlessFlags(rules []dnsObject) (ip, nonIP, qtype bool) {
 	// Bounded iteration; the aggregate rule validator enforces depth/node budgets.
-	for count := 0; len(rules) > 0 && count < 4096; count++ {
+	for count := 0; len(rules) > 0 && count < rulepolicy.MaxNodes; count++ {
 		rule := rules[0]
 		rules = rules[1:]
 		var children []dnsObject
@@ -286,7 +299,7 @@ func analyzeInternalDNSReachability(root dnsObject, rules []dnsObject) []diagnos
 	for i, rule := range rules {
 		pending = append(pending, item{rule, fmt.Sprintf("dns.rules[%d]", i)})
 	}
-	for n := 0; len(pending) > 0 && n < 4096; n++ {
+	for n := 0; len(pending) > 0 && n < rulepolicy.MaxNodes; n++ {
 		current := pending[0]
 		pending = pending[1:]
 		query := activeDNSRaw(current.fields["query_type"]) || activeDNSRaw(current.fields["ip_version"])

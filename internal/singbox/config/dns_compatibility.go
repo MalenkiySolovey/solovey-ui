@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/rulepolicy"
 )
 
 // DNSCompatibility is a pure owner-local projection. On any unresolved case
@@ -183,6 +184,9 @@ func prepareDNS(config []byte, historical bool) (DNSCompatibility, error) {
 		_ = json.Unmarshal(cacheRaw, &experimental)
 		var cache dnsObject
 		_ = json.Unmarshal(experimental["cache_file"], &cache)
+		if dnsBool(cache, "store_dns") && activeDNSRaw(cache["rdrc_timeout"]) {
+			result.Findings = append(result.Findings, dnsFailure("experimental.cache_file.rdrc_timeout", "dns_cache_privacy_choice", "Review and remove the legacy rejection-cache timeout before choosing full DNS persistence.", diagnostics.ManualRequired))
+		}
 		if raw, present := cache["store_rdrc"]; present {
 			if _, dual := cache["store_dns"]; dual && (dnsBool(cache, "store_dns") || dnsBool(cache, "store_rdrc") || activeDNSRaw(cache["rdrc_timeout"])) {
 				result.Findings = append(result.Findings, dnsFailure("experimental.cache_file", "dns_cache_privacy_choice", "Choose rejection-only or full DNS persistence explicitly; remove the conflicting legacy option and review retention.", diagnostics.ManualRequired))
@@ -421,7 +425,7 @@ func rcodeReferencesSafe(root, section dnsObject, servers, rules []dnsObject, ta
 func localDNSPolicyConstrained(rules []dnsObject, tag string) bool {
 	// Inspection itself must remain bounded, before official recursive decoding.
 	for visited := 0; len(rules) > 0; visited++ {
-		if visited >= 4096 {
+		if visited >= rulepolicy.MaxNodes {
 			return true
 		}
 		rule := rules[0]

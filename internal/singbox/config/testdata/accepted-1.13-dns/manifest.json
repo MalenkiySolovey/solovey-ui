@@ -334,5 +334,29 @@
     "input_sha256": "e857213dc1162d4e755ffdfc3574be8393866344d2831f57d4f68b2c0f240b21",
     "solovey_commit": "3523eeea9f91c091ab3f0fbdb94c3955e37798b4",
     "source_owner": "service/SingBoxBaseConfigStore.Set/Get; database/sqlite"
+  },
+  {
+    "config_sha256": "827ddb642bc63c0ab870682ee27f0301d00373654e8667573ca5adaf88a9cc90",
+    "core_version": "v1.13.18",
+    "creation_command": "go test -tags with_quic -run ^TestCaptureAcceptedDNSPolicyFixtures$ -count=1 ./service",
+    "db_sha256": "5184a03520c53698773683600d80ce7b3398e70fd048a51d06c10a7970a56f06",
+    "expected_old_behavior": "SOURCE_EQUIVALENT; stored by accepted serializer; paired old router behavior recorded separately",
+    "family": "FX-07",
+    "fixture_id": "pure-ip-source-set",
+    "input_sha256": "6778acfc422a7a713e1c2f1e6af7cfa66208c5dfb569bc533db8410bd34f8174",
+    "solovey_commit": "3523eeea9f91c091ab3f0fbdb94c3955e37798b4",
+    "source_owner": "service/SingBoxBaseConfigStore.Set/Get; database/sqlite"
+  },
+  {
+    "config_sha256": "edd7719a8a9a353bdee0cf7a930493f9cc071c1f19e1d3a306ba987e0d9b1580",
+    "core_version": "v1.13.18",
+    "creation_command": "go test -tags with_quic -run ^TestCaptureAcceptedDNSPolicyFixtures$ -count=1 ./service",
+    "db_sha256": "182978430f17d70bd7678d071b3f384f088fb35687f60d70fb4d62c5eaf237cf",
+    "expected_old_behavior": "SOURCE_EQUIVALENT; stored by accepted serializer; paired old router behavior recorded separately",
+    "family": "FX-07",
+    "fixture_id": "internal-domain-policy",
+    "input_sha256": "bea06f59535d099d5927221a98dc92892fd958cf2a8ad74d804df8e813ab3149",
+    "solovey_commit": "3523eeea9f91c091ab3f0fbdb94c3955e37798b4",
+    "source_owner": "service/SingBoxBaseConfigStore.Set/Get; database/sqlite"
   }
 ]

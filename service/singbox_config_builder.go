@@ -144,5 +144,8 @@ func (b SingBoxConfigBuilder) BuildCandidateProjectionFromDB(db *gorm.DB, data s
 	if err == nil {
 		err = diagnostics.FirstError(projection.DNSCompatibility)
 	}
+	if err != nil {
+		projection.Config = config
+	}
 	return projection, err
 }

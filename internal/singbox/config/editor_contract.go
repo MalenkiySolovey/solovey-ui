@@ -4,6 +4,8 @@ import (
 	"reflect"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/rulepolicy"
+
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
 )
@@ -12,11 +14,13 @@ import (
 // Editors use it for field presence and action switching; validation remains
 // server-side and never relies on this catalogue as authorization.
 type CoreEditorContract struct {
-	DNSActions    map[string][]string `json:"dnsActions"`
-	DNSConditions []string            `json:"dnsConditions"`
-	TUNDNSModes   []string            `json:"tunDnsModes"`
-	MaxRuleDepth  int                 `json:"maxRuleDepth"`
-	MaxRuleNodes  int                 `json:"maxRuleNodes"`
+	DNSActions             map[string][]string `json:"dnsActions"`
+	DNSConditions          []string            `json:"dnsConditions"`
+	DNSCacheFields         []string            `json:"dnsCacheFields"`
+	TUNDNSModes            []string            `json:"tunDnsModes"`
+	TUNDNSUnavailableModes map[string]string   `json:"tunDnsUnavailableModes,omitempty"`
+	MaxRuleDepth           int                 `json:"maxRuleDepth"`
+	MaxRuleNodes           int                 `json:"maxRuleNodes"`
 }
 
 func EditorContract() CoreEditorContract {
@@ -28,11 +32,11 @@ func EditorContract() CoreEditorContract {
 		C.RuleActionTypeReject:       jsonFields(reflect.TypeFor[option.RejectActionOptions]()),
 		C.RuleActionTypePredefined:   jsonFields(reflect.TypeFor[option.DNSRouteActionPredefined]()),
 	}
-	for action, fields := range actions {
-		actions[action] = append(fields, "race")
+	for _, action := range []string{C.RuleActionTypeRoute, C.RuleActionTypeRespond, C.RuleActionTypeReject, C.RuleActionTypePredefined} {
+		actions[action] = append(actions[action], "race")
 	}
 	dnsMode, _ := reflect.TypeFor[option.TunInboundOptions]().FieldByName("DNSMode")
-	return CoreEditorContract{DNSActions: actions, DNSConditions: jsonFields(reflect.TypeFor[option.DefaultDNSRule]()), TUNDNSModes: strings.Split(dnsMode.Tag.Get("enum"), ","), MaxRuleDepth: 64, MaxRuleNodes: 4096}
+	return CoreEditorContract{DNSActions: actions, DNSConditions: jsonFields(reflect.TypeFor[option.DefaultDNSRule]()), DNSCacheFields: jsonFields(reflect.TypeFor[option.CacheFileOptions]()), TUNDNSModes: strings.Split(dnsMode.Tag.Get("enum"), ","), MaxRuleDepth: rulepolicy.MaxDepth, MaxRuleNodes: rulepolicy.MaxNodes}
 }
 
 func jsonFields(t reflect.Type) []string {

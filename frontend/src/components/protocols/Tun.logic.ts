@@ -10,7 +10,7 @@ export default defineComponent({
     }
   },
   computed: {
-    tunDnsModes() { return coreConfigContract.value?.tunDnsModes ?? [] },
+    tunDnsModes() { return (coreConfigContract.value?.tunDnsModes ?? []).map(value => ({ title: value, value, props: { disabled: !!coreConfigContract.value?.tunDnsUnavailableModes?.[value] } })) },
     dnsAddresses: listText('dns_address'),
     ruleSetTags() { return Data().config.route?.rule_set?.map((rs:any) => rs.tag) ?? [] },
     emptyAppPreset() {

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/rulepolicy"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -13,8 +14,8 @@ import (
 )
 
 const (
-	maxRuleDepth = 64
-	maxRuleNodes = 4096 // Per DNS/route tree, including roots.
+	maxRuleDepth = rulepolicy.MaxDepth
+	maxRuleNodes = rulepolicy.MaxNodes
 
 	RuleSeverityError = "error"
 	RuleSeverityWarn  = "warn"

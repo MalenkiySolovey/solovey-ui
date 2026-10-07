@@ -161,14 +161,17 @@
               hide-details></v-switch>
           </v-col>
           <v-col cols="12" sm="6" md="3" lg="2" v-if="appConfig.experimental.cache_file">
-            <v-switch v-model="appConfig.experimental.cache_file.store_rdrc"
+            <v-switch :model-value="appConfig.experimental.cache_file.store_rdrc" @update:model-value="setRejectionPersistence"
               color="primary"
               :label="$t('singbox.storeRdrc')"
               hide-details></v-switch>
           </v-col>
-          <v-col cols="12" sm="6" md="3" lg="2" v-if="appConfig.experimental.cache_file?.store_rdrc">
+          <v-col cols="12" sm="6" v-if="appConfig.experimental.cache_file && coreConfigContract?.dnsCacheFields?.includes('store_dns')">
+            <v-switch v-model="appConfig.experimental.cache_file.store_dns" color="primary" label="Persist full DNS cache" hint="Stores DNS answers on disk. Choose explicitly; clear rejection-only persistence and its timeout before enabling." persistent-hint />
+          </v-col>
+          <v-col cols="12" sm="6" md="3" lg="2" v-if="appConfig.experimental.cache_file && (appConfig.experimental.cache_file.store_rdrc || appConfig.experimental.cache_file.rdrc_timeout !== undefined)">
             <v-text-field
-              v-model="appConfig.experimental.cache_file.rdrc_timeout"
+              :model-value="appConfig.experimental.cache_file.rdrc_timeout" @update:model-value="setRejectionTimeout"
               hide-details
               placeholder="7d"
               :label="$t('singbox.rdrcTimeout')">
@@ -354,9 +357,13 @@
 </template>
 
 <script lang="ts" setup>
+import { onMounted } from 'vue'
 import Dial from '@/components/fields/Dial.vue'
 import SettingInfo from '@/components/settings/SettingInfo.vue'
 import { useBasicsPage } from '@/features/useBasicsPage'
+import { coreConfigContract, loadCoreConfigContract } from '@/types/coreConfigContract'
+
+onMounted(() => { void loadCoreConfigContract() })
 
 withDefaults(defineProps<{
   showActions?: boolean
@@ -365,4 +372,16 @@ withDefaults(defineProps<{
 })
 
 const { appConfig, certificateDirectoryText, certificateMode, certificateModes, certificatePathText, certificateStores, certificateText, clashModes, clientNames, enableCacheFile, enableClashApi, enableDebug, enableNtp, enableV2rayApi, inboundTags, levels, loading, ntpInterval, origin, outboundTags, saveConfig, stateChange } = useBasicsPage()
+function setRejectionPersistence(value: unknown) {
+  const cache = appConfig.value.experimental.cache_file
+  if (!cache) return
+  if (value === true) cache.store_rdrc = true
+  else delete cache.store_rdrc
+}
+function setRejectionTimeout(value: string | null) {
+  const cache = appConfig.value.experimental.cache_file
+  if (!cache) return
+  if (value?.trim()) cache.rdrc_timeout = value
+  else delete cache.rdrc_timeout
+}
 </script>

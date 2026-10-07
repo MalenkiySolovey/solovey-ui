@@ -8,6 +8,8 @@ import (
 	"embed"
 	"encoding/hex"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"testing"
 
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
@@ -36,10 +38,11 @@ func TestAcceptedDNSFixtureReplay(t *testing.T) {
 	if err := json.Unmarshal(manifestRaw, &manifest); err != nil {
 		t.Fatal(err)
 	}
-	manual := map[string]bool{"legacy-strategy": true, "legacy-local": true, "rcode-final": true, "local-constrained": true, "tun-default": true, "fakeip-active": true}
-	if len(manifest) != 28 {
+	manual := map[string]bool{"legacy-strategy": true, "legacy-local": true, "rcode-final": true, "local-constrained": true, "tun-default": true, "fakeip-active": true, "pure-ip-source-set": true, "internal-domain-policy": true}
+	if len(manifest) != 30 {
 		t.Fatal("capture manifest incomplete")
 	}
+	var report []map[string]any
 	for _, f := range manifest {
 		t.Run(f.ID, func(t *testing.T) {
 			if f.Commit != "3523eeea9f91c091ab3f0fbdb94c3955e37798b4" || f.Core != "v1.13.18" {
@@ -62,6 +65,11 @@ func TestAcceptedDNSFixtureReplay(t *testing.T) {
 			if (err != nil) != blocked {
 				t.Fatalf("unexpected replay outcome: %v", err)
 			}
+			outcome := p.Outcome
+			if err != nil && outcome != diagnostics.UnsupportedLegacy {
+				outcome = diagnostics.ManualRequired
+			}
+			report = append(report, map[string]any{"fixture_id": f.ID, "outcome": outcome, "findings": p.Findings, "source_sha256": f.SHA, "source_preserved": blocked, "automatic_candidate_official_validated": !blocked, "idempotence_verified": !blocked})
 			if blocked {
 				if !bytes.Equal(raw, p.Candidate) {
 					t.Fatal("failed replay destroyed preimage")
@@ -76,5 +84,11 @@ func TestAcceptedDNSFixtureReplay(t *testing.T) {
 				t.Fatal("retry changed candidate")
 			}
 		})
+	}
+	if directory := os.Getenv("SOLOVEY_DNS_BEHAVIOR_CAPTURE"); directory != "" {
+		data, _ := json.MarshalIndent(report, "", "  ")
+		if err := os.WriteFile(filepath.Join(directory, "fixture-replay.json"), data, 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

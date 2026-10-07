@@ -4,7 +4,9 @@ import HttpUtils from '@/plugins/httputil'
 export interface CoreConfigContract {
   dnsActions: Record<string, string[]>
   dnsConditions: string[]
+  dnsCacheFields?: string[]
   tunDnsModes: string[]
+  tunDnsUnavailableModes?: Record<string, string>
   maxRuleDepth: number
   maxRuleNodes: number
 }

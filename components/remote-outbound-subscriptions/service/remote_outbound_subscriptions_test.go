@@ -359,7 +359,7 @@ func TestRemoteOutboundUnsyncBlocksConfigReferences(t *testing.T) {
 		},
 		{
 			name:    "dns server detour",
-			config:  `{"dns":{"servers":[{"tag":"dns-remote","address":"1.1.1.1","detour":"ros-node"}]},"route":{"rules":[]}}`,
+			config:  `{"dns":{"servers":[{"type":"udp","tag":"dns-remote","server":"1.1.1.1","detour":"ros-node"}]},"route":{"rules":[]}}`,
 			locator: `dns server "dns-remote"`,
 		},
 	}
@@ -395,7 +395,7 @@ func TestRemoteOutboundSubscriptionDeleteBlocksConfigReferences(t *testing.T) {
 		},
 		{
 			name:    "dns server detour",
-			config:  `{"dns":{"servers":[{"tag":"dns-remote","address":"1.1.1.1","detour":"ros-node"}]},"route":{"rules":[]}}`,
+			config:  `{"dns":{"servers":[{"type":"udp","tag":"dns-remote","server":"1.1.1.1","detour":"ros-node"}]},"route":{"rules":[]}}`,
 			locator: `dns server "dns-remote"`,
 		},
 	}
