@@ -19,6 +19,16 @@ type RuntimeSections struct {
 }
 
 func BuildRuntimeConfig(base json.RawMessage, sections RuntimeSections) ([]byte, error) {
+	merged, err := MergeRuntimeConfig(base, sections)
+	if err != nil {
+		return nil, err
+	}
+	return PrepareRuntimeAssets(merged)
+}
+
+// MergeRuntimeConfig is read-only. Migration previews and preflight must inspect
+// the complete candidate before any managed asset download or file publication.
+func MergeRuntimeConfig(base json.RawMessage, sections RuntimeSections) ([]byte, error) {
 	doc, err := ParseBaseConfig(base)
 	if err != nil {
 		return nil, err
@@ -39,7 +49,10 @@ func BuildRuntimeConfig(base json.RawMessage, sections RuntimeSections) ([]byte,
 	if err != nil {
 		return nil, err
 	}
-	mergedBytes := json.RawMessage(merged)
+	return []byte(merged), nil
+}
+
+func PrepareRuntimeAssets(mergedBytes json.RawMessage) ([]byte, error) {
 	if err := EnsureManagedRuleSetsForConfig(mergedBytes); err != nil {
 		return nil, err
 	}

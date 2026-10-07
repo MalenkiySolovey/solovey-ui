@@ -1,0 +1,24 @@
+{
+  "dns": {
+    "servers": [
+      {
+        "tag": "bootstrap",
+        "type": "udp",
+        "server": "127.0.0.1"
+      },
+      {
+        "tag": "dns-a",
+        "address": "tls://resolver.example:1853",
+        "address_resolver": "bootstrap",
+        "address_strategy": "ipv4_only",
+        "detour": "direct"
+      }
+    ]
+  },
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}

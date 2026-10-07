@@ -1,0 +1,43 @@
+// Package diagnostics defines the immutable result shared by semantic owners
+// and their save, upgrade, Doctor and editor consumers. It owns no state.
+package diagnostics
+
+import "fmt"
+
+const (
+	LosslessAutomatic   = "LOSSLESS_AUTOMATIC"
+	AutomaticDiagnostic = "AUTOMATIC_WITH_EXPLICIT_DIAGNOSTIC"
+	ManualRequired      = "MANUAL_REQUIRED"
+	UnsupportedLegacy   = "UNSUPPORTED_LEGACY"
+	Error               = "error"
+	Warn                = "warn"
+)
+
+// Finding must contain fixed text and structural paths, never submitted values.
+type Finding struct {
+	Kind                   string `json:"kind"`
+	Path                   string `json:"path"`
+	Code                   string `json:"code"`
+	Severity               string `json:"severity"`
+	Message                string `json:"message"`
+	MigrationOutcome       string `json:"migrationOutcome,omitempty"`
+	AutomaticAvailable     bool   `json:"automaticAvailable,omitempty"`
+	OperatorActionRequired bool   `json:"operatorActionRequired,omitempty"`
+}
+
+type Rejection struct{ Finding Finding }
+
+func (e *Rejection) ReasonCode() string { return e.Finding.Code }
+
+func (e *Rejection) Error() string {
+	return fmt.Sprintf("%s [%s]: %s", e.Finding.Path, e.Finding.Code, e.Finding.Message)
+}
+
+func FirstError(findings []Finding) error {
+	for _, f := range findings {
+		if f.Severity == Error {
+			return &Rejection{Finding: f}
+		}
+	}
+	return nil
+}

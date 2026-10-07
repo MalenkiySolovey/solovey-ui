@@ -54,8 +54,13 @@
             <v-switch color="primary" v-model="ruleData.invert" :label="$t('rule.invert')" hide-details></v-switch>
           </v-col>
         </v-row>
-        <v-card :subtitle="$t(ruleData.action == 'route' ? 'dns.rule.action.route' : 'dns.rule.action.routeOptions')" v-if="['route', 'route-options'].includes(ruleData.action)">
-          <v-row v-if="ruleData.action == 'route'">
+        <v-row>
+          <v-col cols="12" sm="4"><v-switch v-model="ruleData.race" label="Race with following rules" hide-details /></v-col>
+          <v-col v-if="ruleData.action === 'evaluate'" cols="12" sm="4"><v-text-field v-model="ruleData.tag" label="Evaluate response tag" clearable @click:clear="delete ruleData.tag" hide-details /></v-col>
+          <v-col v-if="['route', 'evaluate'].includes(ruleData.action)" cols="12" sm="4"><v-switch v-model="ruleData.speculative" label="Speculative evaluation" hide-details /></v-col>
+        </v-row>
+        <v-card :subtitle="$t(ruleData.action == 'route' ? 'dns.rule.action.route' : 'dns.rule.action.routeOptions')" v-if="['route', 'evaluate', 'route-options'].includes(ruleData.action)">
+          <v-row v-if="['route', 'evaluate'].includes(ruleData.action)">
             <v-col cols="12" sm="6" md="4">
               <v-select
                 v-model="ruleData.server"
@@ -76,6 +81,8 @@
             </v-col>
           </v-row>
           <v-row>
+            <v-col cols="12" sm="4"><v-text-field v-model="ruleData.timeout" label="Query timeout" placeholder="5s" clearable @click:clear="delete ruleData.timeout" hide-details /></v-col>
+            <v-col cols="12" sm="4"><v-switch v-model="ruleData.disable_optimistic_cache" label="Disable optimistic cache" hide-details /></v-col>
             <v-col cols="12" sm="6" md="4">
               <v-switch v-model="ruleData.disable_cache" :label="$t('dns.disableCache')" hide-details></v-switch>
             </v-col>
@@ -134,7 +141,8 @@
 
 <script lang="ts">
 import { logicalDnsRule, dnsRule, actionDnsRuleKeys } from '@/types/dns'
-import RuleOptions from '@/components/rules/DnsRule.vue'
+import RuleOptions from '@/components/dns/DNSRuleOptions.vue'
+import { coreConfigContract, loadCoreConfigContract, serializeDNSRule } from '@/types/coreConfigContract'
 import { i18n } from '@/locales'
 import FormShell from '@/components/nexus/drawers/FormShell.vue'
 
@@ -157,12 +165,6 @@ export default {
         action: 'route',
         server: 'local',
       },
-      actions: [
-        { title: i18n.global.t('dns.rule.action.route'), value: 'route'},
-        { title: i18n.global.t('dns.rule.action.routeOptions'), value: 'route-options'},
-        { title: i18n.global.t('dns.rule.action.reject'), value: 'reject'},
-        { title: i18n.global.t('dns.rule.action.predefined'), value: 'predefined'},
-      ],
       strategies: [
         { title: 'Prefer IPv4', value: 'prefer_ipv4' },
         { title: 'Prefer IPv6', value: 'prefer_ipv6' },
@@ -192,7 +194,7 @@ export default {
     updateData() {
       if (this.$props.index != -1) {
         const newData = JSON.parse(this.$props.data)
-        if (newData.type) {
+        if (newData.type === 'logical') {
           this.ruleData = newData
         } else {
           this.ruleData = {
@@ -217,7 +219,7 @@ export default {
             rules: <dnsRule[]>[{}],
             invert: false,
             action: 'route',
-            server: this.$props.serverTags[0]?? 'local',
+            server: this.$props.serverTags[0] ?? undefined,
           }
         this.title = 'add'
       }
@@ -228,47 +230,8 @@ export default {
     },
     saveChanges() {
       this.loading = true
-      let newRule = <any>{
-        action: this.ruleData.action,
-        invert: this.ruleData.invert? this.ruleData.invert : undefined,
-      }
-
-      // Filter action data
-      switch (newRule.action){
-        case 'route':
-          newRule.server = this.ruleData.server
-          newRule.strategy = this.ruleData.strategy?.length > 0 ? this.ruleData.strategy : undefined
-          newRule.disable_cache = this.ruleData.disable_cache? true : undefined
-          newRule.rewrite_ttl = this.ruleData.rewrite_ttl > 0 ? this.ruleData.rewrite_ttl : undefined
-          newRule.client_subnet = this.ruleData.client_subnet?.length > 0 ? this.ruleData.client_subnet : undefined
-          break
-        case 'route-options':
-          newRule.disable_cache = this.ruleData.disable_cache? true : undefined
-          newRule.rewrite_ttl = this.ruleData.rewrite_ttl > 0 ? this.ruleData.rewrite_ttl : undefined
-          newRule.client_subnet = this.ruleData.client_subnet?.length > 0 ? this.ruleData.client_subnet : undefined
-          break
-        case 'reject':
-          newRule.method = this.ruleData.method?.length > 0 ? this.ruleData.method : undefined
-          newRule.no_drop = this.ruleData.no_drop? true : undefined
-          break
-        case 'predefined':
-          newRule.rcode = this.ruleData.rcode?.length > 0 ? this.ruleData.rcode : undefined
-          if (this.ruleData.rcode == 'NOERROR') {
-            newRule.answer = this.ruleData.answer
-            newRule.ns = this.ruleData.ns
-            newRule.extra = this.ruleData.extra
-          }
-          break
-      }
-
-      // Add rules
-      if (this.ruleData.type == 'simple'){
-        newRule = { ...this.ruleData.rules[0], ...newRule }
-      } else {
-        newRule.type = 'logical'
-        newRule.mode = this.ruleData.mode
-        newRule.rules = this.ruleData.rules
-      }
+      const originalAction = this.snapshot ? (JSON.parse(this.snapshot).action ?? 'route') : undefined
+      const newRule = serializeDNSRule(this.ruleData, originalAction, coreConfigContract.value)
       this.$emit('save', newRule)
       this.loading = false
     },
@@ -277,6 +240,12 @@ export default {
     }
   },
   computed: {
+    actions() {
+      const actions = Object.keys(coreConfigContract.value?.dnsActions ?? {})
+      const current = this.ruleData.action ?? 'route'
+      if (!actions.includes(current)) actions.push(current)
+      return actions.map(value => ({ title: ['evaluate', 'respond'].includes(value) ? value : i18n.global.t('dns.rule.action.' + (value === 'route-options' ? 'routeOptions' : value)), value }))
+    },
     dirty(): boolean {
       return this.snapshot !== '' && JSON.stringify(this.ruleData) !== this.snapshot
     },
@@ -306,6 +275,7 @@ export default {
       }
     },
   },
+  mounted() { void loadCoreConfigContract() },
   components: { FormShell, RuleOptions }
 }
 

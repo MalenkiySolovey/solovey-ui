@@ -1,6 +1,10 @@
 <template>
   <v-card subtitle="Tun">
     <v-row>
+      <v-col cols="12" sm="6"><v-select v-model="data.dns_mode" :items="tunDnsModes" label="DNS mode" hint="Choose explicitly. Native and hijack modes change interface DNS and require the existing deployment authorization." persistent-hint /></v-col>
+      <v-col cols="12" sm="6"><v-text-field v-model="dnsAddresses" label="DNS addresses" hint="Comma separated; explicit addresses disable automatic address derivation" persistent-hint /></v-col>
+    </v-row>
+    <v-row>
       <v-col cols="12" sm="8">
         <v-text-field v-model="addrs" :label="$t('types.tun.addr') + ' ' + $t('commaSeparated')" placeholder="172.18.0.1/30" hide-details></v-text-field>
       </v-col>

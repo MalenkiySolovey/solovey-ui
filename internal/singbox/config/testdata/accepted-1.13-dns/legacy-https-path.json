@@ -1,0 +1,17 @@
+{
+  "dns": {
+    "servers": [
+      {
+        "tag": "dns-a",
+        "address": "https://127.0.0.1:1443/custom-query",
+        "detour": "direct"
+      }
+    ]
+  },
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}

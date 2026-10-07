@@ -1,0 +1,10 @@
+{
+  "dns": {
+    "servers": [
+      {
+        "tag": "old",
+        "address": "unknown://resolver.example"
+      }
+    ]
+  }
+}

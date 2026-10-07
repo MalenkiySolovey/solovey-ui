@@ -1,15 +1,18 @@
 import Data from '@/store/modules/data'
-import { computed, onBeforeMount, ref } from 'vue'
+import { computed, onBeforeMount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { Config } from '@/types/config'
 import { dnsRule } from '@/types/dns'
 import { FindDiff } from '@/plugins/utils'
+import HttpUtils from '@/plugins/httputil'
+import { loadCoreConfigContract, type CompatibilityPreview } from '@/types/coreConfigContract'
 
 export const useDnsConfig = () => {
   const { t } = useI18n()
 
   const oldConfig = ref(<any>{})
   const loading = ref(false)
+  const compatibilityPreview = ref<CompatibilityPreview>()
 
   // Edit a LOCAL clone of the store config. A background reload (data.ts setNewData
   // replaces Data().config wholesale, driven by realtime/fallback refreshes) must not wipe
@@ -24,6 +27,7 @@ export const useDnsConfig = () => {
   }
 
   const appConfig = ref<Config>((() => { const c = cloneStoreConfig(); ensureDnsShape(c); return c })())
+  watch(appConfig, () => { compatibilityPreview.value = undefined }, { deep: true, flush: 'sync' })
 
   const resyncFromStore = () => {
     const c = cloneStoreConfig()
@@ -33,6 +37,7 @@ export const useDnsConfig = () => {
   }
 
   onBeforeMount(() => {
+    void loadCoreConfigContract()
     loading.value = true
     resyncFromStore()
     loading.value = false
@@ -64,6 +69,19 @@ export const useDnsConfig = () => {
     } finally {
       loading.value = false
     }
+  }
+
+  const previewCompatibility = async () => {
+    loading.value = true
+    try {
+      const response = await HttpUtils.post('api/config/compatibility-preview', { config: appConfig.value })
+      if (response.success) compatibilityPreview.value = response.obj
+    } finally { loading.value = false }
+  }
+  const applyCompatibilityToDraft = () => {
+    if (compatibilityPreview.value?.blocked || !compatibilityPreview.value?.dns) return
+    appConfig.value.dns = JSON.parse(JSON.stringify(compatibilityPreview.value.dns))
+    compatibilityPreview.value = undefined
   }
 
   const applyPresetConfig = (config: Config) => {
@@ -98,7 +116,7 @@ export const useDnsConfig = () => {
   })
 
   const ruleSets = computed((): string[] => {
-    return appConfig.value?.route?.rule_set?.map((r:any) => r.tag) ?? []
+    return appConfig.value?.route?.rule_set?.flatMap((r:any) => Array.isArray(r.tag) ? r.tag : [r.tag]).filter(Boolean) ?? []
   })
 
   const subtitle = computed(() => {
@@ -110,6 +128,9 @@ export const useDnsConfig = () => {
 
   return {
     appConfig,
+    compatibilityPreview,
+    previewCompatibility,
+    applyCompatibilityToDraft,
     applyPresetConfig,
     clients,
     dns,

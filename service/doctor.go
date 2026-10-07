@@ -64,11 +64,19 @@ func (s *DoctorService) Run(hostname string) opsdoctor.Report {
 		// files or official decoding can recurse through an unbounded tree.
 		return opsdoctor.FinishReport(start, items)
 	}
-	rawConfig, err := configService.GetConfig("")
+	projection, err := NewSingBoxConfigBuilder(s.runtime()).BuildProjectionFromDB(dbsqlite.DB(), "")
+	for i, finding := range projection.DNSCompatibility {
+		severity := opsdoctor.SeverityWarn
+		if finding.Severity == "error" {
+			severity = opsdoctor.SeverityError
+		}
+		items = append(items, opsdoctor.Item{ID: fmt.Sprintf("dns-compatibility-%d", i), Title: "DNS compatibility", Severity: severity, Message: finding.Message, Action: "Correct the indicated path or use the compatibility preview before retrying. Original storage is preserved.", Details: finding})
+	}
 	if err != nil {
 		items = append(items, opsdoctor.ConfigBuildFailure(err))
 		return opsdoctor.FinishReport(start, items)
 	}
+	rawConfig := &projection.Config
 	items = append(items, opsdoctor.OK("config-build", "Build sing-box config", "Full sing-box config was assembled from database rows.", nil))
 
 	if err := singboxvalidation.ValidateConfig(*rawConfig); err != nil {

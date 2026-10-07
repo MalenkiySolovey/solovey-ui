@@ -1,0 +1,17 @@
+{
+  "dns": {
+    "servers": [
+      {
+        "tag": "dns-a",
+        "address": "tls://[::1]:1853",
+        "detour": "direct"
+      }
+    ]
+  },
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}

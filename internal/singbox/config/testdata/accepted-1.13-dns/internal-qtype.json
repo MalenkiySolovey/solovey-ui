@@ -1,0 +1,19 @@
+{
+  "dns": {
+    "servers": [
+      {
+        "type": "udp",
+        "tag": "dns-a",
+        "server": "127.0.0.1"
+      }
+    ],
+    "rules": [
+      {
+        "query_type": [
+          "A"
+        ],
+        "server": "dns-a"
+      }
+    ]
+  }
+}

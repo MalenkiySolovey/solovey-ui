@@ -1,0 +1,9 @@
+{
+  "experimental": {
+    "cache_file": {
+      "enabled": true,
+      "store_rdrc": true,
+      "rdrc_timeout": "1h"
+    }
+  }
+}

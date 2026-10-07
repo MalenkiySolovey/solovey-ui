@@ -1,0 +1,11 @@
+{
+  "dns": {
+    "servers": [
+      {
+        "tag": "deny",
+        "address": "rcode://refused"
+      }
+    ],
+    "final": "deny"
+  }
+}

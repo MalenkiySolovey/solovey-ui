@@ -77,6 +77,7 @@ export default {
   props: ['data', 'field', 'label'],
   data() {
     return {
+      resolverDraft: undefined as ResolverObject | undefined,
       strategies: ['', 'prefer_ipv4', 'prefer_ipv6', 'ipv4_only', 'ipv6_only']
     }
   },
@@ -98,30 +99,29 @@ export default {
         return typeof this.value == 'string' ? 'tag' : 'advanced'
       },
       set(v:string) {
+        if (typeof this.value == 'object' && this.value != null) this.resolverDraft = JSON.parse(JSON.stringify(this.value))
         if (v == 'off') {
           delete this.$props.data[this.$props.field]
         } else if (v == 'tag') {
-          if (this.dnsTags.length > 0) this.$props.data[this.$props.field] = typeof this.value == 'string' ? this.value : this.dnsTags[0]
-          else delete this.$props.data[this.$props.field]
+          this.$props.data[this.$props.field] = typeof this.value == 'string' ? this.value : this.value?.server ?? ''
         } else {
           const server = typeof this.value == 'string' ? this.value : this.value?.server
-          this.$props.data[this.$props.field] = { server: server || this.dnsTags[0] || '' }
+          this.$props.data[this.$props.field] = typeof this.value == 'object' && this.value != null ? JSON.parse(JSON.stringify(this.value)) : { ...this.resolverDraft, server: server ?? this.resolverDraft?.server ?? '' }
         }
       }
     },
     tagValue: {
-      get(): string { return typeof this.value == 'string' ? this.value : this.dnsTags[0] ?? '' },
+      get(): string { return typeof this.value == 'string' ? this.value : this.value?.server ?? '' },
       set(v:string) { v.length > 0 ? this.$props.data[this.$props.field] = v : delete this.$props.data[this.$props.field] }
     },
     advanced(): ResolverObject {
       if (typeof this.value == 'object' && this.value != null) return this.value
-      this.$props.data[this.$props.field] = { server: this.dnsTags[0] || '' }
-      return this.$props.data[this.$props.field]
+      return { server: typeof this.value == 'string' ? this.value : '' }
     },
     rewriteTtl: {
       get(): number | undefined { return this.advanced.rewrite_ttl },
       set(v:number | undefined) {
-        if (typeof v == 'number' && !isNaN(v) && v > 0) this.advanced.rewrite_ttl = v
+        if (typeof v == 'number' && Number.isFinite(v) && v >= 0) this.advanced.rewrite_ttl = v
         else delete this.advanced.rewrite_ttl
       }
     }

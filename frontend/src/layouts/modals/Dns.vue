@@ -64,6 +64,8 @@
           </v-card>
         </template>
         <v-row v-if="dnsServer.type == 'local'">
+          <v-col cols="12"><v-alert type="info" variant="tonal">Local DNS follows system configuration and may use multicast for local and link-local names. Choose an explicit unicast server when that is required by your policy.</v-alert></v-col>
+          <v-col cols="12" sm="8"><v-text-field :model-value="neighborDomains" @update:model-value="neighborDomains = $event" label="Preferred neighbor domains" hint="Comma separated" persistent-hint /></v-col>
           <v-col cols="12" sm="6" md="4">
             <v-switch v-model="dnsServer.prefer_go" color="primary" :label="$t('dns.local.preferGo')" hide-details></v-switch>
           </v-col>
@@ -102,6 +104,7 @@ import Headers from '@/components/fields/Headers.vue'
 import RandomUtil from '@/plugins/randomUtil'
 import { DnsTypes, createDnsServer } from '@/types/dns'
 import FormShell from '@/components/nexus/drawers/FormShell.vue'
+import Data from '@/store/modules/data'
 export default {
   props: ['visible', 'data', 'index', 'tsTags', 'rslvdTags'],
   emits: ['close', 'save'],
@@ -110,7 +113,6 @@ export default {
       title: "add",
       snapshot: '',
       dnsServer: createDnsServer("local",{tag: "dns-" + RandomUtil.randomSeq(3)}),
-      dnsTypes: Object.keys(DnsTypes).map((key,index) => ({title: key, value: Object.values(DnsTypes)[index]})),
       HasServer: [DnsTypes.TCP, DnsTypes.UDP, DnsTypes.TLS, DnsTypes.QUIC, DnsTypes.HTTPS, DnsTypes.HTTP3],
       HasHeaders: [DnsTypes.HTTPS, DnsTypes.HTTP3],
       HasTls: [DnsTypes.TLS, DnsTypes.QUIC, DnsTypes.HTTPS, DnsTypes.HTTP3],
@@ -159,6 +161,13 @@ export default {
     },
   },
   computed:{
+    dnsTypes() {
+      return Data().capabilities?.facts.filter(f => f.category === 'dns').map(f => ({ title: f.type + (f.available ? '' : ' (' + f.reason + ')'), value: f.type, props: { disabled: !f.available } })) ?? []
+    },
+    neighborDomains: {
+      get() { const value = this.dnsServer.neighbor_domain; return Array.isArray(value) ? value.join(',') : value ?? '' },
+      set(value: string) { if (value === '') delete this.dnsServer.neighbor_domain; else this.dnsServer.neighbor_domain = value.split(',').map(s => s.trim()) },
+    },
     dirty(): boolean {
       return this.snapshot !== '' && JSON.stringify(this.dnsServer) !== this.snapshot
     },

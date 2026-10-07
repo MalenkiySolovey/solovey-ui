@@ -1,0 +1,8 @@
+{
+  "dns": {
+    "fakeip": {
+      "enabled": false
+    },
+    "servers": []
+  }
+}

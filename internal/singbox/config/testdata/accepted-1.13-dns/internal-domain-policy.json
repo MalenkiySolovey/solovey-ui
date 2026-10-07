@@ -1,0 +1,27 @@
+{
+  "dns": {
+    "servers": [
+      {
+        "type": "udp",
+        "tag": "a",
+        "server": "127.0.0.1"
+      }
+    ],
+    "rules": [
+      {
+        "query_type": [
+          "A"
+        ],
+        "server": "a"
+      }
+    ]
+  },
+  "outbounds": [
+    {
+      "type": "socks",
+      "tag": "proxy",
+      "server": "proxy.example",
+      "server_port": 1080
+    }
+  ]
+}

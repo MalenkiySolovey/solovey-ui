@@ -57,7 +57,7 @@ func TestReorderOutboundsPreservesImplicitRouteFinal(t *testing.T) {
 func TestReorderDNSServersPreservesImplicitFinal(t *testing.T) {
 	settingService := initSettingTestDB(t)
 	if err := saveTestBaseConfig(settingService, `{
-		"dns":{"servers":[{"tag":"local","address":"local"},{"tag":"remote","address":"tls://1.1.1.1"}],"rules":[]},
+		"dns":{"servers":[{"type":"local","tag":"local"},{"type":"tls","tag":"remote","server":"1.1.1.1"}],"rules":[]},
 		"route":{"rules":[]},
 		"experimental":{}
 	}`); err != nil {

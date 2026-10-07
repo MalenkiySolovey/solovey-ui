@@ -1,0 +1,19 @@
+{
+  "dns": {
+    "servers": [
+      {
+        "tag": "dns-a",
+        "address": "tcp://127.0.0.1:15353",
+        "detour": "proxy"
+      }
+    ]
+  },
+  "outbounds": [
+    {
+      "type": "socks",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 1080
+    }
+  ]
+}

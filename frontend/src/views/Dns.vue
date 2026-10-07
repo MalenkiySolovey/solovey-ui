@@ -58,6 +58,10 @@
       </v-btn>
     </v-col>
   </v-row>
+  <v-btn variant="text" :loading="loading" @click="previewCompatibility">Review 1.14 compatibility</v-btn>
+  <CompatibilityFindings :preview="compatibilityPreview">
+    <v-btn v-if="!compatibilityPreview?.blocked && compatibilityPreview?.dns" class="mt-2" variant="outlined" @click="applyCompatibilityToDraft">Apply DNS changes to draft</v-btn>
+  </CompatibilityFindings>
   <v-row>
     <v-col class="v-card-subtitle" cols="12">{{ $t('pages.basics') }}</v-col>
     <v-col cols="12">
@@ -98,9 +102,6 @@
         </v-col>
         <v-col cols="auto">
           <v-checkbox v-model="dns.disable_expire" hide-details :label="$t('dns.disableExpire')" />
-        </v-col>
-        <v-col cols="auto">
-          <v-checkbox v-model="dns.independent_cache" hide-details :label="$t('dns.independentCache')" />
         </v-col>
         <v-col cols="auto">
           <v-checkbox v-model="dns.reverse_mapping" hide-details :label="$t('dns.reverseMapping')" />
@@ -325,8 +326,12 @@ import EmptyState from '@/components/nexus/primitives/EmptyState.vue'
 import PageHeader from '@/components/nexus/primitives/PageHeader.vue'
 import PageToolbar from '@/components/nexus/primitives/PageToolbar.vue'
 import { useDnsPage } from '@/features/useDnsPage'
+import CompatibilityFindings from '@/components/common/CompatibilityFindings.vue'
 
-const { actionDnsRuleKeys, appConfig, applyPresetConfig, clients, closeDnsModal, closeDnsRuleModal, confirm, delDns, delDnsOverlay, delDnsRule, delDnsRuleOverlay, deleteSelectedDnsRules, deleteSelectedDnsServers, dns, dnsModal, dnsRuleDrag, dnsRuleModal, dnsRuleRows, dnsRuleSelectMode, dnsRules, dnsServerDrag, dnsServerRows, dnsServerSelectMode, dnsServerTags, dnsServersExpanded, finalDns, handleRuleAction, handleServerAction, inboundTags, isDnsRuleSelected, isDnsServerSelected, loading, mode, moveDnsRulesTo, moveDnsServersTo, moveDnsRuleTo, moveDnsServerTo, nexus, onDnsRuleDrop, onDnsServerDrop, outboundTags, presetSourceLabel, regionalPresetDrawer, rslvdTags, ruleActions, ruleColumns, ruleSets, saveConfig, saveDnsModal, saveDnsRuleModal, search, selectedDnsRuleIndexes, selectedDnsServerIndexes, serverActions, serverColumns, showDnsModal, showDnsRuleModal, sortDnsServersByName, stateChange, subtitle, t, toggleDnsRuleSelectMode, toggleDnsRuleSelection, toggleDnsServerSelectMode, toggleDnsServerSelection, tsTags } = useDnsPage()
+const dnsPage = useDnsPage()
+const { compatibilityPreview, previewCompatibility, applyCompatibilityToDraft } = dnsPage
+
+const { actionDnsRuleKeys, appConfig, applyPresetConfig, clients, closeDnsModal, closeDnsRuleModal, confirm, delDns, delDnsOverlay, delDnsRule, delDnsRuleOverlay, deleteSelectedDnsRules, deleteSelectedDnsServers, dns, dnsModal, dnsRuleDrag, dnsRuleModal, dnsRuleRows, dnsRuleSelectMode, dnsRules, dnsServerDrag, dnsServerRows, dnsServerSelectMode, dnsServerTags, dnsServersExpanded, finalDns, handleRuleAction, handleServerAction, inboundTags, isDnsRuleSelected, isDnsServerSelected, loading, mode, moveDnsRulesTo, moveDnsServersTo, moveDnsRuleTo, moveDnsServerTo, nexus, onDnsRuleDrop, onDnsServerDrop, outboundTags, presetSourceLabel, regionalPresetDrawer, rslvdTags, ruleActions, ruleColumns, ruleSets, saveConfig, saveDnsModal, saveDnsRuleModal, search, selectedDnsRuleIndexes, selectedDnsServerIndexes, serverActions, serverColumns, showDnsModal, showDnsRuleModal, sortDnsServersByName, stateChange, subtitle, t, toggleDnsRuleSelectMode, toggleDnsRuleSelection, toggleDnsServerSelectMode, toggleDnsServerSelection, tsTags } = dnsPage
 const indexKeys = (rows: unknown[]): number[] => rows.map((_, rowIndex) => rowIndex)
 const presetSourceVariant = (item: any) => isPresetManagedItem(item) ? 'success' : 'secondary'
 </script>

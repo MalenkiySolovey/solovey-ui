@@ -1,0 +1,28 @@
+{
+  "dns": {
+    "fakeip": {
+      "enabled": true,
+      "inet4_range": "198.18.0.0/15",
+      "inet6_range": "fc00::/18"
+    },
+    "servers": [
+      {
+        "type": "udp",
+        "tag": "normal",
+        "server": "127.0.0.1"
+      },
+      {
+        "tag": "fake",
+        "address": "fakeip"
+      }
+    ],
+    "rules": [
+      {
+        "domain_suffix": [
+          "example"
+        ],
+        "server": "fake"
+      }
+    ]
+  }
+}

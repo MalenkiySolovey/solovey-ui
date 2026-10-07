@@ -145,7 +145,7 @@ func TestSaveConfigCreatesMissingConfigSetting(t *testing.T) {
 		t.Fatal(tx.Error)
 	}
 
-	config := json.RawMessage(`{"dns":{"servers":[{"tag":"dns-umbrella"}]},"route":{"rules":[{"action":"sniff"}]}}`)
+	config := json.RawMessage(`{"dns":{"servers":[{"type":"local","tag":"dns-umbrella"}]},"route":{"rules":[{"action":"sniff"}]}}`)
 	if err := settingService.SaveConfig(tx, config); err != nil {
 		tx.Rollback()
 		t.Fatal(err)

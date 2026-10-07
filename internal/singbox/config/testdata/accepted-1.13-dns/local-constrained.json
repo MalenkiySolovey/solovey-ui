@@ -1,0 +1,18 @@
+{
+  "dns": {
+    "servers": [
+      {
+        "type": "local",
+        "tag": "system"
+      }
+    ],
+    "rules": [
+      {
+        "domain_suffix": [
+          "local"
+        ],
+        "server": "system"
+      }
+    ]
+  }
+}

@@ -24,6 +24,9 @@ export const useDnsPage = () => {
 
   const {
     appConfig,
+    compatibilityPreview,
+    previewCompatibility,
+    applyCompatibilityToDraft,
     applyPresetConfig,
     clients,
     dns,
@@ -328,6 +331,9 @@ export const useDnsPage = () => {
   return {
     actionDnsRuleKeys,
     appConfig,
+    compatibilityPreview,
+    previewCompatibility,
+    applyCompatibilityToDraft,
     applyPresetConfig,
     clients,
     closeDnsModal,

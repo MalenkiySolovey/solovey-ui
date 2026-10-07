@@ -5,6 +5,9 @@ import (
 
 	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
+	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
+	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/sagernet/sing-box/option"
 )
 
@@ -16,6 +19,12 @@ func NewDryChecker() DryChecker {
 
 func (DryChecker) ValidateConfig(sbConfig []byte) error {
 	if _, err := ValidateRuleConditions(sbConfig); err != nil {
+		return err
+	}
+	if _, err := singboxconfig.ValidateDNSConfig(sbConfig); err != nil {
+		return err
+	}
+	if err := diagnostics.FirstError(entityinbounds.TUNDNSFindings(sbConfig)); err != nil {
 		return err
 	}
 	var opt option.Options
