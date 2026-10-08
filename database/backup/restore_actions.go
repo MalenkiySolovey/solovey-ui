@@ -22,6 +22,10 @@ var restoreProtectedPostActionHook func(context.Context) error
 
 func importRollbackProtectedPostActions(dbPath string, owners []RestoreOwnerStatus, files ...*FileBackupManifest) []importPostAction {
 	return []importPostAction{
+		{stage: "migrating staged owner state", rollbackOnError: true, run: func(ctx context.Context) error {
+			_, err := migrateAndNormalizeRestoreOwners(ctx, dbPath, nil, files...)
+			return err
+		}},
 		{
 			stage:           "opening imported db",
 			rollbackOnError: true,

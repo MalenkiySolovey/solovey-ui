@@ -9,8 +9,8 @@ import (
 	"testing"
 
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/assembly"
 
-	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/gin-gonic/gin"
 )
@@ -29,7 +29,7 @@ func TestCoreEditorContractIsScopedAndOwnerDerived(t *testing.T) {
 		}, JSONObj: func(_ *gin.Context, obj any, err error) {
 			called = true
 			raw, _ := json.Marshal(obj)
-			contract := singboxconfig.EditorContract()
+			contract := assembly.EditorContract()
 			contract.TUNDNSUnavailableModes = entityinbounds.TUNDNSUnavailableModes()
 			expected, _ := json.Marshal(contract)
 			if string(raw) != string(expected) || err != nil {

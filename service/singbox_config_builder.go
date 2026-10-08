@@ -3,17 +3,11 @@ package service
 import (
 	"encoding/json"
 	"errors"
-
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
-	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
-	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
-	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/assembly"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
-	"github.com/MalenkiySolovey/solovey-ui/logger"
 	"gorm.io/gorm"
 )
 
@@ -44,15 +38,7 @@ func (b SingBoxConfigBuilder) Build(data string) ([]byte, error) {
 // BuildFromDB renders a complete candidate from the supplied database view.
 // It is used by transactional workflows that must validate uncommitted rows
 // without temporarily exposing them through the process-wide database handle.
-type RuntimeProjection struct {
-	Config                 []byte
-	Eligibility            runtimeprojection.Report
-	RuleCompatibility      []singboxvalidation.RuleFinding
-	DNSCompatibility       []diagnostics.Finding
-	HTTPCompatibility      []diagnostics.Finding
-	TLSCompatibility       []diagnostics.Finding
-	TransportCompatibility []diagnostics.Finding
-}
+type RuntimeProjection = assembly.RuntimeProjection
 
 // PrepareHTTPDownloadsFromDB adapts a new/edit/import candidate to the shared
 // HTTP owner using the transaction's actual outbound catalogue. It publishes
@@ -115,134 +101,5 @@ func (b SingBoxConfigBuilder) BuildProjectionFromDB(db *gorm.DB, data string) (R
 // BuildCandidateProjectionFromDB renders and analyzes the candidate without
 // preparing files, downloading assets, starting transports, or writing storage.
 func (b SingBoxConfigBuilder) BuildCandidateProjectionFromDB(db *gorm.DB, data string, upgrade bool) (RuntimeProjection, error) {
-	if db == nil {
-		return RuntimeProjection{}, errors.New("database is not initialized")
-	}
-	stored := len(data) == 0
-	if stored {
-		var setting model.Setting
-		result := db.Model(&model.Setting{}).Where("key = ?", "config").Limit(1).Find(&setting)
-		if result.Error != nil {
-			return RuntimeProjection{}, result.Error
-		}
-		if result.RowsAffected == 0 {
-			data = defaultSingBoxBaseConfig
-		} else {
-			data = setting.Value
-		}
-	}
-	sourceBase := data
-	var compatibility []singboxvalidation.RuleFinding
-	if upgrade {
-		upgrade, err := singboxvalidation.PrepareRuleUpgrade([]byte(data))
-		compatibility = upgrade.Findings
-		if err != nil {
-			return RuntimeProjection{RuleCompatibility: compatibility}, err
-		}
-		data = string(upgrade.Candidate)
-		for _, finding := range compatibility {
-			logger.Warningf("config rule compatibility: %s [%s]: %s", finding.Path, finding.Code, finding.Message)
-		}
-	} else if _, err := singboxvalidation.ValidateRuleConditions([]byte(data)); err != nil {
-		return RuntimeProjection{}, err
-	}
-	eligibility, err := runtimeprojection.ValidateReferences(db, []byte(data))
-	if err != nil {
-		return RuntimeProjection{Eligibility: eligibility}, err
-	}
-	inbounds, err := b.InboundService.GetAllConfig(db)
-	if err != nil {
-		return RuntimeProjection{}, err
-	}
-
-	outbounds, err := b.OutboundService.GetAllConfig(db)
-	if err != nil {
-		return RuntimeProjection{}, err
-	}
-
-	services, err := b.ServicesService.GetAllConfig(db)
-	if err != nil {
-		return RuntimeProjection{}, err
-	}
-
-	endpoints, err := b.EndpointService.GetAllConfig(db)
-	if err != nil {
-		return RuntimeProjection{}, err
-	}
-
-	sections := singboxconfig.RuntimeSections{
-		Inbounds:  inbounds,
-		Outbounds: outbounds,
-		Services:  services,
-		Endpoints: endpoints,
-	}
-	config, err := singboxconfig.MergeRuntimeConfig(json.RawMessage(data), sections)
-	projection := RuntimeProjection{Config: config, Eligibility: eligibility, RuleCompatibility: compatibility}
-	if err != nil {
-		return projection, err
-	}
-	original := config
-	if sourceBase != data {
-		original, err = singboxconfig.MergeRuntimeConfig(json.RawMessage(sourceBase), sections)
-		if err != nil {
-			return projection, err
-		}
-	}
-	definitions, definitionErr := entitytls.ReadProviderDefinitions(db)
-	if definitionErr != nil {
-		return projection, definitionErr
-	}
-	certificates, certificateErr := entitytls.ProjectCertificateProviders(config, definitions)
-	projection.TLSCompatibility = certificates.Findings
-	if certificateErr != nil {
-		projection.Config = original
-		return projection, certificateErr
-	}
-	config = certificates.Candidate
-	projection.Config = config
-	if upgrade {
-		transports, transportErr := entityprotocol.PrepareConfigUpgrade(config)
-		projection.TransportCompatibility = transports.Findings
-		if transportErr != nil {
-			projection.Config = original
-			return projection, transportErr
-		}
-		config = transports.Candidate
-		projection.Config = config
-	}
-	projection.TransportCompatibility = append(projection.TransportCompatibility, entityprotocol.ConfigFindings(config)...)
-	projection.TLSCompatibility = append(projection.TLSCompatibility, entitytls.TLSConfigFindings(config)...)
-	if semanticErr := diagnostics.FirstError(append(append([]diagnostics.Finding{}, projection.TLSCompatibility...), projection.TransportCompatibility...)); semanticErr != nil {
-		projection.Config = original
-		return projection, semanticErr
-	}
-	if upgrade {
-		upgraded, upgradeErr := singboxconfig.PrepareHTTPUpgrade(config)
-		projection.HTTPCompatibility = upgraded.Findings
-		projection.Config = upgraded.Candidate
-		err = upgradeErr
-	} else {
-		projection.HTTPCompatibility, err = singboxconfig.ValidateHTTPConfig(config)
-	}
-	if err != nil {
-		projection.Config = original
-		return projection, err
-	}
-	config = projection.Config
-	if upgrade {
-		upgraded, upgradeErr := singboxconfig.PrepareDNSUpgrade(config)
-		projection.DNSCompatibility = upgraded.Findings
-		projection.Config = upgraded.Candidate
-		err = upgradeErr
-	} else {
-		projection.DNSCompatibility, err = singboxconfig.ValidateDNSConfig(config)
-	}
-	projection.DNSCompatibility = append(projection.DNSCompatibility, entityinbounds.TUNDNSFindings(config)...)
-	if err == nil {
-		err = diagnostics.FirstError(projection.DNSCompatibility)
-	}
-	if err != nil {
-		projection.Config = original
-	}
-	return projection, err
+	return assembly.BuildCandidateProjectionFromDB(db, data, upgrade)
 }

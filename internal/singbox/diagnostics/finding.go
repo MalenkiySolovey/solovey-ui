@@ -25,6 +25,15 @@ type Finding struct {
 	OperatorActionRequired bool   `json:"operatorActionRequired,omitempty"`
 }
 
+// CompatibilityFact is owner-provided presentation data for the pinned core.
+// Classification describes a consumer; it never grants runtime authorization.
+type CompatibilityFact struct {
+	ID             string `json:"id"`
+	Consumer       string `json:"consumer"`
+	Classification string `json:"classification"`
+	Policy         string `json:"policy"`
+}
+
 type Rejection struct{ Finding Finding }
 
 func (e *Rejection) ReasonCode() string { return e.Finding.Code }

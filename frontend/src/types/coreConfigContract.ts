@@ -2,6 +2,7 @@ import { shallowRef } from 'vue'
 import HttpUtils from '@/plugins/httputil'
 
 export interface CoreConfigContract {
+	compatibilityCatalogue?: { id: string; consumer: string; classification: string; policy: string }[]
   tls?: {
     fields: Record<string, string[]>
     providerFields: Record<string, string[]>

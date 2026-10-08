@@ -5,7 +5,7 @@ import (
 
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
-	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/assembly"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	subformats "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/formats"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -16,7 +16,7 @@ func (a *Handler) GetEditorContract(c *gin.Context) {
 	if a.RequireScope != nil && !a.RequireScope(c, "config", "admin", "read", "write") {
 		return
 	}
-	contract := singboxconfig.EditorContract()
+	contract := assembly.EditorContract()
 	contract.TUNDNSUnavailableModes = entityinbounds.TUNDNSUnavailableModes()
 	a.JSONObj(c, contract, nil)
 }
@@ -61,6 +61,7 @@ func (a *Handler) PreviewCompatibility(c *gin.Context) {
 	findings = append(findings, projection.HTTPCompatibility...)
 	findings = append(findings, projection.TLSCompatibility...)
 	findings = append(findings, projection.TransportCompatibility...)
+	findings = append(findings, projection.OptionsCompatibility...)
 	if err != nil && diagnostics.FirstError(findings) == nil {
 		findings = append(findings, diagnostics.Finding{Kind: "config", Path: "config", Code: "candidate_preparation_failed", Severity: diagnostics.Error, Message: "The complete candidate could not be prepared. Check database and entity references in Doctor before retrying.", MigrationOutcome: diagnostics.ManualRequired, OperatorActionRequired: true})
 	}

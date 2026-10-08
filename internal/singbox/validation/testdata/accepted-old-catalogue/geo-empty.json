@@ -1,0 +1,12 @@
+{
+  "route": {
+    "rules": [
+      {
+        "geosite": [],
+        "geoip": [],
+        "source_geoip": [],
+        "action": "reject"
+      }
+    ]
+  }
+}

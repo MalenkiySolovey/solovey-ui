@@ -1,0 +1,18 @@
+{
+  "outbounds": [
+    {
+      "type": "socks",
+      "tag": "ech",
+      "server": "127.0.0.1",
+      "server_port": 1080,
+      "tls": {
+        "enabled": false,
+        "ech": {
+          "enabled": false,
+          "pq_signature_schemes_enabled": false,
+          "dynamic_record_sizing_disabled": true
+        }
+      }
+    }
+  ]
+}

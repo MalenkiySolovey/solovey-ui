@@ -1,0 +1,8 @@
+{
+  "experimental": {
+    "clash_api": {
+      "cache_file": "legacy-cache.db",
+      "store_fakeip": true
+    }
+  }
+}

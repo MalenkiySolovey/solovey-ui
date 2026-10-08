@@ -1,0 +1,10 @@
+{
+  "inbounds": [
+    {
+      "type": "direct",
+      "tag": "supported",
+      "override_address": "127.0.0.1",
+      "override_port": 18080
+    }
+  ]
+}

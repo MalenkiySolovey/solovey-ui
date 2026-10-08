@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
 	"io"
 	"os"
 	"sort"
@@ -21,6 +22,9 @@ import (
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	componentmanifest "github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/durableowner"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/assembly"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
+	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 	"github.com/shirou/gopsutil/v4/disk"
 	gormsqlite "gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -42,22 +46,23 @@ type RestoreOwnerStatus struct {
 }
 
 type RestoreRehearsal struct {
-	Schema               string               `json:"schema"`
-	State                string               `json:"state"`
-	Possible             bool                 `json:"possible"`
-	BackupDigest         string               `json:"backupDigest"`
-	BackupBytes          int64                `json:"backupBytes"`
-	ManifestStatus       string               `json:"manifestStatus"`
-	Manifest             *BackupManifest      `json:"manifest,omitempty"`
-	Integrity            string               `json:"integrity"`
-	SchemaCompatibility  string               `json:"schemaCompatibility"`
-	MigrationPlan        string               `json:"migrationPlan"`
-	ReleaseCompatibility string               `json:"releaseCompatibility"`
-	SpaceStatus          string               `json:"spaceStatus"`
-	Owners               []RestoreOwnerStatus `json:"owners"`
-	ReasonCodes          []string             `json:"reasonCodes"`
-	Revision             string               `json:"revision"`
-	GeneratedAt          int64                `json:"generatedAt"`
+	Schema               string                `json:"schema"`
+	State                string                `json:"state"`
+	Possible             bool                  `json:"possible"`
+	BackupDigest         string                `json:"backupDigest"`
+	BackupBytes          int64                 `json:"backupBytes"`
+	ManifestStatus       string                `json:"manifestStatus"`
+	Manifest             *BackupManifest       `json:"manifest,omitempty"`
+	Integrity            string                `json:"integrity"`
+	SchemaCompatibility  string                `json:"schemaCompatibility"`
+	MigrationPlan        string                `json:"migrationPlan"`
+	ReleaseCompatibility string                `json:"releaseCompatibility"`
+	SpaceStatus          string                `json:"spaceStatus"`
+	Owners               []RestoreOwnerStatus  `json:"owners"`
+	ReasonCodes          []string              `json:"reasonCodes"`
+	MigrationFindings    []diagnostics.Finding `json:"migrationFindings,omitempty"`
+	Revision             string                `json:"revision"`
+	GeneratedAt          int64                 `json:"generatedAt"`
 }
 
 func Rehearse(ctx context.Context, source io.ReadSeeker) (RestoreRehearsal, error) {
@@ -135,11 +140,22 @@ func Rehearse(ctx context.Context, source io.ReadSeeker) (RestoreRehearsal, erro
 			}
 		}
 		if len(result.ReasonCodes) == 0 {
-			statuses, migrationErr := rehearseMigrationsAndOwners(ctx, staged, result.Owners, manifest.Files)
+			statuses, migrationErr := rehearseMigrationsAndOwnersWithFindings(ctx, staged, result.Owners, func(findings []diagnostics.Finding) {
+				result.MigrationFindings = append(result.MigrationFindings, findings...)
+			}, manifest.Files)
 			result.Owners = statuses
 			if migrationErr != nil {
 				result.MigrationPlan = "FAILED"
 				result.ReasonCodes = append(result.ReasonCodes, "staged_migration_or_owner_hook_failed")
+				var rejection *diagnostics.Rejection
+				var ruleRejection *singboxvalidation.RuleConditionError
+				if errors.As(migrationErr, &rejection) {
+					result.MigrationFindings = append(result.MigrationFindings, rejection.Finding)
+					result.ReasonCodes = append(result.ReasonCodes, rejection.ReasonCode())
+				} else if errors.As(migrationErr, &ruleRejection) {
+					result.MigrationFindings = append(result.MigrationFindings, ruleRejection.Finding)
+					result.ReasonCodes = append(result.ReasonCodes, ruleRejection.Finding.Code)
+				}
 			} else if result.MigrationPlan == "REQUIRED" {
 				result.MigrationPlan = "REHEARSED"
 			} else {
@@ -195,7 +211,7 @@ func synthesizeSupportedLegacyManifest(ctx context.Context, db *gorm.DB) (Backup
 	if coreSchema == "" {
 		coreSchema = "1.7"
 	}
-	coreComparison, coreOK := versionpolicy.CompareVersions(coreSchema, "1.11")
+	coreComparison, coreOK := versionpolicy.CompareVersions(coreSchema, dbschema.CurrentCoreVersion)
 	if !coreOK || coreComparison > 0 {
 		return BackupManifest{}, errors.New("legacy core schema is unsupported")
 	}
@@ -294,7 +310,7 @@ func copyContext(ctx context.Context, destination io.Writer, source io.Reader) (
 }
 
 func schemaCompatibility(value string) (string, string) {
-	comparison, ok := versionpolicy.CompareVersions(value, "1.11")
+	comparison, ok := versionpolicy.CompareVersions(value, dbschema.CurrentCoreVersion)
 	if !ok || comparison > 0 {
 		return "FUTURE_UNSUPPORTED", "BLOCKED"
 	}
@@ -382,22 +398,27 @@ func schemaSemver(value string) string {
 }
 
 func rehearseMigrationsAndOwners(ctx context.Context, staged string, statuses []RestoreOwnerStatus, files ...*FileBackupManifest) ([]RestoreOwnerStatus, error) {
+	return rehearseMigrationsAndOwnersWithFindings(ctx, staged, statuses, nil, files...)
+}
+
+func rehearseMigrationsAndOwnersWithFindings(ctx context.Context, staged string, statuses []RestoreOwnerStatus, report func([]diagnostics.Finding), files ...*FileBackupManifest) ([]RestoreOwnerStatus, error) {
 	copyPath := staged + ".migration"
 	cleanup := func() { cleanupRestoreFile(copyPath) }
 	defer cleanup()
 	if err := cloneRestoreFile(ctx, staged, copyPath); err != nil {
 		return statuses, err
 	}
-	return migrateAndNormalizeRestoreOwners(ctx, copyPath, statuses, files...)
+	return migrateAndNormalizeRestoreOwnersWithFindings(ctx, copyPath, statuses, report, files...)
 }
 
 // Rehearsal migrates a private candidate. Execution applies the same owner
 // normalization after open, within the existing rollback-protected boundary.
 func migrateAndNormalizeRestoreOwners(ctx context.Context, candidate string, statuses []RestoreOwnerStatus, files ...*FileBackupManifest) ([]RestoreOwnerStatus, error) {
+	return migrateAndNormalizeRestoreOwnersWithFindings(ctx, candidate, statuses, nil, files...)
+}
+
+func migrateAndNormalizeRestoreOwnersWithFindings(ctx context.Context, candidate string, statuses []RestoreOwnerStatus, report func([]diagnostics.Finding), files ...*FileBackupManifest) ([]RestoreOwnerStatus, error) {
 	statuses = append([]RestoreOwnerStatus(nil), statuses...)
-	if err := migration.MigratePath(candidate, migration.Options{}); err != nil {
-		return statuses, err
-	}
 	db, err := gorm.Open(gormsqlite.Open(candidate+"?_busy_timeout=10000&_foreign_keys=on"), &gorm.Config{Logger: gormlogger.Discard})
 	if err != nil {
 		return statuses, err
@@ -410,9 +431,41 @@ func migrateAndNormalizeRestoreOwners(ctx context.Context, candidate string, sta
 		fileManifest = files[0]
 	}
 	if err := restoreOwnerFiles(ctx, db, fileManifest, false); err != nil {
+		return statuses, restoreCandidateFinding(err, "backup.files", "RESTORE_OWNER_FILES_INVALID", "The private archive's managed file inventory or deployment capability is incomplete. Supply a complete owner-approved archive or correct the managed references before retrying.")
+	}
+	if err := migration.MigratePath(candidate, migration.Options{ReportFindings: report, ProjectRuntimeFiles: func(tx *gorm.DB, config []byte) ([]byte, error) {
+		return projectOwnerRuntimeFiles(ctx, tx, fileManifest, config)
+	}}); err != nil {
 		return statuses, err
 	}
-	return normalizeRestoredOwners(ctx, db, statuses)
+	statuses, err = normalizeRestoredOwners(ctx, db, statuses)
+	if err != nil {
+		return statuses, err
+	}
+	projection, err := assembly.BuildCandidateProjectionFromDB(db, "", false)
+	if err != nil {
+		return statuses, err
+	}
+	if err := singboxvalidation.ValidateConfigShape(projection.Config); err != nil {
+		return statuses, err
+	}
+	runtime, err := projectOwnerRuntimeFiles(ctx, db, fileManifest, projection.Config)
+	if err != nil {
+		return statuses, restoreCandidateFinding(err, "backup.files", "RESTORE_OWNER_FILES_INVALID", "Required managed file facts cannot project a complete runtime candidate. Supply a complete owner-approved archive or correct its references before retrying.")
+	}
+	if err := singboxvalidation.ValidateConfig(runtime); err != nil {
+		return statuses, restoreCandidateFinding(err, "config", "RESTORE_COMPLETE_BUILD_REJECTED", "The complete restore candidate is rejected by the pinned offline build. Correct entity options and required owner files before retrying; submitted values are excluded from this diagnostic.")
+	}
+	return statuses, nil
+}
+
+func restoreCandidateFinding(err error, path, code, message string) error {
+	var rejection *diagnostics.Rejection
+	var ruleRejection *singboxvalidation.RuleConditionError
+	if errors.As(err, &rejection) || errors.As(err, &ruleRejection) {
+		return err
+	}
+	return diagnostics.FirstError([]diagnostics.Finding{{Kind: "restore", Path: path, Code: code, Severity: diagnostics.Error, Message: message, MigrationOutcome: diagnostics.ManualRequired, OperatorActionRequired: true}})
 }
 
 func normalizeRestoredOwners(ctx context.Context, db *gorm.DB, statuses []RestoreOwnerStatus) ([]RestoreOwnerStatus, error) {

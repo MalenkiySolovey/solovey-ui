@@ -1,0 +1,11 @@
+{
+  "experimental": {
+    "clash_api": {
+      "cache_file": "",
+      "cache_id": "",
+      "store_mode": false,
+      "store_selected": false,
+      "store_fakeip": false
+    }
+  }
+}

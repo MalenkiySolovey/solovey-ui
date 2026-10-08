@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/util/jsonfields"
 	"reflect"
 	"strings"
@@ -18,21 +19,22 @@ import (
 // Editors use it for field presence and action switching; validation remains
 // server-side and never relies on this catalogue as authorization.
 type CoreEditorContract struct {
-	TLS                     entitytls.EditorFacts      `json:"tls"`
-	Protocol                entityprotocol.EditorFacts `json:"protocol"`
-	DNSActions              map[string][]string        `json:"dnsActions"`
-	DNSConditions           []string                   `json:"dnsConditions"`
-	DNSCacheFields          []string                   `json:"dnsCacheFields"`
-	TUNDNSModes             []string                   `json:"tunDnsModes"`
-	TUNDNSUnavailableModes  map[string]string          `json:"tunDnsUnavailableModes,omitempty"`
-	MaxRuleDepth            int                        `json:"maxRuleDepth"`
-	MaxRuleNodes            int                        `json:"maxRuleNodes"`
-	HTTPClientFields        map[string][]string        `json:"httpClientFields"`
-	HTTPEngines             []string                   `json:"httpEngines"`
-	HTTPVersions            []string                   `json:"httpVersions"`
-	HTTPUnavailableEngines  map[string]string          `json:"httpUnavailableEngines"`
-	HTTPUnavailableVersions map[string]string          `json:"httpUnavailableVersions"`
-	DirectHTTPClient        json.RawMessage            `json:"directHttpClient"`
+	CompatibilityCatalogue  []diagnostics.CompatibilityFact `json:"compatibilityCatalogue"`
+	TLS                     entitytls.EditorFacts           `json:"tls"`
+	Protocol                entityprotocol.EditorFacts      `json:"protocol"`
+	DNSActions              map[string][]string             `json:"dnsActions"`
+	DNSConditions           []string                        `json:"dnsConditions"`
+	DNSCacheFields          []string                        `json:"dnsCacheFields"`
+	TUNDNSModes             []string                        `json:"tunDnsModes"`
+	TUNDNSUnavailableModes  map[string]string               `json:"tunDnsUnavailableModes,omitempty"`
+	MaxRuleDepth            int                             `json:"maxRuleDepth"`
+	MaxRuleNodes            int                             `json:"maxRuleNodes"`
+	HTTPClientFields        map[string][]string             `json:"httpClientFields"`
+	HTTPEngines             []string                        `json:"httpEngines"`
+	HTTPVersions            []string                        `json:"httpVersions"`
+	HTTPUnavailableEngines  map[string]string               `json:"httpUnavailableEngines"`
+	HTTPUnavailableVersions map[string]string               `json:"httpUnavailableVersions"`
+	DirectHTTPClient        json.RawMessage                 `json:"directHttpClient"`
 }
 
 func EditorContract() CoreEditorContract {
@@ -53,7 +55,11 @@ func EditorContract() CoreEditorContract {
 	version, _ := httpType.FieldByName("Version")
 	base := jsonFields(httpType)
 	httpFields := map[string][]string{"1": base, "2": append(append([]string{}, base...), jsonFields(reflect.TypeFor[option.HTTP2Options]())...), "3": append(append([]string{}, base...), jsonFields(reflect.TypeFor[option.QUICOptions]())...)}
-	return CoreEditorContract{TLS: entitytls.EditorContract(), Protocol: entityprotocol.EditorContract(), DNSActions: actions, DNSConditions: jsonFields(reflect.TypeFor[option.DefaultDNSRule]()), DNSCacheFields: jsonFields(reflect.TypeFor[option.CacheFileOptions]()), TUNDNSModes: strings.Split(dnsMode.Tag.Get("enum"), ","), MaxRuleDepth: rulepolicy.MaxDepth, MaxRuleNodes: rulepolicy.MaxNodes, HTTPClientFields: httpFields, HTTPEngines: strings.Split(engine.Tag.Get("enum"), ","), HTTPVersions: strings.Split(version.Tag.Get("enum"), ","), HTTPUnavailableEngines: HTTPUnavailableEngines(), HTTPUnavailableVersions: HTTPUnavailableVersions(), DirectHTTPClient: ExplicitDirectHTTPClient()}
+	catalogue := BaseCompatibilityCatalogue()
+	for _, facts := range [][]diagnostics.CompatibilityFact{entitytls.CompatibilityCatalogue(), entityprotocol.CompatibilityCatalogue()} {
+		catalogue = append(catalogue, facts...)
+	}
+	return CoreEditorContract{CompatibilityCatalogue: catalogue, TLS: entitytls.EditorContract(), Protocol: entityprotocol.EditorContract(), DNSActions: actions, DNSConditions: jsonFields(reflect.TypeFor[option.DefaultDNSRule]()), DNSCacheFields: jsonFields(reflect.TypeFor[option.CacheFileOptions]()), TUNDNSModes: strings.Split(dnsMode.Tag.Get("enum"), ","), MaxRuleDepth: rulepolicy.MaxDepth, MaxRuleNodes: rulepolicy.MaxNodes, HTTPClientFields: httpFields, HTTPEngines: strings.Split(engine.Tag.Get("enum"), ","), HTTPVersions: strings.Split(version.Tag.Get("enum"), ","), HTTPUnavailableEngines: HTTPUnavailableEngines(), HTTPUnavailableVersions: HTTPUnavailableVersions(), DirectHTTPClient: ExplicitDirectHTTPClient()}
 }
 
 func jsonFields(t reflect.Type) []string {

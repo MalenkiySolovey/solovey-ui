@@ -17,7 +17,7 @@ func UpdateOutJSONs(tx *gorm.DB, inboundIDs []uint, hostname string) error {
 		return err
 	}
 	for _, inbound := range inbounds {
-		err = FillOutboundJSON(&inbound, hostname)
+		err = FillOutboundJSONFromDB(tx, &inbound, hostname)
 		if err != nil {
 			return err
 		}

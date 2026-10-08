@@ -1,0 +1,9 @@
+{
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "active",
+      "sniff": true
+    }
+  ]
+}

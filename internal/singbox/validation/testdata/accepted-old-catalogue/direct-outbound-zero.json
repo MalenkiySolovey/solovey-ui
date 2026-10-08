@@ -1,0 +1,11 @@
+{
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "zero",
+      "override_address": "",
+      "override_port": 0,
+      "proxy_protocol": 2
+    }
+  ]
+}

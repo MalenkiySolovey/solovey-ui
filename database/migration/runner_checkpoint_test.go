@@ -39,7 +39,10 @@ CREATE TABLE settings (
 CREATE TABLE clients (
 	id integer PRIMARY KEY AUTOINCREMENT,
 	enable boolean,
-	name text
+	name text,
+	config blob,
+	inbounds blob,
+	links blob
 )`).Error; err != nil {
 		t.Fatal(err)
 	}

@@ -39,9 +39,48 @@ func (OwnerFile) TableName() string { return BackupFileTable }
 // Restore with publish=false may change only its staged DB, never live files.
 // Published files must be immutable so DB rollback cannot alter old live data.
 type FileOwner struct {
-	Component string
-	Export    func(context.Context, *gorm.DB) ([]OwnerFile, error)
-	Restore   func(context.Context, *gorm.DB, []OwnerFile, bool) error
+	Component      string
+	Export         func(context.Context, *gorm.DB) ([]OwnerFile, error)
+	Restore        func(context.Context, *gorm.DB, []OwnerFile, bool) error
+	ProjectRuntime func(context.Context, *gorm.DB, []OwnerFile, []byte) ([]byte, error)
+}
+
+// projectOwnerRuntimeFiles supplies verified archive facts through the same
+// semantic file owners. It never publishes files or changes durable rows.
+func projectOwnerRuntimeFiles(ctx context.Context, db *gorm.DB, m *FileBackupManifest, config []byte) (projected []byte, resultErr error) {
+	defer func() {
+		if resultErr != nil {
+			resultErr = restoreCandidateFinding(resultErr, "backup.files", "RESTORE_OWNER_FILES_INVALID", "Required managed file facts cannot project a complete runtime candidate. Supply a complete owner-approved archive or correct its references before retrying.")
+		}
+	}()
+	if m == nil {
+		return config, nil
+	}
+	if err := verifyOwnerFiles(ctx, db, m); err != nil {
+		return config, err
+	}
+	owners, err := selectedFileOwners()
+	if err != nil {
+		return config, err
+	}
+	for _, id := range m.Owners {
+		owner, ok := owners[id]
+		if !ok {
+			return config, errors.New("logical file owner unavailable")
+		}
+		if owner.ProjectRuntime == nil {
+			continue
+		}
+		var files []OwnerFile
+		if err := db.WithContext(ctx).Where("owner = ?", id).Order("key").Limit(MaxOwnerFiles + 1).Find(&files).Error; err != nil {
+			return config, err
+		}
+		config, err = owner.ProjectRuntime(ctx, db, files, config)
+		if err != nil {
+			return config, fmt.Errorf("project logical file owner %s: %w", id, err)
+		}
+	}
+	return config, nil
 }
 
 var fileOwners = struct {

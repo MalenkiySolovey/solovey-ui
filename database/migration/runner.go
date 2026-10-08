@@ -13,15 +13,21 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration/integrity"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration/steps"
+	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
+	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	gormlogger "gorm.io/gorm/logger"
 )
 
 type Options struct {
 	RepairForeignKeyOrphans bool
 	LegacyConfigPath        string
+	ProjectRuntimeFiles     func(*gorm.DB, []byte) ([]byte, error)
+	ReportFindings          func([]diagnostics.Finding)
 }
 
 const maxLegacyConfigBytes = int64(16 << 20)
@@ -101,7 +107,7 @@ func MigratePath(path string, options Options) error {
 	if err := rejectFutureVersion("database", preflightDBVersion, currentVersion); err != nil {
 		return err
 	}
-	if err := rejectFutureVersion("core schema", preflightCoreVersion, "1.11"); err != nil {
+	if err := rejectFutureVersion("core schema", preflightCoreVersion, dbschema.CurrentCoreVersion); err != nil {
 		return err
 	}
 	// Rule compatibility is checked on a read-only pre-image before any schema
@@ -109,7 +115,7 @@ func MigratePath(path string, options Options) error {
 	if err := readOnlyRuleUpgradePreflight(path); err != nil {
 		return err
 	}
-	db, err := gorm.Open(sqlite.Open(sqliteMigrationDSN(path)))
+	db, err := gorm.Open(sqlite.Open(sqliteMigrationDSN(path)), &gorm.Config{Logger: gormlogger.Discard})
 	if err != nil {
 		return fmt.Errorf("open db: %w", err)
 	}
@@ -130,22 +136,27 @@ func MigratePath(path string, options Options) error {
 	if err := rejectFutureVersion("database", dbVersion, currentVersion); err != nil {
 		return err
 	}
-	if err := rejectFutureVersion("core schema", coreVersion, "1.11"); err != nil {
+	if err := rejectFutureVersion("core schema", coreVersion, dbschema.CurrentCoreVersion); err != nil {
 		return err
 	}
 	if dbVersion != preflightDBVersion || coreVersion != preflightCoreVersion {
 		return errors.New("database version changed after the read-only migration preflight")
 	}
 	fmt.Println("Current version:", currentVersion, "\nDatabase version:", dbVersion, "\nCore schema version:", coreVersion)
-	if currentVersion == dbVersion && coreVersion == "1.11" {
-		if err := validateOperationsMigrationJournal(db); err != nil {
+	if currentVersion == dbVersion && coreVersion == dbschema.CurrentCoreVersion {
+		if err := validateCurrentMigrationJournals(db); err != nil {
 			return err
 		}
 		fmt.Println("Database is up to date, no need to migrate")
 		return nil
 	}
-	if coreVersion == "1.11" {
+	if cmp, ok := versionpolicy.CompareVersions(coreVersionOrBaseline(coreVersion), "1.11"); ok && cmp >= 0 {
 		if err := validateOperationsMigrationJournal(db); err != nil {
+			return err
+		}
+	}
+	if coreVersion == dbschema.CurrentCoreVersion {
+		if err := validateCurrentMigrationJournals(db); err != nil {
 			return err
 		}
 	}
@@ -154,23 +165,20 @@ func MigratePath(path string, options Options) error {
 		return err
 	}
 
-	if err := integrity.EnsureNoTLSForeignKeyParent(db); err != nil {
-		return err
-	}
-	if err := integrity.VerifyForeignKeysBeforeMigration(db, integrity.Options{
-		RepairForeignKeyOrphans: options.RepairForeignKeyOrphans,
-	}); err != nil {
-		return err
-	}
-
-	coreComparison, coreComparable := versionpolicy.CompareVersions(coreVersionOrBaseline(coreVersion), "1.11")
+	coreComparison, coreComparable := versionpolicy.CompareVersions(coreVersionOrBaseline(coreVersion), dbschema.CurrentCoreVersion)
 	if !coreComparable {
 		return errors.New("core schema version is not migration-compatible")
 	}
-	journalPending := coreComparison < 0
-	if journalPending {
-		if err := ensureOperationsMigrationJournal(db); err != nil {
-			return err
+	pending := []coreJournalContract{}
+	if coreComparison < 0 {
+		for _, contract := range coreJournalContracts() {
+			comparison, _ := versionpolicy.CompareVersions(coreVersionOrBaseline(coreVersion), contract.Target)
+			if comparison < 0 {
+				if err := ensureCoreMigrationJournal(db, contract); err != nil {
+					return err
+				}
+				pending = append(pending, contract)
+			}
 		}
 	}
 	tx := db.Begin()
@@ -191,12 +199,21 @@ func MigratePath(path string, options Options) error {
 			state = "RECOVERY_REQUIRED"
 			cause = errors.Join(cause, fmt.Errorf("rollback failed migration: %w", rollbackErr))
 		}
-		if journalPending {
-			if journalErr := recordOperationsMigrationState(db, state, "core_migration_failed"); journalErr != nil {
+		for _, contract := range pending {
+			if journalErr := recordCoreMigrationState(db, contract, state, "core_migration_failed"); journalErr != nil {
 				cause = errors.Join(cause, fmt.Errorf("record failed core migration: %w", journalErr))
 			}
 		}
 		return cause
+	}
+
+	if err := integrity.EnsureNoTLSForeignKeyParent(tx); err != nil {
+		return abortMigration(err)
+	}
+	if err := integrity.VerifyForeignKeysBeforeMigration(tx, integrity.Options{
+		RepairForeignKeyOrphans: options.RepairForeignKeyOrphans,
+	}); err != nil {
+		return abortMigration(err)
 	}
 
 	fmt.Println("Start migrating database...")
@@ -204,7 +221,15 @@ func MigratePath(path string, options Options) error {
 	if _, err = steps.RunPending(tx, dbVersion, legacyConfig); err != nil {
 		return abortMigration(err)
 	}
-	if coreVersion, err = steps.RunCorePending(tx, coreVersion); err != nil {
+	reportFindings := options.ReportFindings
+	if reportFindings == nil {
+		reportFindings = func(findings []diagnostics.Finding) {
+			for _, finding := range findings {
+				fmt.Printf("Migration candidate: %s [%s] %s: %s\n", finding.Path, finding.Code, finding.MigrationOutcome, finding.Message)
+			}
+		}
+	}
+	if coreVersion, err = steps.RunCorePendingWithOptions(tx, coreVersion, steps.CoreOptions{ProjectRuntimeFiles: options.ProjectRuntimeFiles, ReportFindings: reportFindings}); err != nil {
 		return abortMigration(err)
 	}
 	if err = upsertVersionSetting(tx, "coreSchemaVersion", coreVersion); err != nil {
@@ -216,22 +241,29 @@ func MigratePath(path string, options Options) error {
 	if err = upsertVersionSetting(tx, "version", currentVersion); err != nil {
 		return abortMigration(fmt.Errorf("update version: %w", err))
 	}
+	for _, contract := range pending {
+		if err := recordCoreMigrationState(tx, contract, "APPLIED", ""); err != nil {
+			return abortMigration(fmt.Errorf("finalize core migration journal: %w", err))
+		}
+	}
 	err = tx.Commit().Error
 	transactionClosed = true
 	if err != nil {
-		if journalPending {
-			if journalErr := recordOperationsMigrationState(db, "RECOVERY_REQUIRED", "core_migration_commit_ambiguous"); journalErr != nil {
+		state, code := "RECOVERY_REQUIRED", "core_migration_commit_ambiguous"
+		// Version and APPLIED journal are in the same SQLite transaction as every
+		// semantic row. An independent read of the unchanged publication markers
+		// plus still-RUNNING exact journal proves the commit was rolled back.
+		if commitRollbackProven(path, preflightDBVersion, preflightCoreVersion, pending) {
+			state, code = "FAILED", "core_migration_commit_rolled_back"
+		}
+		for _, contract := range pending {
+			if journalErr := recordCoreMigrationState(db, contract, state, code); journalErr != nil {
 				err = errors.Join(err, fmt.Errorf("record ambiguous core migration commit: %w", journalErr))
 			}
 		}
 		return fmt.Errorf("commit migration: %w", err)
 	}
-	if journalPending {
-		if err = recordOperationsMigrationState(db, "APPLIED", ""); err != nil {
-			return fmt.Errorf("finalize core migration journal: %w", err)
-		}
-	}
-	if err = validateOperationsMigrationJournal(db); err != nil {
+	if err = validateCurrentMigrationJournals(db); err != nil {
 		return err
 	}
 	if err = checkpointWAL(db); err != nil {
@@ -265,7 +297,11 @@ func readOnlyRuleUpgradePreflight(path string) error {
 	if strings.TrimSpace(value) == "" {
 		return nil
 	}
-	result, err := singboxvalidation.PrepareRuleUpgrade([]byte(value))
+	base, err := singboxconfig.PrepareBaseOptionsUpgrade([]byte(value))
+	if err != nil {
+		return err
+	}
+	result, err := singboxvalidation.PrepareRuleUpgrade(base.Candidate)
 	if err != nil {
 		return err
 	}
@@ -323,7 +359,22 @@ func coreVersionOrBaseline(value string) string {
 	return value
 }
 
+type coreJournalContract struct{ ID, Checksum, Target string }
+
+func coreJournalContracts() []coreJournalContract {
+	return []coreJournalContract{
+		{steps.OperationsLifecycleStepID, steps.OperationsLifecycleChecksum, "1.11"},
+		{steps.SingBoxStateStepID, steps.SingBoxStateChecksum, dbschema.CurrentCoreVersion},
+	}
+}
 func ensureOperationsMigrationJournal(db *gorm.DB) error {
+	return ensureCoreMigrationJournal(db, coreJournalContracts()[0])
+}
+func recordOperationsMigrationState(db *gorm.DB, state, errorCode string) error {
+	return recordCoreMigrationState(db, coreJournalContracts()[0], state, errorCode)
+}
+
+func ensureCoreMigrationJournal(db *gorm.DB, contract coreJournalContract) error {
 	if err := ensureOperationsMigrationJournalTable(db); err != nil {
 		return fmt.Errorf("create core migration journal: %w", err)
 	}
@@ -332,27 +383,27 @@ func ensureOperationsMigrationJournal(db *gorm.DB) error {
 		State    string
 	}
 	err := db.Raw("SELECT checksum, state FROM migration_journal_v1 WHERE scope = ? AND owner_id = ? AND step_id = ?",
-		"core", "core", steps.OperationsLifecycleStepID).Row().Scan(&existing.Checksum, &existing.State)
+		"core", "core", contract.ID).Row().Scan(&existing.Checksum, &existing.State)
 	if err != nil && !errors.Is(err, sql.ErrNoRows) {
 		return err
 	}
 	if err == nil {
-		if existing.Checksum != steps.OperationsLifecycleChecksum {
+		if existing.Checksum != contract.Checksum {
 			now := time.Now().Unix()
 			if updateErr := db.Exec("UPDATE migration_journal_v1 SET state='RECOVERY_REQUIRED', compatibility_state='CHECKSUM_MISMATCH', error_code='core_migration_checksum_mismatch', finished_at=?, updated_at=? WHERE scope=? AND owner_id=? AND step_id=?",
-				now, now, "core", "core", steps.OperationsLifecycleStepID).Error; updateErr != nil {
+				now, now, "core", "core", contract.ID).Error; updateErr != nil {
 				return errors.Join(errors.New("core migration checksum changed; recovery is required"), updateErr)
 			}
 			return errors.New("core migration checksum changed; recovery is required")
 		}
 		if existing.State == "RECOVERY_REQUIRED" || existing.State == "APPLIED" {
-			return fmt.Errorf("core migration journal state %s is inconsistent with schema 1.10", existing.State)
+			return fmt.Errorf("core migration journal state %s is inconsistent before schema %s", existing.State, contract.Target)
 		}
 	}
-	return recordOperationsMigrationState(db, "RUNNING", "")
+	return recordCoreMigrationState(db, contract, "RUNNING", "")
 }
 
-func recordOperationsMigrationState(db *gorm.DB, state, errorCode string) error {
+func recordCoreMigrationState(db *gorm.DB, contract coreJournalContract, state, errorCode string) error {
 	now := time.Now().Unix()
 	finishedAt := int64(0)
 	if state == "APPLIED" || state == "FAILED" || state == "RECOVERY_REQUIRED" {
@@ -366,7 +417,7 @@ func recordOperationsMigrationState(db *gorm.DB, state, errorCode string) error 
 		error_code=excluded.error_code, finished_at=excluded.finished_at, updated_at=excluded.updated_at,
 		retry_count=CASE WHEN excluded.state='RUNNING' THEN migration_journal_v1.retry_count + 1 ELSE migration_journal_v1.retry_count END
 		WHERE migration_journal_v1.checksum=excluded.checksum`,
-		"core", "core", steps.OperationsLifecycleStepID, steps.OperationsLifecycleChecksum,
+		"core", "core", contract.ID, contract.Checksum,
 		state, "COMPATIBLE", errorCode, now, finishedAt, now)
 	if result.Error != nil {
 		return result.Error
@@ -383,40 +434,53 @@ func EnsureCurrentSchemaJournal(db *gorm.DB, seedFresh bool) error {
 	if db == nil {
 		return errors.New("core migration journal database is unavailable")
 	}
-	coreVersion, err := readVersionSetting(db, "coreSchemaVersion")
-	if err != nil {
-		return err
-	}
-	if coreVersion == "" && seedFresh {
-		if err := upsertVersionSetting(db, "coreSchemaVersion", "1.11"); err != nil {
+	return db.Transaction(func(tx *gorm.DB) error {
+		version, err := readVersionSetting(tx, "coreSchemaVersion")
+		if err != nil {
 			return err
 		}
-		coreVersion = "1.11"
-	}
-	if coreVersion != "1.11" {
-		return fmt.Errorf("cannot seed current migration journal for core schema %q", coreVersion)
-	}
-	if err := ensureOperationsMigrationJournalTable(db); err != nil {
-		return err
-	}
-	var count int64
-	if err := db.Raw("SELECT COUNT(*) FROM migration_journal_v1 WHERE scope=? AND owner_id=? AND step_id=?",
-		"core", "core", steps.OperationsLifecycleStepID).Scan(&count).Error; err != nil {
-		return err
-	}
-	if count == 0 {
-		now := time.Now().Unix()
-		if err := db.Exec(`INSERT INTO migration_journal_v1
-			(scope, owner_id, step_id, checksum, state, compatibility_state, retry_count, error_code, backup_ref, restore_ref, drop_state, started_at, finished_at, updated_at)
-			VALUES (?, ?, ?, ?, 'APPLIED', 'COMPATIBLE', 0, '', '', '', 'NOT_REQUESTED', ?, ?, ?)`,
-			"core", "core", steps.OperationsLifecycleStepID, steps.OperationsLifecycleChecksum, now, now, now).Error; err != nil {
+		if version == "" && seedFresh {
+			if err := upsertVersionSetting(tx, "coreSchemaVersion", dbschema.CurrentCoreVersion); err != nil {
+				return err
+			}
+			version = dbschema.CurrentCoreVersion
+		}
+		if version != dbschema.CurrentCoreVersion {
+			return fmt.Errorf("cannot seed current migration journal for core schema %q", version)
+		}
+		if err := ensureOperationsMigrationJournalTable(tx); err != nil {
 			return err
 		}
-	}
-	return validateOperationsMigrationJournal(db)
+		for _, contract := range coreJournalContracts() {
+			var count int64
+			if err := tx.Raw("SELECT COUNT(*) FROM migration_journal_v1 WHERE scope=? AND owner_id=? AND step_id=?", "core", "core", contract.ID).Scan(&count).Error; err != nil {
+				return err
+			}
+			if count == 0 {
+				if !seedFresh {
+					return errors.New("current core schema migration journal is absent")
+				}
+				if err := recordCoreMigrationState(tx, contract, "APPLIED", ""); err != nil {
+					return err
+				}
+			}
+		}
+		return validateCurrentMigrationJournals(tx)
+	})
 }
 
 func validateOperationsMigrationJournal(db *gorm.DB) error {
+	return validateCoreMigrationJournal(db, coreJournalContracts()[0])
+}
+func validateCurrentMigrationJournals(db *gorm.DB) error {
+	for _, contract := range coreJournalContracts() {
+		if err := validateCoreMigrationJournal(db, contract); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+func validateCoreMigrationJournal(db *gorm.DB, contract coreJournalContract) error {
 	if db == nil || !db.Migrator().HasTable("migration_journal_v1") {
 		return errors.New("current core schema migration journal is absent")
 	}
@@ -425,11 +489,11 @@ func validateOperationsMigrationJournal(db *gorm.DB) error {
 		State    string
 	}
 	err := db.Raw("SELECT checksum, state FROM migration_journal_v1 WHERE scope=? AND owner_id=? AND step_id=? LIMIT 1",
-		"core", "core", steps.OperationsLifecycleStepID).Scan(&row).Error
+		"core", "core", contract.ID).Scan(&row).Error
 	if err != nil {
 		return err
 	}
-	if row.Checksum != steps.OperationsLifecycleChecksum || row.State != "APPLIED" {
+	if row.Checksum != contract.Checksum || row.State != "APPLIED" {
 		return errors.New("current core schema migration journal is not exactly applied")
 	}
 	return nil
@@ -479,4 +543,31 @@ func upsertVersionSetting(tx *gorm.DB, key, value string) error {
 		return tx.Exec("INSERT INTO settings(key, value) VALUES(?, ?)", key, value).Error
 	}
 	return tx.Exec("UPDATE settings SET value = ? WHERE key = ?", value, key).Error
+}
+
+func commitRollbackProven(path, sourceVersion, sourceCore string, pending []coreJournalContract) bool {
+	version, core, err := readOnlyVersionPreflight(path)
+	if err != nil || version != sourceVersion || core != sourceCore {
+		return false
+	}
+	separator := "?"
+	if strings.Contains(path, "?") {
+		separator = "&"
+	}
+	probe, err := gorm.Open(sqlite.Open(path+separator+"mode=ro&_query_only=1"), &gorm.Config{Logger: gormlogger.Discard})
+	if err != nil {
+		return false
+	}
+	sqlDB, err := probe.DB()
+	if err != nil {
+		return false
+	}
+	defer sqlDB.Close()
+	for _, contract := range pending {
+		var row struct{ Checksum, State string }
+		if err := probe.Raw("SELECT checksum,state FROM migration_journal_v1 WHERE scope='core' AND owner_id='core' AND step_id=?", contract.ID).Scan(&row).Error; err != nil || row.Checksum != contract.Checksum || row.State != "RUNNING" {
+			return false
+		}
+	}
+	return true
 }

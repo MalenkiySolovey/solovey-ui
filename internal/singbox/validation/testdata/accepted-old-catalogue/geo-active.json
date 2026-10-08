@@ -1,0 +1,12 @@
+{
+  "route": {
+    "rules": [
+      {
+        "geosite": [
+          "legacy-unpinned"
+        ],
+        "action": "reject"
+      }
+    ]
+  }
+}

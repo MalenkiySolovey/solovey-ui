@@ -109,7 +109,7 @@ func TestInitRunsSequentialMigrationsBeforeCurrentSchemaBootstrap(t *testing.T) 
 	for _, statement := range []string{
 		`CREATE TABLE settings (id integer PRIMARY KEY AUTOINCREMENT, key text, value text)`,
 		`INSERT INTO settings(key,value) VALUES('version','1.4.3')`,
-		`CREATE TABLE clients (id integer PRIMARY KEY AUTOINCREMENT, enable boolean, name text)`,
+		`CREATE TABLE clients (id integer PRIMARY KEY AUTOINCREMENT, enable boolean, name text, config blob, inbounds blob, links blob)`,
 		`INSERT INTO clients(enable,name) VALUES(1,'migrated-client')`,
 		`CREATE TABLE audit_events (id integer PRIMARY KEY AUTOINCREMENT, date_time integer, actor text, event text, resource text, severity text, ip text, user_agent text, details blob)`,
 	} {
@@ -139,8 +139,8 @@ func TestInitRunsSequentialMigrationsBeforeCurrentSchemaBootstrap(t *testing.T) 
 	if err := DB().Model(&model.Setting{}).Select("value").Where("key = ?", "coreSchemaVersion").Scan(&coreVersion).Error; err != nil {
 		t.Fatal(err)
 	}
-	if coreVersion != "1.11" {
-		t.Fatalf("core schema version = %q, want 1.11", coreVersion)
+	if coreVersion != "1.12" {
+		t.Fatalf("core schema version = %q, want 1.12", coreVersion)
 	}
 }
 

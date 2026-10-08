@@ -1,0 +1,15 @@
+{
+  "inbounds": [
+    {
+      "type": "mixed",
+      "tag": "zero",
+      "sniff": false,
+      "sniff_override_destination": false,
+      "sniff_timeout": "0s",
+      "domain_strategy": "",
+      "udp_disable_domain_unmapping": false,
+      "proxy_protocol": false,
+      "proxy_protocol_accept_no_header": false
+    }
+  ]
+}

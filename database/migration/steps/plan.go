@@ -3,6 +3,8 @@ package steps
 import (
 	"fmt"
 
+	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
+
 	"gorm.io/gorm"
 )
 
@@ -51,6 +53,10 @@ func RunPending(tx *gorm.DB, dbVersion string, legacyConfig []byte) (string, err
 }
 
 func RunCorePending(tx *gorm.DB, coreVersion string) (string, error) {
+	return RunCorePendingWithOptions(tx, coreVersion, CoreOptions{})
+}
+
+func RunCorePendingWithOptions(tx *gorm.DB, coreVersion string, options CoreOptions) (string, error) {
 	if coreVersion == "" {
 		coreVersion = "1.7"
 	}
@@ -63,7 +69,13 @@ func RunCorePending(tx *gorm.DB, coreVersion string) (string, error) {
 		}
 		coreVersion = migrationStep.target
 	}
-	if coreVersion != "1.11" {
+	if coreVersion == "1.11" {
+		if err := upgradeSingBoxStoredState(tx, options); err != nil {
+			return "", fmt.Errorf("core migration to %s: %w", dbschema.CurrentCoreVersion, err)
+		}
+		coreVersion = dbschema.CurrentCoreVersion
+	}
+	if coreVersion != dbschema.CurrentCoreVersion {
 		return "", fmt.Errorf("core schema %q is outside the supported sequential migration plan", coreVersion)
 	}
 	return coreVersion, nil

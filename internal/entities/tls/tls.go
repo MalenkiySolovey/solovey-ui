@@ -169,6 +169,9 @@ func ValidateStored(db *gorm.DB) error {
 	if db == nil {
 		return common.NewError("TLS persistence is unavailable")
 	}
+	if !db.Migrator().HasTable(&model.Tls{}) {
+		return nil
+	}
 	var rows []model.Tls
 	if err := db.Where("id > 0").Order("id").Find(&rows).Error; err != nil {
 		return fmt.Errorf("load stored TLS rows: %w", err)
