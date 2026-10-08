@@ -21,34 +21,35 @@ func (l *observableLogger) Log(ctx context.Context, level log.Level, args []any)
 	if level > l.Level() {
 		return
 	}
-	msg := suiLog.SanitizeMessage(F.ToString(args...))
 	l.access.Lock()
 	defer l.access.Unlock()
 	if l.closed {
 		return
 	}
+	msg := suiLog.SanitizeMessage(l.sanitize(F.ToString(args...)))
+	tag := suiLog.SanitizeMessage(l.sanitize(l.tag))
 	switch level {
 	case log.LevelInfo:
-		suiLog.CoreInfo(l.tag, msg)
+		suiLog.CoreInfo(tag, msg)
 	case log.LevelWarn:
-		suiLog.CoreWarning(l.tag, msg)
+		suiLog.CoreWarning(tag, msg)
 	case log.LevelPanic:
 	case log.LevelFatal:
 	case log.LevelError:
-		suiLog.CoreError(l.tag, msg)
+		suiLog.CoreError(tag, msg)
 	default:
-		suiLog.CoreDebug(l.tag, msg)
+		suiLog.CoreDebug(tag, msg)
 	}
 	l.observer.Emit(log.Entry{
 		Level:   level,
 		Message: msg,
 	})
 	if l.platformWriter != nil {
-		message := l.formatter.Format(ctx, level, suiLog.SanitizeMessage(l.tag), msg, time.Now())
+		message := l.formatter.Format(ctx, level, suiLog.SanitizeMessage(l.sanitize(l.tag)), msg, time.Now())
 		l.platformWriter.WriteMessage(level, suiLog.SanitizeMessage(message))
 	}
 	if (l.filePath != "" || l.writer != os.Stderr) && l.writer != nil {
-		message := l.formatter.Format(ctx, level, l.tag, msg, time.Now())
+		message := l.formatter.Format(ctx, level, suiLog.SanitizeMessage(l.sanitize(l.tag)), msg, time.Now())
 		_, _ = l.writer.Write([]byte(message))
 	}
 }

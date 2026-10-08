@@ -126,6 +126,11 @@ func (s *Box) close() error {
 	if s.connTracker != nil {
 		s.connTracker.Close()
 	}
+	// Quiesce generation-owned log callbacks before attached API subscribers
+	// close. The pinned Factory has an attachment slot, no detach RPC.
+	if s.logFactory != nil {
+		s.logFactory.AttachPlatformWriter(nil)
+	}
 	for _, item := range []struct {
 		name  string
 		owner adapter.Lifecycle

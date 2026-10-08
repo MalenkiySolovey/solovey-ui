@@ -220,3 +220,13 @@ WARP/WireGuard save/apply/reapply, and installed paid-component persistence with
 synthetic nonmonetary state on FriendlyWrt 25.12.5. Earlier v1.5.10 boundaries
 above record integration history. No upstream application source or tests were
 copied; existing module licenses and notices remain authoritative.
+# Stage 2 private runtime API adaptation
+
+The private CoreRuntime API boundary independently adapts official sing-box
+v1.14.2 (af6e64c3b69e6132ebaee0e1a3d24e93903f6709, GPL-3.0-or-later)
+service/api, daemon/attached_service.go, daemon/server.go and StartedService
+protocol semantics through the existing Go module. Generation publication,
+credential redaction, typed observations and bounded operations remain Solovey
+owners. No upstream application source or tests were copied; raw browser API
+and host daemon controls are excluded. This is partial Stage 2 integration and
+does not advance the original S-UI complete parity boundary or product release.

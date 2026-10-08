@@ -22,6 +22,7 @@ type coreRuntime struct {
 	endpointManager adapter.EndpointManager
 	router          adapter.Router
 	factory         log.Factory
+	generation      string
 }
 
 // withRuntime keeps the lifecycle read lock for the complete operation. The
@@ -44,6 +45,9 @@ func (c *Core) withRuntime(fn func(coreRuntime) error) error {
 		endpointManager: c.endpointManager,
 		router:          c.router,
 		factory:         c.factory,
+	}
+	if c.privateAPI != nil {
+		runtime.generation = c.privateAPI.generation
 	}
 	c.access.RUnlock()
 	return fn(runtime)
