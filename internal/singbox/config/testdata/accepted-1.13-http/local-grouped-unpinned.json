@@ -1,0 +1,23 @@
+{
+  "route": {
+    "rules": [
+      {
+        "domain_suffix": [
+          "example"
+        ],
+        "rule_set": [
+          "custom"
+        ],
+        "action": "reject"
+      }
+    ],
+    "rule_set": [
+      {
+        "type": "local",
+        "tag": "custom",
+        "format": "source",
+        "path": "operator-rule.json"
+      }
+    ]
+  }
+}

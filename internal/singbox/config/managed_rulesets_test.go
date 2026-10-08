@@ -1,6 +1,7 @@
 package singboxconfig
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"os"
@@ -17,12 +18,9 @@ func TestNormalizeBaseConfigNormalizesManagedRuSmartForStorage(t *testing.T) {
     "rules": [],
     "rule_set": [{
       "tag": "preset-ru-direct-geosite",
-      "type": "remote",
-      "format": "source",
-      "url": "https://example.invalid/geosite.dat",
-      "download_detour": "proxy",
-      "update_interval": "1h",
-      "path": "/tmp/absolute.srs"
+      "type": "local",
+      "format": "binary",
+      "path": "rulesets/geosite-ru-smart/direct-ru.srs"
     }]
   }
 }`))
@@ -44,6 +42,27 @@ func TestNormalizeBaseConfigNormalizesManagedRuSmartForStorage(t *testing.T) {
 		if _, ok := ruleSet[key]; ok {
 			t.Fatalf("%s should be stripped from managed local rule-set: %#v", key, ruleSet)
 		}
+	}
+}
+
+func TestManagedRuleSetConflictPreservesSourceBeforeAssetPreparation(t *testing.T) {
+	data := json.RawMessage(`{"route":{"rule_set":[{"tag":"preset-ru-direct-geosite","type":"remote","format":"source","url":"https://example.invalid/custom.json","download_detour":"proxy","update_interval":"1h"}]}}`)
+	called := false
+	restore := setGeositeRuSmartDownloaderForTest(func(context.Context, string) ([]byte, error) {
+		called = true
+		return testGeositeDat(), nil
+	})
+	defer restore()
+	got, changed, err := NormalizeManagedRuleSetsForStorage(data)
+	if err == nil || changed || !bytes.Equal(got, data) {
+		t.Fatal("managed identity conflict lost source")
+	}
+	if err := EnsureManagedRuleSetsForConfig(data); err == nil || called {
+		t.Fatal("conflicting operator definition reached managed asset download")
+	}
+	got, err = RewriteManagedRuleSetsForRuntime(data)
+	if err == nil || !bytes.Equal(got, data) {
+		t.Fatal("runtime rewrite erased custom definition")
 	}
 }
 

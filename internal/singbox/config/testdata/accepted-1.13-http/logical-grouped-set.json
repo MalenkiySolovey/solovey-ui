@@ -1,0 +1,39 @@
+{
+  "route": {
+    "rules": [
+      {
+        "domain_suffix": [
+          "example"
+        ],
+        "rule_set": [
+          "logical"
+        ],
+        "action": "reject"
+      }
+    ],
+    "rule_set": [
+      {
+        "type": "inline",
+        "tag": "logical",
+        "rules": [
+          {
+            "type": "logical",
+            "mode": "or",
+            "rules": [
+              {
+                "domain_suffix": [
+                  "other"
+                ]
+              },
+              {
+                "domain_suffix": [
+                  "third"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

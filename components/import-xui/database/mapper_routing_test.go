@@ -453,8 +453,17 @@ func TestApply_RoutingMergesIntoLiveConfig(t *testing.T) {
 	if u, _ := gs["url"].(string); !strings.Contains(u, ".srs") {
 		t.Errorf("geosite rule set missing a usable url: %v", gs)
 	}
-	if gs["type"] != "remote" || gs["download_detour"] != "direct" {
+	if gs["type"] != "remote" || gs["http_client"] == nil || gs["download_detour"] != nil {
 		t.Errorf("geosite rule set is not a valid remote rule set: %v", gs)
+	}
+	clients, _ := parsed["http_clients"].([]any)
+	validDirect := false
+	for _, raw := range clients {
+		client, _ := raw.(map[string]any)
+		validDirect = validDirect || (client["tag"] == gs["http_client"] && client["engine"] == "go" && client["version"] == float64(2) && client["detour"] == nil)
+	}
+	if !validDirect {
+		t.Fatal("import did not preserve explicit direct HTTP policy")
 	}
 	dns := parsed["dns"].(map[string]any)
 	if servers, _ := dns["servers"].([]any); len(servers) == 0 {

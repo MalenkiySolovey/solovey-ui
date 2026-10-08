@@ -47,6 +47,49 @@ type RuntimeProjection struct {
 	Eligibility       runtimeprojection.Report
 	RuleCompatibility []singboxvalidation.RuleFinding
 	DNSCompatibility  []diagnostics.Finding
+	HTTPCompatibility []diagnostics.Finding
+}
+
+// PrepareHTTPDownloadsFromDB adapts a new/edit/import candidate to the shared
+// HTTP owner using the transaction's actual outbound catalogue. It publishes
+// nothing and validates all other current semantics before returning base data.
+func (b SingBoxConfigBuilder) PrepareHTTPDownloadsFromDB(db *gorm.DB, data string) (string, RuntimeProjection, error) {
+	projection, err := b.BuildCandidateProjectionFromDB(db, data, false)
+	if len(projection.Config) == 0 {
+		return data, projection, err
+	}
+	if err != nil && diagnostics.FirstError(projection.HTTPCompatibility) == nil {
+		return data, projection, err
+	}
+	prepared, err := singboxconfig.PrepareHTTPDownloads(projection.Config)
+	projection.HTTPCompatibility = prepared.Findings
+	if err != nil {
+		return data, projection, err
+	}
+	var stored, complete map[string]json.RawMessage
+	if json.Unmarshal([]byte(data), &stored) != nil || json.Unmarshal(prepared.Candidate, &complete) != nil {
+		return data, projection, errors.New("HTTP candidate must be an object")
+	}
+	for _, key := range []string{"http_clients", "route"} {
+		if raw, present := complete[key]; present {
+			stored[key] = raw
+		}
+	}
+	base, err := json.Marshal(stored)
+	if err != nil {
+		return data, projection, err
+	}
+	validated, err := b.BuildCandidateProjectionFromDB(db, string(base), false)
+	validated.HTTPCompatibility = append(prepared.Findings, validated.HTTPCompatibility...)
+	if err != nil {
+		validated.Config = projection.Config
+		return data, validated, err
+	}
+	if err := singboxvalidation.ValidateConfigShape(validated.Config); err != nil {
+		validated.Config = projection.Config
+		return data, validated, err
+	}
+	return string(base), validated, nil
 }
 
 func (b SingBoxConfigBuilder) BuildFromDB(db *gorm.DB, data string) ([]byte, error) {
@@ -84,6 +127,7 @@ func (b SingBoxConfigBuilder) BuildCandidateProjectionFromDB(db *gorm.DB, data s
 			data = setting.Value
 		}
 	}
+	sourceBase := data
 	var compatibility []singboxvalidation.RuleFinding
 	if upgrade {
 		upgrade, err := singboxvalidation.PrepareRuleUpgrade([]byte(data))
@@ -122,16 +166,37 @@ func (b SingBoxConfigBuilder) BuildCandidateProjectionFromDB(db *gorm.DB, data s
 		return RuntimeProjection{}, err
 	}
 
-	config, err := singboxconfig.MergeRuntimeConfig(json.RawMessage(data), singboxconfig.RuntimeSections{
+	sections := singboxconfig.RuntimeSections{
 		Inbounds:  inbounds,
 		Outbounds: outbounds,
 		Services:  services,
 		Endpoints: endpoints,
-	})
+	}
+	config, err := singboxconfig.MergeRuntimeConfig(json.RawMessage(data), sections)
 	projection := RuntimeProjection{Config: config, Eligibility: eligibility, RuleCompatibility: compatibility}
 	if err != nil {
 		return projection, err
 	}
+	original := config
+	if sourceBase != data {
+		original, err = singboxconfig.MergeRuntimeConfig(json.RawMessage(sourceBase), sections)
+		if err != nil {
+			return projection, err
+		}
+	}
+	if upgrade {
+		upgraded, upgradeErr := singboxconfig.PrepareHTTPUpgrade(config)
+		projection.HTTPCompatibility = upgraded.Findings
+		projection.Config = upgraded.Candidate
+		err = upgradeErr
+	} else {
+		projection.HTTPCompatibility, err = singboxconfig.ValidateHTTPConfig(config)
+	}
+	if err != nil {
+		projection.Config = original
+		return projection, err
+	}
+	config = projection.Config
 	if upgrade {
 		upgraded, upgradeErr := singboxconfig.PrepareDNSUpgrade(config)
 		projection.DNSCompatibility = upgraded.Findings
@@ -145,7 +210,7 @@ func (b SingBoxConfigBuilder) BuildCandidateProjectionFromDB(db *gorm.DB, data s
 		err = diagnostics.FirstError(projection.DNSCompatibility)
 	}
 	if err != nil {
-		projection.Config = config
+		projection.Config = original
 	}
 	return projection, err
 }

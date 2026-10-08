@@ -43,11 +43,67 @@ func TestCoreEditorContractIsScopedAndOwnerDerived(t *testing.T) {
 	}
 }
 
+func TestEditorRoutesMountOnSharedAPIRouter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	RegisterRoutes(router.Group("/api"), Deps{RequireScope: func(*gin.Context, string, ...string) bool { return true }, JSONObj: func(c *gin.Context, obj any, err error) {
+		c.JSON(http.StatusOK, gin.H{"success": err == nil, "obj": obj})
+	}})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/editor-contract", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "directHttpClient") {
+		t.Fatal("shared editor facts were not mounted on the actual API route")
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/compatibility-preview", strings.NewReader(`{"subscriptionTemplate":{"rule_set":[]}}`))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"blocked":false`) {
+		t.Fatal("compatibility preview was not mounted on the actual JSON API route")
+	}
+}
+
 func TestCompatibilityPreviewAuthorizationPrecedesReadAndParse(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/compatibility-preview", strings.NewReader("invalid"))
 	h := NewHandler(Deps{RequireScope: func(*gin.Context, string, ...string) bool { return false }, JSONObj: func(*gin.Context, any, error) { t.Fatal("read before authorization") }, JSONMsg: func(*gin.Context, string, error) { t.Fatal("parse before authorization") }})
 	h.PreviewCompatibility(ctx)
+}
+
+func TestSubscriptionCompatibilityPreviewIsPureAndPreservesManualSource(t *testing.T) {
+	for _, test := range []struct {
+		template string
+		blocked  bool
+	}{
+		{`{"rule_set":[{"tag":"operator","type":"remote","url":"https://operator.example/custom.srs","download_detour":"direct"}]}`, false},
+		{`{"rule_set":[{"tag":"operator","type":"remote","url":"https://operator.example/custom.srs","download_detour":"direct","http_client":{"engine":"go","version":2}}]}`, true},
+	} {
+		ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
+		ctx.Request = httptest.NewRequest(http.MethodPost, "/compatibility-preview", strings.NewReader(`{"subscriptionTemplate":`+test.template+`}`))
+		called := false
+		h := NewHandler(Deps{RequireScope: func(*gin.Context, string, ...string) bool { return true }, JSONObj: func(_ *gin.Context, obj any, err error) {
+			called = true
+			raw, _ := json.Marshal(obj)
+			var result struct {
+				Blocked  bool
+				Template json.RawMessage `json:"subscriptionTemplate"`
+				Findings []diagnostics.Finding
+			}
+			if err != nil || json.Unmarshal(raw, &result) != nil || result.Blocked != test.blocked {
+				t.Fatal("preview classification lost")
+			}
+			if test.blocked && (len(result.Template) > 0 || diagnostics.FirstError(result.Findings) == nil) {
+				t.Fatal("manual preview exposed candidate")
+			}
+			if !test.blocked && (!strings.Contains(string(result.Template), "custom.srs") || !strings.Contains(string(result.Template), "http_client")) {
+				t.Fatal("preview lost custom policy")
+			}
+		}})
+		h.PreviewCompatibility(ctx)
+		if !called {
+			t.Fatal("preview did not return")
+		}
+	}
 }
 
 func TestSemanticSaveReasonAndPathSurviveWrapping(t *testing.T) {

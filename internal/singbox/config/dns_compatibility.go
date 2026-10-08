@@ -200,22 +200,68 @@ func prepareDNS(config []byte, historical bool) (DNSCompatibility, error) {
 			}
 		}
 	}
+	result.Findings = append(result.Findings, DNSReferenceFindings(dnsJSON(root))...)
 	return finishDNSProjection(result, root, changed)
 }
 
-func finishDNSProjection(result DNSCompatibility, root dnsObject, changed bool) (DNSCompatibility, error) {
-	if err := diagnostics.FirstError(result.Findings); err != nil {
-		result.Outcome = diagnostics.ManualRequired
-		for _, finding := range result.Findings {
-			if finding.Severity == diagnostics.Error && finding.MigrationOutcome == diagnostics.UnsupportedLegacy {
-				result.Outcome = diagnostics.UnsupportedLegacy
-				break
-			}
-		}
-		return result, err
+// DNSReferenceFindings validates explicit identities for known core dialers.
+// It never chooses a replacement for a missing resolver.
+func DNSReferenceFindings(config []byte) []diagnostics.Finding {
+	var root dnsObject
+	if json.Unmarshal(config, &root) != nil {
+		return nil
 	}
-	if len(result.Findings) > 0 {
-		result.Outcome = diagnostics.AutomaticDiagnostic
+	var section, route dnsObject
+	_ = json.Unmarshal(root["dns"], &section)
+	_ = json.Unmarshal(root["route"], &route)
+	var servers []dnsObject
+	_ = json.Unmarshal(section["servers"], &servers)
+	tags := map[string]bool{}
+	for _, server := range servers {
+		if tag := dnsString(server, "tag"); tag != "" {
+			tags[tag] = true
+		}
+	}
+	var findings []diagnostics.Finding
+	check := func(raw json.RawMessage, path string) {
+		if !activeDNSRaw(raw) {
+			return
+		}
+		var tag string
+		if json.Unmarshal(raw, &tag) != nil {
+			var options dnsObject
+			_ = json.Unmarshal(raw, &options)
+			tag = dnsString(options, "server")
+		}
+		if tag == "" || !tags[tag] {
+			findings = append(findings, dnsFailure(path, "dns_resolver_reference_missing", "Select an existing named DNS server; a missing resolver cannot be inferred.", diagnostics.ManualRequired))
+		}
+	}
+	check(route["default_domain_resolver"], "route.default_domain_resolver")
+	for _, kind := range []string{"outbounds", "endpoints", "http_clients"} {
+		var rows []dnsObject
+		_ = json.Unmarshal(root[kind], &rows)
+		for i, row := range rows {
+			check(row["domain_resolver"], fmt.Sprintf("%s[%d].domain_resolver", kind, i))
+		}
+	}
+	for i, server := range servers {
+		check(server["domain_resolver"], fmt.Sprintf("dns.servers[%d].domain_resolver", i))
+	}
+	var sets []dnsObject
+	_ = json.Unmarshal(route["rule_set"], &sets)
+	for i, set := range sets {
+		var client dnsObject
+		_ = json.Unmarshal(set["http_client"], &client)
+		check(client["domain_resolver"], fmt.Sprintf("route.rule_set[%d].http_client.domain_resolver", i))
+	}
+	return findings
+}
+
+func finishDNSProjection(result DNSCompatibility, root dnsObject, changed bool) (DNSCompatibility, error) {
+	result.Outcome = diagnostics.Outcome(result.Findings)
+	if err := diagnostics.FirstError(result.Findings); err != nil {
+		return result, err
 	}
 	if changed {
 		result.Candidate = dnsJSON(root)

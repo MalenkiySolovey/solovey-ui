@@ -41,3 +41,19 @@ func FirstError(findings []Finding) error {
 	}
 	return nil
 }
+
+// Outcome classifies a complete owner's finding set without changing its data.
+func Outcome(findings []Finding) string {
+	result := LosslessAutomatic
+	for _, finding := range findings {
+		if finding.Severity == Error {
+			if finding.MigrationOutcome == UnsupportedLegacy {
+				return UnsupportedLegacy
+			}
+			result = ManualRequired
+		} else if result == LosslessAutomatic {
+			result = AutomaticDiagnostic
+		}
+	}
+	return result
+}

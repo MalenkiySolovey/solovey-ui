@@ -4,6 +4,10 @@ import (
 	"encoding/json"
 	"strings"
 
+	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
+	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 	subcanonical "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 )
 
@@ -19,7 +23,7 @@ const defaultJson = `
       "mtu": 9000,
       "auto_route": true,
       "strict_route": false,
-      "endpoint_independent_nat": false,
+			"dns_mode": "disabled",
       "stack": "system",
       "platform": {
         "http_proxy": {
@@ -58,6 +62,18 @@ func RenderJSON(outbounds []map[string]interface{}, options JSONOptions) (string
 	}
 	result, err := json.MarshalIndent(jsonConfig, "", "  ")
 	if err != nil {
+		return "", err
+	}
+	if _, err := validation.ValidateRuleConditions(result); err != nil {
+		return "", err
+	}
+	if _, err := singboxconfig.ValidateHTTPConfig(result); err != nil {
+		return "", err
+	}
+	if _, err := singboxconfig.ValidateDNSConfig(result); err != nil {
+		return "", err
+	}
+	if err := diagnostics.FirstError(entityinbounds.TUNDNSFindings(result)); err != nil {
 		return "", err
 	}
 	return string(result), nil
@@ -149,6 +165,9 @@ func ApplyJSONOptions(jsonConfig *map[string]interface{}, options JSONOptions) e
 	if _, ok := othersJson["experimental"]; ok {
 		(*jsonConfig)["experimental"] = othersJson["experimental"]
 	}
+	if clients, ok := othersJson["http_clients"]; ok {
+		(*jsonConfig)["http_clients"] = clients
+	}
 	if _, ok := othersJson["rule_set"]; ok {
 		route["rule_set"] = othersJson["rule_set"]
 	}
@@ -156,8 +175,11 @@ func ApplyJSONOptions(jsonConfig *map[string]interface{}, options JSONOptions) e
 		rules := append(rules_start, settingRules...)
 		route["rules"] = append(rules, rules_end...)
 	}
-	if defaultDomainResolver, ok := othersJson["default_domain_resolver"].(string); ok {
+	if defaultDomainResolver, ok := othersJson["default_domain_resolver"]; ok {
 		route["default_domain_resolver"] = defaultDomainResolver
+	}
+	if defaultHTTPClient, ok := othersJson["default_http_client"]; ok {
+		route["default_http_client"] = defaultHTTPClient
 	}
 	addDirectRules(route, options.DirectRules)
 	(*jsonConfig)["route"] = route
@@ -194,7 +216,7 @@ func mergeDirectRuleSets(existing interface{}) []interface{} {
 	seen := map[string]bool{}
 	if ruleSets, ok := existing.([]interface{}); ok {
 		for _, ruleSet := range ruleSets {
-			if tag, ok := ruleSetTag(ruleSet); ok {
+			for _, tag := range ruleSetTags(ruleSet) {
 				seen[tag] = true
 			}
 			result = append(result, ruleSet)
@@ -220,21 +242,31 @@ func ruleSetTag(ruleSet interface{}) (string, bool) {
 	return tag, ok && tag != ""
 }
 
+func ruleSetTags(ruleSet interface{}) []string {
+	object, ok := ruleSet.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+	raw, _ := json.Marshal(object["tag"])
+	tags, _ := singboxconfig.RuleSetTags(raw)
+	return tags
+}
+
 func directRuleSets() []interface{} {
 	return []interface{}{
 		map[string]interface{}{
-			"tag":             "geosite-private",
-			"type":            "remote",
-			"format":          "binary",
-			"url":             "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/private.srs",
-			"download_detour": "direct",
+			"tag":         "geosite-private",
+			"type":        "remote",
+			"format":      "binary",
+			"url":         "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geosite/private.srs",
+			"http_client": json.RawMessage(singboxconfig.ExplicitDirectHTTPClient()),
 		},
 		map[string]interface{}{
-			"tag":             "geoip-private",
-			"type":            "remote",
-			"format":          "binary",
-			"url":             "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip/private.srs",
-			"download_detour": "direct",
+			"tag":         "geoip-private",
+			"type":        "remote",
+			"format":      "binary",
+			"url":         "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@sing/geo/geoip/private.srs",
+			"http_client": json.RawMessage(singboxconfig.ExplicitDirectHTTPClient()),
 		},
 	}
 }

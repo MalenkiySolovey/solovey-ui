@@ -1,0 +1,26 @@
+{
+  "route": {
+    "final": "proxy",
+    "rule_set": [
+      {
+        "type": "remote",
+        "tag": "custom",
+        "format": "source",
+        "url": "http://127.0.0.1:18080/custom.json",
+        "http_client": {}
+      }
+    ]
+  },
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "socks",
+      "tag": "proxy",
+      "server": "127.0.0.1",
+      "server_port": 1080
+    }
+  ]
+}

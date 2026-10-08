@@ -78,5 +78,8 @@ func normalizeSingBoxBaseConfig(config json.RawMessage) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	if _, err := singboxconfig.ValidateHTTPConfig(canonical); err != nil {
+		return "", err
+	}
 	return singboxconfig.NormalizeBaseConfig(canonical)
 }

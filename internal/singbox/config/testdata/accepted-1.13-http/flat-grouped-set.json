@@ -1,0 +1,28 @@
+{
+  "route": {
+    "rules": [
+      {
+        "domain_suffix": [
+          "example"
+        ],
+        "rule_set": [
+          "flat"
+        ],
+        "action": "reject"
+      }
+    ],
+    "rule_set": [
+      {
+        "type": "inline",
+        "tag": "flat",
+        "rules": [
+          {
+            "domain_suffix": [
+              "other"
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}

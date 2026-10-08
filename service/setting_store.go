@@ -6,6 +6,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	subformats "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/formats"
 	"gorm.io/gorm"
 )
 
@@ -44,6 +45,13 @@ func (s *SettingService) getString(key string) (string, error) {
 }
 
 func (s *SettingService) saveSetting(key string, value string) error {
+	if key == settingKeySubJsonExt {
+		prepared, err := subformats.CanonicalJSONExtension([]byte(value))
+		if err != nil {
+			return err
+		}
+		value = string(prepared.Candidate)
+	}
 	return s.settingsManager().SetString(key, value)
 }
 

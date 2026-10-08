@@ -1,0 +1,23 @@
+{
+  "route": {
+    "rule_set": [
+      {
+        "type": "remote",
+        "tag": "custom",
+        "format": "source",
+        "url": "http://127.0.0.1:18080/custom.json",
+        "http_client": {
+          "engine": "go",
+          "version": 2
+        },
+        "download_detour": "direct"
+      }
+    ]
+  },
+  "outbounds": [
+    {
+      "type": "direct",
+      "tag": "direct"
+    }
+  ]
+}

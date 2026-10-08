@@ -7,6 +7,7 @@
     </v-col>
   </v-row>
   <v-expansion-panels>
+    <CoreHttpClients :data="appConfig" />
     <v-expansion-panel :title="$t('basic.log.title')">
       <v-expansion-panel-text>
         <v-row>
@@ -359,6 +360,7 @@
 <script lang="ts" setup>
 import { onMounted } from 'vue'
 import Dial from '@/components/fields/Dial.vue'
+import CoreHttpClients from '@/components/settings/CoreHttpClients.vue'
 import SettingInfo from '@/components/settings/SettingInfo.vue'
 import { useBasicsPage } from '@/features/useBasicsPage'
 import { coreConfigContract, loadCoreConfigContract } from '@/types/coreConfigContract'

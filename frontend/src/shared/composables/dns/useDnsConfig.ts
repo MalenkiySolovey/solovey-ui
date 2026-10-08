@@ -4,8 +4,7 @@ import { useI18n } from 'vue-i18n'
 import { Config } from '@/types/config'
 import { dnsRule } from '@/types/dns'
 import { FindDiff } from '@/plugins/utils'
-import HttpUtils from '@/plugins/httputil'
-import { loadCoreConfigContract, type CompatibilityPreview } from '@/types/coreConfigContract'
+import { loadCoreConfigContract, previewCoreCompatibility, type CompatibilityPreview } from '@/types/coreConfigContract'
 
 export const useDnsConfig = () => {
   const { t } = useI18n()
@@ -74,7 +73,7 @@ export const useDnsConfig = () => {
   const previewCompatibility = async () => {
     loading.value = true
     try {
-      const response = await HttpUtils.post('api/config/compatibility-preview', { config: appConfig.value })
+      const response = await previewCoreCompatibility({ config: appConfig.value })
       if (response.success) compatibilityPreview.value = response.obj
     } finally { loading.value = false }
   }

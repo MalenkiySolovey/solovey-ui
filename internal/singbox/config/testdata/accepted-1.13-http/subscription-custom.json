@@ -1,0 +1,1 @@
+{"rule_set":[{"tag":"geosite-private","type":"remote","format":"binary","url":"https://operator.example/private.srs","download_detour":"direct","update_interval":"2h"},{"tag":"custom","type":"inline","rules":[{"domain_suffix":["custom.example"]}]}],"rules":[{"rule_set":["custom"],"action":"reject"}],"default_domain_resolver":{"server":"dns","disable_cache":false,"rewrite_ttl":0}}

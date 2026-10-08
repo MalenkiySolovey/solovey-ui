@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 )
 
 const DefaultBaseConfig = `{
@@ -138,6 +140,19 @@ func (d Document) validateUniqueTaggedObjects(section string, field string) erro
 	for i, row := range rows {
 		rawTag, ok := row["tag"]
 		if !ok {
+			continue
+		}
+		if section == "route" && field == "rule_set" {
+			tags, err := RuleSetTags(rawTag)
+			if err != nil {
+				return diagnostics.FirstError([]diagnostics.Finding{ruleSetFailure(fmt.Sprintf("route.rule_set[%d].tag", i), "ruleset_tag_invalid", "Use a nonempty rule-set tag or tag list.")})
+			}
+			for _, tag := range tags {
+				if _, exists := seen[tag]; exists {
+					return diagnostics.FirstError([]diagnostics.Finding{ruleSetFailure(fmt.Sprintf("route.rule_set[%d].tag", i), "ruleset_tag_duplicate", "All rule-set tags, including list members, must be unique.")})
+				}
+				seen[tag] = struct{}{}
+			}
 			continue
 		}
 		var tag string

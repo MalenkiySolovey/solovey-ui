@@ -9,6 +9,12 @@ export interface CoreConfigContract {
   tunDnsUnavailableModes?: Record<string, string>
   maxRuleDepth: number
   maxRuleNodes: number
+	 httpClientFields?: Record<string, string[]>
+	 httpEngines?: string[]
+	 httpVersions?: string[]
+	 httpUnavailableEngines?: Record<string, string>
+	 httpUnavailableVersions?: Record<string, string>
+	 directHttpClient?: Record<string, unknown>
 }
 export interface CompatibilityFinding {
   kind: string
@@ -25,6 +31,9 @@ export interface CompatibilityPreview {
   findings: CompatibilityFinding[] | null
   blocked: boolean
   dns?: Record<string, unknown>
+	 http_clients?: Record<string, unknown>[]
+	 route?: Record<string, unknown>
+	 subscriptionTemplate?: Record<string, unknown>
 }
 
 // Both layouts and modals share facts from the backend owner. A failed fetch
@@ -35,10 +44,16 @@ export function loadCoreConfigContract(): Promise<void> {
   if (coreConfigContract.value) return Promise.resolve()
   if (loadingContract) return loadingContract
   loadingContract = (async () => {
-    const response = await HttpUtils.get('api/config/editor-contract')
+    const response = await HttpUtils.get('api/editor-contract')
     if (response.success && response.obj?.dnsActions) coreConfigContract.value = response.obj
   })().finally(() => { loadingContract = undefined })
   return loadingContract
+}
+
+// The panel's general POST default is form encoding; this owner endpoint takes
+// a JSON object so nested drafts and explicit false/zero values remain intact.
+export function previewCoreCompatibility(request: { config?: object; subscriptionTemplate?: object; includeHttp?: boolean; prepareHttpDownloads?: boolean }) {
+  return HttpUtils.post('api/compatibility-preview', request, { headers: { 'Content-Type': 'application/json' } })
 }
 
 export function serializeDNSRule(draft: Record<string, any>, originalAction: string | undefined, contract: CoreConfigContract | undefined): Record<string, any> {
