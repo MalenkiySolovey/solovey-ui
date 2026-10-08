@@ -6,8 +6,8 @@ set -Eeuo pipefail
 # extraction of the verified official SDK archive. It does not build a second
 # release profile, boot OpenWrt, or create an operating-system image.
 
-readonly GO_TOOLCHAIN_FILENAME='go1.26.6.linux-amd64.tar.gz'
-readonly GO_TOOLCHAIN_SHA256='708effb774be8237570d0add163225abbdfaf4fca28b2611df167beba4feef89'
+readonly GO_TOOLCHAIN_FILENAME='go1.26.9.linux-amd64.tar.gz'
+readonly GO_TOOLCHAIN_SHA256='42d158b4d8f7b61ac0a830567c940a86098fb7aac52e467a5ebec03ef5cc2f8d'
 readonly OPENWRT_MAKE_PROGRAM='/usr/bin/make'
 readonly TRUSTED_BASE_PATH='/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
 
@@ -24,7 +24,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/openwrt-target-profile.sh"
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/openwrt-package-build.sh --sdk-archive <official-sdk.tar.zst> --go-toolchain-archive <go1.26.6.linux-amd64.tar.gz> --source <worktree> --trust-roots-file <public-base64-file> --out <new-output-dir> [--jobs <count>] [--target-profile <x86-64|rockchip-armv8>]
+Usage: scripts/openwrt-package-build.sh --sdk-archive <official-sdk.tar.zst> --go-toolchain-archive <go1.26.9.linux-amd64.tar.gz> --source <worktree> --trust-roots-file <public-base64-file> --out <new-output-dir> [--jobs <count>] [--target-profile <x86-64|rockchip-armv8>]
 
 This entrypoint invokes the source-owned canonical stage producer itself. It
 does not accept caller-supplied product binaries or a caller-selected stage.

@@ -35,8 +35,8 @@ go_program=${SOLOVEY_GO_PROGRAM:-$(command -v go || true)}
     exit 1
 }
 [[ -x "$go_program" ]] || { printf '[native-linux-contract] ERROR: Go program is unavailable: %s\n' "$go_program" >&2; exit 1; }
-"$go_program" version | grep -Eq '^go version go1\.26\.6 linux/' || {
-    printf '[native-linux-contract] ERROR: exact Go 1.26.6 Linux toolchain is required\n' >&2
+"$go_program" version | grep -Eq '^go version go1\.26\.9 linux/' || {
+    printf '[native-linux-contract] ERROR: exact Go 1.26.9 Linux toolchain is required\n' >&2
     exit 1
 }
 
