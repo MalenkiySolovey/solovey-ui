@@ -6,7 +6,9 @@ import (
 	"net"
 	"time"
 
+	"github.com/sagernet/sing-box/adapter"
 	urltest "github.com/sagernet/sing-box/common/urltest"
+	"github.com/sagernet/sing/service"
 )
 
 const checkTimeout = 15 * time.Second
@@ -32,6 +34,29 @@ func (c *Core) CheckOutbound(ctx context.Context, tag string, link string) Check
 }
 
 func (c *Core) CheckOutboundWithSource(ctx context.Context, tag string, link string, source ProbeSource) (result CheckOutboundResult) {
+	return c.checkOutbound(ctx, "", tag, link, source)
+}
+
+// CheckRuntimeOutbound binds a bounded manual probe to an accepted generation.
+// The upstream URLTest RPC is fire-and-forget and does not honor caller
+// cancellation; use the existing semantic probe owner instead.
+func (c *Core) CheckRuntimeOutbound(ctx context.Context, generation, tag, link string) CheckOutboundResult {
+	if c == nil {
+		return CheckOutboundResult{Error: CheckOutboundErrorCoreUnavailable}
+	}
+	if generation == "" {
+		return CheckOutboundResult{Error: "stale_generation"}
+	}
+	select {
+	case c.probeSlots <- struct{}{}:
+		defer func() { <-c.probeSlots }()
+	default:
+		return CheckOutboundResult{Error: "runtime_limit_exceeded"}
+	}
+	return c.checkOutbound(ctx, generation, tag, link, ProbeSourceManual)
+}
+
+func (c *Core) checkOutbound(ctx context.Context, generation, tag, link string, source ProbeSource) (result CheckOutboundResult) {
 	if c == nil {
 		return CheckOutboundResult{Error: CheckOutboundErrorCoreUnavailable}
 	}
@@ -56,6 +81,10 @@ func (c *Core) CheckOutboundWithSource(ctx context.Context, tag string, link str
 	c.mutation.Lock()
 	locked = true
 	err := c.withRuntime(func(current coreRuntime) error {
+		if generation != "" && current.generation != generation {
+			result.Error = "stale_generation"
+			return nil
+		}
 		// Resolve identity and reserve an observation atomically with respect to
 		// target removal/replacement, then release the mutation lock for network.
 		ob, ok := current.outboundManager.Outbound(tag)
@@ -77,6 +106,11 @@ func (c *Core) CheckOutboundWithSource(ctx context.Context, tag string, link str
 		}
 		result.OK = true
 		result.Delay = delay
+		if generation != "" {
+			if history := service.PtrFromContext[urltest.HistoryStorage](current.ctx); history != nil {
+				history.StoreURLTestHistory(tag, &adapter.URLTestHistory{Time: time.Now(), Delay: delay})
+			}
+		}
 		return nil
 	})
 	if errors.Is(err, ErrCoreUnavailable) {

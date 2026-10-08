@@ -54,7 +54,7 @@ require (
 	github.com/bytedance/gopkg v0.1.3 // indirect
 	github.com/bytedance/sonic v1.15.0 // indirect
 	github.com/bytedance/sonic/loader v0.5.0 // indirect
-	github.com/caddyserver/certmagic v0.25.3-0.20260421143802-60d9d8b415d6 // indirect
+	github.com/caddyserver/certmagic v0.25.3-0.20260421143802-60d9d8b415d6
 	github.com/caddyserver/zerossl v0.1.5 // indirect
 	github.com/cenkalti/backoff/v5 v5.0.3 // indirect
 	github.com/cloudwego/base64x v0.1.6 // indirect
@@ -108,7 +108,7 @@ require (
 	github.com/mdlayher/socket v0.6.0 // indirect
 	github.com/metacubex/utls v1.8.7 // indirect
 	github.com/mholt/acmez/v3 v3.1.6 // indirect
-	github.com/miekg/dns v1.1.72 // indirect
+	github.com/miekg/dns v1.1.72
 	github.com/mitchellh/go-ps v1.0.0 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.3-0.20250322232337-35a7c28c31ee // indirect
@@ -201,7 +201,7 @@ require (
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
-	google.golang.org/grpc v1.83.2 // indirect
+	google.golang.org/grpc v1.83.2
 	google.golang.org/protobuf v1.36.11
 	lukechampine.com/blake3 v1.4.1 // indirect
 )

@@ -89,6 +89,7 @@ type defaultFactory struct {
 	started        bool
 	closeOnce      sync.Once
 	closeErr       error
+	secrets        []string
 }
 
 func NewDefaultFactory(
@@ -97,6 +98,9 @@ func NewDefaultFactory(
 	writer io.Writer,
 	filePath string,
 ) log.ObservableFactory {
+	if ctx == nil {
+		ctx = context.Background()
+	}
 	subscriber := observable.NewSubscriber[log.Entry](128)
 	factory := &defaultFactory{
 		ctx:       ctx,
@@ -106,6 +110,9 @@ func NewDefaultFactory(
 		observer:  observable.NewObserver(subscriber, 128),
 	}
 	factory.SetLevel(log.LevelTrace)
+	if secrets, ok := ctx.Value(secretContextKey{}).([]string); ok {
+		factory.secrets = append([]string(nil), secrets...)
+	}
 	return factory
 }
 
@@ -135,6 +142,7 @@ func (f *defaultFactory) Close() error {
 		f.access.Lock()
 		f.closed = true
 		f.platformWriter = nil
+		f.secrets = nil
 		file := f.file
 		f.file = nil
 		f.access.Unlock()

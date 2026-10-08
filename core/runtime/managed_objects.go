@@ -15,6 +15,9 @@ func (c *Core) AddInbound(config []byte) error {
 		if err := inboundConfig.UnmarshalJSONContext(rt.ctx, config); err != nil {
 			return err
 		}
+		if inboundConfig.Tag == privateAPITag {
+			return errors.New("reserved runtime tag")
+		}
 		if err := rt.inboundManager.Create(
 			rt.ctx,
 			rt.router,
@@ -60,6 +63,9 @@ func (c *Core) AddOutbound(config []byte) error {
 		if err := outboundConfig.UnmarshalJSONContext(rt.ctx, config); err != nil {
 			return err
 		}
+		if outboundConfig.Tag == privateAPITag {
+			return errors.New("reserved runtime tag")
+		}
 		outboundCtx := adapter.WithContext(rt.ctx, &adapter.InboundContext{Outbound: outboundConfig.Tag})
 		c.probeHealth.remove(outboundConfig.Tag)
 		if err := rt.outboundManager.Create(
@@ -92,6 +98,9 @@ func (c *Core) AddEndpoint(config []byte) error {
 		if err := endpointConfig.UnmarshalJSONContext(rt.ctx, config); err != nil {
 			return err
 		}
+		if endpointConfig.Tag == privateAPITag {
+			return errors.New("reserved runtime tag")
+		}
 		c.probeHealth.remove(endpointConfig.Tag)
 		if err := rt.endpointManager.Create(
 			rt.ctx,
@@ -123,6 +132,9 @@ func (c *Core) AddService(config []byte) error {
 		if err := serviceConfig.UnmarshalJSONContext(rt.ctx, config); err != nil {
 			return err
 		}
+		if serviceConfig.Type == "api" || serviceConfig.Tag == privateAPITag {
+			return errors.New("private runtime API is lifecycle-owned")
+		}
 		return rt.serviceManager.Create(
 			rt.ctx,
 			rt.factory.NewLogger("service/"+serviceConfig.Type+"["+serviceConfig.Tag+"]"),
@@ -133,6 +145,9 @@ func (c *Core) AddService(config []byte) error {
 }
 
 func (c *Core) RemoveService(tag string) error {
+	if tag == privateAPITag {
+		return errors.New("private runtime API is lifecycle-owned")
+	}
 	return c.withMutation(func(rt coreRuntime) error {
 		logger.Info("remove service: ", tag)
 		return rt.serviceManager.Remove(tag)
