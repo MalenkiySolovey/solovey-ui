@@ -111,7 +111,7 @@ func ensureDeploymentRetentionCompatibility(database *gorm.DB) error {
 
 func schemaModels() []any {
 	return []any{
-		&model.Setting{}, &model.Tls{}, &model.Inbound{}, &model.Outbound{},
+		&model.Setting{}, &model.Tls{}, &model.TLSCertificateProvider{}, &model.Inbound{}, &model.Outbound{},
 		&model.Service{}, &model.Endpoint{}, &model.User{}, &model.Tokens{},
 		&model.Stats{}, &model.ClientIP{}, &model.Client{}, &model.Changes{},
 		&model.AuditEvent{}, &model.FailoverMemberState{}, &model.InboundDraft{},

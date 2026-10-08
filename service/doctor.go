@@ -14,6 +14,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	opsdoctor "github.com/MalenkiySolovey/solovey-ui/internal/ops/doctor"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
@@ -65,6 +66,13 @@ func (s *DoctorService) Run(hostname string) opsdoctor.Report {
 		return opsdoctor.FinishReport(start, items)
 	}
 	projection, err := NewSingBoxConfigBuilder(s.runtime()).BuildProjectionFromDB(dbsqlite.DB(), "")
+	for i, finding := range append(append([]diagnostics.Finding{}, projection.TLSCompatibility...), projection.TransportCompatibility...) {
+		severity := opsdoctor.SeverityWarn
+		if finding.Severity == diagnostics.Error {
+			severity = opsdoctor.SeverityError
+		}
+		items = append(items, opsdoctor.Item{ID: fmt.Sprintf("tls-transport-compatibility-%d", i), Title: "TLS and transport compatibility", Severity: severity, Message: finding.Message, Action: "Correct the indicated owner path before retrying. Original storage is preserved.", Details: finding})
+	}
 	for i, finding := range projection.DNSCompatibility {
 		severity := opsdoctor.SeverityWarn
 		if finding.Severity == "error" {

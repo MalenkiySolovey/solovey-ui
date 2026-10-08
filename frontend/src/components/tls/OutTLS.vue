@@ -6,6 +6,7 @@
       </v-col>
     </v-row>
     <template v-if="tls.enabled">
+      <v-text-field v-if="contract?.fields.client.includes('handshake_timeout')" v-model="tls.handshake_timeout" label="Handshake timeout" placeholder="10s" clearable @click:clear="delete tls.handshake_timeout" />
       <v-row>
         <v-col cols="12" sm="6" md="4">
           <v-switch color="primary" :label="$t('tls.disableSni')" v-model="disable_sni" hide-details></v-switch>
@@ -24,10 +25,10 @@
             shaped
             mandatory>
               <v-btn
-                @click="tls.certificate=undefined; tls.certificate_path=''"
+                @click="selectCertificateMode(0)"
               >{{ $t('tls.usePath') }}</v-btn>
               <v-btn
-                @click="tls.certificate_path=undefined; tls.certificate=''"
+                @click="selectCertificateMode(1)"
               >{{ $t('tls.useText') }}</v-btn>
             </v-btn-toggle>
           </v-col>
@@ -130,22 +131,26 @@
         </v-col>
       </v-row>
       <template v-if="optionClientCert">
+        <v-btn-toggle v-model="clientPairUsePath" mandatory>
+          <v-btn @click="selectClientPairMode(0)">{{ $t('tls.usePath') }}</v-btn>
+          <v-btn @click="selectClientPairMode(1)">{{ $t('tls.useText') }}</v-btn>
+        </v-btn-toggle>
         <v-row>
-          <v-col cols="12" sm="6">
+          <v-col cols="12" sm="6" v-if="clientPairUsePath === 0">
             <v-text-field
               :label="$t('tls.clientCertPath')"
               hide-details
               v-model="tls.client_certificate_path">
             </v-text-field>
           </v-col>
-          <v-col cols="12" sm="6">
+          <v-col cols="12" sm="6" v-if="clientPairUsePath === 0">
             <v-text-field
               :label="$t('tls.clientKeyPath')"
               hide-details
               v-model="tls.client_key_path">
             </v-text-field>
           </v-col>
-          <v-col cols="12" sm="6">
+          <v-col cols="12" sm="6" v-if="clientPairUsePath === 1">
             <v-textarea
               :label="$t('tls.clientCert')"
               rows="3"
@@ -154,7 +159,7 @@
               v-model="clientCertificateText">
             </v-textarea>
           </v-col>
-          <v-col cols="12" sm="6">
+          <v-col cols="12" sm="6" v-if="clientPairUsePath === 1">
             <v-textarea
               :label="$t('tls.clientKey')"
               rows="3"

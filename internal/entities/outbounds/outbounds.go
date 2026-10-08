@@ -9,9 +9,11 @@ import (
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
+	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveeligibility"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
@@ -144,6 +146,23 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 	if err := entityidentity.EnsureOutboundTagAvailable(tx, outbound.Tag, outbound.Id, 0); err != nil {
 		return nil, err
 	}
+	if outbound.Type == "hysteria2" && action == "new" {
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(outbound.Options, &fields) == nil && fields != nil {
+			if _, explicit := fields["disable_chrome_parrot"]; !explicit {
+				fields["disable_chrome_parrot"] = json.RawMessage("false")
+				outbound.Options, _ = json.Marshal(fields)
+			}
+		}
+	}
+	prepared, err := entityprotocol.PrepareUpgrade(outbound.Type, "outbound", "outbound.options", outbound.Options)
+	if err != nil {
+		return nil, err
+	}
+	if err := diagnostics.FirstError(entityprotocol.CurrentFindings(outbound.Type, "outbound", "outbound.options", prepared.Candidate)); err != nil {
+		return nil, err
+	}
+	outbound.Options = prepared.Candidate
 	if outbound.Type == FailoverType {
 		if err := validateFailoverGroup(tx, outbound); err != nil {
 			return nil, err

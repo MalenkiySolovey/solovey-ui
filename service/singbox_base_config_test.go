@@ -5,9 +5,44 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 )
+
+func TestSingBoxBaseProviderDirectSettingsUsesOwnerAndFullPreflight(t *testing.T) {
+	if !registry.Resolve("certificateProviders", "acme").Available() {
+		t.Skip("this composition has no ACME constructor")
+	}
+	settings := initSettingTestDB(t)
+	if err := dbsqlite.DB().AutoMigrate(&model.TLSCertificateProvider{}); err != nil {
+		t.Fatal(err)
+	}
+	if err := settings.setString("config", `{"log":{"disabled":true},"certificate_providers":[{"type":"acme","tag":"native","domain":["fixture.invalid"],"email":"operator@fixture.invalid"}]}`); err != nil {
+		t.Fatal(err)
+	}
+	stored, err := settings.getString("config")
+	if err != nil || strings.Contains(stored, "certificate_providers") {
+		t.Fatal("direct settings write retained a second provider store")
+	}
+	definitions, err := entitytls.ReadProviderDefinitions(dbsqlite.DB())
+	if err != nil || len(definitions) != 1 {
+		t.Fatal("direct settings write bypassed encrypted TLS storage")
+	}
+	before := definitions[0]
+	if err := settings.setString("config", `{"certificate_providers":[{"type":"acme","tag":"broken"}]}`); err == nil {
+		t.Fatal("pinned full constructor failure was accepted")
+	}
+	after, err := entitytls.ReadProviderDefinitions(dbsqlite.DB())
+	if err != nil || len(after) != 1 || string(after[0].Options) != string(before.Options) {
+		t.Fatal("failed native preflight changed provider source")
+	}
+	current, _ := settings.getString("config")
+	if current != stored {
+		t.Fatal("failed preflight changed base source")
+	}
+}
 
 func TestSingBoxBaseConfigStoreSetValidatesAndNormalizesConfig(t *testing.T) {
 	settingService := initSettingTestDB(t)

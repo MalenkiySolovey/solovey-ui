@@ -1,0 +1,1 @@
+{"inbounds":[{"tag":"capture","tls":{"enabled":false,"certificate_path":"legacy-owned/cert.pem","key_path":"legacy-owned/key.pem","insecure":false,"kernel_tx":false},"type":"trojan"}]}

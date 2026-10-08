@@ -2,6 +2,7 @@ import { iMultiplex } from "./multiplex"
 import { iTls } from "./tls"
 import { Dial } from "./dial"
 import { Transport } from "./transport"
+import type { QUICTuning } from './consumerTuning'
 
 export const InTypes = {
   Direct: 'direct',
@@ -109,7 +110,7 @@ export interface Naive extends InboundBasics {
   tls: iTls,
   quic_congestion_control?: "" | "bbr" | "bbr2" | "cubic" | "reno"
 }
-export interface Hysteria extends InboundBasics {
+export interface Hysteria extends InboundBasics, QUICTuning {
   up_mbps: number
   down_mbps: number
   obfs?: string
@@ -144,7 +145,7 @@ export interface TUIC extends InboundBasics {
   zero_rtt_handshake?: boolean
   heartbeat?: string
 }
-export interface Hysteria2 extends InboundBasics {
+export interface Hysteria2 extends InboundBasics, QUICTuning {
   up_mbps?: number
   down_mbps?: number
   obfs?: {

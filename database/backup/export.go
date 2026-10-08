@@ -35,6 +35,7 @@ func backupTables() []backupTable {
 	return []backupTable{
 		{name: "settings", model: &model.Setting{}},
 		{name: "tls", model: &model.Tls{}},
+		{name: "tls_certificate_providers", model: &model.TLSCertificateProvider{}},
 		{name: "inbounds", model: &model.Inbound{}},
 		{name: "inbound_drafts", model: &model.InboundDraft{}},
 		{name: "outbounds", model: &model.Outbound{}},

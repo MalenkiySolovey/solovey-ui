@@ -1,0 +1,1 @@
+{"outbounds":[{"tag":"direct","type":"direct"},{"down_mbps":20,"server":"127.0.0.1","server_port":18443,"tag":"captured","tls":{"enabled":true,"insecure":true},"type":"hysteria2","up_mbps":10}]}

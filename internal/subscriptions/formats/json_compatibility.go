@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
+	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
@@ -32,6 +33,10 @@ func prepareJSONExtension(extension []byte, historical bool) (JSONExtensionCompa
 	result := JSONExtensionCompatibility{Original: bytes.Clone(extension), Candidate: bytes.Clone(extension), Outcome: diagnostics.LosslessAutomatic}
 	if len(bytes.TrimSpace(extension)) == 0 {
 		return result, nil
+	}
+	result.Findings = append(result.Findings, entitytls.PublicExportFindings(extension)...)
+	if diagnostics.FirstError(result.Findings) != nil {
+		return finishExtension(result)
 	}
 	var stored map[string]json.RawMessage
 	if json.Unmarshal(extension, &stored) != nil || stored == nil {

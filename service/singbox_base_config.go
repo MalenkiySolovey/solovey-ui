@@ -2,8 +2,10 @@ package service
 
 import (
 	"encoding/json"
+	"errors"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 	"github.com/MalenkiySolovey/solovey-ui/logger"
@@ -28,16 +30,46 @@ func (s SingBoxBaseConfigStore) Get() (string, error) {
 }
 
 func (s SingBoxBaseConfigStore) Set(config string) error {
-	configs, err := normalizeSingBoxBaseConfig(json.RawMessage(config))
-	if err != nil {
-		return err
+	db := s.settings.settingDatabase()
+	if db == nil {
+		return errors.New("configuration database is unavailable")
 	}
-	return s.settings.setString("config", configs)
+	return db.Transaction(func(tx *gorm.DB) error { return s.Save(tx, json.RawMessage(config)) })
 }
 
 func (s SingBoxBaseConfigStore) Save(tx *gorm.DB, config json.RawMessage) error {
+	if tx == nil {
+		return errors.New("configuration database is unavailable")
+	}
+	return tx.Transaction(func(candidate *gorm.DB) error { return s.save(candidate, config) })
+}
+
+func (s SingBoxBaseConfigStore) save(tx *gorm.DB, config json.RawMessage) error {
+	var submitted map[string]json.RawMessage
+	_ = json.Unmarshal(config, &submitted)
+	if _, hasProviders := submitted["certificate_providers"]; hasProviders {
+		projection, err := NewSingBoxConfigBuilder(nil).BuildCandidateProjectionFromDB(tx, string(config), false)
+		if err != nil {
+			return err
+		}
+		if err := singboxvalidation.ValidateConfig(projection.Config); err != nil {
+			return err
+		}
+	}
+	definitions, err := entitytls.ReadProviderDefinitions(tx)
+	if err != nil {
+		return err
+	}
+	base, definitions, _, err := entitytls.PrepareBaseProviders(config, definitions)
+	if err != nil {
+		return err
+	}
+	config = base
 	configs, err := normalizeSingBoxBaseConfig(config)
 	if err != nil {
+		return err
+	}
+	if err := entitytls.WriteProviderDefinitions(tx, definitions); err != nil {
 		return err
 	}
 	result := tx.Model(model.Setting{}).Where("key = ?", "config").Update("value", configs)
@@ -51,6 +83,12 @@ func (s SingBoxBaseConfigStore) Save(tx *gorm.DB, config json.RawMessage) error 
 }
 
 func (s SingBoxBaseConfigStore) Changed(tx *gorm.DB, config json.RawMessage) (bool, error) {
+	var root map[string]json.RawMessage
+	if json.Unmarshal(config, &root) == nil {
+		if _, providers := root["certificate_providers"]; providers {
+			return true, nil
+		}
+	}
 	configs, err := normalizeSingBoxBaseConfig(config)
 	if err != nil {
 		return false, err
@@ -67,6 +105,12 @@ func (s SingBoxBaseConfigStore) Changed(tx *gorm.DB, config json.RawMessage) (bo
 }
 
 func normalizeSingBoxBaseConfig(config json.RawMessage) (string, error) {
+	var root map[string]json.RawMessage
+	if json.Unmarshal(config, &root) == nil {
+		if _, present := root["certificate_providers"]; present {
+			return "", errors.New("TLS_PROVIDER_STORE_REQUIRED: submit certificate providers through the TLS-owned config save adapter")
+		}
+	}
 	findings, err := singboxvalidation.ValidateRuleConditions(config)
 	if err != nil {
 		return "", err

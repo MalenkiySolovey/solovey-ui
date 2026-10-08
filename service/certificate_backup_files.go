@@ -51,16 +51,34 @@ func certificateReferences(ctx context.Context, db *gorm.DB) (map[string]string,
 			if err := json.Unmarshal(raw, &fields); err != nil {
 				return nil, err
 			}
-			for _, field := range []string{"certificate_path", "key_path"} {
-				var name string
+			paths := []string{"certificate_path", "key_path", "client_certificate_path"}
+			if side == "client" {
+				paths = append(paths, "client_key_path")
+			}
+			for _, field := range paths {
 				if len(fields[field]) == 0 {
 					continue
 				}
-				if err := json.Unmarshal(fields[field], &name); err != nil {
-					return nil, err
+				var name string
+				if json.Unmarshal(fields[field], &name) == nil {
+					if name != "" {
+						result[fmt.Sprintf("tls:%d:%s:%s", profile.Id, side, field)] = name
+					}
+				} else if side == "server" && field == "client_certificate_path" {
+					var names []string
+					if json.Unmarshal(fields[field], &names) != nil || len(names) > backup.MaxOwnerFiles {
+						return nil, errors.New("server client CA file list is invalid or exceeds its bound")
+					}
+					for index, name := range names {
+						if name != "" {
+							result[fmt.Sprintf("tls:%d:%s:%s:%d", profile.Id, side, field, index)] = name
+						}
+					}
+				} else {
+					return nil, errors.New("certificate path has an invalid consumer shape")
 				}
-				if name != "" {
-					result[fmt.Sprintf("tls:%d:%s:%s", profile.Id, side, field)] = name
+				if len(result) > backup.MaxOwnerFiles {
+					return nil, errors.New("certificate inventory exceeds its bound")
 				}
 			}
 		}
@@ -92,10 +110,38 @@ func exportCertificateFiles(ctx context.Context, db *gorm.DB) ([]backup.OwnerFil
 		}
 		result = append(result, backup.OwnerFile{Key: key, Data: data})
 	}
-	return result, nil
+	providerFiles, err := exportProviderCertificateFiles(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	if len(result)+len(providerFiles) > backup.MaxOwnerFiles {
+		return nil, errors.New("certificate inventory exceeds its bound")
+	}
+	for _, file := range providerFiles {
+		total += len(file.Data)
+	}
+	if total > backup.MaxOwnerFilesBytes {
+		return nil, errors.New("certificate backup exceeds bound")
+	}
+	return append(result, providerFiles...), nil
 }
 
 func restoreCertificateFiles(ctx context.Context, db *gorm.DB, files []backup.OwnerFile, publish bool) error {
+	return db.WithContext(ctx).Transaction(func(candidate *gorm.DB) error {
+		return restoreCertificateFilesCandidate(ctx, candidate, files, publish)
+	})
+}
+
+func restoreCertificateFilesCandidate(ctx context.Context, db *gorm.DB, files []backup.OwnerFile, publish bool) error {
+	var providerFiles, credentialFiles []backup.OwnerFile
+	for _, file := range files {
+		if strings.HasPrefix(file.Key, "provider:") {
+			providerFiles = append(providerFiles, file)
+		} else {
+			credentialFiles = append(credentialFiles, file)
+		}
+	}
+	files = credentialFiles
 	refs, err := certificateReferences(ctx, db)
 	if err != nil {
 		return err
@@ -112,6 +158,11 @@ func restoreCertificateFiles(ctx context.Context, db *gorm.DB, files []backup.Ow
 		if block, _ := pem.Decode(f.Data); block == nil {
 			return errors.New("restored certificate file is not PEM")
 		}
+	}
+	if err := restoreProviderCertificateFiles(ctx, db, providerFiles, publish); err != nil {
+		return err
+	}
+	for _, f := range files {
 		name, err := backup.PublishOwnedFile(filepath.Join(ipcert.ManagedCertDir(), "restored"), f.Data, publish)
 		if err != nil {
 			return err
@@ -123,7 +174,7 @@ func restoreCertificateFiles(ctx context.Context, db *gorm.DB, files []backup.Ow
 			continue
 		}
 		parts := strings.Split(f.Key, ":")
-		if len(parts) != 4 {
+		if len(parts) != 4 && len(parts) != 5 {
 			return errors.New("invalid certificate key")
 		}
 		id, err := strconv.ParseUint(parts[1], 10, 64)
@@ -142,12 +193,22 @@ func restoreCertificateFiles(ctx context.Context, db *gorm.DB, files []backup.Ow
 		if err := json.Unmarshal(raw, &fields); err != nil {
 			return err
 		}
-		fields[parts[3]], _ = json.Marshal(name)
+		if len(parts) == 5 {
+			var paths []string
+			index, err := strconv.Atoi(parts[4])
+			if err != nil || json.Unmarshal(fields[parts[3]], &paths) != nil || index < 0 || index >= len(paths) {
+				return errors.New("invalid indexed certificate key")
+			}
+			paths[index] = name
+			fields[parts[3]], _ = json.Marshal(paths)
+		} else {
+			fields[parts[3]], _ = json.Marshal(name)
+		}
 		updated, err := json.Marshal(fields)
 		if err != nil {
 			return err
 		}
-		if err := db.WithContext(ctx).Model(&model.Tls{}).Where("id = ?", id).Update(parts[2], string(updated)).Error; err != nil {
+		if err := db.WithContext(ctx).Model(&model.Tls{}).Where("id = ?", id).Update(parts[2], json.RawMessage(updated)).Error; err != nil {
 			return err
 		}
 	}

@@ -3,11 +3,38 @@ package singboxconfig
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 )
+
+func TestHTTPMemoryBytesRejectsWrappingNegativeInput(t *testing.T) {
+	for _, version := range []int{2, 3} {
+		if _, unavailable := HTTPUnavailableVersions()[fmt.Sprint(version)]; unavailable {
+			continue
+		}
+		for _, value := range []string{"-1", "0", `"1MB"`} {
+			source := []byte(fmt.Sprintf(`{"http_clients":[{"tag":"sized","engine":"go","version":%d,"stream_receive_window":%s}]}`, version, value))
+			prepared, err := PrepareHTTPUpgrade(source)
+			if value == "-1" {
+				if err == nil || !bytes.Equal(prepared.Candidate, source) {
+					t.Fatal("negative size wrapped or lost its preimage")
+				}
+				found := false
+				for _, finding := range prepared.Findings {
+					found = found || finding.Code == "http_size_invalid" && finding.Path == "http_clients[0].stream_receive_window"
+				}
+				if !found {
+					t.Fatal("actual HTTP size consumer has no fixed path/reason")
+				}
+			} else if err != nil {
+				t.Fatal("zero or accepted unit was rejected", err)
+			}
+		}
+	}
+}
 
 func TestHTTPReferencesUseCompleteCandidateCatalogue(t *testing.T) {
 	stored := []byte(`{"http_clients":[{"tag":"shared","engine":"go","version":2,"detour":"proxy"}],"route":{"default_http_client":"shared"}}`)

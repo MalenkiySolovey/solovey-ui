@@ -2,6 +2,16 @@ import { shallowRef } from 'vue'
 import HttpUtils from '@/plugins/httputil'
 
 export interface CoreConfigContract {
+  tls?: {
+    fields: Record<string, string[]>
+    providerFields: Record<string, string[]>
+    providerTypes: string[]
+    providerUnavailable: Record<string, string>
+    providerModes: string[]
+    clientAuthentication: string[]
+    engines: string[]
+  }
+  protocol?: { fields: Record<string, string[]>; memoryUnits: Record<string, number> }
   dnsActions: Record<string, string[]>
   dnsConditions: string[]
   dnsCacheFields?: string[]

@@ -6,28 +6,14 @@ import (
 
 	configsecurity "github.com/MalenkiySolovey/solovey-ui/config/security"
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
+	settingsstore "github.com/MalenkiySolovey/solovey-ui/internal/settings/store"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
 func (s *SettingService) GetSecret() ([]byte, error) {
-	setting, err := s.getSetting(settingcatalog.SecretKey)
-	if settingNotFound(err) {
-		secret, randomErr := common.SecureRandom(32)
-		if randomErr != nil {
-			return nil, randomErr
-		}
-		if saveErr := s.saveSetting(settingcatalog.SecretKey, secret); saveErr != nil {
-			logger.Warning("save secret failed:", saveErr)
-			return []byte(secret), saveErr
-		}
-		return []byte(secret), nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	return []byte(setting.Value), nil
+	return settingsstore.EnsureMasterSecret(s.settingDatabase())
 }
 
 func (s *SettingService) GetInstallSalt() ([]byte, error) {

@@ -1,0 +1,1 @@
+{"inbounds":[{"tag":"capture","tls":{"enabled":false,"handshake_timeout":"7s"},"type":"trojan"}]}

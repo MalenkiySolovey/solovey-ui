@@ -7,10 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"reflect"
+	"strconv"
 
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
+	"github.com/MalenkiySolovey/solovey-ui/util/jsonfields"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
+	"github.com/sagernet/sing/common/byteformats"
 )
 
 // HTTPCompatibility stages core HTTP state in its existing base-config owner.
@@ -79,6 +82,13 @@ func prepareHTTP(config []byte, historical, historicalGroups bool) (HTTPCompatib
 		result.Findings = append(result.Findings, httpFailure("route.default_http_client", "http_client_reference_missing", "Select an existing shared HTTP client."))
 	}
 	result.Findings = append(result.Findings, RuleSetFindings(config, historicalGroups)...)
+	var providers []dnsObject
+	_ = json.Unmarshal(root["certificate_providers"], &providers)
+	for i, provider := range providers {
+		if raw, present := provider["http_client"]; present {
+			result.Findings = append(result.Findings, httpReferenceInObject(raw, fmt.Sprintf("certificate_providers[%d].http_client", i), root)...)
+		}
+	}
 	var sets []dnsObject
 	_ = json.Unmarshal(route["rule_set"], &sets)
 	changed := false
@@ -334,6 +344,20 @@ func httpClientShape(client dnsObject, path string, definition bool) []diagnosti
 	_ = json.Unmarshal(client["version"], &version)
 	if _, unavailable := HTTPUnavailableVersions()[fmt.Sprint(version)]; unavailable {
 		findings = append(findings, httpFailure(path+".version", "http_quic_unavailable", "HTTP version 3 requires the declared QUIC build capability."))
+	}
+	var tuning reflect.Type
+	switch version {
+	case 0, 2:
+		tuning = reflect.TypeFor[option.HTTP2Options]()
+	case 3:
+		tuning = reflect.TypeFor[option.QUICOptions]()
+	}
+	if tuning != nil {
+		for _, name := range jsonfields.NamesOfType(tuning, reflect.TypeFor[byteformats.MemoryBytes]()) {
+			if value, err := strconv.ParseFloat(string(client[name]), 64); err == nil && value < 0 {
+				findings = append(findings, httpFailure(path+"."+name, "http_size_invalid", "Byte sizes must be nonnegative; zero and accepted binary unit strings are preserved."))
+			}
+		}
 	}
 	var parsed option.HTTPClient
 	if json.Unmarshal(dnsJSON(client), &parsed) != nil {

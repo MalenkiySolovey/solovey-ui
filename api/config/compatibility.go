@@ -59,6 +59,8 @@ func (a *Handler) PreviewCompatibility(c *gin.Context) {
 	}
 	findings := append(projection.RuleCompatibility, projection.DNSCompatibility...)
 	findings = append(findings, projection.HTTPCompatibility...)
+	findings = append(findings, projection.TLSCompatibility...)
+	findings = append(findings, projection.TransportCompatibility...)
 	if err != nil && diagnostics.FirstError(findings) == nil {
 		findings = append(findings, diagnostics.Finding{Kind: "config", Path: "config", Code: "candidate_preparation_failed", Severity: diagnostics.Error, Message: "The complete candidate could not be prepared. Check database and entity references in Doctor before retrying.", MigrationOutcome: diagnostics.ManualRequired, OperatorActionRequired: true})
 	}

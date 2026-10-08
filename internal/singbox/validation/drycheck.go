@@ -6,6 +6,8 @@ import (
 	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
+	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
+	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/sagernet/sing-box/option"
@@ -40,6 +42,15 @@ func (DryChecker) ValidateConfigShape(sbConfig []byte) error {
 func decodeConfig(sbConfig []byte) (context.Context, option.Options, error) {
 	ctx := registry.Context(context.Background())
 	var opt option.Options
+	if err := diagnostics.FirstError(entitytls.CertificateConfigFindings(sbConfig)); err != nil {
+		return ctx, opt, err
+	}
+	if err := diagnostics.FirstError(entitytls.TLSConfigFindings(sbConfig)); err != nil {
+		return ctx, opt, err
+	}
+	if err := diagnostics.FirstError(entityprotocol.ConfigFindings(sbConfig)); err != nil {
+		return ctx, opt, err
+	}
 	if _, err := ValidateRuleConditions(sbConfig); err != nil {
 		return ctx, opt, err
 	}

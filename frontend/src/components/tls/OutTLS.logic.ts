@@ -1,6 +1,8 @@
 import { defineComponent } from 'vue'
 import { oTls, defaultOutTls } from '@/types/tls'
 import { fetchCertificatePin as requestCertificatePin } from '@/shared/composables/useServerOperations'
+import { selectedCredentialMode, selectCredentialMode } from '@/features/tlsCredentialDraft'
+import { coreConfigContract, loadCoreConfigContract } from '@/types/coreConfigContract'
 
 export default defineComponent({
   props: ['outbound'],
@@ -9,7 +11,8 @@ export default defineComponent({
       menu: false,
       certPingLoading: false,
       usePath: this.$props.outbound?.tls?.certificate? 1:0,
-      useEchPath: this.$props.outbound?.tls.ech?.config? 1:0,
+      clientPairUsePath: this.$props.outbound?.tls?.client_certificate_path !== undefined ? 0 : 1,
+      useEchPath: this.$props.outbound?.tls?.ech?.config? 1:0,
       defaults: defaultOutTls,
       alpn: [
         { title: "H3", value: 'h3' },
@@ -52,20 +55,21 @@ export default defineComponent({
     }
   },
   computed: {
+    contract: () => coreConfigContract.value?.tls,
     tls(): oTls {
       return <oTls> this.$props.outbound.tls
     },
     tlsEnable: {
       get() { return Object.hasOwn(this.tls, 'enabled') ? this.tls.enabled : false },
-      set(newValue: boolean) { this.$props.outbound.tls = newValue ? { enabled: true } : { enabled: false } }
+      set(newValue: boolean) { this.$props.outbound.tls.enabled = newValue }
     },
     disable_sni: {
       get() { return this.tls.disable_sni ?? false },
-      set(newValue: boolean) { this.$props.outbound.tls.disable_sni = newValue ? true : undefined }
+      set(newValue: boolean) { this.$props.outbound.tls.disable_sni = newValue }
     },
     insecure: {
       get() { return this.tls.insecure ?? false },
-      set(newValue: boolean) { this.$props.outbound.tls.insecure = newValue ? true : undefined }
+      set(newValue: boolean) { this.$props.outbound.tls.insecure = newValue }
     },
     tlsOptional(): boolean {
       return !['hysteria','hysteria2','tuic','shadowtls', 'anytls', 'naive'].includes(this.$props.outbound.type)
@@ -116,36 +120,32 @@ export default defineComponent({
     },
     optionClientCert: {
       get(): boolean {
+        const selected = selectedCredentialMode(this.tls, 'client-pair-enabled')
+        if (selected !== undefined) return selected === 'text'
         return this.tls.client_certificate != undefined ||
                this.tls.client_certificate_path != undefined ||
                this.tls.client_key != undefined ||
                this.tls.client_key_path != undefined
       },
       set(v:boolean) {
-        if (v) {
-          this.$props.outbound.tls.client_certificate = []
-          this.$props.outbound.tls.client_certificate_path = ''
-          this.$props.outbound.tls.client_key = []
-          this.$props.outbound.tls.client_key_path = ''
-        } else {
-          delete this.$props.outbound.tls.client_certificate
-          delete this.$props.outbound.tls.client_certificate_path
-          delete this.$props.outbound.tls.client_key
-          delete this.$props.outbound.tls.client_key_path
+        selectCredentialMode(this.tls, 'client-pair-enabled', v ? 'text' : 'path', ['client_certificate', 'client_certificate_path', 'client_key', 'client_key_path'], [])
+        if (v && this.tls.client_certificate === undefined && this.tls.client_certificate_path === undefined) {
+          this.tls.client_certificate = []
+          this.tls.client_key = []
         }
       }
     },
     optionFP: {
       get(): boolean { return this.tls.utls != undefined },
-      set(v:boolean) { this.$props.outbound.tls.utls = v ? defaultOutTls.utls : undefined }
+      set(v:boolean) { this.$props.outbound.tls.utls = v ? JSON.parse(JSON.stringify(defaultOutTls.utls)) : undefined }
     },
     optionReality: {
       get(): boolean { return this.tls.reality != undefined },
-      set(v:boolean) { this.$props.outbound.tls.reality = v ? defaultOutTls.reality : undefined }
+      set(v:boolean) { this.$props.outbound.tls.reality = v ? JSON.parse(JSON.stringify(defaultOutTls.reality)) : undefined }
     },
     optionEch: {
       get(): boolean { return this.tls.ech != undefined },
-      set(v:boolean) { this.$props.outbound.tls.ech = v ? defaultOutTls.ech : undefined }
+      set(v:boolean) { this.$props.outbound.tls.ech = v ? JSON.parse(JSON.stringify(defaultOutTls.ech)) : undefined }
     },
     optionFragment: {
       get(): boolean { return this.tls.fragment != undefined },
@@ -192,6 +192,14 @@ export default defineComponent({
     }
   },
   methods: {
+    selectCertificateMode(mode: number) {
+      this.usePath = mode
+      selectCredentialMode(this.tls, 'certificate', mode === 1 ? 'text' : 'path', ['certificate'], ['certificate_path'])
+    },
+    selectClientPairMode(mode: number) {
+      this.clientPairUsePath = mode
+      selectCredentialMode(this.tls, 'client-pair', mode === 1 ? 'text' : 'path', ['client_certificate', 'client_key'], ['client_certificate_path', 'client_key_path'])
+    },
     async fetchCertificatePin() {
       const server = this.$props.outbound?.server
       if (!server) return
@@ -213,5 +221,6 @@ export default defineComponent({
         this.certPingLoading = false
       }
     },
-  }
+  },
+  mounted() { void loadCoreConfigContract() }
 })

@@ -83,6 +83,7 @@
           </v-select>
         </v-col>
       </v-row>
+      <ConsumerTuning :data="data" type="naive" :direction="direction" />
       <Headers :data="extra_headers" />
     </template>
   </v-card>
@@ -90,6 +91,7 @@
 
 <script lang="ts">
 import Network from '@/components/fields/Network.vue'
+import ConsumerTuning from './ConsumerTuning.vue'
 import Headers from '@/components/fields/Headers.vue'
 import UoT from '@/components/fields/UoT.vue'
 
@@ -137,6 +139,6 @@ export default {
       })
     },
   },
-  components: { Network, Headers, UoT }
+  components: { ConsumerTuning, Network, Headers, UoT }
 }
 </script>

@@ -7,6 +7,20 @@ import (
 	"testing"
 )
 
+func TestJSONExtensionPrivateTLSMaterialPreservesSourceAndRetry(t *testing.T) {
+	for _, source := range [][]byte{[]byte(`{"certificate_providers":[{"type":"acme","tag":"private","account_key":"private-canary"}]}`), []byte(`{"inbounds":[{"type":"trojan","tls":{"enabled":true,"key_path":"private-canary"}}]}`)} {
+		for _, historical := range []bool{false, true} {
+			prepared, err := prepareJSONExtension(source, historical)
+			if err == nil || !bytes.Equal(prepared.Candidate, source) || !strings.Contains(err.Error(), "TLS_PRIVATE_EXPORT_REQUIRED") || strings.Contains(err.Error(), "canary") {
+				t.Fatal("private template bypassed the shared TLS policy or lost its preimage")
+			}
+		}
+	}
+	if _, err := CanonicalJSONExtension([]byte(`{"custom":{"enabled":false,"empty":""}}`)); err != nil {
+		t.Fatal("safe corrected public template cannot be retried")
+	}
+}
+
 func TestJSONExtensionUpgradePreservesCustomPolicyAndResolver(t *testing.T) {
 	source := []byte(`{"dns":{"servers":[{"type":"udp","tag":"dns","server":"127.0.0.1"}]},"default_domain_resolver":{"server":"dns","disable_cache":false,"rewrite_ttl":0},"rule_set":[{"tag":"geosite-private","type":"remote","url":"https://operator.example/custom.srs","download_detour":"direct","update_interval":"2h"},{"tag":"custom","type":"inline","rules":[{"domain":"custom.example"}]}],"rules":[{"rule_set":"custom","action":"reject"}],"custom":{"blank":"","false":false}}`)
 	prepared, err := PrepareJSONExtensionUpgrade(source)

@@ -16,7 +16,7 @@ type TlsService struct {
 }
 
 func (s *TlsService) GetAll() ([]model.Tls, error) {
-	return entitytls.GetAll(dbsqlite.DB())
+	return entitytls.GetAllViews(dbsqlite.DB())
 }
 
 func (s *TlsService) Save(tx *gorm.DB, action string, data json.RawMessage, hostname string) error {

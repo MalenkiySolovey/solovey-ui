@@ -1,0 +1,1 @@
+{"disable_mtu_discovery":true,"down_mbps":20,"listen":"127.0.0.1","listen_port":18443,"max_conn_client":25,"recv_window_client":16384,"recv_window_conn":32768,"tag":"captured","type":"hysteria","up_mbps":10}

@@ -44,6 +44,8 @@ var sensitiveKeyFragments = []string{
 }
 
 var sensitiveExactKeys = []string{
+	"account_key",
+	"mac_key",
 	"otp",
 	"totp",
 	"mfa",

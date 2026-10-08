@@ -104,6 +104,9 @@ func addTls(out *map[string]interface{}, tls *model.Tls) {
 	if maxVersion, ok := tlsServer["max_version"]; ok {
 		tlsConfig["max_version"] = maxVersion
 	}
+	if timeout, ok := tlsServer["handshake_timeout"]; ok {
+		tlsConfig["handshake_timeout"] = timeout
+	}
 	if certificate, ok := tlsServer["certificate"]; ok && !hasPublicKeyPin(tlsConfig) {
 		tlsConfig["certificate"] = certificate
 	}
@@ -157,7 +160,9 @@ func hasPublicKeyPin(tlsConfig map[string]interface{}) bool {
 }
 
 func naiveOut(out *map[string]interface{}, inbound map[string]interface{}) {
-	if quic_congestion_control, ok := inbound["quic_congestion_control"].(string); ok {
+	delete(*out, "quic")
+	delete(*out, "quic_congestion_control")
+	if quic_congestion_control, ok := inbound["quic_congestion_control"].(string); ok && quic_congestion_control != "" {
 		(*out)["quic"] = true
 		switch quic_congestion_control {
 		case "bbr_standard":
@@ -194,6 +199,8 @@ func hysteriaOut(out *map[string]interface{}, inbound map[string]interface{}) {
 	delete(*out, "obfs")
 	delete(*out, "recv_window_conn")
 	delete(*out, "disable_mtu_discovery")
+	delete(*out, "connection_receive_window")
+	delete(*out, "disable_path_mtu_discovery")
 
 	if upMbps, ok := inbound["down_mbps"]; ok {
 		(*out)["up_mbps"] = upMbps
@@ -207,8 +214,14 @@ func hysteriaOut(out *map[string]interface{}, inbound map[string]interface{}) {
 	if recvWindow, ok := inbound["recv_window_conn"]; ok {
 		(*out)["recv_window_conn"] = recvWindow
 	}
+	if recvWindow, ok := inbound["connection_receive_window"]; ok {
+		(*out)["connection_receive_window"] = recvWindow
+	}
 	if disableMTU, ok := inbound["disable_mtu_discovery"]; ok {
 		(*out)["disable_mtu_discovery"] = disableMTU
+	}
+	if disableMTU, ok := inbound["disable_path_mtu_discovery"]; ok {
+		(*out)["disable_path_mtu_discovery"] = disableMTU
 	}
 }
 
@@ -216,6 +229,9 @@ func hysteria2Out(out *map[string]interface{}, inbound map[string]interface{}) {
 	delete(*out, "down_mbps")
 	delete(*out, "up_mbps")
 	delete(*out, "obfs")
+	if _, explicit := (*out)["disable_chrome_parrot"]; !explicit {
+		(*out)["disable_chrome_parrot"] = true
+	}
 
 	if upMbps, ok := inbound["down_mbps"]; ok {
 		(*out)["up_mbps"] = upMbps
