@@ -114,7 +114,11 @@ func TestPrivateAPIWebAccessDashboardAndCORS(t *testing.T) {
 	c := startPrivateFixture(t)
 	base := "http://" + c.privateAPI.endpoint
 	client := &http.Client{Timeout: time.Second}
-	response, err := client.Get(base + "/")
+	request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+"/", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := client.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -122,7 +126,7 @@ func TestPrivateAPIWebAccessDashboardAndCORS(t *testing.T) {
 	if response.StatusCode != http.StatusNotFound {
 		t.Fatal("dashboard unexpectedly enabled")
 	}
-	request, _ := http.NewRequest(http.MethodOptions, base+"/daemon.StartedService/GetVersion", nil)
+	request, _ = http.NewRequestWithContext(t.Context(), http.MethodOptions, base+"/daemon.StartedService/GetVersion", nil)
 	request.Header.Set("Origin", "https://operator.example")
 	request.Header.Set("Access-Control-Request-Method", "POST")
 	request.Header.Set("Access-Control-Request-Headers", "content-type,x-grpc-web,authorization")
@@ -135,7 +139,7 @@ func TestPrivateAPIWebAccessDashboardAndCORS(t *testing.T) {
 		t.Fatal("browser origin allowed")
 	}
 	for _, auth := range []string{"", "Bearer incorrect"} {
-		request, _ = http.NewRequest(http.MethodPost, base+"/daemon.StartedService/GetVersion", bytes.NewReader(make([]byte, 5)))
+		request, _ = http.NewRequestWithContext(t.Context(), http.MethodPost, base+"/daemon.StartedService/GetVersion", bytes.NewReader(make([]byte, 5)))
 		request.Header.Set("Content-Type", "application/grpc-web+proto")
 		request.Header.Set("X-Grpc-Web", "1")
 		if auth != "" {
@@ -153,7 +157,10 @@ func TestPrivateAPIWebAccessDashboardAndCORS(t *testing.T) {
 	}
 	for _, auth := range []string{"", "Bearer incorrect"} {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
-		conn, _, err := websocket.Dial(ctx, "ws://"+c.privateAPI.endpoint+"/daemon.StartedService/SubscribeServiceStatus", &websocket.DialOptions{Subprotocols: []string{"grpc-websockets"}})
+		conn, response, err := websocket.Dial(ctx, "ws://"+c.privateAPI.endpoint+"/daemon.StartedService/SubscribeServiceStatus", &websocket.DialOptions{Subprotocols: []string{"grpc-websockets"}})
+		if response != nil && response.Body != nil {
+			_ = response.Body.Close()
+		}
 		if err != nil {
 			cancel()
 			t.Fatal(err)
