@@ -39,6 +39,7 @@ type Core struct {
 	prepareAPI        func(context.Context, *option.Options) (context.Context, *privateAPI, error)
 	lifecycleState    string
 	logSubscribers    atomic.Int32
+	snapshotReaders   atomic.Int32
 	probeSlots        chan struct{}
 }
 

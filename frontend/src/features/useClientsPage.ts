@@ -289,6 +289,12 @@ export const useClientsPage = () => {
     stats.value.visible = true
   }
 
+  const sessions = ref({ visible: false, clientId: 0, clientName: '' })
+  const showSessions = (id: number) => {
+    const client = clients.value.find(row => row.id === id)
+    if (client) sessions.value = { visible: true, clientId: id, clientName: client.name }
+  }
+
   const closeStats = () => {
     stats.value.visible = false
   }
@@ -335,6 +341,8 @@ export const useClientsPage = () => {
   const percentColor = (c: Client) => { return (c.up+c.down) >= c.volume ? 'error' : percent(c)>90 ? 'warning' : 'success' }
 
   return {
+    sessions,
+    showSessions,
     actionMenu,
     addBulk,
     addBulkModal,

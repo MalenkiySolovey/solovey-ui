@@ -82,6 +82,7 @@ func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
 	g.GET("/logs/entries", a.telemetry.GetLogEntries)
 	g.GET("/diagnostics/report", a.telemetry.GetDiagnosticsReport)
 	g.GET("/diagnostics/bundle", a.telemetry.GetDiagnosticsBundle)
+	a.registerRuntimeRoutes(g)
 	g.POST("/:postAction", a.postHandler)
 	g.GET("/:getAction", a.getHandler)
 }

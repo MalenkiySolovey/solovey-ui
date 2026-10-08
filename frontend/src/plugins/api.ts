@@ -29,6 +29,12 @@ const requestKey = (config: any) => {
     return `${config.method}:${config.url}:${params}`
 }
 
+const finishPendingRead = (config: any) => {
+    if (config && pendingRequests.get(requestKey(config)) === config.dedupeController) {
+        pendingRequests.delete(requestKey(config))
+    }
+}
+
 const normalizeURL = (url?: string) => (url ?? '').replace(/^\.\//, '').replace(/^\//, '')
 
 const needsCSRFToken = (method?: string, url?: string) => {
@@ -48,7 +54,11 @@ api.interceptors.request.use(
                 pendingRequests.get(key)?.abort(DUPLICATE_ABORT_REASON)
             }
             const controller = new AbortController()
-            config.signal = controller.signal
+            // Preserve the feature's visibility/generation cancellation.
+            config.signal = config.signal
+                ? AbortSignal.any([config.signal as AbortSignal, controller.signal])
+                : controller.signal
+            Object.assign(config, { dedupeController: controller })
             pendingRequests.set(key, controller)
         }
 
@@ -66,16 +76,15 @@ api.interceptors.request.use(
 api.interceptors.response.use(
     (response) => {
         if (isDedupeMethod(response.config.method)) {
-            pendingRequests.delete(requestKey(response.config))
+            finishPendingRead(response.config)
         }
         return response
     },
     (error) => {
         if (axios.isCancel(error) || error.code === 'ERR_CANCELED') {
             console.warn(error.message)
-        } else if (error.config && isDedupeMethod(error.config.method)) {
-            pendingRequests.delete(requestKey(error.config))
         }
+        if (error.config && isDedupeMethod(error.config.method)) finishPendingRead(error.config)
         if (error.response?.status === 403 && error.response?.data?.msg === 'Invalid CSRF token') {
             clearCSRFToken()
         }

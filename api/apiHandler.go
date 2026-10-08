@@ -72,6 +72,7 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	a.registerUpdateRoutes(g)
 	a.registerOperationsStatusRoutes(g)
 	a.registerDataLifecycleRoutes(g)
+	a.registerRuntimeRoutes(g)
 
 	configDeps := a.configDeps()
 	configDeps.LoginUser = GetLoginUser

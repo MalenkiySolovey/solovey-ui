@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
 	"github.com/MalenkiySolovey/solovey-ui/core/tracker"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -11,6 +12,8 @@ import (
 )
 
 func (s *Box) Context() context.Context { return s.ctx }
+
+func (s *Box) InboundIdentity() *inboundidentity.Owner { return s.inboundIdentity }
 
 func (s *Box) Uptime() uint32 {
 	return uint32(time.Since(s.createdAt).Seconds())

@@ -2,12 +2,14 @@ package netentity
 
 import (
 	"encoding/json"
+	"errors"
 
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/sessionidentity"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 
 	"gorm.io/gorm"
@@ -54,7 +56,18 @@ func (s *InboundService) GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 }
 
 func (s *InboundService) RestartInbounds(tx *gorm.DB, ids []uint) error {
-	return entityinbounds.Restart(tx, ids, s.inboundCore(), s.userHooks())
+	core := s.inboundCoreFromDB(tx)
+	if core == nil || !core.IsRunning() {
+		return nil
+	}
+	if tx == nil {
+		return errors.New("inbound identity database unavailable")
+	}
+	// Rendering and credential binding share one read view, including callers
+	// that supplied the autocommit DB rather than an existing transaction.
+	return tx.Transaction(func(view *gorm.DB) error {
+		return entityinbounds.Restart(view, ids, s.inboundCoreFromDB(view), s.userHooks())
+	})
 }
 
 func (s *InboundService) RestartCurrentInbounds(ids []uint) error {
@@ -80,6 +93,10 @@ func (s *InboundService) clientHooks() entityinbounds.ClientHooks {
 }
 
 func (s *InboundService) inboundCore() entityinbounds.Core {
+	return s.inboundCoreFromDB(dbsqlite.DB())
+}
+
+func (s *InboundService) inboundCoreFromDB(db *gorm.DB) entityinbounds.Core {
 	if s == nil {
 		return nil
 	}
@@ -87,7 +104,7 @@ func (s *InboundService) inboundCore() entityinbounds.Core {
 	if coreInstance == nil {
 		return nil
 	}
-	return inboundCoreAdapter{core: coreInstance}
+	return inboundCoreAdapter{core: coreInstance, db: db}
 }
 
 type inboundUserHooks struct {
@@ -108,6 +125,7 @@ func (h inboundUserHooks) ClientNamesByInboundIDs(db *gorm.DB, inboundIDs []uint
 
 type inboundCoreAdapter struct {
 	core *coreruntime.Core
+	db   *gorm.DB
 }
 
 func (a inboundCoreAdapter) IsRunning() bool {
@@ -119,7 +137,11 @@ func (a inboundCoreAdapter) RemoveInbound(tag string) error {
 }
 
 func (a inboundCoreAdapter) AddInbound(config []byte) error {
-	return a.core.AddInbound(config)
+	bindings, err := sessionidentity.Capture(a.db, config)
+	if err != nil {
+		return err
+	}
+	return a.core.AddInboundWithBindings(config, bindings)
 }
 
 func (a inboundCoreAdapter) CloseInboundConnections(tag string) {

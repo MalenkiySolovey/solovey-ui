@@ -4,6 +4,8 @@ import (
 	"context"
 	"net"
 
+	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
+
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing/common/network"
 )
@@ -26,11 +28,17 @@ func (t *RoutedTracker) RoutedConnection(ctx context.Context, conn net.Conn, met
 		_ = conn.Close()
 		return conn
 	}
-	wrapped, admitted := t.stats.admitConnection(conn, metadata, outbound)
-	if !admitted {
-		return wrapped
+	var result net.Conn = conn
+	if !inboundidentity.Admission(ctx, func() {
+		wrapped, admitted := t.stats.admitConnection(conn, metadata, outbound)
+		result = wrapped
+		if admitted {
+			result = t.connections.RoutedConnection(ctx, wrapped, inboundidentity.InventoryMetadata(ctx, metadata), rule, outbound)
+		}
+	}) {
+		_ = conn.Close()
 	}
-	return t.connections.RoutedConnection(ctx, wrapped, metadata, rule, outbound)
+	return result
 }
 
 func (t *RoutedTracker) RoutedPacketConnection(ctx context.Context, conn network.PacketConn, metadata adapter.InboundContext, rule adapter.Rule, outbound adapter.Outbound) network.PacketConn {
@@ -38,9 +46,15 @@ func (t *RoutedTracker) RoutedPacketConnection(ctx context.Context, conn network
 		_ = conn.Close()
 		return conn
 	}
-	wrapped, admitted := t.stats.admitPacketConnection(conn, metadata, outbound)
-	if !admitted {
-		return wrapped
+	var result network.PacketConn = conn
+	if !inboundidentity.Admission(ctx, func() {
+		wrapped, admitted := t.stats.admitPacketConnection(conn, metadata, outbound)
+		result = wrapped
+		if admitted {
+			result = t.connections.RoutedPacketConnection(ctx, wrapped, inboundidentity.InventoryMetadata(ctx, metadata), rule, outbound)
+		}
+	}) {
+		_ = conn.Close()
 	}
-	return t.connections.RoutedPacketConnection(ctx, wrapped, metadata, rule, outbound)
+	return result
 }

@@ -287,6 +287,7 @@ const applyRealtimeEvent = (event: any) => {
       }
       break
     case 'core_state':
+      ws.runtimeRevision++
       if (event.payload?.warning) {
         const warning = String(event.payload.warning)
         const group = event.payload.group ? `: ${event.payload.group}` : ''
@@ -299,6 +300,7 @@ const applyRealtimeEvent = (event: any) => {
       break
     case 'config_invalidated':
     case 'reload':
+      ws.runtimeRevision++
       void data.loadData()
       break
   }
@@ -311,6 +313,7 @@ const Ws = defineStore('Ws', {
     state: <WsConnectionState>'degraded',
     runtime: <WsRuntime | null>null,
     componentProgress: <Record<string, any>>{},
+    runtimeRevision: 0,
   }),
   actions: {
     ensureRuntime() {

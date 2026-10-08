@@ -7,10 +7,13 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/sessionidentity"
 	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/MalenkiySolovey/solovey-ui/util/redact"
@@ -67,6 +70,27 @@ func (s *ConfigService) GetConfig(data string) (*[]byte, error) {
 	return &rawConfig, nil
 }
 
+// Render and bind from one SQLite view. Only stable IDs and authenticated
+// principals enter Box; credentials remain in the existing desired-state owner.
+func (s *ConfigService) coreCandidate() ([]byte, []inboundidentity.Binding, error) {
+	db := configDatabase()
+	if db == nil {
+		return nil, nil, errors.New("configuration database is not initialized")
+	}
+	var config []byte
+	var bindings []inboundidentity.Binding
+	err := db.Transaction(func(tx *gorm.DB) error {
+		var err error
+		config, err = s.singBoxConfigBuilder().BuildFromDB(tx, "")
+		if err != nil {
+			return err
+		}
+		bindings, err = sessionidentity.Capture(tx, config)
+		return err
+	})
+	return config, bindings, err
+}
+
 func (s *ConfigService) singBoxConfigBuilder() SingBoxConfigBuilder {
 	if s == nil {
 		return NewSingBoxConfigBuilder(DefaultRuntime())
@@ -108,11 +132,11 @@ func (s *ConfigService) startCoreLocked(force bool) error {
 	}
 
 	logger.Info("starting core")
-	rawConfig, err := s.GetConfig("")
+	rawConfig, bindings, err := s.coreCandidate()
 	if err != nil {
 		return err
 	}
-	err = coreInstance.Start(*rawConfig)
+	err = coreInstance.StartWithBindings(rawConfig, bindings)
 	if err != nil {
 		runtime.markCoreStartFailed()
 		logger.Error("start sing-box err:", err.Error())
@@ -120,6 +144,7 @@ func (s *ConfigService) startCoreLocked(force bool) error {
 	}
 	runtime.markCoreStartSucceeded()
 	logger.Info("sing-box started")
+	realtime.Publish(realtime.TopicCoreState, map[string]any{"state": "running"})
 	return nil
 }
 
@@ -172,6 +197,7 @@ func (s *ConfigService) stopCoreLocked() error {
 		return err
 	}
 	logger.Info("sing-box stopped")
+	realtime.Publish(realtime.TopicCoreState, map[string]any{"state": "stopped"})
 	return nil
 }
 

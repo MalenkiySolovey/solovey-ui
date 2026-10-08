@@ -112,6 +112,7 @@ const USED_ICONS = [
   'mdi-key-plus',
   'mdi-key-star',
   'mdi-key-variant',
+  'mdi-lan-connect',
   'mdi-language-markdown',
   'mdi-laptop',
   'mdi-link-off',

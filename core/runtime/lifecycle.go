@@ -3,6 +3,8 @@ package runtime
 import (
 	"errors"
 
+	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
+
 	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
@@ -13,6 +15,12 @@ import (
 )
 
 func (c *Core) Start(sbConfig []byte) error {
+	return c.StartWithBindings(sbConfig, nil)
+}
+
+// Stable client bindings are supplied by the configuration semantic owner.
+// Core never queries a database or infers identity from names or addresses.
+func (c *Core) StartWithBindings(sbConfig []byte, bindings []inboundidentity.Binding) error {
 	c.lifecycle.Lock()
 	defer c.lifecycle.Unlock()
 
@@ -64,9 +72,10 @@ func (c *Core) Start(sbConfig []byte) error {
 	}()
 
 	instance, err := corebox.NewBox(corebox.Options{
-		Context:    ctx,
-		Options:    opt,
-		IPObserver: c.ipObserver,
+		Context:          ctx,
+		Options:          opt,
+		IPObserver:       c.ipObserver,
+		IdentityBindings: bindings,
 	})
 	if err != nil {
 		return api.safeError(err)
