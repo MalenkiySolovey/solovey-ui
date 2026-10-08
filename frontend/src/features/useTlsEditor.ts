@@ -1,7 +1,11 @@
 import { defineComponent } from 'vue'
 import SaveGuardNotice from '@/components/fields/SaveGuardNotice.vue'
 import { entitySaveReasons, type SaveReason } from './entitySaveReview'
-import { tls, iTls, defaultInTls, oTls, defaultOutTls } from '@/types/tls'
+import { tls, iTls, defaultInTls, oTls, defaultOutTls, type TLSProvider } from '@/types/tls'
+import TLSProviderEditor from '@/components/tls/TLSProviderEditor.vue'
+import CompatibilityFindings from '@/components/common/CompatibilityFindings.vue'
+import { selectedCredentialMode, selectCredentialMode, serializeCredentialDraft } from './tlsCredentialDraft'
+import { coreConfigContract, loadCoreConfigContract } from '@/types/coreConfigContract'
 import AcmeVue from '@/components/tls/Acme.vue'
 import EchVue from '@/components/tls/Ech.vue'
 import { push } from 'notivue'
@@ -19,6 +23,10 @@ export default defineComponent({
       menu: false,
       tlsType: 0,
       usePath: 0,
+      clientAuthUsePath: 0,
+      activeTlsType: 0,
+      providerDraftInvalid: false,
+      typeDrafts: {} as Record<number, { server: iTls; client: oTls; provider?: TLSProvider }>,
       snapshot: "",
       alpn: [
         { title: "H3", value: 'h3' },
@@ -46,7 +54,7 @@ export default defineComponent({
         { title: "ECDHE-RSA-CHACHA20-POLY1305-SHA256", value: "TLS_ECDHE_RSA_WITH_CHACHA20_POLY1305_SHA256" }
       ],
       curvePreferences: ['P256', 'P384', 'P521', 'X25519', 'X25519MLKEM768'],
-      clientAuthTypes: [
+      clientAuthLabels: [
         { title: 'No client certificate', value: 'no' },
         { title: 'Request client certificate', value: 'request' },
         { title: 'Require any client certificate', value: 'require-any' },
@@ -79,7 +87,7 @@ export default defineComponent({
         if (this.tls.server == null) this.tls.server = { enabled: true }
         if (this.tls.client == null) this.tls.client = {}
         this.tlsType = newData.server?.reality == undefined ? 0 : 1
-        this.usePath = newData.server?.key == undefined ? 0 : 1
+        this.usePath = newData.server?.certificate_provider !== undefined ? 2 : newData.server?.key !== undefined ? 1 : 0
         this.title = "edit"
       }
       else {
@@ -89,8 +97,22 @@ export default defineComponent({
         this.title = "add"
       }
       this.snapshot = JSON.stringify(this.tls)
+      this.activeTlsType = this.tlsType
+      this.typeDrafts = {}
+      this.providerDraftInvalid = false
+      this.clientAuthUsePath = this.tls.server.client_certificate !== undefined ? 1 : 0
     },
     changeTlsType(){
+      this.typeDrafts[this.activeTlsType] = { server: this.tls.server, client: this.tls.client, provider: this.tls.provider }
+      const previous = this.typeDrafts[this.tlsType]
+      if (previous) {
+        this.tls.server = previous.server
+        this.tls.client = previous.client
+        this.tls.provider = previous.provider
+        this.activeTlsType = this.tlsType
+        this.usePath = this.tls.server.certificate_provider !== undefined ? 2 : this.tls.server.key !== undefined ? 1 : 0
+        return
+      }
       if (this.tlsType) {
         this.tls.server = <iTls>{
           enabled: true,
@@ -102,23 +124,37 @@ export default defineComponent({
         this.tls.server = <iTls>{ enabled: true }
         this.tls.client = <oTls>{}
       }
+      this.tls.provider = undefined
+      this.activeTlsType = this.tlsType
+      this.usePath = 0
+    },
+    selectServerCredentialMode(mode: number) {
+      this.usePath = mode
+      selectCredentialMode(this.tls.server, 'server', mode === 2 ? 'provider' : mode === 1 ? 'text' : 'path', ['certificate', 'key', 'acme'], ['certificate_path', 'key_path'], true)
+      selectCredentialMode(this.tls, 'provider-dto', mode === 2 ? 'text' : 'path', ['provider'], [])
+      if (mode === 2 && !this.tls.provider) {
+        this.tls.provider = { tag: this.tls.id > 0 ? `tls-acme-${this.tls.id}` : '', type: 'acme', runtimeMode: 'native', options: {} }
+        this.tls.server.certificate_provider = this.tls.provider.tag
+      }
     },
     closeModal() {
       this.updateData(0) // reset
       this.$emit('close')
     },
+    selectClientAuthMode(mode: number) {
+      this.clientAuthUsePath = mode
+      selectCredentialMode(this.inTls, 'client-ca', mode === 1 ? 'text' : 'path', ['client_certificate'], ['client_certificate_path'])
+    },
     saveChanges() {
       if (!this.$props.visible || this.saveReasons.length > 0) return
-      this.$emit('save', this.tls)
+      this.$emit('save', serializeCredentialDraft(this.tls))
     },
     async genSelfSigned(){
       this.loading = true
       const msg = await generateKeypair('tls', this.inTls.server_name ?? "''")
       this.loading = false
       if (msg.success) {
-        this.inTls.key_path=undefined
-        this.inTls.certificate_path=undefined
-        this.usePath = 1
+        this.selectServerCredentialMode(1)
         if (msg.obj.length>0){
           const pair = parseTLSKeypair(msg.obj as string[])
           this.inTls.key = pair.privateKey
@@ -152,12 +188,13 @@ export default defineComponent({
     }
   },
   computed: {
+    contract: () => coreConfigContract.value?.tls,
     busy(): boolean { return this.loading || !!this.$props.saving },
     saveReasons(): SaveReason[] {
-      return entitySaveReasons({ identity: this.tls.name, port: this.server_port, requiresPort: !!this.inTls.reality?.enabled, pending: this.busy })
+      return entitySaveReasons({ identity: this.tls.name, port: this.server_port, requiresPort: !!this.inTls.reality?.enabled, missingRequiredTls: this.usePath === 2 && this.providerDraftInvalid, pending: this.busy })
     },
     dirty(): boolean {
-      return this.snapshot !== "" && JSON.stringify(this.tls) !== this.snapshot
+      return this.snapshot !== "" && JSON.stringify(serializeCredentialDraft(this.tls)) !== this.snapshot
     },
     inTls(): iTls {
       return this.tls.server
@@ -166,20 +203,20 @@ export default defineComponent({
       return this.tls.client
     },
     certText: {
-      get(): string { return this.inTls.certificate ? this.inTls.certificate.join('\n') : '' },
+      get(): string { return Array.isArray(this.inTls.certificate) ? this.inTls.certificate.join('\n') : this.inTls.certificate ?? '' },
       set(v:string) { this.inTls.certificate = v.split('\n') }
     },
     keyText: {
-      get(): string { return this.inTls.key ? this.inTls.key.join('\n') : '' },
+      get(): string { return Array.isArray(this.inTls.key) ? this.inTls.key.join('\n') : this.inTls.key ?? '' },
       set(v:string) { this.inTls.key = v.split('\n') }
     },
     disableSni: {
       get() { return this.outTls.disable_sni ?? false },
-      set(v: boolean) { this.tls.client.disable_sni = v ? true : undefined }
+      set(v: boolean) { this.tls.client.disable_sni = v }
     },
     insecure: {
       get() { return this.outTls.insecure ?? false },
-      set(v: boolean) { this.tls.client.insecure = v ? true : undefined }
+      set(v: boolean) { this.tls.client.insecure = v }
     },
     server_port: {
       get() { return this.inTls.reality?.handshake?.server_port ? this.inTls.reality.handshake.server_port : 443 },
@@ -231,24 +268,22 @@ export default defineComponent({
     },
     optionClientAuth: {
       get(): boolean {
+        const selected = selectedCredentialMode(this.inTls, 'client-auth-enabled')
+        if (selected !== undefined) return selected === 'text'
         return this.inTls.client_authentication != undefined ||
                this.inTls.client_certificate != undefined ||
                this.inTls.client_certificate_path != undefined ||
                this.inTls.client_certificate_public_key_sha256 != undefined
       },
       set(v:boolean) {
-        if (v) {
+        selectCredentialMode(this.inTls, 'client-auth-enabled', v ? 'text' : 'path', ['client_authentication', 'client_certificate', 'client_certificate_path', 'client_certificate_public_key_sha256'], [])
+        if (v && this.inTls.client_authentication === undefined) {
           this.inTls.client_authentication = 'no'
-          this.inTls.client_certificate = []
-          this.inTls.client_certificate_path = []
-          this.inTls.client_certificate_public_key_sha256 = []
-        } else {
-          delete this.inTls.client_authentication
-          delete this.inTls.client_certificate
-          delete this.inTls.client_certificate_path
-          delete this.inTls.client_certificate_public_key_sha256
         }
       }
+    },
+    clientAuthTypes() {
+      return this.clientAuthLabels.filter(item => this.contract?.clientAuthentication.includes(item.value))
     },
     optionFP: {
       get(): boolean { return this.outTls.utls != undefined },
@@ -279,11 +314,11 @@ export default defineComponent({
       set(v:boolean) { if (this.inTls.reality) this.inTls.reality.max_time_difference = v ? "1m" : undefined }
     },
     clientCertificateText: {
-      get(): string { return this.inTls.client_certificate ? this.inTls.client_certificate.join('\n') : '' },
+      get(): string { return Array.isArray(this.inTls.client_certificate) ? this.inTls.client_certificate.join('\n') : this.inTls.client_certificate ?? '' },
       set(v:string) { this.inTls.client_certificate = v.length > 0 ? v.split('\n') : [] }
     },
     clientCertificatePath: {
-      get(): string { return this.inTls.client_certificate_path?.join('\n') ?? '' },
+      get(): string { return Array.isArray(this.inTls.client_certificate_path) ? this.inTls.client_certificate_path.join('\n') : this.inTls.client_certificate_path ?? '' },
       set(v:string) { this.inTls.client_certificate_path = v.split(/[\n,]/).map((s:string) => s.trim()).filter((s:string) => s.length > 0) }
     },
     clientCertificatePublicKeySha256: {
@@ -298,5 +333,6 @@ export default defineComponent({
       }
     },
   },
-  components: { SaveGuardNotice, AcmeVue, EchVue }
+  mounted() { void loadCoreConfigContract() },
+  components: { SaveGuardNotice, AcmeVue, EchVue, TLSProviderEditor, CompatibilityFindings }
 })

@@ -2,6 +2,7 @@ package singboxconfig
 
 import (
 	"encoding/json"
+	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	"net/netip"
 	"net/url"
 )
@@ -52,17 +53,55 @@ func coreHTTPDomainConsumers(root dnsObject) []dnsObject {
 				}
 			}
 		}
-		resolver := client["domain_resolver"]
-		if detour := dnsString(client, "detour"); detour != "" {
-			outbound, found := findDNSOutbound(root, detour)
-			if !found || dnsString(outbound, "type") != "direct" {
+		if consumer, local := httpDNSConsumer(root, client, address.Hostname()); local {
+			consumers = append(consumers, consumer)
+		}
+	}
+	var providers []dnsObject
+	_ = json.Unmarshal(root["certificate_providers"], &providers)
+	for _, provider := range providers {
+		if dnsString(provider, "type") != "acme" {
+			continue
+		}
+		raw, _ := json.Marshal(provider)
+		for _, request := range entitytls.NativeHTTPConsumers(raw) {
+			address, err := url.Parse(request.URL)
+			if err != nil || address.Hostname() == "" {
 				continue
 			}
-			if !activeDNSRaw(resolver) {
-				resolver = outbound["domain_resolver"]
+			if _, err := netip.ParseAddr(address.Hostname()); err == nil {
+				continue
+			}
+			client := dnsObject{}
+			var tag string
+			if json.Unmarshal(request.Client, &tag) == nil {
+				for _, defined := range clients {
+					if dnsString(defined, "tag") == tag {
+						client = defined
+						break
+					}
+				}
+			} else {
+				_ = json.Unmarshal(request.Client, &client)
+			}
+			if consumer, local := httpDNSConsumer(root, client, address.Hostname()); local {
+				consumers = append(consumers, consumer)
 			}
 		}
-		consumers = append(consumers, dnsObject{"server": dnsJSON(address.Hostname()), "domain_resolver": resolver})
 	}
 	return consumers
+}
+
+func httpDNSConsumer(root, client dnsObject, hostname string) (dnsObject, bool) {
+	resolver := client["domain_resolver"]
+	if detour := dnsString(client, "detour"); detour != "" {
+		outbound, found := findDNSOutbound(root, detour)
+		if !found || dnsString(outbound, "type") != "direct" {
+			return nil, false
+		}
+		if !activeDNSRaw(resolver) {
+			resolver = outbound["domain_resolver"]
+		}
+	}
+	return dnsObject{"server": dnsJSON(hostname), "domain_resolver": resolver}, true
 }

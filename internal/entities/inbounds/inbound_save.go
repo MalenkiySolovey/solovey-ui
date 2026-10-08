@@ -7,6 +7,7 @@ import (
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
+	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveeligibility"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
@@ -108,6 +109,14 @@ func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 	if err := validateJSONShape(inbound); err != nil {
 		return inbound, err
 	}
+	prepared, err := entityprotocol.PrepareUpgrade(inbound.Type, "inbound", "inbound.options", inbound.Options)
+	if err != nil {
+		return inbound, err
+	}
+	if err := diagnostics.FirstError(entityprotocol.CurrentFindings(inbound.Type, "inbound", "inbound.options", prepared.Candidate)); err != nil {
+		return inbound, err
+	}
+	inbound.Options = prepared.Candidate
 	if err := diagnostics.FirstError(TUNDNSFindings(append(append([]byte(`{"inbounds":[`), data...), []byte(`]}`)...))); err != nil {
 		return inbound, err
 	}

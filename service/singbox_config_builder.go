@@ -7,7 +7,9 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
+	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
+	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
@@ -43,11 +45,13 @@ func (b SingBoxConfigBuilder) Build(data string) ([]byte, error) {
 // It is used by transactional workflows that must validate uncommitted rows
 // without temporarily exposing them through the process-wide database handle.
 type RuntimeProjection struct {
-	Config            []byte
-	Eligibility       runtimeprojection.Report
-	RuleCompatibility []singboxvalidation.RuleFinding
-	DNSCompatibility  []diagnostics.Finding
-	HTTPCompatibility []diagnostics.Finding
+	Config                 []byte
+	Eligibility            runtimeprojection.Report
+	RuleCompatibility      []singboxvalidation.RuleFinding
+	DNSCompatibility       []diagnostics.Finding
+	HTTPCompatibility      []diagnostics.Finding
+	TLSCompatibility       []diagnostics.Finding
+	TransportCompatibility []diagnostics.Finding
 }
 
 // PrepareHTTPDownloadsFromDB adapts a new/edit/import candidate to the shared
@@ -183,6 +187,34 @@ func (b SingBoxConfigBuilder) BuildCandidateProjectionFromDB(db *gorm.DB, data s
 		if err != nil {
 			return projection, err
 		}
+	}
+	definitions, definitionErr := entitytls.ReadProviderDefinitions(db)
+	if definitionErr != nil {
+		return projection, definitionErr
+	}
+	certificates, certificateErr := entitytls.ProjectCertificateProviders(config, definitions)
+	projection.TLSCompatibility = certificates.Findings
+	if certificateErr != nil {
+		projection.Config = original
+		return projection, certificateErr
+	}
+	config = certificates.Candidate
+	projection.Config = config
+	if upgrade {
+		transports, transportErr := entityprotocol.PrepareConfigUpgrade(config)
+		projection.TransportCompatibility = transports.Findings
+		if transportErr != nil {
+			projection.Config = original
+			return projection, transportErr
+		}
+		config = transports.Candidate
+		projection.Config = config
+	}
+	projection.TransportCompatibility = append(projection.TransportCompatibility, entityprotocol.ConfigFindings(config)...)
+	projection.TLSCompatibility = append(projection.TLSCompatibility, entitytls.TLSConfigFindings(config)...)
+	if semanticErr := diagnostics.FirstError(append(append([]diagnostics.Finding{}, projection.TLSCompatibility...), projection.TransportCompatibility...)); semanticErr != nil {
+		projection.Config = original
+		return projection, semanticErr
 	}
 	if upgrade {
 		upgraded, upgradeErr := singboxconfig.PrepareHTTPUpgrade(config)

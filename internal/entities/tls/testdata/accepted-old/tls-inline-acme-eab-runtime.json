@@ -1,0 +1,1 @@
+{"inbounds":[{"tag":"capture","tls":{"enabled":true,"acme":{"domain":["capture.example.invalid"],"provider":"zerossl","external_account":{"key_id":"fixture-account","mac_key":"fixture-noncredential"},"disable_http_challenge":true,"disable_tls_alpn_challenge":true}},"type":"trojan"}]}

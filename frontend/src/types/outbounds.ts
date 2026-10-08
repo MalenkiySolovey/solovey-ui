@@ -2,6 +2,7 @@ import { oTls } from "./tls"
 import { oMultiplex } from "./multiplex"
 import { Transport } from "./transport"
 import { Dial } from "./dial"
+import type { MemoryQuantity, QUICTuning } from './consumerTuning'
 
 export const OutTypes = {
   Direct: 'direct',
@@ -116,14 +117,14 @@ export interface Naive extends OutboundBasics, Dial {
   insecure_concurrency?: number
   extra_headers?: { [key: string]: string }
   udp_over_tcp?: false | { enabled?: boolean; version?: number }
-  stream_receive_window?: string | number
+  stream_receive_window?: MemoryQuantity
   quic?: boolean
   quic_congestion_control?: "" | "bbr" | "bbr2" | "cubic" | "reno"
-  quic_session_receive_window?: string | number
+  quic_session_receive_window?: MemoryQuantity
   tls: oTls
 }
 
-export interface Hysteria extends OutboundBasics, Dial {
+export interface Hysteria extends OutboundBasics, Dial, QUICTuning {
   server: string
   server_port: number
   server_ports?: string[]
@@ -175,7 +176,8 @@ export interface TUIC extends OutboundBasics, Dial {
   tls: oTls
 }
 
-export interface Hysteria2 extends OutboundBasics, Dial {
+export interface Hysteria2 extends OutboundBasics, Dial, QUICTuning {
+  disable_chrome_parrot?: boolean
   server: string
   server_port: number
   server_ports?: string[]

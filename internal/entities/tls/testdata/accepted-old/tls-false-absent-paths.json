@@ -1,0 +1,1 @@
+{"id":1,"sortOrder":2,"name":"tls-false-absent-paths","server":{"enabled":false,"certificate_path":"legacy-owned/cert.pem","key_path":"legacy-owned/key.pem","insecure":false,"kernel_tx":false},"client":{"certificate_path":"legacy-owned/ca.pem","disable_sni":false,"enabled":false,"insecure":false}}

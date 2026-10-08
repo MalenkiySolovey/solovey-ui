@@ -1,0 +1,1 @@
+{"inbounds":[{"tag":"capture","tls":{"enabled":true,"acme":{"domain":["capture.example.invalid"],"email":"capture@example.invalid","disable_http_challenge":false,"disable_tls_alpn_challenge":true}},"type":"trojan"}]}

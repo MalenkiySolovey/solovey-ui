@@ -1,0 +1,1 @@
+{"id":1,"sortOrder":2,"name":"tls-inline-acme-default","server":{"enabled":true,"acme":{"domain":["capture.example.invalid"],"email":"capture@example.invalid","disable_http_challenge":false,"disable_tls_alpn_challenge":true}},"client":{"disable_sni":false,"insecure":false}}

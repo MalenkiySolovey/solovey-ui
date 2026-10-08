@@ -1,0 +1,1 @@
+{"inbounds":[{"tag":"capture","tls":{"enabled":true,"acme":{"domain":["capture.example.invalid"],"dns01_challenge":{"provider":"cloudflare","api_token":"fixture-noncredential","zone_token":"fixture-noncredential"}}},"type":"trojan"}]}

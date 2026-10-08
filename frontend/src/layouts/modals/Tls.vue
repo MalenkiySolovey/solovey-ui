@@ -6,7 +6,8 @@
       </v-card-title>
       <v-divider></v-divider>
       <v-card-text style="padding: 0 16px; overflow-y: scroll;">
-        <SaveGuardNotice :reasons="saveReasons" />
+    <SaveGuardNotice :reasons="saveReasons" />
+    <CompatibilityFindings v-if="tls.compatibility" :preview="tls.compatibility" />
         <fieldset :disabled="busy" style="border: 0; padding: 0; margin: 0; min-width: 0">
         <v-card class="rounded-lg">
           <v-row>
@@ -95,11 +96,12 @@
                 shaped
                 mandatory>
                   <v-btn
-                    @click="inTls.key=undefined; inTls.certificate=undefined"
+                    @click="selectServerCredentialMode(0)"
                   >{{ $t('tls.usePath') }}</v-btn>
                   <v-btn
-                    @click="inTls.key_path=undefined; inTls.certificate_path=undefined"
+                    @click="selectServerCredentialMode(1)"
                   >{{ $t('tls.useText') }}</v-btn>
+                  <v-btn @click="selectServerCredentialMode(2)">Certificate provider</v-btn>
                 </v-btn-toggle>
               </v-col>
               <v-spacer></v-spacer>
@@ -133,7 +135,7 @@
                 </v-text-field>
               </v-col>
             </v-row>
-            <v-row v-else>
+            <v-row v-else-if="usePath == 1">
               <v-col cols="12">
                 <v-textarea
                   :label="$t('tls.cert')"
@@ -158,6 +160,10 @@
               </v-col>
             </v-row>
             <template v-if="optionClientAuth">
+              <v-btn-toggle v-model="clientAuthUsePath" mandatory>
+                <v-btn @click="selectClientAuthMode(0)">{{ $t('tls.usePath') }}</v-btn>
+                <v-btn @click="selectClientAuthMode(1)">{{ $t('tls.useText') }}</v-btn>
+              </v-btn-toggle>
               <v-row>
                 <v-col cols="12" sm="6" md="4">
                   <v-select
@@ -176,14 +182,14 @@
                     v-model="clientCertificatePublicKeySha256">
                   </v-textarea>
                 </v-col>
-                <v-col cols="12" sm="6">
+                <v-col cols="12" sm="6" v-if="clientAuthUsePath === 0">
                   <v-text-field
                     :label="$t('tls.clientCertPath')"
                     hide-details
                     v-model="clientCertificatePath">
                   </v-text-field>
                 </v-col>
-                <v-col cols="12">
+                <v-col cols="12" v-if="clientAuthUsePath === 1">
                   <v-textarea
                     :label="$t('tls.clientCert')"
                     rows="3"
@@ -311,7 +317,9 @@
             />
           </v-card-actions>
         </v-card>
-        <AcmeVue :tls="inTls" />
+        <v-text-field v-if="contract?.fields.server.includes('handshake_timeout')" v-model="inTls.handshake_timeout" label="Handshake timeout" placeholder="10s" clearable @click:clear="delete inTls.handshake_timeout" />
+        <TLSProviderEditor v-if="tlsType === 0 && usePath === 2" :profile="tls" @validity="providerDraftInvalid = !$event" />
+        <AcmeVue v-if="usePath !== 2" :tls="inTls" />
         <EchVue :iTls="inTls" :oTls="outTls" />
         </fieldset>
       </v-card-text>

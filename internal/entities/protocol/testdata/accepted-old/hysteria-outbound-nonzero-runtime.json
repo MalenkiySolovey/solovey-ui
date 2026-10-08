@@ -1,0 +1,1 @@
+{"outbounds":[{"tag":"direct","type":"direct"},{"disable_mtu_discovery":true,"down_mbps":20,"recv_window":16384,"recv_window_conn":32768,"server":"127.0.0.1","server_port":18443,"tag":"captured","tls":{"enabled":true,"insecure":true},"type":"hysteria","up_mbps":10}]}

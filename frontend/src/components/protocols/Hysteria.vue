@@ -100,6 +100,7 @@
         </v-text-field>
       </v-col>
     </v-row>
+    <ConsumerTuning :data="data" type="hysteria" :direction="direction" />
     <v-card-actions>
       <v-spacer></v-spacer>
       <v-menu v-model="menu" :close-on-content-click="false" location="start">
@@ -148,6 +149,7 @@
 
 <script lang="ts">
 import Network from '@/components/fields/Network.vue'
+import ConsumerTuning from './ConsumerTuning.vue'
 
 export default {
   props: ['direction','data'],
@@ -220,6 +222,6 @@ export default {
       set(newValue:number) { this.$props.data.up_mbps = newValue > 0 ? newValue : 0 }
     },
   },
-  components: { Network }
+  components: { ConsumerTuning, Network }
 }
 </script>

@@ -8,6 +8,8 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
+	"strings"
 )
 
 // ReadOwnedFile reads one bounded regular file inside an owner-selected root.
@@ -60,6 +62,52 @@ func PublishOwnedFile(root string, data []byte, publish bool) (string, error) {
 	}
 	sum := sha256.Sum256(data)
 	name := filepath.Join(root, hex.EncodeToString(sum[:]))
+	return publishOwnedNamedFile(root, name, data, publish)
+}
+
+// PublishOwnedTree retains filenames required by a semantic storage adapter.
+// The caller supplies owner-derived keys, never archive-authorized paths. Each
+// inventory gets a new content-addressed generation; old referenced files are
+// never replaced, including when a later DB publication fails.
+func PublishOwnedTree(root string, files map[string][]byte, publish bool) (string, error) {
+	if len(files) > MaxOwnerFiles {
+		return "", errors.New("owner tree exceeds its bound")
+	}
+	keys := make([]string, 0, len(files))
+	total := 0
+	for key, data := range files {
+		if !filepath.IsLocal(key) || key == "." || strings.ContainsAny(key, "\\:\x00") || filepath.ToSlash(filepath.Clean(key)) != key || len(data) > MaxOwnerFileBytes {
+			return "", errors.New("invalid owner tree key or data bound")
+		}
+		total += len(data)
+		if total > MaxOwnerFilesBytes {
+			return "", errors.New("owner tree exceeds its byte bound")
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	hash := sha256.New()
+	for _, key := range keys {
+		_, _ = hash.Write([]byte(key))
+		_, _ = hash.Write([]byte{0})
+		digest := sha256.Sum256(files[key])
+		_, _ = hash.Write(digest[:])
+	}
+	absolute, err := filepath.Abs(root)
+	if err != nil {
+		return "", err
+	}
+	generation := filepath.Join(absolute, hex.EncodeToString(hash.Sum(nil)))
+	for _, key := range keys {
+		name := filepath.Join(generation, filepath.FromSlash(key))
+		if _, err := publishOwnedNamedFile(filepath.Dir(name), name, files[key], publish); err != nil {
+			return "", err
+		}
+	}
+	return generation, nil
+}
+
+func publishOwnedNamedFile(root, name string, data []byte, publish bool) (string, error) {
 	if !publish {
 		return name, nil
 	}

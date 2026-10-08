@@ -75,14 +75,38 @@ func Save(req SaveRequest) error {
 	}
 	switch action {
 	case ActionNew, ActionEdit:
-		tls, err := saveConfig(req.Tx, string(action), req.Data)
-		if err != nil {
-			return err
+		if req.Tx == nil {
+			return common.NewError("TLS persistence is unavailable")
 		}
-		if action == ActionEdit {
-			return ApplyEditCascade(req.Tx, tls.Id, req.Hostname, req.Hooks)
-		}
-		return nil
+		return req.Tx.Transaction(func(tx *gorm.DB) error {
+			tls, err := saveConfig(tx, string(action), req.Data)
+			if err != nil {
+				return err
+			}
+			if action == ActionEdit {
+				if err := ApplyEditCascade(tx, tls.Id, req.Hostname, req.Hooks); err != nil {
+					return err
+				}
+			}
+			if len(tls.Provider) > 0 {
+				var provider ProviderView
+				if json.Unmarshal(tls.Provider, &provider) != nil {
+					return common.NewError("TLS provider editor data is invalid")
+				}
+				ids, err := BoundProviderProfileIDs(tx, provider.Tag)
+				if err != nil {
+					return err
+				}
+				for _, id := range ids {
+					if id != tls.Id {
+						if err := ApplyEditCascade(tx, id, req.Hostname, req.Hooks); err != nil {
+							return err
+						}
+					}
+				}
+			}
+			return nil
+		})
 	case ActionDel:
 		return Delete(req.Tx, req.Data)
 	default:
@@ -108,6 +132,10 @@ func saveConfig(tx *gorm.DB, action string, data json.RawMessage) (model.Tls, er
 		return tls, err
 	}
 	ApplySelfSignedPublicKeyPin(&tls)
+	definitions, err := prepareProfileDraft(tx, &tls)
+	if err != nil {
+		return tls, err
+	}
 
 	sortOrder, err := entityorder.ForSave(tx, &model.Tls{}, tls.Id)
 	if err != nil {
@@ -116,6 +144,12 @@ func saveConfig(tx *gorm.DB, action string, data json.RawMessage) (model.Tls, er
 	tls.SortOrder = sortOrder
 
 	if err := tx.Save(&tls).Error; err != nil {
+		return tls, err
+	}
+	if err := persistProfileProvider(tx, &tls, definitions); err != nil {
+		return tls, err
+	}
+	if err := tx.Model(&model.Tls{}).Where("id = ?", tls.Id).Updates(map[string]any{"server": tls.Server, "client": tls.Client}).Error; err != nil {
 		return tls, err
 	}
 	return tls, nil

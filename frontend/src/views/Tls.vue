@@ -99,7 +99,7 @@
             <v-row>
               <v-col>ACME</v-col>
               <v-col>
-                {{ $t(item.server?.acme == undefined ? 'no' : 'yes') }}
+                {{ $t(item.provider?.type === 'acme' || item.server?.acme !== undefined ? 'yes' : 'no') }}
               </v-col>
             </v-row>
             <v-row>

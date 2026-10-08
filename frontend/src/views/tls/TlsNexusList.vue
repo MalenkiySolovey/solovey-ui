@@ -58,7 +58,7 @@
       </template>
 
       <template #col.acme="{ item }">
-        <nexus-badge v-if="item.server?.acme != undefined" :label="$t('yes')" variant="success" />
+        <nexus-badge v-if="item.provider?.type === 'acme' || item.server?.acme !== undefined" :label="$t('yes')" variant="success" />
         <span v-else class="tls-nexus__muted">—</span>
       </template>
       <template #col.ech="{ item }">
@@ -104,6 +104,7 @@ interface TlsRow {
   id: number
   name: string
   server?: { server_name?: string; acme?: unknown; ech?: unknown; reality?: unknown }
+  provider?: { type?: string }
   [key: string]: unknown
 }
 
@@ -139,7 +140,7 @@ const sortByName = (direction: ManualSortDirection) => {
 
 const subtitle = computed(() => {
   const total = props.tlsConfigs.length
-  const acme = props.tlsConfigs.filter(c => c.server?.acme != undefined).length
+  const acme = props.tlsConfigs.filter(c => c.provider?.type === 'acme' || c.server?.acme !== undefined).length
   const reality = props.tlsConfigs.filter(c => c.server?.reality != undefined).length
 
   return t('nexus.summary.tls', { total, acme, reality })

@@ -6,6 +6,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	subformats "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/formats"
 	"gorm.io/gorm"
 )
@@ -45,6 +46,9 @@ func (s *SettingService) getString(key string) (string, error) {
 }
 
 func (s *SettingService) saveSetting(key string, value string) error {
+	if key == settingcatalog.ConfigKey {
+		return NewSingBoxBaseConfigStore(s).Set(value)
+	}
 	if key == settingKeySubJsonExt {
 		prepared, err := subformats.CanonicalJSONExtension([]byte(value))
 		if err != nil {

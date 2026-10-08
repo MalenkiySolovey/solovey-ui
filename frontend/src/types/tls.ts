@@ -1,13 +1,25 @@
 import { Dial } from "./dial"
+import type { CompatibilityPreview } from './coreConfigContract'
 
 export interface tls {
   id: number
   name: string
   server: iTls
   client: oTls
+  provider?: TLSProvider
+  compatibility?: CompatibilityPreview
+}
+
+export interface TLSProvider {
+  tag: string
+  type: string
+  runtimeMode: string
+  options: Record<string, unknown>
 }
 
 export interface iTls {
+  handshake_timeout?: string
+  certificate_provider?: string
   enabled?: boolean
   server_name?: string
   alpn?: string[]
@@ -15,13 +27,13 @@ export interface iTls {
   max_version?: string
   cipher_suites?: string[]
   curve_preferences?: string[]
-  certificate?: string[]
+  certificate?: string[] | string
   certificate_path?: string
-  key?: string[]
+  key?: string[] | string
   key_path?: string
   client_authentication?: string
-  client_certificate?: string[]
-  client_certificate_path?: string[]
+  client_certificate?: string[] | string
+  client_certificate_path?: string[] | string
   client_certificate_public_key_sha256?: string[]
   acme?: acme
   ech?: ech
@@ -78,6 +90,7 @@ export const defaultInTls: iTls = {
 }
 
 export interface oTls {
+  handshake_timeout?: string
   enabled?: boolean
   disable_sni?: boolean
   server_name?: string

@@ -7,6 +7,8 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
+	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 )
 
@@ -57,6 +59,12 @@ func BuildInboundOutbounds(clientConfig json.RawMessage, inbounds []*model.Inbou
 			return nil, err
 		}
 		appendInboundOutbounds(set, outbound, addrs)
+	}
+	for _, outbound := range set.Outbounds {
+		raw, _ := json.Marshal(outbound)
+		if err := diagnostics.FirstError(entitytls.PublicExportFindings(raw)); err != nil {
+			return nil, err
+		}
 	}
 	return set, nil
 }

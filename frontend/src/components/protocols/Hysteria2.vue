@@ -128,6 +128,7 @@
         </v-col>
       </v-row>
     </template>
+    <ConsumerTuning :data="data" type="hysteria2" :direction="direction" />
     <v-card-actions>
       <v-spacer></v-spacer>
       <v-menu v-model="menu" :close-on-content-click="false" location="start">
@@ -161,6 +162,7 @@
 
 <script lang="ts">
 import Network from '@/components/fields/Network.vue'
+import ConsumerTuning from './ConsumerTuning.vue'
 import Headers from '@/components/fields/Headers.vue'
 import { i18n } from '@/locales'
 
@@ -227,6 +229,6 @@ export default {
       }
     }
   },
-  components: { Network, Headers }
+  components: { ConsumerTuning, Network, Headers }
 }
 </script>

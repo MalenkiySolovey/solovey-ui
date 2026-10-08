@@ -6,6 +6,7 @@ import { Inbound } from '@/types/inbounds'
 import { Client } from '@/types/clients'
 import { actionableLogLevel } from './dataLogLevel'
 import { readRuntimeCapabilities, type RuntimeCapabilities } from '@/types/runtimeCapabilities'
+import { serializeCredentialDraft } from '@/features/tlsCredentialDraft'
 
 export interface FailoverMemberStatus {
   tag: string
@@ -207,7 +208,7 @@ const Data = defineStore('Data', {
       let postData = {
         object: object,
         action: action,
-        data: JSON.stringify(data, null, 2),
+        data: JSON.stringify(serializeCredentialDraft(data), null, 2),
         initUsers: initUsers?.join(',') ?? undefined
       }
       const msg = await HttpUtils.post('api/save', postData)
