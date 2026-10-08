@@ -42,6 +42,9 @@ func (DryChecker) ValidateConfigShape(sbConfig []byte) error {
 func decodeConfig(sbConfig []byte) (context.Context, option.Options, error) {
 	ctx := registry.Context(context.Background())
 	var opt option.Options
+	if err := diagnostics.FirstError(OwnerOptionsFindings(sbConfig)); err != nil {
+		return ctx, opt, err
+	}
 	if err := diagnostics.FirstError(entitytls.CertificateConfigFindings(sbConfig)); err != nil {
 		return ctx, opt, err
 	}

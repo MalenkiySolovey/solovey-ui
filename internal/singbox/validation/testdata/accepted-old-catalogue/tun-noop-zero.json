@@ -1,0 +1,16 @@
+{
+  "inbounds": [
+    {
+      "type": "tun",
+      "tag": "noop",
+      "endpoint_independent_nat": true,
+      "gso": false,
+      "inet4_address": [],
+      "inet6_address": [],
+      "inet4_route_address": [],
+      "inet6_route_address": [],
+      "inet4_route_exclude_address": [],
+      "inet6_route_exclude_address": []
+    }
+  ]
+}

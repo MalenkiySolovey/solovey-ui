@@ -2,6 +2,7 @@ package sqlite
 
 import (
 	"fmt"
+	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
 	"os"
 	"strings"
 
@@ -61,7 +62,7 @@ func preflightSupportedVersion(dbPath string) error {
 		supported string
 	}{
 		{key: "version", label: "database", supported: configidentity.GetVersion()},
-		{key: "coreSchemaVersion", label: "core schema", supported: "1.11"},
+		{key: "coreSchemaVersion", label: "core schema", supported: dbschema.CurrentCoreVersion},
 	} {
 		var actual string
 		if err := readOnly.Raw("SELECT value FROM settings WHERE key = ? LIMIT 1", check.key).Scan(&actual).Error; err != nil {

@@ -12,6 +12,7 @@ import (
 	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveeligibility"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
@@ -115,6 +116,9 @@ func Save(tx *gorm.DB, act string, data json.RawMessage, warp WarpHooks) (*singb
 func saveUpsert(tx *gorm.DB, act string, data json.RawMessage, warp WarpHooks) (*singboxapply.Change, error) {
 	var endpoint model.Endpoint
 	if err := endpoint.UnmarshalJSON(data); err != nil {
+		return nil, err
+	}
+	if err := diagnostics.FirstError(HostCapabilityFindings(endpoint.Type, "endpoint.options", endpoint.Options)); err != nil {
 		return nil, err
 	}
 	if err := saveeligibility.Validate(tx, act, endpoint.Id, &model.Endpoint{}, "endpoints", endpoint.Type); err != nil {

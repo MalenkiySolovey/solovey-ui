@@ -3,9 +3,15 @@ package backup_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"maps"
+	"math/big"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -21,6 +27,7 @@ import (
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
 	deploymentdomain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
+	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/sshmanagement"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"
@@ -403,10 +410,29 @@ func closeBackupRestoreIntegrationDB() {
 func seedBackupRestoreTables(t *testing.T) {
 	t.Helper()
 	db := dbsqlite.DB()
+	certKey, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cert := &x509.Certificate{SerialNumber: big.NewInt(1), NotBefore: time.Now().Add(-time.Hour), NotAfter: time.Now().Add(time.Hour), DNSNames: []string{"fixture.invalid"}}
+	certDER, err := x509.CreateCertificate(rand.Reader, cert, cert, &certKey.PublicKey, certKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	keyDER, err := x509.MarshalECPrivateKey(certKey)
+	if err != nil {
+		t.Fatal(err)
+	}
+	server, _ := json.Marshal(map[string]any{"enabled": true, "certificate": string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})), "key": string(pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: keyDER}))})
+	profile := model.Tls{Name: "integration-derp", Server: server, Client: []byte("{}")}
+	if err := db.Create(&profile).Error; err != nil {
+		t.Fatal(err)
+	}
+	endpointOptions, _ := json.Marshal(map[string]any{"state_directory": t.TempDir(), "hostname": "fixture", "ephemeral": true, "ssh_server": false, "taildrop_directory": ""})
 	rows := []any{
 		&model.Inbound{Type: "http", Tag: "integration-inbound", TlsId: 0, Addrs: []byte("[]"), OutJson: []byte("{}"), Options: []byte(`{"listen_port":18080}`)},
-		&model.Service{Type: "derp", Tag: "integration-service", TlsId: 0, Options: []byte("{}")},
-		&model.Endpoint{Type: "wireguard", Tag: "integration-endpoint", Options: []byte("{}"), Ext: []byte("{}")},
+		&model.Service{Type: "derp", Tag: "integration-service", TlsId: profile.Id, Options: []byte(`{"config_path":"fixture-derp.json"}`)},
+		&model.Endpoint{Type: "tailscale", Tag: "integration-endpoint", Options: endpointOptions, Ext: []byte("{}")},
 		&model.Tokens{Desc: "integration-token", Token: "plain-token", UserId: 1, Enabled: true},
 		&model.Stats{DateTime: 1, Resource: "user", Tag: "integration-client", Direction: true, Traffic: 10},
 		&model.ClientIP{ClientName: "integration-client", IPHash: "integration-hash", FirstSeen: 1, LastSeen: 2},
@@ -418,6 +444,13 @@ func seedBackupRestoreTables(t *testing.T) {
 		if err := db.Create(row).Error; err != nil {
 			t.Fatalf("seed %T: %v", row, err)
 		}
+	}
+	projection, err := service.NewSingBoxConfigBuilder(nil).BuildCandidateProjectionFromDB(db, "", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := singboxvalidation.ValidateConfig(projection.Config); err != nil {
+		t.Fatalf("offline fixture build: %v", err)
 	}
 }
 

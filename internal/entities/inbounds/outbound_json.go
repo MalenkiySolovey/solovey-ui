@@ -5,12 +5,26 @@ import (
 	"encoding/json"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	"gorm.io/gorm"
 )
 
 // Fill Inbound's out_json
 func FillOutboundJSON(i *model.Inbound, hostname string) error {
+	return fillOutboundJSON(i, hostname, true)
+}
+
+func FillOutboundJSONFromDB(db *gorm.DB, i *model.Inbound, hostname string) error {
+	legacy, err := dbschema.LegacyProjection(db)
+	if err != nil {
+		return err
+	}
+	return fillOutboundJSON(i, hostname, legacy)
+}
+
+func fillOutboundJSON(i *model.Inbound, hostname string, legacy bool) error {
 	if fact, ok := clientfacts.Resolve(i.Type); !ok || !fact.JSON {
 		return nil
 	}
@@ -48,7 +62,7 @@ func FillOutboundJSON(i *model.Inbound, hostname string) error {
 	case "hysteria":
 		hysteriaOut(&outJson, *inbound)
 	case "hysteria2":
-		hysteria2Out(&outJson, *inbound)
+		hysteria2Out(&outJson, *inbound, legacy)
 	case "tuic":
 		tuicOut(&outJson, *inbound)
 	case "vless":
@@ -225,11 +239,11 @@ func hysteriaOut(out *map[string]interface{}, inbound map[string]interface{}) {
 	}
 }
 
-func hysteria2Out(out *map[string]interface{}, inbound map[string]interface{}) {
+func hysteria2Out(out *map[string]interface{}, inbound map[string]interface{}, legacy bool) {
 	delete(*out, "down_mbps")
 	delete(*out, "up_mbps")
 	delete(*out, "obfs")
-	if _, explicit := (*out)["disable_chrome_parrot"]; !explicit {
+	if _, explicit := (*out)["disable_chrome_parrot"]; !explicit && legacy {
 		(*out)["disable_chrome_parrot"] = true
 	}
 

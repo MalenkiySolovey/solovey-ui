@@ -149,7 +149,7 @@ func (h configCoreMutationHooks) BeforeCommit(ctx context.Context, tx *gorm.DB, 
 	if h.service == nil || inbound == nil {
 		return fmt.Errorf("core mutation hooks unavailable")
 	}
-	if err := entityinbounds.FillOutboundJSON(inbound, ""); err != nil {
+	if err := entityinbounds.FillOutboundJSONFromDB(tx, inbound, ""); err != nil {
 		return err
 	}
 	if err := tx.Model(&model.Inbound{}).Where("id = ?", inbound.Id).Update("out_json", inbound.OutJson).Error; err != nil {

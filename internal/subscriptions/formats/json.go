@@ -76,6 +76,9 @@ func RenderJSON(outbounds []map[string]interface{}, options JSONOptions) (string
 	if err := diagnostics.FirstError(entityinbounds.TUNDNSFindings(result)); err != nil {
 		return "", err
 	}
+	if err := validation.ValidateConfigShape(result); err != nil {
+		return "", err
+	}
 	return string(result), nil
 }
 

@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
@@ -143,10 +144,17 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 	if err := entityidentity.ValidateTypeTag(outbound.Type, outbound.Tag); err != nil {
 		return nil, err
 	}
+	if _, _, err := PrepareOptionsUpgrade(outbound.Type, "outbound.options", outbound.Options); err != nil {
+		return nil, err
+	}
 	if err := entityidentity.EnsureOutboundTagAvailable(tx, outbound.Tag, outbound.Id, 0); err != nil {
 		return nil, err
 	}
-	if outbound.Type == "hysteria2" && action == "new" {
+	legacy, err := dbschema.LegacyProjection(tx)
+	if err != nil {
+		return nil, err
+	}
+	if outbound.Type == "hysteria2" && action == "new" && legacy {
 		var fields map[string]json.RawMessage
 		if json.Unmarshal(outbound.Options, &fields) == nil && fields != nil {
 			if _, explicit := fields["disable_chrome_parrot"]; !explicit {
@@ -155,7 +163,10 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 			}
 		}
 	}
-	prepared, err := entityprotocol.PrepareUpgrade(outbound.Type, "outbound", "outbound.options", outbound.Options)
+	prepared := entityprotocol.Projection{Candidate: outbound.Options}
+	if outbound.Type != "hysteria2" || legacy {
+		prepared, err = entityprotocol.PrepareUpgrade(outbound.Type, "outbound", "outbound.options", outbound.Options)
+	}
 	if err != nil {
 		return nil, err
 	}

@@ -17,7 +17,7 @@ import (
 )
 
 func init() {
-	backup.RegisterFileOwner("certificates", backup.FileOwner{Export: exportCertificateFiles, Restore: restoreCertificateFiles})
+	backup.RegisterFileOwner("certificates", backup.FileOwner{Export: exportCertificateFiles, Restore: restoreCertificateFiles, ProjectRuntime: projectCertificateRuntimeFiles})
 }
 
 // The certificate owner recognizes only its setting keys and TLS path fields.
@@ -82,6 +82,16 @@ func certificateReferences(ctx context.Context, db *gorm.DB) (map[string]string,
 				}
 			}
 		}
+	}
+	inline, err := inlineClientCertificateReferences(ctx, db)
+	if err != nil {
+		return nil, err
+	}
+	for key, path := range inline {
+		result[key] = path
+	}
+	if len(result) > backup.MaxOwnerFiles {
+		return nil, errors.New("certificate inventory exceeds its bound")
 	}
 	return result, nil
 }
@@ -174,6 +184,12 @@ func restoreCertificateFilesCandidate(ctx context.Context, db *gorm.DB, files []
 			continue
 		}
 		parts := strings.Split(f.Key, ":")
+		if parts[0] == "outbound" || parts[0] == "http-client" {
+			if err := rebindInlineClientCertificate(ctx, db, parts, name); err != nil {
+				return err
+			}
+			continue
+		}
 		if len(parts) != 4 && len(parts) != 5 {
 			return errors.New("invalid certificate key")
 		}

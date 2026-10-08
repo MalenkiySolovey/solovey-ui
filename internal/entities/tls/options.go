@@ -33,6 +33,11 @@ func TLSOptionsFindings(side, path string, source json.RawMessage) []diagnostics
 			fail("engine", "TLS_ENGINE_UNAVAILABLE", "Only the product's Go TLS engine is authorized.")
 		}
 	}
+	for _, key := range []string{"spoof", "spoof_method"} {
+		if nonemptyTLSValue(fields[key]) {
+			fail(key, "TLS_SPOOF_UNAVAILABLE", "Privileged TLS spoof activation has no product/deployment authorization.")
+		}
+	}
 	if raw, present := fields["handshake_timeout"]; present {
 		var duration badoption.Duration
 		if json.Unmarshal(raw, &duration) != nil || duration < 0 {
@@ -137,7 +142,7 @@ func TLSConfigFindings(source []byte) []diagnostics.Finding {
 		return nil
 	}
 	var result []diagnostics.Finding
-	for _, section := range []string{"inbounds", "outbounds", "services"} {
+	for _, section := range []string{"inbounds", "outbounds", "services", "http_clients"} {
 		var values []map[string]json.RawMessage
 		if json.Unmarshal(root[section], &values) != nil {
 			continue
@@ -145,7 +150,7 @@ func TLSConfigFindings(source []byte) []diagnostics.Finding {
 		for i, value := range values {
 			if raw, present := value["tls"]; present {
 				side := "server"
-				if section == "outbounds" {
+				if section == "outbounds" || section == "http_clients" {
 					side = "client"
 				}
 				result = append(result, TLSOptionsFindings(side, fmt.Sprintf("%s[%d].tls", section, i), raw)...)

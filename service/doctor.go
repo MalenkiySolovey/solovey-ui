@@ -66,6 +66,13 @@ func (s *DoctorService) Run(hostname string) opsdoctor.Report {
 		return opsdoctor.FinishReport(start, items)
 	}
 	projection, err := NewSingBoxConfigBuilder(s.runtime()).BuildProjectionFromDB(dbsqlite.DB(), "")
+	for i, finding := range projection.OptionsCompatibility {
+		severity := opsdoctor.SeverityWarn
+		if finding.Severity == diagnostics.Error {
+			severity = opsdoctor.SeverityError
+		}
+		items = append(items, opsdoctor.Item{ID: fmt.Sprintf("owner-options-%d", i), Title: "Stored option compatibility", Severity: severity, Message: finding.Message, Action: "Correct the indicated owner path before retrying. Original storage is preserved.", Details: finding})
+	}
 	for i, finding := range append(append([]diagnostics.Finding{}, projection.TLSCompatibility...), projection.TransportCompatibility...) {
 		severity := opsdoctor.SeverityWarn
 		if finding.Severity == diagnostics.Error {

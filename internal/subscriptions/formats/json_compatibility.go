@@ -3,13 +3,18 @@ package formats
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
+	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
+	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
+	"gorm.io/gorm"
 )
 
 type JSONExtensionCompatibility struct {
@@ -58,6 +63,38 @@ func prepareJSONExtension(extension []byte, historical bool) (JSONExtensionCompa
 	root["route"], _ = json.Marshal(route)
 	candidate, _ := json.Marshal(root)
 	if historical {
+		base, err := singboxconfig.PrepareBaseOptionsUpgrade(candidate)
+		result.Findings = append(result.Findings, base.Findings...)
+		if err != nil {
+			return finishExtension(result)
+		}
+		candidate = base.Candidate
+		_ = json.Unmarshal(candidate, &root)
+		var rows []json.RawMessage
+		if json.Unmarshal(root["inbounds"], &rows) == nil {
+			for i, source := range rows {
+				var header struct {
+					Type string `json:"type"`
+				}
+				_ = json.Unmarshal(source, &header)
+				path := fmt.Sprintf("inbounds[%d]", i)
+				listen, err := entityinbounds.PrepareOptionsUpgrade(header.Type, path, source)
+				result.Findings = append(result.Findings, listen.Findings...)
+				if err != nil {
+					return finishExtension(result)
+				}
+				protocol, err := entityprotocol.PrepareUpgrade(header.Type, "inbound", path, listen.Candidate)
+				result.Findings = append(result.Findings, protocol.Findings...)
+				if err != nil {
+					return finishExtension(result)
+				}
+				rows[i] = protocol.Candidate
+			}
+			root["inbounds"], _ = json.Marshal(rows)
+			candidate, _ = json.Marshal(root)
+		}
+	}
+	if historical {
 		transformed, err := validation.PrepareRuleUpgrade(candidate)
 		result.Findings = append(result.Findings, transformed.Findings...)
 		if err != nil {
@@ -104,7 +141,12 @@ func prepareJSONExtension(extension []byte, historical bool) (JSONExtensionCompa
 		}
 	}
 	result.Findings = append(result.Findings, entityinbounds.TUNDNSFindings(candidate)...)
+	result.Findings = append(result.Findings, validation.OwnerOptionsFindings(candidate)...)
 	if diagnostics.FirstError(result.Findings) != nil {
+		return finishExtension(result)
+	}
+	if err := validation.ValidateConfigShape(candidate); err != nil {
+		result.Findings = append(result.Findings, diagnostics.Finding{Kind: "subscription", Path: "subJsonExt", Code: "SUBSCRIPTION_PINNED_SCHEMA_REJECTED", Severity: diagnostics.Error, Message: "The assembled subscription extension is rejected by the pinned schema. Correct its current owner fields before retrying; submitted values are excluded.", MigrationOutcome: diagnostics.ManualRequired, OperatorActionRequired: true})
 		return finishExtension(result)
 	}
 	_ = json.Unmarshal(candidate, &root)
@@ -129,6 +171,24 @@ func prepareJSONExtension(extension []byte, historical bool) (JSONExtensionCompa
 		result.Candidate = transformed
 	}
 	return finishExtension(result)
+}
+
+// StageStoredUpgrade adapts this owner's setting inside the existing caller
+// transaction; semantic transforms and classification stay with core owners.
+func StageStoredUpgrade(tx *gorm.DB) ([]diagnostics.Finding, error) {
+	if !tx.Migrator().HasTable(&model.Setting{}) {
+		return nil, nil
+	}
+	var row model.Setting
+	query := tx.Where("key = ?", settingcatalog.SubJsonExtKey).Limit(1).Find(&row)
+	if query.Error != nil || query.RowsAffected == 0 {
+		return nil, query.Error
+	}
+	prepared, err := PrepareJSONExtensionUpgrade([]byte(row.Value))
+	if err == nil && !bytes.Equal(prepared.Candidate, []byte(row.Value)) {
+		err = tx.Model(&model.Setting{}).Where("key = ?", row.Key).Update("value", string(prepared.Candidate)).Error
+	}
+	return prepared.Findings, err
 }
 
 func finishExtension(result JSONExtensionCompatibility) (JSONExtensionCompatibility, error) {

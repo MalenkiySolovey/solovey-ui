@@ -1,0 +1,10 @@
+{
+  "route": {
+    "rules": [
+      {
+        "rule_set_ipcidr_match_source": false,
+        "action": "reject"
+      }
+    ]
+  }
+}

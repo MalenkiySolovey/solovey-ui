@@ -109,6 +109,9 @@ func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 	if err := validateJSONShape(inbound); err != nil {
 		return inbound, err
 	}
+	if err := diagnostics.FirstError(LegacyOptionsFindings(inbound.Type, "inbound.options", inbound.Options)); err != nil {
+		return inbound, err
+	}
 	prepared, err := entityprotocol.PrepareUpgrade(inbound.Type, "inbound", "inbound.options", inbound.Options)
 	if err != nil {
 		return inbound, err
@@ -162,7 +165,7 @@ func ValidateStored(db *gorm.DB) error {
 	return nil
 }
 func FillAndSave(tx *gorm.DB, inbound *model.Inbound, hostname string) error {
-	if err := FillOutboundJSON(inbound, hostname); err != nil {
+	if err := FillOutboundJSONFromDB(tx, inbound, hostname); err != nil {
 		return err
 	}
 	sortOrder, err := entityorder.ForSave(tx, &model.Inbound{}, inbound.Id)

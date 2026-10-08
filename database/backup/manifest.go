@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
 	"io"
 	"sort"
 	"strings"
@@ -86,8 +87,12 @@ func writeBackupManifest(ctx context.Context, db *gorm.DB, tables []backupTable,
 	if err != nil {
 		return err
 	}
+	coreSchema, err := dbschema.StoredCoreVersion(db)
+	if err != nil {
+		return err
+	}
 	manifest := BackupManifest{Schema: BackupManifestSchema, CreatedAt: time.Now().UTC().Unix(), AppVersion: configidentity.GetVersion(),
-		CoreSchema: "1.11", SQLiteModule: dbsqlite.SQLiteModuleVersion, SQLiteRuntime: runtimeStatus.RuntimeVersion,
+		CoreSchema: coreSchema, SQLiteModule: dbsqlite.SQLiteModuleVersion, SQLiteRuntime: runtimeStatus.RuntimeVersion,
 		SQLiteSourceID: runtimeStatus.SourceID, Encryption: "INNER_PLAINTEXT", MaxBytes: 512 << 20,
 		Compatibility: "EXACT_OR_FORWARD_MIGRATABLE", Owners: []BackupOwnerManifest{{ID: "core", Installed: true, Available: true, Mode: "TYPED"}}}
 	if len(files) > 1 {
