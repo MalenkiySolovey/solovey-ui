@@ -61,10 +61,10 @@ func PrepareOptionsUpgrade(kind, path string, source json.RawMessage) (json.RawM
 
 func CompatibilityCatalogue() []diagnostics.CompatibilityFact {
 	return []diagnostics.CompatibilityFact{
-		{"DEP-13", "direct outbound override_address/override_port", "REMOVED", "Typed zero cleanup only; active outbound overrides require a supported route."},
-		{"DEP-13", "direct inbound override_address/override_port", "SUPPORTED", "Inbound overrides retain their accepted semantics."},
-		{"DEP-14", "direct outbound proxy_protocol", "NO_OP", "Remove valid numeric values with diagnostic; no active proxy-protocol claim."},
-		{"DEP-20", "legacy dns/wireguard/shadowsocksr outbound types", "UNSUPPORTED_BY_PRODUCT", "Preserve source and require correction at a supported owner; no protocol substitution."},
-		{"DEP-20", "block outbound", "SUPPORTED", "Retain accepted block behavior; no mass block-to-reject conversion."},
+		{ID: "DEP-13", Consumer: "direct outbound override_address/override_port", Classification: "REMOVED", Policy: "Typed zero cleanup only; active outbound overrides require a supported route."},
+		{ID: "DEP-13", Consumer: "direct inbound override_address/override_port", Classification: "SUPPORTED", Policy: "Inbound overrides retain their accepted semantics."},
+		{ID: "DEP-14", Consumer: "direct outbound proxy_protocol", Classification: "NO_OP", Policy: "Remove valid numeric values with diagnostic; no active proxy-protocol claim."},
+		{ID: "DEP-20", Consumer: "legacy dns/wireguard/shadowsocksr outbound types", Classification: "UNSUPPORTED_BY_PRODUCT", Policy: "Preserve source and require correction at a supported owner; no protocol substitution."},
+		{ID: "DEP-20", Consumer: "block outbound", Classification: "SUPPORTED", Policy: "Retain accepted block behavior; no mass block-to-reject conversion."},
 	}
 }

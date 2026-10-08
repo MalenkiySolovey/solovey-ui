@@ -95,9 +95,9 @@ func LegacyOptionsFindings(kind, path string, source json.RawMessage) []diagnost
 
 func CompatibilityCatalogue() []diagnostics.CompatibilityFact {
 	return []diagnostics.CompatibilityFact{
-		{"DEP-12", "listen.sniff/sniff_override_destination/sniff_timeout/domain_strategy/udp_disable_domain_unmapping", "REMOVED", "Typed zero cleanup only; active intent has no inferred route-action replacement."},
-		{"DEP-14", "listen.proxy_protocol/proxy_protocol_accept_no_header", "REMOVED", "False cleanup only; active listen proxy protocol is unsupported."},
-		{"DEP-15", "tun.inet4/inet6_address/route_address/route_exclude_address; tun.gso", "REMOVED", "Empty aliases and false gso are inert; active legacy values require explicit supported correction."},
-		{"DEP-16", "tun.endpoint_independent_nat", "NO_OP", "Remove the obsolete flag with diagnostic; it grants no NAT or interface-DNS policy."},
+		{ID: "DEP-12", Consumer: "listen.sniff/sniff_override_destination/sniff_timeout/domain_strategy/udp_disable_domain_unmapping", Classification: "REMOVED", Policy: "Typed zero cleanup only; active intent has no inferred route-action replacement."},
+		{ID: "DEP-14", Consumer: "listen.proxy_protocol/proxy_protocol_accept_no_header", Classification: "REMOVED", Policy: "False cleanup only; active listen proxy protocol is unsupported."},
+		{ID: "DEP-15", Consumer: "tun.inet4/inet6_address/route_address/route_exclude_address; tun.gso", Classification: "REMOVED", Policy: "Empty aliases and false gso are inert; active legacy values require explicit supported correction."},
+		{ID: "DEP-16", Consumer: "tun.endpoint_independent_nat", Classification: "NO_OP", Policy: "Remove the obsolete flag with diagnostic; it grants no NAT or interface-DNS policy."},
 	}
 }

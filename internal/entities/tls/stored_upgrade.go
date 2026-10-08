@@ -91,7 +91,7 @@ func StageStoredUpgrade(tx *gorm.DB) ([]diagnostics.Finding, error) {
 
 func CompatibilityCatalogue() []diagnostics.CompatibilityFact {
 	return []diagnostics.CompatibilityFact{
-		{"DEP-09", "tls.acme/certificate_provider; certificate_providers", "DEPRECATED_ACCEPTED", "One encrypted TLS-owned provider store, deterministic identity and legacy inline runtime semantics; conflicts are manual."},
-		{"DEP-11", "tls.ech.pq_signature_schemes_enabled/dynamic_record_sizing_disabled", "NO_OP", "Remove proven inert boolean flags; retain active ECH keys and config."},
+		{ID: "DEP-09", Consumer: "tls.acme/certificate_provider; certificate_providers", Classification: "DEPRECATED_ACCEPTED", Policy: "One encrypted TLS-owned provider store, deterministic identity and legacy inline runtime semantics; conflicts are manual."},
+		{ID: "DEP-11", Consumer: "tls.ech.pq_signature_schemes_enabled/dynamic_record_sizing_disabled", Classification: "NO_OP", Policy: "Remove proven inert boolean flags; retain active ECH keys and config."},
 	}
 }

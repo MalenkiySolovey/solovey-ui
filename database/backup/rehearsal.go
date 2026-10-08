@@ -397,10 +397,6 @@ func schemaSemver(value string) string {
 	return value
 }
 
-func rehearseMigrationsAndOwners(ctx context.Context, staged string, statuses []RestoreOwnerStatus, files ...*FileBackupManifest) ([]RestoreOwnerStatus, error) {
-	return rehearseMigrationsAndOwnersWithFindings(ctx, staged, statuses, nil, files...)
-}
-
 func rehearseMigrationsAndOwnersWithFindings(ctx context.Context, staged string, statuses []RestoreOwnerStatus, report func([]diagnostics.Finding), files ...*FileBackupManifest) ([]RestoreOwnerStatus, error) {
 	copyPath := staged + ".migration"
 	cleanup := func() { cleanupRestoreFile(copyPath) }
