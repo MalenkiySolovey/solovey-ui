@@ -43,6 +43,26 @@ func TestCoreEditorContractIsScopedAndOwnerDerived(t *testing.T) {
 	}
 }
 
+func TestEditorRoutesMountOnSharedAPIRouter(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	RegisterRoutes(router.Group("/api"), Deps{RequireScope: func(*gin.Context, string, ...string) bool { return true }, JSONObj: func(c *gin.Context, obj any, err error) {
+		c.JSON(http.StatusOK, gin.H{"success": err == nil, "obj": obj})
+	}})
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/api/editor-contract", nil))
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), "directHttpClient") {
+		t.Fatal("shared editor facts were not mounted on the actual API route")
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/compatibility-preview", strings.NewReader(`{"subscriptionTemplate":{"rule_set":[]}}`))
+	request.Header.Set("Content-Type", "application/json")
+	response = httptest.NewRecorder()
+	router.ServeHTTP(response, request)
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), `"blocked":false`) {
+		t.Fatal("compatibility preview was not mounted on the actual JSON API route")
+	}
+}
+
 func TestCompatibilityPreviewAuthorizationPrecedesReadAndParse(t *testing.T) {
 	ctx, _ := gin.CreateTestContext(httptest.NewRecorder())
 	ctx.Request = httptest.NewRequest(http.MethodPost, "/compatibility-preview", strings.NewReader("invalid"))

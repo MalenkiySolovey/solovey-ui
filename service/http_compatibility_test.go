@@ -10,6 +10,38 @@ import (
 	"testing"
 )
 
+func TestHTTPExplicitEditedCandidateUsesCurrentSemanticsWithoutStorageMutation(t *testing.T) {
+	initSettingTestDB(t)
+	db := dbsqlite.DB()
+	source := `{"route":{"final":"direct","rule_set":[{"type":"remote","tag":"operator","format":"source","url":"https://10.255.255.1/never.json","download_detour":"direct"},{"type":"inline","tag":"current","rules":[{"domain":"a.example"},{"ip_cidr":"192.0.2.0/24"}]}],"rules":[{"rule_set":"current","domain":"b.example","action":"reject"}]}}`
+	if err := db.Create(&model.Setting{Key: "config", Value: source}).Error; err != nil {
+		t.Fatal(err)
+	}
+	builder := NewSingBoxConfigBuilder(nil)
+	if _, err := builder.BuildCandidateProjectionFromDB(db, source, true); err == nil {
+		t.Fatal("historical grouped semantics guard was bypassed")
+	}
+	base, projection, err := builder.PrepareHTTPDownloadsFromDB(db, source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains([]byte(base), []byte(`"http_clients"`)) || len(projection.HTTPCompatibility) == 0 {
+		t.Fatal("HTTP policy was not prepared")
+	}
+	var stored model.Setting
+	if err := db.Where("key = ?", "config").Take(&stored).Error; err != nil || stored.Value != source {
+		t.Fatal("new/edit preparation mutated stored source")
+	}
+	invalid := `{"route":{"final":"direct","default_domain_resolver":"missing","rule_set":[{"type":"remote","tag":"operator","url":"https://10.255.255.1/never.srs","download_detour":"direct"}]}}`
+	base, failed, err := builder.PrepareHTTPDownloadsFromDB(db, invalid)
+	var root struct {
+		HTTPClients []json.RawMessage `json:"http_clients"`
+	}
+	if err == nil || base != invalid || json.Unmarshal(failed.Config, &root) != nil || len(root.HTTPClients) != 0 {
+		t.Fatal("failed explicit preparation returned partial candidate")
+	}
+}
+
 func TestHTTPProjectionLateDNSFailureKeepsWholePreimage(t *testing.T) {
 	initSettingTestDB(t)
 	db := dbsqlite.DB()

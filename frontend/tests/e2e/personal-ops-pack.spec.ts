@@ -35,7 +35,11 @@ test('personal ops pack doctor presets delivery and client diagnosis smoke', asy
 
   await login(page)
 
+  const contract = await (await page.request.get('api/editor-contract')).json()
   await page.goto('settings')
+  expect(contract.success).toBe(true)
+  expect(contract.obj.maxRuleNodes).toBeGreaterThan(0)
+  expect(contract.obj.directHttpClient).toEqual({ engine: 'go', version: 2 })
   await page.getByRole('tab', { name: 'Maintenance' }).click()
   await expect(page.getByText('Config Doctor').first()).toBeVisible()
   await page.getByRole('button', { name: 'Run Doctor' }).first().click()
@@ -50,7 +54,11 @@ test('personal ops pack doctor presets delivery and client diagnosis smoke', asy
   await page.getByTestId('regional-preset-ru-enabled').locator('input').check({ force: true })
   await page.getByRole('button', { name: 'Preview changes' }).click()
   await expect(presetDrawer.getByText('RU routing and DNS')).toBeVisible()
+  const preparation = page.waitForResponse(response => response.url().endsWith('/api/compatibility-preview') && response.request().method() === 'POST')
   await page.getByRole('button', { name: 'Apply presets' }).click()
+  const prepared = await (await preparation).json()
+  expect(prepared.success).toBe(true)
+  expect(prepared.obj?.blocked).toBe(false)
   await expect(presetDrawer.getByText('Regional presets applied')).toBeVisible()
 
   const clientName = `ops-${Date.now()}`

@@ -22,13 +22,21 @@ type HTTPCompatibility struct {
 	Findings  []diagnostics.Finding `json:"findings"`
 }
 
-func PrepareHTTPUpgrade(config []byte) (HTTPCompatibility, error) { return prepareHTTP(config, true) }
+func PrepareHTTPUpgrade(config []byte) (HTTPCompatibility, error) {
+	return prepareHTTP(config, true, true)
+}
+
+// PrepareHTTPDownloads stages HTTP paths for an explicitly edited current
+// candidate. Historical grouped-rule review remains owned by PrepareHTTPUpgrade.
+func PrepareHTTPDownloads(config []byte) (HTTPCompatibility, error) {
+	return prepareHTTP(config, true, false)
+}
 func ValidateHTTPConfig(config []byte) ([]diagnostics.Finding, error) {
-	result, err := prepareHTTP(config, false)
+	result, err := prepareHTTP(config, false, false)
 	return result.Findings, err
 }
 
-func prepareHTTP(config []byte, historical bool) (HTTPCompatibility, error) {
+func prepareHTTP(config []byte, historical, historicalGroups bool) (HTTPCompatibility, error) {
 	result := HTTPCompatibility{Original: bytes.Clone(config), Candidate: bytes.Clone(config), Outcome: diagnostics.LosslessAutomatic}
 	var root dnsObject
 	if json.Unmarshal(config, &root) != nil || root == nil {
@@ -70,7 +78,7 @@ func prepareHTTP(config []byte, historical bool) (HTTPCompatibility, error) {
 	if defaultClient != "" && !httpTagPresent(clients, defaultClient) {
 		result.Findings = append(result.Findings, httpFailure("route.default_http_client", "http_client_reference_missing", "Select an existing shared HTTP client."))
 	}
-	result.Findings = append(result.Findings, RuleSetFindings(config, historical)...)
+	result.Findings = append(result.Findings, RuleSetFindings(config, historicalGroups)...)
 	var sets []dnsObject
 	_ = json.Unmarshal(route["rule_set"], &sets)
 	changed := false

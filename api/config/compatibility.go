@@ -28,6 +28,7 @@ func (a *Handler) PreviewCompatibility(c *gin.Context) {
 	var request struct {
 		Config               json.RawMessage `json:"config"`
 		IncludeHTTP          bool            `json:"includeHttp"`
+		PrepareHTTPDownloads bool            `json:"prepareHttpDownloads"`
 		SubscriptionTemplate json.RawMessage `json:"subscriptionTemplate"`
 	}
 	if c.ShouldBindJSON(&request) != nil || (len(request.Config) == 0 && len(request.SubscriptionTemplate) == 0) || (len(request.Config) > 0 && len(request.SubscriptionTemplate) > 0) {
@@ -48,7 +49,14 @@ func (a *Handler) PreviewCompatibility(c *gin.Context) {
 		}{prepared.Outcome, prepared.Findings, err != nil, candidate}, nil)
 		return
 	}
-	projection, err := service.NewSingBoxConfigBuilder(a.Runtime).BuildCandidateProjectionFromDB(dbsqlite.DB(), string(request.Config), true)
+	builder := service.NewSingBoxConfigBuilder(a.Runtime)
+	var projection service.RuntimeProjection
+	var err error
+	if request.PrepareHTTPDownloads {
+		_, projection, err = builder.PrepareHTTPDownloadsFromDB(dbsqlite.DB(), string(request.Config))
+	} else {
+		projection, err = builder.BuildCandidateProjectionFromDB(dbsqlite.DB(), string(request.Config), true)
+	}
 	findings := append(projection.RuleCompatibility, projection.DNSCompatibility...)
 	findings = append(findings, projection.HTTPCompatibility...)
 	if err != nil && diagnostics.FirstError(findings) == nil {

@@ -16,9 +16,8 @@
 <script lang="ts">
 import { defineComponent, type PropType } from 'vue'
 import type { Config } from '@/types/config'
-import HttpUtils from '@/plugins/httputil'
 import CompatibilityFindings from '@/components/common/CompatibilityFindings.vue'
-import { coreConfigContract, loadCoreConfigContract, type CompatibilityPreview } from '@/types/coreConfigContract'
+import { coreConfigContract, loadCoreConfigContract, previewCoreCompatibility, type CompatibilityPreview } from '@/types/coreConfigContract'
 
 export default defineComponent({
   components: { CompatibilityFindings },
@@ -47,7 +46,7 @@ export default defineComponent({
       this.loading = true
       const source = JSON.stringify(this.data)
       try {
-        const response = await HttpUtils.post('api/config/compatibility-preview', { config: this.data, includeHttp: true })
+        const response = await previewCoreCompatibility({ config: this.data, includeHttp: true })
         if (response.success && source === JSON.stringify(this.data)) {
           this.preview = response.obj
           this.previewSource = source

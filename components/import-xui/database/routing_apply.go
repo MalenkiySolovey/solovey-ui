@@ -193,5 +193,9 @@ func mergeRoutingIntoConfig(tx *gorm.DB, mapped map[string]any) error {
 	if !changed {
 		return nil
 	}
-	return (&service.SettingService{}).SaveConfig(tx, []byte(merged))
+	prepared, _, err := service.NewSingBoxConfigBuilder(nil).PrepareHTTPDownloadsFromDB(tx, merged)
+	if err != nil {
+		return err
+	}
+	return (&service.SettingService{}).SaveConfig(tx, []byte(prepared))
 }

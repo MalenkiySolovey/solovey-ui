@@ -3,8 +3,7 @@ import Editor from '@/components/Editor.vue'
 import SimpleDNS from '@/components/rules/SimpleDNS.vue'
 import DomainResolver from '@/components/fields/DomainResolver.vue'
 import CompatibilityFindings from '@/components/common/CompatibilityFindings.vue'
-import HttpUtils from '@/plugins/httputil'
-import { coreConfigContract, loadCoreConfigContract, type CompatibilityPreview } from '@/types/coreConfigContract'
+import { coreConfigContract, loadCoreConfigContract, previewCoreCompatibility, type CompatibilityPreview } from '@/types/coreConfigContract'
 import { mergeTemplateRuleSets } from './templateRuleSets'
 import { push } from 'notivue'
 import { i18n } from '@/locales'
@@ -342,7 +341,7 @@ export default defineComponent({
       this.compatibilityLoading = true
       const source = JSON.stringify(this.subJsonExt)
       try {
-        const response = await HttpUtils.post('api/config/compatibility-preview', { subscriptionTemplate: this.subJsonExt })
+        const response = await previewCoreCompatibility({ subscriptionTemplate: this.subJsonExt })
         if (response.success && source === JSON.stringify(this.subJsonExt)) {
           this.compatibilityPreview = response.obj
           this.previewSource = source

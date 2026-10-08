@@ -295,7 +295,7 @@ import { computed, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import type { Config } from '@/types/config'
-import HttpUtils from '@/plugins/httputil'
+import { previewCoreCompatibility } from '@/types/coreConfigContract'
 import {
   applyPresets,
   computePreview,
@@ -501,7 +501,7 @@ const applySelectedPresets = async () => {
       directOutbound: directOutbound.value,
     })
     const source = JSON.stringify(props.config)
-    const response = await HttpUtils.post('api/config/compatibility-preview', { config: result.config, includeHttp: true })
+    const response = await previewCoreCompatibility({ config: result.config, includeHttp: true, prepareHttpDownloads: true })
     if (!response.success || response.obj?.blocked) {
       const reason = response.obj?.findings?.find((finding: any) => finding.severity === 'error')
       throw new Error(reason ? `${reason.path}: ${reason.message}` : 'Unable to prepare the preset. Existing draft is preserved.')
