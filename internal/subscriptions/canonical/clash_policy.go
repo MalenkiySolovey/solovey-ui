@@ -15,6 +15,6 @@ func ParseClashUDPPolicy(value string) (ClashUDPPolicy, error) {
 	case ClashUDPDefault, ClashUDPEnabled, ClashUDPDisabled:
 		return ClashUDPPolicy(value), nil
 	default:
-		return "", errors.New("Clash UDP policy must be default, true, or false")
+		return "", errors.New("clash UDP policy must be default, true, or false")
 	}
 }

@@ -9,6 +9,14 @@ import (
 	"github.com/sagernet/sing-quic/hysteria"
 )
 
+func TestNamedOutboundsPreservesAbsentObjects(t *testing.T) {
+	input := []map[string]any{nil, {"tag": "node", "detour": "node"}}
+	result, names := NamedOutbounds(input)
+	if result[0] != nil || result[1]["tag"] != "node" || names[1] != "node" || result[1]["detour"] != "node" {
+		t.Fatal("absent metadata changed valid graph names or became an invented object")
+	}
+}
+
 func TestHysteriaPortsMatchPinnedRuntimeParser(t *testing.T) {
 	ports, err := HysteriaPorts([]any{"1", float64(443), "8443:8445", "65535:"})
 	if err != nil {

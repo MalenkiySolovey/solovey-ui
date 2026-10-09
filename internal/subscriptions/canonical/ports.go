@@ -30,7 +30,7 @@ func HysteriaPorts(value any) ([]string, error) {
 		return nil, errors.New("invalid Hysteria server_ports shape")
 	}
 	if len(items) > 64 {
-		return nil, errors.New("Hysteria server_ports exceeds 64 segments")
+		return nil, errors.New("hysteria server_ports exceeds 64 segments")
 	}
 	ports := make([]string, 0, len(items))
 	for _, item := range items {
@@ -87,7 +87,7 @@ func boundedPort(text string) (int, error) {
 	}
 	port, err := strconv.Atoi(text)
 	if err != nil || port < 1 || port > 65535 {
-		return 0, errors.New("Hysteria port outside 1..65535")
+		return 0, errors.New("hysteria port outside 1..65535")
 	}
 	return port, nil
 }

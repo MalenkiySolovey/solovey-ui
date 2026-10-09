@@ -9,6 +9,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+func TestClashWave4RejectsAbsentOutboundObject(t *testing.T) {
+	if output, err := RenderClash([]map[string]any{nil}, DefaultClashConfig); err == nil || output != "" {
+		t.Fatal("malformed outbound was exported")
+	}
+}
+
 func wave4ClashConfig(t *testing.T, outbounds []map[string]any, template string, policy ClashUDPPolicy) map[string]any {
 	t.Helper()
 	raw, err := RenderClash(outbounds, template, policy)

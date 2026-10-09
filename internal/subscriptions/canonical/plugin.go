@@ -28,7 +28,7 @@ func ShadowsocksPlugin(outbound map[string]any) (string, string, error) {
 		return "", "", err
 	}
 	if plugin == "" && opts != "" {
-		return "", "", errors.New("Shadowsocks plugin options require a plugin name")
+		return "", "", errors.New("shadowsocks plugin options require a plugin name")
 	}
 	if len(plugin) > 128 || strings.ContainsAny(plugin, ";:=\\/") || strings.IndexFunc(plugin, unicode.IsSpace) >= 0 {
 		return "", "", errors.New("invalid Shadowsocks plugin name")

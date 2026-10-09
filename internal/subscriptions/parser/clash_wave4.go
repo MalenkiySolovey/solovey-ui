@@ -13,7 +13,7 @@ import (
 
 func adaptClashWave4(outbound, proxy map[string]any) error {
 	if outbound["type"] == "shadowsocks" && stringValue(proxy["plugin"]) != "" {
-		return errors.New("Clash SIP002 plugin metadata requires a URI or JSON profile to preserve its ordered options")
+		return errors.New("clash SIP002 plugin metadata requires a URI or JSON profile to preserve its ordered options")
 	}
 	if server, ok := outbound["server"].(string); ok && server != "" {
 		host, err := codec.NormalizeHost(server)
@@ -70,11 +70,11 @@ func adaptClashWave4(outbound, proxy map[string]any) error {
 				seconds = int64(number)
 			case float64:
 				if math.Trunc(number) != number || number < 0 || number >= float64(math.MaxInt64/int64(time.Second)) {
-					return errors.New("Clash Hysteria hop-interval cannot be represented as a fixed runtime duration")
+					return errors.New("clash Hysteria hop-interval cannot be represented as a fixed runtime duration")
 				}
 				seconds = int64(number)
 			default:
-				return errors.New("Clash Hysteria hop-interval cannot be represented as a fixed runtime duration")
+				return errors.New("clash Hysteria hop-interval cannot be represented as a fixed runtime duration")
 			}
 			if seconds < 0 || seconds > math.MaxInt64/int64(time.Second) {
 				return errors.New("invalid Clash Hysteria hop-interval")

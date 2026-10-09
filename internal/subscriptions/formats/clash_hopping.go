@@ -42,7 +42,7 @@ func clashHysteriaInterval(value any) (int64, error) {
 		return 0, errors.New("invalid Hysteria hop_interval")
 	}
 	if duration%time.Second != 0 {
-		return 0, errors.New("Clash hop-interval requires whole seconds; use JSON to preserve the configured interval")
+		return 0, errors.New("clash hop-interval requires whole seconds; use JSON to preserve the configured interval")
 	}
 	return int64(duration / time.Second), nil
 }

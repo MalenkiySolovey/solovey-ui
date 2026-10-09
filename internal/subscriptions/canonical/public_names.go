@@ -126,6 +126,9 @@ func NamedOutbounds(outbounds []map[string]any, reserved ...string) ([]map[strin
 	result := make([]map[string]any, len(outbounds))
 	for i, outbound := range outbounds {
 		result[i] = CloneOutbound(outbound)
+		if result[i] == nil {
+			continue
+		}
 		result[i]["tag"] = names[i]
 		RenameOutboundReferences(result[i], first)
 	}

@@ -100,6 +100,9 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string, policie
 	}
 	prepared := make([]map[string]interface{}, len(outbounds))
 	for index, outbound := range outbounds {
+		if outbound == nil {
+			return "", fmt.Errorf("clash outbound %d must be an object", index+1)
+		}
 		prepared[index] = canonical.CloneOutbound(outbound)
 		if strings.TrimSpace(asString(outbound["tag"])) == "" {
 			if t := asString(outbound["type"]); t == "selector" || t == "urltest" || t == "failover" {

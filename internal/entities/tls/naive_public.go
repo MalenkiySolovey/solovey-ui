@@ -35,15 +35,15 @@ func NaivePublicTrust(client map[string]any, server *model.Tls) (map[string]any,
 		return client, nil
 	}
 	if server == nil || len(pins) != 1 {
-		return nil, errors.New("Naive JSON requires a trusted certificate profile; this runtime cannot enforce the configured SPKI pins")
+		return nil, errors.New("naive JSON requires a trusted certificate profile; this runtime cannot enforce the configured SPKI pins")
 	}
 	certificate := parseLeafCert(certPEMFromTLS(decodeTLSMap(server.Server)))
 	if certificate == nil {
-		return nil, errors.New("Naive JSON cannot resolve the public certificate for its pin")
+		return nil, errors.New("naive JSON cannot resolve the public certificate for its pin")
 	}
 	publicPEM := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certificate.Raw}))
 	if !certIsSelfSigned(publicPEM) || certPublicKeySHA256(publicPEM) != pins[0] {
-		return nil, errors.New("Naive JSON public certificate does not match its configured self-signed pin")
+		return nil, errors.New("naive JSON public certificate does not match its configured self-signed pin")
 	}
 	result := maps.Clone(client)
 	delete(result, "certificate_public_key_sha256")
