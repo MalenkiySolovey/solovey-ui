@@ -1,7 +1,8 @@
-import { computed, ref } from 'vue'
+import { computed, ref, type Ref } from 'vue'
 
 export const trafficTimeZoneKey = 'sui:overview:traffic-time-zone'
 type PreferenceStorage = Pick<Storage, 'getItem' | 'setItem'>
+let sharedPreference: Ref<string> | undefined
 
 export function resolveTrafficTimeZone(value: unknown, systemZone?: string): string {
   try {
@@ -16,7 +17,7 @@ export function trafficTimeZoneOptions(): string[] {
   catch { return ['system', 'UTC'] }
 }
 
-// The overview instance owns this UI preference. It never reads or writes the
+// Traffic views share this UI preference. It never reads or writes the
 // core scheduling timezone, bucket timestamps or server aggregation settings.
 export function useTrafficTimeZone(storage?: PreferenceStorage) {
   const read = (): string => {
@@ -25,7 +26,7 @@ export function useTrafficTimeZone(storage?: PreferenceStorage) {
       return raw === null || raw === 'system' ? 'system' : resolveTrafficTimeZone(raw)
     } catch { return 'system' }
   }
-  const preference = ref(read())
+  const preference = storage ? ref(read()) : (sharedPreference ??= ref(read()))
   const timeZone = computed({
     get: () => preference.value,
     set: (value: string) => {

@@ -282,3 +282,12 @@ canonical state, public disclosure policy and lifecycle. No application source
 or tests were copied. Existing dependency licenses remain authoritative. This
 partial integration does not advance the complete original-SUI parity boundary
 or the product release.
+
+Stage 2 selected frontend statistics and random-bound behavior independently
+adapts original S-UI frontend Stats.vue, History.vue, randomUtil.ts and utils.test.ts
+at 691346925b65e485b1cc5c70ca952819bbbe6047 (GPL-compatible project lineage).
+Backend util/password.go at 13abbdc431ae31ec78a54f5e6643b7fd70b6e634 is a behavior
+witness only; Solovey retains its modern Argon2id policy. Existing shared fetch,
+timezone and cryptographic utility owners provide the implementation. No original
+application source or tests were copied; no dependency or complete-parity/release
+boundary advances are implied.

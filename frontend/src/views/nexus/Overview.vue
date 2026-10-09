@@ -38,7 +38,7 @@
 <script lang="ts" setup>
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useTrafficTimeZone } from '@/components/nexus/overview/trafficTimeZone'
+import { useTrafficTimeZone } from '@/shared/composables/trafficTimeZone'
 
 import KpiRow from '@/components/nexus/overview/KpiRow.vue'
 import ProtocolSummaries from '@/components/nexus/overview/ProtocolSummaries.vue'

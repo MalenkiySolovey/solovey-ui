@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { resolveTrafficTimeZone, trafficLabelFormatter, trafficTimeZoneKey, trafficTimeZoneOptions, useTrafficTimeZone } from './trafficTimeZone'
+import { resolveTrafficTimeZone, trafficLabelFormatter, trafficTimeZoneKey, trafficTimeZoneOptions, useTrafficTimeZone } from '@/shared/composables/trafficTimeZone'
 import { selectTrafficSeries } from './selectors/trafficSelectors'
 const sec = (value: string) => Date.parse(value) / 1000
 

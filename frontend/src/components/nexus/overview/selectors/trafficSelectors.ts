@@ -1,5 +1,5 @@
 import { isSelectorRecord, nonNegativeNumber } from './selectorUtils'
-import { trafficLabelFormatter } from '../trafficTimeZone'
+import { trafficLabelFormatter } from '@/shared/composables/trafficTimeZone'
 
 export interface TrafficSeries {
   labels: string[]

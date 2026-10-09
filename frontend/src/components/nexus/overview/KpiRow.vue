@@ -83,7 +83,7 @@
 
 <script lang="ts" setup>
 import { computed } from 'vue'
-import { trafficTimeZoneOptions } from './trafficTimeZone'
+import { trafficTimeZoneOptions } from '@/shared/composables/trafficTimeZone'
 import { useI18n } from 'vue-i18n'
 
 import AreaSeries from '@/components/nexus/primitives/AreaSeries.vue'
