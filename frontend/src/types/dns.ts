@@ -13,6 +13,7 @@ export interface Dns {
 
 export const DnsTypes = {
   Local: 'local',
+  MDNS: 'mdns',
   Hosts: 'hosts',
   TCP: 'tcp',
   UDP: 'udp',
@@ -39,6 +40,7 @@ export type DnsServer = InterfaceMap[keyof InterfaceMap]
 
 const defaultValues: Record<DnsType, DnsServer> = {
   local: { type: 'local' },
+  mdns: { type: 'mdns' },
   hosts: { type: 'hosts', path: ['/etc/hosts'] },
   tcp: { type: 'tcp', server_port: 53 },
   udp: { type: 'udp', server_port: 53 },

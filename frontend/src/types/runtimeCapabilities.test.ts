@@ -25,4 +25,12 @@ describe('backend runtime capability projection', () => {
       expect(readRuntimeCapabilities(bad)).toBeUndefined()
     }
   })
+  it('keeps compiled dependencies unavailable without contradicting the snapshot', () => {
+    const fact = { ...projection().facts[0], category: 'dns', type: 'resolved', runtimeType: 'resolved', runtimeDependency: 'resolve1-system-bus', runtimeEligible: false, platformDependencyAvailable: true, available: false }
+    expect(readRuntimeCapabilities({ ...projection(), facts: [fact] })?.facts[0]?.available).toBe(false)
+    for (const bad of [{ ...fact, available: true }, { ...fact, runtimeEligible: undefined }, { ...fact, platformDependencyAvailable: 'yes' }]) {
+      expect(readRuntimeCapabilities({ ...projection(), facts: [bad] })).toBeUndefined()
+    }
+    expect(readRuntimeCapabilities({ ...projection(), facts: [{ ...projection().facts[0], supportedByProduct: false }] })).toBeUndefined()
+  })
 })

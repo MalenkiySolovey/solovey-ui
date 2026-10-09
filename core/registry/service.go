@@ -19,7 +19,7 @@ func ServiceRegistry() *service.Registry {
 
 func serviceDeclarations() []declaration[*service.Registry] {
 	return []declaration[*service.Registry]{
-		{typeName: "resolved", platform: "linux", compiled: supportsResolved, register: resolved.RegisterService},
+		{typeName: "resolved", platform: "linux", compiled: supportsResolved, runtimeDependency: DependencyResolve1, register: resolved.RegisterService},
 		{typeName: "ssm-api", buildTag: "", compiled: true, register: ssmapi.RegisterService},
 		{typeName: "derp", buildTag: tailscaleBuildTag, compiled: supportsTailscale, register: registerDERPService},
 		{typeName: "oom-killer", buildTag: "", compiled: true, register: oomkiller.RegisterService},

@@ -177,6 +177,7 @@ func BuildCandidateProjectionFromDB(db *gorm.DB, data string, upgrade bool) (Run
 		projection.DNSCompatibility, err = singboxconfig.ValidateDNSConfig(config)
 	}
 	projection.DNSCompatibility = append(projection.DNSCompatibility, entityinbounds.TUNDNSFindings(config)...)
+	projection.DNSCompatibility = append(projection.DNSCompatibility, singboxconfig.CurrentDNSRuntimeFindings(projection.Config)...)
 	if err == nil {
 		err = diagnostics.FirstError(projection.DNSCompatibility)
 	}

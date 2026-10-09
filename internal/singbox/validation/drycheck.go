@@ -60,6 +60,9 @@ func decodeConfig(sbConfig []byte) (context.Context, option.Options, error) {
 	if _, err := singboxconfig.ValidateDNSConfig(sbConfig); err != nil {
 		return ctx, opt, err
 	}
+	if err := diagnostics.FirstError(singboxconfig.CurrentDNSRuntimeFindings(sbConfig)); err != nil {
+		return ctx, opt, err
+	}
 	if _, err := singboxconfig.ValidateHTTPConfig(sbConfig); err != nil {
 		return ctx, opt, err
 	}

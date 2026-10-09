@@ -45,6 +45,15 @@ func (s SingBoxBaseConfigStore) Save(tx *gorm.DB, config json.RawMessage) error 
 }
 
 func (s SingBoxBaseConfigStore) save(tx *gorm.DB, config json.RawMessage) error {
+	if singboxconfig.HasSelectedDNSTransport(config) {
+		projection, err := NewSingBoxConfigBuilder(nil).BuildCandidateProjectionFromDB(tx, string(config), false)
+		if err != nil {
+			return err
+		}
+		if err := singboxvalidation.ValidateConfigShape(projection.Config); err != nil {
+			return err
+		}
+	}
 	var submitted map[string]json.RawMessage
 	_ = json.Unmarshal(config, &submitted)
 	if _, hasProviders := submitted["certificate_providers"]; hasProviders {

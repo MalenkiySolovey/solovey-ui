@@ -258,3 +258,14 @@ frontend gitlink f859e16953cd733293618f626cc19b8466e00fd3) provide behavioral
 references only. No application source or tests were copied. Dependency
 licenses/notices remain authoritative. This partial integration does not
 advance the complete original-SUI parity boundary or the product release.
+
+Stage 2 selected DNS integration links the official sing-box v1.14.2
+mDNS and resolved constructors at af6e64c3b69e6132ebaee0e1a3d24e93903f6709
+(GPL-3.0-or-later). Original S-UI backend 13abbdc431ae31ec78a54f5e6643b7fd70b6e634
+and frontend 691346925b65e485b1cc5c70ca952819bbbe6047 provide behavior witnesses.
+Solovey independently owns read-only environment classification, portable DNS
+validation, persisted service references and shared Classic/Nexus fields. No
+application source or tests were transferred. The existing godbus/dbus/v5
+v5.2.2 dependency (BSD-2-Clause) supplies local D-Bus metadata calls; its
+license remains authoritative. No platform privilege or release boundary
+changes are implied by this partial integration.
