@@ -13,6 +13,7 @@ import (
 	_ "github.com/sagernet/sing-box/protocol/naive/quic"
 	"github.com/sagernet/sing-box/protocol/shadowsocks"
 	"github.com/sagernet/sing-box/protocol/shadowtls"
+	"github.com/sagernet/sing-box/protocol/snell"
 	"github.com/sagernet/sing-box/protocol/socks"
 	"github.com/sagernet/sing-box/protocol/ssh"
 	"github.com/sagernet/sing-box/protocol/tor"
@@ -49,7 +50,7 @@ func outboundDeclarations() []declaration[*outbound.Registry] {
 		{typeName: "shadowtls", buildTag: "", compiled: true, register: shadowtls.RegisterOutbound},
 		{typeName: "vless", buildTag: "", compiled: true, register: vless.RegisterOutbound},
 		{typeName: "anytls", buildTag: "", compiled: true, register: anytls.RegisterOutbound},
-		{typeName: C.TypeSnell, productUnavailable: "PRODUCT_FEATURE_NOT_ENABLED", register: registerSnellOutboundSchema},
+		{typeName: C.TypeSnell, compiled: true, register: snell.RegisterOutbound},
 		{typeName: C.TypeBridge, productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
 		{typeName: "hysteria", buildTag: "with_quic", compiled: C.WithQUIC, register: hysteria.RegisterOutbound},
 		{typeName: "tuic", buildTag: "with_quic", compiled: C.WithQUIC, register: tuic.RegisterOutbound},

@@ -7,6 +7,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
+	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
@@ -122,6 +123,19 @@ func inboundOutboundConfig(configs map[string]interface{}, inbound *model.Inboun
 		return shadowsocksOutboundConfig(configs, inbound, outbound)
 	}
 	mergeClientProtocolConfig(configs, inbound, outbound, protocol)
+	if protocol == "snell" {
+		key, ok := outbound["userkey"].(string)
+		if !ok || key == "" {
+			return nil, fmt.Errorf("managed Snell export requires a client user key")
+		}
+		raw, err := json.Marshal(outbound)
+		if err != nil {
+			return nil, err
+		}
+		if err := diagnostics.FirstError(entityprotocol.CurrentFindings(protocol, "outbound", "subscription", raw)); err != nil {
+			return nil, err
+		}
+	}
 	return outbound, nil
 }
 

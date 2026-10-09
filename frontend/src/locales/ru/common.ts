@@ -671,6 +671,16 @@ export default {
       "streamReceiveWindow": "Окно приема потока",
       "quicSessionReceiveWindow": "Окно приема сессии QUIC"
     },
+    "snell": {
+      "psk": "PSK сервера",
+      "userKey": "Ключ клиента",
+      "obfsMode": "Обфускация",
+      "obfsHost": "Хост обфускации",
+      "mode": "Формирование трафика",
+      "reuse": "Повторное использование соединений",
+      "pskLength": "PSK требует {min}–{max} байт; сейчас: {bytes}",
+      "exportLimit": "Snell доступен в формате JSON sing-box. Экспорт URI и Clash недоступен."
+    },
     "anytls": {
     "paddingScheme": "Схема заполнения",
       "idleInterval": "Интервал проверки неактивных сессий",

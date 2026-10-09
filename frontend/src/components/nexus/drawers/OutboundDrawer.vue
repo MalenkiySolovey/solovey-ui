@@ -47,6 +47,7 @@
       <Tuic v-if="outbound.type == outTypes.TUIC" direction="out" :data="outbound" />
       <Hysteria2 v-if="outbound.type == outTypes.Hysteria2" direction="out" :data="outbound" />
       <AnyTls v-if="outbound.type == outTypes.AnyTls" :data="outbound" direction="out" />
+      <Snell v-if="outbound.type == outTypes.Snell" :data="outbound" direction="out" />
       <Tor v-if="outbound.type == outTypes.Tor" :data="outbound" />
       <Ssh v-if="outbound.type == outTypes.SSH" :data="outbound" />
       <Selector v-if="outbound.type == outTypes.Selector" :data="outbound" :tags="tags" />

@@ -21,6 +21,9 @@ import (
 // CurrentFindings selects the actual protocol/side schema. Inbound user DTOs
 // are resolved by their own owner, so they are not interpreted as core users.
 func CurrentFindings(kind, side, path string, source json.RawMessage) []diagnostics.Finding {
+	if kind == "snell" {
+		return snellFindings(side, path, source)
+	}
 	var consumer any
 	switch kind {
 	case "hysteria":

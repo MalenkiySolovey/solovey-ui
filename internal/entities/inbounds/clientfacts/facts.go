@@ -24,6 +24,7 @@ var declarations = []Fact{
 	{"hysteria", "hysteria", true, true}, {"shadowtls", "shadowtls", true, false},
 	{"tuic", "tuic", true, true}, {"hysteria2", "hysteria2", true, true},
 	{"vless", "vless", true, true}, {"anytls", "anytls", true, true},
+	{"snell", "snell", true, false},
 }
 
 func Facts() []Fact { return append([]Fact(nil), declarations...) }

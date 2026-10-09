@@ -19,6 +19,7 @@ export const InTypes = {
   Hysteria2: 'hysteria2',
   VLESS: 'vless',
   AnyTls: 'anytls',
+  Snell: 'snell',
   Tun: 'tun',
   Redirect: 'redirect',
   TProxy: 'tproxy',
@@ -211,6 +212,13 @@ export interface TProxy extends InboundBasics {
   network?: "udp" | "tcp"
 }
 
+export interface Snell extends InboundBasics {
+  version: 5 | 6
+  psk: string
+  obfs_mode?: 'none' | 'http' | 'tls'
+  mode?: 'default' | 'unshaped' | 'unsafe-raw'
+}
+
 // Create interfaces dynamically based on InTypes keys
 type InterfaceMap = {
   direct: Direct
@@ -227,6 +235,7 @@ type InterfaceMap = {
   hysteria2: Hysteria2
   vless: VLESS
   anytls: AnyTls
+  snell: Snell
   tun: Tun
   redirect: Redirect
   tproxy: TProxy
@@ -261,6 +270,7 @@ const defaultValues: Record<InType, Inbound> = {
     "6=500-1000",
     "7=500-1000"
   ]},
+  snell: <Snell>{ type: InTypes.Snell, version: 6, psk: '' },
   tun: <Tun>{ type: InTypes.Tun, mtu: 9000, stack: 'system', udp_timeout: '5m', auto_route: false },
   redirect: <Redirect>{ type: InTypes.Redirect },
   tproxy: <TProxy>{ type: InTypes.TProxy },

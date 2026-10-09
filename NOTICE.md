@@ -246,3 +246,15 @@ maintenance; its existing lifecycle serializer applies intent, and the shared
 Classic/Nexus consumers expose generation-bound actual state. Member probes
 retain the existing bounded probe owner. No upstream application source or
 tests were copied; this partial integration does not advance complete parity.
+
+Stage 2 Snell integration uses official sing-box v1.14.2
+(af6e64c3b69e6132ebaee0e1a3d24e93903f6709) and its pinned sing-snell module
+v0.0.0-20260829071736-20f2eaec77c3 (GPL-3.0-or-later). Solovey independently
+implements version-specific validation, stable managed credentials, admission
+and shared editors. Original S-UI v1.6.3 backend
+13abbdc431ae31ec78a54f5e6643b7fd70b6e634 and frontend Snell witness
+691346925b65e485b1cc5c70ca952819bbbe6047 (ancestor of the accepted v1.6.3
+frontend gitlink f859e16953cd733293618f626cc19b8466e00fd3) provide behavioral
+references only. No application source or tests were copied. Dependency
+licenses/notices remain authoritative. This partial integration does not
+advance the complete original-SUI parity boundary or the product release.

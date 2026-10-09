@@ -317,6 +317,9 @@ func validateClientSaveBatch(tx *gorm.DB, clients []*model.Client, editing bool)
 		if err := saveidentity.Validate(tx, action, client.Id, &model.Client{}); err != nil {
 			return err
 		}
+		if err := PrepareSnellCredential(tx, client); err != nil {
+			return err
+		}
 		if _, duplicate := byName[client.Name]; duplicate {
 			return common.NewError("client name already exists")
 		}
@@ -332,7 +335,7 @@ func validateClientSaveBatch(tx *gorm.DB, clients []*model.Client, editing bool)
 			return common.NewError("client name already exists")
 		}
 	}
-	return nil
+	return validateSnellUserKeys(tx, clients)
 }
 
 func reconcileClientIPIdentity(tx *gorm.DB, client *model.Client, editing bool) error {

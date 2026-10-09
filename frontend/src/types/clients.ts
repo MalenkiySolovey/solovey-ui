@@ -90,6 +90,9 @@ export function shuffleConfigs(configs: Config, key?: string) {
   const keys = key ? [key] : Object.keys(configs)
   keys.forEach(k => {
     switch (k) {
+      case "snell":
+        configs[k].userkey = RandomUtil.randomShadowsocksPassword(24)
+        break
       case "mixed":
       case "socks":
       case "http":
@@ -188,6 +191,7 @@ export function randomConfigs(user: string): Config {
       name: user,
       password: mixedPassword,
     },
+    snell: { name: user, userkey: RandomUtil.randomShadowsocksPassword(24) },
   }
 }
 
