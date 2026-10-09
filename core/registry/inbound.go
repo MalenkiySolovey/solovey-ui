@@ -13,6 +13,7 @@ import (
 	"github.com/sagernet/sing-box/protocol/redirect"
 	"github.com/sagernet/sing-box/protocol/shadowsocks"
 	"github.com/sagernet/sing-box/protocol/shadowtls"
+	"github.com/sagernet/sing-box/protocol/snell"
 	"github.com/sagernet/sing-box/protocol/socks"
 	"github.com/sagernet/sing-box/protocol/trojan"
 	"github.com/sagernet/sing-box/protocol/tuic"
@@ -47,7 +48,7 @@ func inboundDeclarations() []declaration[*inbound.Registry] {
 		{typeName: "shadowtls", buildTag: "", compiled: true, register: shadowtls.RegisterInbound},
 		{typeName: "vless", buildTag: "", compiled: true, register: vless.RegisterInbound},
 		{typeName: "anytls", buildTag: "", compiled: true, register: anytls.RegisterInbound},
-		{typeName: C.TypeSnell, productUnavailable: "PRODUCT_FEATURE_NOT_ENABLED", register: registerSnellInboundSchema},
+		{typeName: C.TypeSnell, compiled: true, authenticatedUsers: true, register: snell.RegisterInbound},
 		{typeName: C.TypeCloudflared, buildTag: "with_cloudflared", productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
 		{typeName: "hysteria", buildTag: "with_quic", compiled: C.WithQUIC, register: hysteria.RegisterInbound},
 		{typeName: "tuic", buildTag: "with_quic", compiled: C.WithQUIC, register: tuic.RegisterInbound},

@@ -44,6 +44,9 @@ var sensitiveKeyFragments = []string{
 }
 
 var sensitiveExactKeys = []string{
+	"psk",
+	"userkey",
+	"user_key",
 	"account_key",
 	"mac_key",
 	"otp",
@@ -85,7 +88,7 @@ var sensitiveValuePatterns = []struct {
 	},
 	{
 		// Keep the key for diagnostics and remove the entire scalar value.
-		pattern:     regexp.MustCompile(`(?i)(\b(?:password|passwd|passphrase|proxy_password|csrf(?:[_-]?token)?|recovery[_-]?code|private[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|session[_-]?(?:id|token)|cookie|secret)\b["']?\s*[:=]\s*["']?)[^"'\s,;}\]]+(["']?)`),
+		pattern:     regexp.MustCompile(`(?i)(\b(?:psk|user[_-]?key|password|passwd|passphrase|proxy_password|csrf(?:[_-]?token)?|recovery[_-]?code|private[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|session[_-]?(?:id|token)|cookie|secret)\b["']?\s*[:=]\s*["']?)[^"'\s,;}\]]+(["']?)`),
 		replacement: `${1}` + Marker + `${2}`,
 	},
 	{

@@ -663,6 +663,16 @@ export default {
       "stun": "STUN Server",
       "options": "DERP Options"
     },
+    "snell": {
+      "psk": "Server PSK",
+      "userKey": "Client user key",
+      "obfsMode": "Obfuscation",
+      "obfsHost": "Obfuscation host",
+      "mode": "Traffic shaping",
+      "reuse": "Reuse connections",
+      "pskLength": "PSK requires {min}–{max} bytes; current: {bytes}",
+      "exportLimit": "Snell is available as sing-box JSON. Share URI and Clash export are unavailable."
+    },
     "anytls": {
     "paddingScheme": "Padding scheme",
       "idleInterval": "Idle Session Check Interval",

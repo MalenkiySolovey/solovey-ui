@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"sync"
 
+	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/sagernet/sing-box/adapter"
 )
@@ -127,6 +128,13 @@ func (e *Epoch) bind(ctx context.Context, metadata adapter.InboundContext) (cont
 	defer e.mu.RUnlock()
 	if !e.active {
 		return nil, errors.New("inbound_generation_retired")
+	}
+	// The pinned Snell constructor falls back to PSK-only when users is empty.
+	// Product-managed credentials must never gain that anonymous fallback when
+	// the last client is disabled. Require the authenticated runtime principal;
+	// a nonempty but unproven binding still remains unknown in the inventory.
+	if registry.Resolve("inbounds", metadata.InboundType).AuthenticatedUsers && (metadata.Inbound != e.tag || metadata.User == "") {
+		return nil, errors.New("authenticated_inbound_user_required")
 	}
 	var entry *principal
 	if metadata.Inbound == e.tag {

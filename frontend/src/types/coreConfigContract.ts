@@ -1,6 +1,14 @@
 import { shallowRef } from 'vue'
 import HttpUtils from '@/plugins/httputil'
 
+export interface SnellCapability {
+  versions: { version: number; clientVersion: number; pskMinBytes: number; pskMaxBytes: number; obfuscation: boolean }[]
+  obfsModes: string[]
+  modes: string[]
+  userKeyMaxBytes: number
+  uri: boolean
+}
+
 export interface CoreConfigContract {
 	compatibilityCatalogue?: { id: string; consumer: string; classification: string; policy: string }[]
   tls?: {
@@ -12,7 +20,7 @@ export interface CoreConfigContract {
     clientAuthentication: string[]
     engines: string[]
   }
-  protocol?: { fields: Record<string, string[]>; memoryUnits: Record<string, number> }
+  protocol?: { fields: Record<string, string[]>; memoryUnits: Record<string, number>; snell?: Record<'in' | 'out', SnellCapability> }
   dnsActions: Record<string, string[]>
   dnsConditions: string[]
   dnsCacheFields?: string[]

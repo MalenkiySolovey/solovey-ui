@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 
+	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
@@ -55,6 +56,8 @@ func fillOutboundJSON(i *model.Inbound, hostname string, legacy bool) error {
 	case "http", "socks", "mixed", "anytls":
 	case "naive":
 		naiveOut(&outJson, *inbound)
+	case "snell":
+		snellOut(outJson, *inbound)
 	case "shadowsocks":
 		shadowsocksOut(&outJson, *inbound)
 	case "shadowtls":
@@ -83,6 +86,32 @@ func fillOutboundJSON(i *model.Inbound, hostname string, legacy bool) error {
 	}
 
 	return nil
+}
+
+func snellOut(out map[string]interface{}, inbound map[string]interface{}) {
+	version, _ := inbound["version"].(float64)
+	for _, fact := range registry.SnellContract("inbounds").Versions {
+		if fact.Version != int(version) {
+			continue
+		}
+		out["version"] = fact.ClientVersion
+		out["psk"] = inbound["psk"]
+		if fact.Obfuscation {
+			delete(out, "mode")
+			out["obfs_mode"] = inbound["obfs_mode"]
+			if out["obfs_mode"] == nil {
+				delete(out, "obfs_mode")
+			}
+		} else {
+			delete(out, "obfs_mode")
+			delete(out, "obfs_host")
+			out["mode"] = inbound["mode"]
+			if out["mode"] == nil {
+				delete(out, "mode")
+			}
+		}
+		return
+	}
 }
 
 // addTls function

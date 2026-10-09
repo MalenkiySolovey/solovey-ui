@@ -83,6 +83,7 @@
           <Tuic v-if="inbound.type == inTypes.TUIC" direction="in" :data="inbound" />
           <Tun v-if="inbound.type == inTypes.Tun" :data="inbound" />
           <AnyTls v-if="inbound.type == inTypes.AnyTls" :data="inbound" direction="in" />
+          <Snell v-if="inbound.type == inTypes.Snell" :data="inbound" direction="in" />
           <TProxy v-if="inbound.type == inTypes.TProxy" :inbound="inbound" />
           <Transport v-if="Object.hasOwn(inbound,'transport')" :data="inbound" />
           <Users v-if="hasUser" :clients="clients" :data="initUsers" />

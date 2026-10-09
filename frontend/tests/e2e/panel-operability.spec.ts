@@ -29,21 +29,33 @@ test('authenticated panel composition remains operable through its production ow
     }
   })
 
-  const realtimeToken = page.waitForResponse(response => (
+  const waitForRealtimeToken = () => page.waitForResponse(response => (
     response.request().method() === 'POST' && response.url().endsWith('/api/realtime/ws-token')
   ))
+  let realtimeToken = waitForRealtimeToken()
   const realtimeSocket = page.waitForEvent('websocket', {
     predicate: socket => socket.url().includes('/api/realtime/ws'),
-  })
+    timeout: 120_000,
+  }).then(socket => ({ socket }), error => ({ error }))
 
   await login(page)
-  const realtimeTokenResponse = await realtimeToken
-  const realtimeTokenBody = await realtimeTokenResponse.text()
+  let realtimeTokenResponse = await realtimeToken
+  // All files share one managed backend and loopback address. Respect its
+  // production handshake window if earlier browser tests consumed that budget.
+  if (realtimeTokenResponse.status() === 429) {
+    const retrySeconds = Number(realtimeTokenResponse.headers()['retry-after'])
+    expect(retrySeconds).toBeGreaterThan(0)
+    expect(retrySeconds).toBeLessThanOrEqual(60)
+    await new Promise(resolve => setTimeout(resolve, retrySeconds * 1_000))
+    realtimeToken = waitForRealtimeToken()
+    await page.reload()
+    realtimeTokenResponse = await realtimeToken
+  }
   expect(
     realtimeTokenResponse.ok(),
-    `realtime token status=${realtimeTokenResponse.status()} body=${realtimeTokenBody}`,
+    `realtime token status=${realtimeTokenResponse.status()}`,
   ).toBeTruthy()
-  await realtimeSocket
+  expect(await realtimeSocket).toHaveProperty('socket')
 
   const inventory = await successfulObject<CatalogInventory>(
     await page.request.get('api/update/components'),

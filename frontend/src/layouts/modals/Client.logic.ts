@@ -25,6 +25,7 @@ export default defineComponent({
       componentLinks: <Link[]>[],
       ipLimitModes: ['monitor', 'enforce'],
       snapshot: '',
+      revealSnell: false,
     }
   },
   methods: {
@@ -47,6 +48,7 @@ export default defineComponent({
       this.subLinks = clientLinks.filter(l => l.type === 'sub')
       this.componentLinks = clientLinks.filter(l => !isCoreClientLinkType(l.type))
       this.tab = "t1"
+      this.revealSnell = false
       this.loading = false
       this.snapshot = JSON.stringify([this.client, this.clientConfig, this.links, this.extLinks, this.subLinks, this.componentLinks])
     },

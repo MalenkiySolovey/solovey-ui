@@ -91,6 +91,7 @@
     <Headers :data="inData.out_json" v-if="type == inTypes.HTTP" />
     <AnyTls v-if="type == inTypes.AnyTls" :data="inData.out_json" direction="out_json" />
     <Naive v-if="type == inTypes.Naive" :data="inData.out_json" direction="out_json" />
+    <Snell v-if="type == inTypes.Snell" :data="inData.out_json" :server-version="inData.version" direction="out_json" />
   </v-card>
 </template>
 
@@ -101,6 +102,7 @@ import UoT from '@/components/fields/UoT.vue'
 import Headers from '@/components/fields/Headers.vue'
 import AnyTls from '@/components/protocols/AnyTls.vue'
 import Naive from '@/components/protocols/Naive.vue'
+import Snell from '@/components/protocols/Snell.vue'
 
 export default {
   props: ['inData', 'type'],
@@ -124,6 +126,7 @@ export default {
         InTypes.VLESS,
         InTypes.TUIC,
         InTypes.Hysteria2,
+        InTypes.Snell,
       ],
       havUoT: [
         InTypes.SOCKS,
@@ -147,6 +150,6 @@ export default {
       set(v:number) { this.$props.inData.out_json.hop_interval = v>0 ? v + 's' : undefined }
     },
   },
-  components: { Network, UoT, Headers, AnyTls, Naive }
+  components: { Network, UoT, Headers, AnyTls, Naive, Snell }
 }
 </script>

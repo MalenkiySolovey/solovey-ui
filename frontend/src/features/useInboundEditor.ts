@@ -19,6 +19,7 @@ import Tuic from '@/components/protocols/Tuic.vue'
 import Tun from '@/components/protocols/Tun.vue'
 import Trojan from '@/components/protocols/Trojan.vue'
 import AnyTls from '@/components/protocols/AnyTls.vue'
+import Snell from '@/components/protocols/Snell.vue'
 import InTls from '@/components/tls/InTLS.vue'
 import TProxy from '@/components/protocols/TProxy.vue'
 import Multiplex from '@/components/fields/Multiplex.vue'
@@ -43,12 +44,13 @@ export default defineComponent({
       snapshot: "",
       side: "s",
       inTypes: InTypes,
-      inboundWithUsers: ['mixed', 'socks', 'http', 'shadowsocks', 'vmess', 'trojan', 'naive', 'hysteria', 'shadowtls', 'tuic', 'hysteria2', 'vless', 'anytls'],
+      inboundWithUsers: ['mixed', 'socks', 'http', 'shadowsocks', 'vmess', 'trojan', 'naive', 'hysteria', 'shadowtls', 'tuic', 'hysteria2', 'vless', 'anytls', 'snell'],
       initUsers: {
         model: 'none',
         values: <any>[],
       },
       HasInData: [
+        InTypes.Snell,
         InTypes.SOCKS,
         InTypes.HTTP,
         InTypes.Mixed,
@@ -234,6 +236,6 @@ export default defineComponent({
   components: { InboundGuidance, SaveGuardNotice, CapabilityNotice,
     Listen, InTls, Hysteria2, Naive, Direct, Shadowsocks,
     Users, Hysteria, ShadowTls, TProxy, Multiplex, Tuic, Tun,
-    Trojan, AnyTls, Transport, AddrVue, OutJsonVue, Dial, DomainResolver
+    Trojan, AnyTls, Snell, Transport, AddrVue, OutJsonVue, Dial, DomainResolver
   }
 })

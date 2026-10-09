@@ -66,6 +66,12 @@ func fixtureIdentityRouter(t *testing.T, c *Core, tag string, clientID uint) (ad
 }
 
 func TestOfficialLiveProjectionAndVerifiedDisconnect(t *testing.T) {
+	for _, kind := range []string{"anytls", "snell"} {
+		t.Run(kind, func(t *testing.T) { testOfficialProtocolProjection(t, kind) })
+	}
+}
+
+func testOfficialProtocolProjection(t *testing.T, kind string) {
 	c := startPrivateFixture(t)
 	generation := c.privateAPI.generation
 	empty, err := c.Connections(t.Context(), generation, 7, 100)
@@ -73,7 +79,7 @@ func TestOfficialLiveProjectionAndVerifiedDisconnect(t *testing.T) {
 		t.Fatal("invalid zero projection")
 	}
 	router, delegate := fixtureIdentityRouter(t, c, "in", 7)
-	metadata := adapter.InboundContext{Inbound: "in", InboundType: "anytls", User: "authenticated", Network: "tcp", Source: M.ParseSocksaddr("127.0.0.1:12345"), Destination: M.ParseSocksaddr("example.invalid:443")}
+	metadata := adapter.InboundContext{Inbound: "in", InboundType: kind, User: "authenticated", Network: "tcp", Source: M.ParseSocksaddr("127.0.0.1:12345"), Destination: M.ParseSocksaddr("example.invalid:443")}
 	left, right := net.Pipe()
 	t.Cleanup(func() { _ = right.Close() })
 	raw := &countedFlow{Conn: left}
@@ -230,6 +236,12 @@ func (o *rejectingPrincipalObserver) ObserveAndAllow(principal, _ string) bool {
 }
 
 func TestIdentityDoesNotBypassTCPUDPAdmissionOrAccounting(t *testing.T) {
+	for _, kind := range []string{"anytls", "snell"} {
+		t.Run(kind, func(t *testing.T) { testAuthenticatedProtocolAdmission(t, kind) })
+	}
+}
+
+func testAuthenticatedProtocolAdmission(t *testing.T, kind string) {
 	observer := &rejectingPrincipalObserver{}
 	c := NewCore(observer)
 	if err := c.Start([]byte(privateFixture)); err != nil {
@@ -237,7 +249,7 @@ func TestIdentityDoesNotBypassTCPUDPAdmissionOrAccounting(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = c.Stop() })
 	router, delegate := fixtureIdentityRouter(t, c, "in", 7)
-	metadata := adapter.InboundContext{Inbound: "in", User: "authenticated", Source: M.ParseSocksaddr("127.0.0.1:1234")}
+	metadata := adapter.InboundContext{Inbound: "in", InboundType: kind, User: "authenticated", Source: M.ParseSocksaddr("127.0.0.1:1234")}
 	left, right := net.Pipe()
 	defer func() { _ = right.Close() }()
 	raw := &countedFlow{Conn: left}

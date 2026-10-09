@@ -156,6 +156,9 @@
                     v-model="clientConfig[key].password"
                     hide-details>
                   </v-text-field>
+                  <v-text-field v-if="key === 'snell'" v-model="clientConfig[key].userkey" :label="$t('types.snell.userKey')"
+                    :type="revealSnell ? 'text' : 'password'" :append-inner-icon="revealSnell ? 'mdi-eye-off' : 'mdi-eye'"
+                    @click:append-inner="revealSnell = !revealSnell" />
                   <v-text-field
                     v-if="clientConfig[key].uuid != undefined"
                     label="UUID"

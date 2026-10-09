@@ -155,6 +155,9 @@ func UpdateClientsOnInboundAdd(tx *gorm.DB, initIDs string, inboundID uint, host
 		if !ok {
 			continue
 		}
+		if err := PrepareSnellCredential(tx, &client); err != nil {
+			return err
+		}
 		links, decoded, lerr := RebuildLinks(client.Id, client.Config, client.Links, []model.Inbound{inbound}, hostname, func(link Link) bool {
 			return LinkString(link, "remark") != inbound.Tag
 		}, "inbound add")
@@ -169,7 +172,7 @@ func UpdateClientsOnInboundAdd(tx *gorm.DB, initIDs string, inboundID uint, host
 			return err
 		}
 	}
-	return nil
+	return validateSnellUserKeys(tx, nil)
 }
 func UpdateClientsOnInboundDelete(tx *gorm.DB, id uint, tag string) error {
 	clients, err := ByInbound(tx, id)
@@ -213,6 +216,9 @@ func UpdateLinksByInboundChange(tx *gorm.DB, inbounds *[]model.Inbound, hostname
 			return err
 		}
 		for _, client := range clients {
+			if err := PrepareSnellCredential(tx, &client); err != nil {
+				return err
+			}
 			links, decoded, lerr := RebuildLinks(client.Id, client.Config, client.Links, []model.Inbound{inbound}, hostname, func(link Link) bool {
 				return LinkString(link, "type") != "local" || (LinkString(link, "remark") != inbound.Tag && LinkString(link, "remark") != oldTag)
 			}, "inbound link update")
@@ -228,7 +234,7 @@ func UpdateLinksByInboundChange(tx *gorm.DB, inbounds *[]model.Inbound, hostname
 			}
 		}
 	}
-	return nil
+	return validateSnellUserKeys(tx, nil)
 }
 func UpdateResetFields(tx *gorm.DB, clientID uint, values map[string]interface{}) error {
 	return tx.Model(model.Client{}).Where("id = ?", clientID).Updates(values).Error

@@ -25,6 +25,7 @@ import UrlTest from '@/components/protocols/UrlTest.vue'
 import Failover from '@/components/protocols/Failover.vue'
 import { convertOutboundLink } from '@/shared/composables/useOutboundConversion'
 import AnyTls from '@/components/protocols/AnyTls.vue'
+import Snell from '@/components/protocols/Snell.vue'
 import Data from '@/store/modules/data'
 import CapabilityNotice from '@/components/fields/CapabilityNotice.vue'
 import SaveGuardNotice from '@/components/fields/SaveGuardNotice.vue'
@@ -128,5 +129,5 @@ export default defineComponent({
   components: { SaveGuardNotice, CapabilityNotice, Dial, Multiplex, Transport, OutTLS,
     Direct, Socks, Http, Shadowsocks, Vmess, Trojan,
     Wireguard, Hysteria, Naive, ShadowTls, Vless, Tuic,
-    Hysteria2, AnyTls, Tor, Ssh, Selector, UrlTest, Failover }
+    Hysteria2, AnyTls, Snell, Tor, Ssh, Selector, UrlTest, Failover }
 })
