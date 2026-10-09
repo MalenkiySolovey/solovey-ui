@@ -1,5 +1,6 @@
 
 <template>
+  <ClientSessions v-model="sessions.visible" :client-id="sessions.clientId" :client-name="sessions.clientName" />
   <ClientModal 
     v-model="modal.visible"
     :visible="modal.visible"
@@ -70,6 +71,7 @@
     @sort-by-name="sortClientsByName"
     @show-ips="showClientIps"
     @stats="showStats"
+    @sessions="showSessions"
   />
 
   <template v-else>
@@ -287,6 +289,7 @@
         <v-icon class="me-2" icon="lucide:activity" @click="showDoctor(item.id)">
           <v-tooltip activator="parent" location="top" :text="$t('actions.diagnose')"></v-tooltip>
         </v-icon>
+        <v-icon icon="mdi-lan-connect" class="ms-2" :aria-label="$t('runtime.sessions')" @click="showSessions(item.id)" />
         <v-icon icon="mdi-chart-line" @click="showStats(item.name)" v-if="enableTraffic">
           <v-tooltip activator="parent" location="top" :text="$t('stats.graphTitle')"></v-tooltip>
         </v-icon>
@@ -301,6 +304,7 @@
 </template>
 <style lang="scss" src="./Clients.scss"></style>
 <script lang="ts" setup>
+import ClientSessions from '@/components/ClientSessions.vue'
 import ManualSortButton from '@/shared/ui/ManualSortButton.vue'
 import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
 import ClientModal from '@/layouts/modals/Client.vue'
@@ -313,5 +317,5 @@ import IpHistoryModal from '@/components/security/IpHistoryModal.vue'
 import ClientsNexusList from '@/views/clients/ClientsNexusList.vue'
 import { useClientsPage } from '@/features/useClientsPage'
 
-const { actionMenu, addBulk, addBulkModal, clearFilter, clientRowProps, clientSelectMode, clients, closeAddBulk, closeDoctor, closeEditBulk, closeModal, closeQrCode, closeStats, dateLocale, delClient, delClientsBulk, deleteSelectedClients, delOverlay, doFilter, doctor, dragClient, dragSelectedClients, editBulk, editBulkModal, enableTraffic, filterItems, filterMenu, filterSettings, filteredClients, formatSize, groups, headers, inboundTags, inbounds, ipModal, isOnline, itemPerPage, modal, mode, moveClient, onClientIpsCleared, onlineUsers, percent, percentColor, qrcode, remainedDays, resetClientTraffic, selectedClientCount, selectedClientIds, setItemPerPage, showClientIps, showDoctor, showModal, showQrCode, showStats, smAndDown, sortClientsByName, stats, toggleClientSelectMode } = useClientsPage()
+const { sessions, showSessions, actionMenu, addBulk, addBulkModal, clearFilter, clientRowProps, clientSelectMode, clients, closeAddBulk, closeDoctor, closeEditBulk, closeModal, closeQrCode, closeStats, dateLocale, delClient, delClientsBulk, deleteSelectedClients, delOverlay, doFilter, doctor, dragClient, dragSelectedClients, editBulk, editBulkModal, enableTraffic, filterItems, filterMenu, filterSettings, filteredClients, formatSize, groups, headers, inboundTags, inbounds, ipModal, isOnline, itemPerPage, modal, mode, moveClient, onClientIpsCleared, onlineUsers, percent, percentColor, qrcode, remainedDays, resetClientTraffic, selectedClientCount, selectedClientIds, setItemPerPage, showClientIps, showDoctor, showModal, showQrCode, showStats, smAndDown, sortClientsByName, stats, toggleClientSelectMode } = useClientsPage()
 </script>

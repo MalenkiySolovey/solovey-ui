@@ -109,6 +109,9 @@ func absent(owner any) bool {
 }
 
 func (s *Box) close() error {
+	if s.inboundIdentity != nil {
+		s.inboundIdentity.Close()
+	}
 	var result error
 	closeOne := func(name string, owner io.Closer) {
 		if absent(owner) {

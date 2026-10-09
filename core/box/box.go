@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
 	corelogging "github.com/MalenkiySolovey/solovey-ui/core/logging"
 	"github.com/MalenkiySolovey/solovey-ui/core/tracker"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
@@ -64,6 +65,7 @@ type Box struct {
 	internalService     []adapter.LifecycleService
 	statsTracker        *tracker.StatsTracker
 	connTracker         *tracker.ConnTracker
+	inboundIdentity     *inboundidentity.Owner
 	done                chan struct{}
 	closeOnce           sync.Once
 	closeErr            error
@@ -145,7 +147,7 @@ func NewBox(options Options) (_ *Box, err error) {
 	}
 	s := &Box{ctx: ctx, cancel: cancel, createdAt: createdAt, logFactory: logFactory,
 		logger: logFactory.Logger(), done: make(chan struct{}),
-		initialized: make(map[adapter.Lifecycle]bool)}
+		initialized: make(map[adapter.Lifecycle]bool), inboundIdentity: inboundidentity.NewOwner()}
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, s.Close())
@@ -176,7 +178,7 @@ func NewBox(options Options) (_ *Box, err error) {
 	routeOptions := sbCommon.PtrValueOrDefault(options.Route)
 	dnsOptions := sbCommon.PtrValueOrDefault(options.DNS)
 	endpointManager := endpoint.NewManager(logFactory.NewLogger("endpoint"), endpointRegistry)
-	inboundManager := inbound.NewManager(logFactory.NewLogger("inbound"), inboundRegistry, endpointManager)
+	inboundManager := inbound.NewManager(logFactory.NewLogger("inbound"), constructionRegistry{inboundRegistry}, endpointManager)
 	outboundManager := outbound.NewManager(logFactory.NewLogger("outbound"), outboundRegistry, endpointManager, routeOptions.Final)
 	dnsTransportManager := dns.NewTransportManager(logFactory.NewLogger("dns/transport"), dnsTransportRegistry, outboundManager, dnsOptions.Final)
 	serviceManager := boxService.NewManager(logFactory.NewLogger("service"), serviceRegistry)
@@ -266,9 +268,13 @@ func NewBox(options Options) (_ *Box, err error) {
 	}
 	for i, inboundOptions := range options.Inbounds {
 		tag := indexedOptionTag(i, inboundOptions.Tag)
+		boundRouter, epoch, bindErr := s.inboundIdentity.Prepare(router, tag, options.IdentityBindings)
+		if bindErr != nil {
+			return nil, bindErr
+		}
 		err = inboundManager.Create(
 			ctx,
-			router,
+			boundRouter,
 			logFactory.NewLogger(F.ToString("inbound/", inboundOptions.Type, "[", tag, "]")),
 			tag,
 			inboundOptions.Type,
@@ -277,6 +283,7 @@ func NewBox(options Options) (_ *Box, err error) {
 		if err != nil {
 			return nil, common.NewError("initialize inbound[", i, "] ", tag, err)
 		}
+		s.inboundIdentity.Publish(tag, epoch)
 	}
 	for i, outboundOptions := range options.Outbounds {
 		tag := indexedOptionTag(i, outboundOptions.Tag)

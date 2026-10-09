@@ -120,6 +120,18 @@ describe('api axios interceptor regression anchors', () => {
     expect(first.signal).toBeUndefined()
   })
 
+  it('preserves caller cancellation and does not retire a newer duplicate', async () => {
+    await loadApi()
+    const caller = new AbortController()
+    const first = await mocks.requestFulfilled?.({ method: 'get', url: 'api/runtime/sessions', headers: {}, signal: caller.signal })
+    caller.abort('view retired')
+    expect(first.signal.aborted).toBe(true)
+    const second = await mocks.requestFulfilled?.({ method: 'get', url: 'api/runtime/sessions', headers: {} })
+    await expect(mocks.responseRejected?.({ config: first, __CANCEL__: true })).rejects.toBeDefined()
+    await mocks.requestFulfilled?.({ method: 'get', url: 'api/runtime/sessions', headers: {} })
+    expect(second.signal.aborted).toBe(true)
+  })
+
   it('clears the cached CSRF token on Invalid CSRF token responses', async () => {
     await loadApi()
     const error = {

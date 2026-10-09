@@ -230,3 +230,11 @@ credential redaction, typed observations and bounded operations remain Solovey
 owners. No upstream application source or tests were copied; raw browser API
 and host daemon controls are excluded. This is partial Stage 2 integration and
 does not advance the original S-UI complete parity boundary or product release.
+
+Live client-flow listing independently adapts the behavior of alireza0/s-ui
+v1.6.3 (13abbdc431ae31ec78a54f5e6643b7fd70b6e634) and its pinned frontend
+691346925b65e485b1cc5c70ca952819bbbe6047. Official v1.14.2 connection IDs and
+protocol authentication contexts supply runtime identity; Solovey owns stable
+client bindings, retired-inbound admission and scoped Classic/Nexus projection.
+Parent transport limitations remain explicit. No application source or tests
+were copied. Existing dependency licenses remain authoritative.

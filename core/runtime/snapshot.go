@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 
+	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
+
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing-box/log"
 )
@@ -23,6 +25,7 @@ type coreRuntime struct {
 	router          adapter.Router
 	factory         log.Factory
 	generation      string
+	inboundIdentity *inboundidentity.Owner
 }
 
 // withRuntime keeps the lifecycle read lock for the complete operation. The
@@ -45,6 +48,7 @@ func (c *Core) withRuntime(fn func(coreRuntime) error) error {
 		endpointManager: c.endpointManager,
 		router:          c.router,
 		factory:         c.factory,
+		inboundIdentity: c.instance.InboundIdentity(),
 	}
 	if c.privateAPI != nil {
 		runtime.generation = c.privateAPI.generation

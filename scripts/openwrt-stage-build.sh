@@ -7,9 +7,9 @@ set -Eeuo pipefail
 # builds the frontend before Go embedding, compiles the nine target programs,
 # and closes the result with a source-bound payload manifest.
 
-readonly GO_VERSION='go1.26.6'
-readonly GO_TOOLCHAIN_FILENAME='go1.26.6.linux-amd64.tar.gz'
-readonly GO_TOOLCHAIN_SHA256='708effb774be8237570d0add163225abbdfaf4fca28b2611df167beba4feef89'
+readonly GO_VERSION='go1.26.9'
+readonly GO_TOOLCHAIN_FILENAME='go1.26.9.linux-amd64.tar.gz'
+readonly GO_TOOLCHAIN_SHA256='42d158b4d8f7b61ac0a830567c940a86098fb7aac52e467a5ebec03ef5cc2f8d'
 readonly CRONET_TOOLCHAIN_COMMIT='e7f6f6f5b7ce226f686f6cb5d068a63da6657ccd'
 readonly BUILD_TAGS='with_quic,with_grpc,with_utls,with_acme,with_gvisor,badlinkname,tfogo_checklinkname0,with_tailscale,with_naive_outbound,with_musl'
 readonly HELPER_LDFLAGS_CONTRACT="-buildid= -w -s -linkmode external -extldflags '-static'"
@@ -25,7 +25,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/openwrt-target-profile.sh"
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/openwrt-stage-build.sh --source <current-source> --out <new-stage-root> --trust-roots-file <public-base64-file> --go-toolchain-archive <go1.26.6.linux-amd64.tar.gz> [--target-profile <x86-64|rockchip-armv8>]
+Usage: scripts/openwrt-stage-build.sh --source <current-source> --out <new-stage-root> --trust-roots-file <public-base64-file> --go-toolchain-archive <go1.26.9.linux-amd64.tar.gz> [--target-profile <x86-64|rockchip-armv8>]
 
 Required environment: the project-pinned Go and Node toolchains plus
 GOOS=linux, the profile's GOARCH, CGO_ENABLED=1 and the OpenWrt-musl CC/CXX compiler

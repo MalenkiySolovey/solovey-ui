@@ -3,6 +3,9 @@ package runtime
 import (
 	"errors"
 
+	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
+	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
+
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -10,6 +13,10 @@ import (
 )
 
 func (c *Core) AddInbound(config []byte) error {
+	return c.AddInboundWithBindings(config, nil)
+}
+
+func (c *Core) AddInboundWithBindings(config []byte, bindings []inboundidentity.Binding) error {
 	return c.withMutation(func(rt coreRuntime) error {
 		var inboundConfig option.Inbound
 		if err := inboundConfig.UnmarshalJSONContext(rt.ctx, config); err != nil {
@@ -18,19 +25,25 @@ func (c *Core) AddInbound(config []byte) error {
 		if inboundConfig.Tag == privateAPITag {
 			return errors.New("reserved runtime tag")
 		}
-		if err := rt.inboundManager.Create(
-			rt.ctx,
-			rt.router,
+		record, recorded := inboundRuntimeRecord(rt.ctx, inboundConfig, 0)
+		if !recorded {
+			return errors.New("record effective inbound")
+		}
+		boundRouter, epoch, err := rt.inboundIdentity.Prepare(rt.router, inboundConfig.Tag, bindings)
+		if err != nil {
+			return err
+		}
+		constructionCtx, finish := corebox.BeginInboundConstruction(rt.ctx, inboundConfig.Tag)
+		if err := finish(rt.inboundManager.Create(
+			constructionCtx,
+			boundRouter,
 			rt.factory.NewLogger("inbound/"+inboundConfig.Type+"["+inboundConfig.Tag+"]"),
 			inboundConfig.Tag,
 			inboundConfig.Type,
-			inboundConfig.Options); err != nil {
+			inboundConfig.Options)); err != nil {
 			return err
 		}
-		record, recorded := inboundRuntimeRecord(rt.ctx, inboundConfig, 0)
-		if !recorded {
-			return errors.Join(errors.New("record effective inbound"), rt.inboundManager.Remove(inboundConfig.Tag))
-		}
+		rt.inboundIdentity.Publish(inboundConfig.Tag, epoch)
 		c.access.Lock()
 		if c.effectiveInbounds == nil {
 			c.effectiveInbounds = make(map[string]InboundRuntimeRecord)
@@ -45,6 +58,7 @@ func (c *Core) AddInbound(config []byte) error {
 func (c *Core) RemoveInbound(tag string) error {
 	return c.withMutation(func(rt coreRuntime) error {
 		logger.Info("remove inbound: ", tag)
+		rt.inboundIdentity.Revoke(tag)
 		if err := rt.inboundManager.Remove(tag); err != nil {
 			return err
 		}

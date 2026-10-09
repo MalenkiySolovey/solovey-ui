@@ -44,7 +44,7 @@ unsupported filesystem entries, mode changes and byte changes.
 
 Target-producing frontend and Go subprocesses run with explicit `env -i`
 allowlists, private HOME/config/cache roots and canonical target variables.
-The Go producer privately copies and verifies the official Go 1.26.6 archive,
+The Go producer privately copies and verifies the official Go 1.26.9 archive,
 binds the complete extracted toolchain tree, materializes the exact seven-target
 module graph into fresh private module/build caches through the public module
 proxy and SumDB, and repeats the complete-tree and `go mod verify` checks at the
@@ -59,7 +59,7 @@ On an eligible Linux SDK host, package current source with:
 ```sh
 scripts/openwrt-package-build.sh \
   --sdk-archive <official-sdk.tar.zst> \
-  --go-toolchain-archive <go1.26.6.linux-amd64.tar.gz> \
+  --go-toolchain-archive <go1.26.9.linux-amd64.tar.gz> \
   --source <source-worktree> \
   --trust-roots-file <public-release-trust-roots.b64> \
   --out <new-evidence-directory>

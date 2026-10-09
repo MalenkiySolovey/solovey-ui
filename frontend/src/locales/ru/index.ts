@@ -8,6 +8,7 @@ import security from './security'
 import sshManagement from './sshManagement'
 import deployment from './deployment'
 import operations from './operations'
+import runtime from './runtime'
 
 export default {
   ...common,
@@ -20,4 +21,5 @@ export default {
   ...sshManagement,
   ...deployment,
   ...operations,
+  ...runtime,
 }
