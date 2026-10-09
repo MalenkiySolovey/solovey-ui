@@ -16,12 +16,29 @@ func (s *SettingService) GetAllSetting() (*map[string]string, error) {
 }
 
 func (s *SettingService) ResetSettings() error {
-	if err := s.settingsManager().Reset(); err != nil {
-		return err
+	db := s.settingDatabase()
+	if db == nil {
+		return ErrMaintenanceUnavailable
 	}
-	// A deliberate reset adopts current safe defaults; it must not recreate
-	// the upgrade-only LEGACY_UNBOUNDED fallback by deleting its marker.
-	return s.AdoptBoundedSessionLifetime()
+	return db.Transaction(func(tx *gorm.DB) error {
+		local := &SettingService{database: tx}
+		held, err := local.CoreMaintenance()
+		if err != nil {
+			return err
+		}
+		if err := local.settingsManager().Reset(); err != nil {
+			return err
+		}
+		value := "false"
+		if held {
+			value = "true"
+		}
+		if err := local.setCoreMaintenanceValue(value); err != nil {
+			return err
+		}
+		// Reset retains deliberate downtime and adopts the bounded session policy.
+		return local.AdoptBoundedSessionLifetime()
+	})
 }
 
 func (s *SettingService) GetComponentSettingString(key string) (string, error) {

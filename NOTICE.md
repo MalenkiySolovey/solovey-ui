@@ -238,3 +238,11 @@ protocol authentication contexts supply runtime identity; Solovey owns stable
 client bindings, retired-inbound admission and scoped Classic/Nexus projection.
 Parent transport limitations remain explicit. No application source or tests
 were copied. Existing dependency licenses remain authoritative.
+
+Maintenance, current outbound groups and bounded log projection independently
+adapt the same pinned original S-UI behavior and official sing-box v1.14.2
+StartedService semantics. Solovey's existing settings owner persists deliberate
+maintenance; its existing lifecycle serializer applies intent, and the shared
+Classic/Nexus consumers expose generation-bound actual state. Member probes
+retain the existing bounded probe owner. No upstream application source or
+tests were copied; this partial integration does not advance complete parity.

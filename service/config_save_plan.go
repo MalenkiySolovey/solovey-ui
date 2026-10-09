@@ -134,6 +134,9 @@ func (s *ConfigService) applyCoreSaveEffectLocked(plan configSavePlan) error {
 	if coreInstance == nil {
 		return nil
 	}
+	if held, err := s.maintenanceHeldLocked(); err != nil || held {
+		return err
+	}
 	lifecycle := s.configCoreLifecycle()
 	if plan.RequiresCoreRestart() {
 		if reason := plan.RestartReason(); reason != "" {

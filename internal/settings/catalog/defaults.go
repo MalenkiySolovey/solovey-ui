@@ -17,6 +17,7 @@ const (
 	SessionGenerationKey     = "sessionGeneration"
 	SessionLifetimePolicyKey = "sessionLifetimePolicy"
 	CoreSchemaVersionKey     = "coreSchemaVersion"
+	CoreMaintenanceKey       = "coreMaintenance"
 
 	TrafficAgeKey               = "trafficAge"
 	TimeLocationKey             = "timeLocation"
@@ -72,7 +73,8 @@ func RuntimeDefaults() map[string]string {
 
 func InternalDefaults(baseConfig string) map[string]string {
 	return map[string]string{
-		ConfigKey:  baseConfig,
-		VersionKey: "",
+		ConfigKey:          baseConfig,
+		VersionKey:         "",
+		CoreMaintenanceKey: "false",
 	}
 }

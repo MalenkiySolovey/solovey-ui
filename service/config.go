@@ -122,6 +122,9 @@ func (s *ConfigService) startCoreLocked(force bool) error {
 	if coreInstance == nil {
 		return common.NewError("core not initialized")
 	}
+	if held, err := s.maintenanceHeldLocked(); err != nil || held {
+		return err
+	}
 	if coreInstance.IsRunning() {
 		return nil
 	}
@@ -168,6 +171,9 @@ func (s *ConfigService) RestartCore() error {
 func (s *ConfigService) restartCoreLocked() error {
 	if s.coreInstance() == nil {
 		return common.NewError("core not initialized")
+	}
+	if held, err := s.maintenanceHeldLocked(); err != nil || held {
+		return err
 	}
 	// Reject an unavailable dependency before stopping the currently running core.
 	if _, err := s.GetConfig(""); err != nil {

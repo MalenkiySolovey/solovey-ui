@@ -89,6 +89,12 @@ func (r configCoreMutationRuntime) ApplyInbound(ctx context.Context, inboundID u
 	if coreInstance == nil {
 		return coreinboundcontrol.RuntimeInboundObservationV1{}, fmt.Errorf("core unavailable")
 	}
+	if held, err := r.service.maintenanceHeldLocked(); err != nil || held {
+		if err != nil {
+			return coreinboundcontrol.RuntimeInboundObservationV1{}, err
+		}
+		return coreinboundcontrol.RuntimeInboundObservationV1{}, fmt.Errorf("core held for maintenance")
+	}
 	if !coreInstance.IsRunning() {
 		if err := r.service.startCoreLocked(true); err != nil {
 			return coreinboundcontrol.RuntimeInboundObservationV1{}, err

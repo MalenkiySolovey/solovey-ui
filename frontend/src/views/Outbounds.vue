@@ -1,4 +1,6 @@
 <template>
+  <RuntimeControls v-model="runtimeControlsOpen" />
+  <div class="d-flex justify-end mb-3"><v-btn variant="outlined" @click="runtimeControlsOpen = true">{{ $t('runtime.controls') }}</v-btn></div>
   <component
     :is="EntityForm"
     v-model="modal.visible"
@@ -256,7 +258,10 @@ import OutboundVue from '@/layouts/modals/Outbound.vue'
 import OutboundBulk from '@/layouts/modals/OutboundBulk.vue'
 import Stats from '@/layouts/modals/Stats.vue'
 import { useOutboundsPage } from '@/features/useOutboundsPage'
-import { defineAsyncComponent } from 'vue'
+import { defineAsyncComponent, ref } from 'vue'
+import RuntimeControls from '@/components/RuntimeControls.vue'
+
+const runtimeControlsOpen = ref(false)
 
 const OutboundsNexusList = defineAsyncComponent(() => import('./outbounds/OutboundsNexusList.vue'))
 const OutboundDrawer = defineAsyncComponent(() => import('@/components/nexus/drawers/OutboundDrawer.vue'))
