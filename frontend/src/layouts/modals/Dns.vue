@@ -1,10 +1,15 @@
 <template>
   <form-shell
     :dirty="dirty"
+    :save-disabled="!selectedCapability?.available || missingService"
     :title="$t('actions.' + title) + ' ' + $t('objects.dnsserver')"
     @close="close"
     @save="save"
   >
+        <v-alert v-if="!selectedCapability?.available" type="warning" variant="tonal" class="mb-3">
+          {{ $t('dns.capabilityUnavailable') }} {{ selectedCapability?.reason ?? $t('capability.waiting') }}
+        </v-alert>
+        <v-alert v-if="missingService" type="error" variant="tonal" class="mb-3">{{ $t('dns.resolvedMissingService') }}</v-alert>
         <v-row>
           <v-col cols="12" sm="6" md="4">
             <v-select
@@ -75,6 +80,14 @@
             <v-text-field v-model="dnsServer.interface" :label="$t('types.tun.ifName')" hide-details />
           </v-col>
         </v-row>
+        <v-row v-if="dnsServer.type == 'mdns'">
+          <v-col cols="12"><v-alert type="info" variant="tonal">{{ $t('dns.mdnsSemantics') }}</v-alert></v-col>
+          <v-col cols="12" sm="8">
+            <v-text-field v-model="multicastInterfaces" :label="$t('dns.mdnsInterfaces')" :hint="$t('dns.mdnsInterfaceHint')" persistent-hint />
+            <div class="text-caption">{{ $t('dns.mdnsObserved') }} {{ observedInterfaces.join(', ') || '—' }}</div>
+          </v-col>
+        </v-row>
+        <v-alert v-if="dnsServer.type == 'resolved'" type="info" variant="tonal" class="my-3">{{ $t('dns.resolvedSemantics') }}</v-alert>
         <v-row v-if="dnsServer.type == 'fakeip'">
           <v-col cols="12" sm="6" md="4">
             <v-text-field v-model="dnsServer.inet4_range" :label="$t('dns.rule.inet4Range')" hide-details />
@@ -105,6 +118,7 @@ import RandomUtil from '@/plugins/randomUtil'
 import { DnsTypes, createDnsServer } from '@/types/dns'
 import FormShell from '@/components/nexus/drawers/FormShell.vue'
 import Data from '@/store/modules/data'
+import { runtimeCapability } from '@/types/runtimeCapabilities'
 export default {
   props: ['visible', 'data', 'index', 'tsTags', 'rslvdTags'],
   emits: ['close', 'save'],
@@ -116,7 +130,7 @@ export default {
       HasServer: [DnsTypes.TCP, DnsTypes.UDP, DnsTypes.TLS, DnsTypes.QUIC, DnsTypes.HTTPS, DnsTypes.HTTP3],
       HasHeaders: [DnsTypes.HTTPS, DnsTypes.HTTP3],
       HasTls: [DnsTypes.TLS, DnsTypes.QUIC, DnsTypes.HTTPS, DnsTypes.HTTP3],
-      WithoutDial: [DnsTypes.Hosts, DnsTypes.Tailscale, DnsTypes.FakeIP, DnsTypes.Resolved],
+      WithoutDial: [DnsTypes.Hosts, DnsTypes.MDNS, DnsTypes.Tailscale, DnsTypes.FakeIP, DnsTypes.Resolved],
     }
   },
   methods: {
@@ -138,6 +152,7 @@ export default {
       this.$emit('close')
     },
     save() {
+      if (!this.selectedCapability?.available || this.missingService) return
       this.$emit('save', this.dnsServer)
     },
     addHostsPredefined() {
@@ -161,6 +176,13 @@ export default {
     },
   },
   computed:{
+    selectedCapability() { return runtimeCapability(Data().capabilities, 'dns', this.dnsServer.type) },
+    missingService(): boolean { return this.dnsServer.type === 'resolved' && (!this.dnsServer.service || !this.rslvdTags?.includes(this.dnsServer.service)) },
+    observedInterfaces(): string[] { return Data().capabilities?.multicastInterfaces ?? [] },
+    multicastInterfaces: {
+      get(): string { const value = this.dnsServer.interface; return Array.isArray(value) ? value.join(',') : value ?? '' },
+      set(value: string) { if (value === '') delete this.dnsServer.interface; else this.dnsServer.interface = value.split(',').map(s => s.trim()) },
+    },
     dnsTypes() {
       return Data().capabilities?.facts.filter(f => f.category === 'dns').map(f => ({ title: f.type + (f.available ? '' : ' (' + f.reason + ')'), value: f.type, props: { disabled: !f.available } })) ?? []
     },

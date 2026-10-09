@@ -201,6 +201,7 @@ func prepareDNS(config []byte, historical bool) (DNSCompatibility, error) {
 		}
 	}
 	result.Findings = append(result.Findings, DNSReferenceFindings(dnsJSON(root))...)
+	result.Findings = append(result.Findings, DNSSelectedTransportFindings(dnsJSON(root))...)
 	return finishDNSProjection(result, root, changed)
 }
 

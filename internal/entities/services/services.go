@@ -1,6 +1,7 @@
 package services
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -12,7 +13,9 @@ import (
 	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveeligibility"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
+	"github.com/sagernet/sing-box/option"
 	"gorm.io/gorm"
 )
 
@@ -115,6 +118,12 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 	if err := entityidentity.ValidateTypeTag(srv.Type, srv.Tag); err != nil {
 		return nil, err
 	}
+	if srv.Type == "resolved" {
+		var options option.ResolvedServiceOptions
+		if err := options.UnmarshalJSONContext(context.Background(), srv.Options); err != nil {
+			return nil, common.NewError("dns_resolved_service_schema_rejected: correct resolved listen options before saving")
+		}
+	}
 
 	if srv.TlsId > 0 {
 		if err := tx.Model(model.Tls{}).Where("id = ?", srv.TlsId).Find(&srv.Tls).Error; err != nil {
@@ -122,11 +131,28 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 		}
 	}
 
-	oldTag, err := tagByID(tx, srv.Id)
-	if err != nil {
-		return nil, err
+	var old model.Service
+	if srv.Id != 0 {
+		if err := tx.Where("id = ?", srv.Id).Find(&old).Error; err != nil {
+			return nil, err
+		}
+	}
+	if old.Tag != "" && (old.Tag != srv.Tag || old.Type != srv.Type) {
+		if err := rejectReferencedService(tx, old.Tag); err != nil {
+			return nil, err
+		}
+	}
+	if srv.Type == "resolved" {
+		var count int64
+		if err := tx.Model(&model.Service{}).Where("type = ? AND id <> ?", "resolved", srv.Id).Count(&count).Error; err != nil {
+			return nil, err
+		}
+		if count != 0 {
+			return nil, common.NewError("dns_resolved_service_duplicate: the official resolve1 service has one owner per core")
+		}
 	}
 
+	var err error
 	srv.SortOrder, err = entityorder.ForSave(tx, &model.Service{}, srv.Id)
 	if err != nil {
 		return nil, err
@@ -136,8 +162,12 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 		return nil, err
 	}
 	change := &singboxapply.Change{ReloadIDs: []uint{srv.Id}}
-	if oldTag != "" && oldTag != srv.Tag {
-		change.RemoveTags = []string{oldTag}
+	if old.Tag != "" && old.Tag != srv.Tag {
+		change.RemoveTags = []string{old.Tag}
+	}
+	if old.Type == "resolved" || srv.Type == "resolved" {
+		change.NeedsRestart = true
+		change.RestartReason = "dns resolved service lifecycle changed"
 	}
 	return change, nil
 }
@@ -150,19 +180,28 @@ func saveDelete(tx *gorm.DB, data json.RawMessage) (*singboxapply.Change, error)
 	if err := entityidentity.ValidateTag(tag); err != nil {
 		return nil, err
 	}
+	if err := rejectReferencedService(tx, tag); err != nil {
+		return nil, err
+	}
+	var old model.Service
+	if err := tx.Where("tag = ?", tag).Find(&old).Error; err != nil {
+		return nil, err
+	}
 	if err := tx.Where("tag = ?", tag).Delete(model.Service{}).Error; err != nil {
 		return nil, err
 	}
-	return &singboxapply.Change{RemoveTags: []string{tag}}, nil
+	return &singboxapply.Change{RemoveTags: []string{tag}, NeedsRestart: old.Type == "resolved", RestartReason: "dns resolved service lifecycle changed"}, nil
 }
 
-func tagByID(tx *gorm.DB, id uint) (string, error) {
-	if id == 0 {
-		return "", nil
+func rejectReferencedService(tx *gorm.DB, tag string) error {
+	refs, err := tagrefs.Service(tx, tag)
+	if err != nil {
+		return err
 	}
-	var tag string
-	err := tx.Model(model.Service{}).Select("tag").Where("id = ?", id).Find(&tag).Error
-	return tag, err
+	if len(refs) > 0 {
+		return tagrefs.FormatError("service", tag, refs)
+	}
+	return nil
 }
 
 func RemoveFromCore(tags []string, core Core) error {

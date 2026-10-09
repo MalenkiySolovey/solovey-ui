@@ -116,3 +116,15 @@ func configBlobFrom(tx *gorm.DB) ([]byte, error) {
 	}
 	return []byte(stored.Value), nil
 }
+
+// Service references are eagerly bound by the DNS transport owner.
+func Service(tx *gorm.DB, tag string) ([]TagReference, error) {
+	if !tx.Migrator().HasTable(&model.Setting{}) {
+		return nil, nil
+	}
+	base, err := configBlobFrom(tx)
+	if err != nil {
+		return nil, err
+	}
+	return projectedBaseReferences(base, "services", tag)
+}

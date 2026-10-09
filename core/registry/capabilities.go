@@ -13,6 +13,7 @@ type declaration[R any] struct {
 	compiled           bool
 	productUnavailable string
 	authenticatedUsers bool
+	runtimeDependency  string
 	register           func(R)
 }
 
@@ -27,6 +28,7 @@ type Fact struct {
 	Platform           string `json:"platform,omitempty"`
 	Reason             string `json:"reason,omitempty"`
 	AuthenticatedUsers bool   `json:"authenticatedUsers,omitempty"`
+	RuntimeDependency  string `json:"runtimeDependency,omitempty"`
 }
 
 func (f Fact) Available() bool { return f.Known && f.Registered && f.Compiled && f.SupportedByProduct }
@@ -38,7 +40,7 @@ func factsFor[R optionRegistry](category string, entries []declaration[R], regis
 	for _, entry := range entries {
 		_, registered := registry.CreateOptions(entry.typeName)
 		fact := Fact{Category: category, Type: entry.typeName, Known: true,
-			Registered: registered, Compiled: entry.compiled, SupportedByProduct: entry.productUnavailable == "", BuildTag: entry.buildTag, Platform: entry.platform, AuthenticatedUsers: entry.authenticatedUsers}
+			Registered: registered, Compiled: entry.compiled, SupportedByProduct: entry.productUnavailable == "", BuildTag: entry.buildTag, Platform: entry.platform, AuthenticatedUsers: entry.authenticatedUsers, RuntimeDependency: entry.runtimeDependency}
 		if !fact.SupportedByProduct {
 			fact.Reason = entry.productUnavailable
 		} else if !fact.Compiled {

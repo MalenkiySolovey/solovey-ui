@@ -12,18 +12,28 @@ const Schema = "solovey-ui/entity-capabilities/v1"
 
 type Fact struct {
 	registry.Fact
-	RuntimeType      string `json:"runtimeType"`
-	ContextSupported bool   `json:"contextSupported"`
-	Available        bool   `json:"available"`
+	RuntimeType                 string `json:"runtimeType"`
+	ContextSupported            bool   `json:"contextSupported"`
+	Available                   bool   `json:"available"`
+	RuntimeEligible             *bool  `json:"runtimeEligible,omitempty"`
+	PlatformDependencyAvailable *bool  `json:"platformDependencyAvailable,omitempty"`
 }
 
 type Snapshot struct {
-	Schema           string `json:"schema"`
-	ComponentProfile string `json:"componentProfile"`
-	Facts            []Fact `json:"facts"`
+	Schema              string   `json:"schema"`
+	ComponentProfile    string   `json:"componentProfile"`
+	Facts               []Fact   `json:"facts"`
+	MulticastInterfaces []string `json:"multicastInterfaces,omitempty"`
 }
 
 func Resolve(category, panelType string) Fact {
+	if registry.Resolve(category, entitytypes.RuntimeType(category, panelType)).RuntimeDependency != "" {
+		return ResolveWithEnvironment(category, panelType, ObserveEnvironment())
+	}
+	return ResolveWithEnvironment(category, panelType, Environment{})
+}
+
+func ResolveWithEnvironment(category, panelType string, environment Environment) Fact {
 	runtimeType := entitytypes.RuntimeType(category, panelType)
 	runtimeFact := registry.Resolve(category, runtimeType)
 	contextSupported := runtimeFact.Known
@@ -45,17 +55,26 @@ func Resolve(category, panelType string) Fact {
 		}
 	}
 	runtimeFact.Type = panelType
+	eligible, dependencyAvailable, reason := environmentEligibility(runtimeFact.RuntimeDependency, environment)
+	if contextSupported && runtimeFact.Available() && reason != "" {
+		runtimeFact.Reason = reason
+	}
 	return Fact{Fact: runtimeFact, RuntimeType: runtimeType, ContextSupported: contextSupported,
-		Available: contextSupported && runtimeFact.Available()}
+		RuntimeEligible: &eligible, PlatformDependencyAvailable: &dependencyAvailable,
+		Available: contextSupported && runtimeFact.Available() && eligible && dependencyAvailable}
 }
 
 func Current() Snapshot {
-	result := Snapshot{Schema: Schema, ComponentProfile: profile.Binary, Facts: []Fact{}}
+	return CurrentWithEnvironment(ObserveEnvironment())
+}
+
+func CurrentWithEnvironment(environment Environment) Snapshot {
+	result := Snapshot{Schema: Schema, ComponentProfile: profile.Binary, Facts: []Fact{}, MulticastInterfaces: environment.MulticastNames()}
 	for _, fact := range registry.Facts() {
-		result.Facts = append(result.Facts, Resolve(fact.Category, fact.Type))
+		result.Facts = append(result.Facts, ResolveWithEnvironment(fact.Category, fact.Type, environment))
 	}
 	for _, mapping := range entitytypes.Mappings() {
-		result.Facts = append(result.Facts, Resolve(mapping.Category, mapping.Type))
+		result.Facts = append(result.Facts, ResolveWithEnvironment(mapping.Category, mapping.Type, environment))
 	}
 	return result
 }
@@ -68,7 +87,7 @@ func (s Snapshot) Resolve(category, panelType string) Fact {
 		result.Reason = "CAPABILITY_SNAPSHOT_UNAVAILABLE"
 		return result
 	}
-	identity := Resolve(category, panelType)
+	identity := ResolveWithEnvironment(category, panelType, Environment{})
 	if !identity.ContextSupported {
 		result.Known = identity.Known
 		result.Reason = identity.Reason
@@ -77,7 +96,10 @@ func (s Snapshot) Resolve(category, panelType string) Fact {
 	for _, fact := range s.Facts {
 		if fact.Category == category && fact.Type == panelType {
 			result = fact
-			result.Available = fact.Known && fact.ContextSupported && fact.Registered && fact.Compiled && fact.SupportedByProduct && fact.Available && fact.RuntimeType == entitytypes.RuntimeType(category, panelType)
+			result.RuntimeEligible = copyEligibility(fact.RuntimeEligible)
+			result.PlatformDependencyAvailable = copyEligibility(fact.PlatformDependencyAvailable)
+			legacy := identity.RuntimeDependency == ""
+			result.Available = fact.Known && fact.ContextSupported && fact.Registered && fact.Compiled && fact.SupportedByProduct && fact.Available && fact.RuntimeType == entitytypes.RuntimeType(category, panelType) && fact.RuntimeDependency == identity.RuntimeDependency && optionalEligibility(fact.RuntimeEligible, legacy) && optionalEligibility(fact.PlatformDependencyAvailable, legacy)
 			if !result.Available && result.Reason == "" {
 				result.Reason = "CAPABILITY_SNAPSHOT_UNAVAILABLE"
 			}
@@ -91,4 +113,12 @@ func (s Snapshot) Resolve(category, panelType string) Fact {
 		result.Reason = "KNOWN_BUT_UNSUPPORTED_ENTITY_CONTEXT"
 	}
 	return result
+}
+
+func copyEligibility(value *bool) *bool {
+	if value == nil {
+		return nil
+	}
+	copy := *value
+	return &copy
 }

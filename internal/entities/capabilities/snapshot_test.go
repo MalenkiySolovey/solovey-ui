@@ -1,11 +1,15 @@
 package capabilities
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestCapturedSnapshotMatchesCurrentOwnerAndFailsClosed(t *testing.T) {
-	snapshot := Current()
+	environment := Environment{InterfacesAvailable: true, Interfaces: []Interface{{Name: "fixture", Eligible: true}}, SystemBusAvailable: true, Resolve1Name: Resolve1NameUnclaimed}
+	snapshot := CurrentWithEnvironment(environment)
 	for _, fact := range snapshot.Facts {
-		if captured := snapshot.Resolve(fact.Category, fact.Type); captured != Resolve(fact.Category, fact.Type) {
+		if captured := snapshot.Resolve(fact.Category, fact.Type); !reflect.DeepEqual(captured, ResolveWithEnvironment(fact.Category, fact.Type, environment)) {
 			t.Fatalf("captured target disagrees for %s/%s", fact.Category, fact.Type)
 		}
 	}

@@ -8,7 +8,9 @@ import (
 	"github.com/sagernet/sing-box/dns/transport/fakeip"
 	"github.com/sagernet/sing-box/dns/transport/hosts"
 	"github.com/sagernet/sing-box/dns/transport/local"
+	"github.com/sagernet/sing-box/dns/transport/mdns"
 	"github.com/sagernet/sing-box/dns/transport/quic"
+	"github.com/sagernet/sing-box/service/resolved"
 )
 
 func DNSTransportRegistry() *dns.TransportRegistry {
@@ -34,7 +36,7 @@ func dnsDeclarations() []declaration[*dns.TransportRegistry] {
 		{typeName: "h3", buildTag: "with_quic", compiled: C.WithQUIC, register: quic.RegisterHTTP3Transport},
 		{typeName: "dhcp", buildTag: "", compiled: true, register: dhcp.RegisterTransport},
 		{typeName: "tailscale", buildTag: tailscaleBuildTag, compiled: supportsTailscale, register: registerTailscaleTransport},
-		{typeName: "mdns", productUnavailable: "PRODUCT_FEATURE_NOT_ENABLED", register: registerMDNSSchema},
-		{typeName: "resolved", platform: "linux", productUnavailable: "PRODUCT_FEATURE_NOT_ENABLED", register: registerResolvedDNSSchema},
+		{typeName: "mdns", compiled: true, runtimeDependency: DependencyMulticast, register: mdns.RegisterTransport},
+		{typeName: "resolved", platform: "linux", compiled: supportsResolved, runtimeDependency: DependencyResolve1, register: resolved.RegisterTransport},
 	}
 }

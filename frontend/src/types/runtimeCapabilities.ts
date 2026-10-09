@@ -7,6 +7,10 @@ export interface RuntimeCapability {
   registered: boolean
   compiled: boolean
   available: boolean
+  supportedByProduct?: boolean
+  runtimeDependency?: string
+  runtimeEligible?: boolean
+  platformDependencyAvailable?: boolean
   buildTag?: string
   platform?: string
   reason?: string
@@ -16,6 +20,7 @@ export interface RuntimeCapabilities {
   schema: 'solovey-ui/entity-capabilities/v1'
   componentProfile: 'full' | 'minimal'
   facts: RuntimeCapability[]
+  multicastInterfaces?: string[]
 }
 
 // This is only wire validation. Support and aliases come from the backend.
@@ -25,12 +30,19 @@ export function readRuntimeCapabilities(value: unknown): RuntimeCapabilities | u
   if (data.schema !== 'solovey-ui/entity-capabilities/v1' ||
       !['full', 'minimal'].includes(String(data.componentProfile)) || !Array.isArray(data.facts)) return undefined
   const seen = new Set<string>()
+  if (data.multicastInterfaces !== undefined && (!Array.isArray(data.multicastInterfaces) ||
+      data.multicastInterfaces.some(name => typeof name !== 'string' || !name) ||
+      new Set(data.multicastInterfaces).size !== data.multicastInterfaces.length)) return undefined
   for (const item of data.facts) {
     if (!item || typeof item !== 'object') return undefined
     const fact = item as Record<string, unknown>
     if (['category', 'type', 'runtimeType'].some(key => typeof fact[key] !== 'string' || !fact[key]) ||
         ['known', 'contextSupported', 'registered', 'compiled', 'available'].some(key => typeof fact[key] !== 'boolean') ||
-        fact.available !== (fact.known && fact.contextSupported && fact.registered && fact.compiled) ||
+        ['supportedByProduct', 'runtimeEligible', 'platformDependencyAvailable'].some(key => fact[key] !== undefined && typeof fact[key] !== 'boolean') ||
+        (fact.runtimeDependency !== undefined && (typeof fact.runtimeDependency !== 'string' || !fact.runtimeDependency)) ||
+        (fact.runtimeDependency !== undefined && (fact.runtimeEligible === undefined || fact.platformDependencyAvailable === undefined)) ||
+        fact.available !== (fact.known && fact.contextSupported && fact.registered && fact.compiled &&
+          fact.supportedByProduct !== false && fact.runtimeEligible !== false && fact.platformDependencyAvailable !== false) ||
         (fact.buildTag !== undefined && typeof fact.buildTag !== 'string') ||
         (fact.platform !== undefined && typeof fact.platform !== 'string') ||
         (fact.reason !== undefined && typeof fact.reason !== 'string')) return undefined
