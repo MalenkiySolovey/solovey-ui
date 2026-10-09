@@ -2,6 +2,7 @@ package validation
 
 import (
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
@@ -39,6 +40,9 @@ func ValidateSubscriptionSettingInput(key string, value string) error {
 		return ValidateOptionalHTTPURL(value)
 	}
 	switch key {
+	case settingcatalog.SubClashUDPKey:
+		_, err := canonical.ParseClashUDPPolicy(value)
+		return err
 	case settingcatalog.SubJsonFragmentKey:
 		if err := ValidateOptionalJSONObject(value, key); err != nil {
 			return err

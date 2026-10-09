@@ -35,6 +35,9 @@ func ResolveClientLinksWithFetcher(rawLinks json.RawMessage, mode LinkMode, clie
 	}
 	result := make([]string, 0, len(links))
 	for _, link := range links {
+		if link.URI == "" {
+			continue
+		}
 		switch link.Type {
 		case "external":
 			result = append(result, link.URI)

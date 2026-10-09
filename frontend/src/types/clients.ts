@@ -64,6 +64,8 @@ const defaultClient: Client = {
   totalDown: 0,
 }
 
+export const clientSubscriptionMetadataKey = '_subscription'
+
 type Config = {
   [key: string]: {
     name?: string
@@ -74,6 +76,7 @@ type Config = {
 
 export function updateConfigs(configs: Config, newUserName: string): Config {
   for (const key in configs) {
+    if (key === clientSubscriptionMetadataKey) continue
     if (configs.hasOwnProperty(key)) {
       const config = configs[key]
       if (config.hasOwnProperty("name")) {
@@ -84,6 +87,19 @@ export function updateConfigs(configs: Config, newUserName: string): Config {
     }
   }
   return configs
+}
+
+export function getClientPublicRemark(configs: Config): string {
+  const value = configs[clientSubscriptionMetadataKey]?.publicRemark
+  return typeof value === 'string' ? value : ''
+}
+
+export function setClientPublicRemark(configs: Config, value: string) {
+  configs[clientSubscriptionMetadataKey] = { ...configs[clientSubscriptionMetadataKey], publicRemark: value }
+}
+
+export function clientCredentialKeys(configs: Config): string[] {
+  return Object.keys(configs).filter(key => key !== clientSubscriptionMetadataKey)
 }
 
 export function shuffleConfigs(configs: Config, key?: string) {

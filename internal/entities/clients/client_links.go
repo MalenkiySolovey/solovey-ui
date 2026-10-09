@@ -3,6 +3,7 @@ package entityclients
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -35,6 +36,11 @@ func BuildLinksForInbounds(config json.RawMessage, inbounds []model.Inbound, hos
 		}
 		generated, err := suburi.Generate(config, &inbounds[i], hostname)
 		if err != nil {
+			var unsupported *suburi.UnsupportedProjection
+			if errors.As(err, &unsupported) {
+				links = append(links, Link{"remark": inbounds[i].Tag, "type": "local", "uri": "", "diagnostic": unsupported.Error()})
+				continue
+			}
 			return nil, err
 		}
 		for _, uri := range generated {
@@ -44,6 +50,21 @@ func BuildLinksForInbounds(config json.RawMessage, inbounds []model.Inbound, hos
 				"uri":    uri,
 			})
 		}
+	}
+	var uris []string
+	var indexes []int
+	for index, link := range links {
+		if value := LinkString(link, "uri"); value != "" {
+			uris = append(uris, value)
+			indexes = append(indexes, index)
+		}
+	}
+	named, err := suburi.UniqueLinkNames(uris)
+	if err != nil {
+		return nil, err
+	}
+	for i, index := range indexes {
+		links[index]["uri"] = named[i]
 	}
 	return links, nil
 }

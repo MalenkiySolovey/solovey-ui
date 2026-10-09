@@ -25,15 +25,28 @@ func InboundsByID(tx *gorm.DB, id uint) ([]uint, error) {
 	}
 	return inboundIDs, nil
 }
-func FindInboundChanges(tx *gorm.DB, client *model.Client, fillOmitted bool) ([]uint, error) {
+
+// FillOmittedContents hydrates a partial bulk-editor payload before validation
+// and credential preparation. Explicit content remains owned by the save.
+func FillOmittedContents(tx *gorm.DB, client *model.Client) error {
+	var stored model.Client
+	if err := tx.Select("config", "links").Where("id = ?", client.Id).First(&stored).Error; err != nil {
+		return err
+	}
+	if len(client.Config) == 0 {
+		client.Config = stored.Config
+	}
+	if len(client.Links) == 0 {
+		client.Links = stored.Links
+	}
+	return nil
+}
+
+func FindInboundChanges(tx *gorm.DB, client *model.Client) ([]uint, error) {
 	var oldClient model.Client
 	var oldInboundIDs, newInboundIDs []uint
 	if err := tx.Model(model.Client{}).Where("id = ?", client.Id).First(&oldClient).Error; err != nil {
 		return nil, err
-	}
-	if fillOmitted {
-		client.Links = oldClient.Links
-		client.Config = oldClient.Config
 	}
 	if err := json.Unmarshal(oldClient.Inbounds, &oldInboundIDs); err != nil {
 		return nil, err

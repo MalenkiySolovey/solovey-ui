@@ -664,6 +664,7 @@ export default {
       "options": "Параметры DERP"
     },
     "naive": {
+      "shareVariantsHint": "TCP создаёт ссылки HTTP/2 и naive+https; UDP — naive+quic. Pins сертификата и собственный trust source требуют профиля клиента, который их сохраняет.",
       "insecureConcurrency": "Небезопасная параллельность",
       "quic": "QUIC",
       "quicCongestion": "Управление перегрузкой QUIC",

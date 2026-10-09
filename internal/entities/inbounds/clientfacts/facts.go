@@ -13,18 +13,61 @@ type Fact struct {
 	UserField string
 	JSON      bool
 	URI       bool
+	UDP       bool
 }
 
 // Each declaration is schema metadata. Runtime support is separately resolved
 // against the serving inbound, never this server's outbound build composition.
 var declarations = []Fact{
-	{"mixed", "mixed", true, true}, {"socks", "socks", true, true}, {"http", "http", true, true},
-	{"shadowsocks", "shadowsocks", true, true}, {"vmess", "vmess", true, true},
-	{"trojan", "trojan", true, true}, {"naive", "naive", true, true},
-	{"hysteria", "hysteria", true, true}, {"shadowtls", "shadowtls", true, false},
-	{"tuic", "tuic", true, true}, {"hysteria2", "hysteria2", true, true},
-	{"vless", "vless", true, true}, {"anytls", "anytls", true, true},
-	{"snell", "snell", true, false},
+	{"mixed", "mixed", true, true, true}, {"socks", "socks", true, true, true}, {"http", "http", true, true, false},
+	{"shadowsocks", "shadowsocks", true, true, true}, {"vmess", "vmess", true, true, true},
+	{"trojan", "trojan", true, true, true}, {"naive", "naive", true, true, true},
+	{"hysteria", "hysteria", true, true, true}, {"shadowtls", "shadowtls", true, false, false},
+	{"tuic", "tuic", true, true, true}, {"hysteria2", "hysteria2", true, true, true},
+	{"vless", "vless", true, true, true}, {"anytls", "anytls", true, true, true},
+	{"snell", "snell", true, false, true},
+}
+
+// SupportsUDP is a portable protocol fact, narrowed by the selected outbound
+// network/version. It never grants this server a runtime network capability.
+func SupportsUDP(panelType string, outbound map[string]any) bool {
+	fact, known := Resolve(panelType)
+	if !known || !fact.UDP {
+		return false
+	}
+	if panelType == "socks" {
+		if version, _ := outbound["version"].(string); version == "4" || version == "4a" {
+			return false
+		}
+	}
+	switch network := outbound["network"].(type) {
+	case string:
+		return network == "" || network == "udp"
+	case []string:
+		if len(network) == 0 {
+			return true
+		}
+		for _, value := range network {
+			if value == "udp" {
+				return true
+			}
+		}
+		return false
+	case []any:
+		if len(network) == 0 {
+			return true
+		}
+		for _, value := range network {
+			if value == "udp" {
+				return true
+			}
+		}
+		return false
+	case nil:
+		return true
+	default:
+		return false
+	}
 }
 
 func Facts() []Fact { return append([]Fact(nil), declarations...) }

@@ -38,6 +38,7 @@ export default {
   "transport": {
     "maxEarlyData": "Максимальный объём ранних данных",
     "earlyDataHeaderName": "Имя заголовка ранних данных",
+    "earlyDataShareHint": "Ссылки поддерживают ранние данные с Sec-WebSocket-Protocol. Для другого заголовка используйте JSON профиль. Параметры query в пути сохраняются.",
     "enable": "Включить транспорт",
     "host": "Хост",
     "hosts": "Хосты",

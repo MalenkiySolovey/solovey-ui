@@ -10,6 +10,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveidentity"
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )
@@ -111,6 +112,9 @@ func ValidateStored(db *gorm.DB) error {
 		if err := jsonvalue.OptionalObject("client config", client.Config); err != nil {
 			return fmt.Errorf("stored client row %d: %w", client.ID, err)
 		}
+		if _, err := canonical.ClientPublicRemark(client.Config); err != nil {
+			return fmt.Errorf("stored client row %d: %w", client.ID, err)
+		}
 		if err := jsonvalue.OptionalArray("client inbounds", client.Inbounds); err != nil {
 			return fmt.Errorf("stored client row %d: %w", client.ID, err)
 		}
@@ -182,7 +186,7 @@ func saveSingle(req SaveRequest, editing bool) ([]uint, error) {
 	client.SortOrder = sortOrder
 	var inboundIDs []uint
 	if editing {
-		changedInboundIDs, err := FindInboundChanges(req.Tx, &client, false)
+		changedInboundIDs, err := FindInboundChanges(req.Tx, &client)
 		if err != nil {
 			return nil, err
 		}
@@ -244,6 +248,17 @@ func saveEditedBulk(req SaveRequest) ([]uint, error) {
 	if err := json.Unmarshal(req.Data, &clients); err != nil {
 		return nil, err
 	}
+	for _, client := range clients {
+		if client == nil {
+			return nil, common.NewError("client payload is invalid")
+		}
+		if err := saveidentity.Validate(req.Tx, "edit", client.Id, &model.Client{}); err != nil {
+			return nil, err
+		}
+		if err := FillOmittedContents(req.Tx, client); err != nil {
+			return nil, err
+		}
+	}
 	if err := validateClientSaveBatch(req.Tx, clients, true); err != nil {
 		return nil, err
 	}
@@ -257,7 +272,7 @@ func saveEditedBulk(req SaveRequest) ([]uint, error) {
 		if err := PrepareSubSecret(req.Tx, client, true); err != nil {
 			return nil, err
 		}
-		changedInboundIDs, err := FindInboundChanges(req.Tx, client, true)
+		changedInboundIDs, err := FindInboundChanges(req.Tx, client)
 		if err != nil {
 			return nil, err
 		}
@@ -270,10 +285,8 @@ func saveEditedBulk(req SaveRequest) ([]uint, error) {
 		}
 		client.SortOrder = sortOrder
 	}
-	if len(inboundIDs) > 0 {
-		if err := UpdateLinksWithFixedInbounds(req.Tx, clients, req.Hostname); err != nil {
-			return nil, err
-		}
+	if err := UpdateLinksWithFixedInbounds(req.Tx, clients, req.Hostname); err != nil {
+		return nil, err
 	}
 	if req.SaveBatch == nil {
 		return nil, common.NewError("client batch persistence is unavailable")
@@ -315,6 +328,20 @@ func validateClientSaveBatch(tx *gorm.DB, clients []*model.Client, editing bool)
 			action = "edit"
 		}
 		if err := saveidentity.Validate(tx, action, client.Id, &model.Client{}); err != nil {
+			return err
+		}
+		if editing {
+			var stored model.Client
+			if err := tx.Select("config").Where("id = ?", client.Id).First(&stored).Error; err != nil {
+				return err
+			}
+			retained, err := canonical.RetainClientPublicMetadata(client.Config, stored.Config)
+			if err != nil {
+				return err
+			}
+			client.Config = retained
+		}
+		if _, err := canonical.ClientPublicRemark(client.Config); err != nil {
 			return err
 		}
 		if err := PrepareSnellCredential(tx, client); err != nil {

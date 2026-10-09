@@ -38,6 +38,7 @@ export default {
   "transport": {
     "maxEarlyData": "Maximum early data",
     "earlyDataHeaderName": "Early data header name",
+    "earlyDataShareHint": "Share links support early data with Sec-WebSocket-Protocol. Use a JSON profile for a custom header; existing path query parameters are preserved.",
     "enable": "Enable Transport",
     "host": "Host",
     "hosts": "Hosts",

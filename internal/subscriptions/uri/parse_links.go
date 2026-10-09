@@ -3,9 +3,11 @@ package uri
 import (
 	"encoding/json"
 	"fmt"
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"net/url"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 
 	uricodec "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
@@ -19,10 +21,14 @@ func vmess(data string, i int) (*map[string]interface{}, string, error) {
 	var dataJson map[string]interface{}
 	err = json.Unmarshal(dataByte, &dataJson)
 	if err != nil {
-		return nil, "", err
+		return nil, "", common.NewError("Invalid vmess payload")
 	}
 	server, ok := dataJson["add"].(string)
 	if !ok || strings.TrimSpace(server) == "" {
+		return nil, "", common.NewError("Invalid vmess server")
+	}
+	server, err = uricodec.NormalizeHost(server)
+	if err != nil {
 		return nil, "", common.NewError("Invalid vmess server")
 	}
 	port, err := parsePortValue(dataJson["port"])
@@ -54,9 +60,16 @@ func vmess(data string, i int) (*map[string]interface{}, string, error) {
 		}
 		transport["path"] = tp_path
 	case "ws":
+		path, early, err := uricodec.DecodeWebSocketPath(tp_path)
+		if err != nil {
+			return nil, "", err
+		}
 		transport["type"] = tp_net
-		transport["path"] = tp_path
+		transport["path"] = path
 		transport["early_data_header_name"] = "Sec-WebSocket-Protocol"
+		if early > 0 {
+			transport["max_early_data"] = early
+		}
 		if len(tp_host) > 0 {
 			transport["headers"] = map[string]interface{}{
 				"Host": tp_host,
@@ -133,11 +146,15 @@ func vless(u *url.URL, i int) (*map[string]interface{}, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	uuid, err := requiredUsername(u, "vless uuid")
+	uuid, err := requiredSingleCredential(u, "vless uuid")
 	if err != nil {
 		return nil, "", err
 	}
 	tp_type := query.Get("type")
+	transport, err := getTransport(tp_type, &query)
+	if err != nil {
+		return nil, "", err
+	}
 	tag := u.Fragment
 	if i > 0 {
 		tag = fmt.Sprintf("%d.%s", i, u.Fragment)
@@ -150,7 +167,7 @@ func vless(u *url.URL, i int) (*map[string]interface{}, string, error) {
 		"uuid":        uuid,
 		"flow":        query.Get("flow"),
 		"tls":         getTls(security, &query),
-		"transport":   getTransport(tp_type, &query),
+		"transport":   transport,
 	}
 	return &vless, tag, nil
 }
@@ -168,11 +185,15 @@ func trojan(u *url.URL, i int) (*map[string]interface{}, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
-	password, err := requiredUsername(u, "trojan password")
+	password, err := requiredSingleCredential(u, "trojan password")
 	if err != nil {
 		return nil, "", err
 	}
 	tp_type := query.Get("type")
+	transport, err := getTransport(tp_type, &query)
+	if err != nil {
+		return nil, "", err
+	}
 	tag := u.Fragment
 	if i > 0 {
 		tag = fmt.Sprintf("%d.%s", i, u.Fragment)
@@ -184,7 +205,7 @@ func trojan(u *url.URL, i int) (*map[string]interface{}, string, error) {
 		"server_port": port,
 		"password":    password,
 		"tls":         getTls(security, &query),
-		"transport":   getTransport(tp_type, &query),
+		"transport":   transport,
 	}
 	return &trojan, tag, nil
 }
@@ -213,6 +234,16 @@ func hy(u *url.URL, i int) (*map[string]interface{}, string, error) {
 		"obfs":        query.Get("obfsParam"),
 		"auth_str":    query.Get("auth"),
 		"tls":         getTls(security, &query),
+	}
+	if hy["obfs"] == "" {
+		hy["obfs"] = query.Get("obfs")
+	}
+	ports, err := canonical.ParseHysteriaSharePorts(query.Get("mport"))
+	if err != nil {
+		return nil, "", err
+	}
+	if len(ports) > 0 {
+		hy["server_ports"] = ports
 	}
 	down, _ := strconv.Atoi(query.Get("downmbps"))
 	up, _ := strconv.Atoi(query.Get("upmbps"))
@@ -245,6 +276,12 @@ func hy2(u *url.URL, i int) (*map[string]interface{}, string, error) {
 	if err != nil {
 		return nil, "", err
 	}
+	if extra, present := u.User.Password(); present {
+		password += ":" + extra
+	}
+	if !utf8.ValidString(password) {
+		return nil, "", common.NewError("invalid hysteria2 credentials")
+	}
 	security := query.Get("security")
 	if len(security) == 0 {
 		security = "tls"
@@ -264,7 +301,10 @@ func hy2(u *url.URL, i int) (*map[string]interface{}, string, error) {
 	down, _ := strconv.Atoi(query.Get("downmbps"))
 	up, _ := strconv.Atoi(query.Get("upmbps"))
 	obfs := query.Get("obfs")
-	mport := strings.ReplaceAll(query.Get("mport"), "-", ":")
+	ports, err := canonical.ParseHysteriaSharePorts(query.Get("mport"))
+	if err != nil {
+		return nil, "", err
+	}
 	fastopen := query.Get("fastopen")
 	if down > 0 {
 		hy2["down_mbps"] = down
@@ -278,11 +318,11 @@ func hy2(u *url.URL, i int) (*map[string]interface{}, string, error) {
 			"password": query.Get("obfs-password"),
 		}
 	}
-	if len(mport) > 0 {
-		hy2["server_ports"] = strings.Split(mport, ",")
+	if len(ports) > 0 {
+		hy2["server_ports"] = ports
 	}
 	if fastopen == "1" || fastopen == "true" {
-		hy2["fastopen"] = true
+		hy2["tcp_fast_open"] = true
 	}
 	return &hy2, tag, nil
 }

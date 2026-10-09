@@ -32,6 +32,9 @@
                 <v-col cols="12" sm="6" md="4">
                   <v-text-field v-model="client.desc" :label="$t('client.desc')" hide-details></v-text-field>
                 </v-col>
+                <v-col cols="12" sm="6" md="4">
+                  <v-text-field v-model="publicRemark" :label="$t('client.publicRemark')" :hint="$t('client.publicRemarkHint')" persistent-hint :counter="128" :rules="[(value: string) => Array.from(value ?? '').length <= 128 || $t('client.publicRemarkLimit')]" />
+                </v-col>
               </v-row>
               <v-row>
                 <v-col cols="12" sm="6" md="4">
@@ -144,7 +147,7 @@
                   <v-btn variant="tonal" @click="shuffle()">{{ $t('reset') + ' - ' + $t('all') }}<v-icon icon="mdi-refresh" /></v-btn>
                 </v-col>
               </v-row>
-              <v-row v-for="key in Object.keys(clientConfig)">
+              <v-row v-for="key in credentialKeys">
                 <v-col cols="12" md="3" align="end" align-self="center">
                     {{ key }}
                     <v-icon @click="shuffle(key)" icon="mdi-refresh" v-tooltip:top="$t('reset')" />
@@ -184,6 +187,7 @@
               <v-row v-for="(lnk, index) in links">
                 <v-col cols="auto">{{ index + 1 }}</v-col>
                 <v-col style="direction: ltr; overflow-y: hidden;">{{ lnk.uri }}</v-col>
+                <v-col v-if="lnk.diagnostic" cols="12"><v-alert type="info" variant="tonal" density="compact">{{ lnk.diagnostic }}</v-alert></v-col>
               </v-row>
               <v-row>
                 <v-col>

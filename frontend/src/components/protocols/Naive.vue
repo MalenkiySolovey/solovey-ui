@@ -3,6 +3,7 @@
     <v-card-subtitle v-if="direction != 'out_json'">Naive</v-card-subtitle>
     <!-- Inbound -->
     <template v-if="direction === 'in'">
+      <v-alert type="info" variant="tonal" density="compact">{{ $t('types.naive.shareVariantsHint') }}</v-alert>
       <v-row>
         <v-col cols="12" sm="6" md="4">
           <Network :data="data" />

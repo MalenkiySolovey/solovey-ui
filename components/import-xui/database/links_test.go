@@ -4,6 +4,8 @@ package importxui
 
 import (
 	"encoding/json"
+	"net/url"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -53,8 +55,13 @@ func TestBuildClientLinks(t *testing.T) {
 		t.Errorf("unexpected link metadata: %v", got)
 	}
 	want := "trojan://jwbMqRgdLA@panel.example.com:12223?type=grpc&serviceName=hello#inbound-12223"
-	if got["uri"] != want {
-		t.Errorf("link uri = %q, want %q", got["uri"], want)
+	actual, actualErr := url.Parse(got["uri"])
+	expected, expectedErr := url.Parse(want)
+	if actualErr != nil || expectedErr != nil {
+		t.Fatal("generated link is malformed")
+	}
+	if actual.Scheme != expected.Scheme || actual.Host != expected.Host || actual.User.String() != expected.User.String() || actual.Fragment != expected.Fragment || !reflect.DeepEqual(actual.Query(), expected.Query()) {
+		t.Error("generated link changed credential, endpoint, transport or label semantics")
 	}
 
 	// Without a hostname, links are left nil (no broken empty-host link).

@@ -53,7 +53,15 @@ func (s *ClashService) GetClash(subID string) (*string, []string, error) {
 	if err != nil || basicConfig == "" {
 		basicConfig = subformats.DefaultClashConfig
 	}
-	result, err := subformats.RenderClash(outboundSet.Outbounds, basicConfig)
+	udpValue, err := s.SettingService.GetSubClashUDP()
+	if err != nil {
+		return nil, nil, err
+	}
+	udpPolicy, err := subformats.ParseClashUDPPolicy(udpValue)
+	if err != nil {
+		return nil, nil, err
+	}
+	result, err := subformats.RenderClash(outboundSet.Outbounds, basicConfig, udpPolicy)
 	if err != nil {
 		return nil, nil, err
 	}

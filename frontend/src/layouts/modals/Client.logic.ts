@@ -1,5 +1,5 @@
 import { defineAsyncComponent, defineComponent } from 'vue'
-import { createClient, randomConfigs, updateConfigs, Link, isCoreClientLinkType, shuffleConfigs } from '@/types/clients'
+import { createClient, randomConfigs, updateConfigs, Link, isCoreClientLinkType, shuffleConfigs, getClientPublicRemark, setClientPublicRemark, clientCredentialKeys } from '@/types/clients'
 import { HumanReadable } from '@/plugins/utils'
 import Data from '@/store/modules/data'
 import { dateLocale } from '@/locales'
@@ -105,6 +105,11 @@ export default defineComponent({
     },
   },
   computed: {
+    publicRemark: {
+      get(): string { return getClientPublicRemark(this.clientConfig) },
+      set(value: string) { setClientPublicRemark(this.clientConfig, value ?? '') },
+    },
+    credentialKeys(): string[] { return clientCredentialKeys(this.clientConfig) },
     dirty(): boolean {
       return this.snapshot !== '' &&
         JSON.stringify([this.client, this.clientConfig, this.links, this.extLinks, this.subLinks, this.componentLinks]) !== this.snapshot

@@ -153,3 +153,7 @@ func (s *SettingService) GetSubJsonExt() (string, error) {
 func (s *SettingService) GetSubClashExt() (string, error) {
 	return s.getString(settingKeySubClashExt)
 }
+
+func (s *SettingService) GetSubClashUDP() (string, error) {
+	return s.getString(settingKeySubClashUDP)
+}

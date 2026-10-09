@@ -10,7 +10,9 @@ import (
 	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
 )
 
 type OutboundSet struct {
@@ -22,27 +24,32 @@ func (s *OutboundSet) Append(outbound map[string]interface{}, tag string) {
 	if outbound == nil || tag == "" {
 		return
 	}
-	for _, existing := range s.Tags {
-		if existing == tag {
-			return
-		}
-	}
+	outbound = cloneOutbound(outbound)
+	outbound["tag"] = tag
 	s.Outbounds = append(s.Outbounds, outbound)
 	s.Tags = append(s.Tags, tag)
 }
 
 func (s *OutboundSet) AppendMany(outbounds []map[string]interface{}, tags []string) {
+	incoming := &OutboundSet{}
 	for index, outbound := range outbounds {
 		if index >= len(tags) {
 			break
 		}
-		s.Append(outbound, tags[index])
+		incoming.Append(outbound, tags[index])
 	}
+	projected, names := canonical.NamedOutbounds(incoming.Outbounds, s.Tags...)
+	s.Outbounds = append(s.Outbounds, projected...)
+	s.Tags = append(s.Tags, names...)
 }
 
 func BuildInboundOutbounds(clientConfig json.RawMessage, inbounds []*model.Inbound) (*OutboundSet, error) {
 	var configs map[string]interface{}
 	if err := json.Unmarshal(clientConfig, &configs); err != nil {
+		return nil, err
+	}
+	publicRemark, err := canonical.ClientPublicRemark(clientConfig)
+	if err != nil {
 		return nil, err
 	}
 
@@ -59,9 +66,52 @@ func BuildInboundOutbounds(clientConfig json.RawMessage, inbounds []*model.Inbou
 		if err != nil {
 			return nil, err
 		}
-		appendInboundOutbounds(set, outbound, addrs)
+		if inbound.Type == "naive" {
+			if tls, ok := outbound["tls"].(map[string]interface{}); ok {
+				trust, err := entitytls.NaivePublicTrust(tls, inbound.Tls)
+				if err != nil {
+					return nil, err
+				}
+				outbound["tls"] = trust
+			}
+			for _, address := range addrs {
+				if tls, ok := address["tls"].(map[string]interface{}); ok {
+					trust, err := entitytls.NaivePublicTrust(tls, inbound.Tls)
+					if err != nil {
+						return nil, err
+					}
+					address["tls"] = trust
+				}
+			}
+		}
+		if publicRemark != "" {
+			outbound["tag"] = publicRemark
+		}
+		appendInboundOutbounds(set, outbound, addrs, publicRemark != "")
 	}
+	set.Outbounds, set.Tags = canonical.NamedOutbounds(set.Outbounds)
 	for _, outbound := range set.Outbounds {
+		if server, ok := outbound["server"].(string); ok {
+			normalized, err := codec.NormalizeHost(server)
+			if err != nil {
+				return nil, err
+			}
+			outbound["server"] = normalized
+		}
+		if typ, _ := outbound["type"].(string); typ == "hysteria" || typ == "hysteria2" {
+			if _, present := outbound["server_ports"]; present {
+				ports, err := canonical.HysteriaPorts(outbound["server_ports"])
+				if err != nil {
+					return nil, err
+				}
+				outbound["server_ports"] = ports
+			}
+		}
+		if typ, _ := outbound["type"].(string); typ == "shadowsocks" {
+			if _, _, err := canonical.ShadowsocksPlugin(outbound); err != nil {
+				return nil, err
+			}
+		}
 		raw, _ := json.Marshal(outbound)
 		if err := diagnostics.FirstError(entitytls.PublicExportFindings(raw)); err != nil {
 			return nil, err
@@ -78,18 +128,21 @@ func AppendExternalLinkOutbounds(set *OutboundSet, links []string) {
 	if len(links) > 1 {
 		tagNumEnable = 1
 	}
+	incoming := &OutboundSet{}
 	for index, link := range links {
 		outbound, tag, err := suburi.Parse(link, (index+1)*tagNumEnable)
 		if err == nil && outbound != nil && tag != "" {
-			set.Append(*outbound, tag)
+			incoming.Append(*outbound, tag)
 		}
 	}
+	set.AppendMany(incoming.Outbounds, incoming.Tags)
 }
 
 func PrependDefaultJSONOutbounds(set *OutboundSet) {
 	if set == nil {
 		return
 	}
+	set.Outbounds, set.Tags = canonical.NamedOutbounds(set.Outbounds, "proxy", "auto", "direct")
 	tags := append([]string(nil), set.Tags...)
 	defaultOutbounds := []map[string]interface{}{
 		{
@@ -191,7 +244,7 @@ func inboundAddresses(inbound *model.Inbound) ([]map[string]interface{}, error) 
 	return addrs, nil
 }
 
-func appendInboundOutbounds(set *OutboundSet, outbound map[string]interface{}, addrs []map[string]interface{}) {
+func appendInboundOutbounds(set *OutboundSet, outbound map[string]interface{}, addrs []map[string]interface{}, publicName bool) {
 	protocol, _ := outbound["type"].(string)
 	tag, _ := outbound["tag"].(string)
 	if len(addrs) == 0 {
@@ -219,6 +272,9 @@ func appendInboundOutbounds(set *OutboundSet, outbound map[string]interface{}, a
 		}
 		remark, _ := addr["remark"].(string)
 		newTag := fmt.Sprintf("%d.%s%s", index+1, tag, remark)
+		if publicName {
+			newTag = tag + remark
+		}
 		newOut["tag"] = newTag
 		if protocol == "mixed" {
 			appendMixedOutbound(set, newOut)
@@ -242,9 +298,5 @@ func appendMixedOutbound(set *OutboundSet, outbound map[string]interface{}) {
 }
 
 func cloneOutbound(outbound map[string]interface{}) map[string]interface{} {
-	clone := make(map[string]interface{}, len(outbound))
-	for key, value := range outbound {
-		clone[key] = value
-	}
-	return clone
+	return canonical.CloneOutbound(outbound)
 }

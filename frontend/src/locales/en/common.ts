@@ -680,6 +680,7 @@ export default {
       "minIdle": "Minimum Idle Session"
     },
     "naive": {
+      "shareVariantsHint": "TCP generates HTTP/2 and naive+https links; UDP generates naive+quic. Certificate pins and custom trust need a client profile that preserves them.",
       "insecureConcurrency": "Insecure Concurrency",
       "quic": "QUIC",
       "quicCongestion": "QUIC Congestion Control",

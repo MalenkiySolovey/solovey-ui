@@ -9,6 +9,11 @@
     />
   <v-card>
     <v-row>
+      <v-col cols="12" sm="6" md="4">
+        <v-select v-model="settings.subClashUDP" :label="$t('setting.subClashUDP')" :hint="$t('setting.subClashUDPHint')" persistent-hint :items="[{title: $t('setting.subClashUDPDefault'), value: ''}, {title: $t('setting.subClashUDPTrue'), value: 'true'}, {title: $t('setting.subClashUDPFalse'), value: 'false'}]" />
+      </v-col>
+    </v-row>
+    <v-row>
       <v-col cols="12" sm="6" md="3" lg="2" v-if="optionMixed">
         <v-text-field type="number" v-model.number="mixedPort" min="1" max="65535" :label="$t('setting.mixedPort')" hide-details></v-text-field>
       </v-col>

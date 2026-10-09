@@ -1,6 +1,13 @@
 package formats
 
 import (
+	"encoding/json"
+	"fmt"
+	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
+	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
 	"strings"
 
 	"gopkg.in/yaml.v3"
@@ -64,7 +71,45 @@ const ProxyGroups = `- name: Proxy
   tolerance: 50
 `
 
-func RenderClash(outbounds []map[string]interface{}, basicConfig string) (string, error) {
+func RenderClash(outbounds []map[string]interface{}, basicConfig string, policies ...ClashUDPPolicy) (string, error) {
+	policy := ClashUDPDefault
+	if len(policies) > 0 {
+		policy = policies[0]
+	}
+	if _, err := ParseClashUDPPolicy(string(policy)); err != nil {
+		return "", err
+	}
+	var output map[string]interface{}
+	if err := yaml.Unmarshal([]byte(basicConfig), &output); err != nil {
+		return "", err
+	}
+	if output == nil {
+		output = map[string]interface{}{}
+	}
+	reserved := []string{"Proxy", "Auto", "DIRECT", "REJECT"}
+	for _, section := range []string{"proxies", "proxy-groups"} {
+		if entries, ok := output[section].([]interface{}); ok {
+			for _, entry := range entries {
+				if item, ok := entry.(map[string]interface{}); ok {
+					if name := asString(item["name"]); name != "" {
+						reserved = append(reserved, name)
+					}
+				}
+			}
+		}
+	}
+	prepared := make([]map[string]interface{}, len(outbounds))
+	for index, outbound := range outbounds {
+		prepared[index] = canonical.CloneOutbound(outbound)
+		if strings.TrimSpace(asString(outbound["tag"])) == "" {
+			if t := asString(outbound["type"]); t == "selector" || t == "urltest" || t == "failover" {
+				prepared[index]["tag"] = "group-" + fmt.Sprint(index+1)
+			} else {
+				prepared[index]["tag"] = clashProxyFallbackName(map[string]interface{}{"type": outbound["type"], "server": outbound["server"], "port": outbound["server_port"]}, index)
+			}
+		}
+	}
+	outbounds, _ = canonical.NamedOutbounds(prepared, reserved...)
 	var proxies []interface{}
 	var groupOutbounds []map[string]interface{}
 	for _, obMap := range outbounds {
@@ -83,10 +128,6 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string) (string
 		proxy["type"] = t
 
 		server, _ := obMap["server"].(string)
-		if len(server) > 0 && strings.Contains(server, ":") && !strings.Contains(server, ".") && !(strings.HasPrefix(server, "[") && strings.HasSuffix(server, "]")) {
-			server = "'[" + server + "]'"
-		}
-		proxy["server"] = server
 
 		proxy["port"] = obMap["server_port"]
 
@@ -124,6 +165,14 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string) (string
 			proxy["username"] = obMap["username"]
 			proxy["password"] = obMap["password"]
 		case "hysteria", "hysteria2":
+			if interval, err := clashHysteriaInterval(obMap["hop_interval"]); err != nil {
+				return "", err
+			} else if interval > 0 {
+				if t != "hysteria2" {
+					return "", fmt.Errorf("this Clash Hysteria1 projection cannot preserve hop_interval; use the JSON subscription")
+				}
+				proxy["hop-interval"] = interval
+			}
 			if _, ok := obMap["up_mbps"].(float64); ok {
 				proxy["up"] = obMap["up_mbps"]
 			}
@@ -143,13 +192,10 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string) (string
 				}
 			}
 
-			if portLists, ok := obMap["server_ports"].([]interface{}); ok {
-				var ports []string
-				for _, portList := range portLists {
-					portRange, _ := portList.(string)
-					ports = append(ports, strings.ReplaceAll(portRange, ":", "-"))
-				}
-				proxy["ports"] = strings.Join(ports, ",")
+			if ports, err := clashHysteriaPorts(obMap["server_ports"]); err != nil {
+				return "", err
+			} else if ports != "" {
+				proxy["ports"] = ports
 			}
 		case "anytls":
 			proxy["password"] = obMap["password"]
@@ -158,6 +204,11 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string) (string
 				proxy["skip-cert-verify"] = tls["insecure"]
 			}
 		case "shadowsocks":
+			if plugin, _, err := canonical.ShadowsocksPlugin(obMap); err != nil {
+				return "", err
+			} else if plugin != "" {
+				return "", fmt.Errorf("this Clash projection cannot preserve the configured SIP002 plugin options; use its URI or JSON profile")
+			}
 			proxy["type"] = "ss"
 			proxy["cipher"] = obMap["method"]
 			proxy["password"] = obMap["password"]
@@ -169,6 +220,21 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string) (string
 			}
 		default:
 			continue
+		}
+		server, hostErr := codec.NormalizeHost(server)
+		if hostErr != nil {
+			return "", hostErr
+		}
+		proxy["server"] = server
+		if policy != ClashUDPDefault {
+			proxy["udp"] = policy == ClashUDPEnabled && clientfacts.SupportsUDP(t, obMap)
+		}
+		rawOutbound, err := json.Marshal(obMap)
+		if err != nil {
+			return "", err
+		}
+		if err := diagnostics.FirstError(entitytls.PublicExportFindings(rawOutbound)); err != nil {
+			return "", err
 		}
 
 		// TLS params
@@ -217,10 +283,9 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string) (string
 			}
 			// ech outbounds
 			if ech, ok := tls["ech"].(map[string]interface{}); ok && asBool(ech["enabled"]) {
-				ech_config, _ := ech["config"].([]interface{})
-				ech_string := ""
-				for i := 1; i < len(ech_config)-1; i++ {
-					ech_string += asString(ech_config[i])
+				ech_string, err := entitytls.PublicECHConfig(ech["config"])
+				if err != nil {
+					return "", err
 				}
 				proxy["ech-opts"] = map[string]interface{}{
 					"enable": true,
@@ -291,6 +356,11 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string) (string
 				if ed, ok := transport["early_data_header_name"].(string); ok {
 					wsOpts["early-data-header-name"] = ed
 				}
+				if max, err := codec.WebSocketEarlyData(transport); err != nil {
+					return "", err
+				} else if max > 0 {
+					wsOpts["max-early-data"] = max
+				}
 				if tt == "httpupgrade" {
 					wsOpts["v2ray-http-upgrade"] = true
 				}
@@ -344,17 +414,18 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string) (string
 
 		proxies = append(proxies, proxy)
 	}
-	proxyTags, proxyNameMap := ensureUniqueClashProxyNames(proxies)
-
-	var output map[string]interface{}
-	err := yaml.Unmarshal([]byte(basicConfig), &output)
-	if err != nil {
-		return "", err
+	proxyTags, proxyNameMap := clashProxyNames(proxies)
+	proxyNameMap["DIRECT"], proxyNameMap["REJECT"] = "DIRECT", "REJECT"
+	for _, outbound := range outbounds {
+		if asString(outbound["type"]) == "direct" {
+			proxyNameMap[asString(outbound["tag"])] = "DIRECT"
+		}
 	}
+
 	providerNames := clashProviderNames(output["proxy-providers"])
 
 	var proxyGroups []map[string]interface{}
-	err = yaml.Unmarshal([]byte(ProxyGroups), &proxyGroups)
+	err := yaml.Unmarshal([]byte(ProxyGroups), &proxyGroups)
 	if err != nil {
 		return "", err
 	}
@@ -372,7 +443,7 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string) (string
 	}
 
 	if pg, ok := output["proxy-groups"].([]interface{}); ok {
-		if shouldInjectDefaultClashGroups(pg) {
+		if shouldInjectDefaultClashGroups(pg) || !hasClashGroupNamed(pg, "Proxy") && clashRulesReference(output["rules"], "Proxy") {
 			for _, group := range defaultClashGroupsForInjection(proxyGroups, pg, renderedGroupNames, proxyTags) {
 				pg = append(pg, group)
 			}
@@ -390,6 +461,16 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string) (string
 		return "", err
 	}
 	return string(result), nil
+}
+
+func clashRulesReference(value any, name string) bool {
+	for _, rule := range clashStringList(value) {
+		parts := strings.Split(rule, ",")
+		if len(parts) > 1 && strings.TrimSpace(parts[len(parts)-1]) == name {
+			return true
+		}
+	}
+	return false
 }
 
 func shouldInjectDefaultClashGroups(groups []interface{}) bool {

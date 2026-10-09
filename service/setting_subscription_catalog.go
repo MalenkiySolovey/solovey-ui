@@ -36,6 +36,7 @@ const (
 	settingKeySubURI             = settingcatalog.SubURIKey
 	settingKeySubJsonExt         = settingcatalog.SubJsonExtKey
 	settingKeySubClashExt        = settingcatalog.SubClashExtKey
+	settingKeySubClashUDP        = settingcatalog.SubClashUDPKey
 )
 
 var defaultSubscriptionSettingValues = settingcatalog.SubscriptionDefaults()

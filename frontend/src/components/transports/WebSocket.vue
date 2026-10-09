@@ -33,6 +33,7 @@
       </v-text-field>
     </v-col>
   </v-row>
+  <v-alert v-if="WS.max_early_data" type="info" variant="tonal" density="compact">{{ $t('transport.earlyDataShareHint') }}</v-alert>
   <Headers :data="transport" />
 </template>
 

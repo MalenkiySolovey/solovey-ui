@@ -244,8 +244,8 @@ func TestLinkGeneratorRoundTripCommonProtocols(t *testing.T) {
 				"password":      "hy2-pass",
 				"up_mbps":       200,
 				"down_mbps":     100,
-				"fastopen":      true,
-				"server_ports":  []string{"8443:8444", "9443"},
+				"tcp_fast_open": true,
+				"server_ports":  []string{"8443:8444", "9443:9443"},
 				"obfs.type":     "salamander",
 				"obfs.password": "obfs-pass",
 				"tls.enabled":   true,
@@ -299,7 +299,11 @@ func TestLinkGeneratorRoundTripCommonProtocols(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(links) != 1 {
+			wantLinks := 1
+			if tt.inbound.Type == "naive" {
+				wantLinks = 3
+			}
+			if len(links) != wantLinks {
 				t.Fatalf("expected one generated link, got %d: %#v", len(links), links)
 			}
 
