@@ -72,6 +72,11 @@ export default {
     "volume": "Volume",
     "usage": "Usage",
     "graphTitle": "Traffic graph",
+    "refresh": "Refresh graph",
+    "autoRefresh": "Refresh every 10 seconds",
+    "timeZone": "Traffic time zone",
+    "windowTotal": "Total in this graph window",
+    "windowTotalHint": "Sum of the samples shown in this graph.",
     "enable": "Enable traffic statistics"
   },
   "enable": "Enable",
