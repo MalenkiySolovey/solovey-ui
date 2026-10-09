@@ -82,7 +82,8 @@ func TestPrivateAPIAuthAndGeneratedPolicy(t *testing.T) {
 			if err == nil {
 				err = reflection.Send(&grpc_reflection_v1.ServerReflectionRequest{MessageRequest: &grpc_reflection_v1.ServerReflectionRequest_ListServices{ListServices: ""}})
 			}
-			if err == nil {
+			// A server-side rejection can make Send return EOF before the RPC status.
+			if err == nil || errors.Is(err, io.EOF) {
 				_, err = reflection.Recv()
 			}
 			assertUnauthenticated(t, err)
@@ -341,4 +342,29 @@ func TestRuntimeLogProjectionRedactsEphemeralCredential(t *testing.T) {
 	if err != nil || !seen {
 		t.Fatal("bounded log projection did not observe existing log")
 	}
+}
+
+func TestPrivateAPIReflectionRejectionBeforeSend(t *testing.T) {
+	c := startPrivateFixture(t)
+	conn, err := grpc.NewClient("passthrough:///"+c.privateAPI.endpoint, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	stream, err := grpc_reflection_v1.NewServerReflectionClient(conn).ServerReflectionInfo(ctx)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Wait for the real server to reject this unauthenticated stream before sending.
+	if _, err := stream.Header(); err != nil {
+		t.Fatal(err)
+	}
+	err = stream.Send(&grpc_reflection_v1.ServerReflectionRequest{MessageRequest: &grpc_reflection_v1.ServerReflectionRequest_ListServices{ListServices: ""}})
+	if err != nil && !errors.Is(err, io.EOF) {
+		t.Fatalf("early rejection send code=%v; want queued send or transport EOF", status.Code(err))
+	}
+	_, err = stream.Recv()
+	assertUnauthenticated(t, err)
 }
