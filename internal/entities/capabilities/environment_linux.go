@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -43,12 +44,14 @@ func observeResolve1At(address string) (bool, Resolve1NameState) {
 	if raw.SetDeadline(deadline) != nil {
 		return false, Resolve1NameUnknown
 	}
-	connection, err := dbus.NewConn(raw, dbus.WithContext(ctx))
+	connection, err := dbus.NewConn(&observationBusConn{Conn: raw}, dbus.WithContext(ctx))
 	if err != nil {
 		return false, Resolve1NameUnknown
 	}
 	defer connection.Close()
-	if connection.Auth(nil) != nil || connection.Hello() != nil {
+	// A local system bus uses EXTERNAL peer credentials. Do not let a
+	// metadata-only observation fall back to cookie-file authentication.
+	if connection.Auth([]dbus.Auth{dbus.AuthExternal(strconv.Itoa(os.Geteuid()))}) != nil || connection.Hello() != nil {
 		return false, Resolve1NameUnknown
 	}
 	var owner string
