@@ -49,7 +49,7 @@ func PrepareSnellCredential(tx *gorm.DB, client *model.Client) error {
 	var user map[string]any
 	if len(config["snell"]) > 0 {
 		if json.Unmarshal(config["snell"], &user) != nil || user == nil {
-			return errors.New("Snell client credential must be an object")
+			return errors.New("snell client credential must be an object")
 		}
 	} else {
 		user = map[string]any{}
@@ -68,14 +68,14 @@ func PrepareSnellCredential(tx *gorm.DB, client *model.Client) error {
 		} else {
 			value, err := common.SecureRandom(32)
 			if err != nil {
-				return errors.New("Snell credential generation failed")
+				return errors.New("snell credential generation failed")
 			}
 			key = value
 		}
 	}
 	value, ok := key.(string)
 	if !ok || len(value) == 0 || len(value) > registry.SnellContract("inbounds").UserKeyMaxBytes {
-		return errors.New("Snell user key must contain 1 to 255 bytes")
+		return errors.New("snell user key must contain 1 to 255 bytes")
 	}
 	user["userkey"], user["name"] = value, client.Name
 	config["snell"], _ = json.Marshal(user)
@@ -140,7 +140,7 @@ func validateSnellUserKeys(tx *gorm.DB, candidates []*model.Client) error {
 				seen[id] = map[string]bool{}
 			}
 			if seen[id][config.Snell.UserKey] {
-				return errors.New("Snell clients on one inbound require unique user keys")
+				return errors.New("snell clients on one inbound require unique user keys")
 			}
 			seen[id][config.Snell.UserKey] = true
 		}

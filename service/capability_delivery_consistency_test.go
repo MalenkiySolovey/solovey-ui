@@ -32,7 +32,12 @@ func TestCapabilityDeliveryAgreesWithServingEntityForEveryOwnerFact(t *testing.T
 				t.Fatal("URI delivery disagrees with serving inbound")
 			}
 			inbound := &model.Inbound{Type: fact.Type, Tag: "local", Options: json.RawMessage("{}"), Addrs: json.RawMessage("[]"), OutJson: json.RawMessage(fmt.Sprintf(`{"type":%q,"tag":"local","server":"example.invalid","server_port":443}`, fact.Type))}
-			set, err := sublocal.BuildInboundOutbounds(json.RawMessage("{}"), []*model.Inbound{inbound})
+			clientConfig := json.RawMessage("{}")
+			if fact.Type == "snell" {
+				inbound.OutJson = json.RawMessage(`{"type":"snell","tag":"local","version":6,"psk":"fixture-psk-12","server":"example.invalid","server_port":443}`)
+				clientConfig = json.RawMessage(`{"snell":{"userkey":"fixture-client-key"}}`)
+			}
+			set, err := sublocal.BuildInboundOutbounds(clientConfig, []*model.Inbound{inbound})
 			if err != nil {
 				t.Fatal(err)
 			}
