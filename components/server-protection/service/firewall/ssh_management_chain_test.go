@@ -301,6 +301,35 @@ func TestManagementPlanProductionHealthLifecycle(t *testing.T) {
 	}
 }
 
+func TestManagementFixtureObservationMustBeCurrentForNativeRegistry(t *testing.T) {
+	for _, test := range []struct {
+		name    string
+		age     time.Duration
+		current bool
+	}{
+		{name: "setup_consumed_listener_lifetime", age: 45 * time.Second},
+		{name: "observation_after_setup", age: 9 * time.Second, current: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			observed := time.Now().UTC().Add(-test.age)
+			contributor := sshservice.ProtectionResourceContributor{
+				Reader: chainSSHPostureReader{posture: stockDropbearPostureFixture(observed)},
+				Now:    func() time.Time { return observed },
+			}
+			registry := hostresources.NewRegistry(time.Second)
+			if _, err := registry.Register(contributor); err != nil {
+				t.Fatal(err)
+			}
+			snapshot := registry.Refresh(context.Background())
+			err := InventoryReady(protectionresources.FromHostSnapshot(snapshot))
+			t.Logf("current=%t resources=%d errors=%d inventory=%v", test.current, len(snapshot.Resources), len(snapshot.Errors), err)
+			if (err == nil) != test.current {
+				t.Fatalf("native registry accepted wrong observation lifetime: %v", err)
+			}
+		})
+	}
+}
+
 type managementRuntimeChecker struct{}
 
 func (managementRuntimeChecker) Check(_ context.Context, id string) componenthealth.Result {
@@ -320,9 +349,7 @@ func RunRetainedPublicLifecycleTest(t *testing.T, operator func(Workflow, *prote
 }
 
 func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth bool, fault string, operator lifecycleOperator, bootRecovery ...string) {
-	// Native registries run on the real clock; the owner and baseline clocks
-	// advance deterministically within the current bounded validity interval.
-	clock := time.Now().UTC().Add(-10 * time.Second)
+	var clock time.Time
 	provider := &currentChainProvider{}
 	provider.observe = func() {
 		clock = clock.Add(time.Second)
@@ -373,6 +400,10 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 		dbConfig.Open = productionStartupSQLite(t)
 	}
 	workflow, helper, _, repo, _ := newWorkflowWithRoot(t, nil, dbConfig)
+	// Start observation time after SQLite/helper setup. Native registries use
+	// the real clock, so slow fixture construction must not age unborn facts.
+	// Owner/baseline observations still advance within the same bounded TTL.
+	clock = time.Now().UTC().Add(-10 * time.Second)
 	if operator != nil {
 		shared := sshservice.Shared()
 		previousProvider, previousNow := shared.Provider, shared.Now
