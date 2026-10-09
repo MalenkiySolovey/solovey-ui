@@ -40,6 +40,7 @@ func runtimeFieldMetadata() []Field {
 
 func internalFieldMetadata() []Field {
 	return []Field{
+		{Key: settingcatalog.CoreMaintenanceKey, Page: PageInternal, Group: GroupInternal, Type: FieldTypeBool, LabelKey: "runtime.maintenance", Order: 40},
 		{Key: settingcatalog.ConfigKey, Page: PageInternal, Group: GroupInternal, Type: FieldTypeJSON, LabelKey: "setting.config", Order: 10},
 		{Key: settingcatalog.VersionKey, Page: PageInternal, Group: GroupInternal, Type: FieldTypeString, LabelKey: "setting.version", Order: 20},
 		{Key: settingcatalog.CoreSchemaVersionKey, Page: PageInternal, Group: GroupInternal, Type: FieldTypeString, LabelKey: "setting.coreSchemaVersion", Order: 30},

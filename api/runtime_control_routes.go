@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"net/http"
 	"strconv"
@@ -22,17 +21,23 @@ type runtimeCapabilities struct {
 }
 
 type runtimeSessionsView struct {
-	Status       coreruntime.RuntimeStatus       `json:"status"`
-	Snapshot     *coreruntime.ConnectionSnapshot `json:"snapshot,omitempty"`
-	Capabilities runtimeCapabilities             `json:"capabilities"`
-	Maintenance  bool                            `json:"maintenance"`
-	Reason       string                          `json:"reason,omitempty"`
+	Status               coreruntime.RuntimeStatus       `json:"status"`
+	Snapshot             *coreruntime.ConnectionSnapshot `json:"snapshot,omitempty"`
+	Capabilities         runtimeCapabilities             `json:"capabilities"`
+	Maintenance          bool                            `json:"maintenance"`
+	MaintenanceAvailable bool                            `json:"maintenanceAvailable"`
+	Reason               string                          `json:"reason,omitempty"`
 }
 
 func (a *ApiService) registerRuntimeRoutes(g *gin.RouterGroup) {
 	g.GET("/runtime/status", a.getRuntimeStatus)
 	g.GET("/runtime/sessions", a.getRuntimeSessions)
 	g.POST("/runtime/disconnect", a.disconnectRuntimeSessions)
+	g.GET("/runtime/groups", a.getRuntimeGroups)
+	g.POST("/runtime/select", a.selectRuntimeGroup)
+	g.POST("/runtime/probe", a.probeRuntimeGroup)
+	g.POST("/runtime/maintenance", a.setRuntimeMaintenance)
+	g.GET("/runtime/logs", a.streamRuntimeLogs)
 }
 
 func runtimeReason(err error) string {
@@ -45,6 +50,8 @@ func runtimeReason(err error) string {
 		return "runtime_limit_exceeded"
 	case errors.Is(err, coreruntime.ErrRuntimeAPIUnavailable):
 		return "runtime_api_unavailable"
+	case errors.Is(err, service.ErrMaintenanceUnavailable):
+		return "maintenance_unavailable"
 	default:
 		return "runtime_error"
 	}
@@ -63,10 +70,17 @@ func runtimeWriteAllowed(c *gin.Context) bool {
 }
 
 func (a *ApiService) runtimeView(c *gin.Context) runtimeSessionsView {
-	return runtimeSessionsView{
+	view := runtimeSessionsView{
 		Status:       a.runtimeCore().RuntimeStatus(c.Request.Context()),
 		Capabilities: runtimeCapabilities{Compiled: registry.PrivateRuntimeAPICompiled(), FlowClose: runtimeWriteAllowed(c)},
 	}
+	held, err := a.SettingService.CoreMaintenance()
+	view.Maintenance, view.MaintenanceAvailable = held, err == nil
+	if err != nil {
+		view.Reason = "maintenance_unavailable"
+		view.Capabilities.FlowClose = false
+	}
+	return view
 }
 
 func (a *ApiService) getRuntimeStatus(c *gin.Context) {
@@ -88,6 +102,10 @@ func (a *ApiService) getRuntimeSessions(c *gin.Context) {
 		return
 	}
 	view := a.runtimeView(c)
+	if !view.MaintenanceAvailable {
+		c.JSON(http.StatusOK, Msg{Success: true, Obj: view})
+		return
+	}
 	if !view.Status.APIAvailable {
 		view.Reason = view.Status.Reason
 		if view.Reason == "" {
@@ -113,15 +131,13 @@ func (a *ApiService) disconnectRuntimeSessions(c *gin.Context) {
 		return
 	}
 	var request coreruntime.DisconnectRequest
-	decoder := json.NewDecoder(http.MaxBytesReader(c.Writer, c.Request.Body, 2048))
-	decoder.DisallowUnknownFields()
-	decodeErr := decoder.Decode(&request)
+	decoded := decodeRuntimeRequest(c, &request)
 	_, generationErr := uuid.FromString(request.Generation)
 	var flowErr error
 	if request.FlowID != "" {
 		_, flowErr = uuid.FromString(request.FlowID)
 	}
-	if decodeErr != nil || generationErr != nil || flowErr != nil || request.FlowID == "" && request.ClientID == 0 {
+	if !decoded || generationErr != nil || flowErr != nil || request.FlowID == "" && request.ClientID == 0 {
 		c.JSON(http.StatusBadRequest, Msg{Msg: "invalid_runtime_request"})
 		return
 	}

@@ -31,6 +31,7 @@ func (r *recordingConfigCoreLifecycle) restartCoreLocked() error {
 }
 
 func TestApplyCoreSaveEffectLockedFallsBackToFullRestartAfterPartialReloadError(t *testing.T) {
+	initSettingTestDB(t)
 	plan := newConfigSavePlan(singboxapply.ObjectOutbounds.String())
 	plan.MergeOutboundChange(&singboxapply.Change{ReloadIDs: []uint{11}})
 
@@ -51,6 +52,7 @@ func TestApplyCoreSaveEffectLockedFallsBackToFullRestartAfterPartialReloadError(
 }
 
 func TestApplyCoreSaveEffectLockedStartsStoppedCoreForObjectChange(t *testing.T) {
+	initSettingTestDB(t)
 	plan := newConfigSavePlan(singboxapply.ObjectOutbounds.String())
 	plan.MergeOutboundChange(&singboxapply.Change{ReloadIDs: []uint{11}})
 
@@ -70,6 +72,7 @@ func TestApplyCoreSaveEffectLockedStartsStoppedCoreForObjectChange(t *testing.T)
 }
 
 func TestApplyCoreSaveEffectLockedUsesFullRestartForRestartPlan(t *testing.T) {
+	initSettingTestDB(t)
 	plan := newConfigSavePlan(singboxapply.ObjectConfig.String())
 	plan.RequireCoreRestart("config changed")
 
@@ -89,6 +92,7 @@ func TestApplyCoreSaveEffectLockedUsesFullRestartForRestartPlan(t *testing.T) {
 }
 
 func TestApplyCoreSaveEffectLockedReturnsRestartFailure(t *testing.T) {
+	initSettingTestDB(t)
 	plan := newConfigSavePlan(singboxapply.ObjectConfig.String())
 	plan.RequireCoreRestart("config changed")
 	want := errors.New("restart failed")

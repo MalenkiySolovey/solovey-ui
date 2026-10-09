@@ -35,6 +35,9 @@ func securityCSRFPostRoutes() []string {
 		"/api/rotateSubSecret",
 		"/api/resetTraffic",
 		"/api/runtime/disconnect",
+		"/api/runtime/select",
+		"/api/runtime/probe",
+		"/api/runtime/maintenance",
 		"/api/ip-monitor/alice/clear",
 	}
 	return append(routes, securityCSRFOptionalPostRoutes()...)

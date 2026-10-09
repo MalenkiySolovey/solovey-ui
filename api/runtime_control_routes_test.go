@@ -63,6 +63,24 @@ func TestRuntimeRoutesUseCurrentBearerScopesAndAudit(t *testing.T) {
 		if (closeResponse.Code == http.StatusOK) != wantWrite {
 			t.Fatalf("%s disconnect policy=%d", scope, closeResponse.Code)
 		}
+		groupBody := `{"generation":"` + generation + `","group":"missing","member":"direct"}`
+		if (request(http.MethodGet, "groups", token, "").Code == http.StatusOK) != wantRead {
+			t.Fatalf("%s runtime group read policy", scope)
+		}
+		for _, action := range []string{"select", "probe"} {
+			if (request(http.MethodPost, action, token, groupBody).Code == http.StatusOK) != wantWrite {
+				t.Fatalf("%s %s policy", scope, action)
+			}
+		}
+		maintenance := request(http.MethodPost, "maintenance", token, `{"generation":"00000000-0000-4000-8000-000000000001","enabled":true}`)
+		if (maintenance.Code == http.StatusOK) != (scope == "admin") {
+			t.Fatalf("%s maintenance policy=%d", scope, maintenance.Code)
+		}
+		log := request(http.MethodGet, "logs?generation=invalid", token, "")
+		wantLogs := wantRead || scope == "observability"
+		if (log.Code == http.StatusBadRequest) != wantLogs {
+			t.Fatalf("%s log read policy=%d", scope, log.Code)
+		}
 		if wantWrite && !strings.Contains(closeResponse.Body.String(), "ALREADY_GONE") {
 			t.Fatal("zero flow result not explicit")
 		}
@@ -87,6 +105,18 @@ func TestRuntimeRoutesUseCurrentBearerScopesAndAudit(t *testing.T) {
 	}
 	if request(http.MethodPost, "disconnect", tokens["admin"], `{"generation":"secret-as-target","clientId":7}`).Code != http.StatusBadRequest {
 		t.Fatal("arbitrary payload accepted as audit identity")
+	}
+	for action, valid := range map[string]string{
+		"disconnect":  body,
+		"select":      `{"generation":"` + generation + `","group":"missing","member":"direct"}`,
+		"probe":       `{"generation":"` + generation + `","group":"missing","member":"direct"}`,
+		"maintenance": `{"generation":"` + generation + `","enabled":true}`,
+	} {
+		for _, invalid := range []string{valid + `{}`, valid[:len(valid)-1] + `,"unknown":true}`, strings.Repeat(" ", 2048) + valid} {
+			if request(http.MethodPost, action, tokens["admin"], invalid).Code != http.StatusBadRequest {
+				t.Fatalf("%s accepted trailing/unknown/oversize input", action)
+			}
+		}
 	}
 	stale := request(http.MethodPost, "disconnect", tokens["admin"], `{"generation":"00000000-0000-4000-8000-000000000001","clientId":7}`)
 	if !strings.Contains(stale.Body.String(), "STALE_GENERATION") {

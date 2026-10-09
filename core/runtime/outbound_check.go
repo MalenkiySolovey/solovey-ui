@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"slices"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -34,13 +35,26 @@ func (c *Core) CheckOutbound(ctx context.Context, tag string, link string) Check
 }
 
 func (c *Core) CheckOutboundWithSource(ctx context.Context, tag string, link string, source ProbeSource) (result CheckOutboundResult) {
-	return c.checkOutbound(ctx, "", tag, link, source)
+	return c.checkOutbound(ctx, "", "", tag, link, source)
 }
 
 // CheckRuntimeOutbound binds a bounded manual probe to an accepted generation.
 // The upstream URLTest RPC is fire-and-forget and does not honor caller
 // cancellation; use the existing semantic probe owner instead.
 func (c *Core) CheckRuntimeOutbound(ctx context.Context, generation, tag, link string) CheckOutboundResult {
+	return c.checkRuntimeGroupOutbound(ctx, generation, "", tag, link)
+}
+
+// Group membership and the member's concrete dialer are resolved in the same
+// mutation/lifecycle lease, before the bounded existing probe is admitted.
+func (c *Core) CheckRuntimeGroupOutbound(ctx context.Context, generation, group, tag, link string) CheckOutboundResult {
+	if group == "" {
+		return CheckOutboundResult{Error: CheckOutboundErrorInvalidRequest}
+	}
+	return c.checkRuntimeGroupOutbound(ctx, generation, group, tag, link)
+}
+
+func (c *Core) checkRuntimeGroupOutbound(ctx context.Context, generation, group, tag, link string) CheckOutboundResult {
 	if c == nil {
 		return CheckOutboundResult{Error: CheckOutboundErrorCoreUnavailable}
 	}
@@ -53,10 +67,10 @@ func (c *Core) CheckRuntimeOutbound(ctx context.Context, generation, tag, link s
 	default:
 		return CheckOutboundResult{Error: "runtime_limit_exceeded"}
 	}
-	return c.checkOutbound(ctx, generation, tag, link, ProbeSourceManual)
+	return c.checkOutbound(ctx, generation, group, tag, link, ProbeSourceManual)
 }
 
-func (c *Core) checkOutbound(ctx context.Context, generation, tag, link string, source ProbeSource) (result CheckOutboundResult) {
+func (c *Core) checkOutbound(ctx context.Context, generation, group, tag, link string, source ProbeSource) (result CheckOutboundResult) {
 	if c == nil {
 		return CheckOutboundResult{Error: CheckOutboundErrorCoreUnavailable}
 	}
@@ -84,6 +98,14 @@ func (c *Core) checkOutbound(ctx context.Context, generation, tag, link string, 
 		if generation != "" && current.generation != generation {
 			result.Error = "stale_generation"
 			return nil
+		}
+		if group != "" {
+			outbound, exists := current.outboundManager.Outbound(group)
+			owner, isGroup := outbound.(adapter.OutboundGroup)
+			if !exists || !isGroup || !slices.Contains(owner.All(), tag) {
+				result.Error = "member_not_in_group"
+				return nil
+			}
 		}
 		// Resolve identity and reserve an observation atomically with respect to
 		// target removal/replacement, then release the mutation lock for network.

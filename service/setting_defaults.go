@@ -24,6 +24,7 @@ var internalSettingKeys = settingcatalog.MergeKeySets(
 		settingcatalog.CoreSchemaVersionKey,
 		settingcatalog.ConfigKey,
 		settingcatalog.VersionKey,
+		settingcatalog.CoreMaintenanceKey,
 	),
 	ipCertInternalSettingKeySet,
 )
