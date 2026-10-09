@@ -1,23 +1,17 @@
 package uri
 
 import (
-	"fmt"
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
 	"net/url"
 	"strings"
 )
 
 func addParams(uri string, params []LinkParam, remark string) string {
-	URL, _ := url.Parse(uri)
-	var q []string
-	for _, p := range params {
-		switch p.Key {
-		case "mport", "alpn":
-			q = append(q, fmt.Sprintf("%s=%s", p.Key, p.Value))
-		default:
-			q = append(q, fmt.Sprintf("%s=%s", p.Key, url.QueryEscape(p.Value)))
-		}
+	URL, err := url.Parse(uri)
+	if err != nil {
+		return ""
 	}
-	URL.RawQuery = strings.Join(q, "&")
+	URL.RawQuery = encodeParams(params)
 	URL.Fragment = remark
 	return URL.String()
 }
@@ -49,7 +43,7 @@ func getTransportParams(t interface{}) []LinkParam {
 			params = append(params, LinkParam{"path", path})
 		}
 	case "ws":
-		if path, ok := trasport["path"].(string); ok {
+		if path, err := codec.WebSocketPath(trasport); err == nil && path != "" {
 			params = append(params, LinkParam{"path", path})
 		}
 		if headers, ok := trasport["headers"].(map[string]interface{}); ok {
@@ -111,6 +105,11 @@ func getTlsParams(params *[]LinkParam, tls map[string]interface{}, insecureKey s
 
 func tlsStringList(value interface{}) []string {
 	switch typed := value.(type) {
+	case string:
+		if typed == "" {
+			return nil
+		}
+		return []string{typed}
 	case []string:
 		return typed
 	case []interface{}:

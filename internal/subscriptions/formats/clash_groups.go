@@ -34,23 +34,13 @@ func renderClashGroups(groupOutbounds []map[string]interface{}, proxyNameMap map
 	return groups, names
 }
 func uniqueClashGroupNameMap(groupOutbounds []map[string]interface{}) map[string]string {
-	seen := map[string]bool{
-		"Proxy": true,
-		"Auto":  true,
-	}
 	names := make(map[string]string, len(groupOutbounds))
 	for index, outbound := range groupOutbounds {
-		original := strings.TrimSpace(asString(outbound["tag"]))
+		original := asString(outbound["tag"])
 		if original == "" {
 			original = fmt.Sprintf("group-%d", index+1)
 		}
-		name := original
-		for suffix := 2; seen[name]; suffix++ {
-			name = fmt.Sprintf("%s-%d", original, suffix)
-		}
-		seen[name] = true
-		names[original] = name
-		names[name] = name
+		names[original] = original // RenderClash allocated the shared namespace.
 	}
 	return names
 }
@@ -59,7 +49,7 @@ func renderClashGroup(outbound map[string]interface{}, groupNameMap map[string]s
 	if groupType == "" {
 		return nil
 	}
-	name := strings.TrimSpace(asString(outbound["tag"]))
+	name := asString(outbound["tag"])
 	if name == "" {
 		name = fmt.Sprintf("group-%d", index+1)
 	}
@@ -282,7 +272,7 @@ func clashStringList(value interface{}) []string {
 	case []interface{}:
 		result := make([]string, 0, len(typed))
 		for _, item := range typed {
-			if value := strings.TrimSpace(asString(item)); value != "" {
+			if value := asString(item); strings.TrimSpace(value) != "" {
 				result = append(result, value)
 			}
 		}

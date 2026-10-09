@@ -75,12 +75,14 @@
       <v-col cols="12" sm="8">
         <v-text-field
           :label="$t('rule.portRange') + ' ' + $t('commaSeparated')"
+          :hint="$t('setting.hysteriaSharePortsHint')" persistent-hint
           v-model="server_ports">
         </v-text-field>
       </v-col>
       <v-col cols="12" sm="6" md="4">
         <v-text-field
           :label="$t('ruleset.interval')"
+          :hint="$t('setting.hysteriaShareIntervalHint')" persistent-hint
           type="number"
           min="0"
           :suffix="$t('date.s')"
@@ -90,6 +92,7 @@
     </v-row>
     <Headers :data="inData.out_json" v-if="type == inTypes.HTTP" />
     <AnyTls v-if="type == inTypes.AnyTls" :data="inData.out_json" direction="out_json" />
+    <Shadowsocks v-if="type == inTypes.Shadowsocks" :data="inData.out_json" direction="out_json" />
     <Naive v-if="type == inTypes.Naive" :data="inData.out_json" direction="out_json" />
     <Snell v-if="type == inTypes.Snell" :data="inData.out_json" :server-version="inData.version" direction="out_json" />
   </v-card>
@@ -101,6 +104,7 @@ import Network from '@/components/fields/Network.vue'
 import UoT from '@/components/fields/UoT.vue'
 import Headers from '@/components/fields/Headers.vue'
 import AnyTls from '@/components/protocols/AnyTls.vue'
+import Shadowsocks from '@/components/protocols/Shadowsocks.vue'
 import Naive from '@/components/protocols/Naive.vue'
 import Snell from '@/components/protocols/Snell.vue'
 
@@ -142,14 +146,14 @@ export default {
       set(v:string) { this.$props.inData.out_json.packet_encoding = v != "none" ? v : undefined }
     },
     server_ports: {
-      get() { return this.$props.inData.out_json.server_ports?.join(',')?? [] },
-      set(v:string) { this.$props.inData.out_json.server_ports = v.length > 0 ? v.split(',') : undefined }
+      get() { return this.$props.inData.out_json.server_ports?.join(',')?? '' },
+      set(v:string) { this.$props.inData.out_json.server_ports = v.trim().length > 0 ? v.split(',').map(item => item.trim()) : undefined }
     },
     hop_interval: {
       get() { return this.$props.inData.out_json.hop_interval? parseInt(this.$props.inData.out_json.hop_interval.replace('s','')) : 0 },
       set(v:number) { this.$props.inData.out_json.hop_interval = v>0 ? v + 's' : undefined }
     },
   },
-  components: { Network, UoT, Headers, AnyTls, Naive, Snell }
+  components: { Network, UoT, Headers, AnyTls, Naive, Snell, Shadowsocks }
 }
 </script>

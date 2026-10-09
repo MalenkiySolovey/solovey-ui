@@ -1,6 +1,6 @@
 <template>
   <v-card subtitle="Shadowsocks">
-    <v-row>
+    <v-row v-if="direction !== 'out_json'">
       <v-col cols="12" sm="6" md="4">
         <v-select
           hide-details
@@ -25,7 +25,7 @@
         </v-switch>
       </v-col>
     </v-row>
-    <v-row v-if="data.method != 'none' || direction == 'out'">
+    <v-row v-if="direction !== 'out_json' && (data.method != 'none' || direction == 'out')">
       <v-col cols="12" sm="8">
         <v-text-field
           v-model="data.password"
@@ -36,7 +36,7 @@
         </v-text-field>
       </v-col>
     </v-row>
-    <v-row v-if="direction == 'out'">
+    <v-row v-if="direction === 'out' || direction === 'out_json'">
       <v-col cols="12" sm="6" md="4">
         <v-select
           v-model="plugin"
@@ -51,7 +51,7 @@
           v-model="pluginOptions"
           :label="$t('singbox.pluginOptions')"
           placeholder="obfs=http;obfs-host=example.com"
-          hide-details>
+          :hint="$t('setting.shadowsocksPluginShareHint')" persistent-hint>
         </v-text-field>
       </v-col>
     </v-row>

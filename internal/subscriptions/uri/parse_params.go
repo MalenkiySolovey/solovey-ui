@@ -1,11 +1,12 @@
 package uri
 
 import (
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
 	"net/url"
 	"strings"
 )
 
-func getTransport(tp_type string, q *url.Values) map[string]interface{} {
+func getTransport(tp_type string, q *url.Values) (map[string]interface{}, error) {
 	transport := map[string]interface{}{}
 	tp_host := q.Get("host")
 	tp_path := q.Get("path")
@@ -25,8 +26,16 @@ func getTransport(tp_type string, q *url.Values) map[string]interface{} {
 		}
 		transport["path"] = tp_path
 	case "ws":
+		path, early, err := codec.DecodeWebSocketPath(tp_path)
+		if err != nil {
+			return nil, err
+		}
 		transport["type"] = "ws"
-		transport["path"] = tp_path
+		transport["path"] = path
+		if early > 0 {
+			transport["max_early_data"] = early
+			transport["early_data_header_name"] = codec.WebSocketProtocolHeader
+		}
 		if len(tp_host) > 0 {
 			transport["headers"] = map[string]interface{}{
 				"Host": tp_host,
@@ -42,7 +51,7 @@ func getTransport(tp_type string, q *url.Values) map[string]interface{} {
 		transport["path"] = tp_path
 		transport["host"] = tp_host
 	}
-	return transport
+	return transport, nil
 }
 func getTls(security string, q *url.Values) map[string]interface{} {
 	tls := map[string]interface{}{}

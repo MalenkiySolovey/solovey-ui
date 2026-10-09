@@ -40,6 +40,7 @@ export const settingsPageDefaults: SettingsMap = {
   subNameInRemark: 'false',
   subJsonExt: '',
   subClashExt: '',
+  subClashUDP: '',
 }
 
 export const pickSettingsByDefaults = (defaults: SettingsMap, source: SettingsMap): SettingsMap => {

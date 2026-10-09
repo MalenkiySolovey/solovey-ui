@@ -3,6 +3,7 @@ package uri
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"strings"
 )
 
@@ -10,16 +11,13 @@ func anytlsLink(
 	userConfig map[string]interface{},
 	addrs []map[string]interface{}) []string {
 	password, _ := userConfig["password"].(string)
-	baseUri := fmt.Sprintf("%s%s@", "anytls://", password)
 	var links []string
 	for _, addr := range addrs {
 		var params []LinkParam
 		if tls, ok := addr["tls"].(map[string]interface{}); ok {
 			getTlsParams(&params, tls, "insecure")
 		}
-		port, _ := addr["server_port"].(float64)
-		uri := fmt.Sprintf("%s%s:%.0f", baseUri, mapString(addr, "server"), port)
-		links = append(links, addParams(uri, params, mapString(addr, "remark")))
+		links = append(links, linkURL("anytls", url.User(password), addr, params, mapString(addr, "remark")))
 	}
 	return links
 }
@@ -29,7 +27,6 @@ func tuicLink(
 	addrs []map[string]interface{}) []string {
 	password, _ := userConfig["password"].(string)
 	uuid, _ := userConfig["uuid"].(string)
-	baseUri := fmt.Sprintf("%s%s:%s@", "tuic://", uuid, password)
 	udpRelayMode := tuicUDPRelayMode(inbound)
 	var links []string
 	for _, addr := range addrs {
@@ -43,9 +40,7 @@ func tuicLink(
 		if udpRelayMode != "" {
 			params = append(params, LinkParam{"udp_relay_mode", udpRelayMode})
 		}
-		port, _ := addr["server_port"].(float64)
-		uri := fmt.Sprintf("%s%s:%.0f", baseUri, mapString(addr, "server"), port)
-		links = append(links, addParams(uri, params, mapString(addr, "remark")))
+		links = append(links, linkURL("tuic", url.UserPassword(uuid, password), addr, params, mapString(addr, "remark")))
 	}
 	return links
 }
@@ -103,9 +98,7 @@ func vlessLink(
 				params = append(params, LinkParam{"flow", flow})
 			}
 		}
-		port, _ := addr["server_port"].(float64)
-		uri := fmt.Sprintf("vless://%s@%s:%.0f", uuid, mapString(addr, "server"), port)
-		uri = addParams(uri, params, mapString(addr, "remark"))
+		uri := linkURL("vless", url.User(uuid), addr, params, mapString(addr, "remark"))
 		links = append(links, uri)
 	}
 	return links
@@ -123,9 +116,7 @@ func trojanLink(
 		if tls, ok := addr["tls"].(map[string]interface{}); ok && asBool(tls["enabled"]) {
 			getTlsParams(&params, tls, "allowInsecure")
 		}
-		port, _ := addr["server_port"].(float64)
-		uri := fmt.Sprintf("trojan://%s@%s:%.0f", password, mapString(addr, "server"), port)
-		uri = addParams(uri, params, mapString(addr, "remark"))
+		uri := linkURL("trojan", url.User(password), addr, params, mapString(addr, "remark"))
 		links = append(links, uri)
 	}
 	return links

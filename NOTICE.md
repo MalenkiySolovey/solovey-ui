@@ -269,3 +269,16 @@ application source or tests were transferred. The existing godbus/dbus/v5
 v5.2.2 dependency (BSD-2-Clause) supplies local D-Bus metadata calls; its
 license remains authoritative. No platform privilege or release boundary
 changes are implied by this partial integration.
+
+Stage 2 selected subscription integration independently adapts behavioral
+witnesses from original S-UI v1.6.3 util/genLink.go, util/host.go and subscription
+adapters at 13abbdc431ae31ec78a54f5e6643b7fd70b6e634, and shared editor witnesses
+at frontend 691346925b65e485b1cc5c70ca952819bbbe6047 (GPL-3.0-or-later).
+Official sing-box v1.14.2 at af6e64c3b69e6132ebaee0e1a3d24e93903f6709 and its
+pinned sing-quic module remain the runtime schema and port-range authorities.
+SIP002 and Mihomo client documentation guide format-specific projection;
+Solovey's existing subscription, TLS, client and settings owners retain
+canonical state, public disclosure policy and lifecycle. No application source
+or tests were copied. Existing dependency licenses remain authoritative. This
+partial integration does not advance the complete original-SUI parity boundary
+or the product release.

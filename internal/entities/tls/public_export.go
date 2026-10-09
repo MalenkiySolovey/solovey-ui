@@ -38,6 +38,19 @@ func PublicExportFindings(source []byte) []diagnostics.Finding {
 					findings = append(findings, providerFinding(path+"."+key+"."+secret, "TLS_PRIVATE_EXPORT_REQUIRED", diagnostics.Error, "Private server certificate material is unavailable in a public export."))
 				}
 			}
+			if key == "ech" {
+				if nonemptyTLSValue(nested["config_path"]) {
+					findings = append(findings, providerFinding(path+".ech.config_path", "TLS_PRIVATE_EXPORT_REQUIRED", diagnostics.Error, "Internal ECH file references are unavailable in public export."))
+				}
+				var config any
+				if raw, exists := nested["config"]; exists {
+					if err := json.Unmarshal(raw, &config); err != nil {
+						findings = append(findings, providerFinding(path+".ech.config", "TLS_PUBLIC_ECH_INVALID", diagnostics.Error, "Invalid public ECH configuration."))
+					} else if _, err := PublicECHConfig(config); err != nil {
+						findings = append(findings, providerFinding(path+".ech.config", "TLS_PUBLIC_ECH_INVALID", diagnostics.Error, err.Error()))
+					}
+				}
+			}
 		}
 	}
 	if raw, present := root["tls"]; present {

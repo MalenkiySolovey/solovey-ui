@@ -37,6 +37,7 @@ func subscriptionFieldMetadata() []Field {
 		{Key: settingcatalog.SubClashPathKey, Page: PageSettings, Group: GroupSubscriptionClash, Type: FieldTypePath, LabelKey: "setting.clashPath", RestartRequired: true, Order: 10},
 		{Key: settingcatalog.SubClashURIKey, Page: PageSettings, Group: GroupSubscriptionClash, Type: FieldTypeURL, LabelKey: "setting.clashSub", Order: 20},
 		{Key: settingcatalog.SubClashExtKey, Page: PageSettings, Group: GroupSubscriptionClash, Type: FieldTypeYAML, LabelKey: "setting.clashSub", Advanced: true, Order: 30},
+		{Key: settingcatalog.SubClashUDPKey, Page: PageSettings, Group: GroupSubscriptionClash, Type: FieldTypeEnum, LabelKey: "setting.subClashUDP", Options: []string{"", "true", "false"}, Order: 40},
 
 		{Key: settingcatalog.SubXrayPathKey, Page: PageSettings, Group: GroupSubscriptionXray, Type: FieldTypePath, LabelKey: "setting.xrayPath", RestartRequired: true, Order: 10},
 		{Key: settingcatalog.SubXrayURIKey, Page: PageSettings, Group: GroupSubscriptionXray, Type: FieldTypeURL, LabelKey: "setting.xraySub", Order: 20},

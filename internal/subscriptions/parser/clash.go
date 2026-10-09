@@ -31,6 +31,9 @@ func ParseClashOutboundsWithOptions(data string, options ParseOptions) ([]map[st
 		if outbound == nil {
 			continue
 		}
+		if err := adaptClashWave4(outbound, proxy); err != nil {
+			return nil, err
+		}
 		outbounds = append(outbounds, outbound)
 	}
 	outbounds = append(outbounds, clashProxyGroupOutbounds(config, knownTags, options)...)

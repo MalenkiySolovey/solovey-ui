@@ -34,6 +34,7 @@ const (
 	SubURIKey             = "subURI"
 	SubJsonExtKey         = "subJsonExt"
 	SubClashExtKey        = "subClashExt"
+	SubClashUDPKey        = "subClashUDP"
 )
 
 func SubscriptionDefaults() map[string]string {
@@ -71,6 +72,7 @@ func SubscriptionDefaults() map[string]string {
 		SubURIKey:             "",
 		SubJsonExtKey:         "",
 		SubClashExtKey:        "",
+		SubClashUDPKey:        "",
 	}
 }
 

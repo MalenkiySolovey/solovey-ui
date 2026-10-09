@@ -2,6 +2,9 @@ export default {
   "client": {
     "name": "Name",
     "desc": "Description",
+    "publicRemark": "Public subscription remark",
+    "publicRemarkHint": "Optional name shared with subscription clients. The description stays private. Empty keeps the existing names.",
+    "publicRemarkLimit": "Use at most 128 characters.",
     "group": "Group",
     "inboundTags": "Inbound Tags",
     "subscriptionTags": "Subscription Groups",

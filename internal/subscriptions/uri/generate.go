@@ -6,13 +6,13 @@ import (
 	"errors"
 	"fmt"
 	"math"
-	"net/netip"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
@@ -62,6 +62,10 @@ func Generate(clientConfig json.RawMessage, i *model.Inbound, hostname string) (
 	if err := json.Unmarshal(clientConfig, &userConfig); err != nil {
 		return nil, fmt.Errorf("decode subscription client config: %w", err)
 	}
+	publicRemark, err := canonical.ClientPublicRemark(clientConfig)
+	if err != nil {
+		return nil, err
+	}
 	Addrs, err := decodeAddresses(i.Addrs)
 	if err != nil {
 		return nil, err
@@ -95,6 +99,20 @@ func Generate(clientConfig json.RawMessage, i *model.Inbound, hostname string) (
 		}
 	}
 	if err := validateLinkAddresses(Addrs); err != nil {
+		return nil, err
+	}
+	if publicRemark != "" {
+		original, _ := decodeAddresses(i.Addrs)
+		for index, address := range Addrs {
+			suffix := ""
+			if index < len(original) {
+				suffix, _ = original[index]["remark"].(string)
+			}
+			address["remark"] = publicRemark + suffix
+			address["share_name"] = publicRemark + suffix // opt-in for previously unlabelled HTTP/SOCKS URIs
+		}
+	}
+	if err := validateProjection(i.Type, *inbound, Addrs); err != nil {
 		return nil, err
 	}
 	var links []string
@@ -132,6 +150,10 @@ func Generate(clientConfig json.RawMessage, i *model.Inbound, hostname string) (
 	if len(links) == 0 {
 		return nil, fmt.Errorf("subscription inbound %q produced no links", i.Tag)
 	}
+	links, err = UniqueLinkNames(links)
+	if err != nil {
+		return nil, err
+	}
 	for index, link := range links {
 		if err := validateGeneratedLink(link); err != nil {
 			return nil, fmt.Errorf("validate generated subscription link %d for inbound %q: %w", index+1, i.Tag, err)
@@ -143,19 +165,12 @@ func Generate(clientConfig json.RawMessage, i *model.Inbound, hostname string) (
 func validateGeneratedLink(link string) error {
 	parsed, err := url.Parse(link)
 	if err != nil {
-		return err
+		return errors.New("malformed generated subscription link")
 	}
 	switch parsed.Scheme {
 	case "socks5", "http", "https":
-		password, hasPassword := parsed.User.Password()
-		if parsed.User == nil || parsed.User.Username() == "" || !hasPassword || password == "" || parsed.Hostname() == "" {
-			return errors.New("standard proxy link is missing credentials or host")
-		}
-		port, err := strconv.Atoi(parsed.Port())
-		if err != nil || port < 1 || port > 65535 {
-			return errors.New("standard proxy link has an invalid port")
-		}
-		return nil
+		_, _, err := parseStandardProxy(parsed, 0)
+		return err
 	default:
 		_, _, err := Parse(link, 0)
 		return err
@@ -165,16 +180,12 @@ func validateGeneratedLink(link string) error {
 func validateLinkAddresses(addresses []map[string]interface{}) error {
 	for index, address := range addresses {
 		host, ok := address["server"].(string)
-		host = strings.TrimSpace(host)
 		if !ok || host == "" {
 			return fmt.Errorf("subscription address %d has no server", index+1)
 		}
-		if strings.Contains(host, ":") {
-			ip, err := netip.ParseAddr(strings.Trim(host, "[]"))
-			if err != nil || !ip.Is6() {
-				return fmt.Errorf("subscription address %d has an invalid server", index+1)
-			}
-			host = "[" + ip.String() + "]"
+		host, err := codec.NormalizeHost(host)
+		if err != nil {
+			return fmt.Errorf("subscription address %d has an invalid server", index+1)
 		}
 		port, ok := address["server_port"].(float64)
 		if !ok || math.Trunc(port) != port || port < 1 || port > 65535 {
