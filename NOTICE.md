@@ -291,3 +291,11 @@ witness only; Solovey retains its modern Argon2id policy. Existing shared fetch,
 timezone and cryptographic utility owners provide the implementation. No original
 application source or tests were copied; no dependency or complete-parity/release
 boundary advances are implied.
+
+Stage 2 selected auto-HTTPS behavior adapts the original S-UI
+network/auto_https_conn.go and tests at
+13abbdc431ae31ec78a54f5e6643b7fd70b6e634 as GPL-compatible behavior witnesses.
+Existing Solovey network/autohttps owns bounded classification, stream replay,
+validated authority and caller deadline preservation. No original application
+source or tests were copied; no TLS, dependency, privilege, complete-parity or
+release boundary changes are implied.
