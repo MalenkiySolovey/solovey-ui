@@ -25,7 +25,7 @@ func TestRuntimeRoutesUseCurrentBearerScopesAndAudit(t *testing.T) {
 	runtime := service.NewRuntime(core)
 	userService := &service.UserService{Runtime: runtime}
 	tokens := map[string]string{}
-	for _, scope := range []string{"admin", "read", "write", "observability", "database", "telegram"} {
+	for _, scope := range []string{"admin", "read", "write", "observability", "database", "update"} {
 		plain, err := userService.AddToken("admin", 0, "runtime fixture", scope)
 		if err != nil {
 			t.Fatal(err)
@@ -47,7 +47,7 @@ func TestRuntimeRoutesUseCurrentBearerScopesAndAudit(t *testing.T) {
 	for scope, token := range tokens {
 		status := request(http.MethodGet, "status", token, "")
 		wantStatus := http.StatusOK
-		if scope == "database" || scope == "telegram" {
+		if scope == "database" || scope == "update" {
 			wantStatus = http.StatusForbidden
 		}
 		if status.Code != wantStatus {
