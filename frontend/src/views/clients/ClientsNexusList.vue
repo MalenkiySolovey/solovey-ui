@@ -140,6 +140,7 @@ import { HumanReadable } from '@/plugins/utils'
 import { useBulkSelection } from '@/shared/dnd/bulkSelection'
 import type { ManualDropPosition } from '@/shared/dnd/manualDrag'
 import type { ManualSortDirection } from '@/shared/dnd/manualReorder'
+import { usedTraffic } from '@/shared/clients/traffic'
 
 interface ClientRow {
   id: number
@@ -208,7 +209,7 @@ const columns: Column<ClientRow>[] = [
   { key: 'desc', labelKey: 'client.desc' },
   { key: 'group', labelKey: 'client.group' },
   { key: 'inbounds', labelKey: 'pages.inbounds' },
-  { key: 'volume', labelKey: 'stats.volume' },
+  { key: 'volume', labelKey: 'stats.volume', sortValue: usedTraffic },
   { key: 'expiry', labelKey: 'date.expiry' },
   { key: 'online', labelKey: 'status' },
   { key: 'lastIpCount', labelKey: 'client.lastIpCount' },

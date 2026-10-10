@@ -1,10 +1,12 @@
 package componentdoctor
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	componentdoctor "github.com/MalenkiySolovey/solovey-ui/componenthost/doctor"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
@@ -16,29 +18,48 @@ func Run(args []string, out io.Writer) int {
 	fs.SetOutput(out)
 
 	var components bool
+	var panel bool
 	fs.BoolVar(&components, "components", false, "show installed component metadata, binary presence, enabled state and orphan data")
+	fs.BoolVar(&panel, "panel", false, "check the configured panel listener without HTTP requests or database changes")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	if !components {
+	if !components && !panel {
 		fs.Usage()
 		return 2
 	}
 
-	if err := dbsqlite.Init(configstorage.GetDBPath()); err != nil {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	readOnly, err := dbsqlite.OpenReadOnly(ctx, configstorage.GetDBPath())
+	if err != nil {
+		fmt.Fprintln(out, "doctor:", err)
+		return 1
+	}
+	pool, err := readOnly.DB()
+	if err != nil {
 		fmt.Fprintln(out, "doctor:", err)
 		return 1
 	}
 	defer func() {
-		if err := dbsqlite.Close(); err != nil {
+		if err := pool.Close(); err != nil {
 			fmt.Fprintln(out, "doctor: close database:", err)
 		}
 	}()
 
-	report := componentdoctor.Inspect(dbsqlite.DB())
-	Print(out, report)
-	if componentdoctor.HasErrors(report) {
-		return 1
+	if components {
+		report := componentdoctor.Inspect(readOnly)
+		Print(out, report)
+		if componentdoctor.HasErrors(report) {
+			return 1
+		}
+	}
+	if panel {
+		if err := checkPanel(ctx, readOnly); err != nil {
+			fmt.Fprintln(out, "doctor:", err)
+			return 1
+		}
+		fmt.Fprintln(out, "panel: configured listener is reachable")
 	}
 	return 0
 }

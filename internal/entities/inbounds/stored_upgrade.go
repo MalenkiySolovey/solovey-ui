@@ -7,6 +7,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
+	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"gorm.io/gorm"
 )
@@ -54,9 +55,32 @@ func StageStoredUpgrade(tx *gorm.DB) ([]diagnostics.Finding, error) {
 				}
 			}
 		}
+		projection, local, err := prepareOutboundTLSUpgrade(path+".out_json", row.OutJson)
+		findings = append(findings, local...)
+		if err != nil {
+			return findings, err
+		}
+		row.OutJson = projection
 		if err := tx.Model(&model.Inbound{}).Where("id = ?", row.Id).Updates(map[string]any{"options": row.Options, "out_json": row.OutJson}).Error; err != nil {
 			return findings, err
 		}
 	}
 	return findings, nil
+}
+
+func prepareOutboundTLSUpgrade(path string, source json.RawMessage) (json.RawMessage, []diagnostics.Finding, error) {
+	if len(bytes.TrimSpace(source)) == 0 || bytes.Equal(bytes.TrimSpace(source), []byte("null")) {
+		return source, nil, nil
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(source, &fields) != nil || fields == nil {
+		return source, nil, fmt.Errorf("%s must be an object", path)
+	}
+	candidate, findings, err := entitytls.PrepareOptionsUpgrade(path+".tls", fields["tls"])
+	if err != nil || len(findings) == 0 {
+		return source, findings, err
+	}
+	fields["tls"] = candidate
+	result, err := json.Marshal(fields)
+	return result, findings, err
 }

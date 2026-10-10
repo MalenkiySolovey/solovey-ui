@@ -29,8 +29,11 @@ func TestAddTLSInitializesMissingClientRealityAndECH(t *testing.T) {
 		t.Fatalf("unexpected Reality client config: %#v", reality)
 	}
 	ech, ok := tlsConfig["ech"].(map[string]interface{})
-	if !ok || ech["enabled"] != true || ech["pq_signature_schemes_enabled"] != true {
+	if !ok || ech["enabled"] != true {
 		t.Fatalf("unexpected ECH client config: %#v", ech)
+	}
+	if _, present := ech["pq_signature_schemes_enabled"]; present {
+		t.Fatal("removed ECH flag was regenerated")
 	}
 }
 

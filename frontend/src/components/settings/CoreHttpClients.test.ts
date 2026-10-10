@@ -2,6 +2,23 @@ import { describe, expect, it } from 'vitest'
 import CoreHttpClients from './CoreHttpClients.vue'
 
 describe('shared core HTTP editor', () => {
+  it('roundtrips the full HTTP dial contract without filtering detour or explicit defaults', () => {
+    const owner = CoreHttpClients as any
+    const client = {
+      tag: 'complete', engine: 'go', detour: 'proxy-out', bind_interface: 'fixture-interface',
+      inet4_bind_address: '127.0.0.1', inet6_bind_address: '::1', bind_address_no_port: false,
+      routing_mark: 0, reuse_addr: false, connect_timeout: '0s', tcp_fast_open: false,
+      tcp_multi_path: false, disable_tcp_keep_alive: false, tcp_keep_alive: '0s',
+      domain_resolver: { server: 'dns-owner', strategy: 'prefer_ipv4', disable_cache: false },
+      tls: { insecure: false }, custom_extension: { keep: true },
+    }
+    const data = { http_clients: [client], route: { default_http_client: 'complete' } }
+    const state = { ...owner.data(), data }
+    owner.methods.refreshText.call(state)
+    owner.methods.applyDefinitions.call(state)
+    expect(data.http_clients[0]).toEqual(client)
+    expect(data.route.default_http_client).toBe('complete')
+  })
   it('opening, editing and reopening keeps false, zero, custom headers and shared references', () => {
     const owner = CoreHttpClients as any
     const data = { http_clients: [{ tag: 'chosen', engine: 'go', version: 2, headers: { empty: [] }, tls: { insecure: false }, idle_timeout: 0 }], route: { default_http_client: 'chosen' } }

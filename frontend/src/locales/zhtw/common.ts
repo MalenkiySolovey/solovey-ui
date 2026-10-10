@@ -15,9 +15,9 @@
     "selectAll": "全選",
     "expandRow": "展開列詳情",
     "clearFilters": "清除篩選",
-    "noData": "暫無資料",
-    "previousPage": "Previous page",
-    "nextPage": "Next page"
+    "noData": "沒有資料",
+    "previousPage": "上一頁",
+    "nextPage": "下一頁"
   },
   "form": {
     "unsavedChanges": "未儲存的變更",
@@ -29,7 +29,7 @@
       "configuration": "設定"
     }
   },
-  "warning": "warning",
+  "warning": "警告",
   "success": "成功",
   "failed": "失敗",
   "stats": {
@@ -52,10 +52,10 @@
     "enable": "啟用流量統計"
   },
   "enable": "啟用",
-  "disable": "禁用",
+  "disable": "停用",
   "none": "無",
   "all": "全部",
-  "loading": "加載中...",
+  "loading": "載入中…",
   "confirm": "是否確定？",
   "yes": "確認",
   "no": "取消",
@@ -64,23 +64,23 @@
   "protocol": "協定",
   "submit": "提交",
   "reset": "重置",
-  "now": "當前",
-  "network": "網絡",
-  "copyToClipboard": "復製到剪貼板",
-  "noData": "無數據！",
-  "invalidLogin": "登錄無效！",
+  "now": "目前",
+  "network": "網路",
+  "copyToClipboard": "複製到剪貼簿",
+  "noData": "沒有資料",
+  "invalidLogin": "登入已失效",
   "online": "在線",
   "status": "狀態",
   "version": "版本",
   "email": "電子郵件",
   "commaSeparated": "（逗號分隔）",
   "count": "計數",
-  "template": "模板",
+  "template": "範本",
   "editor": "編輯器",
   "error": {
-    "dplData": "重複數據",
+    "dplData": "重複資料",
     "core": "Sing-Box 錯誤",
-    "invalidData": "無效數據"
+    "invalidData": "無效資料"
   },
   "theme": {
     "light": "明亮",
@@ -88,21 +88,21 @@
     "system": "系統"
   },
   "pages": {
-    "login": "登錄",
+    "login": "登入",
     "home": "儀表板",
     "inbounds": "入站管理",
     "outbounds": "出站管理",
     "services": "服務管理",
     "endpoints": "端點管理",
-    "clients": "用戶管理",
+    "clients": "用戶端管理",
     "rules": "路由列表",
-    "tls": "TLS 設置",
-    "basics": "基礎信息",
+    "tls": "TLS 設定",
+    "basics": "基礎資訊",
     "dns": "DNS",
     "admins": "管理員",
-    "security": "Account security",
-    "securityTransition": "Security verification",
-    "settings": "設置",
+    "security": "帳戶安全",
+    "securityTransition": "安全驗證",
+    "settings": "設定",
     "support": "支援專案"
   },
   "support": {
@@ -114,10 +114,10 @@
     "imageAlt": "Solovey UI 標誌"
   },
   "main": {
-    "tiles": "信息卡",
+    "tiles": "資訊卡",
     "gauges": "儀表板",
     "charts": "圖表",
-    "infos": "信息",
+    "infos": "資訊",
     "gauge": {
       "cpu": "CPU 儀表",
       "mem": "RAM 儀表",
@@ -127,30 +127,30 @@
     "chart": {
       "cpu": "CPU 監視器",
       "mem": "RAM 監視器",
-      "net": "網絡帶寬",
-      "pnet": "網絡數據包",
+      "net": "網路帶寬",
+      "pnet": "網路封包",
       "dio": "Disk I/O"
     },
     "info": {
-      "sys": "系統信息",
-      "sbd": "運行信息",
+      "sys": "系統資訊",
+      "sbd": "執行資訊",
       "host": "主機",
       "cpu": "CPU",
       "core": "核心",
-      "uptime": "運行時間",
+      "uptime": "執行時間",
       "startupTime": "啟動時間",
-      "threads": "線程",
-      "memory": "內存",
-      "running": "運行狀態"
+      "threads": "執行緒",
+      "memory": "記憶體",
+      "running": "執行狀態"
     },
     "backup": {
-      "title": "備份與恢復",
+      "title": "備份與還原",
       "backup": "下載備份",
-      "restore": "恢復備份",
+      "restore": "還原備份",
       "exclStats": "排除圖表記錄",
       "exclChanges": "排除更改記錄",
       "restorePassphrase": "備份密語",
-      "sbConfig": "下載 Sing-Box 配置",
+      "sbConfig": "下載 Sing-Box 設定",
     },
     "stats": {
       "title": "使用量與統計",
@@ -180,7 +180,7 @@
     "status": {
       "online": "線上",
       "offline": "離線",
-      "loading": "載入中",
+      "loading": "載入中…",
       "failed": "失敗",
       "unavailable": "不可用",
       "running": "執行中",
@@ -219,7 +219,7 @@
       "traffic": {
         "title": "流量概覽",
         "range24h": "24 小時入站歷史",
-        "loading": "正在載入流量歷史。",
+        "loading": "載入中…",
         "chartAria": "入站上傳與下載歷史",
         "emptyOffline": "瀏覽器離線時無法查看流量歷史。",
         "emptyUnavailable": "無法從目前入站統計載入流量歷史。",
@@ -238,7 +238,7 @@
       "clients": {
         "title": "熱門用戶端",
         "shown": "顯示 {count} 個",
-        "loading": "正在載入用戶端。",
+        "loading": "載入中…",
         "empty": "暫時沒有用戶端流量。",
         "state": "狀態",
         "total": "總計",
@@ -246,7 +246,7 @@
       },
       "events": {
         "title": "最近事件",
-        "loading": "正在載入稽核事件。",
+        "loading": "載入中…",
         "rows": "{count} 列",
         "emptyOffline": "離線時無法查看最近稽核事件。",
         "emptyUnavailable": "無法載入最近稽核事件。",
@@ -259,7 +259,7 @@
         "activeShort": "作用中",
         "totalShort": "總數",
         "tags": "標籤",
-        "loading": "正在載入入站。",
+        "loading": "載入中…",
         "empty": "未設定入站。",
         "inboundTags": "{count} 個入站標籤",
         "noTag": "未回報標籤。"
@@ -268,17 +268,17 @@
   },
   "objects": {
     "inbound": "入站",
-    "client": "客戶端",
+    "client": "用戶端",
     "outbound": "出站",
     "endpoint": "端點",
-    "config": "配置",
+    "config": "設定",
     "rule": "規則",
     "ruleset": "規則集",
     "service": "服務",
-    "dnsserver": "DNS 服務器",
+    "dnsserver": "DNS 伺服器",
     "dnsrule": "DNS 規則",
     "user": "用戶",
-    "tag": "標簽",
+    "tag": "標籤",
     "listen": "聽",
     "dial": "撥號",
     "tls": "TLS",
@@ -290,8 +290,8 @@
   },
   "actions": {
     "action": "操作",
-    "add": "添加",
-    "addbulk": "批量添加",
+    "add": "新增",
+    "addbulk": "批量新增",
     "editbulk": "批量編輯",
     "delbulk": "批量刪除",
     "new": "新建",
@@ -303,12 +303,12 @@
     "save": "保存",
     "update": "更新",
     "submit": "提交",
-    "set": "設置",
+    "set": "設定",
     "generate": "生成",
-    "disable": "禁用",
+    "disable": "停用",
     "close": "關閉",
-    "restartApp": "重啟面板",
-    "restartSb": "重啟 Singbox",
+    "restartApp": "重新啟動面板",
+    "restartSb": "重新啟動 Singbox",
     "logoutAllAdmins": "登出所有管理員"
   },
   "presets": {
@@ -422,15 +422,15 @@
     "noRawLinks": "No raw client links are stored for this client."
   },
   "login": {
-    "title": "登錄",
-    "username": "用戶名",
-    "unRules": "用戶名不能為空",
+    "title": "登入",
+    "username": "使用者名稱",
+    "unRules": "使用者名稱不能為空",
     "password": "密碼",
     "pwRules": "密碼不能為空",
-    "invalidCredentials": "使用者名稱或密碼無效。"
+    "invalidCredentials": "使用者名稱或密碼不正確。"
   },
   "menu": {
-    "logout": "退出登錄",
+    "logout": "登出",
     "language": "語言",
     "theme": "主題",
     "navigation": "切換導覽"
@@ -439,8 +439,8 @@
     "addAdmin": "新增管理員",
     "deleteAdmin": "刪除管理員",
     "changeCred": "更改憑據",
-    "oldPass": "當前密碼",
-    "newUname": "新用戶名",
+    "oldPass": "目前密碼",
+    "newUname": "新使用者名稱",
     "newPass": "新密碼",
     "confirmPass": "確認密碼",
     "addValidation": "請填寫目前密碼、使用者名稱和兩個密碼欄位。",
@@ -466,42 +466,42 @@
     }
   },
   "types": {
-    "un": "用戶名",
+    "un": "使用者名稱",
     "pw": "密碼",
     "direct": {
-      "overrideAddr": "覆蓋地址",
-      "overridePort": "覆蓋端口"
+      "overrideAddr": "覆蓋位址",
+      "overridePort": "覆蓋連接埠"
     },
     "hy": {
       "obfs": "混淆密碼",
       "auth": "驗證密碼",
       "hyOptions": "Hysteria 選項",
       "hy2Options": "Hysteria2 選項",
-      "ignoreBw": "忽略客戶端帶寬"
+      "ignoreBw": "忽略用戶端帶寬"
     },
     "shdwTls": {
-      "hs": "握手服務器",
-      "addHS": "添加握手服務器"
+      "hs": "握手伺服器",
+      "addHS": "新增握手伺服器"
     },
     "ssh": {
       "passphrase": "密語",
       "hostKey": "主機密鑰",
       "algorithm": "密鑰算法",
-      "clientVer": "客戶端版本",
+      "clientVer": "用戶端版本",
       "options": "SSH 選項"
     },
     "tor": {
-      "execPath": "可執行文件路徑",
-      "dataDir": "數據目錄",
+      "execPath": "可執行檔案路徑",
+      "dataDir": "資料目錄",
       "extArgs": "額外參數"
     },
     "tuic": {
       "congControl": "擁塞控制",
-      "authTimeout": "身份驗證超時",
+      "authTimeout": "身份驗證逾時",
       "hb": "心跳"
     },
     "tun": {
-      "addr": "地址",
+      "addr": "位址",
       "ifName": "介面名稱",
       "excludeMptcp": "排除 MPTCP",
       "fallbackRuleIndex": "iproute2 回退規則索引"
@@ -520,7 +520,7 @@
       "pubKey": "對等方公鑰",
       "psk": "預共享密鑰",
       "localIp": "本地 IP",
-      "worker": "工作線程",
+      "worker": "工作執行緒",
       "ifName": "介面名稱",
       "sysIf": "系統介面",
       "options": "Wireguard 選項",
@@ -529,8 +529,8 @@
       "peers": "對等方"
     },
     "lb": {
-      "defaultOut": "默認外部",
-      "interruptConn": "中斷現有連接",
+      "defaultOut": "預設外部",
+      "interruptConn": "中斷現有連線",
       "testUrl": "測試 URL",
       "interval": "間隔",
       "tolerance": "容忍度",
@@ -554,7 +554,7 @@
       "stateDir": "狀態目錄",
       "authKey": "授權密鑰",
       "relayServer": "轉發伺服器",
-      "relayServerPort": "轉發伺服器端口",
+      "relayServerPort": "轉發伺服器連接埠",
       "relayEndpoints": "轉發靜態端點",
       "systemInterface": "系統介面",
       "sysIfName": "介面名稱",
@@ -567,16 +567,16 @@
       "allowLanAccess": "允許 LAN 訪問",
       "advRoutes": "廣告路由",
       "advExitNode": "廣告出口節點",
-      "udpTimeout": "UDP 超時"
+      "udpTimeout": "UDP 逾時"
     },
     "derp": {
-      "configPath": "配置路徑",
-      "verifyClientEndpoint": "驗證客戶端端點",
-      "verifyClientUrl": "驗證客戶端 URL",
-      "meshWith": "網狀連接",
+      "configPath": "設定路徑",
+      "verifyClientEndpoint": "驗證用戶端端點",
+      "verifyClientUrl": "驗證用戶端 URL",
+      "meshWith": "網狀連線",
       "meshPsk": "網狀 PSK",
-      "meshPskFile": "網狀 PSK 文件",
-      "stun": "STUN 服務器",
+      "meshPskFile": "網狀 PSK 檔案",
+      "stun": "STUN 伺服器",
       "options": "DERP 選項"
     },
     "naive": {
@@ -600,10 +600,10 @@
     },
     "routing": {
       "title": "路由",
-      "defaultOut": "默認外部",
-      "defaultIf": "默認網卡",
-      "defaultRm": "默認路由標記",
-      "defaultDns": "默認 DNS 解析器",
+      "defaultOut": "預設外部",
+      "defaultIf": "預設網卡",
+      "defaultRm": "預設路由標記",
+      "defaultDns": "預設 DNS 解析器",
       "autoBind": "自動綁定網卡"
     },
     "exp": {
