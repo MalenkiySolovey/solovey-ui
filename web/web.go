@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"net"
 	"net/http"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -124,7 +125,12 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		return nil, err
 	}
 
-	engine.Use(gzip.Gzip(gzip.DefaultCompression))
+	// Gzip's writer hides ResponseController deadline methods. Runtime NDJSON
+	// subscriptions own bounded per-write and request deadlines, so these exact
+	// paths must reach the native HTTP1/HTTP2 writer without that wrapper.
+	engine.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPathsRegexs([]string{
+		"^" + regexp.QuoteMeta(base_url) + "(?:api|apiv2)/runtime/logs$",
+	})))
 	assetsBasePath := base_url + "assets/"
 
 	store, err := NewSQLiteSessionStore(dbsqlite.DB(), cookieKeys...)
