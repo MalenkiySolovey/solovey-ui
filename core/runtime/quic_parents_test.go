@@ -447,6 +447,38 @@ func TestQUICTUICEarlyListenerParentControl(t *testing.T) {
 	t.Log("TUIC ListenEarly configuration, completed authenticated handshake: kick/reconnect/removal PASS; no 0-RTT resumption claim")
 }
 
+func TestQUICFlowOnlyDisconnectPreservesParent(t *testing.T) {
+	for _, kind := range []string{"hysteria", "hysteria2", "tuic"} {
+		t.Run(kind, func(t *testing.T) {
+			f := newQUICFixture(t, kind)
+			peer := f.peer(t, 7)
+			stream, err := peer.echoStream(t.Context(), f.echo.Addr().String())
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() { stream.CancelRead(0); _ = stream.Close() })
+			observed := f.parents(t, 7)
+			if len(observed.Connections) != 1 || len(observed.Parents) != 1 {
+				t.Fatal("active routed-flow/parent fixture incomplete")
+			}
+			result, err := f.core.Disconnect(t.Context(), DisconnectRequest{Generation: observed.Generation, ClientID: 7, FlowID: observed.Connections[0].ID})
+			if err != nil || result.Closed != 1 || result.ParentClosed || result.ParentControl != "not_supported" {
+				t.Fatalf("flow-only semantics changed: %+v %v", result, err)
+			}
+			if peer.conn.Context().Err() != nil {
+				t.Fatal("closing a routed flow closed its QUIC parent")
+			}
+			after := f.parents(t, 7)
+			if len(after.Parents) != 1 || after.Parents[0].QUICParentTarget != observed.Parents[0].QUICParentTarget {
+				t.Fatal("flow close changed parent identity")
+			}
+			if err := peer.echo(t.Context(), f.echo.Addr().String()); err != nil {
+				t.Fatal("flow-only close blocked later parent streams", err)
+			}
+		})
+	}
+}
+
 func TestQUICParentLifecycle(t *testing.T) {
 	for _, kind := range []string{"hysteria", "hysteria2", "tuic"} {
 		for _, action := range []string{"remove", "box-core-shutdown", "hot-replacement", "restart-reconnect"} {
