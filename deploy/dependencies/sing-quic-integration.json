@@ -1,0 +1,43 @@
+{
+  "schema": "solovey.quic-integration/v1",
+  "patched": true,
+  "semanticBaseline": {
+    "module": "github.com/sagernet/sing-box",
+    "version": "v1.14.2",
+    "commit": "af6e64c3b69e6132ebaee0e1a3d24e93903f6709"
+  },
+  "original": {
+    "module": "github.com/sagernet/sing-quic",
+    "version": "v0.7.1-0.20260924092235-6a3a24d65b99",
+    "commit": "6a3a24d65b99587fad1d4cdd567c88f212acdd63",
+    "repository": "https://github.com/SagerNet/sing-quic"
+  },
+  "replacement": {
+    "module": "github.com/MalenkiySolovey/sing-quic",
+    "version": "v0.7.1-0.20261010045634-b2eea8ca8762",
+    "commit": "b2eea8ca8762dd1e438171e2f7b56f9715c30cbb",
+    "repository": "https://github.com/MalenkiySolovey/sing-quic",
+    "sum": "h1:0x0RTO9IyqRHO9rmEpUhCKRBeISM5LwKLsIiIifFbRY=",
+    "goModSum": "h1:rJFeVxbEej2iuyeCJ3drKW+p5rOgtLIW3XhZ6ty7Fig="
+  },
+  "transport": {
+    "module": "github.com/sagernet/quic-go",
+    "version": "v0.61.0-sing-box-mod.7"
+  },
+  "patch": {
+    "file": "deploy/dependencies/sing-quic-parent-control.patch",
+    "sha256": "fab789e419e1408ac554228ec84ec70aceb2e8975b392dc27658c10d2a0561b5",
+    "files": [
+      "SOLOVEY_INTEGRATION.md",
+      "hysteria/service.go",
+      "hysteria2/service.go",
+      "parent.go",
+      "parent_test.go",
+      "tuic/early_data.go",
+      "tuic/early_data_test.go",
+      "tuic/service.go"
+    ]
+  },
+  "license": "GPL-3.0-or-later",
+  "officialByteIdentical": false
+}

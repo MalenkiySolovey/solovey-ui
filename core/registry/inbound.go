@@ -6,8 +6,6 @@ import (
 	"github.com/sagernet/sing-box/protocol/anytls"
 	"github.com/sagernet/sing-box/protocol/direct"
 	"github.com/sagernet/sing-box/protocol/http"
-	"github.com/sagernet/sing-box/protocol/hysteria"
-	"github.com/sagernet/sing-box/protocol/hysteria2"
 	"github.com/sagernet/sing-box/protocol/mixed"
 	"github.com/sagernet/sing-box/protocol/naive"
 	"github.com/sagernet/sing-box/protocol/redirect"
@@ -16,7 +14,6 @@ import (
 	"github.com/sagernet/sing-box/protocol/snell"
 	"github.com/sagernet/sing-box/protocol/socks"
 	"github.com/sagernet/sing-box/protocol/trojan"
-	"github.com/sagernet/sing-box/protocol/tuic"
 	"github.com/sagernet/sing-box/protocol/tun"
 	"github.com/sagernet/sing-box/protocol/vless"
 	"github.com/sagernet/sing-box/protocol/vmess"
@@ -50,8 +47,8 @@ func inboundDeclarations() []declaration[*inbound.Registry] {
 		{typeName: "anytls", buildTag: "", compiled: true, register: anytls.RegisterInbound},
 		{typeName: C.TypeSnell, compiled: true, authenticatedUsers: true, register: snell.RegisterInbound},
 		{typeName: C.TypeCloudflared, buildTag: "with_cloudflared", productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
-		{typeName: "hysteria", buildTag: "with_quic", compiled: C.WithQUIC, register: hysteria.RegisterInbound},
-		{typeName: "tuic", buildTag: "with_quic", compiled: C.WithQUIC, register: tuic.RegisterInbound},
-		{typeName: "hysteria2", buildTag: "with_quic", compiled: C.WithQUIC, register: hysteria2.RegisterInbound},
+		{typeName: "hysteria", buildTag: "with_quic", compiled: C.WithQUIC, register: registerHysteriaInbound},
+		{typeName: "tuic", buildTag: "with_quic", compiled: C.WithQUIC, register: registerTUICInbound},
+		{typeName: "hysteria2", buildTag: "with_quic", compiled: C.WithQUIC, register: registerHysteria2Inbound},
 	}
 }

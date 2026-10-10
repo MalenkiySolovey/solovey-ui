@@ -36,6 +36,22 @@ The current networking runtime uses
 Go module dependency declared by this repository. Dependency source and
 license notices remain authoritative for that code.
 
+The QUIC transport dependency has an explicit maintained integration delta:
+official `SagerNet/sing-quic` at
+`6a3a24d65b99587fad1d4cdd567c88f212acdd63` is resolved to
+[`MalenkiySolovey/sing-quic`](https://github.com/MalenkiySolovey/sing-quic)
+at `b2eea8ca8762dd1e438171e2f7b56f9715c30cbb`. Its original Copyright (C)
+2022 nekohasekai and GPL-3.0-or-later notices remain intact; integration additions
+are Copyright (C) 2026 MalenkiySolovey under GPL-3.0-or-later. The original
+protocol verifiers and implementations remain authoritative. A constructor hook,
+per-service accepted-parent lifetime owner and three small service adapters expose
+authenticated parent control; TUIC initial-payload close is synchronized.
+Original S-UI v1.6.4 is a behavioral reference without literal quicgrace transfer.
+Official sing-box v1.14.2 is the semantic baseline. This patched dependency build
+is not byte-identical to unmodified official sing-box. Exact module checksums,
+the complete replayable eight-file patch and its digest are recorded under
+`deploy/dependencies/`, and package metadata names the replacement explicitly.
+
 The 1.14 runtime foundation and nested-rule compatibility adapt existing
 Solovey owners against official source
 `af6e64c3b69e6132ebaee0e1a3d24e93903f6709`. No upstream implementation or

@@ -23,6 +23,17 @@ export interface RuntimeFlow {
   download: number
   parentControl: 'not_supported'
 }
+export interface QUICParentTarget {
+  parentId: string
+  inbound: string
+  epoch: string
+}
+export interface RuntimeQUICParent extends QUICParentTarget {
+  clientId: number
+  inboundType: string
+  createdAt: number
+  parentControl: 'authenticated_quic'
+}
 export interface SessionView {
   status: RuntimeStatus
   maintenance: boolean
@@ -33,6 +44,9 @@ export interface SessionView {
     generation: string
     observedAt: number
     connections: RuntimeFlow[]
+    parents?: RuntimeQUICParent[]
+    parentTotal?: number
+    parentsTruncated?: boolean
     total: number
     actualTotal: number
     unassociated: number
@@ -47,7 +61,10 @@ export interface DisconnectResult {
   closed: number
   remaining: number
   parentClosed: boolean
-  parentControl: 'not_supported'
+  parentControl: 'not_supported' | 'authenticated_quic'
+  parentsMatched?: number
+  parentsClosed?: number
+  parentsRemaining?: number
   reason?: string
 }
 
@@ -68,6 +85,6 @@ export function sessionState(view: SessionView, now: number): string {
   if (availability) return availability
   if (!view.snapshot) return 'unavailable'
   if (view.snapshot.generation !== view.status.generation || now - view.snapshot.observedAt > 10000) return 'stale'
-  if (view.snapshot.connections.length) return 'active'
+  if (view.snapshot.connections.length || view.snapshot.parents?.length) return 'active'
   return view.snapshot.unassociated ? 'identity_unavailable' : 'empty'
 }

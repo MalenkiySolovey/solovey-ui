@@ -180,6 +180,7 @@ jobs:
             echo "source_fingerprint=$(node scripts/release-source.mjs .)"
             echo "platform=windows/${{ matrix.arch }}"
             echo "profile=full"
+            node scripts/quic-integration-provenance.mjs build-info
           } > solovey-ui-windows/BUILD_INFO.txt
 
       - name: Copy module-authenticated libcronet-go

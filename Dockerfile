@@ -2,8 +2,12 @@ FROM --platform=$BUILDPLATFORM node:alpine@sha256:3ad34ca6292aec4a91d8ddeb9229e2
 WORKDIR /app
 COPY frontend/ ./frontend/
 COPY components/ ./components/
+COPY go.mod go.sum ./
+COPY deploy/dependencies/sing-quic-integration.json deploy/dependencies/sing-quic-parent-control.patch ./deploy/dependencies/
+COPY scripts/quic-integration-provenance.mjs ./scripts/
 COPY scripts/component-frontend-manifest.mjs scripts/extract-component-frontend.mjs scripts/generate-component-imports.mjs scripts/write-component-installed-metadata.mjs scripts/frontend-assets.mjs scripts/frontend-runtime-closure.mjs ./scripts/
-RUN cd frontend \
+RUN node scripts/quic-integration-provenance.mjs manifest > QUIC_INTEGRATION.json \
+    && cd frontend \
     && npm ci \
     && SOLOVEY_UI_PROFILE=full npm run build \
     && cd .. \
@@ -57,6 +61,7 @@ RUN apk add --no-cache --upgrade ca-certificates gcompat libgcc \
     && chown -R 65532:65532 /data /cert /app
 COPY --from=backend-builder --chown=65532:65532 /app/solovey-ui /app/libcronet.so /app/
 COPY --from=front-builder --chown=65532:65532 /app/component-packs/ /app/components/
+COPY --from=front-builder --chown=65532:65532 /app/QUIC_INTEGRATION.json /app/QUIC_INTEGRATION.json
 COPY --chown=65532:65532 entrypoint.sh /app/entrypoint.sh
 RUN chmod 0555 /app/solovey-ui /app/entrypoint.sh /app/libcronet.so
 USER 65532:65532

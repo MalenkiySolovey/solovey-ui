@@ -98,4 +98,43 @@ describe('shared Classic/Nexus live session semantics', () => {
     expect(sessions.canClose.value).toBe(false)
     expect(load).toHaveBeenCalledTimes(2)
   })
+
+  it('projects authenticated QUIC parents separately and submits exact accepted scopes', async () => {
+    const view = fresh()
+    view.capabilities.parentClose = true
+    view.snapshot!.connections = []
+    view.snapshot!.parents = [{ parentId: '3', inbound: 'quic', epoch: 'accepted-inbound', clientId: 7, inboundType: 'hysteria2', createdAt: Date.now(), parentControl: 'authenticated_quic' }]
+    view.snapshot!.parentTotal = 1
+    const updated = deferred<SessionView>()
+    const load = vi.fn().mockResolvedValueOnce(view).mockReturnValueOnce(updated.promise)
+    const close = vi.fn().mockResolvedValue({ generation: 'accepted', outcome: 'QUIC_PARENTS_CLOSED', matched: 0, closed: 0, remaining: 0, parentsMatched: 1, parentsClosed: 1, parentsRemaining: 0, parentClosed: true, parentControl: 'authenticated_quic' })
+    const { sessions } = setup(load, close); await settle()
+    expect(sessions.state.value).toBe('active')
+    expect(sessions.canClose.value).toBe(false)
+    expect(sessions.canCloseParents.value).toBe(true)
+    const action = sessions.disconnectParents(); await settle()
+    expect(close.mock.calls[0].slice(0, 3)).toEqual(['accepted', 7, undefined])
+    expect(close.mock.calls[0][4]).toEqual([{ parentId: '3', inbound: 'quic', epoch: 'accepted-inbound' }])
+    expect(sessions.view.value?.snapshot?.parents).toHaveLength(1)
+    expect(sessions.outcome.value?.parentClosed).toBe(true)
+    const empty = fresh(); empty.snapshot!.connections = []; empty.snapshot!.parents = []
+    updated.resolve(empty); await action
+    expect(sessions.state.value).toBe('empty')
+  })
+
+  it.each(['read-only', 'truncated', 'foreign', 'maintenance', 'stale'])('rejects %s QUIC parent controls', async reason => {
+    const view = fresh()
+    view.capabilities.parentClose = true
+    view.snapshot!.parents = [{ parentId: '3', inbound: 'quic', epoch: 'accepted-inbound', clientId: 7, inboundType: 'tuic', createdAt: Date.now(), parentControl: 'authenticated_quic' }]
+    if (reason === 'read-only') view.capabilities.parentClose = false
+    if (reason === 'truncated') view.snapshot!.parentsTruncated = true
+    if (reason === 'foreign') view.snapshot!.parents[0].clientId = 9
+    if (reason === 'maintenance') view.maintenance = true
+    if (reason === 'stale') view.snapshot!.generation = 'retired'
+    const close = vi.fn()
+    const { sessions } = setup(vi.fn().mockResolvedValue(view), close); await settle()
+    expect(sessions.canCloseParents.value).toBe(false)
+    await sessions.disconnectParents()
+    expect(close).not.toHaveBeenCalled()
+  })
 })

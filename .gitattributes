@@ -6,6 +6,11 @@ Dockerfile text eol=lf
 *.service text eol=lf
 .github/workflows/*.yml text eol=lf
 
+# Unified patch context has an intentional leading space before Go tabs and
+# empty context lines. Preserve its exact checksummed bytes and normal checks
+# for the actual source files.
+deploy/dependencies/sing-quic-parent-control.patch text eol=lf whitespace=-blank-at-eol,-space-before-tab
+
 # Extensionless Unix assets copied into the OpenWrt package.
 deploy/openwrt/solovey-ui.init text eol=lf
 deploy/openwrt/solovey-openwrt-prepare text eol=lf

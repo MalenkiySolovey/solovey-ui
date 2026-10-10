@@ -63,6 +63,10 @@ func TestRuntimeRoutesUseCurrentBearerScopesAndAudit(t *testing.T) {
 		if (closeResponse.Code == http.StatusOK) != wantWrite {
 			t.Fatalf("%s disconnect policy=%d", scope, closeResponse.Code)
 		}
+		parentBody := `{"generation":"` + generation + `","clientId":7,"parents":[{"parentId":"1","inbound":"missing","epoch":"00000000-0000-4000-8000-000000000001"}]}`
+		if response := request(http.MethodPost, "disconnect", token, parentBody); (response.Code == http.StatusOK) != wantWrite {
+			t.Fatalf("%s QUIC parent disconnect scope policy=%d", scope, response.Code)
+		}
 		groupBody := `{"generation":"` + generation + `","group":"missing","member":"direct"}`
 		if (request(http.MethodGet, "groups", token, "").Code == http.StatusOK) != wantRead {
 			t.Fatalf("%s runtime group read policy", scope)
@@ -87,7 +91,7 @@ func TestRuntimeRoutesUseCurrentBearerScopesAndAudit(t *testing.T) {
 	}
 	flushAPIAudit(t)
 	var count int64
-	if err := dbsqlite.DB().Model(&model.AuditEvent{}).Where("event = ? AND actor = ?", "runtime_disconnect", "admin").Count(&count).Error; err != nil || count != 2 {
+	if err := dbsqlite.DB().Model(&model.AuditEvent{}).Where("event = ? AND actor = ?", "runtime_disconnect", "admin").Count(&count).Error; err != nil || count != 4 {
 		t.Fatalf("attributable audit count=%d err=%v", count, err)
 	}
 	if err := dbsqlite.DB().Model(&model.Tokens{}).Where("scope = ?", "write").Update("scope", "read").Error; err != nil {

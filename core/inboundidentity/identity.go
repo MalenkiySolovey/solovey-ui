@@ -29,6 +29,7 @@ type principal struct {
 type Epoch struct {
 	mu         sync.RWMutex
 	active     bool
+	id         string
 	tag        string
 	principals map[string]*principal
 	tokens     map[string]*principal
@@ -46,7 +47,7 @@ func (o *Owner) Prepare(router adapter.Router, tag string, bindings []Binding) (
 	if err != nil {
 		return nil, nil, errors.New("inbound identity generation failed")
 	}
-	epoch := &Epoch{tag: tag, principals: map[string]*principal{}, tokens: map[string]*principal{}}
+	epoch := &Epoch{id: id, tag: tag, principals: map[string]*principal{}, tokens: map[string]*principal{}}
 	for _, binding := range bindings {
 		if binding.Inbound != tag || binding.Principal == "" || binding.ClientID == 0 {
 			continue
@@ -117,6 +118,37 @@ func (o *Owner) Resolve(inbound, token string) (Binding, bool) {
 	return entry.binding, true
 }
 
+// ResolvePrincipal binds verified protocol output to the accepted inbound
+// epoch. The caller must hold the runtime mutation/lifecycle lease while pairing
+// this projection with the current inbound's transport controller.
+func (o *Owner) ResolvePrincipal(inbound, principal string) (Binding, string, bool) {
+	o.mu.RLock()
+	epoch := o.inbounds[inbound]
+	o.mu.RUnlock()
+	if epoch == nil {
+		return Binding{}, "", false
+	}
+	epoch.mu.RLock()
+	defer epoch.mu.RUnlock()
+	entry := epoch.principals[principal]
+	if !epoch.active || entry == nil {
+		return Binding{}, "", false
+	}
+	return entry.binding, epoch.id, true
+}
+
+func (o *Owner) CurrentEpoch(inbound string) (string, bool) {
+	o.mu.RLock()
+	epoch := o.inbounds[inbound]
+	o.mu.RUnlock()
+	if epoch == nil {
+		return "", false
+	}
+	epoch.mu.RLock()
+	defer epoch.mu.RUnlock()
+	return epoch.id, epoch.active
+}
+
 type stampKey struct{}
 type stamp struct {
 	epoch     *Epoch
@@ -148,16 +180,14 @@ func (e *Epoch) bind(ctx context.Context, metadata adapter.InboundContext) (cont
 func Admission(ctx context.Context, accept func()) bool {
 	proof, _ := ctx.Value(stampKey{}).(*stamp)
 	if proof == nil {
-		accept()
-		return true
+		return registry.QUICAdmission(ctx, accept)
 	}
 	proof.epoch.mu.RLock()
 	defer proof.epoch.mu.RUnlock()
-	if !proof.epoch.active {
+	if !proof.epoch.active || ctx.Err() != nil {
 		return false
 	}
-	accept()
-	return true
+	return registry.QUICAdmission(ctx, accept)
 }
 
 // InventoryMetadata is applied after StatsTracker admission. Policy, counters
