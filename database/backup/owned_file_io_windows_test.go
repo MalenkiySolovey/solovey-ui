@@ -2,6 +2,7 @@ package backup
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
@@ -52,7 +53,17 @@ func TestOwnedTreeWindowsActualSymlinkRemainsRejected(t *testing.T) {
 	}
 	link := filepath.Join(root, "link")
 	if err := os.Symlink(actual, link); err != nil {
-		t.Skip("host cannot create a test-only symlink")
+		// A directory junction proves the same actual reparse-point boundary
+		// without granting SeCreateSymbolicLinkPrivilege to this process.
+		program := filepath.Join(os.Getenv("SystemRoot"), "System32", "WindowsPowerShell", "v1.0", "powershell.exe")
+		command := exec.CommandContext(t.Context(), program, "-NoProfile", "-NonInteractive", "-Command", `$ErrorActionPreference='Stop'; New-Item -ItemType Junction -Path $env:SOLOVEY_TEST_LINK -Target $env:SOLOVEY_TEST_TARGET | Out-Null`)
+		command.Env = append(os.Environ(), "SOLOVEY_TEST_LINK="+link, "SOLOVEY_TEST_TARGET="+actual)
+		if err = command.Run(); err != nil {
+			t.Fatal("create owned test-only junction", err)
+		}
+		t.Log("fixture_kind junction; no privilege grant")
+	} else {
+		t.Log("fixture_kind symbolic link")
 	}
 	if _, err := PublishOwnedTree(filepath.Join(link, "restored"), map[string][]byte{"fixture": []byte("fixture")}, true); err == nil {
 		t.Fatal("actual symlink accepted for publication")

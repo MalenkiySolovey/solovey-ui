@@ -268,6 +268,9 @@ jobs:
         run: node --test scripts/ssm-integration-provenance.test.mjs
       - name: Private cache, lifecycle, actual Box and archive race regressions
         run: go test -race -p 1 -count=1 -timeout=3m -tags with_quic -run 'TestCache|TestOptionalCache|TestImmutableRestoreSeed|TestPrivateWindows|TestSSMBox|TestSSMCache|TestOptionalCoreFileOwner' github.com/sagernet/sing-box/service/ssmapi ./internal/entities/ssmcache ./internal/entities/services ./core/registry ./database/backup ./service
+      - name: Native Windows short names and actual reparse-point rejection
+        if: runner.os == 'Windows'
+        run: go test -race -v -count=1 -timeout=2m -run TestOwnedTreeWindows ./database/backup
 
   frontend:
     name: Frontend
