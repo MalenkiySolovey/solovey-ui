@@ -1,9 +1,9 @@
 diff --git a/SOLOVEY_INTEGRATION.md b/SOLOVEY_INTEGRATION.md
 new file mode 100644
-index 00000000..2ff27148
+index 00000000..11950965
 --- /dev/null
 +++ b/SOLOVEY_INTEGRATION.md
-@@ -0,0 +1,37 @@
+@@ -0,0 +1,41 @@
 +# Solovey pinned SSM integration
 +
 +Baseline: official SagerNet/sing-box v1.14.2,
@@ -28,9 +28,13 @@ index 00000000..2ff27148
 +  drains the periodic writer before final flush. Close has one two-second
 +  context budget. Injected storage must honor cancellation before publication;
 +  blocked external filesystem calls cannot be forcibly interrupted by Go.
++  HTTP shutdown may already close the served TCP listener; the listener owner
++  still cleans up and treats only its expected `net.ErrClosed` as success.
 +- `cache_test.go`: bounded/corrupt/redacted inputs, counters/authentication
 +  restoration, concurrent update snapshots, missing/disabled optional cache,
 +  failed startup preimage, periodic drain, bounded concurrent close and close-once.
++  A real served loopback listener proves normal closure, port reuse and repeated
++  close without a spurious hot-removal failure.
 +
 +Solovey's deployment adapter independently owns anchored private data paths,
 +POSIX ownership/mode and Windows DACL checks, atomic publication, read-only
@@ -304,16 +308,18 @@ index 00000000..70ba29c4
 +}
 diff --git a/service/ssmapi/cache_test.go b/service/ssmapi/cache_test.go
 new file mode 100644
-index 00000000..7665847c
+index 00000000..a5a18fe6
 --- /dev/null
 +++ b/service/ssmapi/cache_test.go
-@@ -0,0 +1,281 @@
+@@ -0,0 +1,344 @@
 +package ssmapi
 +
 +import (
 +	"bytes"
 +	"context"
 +	"errors"
++	"net"
++	"net/http"
 +	"os"
 +	"strings"
 +	"sync"
@@ -322,7 +328,9 @@ index 00000000..7665847c
 +
 +	"github.com/sagernet/sing-box/adapter"
 +	"github.com/sagernet/sing-box/adapter/inbound"
++	"github.com/sagernet/sing-box/common/listener"
 +	"github.com/sagernet/sing-box/log"
++	"github.com/sagernet/sing-box/option"
 +)
 +
 +type cacheManagedFixture struct {
@@ -589,11 +597,78 @@ index 00000000..7665847c
 +		t.Fatal("final write did not follow drain exactly once")
 +	}
 +}
++
++// Exercise the real HTTP/listener ownership used by a started SSM service.
++// Closing the HTTP server already closes its accepted listener; the listener
++// owner must still run its cleanup without turning that expected close into
++// a failed hot removal of the service.
++func TestCacheStartedHTTPListenerCloseAndPortReuse(t *testing.T) {
++	s := cacheServiceFixture()
++	s.ctx, s.cancel = context.WithCancel(context.Background())
++	s.listener = listener.New(listener.Options{Context: s.ctx, Logger: s.logger, Listen: option.ListenOptions{}})
++	tcp, err := s.listener.ListenTCP()
++	if err != nil {
++		t.Fatal("open loopback listener", err)
++	}
++	address := tcp.Addr().String()
++	s.httpServer = &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusNoContent) })}
++	served := make(chan error, 1)
++	go func() { served <- s.httpServer.Serve(tcp) }()
++	t.Cleanup(func() { _ = s.Close() })
++	client := &http.Client{Timeout: time.Second}
++	defer client.CloseIdleConnections()
++	response, err := client.Get("http://" + address)
++	if err != nil {
++		t.Fatal("HTTP readiness barrier", err)
++	}
++	response.Body.Close()
++	if response.StatusCode != http.StatusNoContent {
++		t.Fatal("HTTP readiness rejected")
++	}
++	if err = s.Close(); err != nil {
++		t.Fatal("intentional service closure rejected", err)
++	}
++	select {
++	case err = <-served:
++		if !errors.Is(err, http.ErrServerClosed) {
++			t.Fatal("unexpected HTTP termination", err)
++		}
++	case <-time.After(time.Second):
++		t.Fatal("HTTP service leaked")
++	}
++	reused, err := net.Listen("tcp", address)
++	if err != nil {
++		t.Fatal("closed listener still owns port", err)
++	}
++	defer reused.Close()
++	results := make(chan error, 8)
++	for range 8 {
++		go func() { results <- s.Close() }()
++	}
++	for range 8 {
++		select {
++		case err = <-results:
++			if err != nil {
++				t.Fatal("repeated close changed result", err)
++			}
++		case <-time.After(time.Second):
++			t.Fatal("repeated close blocked")
++		}
++	}
++}
 diff --git a/service/ssmapi/server.go b/service/ssmapi/server.go
-index 157ea150..394f4fce 100644
+index 157ea150..e3ea6a4f 100644
 --- a/service/ssmapi/server.go
 +++ b/service/ssmapi/server.go
-@@ -42,6 +42,13 @@ type Service struct {
+@@ -3,6 +3,7 @@ package ssmapi
+ import (
+ 	"context"
+ 	"errors"
++	"net"
+ 	"net/http"
+ 	"sync"
+ 	"time"
+@@ -42,6 +43,13 @@ type Service struct {
  	saveTicker     *time.Ticker
  	lastSavedCache []byte
  	cacheMutex     sync.Mutex
@@ -607,7 +682,7 @@ index 157ea150..394f4fce 100644
  }
  
  func NewService(ctx context.Context, logger log.ContextLogger, tag string, options option.SSMAPIServiceOptions) (adapter.Service, error) {
-@@ -65,6 +72,10 @@ func NewService(ctx context.Context, logger log.ContextLogger, tag string, optio
+@@ -65,6 +73,10 @@ func NewService(ctx context.Context, logger log.ContextLogger, tag string, optio
  		users:     make(map[string]*UserManager),
  		cachePath: options.CachePath,
  	}
@@ -618,7 +693,7 @@ index 157ea150..394f4fce 100644
  	inboundManager := service.FromContext[adapter.InboundManager](ctx)
  	if options.Servers.Size() == 0 {
  		return nil, E.New("missing servers")
-@@ -99,12 +110,18 @@ func (s *Service) Start(stage adapter.StartStage) error {
+@@ -99,12 +111,18 @@ func (s *Service) Start(stage adapter.StartStage) error {
  	if stage != adapter.StartStateStart {
  		return nil
  	}
@@ -640,7 +715,7 @@ index 157ea150..394f4fce 100644
  	if s.tlsConfig != nil {
  		err = s.tlsConfig.Start()
  		if err != nil {
-@@ -127,16 +144,23 @@ func (s *Service) Start(stage adapter.StartStage) error {
+@@ -127,16 +145,23 @@ func (s *Service) Start(stage adapter.StartStage) error {
  			s.logger.Error("serve error: ", err)
  		}
  	}()
@@ -665,7 +740,7 @@ index 157ea150..394f4fce 100644
  			if err != nil {
  				s.logger.Error(E.Cause(err, "save cache"))
  			}
-@@ -145,19 +169,36 @@ func (s *Service) loopSaveCache() {
+@@ -145,19 +170,44 @@ func (s *Service) loopSaveCache() {
  }
  
  func (s *Service) Close() error {
@@ -692,7 +767,15 @@ index 157ea150..394f4fce 100644
 +		}
 +		ready, done := s.cacheReady, s.loopDone
 +		s.lifecycle.Unlock()
-+		s.closeErr = common.Close(common.PtrOrNil(s.httpServer), common.PtrOrNil(s.listener), s.tlsConfig)
++		// http.Server.Close closes the same TCP listener it serves. Retain the
++		// listener owner's cleanup, but an already-closed socket is expected at
++		// this seam and must not turn a normal hot removal into a failed reload.
++		s.closeErr = common.Close(common.PtrOrNil(s.httpServer))
++		listenerErr := common.Close(common.PtrOrNil(s.listener))
++		if errors.Is(listenerErr, net.ErrClosed) {
++			listenerErr = nil
++		}
++		s.closeErr = errors.Join(s.closeErr, listenerErr, common.Close(s.tlsConfig))
 +		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 +		defer cancel()
 +		if done != nil {

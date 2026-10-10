@@ -326,8 +326,8 @@ release boundary changes are implied.
 Stage 2 Wave5 CORE-57 cache/lifecycle qualification uses official sing-box
 v1.14.2 source af6e64c3b69e6132ebaee0e1a3d24e93903f6709 with a narrow
 service/ssmapi patch. Public replacement MalenkiySolovey/sing-box source
-20fdbaa1cf7c7f9fd1c22116c63731d25916290d resolves as
-v1.14.3-0.20261010163807-20fdbaa1cf7c. This pseudo-version is module metadata;
+afd12f10473eb4d2d1459897488deb623527782e resolves as
+v1.14.3-0.20261010211422-afd12f10473e. This pseudo-version is module metadata;
 the semantic baseline remains official v1.14.2. Original and integration source
 are GPL-3.0-or-later. The replayable delta, source pin and checksums are in
 deploy/dependencies/sing-box-ssm-cache.patch and sing-box-ssm-integration.json.
@@ -338,3 +338,8 @@ Original S-UI v1.6.4 SSM registration was a behavioral reference; no application
 source was copied. This is patched core source, not byte-identical official
 sing-box; QUIC integration remains separately recorded. No physical-parity,
 product-version or release-boundary advancement is implied.
+
+CORE-57 physical follow-up preserves normal SSM hot removal when HTTP shutdown
+has already closed the served TCP listener. Only that owner-local expected
+net.ErrClosed is accepted; TLS/cache errors retain their existing reporting.
+The complete cumulative source patch remains confined to the five recorded files.
