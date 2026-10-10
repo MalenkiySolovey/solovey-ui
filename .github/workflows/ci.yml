@@ -14,13 +14,13 @@ permissions:
   actions: read
 
 env:
-  W5_PRODUCT_COMMIT: 39701b1ee108702451ae4b105b8d6a05a75a390d
+  W5_PRODUCT_COMMIT: 9bb74e87623f3502870878a48458f1d2f1152174
 
 jobs:
   windows-build:
     uses: ./.github/workflows/windows.yml
     with:
-      source_commit: 39701b1ee108702451ae4b105b8d6a05a75a390d
+      source_commit: 9bb74e87623f3502870878a48458f1d2f1152174
       tag: v2026.3.3
       preflight_only: true
 

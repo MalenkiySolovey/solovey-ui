@@ -6,6 +6,7 @@ import path from 'node:path'
 import net from 'node:net'
 import dgram from 'node:dgram'
 import crypto from 'node:crypto'
+import {pathToFileURL} from 'node:url'
 import { spawn, spawnSync } from 'node:child_process'
 
 const flags = Object.fromEntries(process.argv.slice(2).reduce((all, arg, i, args) => {
@@ -21,7 +22,7 @@ const data = path.join(temporary, 'data')
 fs.mkdirSync(data, { mode: 0o700 })
 fs.writeFileSync(path.join(data, '.w5-disposable'), 'W5_SYNTHETIC_ONLY\n', { mode: 0o600 })
 const secrets = [crypto.randomBytes(32).toString('base64url'), crypto.randomBytes(32).toString('base64url'),
-  crypto.randomBytes(32).toString('base64url'), crypto.randomBytes(32).toString('base64url')]
+  crypto.randomBytes(32).toString('base64url'), crypto.randomBytes(32).toString('base64url'), crypto.randomBytes(32).toString('base64url')]
 const environment = { ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !name.startsWith('SUI_') && !name.startsWith('SOLOVEY_'))),
   SUI_DB_FOLDER: data, SUI_CACHE_FOLDER: data, SUI_STAGING_FOLDER: data, SUI_RUNTIME: path.join(temporary, 'runtime'),
   APPDATA: path.join(temporary, 'profile'), LOCALAPPDATA: path.join(temporary, 'profile') }
@@ -93,7 +94,8 @@ async function run() {
   const ports = Object.fromEntries(await Promise.all(['hysteria', 'hysteria2', 'tuic'].map(async (kind) => [kind, await freePort('udp')])))
   const webPort = await freePort('tcp'), subPort = await freePort('tcp')
   const input = { Root: data, Listen: docker ? '0.0.0.0' : '127.0.0.1', WebPort: webPort, SubPort: subPort,
-    Ports: ports, WriteToken: secrets[0], ReadToken: secrets[1], Passwords: secrets.slice(2), IncludeNaive: true }
+    Ports: ports, WriteToken: secrets[0], ReadToken: secrets[1], Passwords: secrets.slice(2, 4), IncludeNaive: true }
+  if (flags['browser-module']) { input.AdminUser = 'qualification'; input.AdminPassword = secrets[4] }
   const seed = helper('seed', input)
   const database = path.join(data, 'solovey-ui.db')
   const seededHash = hash(database)
@@ -214,6 +216,14 @@ async function run() {
   const result = helper('probe', input)
   report.assertions.push(...result.assertions)
   if (result.logSubscriptionWallMs !== undefined) report.logSubscriptionWallMs = result.logSubscriptionWallMs
+  if (flags['browser-module']) {
+    assertion('browser_frontend_dependency_root_available', !!flags.frontend && fs.existsSync(path.join(flags.frontend, 'package.json')))
+    report.fixtureSource.browserModuleSha256 = hash(path.resolve(flags['browser-module']))
+    const {exercisePackagedBrowser} = await import(pathToFileURL(path.resolve(flags['browser-module'])).href)
+    report.browser = await exercisePackagedBrowser({frontend: flags.frontend, endpoint: input.API.replace(/api\/?$/, ''),
+      username: input.AdminUser, password: input.AdminPassword})
+    report.assertions.push(...report.browser.assertions)
+  }
   if (process.platform === 'win32') {
     const program = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
     const loaded = invoke(program, ['-NoProfile', '-NonInteractive', '-Command',

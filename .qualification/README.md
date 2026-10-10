@@ -1,7 +1,7 @@
 # Temporary Stage2 Wave5 executor
 
 This branch is a Goal-owned test executor. Main's CI and production source stay
-unchanged. Product source is merged main d14e14ab1ddcd126fc71a00197d249e45b42d05d;
+unchanged. Product source is merged main 9bb74e87623f3502870878a48458f1d2f1152174;
 reports record the separate fixture commit and actual binary/image hashes.
 Windows uses the unchanged canonical reusable package producer. Docker uses the
 exact main's Dockerfile and existing cache scopes, with local load and no push.
@@ -12,6 +12,13 @@ release, tag, registry publication, privilege/security change, emulator or route
 mutation. Only existing public trust roots and fresh synthetic state are used.
 This host proof does not replace board/systemd/OpenWrt/FriendlyWrt or remaining
 old-state/client requirements.
+
+The final execution rebuilds full and Core Windows on each native architecture,
+uses each profile's own verified frontend, checks negative raw private gRPC
+authorization and bounded idle logs, and records separate source/helper hashes.
+Docker ARM64 runs with the unchanged non-root security boundary and a standalone
+negative gRPC probe as product UID65532. Its test-only probe is CGO0; the actual
+candidate retains canonical CGO/native Cronet and security tags.
 
 The Go fixture adapts Solovey clients from core/runtime/quic_parents_test.go. Its
 text suffix excludes ordinary package discovery. A runner copies it to an owned

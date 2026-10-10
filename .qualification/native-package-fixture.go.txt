@@ -55,6 +55,7 @@ var kinds = []string{"hysteria", "hysteria2", "tuic"}
 type fixtureInput struct {
 	Root, Listen, API, Certificate string
 	WriteToken, ReadToken          string
+	AdminUser, AdminPassword       string
 	Passwords                      []string
 	WebPort, SubPort               int
 	PrivatePort                    int
@@ -173,6 +174,11 @@ func seed(in fixtureInput) (fixtureOutput, error) {
 		return out, errors.New("SEED_ENROLLED_ADMIN_FAILED")
 	}
 	users := &service.UserService{}
+	if in.AdminPassword != "" {
+		if in.AdminUser == "" || users.UpdateFirstUser(in.AdminUser, in.AdminPassword) != nil {
+			return out, errors.New("SEED_BROWSER_AUTH_OWNER_FAILED")
+		}
+	}
 	for _, scope := range []string{"write", "read"} {
 		token := in.WriteToken
 		if scope == "read" {
@@ -605,7 +611,9 @@ func probe(in fixtureInput) (fixtureOutput, error) {
 	out.LogSubscriptionWallMs = time.Since(logStarted).Milliseconds()
 	if readErr != nil || logResponse.StatusCode != 200 || logResponse.Header.Get("Content-Type") != "application/x-ndjson" ||
 		logResponse.Header.Get("Cache-Control") != "no-store" || logBytes > 64*1024 || out.LogSubscriptionWallMs > 35000 {
-		return out, errors.New("PACKAGED_LOG_SUBSCRIPTION_NOT_BOUNDED")
+		return out, fmt.Errorf("PACKAGED_LOG_SUBSCRIPTION_NOT_BOUNDED_status%d_ndjson%t_nostore%t_bytes%d_ms%d_readerror%t",
+			logResponse.StatusCode, logResponse.Header.Get("Content-Type") == "application/x-ndjson",
+			logResponse.Header.Get("Cache-Control") == "no-store", logBytes, out.LogSubscriptionWallMs, readErr != nil)
 	}
 	p.assertions = append(p.assertions, "current_generation_idle_private_log_subscription_bounded_35s_no_store")
 	for _, kind := range kinds {
