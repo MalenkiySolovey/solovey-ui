@@ -8,6 +8,7 @@ import (
 	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/ssmcache"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
@@ -18,6 +19,7 @@ import (
 func OwnerOptionsFindings(source []byte) []diagnostics.Finding {
 	result := singboxconfig.BaseOptionsFindings(source)
 	result = append(result, entityendpoints.HostConfigFindings(source)...)
+	result = append(result, ssmcache.ConfigFindings(source)...)
 	var root map[string]json.RawMessage
 	if json.Unmarshal(source, &root) != nil {
 		return result

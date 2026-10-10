@@ -39,7 +39,10 @@ func (OwnerFile) TableName() string { return BackupFileTable }
 // Restore with publish=false may change only its staged DB, never live files.
 // Published files must be immutable so DB rollback cannot alter old live data.
 type FileOwner struct {
-	Component      string
+	Component string
+	// Required is an owner-provided selection fact for optional core state.
+	// A missing owner is safe only when the staged DB says that state is absent.
+	Required       func(context.Context, *gorm.DB) (bool, error)
 	Export         func(context.Context, *gorm.DB) ([]OwnerFile, error)
 	Restore        func(context.Context, *gorm.DB, []OwnerFile, bool) error
 	ProjectRuntime func(context.Context, *gorm.DB, []OwnerFile, []byte) ([]byte, error)
@@ -59,7 +62,7 @@ func projectOwnerRuntimeFiles(ctx context.Context, db *gorm.DB, m *FileBackupMan
 	if err := verifyOwnerFiles(ctx, db, m); err != nil {
 		return config, err
 	}
-	owners, err := selectedFileOwners()
+	owners, err := selectedFileOwnersFor(ctx, db)
 	if err != nil {
 		return config, err
 	}
@@ -131,6 +134,51 @@ func selectedFileOwners() (map[string]FileOwner, error) {
 	return result, nil
 }
 
+func selectedFileOwnersFor(ctx context.Context, db *gorm.DB) (map[string]FileOwner, error) {
+	owners, err := selectedFileOwners()
+	if err != nil {
+		return nil, err
+	}
+	for id, owner := range owners {
+		if owner.Required != nil {
+			required, err := owner.Required(ctx, db)
+			if err != nil {
+				return nil, err
+			}
+			if !required {
+				delete(owners, id)
+			}
+		}
+	}
+	return owners, nil
+}
+
+func configuredCoreFileState(ctx context.Context, db *gorm.DB) (bool, error) {
+	if db == nil {
+		return false, nil
+	}
+	// Optional core facts do not depend on paid-component installation metadata.
+	// Keep legacy archives unchanged when none of these core states is configured.
+	fileOwners.RLock()
+	checks := []func(context.Context, *gorm.DB) (bool, error){}
+	for _, owner := range fileOwners.items {
+		if owner.Component == "" && owner.Required != nil {
+			checks = append(checks, owner.Required)
+		}
+	}
+	fileOwners.RUnlock()
+	for _, check := range checks {
+		configured, err := check(ctx, db)
+		if err != nil {
+			return false, err
+		}
+		if configured {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 type FileBackupManifest struct {
 	Schema        string   `json:"schema"`
 	Owners        []string `json:"owners"`
@@ -141,10 +189,20 @@ type FileBackupManifest struct {
 
 func exportOwnerFiles(ctx context.Context, source, destination *gorm.DB) (*FileBackupManifest, error) {
 	required, err := logicalFileBackupRequired()
-	if err != nil || !required {
+	if err != nil {
 		return nil, err
 	}
-	owners, err := selectedFileOwners()
+	if !required {
+		configured, err := configuredCoreFileState(ctx, source)
+		if err != nil {
+			return nil, err
+		}
+		if configured {
+			return nil, errors.New("configured managed state requires complete logical file backup")
+		}
+		return nil, nil
+	}
+	owners, err := selectedFileOwnersFor(ctx, source)
 	if err != nil || len(owners) == 0 {
 		return nil, errors.Join(errors.New("logical file owners unavailable"), err)
 	}
@@ -240,6 +298,13 @@ func restoreOwnerFiles(ctx context.Context, db *gorm.DB, m *FileBackupManifest, 
 		if required {
 			return errors.New("selected deployment requires complete logical file backup")
 		}
+		configured, err := configuredCoreFileState(ctx, db)
+		if err != nil {
+			return err
+		}
+		if configured {
+			return errors.New("configured managed state requires complete logical file backup")
+		}
 		return nil
 	}
 	if !required {
@@ -248,7 +313,7 @@ func restoreOwnerFiles(ctx context.Context, db *gorm.DB, m *FileBackupManifest, 
 	if err := verifyOwnerFiles(ctx, db, m); err != nil {
 		return err
 	}
-	owners, err := selectedFileOwners()
+	owners, err := selectedFileOwnersFor(ctx, db)
 	if err != nil {
 		return err
 	}
