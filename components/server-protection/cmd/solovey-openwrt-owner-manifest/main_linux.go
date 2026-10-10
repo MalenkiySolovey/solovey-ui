@@ -230,6 +230,13 @@ func atomicRootFile(name string, data []byte, mode os.FileMode) error {
 	if err != nil {
 		return err
 	}
+	// Installed readers require exact modes. OpenFile applies the caller's
+	// umask, so establish the owner contract explicitly before publication.
+	if err := file.Chmod(mode); err != nil {
+		_ = file.Close()
+		_ = os.Remove(temporary)
+		return err
+	}
 	_, writeErr := file.Write(data)
 	syncErr := file.Sync()
 	closeErr := file.Close()

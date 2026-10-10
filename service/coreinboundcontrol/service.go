@@ -141,6 +141,9 @@ func authenticationCountsDB(ctx context.Context, db *gorm.DB, inboundIDs []uint)
 	if db == nil {
 		return nil, fmt.Errorf("%w: database is unavailable", ErrAuthenticationMembershipUnavailable)
 	}
+	// Schema presence and membership must use the same operation authority,
+	// including the private database generation opened during logical restore.
+	db = db.WithContext(ctx)
 	if !db.Migrator().HasTable(&model.Client{}) {
 		return nil, fmt.Errorf("%w: clients table is absent", ErrAuthenticationMembershipUnavailable)
 	}
@@ -149,7 +152,7 @@ func authenticationCountsDB(ctx context.Context, db *gorm.DB, inboundIDs []uint)
 		wanted[id] = true
 	}
 	var clients []model.Client
-	if err := db.WithContext(ctx).Select("inbounds").Find(&clients).Error; err != nil {
+	if err := db.Select("inbounds").Find(&clients).Error; err != nil {
 		return nil, fmt.Errorf("count inbound authentication principals: %w", err)
 	}
 	for _, client := range clients {
