@@ -105,9 +105,8 @@ func checkPrivate(f *os.File) error {
 		if len(fields) != 6 || fields[0] != "A" {
 			return errors.New("SSM_CACHE_STORAGE_NOT_PRIVATE")
 		}
-		sid := fields[5]
-		if !trusted[sid] && sid != "SY" && sid != "BA" {
-			return errors.New("SSM_CACHE_STORAGE_NOT_PRIVATE")
+		if !trustedSDDLTrustee(fields[5], trusted) {
+			return errors.New("SSM_CACHE_STORAGE_UNTRUSTED_ACE")
 		}
 		count++
 		text = text[end+1:]
@@ -120,7 +119,25 @@ func checkPrivate(f *os.File) error {
 		return err
 	}
 	if info.NumberOfLinks != 1 {
-		return errors.New("SSM_CACHE_STORAGE_NOT_PRIVATE")
+		return errors.New("SSM_CACHE_STORAGE_MULTIPLE_LINKS")
 	}
 	return nil
+}
+
+func trustedSDDLTrustee(value string, trusted map[string]bool) bool {
+	if trusted[value] {
+		return true
+	}
+	// Windows serializes well-known SIDs as two-letter SDDL aliases, including
+	// LA for a local Administrator account. Resolve the OS's representation
+	// before comparison; an alias grants no authority beyond the exact SID.
+	if len(value) != 2 {
+		return false
+	}
+	descriptor, err := windows.SecurityDescriptorFromString("O:" + value)
+	if err != nil {
+		return false
+	}
+	owner, _, err := descriptor.Owner()
+	return err == nil && owner != nil && trusted[owner.String()]
 }

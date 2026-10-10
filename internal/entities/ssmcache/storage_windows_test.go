@@ -41,6 +41,32 @@ func TestPrivateWindowsDirectoryHandle(t *testing.T) {
 	}
 }
 
+func TestWindowsSDDLAliasesPreserveExactTrusteeAuthority(t *testing.T) {
+	for _, alias := range []string{"LA", "SY", "BA", "WD", "BU"} {
+		descriptor, err := windows.SecurityDescriptorFromString("O:" + alias)
+		if err != nil {
+			t.Fatal("resolve local SDDL trustee", err)
+		}
+		owner, _, err := descriptor.Owner()
+		if err != nil || owner == nil {
+			t.Fatal("resolved trustee missing")
+		}
+		exact := map[string]bool{owner.String(): true}
+		if !trustedSDDLTrustee(alias, exact) || !trustedSDDLTrustee(owner.String(), exact) {
+			t.Fatal("OS alias differs from its exact SID")
+		}
+		if trustedSDDLTrustee(alias, map[string]bool{}) {
+			t.Fatal("alias grants independent authority")
+		}
+	}
+	trusted := map[string]bool{"S-1-5-18": true, "S-1-5-32-544": true}
+	for _, value := range []string{"WD", "BU", "ZZ", "S-1-1-0", "SY)D:(A;;FA;;;WD"} {
+		if trustedSDDLTrustee(value, trusted) {
+			t.Fatal("untrusted or malformed trustee accepted")
+		}
+	}
+}
+
 func TestCacheRejectsPublicWindowsACLWithoutChangingPreimage(t *testing.T) {
 	s := testStore(t, "state.json")
 	if err := s.Write(context.Background(), []byte("{}")); err != nil {

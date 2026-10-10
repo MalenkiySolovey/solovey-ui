@@ -318,7 +318,7 @@ func (s *Store) Write(ctx context.Context, data []byte) error {
 	if err != nil {
 		return errors.New("SSM_CACHE_STORAGE_UNAVAILABLE")
 	}
-	defer dir.Remove(temporary)
+	defer func() { _ = dir.Remove(temporary) }() // Best effort after publication/cancellation.
 	if err = secureCreated(f); err == nil {
 		_, err = f.Write(data)
 	}

@@ -101,7 +101,11 @@ func TestSSMBoxRestartRestoresOfficialAuthenticationAndCounters(t *testing.T) {
 			t.Fatal("service start", err)
 		}
 		base := "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(port)) + "/main/server/v1"
-		response, err := client.Get(base + "/users/fixture")
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+"/users/fixture", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := client.Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -114,7 +118,11 @@ func TestSSMBoxRestartRestoresOfficialAuthenticationAndCounters(t *testing.T) {
 		if err != nil || response.StatusCode != 200 || user.Password != credential || user.Uplink != 9 {
 			t.Fatal("official authenticated service state lost")
 		}
-		response, err = client.Get(base + "/stats")
+		request, err = http.NewRequestWithContext(t.Context(), http.MethodGet, base+"/stats", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err = client.Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
