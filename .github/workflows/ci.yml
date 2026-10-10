@@ -39,6 +39,46 @@ jobs:
         if: runner.os == 'Windows'
         run: node scripts/audit/source-hygiene.mjs --no-shell
 
+  docker-native-cronet:
+    name: Docker native Cronet (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
+      - name: Build the real image and opt-in native probe without publication
+        uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
+        with:
+          context: .
+          target: native-cronet-probe
+          platforms: linux/${{ matrix.arch }}
+          push: false
+          load: true
+          tags: solovey-native-cronet:${{ matrix.arch }}
+          build-args: |
+            SUI_RELEASE_TRUST_ROOTS_B64=${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
+          cache-from: type=gha,scope=docker-${{ matrix.arch }}
+          cache-to: type=gha,mode=max,scope=docker-${{ matrix.arch }}
+      - name: Native engine start, worker drain, shutdown and repeated initialization
+        run: |
+          set -euo pipefail
+          test "$(docker image inspect solovey-native-cronet:${{ matrix.arch }} --format '{{.Architecture}}')" = '${{ matrix.arch }}'
+          case '${{ matrix.arch }}' in
+            amd64) test "$(uname -m)" = x86_64 ;;
+            arm64) test "$(uname -m)" = aarch64 ;;
+          esac
+          timeout 45s docker run --rm --read-only --network none --cap-drop ALL \
+            --security-opt no-new-privileges \
+            --tmpfs /tmp:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=65532,gid=65532 \
+            solovey-native-cronet:${{ matrix.arch }}
+
   installer:
     name: Installer
     runs-on: ubuntu-24.04
