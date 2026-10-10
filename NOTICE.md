@@ -61,6 +61,13 @@ tests were copied. Cronet native package assets come from the selected
 and the target-specific SHA256 in the package producer. The Cronet source
 and GPL-3.0 notices remain authoritative for those assets.
 
+The Alpine Docker producer selects the official static musl Cronet asset from
+those same pinned modules, using LLVM to link it. The final image records its
+selected archive hash and module/version in `CRONET_INTEGRATION.json`; it does
+not ship the glibc shared object. This is packaging integration, without a
+native implementation patch or new module version. The original Cronet source
+and license notices remain applicable to the statically linked bytes.
+
 The project-wide architecture audit compared additional firewall, panel,
 installer, and networking projects. No production code was copied from those
 comparison sources. GPL/AGPL and unknown-license comparison sources are
