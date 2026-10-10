@@ -14,11 +14,19 @@ permissions:
   actions: read
 
 env:
-  W5_PRODUCT_COMMIT: d14e14ab1ddcd126fc71a00197d249e45b42d05d
+  W5_PRODUCT_COMMIT: 39701b1ee108702451ae4b105b8d6a05a75a390d
 
 jobs:
+  windows-build:
+    uses: ./.github/workflows/windows.yml
+    with:
+      source_commit: 39701b1ee108702451ae4b105b8d6a05a75a390d
+      tag: v2026.3.3
+      preflight_only: true
+
   windows-runtime:
     name: Native packaged Windows ${{ matrix.arch }}
+    needs: windows-build
     strategy:
       fail-fast: false
       matrix:
@@ -47,8 +55,6 @@ jobs:
         with:
           name: solovey-ui-windows-${{ matrix.arch }}
           path: candidate-archive
-          run-id: 38031018222
-          github-token: ${{ github.token }}
       - name: Authenticate and extract produced package
         shell: powershell
         run: |
@@ -94,7 +100,55 @@ jobs:
           node fixture-driver/.qualification/native-package-runtime.mjs \
             --binary candidate-package/solovey-ui-windows/sui.exe \
             --helper "$RUNNER_TEMP/native-fixture.exe" --output qualification-evidence/RUNTIME.json \
-            --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}'
+            --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}' --private-api-check true
+      - name: Build and exercise native Core profile with its own verified frontend
+        shell: bash
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+          SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
+        run: |
+          set -euo pipefail
+          test -n "$SUI_RELEASE_TRUST_ROOTS_B64"
+          export CGO_ENABLED=1 GOWORK=off GOOS=windows GOARCH='${{ matrix.arch }}'
+          if [ '${{ matrix.arch }}' = arm64 ]; then
+            export PATH="$(cygpath -u "$MSYS2_LOCATION")/clangarm64/bin:$PATH"
+            export CC=clang
+          else
+            export CC=gcc
+          fi
+          cd frontend
+          npm ci
+          SOLOVEY_UI_PROFILE=core npm run build
+          cd ..
+          node scripts/check-frontend-profile.mjs --profile core --dist frontend/dist
+          node scripts/frontend-assets.mjs publish --dist frontend/dist --destination web/html
+          mkdir -p candidate-core qualification-evidence/core
+          tags=with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0,with_tailscale,minimal
+          go build -trimpath -buildvcs=false -tags "$tags" -ldflags="-buildid= -w -s -checklinkname=0 -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=$SUI_RELEASE_TRUST_ROOTS_B64" -o candidate-core/sui.exe main.go
+          cp candidate-package/solovey-ui-windows/libcronet.dll candidate-core/libcronet.dll
+          {
+            printf 'version=v2026.3.3\ncommit=%s\nplatform=windows/${{ matrix.arch }}\nprofile=core\n' "$W5_PRODUCT_COMMIT"
+            printf 'source_fingerprint=%s\n' "$(node scripts/release-source.mjs .)"
+            node scripts/quic-integration-provenance.mjs build-info
+          } > candidate-core/BUILD_INFO.txt
+          cp candidate-core/BUILD_INFO.txt qualification-evidence/core/BUILD_INFO.txt
+          go version -m candidate-core/sui.exe > qualification-evidence/core/GO_BUILD_INFO.txt
+          node fixture-driver/.qualification/native-package-runtime.mjs \
+            --binary candidate-core/sui.exe --helper "$RUNNER_TEMP/native-fixture.exe" \
+            --output qualification-evidence/core/RUNTIME.json --commit "$W5_PRODUCT_COMMIT" \
+            --fixture-commit '${{ github.sha }}' --private-api-check true
+      - name: Retain the independently built Core candidate
+        if: always()
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          if (Test-Path -LiteralPath 'candidate-core/sui.exe') {
+            New-Item -ItemType Directory -Path qualification-evidence -Force | Out-Null
+            $archive='qualification-evidence/solovey-ui-core-windows-${{ matrix.arch }}.zip'
+            Compress-Archive -LiteralPath candidate-core -DestinationPath $archive -CompressionLevel Optimal
+            $hash=(Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  solovey-ui-core-windows-${{ matrix.arch }}.zip" | Set-Content -LiteralPath "$archive.sha256"
+          }
       - name: Retain sanitized runtime evidence only
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -154,9 +208,12 @@ jobs:
           mkdir -p qualification-evidence
           cp fixture-driver/.qualification/native-package-fixture.go.txt "$RUNNER_TEMP/native-fixture.go"
           CGO_ENABLED=1 GOWORK=off go build -tags with_quic -o "$RUNNER_TEMP/native-fixture" "$RUNNER_TEMP/native-fixture.go"
+          cp fixture-driver/.qualification/private-api-probe.go.txt "$RUNNER_TEMP/private-api-probe.go"
+          CGO_ENABLED=0 GOWORK=off go build -o "$RUNNER_TEMP/private-api-probe" "$RUNNER_TEMP/private-api-probe.go"
           node fixture-driver/.qualification/native-package-runtime.mjs \
             --image solovey-w5-candidate:arm64 --helper "$RUNNER_TEMP/native-fixture" \
-            --output qualification-evidence/RUNTIME.json --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}'
+            --output qualification-evidence/RUNTIME.json --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}' \
+            --private-probe "$RUNNER_TEMP/private-api-probe"
       - name: Preserve locally built candidate even when a runtime assertion fails
         if: always()
         run: |

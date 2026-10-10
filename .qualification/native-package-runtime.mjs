@@ -128,6 +128,12 @@ async function run() {
       const list = Array.isArray(listeners) ? listeners : [listeners]
       assertion('candidate_tcp_listeners_loopback_only', list.length >= 2 && list.every((listener) => ['127.0.0.1', '::1'].includes(listener.LocalAddress)))
       report.listenerCount = list.length
+      if (flags['private-api-check'] === 'true') {
+        const privateListeners = list.filter((listener) => ![webPort, subPort].includes(listener.LocalPort))
+        assertion('single_private_tcp_listener_identified_from_owned_process', privateListeners.length === 1 && privateListeners[0].LocalAddress === '127.0.0.1')
+        const privateProbe = helper('private-probe', { PrivatePort: privateListeners[0].LocalPort })
+        report.assertions.push(...privateProbe.assertions)
+      }
       const library = path.join(path.dirname(binary), 'libcronet.dll')
       const expected = { x64: '3217c6260fbca5f16072e0b79735742f40109a63bb0ff88fd6b96dd6b54a2928', arm64: 'a75a1b99a7e31802cf67ee14763e5cb9db6a24aaf7062f86c49f2fc1c030fcf0' }[process.arch]
       assertion('module_authenticated_cronet_dll_hash', fs.existsSync(library) && hash(library) === expected)
@@ -155,6 +161,11 @@ async function run() {
       '--tmpfs', '/tmp:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=65532,gid=65532',
       '--mount', `type=bind,src=${data},dst=/data`, '-e', 'SUI_SERVER_PROTECTION_RUNTIME_ROOT=/run/solovey-ui/server-protection',
       '-p', `127.0.0.1::${webPort}/tcp`, ...Object.values(ports).flatMap((port) => ['-p', `127.0.0.1::${port}/udp`]), flags.image]
+    if (flags['private-probe']) {
+      assertion('docker_private_probe_is_regular_fixture_file', fs.statSync(path.resolve(flags['private-probe'])).isFile())
+      args.splice(args.length - 1, 0, '--mount', `type=bind,src=${path.resolve(flags['private-probe'])},dst=/opt/w5/private-api-probe,readonly`)
+      report.fixtureSource.privateProbeSha256 = hash(path.resolve(flags['private-probe']))
+    }
     if (flags['ld-preload']) {
       assertion('experimental_loader_is_existing_image_dependency', flags['ld-preload'] === '/lib/libgcompat.so.0')
       args.splice(args.length - 1, 0, '-e', `LD_PRELOAD=${flags['ld-preload']}`)
@@ -169,6 +180,22 @@ async function run() {
     input.API = `http://127.0.0.1:${mappings[`${webPort}/tcp`][0].HostPort}/app/`
     input.Ports = Object.fromEntries(Object.entries(ports).map(([kind, port]) => [kind, Number(mappings[`${port}/udp`][0].HostPort)]))
     await waitReady(`${input.API}login`)
+    if (flags['private-probe']) {
+      const deadline = Date.now() + 45000
+      let privateListener
+      while (Date.now() < deadline) {
+        const sockets = invoke('docker', ['exec', container, 'cat', '/proc/net/tcp']).trim().split(/\r?\n/).slice(1)
+          .map((line) => line.trim().split(/\s+/)).filter((columns) => columns[3] === '0A')
+          .map((columns) => ({ address: columns[1].split(':')[0], port: parseInt(columns[1].split(':')[1], 16) }))
+          .filter((socket) => ![webPort, subPort].includes(socket.port))
+        if (sockets.length === 1 && sockets[0].address === '0100007F') { privateListener = sockets[0]; break }
+        await new Promise((resolve) => setTimeout(resolve, 100))
+      }
+      assertion('container_single_private_api_loopback_listener_unpublished', !!privateListener && !mappings[`${privateListener.port}/tcp`])
+      const privateResult = JSON.parse(invoke('docker', ['exec', container, '/opt/w5/private-api-probe', String(privateListener.port)]))
+      assertion('negative_private_api_probe_runs_as_product_uid', privateResult.uid === 65532 && privateResult.result === 'PASS')
+      report.assertions.push(...privateResult.assertions)
+    }
     const metadata = JSON.parse(invoke('docker', ['exec', container, 'cat', '/app/QUIC_INTEGRATION.json']))
     report.quicIntegration = metadata
     const nativeMetadata = spawnSync('docker', ['exec', container, 'cat', '/app/CRONET_INTEGRATION.json'], { encoding: 'utf8', timeout: 10000 })
@@ -186,6 +213,7 @@ async function run() {
   input.Clients = seed.clients
   const result = helper('probe', input)
   report.assertions.push(...result.assertions)
+  if (result.logSubscriptionWallMs !== undefined) report.logSubscriptionWallMs = result.logSubscriptionWallMs
   if (process.platform === 'win32') {
     const program = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
     const loaded = invoke(program, ['-NoProfile', '-NonInteractive', '-Command',

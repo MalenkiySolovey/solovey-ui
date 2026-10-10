@@ -1,0 +1,53 @@
+// Goal-owned negative-auth fixture, never a product module or credential owner.
+package main
+
+import (
+	"context"
+	"encoding/json"
+	"net"
+	"os"
+	"strconv"
+	"time"
+
+	"github.com/sagernet/sing-box/daemon"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
+)
+
+func main() {
+	if len(os.Args) != 2 {
+		os.Exit(2)
+	}
+	port, err := strconv.Atoi(os.Args[1])
+	if err != nil || port < 1024 || port > 65535 {
+		os.Exit(2)
+	}
+	conn, err := grpc.NewClient("passthrough:///"+net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		os.Exit(1)
+	}
+	defer conn.Close()
+	client := daemon.NewStartedServiceClient(conn)
+	for _, auth := range []string{"", "Bearer invalid-synthetic-credential"} {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if auth != "" {
+			ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", auth))
+		}
+		_, versionErr := client.GetVersion(ctx, &emptypb.Empty{})
+		_, healthErr := grpc_health_v1.NewHealthClient(conn).Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+		stream, streamErr := client.SubscribeServiceStatus(ctx, &emptypb.Empty{})
+		if streamErr == nil {
+			_, streamErr = stream.Recv()
+		}
+		cancel()
+		if status.Code(versionErr) != codes.Unauthenticated || status.Code(healthErr) != codes.Unauthenticated || status.Code(streamErr) != codes.Unauthenticated {
+			os.Exit(1)
+		}
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"result": "PASS", "uid": os.Getuid(), "assertions": []string{"container_private_grpc_version_health_stream_missing_and_wrong_bearer_rejected"}})
+}

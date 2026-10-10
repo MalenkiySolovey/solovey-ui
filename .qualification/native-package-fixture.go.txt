@@ -37,8 +37,16 @@ import (
 	"github.com/sagernet/quic-go"
 	"github.com/sagernet/quic-go/http3"
 	"github.com/sagernet/quic-go/quicvarint"
+	"github.com/sagernet/sing-box/daemon"
 	"github.com/sagernet/sing-quic/hysteria"
 	"github.com/sagernet/sing-quic/tuic"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/metadata"
+	"google.golang.org/grpc/status"
+	"google.golang.org/protobuf/types/known/emptypb"
 	"gorm.io/gorm/clause"
 )
 
@@ -49,15 +57,17 @@ type fixtureInput struct {
 	WriteToken, ReadToken          string
 	Passwords                      []string
 	WebPort, SubPort               int
+	PrivatePort                    int
 	Ports                          map[string]int
 	Clients                        []model.Client
 	IncludeNaive                   bool
 }
 
 type fixtureOutput struct {
-	Certificate string         `json:"certificate,omitempty"`
-	Assertions  []string       `json:"assertions,omitempty"`
-	Clients     []model.Client `json:"clients,omitempty"`
+	Certificate           string         `json:"certificate,omitempty"`
+	Assertions            []string       `json:"assertions,omitempty"`
+	Clients               []model.Client `json:"clients,omitempty"`
+	LogSubscriptionWallMs int64          `json:"logSubscriptionWallMs,omitempty"`
 }
 
 func main() {
@@ -78,6 +88,8 @@ func main() {
 		output, err = seed(input)
 	case "probe":
 		output, err = probe(input)
+	case "private-probe":
+		output, err = probePrivateAPI(input)
 	default:
 		os.Exit(2)
 	}
@@ -86,6 +98,38 @@ func main() {
 		os.Exit(1)
 	}
 	_ = json.NewEncoder(os.Stdout).Encode(output)
+}
+
+func probePrivateAPI(in fixtureInput) (fixtureOutput, error) {
+	var out fixtureOutput
+	if in.PrivatePort < 1024 || in.PrivatePort > 65535 {
+		return out, errors.New("PRIVATE_PROBE_LOOPBACK_PORT_REQUIRED")
+	}
+	conn, err := grpc.NewClient("passthrough:///"+net.JoinHostPort("127.0.0.1", strconv.Itoa(in.PrivatePort)),
+		grpc.WithTransportCredentials(insecure.NewCredentials()))
+	if err != nil {
+		return out, errors.New("PRIVATE_PROBE_CONNECTION_FAILED")
+	}
+	defer conn.Close()
+	client := daemon.NewStartedServiceClient(conn)
+	for _, auth := range []string{"", "Bearer invalid-synthetic-credential"} {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		if auth != "" {
+			ctx = metadata.NewOutgoingContext(ctx, metadata.Pairs("authorization", auth))
+		}
+		_, versionErr := client.GetVersion(ctx, &emptypb.Empty{})
+		_, healthErr := grpc_health_v1.NewHealthClient(conn).Check(ctx, &grpc_health_v1.HealthCheckRequest{})
+		stream, streamErr := client.SubscribeServiceStatus(ctx, &emptypb.Empty{})
+		if streamErr == nil {
+			_, streamErr = stream.Recv()
+		}
+		cancel()
+		if status.Code(versionErr) != codes.Unauthenticated || status.Code(healthErr) != codes.Unauthenticated || status.Code(streamErr) != codes.Unauthenticated {
+			return out, errors.New("PRIVATE_API_MISSING_OR_WRONG_BEARER_NOT_REJECTED")
+		}
+	}
+	out.Assertions = []string{"packaged_private_grpc_version_health_stream_missing_and_wrong_bearer_rejected"}
+	return out, nil
 }
 
 func seed(in fixtureInput) (fixtureOutput, error) {
@@ -539,6 +583,31 @@ func probe(in fixtureInput) (fixtureOutput, error) {
 		return out, errors.New("SIX_AUTHENTICATED_PARENTS_NOT_OBSERVED")
 	}
 	p.assertions = append(p.assertions, "three_protocols_authenticated_same_ip_independent_parent_handles")
+	// Exercise the deployed HTTP -> trusted private gRPC log subscription. The
+	// seed explicitly disables log production, so the owner must still terminate
+	// this idle current-generation request at its 30-second server deadline.
+	logURL := in.API + "apiv2/runtime/logs?generation=" + url.QueryEscape(generation)
+	logContext, logCancel := context.WithTimeout(context.Background(), 36*time.Second)
+	logRequest, _ := http.NewRequestWithContext(logContext, http.MethodGet, logURL, nil)
+	logRequest.Header.Set("Authorization", "Bearer "+in.ReadToken)
+	logClient := &http.Client{Transport: &http.Transport{Proxy: nil}}
+	logStarted := time.Now()
+	logResponse, logErr := logClient.Do(logRequest)
+	if logErr != nil {
+		logCancel()
+		logClient.CloseIdleConnections()
+		return out, errors.New("PACKAGED_LOG_SUBSCRIPTION_FAILED")
+	}
+	logBytes, readErr := io.Copy(io.Discard, io.LimitReader(logResponse.Body, 64*1024+1))
+	_ = logResponse.Body.Close()
+	logCancel()
+	logClient.CloseIdleConnections()
+	out.LogSubscriptionWallMs = time.Since(logStarted).Milliseconds()
+	if readErr != nil || logResponse.StatusCode != 200 || logResponse.Header.Get("Content-Type") != "application/x-ndjson" ||
+		logResponse.Header.Get("Cache-Control") != "no-store" || logBytes > 64*1024 || out.LogSubscriptionWallMs > 35000 {
+		return out, errors.New("PACKAGED_LOG_SUBSCRIPTION_NOT_BOUNDED")
+	}
+	p.assertions = append(p.assertions, "current_generation_idle_private_log_subscription_bounded_35s_no_store")
 	for _, kind := range kinds {
 		var target cr.QUICParentTarget
 		for _, parent := range snapshot.Parents {
