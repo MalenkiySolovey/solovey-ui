@@ -35,7 +35,11 @@ func TestSSMHotReplacementKeepsRuntimeGenerationAndPortReusable(t *testing.T) {
 	defer client.CloseIdleConnections()
 	ready := func() {
 		t.Helper()
-		response, err := client.Get("http://" + address + "/main/server/v1/stats")
+		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, "http://"+address+"/main/server/v1/stats", nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		response, err := client.Do(request)
 		if err != nil {
 			t.Fatal("SSM HTTP readiness", err)
 		}
