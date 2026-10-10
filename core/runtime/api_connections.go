@@ -33,15 +33,18 @@ type RuntimeConnection struct {
 }
 
 type ConnectionSnapshot struct {
-	Generation   string              `json:"generation"`
-	ObservedAt   int64               `json:"observedAt"`
-	Source       string              `json:"source"`
-	Connections  []RuntimeConnection `json:"connections"`
-	Total        int                 `json:"total"`
-	ActualTotal  int                 `json:"actualTotal"`
-	Unassociated int                 `json:"unassociated"`
-	Limit        int                 `json:"limit"`
-	Truncated    bool                `json:"truncated"`
+	Generation       string              `json:"generation"`
+	ObservedAt       int64               `json:"observedAt"`
+	Source           string              `json:"source"`
+	Connections      []RuntimeConnection `json:"connections"`
+	Parents          []RuntimeQUICParent `json:"parents"`
+	ParentTotal      int                 `json:"parentTotal"`
+	ParentsTruncated bool                `json:"parentsTruncated"`
+	Total            int                 `json:"total"`
+	ActualTotal      int                 `json:"actualTotal"`
+	Unassociated     int                 `json:"unassociated"`
+	Limit            int                 `json:"limit"`
+	Truncated        bool                `json:"truncated"`
 }
 
 func readConnectionFrame(ctx context.Context, api *privateAPI) ([]*daemon.Connection, error) {
@@ -100,7 +103,7 @@ func (c *Core) connectionView(flow *daemon.Connection) RuntimeConnection {
 }
 
 func (c *Core) Connections(ctx context.Context, generation string, clientID uint, limit int) (ConnectionSnapshot, error) {
-	result := ConnectionSnapshot{Connections: []RuntimeConnection{}, Source: "official_api", Limit: limit}
+	result := ConnectionSnapshot{Connections: []RuntimeConnection{}, Parents: []RuntimeQUICParent{}, Source: "official_api", Limit: limit}
 	if generation == "" {
 		return result, ErrStaleGeneration
 	}
@@ -112,7 +115,11 @@ func (c *Core) Connections(ctx context.Context, generation string, clientID uint
 		return result, ErrRuntimeLimit
 	}
 	defer c.snapshotReaders.Add(-1)
-	err := c.withPrivateAPI(ctx, generation, func(ctx context.Context, api *privateAPI) error {
+	parents, parentTotal, parentsTruncated, err := c.quicParentSnapshot(ctx, generation, clientID, limit)
+	if err != nil {
+		return result, err
+	}
+	err = c.withPrivateAPI(ctx, generation, func(ctx context.Context, api *privateAPI) error {
 		flows, err := readConnectionFrame(ctx, api)
 		if err != nil {
 			return err
@@ -132,31 +139,37 @@ func (c *Core) Connections(ctx context.Context, generation string, clientID uint
 			}
 		}
 		result.Truncated = result.Total > len(result.Connections)
+		result.Parents, result.ParentTotal, result.ParentsTruncated = parents, parentTotal, parentsTruncated
 		return nil
 	})
 	return result, err
 }
 
 type DisconnectRequest struct {
-	Generation string `json:"generation"`
-	FlowID     string `json:"flowId,omitempty"`
-	ClientID   uint   `json:"clientId,omitempty"`
+	Generation string             `json:"generation"`
+	FlowID     string             `json:"flowId,omitempty"`
+	ClientID   uint               `json:"clientId,omitempty"`
+	Parents    []QUICParentTarget `json:"parents,omitempty"`
 }
 
 type DisconnectResult struct {
-	Generation    string `json:"generation"`
-	Outcome       string `json:"outcome"`
-	Matched       int    `json:"matched"`
-	Closed        int    `json:"closed"`
-	Remaining     int    `json:"remaining"`
-	ParentClosed  bool   `json:"parentClosed"`
-	ParentControl string `json:"parentControl"`
-	Reason        string `json:"reason,omitempty"`
+	Generation       string `json:"generation"`
+	Outcome          string `json:"outcome"`
+	Matched          int    `json:"matched"`
+	Closed           int    `json:"closed"`
+	Remaining        int    `json:"remaining"`
+	ParentClosed     bool   `json:"parentClosed"`
+	ParentControl    string `json:"parentControl"`
+	Reason           string `json:"reason,omitempty"`
+	ParentsMatched   int    `json:"parentsMatched"`
+	ParentsClosed    int    `json:"parentsClosed"`
+	ParentsRemaining int    `json:"parentsRemaining"`
 }
 
 // Disconnect closes only reverified official IDs. Upstream RPC acknowledgement
 // ignores the underlying close error, so disappearance is checked before a
-// success claim. No account mutation, parent claim or inbound restart occurs.
+// success claim. Explicit QUIC targets use the authenticated transport owner;
+// flow-only requests retain the original partial parent-control semantics.
 func (c *Core) Disconnect(ctx context.Context, request DisconnectRequest) (DisconnectResult, error) {
 	result := DisconnectResult{Generation: request.Generation, Outcome: "ERROR", ParentControl: "not_supported"}
 	if request.Generation == "" {
@@ -168,6 +181,9 @@ func (c *Core) Disconnect(ctx context.Context, request DisconnectRequest) (Disco
 	c.mutation.Lock()
 	defer c.mutation.Unlock()
 	err := c.withPrivateAPI(ctx, request.Generation, func(ctx context.Context, api *privateAPI) error {
+		if len(request.Parents) != 0 {
+			return c.disconnectQUICParents(ctx, request, &result)
+		}
 		flows, err := readConnectionFrame(ctx, api)
 		if err != nil {
 			return err

@@ -1,0 +1,1319 @@
+diff --git a/SOLOVEY_INTEGRATION.md b/SOLOVEY_INTEGRATION.md
+new file mode 100644
+index 0000000..d525b5c
+--- /dev/null
++++ b/SOLOVEY_INTEGRATION.md
+@@ -0,0 +1,62 @@
++# Solovey pinned parent lifecycle integration
++
++This is a maintained integration delta against official SagerNet/sing-quic
++`6a3a24d65b99587fad1d4cdd567c88f212acdd63`
++(`v0.7.1-0.20260924092235-6a3a24d65b99`). It supports the official sing-box
++v1.14.2 semantic baseline. It is not an unmodified official build.
++
++The original GPL-3.0-or-later license and copyright notices remain intact.
++Integration additions are Copyright (C) 2026 MalenkiySolovey and distributed
++under GPL-3.0-or-later. Original S-UI v1.6.4 supplied a behavioral witness for
++graceful close; its quicgrace implementation was not copied.
++
++Only these implementation seams change:
++
++- `parent.go`: constructor-scoped typed hook and one per-service owner of
++  accepted QUIC handles, their authenticated user, admission and close lifetime.
++- Hysteria, Hysteria2 and TUIC `service.go`: retain their original verifier,
++  protocol handling, TLS, congestion and options; associate the existing verified
++  user with the accepted handle and delegate transport lifecycle to that owner.
++  Authentication publication and stream error variables are synchronized.
++- TUIC `early_data.go`: retain the parser's bounded initial payload safely when
++  network Read and Close run concurrently. This avoids the upstream CachedConn
++  buffer lifetime race witnessed during the integration race tests.
++- Hysteria rejects bad passwords without including the password in an error.
++
++Authentication remains authoritative in each original protocol service. No
++address lookup, DB identity, global registry, or replacement flow tracker is
++introduced. IDs are monotonic within one owner and need the embedding runtime's
++inbound epoch and generation to be usable as mutation targets.
++
++Closing rejects new admission, cancels Accept, and waits for its result barrier.
++Tracked parents call the pinned quic-go CloseWithError before acceptor shutdown.
++The public listener Close stops handshakes while preserving established handles;
++its finite completed queue is subsequently accepted and intentionally closed by
++the same owner before the embedding inbound can close UDP. This ordering uses
++barriers and a two-second deadline, with at most eight concurrent tracked close
++workers. A deadline is an error, not a delivery assertion. Listener Close is
++initiated exactly once with a bounded waiter. No sleep establishes correctness.
++quic-go's emission attempt does not guarantee delivery across a broken network.
++
++The official sing-box inbound closes UDP before calling service.Close. Solovey
++uses a typed wrapper of each exported official inbound to drain this exposed
++service owner first and preserve optional interfaces. No sing-box source patch,
++private-field access, reflection, unsafe code or protocol service copy is used.
++
++Tests in `parent_test.go` cover admission fencing, 24 live transport handles,
++close-once, late Accept, completed queue, bounded listener wait and cleanup.
++`tuic/early_data_test.go` covers payload order and concurrent buffer close.
++Solovey's integration tests separately authenticate all three real protocols
++and exercise lifecycle, selective termination, NAT, port migration, stale epoch
++and generation, disable/re-enable, rejected TCP admission and routed UDP.
++
++Run these tests under the Solovey module's selected dependency graph, including
++`github.com/sagernet/quic-go v0.61.0-sing-box-mod.7` and Go 1.26.9:
++
++    go test -race github.com/sagernet/sing-quic github.com/sagernet/sing-quic/tuic
++    go test -race -tags=with_quic ./core/runtime ./core/inboundidentity ./core/tracker ./core/registry
++
++The consuming repository records the exact replacement module commit and Go
++checksums, a complete replayable patch against the baseline, its SHA256 and
++explicit package build metadata. Updating either source pin requires reviewing
++the integration seam and repeating the affected integration and race tests.
+diff --git a/hysteria/service.go b/hysteria/service.go
+index c36ee35..8617854 100644
+--- a/hysteria/service.go
++++ b/hysteria/service.go
+@@ -3,7 +3,6 @@ package hysteria
+ import (
+ 	"context"
+ 	"errors"
+-	"io"
+ 	"net"
+ 	"os"
+ 	"runtime"
+@@ -13,7 +12,6 @@ import (
+ 	"github.com/sagernet/quic-go"
+ 	qtls "github.com/sagernet/sing-quic"
+ 	hyCC "github.com/sagernet/sing-quic/hysteria/congestion"
+-	"github.com/sagernet/sing/common"
+ 	"github.com/sagernet/sing/common/auth"
+ 	"github.com/sagernet/sing/common/canceler"
+ 	E "github.com/sagernet/sing/common/exceptions"
+@@ -55,7 +53,7 @@ type Service[U comparable] struct {
+ 	udpDisabled   bool
+ 	udpTimeout    time.Duration
+ 	handler       ServerHandler
+-	quicListener  io.Closer
++	parents       *qtls.ParentOwner[U]
+ }
+ 
+ func NewService[U comparable](options ServiceOptions) (*Service[U], error) {
+@@ -94,6 +92,7 @@ func NewService[U comparable](options ServiceOptions) (*Service[U], error) {
+ 		handler:       options.Handler,
+ 		udpDisabled:   options.UDPDisabled,
+ 		udpTimeout:    options.UDPTimeout,
++		parents:       qtls.NewParentOwner[U](options.Context),
+ 	}, nil
+ }
+ 
+@@ -113,39 +112,27 @@ func (s *Service[U]) Start(conn net.PacketConn) error {
+ 	if err != nil {
+ 		return err
+ 	}
+-	s.quicListener = listener
+-	go s.loopConnections(listener)
+-	return nil
++	return s.parents.Start(listener, s.handleConnection, s.listenerError)
+ }
+ 
+ func (s *Service[U]) Close() error {
+-	return common.Close(
+-		s.quicListener,
+-	)
++	return s.parents.Close()
+ }
+ 
+-func (s *Service[U]) loopConnections(listener qtls.Listener) {
+-	for {
+-		connection, err := listener.Accept(s.ctx)
+-		if err != nil {
+-			if E.IsClosedOrCanceled(err) || errors.Is(err, quic.ErrServerClosed) {
+-				s.logger.Debug(E.Cause(err, "listener closed"))
+-			} else {
+-				s.logger.Error(E.Cause(err, "listener closed"))
+-			}
+-			return
+-		}
+-		session := &serverSession[U]{
+-			Service:    s,
+-			ctx:        s.ctx,
+-			quicConn:   connection,
+-			connDone:   make(chan struct{}),
+-			udpConnMap: make(map[uint32]*udpPacketConn),
+-		}
+-		go session.handleConnection()
++func (s *Service[U]) listenerError(err error) {
++	if E.IsClosedOrCanceled(err) || errors.Is(err, quic.ErrServerClosed) {
++		s.logger.Debug(E.Cause(err, "listener closed"))
++	} else {
++		s.logger.Error(E.Cause(err, "listener closed"))
+ 	}
+ }
+ 
++func (s *Service[U]) handleConnection(ctx context.Context, connection *quic.Conn) {
++	session := &serverSession[U]{Service: s, ctx: ctx, quicConn: connection,
++		connDone: make(chan struct{}), udpConnMap: make(map[uint32]*udpPacketConn)}
++	session.handleConnection()
++}
++
+ type serverSession[U comparable] struct {
+ 	*Service[U]
+ 	ctx          context.Context
+@@ -179,7 +166,11 @@ func (s *serverSession[U]) handleConnection() {
+ 			OK:      false,
+ 			Message: "Wrong password",
+ 		})
+-		s.closeWithError0(ErrorCodeAuthError, E.New("authentication failed, auth_str=", clientHello.Auth))
++		s.closeWithError0(ErrorCodeAuthError, E.New("authentication failed"))
++		return
++	}
++	if !s.parents.Authenticate(s.quicConn, user) {
++		s.closeWithError(E.New("parent retired during authentication"))
+ 		return
+ 	}
+ 	err = WriteServerHello(controlStream, ServerHello{
+@@ -207,7 +198,7 @@ func (s *serverSession[U]) loopStreams() {
+ 			return
+ 		}
+ 		go func() {
+-			err = s.handleStream(stream)
++			err := s.handleStream(stream)
+ 			if err != nil {
+ 				stream.CancelRead(0)
+ 				stream.Close()
+diff --git a/hysteria2/service.go b/hysteria2/service.go
+index e79582f..deaf8ef 100644
+--- a/hysteria2/service.go
++++ b/hysteria2/service.go
+@@ -3,7 +3,6 @@ package hysteria2
+ import (
+ 	"context"
+ 	"errors"
+-	"io"
+ 	"net"
+ 	"net/http"
+ 	"os"
+@@ -73,7 +72,7 @@ type Service[U comparable] struct {
+ 	udpTimeout            time.Duration
+ 	handler               ServerHandler
+ 	masqueradeHandler     http.Handler
+-	quicListener          io.Closer
++	parents               *qtls.ParentOwner[U]
+ 	bbrProfile            congestion_meta2.Profile
+ 	realmServer           *realm.Server
+ }
+@@ -145,6 +144,7 @@ func NewService[U comparable](options ServiceOptions) (*Service[U], error) {
+ 		masqueradeHandler:     options.MasqueradeHandler,
+ 		bbrProfile:            bbrProfile,
+ 		realmServer:           realmServer,
++		parents:               qtls.NewParentOwner[U](options.Context),
+ 	}, nil
+ }
+ 
+@@ -177,9 +177,7 @@ func (s *Service[U]) Start(conn net.PacketConn) error {
+ 	if err != nil {
+ 		return err
+ 	}
+-	s.quicListener = listener
+-	go s.loopConnections(listener)
+-	return nil
++	return s.parents.Start(listener, s.handleConnection, s.listenerError)
+ }
+ 
+ func (s *Service[U]) startWithRealm(conn net.PacketConn) error {
+@@ -205,17 +203,16 @@ func (s *Service[U]) startWithRealm(conn net.PacketConn) error {
+ 	if err != nil {
+ 		return E.Errors(err, s.realmServer.Close())
+ 	}
+-	s.quicListener = listener
+-	go s.loopConnections(listener)
+-	return nil
++	return s.parents.Start(listener, s.handleConnection, s.listenerError)
+ }
+ 
+ func (s *Service[U]) Close() error {
++	parentErr := s.parents.Close()
+ 	var realmErr error
+ 	if s.realmServer != nil {
+ 		realmErr = s.realmServer.Close()
+ 	}
+-	return E.Errors(realmErr, common.Close(s.quicListener))
++	return E.Errors(parentErr, realmErr)
+ }
+ 
+ func (s *Service[U]) Reset() {
+@@ -224,25 +221,18 @@ func (s *Service[U]) Reset() {
+ 	}
+ }
+ 
+-func (s *Service[U]) loopConnections(listener qtls.Listener) {
+-	for {
+-		connection, err := listener.Accept(s.ctx)
+-		if err != nil {
+-			if E.IsClosedOrCanceled(err) || errors.Is(err, quic.ErrServerClosed) {
+-				s.logger.Debug(E.Cause(err, "listener closed"))
+-			} else {
+-				s.logger.Error(E.Cause(err, "listener closed"))
+-			}
+-			return
+-		}
+-		go s.handleConnection(connection)
++func (s *Service[U]) listenerError(err error) {
++	if E.IsClosedOrCanceled(err) || errors.Is(err, quic.ErrServerClosed) {
++		s.logger.Debug(E.Cause(err, "listener closed"))
++	} else {
++		s.logger.Error(E.Cause(err, "listener closed"))
+ 	}
+ }
+ 
+-func (s *Service[U]) handleConnection(connection *quic.Conn) {
++func (s *Service[U]) handleConnection(ctx context.Context, connection *quic.Conn) {
+ 	session := &serverSession[U]{
+ 		Service:    s,
+-		ctx:        s.ctx,
++		ctx:        ctx,
+ 		quicConn:   connection,
+ 		connDone:   make(chan struct{}),
+ 		udpConnMap: make(map[uint32]*udpPacketConn),
+@@ -263,6 +253,7 @@ type serverSession[U comparable] struct {
+ 	connDone      chan struct{}
+ 	connErr       error
+ 	authenticated bool
++	authAccess    sync.RWMutex
+ 	authUser      U
+ 	udpAccess     sync.RWMutex
+ 	udpConnMap    map[uint32]*udpPacketConn
+@@ -270,6 +261,8 @@ type serverSession[U comparable] struct {
+ 
+ func (s *serverSession[U]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+ 	if r.Method == http.MethodPost && r.Host == protocol.URLHost && r.URL.Path == protocol.URLPath {
++		s.authAccess.Lock()
++		defer s.authAccess.Unlock()
+ 		if s.authenticated {
+ 			protocol.AuthResponseToHeader(w.Header(), protocol.AuthResponse{
+ 				UDPEnabled: !s.udpDisabled,
+@@ -285,6 +278,10 @@ func (s *serverSession[U]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+ 			s.masqueradeHandler.ServeHTTP(w, r)
+ 			return
+ 		}
++		if !s.parents.Authenticate(s.quicConn, user) {
++			s.closeWithError(E.New("parent retired during authentication"))
++			return
++		}
+ 		s.authUser = user
+ 		s.authenticated = true
+ 		var rxAuto bool
+@@ -329,7 +326,10 @@ func (s *serverSession[U]) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+ }
+ 
+ func (s *serverSession[U]) dispatchStream(frameType http3.FrameType, stream *quic.Stream, err error) (bool, error) {
+-	if !s.authenticated || err != nil {
++	s.authAccess.RLock()
++	authenticated := s.authenticated
++	s.authAccess.RUnlock()
++	if !authenticated || err != nil {
+ 		return false, nil
+ 	}
+ 	if frameType != protocol.FrameTypeTCPRequest {
+diff --git a/parent.go b/parent.go
+new file mode 100644
+index 0000000..cddb3b1
+--- /dev/null
++++ b/parent.go
+@@ -0,0 +1,387 @@
++package qtls
++
++// Solovey integration delta against 6a3a24d65b99587fad1d4cdd567c88f212acdd63.
++// Protocol authentication remains in its original service. This owner retains
++// accepted transport handles and their admission/close lifetime, never flows.
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"sort"
++	"sync"
++	"time"
++
++	"github.com/sagernet/quic-go"
++)
++
++const ParentDrainTimeout = 2 * time.Second
++
++var ErrParentUnavailable = errors.New("QUIC parent unavailable or identity mismatch")
++
++type Parent[U comparable] struct {
++	ID            uint64
++	User          U
++	Authenticated bool
++	CreatedAt     time.Time
++}
++
++type parentHookKey[U comparable] struct{}
++
++// WithParentControl is a constructor-scoped hook. It exposes only the service
++// created with this context; there is no process-wide observer or catalogue.
++func WithParentControl[U comparable](ctx context.Context, hook func(*ParentOwner[U])) context.Context {
++	return context.WithValue(ctx, parentHookKey[U]{}, hook)
++}
++
++type parentAdmissionKey struct{}
++
++type parentAdmission struct {
++	mu        sync.Mutex
++	closing   bool
++	inflight  int
++	quiescent chan struct{}
++	ctx       context.Context
++	cancel    context.CancelFunc
++	conn      *quic.Conn
++	connCtx   context.Context
++}
++
++// ParentAdmission fences late routed flows while allowing the existing policy
++// and official inventory owner to publish an admission already in progress.
++func ParentAdmission(ctx context.Context, accept func()) bool {
++	gate, _ := ctx.Value(parentAdmissionKey{}).(*parentAdmission)
++	if gate == nil {
++		if ctx.Err() != nil {
++			return false
++		}
++		accept()
++		return true
++	}
++	gate.mu.Lock()
++	if gate.closing || ctx.Err() != nil || gate.connCtx.Err() != nil {
++		gate.mu.Unlock()
++		return false
++	}
++	gate.inflight++
++	gate.mu.Unlock()
++	defer func() {
++		gate.mu.Lock()
++		gate.inflight--
++		if gate.closing && gate.inflight == 0 {
++			gate.cancel()
++			close(gate.quiescent)
++		}
++		gate.mu.Unlock()
++	}()
++	accept()
++	return true
++}
++
++func (g *parentAdmission) retire() <-chan struct{} {
++	g.mu.Lock()
++	if !g.closing {
++		g.closing = true
++		if g.inflight == 0 {
++			g.cancel()
++			close(g.quiescent)
++		}
++	}
++	g.mu.Unlock()
++	return g.quiescent
++}
++
++type liveParent[U comparable] struct {
++	Parent[U]
++	gate      *parentAdmission
++	closeOnce sync.Once
++	closeDone chan struct{}
++	closeErr  error
++}
++
++type ParentOwner[U comparable] struct {
++	ctx        context.Context
++	mu         sync.Mutex
++	parents    map[*quic.Conn]*liveParent[U]
++	nextID     uint64
++	closing    bool
++	started    bool
++	listener   Listener
++	stopAccept context.CancelFunc
++	acceptDone chan struct{}
++	closeOnce  sync.Once
++	closeErr   error
++}
++
++func NewParentOwner[U comparable](ctx context.Context) *ParentOwner[U] {
++	o := &ParentOwner[U]{ctx: ctx, parents: make(map[*quic.Conn]*liveParent[U]), acceptDone: make(chan struct{})}
++	if hook, _ := ctx.Value(parentHookKey[U]{}).(func(*ParentOwner[U])); hook != nil {
++		hook(o)
++	}
++	return o
++}
++
++// Start records every Accept result before protocol work can run. Cancelling
++// Accept and waiting for acceptDone is the drain barrier, including a result
++// returned concurrently with shutdown. Closing the acceptor then exposes its
++// finite completed-handshake queue; that queue is drained before UDP destruction.
++func (o *ParentOwner[U]) Start(listener Listener, handle func(context.Context, *quic.Conn), failed func(error)) error {
++	o.mu.Lock()
++	if o.closing || o.started {
++		o.mu.Unlock()
++		ctx, cancel := context.WithTimeout(context.Background(), ParentDrainTimeout)
++		defer cancel()
++		return errors.Join(ErrParentUnavailable, closeListener(ctx, listener))
++	}
++	acceptCtx, cancel := context.WithCancel(o.ctx)
++	o.listener, o.stopAccept, o.started = listener, cancel, true
++	o.mu.Unlock()
++	go func() {
++		defer close(o.acceptDone)
++		for {
++			conn, err := listener.Accept(acceptCtx)
++			if err != nil {
++				failed(err)
++				return
++			}
++			ctx, _ := o.adopt(conn)
++			o.mu.Lock()
++			closing := o.closing
++			o.mu.Unlock()
++			if closing {
++				return
++			}
++			go handle(ctx, conn)
++		}
++	}()
++	return nil
++}
++
++func (o *ParentOwner[U]) adopt(conn *quic.Conn) (context.Context, *liveParent[U]) {
++	ctx, cancel := context.WithCancel(o.ctx)
++	gate := &parentAdmission{ctx: ctx, cancel: cancel, conn: conn, connCtx: conn.Context(), quiescent: make(chan struct{})}
++	ctx = context.WithValue(ctx, parentAdmissionKey{}, gate)
++	o.mu.Lock()
++	o.nextID++
++	peer := &liveParent[U]{Parent: Parent[U]{ID: o.nextID, CreatedAt: time.Now()}, gate: gate, closeDone: make(chan struct{})}
++	o.parents[conn] = peer
++	o.mu.Unlock()
++	context.AfterFunc(conn.Context(), func() {
++		gate.retire()
++		cancel()
++		o.mu.Lock()
++		delete(o.parents, conn)
++		o.mu.Unlock()
++	})
++	return ctx, peer
++}
++
++// Authenticate is called only after the original protocol verifier succeeded.
++// A handle cannot change principal through a second authentication request.
++func (o *ParentOwner[U]) Authenticate(conn *quic.Conn, user U) bool {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	peer := o.parents[conn]
++	if o.closing || peer == nil || conn.Context().Err() != nil {
++		return false
++	}
++	peer.gate.mu.Lock()
++	defer peer.gate.mu.Unlock()
++	if peer.gate.closing || peer.gate.ctx.Err() != nil || peer.Authenticated {
++		return false
++	}
++	peer.User, peer.Authenticated = user, true
++	return true
++}
++
++func (o *ParentOwner[U]) Snapshot(limit int) ([]Parent[U], int) {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	result := make([]Parent[U], 0, min(max(limit, 0), len(o.parents)))
++	total := 0
++	for conn, peer := range o.parents {
++		peer.gate.mu.Lock()
++		live := peer.Authenticated && !peer.gate.closing && conn.Context().Err() == nil
++		peer.gate.mu.Unlock()
++		if live {
++			total++
++			if len(result) < limit {
++				result = append(result, peer.Parent)
++			}
++		}
++	}
++	sort.Slice(result, func(i, j int) bool { return result[i].ID < result[j].ID })
++	return result, total
++}
++
++func (o *ParentOwner[U]) Get(id uint64) (Parent[U], bool) {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	for conn, peer := range o.parents {
++		if peer.ID == id && peer.Authenticated && conn.Context().Err() == nil {
++			peer.gate.mu.Lock()
++			live := !peer.gate.closing
++			peer.gate.mu.Unlock()
++			if live {
++				return peer.Parent, true
++			}
++		}
++	}
++	return Parent[U]{}, false
++}
++
++func closeParent[U comparable](ctx context.Context, peer *liveParent[U], reason string) error {
++	quiescent := peer.gate.retire()
++	peer.closeOnce.Do(func() {
++		go func() {
++			defer close(peer.closeDone)
++			drainCtx, cancel := context.WithTimeout(context.Background(), ParentDrainTimeout)
++			defer cancel()
++			select {
++			case <-quiescent:
++			case <-drainCtx.Done():
++				peer.closeErr = drainCtx.Err()
++				peer.gate.cancel()
++			}
++			// A cancelled caller does not abandon the initiated close. Pinned
++			// quic-go waits for its CONNECTION_CLOSE emission attempt and run
++			// cleanup before cancelling Conn.Context. A drain timeout is retained.
++			peer.closeErr = errors.Join(peer.closeErr, peer.gate.conn.CloseWithError(0, reason))
++		}()
++	})
++	select {
++	case <-peer.closeDone:
++		return peer.closeErr
++	case <-ctx.Done():
++		return ctx.Err()
++	}
++}
++
++func (o *ParentOwner[U]) CloseParent(ctx context.Context, id uint64, user U) error {
++	o.mu.Lock()
++	var selected *liveParent[U]
++	for _, peer := range o.parents {
++		if peer.ID == id && peer.Authenticated && peer.User == user && !o.closing {
++			selected = peer
++			break
++		}
++	}
++	o.mu.Unlock()
++	if selected == nil {
++		return ErrParentUnavailable
++	}
++	closeCtx, cancel := context.WithTimeout(ctx, ParentDrainTimeout)
++	defer cancel()
++	err := closeParent(closeCtx, selected, "session disconnected")
++	o.removeClosed()
++	return err
++}
++
++func (o *ParentOwner[U]) removeClosed() {
++	o.mu.Lock()
++	defer o.mu.Unlock()
++	for conn := range o.parents {
++		if conn.Context().Err() != nil {
++			delete(o.parents, conn)
++		}
++	}
++}
++
++func (o *ParentOwner[U]) Close() error {
++	o.closeOnce.Do(func() { o.closeErr = o.drain() })
++	return o.closeErr
++}
++
++func (o *ParentOwner[U]) drain() error {
++	ctx, cancel := context.WithTimeout(context.Background(), ParentDrainTimeout)
++	defer cancel()
++	o.mu.Lock()
++	o.closing = true
++	started, listener, stopAccept := o.started, o.listener, o.stopAccept
++	o.mu.Unlock()
++	if !started {
++		return nil
++	}
++	stopAccept()
++	select {
++	case <-o.acceptDone:
++	case <-ctx.Done():
++		return errors.Join(fmt.Errorf("QUIC acceptance drain: %w", ctx.Err()), closeListener(ctx, listener))
++	}
++	o.mu.Lock()
++	peers := make([]*liveParent[U], 0, len(o.parents))
++	for _, peer := range o.parents {
++		peer.gate.retire()
++		peers = append(peers, peer)
++	}
++	o.mu.Unlock()
++	drainErr := closeParents(ctx, peers)
++	// Public quic-go Close stops handshakes, but preserves established handles.
++	// Accept still returns every queued connection before ErrServerClosed. Adopt
++	// and close those handles through this same owner without protocol admission.
++	listenerErr := closeListener(ctx, listener)
++	if listenerErr == nil {
++		for {
++			conn, err := listener.Accept(ctx)
++			if err != nil {
++				if !errors.Is(err, quic.ErrServerClosed) {
++					drainErr = errors.Join(drainErr, fmt.Errorf("QUIC queued acceptance drain: %w", err))
++				}
++				break
++			}
++			_, peer := o.adopt(conn)
++			if err := closeParent(ctx, peer, "inbound closed"); err != nil {
++				drainErr = errors.Join(drainErr, err)
++			}
++		}
++	}
++	o.removeClosed()
++	return errors.Join(drainErr, listenerErr)
++}
++
++func closeListener(ctx context.Context, listener Listener) error {
++	done := make(chan error, 1)
++	go func() { done <- listener.Close() }()
++	select {
++	case err := <-done:
++		return err
++	case <-ctx.Done():
++		return fmt.Errorf("QUIC listener close: %w", ctx.Err())
++	}
++}
++
++func closeParents[U comparable](ctx context.Context, peers []*liveParent[U]) error {
++	// Eight workers bound close fanout. A deadline is a reported failure, never
++	// an assertion of network delivery or permission to wait without a bound.
++	jobs := make(chan *liveParent[U])
++	var workers sync.WaitGroup
++	var errMu sync.Mutex
++	var drainErr error
++	for i := 0; i < min(8, len(peers)); i++ {
++		workers.Add(1)
++		go func() {
++			defer workers.Done()
++			for peer := range jobs {
++				if err := closeParent(ctx, peer, "inbound closed"); err != nil {
++					errMu.Lock()
++					drainErr = errors.Join(drainErr, err)
++					errMu.Unlock()
++				}
++			}
++		}()
++	}
++enqueue:
++	for _, peer := range peers {
++		select {
++		case jobs <- peer:
++		case <-ctx.Done():
++			break enqueue
++		}
++	}
++	close(jobs)
++	workers.Wait() // workers select on the same bounded context
++	if ctx.Err() != nil {
++		drainErr = errors.Join(drainErr, ctx.Err())
++	}
++	return drainErr
++}
+diff --git a/parent_test.go b/parent_test.go
+new file mode 100644
+index 0000000..ea0cef7
+--- /dev/null
++++ b/parent_test.go
+@@ -0,0 +1,315 @@
++package qtls
++
++import (
++	"context"
++	"crypto/ecdsa"
++	"crypto/elliptic"
++	"crypto/rand"
++	"crypto/tls"
++	"crypto/x509"
++	"errors"
++	"math/big"
++	"net"
++	"sync"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"github.com/sagernet/quic-go"
++)
++
++func TestParentAdmissionCloseBarrier(t *testing.T) {
++	ctx, cancel := context.WithCancel(t.Context())
++	defer cancel()
++	gate := &parentAdmission{ctx: ctx, cancel: cancel, connCtx: context.Background(), quiescent: make(chan struct{})}
++	ctx = context.WithValue(ctx, parentAdmissionKey{}, gate)
++	entered, release, done := make(chan struct{}), make(chan struct{}), make(chan bool, 1)
++	go func() { done <- ParentAdmission(ctx, func() { close(entered); <-release }) }()
++	<-entered
++	quiescent := gate.retire()
++	select {
++	case <-quiescent:
++		t.Fatal("in-progress admission was not drained")
++	default:
++	}
++	if ParentAdmission(ctx, func() { t.Error("late rejected admission reached accounting") }) {
++		t.Fatal("closing parent admitted")
++	}
++	close(release)
++	if !<-done {
++		t.Fatal("accepted admission changed retroactively")
++	}
++	select {
++	case <-quiescent:
++	case <-time.After(time.Second):
++		t.Fatal("admission drain leaked")
++	}
++	if ctx.Err() == nil {
++		t.Fatal("closed parent context survived")
++	}
++}
++
++type idleParentListener struct {
++	closes     atomic.Int32
++	accepted   chan struct{}
++	acceptOnce sync.Once
++}
++
++func (l *idleParentListener) Accept(ctx context.Context) (*quic.Conn, error) {
++	if l.closes.Load() != 0 {
++		return nil, quic.ErrServerClosed
++	}
++	l.acceptOnce.Do(func() { close(l.accepted) })
++	<-ctx.Done()
++	return nil, ctx.Err()
++}
++func (l *idleParentListener) Close() error   { l.closes.Add(1); return nil }
++func (l *idleParentListener) Addr() net.Addr { return &net.UDPAddr{} }
++
++func TestParentOwnerPartialStartupAndCloseOnce(t *testing.T) {
++	var hook *ParentOwner[int]
++	owner := NewParentOwner[int](WithParentControl(t.Context(), func(value *ParentOwner[int]) { hook = value }))
++	if owner != hook {
++		t.Fatal("constructor hook changed lifecycle owner")
++	}
++	listener := &idleParentListener{accepted: make(chan struct{})}
++	if err := owner.Start(listener, func(context.Context, *quic.Conn) { t.Error("unexpected parent") }, func(error) {}); err != nil {
++		t.Fatal(err)
++	}
++	<-listener.accepted
++	var closers sync.WaitGroup
++	for range 16 {
++		closers.Add(1)
++		go func() {
++			defer closers.Done()
++			if err := owner.Close(); err != nil {
++				t.Error(err)
++			}
++		}()
++	}
++	closers.Wait()
++	if listener.closes.Load() != 1 {
++		t.Fatal("listener was not closed exactly once")
++	}
++	late := &idleParentListener{accepted: make(chan struct{})}
++	if err := owner.Start(late, nil, nil); !errors.Is(err, ErrParentUnavailable) || late.closes.Load() != 1 {
++		t.Fatal("late startup cleanup missing")
++	}
++	cold := NewParentOwner[int](t.Context())
++	if err := cold.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if err := cold.Close(); err != nil {
++		t.Fatal(err)
++	}
++}
++
++type orderedParentListener struct {
++	Listener
++	owner    *ParentOwner[int]
++	closes   atomic.Int32
++	violated atomic.Bool
++}
++
++func (l *orderedParentListener) Close() error {
++	l.owner.mu.Lock()
++	for conn := range l.owner.parents {
++		if conn.Context().Err() == nil {
++			l.violated.Store(true)
++		}
++	}
++	l.owner.mu.Unlock()
++	l.closes.Add(1)
++	return l.Listener.Close()
++}
++
++func parentTestListener(t *testing.T) (*quic.Listener, *tls.Config) {
++	t.Helper()
++	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
++	if err != nil {
++		t.Fatal(err)
++	}
++	template := &x509.Certificate{SerialNumber: big.NewInt(1), DNSNames: []string{"parent-fixture.invalid"}, NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
++	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
++	if err != nil {
++		t.Fatal(err)
++	}
++	cert, err := x509.ParseCertificate(der)
++	if err != nil {
++		t.Fatal(err)
++	}
++	pool := x509.NewCertPool()
++	pool.AddCert(cert)
++	server, err := quic.ListenAddr("127.0.0.1:0", &tls.Config{Certificates: []tls.Certificate{{Certificate: [][]byte{der}, PrivateKey: key}}, NextProtos: []string{"parent-fixture"}, MinVersion: tls.VersionTLS13}, &quic.Config{})
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = server.Close() })
++	return server, &tls.Config{RootCAs: pool, ServerName: "parent-fixture.invalid", NextProtos: []string{"parent-fixture"}, MinVersion: tls.VersionTLS13}
++}
++
++func TestParentOwnerLiveDrainAndBoundedRegistry(t *testing.T) {
++	server, clientTLS := parentTestListener(t)
++	owner := NewParentOwner[int](t.Context())
++	listener := &orderedParentListener{Listener: server, owner: owner}
++	authenticated := make(chan *quic.Conn, 24)
++	if err := owner.Start(listener, func(_ context.Context, conn *quic.Conn) {
++		if owner.Authenticate(conn, 1) {
++			authenticated <- conn
++		}
++	}, func(error) {}); err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = owner.Close() })
++	clients := make([]*quic.Conn, 0, 24)
++	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
++	defer cancel()
++	for range 24 {
++		conn, err := quic.DialAddr(ctx, server.Addr().String(), clientTLS, &quic.Config{})
++		if err != nil {
++			t.Fatal(err)
++		}
++		clients = append(clients, conn)
++		t.Cleanup(func() { _ = conn.CloseWithError(0, "") })
++		select {
++		case <-authenticated:
++		case <-ctx.Done():
++			t.Fatal("authentication barrier timed out")
++		}
++	}
++	snapshot, total := owner.Snapshot(2)
++	if total != 24 || len(snapshot) != 2 {
++		t.Fatal("snapshot bound incorrect")
++	}
++	if err := owner.CloseParent(ctx, snapshot[0].ID, 2); !errors.Is(err, ErrParentUnavailable) {
++		t.Fatal("foreign principal close accepted")
++	}
++	if err := owner.Close(); err != nil {
++		t.Fatal(err)
++	}
++	if listener.violated.Load() || listener.closes.Load() != 1 {
++		t.Fatal("listener destroyed before parent close emission")
++	}
++	for _, conn := range clients {
++		select {
++		case <-conn.Context().Done():
++			var app *quic.ApplicationError
++			if !errors.As(context.Cause(conn.Context()), &app) || !app.Remote {
++				t.Fatal("no remote CONNECTION_CLOSE")
++			}
++		case <-ctx.Done():
++			t.Fatal("parent close timed out")
++		}
++	}
++	owner.mu.Lock()
++	retained := len(owner.parents)
++	owner.mu.Unlock()
++	if retained != 0 {
++		t.Fatal("completed parents retained in registry")
++	}
++	if err := owner.Close(); err != nil || listener.closes.Load() != 1 {
++		t.Fatal("repeated close changed ownership")
++	}
++}
++
++// Model the public Accept contract deterministically: one completed handle wins
++// the cancellation race; the finite remaining queue is returned after Close.
++type queuedParentListener struct {
++	Listener
++	parents []*quic.Conn
++	entered chan struct{}
++	index   int
++	closed  atomic.Bool
++	closes  atomic.Int32
++}
++
++func (l *queuedParentListener) Accept(ctx context.Context) (*quic.Conn, error) {
++	if l.index == 0 {
++		close(l.entered)
++		<-ctx.Done()
++	} else if !l.closed.Load() {
++		return nil, errors.New("queue drained before acceptor stopped")
++	}
++	if l.index == len(l.parents) {
++		return nil, quic.ErrServerClosed
++	}
++	conn := l.parents[l.index]
++	l.index++
++	return conn, nil
++}
++
++func (l *queuedParentListener) Close() error {
++	l.closes.Add(1)
++	err := l.Listener.Close()
++	l.closed.Store(true)
++	return err
++}
++
++func TestParentOwnerLateAcceptAndCompletedQueue(t *testing.T) {
++	server, clientTLS := parentTestListener(t)
++	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
++	defer cancel()
++	listener := &queuedParentListener{Listener: server, entered: make(chan struct{})}
++	var clients []*quic.Conn
++	for range 3 {
++		client, err := quic.DialAddr(ctx, server.Addr().String(), clientTLS, &quic.Config{})
++		if err != nil {
++			t.Fatal(err)
++		}
++		clients = append(clients, client)
++		t.Cleanup(func() { _ = client.CloseWithError(0, "") })
++		parent, err := server.Accept(ctx)
++		if err != nil {
++			t.Fatal(err)
++		}
++		listener.parents = append(listener.parents, parent)
++	}
++	owner := NewParentOwner[int](t.Context())
++	if err := owner.Start(listener, func(context.Context, *quic.Conn) { t.Error("closing parent reached protocol admission") }, func(error) {}); err != nil {
++		t.Fatal(err)
++	}
++	<-listener.entered
++	if err := owner.Close(); err != nil {
++		t.Fatal(err)
++	}
++	for _, client := range clients {
++		select {
++		case <-client.Context().Done():
++			var app *quic.ApplicationError
++			if !errors.As(context.Cause(client.Context()), &app) || !app.Remote {
++				t.Fatal("queued parent did not observe remote close")
++			}
++		case <-ctx.Done():
++			t.Fatal("queued parent close timed out")
++		}
++	}
++	owner.mu.Lock()
++	retained := len(owner.parents)
++	owner.mu.Unlock()
++	if listener.closes.Load() != 1 || listener.index != 3 || retained != 0 {
++		t.Fatal("late queue cleanup was incomplete")
++	}
++}
++
++type blockedCloseListener struct {
++	idleParentListener
++	entered chan struct{}
++	release chan struct{}
++}
++
++func (l *blockedCloseListener) Close() error { close(l.entered); <-l.release; return nil }
++
++func TestListenerCloseDeadline(t *testing.T) {
++	listener := &blockedCloseListener{entered: make(chan struct{}), release: make(chan struct{})}
++	ctx, cancel := context.WithTimeout(t.Context(), 20*time.Millisecond)
++	defer cancel()
++	defer close(listener.release)
++	if err := closeListener(ctx, listener); !errors.Is(err, context.DeadlineExceeded) {
++		t.Fatal("listener wait was unbounded", err)
++	}
++	select {
++	case <-listener.entered:
++	default:
++		t.Fatal("bounded waiter abandoned cleanup")
++	}
++}
+diff --git a/tuic/early_data.go b/tuic/early_data.go
+new file mode 100644
+index 0000000..70b1a70
+--- /dev/null
++++ b/tuic/early_data.go
+@@ -0,0 +1,39 @@
++package tuic
++
++import (
++	"net"
++	"sync"
++)
++
++// The request parser may also read a small initial payload. Keep its lifetime
++// local to this stream: concurrent Close must not release the reader's buffer.
++// Underlying network reads never hold mu, so Close can unblock them normally.
++type earlyDataConn struct {
++	net.Conn
++	mu        sync.Mutex
++	initial   []byte
++	closeOnce sync.Once
++	closeErr  error
++}
++
++func (c *earlyDataConn) Read(p []byte) (int, error) {
++	c.mu.Lock()
++	if len(c.initial) != 0 {
++		n := copy(p, c.initial)
++		c.initial = c.initial[n:]
++		c.mu.Unlock()
++		return n, nil
++	}
++	c.mu.Unlock()
++	return c.Conn.Read(p)
++}
++
++func (c *earlyDataConn) Close() error {
++	c.closeOnce.Do(func() {
++		c.closeErr = c.Conn.Close()
++		c.mu.Lock()
++		c.initial = nil
++		c.mu.Unlock()
++	})
++	return c.closeErr
++}
+diff --git a/tuic/early_data_test.go b/tuic/early_data_test.go
+new file mode 100644
+index 0000000..8664b74
+--- /dev/null
++++ b/tuic/early_data_test.go
+@@ -0,0 +1,73 @@
++package tuic
++
++import (
++	"bytes"
++	"io"
++	"net"
++	"sync"
++	"sync/atomic"
++	"testing"
++	"time"
++)
++
++type observedEarlyConn struct {
++	net.Conn
++	readEntered chan struct{}
++	readOnce    sync.Once
++	closes      atomic.Int32
++}
++
++func (c *observedEarlyConn) Read(p []byte) (int, error) {
++	c.readOnce.Do(func() { close(c.readEntered) })
++	return c.Conn.Read(p)
++}
++func (c *observedEarlyConn) Close() error {
++	c.closes.Add(1)
++	return c.Conn.Close()
++}
++
++func TestEarlyDataOrderAndConcurrentClose(t *testing.T) {
++	local, remote := net.Pipe()
++	t.Cleanup(func() { _ = remote.Close() })
++	underlying := &observedEarlyConn{Conn: local, readEntered: make(chan struct{})}
++	conn := &earlyDataConn{Conn: underlying, initial: []byte("initial")}
++	initial := make([]byte, 7)
++	if _, err := io.ReadFull(conn, initial); err != nil || !bytes.Equal(initial, []byte("initial")) {
++		t.Fatal("initial request payload changed", err)
++	}
++	readDone := make(chan error, 1)
++	go func() { _, err := conn.Read(make([]byte, 1)); readDone <- err }()
++	<-underlying.readEntered
++	var closers sync.WaitGroup
++	for range 16 {
++		closers.Add(1)
++		go func() { defer closers.Done(); _ = conn.Close() }()
++	}
++	closers.Wait()
++	select {
++	case err := <-readDone:
++		if err == nil {
++			t.Fatal("close did not interrupt underlying read")
++		}
++	case <-time.After(time.Second):
++		t.Fatal("close blocked behind network read")
++	}
++	if underlying.closes.Load() != 1 || conn.initial != nil {
++		t.Fatal("stream cleanup was not exactly once")
++	}
++}
++
++func TestEarlyDataReadCloseRace(t *testing.T) {
++	for range 100 {
++		local, remote := net.Pipe()
++		conn := &earlyDataConn{Conn: local, initial: []byte("initial")}
++		barrier := make(chan struct{})
++		var workers sync.WaitGroup
++		workers.Add(2)
++		go func() { defer workers.Done(); <-barrier; _, _ = conn.Read(make([]byte, 7)) }()
++		go func() { defer workers.Done(); <-barrier; _ = conn.Close() }()
++		close(barrier)
++		workers.Wait()
++		_ = remote.Close()
++	}
++}
+diff --git a/tuic/service.go b/tuic/service.go
+index a4d0741..26c8563 100644
+--- a/tuic/service.go
++++ b/tuic/service.go
+@@ -13,10 +13,8 @@ import (
+ 
+ 	"github.com/sagernet/quic-go"
+ 	qtls "github.com/sagernet/sing-quic"
+-	"github.com/sagernet/sing/common"
+ 	"github.com/sagernet/sing/common/auth"
+ 	"github.com/sagernet/sing/common/buf"
+-	"github.com/sagernet/sing/common/bufio"
+ 	E "github.com/sagernet/sing/common/exceptions"
+ 	"github.com/sagernet/sing/common/logger"
+ 	M "github.com/sagernet/sing/common/metadata"
+@@ -57,7 +55,7 @@ type Service[U comparable] struct {
+ 	udpTimeout        time.Duration
+ 	handler           ServiceHandler
+ 
+-	quicListener io.Closer
++	parents *qtls.ParentOwner[U]
+ }
+ 
+ func NewService[U comparable](options ServiceOptions) (*Service[U], error) {
+@@ -94,6 +92,7 @@ func NewService[U comparable](options ServiceOptions) (*Service[U], error) {
+ 		authTimeout:       options.AuthTimeout,
+ 		udpTimeout:        options.UDPTimeout,
+ 		handler:           options.Handler,
++		parents:           qtls.NewParentOwner[U](options.Context),
+ 	}, nil
+ }
+ 
+@@ -109,61 +108,36 @@ func (s *Service[U]) UpdateUsers(userList []U, uuidList [][16]byte, passwordList
+ }
+ 
+ func (s *Service[U]) Start(conn net.PacketConn) error {
++	var listener qtls.Listener
++	var err error
+ 	if !s.quicConfig.Allow0RTT {
+-		listener, err := qtls.Listen(conn, s.tlsConfig, s.quicConfig)
+-		if err != nil {
+-			return err
+-		}
+-		s.quicListener = listener
+-		go func() {
+-			for {
+-				connection, hErr := listener.Accept(s.ctx)
+-				if hErr != nil {
+-					if E.IsClosedOrCanceled(hErr) || errors.Is(hErr, quic.ErrServerClosed) {
+-						s.logger.Debug(E.Cause(hErr, "listener closed"))
+-					} else {
+-						s.logger.Error(E.Cause(hErr, "listener closed"))
+-					}
+-					return
+-				}
+-				go s.handleConnection(connection)
+-			}
+-		}()
++		listener, err = qtls.Listen(conn, s.tlsConfig, s.quicConfig)
+ 	} else {
+-		listener, err := qtls.ListenEarly(conn, s.tlsConfig, s.quicConfig)
+-		if err != nil {
+-			return err
+-		}
+-		s.quicListener = listener
+-		go func() {
+-			for {
+-				connection, hErr := listener.Accept(s.ctx)
+-				if hErr != nil {
+-					if E.IsClosedOrCanceled(hErr) || errors.Is(hErr, quic.ErrServerClosed) {
+-						s.logger.Debug(E.Cause(hErr, "listener closed"))
+-					} else {
+-						s.logger.Error(E.Cause(hErr, "listener closed"))
+-					}
+-					return
+-				}
+-				go s.handleConnection(connection)
+-			}
+-		}()
++		listener, err = qtls.ListenEarly(conn, s.tlsConfig, s.quicConfig)
+ 	}
+-	return nil
++	if err != nil {
++		return err
++	}
++	return s.parents.Start(listener, s.handleConnection, s.listenerError)
+ }
+ 
+ func (s *Service[U]) Close() error {
+-	return common.Close(
+-		s.quicListener,
+-	)
++	return s.parents.Close()
+ }
+ 
+-func (s *Service[U]) handleConnection(connection *quic.Conn) {
++func (s *Service[U]) listenerError(err error) {
++	if E.IsClosedOrCanceled(err) || errors.Is(err, quic.ErrServerClosed) {
++		s.logger.Debug(E.Cause(err, "listener closed"))
++	} else {
++		s.logger.Error(E.Cause(err, "listener closed"))
++	}
++}
++
++func (s *Service[U]) handleConnection(ctx context.Context, connection *quic.Conn) {
+ 	setCongestion(s.ctx, connection, s.congestionControl)
+ 	session := &serverSession[U]{
+ 		Service:    s,
+-		ctx:        s.ctx,
++		ctx:        ctx,
+ 		quicConn:   connection,
+ 		connDone:   make(chan struct{}),
+ 		authDone:   make(chan struct{}),
+@@ -180,6 +154,7 @@ type serverSession[U comparable] struct {
+ 	connDone   chan struct{}
+ 	connErr    error
+ 	authDone   chan struct{}
++	authAccess sync.Mutex
+ 	authUser   U
+ 	udpAccess  sync.RWMutex
+ 	udpConnMap map[uint16]*udpPacketConn
+@@ -209,7 +184,7 @@ func (s *serverSession[U]) loopUniStreams() {
+ 			return
+ 		}
+ 		go func() {
+-			err = s.handleUniStream(uniStream)
++			err := s.handleUniStream(uniStream)
+ 			if err != nil {
+ 				s.closeWithError(E.Cause(err, "handle uni stream"))
+ 			}
+@@ -232,6 +207,8 @@ func (s *serverSession[U]) handleUniStream(stream *quic.ReceiveStream) error {
+ 	command := buffer.Byte(1)
+ 	switch command {
+ 	case CommandAuthenticate:
++		s.authAccess.Lock()
++		defer s.authAccess.Unlock()
+ 		select {
+ 		case <-s.authDone:
+ 			return E.New("authentication: multiple authentication requests")
+@@ -257,6 +234,9 @@ func (s *serverSession[U]) handleUniStream(stream *quic.ReceiveStream) error {
+ 		if !bytes.Equal(tuicToken, buffer.Range(2+16, 2+16+32)) {
+ 			return E.New("authentication: token mismatch")
+ 		}
++		if !s.parents.Authenticate(s.quicConn, user) {
++			return E.New("parent retired during authentication")
++		}
+ 		s.authUser = user
+ 		close(s.authDone)
+ 		return nil
+@@ -319,7 +299,7 @@ func (s *serverSession[U]) loopStreams() {
+ 			return
+ 		}
+ 		go func() {
+-			err = s.handleStream(stream)
++			err := s.handleStream(stream)
+ 			if err != nil {
+ 				stream.CancelRead(0)
+ 				stream.Close()
+@@ -358,7 +338,7 @@ func (s *serverSession[U]) handleStream(stream *quic.Stream) error {
+ 		destination: destination,
+ 	}
+ 	if !buffer.IsEmpty() {
+-		conn = bufio.NewCachedConn(conn, buffer.ToOwned())
++		conn = &earlyDataConn{Conn: conn, initial: append([]byte(nil), buffer.Bytes()...)}
+ 	}
+ 	s.handler.NewConnectionEx(auth.ContextWithUser(s.ctx, s.authUser), conn, M.SocksaddrFromNet(s.quicConn.RemoteAddr()).Unwrap(), destination, nil)
+ 	return nil

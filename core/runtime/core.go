@@ -17,7 +17,7 @@ import (
 
 type Core struct {
 	lifecycle         sync.RWMutex
-	mutation          sync.Mutex
+	mutation          sync.RWMutex
 	access            sync.RWMutex
 	ctx               context.Context
 	parentContext     context.Context

@@ -1,11 +1,11 @@
 import { computed, onScopeDispose, ref, watch, type Ref } from 'vue'
 import api from '@/plugins/api'
 import HttpUtils, { type Msg } from '@/plugins/httputil'
-import { sessionState, type DisconnectResult, type SessionView } from './runtimeSessions'
+import { sessionState, type DisconnectResult, type QUICParentTarget, type SessionView } from './runtimeSessions'
 
 interface SessionDeps {
   load: (clientId: number, signal: AbortSignal) => Promise<SessionView>
-  close: (generation: string, clientId: number, flowId: string | undefined, signal: AbortSignal) => Promise<DisconnectResult>
+  close: (generation: string, clientId: number, flowId: string | undefined, signal: AbortSignal, parents?: QUICParentTarget[]) => Promise<DisconnectResult>
 }
 const defaults: SessionDeps = {
   async load(clientId, signal) {
@@ -13,8 +13,8 @@ const defaults: SessionDeps = {
     if (!response.success || !response.obj) throw new Error(response.msg === 'Invalid login' ? 'unauthorized' : 'unavailable')
     return response.obj as SessionView
   },
-  async close(generation, clientId, flowId, signal) {
-    const response = await api.post<Msg>('api/runtime/disconnect', { generation, clientId, flowId }, {
+  async close(generation, clientId, flowId, signal, parents) {
+    const response = await api.post<Msg>('api/runtime/disconnect', { generation, clientId, flowId, parents }, {
       signal, timeout: 7000, headers: { 'Content-Type': 'application/json' },
     })
     if (!response.data.obj) throw new Error('unavailable')
@@ -32,7 +32,14 @@ export function useLiveSessions(visible: Ref<boolean>, clientId: Ref<number>, re
   const pageVisible = ref(typeof document === 'undefined' || document.visibilityState !== 'hidden')
   const enabled = computed(() => visible.value && pageVisible.value)
   const state = computed(() => view.value ? sessionState(view.value, now.value) : phase.value)
-  const canClose = computed(() => !busy.value && state.value === 'active' && Boolean(view.value?.capabilities.flowClose))
+  const canClose = computed(() => !busy.value && state.value === 'active' && Boolean(view.value?.capabilities.flowClose) && Boolean(view.value?.snapshot?.connections.length))
+  const canCloseParents = computed(() => {
+    const snapshot = view.value?.snapshot
+    const parents = snapshot?.parents ?? []
+    return !busy.value && state.value === 'active' && Boolean(view.value?.capabilities.parentClose)
+      && !snapshot?.parentsTruncated && parents.length > 0 && parents.length <= 128
+      && parents.every(parent => parent.clientId === clientId.value && parent.parentControl === 'authenticated_quic')
+  })
   let epoch = 0
   let request: AbortController | null = null
   let timer: ReturnType<typeof setInterval> | null = null
@@ -69,15 +76,17 @@ export function useLiveSessions(visible: Ref<boolean>, clientId: Ref<number>, re
       if (current === epoch) { busy.value = false; request = null }
     }
   }
-  const disconnect = async (flowId?: string) => {
-    if (!canClose.value || !view.value?.snapshot) return
+  const performDisconnect = async (flowId?: string, parents?: QUICParentTarget[]) => {
+    if (!(parents ? canCloseParents.value : canClose.value) || !view.value?.snapshot) return
     const current = ++epoch
     const generation = view.value.snapshot.generation
     const controller = new AbortController()
     request = controller
     busy.value = true
     try {
-      const result = await deps.close(generation, clientId.value, flowId, controller.signal)
+      const result = parents
+        ? await deps.close(generation, clientId.value, undefined, controller.signal, parents)
+        : await deps.close(generation, clientId.value, flowId, controller.signal)
       if (current !== epoch || !enabled.value || generation !== view.value?.snapshot?.generation) return
       outcome.value = result
     } catch (error) {
@@ -91,6 +100,12 @@ export function useLiveSessions(visible: Ref<boolean>, clientId: Ref<number>, re
         await refresh()
       }
     }
+  }
+  const disconnect = (flowId?: string) => performDisconnect(flowId)
+  const disconnectParents = () => {
+    const parents = view.value?.snapshot?.parents?.map(({ parentId, inbound, epoch }) => ({ parentId, inbound, epoch }))
+    if (!parents?.length) return
+    return performDisconnect(undefined, parents)
   }
   const restartView = () => {
     retire()
@@ -109,5 +124,5 @@ export function useLiveSessions(visible: Ref<boolean>, clientId: Ref<number>, re
     retire(); stopTimer()
     if (typeof document !== 'undefined') document.removeEventListener('visibilitychange', visibilityChanged)
   })
-  return { view, state, busy, outcome, canClose, refresh, disconnect }
+  return { view, state, busy, outcome, canClose, canCloseParents, refresh, disconnect, disconnectParents }
 }

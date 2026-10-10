@@ -1,8 +1,11 @@
 package api
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -44,6 +47,10 @@ func runtimeReason(err error) string {
 	switch {
 	case errors.Is(err, coreruntime.ErrStaleGeneration):
 		return "stale_generation"
+	case errors.Is(err, coreruntime.ErrStaleInboundEpoch):
+		return "stale_inbound_epoch"
+	case errors.Is(err, coreruntime.ErrQUICParentIdentity):
+		return "parent_identity_unavailable"
 	case errors.Is(err, coreruntime.ErrCoreUnavailable):
 		return "core_unavailable"
 	case errors.Is(err, coreruntime.ErrRuntimeLimit):
@@ -72,13 +79,14 @@ func runtimeWriteAllowed(c *gin.Context) bool {
 func (a *ApiService) runtimeView(c *gin.Context) runtimeSessionsView {
 	view := runtimeSessionsView{
 		Status:       a.runtimeCore().RuntimeStatus(c.Request.Context()),
-		Capabilities: runtimeCapabilities{Compiled: registry.PrivateRuntimeAPICompiled(), FlowClose: runtimeWriteAllowed(c)},
+		Capabilities: runtimeCapabilities{Compiled: registry.PrivateRuntimeAPICompiled(), FlowClose: runtimeWriteAllowed(c), ParentClose: runtimeWriteAllowed(c) && registry.PrivateRuntimeAPICompiled() && registry.QUICParentControlCompiled()},
 	}
 	held, err := a.SettingService.CoreMaintenance()
 	view.Maintenance, view.MaintenanceAvailable = held, err == nil
 	if err != nil {
 		view.Reason = "maintenance_unavailable"
 		view.Capabilities.FlowClose = false
+		view.Capabilities.ParentClose = false
 	}
 	return view
 }
@@ -131,13 +139,18 @@ func (a *ApiService) disconnectRuntimeSessions(c *gin.Context) {
 		return
 	}
 	var request coreruntime.DisconnectRequest
-	decoded := decodeRuntimeRequest(c, &request)
+	decoded := decodeRuntimeDisconnect(c, &request)
 	_, generationErr := uuid.FromString(request.Generation)
 	var flowErr error
 	if request.FlowID != "" {
 		_, flowErr = uuid.FromString(request.FlowID)
 	}
-	if !decoded || generationErr != nil || flowErr != nil || request.FlowID == "" && request.ClientID == 0 {
+	parentsValid := len(request.Parents) <= 128 && (len(request.Parents) == 0 || request.FlowID == "" && request.ClientID != 0)
+	for _, parent := range request.Parents {
+		id, err := strconv.ParseUint(parent.ParentID, 10, 64)
+		parentsValid = parentsValid && err == nil && id != 0 && strconv.FormatUint(id, 10) == parent.ParentID && validRuntimeTag(parent.Inbound) && validRuntimeGeneration(parent.Epoch)
+	}
+	if !decoded || generationErr != nil || flowErr != nil || !parentsValid || request.FlowID == "" && request.ClientID == 0 {
 		c.JSON(http.StatusBadRequest, Msg{Msg: "invalid_runtime_request"})
 		return
 	}
@@ -155,11 +168,30 @@ func (a *ApiService) disconnectRuntimeSessions(c *gin.Context) {
 		if errors.Is(err, coreruntime.ErrStaleGeneration) {
 			result.Outcome = "STALE_GENERATION"
 		}
+		if errors.Is(err, coreruntime.ErrStaleInboundEpoch) {
+			result.Outcome = "STALE_INBOUND_EPOCH"
+		}
 	}
 	a.recordAuditSynchronous(c, requestActor(c), "runtime_disconnect", "runtime", service.AuditSeverityInfo, map[string]any{
 		"generation": request.Generation, "client_id": request.ClientID, "flow_id": request.FlowID,
 		"outcome": result.Outcome, "matched": result.Matched, "closed": result.Closed,
-		"remaining": result.Remaining, "parent_closed": false, "reason": result.Reason,
+		"remaining": result.Remaining, "parent_closed": result.ParentClosed, "parents_matched": result.ParentsMatched,
+		"parents_closed": result.ParentsClosed, "parents_remaining": result.ParentsRemaining, "reason": result.Reason,
 	})
 	c.JSON(http.StatusOK, Msg{Success: err == nil, Obj: result})
+}
+
+// Up to 128 explicit parent targets need a bounded larger envelope. Preserve
+// the established 2 KiB limit for every flow-only request and strict decoding.
+func decodeRuntimeDisconnect(c *gin.Context, target *coreruntime.DisconnectRequest) bool {
+	body, err := io.ReadAll(http.MaxBytesReader(c.Writer, c.Request.Body, 64*1024))
+	if err != nil {
+		return false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.DisallowUnknownFields()
+	if decoder.Decode(target) != nil || decoder.Decode(new(any)) != io.EOF {
+		return false
+	}
+	return len(target.Parents) != 0 || len(body) <= 2048
 }

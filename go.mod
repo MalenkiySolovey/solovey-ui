@@ -159,7 +159,7 @@ require (
 	github.com/sagernet/nftables v0.3.0-mod.4 // indirect
 	github.com/sagernet/quic-go v0.61.0-sing-box-mod.7 // indirect
 	github.com/sagernet/sing-mux v0.3.8 // indirect
-	github.com/sagernet/sing-quic v0.7.1-0.20260924092235-6a3a24d65b99 // indirect
+	github.com/sagernet/sing-quic v0.7.1-0.20260924092235-6a3a24d65b99
 	github.com/sagernet/sing-shadowsocks v0.2.8 // indirect
 	github.com/sagernet/sing-shadowsocks2 v0.2.1
 	github.com/sagernet/sing-shadowtls v0.2.1 // indirect
@@ -208,3 +208,5 @@ require (
 )
 
 replace github.com/quic-go/quic-go => github.com/quic-go/quic-go v0.59.1
+
+replace github.com/sagernet/sing-quic => github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762
