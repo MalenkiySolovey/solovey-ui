@@ -66,7 +66,13 @@ func TestRuntimeLogsProductionMiddlewarePreservesTransportDeadlines(t *testing.T
 				}
 				t.Cleanup(server.Close)
 				if namespace == "api" {
-					loginRuntimeTransportFixture(t, server.Client(), server.URL, password)
+					// Authenticate through the same real router on a separate
+					// listener. The deliberately short streaming write deadline
+					// must not also become a password-KDF performance assertion.
+					authServer := httptest.NewServer(router)
+					t.Cleanup(authServer.Close)
+					loginRuntimeTransportFixture(t, authServer.Client(), authServer.URL, password)
+					server.Client().Jar = authServer.Client().Jar
 				}
 				ctx, cancel := context.WithTimeout(t.Context(), 8*time.Second)
 				defer cancel()
@@ -134,7 +140,7 @@ func loginRuntimeTransportFixture(t *testing.T, client *http.Client, endpoint, p
 		t.Fatal(err)
 	}
 	client.Jar = jar
-	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 60*time.Second)
 	defer cancel()
 	csrfRequest, _ := http.NewRequestWithContext(ctx, http.MethodGet, endpoint+"/qualification+v1/api/csrf", nil)
 	csrfResponse, err := client.Do(csrfRequest)
