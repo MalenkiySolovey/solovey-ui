@@ -12,6 +12,7 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"encoding/binary"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/pem"
 	"errors"
@@ -28,6 +29,7 @@ import (
 	"time"
 
 	cr "github.com/MalenkiySolovey/solovey-ui/core/runtime"
+	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -104,13 +106,18 @@ func seed(in fixtureInput) (fixtureOutput, error) {
 		return out, errors.New("SEED_DATABASE_INIT_FAILED")
 	}
 	defer dbsqlite.Close()
+	// Mirror APP.Init's fresh bootstrap gate before persisting current-format
+	// settings. sqlite.Init alone intentionally does not publish schema journals.
+	if err := migration.EnsureCurrentSchemaJournal(dbsqlite.DB(), true); err != nil {
+		return out, errors.New("SEED_FRESH_SCHEMA_JOURNAL_FAILED")
+	}
 	settings := &service.SettingService{}
 	if _, err := settings.GetAllSetting(); err != nil {
 		return out, errors.New("SEED_SETTINGS_FAILED")
 	}
 	values := map[string]string{"webListen": in.Listen, "webPort": strconv.Itoa(in.WebPort), "webPath": "/app/",
 		"subListen": in.Listen, "subPort": strconv.Itoa(in.SubPort), "timeLocation": "UTC",
-		"config": `{"log":{"disabled":true},"dns":{"servers":[{"type":"local","tag":"local"}]},"ntp":{"enabled":false},"route":{},"experimental":{}}`}
+		"config": `{"log":{"disabled":true},"dns":{"servers":[{"type":"local","tag":"local"}]},"ntp":{"enabled":false},"route":{"final":"direct"},"experimental":{}}`}
 	for key, value := range values {
 		row := model.Setting{Key: key, Value: value}
 		if err := dbsqlite.DB().Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "key"}}, DoUpdates: clause.AssignmentColumns([]string{"value"})}).Create(&row).Error; err != nil {
@@ -153,7 +160,7 @@ func seed(in fixtureInput) (fixtureOutput, error) {
 	if in.IncludeNaive {
 		options, _ := json.Marshal(map[string]any{"server": "127.0.0.1", "server_port": in.WebPort,
 			"username": "w5-native-engine", "password": in.Passwords[0], "tls": map[string]any{"enabled": true, "server_name": "w5-fixture.invalid", "certificate": []string{public}}})
-		if err := dbsqlite.DB().Create(&model.Outbound{Type: "naive", Tag: "w5-native-engine", Options: options}).Error; err != nil {
+		if err := dbsqlite.DB().Create(&model.Outbound{SortOrder: 2, Type: "naive", Tag: "w5-native-engine", Options: options}).Error; err != nil {
 			return out, errors.New("SEED_NAIVE_ENGINE_FAILED")
 		}
 	}
@@ -195,7 +202,11 @@ func seed(in fixtureInput) (fixtureOutput, error) {
 			"hysteria2": map[string]any{"name": name, "password": password},
 			"tuic":      map[string]any{"name": name, "uuid": fmt.Sprintf("00000000-0000-4000-8000-%012d", id), "password": password},
 		})
-		row := model.Client{Id: id, Name: name, Enable: true, Config: config, Inbounds: membership, IPLimitMode: "monitor"}
+		subscriptionSecret := make([]byte, 32)
+		if _, err := rand.Read(subscriptionSecret); err != nil {
+			return out, errors.New("SEED_SUBSCRIPTION_IDENTITY_FAILED")
+		}
+		row := model.Client{Id: id, Name: name, SubSecret: hex.EncodeToString(subscriptionSecret), Enable: true, Config: config, Inbounds: membership, IPLimitMode: "monitor"}
 		if err := dbsqlite.DB().Create(&row).Error; err != nil {
 			return out, errors.New("SEED_CLIENT_FAILED")
 		}
@@ -324,7 +335,11 @@ func (p *packageProbe) dial(kind string, user int) (*peer, error) {
 	} else {
 		conn, err := quic.DialAddr(ctx, address, tlsConfig, &quic.Config{EnableDatagrams: true})
 		if err != nil {
-			return nil, errors.New("QUIC_TLS_DIAL_FAILED")
+			var transportError *quic.TransportError
+			if errors.As(err, &transportError) {
+				return nil, fmt.Errorf("QUIC_TLS_DIAL_TRANSPORT_%d", transportError.ErrorCode)
+			}
+			return nil, fmt.Errorf("QUIC_TLS_DIAL_TYPE_%s", strings.ReplaceAll(fmt.Sprintf("%T", err), "*", ""))
 		}
 		result.conn = conn
 		if kind == "hysteria" {
@@ -384,9 +399,13 @@ func (p *peer) routedHTTP(port int) error {
 	defer stream.Close()
 	_ = stream.SetDeadline(time.Now().Add(4 * time.Second))
 	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+	// Like the official lazy proxy clients, publish the first application bytes
+	// with the request before waiting for the server's handshake response. This
+	// also permits the product's sniffing route to observe a complete HTTP prefix.
+	payload := []byte("GET /app/login HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
 	switch p.kind {
 	case "hysteria":
-		raw := hysteria.WriteClientRequest(hysteria.ClientRequest{Host: "127.0.0.1", Port: uint16(port)}, nil)
+		raw := hysteria.WriteClientRequest(hysteria.ClientRequest{Host: "127.0.0.1", Port: uint16(port)}, payload)
 		_, err = stream.Write(raw.Bytes())
 		raw.Release()
 		var reply *hysteria.ServerResponse
@@ -401,6 +420,7 @@ func (p *peer) routedHTTP(port int) error {
 		raw = quicvarint.Append(raw, uint64(len(address)))
 		raw = append(raw, address...)
 		raw = quicvarint.Append(raw, 0)
+		raw = append(raw, payload...)
 		if _, err := stream.Write(raw); err != nil {
 			return errors.New("H2_ROUTED_WRITE_FAILED")
 		}
@@ -420,15 +440,27 @@ func (p *peer) routedHTTP(port int) error {
 	case "tuic":
 		raw := []byte{tuic.Version, tuic.CommandConnect, 1, 127, 0, 0, 1, 0, 0}
 		binary.BigEndian.PutUint16(raw[7:], uint16(port))
+		raw = append(raw, payload...)
 		if _, err := stream.Write(raw); err != nil {
 			return errors.New("TUIC_ROUTED_WRITE_FAILED")
 		}
 	}
-	if _, err := io.WriteString(stream, "GET /app/login HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"); err != nil {
-		return errors.New("ROUTED_HTTP_WRITE_FAILED")
-	}
 	r, err := http.ReadResponse(bufio.NewReader(stream), nil)
 	if err != nil {
+		var streamError *quic.StreamError
+		if errors.As(err, &streamError) {
+			return fmt.Errorf("ROUTED_HTTP_STREAM_RESET_%d_REMOTE_%t", streamError.ErrorCode, streamError.Remote)
+		}
+		var networkError net.Error
+		if errors.As(err, &networkError) && networkError.Timeout() {
+			return errors.New("ROUTED_HTTP_RESPONSE_TIMEOUT")
+		}
+		if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+			return errors.New("ROUTED_HTTP_RESPONSE_EOF")
+		}
+		if strings.Contains(err.Error(), "malformed HTTP") {
+			return errors.New("ROUTED_HTTP_RESPONSE_MALFORMED")
+		}
 		return errors.New("ROUTED_HTTP_RESPONSE_FAILED")
 	}
 	defer r.Body.Close()

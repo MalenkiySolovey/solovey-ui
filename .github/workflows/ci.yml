@@ -3,24 +3,22 @@ name: Stage2 Wave5 package qualification
 # Goal-owned execution branch; main's CI remains unchanged.
 on:
   workflow_dispatch:
+    inputs:
+      qualify_docker:
+        type: boolean
+        default: false
+        description: Also build and exercise Docker ARM64
 
 permissions:
   contents: read
+  actions: read
 
 env:
   W5_PRODUCT_COMMIT: d14e14ab1ddcd126fc71a00197d249e45b42d05d
 
 jobs:
-  windows-build:
-    uses: ./.github/workflows/windows.yml
-    with:
-      source_commit: d14e14ab1ddcd126fc71a00197d249e45b42d05d
-      tag: v2026.3.3
-      preflight_only: true
-
   windows-runtime:
     name: Native packaged Windows ${{ matrix.arch }}
-    needs: windows-build
     strategy:
       fail-fast: false
       matrix:
@@ -32,11 +30,13 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.W5_PRODUCT_COMMIT }}
+          persist-credentials: false
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.sha }}
           path: fixture-driver
           sparse-checkout: .qualification
+          persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
@@ -47,6 +47,8 @@ jobs:
         with:
           name: solovey-ui-windows-${{ matrix.arch }}
           path: candidate-archive
+          run-id: 38031018222
+          github-token: ${{ github.token }}
       - name: Authenticate and extract produced package
         shell: powershell
         run: |
@@ -103,16 +105,19 @@ jobs:
 
   docker-runtime:
     name: Native packaged Docker arm64
+    if: inputs.qualify_docker
     runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ env.W5_PRODUCT_COMMIT }}
+          persist-credentials: false
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.sha }}
           path: fixture-driver
           sparse-checkout: .qualification
+          persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
         with:
           go-version-file: go.mod
@@ -152,8 +157,15 @@ jobs:
           node fixture-driver/.qualification/native-package-runtime.mjs \
             --image solovey-w5-candidate:arm64 --helper "$RUNNER_TEMP/native-fixture" \
             --output qualification-evidence/RUNTIME.json --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}'
-          docker save solovey-w5-candidate:arm64 | gzip -1 > qualification-evidence/docker-arm64-candidate.tar.gz
-          sha256sum qualification-evidence/docker-arm64-candidate.tar.gz > qualification-evidence/docker-arm64-candidate.tar.gz.sha256
+      - name: Preserve locally built candidate even when a runtime assertion fails
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p qualification-evidence
+          if docker image inspect solovey-w5-candidate:arm64 >/dev/null 2>&1; then
+            docker save solovey-w5-candidate:arm64 | gzip -1 > qualification-evidence/docker-arm64-candidate.tar.gz
+            sha256sum qualification-evidence/docker-arm64-candidate.tar.gz > qualification-evidence/docker-arm64-candidate.tar.gz.sha256
+          fi
       - name: Retain candidate image and sanitized evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7

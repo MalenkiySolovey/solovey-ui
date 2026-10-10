@@ -28,8 +28,9 @@ const environment = { ...Object.fromEntries(Object.entries(process.env).filter((
 const report = { test: 'packaged-native-runtime', timestamp: new Date().toISOString(), commit: flags.commit,
   environment: { platform: process.platform, architecture: process.arch, release: os.release(), runner: process.env.RUNNER_NAME || 'local' },
   evidenceClass: 'HOST_NATIVE_PROVEN', assertions: [], status: 'RUNNING', candidate: {}, cleanup: 'PENDING' }
-report.fixtureSource = { commit: flags['fixture-commit'] || null, helperSha256: hash(path.resolve(flags.helper)) }
-let child, container, secretLeak = false, tail = ''
+report.fixtureSource = { commit: flags['fixture-commit'] || null, helperSha256: hash(path.resolve(flags.helper)),
+  driverSha256: hash(new URL(import.meta.url)) }
+let child, container, secretLeak = false, tail = '', boundedLog = ''
 const assertion = (name, condition) => { if (!condition) throw new Error(name); report.assertions.push(name) }
 const invoke = (program, args, options = {}) => {
   const result = spawnSync(program, args, { encoding: 'utf8', timeout: 120000, windowsHide: true, ...options })
@@ -72,6 +73,19 @@ const inspectLogs = (chunk) => {
   const text = tail + chunk.toString('utf8')
   if (secrets.some((secret) => text.includes(secret)) || text.includes('-----BEGIN PRIVATE KEY-----')) secretLeak = true
   tail = text.slice(-256)
+  boundedLog = (boundedLog + chunk.toString('utf8')).slice(-65536)
+}
+const sanitizedDiagnostics = () => {
+  let text = boundedLog
+  for (const secret of secrets) text = text.split(secret).join('[REDACTED]')
+  text = text.replace(/-----BEGIN [^-]+-----[\s\S]*?-----END [^-]+-----/g, '[REDACTED_PEM]')
+  text = text.replace(/(password|token|secret|credential|cookie|authorization)(\s*[:=]\s*)[^\s,}]+/gi, '$1$2[REDACTED]')
+  return text.split(/\r?\n/).filter((line) => !/initial.admin|BEGIN|END.*KEY|^\s*[A-Za-z0-9+/=]{32,}\s*$|Authorization:\s|Cookie:\s/i.test(line)).slice(-70).join('\n')
+}
+const captureContainerLogs = () => {
+  if (!container) return
+  const result = spawnSync('docker', ['logs', '--tail', '100', container], { encoding: 'utf8', timeout: 10000 })
+  inspectLogs(Buffer.from((result.stdout || '') + (result.stderr || '')))
 }
 
 async function run() {
@@ -91,8 +105,17 @@ async function run() {
     assertion('official_core_1_14_2_version', /Sing-Box\s+v1\.14\.2(?:\s|$)/.test(version))
     assertion('public_product_version_unchanged', /Solovey UI Panel\s+2026\.3\.3(?:\s|$)/.test(version))
     const beforeNames = fs.readdirSync(data).sort().join('\n')
-    const health = spawnSync(binary, ['doctor', '--panel'], { encoding: 'utf8', env: environment, timeout: 10000, windowsHide: true })
-    assertion('offline_doctor_does_not_write_database', health.status === 1 && hash(database) === seededHash && beforeNames === fs.readdirSync(data).sort().join('\n'))
+    const doctorStarted = Date.now()
+    const health = spawnSync(binary, ['doctor', '--panel'], { encoding: 'utf8', env: environment, timeout: 30000, windowsHide: true })
+    report.offlineDoctor = { exitCode: health.status, databaseUnchanged: hash(database) === seededHash,
+      directoryEntriesUnchanged: beforeNames === fs.readdirSync(data).sort().join('\n'), timedOut: health.error?.code === 'ETIMEDOUT',
+      processWallMs: Date.now() - doctorStarted, configuredProbeDeadlineMs: 5000 }
+    const originalEntries = new Set(beforeNames.split('\n'))
+    report.offlineDoctor.newEntries = fs.readdirSync(data).filter((name) => !originalEntries.has(name))
+    report.offlineDoctor.onlySQLiteCoordinationSidecars = report.offlineDoctor.newEntries.every((name) => ['solovey-ui.db-wal', 'solovey-ui.db-shm'].includes(name))
+    inspectLogs(Buffer.from((health.stdout || '') + (health.stderr || '')))
+    assertion('offline_doctor_preserves_database_bytes_no_migration', report.offlineDoctor.databaseUnchanged && report.offlineDoctor.onlySQLiteCoordinationSidecars)
+    assertion('offline_doctor_reports_unavailable_panel', health.status === 1)
     child = spawn(binary, [], { cwd: path.dirname(binary), env: environment, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
     child.stdout.on('data', inspectLogs); child.stderr.on('data', inspectLogs)
     child.on('error', () => { report.processSpawnFailed = true })
@@ -117,7 +140,9 @@ async function run() {
     assertion('image_non_root_user_preserved', image.Config.User === '65532:65532')
     assertion('image_exact_candidate_revision', image.Config.Labels?.['org.opencontainers.image.revision'] === flags.commit)
     assertion('image_matches_native_host_architecture', image.Architecture === ({ x64: 'amd64', arm64: 'arm64' }[process.arch]))
-    report.candidate = { imageId: image.Id, architecture: image.Architecture }
+    report.candidate = { imageId: image.Id, architecture: image.Architecture,
+      experimentalRecipeSha256: image.Config.Labels?.['solovey.qualification.overlay.sha256'] || null }
+    if (report.candidate.experimentalRecipeSha256) report.evidenceClass = 'REPRODUCTION_PROVEN_PENDING_OWNER_INTEGRATION'
     // Only this marked, private fixture subtree changes ownership. The product
     // still executes as65532; no root container or extra capability is used.
     const expected = path.join(fs.realpathSync(temporary), 'data')
@@ -130,6 +155,12 @@ async function run() {
       '--tmpfs', '/tmp:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=65532,gid=65532',
       '--mount', `type=bind,src=${data},dst=/data`, '-e', 'SUI_SERVER_PROTECTION_RUNTIME_ROOT=/run/solovey-ui/server-protection',
       '-p', `127.0.0.1::${webPort}/tcp`, ...Object.values(ports).flatMap((port) => ['-p', `127.0.0.1::${port}/udp`]), flags.image]
+    if (flags['ld-preload']) {
+      assertion('experimental_loader_is_existing_image_dependency', flags['ld-preload'] === '/lib/libgcompat.so.0')
+      args.splice(args.length - 1, 0, '-e', `LD_PRELOAD=${flags['ld-preload']}`)
+      report.experimentalRuntimeOverlay = { LD_PRELOAD: flags['ld-preload'], sourceUnchanged: true,
+        qualification: 'REPRODUCTION_PROVEN_ONLY_UNTIL_OWNER_INTEGRATION' }
+    }
     container = invoke('docker', args).trim()
     const actual = JSON.parse(invoke('docker', ['inspect', container]))[0]
     assertion('container_readonly_no_caps_no_new_privileges', actual.HostConfig.ReadonlyRootfs && actual.HostConfig.CapDrop.includes('ALL') && actual.HostConfig.SecurityOpt.includes('no-new-privileges'))
@@ -140,6 +171,11 @@ async function run() {
     await waitReady(`${input.API}login`)
     const metadata = JSON.parse(invoke('docker', ['exec', container, 'cat', '/app/QUIC_INTEGRATION.json']))
     report.quicIntegration = metadata
+    const nativeMetadata = spawnSync('docker', ['exec', container, 'cat', '/app/CRONET_INTEGRATION.json'], { encoding: 'utf8', timeout: 10000 })
+    if (nativeMetadata.status === 0) report.cronetIntegration = JSON.parse(nativeMetadata.stdout)
+    report.udpListeners = { ipv4: invoke('docker', ['exec', container, 'cat', '/proc/net/udp']),
+      ipv6: invoke('docker', ['exec', container, 'cat', '/proc/net/udp6']),
+      expectedInternalPorts: ports, published: input.Ports }
     const copied = path.join(temporary, 'candidate-binary')
     invoke('docker', ['cp', `${container}:/app/solovey-ui`, copied])
     report.candidate.binarySha256 = hash(copied)
@@ -156,7 +192,7 @@ async function run() {
       `$ErrorActionPreference='Stop'; @((Get-Process -Id ${child.pid}).Modules | Where-Object ModuleName -eq 'libcronet.dll').Count`]).trim()
     assertion('packaged_naive_engine_loaded_native_cronet_dll', loaded === '1')
   }
-  if (container) inspectLogs(invoke('docker', ['logs', container]))
+  captureContainerLogs()
   assertion('candidate_logs_do_not_expose_fixture_secrets', !secretLeak)
   report.status = 'PASS'
 }
@@ -165,6 +201,9 @@ try { await run() } catch (error) {
   report.status = 'FAILED_HARNESS_OR_PRODUCT_UNCLASSIFIED'
   report.failure = String(error.message).replace(/[^A-Za-z0-9_:.-]/g, '_').slice(0, 200)
 } finally {
+  captureContainerLogs()
+  report.sanitizedDiagnostics = sanitizedDiagnostics()
+  report.secretLeakDetected = secretLeak
   if (container) { try { invoke('docker', ['stop', '--time', '10', container]); invoke('docker', ['rm', container]); report.containerCleanup = 'REMOVED_OWNED_CONTAINER' } catch { report.containerCleanup = 'FAILED' } }
   if (child && child.exitCode === null) {
     child.kill('SIGTERM')
