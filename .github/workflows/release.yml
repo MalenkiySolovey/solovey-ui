@@ -512,6 +512,7 @@ jobs:
             echo "go=$(go version)"
             echo "sing_box=${{ steps.build_meta.outputs.sing_box_version }}"
             node scripts/quic-integration-provenance.mjs build-info
+            node scripts/ssm-integration-provenance.mjs build-info
           } > BUILD_INFO.full.txt
           {
             echo "app=solovey-ui"
@@ -523,6 +524,7 @@ jobs:
             echo "go=$(go version)"
             echo "sing_box=${{ steps.build_meta.outputs.sing_box_version }}"
             node scripts/quic-integration-provenance.mjs build-info
+            node scripts/ssm-integration-provenance.mjs build-info
           } > BUILD_INFO.core.txt
 
       - name: Package full profile

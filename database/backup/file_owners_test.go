@@ -189,3 +189,56 @@ func TestLogicalFileCapabilityFailsClosed(t *testing.T) {
 		t.Fatalf("stock contract changed: %v", err)
 	}
 }
+
+func TestOptionalCoreFileOwnerSelectionUsesStagedDB(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv(installstate.InstalledFileEnv, filepath.Join(t.TempDir(), "absent.json"))
+	t.Setenv(LogicalFileBackupEnv, LogicalFileBackupRequired)
+	fileOwners.Lock()
+	previous := fileOwners.items
+	fileOwners.items = map[string]FileOwner{}
+	fileOwners.Unlock()
+	t.Cleanup(func() { fileOwners.Lock(); fileOwners.items = previous; fileOwners.Unlock() })
+	noop := FileOwner{Export: func(context.Context, *gorm.DB) ([]OwnerFile, error) { return nil, nil }, Restore: func(context.Context, *gorm.DB, []OwnerFile, bool) error { return nil }}
+	RegisterFileOwner("always", noop)
+	optional := noop
+	optional.Required = func(ctx context.Context, db *gorm.DB) (bool, error) {
+		var count int64
+		err := db.WithContext(ctx).Model(&model.Setting{}).Where("key = ?", "optional-cache").Count(&count).Error
+		return count > 0, err
+	}
+	RegisterFileOwner("optional-cache", optional)
+	open := func() *gorm.DB {
+		db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "selection.db")), &gorm.Config{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		sqlDB, _ := db.DB()
+		t.Cleanup(func() { sqlDB.Close() })
+		if err = db.AutoMigrate(&model.Setting{}); err != nil {
+			t.Fatal(err)
+		}
+		return db
+	}
+	source, destination := open(), open()
+	manifest, err := exportOwnerFiles(ctx, source, destination)
+	if err != nil || len(manifest.Owners) != 1 || manifest.Owners[0] != "always" {
+		t.Fatal("absent optional state changed archive inventory")
+	}
+	if err = restoreOwnerFiles(ctx, destination, manifest, false); err != nil {
+		t.Fatal("legacy absent state rejected", err)
+	}
+	if err = destination.Create(&model.Setting{Key: "optional-cache", Value: "configured"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err = restoreOwnerFiles(ctx, destination, manifest, false); err == nil {
+		t.Fatal("required owner omitted by old archive")
+	}
+	t.Setenv(LogicalFileBackupEnv, "")
+	if _, err = exportOwnerFiles(ctx, destination, open()); err == nil {
+		t.Fatal("configured private state silently omitted without deployment capability")
+	}
+	if err = restoreOwnerFiles(ctx, destination, nil, false); err == nil {
+		t.Fatal("configured private state restored without archive facts")
+	}
+}

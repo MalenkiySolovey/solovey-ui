@@ -29,7 +29,7 @@ func ReadOwnedFile(root, name string) ([]byte, error) {
 		return nil, errors.New("file is outside owner root")
 	}
 	resolved, err := filepath.EvalSymlinks(name)
-	if err != nil || resolved != name {
+	if err != nil || !ownedPathIsDirect(name, resolved) {
 		return nil, errors.New("owner file path is unavailable or indirect")
 	}
 	before, err := os.Lstat(name)
@@ -128,7 +128,7 @@ func publishOwnedNamedFile(root, name string, data []byte, publish bool) (string
 			return "", errors.New("owner directory is unsafe")
 		}
 		resolved, err := filepath.EvalSymlinks(current)
-		if err != nil || resolved != current {
+		if err != nil || !ownedPathIsDirect(current, resolved) {
 			return "", errors.New("owner directory is indirect")
 		}
 		break

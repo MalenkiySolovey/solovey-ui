@@ -12,7 +12,9 @@ import (
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveeligibility"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/ssmcache"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/sagernet/sing-box/option"
@@ -122,6 +124,30 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 		var options option.ResolvedServiceOptions
 		if err := options.UnmarshalJSONContext(context.Background(), srv.Options); err != nil {
 			return nil, common.NewError("dns_resolved_service_schema_rejected: correct resolved listen options before saving")
+		}
+	}
+	if srv.Type == "ssm-api" {
+		if err := diagnostics.FirstError(ssmcache.OptionsFindings("services", srv.Options)); err != nil {
+			return nil, err
+		}
+		name, err := ssmcache.Path(srv.Options)
+		if err != nil {
+			return nil, err
+		}
+		if name != "" {
+			var existing []model.Service
+			if err = tx.Where("type = ? AND id <> ?", "ssm-api", srv.Id).Find(&existing).Error; err != nil {
+				return nil, err
+			}
+			for _, other := range existing {
+				otherPath, err := ssmcache.Path(other.Options)
+				if err != nil {
+					return nil, err
+				}
+				if otherPath != "" && ssmcache.NamespaceKey(otherPath) == ssmcache.NamespaceKey(name) {
+					return nil, common.NewError("SSM_CACHE_SHARED_PATH_REJECTED")
+				}
+			}
 		}
 	}
 
