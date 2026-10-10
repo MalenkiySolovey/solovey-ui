@@ -1,25 +1,25 @@
 export default {
   "dns": {
-    "add": "添加 DNS 服務器",
-    "title": "DNS 服務器",
+    "add": "新增 DNS 伺服器",
+    "title": "DNS 伺服器",
     "final": "最終",
-    "server": "服務器",
-    "firstServer": "首選服務器",
+    "server": "伺服器",
+    "firstServer": "首選伺服器",
     "cacheCapacity": "快取容量",
     "disableCache": "停用快取",
     "disableExpire": "停用過期",
     "independentCache": "獨立快取",
     "reverseMapping": "反向映射",
-    "domainStrategy": "域名策略",
+    "domainStrategy": "網域策略",
     "local": {
       "preferGo": "優先使用 Go"
     },
     "rule": {
-      "add": "添加 DNS 規則",
+      "add": "新增 DNS 規則",
       "title": "DNS 規則",
       "inet4Range": "IPv4 範圍",
       "inet6Range": "IPv6 範圍",
-      "acceptDefault": "接受默認",
+      "acceptDefault": "接受預設",
       "action": {
         "title": "操作",
         "route": "路由",

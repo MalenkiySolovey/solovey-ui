@@ -33,7 +33,7 @@ services:
         soft: 16384
         hard: 16384
     healthcheck:
-      test: ["CMD", "/app/solovey-ui", "doctor", "--components"]
+      test: ["CMD", "/app/solovey-ui", "doctor", "--panel"]
       interval: 30s
       timeout: 10s
       retries: 3

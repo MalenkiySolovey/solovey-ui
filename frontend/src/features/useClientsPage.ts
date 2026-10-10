@@ -16,6 +16,7 @@ import {
 } from '@/shared/dnd/manualReorder'
 import { useBulkSelection } from '@/shared/dnd/bulkSelection'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
+import { compareUsedTraffic } from '@/shared/clients/traffic'
 
 export const useClientsPage = () => {
   const { smAndDown } = useDisplay()
@@ -104,7 +105,7 @@ export const useClientsPage = () => {
     { title: i18n.global.t('client.group'), key: 'group' },
     { title: i18n.global.t('pages.inbounds'), key: 'inbounds', width: 10 },
     { title: i18n.global.t('actions.action'), key: 'actions', sortable: false },
-    { title: i18n.global.t('stats.volume'), key: 'volume' },
+    { title: i18n.global.t('stats.volume'), key: 'volume', sortRaw: compareUsedTraffic },
     { title: i18n.global.t('date.expiry'), key: 'expiry' },
     { title: i18n.global.t('online'), key: 'online' },
     { title: i18n.global.t('client.lastIpCount'), key: 'lastIpCount' },
