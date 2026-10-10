@@ -1,0 +1,587 @@
+// Goal-owned disposable package fixture. Product executes in another process.
+// Protocol clients adapt the existing core/runtime/quic_parents_test.go fixture.
+package main
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/binary"
+	"encoding/json"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"io"
+	"math/big"
+	"net"
+	"net/http"
+	"net/url"
+	"os"
+	"path/filepath"
+	"strconv"
+	"strings"
+	"time"
+
+	cr "github.com/MalenkiySolovey/solovey-ui/core/runtime"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/service"
+	"github.com/gofrs/uuid/v5"
+	"github.com/sagernet/quic-go"
+	"github.com/sagernet/quic-go/http3"
+	"github.com/sagernet/quic-go/quicvarint"
+	"github.com/sagernet/sing-quic/hysteria"
+	"github.com/sagernet/sing-quic/tuic"
+	"gorm.io/gorm/clause"
+)
+
+var kinds = []string{"hysteria", "hysteria2", "tuic"}
+
+type fixtureInput struct {
+	Root, Listen, API, Certificate string
+	WriteToken, ReadToken          string
+	Passwords                      []string
+	WebPort, SubPort               int
+	Ports                          map[string]int
+	Clients                        []model.Client
+	IncludeNaive                   bool
+}
+
+type fixtureOutput struct {
+	Certificate string         `json:"certificate,omitempty"`
+	Assertions  []string       `json:"assertions,omitempty"`
+	Clients     []model.Client `json:"clients,omitempty"`
+}
+
+func main() {
+	if len(os.Args) != 2 {
+		os.Exit(2)
+	}
+	var input fixtureInput
+	d := json.NewDecoder(io.LimitReader(os.Stdin, 128*1024))
+	d.DisallowUnknownFields()
+	if d.Decode(&input) != nil {
+		fmt.Fprintln(os.Stderr, "FIXTURE_INPUT_INVALID")
+		os.Exit(2)
+	}
+	var output fixtureOutput
+	var err error
+	switch os.Args[1] {
+	case "seed":
+		output, err = seed(input)
+	case "probe":
+		output, err = probe(input)
+	default:
+		os.Exit(2)
+	}
+	if err != nil {
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(output)
+}
+
+func seed(in fixtureInput) (fixtureOutput, error) {
+	var out fixtureOutput
+	if !filepath.IsAbs(in.Root) || in.Root != os.Getenv("SUI_DB_FOLDER") || len(in.Passwords) != 2 ||
+		(in.Listen != "127.0.0.1" && in.Listen != "0.0.0.0") || in.WebPort < 1024 || in.SubPort < 1024 {
+		return out, errors.New("SEED_AUTHORITY_INVALID")
+	}
+	marker, err := os.ReadFile(filepath.Join(in.Root, ".w5-disposable"))
+	if err != nil || string(marker) != "W5_SYNTHETIC_ONLY\n" {
+		return out, errors.New("SEED_DISPOSABLE_MARKER_REQUIRED")
+	}
+	dbPath := filepath.Join(in.Root, "solovey-ui.db")
+	if _, err := os.Stat(dbPath); !errors.Is(err, os.ErrNotExist) {
+		return out, errors.New("SEED_EXISTING_DATABASE_REFUSED")
+	}
+	if err := dbsqlite.Init(dbPath); err != nil {
+		return out, errors.New("SEED_DATABASE_INIT_FAILED")
+	}
+	defer dbsqlite.Close()
+	settings := &service.SettingService{}
+	if _, err := settings.GetAllSetting(); err != nil {
+		return out, errors.New("SEED_SETTINGS_FAILED")
+	}
+	values := map[string]string{"webListen": in.Listen, "webPort": strconv.Itoa(in.WebPort), "webPath": "/app/",
+		"subListen": in.Listen, "subPort": strconv.Itoa(in.SubPort), "timeLocation": "UTC",
+		"config": `{"log":{"disabled":true},"dns":{"servers":[{"type":"local","tag":"local"}]},"ntp":{"enabled":false},"route":{},"experimental":{}}`}
+	for key, value := range values {
+		row := model.Setting{Key: key, Value: value}
+		if err := dbsqlite.DB().Clauses(clause.OnConflict{Columns: []clause.Column{{Name: "key"}}, DoUpdates: clause.AssignmentColumns([]string{"value"})}).Create(&row).Error; err != nil {
+			return out, errors.New("SEED_SETTING_WRITE_FAILED")
+		}
+	}
+	// This is an already-enrolled synthetic fixture, not a product auth bypass.
+	if err := dbsqlite.DB().Table("users").Where("id = ?", 1).Update("force_password_reset", false).Error; err != nil {
+		return out, errors.New("SEED_ENROLLED_ADMIN_FAILED")
+	}
+	users := &service.UserService{}
+	for _, scope := range []string{"write", "read"} {
+		token := in.WriteToken
+		if scope == "read" {
+			token = in.ReadToken
+		}
+		hash, err := users.HashAPIToken(token)
+		if err != nil || len(token) < 32 {
+			return out, errors.New("SEED_TOKEN_INVALID")
+		}
+		if err := dbsqlite.DB().Create(&model.Tokens{TokenHash: hash, Scope: scope, Enabled: true, UserId: 1, CreatedAt: time.Now().Unix()}).Error; err != nil {
+			return out, errors.New("SEED_TOKEN_FAILED")
+		}
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return out, errors.New("SEED_CERT_KEY_FAILED")
+	}
+	cert := &x509.Certificate{SerialNumber: big.NewInt(time.Now().UnixNano()), DNSNames: []string{"w5-fixture.invalid"}, IPAddresses: []net.IP{net.ParseIP("127.0.0.1")}, NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
+	der, err := x509.CreateCertificate(rand.Reader, cert, cert, &key.PublicKey, key)
+	if err != nil {
+		return out, errors.New("SEED_CERT_FAILED")
+	}
+	keyDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return out, errors.New("SEED_PRIVATE_CERT_FAILED")
+	}
+	public := string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+	private := string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: keyDER}))
+	if in.IncludeNaive {
+		options, _ := json.Marshal(map[string]any{"server": "127.0.0.1", "server_port": in.WebPort,
+			"username": "w5-native-engine", "password": in.Passwords[0], "tls": map[string]any{"enabled": true, "server_name": "w5-fixture.invalid", "certificate": []string{public}}})
+		if err := dbsqlite.DB().Create(&model.Outbound{Type: "naive", Tag: "w5-native-engine", Options: options}).Error; err != nil {
+			return out, errors.New("SEED_NAIVE_ENGINE_FAILED")
+		}
+	}
+	ids := []uint{}
+	for index, kind := range kinds {
+		if in.Ports[kind] < 1024 {
+			return out, errors.New("SEED_PORT_INVALID")
+		}
+		alpn := "h3"
+		if kind == "hysteria" {
+			alpn = hysteria.DefaultALPN
+		}
+		server, _ := json.Marshal(map[string]any{"enabled": true, "alpn": []string{alpn}, "certificate": []string{public}, "key": []string{private}})
+		client, _ := json.Marshal(map[string]any{"enabled": true, "server_name": "w5-fixture.invalid", "certificate": []string{public}})
+		tlsRow := model.Tls{Name: "w5-" + kind, Server: server, Client: client}
+		if err := dbsqlite.DB().Create(&tlsRow).Error; err != nil {
+			return out, errors.New("SEED_TLS_FAILED")
+		}
+		options := map[string]any{"listen": in.Listen, "listen_port": in.Ports[kind]}
+		if kind == "hysteria" {
+			options["up_mbps"], options["down_mbps"] = 100, 100
+		}
+		raw, _ := json.Marshal(options)
+		row := model.Inbound{Id: uint(index + 1), Tag: "w5-" + kind, Type: kind, TlsId: tlsRow.Id, Options: raw, Addrs: json.RawMessage("[]"), OutJson: json.RawMessage("{}")}
+		if err := dbsqlite.DB().Create(&row).Error; err != nil {
+			return out, errors.New("SEED_INBOUND_FAILED")
+		}
+		ids = append(ids, row.Id)
+	}
+	membership, _ := json.Marshal(ids)
+	for index, password := range in.Passwords {
+		if len(password) < 24 {
+			return out, errors.New("SEED_PASSWORD_INVALID")
+		}
+		id := uint(index + 101)
+		name := fmt.Sprintf("w5-client-%d", id)
+		config, _ := json.Marshal(map[string]any{
+			"hysteria":  map[string]any{"name": name, "auth_str": password},
+			"hysteria2": map[string]any{"name": name, "password": password},
+			"tuic":      map[string]any{"name": name, "uuid": fmt.Sprintf("00000000-0000-4000-8000-%012d", id), "password": password},
+		})
+		row := model.Client{Id: id, Name: name, Enable: true, Config: config, Inbounds: membership, IPLimitMode: "monitor"}
+		if err := dbsqlite.DB().Create(&row).Error; err != nil {
+			return out, errors.New("SEED_CLIENT_FAILED")
+		}
+		out.Clients = append(out.Clients, row)
+	}
+	out.Certificate = public
+	return out, nil
+}
+
+type response struct {
+	Success bool            `json:"success"`
+	Obj     json.RawMessage `json:"obj"`
+}
+type runtimeView struct {
+	Status       cr.RuntimeStatus       `json:"status"`
+	Snapshot     *cr.ConnectionSnapshot `json:"snapshot"`
+	Capabilities struct {
+		ParentClose bool `json:"parentClose"`
+	} `json:"capabilities"`
+}
+type packageProbe struct {
+	in         fixtureInput
+	client     *http.Client
+	roots      *x509.CertPool
+	assertions []string
+}
+
+func (p *packageProbe) request(method, route, token string, body any) (response, int, error) {
+	var data io.Reader
+	contentType := "application/json"
+	if form, ok := body.(url.Values); ok {
+		data = strings.NewReader(form.Encode())
+		contentType = "application/x-www-form-urlencoded"
+	} else if body != nil {
+		raw, _ := json.Marshal(body)
+		data = bytes.NewReader(raw)
+	}
+	req, err := http.NewRequest(method, p.in.API+"apiv2/"+route, data)
+	if err != nil {
+		return response{}, 0, errors.New("API_REQUEST_INVALID")
+	}
+	req.Header.Set("Authorization", "Bearer "+token)
+	req.Header.Set("Content-Type", contentType)
+	r, err := p.client.Do(req)
+	if err != nil {
+		return response{}, 0, errors.New("API_TRANSPORT_FAILED")
+	}
+	defer r.Body.Close()
+	var result response
+	if json.NewDecoder(io.LimitReader(r.Body, 2*1024*1024)).Decode(&result) != nil {
+		return result, r.StatusCode, errors.New("API_RESPONSE_INVALID")
+	}
+	return result, r.StatusCode, nil
+}
+
+func (p *packageProbe) status() (runtimeView, error) {
+	r, code, err := p.request(http.MethodGet, "runtime/status", p.in.ReadToken, nil)
+	var view runtimeView
+	if err != nil || code != http.StatusOK || !r.Success || json.Unmarshal(r.Obj, &view) != nil || !view.Status.APIAvailable {
+		return view, errors.New("RUNTIME_STATUS_UNAVAILABLE")
+	}
+	return view, nil
+}
+
+func (p *packageProbe) snapshot(generation string, client uint) (cr.ConnectionSnapshot, error) {
+	r, code, err := p.request(http.MethodGet, fmt.Sprintf("runtime/sessions?generation=%s&clientId=%d&limit=100", url.QueryEscape(generation), client), p.in.WriteToken, nil)
+	var view runtimeView
+	if err != nil || code != 200 || !r.Success || json.Unmarshal(r.Obj, &view) != nil || view.Snapshot == nil || view.Snapshot.ParentsTruncated {
+		return cr.ConnectionSnapshot{}, errors.New("RUNTIME_SNAPSHOT_FAILED")
+	}
+	return *view.Snapshot, nil
+}
+
+func (p *packageProbe) disconnect(generation string, client uint, parents []cr.QUICParentTarget) (cr.DisconnectResult, error) {
+	r, code, err := p.request(http.MethodPost, "runtime/disconnect", p.in.WriteToken, cr.DisconnectRequest{Generation: generation, ClientID: client, Parents: parents})
+	var result cr.DisconnectResult
+	if err != nil || code != 200 || !r.Success || json.Unmarshal(r.Obj, &result) != nil {
+		return result, errors.New("PARENT_DISCONNECT_FAILED")
+	}
+	return result, nil
+}
+
+type peer struct {
+	conn      *quic.Conn
+	kind      string
+	transport *http3.Transport
+}
+
+func (p *peer) close() {
+	if p.transport != nil {
+		_ = p.transport.Close()
+	}
+	_ = p.conn.CloseWithError(0, "fixture cleanup")
+}
+
+func (p *packageProbe) dial(kind string, user int) (*peer, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	alpn := "h3"
+	if kind == "hysteria" {
+		alpn = hysteria.DefaultALPN
+	}
+	tlsConfig := &tls.Config{RootCAs: p.roots, ServerName: "w5-fixture.invalid", NextProtos: []string{alpn}, MinVersion: tls.VersionTLS13}
+	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(p.in.Ports[kind]))
+	result := &peer{kind: kind}
+	if kind == "hysteria2" {
+		result.transport = &http3.Transport{TLSClientConfig: tlsConfig, QUICConfig: &quic.Config{EnableDatagrams: true}, Dial: func(ctx context.Context, _ string, tc *tls.Config, qc *quic.Config) (*quic.Conn, error) {
+			conn, err := quic.DialAddr(ctx, address, tc, qc)
+			result.conn = conn
+			return conn, err
+		}}
+		req, _ := http.NewRequestWithContext(ctx, http.MethodPost, "https://hysteria/auth", nil)
+		req.Header.Set("Hysteria-Auth", p.in.Passwords[user])
+		req.Header.Set("Hysteria-CC-RX", "0")
+		r, err := result.transport.RoundTrip(req)
+		if err != nil {
+			_ = result.transport.Close()
+			return nil, errors.New("H2_AUTH_TRANSPORT_FAILED")
+		}
+		_, _ = io.Copy(io.Discard, r.Body)
+		_ = r.Body.Close()
+		if r.StatusCode != 233 {
+			result.close()
+			return nil, errors.New("H2_AUTH_REJECTED")
+		}
+	} else {
+		conn, err := quic.DialAddr(ctx, address, tlsConfig, &quic.Config{EnableDatagrams: true})
+		if err != nil {
+			return nil, errors.New("QUIC_TLS_DIAL_FAILED")
+		}
+		result.conn = conn
+		if kind == "hysteria" {
+			stream, err := conn.OpenStreamSync(ctx)
+			if err != nil {
+				result.close()
+				return nil, errors.New("H1_AUTH_STREAM_FAILED")
+			}
+			_ = stream.SetDeadline(time.Now().Add(4 * time.Second))
+			err = hysteria.WriteClientHello(stream, hysteria.ClientHello{Auth: p.in.Passwords[user], SendBPS: 12500000, RecvBPS: 12500000})
+			var hello *hysteria.ServerHello
+			if err == nil {
+				hello, err = hysteria.ReadServerHello(stream)
+			}
+			if err != nil || hello == nil || !hello.OK {
+				result.close()
+				return nil, errors.New("H1_AUTH_REJECTED")
+			}
+			_ = stream.SetDeadline(time.Time{})
+		} else {
+			stream, err := conn.OpenUniStreamSync(ctx)
+			if err != nil {
+				result.close()
+				return nil, errors.New("TUIC_AUTH_STREAM_FAILED")
+			}
+			id, _ := uuid.FromString(fmt.Sprintf("00000000-0000-4000-8000-%012d", user+101))
+			state := conn.ConnectionState()
+			token, err := state.TLS.ExportKeyingMaterial(string(id[:]), []byte(p.in.Passwords[user]), 32)
+			if err != nil {
+				result.close()
+				return nil, errors.New("TUIC_EXPORTER_FAILED")
+			}
+			packet := append([]byte{tuic.Version, tuic.CommandAuthenticate}, id[:]...)
+			packet = append(packet, token...)
+			if _, err := stream.Write(packet); err != nil {
+				result.close()
+				return nil, errors.New("TUIC_AUTH_WRITE_FAILED")
+			}
+			_ = stream.Close()
+		}
+	}
+	if err := result.routedHTTP(p.in.WebPort); err != nil {
+		result.close()
+		return nil, err
+	}
+	return result, nil
+}
+
+func (p *peer) routedHTTP(port int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	stream, err := p.conn.OpenStreamSync(ctx)
+	if err != nil {
+		return errors.New("ROUTED_STREAM_FAILED")
+	}
+	defer stream.CancelRead(0)
+	defer stream.Close()
+	_ = stream.SetDeadline(time.Now().Add(4 * time.Second))
+	address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+	switch p.kind {
+	case "hysteria":
+		raw := hysteria.WriteClientRequest(hysteria.ClientRequest{Host: "127.0.0.1", Port: uint16(port)}, nil)
+		_, err = stream.Write(raw.Bytes())
+		raw.Release()
+		var reply *hysteria.ServerResponse
+		if err == nil {
+			reply, err = hysteria.ReadServerResponse(stream)
+		}
+		if err != nil || reply == nil || !reply.OK {
+			return errors.New("H1_ROUTED_REQUEST_REJECTED")
+		}
+	case "hysteria2":
+		raw := quicvarint.Append(nil, 0x401)
+		raw = quicvarint.Append(raw, uint64(len(address)))
+		raw = append(raw, address...)
+		raw = quicvarint.Append(raw, 0)
+		if _, err := stream.Write(raw); err != nil {
+			return errors.New("H2_ROUTED_WRITE_FAILED")
+		}
+		var status [1]byte
+		if _, err := io.ReadFull(stream, status[:]); err != nil || status[0] != 0 {
+			return errors.New("H2_ROUTED_REQUEST_REJECTED")
+		}
+		for index := 0; index < 2; index++ {
+			size, err := quicvarint.Read(quicvarint.NewReader(stream))
+			if err != nil || size > 4096 {
+				return errors.New("H2_RESPONSE_INVALID")
+			}
+			if _, err := io.CopyN(io.Discard, stream, int64(size)); err != nil {
+				return errors.New("H2_RESPONSE_TRUNCATED")
+			}
+		}
+	case "tuic":
+		raw := []byte{tuic.Version, tuic.CommandConnect, 1, 127, 0, 0, 1, 0, 0}
+		binary.BigEndian.PutUint16(raw[7:], uint16(port))
+		if _, err := stream.Write(raw); err != nil {
+			return errors.New("TUIC_ROUTED_WRITE_FAILED")
+		}
+	}
+	if _, err := io.WriteString(stream, "GET /app/login HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n"); err != nil {
+		return errors.New("ROUTED_HTTP_WRITE_FAILED")
+	}
+	r, err := http.ReadResponse(bufio.NewReader(stream), nil)
+	if err != nil {
+		return errors.New("ROUTED_HTTP_RESPONSE_FAILED")
+	}
+	defer r.Body.Close()
+	_, err = io.Copy(io.Discard, io.LimitReader(r.Body, 2*1024*1024))
+	if err != nil || r.StatusCode != 200 {
+		return errors.New("ROUTED_HTTP_ASSERTION_FAILED")
+	}
+	return nil
+}
+
+func remoteClosed(peer *peer) error {
+	select {
+	case <-peer.conn.Context().Done():
+		var app *quic.ApplicationError
+		if !errors.As(context.Cause(peer.conn.Context()), &app) || !app.Remote {
+			return errors.New("REMOTE_CONNECTION_CLOSE_MISSING")
+		}
+		return nil
+	case <-time.After(2 * time.Second):
+		return errors.New("REMOTE_CONNECTION_CLOSE_TIMEOUT")
+	}
+}
+
+func probe(in fixtureInput) (fixtureOutput, error) {
+	var out fixtureOutput
+	u, err := url.Parse(in.API)
+	if err != nil || u.Scheme != "http" || u.Hostname() != "127.0.0.1" || u.Path != "/app/" || len(in.Passwords) != 2 {
+		return out, errors.New("PROBE_LOOPBACK_AUTHORITY_REQUIRED")
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM([]byte(in.Certificate)) {
+		return out, errors.New("PROBE_CERT_INVALID")
+	}
+	p := &packageProbe{in: in, roots: roots, client: &http.Client{Timeout: 25 * time.Second, Transport: &http.Transport{Proxy: nil}}}
+	defer p.client.CloseIdleConnections()
+	var view runtimeView
+	deadline := time.Now().Add(40 * time.Second)
+	for {
+		view, err = p.status()
+		if err == nil {
+			break
+		}
+		if time.Now().After(deadline) {
+			return out, errors.New("PACKAGED_RUNTIME_START_BARRIER_TIMEOUT")
+		}
+		time.Sleep(100 * time.Millisecond) // Poll an explicit published runtime fact.
+	}
+	generation := view.Status.Generation
+	unauthorized, code, _ := p.request(http.MethodGet, "runtime/status", "invalid-synthetic-token", nil)
+	if code != 401 || unauthorized.Success {
+		return out, errors.New("INVALID_TOKEN_NOT_REJECTED")
+	}
+	p.assertions = append(p.assertions, "invalid_token_rejected")
+	peers := map[string][]*peer{}
+	defer func() {
+		for _, pair := range peers {
+			for _, peer := range pair {
+				peer.close()
+			}
+		}
+	}()
+	for _, kind := range kinds {
+		for user := 0; user < 2; user++ {
+			peer, err := p.dial(kind, user)
+			if err != nil {
+				return out, fmt.Errorf("%s:%s", kind, err.Error())
+			}
+			peers[kind] = append(peers[kind], peer)
+		}
+	}
+	snapshot, err := p.snapshot(generation, 0)
+	if err != nil {
+		return out, err
+	}
+	if snapshot.ParentTotal != 6 || len(snapshot.Parents) != 6 {
+		return out, errors.New("SIX_AUTHENTICATED_PARENTS_NOT_OBSERVED")
+	}
+	p.assertions = append(p.assertions, "three_protocols_authenticated_same_ip_independent_parent_handles")
+	for _, kind := range kinds {
+		var target cr.QUICParentTarget
+		for _, parent := range snapshot.Parents {
+			if parent.Inbound == "w5-"+kind && parent.ClientID == 101 {
+				target = parent.QUICParentTarget
+			}
+		}
+		if target.ParentID == "" {
+			return out, errors.New("AUTHENTICATED_PARENT_IDENTITY_MISSING")
+		}
+		read, code, _ := p.request(http.MethodPost, "runtime/disconnect", in.ReadToken, cr.DisconnectRequest{Generation: generation, ClientID: 101, Parents: []cr.QUICParentTarget{target}})
+		if code != 403 || read.Success {
+			return out, errors.New("READ_TOKEN_MUTATION_NOT_REJECTED")
+		}
+		result, err := p.disconnect(generation, 101, []cr.QUICParentTarget{target})
+		if err != nil || !result.ParentClosed || result.ParentsClosed != 1 {
+			return out, errors.New("SELECTIVE_PARENT_CONFIRMATION_FAILED")
+		}
+		if err := remoteClosed(peers[kind][0]); err != nil {
+			return out, fmt.Errorf("%s:%s", kind, err.Error())
+		}
+		if err := peers[kind][1].routedHTTP(in.WebPort); err != nil {
+			return out, errors.New("SAME_IP_OTHER_USER_DISCONNECTED")
+		}
+		peers[kind][0].close()
+		reconnected, err := p.dial(kind, 0)
+		if err != nil {
+			return out, errors.New("KICKED_ENABLED_USER_RECONNECT_FAILED")
+		}
+		peers[kind][0] = reconnected
+		p.assertions = append(p.assertions, kind+"_selective_kick_remote_close_other_user_alive_reconnect")
+	}
+	r, code, err := p.request(http.MethodPost, "restartSb", in.WriteToken, url.Values{})
+	if err != nil || code != 200 || !r.Success {
+		return out, errors.New("PACKAGED_CORE_RESTART_FAILED")
+	}
+	for _, kind := range kinds {
+		for _, peer := range peers[kind] {
+			if err := remoteClosed(peer); err != nil {
+				return out, fmt.Errorf("%s_restart:%s", kind, err.Error())
+			}
+		}
+	}
+	newView, err := p.status()
+	if err != nil || newView.Status.Generation == generation {
+		return out, errors.New("RESTART_GENERATION_NOT_REPLACED")
+	}
+	for _, kind := range kinds {
+		for user := 0; user < 2; user++ {
+			peers[kind][user].close()
+			peer, err := p.dial(kind, user)
+			if err != nil {
+				return out, errors.New("RESTART_RECONNECT_FAILED")
+			}
+			peers[kind][user] = peer
+		}
+	}
+	stale, code, _ := p.request(http.MethodPost, "runtime/disconnect", in.WriteToken, cr.DisconnectRequest{Generation: generation, ClientID: 101, Parents: []cr.QUICParentTarget{snapshot.Parents[0].QUICParentTarget}})
+	var staleResult cr.DisconnectResult
+	_ = json.Unmarshal(stale.Obj, &staleResult)
+	if code != 200 || stale.Success || staleResult.Outcome != "STALE_GENERATION" {
+		return out, errors.New("STALE_GENERATION_NOT_REJECTED")
+	}
+	for _, kind := range kinds {
+		for _, peer := range peers[kind] {
+			if err := peer.routedHTTP(in.WebPort); err != nil {
+				return out, errors.New("STALE_ACTION_MUTATED_NEW_PARENT")
+			}
+		}
+	}
+	final, err := p.snapshot(newView.Status.Generation, 0)
+	if err != nil || final.ParentTotal != 6 {
+		return out, errors.New("RESTART_PARENT_REGISTRY_NOT_BOUNDED")
+	}
+	p.assertions = append(p.assertions, "all_protocols_restart_remote_close_reconnect_generation_fence", "read_token_parent_action_rejected", "new_generation_six_parents_only")
+	out.Assertions = p.assertions
+	return out, nil
+}
