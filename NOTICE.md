@@ -61,6 +61,13 @@ tests were copied. Cronet native package assets come from the selected
 and the target-specific SHA256 in the package producer. The Cronet source
 and GPL-3.0 notices remain authoritative for those assets.
 
+The Alpine Docker producer selects the official static musl Cronet asset from
+those same pinned modules, using LLVM to link it. The final image records its
+selected archive hash and module/version in `CRONET_INTEGRATION.json`; it does
+not ship the glibc shared object. This is packaging integration, without a
+native implementation patch or new module version. The original Cronet source
+and license notices remain applicable to the statically linked bytes.
+
 The project-wide architecture audit compared additional firewall, panel,
 installer, and networking projects. No production code was copied from those
 comparison sources. GPL/AGPL and unknown-license comparison sources are
@@ -315,3 +322,19 @@ Existing Solovey network/autohttps owns bounded classification, stream replay,
 validated authority and caller deadline preservation. No original application
 source or tests were copied; no TLS, dependency, privilege, complete-parity or
 release boundary changes are implied.
+
+Stage 2 Wave5 CORE-57 cache/lifecycle qualification uses official sing-box
+v1.14.2 source af6e64c3b69e6132ebaee0e1a3d24e93903f6709 with a narrow
+service/ssmapi patch. Public replacement MalenkiySolovey/sing-box source
+20fdbaa1cf7c7f9fd1c22116c63731d25916290d resolves as
+v1.14.3-0.20261010163807-20fdbaa1cf7c. This pseudo-version is module metadata;
+the semantic baseline remains official v1.14.2. Original and integration source
+are GPL-3.0-or-later. The replayable delta, source pin and checksums are in
+deploy/dependencies/sing-box-ssm-cache.patch and sing-box-ssm-integration.json.
+Only the SSM cache/lifecycle seam changes; protocol services, toolchain and
+dependency requirements retain the baseline. Solovey independently owns private
+deployment files, redacted diagnostics and its existing backup contribution.
+Original S-UI v1.6.4 SSM registration was a behavioral reference; no application
+source was copied. This is patched core source, not byte-identical official
+sing-box; QUIC integration remains separately recorded. No physical-parity,
+product-version or release-boundary advancement is implied.

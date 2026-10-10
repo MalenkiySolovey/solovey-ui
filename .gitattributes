@@ -10,6 +10,7 @@ Dockerfile text eol=lf
 # empty context lines. Preserve its exact checksummed bytes and normal checks
 # for the actual source files.
 deploy/dependencies/sing-quic-parent-control.patch text eol=lf whitespace=-blank-at-eol,-space-before-tab
+deploy/dependencies/sing-box-ssm-cache.patch text eol=lf whitespace=-blank-at-eol,-space-before-tab
 
 # Extensionless Unix assets copied into the OpenWrt package.
 deploy/openwrt/solovey-ui.init text eol=lf

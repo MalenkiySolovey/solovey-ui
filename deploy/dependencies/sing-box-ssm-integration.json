@@ -1,0 +1,36 @@
+{
+  "schema": "solovey.ssm-integration/v1",
+  "patched": true,
+  "officialByteIdentical": false,
+  "semanticBaseline": {
+    "module": "github.com/sagernet/sing-box",
+    "version": "v1.14.2",
+    "commit": "af6e64c3b69e6132ebaee0e1a3d24e93903f6709"
+  },
+  "original": {
+    "module": "github.com/sagernet/sing-box",
+    "version": "v1.14.2",
+    "commit": "af6e64c3b69e6132ebaee0e1a3d24e93903f6709",
+    "repository": "https://github.com/SagerNet/sing-box"
+  },
+  "replacement": {
+    "module": "github.com/MalenkiySolovey/sing-box",
+    "version": "v1.14.3-0.20261010163807-20fdbaa1cf7c",
+    "commit": "20fdbaa1cf7c7f9fd1c22116c63731d25916290d",
+    "repository": "https://github.com/MalenkiySolovey/sing-box",
+    "sum": "h1:5LfmnaH/TnBYoE1dx9su9FqfkQRV9D0JQQwEBn0OD6E=",
+    "goModSum": "h1:O4q0spxb+xwV/p9HYR+Es1cMjK3bBvYl6k08V9rSpwU="
+  },
+  "patch": {
+    "file": "deploy/dependencies/sing-box-ssm-cache.patch",
+    "sha256": "b7c7384271257162e74904ed673c5f986df7adbe9ab2e6f5cce9655f2c5c592c",
+    "files": [
+      "SOLOVEY_INTEGRATION.md",
+      "service/ssmapi/cache.go",
+      "service/ssmapi/cache_store.go",
+      "service/ssmapi/cache_test.go",
+      "service/ssmapi/server.go"
+    ]
+  },
+  "license": "GPL-3.0-or-later"
+}

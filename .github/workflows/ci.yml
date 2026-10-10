@@ -14,13 +14,13 @@ permissions:
   actions: read
 
 env:
-  W5_PRODUCT_COMMIT: 9bb74e87623f3502870878a48458f1d2f1152174
+  W5_PRODUCT_COMMIT: beef5df19daec197492553c12b7c1bb2946548fa
 
 jobs:
   windows-build:
     uses: ./.github/workflows/windows.yml
     with:
-      source_commit: 9bb74e87623f3502870878a48458f1d2f1152174
+      source_commit: beef5df19daec197492553c12b7c1bb2946548fa
       tag: v2026.3.3
       preflight_only: true
 
@@ -93,13 +93,19 @@ jobs:
           test "$(go env GOHOSTARCH)" = '${{ matrix.arch }}'
           cp fixture-driver/.qualification/native-package-fixture.go.txt "$RUNNER_TEMP/native-fixture.go"
           go build -tags with_quic -o "$RUNNER_TEMP/native-fixture.exe" "$RUNNER_TEMP/native-fixture.go"
+          cp fixture-driver/.qualification/udp-loopback-witness.go.txt "$RUNNER_TEMP/udp-witness.go"
+          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/udp-witness.exe" "$RUNNER_TEMP/udp-witness.go"
+          if [ '${{ matrix.arch }}' = arm64 ]; then
+            go test -tags with_quic ./internal/entities/ssmcache ./core/registry ./database/backup ./service github.com/sagernet/sing-box/service/ssmapi \
+              -run 'Test(SSM|OwnedTreeWindows|WindowsSDDL|Cache|OptionalCache)' -count=1 > qualification-evidence/SSM_FOCUSED.txt
+          fi
           go version -m candidate-package/solovey-ui-windows/sui.exe > qualification-evidence/GO_BUILD_INFO.txt
       - name: Actual packaged runtime with loopback synthetic state
         shell: bash
         run: |
           node fixture-driver/.qualification/native-package-runtime.mjs \
             --binary candidate-package/solovey-ui-windows/sui.exe \
-            --helper "$RUNNER_TEMP/native-fixture.exe" --output qualification-evidence/RUNTIME.json \
+            --helper "$RUNNER_TEMP/native-fixture.exe" --udp-witness "$RUNNER_TEMP/udp-witness.exe" --output qualification-evidence/RUNTIME.json \
             --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}' --private-api-check true
       - name: Build and exercise native Core profile with its own verified frontend
         shell: bash
@@ -130,11 +136,12 @@ jobs:
             printf 'version=v2026.3.3\ncommit=%s\nplatform=windows/${{ matrix.arch }}\nprofile=core\n' "$W5_PRODUCT_COMMIT"
             printf 'source_fingerprint=%s\n' "$(node scripts/release-source.mjs .)"
             node scripts/quic-integration-provenance.mjs build-info
+            node scripts/ssm-integration-provenance.mjs build-info
           } > candidate-core/BUILD_INFO.txt
           cp candidate-core/BUILD_INFO.txt qualification-evidence/core/BUILD_INFO.txt
           go version -m candidate-core/sui.exe > qualification-evidence/core/GO_BUILD_INFO.txt
           node fixture-driver/.qualification/native-package-runtime.mjs \
-            --binary candidate-core/sui.exe --helper "$RUNNER_TEMP/native-fixture.exe" \
+            --binary candidate-core/sui.exe --helper "$RUNNER_TEMP/native-fixture.exe" --udp-witness "$RUNNER_TEMP/udp-witness.exe" \
             --output qualification-evidence/core/RUNTIME.json --commit "$W5_PRODUCT_COMMIT" \
             --fixture-commit '${{ github.sha }}' --private-api-check true
       - name: Retain the independently built Core candidate
@@ -210,10 +217,12 @@ jobs:
           CGO_ENABLED=1 GOWORK=off go build -tags with_quic -o "$RUNNER_TEMP/native-fixture" "$RUNNER_TEMP/native-fixture.go"
           cp fixture-driver/.qualification/private-api-probe.go.txt "$RUNNER_TEMP/private-api-probe.go"
           CGO_ENABLED=0 GOWORK=off go build -o "$RUNNER_TEMP/private-api-probe" "$RUNNER_TEMP/private-api-probe.go"
+          cp fixture-driver/.qualification/udp-loopback-witness.go.txt "$RUNNER_TEMP/udp-witness.go"
+          CGO_ENABLED=0 GOWORK=off go build -o "$RUNNER_TEMP/udp-witness" "$RUNNER_TEMP/udp-witness.go"
           node fixture-driver/.qualification/native-package-runtime.mjs \
             --image solovey-w5-candidate:arm64 --helper "$RUNNER_TEMP/native-fixture" \
             --output qualification-evidence/RUNTIME.json --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}' \
-            --private-probe "$RUNNER_TEMP/private-api-probe"
+            --private-probe "$RUNNER_TEMP/private-api-probe" --udp-witness "$RUNNER_TEMP/udp-witness"
       - name: Preserve locally built candidate even when a runtime assertion fails
         if: always()
         run: |

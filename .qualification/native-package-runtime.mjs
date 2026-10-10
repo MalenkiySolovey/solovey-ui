@@ -31,7 +31,7 @@ const report = { test: 'packaged-native-runtime', timestamp: new Date().toISOStr
   evidenceClass: 'HOST_NATIVE_PROVEN', assertions: [], status: 'RUNNING', candidate: {}, cleanup: 'PENDING' }
 report.fixtureSource = { commit: flags['fixture-commit'] || null, helperSha256: hash(path.resolve(flags.helper)),
   driverSha256: hash(new URL(import.meta.url)) }
-let child, container, secretLeak = false, tail = '', boundedLog = ''
+let child, container, witness, secretLeak = false, tail = '', boundedLog = ''
 const assertion = (name, condition) => { if (!condition) throw new Error(name); report.assertions.push(name) }
 const invoke = (program, args, options = {}) => {
   const result = spawnSync(program, args, { encoding: 'utf8', timeout: 120000, windowsHide: true, ...options })
@@ -87,6 +87,34 @@ const captureContainerLogs = () => {
   if (!container) return
   const result = spawnSync('docker', ['logs', '--tail', '100', container], { encoding: 'utf8', timeout: 10000 })
   inspectLogs(Buffer.from((result.stdout || '') + (result.stderr || '')))
+}
+
+const startUDPWitness = async () => {
+  const program = path.resolve(flags['udp-witness'])
+  assertion('udp_witness_is_regular_goal_fixture', fs.statSync(program).isFile())
+  report.fixtureSource.udpWitnessSha256 = hash(program)
+  witness = flags.image
+    ? spawn('docker', ['exec', container, '/opt/w5/udp-witness'], {windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']})
+    : spawn(program, [], {windowsHide: true, env: environment, stdio: ['ignore', 'pipe', 'pipe']})
+  const port = await new Promise((resolve, reject) => {
+    let text = ''
+    const timer = setTimeout(() => reject(new Error('UDP_WITNESS_READY_TIMEOUT')), 5000)
+    witness.once('error', () => {clearTimeout(timer); reject(new Error('UDP_WITNESS_START_FAILED'))})
+    witness.once('exit', () => {clearTimeout(timer); reject(new Error('UDP_WITNESS_EXITED'))})
+    witness.stdout.on('data', chunk => {
+      text += chunk.toString('utf8')
+      if (text.length > 1024) {clearTimeout(timer); reject(new Error('UDP_WITNESS_FRAME_INVALID')); return}
+      if (!text.includes('\n')) return
+      try {
+        const frame = JSON.parse(text.split('\n')[0])
+        if (frame.loopback !== true || !Number.isInteger(frame.port) || frame.port < 1 || frame.port > 65535) throw new Error()
+        clearTimeout(timer); resolve(frame.port)
+      } catch {clearTimeout(timer); reject(new Error('UDP_WITNESS_FRAME_INVALID'))}
+    })
+    witness.stderr.resume()
+  })
+  report.udpWitness = {loopbackOnly: true, port, maxLifetimeMs: 120000, namespace: flags.image ? 'candidate-container' : 'candidate-native-host'}
+  return port
 }
 
 async function run() {
@@ -168,6 +196,10 @@ async function run() {
       args.splice(args.length - 1, 0, '--mount', `type=bind,src=${path.resolve(flags['private-probe'])},dst=/opt/w5/private-api-probe,readonly`)
       report.fixtureSource.privateProbeSha256 = hash(path.resolve(flags['private-probe']))
     }
+    if (flags['udp-witness']) {
+      assertion('docker_udp_witness_regular_fixture_file', fs.statSync(path.resolve(flags['udp-witness'])).isFile())
+      args.splice(args.length - 1, 0, '--mount', `type=bind,src=${path.resolve(flags['udp-witness'])},dst=/opt/w5/udp-witness,readonly`)
+    }
     if (flags['ld-preload']) {
       assertion('experimental_loader_is_existing_image_dependency', flags['ld-preload'] === '/lib/libgcompat.so.0')
       args.splice(args.length - 1, 0, '-e', `LD_PRELOAD=${flags['ld-preload']}`)
@@ -200,6 +232,8 @@ async function run() {
     }
     const metadata = JSON.parse(invoke('docker', ['exec', container, 'cat', '/app/QUIC_INTEGRATION.json']))
     report.quicIntegration = metadata
+    const ssmMetadata = spawnSync('docker', ['exec', container, 'cat', '/app/SSM_INTEGRATION.json'], {encoding: 'utf8', timeout: 10000})
+    if (ssmMetadata.status === 0) report.ssmIntegration = JSON.parse(ssmMetadata.stdout)
     const nativeMetadata = spawnSync('docker', ['exec', container, 'cat', '/app/CRONET_INTEGRATION.json'], { encoding: 'utf8', timeout: 10000 })
     if (nativeMetadata.status === 0) report.cronetIntegration = JSON.parse(nativeMetadata.stdout)
     report.udpListeners = { ipv4: invoke('docker', ['exec', container, 'cat', '/proc/net/udp']),
@@ -213,6 +247,7 @@ async function run() {
   }
   input.Certificate = seed.certificate
   input.Clients = seed.clients
+  if (flags['udp-witness']) input.UDPPort = await startUDPWitness()
   const result = helper('probe', input)
   report.assertions.push(...result.assertions)
   if (result.logSubscriptionWallMs !== undefined) report.logSubscriptionWallMs = result.logSubscriptionWallMs
@@ -243,6 +278,11 @@ try { await run() } catch (error) {
   report.sanitizedDiagnostics = sanitizedDiagnostics()
   report.secretLeakDetected = secretLeak
   if (container) { try { invoke('docker', ['stop', '--time', '10', container]); invoke('docker', ['rm', container]); report.containerCleanup = 'REMOVED_OWNED_CONTAINER' } catch { report.containerCleanup = 'FAILED' } }
+  if (witness && witness.exitCode === null) {
+    witness.kill('SIGTERM')
+    await Promise.race([new Promise(resolve => witness.once('exit', resolve)), new Promise(resolve => setTimeout(resolve, 1000))])
+    if (witness.exitCode === null) witness.kill('SIGKILL')
+  }
   if (child && child.exitCode === null) {
     child.kill('SIGTERM')
     await Promise.race([new Promise((resolve) => child.once('exit', resolve)), new Promise((resolve) => setTimeout(resolve, 5000))])

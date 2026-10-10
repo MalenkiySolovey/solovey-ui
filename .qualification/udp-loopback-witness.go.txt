@@ -1,0 +1,37 @@
+// Goal-owned bounded loopback echo witness. No product state or credentials.
+package main
+
+import (
+	"bytes"
+	"context"
+	"encoding/json"
+	"net"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+)
+
+func main() {
+	ctx, cancel := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer cancel()
+	ctx, deadline := context.WithTimeout(ctx, 2*time.Minute)
+	defer deadline()
+	listener, err := net.ListenUDP("udp4", &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1)})
+	if err != nil {
+		os.Exit(1)
+	}
+	defer listener.Close()
+	go func() { <-ctx.Done(); _ = listener.Close() }()
+	_ = json.NewEncoder(os.Stdout).Encode(map[string]any{"port": listener.LocalAddr().(*net.UDPAddr).Port, "loopback": true})
+	buffer := make([]byte, 2048)
+	for count := 0; count < 128; count++ {
+		n, address, err := listener.ReadFromUDP(buffer)
+		if err != nil {
+			return
+		}
+		if address.IP.IsLoopback() && n <= 256 && bytes.HasPrefix(buffer[:n], []byte("W5-UDP-")) {
+			_, _ = listener.WriteToUDP(buffer[:n], address)
+		}
+	}
+}

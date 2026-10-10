@@ -482,6 +482,7 @@ build_info="$temporary_root/BUILD_INFO.txt"
 	echo "source_fingerprint=$source_fingerprint"
 	echo "build_identity=$build_identity"
 	run_node "$snapshot/scripts/quic-integration-provenance.mjs" build-info
+	run_node "$snapshot/scripts/ssm-integration-provenance.mjs" build-info
 } > "$build_info"
 
 # The exact private toolchain and authenticated module cache are reverified at

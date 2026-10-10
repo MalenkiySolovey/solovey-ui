@@ -1,0 +1,718 @@
+diff --git a/SOLOVEY_INTEGRATION.md b/SOLOVEY_INTEGRATION.md
+new file mode 100644
+index 00000000..2ff27148
+--- /dev/null
++++ b/SOLOVEY_INTEGRATION.md
+@@ -0,0 +1,37 @@
++# Solovey pinned SSM integration
++
++Baseline: official SagerNet/sing-box v1.14.2,
++`af6e64c3b69e6132ebaee0e1a3d24e93903f6709`.
++The Go module declaration, protocol services and dependency requirements remain
++those of that exact official baseline. This is a patched source integration,
++not byte-identical official sing-box v1.14.2.
++
++The delta is confined to `service/ssmapi` and this source notice:
++
++- `cache.go`: bounded cache parsing rejects null roots/endpoints with errors
++  that exclude input values, preserves unreadable/corrupt preimages, checks
++  managed user restoration, and snapshots user/counter maps under their existing
++  locks in the user-before-traffic lock order. Cache writes are serialized.
++- `cache_store.go`: an instance-local context adapter exposes only bounded
++  read/write storage. Official SSM continues to interpret authentication and
++  counters. The portable default retains filemanager routing, writes new files
++  with mode0600 and directories0700; deployment ownership and atomic publication
++  belong to the injected storage adapter, not this portable default.
++- `server.go`: failed cache loading rejects startup, failed startup does not
++  overwrite cache, repeated Start/Close are idempotent, cancellation stops and
++  drains the periodic writer before final flush. Close has one two-second
++  context budget. Injected storage must honor cancellation before publication;
++  blocked external filesystem calls cannot be forcibly interrupted by Go.
++- `cache_test.go`: bounded/corrupt/redacted inputs, counters/authentication
++  restoration, concurrent update snapshots, missing/disabled optional cache,
++  failed startup preimage, periodic drain, bounded concurrent close and close-once.
++
++Solovey's deployment adapter independently owns anchored private data paths,
++POSIX ownership/mode and Windows DACL checks, atomic publication, read-only
++diagnostics and its existing private backup contributor. It does not replace
++SSM authentication, StatsTracker, panel clients or panel quota authority.
++
++Source and original copyright notices remain under GPL-3.0-or-later. These
++integration additions are also GPL-3.0-or-later. The consuming repository records
++the exact source commit, Go module checksums, complete replayable patch, package
++build metadata and SBOM module replacement. No module cache is modified.
+diff --git a/service/ssmapi/cache.go b/service/ssmapi/cache.go
+index 38552f1c..8565341d 100644
+--- a/service/ssmapi/cache.go
++++ b/service/ssmapi/cache.go
+@@ -2,14 +2,14 @@ package ssmapi
+ 
+ import (
+ 	"bytes"
++	"context"
++	"errors"
+ 	"os"
+-	"path/filepath"
+ 	"sort"
+ 	"sync/atomic"
+ 
+ 	"github.com/sagernet/sing/common/json"
+ 	"github.com/sagernet/sing/common/json/badjson"
+-	"github.com/sagernet/sing/service/filemanager"
+ )
+ 
+ type Cache struct {
+@@ -36,8 +36,7 @@ func (s *Service) loadCache() error {
+ 	if s.cachePath == "" {
+ 		return nil
+ 	}
+-	basePath := filemanager.BasePath(s.ctx, s.cachePath)
+-	cacheBinary, err := filemanager.ReadFile(s.ctx, basePath)
++	cacheBinary, err := s.cacheStore.Read(s.ctx)
+ 	if err != nil {
+ 		if os.IsNotExist(err) {
+ 			return nil
+@@ -46,7 +45,6 @@ func (s *Service) loadCache() error {
+ 	}
+ 	err = s.decodeCache(cacheBinary)
+ 	if err != nil {
+-		filemanager.RemoveAll(s.ctx, basePath)
+ 		return err
+ 	}
+ 	s.cacheMutex.Lock()
+@@ -55,29 +53,27 @@ func (s *Service) loadCache() error {
+ 	return nil
+ }
+ 
+-func (s *Service) saveCache() error {
++func (s *Service) saveCache(ctx context.Context) error {
+ 	if s.cachePath == "" {
+ 		return nil
+ 	}
+-	cacheBinary, err := s.encodeCache()
+-	if err != nil {
++	if err := ctx.Err(); err != nil {
+ 		return err
+ 	}
+ 	s.cacheMutex.Lock()
+ 	defer s.cacheMutex.Unlock()
++	cacheBinary, err := s.encodeCache()
++	if err != nil {
++		return err
++	}
+ 	if bytes.Equal(s.lastSavedCache, cacheBinary) {
+ 		return nil
+ 	}
+-	return s.writeCache(cacheBinary)
++	return s.writeCache(ctx, cacheBinary)
+ }
+ 
+-func (s *Service) writeCache(cacheBinary []byte) error {
+-	basePath := filemanager.BasePath(s.ctx, s.cachePath)
+-	err := filemanager.MkdirAll(s.ctx, filepath.Dir(basePath), 0o777)
+-	if err != nil {
+-		return err
+-	}
+-	err = filemanager.WriteFile(s.ctx, basePath, cacheBinary, 0o644)
++func (s *Service) writeCache(ctx context.Context, cacheBinary []byte) error {
++	err := s.cacheStore.Write(ctx, cacheBinary)
+ 	if err != nil {
+ 		return err
+ 	}
+@@ -89,7 +85,7 @@ func (s *Service) decodeCache(cacheBinary []byte) error {
+ 	if len(cacheBinary) == 0 {
+ 		return nil
+ 	}
+-	cache, err := json.UnmarshalExtended[*Cache](cacheBinary)
++	cache, err := parseCache(cacheBinary)
+ 	if err != nil {
+ 		return err
+ 	}
+@@ -101,6 +97,7 @@ func (s *Service) decodeCache(cacheBinary []byte) error {
+ 		if !loaded {
+ 			continue
+ 		}
++		trafficManager.userAccess.Lock()
+ 		trafficManager.globalUplink.Store(entry.Value.GlobalUplink)
+ 		trafficManager.globalDownlink.Store(entry.Value.GlobalDownlink)
+ 		trafficManager.globalUplinkPackets.Store(entry.Value.GlobalUplinkPackets)
+@@ -113,19 +110,60 @@ func (s *Service) decodeCache(cacheBinary []byte) error {
+ 		trafficManager.userDownlinkPackets = typedAtomicInt64Map(entry.Value.UserDownlinkPackets)
+ 		trafficManager.userTCPSessions = typedAtomicInt64Map(entry.Value.UserTCPSessions)
+ 		trafficManager.userUDPSessions = typedAtomicInt64Map(entry.Value.UserUDPSessions)
++		trafficManager.userAccess.Unlock()
+ 		userManager, loaded := s.users[entry.Key]
+ 		if !loaded {
+ 			continue
+ 		}
++		userManager.access.Lock()
+ 		userManager.usersMap = typedMap(entry.Value.Users)
+-		_ = userManager.postUpdate(false)
++		err = userManager.postUpdate(false)
++		userManager.access.Unlock()
++		if err != nil {
++			return errors.New("SSM_CACHE_USERS_REJECTED")
++		}
+ 	}
+ 	return nil
+ }
+ 
++// ValidateCache shares the service's bounded schema interpretation with its
++// private backup/restore adapter. Errors never include credential bytes.
++func ValidateCache(data []byte) error {
++	if len(data) == 0 {
++		return nil
++	}
++	_, err := parseCache(data)
++	return err
++}
++
++func parseCache(data []byte) (*Cache, error) {
++	if len(data) > MaxCacheBytes {
++		return nil, errors.New("SSM_CACHE_EXCESSIVE")
++	}
++	cache, err := json.UnmarshalExtended[*Cache](data)
++	if err != nil || cache == nil {
++		return nil, errors.New("SSM_CACHE_INVALID")
++	}
++	if cache.Endpoints != nil {
++		for _, entry := range cache.Endpoints.Entries() {
++			if entry.Value == nil {
++				return nil, errors.New("SSM_CACHE_INVALID")
++			}
++		}
++	}
++	return cache, nil
++}
++
+ func (s *Service) encodeCache() ([]byte, error) {
+ 	endpoints := new(badjson.TypedMap[string, *EndpointCache])
+ 	for tag, traffic := range s.traffics {
++		// User updates acquire user access before traffic access; preserve the
++		// same order for an internally consistent, race-free cache snapshot.
++		userManager := s.users[tag]
++		if userManager != nil {
++			userManager.access.Lock()
++		}
++		traffic.userAccess.Lock()
+ 		var (
+ 			userUplink          = new(badjson.TypedMap[string, int64])
+ 			userDownlink        = new(badjson.TypedMap[string, int64])
+@@ -165,7 +203,6 @@ func (s *Service) encodeCache() ([]byte, error) {
+ 				userUDPSessions.Put(user, udpSessions.Load())
+ 			}
+ 		}
+-		userManager := s.users[tag]
+ 		if userManager != nil && len(userManager.usersMap) > 0 {
+ 			userMap = new(badjson.TypedMap[string, string])
+ 			for username, password := range userManager.usersMap {
+@@ -189,6 +226,10 @@ func (s *Service) encodeCache() ([]byte, error) {
+ 			UserUDPSessions:       sortTypedMap(userUDPSessions),
+ 			Users:                 sortTypedMap(userMap),
+ 		})
++		traffic.userAccess.Unlock()
++		if userManager != nil {
++			userManager.access.Unlock()
++		}
+ 	}
+ 	var buffer bytes.Buffer
+ 	encoder := json.NewEncoder(&buffer)
+@@ -199,6 +240,9 @@ func (s *Service) encodeCache() ([]byte, error) {
+ 	if err != nil {
+ 		return nil, err
+ 	}
++	if buffer.Len() > MaxCacheBytes {
++		return nil, errors.New("SSM_CACHE_EXCESSIVE")
++	}
+ 	return buffer.Bytes(), nil
+ }
+ 
+diff --git a/service/ssmapi/cache_store.go b/service/ssmapi/cache_store.go
+new file mode 100644
+index 00000000..70ba29c4
+--- /dev/null
++++ b/service/ssmapi/cache_store.go
+@@ -0,0 +1,69 @@
++package ssmapi
++
++import (
++	"context"
++	"errors"
++	"io"
++	"os"
++	"path/filepath"
++
++	"github.com/sagernet/sing/service/filemanager"
++)
++
++// MaxCacheBytes bounds this credential-bearing service state independently of
++// any panel's users or quota database.
++const MaxCacheBytes = 16 << 20
++
++// CacheStore is an instance-local deployment file adapter. Authentication and
++// counter interpretation remain owned by this service.
++type CacheStore interface {
++	Read(context.Context) ([]byte, error)
++	Write(context.Context, []byte) error
++}
++
++type cacheStoreKey struct{}
++
++func WithCacheStore(ctx context.Context, store CacheStore) context.Context {
++	return context.WithValue(ctx, cacheStoreKey{}, store)
++}
++
++type fileCacheStore struct {
++	ctx  context.Context
++	path string
++}
++
++func (s fileCacheStore) Read(ctx context.Context) ([]byte, error) {
++	if err := ctx.Err(); err != nil {
++		return nil, err
++	}
++	f, err := filemanager.Open(s.ctx, filemanager.BasePath(s.ctx, s.path))
++	if err != nil {
++		return nil, err
++	}
++	defer f.Close()
++	info, err := f.Stat()
++	if err != nil || !info.Mode().IsRegular() || info.Size() > MaxCacheBytes {
++		return nil, errors.New("SSM_CACHE_FILE_INVALID")
++	}
++	data, err := io.ReadAll(io.LimitReader(f, MaxCacheBytes+1))
++	if err != nil || len(data) > MaxCacheBytes {
++		return nil, errors.New("SSM_CACHE_FILE_INVALID")
++	}
++	return data, ctx.Err()
++}
++
++func (s fileCacheStore) Write(ctx context.Context, data []byte) error {
++	if len(data) > MaxCacheBytes {
++		return errors.New("SSM_CACHE_EXCESSIVE")
++	}
++	if err := ctx.Err(); err != nil {
++		return err
++	}
++	path := filemanager.BasePath(s.ctx, s.path)
++	if err := filemanager.MkdirAll(s.ctx, filepath.Dir(path), 0o700); err != nil {
++		return err
++	}
++	// Deployments requiring path/identity/atomic-publication guarantees inject
++	// their owned CacheStore; the portable default retains filemanager routing.
++	return filemanager.WriteFile(s.ctx, path, data, os.FileMode(0o600))
++}
+diff --git a/service/ssmapi/cache_test.go b/service/ssmapi/cache_test.go
+new file mode 100644
+index 00000000..7665847c
+--- /dev/null
++++ b/service/ssmapi/cache_test.go
+@@ -0,0 +1,281 @@
++package ssmapi
++
++import (
++	"bytes"
++	"context"
++	"errors"
++	"os"
++	"strings"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing-box/adapter/inbound"
++	"github.com/sagernet/sing-box/log"
++)
++
++type cacheManagedFixture struct {
++	inbound.Adapter
++	reject bool
++}
++
++func (s *cacheManagedFixture) SetTracker(adapter.SSMTracker) {}
++func (s *cacheManagedFixture) UpdateUsers([]string, []string) error {
++	if s.reject {
++		return errors.New("credential-must-not-appear")
++	}
++	return nil
++}
++func (s *cacheManagedFixture) Close() error                   { return nil }
++func (s *cacheManagedFixture) Start(adapter.StartStage) error { return nil }
++
++type cacheMemoryStore struct {
++	mu     sync.Mutex
++	data   []byte
++	writes int
++}
++
++func (s *cacheMemoryStore) Read(context.Context) ([]byte, error) {
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	return append([]byte(nil), s.data...), nil
++}
++func (s *cacheMemoryStore) Write(ctx context.Context, data []byte) error {
++	if err := ctx.Err(); err != nil {
++		return err
++	}
++	s.mu.Lock()
++	defer s.mu.Unlock()
++	s.data = append([]byte(nil), data...)
++	s.writes++
++	return nil
++}
++
++func cacheServiceFixture() *Service {
++	traffic := NewTrafficManager()
++	user := NewUserManager(&cacheManagedFixture{}, traffic)
++	return &Service{traffics: map[string]*TrafficManager{"/main": traffic}, users: map[string]*UserManager{"/main": user}, logger: log.NewNOPFactory().Logger()}
++}
++
++func TestCacheCorruptInputBoundedAndCredentialRedacted(t *testing.T) {
++	for _, data := range [][]byte{[]byte("null"), []byte(`{"endpoints":{"/main":null}}`), []byte(`{"endpoints":{"unknown":null}}`), []byte(`{"credential-must-not-appear"`), bytes.Repeat([]byte(" "), MaxCacheBytes+1)} {
++		if err := ValidateCache(data); err == nil || strings.Contains(err.Error(), "credential-must-not-appear") {
++			t.Fatal("corrupt cache accepted or input exposed")
++		}
++	}
++	for _, data := range [][]byte{nil, []byte("{}"), []byte(`{"endpoints":{}}`)} {
++		if err := ValidateCache(data); err != nil {
++			t.Fatal(err)
++		}
++	}
++}
++
++func TestCacheRestoresServiceCountersAndAuthentication(t *testing.T) {
++	s := cacheServiceFixture()
++	data := []byte(`{"endpoints":{"/main":{"global_uplink":17,"user_uplink":{"test-user":9},"users":{"test-user":"opaque-test-input"}}}}`)
++	if err := s.decodeCache(data); err != nil {
++		t.Fatal(err)
++	}
++	if s.traffics["/main"].globalUplink.Load() != 17 {
++		t.Fatal("global service counter lost")
++	}
++	if s.traffics["/main"].userUplink["test-user"].Load() != 9 {
++		t.Fatal("user service counter lost")
++	}
++	if _, found := s.users["/main"].Get("test-user"); !found {
++		t.Fatal("service authentication lost")
++	}
++	encoded, err := s.encodeCache()
++	if err != nil {
++		t.Fatal(err)
++	}
++	restored := cacheServiceFixture()
++	if err = restored.decodeCache(encoded); err != nil {
++		t.Fatal(err)
++	}
++	if restored.traffics["/main"].globalUplink.Load() != 17 {
++		t.Fatal("roundtrip changed counters")
++	}
++	s.users["/main"].server = &cacheManagedFixture{reject: true}
++	if err = s.decodeCache(data); err == nil || strings.Contains(err.Error(), "opaque-test-input") {
++		t.Fatal("authentication rejection was ignored or exposed")
++	}
++}
++
++func TestCacheConcurrentUserCounterSnapshot(t *testing.T) {
++	s := cacheServiceFixture()
++	start := make(chan struct{})
++	var wg sync.WaitGroup
++	for worker := 0; worker < 3; worker++ {
++		wg.Add(1)
++		go func(worker int) {
++			defer wg.Done()
++			<-start
++			for i := 0; i < 200; i++ {
++				switch worker {
++				case 0:
++					if err := s.users["/main"].Update("test-user", "opaque-test-input"); err != nil {
++						t.Error(err)
++					}
++				case 1:
++					s.traffics["/main"].userCounter("test-user")
++				case 2:
++					if _, err := s.encodeCache(); err != nil {
++						t.Error(err)
++					}
++				}
++			}
++		}(worker)
++	}
++	close(start)
++	wg.Wait()
++}
++
++func TestCacheFailedStartPreservesPreimageAndCloseOnce(t *testing.T) {
++	s := cacheServiceFixture()
++	s.ctx, s.cancel = context.WithCancel(context.Background())
++	s.cachePath = "owned"
++	store := &cacheMemoryStore{data: []byte("null")}
++	s.cacheStore = store
++	if err := s.Start(adapter.StartStateStart); err == nil {
++		t.Fatal("corrupt cache accepted")
++	}
++	for i := 0; i < 3; i++ {
++		_ = s.Close()
++	}
++	if store.writes != 0 || string(store.data) != "null" {
++		t.Fatal("failed startup overwrote preimage")
++	}
++	if err := s.Start(adapter.StartStateStart); err == nil {
++		t.Fatal("closed service restarted")
++	}
++}
++
++func TestCacheEmptyPathHasNoPersistence(t *testing.T) {
++	s := cacheServiceFixture()
++	store := &cacheMemoryStore{}
++	s.cacheStore = store
++	if err := s.loadCache(); err != nil {
++		t.Fatal(err)
++	}
++	if err := s.saveCache(context.Background()); err != nil || store.writes != 0 {
++		t.Fatal("absent optional cache persisted")
++	}
++}
++
++func TestCacheStoreMissingFileKeepsDefault(t *testing.T) {
++	s := cacheServiceFixture()
++	s.ctx = context.Background()
++	s.cachePath = "owned"
++	s.cacheStore = missingCacheStore{}
++	if err := s.loadCache(); err != nil {
++		t.Fatal("missing optional cache rejected")
++	}
++}
++
++type missingCacheStore struct{}
++
++func (missingCacheStore) Read(context.Context) ([]byte, error) { return nil, os.ErrNotExist }
++func (missingCacheStore) Write(context.Context, []byte) error  { return nil }
++
++type blockedCacheStore struct {
++	entered chan struct{}
++	exited  chan struct{}
++	once    sync.Once
++	writes  int
++}
++
++func (s *blockedCacheStore) Read(context.Context) ([]byte, error) { return nil, os.ErrNotExist }
++func (s *blockedCacheStore) Write(ctx context.Context, _ []byte) error {
++	s.writes++
++	s.once.Do(func() { close(s.entered) })
++	<-ctx.Done()
++	close(s.exited)
++	return ctx.Err()
++}
++
++func TestCacheCloseBoundedConcurrentAndOnce(t *testing.T) {
++	s := cacheServiceFixture()
++	s.ctx, s.cancel = context.WithCancel(context.Background())
++	s.cachePath = "owned"
++	s.cacheReady = true
++	store := &blockedCacheStore{entered: make(chan struct{}), exited: make(chan struct{})}
++	s.cacheStore = store
++	start := time.Now()
++	results := make(chan error, 16)
++	go func() { results <- s.Close() }()
++	select {
++	case <-store.entered:
++	case <-time.After(time.Second):
++		t.Fatal("flush was not entered")
++	}
++	for i := 1; i < 16; i++ {
++		go func() { results <- s.Close() }()
++	}
++	for i := 0; i < 16; i++ {
++		select {
++		case err := <-results:
++			if err == nil {
++				t.Fatal("blocked close reported success")
++			}
++		case <-time.After(3 * time.Second):
++			t.Fatal("close exceeded bound")
++		}
++	}
++	select {
++	case <-store.exited:
++	case <-time.After(time.Second):
++		t.Fatal("cancelled storage did not finish")
++	}
++	if store.writes != 1 || time.Since(start) > 3*time.Second {
++		t.Fatal("flush repeated or close unbounded")
++	}
++}
++
++type drainCacheStore struct {
++	entered chan struct{}
++	writes  int
++}
++
++func (s *drainCacheStore) Read(context.Context) ([]byte, error) { return nil, os.ErrNotExist }
++func (s *drainCacheStore) Write(ctx context.Context, _ []byte) error {
++	s.writes++
++	if s.writes == 1 {
++		close(s.entered)
++		<-ctx.Done()
++		return ctx.Err()
++	}
++	return ctx.Err()
++}
++
++func TestCacheLoopDrainsBeforeFinalFlush(t *testing.T) {
++	s := cacheServiceFixture()
++	s.ctx, s.cancel = context.WithCancel(context.Background())
++	s.cachePath = "owned"
++	s.cacheReady = true
++	store := &drainCacheStore{entered: make(chan struct{})}
++	s.cacheStore = store
++	s.saveTicker = time.NewTicker(time.Millisecond)
++	s.loopDone = make(chan struct{})
++	go s.loopSaveCache()
++	select {
++	case <-store.entered:
++	case <-time.After(time.Second):
++		t.Fatal("periodic write not entered")
++	}
++	if err := s.Start(adapter.StartStateStart); err != nil {
++		t.Fatal("repeated start", err)
++	}
++	if err := s.Close(); err != nil {
++		t.Fatal("close", err)
++	}
++	select {
++	case <-s.loopDone:
++	default:
++		t.Fatal("writer not drained")
++	}
++	if store.writes != 2 {
++		t.Fatal("final write did not follow drain exactly once")
++	}
++}
+diff --git a/service/ssmapi/server.go b/service/ssmapi/server.go
+index 157ea150..394f4fce 100644
+--- a/service/ssmapi/server.go
++++ b/service/ssmapi/server.go
+@@ -42,6 +42,13 @@ type Service struct {
+ 	saveTicker     *time.Ticker
+ 	lastSavedCache []byte
+ 	cacheMutex     sync.Mutex
++	cacheStore     CacheStore
++	cacheReady     bool
++	loopDone       chan struct{}
++	lifecycle      sync.Mutex
++	closeOnce      sync.Once
++	closeErr       error
++	closed         bool
+ }
+ 
+ func NewService(ctx context.Context, logger log.ContextLogger, tag string, options option.SSMAPIServiceOptions) (adapter.Service, error) {
+@@ -65,6 +72,10 @@ func NewService(ctx context.Context, logger log.ContextLogger, tag string, optio
+ 		users:     make(map[string]*UserManager),
+ 		cachePath: options.CachePath,
+ 	}
++	s.cacheStore, _ = ctx.Value(cacheStoreKey{}).(CacheStore)
++	if s.cacheStore == nil {
++		s.cacheStore = fileCacheStore{ctx: ctx, path: options.CachePath}
++	}
+ 	inboundManager := service.FromContext[adapter.InboundManager](ctx)
+ 	if options.Servers.Size() == 0 {
+ 		return nil, E.New("missing servers")
+@@ -99,12 +110,18 @@ func (s *Service) Start(stage adapter.StartStage) error {
+ 	if stage != adapter.StartStateStart {
+ 		return nil
+ 	}
++	s.lifecycle.Lock()
++	defer s.lifecycle.Unlock()
++	if s.closed {
++		return errors.New("SSM_SERVICE_CLOSED")
++	}
++	if s.cacheReady {
++		return nil
++	}
+ 	err := s.loadCache()
+ 	if err != nil {
+-		s.logger.Error(E.Cause(err, "load cache"))
++		return errors.New("SSM_CACHE_LOAD_REJECTED")
+ 	}
+-	s.saveTicker = time.NewTicker(1 * time.Minute)
+-	go s.loopSaveCache()
+ 	if s.tlsConfig != nil {
+ 		err = s.tlsConfig.Start()
+ 		if err != nil {
+@@ -127,16 +144,23 @@ func (s *Service) Start(stage adapter.StartStage) error {
+ 			s.logger.Error("serve error: ", err)
+ 		}
+ 	}()
++	s.cacheReady = true
++	if s.cachePath != "" {
++		s.saveTicker = time.NewTicker(1 * time.Minute)
++		s.loopDone = make(chan struct{})
++		go s.loopSaveCache()
++	}
+ 	return nil
+ }
+ 
+ func (s *Service) loopSaveCache() {
++	defer close(s.loopDone)
+ 	for {
+ 		select {
+ 		case <-s.ctx.Done():
+ 			return
+ 		case <-s.saveTicker.C:
+-			err := s.saveCache()
++			err := s.saveCache(s.ctx)
+ 			if err != nil {
+ 				s.logger.Error(E.Cause(err, "save cache"))
+ 			}
+@@ -145,19 +169,36 @@ func (s *Service) loopSaveCache() {
+ }
+ 
+ func (s *Service) Close() error {
+-	if s.cancel != nil {
++	s.closeOnce.Do(func() {
++		s.lifecycle.Lock()
++		s.closed = true
+ 		s.cancel()
+-	}
+-	if s.saveTicker != nil {
+-		s.saveTicker.Stop()
+-	}
+-	err := s.saveCache()
+-	if err != nil {
+-		s.logger.Error(E.Cause(err, "save cache"))
+-	}
+-	return common.Close(
+-		common.PtrOrNil(s.httpServer),
+-		common.PtrOrNil(s.listener),
+-		s.tlsConfig,
+-	)
++		if s.saveTicker != nil {
++			s.saveTicker.Stop()
++		}
++		ready, done := s.cacheReady, s.loopDone
++		s.lifecycle.Unlock()
++		s.closeErr = common.Close(common.PtrOrNil(s.httpServer), common.PtrOrNil(s.listener), s.tlsConfig)
++		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
++		defer cancel()
++		if done != nil {
++			select {
++			case <-done:
++			case <-ctx.Done():
++				s.closeErr = errors.Join(s.closeErr, errors.New("SSM_CACHE_DRAIN_TIMEOUT"))
++				return
++			}
++		}
++		if ready && s.cachePath != "" {
++			flush := make(chan error, 1)
++			go func() { flush <- s.saveCache(ctx) }()
++			select {
++			case err := <-flush:
++				s.closeErr = errors.Join(s.closeErr, err)
++			case <-ctx.Done():
++				s.closeErr = errors.Join(s.closeErr, errors.New("SSM_CACHE_DRAIN_TIMEOUT"))
++			}
++		}
++	})
++	return s.closeErr
+ }

@@ -59,6 +59,7 @@ type fixtureInput struct {
 	Passwords                      []string
 	WebPort, SubPort               int
 	PrivatePort                    int
+	UDPPort                        int
 	Ports                          map[string]int
 	Clients                        []model.Client
 	IncludeNaive                   bool
@@ -343,9 +344,14 @@ type peer struct {
 	conn      *quic.Conn
 	kind      string
 	transport *http3.Transport
+	udpStream *quic.Stream
 }
 
 func (p *peer) close() {
+	if p.udpStream != nil {
+		p.udpStream.CancelRead(0)
+		_ = p.udpStream.Close()
+	}
 	if p.transport != nil {
 		_ = p.transport.Close()
 	}
@@ -436,6 +442,80 @@ func (p *packageProbe) dial(kind string, user int) (*peer, error) {
 		return nil, err
 	}
 	return result, nil
+}
+
+// Adapted from the accepted owner TestQUICAuthenticatedUDPParentKick. An
+// independent process echoes a fresh nonce on loopback in the product's network
+// namespace; the response therefore proves routed application UDP, not merely
+// authentication or the presence of a listener.
+func (p *peer) routedUDP(port int) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 4*time.Second)
+	defer cancel()
+	var session uint32 = 42
+	payload := []byte("W5-UDP-" + rand.Text())
+	var packet []byte
+	switch p.kind {
+	case "hysteria":
+		stream, err := p.conn.OpenStreamSync(ctx)
+		if err != nil {
+			return errors.New("H1_UDP_STREAM_FAILED")
+		}
+		p.udpStream = stream
+		_ = stream.SetDeadline(time.Now().Add(4 * time.Second))
+		request := hysteria.WriteClientRequest(hysteria.ClientRequest{UDP: true, Host: "127.0.0.1", Port: uint16(port)}, nil)
+		_, err = stream.Write(request.Bytes())
+		request.Release()
+		if err != nil {
+			return errors.New("H1_UDP_REQUEST_FAILED")
+		}
+		response, err := hysteria.ReadServerResponse(stream)
+		if err != nil || !response.OK {
+			return errors.New("H1_UDP_REQUEST_REJECTED")
+		}
+		_ = stream.SetDeadline(time.Time{})
+		session = response.UDPSessionID
+		packet = binary.BigEndian.AppendUint32(nil, session)
+		packet = binary.BigEndian.AppendUint16(packet, 9)
+		packet = append(packet, "127.0.0.1"...)
+		packet = binary.BigEndian.AppendUint16(packet, uint16(port))
+		packet = binary.BigEndian.AppendUint16(packet, 1)
+		packet = append(packet, 0, 1)
+		packet = binary.BigEndian.AppendUint16(packet, uint16(len(payload)))
+	case "hysteria2":
+		address := net.JoinHostPort("127.0.0.1", strconv.Itoa(port))
+		packet = binary.BigEndian.AppendUint32(nil, session)
+		packet = binary.BigEndian.AppendUint16(packet, 1)
+		packet = append(packet, 0, 1)
+		packet = quicvarint.Append(packet, uint64(len(address)))
+		packet = append(packet, address...)
+	case "tuic":
+		packet = []byte{tuic.Version, tuic.CommandPacket}
+		packet = binary.BigEndian.AppendUint16(packet, uint16(session))
+		packet = binary.BigEndian.AppendUint16(packet, 1)
+		packet = append(packet, 1, 0)
+		packet = binary.BigEndian.AppendUint16(packet, uint16(len(payload)))
+		packet = append(packet, 1, 127, 0, 0, 1)
+		packet = binary.BigEndian.AppendUint16(packet, uint16(port))
+	default:
+		return errors.New("UDP_PROTOCOL_UNSUPPORTED")
+	}
+	packet = append(packet, payload...)
+	if err := p.conn.SendDatagram(packet); err != nil {
+		return errors.New("ROUTED_UDP_WRITE_FAILED")
+	}
+	for {
+		response, err := p.conn.ReceiveDatagram(ctx)
+		if err != nil {
+			return errors.New("ROUTED_UDP_RESPONSE_FAILED")
+		}
+		if p.kind == "tuic" && (len(response) < 2 || response[1] != tuic.CommandPacket) {
+			continue
+		}
+		if !bytes.HasSuffix(response, payload) {
+			return errors.New("ROUTED_UDP_NONCE_MISMATCH")
+		}
+		return nil
+	}
 }
 
 func (p *peer) routedHTTP(port int) error {
@@ -589,6 +669,34 @@ func probe(in fixtureInput) (fixtureOutput, error) {
 		return out, errors.New("SIX_AUTHENTICATED_PARENTS_NOT_OBSERVED")
 	}
 	p.assertions = append(p.assertions, "three_protocols_authenticated_same_ip_independent_parent_handles")
+	if in.UDPPort > 0 {
+		for _, kind := range kinds {
+			for _, peer := range peers[kind] {
+				if err := peer.routedUDP(in.UDPPort); err != nil {
+					return out, fmt.Errorf("%s:%s", kind, err.Error())
+				}
+			}
+			p.assertions = append(p.assertions, kind+"_two_authenticated_users_routed_udp_nonce_echo")
+		}
+		admitted, err := p.snapshot(generation, 0)
+		if err != nil {
+			return out, err
+		}
+		for _, kind := range kinds {
+			for _, client := range []uint{101, 102} {
+				found := false
+				for _, flow := range admitted.Connections {
+					if flow.Inbound == "w5-"+kind && flow.ClientID == client && flow.Network == "udp" {
+						found = true
+					}
+				}
+				if !found {
+					return out, errors.New("ROUTED_UDP_AUTHENTICATED_INVENTORY_MISSING")
+				}
+			}
+		}
+		p.assertions = append(p.assertions, "six_routed_udp_flows_bound_to_official_authenticated_client_inventory")
+	}
 	// Exercise the deployed HTTP -> trusted private gRPC log subscription. The
 	// seed explicitly disables log production, so the owner must still terminate
 	// this idle current-generation request at its 30-second server deadline.
