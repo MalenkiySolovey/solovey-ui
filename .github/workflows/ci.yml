@@ -4,6 +4,10 @@ name: Stage2 Wave5 package qualification
 on:
   workflow_dispatch:
     inputs:
+      qualify_windows:
+        type: boolean
+        default: true
+        description: Also build and exercise native Windows packages
       qualify_docker:
         type: boolean
         default: false
@@ -18,6 +22,7 @@ env:
 
 jobs:
   windows-build:
+    if: inputs.qualify_windows
     uses: ./.github/workflows/windows.yml
     with:
       source_commit: beef5df19daec197492553c12b7c1bb2946548fa
@@ -222,7 +227,7 @@ jobs:
           node fixture-driver/.qualification/native-package-runtime.mjs \
             --image solovey-w5-candidate:arm64 --helper "$RUNNER_TEMP/native-fixture" \
             --output qualification-evidence/RUNTIME.json --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}' \
-            --private-probe "$RUNNER_TEMP/private-api-probe" --udp-witness "$RUNNER_TEMP/udp-witness"
+            --private-probe "$RUNNER_TEMP/private-api-probe" --udp-witness "$RUNNER_TEMP/udp-witness" --persist-restart true
       - name: Preserve locally built candidate even when a runtime assertion fails
         if: always()
         run: |

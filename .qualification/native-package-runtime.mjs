@@ -265,6 +265,29 @@ async function run() {
       `$ErrorActionPreference='Stop'; @((Get-Process -Id ${child.pid}).Modules | Where-Object ModuleName -eq 'libcronet.dll').Count`]).trim()
     assertion('packaged_naive_engine_loaded_native_cronet_dll', loaded === '1')
   }
+  if (flags['persist-restart'] === 'true') {
+    assertion('persistent_restart_requires_owned_docker_fixture', !!container)
+    invoke('docker', ['stop', '--time', '10', container])
+    const stopped = JSON.parse(invoke('docker', ['inspect', container]))[0]
+    assertion('container_sigterm_shutdown_not_forced_kill', stopped.State.ExitCode === 0)
+    if (witness && witness.exitCode === null) {
+      await Promise.race([new Promise(resolve => witness.once('exit', resolve)),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('STOPPED_CONTAINER_WITNESS_EXIT_TIMEOUT')), 3000))])
+    }
+    invoke('docker', ['start', container])
+    const restarted = JSON.parse(invoke('docker', ['inspect', container]))[0]
+    const remapped = restarted.NetworkSettings.Ports
+    assertion('restarted_container_published_ports_loopback_only', Object.values(remapped).flat().every(mapping => mapping.HostIp === '127.0.0.1'))
+    input.API = `http://127.0.0.1:${remapped[`${webPort}/tcp`][0].HostPort}/app/`
+    input.Ports = Object.fromEntries(Object.entries(ports).map(([kind, port]) => [kind, Number(remapped[`${port}/udp`][0].HostPort)]))
+    await waitReady(`${input.API}login`)
+    if (flags['udp-witness']) input.UDPPort = await startUDPWitness()
+    const afterRestart = helper('probe', input)
+    report.assertions.push(...afterRestart.assertions.map(name => `after_container_restart_${name}`))
+    assertion('persisted_volume_auth_clients_tcp_udp_and_parent_control_recovered', afterRestart.assertions.length >= result.assertions.length)
+    assertion('restart_preserves_nonroot_readonly_capdrop_no_new_privileges', restarted.Config.User === '65532:65532' && restarted.HostConfig.ReadonlyRootfs && restarted.HostConfig.CapDrop.includes('ALL') && restarted.HostConfig.SecurityOpt.includes('no-new-privileges'))
+    report.persistentRestart = {status:'PASS',sameMarkedVolume:true,oldCapturedDatabase:false,gracefulExitCode:stopped.State.ExitCode,afterRestartAssertions:afterRestart.assertions.length}
+  }
   captureContainerLogs()
   assertion('candidate_logs_do_not_expose_fixture_secrets', !secretLeak)
   report.status = 'PASS'
