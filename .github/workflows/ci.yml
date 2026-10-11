@@ -62,12 +62,30 @@ jobs:
       - name: Compare original console input with exact private ACL environment input
         env:
           W5_FIXTURE_COMMIT: ${{ github.sha }}
-        run: node .qualification/native-windows-extra/private-metadata-probe.mjs WINDOWS_PRIVATE_METADATA_HARNESS_RCA.json
+        run: |
+          node .qualification/native-windows-extra/private-metadata-probe.mjs WINDOWS_PRIVATE_METADATA_HARNESS_RCA.json
+          if($LASTEXITCODE -ne 0){throw 'BEFORE_TOOLING_METADATA_FAILED'}
+          $w5Baseline=@{}
+          foreach($w5Key in @('Path','PSModulePath','SystemRoot','WINDIR','ComSpec','PATHEXT')){$w5Baseline[$w5Key]=[Environment]::GetEnvironmentVariable($w5Key)}
+          $w5Baseline | ConvertTo-Json | Set-Content -Encoding utf8 -LiteralPath "$env:RUNNER_TEMP/w5-native-child-environment.json"
+      - uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884
+        with:
+          msystem: CLANGARM64
+          update: false
+          install: mingw-w64-clang-aarch64-clang
+          path-type: inherit
+      - name: Compare post-tooling environment with preserved native child environment
+        env:
+          W5_FIXTURE_COMMIT: ${{ github.sha }}
+        run: |
+          $env:W5_POWERSHELL_BASELINE_FILE="$env:RUNNER_TEMP/w5-native-child-environment.json"
+          node .qualification/native-windows-extra/private-metadata-probe.mjs WINDOWS_PRIVATE_METADATA_AFTER_TOOLING.json
+          if($LASTEXITCODE -ne 0){throw 'PRESERVED_NATIVE_CHILD_METADATA_FAILED'}
       - if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: w5-windows-arm64-private-metadata-rca
-          path: WINDOWS_PRIVATE_METADATA_HARNESS_RCA.json
+          path: WINDOWS_PRIVATE_METADATA*.json
           retention-days: 7
 
   docker-arm-carrier:

@@ -10,8 +10,13 @@ import {spawnSync} from 'node:child_process'
 const report={test:'WINDOWS_PRIVATE_METADATA_HARNESS_RCA',startedAt:new Date().toISOString(),platform:process.platform,architecture:process.arch,node:process.version,fixture:process.env.W5_FIXTURE_COMMIT??null,productSource:'de501586b354e8f93adc5a66984c1c61b48dbf96',productExecuted:false,privateValuesCaptured:false,results:[],status:'RUNNING'}
 if(process.platform!=='win32')throw Error('NATIVE_WINDOWS_REQUIRED')
 const program=path.join(process.env.SystemRoot,'System32/WindowsPowerShell/v1.0/powershell.exe')
+const preserved=process.env.W5_POWERSHELL_BASELINE_FILE?JSON.parse(fs.readFileSync(process.env.W5_POWERSHELL_BASELINE_FILE,'utf8').replace(/^\uFEFF/,'')):null
+if(preserved){
+ report.nativeEnvironmentDifferences=Object.entries(preserved).filter(([key,value])=>value!==process.env[key]).map(([key,value])=>({key,preservedBytes:Buffer.byteLength(value??''),currentBytes:Buffer.byteLength(process.env[key]??''),preservedSha256:crypto.createHash('sha256').update(value??'').digest('hex'),currentSha256:crypto.createHash('sha256').update(process.env[key]??'').digest('hex')}))
+}
 const invoke=(name,script,input,viaEnv)=>{
- const started=Date.now(),r=spawnSync(program,['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{encoding:'utf8',windowsHide:true,timeout:20000,maxBuffer:65536,...(viaEnv?{stdio:['ignore','pipe','pipe'],env:{...process.env,W5_PRIVATE_METADATA_INPUT:JSON.stringify(input)}}:{input:JSON.stringify(input)})})
+ const nativeEnv={...process.env,...(preserved??{}),W5_PRIVATE_METADATA_INPUT:JSON.stringify(input)}
+ const started=Date.now(),r=spawnSync(program,['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(script,'utf16le').toString('base64')],{env:nativeEnv,encoding:'utf8',windowsHide:true,timeout:20000,maxBuffer:65536,...(viaEnv?{stdio:['ignore','pipe','pipe']}:{input:JSON.stringify(input)})})
  let detail;try{detail=JSON.parse(r.stdout?.trim())}catch{}
  report.results.push({name,elapsedMs:Date.now()-started,exitCode:r.status,spawnCode:r.error?.code??null,stderrBytes:Buffer.byteLength(r.stderr??''),detail:detail??null})
  console.log(JSON.stringify(report.results.at(-1)))
