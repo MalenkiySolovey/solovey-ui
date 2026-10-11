@@ -51,7 +51,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.sha }}
-          path: fixture-driver
+          path: .runtime/fixture-driver
           sparse-checkout: .qualification
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
@@ -63,19 +63,19 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: solovey-ui-windows-${{ matrix.arch }}
-          path: candidate-archive
+          path: .runtime/candidate-archive
       - name: Authenticate and extract produced package
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          $archive="candidate-archive/solovey-ui-windows-${{ matrix.arch }}.zip"
+          $archive=".runtime/candidate-archive/solovey-ui-windows-${{ matrix.arch }}.zip"
           $expected=(Get-Content -LiteralPath "$archive.sha256" -Raw).Split(' ')[0].Trim()
           if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Candidate archive checksum mismatch' }
-          Expand-Archive -LiteralPath $archive -DestinationPath candidate-package
-          $metadata=Get-Content -LiteralPath 'candidate-package/solovey-ui-windows/BUILD_INFO.txt' -Raw
+          Expand-Archive -LiteralPath $archive -DestinationPath .runtime/candidate-package
+          $metadata=Get-Content -LiteralPath '.runtime/candidate-package/solovey-ui-windows/BUILD_INFO.txt' -Raw
           if (!$metadata.Contains("commit=$env:W5_PRODUCT_COMMIT")) { throw 'Candidate source mismatch' }
-          New-Item -ItemType Directory -Path qualification-evidence -Force | Out-Null
-          Copy-Item -LiteralPath 'candidate-package/solovey-ui-windows/BUILD_INFO.txt' -Destination 'qualification-evidence/BUILD_INFO.txt'
+          New-Item -ItemType Directory -Path .runtime/qualification-evidence -Force | Out-Null
+          Copy-Item -LiteralPath '.runtime/candidate-package/solovey-ui-windows/BUILD_INFO.txt' -Destination '.runtime/qualification-evidence/BUILD_INFO.txt'
       - name: Native ARM64 C toolchain
         id: msys2
         if: matrix.arch == 'arm64'
@@ -100,21 +100,21 @@ jobs:
             export CC=gcc
           fi
           test "$(go env GOHOSTARCH)" = '${{ matrix.arch }}'
-          cp fixture-driver/.qualification/native-package-fixture.go.txt "$RUNNER_TEMP/native-fixture.go"
+          cp .runtime/fixture-driver/.qualification/native-package-fixture.go.txt "$RUNNER_TEMP/native-fixture.go"
           go build -tags with_quic -o "$RUNNER_TEMP/native-fixture.exe" "$RUNNER_TEMP/native-fixture.go"
-          cp fixture-driver/.qualification/udp-loopback-witness.go.txt "$RUNNER_TEMP/udp-witness.go"
+          cp .runtime/fixture-driver/.qualification/udp-loopback-witness.go.txt "$RUNNER_TEMP/udp-witness.go"
           CGO_ENABLED=0 go build -o "$RUNNER_TEMP/udp-witness.exe" "$RUNNER_TEMP/udp-witness.go"
           if [ '${{ matrix.arch }}' = arm64 ]; then
             go test -tags with_quic ./internal/entities/ssmcache ./core/registry ./database/backup ./service github.com/sagernet/sing-box/service/ssmapi \
-              -run 'Test(SSM|OwnedTreeWindows|WindowsSDDL|Cache|OptionalCache)' -count=1 > qualification-evidence/SSM_FOCUSED.txt
+              -run 'Test(SSM|OwnedTreeWindows|WindowsSDDL|Cache|OptionalCache)' -count=1 > .runtime/qualification-evidence/SSM_FOCUSED.txt
           fi
-          go version -m candidate-package/solovey-ui-windows/sui.exe > qualification-evidence/GO_BUILD_INFO.txt
+          go version -m .runtime/candidate-package/solovey-ui-windows/sui.exe > .runtime/qualification-evidence/GO_BUILD_INFO.txt
       - name: Actual packaged runtime with loopback synthetic state
         shell: bash
         run: |
-          node fixture-driver/.qualification/native-package-runtime.mjs \
-            --binary candidate-package/solovey-ui-windows/sui.exe \
-            --helper "$RUNNER_TEMP/native-fixture.exe" --udp-witness "$RUNNER_TEMP/udp-witness.exe" --output qualification-evidence/RUNTIME.json \
+          node .runtime/fixture-driver/.qualification/native-package-runtime.mjs \
+            --binary .runtime/candidate-package/solovey-ui-windows/sui.exe \
+            --helper "$RUNNER_TEMP/native-fixture.exe" --udp-witness "$RUNNER_TEMP/udp-witness.exe" --output .runtime/qualification-evidence/RUNTIME.json \
             --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}' --private-api-check true
       - name: Build and exercise native Core profile with its own verified frontend
         shell: bash
@@ -137,32 +137,32 @@ jobs:
           cd ..
           node scripts/check-frontend-profile.mjs --profile core --dist frontend/dist
           node scripts/frontend-assets.mjs publish --dist frontend/dist --destination web/html
-          mkdir -p candidate-core qualification-evidence/core
+          mkdir -p .runtime/candidate-core .runtime/qualification-evidence/core
           tags=with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0,with_tailscale,minimal
-          go build -trimpath -buildvcs=false -tags "$tags" -ldflags="-buildid= -w -s -checklinkname=0 -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=$SUI_RELEASE_TRUST_ROOTS_B64" -o candidate-core/sui.exe main.go
-          cp candidate-package/solovey-ui-windows/libcronet.dll candidate-core/libcronet.dll
+          go build -trimpath -buildvcs=false -tags "$tags" -ldflags="-buildid= -w -s -checklinkname=0 -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=$SUI_RELEASE_TRUST_ROOTS_B64" -o .runtime/candidate-core/sui.exe main.go
+          cp .runtime/candidate-package/solovey-ui-windows/libcronet.dll .runtime/candidate-core/libcronet.dll
           {
             printf 'version=v2026.3.3\ncommit=%s\nplatform=windows/${{ matrix.arch }}\nprofile=core\n' "$W5_PRODUCT_COMMIT"
             printf 'source_fingerprint=%s\n' "$(node scripts/release-source.mjs .)"
             node scripts/quic-integration-provenance.mjs build-info
             node scripts/ssm-integration-provenance.mjs build-info
             node scripts/anytls-integration-provenance.mjs build-info
-          } > candidate-core/BUILD_INFO.txt
-          cp candidate-core/BUILD_INFO.txt qualification-evidence/core/BUILD_INFO.txt
-          go version -m candidate-core/sui.exe > qualification-evidence/core/GO_BUILD_INFO.txt
-          node fixture-driver/.qualification/native-package-runtime.mjs \
-            --binary candidate-core/sui.exe --helper "$RUNNER_TEMP/native-fixture.exe" --udp-witness "$RUNNER_TEMP/udp-witness.exe" \
-            --output qualification-evidence/core/RUNTIME.json --commit "$W5_PRODUCT_COMMIT" \
+          } > .runtime/candidate-core/BUILD_INFO.txt
+          cp .runtime/candidate-core/BUILD_INFO.txt .runtime/qualification-evidence/core/BUILD_INFO.txt
+          go version -m .runtime/candidate-core/sui.exe > .runtime/qualification-evidence/core/GO_BUILD_INFO.txt
+          node .runtime/fixture-driver/.qualification/native-package-runtime.mjs \
+            --binary .runtime/candidate-core/sui.exe --helper "$RUNNER_TEMP/native-fixture.exe" --udp-witness "$RUNNER_TEMP/udp-witness.exe" \
+            --output .runtime/qualification-evidence/core/RUNTIME.json --commit "$W5_PRODUCT_COMMIT" \
             --fixture-commit '${{ github.sha }}' --private-api-check true
       - name: Retain the independently built Core candidate
         if: always()
         shell: powershell
         run: |
           $ErrorActionPreference='Stop'
-          if (Test-Path -LiteralPath 'candidate-core/sui.exe') {
-            New-Item -ItemType Directory -Path qualification-evidence -Force | Out-Null
-            $archive='qualification-evidence/solovey-ui-core-windows-${{ matrix.arch }}.zip'
-            Compress-Archive -LiteralPath candidate-core -DestinationPath $archive -CompressionLevel Optimal
+          if (Test-Path -LiteralPath '.runtime/candidate-core/sui.exe') {
+            New-Item -ItemType Directory -Path .runtime/qualification-evidence -Force | Out-Null
+            $archive='.runtime/qualification-evidence/solovey-ui-core-windows-${{ matrix.arch }}.zip'
+            Compress-Archive -LiteralPath .runtime/candidate-core -DestinationPath $archive -CompressionLevel Optimal
             $hash=(Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
             "$hash  solovey-ui-core-windows-${{ matrix.arch }}.zip" | Set-Content -LiteralPath "$archive.sha256"
           }
@@ -171,7 +171,7 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: w5-windows-${{ matrix.arch }}-runtime
-          path: qualification-evidence
+          path: .runtime/qualification-evidence
           retention-days: 4
 
   docker-runtime:
@@ -186,7 +186,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.sha }}
-          path: fixture-driver
+          path: .runtime/fixture-driver
           sparse-checkout: .qualification
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
@@ -222,32 +222,32 @@ jobs:
       - name: Compile fixture and run actual non-root candidate
         run: |
           set -euo pipefail
-          mkdir -p qualification-evidence
-          cp fixture-driver/.qualification/native-package-fixture.go.txt "$RUNNER_TEMP/native-fixture.go"
+          mkdir -p .runtime/qualification-evidence
+          cp .runtime/fixture-driver/.qualification/native-package-fixture.go.txt "$RUNNER_TEMP/native-fixture.go"
           CGO_ENABLED=1 GOWORK=off go build -tags with_quic -o "$RUNNER_TEMP/native-fixture" "$RUNNER_TEMP/native-fixture.go"
-          cp fixture-driver/.qualification/private-api-probe.go.txt "$RUNNER_TEMP/private-api-probe.go"
+          cp .runtime/fixture-driver/.qualification/private-api-probe.go.txt "$RUNNER_TEMP/private-api-probe.go"
           CGO_ENABLED=0 GOWORK=off go build -o "$RUNNER_TEMP/private-api-probe" "$RUNNER_TEMP/private-api-probe.go"
-          cp fixture-driver/.qualification/udp-loopback-witness.go.txt "$RUNNER_TEMP/udp-witness.go"
+          cp .runtime/fixture-driver/.qualification/udp-loopback-witness.go.txt "$RUNNER_TEMP/udp-witness.go"
           CGO_ENABLED=0 GOWORK=off go build -o "$RUNNER_TEMP/udp-witness" "$RUNNER_TEMP/udp-witness.go"
-          node fixture-driver/.qualification/native-package-runtime.mjs \
+          node .runtime/fixture-driver/.qualification/native-package-runtime.mjs \
             --image solovey-w5-candidate:arm64 --helper "$RUNNER_TEMP/native-fixture" \
-            --output qualification-evidence/RUNTIME.json --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}' \
+            --output .runtime/qualification-evidence/RUNTIME.json --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}' \
             --private-probe "$RUNNER_TEMP/private-api-probe" --udp-witness "$RUNNER_TEMP/udp-witness" --persist-restart true
       - name: Preserve locally built candidate even when a runtime assertion fails
         if: always()
         run: |
           set -euo pipefail
-          mkdir -p qualification-evidence
+          mkdir -p .runtime/qualification-evidence
           if docker image inspect solovey-w5-candidate:arm64 >/dev/null 2>&1; then
-            docker save solovey-w5-candidate:arm64 | gzip -1 > qualification-evidence/docker-arm64-candidate.tar.gz
-            sha256sum qualification-evidence/docker-arm64-candidate.tar.gz > qualification-evidence/docker-arm64-candidate.tar.gz.sha256
+            docker save solovey-w5-candidate:arm64 | gzip -1 > .runtime/qualification-evidence/docker-arm64-candidate.tar.gz
+            sha256sum .runtime/qualification-evidence/docker-arm64-candidate.tar.gz > .runtime/qualification-evidence/docker-arm64-candidate.tar.gz.sha256
           fi
       - name: Retain candidate image and sanitized evidence
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: w5-docker-arm64-runtime
-          path: qualification-evidence
+          path: .runtime/qualification-evidence
           retention-days: 4
   linux-build:
     name: Canonical Linux candidate ${{ matrix.arch }}
@@ -265,7 +265,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ github.sha }}
-          path: fixture-driver
+          path: .runtime/fixture-driver
           sparse-checkout: .qualification
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
@@ -295,12 +295,12 @@ jobs:
         env:
           W5_TARGET_ARCH: ${{ matrix.arch }}
           SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
-        run: bash fixture-driver/.qualification/linux-systemd-build.sh
+        run: bash .runtime/fixture-driver/.qualification/linux-systemd-build.sh
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         if: always()
         with:
           name: w5-linux-${{ matrix.arch }}-candidates
-          path: qualification-evidence
+          path: .runtime/qualification-evidence
           retention-days: 4
 
   linux-systemd-runtime:
@@ -322,7 +322,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
         with:
           ref: ${{ github.sha }}
-          path: fixture-driver
+          path: .runtime/fixture-driver
           sparse-checkout: .qualification
           persist-credentials: false
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
@@ -334,7 +334,7 @@ jobs:
       - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
         with:
           name: w5-linux-${{ matrix.arch }}-candidates
-          path: candidate-packages
+          path: .runtime/candidate-packages
       - name: Require native architecture and actual PID1 systemd
         run: |
           set -euo pipefail
@@ -342,38 +342,39 @@ jobs:
           test "$(go env GOHOSTARCH)" = '${{ matrix.arch }}'
           test "$(cat /proc/1/comm)" = systemd
           case "$(uname -r)" in *[Mm]icrosoft*) exit 1;; esac
-          cat /etc/os-release > candidate-packages/NATIVE_HOST_OS.txt
-          uname -a >> candidate-packages/NATIVE_HOST_OS.txt
+          cat /etc/os-release > .runtime/candidate-packages/NATIVE_HOST_OS.txt
+          uname -a >> .runtime/candidate-packages/NATIVE_HOST_OS.txt
       - name: Compile independent authenticated clients and private API witness
         run: |
           set -euo pipefail
-          cp fixture-driver/.qualification/native-package-fixture.go.txt "$RUNNER_TEMP/native-fixture.go"
+          cp .runtime/fixture-driver/.qualification/native-package-fixture.go.txt "$RUNNER_TEMP/native-fixture.go"
           CGO_ENABLED=1 CC=gcc go build -tags with_quic -o "$RUNNER_TEMP/native-fixture" "$RUNNER_TEMP/native-fixture.go"
-          cp fixture-driver/.qualification/udp-loopback-witness.go.txt "$RUNNER_TEMP/udp-witness.go"
+          cp .runtime/fixture-driver/.qualification/udp-loopback-witness.go.txt "$RUNNER_TEMP/udp-witness.go"
           CGO_ENABLED=0 go build -o "$RUNNER_TEMP/udp-witness" "$RUNNER_TEMP/udp-witness.go"
       - name: Run exact full and Core candidates under canonical hardening
         run: |
           set -euo pipefail
-          cd candidate-packages
-          sha256sum -c "solovey-ui-linux-${{ matrix.arch }}.tar.gz.sha256"
-          sha256sum -c "solovey-ui-core-linux-${{ matrix.arch }}.tar.gz.sha256"
-          cd ..
+          (
+            cd .runtime/candidate-packages
+            sha256sum -c "solovey-ui-linux-${{ matrix.arch }}.tar.gz.sha256"
+            sha256sum -c "solovey-ui-core-linux-${{ matrix.arch }}.tar.gz.sha256"
+          )
           fixture="/run/solovey-w5-${GITHUB_RUN_ID}-${{ matrix.arch }}"
           test ! -e "$fixture"
           sudo -n install -d -m 0755 "$fixture"
           sudo -n install -d -m 0700 -o "$(id -u)" -g "$(id -g)" "$fixture/private"
-          mkdir -p qualification-evidence
-          cp candidate-packages/NATIVE_HOST_OS.txt qualification-evidence/
+          mkdir -p .runtime/qualification-evidence
+          cp .runtime/candidate-packages/NATIVE_HOST_OS.txt .runtime/qualification-evidence/
           for profile in full core; do
-            archive="candidate-packages/solovey-ui-linux-${{ matrix.arch }}.tar.gz"
-            test "$profile" != core || archive="candidate-packages/solovey-ui-core-linux-${{ matrix.arch }}.tar.gz"
+            archive=".runtime/candidate-packages/solovey-ui-linux-${{ matrix.arch }}.tar.gz"
+            test "$profile" != core || archive=".runtime/candidate-packages/solovey-ui-core-linux-${{ matrix.arch }}.tar.gz"
             sudo -n install -d -m 0755 "$fixture/$profile"
             sudo -n tar -xzf "$archive" -C "$fixture/$profile"
             binary=$(find "$fixture/$profile" -type f -name 'solovey-ui' -o -type f -name 'solovey-ui-core')
             test "$(printf '%s\n' "$binary" | wc -l)" = 1
-            node fixture-driver/.qualification/native-package-runtime.mjs \
+            node .runtime/fixture-driver/.qualification/native-package-runtime.mjs \
               --binary "$binary" --helper "$RUNNER_TEMP/native-fixture" --udp-witness "$RUNNER_TEMP/udp-witness" \
-              --output "qualification-evidence/${profile}-RUNTIME.json" --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}' \
+              --output ".runtime/qualification-evidence/${profile}-RUNTIME.json" --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}' \
               --systemd true --systemd-policy deploy/systemd/solovey-ui-native-hardened.service --fixture-base "$fixture/private" --private-api-check true
           done
           test "$(realpath "$fixture")" = "$fixture"
@@ -383,5 +384,5 @@ jobs:
         if: always()
         with:
           name: w5-linux-${{ matrix.arch }}-systemd-runtime
-          path: qualification-evidence
+          path: .runtime/qualification-evidence
           retention-days: 4
