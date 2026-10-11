@@ -1,0 +1,40 @@
+// Goal-only enrolment of an already-migrated synthetic disposable copy.
+// Reuse the same UserService owner as native-package-fixture.go. This helper
+// runs before the actual packaged candidate; it is not a product auth bypass.
+package main
+
+import (
+	"encoding/json"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/service"
+)
+
+func main() {
+	var input struct{ Root, Username, Password string }
+	fail := func(code string) { fmt.Fprintln(os.Stderr, code); os.Exit(1) }
+	if json.NewDecoder(os.Stdin).Decode(&input) != nil { fail("ENROLL_INPUT_INVALID") }
+	base := os.Getenv("W5_SYNTHETIC_BASE")
+	if !strings.HasPrefix(base, "/run/solovey-w5-docker-arm-") || filepath.Base(base) != "private" { fail("ENROLL_DISPOSABLE_ARM_BASE_REQUIRED") }
+	resolvedBase, baseErr := filepath.EvalSymlinks(base)
+	if baseErr != nil || resolvedBase != base { fail("ENROLL_REAL_PRIVATE_BASE_REQUIRED") }
+	root, err := filepath.EvalSymlinks(input.Root)
+	if err != nil || root != input.Root || root != os.Getenv("SUI_DB_FOLDER") ||
+		filepath.Dir(filepath.Dir(root)) != base || !strings.HasPrefix(filepath.Base(filepath.Dir(root)), "solovey-w5-closure-ec534-") ||
+		filepath.Base(root) != "data" { fail("ENROLL_PRIVATE_COPY_BOUNDARY_REQUIRED") }
+	marker, err := os.ReadFile(filepath.Join(root, ".w5-disposable"))
+	if err != nil || string(marker) != "W5_SYNTHETIC_ONLY\n" { fail("ENROLL_MARKER_REQUIRED") }
+	info, err := os.Lstat(filepath.Join(root, "solovey-ui.db"))
+	if err != nil || !info.Mode().IsRegular() || info.Mode().Perm() != 0600 { fail("ENROLL_PRIVATE_EXISTING_DATABASE_REQUIRED") }
+	if dbsqlite.Init(filepath.Join(root, "solovey-ui.db")) != nil { fail("ENROLL_DATABASE_OWNER_FAILED") }
+	defer dbsqlite.Close()
+	var version string
+	if dbsqlite.DB().Table("settings").Select("value").Where("key = ?", "coreSchemaVersion").Scan(&version).Error != nil || version != "1.12" { fail("ENROLL_CURRENT_MIGRATED_SCHEMA_REQUIRED") }
+	users := &service.UserService{}
+	if users.UpdateFirstUser(input.Username, input.Password) != nil { fail("ENROLL_EXISTING_USER_OWNER_FAILED") }
+	fmt.Println("{\"status\":\"PASS_NORMAL_SYNTHETIC_USER_OWNER_ENROLMENT\"}")
+}

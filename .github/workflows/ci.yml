@@ -12,6 +12,10 @@ on:
         type: boolean
         default: false
         description: Reuse sealed packages for paired native DNS intent
+      qualify_docker_maintenance:
+        type: boolean
+        default: false
+        description: Reuse sealed ARM Docker image for synthetic old-volume maintenance
       qualify_windows:
         type: boolean
         default: true
@@ -448,5 +452,74 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
           name: w5-paired-dns-native-systemd
+          path: .runtime/qualification-evidence
+          retention-days: 4
+
+  docker-arm-maintenance:
+    name: Sealed native ARM Docker migrated-volume maintenance
+    if: inputs.qualify_docker_maintenance
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.W5_PRODUCT_COMMIT }}
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          path: .runtime/fixture-driver
+          sparse-checkout: .qualification
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-version-file: go.mod
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: w5-docker-arm64-runtime
+          run-id: 38117271323
+          github-token: ${{ github.token }}
+          path: .runtime/sealed-arm-image
+      - name: Authenticate sealed native ARM candidate without rebuilding
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$W5_PRODUCT_COMMIT"
+          test "$(uname -m)" = aarch64
+          test "$(go env GOHOSTARCH)" = arm64
+          test "$(sha256sum .runtime/sealed-arm-image/docker-arm64-candidate.tar.gz | cut -d ' ' -f1)" = d50c7b5ee787d16d8bacd999b657e40a90a782f4c78231195b1a861f03d221e9
+          docker load -i .runtime/sealed-arm-image/docker-arm64-candidate.tar.gz
+          test "$(docker image inspect sha256:eb8f1d36f015872f9a12065bd1cedb03dd846fe3bb7b4a53f23dd7807474eecd --format '{{.Architecture}}')" = arm64
+          mkdir -p .runtime/qualification-evidence
+          docker image inspect sha256:eb8f1d36f015872f9a12065bd1cedb03dd846fe3bb7b4a53f23dd7807474eecd --format '{{json .Config.Labels}}' > .runtime/qualification-evidence/SEALED_IMAGE_LABELS.json
+          uname -a > .runtime/qualification-evidence/NATIVE_HOST_OS.txt
+          docker version --format '{{json .Server}}' > .runtime/qualification-evidence/DOCKER_SERVER.json
+      - name: Compile only the synthetic enrolment owner adapter
+        run: |
+          set -euo pipefail
+          cp .runtime/fixture-driver/.qualification/volume-enroll.go.txt "$RUNNER_TEMP/volume-enroll.go"
+          CGO_ENABLED=1 GOWORK=off go build -mod=readonly -o "$RUNNER_TEMP/volume-enroll" "$RUNNER_TEMP/volume-enroll.go"
+          go version -m "$RUNNER_TEMP/volume-enroll" > .runtime/qualification-evidence/ENROLL_BUILD_INFO.txt
+          sha256sum "$RUNNER_TEMP/volume-enroll" > .runtime/qualification-evidence/ENROLL_SHA256.txt
+      - name: Actual old-schema migration and normal owner lifecycle on isolated ARM Docker
+        run: |
+          set -euo pipefail
+          fixture="/run/solovey-w5-docker-arm-${GITHUB_RUN_ID}"
+          test ! -e "$fixture"
+          sudo -n install -d -m 0700 "$fixture" "$fixture/private"
+          sudo -n env W5_SYNTHETIC_BASE="$fixture/private" \
+            W5_PUBLIC_EVIDENCE="$GITHUB_WORKSPACE/.runtime/qualification-evidence" \
+            W5_ENROLL_HELPER="$RUNNER_TEMP/volume-enroll" \
+            W5_FIXTURE_COMMIT='${{ github.sha }}' \
+            python3 .runtime/fixture-driver/.qualification/docker-synthetic-old-maintenance.py
+      - name: Require no owned container after bounded cleanup
+        if: always()
+        run: |
+          set -euo pipefail
+          test -z "$(docker ps -aq --filter label=solovey.goal=stage2-w5)"
+      - name: Preserve only sanitized result and helper/image provenance
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: w5-docker-arm64-migrated-maintenance
           path: .runtime/qualification-evidence
           retention-days: 4
