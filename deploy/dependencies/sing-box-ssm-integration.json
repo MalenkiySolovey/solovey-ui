@@ -15,22 +15,51 @@
   },
   "replacement": {
     "module": "github.com/MalenkiySolovey/sing-box",
-    "version": "v1.14.3-0.20261010211422-afd12f10473e",
-    "commit": "afd12f10473eb4d2d1459897488deb623527782e",
+    "version": "v1.14.3-0.20261011174904-d0feb7cd0e3c",
+    "commit": "d0feb7cd0e3cfd46a2a90c06be901c6c87aaeed8",
     "repository": "https://github.com/MalenkiySolovey/sing-box",
-    "sum": "h1:pBeAERxdcuwvBoQJ0GtpRzdUrNMYA1ZXjhNJ6Urw484=",
+    "sum": "h1:lX7Qwh5aCacz17vm6PWShakbsThRNJnVd2AFQxaACXM=",
     "goModSum": "h1:O4q0spxb+xwV/p9HYR+Es1cMjK3bBvYl6k08V9rSpwU="
   },
   "patch": {
     "file": "deploy/dependencies/sing-box-ssm-cache.patch",
-    "sha256": "51b468adff332b5ea7be227a3ede438ae402af9144d128e24b41adc4765c74f9",
+    "sha256": "f5db7b3b33b171dfe84ce3c3c075395b5c5ece98dc4c781a95bed9735d78196a",
     "files": [
       "SOLOVEY_INTEGRATION.md",
+      "protocol/naive/inbound.go",
+      "protocol/naive/quic/inbound_init.go",
+      "protocol/naive/quic/inbound_lifecycle.go",
       "service/ssmapi/cache.go",
       "service/ssmapi/cache_store.go",
       "service/ssmapi/cache_test.go",
       "service/ssmapi/server.go"
-    ]
+    ],
+    "description": "Complete cumulative source overlay; legacy SSM patch filename retained. Includes accepted SSM plus Naive HTTP3 lifecycle integration."
   },
-  "license": "GPL-3.0-or-later"
+  "license": "GPL-3.0-or-later",
+  "scopes": [
+    "ssm-cache",
+    "naive-http3-lifecycle"
+  ],
+  "additionalIntegrations": {
+    "naiveHttp3": {
+      "patched": true,
+      "parentControl": "inbound-lifecycle-only",
+      "selectivePrincipalParentControl": false,
+      "files": [
+        "protocol/naive/inbound.go",
+        "protocol/naive/quic/inbound_init.go",
+        "protocol/naive/quic/inbound_lifecycle.go"
+      ],
+      "companion": {
+        "module": "github.com/MalenkiySolovey/sing-quic",
+        "version": "v0.7.1-0.20261010045634-b2eea8ca8762",
+        "commit": "b2eea8ca8762dd1e438171e2f7b56f9715c30cbb"
+      },
+      "transport": {
+        "module": "github.com/sagernet/quic-go",
+        "version": "v0.61.0-sing-box-mod.7"
+      }
+    }
+  }
 }

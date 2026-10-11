@@ -1,10 +1,10 @@
 diff --git a/SOLOVEY_INTEGRATION.md b/SOLOVEY_INTEGRATION.md
 new file mode 100644
-index 00000000..11950965
+index 00000000..5b9a30bc
 --- /dev/null
 +++ b/SOLOVEY_INTEGRATION.md
-@@ -0,0 +1,41 @@
-+# Solovey pinned SSM integration
+@@ -0,0 +1,70 @@
++# Solovey pinned sing-box integration
 +
 +Baseline: official SagerNet/sing-box v1.14.2,
 +`af6e64c3b69e6132ebaee0e1a3d24e93903f6709`.
@@ -12,7 +12,7 @@ index 00000000..11950965
 +those of that exact official baseline. This is a patched source integration,
 +not byte-identical official sing-box v1.14.2.
 +
-+The delta is confined to `service/ssmapi` and this source notice:
++The delta is confined to `service/ssmapi`, `protocol/naive` and this source notice:
 +
 +- `cache.go`: bounded cache parsing rejects null roots/endpoints with errors
 +  that exclude input values, preserves unreadable/corrupt preimages, checks
@@ -36,6 +36,35 @@ index 00000000..11950965
 +  A real served loopback listener proves normal closure, port reuse and repeated
 +  close without a spurious hot-removal failure.
 +
++The Naive HTTP/3 addition repairs independently reproduced authenticated parent
++connections remaining open after normal removal, hot replacement and Box shutdown:
++
++- `protocol/naive/inbound.go`: close HTTP/3 lifecycle before the enclosing listener
++  destroys UDP. TCP/HTTP handler and TLS cleanup retain their existing owners.
++- `protocol/naive/quic/inbound_init.go`: preserve official TLS, congestion and HTTP
++  semantics; validate congestion before allocating UDP, and hand accepted parents
++  to the already pinned sing-quic transport owner. Serve each with the existing
++  public HTTP/3 `ServeQUICConn` interface. An accept/handler goroutine does not close
++  shared UDP ahead of the lifecycle owner.
++- `protocol/naive/quic/inbound_lifecycle.go`: close once, fence acceptance, drain
++  exact live/queued transport handles through the existing two-second parent
++  contract, then bound HTTP/3 handler cleanup separately to two seconds. Errors
++  and deadlines remain failures. QUIC's emission attempt cannot guarantee delivery
++  across a broken network.
++
++This seam is consumed with Solovey's paired sing-quic integration
++`b2eea8ca8762dd1e438171e2f7b56f9715c30cbb`, selected quic-go
++`v0.61.0-sing-box-mod.7`, and the unchanged official dependency requirements.
++Build/test it under the consuming Solovey module's pinned graph. It introduces
++no second transport inventory: the same per-inbound parent owner is reused.
++Naive authentication remains per HTTP request and may use different principals
++on one HTTP/3 parent. Its private lifecycle handle type exposes no authenticated
++selective parent control, DB identity, address lookup or new product capability.
++The existing CoreRuntime flow-only/session authorization contract remains intact.
++Consumer integration tests exercise actual authenticated CONNECT/nonce, removal,
++same-port replacement, shutdown/restart, UDP reuse and a shared parent carrying
++two principals whose individual flow close must leave the parent usable.
++
 +Solovey's deployment adapter independently owns anchored private data paths,
 +POSIX ownership/mode and Windows DACL checks, atomic publication, read-only
 +diagnostics and its existing private backup contributor. It does not replace
@@ -45,6 +74,131 @@ index 00000000..11950965
 +integration additions are also GPL-3.0-or-later. The consuming repository records
 +the exact source commit, Go module checksums, complete replayable patch, package
 +build metadata and SBOM module replacement. No module cache is modified.
+diff --git a/protocol/naive/inbound.go b/protocol/naive/inbound.go
+index 9da0cf08..d8bd98cc 100644
+--- a/protocol/naive/inbound.go
++++ b/protocol/naive/inbound.go
+@@ -142,9 +142,9 @@ func (n *Inbound) Start(stage adapter.StartStage) error {
+ 
+ func (n *Inbound) Close() error {
+ 	return common.Close(
++		n.h3Server,
+ 		n.listener,
+ 		common.PtrOrNil(n.httpServer),
+-		n.h3Server,
+ 		n.tlsConfig,
+ 	)
+ }
+diff --git a/protocol/naive/quic/inbound_init.go b/protocol/naive/quic/inbound_init.go
+index 3f59355a..fd7e8e66 100644
+--- a/protocol/naive/quic/inbound_init.go
++++ b/protocol/naive/quic/inbound_init.go
+@@ -33,11 +33,6 @@ func init() {
+ 			tlsConfig.SetNextProtos(append(append([]string{}, tlsConfig.NextProtos()...), http3.NextProtoH3))
+ 		}
+ 
+-		udpConn, err := listener.ListenUDP()
+-		if err != nil {
+-			return nil, err
+-		}
+-
+ 		var congestionControl func(conn *quic.Conn) congestion.CongestionControl
+ 		timeFunc := ntp.TimeFuncFromContext(ctx)
+ 		if timeFunc == nil {
+@@ -68,6 +63,11 @@ func init() {
+ 			return nil, E.New("unknown quic congestion control: ", options.QUICCongestionControl)
+ 		}
+ 
++		udpConn, err := listener.ListenUDP()
++		if err != nil {
++			return nil, err
++		}
++
+ 		quicListener, err := qtls.ListenEarly(udpConn, tlsConfig, &quic.Config{
+ 			MaxIncomingStreams: 1 << 60,
+ 			Allow0RTT:          true,
+@@ -86,15 +86,25 @@ func init() {
+ 			},
+ 		}
+ 
+-		go func() {
+-			sErr := h3Server.ServeListener(quicListener)
+-			udpConn.Close()
++		// Reuse the pinned transport owner. Naive authentication is per HTTP
++		// request, so these handles intentionally have no principal binding or
++		// selective-parent capability. The owner only drains this inbound.
++		parents := qtls.NewParentOwner[naiveParent](ctx)
++		err = parents.Start(quicListener, func(_ context.Context, conn *quic.Conn) {
++			sErr := h3Server.ServeQUICConn(conn)
+ 			if sErr != nil && !E.IsClosedOrCanceled(sErr) {
+ 				logger.Error("http3 server closed: ", sErr)
+ 			}
+-		}()
++		}, func(err error) {
++			if !E.IsClosedOrCanceled(err) {
++				logger.Error("http3 listener closed: ", err)
++			}
++		})
++		if err != nil {
++			return nil, err
++		}
+ 
+-		return quicListener, nil
++		return &http3Lifecycle{parents: parents, server: h3Server}, nil
+ 	}
+ 	naive.WrapError = qtls.WrapError
+ }
+diff --git a/protocol/naive/quic/inbound_lifecycle.go b/protocol/naive/quic/inbound_lifecycle.go
+new file mode 100644
+index 00000000..b4468b35
+--- /dev/null
++++ b/protocol/naive/quic/inbound_lifecycle.go
+@@ -0,0 +1,45 @@
++package quic
++
++// Solovey integration against official sing-box v1.14.2. The consuming module
++// pairs this seam with its already pinned sing-quic transport lifecycle owner.
++
++import (
++	"context"
++	"errors"
++	"sync"
++
++	"github.com/sagernet/quic-go/http3"
++	"github.com/sagernet/sing-quic"
++)
++
++// Private type prevents publishing these unauthenticated transport handles as
++// Hysteria/TUIC principal sessions. HTTP/3 may carry several request principals.
++type naiveParent struct{}
++
++type http3Lifecycle struct {
++	parents   *qtls.ParentOwner[naiveParent]
++	server    *http3.Server
++	closeOnce sync.Once
++	closeErr  error
++}
++
++func (l *http3Lifecycle) Close() error {
++	l.closeOnce.Do(func() {
++		// This owner fences acceptance, closes each exact parent and drains the
++		// completed queue before the embedding inbound can destroy its UDP.
++		l.closeErr = l.parents.Close()
++		// ServeQUICConn handlers receive parent cancellation. Bound their server
++		// cleanup separately; a timeout is an error, never a delivery guarantee.
++		ctx, cancel := context.WithTimeout(context.Background(), qtls.ParentDrainTimeout)
++		defer cancel()
++		done := make(chan error, 1)
++		go func() { done <- l.server.Close() }()
++		select {
++		case err := <-done:
++			l.closeErr = errors.Join(l.closeErr, err)
++		case <-ctx.Done():
++			l.closeErr = errors.Join(l.closeErr, ctx.Err())
++		}
++	})
++	return l.closeErr
++}
 diff --git a/service/ssmapi/cache.go b/service/ssmapi/cache.go
 index 38552f1c..8565341d 100644
 --- a/service/ssmapi/cache.go
