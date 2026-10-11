@@ -64,5 +64,22 @@
   ],
   "sourceCommit": "de501586b354e8f93adc5a66984c1c61b48dbf96",
   "fixtureParent": "911c66f21e83e459da12e0d4eb4a0038893ccd05",
-  "privateValuesCaptured": false
+  "privateValuesCaptured": false,
+  "fixtureDiagnosticCorrection": {
+    "reason": "Exact native ARM private ACL failure before settings mutation; normalize CurrentUser/SYSTEM identities to handle a SYSTEM runner without duplicate allow rules, add typed diagnostic; no new principal or privilege. Preserve per-profile report paths on failure.",
+    "currentTargetHashes": [
+      {
+        "path": "autohttps-contract.mjs",
+        "sha256": "04812cc9bd8d5364a01f3a402a22c7cd692ad73df30e3fb5feda1b05b723bc05"
+      },
+      {
+        "path": "outbound-mtls-contract.mjs",
+        "sha256": "6a88c19e79888f07ab62149b3d7a2f769d6f8678c1bf6fccf1d58de9a2ee58e3"
+      },
+      {
+        "path": "naive-contract.mjs",
+        "sha256": "36766ca695c57cb64a00a33b8f8e060cff01fd9288773d98f4ad75e24f75c2a4"
+      }
+    ]
+  }
 }

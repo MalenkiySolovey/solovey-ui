@@ -232,14 +232,17 @@ jobs:
           for profile in full core; do
             package=solovey-ui-windows
             test "$profile" != core || package=candidate-core
-            node "$peers/native-package-runtime.mjs" \
+            result=0
+            W5_NATIVE_PROFILE="$profile" node "$peers/native-package-runtime.mjs" \
               --binary ".runtime/existing-$profile/$package/sui.exe" \
               --helper "$RUNNER_TEMP/native-fixture.exe" --udp-witness "$RUNNER_TEMP/udp-witness.exe" \
               --browser-module "$peers/exercise-all.mjs" --frontend frontend \
               --output ".runtime/qualification-extra/$profile/RUNTIME.json" \
-              --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}' --private-api-check true
-            cp "$peers"/WINDOWS_*_RUNTIME.json .runtime/qualification-extra/"$profile"/
-            cp "$peers/WINDOWS_NAIVE_NATIVE_CARRIERS_AND_PARENT.json" .runtime/qualification-extra/"$profile"/
+              --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}' --private-api-check true || result=$?
+            for report in "$peers"/WINDOWS_*_"$profile".json; do
+              test ! -f "$report" || cp "$report" .runtime/qualification-extra/"$profile"/
+            done
+            test "$result" = 0
           done
           cp "$peers/PROVENANCE.json" .runtime/qualification-extra/FIXTURE_SOURCE_PROVENANCE.json
       - name: Retain sanitized scoped reports only
