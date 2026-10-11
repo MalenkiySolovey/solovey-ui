@@ -170,7 +170,7 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 	if err != nil {
 		return nil, err
 	}
-	if err := diagnostics.FirstError(entityprotocol.CurrentFindings(outbound.Type, "outbound", "outbound.options", prepared.Candidate)); err != nil {
+	if err := diagnostics.FirstError(entityprotocol.StoredOutboundFindings(outbound.Type, "outbound.options", prepared.Candidate)); err != nil {
 		return nil, err
 	}
 	outbound.Options = prepared.Candidate

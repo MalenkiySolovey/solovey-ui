@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
+	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/util/jsonfields"
 	"github.com/sagernet/sing-box/option"
@@ -78,7 +79,28 @@ func CurrentFindings(kind, side, path string, source json.RawMessage) []diagnost
 			}
 		}
 	}
+	if kind == "naive" && side == "outbound" {
+		if raw, present := fields["tls"]; present {
+			return entitytls.NaiveOutboundTLSFindings(path+".tls", raw)
+		}
+	}
 	return nil
+}
+
+// StoredOutboundFindings adds required Naive TLS policy to the partial option
+// shape contract used by metadata and historical field captures. It performs
+// no native construction or local certificate file reads.
+func StoredOutboundFindings(kind, path string, source json.RawMessage) []diagnostics.Finding {
+	findings := CurrentFindings(kind, "outbound", path, source)
+	if kind == "naive" && len(findings) == 0 {
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(source, &fields) == nil {
+			if _, present := fields["tls"]; !present {
+				return entitytls.NaiveOutboundTLSFindings(path+".tls", nil)
+			}
+		}
+	}
+	return findings
 }
 
 func ConfigFindings(source []byte) []diagnostics.Finding {
@@ -101,7 +123,11 @@ func ConfigFindings(source []byte) []diagnostics.Finding {
 			if section == "outbounds" {
 				side = "outbound"
 			}
-			result = append(result, CurrentFindings(header.Type, side, fmt.Sprintf("%s[%d]", section, i), entity)...)
+			if side == "outbound" {
+				result = append(result, StoredOutboundFindings(header.Type, fmt.Sprintf("%s[%d]", section, i), entity)...)
+			} else {
+				result = append(result, CurrentFindings(header.Type, side, fmt.Sprintf("%s[%d]", section, i), entity)...)
+			}
 		}
 	}
 	return result
