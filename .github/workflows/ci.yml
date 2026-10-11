@@ -272,6 +272,34 @@ jobs:
         if: runner.os == 'Windows'
         run: go test -race -v -count=1 -timeout=2m -run TestOwnedTreeWindows ./database/backup
 
+  anytls-integration:
+    name: AnyTLS session integration (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+          cache: true
+          cache-dependency-path: go.sum
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: frontend/.node-version
+      - name: Generate accepted full profile imports
+        run: node scripts/generate-component-imports.mjs --profile full
+      - name: Verify pinned AnyTLS source and package provenance
+        run: node scripts/anytls-integration-provenance.mjs check
+      - name: Reject altered AnyTLS source provenance
+        run: node --test scripts/anytls-integration-provenance.test.mjs
+      - name: Pinned session-owner negotiation and close race regressions
+        run: go test -race -count=3 -timeout=2m github.com/anytls/sing-anytls/session
+      - name: Official Box outbound metadata and authenticated parent admission
+        run: go test -race -p 1 -count=3 -timeout=2m -run TestAnyTLS ./core/runtime ./core/inboundidentity
+
   frontend:
     name: Frontend
     runs-on: ubuntu-24.04

@@ -343,3 +343,19 @@ CORE-57 physical follow-up preserves normal SSM hot removal when HTTP shutdown
 has already closed the served TCP listener. Only that owner-local expected
 net.ErrClosed is accepted; TLS/cache errors retain their existing reporting.
 The complete cumulative source patch remains confined to the five recorded files.
+
+Stage 2 Wave5 authenticated-session qualification retains original
+anytls/sing-anytls v0.0.11, commit 130d2e61b8895727bfed4942c535e91b246a9603,
+as the protocol baseline with a narrow GPL-3.0-or-later owner-local correction.
+MalenkiySolovey/sing-anytls source 8f440972b353f7ace3bbfbac9cf291938de5ab19
+resolves as v0.0.12-0.20261011014237-8f440972b353. The pseudo-version is module
+resolution metadata, not an upgrade to original v0.0.12. Concurrent negotiated
+peer version and terminal stream error use existing atomic types; wire format,
+authentication, constructors, pool policy and lifecycle remain unchanged.
+The four-file replayable patch, original source attribution, exact pins and
+checksums are recorded in deploy/dependencies/sing-anytls-session-state.patch
+and sing-anytls-integration.json. Original LICENSE and authorship are preserved.
+The official sing-box v1.14.2 semantic baseline, existing SSM/QUIC integrations,
+Go 1.26.9 and dependency versions remain unchanged. This is patched dependency
+source, not a byte-identical original module. Parent-control capability remains
+partial; no physical-parity or release claim follows from this source correction.

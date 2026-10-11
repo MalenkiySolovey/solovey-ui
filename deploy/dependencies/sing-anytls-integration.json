@@ -1,0 +1,35 @@
+{
+  "schema": "solovey.anytls-integration/v1",
+  "patched": true,
+  "officialByteIdentical": false,
+  "semanticBaseline": {
+    "module": "github.com/sagernet/sing-box",
+    "version": "v1.14.2",
+    "commit": "af6e64c3b69e6132ebaee0e1a3d24e93903f6709"
+  },
+  "original": {
+    "module": "github.com/anytls/sing-anytls",
+    "version": "v0.0.11",
+    "commit": "130d2e61b8895727bfed4942c535e91b246a9603",
+    "repository": "https://github.com/anytls/sing-anytls"
+  },
+  "replacement": {
+    "module": "github.com/MalenkiySolovey/sing-anytls",
+    "version": "v0.0.12-0.20261011014237-8f440972b353",
+    "commit": "8f440972b353f7ace3bbfbac9cf291938de5ab19",
+    "repository": "https://github.com/MalenkiySolovey/sing-anytls",
+    "sum": "h1:Lnjw34ch15qhggeavOMiQIJrk3N8rcsCoJOvciNHyaY=",
+    "goModSum": "h1:7rjN6IukwysmdusYsrV51Fgu1uW6vsrdd6ctjnEAln8="
+  },
+  "patch": {
+    "file": "deploy/dependencies/sing-anytls-session-state.patch",
+    "sha256": "3bec5c9f7772910e2e5a5821a3012a95f460b7328ba7e62282c79acd3f26a64b",
+    "files": [
+      "SOLOVEY_INTEGRATION.md",
+      "session/concurrency_test.go",
+      "session/session.go",
+      "session/stream.go"
+    ]
+  },
+  "license": "GPL-3.0-or-later"
+}
