@@ -80,6 +80,10 @@ func (f *quicFixture) users(users ...uint) {
 		if f.kind == "tuic" {
 			entry["uuid"] = fmt.Sprintf("00000000-0000-4000-8000-%012d", user)
 		}
+		if f.kind == "naive" {
+			delete(entry, "name")
+			entry["username"] = fmt.Sprintf("verified-%d", user)
+		}
 		list = append(list, entry)
 	}
 	f.inbound["users"] = list
@@ -120,6 +124,9 @@ func newQUICFixture(t *testing.T, kind string, observers ...tracker.IPObserver) 
 		"tls": map[string]any{"enabled": true, "alpn": []string{alpn}, "certificate": []string{string(public)}, "key": []string{string(private)}}}
 	if kind == "hysteria" {
 		f.inbound["up_mbps"], f.inbound["down_mbps"] = 100, 100
+	}
+	if kind == "naive" {
+		f.inbound["network"] = "udp"
 	}
 	f.users(7, 9)
 	if err := f.core.StartWithBindings(f.raw(), quicBindings(7, 9)); err != nil {

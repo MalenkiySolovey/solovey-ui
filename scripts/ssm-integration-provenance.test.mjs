@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const inputs = ['go.mod', 'go.sum', 'scripts/ssm-integration-provenance.mjs', 'deploy/dependencies/sing-box-ssm-integration.json', 'deploy/dependencies/sing-box-ssm-cache.patch']
+const inputs = ['go.mod', 'go.sum', 'scripts/ssm-integration-provenance.mjs', 'deploy/dependencies/sing-box-ssm-integration.json', 'deploy/dependencies/sing-box-ssm-cache.patch', 'deploy/dependencies/sing-quic-integration.json']
 function fixture(t) {
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'solovey-ssm-proof-test-'))
   for (const file of inputs) {
@@ -38,6 +38,9 @@ test('package metadata identifies the actual patched dependency', t => {
   assert.equal(buildInfo.status, 0, buildInfo.stderr)
   assert.ok(buildInfo.stdout.includes(`ssm_source_commit=${manifest.replacement.commit}`))
   assert.ok(buildInfo.stdout.includes(`ssm_module_sum=${manifest.replacement.sum}`))
+  assert.deepEqual(manifest.scopes, ['ssm-cache', 'naive-http3-lifecycle'])
+  assert.equal(manifest.additionalIntegrations.naiveHttp3.selectivePrincipalParentControl, false)
+  assert.ok(buildInfo.stdout.includes('naive_h3_parent_control=inbound-lifecycle-only'))
 })
 
 for (const scenario of ['patch', 'module pin', 'checksum']) {
@@ -52,5 +55,22 @@ for (const scenario of ['patch', 'module pin', 'checksum']) {
     const result = run(source)
     assert.notEqual(result.status, 0)
     assert.match(result.stderr, /mismatch|differs|missing/)
+  })
+}
+
+for (const scenario of ['companion pin', 'transport', 'selective capability', 'source inventory']) {
+  test(`Naive integration provenance rejects ${scenario} tampering`, t => {
+    const source = fixture(t)
+    const manifestPath = path.join(source, inputs[3])
+    const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
+    const naive = manifest.additionalIntegrations.naiveHttp3
+    if (scenario === 'companion pin') naive.companion.commit = '0'.repeat(40)
+    if (scenario === 'transport') naive.transport.version = 'v0.61.0-unreviewed'
+    if (scenario === 'selective capability') naive.selectivePrincipalParentControl = true
+    if (scenario === 'source inventory') naive.files.pop()
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest))
+    const result = run(source)
+    assert.notEqual(result.status, 0)
+    assert.match(result.stderr, /mismatch|differs/)
   })
 }
