@@ -4,6 +4,10 @@ name: Stage2 Wave5 package qualification
 on:
   workflow_dispatch:
     inputs:
+      qualify_linux:
+        type: boolean
+        default: false
+        description: Build and exercise native Linux systemd candidates
       qualify_windows:
         type: boolean
         default: true
@@ -18,14 +22,14 @@ permissions:
   actions: read
 
 env:
-  W5_PRODUCT_COMMIT: beef5df19daec197492553c12b7c1bb2946548fa
+  W5_PRODUCT_COMMIT: ec534be49a9141a45743b035077ebfa5c0148208
 
 jobs:
   windows-build:
     if: inputs.qualify_windows
     uses: ./.github/workflows/windows.yml
     with:
-      source_commit: beef5df19daec197492553c12b7c1bb2946548fa
+      source_commit: ec534be49a9141a45743b035077ebfa5c0148208
       tag: v2026.3.3
       preflight_only: true
 
@@ -142,6 +146,7 @@ jobs:
             printf 'source_fingerprint=%s\n' "$(node scripts/release-source.mjs .)"
             node scripts/quic-integration-provenance.mjs build-info
             node scripts/ssm-integration-provenance.mjs build-info
+            node scripts/anytls-integration-provenance.mjs build-info
           } > candidate-core/BUILD_INFO.txt
           cp candidate-core/BUILD_INFO.txt qualification-evidence/core/BUILD_INFO.txt
           go version -m candidate-core/sui.exe > qualification-evidence/core/GO_BUILD_INFO.txt
@@ -242,5 +247,141 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: w5-docker-arm64-runtime
+          path: qualification-evidence
+          retention-days: 4
+  linux-build:
+    name: Canonical Linux candidate ${{ matrix.arch }}
+    if: inputs.qualify_linux
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.W5_PRODUCT_COMMIT }}
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          path: fixture-driver
+          sparse-checkout: .qualification
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: frontend/.node-version
+      - name: Reuse canonical pinned Cronet compiler owner
+        run: |
+          set -euo pipefail
+          git init "$RUNNER_TEMP/cronet-go"
+          git -C "$RUNNER_TEMP/cronet-go" remote add origin https://github.com/sagernet/cronet-go.git
+          git -C "$RUNNER_TEMP/cronet-go" fetch --depth=1 origin 7e27f60f7f04a1c762b6bb69b4a44d7b24cd7a5d
+          git -C "$RUNNER_TEMP/cronet-go" checkout FETCH_HEAD
+          test "$(git -C "$RUNNER_TEMP/cronet-go" rev-parse HEAD)" = 7e27f60f7f04a1c762b6bb69b4a44d7b24cd7a5d
+          git -C "$RUNNER_TEMP/cronet-go" submodule update --init --recursive --depth=1
+          cd "$RUNNER_TEMP/cronet-go"
+          rm -f naiveproxy/src/build/linux/sysroot_scripts/keyring.gpg
+          GPG_TTY=/dev/null ./naiveproxy/src/build/linux/sysroot_scripts/generate_keyring.sh
+          go run ./cmd/build-naive --target=linux/${{ matrix.arch }} --libc=musl download-toolchain
+          go run ./cmd/build-naive --target=linux/${{ matrix.arch }} --libc=musl env | while IFS= read -r line; do
+            line="${line#export }"
+            test -z "$line" || printf '%s\n' "$line" >> "$GITHUB_ENV"
+          done
+      - name: Build full and Core through canonical producers
+        env:
+          W5_TARGET_ARCH: ${{ matrix.arch }}
+          SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
+        run: bash fixture-driver/.qualification/linux-systemd-build.sh
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: w5-linux-${{ matrix.arch }}-candidates
+          path: qualification-evidence
+          retention-days: 4
+
+  linux-systemd-runtime:
+    name: Native systemd Linux ${{ matrix.arch }}
+    if: inputs.qualify_linux
+    needs: linux-build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { arch: amd64, runner: ubuntu-24.04 }
+          - { arch: arm64, runner: ubuntu-24.04-arm }
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.W5_PRODUCT_COMMIT }}
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          path: fixture-driver
+          sparse-checkout: .qualification
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: frontend/.node-version
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: w5-linux-${{ matrix.arch }}-candidates
+          path: candidate-packages
+      - name: Require native architecture and actual PID1 systemd
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$W5_PRODUCT_COMMIT"
+          test "$(go env GOHOSTARCH)" = '${{ matrix.arch }}'
+          test "$(cat /proc/1/comm)" = systemd
+          case "$(uname -r)" in *[Mm]icrosoft*) exit 1;; esac
+          cat /etc/os-release > candidate-packages/NATIVE_HOST_OS.txt
+          uname -a >> candidate-packages/NATIVE_HOST_OS.txt
+      - name: Compile independent authenticated clients and private API witness
+        run: |
+          set -euo pipefail
+          cp fixture-driver/.qualification/native-package-fixture.go.txt "$RUNNER_TEMP/native-fixture.go"
+          CGO_ENABLED=1 CC=gcc go build -tags with_quic -o "$RUNNER_TEMP/native-fixture" "$RUNNER_TEMP/native-fixture.go"
+          cp fixture-driver/.qualification/udp-loopback-witness.go.txt "$RUNNER_TEMP/udp-witness.go"
+          CGO_ENABLED=0 go build -o "$RUNNER_TEMP/udp-witness" "$RUNNER_TEMP/udp-witness.go"
+      - name: Run exact full and Core candidates under canonical hardening
+        run: |
+          set -euo pipefail
+          cd candidate-packages
+          sha256sum -c "solovey-ui-linux-${{ matrix.arch }}.tar.gz.sha256"
+          sha256sum -c "solovey-ui-core-linux-${{ matrix.arch }}.tar.gz.sha256"
+          cd ..
+          fixture="/run/solovey-w5-${GITHUB_RUN_ID}-${{ matrix.arch }}"
+          test ! -e "$fixture"
+          sudo -n install -d -m 0755 "$fixture"
+          sudo -n install -d -m 0700 -o "$(id -u)" -g "$(id -g)" "$fixture/private"
+          mkdir -p qualification-evidence
+          cp candidate-packages/NATIVE_HOST_OS.txt qualification-evidence/
+          for profile in full core; do
+            archive="candidate-packages/solovey-ui-linux-${{ matrix.arch }}.tar.gz"
+            test "$profile" != core || archive="candidate-packages/solovey-ui-core-linux-${{ matrix.arch }}.tar.gz"
+            sudo -n install -d -m 0755 "$fixture/$profile"
+            sudo -n tar -xzf "$archive" -C "$fixture/$profile"
+            binary=$(find "$fixture/$profile" -type f -name 'solovey-ui' -o -type f -name 'solovey-ui-core')
+            test "$(printf '%s\n' "$binary" | wc -l)" = 1
+            node fixture-driver/.qualification/native-package-runtime.mjs \
+              --binary "$binary" --helper "$RUNNER_TEMP/native-fixture" --udp-witness "$RUNNER_TEMP/udp-witness" \
+              --output "qualification-evidence/${profile}-RUNTIME.json" --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}' \
+              --systemd true --systemd-policy deploy/systemd/solovey-ui-native-hardened.service --fixture-base "$fixture/private" --private-api-check true
+          done
+          test "$(realpath "$fixture")" = "$fixture"
+          test -z "$(find "$fixture/private" -mindepth 1 -maxdepth 1 -type d)"
+          sudo -n rm -rf -- "$fixture"
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: w5-linux-${{ matrix.arch }}-systemd-runtime
           path: qualification-evidence
           retention-days: 4

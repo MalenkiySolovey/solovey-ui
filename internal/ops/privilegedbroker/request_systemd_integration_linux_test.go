@@ -75,6 +75,9 @@ func TestSystemdRequestBroker(t *testing.T) {
 	var successes atomic.Int32
 	events := make(chan struct{}, systemdRequestCount)
 	server.Diagnostic = func(event DiagnosticEvent) {
+		fmt.Printf("REQUEST_DIAGNOSTIC phase=%s attestation=%s same_pid=%t same_uid=%t same_gid=%t\n",
+			event.Phase, event.PeerAttestation, event.Writer.PID == event.Peer.PID,
+			event.Writer.UID == event.Peer.UID, event.Writer.GID == event.Peer.GID)
 		if event.HandlerReason != "" {
 			fmt.Printf("REQUEST_DIAGNOSTIC class=%s errno=%s\n", event.HandlerReason, event.HandlerErrno)
 		}

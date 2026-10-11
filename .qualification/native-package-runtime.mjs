@@ -16,8 +16,14 @@ const flags = Object.fromEntries(process.argv.slice(2).reduce((all, arg, i, args
 if (!/^[a-f0-9]{40}$/.test(flags.commit || '') || !flags.helper || !flags.output || (!!flags.binary === !!flags.image)) {
   throw new Error('RUNTIME_ARGUMENTS_INVALID')
 }
+const supervised = flags.systemd === 'true'
+if (supervised && (process.platform !== 'linux' || /microsoft/i.test(os.release()) || !flags['systemd-policy'] || !flags['fixture-base'] || fs.readFileSync('/proc/1/comm', 'utf8').trim() !== 'systemd')) {
+  throw new Error('ACTUAL_NATIVE_SYSTEMD_EXECUTOR_REQUIRED')
+}
+const fixtureBase = supervised ? fs.realpathSync(flags['fixture-base']) : fs.realpathSync(os.tmpdir())
+if (supervised && (!fixtureBase.startsWith('/run/solovey-w5-') || fs.statSync(fixtureBase).uid !== process.getuid() || (fs.statSync(fixtureBase).mode & 0o777) !== 0o700 || process.getuid() === 0)) throw new Error('PRIVATE_NATIVE_SYSTEMD_FIXTURE_ROOT_REQUIRED')
 const hash = (file) => crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex')
-const temporary = fs.mkdtempSync(path.join(os.tmpdir(), 'solovey-w5-package-'))
+const temporary = fs.mkdtempSync(path.join(fixtureBase, 'solovey-w5-package-'))
 const data = path.join(temporary, 'data')
 fs.mkdirSync(data, { mode: 0o700 })
 fs.writeFileSync(path.join(data, '.w5-disposable'), 'W5_SYNTHETIC_ONLY\n', { mode: 0o600 })
@@ -27,11 +33,12 @@ const environment = { ...Object.fromEntries(Object.entries(process.env).filter((
   SUI_DB_FOLDER: data, SUI_CACHE_FOLDER: data, SUI_STAGING_FOLDER: data, SUI_RUNTIME: path.join(temporary, 'runtime'),
   APPDATA: path.join(temporary, 'profile'), LOCALAPPDATA: path.join(temporary, 'profile') }
 const report = { test: 'packaged-native-runtime', timestamp: new Date().toISOString(), commit: flags.commit,
-  environment: { platform: process.platform, architecture: process.arch, release: os.release(), runner: process.env.RUNNER_NAME || 'local' },
+  environment: { platform: process.platform, architecture: process.arch, release: os.release(), runner: process.env.RUNNER_NAME || 'local',
+    uid: process.getuid?.() ?? null, executionKind: /microsoft/i.test(os.release()) ? 'WSL_HOST_USERSPACE' : 'NATIVE_HOST' },
   evidenceClass: 'HOST_NATIVE_PROVEN', assertions: [], status: 'RUNNING', candidate: {}, cleanup: 'PENDING' }
 report.fixtureSource = { commit: flags['fixture-commit'] || null, helperSha256: hash(path.resolve(flags.helper)),
   driverSha256: hash(new URL(import.meta.url)) }
-let child, container, witness, secretLeak = false, tail = '', boundedLog = ''
+let child, container, witness, systemdUnit, secretLeak = false, tail = '', boundedLog = ''
 const assertion = (name, condition) => { if (!condition) throw new Error(name); report.assertions.push(name) }
 const invoke = (program, args, options = {}) => {
   const result = spawnSync(program, args, { encoding: 'utf8', timeout: 120000, windowsHide: true, ...options })
@@ -46,6 +53,38 @@ const helper = (mode, input) => {
     throw new Error(stage && /^[A-Za-z0-9_:.-]{1,180}$/.test(stage) ? stage : `FIXTURE_${mode}_FAILED`)
   }
   return JSON.parse(result.stdout.trim().split(/\r?\n/).at(-1))
+}
+function startNative(binary) {
+  if (!supervised) return spawn(binary, [], {cwd: path.dirname(binary), env: environment, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']})
+  const policy = fs.readFileSync(flags['systemd-policy'], 'utf8')
+  const allowed = /^(NoNewPrivileges|PrivateTmp|PrivateDevices|Protect\w+|Restrict\w+|LockPersonality|MemoryDenyWriteExecute|SystemCallArchitectures|CapabilityBoundingSet|AmbientCapabilities|UMask|LimitNOFILE|TasksMax|MemoryHigh|MemoryMax|CPUQuota|LogRateLimitIntervalSec|LogRateLimitBurst)=/
+  const properties = policy.split(/\r?\n/).filter(line => allowed.test(line))
+  assertion('canonical_systemd_no_new_privileges_and_zero_capabilities', properties.includes('NoNewPrivileges=true') && properties.includes('CapabilityBoundingSet=') && properties.includes('AmbientCapabilities='))
+  systemdUnit = `solovey-w5-${process.pid}-${crypto.randomBytes(8).toString('hex')}.service`
+  const args = ['-n', 'systemd-run', '--quiet', '--wait', '--pipe', '--collect', `--unit=${systemdUnit}`,
+    `--property=User=${process.getuid()}`, `--property=Group=${process.getgid()}`, `--property=WorkingDirectory=${path.dirname(binary)}`,
+    `--property=ReadWritePaths=${temporary}`, '--property=TimeoutStopSec=30s', ...properties.map(value => `--property=${value}`),
+    ...['SUI_DB_FOLDER','SUI_CACHE_FOLDER','SUI_STAGING_FOLDER','SUI_RUNTIME'].map(name => `--setenv=${name}=${environment[name]}`), binary]
+  report.supervision = {kind: 'ACTUAL_TRANSIENT_SYSTEMD_SERVICE', unit: systemdUnit, canonicalPolicySha256: hash(flags['systemd-policy']), properties,
+    scope: 'Canonical hardened main-process properties with disposable deployment paths and runner UID. Installed broker authority is independently qualified; this fixture makes no installed broker claim.'}
+  return spawn('sudo', args, {windowsHide: true, stdio: ['ignore', 'pipe', 'pipe']})
+}
+function inspectSupervisedProcess(webPort, subPort) {
+  const pid = Number(invoke('systemctl', ['show', '--property=MainPID', '--value', systemdUnit]).trim())
+  assertion('systemd_owns_live_exact_candidate_process', Number.isInteger(pid) && pid > 1 && hash(`/proc/${pid}/exe`) === report.candidate.sha256)
+  const status = fs.readFileSync(`/proc/${pid}/status`, 'utf8')
+  assertion('systemd_main_process_nonroot_zero_caps_no_new_privileges', new RegExp(`^Uid:\\s+${process.getuid()}\\s+${process.getuid()}\\s+${process.getuid()}\\s+${process.getuid()}$`, 'm').test(status) && /^CapEff:\s+0+$/m.test(status) && /^CapPrm:\s+0+$/m.test(status) && /^NoNewPrivs:\s+1$/m.test(status))
+  const descriptors = fs.readdirSync(`/proc/${pid}/fd`)
+  assertion('bounded_candidate_socket_projection', descriptors.length < 4096)
+  const sockets = new Set(descriptors.flatMap(fd => {try {const match = /^socket:\[(\d+)\]$/.exec(fs.readlinkSync(`/proc/${pid}/fd/${fd}`)); return match ? [match[1]] : []} catch {return []}}))
+  const listeners = ['tcp','tcp6'].flatMap(kind => fs.readFileSync(`/proc/${pid}/net/${kind}`, 'utf8').trim().split('\n').slice(1).map(line => line.trim().split(/\s+/)).filter(row => row[3] === '0A' && sockets.has(row[9])).map(row => ({address: row[1].split(':')[0], port: Number.parseInt(row[1].split(':')[1], 16)})))
+  assertion('candidate_tcp_listeners_loopback_only', listeners.length >= 3 && listeners.every(row => ['0100007F','00000000000000000000000001000000'].includes(row.address)))
+  report.supervision.process = {pid, uid: process.getuid(), noNewPrivileges: true, effectiveCapabilities: 'ZERO', listeners}
+  if (flags['private-api-check'] === 'true') {
+    const candidates = listeners.filter(row => ![webPort,subPort].includes(row.port))
+    assertion('single_generation_private_api_loopback_listener', candidates.length === 1)
+    report.assertions.push(...helper('private-probe', {PrivatePort: candidates[0].port}).assertions)
+  }
 }
 const freePort = async (protocol) => {
   if (protocol === 'udp') {
@@ -146,10 +185,11 @@ async function run() {
     inspectLogs(Buffer.from((health.stdout || '') + (health.stderr || '')))
     assertion('offline_doctor_preserves_database_bytes_no_migration', report.offlineDoctor.databaseUnchanged && report.offlineDoctor.onlySQLiteCoordinationSidecars)
     assertion('offline_doctor_reports_unavailable_panel', health.status === 1)
-    child = spawn(binary, [], { cwd: path.dirname(binary), env: environment, windowsHide: true, stdio: ['ignore', 'pipe', 'pipe'] })
+    child = startNative(binary)
     child.stdout.on('data', inspectLogs); child.stderr.on('data', inspectLogs)
     child.on('error', () => { report.processSpawnFailed = true })
     await waitReady(`http://127.0.0.1:${webPort}/app/login`)
+    if (supervised) inspectSupervisedProcess(webPort, subPort)
     if (process.platform === 'win32') {
       const program = path.join(process.env.SystemRoot, 'System32', 'WindowsPowerShell', 'v1.0', 'powershell.exe')
       const text = invoke(program, ['-NoProfile', '-NonInteractive', '-Command',
@@ -307,17 +347,30 @@ try { await run() } catch (error) {
     if (witness.exitCode === null) witness.kill('SIGKILL')
   }
   if (child && child.exitCode === null) {
-    child.kill('SIGTERM')
+    if (supervised && systemdUnit) {
+      try {
+        invoke('sudo', ['-n','systemctl','stop',systemdUnit])
+        const state = spawnSync('systemctl', ['show','--property=MainPID','--value',systemdUnit], {encoding:'utf8',timeout:10000})
+        let exited = false
+        try { fs.statSync(`/proc/${report.supervision.process.pid}`) } catch (error) { exited = error.code === 'ENOENT' }
+        if (!exited && (state.error || state.status !== 0 || state.stdout.trim() !== '0')) throw new Error('SYSTEMD_PROCESS_EXIT_NOT_PROVEN')
+        report.systemdStop = 'NORMAL_SIGTERM_MAINPID_ZERO'
+      } catch {
+        report.status = 'FAIL'; report.failure = 'SYSTEMD_OWNED_PROCESS_CLEANUP_FAILED'
+      }
+    } else child.kill('SIGTERM')
     await Promise.race([new Promise((resolve) => child.once('exit', resolve)), new Promise((resolve) => setTimeout(resolve, 5000))])
-    if (child.exitCode === null) child.kill('SIGKILL')
-    report.processTeardown = process.platform === 'win32' ? 'TERMINATEPROCESS_CLEANUP_NOT_GRACEFUL_PROOF' : 'SIGTERM'
+    const forced = child.exitCode === null && child.signalCode === null
+    if (forced) child.kill('SIGKILL')
+    report.processTeardown = supervised ? report.systemdStop || 'SYSTEMD_STOP_FAILED' : process.platform === 'win32' ? 'TERMINATEPROCESS_CLEANUP_NOT_GRACEFUL_PROOF' : forced ? 'SIGKILL_FALLBACK_CLEANUP_NOT_GRACEFUL_PROOF' : 'SIGTERM_COMPLETED'
+    report.processExitCode = child.exitCode
   }
   fs.mkdirSync(path.dirname(path.resolve(flags.output)), { recursive: true })
   report.finishedAt = new Date().toISOString()
   report.fixtureRetainedForPrivateInvestigation = report.status !== 'PASS'
   if (report.status === 'PASS') {
     const resolved = fs.realpathSync(temporary)
-    if (path.dirname(resolved) !== fs.realpathSync(os.tmpdir()) || !path.basename(resolved).startsWith('solovey-w5-package-')) throw new Error('FIXTURE_CLEANUP_TARGET_INVALID')
+    if (path.dirname(resolved) !== fixtureBase || !path.basename(resolved).startsWith('solovey-w5-package-')) throw new Error('FIXTURE_CLEANUP_TARGET_INVALID')
     if (container && process.getuid() !== 0) invoke('sudo', ['-n', 'chown', '-R', `${process.getuid()}:${process.getgid()}`, '--', data])
     fs.rmSync(resolved, { recursive: true })
     report.cleanup = 'REMOVED_ONLY_OWNED_DISPOSABLE_FIXTURE_AFTER_RESULT'

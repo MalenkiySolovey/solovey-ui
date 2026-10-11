@@ -3,6 +3,7 @@ package app
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
@@ -16,18 +17,31 @@ import (
 )
 
 func TestLogicalRestoreRebindsApplicationResourceOwners(t *testing.T) {
-	for _, reject := range []bool{false, true} {
-		name := "applied"
-		if reject {
-			name = "rejected_owner_rebind"
-		}
-		t.Run(name, func(t *testing.T) {
+	for _, fixture := range []struct {
+		name              string
+		reject, populated bool
+	}{
+		{"applied", false, false}, {"rejected_owner_rebind", true, false},
+		{"applied_with_inbound", false, true}, {"rejected_owner_rebind_with_inbound", true, true},
+	} {
+		t.Run(fixture.name, func(t *testing.T) {
+			reject := fixture.reject
 			t.Setenv("SUI_DB_FOLDER", t.TempDir())
 			application := NewApp()
 			if err := application.Init(); err != nil {
 				t.Fatal(err)
 			}
 			t.Cleanup(application.Stop)
+			if fixture.populated {
+				inbound := model.Inbound{Id: 51, Type: "shadowsocks", Tag: "restore-authenticated", Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":24826,"method":"aes-128-gcm"}`)}
+				client := model.Client{Name: "restore-principal", Enable: true, SubSecret: "synthetic-restore-subscription", Links: json.RawMessage(`[]`), Config: json.RawMessage(`{"shadowsocks":{"name":"restore-principal","password":"synthetic-restore-fixture"}}`), Inbounds: json.RawMessage(`[51]`)}
+				if err := dbsqlite.DB().Create(&inbound).Error; err != nil {
+					t.Fatal(err)
+				}
+				if err := dbsqlite.DB().Create(&client).Error; err != nil {
+					t.Fatal(err)
+				}
+			}
 			dbbackup.SetSendSighupHook(func() error { return nil })
 			t.Cleanup(func() { dbbackup.SetSendSighupHook(nil) })
 			// SSH socket observation is independently qualified by the native
@@ -40,7 +54,11 @@ func TestLogicalRestoreRebindsApplicationResourceOwners(t *testing.T) {
 			checkResources := func() {
 				t.Helper()
 				snapshot := hostresources.Default.Refresh(context.Background())
-				if len(snapshot.Errors) != 0 || len(snapshot.Resources) != 4 {
+				wantResources := 4
+				if fixture.populated {
+					wantResources++
+				}
+				if len(snapshot.Errors) != 0 || len(snapshot.Resources) != wantResources {
 					t.Fatalf("resource inventory: count=%d errors=%v", len(snapshot.Resources), snapshot.Errors)
 				}
 				ids := map[string]bool{}
@@ -51,6 +69,9 @@ func TestLogicalRestoreRebindsApplicationResourceOwners(t *testing.T) {
 					if !ids[id] {
 						t.Fatalf("required resource %s absent", id)
 					}
+				}
+				if fixture.populated && !ids["core:inbound:51"] {
+					t.Fatal("authenticated inbound resource missing after restore")
 				}
 			}
 			checkResources()
@@ -114,8 +135,10 @@ func TestLogicalRestoreRebindsApplicationResourceOwners(t *testing.T) {
 			if current == oldControl {
 				t.Fatal("current owner retained the old generation")
 			}
-			if _, err := current.ListSnapshots(context.Background(), 1); err != nil {
+			if snapshots, err := current.ListSnapshots(context.Background(), 1); err != nil {
 				t.Fatal(err)
+			} else if fixture.populated && (len(snapshots) != 1 || snapshots[0].Authentication.Count != 1) {
+				t.Fatal("restored authenticated inbound membership changed")
 			}
 			var canary model.Setting
 			if err := dbsqlite.DB().First(&canary, "key = ?", "trafficAge").Error; err != nil {

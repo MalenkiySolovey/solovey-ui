@@ -59,3 +59,10 @@ Linux/Windows package build metadata and Docker's `SSM_INTEGRATION.json` identif
 the replacement, patch, checksums and license. Standard Go build information
 retains both module replacements for SBOM consumers. Patched source is not
 byte-identical unmodified official core.
+
+R76S physical qualification found that normal SSM replacement could fail solely
+because HTTP shutdown had already closed its served listener, forcing a full
+core restart. The pinned follow-up accepts that expected listener net.ErrClosed
+at the existing SSM owner. Real served-listener/port-reuse/concurrent-close and
+CoreRuntime hot-replacement regressions retain the existing generation, private
+API and StatsTracker. TLS/cache errors continue to be returned.

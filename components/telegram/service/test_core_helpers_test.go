@@ -26,14 +26,16 @@ func initSettingTestDB(t *testing.T) *coreservice.SettingService {
 		}
 		t.Fatal(err)
 	}
-	testDB := dbsqlite.DB()
 	t.Cleanup(func() {
-		if testDB == nil {
-			return
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		// The async audit owner must finish before its fixture DB is retired;
+		// direct pool closure lets an old batch enter the next fixture's schema.
+		if err := coreservice.StopAuditWriter(ctx); err != nil {
+			t.Error("drain fixture audit writer", err)
 		}
-		if sqlDB, err := testDB.DB(); err == nil {
-			_ = sqlDB.Close()
-			time.Sleep(25 * time.Millisecond)
+		if err := dbsqlite.Close(); err != nil {
+			t.Error("retire fixture database", err)
 		}
 	})
 	return &coreservice.SettingService{}
