@@ -15,15 +15,15 @@
   },
   "replacement": {
     "module": "github.com/MalenkiySolovey/sing-box",
-    "version": "v1.14.3-0.20261010163807-20fdbaa1cf7c",
-    "commit": "20fdbaa1cf7c7f9fd1c22116c63731d25916290d",
+    "version": "v1.14.3-0.20261010211422-afd12f10473e",
+    "commit": "afd12f10473eb4d2d1459897488deb623527782e",
     "repository": "https://github.com/MalenkiySolovey/sing-box",
-    "sum": "h1:5LfmnaH/TnBYoE1dx9su9FqfkQRV9D0JQQwEBn0OD6E=",
+    "sum": "h1:pBeAERxdcuwvBoQJ0GtpRzdUrNMYA1ZXjhNJ6Urw484=",
     "goModSum": "h1:O4q0spxb+xwV/p9HYR+Es1cMjK3bBvYl6k08V9rSpwU="
   },
   "patch": {
     "file": "deploy/dependencies/sing-box-ssm-cache.patch",
-    "sha256": "b7c7384271257162e74904ed673c5f986df7adbe9ab2e6f5cce9655f2c5c592c",
+    "sha256": "51b468adff332b5ea7be227a3ede438ae402af9144d128e24b41adc4765c74f9",
     "files": [
       "SOLOVEY_INTEGRATION.md",
       "service/ssmapi/cache.go",
