@@ -213,16 +213,17 @@ def seed_old_schema():
         row={k:(v.encode() if k in {'options','addrs','out_json','server','client'} and isinstance(v,str) else v) for k,v in values.items() if k in cols(table)}
         db.execute('insert into '+table+' ('+','.join(row)+') values ('+','.join('?' for _ in row)+')',list(row.values()))
     config={'log':{'level':'info'},'dns':{'servers':[{'tag':'fixture-dns','address':'udp://127.0.0.1:53353','detour':'direct'}],'final':'fixture-dns'},'route':{'final':'direct','rule_set':[{'tag':'w5-control','type':'remote','format':'source','url':'https://unbound.fixture.invalid/w5.json','download_detour':'direct'}]},'experimental':{'cache_file':{'enabled':True}}}
-    for key,value in {'version':'2026.3.3','coreSchemaVersion':'1.11','config':json.dumps(config),'webListen':'127.0.0.1','webPort':'2095','webPath':'/app/','subListen':'127.0.0.1','subPort':'2096','timeLocation':'UTC'}.items():put('settings',{'key':key,'value':value})
+    for key,value in {'version':'2026.3.3','config':json.dumps(config),'webListen':'127.0.0.1','webPort':'2095','webPath':'/app/','subListen':'127.0.0.1','subPort':'2096','timeLocation':'UTC'}.items():put('settings',{'key':key,'value':value})
     put('tls',{'id':0,'name':'none','server':'{}','client':'{}'})
     put('inbounds',{'id':1,'type':'mixed','tag':'w5-lifecycle','tls_id':0,'options':json.dumps({'listen':'127.0.0.1','listen_port':24881}),'addrs':'[]','out_json':'{}','sort_order':1})
     put('outbounds',{'id':1,'type':'direct','tag':'direct','options':'{}','sort_order':1})
     db.commit();db.close();os.chmod(data/'solovey-ui.db',0o600);os.chown(data/'solovey-ui.db',65532,65532)
-    report['syntheticOldInput']={'schemaSourceCommit':template['sourceCommit'],'originalDDLSourceCaptureSha256':template['originalCaptureSha256'],'DDLTemplateSha256':sha(ORIGINAL),'freshSyntheticDatabaseSha256':sha(data/'solovey-ui.db'),'coreSchema':'1.11','capturedOriginalRowValuesUsed':False}
+    report['syntheticOldInput']={'schemaSourceCommit':template['sourceCommit'],'originalDDLSourceCaptureSha256':template['originalCaptureSha256'],'DDLTemplateSha256':sha(ORIGINAL),'freshSyntheticDatabaseSha256':sha(data/'solovey-ui.db'),'coreSchema':'ABSENT_LEGACY_MARKER_OWNER_SEQUENTIAL_MIGRATION_REQUIRED','capturedOriginalRowValuesUsed':False,'journalValuesManufactured':False}
     container=docker('run','--detach','--name',PRIOR.name,'--label','solovey.goal=stage2-w5','--read-only','--cap-drop','ALL','--security-opt','no-new-privileges','--network','none','--tmpfs','/run/solovey-ui:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=65532,gid=65532','--tmpfs','/tmp:rw,noexec,nosuid,nodev,size=16m,mode=0700,uid=65532,gid=65532','--mount','type=bind,src='+str(data)+',dst=/data','-e','SUI_SERVER_PROTECTION_RUNTIME_ROOT=/run/solovey-ui/server-protection',IMAGE).decode().strip()
     port=2095;web_path='/app/'
     deadline=time.monotonic()+70
     while time.monotonic()<deadline:
+        if not inspect()['State']['Running']:raise RuntimeError('LEGACY_SEED_PRODUCT_EXIT_BEFORE_PANEL_READY')
         try:
             if request('api/csrf')['status']==200:break
         except (RuntimeError,OSError,ValueError):pass
@@ -235,6 +236,10 @@ def seed_old_schema():
     docker('rm',container);container=None;cookies.clear()
     migrated=snap(data/'solovey-ui.db')
     check('actual_candidate_first_boot_migrated_legacy_schema_to_1_12',migrated['integrity']=='ok' and migrated['schema']=='1.12')
+    db=sqlite3.connect((data/'solovey-ui.db').as_uri()+'?mode=ro',uri=True)
+    journals=db.execute("SELECT step_id,checksum,state FROM migration_journal_v1 WHERE scope='core' AND owner_id='core' ORDER BY step_id").fetchall();db.close()
+    check('both_sequential_core_journals_APPLIED_by_actual_migration_owner',len(journals)==2 and all(j[2]=='APPLIED' and j[0] and j[1] for j in journals))
+    report['actualOwnerMigrationJournals']=[{'step':j[0],'checksum':j[1],'state':j[2]} for j in journals]
     report['firstBootStoppedMigratedDatabaseSha256']=sha(data/'solovey-ui.db')
     report['firstBootMigratedLogicalState']=migrated
 
@@ -435,8 +440,8 @@ finally:
             removed=invoke(['docker','rm',container],timeout=15)
             report['containerCleanup']='OWNED_CONTAINER_REMOVED' if removed.returncode==0 else 'OWNED_CONTAINER_RETAINED'
         except Exception:report['containerCleanup']='VERIFY_REQUIRED'
-    report['privateFixtureRetained']=bool(private)
-    report['privateFixturePath']=str(private) if private else None
+    report['privateFixtureRetained']=bool(private or PRIOR)
+    report['privateFixturePath']=str(private or PRIOR) if (private or PRIOR) else None
     report['enrolmentHelperSha256']=sha(ENROLL) if ENROLL.exists() else None
     report['controllerSha256']=sha(Path(__file__))
     report['fixtureCommit']=os.environ.get('W5_FIXTURE_COMMIT')
