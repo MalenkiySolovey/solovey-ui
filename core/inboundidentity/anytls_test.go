@@ -135,7 +135,7 @@ func TestAnyTLSAuthenticatedParentCannotReopenRetiredInbound(t *testing.T) {
 			t.Error("parent fixture did not close")
 		}
 	})
-	open := func() {
+	open := func(awaitIdleParent bool) {
 		t.Helper()
 		ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
 		defer cancel()
@@ -161,19 +161,23 @@ func TestAnyTLSAuthenticatedParentCannotReopenRetiredInbound(t *testing.T) {
 		case <-ctx.Done():
 			t.Fatal("parent route barrier timed out")
 		}
-		select {
-		case <-finProcessed:
-		case <-ctx.Done():
-			t.Fatal("parent idle return barrier timed out")
+		if awaitIdleParent {
+			select {
+			case <-finProcessed:
+			case <-ctx.Done():
+				t.Fatal("parent idle return barrier timed out")
+			}
 		}
 		_ = conn.Close()
 	}
-	open()
+	open(true)
 	if delegate.accepted.Load() != 1 {
 		t.Fatal("initial authenticated flow was not routed")
 	}
 	owner.Revoke("any")
-	open()
+	// A rejected version-2 stream can report only a SYNACK error. No third
+	// stream is opened, so its idle-parent return is not a fixture barrier.
+	open(false)
 	if dials.Load() != 1 || delegate.accepted.Load() != 1 {
 		t.Fatalf("retired parent: dials=%d accepted=%d; want one authenticated parent and one admitted flow", dials.Load(), delegate.accepted.Load())
 	}
