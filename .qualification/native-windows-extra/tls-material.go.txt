@@ -1,0 +1,53 @@
+// Goal-owned synthetic certificate witness, adapted from the certificate
+// generator in native-package-fixture.go. The controller consumes private
+// output in memory; only --check may be invoked with visible tool output.
+package main
+
+import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/x509"
+	"encoding/hex"
+	"encoding/json"
+	"encoding/pem"
+	"math/big"
+	"net"
+	"os"
+	"time"
+)
+
+func main() {
+	if len(os.Args) != 2 || (os.Args[1] != "--check" && os.Args[1] != "--private-controller") {
+		os.Exit(2)
+	}
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		os.Exit(1)
+	}
+	now := time.Now().UTC()
+	certificate := &x509.Certificate{SerialNumber: big.NewInt(now.UnixNano()), DNSNames: []string{"w5-fixture.invalid"}, IPAddresses: []net.IP{net.ParseIP("127.0.0.1")}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(72 * time.Hour), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
+	der, err := x509.CreateCertificate(rand.Reader, certificate, certificate, &key.PublicKey, key)
+	if err != nil {
+		os.Exit(1)
+	}
+	parsed, err := x509.ParseCertificate(der)
+	if err != nil || parsed.VerifyHostname("w5-fixture.invalid") != nil || parsed.CheckSignature(parsed.SignatureAlgorithm, parsed.RawTBSCertificate, parsed.Signature) != nil {
+		os.Exit(1)
+	}
+	privateDER, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		os.Exit(1)
+	}
+	certificateDigest := sha256.Sum256(der)
+	publicKeyDigest := sha256.Sum256(parsed.RawSubjectPublicKeyInfo)
+	output := map[string]any{"certificateSha256": hex.EncodeToString(certificateDigest[:]), "publicKeySha256": hex.EncodeToString(publicKeyDigest[:]), "notAfter": parsed.NotAfter.Format(time.RFC3339), "hostnameVerified": true, "selfSignatureVerified": true}
+	if os.Args[1] == "--private-controller" {
+		output["certificate"] = string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))
+		output["key"] = string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privateDER}))
+	}
+	if json.NewEncoder(os.Stdout).Encode(output) != nil {
+		os.Exit(1)
+	}
+}

@@ -1,0 +1,149 @@
+// Disposable independent HTTP/3 peer. Uses public pinned quic-go interfaces;
+// certificate and proxy credentials are decoded only from private stdin.
+package main
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/base64"
+	"encoding/binary"
+	"encoding/json"
+	"errors"
+	"io"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/sagernet/quic-go"
+	"github.com/sagernet/quic-go/http3"
+)
+
+func emit(value any) { _ = json.NewEncoder(os.Stdout).Encode(value) }
+
+func run() (code string) {
+	var input struct{ CA, Name, Username, Password, Target string }
+	decoder := json.NewDecoder(io.LimitReader(os.Stdin, 65536))
+	if decoder.Decode(&input) != nil || input.Username == "" || input.Password == "" {
+		return "PRIVATE_INPUT_INVALID"
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM([]byte(input.CA)) {
+		return "PRIVATE_CA_INVALID"
+	}
+	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGTERM, os.Interrupt)
+	defer cancel()
+	ctx, deadline := context.WithTimeout(ctx, 180*time.Second)
+	defer deadline()
+	emit(map[string]any{"event": "READY", "pid": os.Getpid(), "loopback": true})
+	target := input.Target
+	if target == "" {
+		target = "127.0.0.1:24864"
+	}
+	if target != "127.0.0.1:24864" && target != "127.0.0.1:24862" {
+		return "FIXED_LOOPBACK_TARGET_REQUIRED"
+	}
+	conn, err := quic.DialAddr(ctx, target, &tls.Config{
+		RootCAs: roots, ServerName: input.Name, NextProtos: []string{http3.NextProtoH3}, MinVersion: tls.VersionTLS13,
+	}, &quic.Config{HandshakeIdleTimeout: 3 * time.Second, MaxIdleTimeout: 60 * time.Second})
+	if err != nil {
+		return "QUIC_AUTHENTICATED_TLS_DIAL_FAILED"
+	}
+	defer conn.CloseWithError(0, "qualification peer cleanup")
+	transport := &http3.Transport{}
+	defer transport.Close()
+	reader, writer := io.Pipe()
+	defer reader.Close()
+	defer writer.Close()
+	req, err := http.NewRequestWithContext(ctx, http.MethodConnect, "https://127.0.0.1:24843", reader)
+	if err != nil {
+		return "CONNECT_REQUEST_INVALID"
+	}
+	req.Host = "127.0.0.1:24843"
+	req.Header.Set("Padding", "00000000000000000000000000000000")
+	req.Header.Set("Proxy-Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(input.Username+":"+input.Password)))
+	response, err := transport.NewClientConn(conn).RoundTrip(req)
+	if err != nil {
+		return "AUTHENTICATED_HTTP3_CONNECT_FAILED"
+	}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK || response.ProtoMajor != 3 {
+		return "AUTHENTICATED_HTTP3_CONNECT_NOT_ACCEPTED"
+	}
+	nonce := make([]byte, 32)
+	if _, err = rand.Read(nonce); err != nil {
+		return "NONCE_GENERATION_FAILED"
+	}
+	frame := append([]byte{0, 32, 0}, nonce...)
+	answered := make(chan bool, 1)
+	go func() {
+		if _, err := writer.Write(frame); err != nil {
+			answered <- false
+			return
+		}
+		header := make([]byte, 3)
+		if _, err := io.ReadFull(response.Body, header); err != nil {
+			answered <- false
+			return
+		}
+		if binary.BigEndian.Uint16(header[:2]) != 32 {
+			answered <- false
+			return
+		}
+		payload := make([]byte, 32+int(header[2]))
+		_, err := io.ReadFull(response.Body, payload)
+		answered <- err == nil && bytes.Equal(payload[:32], nonce)
+	}()
+	select {
+	case ok := <-answered:
+		if !ok {
+			return "AUTHENTICATED_HTTP3_NONCE_FAILED"
+		}
+	case <-time.After(5 * time.Second):
+		return "AUTHENTICATED_HTTP3_NONCE_DEADLINE"
+	case <-ctx.Done():
+		return "PEER_CANCELLED_BEFORE_AUTHENTICATION"
+	}
+	emit(map[string]any{"event": "AUTHENTICATED", "nonceMatched": true, "protocol": response.Proto,
+		"alpn": conn.ConnectionState().TLS.NegotiatedProtocol, "tlsVersion": conn.ConnectionState().TLS.Version})
+	var command struct{ Observe bool }
+	if decoder.Decode(&command) != nil || !command.Observe {
+		return "OBSERVATION_COMMAND_INVALID"
+	}
+	start := time.Now()
+	emit(map[string]any{"event": "ARMED", "windowMilliseconds": 2000})
+	timer := time.NewTimer(2 * time.Second)
+	defer timer.Stop()
+	select {
+	case <-conn.Context().Done():
+		var app *quic.ApplicationError
+		remote := errors.As(context.Cause(conn.Context()), &app) && app.Remote
+		result := map[string]any{"event": "PARENT_RESULT", "remoteConnectionClose": remote, "parentOpen": false,
+			"elapsedMilliseconds": time.Since(start).Milliseconds()}
+		if app != nil {
+			result["applicationErrorCode"] = uint64(app.ErrorCode)
+		}
+		emit(result)
+	case <-timer.C:
+		emit(map[string]any{"event": "PARENT_RESULT", "remoteConnectionClose": false, "parentOpen": conn.Context().Err() == nil,
+			"elapsedMilliseconds": time.Since(start).Milliseconds(), "code": "HEALTHY_LOOPBACK_REMOTE_CLOSE_DEADLINE"})
+	case <-ctx.Done():
+		return "PEER_CANCELLED_DURING_OBSERVATION"
+	}
+	return ""
+}
+
+func main() {
+	code := run()
+	if code != "" {
+		emit(map[string]any{"event": "FAIL", "code": code})
+	}
+	emit(map[string]any{"event": "STOPPED", "activeParents": 0, "credentialsCaptured": false})
+	if code != "" {
+		os.Exit(1)
+	}
+}

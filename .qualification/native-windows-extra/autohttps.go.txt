@@ -1,0 +1,319 @@
+// Goal-owned standard-library wire peer. It never constructs a product server.
+// The target is the actual installed subscription listener on the R76S.
+package main
+
+import (
+	"bufio"
+	"crypto/tls"
+	"crypto/x509"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"os"
+	"strings"
+	"syscall"
+	"time"
+)
+
+type input struct {
+	Target, Name, Authority, Certificate string
+}
+
+type result struct {
+	Status     string           `json:"status"`
+	Assertions []string         `json:"assertions"`
+	Timings    map[string]int64 `json:"timingsMs"`
+	Details    map[string]any   `json:"details"`
+	Failure    string           `json:"failure,omitempty"`
+}
+
+func check(r *result, name string, ok bool) error {
+	if !ok {
+		return errors.New(name)
+	}
+	r.Assertions = append(r.Assertions, name)
+	return nil
+}
+
+type fragments struct {
+	net.Conn
+	writes int
+}
+
+func (c *fragments) Write(b []byte) (int, error) {
+	total := 0
+	for len(b) > 0 {
+		n, err := c.Conn.Write(b[:min(17, len(b))])
+		c.writes++
+		total += n
+		b = b[n:]
+		if err != nil {
+			return total, err
+		}
+		if n == 0 {
+			return total, io.ErrNoProgress
+		}
+	}
+	return total, nil
+}
+
+func dial(in input) (*net.TCPConn, error) {
+	c, err := net.DialTimeout("tcp", in.Target, 2*time.Second)
+	if err != nil {
+		return nil, errors.New("LOOPBACK_TARGET_DIAL_FAILED")
+	}
+	tcp := c.(*net.TCPConn)
+	if tcp.SetDeadline(time.Now().Add(4*time.Second)) != nil {
+		tcp.Close()
+		return nil, errors.New("PEER_DEADLINE_FAILED")
+	}
+	return tcp, nil
+}
+
+func httpResponse(c net.Conn) (*http.Response, error) {
+	return http.ReadResponse(bufio.NewReader(c), nil)
+}
+
+func secureRequest(in input, roots *x509.CertPool, name, host string, version uint16, fragment bool) (int, tls.ConnectionState, int, error) {
+	tcp, err := dial(in)
+	if err != nil {
+		return 0, tls.ConnectionState{}, 0, err
+	}
+	defer tcp.Close()
+	var transport net.Conn = tcp
+	f := &fragments{Conn: tcp}
+	if fragment {
+		transport = f
+	}
+	conf := &tls.Config{RootCAs: roots, ServerName: name, MinVersion: version, MaxVersion: version}
+	secure := tls.Client(transport, conf)
+	if err = secure.Handshake(); err != nil {
+		return 0, tls.ConnectionState{}, f.writes, err
+	}
+	state := secure.ConnectionState()
+	_, err = io.WriteString(secure, "GET /w5-autohttps-owned-missing HTTP/1.1\r\nHost: "+host+"\r\nConnection: close\r\n\r\n")
+	if err != nil {
+		return 0, state, f.writes, err
+	}
+	response, err := httpResponse(secure)
+	if err != nil {
+		return 0, state, f.writes, err
+	}
+	defer response.Body.Close()
+	_, err = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+	return response.StatusCode, state, f.writes, err
+}
+
+func redirect(in input, fragment, halfClose bool) (map[string]any, error) {
+	tcp, err := dial(in)
+	if err != nil {
+		return nil, err
+	}
+	defer tcp.Close()
+	request := "GET http://attacker.invalid/escaped%2Fpath?q=a%26b HTTP/1.1\r\nHost: attacker.invalid\r\nX-Goal-Large: " + strings.Repeat("x", 4096) + "\r\n\r\n"
+	var w io.Writer = tcp
+	f := &fragments{Conn: tcp}
+	if fragment {
+		w = f
+	}
+	if _, err = io.WriteString(w, request); err != nil {
+		return nil, errors.New("REDIRECT_REQUEST_WRITE_FAILED")
+	}
+	if halfClose {
+		if tcp.CloseWrite() != nil {
+			return nil, errors.New("REDIRECT_FIN_FAILED")
+		}
+	}
+	response, err := httpResponse(tcp)
+	if err != nil {
+		return nil, errors.New("REDIRECT_HTTP_PARSE_FAILED")
+	}
+	defer response.Body.Close()
+	_, err = io.Copy(io.Discard, io.LimitReader(response.Body, 4096))
+	if err != nil {
+		return nil, errors.New("REDIRECT_BODY_FAILED")
+	}
+	var tail [1]byte
+	n, tailErr := tcp.Read(tail[:])
+	ok := response.Proto == "HTTP/1.1" && response.StatusCode == 307 && response.Close && response.Header.Get("Location") == "https://"+in.Authority+"/escaped%2Fpath?q=a%26b" && n == 0 && errors.Is(tailErr, io.EOF)
+	if !ok {
+		return nil, errors.New("REDIRECT_PROTOCOL_AUTHORITY_PATH_OR_CLOSE_CHANGED")
+	}
+	return map[string]any{"protocol": response.Proto, "status": response.StatusCode, "configuredAuthority": true, "escapedPathAndQueryPreserved": true, "remoteEOF": true, "fragmentWrites": f.writes, "requestHalfClosed": halfClose}, nil
+}
+
+type timed struct {
+	elapsed     int64
+	bytes       int
+	remoteClose bool
+	err         error
+}
+
+func timedPeer(in input, partial bool) (*net.TCPConn, <-chan timed, error) {
+	tcp, err := dial(in)
+	if err != nil {
+		return nil, nil, err
+	}
+	start := time.Now()
+	if tcp.SetDeadline(start.Add(14*time.Second)) != nil {
+		tcp.Close()
+		return nil, nil, errors.New("TIMED_PEER_DEADLINE_FAILED")
+	}
+	if partial {
+		if _, err = tcp.Write([]byte("G")); err != nil {
+			tcp.Close()
+			return nil, nil, errors.New("PARTIAL_PEER_WRITE_FAILED")
+		}
+	}
+	ch := make(chan timed, 1)
+	go func() {
+		defer tcp.Close()
+		b, err := io.ReadAll(io.LimitReader(tcp, 8192))
+		closed := err == nil || errors.Is(err, syscall.ECONNRESET)
+		ch <- timed{elapsed: time.Since(start).Milliseconds(), bytes: len(b), remoteClose: closed && len(b) < 8192, err: err}
+		close(ch)
+	}()
+	return tcp, ch, nil
+}
+
+func run(in input, mode string, r *result) error {
+	host, port, err := net.SplitHostPort(in.Target)
+	if err != nil || host != "127.0.0.1" || port == "" || len(port) > 5 || in.Name != "w5-fixture.invalid" || in.Authority != in.Name {
+		return errors.New("BOUNDED_LOOPBACK_INPUT_REQUIRED")
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM([]byte(in.Certificate)) {
+		return errors.New("CONTROLLED_PUBLIC_TRUST_REQUIRED")
+	}
+	code, state, writes, err := secureRequest(in, roots, in.Name, in.Name, tls.VersionTLS13, true)
+	if err != nil {
+		return errors.New("ACTUAL_TLS13_FRAGMENTED_HANDSHAKE_FAILED")
+	}
+	if err = check(r, "actual_packaged_TLS13_custom_CA_hostname_and_fragmented_handshake", code == 404 && state.Version == tls.VersionTLS13 && len(state.VerifiedChains) > 0 && writes > 1); err != nil {
+		return err
+	}
+	r.Details["TLS13"] = map[string]any{"httpStatus": code, "verifiedChains": len(state.VerifiedChains), "fragmentWrites": writes}
+	if mode == "ready" {
+		return nil
+	}
+	code, state, _, err = secureRequest(in, roots, in.Name, in.Name, tls.VersionTLS12, false)
+	if err = check(r, "actual_packaged_TLS12_custom_CA_and_application_response", err == nil && code == 404 && state.Version == tls.VersionTLS12 && len(state.VerifiedChains) > 0); err != nil {
+		return err
+	}
+	_, _, _, err = secureRequest(in, roots, "wrong-owned-host.invalid", in.Name, tls.VersionTLS13, false)
+	var wrongHostname x509.HostnameError
+	if err = check(r, "wrong_hostname_not_accepted", errors.As(err, &wrongHostname)); err != nil {
+		return err
+	}
+	_, _, _, err = secureRequest(in, x509.NewCertPool(), in.Name, in.Name, tls.VersionTLS13, false)
+	var wrongAuthority x509.UnknownAuthorityError
+	if err = check(r, "untrusted_certificate_not_accepted", errors.As(err, &wrongAuthority)); err != nil {
+		return err
+	}
+	_, _, _, err = secureRequest(in, roots, in.Name, in.Name, tls.VersionTLS11, false)
+	if err = check(r, "TLS11_not_accepted_by_packaged_minimum", err != nil && strings.Contains(err.Error(), "protocol version")); err != nil {
+		return err
+	}
+	code, _, _, err = secureRequest(in, roots, in.Name, "wrong-owned-host.invalid", tls.VersionTLS13, false)
+	if err = check(r, "existing_subscription_Host_authority_validator_retained", err == nil && code == 403); err != nil {
+		return err
+	}
+	for _, variant := range []struct {
+		name           string
+		fragment, half bool
+	}{{"fragmented_HTTP", true, false}, {"complete_HTTP_then_FIN", false, true}} {
+		proof, err := redirect(in, variant.fragment, variant.half)
+		if err != nil {
+			return err
+		}
+		r.Details[variant.name] = proof
+		if err = check(r, variant.name+"_valid_307_HTTP11_configured_authority_and_remote_EOF", true); err != nil {
+			return err
+		}
+	}
+	tcp, err := dial(in)
+	if err != nil {
+		return err
+	}
+	func() {
+		defer tcp.Close()
+		_, err = io.WriteString(tcp, "GET /w5-oversized HTTP/1.1\r\nHost: "+in.Name+"\r\nX-Goal: "+strings.Repeat("x", 17*1024)+"\r\n\r\n")
+		if err == nil {
+			var responseCode int
+			response, responseErr := httpResponse(tcp)
+			if responseErr == nil {
+				responseCode = response.StatusCode
+				response.Body.Close()
+			}
+			r.Details["oversizedHTTP"] = map[string]any{"status": responseCode, "parseFailed": responseErr != nil}
+			if responseCode == 307 {
+				err = errors.New("OVERSIZED_REQUEST_REDIRECTED")
+			} else if responseErr != nil && !errors.Is(responseErr, io.EOF) && !errors.Is(responseErr, syscall.ECONNRESET) {
+				err = responseErr
+			}
+		}
+	}()
+	if err != nil && !errors.Is(err, syscall.ECONNRESET) {
+		return errors.New("OVERSIZED_PEER_FAILED")
+	}
+	if err = check(r, "over_16KiB_request_not_redirected", true); err != nil {
+		return err
+	}
+	silent, silentDone, err := timedPeer(in, false)
+	if err != nil {
+		return err
+	}
+	defer silent.Close()
+	partial, partialDone, err := timedPeer(in, true)
+	if err != nil {
+		return err
+	}
+	defer partial.Close()
+	start := time.Now()
+	code, _, _, err = secureRequest(in, roots, in.Name, in.Name, tls.VersionTLS13, true)
+	responsiveMs := time.Since(start).Milliseconds()
+	if err = check(r, "listener_serves_valid_TLS_while_silent_and_partial_peers_wait", err == nil && code == 404 && responsiveMs < 3000); err != nil {
+		return err
+	}
+	r.Timings["parallelValidTLS"] = responsiveMs
+	for _, peer := range []struct {
+		name string
+		ch   <-chan timed
+	}{{"silent", silentDone}, {"partial_HTTP", partialDone}} {
+		proof := <-peer.ch
+		r.Timings[peer.name+"RemoteClose"] = proof.elapsed
+		r.Details[peer.name] = map[string]any{"remoteClose": proof.remoteClose, "receivedBytes": proof.bytes}
+		if err = check(r, peer.name+"_closed_by_actual_tighter_10s_HTTP_handshake_deadline", proof.remoteClose && proof.elapsed >= 8000 && proof.elapsed < 14000); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func main() {
+	r := result{Status: "FAIL", Assertions: []string{}, Timings: map[string]int64{}, Details: map[string]any{}}
+	var in input
+	mode := "probe"
+	if len(os.Args) == 2 {
+		mode = os.Args[1]
+	}
+	var err error
+	if (mode != "probe" && mode != "ready") || json.NewDecoder(io.LimitReader(os.Stdin, 65536)).Decode(&in) != nil {
+		err = errors.New("PEER_INPUT_INVALID")
+	} else {
+		err = run(in, mode, &r)
+	}
+	if err == nil {
+		r.Status = "PASS"
+	} else {
+		r.Failure = err.Error()
+	}
+	json.NewEncoder(os.Stdout).Encode(r)
+	if err != nil {
+		fmt.Fprintln(os.Stderr, r.Failure)
+		os.Exit(1)
+	}
+}

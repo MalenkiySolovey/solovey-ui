@@ -1,0 +1,338 @@
+// Goal-owned public TLS/Trojan wire client and independent bounded nonce peer.
+// No product/core/TLS server is constructed by this helper.
+package main
+
+import (
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/sha256"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
+	"encoding/base64"
+	"encoding/binary"
+	"encoding/hex"
+	"encoding/json"
+	"encoding/pem"
+	"errors"
+	"fmt"
+	"io"
+	"math/big"
+	"net"
+	"os"
+	"os/signal"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"syscall"
+	"time"
+)
+
+type input struct {
+	StdinLifecycle                                             bool
+	Target, Echo, Name, CA, Certificate, Key, Password, Denial string
+}
+
+func certPair(serial int64, ca *x509.Certificate, caKey *ecdsa.PrivateKey, usage x509.ExtKeyUsage) (string, string, *x509.Certificate, error) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return "", "", nil, err
+	}
+	now := time.Now().UTC()
+	template := &x509.Certificate{SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: "w5-mtls-fixture"}, DNSNames: []string{"mtls.fixture.invalid"}, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(72 * time.Hour), KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{usage}}
+	der, err := x509.CreateCertificate(rand.Reader, template, ca, &key.PublicKey, caKey)
+	if err != nil {
+		return "", "", nil, err
+	}
+	private, err := x509.MarshalPKCS8PrivateKey(key)
+	if err != nil {
+		return "", "", nil, err
+	}
+	cert, err := x509.ParseCertificate(der)
+	if err != nil {
+		return "", "", nil, err
+	}
+	return string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: private})), cert, nil
+}
+
+func newCA(serial int64) (*x509.Certificate, *ecdsa.PrivateKey, string, error) {
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	now := time.Now().UTC()
+	template := &x509.Certificate{SerialNumber: big.NewInt(serial), Subject: pkix.Name{CommonName: fmt.Sprintf("w5-controlled-ca-%d", serial)}, IsCA: true, BasicConstraintsValid: true, NotBefore: now.Add(-time.Minute), NotAfter: now.Add(72 * time.Hour), KeyUsage: x509.KeyUsageCertSign | x509.KeyUsageCRLSign}
+	der, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	ca, err := x509.ParseCertificate(der)
+	if err != nil {
+		return nil, nil, "", err
+	}
+	return ca, key, string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der})), nil
+}
+
+func generate() (map[string]any, error) {
+	ca, caKey, caPEM, err := newCA(1)
+	if err != nil {
+		return nil, err
+	}
+	wrongCA, wrongKey, _, err := newCA(9)
+	if err != nil {
+		return nil, err
+	}
+	server, serverKey, serverCert, err := certPair(2, ca, caKey, x509.ExtKeyUsageServerAuth)
+	if err != nil {
+		return nil, err
+	}
+	client, clientKey, clientCert, err := certPair(3, ca, caKey, x509.ExtKeyUsageClientAuth)
+	if err != nil {
+		return nil, err
+	}
+	other, otherKey, _, err := certPair(4, ca, caKey, x509.ExtKeyUsageClientAuth)
+	if err != nil {
+		return nil, err
+	}
+	wrong, wrongClientKey, _, err := certPair(10, wrongCA, wrongKey, x509.ExtKeyUsageClientAuth)
+	if err != nil {
+		return nil, err
+	}
+	roots := x509.NewCertPool()
+	roots.AddCert(ca)
+	if _, err = serverCert.Verify(x509.VerifyOptions{Roots: roots, DNSName: "mtls.fixture.invalid"}); err != nil {
+		return nil, err
+	}
+	if _, err = clientCert.Verify(x509.VerifyOptions{Roots: roots, KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}}); err != nil {
+		return nil, err
+	}
+	pin := sha256.Sum256(clientCert.RawSubjectPublicKeyInfo)
+	return map[string]any{"CA": caPEM, "ServerCertificate": server, "ServerKey": serverKey, "ClientCertificate": client, "ClientKey": clientKey, "OtherCertificate": other, "OtherKey": otherKey, "WrongCertificate": wrong, "WrongKey": wrongClientKey, "ClientPublicKeySHA256": base64.StdEncoding.EncodeToString(pin[:]), "Name": "mtls.fixture.invalid", "NotAfter": serverCert.NotAfter.Format(time.RFC3339)}, nil
+}
+
+func boundedTarget(target string, port string) bool {
+	h, p, err := net.SplitHostPort(target)
+	return err == nil && h == "127.0.0.1" && p == port
+}
+
+func probe(in input) (map[string]any, error) {
+	if !boundedTarget(in.Target, "24840") || !boundedTarget(in.Echo, "24843") || in.Name != "mtls.fixture.invalid" || len(in.Password) < 24 {
+		return nil, errors.New("BOUNDED_MTLS_INPUT_REQUIRED")
+	}
+	roots := x509.NewCertPool()
+	if !roots.AppendCertsFromPEM([]byte(in.CA)) {
+		return nil, errors.New("PUBLIC_SERVER_CA_INVALID")
+	}
+	var pair tls.Certificate
+	var err error
+	if in.Certificate != "" || in.Key != "" {
+		pair, err = tls.X509KeyPair([]byte(in.Certificate), []byte(in.Key))
+		if err != nil {
+			return nil, errors.New("PRIVATE_PEER_KEY_PAIR_INVALID")
+		}
+	}
+	conf := &tls.Config{RootCAs: roots, ServerName: in.Name, MinVersion: tls.VersionTLS12}
+	sent := false
+	if len(pair.Certificate) > 0 {
+		// Intentionally send this exact controlled certificate even when its
+		// issuer is not requested, so wrong-CA proof cannot collapse to no-cert.
+		conf.GetClientCertificate = func(*tls.CertificateRequestInfo) (*tls.Certificate, error) { sent = true; return &pair, nil }
+	}
+	raw, err := net.DialTimeout("tcp", in.Target, time.Second)
+	if err != nil {
+		return nil, errors.New("ACTUAL_MTLS_TARGET_DIAL_FAILED")
+	}
+	defer raw.Close()
+	raw.SetDeadline(time.Now().Add(4 * time.Second))
+	conn := tls.Client(raw, conf)
+	err = conn.Handshake()
+	handshakeOK := err == nil
+	var nonce [32]byte
+	if _, e := rand.Read(nonce[:]); e != nil {
+		return nil, errors.New("NONCE_GENERATION_FAILED")
+	}
+	if err == nil {
+		key := sha256.Sum224([]byte(in.Password))
+		// Public Trojan TCP framing: SHA224 hex, CRLF, CONNECT, IPv4+port,
+		// CRLF and a bounded nonce. No private upstream implementation copied.
+		header := append([]byte(hex.EncodeToString(key[:])+"\r\n"), 1, 1, 127, 0, 0, 1)
+		var port [2]byte
+		binary.BigEndian.PutUint16(port[:], 24843)
+		header = append(header, port[:]...)
+		header = append(header, '\r', '\n')
+		header = append(header, nonce[:]...)
+		_, err = conn.Write(header)
+		if err == nil {
+			var reply [32]byte
+			_, err = io.ReadFull(conn, reply[:])
+			if err == nil && reply != nonce {
+				err = errors.New("ROUTED_NONCE_MISMATCH")
+			}
+		}
+	}
+	denied := in.Denial != ""
+	if !denied {
+		if err != nil {
+			return nil, errors.New("VALID_MTLS_TROJAN_NONCE_FAILED")
+		}
+		state := conn.ConnectionState()
+		if !sent || len(state.VerifiedChains) == 0 {
+			return nil, errors.New("VALID_MUTUAL_TRUST_NOT_PROVEN")
+		}
+		return map[string]any{"status": "PASS", "certificateSent": sent, "verifiedServerChains": len(state.VerifiedChains), "tlsVersion": state.Version, "authenticatedTrojanNonce": true}, nil
+	}
+	if err == nil {
+		return nil, errors.New("INVALID_MTLS_OR_AUTH_ROUTED_NONCE")
+	}
+	var timeout net.Error
+	if errors.As(err, &timeout) && timeout.Timeout() {
+		return nil, errors.New("DENIAL_ONLY_CLIENT_TIMEOUT")
+	}
+	var localCA x509.UnknownAuthorityError
+	var localName x509.HostnameError
+	if errors.As(err, &localCA) || errors.As(err, &localName) {
+		return nil, errors.New("DENIAL_LOCAL_SERVER_TRUST_FIXTURE_FAILURE")
+	}
+	remoteAlert := strings.Contains(err.Error(), "remote error: tls:")
+	remoteClose := errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) || errors.Is(err, syscall.ECONNRESET) || errors.Is(err, syscall.EPIPE)
+	if !remoteAlert && !remoteClose {
+		return nil, errors.New("DENIAL_REMOTE_CLOSE_NOT_PROVEN")
+	}
+	if in.Denial == "missing-client" && sent || in.Denial != "missing-client" && !sent {
+		return nil, errors.New("DENIAL_CERTIFICATE_SELECTION_NOT_PROVEN")
+	}
+	return map[string]any{"status": "PASS", "denial": in.Denial, "certificateSent": sent, "handshakeCompleted": handshakeOK, "remoteTLSAlert": remoteAlert, "remoteClose": remoteClose, "authenticatedTrojanNonce": false}, nil
+}
+
+func silent(in input) (map[string]any, error) {
+	if !boundedTarget(in.Target, "24840") {
+		return nil, errors.New("BOUNDED_TIMEOUT_TARGET_REQUIRED")
+	}
+	c, err := net.DialTimeout("tcp", in.Target, time.Second)
+	if err != nil {
+		return nil, errors.New("TIMEOUT_TARGET_DIAL_FAILED")
+	}
+	defer c.Close()
+	start := time.Now()
+	c.SetDeadline(start.Add(3 * time.Second))
+	var b [1]byte
+	n, err := c.Read(b[:])
+	elapsed := time.Since(start).Milliseconds()
+	if n != 0 || !errors.Is(err, io.EOF) || elapsed < 500 || elapsed >= 2500 {
+		return nil, errors.New("ACTUAL_CONFIGURED_HANDSHAKE_TIMEOUT_NOT_PROVEN")
+	}
+	return map[string]any{"status": "PASS", "remoteEOF": true, "elapsedMs": elapsed, "configuredTimeoutMs": 700}, nil
+}
+
+func closed(in input) (map[string]any, error) {
+	if !boundedTarget(in.Target, "24840") {
+		return nil, errors.New("BOUNDED_CLOSED_TARGET_REQUIRED")
+	}
+	c, err := net.DialTimeout("tcp", in.Target, time.Second)
+	if err == nil {
+		c.Close()
+		return nil, errors.New("REMOVED_INBOUND_LISTENER_STILL_OPEN")
+	}
+	if !errors.Is(err, syscall.ECONNREFUSED) {
+		return nil, errors.New("CLOSED_TARGET_ONLY_ENVIRONMENT_FAILURE")
+	}
+	return map[string]any{"status": "PASS", "connectionRefused": true}, nil
+}
+
+func echo(in input) error {
+	if !boundedTarget(in.Echo, "24843") {
+		return errors.New("BOUNDED_ECHO_TARGET_REQUIRED")
+	}
+	listener, err := net.Listen("tcp", in.Echo)
+	if err != nil {
+		return errors.New("CONTROLLED_NONCE_LISTENER_FAILED")
+	}
+	defer listener.Close()
+	if in.StdinLifecycle {
+		go func() { _, _ = io.Copy(io.Discard, os.Stdin); _ = listener.Close() }()
+	}
+	var access sync.Mutex
+	emit := func(v any) { access.Lock(); defer access.Unlock(); json.NewEncoder(os.Stdout).Encode(v) }
+	var count atomic.Int32
+	var workers sync.WaitGroup
+	done := make(chan os.Signal, 1)
+	signal.Notify(done, syscall.SIGTERM, syscall.SIGINT)
+	defer signal.Stop(done)
+	timer := time.NewTimer(180 * time.Second)
+	defer timer.Stop()
+	stop := make(chan struct{})
+	go func() {
+		select {
+		case <-done:
+		case <-timer.C:
+		case <-stop:
+		}
+		listener.Close()
+	}()
+	defer close(stop)
+	emit(map[string]any{"event": "READY", "loopback": true, "pid": os.Getpid()})
+	for {
+		c, err := listener.Accept()
+		if err != nil {
+			break
+		}
+		workers.Add(1)
+		go func() {
+			defer workers.Done()
+			defer c.Close()
+			c.SetDeadline(time.Now().Add(3 * time.Second))
+			var nonce [32]byte
+			if _, err := io.ReadFull(c, nonce[:]); err != nil {
+				return
+			}
+			if _, err := c.Write(nonce[:]); err != nil {
+				return
+			}
+			emit(map[string]any{"event": "ANSWERED", "count": count.Add(1)})
+		}()
+	}
+	workers.Wait()
+	emit(map[string]any{"event": "STOPPED", "count": count.Load()})
+	return nil
+}
+
+func main() {
+	if len(os.Args) == 3 && os.Args[1] == "generate-private" && os.Args[2] == "--controller-memory-only" {
+		v, err := generate()
+		if err != nil {
+			fmt.Fprintln(os.Stderr, "PRIVATE_MTLS_GENERATION_FAILED")
+			os.Exit(1)
+		}
+		json.NewEncoder(os.Stdout).Encode(v)
+		return
+	}
+	var in input
+	if len(os.Args) != 2 || json.NewDecoder(io.LimitReader(os.Stdin, 65536)).Decode(&in) != nil {
+		fmt.Fprintln(os.Stderr, "MTLS_PEER_INPUT_INVALID")
+		os.Exit(2)
+	}
+	var result map[string]any
+	var err error
+	switch os.Args[1] {
+	case "probe":
+		result, err = probe(in)
+	case "silent":
+		result, err = silent(in)
+	case "closed":
+		result, err = closed(in)
+	case "echo":
+		err = echo(in)
+		if err == nil {
+			return
+		}
+	default:
+		err = errors.New("MTLS_PEER_MODE_INVALID")
+	}
+	if err != nil {
+		json.NewEncoder(os.Stdout).Encode(map[string]any{"status": "FAIL", "code": err.Error()})
+		fmt.Fprintln(os.Stderr, err.Error())
+		os.Exit(1)
+	}
+	json.NewEncoder(os.Stdout).Encode(result)
+}

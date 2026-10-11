@@ -1,0 +1,13 @@
+{
+  "kind": "SEALED_CANDIDATE_EXPECTATION_NOT_NEW_BUILD",
+  "commit": "de501586b354e8f93adc5a66984c1c61b48dbf96",
+  "sourceSHA256": "9aab8d4784faf03bbeefdc85b47db262881ce4e274fb6e9dad129bd2c728084e",
+  "artifactRun": 38166107316,
+  "semanticBaseline": "official sing-box v1.14.2",
+  "patchPins": [
+    "d0feb7cd0e3cfd46a2a90c06be901c6c87aaeed8",
+    "b2eea8ca8762dd1e438171e2f7b56f9715c30cbb",
+    "8f440972b353f7ace3bbfbac9cf291938de5ab19"
+  ],
+  "privateValuesCaptured": false
+}

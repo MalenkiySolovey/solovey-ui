@@ -1,0 +1,68 @@
+{
+  "timestamp": "2026-10-11T22:30:25.235Z",
+  "changes": [
+    {
+      "source": "native-package-runtime-with-autohttps.mjs",
+      "sourceSHA256": "e9147047a9e2ba684f0c288499037100229fc0d38dbc206263d27d605d6ddca0",
+      "target": ".qualification/native-windows-extra/native-package-runtime.mjs",
+      "targetSHA256": "e9147047a9e2ba684f0c288499037100229fc0d38dbc206263d27d605d6ddca0"
+    },
+    {
+      "source": "naive-portable-windows-contract.mjs",
+      "sourceSHA256": "4ade66360fb986fe71be1b4558928bc901210faaa448fb3133eca705bcceb1e5",
+      "target": ".qualification/native-windows-extra/naive-contract.mjs",
+      "targetSHA256": "7a8bead781588af6737056d7f282deeea842d71fa277c00890bde6997c6ca5c7"
+    },
+    {
+      "source": "windows-autohttps-contract.mjs",
+      "sourceSHA256": "be41726c5d37d5e514b0602299b6e410f0c25f6ba259c107304cad530d8030d7",
+      "target": ".qualification/native-windows-extra/autohttps-contract.mjs",
+      "targetSHA256": "e227e7e8c80c6284308c706f8e1b8488557610c40a4183a90652b438899056e5"
+    },
+    {
+      "source": "windows-outbound-mtls-contract.mjs",
+      "sourceSHA256": "49387f260c12ae7289292f6208bf7edd4104a6633a3c0b4517a08645500e8018",
+      "target": ".qualification/native-windows-extra/outbound-mtls-contract.mjs",
+      "targetSHA256": "0427e7637dfaaf15390ca4308becea4e7d709d258ad6414bb139c7b6d7c21fbb"
+    },
+    {
+      "source": "naive-portable-echo.go",
+      "sourceSHA256": "48e3491ed1108af2ffd7fe4261e2b3e1d1d341644f662b8c2319161f988d8234",
+      "target": ".qualification/native-windows-extra/echo.go.txt",
+      "targetSHA256": "48e3491ed1108af2ffd7fe4261e2b3e1d1d341644f662b8c2319161f988d8234"
+    },
+    {
+      "source": "naive-portable-wire.go",
+      "sourceSHA256": "36a6d72c76c5c3a056872d5527d0eda050b06fc52a5b50a6102ad7c6a75b91b5",
+      "target": ".qualification/native-windows-extra/wire.go.txt",
+      "targetSHA256": "36a6d72c76c5c3a056872d5527d0eda050b06fc52a5b50a6102ad7c6a75b91b5"
+    },
+    {
+      "source": "naive-portable-parent.go",
+      "sourceSHA256": "de9364816ec4525cfa73f552eabfd4a3d33f72e7f662c48f1d028622cfe06bcd",
+      "target": ".qualification/native-windows-extra/parent.go.txt",
+      "targetSHA256": "de9364816ec4525cfa73f552eabfd4a3d33f72e7f662c48f1d028622cfe06bcd"
+    },
+    {
+      "source": "autohttps-windows-peer.go",
+      "sourceSHA256": "168235ba7e41441bb7eebdd07d33c65fdb312cfa0eced41255dcb0ad857ddcde",
+      "target": ".qualification/native-windows-extra/autohttps.go.txt",
+      "targetSHA256": "168235ba7e41441bb7eebdd07d33c65fdb312cfa0eced41255dcb0ad857ddcde"
+    },
+    {
+      "source": "fixture-tls-material.go",
+      "sourceSHA256": "b3e97e4069135d6cd4a0db1c7f1fbb79198e345bd1371889952bab22183d4d7a",
+      "target": ".qualification/native-windows-extra/tls-material.go.txt",
+      "targetSHA256": "b3e97e4069135d6cd4a0db1c7f1fbb79198e345bd1371889952bab22183d4d7a"
+    }
+  ],
+  "scope": "Fixture-only portability: exact binary passed from existing native driver; dynamic native Go peer architecture; independently compiled standard-library private certificate generator. Original module behavior/assertions preserved. Full/Core packages reused by exact archived SHA, no candidate rebuilding, new product dependency, profile weakening, source mutation or secret assets.",
+  "localExecutedReports": [
+    "WINDOWS_NAIVE_PORTABLE_OUTER_RUNTIME.json",
+    "WINDOWS_AUTOHTTPS_OUTER_RUNTIME.json",
+    "WINDOWS_OUTBOUND_MTLS_OUTER_RUNTIME.json"
+  ],
+  "sourceCommit": "de501586b354e8f93adc5a66984c1c61b48dbf96",
+  "fixtureParent": "911c66f21e83e459da12e0d4eb4a0038893ccd05",
+  "privateValuesCaptured": false
+}

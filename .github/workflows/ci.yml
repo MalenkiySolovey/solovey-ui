@@ -4,6 +4,10 @@ name: Stage2 Wave5 package qualification
 on:
   workflow_dispatch:
     inputs:
+      qualify_carrier_tls:
+        type: boolean
+        default: false
+        description: Reuse sealed Windows ARM64 full/Core packages for native Naive and TLS witnesses
       qualify_linux:
         type: boolean
         default: false
@@ -33,6 +37,128 @@ env:
   W5_PRODUCT_COMMIT: de501586b354e8f93adc5a66984c1c61b48dbf96
 
 jobs:
+  windows-carrier-tls:
+    name: Sealed native Windows ARM64 carrier and TLS
+    if: inputs.qualify_carrier_tls
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.W5_PRODUCT_COMMIT }}
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          path: .runtime/fixture-driver
+          sparse-checkout: .qualification
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: frontend/.node-version
+          architecture: arm64
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: solovey-ui-windows-arm64
+          run-id: 38166107316
+          github-token: ${{ github.token }}
+          path: .runtime/sealed-full
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: w5-windows-arm64-runtime
+          run-id: 38166107316
+          github-token: ${{ github.token }}
+          path: .runtime/sealed-core
+      - name: Authenticate existing full and Core packages without rebuilding
+        shell: powershell
+        run: |
+          $ErrorActionPreference='Stop'
+          if((git rev-parse HEAD).Trim() -ne $env:W5_PRODUCT_COMMIT){throw 'EXACT_PINNED_SOURCE_REQUIRED'}
+          if((node -p process.arch).Trim() -ne 'arm64'){throw 'ACTUAL_NATIVE_ARM64_NODE_REQUIRED'}
+          if((go env GOHOSTARCH).Trim() -ne 'arm64'){throw 'ACTUAL_NATIVE_ARM64_GO_REQUIRED'}
+          if((go env GOVERSION).Trim() -ne 'go1.26.9'){throw 'PINNED_GO_1_26_9_REQUIRED'}
+          $cases=@(
+            @{profile='full';archive='.runtime/sealed-full/solovey-ui-windows-arm64.zip';sha='13c9b641e24792963dd5b88d16aa6c8560f7a0f90a1735e55ecfd4640a9d0ec2';package='solovey-ui-windows'},
+            @{profile='core';archive='.runtime/sealed-core/solovey-ui-core-windows-arm64.zip';sha='b4639c407423874e9a193ac7b2e32050c840b8a1333f86d6b7fdc5044f58e698';package='candidate-core'}
+          )
+          New-Item -ItemType Directory -Path .runtime/qualification-extra -Force | Out-Null
+          foreach($case in $cases){
+            if((Get-FileHash -LiteralPath $case.archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $case.sha){throw 'SEALED_ARCHIVE_SHA_MISMATCH'}
+            Expand-Archive -LiteralPath $case.archive -DestinationPath ".runtime/existing-$($case.profile)"
+            $metadata=Get-Content -LiteralPath ".runtime/existing-$($case.profile)/$($case.package)/BUILD_INFO.txt" -Raw
+            foreach($pin in @($env:W5_PRODUCT_COMMIT,'af4f906729368f2bfa5efef123721c350ed27b8f486d875a180d12bf2099676a','d0feb7cd0e3cfd46a2a90c06be901c6c87aaeed8','b2eea8ca8762dd1e438171e2f7b56f9715c30cbb','8f440972b353f7ace3bbfbac9cf291938de5ab19')){if(!$metadata.Contains($pin)){throw 'PINNED_PACKAGE_SOURCE_PROVENANCE_REQUIRED'}}
+            New-Item -ItemType Directory -Path ".runtime/qualification-extra/$($case.profile)" -Force | Out-Null
+            Copy-Item -LiteralPath ".runtime/existing-$($case.profile)/$($case.package)/BUILD_INFO.txt" -Destination ".runtime/qualification-extra/$($case.profile)/BUILD_INFO.txt"
+          }
+          [pscustomobject]@{source=$env:W5_PRODUCT_COMMIT;fixture='${{ github.sha }}';artifactRun=38166107316;nativeNode=(node -p process.arch).Trim();nativeGo=(go env GOHOSTARCH).Trim();release=[System.Environment]::OSVersion.VersionString;rebuilt=$false;packages=$cases} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath .runtime/qualification-extra/SEALED_PACKAGE_REUSE.json
+      - name: Reuse the existing native ARM64 fixture compiler
+        id: extra-msys2
+        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884
+        with:
+          msystem: CLANGARM64
+          update: true
+          install: mingw-w64-clang-aarch64-clang
+          path-type: inherit
+      - name: Compile only scoped fixture peers and install locked API client
+        shell: bash
+        env:
+          MSYS2_LOCATION: ${{ steps.extra-msys2.outputs.msys2-location }}
+          PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD: '1'
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$W5_PRODUCT_COMMIT"
+          test "$(go env GOHOSTARCH)" = arm64
+          test "$(node -p process.arch)" = arm64
+          export PATH="$(cygpath -u "$MSYS2_LOCATION")/clangarm64/bin:$PATH"
+          export CC=clang CGO_ENABLED=1 GOWORK=off GOTOOLCHAIN=local
+          fixture=.runtime/fixture-driver/.qualification
+          peers="$fixture/native-windows-extra"
+          cp "$fixture/native-package-fixture.go.txt" "$RUNNER_TEMP/native-fixture.go"
+          go build -mod=readonly -tags with_quic -o "$RUNNER_TEMP/native-fixture.exe" "$RUNNER_TEMP/native-fixture.go"
+          cp "$fixture/udp-loopback-witness.go.txt" "$RUNNER_TEMP/udp-witness.go"
+          CGO_ENABLED=0 go build -mod=readonly -o "$RUNNER_TEMP/udp-witness.exe" "$RUNNER_TEMP/udp-witness.go"
+          for kind in echo wire parent; do
+            cp "$peers/$kind.go.txt" "$RUNNER_TEMP/$kind.go"
+            CGO_ENABLED=0 go build -mod=readonly -o "$peers/naive-portable-$kind-windows-arm64.exe" "$RUNNER_TEMP/$kind.go"
+          done
+          cp "$peers/autohttps.go.txt" "$RUNNER_TEMP/autohttps.go"
+          CGO_ENABLED=0 go build -mod=readonly -o "$peers/autohttps-windows-peer-arm64.exe" "$RUNNER_TEMP/autohttps.go"
+          cp "$peers/tls-material.go.txt" "$RUNNER_TEMP/tls-material.go"
+          CGO_ENABLED=0 go build -mod=readonly -o "$peers/fixture-tls-material-windows-arm64.exe" "$RUNNER_TEMP/tls-material.go"
+          for file in "$RUNNER_TEMP/native-fixture.exe" "$RUNNER_TEMP/udp-witness.exe" "$peers"/*.exe; do
+            go version -m "$file"
+            sha256sum "$file"
+          done > .runtime/qualification-extra/FIXTURE_BUILD_INFO.txt
+          cd frontend
+          npm ci
+      - name: Execute full and Core native carrier and TLS witnesses
+        shell: bash
+        run: |
+          set -euo pipefail
+          peers=.runtime/fixture-driver/.qualification/native-windows-extra
+          for profile in full core; do
+            package=solovey-ui-windows
+            test "$profile" != core || package=candidate-core
+            node "$peers/native-package-runtime.mjs" \
+              --binary ".runtime/existing-$profile/$package/sui.exe" \
+              --helper "$RUNNER_TEMP/native-fixture.exe" --udp-witness "$RUNNER_TEMP/udp-witness.exe" \
+              --browser-module "$peers/exercise-all.mjs" --frontend frontend \
+              --output ".runtime/qualification-extra/$profile/RUNTIME.json" \
+              --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}' --private-api-check true
+            cp "$peers"/WINDOWS_*_RUNTIME.json .runtime/qualification-extra/"$profile"/
+            cp "$peers/WINDOWS_NAIVE_NATIVE_CARRIERS_AND_PARENT.json" .runtime/qualification-extra/"$profile"/
+          done
+          cp "$peers/PROVENANCE.json" .runtime/qualification-extra/FIXTURE_SOURCE_PROVENANCE.json
+      - name: Retain sanitized scoped reports only
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: w5-windows-arm64-carrier-tls
+          path: .runtime/qualification-extra
+          retention-days: 7
+
   windows-build:
     if: inputs.qualify_windows
     uses: ./.github/workflows/windows.yml
