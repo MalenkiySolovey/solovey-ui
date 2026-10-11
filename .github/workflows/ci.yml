@@ -231,6 +231,7 @@ jobs:
           test "$(git rev-parse HEAD)" = "$W5_PRODUCT_COMMIT"
           test "$(go env GOHOSTARCH)" = arm64
           test "$(node -p process.arch)" = arm64
+          node .runtime/fixture-driver/.qualification/native-windows-extra/private-metadata-probe.mjs .runtime/qualification-extra/WINDOWS_PRIVATE_METADATA_HARNESS_RCA.json
           export PATH="$(cygpath -u "$MSYS2_LOCATION")/clangarm64/bin:$PATH"
           export CC=clang CGO_ENABLED=1 GOWORK=off GOTOOLCHAIN=local
           fixture=.runtime/fixture-driver/.qualification

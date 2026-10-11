@@ -21,13 +21,15 @@ const directory=fs.mkdtempSync(path.join(os.tmpdir(),'w5-private-metadata-'))
 try{
  invoke('original_console_stdin',"$ErrorActionPreference='Stop'; $w5Input=[Console]::In.ReadToEnd()|ConvertFrom-Json; if($w5Input.probe -ne 'W5_METADATA_ONLY'){throw 'INPUT_REQUIRED'}; [pscustomobject]@{status='PASS';stage='READ_CONSOLE_INPUT'}|ConvertTo-Json -Compress",{probe:'W5_METADATA_ONLY'},false)
  const environment=invoke('environment_input',"$ErrorActionPreference='Stop'; $w5Input=$env:W5_PRIVATE_METADATA_INPUT|ConvertFrom-Json; if($w5Input.probe -ne 'W5_METADATA_ONLY'){throw 'INPUT_REQUIRED'}; [pscustomobject]@{status='PASS';stage='READ_ENVIRONMENT_INPUT';PSVersion=$PSVersionTable.PSVersion.ToString()}|ConvertTo-Json -Compress",{probe:'W5_METADATA_ONLY'},true)
- const acl=invoke('environment_exact_private_acl',`$ErrorActionPreference='Stop'; $w5Step='READ_INPUT'; try {
+ const aclScript=`$ErrorActionPreference='Stop'; $w5Step='READ_INPUT'; try {
  $w5Input=$env:W5_PRIVATE_METADATA_INPUT|ConvertFrom-Json; $w5Step='CREATE_SECURITY'; $w5Acl=New-Object System.Security.AccessControl.DirectorySecurity; $w5Acl.SetAccessRuleProtection($true,$false); $w5User=[System.Security.Principal.WindowsIdentity]::GetCurrent().User; $w5Acl.SetOwner($w5User); $w5Principals=@($w5User.Value,'S-1-5-18')|Select-Object -Unique;
  foreach($w5Value in $w5Principals){$w5Sid=New-Object System.Security.Principal.SecurityIdentifier($w5Value); $w5Rule=New-Object System.Security.AccessControl.FileSystemAccessRule($w5Sid,'FullControl','ContainerInherit,ObjectInherit','None','Allow'); $w5Acl.AddAccessRule($w5Rule)};
  $w5Step='WRITE_ACL'; $w5Directory=New-Object System.IO.DirectoryInfo($w5Input.path); $w5Directory.SetAccessControl($w5Acl); $w5Step='READ_ACL'; $w5Actual=$w5Directory.GetAccessControl(); $w5Rules=@($w5Actual.GetAccessRules($true,$false,[System.Security.Principal.SecurityIdentifier])); $w5Step='VERIFY_ACL';
  if(-not $w5Actual.AreAccessRulesProtected -or $w5Rules.Count -ne $w5Principals.Count -or $w5Actual.GetOwner([System.Security.Principal.SecurityIdentifier]).Value -ne $w5User.Value -or @($w5Rules|Where-Object {$_.AccessControlType -ne 'Allow' -or $_.IdentityReference.Value -notin $w5Principals}).Count -ne 0){throw 'EXACT_PRIVATE_ACL_REQUIRED'};
  [pscustomobject]@{status='PASS';stage=$w5Step;currentUserIsSYSTEM=($w5User.Value -eq 'S-1-5-18');expectedPrincipals=@($w5Principals).Count;actualPrincipals=@($w5Rules).Count;protected=$w5Actual.AreAccessRulesProtected;PSVersion=$PSVersionTable.PSVersion.ToString()}|ConvertTo-Json -Compress
- } catch { [pscustomobject]@{status='FAIL';stage=$w5Step;exceptionType=$_.Exception.GetType().FullName;errorId=$_.FullyQualifiedErrorId}|ConvertTo-Json -Compress; exit 1 }`,{path:directory},true)
+ } catch { [pscustomobject]@{status='FAIL';stage=$w5Step;exceptionType=$_.Exception.GetType().FullName;errorId=$_.FullyQualifiedErrorId}|ConvertTo-Json -Compress; exit 1 }`;
+ invoke('original_console_exact_private_acl',aclScript.replace('$env:W5_PRIVATE_METADATA_INPUT','[Console]::In.ReadToEnd()'),{path:directory},false)
+ const acl=invoke('environment_exact_private_acl',aclScript,{path:directory},true)
  report.status=environment&&acl?'PASS':'FAIL';report.sourceSha256=crypto.createHash('sha256').update(fs.readFileSync(new URL(import.meta.url))).digest('hex')
 }finally{
  fs.rmdirSync(directory);report.cleanup='ONLY_EMPTY_OWNED_DIRECTORY_REMOVED';report.finishedAt=new Date().toISOString()

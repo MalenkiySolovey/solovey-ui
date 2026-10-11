@@ -81,5 +81,25 @@
         "sha256": "36766ca695c57cb64a00a33b8f8e060cff01fd9288773d98f4ad75e24f75c2a4"
       }
     ]
+  },
+  "codeFirstHarnessBatch": {
+    "productChanged": false,
+    "requiredInvariants": [
+      "PHY-04/06 secret fixture paths are private before TLS owner mutation",
+      "Affected native ARM AutoHTTPS/mTLS behavior"
+    ],
+    "originalFailures": [
+      38180868791,
+      38182097918
+    ],
+    "independentNativeRca": 38183516579,
+    "causalLimit": "Native standalone original stdin and ACL pass; full runner cold invocation timeout was not reproduced. Environment input removes EOF dependency and stage capture disambiguates future child startup/ACL errors; deadline and exact ACL remain unchanged.",
+    "rerunScope": "full AutoHTTPS/mTLS; Core previously unrun Naive/AutoHTTPS/mTLS; full Naive49 retained from38182097918",
+    "files": {
+      "autohttps-contract.mjs": "94b5c4bfd704c525bb1c7b43fc31d700507f79ee54dda4bdd0a9440306933aa6",
+      "outbound-mtls-contract.mjs": "bcd07e09f11dcdfb010e71bb873554c6a89ef4639b9d2e5d80e8b7230b3eaf4a",
+      "exercise-all.mjs": "1d4dfad5b8d8d05ce63723ff376cf7ca2ece3c2273e4a6b4fd29928c92ce98ff",
+      "private-metadata-probe.mjs": "a7085f2ebf6f2dd190cd6a37cfea5bde727bbd47096dcdeb4bb97cd2f3c4262e"
+    }
   }
 }
