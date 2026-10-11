@@ -47,6 +47,7 @@ const targetBuildScripts = new Set([
   'scripts/openwrt-unix-text-assets.mjs',
   'scripts/quic-integration-provenance.mjs',
   'scripts/ssm-integration-provenance.mjs',
+  'scripts/anytls-integration-provenance.mjs',
   'scripts/write-component-installed-metadata.mjs',
 ])
 

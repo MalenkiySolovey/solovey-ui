@@ -143,9 +143,9 @@ func TestAnyTLSAuthenticatedParentCannotReopenRetiredInbound(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		// Flush the destination before permitting server-side close. The pinned
-		// client Stream has an unrelated dieErr race on concurrent Write/remote
-		// close; this fixture qualifies parent admission with ordered protocol IO.
+		// Flush the destination before permitting server-side close. This fixture
+		// qualifies parent admission with ordered protocol IO; concurrent client
+		// negotiation and close are separately tested at the pinned session owner.
 		_, _ = conn.Write(nil)
 		select {
 		case user := <-handler.attempted:
