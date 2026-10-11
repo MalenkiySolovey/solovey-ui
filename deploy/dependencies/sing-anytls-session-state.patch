@@ -1,0 +1,297 @@
+diff --git a/SOLOVEY_INTEGRATION.md b/SOLOVEY_INTEGRATION.md
+new file mode 100644
+index 0000000..0aec91a
+--- /dev/null
++++ b/SOLOVEY_INTEGRATION.md
+@@ -0,0 +1,32 @@
++# Narrow pinned session-state synchronization
++
++Semantic source: original anytls/sing-anytls v0.0.11, commit
++130d2e61b8895727bfed4942c535e91b246a9603, GPL-3.0-or-later (LICENSE
++and upstream authorship retained). This maintained integration is not
++byte-identical to the original module. It retains the original module path,
++Go1.23.1 declaration, dependency versions, protocol, constructors, authentication,
++padding, pool policy and close-once/lifecycle behavior.
++
++Two owner-local fields have concurrent read/write paths: peerVersion is
++written by the wire receiver and read by stream creation and handshake
++reporting; dieErr is written by stream close and read by concurrent net.Conn
++Read/Write/Close. Existing official sing-box v1.14.2 AnyTLS outbound uses
++this session client; these are reachable dependency operations.
++
++Use the module's already-required sing/common/atomic types for those fields.
++Peer version retains the original byte truncation before storage. Terminal
++error retains the original concrete error object and first-close result.
++No new dependency, service, registry, credential owner, unsafe/reflection
++access, protocol field, retry, source-address identity or privilege is added.
++The official core's existing metadata adapter is unchanged and continues to
++derive its field offsets from actual compiled types.
++
++The focused session-owner regressions exercise actual server-settings parsing
++concurrently with OpenStream, then concurrent stream Close/Write. Unmodified
++v0.0.11 fails both tests under supported GCC race detection. The correction
++must pass those regressions, Solovey's authenticated parent admission fixture,
++and all current required Linux/Windows checks before product integration.
++
++Later original v0.0.12/v0.0.13 includes unrelated directory, constructor,
++reuse and frame-write changes and does not synchronize these fields. It is
++not automatically substituted for this pinned baseline.
+diff --git a/session/concurrency_test.go b/session/concurrency_test.go
+new file mode 100644
+index 0000000..c20b937
+--- /dev/null
++++ b/session/concurrency_test.go
+@@ -0,0 +1,125 @@
++package session
++
++import (
++	"bytes"
++	"io"
++	"net"
++	"sync"
++	"testing"
++	"time"
++
++	"github.com/anytls/sing-anytls/padding"
++	"github.com/sagernet/sing/common/atomic"
++	"github.com/sagernet/sing/common/logger"
++)
++
++// A full-duplex owner fixture: reads consume peer settings while writes are
++// accepted independently. It records no credentials and owns one close signal.
++type concurrencyConn struct {
++	net.Conn
++	reader  *bytes.Reader
++	drained chan struct{}
++	closed  chan struct{}
++	once    sync.Once
++	drain   sync.Once
++}
++
++func (c *concurrencyConn) Read(p []byte) (int, error) {
++	n, err := c.reader.Read(p)
++	if err == io.EOF {
++		c.drain.Do(func() { close(c.drained) })
++		<-c.closed
++	}
++	return n, err
++}
++func (c *concurrencyConn) Write(p []byte) (int, error)      { return len(p), nil }
++func (c *concurrencyConn) SetWriteDeadline(time.Time) error { return nil }
++func (c *concurrencyConn) Close() error {
++	c.once.Do(func() { close(c.closed) })
++	return nil
++}
++
++func concurrencySession() (*Session, *concurrencyConn) {
++	var pad atomic.TypedValue[*padding.PaddingFactory]
++	padding.UpdatePaddingScheme(padding.DefaultPaddingScheme, &pad)
++	// Actual version-2 server-settings frames, read by the real recvLoop.
++	frame := []byte{cmdServerSettings, 0, 0, 0, 0, 0, 3, 'v', '=', '2'}
++	conn := &concurrencyConn{reader: bytes.NewReader(bytes.Repeat(frame, 1024)),
++		drained: make(chan struct{}), closed: make(chan struct{})}
++	return NewClientSession(conn, &pad, logger.NOP()), conn
++}
++
++func TestPeerVersionNegotiationConcurrentOpenStream(t *testing.T) {
++	session, conn := concurrencySession()
++	defer session.Close()
++	start := make(chan struct{})
++	received := make(chan error, 1)
++	opened := make(chan error, 1)
++	go func() { <-start; received <- session.recvLoop() }()
++	go func() {
++		<-start
++		for index := 0; index < 1024; index++ {
++			stream, err := session.OpenStream()
++			if err != nil {
++				opened <- err
++				return
++			}
++			_ = stream.Close()
++		}
++		opened <- nil
++	}()
++	close(start)
++	select {
++	case err := <-opened:
++		if err != nil {
++			t.Fatal(err)
++		}
++	case <-time.After(5 * time.Second):
++		t.Fatal("stream creation did not finish")
++	}
++	select {
++	case <-conn.drained:
++	case <-time.After(5 * time.Second):
++		t.Fatal("peer negotiation did not finish")
++	}
++	// Check negotiated behavior, without coupling the test to field storage.
++	stream, err := session.OpenStream()
++	if err != nil {
++		t.Fatal(err)
++	}
++	if session.synDone == nil {
++		t.Fatal("version-2 stream confirmation was not enabled")
++	}
++	_ = stream.Close()
++	_ = session.Close()
++	select {
++	case <-received:
++	case <-time.After(5 * time.Second):
++		t.Fatal("receiver did not close")
++	}
++}
++
++func TestStreamCloseConcurrentWrite(t *testing.T) {
++	session, _ := concurrencySession()
++	defer session.Close()
++	stream, err := session.OpenStream()
++	if err != nil {
++		t.Fatal(err)
++	}
++	start := make(chan struct{})
++	var done sync.WaitGroup
++	done.Add(2)
++	go func() {
++		defer done.Done()
++		<-start
++		for index := 0; index < 1024; index++ {
++			_, _ = stream.Write([]byte{1})
++		}
++	}()
++	go func() { defer done.Done(); <-start; _ = stream.Close() }()
++	close(start)
++	done.Wait()
++	if _, err := stream.Write([]byte{1}); err == nil {
++		t.Fatal("closed stream still accepted a write")
++	}
++}
+diff --git a/session/session.go b/session/session.go
+index 893cc72..f9b97b2 100644
+--- a/session/session.go
++++ b/session/session.go
+@@ -39,7 +39,7 @@ type Session struct {
+ 	padding   *atomic.TypedValue[*padding.PaddingFactory]
+ 	logger    logger.Logger
+ 
+-	peerVersion byte
++	peerVersion atomic.Uint32
+ 
+ 	// client
+ 	isClient    bool
+@@ -139,7 +139,7 @@ func (s *Session) OpenStream() (*Stream, error) {
+ 	sid := s.streamId.Add(1)
+ 	stream := newStream(sid, s)
+ 
+-	if sid >= 2 && s.peerVersion >= 2 {
++	if sid >= 2 && s.peerVersion.Load() >= 2 {
+ 		s.synDoneLock.Lock()
+ 		if s.synDone != nil {
+ 			s.synDone()
+@@ -283,7 +283,7 @@ func (s *Session) recvLoop() error {
+ 						}
+ 						// check client's version
+ 						if v, err := strconv.Atoi(m["v"]); err == nil && v >= 2 {
+-							s.peerVersion = byte(v)
++							s.peerVersion.Store(uint32(byte(v)))
+ 							// send cmdServerSettings
+ 							f := newFrame(cmdServerSettings, 0)
+ 							f.data = util.StringMap{
+@@ -344,7 +344,7 @@ func (s *Session) recvLoop() error {
+ 						// check server's version
+ 						m := util.StringMapFromBytes(buffer)
+ 						if v, err := strconv.Atoi(m["v"]); err == nil {
+-							s.peerVersion = byte(v)
++							s.peerVersion.Store(uint32(byte(v)))
+ 						}
+ 					}
+ 					buf.Put(buffer)
+diff --git a/session/stream.go b/session/stream.go
+index a962374..faa6a7b 100644
+--- a/session/stream.go
++++ b/session/stream.go
+@@ -8,6 +8,7 @@ import (
+ 	"time"
+ 
+ 	"github.com/anytls/sing-anytls/pipe"
++	"github.com/sagernet/sing/common/atomic"
+ )
+ 
+ // Stream implements net.Conn
+@@ -22,7 +23,7 @@ type Stream struct {
+ 
+ 	dieOnce sync.Once
+ 	dieHook func()
+-	dieErr  error
++	dieErr  atomic.TypedValue[error]
+ 
+ 	reportOnce sync.Once
+ }
+@@ -40,8 +41,8 @@ func newStream(id uint32, sess *Session) *Stream {
+ // Read implements net.Conn
+ func (s *Stream) Read(b []byte) (n int, err error) {
+ 	n, err = s.pipeR.Read(b)
+-	if n == 0 && s.dieErr != nil {
+-		err = s.dieErr
++	if finalErr := s.dieErr.Load(); n == 0 && finalErr != nil {
++		err = finalErr
+ 	}
+ 	return
+ }
+@@ -53,8 +54,8 @@ func (s *Stream) Write(b []byte) (n int, err error) {
+ 		return 0, os.ErrDeadlineExceeded
+ 	default:
+ 	}
+-	if s.dieErr != nil {
+-		return 0, s.dieErr
++	if finalErr := s.dieErr.Load(); finalErr != nil {
++		return 0, finalErr
+ 	}
+ 	n, err = s.sess.writeDataFrame(s.id, b)
+ 	return
+@@ -69,7 +70,7 @@ func (s *Stream) Close() error {
+ func (s *Stream) closeLocally() {
+ 	var once bool
+ 	s.dieOnce.Do(func() {
+-		s.dieErr = net.ErrClosed
++		s.dieErr.Store(net.ErrClosed)
+ 		s.pipeR.Close()
+ 		once = true
+ 	})
+@@ -84,7 +85,7 @@ func (s *Stream) closeLocally() {
+ func (s *Stream) closeWithError(err error) error {
+ 	var once bool
+ 	s.dieOnce.Do(func() {
+-		s.dieErr = err
++		s.dieErr.Store(err)
+ 		s.pipeR.Close()
+ 		once = true
+ 	})
+@@ -95,7 +96,7 @@ func (s *Stream) closeWithError(err error) error {
+ 		}
+ 		return s.sess.streamClosed(s.id)
+ 	} else {
+-		return s.dieErr
++		return s.dieErr.Load()
+ 	}
+ }
+ 
+@@ -139,7 +140,7 @@ func (s *Stream) HandshakeFailure(err error) error {
+ 	s.reportOnce.Do(func() {
+ 		once = true
+ 	})
+-	if once && err != nil && s.sess.peerVersion >= 2 {
++	if once && err != nil && s.sess.peerVersion.Load() >= 2 {
+ 		f := newFrame(cmdSYNACK, s.id)
+ 		f.data = []byte(err.Error())
+ 		if _, err := s.sess.writeControlFrame(f); err != nil {
+@@ -155,7 +156,7 @@ func (s *Stream) HandshakeSuccess() error {
+ 	s.reportOnce.Do(func() {
+ 		once = true
+ 	})
+-	if once && s.sess.peerVersion >= 2 {
++	if once && s.sess.peerVersion.Load() >= 2 {
+ 		if _, err := s.sess.writeControlFrame(newFrame(cmdSYNACK, s.id)); err != nil {
+ 			return err
+ 		}

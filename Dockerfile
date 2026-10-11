@@ -5,11 +5,14 @@ COPY components/ ./components/
 COPY go.mod go.sum ./
 COPY deploy/dependencies/sing-quic-integration.json deploy/dependencies/sing-quic-parent-control.patch ./deploy/dependencies/
 COPY deploy/dependencies/sing-box-ssm-integration.json deploy/dependencies/sing-box-ssm-cache.patch ./deploy/dependencies/
+COPY deploy/dependencies/sing-anytls-integration.json deploy/dependencies/sing-anytls-session-state.patch ./deploy/dependencies/
 COPY scripts/quic-integration-provenance.mjs ./scripts/
 COPY scripts/ssm-integration-provenance.mjs ./scripts/
+COPY scripts/anytls-integration-provenance.mjs ./scripts/
 COPY scripts/component-frontend-manifest.mjs scripts/extract-component-frontend.mjs scripts/generate-component-imports.mjs scripts/write-component-installed-metadata.mjs scripts/frontend-assets.mjs scripts/frontend-runtime-closure.mjs ./scripts/
 RUN node scripts/quic-integration-provenance.mjs manifest > QUIC_INTEGRATION.json \
     && node scripts/ssm-integration-provenance.mjs manifest > SSM_INTEGRATION.json \
+    && node scripts/anytls-integration-provenance.mjs manifest > ANYTLS_INTEGRATION.json \
     && cd frontend \
     && npm ci \
     && SOLOVEY_UI_PROFILE=full npm run build \
@@ -68,6 +71,7 @@ COPY --from=backend-builder --chown=65532:65532 /app/solovey-ui /app/CRONET_INTE
 COPY --from=front-builder --chown=65532:65532 /app/component-packs/ /app/components/
 COPY --from=front-builder --chown=65532:65532 /app/QUIC_INTEGRATION.json /app/QUIC_INTEGRATION.json
 COPY --from=front-builder --chown=65532:65532 /app/SSM_INTEGRATION.json /app/SSM_INTEGRATION.json
+COPY --from=front-builder --chown=65532:65532 /app/ANYTLS_INTEGRATION.json /app/ANYTLS_INTEGRATION.json
 COPY --chown=65532:65532 entrypoint.sh /app/entrypoint.sh
 RUN chmod 0555 /app/solovey-ui /app/entrypoint.sh
 USER 65532:65532

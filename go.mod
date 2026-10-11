@@ -212,3 +212,5 @@ replace github.com/quic-go/quic-go => github.com/quic-go/quic-go v0.59.1
 replace github.com/sagernet/sing-quic => github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762
 
 replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box v1.14.3-0.20261010211422-afd12f10473e
+
+replace github.com/anytls/sing-anytls => github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353
