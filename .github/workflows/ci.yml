@@ -8,6 +8,10 @@ on:
         type: boolean
         default: false
         description: Build and exercise native Linux systemd candidates
+      qualify_paired_dns:
+        type: boolean
+        default: false
+        description: Reuse sealed packages for paired native DNS intent
       qualify_windows:
         type: boolean
         default: true
@@ -384,5 +388,65 @@ jobs:
         if: always()
         with:
           name: w5-linux-${{ matrix.arch }}-systemd-runtime
+          path: .runtime/qualification-evidence
+          retention-days: 4
+
+  linux-paired-dns:
+    name: Paired packaged DNS on native Linux systemd
+    if: inputs.qualify_paired_dns
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.W5_PRODUCT_COMMIT }}
+          persist-credentials: false
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          path: .runtime/fixture-driver
+          sparse-checkout: .qualification
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: w5-linux-amd64-candidates
+          run-id: 38118378216
+          github-token: ${{ github.token }}
+          path: .runtime/candidate-packages
+      - name: Reuse immutable public old release and sealed current packages
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$W5_PRODUCT_COMMIT"
+          test "$(uname -m)" = x86_64
+          test "$(cat /proc/1/comm)" = systemd
+          case "$(uname -r)" in *[Mm]icrosoft*) exit 1;; esac
+          mkdir -p .runtime/old-package .runtime/qualification-evidence
+          gh release download v2026.3.3 --repo MalenkiySolovey/solovey-ui --pattern 'solovey-ui-core-linux-amd64.tar.gz' --dir .runtime/old-package
+          test "$(sha256sum .runtime/old-package/solovey-ui-core-linux-amd64.tar.gz | cut -d ' ' -f1)" = 098a63228363ca972bba574b2bc1731e6e1f367a670350edc9e41f40bf9cd073
+          test "$(sha256sum .runtime/candidate-packages/solovey-ui-core-linux-amd64.tar.gz | cut -d ' ' -f1)" = 33289334442a99b33ee7bbf7f95649cbf5bc05775ccce709c0726aeb8b346879
+          fixture="/run/solovey-w5-dns-${GITHUB_RUN_ID}"
+          test ! -e "$fixture"
+          sudo -n install -d -m 0755 "$fixture" "$fixture/old" "$fixture/current"
+          sudo -n install -d -m 0700 -o "$(id -u)" -g "$(id -g)" "$fixture/private"
+          sudo -n tar -xzf .runtime/old-package/solovey-ui-core-linux-amd64.tar.gz -C "$fixture/old"
+          sudo -n tar -xzf .runtime/candidate-packages/solovey-ui-core-linux-amd64.tar.gz -C "$fixture/current"
+          test "$(sha256sum "$fixture/old/solovey-ui/solovey-ui" | cut -d ' ' -f1)" = 3340d07e67906d251442ced28b35f4fb723e6b82f431491858ed99e5ef4c1a81
+          test "$(sha256sum "$fixture/current/solovey-ui/solovey-ui" | cut -d ' ' -f1)" = 3f55af1b3506944e37ffa635f3b8a815c3c2f61d1e683e8219fd5414777f0b74
+          cp "$fixture/old/solovey-ui/BUILD_INFO.txt" .runtime/qualification-evidence/OLD_BUILD_INFO.txt
+          cp "$fixture/current/solovey-ui/BUILD_INFO.txt" .runtime/qualification-evidence/CURRENT_BUILD_INFO.txt
+          cat /etc/os-release > .runtime/qualification-evidence/NATIVE_HOST_OS.txt
+          uname -a >> .runtime/qualification-evidence/NATIVE_HOST_OS.txt
+          python3 .runtime/fixture-driver/.qualification/paired-package-dns.py \
+            --old-binary "$fixture/old/solovey-ui/solovey-ui" \
+            --new-binary "$fixture/current/solovey-ui/solovey-ui" \
+            --schema .runtime/fixture-driver/.qualification/paired-dns-old-schema.json \
+            --base "$fixture/private" --systemd-policy deploy/systemd/solovey-ui-native-hardened.service \
+            --output .runtime/qualification-evidence/PAIRED_PACKAGE_DNS_NATIVE_SYSTEMD.json
+      - name: Retain public counters and exact package metadata only
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: w5-paired-dns-native-systemd
           path: .runtime/qualification-evidence
           retention-days: 4
