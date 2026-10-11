@@ -231,7 +231,6 @@ jobs:
           test "$(git rev-parse HEAD)" = "$W5_PRODUCT_COMMIT"
           test "$(go env GOHOSTARCH)" = arm64
           test "$(node -p process.arch)" = arm64
-          node .runtime/fixture-driver/.qualification/native-windows-extra/private-metadata-probe.mjs .runtime/qualification-extra/WINDOWS_PRIVATE_METADATA_HARNESS_RCA.json
           export PATH="$(cygpath -u "$MSYS2_LOCATION")/clangarm64/bin:$PATH"
           export CC=clang CGO_ENABLED=1 GOWORK=off GOTOOLCHAIN=local
           fixture=.runtime/fixture-driver/.qualification
@@ -255,26 +254,25 @@ jobs:
           cd frontend
           npm ci
       - name: Execute full and Core native carrier and TLS witnesses
-        shell: bash
+        shell: powershell
         run: |
-          set -euo pipefail
-          peers=.runtime/fixture-driver/.qualification/native-windows-extra
-          for profile in full core; do
-            package=solovey-ui-windows
-            test "$profile" != core || package=candidate-core
-            result=0
-            W5_NATIVE_PROFILE="$profile" node "$peers/native-package-runtime.mjs" \
-              --binary ".runtime/existing-$profile/$package/sui.exe" \
-              --helper "$RUNNER_TEMP/native-fixture.exe" --udp-witness "$RUNNER_TEMP/udp-witness.exe" \
-              --browser-module "$peers/exercise-all.mjs" --frontend frontend \
-              --output ".runtime/qualification-extra/$profile/RUNTIME.json" \
-              --commit "$W5_PRODUCT_COMMIT" --fixture-commit '${{ github.sha }}' --private-api-check true || result=$?
-            for report in "$peers"/WINDOWS_*_"$profile".json; do
-              test ! -f "$report" || cp "$report" .runtime/qualification-extra/"$profile"/
-            done
-            test "$result" = 0
-          done
-          cp "$peers/PROVENANCE.json" .runtime/qualification-extra/FIXTURE_SOURCE_PROVENANCE.json
+          $ErrorActionPreference='Stop'
+          $w5Peers='.runtime/fixture-driver/.qualification/native-windows-extra'
+          node "$w5Peers/private-metadata-probe.mjs" .runtime/qualification-extra/WINDOWS_PRIVATE_METADATA_HARNESS_RCA.json
+          if($LASTEXITCODE -ne 0){throw 'NATIVE_PRIVATE_METADATA_PREFLIGHT_FAILED'}
+          foreach($w5Profile in @('full','core')){
+            $w5Package=if($w5Profile -eq 'core'){'candidate-core'}else{'solovey-ui-windows'}
+            $env:W5_NATIVE_PROFILE=$w5Profile
+            node "$w5Peers/native-package-runtime.mjs" --binary ".runtime/existing-$w5Profile/$w5Package/sui.exe" `
+              --helper "$env:RUNNER_TEMP/native-fixture.exe" --udp-witness "$env:RUNNER_TEMP/udp-witness.exe" `
+              --browser-module "$w5Peers/exercise-all.mjs" --frontend frontend `
+              --output ".runtime/qualification-extra/$w5Profile/RUNTIME.json" `
+              --commit $env:W5_PRODUCT_COMMIT --fixture-commit '${{ github.sha }}' --private-api-check true
+            $w5Exit=$LASTEXITCODE
+            Get-ChildItem -LiteralPath $w5Peers -Filter "WINDOWS_*_$w5Profile.json" | Copy-Item -Destination ".runtime/qualification-extra/$w5Profile/"
+            if($w5Exit -ne 0){throw 'NATIVE_SCOPED_TLS_RUNTIME_FAILED'}
+          }
+          Copy-Item -LiteralPath "$w5Peers/PROVENANCE.json" -Destination .runtime/qualification-extra/FIXTURE_SOURCE_PROVENANCE.json
       - name: Retain sanitized scoped reports only
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
