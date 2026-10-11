@@ -1,0 +1,48 @@
+{
+  "timestamp": "2026-10-11T22:38:33.080Z",
+  "files": [
+    {
+      "source": "naive-portable-docker-contract.mjs",
+      "sourceSHA256": "21fbe96f23606b8c0057c2caeafb1379b10137fa797f0076b9b48e49c63884ad",
+      "target": "naive-contract.mjs",
+      "targetSHA256": "29ddcfe2febc5247434abba398d3f37072fb26b0a1c7b7890f8f347f2099b606"
+    },
+    {
+      "source": "native-package-runtime-with-naive.mjs",
+      "sourceSHA256": "8e36394bd5541c3ce384fddec8bd6e660d80a65916d3d687a440c1b707b477cf",
+      "target": "native-package-runtime.mjs",
+      "targetSHA256": "51f54e182b04425feeb691ee9200039a39f6d95bb070a65bcc41bc3c30959214"
+    },
+    {
+      "source": "naive-portable-echo.go",
+      "sourceSHA256": "48e3491ed1108af2ffd7fe4261e2b3e1d1d341644f662b8c2319161f988d8234",
+      "target": "echo.go.txt",
+      "targetSHA256": "48e3491ed1108af2ffd7fe4261e2b3e1d1d341644f662b8c2319161f988d8234"
+    },
+    {
+      "source": "naive-portable-wire.go",
+      "sourceSHA256": "36a6d72c76c5c3a056872d5527d0eda050b06fc52a5b50a6102ad7c6a75b91b5",
+      "target": "wire.go.txt",
+      "targetSHA256": "36a6d72c76c5c3a056872d5527d0eda050b06fc52a5b50a6102ad7c6a75b91b5"
+    },
+    {
+      "source": "naive-portable-parent.go",
+      "sourceSHA256": "de9364816ec4525cfa73f552eabfd4a3d33f72e7f662c48f1d028622cfe06bcd",
+      "target": "parent.go.txt",
+      "targetSHA256": "de9364816ec4525cfa73f552eabfd4a3d33f72e7f662c48f1d028622cfe06bcd"
+    },
+    {
+      "source": "naive-portable-network-probe.go",
+      "sourceSHA256": "b6bb68dd619f5bcc12f4f55175a53240a445cec83c35dfbce65f5785b62bb522",
+      "target": "network-probe.go.txt",
+      "targetSHA256": "b6bb68dd619f5bcc12f4f55175a53240a445cec83c35dfbce65f5785b62bb522"
+    }
+  ],
+  "sourceCommit": "de501586b354e8f93adc5a66984c1c61b48dbf96",
+  "fixtureParent": "db5782468cf4547e5e58f0a602431e8fc5c8f399",
+  "sourcePin": "Same existing exact Docker ARM image from38166107316; architecture adaptation only in Goal peers/controller; native host and image architecture verified, product UID65532/read-only/cap-drop/NNP and private API policy unchanged",
+  "compiledProductRebuilt": false,
+  "productSourcesModified": false,
+  "securityPrivilegesAdded": false,
+  "privateValuesCaptured": false
+}

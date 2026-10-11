@@ -1,0 +1,156 @@
+// Goal-only fixed-loopback namespace witness. Private SOCKS credentials enter
+// stdin and never appear in output. No product dependency or runtime shim.
+package main
+
+import (
+	"bytes"
+	"crypto/rand"
+	"encoding/json"
+	"errors"
+	"io"
+	"net"
+	"os"
+	"strings"
+	"time"
+)
+
+type input struct {
+	Port               int
+	Username, Password string
+}
+
+func probe(in input) (out map[string]any) {
+	out = map[string]any{"nonceMatched": false, "remoteDenial": false}
+	c, err := net.DialTimeout("tcp", "127.0.0.1:24861", 3*time.Second)
+	if err != nil {
+		out["code"] = "INGRESS_DIAL_FAILED"
+		return
+	}
+	defer c.Close()
+	_ = c.SetDeadline(time.Now().Add(10 * time.Second))
+	read := func(n int) ([]byte, error) { b := make([]byte, n); _, e := io.ReadFull(c, b); return b, e }
+	stage := "INGRESS"
+	fail := func(e error) map[string]any {
+		out["stage"] = stage
+		out["code"] = "CONTROLLED_PROBE_FAILED"
+		if errors.Is(e, io.EOF) || errors.Is(e, io.ErrUnexpectedEOF) {
+			out["remoteDenial"] = stage != "INGRESS"
+			out["code"] = "REMOTE_EOF"
+		}
+		return out
+	}
+	if len(in.Username) == 0 || len(in.Username) > 255 || len(in.Password) == 0 || len(in.Password) > 255 {
+		return out
+	}
+	if _, err = c.Write([]byte{5, 1, 2}); err != nil {
+		return fail(err)
+	}
+	b, err := read(2)
+	if err != nil {
+		return fail(err)
+	}
+	if b[0] != 5 || b[1] != 2 {
+		return out
+	}
+	frame := append([]byte{1, byte(len(in.Username))}, []byte(in.Username)...)
+	frame = append(frame, byte(len(in.Password)))
+	frame = append(frame, []byte(in.Password)...)
+	if _, err = c.Write(frame); err != nil {
+		return fail(err)
+	}
+	b, err = read(2)
+	if err != nil {
+		return fail(err)
+	}
+	if b[0] != 1 || b[1] != 0 {
+		return out
+	}
+	stage = "DESTINATION_REPLY"
+	if _, err = c.Write([]byte{5, 1, 0, 1, 127, 0, 0, 1, byte(24843 >> 8), byte(24843 & 255)}); err != nil {
+		return fail(err)
+	}
+	b, err = read(4)
+	if err != nil {
+		return fail(err)
+	}
+	if b[0] != 5 {
+		return out
+	}
+	if b[1] != 0 {
+		out["remoteDenial"] = true
+		out["socksReply"] = b[1]
+		return out
+	}
+	switch b[3] {
+	case 1:
+		_, err = read(6)
+	case 4:
+		_, err = read(18)
+	case 3:
+		var n []byte
+		n, err = read(1)
+		if err == nil {
+			_, err = read(int(n[0]) + 2)
+		}
+	default:
+		return out
+	}
+	if err != nil {
+		return fail(err)
+	}
+	stage = "NONCE"
+	nonce := make([]byte, 32)
+	if _, err = rand.Read(nonce); err != nil {
+		return out
+	}
+	if _, err = c.Write(nonce); err != nil {
+		return fail(err)
+	}
+	b, err = read(32)
+	if err != nil {
+		return fail(err)
+	}
+	out["nonceMatched"] = bytes.Equal(b, nonce)
+	return out
+}
+func main() {
+	var in input
+	if len(os.Args) != 2 || json.NewDecoder(io.LimitReader(os.Stdin, 8192)).Decode(&in) != nil {
+		os.Exit(2)
+	}
+	var out map[string]any
+	switch os.Args[1] {
+	case "unused":
+		switch in.Port {
+		case 24843, 24860, 24861, 24862:
+		default:
+			os.Exit(2)
+		}
+		l, e := net.Listen("tcp", net.JoinHostPort("127.0.0.1", stringPort(in.Port)))
+		out = map[string]any{"unused": e == nil}
+		if e == nil {
+			_ = l.Close()
+		}
+	case "socks":
+		out = probe(in)
+	default:
+		os.Exit(2)
+	}
+	status, _ := os.ReadFile("/proc/self/status")
+	out["uid"] = os.Getuid()
+	out["noNewPrivileges"] = strings.Contains(string(status), "NoNewPrivs:\t1\n")
+	_ = json.NewEncoder(os.Stdout).Encode(out)
+}
+func stringPort(port int) string {
+	switch port {
+	case 24843:
+		return "24843"
+	case 24860:
+		return "24860"
+	case 24861:
+		return "24861"
+	case 24862:
+		return "24862"
+	}
+	return "0"
+}
