@@ -4,6 +4,10 @@ name: Stage2 Wave5 package qualification
 on:
   workflow_dispatch:
     inputs:
+      qualify_listener_metadata_probe:
+        type: boolean
+        default: false
+        description: Isolate exact PID listener inventory without product or compiler
       qualify_private_metadata_probe:
         type: boolean
         default: false
@@ -45,6 +49,30 @@ env:
   W5_PRODUCT_COMMIT: de501586b354e8f93adc5a66984c1c61b48dbf96
 
 jobs:
+  windows-listener-metadata-probe:
+    name: Native Windows ARM64 PID listener RCA
+    if: inputs.qualify_listener_metadata_probe
+    runs-on: windows-11-arm
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: frontend/.node-version
+          architecture: arm64
+      - name: Compare legacy and native PowerShell TCP inventory
+        shell: pwsh
+        run: node .qualification/native-windows-extra/listener-metadata-probe.mjs WINDOWS_LISTENER_METADATA_RCA.json
+      - if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: w5-windows-arm64-listener-metadata-rca
+          path: WINDOWS_LISTENER_METADATA_RCA.json
+          retention-days: 7
+
   windows-private-metadata-probe:
     name: Native Windows ARM64 private fixture RCA
     if: inputs.qualify_private_metadata_probe
