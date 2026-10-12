@@ -4,6 +4,10 @@ name: Stage2 Wave5 package qualification
 on:
   workflow_dispatch:
     inputs:
+      windows_full_build_run:
+        type: string
+        default: '38255046364'
+        description: Exact full package producer run consumed by the Core-only build
       qualify_windows_core_build:
         type: boolean
         default: false
@@ -54,7 +58,7 @@ permissions:
   actions: read
 
 env:
-  W5_PRODUCT_COMMIT: 2312e83bc92b2f67596c529776ddc79c02b88ad2
+  W5_PRODUCT_COMMIT: e182410765e26e7a9b0f8fc44eb93ca784763a0c
 
 jobs:
   windows-listener-metadata-probe:
@@ -351,7 +355,7 @@ jobs:
     if: inputs.qualify_windows
     uses: ./.github/workflows/windows.yml
     with:
-      source_commit: 2312e83bc92b2f67596c529776ddc79c02b88ad2
+      source_commit: e182410765e26e7a9b0f8fc44eb93ca784763a0c
       tag: v2026.3.3
       preflight_only: true
 
@@ -867,7 +871,7 @@ jobs:
         with:
           name: solovey-ui-windows-${{ matrix.arch }}
           path: .runtime/candidate-archive
-          run-id: 38255046364
+          run-id: ${{ inputs.windows_full_build_run }}
           github-token: ${{ github.token }}
       - name: Authenticate and extract produced package
         shell: powershell
