@@ -54,7 +54,7 @@ func clashECHConfig(value any) (string, error) {
 			offset += size + 4
 		}
 		if len(entries)+len(list)-2 > 65535 {
-			return "", errors.New("Clash ECHConfigList exceeds its wire limit")
+			return "", errors.New("clash ECHConfigList exceeds its wire limit")
 		}
 		entries = append(entries, list[2:]...)
 	}
