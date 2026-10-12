@@ -92,8 +92,8 @@
       38180868791,
       38182097918
     ],
-    "independentNativeRca": 38186316565,
-    "causalLimit": "RCA38186316565: native before/after-MS​​YS probe passes when preserved native child environment is restored; Path is the only changed captured key. MSYS inherited Path caused child PowerShell startup timeouts before ACL, including with native parent shell. Only PowerShell child metadata receives preserved environment; compiler/helper/product environment unchanged.",
+    "independentNativeRca": 38187783902,
+    "causalLimit": "RCA38187783902: same native ARM Node→legacy PowerShell child call times out20s under WindowsPowerShell5 parent before MSYS; pwsh parent passes before and after tooling with exact private ACL. Native pwsh controller and preserved child environment match the proven execution contract. No product/ACL/deadline change.",
     "rerunScope": "full AutoHTTPS/mTLS; Core previously unrun Naive/AutoHTTPS/mTLS; full Naive49 retained from38182097918",
     "files": {
       "autohttps-contract.mjs": "35f1db39f4fbd033965e20c4f9d6932c6ebb59ad6e4ede4feaec381ea187b25f",

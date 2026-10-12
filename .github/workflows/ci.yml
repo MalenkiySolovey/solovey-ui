@@ -237,7 +237,7 @@ jobs:
           }
           [pscustomobject]@{source=$env:W5_PRODUCT_COMMIT;fixture='${{ github.sha }}';artifactRun=38166107316;nativeNode=(node -p process.arch).Trim();nativeGo=(go env GOHOSTARCH).Trim();release=[System.Environment]::OSVersion.VersionString;rebuilt=$false;packages=$cases} | ConvertTo-Json -Depth 5 | Set-Content -LiteralPath .runtime/qualification-extra/SEALED_PACKAGE_REUSE.json
       - name: Preserve native PowerShell child environment before MSYS tooling
-        shell: powershell
+        shell: pwsh
         run: |
           $w5Baseline=@{}
           foreach($w5Key in @('Path','PSModulePath','SystemRoot','WINDIR','ComSpec','PATHEXT')){$w5Baseline[$w5Key]=[Environment]::GetEnvironmentVariable($w5Key)}
@@ -284,7 +284,7 @@ jobs:
           cd frontend
           npm ci
       - name: Execute full and Core native carrier and TLS witnesses
-        shell: powershell
+        shell: pwsh
         run: |
           $ErrorActionPreference='Stop'
           $w5Peers='.runtime/fixture-driver/.qualification/native-windows-extra'
