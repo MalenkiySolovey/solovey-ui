@@ -4,6 +4,10 @@ name: Stage2 Wave5 package qualification
 on:
   workflow_dispatch:
     inputs:
+      qualify_windows_core_build:
+        type: boolean
+        default: false
+        description: Build missing Core archives from the sealed full candidate without runtime replay
       qualify_builds_only:
         type: boolean
         default: false
@@ -835,3 +839,116 @@ jobs:
           name: w5-docker-arm64-migrated-maintenance
           path: .runtime/qualification-evidence
           retention-days: 4
+
+  windows-core-build:
+    name: Canonical Windows Core build ${{ matrix.arch }}
+    if: inputs.qualify_windows_core_build
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: windows-latest
+          - arch: arm64
+            runner: windows-11-arm
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd
+        with:
+          ref: ${{ env.W5_PRODUCT_COMMIT }}
+          persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e
+        with:
+          node-version-file: frontend/.node-version
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          name: solovey-ui-windows-${{ matrix.arch }}
+          path: .runtime/candidate-archive
+          run-id: 38255046364
+          github-token: ${{ github.token }}
+      - name: Authenticate and extract produced package
+        shell: powershell
+        run: >
+          $ErrorActionPreference='Stop'
+          $archive=".runtime/candidate-archive/solovey-ui-windows-${{ matrix.arch
+          }}.zip"
+          $expected=(Get-Content -LiteralPath "$archive.sha256" -Raw).Split('
+          ')[0].Trim()
+          if ((Get-FileHash -LiteralPath $archive -Algorithm
+          SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Candidate
+          archive checksum mismatch' }
+          Expand-Archive -LiteralPath $archive -DestinationPath
+          .runtime/candidate-package
+          $metadata=Get-Content -LiteralPath
+          '.runtime/candidate-package/solovey-ui-windows/BUILD_INFO.txt' -Raw
+          if (!$metadata.Contains("commit=$env:W5_PRODUCT_COMMIT")) { throw
+          'Candidate source mismatch' }
+          New-Item -ItemType Directory -Path .runtime/qualification-evidence
+          -Force | Out-Null
+          Copy-Item -LiteralPath
+          '.runtime/candidate-package/solovey-ui-windows/BUILD_INFO.txt'
+          -Destination '.runtime/qualification-evidence/BUILD_INFO.txt'
+      - name: Native ARM64 C toolchain
+        id: msys2
+        if: matrix.arch == 'arm64'
+        uses: msys2/setup-msys2@66cd2cce69caa17b53920067426061ca1de3a884
+        with:
+          msystem: CLANGARM64
+          update: true
+          install: mingw-w64-clang-aarch64-clang
+          path-type: inherit
+      - name: Build native Core profile through the accepted producer
+        shell: bash
+        env:
+          MSYS2_LOCATION: ${{ steps.msys2.outputs.msys2-location }}
+          SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
+        run: |
+          set -euo pipefail
+          test -n "$SUI_RELEASE_TRUST_ROOTS_B64"
+          export CGO_ENABLED=1 GOWORK=off GOOS=windows GOARCH='${{ matrix.arch }}'
+          if [ '${{ matrix.arch }}' = arm64 ]; then
+            export PATH="$(cygpath -u "$MSYS2_LOCATION")/clangarm64/bin:$PATH"
+            export CC=clang
+          else
+            export CC=gcc
+          fi
+          cd frontend
+          npm ci
+          SOLOVEY_UI_PROFILE=core npm run build
+          cd ..
+          node scripts/check-frontend-profile.mjs --profile core --dist frontend/dist
+          node scripts/frontend-assets.mjs publish --dist frontend/dist --destination web/html
+          mkdir -p .runtime/candidate-core .runtime/qualification-evidence/core
+          tags=with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_naive_outbound,with_purego,badlinkname,tfogo_checklinkname0,with_tailscale,minimal
+          go build -trimpath -buildvcs=false -tags "$tags" -ldflags="-buildid= -w -s -checklinkname=0 -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=$SUI_RELEASE_TRUST_ROOTS_B64" -o .runtime/candidate-core/sui.exe main.go
+          cp .runtime/candidate-package/solovey-ui-windows/libcronet.dll .runtime/candidate-core/libcronet.dll
+          {
+            printf 'version=v2026.3.3\ncommit=%s\nplatform=windows/${{ matrix.arch }}\nprofile=core\n' "$W5_PRODUCT_COMMIT"
+            printf 'source_fingerprint=%s\n' "$(node scripts/release-source.mjs .)"
+            node scripts/quic-integration-provenance.mjs build-info
+            node scripts/ssm-integration-provenance.mjs build-info
+            node scripts/anytls-integration-provenance.mjs build-info
+          } > .runtime/candidate-core/BUILD_INFO.txt
+          cp .runtime/candidate-core/BUILD_INFO.txt .runtime/qualification-evidence/core/BUILD_INFO.txt
+          go version -m .runtime/candidate-core/sui.exe > .runtime/qualification-evidence/core/GO_BUILD_INFO.txt
+      - name: Retain the independently built Core candidate
+        if: always()
+        shell: powershell
+        run: >
+          $ErrorActionPreference='Stop'
+          if (Test-Path -LiteralPath '.runtime/candidate-core/sui.exe') {
+            New-Item -ItemType Directory -Path .runtime/qualification-evidence -Force | Out-Null
+            $archive='.runtime/qualification-evidence/solovey-ui-core-windows-${{ matrix.arch }}.zip'
+            Compress-Archive -LiteralPath .runtime/candidate-core -DestinationPath $archive -CompressionLevel Optimal
+            $hash=(Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+            "$hash  solovey-ui-core-windows-${{ matrix.arch }}.zip" | Set-Content -LiteralPath "$archive.sha256"
+          }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        if: always()
+        with:
+          name: w5-windows-core-build-${{ matrix.arch }}
+          path: .runtime/qualification-evidence
+          retention-days: 7
