@@ -38,8 +38,9 @@ test('package metadata identifies the actual patched dependency', t => {
   assert.equal(buildInfo.status, 0, buildInfo.stderr)
   assert.ok(buildInfo.stdout.includes(`ssm_source_commit=${manifest.replacement.commit}`))
   assert.ok(buildInfo.stdout.includes(`ssm_module_sum=${manifest.replacement.sum}`))
-  assert.deepEqual(manifest.scopes, ['ssm-cache', 'naive-http3-lifecycle'])
+  assert.deepEqual(manifest.scopes, ['ssm-cache', 'naive-http3-lifecycle', 'websocket-path-early-data'])
   assert.equal(manifest.additionalIntegrations.naiveHttp3.selectivePrincipalParentControl, false)
+  assert.equal(manifest.additionalIntegrations.websocket.configuredMaximumEnforcedBeforeHandler, true)
   assert.ok(buildInfo.stdout.includes('naive_h3_parent_control=inbound-lifecycle-only'))
 })
 

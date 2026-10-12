@@ -76,10 +76,10 @@ func initSessionRotationIntegrationDB(t *testing.T) *service.SettingService {
 	t.Helper()
 	tempDir := t.TempDir()
 	t.Setenv("SUI_DB_FOLDER", tempDir)
-	if db := dbsqlite.DB(); db != nil {
-		if sqlDB, err := db.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := dbsqlite.CloseContext(ctx); err != nil {
+		t.Fatal(err)
 	}
 	if err := dbsqlite.Init(filepath.Join(tempDir, "s-ui.db")); err != nil {
 		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
@@ -87,18 +87,24 @@ func initSessionRotationIntegrationDB(t *testing.T) *service.SettingService {
 		}
 		t.Fatal(err)
 	}
+	t.Cleanup(func() {
+		// Flush fixture writers before retiring the database generation. The
+		// owner waits for actual borrowed connections, unlike sql.DB.Close.
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		if err := service.StopTokenUseDebouncer(ctx); err != nil {
+			t.Error(err)
+		}
+		if err := service.StopAuditWriter(ctx); err != nil {
+			t.Error(err)
+		}
+		if err := dbsqlite.CloseContext(ctx); err != nil {
+			t.Error(err)
+		}
+	})
 	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
 		t.Fatal(err)
 	}
-	testDB := dbsqlite.DB()
-	t.Cleanup(func() {
-		if testDB != nil {
-			if sqlDB, err := testDB.DB(); err == nil {
-				_ = sqlDB.Close()
-				time.Sleep(25 * time.Millisecond)
-			}
-		}
-	})
 	return &service.SettingService{}
 }
 

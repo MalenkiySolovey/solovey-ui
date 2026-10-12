@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
+	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
@@ -286,7 +287,7 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string, policie
 			}
 			// ech outbounds
 			if ech, ok := tls["ech"].(map[string]interface{}); ok && asBool(ech["enabled"]) {
-				ech_string, err := entitytls.PublicECHConfig(ech["config"])
+				ech_string, err := clashECHConfig(ech["config"])
 				if err != nil {
 					return "", err
 				}
@@ -306,7 +307,11 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string, policie
 				if path, ok := transport["path"].([]interface{}); ok && len(path) > 0 {
 					httpOpts["path"] = path[0]
 				} else if path, ok := transport["path"].(string); ok {
-					httpOpts["path"] = path
+					literal, err := entityprotocol.ClientTransportLiteralPath(path)
+					if err != nil {
+						return "", err
+					}
+					httpOpts["path"] = literal
 				}
 				if host, ok := transport["host"].([]interface{}); ok && len(host) > 0 {
 					httpOpts["host"] = host[0]
@@ -322,7 +327,11 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string, policie
 				proxy["network"] = "ws"
 				wsOpts := make(map[string]interface{})
 				if path, ok := transport["path"].(string); ok {
-					wsOpts["path"] = path
+					urlPath, err := entityprotocol.ClientTransportURLPath(path)
+					if err != nil {
+						return "", err
+					}
+					wsOpts["path"] = urlPath
 				}
 				// `transport.headers` is a map of header name to value
 				// (mirrors the sing-box outbound shape produced elsewhere

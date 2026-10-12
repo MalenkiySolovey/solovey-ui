@@ -8,6 +8,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
+	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )
@@ -308,14 +309,14 @@ func tuicOut(out *map[string]interface{}, inbound map[string]interface{}) {
 func vlessOut(out *map[string]interface{}, inbound map[string]interface{}) {
 	delete(*out, "transport")
 	if transport, ok := inbound["transport"]; ok {
-		(*out)["transport"] = transport
+		(*out)["transport"] = entityprotocol.ClientTransportFromInbound(transport)
 	}
 }
 
 func trojanOut(out *map[string]interface{}, inbound map[string]interface{}) {
 	delete(*out, "transport")
 	if transport, ok := inbound["transport"]; ok {
-		(*out)["transport"] = transport
+		(*out)["transport"] = entityprotocol.ClientTransportFromInbound(transport)
 	}
 }
 
@@ -323,6 +324,6 @@ func vmessOut(out *map[string]interface{}, inbound map[string]interface{}) {
 	(*out)["alter_id"] = 0
 	delete(*out, "transport")
 	if transport, ok := inbound["transport"]; ok {
-		(*out)["transport"] = transport
+		(*out)["transport"] = entityprotocol.ClientTransportFromInbound(transport)
 	}
 }

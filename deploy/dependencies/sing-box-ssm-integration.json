@@ -15,15 +15,15 @@
   },
   "replacement": {
     "module": "github.com/MalenkiySolovey/sing-box",
-    "version": "v1.14.3-0.20261011174904-d0feb7cd0e3c",
-    "commit": "d0feb7cd0e3cfd46a2a90c06be901c6c87aaeed8",
+    "version": "v1.14.3-0.20261012000247-8b914e4be510",
+    "commit": "8b914e4be5103d5f343dac94f26c3ebeeb226ffc",
     "repository": "https://github.com/MalenkiySolovey/sing-box",
-    "sum": "h1:lX7Qwh5aCacz17vm6PWShakbsThRNJnVd2AFQxaACXM=",
+    "sum": "h1:RkQg7xe/iBA9+PrEgN8oN0p9LNBNsd2OR65KUEmo4K0=",
     "goModSum": "h1:O4q0spxb+xwV/p9HYR+Es1cMjK3bBvYl6k08V9rSpwU="
   },
   "patch": {
     "file": "deploy/dependencies/sing-box-ssm-cache.patch",
-    "sha256": "f5db7b3b33b171dfe84ce3c3c075395b5c5ece98dc4c781a95bed9735d78196a",
+    "sha256": "dad70c774a4f2f2a157254a9982044be082f808ec77f4652fd77eb020d6e72bd",
     "files": [
       "SOLOVEY_INTEGRATION.md",
       "protocol/naive/inbound.go",
@@ -32,14 +32,17 @@
       "service/ssmapi/cache.go",
       "service/ssmapi/cache_store.go",
       "service/ssmapi/cache_test.go",
-      "service/ssmapi/server.go"
+      "service/ssmapi/server.go",
+      "transport/v2raywebsocket/server.go",
+      "transport/v2raywebsocket/server_path_test.go"
     ],
-    "description": "Complete cumulative source overlay; legacy SSM patch filename retained. Includes accepted SSM plus Naive HTTP3 lifecycle integration."
+    "description": "Complete cumulative source overlay; legacy filename retained. Official1.14.2 baseline plus accepted SSM, Naive HTTP3 lifecycle and bounded WS literal-path/early-data correction."
   },
   "license": "GPL-3.0-or-later",
   "scopes": [
     "ssm-cache",
-    "naive-http3-lifecycle"
+    "naive-http3-lifecycle",
+    "websocket-path-early-data"
   ],
   "additionalIntegrations": {
     "naiveHttp3": {
@@ -60,6 +63,16 @@
         "module": "github.com/sagernet/quic-go",
         "version": "v0.61.0-sing-box-mod.7"
       }
+    },
+    "websocket": {
+      "patched": true,
+      "disabledEarlyDataDecoded": false,
+      "pathSuffixBasis": "decoded-URL.Path",
+      "configuredMaximumEnforcedBeforeHandler": true,
+      "files": [
+        "transport/v2raywebsocket/server.go",
+        "transport/v2raywebsocket/server_path_test.go"
+      ]
     }
   }
 }

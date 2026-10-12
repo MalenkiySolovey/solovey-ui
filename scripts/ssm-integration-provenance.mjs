@@ -25,13 +25,16 @@ requireFact(goSum.includes(`${lock.replacement.module} ${lock.replacement.versio
 requireFact(goSum.includes(`${lock.replacement.module} ${lock.replacement.version}/go.mod ${lock.replacement.goModSum}\n`), 'replacement Go module checksum missing')
 requireFact(lock.original.version === 'v1.14.2' && lock.original.commit === 'af6e64c3b69e6132ebaee0e1a3d24e93903f6709', 'SSM baseline differs')
 requireFact(lock.original.commit === lock.semanticBaseline.commit, 'SSM source baseline mismatch')
-const allowed = ['SOLOVEY_INTEGRATION.md', 'protocol/naive/inbound.go', 'protocol/naive/quic/inbound_init.go', 'protocol/naive/quic/inbound_lifecycle.go', 'service/ssmapi/cache.go', 'service/ssmapi/cache_store.go', 'service/ssmapi/cache_test.go', 'service/ssmapi/server.go'].sort()
+const allowed = ['SOLOVEY_INTEGRATION.md', 'protocol/naive/inbound.go', 'protocol/naive/quic/inbound_init.go', 'protocol/naive/quic/inbound_lifecycle.go', 'service/ssmapi/cache.go', 'service/ssmapi/cache_store.go', 'service/ssmapi/cache_test.go', 'service/ssmapi/server.go', 'transport/v2raywebsocket/server.go', 'transport/v2raywebsocket/server_path_test.go'].sort()
 requireFact(JSON.stringify([...lock.patch.files].sort()) === JSON.stringify(allowed), 'SSM source scope differs')
 const changedPaths = [...patch.toString('utf8').matchAll(/^diff --git a\/(\S+) b\/\1$/gm)].map(match => match[1]).sort()
 requireFact(JSON.stringify(changedPaths) === JSON.stringify([...lock.patch.files].sort()), 'patch inventory mismatch')
 const quicLock = JSON.parse(fs.readFileSync(path.join(root, 'deploy/dependencies/sing-quic-integration.json'), 'utf8'))
+const websocket = lock.additionalIntegrations?.websocket
+requireFact(websocket?.patched && websocket.disabledEarlyDataDecoded === false && websocket.pathSuffixBasis === 'decoded-URL.Path' && websocket.configuredMaximumEnforcedBeforeHandler === true, 'WebSocket transport contract differs')
+requireFact(JSON.stringify([...websocket.files].sort()) === JSON.stringify(allowed.filter(file => file.startsWith('transport/v2raywebsocket/'))), 'WebSocket source inventory mismatch')
 const naive = lock.additionalIntegrations?.naiveHttp3
-requireFact(JSON.stringify(lock.scopes) === JSON.stringify(['ssm-cache', 'naive-http3-lifecycle']), 'sing-box integration scopes differ')
+requireFact(JSON.stringify(lock.scopes) === JSON.stringify(['ssm-cache', 'naive-http3-lifecycle', 'websocket-path-early-data']), 'sing-box integration scopes differ')
 requireFact(naive?.patched && naive.parentControl === 'inbound-lifecycle-only' && naive.selectivePrincipalParentControl === false, 'Naive lifecycle capability differs')
 requireFact(JSON.stringify([...naive.files].sort()) === JSON.stringify(allowed.filter(file => file.startsWith('protocol/naive/'))), 'Naive source inventory mismatch')
 requireFact(JSON.stringify(naive.companion) === JSON.stringify({ module: quicLock.replacement.module, version: quicLock.replacement.version, commit: quicLock.replacement.commit }), 'Naive companion source mismatch')
@@ -52,6 +55,8 @@ if (command === 'manifest') {
     `ssm_module_sum=${lock.replacement.sum}`,
     `ssm_license=${lock.license}`,
     `sing_box_integration_scopes=${lock.scopes.join(',')}`,
+    'websocket_integration=patched',
+    'websocket_early_data_maximum=before-handler',
     'naive_h3_integration=patched',
     `naive_h3_parent_control=${naive.parentControl}`,
     `naive_h3_companion_commit=${naive.companion.commit}`,

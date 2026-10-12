@@ -11,6 +11,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
+	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
@@ -111,6 +112,9 @@ func Generate(clientConfig json.RawMessage, i *model.Inbound, hostname string) (
 			address["remark"] = publicRemark + suffix
 			address["share_name"] = publicRemark + suffix // opt-in for previously unlabelled HTTP/SOCKS URIs
 		}
+	}
+	if transport, ok := (*inbound)["transport"].(map[string]any); ok && (transport["type"] == "ws" || transport["type"] == "httpupgrade") {
+		(*inbound)["transport"] = entityprotocol.ClientTransportFromInbound(transport)
 	}
 	if err := validateProjection(i.Type, *inbound, Addrs); err != nil {
 		return nil, err

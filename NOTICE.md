@@ -374,3 +374,5 @@ The official sing-box v1.14.2 semantic baseline, existing SSM/QUIC integrations,
 Go 1.26.9 and dependency versions remain unchanged. This is patched dependency
 source, not a byte-identical original module. Parent-control capability remains
 partial; no physical-parity or release claim follows from this source correction.
+
+The cumulative official sing-box v1.14.2 source integration also includes a bounded WebSocket server correction: literal decoded path suffixes, disabled early-data handling and a configured maximum before handler admission. Exact source, GPL-3.0-or-later attribution, patch replay and module sums are recorded in deploy/dependencies/sing-box-ssm-integration.json; the legacy filename is retained.

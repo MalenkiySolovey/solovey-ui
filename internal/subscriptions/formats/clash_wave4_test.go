@@ -29,7 +29,7 @@ func wave4ClashConfig(t *testing.T, outbounds []map[string]any, template string,
 }
 
 func TestClashWave4ECHKeepsFullPublicContent(t *testing.T) {
-	for _, value := range []any{nil, "one-line-config", []string{"one-line-config"}, []any{"-----BEGIN ECH CONFIGS-----", "AA==", "-----END ECH CONFIGS-----"}, "-----BEGIN ECH CONFIGS-----\nAA==\n-----END ECH CONFIGS-----"} {
+	for _, value := range []any{nil, "AAX+DQABAA==", []string{"AAX+DQABAA=="}, []any{"-----BEGIN ECH CONFIGS-----", "AAX+DQABAA==", "-----END ECH CONFIGS-----"}, "-----BEGIN ECH CONFIGS-----\nAAX+DQABAA==\n-----END ECH CONFIGS-----"} {
 		outbound := map[string]any{"type": "trojan", "tag": "node", "server": "[2001:db8::1]", "server_port": 443, "password": "fixture", "tls": map[string]any{"enabled": true, "ech": map[string]any{"enabled": true, "config": value}}}
 		parsed := wave4ClashConfig(t, []map[string]any{outbound}, DefaultClashConfig, ClashUDPDefault)
 		proxy := parsed["proxies"].([]any)[0].(map[string]any)
@@ -50,6 +50,9 @@ func TestClashWave4ECHKeepsFullPublicContent(t *testing.T) {
 				want += line.(string)
 			}
 		}
+		if strings.Contains(want, "-----BEGIN ECH CONFIGS-----") {
+			want = "AAX+DQABAA=="
+		}
 		if proxy["ech-opts"].(map[string]any)["config"] != want {
 			t.Fatal("public ECH boundaries or lines were lost")
 		}
@@ -62,11 +65,11 @@ func TestClashWave4ECHKeepsFullPublicContent(t *testing.T) {
 	}
 	for _, value := range []string{
 		"-----BEGIN ECH CONFIGS-----\n%%%\n-----END ECH CONFIGS-----",
-		"-----BEGIN ECH CONFIGS-----\nAA==",
+		"-----BEGIN ECH CONFIGS-----\nAAX+DQABAA==",
 		"-----END ECH CONFIGS-----",
-		"-----BEGIN ECH CONFIGS-----\nAA==\n-----END CERTIFICATE-----",
-		"-----BEGIN ECH CONFIGS-----\n-----BEGIN ECH CONFIGS-----\nAA==\n-----END ECH CONFIGS-----",
-		"-----BEGIN ECH CONFIGS-----\nAA==\n-----END ECH CONFIGS-----\n-----END ECH CONFIGS-----",
+		"-----BEGIN ECH CONFIGS-----\nAAX+DQABAA==\n-----END CERTIFICATE-----",
+		"-----BEGIN ECH CONFIGS-----\n-----BEGIN ECH CONFIGS-----\nAAX+DQABAA==\n-----END ECH CONFIGS-----",
+		"-----BEGIN ECH CONFIGS-----\nAAX+DQABAA==\n-----END ECH CONFIGS-----\n-----END ECH CONFIGS-----",
 	} {
 		outbound := map[string]any{"type": "trojan", "tag": "node", "server": "example.com", "server_port": 443, "password": "fixture", "tls": map[string]any{"enabled": true, "ech": map[string]any{"enabled": true, "config": value}}}
 		if _, err := RenderClash([]map[string]any{outbound}, DefaultClashConfig); err == nil {

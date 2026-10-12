@@ -170,7 +170,7 @@ func TestWave4WebSocketEarlyDataRoundTrip(t *testing.T) {
 			t.Fatal(err)
 		}
 		transport := (*parsed)["transport"].(map[string]any)
-		if transport["path"] != path {
+		if transport["path"] != (&url.URL{Path: path}).EscapedPath() {
 			t.Fatal("WS path/query changed")
 		}
 		if max > 0 && transport["max_early_data"] != uint32(max) {
