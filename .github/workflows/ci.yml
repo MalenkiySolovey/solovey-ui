@@ -59,6 +59,11 @@ jobs:
         with:
           node-version-file: frontend/.node-version
           architecture: arm64
+      - name: Isolate legacy PowerShell parent without product or compiler
+        shell: powershell
+        run: |
+          node .qualification/native-windows-extra/private-metadata-probe.mjs WINDOWS_PRIVATE_METADATA_LEGACY_PARENT.json input-only
+          $global:LASTEXITCODE=0
       - name: Compare original console input with exact private ACL environment input
         env:
           W5_FIXTURE_COMMIT: ${{ github.sha }}

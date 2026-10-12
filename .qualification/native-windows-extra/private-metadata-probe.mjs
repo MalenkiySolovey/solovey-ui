@@ -22,6 +22,10 @@ const invoke=(name,script,input,viaEnv)=>{
  console.log(JSON.stringify(report.results.at(-1)))
  return r.status===0&&!r.error&&detail?.status==='PASS'
 }
+if(process.argv[3]==='input-only'){
+ const ok=invoke('environment_input',"$ErrorActionPreference='Stop'; $w5Input=$env:W5_PRIVATE_METADATA_INPUT|ConvertFrom-Json; if($w5Input.probe -ne 'W5_METADATA_ONLY'){throw 'INPUT_REQUIRED'}; [pscustomobject]@{status='PASS';stage='READ_ENVIRONMENT_INPUT';PSVersion=$PSVersionTable.PSVersion.ToString()}|ConvertTo-Json -Compress",{probe:'W5_METADATA_ONLY'},true)
+ report.status=ok?'PASS':'FAIL';report.finishedAt=new Date().toISOString();fs.writeFileSync(process.argv[2],JSON.stringify(report,null,2)+'\n');process.exit(ok?0:1)
+}
 const directory=fs.mkdtempSync(path.join(os.tmpdir(),'w5-private-metadata-'))
 try{
  invoke('original_console_stdin',"$ErrorActionPreference='Stop'; $w5Input=[Console]::In.ReadToEnd()|ConvertFrom-Json; if($w5Input.probe -ne 'W5_METADATA_ONLY'){throw 'INPUT_REQUIRED'}; [pscustomobject]@{status='PASS';stage='READ_CONSOLE_INPUT'}|ConvertTo-Json -Compress",{probe:'W5_METADATA_ONLY'},false)
