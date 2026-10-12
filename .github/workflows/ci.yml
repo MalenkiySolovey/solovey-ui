@@ -539,6 +539,7 @@ jobs:
           cache-from: type=gha,scope=docker-arm64
           cache-to: type=gha,mode=max,scope=docker-arm64
       - name: Compile fixture and run actual non-root candidate
+        if: '!inputs.qualify_builds_only'
         run: |
           set -euo pipefail
           mkdir -p .runtime/qualification-evidence
