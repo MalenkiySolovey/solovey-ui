@@ -22,8 +22,8 @@ func TestClientFieldsAreImmutableAndSafeBeforeSQL(t *testing.T) {
 	if _, ok := UserField("vmess'); DROP TABLE clients; --"); ok {
 		t.Fatal("untrusted type became a SQL field")
 	}
-	if field, ok := UserField("shadowsocks16"); !ok || field != "shadowsocks" {
-		t.Fatal("credential variant became a runtime discriminator")
+	if field, ok := UserField("shadowsocks16"); !ok || field != "shadowsocks16" {
+		t.Fatal("16-byte credential variant lost its distinct stored field")
 	}
 	if CanDeliver("shadowsocks16", "json") {
 		t.Fatal("credential variant falsely authorized as a runtime inbound")

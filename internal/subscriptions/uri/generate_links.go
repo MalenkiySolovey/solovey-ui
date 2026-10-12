@@ -3,6 +3,7 @@ package uri
 import (
 	"encoding/base64"
 	"fmt"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
 	"net/url"
@@ -38,11 +39,8 @@ func shadowsocksLink(
 		userPass = append(userPass, inbPass)
 	}
 	var pass string
-	if method == "2022-blake3-aes-128-gcm" {
-		pass, _ = userConfig["shadowsocks16"]["password"].(string)
-	} else {
-		pass, _ = userConfig["shadowsocks"]["password"].(string)
-	}
+	field, _ := clientfacts.UserFieldForMethod("shadowsocks", method)
+	pass, _ = userConfig[field]["password"].(string)
 	userPass = append(userPass, pass)
 	password := strings.Join(userPass, ":")
 	userinfo := url.User(base64.RawURLEncoding.EncodeToString([]byte(method + ":" + password)))

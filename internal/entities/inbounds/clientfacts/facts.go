@@ -89,8 +89,21 @@ func Resolve(panelType string) (Fact, bool) {
 // UserField returns only the fixed field declared by the inbound schema.
 // Untrusted type strings can never become an interpolated SQLite JSON path.
 func UserField(panelType string) (string, bool) {
+	if panelType == "shadowsocks16" {
+		return "shadowsocks16", true
+	}
 	fact, ok := Resolve(panelType)
 	return fact.UserField, ok && fact.UserField != ""
+}
+
+// UserFieldForMethod selects the existing credential schema, independently
+// of the official inbound discriminator or this server's build capabilities.
+// All returned SQL fields remain fixed allow-listed strings.
+func UserFieldForMethod(panelType, method string) (string, bool) {
+	if panelType == "shadowsocks" && method == "2022-blake3-aes-128-gcm" {
+		panelType = "shadowsocks16"
+	}
+	return UserField(panelType)
 }
 
 func CanDeliver(panelType, format string) bool {

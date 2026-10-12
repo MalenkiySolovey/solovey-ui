@@ -17,9 +17,10 @@ import (
 )
 
 type candidate struct {
-	Type  string           `json:"type"`
-	Tag   string           `json:"tag"`
-	Users []map[string]any `json:"users"`
+	Type   string           `json:"type"`
+	Method string           `json:"method"`
+	Tag    string           `json:"tag"`
+	Users  []map[string]any `json:"users"`
 }
 
 // Capture accepts a complete rendered config or one owner-rendered inbound.
@@ -68,7 +69,7 @@ func Capture(db *gorm.DB, config []byte) ([]inboundidentity.Binding, error) {
 		if !ok || stored.Type != row.Type {
 			continue
 		}
-		field, supported := clientfacts.UserField(row.Type)
+		field, supported := clientfacts.UserFieldForMethod(row.Type, row.Method)
 		if !supported {
 			continue
 		}
