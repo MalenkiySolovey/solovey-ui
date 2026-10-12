@@ -225,11 +225,8 @@ func shadowsocksOutboundConfig(configs map[string]interface{}, inbound *model.In
 		userPass = append(userPass, inboundPass)
 	}
 	var pass string
-	if method == "2022-blake3-aes-128-gcm" {
-		if config, ok := configs["shadowsocks16"].(map[string]interface{}); ok {
-			pass, _ = config["password"].(string)
-		}
-	} else if config, ok := configs["shadowsocks"].(map[string]interface{}); ok {
+	field, _ := clientfacts.UserFieldForMethod("shadowsocks", method)
+	if config, ok := configs[field].(map[string]interface{}); ok {
 		pass, _ = config["password"].(string)
 	}
 	userPass = append(userPass, pass)

@@ -58,14 +58,8 @@ func (s StoredUsers) FetchUsers(db *gorm.DB, inboundType string, inbound map[str
 			return nil, nil
 		}
 	}
-	if inboundType == "shadowsocks" {
-		method, _ := inbound["method"].(string)
-		if method == "2022-blake3-aes-128-gcm" {
-			inboundType = "shadowsocks16"
-		}
-	}
-
-	field, ok := clientfacts.UserField(inboundType)
+	method, _ := inbound["method"].(string)
+	field, ok := clientfacts.UserFieldForMethod(inboundType, method)
 	if !ok {
 		return nil, common.NewErrorf("unsupported inbound type for user lookup: %s", inboundType)
 	}
