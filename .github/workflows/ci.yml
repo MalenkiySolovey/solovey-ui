@@ -871,26 +871,16 @@ jobs:
           github-token: ${{ github.token }}
       - name: Authenticate and extract produced package
         shell: powershell
-        run: >
+        run: |
           $ErrorActionPreference='Stop'
-          $archive=".runtime/candidate-archive/solovey-ui-windows-${{ matrix.arch
-          }}.zip"
-          $expected=(Get-Content -LiteralPath "$archive.sha256" -Raw).Split('
-          ')[0].Trim()
-          if ((Get-FileHash -LiteralPath $archive -Algorithm
-          SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Candidate
-          archive checksum mismatch' }
-          Expand-Archive -LiteralPath $archive -DestinationPath
-          .runtime/candidate-package
-          $metadata=Get-Content -LiteralPath
-          '.runtime/candidate-package/solovey-ui-windows/BUILD_INFO.txt' -Raw
-          if (!$metadata.Contains("commit=$env:W5_PRODUCT_COMMIT")) { throw
-          'Candidate source mismatch' }
-          New-Item -ItemType Directory -Path .runtime/qualification-evidence
-          -Force | Out-Null
-          Copy-Item -LiteralPath
-          '.runtime/candidate-package/solovey-ui-windows/BUILD_INFO.txt'
-          -Destination '.runtime/qualification-evidence/BUILD_INFO.txt'
+          $archive=".runtime/candidate-archive/solovey-ui-windows-${{ matrix.arch }}.zip"
+          $expected=(Get-Content -LiteralPath "$archive.sha256" -Raw).Split(' ')[0].Trim()
+          if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256).Hash.ToLowerInvariant() -ne $expected) { throw 'Candidate archive checksum mismatch' }
+          Expand-Archive -LiteralPath $archive -DestinationPath .runtime/candidate-package
+          $metadata=Get-Content -LiteralPath '.runtime/candidate-package/solovey-ui-windows/BUILD_INFO.txt' -Raw
+          if (!$metadata.Contains("commit=$env:W5_PRODUCT_COMMIT")) { throw 'Candidate source mismatch' }
+          New-Item -ItemType Directory -Path .runtime/qualification-evidence -Force | Out-Null
+          Copy-Item -LiteralPath '.runtime/candidate-package/solovey-ui-windows/BUILD_INFO.txt' -Destination '.runtime/qualification-evidence/BUILD_INFO.txt'
       - name: Native ARM64 C toolchain
         id: msys2
         if: matrix.arch == 'arm64'
@@ -937,7 +927,7 @@ jobs:
       - name: Retain the independently built Core candidate
         if: always()
         shell: powershell
-        run: >
+        run: |
           $ErrorActionPreference='Stop'
           if (Test-Path -LiteralPath '.runtime/candidate-core/sui.exe') {
             New-Item -ItemType Directory -Path .runtime/qualification-evidence -Force | Out-Null
