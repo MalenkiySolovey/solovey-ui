@@ -1,6 +1,7 @@
 package uri
 
 import (
+	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
 	"net/url"
 	"strings"
@@ -50,6 +51,9 @@ func getTransport(tp_type string, q *url.Values) (map[string]interface{}, error)
 		transport["type"] = "httpupgrade"
 		transport["path"] = tp_path
 		transport["host"] = tp_host
+	}
+	if transport["type"] == "http" {
+		transport, _ = entityprotocol.ClientTransportFromInbound(transport).(map[string]any)
 	}
 	return transport, nil
 }

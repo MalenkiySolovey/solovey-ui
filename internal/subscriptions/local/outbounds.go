@@ -1,6 +1,7 @@
 package local
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -172,6 +173,26 @@ func inboundOutboundConfig(configs map[string]interface{}, inbound *model.Inboun
 		return nil, err
 	}
 	protocol, _ := outbound["type"].(string)
+	// Older generated rows copied the server path into client state. Correct
+	// only the matching derived path; explicit client overrides survive.
+	if (protocol == "vless" || protocol == "vmess" || protocol == "trojan") && len(bytes.TrimSpace(inbound.Options)) > 0 {
+		var options map[string]any
+		if err := json.Unmarshal(inbound.Options, &options); err != nil {
+			return nil, err
+		}
+		server, _ := options["transport"].(map[string]any)
+		client, _ := outbound["transport"].(map[string]any)
+		serverPath, serverOK := server["path"].(string)
+		clientPath, clientOK := client["path"].(string)
+		serverType, serverTyped := server["type"].(string)
+		clientType, clientTyped := client["type"].(string)
+		if server != nil && client != nil && serverTyped && clientTyped && serverOK && clientOK && serverType == clientType && serverPath == clientPath {
+			derived, _ := entityprotocol.ClientTransportFromInbound(server).(map[string]any)
+			if derived != nil {
+				client["path"] = derived["path"]
+			}
+		}
+	}
 	if protocol == "shadowsocks" {
 		return shadowsocksOutboundConfig(configs, inbound, outbound)
 	}

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
@@ -31,6 +32,9 @@ func adaptClashWave4(outbound, proxy map[string]any) error {
 			}
 			transport["max_early_data"] = max
 		}
+	}
+	if transport, ok := outbound["transport"].(map[string]any); ok && transport["type"] == "http" {
+		outbound["transport"] = entityprotocol.ClientTransportFromInbound(transport)
 	}
 	if ech, ok := proxy["ech-opts"].(map[string]any); ok && boolValue(ech["enable"]) {
 		config, err := entitytls.PublicECHConfig(ech["config"])

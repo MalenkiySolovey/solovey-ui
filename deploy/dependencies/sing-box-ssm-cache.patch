@@ -1,9 +1,9 @@
 diff --git a/SOLOVEY_INTEGRATION.md b/SOLOVEY_INTEGRATION.md
 new file mode 100644
-index 00000000..5b9a30bc
+index 00000000..efbd0ee2
 --- /dev/null
 +++ b/SOLOVEY_INTEGRATION.md
-@@ -0,0 +1,70 @@
+@@ -0,0 +1,83 @@
 +# Solovey pinned sing-box integration
 +
 +Baseline: official SagerNet/sing-box v1.14.2,
@@ -74,6 +74,19 @@ index 00000000..5b9a30bc
 +integration additions are also GPL-3.0-or-later. The consuming repository records
 +the exact source commit, Go module checksums, complete replayable patch, package
 +build metadata and SBOM module replacement. No module cache is modified.
++
++Additional bounded WebSocket transport correction: the official v1.14.2 server
++compared a decoded literal path against RequestURI when decoding path early
++data, including when early data was disabled. Literal question marks/percent
++escapes failed even when the native client sent the correct path. Oversized
++early data also bypassed the configured maximum before transport admission.
++`transport/v2raywebsocket/server.go` now uses URL.Path for the suffix, decodes
++only when enabled, and rejects oversized data before the handler. Existing
++protocol authentication and runtime/session ownership remain unchanged.
++`server_path_test.go` exercises disabled/path/header modes with two literal
++paths and oversized-header rejection through actual loopback transports.
++Solovey separately adapts server-to-client path and public ECH serialization;
++those changes belong to its existing entity/subscription owners.
 diff --git a/protocol/naive/inbound.go b/protocol/naive/inbound.go
 index 9da0cf08..d8bd98cc 100644
 --- a/protocol/naive/inbound.go
@@ -953,3 +966,167 @@ index 157ea150..e3ea6a4f 100644
 +	})
 +	return s.closeErr
  }
+diff --git a/transport/v2raywebsocket/server.go b/transport/v2raywebsocket/server.go
+index b54d760a..c9ca4f8b 100644
+--- a/transport/v2raywebsocket/server.go
++++ b/transport/v2raywebsocket/server.go
+@@ -83,15 +83,15 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+ 		err       error
+ 		conn      net.Conn
+ 	)
+-	if s.earlyDataHeaderName == "" {
+-		if strings.HasPrefix(request.URL.RequestURI(), s.path) {
+-			earlyDataStr := request.URL.RequestURI()[len(s.path):]
++	if s.maxEarlyData > 0 && s.earlyDataHeaderName == "" {
++		if strings.HasPrefix(request.URL.Path, s.path) {
++			earlyDataStr := request.URL.Path[len(s.path):]
+ 			earlyData, err = base64.RawURLEncoding.DecodeString(earlyDataStr)
+ 		} else {
+ 			s.invalidRequest(writer, request, http.StatusNotFound, E.New("bad path: ", request.URL.Path))
+ 			return
+ 		}
+-	} else {
++	} else if s.maxEarlyData > 0 {
+ 		if request.URL.Path != s.path {
+ 			s.invalidRequest(writer, request, http.StatusNotFound, E.New("bad path: ", request.URL.Path))
+ 			return
+@@ -101,6 +101,9 @@ func (s *Server) ServeHTTP(writer http.ResponseWriter, request *http.Request) {
+ 			earlyData, err = base64.RawURLEncoding.DecodeString(earlyDataStr)
+ 		}
+ 	}
++	if err == nil && uint64(len(earlyData)) > uint64(s.maxEarlyData) {
++		err = E.New("early data exceeds configured maximum")
++	}
+ 	if err != nil {
+ 		s.invalidRequest(writer, request, http.StatusBadRequest, E.Cause(err, "decode early data"))
+ 		return
+diff --git a/transport/v2raywebsocket/server_path_test.go b/transport/v2raywebsocket/server_path_test.go
+new file mode 100644
+index 00000000..630bce9d
+--- /dev/null
++++ b/transport/v2raywebsocket/server_path_test.go
+@@ -0,0 +1,124 @@
++package v2raywebsocket
++
++import (
++	"bytes"
++	"context"
++	"io"
++	"net"
++	"net/http/httptest"
++	"net/url"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"github.com/sagernet/sing-box/log"
++	"github.com/sagernet/sing-box/option"
++	M "github.com/sagernet/sing/common/metadata"
++	N "github.com/sagernet/sing/common/network"
++)
++
++type pathEcho struct {
++	payload  []byte
++	done     chan error
++	accepted atomic.Bool
++}
++
++func (h *pathEcho) NewConnectionEx(_ context.Context, conn net.Conn, _, _ M.Socksaddr, _ N.CloseHandlerFunc) {
++	h.accepted.Store(true)
++	defer conn.Close()
++	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
++	buffer := make([]byte, len(h.payload))
++	_, err := io.ReadFull(conn, buffer)
++	if err == nil && !bytes.Equal(buffer, h.payload) {
++		err = io.ErrUnexpectedEOF
++	}
++	if err == nil {
++		_, err = conn.Write(buffer)
++	}
++	h.done <- err
++}
++
++func (*pathEcho) NewPacketConnectionEx(_ context.Context, conn N.PacketConn, _, _ M.Socksaddr, _ N.CloseHandlerFunc) {
++	_ = conn.Close()
++}
++
++func TestLiteralPathEarlyDataModes(t *testing.T) {
++	for _, path := range []string{"/fixture?token=a%26b", "/fixture%2Fsegment"} {
++		for _, mode := range []struct {
++			name   string
++			max    uint32
++			header string
++		}{{"disabled", 0, ""}, {"path", 32, ""}, {"header", 32, "Sec-WebSocket-Protocol"}} {
++			t.Run(path+"/"+mode.name, func(t *testing.T) {
++				h := &pathEcho{payload: []byte("authenticated-protocol-independent-path-nonce"), done: make(chan error, 1)}
++				logger := log.NewNOPFactory().Logger()
++				server, err := NewServer(t.Context(), logger, option.V2RayWebsocketOptions{Path: path, MaxEarlyData: mode.max, EarlyDataHeaderName: mode.header}, nil, h)
++				if err != nil {
++					t.Fatal(err)
++				}
++				local := httptest.NewServer(server)
++				defer local.Close()
++				client, err := NewClient(t.Context(), N.SystemDialer, M.ParseSocksaddr(local.Listener.Addr().String()), option.V2RayWebsocketOptions{Path: (&url.URL{Path: path}).EscapedPath(), MaxEarlyData: mode.max, EarlyDataHeaderName: mode.header}, nil)
++				if err != nil {
++					t.Fatal(err)
++				}
++				defer client.Close()
++				ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
++				defer cancel()
++				conn, err := client.DialContext(ctx)
++				if err != nil {
++					t.Fatal(err)
++				}
++				defer conn.Close()
++				_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
++				if _, err = conn.Write(h.payload); err != nil {
++					t.Fatal(err)
++				}
++				response := make([]byte, len(h.payload))
++				if _, err = io.ReadFull(conn, response); err != nil || !bytes.Equal(response, h.payload) {
++					t.Fatal("literal path nonce failed", err)
++				}
++				select {
++				case err := <-h.done:
++					if err != nil {
++						t.Fatal(err)
++					}
++				case <-ctx.Done():
++					t.Fatal("transport handler did not finish")
++				}
++			})
++		}
++	}
++}
++
++func TestOversizedEarlyDataRejectedBeforeHandler(t *testing.T) {
++	h := &pathEcho{payload: []byte("too-large-for-configured-two-bytes"), done: make(chan error, 1)}
++	logger := log.NewNOPFactory().Logger()
++	server, err := NewServer(t.Context(), logger, option.V2RayWebsocketOptions{Path: "/fixture", MaxEarlyData: 2, EarlyDataHeaderName: "Sec-WebSocket-Protocol"}, nil, h)
++	if err != nil {
++		t.Fatal(err)
++	}
++	local := httptest.NewServer(server)
++	defer local.Close()
++	client, err := NewClient(t.Context(), N.SystemDialer, M.ParseSocksaddr(local.Listener.Addr().String()), option.V2RayWebsocketOptions{Path: "/fixture", MaxEarlyData: 64, EarlyDataHeaderName: "Sec-WebSocket-Protocol"}, nil)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer client.Close()
++	ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
++	defer cancel()
++	conn, err := client.DialContext(ctx)
++	if err != nil {
++		t.Fatal(err)
++	}
++	defer conn.Close()
++	_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
++	_, err = conn.Write(h.payload)
++	if err == nil {
++		buffer := make([]byte, 1)
++		_, err = conn.Read(buffer)
++	}
++	if err == nil || h.accepted.Load() {
++		t.Fatal("oversized early data reached transport handler")
++	}
++}

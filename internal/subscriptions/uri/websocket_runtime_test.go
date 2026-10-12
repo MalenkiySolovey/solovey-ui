@@ -75,13 +75,16 @@ func (h *websocketMuxParent) NewConnectionEx(ctx context.Context, conn net.Conn,
 
 // The generated URI is decoded into the pinned official WebSocket transport.
 // Two real sing-mux streams share that parent, including early handshake bytes
-// and later frames. Query-byte preservation has a separate codec fixture:
-// pinned sing's URLSetPath treats a query-looking path as a literal path.
+// and later frames. Literal query/percent paths must survive actual URLSetPath.
 func TestWave4WebSocketURIWorksWithPinnedRuntimeAndMux(t *testing.T) {
-	for _, max := range []uint32{0, 1, 32, 8192} {
-		t.Run(strconv.Itoa(int(max)), func(t *testing.T) {
+	for _, scenario := range []struct {
+		path string
+		max  uint32
+	}{{"/fixture", 0}, {"/fixture", 1}, {"/fixture", 32}, {"/fixture", 8192}, {"/fixture?token=a%26b", 32}, {"/fixture%2Fsegment", 32}} {
+		max, serverPath := scenario.max, scenario.path
+		t.Run(serverPath+strconv.Itoa(int(max)), func(t *testing.T) {
 			config := json.RawMessage(`{"vless":{"uuid":"11111111-1111-4111-8111-111111111111"}}`)
-			inbound := wave4Inbound(t, "vless", "example.com", map[string]any{"transport": map[string]any{"type": "ws", "path": "/fixture", "max_early_data": max, "early_data_header_name": "Sec-WebSocket-Protocol"}}, nil)
+			inbound := wave4Inbound(t, "vless", "example.com", map[string]any{"transport": map[string]any{"type": "ws", "path": serverPath, "max_early_data": max, "early_data_header_name": "Sec-WebSocket-Protocol"}}, nil)
 			links, err := Generate(config, inbound, "")
 			if err != nil {
 				t.Fatal(err)
@@ -102,7 +105,7 @@ func TestWave4WebSocketURIWorksWithPinnedRuntimeAndMux(t *testing.T) {
 				t.Fatal(err)
 			}
 			parent := &websocketMuxParent{service: service, done: make(chan struct{}, 4)}
-			server, err := v2raywebsocket.NewServer(t.Context(), logger, option.V2RayWebsocketOptions{Path: "/fixture", MaxEarlyData: max, EarlyDataHeaderName: "Sec-WebSocket-Protocol"}, nil, parent)
+			server, err := v2raywebsocket.NewServer(t.Context(), logger, option.V2RayWebsocketOptions{Path: serverPath, MaxEarlyData: max, EarlyDataHeaderName: "Sec-WebSocket-Protocol"}, nil, parent)
 			if err != nil {
 				t.Fatal(err)
 			}
