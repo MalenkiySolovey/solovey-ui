@@ -18,9 +18,14 @@ export async function exercisePackagedBrowser({endpoint,username,password,fixtur
  const endpoints={panel:new URL(endpoint),subscription:new URL(subscriptionEndpoint)}
  let material,tlsMode=false,changed=false,original,baseline,generation,cookies=new Map(),certDir,files=[]
  const cert=()=>path.join(certDir,'certificate.pem'),key=()=>path.join(certDir,'key.pem')
+ const nativeMetadataEnvironment={...process.env}
+ if(process.env.W5_POWERSHELL_BASELINE_FILE){
+  const preserved=JSON.parse(fs.readFileSync(process.env.W5_POWERSHELL_BASELINE_FILE,'utf8').replace(/^\uFEFF/,''))
+  for(const [key,value]of Object.entries(preserved)){for(const existing of Object.keys(nativeMetadataEnvironment))if(existing.toLowerCase()===key.toLowerCase())delete nativeMetadataEnvironment[existing];if(value!==null)nativeMetadataEnvironment[key]=value}
+ }
  const powershell=(script,input)=>{
   const started=Date.now(),encoded="[Console]::Out.WriteLine('W5_STAGE=PROCESS_STARTED');"+script
-  const r=spawnSync(path.join(process.env.SystemRoot,'System32/WindowsPowerShell/v1.0/powershell.exe'),['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(encoded,'utf16le').toString('base64')],{stdio:['ignore','pipe','pipe'],env:{...process.env,W5_PRIVATE_METADATA_INPUT:JSON.stringify(input)},encoding:'utf8',windowsHide:true,timeout:20000,maxBuffer:65536})
+  const r=spawnSync(path.join(process.env.SystemRoot,'System32/WindowsPowerShell/v1.0/powershell.exe'),['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(encoded,'utf16le').toString('base64')],{stdio:['ignore','pipe','pipe'],env:{...nativeMetadataEnvironment,W5_PRIVATE_METADATA_INPUT:JSON.stringify(input)},encoding:'utf8',windowsHide:true,timeout:20000,maxBuffer:65536})
   const lines=(r.stdout??'').trim().split(/\r?\n/),stages=lines.filter(x=>/^W5_STAGE=[A-Z_]+$/.test(x)),output=lines.filter(x=>!x.startsWith('W5_STAGE=')).join('\n')
   report.metadataCalls??=[];report.metadataCalls.push({transport:'ENVIRONMENT_CLOSED_STDIN',elapsedMs:Date.now()-started,stages})
   if(r.status!==0||r.error){let detail;try{detail=JSON.parse(output)}catch{};report.metadataFailure={exitCode:r.status,spawnCode:r.error?.code??null,stderrBytes:Buffer.byteLength(r.stderr??''),stages,...(detail?.kind==='W5_OWNED_ACL_DIAGNOSTIC'?detail:{})};throw Error('WINDOWS_OWNED_FIXTURE_METADATA_FAILED')};return output.trim()

@@ -92,14 +92,14 @@
       38180868791,
       38182097918
     ],
-    "independentNativeRca": 38183516579,
-    "causalLimit": "Native standalone original stdin and ACL pass; full runner cold invocation timeout was not reproduced. Environment input removes EOF dependency and stage capture disambiguates future child startup/ACL errors; deadline and exact ACL remain unchanged.",
+    "independentNativeRca": 38186316565,
+    "causalLimit": "RCA38186316565: native before/after-MS​​YS probe passes when preserved native child environment is restored; Path is the only changed captured key. MSYS inherited Path caused child PowerShell startup timeouts before ACL, including with native parent shell. Only PowerShell child metadata receives preserved environment; compiler/helper/product environment unchanged.",
     "rerunScope": "full AutoHTTPS/mTLS; Core previously unrun Naive/AutoHTTPS/mTLS; full Naive49 retained from38182097918",
     "files": {
-      "autohttps-contract.mjs": "94b5c4bfd704c525bb1c7b43fc31d700507f79ee54dda4bdd0a9440306933aa6",
-      "outbound-mtls-contract.mjs": "bcd07e09f11dcdfb010e71bb873554c6a89ef4639b9d2e5d80e8b7230b3eaf4a",
+      "autohttps-contract.mjs": "35f1db39f4fbd033965e20c4f9d6932c6ebb59ad6e4ede4feaec381ea187b25f",
+      "outbound-mtls-contract.mjs": "b087c229ccab8f98132ab627c77a8ee19f89208d94b4b1b8a65b5413e37a2a60",
       "exercise-all.mjs": "1d4dfad5b8d8d05ce63723ff376cf7ca2ece3c2273e4a6b4fd29928c92ce98ff",
-      "private-metadata-probe.mjs": "a7085f2ebf6f2dd190cd6a37cfea5bde727bbd47096dcdeb4bb97cd2f3c4262e"
+      "private-metadata-probe.mjs": "b3766d139542daa20fd73a1a3726930eab67ebeae86886674bdc99a0471865da"
     }
   }
 }
