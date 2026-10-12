@@ -23,9 +23,10 @@ export async function exercisePackagedBrowser({endpoint,username,password,fixtur
   const preserved=JSON.parse(fs.readFileSync(process.env.W5_POWERSHELL_BASELINE_FILE,'utf8').replace(/^\uFEFF/,''))
   for(const [key,value]of Object.entries(preserved)){for(const existing of Object.keys(nativeMetadataEnvironment))if(existing.toLowerCase()===key.toLowerCase())delete nativeMetadataEnvironment[existing];if(value!==null)nativeMetadataEnvironment[key]=value}
  }
- const powershell=(script,input)=>{
+ const powershell=(script,input,nativeHost=false)=>{
   const started=Date.now(),encoded="[Console]::Out.WriteLine('W5_STAGE=PROCESS_STARTED');"+script
-  const r=spawnSync(path.join(process.env.SystemRoot,'System32/WindowsPowerShell/v1.0/powershell.exe'),['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(encoded,'utf16le').toString('base64')],{stdio:['ignore','pipe','pipe'],env:{...nativeMetadataEnvironment,W5_PRIVATE_METADATA_INPUT:JSON.stringify(input)},encoding:'utf8',windowsHide:true,timeout:20000,maxBuffer:65536})
+  const program=nativeHost?path.join(process.env.ProgramFiles,'PowerShell/7/pwsh.exe'):path.join(process.env.SystemRoot,'System32/WindowsPowerShell/v1.0/powershell.exe')
+  const r=spawnSync(program,['-NoProfile','-NonInteractive','-EncodedCommand',Buffer.from(encoded,'utf16le').toString('base64')],{stdio:['ignore','pipe','pipe'],env:{...nativeMetadataEnvironment,W5_PRIVATE_METADATA_INPUT:JSON.stringify(input)},encoding:'utf8',windowsHide:true,timeout:20000,maxBuffer:65536})
   const lines=(r.stdout??'').trim().split(/\r?\n/),stages=lines.filter(x=>/^W5_STAGE=[A-Z_]+$/.test(x)),output=lines.filter(x=>!x.startsWith('W5_STAGE=')).join('\n')
   report.metadataCalls??=[];report.metadataCalls.push({transport:'ENVIRONMENT_CLOSED_STDIN',elapsedMs:Date.now()-started,stages})
   if(r.status!==0||r.error){let detail;try{detail=JSON.parse(output)}catch{};report.metadataFailure={exitCode:r.status,spawnCode:r.error?.code??null,stderrBytes:Buffer.byteLength(r.stderr??''),stages,...(detail?.kind==='W5_OWNED_ACL_DIAGNOSTIC'?detail:{})};throw Error('WINDOWS_OWNED_FIXTURE_METADATA_FAILED')};return output.trim()
@@ -79,7 +80,7 @@ export async function exercisePackagedBrowser({endpoint,username,password,fixtur
   for(const which of ['panel','subscription']){
    const proof=peer(which,'probe');report.listeners.push({listener:which,port:Number(endpoints[which].port),...proof});report.assertions.push(...proof.assertions.map(x=>which+'_'+x))
   }
-  const pid=powershell(`$ErrorActionPreference='Stop';$w5Input=$env:W5_PRIVATE_METADATA_INPUT|ConvertFrom-Json; $w5Process=Get-Process -Id $w5Input.pid; @(Get-NetTCPConnection -OwningProcess $w5Process.Id -State Listen|Select-Object LocalAddress,LocalPort)|ConvertTo-Json -Compress`,{pid:candidatePID})
+  const pid=powershell(`$ErrorActionPreference='Stop';$w5Input=$env:W5_PRIVATE_METADATA_INPUT|ConvertFrom-Json; $w5Process=Get-Process -Id $w5Input.pid; @(Get-NetTCPConnection -OwningProcess $w5Process.Id -State Listen|Select-Object LocalAddress,LocalPort)|ConvertTo-Json -Compress`,{pid:candidatePID},process.arch==='arm64')
   const listeners=[JSON.parse(pid)].flat();check('exact_same_panel_process_loopback_listeners_only',listeners.length>=3&&listeners.every(x=>['127.0.0.1','::1'].includes(x.LocalAddress))&&Object.values(endpoints).every(v=>listeners.some(x=>x.LocalPort===Number(v.port))))
   report.status='PASS'
  }catch(e){report.status='FAIL';report.failure=/^[A-Za-z0-9_.:-]{1,160}$/.test(e.message)?e.message:'WINDOWS_AUTOHTTPS_FIXTURE_FAILED'}
