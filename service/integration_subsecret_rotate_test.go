@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -112,29 +111,5 @@ func TestIntegrationSubSecretRotateReloadsClientAndPublishesRealtime(t *testing.
 
 func initSubSecretIntegrationDB(t *testing.T) {
 	t.Helper()
-	tempDir := t.TempDir()
-	t.Setenv("SUI_DB_FOLDER", tempDir)
-	if db := dbsqlite.DB(); db != nil {
-		if sqlDB, err := db.DB(); err == nil {
-			_ = sqlDB.Close()
-		}
-	}
-	if err := dbsqlite.Init(filepath.Join(tempDir, "s-ui.db")); err != nil {
-		if strings.Contains(err.Error(), "go-sqlite3 requires cgo") {
-			t.Skip(err)
-		}
-		t.Fatal(err)
-	}
-	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
-		t.Fatal(err)
-	}
-	testDB := dbsqlite.DB()
-	t.Cleanup(func() {
-		if testDB != nil {
-			if sqlDB, err := testDB.DB(); err == nil {
-				_ = sqlDB.Close()
-				time.Sleep(25 * time.Millisecond)
-			}
-		}
-	})
+	initSessionRotationIntegrationDB(t)
 }
