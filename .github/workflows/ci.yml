@@ -4,6 +4,10 @@ name: Stage2 Wave5 package qualification
 on:
   workflow_dispatch:
     inputs:
+      qualify_builds_only:
+        type: boolean
+        default: false
+        description: Build exact candidate packages while retaining independent native runtime evidence
       qualify_listener_metadata_probe:
         type: boolean
         default: false
@@ -46,7 +50,7 @@ permissions:
   actions: read
 
 env:
-  W5_PRODUCT_COMMIT: de501586b354e8f93adc5a66984c1c61b48dbf96
+  W5_PRODUCT_COMMIT: 2312e83bc92b2f67596c529776ddc79c02b88ad2
 
 jobs:
   windows-listener-metadata-probe:
@@ -343,12 +347,13 @@ jobs:
     if: inputs.qualify_windows
     uses: ./.github/workflows/windows.yml
     with:
-      source_commit: de501586b354e8f93adc5a66984c1c61b48dbf96
+      source_commit: 2312e83bc92b2f67596c529776ddc79c02b88ad2
       tag: v2026.3.3
       preflight_only: true
 
   windows-runtime:
     name: Native packaged Windows ${{ matrix.arch }}
+    if: inputs.qualify_windows && !inputs.qualify_builds_only
     needs: windows-build
     strategy:
       fail-fast: false
