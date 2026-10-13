@@ -65,7 +65,7 @@ func TestDatabaseTransferProductionMiddlewarePreservesTransportDeadlines(t *test
 			t.Cleanup(s.Close)
 			s.Client().Jar = auth.Client().Jar
 			s.Client().Timeout = 10 * time.Second
-			request, _ := http.NewRequest("GET", s.URL+"/qualification+v1/api/getdb", nil)
+			request, _ := http.NewRequestWithContext(t.Context(), "GET", s.URL+"/qualification+v1/api/getdb", nil)
 			request.Header.Set("Accept-Encoding", "gzip")
 			response, err := s.Client().Do(request)
 			if err != nil {
