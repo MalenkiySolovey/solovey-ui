@@ -11,7 +11,7 @@ import (
 )
 
 func (a *Handler) getPlainDb(c *gin.Context, request databaseBackupRequest) {
-	backupPath, cleanup, err := backup.PrepareExport(request.Exclude)
+	backupPath, cleanup, err := backup.PrepareExportContext(c.Request.Context(), request.Exclude)
 	if err != nil {
 		a.Audit(c, a.Actor(c), "db_export_failed", "database", service.AuditSeverityWarn, map[string]any{
 			"channel": "download",

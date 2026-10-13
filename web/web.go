@@ -125,11 +125,11 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		return nil, err
 	}
 
-	// Gzip's writer hides ResponseController deadline methods. Runtime NDJSON
-	// subscriptions own bounded per-write and request deadlines, so these exact
-	// paths must reach the native HTTP1/HTTP2 writer without that wrapper.
+	// Runtime streams and database transfer own bounded transport deadlines.
+	// Gzip hides ResponseController; only these exact routes bypass its writer.
 	engine.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPathsRegexs([]string{
 		"^" + regexp.QuoteMeta(base_url) + "(?:api|apiv2)/runtime/logs$",
+		databaseTransferUncompressedPattern(base_url),
 	})))
 	assetsBasePath := base_url + "assets/"
 
@@ -204,6 +204,10 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	})
 
 	return engine, nil
+}
+
+func databaseTransferUncompressedPattern(basePath string) string {
+	return "^" + regexp.QuoteMeta(basePath) + "(?:api|apiv2)/(?:importdb|getdb|v1/operations/data/restore(?:/rehearsal)?)$"
 }
 
 func (s *Server) recordRequestBudgetRejection(c *gin.Context, policy requestbudget.Policy, reason string) {

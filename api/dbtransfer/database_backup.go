@@ -10,6 +10,8 @@ func (a *Handler) DownloadDatabase(c *gin.Context) {
 	if !a.RequireScope(c, "database", "admin") {
 		return
 	}
+	cancel := beginDatabaseTransfer(c)
+	defer cancel()
 	request := parseDatabaseBackupRequest(c)
 	codec, ok, codecErr := selectedBackupExportCodec(c)
 	if codecErr != nil {
