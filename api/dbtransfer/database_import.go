@@ -36,6 +36,8 @@ func (a *Handler) ImportDb(c *gin.Context) {
 		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"success": false, "msg": "Database restore is unavailable", "obj": nil})
 		return
 	}
+	cancel := beginDatabaseTransfer(c)
+	defer cancel()
 	prepared, ok := a.openDatabaseImportFile(c)
 	if !ok {
 		return
@@ -94,6 +96,8 @@ func (a *Handler) RehearseDb(c *gin.Context) {
 	if !a.RequireScope(c, "database", "admin") {
 		return
 	}
+	cancel := beginDatabaseTransfer(c)
+	defer cancel()
 	prepared, ok := a.openDatabaseImportFile(c)
 	if !ok {
 		return
