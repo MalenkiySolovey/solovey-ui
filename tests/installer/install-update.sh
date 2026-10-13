@@ -604,6 +604,38 @@ assert_component_pack_removal_on_update() {
     assert_contains "${LOG_DIR}/binary.log" '^v2:migrate$'
 }
 
+assert_full_to_core_removes_installed_packs_without_catalog() {
+    local selection
+    for selection in core without-all; do
+        rm -rf "${TARGET}"
+        mkdir -p "${TARGET}"
+        reset_logs
+        run_installer v1
+        assert_component_packs true true true
+        printf 'full-to-core durable preimage\n' > "${INSTALL_DIR}/db/solovey-ui.db"
+        mkdir -p "${TARGET}/var/lib/solovey-ui/db"
+        printf 'full-to-core hardened preimage\n' > "${TARGET}/var/lib/solovey-ui/db/solovey-ui.db"
+        local secret_hash
+        secret_hash="$(sha256sum "${ENV_DIR}/secretbox.env")"
+        reset_logs
+        if [[ "${selection}" == core ]]; then
+            run_installer v2 --profile core
+        else
+            run_installer v2 --profile full --without all
+        fi
+        assert_component_metadata core false false false
+        assert_component_packs false false false
+        assert_not_exists "${OWNER_CONTRACT}"
+        assert_not_exists "${INSTALL_DIR}/solovey-owner-manifest"
+        assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^profile=core$'
+        assert_contains "${INSTALL_DIR}/db/solovey-ui.db" '^full-to-core durable preimage$'
+        assert_contains "${TARGET}/var/lib/solovey-ui/db/solovey-ui.db" '^full-to-core hardened preimage$'
+        [[ "$(sha256sum "${ENV_DIR}/secretbox.env")" == "${secret_hash}" ]] || fail "profile switch changed secret preimage"
+        assert_contains "${LOG_DIR}/binary.log" '^v2:migrate$'
+        assert_contains "${LOG_DIR}/systemctl.log" '^restart solovey-ui$'
+    done
+}
+
 assert_bad_component_pack_is_rejected() {
     rm -rf "${TARGET}"
     mkdir -p "${TARGET}"
@@ -689,6 +721,7 @@ assert_explicit_full_without_all_resolves_core_binary
 assert_minimal_with_inprocess_component_resolves_full_binary
 assert_require_core_rejects_inprocess_components
 assert_component_pack_removal_on_update
+assert_full_to_core_removes_installed_packs_without_catalog
 assert_bad_component_pack_is_rejected
 assert_unsupported_systemd_is_rejected_before_install
 assert_native_advanced_fails_closed_before_install
