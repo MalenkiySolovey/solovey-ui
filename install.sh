@@ -658,7 +658,9 @@ install_component_packs() {
         [[ -d "${existing}" ]] || continue
         existing_id="$(basename "${existing}")"
         [[ "${existing_id}" != "installed.json" ]] || continue
-        if ! component_known "${existing_id}" || ! component_installed "${existing_id}"; then
+        # A Core/no-pack selection intentionally skips the bundle/catalog.
+        # Reject unselected old packs before consulting that optional catalog.
+        if ! component_installed "${existing_id}" || ! component_known "${existing_id}"; then
             rm -rf "${existing}" \
                 "${INSTALL_DIR}/components/${existing_id}.incoming."* \
                 "${INSTALL_DIR}/components/${existing_id}.previous."*
