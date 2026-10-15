@@ -23,7 +23,14 @@ const expiresAt = exactPositiveInteger(args.get('expires-at') ?? String(issuedAt
 const channel = args.get('channel')
 const keyId = args.get('key-id')
 const privateKeyBase64 = process.env.SUI_RELEASE_SIGNING_PRIVATE_KEY_B64 ?? ''
-const minimumPanelVersion = normalizeVersion(fs.readFileSync('config/identity/version', 'utf8').trim())
+const sourceVersion = normalizeVersion(fs.readFileSync('config/identity/version', 'utf8').trim())
+const compatibility = JSON.parse(fs.readFileSync('scripts/release-compatibility.json', 'utf8'))
+if (version !== sourceVersion || compatibility.version !== sourceVersion) fail('release compatibility must match the exact source version')
+const minimumPanelVersion = normalizeVersion(compatibility.minimumPanelVersion)
+for (const field of ['minimumCoreSchema', 'maximumCoreSchema', 'targetCoreSchema', 'componentMinimumCoreSchema', 'componentMaximumCoreSchema']) {
+  if (!/^[0-9]+\.[0-9]+$/.test(compatibility[field] ?? '')) fail(`invalid release compatibility ${field}`)
+}
+if (!['automatic', 'manual-recovery'].includes(compatibility.rollbackClass)) fail('invalid release rollback class')
 const releaseId = `solovey-ui-${channel}-${sequence}`
 
 if (!['main', 'beta'].includes(channel)) fail('channel must be main or beta')
@@ -79,8 +86,8 @@ for (const entry of fs.readdirSync(componentsDir, { withFileTypes: true }).sort(
     id: item.id,
     version: normalizeComponentVersion(item.version),
     artifactSha256: componentCatalog.sha256,
-    minimumCoreSchema: '1.11',
-    maximumCoreSchema: '1.11',
+    minimumCoreSchema: compatibility.componentMinimumCoreSchema,
+    maximumCoreSchema: compatibility.componentMaximumCoreSchema,
   })
 }
 components.sort((left, right) => left.id.localeCompare(right.id))
@@ -96,15 +103,15 @@ const manifest = {
   deploymentRevision: digestSourceSet(['deploy/systemd', 'solovey-ui.service']),
   minimumPanelVersion,
   maximumPanelVersion: version,
-  minimumCoreSchema: '1.11',
-  maximumCoreSchema: '1.11',
-  targetCoreSchema: '1.11',
+  minimumCoreSchema: compatibility.minimumCoreSchema,
+  maximumCoreSchema: compatibility.maximumCoreSchema,
+  targetCoreSchema: compatibility.targetCoreSchema,
   brokerCapability: 'broker-capabilities-1.3',
   migrationSetDigest: digestSourceSet(['database/migration/steps']),
   releaseNotesDigest: sha256(fs.readFileSync('CHANGELOG.md')),
   restartClass: 'stack',
   rebootClass: 'operator-advisory',
-  rollbackClass: 'automatic',
+  rollbackClass: compatibility.rollbackClass,
   artifacts,
   components,
 }

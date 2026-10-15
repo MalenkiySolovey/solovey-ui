@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.4.0
+
+- Migrate to the sing-box 1.14.2 semantic baseline and the accepted original S-UI v1.6.4 compatibility boundary, with explicit maintained core, QUIC and AnyTLS integration sources.
+- Validate stored-state/schema 1.12 migration, DNS/cache/HTTP client/TLS and certificate state, private authenticated CoreRuntime operations, live sessions and deliberate maintenance.
+- Correct authenticated QUIC parent shutdown and selective termination, AnyTLS concurrency, Naive HTTP/3 lifecycle, WebSocket path/early-data handling and AES-128 AEAD2022 identity.
+- Add accepted Snell v5/v6 and mDNS/Resolved integration, URI/subscription/Clash compatibility, shared frontend changes and bounded auto-HTTPS classification.
+- Preserve backup/restore lifetime and recovery, native installer Full/Core/custom profile transitions and qualified platform/security contracts.
+- Prepare all existing release targets with Windows Full/Core symmetry, checksums, source archives, dependency notices, CycloneDX SBOM and exact source provenance. Physical OpenWrt x86 testing remains future targeted qualification.
+
 ## 2026.3.3
 
 - Updated the networking core to sing-box v1.13.18 with reviewed supporting dependencies and Cronet 150 native artifacts, preserving newer compatible security fixes.

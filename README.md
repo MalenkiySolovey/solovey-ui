@@ -19,7 +19,11 @@ components, Windows packages and Docker images; its default preflight mode build
 and verifies candidates without publishing. Archive targets are defined in
 `scripts/release-targets.json`. Naive/Cronet requires a supported target library;
 ARMv5, ARMv6 and s390x builds omit that protocol. All seven Linux targets retain
-full and core panel profiles.
+full and core panel profiles. Windows amd64 and arm64 also have Full/Core
+packages. Source archives, dependency license notices, a CycloneDX SBOM and
+provenance accompany each complete release. The core's official semantic
+baseline is sing-box v1.14.2; the maintained integration pins and patches are
+disclosed in [NOTICE](NOTICE.md) and `deploy/dependencies/`.
 The maintainer transaction is documented in
 [Release contract](.github/RELEASE_CONTRACT.md).
 
@@ -60,10 +64,10 @@ sudo solovey-ui doctor
 sudo solovey-ui status
 ```
 
-Install a specific release:
+Install a specific release after that version appears on the official releases page:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.3.2-beta.2
+bash <(curl -fsSL https://raw.githubusercontent.com/MalenkiySolovey/solovey-ui/main/install.sh) --version v2026.4.0
 ```
 
 Default paths:

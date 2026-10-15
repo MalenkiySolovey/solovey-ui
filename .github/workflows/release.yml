@@ -6,13 +6,18 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v2026.3.3"
+        default: "v2026.4.0"
         type: string
       preflight_only:
         description: "Validate and build release artifacts without publishing"
         required: true
         default: true
         type: boolean
+      source_commit:
+        description: "Exact product SHA for tagless preflight only; publication always requires its version tag"
+        required: false
+        default: ""
+        type: string
       resume_run_id:
         description: "Completed canonical run whose verified artifacts finish an interrupted publication"
         required: false
@@ -95,13 +100,21 @@ jobs:
       - name: Check out immutable product source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: refs/tags/${{ env.RELEASE_TAG_INPUT }}
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only && inputs.source_commit || format('refs/tags/{0}', env.RELEASE_TAG_INPUT) }}
 
       - name: Resolve immutable product identity
         id: product
+        env:
+          PREPARATION_SOURCE_COMMIT: ${{ inputs.source_commit }}
+          PREFLIGHT_ONLY: ${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only }}
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
         run: |
           set -euo pipefail
           COMMIT="$(git rev-parse HEAD)"
+          if [ -n "$PREPARATION_SOURCE_COMMIT" ]; then
+            [ "$PREFLIGHT_ONLY" = true ] && [ -z "$RESUME_RUN_ID" ] || { echo 'source_commit is permitted only for a fresh non-publishing preflight' >&2; exit 1; }
+            [[ "$PREPARATION_SOURCE_COMMIT" =~ ^[a-f0-9]{40}$ ]] && [ "$COMMIT" = "$PREPARATION_SOURCE_COMMIT" ] || { echo 'preflight requires the exact requested product SHA' >&2; exit 1; }
+          fi
           FINGERPRINT="$(node scripts/release-source.mjs .)"
           echo "commit=$COMMIT" >> "$GITHUB_OUTPUT"
           echo "fingerprint=$FINGERPRINT" >> "$GITHUB_OUTPUT"
@@ -122,6 +135,7 @@ jobs:
         run: node -e 'const fs=require("fs"); const targets=require("./scripts/release-targets.json"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "linux-matrix="+JSON.stringify({include:targets.linux})+"\n")'
 
       - name: Verify immutable publication identity before any registry write
+        if: github.event_name == 'push' || inputs.preflight_only == false
         env:
           GH_TOKEN: ${{ github.token }}
           PRODUCT_COMMIT: ${{ steps.product.outputs.commit }}
@@ -507,9 +521,13 @@ jobs:
             echo "profile=full"
             echo "version=${{ steps.build_meta.outputs.panel_version }}"
             echo "commit=${{ needs.release-preflight.outputs.product-commit }}"
+            echo "tree=$(git rev-parse HEAD^{tree})"
             echo "source_fingerprint=${{ steps.build_meta.outputs.source_fingerprint }}"
             echo "platform=linux/${{ matrix.platform }}"
             echo "go=$(go version)"
+            echo "compiler=$($CC --version | head -n1)"
+            echo "node=$(node --version)"
+            echo "npm=$(npm --version)"
             echo "sing_box=${{ steps.build_meta.outputs.sing_box_version }}"
             node scripts/quic-integration-provenance.mjs build-info
             node scripts/ssm-integration-provenance.mjs build-info
@@ -520,9 +538,13 @@ jobs:
             echo "profile=core"
             echo "version=${{ steps.build_meta.outputs.panel_version }}"
             echo "commit=${{ needs.release-preflight.outputs.product-commit }}"
+            echo "tree=$(git rev-parse HEAD^{tree})"
             echo "source_fingerprint=${{ steps.build_meta.outputs.source_fingerprint }}"
             echo "platform=linux/${{ matrix.platform }}"
             echo "go=$(go version)"
+            echo "compiler=$($CC --version | head -n1)"
+            echo "node=$(node --version)"
+            echo "npm=$(npm --version)"
             echo "sing_box=${{ steps.build_meta.outputs.sing_box_version }}"
             node scripts/quic-integration-provenance.mjs build-info
             node scripts/ssm-integration-provenance.mjs build-info
@@ -561,6 +583,37 @@ jobs:
             ./solovey-ui-core-linux-${{ matrix.platform }}.tar.gz
             ./solovey-ui-core-linux-${{ matrix.platform }}.tar.gz.sha256
           retention-days: 1
+
+  release-metadata:
+    name: Prepare source, SBOM and dependency notices
+    needs: release-preflight
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out immutable product source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ needs.release-preflight.outputs.product-commit }}
+      - name: Set up Go
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - name: Set up Node.js
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: frontend/.node-version
+      - name: Produce and verify immutable release disclosure
+        env:
+          PRODUCT_COMMIT: ${{ needs.release-preflight.outputs.product-commit }}
+        run: |
+          node scripts/release-metadata.mjs produce "$RUNNER_TEMP/release-metadata" "$PRODUCT_COMMIT"
+          node scripts/release-metadata.mjs verify "$RUNNER_TEMP/release-metadata" "$PRODUCT_COMMIT"
+      - name: Retain complete source and disclosure candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: complete-release-metadata
+          path: ${{ runner.temp }}/release-metadata/*
+          if-no-files-found: error
+          retention-days: 7
 
   assemble-linux:
     name: Assemble and verify complete Linux release
@@ -767,13 +820,14 @@ jobs:
 
   publish-linux:
     name: Publish complete verified release
-    needs: [release-preflight, assemble-linux, build-windows, build-docker, resume-candidate, test-installer, build-frontend, component-profile-checks, verify-openwrt]
+    needs: [release-preflight, assemble-linux, build-windows, build-docker, resume-candidate, test-installer, build-frontend, component-profile-checks, verify-openwrt, release-metadata]
     if: >-
       always() && !cancelled() &&
       (github.event_name == 'push' || inputs.preflight_only == false) &&
       needs.release-preflight.result == 'success' && needs.test-installer.result == 'success' &&
       needs.build-frontend.result == 'success' && needs.component-profile-checks.result == 'success' &&
       needs.verify-openwrt.result == 'success' &&
+      needs.release-metadata.result == 'success' &&
       ((inputs.resume_run_id != '' && needs.resume-candidate.result == 'success') ||
        (inputs.resume_run_id == '' && needs.assemble-linux.result == 'success' &&
         needs.build-windows.result == 'success' && needs.build-docker.result == 'success'))
@@ -806,12 +860,22 @@ jobs:
       - name: Download Windows candidates
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          pattern: solovey-ui-windows-*
+          pattern: solovey-ui*windows-*
           path: windows-assets
           merge-multiple: true
 
       - name: Verify complete Windows candidates
         run: node scripts/release-verify.mjs windows-assets "$RELEASE_TAG_INPUT" --windows
+
+      - name: Download source and disclosure candidate
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: complete-release-metadata
+          path: metadata-assets
+      - name: Verify complete source and disclosure candidate
+        env:
+          PRODUCT_COMMIT: ${{ needs.release-preflight.outputs.product-commit }}
+        run: node scripts/release-metadata.mjs verify metadata-assets "$PRODUCT_COMMIT"
 
       - name: Download complete OpenWrt candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
@@ -850,6 +914,7 @@ jobs:
             release-assets/*
             windows-assets/*
             openwrt-candidate/assets/*
+            metadata-assets/*
 
       - name: Publish fully uploaded immutable version
         env:
@@ -857,7 +922,7 @@ jobs:
           PRODUCT_COMMIT: ${{ needs.release-preflight.outputs.product-commit }}
           RELEASE_TAG: ${{ env.RELEASE_TAG_INPUT }}
         run: |
-          env GITHUB_SHA="$PRODUCT_COMMIT" node "$RUNNER_TEMP/release-publish-gate.mjs" uploaded "$RELEASE_TAG" release-assets windows-assets openwrt-candidate/assets
+          env GITHUB_SHA="$PRODUCT_COMMIT" node "$RUNNER_TEMP/release-publish-gate.mjs" uploaded "$RELEASE_TAG" release-assets windows-assets openwrt-candidate/assets metadata-assets
           PUBLISH_ARGS=(--draft=false --notes-file "$RUNNER_TEMP/release-notes.md")
           [[ "$RELEASE_TAG" == *-* ]] && PUBLISH_ARGS+=(--prerelease --latest=false)
           gh release edit "$RELEASE_TAG" "${PUBLISH_ARGS[@]}"

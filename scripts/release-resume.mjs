@@ -34,16 +34,17 @@ for (const [name, directory] of [
   ['complete-linux-release', 'release-assets'],
   ['solovey-ui-windows-amd64', 'windows-assets'],
   ['solovey-ui-windows-arm64', 'windows-assets'],
+  ['solovey-ui-core-windows-amd64', 'windows-assets'],
+  ['solovey-ui-core-windows-arm64', 'windows-assets'],
 ]) gh(['run', 'download', runID, '--repo', repository, '--name', name, '--dir', directory])
 
-const { verifyReleaseSet, verifyWindowsSet, targets } = await import(pathToFileURL(path.resolve('scripts/release-verify.mjs')))
+const { verifyReleaseSet, verifyWindowsSet, windowsAssetNames, targets } = await import(pathToFileURL(path.resolve('scripts/release-verify.mjs')))
 await verifyReleaseSet('release-assets', { version: tag, trustRootsBase64: process.env.SUI_RELEASE_TRUST_ROOTS_B64 })
 const envelope = JSON.parse(fs.readFileSync('release-assets/solovey-ui-release.json', 'utf8'))
 assert.ok(envelope.manifest.sequence > run.run_number * 1000)
 assert.ok(envelope.manifest.sequence <= run.run_number * 1000 + run.run_attempt)
 // Validate original checksum before canonicalizing only its binary-mode marker.
-for (const arch of targets.windows) {
-  const name = `solovey-ui-windows-${arch}.zip`
+for (const name of windowsAssetNames()) {
   const hash = crypto.createHash('sha256')
   for await (const chunk of fs.createReadStream(`windows-assets/${name}`)) hash.update(chunk)
   const digest = hash.digest('hex')
@@ -66,12 +67,14 @@ for target in targets['linux']:
   assert fields['commit']==commit and fields['source_fingerprint']==fingerprint and fields['version']==tag
   assert fields['profile']==profile and fields['platform']=='linux/'+target['platform']
 for arch in targets['windows']:
- with zipfile.ZipFile('windows-assets/solovey-ui-windows-'+arch+'.zip') as archive:
-  names=[name for name in archive.namelist() if name.replace(chr(92),'/')=='solovey-ui-windows/BUILD_INFO.txt']
-  assert len(names)==1
-  fields=dict(line.split('=',1) for line in archive.read(names[0]).decode().splitlines() if '=' in line)
-  assert fields['commit']==commit and fields['source_fingerprint']==fingerprint and fields['version']==tag
-  assert fields['platform']=='windows/'+arch and fields['profile']=='full'
+ for profile in targets['windowsProfiles']:
+  prefix='-core' if profile=='core' else ''
+  with zipfile.ZipFile('windows-assets/solovey-ui'+prefix+'-windows-'+arch+'.zip') as archive:
+   names=[name for name in archive.namelist() if name.replace(chr(92),'/')=='solovey-ui-windows/BUILD_INFO.txt']
+   assert len(names)==1
+   fields=dict(line.split('=',1) for line in archive.read(names[0]).decode().splitlines() if '=' in line)
+   assert fields['commit']==commit and fields['source_fingerprint']==fingerprint and fields['version']==tag
+   assert fields['platform']=='windows/'+arch and fields['profile']==profile
 `], { stdio: 'inherit' })
 
 const image = repository.toLowerCase()
