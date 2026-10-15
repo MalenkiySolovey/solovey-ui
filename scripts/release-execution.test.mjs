@@ -130,6 +130,7 @@ test('canonical OpenWrt packages and FriendlyWrt bytes are mandatory even during
 
 test('publication requires source disclosure and private Docker preflight retains verifiable OCI bytes', () => {
   const publisher = release.jobs['publish-linux']
+  assert.ok(release.jobs['build-docker'].needs.includes('release-metadata'), 'registry writes must wait for complete source/license disclosure')
   assert.ok(publisher.needs.includes('release-metadata'))
   assert.ok(publisher.if.includes("needs.release-metadata.result == 'success'"))
   assert.ok(publisher.steps.some(step => step.run?.includes('scripts/release-metadata.mjs verify metadata-assets')))

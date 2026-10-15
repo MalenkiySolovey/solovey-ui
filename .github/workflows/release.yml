@@ -48,7 +48,7 @@ env:
 jobs:
   build-docker:
     if: inputs.resume_run_id == ''
-    needs: [release-preflight, assemble-linux, build-windows, verify-openwrt]
+    needs: [release-preflight, assemble-linux, build-windows, verify-openwrt, release-metadata]
     uses: ./.github/workflows/docker.yml
     with:
       tag: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
