@@ -97,6 +97,11 @@ lockfile, including build tools and platform alternatives. Each npm archive is
 verified against SHA512 SRI; Go sources use authenticated module sums. License
 and copyright files retain their original bytes. The SBOM identifies the actual
 three maintained replacements separately from the official semantic baseline.
+The native libcronet source lock additionally includes the exact C++ source
+snapshot with a pinned archive SHA256 and size, and original Chromium/Naive and
+third-party license files. README.chromium license references are preserved with
+their original metadata. Native source and build-source commits remain distinct
+from the Go wrapper and prebuilt library module versions.
 The producer never edits frozen module files and normalizes archive metadata.
 All four assets and their checksums are verified before publication. They are
 outside the generic Linux/component update envelope's signature scope.

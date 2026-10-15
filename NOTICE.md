@@ -82,6 +82,15 @@ applicable. The Alpine Docker producer links the pinned static musl asset with
 LLVM and records its module, version and hash in `CRONET_INTEGRATION.json`.
 Generic Linux and OpenWrt producers also record their distinct pinned native
 toolchain authorities. These are packaging integrations of the recorded sources.
+The native libraries were built from cronet-go source
+`049f2909701ca088c9569f6b303bba5376a2b2ff`, whose Naive/Chromium source is
+`SagerNet/naiveproxy@72a06c9fca0e2d228588c7f3074bf7efff3ff686`.
+`deploy/dependencies/cronet-native-source.json` binds its complete source archive,
+original Chromium/Naive notices and README.chromium-declared third-party license
+files. That native source snapshot is included alongside the authenticated Go
+modules. The notice archive preserves the original texts and per-project license
+metadata, including platform and build alternatives. Retain the applicable BSD,
+Apache, LLVM, MPL, APSL and other bundled notices when redistributing native assets.
 
 ## Panel behavior references
 

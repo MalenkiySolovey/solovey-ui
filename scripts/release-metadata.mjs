@@ -45,6 +45,11 @@ export async function verifyMetadata(directory, commit) {
   assert.equal(bom.bomFormat, 'CycloneDX')
   assert.equal(bom.metadata.component.version, p.version)
   assert.equal(bom.metadata.component.properties.find(x => x.name === 'solovey:sourceCommit').value, commit)
+  const native = json('deploy/dependencies/cronet-native-source.json')
+  assert.deepEqual(p.nativeSource, native)
+  const nativeComponent = bom.components.find(c => c.name === 'SagerNet/naiveproxy')
+  assert.equal(nativeComponent?.version, native.nativeSource.commit)
+  assert.equal(nativeComponent.hashes[0].content, native.nativeSource.archiveSha256)
   for (const integration of p.integrations) {
     const component = bom.components.find(c => c.name === integration.replacement.module)
     assert.equal(component?.version, integration.replacement.version)
@@ -106,6 +111,53 @@ async function produce(directory, commit) {
         else if (e.isFile() && /^(?:licen[cs]e|copying|notice|copyright)(?:[._-]|$)/i.test(e.name)) addNotice(identity, name, fs.readFileSync(path.join(base, name)))
       }
     }
+    // Native libcronet Go modules contain prebuilt libraries and their wrapper
+    // license. Include the corresponding pinned C++ source and original
+    // Chromium/third-party notices as a separate, authenticated source input.
+    const native = json('deploy/dependencies/cronet-native-source.json')
+    assert.equal(native.schema, 'solovey.native-cronet-source/v1')
+    assert.match(native.nativeSource.commit, /^[a-f0-9]{40}$/)
+    assert.equal(native.nativeSource.archiveURL, `https://codeload.github.com/SagerNet/naiveproxy/tar.gz/${native.nativeSource.commit}`)
+    const libraries = selected.filter(m => m.Path.startsWith('github.com/sagernet/cronet-go/lib/'))
+    assert.ok(libraries.length > 0 && libraries.every(m => m.Version === native.goModuleVersion), 'native source lock differs from resolved library modules')
+    const nativeDirectory = path.join(source, 'dependency-sources', 'native')
+    fs.mkdirSync(nativeDirectory, { recursive: true })
+    const nativeName = `naiveproxy-${native.nativeSource.commit}.tar.gz`, nativeFile = path.join(nativeDirectory, nativeName)
+    const response = await fetch(native.nativeSource.archiveURL, { redirect: 'error', signal: AbortSignal.timeout(300000) })
+    assert.ok(response.ok, `native source HTTP ${response.status}`)
+    const nativeHash = crypto.createHash('sha256'), fd = fs.openSync(nativeFile, 'wx')
+    let nativeSize = 0
+    try {
+      for await (const bytes of response.body) {
+        nativeSize += bytes.length
+        assert.ok(nativeSize <= native.nativeSource.archiveSize, 'native source archive exceeds its pinned size')
+        nativeHash.update(bytes); fs.writeSync(fd, bytes)
+      }
+    } finally { fs.closeSync(fd) }
+    assert.equal(nativeSize, native.nativeSource.archiveSize)
+    assert.equal(nativeHash.digest('hex'), native.nativeSource.archiveSha256)
+    const nativeIdentity = `native:SagerNet/naiveproxy@${native.nativeSource.commit}`
+    const nativeEntries = new Map()
+    for (const entry of native.notices) {
+      assert.ok(!entry.path.includes('..') && !path.isAbsolute(entry.path))
+      nativeEntries.set(native.nativeSource.archivePrefix + entry.path, entry)
+    }
+    const nativeOrder = run('tar', ['-tzf', nativeFile]).trim().split('\n').filter(name => nativeEntries.has(name))
+    assert.equal(nativeOrder.length, native.notices.length)
+    const nativeNotices = execFileSync('tar', ['-xOf', nativeFile, '--', ...nativeOrder], { maxBuffer: 8 << 20 })
+    let offset = 0
+    for (const name of nativeOrder) {
+      const entry = nativeEntries.get(name), bytes = nativeNotices.subarray(offset, offset + entry.size)
+      assert.equal(bytes.length, entry.size); assert.equal(sha(bytes), entry.sha256)
+      addNotice(nativeIdentity, entry.path, bytes)
+      offset += entry.size
+    }
+    assert.equal(offset, nativeNotices.length)
+    sourceRecords.push({ ecosystem: 'native-git', name: 'SagerNet/naiveproxy', version: native.nativeSource.commit, source: `dependency-sources/native/${nativeName}`, sha256: native.nativeSource.archiveSha256, distribution: native.nativeSource.archiveURL })
+    components.push({ type: 'library', 'bom-ref': nativeIdentity, name: 'SagerNet/naiveproxy', version: native.nativeSource.commit, scope: 'optional', licenses: [{ license: { id: 'BSD-3-Clause' } }], hashes: [{ alg: 'SHA-256', content: native.nativeSource.archiveSha256 }], externalReferences: [{ type: 'vcs', url: `${native.nativeSource.repository}/tree/${native.nativeSource.commit}` }], properties: [{ name: 'solovey:nativeVersion', value: native.nativeVersion }, { name: 'solovey:nativeLicenseScope', value: native.licenseScope }] })
+    writeJSON(path.join(source, 'NATIVE_SOURCE_DISCLOSURE.json'), native)
+    writeJSON(path.join(notices, 'NATIVE_SOURCE_DISCLOSURE.json'), native)
+    console.log(`Authenticated native source snapshot and ${native.notices.length} original notices`)
     for (const module of selected.filter(m => !m.Main)) {
       const actual = module.Replace ?? module
       const bytes = downloaded.find(m => m.Path === actual.Path && m.Version === actual.Version)
@@ -154,7 +206,7 @@ async function produce(directory, commit) {
     components.sort((a, b) => a['bom-ref'].localeCompare(b['bom-ref']))
     const app = { type: 'application', 'bom-ref': `solovey-ui@${version}`, name: 'solovey-ui', version, licenses: [{ license: { id: 'GPL-3.0-only' } }], properties: [{ name: 'solovey:sourceCommit', value: commit }, { name: 'solovey:sourceTree', value: tree }, { name: 'solovey:sourceFingerprint', value: fingerprint }] }
     dependencies.push({ ref: app['bom-ref'], dependsOn: components.map(c => c['bom-ref']) })
-    const bom = { bomFormat: 'CycloneDX', specVersion: '1.6', version: 1, metadata: { timestamp, component: app, properties: [{ name: 'solovey:inventoryScope', value: 'Complete resolved Go module graph and npm lockfile source inventory; includes platform alternatives and build tools, not a claim that every module is linked into every artifact.' }] }, components, dependencies }
+    const bom = { bomFormat: 'CycloneDX', specVersion: '1.6', version: 1, metadata: { timestamp, component: app, properties: [{ name: 'solovey:inventoryScope', value: 'Complete resolved Go module graph, npm lockfile and pinned native C++ source inventory; includes platform alternatives and build tools, not a claim that every source is linked into every artifact.' }] }, components, dependencies }
     writeJSON(path.join(directory, 'solovey-ui-sbom.cdx.json'), bom)
     sourceRecords.sort((a, b) => a.source.localeCompare(b.source))
     noticeRecords.sort((a, b) => a.path.localeCompare(b.path))
@@ -171,7 +223,7 @@ async function produce(directory, commit) {
     }
     const subjects = []
     for (const name of metadataNames.filter(n => n !== 'solovey-ui-provenance.json')) subjects.push({ name, sha256: await digestFile(path.join(directory, name)), size: fs.statSync(path.join(directory, name)).size })
-    writeJSON(path.join(directory, 'solovey-ui-provenance.json'), { schema: 'solovey.release-provenance/v1', version, source: { repository: 'https://github.com/MalenkiySolovey/solovey-ui', commit, tree, fingerprint }, officialSemanticBaseline: integrations[0].semanticBaseline, officialByteIdentical: false, integrations, toolchain: { go: run('go', ['version']).trim(), node: process.version, npm: run('npm', ['--version']).trim() }, builder: '.github/workflows/release.yml:release-metadata; scripts/release-metadata.mjs', inventory: { goModules: selected.length - 1, npmPackages: npmSources.size, dependencyNotices: noticeRecords.length }, compatibility: json('scripts/release-compatibility.json'), subjects })
+    writeJSON(path.join(directory, 'solovey-ui-provenance.json'), { schema: 'solovey.release-provenance/v1', version, source: { repository: 'https://github.com/MalenkiySolovey/solovey-ui', commit, tree, fingerprint }, officialSemanticBaseline: integrations[0].semanticBaseline, officialByteIdentical: false, integrations, nativeSource: native, toolchain: { go: run('go', ['version']).trim(), node: process.version, npm: run('npm', ['--version']).trim() }, builder: '.github/workflows/release.yml:release-metadata; scripts/release-metadata.mjs', inventory: { goModules: selected.length - 1, npmPackages: npmSources.size, nativeSourceSnapshots: 1, dependencyNotices: noticeRecords.length }, compatibility: json('scripts/release-compatibility.json'), subjects })
     for (const name of metadataNames) fs.writeFileSync(path.join(directory, `${name}.sha256`), `${await digestFile(path.join(directory, name))}  ${name}\n`)
     assert.equal(run(process.execPath, ['scripts/release-source.mjs', root]).trim(), fingerprint, 'producer changed frozen source')
     await verifyMetadata(directory, commit)
