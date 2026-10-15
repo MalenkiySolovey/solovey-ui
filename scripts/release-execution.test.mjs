@@ -73,6 +73,22 @@ test('Windows producer writes canonical checksum bytes and verifies the pair bef
   assert.equal(gate.if, undefined)
 })
 
+test('Windows metadata retains clean product identity across profile generation', () => {
+  const steps = read('windows').jobs['build-windows'].steps
+  const identityIndex = steps.findIndex(step => step.id === 'source_identity')
+  assert.ok(identityIndex >= 0, 'resolve product identity before generated profile inputs change')
+  const identity = steps[identityIndex]
+  assert.equal(identity.if, undefined)
+  assert.equal(identity['continue-on-error'], undefined)
+  assert.match(identity.run, /git status --porcelain/)
+  assert.match(identity.run, /node scripts\/release-source\.mjs/)
+  const generatedIndex = steps.findIndex(step => step.run?.includes('scripts/generate-component-imports.mjs'))
+  assert.ok(identityIndex < generatedIndex, 'Core generation changes tracked Linux-only imports')
+  const metadata = steps.find(step => step.run?.includes('source_fingerprint='))
+  assert.ok(metadata.run.includes('source_fingerprint=${{ steps.source_identity.outputs.fingerprint }}'))
+  assert.ok(!metadata.run.includes('source_fingerprint=$(node'), 'recovery requires the original clean fingerprint')
+})
+
 test('interrupted publication recovery is gated and never rebuilds or overwrites registry', () => {
   assert.equal(release.jobs['build-linux'].if, "inputs.resume_run_id == ''")
   assert.equal(release.jobs['build-docker'].if, "inputs.resume_run_id == ''")

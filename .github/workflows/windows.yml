@@ -142,6 +142,14 @@ jobs:
         with:
           node-version-file: frontend/.node-version
 
+      - name: Resolve immutable Windows source identity
+        id: source_identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          [ -z "$(git status --porcelain)" ] || { echo "Windows source must be clean before profile generation" >&2; exit 1; }
+          echo "fingerprint=$(node scripts/release-source.mjs .)" >> "$GITHUB_OUTPUT"
+
       - name: Publish verified frontend assets
         run: node scripts/frontend-assets.mjs publish --dist .release/frontend --destination web/html
 
@@ -196,7 +204,7 @@ jobs:
             echo "version=$RELEASE_TAG_INPUT"
             echo "commit=$(git rev-parse HEAD)"
             echo "tree=$(git rev-parse HEAD^{tree})"
-            echo "source_fingerprint=$(node scripts/release-source.mjs .)"
+            echo "source_fingerprint=${{ steps.source_identity.outputs.fingerprint }}"
             echo "platform=windows/${{ matrix.arch }}"
             echo "profile=${{ matrix.profile }}"
             echo "go=$(go version)"
