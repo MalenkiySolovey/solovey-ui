@@ -64,7 +64,10 @@ func TestDatabaseTransferProductionMiddlewarePreservesTransportDeadlines(t *test
 			}
 			t.Cleanup(s.Close)
 			s.Client().Jar = auth.Client().Jar
-			s.Client().Timeout = 10 * time.Second
+			// The client bounds observation; the one-second server timeout and
+			// native multi-minute deadline below are the behavior under test.
+			// Full SQLite export can exceed ten seconds on a slow Windows host.
+			s.Client().Timeout = 2 * time.Minute
 			request, _ := http.NewRequestWithContext(t.Context(), "GET", s.URL+"/qualification+v1/api/getdb", nil)
 			request.Header.Set("Accept-Encoding", "gzip")
 			response, err := s.Client().Do(request)
