@@ -48,6 +48,15 @@ const fs = require('node:fs')
 const envelope = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'))
 if (envelope.schema !== 'solovey.release/v1') throw new Error('unexpected envelope schema')
 if (envelope.algorithm !== 'Ed25519') throw new Error('unexpected signature algorithm')
+const compatibility = JSON.parse(fs.readFileSync('scripts/release-compatibility.json', 'utf8'))
+if (envelope.manifest.minimumPanelVersion !== compatibility.minimumPanelVersion ||
+    envelope.manifest.minimumCoreSchema !== '1.12' || envelope.manifest.maximumCoreSchema !== '1.12' ||
+    envelope.manifest.targetCoreSchema !== '1.12' || envelope.manifest.rollbackClass !== 'manual-recovery') {
+  throw new Error('signed schema upgrade/recovery contract is incorrect')
+}
+if (envelope.manifest.components.some(item => item.minimumCoreSchema !== '1.12' || item.maximumCoreSchema !== '1.12')) {
+  throw new Error('component catalog must match the target schema')
+}
 if (envelope.manifest.artifacts.length !== 3) throw new Error('unexpected artifact count')
 if (envelope.manifest.components.length !== 1 || envelope.manifest.components[0].id !== 'telegram') {
   throw new Error('unexpected component inventory')

@@ -14,8 +14,11 @@ export const linuxAssetNames = () => [
   'solovey-ui-components.tar.gz',
 ].sort()
 
+export const windowsAssetNames = () => targets.windows.flatMap(arch =>
+  targets.windowsProfiles.map(profile => `solovey-ui${profile === 'core' ? '-core' : ''}-windows-${arch}.zip`)).sort()
+
 export async function verifyWindowsSet(directory) {
-  const names = targets.windows.map(arch => `solovey-ui-windows-${arch}.zip`).sort()
+  const names = windowsAssetNames()
   const expected = names.flatMap(name => [name, `${name}.sha256`]).sort()
   if (JSON.stringify(fs.readdirSync(directory).sort()) !== JSON.stringify(expected)) throw new Error('Windows release directory is incomplete or contains extra assets')
   for (const name of names) {

@@ -18,7 +18,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v2026.3.3"
+        default: "v2026.4.0"
         type: string
       preflight_only:
         description: "Build Windows release package without publishing"
@@ -65,24 +65,39 @@ jobs:
           cd frontend
           npm ci
           SOLOVEY_UI_PROFILE=full npm run build
+          cp -a dist ../.release-frontend-full
+          SOLOVEY_UI_PROFILE=core npm run build
+          cp -a dist ../.release-frontend-core
 
       - name: Check full frontend profile
-        run: node scripts/check-frontend-profile.mjs --profile full --dist frontend/dist
+        run: |
+          node scripts/check-frontend-profile.mjs --profile full --dist .release-frontend-full
+          node scripts/check-frontend-profile.mjs --profile core --dist .release-frontend-core
 
       - name: Upload frontend build artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: frontend-dist
-          path: frontend/dist
+          path: .release-frontend-full
           include-hidden-files: true
           retention-days: 1
 
+      - name: Upload core frontend build artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: frontend-core-dist
+          path: .release-frontend-core
+          include-hidden-files: true
+          retention-days: 7
+
   build-windows:
     needs: build-frontend
-    name: Build-windows-${{ matrix.arch }}
+    name: Build-windows-${{ matrix.arch }}-${{ matrix.profile }}
     strategy:
       fail-fast: false
       matrix:
+        arch: [amd64, arm64]
+        profile: [full, core]
         include:
           - { arch: amd64, runner: windows-latest, cgo: "1" }
           - { arch: arm64, runner: windows-11-arm, cgo: "1" }
@@ -113,7 +128,7 @@ jobs:
       - name: Download frontend build artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          name: frontend-dist
+          name: ${{ matrix.profile == 'core' && 'frontend-core-dist' || 'frontend-dist' }}
           path: .release/frontend
 
       - name: Set up Go
@@ -167,8 +182,11 @@ jobs:
           # packaging so a CGO-disabled stub can never become a release asset.
           go test ./database/sqlite
 
-          node scripts/generate-component-imports.mjs --profile full --out app/components_generated.go
-          go build -trimpath -buildvcs=false -ldflags="-buildid= -w -s -checklinkname=0 -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=$SUI_RELEASE_TRUST_ROOTS_B64" -tags "${{ env.TAGS }}" -o sui.exe main.go
+          node scripts/check-frontend-profile.mjs --profile "${{ matrix.profile }}" --dist .release/frontend
+          node scripts/generate-component-imports.mjs --profile "${{ matrix.profile }}"
+          BUILD_TAGS="${{ env.TAGS }}"
+          [ "${{ matrix.profile }}" != core ] || BUILD_TAGS="$BUILD_TAGS,minimal"
+          go build -trimpath -buildvcs=false -ldflags="-buildid= -w -s -checklinkname=0 -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=$SUI_RELEASE_TRUST_ROOTS_B64" -tags "$BUILD_TAGS" -o sui.exe main.go
           file sui.exe
 
           mkdir solovey-ui-windows
@@ -177,9 +195,15 @@ jobs:
           {
             echo "version=$RELEASE_TAG_INPUT"
             echo "commit=$(git rev-parse HEAD)"
+            echo "tree=$(git rev-parse HEAD^{tree})"
             echo "source_fingerprint=$(node scripts/release-source.mjs .)"
             echo "platform=windows/${{ matrix.arch }}"
-            echo "profile=full"
+            echo "profile=${{ matrix.profile }}"
+            echo "go=$(go version)"
+            echo "compiler=$($CC --version | head -n1)"
+            echo "node=$(node --version)"
+            echo "npm=$(npm --version)"
+            echo "sing_box=$(go list -m -f '{{.Version}}' github.com/sagernet/sing-box)"
             node scripts/quic-integration-provenance.mjs build-info
             node scripts/ssm-integration-provenance.mjs build-info
             node scripts/anytls-integration-provenance.mjs build-info
@@ -206,7 +230,7 @@ jobs:
         run: |
           Compress-Archive `
             -Path solovey-ui-windows `
-            -DestinationPath "solovey-ui-windows-${{ matrix.arch }}.zip" `
+            -DestinationPath "solovey-ui${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}.zip" `
             -CompressionLevel Optimal `
             -Force
 
@@ -214,12 +238,12 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: |
-          zip -r "solovey-ui-windows-${{ matrix.arch }}.zip" solovey-ui-windows
+          zip -r "solovey-ui${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}.zip" solovey-ui-windows
 
       - name: Write package checksum
         shell: bash
         env:
-          ARCHIVE: solovey-ui-windows-${{ matrix.arch }}.zip
+          ARCHIVE: solovey-ui${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}.zip
         run: |
           node --input-type=module - <<'NODE'
           import fs from 'node:fs';
@@ -233,11 +257,11 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: solovey-ui-windows-${{ matrix.arch }}
+          name: solovey-ui${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}
           path: |
-            ./solovey-ui-windows-${{ matrix.arch }}.zip
-            ./solovey-ui-windows-${{ matrix.arch }}.zip.sha256
-          retention-days: 1
+            ./solovey-ui${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}.zip
+            ./solovey-ui${{ matrix.profile == 'core' && '-core' || '' }}-windows-${{ matrix.arch }}.zip.sha256
+          retention-days: 7
 
   verify-windows:
     needs: build-windows
@@ -250,7 +274,7 @@ jobs:
       - name: Download Windows candidates
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          pattern: solovey-ui-windows-*
+          pattern: solovey-ui*windows-*
           path: windows-assets
           merge-multiple: true
       - name: Verify complete Windows candidates before publication eligibility

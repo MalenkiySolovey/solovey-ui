@@ -18,7 +18,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v2026.3.3"
+        default: "v2026.4.0"
         type: string
       preflight_only:
         description: "Build release images without publishing"
@@ -114,18 +114,40 @@ jobs:
 
       - name: Preflight Docker image
         if: inputs.preflight_only == true
+        id: preflight
         uses: docker/build-push-action@f9f3042f7e2789586610d6e8b85c8f03e5195baf # v7
         with:
           context: .
           file: Dockerfile
           platforms: ${{ matrix.platform }}
           push: false
+          outputs: type=oci,dest=${{ runner.temp }}/solovey-ui-docker-${{ matrix.platform_name }}.tar
+          sbom: true
+          provenance: mode=max
           labels: org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
           tags: ${{ steps.image.outputs.name }}:preflight-${{ matrix.platform_name }}
           build-args: |
             SUI_RELEASE_TRUST_ROOTS_B64=${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
           cache-from: type=gha,scope=docker-${{ matrix.platform_name }}
           cache-to: type=gha,mode=max,scope=docker-${{ matrix.platform_name }}
+
+      - name: Seal private OCI candidate
+        if: inputs.preflight_only == true
+        env:
+          OCI_CANDIDATE: ${{ runner.temp }}/solovey-ui-docker-${{ matrix.platform_name }}.tar
+        run: |
+          cd "$RUNNER_TEMP"
+          sha256sum "$(basename "$OCI_CANDIDATE")" > "$(basename "$OCI_CANDIDATE").sha256"
+      - name: Retain private OCI candidate
+        if: inputs.preflight_only == true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: solovey-ui-docker-${{ matrix.platform_name }}
+          path: |
+            ${{ runner.temp }}/solovey-ui-docker-${{ matrix.platform_name }}.tar
+            ${{ runner.temp }}/solovey-ui-docker-${{ matrix.platform_name }}.tar.sha256
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Build and push Docker image by digest
         if: inputs.preflight_only == false
@@ -136,6 +158,8 @@ jobs:
           file: Dockerfile
           platforms: ${{ matrix.platform }}
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+          sbom: true
+          provenance: mode=max
           labels: org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
           tags: ${{ steps.image.outputs.name }}
           build-args: |

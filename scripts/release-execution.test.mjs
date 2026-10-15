@@ -23,7 +23,7 @@ test('CI and publication execute the native installer ownership contract', () =>
 test('orchestrator is validated before immutable product checkout and resolution', () => {
   const job = release.jobs['release-preflight']
   assert.deepEqual(checkouts(job).map(step => step.with.ref), [
-    '${{ github.sha }}', 'refs/tags/${{ env.RELEASE_TAG_INPUT }}',
+    '${{ github.sha }}', "${{ github.event_name == 'workflow_dispatch' && inputs.preflight_only && inputs.source_commit || format('refs/tags/{0}', env.RELEASE_TAG_INPUT) }}",
   ])
   const validation = job.steps.findIndex(step => step.run?.includes('release-execution.test.mjs'))
   const product = job.steps.findIndex(step => step.name === 'Check out immutable product source')
@@ -32,8 +32,12 @@ test('orchestrator is validated before immutable product checkout and resolution
   assert.match(job.steps[resolution].run, /git rev-parse HEAD/)
   assert.match(job.steps[resolution].run, /node scripts\/release-source.mjs/)
   const gate = job.steps.find(step => step.run?.includes('release-publish-gate.mjs" before'))
-  assert.equal(gate.if, undefined)
+  assert.equal(gate.if, "github.event_name == 'push' || inputs.preflight_only == false")
   assert.equal(gate.env.PRODUCT_COMMIT, '${{ steps.product.outputs.commit }}')
+  const sourceSelection = job.steps[resolution]
+  assert.ok(sourceSelection.run.includes('[ "$PREFLIGHT_ONLY" = true ] && [ -z "$RESUME_RUN_ID" ]'))
+  assert.ok(sourceSelection.run.includes('[ "$COMMIT" = "$PREPARATION_SOURCE_COMMIT" ]'))
+  assert.ok(sourceSelection.run.includes('^[a-f0-9]{40}$'))
 })
 
 test('every product checkout and reusable build is bound to resolved product source', () => {
@@ -122,4 +126,21 @@ test('canonical OpenWrt packages and FriendlyWrt bytes are mandatory even during
   assert.ok(verify.steps.some(step => step.run?.includes('cp deploy/friendlywrt/deployment-storage.json')))
   assert.ok(release.jobs['publish-linux'].if.includes("needs.verify-openwrt.result == 'success'"))
   assert.ok(release.jobs['build-docker'].needs.includes('verify-openwrt'))
+})
+
+test('publication requires source disclosure and private Docker preflight retains verifiable OCI bytes', () => {
+  const publisher = release.jobs['publish-linux']
+  assert.ok(release.jobs['build-docker'].needs.includes('release-metadata'), 'registry writes must wait for complete source/license disclosure')
+  assert.ok(publisher.needs.includes('release-metadata'))
+  assert.ok(publisher.if.includes("needs.release-metadata.result == 'success'"))
+  assert.ok(publisher.steps.some(step => step.run?.includes('scripts/release-metadata.mjs verify metadata-assets')))
+  assert.ok(publisher.steps.find(step => step.uses?.startsWith('softprops/action-gh-release@')).with.files.includes('metadata-assets/*'))
+  const docker = read('docker').jobs.build.steps.find(step => step.name === 'Preflight Docker image')
+  assert.equal(docker.with.push, false)
+  assert.ok(docker.with.outputs.startsWith('type=oci,'))
+  assert.equal(docker.with.sbom, true)
+  assert.equal(docker.with.provenance, 'mode=max')
+  const windows = read('windows').jobs['build-windows'].strategy.matrix
+  assert.deepEqual(windows.arch, ['amd64', 'arm64'])
+  assert.deepEqual(windows.profile, ['full', 'core'])
 })

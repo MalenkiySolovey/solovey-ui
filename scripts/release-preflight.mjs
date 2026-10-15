@@ -23,9 +23,9 @@ const allowedRootFields = new Set([
 
 export function validateReleaseTrain(version, train) {
   // Both channels require an explicit, coherent release policy.
-  if (!['2026.3.2', '2026.3.3'].includes(train?.candidateBase)) throw new Error('release train requires a reviewed policy transition')
+  if (!['2026.3.2', '2026.3.3', '2026.4.0'].includes(train?.candidateBase)) throw new Error('release train requires a reviewed policy transition')
   if (train.stage === 'stable') {
-    const previousStable = train.candidateBase === '2026.3.2' ? '2026.3.1' : '2026.3.2'
+    const previousStable = { '2026.3.2': '2026.3.1', '2026.3.3': '2026.3.2', '2026.4.0': '2026.3.3' }[train.candidateBase]
     const acceptedPrerelease = train.candidateBase === '2026.3.2' ? '2026.3.2-beta.10' : null
     if (train.stableBaseline !== train.candidateBase || train.previousStable !== previousStable ||
         train.acceptedPrerelease !== acceptedPrerelease || !Array.isArray(train.pendingAcceptance) ||

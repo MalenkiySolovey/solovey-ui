@@ -5,7 +5,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import test from 'node:test'
-import { linuxAssetNames, verifyReleaseSet, verifyWindowsSet } from './release-verify.mjs'
+import { linuxAssetNames, windowsAssetNames, verifyReleaseSet, verifyWindowsSet } from './release-verify.mjs'
 
 function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'solovey-release-contract-'))
@@ -83,11 +83,12 @@ test('even a signed wrong role, wrong version or expired envelope is rejected', 
   await assert.rejects(verifyReleaseSet(dir, options), /role\/target/)
 })
 
-test('both Windows archives and their exact checksum bindings are mandatory', async t => {
+test('Windows full/core archives and their exact checksum bindings are mandatory', async t => {
   const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'solovey-windows-inventory-'))
   t.after(() => fs.rmSync(directory, { recursive: true, force: true }))
   // Inventory/digest fixtures, never executable release candidates.
-  const names = ['solovey-ui-windows-amd64.zip', 'solovey-ui-windows-arm64.zip']
+  const names = windowsAssetNames()
+  assert.equal(names.length, 4)
   for (const name of names) { fs.writeFileSync(path.join(directory, name), Buffer.alloc(24, 1)); checksum(directory, name) }
   assert.deepEqual(await verifyWindowsSet(directory), names)
   fs.appendFileSync(path.join(directory, names[1]), 'tampered')

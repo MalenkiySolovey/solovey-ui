@@ -54,6 +54,13 @@ test('accepted stable patch rejects other versions and incomplete promotion', ()
   }
 })
 
+test('planned 2026.4.0 release requires the exact reviewed transition from 2026.3.3', () => {
+  const train = { stableBaseline: '2026.4.0', candidateBase: '2026.4.0', stage: 'stable', previousStable: '2026.3.3', acceptedPrerelease: null, pendingAcceptance: [] }
+  assert.doesNotThrow(() => validateReleaseTrain('2026.4.0', train))
+  for (const version of ['2026.3.3', '2026.3.4', '2026.4.0-rc.1', '2026.4.1']) assert.throws(() => validateReleaseTrain(version, train))
+  for (const mutation of [{ previousStable: '2026.3.2' }, { stableBaseline: '2026.3.3' }, { pendingAcceptance: ['migration'] }, { acceptedPrerelease: '2026.4.0-rc.1' }, { candidateBase: '2026.5.0' }]) assert.throws(() => validateReleaseTrain('2026.4.0', { ...train, ...mutation }))
+})
+
 function fixture(overrides = {}) {
   const { privateKey, publicKey } = generateKeyPairSync('ed25519')
   const now = new Date('2026-08-15T00:00:00Z')

@@ -1,0 +1,10 @@
+{
+  "version": "2026.4.0",
+  "minimumPanelVersion": "2026.4.0",
+  "minimumCoreSchema": "1.12",
+  "maximumCoreSchema": "1.12",
+  "targetCoreSchema": "1.12",
+  "componentMinimumCoreSchema": "1.12",
+  "componentMaximumCoreSchema": "1.12",
+  "rollbackClass": "manual-recovery"
+}

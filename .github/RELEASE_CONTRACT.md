@@ -52,7 +52,7 @@ Release checklist:
 Linux has full and core archives for amd64, arm64, armv7, armv6, armv5, 386 and
 s390x, plus one component bundle. Every archive has an exact SHA-256 sidecar.
 `solovey-ui-release.json` and its checksum bind the complete Linux update set.
-Windows ships amd64 and arm64 ZIP packages with checksums; the operator-managed
+Windows ships amd64 and arm64 full/core ZIP packages with checksums; the operator-managed
 Docker output covers amd64 and arm64. RISC-V is not a current release target.
 
 `release.yml` coordinates the transaction. Its Windows reusable build never
@@ -62,6 +62,11 @@ Publication verifies the immutable tag against the tested source before any
 registry write. Release runs are serialized so channel updates have one writer.
 After Windows and Linux are ready, the Docker owner builds both image targets;
 only publication mode pushes their digests and complete multi-platform manifest.
+Preflight retains private OCI archives, SBOM and build provenance for both
+Docker architectures. A manual preflight can select one exact forty-character
+`source_commit` before a tag exists. That input is rejected in publication or
+recovery mode; publication still requires the immutable version tag and the
+unchanged pre-registry publication gate.
 The version Release is uploaded as a draft with both Linux and Windows files and
 becomes public only after upload succeeds. The signed channel transport is
 updated afterwards. A transport failure requires bounded recovery of the same
@@ -75,6 +80,31 @@ Use `node scripts/release-verify.mjs <windows-assets> <tag> --windows` for the
 Windows inventory/checksum gate. Production signing keys remain workflow-only.
 Local signature fixtures demonstrate cryptographic behavior without establishing
 production trust. Real candidates embed the configured public roots.
+
+`scripts/release-compatibility.json` owns the reviewed update range and target
+schema for the exact source version. Signed self-update admission starts at
+panel 2026.4.0/schema 1.12, with target and component packs at schema 1.12.
+Published v2026.3.3 retains its exact 1.11 admission guard; crossing that schema
+boundary uses the normal operator-managed installer/package/container path.
+The signed envelope declares manual recovery. Keep a protected pre-upgrade
+backup; an older binary must not open migrated state.
+
+`scripts/release-metadata.mjs` produces the canonical source archive, dependency
+notice archive, CycloneDX SBOM and provenance assets listed in
+`scripts/release-targets.json`. The source archive contains the exact Git tree
+and immutable source archives for the resolved Go graph and complete npm
+lockfile, including build tools and platform alternatives. Each npm archive is
+verified against SHA512 SRI; Go sources use authenticated module sums. License
+and copyright files retain their original bytes. The SBOM identifies the actual
+three maintained replacements separately from the official semantic baseline.
+The native libcronet source lock additionally includes the exact C++ source
+snapshot with a pinned archive SHA256 and size, and original Chromium/Naive and
+third-party license files. README.chromium license references are preserved with
+their original metadata. Native source and build-source commits remain distinct
+from the Go wrapper and prebuilt library module versions.
+The producer never edits frozen module files and normalizes archive metadata.
+All four assets and their checksums are verified before publication. They are
+outside the generic Linux/component update envelope's signature scope.
 
 The Linux/component packagers normalize ownership, modes, ordering, timestamps
 and gzip headers. Rebuilding identical inputs from independent roots must yield
