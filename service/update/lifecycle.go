@@ -17,6 +17,7 @@ import (
 	configupdate "github.com/MalenkiySolovey/solovey-ui/config/update"
 	"github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/database/schema"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	componentprofile "github.com/MalenkiySolovey/solovey-ui/internal/components/profile"
 	operationcoordination "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
@@ -840,9 +841,9 @@ func validateManifestCompatibility(manifest release.Manifest) error {
 	if !minimumPanelOK || !maximumPanelOK || minimumPanelComparison < 0 || maximumPanelComparison > 0 {
 		return errors.New("release panel version range is incompatible")
 	}
-	minimumComparison, minimumOK := versionpolicy.CompareVersions(manifest.MinimumCoreSchema, "1.11")
-	maximumComparison, maximumOK := versionpolicy.CompareVersions(manifest.MaximumCoreSchema, "1.11")
-	targetComparison, targetOK := versionpolicy.CompareVersions(manifest.TargetCoreSchema, "1.11")
+	minimumComparison, minimumOK := versionpolicy.CompareVersions(manifest.MinimumCoreSchema, schema.CurrentCoreVersion)
+	maximumComparison, maximumOK := versionpolicy.CompareVersions(manifest.MaximumCoreSchema, schema.CurrentCoreVersion)
+	targetComparison, targetOK := versionpolicy.CompareVersions(manifest.TargetCoreSchema, schema.CurrentCoreVersion)
 	if !minimumOK || !maximumOK || !targetOK || minimumComparison > 0 || maximumComparison < 0 || targetComparison != 0 {
 		return errors.New("release core schema is incompatible")
 	}

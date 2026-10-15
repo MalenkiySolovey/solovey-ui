@@ -16,6 +16,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/database/schema"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -91,10 +92,16 @@ func newLifecycleFixture(t testing.TB) lifecycleFixture {
 	if err != nil {
 		t.Fatal(err)
 	}
-	manifest := release.Manifest{Schema: release.SchemaV1, ReleaseID: "solovey-ui-main-17", Sequence: 17, Version: "2026.4.0", Channel: release.ChannelMain,
+	current := configidentity.GetVersion()
+	var major, minor, patch int
+	if n, err := fmt.Sscanf(current, "%d.%d.%d", &major, &minor, &patch); err != nil || n != 3 {
+		t.Fatalf("parse current panel version %q: %v", current, err)
+	}
+	nextVersion := fmt.Sprintf("%d.%d.%d", major, minor, patch+1)
+	manifest := release.Manifest{Schema: release.SchemaV1, ReleaseID: "solovey-ui-main-17", Sequence: 17, Version: nextVersion, Channel: release.ChannelMain,
 		IssuedAt: now.Add(-time.Minute).Unix(), ExpiresAt: now.Add(time.Hour).Unix(), DeploymentRevision: lifecycleDigest("deployment"),
-		MinimumPanelVersion: "2026.2.0", MaximumPanelVersion: "2026.4.0",
-		MinimumCoreSchema: "1.11", MaximumCoreSchema: "1.11", TargetCoreSchema: "1.11", BrokerCapability: "broker-capabilities-1.3",
+		MinimumPanelVersion: current, MaximumPanelVersion: nextVersion,
+		MinimumCoreSchema: schema.CurrentCoreVersion, MaximumCoreSchema: schema.CurrentCoreVersion, TargetCoreSchema: schema.CurrentCoreVersion, BrokerCapability: "broker-capabilities-1.3",
 		MigrationSetDigest: lifecycleDigest("migration"), ReleaseNotesDigest: lifecycleDigest("notes"),
 		RestartClass: "stack", RebootClass: "operator-advisory", RollbackClass: "automatic",
 		Artifacts: []release.Artifact{
@@ -344,12 +351,18 @@ func TestManifestCompatibilityRejectsPanelSchemaBrokerAndComponentDrift(t *testi
 		"target schema drift": func(manifest *release.Manifest) {
 			manifest.TargetCoreSchema = "1.10"
 		},
+		"retired target schema": func(manifest *release.Manifest) {
+			manifest.MinimumCoreSchema, manifest.MaximumCoreSchema, manifest.TargetCoreSchema = "1.11", "1.11", "1.11"
+		},
+		"future target schema": func(manifest *release.Manifest) {
+			manifest.MinimumCoreSchema, manifest.MaximumCoreSchema, manifest.TargetCoreSchema = "1.13", "1.13", "1.13"
+		},
 		"broker drift": func(manifest *release.Manifest) {
 			manifest.BrokerCapability = "broker-capabilities-9.9"
 		},
 		"component range drift": func(manifest *release.Manifest) {
 			manifest.Components = []release.Component{{ID: "fixture-component", Version: "1.0.0",
-				ArtifactSHA256: manifest.Artifacts[0].SHA256, MinimumCoreSchema: "1.12", MaximumCoreSchema: "1.13"}}
+				ArtifactSHA256: manifest.Artifacts[0].SHA256, MinimumCoreSchema: "1.13", MaximumCoreSchema: "1.14"}}
 		},
 	}
 	for name, mutate := range cases {
