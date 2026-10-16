@@ -90,9 +90,9 @@ test('Windows metadata retains clean product identity across profile generation'
 })
 
 test('interrupted publication recovery is gated and never rebuilds or overwrites registry', () => {
-  assert.equal(release.jobs['build-linux'].if, "inputs.resume_run_id == ''")
-  assert.equal(release.jobs['build-docker'].if, "inputs.resume_run_id == ''")
-  assert.equal(release.jobs['build-windows'].if, "inputs.resume_run_id == ''")
+  for (const name of ['test-installer', 'build-frontend', 'component-profile-checks', 'build-linux', 'build-docker', 'build-windows', 'release-metadata', 'assemble-linux', 'build-openwrt', 'verify-openwrt']) {
+    assert.equal(release.jobs[name].if, "inputs.resume_run_id == ''", name)
+  }
   const recovery = release.jobs['resume-candidate']
   assert.equal(recovery.if, "inputs.resume_run_id != ''")
   assert.ok(recovery.steps.some(step => step.run?.includes('release-resume.mjs')))
@@ -133,7 +133,7 @@ test('release uses the shared capability owner with the complete original packag
 test('canonical OpenWrt packages and FriendlyWrt bytes are mandatory even during recovery', () => {
   const build = release.jobs['build-openwrt']
   assert.deepEqual(build.strategy.matrix.profile, ['x86-64', 'rockchip-armv8'])
-  assert.equal(build.if, undefined)
+  assert.equal(build.if, "inputs.resume_run_id == ''")
   const adapter = fs.readFileSync('scripts/release-openwrt-build.sh', 'utf8')
   assert.match(adapter, /scripts\/openwrt-package-build.sh/)
   assert.match(adapter, /openwrt_target_profile_load/)
@@ -149,8 +149,8 @@ test('publication requires source disclosure and private Docker preflight retain
   assert.ok(release.jobs['build-docker'].needs.includes('release-metadata'), 'registry writes must wait for complete source/license disclosure')
   assert.ok(publisher.needs.includes('release-metadata'))
   assert.ok(publisher.if.includes("needs.release-metadata.result == 'success'"))
-  assert.ok(publisher.steps.some(step => step.run?.includes('scripts/release-metadata.mjs verify metadata-assets')))
-  assert.ok(publisher.steps.find(step => step.uses?.startsWith('softprops/action-gh-release@')).with.files.includes('metadata-assets/*'))
+  assert.ok(publisher.steps.some(step => step.run?.includes('scripts/release-metadata.mjs verify "$RELEASE_CANDIDATE_DIR/metadata"')))
+  assert.ok(publisher.steps.find(step => step.uses?.startsWith('softprops/action-gh-release@')).with.files.includes('/metadata/*'))
   const docker = read('docker').jobs.build.steps.find(step => step.name === 'Preflight Docker image')
   assert.equal(docker.with.push, false)
   assert.ok(docker.with.outputs.startsWith('type=oci,'))
@@ -159,4 +159,40 @@ test('publication requires source disclosure and private Docker preflight retain
   const windows = read('windows').jobs['build-windows'].strategy.matrix
   assert.deepEqual(windows.arch, ['amd64', 'arm64'])
   assert.deepEqual(windows.profile, ['full', 'core'])
+})
+
+test('recovery graph uses original admission while fresh publication retains every producer gate', () => {
+  const publisher = release.jobs['publish-linux']
+  const expression = publisher.if.replace(/needs\.([\w-]+)\.result/g, 'needs["$1"].result')
+  const evaluate = Function('needs', 'inputs', 'github', 'always', 'cancelled', `return (${expression})`)
+  const needs = Object.fromEntries(publisher.needs.map(name => [name, { result: 'skipped' }]))
+  needs['release-preflight'].result = 'success'; needs['resume-candidate'].result = 'success'
+  const inputs = { resume_run_id: '123', preflight_only: false }, github = { event_name: 'workflow_dispatch' }
+  const admit = () => evaluate(needs, inputs, github, () => true, () => false)
+  assert.equal(admit(), true)
+  needs['resume-candidate'].result = 'failure'; assert.equal(admit(), false)
+  needs['resume-candidate'].result = 'success'; inputs.preflight_only = true; assert.equal(admit(), false)
+  inputs.preflight_only = false; inputs.resume_run_id = ''
+  for (const item of Object.values(needs)) item.result = 'success'
+  needs['resume-candidate'].result = 'skipped'; assert.equal(admit(), true)
+  for (const name of publisher.needs.filter(n => n !== 'resume-candidate')) {
+    needs[name].result = 'failure'; assert.equal(admit(), false, name); needs[name].result = 'success'
+  }
+})
+
+test('publication staging and original-byte receipt gate every external write', () => {
+  const publisher = release.jobs['publish-linux'], recovery = release.jobs['resume-candidate']
+  assert.equal(publisher.env.RELEASE_CANDIDATE_DIR, '${{ runner.temp }}/release-candidate')
+  assert.equal(recovery.env.RELEASE_CANDIDATE_DIR, publisher.env.RELEASE_CANDIDATE_DIR)
+  for (const step of publisher.steps.filter(s => s.uses?.startsWith('actions/download-artifact@'))) {
+    assert.ok(step.with.path.startsWith('${{ env.RELEASE_CANDIDATE_DIR }}') || step.with.path.startsWith('${{ runner.temp }}'), step.name)
+  }
+  const verification = publisher.steps.findIndex(s => s.run === 'node "$RUNNER_TEMP/release-candidate.mjs"')
+  const publication = publisher.steps.findIndex(s => s.uses?.startsWith('softprops/action-gh-release@'))
+  assert.ok(verification >= 0 && verification < publication)
+  assert.equal(publisher.steps[verification].env.RESUME_RUN_ID, '${{ inputs.resume_run_id }}')
+  assert.ok(publisher.steps[verification].env.RELEASE_RECOVERY_RECEIPT.includes('RECOVERY_RECEIPT.json'))
+  const uploads = recovery.steps.filter(s => s.uses?.startsWith('actions/upload-artifact@'))
+  assert.deepEqual(uploads.map(s => s.with.name).sort(), ['complete-linux-release', 'solovey-ui-windows-recovered', 'complete-release-metadata', 'complete-openwrt-release', 'release-recovery-receipt'].sort())
+  assert.ok(uploads.every(s => s.with['retention-days'] <= 7))
 })
