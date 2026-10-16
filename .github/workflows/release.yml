@@ -713,9 +713,9 @@ jobs:
     needs: release-preflight
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      RELEASE_CANDIDATE_DIR: ${{ runner.temp }}/release-candidate
     steps:
+      - name: Initialize external candidate staging
+        run: printf 'RELEASE_CANDIDATE_DIR=%s/release-candidate\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - name: Check out recovery orchestrator
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
@@ -866,9 +866,9 @@ jobs:
         needs.build-windows.result == 'success' && needs.build-docker.result == 'success'))
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      RELEASE_CANDIDATE_DIR: ${{ runner.temp }}/release-candidate
     steps:
+      - name: Initialize external candidate staging
+        run: printf 'RELEASE_CANDIDATE_DIR=%s/release-candidate\n' "$RUNNER_TEMP" >> "$GITHUB_ENV"
       - name: Check out release orchestrator
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
