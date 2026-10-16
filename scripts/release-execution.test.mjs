@@ -10,6 +10,19 @@ const release = read('release')
 const productRef = '${{ needs.release-preflight.outputs.product-commit }}'
 const checkouts = job => job.steps?.filter(step => step.uses?.startsWith('actions/checkout@')) ?? []
 
+test('runner-dependent contexts are excluded from workflow and job environments', () => {
+  for (const filename of fs.readdirSync('.github/workflows').filter(name => /\.ya?ml$/.test(name))) {
+    const workflow = YAML.parse(fs.readFileSync(`.github/workflows/${filename}`, 'utf8'))
+    for (const [location, environment] of [['workflow', workflow.env], ...Object.entries(workflow.jobs ?? {}).map(([name, job]) => [name, job.env])]) {
+      for (const [name, value] of Object.entries(environment ?? {})) {
+        for (const [expression] of String(value).matchAll(/\$\{\{[\s\S]*?\}\}/g)) {
+          assert.doesNotMatch(expression, /\b(?:runner|job|steps|env)\s*[.\[]/, `${filename}: ${location}.env.${name} references a context unavailable before runner assignment`)
+        }
+      }
+    }
+  }
+})
+
 test('CI and publication execute the native installer ownership contract', () => {
   for (const job of [read('ci').jobs.installer, release.jobs['test-installer']]) {
     assert.ok(job.steps.some(step => step.uses?.startsWith('actions/setup-go@')))
@@ -182,8 +195,15 @@ test('recovery graph uses original admission while fresh publication retains eve
 
 test('publication staging and original-byte receipt gate every external write', () => {
   const publisher = release.jobs['publish-linux'], recovery = release.jobs['resume-candidate']
-  assert.equal(publisher.env.RELEASE_CANDIDATE_DIR, '${{ runner.temp }}/release-candidate')
-  assert.equal(recovery.env.RELEASE_CANDIDATE_DIR, publisher.env.RELEASE_CANDIDATE_DIR)
+  for (const job of [publisher, recovery]) {
+    assert.equal(job.env?.RELEASE_CANDIDATE_DIR, undefined)
+    const initialization = job.steps.findIndex(step => step.run?.includes('RELEASE_CANDIDATE_DIR='))
+    assert.equal(initialization, 0, 'resolve external staging before every candidate consumer')
+    assert.ok(job.steps[initialization].run.includes('"$RUNNER_TEMP"'))
+    assert.ok(job.steps[initialization].run.includes('>> "$GITHUB_ENV"'))
+    assert.equal(job.steps[initialization].if, undefined)
+    assert.equal(job.steps[initialization]['continue-on-error'], undefined)
+  }
   for (const step of publisher.steps.filter(s => s.uses?.startsWith('actions/download-artifact@'))) {
     assert.ok(step.with.path.startsWith('${{ env.RELEASE_CANDIDATE_DIR }}') || step.with.path.startsWith('${{ runner.temp }}'), step.name)
   }
