@@ -74,6 +74,27 @@ candidate, not substituting an older version or silently accepting partial asset
 Preflight defaults to no publication. A stored Actions candidate is qualification
 evidence, never a substitute for an official release in the normal installer.
 
+Interrupted-publication recovery uses `resume_run_id` only for a completed,
+failed canonical publication whose exact product tag/source, successful target
+producers, disclosure/package admission and completed Docker push are proven.
+Both canonical tag-push and manual publication runs are eligible; successful or
+non-publishing preflights, incomplete producer runs and unrelated events are not.
+The recovery orchestrator may be newer than the product tag, but must descend
+from the original run. It retains the original complete Linux, Windows, metadata
+and OpenWrt candidates, their signature/issuance and every payload/checksum byte.
+It never rebuilds targets, rewrites checksums, re-signs or republishes OCI.
+Fresh producers are skipped only in recovery; their successful original jobs
+and actual registry publication are checked before recovery admission.
+
+Download candidates outside the immutable checkout, under runner temporary
+storage. Source fingerprinting continues to include unknown nonignored source
+files; candidate staging must not pollute that authority. The publication gate
+rechecks all immutable product verifiers, archive BUILD_INFO identities and all
+candidate bytes against the recovery receipt. It also requires the existing
+version/latest OCI digests to remain unchanged. Missing/expired/ambiguous retained
+artifacts, changed source/bytes, invalid trust or an already public version fail
+closed. Recovery intermediates retain one day; its small receipt retains seven.
+
 Use `node scripts/release-verify.mjs <linux-assets> <tag>` with the configured
 public roots before publication and after downloading the remote Linux set.
 Use `node scripts/release-verify.mjs <windows-assets> <tag> --windows` for the

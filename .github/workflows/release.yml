@@ -94,7 +94,7 @@ jobs:
           node --check scripts/release-preflight.test.mjs
           node --test scripts/release-preflight.test.mjs
           node scripts/audit/validate-workflows.js
-          node --test scripts/release-execution.test.mjs
+          node --test scripts/release-execution.test.mjs scripts/release-resume.test.mjs scripts/release-candidate.test.mjs
           cp scripts/release-publish-gate.mjs "$RUNNER_TEMP/release-publish-gate.mjs"
 
       - name: Check out immutable product source
@@ -142,6 +142,7 @@ jobs:
         run: env GITHUB_SHA="$PRODUCT_COMMIT" node "$RUNNER_TEMP/release-publish-gate.mjs" before "$RELEASE_TAG_INPUT"
 
   test-installer:
+    if: inputs.resume_run_id == ''
     needs: release-preflight
     runs-on: ubuntu-latest
     steps:
@@ -216,6 +217,7 @@ jobs:
         run: bash tests/installer/doctor.sh
 
   build-frontend:
+    if: inputs.resume_run_id == ''
     needs: release-preflight
     runs-on: ubuntu-latest
     steps:
@@ -310,6 +312,7 @@ jobs:
           retention-days: 1
 
   component-profile-checks:
+    if: inputs.resume_run_id == ''
     needs: release-preflight
     runs-on: ubuntu-latest
     steps:
@@ -585,6 +588,7 @@ jobs:
           retention-days: 1
 
   release-metadata:
+    if: inputs.resume_run_id == ''
     name: Prepare source, SBOM and dependency notices
     needs: release-preflight
     runs-on: ubuntu-latest
@@ -616,6 +620,7 @@ jobs:
           retention-days: 7
 
   assemble-linux:
+    if: inputs.resume_run_id == ''
     name: Assemble and verify complete Linux release
     needs: [release-preflight, build-linux]
     runs-on: ubuntu-latest
@@ -707,19 +712,22 @@ jobs:
     if: inputs.resume_run_id != ''
     needs: release-preflight
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RELEASE_CANDIDATE_DIR: ${{ runner.temp }}/release-candidate
     steps:
       - name: Check out recovery orchestrator
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ github.sha }}
       - name: Retain execution-only recovery verifier
-        run: cp scripts/release-resume.mjs scripts/release-publish-gate.mjs "$RUNNER_TEMP/"
+        run: cp scripts/release-resume.mjs scripts/release-candidate.mjs scripts/release-openwrt.mjs scripts/release-publish-gate.mjs "$RUNNER_TEMP/"
       - name: Check out immutable product source
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ needs.release-preflight.outputs.product-commit }}
           fetch-depth: 0
-      - name: Verify source run, signed bytes, Windows checksums and existing registry
+      - name: Verify original complete candidate and existing registry
         env:
           GH_TOKEN: ${{ github.token }}
           RESUME_RUN_ID: ${{ inputs.resume_run_id }}
@@ -731,16 +739,40 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: complete-linux-release
-          path: release-assets/*
+          path: ${{ env.RELEASE_CANDIDATE_DIR }}/linux/*
           if-no-files-found: error
+          retention-days: 1
       - name: Retain verified Windows candidate
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: solovey-ui-windows-recovered
-          path: windows-assets/*
+          path: ${{ env.RELEASE_CANDIDATE_DIR }}/windows/*
           if-no-files-found: error
+          retention-days: 1
+      - name: Retain original source and disclosure candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: complete-release-metadata
+          path: ${{ env.RELEASE_CANDIDATE_DIR }}/metadata/*
+          if-no-files-found: error
+          retention-days: 1
+      - name: Retain original OpenWrt candidate and proofs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: complete-openwrt-release
+          path: ${{ env.RELEASE_CANDIDATE_DIR }}/openwrt/
+          if-no-files-found: error
+          retention-days: 1
+      - name: Retain original-byte recovery receipt
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-recovery-receipt
+          path: ${{ runner.temp }}/release-recovery-receipt/RECOVERY_RECEIPT.json
+          if-no-files-found: error
+          retention-days: 7
 
   build-openwrt:
+    if: inputs.resume_run_id == ''
     name: Canonical OpenWrt ${{ matrix.profile }}
     needs: [release-preflight, test-installer, build-frontend, component-profile-checks]
     runs-on: ubuntu-24.04
@@ -785,6 +817,7 @@ jobs:
           retention-days: 7
 
   verify-openwrt:
+    if: inputs.resume_run_id == ''
     name: Verify complete OpenWrt and FriendlyWrt candidate
     needs: [release-preflight, build-openwrt]
     runs-on: ubuntu-latest
@@ -824,14 +857,17 @@ jobs:
     if: >-
       always() && !cancelled() &&
       (github.event_name == 'push' || inputs.preflight_only == false) &&
-      needs.release-preflight.result == 'success' && needs.test-installer.result == 'success' &&
-      needs.build-frontend.result == 'success' && needs.component-profile-checks.result == 'success' &&
-      needs.verify-openwrt.result == 'success' &&
-      needs.release-metadata.result == 'success' &&
+      needs.release-preflight.result == 'success' &&
       ((inputs.resume_run_id != '' && needs.resume-candidate.result == 'success') ||
-       (inputs.resume_run_id == '' && needs.assemble-linux.result == 'success' &&
+       (inputs.resume_run_id == '' && needs.test-installer.result == 'success' &&
+        needs.build-frontend.result == 'success' && needs.component-profile-checks.result == 'success' &&
+        needs.verify-openwrt.result == 'success' && needs.release-metadata.result == 'success' &&
+        needs.assemble-linux.result == 'success' &&
         needs.build-windows.result == 'success' && needs.build-docker.result == 'success'))
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      RELEASE_CANDIDATE_DIR: ${{ runner.temp }}/release-candidate
     steps:
       - name: Check out release orchestrator
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -839,7 +875,7 @@ jobs:
           ref: ${{ github.sha }}
       - name: Retain publication execution gates
         run: |
-          cp scripts/release-publish-gate.mjs scripts/release-openwrt.mjs "$RUNNER_TEMP/"
+          cp scripts/release-publish-gate.mjs scripts/release-openwrt.mjs scripts/release-candidate.mjs "$RUNNER_TEMP/"
           cp .github/RELEASE_OPENWRT_ASSETS.md "$RUNNER_TEMP/RELEASE_OPENWRT_ASSETS.md"
       - name: Check out release notes
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -850,40 +886,55 @@ jobs:
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: complete-linux-release
-          path: release-assets
+          path: ${{ env.RELEASE_CANDIDATE_DIR }}/linux
 
       - name: Verify candidate at publication boundary
         env:
           SUI_RELEASE_TRUST_ROOTS_B64: ${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
-        run: node scripts/release-verify.mjs release-assets "$RELEASE_TAG_INPUT"
+        run: node scripts/release-verify.mjs "$RELEASE_CANDIDATE_DIR/linux" "$RELEASE_TAG_INPUT"
 
       - name: Download Windows candidates
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           pattern: solovey-ui*windows-*
-          path: windows-assets
+          path: ${{ env.RELEASE_CANDIDATE_DIR }}/windows
           merge-multiple: true
 
       - name: Verify complete Windows candidates
-        run: node scripts/release-verify.mjs windows-assets "$RELEASE_TAG_INPUT" --windows
+        run: node scripts/release-verify.mjs "$RELEASE_CANDIDATE_DIR/windows" "$RELEASE_TAG_INPUT" --windows
 
       - name: Download source and disclosure candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: complete-release-metadata
-          path: metadata-assets
+          path: ${{ env.RELEASE_CANDIDATE_DIR }}/metadata
       - name: Verify complete source and disclosure candidate
         env:
           PRODUCT_COMMIT: ${{ needs.release-preflight.outputs.product-commit }}
-        run: node scripts/release-metadata.mjs verify metadata-assets "$PRODUCT_COMMIT"
+        run: node scripts/release-metadata.mjs verify "$RELEASE_CANDIDATE_DIR/metadata" "$PRODUCT_COMMIT"
 
       - name: Download complete OpenWrt candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: complete-openwrt-release
-          path: openwrt-candidate
+          path: ${{ env.RELEASE_CANDIDATE_DIR }}/openwrt
       - name: Verify OpenWrt admission at publication boundary
-        run: node "$RUNNER_TEMP/release-openwrt.mjs" verify openwrt-candidate "${{ needs.release-preflight.outputs.product-commit }}"
+        run: node "$RUNNER_TEMP/release-openwrt.mjs" verify "$RELEASE_CANDIDATE_DIR/openwrt" "${{ needs.release-preflight.outputs.product-commit }}"
+
+      - name: Download original-byte recovery receipt
+        if: inputs.resume_run_id != ''
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-recovery-receipt
+          path: ${{ runner.temp }}/release-recovery-receipt
+
+      - name: Verify complete candidate against clean product and original recovery bytes
+        env:
+          PRODUCT_COMMIT: ${{ needs.release-preflight.outputs.product-commit }}
+          PRODUCT_FINGERPRINT: ${{ needs.release-preflight.outputs.source-fingerprint }}
+          RESUME_RUN_ID: ${{ inputs.resume_run_id }}
+          RELEASE_RECOVERY_RECEIPT: ${{ inputs.resume_run_id != '' && format('{0}/release-recovery-receipt/RECOVERY_RECEIPT.json', runner.temp) || '' }}
+        run: node "$RUNNER_TEMP/release-candidate.mjs"
 
       - name: Refuse immutable release overwrite
         env:
@@ -911,10 +962,10 @@ jobs:
           draft: true
           fail_on_unmatched_files: true
           files: |
-            release-assets/*
-            windows-assets/*
-            openwrt-candidate/assets/*
-            metadata-assets/*
+            ${{ env.RELEASE_CANDIDATE_DIR }}/linux/*
+            ${{ env.RELEASE_CANDIDATE_DIR }}/windows/*
+            ${{ env.RELEASE_CANDIDATE_DIR }}/openwrt/assets/*
+            ${{ env.RELEASE_CANDIDATE_DIR }}/metadata/*
 
       - name: Publish fully uploaded immutable version
         env:
@@ -922,7 +973,7 @@ jobs:
           PRODUCT_COMMIT: ${{ needs.release-preflight.outputs.product-commit }}
           RELEASE_TAG: ${{ env.RELEASE_TAG_INPUT }}
         run: |
-          env GITHUB_SHA="$PRODUCT_COMMIT" node "$RUNNER_TEMP/release-publish-gate.mjs" uploaded "$RELEASE_TAG" release-assets windows-assets openwrt-candidate/assets metadata-assets
+          env GITHUB_SHA="$PRODUCT_COMMIT" node "$RUNNER_TEMP/release-publish-gate.mjs" uploaded "$RELEASE_TAG" "$RELEASE_CANDIDATE_DIR/linux" "$RELEASE_CANDIDATE_DIR/windows" "$RELEASE_CANDIDATE_DIR/openwrt/assets" "$RELEASE_CANDIDATE_DIR/metadata"
           PUBLISH_ARGS=(--draft=false --notes-file "$RUNNER_TEMP/release-notes.md")
           [[ "$RELEASE_TAG" == *-* ]] && PUBLISH_ARGS+=(--prerelease --latest=false)
           gh release edit "$RELEASE_TAG" "${PUBLISH_ARGS[@]}"
@@ -941,4 +992,4 @@ jobs:
             [ "$CHANNEL" = beta ] && CREATE_ARGS+=(--prerelease)
             gh release create "$CHANNEL_TAG" "${CREATE_ARGS[@]}"
           fi
-          gh release upload "$CHANNEL_TAG" release-assets/* --clobber
+          gh release upload "$CHANNEL_TAG" "$RELEASE_CANDIDATE_DIR"/linux/* --clobber
