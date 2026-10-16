@@ -586,6 +586,9 @@ jobs:
   dashboard:
     name: dashboard
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
     if: always()
     needs:
       - build
@@ -608,11 +611,9 @@ jobs:
         with:
           node-version-file: frontend/.node-version
       - name: Download audit job artifacts
-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
-        with:
-          pattern: audit-go-*
-          path: tests/baseline
-          merge-multiple: false
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/audit/download-go-artifacts.mjs
       - name: Build audit dashboard
         shell: bash
         run: bash scripts/audit/aggregate.sh
@@ -624,5 +625,6 @@ jobs:
             tests/baseline/current/summary.html
             tests/baseline/current/summary.json
             tests/baseline/current/aggregate.junit.xml
+            tests/baseline/audit-artifact-selection.json
           if-no-files-found: ignore
           retention-days: 30

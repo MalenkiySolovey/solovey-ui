@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url'
 import { spawnSync } from 'node:child_process'
 import test from 'node:test'
 import './aggregate.test.mjs'
+import { selectLatestAuditArtifacts } from './download-go-artifacts.mjs'
 
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const YAML = createRequire(import.meta.url)(path.join(repo, 'frontend/node_modules/yaml'))
@@ -89,9 +90,33 @@ test('artifact and evidence names are unique; dashboard waits for all shards and
   for (const id of [...shards, ...gates.map(([id]) => id), 'test-go', 'build', 'vet', 'coverage', 'lint-go', 'staticcheck', 'gosec', 'govulncheck']) {
     assert.ok(dashboard.needs.includes(id), id)
   }
-  const download = dashboard.steps.find(step => step.uses?.startsWith('actions/download-artifact@'))
-  assert.equal(download.with['merge-multiple'], false)
-  assert.equal(download.with.pattern, 'audit-go-*')
+  const download = dashboard.steps.find(step => step.name === 'Download audit job artifacts')
+  assert.equal(download.run, 'node scripts/audit/download-go-artifacts.mjs')
+  assert.equal(download.env.GH_TOKEN, '${{ github.token }}')
+  assert.deepEqual(dashboard.permissions, { contents: 'read', actions: 'read' })
+  const upload = dashboard.steps.find(step => step.uses?.startsWith('actions/upload-artifact@'))
+  assert.ok(upload.with.path.includes('tests/baseline/audit-artifact-selection.json'))
+})
+
+test('rerun artifacts follow creation time even when the older failure has a larger numeric ID', () => {
+  const artifact = (id, name, created_at, extra = {}) => ({ id, name, created_at, expired: false, digest: `sha256:${'a'.repeat(64)}`, ...extra })
+  const older = artifact(12016560069, 'audit-go-race-windows-latest-gate', '2026-10-16T00:11:58Z')
+  const current = artifact(12016364959, older.name, '2026-10-16T00:47:31Z')
+  const unchanged = artifact(12013194738, 'audit-go-govulncheck-ubuntu-latest', '2026-10-15T23:30:44Z')
+  const priorDashboard = artifact(12017248450, 'audit-go-dashboard', '2026-10-16T00:47:46Z')
+  for (const input of [[older, current, unchanged, priorDashboard], [priorDashboard, unchanged, current, older]]) {
+    assert.deepEqual(selectLatestAuditArtifacts(input).map(value => value.id), [unchanged.id, current.id])
+  }
+  // A later failure must replace an earlier success as well; selection does
+  // not inspect or waive test results.
+  assert.equal(selectLatestAuditArtifacts([current, older]).find(value => value.name === older.name).id, current.id)
+})
+
+test('artifact selection rejects missing, ambiguous, expired or unverifiable current evidence', () => {
+  const good = { id: 1, name: 'audit-go-test', created_at: '2026-10-16T00:11:58Z', expired: false, digest: `sha256:${'a'.repeat(64)}` }
+  for (const input of [[], [good, { ...good }], [{ ...good, created_at: '' }], [good, { ...good, id: 2 }], [{ ...good, expired: true }], [{ ...good, digest: undefined }], [{ ...good, name: 'audit-go-../escape' }]]) {
+    assert.throws(() => selectLatestAuditArtifacts(input))
+  }
 })
 
 test('existing wrapper and dashboard retain every shard log/JUnit and report a failed or cancelled gate', () => {
