@@ -71,9 +71,15 @@ func RunCorePendingWithOptions(tx *gorm.DB, coreVersion string, options CoreOpti
 	}
 	if coreVersion == "1.11" {
 		if err := upgradeSingBoxStoredState(tx, options); err != nil {
-			return "", fmt.Errorf("core migration to %s: %w", dbschema.CurrentCoreVersion, err)
+			return "", fmt.Errorf("core migration to 1.12: %w", err)
 		}
-		coreVersion = dbschema.CurrentCoreVersion
+		coreVersion = "1.12"
+	}
+	if coreVersion == "1.12" {
+		if err := addClientDisableReason(tx); err != nil {
+			return "", fmt.Errorf("core migration to 1.13: %w", err)
+		}
+		coreVersion = "1.13"
 	}
 	if coreVersion != dbschema.CurrentCoreVersion {
 		return "", fmt.Errorf("core schema %q is outside the supported sequential migration plan", coreVersion)

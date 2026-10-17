@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -139,8 +140,8 @@ func TestInitRunsSequentialMigrationsBeforeCurrentSchemaBootstrap(t *testing.T) 
 	if err := DB().Model(&model.Setting{}).Select("value").Where("key = ?", "coreSchemaVersion").Scan(&coreVersion).Error; err != nil {
 		t.Fatal(err)
 	}
-	if coreVersion != "1.12" {
-		t.Fatalf("core schema version = %q, want 1.12", coreVersion)
+	if coreVersion != dbschema.CurrentCoreVersion {
+		t.Fatalf("core schema version = %q, want %s", coreVersion, dbschema.CurrentCoreVersion)
 	}
 }
 

@@ -57,3 +57,38 @@ func TestIntegrationPublicRemarkPrivateBackupRestore(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestIntegrationClientAccessReasonsSurviveBackupRestore(t *testing.T) {
+	initBackupRestoreIntegrationDB(t)
+	if _, err := (&service.SettingService{}).GetAllSetting(); err != nil {
+		t.Fatal(err)
+	}
+	clients := []model.Client{}
+	for _, reason := range []string{model.ClientDisabledManual, model.ClientDisabledQuota, model.ClientDisabledLegacy, "CREDENTIAL_REVOKED"} {
+		clients = append(clients, model.Client{Name: "backup-" + reason, SubSecret: "fixture-" + reason, AccessDisableReason: reason, Config: json.RawMessage(`{}`), Inbounds: json.RawMessage(`[]`), Links: json.RawMessage(`[]`), Up: 17, TotalUp: 29})
+	}
+	if err := dbsqlite.DB().Create(&clients).Error; err != nil {
+		t.Fatal(err)
+	}
+	backup, err := dbbackup.Export("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.DB().Model(&model.Client{}).Where("id > 0").Updates(map[string]interface{}{"enable": true, "access_disable_reason": "", "up": 0}).Error; err != nil {
+		t.Fatal(err)
+	}
+	dbbackup.SetSendSighupHook(func() error { return nil })
+	t.Cleanup(func() { dbbackup.SetSendSighupHook(nil) })
+	if err := dbbackup.Restore(integrationMemMultipartFile{Reader: bytes.NewReader(backup)}); err != nil {
+		t.Fatal(err)
+	}
+	for _, original := range clients {
+		var actual model.Client
+		if err := dbsqlite.DB().First(&actual, original.Id).Error; err != nil {
+			t.Fatal(err)
+		}
+		if actual.Enable || actual.AccessDisableReason != original.AccessDisableReason || actual.SubSecret != original.SubSecret || actual.Up != 17 || actual.TotalUp != 29 {
+			t.Fatalf("backup lost access authority or accounting: %#v", actual)
+		}
+	}
+}

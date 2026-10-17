@@ -9,6 +9,11 @@ import (
 
 func BuildPaidClientUpdates(client model.Client, tariff Tariff, now int64) (clientUpdates map[string]any, orderUpdates map[string]any, err error) {
 	clientUpdates = map[string]any{"enable": true}
+	clientUpdates["access_disable_reason"] = ""
+	if client.AccessDisableReason != "" && client.AccessDisableReason != model.ClientDisabledQuota && client.AccessDisableReason != model.ClientDisabledExpired {
+		clientUpdates["enable"] = false
+		clientUpdates["access_disable_reason"] = client.AccessDisableReason
+	}
 	orderUpdates = map[string]any{}
 	if tariff.AddDays > 0 {
 		if int64(tariff.AddDays) > math.MaxInt64/86400 {

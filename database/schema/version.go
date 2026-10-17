@@ -8,8 +8,11 @@ import (
 	"gorm.io/gorm"
 )
 
-const CurrentCoreVersion = "1.12"
+const CurrentCoreVersion = "1.13"
 
+// LegacyProjection selects the pre-1.12 sing-box stored-state projection.
+// Later additive Client migrations do not turn accepted 1.12 runtime data
+// back into legacy input. CurrentCoreVersion remains the future-schema fence.
 func LegacyProjection(db *gorm.DB) (bool, error) {
 	version, err := StoredCoreVersion(db)
 	if err != nil {
@@ -19,7 +22,8 @@ func LegacyProjection(db *gorm.DB) (bool, error) {
 	if !ok || comparison > 0 {
 		return false, errors.New("core schema is outside the supported projection boundary")
 	}
-	return comparison < 0, nil
+	projectionComparison, _ := versionpolicy.CompareVersions(version, "1.12")
+	return projectionComparison < 0, nil
 }
 
 // StoredCoreVersion reports the source database's boundary. Absence denotes

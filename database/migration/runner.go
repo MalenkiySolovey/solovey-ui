@@ -150,14 +150,11 @@ func MigratePath(path string, options Options) error {
 		fmt.Println("Database is up to date, no need to migrate")
 		return nil
 	}
-	if cmp, ok := versionpolicy.CompareVersions(coreVersionOrBaseline(coreVersion), "1.11"); ok && cmp >= 0 {
-		if err := validateOperationsMigrationJournal(db); err != nil {
-			return err
-		}
-	}
-	if coreVersion == dbschema.CurrentCoreVersion {
-		if err := validateCurrentMigrationJournals(db); err != nil {
-			return err
+	for _, contract := range coreJournalContracts() {
+		if cmp, ok := versionpolicy.CompareVersions(coreVersionOrBaseline(coreVersion), contract.Target); ok && cmp >= 0 {
+			if err := validateCoreMigrationJournal(db, contract); err != nil {
+				return err
+			}
 		}
 	}
 	legacyConfig, err := readLegacyConfig(options.LegacyConfigPath, dbVersion == "")
@@ -364,7 +361,8 @@ type coreJournalContract struct{ ID, Checksum, Target string }
 func coreJournalContracts() []coreJournalContract {
 	return []coreJournalContract{
 		{steps.OperationsLifecycleStepID, steps.OperationsLifecycleChecksum, "1.11"},
-		{steps.SingBoxStateStepID, steps.SingBoxStateChecksum, dbschema.CurrentCoreVersion},
+		{steps.SingBoxStateStepID, steps.SingBoxStateChecksum, "1.12"},
+		{steps.ClientDisableReasonStepID, steps.ClientDisableReasonChecksum, "1.13"},
 	}
 }
 func ensureOperationsMigrationJournal(db *gorm.DB) error {

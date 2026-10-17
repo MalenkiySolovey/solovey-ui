@@ -63,6 +63,10 @@ func ApplyPaidOrderGrant(db *gorm.DB, orderID uint, chargeID string, raw []byte,
 				return err
 			}
 		}
+		// A payment may renew quota/expiry; it is not manual access approval.
+		// Evaluate current blockers so a policy edit after the read survives.
+		updates["enable"] = gorm.Expr("CASE WHEN access_disable_reason = '' OR access_disable_reason IN (?, ?) THEN true ELSE false END", model.ClientDisabledQuota, model.ClientDisabledExpired)
+		updates["access_disable_reason"] = gorm.Expr("CASE WHEN access_disable_reason IN (?, ?) THEN '' ELSE access_disable_reason END", model.ClientDisabledQuota, model.ClientDisabledExpired)
 		if err := tx.Model(&model.Client{}).Where("id = ?", client.Id).Updates(updates).Error; err != nil {
 			return err
 		}

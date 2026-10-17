@@ -51,6 +51,18 @@ func TestBuildPaidClientUpdatesRejectsCounterOverflow(t *testing.T) {
 	}
 }
 
+func TestPaidRenewalDoesNotUndoStrongerAccessDisable(t *testing.T) {
+	for _, reason := range []string{model.ClientDisabledManual, model.ClientDisabledLegacy, "CREDENTIAL_REVOKED"} {
+		updates, _, err := BuildPaidClientUpdates(model.Client{AccessDisableReason: reason}, Tariff{AddDays: 1, AddTrafficBytes: 100}, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if updates["enable"] != false || updates["access_disable_reason"] != reason {
+			t.Fatalf("renewal undid %s: %#v", reason, updates)
+		}
+	}
+}
+
 func TestBuildRefundClientUpdatesClampsCounters(t *testing.T) {
 	now := int64(1_700_000_000)
 	client := model.Client{
