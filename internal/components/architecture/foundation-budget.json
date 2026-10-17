@@ -1,0 +1,2579 @@
+{
+  "baseSHA": "bb306959fe17f49bfcb201cb69eb39cf7f7e4030",
+  "sites": [
+    {
+      "rule": "broad-runtime",
+      "path": "api/apiService.go",
+      "symbol": "ApiService",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "api/apiService.go",
+      "symbol": "WithRuntime",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "api/config/handler.go",
+      "symbol": "Deps",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "api/config/handler.go",
+      "symbol": "Handler",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "app/app.go",
+      "symbol": "APP",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "componenthost/deps.go",
+      "symbol": "APIDeps",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/paid-subscriptions/component.go",
+      "symbol": "paymentPollJob",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/paid-subscriptions/telegram/bot.go",
+      "symbol": "Bot",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/paid-subscriptions/telegram/bot.go",
+      "symbol": "StartBot",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/paid-subscriptions/telegram/bot.go",
+      "symbol": "newBotWithRuntime",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/paid-subscriptions/telegram/bot.go",
+      "symbol": "newSenderBot",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/paid-subscriptions/telegram/bot.go",
+      "symbol": "newSenderBot",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/paid-subscriptions/telegram/broadcast.go",
+      "symbol": "Broadcast",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/paid-subscriptions/telegram/payment.go",
+      "symbol": "RefundOrder",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/paid-subscriptions/telegram/payment.go",
+      "symbol": "newPaymentCoordinator",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/paid-subscriptions/telegram/payment.go",
+      "symbol": "paymentCoordinator",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/paid-subscriptions/telegram/payment_bot.go",
+      "symbol": "auditCrossUserOrderAccess",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/paid-subscriptions/telegram/poll.go",
+      "symbol": "PollOnce",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/paid-subscriptions/telegram/poll.go",
+      "symbol": "notifyPaid",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/paid-subscriptions/telegram/poll.go",
+      "symbol": "pollCryptoBot",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/paid-subscriptions/telegram/poll.go",
+      "symbol": "runCryptoBotWork",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/paid-subscriptions/telegram/settings.go",
+      "symbol": "newPaidSubHTTPClient",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/remote-outbound-subscriptions/service/remote_outbound_auto_refresh.go",
+      "symbol": "StartRemoteOutboundAutoRefresh",
+      "digest": "ad8468832317c683b16579506afe56ba1cad31c6cf672a28333658b4228cc751"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/remote-outbound-subscriptions/service/remote_outbound_subscriptions.go",
+      "symbol": "*RemoteOutboundService.runtime",
+      "digest": "ad8468832317c683b16579506afe56ba1cad31c6cf672a28333658b4228cc751"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/remote-outbound-subscriptions/service/remote_outbound_subscriptions.go",
+      "symbol": "RemoteOutboundService",
+      "digest": "ad8468832317c683b16579506afe56ba1cad31c6cf672a28333658b4228cc751"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/remote-outbound-subscriptions/service/remote_outbound_subscriptions.go",
+      "symbol": "remoteOutboundEffects",
+      "digest": "ad8468832317c683b16579506afe56ba1cad31c6cf672a28333658b4228cc751"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/server-protection/component.go",
+      "symbol": "ensureNativeFallbackWorkflowLocked",
+      "digest": "ad8468832317c683b16579506afe56ba1cad31c6cf672a28333658b4228cc751"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/server-protection/component.go",
+      "symbol": "ensureOperationManagerLocked",
+      "digest": "ad8468832317c683b16579506afe56ba1cad31c6cf672a28333658b4228cc751"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/server-protection/component.go",
+      "symbol": "helperAuditRecorder",
+      "digest": "ad8468832317c683b16579506afe56ba1cad31c6cf672a28333658b4228cc751"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/server-protection/component.go",
+      "symbol": "hooks,",
+      "digest": "ad8468832317c683b16579506afe56ba1cad31c6cf672a28333658b4228cc751"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/telegram/component.go",
+      "symbol": "*component.start",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/telegram/component.go",
+      "symbol": "newTelegramNotifier",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/telegram/component.go",
+      "symbol": "recordTelegramBackupAudit",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/telegram/component.go",
+      "symbol": "recordTelegramNotifierAudit",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/telegram/component.go",
+      "symbol": "runtimeAdapter",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/telegram/component.go",
+      "symbol": "startTelegramRuntimeJobs",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/telegram/settings_observer.go",
+      "symbol": "registerSettingsObserver",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "components/telegram/settings_observer.go",
+      "symbol": "telegramBackupPassphraseAuditObserver",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "web/web.go",
+      "symbol": "Server",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "broad-runtime",
+      "path": "web/web.go",
+      "symbol": "WithRuntime",
+      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/authority/store.go",
+      "symbol": "EnsureSchema",
+      "digest": "534b744de5f03ad23e5bbd6d0679e8668d8e9b61c1f4cd49b6dbbb8d0ed02cbe"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/authority/store.go",
+      "symbol": "EnsureSchema",
+      "digest": "571aaafa2212dcd88ddea86c4f90db7913ca6b5ad2fa77a71b8a72bdfbd3d450"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/authority/store.go",
+      "symbol": "ReconcileRestoredInTx",
+      "digest": "443d4c28986d0cc7d19d048328c69f9f51f2af973fba29242c4b93414c930689"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/authority/store.go",
+      "symbol": "SaveReplay",
+      "digest": "0dc20f8e9f14f6ab63e302638c3fa8d67d4969c4c8c0240f87ef414ca33679fb"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/component.go",
+      "symbol": "component.DropData",
+      "digest": "dd1de1f1557df96e1e733bbee1896762e3a08e852aacd85bc2378f340c211054"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/domain/schema.go",
+      "symbol": "EnsureSchema",
+      "digest": "571aaafa2212dcd88ddea86c4f90db7913ca6b5ad2fa77a71b8a72bdfbd3d450"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/domain/schema.go",
+      "symbol": "EnsureSchema",
+      "digest": "dd9e4263be048f2a954c30d7e9abcba81c59a29b84659063cb930b3eb7b71227"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/assets.go",
+      "symbol": "*Service.DeleteAsset",
+      "digest": "10754498ff2943e1e41d9608c354d702f848cee63ba6f9439583d712e55edff1"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/assets.go",
+      "symbol": "*Service.DeleteExternalResource",
+      "digest": "489489fed64b6a48dbfcc0985759f3a3e35fcc62f2379765e1a3f9987bcd5f25"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/assets.go",
+      "symbol": "*Service.SaveExternalResource",
+      "digest": "b05fc390e800b042bda9ff9d38021179dff8e34eeb4cbf4172efe0fc9ea102be"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/assets.go",
+      "symbol": "*Service.saveAsset",
+      "digest": "4cf4867e1e624a59a3e6f023b19d8bfbe426dd09e7e49419fb5ae87b40c57624"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/backup_files.go",
+      "symbol": "restoreFallbackFiles",
+      "digest": "45ea8c3019e53636875d6bf060d844449ff6ba535dfb7fd22ed51621499f4765"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/import.go",
+      "symbol": "*Service.ImportSite",
+      "digest": "0f44e4f2f068819f5bfc565fefec5254e14e9d7bd169d7df580d2deedb00cb40"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/import.go",
+      "symbol": "*Service.ImportSite",
+      "digest": "46d7a523a4619689d8509ed21b0f23ec28ea29b837683738046762a800d6bccb"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/import.go",
+      "symbol": "*Service.ImportSite",
+      "digest": "4e5a3c7cc17134041ffcdd72bced0d18c4611977e4e498212ccb819ba65266cf"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/import.go",
+      "symbol": "*Service.ImportSite",
+      "digest": "7bfdca5869c31634a858f64dff3247d882a5906bdd2ce47a57cb4d8055299342"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/import.go",
+      "symbol": "*Service.ImportSite",
+      "digest": "af6fb5a60bd566bfee21e4c0227fca085ca03711f558430448e3466a667ebfaa"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/import.go",
+      "symbol": "*Service.ImportSite",
+      "digest": "f3bd0c8b70c5d78be43083978c7b896ccd93c2d47e2f2047e1d45c554313746b"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/legacy_self_steal.go",
+      "symbol": "ReconcileLegacySelfSteal",
+      "digest": "24cd5fbd20caf7070afd8757e3a2623494ce872f0b428078dc676afc519253b4"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/legacy_self_steal.go",
+      "symbol": "ReconcileLegacySelfSteal",
+      "digest": "f257eb75c547e815eaa1cb2decf6da992436abdfb87c7ce5d6e6ea5ffa7bb08d"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/publish.go",
+      "symbol": "*Service.PrunePublishes",
+      "digest": "6d754ddc6ec44286060c6894e7b203b1a70f012036536432b25f1e10f2eb5382"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/publish.go",
+      "symbol": "*Service.PrunePublishes",
+      "digest": "7344437612adefd81c42f0d88fa92aebb2122acf53a110d16e2fb61a52f68bc7"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/publish.go",
+      "symbol": "*Service.PrunePublishes",
+      "digest": "c3d7e72cc4c7c849457ef150d1bf582d21b52ee75aa8c65a326eb30f5c6e49dd"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/publish.go",
+      "symbol": "*Service.PublishSite",
+      "digest": "46d7a523a4619689d8509ed21b0f23ec28ea29b837683738046762a800d6bccb"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/publish.go",
+      "symbol": "*Service.PublishSite",
+      "digest": "48ef9bbbd8ad2018c7f63e146ef9bb03a36975b2af26fc5b781dc04b13516a08"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/publish.go",
+      "symbol": "*Service.PublishSite",
+      "digest": "509197f60b04dd0bd7dde5472a336bc760f6d5b68553dadd0b68dcea1641b650"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/publish.go",
+      "symbol": "*Service.PublishSite",
+      "digest": "82f67780596e71f87f1e9edcff95470510da7167e2b0f2f71bbb1fc6590a9a6a"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/publish.go",
+      "symbol": "*Service.PublishSite",
+      "digest": "af6fb5a60bd566bfee21e4c0227fca085ca03711f558430448e3466a667ebfaa"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/publish.go",
+      "symbol": "*Service.RollbackSite",
+      "digest": "46d7a523a4619689d8509ed21b0f23ec28ea29b837683738046762a800d6bccb"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/publish.go",
+      "symbol": "*Service.RollbackSite",
+      "digest": "5ce47c24cd328bab98faf237198c69096c87ebce34e35d6e026add11edde41a8"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/publish.go",
+      "symbol": "*Service.RollbackSite",
+      "digest": "82f67780596e71f87f1e9edcff95470510da7167e2b0f2f71bbb1fc6590a9a6a"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/publish.go",
+      "symbol": "*Service.UnpublishSite",
+      "digest": "46d7a523a4619689d8509ed21b0f23ec28ea29b837683738046762a800d6bccb"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/publish.go",
+      "symbol": "*Service.UnpublishSite",
+      "digest": "b77f50df89b85a2753df150a652382fb87e883b57a96d6e08b5cc2378d6f1b8e"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/publish.go",
+      "symbol": "createSafetyReport",
+      "digest": "616c44aa8c2284345defdf0ba8eb9047bcae3c1d338bfd5ce8e87c650daa791f"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/remote_templates.go",
+      "symbol": "*Service.DeleteRemoteTemplate",
+      "digest": "6f997b8307794ca31cfd7f8a91715e7103b7e5bc071e370ed859b1d1326adfe2"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/remote_templates.go",
+      "symbol": "*Service.DeleteRemoteTemplate",
+      "digest": "b1b8065aaa011b87c9a5765f70377483394cfa7518ddf1c47547d7dc23f44ae6"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/remote_templates.go",
+      "symbol": "*Service.createSiteFromRemotePackage",
+      "digest": "2444f85f9c80af99b5e8ddebf5e0eb6444115745260164141654568a7d6d892a"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/remote_templates.go",
+      "symbol": "*Service.createSiteFromRemotePackage",
+      "digest": "493c1e762c585b9be0fafebb5dd0c6c78effb04f66e97878f588286e366a687a"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/remote_templates.go",
+      "symbol": "*Service.createSiteFromRemotePackage",
+      "digest": "7bfdca5869c31634a858f64dff3247d882a5906bdd2ce47a57cb4d8055299342"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/remote_templates.go",
+      "symbol": "*Service.saveAssetInTx",
+      "digest": "4cf4867e1e624a59a3e6f023b19d8bfbe426dd09e7e49419fb5ae87b40c57624"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/remote_templates.go",
+      "symbol": "*Service.saveDecoyInteractivityAssetInTx",
+      "digest": "4cf4867e1e624a59a3e6f023b19d8bfbe426dd09e7e49419fb5ae87b40c57624"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/service.go",
+      "symbol": "*Service.DeletePage",
+      "digest": "1379ca5ea3962613ea58748f82a39ab6f9ff412e8742ed821d681b476161db0c"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/service.go",
+      "symbol": "*Service.DeleteRedirect",
+      "digest": "4001fc976615860b6f187ed7042a53cbe74bca320da1813049cf7d255953dda6"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/service.go",
+      "symbol": "*Service.DeleteSite",
+      "digest": "8d619e89ececd620bde680243a1be98df0ec2894934dee8cd66402cce7418ef6"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/service.go",
+      "symbol": "*Service.SavePage",
+      "digest": "90546c376fe86deb79edf69b4c09e031864ccaf09396d4f5432a2592329cd96f"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/service.go",
+      "symbol": "*Service.SavePage",
+      "digest": "aef4f18365c9a10ec3292d0d6dbb82669938104022cee7b0e6fb84886b6d4067"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/service.go",
+      "symbol": "*Service.SaveRedirect",
+      "digest": "a1e8fd02628dd2d06a0daed7e39a2c1cecac0c923064330ba792528f3cb12be1"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/service.go",
+      "symbol": "*Service.SaveSite",
+      "digest": "2444f85f9c80af99b5e8ddebf5e0eb6444115745260164141654568a7d6d892a"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/service.go",
+      "symbol": "*Service.SaveSite",
+      "digest": "ef34c25c2f7196239f66af2653028ea6c3c84361895b18db29ebc785203b83eb"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/service.go",
+      "symbol": "NormalizeRestoredData",
+      "digest": "3cb2e61e05c9d9ea658967a655faa94057519ef83308aae58733ce87da0f4d04"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/service.go",
+      "symbol": "NormalizeRestoredData",
+      "digest": "75c1fa16a3cccb84d9fdaaaf217425594aced94578a2801b797005be04170da2"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/service.go",
+      "symbol": "createDefaultPages",
+      "digest": "7bfdca5869c31634a858f64dff3247d882a5906bdd2ce47a57cb4d8055299342"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/service.go",
+      "symbol": "recordEvent",
+      "digest": "863941dd046d1c37e641779d293559520b71f6cc37f693452d2e4b980e9dc9b0"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/targets.go",
+      "symbol": "*Service.DeleteTarget",
+      "digest": "31cf9c201d8ec57c317bf2b34ecb5a366f6e3102c01fc34fdd811cbb17e8b0b8"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/targets.go",
+      "symbol": "*Service.SaveTarget",
+      "digest": "8609880095ba11d6822eac2de4601c8e5716ff9551168f7f408037bd7b5d117a"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/service/targets.go",
+      "symbol": "*Service.SaveTarget",
+      "digest": "e857ad8892d92652372cc64afb1ec64c9ec89af4c40b0c941eedafbf66451b92"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/targets_provider_v2.go",
+      "symbol": "targetProvider.Reserve",
+      "digest": "5e4fdd6a92948e8bcda96bd2a25e4e01c20302a4fa767d6f32d846f7a87c0a34"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/fallback-html/targets_provider_v2.go",
+      "symbol": "targetProvider.transitionReservation",
+      "digest": "cadeda0639b3ba438b54ffbf8bd92577e4059416b94750cbe65ccbc2516d55ee"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/destination_clients.go",
+      "symbol": "applyClient",
+      "digest": "7085576eddbabd5fd85df073eeef4c4af4d6ec1dfa659ae0fd6a8139a5167bf7"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/destination_clients.go",
+      "symbol": "applyClient",
+      "digest": "b12ca87664833dcc5ca9e01555f6c45eb7051786532fa9c3e5d41526dc90e34e"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/destination_clients.go",
+      "symbol": "applyClient",
+      "digest": "d4cc22d317437409ef817b7b11cfb13fe0e73e33e904cd0f4ed953acdaffb5f8"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/destination_network.go",
+      "symbol": "applyEndpoint",
+      "digest": "018683536cb533345b33f0e711f09fa858c1d9e140facf1ab4f1fe1c3926bea7"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/destination_network.go",
+      "symbol": "applyEndpoint",
+      "digest": "3befbb00dab2ed863edb6c04d6a30ef2e7e7a64b9cec4bcc50e1864857d260d1"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/destination_network.go",
+      "symbol": "applyEndpoint",
+      "digest": "efd50ec979ddc0088086b6885d1ea6492fbb58029e2d8327f3cf394308f5fef2"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/destination_network.go",
+      "symbol": "applyEndpoint",
+      "digest": "efd50ec979ddc0088086b6885d1ea6492fbb58029e2d8327f3cf394308f5fef2"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/destination_network.go",
+      "symbol": "applyInbound",
+      "digest": "018683536cb533345b33f0e711f09fa858c1d9e140facf1ab4f1fe1c3926bea7"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/destination_network.go",
+      "symbol": "applyInbound",
+      "digest": "6e57b66fae52e8c59c4ea125cc57d91235da251fb41e04565e37ce5944714839"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/destination_network.go",
+      "symbol": "applyInbound",
+      "digest": "958777cb3986083485b5ceb0a29c63632bbf94a829fc2b7dcd29b49843cb1165"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/destination_network.go",
+      "symbol": "applyInbound",
+      "digest": "958777cb3986083485b5ceb0a29c63632bbf94a829fc2b7dcd29b49843cb1165"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/plan_admins.go",
+      "symbol": "upsertUserResetRequired",
+      "digest": "a9628da6c29ec73f65ad8cd7fef6d3818828836dfeb140b01528eb32045b9661"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/plan_admins.go",
+      "symbol": "upsertUserResetRequired",
+      "digest": "ffe0cdfb5a35e8a04d50f22c14d1bb482cf77fe2a821c105e40524c9eb960f5b"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/plan_admins.go",
+      "symbol": "upsertUserWithPassword",
+      "digest": "325c2c9974f2ad183dc7412fe74ed09cbcf7dd59be23450ff34eebc08a7af1c1"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/plan_admins.go",
+      "symbol": "upsertUserWithPassword",
+      "digest": "6ae7519e2e591d28b66fa59a6a38581601b0e642434cdc385ea28fe20865ec12"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/plan_apply.go",
+      "symbol": "*applyState.applyPlainTLS",
+      "digest": "018683536cb533345b33f0e711f09fa858c1d9e140facf1ab4f1fe1c3926bea7"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/plan_apply.go",
+      "symbol": "*applyState.applyPlainTLS",
+      "digest": "94bc0795245bf8b49d72fcdf3e58090da65d11a67e52691070bae1160e663fc9"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/plan_apply.go",
+      "symbol": "*applyState.applyTLS",
+      "digest": "018683536cb533345b33f0e711f09fa858c1d9e140facf1ab4f1fe1c3926bea7"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/plan_apply.go",
+      "symbol": "*applyState.applyTLS",
+      "digest": "94bc0795245bf8b49d72fcdf3e58090da65d11a67e52691070bae1160e663fc9"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/plan_apply.go",
+      "symbol": "Apply",
+      "digest": "f24ce568e4f2ae78af430d42510f55442e56ed9a7d8db5f7b3157a8860f85abc"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/plan_audit.go",
+      "symbol": "recordAuditWithBackup",
+      "digest": "b7dbe39440c9d65ff5bc02345092cd4e4e85232e951669d2ab181ab0a14c4191"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/plan_history.go",
+      "symbol": "*applyState.applyHistorical",
+      "digest": "2bc6ae2fd2fbc968b02ebc5fa1d2f0d99f0cee9d5921e1266d83ed41946f6f69"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/plan_settings.go",
+      "symbol": "*applyState.applySettings",
+      "digest": "ea206c2640c3ca169593635eb953e0be91348481f5a877e1073eba79b69b6b47"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/routing_apply.go",
+      "symbol": "createNewEndpoints",
+      "digest": "98b24a96c0fdac4fe661235422ba63f92d7b15118c746b95fe6c39a1e5d66bb9"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/import-xui/database/routing_apply.go",
+      "symbol": "createNewOutbounds",
+      "digest": "cb4a9b473327e7253bbcbbcca797eaa7f0b77e6af6740e26e3b9f40f48260aef"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/component.go",
+      "symbol": "*component.DropData",
+      "digest": "eb3d9e76d20796a819e92b07b9745e813b8955ddc86b8c82906846ef84460b9f"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/schema.go",
+      "symbol": "ensureSchema",
+      "digest": "0050f17c820e3d363eb2e0b3c1f46f6076611ae245c2e8b8282c075557bcd3b5"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/schema.go",
+      "symbol": "ensureSchema",
+      "digest": "0050f17c820e3d363eb2e0b3c1f46f6076611ae245c2e8b8282c075557bcd3b5"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/schema.go",
+      "symbol": "ensureSchema",
+      "digest": "910ee48c66f387e0756c7cc4372ca2516c17e678e56c3b2e6a65c592679b918b"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/schema.go",
+      "symbol": "ensureSchema",
+      "digest": "d570ed42292292077ad69f8ac37a3f1ed1e30f2370bb9fd42ff2eef8c241fc6e"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/schema.go",
+      "symbol": "migrateOrders",
+      "digest": "1d9755d0125de8783252e657bce9babf7362064e25205df7703aa20329b43e37"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/schema.go",
+      "symbol": "migrateOrders",
+      "digest": "380f8d765ba9036967ed98a19eb3d68df9a796e98b5114928f88f4c54dc21778"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/schema.go",
+      "symbol": "migrateOrders",
+      "digest": "8e53a9efc2b0dd8e7150515866674491ed0a3d82d8c55fed87c7852899461d06"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/schema.go",
+      "symbol": "migrateOrders",
+      "digest": "b58c141ca1bccc5d768442d888ad74daf699ff58cb32b844d9a68ed01b5b41e9"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/schema.go",
+      "symbol": "migrateOrders",
+      "digest": "bcbebc6006a2c535d7cd78805872f5c43b26da045d613c8df6b3541d8f6b623a"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/schema.go",
+      "symbol": "migrateOrders",
+      "digest": "d556f042309fb5f3fe606be564d162df72785e68a8b980ef475949e458c2984f"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/schema.go",
+      "symbol": "migrateOrders",
+      "digest": "feef9fc73e44bdf1c5f11f5e5d5a938d7dd713af5ca39a73fe67016ec48ee57a"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/bindings.go",
+      "symbol": "SetBinding",
+      "digest": "8de7ab99f13d11885df6cc3ff8702f749d92004bc3b28e24e9043ae5ee9da26d"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/bindings.go",
+      "symbol": "SetBinding",
+      "digest": "d6f0b20fed045a44061f470a0e7ac2c497f16deed7d4816e0485056c7da3a1dd"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/bindings.go",
+      "symbol": "UnbindClient",
+      "digest": "476f7af32eb33e0209fae2715306cf98d9562aedd9acf7631f81ea6aaa3ba811"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/order_grant_store.go",
+      "symbol": "ApplyPaidOrderGrant",
+      "digest": "3d2a088f4023c0aeeca84feced815e5ab6a5a8f8d924c83b0222d93010be5efa"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/order_grant_store.go",
+      "symbol": "ApplyPaidOrderGrant",
+      "digest": "460c87d7b9723abbb42ea0e1acd6848c832306e75e7f30dac1f0dab80f5df5b4"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/order_grant_store.go",
+      "symbol": "ApplyPaidOrderGrant",
+      "digest": "8938ed530ccb1d9b6016354a7e4b6ac2d750ae92835452a8e1ed368995f349ef"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/order_grant_store.go",
+      "symbol": "ApplyPaidOrderGrant",
+      "digest": "adf6f4d6fb24861815a003b1b001ee633f9e95c762a49b42449b9f4118836f27"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/order_grant_store.go",
+      "symbol": "finalizeRefundGrant",
+      "digest": "460c87d7b9723abbb42ea0e1acd6848c832306e75e7f30dac1f0dab80f5df5b4"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/order_grant_store.go",
+      "symbol": "finalizeRefundGrant",
+      "digest": "55ad3adb5bccd63f134fab7038bc4ad2b333c7b2eb73244a598540f7bfa25182"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/order_grant_store.go",
+      "symbol": "finalizeRefundGrant",
+      "digest": "f73b6844d024472b795d97e7c8d6631253307457502739e692ffcc8f6abcb80f"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/order_store.go",
+      "symbol": "CreateInvoiceIntent",
+      "digest": "51e86f37ae180182f4a49ea3571b3c4bf1601e1abdce9748e171c4acc0775b0c"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/order_store.go",
+      "symbol": "CreateInvoiceIntent",
+      "digest": "6c87087a4d1fb65c5163dc24876c89fe8ae2d3328498760e6c2acc6e97ec2914"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/order_store.go",
+      "symbol": "ExpireStaleOrders",
+      "digest": "183f328365f4ce13eb8e4d7684dd2db5f37b85704c44416e5652811097bf45ba"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/order_store.go",
+      "symbol": "MarkInvoiceRecoverable",
+      "digest": "c1a3b26d1f93e6454911465486153839c51234d1afec754e60a5eee9bfac7b3a"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/order_store.go",
+      "symbol": "MarkOrderFailed",
+      "digest": "e39b3b531f6a9666f8edff06776d4150241363e585369cb6038fde8e4f2dbbf7"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/order_store.go",
+      "symbol": "ReviewProviderOrders",
+      "digest": "194cc0c1119c3cd96a43568dbb7eb867f0e27e6239b0cf3127bf6635d93f9cd1"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/order_store.go",
+      "symbol": "SaveInvoiceResult",
+      "digest": "3f77b3b7de4c57dd31a435057060ee31680b174b6ba7679639139fa4346a837d"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/provider_work_store.go",
+      "symbol": "AdvanceProviderCursor",
+      "digest": "7c994e75c3c0464fa6a4728e1a7d0066c8cdfe6510b59f968518800e3c55de68"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/provider_work_store.go",
+      "symbol": "CompleteCancellation",
+      "digest": "155b8e58b4102690c79784fcc20f4df5985a7177cb03aa9d6747b59b8f201194"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/provider_work_store.go",
+      "symbol": "CompleteCancellation",
+      "digest": "b81a2783c3ef728c2352199e924d1e07f1ebe1a4edb8c2175cd2ac155fa0c111"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/provider_work_store.go",
+      "symbol": "ExpireVerifiedProviderOrders",
+      "digest": "f4c5d94e75b1fc682dbf71bff2fde4110d58d1dbe3566b816e60b5595788d18f"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/provider_work_store.go",
+      "symbol": "RecoverProviderOrder",
+      "digest": "051d150193afc4d4e885c76082cc08c3793204a7643dc2fa9bc855f09bff3481"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/provider_work_store.go",
+      "symbol": "RecoverProviderOrder",
+      "digest": "53a15bd0c58765a1d0df5aad8c2b7f2e0c5b627a2c5b8727518b2e48e4772178"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/provider_work_store.go",
+      "symbol": "RecoverProviderOrder",
+      "digest": "550c4bf1fc14cf16a33b1608fc620150a237debdf3bcee7945dde344a9662428"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/provider_work_store.go",
+      "symbol": "RecoverProviderOrder",
+      "digest": "898b6d2402c0df65eb5dcac779bd30bfb723147d2451b5b735e13ed1f1ad40af"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/provider_work_store.go",
+      "symbol": "RecoverProviderOrder",
+      "digest": "898b6d2402c0df65eb5dcac779bd30bfb723147d2451b5b735e13ed1f1ad40af"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/provider_work_store.go",
+      "symbol": "RecoverProviderOrder",
+      "digest": "a25b90cd31d166b72d2231fc3cdf1158bc1586a07a71c57e89e072ac2d66a9fb"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/provider_work_store.go",
+      "symbol": "RecoverProviderOrder",
+      "digest": "a8b412e170c10066ea4de8fc990e13690e0cd2a3078100b4991d2d459f2b08e9"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/provider_work_store.go",
+      "symbol": "queueCancellations",
+      "digest": "ef630e7f298700af3b46deab31dc98b9e24da326b23fe4c6d102e771d7157304"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/refund_claim_store.go",
+      "symbol": "ClaimStarsRefund",
+      "digest": "973bf2329f4c23992aade4106418bb5aa3f6e39d320016ca2456aa1db65ee2b8"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/refund_claim_store.go",
+      "symbol": "ClaimStarsRefund",
+      "digest": "cb6014c25bbb83ce9aa9d3293de08010df95e7882e6d4ad228aae77c1a47b139"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/refund_claim_store.go",
+      "symbol": "ReleaseRefundClaim",
+      "digest": "06458d7a6e29f1d371bfad2889125757c3c17dffc2700214988f3f96ce5df485"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/tariff_store.go",
+      "symbol": "SaveTariff",
+      "digest": "75caf3b3776a50158f29c1acfb7f4cc04fa1fbdb16b820719372222f53b5f16c"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/tariff_store.go",
+      "symbol": "SaveTariff",
+      "digest": "d3bae0b58fceaf049e0cc7924909768c893c8d5cbd7664632878a07d70da96a6"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/internal/paid/store/tariff_store.go",
+      "symbol": "deleteTariffsWithoutOrders",
+      "digest": "839776e0f0aee8526e74bff45c7e7351a12499337fa96ba0ef22bcaeb5b6de45"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/telegram/autoregister.go",
+      "symbol": "*Bot.tryAutoRegister",
+      "digest": "314d63bf3b2378552b51252e3f0891bc3c353510a495646e61d89a770c844f57"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/paid-subscriptions/telegram/payment.go",
+      "symbol": "*paymentCoordinator.CreateOrder",
+      "digest": "cccde4802f3bdd5398468a79e3885846af43f0039f4e1fe87bad23474a2b35b1"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/component.go",
+      "symbol": "deleteComponentSettings",
+      "digest": "65d960e40ad15e0e8596fe182ed88e626be864e7a74b62391cbd7acb689ac4a7"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/dependencies.go",
+      "symbol": "ReconcileDerivedGroupDependencies",
+      "digest": "a3d675b65bc40daee38e4df0cf4e2a3a621f06a49145550e201c9772e6112019"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/dependencies.go",
+      "symbol": "syncGroupDependencyOutbounds",
+      "digest": "3cebd8419e1512a202f4643e4833a33cc38f86569ecb03997a10c4b15623930d"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/group_actions.go",
+      "symbol": "DeleteGroup",
+      "digest": "630db159f11e855999c4a7b5b38bef5eedac83e2621f073c53de79891efe6514"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/group_actions.go",
+      "symbol": "DeleteGroup",
+      "digest": "b29451096f6a9a57ebad3079e049bb4e1a277514b9093aecc0400f7a49161586"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/group_actions.go",
+      "symbol": "MoveConnectionToGroup",
+      "digest": "a164c44ab5a12a83d5eed97918a546c03db4154ff87d76640102d031fa227239"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/group_actions.go",
+      "symbol": "MoveConnectionToGroup",
+      "digest": "e57da577679820e5af90933f474305ebb3196c282e11bca07d78fef74a5049c6"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/group_actions.go",
+      "symbol": "addGroupConnections",
+      "digest": "a164c44ab5a12a83d5eed97918a546c03db4154ff87d76640102d031fa227239"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/group_actions.go",
+      "symbol": "disableGroupOutbounds",
+      "digest": "15c9fb748ed6702754f9ad0abf161179df709bc60be823a84bdfd5bc2673fc87"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/group_actions.go",
+      "symbol": "enableGroupOutbounds",
+      "digest": "15c9fb748ed6702754f9ad0abf161179df709bc60be823a84bdfd5bc2673fc87"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/group_actions.go",
+      "symbol": "enableGroupOutbounds",
+      "digest": "6ed1f5e6369faeab3fc877384f71ba557f79c6bcfd5628c32f345b75e8c7ac28"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/group_actions.go",
+      "symbol": "removeGroupConnections",
+      "digest": "5c6435abb20dd0c2722d8ed6d92c422afa4abdaaf79b5169edefc2bbfe385039"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/groups.go",
+      "symbol": "AddGroupConnection",
+      "digest": "1b18c55f354c96c984a8048bab64f5e20af95094e7c17b477fbaae70e5985e1c"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/groups.go",
+      "symbol": "EnsureDefaultGroup",
+      "digest": "f068469503db8e8f7180d3a517113ef77f2509d5b5cb94003c26f9ae6690798e"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/groups.go",
+      "symbol": "ReconcileGroupStates",
+      "digest": "d6b74996e34962623e1a324651d1caa1546e7a2bf38cf220beaf93cfd712d27d"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/groups.go",
+      "symbol": "SyncConnectionLegacyGroupID",
+      "digest": "05ad2078b92511b9c5a3185d397d018dad1b4a8b1d01acd9b356737d2e446583"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/groups.go",
+      "symbol": "SyncConnectionLegacyGroupID",
+      "digest": "7630ca06b9cec86bc616daba7008b39688bd54f2dc0af5be508dc4604b83bb80"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/refresh.go",
+      "symbol": "MarkRefreshError",
+      "digest": "dcb1c046ec5e14569d7caf2911da78e8a3388d4db2f49c0a01fbc321bb1876d2"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/refresh.go",
+      "symbol": "pruneStaleConnections",
+      "digest": "a9ba4545dd41ebe9749252a46a3fe90e17ff936377244db12d67e5f3161a3238"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/refresh.go",
+      "symbol": "pruneStaleConnections",
+      "digest": "e57da577679820e5af90933f474305ebb3196c282e11bca07d78fef74a5049c6"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/refresh.go",
+      "symbol": "refreshSeenConnections",
+      "digest": "a164c44ab5a12a83d5eed97918a546c03db4154ff87d76640102d031fa227239"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/refresh.go",
+      "symbol": "refreshSubscriptionOutbounds",
+      "digest": "49d0ed34b685d8577f05aec9dd321acc42b05cecb2b8c79e6fc8093a1f4b6853"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/refresh.go",
+      "symbol": "upsertRefreshConnection",
+      "digest": "a164c44ab5a12a83d5eed97918a546c03db4154ff87d76640102d031fa227239"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/schema.go",
+      "symbol": "EnsureSchema",
+      "digest": "571aaafa2212dcd88ddea86c4f90db7913ca6b5ad2fa77a71b8a72bdfbd3d450"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/schema.go",
+      "symbol": "EnsureSchema",
+      "digest": "fcc06cb79821cda8c27fcd120e72b698d235049945cd93ac3093fd8011c85273"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/schema.go",
+      "symbol": "ensureTableSortOrder",
+      "digest": "7294eda9be2903bc01864de9d39813d72016ae8775340960655f97e6aaea8a3a"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/sync.go",
+      "symbol": "MarkConnectionOutboundMissing",
+      "digest": "df8da257f14f22718f0f60c79c7d6546b5198ff9a1c55f47ec4f8707847d7897"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/sync.go",
+      "symbol": "UnsyncConnectionFromOutbound",
+      "digest": "50db1bd0930ca5e0f841d3196d5a0f3892302b7da3facf8639bc4581622472d2"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/sync.go",
+      "symbol": "UnsyncConnectionsForDeletedOutbound",
+      "digest": "7fcafdf879d79c9ff1edf39379857fd5c7a0bdfcf2007461b8b242df3de74cbb"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/sync.go",
+      "symbol": "UnsyncConnectionsForDeletedOutbound",
+      "digest": "e4801369ca0c8e7d82f485a9a6a2e990a4cf470de226692e43faf3b7b178d739"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/sync.go",
+      "symbol": "deleteLinkedOutbound",
+      "digest": "62af8ac880abfd088819d83c090f80f43e7a57d9723ec13448423c035fb509d6"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/sync.go",
+      "symbol": "markConnectionUnsynced",
+      "digest": "a906562cd02535bca16ddd10a2ff4f4a279d5151ab548aa517f80157b4dd6aae"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/sync.go",
+      "symbol": "syncSingleConnectionToOutbound",
+      "digest": "df8da257f14f22718f0f60c79c7d6546b5198ff9a1c55f47ec4f8707847d7897"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/tagging.go",
+      "symbol": "RetagSubscriptionConnections",
+      "digest": "50db1bd0930ca5e0f841d3196d5a0f3892302b7da3facf8639bc4581622472d2"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/domain/tagging.go",
+      "symbol": "RetagSubscriptionConnections",
+      "digest": "fab6f89c36b083af618c4540766c70cd0a9602f52fbad47e3b4c75d2c707396f"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/service/internal/groups.go",
+      "symbol": "*Service.SaveGroup",
+      "digest": "e857ad8892d92652372cc64afb1ec64c9ec89af4c40b0c941eedafbf66451b92"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/service/internal/groups.go",
+      "symbol": "*Service.SaveGroupForAllSubscriptions",
+      "digest": "f068469503db8e8f7180d3a517113ef77f2509d5b5cb94003c26f9ae6690798e"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/service/internal/subscriptions.go",
+      "symbol": "*Service.DeleteSubscription",
+      "digest": "4ad7c539c50c3e3ff17a3b5dd9ec9f504e54f4daea84205b249df07a7f5cff8c"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/service/internal/subscriptions.go",
+      "symbol": "*Service.DeleteSubscription",
+      "digest": "6184e7bced0e619899eb4d3fb6185d7d9af9db0ba5da811226e9a560177d958a"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/service/internal/subscriptions.go",
+      "symbol": "*Service.DeleteSubscription",
+      "digest": "c8c50e7f343f8729d4fa165037e701f641cc5c79364f98979a80128153e9c1f7"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/service/internal/subscriptions.go",
+      "symbol": "*Service.DeleteSubscription",
+      "digest": "e12e773d94e6f211fe0cb4b35712e0053dc6608fce8d30c694b47c3c9623bbe4"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/service/internal/subscriptions.go",
+      "symbol": "*Service.SaveSubscription",
+      "digest": "e857ad8892d92652372cc64afb1ec64c9ec89af4c40b0c941eedafbf66451b92"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/service/internal/subscriptions.go",
+      "symbol": "*Service.SaveSubscription",
+      "digest": "e857ad8892d92652372cc64afb1ec64c9ec89af4c40b0c941eedafbf66451b92"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/remote-outbound-subscriptions/service/internal/subscriptions.go",
+      "symbol": "*Service.SyncConnectionToOutbound",
+      "digest": "e857ad8892d92652372cc64afb1ec64c9ec89af4c40b0c941eedafbf66451b92"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/artifacts.go",
+      "symbol": "*Repository.DeleteArtifact",
+      "digest": "8167cc1dd8b3b557600303d0f2551171d194fd57e2a4be731ce1c341c58d5609"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/artifacts.go",
+      "symbol": "*Repository.MarkOperationRecovery",
+      "digest": "51de04ad0ed560a3fd842e73deeea3f0d39b608a0982aadf9817ee761bc0a01a"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/artifacts.go",
+      "symbol": "*Repository.PruneFirewallHistory",
+      "digest": "01018e7b77ce9a01c5ed3d33d5b5b2305e7b0b02a72f7e9e194c4c21c28938e9"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/artifacts.go",
+      "symbol": "*Repository.PruneFirewallHistory",
+      "digest": "070980d02b3adae3e53c738d8c6f38ad4d49c2a4df4419e6f60b37aa6799ba5b"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/artifacts.go",
+      "symbol": "*Repository.SaveArtifact",
+      "digest": "980125c0f80b76a05778bdf69d8c0b68c4343b971dfb0f024b88128626b2a424"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/contracts_v2.go",
+      "symbol": "*Repository.SaveDecisionV2",
+      "digest": "fc5a914960c3dd1584b820c1204aec31e184581f4d8932e801d7ddfde797ed2a"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/contracts_v2.go",
+      "symbol": "*Repository.SaveLease",
+      "digest": "6e3f5bad673de7390797fb1123885c3385ab03c43ba47a8adbbc0aab00500caa"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/contracts_v2.go",
+      "symbol": "createSignalIdempotent",
+      "digest": "1e50398eb3a702a05fc470ec45f56dc87ef5a1a2bd31687dab4207119839f30c"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/contracts_v2.go",
+      "symbol": "pruneDecisionContracts",
+      "digest": "7b4e87806f5672a51a702863d0417d19e4fad8f001a65601639f1d2693c12c28"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/contracts_v2.go",
+      "symbol": "pruneLeaseContracts",
+      "digest": "7e713733108ea0108cfbf2b4a41bd2dcfac26d890f0aabee49383a2e24d3a243"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/contracts_v2.go",
+      "symbol": "pruneSignalContracts",
+      "digest": "d6950701722f6ee4d0bfa6843d80c545d670cb2d7244c66a76f78ebd0780d159"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/contracts_v2.go",
+      "symbol": "pruneSignalContracts",
+      "digest": "ecb4ba7ec2b477119ed57202d9e80601d740c5d3bc98d58d0c160499f2cb8a60"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/contracts_v2.go",
+      "symbol": "saveDecisionTx",
+      "digest": "4f2adc22976c1fcf63e5ffbcd0a163f9aafc08a9af89dbcfc20d1a54e110fd66"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/durable_transition.go",
+      "symbol": "*Repository.durableTransition",
+      "digest": "2f10f6890ab86fa82337991b46051c9f20667d4b2212bf909b48462594a35d8f"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "*Repository.CommitFirewallAuthority",
+      "digest": "07151c118049dba35dbee4ada9cd1f40028c8522efbbb10e085084e69b56fc47"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "*Repository.CommitFirewallAuthority",
+      "digest": "36bb68af1de4bd8a6a3391a685f2b8a68f707ca4af7165e3194036be96b2b6f7"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "*Repository.CommitFirewallAuthority",
+      "digest": "8fbf536be7b32edeefa1c7f715157722fd44039fae3f6c735d44b266be180a70"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "*Repository.CommitFirewallAuthority",
+      "digest": "906eb1b398e8a1ccbe1abfd9df9b12e7ee74687388925b4f46ddf677220a6b3b"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "*Repository.CommitFirewallAuthority",
+      "digest": "c10e43c8d55219c2432cd1da863c19b996b72103e3d358b156dd30dc735cee37"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "*Repository.CommitFirewallAuthority",
+      "digest": "cb19373f034d05b1b2ef176f1aa2669978bfb10c9fbc915f2e1063be52cce176"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "*Repository.CreateFirewallTransition",
+      "digest": "8f420bfba770e266faa6839b9f1bde8f7345d186a3c35432cbc11939734dc0e2"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "*Repository.MarkFirewallTransitionMutation",
+      "digest": "e1accb863915cd61f02fa8d4b3cd4274a87d334fb7b684e8a6e2cf66d36ecf4e"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "*Repository.MarkFirewallTransitionMutationCompleted",
+      "digest": "4c3665c6d93de55820f106dd9efff94984e4f0cd3eaa2e391030b404a5237066"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "*Repository.RecordFirewallObservation",
+      "digest": "07151c118049dba35dbee4ada9cd1f40028c8522efbbb10e085084e69b56fc47"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "*Repository.RecordFirewallTransitionHealth",
+      "digest": "281c926094affad912c60cc25aee3c1f4d8e9a4e9cf1a0296a4992470da84b8c"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "*Repository.RetireFirewallAuthorityAfterRuntimeLoss",
+      "digest": "32d24a1420a3b735ff1e8baef2a53e11385277615e4ad180527d9adde2a3b1ac"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "*Repository.RetireFirewallAuthorityAfterRuntimeLoss",
+      "digest": "516de956bf77a017ad72831bac3b18dccf2eda17b41df45568ab9862e193a916"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "*Repository.RetireFirewallAuthorityAfterRuntimeLoss",
+      "digest": "e348b47db5dc53fcea11022359b85649a6f8f9bf72214311fa9b31e027211a62"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "*Repository.RetireFirewallAuthorityAfterRuntimeLoss",
+      "digest": "f4f2eedb0453b20b267d1d98d90730ae5983b2e3b865c170d35d46e570aec1c4"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "*Repository.SetFirewallTransitionState",
+      "digest": "85322fa2f066eb9e6d70e8e140321f5bf52398953f1f26386bf188409955786c"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "ReconcileRestoredFirewallAuthority",
+      "digest": "120ad929513de43d78e63cb80d0eb52a634f4c34c242d1647853b7259aabd4af"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "ReconcileRestoredFirewallAuthority",
+      "digest": "a800f22081ece586e13bf960a660e210f3631a21ee4978aca182da57c6189e25"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "ReconcileRestoredFirewallAuthority",
+      "digest": "ab5e0a626e8fdd2f1d3c33ed58ccb27f702626c88bae8254fe7fcf47284adef6"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_composition.go",
+      "symbol": "reconcileAbandonedFirewallTransitions",
+      "digest": "758b9e4287c639f91c86761d301f300d393f41ff27fa35a85db71537005ea0d5"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/firewall_runtime.go",
+      "symbol": "*Repository.UpdateFirewallRuntime",
+      "digest": "cb19373f034d05b1b2ef176f1aa2669978bfb10c9fbc915f2e1063be52cce176"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/fronting_v2.go",
+      "symbol": "*Repository.AmbiguousFrontingReceiptV2",
+      "digest": "422b9057183ca7d11419750154a38887b66957ddf7bfc34a6c22d7cbda7fd6c0"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/fronting_v2.go",
+      "symbol": "*Repository.ClaimFrontingReceiptV2",
+      "digest": "144799531b5a1e33538fe46a7e2dd08f0aa81204a235e34870721e5fedf68983"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/fronting_v2.go",
+      "symbol": "*Repository.CompleteFrontingReceiptV2",
+      "digest": "59725c826c85198dabffa9645f73a426786139c2ed164b403809849e8056a51d"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/fronting_v2.go",
+      "symbol": "*Repository.ProjectFrontingStateV2",
+      "digest": "34c7f04e2d6b71d9854c39179f42da975240aec99fa12b89a18124904dba8a3c"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/fronting_v2.go",
+      "symbol": "ReconcileRestoredFrontingRecords",
+      "digest": "187fc4290164fa052f46e85f3633e640dcbcfe408229202794679b55480cf62b"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/fronting_v2.go",
+      "symbol": "ReconcileRestoredFrontingRecords",
+      "digest": "36cbd6d6cf130cf5be307ed8ba3174e96a89602a76317abaee37e421f61d40ed"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/fronting_v2.go",
+      "symbol": "ReconcileRestoredFrontingRecords",
+      "digest": "b976fe52c1efb341972710fdae79f835f94df3e41e8cc183f5b55071ab96b158"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/graylist_v2.go",
+      "symbol": "ReconcileRestoredGraylistStates",
+      "digest": "500322f7c6774a72974bb90a921e61386cc023d97a20091a96fbc2cf33ea7c1d"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/graylist_v2.go",
+      "symbol": "ReconcileRestoredGraylistStates",
+      "digest": "b8bed4b1945fc41247af7b5199b3f53f4b1eecd6684dab7515322c486678d7ec"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/graylist_v2.go",
+      "symbol": "expireGraylistStatesV2",
+      "digest": "b77cbb7275832730223befabb2d053d6d91c52b46d72e92dec6e9279b84104ff"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/graylist_v2.go",
+      "symbol": "pruneGraylistStatesV2",
+      "digest": "ece5661fd8c8c518a4f3677383e9a3529e38b7f5ae413fe58ca94ff01b076951"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/graylist_v2.go",
+      "symbol": "storeGraylistEvaluationTx",
+      "digest": "0f05a5ec40f842735c8c6929bc0f79bd2326a73735d96fcb8e63dd4fb56c298e"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/graylist_v2.go",
+      "symbol": "storeGraylistEvaluationTx",
+      "digest": "ae9dd24ec5f5711969b6d4fb77a51b36a92c9bfe89982df9817e29d687c51fc8"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/legacy_self_steal.go",
+      "symbol": "ReconcileLegacySelfStealProfiles",
+      "digest": "6ac407116ba88d55293523ec7eb70ea10310e57a04175aac5552b270b8a86e09"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/local_proxy.go",
+      "symbol": "*Repository.AmbiguousLocalProxyReceipt",
+      "digest": "c9c066e44b64f9838488f65a85726842a79e2f5f88e9b2b905e3f1852cfb3c5e"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/local_proxy.go",
+      "symbol": "*Repository.BeginLocalProxyReceipt",
+      "digest": "76bb957eca015bbac997e7357108b2717af2a16a2ee0b46177202b0b56f5476d"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/local_proxy.go",
+      "symbol": "*Repository.BindLocalProxyReceiptOperation",
+      "digest": "0abd32bfb23a25e9771121bcbb96bd3fb0225ed6c237cf07cca0ff8eba3ba367"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/local_proxy.go",
+      "symbol": "*Repository.CompleteLocalProxyReceipt",
+      "digest": "1ea18415f330328484379d87b29aeb481fb7bf74442b9f662a403da0d5fe649d"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/local_proxy.go",
+      "symbol": "*Repository.SaveLocalProxyState",
+      "digest": "994b3a3ff848a2073d0695525733386db30d246b4b14bd6f6371ce0124cf5257"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/local_proxy.go",
+      "symbol": "ReconcileRestoredLocalProxyRecords",
+      "digest": "52bf4661f82a80a6a83ee3b719ff2fdb134b00a108f0c5619af4c8111e695db2"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/local_proxy.go",
+      "symbol": "ReconcileRestoredLocalProxyRecords",
+      "digest": "a3d092ffb5477af8b2c5d40fb51f6321080b622849bf6b783ba1eccb305ae67a"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/native_fallback.go",
+      "symbol": "ReconcileRestoredNativeFallbackRecords",
+      "digest": "244d3b0a9ddd2b8683c559c90ab42d7c82e2f746845e2fc05f27c7edee3e2737"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/native_fallback.go",
+      "symbol": "ReconcileRestoredNativeFallbackRecords",
+      "digest": "c1319a3e150ea6af660bf903f67c8a06458853d625ad587753e1bf9d6fc806d8"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/native_fallback.go",
+      "symbol": "ReconcileRestoredNativeFallbackStates",
+      "digest": "070b867462043e7f387b5d360b01e99ee0c265cd6df242b95af6604f2c6490d5"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/native_operation.go",
+      "symbol": "*Repository.AdvanceNativeFallbackOperation",
+      "digest": "a730936f64ee2970c1ffa1d88ed1ddafb7435077f0471f8fcd7942ccb5716be3"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/native_operation.go",
+      "symbol": "*Repository.CreateNativeFallbackOperation",
+      "digest": "0f05a5ec40f842735c8c6929bc0f79bd2326a73735d96fcb8e63dd4fb56c298e"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/native_operation.go",
+      "symbol": "saveReservationMirrorTx",
+      "digest": "2fc7d4a05f36e67943cb10d940f06adbe463b618f0bbc41eadc0526b553e8b79"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/native_operation.go",
+      "symbol": "writeNativeStateTx",
+      "digest": "69ef063717345a02fe465e9995b731ed8e322cf30db4a12d23bea66364e913d0"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/native_retention.go",
+      "symbol": "*Repository.PruneNativeFallbackHistory",
+      "digest": "0d81c4015a598cf040ae108d3d39e19aaaeb7bbba4183264d68347212f1d3187"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/native_retention.go",
+      "symbol": "*Repository.PruneNativeFallbackHistory",
+      "digest": "bdf46e9bd2806ebcaeaedde322a0bc33b594511bd3674f8eb0ea42088fb43062"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/native_retention.go",
+      "symbol": "*Repository.PruneNativeFallbackHistory",
+      "digest": "f2b44885997c4039e38ef50b8fe89d10dac0e624d94391e17cc8ba74018afd90"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/operations.go",
+      "symbol": "*Repository.AcquireOperationLock",
+      "digest": "a5dbfea0f05f36149cd315726c0f976f801b044633a3ba195f4916c6ed060084"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/operations.go",
+      "symbol": "*Repository.ForceUnlockOperation",
+      "digest": "a9ee02361c8fd0d9070d9e6872d95b5f61839fcf617c48778b8a1bd7d15e0489"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/operations.go",
+      "symbol": "*Repository.ForgetOperationState",
+      "digest": "259a2b8bc47d10c9834f1637aa970f032b255d79f2eb0bb4b50d878fbf57b91f"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/operations.go",
+      "symbol": "*Repository.ForgetOperationState",
+      "digest": "b53298752b49e67c31f4fc049c427f407ebd6d1994b04a78ee99990a9674faf9"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/operations.go",
+      "symbol": "*Repository.HeartbeatOperationLock",
+      "digest": "b8dda29583d9d40977dc0eba9f24a8b37f0ece7183e99e7d88dd180f95320390"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/operations.go",
+      "symbol": "*Repository.ReclaimOperationLock",
+      "digest": "cf54c7173125a72377135597b563a15a2b7c62b4375e303262f1a53322295114"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/operations.go",
+      "symbol": "*Repository.RecordRuntimeRecoveryFailure",
+      "digest": "caf0cd31b445b752ff14dcff6cfb17e69d5e6a3a25de5f7413646ac55539f6a5"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/operations.go",
+      "symbol": "*Repository.RecoverOperationLock",
+      "digest": "52f49c9f72a95c699e24bdf1017020f15bbe289532621ccffa39cee5a093685b"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/operations.go",
+      "symbol": "*Repository.UpdateOperationLockFenced",
+      "digest": "092b67ea33ef830eb3e7c43cbb6e7327c0bfc014512bf05ad85501383ccafe6c"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/pipeline_v2.go",
+      "symbol": "createDecisionIdempotentTx",
+      "digest": "0f05a5ec40f842735c8c6929bc0f79bd2326a73735d96fcb8e63dd4fb56c298e"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/pipeline_v2.go",
+      "symbol": "createPlannedResponseIdempotentTx",
+      "digest": "0f05a5ec40f842735c8c6929bc0f79bd2326a73735d96fcb8e63dd4fb56c298e"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/pipeline_v2.go",
+      "symbol": "prunePlannedResponseContracts",
+      "digest": "a8175058004b8d5dde5d045c041e49eaea6c8e43aea0212f8d0996bc403e8dd3"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/profiles.go",
+      "symbol": "*Repository.CreateProfile",
+      "digest": "980125c0f80b76a05778bdf69d8c0b68c4343b971dfb0f024b88128626b2a424"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/profiles.go",
+      "symbol": "*Repository.DeleteProfile",
+      "digest": "2a94f8c5fca0cbffa782b00952d425ace5664efe2685aeec2f94b3daf98433dd"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/profiles.go",
+      "symbol": "*Repository.UpdateProfile",
+      "digest": "b74a63212dd83cae96478ab4901684f359605be026a591257be7e2b4ffa67cc5"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/query.go",
+      "symbol": "*Repository.deleteByID",
+      "digest": "ff10e5b753ecc2c9904b7aeb9092dc0f9d66feb0651848e01942f1e887ce5bcc"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/receipt_retention.go",
+      "symbol": "*Repository.PruneIdempotencyReceipts",
+      "digest": "90cf42dfdf30cd97ce2677cc88426e909040b557cba161ead4c00ce68b6f00c0"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/receipt_retention.go",
+      "symbol": "advanceReceiptFenceTx",
+      "digest": "0f773d2fed69c4956ce801be8a990a3e8fdaf7efd0d6d6fafe14f70887eea633"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/receipt_retention.go",
+      "symbol": "advanceReceiptFenceTx",
+      "digest": "1253289a9f3d8080f935422b267c2c7233b2457ca626842547d0dcd48d097563"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/retention.go",
+      "symbol": "*Repository.Purge",
+      "digest": "1df98a8a494f7978843eb2bacbdf622a4e32074cb352f4c48c17d7764a3e4a04"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/retention.go",
+      "symbol": "*Repository.Purge",
+      "digest": "1fde1ff3bd585a0ed4b2149db9459c9bbe5e6e7228ed77dc43fef1b7e8724c6c"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/retention.go",
+      "symbol": "*Repository.Purge",
+      "digest": "4001ecbd6bbbea22282854e838c2873579a0a0bb0438eead0f7a37a7ed745668"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/schema.go",
+      "symbol": "Migrate",
+      "digest": "2df3067cdad14a2a5d46f74e459581e088e46b55fbc6e0ca71d0a4977e06f257"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/schema.go",
+      "symbol": "Migrate",
+      "digest": "4bd74c4ba658511fd61f20b0f220e4d29b9ffd0c2a354e35b82c48e47daf630d"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/schema.go",
+      "symbol": "Migrate",
+      "digest": "571aaafa2212dcd88ddea86c4f90db7913ca6b5ad2fa77a71b8a72bdfbd3d450"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/schema.go",
+      "symbol": "Migrate",
+      "digest": "a2de3c489b36ce515ac85bd5da098c3802438e08cdef531525f70c18418b4db4"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/schema.go",
+      "symbol": "quarantineLegacyRecoveryEvidence",
+      "digest": "ae89f97294ab24949e8d3dab4420443da72bdb141fb659063d83a5e666173674"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/score_store.go",
+      "symbol": "*Repository.PersistObservationBatch",
+      "digest": "72b125d9e7f53ebdbe1e7af60360d9b695be62fbda7944d2cae1d011446192fd"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/score_store.go",
+      "symbol": "*Repository.PersistObservationBatch",
+      "digest": "cb1297a2223c02a6a2df337fd129417e9418776fb70a3b0c9a85ae3e39bad1a4"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/score_store.go",
+      "symbol": "*Repository.SaveScore",
+      "digest": "c2251dacae612408f1084d149f1ca762b16c74fc0d4f7a1b2fc3dc928caa169e"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/score_store.go",
+      "symbol": "upsertGraylist",
+      "digest": "1b2fd186a54e254367585fc3c1c85d156a557e1d4f51f8660fdcb9fbcf0685a8"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/score_store.go",
+      "symbol": "upsertGraylist",
+      "digest": "7883c421b0e30a7fa2d60a3ce350b52e6299c2c6180744cfb7da755e9686720c"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/settings.go",
+      "symbol": "*Repository.SaveSettingsRevision",
+      "digest": "b6598251932e665828c7ac9997a3da5712a3231325e647e4d1210c72a8eb6c89"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/udp_guard.go",
+      "symbol": "*Repository.AmbiguousUDPGuardReceipt",
+      "digest": "de554dfb6e8a766d5f5559055cac0c18e2aaad66f2470218faa59e0e026e6ce4"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/udp_guard.go",
+      "symbol": "*Repository.BeginUDPGuardReceipt",
+      "digest": "76bb957eca015bbac997e7357108b2717af2a16a2ee0b46177202b0b56f5476d"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/udp_guard.go",
+      "symbol": "*Repository.BindUDPGuardReceiptOperation",
+      "digest": "8523beb52d48069231db71e537ee939ee98663f625f991957c9284de00f515c5"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/udp_guard.go",
+      "symbol": "*Repository.CompleteUDPGuardReceipt",
+      "digest": "0dbfdfe5825782c409a34bd216585cb3ba99b580614aeafba93d24886c380651"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/udp_guard.go",
+      "symbol": "*Repository.SaveUDPGuardState",
+      "digest": "8cb2f4bd0b593db17344e94fd0a021d8523bb0aa947867088795a6e478d8527f"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/udp_guard.go",
+      "symbol": "*Repository.SaveUDPGuardState",
+      "digest": "d3bbc8b07e0fefccc3788e9ed9f8df87bb86624322a9fd9b4d1412d5377562db"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/udp_guard.go",
+      "symbol": "ReconcileRestoredUDPGuardRecords",
+      "digest": "a0d7b5139f082c9d5197c0c772e59a2903be481b2e2684af3e1913563b2f855e"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/server-protection/service/repository/udp_guard.go",
+      "symbol": "ReconcileRestoredUDPGuardRecords",
+      "digest": "eb23e76e24fdbce8d294a6aa8678c3e72490e9bb3e8d3305ad6238cbf0dbd045"
+    },
+    {
+      "rule": "component-model-mutation",
+      "path": "components/telegram/component.go",
+      "symbol": "*component.DropData",
+      "digest": "89aa4f5ac8dc742732317d16c09c0c1e60fec03b6412e98f65d10888e1bd5abd"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "api/session.go",
+      "symbol": "SetLoginUser",
+      "digest": "6639ab3fa2738f8832acb724ada8393a1065ff4e55ed5f0149730dec45e24eec"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "components/fallback-html/service/remote_templates.go",
+      "symbol": "*Service.createSiteFromRemotePackage",
+      "digest": "efdd543fe007849ef1a3f0ca9df68149a7f73a0005b715c8daee68cbcfd21f1b"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "components/fallback-html/service/service.go",
+      "symbol": "*Service.SaveSite",
+      "digest": "d560e9dc3ee5afba82f5125221db5b2cac0004664be63d3281edca404a1e83fc"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "components/import-xui/database/mapping/routing_xray.go",
+      "symbol": "resolveRoutingTarget",
+      "digest": "8f442026f9f01151a12e30dbd2cafb5222b7ae976f34fc84d1027b246dae98d6"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "components/import-xui/database/mapping/targets.go",
+      "symbol": "DirectOutboundTag,",
+      "digest": "2a3f3586bc8be58cad2aa0a6741fda771fa85e3c44a2c3cdfd8f8649de4b9135"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "components/server-protection/service/udpguard/planner.go",
+      "symbol": "protocolShippingStatus",
+      "digest": "39254af9ac46bb41bd96433f1b1bb347f258799cc36d8ad5462faf49f3da68f8"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "core/box/box.go",
+      "symbol": "NewBox",
+      "digest": "b2370b2215ee98eabe6868fe299a56bf3a4294bb36846c3c20afdf5419fc2bcc"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "core/registry/inbound.go",
+      "symbol": "inboundDeclarations",
+      "digest": "6fc6344a1cd660b2018821fc22a329bb816254c5b5f840a8d44220fe7fc33f42"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "core/registry/outbound.go",
+      "symbol": "outboundDeclarations",
+      "digest": "7f906ce0a8b2b863323c90a7cb176ecb84e6629ba4861ac2dca4af7c47a01d35"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "database/migration/steps/step_1_2_legacy_config.go",
+      "symbol": "moveJSONToDB",
+      "digest": "b8bfe8d6ed08802de5f0be7059caf22bc6c07baebf0e621fbc5a19afb1785be1"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/entities/outbounds/defaults.go",
+      "symbol": "EnsureDefault",
+      "digest": "6ba618e61f4f9158365b7a9183def9cf15318fd35fac20a27fee60cb600dc8d5"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/entities/outbounds/failover.go",
+      "symbol": "DirectFallbackTag",
+      "digest": "f70f31af8246b39fb18102ee24edbbc9c3933d0e72c16e57698608b70fcaf533"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/entities/outbounds/failover.go",
+      "symbol": "DirectTag,",
+      "digest": "0066d0f3b5cc3c4e8ba5c9567f37aa358f376261cb566b6c9276f783fd7b7039"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/entities/outbounds/failover.go",
+      "symbol": "FailoverFinalDirect,",
+      "digest": "524e74dc323eb654e6682dbf666137c630179282b04bd391a5d4abdd8e87d58b"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/entities/outbounds/failover.go",
+      "symbol": "FailoverFinalDirect,",
+      "digest": "524e74dc323eb654e6682dbf666137c630179282b04bd391a5d4abdd8e87d58b"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/entities/outbounds/failover.go",
+      "symbol": "failoverOptions.finalChoice",
+      "digest": "ca33ddc17c9679b7390c7c3e97a0ba34650496790230031ac8538614ea3ddf5c"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/entities/outbounds/failover.go",
+      "symbol": "failoverOptions.finalChoice",
+      "digest": "ca33ddc17c9679b7390c7c3e97a0ba34650496790230031ac8538614ea3ddf5c"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/entities/outbounds/failover.go",
+      "symbol": "failoverOptions.finalTag",
+      "digest": "13d558e4f0cdff4a65d71baab54c2fcfcdc01e798d199a88edb60bfe1107b839"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/entities/outbounds/failover_validation.go",
+      "symbol": "validateFailoverFinal",
+      "digest": "907e619520f11fb6e845422aa47d3fc3ec7b5adbe7b6884fea346a876b8c544c"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/entities/outbounds/legacy_options.go",
+      "symbol": "PrepareOptionsUpgrade",
+      "digest": "3c440b4cf3dfbd2862bee8d0f6ff815c7e10dc44ed3867de4ff5a277429fca11"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/ops/doctor/reference.go",
+      "symbol": "ReferenceChecks",
+      "digest": "6c33ccbdd15dc939e7c49913986b864a936cc74dd8aa2b9298c52fc38a834738"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/singbox/config/dns_compatibility.go",
+      "symbol": "convertLegacyDNSServer",
+      "digest": "6a60a9b06507b44a60f6c4b50c32bb4ac02560ee8dfd90d5eff8ad80aeb89415"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/singbox/config/http_compatibility.go",
+      "symbol": "httpOutboundReference",
+      "digest": "c79c60216328cf8ba65ebd66867c5440b6dca5a0c2efe49a1d0c9fe06f69c689"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/singbox/config/http_compatibility.go",
+      "symbol": "httpPolicyForOutbound",
+      "digest": "53474fb31f18ed2877204a4a6aacbd90f292233784e191d45289a5c83fb358f6"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/singbox/config/http_dns_consumers.go",
+      "symbol": "httpDNSConsumer",
+      "digest": "36ab1fec93396c646f488343d2b3e9b2a3b884267525ad597e0b435c0cf85ecb"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/singbox/tagrefs/rows.go",
+      "symbol": "scanOutboundRowsForTag",
+      "digest": "082a464f0651b2ae6d6e30b329be2a45613fb213ea57cceb6b3144031cacde21"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/subscriptions/formats/clash.go",
+      "symbol": "RenderClash",
+      "digest": "500091cd5e6849c5c663277d75a603968e06d5c0be8c51d854c09e1595b411ec"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/subscriptions/formats/clash.go",
+      "symbol": "RenderClash",
+      "digest": "500091cd5e6849c5c663277d75a603968e06d5c0be8c51d854c09e1595b411ec"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/subscriptions/formats/json.go",
+      "symbol": "ApplyJSONOptions",
+      "digest": "627c5a1516253e119415871de880fa3f4b799c6b60e20e959decfd4570b6090e"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/subscriptions/formats/json.go",
+      "symbol": "insertDirectRouteRules",
+      "digest": "ceea05376850dce9b932593480876b3cb461c8314e42a5c5238696cddb33a37a"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/subscriptions/formats/json.go",
+      "symbol": "jsonRuntimeOutbound",
+      "digest": "517f382868840ab7ace71c15b60a5659284c014b72046314f70a12efdbfc06ea"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/subscriptions/formats/json.go",
+      "symbol": "jsonRuntimeOutbound",
+      "digest": "517f382868840ab7ace71c15b60a5659284c014b72046314f70a12efdbfc06ea"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/subscriptions/formats/xray.go",
+      "symbol": "RenderXray",
+      "digest": "dce4e0098f8eaa41884f7de8d5c0f79dd48f846f92e6b0fb8a9bfa6a49f4113b"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/subscriptions/formats/xray.go",
+      "symbol": "RenderXray",
+      "digest": "dce4e0098f8eaa41884f7de8d5c0f79dd48f846f92e6b0fb8a9bfa6a49f4113b"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/subscriptions/local/outbounds.go",
+      "symbol": "PrependDefaultJSONOutbounds",
+      "digest": "e281f93fb37579c9785d174ade4304590a3358ccefe5a57f8adbd32efed4d34c"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/subscriptions/local/outbounds.go",
+      "symbol": "PrependDefaultJSONOutbounds",
+      "digest": "e281f93fb37579c9785d174ade4304590a3358ccefe5a57f8adbd32efed4d34c"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/subscriptions/local/outbounds.go",
+      "symbol": "PrependDefaultJSONOutbounds",
+      "digest": "e281f93fb37579c9785d174ade4304590a3358ccefe5a57f8adbd32efed4d34c"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/subscriptions/local/outbounds.go",
+      "symbol": "PrependDefaultJSONOutbounds",
+      "digest": "e281f93fb37579c9785d174ade4304590a3358ccefe5a57f8adbd32efed4d34c"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/subscriptions/parser/external.go",
+      "symbol": "parseSingBoxConfigOutbounds",
+      "digest": "d4558b332893ab560434f47a2685f50ebebd6bde82d5f0a24f9fe5f0b0eceea8"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "service/coreinboundcontrol/snapshot.go",
+      "symbol": "listenerNetworkForType",
+      "digest": "cdae4fc5581c4be280fbb6b10a08b6fd1c489d9e2ac7d9a4fcfdc57a072bf5ad"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "api/config/core_runtime.go",
+      "symbol": "*Handler.CheckOutbounds",
+      "digest": "9e294aa19f1c0dd63b17a48232d98781dfdb970a28b1428c36069cbd5a5a1728"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "api/realtime/handler.go",
+      "symbol": "startWSHeartbeat",
+      "digest": "51fc4eac1f0de34d579a85df1efcb605ab2a2eb346a05c28ea37dadccec78546"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "api/realtime/handler.go",
+      "symbol": "startWSHeartbeat",
+      "digest": "5db1967d4d1b154855eb569b58bee8ecbee60560dfc7a20a5c776887725bad99"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "api/runtime_logs.go",
+      "symbol": "*ApiService.streamRuntimeLogs",
+      "digest": "3e131c21d63e09e0977b17756986e7149f054468fcc22f4d7f51a393da9aa502"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "app/app.go",
+      "symbol": "*APP.registerCoreHooks",
+      "digest": "4e67a7d6fc201c43833a125a33525727ea8b39507753e20075584631ecb1faf3"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "cmd/internal/settings/uri.go",
+      "symbol": "getPublicIP",
+      "digest": "4ebfd5a1cd117e599d02c91ccd9877b68191d1d04be77b4da984179879df2e33"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "cmd/solovey-privileged-broker/main.go",
+      "symbol": "run",
+      "digest": "3182e1e70f200e7c062af4e211a087885a1d27f9b7f8f5035c35a521c853b0ea"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "cmd/solovey-privileged-broker/main.go",
+      "symbol": "run",
+      "digest": "7e0725226ae65619f85f3702a5885bac9a8c6010f986fc1485f0a938ceb159db"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "cmd/solovey-privileged-broker/main.go",
+      "symbol": "run",
+      "digest": "9d2f45d7853888958b4c8730824954a450954b554a5a5544046f0732b40ee859"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "cmd/solovey-privileged-broker/main.go",
+      "symbol": "watchAuthorityManifestWith",
+      "digest": "628b6518bf17b7f9081d4d793280384cb8a94b91d213bfd950a3e968f9d696df"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "componenthost/fallbacktargets/registry_v2.go",
+      "symbol": "safeInventoryV2",
+      "digest": "ebba70fbf3d749057d22e87e4176cfa141a88635fdd89e0f412244ee72075613"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "componenthost/fallbacktargets/registry_v2.go",
+      "symbol": "safeListReservationsV2",
+      "digest": "d47ead39a43b91da35f2621bbd3ef920e859ac1eba1d284851b65367b8a44f2c"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "componenthost/health/interception_probe.go",
+      "symbol": "callInterceptionProbe",
+      "digest": "66e7d49e22e3dc0912d84531fc74ef6f8dffd1b537f34e473a597fc6a44b28d8"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "componenthost/health/interception_probe.go",
+      "symbol": "callSupportsInterceptionProbe",
+      "digest": "0cec8be0665b629ed215d3d8d26aabcf64dfebcd1c19568b9893521fbf1b7ee4"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "componenthost/health/local_proxy_probe.go",
+      "symbol": "callLocalProxyProbe",
+      "digest": "1f49056be41bc71a5f4c9508644c12a9ecd86320d7571f6aa1cd380765f558fd"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "componenthost/health/local_proxy_probe.go",
+      "symbol": "callLocalProxyProbeCapability",
+      "digest": "fbf8ff8f5f2932685adc627d8623138de0c182bb6e7fb30ef79005c0986d6d0c"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "componenthost/health/protocol_probe.go",
+      "symbol": "callProtocolProbe",
+      "digest": "5b1432648f06b11ac666eaeb1846c59e081cd1528a05873aac72c1a298fbf917"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "componenthost/health/protocol_probe.go",
+      "symbol": "callProtocolProbeCapability",
+      "digest": "fbf8ff8f5f2932685adc627d8623138de0c182bb6e7fb30ef79005c0986d6d0c"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "componenthost/health/registry.go",
+      "symbol": "*Registry.Check",
+      "digest": "041c73a61c96f98b9cc60ab8eeca63246161957be209eff826ced258620360c8"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "componenthost/hostsurface/registry.go",
+      "symbol": "observeProvider",
+      "digest": "23d97643764add463cbb235ebbe7cb875a920f2e7bf3a7e3e7f39db1edad86f6"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "componenthost/management/registry.go",
+      "symbol": "recoveryPaths",
+      "digest": "0e1824bc28dbdaae296209ef5615be06deaa959c24bb8f9ac4dcfd18998ea12f"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "componenthost/resources/registry_provider.go",
+      "symbol": "callResourceProvider",
+      "digest": "acd6d3389a9f559c129a34cc7ebc1cbdfe69b29f91942cc4da625723a2a89e27"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/fallback-html/service/runtime.go",
+      "symbol": "*Runtime.Shutdown",
+      "digest": "72b9cc61eb112a5f1404209dbeec9a0968fc65959478e48beeee834f720a667a"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/fallback-html/service/runtime.go",
+      "symbol": "*Runtime.startStandaloneLocked",
+      "digest": "0bfa8eff4edab36f418707f0418a69b9761f4f91c122781c1b5a44c91a40799b"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/paid-subscriptions/telegram/bot.go",
+      "symbol": "StartBot",
+      "digest": "1f3a0075c55d329cbb280399eaefb3c6c1589b144bd76f73b400e3069d4a24eb"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/remote-outbound-subscriptions/domain/check.go",
+      "symbol": "CheckConnectionRecordsWithDB",
+      "digest": "a030af39e20aa27a3088ba54cf38f405ec475fb4e8072c1674805d5d7f001620"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/remote-outbound-subscriptions/domain/check.go",
+      "symbol": "checkTempCoreOutboundTags",
+      "digest": "c1ae1e8fe79df71d4b069b2a0591112c880a2bc33492bd04008b830d4fabc7c9"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/remote-outbound-subscriptions/service/remote_outbound_auto_refresh.go",
+      "symbol": "StartRemoteOutboundAutoRefresh",
+      "digest": "23bc2fbef4ce6397de6d30cc8bd8a2c613febb9db349e3ae5b647bb67f5307ba"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/remote-outbound-subscriptions/service/remote_outbound_auto_refresh.go",
+      "symbol": "StartRemoteOutboundAutoRefresh",
+      "digest": "4485e3208cad57046e656826486c20ba0a30c292354a2e5945f77adddc68832f"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/component.go",
+      "symbol": "component.Start",
+      "digest": "a3c4075fa192f36e4dd5aa952f4a1cfad9ef69fc8b35e11e296cbbc4b9cec706"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/component.go",
+      "symbol": "startLocalProxyRenewerLocked",
+      "digest": "257b8671331d920b23112fe4e92972086afd464cd48d11020cd4ddd09b07d50c"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/service/firewall/workflow.go",
+      "symbol": "unixNanoAfter",
+      "digest": "c6637cec188e8020578d939c2d4c24120ffc56ba73310507c9cf5cd4819fdb85"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/service/fronting/sni_health_v2.go",
+      "symbol": "boundedSNIHealthV2",
+      "digest": "1e7cb0b9c47fc6fab735ff434389982d4196ee300609e4556130c1cac12dd8ce"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/service/fronting/target_authority_v2.go",
+      "symbol": "safeFallbackCallV2",
+      "digest": "9cd22e3df161fbae3f44c92c7acfbaf5ab58784a9f039043ea28bda74bbf3ab6"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/service/fronting/workflow.go",
+      "symbol": "boundedHealth",
+      "digest": "84bb0341078135f6bcbb0fb1ff03427c7edfb2c2fa3be03e40436e96c3a85ea8"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/service/fronting/workflow_v2.go",
+      "symbol": "boundedFixedL4HealthV2",
+      "digest": "e929a2c460b28ffe6e1ddfe51d39faec06ee1206b0e00eb58eea8204a0ef0489"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/service/fronting/workflow_v2.go",
+      "symbol": "safeLeaseCallV2",
+      "digest": "f3fb27299bd3e070f378630775c6999007458ecf6150caf11f3d643be2b0e51e"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/service/fronting/workflow_v2.go",
+      "symbol": "safeLeaseListByHolderV2",
+      "digest": "4ed90cb3ccb2a42dd978dd2492f957f7b021e2fe5abae1665fa6b18917e45da9"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/service/helper/nginx_backend.go",
+      "symbol": "waitForReload",
+      "digest": "0bba1934cf3ed770f67c0d75a72a4c39ffb49aed125775dda1f7b9787960cb70"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/service/hostsurface/provider.go",
+      "symbol": "*Provider.Observe",
+      "digest": "30fa2e05e25597bed018c6c66240409a10a2768d228accb8316f00af7a1be22a"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/service/observation/worker.go",
+      "symbol": "*Worker.Start",
+      "digest": "ecb0b0c83203047027d66899d1b023f3dd08de6743d545004a2ee5972eadd420"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/service/observation/worker.go",
+      "symbol": "*Worker.run",
+      "digest": "19ff42cb23c9a69ef028a06a5b5bf73b9b634373689897e9678615ed4f1c6734"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/service/observation/worker.go",
+      "symbol": "*Worker.run",
+      "digest": "28e303859230189883a4fc2f2d5f86c670bce05bf24268429b8e401cd46163de"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/service/operations/manager.go",
+      "symbol": "*Manager.Start",
+      "digest": "08fd5831e49abae777fbdd8c02479560ad896cfb263a6a290773ac4b8769484d"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/service/operations/manager.go",
+      "symbol": "*Manager.run",
+      "digest": "57a32eb7cab82d4997a085f69551a494bf7319959f5a82f8592d3d37d261f27a"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/server-protection/service/operations/manager.go",
+      "symbol": "*Manager.run",
+      "digest": "607130ab0333dc5f84637f6c130c5d7d3944b21d076246cd3d3ec7f61ffe21ec"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/telegram/service/botapi.go",
+      "symbol": "*Service.SendDocumentStream",
+      "digest": "a32f976fe4e68ea3ec8decaa21a317bca4f0b32b4941f9c4b4f9ca0e62912802"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/telegram/service/notifier.go",
+      "symbol": "*Notifier.start",
+      "digest": "06ba642e3ee0b1ab42a1907fc625e2e5491de02d2854cabf677a29b2b5fab0a4"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "cronjob/jobs/runtime/failover.go",
+      "symbol": "*FailoverJob.probeMembers",
+      "digest": "b81d19dd7fdfeaaeaa1bc70d75ab266131e151e16e419d0b5f98b1d80b32cbb6"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "cronjob/scheduler/scheduler.go",
+      "symbol": "*Scheduler.RemoveJob",
+      "digest": "c9412dc003fdfdf1c3d6564bbf67e0710b6817f4c8acf729b77a34d8103f5fac"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "cronjob/scheduler/scheduler.go",
+      "symbol": "*managedJob.wait",
+      "digest": "f928a6b2348105e03d135fcfe7413cd652c02c990824d7b1c8e1bbf49f7fdd0b"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/privilegedbroker/server.go",
+      "symbol": "*Server.Serve",
+      "digest": "1dce48a468d80686246cae1ddf51e41c01e2363e159e6d19a35078ceb392a19d"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/updatebroker/host_systemd_linux.go",
+      "symbol": "scheduleReleaseRestart",
+      "digest": "c4f5ae05b801a959954c3a10daa3410a6a0d3beb9537079f29d3fc41a762a9c6"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/subscriptions/server/runtime.go",
+      "symbol": "*RuntimeServer.Start",
+      "digest": "53a190f4e357596973dcdfb1a8727a83177fb7759ac15b2d3989009afd3be69f"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "service/audit_writer.go",
+      "symbol": "*auditWriter.Start",
+      "digest": "795f4d19d661b1bf77a7da8f85679c6d12813f75cdca8b9eb97fa26d4710e678"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "service/coreinboundcontrol/local_proxy_probe.go",
+      "symbol": "newHTTPChallengeSink",
+      "digest": "dad5dc64a3ce8ad6c3c5a52b31591610436057bdfb16ab59fa85026126f04331"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "service/coreinboundcontrol/local_proxy_probe.go",
+      "symbol": "newLocalProxyTCPSink",
+      "digest": "099e4aaf644179ebff42396265fb8413208a422b5cfa228bfa67c854b3af17d0"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "service/coreinboundcontrol/udp_probe.go",
+      "symbol": "*PlainUDPProbeProviderV1.Probe",
+      "digest": "8501a3a449d0d8540111a8597edadc30e75527b5b2b70c9671e6a4d6ef36c4e0"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "service/doctor.go",
+      "symbol": "*DoctorService.outboundChecksTarget",
+      "digest": "c930ca78a87e059acaf1b57c44ce4d8df850ee9b5acd43a09ff913d7ac5a2907"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "service/resourcepressure/manager.go",
+      "symbol": "*Manager.Start",
+      "digest": "e66a3cd81c9e2e6f5c9a26642a7bc05b0a19f815417613c83edc2ec7ecf518ac"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "service/resourcepressure/manager.go",
+      "symbol": "*Manager.Start",
+      "digest": "e803f4d00fb74fe63b0153204075874be8102c9d4a1916ec3e5de4a270299d9b"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "service/sshmanagement/manager.go",
+      "symbol": "*Manager.StartWatchdog",
+      "digest": "59646c60e37385bdd8bda16e01e22667812bda842993ed11046b283a5f7e151d"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "util/ratelimit/common.go",
+      "symbol": "startJanitor",
+      "digest": "628b6518bf17b7f9081d4d793280384cb8a94b91d213bfd950a3e968f9d696df"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "util/ratelimit/common.go",
+      "symbol": "startJanitor",
+      "digest": "8da411917152c2e68e68b12215d357b31c3ba57f0907d07e4f89fe4ecaaf6a37"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "web/web.go",
+      "symbol": "*Server.Start",
+      "digest": "d712a8a673d27fac2b3e27689870f5b6ecc9e9fd806a1dae82d2d4a50e668723"
+    }
+  ]
+}
