@@ -67,6 +67,7 @@ func TestDeploymentRoutesRequireFullBrowserAuthentication(t *testing.T) {
 		"/api/v1/operations/deployment/profiles",
 		"/api/v1/operations/deployment/manifests",
 		"/api/v1/operations/deployment/broker",
+		"/api/v1/operations/deployment/platform-facts",
 		"/api/v1/operations/deployment/status",
 		"/api/v1/operations/deployment/doctor",
 		"/api/v1/operations/deployment/recovery",
@@ -76,6 +77,16 @@ func TestDeploymentRoutesRequireFullBrowserAuthentication(t *testing.T) {
 		if recorder.Code != http.StatusForbidden {
 			t.Fatalf("%s unauthenticated status=%d body=%s", path, recorder.Code, recorder.Body.String())
 		}
+	}
+}
+
+func TestDeploymentPlatformFactsReadUnavailableIsExplicit(t *testing.T) {
+	router, cookies := deploymentTestRouter(t)
+	response := deploymentRequest(router, cookies, http.MethodGet, "/api/v1/operations/deployment/platform-facts", "")
+	if response.Code != http.StatusOK || !strings.Contains(response.Body.String(), domain.PlatformFactsSchemaV1) ||
+		!strings.Contains(response.Body.String(), `"availability":"UNKNOWN"`) ||
+		!strings.Contains(response.Body.String(), `"hostScope":"LOCAL"`) {
+		t.Fatalf("status=%d body=%s", response.Code, response.Body.String())
 	}
 }
 

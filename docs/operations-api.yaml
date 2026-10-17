@@ -242,6 +242,11 @@ paths:
     get: { operationId: getDeploymentBroker, responses: *messageResponses }
   /api/v1/operations/deployment/capabilities:
     get: { operationId: getDeploymentCapabilities, responses: *messageResponses }
+  /api/v1/operations/deployment/platform-facts:
+    get:
+      operationId: getPlatformFacts
+      description: Local Host semantic facts from current deployment evidence. UNKNOWN preserves unsupported, stale or unavailable observations. Availability does not grant operation authority or attest readiness.
+      responses: *messageResponses
   /api/v1/operations/deployment/status:
     get: { operationId: getDeploymentStatus, responses: *messageResponses }
   /api/v1/operations/deployment/posture:

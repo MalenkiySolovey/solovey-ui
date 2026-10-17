@@ -72,6 +72,7 @@ func (a *APIHandler) registerDeploymentRoutes(g *gin.RouterGroup) {
 	group.GET("/manifests", h.manifests)
 	group.GET("/broker", h.broker)
 	group.GET("/capabilities", h.capabilities)
+	group.GET("/platform-facts", h.platformFacts)
 	group.GET("/status", h.status)
 	group.GET("/posture", h.status)
 	group.GET("/doctor", h.doctor)
@@ -121,6 +122,13 @@ func (h *deploymentHTTP) capabilities(c *gin.Context) {
 		return
 	}
 	jsonObj(c, h.manager.Capabilities(c.Request.Context()), nil)
+}
+
+func (h *deploymentHTTP) platformFacts(c *gin.Context) {
+	if _, ok := requireAuthenticatedSecurityContext(c); !ok {
+		return
+	}
+	jsonObj(c, h.manager.PlatformFacts(c.Request.Context()), nil)
 }
 
 func (h *deploymentHTTP) status(c *gin.Context) {
