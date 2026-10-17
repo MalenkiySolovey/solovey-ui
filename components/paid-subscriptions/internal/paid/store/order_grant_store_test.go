@@ -7,6 +7,7 @@ import (
 	paid "github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid"
 	"github.com/MalenkiySolovey/solovey-ui/components/paid-subscriptions/internal/paid/provider"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"gorm.io/gorm"
 )
 
 func TestApplyPaidOrderGrantAndRefundAreAtomicDomainOperations(t *testing.T) {
@@ -81,6 +82,46 @@ func TestApplyPaidOrderGrantAndRefundAreAtomicDomainOperations(t *testing.T) {
 	gotOrder, _ = GetOrder(db, order.Id)
 	if gotOrder.Status != paid.StatusRefunded {
 		t.Fatalf("order status after refund = %s", gotOrder.Status)
+	}
+}
+
+func TestPaidGrantPreservesCurrentManualDisableAfterSelection(t *testing.T) {
+	db := newPaidDB(t)
+	client := model.Client{Name: "grant-policy-race", Enable: false, AccessDisableReason: model.ClientDisabledQuota, Inbounds: json.RawMessage(`[]`)}
+	if err := db.Create(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+	tariff := paid.Tariff{Name: "renewal", Price: 100, Currency: "RUB", AddDays: 1}
+	if err := db.Create(&tariff).Error; err != nil {
+		t.Fatal(err)
+	}
+	order := paid.PaymentOrder{ClientId: client.Id, TariffId: tariff.Id, Provider: string(provider.ProviderStripe), Amount: 100, Currency: "RUB", Status: paid.StatusPending, IdempotencyKey: "grant-policy-race", GrantSnapshot: true, GrantAddDays: 1}
+	if err := db.Create(&order).Error; err != nil {
+		t.Fatal(err)
+	}
+	const callback = "test:paid-grant-current-blocker"
+	triggered := false
+	if err := db.Callback().Update().Before("gorm:update").Register(callback, func(tx *gorm.DB) {
+		if triggered || tx.Statement.Table != "clients" {
+			return
+		}
+		triggered = true
+		if err := tx.Session(&gorm.Session{NewDB: true}).Model(&model.Client{}).Where("id = ?", client.Id).Updates(map[string]interface{}{"enable": false, "access_disable_reason": model.ClientDisabledManual}).Error; err != nil {
+			t.Error(err)
+		}
+	}); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = db.Callback().Update().Remove(callback) })
+	if _, err := ApplyPaidOrderGrant(db, order.Id, "policy-race-charge", nil, 100, "fixture"); err != nil {
+		t.Fatal(err)
+	}
+	var got model.Client
+	if err := db.First(&got, client.Id).Error; err != nil {
+		t.Fatal(err)
+	}
+	if !triggered || got.Enable || got.AccessDisableReason != model.ClientDisabledManual || got.Expiry != 86500 {
+		t.Fatalf("paid renewal undid current policy or lost entitlement: %#v", got)
 	}
 }
 

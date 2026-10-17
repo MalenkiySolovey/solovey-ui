@@ -65,6 +65,7 @@ verify-*.txt
 !/docs/release-policy.md
 !/docs/build-reliability.md
 !/docs/sing-box-tracker-revalidation.md
+!/docs/client-access-reset.md
 tests/baseline/*
 !tests/baseline/run-command.ps1
 tests/baseline/e2e/tmp/

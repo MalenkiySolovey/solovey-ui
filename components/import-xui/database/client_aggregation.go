@@ -172,25 +172,30 @@ func (agg *clientAggregate) toModel() (model.Client, error) {
 		}
 		subSecret = generated.String()
 	}
+	disableReason := ""
+	if !agg.Enable {
+		disableReason = model.ClientDisabledLegacy
+	}
 	return model.Client{
-		Enable:      agg.Enable,
-		Name:        agg.Email,
-		SubSecret:   subSecret,
-		Config:      configJSON,
-		Inbounds:    inboundsJSON,
-		Links:       nil,
-		Volume:      agg.Volume,
-		Expiry:      agg.Expiry,
-		Down:        agg.Down,
-		Up:          agg.Up,
-		Desc:        agg.Desc,
-		Group:       agg.Group,
-		LimitIP:     agg.LimitIP,
-		IPLimitMode: "monitor",
-		LastOnline:  agg.LastOnline,
-		ResetDays:   0,
-		TotalUp:     0,
-		TotalDown:   0,
+		Enable:              agg.Enable,
+		AccessDisableReason: disableReason,
+		Name:                agg.Email,
+		SubSecret:           subSecret,
+		Config:              configJSON,
+		Inbounds:            inboundsJSON,
+		Links:               nil,
+		Volume:              agg.Volume,
+		Expiry:              agg.Expiry,
+		Down:                agg.Down,
+		Up:                  agg.Up,
+		Desc:                agg.Desc,
+		Group:               agg.Group,
+		LimitIP:             agg.LimitIP,
+		IPLimitMode:         "monitor",
+		LastOnline:          agg.LastOnline,
+		ResetDays:           0,
+		TotalUp:             0,
+		TotalDown:           0,
 	}, nil
 }
 

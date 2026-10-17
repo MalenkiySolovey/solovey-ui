@@ -355,14 +355,14 @@ func TestManifestCompatibilityRejectsPanelSchemaBrokerAndComponentDrift(t *testi
 			manifest.MinimumCoreSchema, manifest.MaximumCoreSchema, manifest.TargetCoreSchema = "1.11", "1.11", "1.11"
 		},
 		"future target schema": func(manifest *release.Manifest) {
-			manifest.MinimumCoreSchema, manifest.MaximumCoreSchema, manifest.TargetCoreSchema = "1.13", "1.13", "1.13"
+			manifest.MinimumCoreSchema, manifest.MaximumCoreSchema, manifest.TargetCoreSchema = "1.14", "1.14", "1.14"
 		},
 		"broker drift": func(manifest *release.Manifest) {
 			manifest.BrokerCapability = "broker-capabilities-9.9"
 		},
 		"component range drift": func(manifest *release.Manifest) {
 			manifest.Components = []release.Component{{ID: "fixture-component", Version: "1.0.0",
-				ArtifactSHA256: manifest.Artifacts[0].SHA256, MinimumCoreSchema: "1.13", MaximumCoreSchema: "1.14"}}
+				ArtifactSHA256: manifest.Artifacts[0].SHA256, MinimumCoreSchema: "1.14", MaximumCoreSchema: "1.15"}}
 		},
 	}
 	for name, mutate := range cases {

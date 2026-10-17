@@ -233,7 +233,7 @@ func TestSingBoxMigrationDoesNotOpenRuntimeCache(t *testing.T) {
 				t.Fatal(err)
 			}
 			if fail {
-				if err := db.Exec(`CREATE TRIGGER reject_cache_wave_version BEFORE UPDATE ON settings WHEN NEW.key='coreSchemaVersion' AND NEW.value='1.12' BEGIN SELECT RAISE(ABORT,'injected version publication'); END`).Error; err != nil {
+				if err := db.Exec(fmt.Sprintf(`CREATE TRIGGER reject_cache_wave_version BEFORE UPDATE ON settings WHEN NEW.key='coreSchemaVersion' AND NEW.value='%s' BEGIN SELECT RAISE(ABORT,'injected version publication'); END`, dbschema.CurrentCoreVersion)).Error; err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -258,7 +258,7 @@ func TestSingBoxMigrationLateFailuresPreservePreimageAndRetry(t *testing.T) {
 				options.ProjectRuntimeFiles = func(*gorm.DB, []byte) ([]byte, error) { return nil, errors.New("injected complete candidate failure") }
 			}
 			if fault == "version_publication" {
-				if err := db.Exec(`CREATE TRIGGER reject_wave_version BEFORE UPDATE ON settings WHEN NEW.key='coreSchemaVersion' AND NEW.value='1.12' BEGIN SELECT RAISE(ABORT,'injected version publication'); END`).Error; err != nil {
+				if err := db.Exec(fmt.Sprintf(`CREATE TRIGGER reject_wave_version BEFORE UPDATE ON settings WHEN NEW.key='coreSchemaVersion' AND NEW.value='%s' BEGIN SELECT RAISE(ABORT,'injected version publication'); END`, dbschema.CurrentCoreVersion)).Error; err != nil {
 					t.Fatal(err)
 				}
 			}
@@ -373,7 +373,7 @@ func TestSingBoxMigrationSQLiteCommitFailureRollsBackAndAllowsCorrection(t *test
 	for _, statement := range []string{
 		`CREATE TABLE fault_parent(id INTEGER PRIMARY KEY)`,
 		`CREATE TABLE fault_child(parent_id INTEGER REFERENCES fault_parent(id) DEFERRABLE INITIALLY DEFERRED)`,
-		`CREATE TRIGGER fail_deferred_commit AFTER UPDATE ON settings WHEN NEW.key='coreSchemaVersion' AND NEW.value='1.12' BEGIN INSERT INTO fault_child(parent_id) VALUES(999); END`,
+		fmt.Sprintf(`CREATE TRIGGER fail_deferred_commit AFTER UPDATE ON settings WHEN NEW.key='coreSchemaVersion' AND NEW.value='%s' BEGIN INSERT INTO fault_child(parent_id) VALUES(999); END`, dbschema.CurrentCoreVersion),
 	} {
 		if err := db.Exec(statement).Error; err != nil {
 			t.Fatal(err)

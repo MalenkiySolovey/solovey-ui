@@ -310,6 +310,12 @@ func validateClientSaveBatch(tx *gorm.DB, clients []*model.Client, editing bool)
 		if client == nil {
 			return common.NewError("client payload is invalid")
 		}
+		// The existing save action is explicit administrative enable intent.
+		// A JSON payload cannot manufacture quota-only reset authority.
+		client.AccessDisableReason = ""
+		if !client.Enable {
+			client.AccessDisableReason = model.ClientDisabledManual
+		}
 		client.Name = strings.TrimSpace(client.Name)
 		if err := entityidentity.ValidateName(client.Name); err != nil {
 			return err

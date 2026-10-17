@@ -130,7 +130,10 @@ func (s *Service) DepleteClients() (inboundIds []uint, err error) {
 
 	// Save changes
 	if len(changes) > 0 {
-		err = tx.Model(model.Client{}).Where("enable = true AND (("+clientTrafficOverLimitCondition+") OR (expiry > 0 AND expiry < ?))", dt).Update("enable", false).Error
+		err = tx.Model(model.Client{}).Where("enable = true AND (("+clientTrafficOverLimitCondition+") OR (expiry > 0 AND expiry < ?))", dt).Updates(map[string]interface{}{
+			"enable":                false,
+			"access_disable_reason": gorm.Expr("CASE WHEN expiry > 0 AND expiry < ? THEN ? ELSE ? END", dt, model.ClientDisabledExpired, model.ClientDisabledQuota),
+		}).Error
 		if err != nil {
 			return nil, err
 		}
@@ -206,30 +209,33 @@ func (s *Service) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 		return nil, err
 	}
 	for _, client := range resetClients {
+		var clientInboundIds []uint
 		if !client.Enable {
-			clientInboundIds, ok := decodeClientInbounds(client.Id, client.Inbounds, "client reset")
+			var ok bool
+			clientInboundIds, ok = decodeClientInbounds(client.Id, client.Inbounds, "client reset")
 			if !ok {
 				continue
 			}
+		}
+		// Evaluate current access state and counters in the write itself. A
+		// policy update after selection must never be overwritten by this job.
+		// The period fence also prevents double accounting or a stale schedule.
+		result := tx.Model(model.Client{}).
+			Where("id = ? AND auto_reset = true AND delay_start = false AND next_reset = ? AND reset_days = ?", client.Id, client.NextReset, client.ResetDays).
+			Updates(map[string]interface{}{
+				"next_reset":            dt + (clientResetPeriodDays(client.ResetDays) * 86400),
+				"total_up":              gorm.Expr("total_up + up"),
+				"total_down":            gorm.Expr("total_down + down"),
+				"up":                    0,
+				"down":                  0,
+				"enable":                gorm.Expr("CASE WHEN enable = false AND access_disable_reason = ? AND (expiry <= 0 OR expiry >= ?) THEN true ELSE enable END", model.ClientDisabledQuota, dt),
+				"access_disable_reason": gorm.Expr("CASE WHEN access_disable_reason = ? THEN CASE WHEN expiry > 0 AND expiry < ? THEN ? ELSE '' END ELSE access_disable_reason END", model.ClientDisabledQuota, dt, model.ClientDisabledExpired),
+			})
+		if result.Error != nil {
+			return nil, result.Error
+		}
+		if result.RowsAffected > 0 {
 			inboundIds = common.UnionUintArray(inboundIds, clientInboundIds)
-		}
-		client.NextReset = dt + (clientResetPeriodDays(client.ResetDays) * 86400)
-		client.TotalUp += client.Up
-		client.TotalDown += client.Down
-		client.Up = 0
-		client.Down = 0
-		if !client.Enable {
-			client.Enable = true
-		}
-		if err := updateClientResetFields(tx, client.Id, map[string]interface{}{
-			"next_reset": client.NextReset,
-			"total_up":   client.TotalUp,
-			"total_down": client.TotalDown,
-			"up":         client.Up,
-			"down":       client.Down,
-			"enable":     client.Enable,
-		}); err != nil {
-			return nil, err
 		}
 	}
 
