@@ -165,6 +165,13 @@ func inspectFoundationDeclaration(path, symbol string, declaration ast.Node, imp
 	ast.Inspect(declaration, func(node ast.Node) bool {
 		switch value := node.(type) {
 		case *ast.SelectorExpr:
+			if filepath.ToSlash(filepath.Dir(path)) == "components/telegram" {
+				qualifier, imported := value.X.(*ast.Ident)
+				coreService := imported && imports[qualifier.Name] == modulePath+"/service"
+				if value.Sel.Name == "Runtime" || coreService && (value.Sel.Name == "DefaultRuntime" || value.Sel.Name == "SetDefaultRuntime" || strings.HasPrefix(value.Sel.Name, "NewRuntime")) {
+					*forbidden = append(*forbidden, path+":"+symbol+": Telegram composition must use narrow transport/audit ports, not broad Runtime")
+				}
+			}
 			if qualifier, ok := value.X.(*ast.Ident); ok && value.Sel.Name == "Runtime" && imports[qualifier.Name] == modulePath+"/service" {
 				add("broad-runtime", symbol, value)
 			}
@@ -318,6 +325,9 @@ func TestFoundationProhibitedChanges(t *testing.T) {
 		})
 	}
 	for _, fixture := range []struct{ name, path, source string }{
+		{"telegram-host-runtime", "components/telegram/adapter.go", `package telegram; func build(host APIDeps) { use(host.Runtime) }`},
+		{"telegram-lifecycle-runtime", "components/telegram/adapter.go", `package telegram; func start(ctx Context) { use(ctx.Host.API.Runtime) }`},
+		{"telegram-global-runtime", "components/telegram/adapter.go", `package telegram; import owner "` + modulePath + `/service"; func build() { use(owner.DefaultRuntime()) }`},
 		{"sibling", "components/a/adapter.go", `package a; import "` + modulePath + `/components/b/internal/store"`},
 		{"exec", "components/a/adapter.go", `package a; import run "os/exec"; func Start() { run.Command("sh") }`},
 		{"rpc", "internal/ops/privilegedbroker/extra.go", "package broker; type ExtraRequest struct { Command string `json:\"command\"` }"},
@@ -337,6 +347,13 @@ func TestFoundationProhibitedChanges(t *testing.T) {
 }
 
 func TestFoundationLegitimateOwnersAndDeterministicBudget(t *testing.T) {
+	telegramPorts, err := parser.ParseFile(token.NewFileSet(), "ports.go", `package telegram; func build(host APIDeps) { use(host.OutboundHTTP); use(host.Audit.Recorder) }`, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if sites, rejected := inspectFoundationFile("components/telegram/adapter.go", telegramPorts); len(sites) != 0 || len(rejected) != 0 {
+		t.Fatalf("legitimate narrow Telegram ports rejected: %v %v", sites, rejected)
+	}
 	// Native exec is legitimate within the reviewed semantic owner. An
 	// observed procd command is a fact, not a generic Request escape hatch.
 	source := "package broker; import \"os/exec\"; type ProcessFact struct { Command []string `json:\"command\"` }; func Inspect() { exec.Command(\"/usr/bin/systemctl\", \"show\") }"

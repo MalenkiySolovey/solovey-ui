@@ -6,10 +6,8 @@ import (
 	"context"
 	_ "embed"
 	"errors"
-	"net/http"
 	"strings"
 	"sync"
-	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
@@ -62,10 +60,10 @@ type component struct {
 }
 
 func (c *component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) error {
-	return c.start(ctx, lifecycleCtx.Host.Scheduler, lifecycleCtx.Host.API.Runtime)
+	return c.start(ctx, lifecycleCtx.Host.Scheduler, lifecycleCtx.Host.API.OutboundHTTP, lifecycleCtx.Host.API.Audit.Recorder)
 }
 
-func (c *component) start(ctx context.Context, scheduler componenthost.Scheduler, runtime *service.Runtime) error {
+func (c *component) start(ctx context.Context, scheduler componenthost.Scheduler, transport componenthost.OutboundHTTPClientProvider, audit componenthost.AuditRecorder) error {
 	c.mu.Lock()
 	if c.started {
 		c.mu.Unlock()
@@ -75,19 +73,19 @@ func (c *component) start(ctx context.Context, scheduler componenthost.Scheduler
 		c.mu.Unlock()
 		return errors.New("telegram scheduler is unavailable")
 	}
-	if runtime == nil {
+	if transport == nil || audit == nil {
 		c.mu.Unlock()
-		return errors.New("telegram runtime is unavailable")
+		return errors.New("telegram transport or audit port is unavailable")
 	}
 	c.started = true
 	if c.notifier == nil {
-		c.notifier = newTelegramNotifier(runtime)
+		c.notifier = newTelegramNotifier(transport, audit)
 	}
 	notifier := c.notifier
 	if c.unregisterEvent == nil {
 		c.unregisterEvent = service.RegisterPanelEventNotifier(id, func(event string, fields map[string]string) {
 			(&telegramservice.Service{
-				Runtime:  runtimeAdapter{Runtime: runtime},
+				Runtime:  transport,
 				Notifier: notifier,
 				Settings: telegramsettings.Reader{},
 			}).NotifyEvent(event, fields)
@@ -106,7 +104,7 @@ func (c *component) start(ctx context.Context, scheduler componenthost.Scheduler
 		c.unregisterBackupCodecs = unregister
 	}
 	if c.unregisterSettings == nil {
-		c.unregisterSettings = registerSettingsObserver(runtime)
+		c.unregisterSettings = registerSettingsObserver(audit)
 	}
 	if c.unregisterLogCategory == nil {
 		c.unregisterLogCategory = diagnostics.RegisterLogCategory(diagnostics.LogCategoryContribution{
@@ -122,7 +120,7 @@ func (c *component) start(ctx context.Context, scheduler componenthost.Scheduler
 			return []string{"telegram"}
 		})
 	}
-	runtimeJobs, err := startTelegramRuntimeJobs(scheduler, runtime)
+	runtimeJobs, err := startTelegramRuntimeJobs(scheduler, transport, audit)
 	if err != nil {
 		c.mu.Unlock()
 		_ = c.Stop(ctx)
@@ -205,13 +203,13 @@ type telegramRuntimeJobs struct {
 	backupScheduler *jobs.TelegramBackupScheduler
 }
 
-func startTelegramRuntimeJobs(scheduler componenthost.Scheduler, runtime *service.Runtime) (telegramRuntimeJobs, error) {
+func startTelegramRuntimeJobs(scheduler componenthost.Scheduler, transport componenthost.OutboundHTTPClientProvider, audit componenthost.AuditRecorder) (telegramRuntimeJobs, error) {
 	runtimeJobs := telegramRuntimeJobs{
 		scheduler:       scheduler,
 		entryIDs:        make([]cron.EntryID, 0, 3),
 		reportScheduler: jobs.NewTelegramReportScheduler(scheduler),
-		backupScheduler: jobs.NewTelegramBackupScheduler(scheduler, runtimeAdapter{Runtime: runtime}, func(record telegramservice.AuditRecord) error {
-			return recordTelegramBackupAudit(runtime, record)
+		backupScheduler: jobs.NewTelegramBackupScheduler(scheduler, transport, func(record telegramservice.AuditRecord) error {
+			return recordTelegramBackupAudit(audit, record)
 		}),
 	}
 	runtimeJobs.reportScheduler.Run()
@@ -273,11 +271,11 @@ func callUnregisters(unregisters ...func()) {
 func telegramDeps(host componenthost.APIDeps) telegramhttp.Deps {
 	return telegramhttp.Deps{
 		Telegram: &telegramservice.Service{
-			Runtime:  runtimeAdapter{Runtime: host.Runtime},
+			Runtime:  host.OutboundHTTP,
 			Settings: telegramsettings.Reader{},
 		},
 		Settings:       telegramsettings.Reader{},
-		AuditService:   service.AuditService{Runtime: host.Runtime},
+		AuditService:   host.Audit.Recorder,
 		RequireScope:   host.Auth.RequireScope,
 		Actor:          host.Request.Actor,
 		RemoteIP:       host.Request.RemoteIP,
@@ -287,31 +285,23 @@ func telegramDeps(host componenthost.APIDeps) telegramhttp.Deps {
 	}
 }
 
-func newTelegramNotifier(runtime *service.Runtime) *telegramservice.Notifier {
+func newTelegramNotifier(transport componenthost.OutboundHTTPClientProvider, audit componenthost.AuditRecorder) *telegramservice.Notifier {
 	return telegramservice.NewNotifierContext(
 		telegramservice.QueueCapacity,
 		func(ctx context.Context, text string) telegramservice.Result {
 			return (&telegramservice.Service{
-				Runtime:  runtimeAdapter{Runtime: runtime},
+				Runtime:  transport,
 				Settings: telegramsettings.Reader{},
 			}).SendContext(ctx, text)
 		},
 		func(event string, details map[string]any) {
-			recordTelegramNotifierAudit(runtime, event, details)
+			recordTelegramNotifierAudit(audit, event, details)
 		},
 	)
 }
 
-type runtimeAdapter struct {
-	Runtime *service.Runtime
-}
-
-func (a runtimeAdapter) CoreHTTPClient(tag string, timeout time.Duration) (*http.Client, error) {
-	return service.NewOutboundHTTPClientForRuntime(a.Runtime, tag, timeout)
-}
-
-func recordTelegramNotifierAudit(runtime *service.Runtime, event string, details map[string]any) {
-	if err := (&service.AuditService{Runtime: runtime}).Record(service.AuditEvent{
+func recordTelegramNotifierAudit(audit componenthost.AuditRecorder, event string, details map[string]any) {
+	if err := audit.Record(service.AuditEvent{
 		Event:    event,
 		Resource: "notifier",
 		Severity: service.AuditSeverityWarn,
@@ -321,8 +311,8 @@ func recordTelegramNotifierAudit(runtime *service.Runtime, event string, details
 	}
 }
 
-func recordTelegramBackupAudit(runtime *service.Runtime, record telegramservice.AuditRecord) error {
-	return (&service.AuditService{Runtime: runtime}).Record(service.AuditEvent{
+func recordTelegramBackupAudit(audit componenthost.AuditRecorder, record telegramservice.AuditRecord) error {
+	return audit.Record(service.AuditEvent{
 		Actor:    record.Actor,
 		Event:    record.Event,
 		Resource: record.Resource,

@@ -32,13 +32,14 @@ type Scheduler interface {
 }
 
 type APIDeps struct {
-	Runtime *service.Runtime
-	Auth    AuthDeps
-	Request RequestDeps
-	Rate    RateLimitDeps
-	Audit   AuditDeps
-	HTTP    HTTPDeps
-	Update  UpdateDeps
+	Runtime      *service.Runtime
+	OutboundHTTP OutboundHTTPClientProvider
+	Auth         AuthDeps
+	Request      RequestDeps
+	Rate         RateLimitDeps
+	Audit        AuditDeps
+	HTTP         HTTPDeps
+	Update       UpdateDeps
 }
 
 type AuthDeps struct {
@@ -72,7 +73,8 @@ type RateLimitDeps struct {
 }
 
 type AuditDeps struct {
-	Audit func(*gin.Context, string, string, string, string, map[string]any)
+	Audit    func(*gin.Context, string, string, string, string, map[string]any)
+	Recorder AuditRecorder
 }
 
 type HTTPDeps struct {
