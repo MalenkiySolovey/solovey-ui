@@ -36,7 +36,7 @@ func NewHostIngressScopeProviderV1() *HostIngressScopeProviderV1 {
 
 func (*HostIngressScopeProviderV1) ProviderID() string { return hostIngressScopeProviderIDV1 }
 
-func (p *HostIngressScopeProviderV1) ForwardedIngressScopesV1(_ context.Context, now time.Time) ([]hostresources.ForwardedIngressScopeFactV1, error) {
+func (p *HostIngressScopeProviderV1) ForwardedIngressScopesV1(ctx context.Context, now time.Time) ([]hostresources.ForwardedIngressScopeFactV1, error) {
 	if p == nil || p.interfaces == nil || p.addrs == nil {
 		return nil, errors.New("host_ingress_scope_provider_unavailable")
 	}
@@ -47,21 +47,24 @@ func (p *HostIngressScopeProviderV1) ForwardedIngressScopesV1(_ context.Context,
 		}
 	}
 	now = now.UTC()
-	interfaces, err := p.interfaces()
-	if err != nil || len(interfaces) > hostresources.MaxResourceFacts {
-		return nil, errors.New("host_ingress_scope_inventory_unavailable")
+	observations, err := p.interfaceObservations(ctx)
+	if err != nil {
+		return nil, err
 	}
-	result := make([]hostresources.ForwardedIngressScopeFactV1, 0, len(interfaces)*2)
-	for _, intf := range interfaces {
+	result := make([]hostresources.ForwardedIngressScopeFactV1, 0, len(observations)*2)
+	for _, observation := range observations {
+		intf := observation.intf
 		if intf.Index <= 0 || !safeInterfaceNameV1(intf.Name) {
 			continue
 		}
-		addrs, addrErr := p.addrs(intf)
-		if addrErr != nil {
+		if observation.failed {
 			continue
 		}
 		families := map[hostresources.AddressFamily][]string{}
-		for _, raw := range addrs {
+		for _, raw := range observation.addrs {
+			if raw == nil {
+				continue
+			}
 			prefix, parseErr := netip.ParsePrefix(raw.String())
 			if parseErr != nil {
 				continue

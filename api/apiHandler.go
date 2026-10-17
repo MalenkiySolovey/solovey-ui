@@ -69,6 +69,7 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	a.registerSecurityRoutes(g)
 	a.registerSSHManagementRoutes(g)
 	a.registerDeploymentRoutes(g)
+	a.registerNetworkIdentityRoutes(g)
 	a.registerUpdateRoutes(g)
 	a.registerOperationsStatusRoutes(g)
 	a.registerDataLifecycleRoutes(g)
