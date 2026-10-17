@@ -320,6 +320,8 @@ jobs:
 
       - name: Frontend utility script syntax
         run: |
+          node --test scripts/audit/architecture-policy.test.mjs
+          node scripts/audit/architecture-policy.mjs
           node --check scripts/audit/validate-workflows.js
           node --check scripts/component-frontend-manifest.mjs
           node --check scripts/check-frontend-profile.mjs

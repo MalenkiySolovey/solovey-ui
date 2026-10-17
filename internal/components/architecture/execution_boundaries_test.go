@@ -13,14 +13,6 @@ import (
 // Linux filesystem behavior tests.
 func TestPrivilegedExecutionPackagesConsumeTrustedObjectMechanisms(t *testing.T) {
 	root := moduleRoot(t)
-	allowedOwners := map[string]bool{
-		"cmd/solovey-openwrt-lifecycle":               true,
-		"components/server-protection/service/helper": true,
-		"internal/ops/deploymentbroker":               true,
-		"internal/ops/privilegedbroker":               true,
-		"internal/ops/sshbroker":                      true,
-		"internal/ops/updatebroker":                   true,
-	}
 	mechanisms := map[string]bool{
 		modulePath + "/internal/ops/executableobject": true,
 		modulePath + "/internal/ops/procdexec":        true,
@@ -53,7 +45,7 @@ func TestPrivilegedExecutionPackagesConsumeTrustedObjectMechanisms(t *testing.T)
 		if len(facts.execFiles) == 0 {
 			continue
 		}
-		if !allowedOwners[packagePath] {
+		if !privilegedExecutionOwner(packagePath) {
 			t.Errorf("package %s gained process execution outside a privileged semantic owner: %v", packagePath, facts.execFiles)
 			continue
 		}
