@@ -152,7 +152,7 @@ func TestOpenAPIInventoryAndStrictRequests(t *testing.T) {
 }
 
 func openAPIContractRoute(path string) bool {
-	return path == "/api/getdb" || strings.HasPrefix(path, "/api/v1/security/") ||
+	return path == "/api/getdb" || path == "/api/v1/network-identity" || strings.HasPrefix(path, "/api/v1/security/") ||
 		strings.HasPrefix(path, "/api/v1/operations/")
 }
 

@@ -234,6 +234,11 @@ paths:
             schema: { $ref: "#/components/schemas/RevisionRequest" }
       responses: *messageResponses
 
+  /api/v1/network-identity:
+    get:
+      operationId: getLocalHostNetworkIdentity
+      description: Local Host interface observations and owner-configured listen/advertised inputs with distinct source, authority and freshness. Unsupported LAN roles, WAN, route sources, egress and forwarded authority remain UNKNOWN. No active probes or policy selection.
+      responses: *messageResponses
   /api/v1/operations/deployment/profiles:
     get: { operationId: getDeploymentProfiles, responses: *messageResponses }
   /api/v1/operations/deployment/manifests:
