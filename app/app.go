@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log"
+	"net/http"
 	"os"
 	"sync"
 	"time"
@@ -123,9 +124,14 @@ func (a *APP) Init() (err error) {
 	service.SetDefaultRuntime(a.runtime)
 
 	a.cronScheduler = scheduler.New()
+	runtime := a.runtime
 	a.components = componentsupervisor.New(componenthost.Deps{
 		API: componenthost.APIDeps{
 			Runtime: a.runtime,
+			OutboundHTTP: componenthost.OutboundHTTPClientFunc(func(tag string, timeout time.Duration) (*http.Client, error) {
+				return service.NewOutboundHTTPClientForRuntime(runtime, tag, timeout)
+			}),
+			Audit: componenthost.AuditDeps{Recorder: &service.AuditService{Runtime: runtime}},
 		},
 		Scheduler: a.cronScheduler,
 	})

@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	telegramservice "github.com/MalenkiySolovey/solovey-ui/components/telegram/service"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -20,7 +21,7 @@ import (
 type Handler struct {
 	Settings       telegramsettings.Reader
 	Telegram       *telegramservice.Service
-	AuditService   service.AuditService
+	AuditService   componenthost.AuditRecorder
 	RequireScope   func(*gin.Context, string, ...string) bool
 	Actor          func(*gin.Context) string
 	RemoteIP       func(*gin.Context) string
@@ -33,7 +34,7 @@ type Handler struct {
 type Deps struct {
 	Settings       telegramsettings.Reader
 	Telegram       *telegramservice.Service
-	AuditService   service.AuditService
+	AuditService   componenthost.AuditRecorder
 	RequireScope   func(*gin.Context, string, ...string) bool
 	Actor          func(*gin.Context) string
 	RemoteIP       func(*gin.Context) string
@@ -130,6 +131,10 @@ func (a *Handler) RunTelegramBackup(c *gin.Context) {
 
 func (a *Handler) runTelegramBackupManual(c *gin.Context) {
 	if !a.requireScope(c, "telegram", "telegram", "admin") {
+		return
+	}
+	if a.AuditService == nil {
+		c.AbortWithStatusJSON(http.StatusServiceUnavailable, Envelope{Success: false, Msg: "telegram audit service is unavailable"})
 		return
 	}
 	if !a.enforceTelegramBackupManualRateLimit(c) {

@@ -183,54 +183,6 @@
     },
     {
       "rule": "broad-runtime",
-      "path": "components/telegram/component.go",
-      "symbol": "*component.start",
-      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
-    },
-    {
-      "rule": "broad-runtime",
-      "path": "components/telegram/component.go",
-      "symbol": "newTelegramNotifier",
-      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
-    },
-    {
-      "rule": "broad-runtime",
-      "path": "components/telegram/component.go",
-      "symbol": "recordTelegramBackupAudit",
-      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
-    },
-    {
-      "rule": "broad-runtime",
-      "path": "components/telegram/component.go",
-      "symbol": "recordTelegramNotifierAudit",
-      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
-    },
-    {
-      "rule": "broad-runtime",
-      "path": "components/telegram/component.go",
-      "symbol": "runtimeAdapter",
-      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
-    },
-    {
-      "rule": "broad-runtime",
-      "path": "components/telegram/component.go",
-      "symbol": "startTelegramRuntimeJobs",
-      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
-    },
-    {
-      "rule": "broad-runtime",
-      "path": "components/telegram/settings_observer.go",
-      "symbol": "registerSettingsObserver",
-      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
-    },
-    {
-      "rule": "broad-runtime",
-      "path": "components/telegram/settings_observer.go",
-      "symbol": "telegramBackupPassphraseAuditObserver",
-      "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
-    },
-    {
-      "rule": "broad-runtime",
       "path": "web/web.go",
       "symbol": "Server",
       "digest": "766ec247190158e3476d6831e12268641c3ea2303c70f9f9c0bfd19baf585e9c"
