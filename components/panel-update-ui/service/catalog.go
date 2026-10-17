@@ -5,15 +5,16 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	componentprofile "github.com/MalenkiySolovey/solovey-ui/internal/components/profile"
 )
 
-// Catalog is a read-only projection of components already compiled into the
-// running binary. Signed release discovery and artifact installation belong to
-// the core update lifecycle, not to this UI component.
+// Catalog projects registered manifests and installed owner metadata. Signed
+// release discovery and artifact installation belong to the core update
+// lifecycle, not to this UI component.
 type Catalog struct{}
 
 func NewCatalog() Catalog { return Catalog{} }
@@ -36,6 +37,24 @@ func (Catalog) Inventory() (Inventory, error) {
 		}
 		status.Group = GroupAvailable
 		inventory.Available = append(inventory.Available, status)
+	}
+	// Installed ownership survives a profile/binary mismatch. Project that
+	// metadata without inventing a manifest, version or release authority.
+	installed, err := state.Components()
+	if err != nil {
+		return Inventory{}, err
+	}
+	for _, component := range installed {
+		if component.AvailableInBinary {
+			continue
+		}
+		status := ComponentStatus{
+			ID: component.ID, Name: component.Name, Delivery: component.Delivery, Installed: true,
+			Group: GroupUnavailable, UnavailableReason: "installed owner is absent from this binary",
+			ObservedLifecycle: component.ObservedLifecycle,
+		}
+		inventory.Components = append(inventory.Components, status)
+		inventory.Unavailable = append(inventory.Unavailable, status)
 	}
 	sortInventory(&inventory)
 	return inventory, nil

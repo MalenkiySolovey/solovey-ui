@@ -1,4 +1,5 @@
 export default { panelUpdateComponent: {
+  lifecycleResult: 'Запуск и остановка', lifecycle: { STARTED: 'Запуск завершён', START_FAILED: 'Ошибка запуска', STOPPED: 'Остановка завершена', STOP_FAILED: 'Ошибка остановки', NOT_OBSERVED: 'Результат не наблюдался', BINARY_ABSENT: 'Код отсутствует в сборке', NOT_INSTALLED: 'Не установлен' },
   panelVersion: 'Версия панели', componentCatalog: 'Каталог компонентов', binaryProfile: 'Профиль сборки', unknown: 'неизвестно', authority: 'Источник состояния', runningBinary: 'запущенная сборка',
   installedComponents: 'Установленные компоненты', noneInstalled: 'Установленных компонентов нет.', enabled: 'Включён', disabled: 'Выключен', locked: 'Защищён', enable: 'Включить', disable: 'Выключить', remove: 'Удалить',
   availableForBuild: 'Доступно в этой сборке', noneAvailable: 'Нет встроенных компонентов, ожидающих установки.', install: 'Установить', unavailable: 'Недоступно', unavailableForProfile: 'Недоступно в этом профиле', noneUnavailable: 'Недоступных компонентов не обнаружено.', notBundled: 'Не входит в сборку', requiresNewerPanel: 'Нужна более новая панель',

@@ -12,16 +12,18 @@ import (
 )
 
 type Component struct {
-	ID             string            `json:"id"`
-	Name           string            `json:"name"`
-	Version        string            `json:"version"`
-	Since          string            `json:"since,omitempty"`
-	Delivery       manifest.Delivery `json:"delivery"`
-	DefaultEnabled bool              `json:"defaultEnabled"`
-	TokenScopes    []string          `json:"tokenScopes,omitempty"`
-	Installed      bool              `json:"installed"`
-	Enabled        bool              `json:"enabled"`
-	Active         bool              `json:"active"`
+	ID                string               `json:"id"`
+	Name              string               `json:"name"`
+	Version           string               `json:"version"`
+	Since             string               `json:"since,omitempty"`
+	Delivery          manifest.Delivery    `json:"delivery"`
+	DefaultEnabled    bool                 `json:"defaultEnabled"`
+	TokenScopes       []string             `json:"tokenScopes,omitempty"`
+	Installed         bool                 `json:"installed"`
+	Enabled           bool                 `json:"enabled"`
+	Active            bool                 `json:"active"`
+	AvailableInBinary bool                 `json:"availableInBinary"`
+	ObservedLifecycle LifecycleObservation `json:"observedLifecycle"`
 }
 
 var activeCache = struct {
@@ -36,9 +38,14 @@ func Components() ([]Component, error) {
 		return nil, err
 	}
 	manifests := make([]manifest.Manifest, 0, len(installedComponents))
+	result := make([]Component, 0, len(installedComponents))
 	for _, item := range installedComponents {
 		component, ok := registry.ComponentByID(item.ID)
 		if !ok {
+			result = append(result, Component{
+				ID: item.ID, Name: item.ID, Delivery: item.Delivery, Installed: true,
+				ObservedLifecycle: LifecycleForComponent(item.ID, true, false),
+			})
 			continue
 		}
 		if item.Delivery != "" && item.Delivery != component.Manifest.Delivery {
@@ -51,20 +58,21 @@ func Components() ([]Component, error) {
 		return nil, err
 	}
 
-	result := make([]Component, 0, len(manifests))
 	for _, item := range manifests {
 		_, isEnabled := enabled[item.ID]
 		result = append(result, Component{
-			ID:             item.ID,
-			Name:           item.Name,
-			Version:        item.Version,
-			Since:          item.Since,
-			Delivery:       item.Delivery,
-			DefaultEnabled: item.DefaultEnabled,
-			TokenScopes:    append([]string(nil), item.TokenScopes...),
-			Installed:      true,
-			Enabled:        isEnabled,
-			Active:         isEnabled,
+			ID:                item.ID,
+			Name:              item.Name,
+			Version:           item.Version,
+			Since:             item.Since,
+			Delivery:          item.Delivery,
+			DefaultEnabled:    item.DefaultEnabled,
+			TokenScopes:       append([]string(nil), item.TokenScopes...),
+			Installed:         true,
+			Enabled:           isEnabled,
+			Active:            isEnabled,
+			AvailableInBinary: true,
+			ObservedLifecycle: LifecycleForComponent(item.ID, true, true),
 		})
 	}
 	sort.Slice(result, func(i, j int) bool {

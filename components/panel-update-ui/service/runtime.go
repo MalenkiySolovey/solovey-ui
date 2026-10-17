@@ -290,6 +290,7 @@ func statusForManifest(item manifest.Manifest, isInstalled bool, isEnabled bool)
 		Installed:         isInstalled,
 		Enabled:           isEnabled,
 		Active:            isInstalled && isEnabled,
+		ObservedLifecycle: state.LifecycleForComponent(item.ID, isInstalled, true),
 		UnavailableReason: unavailableReason,
 	}
 }

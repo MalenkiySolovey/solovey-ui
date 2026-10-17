@@ -75,18 +75,18 @@ export const usePanelUpdate = () => {
       && !jobActive.value
       && !applying.value,
   ))
-  const runtimeInstalledComponents = computed<ComponentCatalogStatus[]>(() => data.components.map(component => ({
+  const runtimeComponents = computed<ComponentCatalogStatus[]>(() => data.components.filter(component => component.installed).map(component => ({
     ...component,
     latestVersion: component.version,
-    compatible: true,
-    availableInBinary: true,
+    compatible: component.availableInBinary !== false,
+    availableInBinary: component.availableInBinary !== false,
     installable: false,
     removable: false,
-    group: 'installed',
+    group: component.availableInBinary === false ? 'unavailable' : 'installed',
   })))
-  const installedComponents = computed<ComponentCatalogStatus[]>(() => componentInventory.value?.installed ?? runtimeInstalledComponents.value)
+  const installedComponents = computed<ComponentCatalogStatus[]>(() => componentInventory.value?.installed ?? runtimeComponents.value.filter(component => component.availableInBinary))
   const availableComponents = computed<ComponentCatalogStatus[]>(() => componentInventory.value?.available ?? [])
-  const unavailableComponents = computed<ComponentCatalogStatus[]>(() => componentInventory.value?.unavailable ?? [])
+  const unavailableComponents = computed<ComponentCatalogStatus[]>(() => componentInventory.value?.unavailable ?? runtimeComponents.value.filter(component => !component.availableInBinary))
 
   const applyPosture = (posture: UpdatePosture) => {
     const selected = posture.selected

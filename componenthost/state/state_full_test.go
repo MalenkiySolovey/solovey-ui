@@ -66,3 +66,38 @@ func registerStateTestComponent(id string) {
 		Lifecycle: lifecycle.Noop{},
 	})
 }
+
+func TestComponentsKeepDisabledAndBinaryAbsentOwnershipExplicit(t *testing.T) {
+	NewLifecyclePublisher()
+	const disabledID = "test-state-disabled"
+	registry.Register(registry.Component{Manifest: manifest.Manifest{
+		ID: disabledID, Name: "Disabled", Version: "1", Delivery: manifest.DeliveryInProcess,
+	}, Lifecycle: lifecycle.Noop{}})
+	path := filepath.Join(t.TempDir(), "installed.json")
+	t.Setenv(installstate.InstalledFileEnv, path)
+	if err := installstate.Store(path, installstate.Metadata{Version: 1, Binary: "full", Components: []installstate.InstalledComponent{
+		{ID: disabledID, Delivery: manifest.DeliveryInProcess, Installed: true},
+		{ID: "test-state-missing-code", Delivery: manifest.DeliveryInProcess, Installed: true},
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	components, err := Components()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(components) != 2 {
+		t.Fatalf("installed owner disappeared: %+v", components)
+	}
+	for _, component := range components {
+		if !component.Installed || component.Enabled || component.Active || component.ObservedLifecycle.InstanceRetention != InstanceUnknown {
+			t.Fatalf("eligibility became observed success: %+v", component)
+		}
+		if component.ID == disabledID {
+			if !component.AvailableInBinary || component.ObservedLifecycle.Phase != LifecycleNotObserved {
+				t.Fatalf("disabled owner misclassified: %+v", component)
+			}
+		} else if component.AvailableInBinary || component.Version != "" || component.ObservedLifecycle.Phase != LifecycleBinaryAbsent {
+			t.Fatalf("absent code acquired a fabricated manifest: %+v", component)
+		}
+	}
+}

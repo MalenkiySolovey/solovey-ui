@@ -45,7 +45,7 @@ const syncEnabledComponentsOnce = async (router: Router) => {
 
   const enabled = new Set(
     data.components
-      .filter(component => component.installed && component.active)
+      .filter(component => component.installed && component.active && component.availableInBinary !== false)
       .map(component => component.id),
   )
 
