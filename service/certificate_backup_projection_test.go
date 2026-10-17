@@ -84,7 +84,8 @@ func TestCertificatePrivateArchiveWholeMigrationAndRuntimeProjection(t *testing.
 	if err := db.Model(&model.Setting{}).Where("key = ?", "coreSchemaVersion").Update("value", "1.11").Error; err != nil {
 		t.Fatal(err)
 	}
-	if err := db.Where("step_id = ?", steps.SingBoxStateStepID).Delete(&model.MigrationJournal{}).Error; err != nil {
+	// This controlled pre-1.12 archive has neither later migration applied.
+	if err := db.Where("step_id IN ?", []string{steps.SingBoxStateStepID, steps.ClientDisableReasonStepID}).Delete(&model.MigrationJournal{}).Error; err != nil {
 		t.Fatal(err)
 	}
 	archive, err := backup.Export("")
