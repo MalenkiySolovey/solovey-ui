@@ -81,12 +81,17 @@ func TestFullComponentCompositionStarts(t *testing.T) {
 				t.Fatalf("unexpected fixture listener %q", endpoint)
 			}
 			client := &http.Client{Transport: &http.Transport{}, Timeout: time.Second}
-			response, err := client.Get("http://" + endpoint + "/composition-test/login")
-			client.CloseIdleConnections()
+			request, err := http.NewRequestWithContext(ctx, http.MethodGet, "http://"+endpoint+"/composition-test/login", nil)
 			if err != nil {
 				t.Fatal(err)
 			}
-			response.Body.Close()
+			response, err := client.Do(request)
+			if err != nil {
+				client.CloseIdleConnections()
+				t.Fatal(err)
+			}
+			_ = response.Body.Close()
+			client.CloseIdleConnections()
 			if response.StatusCode != http.StatusOK {
 				t.Fatalf("fixture login returned %d", response.StatusCode)
 			}
