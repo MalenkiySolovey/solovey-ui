@@ -50,11 +50,11 @@ if (envelope.schema !== 'solovey.release/v1') throw new Error('unexpected envelo
 if (envelope.algorithm !== 'Ed25519') throw new Error('unexpected signature algorithm')
 const compatibility = JSON.parse(fs.readFileSync('scripts/release-compatibility.json', 'utf8'))
 if (envelope.manifest.minimumPanelVersion !== compatibility.minimumPanelVersion ||
-    envelope.manifest.minimumCoreSchema !== '1.12' || envelope.manifest.maximumCoreSchema !== '1.12' ||
-    envelope.manifest.targetCoreSchema !== '1.12' || envelope.manifest.rollbackClass !== 'manual-recovery') {
+    envelope.manifest.minimumCoreSchema !== '1.12' || envelope.manifest.maximumCoreSchema !== '1.13' ||
+    envelope.manifest.targetCoreSchema !== '1.13' || envelope.manifest.rollbackClass !== 'manual-recovery') {
   throw new Error('signed schema upgrade/recovery contract is incorrect')
 }
-if (envelope.manifest.components.some(item => item.minimumCoreSchema !== '1.12' || item.maximumCoreSchema !== '1.12')) {
+if (envelope.manifest.components.some(item => item.minimumCoreSchema !== '1.13' || item.maximumCoreSchema !== '1.13')) {
   throw new Error('component catalog must match the target schema')
 }
 if (envelope.manifest.artifacts.length !== 3) throw new Error('unexpected artifact count')
