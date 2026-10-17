@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"time"
 
 	confighttp "github.com/MalenkiySolovey/solovey-ui/api/config"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
@@ -9,13 +10,18 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	componentprofile "github.com/MalenkiySolovey/solovey-ui/internal/components/profile"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/gin-gonic/gin"
 )
 
 func (a *ApiService) componentAPI(requireStepUp func(*gin.Context, string, string) bool, authorizationChanged func()) componenthost.APIDeps {
+	runtime := a.Runtime
 	return componenthost.APIDeps{
 		Runtime: a.Runtime,
+		OutboundHTTP: componenthost.OutboundHTTPClientFunc(func(tag string, timeout time.Duration) (*http.Client, error) {
+			return service.NewOutboundHTTPClientForRuntime(runtime, tag, timeout)
+		}),
 		Auth: componenthost.AuthDeps{
 			AuthorizationChanged:   authorizationChanged,
 			RequireScope:           a.requireTokenScopeAny,
@@ -45,7 +51,8 @@ func (a *ApiService) componentAPI(requireStepUp func(*gin.Context, string, strin
 			AuditRateLimitWindow:  auditEndpointRateLimitWindow,
 		},
 		Audit: componenthost.AuditDeps{
-			Audit: a.recordAudit,
+			Audit:    a.recordAudit,
+			Recorder: &service.AuditService{Runtime: runtime},
 		},
 		HTTP: componenthost.HTTPDeps{
 			JSONObj: jsonObj,

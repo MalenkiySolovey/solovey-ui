@@ -87,6 +87,10 @@ func main() {
 	components := componentsupervisor.New(componenthost.Deps{
 		API: componenthost.APIDeps{
 			Runtime: runtime,
+			OutboundHTTP: componenthost.OutboundHTTPClientFunc(func(tag string, timeout time.Duration) (*http.Client, error) {
+				return service.NewOutboundHTTPClientForRuntime(runtime, tag, timeout)
+			}),
+			Audit: componenthost.AuditDeps{Recorder: &service.AuditService{Runtime: runtime}},
 		},
 		Scheduler: cronScheduler,
 	})

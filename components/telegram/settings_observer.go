@@ -5,19 +5,20 @@ package telegram
 import (
 	"encoding/json"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
-func registerSettingsObserver(runtime *service.Runtime) func() {
+func registerSettingsObserver(audit componenthost.AuditRecorder) func() {
 	return service.RegisterConfigSaveObserver(id, func(ctx service.ConfigSaveObserverContext) (service.ConfigSaveAfterCommit, error) {
-		return telegramBackupPassphraseAuditObserver(runtime, ctx)
+		return telegramBackupPassphraseAuditObserver(audit, ctx)
 	})
 }
 
-func telegramBackupPassphraseAuditObserver(runtime *service.Runtime, ctx service.ConfigSaveObserverContext) (service.ConfigSaveAfterCommit, error) {
+func telegramBackupPassphraseAuditObserver(audit componenthost.AuditRecorder, ctx service.ConfigSaveObserverContext) (service.ConfigSaveAfterCommit, error) {
 	if ctx.Object != "settings" {
 		return nil, nil
 	}
@@ -39,7 +40,7 @@ func telegramBackupPassphraseAuditObserver(runtime *service.Runtime, ctx service
 	}
 	configured := newPassphrase != ""
 	return func() {
-		if err := (&service.AuditService{Runtime: runtime}).Record(service.AuditEvent{
+		if err := audit.Record(service.AuditEvent{
 			Actor:    ctx.LoginUser,
 			Event:    "tg_backup_passphrase_changed",
 			Resource: "database",

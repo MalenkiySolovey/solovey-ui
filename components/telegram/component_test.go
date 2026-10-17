@@ -4,6 +4,8 @@ package telegram
 
 import (
 	"context"
+	"errors"
+	"net/http"
 	"path/filepath"
 	"slices"
 	"sort"
@@ -16,7 +18,6 @@ import (
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/robfig/cron/v3"
 )
 
@@ -45,6 +46,7 @@ func TestManifestDurableSettingsMatchRuntimeOwnership(t *testing.T) {
 type telegramTrackingScheduler struct {
 	added   int
 	removed int
+	stopErr error
 }
 
 func (s *telegramTrackingScheduler) AddJob(string, cron.Job) (cron.EntryID, error) {
@@ -55,7 +57,7 @@ func (*telegramTrackingScheduler) Schedule(cron.Schedule, cron.Job) cron.EntryID
 func (s *telegramTrackingScheduler) RemoveJob(cron.EntryID)                      { s.removed++ }
 func (s *telegramTrackingScheduler) RemoveJobAndWait(context.Context, cron.EntryID) error {
 	s.removed++
-	return nil
+	return s.stopErr
 }
 
 func TestTelegramComponentStartIsIdempotent(t *testing.T) {
@@ -63,7 +65,7 @@ func TestTelegramComponentStartIsIdempotent(t *testing.T) {
 	c := &component{}
 	host := lifecycle.Context{Host: componenthost.Deps{
 		Scheduler: scheduler,
-		API:       componenthost.APIDeps{Runtime: service.NewRuntimeWithCoreProvider(nil)},
+		API:       testTelegramHostPorts(),
 	}}
 	if err := c.Start(context.Background(), host); err != nil {
 		t.Fatal(err)
@@ -87,7 +89,7 @@ func TestTelegramComponentStartIsIdempotent(t *testing.T) {
 
 func TestTelegramComponentStartRequiresSchedulerWithoutRetainedState(t *testing.T) {
 	c := &component{}
-	if err := c.start(context.Background(), nil, nil); err == nil {
+	if err := c.start(context.Background(), nil, nil, nil); err == nil {
 		t.Fatal("Start accepted a missing scheduler")
 	}
 	if c.started || c.notifier != nil || c.scheduler != nil || len(c.entryIDs) != 0 ||
@@ -97,15 +99,34 @@ func TestTelegramComponentStartRequiresSchedulerWithoutRetainedState(t *testing.
 	}
 }
 
-func TestTelegramComponentStartRequiresRuntimeWithoutRetainedState(t *testing.T) {
-	c := &component{}
-	if err := c.start(context.Background(), &telegramTrackingScheduler{}, nil); err == nil {
-		t.Fatal("Start accepted a missing runtime")
+func TestTelegramComponentStartRequiresNarrowPortsWithoutRetainedState(t *testing.T) {
+	for _, missing := range []string{"transport", "audit"} {
+		t.Run(missing, func(t *testing.T) {
+			host := testTelegramHostPorts()
+			if missing == "transport" {
+				host.OutboundHTTP = nil
+			} else {
+				host.Audit.Recorder = nil
+			}
+			c := &component{}
+			if err := c.start(context.Background(), &telegramTrackingScheduler{}, host.OutboundHTTP, host.Audit.Recorder); err == nil {
+				t.Fatal("Start accepted a missing port")
+			}
+			if c.started || c.notifier != nil || c.scheduler != nil || len(c.entryIDs) != 0 ||
+				c.unregisterEvent != nil || c.unregisterContribution != nil || c.unregisterBackupCodecs != nil ||
+				c.unregisterSettings != nil || c.unregisterLogCategory != nil || c.unregisterTokenScope != nil {
+				t.Fatalf("failed Start retained component state: %#v", c)
+			}
+		})
 	}
-	if c.started || c.notifier != nil || c.scheduler != nil || len(c.entryIDs) != 0 ||
-		c.unregisterEvent != nil || c.unregisterContribution != nil || c.unregisterBackupCodecs != nil ||
-		c.unregisterSettings != nil || c.unregisterLogCategory != nil || c.unregisterTokenScope != nil {
-		t.Fatalf("failed Start retained component state: %#v", c)
+}
+
+func testTelegramHostPorts() componenthost.APIDeps {
+	return componenthost.APIDeps{
+		OutboundHTTP: componenthost.OutboundHTTPClientFunc(func(string, time.Duration) (*http.Client, error) {
+			return nil, errors.New("test core is unavailable")
+		}),
+		Audit: componenthost.AuditDeps{Recorder: &telegramAuditRecorder{}},
 	}
 }
 
