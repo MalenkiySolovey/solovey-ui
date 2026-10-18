@@ -114,18 +114,19 @@ type CheckResult struct {
 }
 
 type LifecycleStatus struct {
-	Schema        string                    `json:"schema"`
-	State         State                     `json:"state"`
-	SigningStatus string                    `json:"signingStatus"`
-	Desired       UpdateDesiredState        `json:"desired"`
-	Selected      *UpdateSelectedState      `json:"selected,omitempty"`
-	Actual        UpdateActualState         `json:"actual"`
-	Release       *model.UpdateReleaseState `json:"release,omitempty"`
-	Operation     *model.UpdateOperation    `json:"operation,omitempty"`
-	Capabilities  Capabilities              `json:"capabilities"`
-	ReasonCodes   []string                  `json:"reasonCodes"`
-	ObservedAt    int64                     `json:"observedAt"`
-	FreshUntil    int64                     `json:"freshUntil,omitempty"`
+	Schema        string                        `json:"schema"`
+	State         State                         `json:"state"`
+	SigningStatus string                        `json:"signingStatus"`
+	Desired       UpdateDesiredState            `json:"desired"`
+	Selected      *UpdateSelectedState          `json:"selected,omitempty"`
+	Actual        UpdateActualState             `json:"actual"`
+	Release       *model.UpdateReleaseState     `json:"release,omitempty"`
+	Operation     *model.UpdateOperation        `json:"operation,omitempty"`
+	Change        *operationcoordination.Change `json:"change,omitempty"`
+	Capabilities  Capabilities                  `json:"capabilities"`
+	ReasonCodes   []string                      `json:"reasonCodes"`
+	ObservedAt    int64                         `json:"observedAt"`
+	FreshUntil    int64                         `json:"freshUntil,omitempty"`
 }
 
 type UpdateDesiredState struct {
@@ -416,6 +417,10 @@ func (m *LifecycleManager) Status(ctx context.Context, channel release.Channel) 
 	}
 	if len(result.ReasonCodes) == 0 {
 		result.ReasonCodes = []string{"update_status_observed"}
+	}
+	if result.Operation != nil {
+		change := ProjectChange(*result.Operation)
+		result.Change = &change
 	}
 	return result
 }
@@ -1164,18 +1169,11 @@ func (r Repository) update(ctx context.Context, operation model.UpdateOperation,
 	if err != nil {
 		return err
 	}
-	return db.Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(&model.UpdateOperation{}).Where("operation_id = ? AND revision = ? AND state = ?", operation.OperationID, expectedRevision, expectedState).
-			Updates(map[string]any{"state": operation.State, "reason_code": operation.ReasonCode, "revision": operation.Revision,
-				"rollback_available": operation.RollbackAvailable, "backup_ref": operation.BackupRef, "cleanup_pending": operation.CleanupPending, "cleanup_reason": operation.CleanupReason, "updated_at": operation.UpdatedAt})
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected != 1 {
-			return ErrRevisionMismatch
-		}
-		return tx.Create(journalFor(operation, event, operation.ReasonCode)).Error
-	})
+	return operationcoordination.CommitTransition(ctx, db, &model.UpdateOperation{},
+		operationcoordination.Fence{OperationID: operation.OperationID, Revision: expectedRevision, State: expectedState},
+		map[string]any{"state": operation.State, "reason_code": operation.ReasonCode, "revision": operation.Revision,
+			"rollback_available": operation.RollbackAvailable, "backup_ref": operation.BackupRef, "cleanup_pending": operation.CleanupPending, "cleanup_reason": operation.CleanupReason, "updated_at": operation.UpdatedAt},
+		journalFor(operation, event, operation.ReasonCode), ErrRevisionMismatch)
 }
 
 func (r Repository) rebindRestoredRollback(ctx context.Context, operation model.UpdateOperation, reason string) (model.UpdateOperation, error) {

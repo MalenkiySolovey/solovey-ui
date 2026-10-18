@@ -91,7 +91,7 @@ func (h *dataLifecycleHTTP) dropExecute(c *gin.Context) {
 	}
 	h.api.recordAuditSynchronous(c, securityContext.Username, "component_data_dropped", "data-lifecycle", service.AuditSeverityWarn,
 		map[string]any{"operationId": operation.OperationID, "ownerId": operation.OwnerID, "state": operation.State, "revision": operation.Revision})
-	jsonObj(c, operation, nil)
+	jsonObj(c, datalifecycle.ProjectOperation(operation), nil)
 }
 
 func (h *dataLifecycleHTTP) operation(c *gin.Context) {
@@ -108,7 +108,7 @@ func (h *dataLifecycleHTTP) operation(c *gin.Context) {
 		h.writeError(c, "data_lifecycle_operation", err, nil)
 		return
 	}
-	jsonObj(c, operation, nil)
+	jsonObj(c, datalifecycle.ProjectOperation(operation), nil)
 }
 
 func (h *dataLifecycleHTTP) recovery(c *gin.Context) {
@@ -124,7 +124,7 @@ func (h *dataLifecycleHTTP) recovery(c *gin.Context) {
 		h.writeError(c, "data_lifecycle_recovery", err, nil)
 		return
 	}
-	jsonObj(c, gin.H{"required": true, "operation": operation, "reasonCodes": []string{operation.ReasonCode}}, nil)
+	jsonObj(c, gin.H{"required": true, "operation": datalifecycle.ProjectOperation(operation), "reasonCodes": []string{operation.ReasonCode}}, nil)
 }
 
 func (h *dataLifecycleHTTP) recoveryBackup(c *gin.Context) {

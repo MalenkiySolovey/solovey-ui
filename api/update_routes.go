@@ -174,7 +174,7 @@ func (h *updateHTTP) operation(c *gin.Context) {
 		h.writeError(c, "update_operation", err, nil)
 		return
 	}
-	jsonObj(c, operation, nil)
+	jsonObj(c, updateservice.ProjectOperation(operation), nil)
 }
 
 func (h *updateHTTP) timeline(c *gin.Context) {

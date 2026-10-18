@@ -492,21 +492,18 @@ func (m *Manager) create(ctx context.Context, operation model.DataLifecycleOpera
 }
 
 func (m *Manager) advance(ctx context.Context, operation model.DataLifecycleOperation, state, event, reason string) (model.DataLifecycleOperation, error) {
+	previous := operation
 	previousState, previousRevision := operation.State, operation.Revision
 	operation.State, operation.ReasonCode, operation.Revision, operation.UpdatedAt = state, reason, operation.Revision+1, m.Now().Unix()
-	err := m.database().WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		result := tx.Model(&model.DataLifecycleOperation{}).Where("operation_id = ? AND revision = ? AND state = ?", operation.OperationID, previousRevision, previousState).
-			Updates(map[string]any{"state": operation.State, "reason_code": operation.ReasonCode, "revision": operation.Revision,
-				"manifest_digest": operation.ManifestDigest, "backup_ref": operation.BackupRef, "updated_at": operation.UpdatedAt})
-		if result.Error != nil {
-			return result.Error
-		}
-		if result.RowsAffected != 1 {
-			return ErrRevisionMismatch
-		}
-		return tx.Create(&model.DataLifecycleJournal{OperationID: operation.OperationID, State: operation.State,
-			Event: event, ReasonCode: reason, Revision: operation.Revision, CreatedAt: operation.UpdatedAt}).Error
-	})
+	err := operationcoordination.CommitTransition(ctx, m.database(), &model.DataLifecycleOperation{},
+		operationcoordination.Fence{OperationID: operation.OperationID, Revision: previousRevision, State: previousState},
+		map[string]any{"state": operation.State, "reason_code": operation.ReasonCode, "revision": operation.Revision,
+			"manifest_digest": operation.ManifestDigest, "backup_ref": operation.BackupRef, "updated_at": operation.UpdatedAt},
+		&model.DataLifecycleJournal{OperationID: operation.OperationID, State: operation.State,
+			Event: event, ReasonCode: reason, Revision: operation.Revision, CreatedAt: operation.UpdatedAt}, ErrRevisionMismatch)
+	if err != nil {
+		return previous, err
+	}
 	return operation, err
 }
 

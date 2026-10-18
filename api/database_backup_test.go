@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
@@ -65,6 +66,57 @@ func databaseImportTestHandler() gin.HandlerFunc {
 	manager.Admit = func(string) bool { return true }
 	handler.DataLifecycle = manager
 	return handler.ImportDb
+}
+
+func TestRestoreAPIProjectsAcceptedOwnerChangeAndIdempotentReplay(t *testing.T) {
+	settings := initSessionTestDB(t)
+	data, err := backup.Export("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := (&ApiService{}).dbTransferHandler()
+	accepted := 0
+	handler.AuthorizationChanged = func() { accepted++ }
+	handler.RequireStepUp = func(*gin.Context, string, string) bool { return true }
+	manager := datalifecycle.NewManager()
+	manager.Admit = func(string) bool { return true }
+	handler.DataLifecycle = manager
+	router, cookies := newAuthenticatedTestRouter(t, settings, func(router *gin.Engine) {
+		router.POST("/api/importdb", withTestTokenScope("admin", "admin", handler.ImportDb))
+	})
+	var first operationcoordination.Change
+	for attempt := range 2 {
+		recorder := performAuthenticatedTestRequest(router, newDatabaseImportRequest(t, data), cookies...)
+		var response struct {
+			Success bool `json:"success"`
+			Object  struct {
+				Operation datalifecycle.OperationView `json:"operation"`
+			} `json:"obj"`
+		}
+		if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil || !response.Success {
+			t.Fatalf("restore attempt %d status=%d response=%s err=%v", attempt, recorder.Code, recorder.Body.String(), err)
+		}
+		view := response.Object.Operation
+		if view.State != "APPLIED" || view.Change.Outcome != operationcoordination.OutcomeCommitted ||
+			view.Change.CheckpointRef == "" || view.Change.RecoveryRequired || view.Change.RollbackVerified {
+			t.Fatalf("restore acceptance projected false truth: %+v", view.Change)
+		}
+		if attempt == 0 {
+			first = view.Change
+		} else if first != view.Change {
+			t.Fatalf("idempotent replay changed correlation/revision: %+v %+v", first, view.Change)
+		}
+		if strings.Contains(recorder.Body.String(), "idempotencyKey") {
+			t.Fatal("private idempotency authority was exposed")
+		}
+	}
+	if accepted != 1 {
+		t.Fatalf("restore accepted %d times", accepted)
+	}
+	persisted, err := manager.Operation(t.Context(), first.OperationID)
+	if err != nil || datalifecycle.ProjectChange(persisted) != first {
+		t.Fatalf("reconnect projection differs from durable owner: %+v %v", persisted, err)
+	}
 }
 
 func TestDownloadDatabaseAuditsExport(t *testing.T) {
