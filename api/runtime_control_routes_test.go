@@ -23,6 +23,7 @@ func TestRuntimeRoutesUseCurrentBearerScopesAndAudit(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = core.Stop() })
 	runtime := service.NewRuntime(core)
+	t.Cleanup(func() { closeAPITestRuntime(t, runtime) })
 	userService := &service.UserService{Runtime: runtime}
 	tokens := map[string]string{}
 	for _, scope := range []string{"admin", "read", "write", "observability", "database", "update"} {
@@ -89,7 +90,7 @@ func TestRuntimeRoutesUseCurrentBearerScopesAndAudit(t *testing.T) {
 			t.Fatal("zero flow result not explicit")
 		}
 	}
-	flushAPIAudit(t)
+	stopAPITestRuntimeAudit(t, runtime)
 	var count int64
 	if err := dbsqlite.DB().Model(&model.AuditEvent{}).Where("event = ? AND actor = ?", "runtime_disconnect", "admin").Count(&count).Error; err != nil || count != 4 {
 		t.Fatalf("attributable audit count=%d err=%v", count, err)
