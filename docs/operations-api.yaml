@@ -372,6 +372,7 @@ paths:
   /api/v1/operations/update/check:
     post:
       operationId: checkSignedUpdate
+      description: Returns signed artifactTrust and componentTrust identities independent of transport, with signer, provenance and manifest revision. These projections do not replace current update admission.
       requestBody:
         required: true
         content:

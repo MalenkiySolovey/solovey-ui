@@ -111,6 +111,7 @@ type Verified struct {
 	Canonical []byte
 	Digest    string
 	KeyID     string
+	proof     *verificationProof
 }
 
 var (
@@ -220,7 +221,9 @@ func Verify(raw []byte, store TrustStore, now time.Time, channel Channel, lastSe
 		return Verified{}, errors.New("release manifest is not currently valid")
 	}
 	sum := sha256.Sum256(canonical)
-	return Verified{Manifest: manifest, Canonical: canonical, Digest: hex.EncodeToString(sum[:]), KeyID: envelope.KeyID}, nil
+	manifestDigest := hex.EncodeToString(sum[:])
+	return Verified{Manifest: manifest, Canonical: canonical, Digest: manifestDigest, KeyID: envelope.KeyID,
+		proof: &verificationProof{canonical: string(canonical), digest: manifestDigest, keyID: envelope.KeyID}}, nil
 }
 
 func (m Manifest) Validate() error {
