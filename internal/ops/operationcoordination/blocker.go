@@ -14,6 +14,22 @@ import (
 
 var admissionMu sync.Mutex
 
+var ErrAdmissionBusy = errors.New("operation admission is busy")
+
+// TrySerializeAdmission uses the same fence for a caller that must fail closed
+// instead of waiting behind another domain's admission. The callback remains a
+// short synchronous check/commit; it must not start a background mutation.
+func TrySerializeAdmission(run func() error) error {
+	if run == nil {
+		return errors.New("operation admission callback is unavailable")
+	}
+	if !admissionMu.TryLock() {
+		return ErrAdmissionBusy
+	}
+	defer admissionMu.Unlock()
+	return run()
+}
+
 // SerializeAdmission closes the in-process check/create race between domain
 // repositories. Durable domain rows remain the authority across restarts.
 func SerializeAdmission(run func() error) error {

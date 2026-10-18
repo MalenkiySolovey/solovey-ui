@@ -97,6 +97,7 @@ func main() {
 	service.RegisterComponentMigrator(components.Migrate)
 	service.RegisterComponentSettingsReconciler(components.Reconcile)
 	service.RegisterComponentDataDropper(components.DropData)
+	service.RegisterComponentRemovalAdmitter(components.TryAdmitRemoval)
 	if err := components.Migrate(context.Background()); err != nil {
 		fatal("component migration", err)
 	}

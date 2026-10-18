@@ -5,14 +5,22 @@ import (
 	"errors"
 	"path/filepath"
 	"testing"
+	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
+	"github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
+	"gorm.io/driver/sqlite"
+	"gorm.io/gorm"
 )
 
-func TestRuntimeManagerRemovePreservesOwnedDataAndReconciles(t *testing.T) {
+func TestRuntimeManagerRemoveCleanDisabledOwnerWithoutDroppingData(t *testing.T) {
 	const id = "test-runtime-remove"
 	registerRuntimeTestComponent(id)
 
@@ -30,7 +38,9 @@ func TestRuntimeManagerRemovePreservesOwnedDataAndReconciles(t *testing.T) {
 	}
 
 	var events []string
+	admission, _ := runtimeRemovalFixture(t)
 	manager := RuntimeManager{
+		Removal: admission,
 		Reconcile: func(context.Context) error {
 			events = append(events, "reconcile")
 			return nil
@@ -69,7 +79,8 @@ func TestRuntimeManagerRemoveRestoresInstalledStateAfterReconcileFailure(t *test
 	}
 
 	reconcileCalls := 0
-	manager := RuntimeManager{Reconcile: func(context.Context) error {
+	admission, _ := runtimeRemovalFixture(t)
+	manager := RuntimeManager{Removal: admission, Reconcile: func(context.Context) error {
 		reconcileCalls++
 		if reconcileCalls == 1 {
 			return errors.New("injected reconcile failure")
@@ -101,7 +112,9 @@ func TestRuntimeManagerInstallRestoresUninstalledStateAfterReconcileFailure(t *t
 	}
 
 	reconcileCalls := 0
+	admission, _ := runtimeRemovalFixture(t)
 	manager := RuntimeManager{
+		Removal: admission,
 		Migrate: func(context.Context) error { return nil },
 		Reconcile: func(context.Context) error {
 			reconcileCalls++
@@ -136,8 +149,31 @@ func registerRuntimeTestComponent(id string) {
 			Name:           id,
 			Version:        "1",
 			Delivery:       manifest.DeliveryInProcess,
-			DefaultEnabled: true,
+			DefaultEnabled: false,
 		},
 		Lifecycle: lifecycle.Noop{},
 	})
+}
+
+func runtimeRemovalFixture(t *testing.T) (*RemovalAdmission, *gorm.DB) {
+	t.Helper()
+	db, err := gorm.Open(sqlite.Open(filepath.Join(t.TempDir(), "removal.db")), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+	if err := db.AutoMigrate(&model.Setting{}, &model.MigrationJournal{}, &model.DataLifecycleOperation{}); err != nil {
+		t.Fatal(err)
+	}
+	data := &datalifecycle.Manager{DB: func() *gorm.DB { return db }, Now: time.Now,
+		Enabled: func(item manifest.Manifest) (bool, error) { return item.DefaultEnabled, nil },
+		Drop:    func(context.Context, string) error { t.Error("Remove invoked DropData"); return nil }}
+	s := supervisor.New(componenthost.Deps{})
+	inventory := resources.NewRegistry(time.Second)
+	return &RemovalAdmission{Preview: data.PreviewRemoval, Resources: data.RemovalResources,
+		Inventory: inventory.Refresh, Admit: s.TryAdmitRemoval}, db
 }

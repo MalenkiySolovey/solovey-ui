@@ -240,10 +240,12 @@ export const usePanelUpdate = () => {
   ) => {
     componentAction.value = `${component.id}:${installed ? 'install' : 'remove'}`
     try {
-      const body = installed ? {} : { password: credential }
+      const stepUp = installed ? undefined : await acquireStepUpToken('component.remove', `component:${component.id}`, credential)
+      if (!installed && !stepUp?.token) return false
       const message = await HttpUtils.post(
         `api/update/components/${component.id}/${installed ? 'install' : 'remove'}`,
-        body,
+        {},
+        stepUp?.token ? { headers: { 'X-Step-Up-Token': stepUp.token } } : undefined,
       )
       if (message.success) {
         await loadComponents()
@@ -263,10 +265,12 @@ export const usePanelUpdate = () => {
 
   const removeComponent = async () => {
     if (!componentRemoveTarget.value) return
+    const credential = componentRemovePassword.value
+    componentRemovePassword.value = ''
     const ok = await setComponentInstalled(
       componentRemoveTarget.value,
       false,
-      componentRemovePassword.value,
+      credential,
     )
     if (ok) {
       componentRemoveConfirm.value = false

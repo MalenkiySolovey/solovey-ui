@@ -17,6 +17,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
+	componentmigrations "github.com/MalenkiySolovey/solovey-ui/componenthost/migrations"
 	componentregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	dbbackup "github.com/MalenkiySolovey/solovey-ui/database/backup"
@@ -100,13 +101,35 @@ func NewManager() *Manager {
 }
 
 func (m *Manager) Preview(ctx context.Context, ownerID string) (Preview, error) {
+	return m.preview(ctx, ownerID, false, true)
+}
+
+// PreviewRemoval observes presence, rather than counting or walking owner data.
+// The external owner callback belongs in the caller's bounded read worker.
+func (m *Manager) PreviewRemoval(ctx context.Context, ownerID string) (Preview, error) {
+	return m.preview(ctx, ownerID, true, true)
+}
+
+// RemovalResources revalidates trusted local ownership under lifecycle admission.
+// It never invokes an owner callback while the caller holds lifecycle locks.
+func (m *Manager) RemovalResources(ctx context.Context, ownerID string) (Preview, error) {
+	return m.preview(ctx, ownerID, true, false)
+}
+
+func (m *Manager) preview(ctx context.Context, ownerID string, presenceOnly, inspectExternal bool) (Preview, error) {
 	if m == nil || !safeOwnerID(ownerID) {
 		return Preview{}, errors.New("invalid durable owner")
 	}
-	now := m.Now().UTC()
+	if ctx == nil || ctx.Err() != nil {
+		return Preview{}, errors.New("owner observation context unavailable")
+	}
+	now := m.now()
 	preview := Preview{Schema: "solovey.drop-data-preview/v1", OwnerID: ownerID, BackupRequired: true,
 		Resources: []Resource{}, Operations: []string{}, Blockers: []string{}, Postcondition: "OWNER_DATA_ABSENT",
 		ExternalAuthority: "NOT_DECLARED", GeneratedAt: now.Unix()}
+	if presenceOnly {
+		preview.Schema = "solovey.component-removal-impact/v1"
+	}
 	installed, err := installstate.InstalledComponents()
 	if err != nil {
 		preview.Blockers = append(preview.Blockers, "installed_owner_manifest_unavailable")
@@ -146,21 +169,29 @@ func (m *Manager) Preview(ctx context.Context, ownerID string) (Preview, error) 
 		return preview, nil
 	}
 	if db := m.database(); db != nil {
+		db = db.WithContext(ctx)
+		// A failed schema read must not look like an absent owner table.
+		var schemaCount int64
+		if err := db.Raw("SELECT COUNT(*) FROM sqlite_master").Scan(&schemaCount).Error; err != nil {
+			return Preview{}, errors.New("owner database observation unavailable")
+		}
 		resources := ownerManifest.Database
 		for _, table := range resources.Tables {
 			resource := Resource{ID: "table:" + table, Kind: "sqlite_table", Owner: ownerID, Class: resources.RedactionClass, Terminal: "ABSENT"}
 			if db.Migrator().HasTable(table) {
 				resource.Terminal = "PRESENT"
-				if countErr := db.WithContext(ctx).Table(table).Count(&resource.Rows).Error; countErr != nil {
-					preview.Blockers = append(preview.Blockers, "owner_table_observation_failed:"+table)
-				}
-				var indexes []struct{ Name string }
-				if indexErr := db.WithContext(ctx).Raw("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? ORDER BY name", table).Scan(&indexes).Error; indexErr != nil {
-					preview.Blockers = append(preview.Blockers, "owner_index_observation_failed:"+table)
-				} else {
-					for _, index := range indexes {
-						preview.Resources = append(preview.Resources, Resource{ID: "index:" + index.Name, Kind: "sqlite_index", Rows: 1,
-							Owner: ownerID, Class: resources.RedactionClass, Terminal: "PRESENT"})
+				if !presenceOnly {
+					if countErr := db.WithContext(ctx).Table(table).Count(&resource.Rows).Error; countErr != nil {
+						preview.Blockers = append(preview.Blockers, "owner_table_observation_failed:"+table)
+					}
+					var indexes []struct{ Name string }
+					if indexErr := db.WithContext(ctx).Raw("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? ORDER BY name", table).Scan(&indexes).Error; indexErr != nil {
+						preview.Blockers = append(preview.Blockers, "owner_index_observation_failed:"+table)
+					} else {
+						for _, index := range indexes {
+							preview.Resources = append(preview.Resources, Resource{ID: "index:" + index.Name, Kind: "sqlite_index", Rows: 1,
+								Owner: ownerID, Class: resources.RedactionClass, Terminal: "PRESENT"})
+						}
 					}
 				}
 			}
@@ -181,16 +212,22 @@ func (m *Manager) Preview(ctx context.Context, ownerID string) (Preview, error) 
 			}
 		}
 		for _, file := range resources.Files {
-			resource, fileErr := m.observeFile(file.Path, ownerID, file.BackupClass)
+			resource, fileErr := m.observeFileMode(file.Path, ownerID, file.BackupClass, presenceOnly)
 			preview.Resources = append(preview.Resources, resource)
 			if fileErr != nil {
 				preview.Blockers = append(preview.Blockers, "owner_file_observation_failed:"+file.Path)
 			}
 		}
-		migrationResources, migrationErr := observeMigrationRows(ctx, db, ownerID)
-		preview.Resources = append(preview.Resources, migrationResources...)
-		if migrationErr != nil {
-			preview.Blockers = append(preview.Blockers, "owner_migration_observation_failed")
+		if presenceOnly {
+			if blocker := componentmigrations.RemovalBlocker(ctx, db, ownerID); blocker != "" {
+				preview.Blockers = append(preview.Blockers, blocker)
+			}
+		} else {
+			migrationResources, migrationErr := observeMigrationRows(ctx, db, ownerID)
+			preview.Resources = append(preview.Resources, migrationResources...)
+			if migrationErr != nil {
+				preview.Blockers = append(preview.Blockers, "owner_migration_observation_failed")
+			}
 		}
 		leaseCount, leaseErr := activeOwnerLeases(db.WithContext(ctx), ownerID, now)
 		preview.LeaseCount = leaseCount
@@ -206,11 +243,18 @@ func (m *Manager) Preview(ctx context.Context, ownerID string) (Preview, error) 
 	} else {
 		preview.Blockers = append(preview.Blockers, "database_unavailable")
 	}
-	externalState, externalBlockers := externalAuthority(ctx, component, m.database(), now)
-	preview.ExternalAuthority = externalState
-	preview.Blockers = append(preview.Blockers, externalBlockers...)
-	if preview.ExternalAuthority == "UNAVAILABLE" {
-		preview.Blockers = append(preview.Blockers, "external_authority_unavailable")
+	if inspectExternal {
+		externalState, externalBlockers := externalAuthority(ctx, component, m.database(), now)
+		preview.ExternalAuthority = externalState
+		preview.Blockers = append(preview.Blockers, externalBlockers...)
+		if preview.ExternalAuthority == "UNAVAILABLE" {
+			preview.Blockers = append(preview.Blockers, "external_authority_unavailable")
+		}
+	} else {
+		preview.ExternalAuthority = "NOT_OBSERVED"
+	}
+	if ctx.Err() != nil {
+		return Preview{}, errors.New("owner observation timed out")
 	}
 	sort.Slice(preview.Resources, func(i, j int) bool { return preview.Resources[i].ID < preview.Resources[j].ID })
 	sort.Strings(preview.Operations)
@@ -260,6 +304,19 @@ func (m *Manager) Execute(ctx context.Context, request ExecuteRequest) (model.Da
 		ManifestDigest: preview.Revision, ExpectedRevision: request.ExpectedPreviewRevision, Revision: 1,
 		CreatedAt: now.Unix(), UpdatedAt: now.Unix()}
 	if err := operationcoordination.SerializeAdmission(func() error {
+		// A preview obtained before safe removal must not admit a later DropData
+		// operation after installed ownership has already been removed.
+		owners, err := installstate.InstalledComponents()
+		if err != nil {
+			return ErrBlocked
+		}
+		found := false
+		for _, owner := range owners {
+			found = found || owner.ID == request.OwnerID
+		}
+		if !found {
+			return ErrBlocked
+		}
 		if blocker := m.globalOperationBlocker(ctx); blocker != "" {
 			return ErrOperationConflict
 		}
@@ -546,6 +603,10 @@ func observeMigrationRows(ctx context.Context, db *gorm.DB, ownerID string) ([]R
 }
 
 func (m *Manager) observeFile(relativePath, ownerID, class string) (Resource, error) {
+	return m.observeFileMode(relativePath, ownerID, class, false)
+}
+
+func (m *Manager) observeFileMode(relativePath, ownerID, class string, presenceOnly bool) (Resource, error) {
 	resource := Resource{ID: "file:" + relativePath, Kind: "file_tree", Owner: ownerID, Class: class, Terminal: "ABSENT"}
 	base, err := filepath.Abs(filepath.Dir(configstorage.GetDBFolderPath()))
 	if err != nil {
@@ -567,6 +628,9 @@ func (m *Manager) observeFile(relativePath, ownerID, class string) (Resource, er
 		return resource, errors.Join(err, errors.New("declared owner file is not inspectable"))
 	}
 	resource.Terminal = "PRESENT"
+	if presenceOnly {
+		return resource, nil
+	}
 	if !info.IsDir() {
 		resource.Rows = 1
 		return resource, nil

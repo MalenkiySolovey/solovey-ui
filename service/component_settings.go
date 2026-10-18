@@ -24,6 +24,27 @@ var componentDataDropper = struct {
 	fn func(context.Context, string) error
 }{}
 
+var componentRemovalAdmitter = struct {
+	sync.RWMutex
+	fn func(context.Context, string, func() error) error
+}{}
+
+func RegisterComponentRemovalAdmitter(fn func(context.Context, string, func() error) error) {
+	componentRemovalAdmitter.Lock()
+	defer componentRemovalAdmitter.Unlock()
+	componentRemovalAdmitter.fn = fn
+}
+
+func AdmitComponentRemoval(ctx context.Context, id string, commit func() error) error {
+	componentRemovalAdmitter.RLock()
+	fn := componentRemovalAdmitter.fn
+	componentRemovalAdmitter.RUnlock()
+	if fn == nil {
+		return errors.New("component removal lifecycle boundary is unavailable")
+	}
+	return fn(ctx, id, commit)
+}
+
 func RegisterComponentSettingsReconciler(fn func(context.Context) error) {
 	componentSettingsReconciler.Lock()
 	defer componentSettingsReconciler.Unlock()

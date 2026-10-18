@@ -2267,7 +2267,7 @@
       "rule": "worker-lifetime",
       "path": "componenthost/resources/registry_provider.go",
       "symbol": "callResourceProvider",
-      "digest": "acd6d3389a9f559c129a34cc7ebc1cbdfe69b29f91942cc4da625723a2a89e27"
+      "digest": "82bd3cf4d5db27767755c37c56a98001a36337049aca1359389c332419e525a7"
     },
     {
       "rule": "worker-lifetime",
@@ -2286,6 +2286,12 @@
       "path": "components/paid-subscriptions/telegram/bot.go",
       "symbol": "StartBot",
       "digest": "1f3a0075c55d329cbb280399eaefb3c6c1589b144bd76f73b400e3069d4a24eb"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "components/panel-update-ui/service/removal.go",
+      "symbol": "boundedRemovalRead",
+      "digest": "779e42b62d74bd97a267072f8ade1b65f885e34187e975230215ea95ff2aa30d"
     },
     {
       "rule": "worker-lifetime",

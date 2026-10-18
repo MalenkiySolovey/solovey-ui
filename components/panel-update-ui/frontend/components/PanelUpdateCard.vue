@@ -187,9 +187,11 @@
           <p class="mb-3">{{ $t('panelUpdateComponent.removeConfirm', { name: componentRemoveTarget?.name }) }}</p>
           <v-text-field
             v-model="componentRemovePassword"
-            autocomplete="current-password"
+            autocomplete="off"
             density="comfortable"
-            :label="$t('panelUpdateComponent.password')"
+            :label="$t('security.stepUpCredential')"
+            :hint="$t('security.stepUpCredentialHint')"
+            persistent-hint
             type="password"
             variant="outlined"
           />

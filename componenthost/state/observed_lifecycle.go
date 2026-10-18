@@ -67,6 +67,22 @@ func (p LifecyclePublisher) RecordStop(id string, succeeded bool) {
 	p.record(id, phase, retention, reason)
 }
 
+// Snapshot reports this supervisor incarnation's last result. Current is false
+// for a replaced publisher; no result in a current incarnation stays unknown.
+func (p LifecyclePublisher) Snapshot(id string) (result LifecycleObservation, current bool) {
+	lifecycleResults.RLock()
+	defer lifecycleResults.RUnlock()
+	if p.epoch == 0 || p.epoch != lifecycleResults.epoch {
+		return LifecycleObservation{}, false
+	}
+	result, exists := lifecycleResults.results[id]
+	if !exists {
+		return LifecycleObservation{Phase: LifecycleNotObserved, InstanceRetention: InstanceUnknown,
+			Source: "componenthost.supervisor", ReasonCode: "NO_LIFECYCLE_RESULT"}, true
+	}
+	return cloneLifecycleObservation(result), true
+}
+
 func (p LifecyclePublisher) record(id, phase, retention, reason string) {
 	if manifest.ValidateID(id) != nil {
 		return
@@ -92,11 +108,7 @@ func LifecycleForComponent(id string, installed, availableInBinary bool) Lifecyc
 	if exists {
 		// Eligibility changes must not hide a failed Stop or any other actual
 		// lifecycle result. Copy the timestamp so callers cannot rewrite it.
-		if result.ObservedAt != nil {
-			observedAt := *result.ObservedAt
-			result.ObservedAt = &observedAt
-		}
-		return result
+		return cloneLifecycleObservation(result)
 	}
 	result = LifecycleObservation{Phase: LifecycleNotObserved, InstanceRetention: InstanceUnknown,
 		Source: "componenthost.supervisor", ReasonCode: "NO_LIFECYCLE_RESULT"}
@@ -104,6 +116,14 @@ func LifecycleForComponent(id string, installed, availableInBinary bool) Lifecyc
 		result.Phase, result.Source, result.ReasonCode = LifecycleNotInstalled, "componenthost.installstate", "OWNER_NOT_INSTALLED"
 	} else if !availableInBinary {
 		result.Phase, result.Source, result.ReasonCode = LifecycleBinaryAbsent, "componenthost.registry", "OWNER_BINARY_ABSENT"
+	}
+	return result
+}
+
+func cloneLifecycleObservation(result LifecycleObservation) LifecycleObservation {
+	if result.ObservedAt != nil {
+		observedAt := *result.ObservedAt
+		result.ObservedAt = &observedAt
 	}
 	return result
 }

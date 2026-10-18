@@ -117,6 +117,7 @@ func scopeSliceContains(s []string, v string) bool {
 func TestStepUpOperationInventoryCoversRegisteredMutations(t *testing.T) {
 	for _, operation := range []string{
 		"data.drop",
+		"component.remove",
 		"update.prepare",
 		"update.activate",
 		"update.rollback",

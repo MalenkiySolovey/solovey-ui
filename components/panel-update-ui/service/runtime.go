@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"sort"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
@@ -19,12 +20,15 @@ import (
 
 const UpdateComponentID = "panel-update-ui"
 
+var componentMutationMu sync.Mutex
+
 type RuntimeManager struct {
 	ConfigService *coreservice.ConfigService
 	Catalog       Catalog
 	Reconcile     func(context.Context) error
 	Migrate       func(context.Context) error
 	Timeout       time.Duration
+	Removal       *RemovalAdmission
 }
 
 func NewRuntimeManager(configService *coreservice.ConfigService) RuntimeManager {
@@ -45,7 +49,11 @@ func (m RuntimeManager) Disable(ctx OperationContext, id string) (ComponentStatu
 	return m.setEnabled(ctx, id, false)
 }
 
-func (m RuntimeManager) Install(_ OperationContext, id string) (ComponentStatus, error) {
+func (m RuntimeManager) Install(operation OperationContext, id string) (ComponentStatus, error) {
+	if !componentMutationMu.TryLock() {
+		return ComponentStatus{}, errors.New("component mutation is busy")
+	}
+	defer componentMutationMu.Unlock()
 	if err := manifest.ValidateID(id); err != nil {
 		return ComponentStatus{}, err
 	}
@@ -70,18 +78,22 @@ func (m RuntimeManager) Install(_ OperationContext, id string) (ComponentStatus,
 		return ComponentStatus{}, err
 	}
 	if err := m.migrate(); err != nil {
-		if _, rollbackErr := installstate.SetInstalled(installstate.DefaultPath(), registeredManifests(), id, false); rollbackErr != nil {
+		if rollbackErr := m.commitMetadataRemoval(operation.RequestContext, id, false); rollbackErr != nil {
 			return ComponentStatus{}, errors.Join(err, fmt.Errorf("restore component install state: %w", rollbackErr))
 		}
 		return ComponentStatus{}, err
 	}
 	if err := m.reconcile(); err != nil {
-		return ComponentStatus{}, m.compensateInstalledState(id, false, err)
+		return ComponentStatus{}, m.compensateInstalledState(operation.RequestContext, id, false, err)
 	}
 	return componentByID(id)
 }
 
 func (m RuntimeManager) Remove(ctx OperationContext, id string) (ComponentStatus, error) {
+	if !componentMutationMu.TryLock() {
+		return ComponentStatus{}, errors.New("component mutation is busy")
+	}
+	defer componentMutationMu.Unlock()
 	if err := manifest.ValidateID(id); err != nil {
 		return ComponentStatus{}, err
 	}
@@ -96,21 +108,28 @@ func (m RuntimeManager) Remove(ctx OperationContext, id string) (ComponentStatus
 		return status, nil
 	}
 	if !status.Removable {
+		if status.Enabled {
+			return ComponentStatus{}, errors.New("disable component before removal")
+		}
 		if status.LockedReason != "" {
 			return ComponentStatus{}, fmt.Errorf("component %q cannot be removed: %s", id, status.LockedReason)
 		}
 		return ComponentStatus{}, fmt.Errorf("component %q cannot be removed", id)
 	}
-	if _, err := installstate.SetInstalled(installstate.DefaultPath(), registeredManifests(), id, false); err != nil {
+	if err := m.commitMetadataRemoval(ctx.RequestContext, id, true); err != nil {
 		return ComponentStatus{}, err
 	}
 	if err := m.reconcile(); err != nil {
-		return ComponentStatus{}, m.compensateInstalledState(id, true, err)
+		return ComponentStatus{}, m.compensateInstalledState(ctx.RequestContext, id, true, err)
 	}
 	return componentByID(id)
 }
 
 func (m RuntimeManager) setEnabled(ctx OperationContext, id string, enabled bool) (ComponentStatus, error) {
+	if !componentMutationMu.TryLock() {
+		return ComponentStatus{}, errors.New("component mutation is busy")
+	}
+	defer componentMutationMu.Unlock()
 	if err := manifest.ValidateID(id); err != nil {
 		return ComponentStatus{}, err
 	}
@@ -151,8 +170,16 @@ func (m RuntimeManager) setEnabled(ctx OperationContext, id string, enabled bool
 	return componentByID(id)
 }
 
-func (m RuntimeManager) compensateInstalledState(id string, installed bool, cause error) error {
-	_, stateErr := installstate.SetInstalled(installstate.DefaultPath(), registeredManifests(), id, installed)
+func (m RuntimeManager) compensateInstalledState(ctx context.Context, id string, installed bool, cause error) error {
+	var stateErr error
+	if installed {
+		_, stateErr = installstate.SetInstalled(installstate.DefaultPath(), registeredManifests(), id, true)
+	} else {
+		stateErr = m.commitMetadataRemoval(ctx, id, false)
+	}
+	if stateErr != nil {
+		return errors.Join(cause, wrapCompensationError("retain component ownership after unsafe compensation", stateErr))
+	}
 	reconcileErr := m.reconcile()
 	return errors.Join(cause, wrapCompensationError("restore component install state", stateErr), wrapCompensationError("reconcile restored component state", reconcileErr))
 }
@@ -286,7 +313,7 @@ func statusForManifest(item manifest.Manifest, isInstalled bool, isEnabled bool)
 		Locked:            locked,
 		LockedReason:      lockedReason,
 		Installable:       !isInstalled && compatible && !locked && mutable,
-		Removable:         isInstalled && !locked && mutable,
+		Removable:         isInstalled && !isEnabled && !locked && mutable,
 		Installed:         isInstalled,
 		Enabled:           isEnabled,
 		Active:            isInstalled && isEnabled,

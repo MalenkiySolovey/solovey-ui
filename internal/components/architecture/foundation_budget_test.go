@@ -184,6 +184,17 @@ func inspectFoundationDeclaration(path, symbol string, declaration ast.Node, imp
 			if !ok {
 				break
 			}
+			if qualifier, ok := selector.X.(*ast.Ident); ok && imports[qualifier.Name] == modulePath+"/componenthost/installstate" && selector.Sel.Name == "SetInstalled" && strings.HasPrefix(path, "components/panel-update-ui/service/") {
+				var installed *ast.Ident
+				var literal bool
+				if len(value.Args) == 4 {
+					installed, literal = value.Args[3].(*ast.Ident)
+				}
+				guarded := path == "components/panel-update-ui/service/removal.go" && symbol == "RuntimeManager.commitMetadataRemoval"
+				if !guarded && (!literal || installed.Name != "true") {
+					*forbidden = append(*forbidden, path+":"+symbol+": component metadata removal must use safe owner admission")
+				}
+			}
 			if qualifier, ok := selector.X.(*ast.Ident); ok && imports[qualifier.Name] == "time" && (selector.Sel.Name == "NewTicker" || selector.Sel.Name == "Tick") {
 				add("worker-lifetime", symbol, value)
 			}
@@ -325,6 +336,8 @@ func TestFoundationProhibitedChanges(t *testing.T) {
 		})
 	}
 	for _, fixture := range []struct{ name, path, source string }{
+		{"removal-bypass", "components/panel-update-ui/service/runtime.go", `package service; import owner "` + modulePath + `/componenthost/installstate"; func Remove() { owner.SetInstalled(path, manifests, id, false) }`},
+		{"removal-boolean-compensation", "components/panel-update-ui/service/runtime.go", `package service; import owner "` + modulePath + `/componenthost/installstate"; func compensate(installed bool) { owner.SetInstalled(path, manifests, id, installed) }`},
 		{"telegram-host-runtime", "components/telegram/adapter.go", `package telegram; func build(host APIDeps) { use(host.Runtime) }`},
 		{"telegram-lifecycle-runtime", "components/telegram/adapter.go", `package telegram; func start(ctx Context) { use(ctx.Host.API.Runtime) }`},
 		{"telegram-global-runtime", "components/telegram/adapter.go", `package telegram; import owner "` + modulePath + `/service"; func build() { use(owner.DefaultRuntime()) }`},
