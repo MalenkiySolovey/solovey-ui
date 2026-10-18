@@ -3,6 +3,7 @@
 package telegram
 
 import (
+	"context"
 	"errors"
 
 	integrationtelegram "github.com/MalenkiySolovey/solovey-ui/componentkit/telegram"
@@ -20,7 +21,7 @@ func (s *Service) telegramEnabled() (bool, error) {
 	return s.Settings.GetTelegramEnabled()
 }
 
-func (s *Service) telegramBotCredentials() (telegramBotCredentials, Result) {
+func (s *Service) telegramBotCredentials(ctx context.Context) (telegramBotCredentials, Result) {
 	enabled, err := s.telegramEnabled()
 	if err != nil {
 		return telegramBotCredentials{}, Result{ErrorClass: "settings"}
@@ -28,7 +29,7 @@ func (s *Service) telegramBotCredentials() (telegramBotCredentials, Result) {
 	if !enabled {
 		return telegramBotCredentials{}, Result{ErrorClass: "disabled"}
 	}
-	token, err := s.Settings.GetTelegramBotToken()
+	token, err := s.Settings.GetTelegramBotToken(ctx)
 	if err != nil {
 		return telegramBotCredentials{}, Result{ErrorClass: "settings"}
 	}

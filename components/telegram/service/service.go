@@ -5,13 +5,14 @@
 package telegram
 
 import (
+	"context"
 	"net/http"
 	"time"
 )
 
 type Settings interface {
 	GetTelegramEnabled() (bool, error)
-	GetTelegramBotToken() (string, error)
+	GetTelegramBotToken(context.Context) (string, error)
 	GetTelegramChatID() (string, error)
 	GetTelegramProxyURL() (string, error)
 	GetTelegramProxyUsername() (string, error)

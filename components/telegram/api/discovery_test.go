@@ -3,6 +3,7 @@
 package telegramapi
 
 import (
+	"context"
 	"encoding/json"
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	telegramservice "github.com/MalenkiySolovey/solovey-ui/components/telegram/service"
@@ -23,7 +24,9 @@ const handlerTestToken = "123456:handler-test-token"
 
 type discoveryReader struct{ telegramsettings.Reader }
 
-func (discoveryReader) GetTelegramBotToken() (string, error) { return handlerTestToken, nil }
+func (discoveryReader) GetTelegramBotToken(context.Context) (string, error) {
+	return handlerTestToken, nil
+}
 
 type handlerRoundTrip func(*http.Request) (*http.Response, error)
 

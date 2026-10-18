@@ -3,7 +3,12 @@
 // Package settings owns Telegram component setting keys, defaults, and readers.
 package settings
 
-import "github.com/MalenkiySolovey/solovey-ui/service"
+import (
+	"context"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
+	"github.com/MalenkiySolovey/solovey-ui/service"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
+)
 
 const (
 	EnabledKey             = "telegramEnabled"
@@ -94,8 +99,18 @@ func (r Reader) GetTelegramEnabled() (bool, error) {
 	return r.GetComponentSettingBool(EnabledKey)
 }
 
-func (r Reader) GetTelegramBotToken() (string, error) {
-	return r.GetComponentSettingString(BotTokenKey)
+func (r Reader) GetTelegramBotToken(ctx context.Context) (string, error) {
+	intentID, err := common.RandomUUID()
+	if err != nil {
+		return "", secretref.ErrUnavailable
+	}
+	var token string
+	_, err = r.AccessComponentSecret(ctx, secretref.Access{Reference: secretref.NewReference("telegram", BotTokenKey),
+		Actor: secretref.Actor{Component: "telegram"}, Operation: secretref.UseForOwner, IntentID: intentID}, func(value []byte) error {
+		token = string(value)
+		return nil
+	})
+	return token, err
 }
 
 func (r Reader) GetTelegramChatID() (string, error) {

@@ -36,7 +36,7 @@ func (s *Service) SendDocumentStream(ctx context.Context, filename string, sourc
 		return Result{ErrorClass: "maintenance"}
 	}
 	defer release()
-	credentials, result := s.telegramBotCredentials()
+	credentials, result := s.telegramBotCredentials(ctx)
 	if !result.Success {
 		return result
 	}
@@ -113,7 +113,7 @@ func (s *Service) SendContext(ctx context.Context, text string) Result {
 		return Result{ErrorClass: "maintenance"}
 	}
 	defer release()
-	credentials, result := s.telegramBotCredentials()
+	credentials, result := s.telegramBotCredentials(ctx)
 	if !result.Success {
 		return result
 	}
