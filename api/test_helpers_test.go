@@ -7,7 +7,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
@@ -68,6 +70,31 @@ func flushAPIAudit(t testing.TB) {
 	t.Helper()
 	if err := service.StopAuditWriter(context.Background()); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func stopAPITestRuntimeAudit(tb testing.TB, runtime *service.Runtime) {
+	tb.Helper()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := runtime.StopAuditWriter(ctx); err != nil {
+		tb.Fatal("drain injected runtime audit", err)
+	}
+}
+
+func closeAPITestRuntime(tb testing.TB, runtime *service.Runtime) {
+	tb.Helper()
+	stopAPITestRuntimeAudit(tb, runtime)
+	// These database fixtures are serial. The existing token-use reset hook
+	// retires the selected runtime's timer and pending numeric token IDs, so
+	// an injected runtime cannot write into a later fixture's database.
+	previous := service.DefaultRuntime()
+	service.SetDefaultRuntime(runtime)
+	defer service.SetDefaultRuntime(previous)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := dbhooks.ResetCaches(ctx); err != nil {
+		tb.Fatal("reset injected runtime before database retirement", err)
 	}
 }
 
