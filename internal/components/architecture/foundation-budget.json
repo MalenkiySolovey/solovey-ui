@@ -2531,7 +2531,7 @@
       "rule": "worker-lifetime",
       "path": "web/web.go",
       "symbol": "*Server.Start",
-      "digest": "d712a8a673d27fac2b3e27689870f5b6ecc9e9fd806a1dae82d2d4a50e668723"
+      "digest": "98ed5edf3302ab99e96dae2cdcb8b2fddf4cf65d87a57927de06813d4916ff9d"
     }
   ]
 }

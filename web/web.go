@@ -53,6 +53,7 @@ type Server struct {
 	assetsFS         fs.FS
 	unregisterHealth func()
 	running          atomic.Bool
+	serveDone        <-chan struct{}
 }
 
 type Option func(*Server)
@@ -309,10 +310,14 @@ func (s *Server) Start() (err error) {
 		ConnContext: httpconn.SaveContext,
 	}
 	s.running.Store(true)
+	httpServer := s.httpServer
+	serveDone := make(chan struct{})
+	s.serveDone = serveDone
 
 	go func() {
+		defer close(serveDone)
 		defer s.running.Store(false)
-		if serveErr := s.httpServer.Serve(listener); serveErr != nil && serveErr != http.ErrServerClosed {
+		if serveErr := httpServer.Serve(listener); serveErr != nil && serveErr != http.ErrServerClosed {
 			logger.Warning("web server stopped unexpectedly:", serveErr)
 		}
 	}()
@@ -337,6 +342,13 @@ func (s *Server) Stop() error {
 	if s.httpServer != nil {
 		shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 30*time.Second)
 		err = s.httpServer.Shutdown(shutdownCtx)
+		if err == nil && s.serveDone != nil {
+			select {
+			case <-s.serveDone:
+			case <-shutdownCtx.Done():
+				err = shutdownCtx.Err()
+			}
+		}
 		cancelShutdown()
 		if err != nil {
 			if s.listener != nil {
@@ -352,5 +364,6 @@ func (s *Server) Stop() error {
 	}
 	s.httpServer = nil
 	s.listener = nil
+	s.serveDone = nil
 	return nil
 }
