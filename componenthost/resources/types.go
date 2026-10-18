@@ -45,6 +45,7 @@ type ProtectableResource struct {
 	Public              bool                            `json:"public"`
 	TLS                 bool                            `json:"tls"`
 	Source              string                          `json:"source"`
+	Identity            *ResourceIdentityV1             `json:"identity,omitempty"`
 	InboundTag          string                          `json:"inboundTag,omitempty"`
 	ComponentID         string                          `json:"componentId,omitempty"`
 	Fingerprint         string                          `json:"fingerprint"`

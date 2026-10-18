@@ -154,6 +154,12 @@ func TestLocalHostNetworkConfiguredInputsRemainInputs(t *testing.T) {
 	resources := hostresources.ResourceSnapshot{GeneratedAt: now.Unix(), Resources: []hostresources.ProtectableResource{resource}}
 	before, _ := json.Marshal(resources)
 	facts := provider.LocalHostNetworkIdentity(t.Context(), resources)
+	legacy := resource
+	legacy.Identity = nil
+	legacyFacts := provider.LocalHostNetworkIdentity(t.Context(), hostresources.ResourceSnapshot{GeneratedAt: resources.GeneratedAt, Resources: []hostresources.ProtectableResource{legacy}})
+	if !reflect.DeepEqual(facts, legacyFacts) {
+		t.Fatal("Local resource metadata changed Network Identity facts or revisions")
+	}
 	if facts.Listen.Evidence.Availability != identity.Available || len(facts.Listen.Values) != 1 || facts.Listen.Values[0].Address != "192.168.1.2" ||
 		facts.Advertised.Evidence.Availability != identity.Available || len(facts.Advertised.Values) != 2 {
 		t.Fatalf("configured inputs=%+v %+v", facts.Listen, facts.Advertised)

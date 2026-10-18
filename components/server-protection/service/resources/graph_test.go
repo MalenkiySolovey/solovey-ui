@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"reflect"
 	"slices"
 	"strings"
 	"testing"
@@ -9,6 +10,30 @@ import (
 	hostsurface "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 )
+
+func TestLocalIdentityMetadataPreservesSocketOwnershipGraph(t *testing.T) {
+	now := time.Unix(1000, 0).UTC()
+	resource := graphResource("core:panel:web", hostresources.NetworkTCP, hostresources.AddressFamilyIPv4, "127.0.0.1", 2095)
+	resource.Kind, resource.Source, resource.Owner = "panel_web", "settings", "core"
+	for index := range resource.Endpoints {
+		resource.Endpoints[index].Owner = resource.Owner
+	}
+	surfaces := []hostsurface.HostSurfaceFactV1{graphSurface(resource, now)}
+	legacy := BuildSocketOwnershipGraph(SocketGraphInput{Resources: []hostresources.ProtectableResource{resource}, Surfaces: surfaces, Now: now})
+	resource.Identity = hostresources.LocalConfiguredIdentity(resource)
+	if !resource.Identity.ValidFor(resource) {
+		t.Fatal("fixture has no bound Local identity")
+	}
+	for _, stale := range []bool{false, true} {
+		if stale {
+			resource.Identity.DesiredRevision = "stale"
+		}
+		current := BuildSocketOwnershipGraph(SocketGraphInput{Resources: []hostresources.ProtectableResource{resource}, Surfaces: surfaces, Now: now})
+		if !reflect.DeepEqual(legacy, current) {
+			t.Fatal("configured identity metadata changed socket ownership/evidence or graph revision")
+		}
+	}
+}
 
 func TestSocketGraphDeterministicAndProtocolFamilyExact(t *testing.T) {
 	now := time.Unix(1000, 0).UTC()

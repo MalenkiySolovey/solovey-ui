@@ -234,6 +234,11 @@ func (r *Registry) snapshot(ctx context.Context, refresh bool, excluded map[stri
 			item.Capabilities.OwnerRevision = optionalResourceToken(item.Capabilities.OwnerRevision, 128)
 			item.Capabilities.ConfigRevision = optionalResourceToken(item.Capabilities.ConfigRevision, 128)
 			resourceInvalid = resourceInvalid || (originalTLSMode != "" && item.Capabilities.TLSMode == "") || (originalFallbackTargetID != "" && item.Capabilities.FallbackTargetID == "") || (originalOwnerRevision != "" && item.Capabilities.OwnerRevision == "") || (originalConfigRevision != "" && item.Capabilities.ConfigRevision == "")
+			// Optional metadata never replaces canonical ownership or becomes a
+			// new apply/removal gate. Unbound metadata has legacy unknown status.
+			if !item.Identity.ValidFor(item) {
+				item.Identity = nil
+			}
 			if expected := item.Capabilities.ExpectedApplicationOwner; expected.Schema != "" && !expected.Valid() {
 				item.Capabilities.ExpectedApplicationOwner = deploymentidentity.ExpectedApplicationOwnerV1{}
 				item.Warnings = append(item.Warnings, "expected application owner contract is invalid")
@@ -508,6 +513,10 @@ func cloneSnapshot(value ResourceSnapshot) ResourceSnapshot {
 
 func cloneResource(value ProtectableResource) ProtectableResource {
 	result := value
+	if value.Identity != nil {
+		identity := *value.Identity
+		result.Identity = &identity
+	}
 	if value.SocketCoverage != nil {
 		coverage := *value.SocketCoverage
 		coverage.Socket.CoverageFamilies = append(coverage.Socket.CoverageFamilies[:0:0], coverage.Socket.CoverageFamilies...)

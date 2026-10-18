@@ -51,7 +51,7 @@ func TestLogicalRestoreRebindsApplicationResourceOwners(t *testing.T) {
 				t.Fatal(err)
 			}
 			t.Cleanup(stopSSH)
-			checkResources := func() {
+			checkResources := func() map[string]hostresources.ResourceIdentityV1 {
 				t.Helper()
 				snapshot := hostresources.Default.Refresh(context.Background())
 				wantResources := 4
@@ -62,8 +62,15 @@ func TestLogicalRestoreRebindsApplicationResourceOwners(t *testing.T) {
 					t.Fatalf("resource inventory: count=%d errors=%v", len(snapshot.Resources), snapshot.Errors)
 				}
 				ids := map[string]bool{}
+				identities := map[string]hostresources.ResourceIdentityV1{}
 				for _, resource := range snapshot.Resources {
 					ids[resource.ID] = true
+					if resource.ID == "core:panel:web" || resource.ID == "core:subscription:default" {
+						if !resource.Identity.ValidFor(resource) || resource.Identity.Owner != "core" || !resource.Identity.Host.IsLocal() || resource.Identity.ObservationStatus != hostresources.ResourceObservationUnknown {
+							t.Fatalf("restored listener lost its canonical Local owner: %+v", resource)
+						}
+						identities[resource.ID] = *resource.Identity
+					}
 				}
 				for _, id := range []string{"core:panel:web", "core:subscription:default", "fixture:ssh:ipv4", "fixture:ssh:ipv6"} {
 					if !ids[id] {
@@ -73,18 +80,30 @@ func TestLogicalRestoreRebindsApplicationResourceOwners(t *testing.T) {
 				if fixture.populated && !ids["core:inbound:51"] {
 					t.Fatal("authenticated inbound resource missing after restore")
 				}
+				return identities
 			}
 			checkResources()
 			oldDB, oldControl := dbsqlite.DB(), application.configService.CoreInboundControl()
 			if err := oldDB.Model(&model.Setting{}).Where("key = ?", "trafficAge").Update("value", "32").Error; err != nil {
 				t.Fatal(err)
 			}
+			if err := application.SetPort(27081); err != nil {
+				t.Fatal(err)
+			}
+			archivedIdentities := checkResources()
 			backup, err := dbbackup.Export("")
 			if err != nil {
 				t.Fatal(err)
 			}
 			if err := oldDB.Model(&model.Setting{}).Where("key = ?", "trafficAge").Update("value", "33").Error; err != nil {
 				t.Fatal(err)
+			}
+			if err := application.SetPort(27082); err != nil {
+				t.Fatal(err)
+			}
+			currentIdentities := checkResources()
+			if currentIdentities["core:panel:web"].DesiredRevision == archivedIdentities["core:panel:web"].DesiredRevision {
+				t.Fatal("fixture did not change listener desired revision")
 			}
 			if reject {
 				failed := false
@@ -100,6 +119,18 @@ func TestLogicalRestoreRebindsApplicationResourceOwners(t *testing.T) {
 			rehearsal, err := dbbackup.Rehearse(context.Background(), bytes.NewReader(backup))
 			if err != nil || !rehearsal.Possible {
 				t.Fatalf("rehearsal: possible=%v err=%v", rehearsal.Possible, err)
+			}
+			if rehearsal.Manifest == nil {
+				t.Fatal("typed backup manifest is missing")
+			}
+			coreOwners := 0
+			for _, owner := range rehearsal.Manifest.Owners {
+				if owner.ID == archivedIdentities["core:panel:web"].Owner {
+					coreOwners++
+				}
+			}
+			if coreOwners != 1 {
+				t.Fatal("listener metadata diverged from the single core backup owner")
 			}
 			manager := datalifecycle.NewManager()
 			// Host resource pressure is independently qualified. This fixture
@@ -153,7 +184,15 @@ func TestLogicalRestoreRebindsApplicationResourceOwners(t *testing.T) {
 			}
 			// Mandatory rebinding has completed before the async restart. Its
 			// ordinary unregister/register cycle must retain the new owner.
-			checkResources()
+			wantIdentities := archivedIdentities
+			if reject {
+				wantIdentities = currentIdentities
+			}
+			for id, identity := range checkResources() {
+				if identity != wantIdentities[id] {
+					t.Fatal("restore did not regenerate identity from the accepted canonical settings")
+				}
+			}
 			application.stopResourceRegistrations()
 			if err := application.registerResources(); err != nil {
 				t.Fatal(err)
