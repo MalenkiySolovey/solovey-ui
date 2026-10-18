@@ -18,6 +18,22 @@ x-step-up-parameters: &stepUpParameters
   - $ref: "#/components/parameters/StepUpToken"
 
 paths:
+  /api/update/components/{id}/remove:
+    post:
+      operationId: removeComponent
+      description: >-
+        Full profile only. Requires a browser one-use step-up grant for
+        component.remove with target component:{id}. The owner must be disabled,
+        stopped, and free of retained data, resource authority and recovery debt.
+        Unknown impact is rejected. Cleanup uses the separate owner workflow.
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, maxLength: 128 } }
+        - $ref: "#/components/parameters/StepUpToken"
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, additionalProperties: false, maxProperties: 0 }
+      responses: *messageResponses
   /api/v1/security/posture:
     get: { operationId: getSecurityPosture, responses: *messageResponses }
   /api/v1/security/sessions:

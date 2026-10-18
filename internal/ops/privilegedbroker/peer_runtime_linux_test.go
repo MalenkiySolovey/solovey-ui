@@ -421,6 +421,25 @@ func (classifiedRejectingAttestor) Attest(context.Context, *net.UnixConn, Role) 
 
 func (classifiedRejectingAttestor) Recheck(context.Context, PeerIdentity, Role) error { return nil }
 
+func TestCanceledServeDoesNotInspectClosedListener(t *testing.T) {
+	server, err := NewServer(NewRegistry(), memoryJournal{}, classifiedRejectingAttestor{}, "boot")
+	if err != nil {
+		t.Fatal(err)
+	}
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(t.TempDir(), "canceled.sock"), Net: "unix"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := listener.Close(); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if err := server.Serve(ctx, listener, RolePanel); err != nil {
+		t.Fatalf("canceled listener shutdown returned an error: %v", err)
+	}
+}
+
 func TestDeniedPeerAuditIncludesOnlyBoundedAttestationClass(t *testing.T) {
 	server, err := NewServer(NewRegistry(), memoryJournal{}, classifiedRejectingAttestor{}, "boot")
 	if err != nil {

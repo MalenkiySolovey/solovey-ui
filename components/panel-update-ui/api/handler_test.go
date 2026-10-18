@@ -14,6 +14,7 @@ import (
 
 type componentManagerStepUpStub struct {
 	removeCalls int
+	operation   panelupdateservice.OperationContext
 }
 
 func (stub *componentManagerStepUpStub) Enable(panelupdateservice.OperationContext, string) (panelupdateservice.ComponentStatus, error) {
@@ -28,8 +29,9 @@ func (stub *componentManagerStepUpStub) Install(panelupdateservice.OperationCont
 	return panelupdateservice.ComponentStatus{}, nil
 }
 
-func (stub *componentManagerStepUpStub) Remove(_ panelupdateservice.OperationContext, id string) (panelupdateservice.ComponentStatus, error) {
+func (stub *componentManagerStepUpStub) Remove(operation panelupdateservice.OperationContext, id string) (panelupdateservice.ComponentStatus, error) {
 	stub.removeCalls++
+	stub.operation = operation
 	return panelupdateservice.ComponentStatus{ID: id, Installed: false}, nil
 }
 
@@ -42,6 +44,7 @@ func TestComponentRemoveFailsClosedWithoutReauthenticationBoundary(t *testing.T)
 		RequireScope:     func(*gin.Context, string, ...string) bool { return true },
 		LoginUser:        func(*gin.Context) string { return "admin" },
 		RemoteIP:         func(*gin.Context) string { return "192.0.2.1" },
+		Audit:            func(*gin.Context, string, string, string, string, map[string]any) {},
 		JSONMsg: func(c *gin.Context, msg string, err error) {
 			c.JSON(http.StatusOK, gin.H{"success": err == nil, "msg": msg})
 		},
@@ -61,6 +64,46 @@ func TestComponentRemoveFailsClosedWithoutReauthenticationBoundary(t *testing.T)
 
 	if recorder.Code != http.StatusServiceUnavailable || manager.removeCalls != 0 {
 		t.Fatalf("remove response=%d calls=%d body=%s", recorder.Code, manager.removeCalls, recorder.Body.String())
+	}
+}
+
+func TestComponentRemoveRequiresExactActionTargetBeforeManager(t *testing.T) {
+	for _, allowed := range []bool{false, true} {
+		t.Run(map[bool]string{false: "denied", true: "accepted"}[allowed], func(t *testing.T) {
+			manager := &componentManagerStepUpStub{}
+			router := gin.New()
+			RegisterRoutes(router.Group("/api"), Deps{
+				ComponentManager: manager,
+				RequireScope:     func(*gin.Context, string, ...string) bool { return true },
+				LoginUser:        func(*gin.Context) string { return "admin" },
+				RemoteIP:         func(*gin.Context) string { return "192.0.2.1" },
+				Audit:            func(*gin.Context, string, string, string, string, map[string]any) {},
+				JSONObj: func(c *gin.Context, obj any, err error) {
+					c.JSON(http.StatusOK, gin.H{"success": err == nil, "obj": obj})
+				},
+				JSONMsg: func(c *gin.Context, msg string, err error) {
+					c.JSON(http.StatusOK, gin.H{"success": err == nil, "msg": msg})
+				},
+				RequireStepUp: func(c *gin.Context, operation, target string) bool {
+					if operation != "component.remove" || target != "component:telegram" {
+						t.Fatalf("assurance binding: %q %q", operation, target)
+					}
+					if !allowed {
+						c.AbortWithStatus(http.StatusForbidden)
+					}
+					return allowed
+				},
+			})
+			request := httptest.NewRequest(http.MethodPost, "/api/update/components/telegram/remove", strings.NewReader(`{}`))
+			recorder := httptest.NewRecorder()
+			router.ServeHTTP(recorder, request)
+			if allowed && (manager.removeCalls != 1 || manager.operation.RequestContext != request.Context() || recorder.Code != http.StatusOK) {
+				t.Fatalf("accepted assurance lost request context: %d %d", manager.removeCalls, recorder.Code)
+			}
+			if !allowed && (manager.removeCalls != 0 || recorder.Code != http.StatusForbidden) {
+				t.Fatal("rejected assurance reached manager")
+			}
+		})
 	}
 }
 

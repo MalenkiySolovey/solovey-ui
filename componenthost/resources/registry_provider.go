@@ -9,6 +9,10 @@ import (
 
 var errProviderCallUnavailable = errors.New("resource_provider_call_unavailable")
 
+// Capacity is released on actual return, not on timeout of an uncooperative
+// provider. Repeated reads cannot accumulate an unbounded set of workers.
+var resourceProviderCalls = make(chan struct{}, maxContributors)
+
 type providerIdentity interface {
 	ProviderID() string
 }
@@ -38,12 +42,21 @@ func callResourceProvider[T any](ctx context.Context, timeout time.Duration, cal
 	}
 	callCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
+	if callCtx.Err() != nil || call == nil {
+		return zero, errProviderCallUnavailable
+	}
+	select {
+	case resourceProviderCalls <- struct{}{}:
+	default:
+		return zero, errProviderCallUnavailable
+	}
 	type response struct {
 		value T
 		err   error
 	}
 	result := make(chan response, 1)
 	go func() {
+		defer func() { <-resourceProviderCalls }()
 		value := response{}
 		defer func() {
 			if recover() != nil {
@@ -55,6 +68,9 @@ func callResourceProvider[T any](ctx context.Context, timeout time.Duration, cal
 	}()
 	select {
 	case value := <-result:
+		if callCtx.Err() != nil {
+			return zero, errProviderCallUnavailable
+		}
 		return value.value, value.err
 	case <-callCtx.Done():
 		return zero, errProviderCallUnavailable

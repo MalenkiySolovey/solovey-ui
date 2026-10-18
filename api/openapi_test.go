@@ -136,6 +136,7 @@ func TestOpenAPIInventoryAndStrictRequests(t *testing.T) {
 		"/api/v1/operations/update/operations/{operationId}/activate",
 		"/api/v1/operations/update/operations/{operationId}/rollback",
 		"/api/v1/operations/data/drop",
+		"/api/update/components/{id}/remove",
 		"/api/v1/operations/data/restore",
 	} {
 		operation := spec.Paths[path]["post"]

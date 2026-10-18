@@ -315,6 +315,7 @@ func classify(method, route string) Policy {
 		policy.AuditPolicy = "security"
 	case strings.Contains(lower, "/update/components/") && strings.HasSuffix(lower, "/remove"):
 		policy.ActionScope = "component_remove"
+		policy.StepUpOperation = "component.remove"
 		policy.AuditPolicy = "security"
 	case strings.HasSuffix(lower, "/v1/security/sessions/adopt-bounded"):
 		policy.ActionScope = "session_policy_adopt"

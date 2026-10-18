@@ -85,7 +85,7 @@ func TestClassifyUsesExactBodyClassesAndHighRiskActionBindings(t *testing.T) {
 
 	remove := classify(http.MethodPost, "/api/update/components/:id/remove")
 	if remove.BodyClass != BodyAuthTiny || remove.MaxBodyBytes != AuthTinyBytes ||
-		remove.ActionScope != "component_remove" || remove.StepUpOperation != "" {
+		remove.ActionScope != "component_remove" || remove.StepUpOperation != "component.remove" {
 		t.Fatalf("component remove policy=%#v", remove)
 	}
 	asset := classify(http.MethodPost, "/api/components/fixture-sites/sites/:id/assets")

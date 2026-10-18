@@ -288,6 +288,9 @@ func registerUpdateFixtureRoutes(g *gin.RouterGroup, deps componenthost.APIDeps)
 			if !deps.Auth.RequireScope(c, "update", "admin", "update") {
 				return
 			}
+			if action == "remove" && !deps.Auth.RequireStepUp(c, "component.remove", "component:"+c.Param("id")) {
+				return
+			}
 			c.JSON(http.StatusOK, Msg{Success: true})
 		})
 	}

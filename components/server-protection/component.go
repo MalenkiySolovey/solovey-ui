@@ -121,11 +121,11 @@ func (component) RehearseRestore(ctx context.Context, db *gorm.DB) error {
 	return protectionrepository.ReconcileLegacySelfStealProfiles(ctx, db, now)
 }
 
-func (component) InspectDropAuthority(_ context.Context, db *gorm.DB, _ time.Time) lifecycle.DropAuthorityStatus {
-	if db == nil {
+func (component) InspectDropAuthority(ctx context.Context, db *gorm.DB, _ time.Time) lifecycle.DropAuthorityStatus {
+	if db == nil || ctx == nil || ctx.Err() != nil {
 		return lifecycle.DropAuthorityStatus{State: "UNAVAILABLE", ReasonCodes: []string{"owner_database_unavailable"}}
 	}
-	if err := protectionrepository.EnsureDropSafe(db); err != nil {
+	if err := protectionrepository.EnsureDropSafe(db.WithContext(ctx)); err != nil {
 		return lifecycle.DropAuthorityStatus{State: "BLOCKED", ReasonCodes: []string{"server_protection_authority_or_recovery_present"}}
 	}
 	return lifecycle.DropAuthorityStatus{State: "VERIFIED_SAFE", ReasonCodes: []string{}}
