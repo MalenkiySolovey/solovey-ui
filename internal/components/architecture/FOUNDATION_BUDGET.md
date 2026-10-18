@@ -33,3 +33,12 @@ bounded slot but cannot cause unbounded worker creation. Deterministic barriers
 cover cancellation, saturation, replacement and late completion. No worker kill,
 repair or new owner goroutine is introduced. The old exact digest is retired;
 the legacy budget is not regenerated or expanded.
+
+Current B3 CI exposed the existing web serving worker dereferencing a field
+cleared by immediate Stop. Its exact `web.Server.Start` worker is reviewed from
+`d712a8a6…` to `98ed5edf…`: it captures the initialized HTTP server and listener,
+closes an owner completion channel on exit, and clears readiness before closing
+that channel. Stop joins it within its existing 30-second shutdown context
+before clearing/reusing fields. Timeout retains owner state and closes the
+listener as before. No worker is added and the budget count stays unchanged.
+The real Start/Stop/reuse regression checks worker completion without sleeps.
