@@ -62,3 +62,18 @@ func TestTransitionRatchetDistinguishesOwnerPolicyFromDuplicateMechanics(t *test
 		}
 	}
 }
+
+func TestCommonPreflightRemainsAReadOnlySemanticFactEvaluator(t *testing.T) {
+	allowed := map[string]bool{"context": true, "strings": true, "time": true, modulePath + "/internal/deployment": true}
+	root := filepath.Join(moduleRoot(t), "internal", "ops", "preflight")
+	walkGoFiles(t, root, func(path string) {
+		if filepath.Ext(path) != ".go" || len(path) >= 8 && path[len(path)-8:] == "_test.go" {
+			return
+		}
+		for _, imported := range fileImports(t, path) {
+			if !allowed[imported] {
+				t.Errorf("common preflight imports executable/owner dependency %s", imported)
+			}
+		}
+	})
+}

@@ -20,7 +20,9 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/schema"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	componentprofile "github.com/MalenkiySolovey/solovey-ui/internal/components/profile"
+	deploymentdomain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 	operationcoordination "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/preflight"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"
@@ -123,6 +125,7 @@ type LifecycleStatus struct {
 	Release       *model.UpdateReleaseState     `json:"release,omitempty"`
 	Operation     *model.UpdateOperation        `json:"operation,omitempty"`
 	Change        *operationcoordination.Change `json:"change,omitempty"`
+	Preflight     *preflight.Report             `json:"preflight,omitempty"`
 	Capabilities  Capabilities                  `json:"capabilities"`
 	ReasonCodes   []string                      `json:"reasonCodes"`
 	ObservedAt    int64                         `json:"observedAt"`
@@ -241,17 +244,18 @@ type ReleaseClient interface {
 type Repository struct{ DB func() *gorm.DB }
 
 type LifecycleManager struct {
-	mu       sync.Mutex
-	repo     Repository
-	provider Provider
-	fetcher  ReleaseClient
-	sources  map[release.Channel]release.Source
-	trust    release.TrustStore
-	now      func() time.Time
-	platform func() (string, string)
-	profile  func() string
-	health   func(context.Context, model.UpdateOperation) HealthResult
-	admit    func(string) bool
+	mu            sync.Mutex
+	repo          Repository
+	provider      Provider
+	fetcher       ReleaseClient
+	sources       map[release.Channel]release.Source
+	trust         release.TrustStore
+	now           func() time.Time
+	platform      func() (string, string)
+	profile       func() string
+	platformFacts func(context.Context) deploymentdomain.PlatformFacts
+	health        func(context.Context, model.UpdateOperation) HealthResult
+	admit         func(string) bool
 }
 
 var lifecycleShared = newSharedLifecycle()
@@ -307,7 +311,7 @@ func NewLifecycleManager(repo Repository, provider Provider, fetcher ReleaseClie
 	}
 	return &LifecycleManager{repo: repo, provider: provider, fetcher: fetcher,
 		sources: map[release.Channel]release.Source{release.ChannelMain: source, release.ChannelBeta: source}, trust: trust,
-		now: time.Now, platform: func() (string, string) {
+		now: time.Now, platformFacts: deploymentservice.Shared().PlatformFacts, platform: func() (string, string) {
 			arch := configupdate.ResolveArtifactPlatform()
 			if arch == "" {
 				arch = runtime.GOARCH
@@ -422,6 +426,8 @@ func (m *LifecycleManager) Status(ctx context.Context, channel release.Channel) 
 		change := ProjectChange(*result.Operation)
 		result.Change = &change
 	}
+	platformCheck := m.platformPreflight(ctx)
+	result.Preflight = &platformCheck
 	return result
 }
 
@@ -505,6 +511,9 @@ func (m *LifecycleManager) Prepare(ctx context.Context, request PrepareRequest) 
 	if !versionpolicy.VersionIsNewer(verified.Manifest.Version, configidentity.GetVersion()) {
 		return model.UpdateOperation{}, ErrNotNewer
 	}
+	if report := m.platformPreflight(ctx); !report.Ready {
+		return model.UpdateOperation{}, PlatformPreflightError{Report: report}
+	}
 	platform, arch := m.platform()
 	operation := newUpdateOperation(request, verified, artifacts, platform, arch, m.profile(), m.now())
 	// Prepare is a valid entry point even when the caller did not run Check
@@ -579,6 +588,9 @@ func (m *LifecycleManager) Activate(ctx context.Context, request RevisionRequest
 	}
 	if operation.Revision != request.ExpectedRevision || State(operation.State) != StatePrepared || operation.RestoredUntrusted {
 		return operation, ErrRevisionMismatch
+	}
+	if report := m.platformPreflight(ctx); !report.Ready {
+		return operation, PlatformPreflightError{Report: report}
 	}
 	operation, err = m.advance(ctx, operation, StateActivating, "update_activation_started", "")
 	if err != nil {
@@ -1574,6 +1586,10 @@ func restoredOperationRecoveryProjection(operation model.UpdateOperation) model.
 }
 
 func ReasonCode(err error) string {
+	var platformError PlatformPreflightError
+	if errors.As(err, &platformError) {
+		return "update_platform_preflight_failed"
+	}
 	switch {
 	case errors.Is(err, ErrSigningUnavailable):
 		return "release_signing_unavailable"
