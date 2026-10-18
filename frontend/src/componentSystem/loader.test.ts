@@ -59,6 +59,31 @@ afterEach(async () => {
 })
 
 describe('component frontend loader', () => {
+  it.each(['START_FAILED', 'NOT_OBSERVED'] as const)('keeps eligible component UI loadable when lifecycle is %s', async phase => {
+    const data = Data()
+    data.componentsLoaded = true
+    data.components = [componentStatus('fixture-alpha', {
+      availableInBinary: true,
+      observedLifecycle: { phase, instanceRetention: 'UNKNOWN', source: 'componenthost.supervisor', reasonCode: 'fixture' },
+    })]
+
+    await syncEnabledComponents(createHostRouter())
+
+    expect(entries.loadAlpha).toHaveBeenCalledOnce()
+    expect(contributionFor('fixture-alpha')).toBeDefined()
+  })
+
+  it('does not load code marked absent even if stale eligibility is true', async () => {
+    const data = Data()
+    data.componentsLoaded = true
+    data.components = [componentStatus('fixture-alpha', { availableInBinary: false })]
+
+    await syncEnabledComponents(createHostRouter())
+
+    expect(entries.loadAlpha).not.toHaveBeenCalled()
+    expect(contributionFor('fixture-alpha')).toBeUndefined()
+  })
+
   it('loads only the installed active projection and ignores unknown backend entries', async () => {
     const data = Data()
     data.componentsLoaded = true

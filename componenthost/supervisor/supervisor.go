@@ -22,8 +22,9 @@ type Supervisor struct {
 	installedComponents func() ([]registry.Component, error)
 	activeComponents    func() ([]registry.Component, error)
 
-	mu      sync.Mutex
-	running []registry.Component
+	mu           sync.Mutex
+	running      []registry.Component
+	observations state.LifecyclePublisher
 }
 
 var componentMigrationMu sync.Mutex
@@ -33,6 +34,7 @@ func New(host componenthost.Deps) *Supervisor {
 		host:                host,
 		installedComponents: installedComponents,
 		activeComponents:    activeComponents,
+		observations:        state.NewLifecyclePublisher(),
 	}
 }
 
@@ -167,10 +169,12 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 		if _, ok := activeByID[component.Manifest.ID]; ok {
 			continue
 		}
-		if err := safeCall(component.Manifest.ID, "stop", func() error {
+		stopErr := safeCall(component.Manifest.ID, "stop", func() error {
 			return component.Lifecycle.Stop(ctx)
-		}); err != nil {
-			joined = errors.Join(joined, err)
+		})
+		s.observations.RecordStop(component.Manifest.ID, stopErr == nil)
+		if stopErr != nil {
+			joined = errors.Join(joined, stopErr)
 			stopFailed[component.Manifest.ID] = struct{}{}
 		}
 	}
@@ -181,10 +185,12 @@ func (s *Supervisor) Reconcile(ctx context.Context) error {
 			nextRunning = append(nextRunning, running)
 			continue
 		}
-		if err := safeCall(component.Manifest.ID, "start", func() error {
+		startErr := safeCall(component.Manifest.ID, "start", func() error {
 			return component.Lifecycle.Start(ctx, lifecycle.Context{Host: s.host})
-		}); err != nil {
-			joined = errors.Join(joined, err)
+		})
+		s.observations.RecordStart(component.Manifest.ID, startErr == nil)
+		if startErr != nil {
+			joined = errors.Join(joined, startErr)
 			continue
 		}
 		nextRunning = append(nextRunning, component)
@@ -267,10 +273,12 @@ func (s *Supervisor) Stop(ctx context.Context) error {
 	failed := make(map[string]struct{})
 	for i := len(s.running) - 1; i >= 0; i-- {
 		component := s.running[i]
-		if err := safeCall(component.Manifest.ID, "stop", func() error {
+		stopErr := safeCall(component.Manifest.ID, "stop", func() error {
 			return component.Lifecycle.Stop(ctx)
-		}); err != nil {
-			joined = errors.Join(joined, err)
+		})
+		s.observations.RecordStop(component.Manifest.ID, stopErr == nil)
+		if stopErr != nil {
+			joined = errors.Join(joined, stopErr)
 			failed[component.Manifest.ID] = struct{}{}
 		}
 	}

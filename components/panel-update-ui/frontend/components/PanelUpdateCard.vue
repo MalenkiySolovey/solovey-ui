@@ -75,9 +75,10 @@
           <div class="panel-update__component-meta">{{ componentMeta(component) }}</div>
         </div>
         <div class="panel-update__component-actions">
-          <v-chip :color="component.active ? 'success' : 'warning'" density="compact" label size="small">
+          <v-chip :color="component.active ? 'primary' : 'warning'" density="compact" label size="small">
             {{ component.active ? $t('panelUpdateComponent.enabled') : $t('panelUpdateComponent.disabled') }}
           </v-chip>
+          <span class="panel-update__component-meta">{{ $t('panelUpdateComponent.lifecycleResult') }}: {{ lifecycleLabel(component) }}</span>
           <v-chip v-if="component.locked" color="info" density="compact" label size="small">
             {{ $t('panelUpdateComponent.locked') }}
           </v-chip>
@@ -152,9 +153,10 @@
             {{ componentMeta(component) }}
             <span v-if="component.unavailableReason"> / {{ component.unavailableReason }}</span>
           </div>
+          <div class="panel-update__component-meta">{{ $t('panelUpdateComponent.lifecycleResult') }}: {{ lifecycleLabel(component) }}</div>
         </div>
         <v-btn disabled size="small" variant="tonal">
-          {{ component.compatible ? $t('panelUpdateComponent.notBundled') : $t('panelUpdateComponent.requiresNewerPanel') }}
+          {{ !component.availableInBinary ? $t('panelUpdateComponent.notBundled') : $t('panelUpdateComponent.requiresNewerPanel') }}
         </v-btn>
       </div>
     </section>
@@ -207,7 +209,7 @@ import { usePanelUpdate } from '../composables/usePanelUpdate'
 import type { ComponentCatalogStatus } from '../types'
 import { useI18n } from 'vue-i18n'
 
-const { t } = useI18n()
+const { t, te } = useI18n()
 
 const {
   applying,
@@ -236,15 +238,19 @@ const {
 } = usePanelUpdate()
 
 const isComponentAction = (component: ComponentCatalogStatus, action: string) => componentAction.value === `${component.id}:${action}`
+const lifecycleLabel = (component: ComponentCatalogStatus) => {
+  const key = `panelUpdateComponent.lifecycle.${component.observedLifecycle?.phase || 'NOT_OBSERVED'}`
+  return te(key) ? t(key) : t('panelUpdateComponent.lifecycle.NOT_OBSERVED')
+}
 const componentMeta = (component: ComponentCatalogStatus) => {
   const parts = [component.id]
   if (component.version) parts.push(`${t('panelUpdateComponent.current')} ${component.version}`)
   if (component.latestVersion && component.latestVersion !== component.version) parts.push(`${t('panelUpdateComponent.latest')} ${component.latestVersion}`)
   if (component.requiredPanelVersion || component.since) parts.push(`${t('panelUpdateComponent.requiresPanel')} ${component.requiredPanelVersion || component.since}`)
   parts.push(component.delivery)
-  if (!component.compatible) parts.push(t('panelUpdateComponent.incompatible'))
+  if (component.availableInBinary && !component.compatible) parts.push(t('panelUpdateComponent.incompatible'))
   if (component.locked && component.lockedReason) parts.push(component.lockedReason)
-  else if (!component.installable && !component.removable && !component.availableInBinary) parts.push(t('panelUpdateComponent.releaseOnly'))
+  else if (!component.availableInBinary) parts.push(t('panelUpdateComponent.notBundled'))
   return parts.join(' / ')
 }
 </script>

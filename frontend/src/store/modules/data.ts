@@ -40,6 +40,16 @@ export interface OnlineSnapshot {
   outboundHealth?: Record<string, OutboundHealth>
 }
 
+// Last process-local call result; this does not assert service readiness or
+// release of external resources. Optional for older backend responses.
+export interface ComponentLifecycleObservation {
+  phase: 'STARTED' | 'START_FAILED' | 'STOPPED' | 'STOP_FAILED' | 'NOT_OBSERVED' | 'BINARY_ABSENT' | 'NOT_INSTALLED'
+  instanceRetention: 'RETAINED' | 'RELEASED' | 'UNKNOWN'
+  source: string
+  observedAt?: string
+  reasonCode: string
+}
+
 export interface ComponentStatus {
   id: string
   name: string
@@ -51,6 +61,8 @@ export interface ComponentStatus {
   installed: boolean
   enabled: boolean
   active: boolean
+  availableInBinary?: boolean
+  observedLifecycle?: ComponentLifecycleObservation
 }
 
 export interface InboundDraftStatus {
