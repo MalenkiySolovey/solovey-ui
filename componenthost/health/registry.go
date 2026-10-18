@@ -23,10 +23,11 @@ const maxHealthCheckers = 256
 // Result intentionally contains only stable codes: health output is safe for
 // diagnostics and recovery artifacts and cannot disclose listener paths.
 type Result struct {
-	ResourceID string `json:"resourceId"`
-	Status     Status `json:"status"`
-	Check      string `json:"check"`
-	FactCode   string `json:"factCode"`
+	ResourceID string    `json:"resourceId"`
+	Status     Status    `json:"status"`
+	Check      string    `json:"check"`
+	FactCode   string    `json:"factCode"`
+	Evidence   *Evidence `json:"evidence,omitempty"`
 }
 
 type Checker interface {
@@ -48,9 +49,12 @@ type Registry struct {
 	mu        sync.RWMutex
 	nextToken uint64
 	checkers  map[string]registeredChecker
+	slots     chan struct{}
 }
 
-func NewRegistry() *Registry { return &Registry{checkers: make(map[string]registeredChecker)} }
+func NewRegistry() *Registry {
+	return &Registry{checkers: make(map[string]registeredChecker), slots: make(chan struct{}, maxHealthCheckers)}
+}
 
 func (r *Registry) Register(checker Checker) (func(), error) {
 	id, ok := checkerResourceID(checker)
@@ -100,6 +104,7 @@ func (r *Registry) Check(ctx context.Context, resourceID string) Result {
 					break
 				}
 				checker = candidate
+				entry = registered
 			}
 		}
 	}
@@ -110,6 +115,11 @@ func (r *Registry) Check(ctx context.Context, resourceID string) Result {
 	if checker == nil {
 		return Result{ResourceID: resourceID, Status: StatusMissingCapability, Check: "internal_health", FactCode: "health_check_unavailable"}
 	}
+	select {
+	case r.slots <- struct{}{}:
+	default:
+		return Result{ResourceID: resourceID, Status: StatusMissingCapability, Check: "internal_health", FactCode: "health_check_busy"}
+	}
 	if ctx == nil {
 		ctx = context.Background()
 	}
@@ -117,6 +127,7 @@ func (r *Registry) Check(ctx context.Context, resourceID string) Result {
 	defer cancel()
 	resultCh := make(chan Result, 1)
 	go func() {
+		defer func() { <-r.slots }()
 		defer func() {
 			if recover() != nil {
 				resultCh <- Result{ResourceID: resourceID, Status: StatusDegraded, Check: "internal_health", FactCode: "health_check_failed"}
@@ -126,6 +137,16 @@ func (r *Registry) Check(ctx context.Context, resourceID string) Result {
 	}()
 	select {
 	case result := <-resultCh:
+		if ctx.Err() != nil {
+			return Result{ResourceID: resourceID, Status: StatusDegraded, Check: "internal_health", FactCode: "health_check_timeout"}
+		}
+		r.mu.RLock()
+		current, exists := r.checkers[entry.resourceID]
+		currentGeneration := exists && current.token == entry.token
+		r.mu.RUnlock()
+		if !currentGeneration {
+			return Result{ResourceID: resourceID, Status: StatusDegraded, Check: "internal_health", FactCode: "health_check_generation_replaced"}
+		}
 		return normalize(resourceID, result)
 	case <-ctx.Done():
 		return Result{ResourceID: resourceID, Status: StatusDegraded, Check: "internal_health", FactCode: "health_check_timeout"}
@@ -142,6 +163,14 @@ func normalize(resourceID string, result Result) Result {
 	}
 	if !healthToken(result.FactCode, 64) {
 		result.FactCode = "health_check_failed"
+	}
+	if result.Evidence != nil {
+		if !validEvidence(resourceID, result.Evidence) {
+			result.Evidence = nil
+		} else {
+			copy := *result.Evidence
+			result.Evidence = &copy
+		}
 	}
 	return result
 }

@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
+	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"sort"
 	"strings"
 	"sync"
@@ -111,6 +113,14 @@ func (s *DoctorService) Run(hostname string) opsdoctor.Report {
 		items = append(items, opsdoctor.OK("core-running", "sing-box core", "Core is running.", nil))
 	} else {
 		items = append(items, opsdoctor.Warn("core-running", "sing-box core", "Core is not running.", "Start or restart sing-box after fixing config errors.", nil))
+	}
+	panel := componenthealth.Require(context.Background(), "core:panel:web", componenthealth.Requirement{
+		Owner: "core", Source: "panel_listener", ProofKind: componenthealth.RuntimeReady,
+		DesiredRevision: componenthealth.Revision(configidentity.GetVersion()), MaxAge: 5 * time.Second})
+	if panel.Status == componenthealth.StatusOK {
+		items = append(items, opsdoctor.OK("panel-runtime-evidence", "Panel listener", "Current panel listener is ready; no data-plane claim is made.", panel))
+	} else {
+		items = append(items, opsdoctor.Warn("panel-runtime-evidence", "Panel listener", "Fresh panel listener evidence is unavailable.", "Review the panel listener owner status.", panel))
 	}
 
 	items = append(items, opsdoctor.ReferenceChecks(*rawConfig)...)

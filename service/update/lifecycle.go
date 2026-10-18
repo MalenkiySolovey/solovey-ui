@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configupdate "github.com/MalenkiySolovey/solovey-ui/config/update"
@@ -166,9 +167,10 @@ type RevisionRequest struct {
 }
 
 type HealthResult struct {
-	Ready       bool     `json:"ready"`
-	ReasonCodes []string `json:"reasonCodes"`
-	Revision    string   `json:"revision"`
+	Evidence    []componenthealth.Result `json:"evidence,omitempty"`
+	Ready       bool                     `json:"ready"`
+	ReasonCodes []string                 `json:"reasonCodes"`
+	Revision    string                   `json:"revision"`
 }
 
 type Provider interface {

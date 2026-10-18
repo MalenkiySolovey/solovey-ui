@@ -2249,7 +2249,7 @@
       "rule": "worker-lifetime",
       "path": "componenthost/health/registry.go",
       "symbol": "*Registry.Check",
-      "digest": "041c73a61c96f98b9cc60ab8eeca63246161957be209eff826ced258620360c8"
+      "digest": "109e493ece393eb8555725e75a158625a91ca1f7e78f192555c83066abc60dc7"
     },
     {
       "rule": "worker-lifetime",

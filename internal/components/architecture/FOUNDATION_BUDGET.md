@@ -22,3 +22,14 @@ No automatic budget refresh command is shipped. Do not regenerate or expand the 
 F4 retires the eight broad Runtime type sites in Telegram's component and settings-observer composition. Its root production package additionally rejects Runtime selector access (including `host.Runtime` / lifecycle Host access) and core Runtime constructors/default access. The narrow service.RuntimeProvider interface in the child service package remains legitimate. Actual component/API tests supply transport and audit ports with no broad Runtime; other Components retain their exact reviewed legacy budgets.
 
 Limits: these checks establish stated AST/import boundaries, not a general Go/SQL/TypeScript dataflow proof. Wrappers, dynamic SQL, indirect function values, arbitrary Node schema names and runtime effective policy still require owner review and behavioral tests. New Root RPC contracts must retain closed typed verbs; preserving a field list cannot prove their implementation safe. R1 observations remain useful review input outside these reliable bounds.
+
+R3 B3 reviews exactly the existing `componenthost/health.Registry.Check` worker
+site, replacing digest `041c73a6…` with `109e493e…`; the worker budget count is
+unchanged. It retains the five-second caller deadline, buffered result and panic
+closure, adds a fixed registry-wide 256-slot admission bound, releases the slot
+only when the checker actually exits, and rejects a result after registration
+generation replacement or cancellation. An uncooperative checker can retain a
+bounded slot but cannot cause unbounded worker creation. Deterministic barriers
+cover cancellation, saturation, replacement and late completion. No worker kill,
+repair or new owner goroutine is introduced. The old exact digest is retired;
+the legacy budget is not regenerated or expanded.
