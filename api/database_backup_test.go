@@ -70,6 +70,9 @@ func databaseImportTestHandler() gin.HandlerFunc {
 
 func TestRestoreAPIProjectsAcceptedOwnerChangeAndIdempotentReplay(t *testing.T) {
 	settings := initSessionTestDB(t)
+	restartRequested := 0
+	backup.SetSendSighupHook(func() error { restartRequested++; return nil })
+	t.Cleanup(func() { backup.SetSendSighupHook(nil) })
 	data, err := backup.Export("")
 	if err != nil {
 		t.Fatal(err)
@@ -112,6 +115,9 @@ func TestRestoreAPIProjectsAcceptedOwnerChangeAndIdempotentReplay(t *testing.T) 
 	}
 	if accepted != 1 {
 		t.Fatalf("restore accepted %d times", accepted)
+	}
+	if restartRequested != 1 {
+		t.Fatalf("restore requested restart %d times", restartRequested)
 	}
 	persisted, err := manager.Operation(t.Context(), first.OperationID)
 	if err != nil || datalifecycle.ProjectChange(persisted) != first {
