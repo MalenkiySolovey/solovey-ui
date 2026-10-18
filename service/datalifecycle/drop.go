@@ -602,10 +602,6 @@ func observeMigrationRows(ctx context.Context, db *gorm.DB, ownerID string) ([]R
 	return result, joined
 }
 
-func (m *Manager) observeFile(relativePath, ownerID, class string) (Resource, error) {
-	return m.observeFileMode(relativePath, ownerID, class, false)
-}
-
 func (m *Manager) observeFileMode(relativePath, ownerID, class string, presenceOnly bool) (Resource, error) {
 	resource := Resource{ID: "file:" + relativePath, Kind: "file_tree", Owner: ownerID, Class: class, Terminal: "ABSENT"}
 	base, err := filepath.Abs(filepath.Dir(configstorage.GetDBFolderPath()))
