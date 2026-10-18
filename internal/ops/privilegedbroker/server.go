@@ -150,11 +150,17 @@ func (s *Server) Serve(ctx context.Context, listener *net.UnixListener, role Rol
 	if s == nil || listener == nil || role != RolePanel && role != RoleSSHProof {
 		return errors.New("broker listener is invalid")
 	}
+	if ctx.Err() != nil {
+		return nil
+	}
 	if err := preparePeerListener(listener); err != nil {
 		return errors.New("broker listener credential authority is unavailable")
 	}
 	for {
 		if err := listener.SetDeadline(time.Now().Add(time.Second)); err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
 			return err
 		}
 		connection, err := listener.AcceptUnix()
