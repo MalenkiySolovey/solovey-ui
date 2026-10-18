@@ -39,6 +39,12 @@ func TestRuntimeManagerRemoveCleanDisabledOwnerWithoutDroppingData(t *testing.T)
 
 	var events []string
 	admission, _ := runtimeRemovalFixture(t)
+	panel := resources.ProtectableResource{ID: "core:panel:web", Owner: "core", Source: "settings",
+		Capabilities: resources.ProtectableResourceCapabilities{ConfigRevision: resources.Revision("configured panel")}}
+	panel.Identity = resources.LocalConfiguredIdentity(panel)
+	admission.Inventory = func(context.Context) resources.ResourceSnapshot {
+		return resources.ResourceSnapshot{Resources: []resources.ProtectableResource{panel}}
+	}
 	manager := RuntimeManager{
 		Removal: admission,
 		Reconcile: func(context.Context) error {

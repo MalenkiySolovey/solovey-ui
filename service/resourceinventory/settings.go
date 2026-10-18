@@ -149,7 +149,7 @@ func listenerFromSettings(value listenerSettings) hostresources.ProtectableResou
 		TLS      bool
 	}{normalized.Value, value.port, strings.ToLower(strings.TrimSpace(value.domain)), hostresources.Revision(value.path), tlsEnabled})
 	expectedOwner := expectedApplicationOwner()
-	return hostresources.ProtectableResource{
+	resource := hostresources.ProtectableResource{
 		ID:       value.id,
 		Kind:     value.kind,
 		Owner:    "core",
@@ -176,6 +176,8 @@ func listenerFromSettings(value listenerSettings) hostresources.ProtectableResou
 		},
 		Warnings: warnings,
 	}
+	resource.Identity = hostresources.LocalConfiguredIdentity(resource)
+	return resource
 }
 
 func expectedApplicationOwner() deploymentidentity.ExpectedApplicationOwnerV1 {

@@ -53,7 +53,7 @@ func TestRemovalDenialsPreserveExactInstalledOwnership(t *testing.T) {
 	const id = "test-removal-denials"
 	registerRuntimeTestComponent(id)
 	path := installedRemovalFixture(t, id)
-	for _, reason := range []string{"active authority", "recovery debt", "unknown authority", "panic", "inventory unavailable", "external reference", "final footprint changed", "missing port", "canceled"} {
+	for _, reason := range []string{"active authority", "recovery debt", "unknown authority", "panic", "inventory unavailable", "external reference", "owned Local resource", "final footprint changed", "missing port", "canceled"} {
 		t.Run(reason, func(t *testing.T) {
 			admission, _ := runtimeRemovalFixture(t)
 			original := admission.Preview
@@ -77,6 +77,13 @@ func TestRemovalDenialsPreserveExactInstalledOwnership(t *testing.T) {
 			case "external reference":
 				admission.Inventory = func(context.Context) resources.ResourceSnapshot {
 					return resources.ResourceSnapshot{Resources: []resources.ProtectableResource{{ID: "foreign:socket", Owner: "foreign", Source: "settings", Capabilities: resources.ProtectableResourceCapabilities{FallbackTargetID: id + ":target"}}}}
+				}
+			case "owned Local resource":
+				owned := resources.ProtectableResource{ID: id + ":listener", Owner: id, Source: "settings",
+					Capabilities: resources.ProtectableResourceCapabilities{ConfigRevision: resources.Revision("configured listener")}}
+				owned.Identity = resources.LocalConfiguredIdentity(owned)
+				admission.Inventory = func(context.Context) resources.ResourceSnapshot {
+					return resources.ResourceSnapshot{Resources: []resources.ProtectableResource{owned}}
 				}
 			case "final footprint changed":
 				final := admission.Resources

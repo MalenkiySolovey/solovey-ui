@@ -18,6 +18,28 @@ import (
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 )
 
+func TestLocalIdentityMetadataPreservesFirewallPlanAndActionScope(t *testing.T) {
+	now := time.Unix(2000, 0).UTC()
+	resource := endpointResourceFixture()
+	resource.Source = "settings"
+	graph := protectionresources.BuildSocketOwnershipGraph(protectionresources.SocketGraphInput{
+		Resources: []hostresources.ProtectableResource{resource}, Surfaces: []hostsurface.HostSurfaceFactV1{endpointSurfaceFixture(resource, now)}, Now: now,
+	})
+	legacy := BuildEndpointPlan(EndpointPlanInput{Graph: graph, Resources: []hostresources.ProtectableResource{resource}, Now: now})
+	legacyScope := EndpointActionScopeRevision([]hostresources.ProtectableResource{resource})
+	legacyResource := EndpointActionResourceRevision(resource)
+	resource.Identity = hostresources.LocalConfiguredIdentity(resource)
+	if !resource.Identity.ValidFor(resource) {
+		t.Fatal("fixture has no bound Local identity")
+	}
+	current := BuildEndpointPlan(EndpointPlanInput{Graph: graph, Resources: []hostresources.ProtectableResource{resource}, Now: now})
+	if legacy.InputRevision != current.InputRevision || legacy.Revision != current.Revision ||
+		legacyScope != EndpointActionScopeRevision([]hostresources.ProtectableResource{resource}) || legacyResource != EndpointActionResourceRevision(resource) ||
+		RenderManagedNFT(legacy) != RenderManagedNFT(current) {
+		t.Fatal("read metadata changed firewall candidate, action fence or rendered rules")
+	}
+}
+
 func TestEndpointPlanDeterministicConservativeCandidate(t *testing.T) {
 	now := time.Unix(1000, 0).UTC()
 	resource := endpointResourceFixture()
