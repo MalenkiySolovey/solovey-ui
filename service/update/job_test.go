@@ -50,4 +50,17 @@ func TestSignedUpdateJobReconnectKeepsDurableProgressAndOutcome(t *testing.T) {
 	if err != nil || !reflect.DeepEqual(ProjectJob(reconnected), terminal) {
 		t.Fatalf("request cancellation changed durable result: %+v %v", reconnected, err)
 	}
+	journal, err := fixture.manager.ReadJournal(t.Context(), 0, 201)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matched := false
+	for _, event := range journal {
+		if event.Type == "update_applied" && event.OperationID == activated.OperationID {
+			matched = event.JobID == terminal.JobID && event.ChangeID == terminal.ChangeID && event.CorrelationID == terminal.CorrelationID
+		}
+	}
+	if !matched {
+		t.Fatal("signed Update acceptance is absent from correlated owner journal")
+	}
 }

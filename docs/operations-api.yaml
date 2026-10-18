@@ -18,6 +18,21 @@ x-step-up-parameters: &stepUpParameters
   - $ref: "#/components/parameters/StepUpToken"
 
 paths:
+  /api/v1/operations/journal:
+    get:
+      operationId: getOperationCorrelationJournal
+      description: >-
+        Full authentication required. Bounded correlation index over existing
+        Update and Data owner journals, available without Observability Extra.
+        Returns items, next update/data cursors, hasMore and limit. Cursors are
+        local history read hints; reset after database restore/resynchronization.
+        Owner operations and journals remain recovery authority. No config,
+        secret, checkpoint payload or new global event store is returned.
+      parameters:
+        - { name: updateAfter, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: dataAfter, in: query, schema: { type: integer, minimum: 0 } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 100 } }
+      responses: *messageResponses
   /api/update/components/{id}/remove:
     post:
       operationId: removeComponent

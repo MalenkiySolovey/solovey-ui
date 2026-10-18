@@ -83,6 +83,7 @@ func (a *Handler) ImportDb(c *gin.Context) {
 		return
 	}
 	a.Audit(c, a.Actor(c), "db_imported", "database", service.AuditSeverityWarn, map[string]any{
+		"correlation": datalifecycle.ProjectChange(operation).Reference.Correlation(),
 		"operationId": operation.OperationID, "state": operation.State, "revision": operation.Revision,
 		"backupId": operation.ManifestDigest, "recoveryCleanupPending": result.RecoveryCleanupPending,
 		"restartPending": result.RestartPending,
