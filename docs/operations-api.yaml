@@ -410,7 +410,10 @@ paths:
         Existing durable owner operation with an additive change projection:
         stable correlationId/changeId, local hostRef, owner/resource, revision,
         semantic phase, outcome, checkpoint reference and verified rollback or
-        recovery-required result. The projection does not authorize replay.
+        recovery-required result. An additive job envelope shares these IDs and
+        projects durable owner phase, staged-byte progress and outcome. Current
+        operations expose no durable cancellation request. The projections do
+        not authorize replay.
       parameters:
         - $ref: "#/components/parameters/UpdateOperationId"
       responses: *messageResponses
@@ -496,7 +499,9 @@ paths:
       description: >-
         Existing durable Data lifecycle operation with the same additive change
         envelope as Update. Restore and Drop execution responses also include
-        this projection. Restored or malformed authority requires recovery.
+        this projection and a stable Job envelope. Data reports durable phases
+        without a fabricated percentage. Restored or malformed authority requires
+        recovery.
       parameters:
         - $ref: "#/components/parameters/DataOperationId"
       responses: *messageResponses

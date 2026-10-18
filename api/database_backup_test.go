@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"mime/multipart"
 	"net/http"
@@ -100,6 +101,10 @@ func TestRestoreAPIProjectsAcceptedOwnerChangeAndIdempotentReplay(t *testing.T) 
 			t.Fatalf("restore attempt %d status=%d response=%s err=%v", attempt, recorder.Code, recorder.Body.String(), err)
 		}
 		view := response.Object.Operation
+		if view.Job.JobID == "" || view.Job.ChangeID != view.Change.ChangeID || view.Job.CorrelationID != view.Change.CorrelationID ||
+			view.Job.Outcome != operationcoordination.OutcomeCommitted || view.Job.Progress != nil || view.Job.CancelSupported || view.Job.CriticalSection {
+			t.Fatalf("real Restore Job invented progress/cancel or lost accepted outcome: %+v", view.Job)
+		}
 		if view.State != "APPLIED" || view.Change.Outcome != operationcoordination.OutcomeCommitted ||
 			view.Change.CheckpointRef == "" || view.Change.RecoveryRequired || view.Change.RollbackVerified {
 			t.Fatalf("restore acceptance projected false truth: %+v", view.Change)
@@ -122,6 +127,14 @@ func TestRestoreAPIProjectsAcceptedOwnerChangeAndIdempotentReplay(t *testing.T) 
 	persisted, err := manager.Operation(t.Context(), first.OperationID)
 	if err != nil || datalifecycle.ProjectChange(persisted) != first {
 		t.Fatalf("reconnect projection differs from durable owner: %+v %v", persisted, err)
+	}
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+	if _, err := manager.Operation(ctx, first.OperationID); err == nil {
+		t.Fatal("cancelled reconnect ignored request context")
+	}
+	if datalifecycle.ProjectJob(persisted).Outcome != operationcoordination.OutcomeCommitted {
+		t.Fatal("request cancellation rewrote durable acceptance")
 	}
 }
 

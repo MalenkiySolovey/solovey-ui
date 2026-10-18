@@ -106,7 +106,7 @@ func (h *updateHTTP) recovery(c *gin.Context) {
 	if operation.ReasonCode != "" {
 		reasonCodes = append(reasonCodes, operation.ReasonCode)
 	}
-	jsonObj(c, gin.H{"required": required, "operation": operation, "reasonCodes": reasonCodes}, nil)
+	jsonObj(c, gin.H{"required": required, "operation": updateservice.ProjectOperation(operation), "reasonCodes": reasonCodes}, nil)
 }
 
 func (h *updateHTTP) check(c *gin.Context) {
@@ -153,12 +153,12 @@ func (h *updateHTTP) prepare(c *gin.Context) {
 		ExpectedSequence: request.ExpectedSequence, ExpectedManifestDigest: request.ExpectedManifestDigest,
 		IdempotencyKey: request.IdempotencyKey, Acknowledged: true})
 	if err != nil {
-		h.writeError(c, "update_prepare", err, operation)
+		h.writeError(c, "update_prepare", err, updateservice.ProjectOperation(operation))
 		return
 	}
 	h.api.recordAuditSynchronous(c, securityContext.Username, "signed_update_prepared", "update", service.AuditSeverityWarn,
 		map[string]any{"operationId": operation.OperationID, "state": operation.State, "sequence": operation.Sequence, "revision": operation.Revision})
-	jsonObj(c, operation, nil)
+	jsonObj(c, updateservice.ProjectOperation(operation), nil)
 }
 
 func (h *updateHTTP) operation(c *gin.Context) {
@@ -274,12 +274,12 @@ func (h *updateHTTP) mutateOperation(c *gin.Context, username, id string, expect
 	}
 	operation, err := mutation(c.Request.Context(), updateservice.RevisionRequest{OperationID: id, ExpectedRevision: expectedRevision})
 	if err != nil {
-		h.writeError(c, strings.ReplaceAll(action, ".", "_"), err, operation)
+		h.writeError(c, strings.ReplaceAll(action, ".", "_"), err, updateservice.ProjectOperation(operation))
 		return
 	}
 	h.api.recordAuditSynchronous(c, username, auditEvent, "update", service.AuditSeverityWarn,
 		map[string]any{"operationId": id, "state": operation.State, "sequence": operation.Sequence, "revision": operation.Revision})
-	jsonObj(c, operation, nil)
+	jsonObj(c, updateservice.ProjectOperation(operation), nil)
 }
 
 func (h *updateHTTP) writeError(c *gin.Context, operation string, err error, object any) {

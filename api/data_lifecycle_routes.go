@@ -86,7 +86,7 @@ func (h *dataLifecycleHTTP) dropExecute(c *gin.Context) {
 		ExpectedPreviewRevision: request.ExpectedPreviewRevision, IdempotencyKey: request.IdempotencyKey,
 		Confirmation: request.Confirmation, BackupAcknowledged: true})
 	if err != nil {
-		h.writeError(c, "drop_data_execute", err, operation)
+		h.writeError(c, "drop_data_execute", err, datalifecycle.ProjectOperation(operation))
 		return
 	}
 	h.api.recordAuditSynchronous(c, securityContext.Username, "component_data_dropped", "data-lifecycle", service.AuditSeverityWarn,

@@ -45,8 +45,9 @@ func ProjectChange(operation model.DataLifecycleOperation) operationcoordination
 type OperationView struct {
 	model.DataLifecycleOperation
 	Change operationcoordination.Change `json:"change"`
+	Job    operationcoordination.Job    `json:"job"`
 }
 
 func ProjectOperation(operation model.DataLifecycleOperation) OperationView {
-	return OperationView{DataLifecycleOperation: operation, Change: ProjectChange(operation)}
+	return OperationView{DataLifecycleOperation: operation, Change: ProjectChange(operation), Job: ProjectJob(operation)}
 }
