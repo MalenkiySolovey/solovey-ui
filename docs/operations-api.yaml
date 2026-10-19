@@ -406,6 +406,11 @@ paths:
   /api/v1/operations/update/operations/{operationId}:
     get:
       operationId: getUpdateOperation
+      description: >-
+        Existing durable owner operation with an additive change projection:
+        stable correlationId/changeId, local hostRef, owner/resource, revision,
+        semantic phase, outcome, checkpoint reference and verified rollback or
+        recovery-required result. The projection does not authorize replay.
       parameters:
         - $ref: "#/components/parameters/UpdateOperationId"
       responses: *messageResponses
@@ -488,6 +493,10 @@ paths:
   /api/v1/operations/data/operations/{operationId}:
     get:
       operationId: getDataOperation
+      description: >-
+        Existing durable Data lifecycle operation with the same additive change
+        envelope as Update. Restore and Drop execution responses also include
+        this projection. Restored or malformed authority requires recovery.
       parameters:
         - $ref: "#/components/parameters/DataOperationId"
       responses: *messageResponses

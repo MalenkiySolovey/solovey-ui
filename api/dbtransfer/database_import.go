@@ -78,7 +78,7 @@ func (a *Handler) ImportDb(c *gin.Context) {
 	if err != nil {
 		a.respondDatabaseImportFailure(c, err)
 		c.JSON(http.StatusOK, gin.H{"success": false, "msg": datalifecycle.ReasonCode(err), "obj": gin.H{
-			"operation": operation, "execution": result, "rehearsal": rehearsal, "reasonCode": datalifecycle.ReasonCode(err),
+			"operation": datalifecycle.ProjectOperation(operation), "execution": result, "rehearsal": rehearsal, "reasonCode": datalifecycle.ReasonCode(err),
 		}})
 		return
 	}
@@ -88,7 +88,7 @@ func (a *Handler) ImportDb(c *gin.Context) {
 		"restartPending": result.RestartPending,
 	})
 	c.JSON(http.StatusOK, gin.H{"success": true, "msg": "", "obj": gin.H{
-		"operation": operation, "execution": result, "rehearsal": result.Rehearsal,
+		"operation": datalifecycle.ProjectOperation(operation), "execution": result, "rehearsal": result.Rehearsal,
 	}})
 }
 
