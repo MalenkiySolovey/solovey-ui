@@ -12,6 +12,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	domain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/preflight"
 	"gorm.io/gorm"
 )
 
@@ -20,6 +21,7 @@ type Preview struct {
 	Target             domain.Profile      `json:"target"`
 	Doctor             domain.DoctorReport `json:"doctor"`
 	ManagementRevision string              `json:"managementRevision"`
+	Preflight          preflight.Report    `json:"preflight"`
 	Possible           bool                `json:"possible"`
 	Reasons            []string            `json:"reasons,omitempty"`
 	Revision           string              `json:"revision"`
@@ -191,6 +193,11 @@ func (m *Manager) Preview(ctx context.Context, targetID domain.ProfileID, acknow
 	}
 	management := m.management(ctx)
 	preview := Preview{Posture: posture, Target: target, Doctor: report, ManagementRevision: management.Revision}
+	preview.Preflight = preflight.Platform(ctx, domain.ProjectPlatformFacts(posture, m.Provider.ProviderID(), m.now()), m.now(),
+		preflight.Requirement{Dimension: preflight.Supervision}, preflight.Requirement{Dimension: preflight.Privilege})
+	if !preview.Preflight.Ready {
+		preview.Reasons = append(preview.Reasons, "deployment_platform_preflight_failed")
+	}
 	if !management.Ready {
 		preview.Reasons = append(preview.Reasons, management.Reasons...)
 	}

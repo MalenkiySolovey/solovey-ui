@@ -17,6 +17,7 @@ import (
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/database/schema"
+	deploymentdomain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -138,6 +139,7 @@ func newLifecycleFixture(t testing.TB) lifecycleFixture {
 	manager := NewLifecycleManager(Repository{DB: func() *gorm.DB { return db }}, provider, lifecycleReleaseClient{raw: raw},
 		release.Source{ID: "test", Origin: "https://example.test", ManifestPath: "/release.json", ExpectedProvenance: "test"}, trust)
 	manager.now = func() time.Time { return now }
+	manager.platformFacts = func(context.Context) deploymentdomain.PlatformFacts { return updateTestPlatformFacts(now) }
 	manager.platform = func() (string, string) { return "linux", "amd64" }
 	manager.profile = func() string { return "full" }
 	manager.health = func(context.Context, model.UpdateOperation) HealthResult {
