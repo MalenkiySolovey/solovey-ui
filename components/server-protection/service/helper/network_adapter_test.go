@@ -3,7 +3,6 @@ package helper
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -21,24 +20,6 @@ type fakeNFTExecutor struct {
 	rollbackMismatch bool
 	checks           int
 	applies          int
-}
-
-func testSemanticSHA(t *testing.T, data []byte) string {
-	t.Helper()
-	value, err := ManagedSemanticSHA256(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return value
-}
-
-func testTimedMembershipSHA(t *testing.T, data []byte) string {
-	t.Helper()
-	value, err := ManagedTimedMembershipSHA256(data)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return value
 }
 
 func (f *fakeNFTExecutor) Detect(context.Context) NFTSupport { return f.support }
@@ -84,17 +65,6 @@ func (f *fakeNFTExecutor) DeleteManagedTable(context.Context) error {
 	}
 	f.state, f.present = nil, false
 	return nil
-}
-
-func writeTestManagedFile(t *testing.T, root ManagedRoot, relative string, data []byte) {
-	t.Helper()
-	path := filepath.Join(root.Path(), filepath.FromSlash(relative))
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(path, data, 0o600); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func TestNFTCapabilityUnknownNeverReportsSuccess(t *testing.T) {
