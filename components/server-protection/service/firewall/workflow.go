@@ -18,6 +18,9 @@ import (
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
+	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
+	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
 var (
@@ -77,6 +80,7 @@ type Workflow struct {
 	Runtime                  RuntimeLifecycle
 	RuntimeStore             RuntimeStore
 	CurrentRuntimeManagement func(context.Context) (RuntimeManagement, error)
+	CurrentNetworkInputs     NetworkInputs
 	Manager                  *protectionoperations.Manager
 	Helper                   Helper
 	Artifacts                ArtifactService
@@ -124,24 +128,29 @@ type PostMutationHealthProof struct {
 }
 
 type Result struct {
-	OperationID                    string                   `json:"operationId"`
-	State                          string                   `json:"state"`
-	Revision                       int                      `json:"revision"`
-	ArtifactRevision               string                   `json:"artifactRevision,omitempty"`
-	Health                         []componenthealth.Result `json:"health,omitempty"`
-	RollbackAttempted              bool                     `json:"rollbackAttempted"`
-	CandidateSHA256                string                   `json:"candidateSha256,omitempty"`
-	CandidateSemanticSHA256        string                   `json:"candidateSemanticSha256,omitempty"`
-	CandidateTimedMembershipSHA256 string                   `json:"candidateTimedMembershipSha256,omitempty"`
-	RollbackSHA256                 string                   `json:"rollbackSha256,omitempty"`
-	RollbackSemanticSHA256         string                   `json:"rollbackSemanticSha256,omitempty"`
-	PlanRevision                   string                   `json:"planRevision,omitempty"`
-	GraphRevision                  string                   `json:"graphRevision,omitempty"`
-	OwnerObservationRevision       string                   `json:"ownerObservationRevision,omitempty"`
-	DesiredStatus                  string                   `json:"desiredStatus,omitempty"`
-	SelectedStatus                 string                   `json:"selectedStatus,omitempty"`
-	ActualStatus                   string                   `json:"actualStatus,omitempty"`
-	ReasonCodes                    []string                 `json:"reasonCodes,omitempty"`
+	NetworkPlanRevision            string                        `json:"networkPlanRevision,omitempty"`
+	NetworkResources               []networkplan.Ownership       `json:"networkResources,omitempty"`
+	NetworkEvidence                []componenthealth.Result      `json:"networkEvidence,omitempty"`
+	Change                         *operationcoordination.Change `json:"change,omitempty"`
+	Job                            *operationcoordination.Job    `json:"job,omitempty"`
+	OperationID                    string                        `json:"operationId"`
+	State                          string                        `json:"state"`
+	Revision                       int                           `json:"revision"`
+	ArtifactRevision               string                        `json:"artifactRevision,omitempty"`
+	Health                         []componenthealth.Result      `json:"health,omitempty"`
+	RollbackAttempted              bool                          `json:"rollbackAttempted"`
+	CandidateSHA256                string                        `json:"candidateSha256,omitempty"`
+	CandidateSemanticSHA256        string                        `json:"candidateSemanticSha256,omitempty"`
+	CandidateTimedMembershipSHA256 string                        `json:"candidateTimedMembershipSha256,omitempty"`
+	RollbackSHA256                 string                        `json:"rollbackSha256,omitempty"`
+	RollbackSemanticSHA256         string                        `json:"rollbackSemanticSha256,omitempty"`
+	PlanRevision                   string                        `json:"planRevision,omitempty"`
+	GraphRevision                  string                        `json:"graphRevision,omitempty"`
+	OwnerObservationRevision       string                        `json:"ownerObservationRevision,omitempty"`
+	DesiredStatus                  string                        `json:"desiredStatus,omitempty"`
+	SelectedStatus                 string                        `json:"selectedStatus,omitempty"`
+	ActualStatus                   string                        `json:"actualStatus,omitempty"`
+	ReasonCodes                    []string                      `json:"reasonCodes,omitempty"`
 }
 
 // AuthorityObservation is the durable-state reconciliation result. It is a
@@ -387,7 +396,7 @@ func (w Workflow) Prepare(ctx context.Context, input PrepareInput) (protectionop
 	return result, nil
 }
 
-func (w Workflow) Apply(ctx context.Context, input ApplyInput) (Result, error) {
+func (w Workflow) apply(ctx context.Context, input ApplyInput) (Result, error) {
 	if err := w.ready(); err != nil {
 		return Result{}, err
 	}
@@ -475,7 +484,11 @@ func (w Workflow) Apply(ctx context.Context, input ApplyInput) (Result, error) {
 	if healthCapabilityMissing(composition.Plan.Resources, w.Health(ctx, composition.Plan.Resources)) {
 		return Result{}, ErrMissingCapability
 	}
-	candidate := RenderManagedNFT(composition.Plan)
+	networkPlan, networkFacts, err := w.compileNetwork(ctx, composition.Plan, capabilities, snapshot)
+	if err != nil {
+		return Result{}, err
+	}
+	candidate := nftables.RenderProtection(networkPlan.Enforcement(), true, time.Time{})
 	candidateSHA := artifactSHA([]byte(candidate))
 	candidateSemanticSHA, semanticErr := protectionhelper.ManagedSemanticSHA256([]byte(candidate))
 	if semanticErr != nil {
@@ -485,7 +498,9 @@ func (w Workflow) Apply(ctx context.Context, input ApplyInput) (Result, error) {
 	if membershipErr != nil || candidateTimedMembershipSHA != composition.CandidateTimedMembershipSHA {
 		return Result{}, errors.Join(ErrPlanRevision, membershipErr)
 	}
-	artifact, err := w.Artifacts.WriteRevision(ctx, operation.OperationID, operation.OperationID, candidateFiles(composition.Plan, candidate, candidateSHA))
+	files := candidateFiles(composition.Plan, candidate, candidateSHA)
+	files["network-plan.json"] = networkManifest(networkPlan, candidateSHA)
+	artifact, err := w.Artifacts.WriteRevision(ctx, operation.OperationID, operation.OperationID, files)
 	if err != nil {
 		return Result{}, err
 	}
@@ -507,11 +522,24 @@ func (w Workflow) Apply(ctx context.Context, input ApplyInput) (Result, error) {
 	} else if validated.PreviousTablePresent {
 		return Result{}, ErrContributionConflict
 	}
+	accepted, err := networkplan.Accept(networkPlan.Plan, networkFacts, validated.CandidateSHA256)
+	if err != nil {
+		return Result{}, err
+	}
+	currentNetworkFacts, err := w.networkFacts(ctx, composition.Plan, capabilities, networkFacts.Allocations)
+	if err != nil {
+		return Result{}, err
+	}
+	if err := networkplan.CheckAccepted(accepted, currentNetworkFacts, candidateSHA); err != nil {
+		return Result{}, err
+	}
 	applying, err := w.Manager.Transition(ctx, operation.OperationID, operation.Revision, protectionoperations.StateApplying)
 	if err != nil {
 		return Result{}, err
 	}
 	result := Result{OperationID: applying.OperationID, State: applying.State, Revision: applying.Revision, ArtifactRevision: artifact.Revision, CandidateSHA256: candidateSHA, CandidateSemanticSHA256: candidateSemanticSHA, CandidateTimedMembershipSHA256: candidateTimedMembershipSHA, PlanRevision: composition.PlanRevision, GraphRevision: composition.Plan.GraphRevision, OwnerObservationRevision: composition.Plan.OwnerObservationRevision, DesiredStatus: "APPLY", SelectedStatus: "APPLYING", ActualStatus: "NOT_VERIFIED"}
+	result.NetworkPlanRevision, result.NetworkResources = accepted.PlanRevision(), networkPlan.Resources()
+	result.NetworkEvidence = []componenthealth.Result{networkEvidence(networkPlan.Revision(), componenthealth.ConfigValid, w.now())}
 	if err := w.Marker.MarkMutation(applying.OperationID, artifact.Revision); err != nil {
 		return w.failAndRollback(ctx, applying, artifact.Revision, result, err)
 	}
@@ -608,6 +636,7 @@ func (w Workflow) Apply(ctx context.Context, input ApplyInput) (Result, error) {
 	}
 	result.State, result.Revision = applied.State, applied.Revision
 	result.SelectedStatus, result.ActualStatus = "APPLIED", "APPLIED"
+	result.NetworkEvidence = append(result.NetworkEvidence, networkEvidence(networkPlan.Revision(), componenthealth.Applied, w.now()))
 	return result, nil
 }
 
@@ -666,7 +695,7 @@ func unixNanoAfter(ctx context.Context, boundary int64) (int64, bool) {
 	}
 }
 
-func (w Workflow) Rollback(ctx context.Context, operationID, confirmation string) (Result, error) {
+func (w Workflow) rollbackRequested(ctx context.Context, operationID, confirmation string) (Result, error) {
 	if err := w.ready(); err != nil {
 		return Result{}, err
 	}

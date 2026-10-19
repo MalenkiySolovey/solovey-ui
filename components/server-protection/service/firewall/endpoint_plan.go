@@ -15,6 +15,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionpolicy "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/policy"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
+	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
 type EndpointActionInput struct {
@@ -556,7 +557,7 @@ func preflightEndpointPlan(plan FirewallPlan) error {
 		if endpoint.ResourceID == "" || !exactHexRevision(endpoint.EndpointRevision) || !exactHexRevision(endpoint.ConfigurationRevision) || endpoint.ActualStatus != "NOT_APPLIED" || endpoint.Key.Port == 0 {
 			return fmt.Errorf("%w: endpoint identity or configuration revision is incomplete", ErrUnsafeResource)
 		}
-		if endpoint.Key.Network != hostresources.NetworkTCP && endpoint.Key.Network != hostresources.NetworkUDP || endpoint.Key.AddressFamily != hostresources.AddressFamilyIPv4 && endpoint.Key.AddressFamily != hostresources.AddressFamilyIPv6 || endpointMatch(endpoint.Key, "") == "" {
+		if !networkplan.ValidProtectionEndpoint(endpoint.Key, "") {
 			return fmt.Errorf("%w: endpoint key is invalid", ErrUnsafeResource)
 		}
 		if endpoint.Strategy == protectionresources.StrategyUnclassified || endpoint.Strategy == "" {
@@ -587,7 +588,7 @@ func preflightEndpointPlan(plan FirewallPlan) error {
 		}
 	}
 	for _, exemption := range plan.ManagementExemptions {
-		if exemption.EndpointID == "" || exemption.RecoveryPathID == "" || canonicalPrefix(exemption.SourcePrefix) == "" || endpointMatch(exemption.Key, exemption.SourcePrefix) == "" || (exemption.RecoveryPathID != "trusted-source" && (exemption.ExpiresAt <= 0 || exemption.ExpiresAt > 253402300799)) {
+		if exemption.EndpointID == "" || exemption.RecoveryPathID == "" || canonicalPrefix(exemption.SourcePrefix) == "" || !networkplan.ValidProtectionEndpoint(exemption.Key, exemption.SourcePrefix) || (exemption.RecoveryPathID != "trusted-source" && (exemption.ExpiresAt <= 0 || exemption.ExpiresAt > 253402300799)) {
 			return fmt.Errorf("%w: management exemption is not exact", ErrUnsafeResource)
 		}
 	}

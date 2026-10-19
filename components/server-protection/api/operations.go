@@ -10,6 +10,7 @@ import (
 	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	"github.com/gin-gonic/gin"
 )
 
@@ -67,33 +68,40 @@ func (h Handler) operations(c *gin.Context) {
 }
 
 type operationView struct {
-	RollbackAvailable        bool   `json:"rollbackAvailable"`
-	OperatorDecisionRequired bool   `json:"operatorDecisionRequired"`
-	OperatorReason           string `json:"operatorReason,omitempty"`
-	OperationID              string `json:"operationId"`
-	Kind                     string `json:"kind"`
-	ResourceID               string `json:"resourceId,omitempty"`
-	Protocol                 string `json:"protocol,omitempty"`
-	Listen                   string `json:"listen,omitempty"`
-	Port                     *int   `json:"port,omitempty"`
-	State                    string `json:"state"`
-	Revision                 int    `json:"revision"`
-	PlanRevision             string `json:"planRevision,omitempty"`
-	RecoveryAttempts         int    `json:"recoveryAttempts"`
-	RecoveryErrorCode        string `json:"recoveryErrorCode,omitempty"`
-	RecoveryBundleAvailable  bool   `json:"recoveryBundleAvailable"`
-	CreatedAt                int64  `json:"createdAt"`
-	UpdatedAt                int64  `json:"updatedAt"`
+	Change                   *operationcoordination.Change `json:"change,omitempty"`
+	Job                      *operationcoordination.Job    `json:"job,omitempty"`
+	RollbackAvailable        bool                          `json:"rollbackAvailable"`
+	OperatorDecisionRequired bool                          `json:"operatorDecisionRequired"`
+	OperatorReason           string                        `json:"operatorReason,omitempty"`
+	OperationID              string                        `json:"operationId"`
+	Kind                     string                        `json:"kind"`
+	ResourceID               string                        `json:"resourceId,omitempty"`
+	Protocol                 string                        `json:"protocol,omitempty"`
+	Listen                   string                        `json:"listen,omitempty"`
+	Port                     *int                          `json:"port,omitempty"`
+	State                    string                        `json:"state"`
+	Revision                 int                           `json:"revision"`
+	PlanRevision             string                        `json:"planRevision,omitempty"`
+	RecoveryAttempts         int                           `json:"recoveryAttempts"`
+	RecoveryErrorCode        string                        `json:"recoveryErrorCode,omitempty"`
+	RecoveryBundleAvailable  bool                          `json:"recoveryBundleAvailable"`
+	CreatedAt                int64                         `json:"createdAt"`
+	UpdatedAt                int64                         `json:"updatedAt"`
 }
 
 func makeOperationView(item protectionrepository.OperationLockModel) operationView {
-	return operationView{
+	view := operationView{
 		OperationID: item.OperationID, Kind: item.Kind, ResourceID: item.ResourceID,
 		Protocol: item.Protocol, Listen: item.Listen, Port: item.Port, State: item.State,
 		Revision: item.Revision, RecoveryAttempts: item.RecoveryAttempts,
 		PlanRevision:      item.PlanRevision,
 		RecoveryErrorCode: item.RecoveryErrorCode, CreatedAt: item.CreatedAt, UpdatedAt: item.UpdatedAt,
 	}
+	if item.Kind == protectionoperations.KindFirewall {
+		change, job := protectionfirewall.ProjectOperation(item)
+		view.Change, view.Job = &change, &job
+	}
+	return view
 }
 
 type confirmOperationInput struct {
