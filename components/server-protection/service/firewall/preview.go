@@ -2,10 +2,11 @@ package firewall
 
 import (
 	"fmt"
-	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 )

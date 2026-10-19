@@ -1,10 +1,11 @@
 package nftables
 
 import (
-	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 	"strconv"
 	"strings"
 	"time"
+
+	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
 // RenderProtection materializes typed decisions only. Mutation still requires

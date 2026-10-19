@@ -1,8 +1,9 @@
 package firewall
 
 import (
-	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 	"time"
+
+	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 )
 
 func renderEndpointManagedNFTAt(plan FirewallPlan, managed bool, at time.Time) string {
