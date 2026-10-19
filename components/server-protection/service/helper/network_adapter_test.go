@@ -3,7 +3,6 @@ package helper
 import (
 	"context"
 	"os"
-	"path/filepath"
 	"strings"
 	"testing"
 )
