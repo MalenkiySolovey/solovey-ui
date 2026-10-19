@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-func TestNFTAndNginxOwnersBindSafeObjectsAndRejectAmbiguity(t *testing.T) {
+func TestNginxOwnerBindSafeObjectsAndRejectAmbiguity(t *testing.T) {
 	if os.Geteuid() != 0 {
 		t.Skip("root-owned Linux executable fixture is required")
 	}
@@ -26,21 +26,12 @@ func TestNFTAndNginxOwnersBindSafeObjectsAndRejectAmbiguity(t *testing.T) {
 	if err := os.Symlink(first, alias); err != nil {
 		t.Fatal(err)
 	}
-	nft := openNFTExecutable([]string{first, alias})
-	if nft == nil || nft.Identity().Digest == "" {
-		t.Fatal("nft owner rejected one object published through a safe alias")
-	}
-	_ = nft.Close()
 	nginx, err := openNginxExecutableCandidates([]string{first, alias})
 	if err != nil || nginx.Identity().Digest == "" {
 		t.Fatalf("nginx identity=%+v err=%v", nginx.Identity(), err)
 	}
 	_ = nginx.Close()
 	second := copyHelperExecutable(t, root, "owner-two")
-	if nft := openNFTExecutable([]string{first, second}); nft != nil {
-		_ = nft.Close()
-		t.Fatal("distinct nft candidates were accepted as one authority")
-	}
 	if nginx, err := openNginxExecutableCandidates([]string{first, second}); err == nil || nginx != nil {
 		if nginx != nil {
 			_ = nginx.Close()

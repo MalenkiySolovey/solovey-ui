@@ -1,6 +1,6 @@
 //go:build linux
 
-package helper
+package nftables
 
 import (
 	"context"
@@ -162,26 +162,26 @@ func TestManagedNFTHostSequence(t *testing.T) {
 	if !appliedA.OK || appliedA.NFT == nil || appliedA.NFT.SemanticSHA256 != semanticA {
 		t.Fatalf("candidate A real apply/list verification failed: %#v", appliedA)
 	}
-	observedA, err := engine.observe(t.Context())
+	observedA, err := engine.Observe(t.Context())
 	if err != nil || observedA.CurrentSemanticSHA256 != semanticA || observedA.CurrentTimedMembershipSHA256 != membershipA {
 		t.Fatalf("candidate A real semantic list failed: result=%#v err=%v", observedA, err)
 	}
 	if _, _, err := executor.runWithInput(t.Context(), []byte("add element inet solovey_protection solovey_block4_aaaaaaaaaaaa { 198.51.100.2 timeout 1s }\n"), "-f", "-"); err != nil {
 		t.Fatal(err)
 	}
-	mutable, err := engine.observe(t.Context())
+	mutable, err := engine.Observe(t.Context())
 	if err != nil || mutable.CurrentSemanticSHA256 != semanticA || mutable.CurrentTimedMembershipSHA256 == membershipA {
 		t.Fatalf("unexpected timed-set insertion was not separated from static identity: result=%#v err=%v", mutable, err)
 	}
 	time.Sleep(1200 * time.Millisecond)
-	aged, err := engine.observe(t.Context())
+	aged, err := engine.Observe(t.Context())
 	if err != nil || aged.CurrentSemanticSHA256 != semanticA || aged.CurrentTimedMembershipSHA256 != membershipA {
 		t.Fatalf("normal timeout aging/expiry changed static identity: result=%#v err=%v", aged, err)
 	}
 	if _, _, err := executor.runWithInput(t.Context(), []byte("delete element inet solovey_protection solovey_block4_aaaaaaaaaaaa { 192.0.2.1 }\n"), "-f", "-"); err != nil {
 		t.Fatal(err)
 	}
-	lost, err := engine.observe(t.Context())
+	lost, err := engine.Observe(t.Context())
 	if err != nil || lost.CurrentSemanticSHA256 != semanticA || lost.CurrentTimedMembershipSHA256 == membershipA {
 		t.Fatalf("premature timed-set membership loss was not detected: result=%#v err=%v", lost, err)
 	}
@@ -202,7 +202,7 @@ func TestManagedNFTHostSequence(t *testing.T) {
 	if !appliedB.OK || appliedB.NFT == nil || appliedB.NFT.SemanticSHA256 != semanticB {
 		t.Fatalf("candidate B real apply/list verification failed: %#v", appliedB)
 	}
-	observedB, err := engine.observe(t.Context())
+	observedB, err := engine.Observe(t.Context())
 	if err != nil || observedB.CurrentSemanticSHA256 != semanticB {
 		t.Fatalf("candidate B real semantic list failed: result=%#v err=%v", observedB, err)
 	}
@@ -212,7 +212,7 @@ func TestManagedNFTHostSequence(t *testing.T) {
 	if !rolledBack.OK || rolledBack.NFT == nil || !rolledBack.NFT.ManagedTablePresent || rolledBack.NFT.CurrentSemanticSHA256 != semanticA {
 		t.Fatalf("real rollback did not restore A: %#v", rolledBack)
 	}
-	observedRollback, err := engine.observe(t.Context())
+	observedRollback, err := engine.Observe(t.Context())
 	if err != nil || observedRollback.CurrentSemanticSHA256 != semanticA {
 		t.Fatalf("candidate A real semantic list after rollback failed: result=%#v err=%v", observedRollback, err)
 	}
@@ -225,7 +225,7 @@ func TestManagedNFTHostSequence(t *testing.T) {
 	if _, _, err := executor.runWithInput(t.Context(), []byte("add chain inet solovey_protection foreign_extra { counter accept; }\n"), "-f", "-"); err != nil {
 		t.Fatal(err)
 	}
-	extraChain, err := engine.observe(t.Context())
+	extraChain, err := engine.Observe(t.Context())
 	if err != nil || extraChain.CurrentSemanticSHA256 == semanticA {
 		t.Fatalf("foreign extra chain was not detected: result=%#v err=%v", extraChain, err)
 	}
@@ -235,7 +235,7 @@ func TestManagedNFTHostSequence(t *testing.T) {
 	if _, _, err := executor.runWithInput(t.Context(), []byte("add set inet solovey_protection foreign_extra { type ipv4_addr; }\n"), "-f", "-"); err != nil {
 		t.Fatal(err)
 	}
-	extraSet, err := engine.observe(t.Context())
+	extraSet, err := engine.Observe(t.Context())
 	if err != nil || extraSet.CurrentSemanticSHA256 == semanticA {
 		t.Fatalf("foreign extra set was not detected: result=%#v err=%v", extraSet, err)
 	}
@@ -246,7 +246,7 @@ func TestManagedNFTHostSequence(t *testing.T) {
 	if _, _, err := executor.run(t.Context(), "add", "rule", "inet", "solovey_protection", "solovey_input", "counter", "drop"); err != nil {
 		t.Fatal(err)
 	}
-	drifted, err := engine.observe(t.Context())
+	drifted, err := engine.Observe(t.Context())
 	if err != nil || drifted.CurrentSemanticSHA256 == semanticA {
 		t.Fatalf("semantic drift was not detected: result=%#v err=%v", drifted, err)
 	}
@@ -256,13 +256,13 @@ func TestManagedNFTHostSequence(t *testing.T) {
 	if _, _, err := executor.runWithInput(t.Context(), []byte("table inet solovey_protection {\n}\n"), "-f", "-"); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := engine.observe(t.Context()); err == nil {
+	if _, err := engine.Observe(t.Context()); err == nil {
 		t.Fatal("foreign same-name table was accepted as owned")
 	}
 	if _, _, err := executor.run(t.Context(), "delete", "table", "inet", "solovey_protection"); err != nil {
 		t.Fatal(err)
 	}
-	absent, err := engine.observe(t.Context())
+	absent, err := engine.Observe(t.Context())
 	if err != nil || absent.ManagedTablePresent {
 		t.Fatalf("managed table deletion was not observed as ABSENT: result=%#v err=%v", absent, err)
 	}
@@ -318,7 +318,7 @@ func TestManagedNFTHostNearAdmissionLimit(t *testing.T) {
 	if !applied.OK || applied.NFT == nil || applied.NFT.SemanticSHA256 != semantic || applied.NFT.TimedMembershipSHA256 != membership {
 		t.Fatalf("near-limit candidate apply/list verification failed: %#v", applied)
 	}
-	observed, err := engine.observe(t.Context())
+	observed, err := engine.Observe(t.Context())
 	if err != nil || observed.CurrentSemanticSHA256 != semantic || observed.CurrentTimedMembershipSHA256 != membership {
 		t.Fatalf("near-limit mandatory observation failed: result=%#v err=%v", observed, err)
 	}
@@ -529,7 +529,7 @@ func TestManagedNFTHostEndpointTemporalSemantics(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	observed, err := engine.observe(t.Context())
+	observed, err := engine.Observe(t.Context())
 	if err != nil || observed.CurrentRevision != revisionA || observed.CurrentSemanticSHA256 != semanticA || observed.CurrentTimedMembershipSHA256 != emptyMembership {
 		t.Fatalf("rollback resurrected the member beyond its original deadline: result=%#v err=%v", observed, err)
 	}

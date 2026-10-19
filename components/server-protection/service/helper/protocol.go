@@ -16,6 +16,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
+
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 )
 
@@ -27,9 +29,9 @@ const (
 	// An accepted candidate must always fit through a subsequent bounded live
 	// observation. nft can add formatting and volatile counters to list output,
 	// so acceptance is deliberately below the transport/artifact ceilings.
-	MaxManagedCandidateBytes = 256 << 10
-	MaxOutputBytes           = 512 << 10
-	MaxArtifactBytes         = 512 << 10
+	MaxManagedCandidateBytes = nftables.MaxManagedCandidateBytes
+	MaxOutputBytes           = nftables.MaxOutputBytes
+	MaxArtifactBytes         = nftables.MaxArtifactBytes
 )
 
 type boundedBuffer struct {
@@ -93,12 +95,6 @@ const (
 	CodeInternal          ErrorCode = "internal_error"
 )
 
-type Correlation struct {
-	OperationID  string `json:"operation_id"`
-	InstanceID   string `json:"instance_id"`
-	LockRevision int    `json:"lock_revision"`
-}
-
 type Request struct {
 	ProtocolVersion int         `json:"protocol_version"`
 	Correlation     Correlation `json:"correlation"`
@@ -121,41 +117,6 @@ type Request struct {
 }
 
 type CapabilitiesRequest struct{}
-
-type NFTValidateRequest struct {
-	CandidateCapturedAtUnixNano   int64  `json:"candidate_captured_at_unix_nano,omitempty"`
-	CandidatePath                 string `json:"candidate_path"`
-	ExpectedRevision              string `json:"expected_revision"`
-	ExpectedSHA256                string `json:"expected_sha256"`
-	ExpectedSemanticSHA256        string `json:"expected_semantic_sha256"`
-	ExpectedTimedMembershipSHA256 string `json:"expected_timed_membership_sha256"`
-}
-
-type NFTObserveRequest struct{}
-
-type NFTApplyRequest struct {
-	CandidateCapturedAtUnixNano           int64  `json:"candidate_captured_at_unix_nano,omitempty"`
-	CandidatePath                         string `json:"candidate_path"`
-	RollbackArtifactPath                  string `json:"rollback_artifact_path"`
-	ExpectedTable                         string `json:"expected_table"`
-	ExpectedRevision                      string `json:"expected_revision"`
-	ExpectedSHA256                        string `json:"expected_sha256"`
-	ExpectedPreviousRevision              string `json:"expected_previous_revision,omitempty"`
-	ExpectedPreviousTablePresent          bool   `json:"expected_previous_table_present"`
-	ExpectedSemanticSHA256                string `json:"expected_semantic_sha256"`
-	ExpectedPreviousSemanticSHA256        string `json:"expected_previous_semantic_sha256,omitempty"`
-	ExpectedTimedMembershipSHA256         string `json:"expected_timed_membership_sha256"`
-	ExpectedPreviousTimedMembershipSHA256 string `json:"expected_previous_timed_membership_sha256,omitempty"`
-}
-
-type NFTRollbackRequest struct {
-	RollbackArtifactPath                 string `json:"rollback_artifact_path"`
-	ExpectedTable                        string `json:"expected_table"`
-	ExpectedSHA256                       string `json:"expected_sha256"`
-	ExpectedCurrentRevision              string `json:"expected_current_revision"`
-	ExpectedCurrentSemanticSHA256        string `json:"expected_current_semantic_sha256"`
-	ExpectedCurrentTimedMembershipSHA256 string `json:"expected_current_timed_membership_sha256"`
-}
 
 type NginxDetectVersionRequest struct{}
 
@@ -336,22 +297,6 @@ type NginxResult struct {
 
 // NFTResult contains only integrity and managed-table facts. Raw nft output is
 // deliberately never returned across the helper boundary.
-type NFTResult struct {
-	ManagedTablePresent           bool   `json:"managed_table_present"`
-	AppliedRevision               string `json:"applied_revision,omitempty"`
-	CandidateSHA256               string `json:"candidate_sha256,omitempty"`
-	RollbackSHA256                string `json:"rollback_sha256,omitempty"`
-	PreviousRevision              string `json:"previous_revision,omitempty"`
-	PreviousTablePresent          bool   `json:"previous_table_present"`
-	SemanticSHA256                string `json:"semantic_sha256,omitempty"`
-	PreviousSemanticSHA256        string `json:"previous_semantic_sha256,omitempty"`
-	CurrentRevision               string `json:"current_revision,omitempty"`
-	CurrentSemanticSHA256         string `json:"current_semantic_sha256,omitempty"`
-	TimedMembershipSHA256         string `json:"timed_membership_sha256,omitempty"`
-	PreviousTimedMembershipSHA256 string `json:"previous_timed_membership_sha256,omitempty"`
-	CurrentTimedMembershipSHA256  string `json:"current_timed_membership_sha256,omitempty"`
-}
-
 type Response struct {
 	ProtocolVersion int         `json:"protocol_version"`
 	HelperVersion   string      `json:"helper_version"`
@@ -473,49 +418,15 @@ func isNilPayload(value any) bool {
 }
 
 func (r Request) validatePayload(root ManagedRoot) error {
-	resolve := func(path string, mustExist bool) error {
-		_, err := root.Resolve(path, mustExist)
-		return err
-	}
 	switch r.Operation {
 	case OperationCapabilities, OperationNFTObserve, OperationNginxDetectVersion:
 		return nil
 	case OperationNFTValidate:
-		if !validRevision(r.NFTValidate.ExpectedRevision) || !validSHA256(r.NFTValidate.ExpectedSHA256) || !validSHA256(r.NFTValidate.ExpectedSemanticSHA256) || !validSHA256(r.NFTValidate.ExpectedTimedMembershipSHA256) {
-			return errors.New("nft validation requires bounded candidate artifact and semantic identities")
-		}
-		return resolve(r.NFTValidate.CandidatePath, true)
+		return r.NFTValidate.Validate(root)
 	case OperationNFTApply:
-		if r.NFTApply.ExpectedTable != "inet solovey_protection" {
-			return errors.New("nft apply is restricted to inet solovey_protection")
-		}
-		if err := resolve(r.NFTApply.CandidatePath, true); err != nil {
-			return err
-		}
-		if !validRevision(r.NFTApply.ExpectedRevision) || !validSHA256(r.NFTApply.ExpectedSHA256) || !validSHA256(r.NFTApply.ExpectedSemanticSHA256) || !validSHA256(r.NFTApply.ExpectedTimedMembershipSHA256) {
-			return errors.New("nft apply requires bounded candidate artifact and semantic identities")
-		}
-		if r.NFTApply.ExpectedPreviousTablePresent {
-			if !validRevision(r.NFTApply.ExpectedPreviousRevision) || !validSHA256(r.NFTApply.ExpectedPreviousSemanticSHA256) || !validSHA256(r.NFTApply.ExpectedPreviousTimedMembershipSHA256) {
-				return errors.New("nft apply previous managed-table fence is malformed")
-			}
-		} else if r.NFTApply.ExpectedPreviousRevision != "" || r.NFTApply.ExpectedPreviousSemanticSHA256 != "" || r.NFTApply.ExpectedPreviousTimedMembershipSHA256 != "" {
-			return errors.New("nft apply absent-table fence contains a previous identity")
-		}
-		return resolve(r.NFTApply.RollbackArtifactPath, false)
+		return r.NFTApply.Validate(root)
 	case OperationNFTRollback:
-		if r.NFTRollback.ExpectedTable != "inet solovey_protection" {
-			return errors.New("nft rollback is restricted to inet solovey_protection")
-		}
-		if r.NFTRollback.ExpectedSHA256 != "" && !validSHA256(r.NFTRollback.ExpectedSHA256) || !validSHA256(r.NFTRollback.ExpectedCurrentSemanticSHA256) || !validSHA256(r.NFTRollback.ExpectedCurrentTimedMembershipSHA256) {
-			return errors.New("nft rollback SHA-256 is malformed")
-		}
-		if !validRevision(r.NFTRollback.ExpectedCurrentRevision) {
-			return errors.New("nft rollback current revision fence is malformed")
-		}
-		// Existence is checked by the privileged engine. The panel-side client
-		// validates only the managed path because the helper creates this file.
-		return resolve(r.NFTRollback.RollbackArtifactPath, false)
+		return r.NFTRollback.Validate(root)
 	case OperationNginxValidate:
 		if err := validateNginxRevision(r.NginxValidate.ExpectedRevision, r.NginxValidate.ExpectedSHA256, r.NginxValidate.ExpectedBinary); err != nil {
 			return err
