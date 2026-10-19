@@ -1,7 +1,5 @@
 package operationcoordination
 
-import "strings"
-
 type Progress struct {
 	Completed int64  `json:"completed"`
 	Total     int64  `json:"total"`
@@ -28,7 +26,8 @@ type Job struct {
 }
 
 func ProjectJob(change Change, progress *Progress, criticalSection bool) Job {
-	result := Job{Reference: change.Reference, JobID: "job:" + strings.TrimPrefix(change.CorrelationID, "operation:"),
+	correlation := change.Reference.Correlation()
+	result := Job{Reference: correlation.Reference, JobID: correlation.JobID,
 		Revision: change.Revision, Phase: change.OwnerPhase, ExpectedRevision: change.ExpectedRevision,
 		CriticalSection: criticalSection, Outcome: change.Outcome, RecoveryRequired: change.RecoveryRequired, Problem: change.Problem}
 	if progress != nil && progress.Unit == "bytes" && progress.Total > 0 && progress.Completed >= 0 && progress.Completed <= progress.Total {

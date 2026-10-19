@@ -52,6 +52,7 @@ type operationsStatusProjection struct {
 func (a *APIHandler) registerOperationsStatusRoutes(g *gin.RouterGroup) {
 	group := g.Group("/v1/operations")
 	group.GET("/status", a.operationsStatus)
+	group.GET("/journal", a.operationJournal)
 	group.GET("/pressure", a.resourcePressureStatus)
 	group.GET("/pressure/history", a.resourcePressureHistory)
 	group.GET("/pressure/cleanup", a.resourcePressureCleanup)

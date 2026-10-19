@@ -28,6 +28,7 @@ func TestRuntimeLogHTTPProjectionCancelsAndReleasesSubscriptions(t *testing.T) {
 	}
 	t.Cleanup(func() { _ = core.Stop() })
 	runtime := service.NewRuntime(core)
+	t.Cleanup(func() { closeAPITestRuntime(t, runtime) })
 	users := service.UserService{Runtime: runtime}
 	token, err := users.AddToken("admin", 0, "log fixture", "observability")
 	if err != nil {
@@ -90,6 +91,7 @@ func TestRuntimeLogHTTP2IdleBetweenFramesDoesNotExpireWriteDeadline(t *testing.T
 	}
 	t.Cleanup(func() { _ = core.Stop() })
 	runtime := service.NewRuntime(core)
+	t.Cleanup(func() { closeAPITestRuntime(t, runtime) })
 	users := service.UserService{Runtime: runtime}
 	token, err := users.AddToken("admin", 0, "idle log fixture", "observability")
 	if err != nil {

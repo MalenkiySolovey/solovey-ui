@@ -8,7 +8,10 @@ import (
 func ProjectChange(operation model.DataLifecycleOperation) operationcoordination.Change {
 	resource := "database"
 	if operation.Kind == "DROP_DATA" {
-		resource = "durable-owner:" + operation.OwnerID
+		resource = "durable-owner:unavailable"
+		if safeOwnerID(operation.OwnerID) {
+			resource = "durable-owner:" + operation.OwnerID
+		}
 	}
 	change := operationcoordination.Change{Reference: operationcoordination.NewReference("data", resource, operation.OperationID),
 		Revision: operation.Revision, ExpectedRevision: operation.ExpectedRevision, OwnerPhase: operation.State,

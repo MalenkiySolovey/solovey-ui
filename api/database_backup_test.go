@@ -136,6 +136,30 @@ func TestRestoreAPIProjectsAcceptedOwnerChangeAndIdempotentReplay(t *testing.T) 
 	if datalifecycle.ProjectJob(persisted).Outcome != operationcoordination.OutcomeCommitted {
 		t.Fatal("request cancellation rewrote durable acceptance")
 	}
+	journal, err := manager.ReadJournal(t.Context(), 0, 201)
+	if err != nil {
+		t.Fatal(err)
+	}
+	matched := false
+	for _, event := range journal {
+		if event.OperationID == first.OperationID && event.Type == "restore_applied" {
+			matched = event.ChangeID == first.ChangeID && event.CorrelationID == first.CorrelationID && event.JobID == datalifecycle.ProjectJob(persisted).JobID
+		}
+	}
+	if !matched {
+		t.Fatal("accepted restore is absent from correlated owner journal")
+	}
+	flushAPIAudit(t)
+	var audit model.AuditEvent
+	if err := dbsqlite.DB().Where("event = ?", "db_imported").Order("id DESC").First(&audit).Error; err != nil {
+		t.Fatal(err)
+	}
+	var details struct {
+		Correlation operationcoordination.Correlation `json:"correlation"`
+	}
+	if err := json.Unmarshal(audit.Details, &details); err != nil || details.Correlation.ChangeID != first.ChangeID || details.Correlation.JobID == "" {
+		t.Fatalf("restore audit lost common correlation: %s %v", audit.Details, err)
+	}
 }
 
 func TestDownloadDatabaseAuditsExport(t *testing.T) {

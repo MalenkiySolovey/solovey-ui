@@ -90,7 +90,8 @@ func (h *dataLifecycleHTTP) dropExecute(c *gin.Context) {
 		return
 	}
 	h.api.recordAuditSynchronous(c, securityContext.Username, "component_data_dropped", "data-lifecycle", service.AuditSeverityWarn,
-		map[string]any{"operationId": operation.OperationID, "ownerId": operation.OwnerID, "state": operation.State, "revision": operation.Revision})
+		map[string]any{"operationId": operation.OperationID, "ownerId": operation.OwnerID, "state": operation.State, "revision": operation.Revision,
+			"correlation": datalifecycle.ProjectChange(operation).Reference.Correlation()})
 	jsonObj(c, datalifecycle.ProjectOperation(operation), nil)
 }
 

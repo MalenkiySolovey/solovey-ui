@@ -157,7 +157,8 @@ func (h *updateHTTP) prepare(c *gin.Context) {
 		return
 	}
 	h.api.recordAuditSynchronous(c, securityContext.Username, "signed_update_prepared", "update", service.AuditSeverityWarn,
-		map[string]any{"operationId": operation.OperationID, "state": operation.State, "sequence": operation.Sequence, "revision": operation.Revision})
+		map[string]any{"operationId": operation.OperationID, "state": operation.State, "sequence": operation.Sequence, "revision": operation.Revision,
+			"correlation": updateservice.ProjectChange(operation).Reference.Correlation()})
 	jsonObj(c, updateservice.ProjectOperation(operation), nil)
 }
 
@@ -278,7 +279,8 @@ func (h *updateHTTP) mutateOperation(c *gin.Context, username, id string, expect
 		return
 	}
 	h.api.recordAuditSynchronous(c, username, auditEvent, "update", service.AuditSeverityWarn,
-		map[string]any{"operationId": id, "state": operation.State, "sequence": operation.Sequence, "revision": operation.Revision})
+		map[string]any{"operationId": id, "state": operation.State, "sequence": operation.Sequence, "revision": operation.Revision,
+			"correlation": updateservice.ProjectChange(operation).Reference.Correlation()})
 	jsonObj(c, updateservice.ProjectOperation(operation), nil)
 }
 
