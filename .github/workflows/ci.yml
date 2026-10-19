@@ -189,7 +189,14 @@ jobs:
         run: node scripts/release-openwrt-references.mjs .github/build-inputs/OPENWRT_REFERENCE_LOCK.md --test-references
 
       - name: Install privileged fixture tools
-        run: sudo apt-get update && sudo apt-get install -y busybox-static
+        run: sudo apt-get update && sudo apt-get install -y busybox-static nftables iproute2
+
+      - name: Owned nft adapter in a disposable network namespace
+        run: |
+          set -euo pipefail
+          go test -c -o "$RUNNER_TEMP/solovey-nftables.test" ./network/nftables
+          sudo unshare --net sh -c 'set -eu; ip link set lo up; export SUI_NFT_HOST_TESTS=1; exec "$1" -test.v -test.timeout=2m' sh "$RUNNER_TEMP/solovey-nftables.test"
+          rm -f -- "$RUNNER_TEMP/solovey-nftables.test"
 
       - name: Go vet
         run: go vet ./...

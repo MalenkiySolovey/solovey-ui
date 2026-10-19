@@ -262,7 +262,7 @@ func databaseMutationMethod(name string) bool {
 
 func privilegedExecutionOwner(path string) bool {
 	switch path {
-	case "cmd/solovey-openwrt-lifecycle", "components/server-protection/service/helper", "internal/ops/deploymentbroker", "internal/ops/privilegedbroker", "internal/ops/sshbroker", "internal/ops/updatebroker":
+	case "cmd/solovey-openwrt-lifecycle", "components/server-protection/service/helper", "network/nftables", "internal/ops/deploymentbroker", "internal/ops/privilegedbroker", "internal/ops/sshbroker", "internal/ops/updatebroker":
 		return true
 	}
 	return false

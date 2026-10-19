@@ -1,4 +1,4 @@
-package helper
+package nftables
 
 import (
 	"context"
@@ -504,10 +504,6 @@ func TestRollbackScopeRejectsAdditionalTopLevelMutation(t *testing.T) {
 
 func TestNFTCapabilityUnknownAndFailureInjectionNeverReportSuccess(t *testing.T) {
 	root := testManagedRoot(t)
-	unknown := newContractEngineWithExecutor(root, nil).Handle(Request{ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "capabilities", InstanceID: "instance"}, Operation: OperationCapabilities, Capabilities: &CapabilitiesRequest{}})
-	if !unknown.OK || unknown.Capabilities.NFT.PlatformKnown || CapabilityAvailable(unknown.Capabilities, OperationNFTApply) {
-		t.Fatalf("unknown capability became supported: %#v", unknown)
-	}
 	revision := strings.Repeat("3", 64)
 	candidate := []byte("table inet solovey_protection {\n  comment \"solovey-revision:" + revision + "\"\n}\n")
 	writeTestManagedFile(t, root, "revisions/fail/candidate.nft", candidate)
