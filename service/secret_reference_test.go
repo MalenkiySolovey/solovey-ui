@@ -180,7 +180,7 @@ func TestSecretReferenceLegacyWrongKeyAADCancellationAndAuditFailure(t *testing.
 	const hook = "r3_reject_secret_audit"
 	if err := db.Callback().Create().Before("gorm:create").Register(hook, func(tx *gorm.DB) {
 		if tx.Statement.Table == "audit_events" {
-			tx.AddError(errors.New("fixture-audit-write-failed"))
+			_ = tx.AddError(errors.New("fixture-audit-write-failed"))
 		}
 	}); err != nil {
 		t.Fatal(err)
