@@ -22,7 +22,11 @@ import (
 
 const managedTable = networkplan.ProtectionTableCLI
 
-var managedRevisionMarker = regexp.MustCompile(`(?m)^\s*comment "solovey-revision:([a-f0-9]{16,128})"\s*$`)
+var (
+	managedRevisionMarker   = regexp.MustCompile(`(?m)^\s*comment "solovey-revision:([a-f0-9]{16,128})"\s*$`)
+	managedSetDeclaration   = regexp.MustCompile(`^set (solovey_allow_tcp_ports|solovey_allow_udp_ports|solovey_graylist4|solovey_graylist6|solovey_(gray|rate|quarantine|block)[46]_[a-f0-9]{12}) \{$`)
+	managedChainDeclaration = regexp.MustCompile(`^chain (solovey_input_precheck|solovey_tcp_public|solovey_udp_public|solovey_input|solovey_endpoint_[a-f0-9]{12}) \{$`)
+)
 
 const nftTTLCapabilityProbe = "table inet solovey_capability_probe {\n  set ttl4 {\n    type ipv4_addr\n    flags timeout\n    timeout 60s\n    elements = { 192.0.2.1 timeout 30s }\n  }\n}\n"
 const nftRateCapabilityProbe = "table inet solovey_capability_probe {\n  chain input {\n    type filter hook input priority -5; policy accept;\n    ip saddr 192.0.2.1 limit rate over 20/second burst 40 packets counter drop\n  }\n}\n"
@@ -165,8 +169,9 @@ func (e systemNFTExecutor) DeleteManagedTable(ctx context.Context) error {
 // RemoveManagedTableForPackageRemoval is the terminal package-owner cleanup
 // seam. It is deliberately narrower than the broker protocol: after the panel
 // and broker have stopped, the root-owned OpenWrt lifecycle may remove only a
-// freshly authenticated inet solovey_protection table. Absence is idempotent;
-// a same-name foreign or concurrently replaced table fails visibly.
+// freshly observed inet solovey_protection table with a Solovey revision and
+// only Planner-owned allocations. Absence is idempotent; unproven ownership
+// fails visibly.
 func RemoveManagedTableForPackageRemoval(ctx context.Context) error {
 	if runtime.GOOS != "linux" {
 		return errors.New("managed nft package cleanup requires Linux")
@@ -191,6 +196,9 @@ func removeManagedTableForPackageRemoval(ctx context.Context, executor NFTExecut
 	}
 	if before.revision == "" || before.semanticSHA == "" || before.timedMembershipSHA == "" {
 		return errors.New("managed nft package cleanup owner is unproven")
+	}
+	if err := validateOwnedAllocations(before.raw); err != nil {
+		return err
 	}
 	if err := executor.DeleteManagedTable(ctx); err != nil {
 		return err
@@ -252,8 +260,6 @@ func validateCandidate(data []byte, revision, expectedSHA string) error {
 	if err := validateManagedScope(data, false); err != nil {
 		return err
 	}
-	allowedSet := regexp.MustCompile(`^set (solovey_allow_tcp_ports|solovey_allow_udp_ports|solovey_graylist4|solovey_graylist6|solovey_(gray|rate|quarantine|block)[46]_[a-f0-9]{12}) \{$`)
-	allowedChain := regexp.MustCompile(`^chain (solovey_input_precheck|solovey_tcp_public|solovey_udp_public|solovey_input|solovey_endpoint_[a-f0-9]{12}) \{$`)
 	allowedElements := regexp.MustCompile(`^elements = \{ [0-9a-f:.,/ ]* \}$`)
 	allowedTimedElements := regexp.MustCompile(`^elements = \{ [0-9a-f:./]+ timeout [0-9]{1,5}s(, [0-9a-f:./]+ timeout [0-9]{1,5}s)* \}$`)
 	allowedSize := regexp.MustCompile(`^(size [1-9][0-9]{0,4}|timeout [1-9][0-9]{0,4}s)$`)
@@ -280,7 +286,7 @@ func validateCandidate(data []byte, revision, expectedSHA string) error {
 		switch {
 		case line == "", line == "}", line == "table inet solovey_protection {":
 		case line == `comment "solovey-revision:`+revision+`"`:
-		case allowedSet.MatchString(line), allowedChain.MatchString(line), allowedElements.MatchString(line), allowedTimedElements.MatchString(line):
+		case managedSetDeclaration.MatchString(line), managedChainDeclaration.MatchString(line), allowedElements.MatchString(line), allowedTimedElements.MatchString(line):
 		case line == "type inet_service", line == "type ipv4_addr", line == "type ipv6_addr", line == "flags interval", line == "flags interval,timeout":
 		case allowedSize.MatchString(line):
 		case line == "type filter hook input priority filter; policy accept;":

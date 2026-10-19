@@ -1,6 +1,7 @@
 package nftables
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"os"
@@ -8,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
 func TestNFTAdvancedCapabilitiesRequireIndependentReadOnlyCheckProof(t *testing.T) {
@@ -309,6 +312,23 @@ func TestPackageRemovalDeletesOnlyAuthenticatedManagedTableAndIsIdempotent(t *te
 			t.Fatalf("foreign table cleanup = present:%v deletes:%d err:%v", executor.present, executor.deleteCalls, err)
 		}
 	})
+	for _, child := range []string{
+		"chain foreign_extra {\n    counter accept\n  }\n",
+		"set foreign_extra {\n    type ipv4_addr\n  }\n",
+	} {
+		t.Run(strings.Fields(child)[0]+" with unproven owner", func(t *testing.T) {
+			state := []byte(strings.TrimSuffix(string(managed), "}\n") + "  " + child + "}\n")
+			executor := &fakeNFTExecutor{state: state, present: true}
+			if _, err := observeManagedTable(t.Context(), executor); err != nil {
+				t.Fatalf("foreign child must remain observable as semantic drift: %v", err)
+			}
+			err := removeManagedTableForPackageRemoval(t.Context(), executor)
+			var failure *networkplan.Conflict
+			if !errors.As(err, &failure) || failure.Reason != networkplan.ResourceConflict || executor.deleteCalls != 0 || !executor.present || !bytes.Equal(executor.state, state) {
+				t.Fatalf("unowned allocation cleanup = present:%v deletes:%d err:%v", executor.present, executor.deleteCalls, err)
+			}
+		})
+	}
 	t.Run("delete failure", func(t *testing.T) {
 		sentinel := errors.New("injected delete failure")
 		executor := &fakeNFTExecutor{state: managed, present: true, deleteErr: sentinel}

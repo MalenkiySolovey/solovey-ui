@@ -382,6 +382,29 @@ func TestManagedNFTHostExternalFlushAndPackageRemoval(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	for _, kind := range []string{"chain", "set"} {
+		args := []string{"add", kind, "inet", "solovey_protection", "foreign_extra"}
+		if kind == "set" {
+			args = append(args, "{", "type", "ipv4_addr", ";", "}")
+		}
+		if _, _, err := executor.run(t.Context(), args...); err != nil {
+			t.Fatal(err)
+		}
+		before, present, err := executor.ListManagedTable(t.Context())
+		if err != nil || !present {
+			t.Fatalf("foreign child setup failed: present=%v err=%v", present, err)
+		}
+		if err := removeManagedTableForPackageRemoval(t.Context(), executor); err == nil {
+			t.Fatalf("package cleanup accepted an unowned %s", kind)
+		}
+		after, present, err := executor.ListManagedTable(t.Context())
+		if err != nil || !present || string(after) != string(before) {
+			t.Fatalf("package cleanup changed a table containing an unowned %s: present=%v err=%v", kind, present, err)
+		}
+		if _, _, err := executor.run(t.Context(), "delete", kind, "inet", "solovey_protection", "foreign_extra"); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if err := removeManagedTableForPackageRemoval(t.Context(), executor); err != nil {
 		t.Fatal(err)
 	}
