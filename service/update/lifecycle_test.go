@@ -335,7 +335,14 @@ func TestManifestCompatibilityRejectsPanelSchemaBrokerAndComponentDrift(t *testi
 		t.Fatalf("parse current panel version %q: %v", current, err)
 	}
 	base.MinimumPanelVersion, base.MaximumPanelVersion = current, current
-	if err := validateManifestCompatibility(base); err != nil {
+	validate := func(manifest release.Manifest) error {
+		verified, _, _, err := verifyArtifactFixture(manifest, fixture.manager.now())
+		if err != nil {
+			return err
+		}
+		return validateManifestCompatibility(verified)
+	}
+	if err := validate(base); err != nil {
 		t.Fatalf("inclusive current panel version boundary: %v", err)
 	}
 	cases := map[string]func(*release.Manifest){
@@ -371,7 +378,7 @@ func TestManifestCompatibilityRejectsPanelSchemaBrokerAndComponentDrift(t *testi
 		t.Run(name, func(t *testing.T) {
 			manifest := base
 			mutate(&manifest)
-			if err := validateManifestCompatibility(manifest); err == nil {
+			if err := validate(manifest); err == nil {
 				t.Fatalf("incompatible manifest was accepted: %#v", manifest)
 			}
 		})

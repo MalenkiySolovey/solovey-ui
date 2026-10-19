@@ -98,22 +98,24 @@ func (c Capabilities) Present(mode string, reasonCodes []string) Capabilities {
 }
 
 type CheckResult struct {
-	State             State           `json:"state"`
-	CurrentVersion    string          `json:"currentVersion"`
-	ReleaseID         string          `json:"releaseId,omitempty"`
-	Version           string          `json:"version,omitempty"`
-	Channel           release.Channel `json:"channel"`
-	Sequence          uint64          `json:"sequence,omitempty"`
-	ManifestDigest    string          `json:"manifestDigest,omitempty"`
-	SigningKeyID      string          `json:"signingKeyId,omitempty"`
-	SigningStatus     string          `json:"signingStatus"`
-	UpdateAvailable   bool            `json:"updateAvailable"`
-	ArtifactSetDigest string          `json:"artifactSetDigest,omitempty"`
-	RestartClass      string          `json:"restartClass,omitempty"`
-	RebootClass       string          `json:"rebootClass,omitempty"`
-	RollbackClass     string          `json:"rollbackClass,omitempty"`
-	ReasonCodes       []string        `json:"reasonCodes"`
-	Capabilities      Capabilities    `json:"capabilities"`
+	State             State                       `json:"state"`
+	CurrentVersion    string                      `json:"currentVersion"`
+	ReleaseID         string                      `json:"releaseId,omitempty"`
+	Version           string                      `json:"version,omitempty"`
+	Channel           release.Channel             `json:"channel"`
+	Sequence          uint64                      `json:"sequence,omitempty"`
+	ManifestDigest    string                      `json:"manifestDigest,omitempty"`
+	SigningKeyID      string                      `json:"signingKeyId,omitempty"`
+	SigningStatus     string                      `json:"signingStatus"`
+	UpdateAvailable   bool                        `json:"updateAvailable"`
+	ArtifactSetDigest string                      `json:"artifactSetDigest,omitempty"`
+	RestartClass      string                      `json:"restartClass,omitempty"`
+	RebootClass       string                      `json:"rebootClass,omitempty"`
+	RollbackClass     string                      `json:"rollbackClass,omitempty"`
+	ReasonCodes       []string                    `json:"reasonCodes"`
+	Capabilities      Capabilities                `json:"capabilities"`
+	ArtifactTrust     []release.ArtifactIdentity  `json:"artifactTrust,omitempty"`
+	ComponentTrust    []release.ComponentArtifact `json:"componentTrust,omitempty"`
 }
 
 type LifecycleStatus struct {
@@ -456,6 +458,17 @@ func (m *LifecycleManager) Check(ctx context.Context, channel release.Channel) (
 	}
 	available := versionpolicy.VersionIsNewer(verified.Manifest.Version, result.CurrentVersion)
 	result.SigningStatus = "VERIFIED"
+	for _, artifact := range artifacts {
+		identity, identityErr := verified.ArtifactIdentity(artifact)
+		if identityErr != nil {
+			return result, identityErr
+		}
+		result.ArtifactTrust = append(result.ArtifactTrust, identity)
+	}
+	result.ComponentTrust, err = verified.ComponentArtifacts()
+	if err != nil {
+		return result, err
+	}
 	result.ReleaseID, result.Version, result.Sequence = verified.Manifest.ReleaseID, verified.Manifest.Version, verified.Manifest.Sequence
 	result.ManifestDigest, result.SigningKeyID = verified.Digest, verified.KeyID
 	result.UpdateAvailable, result.ArtifactSetDigest = available, release.ArtifactSetDigest(artifacts)
@@ -845,7 +858,7 @@ func (m *LifecycleManager) fetchAndVerify(ctx context.Context, channel release.C
 	if err != nil {
 		return release.Verified{}, nil, err
 	}
-	if err := validateManifestCompatibility(verified.Manifest); err != nil {
+	if err := validateManifestCompatibility(verified); err != nil {
 		return release.Verified{}, nil, err
 	}
 	for _, artifact := range verified.Manifest.Artifacts {
@@ -854,11 +867,16 @@ func (m *LifecycleManager) fetchAndVerify(ctx context.Context, channel release.C
 		}
 	}
 	platform, arch := m.platform()
-	artifacts, err := verified.Manifest.ArtifactsFor(platform, arch, m.profile())
+	artifacts, err := verified.PanelArtifacts(platform, arch, m.profile())
 	return verified, artifacts, err
 }
 
-func validateManifestCompatibility(manifest release.Manifest) error {
+func validateManifestCompatibility(verified release.Verified) error {
+	componentArtifacts, err := verified.ComponentArtifacts()
+	if err != nil {
+		return err
+	}
+	manifest := verified.Manifest
 	if manifest.BrokerCapability != broker.CapabilityRevision {
 		return errors.New("release broker capability is incompatible")
 	}
@@ -875,7 +893,8 @@ func validateManifestCompatibility(manifest release.Manifest) error {
 		return errors.New("release core schema is incompatible")
 	}
 	components := make(map[string]release.Component, len(manifest.Components))
-	for _, component := range manifest.Components {
+	for _, bound := range componentArtifacts {
+		component := bound.Component
 		min, minOK := versionpolicy.CompareVersions(component.MinimumCoreSchema, manifest.TargetCoreSchema)
 		max, maxOK := versionpolicy.CompareVersions(component.MaximumCoreSchema, manifest.TargetCoreSchema)
 		if !minOK || !maxOK || min > 0 || max < 0 {

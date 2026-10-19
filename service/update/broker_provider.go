@@ -88,6 +88,12 @@ func (p *BrokerProvider) DownloadAndStage(ctx context.Context, operation model.U
 
 func (p *BrokerProvider) downloadAndStageArtifact(ctx context.Context, operation model.UpdateOperation, verified release.Verified,
 	artifact release.Artifact, root string, progress func(int64)) error {
+	identity, err := verified.ArtifactIdentity(artifact)
+	if err != nil || identity.Owner != "panel" || identity.SourceRevision != operation.ManifestDigest ||
+		identity.Version != operation.Version || identity.Platform != operation.Platform || identity.Arch != operation.Arch ||
+		identity.Kind != "panel-"+operation.BinaryProfile {
+		return errors.New("update artifact trust binding rejected")
+	}
 	cacheName := artifact.Role + "-" + artifact.Name
 	partial := filepath.Join(root, cacheName+".partial")
 	complete := filepath.Join(root, cacheName)
@@ -121,7 +127,7 @@ func (p *BrokerProvider) downloadAndStageArtifact(ctx context.Context, operation
 		return err
 	}
 	defer input.Close()
-	identity := releaseIdentity(operation, verified, []release.Artifact{artifact})
+	brokerIdentity := releaseIdentity(operation, verified, []release.Artifact{artifact})
 	buffer := make([]byte, contract.MaxChunkBytes)
 	offset := int64(0)
 	for {
@@ -133,7 +139,7 @@ func (p *BrokerProvider) downloadAndStageArtifact(ctx context.Context, operation
 			break
 		}
 		final := offset+int64(count) == artifact.Size
-		request := contract.StageChunkRequestV1{Release: identity,
+		request := contract.StageChunkRequestV1{Release: brokerIdentity,
 			Artifact: artifactIdentity(artifact),
 			Offset:   offset, Chunk: append([]byte(nil), buffer[:count]...), Final: final}
 		var result contract.StageChunkResultV1
