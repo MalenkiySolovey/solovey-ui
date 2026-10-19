@@ -918,5 +918,6 @@ func newFakeCIWorkflow(t *testing.T, health HealthCheck) (Workflow, *testHelperI
 			return []componenthealth.Result{{ResourceID: "rollback:panel", Status: componenthealth.StatusOK, FactCode: "listener_ready"}}
 		},
 		Contributions: contributions, Now: func() time.Time { return time.Unix(1000, 0).UTC() },
+		CurrentNetworkInputs: func(_ context.Context, plan FirewallPlan) (FirewallPlan, error) { return plan, nil },
 	}, mock, manager, store
 }

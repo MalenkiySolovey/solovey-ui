@@ -534,7 +534,8 @@ func ensureFirewallWorkflowLocked() (*protectionfirewall.Workflow, error) {
 		RollbackHealth: func(ctx context.Context, _ []hostresources.ProtectableResource) []componenthealth.Result {
 			return protectionhealth.Evaluate(ctx, protectionresources.Snapshot(ctx, true).Resources, nil)
 		},
-		Contributions: protectionrepository.New(dbsqlite.DB()),
+		Contributions:        protectionrepository.New(dbsqlite.DB()),
+		CurrentNetworkInputs: protectionfirewall.NewBaselineService(protectionrepository.New(dbsqlite.DB())).NetworkInputs,
 	}
 	runtimeLifecycle := protectiondeployment.FirewallRuntime{Authority: hooks.runtimeRootAuthority}
 	workflow.RuntimeStore = protectionrepository.New(dbsqlite.DB())

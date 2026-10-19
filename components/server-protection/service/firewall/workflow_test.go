@@ -474,6 +474,7 @@ func newWorkflowWithRoot(t *testing.T, health HealthCheck, configs ...workflowDa
 			return []componenthealth.Result{{ResourceID: "rollback:panel", Status: componenthealth.StatusOK, FactCode: "listener_ready"}}
 		},
 		Contributions: repository, Now: func() time.Time { return time.Unix(1000, 0).UTC() },
+		CurrentNetworkInputs: func(_ context.Context, plan FirewallPlan) (FirewallPlan, error) { return plan, nil },
 	}, mock, manager, repository, rootPath
 }
 

@@ -55,13 +55,14 @@ type ResourceBinding struct {
 }
 
 type Intent struct {
-	HostRef         hostref.Ref       `json:"hostRef"`
-	Owner           string            `json:"owner"`
-	ResourceRef     string            `json:"resourceRef"`
-	DesiredRevision string            `json:"desiredRevision"`
-	InputRevision   string            `json:"inputRevision"`
-	Purpose         string            `json:"purpose"`
-	Resources       []ResourceBinding `json:"resources"`
+	HostRef               hostref.Ref       `json:"hostRef"`
+	Owner                 string            `json:"owner"`
+	ResourceRef           string            `json:"resourceRef"`
+	DesiredRevision       string            `json:"desiredRevision"`
+	ConfigurationRevision string            `json:"configurationRevision,omitempty"`
+	InputRevision         string            `json:"inputRevision"`
+	Purpose               string            `json:"purpose"`
+	Resources             []ResourceBinding `json:"resources"`
 }
 
 type Ownership struct {
@@ -117,7 +118,7 @@ func (p Plan) Resources() []Ownership { return append([]Ownership(nil), p.resour
 func Compile(intent Intent, facts Facts) (Plan, error) {
 	intent, facts = canonicalIntent(intent), canonicalFacts(facts)
 	if !intent.HostRef.IsLocal() || !token(intent.Owner, 64) || !token(intent.ResourceRef, 256) ||
-		!digest(intent.DesiredRevision) || !digest(intent.InputRevision) || !token(intent.Purpose, 96) || len(intent.Resources) > 4096 {
+		!digest(intent.DesiredRevision) || intent.ConfigurationRevision != "" && !digest(intent.ConfigurationRevision) || !digest(intent.InputRevision) || !token(intent.Purpose, 96) || len(intent.Resources) > 4096 {
 		return Plan{}, conflict(InvalidIntent, intent.ResourceRef)
 	}
 	if !facts.HostRef.IsLocal() || !digest(facts.Revision) || !facts.InventoryComplete ||
