@@ -1,11 +1,36 @@
 package architecture
 
 import (
+	"go/parser"
+	"go/token"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestComponentNetworkAdapterConstructionIsBrokerScoped(t *testing.T) {
+	for _, fixture := range []struct {
+		path, alias, expression string
+		blocked                 bool
+	}{
+		{"components/example/feature.go", "n", "n.NewEngine", true},
+		{"components/example/feature.go", "alias", "alias.NewEngineWithExecutor", true},
+		{"components/example/feature.go", ".", "NewEngine", true},
+		{"components/server-protection/service/helper/engine.go", "n", "n.NewEngine", false},
+		{"components/server-protection/service/firewall/preview.go", "n", "n.RenderProtection", false},
+	} {
+		source := "package fixture\nimport " + fixture.alias + " \"" + modulePath + "/network/nftables\"\nvar selected = " + fixture.expression
+		file, err := parser.ParseFile(token.NewFileSet(), fixture.path, source, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, forbidden := inspectFoundationFile(fixture.path, file)
+		if (len(forbidden) != 0) != fixture.blocked {
+			t.Fatalf("%s %s: forbidden=%v", fixture.path, fixture.expression, forbidden)
+		}
+	}
+}
 
 func TestRetiredComponentNetworkAdapterStaysAbsent(t *testing.T) {
 	root := moduleRoot(t)

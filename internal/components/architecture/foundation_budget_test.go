@@ -105,6 +105,9 @@ func inspectFoundationFile(path string, file *ast.File) ([]foundationSite, []str
 		if imported == modulePath+"/service" && alias == "." {
 			forbidden = append(forbidden, path+": dot import hides broad Runtime authority")
 		}
+		if imported == modulePath+"/network/nftables" && alias == "." && strings.HasPrefix(path, "components/") {
+			forbidden = append(forbidden, path+": dot import hides privileged network adapter construction")
+		}
 		if strings.HasPrefix(imported, modulePath+"/components/") && !componentImportAllowed(path, imported) {
 			forbidden = append(forbidden, path+": foreign component implementation import "+imported)
 		}
@@ -165,6 +168,10 @@ func inspectFoundationDeclaration(path, symbol string, declaration ast.Node, imp
 	ast.Inspect(declaration, func(node ast.Node) bool {
 		switch value := node.(type) {
 		case *ast.SelectorExpr:
+			if qualifier, ok := value.X.(*ast.Ident); ok && component && imports[qualifier.Name] == modulePath+"/network/nftables" &&
+				(value.Sel.Name == "NewEngine" || value.Sel.Name == "NewEngineWithExecutor") && filepath.ToSlash(filepath.Dir(path)) != "components/server-protection/service/helper" {
+				*forbidden = append(*forbidden, path+":"+symbol+": privileged network adapter construction belongs to the typed broker bridge")
+			}
 			if filepath.ToSlash(filepath.Dir(path)) == "components/telegram" {
 				qualifier, imported := value.X.(*ast.Ident)
 				coreService := imported && imports[qualifier.Name] == modulePath+"/service"
