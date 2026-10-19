@@ -9,15 +9,17 @@ import (
 	"testing"
 )
 
-func TestComponentNetworkAdapterConstructionIsBrokerScoped(t *testing.T) {
+func TestComponentNetworkAdapterEntrypointsAreBrokerScoped(t *testing.T) {
 	for _, fixture := range []struct {
 		path, alias, expression string
 		blocked                 bool
 	}{
 		{"components/example/feature.go", "n", "n.NewEngine", true},
 		{"components/example/feature.go", "alias", "alias.NewEngineWithExecutor", true},
+		{"components/example/feature.go", "cleanup", "cleanup.RemoveManagedTableForPackageRemoval", true},
 		{"components/example/feature.go", ".", "NewEngine", true},
 		{"components/server-protection/service/helper/engine.go", "n", "n.NewEngine", false},
+		{"components/server-protection/service/helper/network_adapter.go", "n", "n.RemoveManagedTableForPackageRemoval", false},
 		{"components/server-protection/service/firewall/preview.go", "n", "n.RenderProtection", false},
 	} {
 		source := "package fixture\nimport " + fixture.alias + " \"" + modulePath + "/network/nftables\"\nvar selected = " + fixture.expression
