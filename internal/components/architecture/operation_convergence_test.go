@@ -77,3 +77,41 @@ func TestCommonPreflightRemainsAReadOnlySemanticFactEvaluator(t *testing.T) {
 		}
 	})
 }
+
+func TestMigratedLongOperationViewsKeepCommonJobIdentity(t *testing.T) {
+	for _, relative := range []string{"service/update/change.go", "service/datalifecycle/change.go"} {
+		file, err := parser.ParseFile(token.NewFileSet(), filepath.Join(moduleRoot(t), filepath.FromSlash(relative)), nil, 0)
+		if err != nil {
+			t.Fatal(err)
+		}
+		jobField, projection := false, false
+		ast.Inspect(file, func(node ast.Node) bool {
+			if spec, ok := node.(*ast.TypeSpec); ok && spec.Name.Name == "OperationView" {
+				if view, ok := spec.Type.(*ast.StructType); ok {
+					for _, field := range view.Fields.List {
+						if typ, ok := field.Type.(*ast.SelectorExpr); ok && typ.Sel.Name == "Job" {
+							if pkg, ok := typ.X.(*ast.Ident); ok && pkg.Name == "operationcoordination" {
+								jobField = true
+							}
+						}
+					}
+				}
+			}
+			return true
+		})
+		fn := findFunction(file, "ProjectOperation")
+		if fn != nil {
+			ast.Inspect(fn.Body, func(node ast.Node) bool {
+				if call, ok := node.(*ast.CallExpr); ok {
+					if ident, ok := call.Fun.(*ast.Ident); ok && ident.Name == "ProjectJob" {
+						projection = true
+					}
+				}
+				return true
+			})
+		}
+		if !jobField || !projection {
+			t.Errorf("%s bypasses common Job projection", relative)
+		}
+	}
+}

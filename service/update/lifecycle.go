@@ -126,6 +126,7 @@ type LifecycleStatus struct {
 	Release       *model.UpdateReleaseState     `json:"release,omitempty"`
 	Operation     *model.UpdateOperation        `json:"operation,omitempty"`
 	Change        *operationcoordination.Change `json:"change,omitempty"`
+	Job           *operationcoordination.Job    `json:"job,omitempty"`
 	Preflight     *preflight.Report             `json:"preflight,omitempty"`
 	Capabilities  Capabilities                  `json:"capabilities"`
 	ReasonCodes   []string                      `json:"reasonCodes"`
@@ -427,6 +428,8 @@ func (m *LifecycleManager) Status(ctx context.Context, channel release.Channel) 
 	if result.Operation != nil {
 		change := ProjectChange(*result.Operation)
 		result.Change = &change
+		job := ProjectJob(*result.Operation)
+		result.Job = &job
 	}
 	platformCheck := m.platformPreflight(ctx)
 	result.Preflight = &platformCheck
@@ -547,10 +550,15 @@ func (m *LifecycleManager) Prepare(ctx context.Context, request PrepareRequest) 
 	}); err != nil {
 		return model.UpdateOperation{}, err
 	}
-	progress := func(bytes int64) { _ = m.repo.progress(context.Background(), operation.OperationID, bytes) }
+	progressOperation := operation
+	progress := func(bytes int64) { _ = m.repo.progress(context.Background(), progressOperation, bytes) }
 	if err := m.provider.DownloadAndStage(ctx, operation, verified, artifacts, progress); err != nil {
 		return m.fail(ctx, operation, "update_download_failed", err)
 	}
+	// Successful staging has verified the complete selected artifact set. Commit
+	// that fact with the phase so response/reconnect agree even if progress writes
+	// failed. A retained older callback is fenced to DOWNLOADING + its revision.
+	operation.BytesCompleted = operation.BytesTotal
 	operation, err = m.advance(ctx, operation, StateDownloaded, "release_artifacts_downloaded", "")
 	if err != nil {
 		return operation, err
@@ -1183,10 +1191,13 @@ func (r Repository) update(ctx context.Context, operation model.UpdateOperation,
 	if err != nil {
 		return err
 	}
+	columns := map[string]any{"state": operation.State, "reason_code": operation.ReasonCode, "revision": operation.Revision,
+		"rollback_available": operation.RollbackAvailable, "backup_ref": operation.BackupRef, "cleanup_pending": operation.CleanupPending, "cleanup_reason": operation.CleanupReason, "updated_at": operation.UpdatedAt}
+	if expectedState == string(StateDownloading) && operation.State == string(StateDownloaded) {
+		columns["bytes_completed"] = operation.BytesTotal
+	}
 	return operationcoordination.CommitTransition(ctx, db, &model.UpdateOperation{},
-		operationcoordination.Fence{OperationID: operation.OperationID, Revision: expectedRevision, State: expectedState},
-		map[string]any{"state": operation.State, "reason_code": operation.ReasonCode, "revision": operation.Revision,
-			"rollback_available": operation.RollbackAvailable, "backup_ref": operation.BackupRef, "cleanup_pending": operation.CleanupPending, "cleanup_reason": operation.CleanupReason, "updated_at": operation.UpdatedAt},
+		operationcoordination.Fence{OperationID: operation.OperationID, Revision: expectedRevision, State: expectedState}, columns,
 		journalFor(operation, event, operation.ReasonCode), ErrRevisionMismatch)
 }
 
@@ -1423,13 +1434,24 @@ func updateJournalLogicalBytes(journal model.UpdateJournal) int64 {
 	return int64(len(journal.OperationID) + len(journal.State) + len(journal.Event) + len(journal.ReasonCode) + len(journal.SemanticHash) + 64)
 }
 
-func (r Repository) progress(ctx context.Context, id string, bytes int64) error {
+func (r Repository) progress(ctx context.Context, operation model.UpdateOperation, bytes int64) error {
+	if bytes <= 0 {
+		return errors.New("update progress increment is invalid")
+	}
 	db, err := r.db(ctx)
 	if err != nil {
 		return err
 	}
-	return db.Model(&model.UpdateOperation{}).Where("operation_id = ? AND bytes_completed < bytes_total", id).
-		UpdateColumn("bytes_completed", gorm.Expr("MIN(bytes_total, bytes_completed + ?)", bytes)).Error
+	result := db.Model(&model.UpdateOperation{}).
+		Where("operation_id = ? AND revision = ? AND state = ? AND bytes_completed < bytes_total", operation.OperationID, operation.Revision, string(StateDownloading)).
+		UpdateColumn("bytes_completed", gorm.Expr("MIN(bytes_total, bytes_completed + ?)", bytes))
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected != 1 {
+		return ErrRevisionMismatch
+	}
+	return nil
 }
 
 func (r Repository) completeApplied(ctx context.Context, operation model.UpdateOperation, expectedRevision uint64, expectedState, event string) error {

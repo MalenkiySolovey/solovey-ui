@@ -2,6 +2,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
 	"encoding/json"
 	"path/filepath"
@@ -26,13 +27,16 @@ func initSettingTestDB(t *testing.T) *SettingService {
 		}
 		t.Fatal(err)
 	}
-	testDB := dbsqlite.DB()
 	t.Cleanup(func() {
-		if testDB != nil {
-			if sqlDB, err := testDB.DB(); err == nil {
-				_ = sqlDB.Close()
-				time.Sleep(25 * time.Millisecond)
-			}
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		// Audit batches must drain before the next fixture publishes a DB.
+		// Closing only the pool lets an older batch enter new schema creation.
+		if err := StopAuditWriter(ctx); err != nil {
+			t.Error("drain setting fixture audit", err)
+		}
+		if err := dbsqlite.Close(); err != nil {
+			t.Error("retire setting fixture database", err)
 		}
 	})
 	return &SettingService{}
