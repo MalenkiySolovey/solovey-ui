@@ -29,7 +29,9 @@ cleanup() {
 }
 trap cleanup EXIT
 go test -c -o "$build_root/api.test" ./api
-systemd-run --quiet --collect --unit="$identity_unit" --property=DynamicUser=yes --property=User=solovey-ui --property=Group=solovey-ui /usr/bin/sleep infinity
+# Type=exec waits for credential setup and execve; Type=simple can return
+# before DynamicUser is registered and make the following id lookup race.
+systemd-run --quiet --collect --unit="$identity_unit" --property=Type=exec --property=DynamicUser=yes --property=User=solovey-ui --property=Group=solovey-ui /usr/bin/sleep infinity
 panel_uid=$(id -u solovey-ui)
 panel_gid=$(id -g solovey-ui)
 install -d -m 0755 /etc/solovey-ui /usr/local/lib/solovey-ui/systemd /usr/local/solovey-ui/releases/current /usr/local/solovey-ui/.runtime/server-protection /usr/local/solovey-ui/cert
