@@ -51,7 +51,7 @@ func (s *Service) DetectChatContext(ctx context.Context, suppliedToken string) D
 	}
 	token := strings.TrimSpace(suppliedToken)
 	if token == "" {
-		token, err = s.Settings.GetTelegramBotToken()
+		token, err = s.Settings.GetTelegramBotToken(ctx)
 		if err != nil {
 			return DiscoveryResult{ErrorClass: "settings"}
 		}

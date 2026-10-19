@@ -43,7 +43,7 @@ func initSettingTestDB(t *testing.T) *coreservice.SettingService {
 
 func registerTelegramSettingsForTest(t *testing.T) {
 	t.Helper()
-	unregister := coreservice.RegisterSettingContribution("test.telegram."+t.Name(), coreservice.SettingContribution{
+	unregister := coreservice.RegisterSettingContribution("telegram", coreservice.SettingContribution{
 		Defaults:                telegramsettings.Defaults(),
 		Encrypted:               telegramsettings.EncryptedKeys(),
 		ClearableEmptyEncrypted: telegramsettings.ClearableEmptyEncryptedKeys(),

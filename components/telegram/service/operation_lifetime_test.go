@@ -20,7 +20,7 @@ import (
 type lifetimeTelegramSettings struct{ testTelegramSettings }
 
 func (lifetimeTelegramSettings) GetTelegramEnabled() (bool, error) { return true, nil }
-func (lifetimeTelegramSettings) GetTelegramBotToken() (string, error) {
+func (lifetimeTelegramSettings) GetTelegramBotToken(context.Context) (string, error) {
 	return "qualification-fixture", nil
 }
 func (lifetimeTelegramSettings) GetTelegramChatID() (string, error) { return "41", nil }

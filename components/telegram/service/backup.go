@@ -130,7 +130,7 @@ func (s *TelegramBackupService) RunOnce(ctx context.Context, trigger string) (re
 		result.ErrorClass = "disabled"
 		return result
 	}
-	token, err := s.Settings.GetTelegramBotToken()
+	token, err := s.Settings.GetTelegramBotToken(ctx)
 	if err != nil {
 		result.ErrorClass = "settings"
 		return result

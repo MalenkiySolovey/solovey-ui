@@ -29,7 +29,7 @@ type discoverySettings struct {
 	reads      atomic.Int32
 }
 
-func (s *discoverySettings) GetTelegramBotToken() (string, error) {
+func (s *discoverySettings) GetTelegramBotToken(context.Context) (string, error) {
 	s.reads.Add(1)
 	return s.token, s.tokenError
 }

@@ -41,7 +41,7 @@ func (f telegramPortRoundTrip) RoundTrip(r *http.Request) (*http.Response, error
 type telegramPortSettings struct{ telegramsettings.Reader }
 
 func (telegramPortSettings) GetTelegramEnabled() (bool, error) { return true, nil }
-func (telegramPortSettings) GetTelegramBotToken() (string, error) {
+func (telegramPortSettings) GetTelegramBotToken(context.Context) (string, error) {
 	return "123456:port-private-token", nil
 }
 func (telegramPortSettings) GetTelegramChatID() (string, error)        { return "-99", nil }
