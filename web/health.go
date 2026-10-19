@@ -2,8 +2,10 @@ package web
 
 import (
 	"context"
+	"time"
 
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
+	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 )
 
 // panelHealthChecker is deliberately in-process: it confirms the configured
@@ -17,8 +19,12 @@ func (c panelHealthChecker) Check(ctx context.Context) componenthealth.Result {
 	if err := ctx.Err(); err != nil {
 		return componenthealth.Result{Status: componenthealth.StatusDegraded, FactCode: "health_check_timeout"}
 	}
-	if c.server == nil || c.server.listener == nil || c.server.httpServer == nil || !c.server.running.Load() {
+	// Start publishes running only after listener/server initialization; Stop
+	// clears it before retiring them. Do not race their mutable pointers here.
+	if c.server == nil || !c.server.running.Load() {
 		return componenthealth.Result{Status: componenthealth.StatusDegraded, FactCode: "panel_listener_unavailable"}
 	}
-	return componenthealth.Result{Status: componenthealth.StatusOK, Check: "panel_listener", FactCode: "listener_ready"}
+	return componenthealth.WithEvidence(componenthealth.Result{ResourceID: c.ResourceID(), Status: componenthealth.StatusOK,
+		Check: "panel_listener", FactCode: "listener_ready"}, "core", componenthealth.RuntimeReady, "panel_listener",
+		componenthealth.Revision(configidentity.GetVersion()), time.Now(), 30*time.Second)
 }

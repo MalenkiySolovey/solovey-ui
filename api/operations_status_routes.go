@@ -11,6 +11,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	componentregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/database/schema"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	pressuredomain "github.com/MalenkiySolovey/solovey-ui/internal/ops/resourcepressure"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
@@ -132,7 +133,7 @@ func projectOperationsStatus(input operationsStatusProjection) gin.H {
 		"update":      input.Update,
 		"pressure":    input.Pressure,
 		"sqlite":      gin.H{"state": input.SQLiteState, "runtime": input.SQLiteRuntime},
-		"migrations":  gin.H{"state": input.MigrationState, "journalRows": input.MigrationRows, "targetCoreSchema": "1.11"},
+		"migrations":  gin.H{"state": input.MigrationState, "journalRows": input.MigrationRows, "targetCoreSchema": schema.CurrentCoreVersion},
 		"owners":      input.Owners,
 		"backup":      gin.H{"state": input.BackupState, "restoreExecution": "STEP_UP_REQUIRED"},
 		"restore":     gin.H{"rehearsal": "AVAILABLE", "execution": "GLOBAL_ADMISSION_REQUIRED"},

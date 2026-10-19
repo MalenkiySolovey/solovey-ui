@@ -2249,7 +2249,7 @@
       "rule": "worker-lifetime",
       "path": "componenthost/health/registry.go",
       "symbol": "*Registry.Check",
-      "digest": "041c73a61c96f98b9cc60ab8eeca63246161957be209eff826ced258620360c8"
+      "digest": "109e493ece393eb8555725e75a158625a91ca1f7e78f192555c83066abc60dc7"
     },
     {
       "rule": "worker-lifetime",
@@ -2531,7 +2531,7 @@
       "rule": "worker-lifetime",
       "path": "web/web.go",
       "symbol": "*Server.Start",
-      "digest": "d712a8a673d27fac2b3e27689870f5b6ecc9e9fd806a1dae82d2d4a50e668723"
+      "digest": "98ed5edf3302ab99e96dae2cdcb8b2fddf4cf65d87a57927de06813d4916ff9d"
     }
   ]
 }

@@ -22,7 +22,6 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/cronjob/scheduler"
 	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/database/restorestate"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	deploymentdomain "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
@@ -481,52 +480,7 @@ func (a *APP) registerCoreHooks() error {
 	pressureService.Shared().Start(watchdogCtx)
 	updateManager := serviceupdate.SharedLifecycle()
 	updateManager.SetAdmissionCheck(func(class string) bool { return pressureService.Shared().Admission(class).Allowed })
-	updateManager.SetHealthCheck(func(ctx context.Context, operation model.UpdateOperation) serviceupdate.HealthResult {
-		reasons := []string{}
-		panel := componenthealth.Check(ctx, "core:panel:web")
-		if panel.Status != componenthealth.StatusOK {
-			reasons = append(reasons, "panel_api_health_failed")
-		}
-		coreReady := a.runtime != nil && a.runtime.Core() != nil && a.runtime.Core().IsRunning()
-		if operation.RestartClass == "stack" && !coreReady {
-			reasons = append(reasons, "core_runtime_health_failed")
-		}
-		databaseVersion, coreSchema := "", ""
-		runtimeStatus, runtimeErr := dbsqlite.InspectRuntime(dbsqlite.DB())
-		if runtimeErr != nil || !runtimeStatus.WALCapable || !runtimeStatus.WALResetSafe {
-			reasons = append(reasons, "sqlite_runtime_health_failed")
-		}
-		if db := dbsqlite.DB(); db == nil {
-			reasons = append(reasons, "database_health_unavailable")
-		} else {
-			var settings []model.Setting
-			if err := db.WithContext(ctx).Where("key IN ?", []string{"version", "coreSchemaVersion"}).Find(&settings).Error; err != nil {
-				reasons = append(reasons, "database_schema_health_unavailable")
-			} else {
-				for _, setting := range settings {
-					switch setting.Key {
-					case "version":
-						databaseVersion = setting.Value
-					case "coreSchemaVersion":
-						coreSchema = setting.Value
-					}
-				}
-			}
-			var failedMigrations int64
-			if err := db.WithContext(ctx).Model(&model.MigrationJournal{}).
-				Where("state IN ?", []string{"FAILED", "RECOVERY_REQUIRED"}).Count(&failedMigrations).Error; err != nil || failedMigrations != 0 {
-				reasons = append(reasons, "owner_migration_health_failed")
-			}
-		}
-		if configidentity.GetVersion() != operation.Version || databaseVersion != operation.Version || coreSchema != "1.11" {
-			reasons = append(reasons, "release_schema_identity_mismatch")
-		}
-		evidence := struct {
-			OperationID, Version, DatabaseVersion, CoreSchema, SQLiteRevision, PanelStatus string
-			CoreReady, Ready                                                               bool
-		}{operation.OperationID, operation.Version, databaseVersion, coreSchema, runtimeStatus.Revision, string(panel.Status), coreReady, len(reasons) == 0}
-		return serviceupdate.HealthResult{Ready: len(reasons) == 0, ReasonCodes: reasons, Revision: deploymentdomain.Revision(evidence)}
-	})
+	updateManager.SetHealthCheck(a.updateHealth)
 	if err := sshManager.ReconcileStartup(watchdogCtx); err != nil {
 		logger.Warning("SSH management startup reconciliation requires attention")
 	}
