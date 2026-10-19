@@ -82,11 +82,16 @@ func validFirewallRuntimeTransition(before, after FirewallRuntimeBinding) bool {
 		return before.State == "RESTORING_RUNTIME" && after.VerifiedBoot == before.AttemptBoot && after.AttemptBoot == before.AttemptBoot &&
 			after.MutationAt == before.MutationAt && after.HealthAt > before.MutationAt && after.ArtifactRevision == before.ArtifactRevision && !after.CleanupAttempted
 	}
-	if before.Schema != FirewallRuntimeSchema || after.VerifiedBoot != before.VerifiedBoot || after.AttemptBoot == "" || after.AttemptBoot == after.VerifiedBoot ||
+	if before.Schema != FirewallRuntimeSchema || after.VerifiedBoot != before.VerifiedBoot || after.AttemptBoot == "" ||
 		after.StartedAt <= 0 || after.Deadline <= after.StartedAt || after.Deadline-after.StartedAt > 300 {
 		return false
 	}
 	if before.State == "HEALTH_VERIFIED" {
+		// R4 admits one missing-table repair per committed composition in the
+		// same boot. A consumed attempt cannot become a periodic replay loop.
+		if after.AttemptBoot == after.VerifiedBoot && (before.AttemptBoot != "" || after.Reason != "planner_missing_owned_table") {
+			return false
+		}
 		return after.State == "RESTORE_REQUIRED" && after.MutationAt == 0 && after.HealthAt == 0 && after.HealthRevision == "" && !after.CleanupAttempted
 	}
 	if after.AttemptBoot != before.AttemptBoot || after.StartedAt != before.StartedAt || after.Deadline != before.Deadline {

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
@@ -156,15 +157,17 @@ type Result struct {
 // AuthorityObservation is the durable-state reconciliation result. It is a
 // fresh helper observation, never an inference from persisted ACTIVE state.
 type AuthorityObservation struct {
-	State                      string `json:"state"`
-	ManagedTablePresent        bool   `json:"managedTablePresent"`
-	CurrentRevision            string `json:"currentRevision,omitempty"`
-	CurrentSemanticSHA         string `json:"currentSemanticSha256,omitempty"`
-	CurrentTimedMembershipSHA  string `json:"currentTimedMembershipSha256,omitempty"`
-	ExpectedTimedMembershipSHA string `json:"expectedTimedMembershipSha256,omitempty"`
-	CommittedComposition       string `json:"committedCompositionRevision,omitempty"`
-	Reason                     string `json:"reason,omitempty"`
-	Persisted                  bool   `json:"-"`
+	NetworkDrift               []networkplan.Drift     `json:"networkDrift,omitempty"`
+	NetworkEvidence            *componenthealth.Result `json:"networkEvidence,omitempty"`
+	State                      string                  `json:"state"`
+	ManagedTablePresent        bool                    `json:"managedTablePresent"`
+	CurrentRevision            string                  `json:"currentRevision,omitempty"`
+	CurrentSemanticSHA         string                  `json:"currentSemanticSha256,omitempty"`
+	CurrentTimedMembershipSHA  string                  `json:"currentTimedMembershipSha256,omitempty"`
+	ExpectedTimedMembershipSHA string                  `json:"expectedTimedMembershipSha256,omitempty"`
+	CommittedComposition       string                  `json:"committedCompositionRevision,omitempty"`
+	Reason                     string                  `json:"reason,omitempty"`
+	Persisted                  bool                    `json:"-"`
 }
 
 // RecordWorkflowUnavailable publishes a fresh fail-closed startup observation
@@ -255,12 +258,27 @@ func (w Workflow) ReconcileAuthority(ctx context.Context) (AuthorityObservation,
 		observation.Reason = response.Reason
 		observationErr = fmt.Errorf("firewall authority observation failed: %s", response.Reason)
 	}
+	if snapshot.HasComposition {
+		expected := networkplan.Ownership{HostRef: hostref.Local(), Owner: "server-protection", ResourceRef: networkplan.ProtectionResourceRef,
+			PlanRevision: snapshot.Composition.ManagedPlanRevision, Kind: "filter_table", Purpose: "protection-enforcement", Allocation: networkplan.ProtectionAllocation}
+		var actual []networkplan.Allocation
+		if observation.ManagedTablePresent {
+			claim := expected
+			claim.PlanRevision = observation.CurrentRevision
+			actual = []networkplan.Allocation{{Ownership: claim, Proven: observation.State == FirewallLiveMatching || observation.State == FirewallLiveDrifted, IdentityMismatch: observation.State == FirewallLiveDrifted}}
+		}
+		observation.NetworkDrift = networkplan.CompareResource(expected, expected.PlanRevision, observation.State != FirewallLiveUnavailable, actual)
+	}
 	observation, persistErr := persistAuthorityObservation(ctx, w.Contributions, observation)
 	if persistErr != nil {
 		return observation, persistErr
 	}
 	if observationErr != nil {
 		return observation, observationErr
+	}
+	if observation.State == FirewallLiveMatching && snapshot.HasComposition {
+		proof := networkEvidence(snapshot.Composition.ManagedPlanRevision, componenthealth.Applied, w.now())
+		observation.NetworkEvidence = &proof
 	}
 	return observation, nil
 }
@@ -360,7 +378,7 @@ func (w Workflow) Prepare(ctx context.Context, input PrepareInput) (protectionop
 	result, err := w.Manager.Prepare(ctx, protectionoperations.PrepareRequest{
 		PlanRevision: composition.PlanRevision, Confirmation: "PREPARE SERVER PROTECTION " + composition.PlanRevision,
 		Acquire: protectionoperations.AcquireRequest{
-			Kind: protectionoperations.KindFirewall, ResourceID: "managed-table:inet:solovey_protection",
+			Kind: protectionoperations.KindFirewall, ResourceID: networkplan.ProtectionResourceRef,
 			Protocol: "inet", IdempotencyKey: input.IdempotencyKey, Actor: input.Actor,
 			HelperRevision: capabilities.Revision,
 		},
@@ -437,7 +455,7 @@ func (w Workflow) apply(ctx context.Context, input ApplyInput) (Result, error) {
 	}
 	desired, err := decodeContributionJSON(transition.DesiredJSON)
 	if err != nil || desired.SemanticRevision != requested.SemanticRevision || desired.ContributionID != requested.ContributionID ||
-		operation.PlanRevision != transition.ManagedPlanRevision || operation.ResourceID != "managed-table:inet:solovey_protection" {
+		operation.PlanRevision != transition.ManagedPlanRevision || operation.ResourceID != networkplan.ProtectionResourceRef {
 		return Result{}, ErrPlanRevision
 	}
 	if operation.State == protectionoperations.StateApplied {
@@ -876,7 +894,7 @@ func (w Workflow) finishRollback(ctx context.Context, rolling protectionreposito
 		}
 		candidate := RenderManagedNFT(currentComposition.Plan)
 		candidateSHA := artifactSHA([]byte(candidate))
-		deleteArtifact := []byte("delete table inet solovey_protection\n")
+		deleteArtifact := nftables.DeleteOwnedTableCandidate()
 		deleteSHA := artifactSHA(deleteArtifact)
 		revision := rollbackArtifactRevision(rolling.OperationID, "empty")
 		files := candidateFiles(currentComposition.Plan, candidate, candidateSHA)
@@ -943,6 +961,15 @@ func (w Workflow) finishRollback(ctx context.Context, rolling protectionreposito
 			return w.rollbackFailure(ctx, rolling, result, ErrContributionConflict, completeOperation)
 		}
 		if !alreadyApplied {
+			// Compensation restores the independently authenticated owner target,
+			// rather than admitting a new forward policy from stale browser facts.
+			// Bind its exact artifact to the freshly proven live before-image;
+			// the Core adapter rechecks that image at the mutation boundary.
+			if err := networkplan.CheckRollback(networkplan.RollbackIntent{HostRef: hostref.Local(), Owner: "server-protection", ResourceRef: networkplan.ProtectionResourceRef,
+				CurrentRevision: validated.PreviousRevision, CurrentSemantic: validated.PreviousSemanticSHA256,
+				CurrentMembership: validated.PreviousTimedMembershipSHA256, CheckpointDigest: candidateSHA}); err != nil {
+				return w.rollbackFailure(ctx, rolling, result, err, completeOperation)
+			}
 			nftResult, applyErr := w.call(ctx, rolling, protectionhelper.OperationNFTApply, paths, composition.PlanRevision, candidateSHA, "", validated.PreviousRevision, true, composition.CandidateSemanticSHA, validated.PreviousSemanticSHA256, composition.CandidateTimedMembershipSHA, validated.PreviousTimedMembershipSHA256)
 			if applyErr != nil || nftResult == nil || nftResult.AppliedRevision != composition.PlanRevision || nftResult.CandidateSHA256 != candidateSHA || nftResult.SemanticSHA256 != composition.CandidateSemanticSHA || nftResult.TimedMembershipSHA256 != composition.CandidateTimedMembershipSHA {
 				return w.rollbackFailure(ctx, rolling, result, errors.Join(ErrApplyVerify, applyErr), completeOperation)
@@ -1200,7 +1227,7 @@ func (w Workflow) call(ctx context.Context, operation protectionrepository.Opera
 			request.NFTValidate.ExpectedTimedMembershipSHA256 = semantic[1]
 		}
 	case protectionhelper.OperationNFTApply:
-		request.NFTApply = &protectionhelper.NFTApplyRequest{CandidatePath: paths.candidate, RollbackArtifactPath: paths.rollback, ExpectedTable: "inet solovey_protection", ExpectedRevision: planRevision, ExpectedSHA256: candidateSHA, ExpectedPreviousRevision: previousRevision, ExpectedPreviousTablePresent: previousPresent, CandidateCapturedAtUnixNano: paths.capturedAt}
+		request.NFTApply = &protectionhelper.NFTApplyRequest{CandidatePath: paths.candidate, RollbackArtifactPath: paths.rollback, ExpectedTable: networkplan.ProtectionTableCLI, ExpectedRevision: planRevision, ExpectedSHA256: candidateSHA, ExpectedPreviousRevision: previousRevision, ExpectedPreviousTablePresent: previousPresent, CandidateCapturedAtUnixNano: paths.capturedAt}
 		if len(semantic) > 0 {
 			request.NFTApply.ExpectedSemanticSHA256 = semantic[0]
 		}
@@ -1214,7 +1241,14 @@ func (w Workflow) call(ctx context.Context, operation protectionrepository.Opera
 			request.NFTApply.ExpectedPreviousTimedMembershipSHA256 = semantic[3]
 		}
 	case protectionhelper.OperationNFTRollback:
-		request.NFTRollback = &protectionhelper.NFTRollbackRequest{RollbackArtifactPath: paths.rollback, ExpectedTable: "inet solovey_protection", ExpectedSHA256: rollbackSHA, ExpectedCurrentRevision: planRevision}
+		if len(semantic) < 2 {
+			return nil, &networkplan.Conflict{Reason: networkplan.InvalidIntent, ResourceRef: networkplan.ProtectionResourceRef}
+		}
+		if err := networkplan.CheckRollback(networkplan.RollbackIntent{HostRef: hostref.Local(), Owner: "server-protection", ResourceRef: networkplan.ProtectionResourceRef,
+			CurrentRevision: planRevision, CurrentSemantic: semantic[0], CurrentMembership: semantic[1], CheckpointDigest: rollbackSHA}); err != nil {
+			return nil, err
+		}
+		request.NFTRollback = &protectionhelper.NFTRollbackRequest{RollbackArtifactPath: paths.rollback, ExpectedTable: networkplan.ProtectionTableCLI, ExpectedSHA256: rollbackSHA, ExpectedCurrentRevision: planRevision}
 		if len(semantic) > 0 {
 			request.NFTRollback.ExpectedCurrentSemanticSHA256 = semantic[0]
 		}
@@ -1229,6 +1263,10 @@ func (w Workflow) call(ctx context.Context, operation protectionrepository.Opera
 		return nil, err
 	}
 	if !response.OK {
+		switch response.NetworkReason {
+		case networkplan.ResourceConflict, networkplan.StalePlan, networkplan.CandidateChanged:
+			return nil, &networkplan.Conflict{Reason: response.NetworkReason, ResourceRef: networkplan.ProtectionResourceRef, Allocation: networkplan.ProtectionAllocation}
+		}
 		if response.Code == protectionhelper.CodeMissingCapability {
 			return nil, fmt.Errorf("%w: %s", ErrMissingCapability, response.Reason)
 		}
@@ -1253,7 +1291,7 @@ func candidateFiles(plan FirewallPlan, candidate, candidateSHA string) map[strin
 		mode = "coexistence_endpoint_managed"
 		graphRevision = plan.GraphRevision
 	}
-	metadata := fmt.Sprintf("{\"family\":\"inet\",\"table\":\"solovey_protection\",\"mode\":%q,\"plan_revision\":%q,\"graph_revision\":%q}\n", mode, plan.Revision, graphRevision)
+	metadata := fmt.Sprintf("{\"family\":%q,\"table\":%q,\"mode\":%q,\"plan_revision\":%q,\"graph_revision\":%q}\n", networkplan.ProtectionFamily, networkplan.ProtectionTable, mode, plan.Revision, graphRevision)
 	return map[string][]byte{
 		"candidate.nft":      []byte(candidate),
 		"candidate.sha256":   []byte(candidateSHA + "\n"),

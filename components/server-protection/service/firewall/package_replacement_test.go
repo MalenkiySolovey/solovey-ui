@@ -145,6 +145,11 @@ func assertPackageReplacement(t *testing.T, w *Workflow, nft *testHelperInvoker,
 	w.Artifacts = artifacts.Service{Storage: newStorage, Store: repo}
 	w.Marker, w.State = newStorage, newStorage
 	w.CurrentRuntimeManagement = baseline.RuntimeManagement
+	if scenario == "absent" {
+		// A package restart has no reusable browser management grant. Unknown
+		// current owner facts must retain committed intent without mutation.
+		w.CurrentRuntimeManagement = func(context.Context) (RuntimeManagement, error) { return RuntimeManagement{}, ErrUnsafeResource }
+	}
 	if err := restarted.SetReconcilerForKind(operations.KindFirewall, RuntimeLossReconciler{Workflow: w}); err != nil {
 		t.Fatal(err)
 	}
@@ -167,13 +172,26 @@ func assertPackageReplacement(t *testing.T, w *Workflow, nft *testHelperInvoker,
 	if err != nil {
 		t.Fatal(err)
 	}
+	if scenario == "absent" {
+		if helperOperationCount(nft.Requests, helper.OperationNFTApply) != 1 || !after.HasComposition || nft.ManagedTablePresent || op.State != operations.StateReconcileRequired || after.Composition.Runtime.State != "RESTORE_REQUIRED" || after.Composition.Runtime.Reason != "boot_restore_waiting_for_prerequisites" || after.Composition.Runtime.MutationAt != 0 || after.Composition.Runtime.AttemptBoot != before.Composition.Runtime.VerifiedBoot {
+			t.Fatalf("package restart owned-table repair: applies=%d composition=%v present=%v operation=%s runtime=%+v", helperOperationCount(nft.Requests, helper.OperationNFTApply), after.HasComposition, nft.ManagedTablePresent, op.State, after.Composition.Runtime)
+		}
+		if _, err := restarted.Recover(ctx); err != nil {
+			t.Fatal(err)
+		}
+		repeated, err := repo.OperationByID(ctx, id)
+		if err != nil || repeated.Revision != op.Revision {
+			t.Fatal("unchanged missing prerequisites created another reconcile claim")
+		}
+		return
+	}
 	if helperOperationCount(nft.Requests, helper.OperationNFTApply) != 1 {
 		t.Fatal("package startup repeated forward mutation")
 	}
 	if after.HasComposition && (after.Composition.Runtime.AttemptBoot != before.Composition.Runtime.AttemptBoot || after.Composition.Runtime.MutationAt != before.Composition.Runtime.MutationAt) {
 		t.Fatal("same boot was classified as restore")
 	}
-	if scenario == "absent" || scenario == "rolled_back" {
+	if scenario == "rolled_back" {
 		if after.HasComposition || len(after.Contributions) != 0 || nft.ManagedTablePresent {
 			t.Fatal("inactive authority resurrected")
 		}

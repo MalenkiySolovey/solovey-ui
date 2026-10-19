@@ -26,6 +26,31 @@ func fixture() (Intent, Facts) {
 
 func hash(value string) string { return revision(value) }
 
+func TestDriftForDurableOwnerSealRemainsScopedAndFenced(t *testing.T) {
+	intent, facts := fixture()
+	plan, err := Compile(intent, facts)
+	if err != nil {
+		t.Fatal(err)
+	}
+	expected := plan.Resources()[0]
+	extra := Allocation{Ownership: expected, Proven: true}
+	extra.Allocation += ":chain:unexpected"
+	if drift := CompareResource(expected, expected.PlanRevision, true, []Allocation{extra}); len(drift) != 1 || drift[0].Kind != UnexpectedManagedResource || drift[0].Repairable {
+		t.Fatalf("unexpected allocation authorized cleanup: %#v", drift)
+	}
+	extra.Owner = "another-owner"
+	if drift := CompareResource(expected, expected.PlanRevision, true, []Allocation{extra}); len(drift) != 1 || drift[0].Kind != Missing {
+		t.Fatalf("another owner's allocation was adopted: %#v", drift)
+	}
+	actual := Allocation{Ownership: expected, Proven: true, IdentityMismatch: true}
+	if drift := CompareResource(expected, hash("old observation"), true, []Allocation{actual}); len(drift) != 1 || drift[0].Kind != Stale || drift[0].Repairable {
+		t.Fatalf("late identity mismatch authorized repair: %#v", drift)
+	}
+	if drift := CompareResource(expected, expected.PlanRevision, true, []Allocation{actual}); len(drift) != 1 || drift[0].Kind != Mismatch {
+		t.Fatalf("same-marker semantic drift was hidden: %#v", drift)
+	}
+}
+
 func requireReason(t *testing.T, err error, reason Reason) {
 	t.Helper()
 	var problem *Conflict

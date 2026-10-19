@@ -10,8 +10,9 @@ import (
 
 // RuntimeLossReconciler owns restart classification for an already APPLIED
 // managed-table generation. Sealed authority in a proven new boot enters the
-// workflow's bounded runtime continuation. Same-boot loss and unsealed legacy
-// authority retain safe retirement. Ambiguous state remains reconcile-required.
+// workflow's bounded runtime continuation. Sealed same-boot loss gets one owned
+// repair; unsealed legacy authority retains safe retirement. Ambiguous state
+// remains reconcile-required.
 type RuntimeLossReconciler struct {
 	Workflow *Workflow
 }
@@ -39,6 +40,25 @@ func (r RuntimeLossReconciler) NeedsReconcile(ctx context.Context, operation pro
 		// retirement, even if a later observation changes. Only the operator
 		// lifecycle may resolve them after proving current safety.
 		return false, nil
+	}
+	if operation.State == protectionoperations.StateReconcileRequired && binding.State == "RESTORE_REQUIRED" && binding.Reason == "boot_restore_waiting_for_prerequisites" && !zeroMutationExpiredRuntime(binding, r.Workflow.now()) {
+		if r.Workflow.Runtime == nil || r.Workflow.CurrentRuntimeManagement == nil {
+			return false, nil
+		}
+		current, currentErr := r.Workflow.CurrentRuntimeManagement(ctx)
+		values, valuesErr := contributionsFromModels(snapshot.Contributions)
+		composition, composeErr := composeFirewall(values)
+		capabilities, capabilityErr := r.Workflow.Capabilities(ctx)
+		return currentErr == nil && valuesErr == nil && composeErr == nil && capabilityErr == nil &&
+			firewallCapabilitiesAvailable(capabilities, composition.Plan) && (!r.Workflow.Runtime.RequiresBaseFirewall() || capabilities.NFT.BaseFirewallPresent) &&
+			validateRuntimeManagement(composition.Plan, current, r.Workflow.now()) == nil && !healthFailedFor(current.Resources, r.Workflow.Health(ctx, current.Resources)), nil
+	}
+	if operation.State == protectionoperations.StateReconcileRequired && binding.State == "HEALTH_VERIFIED" && binding.AttemptBoot == binding.VerifiedBoot && r.Workflow.Runtime != nil {
+		boot, bootErr := r.Workflow.Runtime.Generation(ctx)
+		if bootErr == nil && boot == binding.VerifiedBoot {
+			observation, err := r.Workflow.ReconcileAuthority(ctx)
+			return err == nil && observation.State == FirewallLiveMatching, nil
+		}
 	}
 	if operation.State == protectionoperations.StateReconcileRequired && binding.State == "RESTORE_FAILED" {
 		// The existing failure-cleanup path still requires this attempt's

@@ -132,6 +132,9 @@ func TestManagedNFTHostSequence(t *testing.T) {
 	revisionA, revisionB := strings.Repeat("a", 64), strings.Repeat("b", 64)
 	candidateA := []byte("table inet solovey_protection {\n  comment \"solovey-revision:" + revisionA + "\"\n  set solovey_allow_tcp_ports {\n    type inet_service\n    elements = { 22 }\n  }\n  set solovey_block4_aaaaaaaaaaaa {\n    type ipv4_addr\n    flags interval,timeout\n    size 4096\n    timeout 3600s\n    elements = { 192.0.2.1 timeout 300s }\n  }\n  chain solovey_input {\n    type filter hook input priority -5; policy accept;\n    counter accept\n  }\n  chain solovey_endpoint_aaaaaaaaaaaa {\n    ip saddr @solovey_block4_aaaaaaaaaaaa counter drop\n    counter accept\n  }\n}\n")
 	candidateB := []byte("table inet solovey_protection {\n  comment \"solovey-revision:" + revisionB + "\"\n  set solovey_allow_tcp_ports {\n    type inet_service\n    elements = { 22, 443 }\n  }\n  chain solovey_input {\n    type filter hook input priority -5; policy accept;\n    iifname \"lo\" counter accept\n    counter accept\n  }\n}\n")
+	// Include the existing UDP contribution grammar in real check/apply/list
+	// and rollback qualification, alongside timed set membership.
+	candidateA = []byte(strings.Replace(string(candidateA), "    ip saddr @solovey_block4_aaaaaaaaaaaa", "    ct state new limit rate over 200/second burst 400 packets counter drop\n    ip saddr @solovey_block4_aaaaaaaaaaaa", 1))
 	semanticA, err := ManagedSemanticSHA256(candidateA)
 	if err != nil {
 		t.Fatal(err)

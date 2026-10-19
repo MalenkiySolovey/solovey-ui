@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
+	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 
 	sshbroker "github.com/MalenkiySolovey/solovey-ui/internal/ops/sshbroker"
 )
@@ -113,6 +114,10 @@ func (e ContractEngine) HandleContext(ctx context.Context, request Request) Resp
 	}
 	if err != nil {
 		response.Code, response.Reason = CodeValidationFailed, "managed_operation_failed"
+		var conflict *networkplan.Conflict
+		if errors.As(err, &conflict) {
+			response.NetworkReason = conflict.Reason
+		}
 		if errors.Is(err, context.DeadlineExceeded) {
 			response.Code, response.Reason = CodeTimeout, "timeout"
 		} else if errors.Is(err, context.Canceled) {

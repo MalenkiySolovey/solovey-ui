@@ -11,6 +11,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
+
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
 
@@ -250,7 +252,7 @@ func loadFirewallRecoveryEvidence(storage *Storage, operation protectionreposito
 	if err != nil || len(rollback) == 0 || len(rollback) > 512<<10 || digestArtifact(rollback) != rollbackSHA {
 		return firewallRecoveryEvidence{}, errors.Join(errors.New("firewall recovery rollback artifact is invalid"), err)
 	}
-	previousPresent := strings.TrimSpace(string(rollback)) != "delete table inet solovey_protection"
+	previousPresent := strings.TrimSpace(string(rollback)) != strings.TrimSpace(string(nftables.DeleteOwnedTableCandidate()))
 	previousRevision := ""
 	if previousPresent {
 		previousMarkers := firewallRevisionMarker.FindAllSubmatch(rollback, -1)

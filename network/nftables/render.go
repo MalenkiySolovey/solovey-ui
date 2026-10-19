@@ -20,7 +20,9 @@ func RenderProtection(intent networkplan.ProtectionEnforcementIntent, managed bo
 
 // DeleteOwnedTableCandidate is used only with fresh proven ownership and the
 // expected exact state in the existing typed rollback boundary.
-func DeleteOwnedTableCandidate() []byte { return []byte("delete table inet solovey_protection\n") }
+func DeleteOwnedTableCandidate() []byte {
+	return []byte("delete table " + networkplan.ProtectionTableCLI + "\n")
+}
 
 func renderLegacyProtection(plan networkplan.ProtectionEnforcementIntent, managed bool) string {
 	var output strings.Builder

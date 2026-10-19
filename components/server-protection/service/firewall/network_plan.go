@@ -8,6 +8,7 @@ import (
 
 	componenthealth "github.com/MalenkiySolovey/solovey-ui/componenthost/health"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/hostref"
+	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	helper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	platform "github.com/MalenkiySolovey/solovey-ui/internal/deployment"
@@ -73,6 +74,33 @@ func (w Workflow) compileNetwork(ctx context.Context, desired FirewallPlan, capa
 		err = &networkplan.Conflict{Reason: networkplan.StalePlan, ResourceRef: networkplan.ProtectionResourceRef}
 	}
 	return plan, facts, err
+}
+
+func (w Workflow) runtimeNetworkFacts(plan FirewallPlan, current RuntimeManagement, capabilities *helper.CapabilitiesResult, boot string) (networkplan.Facts, error) {
+	if !validFirewallSHA(boot) || validateRuntimeManagement(plan, current, w.now()) != nil {
+		return networkplan.Facts{}, &networkplan.Conflict{Reason: networkplan.ManagementUnknown, ResourceRef: networkplan.ProtectionResourceRef}
+	}
+	// The existing owner has just proved complete canonical resource equality
+	// and current management coverage. Only after that proof may its sealed
+	// semantic bindings be used for runtime continuation, without reviving a
+	// persisted browser/session mutation grant.
+	intent := protectionIntent(plan)
+	facts := networkplan.Facts{HostRef: hostref.Local(), InventoryComplete: true, Resources: intent.Binding.Resources,
+		Revision: hostresources.Revision(struct {
+			Boot, Resources, Management string
+			Trusted                     []string
+		}{boot,
+			hostresources.Revision(CanonicalPlanResources(current.Resources)), BaselineConfigurationRevision(current.Management), uniqueSorted(current.Trusted)}),
+		Capability: platform.PlatformFact{Availability: platform.Unavailable, Backend: "nft"}}
+	if firewallCapabilitiesAvailable(capabilities, plan) {
+		facts.CapabilityRevision, facts.Capability = capabilities.Revision, platform.PlatformFact{Availability: platform.Available, Backend: "nft"}
+	}
+	for _, binding := range facts.Resources {
+		if binding.Management {
+			facts.Continuity = append(facts.Continuity, networkplan.Continuity{ResourceRef: binding.ResourceRef, EndpointRevision: binding.EndpointRevision, Status: "VERIFIED"})
+		}
+	}
+	return facts, nil
 }
 
 func networkManifest(plan networkplan.ProtectionPlan, candidateSHA string) []byte {
