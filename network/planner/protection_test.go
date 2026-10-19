@@ -33,6 +33,14 @@ func TestProtectionCompileBindsEveryDecisionAndOwnedObject(t *testing.T) {
 	if len(first.Resources()) != 6 {
 		t.Fatalf("missing table/chain/set ownership: %#v", first.Resources())
 	}
+	preview := first.Preview()
+	if preview.HostRef != first.Intent().HostRef || preview.Owner != first.Intent().Owner || preview.ResourceRef != first.Intent().ResourceRef || preview.DesiredRevision != first.Intent().DesiredRevision || preview.InputRevision != first.Intent().InputRevision || preview.PlanRevision != first.Revision() || !reflect.DeepEqual(preview.Resources, first.Resources()) {
+		t.Fatal("preview lost the accepted intent/resource impact identity")
+	}
+	preview.Resources[0].Owner = "changed-by-preview-reader"
+	if first.Resources()[0].Owner != first.Intent().Owner {
+		t.Fatal("preview changed an immutable plan")
+	}
 	for _, resource := range first.Resources() {
 		if !resource.HostRef.IsLocal() || resource.Owner != "server-protection" || resource.ResourceRef == "" || resource.PlanRevision != first.Revision() || resource.Kind == "" || resource.Purpose == "" {
 			t.Fatalf("incomplete ownership: %#v", resource)

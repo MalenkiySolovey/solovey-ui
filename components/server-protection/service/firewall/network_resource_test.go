@@ -2,6 +2,7 @@ package firewall
 
 import (
 	"context"
+	"errors"
 	"reflect"
 	"strings"
 	"testing"
@@ -9,8 +10,78 @@ import (
 
 	hostsurface "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
+	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
 )
+
+func TestNetworkResourceLifecycleRetiresStaleGuardWithoutRebindingOtherPolicy(t *testing.T) {
+	w, adapter, _, _ := newFakeCIWorkflow(t, nil)
+	current := compositionEndpointPlan(t)
+	w.CurrentNetworkInputs = func(context.Context, FirewallPlan) (FirewallPlan, error) { return current, nil }
+	applyCompositionWorkflowPlan(t, &w, current, "guarded-baseline")
+	guard4 := compositionPlanForUDP(t, current, compositionEndpoint(current, hostresources.NetworkUDP, hostresources.AddressFamilyIPv4))
+	guard4Operation := applyCompositionWorkflowPlan(t, &w, guard4, "guarded-udp4")
+	guard6 := compositionPlanForUDP(t, current, compositionEndpoint(current, hostresources.NetworkUDP, hostresources.AddressFamilyIPv6))
+	guard6Contribution, err := contributionFromPlan(guard6)
+	if err != nil {
+		t.Fatal(err)
+	}
+	applyCompositionWorkflowPlan(t, &w, guard6, "guarded-udp6")
+	resources := cloneFirewallPlan(current).Resources
+	changedRef, retainedRef := resources[0].ID, resources[1].ID
+	resources[0].Port = 8443
+	resources[0].Capabilities.ConfigRevision = strings.Repeat("e", 64)
+	for i := range resources[0].ListenIntents {
+		resources[0].ListenIntents[i].Port = 8443
+		resources[0].ListenIntents[i].ConfigurationRevision = resources[0].Capabilities.ConfigRevision
+	}
+	for i := range resources[0].Endpoints {
+		resources[0].Endpoints[i].Key.Port = 8443
+		resources[0].Endpoints[i].ConfigurationRevision = resources[0].Capabilities.ConfigRevision
+	}
+	current = networkOwnerResourcePlan(t, resources)
+	before := helperOperationCount(adapter.Requests, protectionhelper.OperationNFTApply)
+	_, err = w.Prepare(t.Context(), PrepareInput{Plan: current, Actor: "resource-owner", IdempotencyKey: "stale-guard", Confirmation: "PREPARE SERVER PROTECTION " + current.Revision})
+	if !errors.Is(err, ErrUnsafeResource) || helperOperationCount(adapter.Requests, protectionhelper.OperationNFTApply) != before {
+		t.Fatalf("old exact-socket policy silently rebound: %v", err)
+	}
+	// The feature owner retires its old exact-socket decision using normal
+	// compensation before issuing new canonical intent. Planner never invents
+	// a new UDP policy or carries a stale socket grant onto another endpoint.
+	if _, err := w.Rollback(t.Context(), guard4Operation.OperationID, "ROLLBACK SERVER PROTECTION "+guard4Operation.OperationID); err != nil {
+		t.Fatal(err)
+	}
+	applyCompositionWorkflowPlan(t, &w, current, "changed-guarded-baseline")
+	newGuard := compositionPlanForUDP(t, current, compositionEndpoint(current, hostresources.NetworkUDP, hostresources.AddressFamilyIPv4))
+	newGuardContribution, err := contributionFromPlan(newGuard)
+	oldGuardContribution, oldErr := contributionFromPlan(guard4)
+	if err != nil || oldErr != nil || newGuardContribution.ContributionID != oldGuardContribution.ContributionID || newGuardContribution.SemanticRevision == oldGuardContribution.SemanticRevision {
+		t.Fatal("changed canonical endpoint did not retain semantic guard identity with a new revision")
+	}
+	newGuardOperation := applyCompositionWorkflowPlan(t, &w, newGuard, "changed-udp4")
+	if _, err := w.Rollback(t.Context(), newGuardOperation.OperationID, "ROLLBACK SERVER PROTECTION "+newGuardOperation.OperationID); err != nil {
+		t.Fatal(err)
+	}
+	current = networkOwnerResourcePlan(t, resources[1:])
+	applyCompositionWorkflowPlan(t, &w, current, "deleted-guarded-resource")
+	snapshot, err := w.Contributions.FirewallAuthority(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	values, err := contributionsFromSnapshot(snapshot)
+	if err != nil || len(values) != 2 || contributionRevision(values, guard6Contribution.ContributionID) != guard6Contribution.SemanticRevision || contributionRevision(values, newGuardContribution.ContributionID) != "" {
+		t.Fatal("retirement removed the independent IPv6 guard or retained the deleted binding")
+	}
+	composition, err := composeFirewall(values)
+	if err != nil || len(composition.Plan.Endpoints) != 1 || composition.Plan.Endpoints[0].ResourceID != retainedRef || composition.Plan.Endpoints[0].UDPFlowPolicy == nil {
+		t.Fatalf("remaining materialized policy changed: %v", err)
+	}
+	for _, endpoint := range composition.Plan.Endpoints {
+		if endpoint.ResourceID == changedRef {
+			t.Fatal("deleted semantic resource retained an endpoint allocation")
+		}
+	}
+}
 
 func TestNetworkSemanticEndpointChangeAndDeletionUseCurrentOwner(t *testing.T) {
 	w, adapter, _, _ := newFakeCIWorkflow(t, nil)
