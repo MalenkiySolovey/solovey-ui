@@ -3,12 +3,13 @@ package nftables
 import (
 	"context"
 	"errors"
-	"fmt"
 	"regexp"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
+
+	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
 // ManagedNFTSemanticSchemaV1 identifies the single semantic identity used for
@@ -76,7 +77,7 @@ func observeManagedTable(ctx context.Context, executor NFTExecutor) (managedNFTO
 	}
 	canonical, revision, membership, err := canonicalManagedNFTProjection(raw, false)
 	if err != nil {
-		return managedNFTObservation{}, fmt.Errorf("managed table semantic observation failed: %w", err)
+		return managedNFTObservation{}, errors.Join(networkFailure(networkplan.ResourceConflict, "managed table ownership is not proven"), err)
 	}
 	return managedNFTObservation{present: true, revision: revision,
 		semanticSHA:        sha256Hex(append([]byte(ManagedNFTSemanticSchemaV1+"\x00"), canonical...)),

@@ -28,6 +28,18 @@ func TestNFTAdvancedCapabilitiesRequireIndependentReadOnlyCheckProof(t *testing.
 	}
 }
 
+func TestExistingUDPPolicyCandidateHasOneBoundedGrammar(t *testing.T) {
+	revision := strings.Repeat("a", 64)
+	data := []byte("table inet solovey_protection {\n comment \"solovey-revision:" + revision + "\"\n chain solovey_endpoint_aaaaaaaaaaaa {\n ct state new limit rate over 200/second burst 400 packets counter drop\n counter accept\n }\n}\n")
+	if err := CheckProtectionCandidate(data, revision, sha256Hex(data)); err != nil {
+		t.Fatal(err)
+	}
+	changed := []byte(strings.Replace(string(data), "200/second", "201/second", 1))
+	if err := CheckProtectionCandidate(changed, revision, sha256Hex(changed)); err == nil {
+		t.Fatal("adapter accepted an unimplemented rate vocabulary")
+	}
+}
+
 func TestManagedSemanticIdentityIgnoresVolatileFormattingAndAging(t *testing.T) {
 	revision := strings.Repeat("a", 64)
 	candidate := []byte("table inet solovey_protection {\n  comment \"solovey-revision:" + revision + "\"\n  set solovey_allow_tcp_ports {\n    type inet_service\n    elements = { 22 }\n  }\n  chain solovey_input {\n    type filter hook input priority -5; policy accept;\n    counter accept\n  }\n}\n")

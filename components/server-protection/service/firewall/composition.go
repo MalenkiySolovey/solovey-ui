@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
+
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	protectionhelper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
@@ -85,7 +87,7 @@ func contributionFromPlan(plan FirewallPlan) (ManagedFirewallContributionV1, err
 			return ManagedFirewallContributionV1{}, err
 		}
 		value := ManagedFirewallContributionV1{Schema: FirewallContributionSchemaV1, ContributionID: BaselineContributionID,
-			Kind: ContributionKindBaseline, ResourceID: "managed-table:inet:solovey_protection", Network: hostresources.Network("inet"),
+			Kind: ContributionKindBaseline, ResourceID: networkplan.ProtectionResourceRef, Network: hostresources.Network("inet"),
 			AddressFamily: hostresources.AddressFamily("inet"), Baseline: &baseline}
 		return finalizeContribution(value), nil
 	}

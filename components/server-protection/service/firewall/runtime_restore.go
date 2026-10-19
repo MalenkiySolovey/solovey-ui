@@ -5,10 +5,13 @@ import (
 	"errors"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
+
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	helper "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/helper"
 	operations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
+	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
 type RuntimeLifecycle interface {
@@ -56,7 +59,7 @@ func (w Workflow) reconcileRuntime(ctx context.Context, operation repository.Ope
 	transition, transitionErr := w.Contributions.FirewallTransition(ctx, operation.OperationID)
 	if err != nil || composeErr != nil || transitionErr != nil || transition.Schema != FirewallTransitionSchemaV2 || transition.State != "HEALTH_VERIFIED" || snapshot.Composition.State != "ACTIVE" ||
 		!matchesCommittedComposition(composition, snapshot.Composition) ||
-		transition.AfterCompositionRevision != composition.Revision || transition.ManagedPlanRevision != composition.PlanRevision || transition.CandidateSHA256 != composition.CandidateSHA || transition.CandidateSemanticSHA256 != composition.CandidateSemanticSHA || transition.CandidateTimedMembershipSHA256 != composition.CandidateTimedMembershipSHA || operation.PlanRevision != composition.PlanRevision || operation.ResourceID != "managed-table:inet:solovey_protection" {
+		transition.AfterCompositionRevision != composition.Revision || transition.ManagedPlanRevision != composition.PlanRevision || transition.CandidateSHA256 != composition.CandidateSHA || transition.CandidateSemanticSHA256 != composition.CandidateSemanticSHA || transition.CandidateTimedMembershipSHA256 != composition.CandidateTimedMembershipSHA || operation.PlanRevision != composition.PlanRevision || operation.ResourceID != networkplan.ProtectionResourceRef {
 		return runtimeDecision("firewall_restore_integrity_failed"), true, nil
 	}
 	if err := w.validateRuntimeContributionOwners(ctx, snapshot); err != nil {
@@ -91,7 +94,12 @@ func (w Workflow) reconcileRuntime(ctx context.Context, operation repository.Ope
 		return runtimeDecision("firewall_boot_generation_unavailable"), true, nil
 	}
 	if binding.State == "HEALTH_VERIFIED" && binding.VerifiedBoot == boot {
-		return operations.ReconcileDecision{}, false, nil
+		if observation.State == FirewallLiveMatching {
+			return operations.ReconcileDecision{}, false, nil
+		}
+		if binding.AttemptBoot != "" {
+			return runtimeDecision("firewall_repair_attempt_consumed"), true, nil
+		}
 	}
 	if binding.State == "HEALTH_VERIFIED" {
 		if observation.State != FirewallLiveAbsent {
@@ -99,6 +107,9 @@ func (w Workflow) reconcileRuntime(ctx context.Context, operation repository.Ope
 		}
 		next := binding
 		next.State, next.AttemptBoot, next.Reason = "RESTORE_REQUIRED", boot, "boot_runtime_loss_detected"
+		if binding.VerifiedBoot == boot {
+			next.Reason = "planner_missing_owned_table"
+		}
 		next.StartedAt, next.Deadline = w.now().Unix(), w.now().Add(5*time.Minute).Unix()
 		next.MutationAt, next.HealthAt, next.HealthRevision = 0, 0, ""
 		next.ArtifactRevision, next.CleanupAttempted = "", false
@@ -175,11 +186,21 @@ func (w Workflow) reconcileRuntime(ctx context.Context, operation repository.Ope
 		return w.failRuntimeRestore(ctx, operation, composition, binding, "boot_restore_projection_invalid")
 	}
 	if binding.State == "RESTORE_REQUIRED" {
+		networkFacts, factsErr := w.runtimeNetworkFacts(composition.Plan, current, capabilities, boot)
+		if factsErr != nil {
+			return runtimeDecision("planner_runtime_inputs_unavailable"), true, factsErr
+		}
+		networkPlan, planErr := networkplan.CompileProtection(protectionIntent(composition.Plan), networkFacts)
+		if planErr != nil {
+			return runtimeDecision("planner_runtime_conflict"), true, planErr
+		}
 		revision := rollbackArtifactRevision(operation.OperationID, hostresources.Revision(struct {
 			Boot     string
 			Revision int
 		}{boot, operation.Revision})[:24])
-		artifact, err := w.Artifacts.WriteRevision(ctx, operation.OperationID, revision, candidateFiles(composition.Plan, candidate, runtimeSHA))
+		files := candidateFiles(composition.Plan, candidate, runtimeSHA)
+		files["network-plan.json"] = networkManifest(networkPlan, runtimeSHA)
+		artifact, err := w.Artifacts.WriteRevision(ctx, operation.OperationID, revision, files)
 		if err != nil {
 			return runtimeDecision("boot_restore_artifact_failed"), true, err
 		}
@@ -189,10 +210,22 @@ func (w Workflow) reconcileRuntime(ctx context.Context, operation repository.Ope
 		if err != nil || validated == nil || validated.PreviousTablePresent || validated.CandidateSHA256 != runtimeSHA || validated.SemanticSHA256 != composition.CandidateSemanticSHA || validated.TimedMembershipSHA256 != runtimeMembership {
 			return w.failRuntimeRestore(ctx, operation, composition, binding, "boot_restore_validation_failed")
 		}
+		accepted, acceptErr := networkplan.Accept(networkPlan.Plan, networkFacts, validated.CandidateSHA256)
+		if acceptErr != nil {
+			return runtimeDecision("planner_runtime_candidate_changed"), true, acceptErr
+		}
 		// Re-observe current management immediately before consuming the attempt.
 		current, err = w.CurrentRuntimeManagement(ctx)
 		if err != nil || validateRuntimeManagement(composition.Plan, current, w.now()) != nil {
 			return runtimeDecision("boot_restore_waiting_for_prerequisites"), true, nil
+		}
+		currentBoot, bootErr := w.Runtime.Generation(ctx)
+		currentFacts, factsErr := w.runtimeNetworkFacts(composition.Plan, current, capabilities, currentBoot)
+		if bootErr != nil || factsErr != nil {
+			return runtimeDecision("planner_runtime_inputs_changed"), true, errors.Join(bootErr, factsErr)
+		}
+		if err := networkplan.CheckAccepted(accepted, currentFacts, runtimeSHA); err != nil {
+			return runtimeDecision("planner_runtime_inputs_changed"), true, err
 		}
 		next := binding
 		next.State, next.Reason, next.MutationAt = "RESTORING_RUNTIME", "boot_restore_started", time.Now().UTC().UnixNano()
@@ -227,7 +260,7 @@ func (w Workflow) reconcileRuntime(ctx context.Context, operation repository.Ope
 	}
 	// Reconstruct the operation-local deletion checkpoint even after an
 	// interrupted post-mutation write. Rollback semantics stay contribution-owned.
-	deleteSHA := artifactSHA([]byte("delete table inet solovey_protection\n"))
+	deleteSHA := artifactSHA(nftables.DeleteOwnedTableCandidate())
 	checkpoint := FirewallCheckpoint{Version: 2, OperationID: operation.OperationID, ArtifactRevision: binding.ArtifactRevision, PlanRevision: composition.PlanRevision, CandidateSHA256: binding.ArtifactSHA256, CandidateSemanticSHA256: composition.CandidateSemanticSHA, CandidateTimedMembershipSHA256: binding.ArtifactMembershipSHA256, RollbackSHA256: deleteSHA, ContributionID: transition.ContributionID, ContributionRevision: transition.DesiredSemanticRevision, CompositionRevision: composition.Revision}
 	if err := w.saveCheckpoint(checkpoint); err != nil {
 		return w.failRuntimeRestore(ctx, operation, composition, binding, "boot_restore_checkpoint_failed")
@@ -243,8 +276,8 @@ func (w Workflow) reconcileRuntime(ctx context.Context, operation repository.Ope
 
 func zeroMutationExpiredRuntime(binding repository.FirewallRuntimeBinding, now time.Time) bool {
 	return binding.Schema == repository.FirewallRuntimeSchema && binding.State == "RESTORE_REQUIRED" &&
-		(binding.Reason == "boot_runtime_loss_detected" || binding.Reason == "boot_restore_waiting_for_prerequisites") &&
-		validFirewallSHA(binding.VerifiedBoot) && validFirewallSHA(binding.AttemptBoot) && binding.VerifiedBoot != binding.AttemptBoot &&
+		(binding.Reason == "boot_runtime_loss_detected" || binding.Reason == "planner_missing_owned_table" || binding.Reason == "boot_restore_waiting_for_prerequisites") &&
+		validFirewallSHA(binding.VerifiedBoot) && validFirewallSHA(binding.AttemptBoot) &&
 		binding.StartedAt > 0 && binding.Deadline > binding.StartedAt && binding.Deadline-binding.StartedAt <= 300 && binding.Deadline <= now.Unix() &&
 		binding.MutationAt == 0 && binding.HealthAt == 0 && binding.HealthRevision == "" && !binding.CleanupAttempted &&
 		binding.ArtifactRevision == "" && binding.ArtifactSHA256 == "" && binding.ArtifactMembershipSHA256 == ""
@@ -327,7 +360,7 @@ func (w Workflow) failRuntimeRestore(ctx context.Context, operation repository.O
 		if err := w.RuntimeStore.UpdateFirewallRuntime(ctx, operation.OperationID, operation.Revision, composition.Revision, failed, cleanup); err != nil {
 			return runtimeDecision(reason), true, err
 		}
-		deletion := []byte("delete table inet solovey_protection\n")
+		deletion := nftables.DeleteOwnedTableCandidate()
 		digest := artifactSHA(deletion)
 		files := candidateFiles(composition.Plan, RenderManagedNFT(composition.Plan), composition.CandidateSHA)
 		files["firewall-before.nft"], files["firewall-before.nft.sha256"] = deletion, []byte(digest+"\n")

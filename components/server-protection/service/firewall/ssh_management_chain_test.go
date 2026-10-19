@@ -1048,7 +1048,7 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 				t.Fatal(err)
 			}
 		}
-		if scenario == "same_boot" || scenario == "validation_failure" || scenario == "apply_failure" || scenario == "health_failure" || scenario == "foreign" || scenario == "interrupted_before_apply" || scenario == "sqlite_crash_after_fence" {
+		if scenario == "validation_failure" || scenario == "apply_failure" || scenario == "health_failure" || scenario == "foreign" || scenario == "interrupted_before_apply" || scenario == "sqlite_crash_after_fence" {
 			state, err := repo.OperationByID(t.Context(), operationID)
 			if err != nil {
 				t.Fatal(err)
@@ -1097,6 +1097,27 @@ func assertCurrentSSHProductionLifecycleWithOperator(t *testing.T, exactHealth b
 		}
 		if helperOperationCount(helper.Requests, protectionhelper.OperationNFTApply) != 2 {
 			t.Fatal("boot restore missing or duplicated")
+		}
+		if scenario == "same_boot" {
+			// A second loss in the same boot cannot consume another forward
+			// repair. Retain desired authority and require operator resolution.
+			helper.ManagedTablePresent = false
+			if _, err := restarted.Recover(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			retained, err := repo.FirewallAuthority(t.Context())
+			operation, opErr := repo.OperationByID(t.Context(), operationID)
+			if err != nil || opErr != nil || !retained.HasComposition || operation.State != protectionoperations.StateReconcileRequired || helperOperationCount(helper.Requests, protectionhelper.OperationNFTApply) != 2 {
+				t.Fatal("same-boot repair replayed or erased authority")
+			}
+			if _, err := restarted.Recover(t.Context()); err != nil {
+				t.Fatal(err)
+			}
+			again, err := repo.OperationByID(t.Context(), operationID)
+			if err != nil || again.Revision != operation.Revision || helperOperationCount(helper.Requests, protectionhelper.OperationNFTApply) != 2 {
+				t.Fatal("consumed repair churned or replayed")
+			}
+			return
 		}
 	}
 	rolled, err := workflow.Rollback(context.Background(), operationID, "ROLLBACK SERVER PROTECTION "+operationID)

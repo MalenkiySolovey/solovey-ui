@@ -4,6 +4,8 @@ import (
 	"context"
 	"slices"
 
+	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
+
 	operations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	repository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 )
@@ -67,7 +69,7 @@ func (w Workflow) retainedRollbackPending(ctx context.Context, operation reposit
 }
 
 func (w Workflow) retainedRollbackAdmission(ctx context.Context, operation repository.OperationLockModel) error {
-	if operation.Kind != operations.KindFirewall || operation.ResourceID != "managed-table:inet:solovey_protection" ||
+	if operation.Kind != operations.KindFirewall || operation.ResourceID != networkplan.ProtectionResourceRef ||
 		(operation.State != operations.StateReconcileRequired && operation.State != operations.StateRollingBack) {
 		return operations.ErrConflict
 	}

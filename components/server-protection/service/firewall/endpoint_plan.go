@@ -15,6 +15,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
 	protectionpolicy "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/policy"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
+	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
 	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
@@ -593,13 +594,7 @@ func preflightEndpointPlan(plan FirewallPlan) error {
 		}
 	}
 	candidate := RenderManagedNFT(plan)
-	lower := strings.ToLower(candidate)
-	for _, forbidden := range []string{"flush ruleset", "table ip ", "table ip6 ", "docker", "iptables", "firewalld", "include ", "define "} {
-		if strings.Contains(lower, forbidden) {
-			return fmt.Errorf("%w: candidate contains forbidden global or unmanaged semantics", ErrUnsafeResource)
-		}
-	}
-	return nil
+	return nftables.CheckProtectionCandidate([]byte(candidate), plan.Revision, artifactSHA([]byte(candidate)))
 }
 
 func hexRevision(value string) bool {

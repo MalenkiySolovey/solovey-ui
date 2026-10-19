@@ -9,6 +9,8 @@ import (
 	"net/netip"
 	"regexp"
 	"strings"
+
+	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
 var safeFact = regexp.MustCompile(`^[a-z][a-z0-9_]{0,63}$`)
@@ -319,7 +321,7 @@ func (s *Storage) recoveryActions(kind string) ([]recoveryAction, error) {
 	if kind == "fronting" {
 		return append(result, recoveryAction{Program: "operator_review", Args: []string{"fronting_operation", "artifact_hashes", "active_revision"}, Purpose: "review_before_bounded_manual_repair"}), nil
 	}
-	return append(result, recoveryAction{Program: "nft", Args: []string{"list", "table", "inet", "solovey_protection"}, Purpose: "inspect_managed_table_only"}), nil
+	return append(result, recoveryAction{Program: "nft", Args: []string{"list", "table", networkplan.ProtectionFamily, networkplan.ProtectionTable}, Purpose: "inspect_managed_table_only"}), nil
 }
 
 func validRevisionReference(value string) bool {

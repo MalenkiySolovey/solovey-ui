@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/network/nftables"
+	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 
 	hostfacts "github.com/MalenkiySolovey/solovey-ui/componenthost/hostsurface"
 )
@@ -298,14 +299,15 @@ type NginxResult struct {
 // NFTResult contains only integrity and managed-table facts. Raw nft output is
 // deliberately never returned across the helper boundary.
 type Response struct {
-	ProtocolVersion int         `json:"protocol_version"`
-	HelperVersion   string      `json:"helper_version"`
-	Correlation     Correlation `json:"correlation"`
-	Operation       Operation   `json:"operation"`
-	OK              bool        `json:"ok"`
-	Code            ErrorCode   `json:"code,omitempty"`
-	Reason          string      `json:"reason,omitempty"`
-	Warnings        []string    `json:"warnings,omitempty"`
+	NetworkReason   networkplan.Reason `json:"network_reason,omitempty"`
+	ProtocolVersion int                `json:"protocol_version"`
+	HelperVersion   string             `json:"helper_version"`
+	Correlation     Correlation        `json:"correlation"`
+	Operation       Operation          `json:"operation"`
+	OK              bool               `json:"ok"`
+	Code            ErrorCode          `json:"code,omitempty"`
+	Reason          string             `json:"reason,omitempty"`
+	Warnings        []string           `json:"warnings,omitempty"`
 
 	Capabilities  *CapabilitiesResult         `json:"capabilities,omitempty"`
 	NginxVersion  *NginxVersionResult         `json:"nginx_version,omitempty"`

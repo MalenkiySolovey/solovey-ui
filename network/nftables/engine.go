@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"strings"
 	"time"
+
+	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
 // Engine is invoked only behind the existing authenticated typed broker. It
@@ -70,14 +72,14 @@ func (e Engine) Validate(ctx context.Context, correlation Correlation, request N
 		return nil, err
 	}
 	if request.ExpectedSemanticSHA256 != "" && request.ExpectedSemanticSHA256 != candidateSemantic {
-		return nil, errors.New("candidate semantic identity mismatch")
+		return nil, networkFailure(networkplan.CandidateChanged, "candidate semantic identity mismatch")
 	}
 	candidateMembership, err := managedTimedMembershipSHA(data)
 	if err != nil {
 		return nil, err
 	}
 	if request.ExpectedTimedMembershipSHA256 != candidateMembership {
-		return nil, errors.New("candidate timed membership identity mismatch")
+		return nil, networkFailure(networkplan.CandidateChanged, "candidate timed membership identity mismatch")
 	}
 	currentState, err := observeManagedTable(ctx, e.executor)
 	if err != nil {
@@ -90,7 +92,7 @@ func (e Engine) Validate(ctx context.Context, correlation Correlation, request N
 		previousRevision = currentState.revision
 		previousSemantic = currentState.semanticSHA
 		if previousRevision == "" || previousSemantic == "" {
-			return nil, errors.New("current managed table has no proven Solovey owner")
+			return nil, networkFailure(networkplan.ResourceConflict, "current managed table has no proven Solovey owner")
 		}
 	}
 	transaction := append([]byte(nil), data...)
@@ -146,14 +148,14 @@ func (e Engine) Apply(ctx context.Context, correlation Correlation, request NFTA
 		return nil, err
 	}
 	if request.ExpectedSemanticSHA256 != "" && request.ExpectedSemanticSHA256 != candidateSemantic {
-		return nil, errors.New("candidate semantic identity mismatch")
+		return nil, networkFailure(networkplan.CandidateChanged, "candidate semantic identity mismatch")
 	}
 	candidateMembership, err := managedTimedMembershipSHA(candidate)
 	if err != nil {
 		return nil, err
 	}
 	if request.ExpectedTimedMembershipSHA256 != candidateMembership {
-		return nil, errors.New("candidate timed membership identity mismatch")
+		return nil, networkFailure(networkplan.CandidateChanged, "candidate timed membership identity mismatch")
 	}
 	beforeState, err := observeManagedTable(ctx, e.executor)
 	if err != nil {
@@ -161,17 +163,17 @@ func (e Engine) Apply(ctx context.Context, correlation Correlation, request NFTA
 	}
 	before, present := beforeState.raw, beforeState.present
 	if present != request.ExpectedPreviousTablePresent {
-		return nil, errors.New("managed table presence changed after validation")
+		return nil, networkFailure(networkplan.StalePlan, "managed table presence changed after validation")
 	}
 	rollback := []byte("delete table inet solovey_protection\n")
 	previousRevision := ""
 	if present {
 		previousRevision = beforeState.revision
 		if previousRevision == "" || beforeState.semanticSHA == "" {
-			return nil, errors.New("current managed table is not safely restorable")
+			return nil, networkFailure(networkplan.ResourceConflict, "current managed table is not safely restorable")
 		}
 		if previousRevision != request.ExpectedPreviousRevision || beforeState.semanticSHA != request.ExpectedPreviousSemanticSHA256 || beforeState.timedMembershipSHA != request.ExpectedPreviousTimedMembershipSHA256 {
-			return nil, errors.New("managed table identity changed after validation")
+			return nil, networkFailure(networkplan.StalePlan, "managed table identity changed after validation")
 		}
 		rollback, err = captureManagedNFTRollback(before, e.currentTime())
 		if err != nil {
@@ -300,7 +302,7 @@ func (e Engine) Rollback(ctx context.Context, correlation Correlation, request N
 			CurrentRevision: currentRevision, CurrentSemanticSHA256: currentState.semanticSHA, CurrentTimedMembershipSHA256: currentState.timedMembershipSHA}, nil
 	}
 	if currentRevision != request.ExpectedCurrentRevision || currentState.semanticSHA != request.ExpectedCurrentSemanticSHA256 || currentState.timedMembershipSHA != request.ExpectedCurrentTimedMembershipSHA256 {
-		return nil, errors.New("managed table current revision does not match rollback fence")
+		return nil, networkFailure(networkplan.StalePlan, "managed table current revision does not match rollback fence")
 	}
 	transaction := append([]byte(nil), materialized...)
 	if present && !desiredAbsent {
@@ -334,6 +336,10 @@ func (e Engine) Rollback(ctx context.Context, correlation Correlation, request N
 	}
 	return &NFTResult{ManagedTablePresent: afterPresent, RollbackSHA256: expectedSHA, SemanticSHA256: expectedSemantic, TimedMembershipSHA256: expectedMembership,
 		CurrentRevision: afterState.revision, CurrentSemanticSHA256: afterState.semanticSHA, CurrentTimedMembershipSHA256: afterState.timedMembershipSHA}, nil
+}
+
+func networkFailure(reason networkplan.Reason, message string) error {
+	return errors.Join(&networkplan.Conflict{Reason: reason, ResourceRef: networkplan.ProtectionResourceRef, Allocation: networkplan.ProtectionAllocation}, errors.New(message))
 }
 
 func (e Engine) currentTime() time.Time {

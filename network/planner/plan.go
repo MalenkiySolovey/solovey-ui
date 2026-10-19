@@ -19,6 +19,9 @@ const Schema = "solovey-ui/network-plan/v1"
 // The initial allocator owns the existing coexistence table only. There is no
 // arbitrary table, mark, queue, route, command or global host reset operation.
 const ProtectionAllocation = "inet:solovey_protection"
+const ProtectionFamily = "inet"
+const ProtectionTable = "solovey_protection"
+const ProtectionTableCLI = ProtectionFamily + " " + ProtectionTable
 
 type Reason string
 
@@ -79,7 +82,8 @@ type Ownership struct {
 // adapter's managed-resource grammar/identity check, never from a familiar name.
 type Allocation struct {
 	Ownership
-	Proven bool `json:"proven"`
+	Proven           bool `json:"proven"`
+	IdentityMismatch bool `json:"identityMismatch,omitempty"`
 }
 
 type Continuity struct {
@@ -260,19 +264,37 @@ func Compare(plan Plan, observationPlanRevision string, available bool, actual [
 	if !digest(plan.revision) || !available || len(actual) > 8192 {
 		return []Drift{{Kind: DependencyUnavailable, ResourceRef: ref}}
 	}
-	if observationPlanRevision != plan.revision {
+	return CompareResource(plan.resources[0], observationPlanRevision, available, actual)
+}
+
+// CompareResource is also used for existing durable owner seals. The caller
+// fences the observation against that owner's current composition generation;
+// a late sample never authorizes repair of a newer accepted plan.
+func CompareResource(expected Ownership, observationPlanRevision string, available bool, actual []Allocation) []Drift {
+	ref := expected.ResourceRef
+	if !digest(expected.PlanRevision) || !available || len(actual) > 8192 {
+		return []Drift{{Kind: DependencyUnavailable, ResourceRef: ref}}
+	}
+	if observationPlanRevision != expected.PlanRevision {
 		return []Drift{{Kind: Stale, ResourceRef: ref}}
 	}
+	found := false
 	for _, allocation := range actual {
-		if allocation.Allocation != ProtectionAllocation {
+		if allocation.Allocation != expected.Allocation {
+			if strings.HasPrefix(allocation.Allocation, expected.Allocation+":") && allocation.Proven && allocation.HostRef == expected.HostRef && allocation.Owner == expected.Owner {
+				return []Drift{{Kind: UnexpectedManagedResource, ResourceRef: allocation.ResourceRef}}
+			}
 			continue
 		}
-		if !allocation.Proven || allocation.HostRef != plan.intent.HostRef || allocation.Owner != plan.intent.Owner || allocation.ResourceRef != ref {
+		if !allocation.Proven || allocation.HostRef != expected.HostRef || allocation.Owner != expected.Owner || allocation.ResourceRef != ref {
 			return []Drift{{Kind: Unknown, ResourceRef: ref}}
 		}
-		if allocation.PlanRevision != plan.revision {
+		if allocation.PlanRevision != expected.PlanRevision || allocation.IdentityMismatch {
 			return []Drift{{Kind: Mismatch, ResourceRef: ref, Repairable: true}}
 		}
+		found = true
+	}
+	if found {
 		return nil
 	}
 	return []Drift{{Kind: Missing, ResourceRef: ref, Repairable: true}}

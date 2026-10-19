@@ -17,9 +17,10 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/executableobject"
+	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
-const managedTable = "inet solovey_protection"
+const managedTable = networkplan.ProtectionTableCLI
 
 var managedRevisionMarker = regexp.MustCompile(`(?m)^\s*comment "solovey-revision:([a-f0-9]{16,128})"\s*$`)
 
@@ -243,10 +244,10 @@ func validateCandidate(data []byte, revision, expectedSHA string) error {
 		return errors.New("candidate artifact size is invalid")
 	}
 	if sha256Hex(data) != expectedSHA {
-		return errors.New("candidate artifact SHA-256 mismatch")
+		return networkFailure(networkplan.CandidateChanged, "candidate artifact SHA-256 mismatch")
 	}
 	if !bytes.Contains(data, []byte(`comment "solovey-revision:`+revision+`"`)) {
-		return errors.New("candidate artifact revision marker mismatch")
+		return networkFailure(networkplan.CandidateChanged, "candidate artifact revision marker mismatch")
 	}
 	if err := validateManagedScope(data, false); err != nil {
 		return err
@@ -285,6 +286,7 @@ func validateCandidate(data []byte, revision, expectedSHA string) error {
 		case line == "type filter hook input priority filter; policy accept;":
 		case line == "type filter hook input priority -5; policy accept;":
 		case line == `iifname "lo" counter accept`, line == "ct state established,related counter accept":
+		case line == "ct state new limit rate over 200/second burst 400 packets counter drop":
 		case line == "meta l4proto tcp tcp dport @solovey_allow_tcp_ports counter accept":
 		case line == "meta l4proto udp udp dport @solovey_allow_udp_ports counter accept":
 		case allowedEndpointAction.MatchString(line):
@@ -294,6 +296,12 @@ func validateCandidate(data []byte, revision, expectedSHA string) error {
 		}
 	}
 	return nil
+}
+
+// CheckProtectionCandidate is a pure grammar/identity check. Platform syntax
+// validation is performed separately by Engine.Validate under the broker.
+func CheckProtectionCandidate(data []byte, revision, digest string) error {
+	return validateCandidate(data, revision, digest)
 }
 
 func validateManagedScope(data []byte, allowDelete bool) error {

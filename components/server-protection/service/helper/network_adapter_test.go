@@ -5,6 +5,8 @@ import (
 	"os"
 	"strings"
 	"testing"
+
+	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 )
 
 type fakeNFTExecutor struct {
@@ -72,5 +74,17 @@ func TestNFTCapabilityUnknownNeverReportsSuccess(t *testing.T) {
 	unknown := newContractEngineWithExecutor(root, nil).Handle(Request{ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "capabilities", InstanceID: "instance"}, Operation: OperationCapabilities, Capabilities: &CapabilitiesRequest{}})
 	if !unknown.OK || unknown.Capabilities.NFT.PlatformKnown || CapabilityAvailable(unknown.Capabilities, OperationNFTApply) {
 		t.Fatalf("unknown capability became supported: %#v", unknown)
+	}
+}
+
+func TestNetworkOwnershipConflictSurvivesBrokerWithoutMutation(t *testing.T) {
+	executor := &fakeNFTExecutor{support: NFTSupport{PlatformKnown: true, Linux: true, Available: true},
+		present: true, state: []byte("table inet solovey_protection {\n}\n")}
+	response := newContractEngineWithExecutor(testManagedRoot(t), executor).Handle(Request{
+		ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "observe-conflict", InstanceID: "instance"},
+		Operation: OperationNFTObserve, NFTObserve: &NFTObserveRequest{},
+	})
+	if response.OK || response.NetworkReason != networkplan.ResourceConflict || executor.applies != 0 || executor.deleteCalls != 0 || response.NFT != nil {
+		t.Fatalf("ownership conflict lost at typed broker: %#v", response)
 	}
 }
