@@ -17,6 +17,7 @@ import (
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionrepository "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/repository"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
+	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 	"github.com/gin-gonic/gin"
 )
 
@@ -142,9 +143,12 @@ func (h Handler) currentFirewallPlan(c *gin.Context, refresh bool) (protectionfi
 }
 
 func writeFirewallWorkflowError(c *gin.Context, err error) {
+	var conflict *networkplan.Conflict
 	switch {
 	case errors.Is(err, protectionfirewall.ErrRollbackFailed):
 		writeError(c, http.StatusConflict, "rollback_failed", nil)
+	case errors.As(err, &conflict) && conflict != nil:
+		writeNetworkPlanConflict(c, conflict)
 	case errors.Is(err, protectionoperations.ErrConflict), errors.Is(err, protectionoperations.ErrRevisionConflict):
 		writeError(c, http.StatusConflict, "operation_state_conflict", nil)
 	case errors.Is(err, protectionoperations.ErrConfirmationRequired):
@@ -169,6 +173,22 @@ func writeFirewallWorkflowError(c *gin.Context, err error) {
 		writeError(c, http.StatusNotFound, "not_found", nil)
 	case errors.Is(err, protectionoperations.ErrFenced), errors.Is(err, protectionrepository.ErrOperationFenced):
 		writeError(c, http.StatusConflict, "operation_fenced", nil)
+	default:
+		writeError(c, http.StatusConflict, "operation_failed", nil)
+	}
+}
+
+func writeNetworkPlanConflict(c *gin.Context, conflict *networkplan.Conflict) {
+	// Expose only the closed Planner reason vocabulary. ResourceRef, allocation
+	// and wrapped adapter errors can contain host details and remain private.
+	switch conflict.Reason {
+	case networkplan.InvalidIntent, networkplan.StalePlan, networkplan.ResourceConflict,
+		networkplan.ResourceGone, networkplan.EndpointChanged, networkplan.CapabilityUnavailable,
+		networkplan.ObservationUnknown, networkplan.ManagementUnknown, networkplan.ManagementBlocked,
+		networkplan.CandidateChanged, networkplan.AllocationUnavailable:
+		c.JSON(http.StatusConflict, gin.H{"success": false, "msg": "network_plan_conflict", "obj": gin.H{
+			"code": "network_plan_conflict", "message": "network_plan_conflict", "reason": conflict.Reason,
+		}})
 	default:
 		writeError(c, http.StatusConflict, "operation_failed", nil)
 	}
