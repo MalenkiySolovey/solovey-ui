@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026.4.1
+
+- Stabilize component lifecycle, safe removal and local host resource identity so configuration and cleanup stay with their owning resource.
+- Converge change preflight, operation recovery, health freshness and event correlation; retain shared artifact trust and scoped secret access.
+- Route Server Protection enforcement through the Network Planner with deterministic plans, typed pre-mutation conflicts, verified owner-scoped rollback and bounded reconciliation.
+- Preserve unrelated firewall resources across apply, endpoint changes, resource deletion and cleanup; qualify the accepted package, procd lifecycle, fw4 reload and reboot path on NanoPi R76S / OpenWrt 25.12.5.
+- Publish exact version, revision and source OCI metadata without changing the sing-box 1.14.2 baseline or accepted original S-UI v1.6.4 boundary.
+- Migrate supported schema 1.12 state to 1.13. Keep a protected pre-upgrade backup: recovery to an older binary requires its compatible backup, not opening migrated state.
+
 ## 2026.4.0
 
 - Migrate to the sing-box 1.14.2 semantic baseline and the accepted original S-UI v1.6.4 compatibility boundary, with explicit maintained core, QUIC and AnyTLS integration sources.

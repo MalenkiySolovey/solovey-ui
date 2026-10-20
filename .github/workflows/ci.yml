@@ -342,7 +342,7 @@ jobs:
       - name: Validate workflow contracts
         run: |
           node --test scripts/release-preflight.test.mjs
-          node --test scripts/release-execution.test.mjs scripts/release-resume.test.mjs scripts/release-candidate.test.mjs
+          node --test scripts/release-execution.test.mjs scripts/release-resume.test.mjs scripts/release-candidate.test.mjs scripts/release-oci.test.mjs
           node --test scripts/audit/go-shards.test.mjs
           node scripts/audit/validate-workflows.js
 
