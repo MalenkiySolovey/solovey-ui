@@ -45,9 +45,11 @@ original S-UI v1.6.4 compatibility boundary and the same maintained integrations
 ## Migration notes
 
 - The target core schema is 1.13; v2026.4.0 uses schema 1.12. Preserve a protected
-  pre-upgrade backup. Supported upgrade migrates state; an older binary must not
-  open the migrated database. Downgrade recovery is operator-managed restoration
-  of the compatible pre-upgrade backup.
+  pre-upgrade backup and use the supported operator-managed installer, package
+  or container upgrade. The existing in-app updater rejects a target schema
+  different from its running binary's compiled schema. The new binary migrates
+  supported state; an older binary must not open the migrated database.
+  Downgrade recovery restores the compatible pre-upgrade backup.
 - Existing Full/Core profiles and component ownership remain supported. No
   dependency refresh or upstream baseline upgrade is included.
 

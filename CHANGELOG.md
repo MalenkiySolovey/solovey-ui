@@ -8,7 +8,7 @@
 - Route Server Protection enforcement through the Network Planner with deterministic plans, typed pre-mutation conflicts, verified owner-scoped rollback and bounded reconciliation.
 - Preserve unrelated firewall resources across apply, endpoint changes, resource deletion and cleanup; qualify the accepted package, procd lifecycle, fw4 reload and reboot path on NanoPi R76S / OpenWrt 25.12.5.
 - Publish exact version, revision and source OCI metadata without changing the sing-box 1.14.2 baseline or accepted original S-UI v1.6.4 boundary.
-- Migrate supported schema 1.12 state to 1.13. Keep a protected pre-upgrade backup: recovery to an older binary requires its compatible backup, not opening migrated state.
+- Migrate supported schema 1.12 state to 1.13 through the operator-managed installer/package/container path. Keep a protected pre-upgrade backup: recovery to an older binary requires its compatible backup, not opening migrated state. The existing in-app updater retains its exact-schema guard.
 
 ## 2026.4.0
 
