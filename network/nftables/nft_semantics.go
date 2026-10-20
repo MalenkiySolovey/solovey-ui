@@ -94,6 +94,26 @@ func canonicalManagedNFT(data []byte, allowDelete bool) ([]byte, string, error) 
 	return canonical, revision, err
 }
 
+// Terminal package cleanup has no accepted-plan inventory to compare against.
+// Require every child allocation to belong to the same closed vocabulary used
+// for generated candidates. Normal observation still includes foreign children
+// in its semantic identity so the workflow can report their drift.
+func validateOwnedAllocations(data []byte) error {
+	canonical, _, err := canonicalManagedNFT(data, false)
+	if err != nil {
+		return err
+	}
+	depth := 0
+	for _, line := range strings.Split(string(canonical), "\n") {
+		if depth == 1 && (strings.HasPrefix(line, "set ") || strings.HasPrefix(line, "chain ")) &&
+			!managedSetDeclaration.MatchString(line) && !managedChainDeclaration.MatchString(line) {
+			return networkFailure(networkplan.ResourceConflict, "managed nft package cleanup contains an unowned allocation")
+		}
+		depth += strings.Count(line, "{") - strings.Count(line, "}")
+	}
+	return nil
+}
+
 func canonicalManagedNFTProjection(data []byte, allowDelete bool) ([]byte, string, []byte, error) {
 	if len(data) == 0 || len(data) > MaxArtifactBytes {
 		return nil, "", nil, errors.New("managed table semantic input size is invalid")

@@ -169,8 +169,8 @@ func inspectFoundationDeclaration(path, symbol string, declaration ast.Node, imp
 		switch value := node.(type) {
 		case *ast.SelectorExpr:
 			if qualifier, ok := value.X.(*ast.Ident); ok && component && imports[qualifier.Name] == modulePath+"/network/nftables" &&
-				(value.Sel.Name == "NewEngine" || value.Sel.Name == "NewEngineWithExecutor") && filepath.ToSlash(filepath.Dir(path)) != "components/server-protection/service/helper" {
-				*forbidden = append(*forbidden, path+":"+symbol+": privileged network adapter construction belongs to the typed broker bridge")
+				(value.Sel.Name == "NewEngine" || value.Sel.Name == "NewEngineWithExecutor" || value.Sel.Name == "RemoveManagedTableForPackageRemoval") && filepath.ToSlash(filepath.Dir(path)) != "components/server-protection/service/helper" {
+				*forbidden = append(*forbidden, path+":"+symbol+": privileged network adapter entrypoint belongs to the typed broker bridge")
 			}
 			if filepath.ToSlash(filepath.Dir(path)) == "components/telegram" {
 				qualifier, imported := value.X.(*ast.Ident)
