@@ -48,7 +48,7 @@ func Update(username string, password string) error {
 			fmt.Println("reset admin credentials success")
 		}
 	}
-	return nil
+	return showCurrent()
 }
 
 func Show() error {
@@ -56,6 +56,11 @@ func Show() error {
 	if err != nil {
 		return err
 	}
+	return showCurrent()
+}
+
+// Mutating commands display through their already initialized database owner.
+func showCurrent() error {
 	userService := service.UserService{}
 	userModel, err := userService.GetFirstUser()
 	if err != nil {
