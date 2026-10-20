@@ -18,7 +18,7 @@ on:
       tag:
         description: "Release tag"
         required: true
-        default: "v2026.4.0"
+        default: "v2026.4.1"
         type: string
       preflight_only:
         description: "Build release images without publishing"
@@ -69,11 +69,7 @@ jobs:
         id: source
         run: |
           set -euo pipefail
-          VERSION="${RELEASE_TAG_INPUT#v}"
-          EXPECTED_VERSION="$(tr -d '\r\n' < config/identity/version)"
-          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]
-          [ "$VERSION" = "$EXPECTED_VERSION" ] || { echo "release tag $RELEASE_TAG_INPUT does not match source version $EXPECTED_VERSION" >&2; exit 1; }
-          echo "commit=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          node scripts/release-oci.mjs "$RELEASE_TAG_INPUT" "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
@@ -124,7 +120,14 @@ jobs:
           outputs: type=oci,dest=${{ runner.temp }}/solovey-ui-docker-${{ matrix.platform_name }}.tar
           sbom: true
           provenance: mode=max
-          labels: org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
+          labels: |
+            org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
+            org.opencontainers.image.version=${{ steps.source.outputs.version }}
+            org.opencontainers.image.source=${{ steps.source.outputs.source }}
+          annotations: |
+            index,manifest:org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
+            index,manifest:org.opencontainers.image.version=${{ steps.source.outputs.version }}
+            index,manifest:org.opencontainers.image.source=${{ steps.source.outputs.source }}
           tags: ${{ steps.image.outputs.name }}:preflight-${{ matrix.platform_name }}
           build-args: |
             SUI_RELEASE_TRUST_ROOTS_B64=${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
@@ -160,7 +163,14 @@ jobs:
           outputs: type=image,push-by-digest=true,name-canonical=true,push=true
           sbom: true
           provenance: mode=max
-          labels: org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
+          labels: |
+            org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
+            org.opencontainers.image.version=${{ steps.source.outputs.version }}
+            org.opencontainers.image.source=${{ steps.source.outputs.source }}
+          annotations: |
+            index,manifest:org.opencontainers.image.revision=${{ steps.source.outputs.commit }}
+            index,manifest:org.opencontainers.image.version=${{ steps.source.outputs.version }}
+            index,manifest:org.opencontainers.image.source=${{ steps.source.outputs.source }}
           tags: ${{ steps.image.outputs.name }}
           build-args: |
             SUI_RELEASE_TRUST_ROOTS_B64=${{ vars.SUI_RELEASE_TRUST_ROOTS_B64 }}
@@ -189,6 +199,17 @@ jobs:
     needs: build
     if: inputs.preflight_only == false
     steps:
+      - name: Check out immutable release source
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ inputs.source_commit || format('refs/tags/{0}', inputs.tag) }}
+
+      - name: Validate release tag against source version
+        id: source
+        run: |
+          set -euo pipefail
+          node scripts/release-oci.mjs "$RELEASE_TAG_INPUT" "$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4
 
@@ -232,6 +253,9 @@ jobs:
           CHANNEL=latest
           case "${{ steps.vars.outputs.tag }}" in *-*) CHANNEL=beta ;; esac
           docker buildx imagetools create \
+            --annotation "index:org.opencontainers.image.revision=${{ steps.source.outputs.commit }}" \
+            --annotation "index:org.opencontainers.image.version=${{ steps.source.outputs.version }}" \
+            --annotation "index:org.opencontainers.image.source=${{ steps.source.outputs.source }}" \
             -t "${{ steps.image.outputs.name }}:${{ steps.vars.outputs.tag }}" \
             -t "${{ steps.image.outputs.name }}:${CHANNEL}" \
             $DIGESTS
