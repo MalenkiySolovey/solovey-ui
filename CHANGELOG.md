@@ -2,6 +2,7 @@
 
 ## 2026.4.1
 
+- Correct administrator and settings CLI success reporting without reopening the initialized database; retain future-schema rejection before mutation.
 - Stabilize component lifecycle, safe removal and local host resource identity so configuration and cleanup stay with their owning resource.
 - Converge change preflight, operation recovery, health freshness and event correlation; retain shared artifact trust and scoped secret access.
 - Route Server Protection enforcement through the Network Planner with deterministic plans, typed pre-mutation conflicts, verified owner-scoped rollback and bounded reconciliation.
