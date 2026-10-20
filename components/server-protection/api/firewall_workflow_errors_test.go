@@ -3,6 +3,7 @@
 package api
 
 import (
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -13,6 +14,7 @@ import (
 	protectionfirewall "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/firewall"
 	protectionoperations "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/operations"
 	protectionresources "github.com/MalenkiySolovey/solovey-ui/components/server-protection/service/resources"
+	networkplan "github.com/MalenkiySolovey/solovey-ui/network/planner"
 	"github.com/gin-gonic/gin"
 )
 
@@ -27,6 +29,54 @@ func TestIncompleteResourceInventoryIsFailClosed(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			if err := firewallInventoryReady(inventory); err == nil || !strings.Contains(err.Error(), "inventory_incomplete") {
 				t.Fatalf("incomplete inventory was accepted: %v", err)
+			}
+		})
+	}
+}
+
+func TestFirewallWorkflowPreservesTypedPlannerConflicts(t *testing.T) {
+	for _, reason := range []networkplan.Reason{
+		networkplan.InvalidIntent, networkplan.StalePlan, networkplan.ResourceConflict,
+		networkplan.ResourceGone, networkplan.EndpointChanged, networkplan.CapabilityUnavailable,
+		networkplan.ObservationUnknown, networkplan.ManagementUnknown, networkplan.ManagementBlocked,
+		networkplan.CandidateChanged, networkplan.AllocationUnavailable,
+	} {
+		t.Run(string(reason), func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			conflict := &networkplan.Conflict{Reason: reason, ResourceRef: "private-resource", Allocation: "private-allocation"}
+			writeFirewallWorkflowError(ctx, errors.Join(errors.New("private backend ruleset payload"), conflict))
+			var response struct {
+				Success bool `json:"success"`
+				Obj     struct {
+					Code   string             `json:"code"`
+					Reason networkplan.Reason `json:"reason"`
+				} `json:"obj"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
+				t.Fatal(err)
+			}
+			if recorder.Code != http.StatusConflict || response.Success || response.Obj.Code != "network_plan_conflict" || response.Obj.Reason != reason || strings.Contains(recorder.Body.String(), "private") {
+				t.Fatalf("response=%d %s", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+}
+
+func TestFirewallPlannerConflictKeepsRollbackFailurePriorityAndUnknownReasonsPrivate(t *testing.T) {
+	for name, fixture := range map[string]struct {
+		err  error
+		code string
+	}{
+		"rollback failed": {errors.Join(protectionfirewall.ErrRollbackFailed, &networkplan.Conflict{Reason: networkplan.ResourceConflict}), "rollback_failed"},
+		"unknown reason":  {&networkplan.Conflict{Reason: "private unexpected backend payload"}, "operation_failed"},
+	} {
+		t.Run(name, func(t *testing.T) {
+			recorder := httptest.NewRecorder()
+			ctx, _ := gin.CreateTestContext(recorder)
+			writeFirewallWorkflowError(ctx, fixture.err)
+			if recorder.Code != http.StatusConflict || !strings.Contains(recorder.Body.String(), `"code":"`+fixture.code+`"`) || strings.Contains(recorder.Body.String(), "private") || strings.Contains(recorder.Body.String(), `"reason"`) {
+				t.Fatalf("response=%d %s", recorder.Code, recorder.Body.String())
 			}
 		})
 	}
