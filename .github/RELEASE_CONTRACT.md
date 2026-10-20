@@ -63,7 +63,13 @@ registry write. Release runs are serialized so channel updates have one writer.
 After Windows and Linux are ready, the Docker owner builds both image targets;
 only publication mode pushes their digests and complete multi-platform manifest.
 Preflight retains private OCI archives, SBOM and build provenance for both
-Docker architectures. A manual preflight can select one exact forty-character
+Docker architectures.
+The OCI producer binds the exact version tag, product revision and source URL
+in image config labels, platform manifest/index annotations and the final
+multiarch index. Missing, malformed or mismatching version/revision input fails
+before image production. Existing SBOM and provenance attestations remain enabled.
+
+A manual preflight can select one exact forty-character
 `source_commit` before a tag exists. That input is rejected in publication or
 recovery mode; publication still requires the immutable version tag and the
 unchanged pre-registry publication gate.
@@ -104,7 +110,7 @@ production trust. Real candidates embed the configured public roots.
 
 `scripts/release-compatibility.json` owns the reviewed update range and target
 schema for the exact source version. Signed self-update admission starts at
-panel 2026.4.0/schema 1.12, with target and component packs at schema 1.12.
+panel 2026.4.0/schema 1.12, with target and component packs at schema 1.13.
 Published v2026.3.3 retains its exact 1.11 admission guard; crossing that schema
 boundary uses the normal operator-managed installer/package/container path.
 The signed envelope declares manual recovery. Keep a protected pre-upgrade
