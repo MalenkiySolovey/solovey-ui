@@ -109,10 +109,13 @@ Local signature fixtures demonstrate cryptographic behavior without establishing
 production trust. Real candidates embed the configured public roots.
 
 `scripts/release-compatibility.json` owns the reviewed update range and target
-schema for the exact source version. Signed self-update admission starts at
+schema for the exact source version. The reviewed metadata covers incoming
 panel 2026.4.0/schema 1.12, with target and component packs at schema 1.13.
-Published v2026.3.3 retains its exact 1.11 admission guard; crossing that schema
-boundary uses the normal operator-managed installer/package/container path.
+Signed self-update requires the target schema to match the running binary's
+compiled schema. Therefore v2026.4.0/schema 1.12 to v2026.4.1/schema 1.13 uses
+the normal operator-managed installer/package/container path; the old runtime
+rejects in-app activation across that boundary. Published v2026.3.3 likewise
+retains its exact 1.11 admission guard. Do not weaken these guards for an upgrade.
 The signed envelope declares manual recovery. Keep a protected pre-upgrade
 backup; an older binary must not open migrated state.
 

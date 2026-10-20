@@ -6,6 +6,8 @@ original S-UI v1.6.4 compatibility boundary and the same maintained integrations
 
 ## Fixed
 
+- Administrator and settings CLI commands report a successful persisted change
+  without reopening the database and returning a misleading initialization error.
 - Server Protection now uses the shared Network Planner for its migrated local
   firewall path. Accepted plans bind resource and input revisions; stale plans
   and known ownership conflicts are rejected before host mutation.
@@ -35,16 +37,19 @@ original S-UI v1.6.4 compatibility boundary and the same maintained integrations
 - Reuse accepted real NanoPi R76S qualification on Armbian and official OpenWrt
   25.12.5, including package/procd lifecycle, fw4 reload, ownership preservation,
   rollback, endpoint change, deletion, reconcile, service restart and reboot.
-  This patch's release-only changes do not alter those runtime boundaries.
+  The release producer and CLI reporting corrections do not alter those qualified
+  network, package, supervision or persistence boundaries.
 - OCI config labels and platform/multiarch annotations carry the exact release
   version, source revision and repository, alongside SBOM and provenance.
 
 ## Migration notes
 
 - The target core schema is 1.13; v2026.4.0 uses schema 1.12. Preserve a protected
-  pre-upgrade backup. Supported upgrade migrates state; an older binary must not
-  open the migrated database. Downgrade recovery is operator-managed restoration
-  of the compatible pre-upgrade backup.
+  pre-upgrade backup and use the supported operator-managed installer, package
+  or container upgrade. The existing in-app updater rejects a target schema
+  different from its running binary's compiled schema. The new binary migrates
+  supported state; an older binary must not open the migrated database.
+  Downgrade recovery restores the compatible pre-upgrade backup.
 - Existing Full/Core profiles and component ownership remain supported. No
   dependency refresh or upstream baseline upgrade is included.
 

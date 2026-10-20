@@ -112,9 +112,7 @@ func ParseCmd() int {
 		case adminReset:
 			err = admincmd.Reset()
 		default:
-			if err = admincmd.Update(username, password); err == nil {
-				err = admincmd.Show()
-			}
+			err = admincmd.Update(username, password)
 		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)
@@ -163,9 +161,7 @@ func ParseCmd() int {
 		case settingClearDomain:
 			err = settingscmd.ClearWebDomain()
 		default:
-			if err = settingscmd.Update(port, path, subPort, subPath); err == nil {
-				err = settingscmd.Show()
-			}
+			err = settingscmd.Update(port, path, subPort, subPath)
 		}
 		if err != nil {
 			fmt.Fprintln(os.Stderr, err)

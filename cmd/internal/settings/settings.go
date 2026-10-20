@@ -36,7 +36,7 @@ func ClearWebDomain() error {
 		return fmt.Errorf("clear panel domain and address failed: %w", err)
 	}
 	fmt.Println("clear panel domain and address success")
-	return Show()
+	return showCurrent()
 }
 
 func Update(port int, path string, subPort int, subPath string) error {
@@ -80,7 +80,10 @@ func Update(port int, path string, subPort int, subPath string) error {
 			fmt.Println("set sub path success")
 		}
 	}
-	return result
+	if result != nil {
+		return result
+	}
+	return showCurrent()
 }
 
 func Show() error {
@@ -88,6 +91,11 @@ func Show() error {
 	if err != nil {
 		return err
 	}
+	return showCurrent()
+}
+
+// Mutating commands display through their already initialized database owner.
+func showCurrent() error {
 	settingService := service.SettingService{}
 	allSetting, err := settingService.GetAllSetting()
 	if err != nil {
