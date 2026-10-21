@@ -26,14 +26,7 @@ type SamplingJob struct {
 	now                  func() time.Time
 }
 
-type Sampler interface {
-	CurrentObservabilitySample() observabilitysvc.ObservabilitySample
-	CurrentCoreSample() observabilitysvc.CoreSample
-	RecordObservabilitySample(observabilitysvc.ObservabilityBucket, observabilitysvc.ObservabilitySample) error
-	RecordCoreSample(observabilitysvc.ObservabilityBucket, observabilitysvc.CoreSample) error
-	HistoryForBucket(observabilitysvc.ObservabilityBucket) ([]observabilitysvc.ObservabilitySample, error)
-	CoreHistoryForBucket(observabilitysvc.ObservabilityBucket) ([]observabilitysvc.CoreSample, error)
-}
+type Sampler = observabilitysvc.Sampler
 
 func NewSamplingJob(sampler Sampler) *SamplingJob {
 	job := &SamplingJob{sampler: sampler}

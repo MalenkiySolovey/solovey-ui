@@ -91,8 +91,9 @@ func main() {
 				return service.NewOutboundHTTPClientForRuntime(runtime, tag, timeout)
 			}),
 			Audit: componenthost.AuditDeps{Recorder: &service.AuditService{Runtime: runtime}},
-		},
-		Scheduler: cronScheduler,
+		}.WithObservationOwners(),
+		Scheduler:         cronScheduler,
+		DropOwnedSettings: settingService.DropOwnedComponentSettings,
 	})
 	service.RegisterComponentMigrator(components.Migrate)
 	service.RegisterComponentSettingsReconciler(components.Reconcile)

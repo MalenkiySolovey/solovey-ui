@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/auditquery"
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	auditsvc "github.com/MalenkiySolovey/solovey-ui/service/audit"
 	observabilitysvc "github.com/MalenkiySolovey/solovey-ui/service/observability"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/gin-gonic/gin"
@@ -43,15 +43,8 @@ type Handler struct {
 	Audit                  func(*gin.Context, string, string, string, string, map[string]any)
 }
 
-type ObservabilityHistory interface {
-	HistoryForBucketSince(observabilitysvc.ObservabilityBucket, int64) ([]observabilitysvc.ObservabilitySample, error)
-	CoreHistoryForBucketSince(observabilitysvc.ObservabilityBucket, int64) ([]observabilitysvc.CoreSample, error)
-	MetricHistory(observabilitysvc.ObservabilityMetric, observabilitysvc.ObservabilityBucket, int64) ([]observabilitysvc.ObservabilityMetricSample, error)
-}
-
-type AuditHistory interface {
-	ListPageFiltered(uint64, int, string, string, int64, int64) ([]model.AuditEvent, uint64, error)
-}
+type ObservabilityHistory = observabilitysvc.History
+type AuditHistory = auditsvc.History
 
 func RegisterRoutes(g *gin.RouterGroup, deps Deps) {
 	handler := NewHandler(deps)

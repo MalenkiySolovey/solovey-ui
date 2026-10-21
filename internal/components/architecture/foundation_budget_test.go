@@ -102,9 +102,9 @@ func inspectFoundationFile(path string, file *ast.File) ([]foundationSite, []str
 			alias = spec.Name.Name
 		}
 		imports[alias] = imported
-		if filepath.ToSlash(filepath.Dir(path)) == "components/telegram" &&
+		if typedComponentComposition(path) &&
 			(imported == modulePath+"/database/sqlite" || imported == "gorm.io/gorm") {
-			forbidden = append(forbidden, path+": typed Telegram composition must use its declared owner ports, not raw database access")
+			forbidden = append(forbidden, path+": typed Component composition must use its declared owner ports, not raw database access")
 		}
 		if imported == modulePath+"/service" && alias == "." {
 			forbidden = append(forbidden, path+": dot import hides broad Runtime authority")
@@ -176,11 +176,11 @@ func inspectFoundationDeclaration(path, symbol string, declaration ast.Node, imp
 				(value.Sel.Name == "NewEngine" || value.Sel.Name == "NewEngineWithExecutor" || value.Sel.Name == "RemoveManagedTableForPackageRemoval") && filepath.ToSlash(filepath.Dir(path)) != "components/server-protection/service/helper" {
 				*forbidden = append(*forbidden, path+":"+symbol+": privileged network adapter entrypoint belongs to the typed broker bridge")
 			}
-			if filepath.ToSlash(filepath.Dir(path)) == "components/telegram" {
+			if typedComponentComposition(path) {
 				qualifier, imported := value.X.(*ast.Ident)
 				coreService := imported && imports[qualifier.Name] == modulePath+"/service"
 				if value.Sel.Name == "Runtime" || coreService && (value.Sel.Name == "DefaultRuntime" || value.Sel.Name == "SetDefaultRuntime" || strings.HasPrefix(value.Sel.Name, "NewRuntime")) {
-					*forbidden = append(*forbidden, path+":"+symbol+": Telegram composition must use narrow transport/audit ports, not broad Runtime")
+					*forbidden = append(*forbidden, path+":"+symbol+": typed Component composition must use declared owner ports, not broad Runtime")
 				}
 			}
 			if qualifier, ok := value.X.(*ast.Ident); ok && value.Sel.Name == "Runtime" && imports[qualifier.Name] == modulePath+"/service" {
@@ -419,4 +419,9 @@ func TestFoundationLegitimateOwnersAndDeterministicBudget(t *testing.T) {
 	if len(addedFoundationSites(before, changed)) != 1 {
 		t.Fatal("an existing explicit Direct site concealed a new fallback")
 	}
+}
+
+func typedComponentComposition(path string) bool {
+	directory := filepath.ToSlash(filepath.Dir(path))
+	return directory == "components/telegram" || directory == "components/observability-extra"
 }

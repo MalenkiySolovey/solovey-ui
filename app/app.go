@@ -131,7 +131,7 @@ func (a *APP) Init() (err error) {
 				return service.NewOutboundHTTPClientForRuntime(runtime, tag, timeout)
 			}),
 			Audit: componenthost.AuditDeps{Recorder: &service.AuditService{Runtime: runtime}},
-		},
+		}.WithObservationOwners(),
 		Scheduler:         a.cronScheduler,
 		DropOwnedSettings: (&service.SettingService{}).DropOwnedComponentSettings,
 	})

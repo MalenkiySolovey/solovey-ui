@@ -33,6 +33,7 @@ type Scheduler interface {
 }
 
 type APIDeps struct {
+	ObservationPorts
 	Runtime      *service.Runtime
 	OutboundHTTP OutboundHTTPClientProvider
 	Auth         AuthDeps

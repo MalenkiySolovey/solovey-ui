@@ -13,6 +13,7 @@ import (
 // existing owner contracts, never a Runtime, database, filesystem or executor.
 // Only declared ports are populated; Host is always the actual Local Host.
 type Ports struct {
+	ObservationPorts
 	Host              hostref.Ref
 	Scheduler         Scheduler
 	OutboundHTTP      OutboundHTTPClientProvider
@@ -75,6 +76,8 @@ func (d Deps) bind(required []string) (Ports, error) {
 			ports.HTTP.JSONObj = d.API.HTTP.JSONObj
 			ports.Audit.Audit = d.API.Audit.Audit
 			available = ports.Auth.RequireScope != nil && ports.HTTP.JSONObj != nil
+		default:
+			available = d.API.bindObservationPort(port, &ports)
 		}
 		if !available {
 			return Ports{}, fmt.Errorf("component host port %q is unavailable", port)

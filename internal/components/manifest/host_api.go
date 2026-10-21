@@ -5,11 +5,14 @@ import "fmt"
 const HostAPIV1 = "solovey.component-host/v1"
 
 const (
-	PortScheduler    = "scheduler"
-	PortOutboundHTTP = "outbound.http"
-	PortAuditRecord  = "audit.record"
-	PortHTTPRequest  = "http.request"
-	PortSettingsDrop = "settings.drop-owned"
+	PortScheduler          = "scheduler"
+	PortOutboundHTTP       = "outbound.http"
+	PortAuditRecord        = "audit.record"
+	PortHTTPRequest        = "http.request"
+	PortSettingsDrop       = "settings.drop-owned"
+	PortObservationSample  = "observability.sample"
+	PortObservationHistory = "observability.history"
+	PortAuditHistory       = "audit.history"
 )
 
 // HostAPI declares the existing owner ports required by each entry point.
@@ -43,7 +46,7 @@ func (h *HostAPI) Validate() error {
 		seen := make(map[string]bool, len(ports))
 		for _, port := range ports {
 			switch port {
-			case PortScheduler, PortOutboundHTTP, PortAuditRecord, PortHTTPRequest:
+			case PortScheduler, PortOutboundHTTP, PortAuditRecord, PortHTTPRequest, PortObservationSample, PortObservationHistory, PortAuditHistory:
 			default:
 				return fmt.Errorf("unknown component host port %q", port)
 			}
@@ -54,13 +57,13 @@ func (h *HostAPI) Validate() error {
 		}
 	}
 	for _, port := range h.API {
-		if port == PortScheduler {
-			return fmt.Errorf("scheduler belongs to component lifecycle")
+		if port == PortScheduler || port == PortObservationSample {
+			return fmt.Errorf("port %q belongs to component lifecycle", port)
 		}
 	}
 	for _, port := range h.Lifecycle {
-		if port == PortHTTPRequest {
-			return fmt.Errorf("request helpers belong to component API routes")
+		if port == PortHTTPRequest || port == PortObservationHistory || port == PortAuditHistory {
+			return fmt.Errorf("port %q belongs to component API routes", port)
 		}
 	}
 	if len(h.DropData) > 1 || len(h.DropData) == 1 && h.DropData[0] != PortSettingsDrop {
