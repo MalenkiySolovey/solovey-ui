@@ -2,6 +2,7 @@ package componenthost
 
 import (
 	"context"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	"time"
 
 	clientidentity "github.com/MalenkiySolovey/solovey-ui/internal/httpsecurity/clientidentity"
@@ -47,6 +48,7 @@ type APIDeps struct {
 type AuthDeps struct {
 	// AuthorizationChanged refreshes the host's authorization snapshot after
 	// a feature has committed a change to account or token authority.
+	ActionPolicy           func(*gin.Context) actions.Authorizer
 	AuthorizationChanged   func()
 	RequireScope           func(*gin.Context, string, ...string) bool
 	RequireAuditAdminScope func(*gin.Context) bool

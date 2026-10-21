@@ -96,8 +96,13 @@ func registerAPIComponentFixture(id string, name string, scopes []string, regist
 	if _, exists := registry.ComponentByID(id); exists {
 		return
 	}
+	var declaredActions []string
+	if id == "panel-update-ui" {
+		declaredActions = []string{"component.remove"}
+	}
 	registry.Register(registry.Component{
 		Manifest: manifest.Manifest{
+			Actions:        declaredActions,
 			ID:             id,
 			Name:           name,
 			Version:        "1",

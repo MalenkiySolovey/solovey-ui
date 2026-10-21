@@ -41,6 +41,7 @@ func panelUpdateDeps(host componenthost.APIDeps) panelupdatehttp.Deps {
 		Hostname:         host.Request.Hostname,
 		RequireScope:     host.Auth.RequireScope,
 		RequireStepUp:    host.Auth.RequireStepUp,
+		ActionPolicy:     host.Auth.ActionPolicy,
 		Audit:            host.Audit.Audit,
 		JSONObj:          host.HTTP.JSONObj,
 		JSONMsg:          host.HTTP.JSONMsg,

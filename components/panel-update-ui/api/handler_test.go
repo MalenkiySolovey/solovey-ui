@@ -1,7 +1,10 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -30,6 +33,10 @@ func (stub *componentManagerStepUpStub) Install(panelupdateservice.OperationCont
 }
 
 func (stub *componentManagerStepUpStub) Remove(operation panelupdateservice.OperationContext, id string) (panelupdateservice.ComponentStatus, error) {
+	invocation := actions.RemoveComponent(operationcoordination.NewReference("component-lifecycle", "component:"+id, "component-remove:fixture"), actions.ComponentRemoveInput{ComponentID: id})
+	if _, err := actions.Require(operation.RequestContext, invocation, operation.Authorize); err != nil {
+		return panelupdateservice.ComponentStatus{}, err
+	}
 	stub.removeCalls++
 	stub.operation = operation
 	return panelupdateservice.ComponentStatus{ID: id, Installed: false}, nil
@@ -67,41 +74,49 @@ func TestComponentRemoveFailsClosedWithoutReauthenticationBoundary(t *testing.T)
 	}
 }
 
-func TestComponentRemoveRequiresExactActionTargetBeforeManager(t *testing.T) {
+func TestComponentRemoveRequiresExactActionTargetAtOwner(t *testing.T) {
 	for _, allowed := range []bool{false, true} {
 		t.Run(map[bool]string{false: "denied", true: "accepted"}[allowed], func(t *testing.T) {
 			manager := &componentManagerStepUpStub{}
 			router := gin.New()
+			requireStepUp := func(c *gin.Context, action, target string) bool {
+				if action != actions.ComponentRemove || target != "component:telegram" {
+					t.Fatalf("wrong assurance binding: %q %q", action, target)
+				}
+				if !allowed {
+					c.AbortWithStatus(http.StatusForbidden)
+				}
+				return allowed
+			}
 			RegisterRoutes(router.Group("/api"), Deps{
 				ComponentManager: manager,
 				RequireScope:     func(*gin.Context, string, ...string) bool { return true },
-				LoginUser:        func(*gin.Context) string { return "admin" },
-				RemoteIP:         func(*gin.Context) string { return "192.0.2.1" },
-				Audit:            func(*gin.Context, string, string, string, string, map[string]any) {},
+				LoginUser:        func(*gin.Context) string { return "admin" }, RemoteIP: func(*gin.Context) string { return "192.0.2.1" },
+				Audit: func(*gin.Context, string, string, string, string, map[string]any) {},
 				JSONObj: func(c *gin.Context, obj any, err error) {
 					c.JSON(http.StatusOK, gin.H{"success": err == nil, "obj": obj})
 				},
 				JSONMsg: func(c *gin.Context, msg string, err error) {
 					c.JSON(http.StatusOK, gin.H{"success": err == nil, "msg": msg})
 				},
-				RequireStepUp: func(c *gin.Context, operation, target string) bool {
-					if operation != "component.remove" || target != "component:telegram" {
-						t.Fatalf("assurance binding: %q %q", operation, target)
+				RequireStepUp: requireStepUp,
+				ActionPolicy: func(c *gin.Context) actions.Authorizer {
+					return func(_ context.Context, actual actions.Invocation) (actions.Decision, error) {
+						if !requireStepUp(c, actual.ID, actual.Target) {
+							return actions.Decision{}, actions.ErrDenied
+						}
+						return actions.Decision{Allowed: true, Actor: "admin", Permission: actions.PermissionComponentUninstall, Invocation: actual}, nil
 					}
-					if !allowed {
-						c.AbortWithStatus(http.StatusForbidden)
-					}
-					return allowed
 				},
 			})
 			request := httptest.NewRequest(http.MethodPost, "/api/update/components/telegram/remove", strings.NewReader(`{}`))
 			recorder := httptest.NewRecorder()
 			router.ServeHTTP(recorder, request)
 			if allowed && (manager.removeCalls != 1 || manager.operation.RequestContext != request.Context() || recorder.Code != http.StatusOK) {
-				t.Fatalf("accepted assurance lost request context: %d %d", manager.removeCalls, recorder.Code)
+				t.Fatal("accepted owner action lost its request context")
 			}
 			if !allowed && (manager.removeCalls != 0 || recorder.Code != http.StatusForbidden) {
-				t.Fatal("rejected assurance reached manager")
+				t.Fatal("rejected assurance reached mutation")
 			}
 		})
 	}

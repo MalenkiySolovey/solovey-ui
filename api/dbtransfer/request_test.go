@@ -34,7 +34,7 @@ func TestDatabaseImportNativeTransportSurvivesOrdinaryWriteDeadline(t *testing.T
 	for _, protocol := range []string{"http1", "http2"} {
 		t.Run(protocol, func(t *testing.T) {
 			ready := make(chan time.Time, 1)
-			h := NewHandler(Deps{
+			h := NewHandler(Deps{ActionPolicy: fixtureActionPolicy,
 				RequireScope:         func(*gin.Context, string, ...string) bool { return true },
 				RequireStepUp:        func(*gin.Context, string, string) bool { return true },
 				AuthorizationChanged: func() {},
@@ -131,7 +131,7 @@ func TestDatabaseTransferDeadlinesRemainBehindAuthorization(t *testing.T) {
 			w := &deadlineWriter{ResponseRecorder: httptest.NewRecorder()}
 			c, _ := gin.CreateTestContext(w)
 			c.Request = httptest.NewRequest("POST", "/importdb", nil)
-			h := NewHandler(Deps{RequireScope: func(c *gin.Context, _ string, _ ...string) bool {
+			h := NewHandler(Deps{ActionPolicy: fixtureActionPolicy, RequireScope: func(c *gin.Context, _ string, _ ...string) bool {
 				if boundary == "scope" {
 					c.AbortWithStatus(403)
 					return false

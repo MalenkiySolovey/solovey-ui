@@ -19,7 +19,7 @@ func TestDatabaseImportFailsClosedWithoutBrowserStepUpCapability(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/apiv2/importdb", strings.NewReader(""))
-	handler := NewHandler(Deps{
+	handler := NewHandler(Deps{ActionPolicy: fixtureActionPolicy,
 		RequireScope: func(*gin.Context, string, ...string) bool { return true },
 	})
 
@@ -34,7 +34,7 @@ func TestDatabaseImportFailsClosedWithoutAuthorizationCompletion(t *testing.T) {
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	c.Request = httptest.NewRequest(http.MethodPost, "/api/importdb", nil)
-	handler := NewHandler(Deps{
+	handler := NewHandler(Deps{ActionPolicy: fixtureActionPolicy,
 		RequireScope:  func(*gin.Context, string, ...string) bool { return true },
 		RequireStepUp: func(*gin.Context, string, string) bool { return true },
 	})

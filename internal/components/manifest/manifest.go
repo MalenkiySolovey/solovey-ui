@@ -21,6 +21,7 @@ type Manifest struct {
 	Delivery       Delivery `json:"delivery"`
 	DefaultEnabled bool     `json:"defaultEnabled"`
 	TokenScopes    []string `json:"tokenScopes,omitempty"`
+	Actions        []string `json:"actions,omitempty"`
 	Frontend       Frontend `json:"frontend,omitempty"`
 	CLI            Packages `json:"cli,omitempty"`
 	Privileged     Packages `json:"privilegedBroker,omitempty"`
@@ -37,6 +38,7 @@ type Packages struct {
 }
 
 var idPattern = regexp.MustCompile(`^[a-z0-9-]+$`)
+var semanticActionPattern = regexp.MustCompile(`^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$`)
 var tokenScopePattern = regexp.MustCompile(`^[a-z0-9-]+(?::[a-z0-9-]+)*$`)
 var frontendEntryPattern = regexp.MustCompile(`^(frontend|src)/[A-Za-z0-9_./-]+\.(ts|vue)$`)
 var packageEntryPattern = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_./-]*$`)
@@ -95,6 +97,16 @@ func (m Manifest) Validate() error {
 		}
 		seenScopes[scope] = struct{}{}
 	}
+	if len(m.Actions) > 32 {
+		return fmt.Errorf("component %q declares too many actions", m.ID)
+	}
+	seenActions := make(map[string]bool, len(m.Actions))
+	for _, action := range m.Actions {
+		if len(action) > 128 || !semanticActionPattern.MatchString(action) || seenActions[action] {
+			return fmt.Errorf("component %q action declaration is invalid", m.ID)
+		}
+		seenActions[action] = true
+	}
 	if len(m.Frontend.Entries) > maxManifestFrontendFiles {
 		return fmt.Errorf("component %q declares too many frontend entries", m.ID)
 	}
@@ -148,5 +160,6 @@ func validatePackageEntries(componentID, surface string, entries []string) error
 func (m Manifest) Normalized() Manifest {
 	m.Database = m.Database.Normalized(m.Version)
 	m.HostAPI = m.HostAPI.Clone()
+	m.Actions = append([]string(nil), m.Actions...)
 	return m
 }

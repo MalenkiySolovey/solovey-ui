@@ -3,6 +3,7 @@ package datalifecycle
 import (
 	"context"
 	"errors"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	"io"
 	"strings"
 
@@ -18,6 +19,7 @@ type RestoreRequest struct {
 	Confirmation              string
 	Acknowledged              bool
 	Source                    io.ReadSeeker
+	Authorize                 actions.Authorizer
 	// OnAccepted runs once for a newly accepted restore, before optional
 	// retention work. A later cleanup error cannot undo durable acceptance.
 	OnAccepted func()
@@ -35,6 +37,12 @@ func (m *Manager) ExecuteRestore(ctx context.Context, request RestoreRequest) (m
 	if m == nil || ctx == nil || request.Source == nil || !validDigest(request.ExpectedRehearsalRevision) ||
 		!safeID(request.IdempotencyKey, 96) || request.Confirmation != RestoreConfirmation(request.ExpectedRehearsalRevision) || !request.Acknowledged {
 		return model.DataLifecycleOperation{}, result, errors.New("invalid restore request")
+	}
+	operationID := "data-operation:" + semanticDigest(struct{ Key, Revision string }{request.IdempotencyKey, request.ExpectedRehearsalRevision})[:48]
+	invocation := actions.Restore(operationcoordination.NewReference("data", "database", operationID),
+		actions.RestoreInput{RehearsalRevision: request.ExpectedRehearsalRevision})
+	if _, err := actions.Require(ctx, invocation, request.Authorize); err != nil {
+		return model.DataLifecycleOperation{}, result, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -68,7 +76,7 @@ func (m *Manager) ExecuteRestore(ctx context.Context, request RestoreRequest) (m
 		manifestDigest = rehearsal.Manifest.BackupID
 	}
 	operation := model.DataLifecycleOperation{
-		OperationID:    "data-operation:" + semanticDigest(struct{ Key, Revision string }{request.IdempotencyKey, rehearsal.Revision})[:48],
+		OperationID:    operationID,
 		IdempotencyKey: request.IdempotencyKey, Kind: "RESTORE", State: "ADMITTED", OwnerID: "core",
 		ManifestDigest: manifestDigest, ExpectedRevision: rehearsal.Revision, Revision: 1, CreatedAt: now, UpdatedAt: now,
 	}
