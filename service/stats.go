@@ -12,6 +12,7 @@ import (
 	coretracker "github.com/MalenkiySolovey/solovey-ui/core/tracker"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 	ipmonitor "github.com/MalenkiySolovey/solovey-ui/ipmonitor"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
@@ -147,7 +148,7 @@ func (s *StatsService) saveStatsSamples(enableTraffic bool, samples []coretracke
 	publishOnCommit := false
 	publishOnlines := onlines{}
 	var publishStats []model.Stats
-	clientDeltas := map[string]clientTrafficDelta{}
+	clientDeltas := map[entitytypes.VPNUserID]clientTrafficDelta{}
 	defer func() {
 		if err == nil {
 			if commitErr := tx.Commit().Error; commitErr != nil {
@@ -171,6 +172,9 @@ func (s *StatsService) saveStatsSamples(enableTraffic bool, samples []coretracke
 			transactionCommitted = true
 			ipBatch.Commit()
 			if publishOnCommit {
+				onlineResourcesMu.Lock()
+				onlineResources = &publishOnlines
+				onlineResourcesMu.Unlock()
 				publishStatsRealtime(s.projectOnlines(publishOnlines), publishStats)
 			}
 		} else {
@@ -178,18 +182,21 @@ func (s *StatsService) saveStatsSamples(enableTraffic bool, samples []coretracke
 		}
 	}()
 
-	for _, stat := range stats {
-		if stat.Resource == "user" {
-			if stat.Direction {
-				delta := clientDeltas[stat.Tag]
-				delta.up += stat.Traffic
-				clientDeltas[stat.Tag] = delta
-			} else {
-				delta := clientDeltas[stat.Tag]
-				delta.down += stat.Traffic
-				clientDeltas[stat.Tag] = delta
-			}
+	// Runtime labels remain observations; only authenticated stable IDs can
+	// change durable VPN user counters. Unknown observations are not guessed.
+	for _, sample := range samples {
+		if sample.Resource != "user" || sample.VPNUserID == 0 {
+			continue
 		}
+		delta := clientDeltas[sample.VPNUserID]
+		if sample.Direction {
+			delta.up += sample.Traffic
+		} else {
+			delta.down += sample.Traffic
+		}
+		clientDeltas[sample.VPNUserID] = delta
+	}
+	for _, stat := range stats {
 		if stat.Direction {
 			switch stat.Resource {
 			case "inbound":
@@ -204,9 +211,6 @@ func (s *StatsService) saveStatsSamples(enableTraffic bool, samples []coretracke
 	if err := updateClientTrafficDeltas(tx, clientDeltas); err != nil {
 		return err
 	}
-	onlineResourcesMu.Lock()
-	onlineResources = &currentOnlines
-	onlineResourcesMu.Unlock()
 	publishOnCommit = true
 	publishOnlines = currentOnlines
 	publishStats = append([]model.Stats(nil), stats...)
@@ -234,18 +238,18 @@ func statsModels(samples []coretracker.Stat) []model.Stats {
 	return stats
 }
 
-func updateClientTrafficDeltas(tx *gorm.DB, deltas map[string]clientTrafficDelta) error {
+func updateClientTrafficDeltas(tx *gorm.DB, deltas map[entitytypes.VPNUserID]clientTrafficDelta) error {
 	if len(deltas) == 0 {
 		return nil
 	}
-	names := make([]string, 0, len(deltas))
+	names := make([]entitytypes.VPNUserID, 0, len(deltas))
 	for name, delta := range deltas {
 		if delta.up == 0 && delta.down == 0 {
 			continue
 		}
 		names = append(names, name)
 	}
-	sort.Strings(names)
+	sort.Slice(names, func(i, j int) bool { return names[i] < names[j] })
 	for start := 0; start < len(names); start += 100 {
 		end := start + 100
 		if end > len(names) {
@@ -258,23 +262,23 @@ func updateClientTrafficDeltas(tx *gorm.DB, deltas map[string]clientTrafficDelta
 	return nil
 }
 
-func updateClientTrafficDeltaBatch(tx *gorm.DB, names []string, deltas map[string]clientTrafficDelta) error {
+func updateClientTrafficDeltaBatch(tx *gorm.DB, names []entitytypes.VPNUserID, deltas map[entitytypes.VPNUserID]clientTrafficDelta) error {
 	if len(names) == 0 {
 		return nil
 	}
 	var query strings.Builder
 	args := make([]any, 0, len(names)*5)
-	query.WriteString("UPDATE clients SET up = up + CASE name")
+	query.WriteString("UPDATE clients SET up = up + CASE id")
 	for _, name := range names {
 		query.WriteString(" WHEN ? THEN ?")
 		args = append(args, name, deltas[name].up)
 	}
-	query.WriteString(" ELSE 0 END, down = down + CASE name")
+	query.WriteString(" ELSE 0 END, down = down + CASE id")
 	for _, name := range names {
 		query.WriteString(" WHEN ? THEN ?")
 		args = append(args, name, deltas[name].down)
 	}
-	query.WriteString(" ELSE 0 END WHERE name IN (")
+	query.WriteString(" ELSE 0 END WHERE id IN (")
 	for i, name := range names {
 		if i > 0 {
 			query.WriteByte(',')

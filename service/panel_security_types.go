@@ -4,6 +4,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"time"
+
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 )
 
 const (
@@ -63,15 +65,15 @@ const (
 )
 
 type AuthenticationResult struct {
-	User      modelUserIdentity
+	User      PanelAccountIdentity
 	AuthState string
 	Assurance string
 }
 
-// modelUserIdentity keeps the HTTP boundary from serializing a password-bearing
+// PanelAccountIdentity keeps the HTTP boundary from serializing a password-bearing
 // database model while retaining every fact required to mint a session.
-type modelUserIdentity struct {
-	ID                   uint
+type PanelAccountIdentity struct {
+	ID                   entitytypes.PanelAccountID
 	Username             string
 	CredentialGeneration uint64
 	MFAGeneration        uint64
@@ -113,7 +115,7 @@ type RealtimeSessionBinding struct {
 	MFAGeneration             uint64
 }
 
-func (r AuthenticationResult) UserID() uint { return r.User.ID }
+func (r AuthenticationResult) UserID() uint { return uint(r.User.ID) }
 
 func (r AuthenticationResult) Username() string { return r.User.Username }
 
@@ -125,8 +127,8 @@ func (r AuthenticationResult) MFAGeneration() uint64 { return r.User.MFAGenerati
 
 func NewAuthenticationResult(id uint, username string, credentialGeneration, mfaGeneration uint64, authState, assurance string) AuthenticationResult {
 	return AuthenticationResult{
-		User: modelUserIdentity{
-			ID:                   id,
+		User: PanelAccountIdentity{
+			ID:                   entitytypes.PanelAccountID(id),
 			Username:             username,
 			CredentialGeneration: credentialGeneration,
 			MFAGeneration:        mfaGeneration,

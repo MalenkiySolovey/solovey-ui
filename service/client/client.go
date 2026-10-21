@@ -74,6 +74,7 @@ func clientChangeNameJSON(name string) json.RawMessage {
 func (s *Service) DepleteClients() (inboundIds []uint, err error) {
 	var clients []model.Client
 	var changes []model.Changes
+	var resetChanged bool
 
 	dt := time.Now().Unix()
 	db := clientDatabase()
@@ -91,6 +92,9 @@ func (s *Service) DepleteClients() (inboundIds []uint, err error) {
 			if err != nil {
 				return
 			}
+			if resetChanged || len(changes) > 0 {
+				s.setLastUpdate(dt)
+			}
 			if err1 := db.Exec("PRAGMA wal_checkpoint(FULL)").Error; err1 != nil {
 				logger.Error("Error checkpointing WAL: ", err1.Error())
 			}
@@ -100,7 +104,7 @@ func (s *Service) DepleteClients() (inboundIds []uint, err error) {
 	}()
 
 	// Reset clients
-	inboundIds, err = s.ResetClients(tx, dt)
+	inboundIds, resetChanged, err = s.resetClients(tx, dt)
 	if err != nil {
 		return nil, err
 	}
@@ -141,13 +145,19 @@ func (s *Service) DepleteClients() (inboundIds []uint, err error) {
 		if err != nil {
 			return nil, err
 		}
-		s.setLastUpdate(dt)
 	}
 
 	return inboundIds, nil
 }
 
+// ResetClients stages reset effects in the caller's transaction. The caller
+// owns commit and freshness publication; DepleteClients publishes after commit.
 func (s *Service) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
+	ids, _, err := s.resetClients(tx, dt)
+	return ids, err
+}
+
+func (s *Service) resetClients(tx *gorm.DB, dt int64) ([]uint, bool, error) {
 	var err error
 	var resetClients []*model.Client
 	var changes []model.Changes
@@ -156,7 +166,7 @@ func (s *Service) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 	err = tx.Model(model.Client{}).
 		Where("enable = true AND delay_start = true AND auto_reset = false AND (up > 0 OR down > 0)").Find(&resetClients).Error
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	for _, client := range resetClients {
 		client.Expiry = dt + (clientResetPeriodDays(client.ResetDays) * 86400)
@@ -165,7 +175,7 @@ func (s *Service) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 			"expiry":      client.Expiry,
 			"delay_start": client.DelayStart,
 		}); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		changes = append(changes, model.Changes{
 			DateTime: dt,
@@ -181,7 +191,7 @@ func (s *Service) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 	err = tx.Model(model.Client{}).
 		Where("enable = true AND delay_start = true AND auto_reset = true AND (up > 0 OR down > 0)").Find(&resetClients).Error
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	for _, client := range resetClients {
 		client.NextReset = dt + (clientResetPeriodDays(client.ResetDays) * 86400)
@@ -190,7 +200,7 @@ func (s *Service) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 			"next_reset":  client.NextReset,
 			"delay_start": client.DelayStart,
 		}); err != nil {
-			return nil, err
+			return nil, false, err
 		}
 		changes = append(changes, model.Changes{
 			DateTime: dt,
@@ -206,7 +216,7 @@ func (s *Service) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 	err = tx.Model(model.Client{}).
 		Where("delay_start = false AND auto_reset = true AND next_reset < ?", dt).Find(&resetClients).Error
 	if err != nil {
-		return nil, err
+		return nil, false, err
 	}
 	for _, client := range resetClients {
 		var clientInboundIds []uint
@@ -232,9 +242,10 @@ func (s *Service) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 				"access_disable_reason": gorm.Expr("CASE WHEN access_disable_reason = ? THEN CASE WHEN expiry > 0 AND expiry < ? THEN ? ELSE '' END ELSE access_disable_reason END", model.ClientDisabledQuota, dt, model.ClientDisabledExpired),
 			})
 		if result.Error != nil {
-			return nil, result.Error
+			return nil, false, result.Error
 		}
 		if result.RowsAffected > 0 {
+			changes = append(changes, model.Changes{DateTime: dt, Actor: "ResetJob", Key: "clients", Action: "reset", Obj: clientChangeNameJSON(client.Name)})
 			inboundIds = common.UnionUintArray(inboundIds, clientInboundIds)
 		}
 	}
@@ -243,11 +254,10 @@ func (s *Service) ResetClients(tx *gorm.DB, dt int64) ([]uint, error) {
 	if len(changes) > 0 {
 		err = dbsqlite.CreateInBatches(tx.Model(model.Changes{}), &changes)
 		if err != nil {
-			return nil, err
+			return nil, false, err
 		}
-		s.setLastUpdate(dt)
 	}
-	return inboundIds, nil
+	return inboundIds, len(changes) > 0, nil
 }
 
 func (s *Service) ResetTraffic(id string) (client model.Client, err error) {

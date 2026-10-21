@@ -5,6 +5,8 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
+
 	"github.com/sagernet/sing-box/adapter"
 	tun "github.com/sagernet/sing-tun"
 )
@@ -89,11 +91,12 @@ func (f *inventoryFlow) finish(reason tun.FlowCloseReason) tun.FlowHandle {
 func (f *inventoryFlow) CloseFlow(reason tun.FlowCloseReason) { f.finish(reason) }
 
 func (c *StatsTracker) RoutedFlow(ctx context.Context, metadata adapter.InboundContext, rule adapter.Rule, outbound adapter.Outbound) tun.FlowTracker {
-	flow, _ := c.admitFlow(metadata, outbound)
-	return flow
+	var result tun.FlowTracker = rejectedFlow{}
+	inboundidentity.Admission(ctx, func() { result, _ = c.admitFlow(ctx, metadata, outbound) })
+	return result
 }
 
-func (c *StatsTracker) admitFlow(metadata adapter.InboundContext, outbound adapter.Outbound) (tun.FlowTracker, bool) {
+func (c *StatsTracker) admitFlow(ctx context.Context, metadata adapter.InboundContext, outbound adapter.Outbound) (tun.FlowTracker, bool) {
 	if c.observer != nil && !c.observer.ObserveAndAllow(metadata.User, sourceIPFromMetadata(metadata)) {
 		return rejectedFlow{}, false
 	}
@@ -102,7 +105,7 @@ func (c *StatsTracker) admitFlow(metadata adapter.InboundContext, outbound adapt
 		tag = outbound.Tag()
 	}
 	c.access.Lock()
-	read, write := c.getReadCountersLocked(metadata.Inbound, tag, metadata.User)
+	read, write := c.getReadCountersLocked(metadata.Inbound, tag, metadata.User, inboundidentity.AccountingUserID(ctx, metadata))
 	flow := &statsFlow{read: read, write: write, group: c.inflight}
 	c.access.Unlock()
 	return flow, true
@@ -157,11 +160,15 @@ func (t *RoutedTracker) RoutedFlow(ctx context.Context, metadata adapter.Inbound
 	if ctx.Err() != nil {
 		return rejectedFlow{}
 	}
-	stats, admitted := t.stats.admitFlow(metadata, outbound)
-	if !admitted {
-		return stats
-	}
-	return &routedFlow{stats: stats, actual: t.connections.RoutedFlow(ctx, metadata, rule, outbound)}
+	var result tun.FlowTracker = rejectedFlow{}
+	inboundidentity.Admission(ctx, func() {
+		stats, admitted := t.stats.admitFlow(ctx, metadata, outbound)
+		result = stats
+		if admitted {
+			result = &routedFlow{stats: stats, actual: t.connections.RoutedFlow(ctx, inboundidentity.InventoryMetadata(ctx, metadata), rule, outbound)}
+		}
+	})
+	return result
 }
 
 type routedFlow struct{ stats, actual tun.FlowTracker }

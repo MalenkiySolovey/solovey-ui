@@ -5,7 +5,6 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"sync/atomic"
 	"testing"
 	"time"
 	"unsafe"
@@ -14,6 +13,7 @@ import (
 	coretracker "github.com/MalenkiySolovey/solovey-ui/core/tracker"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 	gormlogger "gorm.io/gorm/logger"
 )
 
@@ -47,9 +47,9 @@ func BenchmarkUpdateClientTrafficDeltas(b *testing.B) {
 			initServicePerfDB(b)
 			const clients = 1000
 			seedStatsBenchClients(b, clients)
-			deltas := make(map[string]clientTrafficDelta, clients)
+			deltas := make(map[entitytypes.VPNUserID]clientTrafficDelta, clients)
 			for i := 0; i < clients; i++ {
-				name := fmt.Sprintf("user-%04d", i)
+				name := entitytypes.VPNUserID(i + 1)
 				if i%100 < emptyPercent {
 					deltas[name] = clientTrafficDelta{}
 					continue
@@ -103,26 +103,20 @@ func syntheticStatsCoreForBench(tb testing.TB, tracker *coretracker.StatsTracker
 
 func seedSyntheticUserStatsForBench(tb testing.TB, tracker *coretracker.StatsTracker, n int) {
 	tb.Helper()
-	trackerValue := reflect.ValueOf(tracker).Elem()
-	usersField := trackerValue.FieldByName("users")
-	users := reflect.MakeMapWithSize(usersField.Type(), n)
-	counterType := usersField.Type().Elem()
-	for i := 0; i < n; i++ {
-		counter := reflect.New(counterType).Elem()
-		read := &atomic.Int64{}
-		write := &atomic.Int64{}
-		read.Store(int64(i + 1))
-		write.Store(int64(i + 2))
-		setUnexportedFieldForBench(counter.FieldByName("read"), reflect.ValueOf(read))
-		setUnexportedFieldForBench(counter.FieldByName("write"), reflect.ValueOf(write))
-		users.SetMapIndex(reflect.ValueOf(fmt.Sprintf("user-%04d", i)), counter)
+	var clients []model.Client
+	if err := dbsqlite.DB().Order("name").Limit(n).Find(&clients).Error; err != nil {
+		tb.Fatal(err)
 	}
-	setUnexportedFieldForBench(usersField, users)
-
-	inboundsField := trackerValue.FieldByName("inbounds")
-	setUnexportedFieldForBench(inboundsField, reflect.MakeMap(inboundsField.Type()))
-	outboundsField := trackerValue.FieldByName("outbounds")
-	setUnexportedFieldForBench(outboundsField, reflect.MakeMap(outboundsField.Type()))
+	if len(clients) != n {
+		tb.Fatalf("wanted %d synthetic principals, got %d", n, len(clients))
+	}
+	samples := make([]coretracker.Stat, 0, n*2)
+	for i, client := range clients {
+		samples = append(samples,
+			coretracker.Stat{DateTime: time.Now().Unix(), Resource: "user", Tag: client.Name, VPNUserID: client.VPNUserID(), Direction: true, Traffic: int64(i + 1)},
+			coretracker.Stat{DateTime: time.Now().Unix(), Resource: "user", Tag: client.Name, VPNUserID: client.VPNUserID(), Direction: false, Traffic: int64(i + 2)})
+	}
+	tracker.RestoreStats(samples)
 }
 
 func setUnexportedFieldForBench(field reflect.Value, value reflect.Value) {

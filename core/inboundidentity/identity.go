@@ -9,6 +9,7 @@ import (
 	"sync"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/sagernet/sing-box/adapter"
 )
@@ -18,6 +19,9 @@ type Binding struct {
 	Principal string
 	ClientID  uint
 }
+
+// VPNUserID is the typed projection of the already proven local principal.
+func (b Binding) VPNUserID() entitytypes.VPNUserID { return entitytypes.VPNUserID(b.ClientID) }
 
 type principal struct {
 	binding Binding
@@ -190,9 +194,20 @@ func Admission(ctx context.Context, accept func()) bool {
 	return registry.QUICAdmission(ctx, accept)
 }
 
-// InventoryMetadata is applied after StatsTracker admission. Policy, counters
-// and route matching keep the original authenticated principal. Only the
-// official inventory receives the opaque proven client binding.
+// AccountingUserID is read within Admission's accepted callback. The immutable
+// stamp comes only from the authenticated inbound owner; a name alone never
+// establishes an accounting identity. Admission owns the epoch lifetime lock.
+func AccountingUserID(ctx context.Context, metadata adapter.InboundContext) entitytypes.VPNUserID {
+	proof, _ := ctx.Value(stampKey{}).(*stamp)
+	if proof == nil || proof.principal == nil || ctx.Err() != nil || metadata.Inbound != proof.epoch.tag || metadata.User != proof.principal.binding.Principal {
+		return 0
+	}
+	return proof.principal.binding.VPNUserID()
+}
+
+// InventoryMetadata is applied after StatsTracker admission. Policy and route
+// matching keep the authenticated principal; accounting separately uses its
+// proven stable ID. Official inventory receives the opaque accepted binding.
 func InventoryMetadata(ctx context.Context, metadata adapter.InboundContext) adapter.InboundContext {
 	proof, _ := ctx.Value(stampKey{}).(*stamp)
 	if proof != nil && proof.principal != nil && metadata.Inbound == proof.epoch.tag && metadata.User == proof.principal.binding.Principal {

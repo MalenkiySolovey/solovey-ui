@@ -7,6 +7,9 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
+
 	"github.com/sagernet/sing-box/adapter"
 	"github.com/sagernet/sing/common/buf"
 	"github.com/sagernet/sing/common/bufio"
@@ -19,11 +22,17 @@ type Counter struct {
 	write *atomic.Int64
 }
 
+// A display name is an observation label, not a durable accounting key.
+type userCounterKey struct {
+	name string
+	id   entitytypes.VPNUserID
+}
+
 type StatsTracker struct {
 	access    sync.Mutex
 	inbounds  map[string]Counter
 	outbounds map[string]Counter
-	users     map[string]Counter
+	users     map[userCounterKey]Counter
 	inflight  *trackerWaitGroup
 	observer  IPObserver
 }
@@ -32,7 +41,7 @@ func NewStatsTracker(observers ...IPObserver) *StatsTracker {
 	tracker := &StatsTracker{
 		inbounds:  make(map[string]Counter),
 		outbounds: make(map[string]Counter),
-		users:     make(map[string]Counter),
+		users:     make(map[userCounterKey]Counter),
 		inflight:  newTrackerWaitGroup(),
 	}
 	if len(observers) > 0 {
@@ -52,41 +61,41 @@ func (c *StatsTracker) Reset() {
 	waitForTrackerIdle("stats tracker", waitGroup, trackerResetWaitTimeout)
 }
 
-func resetCounters(counters map[string]Counter) {
+func resetCounters[K comparable](counters map[K]Counter) {
 	for _, counter := range counters {
 		counter.read.Store(0)
 		counter.write.Store(0)
 	}
 }
 
-func (c *StatsTracker) getTrackedReadCounters(inbound string, outbound string, user string) ([]*atomic.Int64, []*atomic.Int64, *trackerWaitGroup) {
+func (c *StatsTracker) getTrackedReadCounters(inbound string, outbound string, user string, userID entitytypes.VPNUserID) ([]*atomic.Int64, []*atomic.Int64, *trackerWaitGroup) {
 	c.access.Lock()
 	defer c.access.Unlock()
-	readCounter, writeCounter := c.getReadCountersLocked(inbound, outbound, user)
+	readCounter, writeCounter := c.getReadCountersLocked(inbound, outbound, user, userID)
 	c.inflight.Add()
 	return readCounter, writeCounter, c.inflight
 }
 
-func (c *StatsTracker) getReadCountersLocked(inbound string, outbound string, user string) ([]*atomic.Int64, []*atomic.Int64) {
+func (c *StatsTracker) getReadCountersLocked(inbound string, outbound string, user string, userID entitytypes.VPNUserID) ([]*atomic.Int64, []*atomic.Int64) {
 	var readCounter []*atomic.Int64
 	var writeCounter []*atomic.Int64
 
 	if inbound != "" {
-		readCounter = append(readCounter, c.loadOrCreateCounter(&c.inbounds, inbound).read)
+		readCounter = append(readCounter, loadOrCreateCounter(&c.inbounds, inbound).read)
 		writeCounter = append(writeCounter, c.inbounds[inbound].write)
 	}
 	if outbound != "" {
-		readCounter = append(readCounter, c.loadOrCreateCounter(&c.outbounds, outbound).read)
+		readCounter = append(readCounter, loadOrCreateCounter(&c.outbounds, outbound).read)
 		writeCounter = append(writeCounter, c.outbounds[outbound].write)
 	}
 	if user != "" {
-		readCounter = append(readCounter, c.loadOrCreateCounter(&c.users, user).read)
-		writeCounter = append(writeCounter, c.users[user].write)
+		readCounter = append(readCounter, loadOrCreateCounter(&c.users, userCounterKey{name: user, id: userID}).read)
+		writeCounter = append(writeCounter, c.users[userCounterKey{name: user, id: userID}].write)
 	}
 	return readCounter, writeCounter
 }
 
-func (c *StatsTracker) loadOrCreateCounter(obj *map[string]Counter, name string) Counter {
+func loadOrCreateCounter[K comparable](obj *map[K]Counter, name K) Counter {
 	counter, loaded := (*obj)[name]
 	if loaded {
 		return counter
@@ -97,11 +106,14 @@ func (c *StatsTracker) loadOrCreateCounter(obj *map[string]Counter, name string)
 }
 
 func (c *StatsTracker) RoutedConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound) net.Conn {
-	wrapped, _ := c.admitConnection(conn, metadata, matchOutbound)
-	return wrapped
+	result := conn
+	if !inboundidentity.Admission(ctx, func() { result, _ = c.admitConnection(ctx, conn, metadata, matchOutbound) }) {
+		_ = conn.Close()
+	}
+	return result
 }
 
-func (c *StatsTracker) admitConnection(conn net.Conn, metadata adapter.InboundContext, matchOutbound adapter.Outbound) (net.Conn, bool) {
+func (c *StatsTracker) admitConnection(ctx context.Context, conn net.Conn, metadata adapter.InboundContext, matchOutbound adapter.Outbound) (net.Conn, bool) {
 	sourceIP := sourceIPFromMetadata(metadata)
 	if c.observer != nil && !c.observer.ObserveAndAllow(metadata.User, sourceIP) {
 		_ = conn.Close()
@@ -111,16 +123,19 @@ func (c *StatsTracker) admitConnection(conn net.Conn, metadata adapter.InboundCo
 	if matchOutbound != nil {
 		outbound = matchOutbound.Tag()
 	}
-	readCounter, writeCounter, waitGroup := c.getTrackedReadCounters(metadata.Inbound, outbound, metadata.User)
+	readCounter, writeCounter, waitGroup := c.getTrackedReadCounters(metadata.Inbound, outbound, metadata.User, inboundidentity.AccountingUserID(ctx, metadata))
 	return newStatsTrackedConn(bufio.NewInt64CounterConn(conn, readCounter, writeCounter), waitGroup), true
 }
 
 func (c *StatsTracker) RoutedPacketConnection(ctx context.Context, conn network.PacketConn, metadata adapter.InboundContext, matchedRule adapter.Rule, matchOutbound adapter.Outbound) network.PacketConn {
-	wrapped, _ := c.admitPacketConnection(conn, metadata, matchOutbound)
-	return wrapped
+	result := conn
+	if !inboundidentity.Admission(ctx, func() { result, _ = c.admitPacketConnection(ctx, conn, metadata, matchOutbound) }) {
+		_ = conn.Close()
+	}
+	return result
 }
 
-func (c *StatsTracker) admitPacketConnection(conn network.PacketConn, metadata adapter.InboundContext, matchOutbound adapter.Outbound) (network.PacketConn, bool) {
+func (c *StatsTracker) admitPacketConnection(ctx context.Context, conn network.PacketConn, metadata adapter.InboundContext, matchOutbound adapter.Outbound) (network.PacketConn, bool) {
 	sourceIP := sourceIPFromMetadata(metadata)
 	if c.observer != nil && !c.observer.ObserveAndAllow(metadata.User, sourceIP) {
 		_ = conn.Close()
@@ -130,7 +145,7 @@ func (c *StatsTracker) admitPacketConnection(conn network.PacketConn, metadata a
 	if matchOutbound != nil {
 		outbound = matchOutbound.Tag()
 	}
-	readCounter, writeCounter, waitGroup := c.getTrackedReadCounters(metadata.Inbound, outbound, metadata.User)
+	readCounter, writeCounter, waitGroup := c.getTrackedReadCounters(metadata.Inbound, outbound, metadata.User, inboundidentity.AccountingUserID(ctx, metadata))
 	return newStatsTrackedPacketConn(bufio.NewInt64CounterPacketConn(conn, readCounter, nil, writeCounter, nil), waitGroup), true
 }
 
@@ -230,6 +245,9 @@ func sourceIPFromMetadata(metadata adapter.InboundContext) string {
 }
 
 type Stat struct {
+	// VPNUserID is captured at authenticated admission, never resolved by name
+	// at flush time. Zero denotes an observation without durable attribution.
+	VPNUserID entitytypes.VPNUserID
 	DateTime  int64
 	Resource  string
 	Tag       string
@@ -291,13 +309,15 @@ func (c *StatsTracker) GetStats() []Stat {
 			s = append(s, Stat{
 				DateTime:  dt,
 				Resource:  "user",
-				Tag:       user,
+				Tag:       user.name,
+				VPNUserID: user.id,
 				Direction: false,
 				Traffic:   down,
 			}, Stat{
 				DateTime:  dt,
 				Resource:  "user",
-				Tag:       user,
+				Tag:       user.name,
+				VPNUserID: user.id,
 				Direction: true,
 				Traffic:   up,
 			})
@@ -323,11 +343,17 @@ func (c *StatsTracker) RestoreStats(samples []Stat) {
 		case "outbound":
 			counters = &c.outbounds
 		case "user":
-			counters = &c.users
+			counter := loadOrCreateCounter(&c.users, userCounterKey{name: sample.Tag, id: sample.VPNUserID})
+			if sample.Direction {
+				counter.read.Add(sample.Traffic)
+			} else {
+				counter.write.Add(sample.Traffic)
+			}
+			continue
 		default:
 			continue
 		}
-		counter := c.loadOrCreateCounter(counters, sample.Tag)
+		counter := loadOrCreateCounter(counters, sample.Tag)
 		if sample.Direction {
 			counter.read.Add(sample.Traffic)
 		} else {
