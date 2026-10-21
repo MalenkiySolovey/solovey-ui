@@ -98,6 +98,7 @@ func (h *securityHTTP) posture(c *gin.Context) {
 	}
 	jsonObj(c, gin.H{
 		"authState":                    securityContext.AuthState,
+		"componentUIReadPermissions":   componentUIReadPermissions(c),
 		"assurance":                    securityContext.Assurance,
 		"username":                     securityContext.Username,
 		"sessionRef":                   securityContext.Ref,

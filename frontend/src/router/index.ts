@@ -6,6 +6,7 @@ import Data from '@/store/modules/data'
 import Ws from '@/store/ws'
 import { getBaseUrl } from '@/plugins/base-url'
 import { syncEnabledComponents } from '@/componentSystem/loader'
+import { setComponentUIReadPermissions } from '@/componentSystem/registry'
 import { getSecurityPosture, messageObject, type SecurityPosture } from '@/shared/composables/useSecurityOperations'
 import { configureLoginNavigation } from '@/plugins/loginNavigation'
 import { createPreloadRecovery, isPreloadError } from './preloadRecovery'
@@ -57,6 +58,7 @@ router.beforeEach(async (to) => {
   if (to.path !== '/login' && !transitionOnly) {
     const postureResponse = await getSecurityPosture()
     const posture = messageObject<SecurityPosture>(postureResponse)
+    setComponentUIReadPermissions(posture?.authState === 'authenticated' ? posture.componentUIReadPermissions : [])
     if (posture?.authState === 'password_reset' || posture?.authState === 'mfa_pending' || posture?.authState === 'mfa_recovery') {
       return { name: 'pages.securityTransition', query: { returnTo: safeHostReturnTo(to.fullPath) } }
     }
@@ -81,6 +83,7 @@ router.beforeEach(async (to) => {
       return to.fullPath
     }
   } else {
+    setComponentUIReadPermissions([])
     Ws().disconnect()
   }
 })

@@ -2,7 +2,7 @@ import type { Router, RouteRecordRaw } from 'vue-router'
 import { hostPath } from '@/router/hostContext'
 import Data from '@/store/modules/data'
 import { componentEntries } from 'virtual:solovey-component-entries'
-import { componentRoutes, registeredComponents, registerComponent, unregisterComponent } from './registry'
+import { componentRoutes, registeredComponents, registerComponent, registerBundledComponent, unregisterComponent } from './registry'
 import { loadComponentLocaleMessages } from './locales'
 
 type ComponentEntryModule = { register: () => void; unregister?: () => void }
@@ -63,7 +63,7 @@ const syncEnabledComponentsOnce = async (router: Router) => {
       if (!loader) continue
       try {
         const module = await loader()
-        module.register()
+        registerBundledComponent(id, module.register)
         loadedEntries.set(id, module)
       } catch (error) {
         console.warn(`[componentSystem] failed to load ${id}`, error)
@@ -128,7 +128,7 @@ const removeComponentRoutes = (componentId: string) => {
 
 const routeKey = (route: { name: string; meta?: RouteRecordRaw['meta'] }) => {
   const meta = route.meta as { componentId?: unknown } | undefined
-  return `${String(meta?.componentId ?? '')}:${route.name}`
+  return `${String(meta?.componentId ?? '')}:${route.name}:${JSON.stringify(route)}`
 }
 
 export { registerComponent }

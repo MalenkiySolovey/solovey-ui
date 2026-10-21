@@ -14,6 +14,7 @@ export interface MFAStatus {
 }
 
 export interface SecurityPosture {
+  componentUIReadPermissions?: string[]
   authState: AuthState
   assurance: Assurance
   username: string

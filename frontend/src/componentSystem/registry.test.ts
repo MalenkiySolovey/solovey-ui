@@ -12,7 +12,7 @@ describe('componentSystem registry', () => {
     registerComponent({
       id: 'test-alpha',
       apiVersion: '1.0',
-      routes: [{ path: '/alpha', name: 'alpha', component: async () => ({ default: {} as any }) }],
+      routes: [{ path: '/alpha', name: 'component.test-alpha.alpha', component: async () => ({ default: {} as any }) }],
       nav: [{ title: 'alpha', icon: 'mdi-test', path: '/alpha', order: 20 }],
       slots: [{ slot: 'dashboard:widgets', component: async () => ({ default: {} as any }), order: 10 }],
     })
@@ -26,12 +26,12 @@ describe('componentSystem registry', () => {
     registerComponent({
       id: 'test-beta',
       apiVersion: '1.0',
-      routes: [{ path: '/old', name: 'old', component: async () => ({ default: {} as any }) }],
+      routes: [{ path: '/old', name: 'component.test-beta.old', component: async () => ({ default: {} as any }) }],
     })
     registerComponent({
       id: 'test-beta',
       apiVersion: '1.0',
-      routes: [{ path: '/new', name: 'new', component: async () => ({ default: {} as any }) }],
+      routes: [{ path: '/new', name: 'component.test-beta.new', component: async () => ({ default: {} as any }) }],
     })
 
     expect(componentRoutes.value.map(route => route.path)).not.toContain('/old')

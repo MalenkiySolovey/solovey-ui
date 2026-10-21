@@ -117,6 +117,7 @@ export default {
     "system": "Система"
   },
   "pages": {
+    "unavailable": "Функция недоступна",
     "login": "Вход",
     "home": "Дашборд",
     "inbounds": "Входящие",

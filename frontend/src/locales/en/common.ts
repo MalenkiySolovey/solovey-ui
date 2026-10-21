@@ -117,6 +117,7 @@ export default {
     "system": "System"
   },
   "pages": {
+    "unavailable": "Feature unavailable",
     "login": "Login",
     "home": "Dashboard",
     "inbounds": "Inbounds",
