@@ -132,7 +132,7 @@ func TestRemovalRetainsDeclaredSchemaAndMigrationDebt(t *testing.T) {
 		t.Fatalf("fixture cannot reach data admission: %+v %v", preview, err)
 	}
 	before, _ := os.ReadFile(path)
-	if _, err := manager.Remove(authorizedRemovalContext(nil), id); err == nil {
+	if _, err := manager.Remove(authorizedRemovalContext(context.Background()), id); err == nil {
 		t.Fatal("empty declared schema was orphaned")
 	}
 	after, _ := os.ReadFile(path)
@@ -152,7 +152,7 @@ func TestRemovalRetainsDeclaredSchemaAndMigrationDebt(t *testing.T) {
 	if err := db.Create(&journal).Error; err != nil {
 		t.Fatal(err)
 	}
-	if _, err := manager.Remove(authorizedRemovalContext(nil), id); err == nil {
+	if _, err := manager.Remove(authorizedRemovalContext(context.Background()), id); err == nil {
 		t.Fatal("failed migration lost its installed owner")
 	}
 }
@@ -216,11 +216,11 @@ func TestRemovalTimeoutDoesNotAdmitLateMutationOrUnboundedWorkers(t *testing.T) 
 	}
 	before, _ := os.ReadFile(path)
 	manager := RuntimeManager{Removal: admission, Timeout: 10 * time.Millisecond}
-	if _, err := manager.Remove(authorizedRemovalContext(nil), id); err == nil {
+	if _, err := manager.Remove(authorizedRemovalContext(context.Background()), id); err == nil {
 		t.Fatal("timeout admitted removal")
 	}
 	for range 5 {
-		if _, err := manager.Remove(authorizedRemovalContext(nil), id); err == nil {
+		if _, err := manager.Remove(authorizedRemovalContext(context.Background()), id); err == nil {
 			t.Fatal("busy observation admitted removal")
 		}
 	}
