@@ -1,6 +1,7 @@
 package hostcontext
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -39,7 +40,7 @@ func TestLocalHostRequestBinding(t *testing.T) {
 			}
 		})
 	}
-	if _, ok := FromContext(nil); ok {
+	if _, ok := FromContext(context.Background()); ok {
 		t.Fatal("missing Host context accepted")
 	}
 }
