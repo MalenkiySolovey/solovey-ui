@@ -24,12 +24,18 @@ for (const mode of ['classic', 'nexus']) {
     await expect(page.locator('a[href$="/hosts/local/diagnostics"]')).toHaveCount(0)
     await page.unroute(postureURL)
 
-    const token = await csrfToken(page)
-    const disabled = await page.request.post('api/update/components/observability-extra/disable', { headers: mutationHeaders(token) })
-    expect(disabled.ok()).toBe(true)
-    expect((await disabled.json()).success).toBe(true)
-    await page.reload()
-    await expect(page.getByText('This feature is unavailable on this Host. Check the installed Components in Settings.')).toBeVisible()
-    await expect(page.locator('a[href$="/hosts/local/diagnostics"]')).toHaveCount(0)
+    try {
+      const token = await csrfToken(page)
+      const disabled = await page.request.post('api/update/components/observability-extra/disable', { headers: mutationHeaders(token) })
+      expect(disabled.ok()).toBe(true)
+      expect((await disabled.json()).success).toBe(true)
+      await page.reload()
+      await expect(page.getByText('This feature is unavailable on this Host. Check the installed Components in Settings.')).toBeVisible()
+      await expect(page.locator('a[href$="/hosts/local/diagnostics"]')).toHaveCount(0)
+    } finally {
+      // Browser files share the managed backend. Restore the state established
+      // above so later maintenance scenarios retain their real Component.
+      await enableComponent(page, 'observability-extra')
+    }
   })
 }
