@@ -14,8 +14,9 @@ import (
 )
 
 type Component struct {
-	Manifest  manifest.Manifest
-	Lifecycle lifecycle.Lifecycle
+	Manifest      manifest.Manifest
+	Lifecycle     lifecycle.Lifecycle
+	PortLifecycle lifecycle.PortLifecycle
 }
 
 type APIRouteRegistrar func(*gin.RouterGroup, componenthost.APIDeps) error
@@ -58,7 +59,36 @@ func Register(component Component) {
 }
 
 func RegisterAPIRoutes(componentID string, register APIRouteRegistrar) {
-	defaultRegistry.registerAPIRoutes(componentID, register)
+	defaultRegistry.registerLegacyAPIRoutes(componentID, register)
+}
+
+func (r *registry) registerLegacyAPIRoutes(componentID string, register APIRouteRegistrar) {
+	component, ok := r.componentByID(componentID)
+	if !ok || component.Manifest.HostAPI != nil {
+		panic(fmt.Errorf("component %q must use its declared typed API boundary", componentID))
+	}
+	r.registerAPIRoutes(componentID, register)
+}
+
+// RegisterPortAPIRoutes binds only the manifest's declared request ports. Routes
+// remain under the existing authenticated/CSRF-protected ComponentHost group.
+func RegisterPortAPIRoutes(componentID string, register func(*gin.RouterGroup, componenthost.Ports) error) {
+	defaultRegistry.registerPortAPIRoutes(componentID, register)
+}
+
+func (r *registry) registerPortAPIRoutes(componentID string, register func(*gin.RouterGroup, componenthost.Ports) error) {
+	component, ok := r.componentByID(componentID)
+	if !ok || component.Manifest.HostAPI == nil || register == nil {
+		panic(fmt.Errorf("component %q typed API contract is required", componentID))
+	}
+	contract := *component.Manifest.HostAPI
+	r.registerAPIRoutes(componentID, func(g *gin.RouterGroup, host componenthost.APIDeps) error {
+		ports, err := host.BindAPI(contract)
+		if err != nil {
+			return err
+		}
+		return register(g, ports)
+	})
 }
 
 func Components() []Component {
@@ -85,10 +115,22 @@ func (r *registry) registerWith(component Component, admit func(manifest.Manifes
 	if err := component.Manifest.Validate(); err != nil {
 		panic(err)
 	}
+	component.Manifest = component.Manifest.Normalized()
+	if component.PortLifecycle != nil {
+		if component.Lifecycle != nil || component.Manifest.HostAPI == nil {
+			panic(fmt.Errorf("component %q must declare one typed lifecycle contract", component.Manifest.ID))
+		}
+		var err error
+		component.Lifecycle, err = lifecycle.BindPorts(component.Manifest, component.PortLifecycle)
+		if err != nil {
+			panic(fmt.Errorf("component %q: %w", component.Manifest.ID, err))
+		}
+	} else if component.Manifest.HostAPI != nil {
+		panic(fmt.Errorf("component %q Host API requires typed lifecycle", component.Manifest.ID))
+	}
 	if component.Lifecycle == nil {
 		panic(fmt.Errorf("component %q lifecycle is required", component.Manifest.ID))
 	}
-	component.Manifest = component.Manifest.Normalized()
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -134,7 +176,7 @@ func (r *registry) componentsList() []Component {
 
 	components := make([]Component, 0, len(r.components))
 	for _, component := range r.components {
-		components = append(components, component)
+		components = append(components, snapshot(component))
 	}
 	sort.Slice(components, func(i, j int) bool {
 		return components[i].Manifest.ID < components[j].Manifest.ID
@@ -146,7 +188,7 @@ func (r *registry) componentByID(id string) (Component, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	component, ok := r.components[id]
-	return component, ok
+	return snapshot(component), ok
 }
 
 func (r *registry) componentsByID(ids []string) []Component {
@@ -164,12 +206,17 @@ func (r *registry) componentsByID(ids []string) []Component {
 		if !ok {
 			continue
 		}
-		components = append(components, component)
+		components = append(components, snapshot(component))
 	}
 	sort.Slice(components, func(i, j int) bool {
 		return components[i].Manifest.ID < components[j].Manifest.ID
 	})
 	return components
+}
+
+func snapshot(component Component) Component {
+	component.Manifest.HostAPI = component.Manifest.HostAPI.Clone()
+	return component
 }
 
 func (r *registry) apiRouteRegistrarsByComponentIDs(ids map[string]struct{}) []APIRoutes {

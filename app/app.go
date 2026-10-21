@@ -132,7 +132,8 @@ func (a *APP) Init() (err error) {
 			}),
 			Audit: componenthost.AuditDeps{Recorder: &service.AuditService{Runtime: runtime}},
 		},
-		Scheduler: a.cronScheduler,
+		Scheduler:         a.cronScheduler,
+		DropOwnedSettings: (&service.SettingService{}).DropOwnedComponentSettings,
 	})
 	service.RegisterComponentSettingsReconciler(a.components.Reconcile)
 	service.RegisterComponentMigrator(a.components.Migrate)

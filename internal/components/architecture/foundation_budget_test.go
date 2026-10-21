@@ -102,6 +102,10 @@ func inspectFoundationFile(path string, file *ast.File) ([]foundationSite, []str
 			alias = spec.Name.Name
 		}
 		imports[alias] = imported
+		if filepath.ToSlash(filepath.Dir(path)) == "components/telegram" &&
+			(imported == modulePath+"/database/sqlite" || imported == "gorm.io/gorm") {
+			forbidden = append(forbidden, path+": typed Telegram composition must use its declared owner ports, not raw database access")
+		}
 		if imported == modulePath+"/service" && alias == "." {
 			forbidden = append(forbidden, path+": dot import hides broad Runtime authority")
 		}

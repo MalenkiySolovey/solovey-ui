@@ -15,9 +15,11 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/robfig/cron/v3"
 )
 
@@ -63,10 +65,8 @@ func (s *telegramTrackingScheduler) RemoveJobAndWait(context.Context, cron.Entry
 func TestTelegramComponentStartIsIdempotent(t *testing.T) {
 	scheduler := &telegramTrackingScheduler{}
 	c := &component{}
-	host := lifecycle.Context{Host: componenthost.Deps{
-		Scheduler: scheduler,
-		API:       testTelegramHostPorts(),
-	}}
+	host := testTelegramHostPorts()
+	host.Scheduler = scheduler
 	if err := c.Start(context.Background(), host); err != nil {
 		t.Fatal(err)
 	}
@@ -121,8 +121,8 @@ func TestTelegramComponentStartRequiresNarrowPortsWithoutRetainedState(t *testin
 	}
 }
 
-func testTelegramHostPorts() componenthost.APIDeps {
-	return componenthost.APIDeps{
+func testTelegramHostPorts() componenthost.Ports {
+	return componenthost.Ports{
 		OutboundHTTP: componenthost.OutboundHTTPClientFunc(func(string, time.Duration) (*http.Client, error) {
 			return nil, errors.New("test core is unavailable")
 		}),
@@ -136,7 +136,7 @@ func TestTelegramDropDataRemovesOwnedSettings(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if err := (&component{}).DropData(context.Background(), lifecycle.Context{}); err != nil {
+	if err := (&component{}).DropData(context.Background(), testTelegramDropPorts(t)); err != nil {
 		t.Fatal(err)
 	}
 	var settingsCount int64
@@ -145,6 +145,47 @@ func TestTelegramDropDataRemovesOwnedSettings(t *testing.T) {
 	}
 	if settingsCount != 0 {
 		t.Fatalf("telegram DropData left %d setting rows", settingsCount)
+	}
+}
+
+func testTelegramDropPorts(t *testing.T) componenthost.Ports {
+	t.Helper()
+	ports, err := (componenthost.Deps{DropOwnedSettings: (&service.SettingService{}).DropOwnedComponentSettings}).BindDataDrop(telegramManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return ports
+}
+
+func TestTelegramRegisteredLifecycleUsesDeclaredPortsAndScopedDrop(t *testing.T) {
+	initTelegramComponentTestDB(t)
+	registered, ok := registry.ComponentByID(id)
+	if !ok || registered.PortLifecycle == nil || registered.Manifest.HostAPI == nil {
+		t.Fatal("Telegram did not opt into typed host binding")
+	}
+	host := testTelegramHostPorts()
+	legacy := lifecycle.Context{Host: componenthost.Deps{Scheduler: &telegramTrackingScheduler{},
+		API:               componenthost.APIDeps{OutboundHTTP: host.OutboundHTTP, Audit: host.Audit},
+		DropOwnedSettings: (&service.SettingService{}).DropOwnedComponentSettings}}
+	if err := registered.Lifecycle.Start(t.Context(), legacy); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = registered.Lifecycle.Stop(context.Background()) })
+	if err := registered.Lifecycle.Stop(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.DB().Create(&model.Setting{Key: "panel-private-fixture", Value: "keep"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.DB().Create(&model.Setting{Key: telegramsettings.BotTokenKey, Value: "drop"}).Error; err != nil {
+		t.Fatal(err)
+	}
+	if err := registered.Lifecycle.(lifecycle.DataDropper).DropData(t.Context(), legacy); err != nil {
+		t.Fatal(err)
+	}
+	var rows []model.Setting
+	if err := dbsqlite.DB().Where("key IN ?", []string{"panel-private-fixture", telegramsettings.BotTokenKey}).Find(&rows).Error; err != nil || len(rows) != 1 || rows[0].Key != "panel-private-fixture" {
+		t.Fatal("scoped drop crossed settings ownership", err)
 	}
 }
 

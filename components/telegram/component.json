@@ -5,6 +5,12 @@
   "since": "2026.1.0",
   "delivery": "in-process",
   "defaultEnabled": true,
+  "hostAPI": {
+    "version": "solovey.component-host/v1",
+    "lifecycle": ["scheduler", "outbound.http", "audit.record"],
+    "api": ["http.request", "outbound.http", "audit.record"],
+    "dropData": ["settings.drop-owned"]
+  },
   "tokenScopes": [
     "telegram"
   ],

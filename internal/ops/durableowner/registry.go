@@ -66,6 +66,7 @@ func Lookup(id string) (manifest.Manifest, bool) {
 }
 
 func cloneManifest(item manifest.Manifest) manifest.Manifest {
+	item.HostAPI = item.HostAPI.Clone()
 	item.TokenScopes = append([]string(nil), item.TokenScopes...)
 	item.Frontend.Entries = append([]string(nil), item.Frontend.Entries...)
 	item.Database.Tables = append([]string(nil), item.Database.Tables...)

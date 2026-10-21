@@ -14,7 +14,6 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	telegramservice "github.com/MalenkiySolovey/solovey-ui/components/telegram/service"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
@@ -75,10 +74,7 @@ func TestTelegramAPICompositionUsesOnlySelectedTransportAndAuditPorts(t *testing
 			return &http.Response{StatusCode: status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"ok":true}`))}, nil
 		})}, nil
 	})
-	host := componenthost.APIDeps{OutboundHTTP: transport, Audit: componenthost.AuditDeps{Recorder: audit}}
-	if host.Runtime != nil {
-		t.Fatal("fixture must not receive broad Runtime")
-	}
+	host := componenthost.Ports{OutboundHTTP: transport, Audit: componenthost.AuditDeps{Recorder: audit}}
 	deps := telegramDeps(host)
 	deps.Telegram.Settings = telegramPortSettings{}
 	if result := deps.Telegram.SendContext(t.Context(), "Authorization: Bearer secret.jwt.value"); !result.Success || calls != 1 {
@@ -166,8 +162,8 @@ func TestTelegramNarrowPortsPreserveNotifierCancellationAndFailedStopAuthority(t
 			t.Error(err)
 		}
 	})
-	if err := c.Start(t.Context(), lifecycle.Context{Host: componenthost.Deps{Scheduler: scheduler,
-		API: componenthost.APIDeps{OutboundHTTP: transport, Audit: componenthost.AuditDeps{Recorder: &telegramAuditRecorder{}}}}}); err != nil {
+	if err := c.Start(t.Context(), componenthost.Ports{Scheduler: scheduler,
+		OutboundHTTP: transport, Audit: componenthost.AuditDeps{Recorder: &telegramAuditRecorder{}}}); err != nil {
 		t.Fatal(err)
 	}
 	if err := (&service.SettingService{}).Save(dbsqlite.DB(), json.RawMessage(`{"telegramEnabled":"true","telegramBotToken":"123456:port-private-token","telegramChatID":"-99","telegramTransportMode":"outbound","telegramOutboundTag":"selected-vpn"}`)); err != nil {

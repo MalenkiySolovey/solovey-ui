@@ -25,6 +25,7 @@ type Manifest struct {
 	CLI            Packages `json:"cli,omitempty"`
 	Privileged     Packages `json:"privilegedBroker,omitempty"`
 	Database       Database `json:"database,omitempty"`
+	HostAPI        *HostAPI `json:"hostAPI,omitempty"`
 }
 
 type Frontend struct {
@@ -116,6 +117,12 @@ func (m Manifest) Validate() error {
 	if err := validatePackageEntries(m.ID, "privileged broker", m.Privileged.Entries); err != nil {
 		return err
 	}
+	if err := m.HostAPI.Validate(); err != nil {
+		return fmt.Errorf("component %q: %w", m.ID, err)
+	}
+	if m.HostAPI != nil && len(m.HostAPI.DropData) != 0 && len(m.Database.Settings)+len(m.Database.Secrets) == 0 {
+		return fmt.Errorf("component %q settings drop port requires declared owned settings", m.ID)
+	}
 	return m.Database.Validate(m.ID, m.Version)
 }
 
@@ -140,5 +147,6 @@ func validatePackageEntries(componentID, surface string, entries []string) error
 // catalog. JSON and programmatic registrations have identical checksums.
 func (m Manifest) Normalized() Manifest {
 	m.Database = m.Database.Normalized(m.Version)
+	m.HostAPI = m.HostAPI.Clone()
 	return m
 }
