@@ -13,6 +13,12 @@ func HydrateConnectionTypeInfo(subscriptions []RemoteOutboundSubscription) {
 	for subscriptionIndex := range subscriptions {
 		for connectionIndex := range subscriptions[subscriptionIndex].Connections {
 			connection := &subscriptions[subscriptionIndex].Connections[connectionIndex]
+			if captured := canonicalConnection(connection.Canonical); captured != nil {
+				endpoint := subcanonical.NormalizeEndpoint(*captured)
+				connection.EndpointID = endpoint.EndpointID
+				connection.ProjectionStatus = endpoint.Projection
+				connection.ProjectionDiagnostics = append([]subcanonical.ProjectionDiagnostic(nil), endpoint.Diagnostics...)
+			}
 			connection.ConvertedType = strings.TrimSpace(connection.Type)
 			connection.SourceType = connectionSourceType(*connection)
 			if connection.SourceType == "" {

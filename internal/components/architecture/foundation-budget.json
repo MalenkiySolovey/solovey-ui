@@ -1173,12 +1173,6 @@
     },
     {
       "rule": "component-model-mutation",
-      "path": "components/remote-outbound-subscriptions/domain/sync.go",
-      "symbol": "syncSingleConnectionToOutbound",
-      "digest": "df8da257f14f22718f0f60c79c7d6546b5198ff9a1c55f47ec4f8707847d7897"
-    },
-    {
-      "rule": "component-model-mutation",
       "path": "components/remote-outbound-subscriptions/domain/tagging.go",
       "symbol": "RetagSubscriptionConnections",
       "digest": "50db1bd0930ca5e0f841d3196d5a0f3892302b7da3facf8639bc4581622472d2"
@@ -2049,15 +2043,21 @@
     },
     {
       "rule": "direct-policy",
-      "path": "internal/subscriptions/formats/clash.go",
-      "symbol": "RenderClash",
-      "digest": "500091cd5e6849c5c663277d75a603968e06d5c0be8c51d854c09e1595b411ec"
+      "path": "internal/subscriptions/canonical/projection.go",
+      "symbol": "ValidateEndpointProjection",
+      "digest": "816b6bbc44118f4b073c65a9cbb040393c1e11a3cbd51838b60cb1aa84bdf8fb"
     },
     {
       "rule": "direct-policy",
       "path": "internal/subscriptions/formats/clash.go",
       "symbol": "RenderClash",
-      "digest": "500091cd5e6849c5c663277d75a603968e06d5c0be8c51d854c09e1595b411ec"
+      "digest": "24b0e033b6d812612d6ce641c5c29656bdc88406ac7b9d54fb9531dfc1ea26f5"
+    },
+    {
+      "rule": "direct-policy",
+      "path": "internal/subscriptions/formats/clash.go",
+      "symbol": "RenderClash",
+      "digest": "24b0e033b6d812612d6ce641c5c29656bdc88406ac7b9d54fb9531dfc1ea26f5"
     },
     {
       "rule": "direct-policy",
@@ -2087,13 +2087,13 @@
       "rule": "direct-policy",
       "path": "internal/subscriptions/formats/xray.go",
       "symbol": "RenderXray",
-      "digest": "dce4e0098f8eaa41884f7de8d5c0f79dd48f846f92e6b0fb8a9bfa6a49f4113b"
+      "digest": "66698f8709e02fa41357be7b7229da149b0fe03b44b49466cbaaf95038b779ac"
     },
     {
       "rule": "direct-policy",
       "path": "internal/subscriptions/formats/xray.go",
       "symbol": "RenderXray",
-      "digest": "dce4e0098f8eaa41884f7de8d5c0f79dd48f846f92e6b0fb8a9bfa6a49f4113b"
+      "digest": "66698f8709e02fa41357be7b7229da149b0fe03b44b49466cbaaf95038b779ac"
     },
     {
       "rule": "direct-policy",

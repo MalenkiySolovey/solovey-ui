@@ -87,6 +87,10 @@ func getTlsParams(params *[]LinkParam, tls map[string]interface{}, insecureKey s
 		}
 	}
 	if utls, ok := tls["utls"].(map[string]interface{}); ok {
+		enabled, explicit := utls["enabled"]
+		if explicit && !asBool(enabled) {
+			utls = nil
+		}
 		if fingerprint, ok := utls["fingerprint"].(string); ok {
 			*params = append(*params, LinkParam{"fp", fingerprint})
 		}

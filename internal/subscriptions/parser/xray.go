@@ -32,6 +32,16 @@ func ParseXrayOutboundsWithOptions(data string, options ParseOptions) ([]map[str
 	dependencies := make([]map[string]interface{}, 0)
 	multiConfig := len(configs) > 1
 	for configIndex, config := range configs {
+		raw, ok := config["outbounds"].([]any)
+		if !ok || len(raw) == 0 {
+			return nil, common.NewError("MANUAL_MAPPING_REQUIRED: invalid source endpoint list")
+		}
+		for _, value := range raw {
+			endpoint, ok := value.(map[string]any)
+			if !ok || !xraySourceHasEndpoints(endpoint) {
+				return nil, common.NewError("MANUAL_MAPPING_REQUIRED: invalid source endpoint shape")
+			}
+		}
 		for _, outbound := range parseXrayConfigOutbounds(config, options, configIndex, multiConfig) {
 			if boolValue(outbound["xray_profile_member"]) {
 				dependencies = append(dependencies, outbound)

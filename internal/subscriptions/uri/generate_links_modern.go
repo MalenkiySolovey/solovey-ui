@@ -131,7 +131,14 @@ func vmessLink(
 	baseParams := map[string]interface{}{
 		"v":   "2",
 		"id":  uuid,
-		"aid": 0,
+		"aid": userConfig["alter_id"],
+		"scy": userConfig["security"],
+	}
+	if baseParams["aid"] == nil {
+		baseParams["aid"] = 0
+	}
+	if baseParams["scy"] == nil {
+		baseParams["scy"] = "auto"
 	}
 	var net, typ, host, path string
 	for _, p := range transportParams {
@@ -140,7 +147,7 @@ func vmessLink(
 			net = p.Value
 		case "host":
 			host = p.Value
-		case "path":
+		case "path", "serviceName":
 			path = p.Value
 		}
 	}

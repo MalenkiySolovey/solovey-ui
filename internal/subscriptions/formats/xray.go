@@ -4,9 +4,15 @@ import (
 	"encoding/json"
 	"strconv"
 	"strings"
+
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 )
 
 func RenderXray(outbounds []map[string]interface{}) (string, error) {
+	outbounds, projectionErr := canonical.ProjectOutbounds(canonical.FormatXray, outbounds)
+	if projectionErr != nil {
+		return "", projectionErr
+	}
 	configOutbounds := make([]map[string]interface{}, 0, len(outbounds)+2)
 	proxyTags := make([]string, 0, len(outbounds))
 	groupOutbounds := make([]map[string]interface{}, 0)

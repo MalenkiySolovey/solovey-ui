@@ -27,6 +27,7 @@ export default {
     },
     "sourceFeature": "Source feature",
     "convertedType": "Converted to panel",
+    "projectionStates": { "MANUAL_MAPPING_REQUIRED": "Manual mapping required", "UNSUPPORTED": "Unsupported" },
     "collectedData": "Profile",
     "clientUnavailable": "Client sync needs link export support",
     "connections": "connections",

@@ -45,6 +45,7 @@ func ObserveOutbound(format string, outbound map[string]any, index int) Connecti
 	}
 	clone := cloneMap(outbound)
 	adaptations := outboundAdaptations(clone)
+	source, sourceDiagnostics := sourceObservation(clone)
 	stripInternalMetadata(clone)
 	name := displayName(clone, index)
 	groupMembers := outboundGroupMembers(clone)
@@ -64,12 +65,13 @@ func ObserveOutbound(format string, outbound map[string]any, index int) Connecti
 		Formats:      []string{format},
 		Adaptations:  adaptations,
 		Observations: []Observation{{
-			Format:   format,
-			Name:     name,
+			Format: format,
+			Name:   name,
+			Source: source, Diagnostics: sourceDiagnostics,
 			Outbound: cloneMap(clone),
 		}},
 	}
-	return connection
+	return NormalizeEndpoint(connection)
 }
 
 func outboundKind(groupMembers []string) string {
@@ -98,6 +100,7 @@ func stripInternalMetadata(outbound map[string]any) {
 		return
 	}
 	delete(outbound, MetadataKey)
+	delete(outbound, sourceMetadataKey)
 	delete(outbound, "_subscription_metadata")
 	delete(outbound, "_subscription_auxiliary")
 }
@@ -232,7 +235,11 @@ func tlsInfo(outbound map[string]any) TLS {
 		ServerName: strings.TrimSpace(stringValue(tlsMap["server_name"])),
 	}
 	if reality, ok := tlsMap["reality"].(map[string]any); ok {
-		info.Reality = boolValue(reality["enabled"]) || strings.TrimSpace(stringValue(reality["public_key"])) != ""
+		if enabled, explicit := reality["enabled"]; explicit {
+			info.Reality = boolValue(enabled)
+		} else {
+			info.Reality = strings.TrimSpace(stringValue(reality["public_key"])) != ""
+		}
 	}
 	return info
 }

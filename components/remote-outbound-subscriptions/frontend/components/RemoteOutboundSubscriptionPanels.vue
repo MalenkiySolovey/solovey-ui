@@ -185,6 +185,10 @@
               <td>{{ page.connectionGroupNames(subscription, connection) }}</td>
               <td>
                 <div class="remote-outbounds__status">
+                  <v-chip v-if="projectionBlocked(connection)" color="warning" density="compact" size="small" variant="tonal">
+                    {{ $t(`remoteOutbound.projectionStates.${connection.projectionStatus}`) }}
+                    <v-tooltip activator="parent" location="top" :text="(connection.projectionDiagnostics ?? []).map((item: { code: string; field: string }) => `${item.code}: ${item.field}`).join('; ')" />
+                  </v-chip>
                   <v-chip v-if="connection.synced" density="compact" size="small" color="success" variant="flat">
                     {{ $t('remoteOutbound.synced') }}
                   </v-chip>
@@ -200,8 +204,8 @@
                     v-else
                     class="remote-outbounds__delay-icon"
                     icon="mdi-speedometer"
-                    :color="connection.enabled ? undefined : 'disabled'"
-                    @click="connection.enabled ? page.testConnection(connection.id) : undefined"
+                    :color="connection.enabled && !projectionBlocked(connection) ? undefined : 'disabled'"
+                    @click="connection.enabled && !projectionBlocked(connection) ? page.testConnection(connection.id) : undefined"
                   >
                     <v-tooltip activator="parent" location="top" :text="$t('out.delay')" />
                   </v-icon>
@@ -242,6 +246,7 @@
 
 <script lang="ts" setup>
 import RemoteGroupConnectionList from './RemoteGroupConnectionList.vue'
+import { projectionBlocked } from '../composables/remotesub/projection'
 
 defineProps<{
   page: Record<string, any>

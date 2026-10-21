@@ -23,7 +23,7 @@ func xrayStreamTLS(outbound map[string]interface{}) map[string]interface{} {
 	if len(tls) == 0 || !asBool(tls["enabled"]) {
 		return nil
 	}
-	if reality, ok := tls["reality"].(map[string]interface{}); ok && (asBool(reality["enabled"]) || asString(reality["public_key"]) != "") {
+	if reality, ok := tls["reality"].(map[string]interface{}); ok && xrayTLSFeatureEnabled(reality, "public_key") {
 		settings := map[string]interface{}{}
 		if serverName := asString(tls["server_name"]); serverName != "" {
 			settings["serverName"] = serverName
@@ -34,7 +34,7 @@ func xrayStreamTLS(outbound map[string]interface{}) map[string]interface{} {
 		if shortID := asString(reality["short_id"]); shortID != "" {
 			settings["shortId"] = shortID
 		}
-		if utls, ok := tls["utls"].(map[string]interface{}); ok {
+		if utls, ok := tls["utls"].(map[string]interface{}); ok && xrayTLSFeatureEnabled(utls, "fingerprint") {
 			if fingerprint := asString(utls["fingerprint"]); fingerprint != "" {
 				settings["fingerprint"] = fingerprint
 			}
@@ -55,7 +55,7 @@ func xrayStreamTLS(outbound map[string]interface{}) map[string]interface{} {
 	if alpn := xrayStringList(tls["alpn"]); len(alpn) > 0 {
 		settings["alpn"] = alpn
 	}
-	if utls, ok := tls["utls"].(map[string]interface{}); ok {
+	if utls, ok := tls["utls"].(map[string]interface{}); ok && xrayTLSFeatureEnabled(utls, "fingerprint") {
 		if fingerprint := asString(utls["fingerprint"]); fingerprint != "" {
 			settings["fingerprint"] = fingerprint
 		}
@@ -122,4 +122,13 @@ func xrayStreamTransport(outbound map[string]interface{}) map[string]interface{}
 	default:
 		return nil
 	}
+}
+
+// Older projections may omit enabled. An explicit false always wins over
+// retained configuration values.
+func xrayTLSFeatureEnabled(feature map[string]interface{}, legacyKey string) bool {
+	if enabled, present := feature["enabled"]; present {
+		return asBool(enabled)
+	}
+	return asString(feature[legacyKey]) != ""
 }

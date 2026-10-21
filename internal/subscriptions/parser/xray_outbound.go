@@ -3,6 +3,8 @@ package parser
 import (
 	"fmt"
 	"strings"
+
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 )
 
 func xrayProtocolOutbounds(protocol string, outbound map[string]interface{}, index int) []map[string]interface{} {
@@ -66,7 +68,16 @@ func xrayProtocolOutbounds(protocol string, outbound map[string]interface{}, ind
 			}
 		}
 	default:
-		return nil
+		// Builtin traffic-policy targets are handled by the existing group
+		// owner; they are not endpoint records.
+		if protocol == "freedom" || protocol == "blackhole" || protocol == "dns" {
+			return nil
+		}
+		// Unknown protocols stay inspectable and cannot become active through
+		// a known protocol's credential or transport projection.
+		node := map[string]any{"type": protocol}
+		canonical.CaptureSource(node, canonical.FormatXray, outbound, sourceDiagnostic("source_protocol_unsupported", "protocol", canonical.ProjectionUnsupported))
+		return []map[string]any{node}
 	}
 
 	filtered := result[:0]
@@ -77,6 +88,7 @@ func xrayProtocolOutbounds(protocol string, outbound map[string]interface{}, ind
 		if !xrayApplyStreamSettings(node, stream) {
 			continue
 		}
+		canonical.CaptureSource(node, canonical.FormatXray, outbound, classifyXrayEndpoint(protocol, outbound)...)
 		filtered = append(filtered, node)
 	}
 	return filtered
@@ -107,7 +119,7 @@ func xrayApplyStreamSettings(outbound map[string]interface{}, stream map[string]
 			markXrayTransportAdaptation(outbound, network, "httpupgrade", "Xray XHTTP/SplitHTTP has no native sing-box transport; mapped to httpupgrade for preservation")
 		}
 	default:
-		return false
+		outbound["transport"] = map[string]any{"type": network}
 	}
 	if tls := xrayTLS(stream); len(tls) > 0 {
 		outbound["tls"] = tls

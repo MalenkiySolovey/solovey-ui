@@ -27,6 +27,7 @@ export default {
     },
     "sourceFeature": "Исходная фича",
     "convertedType": "В панели",
+    "projectionStates": { "MANUAL_MAPPING_REQUIRED": "Нужна ручная привязка", "UNSUPPORTED": "Не поддерживается" },
     "collectedData": "Profile",
     "clientUnavailable": "Синхронизация с клиентами требует экспорта ссылок",
     "connections": "подключений",

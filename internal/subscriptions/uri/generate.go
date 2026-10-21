@@ -141,15 +141,18 @@ func Generate(clientConfig json.RawMessage, i *model.Inbound, hostname string) (
 	case "tuic":
 		links = tuicLink(userConfig["tuic"], *inbound, Addrs)
 	case "vless":
-		links = vlessLink(userConfig["vless"], *inbound, Addrs)
+		links, err = generateEndpointLinks("vless", userConfig["vless"], *inbound, Addrs)
 	case "anytls":
-		links = anytlsLink(userConfig["anytls"], Addrs)
+		links, err = generateEndpointLinks("anytls", userConfig["anytls"], *inbound, Addrs)
 	case "trojan":
-		links = trojanLink(userConfig["trojan"], *inbound, Addrs)
+		links, err = generateEndpointLinks("trojan", userConfig["trojan"], *inbound, Addrs)
 	case "vmess":
-		links = vmessLink(userConfig["vmess"], *inbound, Addrs)
+		links, err = generateEndpointLinks("vmess", userConfig["vmess"], *inbound, Addrs)
 	default:
 		return nil, fmt.Errorf("unsupported subscription inbound type %q", i.Type)
+	}
+	if err != nil {
+		return nil, err
 	}
 	if len(links) == 0 {
 		return nil, fmt.Errorf("subscription inbound %q produced no links", i.Tag)
