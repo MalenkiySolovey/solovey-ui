@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	"gopkg.in/yaml.v3"
 )
 
@@ -86,7 +87,34 @@ func TestClashWave4UDPPoliciesUsePortableProtocolFacts(t *testing.T) {
 			version  string
 			supports bool
 		}{{"vmess", nil, "", true}, {"vless", nil, "", true}, {"trojan", "tcp", "", false}, {"http", nil, "", false}, {"socks", nil, "4a", false}, {"socks", "udp", "5", true}, {"tuic", []string{"tcp", "udp"}, "", true}, {"hysteria2", nil, "", true}} {
-			outbound := map[string]any{"type": tc.protocol, "tag": "node", "server": "example.com", "server_port": 443, "network": tc.network, "version": tc.version, "username": "fixture", "password": "fixture", "uuid": "11111111-1111-4111-8111-111111111111"}
+			outbound := map[string]any{"type": tc.protocol, "tag": "node", "server": "example.com", "server_port": 443}
+			if tc.network != nil {
+				outbound["network"] = tc.network
+			}
+			if tc.version != "" {
+				outbound["version"] = tc.version
+			}
+			switch tc.protocol {
+			case "vmess", "vless":
+				outbound["uuid"] = "11111111-1111-4111-8111-111111111111"
+			case "tuic":
+				outbound["uuid"] = "11111111-1111-4111-8111-111111111111"
+				outbound["password"] = "fixture"
+			case "socks", "http":
+				outbound["username"] = "fixture"
+				outbound["password"] = "fixture"
+			default:
+				outbound["password"] = "fixture"
+			}
+			if clientfacts.SupportsUDP(tc.protocol, outbound) != tc.supports {
+				t.Fatal("portable UDP fact changed")
+			}
+			if tc.version == "4a" || tc.network == "udp" {
+				if _, err := RenderClash([]map[string]any{outbound}, DefaultClashConfig, policy); err == nil {
+					t.Fatal("SOCKS4 or UDP-only semantics were silently broadened")
+				}
+				continue
+			}
 			parsed := wave4ClashConfig(t, []map[string]any{outbound}, DefaultClashConfig, policy)
 			proxy := parsed["proxies"].([]any)[0].(map[string]any)
 			if policy == ClashUDPDefault {

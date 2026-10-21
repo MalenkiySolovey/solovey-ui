@@ -16,6 +16,9 @@ export interface RemoteOutboundConnection {
   type: string
   sourceType?: string
   convertedType?: string
+  endpointId?: string
+  projectionStatus?: 'EXACT' | 'SUPPORTED_WITH_APPROVED_ADAPTATION' | 'MANUAL_MAPPING_REQUIRED' | 'UNSUPPORTED'
+  projectionDiagnostics?: { state: string; code: string; field: string }[]
   outboundTag: string
   enabled: boolean
   synced: boolean

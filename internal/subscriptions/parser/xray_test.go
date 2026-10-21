@@ -256,8 +256,8 @@ func TestParseXrayOutboundsKeepsCustomConfigWithoutBalancerAsSingleProfile(t *te
 	}
 }
 
-func TestParseXrayOutboundsSkipsUnsupportedTransport(t *testing.T) {
-	_, err := ParseXrayOutbounds(`{
+func TestParseXrayOutboundsPreservesAndBlocksUnsupportedTransport(t *testing.T) {
+	outbounds, err := ParseXrayOutbounds(`{
   "outbounds": [
     {
       "tag": "mkcp-node",
@@ -267,8 +267,19 @@ func TestParseXrayOutboundsSkipsUnsupportedTransport(t *testing.T) {
     }
   ]
 }`)
-	if err == nil {
-		t.Fatal("expected unsupported transport to produce no result")
+	if err != nil || len(outbounds) != 1 {
+		t.Fatalf("preserved endpoint missing: count=%d err=%v", len(outbounds), err)
+	}
+	endpoint := subcanonical.ObserveOutbound(subcanonical.FormatXray, outbounds[0], 0)
+	if endpoint.Projection != subcanonical.ProjectionManual || len(endpoint.Observations) != 1 {
+		t.Fatal("unsupported transport has no visible mapping state")
+	}
+	source := endpoint.Observations[0].Source["options"].(map[string]any)
+	if source["streamSettings"].(map[string]any)["network"] != "kcp" {
+		t.Fatal("native unsupported transport was lost")
+	}
+	if _, err := subcanonical.CheckedEndpointOutbound(endpoint); err == nil {
+		t.Fatal("unsupported source transport became active")
 	}
 }
 

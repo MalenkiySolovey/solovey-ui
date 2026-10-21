@@ -2,7 +2,10 @@
 
 package remote
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+)
 
 type RemoteOutboundSubscription struct {
 	Id                 uint            `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
@@ -55,25 +58,28 @@ func (RemoteOutboundGroupConnection) TableName() string {
 }
 
 type RemoteOutboundConnection struct {
-	Id             uint            `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
-	SubscriptionId uint            `json:"subscriptionId" form:"subscriptionId" gorm:"column:subscription_id;index:idx_remote_outbound_source,unique;not null"`
-	GroupId        uint            `json:"groupId" form:"groupId" gorm:"column:group_id;index"`
-	GroupIds       []uint          `json:"groupIds,omitempty" form:"groupIds" gorm:"-"`
-	SortOrder      int             `json:"sortOrder" form:"sortOrder" gorm:"column:sort_order;default:0;not null;index"`
-	Name           string          `json:"name" form:"name"`
-	SourceKey      string          `json:"sourceKey" form:"sourceKey" gorm:"column:source_key;index:idx_remote_outbound_source,unique;not null"`
-	Type           string          `json:"type" form:"type"`
-	SourceType     string          `json:"sourceType,omitempty" form:"-" gorm:"-"`
-	ConvertedType  string          `json:"convertedType,omitempty" form:"-" gorm:"-"`
-	OutboundTag    string          `json:"outboundTag" form:"outboundTag" gorm:"column:outbound_tag;uniqueIndex;not null"`
-	Enabled        bool            `json:"enabled" form:"enabled" gorm:"not null"`
-	Synced         bool            `json:"synced" form:"synced" gorm:"default:false;not null"`
-	OutboundId     *uint           `json:"outboundId,omitempty" form:"outboundId" gorm:"column:outbound_id;index"`
-	Options        json.RawMessage `json:"options" form:"options"`
-	Canonical      json.RawMessage `json:"-" form:"-" gorm:"column:canonical"`
-	LastSeen       int64           `json:"lastSeen" form:"lastSeen" gorm:"default:0;not null"`
-	CreatedAt      int64           `json:"createdAt" form:"createdAt" gorm:"default:0;not null"`
-	UpdatedAt      int64           `json:"updatedAt" form:"updatedAt" gorm:"default:0;not null"`
+	EndpointID            string                           `json:"endpointId,omitempty" form:"-" gorm:"-"`
+	ProjectionStatus      string                           `json:"projectionStatus,omitempty" form:"-" gorm:"-"`
+	ProjectionDiagnostics []canonical.ProjectionDiagnostic `json:"projectionDiagnostics,omitempty" form:"-" gorm:"-"`
+	Id                    uint                             `json:"id" form:"id" gorm:"primaryKey;autoIncrement"`
+	SubscriptionId        uint                             `json:"subscriptionId" form:"subscriptionId" gorm:"column:subscription_id;index:idx_remote_outbound_source,unique;not null"`
+	GroupId               uint                             `json:"groupId" form:"groupId" gorm:"column:group_id;index"`
+	GroupIds              []uint                           `json:"groupIds,omitempty" form:"groupIds" gorm:"-"`
+	SortOrder             int                              `json:"sortOrder" form:"sortOrder" gorm:"column:sort_order;default:0;not null;index"`
+	Name                  string                           `json:"name" form:"name"`
+	SourceKey             string                           `json:"sourceKey" form:"sourceKey" gorm:"column:source_key;index:idx_remote_outbound_source,unique;not null"`
+	Type                  string                           `json:"type" form:"type"`
+	SourceType            string                           `json:"sourceType,omitempty" form:"-" gorm:"-"`
+	ConvertedType         string                           `json:"convertedType,omitempty" form:"-" gorm:"-"`
+	OutboundTag           string                           `json:"outboundTag" form:"outboundTag" gorm:"column:outbound_tag;uniqueIndex;not null"`
+	Enabled               bool                             `json:"enabled" form:"enabled" gorm:"not null"`
+	Synced                bool                             `json:"synced" form:"synced" gorm:"default:false;not null"`
+	OutboundId            *uint                            `json:"outboundId,omitempty" form:"outboundId" gorm:"column:outbound_id;index"`
+	Options               json.RawMessage                  `json:"options" form:"options"`
+	Canonical             json.RawMessage                  `json:"-" form:"-" gorm:"column:canonical"`
+	LastSeen              int64                            `json:"lastSeen" form:"lastSeen" gorm:"default:0;not null"`
+	CreatedAt             int64                            `json:"createdAt" form:"createdAt" gorm:"default:0;not null"`
+	UpdatedAt             int64                            `json:"updatedAt" form:"updatedAt" gorm:"default:0;not null"`
 }
 
 func (RemoteOutboundConnection) TableName() string {

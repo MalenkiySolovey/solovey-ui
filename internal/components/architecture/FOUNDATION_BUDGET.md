@@ -52,3 +52,25 @@ to that exact package/function; arbitrary Save receivers, unrelated imports and
 locally shadowed owner names remain gated. Alias/shadow/mixed-call fixtures prove
 this distinction. The R1 base identity and all other exact legacy sites remain
 unchanged; no new budget allowance or Direct-policy/worker exception is added.
+
+R5 D8 policy review: the existing RenderClash (500091cd... -> 24b0e033...)
+and RenderXray (dce4e009... -> 66698f87...) declarations now call the shared
+EndpointIR projection before serialization. Both existing Direct-literal sites
+per declaration retain their multiplicity and policy: Clash keeps its explicit
+reserved/default config groups and skips an explicitly supplied direct resource;
+Xray keeps its existing explicit freedom/blackhole shell resources. No routing
+default or Failover omitted-final rule changes. Unsupported endpoint semantics
+return an error before either shell is emitted; they cannot select Direct.
+The new ValidateEndpointProjection site 816b6bbc... only classifies explicitly
+supplied selector/urltest/failover/direct/block resources as existing policy
+objects for the current serializers. It does not synthesize a policy, outbound,
+member, final or fallback. TestEndpointProjectionDoesNotInventPolicy proves this
+for every current target, including omitted final, input immutability and denial;
+existing custom Clash group and Xray balancer tests remain required. SEC-2 stays
+BOUNDED_DEFERRED and no Failover migration/interpretation is introduced.
+The exact retired syncSingleConnectionToOutbound raw-save site df8da257... is
+removed: materialization uses the canonical Outbounds.Save owner recognized by
+the D7 closed port guard. Remote missing metadata retains its existing bounded
+ownership. R1 base identity and all unrelated exact sites remain unchanged; the
+total inventory allowance count is unchanged. No worker/Runtime admission or
+automatic legacy inventory regeneration occurs.

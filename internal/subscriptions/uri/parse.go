@@ -1,6 +1,7 @@
 package uri
 
 import (
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"net/url"
@@ -10,6 +11,14 @@ import (
 )
 
 func Parse(uri string, i int) (*map[string]interface{}, string, error) {
+	outbound, tag, err := parseLink(uri, i)
+	if err == nil && outbound != nil {
+		canonical.CaptureSource(*outbound, canonical.FormatURI, map[string]any{"uri": uri}, classifyLinkSource(uri)...)
+	}
+	return outbound, tag, err
+}
+
+func parseLink(uri string, i int) (*map[string]interface{}, string, error) {
 	if !utf8.ValidString(uri) {
 		return nil, "", common.NewError("Invalid link encoding")
 	}

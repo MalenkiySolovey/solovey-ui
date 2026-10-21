@@ -118,6 +118,16 @@ func BuildInboundOutbounds(clientConfig json.RawMessage, inbounds []*model.Inbou
 			return nil, err
 		}
 	}
+	// Local publication consumes the same EndpointIR as external subscription
+	// activation. Source ownership stays with the inbound export adapter.
+	for index, outbound := range set.Outbounds {
+		endpoint := canonical.ObserveOutbound(canonical.FormatSingBox, outbound, index)
+		projected, err := canonical.CheckedEndpointOutbound(endpoint)
+		if err != nil {
+			return nil, err
+		}
+		set.Outbounds[index] = projected
+	}
 	return set, nil
 }
 

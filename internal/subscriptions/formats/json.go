@@ -52,6 +52,10 @@ type JSONOptions struct {
 }
 
 func RenderJSON(outbounds []map[string]interface{}, options JSONOptions) (string, error) {
+	outbounds, projectionErr := subcanonical.ProjectOutbounds(subcanonical.FormatSingBox, outbounds)
+	if projectionErr != nil {
+		return "", projectionErr
+	}
 	var jsonConfig map[string]interface{}
 	if err := json.Unmarshal([]byte(defaultJson), &jsonConfig); err != nil {
 		return "", err

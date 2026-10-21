@@ -123,10 +123,14 @@ func refreshCollectionSnapshot(fetched *FetchedSubscription) (json.RawMessage, e
 }
 
 func refreshSeenConnections(tx *gorm.DB, subscription *RemoteOutboundSubscription, defaultGroupID uint, outbounds []map[string]interface{}, canonicalSnapshot subcanonical.Snapshot, now int64, result *RefreshResult) (map[string]struct{}, bool, error) {
+	identities, err := newEndpointRefreshPlan(tx, subscription.Id, outbounds, canonicalSnapshot)
+	if err != nil {
+		return nil, false, err
+	}
 	seen := make(map[string]struct{}, len(outbounds))
 	syncedChanged := false
 	for index, outbound := range outbounds {
-		connection, wasSynced, err := upsertRefreshConnection(tx, subscription, defaultGroupID, outbound, canonicalConnectionAt(canonicalSnapshot, index), index, seen, now, result)
+		connection, wasSynced, err := upsertRefreshConnection(tx, subscription, defaultGroupID, outbound, canonicalConnectionAt(canonicalSnapshot, index), index, seen, identities, now, result)
 		if err != nil {
 			return nil, false, err
 		}
@@ -148,19 +152,41 @@ func refreshSeenConnections(tx *gorm.DB, subscription *RemoteOutboundSubscriptio
 	return seen, syncedChanged, nil
 }
 
-func upsertRefreshConnection(tx *gorm.DB, subscription *RemoteOutboundSubscription, defaultGroupID uint, outbound map[string]interface{}, canonicalConnection *subcanonical.Connection, index int, seen map[string]struct{}, now int64, result *RefreshResult) (RemoteOutboundConnection, bool, error) {
+func upsertRefreshConnection(tx *gorm.DB, subscription *RemoteOutboundSubscription, defaultGroupID uint, outbound map[string]interface{}, canonicalConnection *subcanonical.Connection, index int, seen map[string]struct{}, identities *endpointRefreshPlan, now int64, result *RefreshResult) (RemoteOutboundConnection, bool, error) {
 	normalized, err := NormalizeOutboundWithCanonical(outbound, index, canonicalConnection)
 	if err != nil {
 		return RemoteOutboundConnection{}, false, err
 	}
 	normalized.SourceKey = UniqueSourceKey(seen, normalized.SourceKey)
-	seen[normalized.SourceKey] = struct{}{}
 
 	var connection RemoteOutboundConnection
-	err = tx.Where("subscription_id = ? AND source_key = ?", subscription.Id, normalized.SourceKey).First(&connection).Error
+	var previous *RemoteOutboundConnection
+	if planned, ok := identities.matches[index]; ok {
+		locator := normalized.SourceKey
+		normalized.SourceKey = planned.SourceKey
+		// Retain the already-supported typed-label migration when it is
+		// unambiguous; ordinary renames keep the existing opaque locator.
+		if planned.SourceKey == legacyTypedLabelSourceKey(normalized.Type, locator) {
+			if _, occupied := identities.occupied[locator]; !occupied {
+				normalized.SourceKey = locator
+			}
+		}
+		err = tx.Where("subscription_id = ? AND id = ?", subscription.Id, planned.Id).First(&connection).Error
+	} else {
+		err = tx.Where("subscription_id = ? AND source_key = ?", subscription.Id, normalized.SourceKey).First(&connection).Error
+		if err == nil && identities.unavailable(connection.Id, index) {
+			err = gorm.ErrRecordNotFound
+		}
+	}
 	switch {
 	case err == nil:
+		if connection.SourceKey != normalized.SourceKey {
+			connection.SourceKey = normalized.SourceKey
+			result.Updated++
+		}
+		before := connection
 		if UpdateConnection(&connection, normalized, now) {
+			previous = &before
 			result.Updated++
 		}
 	case errors.Is(err, gorm.ErrRecordNotFound):
@@ -168,16 +194,22 @@ func upsertRefreshConnection(tx *gorm.DB, subscription *RemoteOutboundSubscripti
 		if err != nil {
 			return RemoteOutboundConnection{}, false, err
 		}
+		if legacy != nil && identities.unavailable(legacy.Id, index) {
+			legacy = nil
+		}
 		if legacy != nil {
 			connection = *legacy
 			if connection.SourceKey != normalized.SourceKey {
 				connection.SourceKey = normalized.SourceKey
 				result.Updated++
 			}
+			before := connection
 			if UpdateConnection(&connection, normalized, now) {
+				previous = &before
 				result.Updated++
 			}
 		} else {
+			normalized.SourceKey = UniqueSourceKey(identities.occupied, normalized.SourceKey)
 			tag, err := UniqueOutboundTag(tx, *subscription, normalized.Name, 0)
 			if err != nil {
 				return RemoteOutboundConnection{}, false, err
@@ -218,9 +250,25 @@ func upsertRefreshConnection(tx *gorm.DB, subscription *RemoteOutboundSubscripti
 	}
 
 	wasSynced := connection.Synced
+	if wasSynced && previous != nil {
+		// Compare the same checked projection the materializer consumes.
+		// Source labels/provenance alone must not restart the runtime.
+		before, err := connectionOutboundConfig(*previous, nil)
+		if err != nil {
+			return RemoteOutboundConnection{}, false, err
+		}
+		after, err := connectionOutboundConfig(connection, nil)
+		if err != nil {
+			return RemoteOutboundConnection{}, false, err
+		}
+		wasSynced = JSONRawEqual(before, after)
+	}
 	if err := tx.Save(&connection).Error; err != nil {
 		return RemoteOutboundConnection{}, false, err
 	}
+	identities.claimed[connection.Id] = true
+	identities.occupied[connection.SourceKey] = struct{}{}
+	seen[connection.SourceKey] = struct{}{}
 	if connection.GroupId != 0 {
 		if err := EnsureConnectionHasGroup(tx, connection.Id, defaultGroupID); err != nil {
 			return RemoteOutboundConnection{}, false, err

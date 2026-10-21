@@ -41,6 +41,7 @@ func NormalizeOutboundWithCanonical(outbound map[string]interface{}, index int, 
 	if canonicalConnection != nil {
 		canonicalValue = *canonicalConnection
 	}
+	canonicalValue = subcanonical.NormalizeEndpoint(canonicalValue)
 	canonicalData, err := json.Marshal(canonicalValue)
 	if err != nil {
 		return NormalizedOutbound{}, err

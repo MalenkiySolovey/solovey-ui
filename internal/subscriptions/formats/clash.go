@@ -73,6 +73,10 @@ const ProxyGroups = `- name: Proxy
 `
 
 func RenderClash(outbounds []map[string]interface{}, basicConfig string, policies ...ClashUDPPolicy) (string, error) {
+	outbounds, projectionErr := canonical.ProjectOutbounds(canonical.FormatClash, outbounds)
+	if projectionErr != nil {
+		return "", projectionErr
+	}
 	policy := ClashUDPDefault
 	if len(policies) > 0 {
 		policy = policies[0]
@@ -139,12 +143,8 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string, policie
 		case "vmess", "vless", "tuic":
 			proxy["uuid"] = obMap["uuid"]
 			if t == "vmess" {
-				if alterId, ok := obMap["alter_id"].(float64); ok {
-					proxy["alterId"] = int(alterId)
-				} else {
-					proxy["alterId"] = 0
-				}
-				proxy["cipher"] = "auto"
+				proxy["alterId"] = xrayAlterID(obMap["alter_id"])
+				proxy["cipher"] = xrayStringDefault(obMap["security"], "auto")
 			}
 			if t == "vless" {
 				if flow, ok := obMap["flow"].(string); ok {
@@ -203,10 +203,6 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string, policie
 			}
 		case "anytls":
 			proxy["password"] = obMap["password"]
-			if tls, ok := obMap["tls"].(map[string]interface{}); ok {
-				proxy["sni"] = tls["server_name"]
-				proxy["skip-cert-verify"] = tls["insecure"]
-			}
 		case "shadowsocks":
 			if plugin, _, err := canonical.ShadowsocksPlugin(obMap); err != nil {
 				return "", err
@@ -223,7 +219,7 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string, policie
 				proxy["udp-over-tcp"] = true
 			}
 		default:
-			continue
+			return "", fmt.Errorf("UNSUPPORTED: endpoint protocol cannot be represented in Clash")
 		}
 		server, hostErr := codec.NormalizeHost(server)
 		if hostErr != nil {
@@ -349,6 +345,11 @@ func RenderClash(outbounds []map[string]interface{}, basicConfig string, policie
 								headersMap[k] = s
 							}
 						}
+					}
+				}
+				if tt == "httpupgrade" {
+					if host := asString(transport["host"]); host != "" {
+						headersMap["Host"] = host
 					}
 				}
 				// Backfill Host from TLS server_name when the inbound

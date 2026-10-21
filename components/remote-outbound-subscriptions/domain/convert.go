@@ -41,10 +41,20 @@ func connectionOutboundConfig(connection RemoteOutboundConnection, tagMap map[st
 			return nil, err
 		}
 	}
+	if captured := canonicalConnection(connection.Canonical); captured != nil {
+		if _, err := subcanonical.CheckedEndpointOutbound(*captured); err != nil {
+			return nil, err
+		}
+	}
 	raw = subcanonical.CleanOutbound(raw)
 	raw["type"] = connection.Type
 	raw["tag"] = connection.OutboundTag
 	rewriteOutboundTagReferences(raw, tagMap)
+	endpoint := subcanonical.ObserveOutbound(subcanonical.FormatSingBox, raw, 0)
+	raw, err := subcanonical.CheckedEndpointOutbound(endpoint)
+	if err != nil {
+		return nil, err
+	}
 	normalizeRuntimeOutbound(raw)
 	data, err := json.Marshal(raw)
 	if err != nil {

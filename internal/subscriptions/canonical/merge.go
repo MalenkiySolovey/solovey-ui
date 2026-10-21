@@ -55,7 +55,7 @@ func MergeConnections(left Connection, right Connection) Connection {
 	left.Formats = mergeStrings(left.Formats, right.Formats)
 	left.Adaptations = mergeAdaptations(left.Adaptations, right.Adaptations)
 	left.Observations = mergeObservations(left.Observations, right.Observations)
-	return left
+	return NormalizeEndpoint(left)
 }
 
 func mergeKind(left string, right string) string {
@@ -295,6 +295,7 @@ func mergeObservations(left []Observation, right []Observation) []Observation {
 			Format:   observation.Format,
 			Name:     observation.Name,
 			Outbound: cloneMap(observation.Outbound),
+			Source:   cloneMap(observation.Source), Diagnostics: append([]ProjectionDiagnostic(nil), observation.Diagnostics...),
 		})
 	}
 	return result
@@ -323,7 +324,7 @@ func adaptationKey(adaptation Adaptation) string {
 }
 
 func observationKey(observation Observation) string {
-	data, _ := json.Marshal(observation.Outbound)
+	data, _ := json.Marshal(observation)
 	return observation.Format + ":" + string(data)
 }
 
@@ -342,6 +343,8 @@ func cloneValue(value any) any {
 	switch typed := value.(type) {
 	case map[string]any:
 		return cloneMap(typed)
+	case []string:
+		return append([]string(nil), typed...)
 	case []any:
 		result := make([]any, len(typed))
 		for index, item := range typed {

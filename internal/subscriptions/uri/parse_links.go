@@ -119,13 +119,17 @@ func vmess(data string, i int) (*map[string]interface{}, string, error) {
 	if aid, ok := dataJson["aid"].(float64); ok {
 		alter_id = int(aid)
 	}
+	security, _ := dataJson["scy"].(string)
+	if security == "" {
+		security = "auto"
+	}
 	vmess := map[string]interface{}{
 		"type":        "vmess",
 		"tag":         tag,
 		"server":      server,
 		"server_port": port,
 		"uuid":        uuid,
-		"security":    "auto",
+		"security":    security,
 		"alter_id":    alter_id,
 		"tls":         tls,
 		"transport":   transport,

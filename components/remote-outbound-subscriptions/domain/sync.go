@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
+	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
@@ -116,34 +116,37 @@ func syncSingleConnectionToOutbound(tx *gorm.DB, connection *RemoteOutboundConne
 			return common.NewError("outbound is already linked to another remote connection")
 		}
 	} else {
-		sortOrder, err := entityorder.Next(tx, &model.Outbound{})
-		if err != nil {
-			return err
-		}
-		outbound.SortOrder = sortOrder
 		outbound.Tag = connection.OutboundTag
 	}
 	config, err := connectionOutboundConfigForSync(tx, *connection)
 	if err != nil {
 		return err
 	}
-	options := map[string]any{}
-	if err := json.Unmarshal(config, &options); err != nil {
+	candidate := map[string]any{}
+	if err := json.Unmarshal(config, &candidate); err != nil {
 		return err
 	}
-	delete(options, "type")
-	delete(options, "tag")
-	optionData, err := json.Marshal(options)
+	candidate["id"] = outbound.Id
+	// Imported protocol fields are saved by the same semantic owner as the
+	// canonical editor. The Component retains its own binding/missing state.
+	candidate["remoteMissing"] = false
+	candidate["remoteMissingReason"] = ""
+	candidate["remoteMissingSince"] = 0
+	candidate["remoteMissingSource"] = ""
+	data, err := json.Marshal(candidate)
 	if err != nil {
 		return err
 	}
-	outbound.Type = connection.Type
-	outbound.Options = optionData
-	outbound.RemoteMissing = false
-	outbound.RemoteMissingReason = ""
-	outbound.RemoteMissingSince = 0
-	outbound.RemoteMissingSource = ""
-	if err := tx.Save(&outbound).Error; err != nil {
+	action := "new"
+	if outbound.Id != 0 {
+		action = "edit"
+	}
+	if _, err := entityoutbounds.Save(tx, action, data); err != nil {
+		return err
+	}
+	// Existing service transactions perform the full post-commit runtime
+	// invalidation. Read the owner's persisted ID for the existing binding.
+	if err := tx.Where("tag = ?", connection.OutboundTag).First(&outbound).Error; err != nil {
 		return err
 	}
 	connection.OutboundId = &outbound.Id

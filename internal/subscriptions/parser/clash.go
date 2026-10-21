@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gopkg.in/yaml.v3"
 )
@@ -25,7 +27,7 @@ func ParseClashOutboundsWithOptions(data string, options ParseOptions) ([]map[st
 	for index, raw := range rawProxies {
 		proxy, ok := raw.(map[string]interface{})
 		if !ok {
-			continue
+			return nil, common.NewError("MANUAL_MAPPING_REQUIRED: invalid source endpoint shape")
 		}
 		outbound := clashProxyOutbound(proxy, index)
 		if outbound == nil {
@@ -34,6 +36,7 @@ func ParseClashOutboundsWithOptions(data string, options ParseOptions) ([]map[st
 		if err := adaptClashWave4(outbound, proxy); err != nil {
 			return nil, err
 		}
+		canonical.CaptureSource(outbound, canonical.FormatClash, proxy, classifyClashEndpoint(proxy)...)
 		outbounds = append(outbounds, outbound)
 	}
 	outbounds = append(outbounds, clashProxyGroupOutbounds(config, knownTags, options)...)
@@ -68,7 +71,9 @@ func clashProxyOutbound(proxy map[string]interface{}, index int) map[string]inte
 	proxyType := strings.ToLower(strings.TrimSpace(stringValue(proxy["type"])))
 	outboundType := clashOutboundType(proxyType)
 	if outboundType == "" {
-		return nil
+		outbound := map[string]any{"type": proxyType, "tag": clashProxyName(proxy, index)}
+		canonical.CaptureSource(outbound, canonical.FormatClash, proxy, sourceDiagnostic("source_protocol_unsupported", "protocol", canonical.ProjectionUnsupported))
+		return outbound
 	}
 	outbound := map[string]interface{}{
 		"type":        outboundType,
@@ -84,7 +89,10 @@ func clashProxyOutbound(proxy map[string]interface{}, index int) map[string]inte
 			if _, ok := outbound["alter_id"]; !ok {
 				outbound["alter_id"] = 0
 			}
-			outbound["security"] = "auto"
+			outbound["security"] = stringValue(proxy["cipher"])
+			if outbound["security"] == "" {
+				outbound["security"] = "auto"
+			}
 		}
 		if outboundType == "vless" {
 			copyString(proxy, outbound, "flow", "flow")
@@ -183,6 +191,24 @@ func clashTransport(proxy map[string]interface{}) map[string]interface{} {
 	switch network {
 	case "ws":
 		opts, _ := proxy["ws-opts"].(map[string]interface{})
+		if boolValue(opts["v2ray-http-upgrade"]) {
+			transport := map[string]any{"type": "httpupgrade"}
+			copyString(opts, transport, "path", "path")
+			if headers, ok := opts["headers"].(map[string]any); ok {
+				remaining := map[string]any{}
+				for key, value := range headers {
+					if strings.EqualFold(key, "Host") {
+						transport["host"] = firstString(value)
+					} else {
+						remaining[key] = value
+					}
+				}
+				if len(remaining) > 0 {
+					transport["headers"] = remaining
+				}
+			}
+			return transport
+		}
 		transport := map[string]interface{}{"type": "ws"}
 		copyString(opts, transport, "path", "path")
 		if headers, ok := opts["headers"].(map[string]interface{}); ok && len(headers) > 0 {

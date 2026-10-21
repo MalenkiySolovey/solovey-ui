@@ -4,6 +4,7 @@ package remote
 
 import (
 	"encoding/json"
+	"gorm.io/gorm"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -412,7 +413,7 @@ func TestRefreshSubscriptionOutboundsKeepsSameNameCollisionsFromCurrentPayload(t
 	}
 }
 
-func TestRefreshSubscriptionOutboundsTreatsDifferentNormalizedNameAsNewConnection(t *testing.T) {
+func TestRefreshSubscriptionOutboundsPreservesSemanticEndpointAcrossRename(t *testing.T) {
 	db := newRemoteSyncDB(t)
 	sub := RemoteOutboundSubscription{Name: "Remote", TagPrefix: "ros-"}
 	if err := db.Create(&sub).Error; err != nil {
@@ -443,7 +444,7 @@ func TestRefreshSubscriptionOutboundsTreatsDifferentNormalizedNameAsNewConnectio
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Created != 1 || result.Updated != 0 || result.MarkedMissing != 1 {
+	if result.Created != 0 || result.Updated != 1 || result.MarkedMissing != 0 {
 		t.Fatalf("result = %#v", result)
 	}
 	var connections []RemoteOutboundConnection
@@ -453,7 +454,7 @@ func TestRefreshSubscriptionOutboundsTreatsDifferentNormalizedNameAsNewConnectio
 	if len(connections) != 1 {
 		t.Fatalf("connections = %d, want only renamed row: %#v", len(connections), connections)
 	}
-	if connections[0].SourceKey != "label:noderenamed" {
+	if connections[0].SourceKey != "label:nodea" || connections[0].Name != "Node Renamed" {
 		t.Fatalf("new connection state = %#v", connections[0])
 	}
 }
@@ -586,7 +587,7 @@ func TestRefreshSubscriptionOutboundsUpdatesSyncedOutboundForSameNormalizedName(
 	if err != nil {
 		t.Fatal(err)
 	}
-	if coreChanged || result.Created != 0 || result.Updated != 1 || result.Synced != 1 || result.MarkedMissing != 0 {
+	if !coreChanged || result.Created != 0 || result.Updated != 1 || result.Synced != 1 || result.MarkedMissing != 0 {
 		t.Fatalf("refresh result=%#v coreChanged=%v", result, coreChanged)
 	}
 	var connection RemoteOutboundConnection
@@ -685,7 +686,7 @@ func TestRefreshFetchedXrayBalancerSyncsRootURLTestWithDependencies(t *testing.T
       "tag": "proxy-2",
       "protocol": "vless",
       "settings": {"vnext": [{"address": "two.example.com", "port": 443, "users": [{"id": "22222222-2222-2222-2222-222222222222"}]}]},
-      "streamSettings": {"network": "xhttp", "security": "tls", "tlsSettings": {"serverName": "two.example.com"}, "xhttpSettings": {"path": "/", "host": "edge.example.com", "mode": "auto"}}
+      "streamSettings": {"network": "ws", "security": "tls", "tlsSettings": {"serverName": "two.example.com"}, "wsSettings": {"path": "/", "headers": {"Host": "edge.example.com"}}}
     },
     {
       "tag": "proxy-3",
@@ -756,17 +757,111 @@ func TestRefreshFetchedXrayBalancerSyncsRootURLTestWithDependencies(t *testing.T
 	if len(refs) != 3 || refs[0] != "ros-proxy" || refs[1] != "ros-proxy-2" || refs[2] != "ros-proxy-3" {
 		t.Fatalf("urltest refs = %#v options=%#v", refs, options)
 	}
-	var xhttpDependency model.Outbound
-	if err := db.Where("tag = ?", "ros-proxy-2").First(&xhttpDependency).Error; err != nil {
+	var wsDependency model.Outbound
+	if err := db.Where("tag = ?", "ros-proxy-2").First(&wsDependency).Error; err != nil {
 		t.Fatal(err)
 	}
 	var dependencyOptions map[string]any
-	if err := json.Unmarshal(xhttpDependency.Options, &dependencyOptions); err != nil {
+	if err := json.Unmarshal(wsDependency.Options, &dependencyOptions); err != nil {
 		t.Fatal(err)
 	}
 	transport, _ := dependencyOptions["transport"].(map[string]any)
-	if transport["type"] != "httpupgrade" {
-		t.Fatalf("xhttp dependency transport = %#v", transport)
+	if transport["type"] != "ws" {
+		t.Fatalf("ws dependency transport = %#v", transport)
+	}
+}
+
+func TestRefreshFetchedXHTTPDependencyBlocksWholeActivationWithoutLosingSource(t *testing.T) {
+	db := newRemoteSyncDB(t)
+	sub := RemoteOutboundSubscription{Name: "Remote", TagPrefix: "ros-"}
+	if err := db.Create(&sub).Error; err != nil {
+		t.Fatal(err)
+	}
+	fetched, err := ParseFetchedSubscription(`{
+  "outbounds": [
+    {
+      "tag": "proxy",
+      "protocol": "vless",
+      "settings": {"vnext": [{"address": "one.example.com", "port": 443, "users": [{"id": "11111111-1111-1111-1111-111111111111"}]}]},
+      "streamSettings": {"network": "tcp", "security": "tls", "tlsSettings": {"serverName": "one.example.com"}}
+    },
+    {
+      "tag": "proxy-2",
+      "protocol": "vless",
+      "settings": {"vnext": [{"address": "two.example.com", "port": 443, "users": [{"id": "22222222-2222-2222-2222-222222222222"}]}]},
+      "streamSettings": {"network": "xhttp", "security": "tls", "tlsSettings": {"serverName": "two.example.com"}, "xhttpSettings": {"path": "/", "host": "edge.example.com", "mode": "auto"}}
+    },
+    {
+      "tag": "proxy-3",
+      "protocol": "vless",
+      "settings": {"vnext": [{"address": "three.example.com", "port": 443, "users": [{"id": "33333333-3333-3333-3333-333333333333"}]}]},
+      "streamSettings": {"network": "grpc", "security": "tls", "tlsSettings": {"serverName": "three.example.com"}, "grpcSettings": {"serviceName": "grpc-service"}}
+    },
+    {"tag": "direct", "protocol": "freedom"}
+  ],
+  "routing": {
+    "rules": [{"type": "field", "network": "tcp,udp", "balancerTag": "Balancer"}],
+    "balancers": [{"tag": "Balancer", "selector": ["proxy"], "fallbackTag": "direct", "strategy": {"type": "leastLoad"}}]
+  }
+}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	result, coreChanged, err := RefreshFetchedSubscription(db, &sub, fetched, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if coreChanged || result.Created != 4 || result.Fetched != 4 {
+		t.Fatalf("refresh result=%#v coreChanged=%v", result, coreChanged)
+	}
+
+	var groupConnection RemoteOutboundConnection
+	if err := db.Where("subscription_id = ? AND type = ?", sub.Id, "urltest").First(&groupConnection).Error; err != nil {
+		t.Fatal(err)
+	}
+	if groupConnection.Name != "Balancer" {
+		t.Fatalf("group connection = %#v", groupConnection)
+	}
+	var defaultGroup RemoteOutboundGroup
+	if err := db.Where("subscription_id = ? AND name = ?", sub.Id, DefaultGroupName).First(&defaultGroup).Error; err != nil {
+		t.Fatal(err)
+	}
+	var defaultLinks []RemoteOutboundGroupConnection
+	if err := db.Where("group_id = ?", defaultGroup.Id).Find(&defaultLinks).Error; err != nil {
+		t.Fatal(err)
+	}
+	if len(defaultLinks) != 1 || defaultLinks[0].ConnectionId != groupConnection.Id {
+		t.Fatalf("default group links = %#v, want only balancer root", defaultLinks)
+	}
+
+	// The real service owns this transaction and only invalidates after commit.
+	err = db.Transaction(func(tx *gorm.DB) error {
+		_, _, err := ToggleGroupOutbounds(tx, defaultGroup.Id, 150)
+		return err
+	})
+	if err == nil {
+		t.Fatal("XHTTP dependency was silently materialized as a different transport")
+	}
+	var count int64
+	if err := db.Model(&model.Outbound{}).Count(&count).Error; err != nil || count != 0 {
+		t.Fatal("failed group activation wrote partial runtime outbounds")
+	}
+	var connection RemoteOutboundConnection
+	if err := db.Where("subscription_id = ? AND name = ?", sub.Id, "proxy-2").First(&connection).Error; err != nil {
+		t.Fatal(err)
+	}
+	endpoint := canonicalConnection(connection.Canonical)
+	if endpoint == nil {
+		t.Fatal("native source snapshot was not retained")
+	}
+	normalized := subcanonical.NormalizeEndpoint(*endpoint)
+	if normalized.Projection != subcanonical.ProjectionUnsupported {
+		t.Fatal("XHTTP has no explicit unsupported state")
+	}
+	source := normalized.Observations[0].Source["options"].(map[string]any)
+	stream := source["streamSettings"].(map[string]any)
+	if stream["network"] != "xhttp" || stream["xhttpSettings"].(map[string]any)["mode"] != "auto" {
+		t.Fatal("unsupported native XHTTP settings were lost")
 	}
 }
 
