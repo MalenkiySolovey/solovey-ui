@@ -27,7 +27,15 @@ export interface InboundSlotContext {
 export type ComponentLoader = () => Promise<Component | { default: Component }>
 export type LocaleLoader = () => Promise<{ default: LocaleMessages }>
 
+export type ComponentUIReadPermission = 'audit.read' | 'diagnostics.read'
+export interface RouteAccess {
+  hostScope: 'local'
+  surface: 'operations'
+  permission: ComponentUIReadPermission
+}
+
 export interface RouteContribution {
+  access?: RouteAccess
   path: string
   name: string
   component: ComponentLoader
@@ -45,6 +53,10 @@ export interface NavItem {
   singBoxSettings?: boolean
   countKey?: string
 }
+
+// Typed navigation points at its own declared route. URL ownership remains
+// with that route instead of being repeated in each layout/nav descriptor.
+export type RouteNavItem = Omit<NavItem, 'path'> & { route: string; path?: never }
 
 export interface SettingsTab {
   key: string
@@ -64,7 +76,7 @@ export interface ComponentContribution {
   apiVersion: string
   requiresCore?: string
   routes?: RouteContribution[]
-  nav?: NavItem[]
+  nav?: (NavItem | RouteNavItem)[]
   settingsTabs?: SettingsTab[]
   slots?: SlotContribution[]
   locales?: Partial<Record<LocaleCode, LocaleLoader>>

@@ -31,7 +31,7 @@ beforeEach(() => {
       apiVersion: '1.0',
       routes: [{
         path: '/fixture-alpha',
-        name: 'fixture.alpha',
+        name: 'component.fixture-alpha.alpha',
         component: async () => ({ default: {} as Component }),
       }],
     }),
@@ -118,7 +118,7 @@ describe('component frontend loader', () => {
 
     expect(entries.unregisterAlpha).toHaveBeenCalledOnce()
     expect(contributionFor('fixture-alpha')).toBeUndefined()
-    expect(router.hasRoute('fixture.alpha')).toBe(false)
+    expect(router.hasRoute('component.fixture-alpha.alpha')).toBe(false)
   })
 
   it('isolates one optional component failure without changing the bundled catalog', async () => {
