@@ -30,7 +30,7 @@ func (t *RoutedTracker) RoutedConnection(ctx context.Context, conn net.Conn, met
 	}
 	var result net.Conn = conn
 	if !inboundidentity.Admission(ctx, func() {
-		wrapped, admitted := t.stats.admitConnection(conn, metadata, outbound)
+		wrapped, admitted := t.stats.admitConnection(ctx, conn, metadata, outbound)
 		result = wrapped
 		if admitted {
 			result = t.connections.RoutedConnection(ctx, wrapped, inboundidentity.InventoryMetadata(ctx, metadata), rule, outbound)
@@ -48,7 +48,7 @@ func (t *RoutedTracker) RoutedPacketConnection(ctx context.Context, conn network
 	}
 	var result network.PacketConn = conn
 	if !inboundidentity.Admission(ctx, func() {
-		wrapped, admitted := t.stats.admitPacketConnection(conn, metadata, outbound)
+		wrapped, admitted := t.stats.admitPacketConnection(ctx, conn, metadata, outbound)
 		result = wrapped
 		if admitted {
 			result = t.connections.RoutedPacketConnection(ctx, wrapped, inboundidentity.InventoryMetadata(ctx, metadata), rule, outbound)

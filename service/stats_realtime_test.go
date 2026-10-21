@@ -7,6 +7,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 	"github.com/MalenkiySolovey/solovey-ui/realtime"
 	"gorm.io/gorm"
 )
@@ -60,7 +61,7 @@ func TestUpdateClientTrafficDeltasBatchesTwoHundredClients(t *testing.T) {
 	initSettingTestDB(t)
 
 	clients := make([]model.Client, 0, 200)
-	deltas := make(map[string]clientTrafficDelta, 200)
+	deltas := make(map[entitytypes.VPNUserID]clientTrafficDelta, 200)
 	expectedUp := make(map[string]int64, 200)
 	expectedDown := make(map[string]int64, 200)
 	for i := 0; i < 200; i++ {
@@ -70,11 +71,12 @@ func TestUpdateClientTrafficDeltasBatchesTwoHundredClients(t *testing.T) {
 		upDelta := int64(i + 10)
 		downDelta := int64(i + 20)
 		clients = append(clients, model.Client{
+			Id:   uint(i + 1),
 			Name: name,
 			Up:   initialUp,
 			Down: initialDown,
 		})
-		deltas[name] = clientTrafficDelta{
+		deltas[entitytypes.VPNUserID(i+1)] = clientTrafficDelta{
 			up:   upDelta,
 			down: downDelta,
 		}

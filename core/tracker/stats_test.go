@@ -16,7 +16,7 @@ import (
 func (c *StatsTracker) getReadCounters(inbound, outbound, user string) ([]*atomic.Int64, []*atomic.Int64) {
 	c.access.Lock()
 	defer c.access.Unlock()
-	return c.getReadCountersLocked(inbound, outbound, user)
+	return c.getReadCountersLocked(inbound, outbound, user, 0)
 }
 
 func TestStatsTrackerResetPreservesConcurrentCounterPointers(t *testing.T) {
