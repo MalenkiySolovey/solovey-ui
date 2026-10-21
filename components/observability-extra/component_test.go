@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
+	observabilitysvc "github.com/MalenkiySolovey/solovey-ui/service/observability"
 	"github.com/robfig/cron/v3"
 )
 
@@ -32,7 +32,7 @@ func (s *observabilityTrackingScheduler) RemoveJobAndWait(context.Context, cron.
 func TestComponentStopRetainsLifecycleStateWhenJobDoesNotStop(t *testing.T) {
 	scheduler := &observabilityTrackingScheduler{removeErr: errors.New("job still running")}
 	c := &component{}
-	host := lifecycle.Context{Host: componenthost.Deps{Scheduler: scheduler}}
+	host := componenthost.Ports{Scheduler: scheduler, ObservationPorts: componenthost.ObservationPorts{ObservationSampler: &trackingSampler{}}}
 	if err := c.Start(context.Background(), host); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +54,7 @@ func TestComponentStopRetainsLifecycleStateWhenJobDoesNotStop(t *testing.T) {
 func TestComponentStartIsIdempotent(t *testing.T) {
 	scheduler := &observabilityTrackingScheduler{}
 	c := &component{}
-	host := lifecycle.Context{Host: componenthost.Deps{Scheduler: scheduler}}
+	host := componenthost.Ports{Scheduler: scheduler, ObservationPorts: componenthost.ObservationPorts{ObservationSampler: &trackingSampler{}}}
 	if err := c.Start(context.Background(), host); err != nil {
 		t.Fatal(err)
 	}
@@ -77,10 +77,35 @@ func TestComponentStartIsIdempotent(t *testing.T) {
 
 func TestComponentStartFailsWhenSchedulerCapabilityIsUnavailable(t *testing.T) {
 	c := &component{}
-	if err := c.Start(context.Background(), lifecycle.Context{}); err == nil {
+	if err := c.Start(context.Background(), componenthost.Ports{}); err == nil {
 		t.Fatal("Start must fail closed without a scheduler capability")
 	}
 	if c.started {
 		t.Fatal("failed Start must not leave runtime residue")
 	}
+}
+
+type trackingSampler struct {
+	observations, cores int
+}
+
+func (*trackingSampler) CurrentObservabilitySample() observabilitysvc.ObservabilitySample {
+	return observabilitysvc.ObservabilitySample{}
+}
+func (*trackingSampler) CurrentCoreSample() observabilitysvc.CoreSample {
+	return observabilitysvc.CoreSample{}
+}
+func (s *trackingSampler) RecordObservabilitySample(observabilitysvc.ObservabilityBucket, observabilitysvc.ObservabilitySample) error {
+	s.observations++
+	return nil
+}
+func (s *trackingSampler) RecordCoreSample(observabilitysvc.ObservabilityBucket, observabilitysvc.CoreSample) error {
+	s.cores++
+	return nil
+}
+func (*trackingSampler) HistoryForBucket(observabilitysvc.ObservabilityBucket) ([]observabilitysvc.ObservabilitySample, error) {
+	return nil, nil
+}
+func (*trackingSampler) CoreHistoryForBucket(observabilitysvc.ObservabilityBucket) ([]observabilitysvc.CoreSample, error) {
+	return nil, nil
 }

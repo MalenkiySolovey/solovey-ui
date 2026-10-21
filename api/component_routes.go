@@ -61,7 +61,7 @@ func (a *ApiService) componentAPI(requireStepUp func(*gin.Context, string, strin
 		Update: componenthost.UpdateDeps{
 			AllowForcedUpdateCheck: allowForcedUpdateCheck,
 		},
-	}
+	}.WithObservationOwners()
 }
 
 func registerComponentAPIRoutes(g *gin.RouterGroup, api componenthost.APIDeps) {

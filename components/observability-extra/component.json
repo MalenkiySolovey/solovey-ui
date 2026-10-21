@@ -9,5 +9,17 @@
     "entries": [
       "frontend/index.ts"
     ]
+  },
+  "hostAPI": {
+    "version": "solovey.component-host/v1",
+    "lifecycle": [
+      "scheduler",
+      "observability.sample"
+    ],
+    "api": [
+      "http.request",
+      "observability.history",
+      "audit.history"
+    ]
   }
 }

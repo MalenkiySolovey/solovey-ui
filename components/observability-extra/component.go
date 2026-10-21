@@ -9,12 +9,10 @@ import (
 	"sync"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	observabilityhttp "github.com/MalenkiySolovey/solovey-ui/components/observability-extra/api"
 	"github.com/MalenkiySolovey/solovey-ui/components/observability-extra/jobs"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
-	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"github.com/robfig/cron/v3"
 )
@@ -27,10 +25,10 @@ var id = componentManifest.ID
 
 func init() {
 	registry.Register(registry.Component{
-		Manifest:  componentManifest,
-		Lifecycle: &component{},
+		Manifest:      componentManifest,
+		PortLifecycle: &component{},
 	})
-	registry.RegisterAPIRoutes(id, componenthost.RouteAdapter[observabilityhttp.Deps]{
+	registry.RegisterPortAPIRoutes(id, componenthost.PortRouteAdapter[observabilityhttp.Deps]{
 		Build:    observabilityExtraDeps,
 		Register: observabilityhttp.RegisterRoutes,
 	}.RegisterRoutes)
@@ -43,22 +41,24 @@ type component struct {
 	entryID   cron.EntryID
 }
 
-func (c *component) Start(_ context.Context, ctx lifecycle.Context) error {
+func (c *component) Start(_ context.Context, ports componenthost.Ports) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.started {
 		return nil
 	}
-	if ctx.Host.Scheduler == nil {
+	if ports.Scheduler == nil {
 		return errors.New("observability-extra scheduler is unavailable")
 	}
-	sampler := &service.ObservabilityService{ServerService: service.NewServerService(ctx.Host.API.Runtime)}
-	entryID, err := ctx.Host.Scheduler.AddJob("@every 2s", jobs.NewSamplingJob(sampler))
+	if ports.ObservationSampler == nil {
+		return errors.New("observability-extra sampling owner is unavailable")
+	}
+	entryID, err := ports.Scheduler.AddJob("@every 2s", jobs.NewSamplingJob(ports.ObservationSampler))
 	if err != nil {
 		return err
 	}
 	c.started = true
-	c.scheduler = ctx.Host.Scheduler
+	c.scheduler = ports.Scheduler
 	c.entryID = entryID
 	return nil
 }
@@ -79,10 +79,10 @@ func (c *component) Stop(ctx context.Context) error {
 	return nil
 }
 
-func observabilityExtraDeps(host componenthost.APIDeps) observabilityhttp.Deps {
+func observabilityExtraDeps(host componenthost.Ports) observabilityhttp.Deps {
 	return observabilityhttp.Deps{
-		ObservabilityService:   &service.ObservabilityService{ServerService: service.NewServerService(host.Runtime)},
-		AuditService:           &service.AuditService{Runtime: host.Runtime},
+		ObservabilityService:   host.ObservationHistory,
+		AuditService:           host.AuditHistory,
 		RequireScope:           host.Auth.RequireScope,
 		RequireAuditAdminScope: host.Auth.RequireAuditAdminScope,
 		JSONObj:                host.HTTP.JSONObj,
