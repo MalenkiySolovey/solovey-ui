@@ -2,12 +2,14 @@
 package dbtransfer
 
 import (
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	datalifecycle "github.com/MalenkiySolovey/solovey-ui/service/datalifecycle"
 	"github.com/gin-gonic/gin"
 )
 
 type Handler struct {
+	ActionPolicy         func(*gin.Context) actions.Authorizer
 	AuthorizationChanged func()
 	SettingService       service.SettingService
 	NotifyEvent          func(string, map[string]string)
@@ -23,6 +25,7 @@ type Handler struct {
 
 // Deps contains the host capabilities required by database transfer routes.
 type Deps struct {
+	ActionPolicy         func(*gin.Context) actions.Authorizer
 	AuthorizationChanged func()
 	SettingService       service.SettingService
 	NotifyEvent          func(string, map[string]string)
@@ -42,6 +45,7 @@ func NewHandler(deps Deps) *Handler {
 		notifyEvent = func(string, map[string]string) {}
 	}
 	return &Handler{
+		ActionPolicy:         deps.ActionPolicy,
 		AuthorizationChanged: deps.AuthorizationChanged,
 		SettingService:       deps.SettingService,
 		NotifyEvent:          notifyEvent,

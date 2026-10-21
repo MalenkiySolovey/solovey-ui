@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	"io"
 	"os"
 	"path/filepath"
@@ -346,6 +347,7 @@ func restoreSysupgradePreservationIfNeeded(ctx context.Context, environment Pres
 	}
 	idempotency := "openwrt-sysupgrade-" + metadata.ArtifactDigest[:32]
 	operation, _, restoreErr := manager.ExecuteRestore(ctx, datalifecycle.RestoreRequest{
+		Authorize:                 authorizeVerifiedPreservation(rehearsal.Revision),
 		ExpectedRehearsalRevision: rehearsal.Revision, IdempotencyKey: idempotency,
 		Confirmation: datalifecycle.RestoreConfirmation(rehearsal.Revision), Acknowledged: true, Source: snapshot,
 	})
@@ -723,4 +725,18 @@ func validPreservationDigest(value string) bool {
 	}
 	_, err := hex.DecodeString(value)
 	return err == nil
+}
+
+// Startup recovery has no browser session. Its existing authority is the fixed,
+// independently verified preservation pair and exact rehearsal, never a generic
+// system grant or browser-accessible step-up bypass.
+func authorizeVerifiedPreservation(revision string) actions.Authorizer {
+	return func(ctx context.Context, actual actions.Invocation) (actions.Decision, error) {
+		expected := actions.Restore(actual.Reference, actions.RestoreInput{RehearsalRevision: revision})
+		if ctx == nil || ctx.Err() != nil || actual.Validate() != nil || actual != expected {
+			return actions.Decision{}, actions.ErrDenied
+		}
+		return actions.Decision{Allowed: true, Actor: "system:openwrt-preservation",
+			Permission: actions.PermissionBackupRestore, Invocation: actual}, nil
+	}
 }

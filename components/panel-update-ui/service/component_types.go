@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 )
@@ -47,6 +48,7 @@ type ComponentStatus struct {
 }
 
 type OperationContext struct {
+	Authorize      actions.Authorizer
 	RequestContext context.Context
 	Actor          string
 	Hostname       string

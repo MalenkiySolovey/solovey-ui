@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	"testing"
 
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
@@ -137,7 +138,7 @@ func TestLogicalRestoreRebindsApplicationResourceOwners(t *testing.T) {
 			// admits the logical transaction without starting host watchers.
 			manager.Admit = func(string) bool { return true }
 			accepted := 0
-			operation, result, err := manager.ExecuteRestore(context.Background(), datalifecycle.RestoreRequest{
+			operation, result, err := manager.ExecuteRestore(context.Background(), datalifecycle.RestoreRequest{Authorize: fixtureRestoreAuthority,
 				ExpectedRehearsalRevision: rehearsal.Revision, IdempotencyKey: "restore-resource-generation",
 				Confirmation: datalifecycle.RestoreConfirmation(rehearsal.Revision), Acknowledged: true, Source: bytes.NewReader(backup),
 				OnAccepted: func() { accepted++ },
@@ -228,7 +229,7 @@ func TestRestoreAcceptanceSignalSurvivesPruneErrorAndIsNotReplayed(t *testing.T)
 		}
 		return dbsqlite.DB()
 	}
-	request := datalifecycle.RestoreRequest{
+	request := datalifecycle.RestoreRequest{Authorize: fixtureRestoreAuthority,
 		ExpectedRehearsalRevision: rehearsal.Revision, IdempotencyKey: "restore-accepted-before-prune",
 		Confirmation: datalifecycle.RestoreConfirmation(rehearsal.Revision), Acknowledged: true, Source: bytes.NewReader(backup),
 		OnAccepted: func() { accepted++; failPrune = true },
@@ -257,4 +258,8 @@ func (restoreSSHResources) ListProtectableResources(context.Context) ([]hostreso
 		{ID: "fixture:ssh:ipv4", Kind: "ssh", Owner: "fixture:ssh", Source: "ssh", Protocol: "tcp", Listen: "192.0.2.10", Port: 22},
 		{ID: "fixture:ssh:ipv6", Kind: "ssh", Owner: "fixture:ssh", Source: "ssh", Protocol: "tcp", Listen: "2001:db8::10", Port: 22},
 	}, nil
+}
+
+func fixtureRestoreAuthority(_ context.Context, invocation actions.Invocation) (actions.Decision, error) {
+	return actions.Decision{Allowed: true, Actor: "fixture-admin", Permission: actions.PermissionBackupRestore, Invocation: invocation}, nil
 }

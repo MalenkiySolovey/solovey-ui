@@ -23,6 +23,7 @@ func (a *ApiService) componentAPI(requireStepUp func(*gin.Context, string, strin
 			return service.NewOutboundHTTPClientForRuntime(runtime, tag, timeout)
 		}),
 		Auth: componenthost.AuthDeps{
+			ActionPolicy:           a.actionPolicy(requireStepUp),
 			AuthorizationChanged:   authorizationChanged,
 			RequireScope:           a.requireTokenScopeAny,
 			RequireAuditAdminScope: a.requireAuditAdminScope,
@@ -79,6 +80,8 @@ func registerComponentAPIRoutes(g *gin.RouterGroup, api componenthost.APIDeps) {
 	}
 }
 
+const componentAuthorityKey = "componenthost.authority.id"
+
 func componentActiveMiddleware(componentID string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		active, err := state.IsActiveCached(componentID)
@@ -96,6 +99,7 @@ func componentActiveMiddleware(componentID string) gin.HandlerFunc {
 			})
 			return
 		}
+		c.Set(componentAuthorityKey, componentID)
 		c.Next()
 	}
 }

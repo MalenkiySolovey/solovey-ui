@@ -6,6 +6,7 @@ import (
 	"sync"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/durableowner"
@@ -115,6 +116,11 @@ func (r *registry) registerWith(component Component, admit func(manifest.Manifes
 	if err := component.Manifest.Validate(); err != nil {
 		panic(err)
 	}
+	for _, actionID := range component.Manifest.Actions {
+		if !actions.ComponentAllowed(component.Manifest.ID, component.Manifest.Actions, actionID) {
+			panic(fmt.Errorf("component %q action %q is not admitted", component.Manifest.ID, actionID))
+		}
+	}
 	component.Manifest = component.Manifest.Normalized()
 	if component.PortLifecycle != nil {
 		if component.Lifecycle != nil || component.Manifest.HostAPI == nil {
@@ -216,6 +222,7 @@ func (r *registry) componentsByID(ids []string) []Component {
 
 func snapshot(component Component) Component {
 	component.Manifest.HostAPI = component.Manifest.HostAPI.Clone()
+	component.Manifest.Actions = append([]string(nil), component.Manifest.Actions...)
 	return component
 }
 

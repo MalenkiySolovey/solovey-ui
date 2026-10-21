@@ -9,5 +9,8 @@
     "entries": [
       "frontend/index.ts"
     ]
-  }
+  },
+  "actions": [
+    "component.remove"
+  ]
 }

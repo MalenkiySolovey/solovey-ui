@@ -82,6 +82,7 @@ func (a *APIHandler) registerGroupedRoutes(g *gin.RouterGroup) {
 	dbTransferDeps := a.dbTransferDeps()
 	dbTransferDeps.AuthorizationChanged = a.reloadTokens
 	dbTransferDeps.RequireStepUp = a.requireStepUpAction
+	dbTransferDeps.ActionPolicy = a.actionPolicy(a.requireStepUpAction)
 	dbTransferDeps.EnforceStepUpHeader = true
 	dbtransferhttp.RegisterRoutes(g, dbTransferDeps)
 	telemetryhttp.RegisterCoreRoutes(g, a.telemetryDeps())

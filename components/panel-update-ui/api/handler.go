@@ -1,6 +1,8 @@
 package api
 
 import (
+	requestcontext "context"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	"net/http"
 
 	panelupdateservice "github.com/MalenkiySolovey/solovey-ui/components/panel-update-ui/service"
@@ -29,6 +31,7 @@ type Deps struct {
 	Hostname      func(*gin.Context) string
 	RequireScope  func(*gin.Context, string, ...string) bool
 	RequireStepUp func(*gin.Context, string, string) bool
+	ActionPolicy  func(*gin.Context) actions.Authorizer
 	Audit         func(*gin.Context, string, string, string, string, map[string]any)
 	JSONObj       func(*gin.Context, any, error)
 	JSONMsg       func(*gin.Context, string, error)
@@ -122,21 +125,33 @@ func (h Handler) componentRemove(context *gin.Context) {
 	if !ok {
 		return
 	}
-	if h.deps.RequireStepUp == nil {
+	if h.deps.RequireStepUp == nil || h.deps.ActionPolicy == nil {
 		context.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"success": false, "msg": "component step-up boundary unavailable"})
 		return
 	}
-	if !h.deps.RequireStepUp(context, "component.remove", "component:"+id) {
-		return
+	var actionInvocation actions.Invocation
+	policy := h.deps.ActionPolicy(context)
+	operation := h.componentOperationContext(context)
+	operation.Authorize = func(ctx requestcontext.Context, invocation actions.Invocation) (actions.Decision, error) {
+		actionInvocation = invocation
+		if policy == nil {
+			return actions.Decision{}, actions.ErrDenied
+		}
+		return policy(ctx, invocation)
 	}
-	status, err := h.deps.ComponentManager.Remove(h.componentOperationContext(context), id)
+	status, err := h.deps.ComponentManager.Remove(operation, id)
 	if err != nil {
+		if context.IsAborted() {
+			return
+		}
 		h.deps.JSONMsg(context, "", err)
 		return
 	}
 	h.deps.Audit(context, h.deps.LoginUser(context), "component_installed_changed", "component", service.AuditSeverityWarn, map[string]any{
-		"component": id,
-		"installed": false,
+		"actionId": actionInvocation.ID, "inputDigest": actionInvocation.InputDigest,
+		"correlation": actionInvocation.Reference.Correlation(),
+		"component":   id,
+		"installed":   false,
 	})
 	h.deps.JSONObj(context, status, nil)
 }

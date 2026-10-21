@@ -10,12 +10,15 @@ import (
 	"sync"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	coreservice "github.com/MalenkiySolovey/solovey-ui/service"
+	"github.com/MalenkiySolovey/solovey-ui/util/common"
 )
 
 const UpdateComponentID = "panel-update-ui"
@@ -99,6 +102,15 @@ func (m RuntimeManager) Remove(ctx OperationContext, id string) (ComponentStatus
 	}
 	if id == UpdateComponentID {
 		return ComponentStatus{}, fmt.Errorf("component %q cannot remove itself", id)
+	}
+	operationID, err := common.RandomUUID()
+	if err != nil {
+		return ComponentStatus{}, err
+	}
+	invocation := actions.RemoveComponent(operationcoordination.NewReference("component-lifecycle", "component:"+id, "component-remove:"+operationID),
+		actions.ComponentRemoveInput{ComponentID: id})
+	if _, err := actions.Require(ctx.RequestContext, invocation, ctx.Authorize); err != nil {
+		return ComponentStatus{}, err
 	}
 	status, err := m.catalog().StatusByID(id)
 	if err != nil {

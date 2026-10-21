@@ -52,7 +52,7 @@ func TestRuntimeManagerRemoveCleanDisabledOwnerWithoutDroppingData(t *testing.T)
 			return nil
 		},
 	}
-	status, err := manager.Remove(OperationContext{}, id)
+	status, err := manager.Remove(authorizedRemovalContext(context.Background()), id)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,7 +93,7 @@ func TestRuntimeManagerRemoveRestoresInstalledStateAfterReconcileFailure(t *test
 		}
 		return nil
 	}}
-	if _, err := manager.Remove(OperationContext{}, id); err == nil {
+	if _, err := manager.Remove(authorizedRemovalContext(context.Background()), id); err == nil {
 		t.Fatal("expected remove failure")
 	}
 	installed, err := installstate.InstalledIDs(registeredManifests())

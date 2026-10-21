@@ -63,6 +63,7 @@ func databaseImportTestHandler() gin.HandlerFunc {
 	handler := (&ApiService{}).dbTransferHandler()
 	handler.AuthorizationChanged = func() {}
 	handler.RequireStepUp = func(*gin.Context, string, string) bool { return true }
+	handler.ActionPolicy = (&ApiService{}).actionPolicy(handler.RequireStepUp)
 	manager := datalifecycle.NewManager()
 	manager.Admit = func(string) bool { return true }
 	handler.DataLifecycle = manager
@@ -82,6 +83,7 @@ func TestRestoreAPIProjectsAcceptedOwnerChangeAndIdempotentReplay(t *testing.T) 
 	accepted := 0
 	handler.AuthorizationChanged = func() { accepted++ }
 	handler.RequireStepUp = func(*gin.Context, string, string) bool { return true }
+	handler.ActionPolicy = (&ApiService{}).actionPolicy(handler.RequireStepUp)
 	manager := datalifecycle.NewManager()
 	manager.Admit = func(string) bool { return true }
 	handler.DataLifecycle = manager

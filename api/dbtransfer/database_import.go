@@ -1,7 +1,9 @@
 package dbtransfer
 
 import (
+	"context"
 	"errors"
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	"net/http"
 	"strings"
 
@@ -32,7 +34,7 @@ func (a *Handler) ImportDb(c *gin.Context) {
 		})
 		return
 	}
-	if a.AuthorizationChanged == nil {
+	if a.AuthorizationChanged == nil || a.ActionPolicy == nil {
 		c.AbortWithStatusJSON(http.StatusServiceUnavailable, gin.H{"success": false, "msg": "Database restore is unavailable", "obj": nil})
 		return
 	}
@@ -59,9 +61,8 @@ func (a *Handler) ImportDb(c *gin.Context) {
 		a.respondDatabaseImportResult(c, errors.New("restore execution controls are invalid"))
 		return
 	}
-	if !a.RequireStepUp(c, "backup.restore", "database:restore:"+rehearsal.Revision) {
-		return
-	}
+	var actionInvocation actions.Invocation
+	policy := a.ActionPolicy(c)
 	if _, err := prepared.MultipartFile().Seek(0, 0); err != nil {
 		a.respondDatabaseImportResult(c, err)
 		return
@@ -73,9 +74,19 @@ func (a *Handler) ImportDb(c *gin.Context) {
 	operation, result, err := manager.ExecuteRestore(c.Request.Context(), datalifecycle.RestoreRequest{
 		ExpectedRehearsalRevision: expected, IdempotencyKey: idempotencyKey, Confirmation: confirmation,
 		Acknowledged: true, Source: prepared.MultipartFile(),
+		Authorize: func(ctx context.Context, invocation actions.Invocation) (actions.Decision, error) {
+			actionInvocation = invocation
+			if policy == nil {
+				return actions.Decision{}, actions.ErrDenied
+			}
+			return policy(ctx, invocation)
+		},
 		OnAccepted: a.AuthorizationChanged,
 	})
 	if err != nil {
+		if c.IsAborted() {
+			return
+		}
 		a.respondDatabaseImportFailure(c, err)
 		c.JSON(http.StatusOK, gin.H{"success": false, "msg": datalifecycle.ReasonCode(err), "obj": gin.H{
 			"operation": datalifecycle.ProjectOperation(operation), "execution": result, "rehearsal": rehearsal, "reasonCode": datalifecycle.ReasonCode(err),
@@ -83,6 +94,7 @@ func (a *Handler) ImportDb(c *gin.Context) {
 		return
 	}
 	a.Audit(c, a.Actor(c), "db_imported", "database", service.AuditSeverityWarn, map[string]any{
+		"actionId": actionInvocation.ID, "inputDigest": actionInvocation.InputDigest,
 		"correlation": datalifecycle.ProjectChange(operation).Reference.Correlation(),
 		"operationId": operation.OperationID, "state": operation.State, "revision": operation.Revision,
 		"backupId": operation.ManifestDigest, "recoveryCleanupPending": result.RecoveryCleanupPending,
