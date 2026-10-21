@@ -1,5 +1,6 @@
 import axios from 'axios'
 import { getBaseUrl } from '@/plugins/base-url'
+import { currentHostID } from '@/router/hostContext'
 
 let csrfToken: string | null = null
 let csrfTokenPromise: Promise<string> | null = null
@@ -15,6 +16,7 @@ export const getCSRFToken = async () => {
       baseURL: getBaseUrl(),
       headers: {
         'X-Requested-With': 'XMLHttpRequest',
+        'X-Solovey-Host': currentHostID(getBaseUrl()),
       },
     }).then((response) => {
       if (response.data?.success === false && typeof response.data?.msg === 'string' && response.data.msg.length > 0) {

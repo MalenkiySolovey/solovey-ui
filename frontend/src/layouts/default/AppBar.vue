@@ -2,6 +2,7 @@
   <v-app-bar :elevation="5">
     <v-icon v-if="isMobile" icon="mdi-menu" @click="$emit('toggleDrawer')" />
     <span v-else style="width: 24px"></span>
+    <HostContextLabel />
     <v-app-bar-title :text="$t(routeTitleKey)" class="align-center text-center " />
     <v-menu>
       <template v-slot:activator="{ props }">
@@ -43,6 +44,7 @@
 </template>
 
 <script lang="ts" setup>
+import HostContextLabel from '@/components/HostContextLabel.vue'
 import { useLocale, useTheme } from 'vuetify'
 import { useRoute } from 'vue-router'
 import { useI18n } from 'vue-i18n'

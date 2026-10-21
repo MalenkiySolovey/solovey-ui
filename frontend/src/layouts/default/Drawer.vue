@@ -25,8 +25,8 @@
       <v-list-item link
         v-for="item in menu"
         :key="item.title"
-        :to="item.path"
-        :active="route.path == item.path">
+        :to="hostPath(item.path, routeHostID(route))"
+        :active="route.path === hostPath(item.path, routeHostID(route))">
         <template v-slot:prepend>
           <v-icon :icon="item.icon"></v-icon>
         </template>
@@ -41,6 +41,7 @@
 
 <script lang="ts" setup>
 import { computed } from 'vue'
+import { hostPath, routeHostID } from '@/router/hostContext'
 import { useRoute } from 'vue-router'
 import { logout } from '@/shared/composables/useAuthOperations'
 import logoUrl from '@/assets/logo.png'

@@ -13,6 +13,7 @@ import (
 	telemetryhttp "github.com/MalenkiySolovey/solovey-ui/api/telemetry"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
 	"github.com/MalenkiySolovey/solovey-ui/middleware/databaseoperation"
+	"github.com/MalenkiySolovey/solovey-ui/middleware/hostcontext"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"github.com/gin-gonic/gin"
@@ -70,6 +71,7 @@ func NewAPIv2Handler(g *gin.RouterGroup, options ...Option) *APIv2Handler {
 }
 
 func (a *APIv2Handler) initRouter(g *gin.RouterGroup) {
+	g.Use(hostcontext.Middleware())
 	g.Use(databaseoperation.Middleware())
 	g.Use(func(c *gin.Context) {
 		a.checkToken(c)

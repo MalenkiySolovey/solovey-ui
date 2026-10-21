@@ -67,6 +67,7 @@
 </template>
 
 <script lang="ts" setup>
+import { useHostDraftGuard } from '@/shared/composables/useHostDraftGuard'
 import { useI18n } from 'vue-i18n'
 
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
@@ -91,6 +92,8 @@ const emit = defineEmits<{
 
 const { t } = useI18n()
 const { confirm } = useConfirm()
+
+useHostDraftGuard(() => Boolean(props.modelValue && props.dirty))
 
 const requestClose = async () => {
   if (props.dirty) {

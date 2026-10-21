@@ -101,7 +101,9 @@ describe('component frontend loader', () => {
     expect(entries.loadBeta).not.toHaveBeenCalled()
     expect(entries.loadBroken).not.toHaveBeenCalled()
     expect(registeredComponents.value.map(component => component.id)).toEqual(['fixture-alpha'])
-    expect(router.resolve('/fixture-alpha').matched.some(route => route.meta.componentId === 'fixture-alpha')).toBe(true)
+    expect(router.resolve('/hosts/local/fixture-alpha').matched.some(route => route.meta.componentId === 'fixture-alpha')).toBe(true)
+    await router.push('/fixture-alpha')
+    expect(router.currentRoute.value.path).toBe('/hosts/local/fixture-alpha')
   })
 
   it('unloads a component and its routes when the installed projection disables it', async () => {
@@ -155,7 +157,7 @@ function createHostRouter() {
   return createRouter({
     history: createMemoryHistory(),
     routes: [{
-      path: '/',
+      path: '/hosts/:hostId',
       name: 'main',
       component: { template: '<router-view />' },
       children: [],

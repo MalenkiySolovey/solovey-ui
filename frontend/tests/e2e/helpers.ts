@@ -63,7 +63,7 @@ export const login = async (page: Page) => {
   expect(loginResponse.ok(), loginBody.msg).toBeTruthy()
   expect(loginBody.success, loginBody.msg).toBe(true)
   expect(loginBody.obj?.state).toBe('authenticated')
-  await expect(page).toHaveURL(state.baseURL)
+  await expect(page).toHaveURL(new URL('hosts/local', state.baseURL).toString())
 
   const settingsResponse = await page.request.get('api/settings')
   const settingsBody = await settingsResponse.json().catch(() => ({ success: false, msg: 'invalid settings response' }))

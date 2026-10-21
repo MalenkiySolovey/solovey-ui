@@ -2,7 +2,8 @@ import { i18n, languages, setI18nLocale } from '@/locales'
 import { resetInvalidLoginHandling } from '@/plugins/httputil'
 import { login as authenticate } from '@/shared/composables/useAuthOperations'
 import { ref, watch } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { hostPath, safeHostReturnTo } from '@/router/hostContext'
 import { useLocale, useTheme } from 'vuetify'
 import { readThemePreference, writeThemePreference } from '@/uiMode/theme'
 
@@ -10,6 +11,7 @@ export const useLoginPage = () => {
   const theme = useTheme()
   const locale = useLocale()
   const router = useRouter()
+  const route = useRoute()
   const username = ref('')
   const password = ref('')
   const loading = ref(false)
@@ -39,7 +41,10 @@ export const useLoginPage = () => {
         resetInvalidLoginHandling()
         const state = response.obj?.state
         password.value = ''
-        await router.push(state === 'password_reset' || state === 'mfa_pending' || state === 'mfa_recovery' ? '/security-transition' : '/')
+        const returnTo = safeHostReturnTo(route.query.returnTo)
+        await router.push(state === 'password_reset' || state === 'mfa_pending' || state === 'mfa_recovery'
+          ? { name: 'pages.securityTransition', query: returnTo ? { returnTo } : {} }
+          : returnTo ?? hostPath('/'))
         return
       }
       errorMessage.value = response.msg || i18n.global.t('login.invalidCredentials')

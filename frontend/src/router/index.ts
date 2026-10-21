@@ -1,7 +1,7 @@
 // Composables
 import { createRouter, createWebHistory } from 'vue-router'
-import Login from '@/views/Login.vue'
-import SecurityTransition from '@/views/SecurityTransition.vue'
+import { routes } from './routes'
+import { LOCAL_HOST, routeHostID, hostPath, safeHostReturnTo } from './hostContext'
 import Data from '@/store/modules/data'
 import Ws from '@/store/ws'
 import { getBaseUrl } from '@/plugins/base-url'
@@ -10,122 +10,19 @@ import { getSecurityPosture, messageObject, type SecurityPosture } from '@/share
 import { configureLoginNavigation } from '@/plugins/loginNavigation'
 import { createPreloadRecovery, isPreloadError } from './preloadRecovery'
 
-const routes = [
-  {
-    path: '/login',
-    name: 'pages.login',
-    component: Login,
-  },
-  {
-    path: '/security-transition',
-    name: 'pages.securityTransition',
-    component: SecurityTransition,
-  },
-  {
-    path: '/',
-    name: 'main',
-    component: () => import('@/layouts/AuthenticatedHost.vue'),
-    meta: { requiresAuth: true },
-    children: [
-      {
-        path: '/',
-        name: 'pages.home',
-        component: () => import('@/views/Home.vue'),
-      },
-      {
-        path: '/inbounds',
-        name: 'pages.inbounds',
-        component: () => import('@/views/Inbounds.vue'),
-      },
-      {
-        path: '/clients',
-        name: 'pages.clients',
-        component: () => import('@/views/Clients.vue'),
-      },
-      {
-        path: '/outbounds',
-        name: 'pages.outbounds',
-        component: () => import('@/views/Outbounds.vue'),
-      },
-      {
-        path: '/services',
-        name: 'pages.services',
-        component: () => import('@/views/Services.vue'),
-      },
-      {
-        path: '/endpoints',
-        name: 'pages.endpoints',
-        component: () => import('@/views/Endpoints.vue'),
-      },
-      {
-        path: '/rules',
-        name: 'pages.rules',
-        component: () => import('@/views/Rules.vue'),
-      },
-      {
-        path: '/tls',
-        name: 'pages.tls',
-        component: () => import('@/views/Tls.vue'),
-      },
-      {
-        path: '/basics',
-        redirect: '/settings?tab=basics',
-      },
-      {
-        path: '/dns',
-        name: 'pages.dns',
-        component: () => import('@/views/Dns.vue'),
-      },
-      {
-        path: '/sing-box-config',
-        name: 'pages.singBoxConfig',
-        component: () => import('@/views/SingBoxConfig.vue'),
-      },
-      {
-        path: '/admins',
-        name: 'pages.admins',
-        component: () => import('@/views/Admins.vue'),
-      },
-      {
-        path: '/security',
-        name: 'pages.security',
-        component: () => import('@/views/Security.vue'),
-      },
-      {
-		path: '/ssh-management',
-        name: 'pages.sshManagement',
-        component: () => import('@/views/SSHManagement.vue'),
-      },
-	  {
-		path: '/deployment',
-		name: 'pages.deployment',
-		component: () => import('@/views/Deployment.vue'),
-	  },
-      {
-        path: '/operations',
-        name: 'pages.operations',
-        component: () => import('@/views/Operations.vue'),
-      },
-      {
-        path: '/settings',
-        name: 'pages.settings',
-        component: () => import('@/views/Settings.vue'),
-      },
-      {
-        path: '/support',
-        name: 'pages.support',
-        component: () => import('@/views/Donations.vue'),
-      },
-    ],
-  },
-]
 
 const router = createRouter({
   history: createWebHistory(getBaseUrl()),
   routes,
 })
 
-configureLoginNavigation(() => router.push('/login'))
+configureLoginNavigation(() => {
+  const path = window.location.pathname.startsWith(getBaseUrl())
+    ? '/' + window.location.pathname.slice(getBaseUrl().length) + window.location.search + window.location.hash
+    : router.currentRoute.value.fullPath
+  const returnTo = safeHostReturnTo(path)
+  return router.push({ name: 'pages.login', query: returnTo ? { returnTo } : {} })
+})
 
 // After a panel upgrade, the browser tab still holds the previous
 // index.html with hashed chunk names. The first dynamic import (e.g.
@@ -151,13 +48,17 @@ router.afterEach((_to, _from, failure) => {
 // navigation to a protected page and stopping the polling timer when we
 // land on /login.
 router.beforeEach(async (to) => {
+  if (routeHostID(to) && routeHostID(to) !== LOCAL_HOST.id) {
+    Ws().disconnect()
+    return
+  }
   const data = Data()
   const transitionOnly = to.path === '/security-transition'
   if (to.path !== '/login' && !transitionOnly) {
     const postureResponse = await getSecurityPosture()
     const posture = messageObject<SecurityPosture>(postureResponse)
     if (posture?.authState === 'password_reset' || posture?.authState === 'mfa_pending' || posture?.authState === 'mfa_recovery') {
-      return '/security-transition'
+      return { name: 'pages.securityTransition', query: { returnTo: safeHostReturnTo(to.fullPath) } }
     }
     if (!data.componentsLoaded) {
       try {
@@ -170,14 +71,14 @@ router.beforeEach(async (to) => {
     void Ws().connect()
     const resolved = router.resolve(to.fullPath)
     const componentId = to.meta.componentId as string | undefined
-    if (to.matched.length === 0 && resolved.matched.length > 0) {
+    if ((to.matched.length === 0 || to.name === 'pages.unavailable') && resolved.name !== 'pages.unavailable' && resolved.matched.length > 0) {
       return to.fullPath
     }
     if (to.matched.length === 0) {
-      return '/'
+      return hostPath('/')
     }
     if (componentId && !resolved.matched.some(record => record.meta.componentId === componentId)) {
-      return '/'
+      return to.fullPath
     }
   } else {
     Ws().disconnect()

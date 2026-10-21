@@ -40,6 +40,7 @@
     </div>
 
     <template #append>
+      <HostContextLabel />
       <v-menu v-if="compactActions">
         <template #activator="{ props }">
           <v-btn
@@ -172,6 +173,7 @@
 </template>
 
 <script lang="ts" setup>
+import HostContextLabel from '@/components/HostContextLabel.vue'
 import UiModeControl from '@/components/UiModeControl.vue'
 import { pageHeader, topbarSearch } from '@/components/nexus/primitives/pageHeaderPortal'
 import { languages, setI18nLocale } from '@/locales'

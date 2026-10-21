@@ -69,7 +69,7 @@
           :aria-label="$t(item.title)"
           class="nexus-sidebar__item"
           link
-          :to="item.path"
+          :to="hostPath(item.path, routeHostID(route))"
           @click="emit('navigate')"
         >
           <template #prepend>
@@ -120,6 +120,7 @@
 
 <script lang="ts" setup>
 import { computed } from 'vue'
+import { hostPath, routeHostID } from '@/router/hostContext'
 import { useRoute } from 'vue-router'
 
 import { logout } from '@/shared/composables/useAuthOperations'
@@ -149,8 +150,10 @@ const groups = computed(() => visibleNexusMenuGroups())
 // Exact-match the dashboard ('/') so it isn't flagged active on every route
 // (Vue Router treats '/' as a prefix of all paths); other items match their
 // own path or sub-paths.
-const itemActive = (path: string): boolean =>
-  path === '/' ? route.path === '/' : route.path === path || route.path.startsWith(`${path}/`)
+const itemActive = (path: string): boolean => {
+  const scoped = hostPath(path, routeHostID(route))
+  return route.path === scoped || (path !== '/' && route.path.startsWith(`${scoped}/`))
+}
 
 const badgeCount = (item: NexusMenuItem): number => {
   if (!item.countKey) return 0

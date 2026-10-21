@@ -1,3 +1,4 @@
+import { useHostDraftGuard } from '@/shared/composables/useHostDraftGuard'
 import { isNexusEnabled } from '@/uiMode/featureGate'
 import { useUiMode } from '@/uiMode/useUiMode'
 import { i18n } from '@/locales'
@@ -193,6 +194,7 @@ export const useSettingsPage = () => {
   const stateChange = computed(() => {
     return !FindDiff.deepCompare(settings.value,oldSettings.value)
   })
+  useHostDraftGuard(() => stateChange.value)
 
   return {
     loading,
