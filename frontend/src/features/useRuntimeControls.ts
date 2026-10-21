@@ -2,6 +2,7 @@ import { computed, onScopeDispose, ref, watch, type Ref } from 'vue'
 import api from '@/plugins/api'
 import HttpUtils, { type Msg } from '@/plugins/httputil'
 import { getBaseUrl } from '@/plugins/base-url'
+import { currentHostID } from '@/router/hostContext'
 import { runtimeAvailability, type SessionView } from './runtimeSessions'
 
 export interface RuntimeGroup {
@@ -54,7 +55,7 @@ const defaults: ControlsDeps = {
   },
   async stream(generation, signal, emit) {
     const url = `${getBaseUrl()}api/runtime/logs?generation=${encodeURIComponent(generation)}`
-    const response = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(35000)]), credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest' } })
+    const response = await fetch(url, { signal: AbortSignal.any([signal, AbortSignal.timeout(35000)]), credentials: 'same-origin', headers: { 'X-Requested-With': 'XMLHttpRequest', 'X-Solovey-Host': currentHostID(getBaseUrl()) } })
     await consumeRuntimeLogStream(response, signal, emit)
   },
 }

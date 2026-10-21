@@ -1,4 +1,5 @@
 import type { Router, RouteRecordRaw } from 'vue-router'
+import { hostPath } from '@/router/hostContext'
 import Data from '@/store/modules/data'
 import { componentEntries } from 'virtual:solovey-component-entries'
 import { componentRoutes, registeredComponents, registerComponent, unregisterComponent } from './registry'
@@ -89,15 +90,22 @@ const syncComponentRoutes = (router: Router) => {
     desired.add(key)
     if (routeRemovers.has(key)) continue
     const record = {
-      path: route.path,
+      path: route.path.replace(/^\//, ''),
       name: route.name,
       meta: route.meta,
       component: route.component as RouteRecordRaw['component'],
     } as RouteRecordRaw
     if (route.alias !== undefined) {
-      record.alias = route.alias
+      record.alias = (Array.isArray(route.alias) ? route.alias : [route.alias]).map(path => path.replace(/^\//, ''))
     }
-    routeRemovers.set(key, router.addRoute('main', record))
+    const removers = [router.addRoute('main', record)]
+    for (const path of [route.path, ...(Array.isArray(route.alias) ? route.alias : route.alias ? [route.alias] : [])]) {
+      removers.push(router.addRoute({
+        path,
+        redirect: to => ({ path: hostPath(to.path), query: to.query, hash: to.hash }),
+      }))
+    }
+    routeRemovers.set(key, () => removers.forEach(remove => remove()))
   }
 
   for (const [key, remove] of routeRemovers) {

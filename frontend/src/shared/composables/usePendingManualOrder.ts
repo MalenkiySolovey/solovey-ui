@@ -1,6 +1,7 @@
 ﻿import { computed, ref, watch, type ComputedRef } from 'vue'
 
 import Data from '@/store/modules/data'
+import { useHostDraftGuard } from './useHostDraftGuard'
 import { moveRowsToPosition, sortRowsByText, type ManualSortDirection } from '@/shared/dnd/manualReorder'
 import type { ManualDropPosition } from '@/shared/dnd/manualDrag'
 
@@ -31,6 +32,8 @@ export const usePendingManualOrder = <T extends Record<string, any>>(
   })
 
   const dirty = computed(() => pendingIds.value !== null && !idsEqual(currentIds.value, sourceIds.value))
+
+  useHostDraftGuard(dirty)
 
   const displayItems = computed<T[]>(() => {
     const byId = new Map<RowId, T>()

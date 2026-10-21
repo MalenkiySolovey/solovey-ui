@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { clearCSRFToken, getCSRFToken } from '@/store/csrf'
 import { getBaseUrl } from '@/plugins/base-url'
+import { currentHostID } from '@/router/hostContext'
 
 const api = axios.create({
     baseURL: getBaseUrl(),
@@ -48,6 +49,7 @@ const needsCSRFToken = (method?: string, url?: string) => {
 
 api.interceptors.request.use(
     async (config) => {
+        config.headers['X-Solovey-Host'] = currentHostID(getBaseUrl())
         if (isDedupeMethod(config.method)) {
             const key = requestKey(config)
             if (pendingRequests.has(key)) {

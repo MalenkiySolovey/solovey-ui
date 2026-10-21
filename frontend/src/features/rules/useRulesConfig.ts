@@ -1,3 +1,4 @@
+import { useHostDraftGuard } from '@/shared/composables/useHostDraftGuard'
 import Data from '@/store/modules/data'
 import { computed, onBeforeMount, ref } from 'vue'
 import { Config } from '@/types/config'
@@ -115,6 +116,7 @@ export const useRulesConfig = () => {
   })
 
   const stateChange = computed(() => FindDiff.deepCompare(appConfig.value, oldConfig.value))
+  useHostDraftGuard(() => !stateChange.value)
 
   const saveConfig = async () => {
     loading.value = true

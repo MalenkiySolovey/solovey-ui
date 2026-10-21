@@ -98,7 +98,8 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
+import { hostPath, safeHostReturnTo } from '@/router/hostContext'
 import { logout } from '@/shared/composables/useAuthOperations'
 import {
   completeMFAChallenge,
@@ -112,6 +113,7 @@ import {
 import { useI18n } from 'vue-i18n'
 
 const router = useRouter()
+const route = useRoute()
 const { t } = useI18n()
 const posture = ref<SecurityPosture | null>(null)
 const loading = ref(true)
@@ -137,7 +139,7 @@ onMounted(async () => {
   newUsername.value = posture.value?.username ?? ''
   loading.value = false
   if (posture.value?.authState === 'authenticated') {
-    await router.replace('/')
+    await router.replace(safeHostReturnTo(route.query.returnTo) ?? hostPath('/'))
   }
 })
 
@@ -171,7 +173,7 @@ const submitPasswordTransition = async () => {
       return
     }
     clearSecrets()
-    await router.replace('/')
+    await router.replace(safeHostReturnTo(route.query.returnTo) ?? hostPath('/'))
   } finally {
     submitting.value = false
   }
@@ -195,7 +197,7 @@ const submitMFAChallenge = async () => {
       recoveryMode.value = false
       return
     }
-    await router.replace('/')
+    await router.replace(safeHostReturnTo(route.query.returnTo) ?? hostPath('/'))
   } finally {
     submitting.value = false
   }

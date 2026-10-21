@@ -1,3 +1,4 @@
+import { useHostDraftGuard } from '@/shared/composables/useHostDraftGuard'
 import Data from '@/store/modules/data'
 import { computed, onBeforeMount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -57,6 +58,7 @@ export const useDnsConfig = () => {
   const stateChange = computed(() => {
     return FindDiff.deepCompare(appConfig.value.dns,oldConfig.value.dns)
   })
+  useHostDraftGuard(() => !stateChange.value)
 
   const saveConfig = async () => {
     loading.value = true

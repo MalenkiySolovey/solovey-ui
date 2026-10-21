@@ -61,6 +61,7 @@
 </template>
 
 <script lang="ts" setup>
+import { useHostDraftGuard } from '@/shared/composables/useHostDraftGuard'
 import { ref } from 'vue'
 
 import { useUiMode } from '@/uiMode/useUiMode'
@@ -97,6 +98,8 @@ const doClose = () => {
   emit('update:modelValue', false)
   emit('close')
 }
+
+useHostDraftGuard(() => mode.value === 'classic' && Boolean(props.modelValue && props.dirty))
 
 const requestClose = () => {
   if (props.dirty) discardConfirm.value = true
