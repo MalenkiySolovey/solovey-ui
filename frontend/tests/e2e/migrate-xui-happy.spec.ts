@@ -30,6 +30,49 @@ const expectImportPage = async (page: Page) => {
   await expect(page.getByRole('heading', { name: 'Panel database import' })).toBeVisible()
 }
 
+test('keeps unsupported source fields visible and blocked during review', async ({ page }) => {
+  await login(page)
+  await page.route('**/api/import-xui/plan', async route => route.fulfill({
+    json: {
+      success: true,
+      msg: '',
+      obj: {
+        source: { hash: 'blocked-source-hash' },
+        defaults: {},
+        items: [{
+          kind: 'inbound',
+          srcId: '1',
+          srcTag: 'blocked-inbound',
+          dstTag: 'blocked-inbound',
+          action: 'skip',
+          classification: 'UNSUPPORTED_BLOCKED',
+          fields: [{
+            path: 'settings.unmapped_field',
+            state: 'UNSUPPORTED_BLOCKED',
+            reasonCode: 'unmapped_source_field',
+          }],
+          previewJson: null,
+        }],
+      },
+    },
+  }))
+
+  await page.goto('migrate-xui')
+  await expectImportPage(page)
+  await uploadSyntheticDb(page)
+  await page.getByRole('button', { name: 'Build plan' }).click()
+
+  await expect(page.getByTestId('migrate-xui-classification')).toHaveText('Blocked: unsupported source fields')
+  const row = page.getByRole('row').filter({ hasText: 'blocked-inbound' })
+  await expect(row.getByRole('checkbox')).toBeDisabled()
+  await expect(row.getByRole('textbox')).toBeDisabled()
+  await expect(page.getByTestId('migrate-xui-apply-plan')).toBeDisabled()
+
+  await row.locator('.v-data-table__td--expanded-row button').click()
+  await page.getByRole('button', { name: 'Mapping status', exact: true }).click()
+  await expect(page.getByTestId('migrate-xui-field-classifications')).toContainText('settings.unmapped_field: Blocked: unsupported source fields')
+})
+
 test('shows inline apply failure on review step', async ({ page }) => {
   await login(page)
   await page.route('**/api/import-xui/plan', async route => route.fulfill({

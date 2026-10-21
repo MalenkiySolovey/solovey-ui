@@ -3,20 +3,17 @@
 package importxui
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
-	"github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
-
+	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 	"gorm.io/gorm"
 )
 
 func applyClient(tx *gorm.DB, agg *clientAggregate, strategy Strategy, report *Report, hostname string) error {
-	if err := identity.ValidateName(agg.Email); err != nil {
-		return err
-	}
 	next, err := agg.toModel()
 	if err != nil {
 		return err
@@ -26,47 +23,41 @@ func applyClient(tx *gorm.DB, agg *clientAggregate, strategy Strategy, report *R
 	if err != nil && !dbsqlite.IsNotFound(err) {
 		return err
 	}
-	if dbsqlite.IsNotFound(err) {
-		if next.Links, err = buildClientLinks(tx, next.Config, next.Inbounds, hostname); err != nil {
-			return err
+	action := "new"
+	if err == nil {
+		if strategy == StrategySkip {
+			report.warn(fmt.Sprintf("client %s: existing name skipped by strategy", agg.Email))
+			return nil
 		}
-		sortOrder, err := nextImportSortOrder(tx, &model.Client{})
-		if err != nil {
-			return err
+		if strategy != StrategyReplace {
+			added := make([]uint, 0, len(agg.Inbounds))
+			for id := range agg.Inbounds {
+				added = append(added, id)
+			}
+			if err := entityclients.MergeImportedMembership(tx, existing.Id, added, hostname); err != nil {
+				return err
+			}
+			report.Summary.Clients.Merged++
+			return nil
 		}
-		next.SortOrder = sortOrder
-		report.Summary.Clients.Created++
-		return tx.Create(&next).Error
-	}
-	switch strategy {
-	case StrategySkip:
-		report.warn(fmt.Sprintf("client %s: existing name skipped by strategy", agg.Email))
-		return nil
-	case StrategyReplace:
 		next.Id = existing.Id
 		next.SubSecret = existing.SubSecret
 		next.SortOrder = existing.SortOrder
-		if next.Links, err = buildClientLinks(tx, next.Config, next.Inbounds, hostname); err != nil {
-			return err
-		}
-		report.Summary.Clients.Merged++
-		return tx.Save(&next).Error
-	default:
-		mergedInbounds, err := mergeInboundJSON(existing.Inbounds, agg.Inbounds)
-		if err != nil {
-			return err
-		}
-		updates := map[string]any{"inbounds": mergedInbounds}
-		mergedLinks, err := buildMergedClientLinks(tx, existing.Config, mergedInbounds, hostname, existing.Links)
-		if err != nil {
-			return err
-		}
-		if mergedLinks != nil {
-			updates["links"] = mergedLinks
-		}
-		report.Summary.Clients.Merged++
-		return tx.Model(&existing).Updates(updates).Error
+		action = "edit"
 	}
+	raw, err := json.Marshal(next)
+	if err != nil {
+		return err
+	}
+	if _, err := entityclients.SaveImportedCandidate(entityclients.SaveRequest{Tx: tx, Action: action, Data: raw, Hostname: hostname}); err != nil {
+		return err
+	}
+	if action == "new" {
+		report.Summary.Clients.Created++
+	} else {
+		report.Summary.Clients.Merged++
+	}
+	return nil
 }
 
 func sortStrings(values []string) {

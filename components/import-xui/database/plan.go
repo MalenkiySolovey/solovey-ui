@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	"sync"
 
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
@@ -58,25 +59,28 @@ type PlanSource struct {
 }
 
 type PlanItem struct {
-	Unsupported []UnsupportedObject `json:"unsupported,omitempty"`
-	Kind        string              `json:"kind"`
-	SrcID       any                 `json:"srcId"`
-	SrcTag      string              `json:"srcTag,omitempty"`
-	DstTag      string              `json:"dstTag"`
-	Action      string              `json:"action"`
-	Conflict    bool                `json:"conflict"`
-	AdminMode   string              `json:"adminMode,omitempty"`
-	PreviewJSON json.RawMessage     `json:"previewJson"`
-	Warnings    []string            `json:"warnings,omitempty"`
+	Classification string                        `json:"classification"`
+	Fields         []mapping.FieldClassification `json:"fields,omitempty"`
+	Unsupported    []UnsupportedObject           `json:"unsupported,omitempty"`
+	Kind           string                        `json:"kind"`
+	SrcID          any                           `json:"srcId"`
+	SrcTag         string                        `json:"srcTag,omitempty"`
+	DstTag         string                        `json:"dstTag"`
+	Action         string                        `json:"action"`
+	Conflict       bool                          `json:"conflict"`
+	AdminMode      string                        `json:"adminMode,omitempty"`
+	PreviewJSON    json.RawMessage               `json:"previewJson"`
+	Warnings       []string                      `json:"warnings,omitempty"`
 }
 
 type Progress struct {
-	Step        string `json:"step"`
-	Current     int    `json:"current"`
-	Total       int    `json:"total"`
-	CurrentTag  string `json:"currentTag,omitempty"`
-	CurrentName string `json:"currentName,omitempty"`
-	Percent     int    `json:"percent"`
+	Reference   *operationcoordination.Reference `json:"reference,omitempty"`
+	Step        string                           `json:"step"`
+	Current     int                              `json:"current"`
+	Total       int                              `json:"total"`
+	CurrentTag  string                           `json:"currentTag,omitempty"`
+	CurrentName string                           `json:"currentName,omitempty"`
+	Percent     int                              `json:"percent"`
 }
 
 type planningState struct {
@@ -169,6 +173,9 @@ func Plan(srcPath string, opts PlanOptions) (*MigrationPlan, error) {
 		}
 	} else if err := planRoutingDisabledNotice(opts.Context, src, plan); err != nil {
 		return nil, fmt.Errorf("xui-import: %w", err)
+	}
+	if err := classifyPlan(opts.Context, src, plan); err != nil {
+		return nil, err
 	}
 	if opts.OnlyNew {
 		markOnlyNew(plan)

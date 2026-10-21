@@ -49,6 +49,7 @@ type InboundRow struct {
 	StreamSettings       json.RawMessage
 	Tag                  string
 	Sniffing             json.RawMessage
+	Allocate             json.RawMessage
 }
 
 type ClientTraffic struct {

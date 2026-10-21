@@ -212,7 +212,7 @@ func inspectFoundationDeclaration(path, symbol string, declaration ast.Node, imp
 			// Database adapters can own legitimate writes too.
 			// Budget their exact mutation expressions for owner review rather
 			// than pretending a method-name match proves a foreign write.
-			if component && (coreModel || databaseAdapter || hasTableSelector(value)) && databaseMutationMethod(selector.Sel.Name) {
+			if component && (coreModel || databaseAdapter || hasTableSelector(value)) && databaseMutationMethod(selector.Sel.Name) && !semanticOutboundOwnerSave(selector, imports) {
 				add("component-model-mutation", symbol, value)
 			}
 		case *ast.TypeSpec:
@@ -424,4 +424,12 @@ func TestFoundationLegitimateOwnersAndDeterministicBudget(t *testing.T) {
 func typedComponentComposition(path string) bool {
 	directory := filepath.ToSlash(filepath.Dir(path))
 	return directory == "components/telegram" || directory == "components/observability-extra"
+}
+
+// An unshadowed package-qualified call to this existing semantic owner is not
+// direct SQL. Other Save receivers and local shadows retain the mutation gate.
+func semanticOutboundOwnerSave(selector *ast.SelectorExpr, imports map[string]string) bool {
+	qualifier, ok := selector.X.(*ast.Ident)
+	return ok && qualifier.Obj == nil && selector.Sel.Name == "Save" &&
+		imports[qualifier.Name] == modulePath+"/internal/entities/outbounds"
 }

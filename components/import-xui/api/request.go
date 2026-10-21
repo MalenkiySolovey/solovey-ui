@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	dbimport "github.com/MalenkiySolovey/solovey-ui/components/import-xui/database"
 	dbhooks "github.com/MalenkiySolovey/solovey-ui/database/hooks"
 	"github.com/MalenkiySolovey/solovey-ui/internal/httpconn"
 	"github.com/MalenkiySolovey/solovey-ui/service"
@@ -46,6 +47,9 @@ func (a *Handler) beginRequest(c *gin.Context) (context.Context, context.CancelF
 		return c.Request.Context(), func() {}, false
 	}
 	if !a.enforceRateLimit(c) {
+		return c.Request.Context(), func() {}, false
+	}
+	if !a.startOperation(c) {
 		return c.Request.Context(), func() {}, false
 	}
 	ctx, cancel := context.WithTimeout(c.Request.Context(), xuiRequestTimeout)
@@ -141,5 +145,17 @@ func (a *Handler) enforceRateLimit(c *gin.Context) bool {
 		c.JSON(http.StatusTooManyRequests, Envelope{Success: false, Msg: "too many xui import requests"})
 		return false
 	}
+	return true
+}
+
+const importOperationKey = "import-xui.operation.id"
+
+func (a *Handler) startOperation(c *gin.Context) bool {
+	id, err := dbimport.NewOperationID()
+	if err != nil {
+		c.AbortWithStatusJSON(http.StatusInternalServerError, Envelope{Success: false, Msg: "Compatible panel import failed"})
+		return false
+	}
+	c.Set(importOperationKey, id)
 	return true
 }

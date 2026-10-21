@@ -118,6 +118,10 @@ func saveUpsert(tx *gorm.DB, act string, data json.RawMessage, warp WarpHooks) (
 	if err := endpoint.UnmarshalJSON(data); err != nil {
 		return nil, err
 	}
+	return saveCandidate(tx, act, endpoint, warp, false)
+}
+
+func saveCandidate(tx *gorm.DB, act string, endpoint model.Endpoint, warp WarpHooks, captured bool) (*singboxapply.Change, error) {
 	if err := diagnostics.FirstError(HostCapabilityFindings(endpoint.Type, "endpoint.options", endpoint.Options)); err != nil {
 		return nil, err
 	}
@@ -131,7 +135,7 @@ func saveUpsert(tx *gorm.DB, act string, data json.RawMessage, warp WarpHooks) (
 		return nil, err
 	}
 
-	if endpoint.Type == "warp" {
+	if endpoint.Type == "warp" && !captured {
 		if warp == nil {
 			return nil, common.NewError("warp endpoint hook is not configured")
 		}

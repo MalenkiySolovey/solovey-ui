@@ -45,6 +45,8 @@ export default {
     "destination": "Назначение",
     "action": "Действие",
     "conflict": "Конфликт",
+    "classification": "Статус переноса",
+    "classifications": {"EXACT_SUPPORTED": "Точное соответствие", "LOSSLESS_PRESERVE": "Сохранено без изменений", "CONVERT_WITH_DIAGNOSTIC": "Преобразовано в локальную модель", "MANUAL_MAPPING_REQUIRED": "Нужно ручное сопоставление", "UNSUPPORTED_BLOCKED": "Заблокировано: неподдерживаемые поля", "IGNORED_EXPLICITLY": "Явно исключено"},
     "previewJson": "Предпросмотр JSON",
     "warnings": "Предупреждения",
     "back": "Назад",

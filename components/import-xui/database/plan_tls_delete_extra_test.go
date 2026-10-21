@@ -55,8 +55,16 @@ func TestApplyState_TLSReplaceDeleteError(t *testing.T) {
 		t.Fatal("expected Apply to return TLS replace delete error")
 	}
 	errText := strings.ToLower(err.Error())
-	if !strings.Contains(errText, "foreign key") && !strings.Contains(errText, "constraint") {
-		t.Fatalf("expected foreign-key delete error, got %v", err)
+	if !strings.Contains(errText, "tls in use") {
+		t.Fatalf("expected canonical TLS in-use denial, got %v", err)
+	}
+	var retained model.Tls
+	if err := db.First(&retained, existing.Id).Error; err != nil {
+		t.Fatalf("denied replacement removed the bound profile: %v", err)
+	}
+	var bound model.Inbound
+	if err := db.Where("tag = ?", "uses-existing-tls").First(&bound).Error; err != nil || bound.TlsId != existing.Id {
+		t.Fatal("denied replacement changed its binding")
 	}
 }
 

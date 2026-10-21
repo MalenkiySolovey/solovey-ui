@@ -65,6 +65,7 @@ func (Dialect3XUIMHSanaei) ReadInbounds(db *sql.DB) ([]InboundRow, error) {
 		{"stream_settings", "NULL"},
 		{"tag", "''"},
 		{"sniffing", "NULL"},
+		{"allocate", "NULL"},
 	})
 	// #nosec G202 -- projection is assembled solely from the fixed column
 	// allow-list above (quoted via sqliteident.Quote) and literal defaults; no
@@ -77,12 +78,12 @@ func (Dialect3XUIMHSanaei) ReadInbounds(db *sql.DB) ([]InboundRow, error) {
 	var result []InboundRow
 	for rows.Next() {
 		var row InboundRow
-		var remark, trafficReset, listen, protocol, settings, streamSettings, tag, sniffing sql.NullString
+		var remark, trafficReset, listen, protocol, settings, streamSettings, tag, sniffing, allocate sql.NullString
 		var enable sql.NullInt64
 		if err := rows.Scan(
 			&row.ID, &row.UserID, &row.Up, &row.Down, &row.Total, &row.AllTime,
 			&remark, &enable, &row.ExpiryTime, &trafficReset, &row.LastTrafficResetTime,
-			&listen, &row.Port, &protocol, &settings, &streamSettings, &tag, &sniffing,
+			&listen, &row.Port, &protocol, &settings, &streamSettings, &tag, &sniffing, &allocate,
 		); err != nil {
 			return nil, err
 		}
@@ -95,9 +96,10 @@ func (Dialect3XUIMHSanaei) ReadInbounds(db *sql.DB) ([]InboundRow, error) {
 		row.StreamSettings = nullJSON(streamSettings)
 		row.Tag = strings.TrimSpace(nullString(tag))
 		row.Sniffing = nullJSON(sniffing)
+		row.Allocate = nullJSON(allocate)
 		if len(row.Tag) > maxSourceIdentity || len(row.Remark) > maxSourceIdentity || len(row.Listen) > maxSourceIdentity ||
 			len(row.Protocol) > maxSourceIdentity || len(row.Settings) > maxSourceJSONBytes ||
-			len(row.StreamSettings) > maxSourceJSONBytes || len(row.Sniffing) > maxSourceJSONBytes {
+			len(row.StreamSettings) > maxSourceJSONBytes || len(row.Sniffing) > maxSourceJSONBytes || len(row.Allocate) > maxSourceJSONBytes {
 			return nil, fmt.Errorf("source inbound row exceeds limits")
 		}
 		if row.Tag == "" {

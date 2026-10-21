@@ -163,6 +163,21 @@ func SupportedActionStrings() []string {
 	return actions
 }
 func saveSingle(req SaveRequest, editing bool) ([]uint, error) {
+	return saveSingleCandidate(req, editing, true)
+}
+
+// SaveImportedCandidate permits an explicitly incomplete publication address
+// while retaining all credential, identity, access and subscription-token save
+// validation. The import plan/report diagnoses the missing hostname; runtime
+// credentials can be migrated before a public address is configured.
+func SaveImportedCandidate(req SaveRequest) ([]uint, error) {
+	if req.Action != "new" && req.Action != "edit" {
+		return nil, common.NewError("unsupported imported client intent")
+	}
+	return saveSingleCandidate(req, req.Action == "edit", strings.TrimSpace(req.Hostname) != "")
+}
+
+func saveSingleCandidate(req SaveRequest, editing, projectLinks bool) ([]uint, error) {
 	var client model.Client
 	if err := json.Unmarshal(req.Data, &client); err != nil {
 		return nil, err
@@ -176,8 +191,10 @@ func saveSingle(req SaveRequest, editing bool) ([]uint, error) {
 	if err := PrepareSubSecret(req.Tx, &client, editing); err != nil {
 		return nil, err
 	}
-	if err := UpdateLinksWithFixedInbounds(req.Tx, []*model.Client{&client}, req.Hostname); err != nil {
-		return nil, err
+	if projectLinks {
+		if err := UpdateLinksWithFixedInbounds(req.Tx, []*model.Client{&client}, req.Hostname); err != nil {
+			return nil, err
+		}
 	}
 	sortOrder, err := entityorder.ForSave(req.Tx, &model.Client{}, client.Id)
 	if err != nil {

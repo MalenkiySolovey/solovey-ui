@@ -3,12 +3,9 @@
 package importxui
 
 import (
-	"encoding/json"
-	"time"
-
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
-
+	auditsvc "github.com/MalenkiySolovey/solovey-ui/service/audit"
 	"gorm.io/gorm"
+	"time"
 )
 
 func recordAuditWithBackup(tx *gorm.DB, report *Report, opts ApplyOptions) error {
@@ -17,16 +14,16 @@ func recordAuditWithBackup(tx *gorm.DB, report *Report, opts ApplyOptions) error
 		now = opts.Now()
 	}
 	details := summaryDetails(report.Summary)
-	raw, err := json.Marshal(details)
-	if err != nil {
-		return err
+	details["operationId"] = report.Change.OperationID
+	details["planRevision"] = report.Change.ExpectedRevision
+	details["sha256"] = opts.sourceHash
+	if report.BackupPath != "" {
+		details["backup"] = report.BackupPath
 	}
-	return tx.Create(&model.AuditEvent{
-		DateTime: now,
-		Actor:    "system",
-		Event:    "panel_import",
-		Resource: "database",
-		Severity: "info",
-		Details:  raw,
-	}).Error
+	actor := opts.Actor
+	if actor == "" {
+		actor = "system"
+	}
+	return auditsvc.RecordTransaction(tx, auditsvc.Event{Actor: actor, Event: "panel_import",
+		Resource: "database", Severity: auditsvc.AuditSeverityInfo, IP: opts.RemoteIP, Details: details}, now)
 }

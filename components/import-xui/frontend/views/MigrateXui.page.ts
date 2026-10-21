@@ -7,6 +7,8 @@ import { acquireStepUpToken } from '@/shared/composables/useSecurityOperations'
 import MigrationResultStep from '../components/MigrationResultStep.vue'
 
 type PlanItem = {
+  classification?: string
+  fields?: { path: string; state: string; reasonCode: string }[]
   rowKey?: string
   originalDstTag?: string
   kind: string
@@ -86,6 +88,7 @@ export default defineComponent({
       return [
         { title: this.$t('migrateXui.import'), key: 'import', sortable: false, width: 72 },
         { title: this.$t('migrateXui.kind'), key: 'kind', width: 120 },
+        { title: this.$t('migrateXui.classification'), key: 'classification', sortable: false },
         { title: this.$t('migrateXui.source'), key: 'srcTag' },
         { title: this.$t('migrateXui.destination'), key: 'dstTag', sortable: false },
         { title: this.$t('migrateXui.action'), key: 'action', sortable: false, width: 180 },
@@ -290,10 +293,11 @@ export default defineComponent({
         : 'skip'
     },
     isWarningOnlyItem(item: PlanItem): boolean {
-      return item.previewJson === null && item.action === 'skip'
+      return ['UNSUPPORTED_BLOCKED', 'MANUAL_MAPPING_REQUIRED'].includes(item.classification ?? '')
+        || (item.previewJson === null && item.action === 'skip')
     },
     isRenameablePlanItem(item: PlanItem): boolean {
-      return ['tls', 'inbound', 'endpoint', 'client', 'admin'].includes(item.kind)
+      return !this.isWarningOnlyItem(item) && ['tls', 'inbound', 'endpoint', 'client', 'admin'].includes(item.kind)
     },
     actionItemsFor(item: PlanItem): any[] {
       let values: string[]
@@ -304,6 +308,7 @@ export default defineComponent({
       return values.map(value => ({ value, title: this.$t(`migrateXui.actions.${value}`) }))
     },
     destinationChanged(item: PlanItem) {
+      if (this.isWarningOnlyItem(item)) { item.action = 'skip'; return }
       if (item.dstTag !== item.originalDstTag) item.action = 'create'
       else item.action = item.conflict ? this.strategy : 'create'
     },
