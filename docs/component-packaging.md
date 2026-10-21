@@ -70,3 +70,27 @@ semantics. It does not sign APKs, Windows ZIPs or the FriendlyWrt descriptor.
 OpenWrt assets have exact SHA-256 sidecars and source-bound canonical producer
 evidence retained with the release workflow. A new signing schema is not needed
 to publish these additional canonical assets, and is not introduced here.
+
+## Declared in-process Host API
+
+Migrated Components declare `hostAPI.version: solovey.component-host/v1` and
+the required `lifecycle`, `api` and `dropData` ports in their existing manifest.
+Registration validates compatibility and adapts `PortLifecycle` into the same
+supervisor, installed/enabled state and observed lifecycle used by other
+Components. `RegisterPortAPIRoutes` retains the authenticated ComponentHost
+route group. Unknown versions/ports and unavailable dependencies fail closed;
+a typed Component cannot fall back to the legacy broad route registrar.
+
+Telegram consumes `scheduler`, `outbound.http`, `audit.record` and
+`http.request`. Its `settings.drop-owned` port is available only to the data
+drop entry point and is bound to the manifest's Component ID. The settings
+owner uses the existing durable ownership declaration, including secret keys,
+even after runtime settings contributions have been unregistered. The Component
+receives no database handle or caller-controlled setting-key deletion API.
+
+The typed port bundle has the actual Local Host reference and only declared
+dependencies. It contains no Runtime, filesystem, executor or database handle.
+Existing Components can retain the legacy contract until their real consumers
+are migrated. Legacy migration/restore/backup hooks must be migrated explicitly
+before typed admission; the adapter rejects them rather than silently omitting
+their semantics. This is an in-process contract, not a process sandbox.

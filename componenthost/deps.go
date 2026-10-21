@@ -20,8 +20,9 @@ import (
 // rate-limit, audit, response, and update helpers explicitly instead of pulling
 // a flat god-struct into every adapter.
 type Deps struct {
-	API       APIDeps
-	Scheduler Scheduler
+	API               APIDeps
+	Scheduler         Scheduler
+	DropOwnedSettings func(context.Context, string) error
 }
 
 type Scheduler interface {

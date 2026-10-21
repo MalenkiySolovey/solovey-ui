@@ -10,14 +10,11 @@ import (
 	"sync"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
 	telegramhttp "github.com/MalenkiySolovey/solovey-ui/components/telegram/api"
 	telegramsettings "github.com/MalenkiySolovey/solovey-ui/components/telegram/internal/settings"
 	"github.com/MalenkiySolovey/solovey-ui/components/telegram/jobs"
 	telegramservice "github.com/MalenkiySolovey/solovey-ui/components/telegram/service"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/manifest"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/diagnostics"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
@@ -34,10 +31,10 @@ var id = telegramManifest.ID
 
 func init() {
 	registry.Register(registry.Component{
-		Manifest:  telegramManifest,
-		Lifecycle: &component{},
+		Manifest:      telegramManifest,
+		PortLifecycle: &component{},
 	})
-	registry.RegisterAPIRoutes(id, componenthost.RouteAdapter[telegramhttp.Deps]{
+	registry.RegisterPortAPIRoutes(id, componenthost.PortRouteAdapter[telegramhttp.Deps]{
 		Build:    telegramDeps,
 		Register: telegramhttp.RegisterRoutes,
 	}.RegisterRoutes)
@@ -59,8 +56,8 @@ type component struct {
 	backupScheduler        *jobs.TelegramBackupScheduler
 }
 
-func (c *component) Start(ctx context.Context, lifecycleCtx lifecycle.Context) error {
-	return c.start(ctx, lifecycleCtx.Host.Scheduler, lifecycleCtx.Host.API.OutboundHTTP, lifecycleCtx.Host.API.Audit.Recorder)
+func (c *component) Start(ctx context.Context, ports componenthost.Ports) error {
+	return c.start(ctx, ports.Scheduler, ports.OutboundHTTP, ports.Audit.Recorder)
 }
 
 func (c *component) start(ctx context.Context, scheduler componenthost.Scheduler, transport componenthost.OutboundHTTPClientProvider, audit componenthost.AuditRecorder) error {
@@ -189,11 +186,11 @@ func (c *component) Stop(ctx context.Context) error {
 	return nil
 }
 
-func (c *component) DropData(context.Context, lifecycle.Context) error {
-	if dbsqlite.DB() == nil {
-		return nil
+func (c *component) DropData(ctx context.Context, ports componenthost.Ports) error {
+	if ports.DropOwnedSettings == nil {
+		return errors.New("telegram owned settings port is unavailable")
 	}
-	return dbsqlite.DB().Where("key IN ?", telegramsettings.AllKeys()).Delete(&model.Setting{}).Error
+	return ports.DropOwnedSettings(ctx)
 }
 
 type telegramRuntimeJobs struct {
@@ -268,7 +265,7 @@ func callUnregisters(unregisters ...func()) {
 	}
 }
 
-func telegramDeps(host componenthost.APIDeps) telegramhttp.Deps {
+func telegramDeps(host componenthost.Ports) telegramhttp.Deps {
 	return telegramhttp.Deps{
 		Telegram: &telegramservice.Service{
 			Runtime:  host.OutboundHTTP,

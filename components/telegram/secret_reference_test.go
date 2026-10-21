@@ -6,7 +6,6 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
-	"github.com/MalenkiySolovey/solovey-ui/componenthost/lifecycle"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
 	"io"
 	"net/http"
@@ -158,7 +157,7 @@ func TestTelegramStoredSecretReferenceAuthDiscoveryBackupResealAndReplacement(t 
 		t.Fatal("secret leaked into audit")
 	}
 	// Existing owner DropData remains the deletion authority.
-	if err := (&component{}).DropData(t.Context(), lifecycle.Context{}); err != nil {
+	if err := (&component{}).DropData(t.Context(), testTelegramDropPorts(t)); err != nil {
 		t.Fatal(err)
 	}
 	if token, err := (telegramsettings.Reader{}).GetTelegramBotToken(t.Context()); err != nil || token != "" {
