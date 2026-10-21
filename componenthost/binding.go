@@ -67,7 +67,12 @@ func (d Deps) bind(required []string) (Ports, error) {
 		case manifest.PortAuditRecord:
 			ports.Audit.Recorder, available = d.API.Audit.Recorder, d.API.Audit.Recorder != nil
 		case manifest.PortHTTPRequest:
-			ports.Auth, ports.Request, ports.Rate, ports.HTTP = d.API.Auth, d.API.Request, d.API.Rate, d.API.HTTP
+			// Request handling does not imply credential checks, step-up grant
+			// consumption, authorization mutation or arbitrary target validation.
+			ports.Auth.RequireScope = d.API.Auth.RequireScope
+			ports.Request.Actor, ports.Request.RemoteIP = d.API.Request.Actor, d.API.Request.RemoteIP
+			ports.Rate.CheckRateLimit = d.API.Rate.CheckRateLimit
+			ports.HTTP.JSONObj = d.API.HTTP.JSONObj
 			ports.Audit.Audit = d.API.Audit.Audit
 			available = ports.Auth.RequireScope != nil && ports.HTTP.JSONObj != nil
 		}

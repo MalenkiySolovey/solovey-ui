@@ -20,8 +20,10 @@ func TestBindingPopulatesOnlyDeclaredPortsAndActualHost(t *testing.T) {
 	host := APIDeps{
 		OutboundHTTP: OutboundHTTPClientFunc(func(string, time.Duration) (*http.Client, error) { return nil, nil }),
 		Audit:        AuditDeps{Recorder: portAudit{}},
-		Auth:         AuthDeps{RequireScope: func(*gin.Context, string, ...string) bool { return true }},
-		HTTP:         HTTPDeps{JSONObj: func(*gin.Context, interface{}, error) {}},
+		Auth: AuthDeps{RequireScope: func(*gin.Context, string, ...string) bool { return true },
+			AuthorizationChanged: func() {}, RequireStepUp: func(*gin.Context, string, string) bool { return true },
+			CheckPassword: func(string, string, string) bool { return true }},
+		HTTP: HTTPDeps{JSONObj: func(*gin.Context, interface{}, error) {}},
 	}
 	contract := manifest.HostAPI{Version: manifest.HostAPIV1, API: []string{manifest.PortAuditRecord}}
 	ports, err := host.BindAPI(contract)
@@ -32,6 +34,9 @@ func TestBindingPopulatesOnlyDeclaredPortsAndActualHost(t *testing.T) {
 	ports, err = host.BindAPI(contract)
 	if err != nil || ports.OutboundHTTP == nil || ports.Auth.RequireScope == nil || ports.Audit.Recorder != nil {
 		t.Fatalf("request binding: %+v %v", ports, err)
+	}
+	if ports.Auth.AuthorizationChanged != nil || ports.Auth.RequireStepUp != nil || ports.Auth.CheckPassword != nil {
+		t.Fatal("request helpers received unrelated authentication authority")
 	}
 	for _, name := range []string{"Runtime", "DB", "Database", "Exec", "Filesystem"} {
 		if _, exists := reflect.TypeFor[Ports]().FieldByName(name); exists {
