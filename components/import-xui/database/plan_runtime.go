@@ -84,10 +84,11 @@ func (s *applyState) progress(step string, name string) {
 		}
 	}
 	event := Progress{
-		Step:    step,
-		Current: s.current,
-		Total:   s.total,
-		Percent: percent,
+		Reference: &s.reference,
+		Step:      step,
+		Current:   s.current,
+		Total:     s.total,
+		Percent:   percent,
 	}
 	switch step {
 	case "clients", "admins":
@@ -109,8 +110,8 @@ func actionToStrategy(action string) Strategy {
 	}
 }
 
-func applyInboundAction(tx *gorm.DB, inbound *model.Inbound, action string, report *Report) (uint, bool, bool, error) {
-	return applyInbound(tx, inbound, actionToStrategy(action), report)
+func applyInboundAction(tx *gorm.DB, inbound *model.Inbound, action string, report *Report, hostname string) (uint, bool, bool, error) {
+	return applyInbound(tx, inbound, actionToStrategy(action), report, hostname)
 }
 
 func applyEndpointAction(tx *gorm.DB, endpoint *model.Endpoint, action string, report *Report) (bool, error) {

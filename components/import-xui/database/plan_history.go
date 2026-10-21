@@ -8,7 +8,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 
 	"gorm.io/gorm"
 )
@@ -103,10 +103,8 @@ func (s *applyState) applyHistorical(ctx context.Context, tx *gorm.DB, src *sour
 			stats = append(stats, model.Stats{DateTime: now, Resource: "outbound", Tag: row.Tag, Direction: false, Traffic: row.Down})
 		}
 	}
-	if len(stats) > 0 {
-		if err := dbsqlite.CreateInBatches(tx, &stats); err != nil {
-			return err
-		}
+	if err := (&service.StatsService{}).ImportHistoricalObservations(tx, stats); err != nil {
+		return err
 	}
 	s.report.Summary.Historical.Total = len(stats)
 	s.report.Summary.Historical.Imported = len(stats)

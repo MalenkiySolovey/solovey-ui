@@ -687,12 +687,6 @@
     },
     {
       "rule": "component-model-mutation",
-      "path": "components/import-xui/database/routing_apply.go",
-      "symbol": "createNewOutbounds",
-      "digest": "cb4a9b473327e7253bbcbbcca797eaa7f0b77e6af6740e26e3b9f40f48260aef"
-    },
-    {
-      "rule": "component-model-mutation",
       "path": "components/paid-subscriptions/component.go",
       "symbol": "*component.DropData",
       "digest": "eb3d9e76d20796a819e92b07b9745e813b8955ddc86b8c82906846ef84460b9f"

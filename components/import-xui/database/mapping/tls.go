@@ -17,6 +17,7 @@ import (
 
 type xuiRealitySetting struct {
 	Target      string              `json:"target"`
+	Destination string              `json:"dest"`
 	ServerNames []string            `json:"serverNames"`
 	PrivateKey  string              `json:"privateKey"`
 	MaxTimediff int64               `json:"maxTimediff"`
@@ -62,16 +63,17 @@ func ExtractReality(row source.InboundRow) (*RealitySpec, []string, error) {
 		return nil, nil, nil
 	}
 
-	host, port := splitTarget(stream.RealitySettings.Target)
+	target := firstNonEmpty(stream.RealitySettings.Target, stream.RealitySettings.Destination)
+	host, port := splitTarget(target)
 	serverName := firstNonEmpty(stream.RealitySettings.Settings.ServerName, firstString(stream.RealitySettings.ServerNames), host)
-	fingerprint := firstNonEmpty(stream.RealitySettings.Settings.Fingerprint, "chrome")
+	fingerprint := firstNonEmpty(stream.RealitySettings.Settings.Fingerprint, stream.RealitySettings.Fingerprint, "chrome")
 	spec := &RealitySpec{
 		PrivateKey:  stream.RealitySettings.PrivateKey,
-		Target:      stream.RealitySettings.Target,
+		Target:      target,
 		Host:        host,
 		Port:        port,
 		ServerName:  serverName,
-		PublicKey:   stream.RealitySettings.Settings.PublicKey,
+		PublicKey:   firstNonEmpty(stream.RealitySettings.Settings.PublicKey, stream.RealitySettings.PublicKey),
 		Fingerprint: fingerprint,
 		ShortIDs:    stream.RealitySettings.ShortIDs,
 		MaxTimediff: stream.RealitySettings.MaxTimediff,

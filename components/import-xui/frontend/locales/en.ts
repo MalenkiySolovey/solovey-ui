@@ -45,6 +45,8 @@ export default {
     "destination": "Destination",
     "action": "Action",
     "conflict": "Conflict",
+    "classification": "Mapping status",
+    "classifications": {"EXACT_SUPPORTED": "Exact mapping", "LOSSLESS_PRESERVE": "Preserved without changes", "CONVERT_WITH_DIAGNOSTIC": "Converted to local model", "MANUAL_MAPPING_REQUIRED": "Manual mapping required", "UNSUPPORTED_BLOCKED": "Blocked: unsupported source fields", "IGNORED_EXPLICITLY": "Explicitly excluded"},
     "previewJson": "Preview JSON",
     "warnings": "Warnings",
     "back": "Back",

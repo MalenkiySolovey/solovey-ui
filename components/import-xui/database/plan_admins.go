@@ -7,8 +7,8 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
+	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	passwordutil "github.com/MalenkiySolovey/solovey-ui/util/password"
 
@@ -120,50 +120,20 @@ func sourceAdminPasswordHash(ctx context.Context, password string) (string, erro
 	return passwordutil.Hash(ctx, password)
 }
 
-func upsertUserWithPassword(tx *gorm.DB, username string, passwordHash string, action string, forcePasswordReset bool) error {
-	var user model.User
-	err := tx.Where("username = ?", username).First(&user).Error
-	if err != nil && !dbsqlite.IsNotFound(err) {
-		return err
-	}
-	if dbsqlite.IsNotFound(err) {
-		sortOrder, err := nextImportSortOrder(tx, &model.User{})
-		if err != nil {
-			return err
-		}
-		return tx.Create(&model.User{SortOrder: sortOrder, Username: username, Password: passwordHash, ForcePasswordReset: forcePasswordReset}).Error
-	}
+func upsertUserWithPassword(tx *gorm.DB, username, passwordHash, action string, forcePasswordReset bool) error {
 	if action == ActionSkip || action == "" {
 		return nil
 	}
-	return tx.Model(&user).Updates(map[string]any{
-		"password":             passwordHash,
-		"force_password_reset": forcePasswordReset,
-	}).Error
+	return (&service.UserService{}).SaveImportedPanelAccount(tx, service.ImportedPanelAccount{
+		Username: username, PasswordHash: passwordHash, ForcePasswordReset: forcePasswordReset,
+	})
 }
 
-func upsertUserResetRequired(tx *gorm.DB, username string, sourcePasswordHash string, action string) error {
-	var user model.User
-	err := tx.Where("username = ?", username).First(&user).Error
-	if err != nil && !dbsqlite.IsNotFound(err) {
-		return err
-	}
-	if dbsqlite.IsNotFound(err) {
-		if action == ActionSkip || action == "" {
-			return nil
-		}
-		sortOrder, err := nextImportSortOrder(tx, &model.User{})
-		if err != nil {
-			return err
-		}
-		return tx.Create(&model.User{SortOrder: sortOrder, Username: username, Password: sourcePasswordHash, ForcePasswordReset: true}).Error
-	}
+func upsertUserResetRequired(tx *gorm.DB, username, sourcePasswordHash, action string) error {
 	if action == ActionSkip || action == "" {
 		return nil
 	}
-	updates := map[string]any{"force_password_reset": true}
-	if action != ActionMerge {
-		updates["password"] = sourcePasswordHash
-	}
-	return tx.Model(&user).Updates(updates).Error
+	return (&service.UserService{}).SaveImportedPanelAccount(tx, service.ImportedPanelAccount{
+		Username: username, PasswordHash: sourcePasswordHash, ForcePasswordReset: true, KeepExistingPassword: action == ActionMerge,
+	})
 }

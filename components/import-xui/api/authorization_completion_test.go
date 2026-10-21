@@ -70,12 +70,27 @@ func TestImportAuthorizationRefreshOccursAfterCommitBeforeEffects(t *testing.T) 
 		t.Fatal(err)
 	}
 	refreshes, effects, audits := 0, 0, 0
+	assertCommittedAudit := func() {
+		t.Helper()
+		var events []model.AuditEvent
+		if err := dbsqlite.DB().Where("event = ?", "panel_import").Find(&events).Error; err != nil {
+			t.Fatal(err)
+		}
+		if len(events) != 1 {
+			t.Fatalf("committed import audit count=%d", len(events))
+		}
+		projected := dbimport.ProjectHistory(events)
+		if len(projected) != 1 || projected[0].Change == nil || projected[0].Job == nil {
+			t.Fatal("committed audit lost Change/Job correlation")
+		}
+	}
 	handler := NewHandler(Deps{
 		RequireScope:  func(*gin.Context, string, ...string) bool { return true },
 		RequireStepUp: func(*gin.Context, string, string) bool { return true },
 		Actor:         func(*gin.Context) string { return "admin" }, RemoteIP: func(*gin.Context) string { return "192.0.2.1" },
 		AuthorizationChanged: func() {
 			refreshes++
+			assertCommittedAudit()
 			var owner model.User
 			if err := dbsqlite.DB().First(&owner, 1).Error; err != nil || !owner.ForcePasswordReset {
 				t.Fatal("refresh preceded account commit", err)
@@ -133,7 +148,7 @@ func TestImportAuthorizationRefreshOccursAfterCommitBeforeEffects(t *testing.T) 
 	if err := json.Unmarshal(recorder.Body.Bytes(), &response); err != nil {
 		t.Fatal(err)
 	}
-	if recorder.Code != http.StatusOK || !response.Success || refreshes != 1 || effects != 1 || audits != 1 {
+	if recorder.Code != http.StatusOK || !response.Success || refreshes != 1 || effects != 1 || audits != 0 {
 		t.Fatalf("commit status=%d success=%v refreshes=%d effects=%d audits=%d", recorder.Code, response.Success, refreshes, effects, audits)
 	}
 }

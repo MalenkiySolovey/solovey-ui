@@ -42,3 +42,13 @@ that channel. Stop joins it within its existing 30-second shutdown context
 before clearing/reusing fields. Timeout retains owner state and closes the
 listener as before. No worker is added and the budget count stays unchanged.
 The real Start/Stop/reuse regression checks worker completion without sleeps.
+
+R5 D7 retires the exact createNewOutbounds raw-save budget site cb4a9b47... in
+import-xui/database/routing_apply.go. Import now invokes the existing canonical
+Outbounds.Save owner, which validates eligibility, namespace, protocol options
+and references in the caller transaction. Its unshadowed package-qualified Save
+call is recognized as an owner port, not a raw SQL mutation. The guard is closed
+to that exact package/function; arbitrary Save receivers, unrelated imports and
+locally shadowed owner names remain gated. Alias/shadow/mixed-call fixtures prove
+this distinction. The R1 base identity and all other exact legacy sites remain
+unchanged; no new budget allowance or Direct-policy/worker exception is added.

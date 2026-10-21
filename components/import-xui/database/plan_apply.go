@@ -5,12 +5,12 @@ package importxui
 import (
 	"context"
 	"fmt"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	"path/filepath"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
-	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
@@ -22,6 +22,22 @@ import (
 func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, error) {
 	opts = opts.normalized()
 	report := &Report{}
+	if opts.OperationID == "" {
+		id, err := NewOperationID()
+		if err != nil {
+			return report, err
+		}
+		opts.OperationID = id
+	}
+	if err := report.startOperation(opts.OperationID); err != nil {
+		return report, err
+	}
+	accepted := false
+	defer func() {
+		if !accepted && !opts.DryRun {
+			report.projectOperation(operationcoordination.OutcomeFailed, "FAILED", "failed")
+		}
+	}()
 	if !applyMu.TryLock() {
 		return report, fmt.Errorf("xui-import: %w", ErrBusy)
 	}
@@ -38,6 +54,12 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 		return report, fmt.Errorf("xui-import: %w", err)
 	}
 	plan = validatedPlan
+	opts.sourceHash = plan.Source.Hash
+	revision, err := PlanRevision(plan)
+	if err != nil {
+		return report, err
+	}
+	report.Change.ExpectedRevision = revision
 	report.Unsupported = unsupportedObjects(plan)
 	src, err := source.Open(srcPath)
 	if err != nil {
@@ -76,6 +98,7 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 	state := &applyState{
 		capabilities:     targetCapabilities(opts.TargetCapabilities),
 		report:           report,
+		reference:        report.Change.Reference,
 		plan:             normalizePlan(plan),
 		realityByKey:     map[string]*mapping.RealitySpec{},
 		realityBySource:  map[int64]*mapping.RealitySpec{},
@@ -87,6 +110,9 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 		onProgress:       opts.OnProgress,
 		total:            countRunnableItems(plan),
 		hostname:         resolveLinkHostname(tx, opts.Hostname),
+	}
+	if state.hostname == "" {
+		report.warn("subscription_address_manual_mapping_required")
 	}
 	if err := state.run(opts.Context, tx, src, opts); err != nil {
 		return report, fmt.Errorf("xui-import: %w", err)
@@ -101,12 +127,21 @@ func Apply(srcPath string, plan MigrationPlan, opts ApplyOptions) (*Report, erro
 		}
 	}
 	if opts.DryRun {
+		report.Change.Phase, report.Change.OwnerPhase = "PREVIEW", "preview_verified"
+		report.Job = nil
 		return report, nil
+	}
+	report.projectOperation(operationcoordination.OutcomeCommitted, "COMMIT", "committed")
+	if !opts.SkipAudit {
+		if err := recordAuditWithBackup(tx, report, opts); err != nil {
+			return report, err
+		}
 	}
 	if err := tx.Commit().Error; err != nil {
 		return report, fmt.Errorf("xui-import: %w", err)
 	}
 	committed = true
+	accepted = true
 	if err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)").Error; err != nil {
 		report.warn("destination_wal_checkpoint_deferred")
 	}
@@ -129,6 +164,7 @@ func planTouchesRuntime(plan MigrationPlan) bool {
 type applyState struct {
 	capabilities     entitycapabilities.Snapshot
 	report           *Report
+	reference        operationcoordination.Reference
 	plan             map[string]PlanItem
 	realityByKey     map[string]*mapping.RealitySpec
 	realityBySource  map[int64]*mapping.RealitySpec
@@ -170,12 +206,6 @@ func (s *applyState) run(ctx context.Context, tx *gorm.DB, src *source.Database,
 	}
 	if err := s.applyRouting(ctx, tx, src, opts); err != nil {
 		return err
-	}
-	if !opts.DryRun && !opts.SkipAudit {
-		if err := recordAuditWithBackup(tx, s.report, opts); err != nil {
-			return err
-		}
-		s.progress("audit", "panel_import")
 	}
 	return nil
 }
@@ -236,19 +266,12 @@ func (s *applyState) applyTLS(ctx context.Context, tx *gorm.DB, src *source.Data
 			s.progress("tls", record.Name)
 			return nil
 		}
+		var replaceID uint
 		if found && item.Action == ActionReplace {
-			if err := tx.Delete(&existing).Error; err != nil {
-				return err
-			}
-			record.SortOrder = existing.SortOrder
-		} else {
-			sortOrder, err := nextImportSortOrder(tx, &model.Tls{})
-			if err != nil {
-				return err
-			}
-			record.SortOrder = sortOrder
+			replaceID = existing.Id
 		}
-		if err := tx.Create(&record).Error; err != nil {
+		record, err = saveImportedTLS(tx, record, replaceID, s.hostname)
+		if err != nil {
 			return err
 		}
 		s.tlsIDByKey[spec.Key] = record.Id
@@ -309,19 +332,12 @@ func (s *applyState) applyPlainTLS(tx *gorm.DB, row source.InboundRow) error {
 		s.progress("tls", record.Name)
 		return nil
 	}
+	var replaceID uint
 	if found && item.Action == ActionReplace {
-		if err := tx.Delete(&existing).Error; err != nil {
-			return err
-		}
-		record.SortOrder = existing.SortOrder
-	} else {
-		sortOrder, err := nextImportSortOrder(tx, &model.Tls{})
-		if err != nil {
-			return err
-		}
-		record.SortOrder = sortOrder
+		replaceID = existing.Id
 	}
-	if err := tx.Create(&record).Error; err != nil {
+	record, err = saveImportedTLS(tx, record, replaceID, s.hostname)
+	if err != nil {
 		return err
 	}
 	s.tlsIDByKey[spec.Key] = record.Id
@@ -395,7 +411,7 @@ func (s *applyState) applyInboundsEndpoints(ctx context.Context, tx *gorm.DB, sr
 		if err := checkImportedCapability("inbounds", mapped.Inbound.Type); err != nil {
 			return err
 		}
-		dstID, imported, skipped, err := applyInboundAction(tx, &mapped.Inbound, item.Action, s.report)
+		dstID, imported, skipped, err := applyInboundAction(tx, &mapped.Inbound, item.Action, s.report, s.hostname)
 		if err != nil {
 			return err
 		}

@@ -50,6 +50,10 @@ func (o PlanOptions) normalized() (PlanOptions, error) {
 type ApplyOptions struct {
 	TargetCapabilities *entitycapabilities.Snapshot `json:"-"`
 	Context            context.Context
+	sourceHash         string
+	OperationID        string
+	Actor              string
+	RemoteIP           string
 	DryRun             bool
 	SkipBackup         bool
 	SkipAudit          bool

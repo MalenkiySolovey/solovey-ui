@@ -53,10 +53,11 @@ func (a *Handler) ImportXui(c *gin.Context) {
 	var report *dbimport.Report
 	if err == nil {
 		report, err = dbimport.Apply(upload.Path, *plan, dbimport.ApplyOptions{
-			Context:   ctx,
-			DryRun:    dryRun,
-			SkipAudit: true,
-			Hostname:  a.hostname(c),
+			Context:     ctx,
+			DryRun:      dryRun,
+			OperationID: c.GetString(importOperationKey),
+			Actor:       a.Actor(c), RemoteIP: a.RemoteIP(c),
+			Hostname: a.hostname(c),
 		})
 	}
 	if err != nil {
@@ -66,7 +67,6 @@ func (a *Handler) ImportXui(c *gin.Context) {
 	}
 	if !dryRun {
 		a.AuthorizationChanged()
-		a.recordImportSuccess(c, report, upload.SHA256)
 		a.ConfigChanged()
 	}
 	a.JSONObj(c, report, nil)
@@ -142,9 +142,10 @@ func (a *Handler) ImportXuiApply(c *gin.Context) {
 		return
 	}
 	report, err := dbimport.Apply(upload.Path, plan, dbimport.ApplyOptions{
-		Context:   ctx,
-		SkipAudit: true,
-		Hostname:  a.hostname(c),
+		Context:     ctx,
+		OperationID: c.GetString(importOperationKey),
+		Actor:       a.Actor(c), RemoteIP: a.RemoteIP(c),
+		Hostname: a.hostname(c),
 		OnProgress: func(progress dbimport.Progress) {
 			realtime.Publish(realtime.TopicComponentProgress, realtime.ComponentProgress{
 				ComponentID: "import-xui",
@@ -158,7 +159,6 @@ func (a *Handler) ImportXuiApply(c *gin.Context) {
 		return
 	}
 	a.AuthorizationChanged()
-	a.recordImportSuccess(c, report, upload.SHA256)
 	a.ConfigChanged()
 	a.JSONObj(c, report, nil)
 }
@@ -180,6 +180,9 @@ func (a *Handler) ImportXuiRollback(c *gin.Context) {
 		return
 	}
 	if !a.requireMutationDependencies(c) {
+		return
+	}
+	if !a.startOperation(c) {
 		return
 	}
 	backupReference := xuiRollbackBackupPath(c)
@@ -223,5 +226,5 @@ func (a *Handler) ImportXuiReports(c *gin.Context) {
 		return
 	}
 	events, err := a.AuditHistory.ListByEvents(50, []string{"panel_import", "panel_import_failed", "panel_import_rollback"})
-	a.JSONObj(c, events, err)
+	a.JSONObj(c, dbimport.ProjectHistory(events), err)
 }

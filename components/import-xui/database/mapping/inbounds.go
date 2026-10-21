@@ -12,6 +12,7 @@ import (
 )
 
 type xuiInboundSettings struct {
+	Decryption string             `json:"decryption"`
 	Clients    []xuiClientSetting `json:"clients"`
 	Accounts   []xuiAccount       `json:"accounts"`
 	Method     string             `json:"method"`

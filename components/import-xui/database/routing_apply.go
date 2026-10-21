@@ -6,11 +6,14 @@ import (
 	"context"
 	"fmt"
 
+	"encoding/json"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/mapping"
 	"github.com/MalenkiySolovey/solovey-ui/components/import-xui/database/source"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
+	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	singboxconfig "github.com/MalenkiySolovey/solovey-ui/internal/singbox/config"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"gorm.io/gorm"
@@ -40,14 +43,11 @@ func createNewEndpoints(tx *gorm.DB, endpoints []model.Endpoint, report *Report)
 		if err := identity.EnsureOutboundTagAvailable(tx, ep.Tag, 0, 0); err != nil {
 			return err
 		}
-		sortOrder, err := nextImportSortOrder(tx, &model.Endpoint{})
+		saved, err := entityendpoints.SaveImportedCandidate(tx, *ep, false)
 		if err != nil {
 			return err
 		}
-		ep.SortOrder = sortOrder
-		if err := tx.Create(ep).Error; err != nil {
-			return err
-		}
+		*ep = saved
 		report.Summary.Endpoints.Imported++
 		report.warn(fmt.Sprintf("imported WARP endpoint %q from xray wireguard outbound", ep.Tag))
 	}
@@ -78,12 +78,11 @@ func createNewOutbounds(tx *gorm.DB, outbounds []model.Outbound, report *Report)
 		if err := identity.EnsureOutboundTagAvailable(tx, ob.Tag, 0, 0); err != nil {
 			return err
 		}
-		sortOrder, err := nextImportSortOrder(tx, &model.Outbound{})
+		raw, err := json.Marshal(ob)
 		if err != nil {
 			return err
 		}
-		ob.SortOrder = sortOrder
-		if err := tx.Create(ob).Error; err != nil {
+		if _, err := entityoutbounds.Save(tx, "new", raw); err != nil {
 			return err
 		}
 		report.Summary.Outbounds.Imported++

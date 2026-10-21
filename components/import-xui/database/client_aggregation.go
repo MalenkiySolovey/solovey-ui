@@ -3,7 +3,6 @@
 package importxui
 
 import (
-	"encoding/json"
 	"sort"
 	"strings"
 
@@ -197,28 +196,6 @@ func (agg *clientAggregate) toModel() (model.Client, error) {
 		TotalUp:             0,
 		TotalDown:           0,
 	}, nil
-}
-
-func mergeInboundJSON(existing json.RawMessage, add map[uint]struct{}) (json.RawMessage, error) {
-	values := map[uint]struct{}{}
-	if len(existing) > 0 {
-		var ids []uint
-		if err := json.Unmarshal(existing, &ids); err != nil {
-			return nil, err
-		}
-		for _, id := range ids {
-			values[id] = struct{}{}
-		}
-	}
-	for id := range add {
-		values[id] = struct{}{}
-	}
-	ids := make([]uint, 0, len(values))
-	for id := range values {
-		ids = append(ids, id)
-	}
-	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
-	return marshalJSON(ids)
 }
 
 func millisToSeconds(value int64) int64 {

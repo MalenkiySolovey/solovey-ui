@@ -182,6 +182,9 @@
             <template #item.kind="{ item }">
               <v-chip size="small" variant="tonal">{{ kindTitle(rowItem(item).kind) }}</v-chip>
             </template>
+            <template #item.classification="{ item }">
+              <span data-testid="migrate-xui-classification">{{ $t(`migrateXui.classifications.${rowItem(item).classification || 'MANUAL_MAPPING_REQUIRED'}`) }}</span>
+            </template>
             <template #item.srcTag="{ item }">
               <span class="text-body-2">{{ rowItem(item).srcTag || rowItem(item).srcId }}</span>
             </template>
@@ -212,6 +215,13 @@
               <tr>
                 <td :colspan="columns.length">
                   <v-expansion-panels class="my-2" variant="accordion">
+                    <v-expansion-panel v-if="rowItem(item).fields?.length" :title="$t('migrateXui.classification')">
+                      <v-expansion-panel-text>
+                        <ul data-testid="migrate-xui-field-classifications">
+                          <li v-for="(field, index) in rowItem(item).fields" :key="index">{{ field.path }}: {{ $t(`migrateXui.classifications.${field.state}`) }}</li>
+                        </ul>
+                      </v-expansion-panel-text>
+                    </v-expansion-panel>
                     <v-expansion-panel :title="$t('migrateXui.previewJson')">
                       <v-expansion-panel-text>
                         <pre class="preview-json">{{ previewText(rowItem(item)) }}</pre>

@@ -14,13 +14,10 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
-func (a *Handler) recordImportSuccess(c *gin.Context, report *dbimport.Report, sha string) {
-	a.Audit(c, a.Actor(c), "panel_import", "database", service.AuditSeverityInfo, reportAuditDetails(report, sha))
-}
-
 func (a *Handler) recordImportFailure(c *gin.Context, err error, sha string) {
 	details := map[string]any{
-		"reason": xuiImportErrorClass(err),
+		"reason":      xuiImportErrorClass(err),
+		"operationId": c.GetString(importOperationKey),
 	}
 	if sha != "" {
 		details["sha256"] = sha
@@ -33,12 +30,13 @@ func (a *Handler) recordImportFailure(c *gin.Context, err error, sha string) {
 }
 
 func (a *Handler) recordRollbackInvalidBackup(c *gin.Context) {
-	a.Audit(c, a.Actor(c), "panel_import_failed", "database", service.AuditSeverityWarn, map[string]any{"reason": "invalid_backup"})
+	a.Audit(c, a.Actor(c), "panel_import_failed", "database", service.AuditSeverityWarn, map[string]any{"reason": "invalid_backup", "operationId": c.GetString(importOperationKey)})
 }
 
 func (a *Handler) recordRollbackSuccess(c *gin.Context, backupPath string) {
 	a.Audit(c, a.Actor(c), "panel_import_rollback", "database", service.AuditSeverityWarn, map[string]any{
-		"backup": filepath.Base(backupPath),
+		"backup":      filepath.Base(backupPath),
+		"operationId": c.GetString(importOperationKey),
 	})
 }
 
@@ -98,37 +96,5 @@ func xuiImportErrorClass(err error) string {
 		return "not_sqlite"
 	default:
 		return "failed"
-	}
-}
-
-func reportAuditDetails(report *dbimport.Report, sha string) map[string]any {
-	details := summaryDetailsForAPI(report.Summary)
-	if sha != "" {
-		details["sha256"] = sha
-	}
-	return details
-}
-
-func summaryDetailsForAPI(summary dbimport.Summary) map[string]any {
-	return map[string]any{
-		"inbounds": map[string]any{
-			"total":     summary.Inbounds.Total,
-			"imported":  summary.Inbounds.Imported,
-			"skipped":   summary.Inbounds.Skipped,
-			"conflicts": summary.Inbounds.Conflicts,
-		},
-		"endpoints": map[string]any{
-			"imported": summary.Endpoints.Imported,
-			"skipped":  summary.Endpoints.Skipped,
-		},
-		"tls": map[string]any{
-			"created": summary.TLS.Created,
-			"reused":  summary.TLS.Reused,
-		},
-		"clients": map[string]any{
-			"unique_emails": summary.Clients.UniqueEmails,
-			"merged":        summary.Clients.Merged,
-			"created":       summary.Clients.Created,
-		},
 	}
 }
