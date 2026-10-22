@@ -141,8 +141,10 @@ func ValidateCommand(command Command) error {
 			return errors.New("INVALID_INPUT")
 		}
 		ownerInput = string(input.RehearsalRevision)
-		if command.Resource.ResourceID != "database" || command.ExpectedRevision == nil ||
-			string(*command.ExpectedRevision) != ownerInput {
+		if command.Resource.ResourceID != "database" {
+			return errors.New("PERMISSION_DENIED")
+		}
+		if command.ExpectedRevision == nil || string(*command.ExpectedRevision) != ownerInput {
 			return errors.New("INVALID_INPUT")
 		}
 	case "component.remove":

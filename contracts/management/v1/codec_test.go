@@ -177,3 +177,39 @@ func TestCatalogIsRepresentableByItsOwnSchema(t *testing.T) {
 		}
 	}
 }
+
+func TestCommandVectorShapeAndOwnerBindings(t *testing.T) {
+	data, err := os.ReadFile("vectors.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var set struct {
+		Cases []struct {
+			ID, Kind string
+			Steps    []struct{ Command json.RawMessage }
+		}
+	}
+	if err := json.Unmarshal(data, &set); err != nil {
+		t.Fatal(err)
+	}
+	for _, vector := range set.Cases {
+		if vector.Kind != "command" {
+			continue
+		}
+		t.Run(vector.ID, func(t *testing.T) {
+			for _, step := range vector.Steps {
+				_, err := DecodeCommand(step.Command)
+				expected := ""
+				if vector.ID == "unknown-action" {
+					expected = "UNSUPPORTED"
+				}
+				if vector.ID == "foreign-command-resource" {
+					expected = "PERMISSION_DENIED"
+				}
+				if expected == "" && err != nil || expected != "" && (err == nil || err.Error() != expected) {
+					t.Fatalf("expected %q, got %v", expected, err)
+				}
+			}
+		})
+	}
+}
