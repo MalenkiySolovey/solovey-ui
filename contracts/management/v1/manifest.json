@@ -1,0 +1,21 @@
+{
+  "contractVersion": "solovey.management/v1",
+  "schemaSHA256": "72d89a9c0c2f908479cecf6492a58e3d8b2f5b1cb63e7708efb534562c4c57e5",
+  "generatedSHA256": "90d6b8bfd66a2167b410f4044f8b1ba05653a9dd8d971d3ef24f67b3dde35aec",
+  "vectorsVersion": "solovey.management.conformance/v1",
+  "vectorsSHA256": "3f0fca968cdbd1fd1fbfd5091e1107d8de4464472815467d3c07781a78b79af5",
+  "generator": {
+    "id": "solovey-schema-go/v1",
+    "sha256": "23aa4df0d97f342e616ad943f7c13e131ebe0777089386115c50a23759d6593e",
+    "gofmt": "go1.26.10"
+  },
+  "files": {
+    "README.md": "b5e3b11fa89cbd5f672d921b1a4e14021f2c4edcd012ce7abacf53f88ca8d071",
+    "codec.go": "9b134295bfc4989fd854309b320ea001f4a80a899e062f5b1285ea9347b072ed",
+    "codec_test.go": "5da76d90011300c56f489386a6a4eda0ef32aa1b51defd075504ee8d259fb005",
+    "schema.json": "72d89a9c0c2f908479cecf6492a58e3d8b2f5b1cb63e7708efb534562c4c57e5",
+    "types.gen.go": "90d6b8bfd66a2167b410f4044f8b1ba05653a9dd8d971d3ef24f67b3dde35aec",
+    "vectors.json": "3f0fca968cdbd1fd1fbfd5091e1107d8de4464472815467d3c07781a78b79af5"
+  },
+  "bundleSHA256": "234be82ca938251cd21205eade9c08dfb72983903850199f27970df22f3b66de"
+}

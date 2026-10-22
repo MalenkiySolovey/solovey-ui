@@ -1,0 +1,3581 @@
+{
+  "version": "solovey.management.conformance/v1",
+  "cases": [
+    {
+      "id": "host-local",
+      "kind": "document",
+      "type": "HostRef",
+      "document": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "valid": true
+    },
+    {
+      "id": "host-node",
+      "kind": "document",
+      "type": "HostRef",
+      "document": {
+        "kind": "NODE",
+        "id": "node:fixture-01"
+      },
+      "valid": true
+    },
+    {
+      "id": "host-local-alias-denied",
+      "kind": "document",
+      "type": "HostRef",
+      "document": {
+        "kind": "LOCAL",
+        "id": " LOCAL "
+      },
+      "valid": false
+    },
+    {
+      "id": "host-ip-is-not-node-id",
+      "kind": "document",
+      "type": "HostRef",
+      "document": {
+        "kind": "NODE",
+        "id": "192.0.2.10"
+      },
+      "valid": false
+    },
+    {
+      "id": "host-kind-mismatch",
+      "kind": "document",
+      "type": "HostRef",
+      "document": {
+        "kind": "LOCAL",
+        "id": "node:fixture-01"
+      },
+      "valid": false
+    },
+    {
+      "id": "owner-ref-inbounds",
+      "kind": "document",
+      "type": "ResourceRef",
+      "document": {
+        "host": {
+          "kind": "NODE",
+          "id": "node:fixture-01"
+        },
+        "owner": "inbounds",
+        "resourceId": "inbounds:fixture"
+      },
+      "valid": true
+    },
+    {
+      "id": "owner-ref-outbounds",
+      "kind": "document",
+      "type": "ResourceRef",
+      "document": {
+        "host": {
+          "kind": "NODE",
+          "id": "node:fixture-01"
+        },
+        "owner": "outbounds",
+        "resourceId": "outbounds:fixture"
+      },
+      "valid": true
+    },
+    {
+      "id": "owner-ref-routing",
+      "kind": "document",
+      "type": "ResourceRef",
+      "document": {
+        "host": {
+          "kind": "NODE",
+          "id": "node:fixture-01"
+        },
+        "owner": "routing",
+        "resourceId": "routing:fixture"
+      },
+      "valid": true
+    },
+    {
+      "id": "owner-ref-dns",
+      "kind": "document",
+      "type": "ResourceRef",
+      "document": {
+        "host": {
+          "kind": "NODE",
+          "id": "node:fixture-01"
+        },
+        "owner": "dns",
+        "resourceId": "dns:fixture"
+      },
+      "valid": true
+    },
+    {
+      "id": "owner-ref-vpn-users",
+      "kind": "document",
+      "type": "ResourceRef",
+      "document": {
+        "host": {
+          "kind": "NODE",
+          "id": "node:fixture-01"
+        },
+        "owner": "vpn-users",
+        "resourceId": "vpn-users:fixture"
+      },
+      "valid": true
+    },
+    {
+      "id": "owner-ref-subscriptions",
+      "kind": "document",
+      "type": "ResourceRef",
+      "document": {
+        "host": {
+          "kind": "NODE",
+          "id": "node:fixture-01"
+        },
+        "owner": "subscriptions",
+        "resourceId": "subscriptions:fixture"
+      },
+      "valid": true
+    },
+    {
+      "id": "owner-ref-component-lifecycle",
+      "kind": "document",
+      "type": "ResourceRef",
+      "document": {
+        "host": {
+          "kind": "NODE",
+          "id": "node:fixture-01"
+        },
+        "owner": "component-lifecycle",
+        "resourceId": "component-lifecycle:fixture"
+      },
+      "valid": true
+    },
+    {
+      "id": "enrollment-unenrolled",
+      "kind": "document",
+      "type": "NodeIdentity",
+      "document": {
+        "nodeId": "node:fixture-01",
+        "host": {
+          "kind": "NODE",
+          "id": "node:fixture-01"
+        },
+        "managementIdentityRef": "key:fixture",
+        "enrollmentState": "UNENROLLED"
+      },
+      "valid": true
+    },
+    {
+      "id": "enrollment-bound",
+      "kind": "document",
+      "type": "NodeIdentity",
+      "document": {
+        "nodeId": "node:fixture-01",
+        "host": {
+          "kind": "NODE",
+          "id": "node:fixture-01"
+        },
+        "managementIdentityRef": "key:fixture",
+        "enrollmentState": "ENROLLED",
+        "authorityRef": "authority:fixture",
+        "authorizationGeneration": "3"
+      },
+      "valid": true
+    },
+    {
+      "id": "enrollment-revoked",
+      "kind": "document",
+      "type": "NodeIdentity",
+      "document": {
+        "nodeId": "node:fixture-01",
+        "host": {
+          "kind": "NODE",
+          "id": "node:fixture-01"
+        },
+        "managementIdentityRef": "key:fixture",
+        "enrollmentState": "REVOKED",
+        "authorityRef": "authority:fixture",
+        "authorizationGeneration": "3"
+      },
+      "valid": true
+    },
+    {
+      "id": "enrollment-missing-authority",
+      "kind": "document",
+      "type": "NodeIdentity",
+      "document": {
+        "nodeId": "node:fixture-01",
+        "host": {
+          "kind": "NODE",
+          "id": "node:fixture-01"
+        },
+        "managementIdentityRef": "key:fixture",
+        "enrollmentState": "ENROLLED",
+        "authorizationGeneration": "3"
+      },
+      "valid": false
+    },
+    {
+      "id": "enrollment-foreign-host",
+      "kind": "document",
+      "type": "NodeIdentity",
+      "document": {
+        "nodeId": "node:fixture-01",
+        "host": {
+          "kind": "NODE",
+          "id": "node:other"
+        },
+        "managementIdentityRef": "key:fixture",
+        "enrollmentState": "ENROLLED",
+        "authorityRef": "authority:fixture",
+        "authorizationGeneration": "3"
+      },
+      "valid": false
+    },
+    {
+      "id": "generation-full-uint64",
+      "kind": "document",
+      "type": "Generation",
+      "document": "18446744073709551615",
+      "valid": true
+    },
+    {
+      "id": "generation-overflow",
+      "kind": "document",
+      "type": "Generation",
+      "document": "18446744073709551616",
+      "valid": false
+    },
+    {
+      "id": "generation-normalization-denied",
+      "kind": "document",
+      "type": "Generation",
+      "document": "01",
+      "valid": false
+    },
+    {
+      "id": "command-typed-restore",
+      "kind": "document",
+      "type": "Command",
+      "document": {
+        "contractVersion": "solovey.management/v1",
+        "commandId": "command:one",
+        "actionId": "backup.restore",
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "data",
+          "resourceId": "database"
+        },
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generation": "7",
+        "inputSchema": "solovey.action/backup.restore/v1",
+        "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+        "input": {
+          "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "correlationId": "correlation:one",
+        "grantRef": "grant:one"
+      },
+      "valid": true
+    },
+    {
+      "id": "command-missing-field",
+      "kind": "document",
+      "type": "Command",
+      "document": {
+        "contractVersion": "solovey.management/v1",
+        "actionId": "backup.restore",
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "data",
+          "resourceId": "database"
+        },
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generation": "7",
+        "inputSchema": "solovey.action/backup.restore/v1",
+        "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+        "input": {
+          "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "correlationId": "correlation:one",
+        "grantRef": "grant:one"
+      },
+      "valid": false
+    },
+    {
+      "id": "command-unknown-major",
+      "kind": "document",
+      "type": "Command",
+      "document": {
+        "contractVersion": "solovey.management/v2",
+        "commandId": "command:one",
+        "actionId": "backup.restore",
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "data",
+          "resourceId": "database"
+        },
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generation": "7",
+        "inputSchema": "solovey.action/backup.restore/v1",
+        "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+        "input": {
+          "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "correlationId": "correlation:one",
+        "grantRef": "grant:one"
+      },
+      "valid": false
+    },
+    {
+      "id": "command-arbitrary-shell-denied",
+      "kind": "document",
+      "type": "Command",
+      "document": {
+        "contractVersion": "solovey.management/v1",
+        "commandId": "command:one",
+        "actionId": "backup.restore",
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "data",
+          "resourceId": "database"
+        },
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generation": "7",
+        "inputSchema": "solovey.action/backup.restore/v1",
+        "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+        "input": {
+          "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "correlationId": "correlation:one",
+        "grantRef": "grant:one",
+        "shell": "id"
+      },
+      "valid": false
+    },
+    {
+      "id": "command-untyped-input-denied",
+      "kind": "document",
+      "type": "Command",
+      "document": {
+        "contractVersion": "solovey.management/v1",
+        "commandId": "command:one",
+        "actionId": "backup.restore",
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "data",
+          "resourceId": "database"
+        },
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generation": "7",
+        "inputSchema": "solovey.action/backup.restore/v1",
+        "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+        "input": {
+          "shell": "id"
+        },
+        "correlationId": "correlation:one",
+        "grantRef": "grant:one"
+      },
+      "valid": false
+    },
+    {
+      "id": "read-unknown-compatible-field",
+      "kind": "document",
+      "type": "CommandResult",
+      "document": {
+        "contractVersion": "solovey.management/v1",
+        "commandId": "command:one",
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "data",
+          "resourceId": "database"
+        },
+        "status": "REJECTED",
+        "reason": "FUTURE_REASON",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generation": "7",
+        "replay": false,
+        "correlationId": "correlation:one",
+        "description": "future metadata",
+        "Status": "ACCEPTED"
+      },
+      "valid": true
+    },
+    {
+      "id": "health-evidence-shape",
+      "kind": "document",
+      "type": "HealthEvidence",
+      "document": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "valid": true
+    },
+    {
+      "id": "health-false-reference",
+      "kind": "document",
+      "type": "HealthEvidence",
+      "document": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "valid": false
+    },
+    {
+      "id": "job-progress-valid",
+      "kind": "document",
+      "type": "Progress",
+      "document": {
+        "completed": 10,
+        "total": 20,
+        "unit": "bytes"
+      },
+      "valid": true
+    },
+    {
+      "id": "job-progress-overflow",
+      "kind": "document",
+      "type": "Progress",
+      "document": {
+        "completed": 21,
+        "total": 20,
+        "unit": "bytes"
+      },
+      "valid": false
+    },
+    {
+      "id": "secret-reference-masked",
+      "kind": "document",
+      "type": "SecretRef",
+      "document": {
+        "owner": "telegram",
+        "id": "main",
+        "policy": "OWNER_USE_AND_PRESENCE",
+        "projection": "MASKED"
+      },
+      "valid": true
+    },
+    {
+      "id": "secret-raw-value-denied",
+      "kind": "document",
+      "type": "SecretRef",
+      "document": {
+        "owner": "telegram",
+        "id": "main",
+        "policy": "OWNER_USE_AND_PRESENCE",
+        "projection": "MASKED",
+        "value": "secret"
+      },
+      "valid": false
+    },
+    {
+      "id": "artifact-content-identity",
+      "kind": "document",
+      "type": "ArtifactIdentity",
+      "document": {
+        "artifactId": "artifact:b19cf1fca482f9df79f6b55dd7d795dc3cf673bedd12c68a37eeb159ed61eeda",
+        "owner": "panel",
+        "kind": "panel-full",
+        "version": "2026.4.1",
+        "platform": "linux",
+        "arch": "amd64",
+        "contentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "size": 1024,
+        "signerRef": "release-root:fixture",
+        "provenanceRef": "provenance:fixture",
+        "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "valid": true
+    },
+    {
+      "id": "artifact-path-is-not-identity",
+      "kind": "document",
+      "type": "ArtifactIdentity",
+      "document": {
+        "artifactId": "/tmp/payload",
+        "owner": "panel",
+        "kind": "panel-full",
+        "version": "2026.4.1",
+        "platform": "linux",
+        "arch": "amd64",
+        "contentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "size": 1024,
+        "signerRef": "release-root:fixture",
+        "provenanceRef": "provenance:fixture",
+        "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "valid": false
+    },
+    {
+      "id": "artifact-altered-content",
+      "kind": "document",
+      "type": "ArtifactIdentity",
+      "document": {
+        "artifactId": "artifact:b19cf1fca482f9df79f6b55dd7d795dc3cf673bedd12c68a37eeb159ed61eeda",
+        "owner": "panel",
+        "kind": "panel-full",
+        "version": "2026.4.1",
+        "platform": "linux",
+        "arch": "amd64",
+        "contentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "size": 1024,
+        "signerRef": "release-root:fixture",
+        "provenanceRef": "provenance:fixture",
+        "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "valid": false
+    },
+    {
+      "id": "unknown-reason-fails-closed",
+      "kind": "reason",
+      "result": {
+        "contractVersion": "solovey.management/v1",
+        "commandId": "command:one",
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "data",
+          "resourceId": "database"
+        },
+        "status": "ACCEPTED",
+        "reason": "FUTURE_REASON",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generation": "7",
+        "replay": false,
+        "correlationId": "correlation:one"
+      },
+      "accepted": false,
+      "reason": "UNKNOWN"
+    },
+    {
+      "id": "known-accepted-reason",
+      "kind": "reason",
+      "result": {
+        "contractVersion": "solovey.management/v1",
+        "commandId": "command:one",
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "data",
+          "resourceId": "database"
+        },
+        "status": "ACCEPTED",
+        "reason": "ACCEPTED",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generation": "7",
+        "replay": false,
+        "correlationId": "correlation:one"
+      },
+      "accepted": true,
+      "reason": "ACCEPTED"
+    },
+    {
+      "id": "rejection-never-success",
+      "kind": "reason",
+      "result": {
+        "contractVersion": "solovey.management/v1",
+        "commandId": "command:one",
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "data",
+          "resourceId": "database"
+        },
+        "status": "REJECTED",
+        "reason": "ACCEPTED",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generation": "7",
+        "replay": false,
+        "correlationId": "correlation:one"
+      },
+      "accepted": false,
+      "reason": "ACCEPTED"
+    },
+    {
+      "id": "digest-key-order",
+      "kind": "digest",
+      "first": {
+        "contractVersion": "solovey.management/v1",
+        "commandId": "command:one",
+        "actionId": "backup.restore",
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "data",
+          "resourceId": "database"
+        },
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generation": "7",
+        "inputSchema": "solovey.action/backup.restore/v1",
+        "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+        "input": {
+          "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "correlationId": "correlation:one",
+        "grantRef": "grant:one"
+      },
+      "second": {
+        "grantRef": "grant:one",
+        "correlationId": "correlation:one",
+        "input": {
+          "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+        "inputSchema": "solovey.action/backup.restore/v1",
+        "generation": "7",
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "data",
+          "resourceId": "database"
+        },
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "actionId": "backup.restore",
+        "commandId": "command:one",
+        "contractVersion": "solovey.management/v1"
+      },
+      "equal": true,
+      "expectedFirst": "2ef25f4b7decf1e43a4179df6149f583161a83dcc42ff505feda0d90647abd07",
+      "expectedSecond": "2ef25f4b7decf1e43a4179df6149f583161a83dcc42ff505feda0d90647abd07"
+    },
+    {
+      "id": "digest-delivery-metadata",
+      "kind": "digest",
+      "first": {
+        "contractVersion": "solovey.management/v1",
+        "commandId": "command:one",
+        "actionId": "backup.restore",
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "data",
+          "resourceId": "database"
+        },
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generation": "7",
+        "inputSchema": "solovey.action/backup.restore/v1",
+        "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+        "input": {
+          "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "correlationId": "correlation:one",
+        "grantRef": "grant:one"
+      },
+      "second": {
+        "contractVersion": "solovey.management/v1",
+        "commandId": "command:one",
+        "actionId": "backup.restore",
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "data",
+          "resourceId": "database"
+        },
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generation": "7",
+        "inputSchema": "solovey.action/backup.restore/v1",
+        "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+        "input": {
+          "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "correlationId": "correlation:retry",
+        "grantRef": "grant:retry"
+      },
+      "equal": true,
+      "expectedFirst": "2ef25f4b7decf1e43a4179df6149f583161a83dcc42ff505feda0d90647abd07",
+      "expectedSecond": "2ef25f4b7decf1e43a4179df6149f583161a83dcc42ff505feda0d90647abd07"
+    },
+    {
+      "id": "digest-changed-intent",
+      "kind": "digest",
+      "first": {
+        "contractVersion": "solovey.management/v1",
+        "commandId": "command:one",
+        "actionId": "backup.restore",
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "data",
+          "resourceId": "database"
+        },
+        "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generation": "7",
+        "inputSchema": "solovey.action/backup.restore/v1",
+        "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+        "input": {
+          "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "correlationId": "correlation:one",
+        "grantRef": "grant:one"
+      },
+      "second": {
+        "contractVersion": "solovey.management/v1",
+        "commandId": "command:one",
+        "actionId": "backup.restore",
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "data",
+          "resourceId": "database"
+        },
+        "expectedRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "generation": "7",
+        "inputSchema": "solovey.action/backup.restore/v1",
+        "inputDigest": "f9c72d4922a0c4707185ee8dcf262edf3aa39e372889cb90f4163869e955b955",
+        "input": {
+          "rehearsalRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "correlationId": "correlation:one",
+        "grantRef": "grant:one"
+      },
+      "equal": false,
+      "expectedFirst": "2ef25f4b7decf1e43a4179df6149f583161a83dcc42ff505feda0d90647abd07",
+      "expectedSecond": "e4b04ba0d7c8ca8654e7d5293b0c20f14fbf472c939751be24d64c717560806b"
+    },
+    {
+      "id": "accepted-owner-intent",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "ACCEPTED",
+            "mutations": 1,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "missing-grant",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "APPROVAL_REQUIRED",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "expired-grant",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000000,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "APPROVAL_REQUIRED",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "wrong-grant-action",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "component.remove",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "PERMISSION_DENIED",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "wrong-grant-host",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "NODE",
+            "id": "node:fixture-01"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "PERMISSION_DENIED",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "wrong-grant-resource",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database:other"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "PERMISSION_DENIED",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "wrong-grant-input-digest",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "PERMISSION_DENIED",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "wrong-grant-actor",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:other",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "PERMISSION_DENIED",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "wrong-authority",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:other",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "AUTHORITY_UNAVAILABLE",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "stale-authorization-generation",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "2",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "AUTHORITY_UNAVAILABLE",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "stale-credential-generation",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "3",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "AUTHORITY_UNAVAILABLE",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "stale-mfa-generation",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "4",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "AUTHORITY_UNAVAILABLE",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "unknown-permission",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "root.everything",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "PERMISSION_DENIED",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "foreign-command-host",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "NODE",
+              "id": "node:fixture-01"
+            },
+            "resource": {
+              "host": {
+                "kind": "NODE",
+                "id": "node:fixture-01"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "PERMISSION_DENIED",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "foreign-command-resource",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database:other"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "PERMISSION_DENIED",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "unknown-action",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "owner.execute",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "UNSUPPORTED",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "stale-owner-revision",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "REVISION_CONFLICT",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "old-generation-command",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "8",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "STALE_STATE",
+            "mutations": 0,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "same-command-same-payload-replay",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        },
+        {
+          "grantId": "grant:retry",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:retry",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "ACCEPTED",
+            "mutations": 1,
+            "replay": false
+          }
+        },
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:retry"
+          },
+          "expected": {
+            "reason": "ALREADY_EXISTS",
+            "mutations": 1,
+            "replay": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "ambiguous-delivery-retry",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        },
+        {
+          "grantId": "grant:retry",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:retry",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "ACCEPTED",
+            "mutations": 1,
+            "replay": false
+          },
+          "dropResponse": true
+        },
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:retry"
+          },
+          "expected": {
+            "reason": "ALREADY_EXISTS",
+            "mutations": 1,
+            "replay": true
+          }
+        }
+      ]
+    },
+    {
+      "id": "same-id-different-payload",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        },
+        {
+          "grantId": "grant:retry",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "f9c72d4922a0c4707185ee8dcf262edf3aa39e372889cb90f4163869e955b955",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:retry",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "ACCEPTED",
+            "mutations": 1,
+            "replay": false
+          }
+        },
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "f9c72d4922a0c4707185ee8dcf262edf3aa39e372889cb90f4163869e955b955",
+            "input": {
+              "rehearsalRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:retry"
+          },
+          "expected": {
+            "reason": "RESOURCE_CONFLICT",
+            "mutations": 1,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "concurrent-same-revision",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        },
+        {
+          "grantId": "grant:retry",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:retry",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "ACCEPTED",
+            "mutations": 1,
+            "replay": false
+          }
+        },
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:two",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:retry"
+          },
+          "expected": {
+            "reason": "REVISION_CONFLICT",
+            "mutations": 1,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "one-use-grant-replay-denied",
+      "kind": "command",
+      "now": 1700000000,
+      "host": {
+        "kind": "LOCAL",
+        "id": "local"
+      },
+      "resource": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database"
+      },
+      "revision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "nextRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "generation": "7",
+      "actorRef": "panel-account:fixture",
+      "authorityRef": "authority:fixture",
+      "authorizationGeneration": "3",
+      "credentialGeneration": "4",
+      "mfaGeneration": "5",
+      "grants": [
+        {
+          "grantId": "grant:one",
+          "actorRef": "panel-account:fixture",
+          "authorityRef": "authority:fixture",
+          "actionId": "backup.restore",
+          "permission": "backup.restore",
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "data",
+            "resourceId": "database"
+          },
+          "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+          "authorizationGeneration": "3",
+          "credentialGeneration": "4",
+          "mfaGeneration": "5",
+          "expiresAt": 1700000300,
+          "nonce": "nonce:one",
+          "oneUse": true
+        }
+      ],
+      "steps": [
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:one",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "ACCEPTED",
+            "mutations": 1,
+            "replay": false
+          }
+        },
+        {
+          "command": {
+            "contractVersion": "solovey.management/v1",
+            "commandId": "command:two",
+            "actionId": "backup.restore",
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "resource": {
+              "host": {
+                "kind": "LOCAL",
+                "id": "local"
+              },
+              "owner": "data",
+              "resourceId": "database"
+            },
+            "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "generation": "7",
+            "inputSchema": "solovey.action/backup.restore/v1",
+            "inputDigest": "79aa3c625100c984a6a4c562001973c06f9a9ed7d768ece8973d5a758ae19185",
+            "input": {
+              "rehearsalRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "correlationId": "correlation:one",
+            "grantRef": "grant:one"
+          },
+          "expected": {
+            "reason": "APPROVAL_REQUIRED",
+            "mutations": 1,
+            "replay": false
+          }
+        }
+      ]
+    },
+    {
+      "id": "component-absent",
+      "kind": "component",
+      "installed": false,
+      "enabled": false,
+      "available": false,
+      "lifecycle": "NOT_OBSERVED",
+      "expected": "ABSENT"
+    },
+    {
+      "id": "component-disabled",
+      "kind": "component",
+      "installed": true,
+      "enabled": false,
+      "available": true,
+      "lifecycle": "NOT_OBSERVED",
+      "expected": "INSTALLED_DISABLED"
+    },
+    {
+      "id": "component-unsupported",
+      "kind": "component",
+      "installed": true,
+      "enabled": true,
+      "available": false,
+      "lifecycle": "NOT_OBSERVED",
+      "expected": "ENABLED_UNSUPPORTED"
+    },
+    {
+      "id": "component-unknown-health",
+      "kind": "component",
+      "installed": true,
+      "enabled": true,
+      "available": true,
+      "lifecycle": "NOT_OBSERVED",
+      "expected": "UNKNOWN"
+    },
+    {
+      "id": "component-started-is-not-healthy",
+      "kind": "component",
+      "installed": true,
+      "enabled": true,
+      "available": true,
+      "lifecycle": "STARTED",
+      "expected": "UNKNOWN"
+    },
+    {
+      "id": "health-current",
+      "kind": "health",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "now": 1700000030,
+      "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": true
+    },
+    {
+      "id": "health-expired",
+      "kind": "health",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "now": 1700000061,
+      "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false
+    },
+    {
+      "id": "health-old-revision",
+      "kind": "health",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "now": 1700000030,
+      "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false
+    },
+    {
+      "id": "health-future-observation",
+      "kind": "health",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "now": 1699999999,
+      "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false
+    },
+    {
+      "id": "job-cancel-request-is-not-terminal",
+      "kind": "job",
+      "reference": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database",
+        "operationId": "op:fixture",
+        "correlationId": "operation:fixture",
+        "changeId": "change:fixture"
+      },
+      "initial": "RUNNING",
+      "critical": false,
+      "expectedAfterRequest": "CANCEL_REQUESTED",
+      "expectedAfterSafePoint": "CANCELLED"
+    },
+    {
+      "id": "job-cancel-critical-section",
+      "kind": "job",
+      "reference": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database",
+        "operationId": "op:fixture",
+        "correlationId": "operation:fixture",
+        "changeId": "change:fixture"
+      },
+      "initial": "RUNNING",
+      "critical": true,
+      "expectedAfterRequest": "DEFERRED_UNTIL_SAFE_POINT",
+      "expectedAfterSafePoint": "CANCELLED"
+    },
+    {
+      "id": "job-cancel-after-terminal",
+      "kind": "job",
+      "reference": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database",
+        "operationId": "op:fixture",
+        "correlationId": "operation:fixture",
+        "changeId": "change:fixture"
+      },
+      "initial": "SUCCEEDED",
+      "critical": false,
+      "expectedAfterRequest": "SUCCEEDED",
+      "expectedAfterSafePoint": "SUCCEEDED"
+    },
+    {
+      "id": "late-old-generation-result",
+      "kind": "lateResult",
+      "generation": "8",
+      "resultGeneration": "7",
+      "valid": false
+    },
+    {
+      "id": "artifact-trust-verified",
+      "kind": "artifact",
+      "artifact": {
+        "artifactId": "artifact:b19cf1fca482f9df79f6b55dd7d795dc3cf673bedd12c68a37eeb159ed61eeda",
+        "owner": "panel",
+        "kind": "panel-full",
+        "version": "2026.4.1",
+        "platform": "linux",
+        "arch": "amd64",
+        "contentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "size": 1024,
+        "signerRef": "release-root:fixture",
+        "provenanceRef": "provenance:fixture",
+        "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "status": "VERIFIED",
+      "accepted": true
+    },
+    {
+      "id": "artifact-trust-unknown",
+      "kind": "artifact",
+      "artifact": {
+        "artifactId": "artifact:b19cf1fca482f9df79f6b55dd7d795dc3cf673bedd12c68a37eeb159ed61eeda",
+        "owner": "panel",
+        "kind": "panel-full",
+        "version": "2026.4.1",
+        "platform": "linux",
+        "arch": "amd64",
+        "contentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "size": 1024,
+        "signerRef": "release-root:fixture",
+        "provenanceRef": "provenance:fixture",
+        "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "status": "UNKNOWN",
+      "accepted": false
+    },
+    {
+      "id": "artifact-trust-rejected",
+      "kind": "artifact",
+      "artifact": {
+        "artifactId": "artifact:b19cf1fca482f9df79f6b55dd7d795dc3cf673bedd12c68a37eeb159ed61eeda",
+        "owner": "panel",
+        "kind": "panel-full",
+        "version": "2026.4.1",
+        "platform": "linux",
+        "arch": "amd64",
+        "contentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "size": 1024,
+        "signerRef": "release-root:fixture",
+        "provenanceRef": "provenance:fixture",
+        "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "status": "REJECTED",
+      "accepted": false
+    },
+    {
+      "id": "critical-capability-yes",
+      "kind": "capability",
+      "value": "yes",
+      "accepted": true
+    },
+    {
+      "id": "critical-capability-no",
+      "kind": "capability",
+      "value": "no",
+      "accepted": false
+    },
+    {
+      "id": "critical-capability-unknown",
+      "kind": "capability",
+      "value": "unknown",
+      "accepted": false
+    },
+    {
+      "id": "component-current-health",
+      "kind": "component",
+      "installed": true,
+      "enabled": true,
+      "available": true,
+      "lifecycle": "STARTED",
+      "health": "PASS",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "expected": "ENABLED_HEALTHY"
+    },
+    {
+      "id": "component-failed-health",
+      "kind": "component",
+      "installed": true,
+      "enabled": true,
+      "available": true,
+      "lifecycle": "STARTED",
+      "health": "FAIL",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "expected": "ENABLED_UNHEALTHY"
+    },
+    {
+      "id": "change-pending",
+      "kind": "change",
+      "reference": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database",
+        "operationId": "op:fixture",
+        "correlationId": "operation:fixture",
+        "changeId": "change:fixture"
+      },
+      "revision": "17",
+      "phase": "PENDING",
+      "ownerPhase": "PENDING",
+      "outcome": "PENDING",
+      "rollbackVerified": false,
+      "recoveryRequired": false
+    },
+    {
+      "id": "change-committed",
+      "kind": "change",
+      "reference": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database",
+        "operationId": "op:fixture",
+        "correlationId": "operation:fixture",
+        "changeId": "change:fixture"
+      },
+      "revision": "17",
+      "phase": "COMMITTED",
+      "ownerPhase": "COMMITTED",
+      "outcome": "COMMITTED",
+      "rollbackVerified": false,
+      "recoveryRequired": false
+    },
+    {
+      "id": "change-rolled_back",
+      "kind": "change",
+      "reference": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database",
+        "operationId": "op:fixture",
+        "correlationId": "operation:fixture",
+        "changeId": "change:fixture"
+      },
+      "revision": "17",
+      "phase": "ROLLED_BACK",
+      "ownerPhase": "ROLLED_BACK",
+      "outcome": "ROLLED_BACK",
+      "rollbackVerified": true,
+      "recoveryRequired": false
+    },
+    {
+      "id": "change-recovery_required",
+      "kind": "change",
+      "reference": {
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "owner": "data",
+        "resourceId": "database",
+        "operationId": "op:fixture",
+        "correlationId": "operation:fixture",
+        "changeId": "change:fixture"
+      },
+      "revision": "17",
+      "phase": "RECOVERY_REQUIRED",
+      "ownerPhase": "RECOVERY_REQUIRED",
+      "outcome": "RECOVERY_REQUIRED",
+      "rollbackVerified": false,
+      "recoveryRequired": true
+    },
+    {
+      "id": "typed-component-remove",
+      "kind": "document",
+      "type": "Command",
+      "document": {
+        "contractVersion": "solovey.management/v1",
+        "commandId": "command:one",
+        "actionId": "component.remove",
+        "host": {
+          "kind": "LOCAL",
+          "id": "local"
+        },
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "component-lifecycle",
+          "resourceId": "component:telegram"
+        },
+        "generation": "7",
+        "inputSchema": "solovey.action/component.remove/v1",
+        "inputDigest": "0b028563f9ba1976b2e957554a34e670b62b9d9fb8f3bb6142977611e113fb26",
+        "input": {
+          "componentId": "telegram"
+        },
+        "correlationId": "correlation:one",
+        "grantRef": "grant:one"
+      },
+      "valid": true
+    }
+  ]
+}
