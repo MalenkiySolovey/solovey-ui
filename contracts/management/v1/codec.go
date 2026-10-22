@@ -47,6 +47,10 @@ func loadSchema() schemaSet {
 func LookupAction(id string) (ActionDescriptor, bool) {
 	for _, descriptor := range contract.Actions {
 		if descriptor.ID == id {
+			if descriptor.ComponentID != nil {
+				id := *descriptor.ComponentID
+				descriptor.ComponentID = &id
+			}
 			return descriptor, true
 		}
 	}
@@ -414,6 +418,13 @@ func project(rule map[string]any, value any) any {
 	return value
 }
 
+func sameHost(first, second map[string]any) bool {
+	return first["kind"] == second["kind"] && first["id"] == second["id"]
+}
+func sameResource(first, second map[string]any) bool {
+	return sameHost(first["host"].(map[string]any), second["host"].(map[string]any)) && first["owner"] == second["owner"] && first["resourceId"] == second["resourceId"]
+}
+
 func semantic(name string, value any) error {
 	invalid := errors.New("invalid " + name + " semantics")
 	if name == "Generation" {
@@ -425,6 +436,14 @@ func semantic(name string, value any) error {
 		return nil
 	}
 	switch name {
+	case "CommandResult":
+		if !sameHost(object["host"].(map[string]any), object["resource"].(map[string]any)["host"].(map[string]any)) {
+			return invalid
+		}
+	case "Health":
+		if evidence, exists := object["evidence"].(map[string]any); exists && !sameResource(object["resource"].(map[string]any), evidence["resource"].(map[string]any)) {
+			return invalid
+		}
 	case "NodeIdentity":
 		host := object["host"].(map[string]any)
 		if host["kind"] != "NODE" || host["id"] != object["nodeId"] {

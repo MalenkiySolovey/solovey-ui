@@ -21,4 +21,5 @@ jobs:
         with:
           node-version-file: frontend/.node-version
       - run: node contracts/tools/generate.mjs --check
-      - run: go test ./contracts/management/v1 ./internal/managementcontract
+      - run: go test ./contracts/management/v1 ./internal/managementcontract ./componenthost/supervisor
+      - run: go test ./service ./service/datalifecycle -run TestManagementContract -count=1

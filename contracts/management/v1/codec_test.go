@@ -213,3 +213,16 @@ func TestCommandVectorShapeAndOwnerBindings(t *testing.T) {
 		})
 	}
 }
+
+func TestDescriptorLookupDoesNotExposeMutableCatalogPointers(t *testing.T) {
+	descriptor, ok := LookupAction("component.remove")
+	if !ok || descriptor.ComponentID == nil {
+		t.Fatal("missing declaring component identity")
+	}
+	original := *descriptor.ComponentID
+	*descriptor.ComponentID = "changed-by-reader"
+	fresh, ok := LookupAction("component.remove")
+	if !ok || fresh.ComponentID == nil || *fresh.ComponentID != original {
+		t.Fatal("read metadata mutated the canonical Action catalog")
+	}
+}

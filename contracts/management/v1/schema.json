@@ -635,7 +635,8 @@
         "correlationId"
       ],
       "additionalProperties": true,
-      "maxProperties": 48
+      "maxProperties": 48,
+      "description": "host must equal resource.host. Unknown reason codes remain data but cannot be interpreted as accepted success."
     },
     "Capability": {
       "type": "object",
@@ -1035,7 +1036,43 @@
         "resource"
       ],
       "additionalProperties": true,
-      "maxProperties": 48
+      "maxProperties": 48,
+      "description": "Read projection of the exact owner proposition. PASS requires bound evidence and known ACCEPTED reason. Evidence resource must equal the enclosing resource; receipt never refreshes observedAt. Unavailable proof remains UNKNOWN.",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "const": "PASS"
+            },
+            "reason": {
+              "const": "ACCEPTED"
+            }
+          },
+          "required": [
+            "status",
+            "reason",
+            "evidence"
+          ],
+          "additionalProperties": true
+        },
+        {
+          "type": "object",
+          "properties": {
+            "status": {
+              "enum": [
+                "FAIL",
+                "UNKNOWN",
+                "SKIPPED"
+              ]
+            }
+          },
+          "required": [
+            "status"
+          ],
+          "additionalProperties": true
+        }
+      ]
     },
     "ArtifactIdentity": {
       "type": "object",
