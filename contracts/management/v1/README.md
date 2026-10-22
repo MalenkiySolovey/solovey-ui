@@ -2,8 +2,9 @@
 
 Contract-set identity: `solovey.management/v1`. Database schema and product
 release versions are independent. Panel owns this canonical source. Node consumes
-an exact pinned bundle without importing the Panel module. This is an R6 contract
-candidate until both repositories' owner/conformance evidence is accepted.
+an exact pinned bundle without importing the Panel module. Each accepted R6 boundary is identified by its exact manifest and qualified in
+both repositories. Contract version alone is not a claim that an arbitrary
+bundle or untrusted metadata has been accepted.
 
 `schema.json` uses JSON Schema 2020-12, with `x-actions`, `x-inputs` and
 `x-reasons` as catalog annotations. `types.gen.go` is generated, never edited.
@@ -143,3 +144,39 @@ Reason classes are deliberately bounded in x-reasons. Owner-specific bounded
 codes may supplement them; temporary errors and messages are not protocol codes.
 SecretRef remains masked owner-use/presence only. NetworkIntentRef names owner
 intent/revisions, never raw nft/fw4, routes, paths or privileged commands.
+
+## Qualified implementation boundaries
+
+Panel's internal/managementcontract adapters read the existing configured
+ResourceIdentity, Action registry, Component manifests/state, operation
+Change/Job, Health checker and authenticated release identity. They install no
+dispatcher. The eight real component manifests are checked for identity/Action
+parity; private UI, database, package and runtime fields are not projected.
+Descriptor componentId describes the current declaring component; it does not
+require the same UI/binary composition on every Host. Owner/capability admission
+still decides whether an Action is available.
+
+A capability container whose truth is unavailable projects unknown even when a
+stale nested field says yes. Health PASS requires scoped evidence and known
+ACCEPTED reason. The current R3 checker recognizes digest revisions; unfamiliar
+owner revisions can be described but cannot establish that proof. Unavailable
+proof, replaced generations and stale observations remain UNKNOWN. A current
+revision-bound failed check can establish FAIL. Current Local Health has no
+exported runner generation; the adapter leaves runtimeGeneration absent. A
+consumer requiring that dimension must fail closed. The existing registry's
+replacement fence is tested separately with the same observed revision.
+
+The command fixture's grant issuer is a trusted in-memory fixture boundary;
+grant JSON does not authenticate itself. Actual Panel StepUp binding/consumption
+and Restore authorization-before-replay are also tested directly from the shared
+vectors. Browser session/client-identity details stay private to that authority.
+Cancellation vectors model an owner-cooperative signal and safe point in test
+fixtures. They do not add durable cancellation to current Panel APIs: their real
+Job projections preserve cancelSupported=false and absent cancelRequested.
+
+Seven feature domains consume one ResourceRef/Revision shape. Their fixtures
+prove scope isolation, owner-local revision authority and rejection of a Panel
+cache as desired state. They implement no feature payload or new CRUD Action.
+Future feature write inputs still require a deliberate canonical typed addition.
+Node's separate conformance implementation imports only this pinned public
+bundle and standard libraries. It is proof code, not a production Node design.

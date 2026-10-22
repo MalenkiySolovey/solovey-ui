@@ -551,7 +551,7 @@
         "contentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "size": 1024,
         "signerRef": "release-root:fixture",
-        "provenanceRef": "provenance:fixture",
+        "provenanceRef": "fixture",
         "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       },
       "valid": true
@@ -570,7 +570,7 @@
         "contentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "size": 1024,
         "signerRef": "release-root:fixture",
-        "provenanceRef": "provenance:fixture",
+        "provenanceRef": "fixture",
         "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       },
       "valid": false
@@ -589,7 +589,7 @@
         "contentDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
         "size": 1024,
         "signerRef": "release-root:fixture",
-        "provenanceRef": "provenance:fixture",
+        "provenanceRef": "fixture",
         "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       },
       "valid": false
@@ -3190,7 +3190,8 @@
       },
       "now": 1700000030,
       "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "valid": true
+      "valid": true,
+      "expectedStatus": "PASS"
     },
     {
       "id": "health-expired",
@@ -3215,7 +3216,8 @@
       },
       "now": 1700000061,
       "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "valid": false
+      "valid": false,
+      "expectedStatus": "UNKNOWN"
     },
     {
       "id": "health-old-revision",
@@ -3240,7 +3242,8 @@
       },
       "now": 1700000030,
       "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "valid": false
+      "valid": false,
+      "expectedStatus": "UNKNOWN"
     },
     {
       "id": "health-future-observation",
@@ -3265,7 +3268,8 @@
       },
       "now": 1699999999,
       "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-      "valid": false
+      "valid": false,
+      "expectedStatus": "UNKNOWN"
     },
     {
       "id": "job-cancel-request-is-not-terminal",
@@ -3344,7 +3348,7 @@
         "contentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "size": 1024,
         "signerRef": "release-root:fixture",
-        "provenanceRef": "provenance:fixture",
+        "provenanceRef": "fixture",
         "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       },
       "status": "VERIFIED",
@@ -3363,7 +3367,7 @@
         "contentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "size": 1024,
         "signerRef": "release-root:fixture",
-        "provenanceRef": "provenance:fixture",
+        "provenanceRef": "fixture",
         "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       },
       "status": "UNKNOWN",
@@ -3382,7 +3386,7 @@
         "contentDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         "size": 1024,
         "signerRef": "release-root:fixture",
-        "provenanceRef": "provenance:fixture",
+        "provenanceRef": "fixture",
         "sourceRevision": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
       },
       "status": "REJECTED",
@@ -3392,19 +3396,22 @@
       "id": "critical-capability-yes",
       "kind": "capability",
       "value": "yes",
-      "accepted": true
+      "accepted": true,
+      "known": true
     },
     {
       "id": "critical-capability-no",
       "kind": "capability",
       "value": "no",
-      "accepted": false
+      "accepted": false,
+      "known": true
     },
     {
       "id": "critical-capability-unknown",
       "kind": "capability",
       "value": "unknown",
-      "accepted": false
+      "accepted": false,
+      "known": true
     },
     {
       "id": "component-current-health",
@@ -3576,6 +3583,549 @@
         "grantRef": "grant:one"
       },
       "valid": true
+    },
+    {
+      "id": "health-wrong-proposition",
+      "kind": "health",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "DATA_PLANE_VERIFIED",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "now": 1700000030,
+      "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false,
+      "expectedStatus": "UNKNOWN"
+    },
+    {
+      "id": "health-wrong-source",
+      "kind": "health",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "foreign",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "now": 1700000030,
+      "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false,
+      "expectedStatus": "UNKNOWN"
+    },
+    {
+      "id": "health-foreign-owner",
+      "kind": "health",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "foreign",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "now": 1700000030,
+      "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false,
+      "expectedStatus": "UNKNOWN"
+    },
+    {
+      "id": "health-foreign-host",
+      "kind": "health",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "NODE",
+            "id": "node:foreign"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "now": 1700000030,
+      "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false,
+      "expectedStatus": "UNKNOWN"
+    },
+    {
+      "id": "health-old-generation",
+      "kind": "health",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "runtimeGeneration": "7"
+      },
+      "now": 1700000030,
+      "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false,
+      "expectedGeneration": "8",
+      "expectedStatus": "UNKNOWN"
+    },
+    {
+      "id": "health-generation-unavailable",
+      "kind": "health",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "now": 1700000030,
+      "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false,
+      "expectedGeneration": "8",
+      "expectedStatus": "UNKNOWN"
+    },
+    {
+      "id": "health-at-expiry-boundary",
+      "kind": "health",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "now": 1700000060,
+      "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": true,
+      "expectedStatus": "PASS"
+    },
+    {
+      "id": "health-unrecognized-owner-revision",
+      "kind": "health",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "opaque:unrecognized",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "now": 1700000030,
+      "expectedRevision": "opaque:unrecognized",
+      "valid": false,
+      "expectedStatus": "UNKNOWN"
+    },
+    {
+      "id": "critical-capability-unknown-container",
+      "kind": "capability",
+      "value": "yes",
+      "known": false,
+      "accepted": false
+    },
+    {
+      "id": "component-removal-never-started",
+      "kind": "removal",
+      "mode": "never-started",
+      "phase": "NOT_OBSERVED",
+      "retention": "UNKNOWN",
+      "current": true,
+      "running": false,
+      "accepted": true
+    },
+    {
+      "id": "component-removal-running",
+      "kind": "removal",
+      "mode": "running",
+      "phase": "STARTED",
+      "retention": "RETAINED",
+      "current": true,
+      "running": true,
+      "accepted": false
+    },
+    {
+      "id": "component-removal-start-failed",
+      "kind": "removal",
+      "mode": "start-failed",
+      "phase": "START_FAILED",
+      "retention": "UNKNOWN",
+      "current": true,
+      "running": false,
+      "accepted": false
+    },
+    {
+      "id": "component-removal-stopped",
+      "kind": "removal",
+      "mode": "stopped",
+      "phase": "STOPPED",
+      "retention": "RELEASED",
+      "current": true,
+      "running": false,
+      "accepted": true
+    },
+    {
+      "id": "component-removal-stop-failed",
+      "kind": "removal",
+      "mode": "stop-failed",
+      "phase": "STOP_FAILED",
+      "retention": "RETAINED",
+      "current": true,
+      "running": true,
+      "accepted": false
+    },
+    {
+      "id": "component-removal-old-publisher",
+      "kind": "removal",
+      "mode": "old-publisher",
+      "phase": "NOT_OBSERVED",
+      "retention": "UNKNOWN",
+      "current": false,
+      "running": false,
+      "accepted": false
+    },
+    {
+      "id": "health-feature-check-failed",
+      "kind": "health",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "now": 1700000030,
+      "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false,
+      "sourceStatus": "degraded",
+      "factCode": "fixture_failed",
+      "expectedStatus": "FAIL"
+    },
+    {
+      "id": "health-stale-status-is-not-feature-failure",
+      "kind": "health",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "now": 1700000030,
+      "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false,
+      "sourceStatus": "degraded",
+      "factCode": "health_evidence_unsatisfied",
+      "expectedStatus": "UNKNOWN"
+    },
+    {
+      "id": "health-capability-unavailable",
+      "kind": "health",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "now": 1700000030,
+      "expectedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "valid": false,
+      "sourceStatus": "missing_capability",
+      "expectedStatus": "UNKNOWN"
+    },
+    {
+      "id": "component-stale-health",
+      "kind": "component",
+      "installed": true,
+      "enabled": true,
+      "available": true,
+      "lifecycle": "STARTED",
+      "health": "PASS",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "expected": "UNKNOWN",
+      "now": 1700000061
+    },
+    {
+      "id": "component-foreign-proof",
+      "kind": "component",
+      "installed": true,
+      "enabled": true,
+      "available": true,
+      "lifecycle": "STARTED",
+      "health": "PASS",
+      "evidence": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "foreign",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "PROBE_OK",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "expected": "UNKNOWN"
+    },
+    {
+      "id": "enrollment-key-rotation-preserves-node-id",
+      "kind": "document",
+      "type": "NodeIdentity",
+      "document": {
+        "nodeId": "node:fixture-01",
+        "host": {
+          "kind": "NODE",
+          "id": "node:fixture-01"
+        },
+        "managementIdentityRef": "key:rotated",
+        "enrollmentState": "ENROLLED",
+        "authorityRef": "authority:fixture",
+        "authorizationGeneration": "3"
+      },
+      "valid": true
+    },
+    {
+      "id": "health-pass-needs-evidence",
+      "kind": "document",
+      "type": "Health",
+      "document": {
+        "status": "PASS",
+        "reason": "ACCEPTED",
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "health-pass-foreign-evidence-denied",
+      "kind": "document",
+      "type": "Health",
+      "document": {
+        "status": "PASS",
+        "reason": "ACCEPTED",
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "evidence": {
+          "resource": {
+            "host": {
+              "kind": "LOCAL",
+              "id": "local"
+            },
+            "owner": "foreign",
+            "resourceId": "resource:fixture"
+          },
+          "proofKind": "PROBE_OK",
+          "source": "fixture",
+          "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+          "observedAt": 1700000000,
+          "maxAgeSeconds": 60,
+          "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+        }
+      },
+      "valid": false
+    },
+    {
+      "id": "health-unknown-proof-enum-denied",
+      "kind": "document",
+      "type": "HealthEvidence",
+      "document": {
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "test-owner",
+          "resourceId": "resource:fixture"
+        },
+        "proofKind": "FUTURE_PROOF",
+        "source": "fixture",
+        "desiredRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "evidenceRevision": "eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee",
+        "observedAt": 1700000000,
+        "maxAgeSeconds": 60,
+        "evidenceRef": "health:eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+      },
+      "valid": false
+    },
+    {
+      "id": "result-foreign-scope-denied",
+      "kind": "document",
+      "type": "CommandResult",
+      "document": {
+        "contractVersion": "solovey.management/v1",
+        "commandId": "command:one",
+        "host": {
+          "kind": "NODE",
+          "id": "node:foreign"
+        },
+        "resource": {
+          "host": {
+            "kind": "LOCAL",
+            "id": "local"
+          },
+          "owner": "data",
+          "resourceId": "database"
+        },
+        "status": "REJECTED",
+        "reason": "FUTURE_REASON",
+        "observedRevision": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generation": "7",
+        "replay": false,
+        "correlationId": "correlation:one",
+        "description": "future metadata",
+        "Status": "ACCEPTED"
+      },
+      "valid": false
     }
   ]
 }
