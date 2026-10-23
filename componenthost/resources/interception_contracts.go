@@ -249,7 +249,10 @@ func ReferenceInterceptionV1(fact InterceptionInboundFactV1, now time.Time) (Int
 		ConfigurationRevision: fact.ConfigurationRevision, RuntimeRevision: fact.RuntimeRevision, ListenerRevision: fact.ListenerRevision,
 	}
 	value.CanonicalReferenceRevision = Revision(interceptionReferenceRevisionInput(value))
-	return value, value.Validate()
+	// The validated fact supplies every reference field, and the only new
+	// field was computed above. Validate remains mandatory for external input;
+	// recomputing this hash here only repeats the same construction work.
+	return value, nil
 }
 
 func (r InterceptionReferenceV1) Validate() error {

@@ -72,7 +72,15 @@ jobs:
         run: go test -run '^$' -tags "$EXTENDED_TAGS" ./...
       - name: Native lifecycle, management and semantic boundary race regressions
         shell: bash
-        run: go test -race -count=1 -timeout=10m -tags "$EXTENDED_TAGS" github.com/sagernet/sing-box/adapter ./core/... ./internal/singbox/apply ./service/coreinboundcontrol ./components/server-protection/service/nativefallback ./service/update ./internal/singbox/validation ./cmd/internal/corecheck ./internal/release ./cmd/solovey-artifact-info ./internal/ops/updatebroker
+        run: go test -race -count=1 -timeout=10m -tags "$EXTENDED_TAGS" github.com/sagernet/sing-box/adapter ./core/... ./internal/singbox/apply ./service/coreinboundcontrol ./components/server-protection/service/nativefallback ./service/update ./internal/singbox/validation ./cmd/internal/corecheck ./internal/release ./cmd/solovey-artifact-info
+      - name: Native privileged broker race regressions
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          go_binary=$(command -v go)
+          module_cache=$(go env GOMODCACHE)
+          sudo env "GOMODCACHE=$module_cache" "GOCACHE=$RUNNER_TEMP/provider-root-go-cache" "CGO_ENABLED=1" "GOFLAGS=$GOFLAGS" \
+            "$go_binary" test -race -tags "$EXTENDED_TAGS" -count=1 -timeout=5m ./internal/ops/updatebroker
       - name: Observe real provider and capability build metadata
         shell: bash
         run: go run -tags "$EXTENDED_TAGS" ./tests/core-provider-identity

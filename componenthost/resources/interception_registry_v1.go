@@ -1,6 +1,7 @@
 package resources
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"sort"
@@ -78,8 +79,8 @@ func (r *InterceptionRegistryV1) FactsV1(ctx context.Context, now time.Time) ([]
 		}
 	}
 	sort.Slice(result, func(i, j int) bool {
-		return result[i].ProviderID+"\x00"+result[i].ResourceID+"\x00"+result[i].EndpointID <
-			result[j].ProviderID+"\x00"+result[j].ResourceID+"\x00"+result[j].EndpointID
+		left, right := result[i], result[j]
+		return cmp.Or(cmp.Compare(left.ProviderID, right.ProviderID), cmp.Compare(left.ResourceID, right.ResourceID), cmp.Compare(left.EndpointID, right.EndpointID)) < 0
 	})
 	return result, nil
 }

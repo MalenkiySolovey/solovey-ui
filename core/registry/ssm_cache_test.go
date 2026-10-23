@@ -11,23 +11,27 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"sync"
 	"testing"
 	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/box"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/ssmcache"
+	"github.com/sagernet/sing-box/log"
 	"github.com/sagernet/sing-box/option"
 )
 
 func ssmBox(t *testing.T, cache string, port int) *box.Box {
 	t.Helper()
 	ctx := registry.Context(context.Background())
-	raw, _ := json.Marshal(map[string]any{"log": map[string]bool{"disabled": true}, "inbounds": []any{map[string]any{"type": "shadowsocks", "tag": "managed", "listen": "127.0.0.1", "listen_port": 0, "method": "aes-128-gcm", "managed": true}}, "services": []any{map[string]any{"type": "ssm-api", "tag": "ssm", "listen": "127.0.0.1", "listen_port": port, "servers": map[string]string{"/main": "managed"}, "cache_path": cache}}})
+	raw, _ := json.Marshal(map[string]any{"log": map[string]bool{"disabled": false}, "inbounds": []any{map[string]any{"type": "shadowsocks", "tag": "managed", "listen": "127.0.0.1", "listen_port": 0, "method": "aes-128-gcm", "managed": true}}, "services": []any{map[string]any{"type": "ssm-api", "tag": "ssm", "listen": "127.0.0.1", "listen_port": port, "servers": map[string]string{"/main": "managed"}, "cache_path": cache}}})
 	var options option.Options
 	if err := options.UnmarshalJSONContext(ctx, raw); err != nil {
 		t.Fatal("schema", err)
 	}
+	options.Log.DisableColor = true
 	b, err := box.NewBox(box.Options{Context: ctx, Options: options})
 	if err != nil {
 		t.Fatal("constructor", err)
@@ -36,15 +40,28 @@ func ssmBox(t *testing.T, cache string, port int) *box.Box {
 	return b
 }
 
-func ssmPort(t *testing.T) int {
-	t.Helper()
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		t.Fatal(err)
+// Observe the service's actual kernel-assigned port. Closing a reservation
+// before Box.Start lets parallel tests or outgoing sockets steal that port.
+type ssmListenerObservation struct {
+	mu      sync.Mutex
+	address string
+}
+
+func (*ssmListenerObservation) DisableColors() bool { return true }
+
+func (observation *ssmListenerObservation) WriteMessage(_ log.Level, message string) {
+	const prefix = "service/ssm-api[ssm]: tcp server started at "
+	if index := strings.Index(message, prefix); index >= 0 {
+		observation.mu.Lock()
+		observation.address = strings.TrimSpace(message[index+len(prefix):])
+		observation.mu.Unlock()
 	}
-	port := l.Addr().(*net.TCPAddr).Port
-	l.Close()
-	return port
+}
+
+func (observation *ssmListenerObservation) Address() string {
+	observation.mu.Lock()
+	defer observation.mu.Unlock()
+	return observation.address
 }
 
 func TestSSMBoxCorruptCacheFailClosedWithoutPanicOrPublication(t *testing.T) {
@@ -62,8 +79,9 @@ func TestSSMBoxCorruptCacheFailClosedWithoutPanicOrPublication(t *testing.T) {
 			if err = os.WriteFile(name, []byte(data), 0600); err != nil {
 				t.Fatal(err)
 			}
-			port := ssmPort(t)
-			b := ssmBox(t, name, port)
+			b := ssmBox(t, name, 0)
+			observed := &ssmListenerObservation{}
+			b.LogFactory().AttachPlatformWriter(observed)
 			if err = b.Start(); err == nil {
 				t.Fatal("corrupt service started")
 			}
@@ -72,9 +90,8 @@ func TestSSMBoxCorruptCacheFailClosedWithoutPanicOrPublication(t *testing.T) {
 			if string(got) != data {
 				t.Fatal("failed startup overwrote recoverable cache")
 			}
-			if connection, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), 300*time.Millisecond); err == nil {
-				connection.Close()
-				t.Fatal("failed startup leaked listener")
+			if observed.Address() != "" {
+				t.Fatal("corrupt cache published a service listener before rejection")
 			}
 		})
 	}
@@ -95,12 +112,19 @@ func TestSSMBoxRestartRestoresOfficialAuthenticationAndCounters(t *testing.T) {
 	client := http.Client{Timeout: time.Second}
 	defer client.CloseIdleConnections()
 	for restart := 0; restart < 2; restart++ {
-		port := ssmPort(t)
-		b := ssmBox(t, name, port)
+		b := ssmBox(t, name, 0)
+		observed := &ssmListenerObservation{}
+		b.LogFactory().AttachPlatformWriter(observed)
 		if err = b.Start(); err != nil {
 			t.Fatal("service start", err)
 		}
-		base := "http://" + net.JoinHostPort("127.0.0.1", strconv.Itoa(port)) + "/main/server/v1"
+		address := observed.Address()
+		host, port, err := net.SplitHostPort(address)
+		parsedPort, portErr := strconv.Atoi(port)
+		if err != nil || portErr != nil || host != "127.0.0.1" || parsedPort <= 0 {
+			t.Fatal("service did not publish its actual loopback listener")
+		}
+		base := "http://" + address + "/main/server/v1"
 		request, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+"/users/fixture", nil)
 		if err != nil {
 			t.Fatal(err)
@@ -137,7 +161,7 @@ func TestSSMBoxRestartRestoresOfficialAuthenticationAndCounters(t *testing.T) {
 		if err = b.Close(); err != nil {
 			t.Fatal("shutdown", err)
 		}
-		if connection, err := net.DialTimeout("tcp", net.JoinHostPort("127.0.0.1", strconv.Itoa(port)), 300*time.Millisecond); err == nil {
+		if connection, err := net.DialTimeout("tcp", address, 300*time.Millisecond); err == nil {
 			connection.Close()
 			t.Fatal("closed service leaked listener")
 		}
