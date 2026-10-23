@@ -127,6 +127,8 @@
               </template>
               <template v-if="i == 'i-sbd'">
                 <v-row>
+                  <v-col cols="4">CoreRuntime</v-col>
+                  <v-col cols="8"><CoreProviderSummary :value="tilesData.sbd?.provider" /></v-col>
                   <v-col cols="4">{{ $t('main.info.running') }}</v-col>
                   <v-col cols="8">
                     <v-chip density="compact" color="success" variant="flat" v-if="tilesData.sbd?.running">{{ $t('yes') }}</v-chip> 
@@ -192,6 +194,7 @@
 import { HumanReadable } from '@/plugins/utils'
 import Data from '@/store/modules/data'
 import Gauge from '@/components/tiles/Gauge.vue'
+import CoreProviderSummary from '@/components/common/CoreProviderSummary.vue'
 import History from '@/components/tiles/History.vue'
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { dateLocale, i18n } from '@/locales'

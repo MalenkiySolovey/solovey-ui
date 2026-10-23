@@ -1,0 +1,30 @@
+{
+  "schema": "solovey.core-provider-pins/v1",
+  "defaultProvider": "sing-box",
+  "sources": [
+    {
+      "id": "sing-box",
+      "name": "Official",
+      "providerVersion": "v1.14.3-0.20261012000247-8b914e4be510",
+      "runtimeSemanticVersion": "1.14.2",
+      "module": "github.com/MalenkiySolovey/sing-box",
+      "moduleSum": "h1:RkQg7xe/iBA9+PrEgN8oN0p9LNBNsd2OR65KUEmo4K0=",
+      "sourceRepository": "https://github.com/MalenkiySolovey/sing-box",
+      "sourceRevision": "8b914e4be5103d5f343dac94f26c3ebeeb226ffc",
+      "upstreamRepository": "https://github.com/SagerNet/sing-box",
+      "upstreamRevision": "af6e64c3b69e6132ebaee0e1a3d24e93903f6709"
+    },
+    {
+      "id": "shtorm-extended",
+      "name": "Shtorm Extended",
+      "providerVersion": "v1.14.3-extended-2.7.3",
+      "runtimeSemanticVersion": "1.14.3",
+      "module": "github.com/shtorm-7/sing-box-extended",
+      "moduleSum": "h1:Jo0rEFOGXZt+2QEkx0wSQPBDg750I4ad1oSKvOtCe5E=",
+      "sourceRepository": "https://github.com/shtorm-7/sing-box-extended",
+      "sourceRevision": "d9442d14b19ddd02605bf3ee893a171947038e19",
+      "upstreamRepository": "https://github.com/SagerNet/sing-box",
+      "upstreamRevision": "7054cac5124465ffdb145870d7c01885566711b1"
+    }
+  ]
+}

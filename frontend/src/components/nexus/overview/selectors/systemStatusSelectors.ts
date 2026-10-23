@@ -4,6 +4,7 @@ import {
   plainText,
   plainTextList,
 } from './selectorUtils'
+import { readCoreProviderIdentity, type CoreProviderIdentity } from '@/types/coreProvider'
 
 export interface SystemStatus {
   ipv4: string[]
@@ -13,6 +14,7 @@ export interface SystemStatus {
   uptimeSec: number
   singboxRunning: boolean
   singboxVersion?: string
+  coreProvider?: CoreProviderIdentity
   singboxAlloc?: number
   singboxUptimeSec?: number
 }
@@ -43,6 +45,8 @@ export const selectSystemStatus = (payload?: unknown): SystemStatus => {
   }
 
   if (singboxVersion) selected.singboxVersion = singboxVersion
+  const provider = readCoreProviderIdentity(sbd.provider)
+  if (provider) selected.coreProvider = provider
   if (singboxAlloc !== undefined) selected.singboxAlloc = singboxAlloc
   if (singboxUptimeSec !== undefined) selected.singboxUptimeSec = singboxUptimeSec
 
