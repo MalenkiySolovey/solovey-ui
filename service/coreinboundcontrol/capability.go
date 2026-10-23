@@ -192,10 +192,5 @@ func safeALPN(value string) bool {
 }
 
 func runtimeIdentityVerified(identity CoreRuntimeIdentityV1) bool {
-	return identity.Schema == RuntimeIdentitySchemaV1 && identity.State == RuntimeIdentityVerified && len(identity.ReasonCodes) == 0 &&
-		identity.SingBoxModule == PinnedSingBoxModule && identity.SingBoxVersion == PinnedSingBoxVersion && identity.SingBoxModuleSum == PinnedSingBoxModuleSum &&
-		identity.SingBoxSourceRevision == PinnedSingBoxSourceRevision && identity.UTLSModule == PinnedUTLSModule &&
-		identity.UTLSVersion == PinnedUTLSVersion && identity.UTLSModuleSum == PinnedUTLSModuleSum && identity.UTLSSourceRevision == PinnedUTLSSourceRevision &&
-		identity.BuildProfileRevision == expectedBuildProfileRevision(identity.WithUTLS) &&
-		identity.CapabilityResolverRevision == CapabilityResolverRevisionV1 && identity.IdentityRevision != ""
+	return RuntimeIdentityVerifiedV1(identity)
 }

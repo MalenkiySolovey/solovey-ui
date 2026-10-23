@@ -72,7 +72,10 @@ jobs:
         run: go test -run '^$' -tags "$EXTENDED_TAGS" ./...
       - name: Native lifecycle, management and semantic boundary race regressions
         shell: bash
-        run: go test -race -count=1 -timeout=10m -tags "$EXTENDED_TAGS" github.com/sagernet/sing-box/adapter ./core/... ./internal/singbox/apply ./service/coreinboundcontrol
+        run: go test -race -count=1 -timeout=10m -tags "$EXTENDED_TAGS" github.com/sagernet/sing-box/adapter ./core/... ./internal/singbox/apply ./service/coreinboundcontrol ./components/server-protection/service/nativefallback
+      - name: Observe real provider and capability build metadata
+        shell: bash
+        run: go run -tags "$EXTENDED_TAGS" ./tests/core-provider-identity
       - name: Build both shared backend component profiles
         shell: bash
         run: |
@@ -289,6 +292,9 @@ jobs:
         run: go test -race -p 1 -count=1 -timeout=3m -tags with_quic ./core/runtime ./core/inboundidentity ./core/tracker ./core/registry
       - name: Shared scoped API contracts
         run: go test -race -p 1 -count=1 -timeout=3m -tags with_quic -run TestRuntime ./api
+      - name: Observe Official provider and capability build metadata
+        shell: bash
+        run: go run -mod=readonly -tags with_quic,with_utls ./tests/core-provider-identity
 
   ssm-integration:
     name: SSM cache integration (${{ matrix.os }})

@@ -3,6 +3,8 @@ package nativefallback
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
@@ -11,6 +13,7 @@ import (
 	neutralfallback "github.com/MalenkiySolovey/solovey-ui/componenthost/fallbacktargets"
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	"github.com/MalenkiySolovey/solovey-ui/components/server-protection/domain"
+	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/service/coreinboundcontrol"
 )
 
@@ -168,6 +171,56 @@ func TestPlannerProducesDeterministicReadOnlyBoundPlan(t *testing.T) {
 		if strings.Contains(string(payload), forbidden) {
 			t.Fatalf("plan leaked forbidden content %q: %s", forbidden, payload)
 		}
+	}
+}
+
+func TestPlannerQualifiesProviderSourcesAndRejectsForgedIdentityBindings(t *testing.T) {
+	content, err := os.ReadFile(filepath.Join("..", "..", "..", "..", "core", "provider", "pins.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var catalog struct{ Sources []coreprovider.Source }
+	if err := json.Unmarshal(content, &catalog); err != nil {
+		t.Fatal(err)
+	}
+	qualified := 0
+	for _, source := range catalog.Sources {
+		t.Run(source.SourceRevision, func(t *testing.T) {
+			identity := coreinboundcontrol.ResolveRuntimeIdentityV1(coreinboundcontrol.RuntimeBuildInputV1{
+				Available: true, WithUTLS: true, BuildProfileRevision: coreinboundcontrol.BuildProfileWithUTLSRevision,
+				CapabilityResolverRevision: coreinboundcontrol.CapabilityResolverRevisionV1,
+				Modules: []coreinboundcontrol.RuntimeModuleV1{
+					{Path: coreinboundcontrol.PinnedSingBoxModule, Version: "v" + source.RuntimeSemanticVersion, Replaced: true,
+						Replacement: &coreinboundcontrol.RuntimeModuleV1{Path: source.Module, Version: source.ProviderVersion, Sum: source.ModuleSum}},
+					{Path: coreinboundcontrol.PinnedUTLSModule, Version: coreinboundcontrol.PinnedUTLSVersion, Sum: coreinboundcontrol.PinnedUTLSModuleSum},
+				},
+			})
+			fixture := newPlannerFixture(t)
+			fixture.core.identity, fixture.core.snapshot = identity, vlessSnapshot(identity)
+			plan, err := fixture.planner.Plan(t.Context(), fixture.request)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !coreinboundcontrol.RuntimeIdentityVerifiedV1(identity) {
+				if plan.Eligible || fixture.core.previewCalls != 0 {
+					t.Fatal("unqualified research source acquired a plan")
+				}
+				return
+			}
+			qualified++
+			if !plan.Eligible || plan.ActualState != domain.NativeActualNotApplied || fixture.core.previewCalls != 1 {
+				t.Fatalf("qualified source did not retain the existing read-only plan: %+v", plan)
+			}
+			fixture.core.identity.IdentityRevision = strings.Repeat("f", 64)
+			fixture.core.snapshot.RuntimeIdentityRevision = fixture.core.identity.IdentityRevision
+			plan, err = fixture.planner.Plan(t.Context(), fixture.request)
+			if err != nil || plan.Eligible || fixture.core.previewCalls != 1 {
+				t.Fatal("matching forged identity/snapshot digests reached core preview")
+			}
+		})
+	}
+	if qualified != 2 {
+		t.Fatalf("qualified provider count=%d", qualified)
 	}
 }
 

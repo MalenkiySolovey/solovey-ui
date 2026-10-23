@@ -17,6 +17,14 @@ checksum drift yield `UNKNOWN` with reason codes. They never infer Official.
 Unrecognized metadata is not reflected into diagnostics. The observed build
 identity is immutable for the process; each caller receives its own reason slice.
 
+The existing inbound-control identity separately qualifies bounded fallback
+behavior on reviewed source revisions. It reads the actual replacement tuple
+through this source catalog, validates the observed uTLS/build profile, and
+binds the result to a complete identity digest. The fallback planner consumes
+that shared verifier. Research-source recognition alone grants no capability.
+QUIC compile facts retain the observed source and module revisions; an unknown
+identity cannot acquire support by setting a verified label or nonempty digest.
+
 The server summary, capability snapshot, Operations status, Doctor and CLI use
 this owner. Classic and Nexus share the same wire reader and summary component.
 The identity is observational: there is no database setting, migration, new

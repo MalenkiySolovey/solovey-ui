@@ -15,11 +15,16 @@ func TestCapabilityResolverRevisionMatchesSource(t *testing.T) {
 	if !ok {
 		t.Fatal("caller location unavailable")
 	}
-	content, err := os.ReadFile(filepath.Join(filepath.Dir(currentFile), "capability.go"))
-	if err != nil {
-		t.Fatal(err)
+	hash := sha256.New()
+	for _, name := range []string{"capability.go", "identity.go", "provider_identity.go"} {
+		content, err := os.ReadFile(filepath.Join(filepath.Dir(currentFile), name))
+		if err != nil {
+			t.Fatal(err)
+		}
+		fmt.Fprintf(hash, "%s\x00", name)
+		hash.Write([]byte(strings.ReplaceAll(string(content), "\r\n", "\n")))
 	}
-	revision := fmt.Sprintf("%x", sha256.Sum256(content))
+	revision := fmt.Sprintf("%x", hash.Sum(nil))
 	if revision != CapabilityResolverRevisionV1 {
 		t.Fatalf("capability resolver revision = %s, want %s", CapabilityResolverRevisionV1, revision)
 	}
