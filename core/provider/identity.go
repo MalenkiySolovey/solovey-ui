@@ -101,8 +101,45 @@ func observe() Identity {
 }
 
 func Resolve(info *debug.BuildInfo) Identity {
+	engine, reason := engineDependency(info)
+	if reason != "" {
+		return unresolved(reason)
+	}
+	for _, source := range pins.Sources {
+		if moduleSourceMatches(engine, source) {
+			return finish(Identity{Schema: Schema, State: Verified, Source: source,
+				ArtifactState: Unknown, ReasonCodes: []string{"ARTIFACT_DIGEST_NOT_OBSERVED"}})
+		}
+	}
+	return unresolved("ENGINE_SOURCE_UNVERIFIED")
+}
+
+// ModuleSourceMatches compares observed module facts with a separately supplied
+// immutable source declaration. It grants no source qualification, publisher
+// trust or installation authority. Unlike Resolve, it does not require that a
+// future signed source already appear in this process's compiled catalog.
+func ModuleSourceMatches(info *debug.BuildInfo, source Source) bool {
+	engine, reason := engineDependency(info)
+	return reason == "" && moduleSourceMatches(engine, source)
+}
+
+// ResolveModule observes an exact linked module tuple in the compiled catalog.
+// It has no original engine-requirement fact. Callers reading build metadata
+// use Resolve; capability owners separately check their observed requirement.
+// This projection grants no artifact trust or capability qualification.
+func ResolveModule(module, version, sum string) Identity {
+	for _, source := range pins.Sources {
+		if module == source.Module && version == source.ProviderVersion && sum == source.ModuleSum {
+			return finish(Identity{Schema: Schema, State: Verified, Source: source,
+				ArtifactState: Unknown, ReasonCodes: []string{"ARTIFACT_DIGEST_NOT_OBSERVED"}})
+		}
+	}
+	return unresolved("ENGINE_SOURCE_UNVERIFIED")
+}
+
+func engineDependency(info *debug.BuildInfo) (*debug.Module, string) {
 	if info == nil {
-		return unresolved("BUILD_INFO_UNAVAILABLE")
+		return nil, "BUILD_INFO_UNAVAILABLE"
 	}
 	var engine *debug.Module
 	for _, module := range info.Deps {
@@ -110,26 +147,28 @@ func Resolve(info *debug.BuildInfo) Identity {
 			continue
 		}
 		if engine != nil {
-			return unresolved("ENGINE_MODULE_AMBIGUOUS")
+			return nil, "ENGINE_MODULE_AMBIGUOUS"
 		}
 		engine = module
 	}
 	if engine == nil {
-		return unresolved("ENGINE_MODULE_UNAVAILABLE")
+		return nil, "ENGINE_MODULE_UNAVAILABLE"
+	}
+	if engine.Replace != nil && engine.Replace.Replace != nil {
+		return nil, "ENGINE_REPLACEMENT_UNVERIFIED"
+	}
+	return engine, ""
+}
+
+func moduleSourceMatches(engine *debug.Module, source Source) bool {
+	if engine == nil || source.Module == "" || source.ProviderVersion == "" || source.ModuleSum == "" ||
+		source.RuntimeSemanticVersion == "" || engine.Version != "v"+source.RuntimeSemanticVersion {
+		return false
 	}
 	if engine.Replace != nil {
 		engine = engine.Replace
 	}
-	if engine.Replace != nil {
-		return unresolved("ENGINE_REPLACEMENT_UNVERIFIED")
-	}
-	for _, source := range pins.Sources {
-		if engine.Path == source.Module && engine.Version == source.ProviderVersion && engine.Sum == source.ModuleSum {
-			return finish(Identity{Schema: Schema, State: Verified, Source: source,
-				ArtifactState: Unknown, ReasonCodes: []string{"ARTIFACT_DIGEST_NOT_OBSERVED"}})
-		}
-	}
-	return unresolved("ENGINE_SOURCE_UNVERIFIED")
+	return engine.Replace == nil && engine.Path == source.Module && engine.Version == source.ProviderVersion && engine.Sum == source.ModuleSum
 }
 
 func unresolved(reason string) Identity {

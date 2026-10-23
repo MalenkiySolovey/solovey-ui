@@ -16,10 +16,13 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 )
 
 const (
 	SchemaV1           = "solovey.release/v1"
+	SchemaV2           = "solovey.release/v2"
 	SignatureAlgorithm = "Ed25519"
 	MaxManifestBytes   = 2 << 20
 	MaxArtifacts       = 128
@@ -36,14 +39,15 @@ const (
 )
 
 type Artifact struct {
-	Name       string `json:"name"`
-	Role       string `json:"role"`
-	Platform   string `json:"platform"`
-	Arch       string `json:"arch"`
-	MediaType  string `json:"mediaType"`
-	Size       int64  `json:"size"`
-	SHA256     string `json:"sha256"`
-	Provenance string `json:"provenance"`
+	Name         string `json:"name"`
+	Role         string `json:"role"`
+	Platform     string `json:"platform"`
+	Arch         string `json:"arch"`
+	MediaType    string `json:"mediaType"`
+	Size         int64  `json:"size"`
+	SHA256       string `json:"sha256"`
+	Provenance   string `json:"provenance"`
+	CoreProvider string `json:"coreProvider,omitempty"`
 }
 
 type Component struct {
@@ -55,27 +59,28 @@ type Component struct {
 }
 
 type Manifest struct {
-	Schema              string      `json:"schema"`
-	ReleaseID           string      `json:"releaseId"`
-	Sequence            uint64      `json:"sequence"`
-	Version             string      `json:"version"`
-	Channel             Channel     `json:"channel"`
-	IssuedAt            int64       `json:"issuedAt"`
-	ExpiresAt           int64       `json:"expiresAt"`
-	DeploymentRevision  string      `json:"deploymentRevision"`
-	MinimumPanelVersion string      `json:"minimumPanelVersion"`
-	MaximumPanelVersion string      `json:"maximumPanelVersion"`
-	MinimumCoreSchema   string      `json:"minimumCoreSchema"`
-	MaximumCoreSchema   string      `json:"maximumCoreSchema"`
-	TargetCoreSchema    string      `json:"targetCoreSchema"`
-	BrokerCapability    string      `json:"brokerCapability"`
-	MigrationSetDigest  string      `json:"migrationSetDigest"`
-	ReleaseNotesDigest  string      `json:"releaseNotesDigest"`
-	RestartClass        string      `json:"restartClass"`
-	RebootClass         string      `json:"rebootClass"`
-	RollbackClass       string      `json:"rollbackClass"`
-	Artifacts           []Artifact  `json:"artifacts"`
-	Components          []Component `json:"components"`
+	Schema              string               `json:"schema"`
+	ReleaseID           string               `json:"releaseId"`
+	Sequence            uint64               `json:"sequence"`
+	Version             string               `json:"version"`
+	Channel             Channel              `json:"channel"`
+	IssuedAt            int64                `json:"issuedAt"`
+	ExpiresAt           int64                `json:"expiresAt"`
+	DeploymentRevision  string               `json:"deploymentRevision"`
+	MinimumPanelVersion string               `json:"minimumPanelVersion"`
+	MaximumPanelVersion string               `json:"maximumPanelVersion"`
+	MinimumCoreSchema   string               `json:"minimumCoreSchema"`
+	MaximumCoreSchema   string               `json:"maximumCoreSchema"`
+	TargetCoreSchema    string               `json:"targetCoreSchema"`
+	BrokerCapability    string               `json:"brokerCapability"`
+	MigrationSetDigest  string               `json:"migrationSetDigest"`
+	ReleaseNotesDigest  string               `json:"releaseNotesDigest"`
+	RestartClass        string               `json:"restartClass"`
+	RebootClass         string               `json:"rebootClass"`
+	RollbackClass       string               `json:"rollbackClass"`
+	Artifacts           []Artifact           `json:"artifacts"`
+	Components          []Component          `json:"components"`
+	CoreProviders       []CoreProviderSource `json:"coreProviders,omitempty"`
 }
 
 type Envelope struct {
@@ -162,11 +167,13 @@ func Canonical(manifest Manifest) ([]byte, error) {
 	clone := manifest
 	clone.Artifacts = append([]Artifact(nil), manifest.Artifacts...)
 	clone.Components = append([]Component(nil), manifest.Components...)
+	clone.CoreProviders = append([]CoreProviderSource(nil), manifest.CoreProviders...)
 	sort.Slice(clone.Artifacts, func(i, j int) bool {
 		left, right := clone.Artifacts[i], clone.Artifacts[j]
-		return left.Platform+"\x00"+left.Arch+"\x00"+left.Role+"\x00"+left.Name < right.Platform+"\x00"+right.Arch+"\x00"+right.Role+"\x00"+right.Name
+		return left.Platform+"\x00"+left.Arch+"\x00"+left.CoreProvider+"\x00"+left.Role+"\x00"+left.Name < right.Platform+"\x00"+right.Arch+"\x00"+right.CoreProvider+"\x00"+right.Role+"\x00"+right.Name
 	})
 	sort.Slice(clone.Components, func(i, j int) bool { return clone.Components[i].ID < clone.Components[j].ID })
+	sort.Slice(clone.CoreProviders, func(i, j int) bool { return clone.CoreProviders[i].ID < clone.CoreProviders[j].ID })
 	return json.Marshal(clone)
 }
 
@@ -178,7 +185,7 @@ func Sign(manifest Manifest, keyID string, privateKey ed25519.PrivateKey) ([]byt
 	if err != nil {
 		return nil, err
 	}
-	envelope := Envelope{Schema: SchemaV1, KeyID: keyID, Algorithm: SignatureAlgorithm,
+	envelope := Envelope{Schema: manifest.Schema, KeyID: keyID, Algorithm: SignatureAlgorithm,
 		Manifest: canonical, Signature: base64.StdEncoding.EncodeToString(ed25519.Sign(privateKey, canonical))}
 	return json.Marshal(envelope)
 }
@@ -187,11 +194,14 @@ func Verify(raw []byte, store TrustStore, now time.Time, channel Channel, lastSe
 	if len(raw) == 0 || len(raw) > MaxManifestBytes {
 		return Verified{}, errors.New("release envelope size is invalid")
 	}
+	if jsonvalue.StrictObject(raw) != nil {
+		return Verified{}, errors.New("release envelope JSON is ambiguous or malformed")
+	}
 	var envelope Envelope
 	if err := decodeStrict(raw, &envelope); err != nil {
-		return Verified{}, fmt.Errorf("decode release envelope: %w", err)
+		return Verified{}, errors.New("release envelope fields are invalid")
 	}
-	if envelope.Schema != SchemaV1 || envelope.Algorithm != SignatureAlgorithm || !identifier.MatchString(envelope.KeyID) {
+	if !oneOf(envelope.Schema, SchemaV1, SchemaV2) || envelope.Algorithm != SignatureAlgorithm || !identifier.MatchString(envelope.KeyID) {
 		return Verified{}, errors.New("release envelope identity is invalid")
 	}
 	root, ok := store.roots[envelope.KeyID]
@@ -200,7 +210,10 @@ func Verify(raw []byte, store TrustStore, now time.Time, channel Channel, lastSe
 	}
 	var manifest Manifest
 	if err := decodeStrict(envelope.Manifest, &manifest); err != nil {
-		return Verified{}, fmt.Errorf("decode release manifest: %w", err)
+		return Verified{}, errors.New("release manifest fields are invalid")
+	}
+	if manifest.Schema != envelope.Schema {
+		return Verified{}, errors.New("release envelope and manifest schemas differ")
 	}
 	canonical, err := Canonical(manifest)
 	if err != nil {
@@ -227,7 +240,7 @@ func Verify(raw []byte, store TrustStore, now time.Time, channel Channel, lastSe
 }
 
 func (m Manifest) Validate() error {
-	if m.Schema != SchemaV1 || !identifier.MatchString(m.ReleaseID) || m.Sequence == 0 || !version.MatchString(m.Version) ||
+	if !oneOf(m.Schema, SchemaV1, SchemaV2) || !identifier.MatchString(m.ReleaseID) || m.Sequence == 0 || !version.MatchString(m.Version) ||
 		(m.Channel != ChannelMain && m.Channel != ChannelBeta) || m.IssuedAt <= 0 || m.ExpiresAt <= m.IssuedAt ||
 		m.ExpiresAt-m.IssuedAt > int64((14*24*time.Hour)/time.Second) || !digest.MatchString(m.DeploymentRevision) ||
 		!version.MatchString(m.MinimumPanelVersion) || !version.MatchString(m.MaximumPanelVersion) ||
@@ -246,6 +259,9 @@ func (m Manifest) Validate() error {
 	if len(m.Artifacts) == 0 || len(m.Artifacts) > MaxArtifacts || len(m.Components) > MaxComponents {
 		return errors.New("release manifest cardinality is invalid")
 	}
+	if err := m.validateCoreProviders(); err != nil {
+		return err
+	}
 	seenArtifacts := map[string]struct{}{}
 	seenRoles := map[string]struct{}{}
 	artifactDigests := map[string]struct{}{}
@@ -262,12 +278,12 @@ func (m Manifest) Validate() error {
 			return errors.New("release artifact set exceeds total size limit")
 		}
 		totalBytes += artifact.Size
-		identity := artifact.Platform + "\x00" + artifact.Arch + "\x00" + artifact.Role + "\x00" + artifact.Name
+		identity := artifact.Platform + "\x00" + artifact.Arch + "\x00" + artifact.CoreProvider + "\x00" + artifact.Role + "\x00" + artifact.Name
 		if _, exists := seenArtifacts[identity]; exists {
 			return errors.New("release artifact identity is duplicated")
 		}
 		seenArtifacts[identity] = struct{}{}
-		roleIdentity := artifact.Platform + "\x00" + artifact.Arch + "\x00" + artifact.Role
+		roleIdentity := artifact.Platform + "\x00" + artifact.Arch + "\x00" + artifact.CoreProvider + "\x00" + artifact.Role
 		if _, exists := seenRoles[roleIdentity]; exists {
 			return errors.New("release artifact role is duplicated")
 		}
@@ -280,7 +296,7 @@ func (m Manifest) Validate() error {
 		rolesByTarget[target][artifact.Role] = struct{}{}
 	}
 	for target, roles := range rolesByTarget {
-		if strings.HasPrefix(target, "linux/") {
+		if m.Schema == SchemaV1 && strings.HasPrefix(target, "linux/") {
 			for _, role := range requiredNativeRoles {
 				if _, ok := roles[role]; !ok {
 					return fmt.Errorf("release target %s lacks coherent role %s", target, role)
@@ -308,6 +324,9 @@ func (m Manifest) Validate() error {
 }
 
 func (m Manifest) ArtifactsFor(platform, arch, profile string) ([]Artifact, error) {
+	if m.Schema != SchemaV1 {
+		return nil, errors.New("release requires explicit core provider selection")
+	}
 	if profile != "full" && profile != "core" {
 		return nil, errors.New("release binary profile is unsupported")
 	}

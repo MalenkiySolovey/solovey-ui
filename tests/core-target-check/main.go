@@ -134,16 +134,22 @@ func run() error {
 	}
 	digest := sha256.New()
 	_, readErr := io.Copy(digest, file)
+	info, statErr := file.Stat()
+	var artifactScenarios []string
+	if readErr == nil && statErr == nil {
+		artifactScenarios, readErr = inspectArtifactFixture(file, identity.Source, hex.EncodeToString(digest.Sum(nil)), info.Size())
+	}
 	closeErr := file.Close()
-	if readErr != nil || closeErr != nil {
-		return errors.New("probe executable digest failed")
+	if readErr != nil || statErr != nil || closeErr != nil {
+		return fmt.Errorf("probe executable digest or signed artifact inspection failed: %w", errors.Join(readErr, statErr, closeErr))
 	}
 	return json.NewEncoder(os.Stdout).Encode(struct {
-		Schema       string                `json:"schema"`
-		BinaryDigest string                `json:"binaryDigest"`
-		Identity     coreprovider.Identity `json:"coreProvider"`
-		Scenarios    []string              `json:"passedScenarios"`
-	}{"solovey.core-target-probe/v1", hex.EncodeToString(digest.Sum(nil)), identity, passed})
+		Schema            string                `json:"schema"`
+		BinaryDigest      string                `json:"binaryDigest"`
+		Identity          coreprovider.Identity `json:"coreProvider"`
+		Scenarios         []string              `json:"passedScenarios"`
+		ArtifactScenarios []string              `json:"passedArtifactScenarios"`
+	}{"solovey.core-target-probe/v1", hex.EncodeToString(digest.Sum(nil)), identity, passed, artifactScenarios})
 }
 
 func decode(raw []byte, target any) error {
