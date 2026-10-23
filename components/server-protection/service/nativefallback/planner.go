@@ -300,14 +300,7 @@ func admittedVariant(snapshot coreinboundcontrol.InboundFallbackSnapshotV1) (cor
 }
 
 func runtimeIdentityExact(identity coreinboundcontrol.CoreRuntimeIdentityV1, snapshot coreinboundcontrol.InboundFallbackSnapshotV1) bool {
-	expectedProfile := coreinboundcontrol.BuildProfileWithoutUTLSRevision
-	if identity.WithUTLS {
-		expectedProfile = coreinboundcontrol.BuildProfileWithUTLSRevision
-	}
-	return identity.Schema == coreinboundcontrol.RuntimeIdentitySchemaV1 && identity.State == coreinboundcontrol.RuntimeIdentityVerified && len(identity.ReasonCodes) == 0 &&
-		identity.SingBoxModule == coreinboundcontrol.PinnedSingBoxModule && identity.SingBoxVersion == coreinboundcontrol.PinnedSingBoxVersion && identity.SingBoxModuleSum == coreinboundcontrol.PinnedSingBoxModuleSum &&
-		identity.SingBoxSourceRevision == coreinboundcontrol.PinnedSingBoxSourceRevision && identity.UTLSModule == coreinboundcontrol.PinnedUTLSModule && identity.UTLSVersion == coreinboundcontrol.PinnedUTLSVersion &&
-		identity.UTLSModuleSum == coreinboundcontrol.PinnedUTLSModuleSum && identity.UTLSSourceRevision == coreinboundcontrol.PinnedUTLSSourceRevision && identity.BuildProfileRevision == expectedProfile && identity.IdentityRevision != "" &&
+	return coreinboundcontrol.RuntimeIdentityVerifiedV1(identity) &&
 		identity.IdentityRevision == snapshot.RuntimeIdentityRevision && identity.CapabilityResolverRevision == coreinboundcontrol.CapabilityResolverRevisionV1 && snapshot.CapabilityResolverRevision == identity.CapabilityResolverRevision
 }
 

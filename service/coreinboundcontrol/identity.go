@@ -8,7 +8,8 @@ import (
 func ReadQUICBuildFeatureV1(identity CoreRuntimeIdentityV1) QUICBuildFeatureV1 {
 	state := BuildFeatureUnavailable
 	reasons := []ReasonCode(nil)
-	if identity.State != RuntimeIdentityVerified {
+	verified := RuntimeIdentityVerifiedV1(identity)
+	if !verified {
 		state = BuildFeatureUnknown
 		reasons = append(reasons, ReasonRuntimeIdentityUnverified)
 	} else if compiledWithQUIC {
@@ -16,13 +17,16 @@ func ReadQUICBuildFeatureV1(identity CoreRuntimeIdentityV1) QUICBuildFeatureV1 {
 	}
 	value := QUICBuildFeatureV1{
 		Schema: QUICBuildFeatureSchemaV1, Feature: "with_quic", State: state,
-		RuntimeIdentity: identity.IdentityRevision, SourceRevision: PinnedSingBoxSourceRevision,
-		ModuleRevision: digestValue(struct{ Module, Version, Sum string }{PinnedSingBoxModule, PinnedSingBoxVersion, PinnedSingBoxModuleSum}),
+		RuntimeIdentity: identity.IdentityRevision,
 		BuildProfileRevision: digestValue(struct {
 			Schema   string
 			WithQUIC bool
 		}{"solovey-ui/core-quic-build-profile/v1", compiledWithQUIC}),
 		ObservationMethod: "compile_tag_and_debug_build_info", ReasonCodes: normalizedReasons(reasons),
+	}
+	if verified {
+		value.SourceRevision = identity.SingBoxSourceRevision
+		value.ModuleRevision = digestValue(struct{ Module, Version, Sum string }{identity.SingBoxModule, identity.SingBoxVersion, identity.SingBoxModuleSum})
 	}
 	value.Revision = digestValue(struct {
 		Schema, Feature                                                                          string
@@ -34,56 +38,75 @@ func ReadQUICBuildFeatureV1(identity CoreRuntimeIdentityV1) QUICBuildFeatureV1 {
 }
 
 func ReadRuntimeIdentityV1() CoreRuntimeIdentityV1 {
+	info, ok := debug.ReadBuildInfo()
+	if !ok {
+		info = nil
+	}
+	return ResolveRuntimeIdentityV1(runtimeInputFromBuildInfo(info))
+}
+
+func runtimeInputFromBuildInfo(info *debug.BuildInfo) RuntimeBuildInputV1 {
 	input := RuntimeBuildInputV1{
 		WithUTLS:                   compiledWithUTLS,
 		BuildProfileRevision:       expectedBuildProfileRevision(compiledWithUTLS),
 		CapabilityResolverRevision: CapabilityResolverRevisionV1,
 	}
-	info, ok := debug.ReadBuildInfo()
-	input.Available = ok
-	if ok {
+	input.Available = info != nil
+	if info != nil {
 		input.Modules = make([]RuntimeModuleV1, 0, len(info.Deps))
 		for _, dependency := range info.Deps {
 			if dependency == nil || dependency.Path != PinnedSingBoxModule && dependency.Path != PinnedUTLSModule {
 				continue
 			}
-			input.Modules = append(input.Modules, RuntimeModuleV1{
+			module := RuntimeModuleV1{
 				Path: dependency.Path, Version: dependency.Version, Sum: dependency.Sum, Replaced: dependency.Replace != nil,
-			})
+			}
+			if replacement := dependency.Replace; replacement != nil {
+				module.Replacement = &RuntimeModuleV1{Path: replacement.Path, Version: replacement.Version,
+					Sum: replacement.Sum, Replaced: replacement.Replace != nil}
+			}
+			input.Modules = append(input.Modules, module)
 		}
 	}
-	return ResolveRuntimeIdentityV1(input)
+	return input
 }
 
 func ResolveRuntimeIdentityV1(input RuntimeBuildInputV1) CoreRuntimeIdentityV1 {
 	reasons := make([]ReasonCode, 0, 8)
 	modules := make(map[string]RuntimeModuleV1, len(input.Modules))
 	for _, module := range input.Modules {
+		if _, duplicate := modules[module.Path]; duplicate {
+			switch module.Path {
+			case PinnedSingBoxModule:
+				reasons = append(reasons, ReasonSingBoxModuleAmbiguous)
+			case PinnedUTLSModule:
+				reasons = append(reasons, ReasonUTLSModuleAmbiguous)
+			}
+		}
 		modules[module.Path] = module
 	}
 	if !input.Available {
 		reasons = append(reasons, ReasonBuildInfoMissing)
 	}
-	checkModule := func(path, version, sum string, missing, replaced, versionMismatch, sumMismatch ReasonCode) {
-		module, ok := modules[path]
-		if !ok {
-			reasons = append(reasons, missing)
-			return
+	engine, engineReasons := resolveEngineFact(modules[PinnedSingBoxModule])
+	reasons = append(reasons, engineReasons...)
+	utls := modules[PinnedUTLSModule]
+	utlsValid := utls.Path == PinnedUTLSModule && !utls.Replaced && utls.Replacement == nil && utls.Version == PinnedUTLSVersion && utls.Sum == PinnedUTLSModuleSum
+	if utls.Path == "" {
+		if input.WithUTLS {
+			reasons = append(reasons, ReasonUTLSModuleMissing)
 		}
-		if module.Replaced {
-			reasons = append(reasons, replaced)
+	} else {
+		if utls.Replaced || utls.Replacement != nil {
+			reasons = append(reasons, ReasonUTLSModuleReplaced)
 		}
-		if module.Version != version {
-			reasons = append(reasons, versionMismatch)
+		if utls.Version != PinnedUTLSVersion {
+			reasons = append(reasons, ReasonUTLSVersionMismatch)
 		}
-		if module.Sum != sum {
-			reasons = append(reasons, sumMismatch)
+		if utls.Sum != PinnedUTLSModuleSum {
+			reasons = append(reasons, ReasonUTLSSumMismatch)
 		}
 	}
-	checkModule(PinnedSingBoxModule, PinnedSingBoxVersion, PinnedSingBoxModuleSum,
-		ReasonSingBoxModuleMissing, ReasonSingBoxModuleReplaced, ReasonSingBoxVersionMismatch, ReasonSingBoxSumMismatch)
-	checkModule(PinnedUTLSModule, PinnedUTLSVersion, PinnedUTLSModuleSum,
-		ReasonUTLSModuleMissing, ReasonUTLSModuleReplaced, ReasonUTLSVersionMismatch, ReasonUTLSSumMismatch)
 	expectedProfile := expectedBuildProfileRevision(input.WithUTLS)
 	if input.BuildProfileRevision == "" {
 		reasons = append(reasons, ReasonBuildProfileUnknown)
@@ -100,14 +123,20 @@ func ResolveRuntimeIdentityV1(input RuntimeBuildInputV1) CoreRuntimeIdentityV1 {
 	}
 	identity := CoreRuntimeIdentityV1{
 		Schema: RuntimeIdentitySchemaV1, State: state,
-		SingBoxModule: PinnedSingBoxModule, SingBoxVersion: moduleValue(modules, PinnedSingBoxModule).Version,
-		SingBoxModuleSum: moduleValue(modules, PinnedSingBoxModule).Sum, SingBoxSourceRevision: PinnedSingBoxSourceRevision,
-		UTLSModule: PinnedUTLSModule, UTLSVersion: moduleValue(modules, PinnedUTLSModule).Version,
-		UTLSModuleSum: moduleValue(modules, PinnedUTLSModule).Sum, UTLSSourceRevision: PinnedUTLSSourceRevision,
+		SingBoxModule: engine.Module, SingBoxVersion: engine.Version,
+		SingBoxModuleSum: engine.Sum, SingBoxSourceRevision: engine.SourceRevision,
 		WithUTLS: input.WithUTLS, BuildProfileRevision: input.BuildProfileRevision,
 		CapabilityResolverRevision: input.CapabilityResolverRevision, ReasonCodes: reasons,
 	}
-	identity.IdentityRevision = digestValue(struct {
+	if utlsValid {
+		identity.UTLSModule, identity.UTLSVersion, identity.UTLSModuleSum, identity.UTLSSourceRevision = PinnedUTLSModule, PinnedUTLSVersion, PinnedUTLSModuleSum, PinnedUTLSSourceRevision
+	}
+	identity.IdentityRevision = runtimeIdentityRevision(identity)
+	return identity
+}
+
+func runtimeIdentityRevision(identity CoreRuntimeIdentityV1) string {
+	return digestValue(struct {
 		Schema                     string
 		State                      RuntimeIdentityState
 		SingBoxModule              string
@@ -125,8 +154,7 @@ func ResolveRuntimeIdentityV1(input RuntimeBuildInputV1) CoreRuntimeIdentityV1 {
 	}{identity.Schema, identity.State, identity.SingBoxModule, identity.SingBoxVersion, identity.SingBoxModuleSum,
 		identity.SingBoxSourceRevision, identity.UTLSModule, identity.UTLSVersion, identity.UTLSModuleSum,
 		identity.UTLSSourceRevision, identity.WithUTLS, identity.BuildProfileRevision,
-		identity.CapabilityResolverRevision, identity.ReasonCodes})
-	return identity
+		identity.CapabilityResolverRevision, normalizedReasons(identity.ReasonCodes)})
 }
 
 func expectedBuildProfileRevision(withUTLS bool) string {
@@ -134,10 +162,6 @@ func expectedBuildProfileRevision(withUTLS bool) string {
 		return BuildProfileWithUTLSRevision
 	}
 	return BuildProfileWithoutUTLSRevision
-}
-
-func moduleValue(modules map[string]RuntimeModuleV1, path string) RuntimeModuleV1 {
-	return modules[path]
 }
 
 func normalizedReasons(values []ReasonCode) []ReasonCode {

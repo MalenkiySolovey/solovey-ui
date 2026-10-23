@@ -14,10 +14,10 @@ const (
 	PinnedUTLSModuleSum         = "h1:Cp+yWkNTFkSihETgGWq34hlVFds5HpYWVOR1xovUVTs="
 	PinnedUTLSSourceRevision    = "f7d52c22f3a8d2f510ad1470f75cb6c3fe26aa37"
 
-	CapabilityResolverRevisionV1            = "389ac746da5c21bab9f74c46310256ea020f2860734d731c9539f299741a7673"
+	CapabilityResolverRevisionV1            = "6b06103cc412211dab76b8d9f7b492357a9333ac15a422ae86cb20c0cc1c9920"
 	BuildProfileWithUTLSRevision            = "2573ebf675608c4e589ebc062ecf46078f77244489cb5a1578ecb2b649ae0608"
 	BuildProfileWithoutUTLSRevision         = "a55ee5ad8f16d0ab527a612e4a89e2170b2751af200430a90022df99cc33192d"
-	PinnedRuntimeIdentityWithUTLSRevisionV1 = "c9d0cccd1233f7b466c966593d13c45d5d34ae98536cb25870d6ea34206b2680"
+	PinnedRuntimeIdentityWithUTLSRevisionV1 = "2566f5f70bc49108d29e4c4cda637000da11efdca91fcd04ffef2ea6c25faa76"
 )
 
 type ReasonCode string
@@ -28,10 +28,13 @@ const (
 	ReasonSingBoxModuleReplaced          ReasonCode = "sing_box_module_replaced"
 	ReasonSingBoxVersionMismatch         ReasonCode = "sing_box_version_mismatch"
 	ReasonSingBoxSumMismatch             ReasonCode = "sing_box_sum_mismatch"
+	ReasonSingBoxModuleAmbiguous         ReasonCode = "sing_box_module_ambiguous"
+	ReasonSingBoxSourceUnqualified       ReasonCode = "sing_box_source_unqualified"
 	ReasonUTLSModuleMissing              ReasonCode = "utls_module_missing"
 	ReasonUTLSModuleReplaced             ReasonCode = "utls_module_replaced"
 	ReasonUTLSVersionMismatch            ReasonCode = "utls_version_mismatch"
 	ReasonUTLSSumMismatch                ReasonCode = "utls_sum_mismatch"
+	ReasonUTLSModuleAmbiguous            ReasonCode = "utls_module_ambiguous"
 	ReasonBuildProfileUnknown            ReasonCode = "build_profile_unknown"
 	ReasonWithUTLSInconsistent           ReasonCode = "with_utls_inconsistent"
 	ReasonResolverRevisionMismatch       ReasonCode = "capability_resolver_revision_mismatch"
@@ -111,10 +114,11 @@ type CoreRuntimeIdentityV1 struct {
 }
 
 type RuntimeModuleV1 struct {
-	Path     string `json:"path"`
-	Version  string `json:"version"`
-	Sum      string `json:"sum"`
-	Replaced bool   `json:"replaced"`
+	Path        string           `json:"path"`
+	Version     string           `json:"version"`
+	Sum         string           `json:"sum"`
+	Replaced    bool             `json:"replaced"`
+	Replacement *RuntimeModuleV1 `json:"replacement,omitempty"`
 }
 
 type RuntimeBuildInputV1 struct {

@@ -36,6 +36,7 @@ func TestPackageImportsStayInsideNarrowCoreBoundary(t *testing.T) {
 		"github.com/MalenkiySolovey/solovey-ui/componenthost/health":        true,
 		"github.com/MalenkiySolovey/solovey-ui/componenthost/resources":     true,
 		"github.com/MalenkiySolovey/solovey-ui/core/registry":               true,
+		"github.com/MalenkiySolovey/solovey-ui/core/provider":               true,
 		"github.com/MalenkiySolovey/solovey-ui/database/model":              true,
 		"github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation": true,
 	}
