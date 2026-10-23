@@ -32,6 +32,36 @@ func TestIdentityUsesActualReplacementAndSeparatesArtifactTrust(t *testing.T) {
 	}
 }
 
+func TestSourceIdentityVerificationRequiresCompleteOwnerProjection(t *testing.T) {
+	for _, source := range pins.Sources {
+		if !SourceIdentityVerified(Resolve(buildFor(source))) {
+			t.Fatal("owner projection rejected")
+		}
+	}
+	for name, mutate := range map[string]func(*Identity){
+		"schema": func(v *Identity) { v.Schema = "unknown" },
+		"state":  func(v *Identity) { v.State = Unknown },
+		"source": func(v *Identity) {
+			v.SourceRevision = "untrusted-source"
+			v.Revision = ""
+			*v = finish(*v)
+		},
+		"digest":     func(v *Identity) { v.Revision = "asserted" },
+		"projection": func(v *Identity) { v.ReasonCodes = []string{"changed"} },
+	} {
+		t.Run(name, func(t *testing.T) {
+			identity := Resolve(buildFor(pins.Sources[0]))
+			mutate(&identity)
+			if SourceIdentityVerified(identity) {
+				t.Fatal("changed projection accepted")
+			}
+		})
+	}
+	if SourceIdentityVerified(Resolve(nil)) || SourceIdentityVerified(Identity{}) {
+		t.Fatal("unknown projection accepted")
+	}
+}
+
 func TestUnknownIdentityCannotMasqueradeAsOfficial(t *testing.T) {
 	source := pins.Sources[0]
 	cases := map[string]*debug.BuildInfo{"missing metadata": nil, "missing module": {}, "unpatched official": {

@@ -4,6 +4,7 @@ import (
 	"context"
 
 	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
+	corelogging "github.com/MalenkiySolovey/solovey-ui/core/logging"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
@@ -24,7 +25,7 @@ func (DryChecker) ValidateConfig(sbConfig []byte) error {
 	if err != nil {
 		return err
 	}
-	instance, err := corebox.NewBox(corebox.Options{Context: ctx, Options: opt})
+	instance, err := corebox.NewBox(corebox.Options{Context: corelogging.WithDryValidation(ctx), Options: opt})
 	if err != nil {
 		return err
 	}

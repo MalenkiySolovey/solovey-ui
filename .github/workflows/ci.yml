@@ -72,7 +72,7 @@ jobs:
         run: go test -run '^$' -tags "$EXTENDED_TAGS" ./...
       - name: Native lifecycle, management and semantic boundary race regressions
         shell: bash
-        run: go test -race -count=1 -timeout=10m -tags "$EXTENDED_TAGS" github.com/sagernet/sing-box/adapter ./core/... ./internal/singbox/apply ./service/coreinboundcontrol ./components/server-protection/service/nativefallback
+        run: go test -race -count=1 -timeout=10m -tags "$EXTENDED_TAGS" github.com/sagernet/sing-box/adapter ./core/... ./internal/singbox/apply ./service/coreinboundcontrol ./components/server-protection/service/nativefallback ./service/update ./internal/singbox/validation ./cmd/internal/corecheck
       - name: Observe real provider and capability build metadata
         shell: bash
         run: go run -tags "$EXTENDED_TAGS" ./tests/core-provider-identity
@@ -81,6 +81,11 @@ jobs:
         run: |
           go build -tags "$EXTENDED_TAGS" -o "$RUNNER_TEMP/solovey-extended-full${{ runner.os == 'Windows' && '.exe' || '' }}" main.go
           go build -tags "$EXTENDED_TAGS,minimal" -o "$RUNNER_TEMP/solovey-extended-core${{ runner.os == 'Windows' && '.exe' || '' }}" main.go
+      - name: Probe native target validation in both actual binary profiles
+        shell: bash
+        run: |
+          go run -tags "$EXTENDED_TAGS" ./tests/core-target-check "$RUNNER_TEMP/solovey-extended-full${{ runner.os == 'Windows' && '.exe' || '' }}" shtorm-extended
+          go run -tags "$EXTENDED_TAGS" ./tests/core-target-check "$RUNNER_TEMP/solovey-extended-core${{ runner.os == 'Windows' && '.exe' || '' }}" shtorm-extended
 
   docker-native-cronet:
     name: Docker native Cronet (${{ matrix.arch }})
@@ -295,6 +300,14 @@ jobs:
       - name: Observe Official provider and capability build metadata
         shell: bash
         run: go run -mod=readonly -tags with_quic,with_utls ./tests/core-provider-identity
+      - name: Probe Official target validation in both actual binary profiles
+        shell: bash
+        run: |
+          tags=with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale
+          go build -mod=readonly -tags "$tags" -o "$RUNNER_TEMP/solovey-official-full${{ runner.os == 'Windows' && '.exe' || '' }}" main.go
+          go build -mod=readonly -tags "$tags,minimal" -o "$RUNNER_TEMP/solovey-official-core${{ runner.os == 'Windows' && '.exe' || '' }}" main.go
+          go run -mod=readonly -tags "$tags" ./tests/core-target-check "$RUNNER_TEMP/solovey-official-full${{ runner.os == 'Windows' && '.exe' || '' }}" sing-box
+          go run -mod=readonly -tags "$tags" ./tests/core-target-check "$RUNNER_TEMP/solovey-official-core${{ runner.os == 'Windows' && '.exe' || '' }}" sing-box
 
   ssm-integration:
     name: SSM cache integration (${{ matrix.os }})

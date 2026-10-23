@@ -287,7 +287,8 @@ func (h *updateHTTP) mutateOperation(c *gin.Context, username, id string, expect
 func (h *updateHTTP) writeError(c *gin.Context, operation string, err error, object any) {
 	reason := updateservice.ReasonCode(err)
 	state := "REJECTED"
-	if errors.Is(err, updateservice.ErrSigningUnavailable) || errors.Is(err, updateservice.ErrProviderUnavailable) {
+	if errors.Is(err, updateservice.ErrSigningUnavailable) || errors.Is(err, updateservice.ErrProviderUnavailable) ||
+		errors.Is(err, updateservice.ErrCoreProviderUnverified) || errors.Is(err, updateservice.ErrCoreProviderMaintenance) {
 		state = "UNAVAILABLE"
 	}
 	if errors.Is(err, updateservice.ErrRecoveryRequired) {

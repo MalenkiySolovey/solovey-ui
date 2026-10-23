@@ -31,6 +31,9 @@ func (client lifecycleReleaseClient) Fetch(context.Context, release.Source) ([]b
 }
 
 type lifecycleProvider struct {
+	stageCalls         int
+	activateCalls      int
+	rollbackCalls      int
 	downloadErr        error
 	preflightAvailable bool
 	preflightErr       error
@@ -51,6 +54,7 @@ func (provider *lifecycleProvider) Capabilities(context.Context) Capabilities {
 		Activate: "AVAILABLE", Rollback: "AVAILABLE", OSUpdates: "EXTERNAL_MANAGED", Reboot: "OPERATOR_ADVISORY"}
 }
 func (provider *lifecycleProvider) DownloadAndStage(_ context.Context, _ model.UpdateOperation, _ release.Verified, artifacts []release.Artifact, progress func(int64)) error {
+	provider.stageCalls++
 	if provider.downloadErr == nil {
 		for _, artifact := range artifacts {
 			progress(artifact.Size)
@@ -62,12 +66,14 @@ func (provider *lifecycleProvider) Preflight(context.Context, model.UpdateOperat
 	return PreflightResult{RollbackAvailable: provider.preflightAvailable, BackupRef: lifecycleDigest("fixture-backup")}, provider.preflightErr
 }
 func (provider *lifecycleProvider) Activate(context.Context, model.UpdateOperation) error {
+	provider.activateCalls++
 	return provider.activateErr
 }
 func (provider *lifecycleProvider) VerifyActive(context.Context, model.UpdateOperation) (bool, error) {
 	return provider.verifyActive, provider.verifyErr
 }
 func (provider *lifecycleProvider) Rollback(context.Context, model.UpdateOperation) (bool, error) {
+	provider.rollbackCalls++
 	return provider.rollbackVerified, provider.rollbackErr
 }
 func (provider *lifecycleProvider) Reconcile(context.Context, model.UpdateOperation) (State, error) {
@@ -142,6 +148,7 @@ func newLifecycleFixture(t testing.TB) lifecycleFixture {
 	manager.platformFacts = func(context.Context) deploymentdomain.PlatformFacts { return updateTestPlatformFacts(now) }
 	manager.platform = func() (string, string) { return "linux", "amd64" }
 	manager.profile = func() string { return "full" }
+	manager.coreProvider = updateTestCoreProvider(t, "sing-box")
 	manager.health = func(context.Context, model.UpdateOperation) HealthResult {
 		return HealthResult{Ready: true, ReasonCodes: []string{"fixture_healthy"}, Revision: lifecycleDigest("fixture-health")}
 	}
