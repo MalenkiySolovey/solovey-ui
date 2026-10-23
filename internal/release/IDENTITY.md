@@ -60,6 +60,21 @@ does not synthesize incomplete Go build metadata for the stricter reader.
 
 ## Offline executable observation
 
+`PanelArchiveReader` owns the shared bounded tar/gzip grammar used by broker
+extraction and the local offline observer. It accepts canonical root/systemd
+directory records and safe regular members, and rejects duplicate labels,
+links, traversal, excessive entries/bytes, missing tar end records and invalid
+gzip trailers or nonzero trailing payloads. Consumers must reach EOF before
+trusting a complete inventory; it grants no filesystem or installation right.
+
+The local command also accepts `--archive CANDIDATE` and emits
+`solovey.panel-archive-observation/v1`. It hashes the complete archive and each
+member, spools only the bounded Panel executable to an exclusive private file,
+then observes that executable without running it. Text build metadata and
+archive filenames cannot select or override its provider. The temporary file
+is removed on success and failure. This is packaging observation, not a
+complete package/SBOM proof or host execution authorization.
+
 `InspectPanelBuild(io.ReaderAt, source)` observes Go build metadata and the ELF
 or PE executable container without executing code. It checks the first-party
 module, unique pinned linked dependencies, provider ABI tag, full/core profile,

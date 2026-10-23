@@ -86,6 +86,14 @@ jobs:
         run: |
           go run -tags "$EXTENDED_TAGS" ./tests/core-target-check "$RUNNER_TEMP/solovey-extended-full${{ runner.os == 'Windows' && '.exe' || '' }}" shtorm-extended
           go run -tags "$EXTENDED_TAGS" ./tests/core-target-check "$RUNNER_TEMP/solovey-extended-core${{ runner.os == 'Windows' && '.exe' || '' }}" shtorm-extended
+      - name: Inspect native binaries inside canonical archives without execution
+        shell: bash
+        run: |
+          for profile in full core; do
+            SOLOVEY_ARTIFACT_TEST_BINARY="$RUNNER_TEMP/solovey-extended-$profile${{ runner.os == 'Windows' && '.exe' || '' }}" \
+              SOLOVEY_ARTIFACT_TEST_PROVIDER=shtorm-extended SOLOVEY_ARTIFACT_TEST_PROFILE="$profile" \
+              go test -tags "$EXTENDED_TAGS" -count=1 -timeout=5m -run '^TestArtifactObservationActualBinaryAndArchive$' ./cmd/solovey-artifact-info
+          done
 
   docker-native-cronet:
     name: Docker native Cronet (${{ matrix.arch }})
@@ -308,6 +316,14 @@ jobs:
           go build -mod=readonly -tags "$tags,minimal" -o "$RUNNER_TEMP/solovey-official-core${{ runner.os == 'Windows' && '.exe' || '' }}" main.go
           go run -mod=readonly -tags "$tags" ./tests/core-target-check "$RUNNER_TEMP/solovey-official-full${{ runner.os == 'Windows' && '.exe' || '' }}" sing-box
           go run -mod=readonly -tags "$tags" ./tests/core-target-check "$RUNNER_TEMP/solovey-official-core${{ runner.os == 'Windows' && '.exe' || '' }}" sing-box
+      - name: Inspect Official binaries inside canonical archives without execution
+        shell: bash
+        run: |
+          for profile in full core; do
+            SOLOVEY_ARTIFACT_TEST_BINARY="$RUNNER_TEMP/solovey-official-$profile${{ runner.os == 'Windows' && '.exe' || '' }}" \
+              SOLOVEY_ARTIFACT_TEST_PROVIDER=sing-box SOLOVEY_ARTIFACT_TEST_PROFILE="$profile" \
+              go test -mod=readonly -count=1 -timeout=5m -run '^TestArtifactObservationActualBinaryAndArchive$' ./cmd/solovey-artifact-info
+          done
 
   ssm-integration:
     name: SSM cache integration (${{ matrix.os }})

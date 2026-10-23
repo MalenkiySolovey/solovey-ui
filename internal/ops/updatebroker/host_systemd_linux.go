@@ -3,9 +3,7 @@
 package updatebroker
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -25,6 +23,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/deploymentidentity"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/executableobject"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
+	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 )
 
 var (
@@ -1029,13 +1028,11 @@ func extractRelease(archive, destination string) ([]extractedReleaseMember, erro
 		return nil, err
 	}
 	defer file.Close()
-	gzipReader, err := gzip.NewReader(file)
+	reader, err := release.NewPanelArchiveReader(file)
 	if err != nil {
 		return nil, err
 	}
-	defer gzipReader.Close()
-	reader := tar.NewReader(gzipReader)
-	count, total := 0, int64(0)
+	defer reader.Close()
 	members := make([]extractedReleaseMember, 0, 16)
 	for {
 		header, err := reader.Next()
@@ -1045,23 +1042,7 @@ func extractRelease(archive, destination string) ([]extractedReleaseMember, erro
 		if err != nil {
 			return nil, err
 		}
-		name := filepath.ToSlash(header.Name)
-		prefix := "solovey-ui/"
-		if !strings.HasPrefix(name, prefix) {
-			return nil, errors.New("release archive root is invalid")
-		}
-		relative := strings.TrimPrefix(name, prefix)
-		if relative == "" {
-			continue
-		}
-		if !allowedReleasePath(relative) || header.Typeflag != tar.TypeReg || header.Size < 0 || header.Size > 512<<20 {
-			return nil, errors.New("release archive member is invalid")
-		}
-		count++
-		total += header.Size
-		if count > 64 || total > 1<<30 {
-			return nil, errors.New("release archive exceeds bounds")
-		}
+		relative := header.Relative
 		target := filepath.Join(destination, filepath.FromSlash(relative))
 		if !pathWithin(destination, target) {
 			return nil, errors.New("release archive path escaped")
@@ -1360,13 +1341,7 @@ func removeUpdateAuthority(path string, ops updateRemovalOps) error {
 }
 
 func allowedReleasePath(value string) bool {
-	if strings.Contains(value, "..") || strings.Contains(value, "\\") {
-		return false
-	}
-	if strings.HasPrefix(value, "systemd/") {
-		return safeNamePattern.MatchString(strings.TrimPrefix(value, "systemd/"))
-	}
-	return safeNamePattern.MatchString(value)
+	return release.PanelArchivePath(value)
 }
 
 func executableReleasePath(value string) bool {
