@@ -8,6 +8,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 )
 
 var (
@@ -26,6 +28,10 @@ func ValidateRelease(value ReleaseIdentityV1) error {
 		(value.BinaryProfile != "full" && value.BinaryProfile != "core") || len(value.Artifacts) > 1 {
 		return errors.New("update release identity is invalid")
 	}
+	withSource := value.CoreProvider != (release.CoreProviderSource{})
+	if withSource && release.ValidateCoreProviderSource(value.CoreProvider) != nil {
+		return errors.New("update core provider source is invalid")
+	}
 	seen := map[string]struct{}{}
 	for _, artifact := range value.Artifacts {
 		if err := ValidateArtifact(artifact); err != nil {
@@ -38,6 +44,9 @@ func ValidateRelease(value ReleaseIdentityV1) error {
 		seen[identity] = struct{}{}
 		if artifact.Role != "panel-"+value.BinaryProfile {
 			return errors.New("update artifact does not match the binary profile")
+		}
+		if artifact.CoreProvider != value.CoreProvider.ID {
+			return errors.New("update artifact does not match its provider source")
 		}
 	}
 	if len(value.Artifacts) > 0 && artifactSetDigest(value.Artifacts) != value.ArtifactSetDigest {
@@ -52,6 +61,9 @@ func ValidateArtifact(value ArtifactIdentityV1) error {
 		value.MediaType == "" || len(value.MediaType) > 96 || value.Size <= 0 || value.Size > 1<<30 ||
 		!digestPattern.MatchString(value.SHA256) || !safeIDPattern.MatchString(value.Provenance) {
 		return errors.New("update artifact identity is invalid")
+	}
+	if value.CoreProvider != "" && value.CoreProvider != "sing-box" && value.CoreProvider != "shtorm-extended" {
+		return errors.New("update artifact core provider is unsupported")
 	}
 	return nil
 }

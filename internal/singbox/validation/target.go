@@ -6,18 +6,13 @@ import (
 
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
+	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/targetcheck"
 )
 
-const MaxTargetConfigBytes = 8 << 20
-const TargetCheckSchema = "solovey.core-target-check/v1"
+const MaxTargetConfigBytes = targetcheck.MaxConfigBytes
+const TargetCheckSchema = targetcheck.Schema
 
-type TargetCheck struct {
-	Schema              string                `json:"schema"`
-	State               string                `json:"state"`
-	CoreProvider        coreprovider.Identity `json:"coreProvider"`
-	ConfigurationDigest string                `json:"configurationDigest,omitempty"`
-	ReasonCodes         []string              `json:"reasonCodes"`
-}
+type TargetCheck = targetcheck.Report
 
 // CheckTargetConfig uses this build's existing owner checks, option registries
 // and construct/close dry validation. It starts no runtime and writes no Panel

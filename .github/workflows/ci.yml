@@ -72,7 +72,7 @@ jobs:
         run: go test -run '^$' -tags "$EXTENDED_TAGS" ./...
       - name: Native lifecycle, management and semantic boundary race regressions
         shell: bash
-        run: go test -race -count=1 -timeout=10m -tags "$EXTENDED_TAGS" github.com/sagernet/sing-box/adapter ./core/... ./internal/singbox/apply ./service/coreinboundcontrol ./components/server-protection/service/nativefallback ./service/update ./internal/singbox/validation ./cmd/internal/corecheck ./internal/release ./cmd/solovey-artifact-info
+        run: go test -race -count=1 -timeout=10m -tags "$EXTENDED_TAGS" github.com/sagernet/sing-box/adapter ./core/... ./internal/singbox/apply ./service/coreinboundcontrol ./components/server-protection/service/nativefallback ./service/update ./internal/singbox/validation ./cmd/internal/corecheck ./internal/release ./cmd/solovey-artifact-info ./internal/ops/updatebroker
       - name: Observe real provider and capability build metadata
         shell: bash
         run: go run -tags "$EXTENDED_TAGS" ./tests/core-provider-identity
@@ -93,6 +93,19 @@ jobs:
             SOLOVEY_ARTIFACT_TEST_BINARY="$RUNNER_TEMP/solovey-extended-$profile${{ runner.os == 'Windows' && '.exe' || '' }}" \
               SOLOVEY_ARTIFACT_TEST_PROVIDER=shtorm-extended SOLOVEY_ARTIFACT_TEST_PROFILE="$profile" \
               go test -tags "$EXTENDED_TAGS" -count=1 -timeout=5m -run '^TestArtifactObservationActualBinaryAndArchive$' ./cmd/solovey-artifact-info
+          done
+      - name: Qualify native provider maintenance with root-owned actual candidates
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          go_binary=$(command -v go)
+          module_cache=$(go env GOMODCACHE)
+          for profile in full core; do
+            sudo env "GOMODCACHE=$module_cache" "GOCACHE=$RUNNER_TEMP/provider-root-go-cache" "CGO_ENABLED=1" "GOFLAGS=$GOFLAGS" \
+              "SOLOVEY_PROVIDER_TEST_BINARY=$RUNNER_TEMP/solovey-extended-$profile" \
+              SOLOVEY_PROVIDER_TEST_ID=shtorm-extended "SOLOVEY_PROVIDER_TEST_PROFILE=$profile" \
+              "$go_binary" test -race -tags "$EXTENDED_TAGS" -count=1 -timeout=5m \
+              -run '^Test(ProviderMaintenance|PreparedProviderActual)' ./internal/ops/updatebroker
           done
 
   docker-native-cronet:
@@ -323,6 +336,19 @@ jobs:
             SOLOVEY_ARTIFACT_TEST_BINARY="$RUNNER_TEMP/solovey-official-$profile${{ runner.os == 'Windows' && '.exe' || '' }}" \
               SOLOVEY_ARTIFACT_TEST_PROVIDER=sing-box SOLOVEY_ARTIFACT_TEST_PROFILE="$profile" \
               go test -mod=readonly -count=1 -timeout=5m -run '^TestArtifactObservationActualBinaryAndArchive$' ./cmd/solovey-artifact-info
+          done
+      - name: Qualify Official provider maintenance with root-owned actual candidates
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          go_binary=$(command -v go)
+          module_cache=$(go env GOMODCACHE)
+          for profile in full core; do
+            sudo env "GOMODCACHE=$module_cache" "GOCACHE=$RUNNER_TEMP/provider-root-go-cache" "CGO_ENABLED=1" \
+              "SOLOVEY_PROVIDER_TEST_BINARY=$RUNNER_TEMP/solovey-official-$profile" \
+              SOLOVEY_PROVIDER_TEST_ID=sing-box "SOLOVEY_PROVIDER_TEST_PROFILE=$profile" \
+              "$go_binary" test -race -mod=readonly -tags with_quic,with_utls -count=1 -timeout=5m \
+              -run '^Test(ProviderMaintenance|PreparedProviderActual)' ./internal/ops/updatebroker
           done
 
   ssm-integration:
