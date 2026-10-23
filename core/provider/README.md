@@ -25,6 +25,31 @@ that shared verifier. Research-source recognition alone grants no capability.
 QUIC compile facts retain the observed source and module revisions; an unknown
 identity cannot acquire support by setting a verified label or nonempty digest.
 
+`solovey-ui core-info` prints the embedded source identity as one JSON object.
+`solovey-ui core-check` reads at most 8 MiB of JSON from standard input and uses
+this build's existing owner checks, typed option registries and construct/close
+validator. It starts no runtime, opens no Panel database and accepts no path,
+provider or shell argument. It rejects duplicate decoded JSON member names,
+invalid UTF-8, trailing documents, excessive shape and unsupported options. A
+valid report binds the exact, unmodified input bytes with SHA-256. Diagnostics
+contain bounded codes, never configuration values or owner error strings.
+
+The commands exit zero only for a verified source (`core-info`) or a valid target
+configuration (`core-check`). A rejected/unavailable check exits one; invalid
+command arguments exit two. Source recognition and successful validation confer
+no artifact trust or maintenance admission. Installation must independently
+verify the candidate executable's signed artifact and bind its report to the
+current checkpoint and configuration revision. The local qualification harness
+is `go run ./tests/core-target-check BUILT_PANEL sing-box|shtorm-extended`.
+
+The legacy signed `solovey.release/v1` artifact set carries no provider identity.
+The existing Update owner admits it only when the installed source is verified
+Official. An Extended or unknown source cannot fetch, prepare or activate that
+set. Activation rechecks the installed source before changing its prepared
+operation. Existing checkpoint rollback and reconciliation retain their recovery
+authority. An explicit provider-bearing artifact contract and maintenance flow
+are still required before Extended installation or provider switching.
+
 The server summary, capability snapshot, Operations status, Doctor and CLI use
 this owner. Classic and Nexus share the same wire reader and summary component.
 The identity is observational: there is no database setting, migration, new

@@ -17,6 +17,7 @@ import (
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	configupdate "github.com/MalenkiySolovey/solovey-ui/config/update"
 	"github.com/MalenkiySolovey/solovey-ui/config/versionpolicy"
+	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/database/schema"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
@@ -258,6 +259,7 @@ type LifecycleManager struct {
 	now           func() time.Time
 	platform      func() (string, string)
 	profile       func() string
+	coreProvider  func() coreprovider.Identity
 	platformFacts func(context.Context) deploymentdomain.PlatformFacts
 	health        func(context.Context, model.UpdateOperation) HealthResult
 	admit         func(string) bool
@@ -322,7 +324,7 @@ func NewLifecycleManager(repo Repository, provider Provider, fetcher ReleaseClie
 				arch = runtime.GOARCH
 			}
 			return runtime.GOOS, arch
-		}, profile: func() string { return componentprofile.Binary }}
+		}, profile: func() string { return componentprofile.Binary }, coreProvider: coreprovider.Current}
 }
 
 func (m *LifecycleManager) SetHealthCheck(check func(context.Context, model.UpdateOperation) HealthResult) {
@@ -347,7 +349,18 @@ func (m *LifecycleManager) Capabilities(ctx context.Context) Capabilities {
 	if m == nil || m.provider == nil {
 		return UnavailableProvider{}.Capabilities(ctx)
 	}
-	return m.provider.Capabilities(ctx)
+	result := m.provider.Capabilities(ctx)
+	if err := m.legacyCoreProviderAdmission(); err != nil {
+		for _, capability := range []*string{&result.Download, &result.Prepare, &result.Activate} {
+			if *capability == "AVAILABLE" {
+				*capability = "UNAVAILABLE"
+			}
+		}
+		result.ReasonCodes = append(append([]string{}, result.ReasonCodes...), ReasonCode(err))
+		result.Revision = ""
+		result.Revision = semanticDigest(result)
+	}
+	return result
 }
 
 func (m *LifecycleManager) Status(ctx context.Context, channel release.Channel) LifecycleStatus {
@@ -445,6 +458,11 @@ func (m *LifecycleManager) Check(ctx context.Context, channel release.Channel) (
 		result.ReasonCodes = []string{"production_release_trust_unavailable"}
 		return result, ErrSigningUnavailable
 	}
+	if err := m.legacyCoreProviderAdmission(); err != nil {
+		result.SigningStatus = "AVAILABLE_NOT_YET_VERIFIED"
+		result.ReasonCodes = []string{ReasonCode(err)}
+		return result, err
+	}
 	lastApplied, err := m.repo.lastApplied(ctx, channel)
 	if err != nil {
 		result.ReasonCodes = []string{"release_state_unavailable"}
@@ -517,6 +535,9 @@ func (m *LifecycleManager) Prepare(ctx context.Context, request PrepareRequest) 
 	}
 	if m.admit != nil && !m.admit("heavy_mutation") {
 		return model.UpdateOperation{}, ErrResourcePressure
+	}
+	if err := m.legacyCoreProviderAdmission(); err != nil {
+		return model.UpdateOperation{}, err
 	}
 	lastApplied, err := m.repo.lastApplied(ctx, request.Channel)
 	if err != nil {
@@ -611,6 +632,9 @@ func (m *LifecycleManager) Activate(ctx context.Context, request RevisionRequest
 	}
 	if operation.Revision != request.ExpectedRevision || State(operation.State) != StatePrepared || operation.RestoredUntrusted {
 		return operation, ErrRevisionMismatch
+	}
+	if err := m.legacyCoreProviderAdmission(); err != nil {
+		return operation, err
 	}
 	if report := m.platformPreflight(ctx); !report.Ready {
 		return operation, PlatformPreflightError{Report: report}
@@ -846,6 +870,9 @@ func (m *LifecycleManager) checkHealth(ctx context.Context, operation model.Upda
 }
 
 func (m *LifecycleManager) fetchAndVerify(ctx context.Context, channel release.Channel, lastApplied uint64) (release.Verified, []release.Artifact, error) {
+	if err := m.legacyCoreProviderAdmission(); err != nil {
+		return release.Verified{}, nil, err
+	}
 	source, ok := m.sources[channel]
 	if !ok {
 		return release.Verified{}, nil, errors.New("release channel source is unavailable")
@@ -1634,6 +1661,10 @@ func ReasonCode(err error) string {
 		return "update_platform_preflight_failed"
 	}
 	switch {
+	case errors.Is(err, ErrCoreProviderUnverified):
+		return "core_provider_identity_unverified"
+	case errors.Is(err, ErrCoreProviderMaintenance):
+		return "core_provider_maintenance_required"
 	case errors.Is(err, ErrSigningUnavailable):
 		return "release_signing_unavailable"
 	case errors.Is(err, ErrProviderUnavailable):

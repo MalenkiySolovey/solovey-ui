@@ -2,6 +2,7 @@ package api
 
 import (
 	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
@@ -9,8 +10,25 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/service"
+	updateservice "github.com/MalenkiySolovey/solovey-ui/service/update"
 	"github.com/gin-gonic/gin"
 )
+
+func TestUpdateProviderAdmissionErrorsAreUnavailable(t *testing.T) {
+	for _, err := range []error{updateservice.ErrCoreProviderUnverified, updateservice.ErrCoreProviderMaintenance} {
+		recorder := httptest.NewRecorder()
+		ctx, _ := gin.CreateTestContext(recorder)
+		(&updateHTTP{}).writeError(ctx, "update_prepare", err, nil)
+		var message struct {
+			Success bool
+			Obj     struct{ State, ReasonCode string }
+		}
+		if decodeErr := json.Unmarshal(recorder.Body.Bytes(), &message); decodeErr != nil || message.Success ||
+			message.Obj.State != "UNAVAILABLE" || message.Obj.ReasonCode != updateservice.ReasonCode(err) {
+			t.Fatalf("provider admission presentation: %s %v", recorder.Body.String(), decodeErr)
+		}
+	}
+}
 
 func TestUpdateRoutesExposeExactPlannedAliasesAndRequireAuthentication(t *testing.T) {
 	router, _ := updateTestRouter(t)

@@ -459,6 +459,29 @@ func TestQUICFlowOnlyDisconnectPreservesParent(t *testing.T) {
 		t.Run(kind, func(t *testing.T) {
 			f := newQUICFixture(t, kind)
 			peer := f.peer(t, 7)
+			// peer authenticates through a routed echo and closes that probe.
+			// QUIC stream closure reaches the server asynchronously; observe the
+			// existing inventory owner removing it before asserting one new flow.
+			deadline := time.NewTimer(2 * time.Second)
+			defer deadline.Stop()
+			tick := time.NewTicker(5 * time.Millisecond)
+			defer tick.Stop()
+			for {
+				idle := f.parents(t, 7)
+				if len(idle.Parents) != 1 {
+					t.Fatalf("authentication probe lost parent: parents=%d", len(idle.Parents))
+				}
+				if len(idle.Connections) == 0 {
+					break
+				}
+				select {
+				case <-tick.C:
+				case <-deadline.C:
+					t.Fatalf("closed authentication probe did not leave inventory: flows=%d", len(idle.Connections))
+				case <-t.Context().Done():
+					t.Fatal("authentication probe cleanup interrupted")
+				}
+			}
 			stream, err := peer.echoStream(t.Context(), f.echo.Addr().String())
 			if err != nil {
 				t.Fatal(err)
@@ -466,7 +489,7 @@ func TestQUICFlowOnlyDisconnectPreservesParent(t *testing.T) {
 			t.Cleanup(func() { stream.CancelRead(0); _ = stream.Close() })
 			observed := f.parents(t, 7)
 			if len(observed.Connections) != 1 || len(observed.Parents) != 1 {
-				t.Fatal("active routed-flow/parent fixture incomplete")
+				t.Fatalf("active routed-flow/parent fixture incomplete: flows=%d parents=%d", len(observed.Connections), len(observed.Parents))
 			}
 			result, err := f.core.Disconnect(t.Context(), DisconnectRequest{Generation: observed.Generation, ClientID: 7, FlowID: observed.Connections[0].ID})
 			if err != nil || result.Closed != 1 || result.ParentClosed || result.ParentControl != "not_supported" {

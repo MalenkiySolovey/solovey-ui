@@ -22,6 +22,14 @@ func NewFactory(options log.Options) (log.Factory, error) {
 	if logOptions.Disabled {
 		return log.NewNOPFactory(), nil
 	}
+	if options.Context != nil && options.Context.Value(dryValidationKey{}) == true {
+		if logOptions.Level != "" {
+			if _, err := log.ParseLevel(logOptions.Level); err != nil {
+				return nil, common.Error("parse log level", err)
+			}
+		}
+		return log.NewNOPFactory(), nil
+	}
 
 	var logWriter io.Writer
 	var logFilePath string

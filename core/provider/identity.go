@@ -76,6 +76,22 @@ func Current() Identity {
 	return identity
 }
 
+// SourceIdentityVerified checks a complete source projection from this owner.
+// It grants no artifact trust or installation authority.
+func SourceIdentityVerified(identity Identity) bool {
+	if identity.Schema != Schema || identity.State != Verified || identity.Revision == "" {
+		return false
+	}
+	for _, source := range pins.Sources {
+		if identity.Source == source {
+			revision := identity.Revision
+			identity.Revision = ""
+			return finish(identity).Revision == revision
+		}
+	}
+	return false
+}
+
 func observe() Identity {
 	info, ok := debug.ReadBuildInfo()
 	if !ok {
