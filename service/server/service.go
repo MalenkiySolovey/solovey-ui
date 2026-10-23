@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
+	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
@@ -151,7 +152,8 @@ func (s *ServerService) GetSingboxInfo() map[string]interface{} {
 		isRunning, uptime = s.coreStatus()
 	}
 	return map[string]interface{}{
-		"running": isRunning,
+		"running":  isRunning,
+		"provider": coreprovider.Current(),
 		"stats": map[string]interface{}{
 			"NumGoroutine": runtime.NumGoroutine(),
 			"Alloc":        rtm.Alloc,

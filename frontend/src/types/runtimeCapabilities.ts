@@ -1,3 +1,5 @@
+import { readCoreProviderIdentity, type CoreProviderIdentity } from './coreProvider'
+
 export interface RuntimeCapability {
   category: string
   type: string
@@ -20,6 +22,7 @@ export interface RuntimeCapabilities {
   schema: 'solovey-ui/entity-capabilities/v1'
   componentProfile: 'full' | 'minimal'
   facts: RuntimeCapability[]
+  provider?: CoreProviderIdentity
   multicastInterfaces?: string[]
 }
 
@@ -29,6 +32,7 @@ export function readRuntimeCapabilities(value: unknown): RuntimeCapabilities | u
   const data = value as Record<string, unknown>
   if (data.schema !== 'solovey-ui/entity-capabilities/v1' ||
       !['full', 'minimal'].includes(String(data.componentProfile)) || !Array.isArray(data.facts)) return undefined
+  if (data.provider !== undefined && !readCoreProviderIdentity(data.provider)) return undefined
   const seen = new Set<string>()
   if (data.multicastInterfaces !== undefined && (!Array.isArray(data.multicastInterfaces) ||
       data.multicastInterfaces.some(name => typeof name !== 'string' || !name) ||

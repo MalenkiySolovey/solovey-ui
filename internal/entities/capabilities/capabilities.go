@@ -3,6 +3,7 @@
 package capabilities
 
 import (
+	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/internal/components/profile"
 	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
@@ -20,10 +21,11 @@ type Fact struct {
 }
 
 type Snapshot struct {
-	Schema              string   `json:"schema"`
-	ComponentProfile    string   `json:"componentProfile"`
-	Facts               []Fact   `json:"facts"`
-	MulticastInterfaces []string `json:"multicastInterfaces,omitempty"`
+	Schema              string                `json:"schema"`
+	ComponentProfile    string                `json:"componentProfile"`
+	Facts               []Fact                `json:"facts"`
+	Provider            coreprovider.Identity `json:"provider"`
+	MulticastInterfaces []string              `json:"multicastInterfaces,omitempty"`
 }
 
 func Resolve(category, panelType string) Fact {
@@ -69,7 +71,7 @@ func Current() Snapshot {
 }
 
 func CurrentWithEnvironment(environment Environment) Snapshot {
-	result := Snapshot{Schema: Schema, ComponentProfile: profile.Binary, Facts: []Fact{}, MulticastInterfaces: environment.MulticastNames()}
+	result := Snapshot{Schema: Schema, ComponentProfile: profile.Binary, Facts: []Fact{}, Provider: coreprovider.Current(), MulticastInterfaces: environment.MulticastNames()}
 	for _, fact := range registry.Facts() {
 		result.Facts = append(result.Facts, ResolveWithEnvironment(fact.Category, fact.Type, environment))
 	}

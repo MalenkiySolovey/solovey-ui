@@ -10,6 +10,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/enabledstate"
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/installstate"
 	componentregistry "github.com/MalenkiySolovey/solovey-ui/componenthost/registry"
+	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/database/schema"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
@@ -127,19 +128,20 @@ func (a *APIHandler) deploymentUpdatePresentation() deploymentservice.UpdatePres
 
 func projectOperationsStatus(input operationsStatusProjection) gin.H {
 	return gin.H{
-		"schema":      "solovey.operations-status/v1",
-		"generatedAt": input.GeneratedAt,
-		"security":    gin.H{"state": "OBSERVED_BY_SECURITY_DOMAIN"},
-		"deployment":  gin.H{"state": typedAvailability(input.DeploymentErr), "posture": input.Deployment},
-		"update":      input.Update,
-		"pressure":    input.Pressure,
-		"sqlite":      gin.H{"state": input.SQLiteState, "runtime": input.SQLiteRuntime},
-		"migrations":  gin.H{"state": input.MigrationState, "journalRows": input.MigrationRows, "targetCoreSchema": schema.CurrentCoreVersion},
-		"owners":      input.Owners,
-		"backup":      gin.H{"state": input.BackupState, "restoreExecution": "STEP_UP_REQUIRED"},
-		"restore":     gin.H{"rehearsal": "AVAILABLE", "execution": "GLOBAL_ADMISSION_REQUIRED"},
-		"dropData":    gin.H{"state": "PREVIEW_REQUIRED", "force": false},
-		"reasonCodes": append([]string(nil), input.ReasonCodes...),
+		"schema":       "solovey.operations-status/v1",
+		"coreProvider": coreprovider.Current(),
+		"generatedAt":  input.GeneratedAt,
+		"security":     gin.H{"state": "OBSERVED_BY_SECURITY_DOMAIN"},
+		"deployment":   gin.H{"state": typedAvailability(input.DeploymentErr), "posture": input.Deployment},
+		"update":       input.Update,
+		"pressure":     input.Pressure,
+		"sqlite":       gin.H{"state": input.SQLiteState, "runtime": input.SQLiteRuntime},
+		"migrations":   gin.H{"state": input.MigrationState, "journalRows": input.MigrationRows, "targetCoreSchema": schema.CurrentCoreVersion},
+		"owners":       input.Owners,
+		"backup":       gin.H{"state": input.BackupState, "restoreExecution": "STEP_UP_REQUIRED"},
+		"restore":      gin.H{"rehearsal": "AVAILABLE", "execution": "GLOBAL_ADMISSION_REQUIRED"},
+		"dropData":     gin.H{"state": "PREVIEW_REQUIRED", "force": false},
+		"reasonCodes":  append([]string(nil), input.ReasonCodes...),
 	}
 }
 

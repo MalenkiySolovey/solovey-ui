@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -40,6 +41,12 @@ func (s *DoctorService) runtime() *Runtime {
 func (s *DoctorService) Run(hostname string) opsdoctor.Report {
 	start := time.Now()
 	var items []opsdoctor.Item
+	providerIdentity := coreprovider.Current()
+	if providerIdentity.State == coreprovider.Verified {
+		items = append(items, opsdoctor.OK("core-provider-source", "Core provider source", "Embedded engine source matches its immutable provider pin; artifact trust and runtime readiness are separate observations.", providerIdentity))
+	} else {
+		items = append(items, opsdoctor.Warn("core-provider-source", "Core provider source", "Embedded engine source identity is unavailable.", "Review the installed artifact and its build provenance.", providerIdentity))
+	}
 	items = append(items, opsdoctor.CapabilityChecks(dbsqlite.DB())...)
 	configService := NewConfigServiceWithRuntime(s.runtime())
 	serverService := NewServerService(s.runtime())

@@ -4,7 +4,6 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"runtime/debug"
 
 	admincmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/admin"
 	backupcmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/backup"
@@ -13,6 +12,7 @@ import (
 	settingscmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/settings"
 	optionalcmd "github.com/MalenkiySolovey/solovey-ui/componenthost/commands"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
+	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/database/migration"
 )
 
@@ -78,14 +78,13 @@ func ParseCmd() int {
 	flag.Parse()
 	if showVersion {
 		fmt.Println("Solovey UI Panel\t", configidentity.GetVersion())
-		info, ok := debug.ReadBuildInfo()
-		if ok {
-			for _, dep := range info.Deps {
-				if dep.Path == "github.com/sagernet/sing-box" {
-					fmt.Println("Sing-Box\t", dep.Version)
-					break
-				}
-			}
+		provider := coreprovider.Current()
+		if provider.State == coreprovider.Verified {
+			fmt.Println("Core provider\t", provider.Name, provider.ProviderVersion)
+			fmt.Println("Core semantics\t", provider.RuntimeSemanticVersion)
+			fmt.Println("Core source\t", provider.SourceRepository, provider.SourceRevision)
+		} else {
+			fmt.Println("Core provider\t UNKNOWN")
 		}
 		return 0
 	}

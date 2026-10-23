@@ -10,10 +10,11 @@
         <strong dir="ltr">{{ status.appVersion || '-' }}</strong>
       </li>
       <li class="nexus-system-status__item">
-        <span class="nexus-system-status__key">sing-box</span>
+        <span class="nexus-system-status__key">CoreRuntime</span>
         <span class="nexus-system-status__value">
+          <CoreProviderSummary :value="status.coreProvider" />
           {{ status.singboxRunning ? $t('nexus.status.running') : $t('nexus.status.notRunning') }}
-          <span v-if="status.singboxVersion" dir="ltr">
+          <span v-if="!status.coreProvider && status.singboxVersion" dir="ltr">
             {{ status.singboxVersion }}
           </span>
         </span>
@@ -55,6 +56,7 @@ import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 
 import DenseList from '@/components/nexus/primitives/DenseList.vue'
+import CoreProviderSummary from '@/components/common/CoreProviderSummary.vue'
 import StatusBadge from '@/components/nexus/primitives/StatusBadge.vue'
 import type { WsConnectionState } from '@/store/ws'
 import {
