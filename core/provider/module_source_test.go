@@ -41,3 +41,26 @@ func TestModuleSourceComparisonDoesNotGrantFutureSourceQualification(t *testing.
 		t.Fatal("unavailable module metadata matched")
 	}
 }
+
+func TestCatalogModuleTupleDoesNotPretendToObserveAnEngineRequirement(t *testing.T) {
+	for _, source := range pins.Sources {
+		projected := ResolveModule(source.Module, source.ProviderVersion, source.ModuleSum)
+		if !SourceIdentityVerified(projected) || projected.Source != source || projected.ArtifactState != Unknown {
+			t.Fatal("exact catalog tuple projection lost source facts")
+		}
+		metadata := buildFor(source)
+		metadata.Deps[0].Version = ""
+		if Resolve(metadata).State != Unknown || ModuleSourceMatches(metadata, source) {
+			t.Fatal("tuple projection bypassed the full build-info requirement check")
+		}
+	}
+	for _, tuple := range [][3]string{
+		{"../credential-sentinel", "v1.0.0", "h1:unknown"},
+		{pins.Sources[0].Module, pins.Sources[0].ProviderVersion, "unknown"},
+		{pins.Sources[0].Module, "v9.9.9", pins.Sources[0].ModuleSum},
+	} {
+		if identity := ResolveModule(tuple[0], tuple[1], tuple[2]); identity.State != Unknown || identity.ID != "" {
+			t.Fatal("unknown module tuple acquired a source projection")
+		}
+	}
+}

@@ -123,6 +123,20 @@ func ModuleSourceMatches(info *debug.BuildInfo, source Source) bool {
 	return reason == "" && moduleSourceMatches(engine, source)
 }
 
+// ResolveModule observes an exact linked module tuple in the compiled catalog.
+// It has no original engine-requirement fact. Callers reading build metadata
+// use Resolve; capability owners separately check their observed requirement.
+// This projection grants no artifact trust or capability qualification.
+func ResolveModule(module, version, sum string) Identity {
+	for _, source := range pins.Sources {
+		if module == source.Module && version == source.ProviderVersion && sum == source.ModuleSum {
+			return finish(Identity{Schema: Schema, State: Verified, Source: source,
+				ArtifactState: Unknown, ReasonCodes: []string{"ARTIFACT_DIGEST_NOT_OBSERVED"}})
+		}
+	}
+	return unresolved("ENGINE_SOURCE_UNVERIFIED")
+}
+
 func engineDependency(info *debug.BuildInfo) (*debug.Module, string) {
 	if info == nil {
 		return nil, "BUILD_INFO_UNAVAILABLE"

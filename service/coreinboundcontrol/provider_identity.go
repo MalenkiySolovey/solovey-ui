@@ -1,10 +1,6 @@
 package coreinboundcontrol
 
-import (
-	"runtime/debug"
-
-	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
-)
+import coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 
 type engineFact struct {
 	Module, Version, Sum, SourceRevision string
@@ -60,8 +56,7 @@ func resolveEngineFact(module RuntimeModuleV1) (engineFact, []ReasonCode) {
 }
 
 func observedProviderSource(module, version, sum string) coreprovider.Identity {
-	return coreprovider.Resolve(&debug.BuildInfo{Deps: []*debug.Module{{Path: coreprovider.EngineModule,
-		Replace: &debug.Module{Path: module, Version: version, Sum: sum}}}})
+	return coreprovider.ResolveModule(module, version, sum)
 }
 
 // RuntimeIdentityVerifiedV1 revalidates source qualification, the uTLS/build

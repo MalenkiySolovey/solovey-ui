@@ -54,6 +54,9 @@ one does not place it in the running process's compiled qualification catalog.
 original engine semantic requirement and its single exact replacement
 path/version/checksum. The signed publisher supplies source/upstream commit
 provenance; a binary's module tuple alone cannot prove those commit labels.
+The capability owner uses `core/provider.ResolveModule` for its already
+projected tuple, then checks its actual original requirement separately. It
+does not synthesize incomplete Go build metadata for the stricter reader.
 
 ## Offline executable observation
 
