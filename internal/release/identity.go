@@ -9,17 +9,18 @@ import (
 // ArtifactIdentity describes signed content, independently of its transport URL,
 // mirror, cache path or download attempt. It is metadata, not admission authority.
 type ArtifactIdentity struct {
-	ArtifactID     string `json:"artifactId"`
-	Owner          string `json:"owner"`
-	Kind           string `json:"kind"`
-	Version        string `json:"version"`
-	Platform       string `json:"platform"`
-	Arch           string `json:"arch"`
-	ContentDigest  string `json:"contentDigest"`
-	Size           int64  `json:"size"`
-	SignerRef      string `json:"signerRef"`
-	ProvenanceRef  string `json:"provenanceRef"`
-	SourceRevision string `json:"sourceRevision"`
+	ArtifactID     string             `json:"artifactId"`
+	Owner          string             `json:"owner"`
+	Kind           string             `json:"kind"`
+	Version        string             `json:"version"`
+	Platform       string             `json:"platform"`
+	Arch           string             `json:"arch"`
+	ContentDigest  string             `json:"contentDigest"`
+	Size           int64              `json:"size"`
+	SignerRef      string             `json:"signerRef"`
+	ProvenanceRef  string             `json:"provenanceRef"`
+	SourceRevision string             `json:"sourceRevision"`
+	CoreProvider   CoreProviderSource `json:"coreProvider,omitzero"`
 }
 
 type ComponentArtifact struct {
@@ -63,10 +64,14 @@ func (v Verified) identity(artifact Artifact) ArtifactIdentity {
 		owner = "components"
 	}
 	sum := sha256.Sum256([]byte(artifact.Role + "\x00" + artifact.SHA256))
-	return ArtifactIdentity{ArtifactID: "artifact:" + hex.EncodeToString(sum[:]), Owner: owner,
+	identity := ArtifactIdentity{ArtifactID: "artifact:" + hex.EncodeToString(sum[:]), Owner: owner,
 		Kind: artifact.Role, Version: v.Manifest.Version, Platform: artifact.Platform, Arch: artifact.Arch,
 		ContentDigest: artifact.SHA256, Size: artifact.Size, SignerRef: "release-root:" + v.KeyID,
 		ProvenanceRef: artifact.Provenance, SourceRevision: v.Digest}
+	if source, ok := v.Manifest.coreProvider(artifact.CoreProvider); ok {
+		identity.CoreProvider = source
+	}
+	return identity
 }
 
 func (v Verified) PanelArtifacts(platform, arch, profile string) ([]Artifact, error) {

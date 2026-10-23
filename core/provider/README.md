@@ -48,7 +48,11 @@ Official. An Extended or unknown source cannot fetch, prepare or activate that
 set. Activation rechecks the installed source before changing its prepared
 operation. Existing checkpoint rollback and reconciliation retain their recovery
 authority. An explicit provider-bearing artifact contract and maintenance flow
-are still required before Extended installation or provider switching.
+are still required before Extended installation or provider switching. The
+existing release owner now defines strict v2 source-bearing metadata and an
+offline executable inspector; current installers and Update/broker admission
+do not consume that format. See `internal/release/IDENTITY.md` for the contract
+and remaining activation boundaries.
 
 The server summary, capability snapshot, Operations status, Doctor and CLI use
 this owner. Classic and Nexus share the same wire reader and summary component.
