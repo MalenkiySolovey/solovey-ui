@@ -32,7 +32,7 @@ func (p *inputProbe) Read(buffer []byte) (int, error) {
 }
 
 func TestArtifactObservationRejectsPathArgumentsBeforeReadingInput(t *testing.T) {
-	for _, args := range [][]string{nil, {""}, {"credential-sentinel", "extra"}} {
+	for _, args := range [][]string{nil, {""}, {"credential-sentinel", "extra"}, {"--archive"}, {"--archive", ""}, {"--unknown", "credential-sentinel"}} {
 		input := &inputProbe{fail: true}
 		var output bytes.Buffer
 		err := run(args, input, &output)

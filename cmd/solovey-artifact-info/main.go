@@ -24,9 +24,11 @@ func main() {
 }
 
 func run(args []string, input io.Reader, output io.Writer) error {
-	if len(args) != 1 || args[0] == "" {
-		return errors.New("usage: solovey-artifact-info BUILT_PANEL; expected source JSON on stdin")
+	archive := len(args) == 2 && args[0] == "--archive"
+	if (len(args) != 1 && !archive) || args[len(args)-1] == "" || (len(args) == 1 && args[0][0] == '-') {
+		return errors.New("usage: solovey-artifact-info [--archive] CANDIDATE; expected source JSON on stdin")
 	}
+	candidate := args[len(args)-1]
 	raw, err := io.ReadAll(io.LimitReader(input, (64<<10)+1))
 	if err != nil || len(raw) > 64<<10 || jsonvalue.StrictObject(raw) != nil {
 		return errors.New("expected source JSON is invalid")
@@ -37,12 +39,12 @@ func run(args []string, input io.Reader, output io.Writer) error {
 	if decoder.Decode(&source) != nil || release.ValidateCoreProviderSource(source) != nil {
 		return errors.New("expected source declaration is invalid")
 	}
-	info, err := os.Lstat(args[0])
+	info, err := os.Lstat(candidate)
 	if err != nil || !info.Mode().IsRegular() || info.Size() <= 0 || info.Size() > 512<<20 {
 		return errors.New("candidate is not a bounded regular file")
 	}
 	// #nosec G304 -- explicit operator input for read-only packaging observation, never a Panel API or execution path.
-	file, err := os.Open(args[0])
+	file, err := os.Open(candidate)
 	if err != nil {
 		return errors.New("candidate file could not be opened")
 	}
@@ -51,7 +53,13 @@ func run(args []string, input io.Reader, output io.Writer) error {
 	if err != nil || !os.SameFile(info, opened) {
 		return errors.New("candidate file changed before observation")
 	}
-	metadata, err := release.InspectPanelBuild(file, source)
+	var metadata release.PanelBuildIdentity
+	var members []archiveMemberObservation
+	if archive {
+		metadata, members, err = inspectArchive(file, source)
+	} else {
+		metadata, err = release.InspectPanelBuild(file, source)
+	}
 	if err != nil {
 		return err
 	}
@@ -64,12 +72,17 @@ func run(args []string, input io.Reader, output io.Writer) error {
 	if err != nil || !os.SameFile(info, after) || after.Size() != info.Size() || after.ModTime() != info.ModTime() {
 		return errors.New("candidate changed during observation")
 	}
-	if err := json.NewEncoder(output).Encode(struct {
+	observation := struct {
 		Schema        string                     `json:"schema"`
 		ContentDigest string                     `json:"contentDigest"`
 		Size          int64                      `json:"size"`
 		Build         release.PanelBuildIdentity `json:"build"`
-	}{"solovey.panel-artifact-observation/v1", hex.EncodeToString(hash.Sum(nil)), written, metadata}); err != nil {
+		Members       []archiveMemberObservation `json:"members,omitempty"`
+	}{"solovey.panel-artifact-observation/v1", hex.EncodeToString(hash.Sum(nil)), written, metadata, members}
+	if archive {
+		observation.Schema = "solovey.panel-archive-observation/v1"
+	}
+	if err := json.NewEncoder(output).Encode(observation); err != nil {
 		return errors.New("candidate observation could not be written")
 	}
 	return nil
