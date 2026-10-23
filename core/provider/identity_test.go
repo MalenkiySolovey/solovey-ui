@@ -10,7 +10,7 @@ import (
 )
 
 func buildFor(source Source) *debug.BuildInfo {
-	return &debug.BuildInfo{Deps: []*debug.Module{{Path: EngineModule, Version: "v1.14.2", Replace: &debug.Module{
+	return &debug.BuildInfo{Deps: []*debug.Module{{Path: EngineModule, Version: "v" + source.RuntimeSemanticVersion, Replace: &debug.Module{
 		Path: source.Module, Version: source.ProviderVersion, Sum: source.ModuleSum,
 	}}}}
 }

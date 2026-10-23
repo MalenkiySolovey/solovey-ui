@@ -3,7 +3,6 @@ package registry
 import (
 	"context"
 
-	sb "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing/service"
 )
 
@@ -12,5 +11,5 @@ import (
 // inherited by a validation or replacement generation.
 func Context(parent context.Context) context.Context {
 	ctx := service.ContextWithRegistry(parent, service.NewRegistry())
-	return sb.Context(ctx, InboundRegistry(), OutboundRegistry(), EndpointRegistry(), DNSTransportRegistry(), ServiceRegistry(), CertificateProviderRegistry())
+	return nativeContext(ctx)
 }

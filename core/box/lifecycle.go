@@ -44,7 +44,7 @@ func (s *Box) startManagers(stage adapter.StartStage, owners ...adapter.Lifecycl
 		if stage == adapter.StartStateInitialize {
 			s.initialized[owner] = true
 		}
-		if err := adapter.Start(s.ctx, s.logger, stage, owner); err != nil {
+		if err := s.native.start(s, stage, owner); err != nil {
 			return err
 		}
 	}
@@ -55,7 +55,7 @@ func (s *Box) preStart() error {
 	if err := s.logFactory.Start(); err != nil {
 		return common.NewError(err, "start logger")
 	}
-	if err := adapter.StartNamed(s.ctx, s.logger, adapter.StartStateInitialize, s.internalService); err != nil {
+	if err := s.native.startServices(s, adapter.StartStateInitialize); err != nil {
 		return err
 	}
 	if err := s.startManagers(adapter.StartStateInitialize, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.outbound, s.inbound, s.endpoint, s.service, s.certificateProvider); err != nil {
@@ -64,7 +64,7 @@ func (s *Box) preStart() error {
 	if err := s.startManagers(adapter.StartStateStart, s.outbound, s.dnsTransport, s.network, s.connection); err != nil {
 		return err
 	}
-	if err := adapter.Start(s.ctx, s.logger, adapter.StartStateStart, s.httpClient); err != nil {
+	if err := s.native.start(s, adapter.StartStateStart, s.httpClient); err != nil {
 		return err
 	}
 	return s.startManagers(adapter.StartStateStart, s.router, s.dnsRouter)
@@ -74,7 +74,7 @@ func (s *Box) start() error {
 	if err := s.preStart(); err != nil {
 		return err
 	}
-	if err := adapter.StartNamed(s.ctx, s.logger, adapter.StartStateStart, s.internalService); err != nil {
+	if err := s.native.startServices(s, adapter.StartStateStart); err != nil {
 		return err
 	}
 	// Provider startup precedes inbound TLS startup, which resolves references.
@@ -84,13 +84,13 @@ func (s *Box) start() error {
 	if err := s.startManagers(adapter.StartStatePostStart, s.outbound, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.endpoint, s.certificateProvider, s.inbound, s.service); err != nil {
 		return err
 	}
-	if err := adapter.StartNamed(s.ctx, s.logger, adapter.StartStatePostStart, s.internalService); err != nil {
+	if err := s.native.startServices(s, adapter.StartStatePostStart); err != nil {
 		return err
 	}
 	if err := s.startManagers(adapter.StartStateStarted, s.network, s.dnsTransport, s.dnsRouter, s.connection, s.router, s.outbound, s.endpoint, s.certificateProvider, s.inbound, s.service); err != nil {
 		return err
 	}
-	return adapter.StartNamed(s.ctx, s.logger, adapter.StartStateStarted, s.internalService)
+	return s.native.startServices(s, adapter.StartStateStarted)
 }
 
 func (s *Box) Close() error {
@@ -113,7 +113,7 @@ func (s *Box) close() error {
 		s.inboundIdentity.Close()
 	}
 	var result error
-	closeOne := func(name string, owner io.Closer) {
+	closeOne := func(name string, owner any) {
 		if absent(owner) {
 			return
 		}
@@ -122,7 +122,7 @@ func (s *Box) close() error {
 				result = errors.Join(result, fmt.Errorf("close %s: panic: %v", name, v))
 			}
 		}()
-		if err := owner.Close(); err != nil {
+		if err := s.native.close(owner); err != nil {
 			result = errors.Join(result, common.NewError(err, "close "+name))
 		}
 	}
@@ -159,6 +159,7 @@ func (s *Box) close() error {
 			closeOne(owner.Name(), owner)
 		}
 	}
+	result = errors.Join(result, s.native.finish())
 	closeOne("logger", s.logFactory)
 	if s.statsTracker != nil {
 		s.statsTracker.Reset()
@@ -168,32 +169,35 @@ func (s *Box) close() error {
 
 func constructedChildren(owner adapter.Lifecycle) []io.Closer {
 	var children []io.Closer
+	add := func(child any) {
+		if closer, ok := child.(io.Closer); ok {
+			children = append(children, closer)
+		}
+	}
 	switch manager := owner.(type) {
 	case *endpoint.Manager:
 		for _, child := range manager.Endpoints() {
-			children = append(children, child)
+			add(child)
 		}
 	case *inbound.Manager:
 		for _, child := range manager.Inbounds() {
-			children = append(children, child)
+			add(child)
 		}
 	case *outbound.Manager:
 		for _, child := range manager.Outbounds() {
-			if closer, ok := child.(io.Closer); ok {
-				children = append(children, closer)
-			}
+			add(child)
 		}
 	case *boxService.Manager:
 		for _, child := range manager.Services() {
-			children = append(children, child)
+			add(child)
 		}
 	case *boxCertificate.Manager:
 		for _, child := range manager.CertificateProviders() {
-			children = append(children, child)
+			add(child)
 		}
 	case *dns.TransportManager:
 		for _, child := range manager.Transports() {
-			children = append(children, child)
+			add(child)
 		}
 	}
 	return children

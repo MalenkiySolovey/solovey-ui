@@ -31,13 +31,53 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - name: Native tooling regressions
-        run: node --test scripts/frontend-assets.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs
+        run: node --test scripts/frontend-assets.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/core-provider-build.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs
       - name: Source format and owned shell entrypoints
         if: runner.os == 'Linux'
         run: node scripts/audit/source-hygiene.mjs
       - name: Windows source format and text contracts
         if: runner.os == 'Windows'
         run: node scripts/audit/source-hygiene.mjs --no-shell
+
+  extended-runtime:
+    name: Extended runtime (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-latest]
+    env:
+      CGO_ENABLED: "1"
+      GOFLAGS: -mod=readonly -modfile=go.extended.mod
+      EXTENDED_TAGS: shtorm_extended,with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+          cache-dependency-path: go.extended.sum
+      - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: frontend/.node-version
+      - name: Generate shared full profile imports
+        run: node scripts/generate-component-imports.mjs --profile full
+      - name: Validate explicit provider selection
+        run: node scripts/core-provider-build.mjs plan --provider shtorm-extended
+      - name: Verify native source provenance and reject altered inputs
+        run: |
+          node scripts/extended-integration-provenance.mjs check
+          node --test scripts/extended-integration-provenance.test.mjs
+      - name: Compile the complete Panel against the immutable native graph
+        shell: bash
+        run: go test -run '^$' -tags "$EXTENDED_TAGS" ./...
+      - name: Native lifecycle, management and semantic boundary race regressions
+        shell: bash
+        run: go test -race -count=1 -timeout=10m -tags "$EXTENDED_TAGS" github.com/sagernet/sing-box/adapter ./core/... ./internal/singbox/apply ./service/coreinboundcontrol
+      - name: Build both shared backend component profiles
+        shell: bash
+        run: |
+          go build -tags "$EXTENDED_TAGS" -o "$RUNNER_TEMP/solovey-extended-full${{ runner.os == 'Windows' && '.exe' || '' }}" main.go
+          go build -tags "$EXTENDED_TAGS,minimal" -o "$RUNNER_TEMP/solovey-extended-core${{ runner.os == 'Windows' && '.exe' || '' }}" main.go
 
   docker-native-cronet:
     name: Docker native Cronet (${{ matrix.arch }})

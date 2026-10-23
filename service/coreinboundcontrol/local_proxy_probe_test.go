@@ -14,7 +14,6 @@ import (
 	corebox "github.com/MalenkiySolovey/solovey-ui/core/box"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	sb "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/option"
 	M "github.com/sagernet/sing/common/metadata"
 )
@@ -42,7 +41,7 @@ func TestLocalProxyProbePerformsAuthenticatedSOCKSHTTPAndMixedTransactions(t *te
 				`,"users":[{"username":"` + username + `","password":"` + password + `"}]}`
 			config := []byte(`{"log":{"disabled":true},"inbounds":[{"type":"` + test.inboundType + `","tag":"` + tag + `",` +
 				strings.TrimPrefix(inboundOptions, "{") + `],"outbounds":[{"type":"direct","tag":"direct"}],"route":{"final":"direct"}}`)
-			ctx := sb.Context(t.Context(), registry.InboundRegistry(), registry.OutboundRegistry(), registry.EndpointRegistry(), registry.DNSTransportRegistry(), registry.ServiceRegistry(), registry.CertificateProviderRegistry())
+			ctx := registry.Context(t.Context())
 			var options option.Options
 			if err := options.UnmarshalJSONContext(ctx, config); err != nil {
 				t.Fatal(err)

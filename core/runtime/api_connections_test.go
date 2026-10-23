@@ -281,7 +281,7 @@ type failingHotInbound struct {
 
 func (i *failingHotInbound) Type() string { return "hot-fixture" }
 func (i *failingHotInbound) Tag() string  { return i.tag }
-func (i *failingHotInbound) Start(stage adapter.StartStage) error {
+func (i *failingHotInbound) start(stage adapter.StartStage) error {
 	if stage == adapter.StartStateStart {
 		var err error
 		i.listener, err = net.Listen("tcp", "127.0.0.1:0")

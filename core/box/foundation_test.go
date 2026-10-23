@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"reflect"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
@@ -18,6 +19,31 @@ import (
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/service"
 )
+
+type countedLogFactory struct {
+	log.Factory
+	closes atomic.Int32
+}
+
+func (f *countedLogFactory) Close() error {
+	f.closes.Add(1)
+	return f.Factory.Close()
+}
+
+func TestBoxClosesLoggerExactlyOnce(t *testing.T) {
+	factory := &countedLogFactory{Factory: log.NewNOPFactory()}
+	instance := &Box{ctx: registry.Context(context.Background()), logFactory: factory,
+		logger: factory.Logger(), done: make(chan struct{})}
+	instance.native.initialize(instance)
+	for range 2 {
+		if err := instance.Close(); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := factory.closes.Load(); got != 1 {
+		t.Fatalf("logger closed %d times", got)
+	}
+}
 
 func TestBoxFreshRequiredContext(t *testing.T) {
 	var previous *Box
@@ -40,6 +66,52 @@ func TestBoxFreshRequiredContext(t *testing.T) {
 			t.Fatal(err)
 		}
 		previous = instance
+	}
+}
+
+func TestBoxProviderAdaptersPreserveOutboundFinal(t *testing.T) {
+	const proxy = `{"type":"socks","tag":"proxy","server":"192.0.2.1","server_port":1080}`
+	const direct = `{"type":"direct","tag":"direct"}`
+	for _, test := range []struct {
+		name, final, outbounds, want string
+		wantFailure                  bool
+	}{
+		{"empty", "", "[]", "direct", false},
+		{"first-proxy", "", "[" + proxy + "," + direct + "]", "proxy", false},
+		{"explicit-proxy", "proxy", "[" + direct + "," + proxy + "]", "proxy", false},
+		{"explicit-direct", "direct", "[" + proxy + "," + direct + "]", "direct", false},
+		{"unresolved-final", "missing", "[" + proxy + "," + direct + "]", "", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := registry.Context(context.Background())
+			raw := []byte(fmt.Sprintf(`{"log":{"disabled":true},"route":{"final":%q},"outbounds":%s}`, test.final, test.outbounds))
+			var options option.Options
+			if err := options.UnmarshalJSONContext(ctx, raw); err != nil {
+				t.Fatal(err)
+			}
+			instance, err := NewBox(Options{Context: ctx, Options: options})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := instance.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			err = instance.Start()
+			if test.wantFailure {
+				if err == nil || !strings.Contains(err.Error(), "default outbound not found") {
+					t.Fatalf("unresolved final did not fail closed: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if actual := instance.Outbound().Default(); actual == nil || actual.Tag() != test.want {
+				t.Fatalf("default outbound=%v, want %s", actual, test.want)
+			}
+		})
 	}
 }
 
@@ -129,7 +201,7 @@ type foundationProvider struct {
 
 func (p *foundationProvider) Type() string { return "test" }
 func (p *foundationProvider) Tag() string  { return p.tag }
-func (p *foundationProvider) Start(stage adapter.StartStage) error {
+func (p *foundationProvider) start(stage adapter.StartStage) error {
 	p.stages = append(p.stages, stage)
 	if p.events != nil {
 		*p.events = append(*p.events, "provider/"+stage.String())
@@ -152,7 +224,7 @@ type foundationInbound struct {
 
 func (i *foundationInbound) Type() string { return "test" }
 func (i *foundationInbound) Tag() string  { return "listener" }
-func (i *foundationInbound) Start(stage adapter.StartStage) error {
+func (i *foundationInbound) start(stage adapter.StartStage) error {
 	i.stages = append(i.stages, stage)
 	*i.events = append(*i.events, "inbound/"+stage.String())
 	return nil

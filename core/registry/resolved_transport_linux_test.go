@@ -30,11 +30,11 @@ func TestResolvedOfficialTransportBindsSameCoreService(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer transport.Close()
+	start := resolvedFixtureLifecycle(t, transport)
 	if _, real := transport.(*resolved.Transport); !real {
 		t.Fatal("resolved registry returned prepared stub")
 	}
-	if err := transport.Start(adapter.StartStateInitialize); err == nil {
+	if err := start(adapter.StartStateInitialize); err == nil {
 		t.Fatal("missing same-core service accepted")
 	}
 	owner, err := ServiceRegistry().Create(ctx, logger, "resolver", "resolved", &option.ResolvedServiceOptions{})
@@ -43,14 +43,14 @@ func TestResolvedOfficialTransportBindsSameCoreService(t *testing.T) {
 	}
 	// Construction/binding only: no bus, listener, host service or name mutation.
 	manager.current = owner
-	if err := transport.Start(adapter.StartStateInitialize); err != nil {
+	if err := start(adapter.StartStateInitialize); err != nil {
 		t.Fatal(err)
 	}
 	if _, real := owner.(*resolved.Service); !real {
 		t.Fatal("resolved service constructor is not official")
 	}
 	manager.current = nil
-	if err := transport.Start(adapter.StartStateInitialize); err == nil {
+	if err := start(adapter.StartStateInitialize); err == nil {
 		t.Fatal("removed service accepted on fresh initialization")
 	}
 }

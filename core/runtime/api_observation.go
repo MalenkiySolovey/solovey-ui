@@ -218,9 +218,32 @@ func (c *Core) deliverRuntimeLogs(api *privateAPI, batch *daemon.Log, emit func(
 		return false, nil
 	}
 	for _, line := range batch.Messages {
-		if !emit(RuntimeLogEvent{Generation: api.generation, ObservedAt: time.Now().UnixMilli(), Level: int32(line.Level), Message: redact.StringLimit(line.Message, 4096)}) {
+		if !emit(RuntimeLogEvent{Generation: api.generation, ObservedAt: time.Now().UnixMilli(), Level: runtimeLogLevel(line.Level), Message: redact.StringLimit(line.Message, 4096)}) {
 			return false, nil
 		}
 	}
 	return true, nil
+}
+
+// RuntimeLogEvent keeps the existing public numeric levels. The provider's
+// private protobuf enum may insert additional levels (for example NOTICE).
+func runtimeLogLevel(level daemon.LogLevel) int32 {
+	switch level.String() {
+	case "PANIC":
+		return 0
+	case "FATAL":
+		return 1
+	case "ERROR":
+		return 2
+	case "WARN":
+		return 3
+	case "NOTICE", "INFO":
+		return 4
+	case "DEBUG":
+		return 5
+	case "TRACE":
+		return 6
+	default:
+		return -1
+	}
 }

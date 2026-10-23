@@ -5,6 +5,7 @@ package registry
 import (
 	"context"
 	"errors"
+	"io"
 	"strconv"
 	"sync"
 
@@ -24,11 +25,12 @@ func QUICParentControlCompiled() bool { return true }
 func QUICAdmission(ctx context.Context, accept func()) bool { return qtls.ParentAdmission(ctx, accept) }
 
 type quicInboundControl struct {
-	owner    *qtls.ParentOwner[int]
-	names    []string
-	hooks    int
-	once     sync.Once
-	closeErr error
+	owner       *qtls.ParentOwner[int]
+	names       []string
+	hooks       int
+	once        sync.Once
+	closeErr    error
+	closeNative func() error
 }
 
 func newQUICControl(ctx context.Context, names []string) (context.Context, *quicInboundControl) {
@@ -45,7 +47,12 @@ func (q *quicInboundControl) finish(candidate adapter.Inbound, err error) (adapt
 	}
 	if err != nil {
 		if candidate != nil {
-			err = errors.Join(err, q.close(candidate.Close))
+			err = errors.Join(err, q.close(func() error {
+				if closer, ok := candidate.(io.Closer); ok {
+					return closer.Close()
+				}
+				return nil
+			}))
 		} else if q.owner != nil {
 			err = errors.Join(err, q.owner.Close())
 		}
@@ -111,21 +118,15 @@ type hysteriaControlled struct {
 	*quicInboundControl
 }
 
-func (h *hysteriaControlled) Close() error { return h.close(h.Inbound.Close) }
-
 type hysteria2Controlled struct {
 	*hysteria2.Inbound
 	*quicInboundControl
 }
 
-func (h *hysteria2Controlled) Close() error { return h.close(h.Inbound.Close) }
-
 type tuicControlled struct {
 	*tuic.Inbound
 	*quicInboundControl
 }
-
-func (h *tuicControlled) Close() error { return h.close(h.Inbound.Close) }
 
 func registerHysteriaInbound(r *inbound.Registry) {
 	inbound.Register[option.HysteriaInboundOptions](r, C.TypeHysteria, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.HysteriaInboundOptions) (adapter.Inbound, error) {

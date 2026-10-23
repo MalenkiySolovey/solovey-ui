@@ -1,3 +1,5 @@
+//go:build !shtorm_extended
+
 package box
 
 import (

@@ -1,0 +1,108 @@
+{
+  "schema": "solovey.extended-integration/v1",
+  "provider": "shtorm-extended",
+  "patched": true,
+  "upstreamByteIdentical": false,
+  "runtimeSemanticVersion": "1.14.3",
+  "modFile": "go.extended.mod",
+  "sources": [
+    {
+      "id": "engine",
+      "original": {
+        "module": "github.com/sagernet/sing-box",
+        "version": "v1.14.3",
+        "sourceVersion": "v1.14.3-extended-2.7.3",
+        "commit": "d9442d14b19ddd02605bf3ee893a171947038e19",
+        "repository": "https://github.com/shtorm-7/sing-box-extended"
+      },
+      "replacement": {
+        "module": "github.com/MalenkiySolovey/sing-box",
+        "version": "v1.14.4-0.20261023040931-b5f1b37ff6d4",
+        "commit": "b5f1b37ff6d4dc16b874b1ffc6e8d0b1b3777f5f",
+        "repository": "https://github.com/MalenkiySolovey/sing-box",
+        "sum": "h1:FgiuNGvrCEtaL1xzEG47OS77+TYAJnW5SSAOlvLV8ww=",
+        "goModSum": "h1:sg62CEdWhkOVVDDI3fA01dd82eoZuZKSlLY0oKAUHmc="
+      },
+      "patch": {
+        "file": "deploy/dependencies/sing-box-extended-integration.patch",
+        "sha256": "2e7b9d30bd22e32f18a21bbb43c66ce6675b9657b8317449df781a80adf53285",
+        "files": [
+          "SOLOVEY_INTEGRATION.md",
+          "adapter/endpoint.go",
+          "adapter/endpoint/manager.go",
+          "adapter/hot_lifecycle_test.go",
+          "adapter/inbound.go",
+          "adapter/inbound/manager.go",
+          "adapter/service.go",
+          "adapter/service/manager.go",
+          "option/warp.go",
+          "protocol/naive/quic/inbound_init.go",
+          "protocol/naive/quic/inbound_lifecycle.go",
+          "protocol/warp/endpoint.go",
+          "protocol/wireguard/endpoint.go",
+          "protocol/wireguard/endpoint_ipc_test.go",
+          "service/api/server.go",
+          "service/ssmapi/cache.go",
+          "service/ssmapi/cache_store.go",
+          "service/ssmapi/cache_test.go",
+          "service/ssmapi/scope_test.go",
+          "service/ssmapi/server.go",
+          "transport/v2raywebsocket/server.go",
+          "transport/v2raywebsocket/server_path_test.go",
+          "transport/wireguard/endpoint.go",
+          "transport/wireguard/endpoint_ipc_started_test.go"
+        ]
+      },
+      "license": "GPL-3.0-or-later",
+      "scopes": [
+        "ssm-cache",
+        "websocket-path-early-data",
+        "wireguard-ipc-awg",
+        "naive-http3-lifecycle",
+        "scope-hot-lifecycle",
+        "private-api-listener-close"
+      ]
+    },
+    {
+      "id": "quic",
+      "original": {
+        "module": "github.com/sagernet/sing-quic",
+        "version": "v0.7.2-0.20261002084117-75c3ac4fa12b",
+        "sourceVersion": "v0.7.2-0.20261002084117-75c3ac4fa12b",
+        "commit": "75c3ac4fa12b4ded2dc01b392ed7d5eaf3ea6876",
+        "repository": "https://github.com/SagerNet/sing-quic"
+      },
+      "replacement": {
+        "module": "github.com/MalenkiySolovey/sing-quic",
+        "version": "v0.7.2-0.20261023031814-d0ecb33c441a",
+        "commit": "d0ecb33c441a8f188f98bbcf07c0e1d77785e7be",
+        "repository": "https://github.com/MalenkiySolovey/sing-quic",
+        "sum": "h1:NTlyDhCQdnNTfbpynp7oeo2nvhUXdiA+pb9Xp5WN/BM=",
+        "goModSum": "h1:rJFeVxbEej2iuyeCJ3drKW+p5rOgtLIW3XhZ6ty7Fig="
+      },
+      "patch": {
+        "file": "deploy/dependencies/sing-quic-extended-parent-control.patch",
+        "sha256": "5e42e717fb2122df63b7eedd340c7d53e6da702cd1d45f1a568c55e7f42fbbf6",
+        "files": [
+          "SOLOVEY_INTEGRATION.md",
+          "hysteria/service.go",
+          "hysteria2/service.go",
+          "parent.go",
+          "parent_test.go",
+          "tuic/early_data.go",
+          "tuic/early_data_test.go",
+          "tuic/service.go"
+        ]
+      },
+      "license": "GPL-3.0-or-later",
+      "scopes": [
+        "authenticated-parent-lifecycle",
+        "tuic-early-data-race"
+      ]
+    }
+  ],
+  "transport": {
+    "module": "github.com/sagernet/quic-go",
+    "version": "v0.61.0-sing-box-mod.9"
+  }
+}

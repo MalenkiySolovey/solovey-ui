@@ -5,26 +5,13 @@ import (
 	"testing"
 
 	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/adapter/endpoint"
-	"github.com/sagernet/sing-box/adapter/outbound"
-	"github.com/sagernet/sing-box/common/trafficcontrol"
-	"github.com/sagernet/sing-box/log"
 )
 
 func newTestConnTracker(t *testing.T) *ConnTracker {
 	t.Helper()
-	logger := log.NewNOPFactory().Logger()
-	manager := outbound.NewManager(logger, outbound.NewRegistry(), endpoint.NewManager(logger, endpoint.NewRegistry()), "")
-	manager.Initialize(func() (adapter.Outbound, error) { return fakeStatsOutbound{tag: "default"}, nil })
-	if err := manager.Start(adapter.StartStateInitialize); err != nil {
-		t.Fatal(err)
-	}
-	inventory := trafficcontrol.NewManager(manager)
-	if err := inventory.Start(adapter.StartStateInitialize); err != nil {
-		t.Fatal(err)
-	}
+	inventory := newTestInventory(t)
 	tracker := NewConnTracker(inventory)
-	t.Cleanup(func() { tracker.Reset(); _ = inventory.Close(); _ = manager.Close() })
+	t.Cleanup(tracker.Reset)
 	return tracker
 }
 

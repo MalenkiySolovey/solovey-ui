@@ -198,7 +198,7 @@ func TestQUICPartialStartupAndConcurrentCloseOnce(t *testing.T) {
 			results := make(chan error, 16)
 			start := make(chan struct{})
 			for range 16 {
-				go func() { <-start; results <- inbound.Close() }()
+				go func() { <-start; results <- inbound.(interface{ Close() error }).Close() }()
 			}
 			close(start)
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

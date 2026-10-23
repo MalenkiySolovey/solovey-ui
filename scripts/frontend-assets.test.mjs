@@ -111,6 +111,11 @@ test('a failed npm build leaves the previous embedded tree untouched',{skip:proc
   const {root,target}=fixture(t)
   const entry=path.join(root,'build.sh'),bin=path.join(root,'bin')
   fs.copyFileSync(fileURLToPath(new URL('../build.sh',import.meta.url)),entry)
+  for(const name of ['scripts/core-provider-build.mjs','core/provider/pins.json','go.mod','go.sum']) {
+    const destination=path.join(root,name)
+    fs.mkdirSync(path.dirname(destination),{recursive:true})
+    fs.copyFileSync(fileURLToPath(new URL(`../${name}`,import.meta.url)),destination)
+  }
   fs.mkdirSync(path.join(root,'frontend'))
   fs.mkdirSync(bin)
   fs.writeFileSync(path.join(bin,'npm'),'#!/bin/sh\n[ "$1" = ci ] && exit 0\nexit 8\n',{mode:0o755})

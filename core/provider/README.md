@@ -23,7 +23,21 @@ The identity is observational: there is no database setting, migration, new
 permission or alternate runtime owner. Runtime registration facts remain owned by
 the capability registry and must be evaluated separately.
 
-The pinned Shtorm source is a research identity. Native Extended build selection,
-its maintained patches and root replacements, field capabilities, maintenance
-transition and artifact qualification are separate R7 gates. A source identity
-alone cannot make those operations available.
+`build.sh --provider shtorm-extended` and
+`windows/build-windows.ps1 -Provider shtorm-extended` explicitly select the
+separate `go.extended.mod`/`go.extended.sum` graph and `shtorm_extended` native
+ABI adapters. Both entrypoints default to Official. The shared build planner
+rejects unknown providers, contradictory tags, local replacements and source
+pin drift before frontend/backend builds. It builds with a read-only module
+lock; neither provider overwrites the other lock.
+
+Extended keeps the native Shtorm semantic baseline and root replacements. Its
+maintained engine and QUIC integrations preserve the existing Panel lifecycle,
+SSM storage, authenticated parent owner, private API and runtime log wire values.
+`deploy/dependencies/sing-box-extended-integration.json` records immutable public
+commits, checksums, licenses and complete replayable patches. Verify it with
+`node scripts/extended-integration-provenance.mjs check`.
+
+Field capabilities, maintenance transition, artifact trust, semantic/UI parity
+and supported-device qualification remain separate R7 gates. Explicit developer
+build selection does not make a provider switch or production artifact available.

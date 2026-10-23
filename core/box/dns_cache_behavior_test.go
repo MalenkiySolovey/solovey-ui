@@ -24,12 +24,11 @@ type dnsCacheWitness struct {
 	calls        int
 }
 
-func (t *dnsCacheWitness) Type() string                   { return "udp" }
-func (t *dnsCacheWitness) Tag() string                    { return t.tag }
-func (t *dnsCacheWitness) Dependencies() []string         { return nil }
-func (t *dnsCacheWitness) Start(adapter.StartStage) error { return nil }
-func (t *dnsCacheWitness) Close() error                   { return nil }
-func (t *dnsCacheWitness) Reset()                         {}
+func (t *dnsCacheWitness) Type() string           { return "udp" }
+func (t *dnsCacheWitness) Tag() string            { return t.tag }
+func (t *dnsCacheWitness) Dependencies() []string { return nil }
+func (t *dnsCacheWitness) Close() error           { return nil }
+func (t *dnsCacheWitness) Reset()                 {}
 func (t *dnsCacheWitness) Exchange(_ context.Context, q *mDNS.Msg) (*mDNS.Msg, error) {
 	t.calls++
 	r := new(mDNS.Msg)
@@ -63,13 +62,14 @@ func TestDNSUpgradeCacheAlwaysPartitionsByTransport(t *testing.T) {
 func TestDNSUpgradeCachePrivacyRestartAndRecovery(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "cache.db")
 	ctx := registry.Context(context.Background())
-	open := func(options option.CacheFileOptions) *cachefile.CacheFile {
+	open := func(options option.CacheFileOptions) *cacheFixture {
 		options.Path = path
 		cache := cachefile.New(ctx, log.NewNOPFactory().Logger(), options)
-		if err := cache.Start(adapter.StartStateInitialize); err != nil {
+		start, closeCache := fixtureLifecycle(cache)
+		if err := start(adapter.StartStateInitialize); err != nil {
 			t.Fatal(err)
 		}
-		return cache
+		return &cacheFixture{CacheFile: cache, Close: closeCache}
 	}
 	options := option.CacheFileOptions{Enabled: true, StoreRDRC: true, StoreFakeIP: true}
 	cache := open(options)
@@ -127,10 +127,19 @@ func TestDNSUpgradeCachePrivacyRestartAndRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	cache = open(full)
-	defer cache.Close()
+	t.Cleanup(func() {
+		if err := cache.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	if _, _, loaded := cache.LoadDNSCache("a", "full.example.", mDNS.TypeA); loaded {
 		t.Fatal("corrupt cache resurrected response")
 	}
+}
+
+type cacheFixture struct {
+	*cachefile.CacheFile
+	Close func() error
 }
 
 func TestDNSUpgradeLocalAndLinkLocalClassification(t *testing.T) {
