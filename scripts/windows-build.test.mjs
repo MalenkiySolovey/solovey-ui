@@ -6,12 +6,18 @@ import { fileURLToPath } from 'node:url'
 
 test('native Windows entrypoint rejects unsupported parameters without prompting',{skip:process.platform!=='win32'},() => {
   const entry=fileURLToPath(new URL('../windows/build-windows.ps1',import.meta.url))
-  for(const args of [['-Architecture','mips'],['-Profile','partial'],['-UnknownOption'],['-NoCGO']]) {
-    const result=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',entry,...args],{cwd:os.tmpdir(),encoding:'utf8',timeout:15000})
-    assert.equal(result.status,1,result.stdout+result.stderr)
-    assert.equal(result.error,undefined)
+  const invoke=args => {
+    // Windows PowerShell can start cold while the parallel asset test compiles
+    // Go on hosted runners. Keep a deadline, but report spawn failures directly.
+    const result=spawnSync('powershell.exe',['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',entry,...args],{cwd:os.tmpdir(),encoding:'utf8',windowsHide:true,timeout:60000})
+    assert.ifError(result.error)
+    return result
   }
-  const help=spawnSync('powershell.exe',['-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',entry,'-Help'],{cwd:os.tmpdir(),encoding:'utf8',timeout:15000})
+  for(const args of [['-Architecture','mips'],['-Profile','partial'],['-UnknownOption'],['-NoCGO']]) {
+    const result=invoke(args)
+    assert.equal(result.status,1,`${args.join(' ')}: ${result.stdout}${result.stderr}`)
+  }
+  const help=invoke(['-Help'])
   assert.equal(help.status,0,help.stderr)
   assert.match(help.stdout,/Usage: build-windows.ps1/)
 })
