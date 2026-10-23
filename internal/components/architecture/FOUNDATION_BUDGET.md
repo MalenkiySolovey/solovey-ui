@@ -74,3 +74,16 @@ the D7 closed port guard. Remote missing metadata retains its existing bounded
 ownership. R1 base identity and all unrelated exact sites remain unchanged; the
 total inventory allowance count is unchanged. No worker/Runtime admission or
 automatic legacy inventory regeneration occurs.
+
+R7 E1 reviews the existing `core/box.NewBox` Direct site from `b2370b22...`
+to `581fe87f...`. Its containing declaration now constructs the same managers
+through narrow provider ABI adapters and initializes native Scope ownership.
+The Direct fallback closure and `route.final` input are unchanged. Both pinned
+outbound managers retain the same selection: an explicit final must resolve;
+otherwise the first configured outbound is selected, with Direct synthesized
+only when there is no configured outbound. A missing explicit final fails startup.
+`TestBoxProviderAdaptersPreserveOutboundFinal` proves these cases through the
+shared Box for both build flavors, without network traffic. Existing HTTP/DNS
+path witnesses also require omitted detours to use an explicit proxy final.
+This reviews one exact existing site; no additional Direct site, allowance,
+Failover policy or SEC-2 interpretation is introduced.

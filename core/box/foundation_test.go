@@ -69,6 +69,52 @@ func TestBoxFreshRequiredContext(t *testing.T) {
 	}
 }
 
+func TestBoxProviderAdaptersPreserveOutboundFinal(t *testing.T) {
+	const proxy = `{"type":"socks","tag":"proxy","server":"192.0.2.1","server_port":1080}`
+	const direct = `{"type":"direct","tag":"direct"}`
+	for _, test := range []struct {
+		name, final, outbounds, want string
+		wantFailure                  bool
+	}{
+		{"empty", "", "[]", "direct", false},
+		{"first-proxy", "", "[" + proxy + "," + direct + "]", "proxy", false},
+		{"explicit-proxy", "proxy", "[" + direct + "," + proxy + "]", "proxy", false},
+		{"explicit-direct", "direct", "[" + proxy + "," + direct + "]", "direct", false},
+		{"unresolved-final", "missing", "[" + proxy + "," + direct + "]", "", true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			ctx := registry.Context(context.Background())
+			raw := []byte(fmt.Sprintf(`{"log":{"disabled":true},"route":{"final":%q},"outbounds":%s}`, test.final, test.outbounds))
+			var options option.Options
+			if err := options.UnmarshalJSONContext(ctx, raw); err != nil {
+				t.Fatal(err)
+			}
+			instance, err := NewBox(Options{Context: ctx, Options: options})
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(func() {
+				if err := instance.Close(); err != nil {
+					t.Error(err)
+				}
+			})
+			err = instance.Start()
+			if test.wantFailure {
+				if err == nil || !strings.Contains(err.Error(), "default outbound not found") {
+					t.Fatalf("unresolved final did not fail closed: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err)
+			}
+			if actual := instance.Outbound().Default(); actual == nil || actual.Tag() != test.want {
+				t.Fatalf("default outbound=%v, want %s", actual, test.want)
+			}
+		})
+	}
+}
+
 func TestBoxConstructorFailureClosesUnstartedProviderOnce(t *testing.T) {
 	ctx := registry.Context(context.Background())
 	provider := &foundationProvider{tag: "first"}

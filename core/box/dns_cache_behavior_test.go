@@ -127,7 +127,11 @@ func TestDNSUpgradeCachePrivacyRestartAndRecovery(t *testing.T) {
 		t.Fatal(err)
 	}
 	cache = open(full)
-	defer cache.Close()
+	t.Cleanup(func() {
+		if err := cache.Close(); err != nil {
+			t.Error(err)
+		}
+	})
 	if _, _, loaded := cache.LoadDNSCache("a", "full.example.", mDNS.TypeA); loaded {
 		t.Fatal("corrupt cache resurrected response")
 	}

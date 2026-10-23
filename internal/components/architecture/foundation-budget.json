@@ -1925,7 +1925,7 @@
       "rule": "direct-policy",
       "path": "core/box/box.go",
       "symbol": "NewBox",
-      "digest": "b2370b2215ee98eabe6868fe299a56bf3a4294bb36846c3c20afdf5419fc2bcc"
+      "digest": "581fe87f8170ef516b8607b727db765ed631cc001ae46e3eceb5e5e04561264a"
     },
     {
       "rule": "direct-policy",
