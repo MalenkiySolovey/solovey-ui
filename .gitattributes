@@ -11,6 +11,8 @@ Dockerfile text eol=lf
 # for the actual source files.
 deploy/dependencies/sing-quic-parent-control.patch text eol=lf whitespace=-blank-at-eol,-space-before-tab
 deploy/dependencies/sing-box-ssm-cache.patch text eol=lf whitespace=-blank-at-eol,-space-before-tab
+deploy/dependencies/sing-box-extended-integration.patch text eol=lf whitespace=-blank-at-eol,-space-before-tab
+deploy/dependencies/sing-quic-extended-parent-control.patch text eol=lf whitespace=-blank-at-eol,-space-before-tab
 
 # Extensionless Unix assets copied into the OpenWrt package.
 deploy/openwrt/solovey-ui.init text eol=lf

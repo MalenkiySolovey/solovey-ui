@@ -3,13 +3,14 @@
 param(
     [ValidateSet('amd64', 'arm64')][string]$Architecture = 'amd64',
     [ValidateSet('full', 'core')][string]$Profile = 'full',
+    [ValidateSet('sing-box', 'shtorm-extended')][string]$Provider = 'sing-box',
     [string]$OutputPath,
     [switch]$Help
 )
 
 $ErrorActionPreference = 'Stop'
 if ($Help) {
-    Write-Host 'Usage: build-windows.ps1 [-Architecture amd64|arm64] [-Profile full|core] [-OutputPath path]'
+    Write-Host 'Usage: build-windows.ps1 [-Architecture amd64|arm64] [-Profile full|core] [-Provider sing-box|shtorm-extended] [-OutputPath path]'
     exit 0
 }
 $repoRoot = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..'))
@@ -37,6 +38,11 @@ try {
     $env:GOARCH = $Architecture
     $env:CGO_ENABLED = '1'
     $env:SOLOVEY_UI_PROFILE = $Profile
+    $tags = 'with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale'
+    if ($Profile -eq 'core') { $tags += ',minimal' }
+    $planJSON = & $node scripts/core-provider-build.mjs plan --provider $Provider --tags $tags
+    if ($LASTEXITCODE -ne 0) { throw 'Core provider source pin validation failed' }
+    $plan = $planJSON | ConvertFrom-Json
     Push-Location -LiteralPath (Join-Path $repoRoot 'frontend')
     try {
         Invoke-Native $npm @('ci')
@@ -45,10 +51,8 @@ try {
     Invoke-Native $node @('scripts/check-frontend-profile.mjs', '--profile', $Profile, '--dist', 'frontend/dist')
     Invoke-Native $node @('scripts/generate-component-imports.mjs', '--profile', $Profile)
     Invoke-Native $node @('scripts/frontend-assets.mjs', 'publish', '--dist', 'frontend/dist', '--destination', 'web/html')
-    $tags = 'with_quic,with_grpc,with_utls,with_acme,with_gvisor,with_tailscale'
-    if ($Profile -eq 'core') { $tags += ',minimal' }
-    Invoke-Native $go @('build', '-ldflags', '-w -s -checklinkname=0', '-tags', $tags, '-o', $OutputPath, 'main.go')
-    Write-Host "Built Windows $Architecture ${Profile}: $OutputPath"
+    Invoke-Native $go (@('build') + @($plan.goArgs) + @('-ldflags', '-w -s -checklinkname=0', '-tags', $plan.tags, '-o', $OutputPath, 'main.go'))
+    Write-Host "Built Windows $Architecture $Profile ${Provider}: $OutputPath"
 } finally {
     foreach ($name in $savedEnvironment.Keys) { [Environment]::SetEnvironmentVariable($name, $savedEnvironment[$name], 'Process') }
     Pop-Location

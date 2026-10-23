@@ -28,7 +28,7 @@ func (l *observableLogger) Log(ctx context.Context, level log.Level, args []any)
 	}
 	msg := suiLog.SanitizeMessage(l.sanitize(F.ToString(args...)))
 	tag := suiLog.SanitizeMessage(l.sanitize(l.tag))
-	switch level {
+	switch panelLevel(level) {
 	case log.LevelInfo:
 		suiLog.CoreInfo(tag, msg)
 	case log.LevelWarn:

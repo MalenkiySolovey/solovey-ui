@@ -26,9 +26,8 @@ type dnsRuleWitness struct {
 	address string
 }
 
-func (t *dnsRuleWitness) Start(adapter.StartStage) error { return nil }
-func (t *dnsRuleWitness) Close() error                   { return nil }
-func (t *dnsRuleWitness) Reset()                         {}
+func (t *dnsRuleWitness) Close() error { return nil }
+func (t *dnsRuleWitness) Reset()       {}
 func (t *dnsRuleWitness) Exchange(_ context.Context, q *mDNS.Msg) (*mDNS.Msg, error) {
 	r := new(mDNS.Msg)
 	r.SetReply(q)

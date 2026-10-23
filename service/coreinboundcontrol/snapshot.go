@@ -10,7 +10,6 @@ import (
 
 	coreregistry "github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	sb "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/auth"
 )
@@ -131,8 +130,7 @@ func populateTypedShapes(snapshot *InboundFallbackSnapshotV1, inbound model.Inbo
 	if err != nil {
 		return err
 	}
-	ctx := sb.Context(context.Background(), coreregistry.InboundRegistry(), coreregistry.OutboundRegistry(),
-		coreregistry.EndpointRegistry(), coreregistry.DNSTransportRegistry(), coreregistry.ServiceRegistry(), coreregistry.CertificateProviderRegistry())
+	ctx := coreregistry.Context(context.Background())
 	var parsed option.Inbound
 	if err = parsed.UnmarshalJSONContext(ctx, content); err != nil {
 		return err
@@ -311,8 +309,7 @@ func applyHydratedLocalProxyShape(snapshot *InboundFallbackSnapshotV1, content [
 	if snapshot == nil || !snapshot.LocalProxy.Candidate {
 		return nil
 	}
-	ctx := sb.Context(context.Background(), coreregistry.InboundRegistry(), coreregistry.OutboundRegistry(),
-		coreregistry.EndpointRegistry(), coreregistry.DNSTransportRegistry(), coreregistry.ServiceRegistry(), coreregistry.CertificateProviderRegistry())
+	ctx := coreregistry.Context(context.Background())
 	var parsed option.Inbound
 	if err := parsed.UnmarshalJSONContext(ctx, content); err != nil {
 		return err

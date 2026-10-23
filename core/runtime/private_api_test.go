@@ -312,10 +312,10 @@ func TestRuntimeGroupsSelectionAndAPIDegradation(t *testing.T) {
 	if err := c.SelectRuntimeGroup(context.Background(), generation, "choice", "missing"); err == nil {
 		t.Fatal("unknown group member accepted")
 	}
-	for _, item := range c.serviceManager.Services() {
-		if item.Tag() == privateAPITag {
-			_ = item.Close()
-		}
+	// Fault injection bypasses the public owner guard to stop only the attached
+	// service through the selected ABI's lifecycle manager.
+	if err := c.serviceManager.Remove(privateAPITag); err != nil && !errors.Is(err, net.ErrClosed) {
+		t.Fatal(err)
 	}
 	fact := c.RuntimeStatus(context.Background())
 	if !c.IsRunning() || fact.State != "running" || fact.APIAvailable || fact.Reason != "runtime_api_unavailable" {

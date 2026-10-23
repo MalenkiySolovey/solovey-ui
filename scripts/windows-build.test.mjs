@@ -13,7 +13,7 @@ test('native Windows entrypoint rejects unsupported parameters without prompting
     assert.ifError(result.error)
     return result
   }
-  for(const args of [['-Architecture','mips'],['-Profile','partial'],['-UnknownOption'],['-NoCGO']]) {
+  for(const args of [['-Architecture','mips'],['-Profile','partial'],['-Provider','unknown'],['-UnknownOption'],['-NoCGO']]) {
     const result=invoke(args)
     assert.equal(result.status,1,`${args.join(' ')}: ${result.stdout}${result.stderr}`)
   }

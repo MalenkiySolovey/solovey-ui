@@ -2,6 +2,7 @@ package registry
 
 import (
 	"context"
+	"io"
 	"net"
 	"net/netip"
 	"testing"
@@ -36,7 +37,9 @@ func TestMDNSOfficialConstructorAndLocalDomainContract(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer transport.Close()
+	if closer, ok := transport.(io.Closer); ok {
+		defer closer.Close()
+	}
 	for _, test := range []struct {
 		domain string
 		local  bool

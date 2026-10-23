@@ -66,3 +66,31 @@ core restart. The pinned follow-up accepts that expected listener net.ErrClosed
 at the existing SSM owner. Real served-listener/port-reuse/concurrent-close and
 CoreRuntime hot-replacement regressions retain the existing generation, private
 API and StatsTracker. TLS/cache errors continue to be returned.
+
+# Explicit Shtorm Extended integration source
+
+`sing-box-extended-integration.json` records the separate native Extended engine
+and QUIC graph selected by `go.extended.mod`. The semantic baseline is Shtorm
+v1.14.3-extended-2.7.3 at `d9442d14b19ddd02605bf3ee893a171947038e19`.
+Its maintained engine pseudo-version is module metadata; the runtime semantic
+version remains 1.14.3. The default Official graph and its notices above stay
+authoritative for Official builds.
+
+The two Extended patches are cumulative, complete deltas against the recorded
+native engine and QUIC baselines. They retain native dependency replacements,
+original licenses and Scope lifecycle ownership. Bounded integrations preserve
+Solovey's existing SSM storage, WebSocket handling, WireGuard IPC/AWG seam,
+Naive HTTP/3 and authenticated QUIC parent lifecycle, hot object mutation and
+private API shutdown. The fork notices describe the specific source gaps and
+regression tests. They introduce no alternate Panel generation, flow tracker,
+authentication, subscription or storage owner.
+
+    node scripts/extended-integration-provenance.mjs check
+    node scripts/extended-integration-provenance.mjs build-info
+    node scripts/extended-integration-provenance.mjs replay /existing/engine/clone /existing/quic/clone /owned/scratch/parent
+
+Replay reads immutable source objects from the existing clones, creates one
+small scratch tree under the explicitly supplied parent, compares every patched
+file to its pinned commit, and removes only that verified scratch tree. It never
+modifies a clone or module cache. Source provenance and local/CI lifecycle proofs
+do not assert full semantic/UI parity, artifact trust or device qualification.

@@ -70,6 +70,7 @@ type Box struct {
 	closeOnce           sync.Once
 	closeErr            error
 	initialized         map[adapter.Lifecycle]bool
+	native              nativeBoxState
 }
 
 func NewBox(options Options) (_ *Box, err error) {
@@ -148,6 +149,7 @@ func NewBox(options Options) (_ *Box, err error) {
 	s := &Box{ctx: ctx, cancel: cancel, createdAt: createdAt, logFactory: logFactory,
 		logger: logFactory.Logger(), done: make(chan struct{}),
 		initialized: make(map[adapter.Lifecycle]bool), inboundIdentity: inboundidentity.NewOwner()}
+	s.native.initialize(s)
 	defer func() {
 		if err != nil {
 			err = errors.Join(err, s.Close())
@@ -177,12 +179,12 @@ func NewBox(options Options) (_ *Box, err error) {
 
 	routeOptions := sbCommon.PtrValueOrDefault(options.Route)
 	dnsOptions := sbCommon.PtrValueOrDefault(options.DNS)
-	endpointManager := endpoint.NewManager(logFactory.NewLogger("endpoint"), endpointRegistry)
-	inboundManager := inbound.NewManager(logFactory.NewLogger("inbound"), constructionRegistry{inboundRegistry}, endpointManager)
-	outboundManager := outbound.NewManager(logFactory.NewLogger("outbound"), outboundRegistry, endpointManager, routeOptions.Final)
-	dnsTransportManager := dns.NewTransportManager(logFactory.NewLogger("dns/transport"), dnsTransportRegistry, outboundManager, dnsOptions.Final)
-	serviceManager := boxService.NewManager(logFactory.NewLogger("service"), serviceRegistry)
-	certificateManager := boxCertificate.NewManager(logFactory.NewLogger("certificate-provider"), certificateRegistry)
+	endpointManager := newEndpointManager(logFactory, endpointRegistry)
+	inboundManager := newInboundManager(logFactory, constructionRegistry{inboundRegistry}, endpointManager)
+	outboundManager := newOutboundManager(logFactory, outboundRegistry, endpointManager, routeOptions.Final)
+	dnsTransportManager := newDNSTransportManager(logFactory, dnsTransportRegistry, outboundManager, dnsOptions.Final)
+	serviceManager := newServiceManager(logFactory, serviceRegistry)
+	certificateManager := newCertificateManager(logFactory, certificateRegistry)
 	s.endpoint, s.inbound, s.outbound = endpointManager, inboundManager, outboundManager
 	s.dnsTransport, s.service, s.certificateProvider = dnsTransportManager, serviceManager, certificateManager
 
@@ -212,7 +214,7 @@ func NewBox(options Options) (_ *Box, err error) {
 	s.network = networkManager
 	s.httpClient = httpclient.NewManager(ctx, logFactory.NewLogger("httpclient"), options.HTTPClients, routeOptions.DefaultHTTPClient)
 	service.MustRegister[adapter.HTTPClientManager](ctx, s.httpClient)
-	router := route.NewRouter(ctx, logFactory, routeOptions, dnsOptions)
+	router := newRouter(ctx, logFactory, routeOptions, dnsOptions)
 	s.router = router
 	service.MustRegister[adapter.Router](ctx, router)
 	err = router.Initialize(routeOptions.Rules, routeOptions.RuleSet)
@@ -400,7 +402,10 @@ func NewBox(options Options) (_ *Box, err error) {
 			WriteToSystem: ntpOptions.WriteToSystem,
 		})
 		timeService.TimeService = ntpService
-		s.internalService = append(s.internalService, adapter.NewLifecycleService(ntpService, "ntp service"))
+		s.internalService = append(s.internalService, newLifecycleService(ntpService, "ntp service"))
+	}
+	if err = s.native.configure(s, options.Options); err != nil {
+		return nil, err
 	}
 	return s, nil
 }

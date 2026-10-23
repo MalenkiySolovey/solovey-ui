@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
-	sb "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/common/srs"
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -17,7 +16,7 @@ import (
 )
 
 func TestAnyTLSClientMetadataDefaultsAndRoundTrip(t *testing.T) {
-	ctx := sb.Context(context.Background(), registry.InboundRegistry(), registry.OutboundRegistry(), registry.EndpointRegistry(), registry.DNSTransportRegistry(), registry.ServiceRegistry(), registry.CertificateProviderRegistry())
+	ctx := registry.Context(context.Background())
 	for _, metadata := range []string{"", "custom-client"} {
 		payload := map[string]any{"type": "anytls", "tag": "proxy", "server": "example.invalid", "server_port": 443, "tls": map[string]any{"enabled": true}}
 		if metadata != "" {

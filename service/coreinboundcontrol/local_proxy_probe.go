@@ -21,7 +21,6 @@ import (
 	hostresources "github.com/MalenkiySolovey/solovey-ui/componenthost/resources"
 	coreregistry "github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	sb "github.com/sagernet/sing-box"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing/common/auth"
 	M "github.com/sagernet/sing/common/metadata"
@@ -228,8 +227,7 @@ func (p *LocalProxyProbeProviderV1) localProxyProbeConfig(ctx context.Context, s
 	if err != nil {
 		return localProxyProbeConfigV1{}, err
 	}
-	parseContext := sb.Context(context.Background(), coreregistry.InboundRegistry(), coreregistry.OutboundRegistry(),
-		coreregistry.EndpointRegistry(), coreregistry.DNSTransportRegistry(), coreregistry.ServiceRegistry(), coreregistry.CertificateProviderRegistry())
+	parseContext := coreregistry.Context(context.Background())
 	var parsed option.Inbound
 	if err := parsed.UnmarshalJSONContext(parseContext, content); err != nil {
 		return localProxyProbeConfigV1{}, err
