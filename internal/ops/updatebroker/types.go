@@ -8,7 +8,7 @@ import "github.com/MalenkiySolovey/solovey-ui/internal/release"
 const (
 	ProviderRevision            = "update-broker-provider-1.1"
 	MaxChunkBytes               = 384 << 10
-	ProviderMaintenanceRevision = "update-broker-maintenance-1.0"
+	ProviderMaintenanceRevision = "update-broker-maintenance-1.1"
 )
 
 type EmptyV1 struct{}
@@ -138,6 +138,7 @@ type VerifyRequestV1 struct {
 	PreparedRef    string            `json:"preparedRef"`
 	RollbackRef    string            `json:"rollbackRef"`
 	ProviderHealth *ProviderHealthV1 `json:"providerHealth,omitempty"`
+	Rollback       bool              `json:"rollback,omitempty"`
 }
 
 type VerifyResultV1 struct {

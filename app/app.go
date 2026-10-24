@@ -44,16 +44,17 @@ type APP struct {
 	initialized bool
 	started     bool
 	service.SettingService
-	configService     *service.ConfigService
-	webServer         *web.Server
-	subServer         *sub.Server
-	cronScheduler     *scheduler.Scheduler
-	core              *coreruntime.Core
-	runtime           *service.Runtime
-	components        *componentsupervisor.Supervisor
-	stopResources     func()
-	stopCoreHooks     func()
-	stopDatabaseHooks func()
+	configService      *service.ConfigService
+	stopUpdateWatchdog func()
+	webServer          *web.Server
+	subServer          *sub.Server
+	cronScheduler      *scheduler.Scheduler
+	core               *coreruntime.Core
+	runtime            *service.Runtime
+	components         *componentsupervisor.Supervisor
+	stopResources      func()
+	stopCoreHooks      func()
+	stopDatabaseHooks  func()
 }
 
 func NewApp() *APP {
@@ -146,6 +147,12 @@ func (a *APP) Init() (err error) {
 	a.subServer = sub.NewServer()
 
 	a.configService = service.NewConfigServiceWithRuntime(a.runtime)
+	serviceupdate.SharedLifecycle().SetCoreConfigurationOwner(a.configService)
+	recoveryCtx, cancelRecovery := context.WithTimeout(context.Background(), 30*time.Second)
+	if err := serviceupdate.SharedLifecycle().RecoverProviderMaintenance(recoveryCtx); err != nil {
+		logger.Warning("provider maintenance startup recovery requires attention")
+	}
+	cancelRecovery()
 	if err := a.registerResources(); err != nil {
 		return err
 	}
@@ -252,6 +259,7 @@ func (a *APP) start() (err error) {
 		logger.Warning("signed update startup reconciliation requires attention")
 	}
 	cancelReconcile()
+	a.startUpdateMaintenanceWatchdog()
 	return nil
 }
 
@@ -282,6 +290,10 @@ func (a *APP) Stop() {
 }
 
 func (a *APP) stop() {
+	if a.stopUpdateWatchdog != nil {
+		a.stopUpdateWatchdog()
+		a.stopUpdateWatchdog = nil
+	}
 	service.StopRestartManager()
 	if a.cronScheduler != nil {
 		stopCtx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

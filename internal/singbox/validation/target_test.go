@@ -12,6 +12,7 @@ import (
 	"strings"
 	"testing"
 
+	panelidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	providerfixture "github.com/MalenkiySolovey/solovey-ui/testsupport/coreprovider"
 )
@@ -32,7 +33,9 @@ func TestTargetCheckBindsExactInputAndDoesNotStartListenerOrWriteAssets(t *testi
 	report := checkTargetConfig(raw, providerfixture.Identity(t, coreprovider.DefaultID()))
 	digest := sha256.Sum256(raw)
 	if report.Schema != TargetCheckSchema || report.State != "VALID" || len(report.ReasonCodes) != 0 ||
-		report.ConfigurationDigest != hex.EncodeToString(digest[:]) || !bytes.Equal(raw, before) {
+		report.ConfigurationDigest != hex.EncodeToString(digest[:]) || !bytes.Equal(raw, before) ||
+		report.PanelVersion != panelidentity.GetVersion() || report.Capabilities.Validate(report.CoreProvider, report.Capabilities.ComponentProfile) != nil ||
+		report.CapabilityRevision != report.Capabilities.Revision() {
 		t.Fatalf("target report is not bound to unchanged input: %+v", report)
 	}
 	if report.CoreProvider.ArtifactState != coreprovider.Unknown || report.CoreProvider.ArtifactDigest != "" {

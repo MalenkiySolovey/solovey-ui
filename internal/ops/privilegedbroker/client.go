@@ -43,6 +43,12 @@ func NewClient(role Role) *Client {
 }
 
 func (c *Client) Invoke(ctx context.Context, call Call, target any) (*Receipt, error) {
+	if ctx == nil {
+		return nil, errors.New("broker request context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if c == nil || c.Role != RolePanel && c.Role != RoleSSHProof {
 		return nil, errors.New("broker client is not configured")
 	}
@@ -81,6 +87,10 @@ func (c *Client) Invoke(ctx context.Context, call Call, target any) (*Receipt, e
 		return nil, fmt.Errorf("connect privileged broker: %w", err)
 	}
 	defer connection.Close()
+	// The caller's lifetime also bounds a connected read/write. A dial context
+	// alone leaves shutdown/recovery workers stuck until the RPC's wire timeout.
+	stopCancellation := context.AfterFunc(ctx, func() { _ = connection.Close() })
+	defer stopCancellation()
 	verify := c.Verify
 	if verify == nil && c.Dial == nil {
 		verify = verifyServerConnection

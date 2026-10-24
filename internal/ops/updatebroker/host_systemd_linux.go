@@ -298,6 +298,14 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 		return nil, broker.Failure(broker.CodeRevision, "installed provider requires explicit maintenance preflight")
 	}
 	maxSequence, maxDigest := state.activationHighWater()
+	if state.ProviderMaintenance.Phase == "ROLLED_BACK" {
+		return nil, broker.Failure(broker.CodeFence, "provider rollback runtime verification is pending")
+	}
+	if state.ProviderMaintenance.Phase == "ROLLBACK_VERIFIED" {
+		// The previous operation remains observable until the next admitted
+		// preparation replaces its now-completed checkpoint atomically.
+		state.clearPreparedRollback()
+	}
 	rollbackRef := semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest)
 	preparedReplay := state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, rollbackRef)
 	activatedReplay := preparedReplay && state.ActiveSequence == request.Release.Sequence && state.ActiveDigest == request.Release.ManifestDigest && state.ActiveRelease == releaseName
@@ -329,7 +337,8 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 		if withProvider {
 			state.ProviderMaintenance = providerMaintenanceState{OperationID: envelope.OperationID, ManifestDigest: request.Release.ManifestDigest,
 				ArtifactSetDigest: request.Release.ArtifactSetDigest, ReleaseDigest: broker.Digest(mustJSON(request.Release)), TargetRelease: releaseName,
-				TargetSequence: request.Release.Sequence, TargetProvider: request.Release.CoreProvider, Input: *request.Maintenance, Phase: "CHECKPOINTED"}
+				TargetSequence: request.Release.Sequence, TargetProvider: request.Release.CoreProvider, TargetPanelVersion: request.Release.Version,
+				Input: *request.Maintenance, Phase: "CHECKPOINTED"}
 		}
 	}
 	if state.MaxActivatedSequence < maxSequence {
@@ -428,7 +437,13 @@ func (h *Host) verify(_ context.Context, envelope broker.Request, peer broker.Pe
 		return nil, broker.Failure(broker.CodeInvalidRequest, "active release verification request is invalid")
 	}
 	state, err := h.loadState()
-	if err != nil || state.ActiveSequence != request.Release.Sequence || state.ActiveDigest != request.Release.ManifestDigest {
+	if err != nil {
+		return nil, broker.Failure(broker.CodeRevision, "active release identity changed")
+	}
+	if request.Rollback {
+		return h.verifyProviderRollback(envelope, request, state, peer)
+	}
+	if state.ActiveSequence != request.Release.Sequence || state.ActiveDigest != request.Release.ManifestDigest {
 		return nil, broker.Failure(broker.CodeRevision, "active release identity changed")
 	}
 	preparedAuthority := state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, request.RollbackRef)
@@ -499,9 +514,17 @@ func (h *Host) rollback(ctx context.Context, envelope broker.Request, peer broke
 	} else if !state.rollbackMatches(envelope.OperationID, request.Release.ManifestDigest, request.RollbackRef) {
 		return nil, broker.Failure(broker.CodeFence, "update rollback checkpoint binding changed")
 	}
-	_, _, identityErr := h.resolveReleaseGeneration(request.Release)
-	if identityErr != nil {
+	_, stored, identityErr := h.resolveReleaseGeneration(request.Release)
+	withProvider := state.ProviderMaintenance != (providerMaintenanceState{})
+	if identityErr != nil || withProvider && !state.ProviderMaintenance.matches(envelope.OperationID, stored) {
 		return nil, broker.Failure(broker.CodeRevision, "rollback release metadata changed")
+	}
+	if withProvider && (state.ProviderMaintenance.Phase == "ROLLED_BACK" || state.ProviderMaintenance.Phase == "ROLLBACK_VERIFIED") {
+		if !h.runningRelease(state.ActiveRelease, peer) && h.Restart != nil {
+			h.Restart(peer.PID)
+		}
+		return RollbackResultV1{ProviderRevision: ProviderRevision, RolledBack: true, ActiveSequence: state.ActiveSequence,
+			ActiveDigest: state.ActiveDigest, ManagementReady: peer.PID > 0}, nil
 	}
 	rollbackRoot := filepath.Join(h.ReleaseRoot, rollbackRelease)
 	previousRelease := state.ActiveRelease
@@ -512,8 +535,9 @@ func (h *Host) rollback(ctx context.Context, envelope broker.Request, peer broke
 		return nil, broker.Failure(broker.CodeExecution, "update rollback could not be committed")
 	}
 	state.ActiveRelease, state.ActiveSequence, state.ActiveDigest = rollbackRelease, rollbackSequence, rollbackDigest
-	state.ProviderMaintenance = providerMaintenanceState{}
-	if preparedAuthority {
+	if withProvider {
+		state.ProviderMaintenance.Phase = "ROLLED_BACK"
+	} else if preparedAuthority {
 		state.clearPreparedRollback()
 	} else {
 		state.clearRollback()
@@ -525,7 +549,7 @@ func (h *Host) rollback(ctx context.Context, envelope broker.Request, peer broke
 		}
 		return nil, broker.Failure(broker.CodeExecution, "rollback release state could not be committed")
 	}
-	h.pruneReleases(state.ActiveRelease, state.RollbackRelease)
+	h.pruneReleases(state.ActiveRelease, state.RollbackRelease, state.ProviderMaintenance.TargetRelease)
 	if h.Restart != nil {
 		h.Restart(peer.PID)
 	}
@@ -924,6 +948,9 @@ func (h *Host) saveState(state diskState) error {
 	data, err := json.Marshal(state)
 	if err != nil {
 		return err
+	}
+	if len(data) > 64<<10 {
+		return errors.New("update state exceeds its observation bound")
 	}
 	if err := os.MkdirAll(filepath.Dir(h.StatePath), 0o700); err != nil {
 		return err

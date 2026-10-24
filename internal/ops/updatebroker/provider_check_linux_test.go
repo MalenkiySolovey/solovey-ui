@@ -21,17 +21,25 @@ import (
 func TestProviderCheckReportBindsInputAndExactObservedSource(t *testing.T) {
 	for _, id := range []string{"sing-box", "shtorm-extended"} {
 		identity := providerfixture.Identity(t, id)
+		releaseIdentity := providerReleaseFixture(t, id)
 		report := targetcheck.Report{Schema: targetcheck.Schema, State: "VALID", CoreProvider: identity,
+			PanelVersion: releaseIdentity.Version, Capabilities: providerCapabilityFixture(t, id, releaseIdentity.BinaryProfile),
 			ConfigurationDigest: updateDigest("unchanged-configuration"), ReasonCodes: []string{}}
+		report.CapabilityRevision = report.Capabilities.Revision()
 		raw := mustJSON(report)
-		if !providerCheckReportMatches(raw, identity.Source, report.ConfigurationDigest) {
+		if !providerCheckReportMatches(raw, releaseIdentity, report.ConfigurationDigest) {
 			t.Fatal("exact report did not match independently bound propositions")
 		}
 		for name, mutate := range map[string]func(*targetcheck.Report){
-			"schema":        func(r *targetcheck.Report) { r.Schema = "unknown" },
-			"state":         func(r *targetcheck.Report) { r.State = "REJECTED" },
-			"configuration": func(r *targetcheck.Report) { r.ConfigurationDigest = updateDigest("other") },
-			"provider":      func(r *targetcheck.Report) { r.CoreProvider.ID = "unverified" },
+			"schema":               func(r *targetcheck.Report) { r.Schema = "unknown" },
+			"state":                func(r *targetcheck.Report) { r.State = "REJECTED" },
+			"configuration":        func(r *targetcheck.Report) { r.ConfigurationDigest = updateDigest("other") },
+			"panel-version":        func(r *targetcheck.Report) { r.PanelVersion = "2026.4.2" },
+			"missing-capabilities": func(r *targetcheck.Report) { r.Capabilities.Facts = nil },
+			"capability-revision":  func(r *targetcheck.Report) { r.CapabilityRevision = updateDigest("other") },
+			"capability-provider":  func(r *targetcheck.Report) { r.Capabilities.Provider.ID = "other" },
+			"capability-profile":   func(r *targetcheck.Report) { r.Capabilities.ComponentProfile = "core" },
+			"provider":             func(r *targetcheck.Report) { r.CoreProvider.ID = "unverified" },
 			"module": func(r *targetcheck.Report) {
 				r.CoreProvider.ModuleSum = "h1:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
 			},
@@ -46,7 +54,7 @@ func TestProviderCheckReportBindsInputAndExactObservedSource(t *testing.T) {
 			t.Run(id+"/"+name, func(t *testing.T) {
 				changed := report
 				mutate(&changed)
-				if providerCheckReportMatches(mustJSON(changed), identity.Source, report.ConfigurationDigest) {
+				if providerCheckReportMatches(mustJSON(changed), releaseIdentity, report.ConfigurationDigest) {
 					t.Fatal("conflicting candidate report acquired validation authority")
 				}
 			})
@@ -57,7 +65,7 @@ func TestProviderCheckReportBindsInputAndExactObservedSource(t *testing.T) {
 			bytes.Replace(raw, []byte(`"schema":`), []byte(`"unknown":true,"schema":`), 1),
 			[]byte(strings.Repeat(" ", targetcheck.MaxReportBytes+1)),
 		} {
-			if providerCheckReportMatches(changed, identity.Source, report.ConfigurationDigest) {
+			if providerCheckReportMatches(changed, releaseIdentity, report.ConfigurationDigest) {
 				t.Fatal("ambiguous, unknown or oversized report was accepted")
 			}
 		}
@@ -67,7 +75,10 @@ func TestProviderCheckReportBindsInputAndExactObservedSource(t *testing.T) {
 		future.CoreProvider.SourceRevision = strings.Repeat("a", 40)
 		future.CoreProvider.Revision = ""
 		future.CoreProvider.Revision = broker.Digest(mustJSON(future.CoreProvider))
-		if !providerCheckReportMatches(mustJSON(future), future.CoreProvider.Source, report.ConfigurationDigest) ||
+		future.Capabilities.Provider = future.CoreProvider
+		future.CapabilityRevision = future.Capabilities.Revision()
+		releaseIdentity.CoreProvider = future.CoreProvider.Source
+		if !providerCheckReportMatches(mustJSON(future), releaseIdentity, report.ConfigurationDigest) ||
 			coreprovider.SourceIdentityVerified(future.CoreProvider) {
 			t.Fatal("signed future-source observation was confused with the current compiled catalog")
 		}
@@ -128,6 +139,14 @@ func TestPreparedProviderActualConfigurationCheck(t *testing.T) {
 		t.Fatal("actual descriptor-bound target check failed", err)
 	}
 	t.Logf("provider=%s profile=%s executable_sha256=%s configuration_sha256=%s report_sha256=%s", id, profile, check.ExecutableDigest, check.ConfigurationDigest, check.ReportDigest)
+	if validateProviderCapabilities(check.TargetCapabilities, check.CapabilityRevision, identity.CoreProvider) != nil {
+		t.Fatal("actual target configuration check did not bind build capabilities")
+	}
+	wrongVersion := identity
+	wrongVersion.Version = "2026.4.999"
+	if result, err := checkPreparedProvider(t.Context(), root, wrongVersion, raw, peer); err == nil || result != (preparedProviderCheck{}) {
+		t.Fatal("signed release version did not match the candidate's compiled Panel version")
+	}
 	for _, invalid := range [][]byte{
 		[]byte(`{"credential-sentinel-unknown":true}`),
 		[]byte(`{"outbounds":[{"type":"direct","tag":"d","credential-sentinel":true}]}`),

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"errors"
 
 	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
@@ -20,4 +21,15 @@ func (s *SettingService) CoreMaintenance() (bool, error) {
 		return false, ErrMaintenanceUnavailable
 	}
 	return value == "true", nil
+}
+
+// CoreMaintenanceContext preserves an existing database maintenance admission
+// for health/recovery reads without granting a fresh ordinary operation lease.
+func (s *SettingService) CoreMaintenanceContext(ctx context.Context) (bool, error) {
+	db := s.settingDatabase()
+	if ctx == nil || db == nil {
+		return false, ErrMaintenanceUnavailable
+	}
+	settings := SettingService{database: db.WithContext(ctx)}
+	return settings.CoreMaintenance()
 }

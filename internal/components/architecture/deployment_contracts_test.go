@@ -3,6 +3,7 @@ package architecture
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -19,17 +20,39 @@ func TestPortableUpdateConsumesLifecycleSemanticsNotDeploymentIdentity(t *testin
 		if err != nil {
 			t.Fatal(err)
 		}
-		for _, forbidden := range []string{
-			"SUI_DEPLOYMENT_KIND", "openwrt-package-managed", "docker-operator-managed",
-			"docker_runtime_operator_managed", "docker_socket_not_used", "apk", "opkg", "apt", "dnf",
-		} {
-			if strings.Contains(strings.ToLower(string(data)), strings.ToLower(forbidden)) {
-				violations = append(violations, filepath.ToSlash(mustRel(t, root, path))+" contains "+forbidden)
-			}
+		for _, forbidden := range portableUpdateDeploymentMarkers(string(data)) {
+			violations = append(violations, filepath.ToSlash(mustRel(t, root, path))+" contains "+forbidden)
 		}
 	})
 	if len(violations) > 0 {
 		t.Fatalf("portable update owns deployment/package identity:\n%s", strings.Join(violations, "\n"))
+	}
+}
+
+func portableUpdateDeploymentMarkers(source string) []string {
+	var markers []string
+	for _, forbidden := range []string{
+		"SUI_DEPLOYMENT_KIND", "openwrt-package-managed", "docker-operator-managed",
+		"docker_runtime_operator_managed", "docker_socket_not_used",
+	} {
+		if strings.Contains(strings.ToLower(source), strings.ToLower(forbidden)) {
+			markers = append(markers, forbidden)
+		}
+	}
+	// Match package-manager tokens, including apt-get, without rejecting ordinary
+	// configuration-owner vocabulary such as Capture or adapter.
+	markers = append(markers, regexp.MustCompile(`(?i)\b(?:apk|opkg|apt|dnf)\b`).FindAllString(source, -1)...)
+	return markers
+}
+
+func TestPortableUpdateDeploymentMarkers(t *testing.T) {
+	if got := portableUpdateDeploymentMarkers("CaptureProviderConfiguration adapter Snapshot"); len(got) != 0 {
+		t.Fatalf("ordinary owner vocabulary matched deployment identity: %v", got)
+	}
+	for _, marker := range []string{"apt-get", "apt", "apk", "opkg", "dnf", "SUI_DEPLOYMENT_KIND", "docker_socket_not_used"} {
+		if got := portableUpdateDeploymentMarkers(marker); len(got) != 1 {
+			t.Fatalf("deployment identity %q was not detected: %v", marker, got)
+		}
 	}
 }
 

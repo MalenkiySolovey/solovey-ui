@@ -250,19 +250,22 @@ type ReleaseClient interface {
 type Repository struct{ DB func() *gorm.DB }
 
 type LifecycleManager struct {
-	mu            sync.Mutex
-	repo          Repository
-	provider      Provider
-	fetcher       ReleaseClient
-	sources       map[release.Channel]release.Source
-	trust         release.TrustStore
-	now           func() time.Time
-	platform      func() (string, string)
-	profile       func() string
-	coreProvider  func() coreprovider.Identity
-	platformFacts func(context.Context) deploymentdomain.PlatformFacts
-	health        func(context.Context, model.UpdateOperation) HealthResult
-	admit         func(string) bool
+	mu               sync.Mutex
+	repo             Repository
+	provider         Provider
+	fetcher          ReleaseClient
+	sources          map[release.Channel]release.Source
+	trust            release.TrustStore
+	now              func() time.Time
+	platform         func() (string, string)
+	profile          func() string
+	coreProvider     func() coreprovider.Identity
+	platformFacts    func(context.Context) deploymentdomain.PlatformFacts
+	health           func(context.Context, model.UpdateOperation) HealthResult
+	admit            func(string) bool
+	configuration    CoreConfigurationOwner
+	maintenance      providerDatabaseMaintenance
+	beginMaintenance func(context.Context) (providerDatabaseMaintenance, error)
 }
 
 var lifecycleShared = newSharedLifecycle()
@@ -324,7 +327,8 @@ func NewLifecycleManager(repo Repository, provider Provider, fetcher ReleaseClie
 				arch = runtime.GOARCH
 			}
 			return runtime.GOOS, arch
-		}, profile: func() string { return componentprofile.Binary }, coreProvider: coreprovider.Current}
+		}, profile: func() string { return componentprofile.Binary }, coreProvider: coreprovider.Current,
+		beginMaintenance: func(ctx context.Context) (providerDatabaseMaintenance, error) { return dbsqlite.BeginMaintenance(ctx) }}
 }
 
 func (m *LifecycleManager) SetHealthCheck(check func(context.Context, model.UpdateOperation) HealthResult) {
@@ -509,6 +513,10 @@ func (m *LifecycleManager) Prepare(ctx context.Context, request PrepareRequest) 
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.prepareLocked(ctx, request, nil)
+}
+
+func (m *LifecycleManager) prepareLocked(ctx context.Context, request PrepareRequest, preparation *providerPreparation) (model.UpdateOperation, error) {
 	if existing, err := m.repo.byIdempotency(ctx, request.IdempotencyKey); err == nil {
 		if existing.RestoredUntrusted {
 			return restoredOperationRecoveryProjection(existing), ErrRecoveryRequired
@@ -516,7 +524,8 @@ func (m *LifecycleManager) Prepare(ctx context.Context, request PrepareRequest) 
 		if !validPersistedOperation(existing) {
 			return operationRecoveryProjection(existing), ErrRecoveryRequired
 		}
-		if existing.Sequence == request.ExpectedSequence && existing.ManifestDigest == request.ExpectedManifestDigest {
+		if existing.Sequence == request.ExpectedSequence && existing.ManifestDigest == request.ExpectedManifestDigest && existing.Channel == string(request.Channel) &&
+			(preparation == nil || existing.ArtifactSetDigest == preparation.request.ExpectedArtifactSetDigest) {
 			return existing, nil
 		}
 		return model.UpdateOperation{}, ErrReleaseChanged
@@ -536,18 +545,31 @@ func (m *LifecycleManager) Prepare(ctx context.Context, request PrepareRequest) 
 	if m.admit != nil && !m.admit("heavy_mutation") {
 		return model.UpdateOperation{}, ErrResourcePressure
 	}
-	if err := m.legacyCoreProviderAdmission(); err != nil {
-		return model.UpdateOperation{}, err
+	if preparation == nil {
+		if err := m.legacyCoreProviderAdmission(); err != nil {
+			return model.UpdateOperation{}, err
+		}
 	}
 	lastApplied, err := m.repo.lastApplied(ctx, request.Channel)
 	if err != nil {
 		return model.UpdateOperation{}, err
 	}
-	verified, artifacts, err := m.fetchAndVerify(ctx, request.Channel, lastApplied)
+	var verified release.Verified
+	var artifacts []release.Artifact
+	if preparation == nil {
+		verified, artifacts, err = m.fetchAndVerify(ctx, request.Channel, lastApplied)
+	} else {
+		verified, artifacts, err = m.fetchProviderRelease(ctx, request.Channel, preparation.request.TargetProvider, lastApplied)
+	}
 	if err != nil || verified.Manifest.Sequence != request.ExpectedSequence || verified.Digest != request.ExpectedManifestDigest {
 		return model.UpdateOperation{}, ErrReleaseChanged
 	}
-	if !versionpolicy.VersionIsNewer(verified.Manifest.Version, configidentity.GetVersion()) {
+	if preparation != nil && (release.ArtifactSetDigest(artifacts) != preparation.request.ExpectedArtifactSetDigest || verified.Manifest.Version != configidentity.GetVersion()) {
+		// A provider-only operation must not perform a Panel/database downgrade.
+		// Different Panel versions require the database restore maintenance path.
+		return model.UpdateOperation{}, ErrCoreProviderMaintenance
+	}
+	if preparation == nil && !versionpolicy.VersionIsNewer(verified.Manifest.Version, configidentity.GetVersion()) {
 		return model.UpdateOperation{}, ErrNotNewer
 	}
 	if report := m.platformPreflight(ctx); !report.Ready {
@@ -574,7 +596,7 @@ func (m *LifecycleManager) Prepare(ctx context.Context, request PrepareRequest) 
 		if appliedErr != nil {
 			return appliedErr
 		}
-		if currentLastApplied >= verified.Manifest.Sequence {
+		if currentLastApplied != lastApplied || preparation == nil && currentLastApplied >= verified.Manifest.Sequence {
 			return ErrReleaseChanged
 		}
 		if saveErr := m.repo.saveVerified(ctx, verified, request.Channel, true, m.now().Unix()); saveErr != nil {
@@ -609,8 +631,17 @@ func (m *LifecycleManager) Prepare(ctx context.Context, request PrepareRequest) 
 	if err != nil {
 		return operation, err
 	}
-	preflight, preflightErr := m.provider.Preflight(ctx, operation, verified, artifacts)
+	var preflight PreflightResult
+	var preflightErr error
+	if preparation == nil {
+		preflight, preflightErr = m.provider.Preflight(ctx, operation, verified, artifacts)
+	} else {
+		ctx, preflight, preflightErr = m.preflightProviderLocked(ctx, &operation, verified, artifacts, preparation.request)
+	}
 	if preflightErr != nil || !preflight.RollbackAvailable || !validDigest(preflight.BackupRef) {
+		if preparation != nil && operation.RollbackAvailable && validDigest(operation.BackupRef) {
+			return m.rollbackAfterFailure(ctx, operation, "provider_maintenance_preflight_failed", preflightErr)
+		}
 		return m.fail(ctx, operation, "update_preflight_failed", preflightErr)
 	}
 	operation.RollbackAvailable, operation.BackupRef = true, preflight.BackupRef
@@ -623,6 +654,10 @@ func (m *LifecycleManager) Activate(ctx context.Context, request RevisionRequest
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.activateLocked(ctx, request, false)
+}
+
+func (m *LifecycleManager) activateLocked(ctx context.Context, request RevisionRequest, providerMaintenance bool) (model.UpdateOperation, error) {
 	operation, err := m.repo.operation(ctx, request.OperationID)
 	if err != nil {
 		return model.UpdateOperation{}, err
@@ -633,8 +668,10 @@ func (m *LifecycleManager) Activate(ctx context.Context, request RevisionRequest
 	if operation.Revision != request.ExpectedRevision || State(operation.State) != StatePrepared || operation.RestoredUntrusted {
 		return operation, ErrRevisionMismatch
 	}
-	if err := m.legacyCoreProviderAdmission(); err != nil {
-		return operation, err
+	if !providerMaintenance {
+		if err := m.legacyCoreProviderAdmission(); err != nil {
+			return operation, err
+		}
 	}
 	if report := m.platformPreflight(ctx); !report.Ready {
 		return operation, PlatformPreflightError{Report: report}
@@ -701,7 +738,37 @@ func (m *LifecycleManager) Rollback(ctx context.Context, request RevisionRequest
 			return operation, ErrRevisionMismatch
 		}
 	}
+	acquiredMaintenance := false
+	if provider, ok := m.provider.(interface {
+		providerCheckpoint(context.Context, model.UpdateOperation) (bool, error)
+		AdmitProviderRollback(context.Context, model.UpdateOperation) error
+	}); ok && m.configuration != nil {
+		present, err := provider.providerCheckpoint(ctx, operation)
+		if err != nil {
+			return operation, err
+		}
+		if present {
+			if m.maintenance == nil || !m.maintenance.Active() {
+				if m.beginMaintenance == nil {
+					return operation, ErrRecoveryRequired
+				}
+				m.maintenance, err = m.beginMaintenance(ctx)
+				if err != nil {
+					return operation, err
+				}
+				acquiredMaintenance = true
+			}
+			ctx = m.maintenanceContext(ctx)
+			if err := provider.AdmitProviderRollback(ctx, operation); err != nil {
+				if acquiredMaintenance {
+					m.endProviderMaintenance()
+				}
+				return operation, err
+			}
+		}
+	}
 	result := operation
+	rollbackStarted := false
 	err = operationcoordination.SerializeAdmission(func() error {
 		if blocker, blockerErr := m.repo.globalBlocker(ctx); blockerErr != nil {
 			return blockerErr
@@ -709,9 +776,13 @@ func (m *LifecycleManager) Rollback(ctx context.Context, request RevisionRequest
 			return ErrOperationConflict
 		}
 		var rollbackErr error
+		rollbackStarted = true
 		result, rollbackErr = m.performRollback(ctx, operation, "operator_rollback_requested")
 		return rollbackErr
 	})
+	if acquiredMaintenance && !rollbackStarted {
+		m.endProviderMaintenance()
+	}
 	return result, err
 }
 
@@ -757,6 +828,12 @@ func (m *LifecycleManager) ReconcileStartup(ctx context.Context) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.reconcileStartupLocked(ctx)
+}
+
+// The caller holds m.mu for the complete reconciliation, including admission.
+func (m *LifecycleManager) reconcileStartupLocked(ctx context.Context) error {
+	ctx = m.maintenanceContext(ctx)
 	if debt, debtErr := m.repo.cleanupDebt(ctx); debtErr == nil {
 		if cleaner, ok := m.provider.(terminalCleaner); ok {
 			if cleanupErr := cleaner.CleanupTerminal(ctx, debt); cleanupErr != nil {
@@ -800,13 +877,38 @@ func (m *LifecycleManager) ReconcileStartup(ctx context.Context) error {
 		return ErrRecoveryRequired
 	}
 	if state == StateVerifyingActive {
-		if operation.UpdatedAt > 0 && m.now().Sub(time.Unix(operation.UpdatedAt, 0)) >= activationHealthDeadline {
+		started, startedErr := m.repo.phaseStartedAt(ctx, operation, StateActivating)
+		if startedErr != nil {
+			return startedErr
+		}
+		if started > 0 && m.now().Sub(time.Unix(started, 0)) >= activationHealthDeadline {
 			_, rollbackErr := m.rollbackAfterFailure(ctx, operation, "active_release_health_timeout", errors.New("active release health deadline exceeded"))
 			return rollbackErr
 		}
-		if State(operation.State) == StateVerifyingActive {
+		if State(operation.State) != StateVerifyingActive {
+			operation, err = m.advance(ctx, operation, StateVerifyingActive, "active_release_verifying", "")
+			if err != nil {
+				return err
+			}
+		} else {
+			operation, err = m.advance(ctx, operation, StateVerifyingActive, "active_release_runtime_probe", "")
+			if err != nil {
+				return err
+			}
+		}
+		verified, verifyErr := m.provider.VerifyActive(ctx, operation)
+		if errors.Is(verifyErr, ErrRestartPending) {
 			return nil
 		}
+		if verifyErr != nil || !verified {
+			_, rollbackErr := m.rollbackAfterFailure(ctx, operation, "active_release_verification_failed", verifyErr)
+			return rollbackErr
+		}
+		state = StateApplied
+	}
+	if state == StateRollingBack {
+		_, err := m.performRollback(ctx, operation, "startup_rollback_verifying")
+		return err
 	}
 	if state == StateRollbackPending {
 		if State(operation.State) != StateRollbackPending {
@@ -830,6 +932,9 @@ func (m *LifecycleManager) ReconcileStartup(ctx context.Context) error {
 	}
 	if err == nil {
 		err = m.repo.pruneHistory(ctx)
+	}
+	if State(operation.State) == StateApplied || State(operation.State) == StateRolledBack {
+		m.endProviderMaintenance()
 	}
 	return err
 }
@@ -971,11 +1076,33 @@ func (m *LifecycleManager) performRollback(ctx context.Context, operation model.
 	if !rollbackAllowedFrom(State(operation.State)) {
 		return operation, ErrRevisionMismatch
 	}
-	operation, err := m.advance(ctx, operation, StateRollingBack, "update_rollback_started", reason)
-	if err != nil {
-		return operation, err
+	var err error
+	if State(operation.State) != StateRollingBack {
+		operation, err = m.advance(ctx, operation, StateRollingBack, "update_rollback_started", reason)
+		if err != nil {
+			return operation, err
+		}
+	} else {
+		started, startedErr := m.repo.phaseStartedAt(ctx, operation, StateRollingBack)
+		if startedErr != nil {
+			return operation, startedErr
+		}
+		if started > 0 && m.now().Sub(time.Unix(started, 0)) >= activationHealthDeadline {
+			recovery, updateErr := m.advance(ctx, operation, StateRecoveryRequired, "update_rollback_runtime_timeout", "update_rollback_runtime_timeout")
+			if updateErr != nil {
+				return recovery, updateErr
+			}
+			return recovery, ErrRecoveryRequired
+		}
+		operation, err = m.advance(ctx, operation, StateRollingBack, "update_rollback_runtime_probe", reason)
+		if err != nil {
+			return operation, err
+		}
 	}
 	verified, rollbackErr := m.provider.Rollback(ctx, operation)
+	if errors.Is(rollbackErr, ErrRestartPending) {
+		return operation, nil
+	}
 	if rollbackErr != nil || !verified {
 		if coordinator, ok := m.provider.(databaseRollbackCoordinator); ok {
 			_ = coordinator.AbortDatabaseRollback()
@@ -986,7 +1113,7 @@ func (m *LifecycleManager) performRollback(ctx context.Context, operation model.
 		}
 		return recovery, ErrRecoveryRequired
 	}
-	if coordinator, ok := m.provider.(databaseRollbackCoordinator); ok {
+	if coordinator, ok := m.provider.(databaseRollbackCoordinator); ok && pendingDatabaseRollback(m.provider) {
 		databaseCtx := ctx
 		if owner, ok := m.provider.(interface {
 			DatabaseRollbackContext(context.Context) context.Context
@@ -1015,12 +1142,15 @@ func (m *LifecycleManager) performRollback(ctx context.Context, operation model.
 	if err == nil {
 		err = m.cleanupTerminal(ctx, rolledBack)
 	}
+	if State(rolledBack.State) == StateRolledBack {
+		m.endProviderMaintenance()
+	}
 	return rolledBack, err
 }
 
 func rollbackAllowedFrom(state State) bool {
 	switch state {
-	case StatePrepared, StateActivating, StateVerifyingActive, StateApplied, StateRollbackPending:
+	case StatePreflighting, StatePrepared, StateActivating, StateVerifyingActive, StateApplied, StateRollbackPending, StateRollingBack:
 		return true
 	default:
 		return false
