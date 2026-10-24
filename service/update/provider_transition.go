@@ -3,9 +3,12 @@ package update
 import (
 	"context"
 	"errors"
+	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	"gorm.io/gorm"
 )
@@ -13,15 +16,36 @@ import (
 const ProviderTransitionSchema = "solovey.provider-maintenance-preview/v1"
 
 type ProviderTransitionRequest struct {
-	Channel                       release.Channel `json:"channel"`
-	TargetProvider                string          `json:"targetProvider"`
-	ExpectedSequence              uint64          `json:"expectedSequence"`
-	ExpectedManifestDigest        string          `json:"expectedManifestDigest"`
-	ExpectedArtifactSetDigest     string          `json:"expectedArtifactSetDigest"`
-	ExpectedConfigurationRevision string          `json:"expectedConfigurationRevision"`
-	ExpectedProviderRevision      string          `json:"expectedProviderRevision"`
-	IdempotencyKey                string          `json:"idempotencyKey"`
-	Acknowledged                  bool            `json:"acknowledged"`
+	Channel                       release.Channel    `json:"channel"`
+	TargetProvider                string             `json:"targetProvider"`
+	ExpectedSequence              uint64             `json:"expectedSequence"`
+	ExpectedManifestDigest        string             `json:"expectedManifestDigest"`
+	ExpectedArtifactSetDigest     string             `json:"expectedArtifactSetDigest"`
+	ExpectedConfigurationRevision string             `json:"expectedConfigurationRevision"`
+	ExpectedProviderRevision      string             `json:"expectedProviderRevision"`
+	IdempotencyKey                string             `json:"idempotencyKey"`
+	Acknowledged                  bool               `json:"acknowledged"`
+	Authorize                     actions.Authorizer `json:"-"`
+}
+
+func (request ProviderTransitionRequest) Validate() error {
+	if !request.Acknowledged || !knownProvider(request.TargetProvider) || !safeID(request.IdempotencyKey, 96) ||
+		(request.Channel != release.ChannelMain && request.Channel != release.ChannelBeta) || request.ExpectedSequence == 0 ||
+		!validDigest(request.ExpectedManifestDigest) || !validDigest(request.ExpectedArtifactSetDigest) ||
+		!validDigest(request.ExpectedConfigurationRevision) || !validDigest(request.ExpectedProviderRevision) {
+		return ErrCoreProviderMaintenance
+	}
+	return nil
+}
+
+func ProviderTransitionAction(request ProviderTransitionRequest) actions.Invocation {
+	reference := operationcoordination.NewReference("update", "panel", updateOperationID(request.IdempotencyKey, request.ExpectedManifestDigest))
+	return actions.MaintainProvider(reference, actions.ProviderMaintenanceInput{PlanDigest: semanticDigest(request)})
+}
+
+func ProviderTransitionConfirmation(request ProviderTransitionRequest) string {
+	digest := semanticDigest(request)
+	return "MAINTAIN_CORE_PROVIDER_" + strings.ToUpper(digest[:12])
 }
 
 type ProviderTransitionPreview struct {

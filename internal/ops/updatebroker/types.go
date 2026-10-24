@@ -3,12 +3,21 @@
 // commands, paths, services, repositories, package-manager inputs or URLs.
 package updatebroker
 
-import "github.com/MalenkiySolovey/solovey-ui/internal/release"
+import (
+	"time"
+
+	"github.com/MalenkiySolovey/solovey-ui/internal/release"
+)
 
 const (
-	ProviderRevision            = "update-broker-provider-1.1"
+	// SHA-256 of the Update provider ABI descriptor "update-broker-provider-1.1".
+	// Broker expected revisions are digests, including this fixed ABI identity.
+	ProviderRevision            = "85d11d88c95e16abb9532bd7fbc934c37a89e46c96c7ea2a723cd8a514012984"
 	MaxChunkBytes               = 384 << 10
-	ProviderMaintenanceRevision = "update-broker-maintenance-1.1"
+	ProviderMaintenanceRevision = "update-broker-maintenance-1.2"
+	// ProviderActivationHealthDeadline is shared by the Panel journal and the
+	// Root checkpoint owner that can recover even when a Panel cannot start.
+	ProviderActivationHealthDeadline = 5 * time.Minute
 )
 
 type EmptyV1 struct{}
@@ -41,32 +50,34 @@ type ReleaseIdentityV1 struct {
 }
 
 type ObservationV1 struct {
-	ProviderRevision               string                            `json:"providerRevision"`
-	ProviderMaintenanceRevision    string                            `json:"providerMaintenanceRevision,omitempty"`
-	ProviderMaintenance            *ProviderMaintenanceObservationV1 `json:"providerMaintenance,omitempty"`
-	InstalledSequence              uint64                            `json:"installedSequence"`
-	ActiveSequence                 uint64                            `json:"activeSequence"`
-	VerifiedSequence               uint64                            `json:"verifiedSequence"`
-	MaxActivatedSequence           uint64                            `json:"maxActivatedSequence"`
-	InstalledDigest                string                            `json:"installedDigest,omitempty"`
-	ActiveDigest                   string                            `json:"activeDigest,omitempty"`
-	VerifiedDigest                 string                            `json:"verifiedDigest,omitempty"`
-	MaxActivatedDigest             string                            `json:"maxActivatedDigest,omitempty"`
-	RollbackAvailable              bool                              `json:"rollbackAvailable"`
-	RollbackOperationID            string                            `json:"rollbackOperationId,omitempty"`
-	RollbackManifestDigest         string                            `json:"rollbackManifestDigest,omitempty"`
-	RollbackRef                    string                            `json:"rollbackRef,omitempty"`
-	RollbackTargetSequence         uint64                            `json:"rollbackTargetSequence,omitempty"`
-	RollbackTargetDigest           string                            `json:"rollbackTargetDigest,omitempty"`
-	PreparedRollbackAvailable      bool                              `json:"preparedRollbackAvailable"`
-	PreparedRollbackOperationID    string                            `json:"preparedRollbackOperationId,omitempty"`
-	PreparedRollbackManifestDigest string                            `json:"preparedRollbackManifestDigest,omitempty"`
-	PreparedRollbackRef            string                            `json:"preparedRollbackRef,omitempty"`
-	PreparedRollbackTargetSequence uint64                            `json:"preparedRollbackTargetSequence,omitempty"`
-	PreparedRollbackTargetDigest   string                            `json:"preparedRollbackTargetDigest,omitempty"`
-	ManagementReady                bool                              `json:"managementReady"`
-	ObservedAt                     int64                             `json:"observedAt"`
-	Revision                       string                            `json:"revision"`
+	ProviderRevision                string                            `json:"providerRevision"`
+	ProviderMaintenanceRevision     string                            `json:"providerMaintenanceRevision,omitempty"`
+	ProviderMaintenance             *ProviderMaintenanceObservationV1 `json:"providerMaintenance,omitempty"`
+	InstalledSequence               uint64                            `json:"installedSequence"`
+	ActiveSequence                  uint64                            `json:"activeSequence"`
+	VerifiedSequence                uint64                            `json:"verifiedSequence"`
+	MaxActivatedSequence            uint64                            `json:"maxActivatedSequence"`
+	InstalledDigest                 string                            `json:"installedDigest,omitempty"`
+	ActiveDigest                    string                            `json:"activeDigest,omitempty"`
+	VerifiedDigest                  string                            `json:"verifiedDigest,omitempty"`
+	MaxActivatedDigest              string                            `json:"maxActivatedDigest,omitempty"`
+	RollbackAvailable               bool                              `json:"rollbackAvailable"`
+	RollbackOperationID             string                            `json:"rollbackOperationId,omitempty"`
+	RollbackManifestDigest          string                            `json:"rollbackManifestDigest,omitempty"`
+	RollbackRef                     string                            `json:"rollbackRef,omitempty"`
+	RollbackTargetSequence          uint64                            `json:"rollbackTargetSequence,omitempty"`
+	RollbackTargetDigest            string                            `json:"rollbackTargetDigest,omitempty"`
+	RollbackTargetLocalCheckpoint   LocalGenerationCheckpointV1       `json:"rollbackTargetLocalCheckpoint,omitzero"`
+	PreparedRollbackAvailable       bool                              `json:"preparedRollbackAvailable"`
+	PreparedRollbackOperationID     string                            `json:"preparedRollbackOperationId,omitempty"`
+	PreparedRollbackManifestDigest  string                            `json:"preparedRollbackManifestDigest,omitempty"`
+	PreparedRollbackRef             string                            `json:"preparedRollbackRef,omitempty"`
+	PreparedRollbackTargetSequence  uint64                            `json:"preparedRollbackTargetSequence,omitempty"`
+	PreparedRollbackTargetDigest    string                            `json:"preparedRollbackTargetDigest,omitempty"`
+	PreparedRollbackLocalCheckpoint LocalGenerationCheckpointV1       `json:"preparedRollbackLocalCheckpoint,omitzero"`
+	ManagementReady                 bool                              `json:"managementReady"`
+	ObservedAt                      int64                             `json:"observedAt"`
+	Revision                        string                            `json:"revision"`
 }
 
 type StageChunkRequestV1 struct {

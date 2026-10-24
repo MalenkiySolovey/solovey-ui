@@ -126,11 +126,13 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		return nil, err
 	}
 
-	// Runtime streams and database transfer own bounded transport deadlines.
+	// Runtime streams, database transfer and authorized provider maintenance
+	// own bounded transport deadlines.
 	// Gzip hides ResponseController; only these exact routes bypass its writer.
 	engine.Use(gzip.Gzip(gzip.DefaultCompression, gzip.WithExcludedPathsRegexs([]string{
 		"^" + regexp.QuoteMeta(base_url) + "(?:api|apiv2)/runtime/logs$",
 		databaseTransferUncompressedPattern(base_url),
+		providerMaintenanceUncompressedPattern(base_url),
 	})))
 	assetsBasePath := base_url + "assets/"
 
@@ -209,6 +211,10 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 
 func databaseTransferUncompressedPattern(basePath string) string {
 	return "^" + regexp.QuoteMeta(basePath) + "(?:api|apiv2)/(?:importdb|getdb|v1/operations/data/restore(?:/rehearsal)?)$"
+}
+
+func providerMaintenanceUncompressedPattern(basePath string) string {
+	return "^" + regexp.QuoteMeta(basePath) + "api/v1/operations/update/provider/maintain$"
 }
 
 func (s *Server) recordRequestBudgetRejection(c *gin.Context, policy requestbudget.Policy, reason string) {

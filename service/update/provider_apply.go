@@ -7,6 +7,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
@@ -33,10 +34,11 @@ type providerMaintenancePreflighter interface {
 // explicit maintenance request binds the preview, rather than changing a
 // runtime setting. Network staging completes before database admission closes.
 func (m *LifecycleManager) ApplyProviderTransition(ctx context.Context, request ProviderTransitionRequest) (model.UpdateOperation, error) {
-	if m == nil || ctx == nil || !request.Acknowledged || !knownProvider(request.TargetProvider) || !safeID(request.IdempotencyKey, 96) ||
-		request.ExpectedSequence == 0 || !validDigest(request.ExpectedManifestDigest) || !validDigest(request.ExpectedArtifactSetDigest) ||
-		!validDigest(request.ExpectedConfigurationRevision) || !validDigest(request.ExpectedProviderRevision) {
+	if m == nil || ctx == nil || request.Validate() != nil {
 		return model.UpdateOperation{}, ErrCoreProviderMaintenance
+	}
+	if _, err := actions.Require(ctx, ProviderTransitionAction(request), request.Authorize); err != nil {
+		return model.UpdateOperation{}, err
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()

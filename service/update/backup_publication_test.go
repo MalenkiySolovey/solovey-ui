@@ -13,7 +13,6 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/backup"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	contract "github.com/MalenkiySolovey/solovey-ui/internal/ops/updatebroker"
 )
 
@@ -79,7 +78,7 @@ func TestRollbackLiveRollbackKeepSetRetainsOnlyObservedCurrentAuthority(t *testi
 		return contract.ObservationV1{ProviderRevision: contract.ProviderRevision, ManagementReady: true,
 			RollbackAvailable: true, RollbackOperationID: "update-operation:applied-a", RollbackManifestDigest: updateDigestForRollback("a"),
 			RollbackTargetSequence: 4, RollbackTargetDigest: updateDigestForRollback("predecessor"),
-			RollbackRef: broker.Digest([]byte("rollback:update-operation:applied-a:" + updateDigestForRollback("a")))}, nil
+			RollbackRef: contract.SemanticReference("rollback", "update-operation:applied-a", updateDigestForRollback("a"))}, nil
 	}}
 	if err := os.MkdirAll(filepath.Join(base, "update-operation:applied-a"), 0o700); err != nil {
 		t.Fatal(err)

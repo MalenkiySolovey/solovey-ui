@@ -26,6 +26,7 @@ import (
 	operationcoordination "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/preflight"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/updatebroker"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"
 	"gorm.io/gorm"
@@ -65,7 +66,7 @@ var (
 	ErrResourcePressure    = errors.New("resource pressure blocks update preparation")
 )
 
-const activationHealthDeadline = 5 * time.Minute
+const activationHealthDeadline = updatebroker.ProviderActivationHealthDeadline
 
 type Capabilities struct {
 	Mode        string   `json:"mode"`
@@ -1185,13 +1186,17 @@ func (m *LifecycleManager) advance(ctx context.Context, operation model.UpdateOp
 	return operation, nil
 }
 
+func updateOperationID(idempotencyKey, manifestDigest string) string {
+	identity := semanticDigest(struct{ Idempotency, Manifest string }{idempotencyKey, manifestDigest})
+	return "update-operation:" + identity[:48]
+}
+
 func newUpdateOperation(request PrepareRequest, verified release.Verified, artifacts []release.Artifact, platform, arch, profile string, now time.Time) model.UpdateOperation {
-	identity := semanticDigest(struct{ Idempotency, Manifest string }{request.IdempotencyKey, verified.Digest})
 	total := int64(0)
 	for _, artifact := range artifacts {
 		total += artifact.Size
 	}
-	return model.UpdateOperation{OperationID: "update-operation:" + identity[:48], IdempotencyKey: request.IdempotencyKey,
+	return model.UpdateOperation{OperationID: updateOperationID(request.IdempotencyKey, verified.Digest), IdempotencyKey: request.IdempotencyKey,
 		State: string(StateDownloading), Channel: string(request.Channel), Sequence: verified.Manifest.Sequence,
 		ReleaseID: verified.Manifest.ReleaseID, Version: verified.Manifest.Version,
 		ManifestDigest: verified.Digest, ArtifactSetDigest: release.ArtifactSetDigest(artifacts), Platform: platform, Arch: arch,

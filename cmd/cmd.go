@@ -10,6 +10,7 @@ import (
 	componentdoctorcmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/componentdoctor"
 	corecheckcmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/corecheck"
 	ipcertcmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/ipcert"
+	providermaintenancecmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/providermaintenance"
 	settingscmd "github.com/MalenkiySolovey/solovey-ui/cmd/internal/settings"
 	optionalcmd "github.com/MalenkiySolovey/solovey-ui/componenthost/commands"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
@@ -63,6 +64,7 @@ func ParseCmd() int {
 		fmt.Println("    doctor         run local diagnostics")
 		fmt.Println("    core-info      print embedded core source identity as JSON")
 		fmt.Println("    core-check     validate JSON from stdin with the embedded core; do not start it")
+		fmt.Println("    core-provider  administrative provider status, preview and maintenance")
 		for _, line := range optionalcmd.UsageLines() {
 			fmt.Println(line)
 		}
@@ -104,6 +106,8 @@ func ParseCmd() int {
 	switch args[0] {
 	case "core-info", "core-check":
 		return corecheckcmd.Run(args[0], args[1:], os.Stdin, os.Stdout, os.Stderr)
+	case "core-provider":
+		return providermaintenancecmd.Run(args[1:], os.Stdin, os.Stdout, os.Stderr)
 	case "admin":
 		err := adminCmd.Parse(args[1:])
 		if err != nil {

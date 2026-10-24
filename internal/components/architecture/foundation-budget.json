@@ -2183,6 +2183,12 @@
       "rule": "worker-lifetime",
       "path": "cmd/solovey-privileged-broker/main.go",
       "symbol": "run",
+      "digest": "4ac0580f2791e6f5ca57cb721ffe8d6ef16e61b8baa0f48b1d4c921f281775bf"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "cmd/solovey-privileged-broker/main.go",
+      "symbol": "run",
       "digest": "7e0725226ae65619f85f3702a5885bac9a8c6010f986fc1485f0a938ceb159db"
     },
     {
@@ -2195,6 +2201,12 @@
       "rule": "worker-lifetime",
       "path": "cmd/solovey-privileged-broker/main.go",
       "symbol": "watchAuthorityManifestWith",
+      "digest": "628b6518bf17b7f9081d4d793280384cb8a94b91d213bfd950a3e968f9d696df"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "cmd/solovey-privileged-broker/main.go",
+      "symbol": "watchAuthorityManifestWithMaintenance",
       "digest": "628b6518bf17b7f9081d4d793280384cb8a94b91d213bfd950a3e968f9d696df"
     },
     {
@@ -2460,6 +2472,12 @@
       "path": "internal/ops/updatebroker/host_systemd_linux.go",
       "symbol": "scheduleReleaseRestart",
       "digest": "c4f5ae05b801a959954c3a10daa3410a6a0d3beb9537079f29d3fc41a762a9c6"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "internal/ops/updatebroker/host_systemd_linux.go",
+      "symbol": "scheduleReleaseRestart",
+      "digest": "f67b1fa057c2f7c2a1efe263f7ca82eeea4b3c63fc2a3a57b31610d04a550d30"
     },
     {
       "rule": "worker-lifetime",

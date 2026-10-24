@@ -379,6 +379,25 @@ paths:
           application/json:
             schema: { $ref: "#/components/schemas/UpdateCheckRequest" }
       responses: *messageResponses
+  /api/v1/operations/update/provider/preview:
+    post:
+      operationId: previewCoreProviderMaintenance
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProviderMaintenancePreviewRequest" }
+      responses: *messageResponses
+  /api/v1/operations/update/provider/maintain:
+    post:
+      operationId: maintainCoreProvider
+      parameters: *stepUpParameters
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ProviderMaintenanceRequest" }
+      responses: *messageResponses
   /api/v1/operations/update/prepare:
     post:
       operationId: prepareSignedUpdate
@@ -750,6 +769,29 @@ components:
       required: [channel]
       properties:
         channel: { type: string, enum: [main, beta] }
+    ProviderMaintenancePreviewRequest:
+      type: object
+      additionalProperties: false
+      required: [channel, targetProvider, idempotencyKey]
+      properties:
+        channel: { type: string, enum: [main, beta] }
+        targetProvider: { type: string, enum: [sing-box, shtorm-extended] }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 96 }
+    ProviderMaintenanceRequest:
+      type: object
+      additionalProperties: false
+      required: [channel, targetProvider, expectedSequence, expectedManifestDigest, expectedArtifactSetDigest, expectedConfigurationRevision, expectedProviderRevision, idempotencyKey, confirmation, acknowledged]
+      properties:
+        channel: { type: string, enum: [main, beta] }
+        targetProvider: { type: string, enum: [sing-box, shtorm-extended] }
+        expectedSequence: { type: integer, minimum: 1 }
+        expectedManifestDigest: { $ref: "#/components/schemas/Digest" }
+        expectedArtifactSetDigest: { $ref: "#/components/schemas/Digest" }
+        expectedConfigurationRevision: { $ref: "#/components/schemas/Digest" }
+        expectedProviderRevision: { $ref: "#/components/schemas/Digest" }
+        idempotencyKey: { type: string, minLength: 1, maxLength: 96 }
+        confirmation: { type: string, minLength: 34, maxLength: 64 }
+        acknowledged: { type: boolean, const: true }
     UpdatePrepareRequest:
       type: object
       additionalProperties: false

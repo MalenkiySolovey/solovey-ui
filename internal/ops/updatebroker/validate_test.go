@@ -52,13 +52,22 @@ func TestOperationIdentityAndSemanticReferencesAreClosedAndStable(t *testing.T) 
 	if !validDigest(manifest) || validDigest(strings.ToUpper(manifest)) || validDigest("short") {
 		t.Fatal("digest validation is not closed over lowercase SHA-256")
 	}
-	first := semanticRef("stage", operationID, manifest)
-	if !validDigest(first) || first != semanticRef("stage", operationID, manifest) {
+	first := SemanticReference("stage", operationID, manifest)
+	if !validDigest(first) || first != SemanticReference("stage", operationID, manifest) {
 		t.Fatal("semantic reference is not a stable SHA-256 identity")
 	}
-	if first == semanticRef("apply", operationID, manifest) ||
-		first == semanticRef("stage", operationID, updateDigest("other-manifest")) {
+	if first == SemanticReference("apply", operationID, manifest) ||
+		first == SemanticReference("stage", operationID, updateDigest("other-manifest")) {
 		t.Fatal("semantic reference did not separate operation semantics")
+	}
+	// These identities are stored in Root checkpoints across Panel updates.
+	for kind, expected := range map[string]string{
+		"prepared": "12aa320bc288277b057ae58436a7c6087bab3bcb2097630e84ee9d08f8b64149",
+		"rollback": "11b1ddd8244e35a05c27b2ed4b28cc5080c6c443de99a9244f6149b4823c56f0",
+	} {
+		if SemanticReference(kind, operationID, manifest) != expected {
+			t.Fatalf("durable %s reference encoding changed", kind)
+		}
 	}
 }
 

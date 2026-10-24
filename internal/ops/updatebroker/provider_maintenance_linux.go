@@ -69,13 +69,15 @@ func validateProviderMaintenanceState(state diskState) error {
 		proof.TargetRelease != providerReleaseDirectoryName(ReleaseIdentityV1{Sequence: proof.TargetSequence, ManifestDigest: proof.ManifestDigest, ArtifactSetDigest: proof.ArtifactSetDigest}) {
 		return failed
 	}
-	rollbackRef := semanticRef("rollback", proof.OperationID, proof.ManifestDigest)
+	rollbackRef := SemanticReference("rollback", proof.OperationID, proof.ManifestDigest)
 	if ValidateProviderMaintenanceObservation(*proof.observation()) != nil {
 		return failed
 	}
 	switch proof.Phase {
 	case "CHECKPOINTED", "VALIDATED":
 		if !state.hasBoundPreparedRollback() || !state.preparedRollbackMatches(proof.OperationID, proof.ManifestDigest, rollbackRef) ||
+			state.ActiveRelease != state.PreparedRollbackRelease || state.ActiveSequence != state.PreparedRollbackSequence || state.ActiveDigest != state.PreparedRollbackDigest ||
+			state.ActiveLocalCheckpoint != state.PreparedRollbackLocalCheckpoint ||
 			proof.Phase == "CHECKPOINTED" && !providerEvidenceEmpty(*proof.observation()) {
 			return failed
 		}
@@ -90,9 +92,9 @@ func validateProviderMaintenanceState(state diskState) error {
 		}
 	case "ROLLED_BACK", "ROLLBACK_VERIFIED":
 		prepared := state.hasBoundPreparedRollback() && state.preparedRollbackMatches(proof.OperationID, proof.ManifestDigest, rollbackRef) &&
-			state.ActiveRelease == state.PreparedRollbackRelease && state.ActiveSequence == state.PreparedRollbackSequence && state.ActiveDigest == state.PreparedRollbackDigest
+			state.ActiveRelease == state.PreparedRollbackRelease && state.ActiveSequence == state.PreparedRollbackSequence && state.ActiveDigest == state.PreparedRollbackDigest && state.ActiveLocalCheckpoint == state.PreparedRollbackLocalCheckpoint
 		promoted := state.rollbackMatches(proof.OperationID, proof.ManifestDigest, rollbackRef) &&
-			state.ActiveRelease == state.RollbackRelease && state.ActiveSequence == state.RollbackSequence && state.ActiveDigest == state.RollbackDigest
+			state.ActiveRelease == state.RollbackRelease && state.ActiveSequence == state.RollbackSequence && state.ActiveDigest == state.RollbackDigest && state.ActiveLocalCheckpoint == state.RollbackLocalCheckpoint
 		if !prepared && !promoted || proof.Phase == "ROLLED_BACK" && (state.VerifiedSequence != 0 || state.VerifiedDigest != "") ||
 			proof.Phase == "ROLLBACK_VERIFIED" && (state.VerifiedSequence != state.ActiveSequence || state.VerifiedDigest != state.ActiveDigest) {
 			return failed
@@ -160,7 +162,7 @@ func (h *Host) stageProviderConfiguration(envelope broker.Request, request Stage
 	proof := state.ProviderMaintenance
 	if err != nil || proof.Phase != "CHECKPOINTED" || !proof.matches(envelope.OperationID, request.Release) ||
 		proof.Input != *request.Configuration || peer.PID <= 0 || peer.ExecutableDigest != proof.Input.PreviousExecutableDigest ||
-		!state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest)) {
+		!state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, SemanticReference("rollback", envelope.OperationID, request.Release.ManifestDigest)) {
 		return nil, broker.Failure(broker.CodeFence, "provider configuration checkpoint changed")
 	}
 	accepted, err := validateChunkAdmission(request.Offset, len(request.Chunk), proof.Input.ConfigurationBytes, request.Final)
@@ -193,7 +195,7 @@ func (h *Host) prepareProviderConfiguration(ctx context.Context, envelope broker
 	proof := state.ProviderMaintenance
 	if err != nil || !proof.matches(envelope.OperationID, request.Release) || proof.Input != *request.Maintenance ||
 		(proof.Phase != "CHECKPOINTED" && proof.Phase != "VALIDATED") ||
-		!state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest)) ||
+		!state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, SemanticReference("rollback", envelope.OperationID, request.Release.ManifestDigest)) ||
 		verifyPreviousProviderPeer(peer, proof.Input, request.Release.BinaryProfile) != nil {
 		return nil, broker.Failure(broker.CodeFence, "provider configuration checkpoint changed")
 	}
@@ -202,6 +204,9 @@ func (h *Host) prepareProviderConfiguration(ctx context.Context, envelope broker
 		return nil, broker.Failure(broker.CodeRevision, "provider configuration target changed")
 	}
 	root := filepath.Join(h.ReleaseRoot, name)
+	if h.maintenance != nil && h.maintenance.admit(ctx, root) != nil {
+		return nil, broker.Failure(broker.CodeRecoveryRequired, "provider configuration requires the installed shared broker and fixed services")
+	}
 	if proof.Phase == "CHECKPOINTED" {
 		inbox, err := h.operationInbox(envelope.OperationID, request.Release, false)
 		if err != nil {
@@ -262,8 +267,8 @@ func (h *Host) prepareProviderConfiguration(ctx context.Context, envelope broker
 }
 
 func providerPrepareResult(operationID string, identity ReleaseIdentityV1, validated bool) PrepareResultV1 {
-	result := PrepareResultV1{ProviderRevision: ProviderRevision, PreparedRef: semanticRef("prepared", operationID, identity.ManifestDigest),
-		RollbackRef: semanticRef("rollback", operationID, identity.ManifestDigest), RollbackAvailable: true, ManagementReady: true,
+	result := PrepareResultV1{ProviderRevision: ProviderRevision, PreparedRef: SemanticReference("prepared", operationID, identity.ManifestDigest),
+		RollbackRef: SemanticReference("rollback", operationID, identity.ManifestDigest), RollbackAvailable: true, ManagementReady: true,
 		PreflightRevision: broker.Digest([]byte(releaseDirectoryName(identity) + ":" + identity.DeploymentRevision)), ConfigurationVerified: validated}
 	return result
 }
@@ -348,6 +353,9 @@ func (h *Host) verifyProviderRollback(envelope broker.Request, request VerifyReq
 	previous.CapabilityRevision = proof.Input.PreviousCapabilityRevision
 	if !providerHealthMatches(previous, request.ProviderHealth) || verifyPreviousProviderPeer(peer, proof.Input, stored.BinaryProfile) != nil {
 		return nil, broker.Failure(broker.CodeFence, "provider rollback runtime and prior intent are not verified")
+	}
+	if !h.localCheckpointMatches(state.ActiveRelease, state.ActiveLocalCheckpoint) {
+		return nil, broker.Failure(broker.CodeRevision, "restored installer checkpoint changed")
 	}
 	if !h.runningRelease(state.ActiveRelease, peer) {
 		return VerifyResultV1{ProviderRevision: ProviderRevision, ManagementReady: peer.PID > 0, HealthRevision: "restart-pending"}, nil

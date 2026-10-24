@@ -362,6 +362,10 @@ func classify(method, route string) Policy {
 		policy.StepUpOperation = "deployment.rollback"
 		policy.AuditPolicy = "security"
 		policy.PressureClass = "recovery_essential"
+	case strings.HasSuffix(lower, "/v1/operations/update/provider/maintain"):
+		policy.ActionScope = "update_maintain"
+		policy.StepUpOperation = "update.provider-maintenance"
+		policy.AuditPolicy = "security"
 	case (strings.HasSuffix(lower, "/prepare") || strings.HasSuffix(lower, "/preflight")) && strings.Contains(lower, "/v1/operations/update/"):
 		policy.ActionScope = "update_prepare"
 		policy.StepUpOperation = "update.prepare"

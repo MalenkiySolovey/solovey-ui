@@ -262,8 +262,8 @@ func liveRollbackOperation(result contract.ObservationV1) (string, error) {
 		return "", nil
 	}
 	if !safeID(result.RollbackOperationID, 96) || !strings.HasPrefix(result.RollbackOperationID, "update-operation:") ||
-		!validDigest(result.RollbackManifestDigest) || !validDigest(result.RollbackTargetDigest) || result.RollbackTargetSequence == 0 ||
-		result.RollbackRef != broker.Digest([]byte("rollback:"+result.RollbackOperationID+":"+result.RollbackManifestDigest)) {
+		!validDigest(result.RollbackManifestDigest) || !contract.ValidRollbackTarget(result.RollbackTargetSequence, result.RollbackTargetDigest, result.RollbackTargetLocalCheckpoint) ||
+		result.RollbackRef != contract.SemanticReference("rollback", result.RollbackOperationID, result.RollbackManifestDigest) {
 		return "", ErrRecoveryRequired
 	}
 	return result.RollbackOperationID, nil
@@ -661,15 +661,19 @@ func (p *BrokerProvider) mutate(ctx context.Context, verb broker.Verb, operation
 	if p == nil || p.Client == nil || !safeID(operation.OperationID, 96) || operation.Revision == 0 || !validDigest(operation.ManifestDigest) {
 		return ErrProviderUnavailable
 	}
+	// Revisions are local to a durable Update operation. A journal-wide fence
+	// would make the next operation inherit the preceding operation's revision.
+	resource := "release-activation:" + broker.Digest([]byte(operation.OperationID))
 	data, _ := json.Marshal(struct {
-		Verb broker.Verb
-		ID   string
-		Rev  uint64
-		Body any
-	}{verb, operation.OperationID, operation.Revision, payload})
+		Verb     broker.Verb
+		ID       string
+		Rev      uint64
+		Resource string
+		Body     any
+	}{verb, operation.OperationID, operation.Revision, resource, payload})
 	digest := broker.Digest(data)
 	_, err := p.Client.Invoke(ctx, broker.Call{Verb: verb, OperationID: operation.OperationID,
-		IdempotencyKey: "update-" + digest[:48], Fence: broker.Fence{Resource: "release-activation", Sequence: operation.Revision*1_000_000 + ordinal,
+		IdempotencyKey: "update-" + digest[:48], Fence: broker.Fence{Resource: resource, Sequence: operation.Revision*1_000_000 + ordinal,
 			Token: broker.Digest([]byte(operation.OperationID + ":" + operation.ManifestDigest))},
 		Expected: broker.Revisions{Provider: contract.ProviderRevision, Configuration: operation.DeploymentRevision},
 		Timeout:  2 * time.Minute, Payload: payload}, target)
@@ -717,7 +721,7 @@ func releaseIdentityFromOperation(operation model.UpdateOperation) contract.Rele
 }
 
 func updateRef(operation model.UpdateOperation, kind string) string {
-	return broker.Digest([]byte(kind + ":" + operation.OperationID + ":" + operation.ManifestDigest))
+	return contract.SemanticReference(kind, operation.OperationID, operation.ManifestDigest)
 }
 
 func containsUpdateVerbs(verbs []broker.Verb) bool {

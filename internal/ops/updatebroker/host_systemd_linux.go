@@ -42,27 +42,30 @@ const (
 )
 
 type diskState struct {
-	ProviderMaintenance            providerMaintenanceState `json:"providerMaintenance,omitzero"`
-	ActiveSequence                 uint64                   `json:"activeSequence"`
-	ActiveDigest                   string                   `json:"activeDigest"`
-	VerifiedSequence               uint64                   `json:"verifiedSequence"`
-	VerifiedDigest                 string                   `json:"verifiedDigest"`
-	MaxActivatedSequence           uint64                   `json:"maxActivatedSequence,omitempty"`
-	MaxActivatedDigest             string                   `json:"maxActivatedDigest,omitempty"`
-	ActiveRelease                  string                   `json:"activeRelease"`
-	RollbackRelease                string                   `json:"rollbackRelease,omitempty"`
-	RollbackSequence               uint64                   `json:"rollbackSequence,omitempty"`
-	RollbackDigest                 string                   `json:"rollbackDigest,omitempty"`
-	RollbackOperationID            string                   `json:"rollbackOperationId,omitempty"`
-	RollbackManifestDigest         string                   `json:"rollbackManifestDigest,omitempty"`
-	RollbackRef                    string                   `json:"rollbackRef,omitempty"`
-	PreparedRollbackRelease        string                   `json:"preparedRollbackRelease,omitempty"`
-	PreparedRollbackSequence       uint64                   `json:"preparedRollbackSequence,omitempty"`
-	PreparedRollbackDigest         string                   `json:"preparedRollbackDigest,omitempty"`
-	PreparedRollbackOperationID    string                   `json:"preparedRollbackOperationId,omitempty"`
-	PreparedRollbackManifestDigest string                   `json:"preparedRollbackManifestDigest,omitempty"`
-	PreparedRollbackRef            string                   `json:"preparedRollbackRef,omitempty"`
-	UpdatedAt                      int64                    `json:"updatedAt"`
+	ProviderMaintenance             providerMaintenanceState    `json:"providerMaintenance,omitzero"`
+	ActiveSequence                  uint64                      `json:"activeSequence"`
+	ActiveDigest                    string                      `json:"activeDigest"`
+	VerifiedSequence                uint64                      `json:"verifiedSequence"`
+	VerifiedDigest                  string                      `json:"verifiedDigest"`
+	MaxActivatedSequence            uint64                      `json:"maxActivatedSequence,omitempty"`
+	MaxActivatedDigest              string                      `json:"maxActivatedDigest,omitempty"`
+	ActiveRelease                   string                      `json:"activeRelease"`
+	ActiveLocalCheckpoint           LocalGenerationCheckpointV1 `json:"activeLocalCheckpoint,omitzero"`
+	RollbackRelease                 string                      `json:"rollbackRelease,omitempty"`
+	RollbackSequence                uint64                      `json:"rollbackSequence,omitempty"`
+	RollbackDigest                  string                      `json:"rollbackDigest,omitempty"`
+	RollbackLocalCheckpoint         LocalGenerationCheckpointV1 `json:"rollbackLocalCheckpoint,omitzero"`
+	RollbackOperationID             string                      `json:"rollbackOperationId,omitempty"`
+	RollbackManifestDigest          string                      `json:"rollbackManifestDigest,omitempty"`
+	RollbackRef                     string                      `json:"rollbackRef,omitempty"`
+	PreparedRollbackRelease         string                      `json:"preparedRollbackRelease,omitempty"`
+	PreparedRollbackSequence        uint64                      `json:"preparedRollbackSequence,omitempty"`
+	PreparedRollbackDigest          string                      `json:"preparedRollbackDigest,omitempty"`
+	PreparedRollbackLocalCheckpoint LocalGenerationCheckpointV1 `json:"preparedRollbackLocalCheckpoint,omitzero"`
+	PreparedRollbackOperationID     string                      `json:"preparedRollbackOperationId,omitempty"`
+	PreparedRollbackManifestDigest  string                      `json:"preparedRollbackManifestDigest,omitempty"`
+	PreparedRollbackRef             string                      `json:"preparedRollbackRef,omitempty"`
+	UpdatedAt                       int64                       `json:"updatedAt"`
 }
 
 type Host struct {
@@ -77,6 +80,7 @@ type Host struct {
 	atomicOps     updateAtomicOps
 	generationOps updateGenerationOps
 	inboxOps      updateInboxOps
+	maintenance   *nativeMaintenanceRuntime
 }
 
 func NewHost() *Host {
@@ -85,8 +89,9 @@ func NewHost() *Host {
 		atomicOps: productionUpdateAtomicOps, generationOps: productionUpdateGenerationOps, inboxOps: productionUpdateInboxOps}
 }
 
-func registerNativeHandlers(registry *broker.Registry) error {
+func registerNativeHandlers(registry *broker.Registry) (func(context.Context) error, error) {
 	host := NewHost()
+	runtime := newNativeMaintenanceRuntime(host)
 	definitions := []struct {
 		verb     broker.Verb
 		mutation bool
@@ -101,11 +106,11 @@ func registerNativeHandlers(registry *broker.Registry) error {
 		{broker.VerbUpdateRollback, true, host.rollback},
 	}
 	for _, definition := range definitions {
-		if err := registry.Register(definition.verb, broker.Definition{Role: broker.RolePanel, Mutation: definition.mutation, Handler: definition.handler}); err != nil {
-			return broker.StartupFailure("update", "update.lifecycle", "native-self-managed", "handler_registration_failed", err)
+		if err := registry.Register(definition.verb, broker.Definition{Role: broker.RolePanel, Mutation: definition.mutation, Handler: runtime.handler(definition.handler)}); err != nil {
+			return nil, broker.StartupFailure("update", "update.lifecycle", "native-self-managed", "handler_registration_failed", err)
 		}
 	}
-	return nil
+	return runtime.reconcile, nil
 }
 
 func (h *Host) observe(_ context.Context, _ broker.Request, peer broker.PeerIdentity) (any, error) {
@@ -137,10 +142,12 @@ func (h *Host) observe(_ context.Context, _ broker.Request, peer broker.PeerIden
 		RollbackAvailable: state.hasBoundRollback(), RollbackOperationID: state.RollbackOperationID,
 		RollbackManifestDigest: state.RollbackManifestDigest, RollbackRef: state.RollbackRef,
 		RollbackTargetSequence: state.RollbackSequence, RollbackTargetDigest: state.RollbackDigest,
-		PreparedRollbackAvailable: state.hasBoundPreparedRollback(), PreparedRollbackOperationID: state.PreparedRollbackOperationID,
+		RollbackTargetLocalCheckpoint: state.RollbackLocalCheckpoint,
+		PreparedRollbackAvailable:     state.hasBoundPreparedRollback(), PreparedRollbackOperationID: state.PreparedRollbackOperationID,
 		PreparedRollbackManifestDigest: state.PreparedRollbackManifestDigest, PreparedRollbackRef: state.PreparedRollbackRef,
 		PreparedRollbackTargetSequence: state.PreparedRollbackSequence, PreparedRollbackTargetDigest: state.PreparedRollbackDigest,
-		ManagementReady: managementReady, ObservedAt: h.Now().Unix()}
+		PreparedRollbackLocalCheckpoint: state.PreparedRollbackLocalCheckpoint,
+		ManagementReady:                 managementReady, ObservedAt: h.Now().Unix()}
 	result.Revision = broker.Digest(mustJSON(result))
 	return result, nil
 }
@@ -280,14 +287,24 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 	if stateErr != nil {
 		return nil, broker.Failure(broker.CodeExecution, "update state is unavailable")
 	}
-	if state.ActiveRelease == "" {
+	if state.ActiveRelease == "" || state.ActiveSequence == 0 && state.ActiveDigest == "" && state.ActiveLocalCheckpoint == (LocalGenerationCheckpointV1{}) {
 		if current, linkErr := os.Readlink(filepath.Join(h.ReleaseRoot, "current")); linkErr == nil {
 			candidate := filepath.Base(current)
 			identity, identityErr := loadReleaseIdentity(filepath.Join(h.ReleaseRoot, candidate))
-			if candidate == current && identityErr == nil && h.verifyReleaseExecutables(filepath.Join(h.ReleaseRoot, candidate)) == nil {
+			if candidate != current || state.ActiveRelease != "" && state.ActiveRelease != candidate {
+				return nil, broker.Failure(broker.CodeRevision, "installed generation link changed")
+			}
+			if identityErr == nil && h.verifyReleaseExecutables(filepath.Join(h.ReleaseRoot, candidate)) == nil {
 				state.ActiveRelease, state.ActiveSequence, state.ActiveDigest = candidate, identity.Sequence, identity.ManifestDigest
+			} else {
+				if checkpoint, err := h.installerCheckpoint(candidate); err == nil {
+					state.ActiveRelease, state.ActiveLocalCheckpoint = candidate, checkpoint
+				}
 			}
 		}
+	}
+	if !h.localCheckpointMatches(state.ActiveRelease, state.ActiveLocalCheckpoint) {
+		return nil, broker.Failure(broker.CodeRevision, "installed rollback generation changed")
 	}
 	if withProvider {
 		if !pathWithin(filepath.Join(h.ReleaseRoot, state.ActiveRelease), peer.Executable) ||
@@ -306,7 +323,7 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 		// preparation replaces its now-completed checkpoint atomically.
 		state.clearPreparedRollback()
 	}
-	rollbackRef := semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest)
+	rollbackRef := SemanticReference("rollback", envelope.OperationID, request.Release.ManifestDigest)
 	preparedReplay := state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, rollbackRef)
 	activatedReplay := preparedReplay && state.ActiveSequence == request.Release.Sequence && state.ActiveDigest == request.Release.ManifestDigest && state.ActiveRelease == releaseName
 	sameEnvelopeTransition := withProvider && request.Maintenance.PreviousProvider.ID != request.Release.CoreProvider.ID &&
@@ -333,6 +350,7 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 	}
 	if !preparedReplay {
 		state.PreparedRollbackRelease, state.PreparedRollbackSequence, state.PreparedRollbackDigest = state.ActiveRelease, state.ActiveSequence, state.ActiveDigest
+		state.PreparedRollbackLocalCheckpoint = state.ActiveLocalCheckpoint
 		state.PreparedRollbackOperationID, state.PreparedRollbackManifestDigest, state.PreparedRollbackRef = envelope.OperationID, request.Release.ManifestDigest, rollbackRef
 		if withProvider {
 			state.ProviderMaintenance = providerMaintenanceState{OperationID: envelope.OperationID, ManifestDigest: request.Release.ManifestDigest,
@@ -356,7 +374,7 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 	if err := h.removeOwnedInbox(inbox); err != nil {
 		return nil, broker.Failure(broker.CodeExecution, "prepared operation inbox could not be released")
 	}
-	return PrepareResultV1{ProviderRevision: ProviderRevision, PreparedRef: semanticRef("prepared", envelope.OperationID, request.Release.ManifestDigest),
+	return PrepareResultV1{ProviderRevision: ProviderRevision, PreparedRef: SemanticReference("prepared", envelope.OperationID, request.Release.ManifestDigest),
 		RollbackRef: rollbackRef, RollbackAvailable: state.hasBoundPreparedRollback(), ManagementReady: true,
 		PreflightRevision: broker.Digest([]byte(releaseName + ":" + request.ExpectedManagementRevision))}, nil
 }
@@ -364,8 +382,8 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broker.PeerIdentity) (any, error) {
 	var request ActivateRequestV1
 	if err := broker.DecodeRawPayload(envelope.Payload, &request); err != nil || !safeOperationID(envelope.OperationID) || ValidateRelease(request.Release) != nil || request.ExpectedMode != "native" ||
-		request.PreparedRef != semanticRef("prepared", envelope.OperationID, request.Release.ManifestDigest) ||
-		request.RollbackRef != semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest) {
+		request.PreparedRef != SemanticReference("prepared", envelope.OperationID, request.Release.ManifestDigest) ||
+		request.RollbackRef != SemanticReference("rollback", envelope.OperationID, request.Release.ManifestDigest) {
 		return nil, broker.Failure(broker.CodeInvalidRequest, "update activation request is invalid")
 	}
 	releaseName, stored, identityErr := h.resolveReleaseGeneration(request.Release)
@@ -386,6 +404,11 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 	if err := h.admitProviderActivation(envelope, request, stored, state, peer); err != nil {
 		return nil, broker.Failure(broker.CodeFence, "provider activation maintenance proof is unavailable or changed")
 	}
+	if stored.CoreProvider != (release.CoreProviderSource{}) && h.maintenance != nil {
+		if err := h.maintenance.admit(ctx, releaseRoot); err != nil {
+			return nil, broker.Failure(broker.CodeRecoveryRequired, "provider activation requires the installed shared broker and fixed services")
+		}
+	}
 	maxSequence, maxDigest := state.activationHighWater()
 	sameEnvelopeTransition := stored.CoreProvider != (release.CoreProviderSource{}) && state.ProviderMaintenance.Phase == "VALIDATED" &&
 		state.ProviderMaintenance.Input.PreviousProvider.ID != stored.CoreProvider.ID && maxDigest == stored.ManifestDigest &&
@@ -395,6 +418,9 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 		return nil, broker.Failure(broker.CodeRevision, "activated release sequence is not monotonic")
 	}
 	previousRelease := state.ActiveRelease
+	if !h.localCheckpointMatches(state.PreparedRollbackRelease, state.PreparedRollbackLocalCheckpoint) {
+		return nil, broker.Failure(broker.CodeRevision, "prepared rollback generation changed")
+	}
 	if err := h.activateLink(releaseName); err != nil {
 		return nil, broker.Failure(broker.CodeExecution, "release activation could not be committed")
 	}
@@ -407,6 +433,7 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 		return nil, broker.Failure(broker.CodeExecution, "application owner manifest could not be rotated")
 	}
 	state.ActiveRelease, state.ActiveSequence, state.ActiveDigest = releaseName, request.Release.Sequence, request.Release.ManifestDigest
+	state.ActiveLocalCheckpoint = LocalGenerationCheckpointV1{}
 	if stored.CoreProvider != (release.CoreProviderSource{}) {
 		state.ProviderMaintenance.Phase = "ACTIVATED"
 	}
@@ -422,7 +449,7 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 		}
 		return nil, broker.Failure(broker.CodeExecution, "active release state could not be committed")
 	}
-	if h.Restart != nil {
+	if (stored.CoreProvider == (release.CoreProviderSource{}) || h.maintenance == nil) && h.Restart != nil {
 		h.Restart(peer.PID)
 	}
 	return ActivateResultV1{ProviderRevision: ProviderRevision, ActiveSequence: request.Release.Sequence,
@@ -432,8 +459,8 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 func (h *Host) verify(_ context.Context, envelope broker.Request, peer broker.PeerIdentity) (any, error) {
 	var request VerifyRequestV1
 	if err := broker.DecodeRawPayload(envelope.Payload, &request); err != nil || !safeOperationID(envelope.OperationID) || ValidateRelease(request.Release) != nil ||
-		request.PreparedRef != semanticRef("prepared", envelope.OperationID, request.Release.ManifestDigest) ||
-		request.RollbackRef != semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest) {
+		request.PreparedRef != SemanticReference("prepared", envelope.OperationID, request.Release.ManifestDigest) ||
+		request.RollbackRef != SemanticReference("rollback", envelope.OperationID, request.Release.ManifestDigest) {
 		return nil, broker.Failure(broker.CodeInvalidRequest, "active release verification request is invalid")
 	}
 	state, err := h.loadState()
@@ -494,39 +521,54 @@ func (h *Host) verify(_ context.Context, envelope broker.Request, peer broker.Pe
 func (h *Host) rollback(ctx context.Context, envelope broker.Request, peer broker.PeerIdentity) (any, error) {
 	var request RollbackRequestV1
 	if err := broker.DecodeRawPayload(envelope.Payload, &request); err != nil || !safeOperationID(envelope.OperationID) || ValidateRelease(request.Release) != nil ||
-		request.RollbackRef != semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest) || len(request.ReasonCode) > 96 {
+		request.RollbackRef != SemanticReference("rollback", envelope.OperationID, request.Release.ManifestDigest) || len(request.ReasonCode) > 96 {
 		return nil, broker.Failure(broker.CodeInvalidRequest, "update rollback request is invalid")
 	}
+	return h.rollbackCheckpoint(ctx, envelope.OperationID, request, peer)
+}
+
+// Both an authenticated rollback request and deadline recovery use this exact
+// checkpoint path. Background recovery has no Panel peer and cannot claim
+// management readiness or successful runtime verification.
+func (h *Host) rollbackCheckpoint(ctx context.Context, operationID string, request RollbackRequestV1, peer broker.PeerIdentity) (any, error) {
 	state, err := h.loadState()
 	if err != nil {
 		return nil, broker.Failure(broker.CodeExecution, "update rollback checkpoint is unavailable")
 	}
-	if state.ProviderMaintenance != (providerMaintenanceState{}) && state.ProviderMaintenance.OperationID != envelope.OperationID {
+	if state.ProviderMaintenance != (providerMaintenanceState{}) && state.ProviderMaintenance.OperationID != operationID {
 		return nil, broker.Failure(broker.CodeFence, "another provider maintenance checkpoint is active")
 	}
-	preparedAuthority := state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, request.RollbackRef)
+	preparedAuthority := state.preparedRollbackMatches(operationID, request.Release.ManifestDigest, request.RollbackRef)
 	rollbackRelease, rollbackSequence, rollbackDigest := state.RollbackRelease, state.RollbackSequence, state.RollbackDigest
+	rollbackLocal := state.RollbackLocalCheckpoint
 	if preparedAuthority {
 		if !state.hasBoundPreparedRollback() {
 			return nil, broker.Failure(broker.CodeExecution, "update rollback checkpoint is unavailable")
 		}
 		rollbackRelease, rollbackSequence, rollbackDigest = state.PreparedRollbackRelease, state.PreparedRollbackSequence, state.PreparedRollbackDigest
-	} else if !state.rollbackMatches(envelope.OperationID, request.Release.ManifestDigest, request.RollbackRef) {
+		rollbackLocal = state.PreparedRollbackLocalCheckpoint
+	} else if !state.rollbackMatches(operationID, request.Release.ManifestDigest, request.RollbackRef) {
 		return nil, broker.Failure(broker.CodeFence, "update rollback checkpoint binding changed")
 	}
 	_, stored, identityErr := h.resolveReleaseGeneration(request.Release)
 	withProvider := state.ProviderMaintenance != (providerMaintenanceState{})
-	if identityErr != nil || withProvider && !state.ProviderMaintenance.matches(envelope.OperationID, stored) {
+	if identityErr != nil || withProvider && !state.ProviderMaintenance.matches(operationID, stored) {
 		return nil, broker.Failure(broker.CodeRevision, "rollback release metadata changed")
 	}
 	if withProvider && (state.ProviderMaintenance.Phase == "ROLLED_BACK" || state.ProviderMaintenance.Phase == "ROLLBACK_VERIFIED") {
-		if !h.runningRelease(state.ActiveRelease, peer) && h.Restart != nil {
+		if (h.maintenance == nil || !withProvider) && !h.runningRelease(state.ActiveRelease, peer) && h.Restart != nil {
 			h.Restart(peer.PID)
 		}
 		return RollbackResultV1{ProviderRevision: ProviderRevision, RolledBack: true, ActiveSequence: state.ActiveSequence,
 			ActiveDigest: state.ActiveDigest, ManagementReady: peer.PID > 0}, nil
 	}
 	rollbackRoot := filepath.Join(h.ReleaseRoot, rollbackRelease)
+	if !h.localCheckpointMatches(rollbackRelease, rollbackLocal) {
+		return nil, broker.Failure(broker.CodeRevision, "rollback generation changed")
+	}
+	if withProvider && h.maintenance != nil && h.maintenance.sharedBroker(rollbackRoot) != nil {
+		return nil, broker.Failure(broker.CodeRecoveryRequired, "provider rollback shared broker is unavailable or changed")
+	}
 	previousRelease := state.ActiveRelease
 	rollbackProfile, profileErr := releaseBinaryProfile(rollbackRoot)
 	if err := h.verifyReleaseExecutables(rollbackRoot); err != nil || h.activateLink(rollbackRelease) != nil || h.rewriteClientManifest(rollbackRoot) != nil ||
@@ -535,6 +577,7 @@ func (h *Host) rollback(ctx context.Context, envelope broker.Request, peer broke
 		return nil, broker.Failure(broker.CodeExecution, "update rollback could not be committed")
 	}
 	state.ActiveRelease, state.ActiveSequence, state.ActiveDigest = rollbackRelease, rollbackSequence, rollbackDigest
+	state.ActiveLocalCheckpoint = rollbackLocal
 	if withProvider {
 		state.ProviderMaintenance.Phase = "ROLLED_BACK"
 	} else if preparedAuthority {
@@ -550,11 +593,11 @@ func (h *Host) rollback(ctx context.Context, envelope broker.Request, peer broke
 		return nil, broker.Failure(broker.CodeExecution, "rollback release state could not be committed")
 	}
 	h.pruneReleases(state.ActiveRelease, state.RollbackRelease, state.ProviderMaintenance.TargetRelease)
-	if h.Restart != nil {
+	if (!withProvider || h.maintenance == nil) && h.Restart != nil {
 		h.Restart(peer.PID)
 	}
 	return RollbackResultV1{ProviderRevision: ProviderRevision, RolledBack: true, ActiveSequence: state.ActiveSequence,
-		ActiveDigest: state.ActiveDigest, ManagementReady: true}, nil
+		ActiveDigest: state.ActiveDigest, ManagementReady: peer.PID > 0}, nil
 }
 
 func (h *Host) operationInbox(operationID string, release ReleaseIdentityV1, create bool) (string, error) {
@@ -905,6 +948,14 @@ func (h *Host) pruneReleases(keep ...string) {
 			retained[name] = true
 		}
 	}
+	// Provider-only transitions keep the byte-identical Root broker alive.
+	// Retain that one executing generation until a later ordinary update has
+	// restarted the broker; never unlink its executable's trusted ancestry.
+	if h.maintenance != nil {
+		if name := h.maintenance.runningRelease(); name != "" {
+			retained[name] = true
+		}
+	}
 	entries, err := os.ReadDir(h.ReleaseRoot)
 	if err != nil {
 		return
@@ -976,6 +1027,9 @@ func (h *Host) runningRelease(releaseName string, peer broker.PeerIdentity) bool
 		return false
 	}
 	releaseRoot := filepath.Join(h.ReleaseRoot, releaseName)
+	if h.maintenance != nil {
+		return pathWithin(releaseRoot, peer.Executable) && h.maintenance.sharedBroker(releaseRoot) == nil
+	}
 	self, err := os.Readlink("/proc/self/exe")
 	return err == nil && pathWithin(releaseRoot, self) && pathWithin(releaseRoot, peer.Executable)
 }
@@ -1046,7 +1100,7 @@ type updateGenerationOps struct {
 var productionUpdateGenerationOps = updateGenerationOps{
 	ensureRoot:    ensureUpdateDirectory,
 	removeAll:     os.RemoveAll,
-	mkdir:         os.Mkdir,
+	mkdir:         createUpdateDirectory,
 	readDir:       os.ReadDir,
 	extract:       extractRelease,
 	verifyProfile: verifyPreparedReleaseExecutables,
@@ -1161,7 +1215,7 @@ func extractRelease(archive, destination string) ([]extractedReleaseMember, erro
 		if !pathWithin(destination, target) {
 			return nil, errors.New("release archive path escaped")
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		if err := ensureReleaseParentDirectory(destination, filepath.Dir(target)); err != nil {
 			return nil, err
 		}
 		mode := os.FileMode(0o644)
@@ -1178,6 +1232,7 @@ func extractRelease(archive, destination string) ([]extractedReleaseMember, erro
 
 type releaseMemberFile interface {
 	io.Writer
+	Chmod(os.FileMode) error
 	Sync() error
 	Close() error
 }
@@ -1208,11 +1263,12 @@ func writeExtractedReleaseMember(ops releaseMemberOps, target, relative string, 
 	}()
 	hash := sha256.New()
 	written, copyErr := io.Copy(io.MultiWriter(output, hash), io.LimitReader(source, size+1))
+	modeErr := output.Chmod(mode.Perm())
 	syncErr := output.Sync()
 	closeErr := output.Close()
 	closed = true
-	if copyErr != nil || syncErr != nil || closeErr != nil || written != size {
-		return extractedReleaseMember{}, errors.Join(copyErr, syncErr, closeErr, errors.New("release member size mismatch"))
+	if copyErr != nil || modeErr != nil || syncErr != nil || closeErr != nil || written != size {
+		return extractedReleaseMember{}, errors.Join(copyErr, modeErr, syncErr, closeErr, errors.New("release member size mismatch"))
 	}
 	return extractedReleaseMember{Relative: filepath.ToSlash(relative), Size: written, Digest: hex.EncodeToString(hash.Sum(nil)), Mode: mode.Perm()}, nil
 }
@@ -1221,7 +1277,7 @@ func ensureUpdateDirectory(path string, mode os.FileMode) error {
 	path = filepath.Clean(path)
 	created := false
 	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
-		if err := os.Mkdir(path, mode); err != nil {
+		if err := createUpdateDirectory(path, mode); err != nil {
 			return err
 		}
 		created = true
@@ -1592,9 +1648,9 @@ func (state *diskState) raiseHighWater(sequence uint64, digest string) {
 }
 
 func (state diskState) hasBoundRollback() bool {
-	return state.RollbackRelease != "" && state.RollbackSequence > 0 && validDigest(state.RollbackDigest) &&
+	return state.RollbackRelease != "" && localCheckpointTarget(state.RollbackRelease, state.RollbackSequence, state.RollbackDigest, state.RollbackLocalCheckpoint) &&
 		safeOperationID(state.RollbackOperationID) && validDigest(state.RollbackManifestDigest) &&
-		state.RollbackRef == semanticRef("rollback", state.RollbackOperationID, state.RollbackManifestDigest)
+		state.RollbackRef == SemanticReference("rollback", state.RollbackOperationID, state.RollbackManifestDigest)
 }
 
 func (state diskState) rollbackMatches(operationID, manifestDigest, rollbackRef string) bool {
@@ -1604,12 +1660,12 @@ func (state diskState) rollbackMatches(operationID, manifestDigest, rollbackRef 
 
 func (state diskState) hasBoundPreparedRollback() bool {
 	return state.hasPreparedRollbackBinding() && state.PreparedRollbackRelease != "" &&
-		state.PreparedRollbackSequence > 0 && validDigest(state.PreparedRollbackDigest)
+		localCheckpointTarget(state.PreparedRollbackRelease, state.PreparedRollbackSequence, state.PreparedRollbackDigest, state.PreparedRollbackLocalCheckpoint)
 }
 
 func (state diskState) hasPreparedRollbackBinding() bool {
 	return safeOperationID(state.PreparedRollbackOperationID) && validDigest(state.PreparedRollbackManifestDigest) &&
-		state.PreparedRollbackRef == semanticRef("rollback", state.PreparedRollbackOperationID, state.PreparedRollbackManifestDigest)
+		state.PreparedRollbackRef == SemanticReference("rollback", state.PreparedRollbackOperationID, state.PreparedRollbackManifestDigest)
 }
 
 func (state diskState) preparedRollbackMatches(operationID, manifestDigest, rollbackRef string) bool {
@@ -1618,11 +1674,13 @@ func (state diskState) preparedRollbackMatches(operationID, manifestDigest, roll
 }
 
 func (state *diskState) clearRollback() {
+	state.RollbackLocalCheckpoint = LocalGenerationCheckpointV1{}
 	state.RollbackRelease, state.RollbackSequence, state.RollbackDigest = "", 0, ""
 	state.RollbackOperationID, state.RollbackManifestDigest, state.RollbackRef = "", "", ""
 }
 
 func (state *diskState) clearPreparedRollback() {
+	state.PreparedRollbackLocalCheckpoint = LocalGenerationCheckpointV1{}
 	state.PreparedRollbackRelease, state.PreparedRollbackSequence, state.PreparedRollbackDigest = "", 0, ""
 	state.PreparedRollbackOperationID, state.PreparedRollbackManifestDigest, state.PreparedRollbackRef = "", "", ""
 }
@@ -1630,6 +1688,7 @@ func (state *diskState) clearPreparedRollback() {
 func (state *diskState) promotePreparedRollback() {
 	if state.hasBoundPreparedRollback() {
 		state.RollbackRelease, state.RollbackSequence, state.RollbackDigest = state.PreparedRollbackRelease, state.PreparedRollbackSequence, state.PreparedRollbackDigest
+		state.RollbackLocalCheckpoint = state.PreparedRollbackLocalCheckpoint
 		state.RollbackOperationID, state.RollbackManifestDigest, state.RollbackRef = state.PreparedRollbackOperationID, state.PreparedRollbackManifestDigest, state.PreparedRollbackRef
 	}
 	state.clearPreparedRollback()
@@ -1642,9 +1701,23 @@ func validateDiskState(state diskState) error {
 	validSequence := func(sequence uint64, digest string) bool {
 		return sequence == 0 && digest == "" || sequence > 0 && validDigest(digest)
 	}
-	legacyRollback := state.RollbackRelease != "" && state.RollbackOperationID == "" && state.RollbackManifestDigest == "" && state.RollbackRef == ""
+	legacyRollback := state.RollbackRelease != "" && state.RollbackOperationID == "" && state.RollbackManifestDigest == "" && state.RollbackRef == "" && state.RollbackLocalCheckpoint == (LocalGenerationCheckpointV1{})
 	preparedPresent := state.PreparedRollbackRelease != "" || state.PreparedRollbackSequence != 0 || state.PreparedRollbackDigest != "" ||
-		state.PreparedRollbackOperationID != "" || state.PreparedRollbackManifestDigest != "" || state.PreparedRollbackRef != ""
+		state.PreparedRollbackOperationID != "" || state.PreparedRollbackManifestDigest != "" || state.PreparedRollbackRef != "" || state.PreparedRollbackLocalCheckpoint != (LocalGenerationCheckpointV1{})
+	for _, target := range []struct {
+		name     string
+		sequence uint64
+		digest   string
+		local    LocalGenerationCheckpointV1
+	}{
+		{state.ActiveRelease, state.ActiveSequence, state.ActiveDigest, state.ActiveLocalCheckpoint},
+		{state.RollbackRelease, state.RollbackSequence, state.RollbackDigest, state.RollbackLocalCheckpoint},
+		{state.PreparedRollbackRelease, state.PreparedRollbackSequence, state.PreparedRollbackDigest, state.PreparedRollbackLocalCheckpoint},
+	} {
+		if target.local != (LocalGenerationCheckpointV1{}) && !localCheckpointTarget(target.name, target.sequence, target.digest, target.local) {
+			return errors.New("invalid local update checkpoint")
+		}
+	}
 	if !validRelease(state.ActiveRelease) || !validRelease(state.RollbackRelease) || !validRelease(state.PreparedRollbackRelease) ||
 		!validSequence(state.ActiveSequence, state.ActiveDigest) || !validSequence(state.VerifiedSequence, state.VerifiedDigest) ||
 		!validSequence(state.RollbackSequence, state.RollbackDigest) || !validSequence(state.PreparedRollbackSequence, state.PreparedRollbackDigest) ||
@@ -1711,14 +1784,12 @@ func syncDirectory(path string) error {
 	return directory.Sync()
 }
 
-func scheduleReleaseRestart(panelPID int) {
+func scheduleReleaseRestart(_ int) {
 	go func() {
 		time.Sleep(1500 * time.Millisecond)
-		if panelPID > 1 {
-			_ = syscall.Kill(panelPID, syscall.SIGTERM)
-		}
-		time.Sleep(250 * time.Millisecond)
-		_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*releaseControlTimeout)
+		defer cancel()
+		_ = newReleaseServiceControl().RestartBoth(ctx)
 	}()
 }
 

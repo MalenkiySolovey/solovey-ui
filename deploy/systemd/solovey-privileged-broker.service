@@ -33,13 +33,15 @@ ProtectHostname=true
 RestrictAddressFamilies=AF_UNIX AF_NETLINK AF_INET AF_INET6
 RestrictNamespaces=true
 RestrictRealtime=true
-RestrictSUIDSGID=true
+# Update publishes the fixed SSH proof helper's root-owned setgid mode.
+# NoNewPrivileges still applies to this service and all its child processes.
+RestrictSUIDSGID=false
 LockPersonality=true
 MemoryDenyWriteExecute=true
 SystemCallArchitectures=native
 # Cross-UID peer attestation reads /proc/<pid>/exe under the kernel's ptrace access check.
-CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_NET_ADMIN CAP_NET_RAW CAP_SETGID CAP_SETUID CAP_SYS_PTRACE
-AmbientCapabilities=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_NET_ADMIN CAP_NET_RAW CAP_SETGID CAP_SETUID CAP_SYS_PTRACE
+CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_FSETID CAP_NET_ADMIN CAP_NET_RAW CAP_SETGID CAP_SETUID CAP_SYS_PTRACE
+AmbientCapabilities=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_FSETID CAP_NET_ADMIN CAP_NET_RAW CAP_SETGID CAP_SETUID CAP_SYS_PTRACE
 ReadWritePaths=/var/lib/solovey-ui-broker /var/lib/solovey-ui /usr/local/solovey-ui/releases /usr/local/solovey-ui/.runtime/server-protection /etc/solovey-ui /etc/systemd/system /etc/ssh/sshd_config.d -/etc/nginx -/run/nginx -/var/lib/nginx -/var/log/nginx /run/systemd
 ReadOnlyPaths=/etc/ssh /usr/local/solovey-ui /usr/local/lib/solovey-ui/systemd
 LimitNOFILE=4096

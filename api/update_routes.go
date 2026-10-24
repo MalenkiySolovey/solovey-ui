@@ -58,6 +58,8 @@ func (a *APIHandler) registerUpdateRoutes(g *gin.RouterGroup) {
 	group.POST("/preflight", h.prepare)
 	group.POST("/activate", h.activateByBody)
 	group.POST("/rollback", h.rollbackByBody)
+	group.POST("/provider/preview", h.providerPreview)
+	group.POST("/provider/maintain", h.maintainProvider)
 	group.GET("/operations/:operationId", h.operation)
 	group.GET("/operations/:operationId/timeline", h.timeline)
 	group.POST("/operations/:operationId/activate", h.activate)

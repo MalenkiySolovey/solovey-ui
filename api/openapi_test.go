@@ -104,6 +104,7 @@ func TestOpenAPIInventoryAndStrictRequests(t *testing.T) {
 		"DeploymentPreviewRequest", "DeploymentStartRequest",
 		"UpdateCheckRequest", "UpdatePrepareRequest", "UpdateOperationRequest",
 		"UpdateRevisionRequest",
+		"ProviderMaintenancePreviewRequest", "ProviderMaintenanceRequest",
 		"DropPreviewRequest", "DropExecuteRequest", "RestoreRehearsalRequest", "RestoreExecuteRequest",
 	}
 	for _, name := range strictSchemas {
@@ -133,6 +134,7 @@ func TestOpenAPIInventoryAndStrictRequests(t *testing.T) {
 		"/api/v1/operations/update/preflight",
 		"/api/v1/operations/update/activate",
 		"/api/v1/operations/update/rollback",
+		"/api/v1/operations/update/provider/maintain",
 		"/api/v1/operations/update/operations/{operationId}/activate",
 		"/api/v1/operations/update/operations/{operationId}/rollback",
 		"/api/v1/operations/data/drop",
