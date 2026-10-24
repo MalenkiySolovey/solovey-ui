@@ -4,7 +4,9 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 
+	panelidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
+	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/targetcheck"
 )
@@ -28,6 +30,14 @@ func checkTargetConfig(raw []byte, identity coreprovider.Identity) TargetCheck {
 	if !coreprovider.SourceIdentityVerified(identity) {
 		return result
 	}
+	result.PanelVersion = panelidentity.GetVersion()
+	result.Capabilities = entitycapabilities.Build()
+	result.Capabilities.Provider = identity
+	if result.Capabilities.Validate(identity, result.Capabilities.ComponentProfile) != nil {
+		result.ReasonCodes = []string{"CORE_CAPABILITY_OBSERVATION_INVALID"}
+		return result
+	}
+	result.CapabilityRevision = result.Capabilities.Revision()
 	result.State, result.ReasonCodes = "REJECTED", []string{"CONFIGURATION_INPUT_INVALID"}
 	if len(raw) == 0 || len(raw) > MaxTargetConfigBytes || jsonvalue.StrictObject(raw) != nil {
 		return result

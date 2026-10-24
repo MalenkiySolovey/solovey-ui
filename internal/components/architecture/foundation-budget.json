@@ -2163,6 +2163,12 @@
     },
     {
       "rule": "worker-lifetime",
+      "path": "app/update_maintenance.go",
+      "symbol": "*APP.startUpdateMaintenanceWatchdog",
+      "digest": "15365a3718537ab65bbfb8a5e1e332c990a89100f619dbcc38b968bb1c84e98d"
+    },
+    {
+      "rule": "worker-lifetime",
       "path": "cmd/internal/settings/uri.go",
       "symbol": "getPublicIP",
       "digest": "4ebfd5a1cd117e599d02c91ccd9877b68191d1d04be77b4da984179879df2e33"
@@ -2508,6 +2514,12 @@
       "path": "service/sshmanagement/manager.go",
       "symbol": "*Manager.StartWatchdog",
       "digest": "59646c60e37385bdd8bda16e01e22667812bda842993ed11046b283a5f7e151d"
+    },
+    {
+      "rule": "worker-lifetime",
+      "path": "service/update/provider_apply.go",
+      "symbol": "*LifecycleManager.RunMaintenanceWatchdog",
+      "digest": "46a48fce0bb1ad58ea9feb20b4dbec0883da78f84320b826d8b3ccc481fb511c"
     },
     {
       "rule": "worker-lifetime",

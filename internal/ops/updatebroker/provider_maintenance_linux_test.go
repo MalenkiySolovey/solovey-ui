@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilityview"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	providerfixture "github.com/MalenkiySolovey/solovey-ui/testsupport/coreprovider"
@@ -25,7 +26,7 @@ func providerCheckpointState(t *testing.T, identity ReleaseIdentityV1, input Pro
 		PreparedRollbackOperationID: operationID, PreparedRollbackManifestDigest: identity.ManifestDigest, PreparedRollbackRef: semanticRef("rollback", operationID, identity.ManifestDigest),
 		ProviderMaintenance: providerMaintenanceState{OperationID: operationID, ManifestDigest: identity.ManifestDigest, ArtifactSetDigest: identity.ArtifactSetDigest,
 			ReleaseDigest: broker.Digest(mustJSON(identity)), TargetRelease: releaseDirectoryName(identity), TargetSequence: identity.Sequence,
-			TargetProvider: identity.CoreProvider, Input: input, Phase: "CHECKPOINTED"}}
+			TargetProvider: identity.CoreProvider, TargetPanelVersion: identity.Version, Input: input, Phase: "CHECKPOINTED"}}
 }
 
 func TestProviderMaintenanceEvidencePublicationReopensOnlyOldOrNewBoundState(t *testing.T) {
@@ -36,6 +37,14 @@ func TestProviderMaintenanceEvidencePublicationReopensOnlyOldOrNewBoundState(t *
 	next := old
 	next.ProviderMaintenance.Phase = "VALIDATED"
 	next.ProviderMaintenance.ExecutableDigest, next.ProviderMaintenance.ReportDigest = updateDigest("target-executable"), updateDigest("exact-check-report")
+	capabilities := providerCapabilityFixture(t, "shtorm-extended", "full")
+	next.ProviderMaintenance.TargetCapabilities, next.ProviderMaintenance.CapabilityRevision = string(mustJSON(capabilities)), capabilities.Revision()
+	difference, err := capabilityview.Compare(providerCapabilityFixture(t, "sing-box", "full"), capabilities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	next.ProviderMaintenance.PreviousReportDigest = updateDigest("previous-check-report")
+	next.ProviderMaintenance.CapabilityDifference = string(mustJSON(difference))
 	fault := errors.New("provider evidence publication fault")
 	for _, at := range []string{"create", "write", "sync", "close", "rename", "sync-dir"} {
 		t.Run(at, func(t *testing.T) {
@@ -117,10 +126,60 @@ func TestProviderMaintenanceObservationCannotPromoteSameManifestCheckpoint(t *te
 	}
 }
 
+func TestProviderMaintenanceActivationAndCommitRequireTheirRollbackBinding(t *testing.T) {
+	identity := providerReleaseFixture(t, "shtorm-extended")
+	state := providerCheckpointState(t, identity, providerMaintenanceFixture(t))
+	proof := &state.ProviderMaintenance
+	capabilities := providerCapabilityFixture(t, "shtorm-extended", "full")
+	difference, err := capabilityview.Compare(providerCapabilityFixture(t, "sing-box", "full"), capabilities)
+	if err != nil {
+		t.Fatal(err)
+	}
+	proof.Phase, proof.ExecutableDigest, proof.ReportDigest = "ACTIVATED", updateDigest("executable"), updateDigest("report")
+	proof.TargetCapabilities, proof.CapabilityRevision = string(mustJSON(capabilities)), capabilities.Revision()
+	proof.PreviousReportDigest, proof.CapabilityDifference = updateDigest("previous-report"), string(mustJSON(difference))
+	state.ActiveRelease, state.ActiveSequence, state.ActiveDigest = proof.TargetRelease, proof.TargetSequence, proof.ManifestDigest
+	if err := validateProviderMaintenanceState(state); err != nil {
+		t.Fatal("bound activation was rejected", err)
+	}
+	missingPrepared := state
+	missingPrepared.clearPreparedRollback()
+	if validateProviderMaintenanceState(missingPrepared) == nil {
+		t.Fatal("activation without the prepared rollback authority was accepted")
+	}
+	state.ProviderMaintenance.Phase = "COMMITTED"
+	if validateProviderMaintenanceState(state) == nil {
+		t.Fatal("unpromoted, unverified activation was accepted as committed")
+	}
+	state.promotePreparedRollback()
+	state.VerifiedSequence, state.VerifiedDigest = state.ActiveSequence, state.ActiveDigest
+	if err := validateProviderMaintenanceState(state); err != nil {
+		t.Fatal("committed runtime evidence with retained rollback was rejected", err)
+	}
+	for name, change := range map[string]func(*diskState){
+		"rollback":        func(s *diskState) { s.clearRollback() },
+		"runtime":         func(s *diskState) { s.VerifiedSequence, s.VerifiedDigest = 0, "" },
+		"previous-report": func(s *diskState) { s.ProviderMaintenance.PreviousReportDigest = "" },
+		"comparison":      func(s *diskState) { s.ProviderMaintenance.CapabilityDifference = "" },
+		"comparison-source": func(s *diskState) {
+			s.ProviderMaintenance.Input.PreviousCapabilityRevision = updateDigest("foreign-capabilities")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			invalid := state
+			change(&invalid)
+			if validateProviderMaintenanceState(invalid) == nil {
+				t.Fatal("incomplete or mixed committed provider authority was accepted")
+			}
+		})
+	}
+}
+
 func TestProviderMaintenanceRuntimeProofRequiresRestoredIntentAndCurrentHealth(t *testing.T) {
 	proof := providerCheckpointState(t, providerReleaseFixture(t, "shtorm-extended"), providerMaintenanceFixture(t)).ProviderMaintenance
+	proof.CapabilityRevision = providerCapabilityFixture(t, "shtorm-extended", "full").Revision()
 	health := ProviderHealthV1{ConfigurationDigest: proof.Input.ConfigurationDigest, ConfigurationRevision: proof.Input.ConfigurationRevision,
-		RuntimeState: "RUNNING", RuntimeGeneration: "generation-current", CapabilityRevision: updateDigest("observed-capability")}
+		RuntimeState: "RUNNING", RuntimeGeneration: "generation-current", CapabilityRevision: proof.CapabilityRevision}
 	if !providerHealthMatches(proof, &health) {
 		t.Fatal("exact running health was not accepted")
 	}
@@ -131,6 +190,7 @@ func TestProviderMaintenanceRuntimeProofRequiresRestoredIntentAndCurrentHealth(t
 		func(h *ProviderHealthV1) { h.RuntimeState = "UNKNOWN" },
 		func(h *ProviderHealthV1) { h.RuntimeGeneration = "" },
 		func(h *ProviderHealthV1) { h.CapabilityRevision = "" },
+		func(h *ProviderHealthV1) { h.CapabilityRevision = updateDigest("other-binary-capabilities") },
 	} {
 		changed := health
 		change(&changed)
@@ -142,6 +202,37 @@ func TestProviderMaintenanceRuntimeProofRequiresRestoredIntentAndCurrentHealth(t
 	health.Maintenance, health.RuntimeState, health.RuntimeGeneration = true, "MAINTENANCE", ""
 	if !providerHealthMatches(proof, &health) || providerHealthMatches(proof, nil) {
 		t.Fatal("pre-existing operator hold was not preserved")
+	}
+}
+
+func TestProviderRollbackRetainsPriorIntentUntilRuntimeVerification(t *testing.T) {
+	state := providerCheckpointState(t, providerReleaseFixture(t, "shtorm-extended"), providerMaintenanceFixture(t))
+	state.ProviderMaintenance.Phase = "ROLLED_BACK"
+	if err := validateDiskState(state); err != nil {
+		t.Fatal("pre-validation rollback lost its checkpoint", err)
+	}
+	observation := state.ProviderMaintenance.observation()
+	if ValidateProviderMaintenanceObservation(*observation) != nil || observation.Input != state.ProviderMaintenance.Input ||
+		observation.Input.PreviousPanelVersion == "" || observation.Input.PreviousCapabilityRevision == "" {
+		t.Fatal("rollback restart cannot recover prior configuration and maintenance intent")
+	}
+	for _, mutate := range []func(*diskState){
+		func(s *diskState) { s.clearPreparedRollback() },
+		func(s *diskState) { s.ActiveDigest = updateDigest("other-active") },
+		func(s *diskState) { s.ProviderMaintenance.Phase = "ROLLBACK_VERIFIED" },
+		func(s *diskState) { s.ProviderMaintenance.ReportDigest = updateDigest("partial-target-evidence") },
+		func(s *diskState) { s.ProviderMaintenance.Input.PreviousCapabilityRevision = "" },
+	} {
+		changed := state
+		mutate(&changed)
+		if validateDiskState(changed) == nil {
+			t.Fatal("mixed rollback authority acquired restart verification")
+		}
+	}
+	state.ProviderMaintenance.Phase = "ROLLBACK_VERIFIED"
+	state.VerifiedSequence, state.VerifiedDigest = state.ActiveSequence, state.ActiveDigest
+	if err := validateDiskState(state); err != nil || NewHost().legacyAutoVerificationAllowed(state) {
+		t.Fatal("completed provider rollback was confused with legacy automatic verification", err)
 	}
 }
 
@@ -242,6 +333,27 @@ func TestProviderMaintenanceActualCandidateCheckpointCheckActivateRollback(t *te
 	peer := broker.PeerIdentity{PID: os.Getpid(), UID: 65534, GID: 65534, Executable: oldPanel, ExecutableDigest: entry.ExecutableDigest,
 		Device: entry.Device, Inode: entry.Inode, ExecutableSize: info.Size()}
 	input.PreviousExecutableDigest = peer.ExecutableDigest
+	object, err := openPreviousProviderPeer(peer, input, profile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	previousCheck, checkErr := checkProviderObject(t.Context(), object, ReleaseIdentityV1{Version: input.PreviousPanelVersion,
+		CoreProvider: input.PreviousProvider, BinaryProfile: profile}, raw, peer)
+	closeErr := object.Close()
+	if checkErr != nil || closeErr != nil {
+		t.Fatal("previous actual executable observation failed", checkErr, closeErr)
+	}
+	input.PreviousCapabilityRevision = previousCheck.CapabilityRevision
+	for _, mutate := range []func(*ProviderMaintenanceV1){
+		func(v *ProviderMaintenanceV1) { v.PreviousCapabilityRevision = updateDigest("other-capabilities") },
+		func(v *ProviderMaintenanceV1) { v.PreviousPanelVersion = "2026.4.999" },
+	} {
+		wrong := input
+		mutate(&wrong)
+		if check, err := checkPreviousProvider(t.Context(), wrong, profile, raw, peer); err == nil || check != (preparedProviderCheck{}) {
+			t.Fatal("previous executable accepted a forged Panel version or capability revision")
+		}
+	}
 	operationID := "update-operation:provider-maintenance"
 	inbox, err := host.operationInbox(operationID, identity, true)
 	if err != nil {
@@ -322,8 +434,26 @@ func TestProviderMaintenanceActualCandidateCheckpointCheckActivateRollback(t *te
 		t.Fatal("provider rollback failed", err)
 	}
 	state, err = host.loadState()
-	if err != nil || state.ActiveRelease != releaseDirectoryName(previous) || state.ProviderMaintenance != (providerMaintenanceState{}) || state.MaxActivatedSequence != identity.Sequence || state.MaxActivatedDigest != identity.ManifestDigest {
+	if err != nil || state.ActiveRelease != releaseDirectoryName(previous) || state.ProviderMaintenance.Phase != "ROLLED_BACK" ||
+		state.ProviderMaintenance.Input != input || !state.hasBoundPreparedRollback() || state.MaxActivatedSequence != identity.Sequence || state.MaxActivatedDigest != identity.ManifestDigest {
 		t.Fatal("rollback lost the predecessor or reset global high-water authority", err)
+	}
+	if _, err := os.Stat(filepath.Join(host.ReleaseRoot, releaseDirectoryName(identity), "release-identity.json")); err != nil {
+		t.Fatal("rollback pruned the target needed to reconcile its checkpoint", err)
+	}
+	verify.Rollback = true
+	verify.ProviderHealth = &ProviderHealthV1{ConfigurationDigest: input.ConfigurationDigest, ConfigurationRevision: input.ConfigurationRevision,
+		Maintenance: input.PreviousMaintenance, RuntimeState: "RUNNING", RuntimeGeneration: "recovered-generation", CapabilityRevision: input.PreviousCapabilityRevision}
+	if input.PreviousMaintenance {
+		verify.ProviderHealth.RuntimeState, verify.ProviderHealth.RuntimeGeneration = "MAINTENANCE", ""
+	}
+	value, err = host.verify(t.Context(), envelope(verify), peer)
+	if err != nil || value.(VerifyResultV1).Verified || value.(VerifyResultV1).HealthRevision != "restart-pending" {
+		t.Fatal("a handler fixture was promoted to actual rollback runtime proof", err)
+	}
+	verify.ProviderHealth.CapabilityRevision = state.ProviderMaintenance.CapabilityRevision
+	if _, err := host.verify(t.Context(), envelope(verify), peer); !brokerErrorCode(err, broker.CodeFence) {
+		t.Fatal("target capabilities were accepted as the predecessor's rollback health")
 	}
 	t.Logf("previous_provider=%s target_provider=%s profile=%s target_sequence=%d target_manifest=%s prior_maintenance=%t configuration_sha256=%s", previousID, id, profile, identity.Sequence, identity.ManifestDigest, input.PreviousMaintenance, input.ConfigurationDigest)
 	// These are handler/owner fixtures. Actual Panel+broker restart and runtime

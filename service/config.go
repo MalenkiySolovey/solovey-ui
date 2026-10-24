@@ -73,13 +73,17 @@ func (s *ConfigService) GetConfig(data string) (*[]byte, error) {
 // Render and bind from one SQLite view. Only stable IDs and authenticated
 // principals enter Box; credentials remain in the existing desired-state owner.
 func (s *ConfigService) coreCandidate() ([]byte, []inboundidentity.Binding, error) {
+	return s.coreCandidateContext(context.Background())
+}
+
+func (s *ConfigService) coreCandidateContext(ctx context.Context) ([]byte, []inboundidentity.Binding, error) {
 	db := configDatabase()
 	if db == nil {
 		return nil, nil, errors.New("configuration database is not initialized")
 	}
 	var config []byte
 	var bindings []inboundidentity.Binding
-	err := db.Transaction(func(tx *gorm.DB) error {
+	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var err error
 		config, err = s.singBoxConfigBuilder().BuildFromDB(tx, "")
 		if err != nil {
@@ -118,11 +122,15 @@ func (s *ConfigService) startCore(force bool) error {
 }
 
 func (s *ConfigService) startCoreLocked(force bool) error {
+	return s.startCoreLockedContext(context.Background(), force)
+}
+
+func (s *ConfigService) startCoreLockedContext(ctx context.Context, force bool) error {
 	coreInstance := s.coreInstance()
 	if coreInstance == nil {
 		return common.NewError("core not initialized")
 	}
-	if held, err := s.maintenanceHeldLocked(); err != nil || held {
+	if held, err := s.maintenanceHeldLockedContext(ctx); err != nil || held {
 		return err
 	}
 	if coreInstance.IsRunning() {
@@ -135,7 +143,7 @@ func (s *ConfigService) startCoreLocked(force bool) error {
 	}
 
 	logger.Info("starting core")
-	rawConfig, bindings, err := s.coreCandidate()
+	rawConfig, bindings, err := s.coreCandidateContext(ctx)
 	if err != nil {
 		return err
 	}

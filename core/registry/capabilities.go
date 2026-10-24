@@ -1,6 +1,10 @@
 package registry
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/MalenkiySolovey/solovey-ui/core/registry/facts"
+)
 
 const tailscaleBuildTag = "with_tailscale,with_gvisor"
 
@@ -17,21 +21,7 @@ type declaration[R any] struct {
 	register           func(R)
 }
 
-type Fact struct {
-	Category           string `json:"category"`
-	Type               string `json:"type"`
-	Known              bool   `json:"known"`
-	Registered         bool   `json:"registered"`
-	Compiled           bool   `json:"compiled"`
-	SupportedByProduct bool   `json:"supportedByProduct"`
-	BuildTag           string `json:"buildTag,omitempty"`
-	Platform           string `json:"platform,omitempty"`
-	Reason             string `json:"reason,omitempty"`
-	AuthenticatedUsers bool   `json:"authenticatedUsers,omitempty"`
-	RuntimeDependency  string `json:"runtimeDependency,omitempty"`
-}
-
-func (f Fact) Available() bool { return f.Known && f.Registered && f.Compiled && f.SupportedByProduct }
+type Fact = facts.Fact
 
 type optionRegistry interface{ CreateOptions(string) (any, bool) }
 

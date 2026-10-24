@@ -7,7 +7,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -15,8 +14,8 @@ import (
 	"syscall"
 	"time"
 
-	coreprovider "github.com/MalenkiySolovey/solovey-ui/core/provider"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/executableobject"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/targetcheck"
@@ -28,6 +27,8 @@ type preparedProviderCheck struct {
 	ExecutableDigest    string
 	ConfigurationDigest string
 	ReportDigest        string
+	TargetCapabilities  string
+	CapabilityRevision  string
 }
 
 // checkPreparedProvider is an Update-owned fixed operation. The source and
@@ -36,19 +37,41 @@ type preparedProviderCheck struct {
 // revalidated. Success is evidence only; the maintenance owner must durably
 // bind it to a current checkpoint before it can admit activation.
 func checkPreparedProvider(ctx context.Context, root string, identity ReleaseIdentityV1, raw []byte, peer broker.PeerIdentity) (preparedProviderCheck, error) {
+	object, err := openPreparedProvider(root, identity)
+	if err != nil {
+		return preparedProviderCheck{}, errors.New("prepared provider configuration check failed")
+	}
+	defer func() { _ = object.Close() }()
+	return checkProviderObject(ctx, object, identity, raw, peer)
+}
+
+// The previous side is independently observed through the authenticated peer's
+// executable object. Its claimed Panel version/capability revision is accepted
+// only after the same fixed, unprivileged command reports it on the same input.
+func checkPreviousProvider(ctx context.Context, input ProviderMaintenanceV1, profile string, raw []byte, peer broker.PeerIdentity) (preparedProviderCheck, error) {
+	object, err := openPreviousProviderPeer(peer, input, profile)
+	if err != nil {
+		return preparedProviderCheck{}, err
+	}
+	defer func() { _ = object.Close() }()
+	identity := ReleaseIdentityV1{CoreProvider: input.PreviousProvider, Version: input.PreviousPanelVersion, BinaryProfile: profile}
+	check, err := checkProviderObject(ctx, object, identity, raw, peer)
+	if err != nil || check.ExecutableDigest != input.PreviousExecutableDigest || check.CapabilityRevision != input.PreviousCapabilityRevision ||
+		check.ConfigurationDigest != input.ConfigurationDigest {
+		return preparedProviderCheck{}, errors.New("previous provider configuration observation changed")
+	}
+	return check, nil
+}
+
+func checkProviderObject(ctx context.Context, object *executableobject.Object, identity ReleaseIdentityV1, raw []byte, peer broker.PeerIdentity) (preparedProviderCheck, error) {
 	failed := errors.New("prepared provider configuration check failed")
 	if ctx == nil || ctx.Err() != nil || peer.PID <= 0 || len(peer.Groups) > 64 ||
 		len(raw) == 0 || len(raw) > targetcheck.MaxConfigBytes || jsonvalue.StrictObject(raw) != nil {
 		return preparedProviderCheck{}, failed
 	}
-	// Freeze the input before opening the candidate and computing its proposition.
+	// Freeze the input before running the candidate and computing its proposition.
 	configuration := bytes.Clone(raw)
 	defer clear(configuration)
-	object, err := openPreparedProvider(root, identity)
-	if err != nil {
-		return preparedProviderCheck{}, failed
-	}
-	defer func() { _ = object.Close() }()
 	deadline, cancel := context.WithTimeout(ctx, providerCheckTimeout)
 	defer cancel()
 	command := exec.CommandContext(deadline, object.ExecPath(0), "core-check")
@@ -79,37 +102,34 @@ func checkPreparedProvider(ctx context.Context, root string, identity ReleaseIde
 	}
 	sum := sha256.Sum256(configuration)
 	configurationDigest := hex.EncodeToString(sum[:])
-	if !providerCheckReportMatches(output.Bytes(), identity.CoreProvider, configurationDigest) {
+	if !providerCheckReportMatches(output.Bytes(), identity, configurationDigest) {
 		return preparedProviderCheck{}, failed
 	}
 	reportSum := sha256.Sum256(output.Bytes())
+	var report targetcheck.Report
+	if decodeStrict(output.Bytes(), &report) != nil {
+		return preparedProviderCheck{}, failed
+	}
 	return preparedProviderCheck{ExecutableDigest: object.Identity().Digest, ConfigurationDigest: configurationDigest,
-		ReportDigest: hex.EncodeToString(reportSum[:])}, nil
+		ReportDigest: hex.EncodeToString(reportSum[:]), TargetCapabilities: string(mustJSON(report.Capabilities)),
+		CapabilityRevision: report.CapabilityRevision}, nil
 }
 
 // A future signed candidate may carry a new source pin absent from the running
 // Panel's catalog. Its report must match the independently inspected signed
 // source exactly; the current Panel's default/catalog must not invent it.
-func providerCheckReportMatches(raw []byte, source release.CoreProviderSource, digest string) bool {
+func providerCheckReportMatches(raw []byte, identity ReleaseIdentityV1, digest string) bool {
 	if len(raw) == 0 || len(raw) > targetcheck.MaxReportBytes || jsonvalue.StrictObject(raw) != nil ||
-		release.ValidateCoreProviderSource(source) != nil || !validDigest(digest) {
+		release.ValidateCoreProviderSource(identity.CoreProvider) != nil || !versionPattern.MatchString(identity.Version) || !validDigest(digest) {
 		return false
 	}
 	var report targetcheck.Report
 	if decodeStrict(raw, &report) != nil || report.Schema != targetcheck.Schema || report.State != "VALID" ||
-		report.ConfigurationDigest != digest || len(report.ReasonCodes) != 0 {
+		report.ConfigurationDigest != digest || len(report.ReasonCodes) != 0 || report.PanelVersion != identity.Version ||
+		report.Capabilities.Validate(report.CoreProvider, identity.BinaryProfile) != nil || report.Capabilities.Revision() != report.CapabilityRevision {
 		return false
 	}
-	observed := report.CoreProvider
-	if observed.Schema != coreprovider.Schema || observed.State != coreprovider.Verified || observed.Source != source ||
-		observed.ArtifactState != coreprovider.Unknown || observed.ArtifactDigest != "" ||
-		!validDigest(observed.Revision) || len(observed.ReasonCodes) != 1 || observed.ReasonCodes[0] != "ARTIFACT_DIGEST_NOT_OBSERVED" {
-		return false
-	}
-	revision := observed.Revision
-	observed.Revision = ""
-	encoded, err := json.Marshal(observed)
-	return err == nil && broker.Digest(encoded) == revision
+	return providerIdentityMatchesSource(report.CoreProvider, identity.CoreProvider)
 }
 
 type boundedProviderCheckOutput struct {
