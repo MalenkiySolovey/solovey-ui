@@ -10,7 +10,9 @@ import (
 )
 
 const (
-	ProviderRevision            = "update-broker-provider-1.1"
+	// SHA-256 of the Update provider ABI descriptor "update-broker-provider-1.1".
+	// Broker expected revisions are digests, including this fixed ABI identity.
+	ProviderRevision            = "85d11d88c95e16abb9532bd7fbc934c37a89e46c96c7ea2a723cd8a514012984"
 	MaxChunkBytes               = 384 << 10
 	ProviderMaintenanceRevision = "update-broker-maintenance-1.2"
 	// ProviderActivationHealthDeadline is shared by the Panel journal and the
