@@ -152,7 +152,7 @@ func newClient(address string, input io.Reader, diagnostics io.Writer) (*client,
 	}
 	base.Path = strings.TrimRight(base.Path, "/")
 	if !strings.HasSuffix(base.Path, "/api") {
-		return nil, errors.New("Panel API URL must include its configured base path and /api")
+		return nil, errors.New("panel API URL must include its configured base path and /api")
 	}
 	jar, err := cookiejar.New(nil)
 	if err != nil {
