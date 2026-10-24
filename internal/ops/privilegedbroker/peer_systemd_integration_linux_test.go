@@ -40,7 +40,7 @@ func TestSystemdCrossUIDPidfdAttestation(t *testing.T) {
 				continue
 			}
 			value, err := strconv.ParseUint(strings.TrimSpace(strings.TrimPrefix(line, field)), 16, 64)
-			if err != nil || value != 0x830cb {
+			if err != nil || value != 0x830db { // Includes CAP_FSETID for the fixed SSH proof mode.
 				t.Fatalf("production capability contract changed: %s", line)
 			}
 			found = true
