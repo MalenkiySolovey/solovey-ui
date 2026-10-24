@@ -53,7 +53,8 @@ func TestCLIUsesSessionMFAFreshCSRFAndExactOneUseAction(t *testing.T) {
 		if request.Header.Get("Authorization") != "" || request.Header.Get("User-Agent") != "Solovey-UI-Provider-Maintenance-CLI/1" {
 			t.Error("CLI introduced token authentication or changed its session identity")
 		}
-		if endpoint != "/login" {
+		bootstrap := endpoint == "/csrf" && csrfCount == 0
+		if !bootstrap {
 			if _, err := request.Cookie("s-ui"); err != nil {
 				t.Error("session cookie missing")
 			}
@@ -70,6 +71,9 @@ func TestCLIUsesSessionMFAFreshCSRFAndExactOneUseAction(t *testing.T) {
 			http.SetCookie(w, &http.Cookie{Name: "s-ui", Value: "cookie-sentinel", Path: "/", HttpOnly: true})
 			obj = map[string]any{"state": "mfa_pending"}
 		case "/csrf":
+			if bootstrap {
+				http.SetCookie(w, &http.Cookie{Name: "s-ui", Value: "preauth-cookie-sentinel", Path: "/", HttpOnly: true})
+			}
 			csrfCount++
 			csrf = fmt.Sprintf("csrf-%d", csrfCount)
 			obj = map[string]any{"token": csrf}
@@ -115,13 +119,28 @@ func TestCLIUsesSessionMFAFreshCSRFAndExactOneUseAction(t *testing.T) {
 	mu.Lock()
 	actualCalls := strings.Join(calls, ",")
 	mu.Unlock()
-	if actualCalls != "/login,/csrf,/v1/security/mfa/challenge,/csrf,/v1/security/step-up,/csrf,/v1/operations/update/provider/maintain,/logout" {
+	if actualCalls != "/csrf,/login,/csrf,/v1/security/mfa/challenge,/csrf,/v1/security/step-up,/csrf,/v1/operations/update/provider/maintain,/logout" {
 		t.Fatal("CLI session/assurance lifecycle changed", actualCalls)
 	}
-	for _, secret := range []string{"password-sentinel", "mfa-sentinel", "fresh-stepup-sentinel", "cookie-sentinel", "grant-sentinel"} {
+	for _, secret := range []string{"password-sentinel", "mfa-sentinel", "fresh-stepup-sentinel", "preauth-cookie-sentinel", "cookie-sentinel", "grant-sentinel"} {
 		if strings.Contains(output.String()+diagnostics.String(), secret) {
 			t.Fatal("credential/session material escaped CLI output")
 		}
+	}
+}
+
+func TestCLIBootstrapCSRFFailureCannotSubmitCredentials(t *testing.T) {
+	var submitted atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+		if request.URL.Path != "/api/csrf" || request.Method != http.MethodGet || request.ContentLength != 0 {
+			submitted.Store(true)
+		}
+		w.WriteHeader(http.StatusForbidden)
+	}))
+	defer server.Close()
+	var output, diagnostics bytes.Buffer
+	if code := Run([]string{"status", "--api-url", server.URL + "/api"}, strings.NewReader(`{"username":"operator","password":"private-sentinel"}`), &output, &diagnostics); code != 1 || submitted.Load() || strings.Contains(output.String()+diagnostics.String(), "private-sentinel") {
+		t.Fatal("failed pre-authentication CSRF submitted credentials or escaped them to output", code)
 	}
 }
 

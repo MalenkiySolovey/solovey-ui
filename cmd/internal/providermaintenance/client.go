@@ -175,6 +175,11 @@ func (client *client) login(ctx context.Context) error {
 	if client.input.Decode(&credentials) != nil || credentials.Username == "" || credentials.Password == "" {
 		return errors.New("login credentials are required on stdin")
 	}
+	// Login is protected by the same session-bound CSRF policy as every write.
+	// Establish that pre-authentication session before submitting credentials.
+	if client.refreshCSRF(ctx) != nil {
+		return errRequest
+	}
 	form := url.Values{"user": {credentials.Username}, "pass": {credentials.Password}, "remember": {"false"}}
 	raw, err := client.call(ctx, http.MethodPost, "/login", []byte(form.Encode()), "application/x-www-form-urlencoded", "")
 	credentials.Username, credentials.Password = "", ""
