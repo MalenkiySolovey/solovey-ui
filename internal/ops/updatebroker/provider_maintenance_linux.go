@@ -202,6 +202,9 @@ func (h *Host) prepareProviderConfiguration(ctx context.Context, envelope broker
 		return nil, broker.Failure(broker.CodeRevision, "provider configuration target changed")
 	}
 	root := filepath.Join(h.ReleaseRoot, name)
+	if h.maintenance != nil && h.maintenance.admit(ctx, root) != nil {
+		return nil, broker.Failure(broker.CodeRecoveryRequired, "provider configuration requires the installed shared broker and fixed services")
+	}
 	if proof.Phase == "CHECKPOINTED" {
 		inbox, err := h.operationInbox(envelope.OperationID, request.Release, false)
 		if err != nil {

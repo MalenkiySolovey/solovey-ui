@@ -26,6 +26,7 @@ import (
 	operationcoordination "github.com/MalenkiySolovey/solovey-ui/internal/ops/operationcoordination"
 	"github.com/MalenkiySolovey/solovey-ui/internal/ops/preflight"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/updatebroker"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
 	deploymentservice "github.com/MalenkiySolovey/solovey-ui/service/deployment"
 	"gorm.io/gorm"
@@ -65,7 +66,7 @@ var (
 	ErrResourcePressure    = errors.New("resource pressure blocks update preparation")
 )
 
-const activationHealthDeadline = 5 * time.Minute
+const activationHealthDeadline = updatebroker.ProviderActivationHealthDeadline
 
 type Capabilities struct {
 	Mode        string   `json:"mode"`

@@ -15,6 +15,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/deploymentidentity"
 	"github.com/MalenkiySolovey/solovey-ui/internal/evidencebundle"
 	broker "github.com/MalenkiySolovey/solovey-ui/internal/ops/privilegedbroker"
+	"github.com/MalenkiySolovey/solovey-ui/internal/ops/updatebroker"
 )
 
 func main() {
@@ -50,7 +51,10 @@ func run() error {
 		return err
 	}
 	registry := broker.NewRegistry()
-	if err := registerHandlerGraph(registry, composition, journal, productionHandlerRegistrars()); err != nil {
+	updateRuntime := updatebroker.NewRuntime()
+	registrars := productionHandlerRegistrars()
+	registrars.update = updateRuntime.RegisterHandlers
+	if err := registerHandlerGraph(registry, composition, journal, registrars); err != nil {
 		return err
 	}
 	attestor, err := broker.NewManifestAttestor(manifest)
@@ -122,7 +126,15 @@ func run() error {
 	}
 	errorsChannel := make(chan error, len(listeners))
 	authorityErrors := make(chan error, 1)
-	go func() { authorityErrors <- watchAuthorityManifest(ctx, server, manifest.Revision, manifestPath) }()
+	authorityDone := make(chan struct{})
+	go func() {
+		defer close(authorityDone)
+		authorityErrors <- watchAuthorityManifest(ctx, server, manifest.Revision, manifestPath, updateRuntime.Reconcile)
+	}()
+	defer func() {
+		cancel()
+		<-authorityDone
+	}()
 	var group sync.WaitGroup
 	for role, listener := range listeners {
 		role, listener := role, listener
@@ -259,24 +271,42 @@ func loadAuthorizedManifest(path string) (broker.Manifest, error) {
 	return manifest, nil
 }
 
-func watchAuthorityManifest(ctx context.Context, server *broker.Server, current, path string) error {
-	return watchAuthorityManifestWith(ctx, server, current, time.Second, func() (broker.Manifest, error) {
+func watchAuthorityManifest(ctx context.Context, server *broker.Server, current, path string, maintain func(context.Context) error) error {
+	return watchAuthorityManifestWithMaintenance(ctx, server, current, time.Second, func() (broker.Manifest, error) {
 		return loadAuthorizedManifest(path)
-	})
+	}, maintain)
 }
 
 func watchAuthorityManifestWith(ctx context.Context, server *broker.Server, current string, interval time.Duration,
 	load func() (broker.Manifest, error)) error {
+	return watchAuthorityManifestWithMaintenance(ctx, server, current, interval, load, nil)
+}
+
+func watchAuthorityManifestWithMaintenance(ctx context.Context, server *broker.Server, current string, interval time.Duration,
+	load func() (broker.Manifest, error), maintain func(context.Context) error) error {
 	if server == nil || current == "" || interval <= 0 || load == nil {
 		return errors.New("broker authority watcher is not configured")
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+	maintenanceFailed := false
 	for {
 		select {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
+			if maintain != nil {
+				maintenanceContext, cancel := context.WithTimeout(ctx, 30*time.Second)
+				maintenanceErr := maintain(maintenanceContext)
+				cancel()
+				if ctx.Err() != nil {
+					return nil
+				}
+				if maintenanceErr != nil && !maintenanceFailed {
+					fmt.Fprintln(os.Stderr, "solovey privileged broker: provider maintenance requires recovery")
+				}
+				maintenanceFailed = maintenanceErr != nil
+			}
 			manifest, err := load()
 			if err != nil {
 				return errors.New("broker authority generation reload failed")

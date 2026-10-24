@@ -3,12 +3,19 @@
 // commands, paths, services, repositories, package-manager inputs or URLs.
 package updatebroker
 
-import "github.com/MalenkiySolovey/solovey-ui/internal/release"
+import (
+	"time"
+
+	"github.com/MalenkiySolovey/solovey-ui/internal/release"
+)
 
 const (
 	ProviderRevision            = "update-broker-provider-1.1"
 	MaxChunkBytes               = 384 << 10
-	ProviderMaintenanceRevision = "update-broker-maintenance-1.1"
+	ProviderMaintenanceRevision = "update-broker-maintenance-1.2"
+	// ProviderActivationHealthDeadline is shared by the Panel journal and the
+	// Root checkpoint owner that can recover even when a Panel cannot start.
+	ProviderActivationHealthDeadline = 5 * time.Minute
 )
 
 type EmptyV1 struct{}

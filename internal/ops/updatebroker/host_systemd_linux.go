@@ -77,6 +77,7 @@ type Host struct {
 	atomicOps     updateAtomicOps
 	generationOps updateGenerationOps
 	inboxOps      updateInboxOps
+	maintenance   *nativeMaintenanceRuntime
 }
 
 func NewHost() *Host {
@@ -85,8 +86,9 @@ func NewHost() *Host {
 		atomicOps: productionUpdateAtomicOps, generationOps: productionUpdateGenerationOps, inboxOps: productionUpdateInboxOps}
 }
 
-func registerNativeHandlers(registry *broker.Registry) error {
+func registerNativeHandlers(registry *broker.Registry) (func(context.Context) error, error) {
 	host := NewHost()
+	runtime := newNativeMaintenanceRuntime(host)
 	definitions := []struct {
 		verb     broker.Verb
 		mutation bool
@@ -101,11 +103,11 @@ func registerNativeHandlers(registry *broker.Registry) error {
 		{broker.VerbUpdateRollback, true, host.rollback},
 	}
 	for _, definition := range definitions {
-		if err := registry.Register(definition.verb, broker.Definition{Role: broker.RolePanel, Mutation: definition.mutation, Handler: definition.handler}); err != nil {
-			return broker.StartupFailure("update", "update.lifecycle", "native-self-managed", "handler_registration_failed", err)
+		if err := registry.Register(definition.verb, broker.Definition{Role: broker.RolePanel, Mutation: definition.mutation, Handler: runtime.handler(definition.handler)}); err != nil {
+			return nil, broker.StartupFailure("update", "update.lifecycle", "native-self-managed", "handler_registration_failed", err)
 		}
 	}
-	return nil
+	return runtime.reconcile, nil
 }
 
 func (h *Host) observe(_ context.Context, _ broker.Request, peer broker.PeerIdentity) (any, error) {
@@ -386,6 +388,11 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 	if err := h.admitProviderActivation(envelope, request, stored, state, peer); err != nil {
 		return nil, broker.Failure(broker.CodeFence, "provider activation maintenance proof is unavailable or changed")
 	}
+	if stored.CoreProvider != (release.CoreProviderSource{}) && h.maintenance != nil {
+		if err := h.maintenance.admit(ctx, releaseRoot); err != nil {
+			return nil, broker.Failure(broker.CodeRecoveryRequired, "provider activation requires the installed shared broker and fixed services")
+		}
+	}
 	maxSequence, maxDigest := state.activationHighWater()
 	sameEnvelopeTransition := stored.CoreProvider != (release.CoreProviderSource{}) && state.ProviderMaintenance.Phase == "VALIDATED" &&
 		state.ProviderMaintenance.Input.PreviousProvider.ID != stored.CoreProvider.ID && maxDigest == stored.ManifestDigest &&
@@ -422,7 +429,7 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 		}
 		return nil, broker.Failure(broker.CodeExecution, "active release state could not be committed")
 	}
-	if h.Restart != nil {
+	if (stored.CoreProvider == (release.CoreProviderSource{}) || h.maintenance == nil) && h.Restart != nil {
 		h.Restart(peer.PID)
 	}
 	return ActivateResultV1{ProviderRevision: ProviderRevision, ActiveSequence: request.Release.Sequence,
@@ -497,36 +504,46 @@ func (h *Host) rollback(ctx context.Context, envelope broker.Request, peer broke
 		request.RollbackRef != semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest) || len(request.ReasonCode) > 96 {
 		return nil, broker.Failure(broker.CodeInvalidRequest, "update rollback request is invalid")
 	}
+	return h.rollbackCheckpoint(ctx, envelope.OperationID, request, peer)
+}
+
+// Both an authenticated rollback request and deadline recovery use this exact
+// checkpoint path. Background recovery has no Panel peer and cannot claim
+// management readiness or successful runtime verification.
+func (h *Host) rollbackCheckpoint(ctx context.Context, operationID string, request RollbackRequestV1, peer broker.PeerIdentity) (any, error) {
 	state, err := h.loadState()
 	if err != nil {
 		return nil, broker.Failure(broker.CodeExecution, "update rollback checkpoint is unavailable")
 	}
-	if state.ProviderMaintenance != (providerMaintenanceState{}) && state.ProviderMaintenance.OperationID != envelope.OperationID {
+	if state.ProviderMaintenance != (providerMaintenanceState{}) && state.ProviderMaintenance.OperationID != operationID {
 		return nil, broker.Failure(broker.CodeFence, "another provider maintenance checkpoint is active")
 	}
-	preparedAuthority := state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, request.RollbackRef)
+	preparedAuthority := state.preparedRollbackMatches(operationID, request.Release.ManifestDigest, request.RollbackRef)
 	rollbackRelease, rollbackSequence, rollbackDigest := state.RollbackRelease, state.RollbackSequence, state.RollbackDigest
 	if preparedAuthority {
 		if !state.hasBoundPreparedRollback() {
 			return nil, broker.Failure(broker.CodeExecution, "update rollback checkpoint is unavailable")
 		}
 		rollbackRelease, rollbackSequence, rollbackDigest = state.PreparedRollbackRelease, state.PreparedRollbackSequence, state.PreparedRollbackDigest
-	} else if !state.rollbackMatches(envelope.OperationID, request.Release.ManifestDigest, request.RollbackRef) {
+	} else if !state.rollbackMatches(operationID, request.Release.ManifestDigest, request.RollbackRef) {
 		return nil, broker.Failure(broker.CodeFence, "update rollback checkpoint binding changed")
 	}
 	_, stored, identityErr := h.resolveReleaseGeneration(request.Release)
 	withProvider := state.ProviderMaintenance != (providerMaintenanceState{})
-	if identityErr != nil || withProvider && !state.ProviderMaintenance.matches(envelope.OperationID, stored) {
+	if identityErr != nil || withProvider && !state.ProviderMaintenance.matches(operationID, stored) {
 		return nil, broker.Failure(broker.CodeRevision, "rollback release metadata changed")
 	}
 	if withProvider && (state.ProviderMaintenance.Phase == "ROLLED_BACK" || state.ProviderMaintenance.Phase == "ROLLBACK_VERIFIED") {
-		if !h.runningRelease(state.ActiveRelease, peer) && h.Restart != nil {
+		if (h.maintenance == nil || !withProvider) && !h.runningRelease(state.ActiveRelease, peer) && h.Restart != nil {
 			h.Restart(peer.PID)
 		}
 		return RollbackResultV1{ProviderRevision: ProviderRevision, RolledBack: true, ActiveSequence: state.ActiveSequence,
 			ActiveDigest: state.ActiveDigest, ManagementReady: peer.PID > 0}, nil
 	}
 	rollbackRoot := filepath.Join(h.ReleaseRoot, rollbackRelease)
+	if withProvider && h.maintenance != nil && h.maintenance.sharedBroker(rollbackRoot) != nil {
+		return nil, broker.Failure(broker.CodeRecoveryRequired, "provider rollback shared broker is unavailable or changed")
+	}
 	previousRelease := state.ActiveRelease
 	rollbackProfile, profileErr := releaseBinaryProfile(rollbackRoot)
 	if err := h.verifyReleaseExecutables(rollbackRoot); err != nil || h.activateLink(rollbackRelease) != nil || h.rewriteClientManifest(rollbackRoot) != nil ||
@@ -550,11 +567,11 @@ func (h *Host) rollback(ctx context.Context, envelope broker.Request, peer broke
 		return nil, broker.Failure(broker.CodeExecution, "rollback release state could not be committed")
 	}
 	h.pruneReleases(state.ActiveRelease, state.RollbackRelease, state.ProviderMaintenance.TargetRelease)
-	if h.Restart != nil {
+	if (!withProvider || h.maintenance == nil) && h.Restart != nil {
 		h.Restart(peer.PID)
 	}
 	return RollbackResultV1{ProviderRevision: ProviderRevision, RolledBack: true, ActiveSequence: state.ActiveSequence,
-		ActiveDigest: state.ActiveDigest, ManagementReady: true}, nil
+		ActiveDigest: state.ActiveDigest, ManagementReady: peer.PID > 0}, nil
 }
 
 func (h *Host) operationInbox(operationID string, release ReleaseIdentityV1, create bool) (string, error) {
@@ -905,6 +922,14 @@ func (h *Host) pruneReleases(keep ...string) {
 			retained[name] = true
 		}
 	}
+	// Provider-only transitions keep the byte-identical Root broker alive.
+	// Retain that one executing generation until a later ordinary update has
+	// restarted the broker; never unlink its executable's trusted ancestry.
+	if h.maintenance != nil {
+		if name := h.maintenance.runningRelease(); name != "" {
+			retained[name] = true
+		}
+	}
 	entries, err := os.ReadDir(h.ReleaseRoot)
 	if err != nil {
 		return
@@ -976,6 +1001,9 @@ func (h *Host) runningRelease(releaseName string, peer broker.PeerIdentity) bool
 		return false
 	}
 	releaseRoot := filepath.Join(h.ReleaseRoot, releaseName)
+	if h.maintenance != nil {
+		return pathWithin(releaseRoot, peer.Executable) && h.maintenance.sharedBroker(releaseRoot) == nil
+	}
 	self, err := os.Readlink("/proc/self/exe")
 	return err == nil && pathWithin(releaseRoot, self) && pathWithin(releaseRoot, peer.Executable)
 }
@@ -1711,14 +1739,12 @@ func syncDirectory(path string) error {
 	return directory.Sync()
 }
 
-func scheduleReleaseRestart(panelPID int) {
+func scheduleReleaseRestart(_ int) {
 	go func() {
 		time.Sleep(1500 * time.Millisecond)
-		if panelPID > 1 {
-			_ = syscall.Kill(panelPID, syscall.SIGTERM)
-		}
-		time.Sleep(250 * time.Millisecond)
-		_ = syscall.Kill(os.Getpid(), syscall.SIGKILL)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*releaseControlTimeout)
+		defer cancel()
+		_ = newReleaseServiceControl().RestartBoth(ctx)
 	}()
 }
 
