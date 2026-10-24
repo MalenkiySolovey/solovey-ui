@@ -76,8 +76,9 @@ func TestSystemdProfilesAndBrokerHaveBoundedAuthority(t *testing.T) {
 	for _, required := range []string{"ExecStart=/usr/local/solovey-ui/releases/current/solovey-privileged-broker --transport=systemd-activated --ssh-implementation=openssh --ssh-service-control=systemd --ssh-log-evidence=journald --deployment-backend=systemd-native --update-mode=native-self-managed",
 		"TasksMax=128", "LimitNOFILE=4096",
 		"ReadWritePaths=/var/lib/solovey-ui-broker /var/lib/solovey-ui /usr/local/solovey-ui/releases", "-/etc/nginx -/run/nginx -/var/lib/nginx -/var/log/nginx", "/etc/systemd/system", "ProtectSystem=strict",
-		"CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_NET_ADMIN CAP_NET_RAW CAP_SETGID CAP_SETUID CAP_SYS_PTRACE",
-		"AmbientCapabilities=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_NET_ADMIN CAP_NET_RAW CAP_SETGID CAP_SETUID CAP_SYS_PTRACE"} {
+		"NoNewPrivileges=true", "RestrictSUIDSGID=false", "UMask=0077",
+		"CapabilityBoundingSet=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_FSETID CAP_NET_ADMIN CAP_NET_RAW CAP_SETGID CAP_SETUID CAP_SYS_PTRACE",
+		"AmbientCapabilities=CAP_CHOWN CAP_DAC_OVERRIDE CAP_FOWNER CAP_FSETID CAP_NET_ADMIN CAP_NET_RAW CAP_SETGID CAP_SETUID CAP_SYS_PTRACE"} {
 		if !strings.Contains(brokerUnit, required) {
 			t.Fatalf("broker unit misses %q", required)
 		}
@@ -87,7 +88,7 @@ func TestSystemdProfilesAndBrokerHaveBoundedAuthority(t *testing.T) {
 			t.Fatalf("broker unit retains redundant environment composition authority %q", forbidden)
 		}
 	}
-	if strings.Contains(brokerUnit, "CAP_SYS_ADMIN") || strings.Contains(brokerUnit, "ExecStart=/bin/") {
+	if strings.Contains(brokerUnit, "CAP_SYS_ADMIN") || strings.Contains(brokerUnit, "CAP_KILL") || strings.Contains(brokerUnit, "ExecStart=/bin/") {
 		t.Fatal("broker unit has generic or excess privilege")
 	}
 	for _, socket := range []string{"solovey-privileged-broker.socket", "solovey-privileged-proof.socket"} {
