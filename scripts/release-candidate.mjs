@@ -11,6 +11,19 @@ const run = (command, args, options = {}) => execFileSync(command, args, { encod
 const json = file => JSON.parse(fs.readFileSync(file, 'utf8'))
 const load = name => import(pathToFileURL(path.resolve('scripts', name)))
 
+// An execution-only recovery orchestrator can be newer than its immutable
+// product. v1 products predate release-providers.mjs and retain their original
+// Official-only archive convention; v2 always uses the product's policy owner.
+export async function candidatePanelInventory(signed, targets, loadPolicy = () => load('release-providers.mjs')) {
+  if (signed.schema === undefined || signed.schema === 'solovey.release/v1') {
+    return { providerAware: false, panels: targets.linux.flatMap(({ platform }) =>
+      ['full', 'core'].map(profile => ({ name: `solovey-ui${profile === 'core' ? '-core' : ''}-linux-${platform}.tar.gz`, arch: platform, profile }))) }
+  }
+  const { linuxPanelArtifacts, providerSchema } = await loadPolicy()
+  assert.equal(signed.schema, providerSchema, 'unsupported product release schema')
+  return { providerAware: true, panels: linuxPanelArtifacts(signed.schema) }
+}
+
 export function requireExternalCandidate(checkout, directory) {
   const relative = path.relative(fs.realpathSync(checkout), fs.realpathSync(directory))
   assert.ok(relative && (relative === '..' || relative.startsWith('..' + path.sep) || path.isAbsolute(relative)), 'candidate outputs must be outside the immutable checkout')
@@ -47,27 +60,29 @@ export async function verifyCandidate(directory, { commit, tag, fingerprint, tru
   assert.equal(run('git', ['rev-parse', 'HEAD']).trim(), commit)
   assert.equal(run('git', ['status', '--porcelain']).trim(), '', 'candidate verification requires a clean immutable product checkout')
   assert.equal(run(process.execPath, ['scripts/release-source.mjs', process.cwd()]).trim(), fingerprint)
-  const { verifyReleaseSet, verifyWindowsSet, targets } = await load('release-verify.mjs')
+  const { verifyReleaseSet, verifyWindowsSet, linuxAssetNames, targets } = await load('release-verify.mjs')
   const { verifyMetadata } = await load('release-metadata.mjs')
   const linux = path.join(directory, 'linux'), windows = path.join(directory, 'windows')
   const signed = await verifyReleaseSet(linux, { version: tag, trustRootsBase64 })
+  const panelInventory = await candidatePanelInventory(signed, targets)
   await verifyWindowsSet(windows)
   await verifyMetadata(path.join(directory, 'metadata'), commit)
   run(process.execPath, [openwrtVerifier, 'verify', path.join(directory, 'openwrt'), commit], { stdio: 'inherit' })
   // Read archive metadata without extraction or executing any candidate binary.
   run('python3', ['-c', `
 import json, pathlib, sys, tarfile, zipfile
-root=pathlib.Path(sys.argv[1]); commit, fingerprint, tag=sys.argv[2:]
+root=pathlib.Path(sys.argv[1]); commit, fingerprint, tag=sys.argv[2:5]
+panels=json.loads(sys.argv[5]); provider_aware=sys.argv[6]=='true'
 tree=__import__('subprocess').check_output(['git','rev-parse',commit+'^{tree}'],text=True).strip()
 targets=json.loads(pathlib.Path('scripts/release-targets.json').read_text())
-def verify(data, platform, profile):
+def verify(data, platform, profile, provider=None):
  fields=dict(line.split('=',1) for line in data.decode().splitlines() if '=' in line)
  assert fields['commit']==commit and fields['tree']==tree and fields['source_fingerprint']==fingerprint
  assert fields['version']==tag and fields['platform']==platform and fields['profile']==profile
-for target in targets['linux']:
- for profile,prefix in [('full',''),('core','-core')]:
-  with tarfile.open(root/'linux'/('solovey-ui'+prefix+'-linux-'+target['platform']+'.tar.gz')) as archive:
-   verify(archive.extractfile('solovey-ui/BUILD_INFO.txt').read(),'linux/'+target['platform'],profile)
+ if provider is not None: assert fields['core_provider']==provider
+for target in panels:
+ with tarfile.open(root/'linux'/target['name']) as archive:
+  verify(archive.extractfile('solovey-ui/BUILD_INFO.txt').read(),'linux/'+target['arch'],target['profile'],target['provider'] if provider_aware else None)
 for arch in targets['windows']:
  for profile in targets['windowsProfiles']:
   prefix='-core' if profile=='core' else ''
@@ -75,7 +90,7 @@ for arch in targets['windows']:
    names=[n for n in archive.namelist() if n.replace(chr(92),'/')=='solovey-ui-windows/BUILD_INFO.txt']
    assert len(names)==1
    verify(archive.read(names[0]),'windows/'+arch,profile)
-`, directory, commit, fingerprint, tag])
+`, directory, commit, fingerprint, tag, JSON.stringify(panelInventory.panels), String(panelInventory.providerAware)])
   const assets = [], names = new Set()
   for (const relative of ['linux', 'windows', 'metadata', 'openwrt/assets']) {
     for (const name of fs.readdirSync(path.join(directory, relative)).sort()) {
@@ -87,7 +102,7 @@ for arch in targets['windows']:
       assets.push({ name, size: stat.size, sha256: hash.digest('hex') })
     }
   }
-  const expectedCount = (targets.linux.length * 2 + 2 + targets.windows.length * targets.windowsProfiles.length + targets.releaseMetadata.length + 3) * 2
+  const expectedCount = (linuxAssetNames(signed.schema).length + 1 + targets.windows.length * targets.windowsProfiles.length + targets.releaseMetadata.length + 3) * 2
   assert.equal(assets.length, expectedCount); assets.sort((a, b) => a.name.localeCompare(b.name))
   const actual = { commit, tag, fingerprint, envelopeSHA256: sha(fs.readFileSync(path.join(linux, 'solovey-ui-release.json'))), sequence: signed.sequence, assets }
   if (receipt) {

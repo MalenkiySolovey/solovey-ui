@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
+import { execFileSync } from 'node:child_process'
 import { createRequire } from 'node:module'
 import test from 'node:test'
 
@@ -9,6 +12,24 @@ const read = name => YAML.parse(fs.readFileSync(`.github/workflows/${name}.yml`,
 const release = read('release')
 const productRef = '${{ needs.release-preflight.outputs.product-commit }}'
 const checkouts = job => job.steps?.filter(step => step.uses?.startsWith('actions/checkout@')) ?? []
+
+test('matrix admission can recover old Official-only products without a newer provider policy module', t => {
+  const command = release.jobs['release-preflight'].steps.find(step => step.id === 'targets').run
+  const code = command.match(/node --input-type=module -e '([\s\S]*)'/)?.[1]
+  assert.ok(code)
+  const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'release-legacy-matrix-'))
+  t.after(() => { assert.equal(path.dirname(fs.realpathSync(scratch)), fs.realpathSync(os.tmpdir())); fs.rmSync(scratch, { recursive: true, force: true }) })
+  fs.mkdirSync(path.join(scratch, 'scripts'))
+  const linux = [{ platform: 'amd64', arch: 'amd64', naive: true }]
+  fs.writeFileSync(path.join(scratch, 'scripts/release-targets.json'), JSON.stringify({ linux }))
+  const output = path.join(scratch, 'output')
+  execFileSync(process.execPath, ['--input-type=module', '-e', code], { cwd: scratch, env: { ...process.env, GITHUB_OUTPUT: output } })
+  assert.equal(fs.readFileSync(output, 'utf8'), 'linux-matrix=' + JSON.stringify({ include: linux }) + '\n')
+  fs.unlinkSync(output)
+  execFileSync(process.execPath, ['--input-type=module', '-e', code], { env: { ...process.env, GITHUB_OUTPUT: output } })
+  const current = JSON.parse(fs.readFileSync(output, 'utf8').trim().slice('linux-matrix='.length))
+  assert.ok(current.include.some(item => item.provider === 'shtorm-extended'))
+})
 
 test('runner-dependent contexts are excluded from workflow and job environments', () => {
   for (const filename of fs.readdirSync('.github/workflows').filter(name => /\.ya?ml$/.test(name))) {

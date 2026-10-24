@@ -24,9 +24,15 @@ func main() {
 }
 
 func run(args []string, input io.Reader, output io.Writer) error {
+	if len(args) == 1 && args[0] == "--canonical-manifest" {
+		return canonicalManifest(input, output)
+	}
+	if len(args) == 2 && args[0] == "--verify-release" && args[1] != "" {
+		return verifyRelease(args[1], input, output)
+	}
 	archive := len(args) == 2 && args[0] == "--archive"
 	if (len(args) != 1 && !archive) || args[len(args)-1] == "" || (len(args) == 1 && args[0][0] == '-') {
-		return errors.New("usage: solovey-artifact-info [--archive] CANDIDATE; expected source JSON on stdin")
+		return errors.New("usage: solovey-artifact-info [--archive] CANDIDATE; --canonical-manifest; --verify-release ENVELOPE; typed JSON on stdin")
 	}
 	candidate := args[len(args)-1]
 	raw, err := io.ReadAll(io.LimitReader(input, (64<<10)+1))

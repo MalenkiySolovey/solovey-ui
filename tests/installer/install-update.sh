@@ -139,6 +139,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 [[ -n "${out}" ]] || { echo "fake curl requires -o" >&2; exit 2; }
+printf '%s\n' "${url}" >> "${TEST_INSTALLER_LOG}/download.log"
 if [[ "${TEST_CURL_FAIL:-}" == "artifact" && "${url}" == *.tar.gz ]]; then
     echo "forced artifact download failure" >&2
     exit 22
@@ -154,7 +155,7 @@ case "${url}" in
             printf '0000000000000000000000000000000000000000000000000000000000000000  %s\n' "$(basename "${url%.sha256}")" > "${out}"
         elif [[ "${url}" == *"/solovey-ui-components.tar.gz.sha256" ]]; then
             cp "${FIXTURE_COMPONENTS_SHA}" "${out}"
-        elif [[ "${url}" == *"/solovey-ui-core-linux-"*.tar.gz.sha256 ]]; then
+        elif [[ "${url}" == *"-core-linux-"*.tar.gz.sha256 ]]; then
             cp "${FIXTURE_CORE_SHA}" "${out}"
         else
             cp "${FIXTURE_SHA}" "${out}"
@@ -163,7 +164,7 @@ case "${url}" in
     *.tar.gz)
         if [[ "${url}" == *"/solovey-ui-components.tar.gz" ]]; then
             cp "${FIXTURE_COMPONENTS_TAR}" "${out}"
-        elif [[ "${url}" == *"/solovey-ui-core-linux-"*.tar.gz ]]; then
+        elif [[ "${url}" == *"-core-linux-"*.tar.gz ]]; then
             cp "${FIXTURE_CORE_TAR}" "${out}"
         else
             cp "${FIXTURE_TAR}" "${out}"
@@ -265,10 +266,14 @@ SH
 
 create_release_fixture() {
     local version="$1"
+    local provider="${2:-sing-box}"
+    local artifact_provider="${3:-${provider}}"
+    local provider_suffix=""
+    [[ "${artifact_provider}" != shtorm-extended ]] || provider_suffix="-shtorm-extended"
     local release_root="${FIXTURE}/${version}"
     local release_dir="${release_root}/solovey-ui"
-    local artifact="${release_root}/solovey-ui-linux-amd64.tar.gz"
-    local core_artifact="${release_root}/solovey-ui-core-linux-amd64.tar.gz"
+    local artifact="${release_root}/solovey-ui${provider_suffix}-linux-amd64.tar.gz"
+    local core_artifact="${release_root}/solovey-ui${provider_suffix}-core-linux-amd64.tar.gz"
     local components_artifact="${release_root}/solovey-ui-components.tar.gz"
 
     rm -rf "${release_root}"
@@ -276,6 +281,10 @@ create_release_fixture() {
     cat > "${release_dir}/solovey-ui" <<SH
 #!/usr/bin/env bash
 set -Eeuo pipefail
+if [[ "\${1:-}" == core-info ]]; then
+    printf '%s\\n' '{"schema":"solovey.core-provider-identity/v1","state":"VERIFIED","id":"${provider}"}'
+    exit 0
+fi
 printf '%s\n' "${version}:\$*" >> "\${TEST_INSTALLER_LOG}/binary.log"
 if [[ "\${TEST_BINARY_FAIL_MIGRATE:-0}" == "1" && "\$*" == "migrate" ]]; then
     exit 42
@@ -291,6 +300,7 @@ SH
         printf 'profile=full\n'
         printf 'version=%s\n' "${version}"
         printf 'sing_box=v-test-%s\n' "${version}"
+        printf 'core_provider=%s\n' "${provider}"
     } > "${release_dir}/BUILD_INFO.txt"
     printf 'service %s\n' "${version}" > "${release_dir}/solovey-ui.service"
 	for name in solovey-privileged-broker solovey-ssh-proof solovey-broker-manifest solovey-owner-manifest; do
@@ -339,13 +349,15 @@ create_bad_component_fixture() {
 
 run_installer() {
     local version="$1"
+    local provider_suffix=""
+    [[ "${TEST_RELEASE_PROVIDER:-sing-box}" != shtorm-extended ]] || provider_suffix="-shtorm-extended"
     shift
 
     PATH="${FAKEBIN}:${PATH}" \
-    FIXTURE_TAR="${FIXTURE}/${version}/solovey-ui-linux-amd64.tar.gz" \
-    FIXTURE_SHA="${FIXTURE}/${version}/solovey-ui-linux-amd64.tar.gz.sha256" \
-    FIXTURE_CORE_TAR="${FIXTURE}/${version}/solovey-ui-core-linux-amd64.tar.gz" \
-    FIXTURE_CORE_SHA="${FIXTURE}/${version}/solovey-ui-core-linux-amd64.tar.gz.sha256" \
+    FIXTURE_TAR="${FIXTURE}/${version}/solovey-ui${provider_suffix}-linux-amd64.tar.gz" \
+    FIXTURE_SHA="${FIXTURE}/${version}/solovey-ui${provider_suffix}-linux-amd64.tar.gz.sha256" \
+    FIXTURE_CORE_TAR="${FIXTURE}/${version}/solovey-ui${provider_suffix}-core-linux-amd64.tar.gz" \
+    FIXTURE_CORE_SHA="${FIXTURE}/${version}/solovey-ui${provider_suffix}-core-linux-amd64.tar.gz.sha256" \
     FIXTURE_COMPONENTS_TAR="${FIXTURE}/${version}/solovey-ui-components.tar.gz" \
     FIXTURE_COMPONENTS_SHA="${FIXTURE}/${version}/solovey-ui-components.tar.gz.sha256" \
     TEST_INSTALLER_LOG="${LOG_DIR}" \
@@ -676,11 +688,77 @@ assert_native_advanced_fails_closed_before_install() {
 	assert_contains "${output}" 'separately confined core runtime'
 }
 
+assert_provider_install_and_update() {
+    rm -rf "${TARGET}"
+    mkdir -p "${TARGET}"
+    reset_logs
+    TEST_RELEASE_PROVIDER=shtorm-extended run_installer ext-v1 --profile core --core-provider shtorm-extended
+    assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^core_provider=shtorm-extended$'
+    assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^profile=core$'
+    assert_contains "${LOG_DIR}/download.log" '/solovey-ui-shtorm-extended-core-linux-amd64.tar.gz$'
+    assert_not_exists "${INSTALL_DIR}/solovey-owner-manifest"
+    mkdir -p "${TARGET}/var/lib/solovey-ui/db"
+    printf 'retained Extended state\n' > "${TARGET}/var/lib/solovey-ui/db/solovey-ui.db"
+
+    reset_logs
+    TEST_RELEASE_PROVIDER=shtorm-extended run_installer ext-v2 --profile core
+    assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^version=ext-v2$'
+    assert_contains "${INSTALL_DIR}/BUILD_INFO.txt" '^core_provider=shtorm-extended$'
+    assert_contains "${LOG_DIR}/download.log" '/solovey-ui-shtorm-extended-core-linux-amd64.tar.gz$'
+    assert_contains "${TARGET}/var/lib/solovey-ui/db/solovey-ui.db" '^retained Extended state$'
+    local checkpoint
+    checkpoint="$(grep -l '^build_version=ext-v1$' "${BACKUP_ROOT}"/*/manifest.txt | head -n 1)"
+    [[ -n "${checkpoint}" ]] || fail 'Extended update did not checkpoint the installed generation'
+    assert_contains "$(dirname "${checkpoint}")/app/BUILD_INFO.txt" '^version=ext-v1$'
+
+    local current before after output backup_count
+    current="$(readlink "${INSTALL_DIR}/releases/current")"
+    backup_count="$(find "${BACKUP_ROOT}" -name manifest.txt | wc -l)"
+    before="$(sha256sum "${INSTALL_DIR}/BUILD_INFO.txt" "${TARGET}/var/lib/solovey-ui/db/solovey-ui.db" "${ENV_DIR}/secretbox.env")"
+    reset_logs
+    output="${LOG_DIR}/provider-change.out"
+    if run_installer v1 --profile core --core-provider sing-box >"${output}" 2>&1; then
+        fail 'ordinary installer changed the installed provider'
+    fi
+    assert_contains "${output}" 'maintenance'
+    assert_not_exists "${LOG_DIR}/download.log"
+    assert_not_exists "${LOG_DIR}/systemctl.log"
+
+    reset_logs
+    output="${LOG_DIR}/wrong-payload.out"
+    if TEST_RELEASE_PROVIDER=shtorm-extended run_installer ext-wrong --profile core >"${output}" 2>&1; then
+        fail 'installer trusted an Extended filename containing an Official binary'
+    fi
+    assert_contains "${output}" 'provider'
+    assert_not_exists "${LOG_DIR}/systemctl.log"
+    [[ "$(find "${BACKUP_ROOT}" -name manifest.txt | wc -l)" == "${backup_count}" ]] || fail 'rejected candidate started a backup transaction'
+    [[ "$(readlink "${INSTALL_DIR}/releases/current")" == "${current}" ]] || fail 'rejected candidate changed the active generation'
+    after="$(sha256sum "${INSTALL_DIR}/BUILD_INFO.txt" "${TARGET}/var/lib/solovey-ui/db/solovey-ui.db" "${ENV_DIR}/secretbox.env")"
+    [[ "${before}" == "${after}" ]] || fail 'rejected provider candidate changed installed state'
+
+    rm -rf "${TARGET}"
+    mkdir -p "${TARGET}"
+    reset_logs
+    output="${LOG_DIR}/wrong-default-payload.out"
+    if run_installer official-wrong --profile core >"${output}" 2>&1; then
+        fail 'default Official installation accepted an Extended payload'
+    fi
+    assert_contains "${output}" 'provider'
+    assert_not_exists "${INSTALL_DIR}"
+    assert_not_exists "${SERVICE_FILE}"
+    assert_not_exists "${ENV_DIR}/secretbox.env"
+    assert_not_exists "${LOG_DIR}/systemctl.log"
+}
+
 write_fake_tools
 create_release_fixture v1
 create_release_fixture v2
 create_release_fixture v3
 create_bad_component_fixture vbad
+create_release_fixture ext-v1 shtorm-extended
+create_release_fixture ext-v2 shtorm-extended
+create_release_fixture ext-wrong sing-box shtorm-extended
+create_release_fixture official-wrong shtorm-extended sing-box
 
 reset_logs
 run_installer v1
@@ -725,5 +803,6 @@ assert_full_to_core_removes_installed_packs_without_catalog
 assert_bad_component_pack_is_rejected
 assert_unsupported_systemd_is_rejected_before_install
 assert_native_advanced_fails_closed_before_install
+assert_provider_install_and_update
 
 printf 'PASS: installer fresh/update/failure integration\n'

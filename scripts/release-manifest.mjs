@@ -4,12 +4,16 @@ import crypto from 'node:crypto'
 import fs from 'node:fs'
 import path from 'node:path'
 import process from 'node:process'
+import { resolveProviderSource } from './core-provider-build.mjs'
+import { legacySchema, providerSchema, linuxPanelArtifacts, withArtifactInspector, inspectPanelArchive, canonicalReleaseManifest } from './release-providers.mjs'
 
 const args = new Map()
+const options = new Set(['assets-dir', 'components-dir', 'out', 'version', 'sequence', 'issued-at', 'expires-at', 'channel', 'key-id', 'schema', 'artifact-info'])
 for (let index = 2; index < process.argv.length; index += 2) {
   const key = process.argv[index]
   const value = process.argv[index + 1]
   if (!key?.startsWith('--') || !value || value.startsWith('--')) usage()
+  if (!options.has(key.slice(2)) || args.has(key.slice(2))) usage()
   args.set(key.slice(2), value)
 }
 
@@ -22,6 +26,9 @@ const issuedAt = exactPositiveInteger(args.get('issued-at'), 'issued-at')
 const expiresAt = exactPositiveInteger(args.get('expires-at') ?? String(issuedAt + 7 * 24 * 60 * 60), 'expires-at')
 const channel = args.get('channel')
 const keyId = args.get('key-id')
+const schema = args.get('schema') ?? legacySchema
+if (![legacySchema, providerSchema].includes(schema)) fail('unsupported release schema')
+const panelTargets = new Map(linuxPanelArtifacts(schema).map(target => [target.name, target]))
 const privateKeyBase64 = process.env.SUI_RELEASE_SIGNING_PRIVATE_KEY_B64 ?? ''
 const sourceVersion = normalizeVersion(fs.readFileSync('config/identity/version', 'utf8').trim())
 const compatibility = JSON.parse(fs.readFileSync('scripts/release-compatibility.json', 'utf8'))
@@ -45,25 +52,25 @@ let componentCatalog = null
 const profilesByTarget = new Map()
 for (const name of fs.readdirSync(assetsDir).sort()) {
   const filePath = path.join(assetsDir, name)
-  if (!fs.statSync(filePath).isFile() || !name.endsWith('.tar.gz')) continue
+  if (!name.endsWith('.tar.gz')) continue
+  if (!fs.lstatSync(filePath).isFile()) fail('release archives must be regular files')
   if (name === 'solovey-ui-components.tar.gz') {
     componentCatalog = await artifact(filePath, 'component-catalog', 'any', 'any')
     artifacts.push(componentCatalog)
     continue
   }
-  let match = /^solovey-ui-linux-([a-z0-9._+-]+)\.tar\.gz$/.exec(name)
-  let profile = 'full'
-  if (!match) {
-    match = /^solovey-ui-core-linux-([a-z0-9._+-]+)\.tar\.gz$/.exec(name)
-    profile = 'core'
-  }
-  if (!match) continue
-  const target = `linux/${match[1]}`
+  if (schema === legacySchema && name.startsWith('solovey-ui-shtorm-extended-')) fail('provider packages require release v2 source identity')
+  const declared = panelTargets.get(name)
+  if (!declared) fail(`archive is outside the canonical release platform policy: ${name}`)
+  const { arch, profile, provider } = declared
+  const target = `${provider}/linux/${arch}`
   const seen = profilesByTarget.get(target) ?? new Set()
   if (seen.has(profile)) fail(`duplicate ${profile} artifact for ${target}`)
   seen.add(profile)
   profilesByTarget.set(target, seen)
-  artifacts.push(await artifact(filePath, `panel-${profile}`, 'linux', match[1]))
+  const item = await artifact(filePath, `panel-${profile}`, 'linux', arch)
+  if (schema === providerSchema) item.coreProvider = provider
+  artifacts.push(item)
 }
 if (profilesByTarget.size === 0 || !componentCatalog) fail('coherent Linux archives and component catalog are required')
 for (const [target, profiles] of profilesByTarget) {
@@ -93,7 +100,7 @@ for (const entry of fs.readdirSync(componentsDir, { withFileTypes: true }).sort(
 components.sort((left, right) => left.id.localeCompare(right.id))
 
 const manifest = {
-  schema: 'solovey.release/v1',
+  schema,
   releaseId,
   sequence,
   version,
@@ -114,8 +121,16 @@ const manifest = {
   rollbackClass: compatibility.rollbackClass,
   artifacts,
   components,
+  ...(schema === providerSchema ? { coreProviders: [...new Set(artifacts.map(item => item.coreProvider).filter(Boolean))].sort()
+    .map(provider => resolveProviderSource({ provider }).source) } : {}),
 }
-const canonical = Buffer.from(JSON.stringify(manifest))
+const canonical = schema === legacySchema ? Buffer.from(JSON.stringify(manifest)) : await withArtifactInspector(
+  args.get('artifact-info') ?? process.env.SOLOVEY_ARTIFACT_INFO, inspector => {
+    for (const item of artifacts) {
+      if (item.coreProvider) inspectPanelArchive(inspector, path.join(assetsDir, item.name), panelTargets.get(item.name), item)
+    }
+    return canonicalReleaseManifest(inspector, manifest)
+  })
 let privateKey
 try {
   privateKey = crypto.createPrivateKey({ key: Buffer.from(privateKeyBase64, 'base64'), format: 'der', type: 'pkcs8' })
@@ -125,10 +140,10 @@ try {
 if (privateKey.asymmetricKeyType !== 'ed25519') fail('release signing key must be Ed25519')
 const signature = crypto.sign(null, canonical, privateKey).toString('base64')
 const envelope = `${JSON.stringify({
-  schema: 'solovey.release/v1',
+  schema,
   keyId,
   algorithm: 'Ed25519',
-  manifest,
+  manifest: JSON.parse(canonical),
   signature,
 })}\n`
 
@@ -163,7 +178,7 @@ function sha256File(filePath) {
 }
 
 function artifactIdentity(value) {
-  return `${value.platform}\0${value.arch}\0${value.role}\0${value.name}`
+  return `${value.platform}\0${value.arch}\0${value.coreProvider ?? ''}\0${value.role}\0${value.name}`
 }
 
 function digestSourceSet(roots) {
@@ -248,7 +263,7 @@ function sha256(data) {
 }
 
 function usage() {
-  console.error('Usage: node scripts/release-manifest.mjs --version <semver> --sequence <n> --channel <main|beta> --issued-at <unix> --key-id <id> [--expires-at <unix>] [--assets-dir <dir>] [--components-dir <dir>] [--out <file>]')
+  console.error('Usage: node scripts/release-manifest.mjs --version <semver> --sequence <n> --channel <main|beta> --issued-at <unix> --key-id <id> [--schema <solovey.release/v1|solovey.release/v2>] [--artifact-info <host-tool>] [--expires-at <unix>] [--assets-dir <dir>] [--components-dir <dir>] [--out <file>]')
   process.exit(2)
 }
 

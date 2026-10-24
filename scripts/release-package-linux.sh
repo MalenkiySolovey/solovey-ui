@@ -17,6 +17,7 @@ build_info="BUILD_INFO.txt"
 out_dir="dist/release"
 package_tmp_dir=""
 profile="full"
+core_provider="sing-box"
 
 usage() {
     cat <<EOF
@@ -37,6 +38,7 @@ Options:
   --systemd-dir <path>  Versioned profile unit directory. Default: ./deploy/systemd
   --build-info <path>   BUILD_INFO.txt path. Default: ./BUILD_INFO.txt
   --profile <full|core> Artifact profile. Default: full.
+  --core-provider <id>  Core build flavor. Default: sing-box.
   --out-dir <path>      Output directory. Default: ./dist/release
   --help, -h            Show this help.
 EOF
@@ -105,6 +107,11 @@ parse_args() {
                 profile="$2"
                 shift 2
                 ;;
+            --core-provider)
+                [[ $# -ge 2 ]] || fail "$1 requires a value"
+                core_provider="$2"
+                shift 2
+                ;;
             --out-dir)
                 [[ $# -ge 2 ]] || fail "$1 requires a value"
                 out_dir="$2"
@@ -154,6 +161,8 @@ validate_inputs() {
 
     command -v tar >/dev/null 2>&1 || fail "tar is required"
     command -v sha256sum >/dev/null 2>&1 || fail "sha256sum is required"
+    command -v node >/dev/null 2>&1 || fail "node is required for canonical release platform policy"
+    node "$(dirname "${BASH_SOURCE[0]}")/release-providers.mjs" artifact-name "${core_provider}" "${target}" "${profile}" >/dev/null || fail "unsupported provider target"
 
     require_executable "binary" "${binary}"
 	require_executable "privileged broker" "${broker}"
@@ -178,6 +187,10 @@ validate_inputs() {
     require_build_key platform
     require_build_key go
     require_build_key sing_box
+    if [[ "${core_provider}" != sing-box ]] || grep -q '^core_provider=' "${build_info}"; then
+        [[ "$(grep -c '^core_provider=' "${build_info}")" == 1 ]] || fail "BUILD_INFO.txt must declare one core provider"
+        grep -qxF "core_provider=${core_provider}" "${build_info}" || fail "BUILD_INFO.txt core provider differs from the package selection"
+    fi
 }
 
 package_release() {
@@ -187,11 +200,8 @@ package_release() {
     package_tmp_dir="${tmp_dir}"
     trap 'rm -rf "${package_tmp_dir:-}"' EXIT
     payload="${tmp_dir}/${APP_NAME}"
-    if [[ "${profile}" == "core" ]]; then
-        artifact="${APP_NAME}-core-${target}.tar.gz"
-    else
-        artifact="${APP_NAME}-${target}.tar.gz"
-    fi
+    artifact="$(node "$(dirname "${BASH_SOURCE[0]}")/release-providers.mjs" artifact-name "${core_provider}" "${target}" "${profile}")"
+    artifact="${APP_NAME}${artifact#solovey-ui}"
     checksum="${artifact}.sha256"
 
     mkdir -p "${payload}" "${out_dir}"

@@ -132,7 +132,13 @@ jobs:
 
       - name: Read canonical Linux targets
         id: targets
-        run: node -e 'const fs=require("fs"); const targets=require("./scripts/release-targets.json"); fs.appendFileSync(process.env.GITHUB_OUTPUT, "linux-matrix="+JSON.stringify({include:targets.linux})+"\n")'
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const targets = JSON.parse(fs.readFileSync("scripts/release-targets.json", "utf8"));
+            const include = targets.extended ? (await import("./scripts/release-providers.mjs")).linuxBuildTargets() : targets.linux;
+            fs.appendFileSync(process.env.GITHUB_OUTPUT, "linux-matrix="+JSON.stringify({include})+"\n");
+          '
 
       - name: Verify immutable publication identity before any registry write
         if: github.event_name == 'push' || inputs.preflight_only == false
@@ -190,7 +196,8 @@ jobs:
       - name: Semantic release resolution and complete release verification
         run: |
           bash tests/installer/latest-release.sh
-          node --test scripts/release-verify.test.mjs scripts/release-target.test.mjs scripts/release-publish-gate.test.mjs scripts/release-source.test.mjs
+          bash tests/installer/core-provider.sh
+          node --test scripts/release-verify.test.mjs scripts/release-providers.test.mjs scripts/release-metadata.test.mjs scripts/release-target.test.mjs scripts/release-publish-gate.test.mjs scripts/release-source.test.mjs
 
       - name: signed release manifest integration
         run: bash tests/installer/release-manifest.sh
@@ -362,7 +369,7 @@ jobs:
 
   build-linux:
     if: inputs.resume_run_id == ''
-    name: Build-${{ matrix.platform }}
+    name: Build${{ matrix.artifact_suffix }}-${{ matrix.platform }}
     needs:
       - release-preflight
       - build-frontend
@@ -454,7 +461,7 @@ jobs:
             v*) ;;
             *) PANEL_VERSION="v${PANEL_VERSION}" ;;
           esac
-          SING_BOX_VERSION="$(go list -m -f '{{.Version}}' github.com/sagernet/sing-box)"
+          SING_BOX_VERSION="$(node scripts/core-provider-build.mjs plan --provider '${{ matrix.provider }}' | node --input-type=module -e 'let data=""; for await (const chunk of process.stdin) data+=chunk; process.stdout.write("v"+JSON.parse(data).source.runtimeSemanticVersion)')"
           SOURCE_FINGERPRINT="$(node scripts/release-source.mjs .)"
           [ "$SOURCE_FINGERPRINT" = "${{ needs.release-preflight.outputs.source-fingerprint }}" ] || { echo "product source fingerprint changed" >&2; exit 1; }
           [ -n "$SING_BOX_VERSION" ] || { echo "sing-box module version is empty" >&2; exit 1; }
@@ -507,11 +514,13 @@ jobs:
           [ "${{ matrix.naive }}" = "true" ] && NAIVE_ARGS+=(--naive)
           node scripts/frontend-assets.mjs publish --dist .release/frontend-full --destination web/html --components-dir .release/components
           bash scripts/build-linux-target.sh --mode release --profile full \
+            --core-provider '${{ matrix.provider }}' \
             --out .release/linux-full --platform "${{ matrix.platform }}" \
             --trust-roots-file /tmp/solovey-release-trust-roots.b64 "${NAIVE_ARGS[@]}"
           cp -a .release/linux-full/. ./
           node scripts/frontend-assets.mjs publish --dist .release/frontend-core --destination web/html
           bash scripts/build-linux-target.sh --mode release --profile core \
+            --core-provider '${{ matrix.provider }}' \
             --out .release/linux-core --platform "${{ matrix.platform }}" \
             --trust-roots-file /tmp/solovey-release-trust-roots.b64 "${NAIVE_ARGS[@]}"
           cp -a .release/linux-core/solovey-ui-core ./solovey-ui-core
@@ -532,8 +541,13 @@ jobs:
             echo "node=$(node --version)"
             echo "npm=$(npm --version)"
             echo "sing_box=${{ steps.build_meta.outputs.sing_box_version }}"
-            node scripts/quic-integration-provenance.mjs build-info
-            node scripts/ssm-integration-provenance.mjs build-info
+            if [ '${{ matrix.provider }}' = shtorm-extended ]; then
+              node scripts/extended-integration-provenance.mjs build-info
+            else
+              echo 'core_provider=sing-box'
+              node scripts/quic-integration-provenance.mjs build-info
+              node scripts/ssm-integration-provenance.mjs build-info
+            fi
             node scripts/anytls-integration-provenance.mjs build-info
           } > BUILD_INFO.full.txt
           {
@@ -549,14 +563,20 @@ jobs:
             echo "node=$(node --version)"
             echo "npm=$(npm --version)"
             echo "sing_box=${{ steps.build_meta.outputs.sing_box_version }}"
-            node scripts/quic-integration-provenance.mjs build-info
-            node scripts/ssm-integration-provenance.mjs build-info
+            if [ '${{ matrix.provider }}' = shtorm-extended ]; then
+              node scripts/extended-integration-provenance.mjs build-info
+            else
+              echo 'core_provider=sing-box'
+              node scripts/quic-integration-provenance.mjs build-info
+              node scripts/ssm-integration-provenance.mjs build-info
+            fi
             node scripts/anytls-integration-provenance.mjs build-info
           } > BUILD_INFO.core.txt
 
       - name: Package full profile
         run: |
           bash scripts/release-package-linux.sh \
+            --core-provider '${{ matrix.provider }}' \
             --target linux-${{ matrix.platform }} \
             --binary ./solovey-ui \
             --manager ./solovey-ui.sh \
@@ -567,6 +587,7 @@ jobs:
       - name: Package core profile
         run: |
           bash scripts/release-package-linux.sh \
+            --core-provider '${{ matrix.provider }}' \
             --profile core \
             --target linux-${{ matrix.platform }} \
             --binary ./solovey-ui-core \
@@ -579,12 +600,12 @@ jobs:
       - name: Upload build artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
-          name: solovey-ui-linux-${{ matrix.platform }}
+          name: solovey-ui${{ matrix.artifact_suffix }}-linux-${{ matrix.platform }}
           path: |
-            ./solovey-ui-linux-${{ matrix.platform }}.tar.gz
-            ./solovey-ui-linux-${{ matrix.platform }}.tar.gz.sha256
-            ./solovey-ui-core-linux-${{ matrix.platform }}.tar.gz
-            ./solovey-ui-core-linux-${{ matrix.platform }}.tar.gz.sha256
+            ./solovey-ui${{ matrix.artifact_suffix }}-linux-${{ matrix.platform }}.tar.gz
+            ./solovey-ui${{ matrix.artifact_suffix }}-linux-${{ matrix.platform }}.tar.gz.sha256
+            ./solovey-ui${{ matrix.artifact_suffix }}-core-linux-${{ matrix.platform }}.tar.gz
+            ./solovey-ui${{ matrix.artifact_suffix }}-core-linux-${{ matrix.platform }}.tar.gz.sha256
           retention-days: 1
 
   release-metadata:
@@ -655,6 +676,21 @@ jobs:
             echo "notes_path=" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Set up Go for canonical release inspection
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+
+      - name: Set up Node.js for release tooling
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: frontend/.node-version
+
+      - name: Build the shared release inspector once
+        run: |
+          CGO_ENABLED=0 go build -mod=readonly -trimpath -o "$RUNNER_TEMP/solovey-artifact-info" ./cmd/solovey-artifact-info
+          echo "SOLOVEY_ARTIFACT_INFO=$RUNNER_TEMP/solovey-artifact-info" >> "$GITHUB_ENV"
+
       - name: Download component frontend packs
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -669,7 +705,7 @@ jobs:
       - name: Download Linux build artifacts
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
-          pattern: solovey-ui-linux-*
+          pattern: solovey-ui*linux-*
           path: release-assets
           merge-multiple: true
 
@@ -686,6 +722,7 @@ jobs:
           CHANNEL=main
           [ "${{ steps.vars.outputs.prerelease }}" = "true" ] && CHANNEL=beta
           node scripts/release-manifest.mjs \
+            --schema solovey.release/v2 \
             --version "${{ steps.vars.outputs.version }}" \
             --sequence "$RELEASE_SEQUENCE" \
             --channel "$CHANNEL" \
@@ -727,6 +764,14 @@ jobs:
         with:
           ref: ${{ needs.release-preflight.outputs.product-commit }}
           fetch-depth: 0
+      - name: Set up Go for recovery inspection
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - name: Set up Node.js for recovery inspection
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: frontend/.node-version
       - name: Verify original complete candidate and existing registry
         env:
           GH_TOKEN: ${{ github.token }}
@@ -881,6 +926,15 @@ jobs:
         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
           ref: ${{ needs.release-preflight.outputs.product-commit }}
+
+      - name: Set up Go for publication inspection
+        uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
+        with:
+          go-version-file: go.mod
+      - name: Set up Node.js for publication inspection
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6
+        with:
+          node-version-file: frontend/.node-version
 
       - name: Download verified complete candidate
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8

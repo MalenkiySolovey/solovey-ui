@@ -8,6 +8,13 @@
     { "platform": "386", "arch": "386", "bootlin": "x86-i686", "naive": true },
     { "platform": "s390x", "arch": "s390x", "bootlin": "s390x-z13", "bootlin_archive": "s390x-z13--musl--stable-2025.08-1.tar.xz", "bootlin_sha256": "23f536ff2bf1a9d3b93210465471996bc7c918fbb5702a277d8e1e42ffab8559", "naive": false }
   ],
+  "extended": {
+    "provider": "shtorm-extended",
+    "linux": ["amd64"],
+    "windows": [],
+    "docker": [],
+    "openwrt": []
+  },
   "windows": ["amd64", "arm64"],
   "windowsProfiles": ["full", "core"],
   "docker": ["amd64", "arm64"],

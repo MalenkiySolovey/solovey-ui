@@ -24,6 +24,11 @@ packages. Source archives, dependency license notices, a CycloneDX SBOM and
 provenance accompany each complete release. The core's official semantic
 baseline is sing-box v1.14.2; the maintained integration pins and patches are
 disclosed in [NOTICE](NOTICE.md) and `deploy/dependencies/`.
+Official remains the default provider. This source also defines an explicit
+Shtorm Extended build flavor for Linux amd64 full/core packages. Its installer,
+maintenance and qualification boundaries are described in
+[Provider maintenance](docs/provider-maintenance.md). Extended packages require
+a future complete release; public stable v2026.4.1 does not contain them.
 The maintainer transaction is documented in
 [Release contract](.github/RELEASE_CONTRACT.md).
 

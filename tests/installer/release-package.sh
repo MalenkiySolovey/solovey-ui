@@ -220,6 +220,34 @@ EOF
     diff -u "${TMP}/expected-component-files.txt" "${TMP}/actual-component-files.txt" || fail "component bundle file list does not match release contract"
 }
 
+assert_extended_package_contract() {
+    local profile metadata artifact
+    for profile in full core; do
+        metadata="${SRC}/BUILD_INFO.extended-${profile}.txt"
+        cp "${SRC}/BUILD_INFO.${profile}.txt" "${metadata}"
+        printf 'core_provider=shtorm-extended\n' >> "${metadata}"
+        bash "${ROOT}/scripts/release-package-linux.sh" \
+            --target linux-amd64 --profile "${profile}" --core-provider shtorm-extended \
+            --binary "${SRC}/solovey-ui" --broker "${SRC}/solovey-privileged-broker" \
+            --proof "${SRC}/solovey-ssh-proof" --manifest-writer "${SRC}/solovey-broker-manifest" \
+            --owner-manifest-writer "${SRC}/solovey-owner-manifest" --manager "${SRC}/solovey-ui.sh" \
+            --service "${SRC}/solovey-ui.service" --systemd-dir "${ROOT}/deploy/systemd" \
+            --build-info "${metadata}" --out-dir "${OUT}" >/dev/null
+        artifact="${OUT}/solovey-ui-shtorm-extended"
+        [[ "${profile}" != core ]] || artifact="${artifact}-core"
+        artifact="${artifact}-linux-amd64.tar.gz"
+        assert_file "${artifact}"
+        (cd "${OUT}" && sha256sum -c "$(basename "${artifact}").sha256" >/dev/null)
+        tar -xOf "${artifact}" solovey-ui/BUILD_INFO.txt | grep -qxF 'core_provider=shtorm-extended' || fail 'Extended package lost provider metadata'
+    done
+    # Metadata declarations are packaging inputs; the signed v2 producer also
+    # inspects the actual executable source without executing the candidate.
+    if bash "${ROOT}/scripts/release-package-linux.sh" --target linux-arm64 --core-provider shtorm-extended --out-dir "${OUT}/unsupported" >"${TMP}/unsupported.log" 2>&1; then
+        fail 'packager accepted an undeclared Extended platform'
+    fi
+    assert_not_exists "${OUT}/unsupported"
+}
+
 write_fixture
 write_component_fixture
 package_fixtures() {
@@ -259,6 +287,7 @@ bash "${ROOT}/scripts/release-package-components.sh" \
     --out-dir "${OUT}" >/dev/null
 
 assert_component_bundle_contract
+assert_extended_package_contract
 }
 
 package_fixtures
