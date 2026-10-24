@@ -98,7 +98,9 @@ func validDigest(value string) bool {
 	return digestPattern.MatchString(value)
 }
 
-func semanticRef(kind, operationID, manifestDigest string) string {
+// SemanticReference is the shared identity for a Root-owned release checkpoint.
+// Its encoding preserves existing durable prepared and rollback references.
+func SemanticReference(kind, operationID, manifestDigest string) string {
 	sum := sha256.Sum256([]byte(kind + "\x00" + operationID + "\x00" + manifestDigest))
 	return hex.EncodeToString(sum[:])
 }

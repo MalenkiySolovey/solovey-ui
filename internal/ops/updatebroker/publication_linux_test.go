@@ -324,8 +324,8 @@ func TestPublicationActivateAndRollbackExposeOneExactFullOrCoreGeneration(t *tes
 				t.Fatal(err)
 			}
 			operationID := "update-operation:publication-" + transition.name
-			preparedRef := semanticRef("prepared", operationID, targetIdentity.ManifestDigest)
-			rollbackRef := semanticRef("rollback", operationID, targetIdentity.ManifestDigest)
+			preparedRef := SemanticReference("prepared", operationID, targetIdentity.ManifestDigest)
+			rollbackRef := SemanticReference("rollback", operationID, targetIdentity.ManifestDigest)
 			initial := diskState{ActiveRelease: filepath.Base(oldRoot), ActiveSequence: oldIdentity.Sequence, ActiveDigest: oldIdentity.ManifestDigest,
 				PreparedRollbackRelease: filepath.Base(oldRoot), PreparedRollbackSequence: oldIdentity.Sequence, PreparedRollbackDigest: oldIdentity.ManifestDigest,
 				PreparedRollbackOperationID: operationID, PreparedRollbackManifestDigest: targetIdentity.ManifestDigest, PreparedRollbackRef: rollbackRef}

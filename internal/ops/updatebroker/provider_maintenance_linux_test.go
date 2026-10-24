@@ -23,7 +23,7 @@ func providerCheckpointState(t *testing.T, identity ReleaseIdentityV1, input Pro
 	return diskState{ActiveRelease: "00000000000000000018-1111111111111111", ActiveSequence: 18, ActiveDigest: updateDigest("previous-manifest"),
 		MaxActivatedSequence: 18, MaxActivatedDigest: updateDigest("previous-manifest"),
 		PreparedRollbackRelease: "00000000000000000018-1111111111111111", PreparedRollbackSequence: 18, PreparedRollbackDigest: updateDigest("previous-manifest"),
-		PreparedRollbackOperationID: operationID, PreparedRollbackManifestDigest: identity.ManifestDigest, PreparedRollbackRef: semanticRef("rollback", operationID, identity.ManifestDigest),
+		PreparedRollbackOperationID: operationID, PreparedRollbackManifestDigest: identity.ManifestDigest, PreparedRollbackRef: SemanticReference("rollback", operationID, identity.ManifestDigest),
 		ProviderMaintenance: providerMaintenanceState{OperationID: operationID, ManifestDigest: identity.ManifestDigest, ArtifactSetDigest: identity.ArtifactSetDigest,
 			ReleaseDigest: broker.Digest(mustJSON(identity)), TargetRelease: releaseDirectoryName(identity), TargetSequence: identity.Sequence,
 			TargetProvider: identity.CoreProvider, TargetPanelVersion: identity.Version, Input: input, Phase: "CHECKPOINTED"}}

@@ -263,7 +263,7 @@ func liveRollbackOperation(result contract.ObservationV1) (string, error) {
 	}
 	if !safeID(result.RollbackOperationID, 96) || !strings.HasPrefix(result.RollbackOperationID, "update-operation:") ||
 		!validDigest(result.RollbackManifestDigest) || !validDigest(result.RollbackTargetDigest) || result.RollbackTargetSequence == 0 ||
-		result.RollbackRef != broker.Digest([]byte("rollback:"+result.RollbackOperationID+":"+result.RollbackManifestDigest)) {
+		result.RollbackRef != contract.SemanticReference("rollback", result.RollbackOperationID, result.RollbackManifestDigest) {
 		return "", ErrRecoveryRequired
 	}
 	return result.RollbackOperationID, nil
@@ -717,7 +717,7 @@ func releaseIdentityFromOperation(operation model.UpdateOperation) contract.Rele
 }
 
 func updateRef(operation model.UpdateOperation, kind string) string {
-	return broker.Digest([]byte(kind + ":" + operation.OperationID + ":" + operation.ManifestDigest))
+	return contract.SemanticReference(kind, operation.OperationID, operation.ManifestDigest)
 }
 
 func containsUpdateVerbs(verbs []broker.Verb) bool {

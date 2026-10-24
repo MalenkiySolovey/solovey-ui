@@ -308,7 +308,7 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 		// preparation replaces its now-completed checkpoint atomically.
 		state.clearPreparedRollback()
 	}
-	rollbackRef := semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest)
+	rollbackRef := SemanticReference("rollback", envelope.OperationID, request.Release.ManifestDigest)
 	preparedReplay := state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, rollbackRef)
 	activatedReplay := preparedReplay && state.ActiveSequence == request.Release.Sequence && state.ActiveDigest == request.Release.ManifestDigest && state.ActiveRelease == releaseName
 	sameEnvelopeTransition := withProvider && request.Maintenance.PreviousProvider.ID != request.Release.CoreProvider.ID &&
@@ -358,7 +358,7 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 	if err := h.removeOwnedInbox(inbox); err != nil {
 		return nil, broker.Failure(broker.CodeExecution, "prepared operation inbox could not be released")
 	}
-	return PrepareResultV1{ProviderRevision: ProviderRevision, PreparedRef: semanticRef("prepared", envelope.OperationID, request.Release.ManifestDigest),
+	return PrepareResultV1{ProviderRevision: ProviderRevision, PreparedRef: SemanticReference("prepared", envelope.OperationID, request.Release.ManifestDigest),
 		RollbackRef: rollbackRef, RollbackAvailable: state.hasBoundPreparedRollback(), ManagementReady: true,
 		PreflightRevision: broker.Digest([]byte(releaseName + ":" + request.ExpectedManagementRevision))}, nil
 }
@@ -366,8 +366,8 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broker.PeerIdentity) (any, error) {
 	var request ActivateRequestV1
 	if err := broker.DecodeRawPayload(envelope.Payload, &request); err != nil || !safeOperationID(envelope.OperationID) || ValidateRelease(request.Release) != nil || request.ExpectedMode != "native" ||
-		request.PreparedRef != semanticRef("prepared", envelope.OperationID, request.Release.ManifestDigest) ||
-		request.RollbackRef != semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest) {
+		request.PreparedRef != SemanticReference("prepared", envelope.OperationID, request.Release.ManifestDigest) ||
+		request.RollbackRef != SemanticReference("rollback", envelope.OperationID, request.Release.ManifestDigest) {
 		return nil, broker.Failure(broker.CodeInvalidRequest, "update activation request is invalid")
 	}
 	releaseName, stored, identityErr := h.resolveReleaseGeneration(request.Release)
@@ -439,8 +439,8 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 func (h *Host) verify(_ context.Context, envelope broker.Request, peer broker.PeerIdentity) (any, error) {
 	var request VerifyRequestV1
 	if err := broker.DecodeRawPayload(envelope.Payload, &request); err != nil || !safeOperationID(envelope.OperationID) || ValidateRelease(request.Release) != nil ||
-		request.PreparedRef != semanticRef("prepared", envelope.OperationID, request.Release.ManifestDigest) ||
-		request.RollbackRef != semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest) {
+		request.PreparedRef != SemanticReference("prepared", envelope.OperationID, request.Release.ManifestDigest) ||
+		request.RollbackRef != SemanticReference("rollback", envelope.OperationID, request.Release.ManifestDigest) {
 		return nil, broker.Failure(broker.CodeInvalidRequest, "active release verification request is invalid")
 	}
 	state, err := h.loadState()
@@ -501,7 +501,7 @@ func (h *Host) verify(_ context.Context, envelope broker.Request, peer broker.Pe
 func (h *Host) rollback(ctx context.Context, envelope broker.Request, peer broker.PeerIdentity) (any, error) {
 	var request RollbackRequestV1
 	if err := broker.DecodeRawPayload(envelope.Payload, &request); err != nil || !safeOperationID(envelope.OperationID) || ValidateRelease(request.Release) != nil ||
-		request.RollbackRef != semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest) || len(request.ReasonCode) > 96 {
+		request.RollbackRef != SemanticReference("rollback", envelope.OperationID, request.Release.ManifestDigest) || len(request.ReasonCode) > 96 {
 		return nil, broker.Failure(broker.CodeInvalidRequest, "update rollback request is invalid")
 	}
 	return h.rollbackCheckpoint(ctx, envelope.OperationID, request, peer)
@@ -1624,7 +1624,7 @@ func (state *diskState) raiseHighWater(sequence uint64, digest string) {
 func (state diskState) hasBoundRollback() bool {
 	return state.RollbackRelease != "" && state.RollbackSequence > 0 && validDigest(state.RollbackDigest) &&
 		safeOperationID(state.RollbackOperationID) && validDigest(state.RollbackManifestDigest) &&
-		state.RollbackRef == semanticRef("rollback", state.RollbackOperationID, state.RollbackManifestDigest)
+		state.RollbackRef == SemanticReference("rollback", state.RollbackOperationID, state.RollbackManifestDigest)
 }
 
 func (state diskState) rollbackMatches(operationID, manifestDigest, rollbackRef string) bool {
@@ -1639,7 +1639,7 @@ func (state diskState) hasBoundPreparedRollback() bool {
 
 func (state diskState) hasPreparedRollbackBinding() bool {
 	return safeOperationID(state.PreparedRollbackOperationID) && validDigest(state.PreparedRollbackManifestDigest) &&
-		state.PreparedRollbackRef == semanticRef("rollback", state.PreparedRollbackOperationID, state.PreparedRollbackManifestDigest)
+		state.PreparedRollbackRef == SemanticReference("rollback", state.PreparedRollbackOperationID, state.PreparedRollbackManifestDigest)
 }
 
 func (state diskState) preparedRollbackMatches(operationID, manifestDigest, rollbackRef string) bool {

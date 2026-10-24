@@ -51,7 +51,7 @@ func TestRollbackPreparedRollbackPreservesLiveAuthorityAcrossFailureAndRollback(
 		state := fixture.load(t)
 		if state.ActiveSequence != fixture.applied.Sequence || state.ActiveDigest != fixture.applied.ManifestDigest ||
 			state.hasPreparedRollbackBinding() || !state.rollbackMatches("update-operation:rollback-applied-a", fixture.applied.ManifestDigest,
-			semanticRef("rollback", "update-operation:rollback-applied-a", fixture.applied.ManifestDigest)) ||
+			SemanticReference("rollback", "update-operation:rollback-applied-a", fixture.applied.ManifestDigest)) ||
 			state.RollbackSequence != fixture.predecessor.Sequence || state.RollbackDigest != fixture.predecessor.ManifestDigest {
 			t.Fatalf("failed B consumed A-to-P authority: %#v", state)
 		}
@@ -89,7 +89,7 @@ func TestRollbackPreparedRollbackPreservesLiveAuthorityAcrossFailureAndRollback(
 		advanced := fixture.load(t)
 		if advanced.MaxActivatedSequence != fixture.next.Sequence ||
 			!advanced.preparedRollbackMatches("update-operation:rollback-next-c", fixture.afterNext.ManifestDigest,
-				semanticRef("rollback", "update-operation:rollback-next-c", fixture.afterNext.ManifestDigest)) {
+				SemanticReference("rollback", "update-operation:rollback-next-c", fixture.afterNext.ManifestDigest)) {
 			t.Fatalf("N+1 did not advance from the preserved fence: %#v", advanced)
 		}
 	})
@@ -115,7 +115,7 @@ func TestRollbackSuccessfulVerificationPromotesOnlyItsPreparedAuthority(t *testi
 	t.Cleanup(func() { _ = os.Remove(identityPath) })
 
 	operationID := "update-operation:rollback-verified-b"
-	rollbackRef := semanticRef("rollback", operationID, identity.ManifestDigest)
+	rollbackRef := SemanticReference("rollback", operationID, identity.ManifestDigest)
 	host := NewHost()
 	host.ReleaseRoot, host.StatePath = releaseRoot, filepath.Join(t.TempDir(), "update-state.json")
 	state := diskState{ActiveRelease: releaseName, ActiveSequence: identity.Sequence, ActiveDigest: identity.ManifestDigest,
@@ -126,7 +126,7 @@ func TestRollbackSuccessfulVerificationPromotesOnlyItsPreparedAuthority(t *testi
 		t.Fatal(err)
 	}
 	payload, digest, err := broker.MarshalPayload(VerifyRequestV1{Release: identity,
-		PreparedRef: semanticRef("prepared", operationID, identity.ManifestDigest), RollbackRef: rollbackRef})
+		PreparedRef: SemanticReference("prepared", operationID, identity.ManifestDigest), RollbackRef: rollbackRef})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func newRollbackBrokerFixture(t *testing.T) *rollbackBrokerFixture {
 		t.Fatal(err)
 	}
 	appliedOperation := "update-operation:rollback-applied-a"
-	liveRef := semanticRef("rollback", appliedOperation, fixture.applied.ManifestDigest)
+	liveRef := SemanticReference("rollback", appliedOperation, fixture.applied.ManifestDigest)
 	state := diskState{ActiveRelease: releaseDirectoryName(fixture.applied), ActiveSequence: fixture.applied.Sequence, ActiveDigest: fixture.applied.ManifestDigest,
 		VerifiedSequence: fixture.applied.Sequence, VerifiedDigest: fixture.applied.ManifestDigest,
 		MaxActivatedSequence: fixture.applied.Sequence, MaxActivatedDigest: fixture.applied.ManifestDigest,
@@ -232,8 +232,8 @@ func (fixture *rollbackBrokerFixture) prepare(operationID string, identity Relea
 
 func (fixture *rollbackBrokerFixture) activate(operationID string, identity ReleaseIdentityV1) (any, error) {
 	payload, digest, err := broker.MarshalPayload(ActivateRequestV1{Release: identity,
-		PreparedRef: semanticRef("prepared", operationID, identity.ManifestDigest),
-		RollbackRef: semanticRef("rollback", operationID, identity.ManifestDigest), ExpectedMode: "native"})
+		PreparedRef: SemanticReference("prepared", operationID, identity.ManifestDigest),
+		RollbackRef: SemanticReference("rollback", operationID, identity.ManifestDigest), ExpectedMode: "native"})
 	if err != nil {
 		return nil, err
 	}
@@ -242,7 +242,7 @@ func (fixture *rollbackBrokerFixture) activate(operationID string, identity Rele
 
 func (fixture *rollbackBrokerFixture) rollback(operationID string, identity ReleaseIdentityV1) (any, error) {
 	payload, digest, err := broker.MarshalPayload(RollbackRequestV1{Release: identity,
-		RollbackRef: semanticRef("rollback", operationID, identity.ManifestDigest), ReasonCode: "rollback-test"})
+		RollbackRef: SemanticReference("rollback", operationID, identity.ManifestDigest), ReasonCode: "rollback-test"})
 	if err != nil {
 		return nil, err
 	}
@@ -261,10 +261,10 @@ func (fixture *rollbackBrokerFixture) load(t *testing.T) diskState {
 func assertRollbackPreparedAndLiveAuthority(t *testing.T, host *Host, operationID string, source, target, predecessor ReleaseIdentityV1) {
 	t.Helper()
 	state, err := host.loadState()
-	if err != nil || !state.preparedRollbackMatches(operationID, source.ManifestDigest, semanticRef("rollback", operationID, source.ManifestDigest)) ||
+	if err != nil || !state.preparedRollbackMatches(operationID, source.ManifestDigest, SemanticReference("rollback", operationID, source.ManifestDigest)) ||
 		state.PreparedRollbackSequence != target.Sequence || state.PreparedRollbackDigest != target.ManifestDigest ||
 		!state.rollbackMatches("update-operation:rollback-applied-a", target.ManifestDigest,
-			semanticRef("rollback", "update-operation:rollback-applied-a", target.ManifestDigest)) ||
+			SemanticReference("rollback", "update-operation:rollback-applied-a", target.ManifestDigest)) ||
 		state.RollbackSequence != predecessor.Sequence || state.RollbackDigest != predecessor.ManifestDigest {
 		t.Fatalf("prepared/live rollback authorities state=%#v err=%v", state, err)
 	}

@@ -27,3 +27,22 @@ func TestProviderMaintenanceModeBelongsToOneUpdateOperation(t *testing.T) {
 		t.Fatal("known provider maintenance fell back when its own checkpoint disappeared", err)
 	}
 }
+
+func TestProviderPreparedResultAcceptsOnlyRootCheckpointReferences(t *testing.T) {
+	operation := model.UpdateOperation{OperationID: "update-operation:root-reference-binding", ManifestDigest: lifecycleDigest("root-manifest")}
+	for _, validated := range []bool{false, true} {
+		result := contract.PrepareResultV1{ProviderRevision: contract.ProviderRevision, ManagementReady: true, RollbackAvailable: true,
+			PreparedRef: contract.SemanticReference("prepared", operation.OperationID, operation.ManifestDigest),
+			RollbackRef: contract.SemanticReference("rollback", operation.OperationID, operation.ManifestDigest), ConfigurationVerified: validated}
+		if !providerPreparedResult(operation, result, validated) {
+			t.Fatal("the actual Root checkpoint encoding was rejected by the Panel owner")
+		}
+		if providerPreparedResult(operation, result, !validated) {
+			t.Fatal("configuration validation state was not bound")
+		}
+		result.RollbackRef = contract.SemanticReference("rollback", operation.OperationID, lifecycleDigest("other-manifest"))
+		if providerPreparedResult(operation, result, validated) {
+			t.Fatal("another Root checkpoint was accepted")
+		}
+	}
+}

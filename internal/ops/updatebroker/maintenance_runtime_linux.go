@@ -179,7 +179,7 @@ func (runtime *nativeMaintenanceRuntime) rollback(ctx context.Context, state dis
 		return errMaintenanceRecovery
 	}
 	_, err = runtime.host.rollbackCheckpoint(ctx, proof.OperationID, RollbackRequestV1{Release: identity,
-		RollbackRef: semanticRef("rollback", proof.OperationID, proof.ManifestDigest), ReasonCode: reason}, broker.PeerIdentity{})
+		RollbackRef: SemanticReference("rollback", proof.OperationID, proof.ManifestDigest), ReasonCode: reason}, broker.PeerIdentity{})
 	if err != nil {
 		return errors.Join(errMaintenanceRecovery, err)
 	}

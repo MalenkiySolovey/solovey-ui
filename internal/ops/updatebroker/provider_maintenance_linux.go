@@ -69,7 +69,7 @@ func validateProviderMaintenanceState(state diskState) error {
 		proof.TargetRelease != providerReleaseDirectoryName(ReleaseIdentityV1{Sequence: proof.TargetSequence, ManifestDigest: proof.ManifestDigest, ArtifactSetDigest: proof.ArtifactSetDigest}) {
 		return failed
 	}
-	rollbackRef := semanticRef("rollback", proof.OperationID, proof.ManifestDigest)
+	rollbackRef := SemanticReference("rollback", proof.OperationID, proof.ManifestDigest)
 	if ValidateProviderMaintenanceObservation(*proof.observation()) != nil {
 		return failed
 	}
@@ -160,7 +160,7 @@ func (h *Host) stageProviderConfiguration(envelope broker.Request, request Stage
 	proof := state.ProviderMaintenance
 	if err != nil || proof.Phase != "CHECKPOINTED" || !proof.matches(envelope.OperationID, request.Release) ||
 		proof.Input != *request.Configuration || peer.PID <= 0 || peer.ExecutableDigest != proof.Input.PreviousExecutableDigest ||
-		!state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest)) {
+		!state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, SemanticReference("rollback", envelope.OperationID, request.Release.ManifestDigest)) {
 		return nil, broker.Failure(broker.CodeFence, "provider configuration checkpoint changed")
 	}
 	accepted, err := validateChunkAdmission(request.Offset, len(request.Chunk), proof.Input.ConfigurationBytes, request.Final)
@@ -193,7 +193,7 @@ func (h *Host) prepareProviderConfiguration(ctx context.Context, envelope broker
 	proof := state.ProviderMaintenance
 	if err != nil || !proof.matches(envelope.OperationID, request.Release) || proof.Input != *request.Maintenance ||
 		(proof.Phase != "CHECKPOINTED" && proof.Phase != "VALIDATED") ||
-		!state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest)) ||
+		!state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, SemanticReference("rollback", envelope.OperationID, request.Release.ManifestDigest)) ||
 		verifyPreviousProviderPeer(peer, proof.Input, request.Release.BinaryProfile) != nil {
 		return nil, broker.Failure(broker.CodeFence, "provider configuration checkpoint changed")
 	}
@@ -265,8 +265,8 @@ func (h *Host) prepareProviderConfiguration(ctx context.Context, envelope broker
 }
 
 func providerPrepareResult(operationID string, identity ReleaseIdentityV1, validated bool) PrepareResultV1 {
-	result := PrepareResultV1{ProviderRevision: ProviderRevision, PreparedRef: semanticRef("prepared", operationID, identity.ManifestDigest),
-		RollbackRef: semanticRef("rollback", operationID, identity.ManifestDigest), RollbackAvailable: true, ManagementReady: true,
+	result := PrepareResultV1{ProviderRevision: ProviderRevision, PreparedRef: SemanticReference("prepared", operationID, identity.ManifestDigest),
+		RollbackRef: SemanticReference("rollback", operationID, identity.ManifestDigest), RollbackAvailable: true, ManagementReady: true,
 		PreflightRevision: broker.Digest([]byte(releaseDirectoryName(identity) + ":" + identity.DeploymentRevision)), ConfigurationVerified: validated}
 	return result
 }
