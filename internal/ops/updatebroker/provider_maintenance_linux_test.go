@@ -255,6 +255,15 @@ func providerActualCopy(t *testing.T, binary, destination string) {
 }
 
 func TestProviderMaintenanceActualCandidateCheckpointCheckActivateRollback(t *testing.T) {
+	testProviderMaintenanceActualLifecycle(t, false)
+}
+
+func TestProviderMaintenanceActualInstallerCheckpointCheckActivateRollback(t *testing.T) {
+	testProviderMaintenanceActualLifecycle(t, true)
+}
+
+func testProviderMaintenanceActualLifecycle(t *testing.T, installer bool) {
+	t.Helper()
 	binary := os.Getenv("SOLOVEY_PROVIDER_TEST_BINARY")
 	if binary == "" {
 		t.Skip("actual candidate maintenance probe is supplied during provider qualification")
@@ -306,18 +315,33 @@ func TestProviderMaintenanceActualCandidateCheckpointCheckActivateRollback(t *te
 			publicationExecutable(t, filepath.Join(generation, "solovey-owner-manifest"), "maintenance fixture")
 		}
 	}
-	oldRoot := filepath.Join(host.ReleaseRoot, releaseDirectoryName(previous))
+	previousName := releaseDirectoryName(previous)
+	if installer {
+		previousName = "installer-" + updateDigest("actual-installer-generation")[:16]
+		if err := os.Rename(filepath.Join(host.ReleaseRoot, releaseDirectoryName(previous)), filepath.Join(host.ReleaseRoot, previousName)); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Remove(filepath.Join(host.ReleaseRoot, previousName, "release-identity.json")); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(host.ReleaseRoot, previousName, "BUILD_INFO.txt"), []byte("profile="+profile+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	oldRoot := filepath.Join(host.ReleaseRoot, previousName)
 	oldPanel := filepath.Join(oldRoot, "solovey-ui")
 	manifest := publicationManifest(t, oldPanel)
 	if err := os.WriteFile(host.Manifest, mustJSON(manifest), 0o640); err != nil {
 		t.Fatal(err)
 	}
-	if err := host.activateLink(releaseDirectoryName(previous)); err != nil {
+	if err := host.activateLink(previousName); err != nil {
 		t.Fatal(err)
 	}
 	state := diskState{ActiveRelease: releaseDirectoryName(previous), ActiveSequence: previous.Sequence, ActiveDigest: previous.ManifestDigest,
 		VerifiedSequence: previous.Sequence, VerifiedDigest: previous.ManifestDigest, MaxActivatedSequence: previous.Sequence, MaxActivatedDigest: previous.ManifestDigest}
-	if err := host.saveState(state); err != nil {
+	if installer {
+		state = diskState{}
+	} else if err := host.saveState(state); err != nil {
 		t.Fatal(err)
 	}
 	input := providerMaintenanceFixture(t)
@@ -375,6 +399,14 @@ func TestProviderMaintenanceActualCandidateCheckpointCheckActivateRollback(t *te
 	if err != nil || checkpoint.ConfigurationVerified || !checkpoint.RollbackAvailable || state.ProviderMaintenance.Input != input || state.ProviderMaintenance.Phase != "CHECKPOINTED" {
 		t.Fatal("hold was admitted without a durable complete checkpoint", err)
 	}
+	if installer && (state.ActiveRelease != previousName || state.ActiveSequence != 0 || state.ActiveDigest != "" ||
+		state.PreparedRollbackSequence != 0 || state.PreparedRollbackDigest != "") {
+		t.Fatal("installer checkpoint invented signed release provenance")
+	}
+	local := state.ActiveLocalCheckpoint
+	if installer && (local == (LocalGenerationCheckpointV1{}) || state.PreparedRollbackLocalCheckpoint != local || !host.localCheckpointMatches(previousName, local)) {
+		t.Fatal("installer predecessor has no durable content-bound checkpoint")
+	}
 	activate := ActivateRequestV1{Release: identity, PreparedRef: checkpoint.PreparedRef, RollbackRef: checkpoint.RollbackRef, ExpectedMode: "native",
 		ConfigurationDigest: input.ConfigurationDigest, ConfigurationRevision: input.ConfigurationRevision, MaintenanceHeld: true}
 	if _, err := host.activate(t.Context(), envelope(activate), peer); !brokerErrorCode(err, broker.CodeFence) {
@@ -418,6 +450,22 @@ func TestProviderMaintenanceActualCandidateCheckpointCheckActivateRollback(t *te
 	if _, err := host.activate(t.Context(), envelope(stale), peer); !brokerErrorCode(err, broker.CodeFence) {
 		t.Fatal("stale configuration activated a provider")
 	}
+	if installer {
+		metadata := filepath.Join(oldRoot, "BUILD_INFO.txt")
+		original, err := os.ReadFile(metadata)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(metadata, append(append([]byte(nil), original...), []byte("changed=true\n")...), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := host.activate(t.Context(), envelope(activate), peer); !brokerErrorCode(err, broker.CodeRevision) {
+			t.Fatal("changed installer contents retained rollback authority", err)
+		}
+		if err := os.WriteFile(metadata, original, 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := host.activate(t.Context(), envelope(activate), peer); err != nil {
 		t.Fatal("validated activation failed", err)
 	}
@@ -434,9 +482,17 @@ func TestProviderMaintenanceActualCandidateCheckpointCheckActivateRollback(t *te
 		t.Fatal("provider rollback failed", err)
 	}
 	state, err = host.loadState()
-	if err != nil || state.ActiveRelease != releaseDirectoryName(previous) || state.ProviderMaintenance.Phase != "ROLLED_BACK" ||
+	if err != nil || state.ActiveRelease != previousName || state.ProviderMaintenance.Phase != "ROLLED_BACK" ||
 		state.ProviderMaintenance.Input != input || !state.hasBoundPreparedRollback() || state.MaxActivatedSequence != identity.Sequence || state.MaxActivatedDigest != identity.ManifestDigest {
 		t.Fatal("rollback lost the predecessor or reset global high-water authority", err)
+	}
+	if installer {
+		if state.ActiveSequence != 0 || state.ActiveDigest != "" || state.ActiveLocalCheckpoint != local {
+			t.Fatal("installer rollback invented signed release authority")
+		}
+		if _, err := os.Lstat(filepath.Join(oldRoot, "release-identity.json")); !errors.Is(err, os.ErrNotExist) {
+			t.Fatal("installer rollback wrote synthetic release metadata", err)
+		}
 	}
 	if _, err := os.Stat(filepath.Join(host.ReleaseRoot, releaseDirectoryName(identity), "release-identity.json")); err != nil {
 		t.Fatal("rollback pruned the target needed to reconcile its checkpoint", err)

@@ -42,27 +42,30 @@ const (
 )
 
 type diskState struct {
-	ProviderMaintenance            providerMaintenanceState `json:"providerMaintenance,omitzero"`
-	ActiveSequence                 uint64                   `json:"activeSequence"`
-	ActiveDigest                   string                   `json:"activeDigest"`
-	VerifiedSequence               uint64                   `json:"verifiedSequence"`
-	VerifiedDigest                 string                   `json:"verifiedDigest"`
-	MaxActivatedSequence           uint64                   `json:"maxActivatedSequence,omitempty"`
-	MaxActivatedDigest             string                   `json:"maxActivatedDigest,omitempty"`
-	ActiveRelease                  string                   `json:"activeRelease"`
-	RollbackRelease                string                   `json:"rollbackRelease,omitempty"`
-	RollbackSequence               uint64                   `json:"rollbackSequence,omitempty"`
-	RollbackDigest                 string                   `json:"rollbackDigest,omitempty"`
-	RollbackOperationID            string                   `json:"rollbackOperationId,omitempty"`
-	RollbackManifestDigest         string                   `json:"rollbackManifestDigest,omitempty"`
-	RollbackRef                    string                   `json:"rollbackRef,omitempty"`
-	PreparedRollbackRelease        string                   `json:"preparedRollbackRelease,omitempty"`
-	PreparedRollbackSequence       uint64                   `json:"preparedRollbackSequence,omitempty"`
-	PreparedRollbackDigest         string                   `json:"preparedRollbackDigest,omitempty"`
-	PreparedRollbackOperationID    string                   `json:"preparedRollbackOperationId,omitempty"`
-	PreparedRollbackManifestDigest string                   `json:"preparedRollbackManifestDigest,omitempty"`
-	PreparedRollbackRef            string                   `json:"preparedRollbackRef,omitempty"`
-	UpdatedAt                      int64                    `json:"updatedAt"`
+	ProviderMaintenance             providerMaintenanceState    `json:"providerMaintenance,omitzero"`
+	ActiveSequence                  uint64                      `json:"activeSequence"`
+	ActiveDigest                    string                      `json:"activeDigest"`
+	VerifiedSequence                uint64                      `json:"verifiedSequence"`
+	VerifiedDigest                  string                      `json:"verifiedDigest"`
+	MaxActivatedSequence            uint64                      `json:"maxActivatedSequence,omitempty"`
+	MaxActivatedDigest              string                      `json:"maxActivatedDigest,omitempty"`
+	ActiveRelease                   string                      `json:"activeRelease"`
+	ActiveLocalCheckpoint           LocalGenerationCheckpointV1 `json:"activeLocalCheckpoint,omitzero"`
+	RollbackRelease                 string                      `json:"rollbackRelease,omitempty"`
+	RollbackSequence                uint64                      `json:"rollbackSequence,omitempty"`
+	RollbackDigest                  string                      `json:"rollbackDigest,omitempty"`
+	RollbackLocalCheckpoint         LocalGenerationCheckpointV1 `json:"rollbackLocalCheckpoint,omitzero"`
+	RollbackOperationID             string                      `json:"rollbackOperationId,omitempty"`
+	RollbackManifestDigest          string                      `json:"rollbackManifestDigest,omitempty"`
+	RollbackRef                     string                      `json:"rollbackRef,omitempty"`
+	PreparedRollbackRelease         string                      `json:"preparedRollbackRelease,omitempty"`
+	PreparedRollbackSequence        uint64                      `json:"preparedRollbackSequence,omitempty"`
+	PreparedRollbackDigest          string                      `json:"preparedRollbackDigest,omitempty"`
+	PreparedRollbackLocalCheckpoint LocalGenerationCheckpointV1 `json:"preparedRollbackLocalCheckpoint,omitzero"`
+	PreparedRollbackOperationID     string                      `json:"preparedRollbackOperationId,omitempty"`
+	PreparedRollbackManifestDigest  string                      `json:"preparedRollbackManifestDigest,omitempty"`
+	PreparedRollbackRef             string                      `json:"preparedRollbackRef,omitempty"`
+	UpdatedAt                       int64                       `json:"updatedAt"`
 }
 
 type Host struct {
@@ -139,10 +142,12 @@ func (h *Host) observe(_ context.Context, _ broker.Request, peer broker.PeerIden
 		RollbackAvailable: state.hasBoundRollback(), RollbackOperationID: state.RollbackOperationID,
 		RollbackManifestDigest: state.RollbackManifestDigest, RollbackRef: state.RollbackRef,
 		RollbackTargetSequence: state.RollbackSequence, RollbackTargetDigest: state.RollbackDigest,
-		PreparedRollbackAvailable: state.hasBoundPreparedRollback(), PreparedRollbackOperationID: state.PreparedRollbackOperationID,
+		RollbackTargetLocalCheckpoint: state.RollbackLocalCheckpoint,
+		PreparedRollbackAvailable:     state.hasBoundPreparedRollback(), PreparedRollbackOperationID: state.PreparedRollbackOperationID,
 		PreparedRollbackManifestDigest: state.PreparedRollbackManifestDigest, PreparedRollbackRef: state.PreparedRollbackRef,
 		PreparedRollbackTargetSequence: state.PreparedRollbackSequence, PreparedRollbackTargetDigest: state.PreparedRollbackDigest,
-		ManagementReady: managementReady, ObservedAt: h.Now().Unix()}
+		PreparedRollbackLocalCheckpoint: state.PreparedRollbackLocalCheckpoint,
+		ManagementReady:                 managementReady, ObservedAt: h.Now().Unix()}
 	result.Revision = broker.Digest(mustJSON(result))
 	return result, nil
 }
@@ -282,14 +287,24 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 	if stateErr != nil {
 		return nil, broker.Failure(broker.CodeExecution, "update state is unavailable")
 	}
-	if state.ActiveRelease == "" {
+	if state.ActiveRelease == "" || state.ActiveSequence == 0 && state.ActiveDigest == "" && state.ActiveLocalCheckpoint == (LocalGenerationCheckpointV1{}) {
 		if current, linkErr := os.Readlink(filepath.Join(h.ReleaseRoot, "current")); linkErr == nil {
 			candidate := filepath.Base(current)
 			identity, identityErr := loadReleaseIdentity(filepath.Join(h.ReleaseRoot, candidate))
-			if candidate == current && identityErr == nil && h.verifyReleaseExecutables(filepath.Join(h.ReleaseRoot, candidate)) == nil {
+			if candidate != current || state.ActiveRelease != "" && state.ActiveRelease != candidate {
+				return nil, broker.Failure(broker.CodeRevision, "installed generation link changed")
+			}
+			if identityErr == nil && h.verifyReleaseExecutables(filepath.Join(h.ReleaseRoot, candidate)) == nil {
 				state.ActiveRelease, state.ActiveSequence, state.ActiveDigest = candidate, identity.Sequence, identity.ManifestDigest
+			} else {
+				if checkpoint, err := h.installerCheckpoint(candidate); err == nil {
+					state.ActiveRelease, state.ActiveLocalCheckpoint = candidate, checkpoint
+				}
 			}
 		}
+	}
+	if !h.localCheckpointMatches(state.ActiveRelease, state.ActiveLocalCheckpoint) {
+		return nil, broker.Failure(broker.CodeRevision, "installed rollback generation changed")
 	}
 	if withProvider {
 		if !pathWithin(filepath.Join(h.ReleaseRoot, state.ActiveRelease), peer.Executable) ||
@@ -335,6 +350,7 @@ func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker
 	}
 	if !preparedReplay {
 		state.PreparedRollbackRelease, state.PreparedRollbackSequence, state.PreparedRollbackDigest = state.ActiveRelease, state.ActiveSequence, state.ActiveDigest
+		state.PreparedRollbackLocalCheckpoint = state.ActiveLocalCheckpoint
 		state.PreparedRollbackOperationID, state.PreparedRollbackManifestDigest, state.PreparedRollbackRef = envelope.OperationID, request.Release.ManifestDigest, rollbackRef
 		if withProvider {
 			state.ProviderMaintenance = providerMaintenanceState{OperationID: envelope.OperationID, ManifestDigest: request.Release.ManifestDigest,
@@ -402,6 +418,9 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 		return nil, broker.Failure(broker.CodeRevision, "activated release sequence is not monotonic")
 	}
 	previousRelease := state.ActiveRelease
+	if !h.localCheckpointMatches(state.PreparedRollbackRelease, state.PreparedRollbackLocalCheckpoint) {
+		return nil, broker.Failure(broker.CodeRevision, "prepared rollback generation changed")
+	}
 	if err := h.activateLink(releaseName); err != nil {
 		return nil, broker.Failure(broker.CodeExecution, "release activation could not be committed")
 	}
@@ -414,6 +433,7 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 		return nil, broker.Failure(broker.CodeExecution, "application owner manifest could not be rotated")
 	}
 	state.ActiveRelease, state.ActiveSequence, state.ActiveDigest = releaseName, request.Release.Sequence, request.Release.ManifestDigest
+	state.ActiveLocalCheckpoint = LocalGenerationCheckpointV1{}
 	if stored.CoreProvider != (release.CoreProviderSource{}) {
 		state.ProviderMaintenance.Phase = "ACTIVATED"
 	}
@@ -520,11 +540,13 @@ func (h *Host) rollbackCheckpoint(ctx context.Context, operationID string, reque
 	}
 	preparedAuthority := state.preparedRollbackMatches(operationID, request.Release.ManifestDigest, request.RollbackRef)
 	rollbackRelease, rollbackSequence, rollbackDigest := state.RollbackRelease, state.RollbackSequence, state.RollbackDigest
+	rollbackLocal := state.RollbackLocalCheckpoint
 	if preparedAuthority {
 		if !state.hasBoundPreparedRollback() {
 			return nil, broker.Failure(broker.CodeExecution, "update rollback checkpoint is unavailable")
 		}
 		rollbackRelease, rollbackSequence, rollbackDigest = state.PreparedRollbackRelease, state.PreparedRollbackSequence, state.PreparedRollbackDigest
+		rollbackLocal = state.PreparedRollbackLocalCheckpoint
 	} else if !state.rollbackMatches(operationID, request.Release.ManifestDigest, request.RollbackRef) {
 		return nil, broker.Failure(broker.CodeFence, "update rollback checkpoint binding changed")
 	}
@@ -541,6 +563,9 @@ func (h *Host) rollbackCheckpoint(ctx context.Context, operationID string, reque
 			ActiveDigest: state.ActiveDigest, ManagementReady: peer.PID > 0}, nil
 	}
 	rollbackRoot := filepath.Join(h.ReleaseRoot, rollbackRelease)
+	if !h.localCheckpointMatches(rollbackRelease, rollbackLocal) {
+		return nil, broker.Failure(broker.CodeRevision, "rollback generation changed")
+	}
 	if withProvider && h.maintenance != nil && h.maintenance.sharedBroker(rollbackRoot) != nil {
 		return nil, broker.Failure(broker.CodeRecoveryRequired, "provider rollback shared broker is unavailable or changed")
 	}
@@ -552,6 +577,7 @@ func (h *Host) rollbackCheckpoint(ctx context.Context, operationID string, reque
 		return nil, broker.Failure(broker.CodeExecution, "update rollback could not be committed")
 	}
 	state.ActiveRelease, state.ActiveSequence, state.ActiveDigest = rollbackRelease, rollbackSequence, rollbackDigest
+	state.ActiveLocalCheckpoint = rollbackLocal
 	if withProvider {
 		state.ProviderMaintenance.Phase = "ROLLED_BACK"
 	} else if preparedAuthority {
@@ -1622,7 +1648,7 @@ func (state *diskState) raiseHighWater(sequence uint64, digest string) {
 }
 
 func (state diskState) hasBoundRollback() bool {
-	return state.RollbackRelease != "" && state.RollbackSequence > 0 && validDigest(state.RollbackDigest) &&
+	return state.RollbackRelease != "" && localCheckpointTarget(state.RollbackRelease, state.RollbackSequence, state.RollbackDigest, state.RollbackLocalCheckpoint) &&
 		safeOperationID(state.RollbackOperationID) && validDigest(state.RollbackManifestDigest) &&
 		state.RollbackRef == SemanticReference("rollback", state.RollbackOperationID, state.RollbackManifestDigest)
 }
@@ -1634,7 +1660,7 @@ func (state diskState) rollbackMatches(operationID, manifestDigest, rollbackRef 
 
 func (state diskState) hasBoundPreparedRollback() bool {
 	return state.hasPreparedRollbackBinding() && state.PreparedRollbackRelease != "" &&
-		state.PreparedRollbackSequence > 0 && validDigest(state.PreparedRollbackDigest)
+		localCheckpointTarget(state.PreparedRollbackRelease, state.PreparedRollbackSequence, state.PreparedRollbackDigest, state.PreparedRollbackLocalCheckpoint)
 }
 
 func (state diskState) hasPreparedRollbackBinding() bool {
@@ -1648,11 +1674,13 @@ func (state diskState) preparedRollbackMatches(operationID, manifestDigest, roll
 }
 
 func (state *diskState) clearRollback() {
+	state.RollbackLocalCheckpoint = LocalGenerationCheckpointV1{}
 	state.RollbackRelease, state.RollbackSequence, state.RollbackDigest = "", 0, ""
 	state.RollbackOperationID, state.RollbackManifestDigest, state.RollbackRef = "", "", ""
 }
 
 func (state *diskState) clearPreparedRollback() {
+	state.PreparedRollbackLocalCheckpoint = LocalGenerationCheckpointV1{}
 	state.PreparedRollbackRelease, state.PreparedRollbackSequence, state.PreparedRollbackDigest = "", 0, ""
 	state.PreparedRollbackOperationID, state.PreparedRollbackManifestDigest, state.PreparedRollbackRef = "", "", ""
 }
@@ -1660,6 +1688,7 @@ func (state *diskState) clearPreparedRollback() {
 func (state *diskState) promotePreparedRollback() {
 	if state.hasBoundPreparedRollback() {
 		state.RollbackRelease, state.RollbackSequence, state.RollbackDigest = state.PreparedRollbackRelease, state.PreparedRollbackSequence, state.PreparedRollbackDigest
+		state.RollbackLocalCheckpoint = state.PreparedRollbackLocalCheckpoint
 		state.RollbackOperationID, state.RollbackManifestDigest, state.RollbackRef = state.PreparedRollbackOperationID, state.PreparedRollbackManifestDigest, state.PreparedRollbackRef
 	}
 	state.clearPreparedRollback()
@@ -1672,9 +1701,23 @@ func validateDiskState(state diskState) error {
 	validSequence := func(sequence uint64, digest string) bool {
 		return sequence == 0 && digest == "" || sequence > 0 && validDigest(digest)
 	}
-	legacyRollback := state.RollbackRelease != "" && state.RollbackOperationID == "" && state.RollbackManifestDigest == "" && state.RollbackRef == ""
+	legacyRollback := state.RollbackRelease != "" && state.RollbackOperationID == "" && state.RollbackManifestDigest == "" && state.RollbackRef == "" && state.RollbackLocalCheckpoint == (LocalGenerationCheckpointV1{})
 	preparedPresent := state.PreparedRollbackRelease != "" || state.PreparedRollbackSequence != 0 || state.PreparedRollbackDigest != "" ||
-		state.PreparedRollbackOperationID != "" || state.PreparedRollbackManifestDigest != "" || state.PreparedRollbackRef != ""
+		state.PreparedRollbackOperationID != "" || state.PreparedRollbackManifestDigest != "" || state.PreparedRollbackRef != "" || state.PreparedRollbackLocalCheckpoint != (LocalGenerationCheckpointV1{})
+	for _, target := range []struct {
+		name     string
+		sequence uint64
+		digest   string
+		local    LocalGenerationCheckpointV1
+	}{
+		{state.ActiveRelease, state.ActiveSequence, state.ActiveDigest, state.ActiveLocalCheckpoint},
+		{state.RollbackRelease, state.RollbackSequence, state.RollbackDigest, state.RollbackLocalCheckpoint},
+		{state.PreparedRollbackRelease, state.PreparedRollbackSequence, state.PreparedRollbackDigest, state.PreparedRollbackLocalCheckpoint},
+	} {
+		if target.local != (LocalGenerationCheckpointV1{}) && !localCheckpointTarget(target.name, target.sequence, target.digest, target.local) {
+			return errors.New("invalid local update checkpoint")
+		}
+	}
 	if !validRelease(state.ActiveRelease) || !validRelease(state.RollbackRelease) || !validRelease(state.PreparedRollbackRelease) ||
 		!validSequence(state.ActiveSequence, state.ActiveDigest) || !validSequence(state.VerifiedSequence, state.VerifiedDigest) ||
 		!validSequence(state.RollbackSequence, state.RollbackDigest) || !validSequence(state.PreparedRollbackSequence, state.PreparedRollbackDigest) ||

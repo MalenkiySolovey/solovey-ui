@@ -262,7 +262,7 @@ func liveRollbackOperation(result contract.ObservationV1) (string, error) {
 		return "", nil
 	}
 	if !safeID(result.RollbackOperationID, 96) || !strings.HasPrefix(result.RollbackOperationID, "update-operation:") ||
-		!validDigest(result.RollbackManifestDigest) || !validDigest(result.RollbackTargetDigest) || result.RollbackTargetSequence == 0 ||
+		!validDigest(result.RollbackManifestDigest) || !contract.ValidRollbackTarget(result.RollbackTargetSequence, result.RollbackTargetDigest, result.RollbackTargetLocalCheckpoint) ||
 		result.RollbackRef != contract.SemanticReference("rollback", result.RollbackOperationID, result.RollbackManifestDigest) {
 		return "", ErrRecoveryRequired
 	}
