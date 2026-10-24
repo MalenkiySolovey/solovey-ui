@@ -117,7 +117,7 @@ func TestPublicationExtractedMemberFaultMatrixRequiresWriteSyncAndClose(t *testi
 	requireRootUpdateBrokerTest(t)
 	data := []byte("release-member")
 	fault := errors.New("publication member fault")
-	for _, faultAt := range []string{"create", "write", "sync", "close"} {
+	for _, faultAt := range []string{"create", "write", "chmod", "sync", "close"} {
 		t.Run(faultAt, func(t *testing.T) {
 			target := filepath.Join(t.TempDir(), "solovey-ui")
 			ops := releaseMemberOps{openFile: func(path string, flags int, mode os.FileMode) (releaseMemberFile, error) {
@@ -358,6 +358,13 @@ type publicationFaultAtomicFile struct {
 	*os.File
 	faultAt string
 	fault   error
+}
+
+func (f *publicationFaultAtomicFile) Chmod(mode os.FileMode) error {
+	if f.faultAt == "chmod" {
+		return f.fault
+	}
+	return f.File.Chmod(mode)
 }
 
 func (f *publicationFaultAtomicFile) Write(data []byte) (int, error) {

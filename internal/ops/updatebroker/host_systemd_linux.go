@@ -1074,7 +1074,7 @@ type updateGenerationOps struct {
 var productionUpdateGenerationOps = updateGenerationOps{
 	ensureRoot:    ensureUpdateDirectory,
 	removeAll:     os.RemoveAll,
-	mkdir:         os.Mkdir,
+	mkdir:         createUpdateDirectory,
 	readDir:       os.ReadDir,
 	extract:       extractRelease,
 	verifyProfile: verifyPreparedReleaseExecutables,
@@ -1189,7 +1189,7 @@ func extractRelease(archive, destination string) ([]extractedReleaseMember, erro
 		if !pathWithin(destination, target) {
 			return nil, errors.New("release archive path escaped")
 		}
-		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		if err := ensureReleaseParentDirectory(destination, filepath.Dir(target)); err != nil {
 			return nil, err
 		}
 		mode := os.FileMode(0o644)
@@ -1206,6 +1206,7 @@ func extractRelease(archive, destination string) ([]extractedReleaseMember, erro
 
 type releaseMemberFile interface {
 	io.Writer
+	Chmod(os.FileMode) error
 	Sync() error
 	Close() error
 }
@@ -1236,11 +1237,12 @@ func writeExtractedReleaseMember(ops releaseMemberOps, target, relative string, 
 	}()
 	hash := sha256.New()
 	written, copyErr := io.Copy(io.MultiWriter(output, hash), io.LimitReader(source, size+1))
+	modeErr := output.Chmod(mode.Perm())
 	syncErr := output.Sync()
 	closeErr := output.Close()
 	closed = true
-	if copyErr != nil || syncErr != nil || closeErr != nil || written != size {
-		return extractedReleaseMember{}, errors.Join(copyErr, syncErr, closeErr, errors.New("release member size mismatch"))
+	if copyErr != nil || modeErr != nil || syncErr != nil || closeErr != nil || written != size {
+		return extractedReleaseMember{}, errors.Join(copyErr, modeErr, syncErr, closeErr, errors.New("release member size mismatch"))
 	}
 	return extractedReleaseMember{Relative: filepath.ToSlash(relative), Size: written, Digest: hex.EncodeToString(hash.Sum(nil)), Mode: mode.Perm()}, nil
 }
@@ -1249,7 +1251,7 @@ func ensureUpdateDirectory(path string, mode os.FileMode) error {
 	path = filepath.Clean(path)
 	created := false
 	if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
-		if err := os.Mkdir(path, mode); err != nil {
+		if err := createUpdateDirectory(path, mode); err != nil {
 			return err
 		}
 		created = true
