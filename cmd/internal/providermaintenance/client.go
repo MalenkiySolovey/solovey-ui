@@ -76,7 +76,7 @@ func Run(args []string, input io.Reader, output, diagnostics io.Writer) int {
 		fmt.Fprintln(diagnostics, err)
 		return 2
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Minute)
 	defer cancel()
 	var reviewed plan
 	if args[0] == "migrate" {
@@ -161,7 +161,7 @@ func newClient(address string, input io.Reader, diagnostics io.Writer) (*client,
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.Proxy = nil
 	return &client{base: base, input: json.NewDecoder(io.LimitReader(input, 64<<10)), log: diagnostics,
-		http: &http.Client{Jar: jar, Transport: transport, Timeout: 3 * time.Minute,
+		http: &http.Client{Jar: jar, Transport: transport, Timeout: 6 * time.Minute,
 			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}, nil
 }
 

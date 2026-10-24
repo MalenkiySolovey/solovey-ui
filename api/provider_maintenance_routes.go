@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	"github.com/MalenkiySolovey/solovey-ui/internal/release"
@@ -21,6 +22,14 @@ type providerPreviewRequest struct {
 type providerMaintainRequest struct {
 	updateservice.ProviderTransitionRequest
 	Confirmation string `json:"confirmation"`
+}
+
+const providerMaintenanceRequestTimeout = 5 * time.Minute
+
+func bindProviderMaintenanceResponseDeadline(c *gin.Context, ctx context.Context) {
+	if deadline, ok := ctx.Deadline(); ok {
+		_ = http.NewResponseController(c.Writer).SetWriteDeadline(deadline.Add(10 * time.Second))
+	}
 }
 
 // These routes are the authenticated transport used by the administrative CLI.
@@ -66,10 +75,16 @@ func (h *updateHTTP) maintainProvider(c *gin.Context) {
 	}
 	// Update reconstructs the invocation from its typed request and invokes
 	// this policy before journal writes, downloads, checkpointing or Core hold.
+	ctx, cancel := context.WithTimeout(c.Request.Context(), providerMaintenanceRequestTimeout)
+	defer cancel()
+	c.Request = c.Request.WithContext(ctx)
 	policy := h.api.actionPolicy(h.api.requireStepUpAction)(c)
 	request.Authorize = func(ctx context.Context, invocation actions.Invocation) (actions.Decision, error) {
 		decision, err := policy(ctx, invocation)
 		if err == nil && decision.Allowed {
+			// Artifact staging can exceed the ordinary HTTP write timeout.
+			// Only an authorized action receives this bounded response window.
+			bindProviderMaintenanceResponseDeadline(c, ctx)
 			// Record acceptance before the owner retains SQLite maintenance.
 			// The original HTTP context cannot write through that later hold.
 			h.api.recordAuditSynchronous(c, securityContext.Username, "core_provider_maintenance_requested", "update", service.AuditSeverityWarn,
@@ -78,7 +93,7 @@ func (h *updateHTTP) maintainProvider(c *gin.Context) {
 		}
 		return decision, err
 	}
-	operation, err := h.manager.ApplyProviderTransition(c.Request.Context(), request.ProviderTransitionRequest)
+	operation, err := h.manager.ApplyProviderTransition(ctx, request.ProviderTransitionRequest)
 	if c.IsAborted() {
 		return
 	}

@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -23,6 +24,16 @@ func providerMaintenanceRequestFixture() providerMaintainRequest {
 		ExpectedConfigurationRevision: strings.Repeat("c", 64), ExpectedProviderRevision: strings.Repeat("d", 64),
 		IdempotencyKey: "provider-maintenance-api", Acknowledged: true}
 	return providerMaintainRequest{ProviderTransitionRequest: request, Confirmation: updateservice.ProviderTransitionConfirmation(request)}
+}
+
+type providerMaintenanceDeadlineWriter struct {
+	gin.ResponseWriter
+	writes *[]time.Time
+}
+
+func (w providerMaintenanceDeadlineWriter) SetWriteDeadline(deadline time.Time) error {
+	*w.writes = append(*w.writes, deadline)
+	return nil
 }
 
 func TestProviderMaintenanceTransportRequiresSessionAndOneUseStepUp(t *testing.T) {
@@ -73,6 +84,11 @@ func TestProviderMaintenanceRealOwnerConsumesOnlyMatchingSessionCSRFAndOneUseGra
 		t.Fatal(err)
 	}
 	router := gin.New()
+	var deadlines []time.Time
+	router.Use(func(c *gin.Context) {
+		c.Writer = providerMaintenanceDeadlineWriter{ResponseWriter: c.Writer, writes: &deadlines}
+		c.Next()
+	})
 	store := newAPITestSessionStore(t)
 	store.Options(sessions.Options{Path: "/", HttpOnly: true})
 	router.Use(sessions.Sessions("s-ui", store))
@@ -101,14 +117,23 @@ func TestProviderMaintenanceRealOwnerConsumesOnlyMatchingSessionCSRFAndOneUseGra
 	if got := post(changed, csrf, grant); got.Code != http.StatusForbidden {
 		t.Fatal("provider action borrowed a different plan's grant")
 	}
+	if len(deadlines) != 0 {
+		t.Fatal("unapproved provider action gained an extended transport deadline")
+	}
 	// This manager deliberately has no ConfigService composition. Exact
 	// authorization is consumed before that fail-closed owner admission;
 	// no download, maintenance hold or real activation is performed here.
 	if got := post(actual, csrf, grant); got.Code != http.StatusOK || !strings.Contains(got.Body.String(), updateservice.ReasonCode(updateservice.ErrCoreProviderUnverified)) {
 		t.Fatal("exact provider action did not reach the actual Update owner", got.Code, got.Body.String())
 	}
+	if len(deadlines) != 1 || time.Until(deadlines[0]) <= 4*time.Minute || time.Until(deadlines[0]) > 6*time.Minute {
+		t.Fatal("approved provider action lost its bounded response deadline", deadlines)
+	}
 	if got := post(actual, csrf, grant); got.Code != http.StatusForbidden {
 		t.Fatal("provider action replayed a consumed grant")
+	}
+	if len(deadlines) != 1 {
+		t.Fatal("replayed provider action gained an extended transport deadline")
 	}
 }
 
