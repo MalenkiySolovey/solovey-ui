@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/MalenkiySolovey/solovey-ui/componenthost/actions"
 	configidentity "github.com/MalenkiySolovey/solovey-ui/config/identity"
 	"github.com/MalenkiySolovey/solovey-ui/core/registry/facts"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -140,7 +141,62 @@ func newProviderApplyFixture(t *testing.T) (lifecycleFixture, *applyProviderFixt
 	}
 	return fixture, provider, ProviderTransitionRequest{Channel: release.ChannelMain, TargetProvider: "shtorm-extended", ExpectedSequence: verified.Manifest.Sequence,
 		ExpectedManifestDigest: verified.Digest, ExpectedArtifactSetDigest: release.ArtifactSetDigest(selected), ExpectedConfigurationRevision: owner.ConfigurationRevision,
-		ExpectedProviderRevision: fixture.manager.coreProvider().Revision, IdempotencyKey: "provider-maintenance-apply", Acknowledged: true}
+		ExpectedProviderRevision: fixture.manager.coreProvider().Revision, IdempotencyKey: "provider-maintenance-apply", Acknowledged: true,
+		Authorize: func(_ context.Context, invocation actions.Invocation) (actions.Decision, error) {
+			return actions.Decision{Allowed: true, Actor: "test-admin", Permission: actions.PermissionProviderMaintenance, Invocation: invocation}, nil
+		}}
+}
+
+func TestProviderTransitionOwnerRequiresExactActionBeforeMutationAdmission(t *testing.T) {
+	fixture, provider, request := newProviderApplyFixture(t)
+	bound := ProviderTransitionAction(request)
+	if bound.Validate() != nil || bound.Reference.Owner != "update" || bound.Reference.ResourceID != "panel" {
+		t.Fatal("provider maintenance did not reuse the Update owner correlation")
+	}
+	for _, authorize := range []actions.Authorizer{nil, func(context.Context, actions.Invocation) (actions.Decision, error) {
+		return actions.Decision{Allowed: true, Actor: "test-admin", Permission: actions.PermissionBackupRestore, Invocation: bound}, nil
+	}, func(context.Context, actions.Invocation) (actions.Decision, error) {
+		return actions.Decision{Allowed: true, Actor: "test-admin", Permission: actions.PermissionProviderMaintenance, Invocation: bound}, nil
+	}} {
+		request.Authorize = authorize
+		request.ExpectedConfigurationRevision = semanticBytesDigest([]byte("changed-after-authorization"))
+		if _, err := fixture.manager.ApplyProviderTransition(t.Context(), request); !errors.Is(err, actions.ErrDenied) {
+			t.Fatal("missing, wrong-permission or stale action reached owner mutation admission", err)
+		}
+	}
+	if provider.owner.admission.Active() {
+		t.Fatal("denied semantic action held Core/database maintenance")
+	}
+	var count int64
+	if err := fixture.manager.repo.DB().Model(&model.UpdateOperation{}).Count(&count).Error; err != nil || count != 0 {
+		t.Fatal("denied semantic action wrote an Update operation", count, err)
+	}
+}
+
+func TestProviderTransitionActionBindsEveryMaintenanceField(t *testing.T) {
+	_, _, request := newProviderApplyFixture(t)
+	bound := ProviderTransitionAction(request)
+	for name, mutate := range map[string]func(*ProviderTransitionRequest){
+		"channel":   func(r *ProviderTransitionRequest) { r.Channel = release.ChannelBeta },
+		"provider":  func(r *ProviderTransitionRequest) { r.TargetProvider = "sing-box" },
+		"sequence":  func(r *ProviderTransitionRequest) { r.ExpectedSequence++ },
+		"manifest":  func(r *ProviderTransitionRequest) { r.ExpectedManifestDigest = semanticBytesDigest([]byte("other")) },
+		"artifacts": func(r *ProviderTransitionRequest) { r.ExpectedArtifactSetDigest = semanticBytesDigest([]byte("other")) },
+		"configuration": func(r *ProviderTransitionRequest) {
+			r.ExpectedConfigurationRevision = semanticBytesDigest([]byte("other"))
+		},
+		"source":       func(r *ProviderTransitionRequest) { r.ExpectedProviderRevision = semanticBytesDigest([]byte("other")) },
+		"idempotency":  func(r *ProviderTransitionRequest) { r.IdempotencyKey += "-other" },
+		"acknowledged": func(r *ProviderTransitionRequest) { r.Acknowledged = false },
+	} {
+		t.Run(name, func(t *testing.T) {
+			changed := request
+			mutate(&changed)
+			if ProviderTransitionAction(changed) == bound || ProviderTransitionConfirmation(changed) == ProviderTransitionConfirmation(request) {
+				t.Fatal("changed maintenance input borrowed another plan's authority")
+			}
+		})
+	}
 }
 
 func TestProviderTransitionApplyKeepsAdmissionAcrossRestartAndUsesExistingOperation(t *testing.T) {
@@ -149,6 +205,9 @@ func TestProviderTransitionApplyKeepsAdmissionAcrossRestartAndUsesExistingOperat
 	pending, err := fixture.manager.ApplyProviderTransition(t.Context(), request)
 	if err != nil || State(pending.State) != StateVerifyingActive || !provider.owner.admission.Active() || provider.owner.admission.ends != 0 {
 		t.Fatal("pending restart released the maintenance admission", pending.State, err)
+	}
+	if ProviderTransitionAction(request).Reference != ProjectChange(pending).Reference {
+		t.Fatal("semantic action and Update created different operation correlations")
 	}
 	if len(provider.owner.input) == 0 || string(provider.owner.input) != string(make([]byte, len(provider.owner.input))) {
 		t.Fatal("raw configuration escaped the preflight lifetime")

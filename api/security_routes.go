@@ -956,7 +956,7 @@ func validStepUpOperation(value string) bool {
 	case "admin.credential", "admin.create", "admin.delete", "token.create", "token.revoke", "token.change",
 		"backup.restore", "data.drop", "drop_data", "sessions.revoke_others", "sessions.adopt_bounded", "mfa.enroll",
 		"mfa.recovery.rotate", "mfa.disable", "ssh.candidate.apply", "ssh.candidate.confirm", "ssh.candidate.rollback",
-		"deployment.migrate", "deployment.confirm", "deployment.rollback", "update.prepare", "update.activate", "update.rollback", "component.remove":
+		"deployment.migrate", "deployment.confirm", "deployment.rollback", "update.prepare", "update.activate", "update.rollback", "component.remove", "update.provider-maintenance":
 		return true
 	default:
 		return false

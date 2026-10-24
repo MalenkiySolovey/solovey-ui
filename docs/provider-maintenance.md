@@ -72,6 +72,49 @@ original recovery deadline. An unavailable controller retains the checkpoint
 and requires repair; it cannot mark recovery verified. Pruning retains the one
 generation containing the running shared broker until a later broker restart.
 
+## Administrative CLI
+
+`core-provider` is a thin session client of the existing Update owner. It does
+not open the database or maintain its own selection, backup or rollback state.
+Use the installed Panel API URL, including its configured base path and `/api`:
+
+```text
+solovey-ui core-provider status --api-url https://panel.example/base/api
+solovey-ui core-provider preview --api-url https://panel.example/base/api --target-provider shtorm-extended > provider-plan.json
+solovey-ui core-provider migrate --api-url https://panel.example/base/api --plan provider-plan.json --confirm MAINTAIN_CORE_PROVIDER_<plan confirmation suffix>
+```
+
+`preview` returns the signed target, the preserved configuration observation,
+the exact maintenance request and its confirmation. Inspect that plan before
+`migrate`; target validation still occurs against the staged executable after
+checkpointing and Core admission. The same command supports the explicit
+`sing-box` target for a return to Official. `--channel beta` selects the existing
+release channel; it does not change the stable parity target or provider policy.
+
+Credentials are JSON records on stdin, requested in order: login
+`username`/`password`; when required, login MFA `method`/`credential`; and for
+`migrate`, step-up `method`/`credential`. Methods use the existing password,
+TOTP or recovery-code rules. Login and step-up require separate fresh MFA
+proofs where the existing policy requires them. Supply stdin from a secure
+credential prompt or input producer; credentials do not belong in arguments,
+environment variables or the plan file. The CLI keeps its cookie jar in memory,
+refreshes CSRF after authentication/assurance changes and attempts logout before
+exit. It does not print server error bodies, credentials, cookies or grants.
+HTTPS uses normal certificate verification. HTTP is limited to a literal
+loopback address. Redirects are rejected before forwarding authentication.
+
+The transport is `/v1/operations/update/provider/preview` and
+`/v1/operations/update/provider/maintain`. There is no provider Settings switch
+or alternate UI mode. The protected command invokes the Semantic Action
+`update.provider-maintenance`, permission `update.maintain`, through the same
+Update owner and operation correlation as normal Update. The owner rebuilds
+the action from all typed plan fields and requires authorization before writes,
+downloads, checkpoints or Core hold. Existing administrator/session scope,
+CSRF, MFA and one-use step-up checks apply; bearer tokens cannot replace browser
+session assurance. Neither a caller-provided authorizer nor command/path/URL
+control is accepted in the request. The request audit precedes the owner's
+retained SQLite hold, so its HTTP response need not write through that hold.
+
 ## Worker lifetime review
 
 The two added foundation-budget sites are individually reviewed additions; the

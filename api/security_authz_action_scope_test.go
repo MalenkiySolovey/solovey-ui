@@ -121,6 +121,7 @@ func TestStepUpOperationInventoryCoversRegisteredMutations(t *testing.T) {
 		"update.prepare",
 		"update.activate",
 		"update.rollback",
+		"update.provider-maintenance",
 	} {
 		if !validStepUpOperation(operation) {
 			t.Errorf("registered protected operation %q cannot be issued", operation)

@@ -14,10 +14,12 @@ import (
 )
 
 const (
-	BackupRestore                = "backup.restore"
-	ComponentRemove              = "component.remove"
-	PermissionBackupRestore      = "backup.restore"
-	PermissionComponentUninstall = "component.uninstall"
+	BackupRestore                 = "backup.restore"
+	ComponentRemove               = "component.remove"
+	ProviderMaintenance           = "update.provider-maintenance"
+	PermissionBackupRestore       = "backup.restore"
+	PermissionComponentUninstall  = "component.uninstall"
+	PermissionProviderMaintenance = "update.maintain"
 )
 
 var ErrDenied = errors.New("semantic_action_denied")
@@ -50,12 +52,17 @@ func Lookup(id string) (Descriptor, bool) {
 			HostScope: "LOCAL", ResourceScope: "component:<id>", RiskClass: "HIGH",
 			InputSchema:  "solovey.action/component.remove/v1",
 			StepUpPolicy: "existing_browser_one_use", AuditClass: "component_installed_changed", ComponentID: "panel-update-ui"}, true
+	case ProviderMaintenance:
+		return Descriptor{ID: id, Owner: "update", Permission: PermissionProviderMaintenance,
+			HostScope: "LOCAL", ResourceScope: "panel", RiskClass: "CRITICAL",
+			InputSchema: "solovey.action/update.provider-maintenance/v1", Preview: true,
+			StepUpPolicy: "existing_browser_one_use", AuditClass: "core_provider_maintenance_requested"}, true
 	}
 	return Descriptor{}, false
 }
 
 func KnownPermission(permission string) bool {
-	return permission == PermissionBackupRestore || permission == PermissionComponentUninstall
+	return permission == PermissionBackupRestore || permission == PermissionComponentUninstall || permission == PermissionProviderMaintenance
 }
 
 // ComponentAllowed requires both catalog ownership and an actual manifest
@@ -86,6 +93,16 @@ type Invocation struct {
 
 type RestoreInput struct{ RehearsalRevision string }
 type ComponentRemoveInput struct{ ComponentID string }
+type ProviderMaintenanceInput struct{ PlanDigest string }
+
+// PlanDigest is reconstructed by Update from its full typed maintenance input,
+// including source/configuration revisions and the exact artifact selection.
+func MaintainProvider(reference operationcoordination.Reference, input ProviderMaintenanceInput) Invocation {
+	descriptor, _ := Lookup(ProviderMaintenance)
+	return Invocation{ID: descriptor.ID, InputSchema: descriptor.InputSchema,
+		InputDigest: inputDigest(descriptor.InputSchema, input.PlanDigest),
+		Target:      "provider-maintenance:" + input.PlanDigest, Reference: reference}
+}
 
 func Restore(reference operationcoordination.Reference, input RestoreInput) Invocation {
 	descriptor, _ := Lookup(BackupRestore)
@@ -120,6 +137,12 @@ func (i Invocation) Validate() error {
 		id, ok := strings.CutPrefix(i.Target, "component:")
 		if !ok || id == "" || len(id) > 128 || strings.Trim(id, "abcdefghijklmnopqrstuvwxyz0123456789-") != "" ||
 			r.ResourceID != i.Target || i.InputDigest != inputDigest(i.InputSchema, id) {
+			return ErrDenied
+		}
+	case ProviderMaintenance:
+		digest, ok := strings.CutPrefix(i.Target, "provider-maintenance:")
+		if !ok || len(digest) != 64 || strings.Trim(digest, "0123456789abcdef") != "" ||
+			r.ResourceID != "panel" || i.InputDigest != inputDigest(i.InputSchema, digest) {
 			return ErrDenied
 		}
 	default:

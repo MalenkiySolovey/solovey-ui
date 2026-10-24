@@ -40,6 +40,21 @@ func TestCatalogContainsTwoDifferentRealOwnersAndReturnsImmutableValues(t *testi
 	}
 }
 
+func TestProviderMaintenanceCatalogUsesUpdateOwnerAndExactPlan(t *testing.T) {
+	descriptor, known := Lookup(ProviderMaintenance)
+	if !known || descriptor.Owner != "update" || descriptor.ComponentID != "" || descriptor.Permission != PermissionProviderMaintenance || !descriptor.Preview {
+		t.Fatal("provider maintenance bypassed its actual Update owner")
+	}
+	invocation := MaintainProvider(operationcoordination.NewReference("update", "panel", "update-operation:test"), ProviderMaintenanceInput{PlanDigest: strings.Repeat("a", 64)})
+	if _, err := Require(t.Context(), invocation, allowActual); err != nil {
+		t.Fatal(err)
+	}
+	invocation.Target = "provider-maintenance:" + strings.Repeat("b", 64)
+	if _, err := Require(t.Context(), invocation, allowActual); !errors.Is(err, ErrDenied) {
+		t.Fatal("altered provider maintenance plan retained semantic authority")
+	}
+}
+
 func TestOwnerPolicyRequiresActualKnownHostResourceAndTypedInput(t *testing.T) {
 	valid := restoreInvocation()
 	if _, err := Require(t.Context(), valid, allowActual); err != nil {

@@ -47,6 +47,8 @@ func (a *ApiService) actionPolicy(requireStepUp func(*gin.Context, string, strin
 				permitted = a.requireTokenScopeAny(c, "database", "admin")
 			case actions.PermissionComponentUninstall:
 				permitted = a.requireTokenScopeAny(c, "update", "admin", "update")
+			case actions.PermissionProviderMaintenance:
+				permitted = a.requireTokenScopeAny(c, "update", "admin", "update")
 			default:
 				return deny()
 			}
