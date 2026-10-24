@@ -451,9 +451,17 @@ func TestProviderMaintenanceActualCandidateCheckpointCheckActivateRollback(t *te
 	if err != nil || value.(VerifyResultV1).Verified || value.(VerifyResultV1).HealthRevision != "restart-pending" {
 		t.Fatal("a handler fixture was promoted to actual rollback runtime proof", err)
 	}
-	verify.ProviderHealth.CapabilityRevision = state.ProviderMaintenance.CapabilityRevision
+	verify.ProviderHealth.CapabilityRevision = updateDigest("other-binary-capabilities")
 	if _, err := host.verify(t.Context(), envelope(verify), peer); !brokerErrorCode(err, broker.CodeFence) {
-		t.Fatal("target capabilities were accepted as the predecessor's rollback health")
+		t.Fatal("unrelated capabilities were accepted as the predecessor's rollback health")
+	}
+	// An update within the same provider/profile can truthfully retain the
+	// previous capability revision. Only a differing target is a negative case.
+	if state.ProviderMaintenance.CapabilityRevision != input.PreviousCapabilityRevision {
+		verify.ProviderHealth.CapabilityRevision = state.ProviderMaintenance.CapabilityRevision
+		if _, err := host.verify(t.Context(), envelope(verify), peer); !brokerErrorCode(err, broker.CodeFence) {
+			t.Fatal("different target capabilities were accepted as the predecessor's rollback health")
+		}
 	}
 	t.Logf("previous_provider=%s target_provider=%s profile=%s target_sequence=%d target_manifest=%s prior_maintenance=%t configuration_sha256=%s", previousID, id, profile, identity.Sequence, identity.ManifestDigest, input.PreviousMaintenance, input.ConfigurationDigest)
 	// These are handler/owner fixtures. Actual Panel+broker restart and runtime

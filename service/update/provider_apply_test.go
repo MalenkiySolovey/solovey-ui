@@ -217,6 +217,38 @@ func TestProviderTransitionWatchdogDrainsOnCancellation(t *testing.T) {
 	}
 }
 
+func TestProviderTransitionWatchdogCancellationWhileManagerBusy(t *testing.T) {
+	manager := &LifecycleManager{}
+	manager.mu.Lock()
+	ctx, cancel := context.WithCancel(t.Context())
+	done := make(chan struct{})
+	t.Cleanup(func() {
+		cancel()
+		manager.mu.Unlock()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+			t.Error("Update watchdog did not join after cleanup")
+		}
+	})
+	started := make(chan struct{})
+	go func() {
+		defer close(done)
+		close(started)
+		manager.RunMaintenanceWatchdog(ctx)
+	}()
+	<-started
+	// Keep staging's manager lock held across a reconciliation tick, then
+	// require shutdown to finish before that other operation releases it.
+	time.Sleep(2200 * time.Millisecond)
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Update watchdog cancellation waited for a busy manager")
+	}
+}
+
 func TestProviderTransitionRollbackRejectionPreservesAnExistingHold(t *testing.T) {
 	for _, pending := range []bool{false, true} {
 		t.Run(map[bool]string{false: "new-admission", true: "retained-admission"}[pending], func(t *testing.T) {

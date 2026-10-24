@@ -234,14 +234,18 @@ func (m *LifecycleManager) RunMaintenanceWatchdog(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
-			m.mu.Lock()
-			active := m.maintenance != nil && m.maintenance.Active()
-			m.mu.Unlock()
-			if active {
+			// Staging may hold the manager lock longer than this worker's
+			// shutdown budget. A missed tick can wait for the next tick;
+			// cancellation must never wait for another operation's lock.
+			if !m.mu.TryLock() {
+				continue
+			}
+			if m.maintenance != nil && m.maintenance.Active() {
 				check, cancel := context.WithTimeout(ctx, 30*time.Second)
-				_ = m.ReconcileStartup(check)
+				_ = m.reconcileStartupLocked(check)
 				cancel()
 			}
+			m.mu.Unlock()
 		}
 	}
 }

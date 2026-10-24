@@ -50,12 +50,15 @@ R1 baseline identity and legacy inventory remain unchanged.
 - `LifecycleManager.RunMaintenanceWatchdog` owns a two-second ticker, stops it
   on exit, and does work only while Update retains the existing SQLite
   maintenance admission. Each reconciliation has a 30-second child context and
-  uses the same manager lock, state machine, journal and root checkpoint. No new
-  queue, transaction manager or rollback mechanism is introduced.
+  attempts the same manager lock without waiting for staging. It keeps that
+  lock throughout reconciliation, with the same state machine, journal and root
+  checkpoint. No new queue, transaction manager or rollback mechanism is
+  introduced.
 - Connected privileged-broker I/O is closed on caller cancellation, so an RPC's
   larger wire timeout cannot outlive the app worker. The client cancellation
   test joins both ends of a blocked response wait. The Update cancellation test
-  joins the watchdog. Normal and rollback runtime probes get fresh operation
+  joins the watchdog even while another operation holds its manager lock.
+  Normal and rollback runtime probes get fresh operation
   fences, while deadlines remain anchored to their original journal entries.
 - Terminal runtime acceptance ends the SQLite admission even when terminal
   cache cleanup leaves recorded cleanup debt. Ambiguous authority stays held

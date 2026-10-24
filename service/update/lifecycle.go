@@ -828,6 +828,11 @@ func (m *LifecycleManager) ReconcileStartup(ctx context.Context) error {
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	return m.reconcileStartupLocked(ctx)
+}
+
+// The caller holds m.mu for the complete reconciliation, including admission.
+func (m *LifecycleManager) reconcileStartupLocked(ctx context.Context) error {
 	ctx = m.maintenanceContext(ctx)
 	if debt, debtErr := m.repo.cleanupDebt(ctx); debtErr == nil {
 		if cleaner, ok := m.provider.(terminalCleaner); ok {
