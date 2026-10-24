@@ -57,3 +57,31 @@ func TestUpdateAcceptanceUsesCurrentSchemaAndFreshPanelProof(t *testing.T) {
 		t.Fatal("stale panel status accepted as fresh release evidence")
 	}
 }
+
+func TestUpdateAcceptancePreservesAnExistingCoreHoldUnderDatabaseAdmission(t *testing.T) {
+	t.Setenv("SUI_DB_FOLDER", t.TempDir())
+	application := NewApp()
+	if err := application.Init(); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(application.Stop)
+	stop, err := componenthealth.Register(updatePanelProof{time.Now()})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer stop()
+	owner, err := dbsqlite.BeginMaintenance(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer owner.End()
+	ctx := owner.Context(t.Context())
+	if err := application.configService.SetCoreMaintenance(ctx, "", true); err != nil {
+		t.Fatal(err)
+	}
+	operation := model.UpdateOperation{OperationID: "update-operation:held-proof", Version: configidentity.GetVersion(), RestartClass: "stack"}
+	result := application.updateHealth(ctx, operation)
+	if !result.Ready || application.runtime.Core().IsRunning() || !owner.Active() {
+		t.Fatal("health released or misclassified the previous hold", result)
+	}
+}

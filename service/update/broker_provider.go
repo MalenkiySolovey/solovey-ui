@@ -23,15 +23,17 @@ import (
 )
 
 type BrokerProvider struct {
-	Client                   *broker.Client
-	Fetcher                  release.Fetcher
-	Source                   release.Source
-	Sources                  map[release.Channel]release.Source
-	Root                     string
-	backupOps                updateBackupOps
-	observeRollbackAuthority func(context.Context, model.UpdateOperation) (contract.ObservationV1, error)
-	restorePending           bool
-	restoredDatabase         backupdb.RestoreExecutionResult
+	Client                       *broker.Client
+	Fetcher                      release.Fetcher
+	Source                       release.Source
+	Sources                      map[release.Channel]release.Source
+	Root                         string
+	backupOps                    updateBackupOps
+	observeRollbackAuthority     func(context.Context, model.UpdateOperation) (contract.ObservationV1, error)
+	restorePending               bool
+	restoredDatabase             backupdb.RestoreExecutionResult
+	configuration                CoreConfigurationOwner
+	providerMaintenanceOperation string
 }
 
 func NewBrokerProvider(client *broker.Client, fetcher release.Fetcher, source release.Source) *BrokerProvider {
@@ -486,6 +488,16 @@ func (p *BrokerProvider) validateDatabaseRollback(ctx context.Context, operation
 }
 
 func (p *BrokerProvider) Activate(ctx context.Context, operation model.UpdateOperation) error {
+	if p.configuration != nil || p.providerMaintenanceFor(operation) {
+		if proof, err := p.providerProof(ctx, operation); err != nil {
+			return err
+		} else if proof != nil {
+			return p.activateProvider(ctx, operation, *proof)
+		}
+		if p.providerMaintenanceFor(operation) {
+			return ErrRecoveryRequired
+		}
+	}
 	identity := releaseIdentityFromOperation(operation)
 	ref := updateRef(operation, "prepared")
 	rollback := updateRef(operation, "rollback")
@@ -501,6 +513,19 @@ func (p *BrokerProvider) Activate(ctx context.Context, operation model.UpdateOpe
 }
 
 func (p *BrokerProvider) VerifyActive(ctx context.Context, operation model.UpdateOperation) (bool, error) {
+	if p.configuration != nil || p.providerMaintenanceFor(operation) {
+		if proof, err := p.providerProof(ctx, operation); err != nil {
+			if p.providerMaintenanceFor(operation) && errors.Is(err, ErrProviderUnavailable) {
+				return false, ErrRestartPending
+			}
+			return false, err
+		} else if proof != nil {
+			return p.verifyProvider(ctx, operation, *proof, false)
+		}
+		if p.providerMaintenanceFor(operation) {
+			return false, ErrRecoveryRequired
+		}
+	}
 	var result contract.VerifyResultV1
 	err := p.mutate(ctx, broker.VerbUpdateVerify, operation, 800_003, contract.VerifyRequestV1{Release: releaseIdentityFromOperation(operation),
 		PreparedRef: updateRef(operation, "prepared"), RollbackRef: updateRef(operation, "rollback")}, &result)
@@ -518,6 +543,16 @@ func (p *BrokerProvider) VerifyActive(ctx context.Context, operation model.Updat
 }
 
 func (p *BrokerProvider) Rollback(ctx context.Context, operation model.UpdateOperation) (bool, error) {
+	if p.configuration != nil || p.providerMaintenanceFor(operation) {
+		if proof, err := p.providerProof(ctx, operation); err != nil {
+			return false, err
+		} else if proof != nil {
+			return p.rollbackProvider(ctx, operation, *proof)
+		}
+		if p.providerMaintenanceFor(operation) {
+			return false, ErrRecoveryRequired
+		}
+	}
 	backup, err := p.validateDatabaseRollback(ctx, operation)
 	if err != nil {
 		return false, err
@@ -547,6 +582,8 @@ func (p *BrokerProvider) DatabaseRollbackContext(ctx context.Context) context.Co
 	}
 	return ctx
 }
+
+func (p *BrokerProvider) HasPendingDatabaseRollback() bool { return p != nil && p.restorePending }
 
 func (p *BrokerProvider) CompleteDatabaseRollback(ctx context.Context) error {
 	if p == nil || !p.restorePending {
@@ -580,12 +617,33 @@ func (p *BrokerProvider) Reconcile(ctx context.Context, operation model.UpdateOp
 	_, err := p.Client.Invoke(ctx, broker.Call{Verb: broker.VerbUpdateObserve, OperationID: operation.OperationID + "-reconcile",
 		Timeout: 15 * time.Second, Payload: contract.EmptyV1{}}, &result)
 	if err != nil || result.ProviderRevision != contract.ProviderRevision {
+		if p.providerMaintenanceFor(operation) && (State(operation.State) == StateActivating || State(operation.State) == StateVerifyingActive) {
+			return StateVerifyingActive, nil
+		}
 		return StateRecoveryRequired, ErrProviderUnavailable
+	}
+	if p.providerMaintenanceFor(operation) && !providerProofMatchesOperation(operation, result) {
+		return StateRecoveryRequired, ErrRecoveryRequired
 	}
 	return reconcileBrokerObservation(operation, result)
 }
 
 func reconcileBrokerObservation(operation model.UpdateOperation, result contract.ObservationV1) (State, error) {
+	if proof := result.ProviderMaintenance; proof != nil && proof.OperationID == operation.OperationID {
+		if !providerProofMatchesOperation(operation, result) {
+			return StateRecoveryRequired, ErrRecoveryRequired
+		}
+		switch proof.Phase {
+		case "CHECKPOINTED", "VALIDATED":
+			return StateRollbackPending, nil
+		case "ACTIVATED", "COMMITTED":
+			return StateVerifyingActive, nil
+		case "ROLLED_BACK", "ROLLBACK_VERIFIED":
+			return StateRollingBack, nil
+		default:
+			return StateRecoveryRequired, ErrRecoveryRequired
+		}
+	}
 	switch {
 	case result.VerifiedSequence == operation.Sequence && result.VerifiedDigest == operation.ManifestDigest && result.ManagementReady:
 		return StateApplied, nil

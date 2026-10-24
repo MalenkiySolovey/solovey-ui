@@ -21,7 +21,11 @@ func (a *APP) updateHealth(ctx context.Context, operation model.UpdateOperation)
 		reasons = append(reasons, "panel_api_health_failed")
 	}
 	coreReady := a.runtime != nil && a.runtime.Core() != nil && a.runtime.Core().IsRunning()
-	if operation.RestartClass == "stack" && !coreReady {
+	maintenance, maintenanceErr := a.SettingService.CoreMaintenanceContext(ctx)
+	if maintenanceErr != nil {
+		reasons = append(reasons, "core_maintenance_health_unavailable")
+	}
+	if operation.RestartClass == "stack" && (!maintenance && !coreReady || maintenance && coreReady) {
 		reasons = append(reasons, "core_runtime_health_failed")
 	}
 	databaseVersion, coreSchema := "", ""
@@ -55,7 +59,7 @@ func (a *APP) updateHealth(ctx context.Context, operation model.UpdateOperation)
 	}
 	evidence := struct {
 		OperationID, Version, DatabaseVersion, CoreSchema, SQLiteRevision, PanelStatus string
-		CoreReady, Ready                                                               bool
-	}{operation.OperationID, operation.Version, databaseVersion, coreSchema, runtimeStatus.Revision, string(panel.Status), coreReady, len(reasons) == 0}
+		CoreReady, Maintenance, Ready                                                  bool
+	}{operation.OperationID, operation.Version, databaseVersion, coreSchema, runtimeStatus.Revision, string(panel.Status), coreReady, maintenance, len(reasons) == 0}
 	return serviceupdate.HealthResult{Ready: len(reasons) == 0, ReasonCodes: reasons, Revision: deploymentdomain.Revision(evidence), Evidence: []componenthealth.Result{panel}}
 }
