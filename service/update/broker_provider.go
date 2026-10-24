@@ -94,6 +94,10 @@ func (p *BrokerProvider) downloadAndStageArtifact(ctx context.Context, operation
 		identity.Kind != "panel-"+operation.BinaryProfile {
 		return errors.New("update artifact trust binding rejected")
 	}
+	brokerIdentity, err := releaseIdentity(operation, verified, []release.Artifact{artifact})
+	if err != nil {
+		return err
+	}
 	cacheName := artifact.Role + "-" + artifact.Name
 	partial := filepath.Join(root, cacheName+".partial")
 	complete := filepath.Join(root, cacheName)
@@ -127,7 +131,6 @@ func (p *BrokerProvider) downloadAndStageArtifact(ctx context.Context, operation
 		return err
 	}
 	defer input.Close()
-	brokerIdentity := releaseIdentity(operation, verified, []release.Artifact{artifact})
 	buffer := make([]byte, contract.MaxChunkBytes)
 	offset := int64(0)
 	for {
@@ -160,11 +163,15 @@ func (p *BrokerProvider) Preflight(ctx context.Context, operation model.UpdateOp
 	if p == nil || p.Client == nil || runtime.GOOS != "linux" {
 		return PreflightResult{}, ErrProviderUnavailable
 	}
+	identity, err := releaseIdentity(operation, verified, artifacts)
+	if err != nil {
+		return PreflightResult{}, err
+	}
 	backupRef, err := p.prepareDatabaseBackup(ctx, operation)
 	if err != nil {
 		return PreflightResult{}, err
 	}
-	request := contract.PrepareRequestV1{Release: releaseIdentity(operation, verified, artifacts),
+	request := contract.PrepareRequestV1{Release: identity,
 		ExpectedBrokerCapability: operation.BrokerCapability, ExpectedManagementRevision: operation.DeploymentRevision}
 	var result contract.PrepareResultV1
 	if err := p.mutate(ctx, broker.VerbUpdatePrepare, operation, 800_001, request, &result); err != nil {
@@ -618,21 +625,31 @@ func (p *BrokerProvider) mutate(ctx context.Context, verb broker.Verb, operation
 	return nil
 }
 
-func releaseIdentity(operation model.UpdateOperation, verified release.Verified, artifacts []release.Artifact) contract.ReleaseIdentityV1 {
+func releaseIdentity(operation model.UpdateOperation, verified release.Verified, artifacts []release.Artifact) (contract.ReleaseIdentityV1, error) {
+	if len(artifacts) != 1 || verified.Digest != operation.ManifestDigest ||
+		release.ArtifactSetDigest(artifacts) != operation.ArtifactSetDigest {
+		return contract.ReleaseIdentityV1{}, errors.New("update release trust binding rejected")
+	}
 	identity := releaseIdentityFromOperation(operation)
 	identity.Artifacts = make([]contract.ArtifactIdentityV1, 0, len(artifacts))
 	for _, artifact := range artifacts {
+		trusted, err := verified.ArtifactIdentity(artifact)
+		if err != nil || trusted.Owner != "panel" || trusted.Version != operation.Version || trusted.Platform != operation.Platform ||
+			trusted.Arch != operation.Arch || trusted.Kind != "panel-"+operation.BinaryProfile {
+			return contract.ReleaseIdentityV1{}, errors.New("update artifact trust binding rejected")
+		}
 		identity.Artifacts = append(identity.Artifacts, artifactIdentity(artifact))
+		identity.CoreProvider = trusted.CoreProvider
 	}
-	if verified.Digest != "" {
-		identity.ManifestDigest = verified.Digest
+	if contract.ValidateRelease(identity) != nil {
+		return contract.ReleaseIdentityV1{}, errors.New("update release projection is invalid")
 	}
-	return identity
+	return identity, nil
 }
 
 func artifactIdentity(artifact release.Artifact) contract.ArtifactIdentityV1 {
 	return contract.ArtifactIdentityV1{Name: artifact.Name, Role: artifact.Role, Platform: artifact.Platform, Arch: artifact.Arch,
-		MediaType: artifact.MediaType, Size: artifact.Size, SHA256: artifact.SHA256, Provenance: artifact.Provenance}
+		MediaType: artifact.MediaType, Size: artifact.Size, SHA256: artifact.SHA256, Provenance: artifact.Provenance, CoreProvider: artifact.CoreProvider}
 }
 
 func releaseIdentityFromOperation(operation model.UpdateOperation) contract.ReleaseIdentityV1 {

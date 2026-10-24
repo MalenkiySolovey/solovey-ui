@@ -27,8 +27,8 @@ import (
 )
 
 var (
-	releaseDirectoryPattern = regexp.MustCompile(`^(?:[0-9]{20}|installer)-[a-f0-9]{16}$`)
-	stagingDirectoryPattern = regexp.MustCompile(`^(?:[0-9]{20}|installer)-[a-f0-9]{16}\.staging$`)
+	releaseDirectoryPattern = regexp.MustCompile(`^(?:(?:[0-9]{20}|installer)-[a-f0-9]{16}|[0-9]{20}-[a-f0-9]{16}-[a-f0-9]{64})$`)
+	stagingDirectoryPattern = regexp.MustCompile(`^(?:(?:[0-9]{20}|installer)-[a-f0-9]{16}|[0-9]{20}-[a-f0-9]{16}-[a-f0-9]{64})\.staging$`)
 )
 
 const (
@@ -37,31 +37,32 @@ const (
 	defaultStatePath       = "/var/lib/solovey-ui-broker/update-state.json"
 	defaultManifest        = "/etc/solovey-ui/broker-clients.json"
 	maxResumableInboxCount = 1
-	maxResumableInboxBytes = int64(1<<30 + 64<<10)
+	maxResumableInboxBytes = int64(1<<30 + 8<<20 + 64<<10)
 	maxResumableInboxAge   = 24 * time.Hour
 )
 
 type diskState struct {
-	ActiveSequence                 uint64 `json:"activeSequence"`
-	ActiveDigest                   string `json:"activeDigest"`
-	VerifiedSequence               uint64 `json:"verifiedSequence"`
-	VerifiedDigest                 string `json:"verifiedDigest"`
-	MaxActivatedSequence           uint64 `json:"maxActivatedSequence,omitempty"`
-	MaxActivatedDigest             string `json:"maxActivatedDigest,omitempty"`
-	ActiveRelease                  string `json:"activeRelease"`
-	RollbackRelease                string `json:"rollbackRelease,omitempty"`
-	RollbackSequence               uint64 `json:"rollbackSequence,omitempty"`
-	RollbackDigest                 string `json:"rollbackDigest,omitempty"`
-	RollbackOperationID            string `json:"rollbackOperationId,omitempty"`
-	RollbackManifestDigest         string `json:"rollbackManifestDigest,omitempty"`
-	RollbackRef                    string `json:"rollbackRef,omitempty"`
-	PreparedRollbackRelease        string `json:"preparedRollbackRelease,omitempty"`
-	PreparedRollbackSequence       uint64 `json:"preparedRollbackSequence,omitempty"`
-	PreparedRollbackDigest         string `json:"preparedRollbackDigest,omitempty"`
-	PreparedRollbackOperationID    string `json:"preparedRollbackOperationId,omitempty"`
-	PreparedRollbackManifestDigest string `json:"preparedRollbackManifestDigest,omitempty"`
-	PreparedRollbackRef            string `json:"preparedRollbackRef,omitempty"`
-	UpdatedAt                      int64  `json:"updatedAt"`
+	ProviderMaintenance            providerMaintenanceState `json:"providerMaintenance,omitzero"`
+	ActiveSequence                 uint64                   `json:"activeSequence"`
+	ActiveDigest                   string                   `json:"activeDigest"`
+	VerifiedSequence               uint64                   `json:"verifiedSequence"`
+	VerifiedDigest                 string                   `json:"verifiedDigest"`
+	MaxActivatedSequence           uint64                   `json:"maxActivatedSequence,omitempty"`
+	MaxActivatedDigest             string                   `json:"maxActivatedDigest,omitempty"`
+	ActiveRelease                  string                   `json:"activeRelease"`
+	RollbackRelease                string                   `json:"rollbackRelease,omitempty"`
+	RollbackSequence               uint64                   `json:"rollbackSequence,omitempty"`
+	RollbackDigest                 string                   `json:"rollbackDigest,omitempty"`
+	RollbackOperationID            string                   `json:"rollbackOperationId,omitempty"`
+	RollbackManifestDigest         string                   `json:"rollbackManifestDigest,omitempty"`
+	RollbackRef                    string                   `json:"rollbackRef,omitempty"`
+	PreparedRollbackRelease        string                   `json:"preparedRollbackRelease,omitempty"`
+	PreparedRollbackSequence       uint64                   `json:"preparedRollbackSequence,omitempty"`
+	PreparedRollbackDigest         string                   `json:"preparedRollbackDigest,omitempty"`
+	PreparedRollbackOperationID    string                   `json:"preparedRollbackOperationId,omitempty"`
+	PreparedRollbackManifestDigest string                   `json:"preparedRollbackManifestDigest,omitempty"`
+	PreparedRollbackRef            string                   `json:"preparedRollbackRef,omitempty"`
+	UpdatedAt                      int64                    `json:"updatedAt"`
 }
 
 type Host struct {
@@ -116,7 +117,7 @@ func (h *Host) observe(_ context.Context, _ broker.Request, peer broker.PeerIden
 		return nil, broker.Failure(broker.CodeExecution, "update state is unavailable")
 	}
 	managementReady := peer.PID > 0
-	verified := h.runningRelease(state.ActiveRelease, peer)
+	verified := h.runningRelease(state.ActiveRelease, peer) && h.legacyAutoVerificationAllowed(state)
 	if verified {
 		if state.preparedRollbackMatches(state.PreparedRollbackOperationID, state.ActiveDigest, state.PreparedRollbackRef) {
 			state.promotePreparedRollback()
@@ -128,7 +129,9 @@ func (h *Host) observe(_ context.Context, _ broker.Request, peer broker.PeerIden
 		}
 	}
 	result := ObservationV1{ProviderRevision: ProviderRevision, InstalledSequence: state.ActiveSequence,
-		ActiveSequence: state.ActiveSequence, ActiveDigest: state.ActiveDigest, InstalledDigest: state.ActiveDigest,
+		ProviderMaintenanceRevision: ProviderMaintenanceRevision,
+		ProviderMaintenance:         state.ProviderMaintenance.observation(),
+		ActiveSequence:              state.ActiveSequence, ActiveDigest: state.ActiveDigest, InstalledDigest: state.ActiveDigest,
 		VerifiedSequence: state.VerifiedSequence, VerifiedDigest: state.VerifiedDigest,
 		MaxActivatedSequence: state.MaxActivatedSequence, MaxActivatedDigest: state.MaxActivatedDigest,
 		RollbackAvailable: state.hasBoundRollback(), RollbackOperationID: state.RollbackOperationID,
@@ -142,14 +145,20 @@ func (h *Host) observe(_ context.Context, _ broker.Request, peer broker.PeerIden
 	return result, nil
 }
 
-func (h *Host) stage(_ context.Context, envelope broker.Request, _ broker.PeerIdentity) (any, error) {
+func (h *Host) stage(_ context.Context, envelope broker.Request, peer broker.PeerIdentity) (any, error) {
 	var request StageChunkRequestV1
 	if err := broker.DecodeRawPayload(envelope.Payload, &request); err != nil || !safeOperationID(envelope.OperationID) ||
-		ValidateRelease(request.Release) != nil || ValidateArtifact(request.Artifact) != nil || len(request.Chunk) == 0 || len(request.Chunk) > MaxChunkBytes || request.Offset < 0 {
+		ValidateRelease(request.Release) != nil || len(request.Chunk) == 0 || len(request.Chunk) > MaxChunkBytes || request.Offset < 0 {
 		return nil, broker.Failure(broker.CodeInvalidRequest, "update artifact chunk is invalid")
 	}
 	if request.Release.DeploymentRevision != envelope.Expected.Configuration && envelope.Expected.Configuration != "" {
 		return nil, broker.Failure(broker.CodeRevision, "update release revision changed")
+	}
+	if request.Configuration != nil {
+		return h.stageProviderConfiguration(envelope, request, peer)
+	}
+	if ValidateArtifact(request.Artifact) != nil {
+		return nil, broker.Failure(broker.CodeInvalidRequest, "update artifact identity is invalid")
 	}
 	declared := false
 	for _, artifact := range request.Release.Artifacts {
@@ -176,59 +185,73 @@ func (h *Host) stage(_ context.Context, envelope broker.Request, _ broker.PeerId
 		return nil, broker.Failure(broker.CodeExecution, "update inbox bounds could not be reconciled")
 	}
 	path := filepath.Join(root, request.Artifact.Role+"-"+request.Artifact.Name)
+	return h.stageFixedContent(root, path, request.Offset, request.Chunk, request.Final, accepted, request.Artifact.SHA256)
+}
+
+// Both bounded payload kinds use this existing durable chunk writer. Their
+// semantic handlers alone select the fixed destination and expected digest.
+func (h *Host) stageFixedContent(root, path string, offset int64, chunk []byte, final bool, accepted int64, expectedDigest string) (StageChunkResultV1, error) {
 	if err := ensureRegularOrAbsent(path); err != nil {
-		return nil, broker.Failure(broker.CodeExecution, "update artifact target is unsafe")
+		return StageChunkResultV1{}, broker.Failure(broker.CodeExecution, "update artifact target is unsafe")
 	}
 	file, err := h.inboxOps.openFile(path, os.O_CREATE|os.O_RDWR, 0o600)
 	if err != nil {
-		return nil, broker.Failure(broker.CodeExecution, "update artifact could not be staged")
+		return StageChunkResultV1{}, broker.Failure(broker.CodeExecution, "update artifact could not be staged")
 	}
 	info, statErr := file.Stat()
-	if statErr != nil || !info.Mode().IsRegular() || info.Size() != request.Offset && info.Size() != accepted {
+	if statErr != nil || !info.Mode().IsRegular() || info.Size() != offset && info.Size() != accepted {
 		_ = file.Close()
-		return nil, broker.Failure(broker.CodeFence, "update artifact offset changed")
+		return StageChunkResultV1{}, broker.Failure(broker.CodeFence, "update artifact offset changed")
 	}
 	if info.Size() == accepted {
-		replayed := make([]byte, len(request.Chunk))
-		count, readErr := file.ReadAt(replayed, request.Offset)
-		if readErr != nil || count != len(replayed) || !bytes.Equal(replayed, request.Chunk) {
+		replayed := make([]byte, len(chunk))
+		count, readErr := file.ReadAt(replayed, offset)
+		if readErr != nil || count != len(replayed) || !bytes.Equal(replayed, chunk) {
 			_ = file.Close()
-			return nil, broker.Failure(broker.CodeFence, "update artifact replay changed")
+			return StageChunkResultV1{}, broker.Failure(broker.CodeFence, "update artifact replay changed")
 		}
-	} else if _, err = file.WriteAt(request.Chunk, request.Offset); err != nil {
+	} else if _, err = file.WriteAt(chunk, offset); err != nil {
 		_ = file.Close()
-		return nil, broker.Failure(broker.CodeExecution, "update artifact chunk was not committed")
+		return StageChunkResultV1{}, broker.Failure(broker.CodeExecution, "update artifact chunk was not committed")
 	}
 	if err == nil {
 		err = file.Sync()
 	}
 	closeErr := file.Close()
 	if err != nil || closeErr != nil {
-		return nil, broker.Failure(broker.CodeExecution, "update artifact chunk was not committed")
+		return StageChunkResultV1{}, broker.Failure(broker.CodeExecution, "update artifact chunk was not committed")
 	}
 	if err := h.inboxOps.syncDirectory(root); err != nil {
-		return nil, broker.Failure(broker.CodeExecution, "update artifact name was not committed")
+		return StageChunkResultV1{}, broker.Failure(broker.CodeExecution, "update artifact name was not committed")
 	}
 	result := StageChunkResultV1{ProviderRevision: ProviderRevision, AcceptedBytes: accepted}
-	if request.Final {
-		if accepted != request.Artifact.Size {
-			return nil, broker.Failure(broker.CodeInvalidRequest, "update artifact final size is invalid")
-		}
+	if final {
 		digest, err := fileDigest(path)
-		if err != nil || digest != request.Artifact.SHA256 {
-			return nil, broker.Failure(broker.CodeRevision, "update artifact digest is invalid")
+		if err != nil || digest != expectedDigest {
+			return StageChunkResultV1{}, broker.Failure(broker.CodeRevision, "update artifact digest is invalid")
 		}
 		result.Complete, result.ArtifactDigest = true, digest
 	}
 	return result, nil
 }
 
-func (h *Host) prepare(_ context.Context, envelope broker.Request, _ broker.PeerIdentity) (any, error) {
+func (h *Host) prepare(ctx context.Context, envelope broker.Request, peer broker.PeerIdentity) (any, error) {
 	var request PrepareRequestV1
 	if err := broker.DecodeRawPayload(envelope.Payload, &request); err != nil || !safeOperationID(envelope.OperationID) ||
 		ValidateRelease(request.Release) != nil || request.ExpectedBrokerCapability != broker.CapabilityRevision ||
 		!validDigest(request.ExpectedManagementRevision) || request.ExpectedManagementRevision != request.Release.DeploymentRevision {
 		return nil, broker.Failure(broker.CodeInvalidRequest, "update preflight request is invalid")
+	}
+	withProvider := request.Release.CoreProvider != (release.CoreProviderSource{})
+	if withProvider {
+		if request.Maintenance == nil || ValidateProviderMaintenance(*request.Maintenance) != nil || len(request.Release.Artifacts) != 1 {
+			return nil, broker.Failure(broker.CodeInvalidRequest, "provider preflight requires a complete maintenance checkpoint")
+		}
+		if request.ValidateConfiguration {
+			return h.prepareProviderConfiguration(ctx, envelope, request, peer)
+		}
+	} else if request.Maintenance != nil || request.ValidateConfiguration || request.MaintenanceHeld {
+		return nil, broker.Failure(broker.CodeInvalidRequest, "legacy preflight cannot carry provider maintenance claims")
 	}
 	if err := h.reconcileStagingState(envelope.OperationID); err != nil {
 		return nil, broker.Failure(broker.CodeExecution, "update staging state could not be reconciled")
@@ -266,15 +289,29 @@ func (h *Host) prepare(_ context.Context, envelope broker.Request, _ broker.Peer
 			}
 		}
 	}
+	if withProvider {
+		if !pathWithin(filepath.Join(h.ReleaseRoot, state.ActiveRelease), peer.Executable) ||
+			verifyPreviousProviderPeer(peer, *request.Maintenance, request.Release.BinaryProfile) != nil {
+			return nil, broker.Failure(broker.CodeRevision, "provider preflight source observation changed")
+		}
+	} else if !h.legacyAutoVerificationAllowed(state) {
+		return nil, broker.Failure(broker.CodeRevision, "installed provider requires explicit maintenance preflight")
+	}
 	maxSequence, maxDigest := state.activationHighWater()
 	rollbackRef := semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest)
 	preparedReplay := state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, rollbackRef)
-	activatedReplay := preparedReplay && state.ActiveSequence == request.Release.Sequence && state.ActiveDigest == request.Release.ManifestDigest
-	if request.Release.Sequence < maxSequence || request.Release.Sequence == maxSequence && !activatedReplay {
+	activatedReplay := preparedReplay && state.ActiveSequence == request.Release.Sequence && state.ActiveDigest == request.Release.ManifestDigest && state.ActiveRelease == releaseName
+	sameEnvelopeTransition := withProvider && request.Maintenance.PreviousProvider.ID != request.Release.CoreProvider.ID &&
+		request.Release.Sequence == maxSequence && request.Release.ManifestDigest == maxDigest &&
+		state.ActiveSequence == request.Release.Sequence && state.ActiveDigest == request.Release.ManifestDigest && state.ActiveRelease != releaseName
+	if request.Release.Sequence < maxSequence || request.Release.Sequence == maxSequence && !activatedReplay && !sameEnvelopeTransition {
 		return nil, broker.Failure(broker.CodeRevision, "prepared release sequence is not monotonic")
 	}
 	if state.hasBoundPreparedRollback() && !preparedReplay {
 		return nil, broker.Failure(broker.CodeFence, "another update rollback checkpoint is still prepared")
+	}
+	if withProvider && preparedReplay && (!state.ProviderMaintenance.matches(envelope.OperationID, request.Release) || state.ProviderMaintenance.Input != *request.Maintenance) {
+		return nil, broker.Failure(broker.CodeFence, "provider maintenance checkpoint binding changed")
 	}
 	if info, err := os.Lstat(finalRoot); errors.Is(err, os.ErrNotExist) {
 		if err := h.publishPreparedGeneration(panelArtifact, finalRoot, request.Release); err != nil {
@@ -283,12 +320,17 @@ func (h *Host) prepare(_ context.Context, envelope broker.Request, _ broker.Peer
 	} else if err != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 		return nil, broker.Failure(broker.CodeExecution, "prepared release target is unsafe")
 	} else if stored, err := loadReleaseIdentity(finalRoot); err != nil || !sameReleaseIdentity(stored, request.Release, true) ||
-		h.verifyPreparedReleaseExecutables(finalRoot, request.Release.BinaryProfile) != nil || verifyReleaseTree(finalRoot) != nil {
+		h.verifyPreparedReleaseExecutables(finalRoot, request.Release.BinaryProfile) != nil || verifyPreparedProvider(finalRoot, stored) != nil || verifyReleaseTree(finalRoot) != nil {
 		return nil, broker.Failure(broker.CodeRevision, "prepared release identity changed")
 	}
 	if !preparedReplay {
 		state.PreparedRollbackRelease, state.PreparedRollbackSequence, state.PreparedRollbackDigest = state.ActiveRelease, state.ActiveSequence, state.ActiveDigest
 		state.PreparedRollbackOperationID, state.PreparedRollbackManifestDigest, state.PreparedRollbackRef = envelope.OperationID, request.Release.ManifestDigest, rollbackRef
+		if withProvider {
+			state.ProviderMaintenance = providerMaintenanceState{OperationID: envelope.OperationID, ManifestDigest: request.Release.ManifestDigest,
+				ArtifactSetDigest: request.Release.ArtifactSetDigest, ReleaseDigest: broker.Digest(mustJSON(request.Release)), TargetRelease: releaseName,
+				TargetSequence: request.Release.Sequence, TargetProvider: request.Release.CoreProvider, Input: *request.Maintenance, Phase: "CHECKPOINTED"}
+		}
 	}
 	if state.MaxActivatedSequence < maxSequence {
 		state.MaxActivatedSequence, state.MaxActivatedDigest = maxSequence, maxDigest
@@ -296,6 +338,11 @@ func (h *Host) prepare(_ context.Context, envelope broker.Request, _ broker.Peer
 	state.UpdatedAt = h.Now().Unix()
 	if err := h.saveState(state); err != nil {
 		return nil, broker.Failure(broker.CodeExecution, "release rollback checkpoint could not be committed")
+	}
+	if withProvider {
+		result := providerPrepareResult(envelope.OperationID, request.Release, state.ProviderMaintenance.Phase == "VALIDATED")
+		result.ConfigurationRevision = state.ProviderMaintenance.Input.ConfigurationRevision
+		return result, nil
 	}
 	if err := h.removeOwnedInbox(inbox); err != nil {
 		return nil, broker.Failure(broker.CodeExecution, "prepared operation inbox could not be released")
@@ -312,10 +359,12 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 		request.RollbackRef != semanticRef("rollback", envelope.OperationID, request.Release.ManifestDigest) {
 		return nil, broker.Failure(broker.CodeInvalidRequest, "update activation request is invalid")
 	}
-	releaseName := releaseDirectoryName(request.Release)
+	releaseName, stored, identityErr := h.resolveReleaseGeneration(request.Release)
+	if identityErr != nil {
+		return nil, broker.Failure(broker.CodeExecution, "prepared release is unavailable")
+	}
 	releaseRoot := filepath.Join(h.ReleaseRoot, releaseName)
-	stored, identityErr := loadReleaseIdentity(releaseRoot)
-	if err := h.verifyPreparedReleaseExecutables(releaseRoot, request.Release.BinaryProfile); err != nil || identityErr != nil || !sameReleaseIdentity(stored, request.Release, false) {
+	if err := h.verifyPreparedReleaseExecutables(releaseRoot, request.Release.BinaryProfile); err != nil || verifyPreparedProvider(releaseRoot, stored) != nil {
 		return nil, broker.Failure(broker.CodeExecution, "prepared release is unavailable")
 	}
 	state, err := h.loadState()
@@ -325,9 +374,15 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 	if !state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, request.RollbackRef) {
 		return nil, broker.Failure(broker.CodeFence, "prepared rollback authority changed")
 	}
-	maxSequence, _ := state.activationHighWater()
+	if err := h.admitProviderActivation(envelope, request, stored, state, peer); err != nil {
+		return nil, broker.Failure(broker.CodeFence, "provider activation maintenance proof is unavailable or changed")
+	}
+	maxSequence, maxDigest := state.activationHighWater()
+	sameEnvelopeTransition := stored.CoreProvider != (release.CoreProviderSource{}) && state.ProviderMaintenance.Phase == "VALIDATED" &&
+		state.ProviderMaintenance.Input.PreviousProvider.ID != stored.CoreProvider.ID && maxDigest == stored.ManifestDigest &&
+		state.ActiveSequence == stored.Sequence && state.ActiveDigest == stored.ManifestDigest
 	if request.Release.Sequence < maxSequence || request.Release.Sequence == maxSequence &&
-		(state.ActiveSequence != request.Release.Sequence || state.ActiveDigest != request.Release.ManifestDigest) {
+		(state.ActiveSequence != request.Release.Sequence || state.ActiveDigest != request.Release.ManifestDigest || state.ActiveRelease != releaseName) && !sameEnvelopeTransition {
 		return nil, broker.Failure(broker.CodeRevision, "activated release sequence is not monotonic")
 	}
 	previousRelease := state.ActiveRelease
@@ -343,6 +398,9 @@ func (h *Host) activate(ctx context.Context, envelope broker.Request, peer broke
 		return nil, broker.Failure(broker.CodeExecution, "application owner manifest could not be rotated")
 	}
 	state.ActiveRelease, state.ActiveSequence, state.ActiveDigest = releaseName, request.Release.Sequence, request.Release.ManifestDigest
+	if stored.CoreProvider != (release.CoreProviderSource{}) {
+		state.ProviderMaintenance.Phase = "ACTIVATED"
+	}
 	state.VerifiedSequence, state.VerifiedDigest, state.UpdatedAt = 0, "", h.Now().Unix()
 	state.raiseHighWater(request.Release.Sequence, request.Release.ManifestDigest)
 	if err := h.saveState(state); err != nil {
@@ -378,8 +436,18 @@ func (h *Host) verify(_ context.Context, envelope broker.Request, peer broker.Pe
 		return nil, broker.Failure(broker.CodeFence, "active rollback authority changed")
 	}
 	stored, identityErr := loadReleaseIdentity(filepath.Join(h.ReleaseRoot, state.ActiveRelease))
-	if identityErr != nil || !sameReleaseIdentity(stored, request.Release, false) {
+	if identityErr != nil || !sameReleaseIdentity(stored, request.Release, false) ||
+		verifyPreparedProvider(filepath.Join(h.ReleaseRoot, state.ActiveRelease), stored) != nil {
 		return nil, broker.Failure(broker.CodeRevision, "active release metadata changed")
+	}
+	if stored.CoreProvider != (release.CoreProviderSource{}) {
+		proof := state.ProviderMaintenance
+		if !proof.matches(envelope.OperationID, stored) || (proof.Phase != "ACTIVATED" && proof.Phase != "COMMITTED") ||
+			peer.ExecutableDigest != proof.ExecutableDigest || !providerHealthMatches(proof, request.ProviderHealth) {
+			return nil, broker.Failure(broker.CodeFence, "provider runtime verification lacks current maintenance and health proof")
+		}
+	} else if request.ProviderHealth != nil {
+		return nil, broker.Failure(broker.CodeInvalidRequest, "legacy verification cannot carry provider health claims")
 	}
 	verified := h.runningRelease(state.ActiveRelease, peer)
 	healthRevision := "restart-pending"
@@ -388,11 +456,20 @@ func (h *Host) verify(_ context.Context, envelope broker.Request, peer broker.Pe
 			state.promotePreparedRollback()
 		}
 		state.VerifiedSequence, state.VerifiedDigest, state.UpdatedAt = state.ActiveSequence, state.ActiveDigest, h.Now().Unix()
+		if stored.CoreProvider != (release.CoreProviderSource{}) {
+			state.ProviderMaintenance.Phase = "COMMITTED"
+		}
 		state.raiseHighWater(state.ActiveSequence, state.ActiveDigest)
 		if err := h.saveState(state); err != nil {
 			return nil, broker.Failure(broker.CodeExecution, "verified release state could not be committed")
 		}
 		healthRevision = broker.Digest([]byte(state.ActiveRelease + ":management-ready"))
+		if request.ProviderHealth != nil {
+			healthRevision = broker.Digest(mustJSON(struct {
+				Proof  providerMaintenanceState
+				Health ProviderHealthV1
+			}{state.ProviderMaintenance, *request.ProviderHealth}))
+		}
 		h.pruneReleases(state.ActiveRelease, state.RollbackRelease)
 	}
 	return VerifyResultV1{ProviderRevision: ProviderRevision, Verified: verified, VerifiedSequence: state.VerifiedSequence,
@@ -409,6 +486,9 @@ func (h *Host) rollback(ctx context.Context, envelope broker.Request, peer broke
 	if err != nil {
 		return nil, broker.Failure(broker.CodeExecution, "update rollback checkpoint is unavailable")
 	}
+	if state.ProviderMaintenance != (providerMaintenanceState{}) && state.ProviderMaintenance.OperationID != envelope.OperationID {
+		return nil, broker.Failure(broker.CodeFence, "another provider maintenance checkpoint is active")
+	}
 	preparedAuthority := state.preparedRollbackMatches(envelope.OperationID, request.Release.ManifestDigest, request.RollbackRef)
 	rollbackRelease, rollbackSequence, rollbackDigest := state.RollbackRelease, state.RollbackSequence, state.RollbackDigest
 	if preparedAuthority {
@@ -419,8 +499,8 @@ func (h *Host) rollback(ctx context.Context, envelope broker.Request, peer broke
 	} else if !state.rollbackMatches(envelope.OperationID, request.Release.ManifestDigest, request.RollbackRef) {
 		return nil, broker.Failure(broker.CodeFence, "update rollback checkpoint binding changed")
 	}
-	stored, identityErr := loadReleaseIdentity(filepath.Join(h.ReleaseRoot, releaseDirectoryName(request.Release)))
-	if identityErr != nil || !sameReleaseIdentity(stored, request.Release, false) {
+	_, _, identityErr := h.resolveReleaseGeneration(request.Release)
+	if identityErr != nil {
 		return nil, broker.Failure(broker.CodeRevision, "rollback release metadata changed")
 	}
 	rollbackRoot := filepath.Join(h.ReleaseRoot, rollbackRelease)
@@ -432,6 +512,7 @@ func (h *Host) rollback(ctx context.Context, envelope broker.Request, peer broke
 		return nil, broker.Failure(broker.CodeExecution, "update rollback could not be committed")
 	}
 	state.ActiveRelease, state.ActiveSequence, state.ActiveDigest = rollbackRelease, rollbackSequence, rollbackDigest
+	state.ProviderMaintenance = providerMaintenanceState{}
 	if preparedAuthority {
 		state.clearPreparedRollback()
 	} else {
@@ -982,6 +1063,9 @@ func (h *Host) publishPreparedGeneration(archive, finalRoot string, identity Rel
 	if err := ops.verifyProfile(staging, identity.BinaryProfile); err != nil {
 		return err
 	}
+	if err := verifyPreparedProvider(staging, identity); err != nil {
+		return err
+	}
 	encoded, err := json.Marshal(identity)
 	if err != nil {
 		return err
@@ -1017,6 +1101,9 @@ func (h *Host) publishPreparedGeneration(archive, finalRoot string, identity Rel
 		return &updateAuthorityPublishedError{cause: err}
 	}
 	if err := ops.verifyMembers(finalRoot, members); err != nil {
+		return &updateAuthorityPublishedError{cause: err}
+	}
+	if err := verifyPreparedProvider(finalRoot, stored); err != nil {
 		return &updateAuthorityPublishedError{cause: err}
 	}
 	return nil
@@ -1446,8 +1533,14 @@ func sameReleaseIdentity(stored, requested ReleaseIdentityV1, requireArtifacts b
 		stored.RestartClass != requested.RestartClass || stored.RollbackClass != requested.RollbackClass {
 		return false
 	}
+	if requested.CoreProvider != (release.CoreProviderSource{}) && requested.CoreProvider != stored.CoreProvider {
+		return false
+	}
 	if !requireArtifacts {
 		return true
+	}
+	if requested.CoreProvider != stored.CoreProvider {
+		return false
 	}
 	left, _ := json.Marshal(stored.Artifacts)
 	right, _ := json.Marshal(requested.Artifacts)
@@ -1538,22 +1631,17 @@ func validateDiskState(state diskState) error {
 		state.MaxActivatedSequence == state.ActiveSequence && state.MaxActivatedSequence > 0 && state.MaxActivatedDigest != state.ActiveDigest {
 		return errors.New("invalid update state")
 	}
-	return nil
+	return validateProviderMaintenanceState(state)
 }
 
 func decodeStrict(data []byte, target any) error {
-	decoder := json.NewDecoder(strings.NewReader(string(data)))
-	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(target); err != nil {
-		return err
-	}
-	if err := decoder.Decode(&struct{}{}); err != io.EOF {
-		return errors.New("multiple JSON values are forbidden")
-	}
-	return nil
+	return broker.DecodeRawPayload(data, target)
 }
 
 func releaseDirectoryName(value ReleaseIdentityV1) string {
+	if value.CoreProvider != (release.CoreProviderSource{}) {
+		return providerReleaseDirectoryName(value)
+	}
 	return fmt.Sprintf("%020d-%s", value.Sequence, value.ManifestDigest[:16])
 }
 

@@ -3,79 +3,88 @@
 // commands, paths, services, repositories, package-manager inputs or URLs.
 package updatebroker
 
+import "github.com/MalenkiySolovey/solovey-ui/internal/release"
+
 const (
-	ProviderRevision = "update-broker-provider-1.1"
-	MaxChunkBytes    = 384 << 10
+	ProviderRevision            = "update-broker-provider-1.1"
+	MaxChunkBytes               = 384 << 10
+	ProviderMaintenanceRevision = "update-broker-maintenance-1.0"
 )
 
 type EmptyV1 struct{}
 
 type ArtifactIdentityV1 struct {
-	Name       string `json:"name"`
-	Role       string `json:"role"`
-	Platform   string `json:"platform"`
-	Arch       string `json:"arch"`
-	MediaType  string `json:"mediaType"`
-	Size       int64  `json:"size"`
-	SHA256     string `json:"sha256"`
-	Provenance string `json:"provenance"`
+	Name         string `json:"name"`
+	Role         string `json:"role"`
+	Platform     string `json:"platform"`
+	Arch         string `json:"arch"`
+	MediaType    string `json:"mediaType"`
+	Size         int64  `json:"size"`
+	SHA256       string `json:"sha256"`
+	Provenance   string `json:"provenance"`
+	CoreProvider string `json:"coreProvider,omitempty"`
 }
 
 type ReleaseIdentityV1 struct {
-	ReleaseID          string               `json:"releaseId"`
-	Sequence           uint64               `json:"sequence"`
-	Version            string               `json:"version"`
-	ManifestDigest     string               `json:"manifestDigest"`
-	ArtifactSetDigest  string               `json:"artifactSetDigest"`
-	BinaryProfile      string               `json:"binaryProfile"`
-	DeploymentRevision string               `json:"deploymentRevision"`
-	MigrationSetDigest string               `json:"migrationSetDigest"`
-	RestartClass       string               `json:"restartClass"`
-	RollbackClass      string               `json:"rollbackClass"`
-	Artifacts          []ArtifactIdentityV1 `json:"artifacts"`
+	ReleaseID          string                     `json:"releaseId"`
+	Sequence           uint64                     `json:"sequence"`
+	Version            string                     `json:"version"`
+	ManifestDigest     string                     `json:"manifestDigest"`
+	ArtifactSetDigest  string                     `json:"artifactSetDigest"`
+	BinaryProfile      string                     `json:"binaryProfile"`
+	DeploymentRevision string                     `json:"deploymentRevision"`
+	MigrationSetDigest string                     `json:"migrationSetDigest"`
+	RestartClass       string                     `json:"restartClass"`
+	RollbackClass      string                     `json:"rollbackClass"`
+	Artifacts          []ArtifactIdentityV1       `json:"artifacts"`
+	CoreProvider       release.CoreProviderSource `json:"coreProvider,omitzero"`
 }
 
 type ObservationV1 struct {
-	ProviderRevision               string `json:"providerRevision"`
-	InstalledSequence              uint64 `json:"installedSequence"`
-	ActiveSequence                 uint64 `json:"activeSequence"`
-	VerifiedSequence               uint64 `json:"verifiedSequence"`
-	MaxActivatedSequence           uint64 `json:"maxActivatedSequence"`
-	InstalledDigest                string `json:"installedDigest,omitempty"`
-	ActiveDigest                   string `json:"activeDigest,omitempty"`
-	VerifiedDigest                 string `json:"verifiedDigest,omitempty"`
-	MaxActivatedDigest             string `json:"maxActivatedDigest,omitempty"`
-	RollbackAvailable              bool   `json:"rollbackAvailable"`
-	RollbackOperationID            string `json:"rollbackOperationId,omitempty"`
-	RollbackManifestDigest         string `json:"rollbackManifestDigest,omitempty"`
-	RollbackRef                    string `json:"rollbackRef,omitempty"`
-	RollbackTargetSequence         uint64 `json:"rollbackTargetSequence,omitempty"`
-	RollbackTargetDigest           string `json:"rollbackTargetDigest,omitempty"`
-	PreparedRollbackAvailable      bool   `json:"preparedRollbackAvailable"`
-	PreparedRollbackOperationID    string `json:"preparedRollbackOperationId,omitempty"`
-	PreparedRollbackManifestDigest string `json:"preparedRollbackManifestDigest,omitempty"`
-	PreparedRollbackRef            string `json:"preparedRollbackRef,omitempty"`
-	PreparedRollbackTargetSequence uint64 `json:"preparedRollbackTargetSequence,omitempty"`
-	PreparedRollbackTargetDigest   string `json:"preparedRollbackTargetDigest,omitempty"`
-	ManagementReady                bool   `json:"managementReady"`
-	ObservedAt                     int64  `json:"observedAt"`
-	Revision                       string `json:"revision"`
+	ProviderRevision               string                            `json:"providerRevision"`
+	ProviderMaintenanceRevision    string                            `json:"providerMaintenanceRevision,omitempty"`
+	ProviderMaintenance            *ProviderMaintenanceObservationV1 `json:"providerMaintenance,omitempty"`
+	InstalledSequence              uint64                            `json:"installedSequence"`
+	ActiveSequence                 uint64                            `json:"activeSequence"`
+	VerifiedSequence               uint64                            `json:"verifiedSequence"`
+	MaxActivatedSequence           uint64                            `json:"maxActivatedSequence"`
+	InstalledDigest                string                            `json:"installedDigest,omitempty"`
+	ActiveDigest                   string                            `json:"activeDigest,omitempty"`
+	VerifiedDigest                 string                            `json:"verifiedDigest,omitempty"`
+	MaxActivatedDigest             string                            `json:"maxActivatedDigest,omitempty"`
+	RollbackAvailable              bool                              `json:"rollbackAvailable"`
+	RollbackOperationID            string                            `json:"rollbackOperationId,omitempty"`
+	RollbackManifestDigest         string                            `json:"rollbackManifestDigest,omitempty"`
+	RollbackRef                    string                            `json:"rollbackRef,omitempty"`
+	RollbackTargetSequence         uint64                            `json:"rollbackTargetSequence,omitempty"`
+	RollbackTargetDigest           string                            `json:"rollbackTargetDigest,omitempty"`
+	PreparedRollbackAvailable      bool                              `json:"preparedRollbackAvailable"`
+	PreparedRollbackOperationID    string                            `json:"preparedRollbackOperationId,omitempty"`
+	PreparedRollbackManifestDigest string                            `json:"preparedRollbackManifestDigest,omitempty"`
+	PreparedRollbackRef            string                            `json:"preparedRollbackRef,omitempty"`
+	PreparedRollbackTargetSequence uint64                            `json:"preparedRollbackTargetSequence,omitempty"`
+	PreparedRollbackTargetDigest   string                            `json:"preparedRollbackTargetDigest,omitempty"`
+	ManagementReady                bool                              `json:"managementReady"`
+	ObservedAt                     int64                             `json:"observedAt"`
+	Revision                       string                            `json:"revision"`
 }
 
 type StageChunkRequestV1 struct {
-	Release        ReleaseIdentityV1  `json:"release"`
-	Artifact       ArtifactIdentityV1 `json:"artifact"`
-	Offset         int64              `json:"offset"`
-	Chunk          []byte             `json:"chunk"`
-	Final          bool               `json:"final"`
-	ExpectedPrefix string             `json:"expectedPrefix,omitempty"`
+	Release        ReleaseIdentityV1      `json:"release"`
+	Artifact       ArtifactIdentityV1     `json:"artifact"`
+	Offset         int64                  `json:"offset"`
+	Chunk          []byte                 `json:"chunk"`
+	Final          bool                   `json:"final"`
+	ExpectedPrefix string                 `json:"expectedPrefix,omitempty"`
+	Configuration  *ProviderMaintenanceV1 `json:"configuration,omitempty"`
 }
 
 type StageChunkResultV1 struct {
-	ProviderRevision string `json:"providerRevision"`
-	AcceptedBytes    int64  `json:"acceptedBytes"`
-	Complete         bool   `json:"complete"`
-	ArtifactDigest   string `json:"artifactDigest,omitempty"`
+	ProviderRevision    string `json:"providerRevision"`
+	AcceptedBytes       int64  `json:"acceptedBytes"`
+	Complete            bool   `json:"complete"`
+	ArtifactDigest      string `json:"artifactDigest,omitempty"`
+	ConfigurationDigest string `json:"configurationDigest,omitempty"`
 }
 
 type ReleaseStagingRequestV1 struct {
@@ -88,25 +97,33 @@ type ReleaseStagingResultV1 struct {
 }
 
 type PrepareRequestV1 struct {
-	Release                    ReleaseIdentityV1 `json:"release"`
-	ExpectedBrokerCapability   string            `json:"expectedBrokerCapability"`
-	ExpectedManagementRevision string            `json:"expectedManagementRevision"`
+	Release                    ReleaseIdentityV1      `json:"release"`
+	ExpectedBrokerCapability   string                 `json:"expectedBrokerCapability"`
+	ExpectedManagementRevision string                 `json:"expectedManagementRevision"`
+	Maintenance                *ProviderMaintenanceV1 `json:"maintenance,omitempty"`
+	ValidateConfiguration      bool                   `json:"validateConfiguration,omitempty"`
+	MaintenanceHeld            bool                   `json:"maintenanceHeld,omitempty"`
 }
 
 type PrepareResultV1 struct {
-	ProviderRevision  string `json:"providerRevision"`
-	PreparedRef       string `json:"preparedRef"`
-	RollbackRef       string `json:"rollbackRef"`
-	RollbackAvailable bool   `json:"rollbackAvailable"`
-	ManagementReady   bool   `json:"managementReady"`
-	PreflightRevision string `json:"preflightRevision"`
+	ProviderRevision      string `json:"providerRevision"`
+	PreparedRef           string `json:"preparedRef"`
+	RollbackRef           string `json:"rollbackRef"`
+	RollbackAvailable     bool   `json:"rollbackAvailable"`
+	ManagementReady       bool   `json:"managementReady"`
+	PreflightRevision     string `json:"preflightRevision"`
+	ConfigurationVerified bool   `json:"configurationVerified,omitempty"`
+	ConfigurationRevision string `json:"configurationRevision,omitempty"`
 }
 
 type ActivateRequestV1 struct {
-	Release      ReleaseIdentityV1 `json:"release"`
-	PreparedRef  string            `json:"preparedRef"`
-	RollbackRef  string            `json:"rollbackRef"`
-	ExpectedMode string            `json:"expectedMode"`
+	Release               ReleaseIdentityV1 `json:"release"`
+	PreparedRef           string            `json:"preparedRef"`
+	RollbackRef           string            `json:"rollbackRef"`
+	ExpectedMode          string            `json:"expectedMode"`
+	ConfigurationDigest   string            `json:"configurationDigest,omitempty"`
+	ConfigurationRevision string            `json:"configurationRevision,omitempty"`
+	MaintenanceHeld       bool              `json:"maintenanceHeld,omitempty"`
 }
 
 type ActivateResultV1 struct {
@@ -117,9 +134,10 @@ type ActivateResultV1 struct {
 }
 
 type VerifyRequestV1 struct {
-	Release     ReleaseIdentityV1 `json:"release"`
-	PreparedRef string            `json:"preparedRef"`
-	RollbackRef string            `json:"rollbackRef"`
+	Release        ReleaseIdentityV1 `json:"release"`
+	PreparedRef    string            `json:"preparedRef"`
+	RollbackRef    string            `json:"rollbackRef"`
+	ProviderHealth *ProviderHealthV1 `json:"providerHealth,omitempty"`
 }
 
 type VerifyResultV1 struct {

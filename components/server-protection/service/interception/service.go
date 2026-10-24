@@ -1,6 +1,7 @@
 package interception
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"sort"
@@ -191,8 +192,8 @@ func (s *Service) Status(ctx context.Context) (StatusV1, error) {
 		status.Resources = append(status.Resources, ResourceStatusV1{Fact: fact, Reference: reference, Disposition: disposition, ReasonCodes: reasons})
 	}
 	sort.Slice(status.Resources, func(i, j int) bool {
-		return status.Resources[i].Fact.ResourceID+"\x00"+status.Resources[i].Fact.EndpointID <
-			status.Resources[j].Fact.ResourceID+"\x00"+status.Resources[j].Fact.EndpointID
+		left, right := status.Resources[i].Fact, status.Resources[j].Fact
+		return cmp.Or(cmp.Compare(left.ResourceID, right.ResourceID), cmp.Compare(left.EndpointID, right.EndpointID)) < 0
 	})
 	return status, nil
 }
