@@ -5,7 +5,24 @@ import path from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import test from 'node:test'
-import { requireExternalCandidate, verifyCandidate, verifyRecoveryBinding } from './release-candidate.mjs'
+import { candidatePanelInventory, requireExternalCandidate, verifyCandidate, verifyRecoveryBinding } from './release-candidate.mjs'
+
+test('new recovery orchestration retains old Official-only products and uses v2 product policy when available', async () => {
+  const targets = { linux: [{ platform: 'amd64' }, { platform: 'armv7' }] }
+  const unavailable = () => { throw Error('old product has no provider policy module') }
+  const legacy = await candidatePanelInventory({}, targets, unavailable)
+  assert.equal(legacy.providerAware, false)
+  assert.deepEqual(legacy.panels.map(item => item.name), [
+    'solovey-ui-linux-amd64.tar.gz', 'solovey-ui-core-linux-amd64.tar.gz',
+    'solovey-ui-linux-armv7.tar.gz', 'solovey-ui-core-linux-armv7.tar.gz',
+  ])
+  assert.deepEqual(await candidatePanelInventory({ schema: 'solovey.release/v1' }, targets, unavailable), legacy)
+  const policy = await import('./release-providers.mjs')
+  const current = await candidatePanelInventory({ schema: policy.providerSchema }, targets, () => policy)
+  assert.equal(current.providerAware, true)
+  assert.deepEqual(current.panels, policy.linuxPanelArtifacts())
+  await assert.rejects(candidatePanelInventory({ schema: 'unknown' }, targets, () => policy), /unsupported product release schema/)
+})
 
 test('candidate staging cannot pollute the immutable source inventory or hide unknown source inputs', t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'release-candidate-'))

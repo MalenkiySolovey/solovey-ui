@@ -24,7 +24,7 @@ export function verifySourcePin(source, mod, sums) {
   }
 }
 
-export function resolveBuildPlan({provider,baseTags='',repoRoot=root}={}) {
+export function resolveProviderSource({provider,repoRoot=root}={}) {
   const catalog=JSON.parse(fs.readFileSync(path.join(repoRoot,'core/provider/pins.json'),'utf8'))
   provider ??= catalog.defaultProvider
   const flavors=catalog.buildFlavors.filter(item => item.id===provider)
@@ -34,6 +34,13 @@ export function resolveBuildPlan({provider,baseTags='',repoRoot=root}={}) {
   const sources=catalog.sources.filter(item => item.id===provider && item.sourceRevision===flavor.sourceRevision)
   if(sources.length!==1)throw Error('Provider build source is not pinned uniquely')
   const source=sources[0]
+  return {provider,flavor,source}
+}
+
+export function resolveBuildPlan({provider,baseTags='',repoRoot=root}={}) {
+  const resolved=resolveProviderSource({provider,repoRoot})
+  const {flavor,source}=resolved
+  provider=resolved.provider
   const tags=baseTags ? baseTags.split(',') : []
   if(tags.some(tag => !/^[a-zA-Z0-9_]+$/.test(tag)))throw Error('Invalid base build tag')
   if(tags.includes('shtorm_extended') && !flavor.buildTags.includes('shtorm_extended')) {

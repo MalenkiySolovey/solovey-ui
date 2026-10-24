@@ -143,6 +143,10 @@ create_release_fixture() {
     cat > "${release_dir}/solovey-ui" <<'SH'
 #!/usr/bin/env bash
 set -Eeuo pipefail
+if [[ "${1:-}" == core-info ]]; then
+    printf '%s\n' '{"schema":"solovey.core-provider-identity/v1","state":"VERIFIED","id":"sing-box"}'
+    exit 0
+fi
 printf '%s\n' "$*" >> "${TEST_INSTALLER_LOG}/binary.log"
 exit 0
 SH

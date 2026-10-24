@@ -6,6 +6,49 @@ read-only preview binds a signed v2 envelope and explicit artifact set to the
 current source and desired-configuration revision. It clears raw configuration
 before returning the public projection.
 
+## Installer and release flavors
+
+A fresh installation selects Official (`sing-box`) unless the operator passes
+`--core-provider shtorm-extended`. The same choice can be supplied through
+`SOLOVEY_UI_CORE_PROVIDER`. Repeated flags, unknown or empty choices fail before
+download. Extended fresh installation requires an empty installation with no
+existing database or configuration. Importing legacy S-UI state starts with
+Official and uses the existing maintenance path for a later provider change.
+
+The source release policy scopes Extended to Linux amd64, with full and core
+profiles. Official retains its seven Linux architectures, Windows, Docker and
+OpenWrt packaging. No Extended Windows, Docker, OpenWrt or other architecture
+is declared. Release/platform qualification remains an R7 acceptance gate;
+public stable v2026.4.1 contains no Extended packages. Use the explicit flag only
+with a complete published version that supplies the selected flavor.
+
+Ordinary installer updates observe and retain the installed provider. An
+explicit different provider is rejected before network access and points to
+the authenticated maintenance command below. An unavailable or ambiguous
+installed identity blocks the update. A legacy executable with its exact
+Official version output and application metadata is classified only as Official;
+that compatibility classification does not establish source provenance.
+
+The requested flavor determines the archive name. After checksum verification
+and safe extraction, the installer independently observes the payload's provider
+before backups, service changes, database or secret-environment mutation. A
+mismatched payload is rejected. Bootstrap uses the existing HTTPS/checksum
+contract; the installed Update owner separately requires signed manifests.
+
+Release v2 binds each Panel archive to its provider, complete pinned source,
+content digest, architecture and profile. Packaging/signing statically observes
+the actual executable and uses the existing Go release owner for canonical
+signing bytes and verification. It never runs a candidate executable for that
+proof. Recovery retains the original envelope and payload bytes. Official-only
+v1 products retain their original recovery contract.
+
+The source disclosure includes both resolved module graphs, their lock and
+coordinate digests, each authenticated source checksum and explicit SBOM
+dependency edges for each flavor. Shared dependencies are attributed to both;
+different engine versions and patches retain separate identities. This complete
+source inventory includes tools and platform alternatives and does not claim
+that every listed module is linked into each executable.
+
 The maintenance entry point uses the existing Update operation and journal.
 Network staging precedes SQLite maintenance admission. Under that admission,
 ConfigService captures the same canonical owners used by save/apply. Update

@@ -15,10 +15,11 @@ platform=''
 trust_roots_file=''
 profile='full'
 naive='false'
+core_provider='sing-box'
 
 usage() {
 	cat <<'EOF'
-Usage: scripts/build-linux-target.sh --mode <release|openwrt> --out <directory> --platform <artifact-platform> --trust-roots-file <base64-file> [--profile <full|core>] [--naive]
+Usage: scripts/build-linux-target.sh --mode <release|openwrt> --out <directory> --platform <artifact-platform> --trust-roots-file <base64-file> [--profile <full|core>] [--core-provider <sing-box|shtorm-extended>] [--naive]
 
 The caller must set GOOS, GOARCH, CGO_ENABLED, CC and CXX. OpenWrt mode adds
 the with_musl build tag and emits all nine package executables. Release mode
@@ -38,6 +39,7 @@ while [[ $# -gt 0 ]]; do
 		--platform) platform=${2:?--platform requires a value}; shift 2 ;;
 		--trust-roots-file) trust_roots_file=${2:?--trust-roots-file requires a value}; shift 2 ;;
 		--profile) profile=${2:?--profile requires a value}; shift 2 ;;
+		--core-provider) core_provider=${2:?--core-provider requires a value}; shift 2 ;;
 		--naive) naive='true'; shift ;;
 		--help|-h) usage; exit 0 ;;
 		*) usage; fail "unknown argument: $1" ;;
@@ -47,12 +49,14 @@ done
 [[ "$mode" == 'release' || "$mode" == 'openwrt' ]] || fail '--mode must be release or openwrt'
 [[ "$profile" == 'full' || "$profile" == 'core' ]] || fail '--profile must be full or core'
 [[ "$mode" != 'openwrt' || "$profile" == 'full' ]] || fail 'OpenWrt stage supports only the full profile'
+[[ "$mode" != 'openwrt' || "$core_provider" == 'sing-box' ]] || fail 'Extended is not declared for OpenWrt'
 [[ "$mode" != 'openwrt' || "${SOLOVEY_HERMETIC_TARGET_ENV:-}" == '1' ]] || fail 'OpenWrt targets must run through the canonical hermetic stage producer'
 [[ -n "$out" && -n "$platform" && -f "$trust_roots_file" ]] || fail 'output, platform and trust-roots file are required'
 [[ "${GOOS:-}" == 'linux' && -n "${GOARCH:-}" && "${CGO_ENABLED:-}" == '1' ]] || fail 'GOOS=linux, GOARCH and CGO_ENABLED=1 are required'
 [[ -n "${CC:-}" && -n "${CXX:-}" ]] || fail 'CC and CXX are required'
 if [[ "$mode" == 'release' ]]; then
-	node "$(dirname "${BASH_SOURCE[0]}")/release-target.mjs" "$platform" "$naive" || fail 'release target identity is invalid'
+	export GOFLAGS='' GOWORK=off
+	node "$(dirname "${BASH_SOURCE[0]}")/release-target.mjs" "$platform" "$naive" "$core_provider" || fail 'release target identity is invalid'
 fi
 go_program=$(command -v go) || fail 'go is unavailable'
 go_program=$(readlink -f "$go_program")
@@ -74,34 +78,42 @@ fi
 if [[ "$profile" == 'core' ]]; then
 	tags="${tags},minimal"
 fi
+provider_go_args=(-mod=readonly -modfile=go.mod)
+if [[ "$mode" == 'release' ]]; then
+	tags=$(node "$(dirname "${BASH_SOURCE[0]}")/core-provider-build.mjs" tags --provider "$core_provider" --tags "$tags")
+	if [[ "$core_provider" != 'sing-box' ]]; then
+		provider_args=$(node "$(dirname "${BASH_SOURCE[0]}")/core-provider-build.mjs" go-args --provider "$core_provider")
+		mapfile -t provider_go_args <<< "$provider_args"
+	fi
+fi
 panel_ldflags="-buildid= -w -s -checklinkname=0 -linkmode external -extldflags '-static' -X github.com/MalenkiySolovey/solovey-ui/config/update.ArtifactPlatform=${platform} -X github.com/MalenkiySolovey/solovey-ui/config/update.ReleaseTrustRootsBase64=${trust_roots}"
 
 mkdir -p "$out"
 panel_name='solovey-ui'
 [[ "$profile" == 'core' ]] && panel_name='solovey-ui-core'
-"$go_program" build -trimpath -buildvcs=false -ldflags="$panel_ldflags" -tags "$tags" -o "$out/$panel_name" main.go
+"$go_program" build "${provider_go_args[@]}" -trimpath -buildvcs=false -ldflags="$panel_ldflags" -tags "$tags" -o "$out/$panel_name" main.go
 
 if [[ "$profile" == 'core' ]]; then
-	"$go_program" build -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -tags minimal -o "$out/solovey-privileged-broker" ./cmd/solovey-privileged-broker
+	"$go_program" build -mod=readonly -modfile=go.mod -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -tags minimal -o "$out/solovey-privileged-broker" ./cmd/solovey-privileged-broker
 	chmod 0755 "$out/$panel_name"
 	echo "[build-linux-target] built $mode $profile target in $out"
 	exit 0
 fi
 
-"$go_program" build -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-privileged-broker" ./cmd/solovey-privileged-broker
-"$go_program" build -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-ssh-proof" ./cmd/solovey-ssh-proof
+"$go_program" build -mod=readonly -modfile=go.mod -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-privileged-broker" ./cmd/solovey-privileged-broker
+"$go_program" build -mod=readonly -modfile=go.mod -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-ssh-proof" ./cmd/solovey-ssh-proof
 
 if [[ "$mode" == 'openwrt' ]]; then
-	"$go_program" build -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-evidence" ./cmd/solovey-evidence
-	"$go_program" build -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-broker-readiness" ./cmd/solovey-broker-readiness
-	"$go_program" build -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-openwrt-preservation" ./cmd/solovey-openwrt-preservation
-	"$go_program" build -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-openwrt-durability" ./cmd/solovey-openwrt-durability
-	"$go_program" build -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-openwrt-lifecycle" ./cmd/solovey-openwrt-lifecycle
-	"$go_program" build -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-openwrt-owner-manifest" ./components/server-protection/cmd/solovey-openwrt-owner-manifest
-	"$go_program" build -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-openwrt-broker-manifest" ./cmd/solovey-openwrt-broker-manifest
+	"$go_program" build -mod=readonly -modfile=go.mod -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-evidence" ./cmd/solovey-evidence
+	"$go_program" build -mod=readonly -modfile=go.mod -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-broker-readiness" ./cmd/solovey-broker-readiness
+	"$go_program" build -mod=readonly -modfile=go.mod -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-openwrt-preservation" ./cmd/solovey-openwrt-preservation
+	"$go_program" build -mod=readonly -modfile=go.mod -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-openwrt-durability" ./cmd/solovey-openwrt-durability
+	"$go_program" build -mod=readonly -modfile=go.mod -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-openwrt-lifecycle" ./cmd/solovey-openwrt-lifecycle
+	"$go_program" build -mod=readonly -modfile=go.mod -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-openwrt-owner-manifest" ./components/server-protection/cmd/solovey-openwrt-owner-manifest
+	"$go_program" build -mod=readonly -modfile=go.mod -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-openwrt-broker-manifest" ./cmd/solovey-openwrt-broker-manifest
 else
-	"$go_program" build -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-broker-manifest" ./cmd/solovey-broker-manifest
-	"$go_program" build -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-owner-manifest" ./components/server-protection/cmd/solovey-owner-manifest
+	"$go_program" build -mod=readonly -modfile=go.mod -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-broker-manifest" ./cmd/solovey-broker-manifest
+	"$go_program" build -mod=readonly -modfile=go.mod -trimpath -buildvcs=false -ldflags="$HELPER_LDFLAGS" -o "$out/solovey-owner-manifest" ./components/server-protection/cmd/solovey-owner-manifest
 fi
 
 chmod 0755 "$out"/*

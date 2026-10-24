@@ -31,7 +31,7 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - name: Native tooling regressions
-        run: node --test scripts/frontend-assets.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/core-provider-build.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs
+        run: node --test scripts/frontend-assets.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/core-provider-build.test.mjs scripts/release-providers.test.mjs scripts/release-metadata.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs
       - name: Source format and owned shell entrypoints
         if: runner.os == 'Linux'
         run: node scripts/audit/source-hygiene.mjs
@@ -105,6 +105,14 @@ jobs:
               SOLOVEY_ARTIFACT_TEST_PROVIDER=shtorm-extended SOLOVEY_ARTIFACT_TEST_PROFILE="$profile" \
               go test -tags "$EXTENDED_TAGS" -count=1 -timeout=5m -run '^TestArtifactObservationActualBinaryAndArchive$' ./cmd/solovey-artifact-info
           done
+      - name: Sign and verify both actual Extended package profiles through the release owner
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          SOLOVEY_RELEASE_TEST_FULL="$RUNNER_TEMP/solovey-extended-full" \
+            SOLOVEY_RELEASE_TEST_CORE="$RUNNER_TEMP/solovey-extended-core" \
+            SOLOVEY_RELEASE_TEST_PROVIDER=shtorm-extended \
+            node --test scripts/release-provider-artifacts.test.mjs
       - name: Qualify native provider maintenance with root-owned actual candidates
         if: runner.os == 'Linux'
         shell: bash
@@ -215,6 +223,7 @@ jobs:
       - name: Semantic release resolution and complete release verification
         run: |
           bash tests/installer/latest-release.sh
+          bash tests/installer/core-provider.sh
           node --test scripts/release-verify.test.mjs scripts/release-target.test.mjs scripts/release-publish-gate.test.mjs scripts/release-source.test.mjs scripts/release-resume.test.mjs scripts/release-candidate.test.mjs
 
       - name: signed release manifest integration
@@ -348,6 +357,14 @@ jobs:
               SOLOVEY_ARTIFACT_TEST_PROVIDER=sing-box SOLOVEY_ARTIFACT_TEST_PROFILE="$profile" \
               go test -mod=readonly -count=1 -timeout=5m -run '^TestArtifactObservationActualBinaryAndArchive$' ./cmd/solovey-artifact-info
           done
+      - name: Sign and verify both actual Official package profiles through the release owner
+        if: runner.os == 'Linux'
+        shell: bash
+        run: |
+          SOLOVEY_RELEASE_TEST_FULL="$RUNNER_TEMP/solovey-official-full" \
+            SOLOVEY_RELEASE_TEST_CORE="$RUNNER_TEMP/solovey-official-core" \
+            SOLOVEY_RELEASE_TEST_PROVIDER=sing-box \
+            node --test scripts/release-provider-artifacts.test.mjs
       - name: Qualify Official provider maintenance with root-owned actual candidates
         if: runner.os == 'Linux'
         shell: bash

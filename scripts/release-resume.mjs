@@ -22,6 +22,7 @@ export function verifyInterruptedRun(run, jobs, { repository, commit, tag, curre
     'Canonical OpenWrt x86-64', 'Canonical OpenWrt rockchip-armv8', 'Verify complete OpenWrt and FriendlyWrt candidate',
     'build-docker / publication-authority', 'build-docker / publish-manifest',
     ...targets.linux.map(t => 'Build-' + t.platform),
+    ...(targets.extended?.linux ?? []).map(platform => `Build-${targets.extended.provider}-${platform}`),
     ...targets.windows.flatMap(arch => targets.windowsProfiles.map(profile => `build-windows / Build-windows-${arch}-${profile}`)),
     ...targets.docker.map(arch => 'build-docker / build-' + arch)]
   assert.equal(new Set(jobs.map(j => j.name)).size, jobs.length, 'ambiguous source-run jobs')

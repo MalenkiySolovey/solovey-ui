@@ -1,16 +1,16 @@
 // The release set is a product contract; workflows and operator tools call
 // the same completeness, digest and signature checks before publication.
 import crypto from 'node:crypto'
+import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { resolveProviderSource } from './core-provider-build.mjs'
+import { targets, legacySchema, providerSchema, linuxPanelArtifacts, withArtifactInspector, inspectPanelArchive, verifyReleaseEnvelope } from './release-providers.mjs'
 
-export const targets = JSON.parse(fs.readFileSync(new URL('./release-targets.json', import.meta.url), 'utf8'))
-export const linuxAssetNames = () => [
-  ...targets.linux.flatMap(({ platform }) => [
-    `solovey-ui-linux-${platform}.tar.gz`,
-    `solovey-ui-core-linux-${platform}.tar.gz`,
-  ]),
+export { targets }
+export const linuxAssetNames = (schema = providerSchema) => [
+  ...linuxPanelArtifacts(schema).map(target => target.name),
   'solovey-ui-components.tar.gz',
 ].sort()
 
@@ -34,9 +34,16 @@ export async function verifyWindowsSet(directory) {
   return names
 }
 
-export async function verifyReleaseSet(directory, { version, trustRootsBase64, now = Date.now() / 1000 } = {}) {
-  const names = linuxAssetNames()
+export async function verifyReleaseSet(directory, { version, trustRootsBase64, now = Date.now() / 1000, artifactInfo = process.env.SOLOVEY_ARTIFACT_INFO } = {}) {
   const envelopeName = 'solovey-ui-release.json'
+  const envelopePath = path.join(directory, envelopeName)
+  const envelopeStat = fs.lstatSync(envelopePath)
+  if (!envelopeStat.isFile() || envelopeStat.size <= 0 || envelopeStat.size > (2 << 20)) throw Error('release envelope is not a bounded regular file')
+  const envelope = JSON.parse(fs.readFileSync(envelopePath, 'utf8'))
+  const manifest = envelope.manifest
+  if (![legacySchema, providerSchema].includes(envelope.schema) || envelope.algorithm !== 'Ed25519' || manifest?.schema !== envelope.schema) throw new Error('release envelope schema/algorithm is invalid')
+  const names = linuxAssetNames(envelope.schema)
+  const panelTargets = new Map(linuxPanelArtifacts(envelope.schema).map(target => [target.name, target]))
   const expected = [...names, envelopeName].flatMap(name => [name, `${name}.sha256`]).sort()
   const actual = fs.readdirSync(directory).sort()
   if (JSON.stringify(actual) !== JSON.stringify(expected)) throw new Error('release directory is not the complete canonical Linux set with checksums and envelope')
@@ -52,9 +59,6 @@ export async function verifyReleaseSet(directory, { version, trustRootsBase64, n
     if (!fs.lstatSync(sidecar).isFile() || fs.readFileSync(sidecar, 'utf8') !== `${digest}  ${name}\n`) throw new Error(`checksum binding mismatch for ${name}`)
     identities.set(name, { size: stat.size, sha256: digest })
   }
-  const envelope = JSON.parse(fs.readFileSync(path.join(directory, envelopeName), 'utf8'))
-  const manifest = envelope.manifest
-  if (envelope.schema !== 'solovey.release/v1' || envelope.algorithm !== 'Ed25519' || manifest?.schema !== envelope.schema) throw new Error('release envelope schema/algorithm is invalid')
   if (manifest.version !== version?.replace(/^v/, '') || manifest.issuedAt > now || manifest.expiresAt <= now) throw new Error('release version or validity mismatch')
   if (!Number.isSafeInteger(manifest.issuedAt) || !Number.isSafeInteger(manifest.expiresAt) ||
       manifest.expiresAt <= manifest.issuedAt || manifest.expiresAt - manifest.issuedAt > 14 * 86400 ||
@@ -79,6 +83,9 @@ export async function verifyReleaseSet(directory, { version, trustRootsBase64, n
     const role = component ? 'component-catalog' : artifact.name.includes('-core-') ? 'panel-core' : 'panel-full'
     const arch = component ? 'any' : artifact.name.match(/linux-(.+)\.tar\.gz$/)[1]
     if (artifact.role !== role || artifact.arch !== arch || artifact.platform !== (component ? 'any' : 'linux') || artifact.provenance !== 'github-actions' || artifact.mediaType !== 'application/vnd.solovey.release-set+gzip') throw new Error('manifest role/target binding mismatch')
+    if (envelope.schema === providerSchema) {
+      if (artifact.coreProvider !== (component ? undefined : panelTargets.get(artifact.name).provider)) throw Error('manifest provider/target binding mismatch')
+    } else if (artifact.coreProvider !== undefined) throw Error('legacy manifest cannot declare a provider')
   }
   const catalog = identities.get('solovey-ui-components.tar.gz')
   const componentIDs = new Set()
@@ -87,7 +94,19 @@ export async function verifyReleaseSet(directory, { version, trustRootsBase64, n
     if (!/^[a-z0-9-]+$/.test(component.id ?? '') || componentIDs.has(component.id) || component.artifactSha256 !== catalog.sha256) throw new Error('manifest component catalog binding mismatch')
     componentIDs.add(component.id)
   }
-  return { version: manifest.version, sequence: manifest.sequence, artifacts: Object.fromEntries(identities) }
+  if (envelope.schema === providerSchema) {
+    const sources = [...new Set([...panelTargets.values()].map(target => target.provider))].sort()
+      .map(provider => resolveProviderSource({ provider }).source)
+    assert.deepEqual(manifest.coreProviders, sources, 'release provider sources differ from the pinned build flavors')
+    await withArtifactInspector(artifactInfo, inspector => {
+      const observed = verifyReleaseEnvelope(inspector, envelopePath, { trustRoots: roots, now, channel: manifest.channel })
+      assert.deepEqual(observed.manifest, manifest, 'runtime release observation differs')
+      for (const artifact of manifest.artifacts) {
+        if (artifact.coreProvider) inspectPanelArchive(inspector, path.join(directory, artifact.name), panelTargets.get(artifact.name), identities.get(artifact.name))
+      }
+    })
+  } else if (manifest.coreProviders !== undefined) throw Error('legacy release cannot declare provider sources')
+  return { schema: manifest.schema, version: manifest.version, sequence: manifest.sequence, artifacts: Object.fromEntries(identities) }
 }
 
 if (process.argv[1] && pathToFileURL(path.resolve(process.argv[1])).href === import.meta.url) {

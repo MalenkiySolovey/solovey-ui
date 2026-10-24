@@ -92,6 +92,33 @@ modules. The notice archive preserves the original texts and per-project license
 metadata, including platform and build alternatives. Retain the applicable BSD,
 Apache, LLVM, MPL, APSL and other bundled notices when redistributing native assets.
 
+## Optional Shtorm Extended build flavor
+
+Official remains the default at its accepted v1.14.2 semantic baseline.
+The separately compiled `shtorm-extended` flavor uses Shtorm
+`v1.14.3-extended-2.7.3`, source
+`d9442d14b19ddd02605bf3ee893a171947038e19`, with runtime semantics v1.14.3.
+Its actual maintained engine is
+`github.com/MalenkiySolovey/sing-box@v1.14.4-0.20261023040931-b5f1b37ff6d4`,
+commit `b5f1b37ff6d4dc16b874b1ffc6e8d0b1b3777f5f`. Its maintained QUIC
+integration is pinned at `d0ecb33c441a8f188f98bbcf07c0e1d77785e7be`.
+`deploy/dependencies/sing-box-extended-integration.json` and its replayable
+engine/QUIC patches record the exact bases, source checksums, changes and reasons.
+The shared AnyTLS integration retains its separate source identity above.
+
+These engine and QUIC sources carry GPL-3.0-or-later notices. Original authorship
+and license bytes remain applicable. The engine's original LICENSE additionally
+restricts use of its name or claims of association without consent. Solovey UI
+retains its own product name; source/provider attribution does not assert upstream
+endorsement. Modified Extended binaries are not byte-identical to upstream
+Shtorm or Official sing-box.
+
+The complete source disclosure and SBOM distinguish the two resolved module
+graphs, their engine versions and patches, shared modules and provider-specific
+dependencies. Original dependency/native notices accompany their authenticated
+source archives. Source attribution is separate from platform qualification and
+does not establish that every resolved module is linked into each executable.
+
 ## Panel behavior references
 
 The accepted original S-UI released target is v1.6.4 at

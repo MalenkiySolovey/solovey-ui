@@ -51,6 +51,9 @@ Release checklist:
 `scripts/release-targets.json` records the supported release inventory. Generic
 Linux has full and core archives for amd64, arm64, armv7, armv6, armv5, 386 and
 s390x, plus one component bundle. Every archive has an exact SHA-256 sidecar.
+The explicit Shtorm Extended flavor adds full/core Linux amd64 archives under
+the same release transaction. Its platform policy is `extended` in that file;
+other Extended platforms are not declared. Official remains the default.
 `solovey-ui-release.json` and its checksum bind the complete Linux update set.
 Windows ships amd64 and arm64 full/core ZIP packages with checksums; the operator-managed
 Docker output covers amd64 and arm64. RISC-V is not a current release target.
@@ -108,6 +111,15 @@ Windows inventory/checksum gate. Production signing keys remain workflow-only.
 Local signature fixtures demonstrate cryptographic behavior without establishing
 production trust. Real candidates embed the configured public roots.
 
+Current Linux assembly explicitly produces release v2. Each Panel entry binds
+its provider and exact source pin. The producer statically verifies the packaged
+executable's source, architecture and profile, then signs bytes canonicalized
+by `internal/release`. The publication verifier independently uses that same
+runtime owner for signature/contract verification and inspects every Panel
+archive. Observation adds no installation authority. Legacy v1 remains
+Official-only and cannot silently omit Extended packages; recovery of an old
+product uses its immutable product contract without requiring newer modules.
+
 `scripts/release-compatibility.json` owns the reviewed update range and target
 schema for the exact source version. The reviewed metadata covers incoming
 panel 2026.4.0/schema 1.12, with target and component packs at schema 1.13.
@@ -122,11 +134,16 @@ backup; an older binary must not open migrated state.
 `scripts/release-metadata.mjs` produces the canonical source archive, dependency
 notice archive, CycloneDX SBOM and provenance assets listed in
 `scripts/release-targets.json`. The source archive contains the exact Git tree
-and immutable source archives for the resolved Go graph and complete npm
+and immutable source archives for both resolved Go graphs and the complete npm
 lockfile, including build tools and platform alternatives. Each npm archive is
 verified against SHA512 SRI; Go sources use authenticated module sums. License
 and copyright files retain their original bytes. The SBOM identifies the actual
-three maintained replacements separately from the official semantic baseline.
+Official and Extended engine versions and their maintained patches separately.
+Each build flavor has its exact resolved module dependency edges; shared sources
+remain attributable to both. Lock digests and the resolved coordinate digest
+identify each graph, while component checksums authenticate individual source
+contents. This is a complete source inventory, including unused platform and
+tool dependencies, rather than a linked-module claim for every executable.
 The native libcronet source lock additionally includes the exact C++ source
 snapshot with a pinned archive SHA256 and size, and original Chromium/Naive and
 third-party license files. README.chromium license references are preserved with

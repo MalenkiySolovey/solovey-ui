@@ -11,7 +11,7 @@ function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'solovey-release-contract-'))
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }))
   // Digest/signature fixtures only; these are never installation candidates.
-  for (const name of linuxAssetNames()) {
+  for (const name of linuxAssetNames('solovey.release/v1')) {
     fs.writeFileSync(path.join(dir, name), `contract fixture for ${name}\n`)
     checksum(dir, name)
   }
@@ -45,6 +45,17 @@ test('complete canonical set is bound to signed roles, targets, bytes and checks
   assert.ok(result.artifacts['solovey-ui-linux-arm64.tar.gz'])
   assert.ok(result.artifacts['solovey-ui-core-linux-arm64.tar.gz'])
 })
+
+test('legacy manifest producer cannot silently omit a provider package', t => {
+  const { dir, options } = fixture(t)
+  const name = 'solovey-ui-shtorm-extended-linux-amd64.tar.gz'
+  fs.writeFileSync(path.join(dir, name), 'provider candidate requiring v2 source identity')
+  const { privateKey } = crypto.generateKeyPairSync('ed25519')
+  assert.throws(() => execFileSync(process.execPath, [
+    'scripts/release-manifest.mjs', '--assets-dir', dir, '--version', options.version,
+    '--sequence', '11', '--issued-at', String(options.now), '--channel', 'main', '--key-id', 'unit-test-only',
+  ], { env: { ...process.env, SUI_RELEASE_SIGNING_PRIVATE_KEY_B64: privateKey.export({ format: 'der', type: 'pkcs8' }).toString('base64') }, stdio: 'pipe' }), /provider.*v2|v2.*provider/i)
+})
 test('symmetric but incomplete platform inventory cannot be published', async t => {
   const { dir, options } = fixture(t)
   for (const name of ['solovey-ui-linux-arm64.tar.gz', 'solovey-ui-core-linux-arm64.tar.gz']) {
@@ -54,13 +65,13 @@ test('symmetric but incomplete platform inventory cannot be published', async t 
 })
 test('checksum sidecar cannot bind a different file', async t => {
   const { dir, options } = fixture(t)
-  const name = linuxAssetNames()[0]
+  const name = linuxAssetNames('solovey.release/v1')[0]
   fs.writeFileSync(path.join(dir, `${name}.sha256`), fs.readFileSync(path.join(dir, `${name}.sha256`), 'utf8').replace(name, 'unrelated.tar.gz'))
   await assert.rejects(verifyReleaseSet(dir, options), /checksum binding/)
 })
 test('matching new checksum cannot conceal bytes differing from signed manifest', async t => {
   const { dir, options } = fixture(t)
-  const name = linuxAssetNames()[0]
+  const name = linuxAssetNames('solovey.release/v1')[0]
   fs.appendFileSync(path.join(dir, name), 'tamper')
   checksum(dir, name)
   await assert.rejects(verifyReleaseSet(dir, options), /artifact identity/)
