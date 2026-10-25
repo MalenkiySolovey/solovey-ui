@@ -1,5 +1,10 @@
 # Provider maintenance ownership
 
+Source authorities, shared dependency queues and upstream-first copy policy are
+defined in [Core repository topology](CORE_REPOSITORY_TOPOLOGY.md). Panel owns
+provider selection and qualification; external module source changes belong to
+the repository representing that module's actual lineage.
+
 Provider selection is explicit Host installation state. Official remains the
 default; ordinary v1 Update requests cannot select an Extended artifact. The
 read-only preview binds a signed v2 envelope and explicit artifact set to the
