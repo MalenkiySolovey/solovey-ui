@@ -95,11 +95,17 @@ func inspectArtifactFixture(file *os.File, source coreprovider.Source, contentDi
 		func(m *release.Manifest) { m.CoreProviders[0].ModuleSum = "h1:" + strings.Repeat("A", 43) + "=" },
 		func(m *release.Manifest) {
 			id, name := "shtorm-extended", "Shtorm Extended"
+			repository := "https://github.com/MalenkiySolovey/sing-box-extended"
+			upstream := "https://github.com/shtorm-7/sing-box-extended"
 			if source.ID == id {
 				id, name = "sing-box", "Official"
+				repository = "https://github.com/MalenkiySolovey/sing-box"
+				upstream = "https://github.com/SagerNet/sing-box"
 			}
 			m.CoreProviders[0].ID, m.CoreProviders[0].Name = id, name
-			m.CoreProviders[0].UpstreamRepository = "https://github.com/SagerNet/sing-box"
+			m.CoreProviders[0].SourceRepository = repository
+			m.CoreProviders[0].Module = strings.TrimPrefix(repository, "https://")
+			m.CoreProviders[0].UpstreamRepository = upstream
 			for i := range m.Artifacts {
 				m.Artifacts[i].CoreProvider = id
 			}
