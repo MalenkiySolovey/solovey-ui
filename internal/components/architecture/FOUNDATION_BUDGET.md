@@ -87,3 +87,15 @@ shared Box for both build flavors, without network traffic. Existing HTTP/DNS
 path witnesses also require omitted detours to use an explicit proxy final.
 This reviews one exact existing site; no additional Direct site, allowance,
 Failover policy or SEC-2 interpretation is introduced.
+
+R7 E3 reviews the existing `core/registry.inboundDeclarations` Direct site from
+`6fc6344a...` to `f08e6d44...`. The declaration adds Mieru and TrustTunnel
+registrations with compile-time capability facts and authenticated Users
+bindings. The existing explicit Direct inbound registration is unchanged; the
+table does not select a route, detour, outbound, final or fallback. Native
+listeners retain the existing CoreRuntime/Scope lifetime, Inbounds owns their
+save/apply and Users owns their credentials. Official build stubs make the new
+types unavailable. Existing registry/capability, candidate rollback and real
+authenticated runtime tests qualify this seam. This reviews one changed
+declaration with the same Direct-literal multiplicity; the R1 base identity,
+all other sites and total allowance remain unchanged. SEC-2 stays BOUNDED_DEFERRED.

@@ -5,6 +5,7 @@ package runtime
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net"
@@ -252,6 +253,79 @@ func TestNativeInboundAuthenticatedDataPlaneAndIsolation(t *testing.T) {
 			if got := f.parents(t, 7); got.Total != 0 {
 				t.Fatal("revoked native user retained an admitted flow")
 			}
+		})
+	}
+}
+
+func TestNativeInboundFinalUserRevocationAndReenable(t *testing.T) {
+	for _, fixture := range []struct{ kind, transport string }{{"mieru", "TCP"}, {"mieru", "UDP"}, {"trusttunnel", "tcp"}, {"trusttunnel", "udp"}} {
+		t.Run(fixture.kind+"/"+fixture.transport, func(t *testing.T) {
+			var f *quicFixture
+			if fixture.kind == "mieru" {
+				f = newNativeMieruFixture(t, fixture.transport)
+			} else {
+				f = newQUICFixture(t, fixture.kind)
+			}
+			first := nativeInboundPeer(t, f, fixture.transport, 7, quicFixturePassword)
+			other := nativeInboundPeer(t, f, fixture.transport, 9, quicFixturePassword)
+			streams := []net.Conn{nativeStream(t, first, f), nativeStream(t, other, f)}
+			replace := func(users ...uint) {
+				t.Helper()
+				// Keep the saved listener address and port through disable/re-enable.
+				f.users(users...)
+				raw, err := json.Marshal(f.inbound)
+				if err != nil {
+					t.Fatal(err)
+				}
+				// Match the existing Inbounds.Restart owner: retire the old
+				// listener and its flows before binding the same saved port.
+				if err := f.core.RemoveInbound("quic-fixture"); err != nil {
+					t.Fatal("native owner removal failed", err)
+				}
+				f.core.CloseInboundConnections("quic-fixture")
+				if err := f.core.AddInboundWithBindings(raw, quicBindings(users...)); err != nil {
+					t.Fatal("native user replacement failed", err)
+				}
+			}
+			replace()
+			for _, stream := range streams {
+				if nativeEcho(stream) == nil {
+					t.Fatal("last-user revocation left an established flow forwarding")
+				}
+			}
+			if fixture.kind == "mieru" {
+				var occupied io.Closer
+				var err error
+				address := fmt.Sprintf("127.0.0.1:%d", f.port)
+				if fixture.transport == "TCP" {
+					occupied, err = net.Listen("tcp", address)
+				} else {
+					occupied, err = net.ListenPacket("udp", address)
+				}
+				if err != nil {
+					t.Fatal("inactive Mieru retained its listener port", err)
+				}
+				_ = occupied.Close()
+			}
+			revoked := nativeInboundPeer(t, f, fixture.transport, 7, quicFixturePassword)
+			ctx, cancel := context.WithTimeout(t.Context(), 3*time.Second)
+			defer cancel()
+			conn, err := revoked.DialContext(ctx, "tcp", M.ParseSocksaddr(f.echo.Addr().String()))
+			if err == nil {
+				defer conn.Close()
+				if nativeEcho(conn) == nil {
+					t.Fatal("zero-user inbound admitted a fresh authenticated flow")
+				}
+			}
+			for _, user := range []uint{7, 9} {
+				if got := f.parents(t, user); got.Total != 0 {
+					t.Fatal("revoked native user retained an admitted flow")
+				}
+			}
+			replace(7, 9)
+			reenabled := nativeInboundPeer(t, f, fixture.transport, 7, quicFixturePassword)
+			_ = nativeStream(t, reenabled, f)
+			nativeUDPWitness(t, reenabled)
 		})
 	}
 }

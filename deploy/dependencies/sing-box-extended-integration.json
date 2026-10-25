@@ -17,15 +17,15 @@
       },
       "replacement": {
         "module": "github.com/MalenkiySolovey/sing-box",
-        "version": "v1.14.4-0.20261025053834-abf515412b75",
-        "commit": "abf515412b759e58f925f971b515147c89031225",
+        "version": "v1.14.4-0.20261025131044-1343b09f1446",
+        "commit": "1343b09f1446b89e5c3c2986b5893a092b875cb8",
         "repository": "https://github.com/MalenkiySolovey/sing-box",
-        "sum": "h1:eZBj5nGdFj8NWhQQJFMRfx+1Q6qU+iJRJaE1T4QFq5k=",
+        "sum": "h1:6Ln08tu5JD2EBtlusV7RMuIBT+3v2F46SkEKpT2zONs=",
         "goModSum": "h1:sg62CEdWhkOVVDDI3fA01dd82eoZuZKSlLY0oKAUHmc="
       },
       "patch": {
         "file": "deploy/dependencies/sing-box-extended-integration.patch",
-        "sha256": "ca7ea411a4fd096b65b554c6a3a6c0d2370e071166c046a9f97862147bbbbf8a",
+        "sha256": "cc3b8e62c820500d3437f18c8df88d2e1b761d2319f9aac9d7a1afc280ea201d",
         "files": [
           ".github/workflows/solovey-integration.yml",
           "SOLOVEY_INTEGRATION.md",
@@ -68,7 +68,8 @@
         "scope-hot-lifecycle",
         "private-api-listener-close",
         "mieru-serving-listeners",
-        "trusttunnel-listener-close"
+        "trusttunnel-listener-close",
+        "mieru-empty-users-inactive"
       ]
     },
     {

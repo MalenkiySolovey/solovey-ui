@@ -128,6 +128,9 @@ func newQUICFixture(t *testing.T, kind string, observers ...tracker.IPObserver) 
 	if kind == "naive" {
 		f.inbound["network"] = "udp"
 	}
+	if kind == "trusttunnel" {
+		f.inbound["network"] = []string{"tcp", "udp"}
+	}
 	f.users(7, 9)
 	if err := f.core.StartWithBindings(f.raw(), quicBindings(7, 9)); err != nil {
 		t.Fatal("QUIC fixture core start failed:", err)

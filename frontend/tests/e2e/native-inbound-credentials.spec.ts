@@ -51,7 +51,7 @@ async function removeFixture(page: Page, tag: string) {
   }
 }
 
-async function checkEffective(page: Page, tag: string, kind: string, password: string) {
+async function checkEffective(page: Page, tag: string, kind: string, password?: string) {
   await expect.poll(async () => {
     const body = await (await page.request.get('api/runtime/status')).json()
     return body.obj?.status?.state
@@ -61,7 +61,7 @@ async function checkEffective(page: Page, tag: string, kind: string, password: s
   const root = await response.json()
   const inbound = root.inbounds.find((row: { tag: string }) => row.tag === tag)
   expect(inbound.type).toBe(kind)
-  expect(inbound.users).toEqual([{ name: `${tag}-user`, password }])
+  expect(inbound.users ?? []).toEqual(password === undefined ? [] : [{ name: `${tag}-user`, password }])
   return inbound
 }
 
@@ -241,6 +241,20 @@ for (const mode of ['classic', 'nexus']) for (const kind of ['mieru', 'trusttunn
       expect(client.config[kind].password.rotationRevision).not.toBe(reference.rotationRevision)
       effective = await checkEffective(page, tag, kind, secondPassword)
       expect(effective.users[0].name).toBe(`${tag}-user`)
+      const rotatedReference = client.config[kind].password
+      const membership = client.inbounds
+      for (const enabled of [false, true]) {
+        form = await editClient(page, `${tag}-user`)
+        await form.getByLabel('Enable', { exact: true }).setChecked(enabled)
+        const changed = await save(page, form)
+        expect(changed.enable).toBe(enabled)
+        expect(changed.config[kind].password.intent).toBe('unchanged')
+        client = await readClient(page, `${tag}-user`)
+        expect(client.enable).toBe(enabled)
+        expect(client.config[kind].password).toEqual(rotatedReference)
+        expect(client.inbounds).toEqual(membership)
+        await checkEffective(page, tag, kind, enabled ? secondPassword : undefined)
+      }
     } finally {
       await removeFixture(page, tag)
     }

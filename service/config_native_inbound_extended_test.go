@@ -5,6 +5,7 @@ package service
 import (
 	"bytes"
 	"encoding/json"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -66,5 +67,84 @@ func TestNativeCandidateRejectionRollsBackAssignmentSecretsAndEffects(t *testing
 	}
 	if len(applier.calls) != 1 || len(lifecycle.calls) != 0 || svc.getLastUpdate() == 12345 {
 		t.Fatal("valid native save bypassed the existing apply effects")
+	}
+}
+
+func TestNativeCandidateFinalUserDisableKeepsCredentialAndReenables(t *testing.T) {
+	initSettingTestDB(t)
+	seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+	db := dbsqlite.DB()
+	client := model.Client{Id: 7, Name: "last-native-user", Enable: true, Config: json.RawMessage(`{}`), Inbounds: json.RawMessage(`[]`), Links: json.RawMessage(`[]`), SubSecret: "synthetic-subscription"}
+	if err := db.Create(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+	svc, applier, lifecycle := newHotReloadConfigService(t)
+	if _, err := svc.Save("inbounds", "new", json.RawMessage(`{"type":"mieru","tag":"last-user-mieru","listen":"127.0.0.1","listen_port":23456,"transport":"TCP","mtu":1400}`), "7", "admin", "fixture.example"); err != nil {
+		t.Fatal("native assignment failed", err)
+	}
+	if err := db.First(&client, 7).Error; err != nil {
+		t.Fatal(err)
+	}
+	sealed := bytes.Clone(client.Config)
+	var membership []uint
+	if json.Unmarshal(client.Inbounds, &membership) != nil || len(membership) != 1 {
+		t.Fatal("native assignment membership is invalid")
+	}
+	initial, err := entityclients.GetByID(db, "7")
+	if err != nil || len(*initial) != 1 {
+		t.Fatal("native credential projection is unavailable", err)
+	}
+	reference := bytes.Clone((*initial)[0].Config)
+	for _, enabled := range []bool{false, true} {
+		projected, err := entityclients.GetByID(db, "7")
+		if err != nil || len(*projected) != 1 {
+			t.Fatal("native user could not reload", err)
+		}
+		(*projected)[0].Enable = enabled
+		var draft map[string]map[string]any
+		if json.Unmarshal((*projected)[0].Config, &draft) != nil {
+			t.Fatal("native credential draft is invalid")
+		}
+		password := draft["mieru"]["password"].(map[string]any)
+		draft["mieru"]["password"] = map[string]any{"intent": "unchanged", "reference": password["reference"], "present": password["present"], "rotationRevision": password["rotationRevision"]}
+		(*projected)[0].Config, err = json.Marshal(draft)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, err := json.Marshal((*projected)[0])
+		if err != nil {
+			t.Fatal(err)
+		}
+		if _, err := svc.Save("clients", "edit", data, "", "admin", "fixture.example"); err != nil {
+			t.Fatal("last native user disable/re-enable was rejected", err)
+		}
+		var stored model.Client
+		if err := db.First(&stored, 7).Error; err != nil {
+			t.Fatal(err)
+		}
+		var storedMembership []uint
+		if stored.Enable != enabled || !bytes.Equal(stored.Config, sealed) || json.Unmarshal(stored.Inbounds, &storedMembership) != nil || !reflect.DeepEqual(storedMembership, membership) {
+			t.Fatal("user state change lost membership or changed sealed credentials")
+		}
+		reloaded, err := entityclients.GetByID(db, "7")
+		if err != nil || len(*reloaded) != 1 || !bytes.Equal((*reloaded)[0].Config, reference) {
+			t.Fatal("user state change rotated or exposed the credential reference", err)
+		}
+		raw, err := svc.GetConfig("")
+		if err != nil || singboxvalidation.ValidateConfig(*raw) != nil {
+			t.Fatal("last-user configuration failed the pinned provider check", err)
+		}
+		var config struct {
+			Inbounds []struct {
+				Tag   string
+				Users []json.RawMessage
+			}
+		}
+		if json.Unmarshal(*raw, &config) != nil || len(config.Inbounds) != 1 || config.Inbounds[0].Tag != "last-user-mieru" || len(config.Inbounds[0].Users) != map[bool]int{false: 0, true: 1}[enabled] {
+			t.Fatal("effective users did not follow the saved enabled state")
+		}
+	}
+	if len(applier.calls) != 3 || len(lifecycle.calls) != 0 {
+		t.Fatal("user state change bypassed the existing apply owner")
 	}
 }

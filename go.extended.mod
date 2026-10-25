@@ -212,7 +212,7 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box v1.14.4-0.20261025053834-abf515412b75
+replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box v1.14.4-0.20261025131044-1343b09f1446
 
 replace github.com/anytls/sing-anytls => github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353
 

@@ -1,6 +1,6 @@
 export default {
   "nativeInbound": {
-    "mieruUsers": "Mieru requires at least one enabled User. Create the User first, then assign it in Clients below before saving.",
+    "mieruUsers": "Without enabled Users, this listener stays inactive. Assign Users in Clients below to enable traffic.",
     "transport": "Transport",
     "userHint": "Require user hint",
     "listenPorts": "Additional listening ports or ranges",
