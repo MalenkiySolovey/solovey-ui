@@ -15,6 +15,32 @@ test('Panel contains metadata without editable engine patch payloads', () => {
   for(const source of sources)verifySeriesMetadata(source)
 })
 
+test('Docker frontend provenance runs using its declared metadata and script inputs', t => {
+  const parent=fs.realpathSync(os.tmpdir()),directory=fs.mkdtempSync(path.join(parent,'solovey-core-docker-test-'))
+  t.after(()=>{
+    const actual=fs.realpathSync(directory)
+    assert.equal(path.dirname(actual),parent)
+    assert.ok(path.basename(actual).startsWith('solovey-core-docker-test-'))
+    fs.rmSync(actual,{recursive:true,force:true})
+  })
+  const root=new URL('../',import.meta.url)
+  const stage=fs.readFileSync(new URL('Dockerfile',root),'utf8').split(/^FROM /m)[1]
+  for(const line of stage.split(/\r?\n/)) {
+    if(!line.startsWith('COPY ') || !/\.\/(?:scripts\/|deploy\/dependencies\/)?$/.test(line))continue
+    const inputs=line.slice(5).split(/\s+/)
+    inputs.pop()
+    for(const input of inputs) {
+      const target=path.join(directory,input)
+      fs.mkdirSync(path.dirname(target),{recursive:true})
+      fs.copyFileSync(new URL(input,root),target)
+    }
+  }
+  for(const name of ['ssm','quic','anytls']) {
+    const output=execFileSync(process.execPath,[path.join(directory,`scripts/${name}-integration-provenance.mjs`),'manifest'],{encoding:'utf8',windowsHide:true})
+    verifySeriesMetadata(JSON.parse(output))
+  }
+})
+
 test('Git verification rejects forged trees, omitted commits and changed authority even with a recomputed series identity', t => {
   const root=fs.realpathSync(os.tmpdir()),directory=fs.mkdtempSync(path.join(root,'solovey-core-series-test-'))
   t.after(()=>{

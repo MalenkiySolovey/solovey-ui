@@ -33,20 +33,23 @@ prefixes are Go module resolution metadata.
 All three maintained source integrations are GPL-3.0-or-later. Original notices
 and authorship remain intact. Integration additions are Copyright (C) 2026
 MalenkiySolovey under GPL-3.0-or-later. In particular the sing-quic original
-Copyright (C) 2022 nekohasekai remains applicable. The replayable patches and
-machine-readable manifests under `deploy/dependencies/` record exact module
-sums, original source commits, replacement commits, files and license identity.
+Copyright (C) 2022 nekohasekai remains applicable. Canonical source changes are
+Git commits in each module's source repository. Machine-readable manifests under
+`deploy/dependencies/` record exact module sums, authority/base and build commits,
+trees, ordered source commits, patch-series identities and license identity.
+Former exported patch hashes below remain historical migration provenance;
+their duplicate payloads are no longer maintained in the Panel repository.
 
 - The sing-box cumulative ten-file overlay supplies private SSM cache ownership
   and served-listener lifetime, Naive HTTP/3 parent drain before enclosing UDP
-  shutdown, and bounded WebSocket literal-path/early-data handling. Patch
+  shutdown, and bounded WebSocket literal-path/early-data handling. Historical export
   `sing-box-ssm-cache.patch` has SHA256
   `dad70c774a4f2f2a157254a9982044be082f808ec77f4652fd77eb020d6e72bd`.
-  Its legacy filename is retained; `sing-box-ssm-integration.json` describes
+  `sing-box-ssm-integration.json` describes
   every current scope. Prior SSM-only and Naive-only pins are historical.
 - The eight-file sing-quic overlay supplies authenticated parent lifetime,
   graceful close, selective termination and synchronized TUIC early-data close.
-  Original source is `6a3a24d65b99587fad1d4cdd567c88f212acdd63`. Patch
+  Original source is `6a3a24d65b99587fad1d4cdd567c88f212acdd63`. Historical export
   `sing-quic-parent-control.patch` has SHA256
   `fab789e419e1408ac554228ec84ec70aceb2e8975b392dc27658c10d2a0561b5`.
   Protocol verifiers and authentication remain with the original implementations.
@@ -55,7 +58,7 @@ sums, original source commits, replacement commits, files and license identity.
   authentication retains flow-level principal controls.
 - The four-file AnyTLS overlay synchronizes negotiated peer version and terminal
   stream error using existing atomic types. Original source is v0.0.11 at
-  `130d2e61b8895727bfed4942c535e91b246a9603`. Patch
+  `130d2e61b8895727bfed4942c535e91b246a9603`. Historical export
   `sing-anytls-session-state.patch` has SHA256
   `3bec5c9f7772910e2e5a5821a3012a95f460b7328ba7e62282c79acd3f26a64b`.
   Wire format, authentication, constructors, pool policy and lifecycle retain
@@ -99,11 +102,15 @@ The separately compiled `shtorm-extended` flavor uses Shtorm
 `v1.14.3-extended-2.7.3`, source
 `d9442d14b19ddd02605bf3ee893a171947038e19`, with runtime semantics v1.14.3.
 Its actual maintained engine is
-`github.com/MalenkiySolovey/sing-box@v1.14.4-0.20261025131044-1343b09f1446`,
-commit `1343b09f1446b89e5c3c2986b5893a092b875cb8`. Its maintained QUIC
-integration is pinned at `d0ecb33c441a8f188f98bbcf07c0e1d77785e7be`.
-`deploy/dependencies/sing-box-extended-integration.json` and its replayable
-engine/QUIC patches record the exact bases, source checksums, changes and reasons.
+`github.com/MalenkiySolovey/sing-box-extended@v0.0.0-20261025185415-1adbe9c93686`,
+commit `1adbe9c93686abc2993e8a9ccaee63dc5b5a9468`. Its maintained QUIC
+integration uses the same `MalenkiySolovey/sing-quic` repository as Official,
+independently pinned at `9034c2c10c6331aca496fd9f2dc3a1546bc6f61b`.
+`deploy/dependencies/sing-box-extended-integration.json` records exact authority
+bases, source checksums, build trees and linear Git queue identities. Detailed
+changes, tests and upstream removal conditions belong to the owning core
+repositories. The `v0.0.0` pseudo-version prefix reflects a copy without version
+tags and does not change the selected runtime semantic baseline.
 The shared AnyTLS integration retains its separate source identity above.
 
 These engine and QUIC sources carry GPL-3.0-or-later notices. Original authorship
@@ -171,7 +178,7 @@ SHA256. The SBOM includes build tools and platform alternatives as disclosed
 inventory; it does not imply every listed module is linked into every binary.
 
 The three source integrations above include their original license files,
-authorship, exact public source revisions and replayable modification notices.
+authorship, exact public source revisions and separately identifiable Git changes.
 Source-archive identities and dependency checksums accompany release provenance.
 Keep these notices and the applicable license material when redistributing the
 project, its maintained integrations or bundled third-party assets.
