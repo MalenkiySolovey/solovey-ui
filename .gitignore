@@ -67,6 +67,7 @@ verify-*.txt
 !/docs/sing-box-tracker-revalidation.md
 !/docs/client-access-reset.md
 !/docs/provider-maintenance.md
+!/docs/CORE_REPOSITORY_TOPOLOGY.md
 tests/baseline/*
 !tests/baseline/run-command.ps1
 tests/baseline/e2e/tmp/

@@ -1,5 +1,5 @@
 {
-  "schema": "solovey.extended-integration/v1",
+  "schema": "solovey.extended-integration/v2",
   "provider": "shtorm-extended",
   "patched": true,
   "upstreamByteIdentical": false,
@@ -16,48 +16,12 @@
         "repository": "https://github.com/shtorm-7/sing-box-extended"
       },
       "replacement": {
-        "module": "github.com/MalenkiySolovey/sing-box",
-        "version": "v1.14.4-0.20261025131044-1343b09f1446",
-        "commit": "1343b09f1446b89e5c3c2986b5893a092b875cb8",
-        "repository": "https://github.com/MalenkiySolovey/sing-box",
-        "sum": "h1:6Ln08tu5JD2EBtlusV7RMuIBT+3v2F46SkEKpT2zONs=",
+        "module": "github.com/MalenkiySolovey/sing-box-extended",
+        "version": "v0.0.0-20261025185415-1adbe9c93686",
+        "commit": "1adbe9c93686abc2993e8a9ccaee63dc5b5a9468",
+        "repository": "https://github.com/MalenkiySolovey/sing-box-extended",
+        "sum": "h1:x97488wH2yIIkzQ6qF/6zZgmSb1pLXTlyYob23NcZrQ=",
         "goModSum": "h1:sg62CEdWhkOVVDDI3fA01dd82eoZuZKSlLY0oKAUHmc="
-      },
-      "patch": {
-        "file": "deploy/dependencies/sing-box-extended-integration.patch",
-        "sha256": "cc3b8e62c820500d3437f18c8df88d2e1b761d2319f9aac9d7a1afc280ea201d",
-        "files": [
-          ".github/workflows/solovey-integration.yml",
-          "SOLOVEY_INTEGRATION.md",
-          "adapter/endpoint.go",
-          "adapter/endpoint/manager.go",
-          "adapter/hot_lifecycle_test.go",
-          "adapter/inbound.go",
-          "adapter/inbound/manager.go",
-          "adapter/service.go",
-          "adapter/service/manager.go",
-          "option/warp.go",
-          "protocol/mieru/inbound.go",
-          "protocol/mieru/listener.go",
-          "protocol/mieru/listener_test.go",
-          "protocol/naive/quic/inbound_init.go",
-          "protocol/naive/quic/inbound_lifecycle.go",
-          "protocol/trusttunnel/inbound.go",
-          "protocol/trusttunnel/lifecycle_test.go",
-          "protocol/warp/endpoint.go",
-          "protocol/wireguard/endpoint.go",
-          "protocol/wireguard/endpoint_ipc_test.go",
-          "service/api/server.go",
-          "service/ssmapi/cache.go",
-          "service/ssmapi/cache_store.go",
-          "service/ssmapi/cache_test.go",
-          "service/ssmapi/scope_test.go",
-          "service/ssmapi/server.go",
-          "transport/v2raywebsocket/server.go",
-          "transport/v2raywebsocket/server_path_test.go",
-          "transport/wireguard/endpoint.go",
-          "transport/wireguard/endpoint_ipc_started_test.go"
-        ]
       },
       "license": "GPL-3.0-or-later",
       "scopes": [
@@ -69,8 +33,57 @@
         "private-api-listener-close",
         "mieru-serving-listeners",
         "trusttunnel-listener-close",
-        "mieru-empty-users-inactive"
-      ]
+        "mieru-empty-users-inactive",
+        "ssh-serving-scope",
+        "mtproxy-startup-scope",
+        "mtproxy-interval",
+        "mtproxy-http-helper"
+      ],
+      "copyRole": "mirror/cache/development",
+      "patchSeries": {
+        "format": "linear-git-commits/v1",
+        "base": "d9442d14b19ddd02605bf3ee893a171947038e19",
+        "upstreamTree": "dae57a05c1392b57f03f03e987ed5807b45e14bc",
+        "patchedTree": "2f2f8f59105ed4a3730d531cea825bb666cb9b6c",
+        "pristineRef": "refs/heads/mirror/extended",
+        "branch": "solovey/extended-patches",
+        "commits": [
+          "dea779ee301772c439a5b58139ed9e081e5db84a",
+          "6439d36e67c28cd050fbdbbe0447c64664816dda",
+          "27679ba2642116775e7cd67dd5b893677ce0e3e6",
+          "5cd26c1c0f0885793dfcd7bcde86b2e336601b8b",
+          "d7ace5d96c9ff9a5c0e1471dbb8b4ba8754d7ceb",
+          "18a214b1ffc2503798caa8cb8e4709b45f6e2922",
+          "8bfc2f5b4b934b76eaff8614f79a62b159953d60",
+          "0cf85cb92aa6cb62c9de5828e894f0365a9f11ca",
+          "12d8757e5a54a583a912189c025f0cbfb57841e2",
+          "b84038b97cdd8ca889c841023c7d8f830fbc22fd",
+          "3f01c039dddd0b0ba9bedb8caf31f19f3e8757cd",
+          "91deb548bb0f76012ae785d28813f25b954ebb86",
+          "b76dcffd161e80f56c3f90c97e09ef20fc50cfd6",
+          "ca75be7126da63b9e02a323ce2c1731356573f67",
+          "7ed31f9fbcd87b68e08ef45643f435343ad6fd40",
+          "1adbe9c93686abc2993e8a9ccaee63dc5b5a9468"
+        ],
+        "patchCommits": [
+          "dea779ee301772c439a5b58139ed9e081e5db84a",
+          "6439d36e67c28cd050fbdbbe0447c64664816dda",
+          "27679ba2642116775e7cd67dd5b893677ce0e3e6",
+          "5cd26c1c0f0885793dfcd7bcde86b2e336601b8b",
+          "d7ace5d96c9ff9a5c0e1471dbb8b4ba8754d7ceb",
+          "18a214b1ffc2503798caa8cb8e4709b45f6e2922",
+          "8bfc2f5b4b934b76eaff8614f79a62b159953d60",
+          "0cf85cb92aa6cb62c9de5828e894f0365a9f11ca",
+          "12d8757e5a54a583a912189c025f0cbfb57841e2",
+          "b84038b97cdd8ca889c841023c7d8f830fbc22fd",
+          "3f01c039dddd0b0ba9bedb8caf31f19f3e8757cd",
+          "91deb548bb0f76012ae785d28813f25b954ebb86",
+          "b76dcffd161e80f56c3f90c97e09ef20fc50cfd6",
+          "ca75be7126da63b9e02a323ce2c1731356573f67"
+        ],
+        "patchCount": 14,
+        "identity": "ddd14adc3d84a948a04e5aa8045826138b3dcbc23796b6208a16fa40b714d8ac"
+      }
     },
     {
       "id": "quic",
@@ -83,31 +96,37 @@
       },
       "replacement": {
         "module": "github.com/MalenkiySolovey/sing-quic",
-        "version": "v0.7.2-0.20261023031814-d0ecb33c441a",
-        "commit": "d0ecb33c441a8f188f98bbcf07c0e1d77785e7be",
+        "version": "v0.7.2-0.20261025183737-9034c2c10c63",
+        "commit": "9034c2c10c6331aca496fd9f2dc3a1546bc6f61b",
         "repository": "https://github.com/MalenkiySolovey/sing-quic",
-        "sum": "h1:NTlyDhCQdnNTfbpynp7oeo2nvhUXdiA+pb9Xp5WN/BM=",
+        "sum": "h1:kRQoFAgCMnYrjyyejCWtJd7Sc08t40HMHY4x58Es88c=",
         "goModSum": "h1:rJFeVxbEej2iuyeCJ3drKW+p5rOgtLIW3XhZ6ty7Fig="
-      },
-      "patch": {
-        "file": "deploy/dependencies/sing-quic-extended-parent-control.patch",
-        "sha256": "5e42e717fb2122df63b7eedd340c7d53e6da702cd1d45f1a568c55e7f42fbbf6",
-        "files": [
-          "SOLOVEY_INTEGRATION.md",
-          "hysteria/service.go",
-          "hysteria2/service.go",
-          "parent.go",
-          "parent_test.go",
-          "tuic/early_data.go",
-          "tuic/early_data_test.go",
-          "tuic/service.go"
-        ]
       },
       "license": "GPL-3.0-or-later",
       "scopes": [
         "authenticated-parent-lifecycle",
         "tuic-early-data-race"
-      ]
+      ],
+      "copyRole": "mirror/cache/development",
+      "patchSeries": {
+        "format": "linear-git-commits/v1",
+        "base": "75c3ac4fa12b4ded2dc01b392ed7d5eaf3ea6876",
+        "upstreamTree": "cd7ca728a96a2a5c73df5525130996dbda52e0ee",
+        "patchedTree": "6b58bd66854887b0bc84d2c01ca9a184f3d3e22b",
+        "pristineRef": "refs/heads/mirror/extended-75c3ac4",
+        "branch": "solovey/extended-patches",
+        "commits": [
+          "9afd5356777016e91a163d970c35a8903fba19c8",
+          "e7fb12eb4187fa492d0a4412de70c0f34bb869bd",
+          "9034c2c10c6331aca496fd9f2dc3a1546bc6f61b"
+        ],
+        "patchCommits": [
+          "9afd5356777016e91a163d970c35a8903fba19c8",
+          "e7fb12eb4187fa492d0a4412de70c0f34bb869bd"
+        ],
+        "patchCount": 2,
+        "identity": "c4060ee686134bd289f4e6b5910f829d91a9b6f344201d937a9d4f0db87fb62f"
+      }
     }
   ],
   "transport": {

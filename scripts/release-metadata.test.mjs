@@ -1,11 +1,23 @@
 import assert from 'node:assert/strict'
 import crypto from 'node:crypto'
+import fs from 'node:fs'
 import test from 'node:test'
-import { mergeProviderModuleGraphs, verifyProviderInventory } from './release-metadata.mjs'
+import { coreSourceProperties, mergeProviderModuleGraphs, verifyProviderInventory } from './release-metadata.mjs'
 import { resolveProviderSource } from './core-provider-build.mjs'
 
 const sum = label => 'h1:' + crypto.createHash('sha256').update(label).digest('base64')
 const source = (Path, Version) => ({ Path, Version, Sum: sum(Path + Version), GoModSum: sum(Path + Version + '/go.mod') })
+test('SBOM core disclosure separates upstream authority, owned commits and the actual build tree',()=>{
+  const lock=JSON.parse(fs.readFileSync(new URL('../deploy/dependencies/sing-box-extended-integration.json',import.meta.url),'utf8'))
+  const engine=lock.sources[0]
+  const properties=Object.fromEntries(coreSourceProperties(engine).map(item=>[item.name,item.value]))
+  assert.equal(properties['solovey:sourceAuthority'],'https://github.com/shtorm-7/sing-box-extended')
+  assert.equal(properties['solovey:copyRepository'],'https://github.com/MalenkiySolovey/sing-box-extended')
+  assert.equal(properties['solovey:sourceTree'],engine.patchSeries.patchedTree)
+  assert.deepEqual(JSON.parse(properties['solovey:patchCommits']),engine.patchSeries.patchCommits)
+  const changed=structuredClone(engine);changed.patchSeries.patchedTree='0'.repeat(40)
+  assert.throws(()=>coreSourceProperties(changed))
+})
 function graphs() {
   const common = source('example.invalid/shared', 'v1.0.0')
   return [

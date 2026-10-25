@@ -10,12 +10,29 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 import { resolveBuildPlan } from './core-provider-build.mjs'
 import { readExtendedProvenance } from './extended-integration-provenance.mjs'
 import { linuxBuildTargets } from './release-providers.mjs'
+import { verifySeriesMetadata } from './core-source-provenance.mjs'
 
 export const metadataNames = JSON.parse(fs.readFileSync(new URL('./release-targets.json', import.meta.url), 'utf8')).releaseMetadata.toSorted()
 const sha = bytes => crypto.createHash('sha256').update(bytes).digest('hex')
 const json = file => JSON.parse(fs.readFileSync(file, 'utf8'))
 const jsonStream = text => (text.match(/^{[\s\S]*?^}/gm) ?? []).map(JSON.parse)
 const writeJSON = (file, value) => fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n')
+export function coreSourceProperties(source) {
+  verifySeriesMetadata(source)
+  return Object.entries({
+    sourceAuthority: source.original.repository,
+    upstreamCommit: source.original.commit,
+    upstreamTree: source.patchSeries.upstreamTree,
+    copyRepository: source.replacement.repository,
+    copyRole: source.copyRole,
+    sourceCommit: source.replacement.commit,
+    sourceTree: source.patchSeries.patchedTree,
+    patchSeriesIdentity: source.patchSeries.identity,
+    sourceCommits: JSON.stringify(source.patchSeries.commits),
+    patchCommits: JSON.stringify(source.patchSeries.patchCommits),
+    patchCount: String(source.patchSeries.patchCount),
+  }).map(([name,value]) => ({name:`solovey:${name}`,value}))
+}
 const run = (command, args, options = {}) => execFileSync(command, args, { encoding: 'utf8', maxBuffer: 64 << 20, ...options })
 const digestFile = async file => {
   const hash = crypto.createHash('sha256')
@@ -190,7 +207,9 @@ export async function verifyMetadata(directory, commit) {
     const component = bom.components.find(c => c.name === integration.replacement.module && c.version === integration.replacement.version)
     assert.equal(component?.version, integration.replacement.version)
     assert.equal(component.properties.find(x => x.name === 'solovey:sourceCommit').value, integration.replacement.commit)
-    assert.equal(component.properties.find(x => x.name === 'solovey:patchSha256').value, integration.patch.sha256)
+    for (const property of coreSourceProperties(integration)) {
+      assert.deepEqual(component.properties.filter(item => item.name === property.name), [property], 'SBOM core authority, tree or Git series differs')
+    }
   }
   return p
 }
@@ -306,8 +325,8 @@ async function produce(directory, commit) {
       const properties = [{ name: 'solovey:moduleSum', value: bytes.Sum }, { name: 'solovey:goModSum', value: bytes.GoModSum },
         { name: 'solovey:coreProviders', value: module.providers.join(',') }]
       for (const binding of module.bindings) properties.push({ name: `solovey:requires:${binding.provider}`, value: `${binding.module}@${binding.version}` })
-      if (integration) properties.push({ name: 'solovey:sourceCommit', value: integration.replacement.commit }, { name: 'solovey:officialSemanticBaseline', value: `${integration.semanticBaseline.module}@${integration.semanticBaseline.version}` }, { name: 'solovey:patchSha256', value: integration.patch.sha256 }, { name: 'solovey:officialByteIdentical', value: 'false' })
-      if (extended) properties.push({ name: 'solovey:sourceCommit', value: extended.replacement.commit }, { name: 'solovey:upstreamSource', value: `${extended.original.repository}@${extended.original.commit}` }, { name: 'solovey:patchSha256', value: extended.patch.sha256 }, { name: 'solovey:upstreamByteIdentical', value: 'false' })
+      if (integration) properties.push(...coreSourceProperties(integration), { name: 'solovey:officialSemanticBaseline', value: `${integration.semanticBaseline.module}@${integration.semanticBaseline.version}` }, { name: 'solovey:officialByteIdentical', value: 'false' })
+      if (extended) properties.push(...coreSourceProperties(extended), { name: 'solovey:upstreamSource', value: `${extended.original.repository}@${extended.original.commit}` }, { name: 'solovey:upstreamByteIdentical', value: 'false' })
       const license = integration?.license ?? extended?.license
       components.push({ type: 'library', 'bom-ref': identity, name: module.name, version: module.version, scope: 'optional', purl: `pkg:golang/${module.name}@${encodeURIComponent(module.version)}`, ...(license ? { licenses: [{ license: { id: license } }] } : {}), properties })
     }
