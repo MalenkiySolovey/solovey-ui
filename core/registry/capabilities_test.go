@@ -34,6 +34,12 @@ func TestCapabilityRegistrationsAndCompiledImplementations(t *testing.T) {
 	if fact := Resolve("outbounds", "naive"); fact.Compiled != SupportsNaiveOutbound || fact.Registered != SupportsNaiveOutbound {
 		t.Fatalf("Naive registration: %+v", fact)
 	}
+	for kind, compiled := range map[string]bool{"mieru": supportsMieruInbound, "trusttunnel": supportsTrustTunnelInbound} {
+		fact := Resolve("inbounds", kind)
+		if !fact.Known || fact.Compiled != compiled || fact.Registered != compiled || !fact.AuthenticatedUsers || fact.BuildTag == "" {
+			t.Fatalf("native authenticated serving capability: %+v", fact)
+		}
+	}
 	for _, pair := range [][2]string{{"endpoints", "tailscale"}, {"services", "derp"}, {"dns", "tailscale"}} {
 		if fact := Resolve(pair[0], pair[1]); !fact.Registered || fact.Compiled != supportsTailscale {
 			t.Fatalf("Tailscale stub: %+v", fact)

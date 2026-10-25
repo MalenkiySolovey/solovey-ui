@@ -72,6 +72,7 @@
       </v-tabs>
       <v-window v-model="side" style="margin-top: 10px;">
         <v-window-item value="s">
+          <v-defaults-provider :defaults="{ global: { disabled: nativeOptionsUnavailable } }">
           <Listen :data="inbound" :inTags="inTags" v-if="inbound.type != inTypes.Tun" />
           <Direct v-if="inbound.type == inTypes.Direct" :data="inbound" />
           <Shadowsocks v-if="inbound.type == inTypes.Shadowsocks" direction="in" :data="inbound" />
@@ -84,11 +85,14 @@
           <Tun v-if="inbound.type == inTypes.Tun" :data="inbound" />
           <AnyTls v-if="inbound.type == inTypes.AnyTls" :data="inbound" direction="in" />
           <Snell v-if="inbound.type == inTypes.Snell" :data="inbound" direction="in" />
+          <Mieru v-if="inbound.type == inTypes.Mieru" :data="inbound" />
+          <TrustTunnel v-if="inbound.type == inTypes.TrustTunnel" :data="inbound" />
           <TProxy v-if="inbound.type == inTypes.TProxy" :inbound="inbound" />
-          <Transport v-if="Object.hasOwn(inbound,'transport')" :data="inbound" />
+          <Transport v-if="hasGenericTransport" :data="inbound" />
           <Users v-if="hasUser" :clients="clients" :data="initUsers" />
           <InTls v-if="HasTls.includes(inbound.type)"  :inbound="inbound" :tlsConfigs="tlsConfigs" :tls_id="inbound.tls_id" />
           <Multiplex v-if="MuxAvailable.includes(inbound.type)" direction="in" :data="inbound" />
+          </v-defaults-provider>
         </v-window-item>
         <v-window-item value="c">
           <OutJsonVue :inData="inbound" :type="inbound.type" />

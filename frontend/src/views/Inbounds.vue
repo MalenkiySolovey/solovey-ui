@@ -188,7 +188,7 @@
           </v-card-text>
           <v-divider></v-divider>
           <v-card-actions style="padding: 0;">
-            <v-btn icon="mdi-file-edit" @click="showModal(item.id)">
+            <v-btn icon="mdi-file-edit" :aria-label="$t('actions.edit')" @click="showModal(item.id)">
               <v-icon />
               <v-tooltip activator="parent" location="top" :text="$t('actions.edit')"></v-tooltip>
             </v-btn>

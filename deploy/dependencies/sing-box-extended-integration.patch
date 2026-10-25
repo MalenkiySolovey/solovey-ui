@@ -1,9 +1,54 @@
+diff --git a/.github/workflows/solovey-integration.yml b/.github/workflows/solovey-integration.yml
+new file mode 100644
+index 00000000..318ffa69
+--- /dev/null
++++ b/.github/workflows/solovey-integration.yml
+@@ -0,0 +1,39 @@
++name: Solovey integration
++
++on:
++  push:
++    branches: [solovey/r7-shtorm-integration, solovey/r7-mieru-listeners, solovey/r7-trusttunnel-scope]
++    paths:
++      - protocol/mieru/**
++      - protocol/trusttunnel/**
++      - go.mod
++      - go.sum
++      - .github/workflows/solovey-integration.yml
++  pull_request:
++    branches: [solovey/r7-shtorm-integration]
++    paths:
++      - protocol/mieru/**
++      - protocol/trusttunnel/**
++      - go.mod
++      - go.sum
++      - .github/workflows/solovey-integration.yml
++
++permissions:
++  contents: read
++
++concurrency:
++  group: solovey-integration-${{ github.ref }}
++  cancel-in-progress: true
++
++jobs:
++  native-listeners:
++    name: Mieru and TrustTunnel listener lifecycle
++    runs-on: ubuntu-24.04
++    timeout-minutes: 15
++    steps:
++      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
++      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6
++        with:
++          go-version: 1.26.10
++          cache: true
++      - run: go test -race -mod=readonly -tags=with_quic ./protocol/mieru ./protocol/trusttunnel -run 'TestMieru|TestTrustTunnel' -count=10
 diff --git a/SOLOVEY_INTEGRATION.md b/SOLOVEY_INTEGRATION.md
 new file mode 100644
-index 00000000..f3a33f53
+index 00000000..ca565682
 --- /dev/null
 +++ b/SOLOVEY_INTEGRATION.md
-@@ -0,0 +1,120 @@
+@@ -0,0 +1,158 @@
 +# Solovey pinned Shtorm integration
 +
 +Baseline: Shtorm sing-box-extended v1.14.3-extended-2.7.3,
@@ -124,6 +169,44 @@ index 00000000..f3a33f53
 +expected net.ErrClosed after http.Server.Close as normal. Other cleanup errors
 +still fail. The consuming runtime's actual private API handshake, stop/restart,
 +API-only degradation, log redaction and generation fencing tests cover this seam.
++
++Mieru v3.33.0 exposes listener factories, but the upstream sing-box integration
++left both unset and therefore ignored its ListenOptions at bind time. The bounded
++adapter supplies those factories through the existing sing-box Listener. Mieru
++still selects primary/range ports and its wildcard default when no address is
++configured; sing-box supplies an explicitly configured address,
++socket flags, interface and namespace. No second protocol or socket owner is
++introduced. Mieru's Mux.Start waits for factories but returns success even when
++one fails. The adapter captures that failure before declaring readiness and
++registers unconditional server.Stop with the native Scope before starting.
++Each successful listener also registers its existing listener.Close with Scope:
++the Mieru startup barrier precedes UDP underlay registration, so immediate Stop
++can otherwise miss the underlay and leave its socket open. Expected net.ErrClosed
++from Mieru's concurrent cleanup is normal. Explicit/wildcard listener isolation,
++range port mapping, failed startup and repeated scope cleanup are covered by
++protocol/mieru tests;
++the consuming Panel qualifies actual TCP/UDP traffic and its existing user,
++runtime identity, counters and reload owners.
++
++An empty Mieru user list represents an inactive inbound. The selected upstream
++rejects it, which prevents the existing Users owner from disabling or revoking
++its final enabled user. The adapter still validates transport, ports/ranges and
++traffic patterns, but does not construct or start the Mieru API server when no
++users remain. Native hot replacement retires the old scope and its connections;
++there is no listener, anonymous access, substitute credential or fallback.
++The same saved options and credentials can serve again after an explicit Users
++re-enable. Engine tests prove omitted/empty lists keep TCP/UDP ports reusable,
++repeatable cleanup and strict invalid-option rejection; the consuming Panel
++must qualify final-user revocation and re-enable through its real save/runtime owners.
++
++TrustTunnel Scope cleanup retains the existing HTTP/TLS/listener ownership. Its
++HTTP server closes the served TCP listener before the shared listener cleanup;
++the latter now treats each expected net.ErrClosed as normal while retaining
++other TCP/UDP cleanup errors. Real TLS serving, TCP/UDP port reuse, partial dual
++startup and repeated Scope close cover the correction. No new authenticated
++parent-control capability is introduced. The consuming Panel separately tests
++actual HTTP/2 and HTTP/3 traffic, authenticated Users isolation and revocation
++through normal hot replacement.
 diff --git a/adapter/endpoint.go b/adapter/endpoint.go
 index 63d7ce9d..8974373c 100644
 --- a/adapter/endpoint.go
@@ -705,6 +788,456 @@ index b60f9b9b..a6346501 100644
 +	RandomTrailers         bool                     `json:"random_trailers,omitempty"`
 +	DisableCookies         bool                     `json:"disable_cookies,omitempty"`
  }
+diff --git a/protocol/mieru/inbound.go b/protocol/mieru/inbound.go
+index 451f8820..b0009c3e 100644
+--- a/protocol/mieru/inbound.go
++++ b/protocol/mieru/inbound.go
+@@ -26,6 +26,7 @@ import (
+ 	mierumodel "github.com/enfein/mieru/v3/apis/model"
+ 	mieruserver "github.com/enfein/mieru/v3/apis/server"
+ 	mierutp "github.com/enfein/mieru/v3/apis/trafficpattern"
++	"github.com/enfein/mieru/v3/pkg/appctl/appctlcommon"
+ 	mierupb "github.com/enfein/mieru/v3/pkg/appctl/appctlpb"
+ 	"google.golang.org/protobuf/proto"
+ )
+@@ -41,6 +42,7 @@ type Inbound struct {
+ 	logger    log.ContextLogger
+ 	listener  *listener.Listener
+ 	server    mieruserver.Server
++	listeners *mieruListenerFactory
+ 	userNames []string
+ 
+ 	mu sync.Mutex
+@@ -51,10 +53,15 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
+ 	if err != nil {
+ 		return nil, fmt.Errorf("failed to build mieru server config: %w", err)
+ 	}
++	factory := &mieruListenerFactory{ctx: ctx, logger: logger, options: options.ListenOptions}
++	config.StreamListenerFactory, config.PacketListenerFactory = factory, factory
+ 
+-	s := mieruserver.NewServer()
+-	if err := s.Store(config); err != nil {
+-		return nil, fmt.Errorf("failed to store mieru server config: %w", err)
++	var s mieruserver.Server
++	if len(userNames) > 0 {
++		s = mieruserver.NewServer()
++		if err := s.Store(config); err != nil {
++			return nil, fmt.Errorf("failed to store mieru server config: %w", err)
++		}
+ 	}
+ 
+ 	inboundInstance := &Inbound{
+@@ -63,6 +70,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
+ 		router:    uot.NewRouter(router, logger),
+ 		logger:    logger,
+ 		server:    s,
++		listeners: factory,
+ 		userNames: userNames,
+ 	}
+ 	inboundInstance.listener = listener.New(listener.Options{
+@@ -79,21 +87,32 @@ func (h *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+ 	if stage != adapter.StartStateStart {
+ 		return nil
+ 	}
++	if h.server == nil {
++		// Revoking the final user must retire the old serving instance. An
++		// empty desired user list is inactive: no listener, anonymous access,
++		// generated substitute credential, or fallback server is created.
++		h.logger.Info("mieru listener is inactive: no users")
++		return nil
++	}
+ 
+ 	h.mu.Lock()
+ 	defer h.mu.Unlock()
+ 
+-	if err := h.server.Start(); err != nil {
+-		return fmt.Errorf("failed to start mieru server: %w", err)
+-	}
++	h.listeners.scope = scope
+ 	scope.Add(func() error {
+ 		h.mu.Lock()
+ 		defer h.mu.Unlock()
+-		if h.server.IsRunning() {
+-			return h.server.Stop()
+-		}
+-		return nil
++		return h.server.Stop()
+ 	})
++	if err := h.server.Start(); err != nil {
++		return fmt.Errorf("failed to start mieru server: %w", err)
++	}
++	// Mieru v3.33.0 waits for listener factories but does not propagate their
++	// failures from Start. Reject the candidate before reporting readiness;
++	// its Scope also closes any ports that did start successfully.
++	if err := h.listeners.failure(); err != nil {
++		return fmt.Errorf("failed to start mieru listener: %w", err)
++	}
+ 
+ 	h.logger.Notice("mieru server is started")
+ 	go h.acceptLoop()
+@@ -289,6 +308,12 @@ func buildMieruServerConfig(_ context.Context, options option.MieruInboundOption
+ 			Protocol:  transportProtocol,
+ 		})
+ 	}
++	// Keep the same port validation for inactive and serving configurations.
++	// The Mieru API cannot store an empty user list, so it is only constructed
++	// for serving instances; all non-user checks still run here.
++	if _, err := appctlcommon.FlatPortBindings(portBindings); err != nil {
++		return nil, nil, fmt.Errorf("invalid mieru port bindings: %w", err)
++	}
+ 
+ 	var users []*mierupb.User
+ 	var userNames []string
+@@ -325,9 +350,6 @@ func validateMieruInboundOptions(options option.MieruInboundOptions) error {
+ 	if options.Transport != "TCP" && options.Transport != "UDP" {
+ 		return E.New("transport must be TCP or UDP")
+ 	}
+-	if len(options.Users) == 0 {
+-		return E.New("users is empty")
+-	}
+ 	for _, user := range options.Users {
+ 		if user.Name == "" {
+ 			return E.New("username is empty")
+diff --git a/protocol/mieru/listener.go b/protocol/mieru/listener.go
+new file mode 100644
+index 00000000..ea31df00
+--- /dev/null
++++ b/protocol/mieru/listener.go
+@@ -0,0 +1,106 @@
++package mieru
++
++import (
++	"context"
++	"errors"
++	"fmt"
++	"net"
++	"net/netip"
++	"strconv"
++	"sync"
++
++	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing-box/common/listener"
++	"github.com/sagernet/sing-box/log"
++	"github.com/sagernet/sing-box/option"
++	"github.com/sagernet/sing/common/json/badoption"
++)
++
++// The Mieru API selects the port from its primary/range bindings. sing-box
++// retains ownership of listen address, socket options, interface and namespace.
++type mieruListenerFactory struct {
++	ctx     context.Context
++	logger  log.ContextLogger
++	options option.ListenOptions
++	scope   *adapter.Scope
++	mu      sync.Mutex
++	err     error
++}
++
++func (f *mieruListenerFactory) own(owned *listener.Listener) {
++	// Mux.Start releases its startup barrier before the UDP underlay is
++	// registered. Scope must close the actual socket even if immediate Stop
++	// misses that underlay. Keep the existing listener as the resource owner.
++	f.scope.Add(func() error {
++		err := owned.Close()
++		if errors.Is(err, net.ErrClosed) {
++			return nil
++		}
++		return err
++	})
++}
++
++func (f *mieruListenerFactory) forAddress(address string) (*listener.Listener, error) {
++	host, portText, err := net.SplitHostPort(address)
++	if err != nil {
++		return nil, fmt.Errorf("invalid Mieru listener address")
++	}
++	port, err := strconv.ParseUint(portText, 10, 16)
++	if err != nil || port == 0 {
++		return nil, fmt.Errorf("invalid Mieru listener port")
++	}
++	options := f.options
++	options.ListenPort = uint16(port)
++	if options.Listen == nil {
++		// Preserve the Mieru API's host-dependent wildcard default. The shared
++		// sing-box listener otherwise defaults an omitted address to loopback.
++		addr, err := netip.ParseAddr(host)
++		if err != nil {
++			return nil, fmt.Errorf("invalid Mieru listener address")
++		}
++		listen := badoption.Addr(addr)
++		options.Listen = &listen
++	}
++	return listener.New(listener.Options{Context: f.ctx, Logger: f.logger, Listen: options}), nil
++}
++
++func (f *mieruListenerFactory) record(err error) error {
++	if err != nil {
++		f.mu.Lock()
++		if f.err == nil {
++			f.err = err
++		}
++		f.mu.Unlock()
++	}
++	return err
++}
++
++func (f *mieruListenerFactory) failure() error {
++	f.mu.Lock()
++	defer f.mu.Unlock()
++	return f.err
++}
++
++func (f *mieruListenerFactory) Listen(_ context.Context, _ string, address string) (net.Listener, error) {
++	owned, err := f.forAddress(address)
++	if err != nil {
++		return nil, f.record(err)
++	}
++	socket, err := owned.ListenTCP()
++	if err == nil {
++		f.own(owned)
++	}
++	return socket, f.record(err)
++}
++
++func (f *mieruListenerFactory) ListenPacket(_ context.Context, _ string, address string) (net.PacketConn, error) {
++	owned, err := f.forAddress(address)
++	if err != nil {
++		return nil, f.record(err)
++	}
++	socket, err := owned.ListenUDP()
++	if err == nil {
++		f.own(owned)
++	}
++	return socket, f.record(err)
++}
+diff --git a/protocol/mieru/listener_test.go b/protocol/mieru/listener_test.go
+new file mode 100644
+index 00000000..faea5d6b
+--- /dev/null
++++ b/protocol/mieru/listener_test.go
+@@ -0,0 +1,222 @@
++//go:build linux
++
++package mieru
++
++import (
++	"fmt"
++	"io"
++	"net"
++	"strconv"
++	"strings"
++	"testing"
++	"time"
++
++	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing-box/log"
++	"github.com/sagernet/sing-box/option"
++	sbjson "github.com/sagernet/sing/common/json"
++)
++
++func mieruBind(network, address string) (io.Closer, error) {
++	if network == "tcp" {
++		return net.Listen(network, address)
++	}
++	return net.ListenPacket(network, address)
++}
++
++func reserveMieruPort(t *testing.T, network string) (uint16, io.Closer) {
++	t.Helper()
++	bound, err := mieruBind(network, "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = bound.Close() })
++	var address net.Addr
++	if listener, ok := bound.(net.Listener); ok {
++		address = listener.Addr()
++	} else {
++		address = bound.(net.PacketConn).LocalAddr()
++	}
++	_, text, _ := net.SplitHostPort(address.String())
++	port, _ := strconv.ParseUint(text, 10, 16)
++	return uint16(port), bound
++}
++
++func startMieruListeners(t *testing.T, network, listen string, primary, extra uint16) (*Inbound, *adapter.Scope, error) {
++	t.Helper()
++	var options option.MieruInboundOptions
++	var listenJSON string
++	if listen != "" {
++		listenJSON = fmt.Sprintf(`"listen":%q,`, listen)
++	}
++	raw := fmt.Sprintf(`{%s"listen_port":%d,"listen_ports":["%d-%d"],"transport":%q,"users":[{"name":"fixture","password":"synthetic-listener-only"}]}`, listenJSON, primary, extra, extra, strings.ToUpper(network))
++	if err := sbjson.UnmarshalContext(t.Context(), []byte(raw), &options); err != nil {
++		t.Fatal(err)
++	}
++	logger := log.NewNOPFactory().Logger()
++	candidate, err := NewInbound(t.Context(), nil, logger, "fixture", options)
++	if err != nil {
++		t.Fatal(err)
++	}
++	scope := adapter.NewScope(t.Context(), logger)
++	t.Cleanup(func() {
++		if err := scope.Close(); err != nil {
++			t.Error(err)
++		}
++	})
++	server := candidate.(*Inbound)
++	err = server.Start(adapter.StartStateStart, scope)
++	return server, scope, err
++}
++
++func assertMieruPortReleased(t *testing.T, network string, port uint16) {
++	t.Helper()
++	deadline := time.Now().Add(time.Second)
++	for {
++		bound, err := mieruBind(network, net.JoinHostPort("127.0.0.1", strconv.Itoa(int(port))))
++		if err == nil {
++			_ = bound.Close()
++			return
++		}
++		if time.Now().After(deadline) {
++			t.Fatal("Mieru scope retained a serving socket", err)
++		}
++		time.Sleep(5 * time.Millisecond)
++	}
++}
++
++func TestMieruServingListenersHonorAddressAndRangePorts(t *testing.T) {
++	for _, network := range []string{"tcp", "udp"} {
++		t.Run(network, func(t *testing.T) {
++			primary, first := reserveMieruPort(t, network)
++			extra, second := reserveMieruPort(t, network)
++			_ = first.Close()
++			_ = second.Close()
++			server, scope, err := startMieruListeners(t, network, "127.0.0.1", primary, extra)
++			if err != nil || !server.server.IsRunning() {
++				t.Fatal("Mieru did not reach serving state", err)
++			}
++			for _, port := range []uint16{primary, extra} {
++				if conflict, err := mieruBind(network, net.JoinHostPort("127.0.0.1", strconv.Itoa(int(port)))); err == nil {
++					_ = conflict.Close()
++					t.Fatal("Mieru omitted a configured primary or range-selected port")
++				}
++				other, err := mieruBind(network, net.JoinHostPort("127.0.0.2", strconv.Itoa(int(port))))
++				if err != nil {
++					t.Fatal("loopback-only Mieru listener occupied another local address", err)
++				}
++				_ = other.Close()
++			}
++			if err := scope.Close(); err != nil || server.server.IsRunning() {
++				t.Fatal("Mieru scope did not retire the server", err)
++			}
++			for _, port := range []uint16{primary, extra} {
++				assertMieruPortReleased(t, network, port)
++			}
++			if err := scope.Close(); err != nil {
++				t.Fatal("repeated Mieru cleanup failed", err)
++			}
++		})
++	}
++}
++
++func TestMieruOmittedListenRetainsWildcard(t *testing.T) {
++	for _, network := range []string{"tcp", "udp"} {
++		t.Run(network, func(t *testing.T) {
++			primary, first := reserveMieruPort(t, network)
++			extra, second := reserveMieruPort(t, network)
++			_ = first.Close()
++			_ = second.Close()
++			_, scope, err := startMieruListeners(t, network, "", primary, extra)
++			if err != nil {
++				t.Fatal("Mieru default listener did not start", err)
++			}
++			for _, port := range []uint16{primary, extra} {
++				if other, err := mieruBind(network, net.JoinHostPort("127.0.0.2", strconv.Itoa(int(port)))); err == nil {
++					_ = other.Close()
++					t.Fatal("omitted Mieru address lost its wildcard binding")
++				}
++			}
++			if err := scope.Close(); err != nil {
++				t.Fatal(err)
++			}
++			assertMieruPortReleased(t, network, primary)
++			assertMieruPortReleased(t, network, extra)
++		})
++	}
++}
++
++func TestMieruListenerFailureRejectsReadyAndCleansOtherPorts(t *testing.T) {
++	for _, network := range []string{"tcp", "udp"} {
++		t.Run(network, func(t *testing.T) {
++			primary, first := reserveMieruPort(t, network)
++			blocked, _ := reserveMieruPort(t, network)
++			_ = first.Close()
++			server, scope, err := startMieruListeners(t, network, "127.0.0.1", primary, blocked)
++			if err == nil {
++				t.Fatal("occupied Mieru port was reported ready")
++			}
++			if err := scope.Close(); err != nil || server.server.IsRunning() {
++				t.Fatal("failed Mieru startup did not retire its partial server", err)
++			}
++			assertMieruPortReleased(t, network, primary)
++		})
++	}
++}
++
++func TestMieruNoUsersStaysInactiveAndKeepsPortsReusable(t *testing.T) {
++	for _, network := range []string{"tcp", "udp"} {
++		for _, users := range []string{"", `,"users":[]`} {
++			t.Run(network+users, func(t *testing.T) {
++				primary, first := reserveMieruPort(t, network)
++				extra, second := reserveMieruPort(t, network)
++				var options option.MieruInboundOptions
++				raw := fmt.Sprintf(`{"listen":"127.0.0.1","listen_port":%d,"listen_ports":["%d-%d"],"transport":%q%s}`, primary, extra, extra, strings.ToUpper(network), users)
++				if err := sbjson.UnmarshalContext(t.Context(), []byte(raw), &options); err != nil {
++					t.Fatal(err)
++				}
++				logger := log.NewNOPFactory().Logger()
++				candidate, err := NewInbound(t.Context(), nil, logger, "inactive", options)
++				if err != nil {
++					t.Fatal("empty desired user list was rejected", err)
++				}
++				scope := adapter.NewScope(t.Context(), logger)
++				t.Cleanup(func() { _ = scope.Close() })
++				// The externally occupied ports cannot prevent an inactive
++				// inbound from starting, and remain reusable while it exists.
++				if err := candidate.Start(adapter.StartStateStart, scope); err != nil {
++					t.Fatal("inactive inbound attempted to serve", err)
++				}
++				_ = first.Close()
++				_ = second.Close()
++				assertMieruPortReleased(t, network, primary)
++				assertMieruPortReleased(t, network, extra)
++				if err := scope.Close(); err != nil {
++					t.Fatal(err)
++				}
++				if err := scope.Close(); err != nil {
++					t.Fatal("inactive cleanup was not repeatable", err)
++				}
++			})
++		}
++	}
++}
++
++func TestMieruNoUsersRetainsStrictOptionValidation(t *testing.T) {
++	for name, raw := range map[string]string{
++		"transport": `{"listen_port":12345,"transport":"invalid","users":[]}`,
++		"no-port":   `{"transport":"TCP","users":[]}`,
++		"range":     `{"listen_ports":["invalid"],"transport":"UDP","users":[]}`,
++		"pattern":   `{"listen_port":12345,"transport":"TCP","traffic_pattern":"invalid","users":[]}`,
++	} {
++		t.Run(name, func(t *testing.T) {
++			var options option.MieruInboundOptions
++			if err := sbjson.UnmarshalContext(t.Context(), []byte(raw), &options); err != nil {
++				t.Fatal(err)
++			}
++			if _, err := NewInbound(t.Context(), nil, log.NewNOPFactory().Logger(), "invalid", options); err == nil {
++				t.Fatal("inactive inbound silently accepted invalid serving options")
++			}
++		})
++	}
++}
 diff --git a/protocol/naive/quic/inbound_init.go b/protocol/naive/quic/inbound_init.go
 index 3f59355a..fd7e8e66 100644
 --- a/protocol/naive/quic/inbound_init.go
@@ -815,6 +1348,188 @@ index 00000000..f2443270
 +		}
 +	})
 +	return l.closeErr
++}
+diff --git a/protocol/trusttunnel/inbound.go b/protocol/trusttunnel/inbound.go
+index 2c2e1b4e..3ed19346 100644
+--- a/protocol/trusttunnel/inbound.go
++++ b/protocol/trusttunnel/inbound.go
+@@ -20,6 +20,7 @@ import (
+ 	"github.com/sagernet/sing-quic"
+ 	"github.com/sagernet/sing/common"
+ 	"github.com/sagernet/sing/common/auth"
++	E "github.com/sagernet/sing/common/exceptions"
+ 	"github.com/sagernet/sing/common/logger"
+ 	M "github.com/sagernet/sing/common/metadata"
+ 	N "github.com/sagernet/sing/common/network"
+@@ -88,7 +89,7 @@ func (h *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+ 	if stage != adapter.StartStateStart {
+ 		return nil
+ 	}
+-	scope.Add(h.listener.Close)
++	scope.Add(func() error { return listenerCloseError(h.listener.Close()) })
+ 	var err error
+ 	if common.Contains(h.network, N.NetworkTCP) {
+ 		h.httpTLSConfig, err = tls.NewServer(h.ctx, h.logger, common.PtrValueOrDefault(h.options.TLS))
+@@ -173,6 +174,18 @@ func (h *Inbound) Start(stage adapter.StartStage, scope *adapter.Scope) error {
+ 	return nil
+ }
+ 
++func listenerCloseError(err error) error {
++	// http.Server.Close also closes TCP. Inspect the listener's per-socket
++	// errors so an expected duplicate close cannot hide a different UDP error.
++	var retained []error
++	for _, cause := range E.Expand(err) {
++		if !errors.Is(cause, net.ErrClosed) {
++			retained = append(retained, cause)
++		}
++	}
++	return E.Errors(retained...)
++}
++
+ func (h *Inbound) UpdateUsers(users []option.TrustTunnelUser) {
+ 	userMap := make(map[string]string, len(users))
+ 	for _, u := range users {
+diff --git a/protocol/trusttunnel/lifecycle_test.go b/protocol/trusttunnel/lifecycle_test.go
+new file mode 100644
+index 00000000..ad0324c7
+--- /dev/null
++++ b/protocol/trusttunnel/lifecycle_test.go
+@@ -0,0 +1,136 @@
++//go:build linux && with_quic
++
++package trusttunnel
++
++import (
++	"crypto/ed25519"
++	"crypto/rand"
++	"crypto/tls"
++	"crypto/x509"
++	"encoding/pem"
++	"errors"
++	"fmt"
++	"math/big"
++	"net"
++	"net/http"
++	"net/netip"
++	"testing"
++	"time"
++
++	"github.com/sagernet/sing-box/adapter"
++	"github.com/sagernet/sing-box/log"
++	"github.com/sagernet/sing-box/option"
++	"github.com/sagernet/sing/common/json/badoption"
++)
++
++func TestTrustTunnelListenerClosePreservesOtherErrors(t *testing.T) {
++	unexpected := errors.New("synthetic listener close failure")
++	for _, fixture := range []struct {
++		err  error
++		fail bool
++	}{{}, {err: net.ErrClosed}, {err: fmt.Errorf("tcp: %w", net.ErrClosed)},
++		{err: unexpected, fail: true}, {err: errors.Join(net.ErrClosed, unexpected), fail: true}} {
++		err := listenerCloseError(fixture.err)
++		if fixture.fail && !errors.Is(err, unexpected) || !fixture.fail && err != nil {
++			t.Fatal("listener cleanup discarded a real error or rejected an expected close", err)
++		}
++	}
++}
++
++func trustTunnelTestTLS(t *testing.T) *option.InboundTLSOptions {
++	t.Helper()
++	public, private, err := ed25519.GenerateKey(rand.Reader)
++	if err != nil {
++		t.Fatal(err)
++	}
++	certificate := &x509.Certificate{SerialNumber: big.NewInt(1), IPAddresses: []net.IP{net.ParseIP("127.0.0.1")},
++		NotBefore: time.Now().Add(-time.Minute), NotAfter: time.Now().Add(time.Hour),
++		KeyUsage: x509.KeyUsageDigitalSignature, ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth}}
++	der, err := x509.CreateCertificate(rand.Reader, certificate, certificate, public, private)
++	if err != nil {
++		t.Fatal(err)
++	}
++	key, err := x509.MarshalPKCS8PrivateKey(private)
++	if err != nil {
++		t.Fatal(err)
++	}
++	return &option.InboundTLSOptions{Enabled: true,
++		Certificate: []string{string(pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: der}))},
++		Key:         []string{string(pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: key}))}}
++}
++
++func TestTrustTunnelScopeOwnsServedAndPartialListeners(t *testing.T) {
++	for _, fixture := range []struct {
++		name, network, congestion string
++		fails                     bool
++	}{{name: "tcp", network: "tcp"}, {name: "udp", network: "udp"}, {name: "dual", network: "tcp\nudp"},
++		{name: "partial", network: "tcp\nudp", congestion: "synthetic-unsupported", fails: true}} {
++		t.Run(fixture.name, func(t *testing.T) {
++			listen := badoption.Addr(netip.MustParseAddr("127.0.0.1"))
++			options := option.TrustTunnelInboundOptions{ListenOptions: option.ListenOptions{Listen: &listen},
++				InboundTLSOptionsContainer: option.InboundTLSOptionsContainer{TLS: trustTunnelTestTLS(t)},
++				Network:                    option.NetworkList(fixture.network), CongestionController: fixture.congestion,
++				Users: []option.TrustTunnelUser{{Name: "fixture", Password: "synthetic-lifecycle-only"}}}
++			logger := log.NewNOPFactory().Logger()
++			candidate, err := NewInbound(t.Context(), nil, logger, "fixture", options)
++			if err != nil {
++				t.Fatal(err)
++			}
++			inbound := candidate.(*Inbound)
++			scope := adapter.NewScope(t.Context(), logger)
++			t.Cleanup(func() {
++				if err := scope.Close(); err != nil {
++					t.Error(err)
++				}
++			})
++			err = inbound.Start(adapter.StartStateStart, scope)
++			if (err != nil) != fixture.fails {
++				t.Fatal("unexpected TrustTunnel startup outcome", err)
++			}
++			addresses := map[string]string{}
++			if socket := inbound.listener.TCPListener(); socket != nil {
++				addresses["tcp"] = socket.Addr().String()
++				if !fixture.fails {
++					roots := x509.NewCertPool()
++					if !roots.AppendCertsFromPEM([]byte(options.TLS.Certificate[0])) {
++						t.Fatal("invalid synthetic certificate")
++					}
++					transport := &http.Transport{TLSClientConfig: &tls.Config{RootCAs: roots}, ForceAttemptHTTP2: true}
++					defer transport.CloseIdleConnections()
++					response, err := (&http.Client{Transport: transport, Timeout: 2 * time.Second}).Get("https://" + socket.Addr().String() + "/lifecycle-fixture")
++					if err != nil {
++						t.Fatal("real TrustTunnel TLS listener did not serve", err)
++					}
++					_ = response.Body.Close()
++				}
++			}
++			if socket := inbound.listener.UDPConn(); socket != nil {
++				addresses["udp"] = socket.LocalAddr().String()
++			}
++			if len(addresses) == 0 {
++				t.Fatal("TrustTunnel fixture did not open a listener")
++			}
++			if err := scope.Close(); err != nil {
++				t.Fatal("TrustTunnel scope rejected expected HTTP listener closure", err)
++			}
++			for network, address := range addresses {
++				if network == "tcp" {
++					socket, err := net.Listen(network, address)
++					if err != nil {
++						t.Fatal("TrustTunnel retained its TCP port", err)
++					}
++					_ = socket.Close()
++				} else {
++					socket, err := net.ListenPacket(network, address)
++					if err != nil {
++						t.Fatal("TrustTunnel retained its UDP port", err)
++					}
++					_ = socket.Close()
++				}
++			}
++			if err := scope.Close(); err != nil {
++				t.Fatal("TrustTunnel repeated scope close failed", err)
++			}
++		})
++	}
 +}
 diff --git a/protocol/warp/endpoint.go b/protocol/warp/endpoint.go
 index dc7fda1b..a4ed3630 100644

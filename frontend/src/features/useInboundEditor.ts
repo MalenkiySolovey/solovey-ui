@@ -20,6 +20,8 @@ import Tun from '@/components/protocols/Tun.vue'
 import Trojan from '@/components/protocols/Trojan.vue'
 import AnyTls from '@/components/protocols/AnyTls.vue'
 import Snell from '@/components/protocols/Snell.vue'
+import Mieru from '@/components/protocols/Mieru.vue'
+import TrustTunnel from '@/components/protocols/TrustTunnel.vue'
 import InTls from '@/components/tls/InTLS.vue'
 import TProxy from '@/components/protocols/TProxy.vue'
 import Multiplex from '@/components/fields/Multiplex.vue'
@@ -44,7 +46,7 @@ export default defineComponent({
       snapshot: "",
       side: "s",
       inTypes: InTypes,
-      inboundWithUsers: ['mixed', 'socks', 'http', 'shadowsocks', 'vmess', 'trojan', 'naive', 'hysteria', 'shadowtls', 'tuic', 'hysteria2', 'vless', 'anytls', 'snell'],
+      inboundWithUsers: ['mixed', 'socks', 'http', 'shadowsocks', 'vmess', 'trojan', 'naive', 'hysteria', 'shadowtls', 'tuic', 'hysteria2', 'vless', 'anytls', 'snell', 'mieru', 'trusttunnel'],
       initUsers: {
         model: 'none',
         values: <any>[],
@@ -75,6 +77,7 @@ export default defineComponent({
         InTypes.Hysteria2,
         InTypes.VLESS,
         InTypes.AnyTls,
+        InTypes.TrustTunnel,
       ],
       MuxAvailable: [
         InTypes.VLESS,
@@ -82,7 +85,7 @@ export default defineComponent({
         InTypes.Trojan,
         InTypes.Shadowsocks,
       ],
-      OnlyTLS: [InTypes.Hysteria, InTypes.Hysteria2, InTypes.TUIC, InTypes.Naive, InTypes.AnyTls ],
+      OnlyTLS: [InTypes.Hysteria, InTypes.Hysteria2, InTypes.TUIC, InTypes.Naive, InTypes.AnyTls, InTypes.TrustTunnel ],
     }
   },
   methods: {
@@ -188,8 +191,17 @@ export default defineComponent({
     },
   },
   computed: {
+    hasGenericTransport(): boolean {
+      const transport = (<any>this.inbound).transport
+      return transport !== null && typeof transport === 'object' && !Array.isArray(transport)
+    },
+    nativeOptionsUnavailable(): boolean {
+      return [this.inTypes.Mieru, this.inTypes.TrustTunnel].includes(this.inbound.type) &&
+        runtimeCapability(Data().capabilities, 'inbounds', this.inbound.type)?.available !== true
+    },
     saveReasons(): SaveReason[] {
-      return entitySaveReasons({ identity: this.inbound.tag, port: this.inbound.listen_port, requiresPort: this.inbound.type !== this.inTypes.Tun, pending: this.loading, capability: this.capabilityState, missingRequiredTls: this.OnlyTLS.includes(this.inbound.type) && !this.inbound.tls_id })
+      const rangeOnly = this.inbound.type === this.inTypes.Mieru && (<any>this.inbound).listen_ports?.length > 0 && !this.inbound.listen_port
+      return entitySaveReasons({ identity: this.inbound.tag, port: this.inbound.listen_port, requiresPort: this.inbound.type !== this.inTypes.Tun && !rangeOnly, pending: this.loading, capability: this.capabilityState, missingRequiredTls: this.OnlyTLS.includes(this.inbound.type) && !this.inbound.tls_id })
     },
     capabilityState(): CapabilityEditState {
       return capabilityEditState(Data().capabilities, "inbounds", this.inbound.type, this.storedCapabilityType)
@@ -236,6 +248,6 @@ export default defineComponent({
   components: { InboundGuidance, SaveGuardNotice, CapabilityNotice,
     Listen, InTls, Hysteria2, Naive, Direct, Shadowsocks,
     Users, Hysteria, ShadowTls, TProxy, Multiplex, Tuic, Tun,
-    Trojan, AnyTls, Snell, Transport, AddrVue, OutJsonVue, Dial, DomainResolver
+    Trojan, AnyTls, Snell, Mieru, TrustTunnel, Transport, AddrVue, OutJsonVue, Dial, DomainResolver
   }
 })

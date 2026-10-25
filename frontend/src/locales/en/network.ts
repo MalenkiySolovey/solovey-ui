@@ -1,4 +1,15 @@
 export default {
+  "nativeInbound": {
+    "mieruUsers": "Without enabled Users, this listener stays inactive. Assign Users in Clients below to enable traffic.",
+    "transport": "Transport",
+    "userHint": "Require user hint",
+    "listenPorts": "Additional listening ports or ranges",
+    "trafficPattern": "Traffic pattern",
+    "mtu": "MTU",
+    "congestion": "Congestion controller",
+    "cwndHint": "The pinned core preserves this field but does not apply a custom congestion window.",
+    "disablePathMtuDiscovery": "Disable path MTU discovery"
+  },
   "in": {
     "addr": "Address",
     "port": "Port",

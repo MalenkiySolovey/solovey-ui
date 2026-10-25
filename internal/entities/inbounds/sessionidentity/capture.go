@@ -12,7 +12,9 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	"gorm.io/gorm"
 )
 
@@ -62,7 +64,10 @@ func Capture(db *gorm.DB, config []byte) ([]inboundidentity.Binding, error) {
 	if err := db.Select("id", "config", "inbounds").Where("enable = ?", true).Find(&clients).Error; err != nil {
 		return nil, err
 	}
-	prepared := prepareClients(clients)
+	prepared, err := prepareClients(clients)
+	if err != nil {
+		return nil, err
+	}
 	result := []inboundidentity.Binding{}
 	for _, row := range rows {
 		stored, ok := byTag[row.Tag]
@@ -82,7 +87,11 @@ func Capture(db *gorm.DB, config []byte) ([]inboundidentity.Binding, error) {
 				continue
 			}
 			expected := client.credentials[field]
-			name := principal(expected, row.Type)
+			var fields map[string]any
+			if json.Unmarshal(expected, &fields) != nil {
+				continue
+			}
+			name := principal(fields, row.Type)
 			if name != "" {
 				expectedByPrincipal[name] = append(expectedByPrincipal[name], desiredUser{id: client.id, credentials: expected})
 			}
@@ -97,7 +106,19 @@ func Capture(db *gorm.DB, config []byte) ([]inboundidentity.Binding, error) {
 			}
 			seen[name] = true
 			for _, client := range expectedByPrincipal[name] {
-				if !equivalent(actual, client.credentials, row.Type) {
+				matches := false
+				err := credentials.UseClient(db.Statement.Context, db, client.id, row.Type, client.credentials, "runtime-session-identity", func(value []byte) error {
+					var expected map[string]any
+					if err := json.Unmarshal(value, &expected); err != nil {
+						return err
+					}
+					matches = equivalent(actual, expected, row.Type)
+					return nil
+				})
+				if err != nil {
+					return nil, err
+				}
+				if !matches {
 					continue
 				}
 				if prior := byPrincipal[name]; prior != 0 && prior != client.id {
@@ -133,14 +154,14 @@ func principal(user map[string]any, kind string) string {
 type desiredClient struct {
 	id          uint
 	inbounds    map[uint]bool
-	credentials map[string]map[string]any
+	credentials map[string]json.RawMessage
 }
 type desiredUser struct {
 	id          uint
-	credentials map[string]any
+	credentials json.RawMessage
 }
 
-func prepareClients(clients []model.Client) []desiredClient {
+func prepareClients(clients []model.Client) ([]desiredClient, error) {
 	result := make([]desiredClient, 0, len(clients))
 	for _, client := range clients {
 		prepared := desiredClient{id: client.Id, inbounds: map[uint]bool{}}
@@ -148,12 +169,17 @@ func prepareClients(clients []model.Client) []desiredClient {
 		if json.Unmarshal(client.Inbounds, &ids) != nil || json.Unmarshal(client.Config, &prepared.credentials) != nil {
 			continue
 		}
+		for _, fact := range clientfacts.Facts() {
+			if fact.SecretField != "" && len(prepared.credentials[fact.UserField]) != 0 && jsonvalue.StrictObject(client.Config) != nil {
+				return nil, credentials.ErrInvalid
+			}
+		}
 		for _, id := range ids {
 			prepared.inbounds[id] = true
 		}
 		result = append(result, prepared)
 	}
-	return result
+	return result, nil
 }
 
 func equivalent(actual, expected map[string]any, kind string) bool {

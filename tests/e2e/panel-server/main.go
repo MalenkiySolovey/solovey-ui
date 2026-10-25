@@ -22,6 +22,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/state"
 	componentsupervisor "github.com/MalenkiySolovey/solovey-ui/componenthost/supervisor"
 	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
+	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	cronscheduler "github.com/MalenkiySolovey/solovey-ui/cronjob/scheduler"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
@@ -59,8 +60,13 @@ func main() {
 		fatal("settings reload", err)
 	}
 
-	fmt.Println("e2e panel-server: init api-only web server")
+	fmt.Println("e2e panel-server: init web server")
 	runtime := service.NewRuntime(nil)
+	if os.Getenv("SUI_E2E_REAL_CORE") == "1" {
+		core := coreruntime.NewCore()
+		runtime = service.NewRuntime(core)
+		defer func() { _ = core.Stop() }()
+	}
 	service.SetDefaultRuntime(runtime)
 	cronScheduler := cronscheduler.New()
 	if err := cronScheduler.Start(time.UTC, 0); err != nil {

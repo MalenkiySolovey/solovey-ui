@@ -1,9 +1,13 @@
 package entityinbounds
 
 import (
+	"bytes"
 	"encoding/json"
+	"io"
+	"reflect"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
@@ -75,6 +79,9 @@ func saveEdited(req SaveRequest) (*singboxapply.Change, error) {
 	if err := saveeligibility.Validate(req.Tx, string(ActionEdit), inbound.Id, &model.Inbound{}, "inbounds", inbound.Type); err != nil {
 		return nil, err
 	}
+	if err := preserveUnavailableNativeInbound(req.Tx, &inbound); err != nil {
+		return nil, err
+	}
 	oldTag, err := TagByID(req.Tx, inbound.Id)
 	if err != nil {
 		return nil, err
@@ -103,6 +110,18 @@ func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 	if err := inbound.UnmarshalJSON(data); err != nil {
 		return inbound, err
 	}
+	if inbound.Type == "mieru" || inbound.Type == "trusttunnel" {
+		if jsonvalue.StrictObject(data) != nil {
+			return inbound, common.NewError("NATIVE_INBOUND_INPUT_INVALID")
+		}
+		var submitted map[string]json.RawMessage
+		_ = json.Unmarshal(data, &submitted)
+		for _, field := range []string{"users", "tls"} {
+			if raw, present := submitted[field]; present && string(raw) != "null" {
+				return inbound, common.NewError("NATIVE_INBOUND_OWNED_FIELD: use the existing Users assignment and TLS template owners")
+			}
+		}
+	}
 	if err := entityidentity.ValidateTypeTag(inbound.Type, inbound.Tag); err != nil {
 		return inbound, err
 	}
@@ -128,7 +147,53 @@ func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 			return inbound, err
 		}
 	}
+	if inbound.Type == "trusttunnel" && entitycapabilities.Resolve("inbounds", inbound.Type).Available {
+		var tls struct {
+			Enabled bool `json:"enabled"`
+		}
+		if inbound.TlsId == 0 || inbound.Tls == nil || json.Unmarshal(inbound.Tls.Server, &tls) != nil || !tls.Enabled {
+			return inbound, common.NewError("TRUSTTUNNEL_TLS_REQUIRED: select an enabled TLS template")
+		}
+	}
 	return inbound, nil
+}
+
+func preserveUnavailableNativeInbound(tx *gorm.DB, inbound *model.Inbound) error {
+	if inbound.Type != "mieru" && inbound.Type != "trusttunnel" || entitycapabilities.Resolve("inbounds", inbound.Type).Available {
+		return nil
+	}
+	var stored model.Inbound
+	if err := tx.Where("id = ?", inbound.Id).First(&stored).Error; err != nil {
+		return err
+	}
+	if inbound.TlsId != stored.TlsId || !sameNativeJSON(inbound.Options, stored.Options) ||
+		!sameNativeJSON(inbound.Addrs, stored.Addrs) || !sameNativeJSON(inbound.OutJson, stored.OutJson) {
+		return common.NewError("NATIVE_INBOUND_CAPABILITY_UNAVAILABLE: preserve stored protocol fields until their capability is available")
+	}
+	// Keep the captured owner fields byte-for-byte, including future options.
+	inbound.Options, inbound.Addrs, inbound.OutJson = stored.Options, stored.Addrs, stored.OutJson
+	return nil
+}
+
+func sameNativeJSON(left, right json.RawMessage) bool {
+	decode := func(raw json.RawMessage) (any, bool) {
+		if len(bytes.TrimSpace(raw)) == 0 {
+			return nil, true
+		}
+		decoder := json.NewDecoder(bytes.NewReader(raw))
+		decoder.UseNumber()
+		var value any
+		if decoder.Decode(&value) != nil {
+			return nil, false
+		}
+		return value, decoder.Decode(new(any)) == io.EOF
+	}
+	a, aOK := decode(left)
+	b, bOK := decode(right)
+	if !aOK || !bOK {
+		return false
+	}
+	return reflect.DeepEqual(a, b)
 }
 
 func validateJSONShape(inbound model.Inbound) error {

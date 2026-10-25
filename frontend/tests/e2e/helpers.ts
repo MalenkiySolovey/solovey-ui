@@ -12,7 +12,9 @@ export type E2EServerState = {
 }
 
 export const repoRoot = path.resolve(process.cwd(), '..')
-export const e2eResultDir = path.join(repoRoot, 'tests', 'baseline', 'e2e')
+export const e2eResultDir = process.env.SUI_E2E_RESULT_DIR
+  ? path.resolve(process.env.SUI_E2E_RESULT_DIR)
+  : path.join(repoRoot, 'tests', 'baseline', 'e2e')
 export const serverStatePath = path.join(e2eResultDir, 'e2e-server', 'state.json')
 const fallbackE2EWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH ?? '/e2e-panel/')
 

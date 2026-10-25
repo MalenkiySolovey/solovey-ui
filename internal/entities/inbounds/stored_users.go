@@ -2,11 +2,13 @@ package entityinbounds
 
 import (
 	"encoding/json"
-	"fmt"
 	"strings"
 
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )
@@ -67,11 +69,11 @@ func (s StoredUsers) FetchUsers(db *gorm.DB, inboundType string, inbound map[str
 		return nil, nil
 	}
 
-	var users []string
-	// Both SQL fragments are static allow-listed values; inboundID remains a
-	// bound parameter. Callers cannot inject an alternate WHERE condition.
-	query := fmt.Sprintf(`SELECT json_extract(clients.config, '$.%s') FROM clients WHERE enable = true AND %s ORDER BY clients.sort_order, clients.id`, field, clientHasInboundCondition)
-	err := db.Raw(query, inboundID).Scan(&users).Error
+	var users []model.Client
+	// Capture immutable owner identity together with its value in this view.
+	// Only fixed schema facts select a field; inboundID remains bound SQL.
+	err := db.Select("id", "config").Where("enable = true AND "+clientHasInboundCondition, inboundID).
+		Order("clients.sort_order, clients.id").Find(&users).Error
 	if err != nil {
 		return nil, err
 	}
@@ -93,10 +95,26 @@ func (s StoredUsers) FetchUsers(db *gorm.DB, inboundType string, inbound map[str
 	}
 	var usersJson []json.RawMessage
 	for _, user := range users {
-		if stripVisionFlow {
-			user = strings.Replace(user, "xtls-rprx-vision", "", -1)
+		fact, _ := clientfacts.Resolve(inboundType)
+		if fact.SecretField != "" && jsonvalue.StrictObject(user.Config) != nil {
+			return nil, credentials.ErrInvalid
 		}
-		usersJson = append(usersJson, json.RawMessage(user))
+		var fields map[string]json.RawMessage
+		if json.Unmarshal(user.Config, &fields) != nil {
+			return nil, credentials.ErrInvalid
+		}
+		err := credentials.UseClient(db.Statement.Context, db, user.Id, inboundType, fields[field], "inbound-runtime-config", func(value []byte) error {
+			if stripVisionFlow {
+				value = []byte(strings.ReplaceAll(string(value), "xtls-rprx-vision", ""))
+			}
+			// The provider config owns this scoped copy; SecretRef wipes its
+			// borrowed buffer immediately after this callback returns.
+			usersJson = append(usersJson, append(json.RawMessage(nil), value...))
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
 	}
 	return usersJson, nil
 }

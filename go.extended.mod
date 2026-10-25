@@ -35,6 +35,7 @@ require (
 	github.com/axiomhq/hyperloglog v0.0.0-20240319100328-84253e514e02 // indirect
 	github.com/creack/pty v1.1.24 // indirect
 	github.com/dgryski/go-metro v0.0.0-20180109044635-280f6062b5bc // indirect
+	github.com/enfein/mieru/v3 v3.33.0 // indirect
 	github.com/go4org/hashtriemap v0.0.0-20251130024219-545ba229f689 // indirect
 	github.com/google/gopacket v1.1.19 // indirect
 	github.com/huin/goupnp v1.3.0 // indirect
@@ -211,7 +212,7 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box v1.14.4-0.20261023040931-b5f1b37ff6d4
+replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box v1.14.4-0.20261025131044-1343b09f1446
 
 replace github.com/anytls/sing-anytls => github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353
 

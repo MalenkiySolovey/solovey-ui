@@ -46,6 +46,8 @@ func inboundDeclarations() []declaration[*inbound.Registry] {
 		{typeName: "vless", buildTag: "", compiled: true, register: vless.RegisterInbound},
 		{typeName: "anytls", buildTag: "", compiled: true, register: anytls.RegisterInbound},
 		{typeName: C.TypeSnell, compiled: true, authenticatedUsers: true, register: snell.RegisterInbound},
+		{typeName: "mieru", buildTag: "shtorm_extended", compiled: supportsMieruInbound, authenticatedUsers: true, register: registerMieruInbound},
+		{typeName: "trusttunnel", buildTag: "shtorm_extended,with_quic", compiled: supportsTrustTunnelInbound, authenticatedUsers: true, register: registerTrustTunnelInbound},
 		{typeName: C.TypeCloudflared, buildTag: "with_cloudflared", productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
 		{typeName: "hysteria", buildTag: "with_quic", compiled: C.WithQUIC, register: registerHysteriaInbound},
 		{typeName: "tuic", buildTag: "with_quic", compiled: C.WithQUIC, register: registerTUICInbound},

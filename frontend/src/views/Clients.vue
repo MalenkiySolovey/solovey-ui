@@ -253,6 +253,7 @@
         <template v-slot:item.actions="{ item }">
         <v-icon
           class="me-2"
+          :aria-label="$t('actions.edit')"
           @click="showModal(item.id)"
         >
           mdi-pencil

@@ -1,4 +1,6 @@
 import RandomUtil from "@/plugins/randomUtil"
+import { managedClientSecretFields, managedCredentialAvailable } from '@/features/clientCredentialDraft'
+import type { RuntimeCapabilities } from './runtimeCapabilities'
 
 export interface Link {
   type: string
@@ -74,9 +76,10 @@ type Config = {
   }
 }
 
-export function updateConfigs(configs: Config, newUserName: string): Config {
+export function updateConfigs(configs: Config, newUserName: string, capabilities?: RuntimeCapabilities): Config {
   for (const key in configs) {
     if (key === clientSubscriptionMetadataKey) continue
+    if (managedClientSecretFields[key] && !managedCredentialAvailable(capabilities, key)) continue
     if (configs.hasOwnProperty(key)) {
       const config = configs[key]
       if (config.hasOwnProperty("name")) {

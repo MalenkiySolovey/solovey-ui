@@ -76,6 +76,12 @@ jobs:
       - name: Native shared configuration and maintenance owner regressions
         shell: bash
         run: go test -race -count=1 -timeout=5m -tags "$EXTENDED_TAGS" -run '^Test(ProviderConfiguration|ProviderDesiredRevision|Maintenance)' ./service
+      - name: Native credential owner and strict option race regressions
+        shell: bash
+        run: go test -race -count=1 -timeout=5m -tags "$EXTENDED_TAGS" ./internal/secrets/... ./internal/auditrecord ./internal/settings/store ./internal/entities/credentials ./internal/entities/clients ./internal/entities/inbounds/... ./internal/entities/protocol ./internal/entities/tls
+      - name: Native credential HTTP, candidate rollback and private backup regressions
+        shell: bash
+        run: go test -race -count=1 -timeout=5m -tags "$EXTENDED_TAGS" -run '^TestNative(Credential|Credentials|Candidate)' ./api ./service
       - name: Native privileged broker race regressions
         if: runner.os == 'Linux'
         shell: bash

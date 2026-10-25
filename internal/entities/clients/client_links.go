@@ -179,6 +179,9 @@ func UpdateClientsOnInboundAdd(tx *gorm.DB, initIDs string, inboundID uint, host
 		if err := PrepareSnellCredential(tx, &client); err != nil {
 			return err
 		}
+		if err := PrepareAssignedCredentials(tx, &client); err != nil {
+			return err
+		}
 		links, decoded, lerr := RebuildLinks(client.Id, client.Config, client.Links, []model.Inbound{inbound}, hostname, func(link Link) bool {
 			return LinkString(link, "remark") != inbound.Tag
 		}, "inbound add")
@@ -238,6 +241,9 @@ func UpdateLinksByInboundChange(tx *gorm.DB, inbounds *[]model.Inbound, hostname
 		}
 		for _, client := range clients {
 			if err := PrepareSnellCredential(tx, &client); err != nil {
+				return err
+			}
+			if err := PrepareAssignedCredentials(tx, &client); err != nil {
 				return err
 			}
 			links, decoded, lerr := RebuildLinks(client.Id, client.Config, client.Links, []model.Inbound{inbound}, hostname, func(link Link) bool {

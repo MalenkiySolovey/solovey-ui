@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
@@ -65,6 +66,12 @@ func GetByID(db *gorm.DB, id string) (*[]model.Client, error) {
 	err := db.Model(model.Client{}).Where("id in ?", strings.Split(id, ",")).Order(entityorder.Clause).Scan(&client).Error
 	if err != nil {
 		return nil, err
+	}
+	for index := range client {
+		client[index].Config, err = credentials.ProjectClient(client[index].Id, client[index].Config)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return &client, nil
 }
@@ -129,22 +136,33 @@ func Save(req SaveRequest) ([]uint, error) {
 	if !ok {
 		return nil, common.NewErrorf("unknown action: %s", req.Action)
 	}
-	switch action {
-	case ActionNew:
-		return saveSingle(req, false)
-	case ActionEdit:
-		return saveSingle(req, true)
-	case ActionAddBulk:
-		return saveAddedBulk(req)
-	case ActionEditBulk:
-		return saveEditedBulk(req)
-	case ActionDelBulk:
-		return saveDeletedBulk(req)
-	case ActionDel:
-		return saveDeleted(req)
-	default:
-		return nil, common.NewErrorf("unknown action: %s", req.Action)
+	if req.Tx == nil {
+		return nil, common.NewError("client database is unavailable")
 	}
+	// Credential identity reservation, ciphertext, membership and delivery
+	// changes must commit together, including callers using an admitted DB
+	// handle rather than an already-open owner transaction.
+	var ids []uint
+	err := req.Tx.Transaction(func(tx *gorm.DB) error {
+		req.Tx = tx
+		var err error
+		switch action {
+		case ActionNew:
+			ids, err = saveSingle(req, false)
+		case ActionEdit:
+			ids, err = saveSingle(req, true)
+		case ActionAddBulk:
+			ids, err = saveAddedBulk(req)
+		case ActionEditBulk:
+			ids, err = saveEditedBulk(req)
+		case ActionDelBulk:
+			ids, err = saveDeletedBulk(req)
+		case ActionDel:
+			ids, err = saveDeleted(req)
+		}
+		return err
+	})
+	return ids, err
 }
 func ParseAction(action string) (SaveAction, bool) {
 	saveAction := SaveAction(action)
@@ -174,7 +192,17 @@ func SaveImportedCandidate(req SaveRequest) ([]uint, error) {
 	if req.Action != "new" && req.Action != "edit" {
 		return nil, common.NewError("unsupported imported client intent")
 	}
-	return saveSingleCandidate(req, req.Action == "edit", strings.TrimSpace(req.Hostname) != "")
+	if req.Tx == nil {
+		return nil, common.NewError("client database is unavailable")
+	}
+	var ids []uint
+	err := req.Tx.Transaction(func(tx *gorm.DB) error {
+		req.Tx = tx
+		var err error
+		ids, err = saveSingleCandidate(req, req.Action == "edit", strings.TrimSpace(req.Hostname) != "")
+		return err
+	})
+	return ids, err
 }
 
 func saveSingleCandidate(req SaveRequest, editing, projectLinks bool) ([]uint, error) {
@@ -191,16 +219,19 @@ func saveSingleCandidate(req SaveRequest, editing, projectLinks bool) ([]uint, e
 	if err := PrepareSubSecret(req.Tx, &client, editing); err != nil {
 		return nil, err
 	}
-	if projectLinks {
-		if err := UpdateLinksWithFixedInbounds(req.Tx, []*model.Client{&client}, req.Hostname); err != nil {
-			return nil, err
-		}
-	}
 	sortOrder, err := entityorder.ForSave(req.Tx, &model.Client{}, client.Id)
 	if err != nil {
 		return nil, err
 	}
 	client.SortOrder = sortOrder
+	if err := prepareManagedCredentials(req.Tx, &client, editing); err != nil {
+		return nil, err
+	}
+	if projectLinks {
+		if err := UpdateLinksWithFixedInbounds(req.Tx, []*model.Client{&client}, req.Hostname); err != nil {
+			return nil, err
+		}
+	}
 	var inboundIDs []uint
 	if editing {
 		changedInboundIDs, err := FindInboundChanges(req.Tx, &client)
@@ -248,6 +279,9 @@ func saveAddedBulk(req SaveRequest) ([]uint, error) {
 	for _, client := range clients {
 		client.SortOrder = nextOrder
 		nextOrder++
+		if err := prepareManagedCredentials(req.Tx, client, false); err != nil {
+			return nil, err
+		}
 	}
 	if err := UpdateLinksWithFixedInbounds(req.Tx, clients, req.Hostname); err != nil {
 		return nil, err
@@ -287,6 +321,9 @@ func saveEditedBulk(req SaveRequest) ([]uint, error) {
 	var inboundIDs []uint
 	for _, client := range clients {
 		if err := PrepareSubSecret(req.Tx, client, true); err != nil {
+			return nil, err
+		}
+		if err := prepareManagedCredentials(req.Tx, client, true); err != nil {
 			return nil, err
 		}
 		changedInboundIDs, err := FindInboundChanges(req.Tx, client)
@@ -344,6 +381,9 @@ func validateClientSaveBatch(tx *gorm.DB, clients []*model.Client, editing bool)
 			return err
 		}
 		if err := jsonvalue.OptionalArray("client links", client.Links); err != nil {
+			return err
+		}
+		if err := credentials.ValidateClientConfig(client.Config); err != nil {
 			return err
 		}
 		action := "new"
