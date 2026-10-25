@@ -33,6 +33,9 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 	t.Setenv("SUI_SECRET", "")
 	t.Setenv(backup.LogicalFileBackupEnv, backup.LogicalFileBackupRequired)
 	registerFixtureSettingContributionsForTest(t)
+	// TempDir cleanup runs in reverse registration order. Reserve both paths
+	// before the database cleanup so Windows closes SQLite before removal.
+	sourceDir, targetDir := t.TempDir(), t.TempDir()
 	t.Cleanup(resumeTokenUseFlush)
 	t.Cleanup(func() {
 		if err := StopAuditWriter(ctx); err != nil {
@@ -42,9 +45,9 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 			t.Error(err)
 		}
 	})
-	openFresh := func() *gorm.DB {
+	openFresh := func(dir string) *gorm.DB {
 		t.Helper()
-		t.Setenv("SUI_DB_FOLDER", t.TempDir())
+		t.Setenv("SUI_DB_FOLDER", dir)
 		if err := dbsqlite.Init(configstorage.GetDBPath()); err != nil {
 			t.Fatal(err)
 		}
@@ -90,7 +93,7 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		}
 		return row.Value
 	}
-	db := openFresh()
+	db := openFresh(sourceDir)
 	cert, key := makeSelfSignedCertPEM(t, time.Now().Add(24*time.Hour))
 	server, _ := json.Marshal(map[string]any{"enabled": true, "certificate": []string{string(cert)}, "key": []string{string(key)}})
 	profile := model.Tls{Name: "native-archive-tls", Server: server, Client: json.RawMessage(`{}`)}
@@ -198,7 +201,7 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		t.Fatal(err)
 	}
 	sourceDigest := sha256.Sum256(sourceBytes)
-	target := openFresh()
+	target := openFresh(targetDir)
 	if master(target) == sourceMaster {
 		t.Fatal("fresh restore target did not receive an independent database master")
 	}
