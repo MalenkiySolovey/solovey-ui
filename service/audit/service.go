@@ -3,29 +3,26 @@ package audit
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/internal/auditrecord"
 	logger "github.com/MalenkiySolovey/solovey-ui/logger"
-	"github.com/MalenkiySolovey/solovey-ui/util/redact"
 )
 
 const (
-	AuditSeverityInfo = "info"
-	AuditSeverityWarn = "warn"
+	AuditSeverityInfo = auditrecord.SeverityInfo
+	AuditSeverityWarn = auditrecord.SeverityWarn
 
-	AuditActorMaxBytes     = 256
-	AuditEventMaxBytes     = 128
-	AuditResourceMaxBytes  = 128
-	AuditSeverityMaxBytes  = 16
-	AuditIPMaxBytes        = 64
-	AuditUserAgentMaxBytes = 512
-	AuditDetailsMaxBytes   = 16 * 1024
+	AuditActorMaxBytes     = auditrecord.ActorMaxBytes
+	AuditEventMaxBytes     = auditrecord.EventMaxBytes
+	AuditResourceMaxBytes  = auditrecord.ResourceMaxBytes
+	AuditSeverityMaxBytes  = auditrecord.SeverityMaxBytes
+	AuditIPMaxBytes        = auditrecord.IPMaxBytes
+	AuditUserAgentMaxBytes = auditrecord.UserAgentMaxBytes
+	AuditDetailsMaxBytes   = auditrecord.DetailsMaxBytes
 	AuditWriteTimeout      = 3 * time.Second
 )
 
@@ -34,15 +31,7 @@ type Service struct {
 	aggregator *DenialAggregator
 }
 
-type Event struct {
-	Actor     string
-	Event     string
-	Resource  string
-	Severity  string
-	IP        string
-	UserAgent string
-	Details   map[string]any
-}
+type Event = auditrecord.Event
 
 func New(enqueue func(model.AuditEvent), aggregators ...*DenialAggregator) Service {
 	var aggregator *DenialAggregator
@@ -113,44 +102,7 @@ func (s *Service) RecordListenFallback(component, requestedAddr, fallbackAddr st
 }
 
 func BuildRecord(event Event) (model.AuditEvent, error) {
-	if event.Severity == "" {
-		event.Severity = AuditSeverityInfo
-	}
-	details, err := json.Marshal(redact.Value(event.Details))
-	if err != nil {
-		return model.AuditEvent{}, err
-	}
-	if len(details) > AuditDetailsMaxBytes {
-		details, err = json.Marshal(map[string]any{
-			"truncated":     true,
-			"originalBytes": len(details),
-		})
-		if err != nil {
-			return model.AuditEvent{}, err
-		}
-	}
-	return model.AuditEvent{
-		DateTime:  time.Now().Unix(),
-		Actor:     boundedAuditField(event.Actor, AuditActorMaxBytes),
-		Event:     boundedAuditField(event.Event, AuditEventMaxBytes),
-		Resource:  boundedAuditField(event.Resource, AuditResourceMaxBytes),
-		Severity:  boundedAuditField(event.Severity, AuditSeverityMaxBytes),
-		IP:        boundedAuditField(event.IP, AuditIPMaxBytes),
-		UserAgent: boundedAuditField(event.UserAgent, AuditUserAgentMaxBytes),
-		Details:   details,
-	}, nil
-}
-
-func boundedAuditField(value string, maxBytes int) string {
-	value = redact.String(strings.TrimSpace(value))
-	if maxBytes <= 0 || len(value) <= maxBytes {
-		return value
-	}
-	value = value[:maxBytes]
-	for !utf8.ValidString(value) {
-		value = value[:len(value)-1]
-	}
-	return value
+	return auditrecord.Build(event)
 }
 
 func WriteEvents(events []model.AuditEvent) error {

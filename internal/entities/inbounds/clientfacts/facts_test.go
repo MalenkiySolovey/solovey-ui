@@ -37,7 +37,7 @@ func TestDeliveryEligibilityUsesServingInboundAndPreservesSchema(t *testing.T) {
 	}
 	for _, fact := range Facts() {
 		available := entitycapabilities.Resolve("inbounds", fact.Type).Available
-		if CanDeliver(fact.Type, "json") != available || CanDeliver(fact.Type, "uri") != (available && fact.URI) || eligible[fact.Type] != (available && fact.URI) {
+		if CanDeliver(fact.Type, "json") != (available && fact.JSON) || CanDeliver(fact.Type, "uri") != (available && fact.URI) || eligible[fact.Type] != (available && fact.URI) {
 			t.Fatalf("delivery disagrees for %q", fact.Type)
 		}
 	}

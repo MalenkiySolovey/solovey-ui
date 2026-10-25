@@ -14,18 +14,26 @@ type Fact struct {
 	JSON      bool
 	URI       bool
 	UDP       bool
+	// SecretField is a scoped encrypted credential field. Empty retains the
+	// accepted historical credential backend for protocols not yet migrated.
+	SecretField string
 }
 
 // Each declaration is schema metadata. Runtime support is separately resolved
 // against the serving inbound, never this server's outbound build composition.
 var declarations = []Fact{
-	{"mixed", "mixed", true, true, true}, {"socks", "socks", true, true, true}, {"http", "http", true, true, false},
-	{"shadowsocks", "shadowsocks", true, true, true}, {"vmess", "vmess", true, true, true},
-	{"trojan", "trojan", true, true, true}, {"naive", "naive", true, true, true},
-	{"hysteria", "hysteria", true, true, true}, {"shadowtls", "shadowtls", true, false, false},
-	{"tuic", "tuic", true, true, true}, {"hysteria2", "hysteria2", true, true, true},
-	{"vless", "vless", true, true, true}, {"anytls", "anytls", true, true, true},
-	{"snell", "snell", true, false, true},
+	{"mixed", "mixed", true, true, true, ""}, {"socks", "socks", true, true, true, ""}, {"http", "http", true, true, false, ""},
+	{"shadowsocks", "shadowsocks", true, true, true, ""}, {"vmess", "vmess", true, true, true, ""},
+	{"trojan", "trojan", true, true, true, ""}, {"naive", "naive", true, true, true, ""},
+	{"hysteria", "hysteria", true, true, true, ""}, {"shadowtls", "shadowtls", true, false, false, ""},
+	{"tuic", "tuic", true, true, true, ""}, {"hysteria2", "hysteria2", true, true, true, ""},
+	{"vless", "vless", true, true, true, ""}, {"anytls", "anytls", true, true, true, ""},
+	{"snell", "snell", true, false, true, ""},
+	// Delivery is admitted separately after the canonical serializers qualify.
+	{"mieru", "mieru", false, false, true, "password"},
+	{"trusttunnel", "trusttunnel", false, false, true, "password"},
+	{"ssh", "ssh", false, false, false, "password"},
+	{"mtproxy", "mtproxy", false, false, false, "secret"},
 }
 
 // SupportsUDP is a portable protocol fact, narrowed by the selected outbound

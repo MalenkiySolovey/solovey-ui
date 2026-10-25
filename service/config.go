@@ -278,6 +278,9 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 		if _, err = runtimeprojection.ValidateReferences(tx, nil); err != nil {
 			return nil, err
 		}
+		if err = s.validateNativeInboundCandidate(tx); err != nil {
+			return nil, err
+		}
 	}
 	if err = s.recordConfigChange(tx, loginUser, obj, act, data); err != nil {
 		return nil, err

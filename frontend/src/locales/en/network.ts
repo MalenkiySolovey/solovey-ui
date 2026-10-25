@@ -1,4 +1,15 @@
 export default {
+  "nativeInbound": {
+    "mieruUsers": "Mieru requires at least one enabled User. Create the User first, then assign it in Clients below before saving.",
+    "transport": "Transport",
+    "userHint": "Require user hint",
+    "listenPorts": "Additional listening ports or ranges",
+    "trafficPattern": "Traffic pattern",
+    "mtu": "MTU",
+    "congestion": "Congestion controller",
+    "cwndHint": "The pinned core preserves this field but does not apply a custom congestion window.",
+    "disablePathMtuDiscovery": "Disable path MTU discovery"
+  },
   "in": {
     "addr": "Address",
     "port": "Port",

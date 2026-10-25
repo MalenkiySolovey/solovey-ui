@@ -1,4 +1,13 @@
 export default {
+  "secretCredential": {
+    "keep": "Keep existing credential",
+    "replace": "Replace credential",
+    "clear": "Clear credential (remove protocol assignments first)",
+    "replacement": "New credential",
+    "required": "Enter a nonempty replacement credential.",
+    "present": "A credential is stored. Its value is hidden.",
+    "absent": "A missing credential is initialized when an inbound is assigned."
+  },
   "client": {
     "name": "Name",
     "desc": "Description",

@@ -8,7 +8,6 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	settingcatalog "github.com/MalenkiySolovey/solovey-ui/internal/settings/catalog"
 	settingscrypto "github.com/MalenkiySolovey/solovey-ui/internal/settings/crypto"
 	settingsstore "github.com/MalenkiySolovey/solovey-ui/internal/settings/store"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
@@ -28,16 +27,7 @@ const MaxProviderOptionsBytes = 1 << 20
 // database. It never falls through to the published process-wide DB or creates
 // a master while rendering a preview.
 func ProviderCodec(db *gorm.DB) settingscrypto.Codec {
-	return settingscrypto.Codec{MasterSecret: func() ([]byte, error) {
-		if db == nil {
-			return nil, errors.New("TLS master-key view is unavailable")
-		}
-		row, err := settingsstore.Find(db, settingcatalog.SecretKey)
-		if err != nil || row.Value == "" {
-			return nil, errors.New("TLS master-key view is unavailable")
-		}
-		return []byte(row.Value), nil
-	}}
+	return settingsstore.Codec(db)
 }
 
 func providerAAD(tag string) string { return "tls-provider:v1:" + tag }

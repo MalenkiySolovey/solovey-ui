@@ -5,7 +5,9 @@ const { spawn, spawnSync } = require('node:child_process')
 
 const repoRoot = path.resolve(__dirname, '..', '..')
 const frontendDir = path.join(repoRoot, 'frontend')
-const resultDir = path.join(repoRoot, 'tests', 'baseline', 'e2e')
+const resultDir = process.env.SUI_E2E_RESULT_DIR
+  ? path.resolve(process.env.SUI_E2E_RESULT_DIR)
+  : path.join(repoRoot, 'tests', 'baseline', 'e2e')
 const serverDir = path.join(resultDir, 'e2e-server')
 const generatedDir = path.join(serverDir, 'generated')
 const dbDir = path.join(resultDir, 'e2e-db')
@@ -28,6 +30,10 @@ const readyTimeoutMs = Number(process.env.SUI_E2E_READY_TIMEOUT_MS || (process.e
 const e2eWebPath = normalizeWebPath(process.env.SUI_E2E_WEB_PATH || '/e2e-panel/')
 
 for (const runtimePath of [serverDir, dbDir, appDataDir, runtimeDir, zigGlobalCacheDir, zigLocalCacheDir, componentsStateDir]) {
+  const relative = path.relative(resultDir, path.resolve(runtimePath))
+  if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error('Managed runtime path must stay inside the E2E result directory')
+  }
   fs.rmSync(runtimePath, { recursive: true, force: true })
 }
 for (const runtimePath of [serverDir, dbDir, appDataDir, runtimeDir, zigGlobalCacheDir, zigLocalCacheDir, componentsStateDir]) {

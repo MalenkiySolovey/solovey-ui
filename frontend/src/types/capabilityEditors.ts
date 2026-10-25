@@ -5,7 +5,7 @@ export interface CapabilityEditState {
  message?: 'capability.waiting' | 'capability.unavailable' | 'capability.historical' | 'capability.unknown' | 'capability.contextUnsupported'
  reason?: string
 }
-export interface CapabilityChoice { title: string; value: string; props: { disabled: boolean } }
+export interface CapabilityChoice { title: string; value: string; props: { disabled: boolean; 'aria-disabled': boolean } }
 
 // Thin projection of backend facts. The submitted historical identity is only
 // a UI hint; the backend separately verifies the real stored row and ID.
@@ -20,7 +20,11 @@ export function capabilityEditState(snapshot: RuntimeCapabilities | undefined, c
 }
 
 export function capabilityTypeChoices(snapshot: RuntimeCapabilities | undefined, category: string, catalog: Record<string, string>, storedType = ''): CapabilityChoice[] {
- const choices = Object.entries(catalog).map(([title, value]) => ({ title, value, props: { disabled: !capabilityEditState(snapshot, category, value, storedType).allowed } }))
- if (storedType && !choices.some(choice => choice.value === storedType)) choices.push({ title: storedType, value: storedType, props: { disabled: !capabilityEditState(snapshot, category, storedType, storedType).allowed } })
+ const choiceProps = (value: string) => {
+  const disabled = !capabilityEditState(snapshot, category, value, storedType).allowed
+  return { disabled, 'aria-disabled': disabled }
+ }
+ const choices = Object.entries(catalog).map(([title, value]) => ({ title, value, props: choiceProps(value) }))
+ if (storedType && !choices.some(choice => choice.value === storedType)) choices.push({ title: storedType, value: storedType, props: choiceProps(storedType) })
  return choices
 }

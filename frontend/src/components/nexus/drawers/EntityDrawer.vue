@@ -8,7 +8,7 @@
     role="dialog"
     temporary
     :width="width"
-    @keydown.esc="requestClose"
+    @keydown.esc.capture="onEscape"
     @update:model-value="onModel"
   >
     <div class="nexus-drawer__header">
@@ -112,9 +112,16 @@ const requestClose = async () => {
   emit('close')
 }
 
+const onEscape = (event: KeyboardEvent) => {
+  // A select/menu owns Escape while expanded. Inspect before its handler
+  // collapses the popup so the same key cannot also discard the whole editor.
+  if (event.defaultPrevented || (event.target instanceof Element && event.target.closest('[aria-expanded="true"][aria-controls]'))) return
+  void requestClose()
+}
+
 // The scrim-click path comes through update:model-value(false); route it
 // through the same dirty guard so unsaved edits can't be lost by an outside
-// click. (Esc is handled separately via @keydown.esc, since a temporary
+// click. (Esc is handled separately via onEscape, since a temporary
 // navigation drawer has no built-in Esc-to-close.)
 const onModel = (value: boolean) => {
   if (value) {

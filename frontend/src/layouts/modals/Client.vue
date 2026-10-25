@@ -2,11 +2,13 @@
   <form-shell
     :dirty="dirty"
     :loading="loading"
+    :save-disabled="credentialDraftInvalid"
     :title="$t('actions.' + title) + ' ' + $t('objects.client')"
     @close="closeModal"
     @save="saveChanges"
   >
         <v-container style="padding: 0;" :hidden="loading">
+          <v-alert v-if="credentialDraftInvalid" type="error" variant="tonal">{{ $t('secretCredential.required') }}</v-alert>
           <v-tabs
             v-model="tab"
             align-tabs="center"
@@ -150,11 +152,13 @@
               <v-row v-for="key in credentialKeys">
                 <v-col cols="12" md="3" align="end" align-self="center">
                     {{ key }}
-                    <v-icon @click="shuffle(key)" icon="mdi-refresh" v-tooltip:top="$t('reset')" />
+                    <v-icon v-if="!managedSecretField(key) || credentialAvailable(key)" @click="shuffle(key)" icon="mdi-refresh" v-tooltip:top="$t('reset')" />
                 </v-col>
                 <v-col>
+                  <SecretCredentialField v-if="managedSecretField(key)" :key="String(client.id ?? 0) + ':' + key"
+                    v-model="clientConfig[key][managedSecretField(key)]" :available="credentialAvailable(key)" :label="managedSecretField(key)" />
                   <v-text-field
-                    v-if="clientConfig[key].password != undefined"
+                    v-else-if="clientConfig[key].password != undefined"
                     label="Password"
                     v-model="clientConfig[key].password"
                     hide-details>

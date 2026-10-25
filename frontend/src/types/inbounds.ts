@@ -20,6 +20,8 @@ export const InTypes = {
   VLESS: 'vless',
   AnyTls: 'anytls',
   Snell: 'snell',
+  Mieru: 'mieru',
+  TrustTunnel: 'trusttunnel',
   Tun: 'tun',
   Redirect: 'redirect',
   TProxy: 'tproxy',
@@ -219,6 +221,21 @@ export interface Snell extends InboundBasics {
   mode?: 'default' | 'unshaped' | 'unsafe-raw'
 }
 
+export interface Mieru extends InboundBasics {
+  listen_ports?: string | string[]
+  transport: 'TCP' | 'UDP'
+  traffic_pattern?: string
+  user_hint_is_mandatory?: boolean
+  mtu?: number
+}
+
+export interface TrustTunnel extends InboundBasics {
+  network?: string | string[]
+  congestion_controller?: string
+  cwnd?: number
+  disable_path_mtu_discovery?: boolean
+}
+
 // Create interfaces dynamically based on InTypes keys
 type InterfaceMap = {
   direct: Direct
@@ -236,6 +253,8 @@ type InterfaceMap = {
   vless: VLESS
   anytls: AnyTls
   snell: Snell
+  mieru: Mieru
+  trusttunnel: TrustTunnel
   tun: Tun
   redirect: Redirect
   tproxy: TProxy
@@ -271,6 +290,8 @@ const defaultValues: Record<InType, Inbound> = {
     "7=500-1000"
   ]},
   snell: <Snell>{ type: InTypes.Snell, version: 6, psk: '' },
+  mieru: <Mieru>{ type: InTypes.Mieru, transport: 'TCP' },
+  trusttunnel: <TrustTunnel>{ type: InTypes.TrustTunnel, tls_id: 0, network: ['tcp', 'udp'], congestion_controller: 'bbr' },
   tun: <Tun>{ type: InTypes.Tun, mtu: 9000, stack: 'system', udp_timeout: '5m', auto_route: false },
   redirect: <Redirect>{ type: InTypes.Redirect },
   tproxy: <TProxy>{ type: InTypes.TProxy },

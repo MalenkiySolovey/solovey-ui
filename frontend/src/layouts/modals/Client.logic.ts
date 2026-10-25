@@ -6,6 +6,8 @@ import { dateLocale } from '@/locales'
 import FormShell from '@/components/nexus/drawers/FormShell.vue'
 import StrictSelect from '@/shared/ui/StrictSelect.vue'
 import ComponentSlot from '@/componentSystem/ComponentSlot.vue'
+import SecretCredentialField from '@/components/fields/SecretCredentialField.vue'
+import { clientCredentialDraftInvalid, initializeClientCredentialDrafts, managedClientSecretFields, managedCredentialAvailable, serializeClientCredentialDrafts, shuffleManagedClientCredentials } from '@/features/clientCredentialDraft'
 
 const DatePick = defineAsyncComponent(() => import('@/components/fields/DateTime.vue'))
 
@@ -42,6 +44,7 @@ export default defineComponent({
         this.title = "add"
         this.clientConfig = randomConfigs('client')
       }
+      initializeClientCredentialDrafts(this.clientConfig, Data().capabilities, this.client.name)
       const clientLinks = this.client.links ?? []
       this.links = clientLinks.filter(l => l.type === 'local')
       this.extLinks = clientLinks.filter(l => l.type === 'external')
@@ -60,7 +63,7 @@ export default defineComponent({
     async saveChanges() {
       // Guard against double-submit: ignore re-entry while a save is in flight
       // (the button is also :disabled while loading).
-      if (!this.$props.visible || this.loading) return
+      if (!this.$props.visible || this.loading || this.credentialDraftInvalid) return
       // check duplicate name
       const isDuplicateName = Data().checkClientName(this.$props.id, this.client.name)
       if (isDuplicateName) return
@@ -71,7 +74,7 @@ export default defineComponent({
       // save data
       this.loading = true
       try {
-        this.client.config = updateConfigs(this.clientConfig, this.client.name)
+        this.client.config = updateConfigs(serializeClientCredentialDrafts(this.clientConfig), this.client.name, Data().capabilities)
         this.client.links = [
                           ...this.extLinks.filter(l => l.uri != ''),
                           ...this.subLinks.filter(l => l.uri != ''),
@@ -93,7 +96,10 @@ export default defineComponent({
     },
     shuffle(k?:string) {
       shuffleConfigs(this.clientConfig, k)
+      shuffleManagedClientCredentials(this.clientConfig, Data().capabilities, k)
     },
+    managedSecretField(kind: string): string { return managedClientSecretFields[kind] ?? '' },
+    credentialAvailable(kind: string): boolean { return managedCredentialAvailable(Data().capabilities, kind) },
     resetUsage(){
       this.client.totalUp = (this.client.totalUp ?? 0) + this.client.up
       this.client.totalDown = (this.client.totalDown ?? 0) + this.client.down
@@ -110,6 +116,7 @@ export default defineComponent({
       set(value: string) { setClientPublicRemark(this.clientConfig, value ?? '') },
     },
     credentialKeys(): string[] { return clientCredentialKeys(this.clientConfig) },
+    credentialDraftInvalid(): boolean { return clientCredentialDraftInvalid(this.clientConfig) },
     dirty(): boolean {
       return this.snapshot !== '' &&
         JSON.stringify([this.client, this.clientConfig, this.links, this.extLinks, this.subLinks, this.componentLinks]) !== this.snapshot
@@ -181,5 +188,5 @@ export default defineComponent({
       this.closeSelectMenus()
     },
   },
-  components: { FormShell, DatePick, StrictSelect, ComponentSlot },
+  components: { FormShell, DatePick, StrictSelect, ComponentSlot, SecretCredentialField },
 })

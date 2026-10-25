@@ -2,14 +2,11 @@ package service
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
-	"github.com/MalenkiySolovey/solovey-ui/util/common"
-	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
+	"github.com/MalenkiySolovey/solovey-ui/internal/secrets/ownedvalue"
 	"gorm.io/gorm"
 )
 
@@ -50,50 +47,29 @@ func (s *SettingService) AccessComponentSecret(ctx context.Context, access secre
 	if row.Bytes > maxReferencedSecretBytes {
 		return secretref.View{}, secretref.ErrUnavailable
 	}
-	rotationRevision := ""
-	if secretbox.IsEncrypted(row.Value) {
-		sum := sha256.Sum256([]byte(row.Value))
-		rotationRevision = hex.EncodeToString(sum[:])
-	}
-	view := access.View(row.Value != "", rotationRevision)
+	view := ownedvalue.View(access, row.Value)
 	if current, ok := componentSecretRegistration(access.Reference); !ok || current != token {
 		return view, secretref.ErrDenied
 	}
 	if err := ctx.Err(); err != nil {
 		return view, err
-	}
-	if access.Operation == secretref.Presence {
-		return view, nil
 	}
 	// Decrypt this one captured row: replacement cannot mix old ciphertext with
 	// a newer revision. Active owner use may finish with its admitted snapshot.
 	local := &SettingService{database: db.WithContext(ctx)}
-	value, err := local.decryptSettingBytes(access.Reference.ID, row.Value)
-	defer common.WipeBytes(value)
-	if err != nil {
-		return view, secretref.ErrUnavailable
-	}
-	if current, ok := componentSecretRegistration(access.Reference); !ok || current != token {
-		return view, secretref.ErrDenied
-	}
-	if err := ctx.Err(); err != nil {
-		return view, err
-	}
-	// Admission audit is synchronous and code-only before any owner receives
-	// plaintext. Underlying DB/codec/callback error text never enters the view.
-	if err := (&AuditService{}).RecordSynchronousContext(ctx, AuditEvent{Actor: "component:" + access.Actor.Component,
-		Event: "component_secret_use", Resource: "settings", Severity: AuditSeverityInfo,
-		Details: map[string]any{"reference": view.Reference, "operation": access.Operation,
-			"rotationRevision": view.RotationRevision, "correlation": view.Correlation}}); err != nil {
-		return view, secretref.ErrUnavailable
-	}
-	if err := ctx.Err(); err != nil {
-		return view, err
-	}
-	if err := use(value); err != nil {
-		return view, secretref.ErrUseFailed
-	}
-	return view, nil
+	return ownedvalue.Access(ctx, access, row.Value, func() ([]byte, error) {
+		return local.decryptSettingBytes(access.Reference.ID, row.Value)
+	}, func(view secretref.View) error {
+		if current, ok := componentSecretRegistration(access.Reference); !ok || current != token {
+			return secretref.ErrDenied
+		}
+		// Admission audit is synchronous and code-only before any owner receives
+		// plaintext. Underlying DB/codec/callback text never enters the view.
+		return (&AuditService{}).RecordSynchronousContext(ctx, AuditEvent{Actor: "component:" + access.Actor.Component,
+			Event: "component_secret_use", Resource: "settings", Severity: AuditSeverityInfo,
+			Details: map[string]any{"reference": view.Reference, "operation": access.Operation,
+				"rotationRevision": view.RotationRevision, "correlation": view.Correlation}})
+	}, use)
 }
 
 func componentSecretRegistration(reference secretref.Reference) (uint64, bool) {

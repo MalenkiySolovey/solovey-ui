@@ -1,0 +1,257 @@
+//go:build shtorm_extended && with_quic
+
+package service
+
+import (
+	"bytes"
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/json"
+	"os"
+	"strconv"
+	"testing"
+	"time"
+
+	configstorage "github.com/MalenkiySolovey/solovey-ui/config/storage"
+	"github.com/MalenkiySolovey/solovey-ui/database/backup"
+	"github.com/MalenkiySolovey/solovey-ui/database/migration"
+	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
+	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
+	settingsstore "github.com/MalenkiySolovey/solovey-ui/internal/settings/store"
+	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
+	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
+	"gorm.io/gorm"
+)
+
+func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T) {
+	ctx := context.Background()
+	t.Setenv("SUI_SECRETBOX_KEY", "")
+	t.Setenv("SUI_SECRET", "")
+	t.Setenv(backup.LogicalFileBackupEnv, backup.LogicalFileBackupRequired)
+	registerFixtureSettingContributionsForTest(t)
+	t.Cleanup(resumeTokenUseFlush)
+	t.Cleanup(func() {
+		if err := StopAuditWriter(ctx); err != nil {
+			t.Error("drain native archive fixture audit", err)
+		}
+		if err := dbsqlite.Close(); err != nil {
+			t.Error(err)
+		}
+	})
+	openFresh := func() *gorm.DB {
+		t.Helper()
+		t.Setenv("SUI_DB_FOLDER", t.TempDir())
+		if err := dbsqlite.Init(configstorage.GetDBPath()); err != nil {
+			t.Fatal(err)
+		}
+		if err := migration.EnsureCurrentSchemaJournal(dbsqlite.DB(), true); err != nil {
+			t.Fatal(err)
+		}
+		// These represent independently bootstrapped installations. Reserve a
+		// DB-owned master before the process-scoped settings defaults run.
+		if _, err := settingsstore.EnsureMasterSecret(dbsqlite.DB()); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := (&SettingService{}).GetAllSetting(); err != nil {
+			t.Fatal(err)
+		}
+		seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+		return dbsqlite.DB()
+	}
+	// Compare owner bytes without printing private rows on a failing assertion.
+	ownerState := func(db *gorm.DB) []byte {
+		t.Helper()
+		var rows struct {
+			Clients  []model.Client
+			Inbounds []model.Inbound
+			TLS      []model.Tls
+			Settings []model.Setting
+		}
+		for _, table := range []any{&rows.Clients, &rows.Inbounds, &rows.TLS, &rows.Settings} {
+			if err := db.Order("id").Find(table).Error; err != nil {
+				t.Fatal(err)
+			}
+		}
+		raw, err := json.Marshal(rows)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return raw
+	}
+	master := func(db *gorm.DB) string {
+		t.Helper()
+		var row model.Setting
+		if err := db.Where("key = ?", "secret").First(&row).Error; err != nil || row.Value == "" {
+			t.Fatal("database master is unavailable")
+		}
+		return row.Value
+	}
+	db := openFresh()
+	cert, key := makeSelfSignedCertPEM(t, time.Now().Add(24*time.Hour))
+	server, _ := json.Marshal(map[string]any{"enabled": true, "certificate": []string{string(cert)}, "key": []string{string(key)}})
+	profile := model.Tls{Name: "native-archive-tls", Server: server, Client: json.RawMessage(`{}`)}
+	if err := db.Create(&profile).Error; err != nil {
+		t.Fatal(err)
+	}
+	inbounds := []model.Inbound{
+		{Type: "mieru", Tag: "archive-mieru", Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":23456,"listen_ports":["23458-23459"],"transport":"TCP","user_hint_is_mandatory":true,"mtu":1400}`)},
+		{Type: "trusttunnel", Tag: "archive-trusttunnel", TlsId: profile.Id, Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":23457,"network":["tcp","udp"],"congestion_controller":"cubic","cwnd":48,"disable_path_mtu_discovery":true}`)},
+	}
+	if err := db.Create(&inbounds).Error; err != nil {
+		t.Fatal(err)
+	}
+	passwords := map[string]string{"mieru": "synthetic-native-archive-mieru-password", "trusttunnel": "synthetic-native-archive-trust-password"}
+	config := map[string]any{}
+	for kind, password := range passwords {
+		config[kind] = map[string]any{"password": map[string]string{"intent": "replace", "value": password}}
+	}
+	clientConfig, _ := json.Marshal(config)
+	membership, _ := json.Marshal([]uint{inbounds[0].Id, inbounds[1].Id})
+	client := model.Client{Name: "archive-alice", Enable: true, Config: clientConfig, Inbounds: membership, Links: json.RawMessage(`[]`)}
+	data, _ := json.Marshal(client)
+	_, err := entityclients.Save(entityclients.SaveRequest{Tx: db, Action: "new", Data: data, Hostname: "fixture.invalid"})
+	if err != nil {
+		t.Fatal("native Users owner fixture failed", err)
+	}
+	if err := db.Where("name = ?", client.Name).First(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+	var stored map[string]json.RawMessage
+	if json.Unmarshal(client.Config, &stored) != nil {
+		t.Fatal("stored owner fields are invalid")
+	}
+	for kind := range passwords {
+		var user struct{ Password string }
+		if json.Unmarshal(stored[kind], &user) != nil || !secretbox.IsEncrypted(user.Password) {
+			t.Fatal("native credential was not sealed by the Users owner")
+		}
+	}
+	checkProjection := func(candidate *gorm.DB) {
+		t.Helper()
+		projection, err := NewSingBoxConfigBuilder(nil).BuildCandidateProjectionFromDB(candidate, "", false)
+		if err != nil || singboxvalidation.ValidateConfig(projection.Config) != nil {
+			t.Fatal("native archived candidate failed the exact provider check", err)
+		}
+		var root struct {
+			Inbounds []struct {
+				Type  string
+				Users []struct{ Name, Password string }
+			}
+		}
+		if json.Unmarshal(projection.Config, &root) != nil || len(root.Inbounds) != 2 {
+			t.Fatal("native runtime projection lost an inbound")
+		}
+		for _, inbound := range root.Inbounds {
+			if len(inbound.Users) != 1 || inbound.Users[0].Name != client.Name || inbound.Users[0].Password != passwords[inbound.Type] {
+				t.Fatal("native runtime projection lost its owner-bound credential")
+			}
+		}
+	}
+	checkProjection(db)
+	masked, err := entityclients.GetByID(db, strconv.Itoa(int(client.Id)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	maskedConfig := append([]byte(nil), (*masked)[0].Config...)
+	sourceState, sourceMaster := ownerState(db), master(db)
+	var usesBefore, usesAfter int64
+	if err := db.Model(&model.AuditEvent{}).Where("event = ?", "owner_secret_use").Count(&usesBefore).Error; err != nil {
+		t.Fatal(err)
+	}
+	archive, err := backup.Export("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, password := range passwords {
+		if bytes.Contains(archive, []byte(password)) {
+			t.Fatal("private archive persisted a transient native password")
+		}
+	}
+	var encrypted, decrypted bytes.Buffer
+	passphrase := []byte(rand.Text())
+	if _, _, err := backupenvelope.SealStream(&encrypted, bytes.NewReader(archive), passphrase); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := backupenvelope.OpenStream(&decrypted, bytes.NewReader(encrypted.Bytes()), passphrase, backup.MaxRestoreBytes); err != nil || !bytes.Equal(archive, decrypted.Bytes()) {
+		t.Fatal("private envelope changed the native archive", err)
+	}
+	rehearsal, err := backup.Rehearse(ctx, bytes.NewReader(decrypted.Bytes()))
+	if err != nil || !rehearsal.Possible {
+		t.Fatalf("native archive rehearsal rejected: error=%v reasons=%v", err, rehearsal.ReasonCodes)
+	}
+	if err := db.Model(&model.AuditEvent{}).Where("event = ?", "owner_secret_use").Count(&usesAfter).Error; err != nil || usesAfter != usesBefore || !bytes.Equal(sourceState, ownerState(db)) {
+		t.Fatal("rehearsal changed live owners or wrote a source secret-use audit")
+	}
+	sourcePath := configstorage.GetDBPath()
+	if err := StopAuditWriter(ctx); err != nil {
+		t.Fatal(err)
+	}
+	if err := dbsqlite.Close(); err != nil {
+		t.Fatal(err)
+	}
+	sourceBytes, err := os.ReadFile(sourcePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sourceDigest := sha256.Sum256(sourceBytes)
+	target := openFresh()
+	if master(target) == sourceMaster {
+		t.Fatal("fresh restore target did not receive an independent database master")
+	}
+	for kind := range passwords {
+		used := false
+		err := credentials.UseClient(ctx, target, client.Id, kind, stored[kind], "wrong-database", func([]byte) error { used = true; return nil })
+		if err == nil || used {
+			t.Fatal("native credential crossed into a database with a different master")
+		}
+	}
+	targetState := ownerState(target)
+	backup.SetSendSighupHook(func() error { return nil })
+	t.Cleanup(func() { backup.SetSendSighupHook(nil) })
+	result, err := backup.RestoreContextDetailed(ctx, bytes.NewReader(decrypted.Bytes()))
+	if err != nil {
+		t.Fatal(err)
+	}
+	pending := true
+	t.Cleanup(func() {
+		if pending {
+			if err := backup.AbortPendingRestore(); err != nil {
+				t.Error(err)
+			}
+		}
+	})
+	candidate := dbsqlite.DB().WithContext(result.DatabaseContext(ctx))
+	if master(candidate) != sourceMaster {
+		t.Fatal("restore did not carry the credential owner's database master")
+	}
+	var restored model.Client
+	if err := candidate.First(&restored, client.Id).Error; err != nil || !bytes.Equal(restored.Config, client.Config) || !bytes.Equal(restored.Inbounds, membership) {
+		t.Fatal("restore changed native ciphertext, identity or assignment")
+	}
+	for _, inbound := range inbounds {
+		var restored model.Inbound
+		if err := candidate.First(&restored, inbound.Id).Error; err != nil || !bytes.Equal(restored.Options, inbound.Options) || restored.TlsId != inbound.TlsId {
+			t.Fatal("restore lost native semantic fields or TLS ownership")
+		}
+	}
+	checkProjection(candidate)
+	masked, err = entityclients.GetByID(candidate, strconv.Itoa(int(client.Id)))
+	if err != nil || len(*masked) != 1 || !bytes.Equal((*masked)[0].Config, maskedConfig) {
+		t.Fatal("restore changed the masked credential reference or revision")
+	}
+	if err := backup.AbortPendingRestore(); err != nil {
+		t.Fatal(err)
+	}
+	pending = false
+	if !bytes.Equal(targetState, ownerState(dbsqlite.DB())) {
+		t.Fatal("rejected native restore did not recover the exact target owners")
+	}
+	afterSource, err := os.ReadFile(sourcePath)
+	if err != nil || sha256.Sum256(afterSource) != sourceDigest {
+		t.Fatal("restore changed the closed source database")
+	}
+}

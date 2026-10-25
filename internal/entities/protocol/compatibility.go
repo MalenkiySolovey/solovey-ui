@@ -25,6 +25,9 @@ func CurrentFindings(kind, side, path string, source json.RawMessage) []diagnost
 	if kind == "snell" {
 		return snellFindings(side, path, source)
 	}
+	if kind == "mieru" || kind == "trusttunnel" {
+		return nativeInboundFindings(kind, side, path, source)
+	}
 	var consumer any
 	switch kind {
 	case "hysteria":

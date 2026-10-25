@@ -3,7 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 export const repositoryRoot = path.resolve(process.cwd(), '..')
-export const managedE2EResultDir = path.join(
+export const managedE2EResultDir = process.env.SUI_E2E_RESULT_DIR ? path.resolve(process.env.SUI_E2E_RESULT_DIR) : path.join(
   repositoryRoot,
   'tests',
   'baseline',
@@ -104,6 +104,10 @@ export const cleanupManagedServerRuntime = (preserveLogs: boolean): void => {
 
 const removeRuntimePath = (runtimePath: string, failures: Error[]): void => {
   try {
+    const relative = path.relative(managedE2EResultDir, path.resolve(runtimePath))
+    if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+      throw new Error('Managed runtime path must stay inside the E2E result directory')
+    }
     fs.rmSync(runtimePath, { recursive: true, force: true, maxRetries: 50, retryDelay: 200 })
   } catch (error) {
     const cause = error instanceof Error ? error : new Error(String(error))
