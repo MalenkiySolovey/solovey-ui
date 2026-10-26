@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"slices"
+	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
@@ -31,6 +32,15 @@ func nativeInboundFindings(kind, side, path string, source json.RawMessage) []di
 	}
 	delete(fields, "type")
 	delete(fields, "tag")
+	if kind == "ssh" {
+		// The Inbounds owner validates and seals explicit private-key mutations.
+		// The complete resolved candidate is checked by the actual provider.
+		delete(fields, "host_key")
+		var version string
+		if raw, present := fields["server_version"]; present && (json.Unmarshal(raw, &version) != nil || !validSSHServerVersion(version)) {
+			return bad(".server_version", "SSH_SERVER_VERSION_INVALID", "SSH server version must be a bounded SSH-2.0 identification string.")
+		}
+	}
 	consumer, registered := registry.InboundRegistry().CreateOptions(kind)
 	raw, _ := json.Marshal(fields)
 	if !registered || sbjson.UnmarshalContextDisallowUnknownFields(registry.Context(context.Background()), raw, consumer) != nil {
@@ -49,4 +59,21 @@ func nativeInboundFindings(kind, side, path string, source json.RawMessage) []di
 		}
 	}
 	return nil
+}
+
+// x/crypto/ssh exchanges an ASCII SSH-2.0 identification line, including CRLF
+// within its 255-byte bound. Reject values which could fail only at handshake.
+func validSSHServerVersion(version string) bool {
+	if version == "" {
+		return true
+	}
+	if !strings.HasPrefix(version, "SSH-2.0-") || len(version) <= len("SSH-2.0-") || len(version) > 253 || version[len("SSH-2.0-")] == ' ' {
+		return false
+	}
+	for _, character := range []byte(version) {
+		if character < 32 || character > 126 {
+			return false
+		}
+	}
+	return true
 }

@@ -20,12 +20,23 @@ download. Extended fresh installation requires an empty installation with no
 existing database or configuration. Importing legacy S-UI state starts with
 Official and uses the existing maintenance path for a later provider change.
 
-The source release policy scopes Extended to Linux amd64, with full and core
-profiles. Official retains its seven Linux architectures, Windows, Docker and
-OpenWrt packaging. No Extended Windows, Docker, OpenWrt or other architecture
-is declared. Release/platform qualification remains an R7 acceptance gate;
-public stable v2026.4.1 contains no Extended packages. Use the explicit flag only
-with a complete published version that supplies the selected flavor.
+Provider selection is orthogonal to the existing Solovey platform matrix.
+Extended is intended across the Linux, Windows, Docker and OpenWrt targets
+already owned by `scripts/release-targets.json` and the canonical OpenWrt target
+profiles, including retained OpenWrt-compatible FriendlyWrt ARM64 deployments.
+An OS-specific feature limitation belongs in capability facts; it must not
+disable the entire Provider or introduce an OS-specific provider identity.
+
+Linux amd64 full/core is the currently qualified Extended subset. The current
+release target selections are build availability, not the final R7 platform
+acceptance matrix. Remaining production paths require focused cross-build and
+package proof, then bounded runtime qualification after semantic parity settles.
+Record exact build/dependency/packaging blockers; cross-compilation alone does
+not prove installation, lifecycle or physical hardware. R7 completion requires
+every existing intended target to be accounted for and platform capability gaps
+to preserve stored data. Public stable v2026.4.1 contains no Extended packages.
+Use the explicit flag only with a complete published version that supplies the
+selected flavor.
 
 Ordinary installer updates observe and retain the installed provider. An
 explicit different provider is rejected before network access and points to

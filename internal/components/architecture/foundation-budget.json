@@ -1931,7 +1931,7 @@
       "rule": "direct-policy",
       "path": "core/registry/inbound.go",
       "symbol": "inboundDeclarations",
-      "digest": "f08e6d449c93718477ebe321ca96bbde4487eaf5e91252b6b4ffdf55dfc6f241"
+      "digest": "c936c51f8fdf2ffa51177a995cce37f0d5f65b174e579eea5fb36cda816dba57"
     },
     {
       "rule": "direct-policy",

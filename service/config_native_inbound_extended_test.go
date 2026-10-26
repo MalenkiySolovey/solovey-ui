@@ -6,14 +6,108 @@ import (
 	"bytes"
 	"encoding/json"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
+	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 )
+
+func TestSSHMTProxyCandidateValidationAndRollback(t *testing.T) {
+	for _, kind := range []string{"ssh", "mtproxy"} {
+		t.Run(kind, func(t *testing.T) {
+			initSettingTestDB(t)
+			seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+			db := dbsqlite.DB()
+			client := model.Client{Id: 7, Name: "native-assigned", Enable: true, Config: json.RawMessage(`{}`), Inbounds: json.RawMessage(`[]`), Links: json.RawMessage(`[]`), SubSecret: "synthetic-subscription"}
+			if err := db.Create(&client).Error; err != nil {
+				t.Fatal(err)
+			}
+			svc, applier, lifecycle := newHotReloadConfigService(t)
+			svc.setLastUpdate(12345)
+			count := func(record any) int64 {
+				var value int64
+				if err := db.Model(record).Count(&value).Error; err != nil {
+					t.Fatal(err)
+				}
+				return value
+			}
+			audits, settings, changes := count(&model.AuditEvent{}), count(&model.Setting{}), count(&model.Changes{})
+			draft := map[string]any{"type": kind, "tag": "native-" + kind, "listen": "127.0.0.1", "listen_port": 23456}
+			if kind == "ssh" {
+				_, key := makeSelfSignedCertPEM(t, time.Now().Add(time.Hour))
+				draft["server_version"], draft["max_auth_tries"] = "SSH-2.0-SoloveyFixture", 3
+				draft["host_key"] = map[string]string{"intent": "replace", "value": string(key)}
+				draft["host_key_path"] = []string{"/__nonexistent_solovey_fixture__/private-invalid-canary"}
+			} else {
+				draft["prefer_ip"] = "private-invalid-canary"
+			}
+			raw, _ := json.Marshal(draft)
+			if _, err := svc.Save("inbounds", "new", raw, "7", "admin", "fixture.invalid"); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_INBOUND_CANDIDATE_REJECTED") || strings.Contains(err.Error(), "private-invalid-canary") {
+				t.Fatal("actual provider did not safely reject the native candidate", err)
+			}
+			var after model.Client
+			if err := db.First(&after, client.Id).Error; err != nil || !bytes.Equal(after.Config, client.Config) || !bytes.Equal(after.Inbounds, client.Inbounds) {
+				t.Fatal("failed candidate changed Users state")
+			}
+			if count(&model.Inbound{}) != 0 || count(&model.AuditEvent{}) != audits || count(&model.Setting{}) != settings || count(&model.Changes{}) != changes || len(applier.calls) != 0 || len(lifecycle.calls) != 0 || svc.getLastUpdate() != 12345 {
+				t.Fatal("failed native candidate committed identity, master, audit, change or effects")
+			}
+			delete(draft, "host_key_path")
+			if kind == "mtproxy" {
+				for field, value := range map[string]any{"prefer_ip": "only-ipv4", "concurrency": 4, "auto_update": false,
+					"domain_fronting_host": "fixture.invalid", "domain_fronting_port": 8443, "domain_fronting_proxy_protocol": true,
+					"allow_fallback_on_unknown_dc": true, "idle_timeout": "2m", "handshake_timeout": "8s", "tolerate_time_skewness": "30s",
+					"throttle_check_interval": "45s", "throttle_max_connections": 20, "doppelganger_each": "2h",
+					"doppelganger_urls": []string{"https://fixture.invalid/"}, "doppelganger_per_raid": 2, "doppelganger_drs": true} {
+					draft[field] = value
+				}
+			}
+			raw, _ = json.Marshal(draft)
+			if _, err := svc.Save("inbounds", "new", raw, "7", "admin", "fixture.invalid"); err != nil {
+				t.Fatal("valid native candidate was rejected", err)
+			}
+			config, err := svc.GetConfig("")
+			if err != nil || singboxvalidation.ValidateConfig(*config) != nil {
+				t.Fatal("native saved candidate failed the exact provider check", err)
+			}
+			var root struct{ Inbounds []map[string]json.RawMessage }
+			if json.Unmarshal(*config, &root) != nil || len(root.Inbounds) != 1 {
+				t.Fatal("native runtime projection lost its inbound")
+			}
+			for field, value := range draft {
+				if field == "host_key" {
+					continue
+				}
+				want, _ := json.Marshal(value)
+				var projected bytes.Buffer
+				if err := json.Compact(&projected, root.Inbounds[0][field]); err != nil || !bytes.Equal(projected.Bytes(), want) {
+					t.Fatalf("native field %s did not survive storage and runtime projection", field)
+				}
+			}
+			var inbound model.Inbound
+			if err := db.First(&inbound).Error; err != nil {
+				t.Fatal(err)
+			}
+			normal, err := entityinbounds.GetByIDs(db, strconv.Itoa(int(inbound.Id)))
+			if err != nil {
+				t.Fatal(err)
+			}
+			encoded, _ := json.Marshal(normal)
+			if bytes.Contains(encoded, []byte("PRIVATE KEY")) || bytes.Contains(encoded, []byte("sbox:v1:")) {
+				t.Fatal("normal native read disclosed host-key material")
+			}
+			if len(applier.calls) != 1 || len(lifecycle.calls) != 0 {
+				t.Fatal("native save bypassed the existing apply owner")
+			}
+		})
+	}
+}
 
 func TestNativeCandidateRejectionRollsBackAssignmentSecretsAndEffects(t *testing.T) {
 	initSettingTestDB(t)

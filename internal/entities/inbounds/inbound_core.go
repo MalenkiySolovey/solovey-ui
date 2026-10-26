@@ -39,7 +39,7 @@ func GetAllConfig(db *gorm.DB, hooks UserHooks) ([]json.RawMessage, error) {
 		if !runtimeprojection.Included("inbounds", inbound.Type) {
 			continue
 		}
-		inboundJSON, err := inbound.MarshalJSON()
+		inboundJSON, err := marshalRuntimeInbound(db, *inbound)
 		if err != nil {
 			return nil, err
 		}
@@ -76,7 +76,7 @@ func Restart(tx *gorm.DB, ids []uint, core Core, hooks UserHooks) error {
 			continue
 		}
 
-		config, err := row.MarshalJSON()
+		config, err := marshalRuntimeInbound(tx, *row)
 		if err != nil {
 			return err
 		}

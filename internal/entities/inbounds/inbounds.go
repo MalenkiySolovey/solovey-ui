@@ -71,6 +71,9 @@ func GetByIDs(db *gorm.DB, ids string) (*[]map[string]interface{}, error) {
 		if err != nil {
 			return nil, err
 		}
+		if err := projectInboundCredentials(inb, inbData); err != nil {
+			return nil, err
+		}
 		result = append(result, *inbData)
 	}
 	return &result, nil

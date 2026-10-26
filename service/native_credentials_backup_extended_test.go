@@ -21,6 +21,8 @@ import (
 	backupenvelope "github.com/MalenkiySolovey/solovey-ui/internal/backup/envelope"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
+	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	settingsstore "github.com/MalenkiySolovey/solovey-ui/internal/settings/store"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
@@ -103,20 +105,38 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 	inbounds := []model.Inbound{
 		{Type: "mieru", Tag: "archive-mieru", Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":23456,"listen_ports":["23458-23459"],"transport":"TCP","user_hint_is_mandatory":true,"mtu":1400}`)},
 		{Type: "trusttunnel", Tag: "archive-trusttunnel", TlsId: profile.Id, Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":23457,"network":["tcp","udp"],"congestion_controller":"cubic","cwnd":48,"disable_path_mtu_discovery":true}`)},
+		{Type: "ssh", Tag: "archive-ssh", Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":23460,"server_version":"SSH-2.0-ArchiveFixture","max_auth_tries":4}`)},
+		{Type: "mtproxy", Tag: "archive-mtproxy", Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":23461,"prefer_ip":"only-ipv4","concurrency":4,"auto_update":false,"doppelganger_each":"2h","throttle_check_interval":"45s"}`)},
 	}
-	if err := db.Create(&inbounds).Error; err != nil {
+	var sshOptions map[string]any
+	_ = json.Unmarshal(inbounds[2].Options, &sshOptions)
+	sshOptions["host_key"] = map[string]string{"intent": "replace", "value": string(key)}
+	inbounds[2].Options, _ = json.Marshal(sshOptions)
+	if err := db.Transaction(func(tx *gorm.DB) error {
+		for index := range inbounds {
+			if err := entityinbounds.FillAndSave(tx, &inbounds[index], "fixture.invalid"); err != nil {
+				return err
+			}
+		}
+		return nil
+	}); err != nil {
+		t.Fatal("native Inbounds owner fixture failed", err)
+	}
+	mtSecret, err := credentials.Generate("mtproxy")
+	if err != nil {
 		t.Fatal(err)
 	}
-	passwords := map[string]string{"mieru": "synthetic-native-archive-mieru-password", "trusttunnel": "synthetic-native-archive-trust-password"}
+	passwords := map[string]string{"mieru": "synthetic-native-archive-mieru-password", "trusttunnel": "synthetic-native-archive-trust-password", "ssh": "synthetic-native-archive-ssh-password", "mtproxy": mtSecret}
 	config := map[string]any{}
 	for kind, password := range passwords {
-		config[kind] = map[string]any{"password": map[string]string{"intent": "replace", "value": password}}
+		fact, _ := clientfacts.Resolve(kind)
+		config[kind] = map[string]any{fact.SecretField: map[string]string{"intent": "replace", "value": password}}
 	}
 	clientConfig, _ := json.Marshal(config)
-	membership, _ := json.Marshal([]uint{inbounds[0].Id, inbounds[1].Id})
+	membership, _ := json.Marshal([]uint{inbounds[0].Id, inbounds[1].Id, inbounds[2].Id, inbounds[3].Id})
 	client := model.Client{Name: "archive-alice", Enable: true, Config: clientConfig, Inbounds: membership, Links: json.RawMessage(`[]`)}
 	data, _ := json.Marshal(client)
-	_, err := entityclients.Save(entityclients.SaveRequest{Tx: db, Action: "new", Data: data, Hostname: "fixture.invalid"})
+	_, err = entityclients.Save(entityclients.SaveRequest{Tx: db, Action: "new", Data: data, Hostname: "fixture.invalid"})
 	if err != nil {
 		t.Fatal("native Users owner fixture failed", err)
 	}
@@ -128,8 +148,9 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		t.Fatal("stored owner fields are invalid")
 	}
 	for kind := range passwords {
-		var user struct{ Password string }
-		if json.Unmarshal(stored[kind], &user) != nil || !secretbox.IsEncrypted(user.Password) {
+		fact, _ := clientfacts.Resolve(kind)
+		var user map[string]string
+		if json.Unmarshal(stored[kind], &user) != nil || !secretbox.IsEncrypted(user[fact.SecretField]) {
 			t.Fatal("native credential was not sealed by the Users owner")
 		}
 	}
@@ -141,17 +162,30 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		}
 		var root struct {
 			Inbounds []struct {
-				Type  string
-				Users []struct{ Name, Password string }
+				Type    string
+				Users   []map[string]string
+				HostKey []string `json:"host_key"`
 			}
 		}
-		if json.Unmarshal(projection.Config, &root) != nil || len(root.Inbounds) != 2 {
+		if json.Unmarshal(projection.Config, &root) != nil || len(root.Inbounds) != 4 {
 			t.Fatal("native runtime projection lost an inbound")
 		}
 		for _, inbound := range root.Inbounds {
-			if len(inbound.Users) != 1 || inbound.Users[0].Name != client.Name || inbound.Users[0].Password != passwords[inbound.Type] {
+			fact, _ := clientfacts.Resolve(inbound.Type)
+			if len(inbound.Users) != 1 || inbound.Users[0]["name"] != client.Name || inbound.Users[0][fact.SecretField] != passwords[inbound.Type] {
 				t.Fatal("native runtime projection lost its owner-bound credential")
 			}
+			if inbound.Type == "ssh" && (len(inbound.HostKey) != 1 || inbound.HostKey[0] != string(key)) {
+				t.Fatal("archived SSH host key lost its owner binding")
+			}
+		}
+		normal, err := entityinbounds.GetByIDs(candidate, strconv.Itoa(int(inbounds[2].Id)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded, _ := json.Marshal(normal)
+		if bytes.Contains(encoded, []byte("PRIVATE KEY")) || bytes.Contains(encoded, []byte("sbox:v1:")) {
+			t.Fatal("restored normal SSH read disclosed host-key material")
 		}
 	}
 	checkProjection(db)
@@ -173,6 +207,9 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		if bytes.Contains(archive, []byte(password)) {
 			t.Fatal("private archive persisted a transient native password")
 		}
+	}
+	if bytes.Contains(archive, key) {
+		t.Fatal("private archive persisted a transient SSH host key")
 	}
 	var encrypted, decrypted bytes.Buffer
 	passphrase := []byte(rand.Text())

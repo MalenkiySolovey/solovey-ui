@@ -2,7 +2,10 @@
   <div>
     <v-alert v-if="!available" type="info" variant="tonal" density="compact" class="mb-2">{{ $t('capability.historical') }}</v-alert>
     <v-select :model-value="mode" @update:model-value="selectMode" :disabled="!available" :items="choices" :label="label" />
-    <v-text-field v-if="mode === 'replace'" :model-value="replacement" @update:model-value="replace" type="password"
+    <v-textarea v-if="mode === 'replace' && multiline" :model-value="replacement" @update:model-value="replace" rows="4" auto-grow
+      autocomplete="off" :disabled="!available" :label="$t('secretCredential.replacement')"
+      :error-messages="replacement ? [] : [$t('secretCredential.required')]" />
+    <v-text-field v-else-if="mode === 'replace'" :model-value="replacement" @update:model-value="replace" type="password"
       autocomplete="new-password" :disabled="!available" :label="$t('secretCredential.replacement')"
       :error-messages="replacement ? [] : [$t('secretCredential.required')]" />
     <div v-else class="text-caption">{{ $t(baseline?.present ? 'secretCredential.present' : 'secretCredential.absent') }}</div>
@@ -14,7 +17,7 @@ import { computed, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { unchangedSecret } from '@/features/secretCredentialDraft'
 
-const props = defineProps<{ modelValue?: unknown; available: boolean; label: string }>()
+const props = defineProps<{ modelValue?: unknown; available: boolean; label: string; multiline?: boolean }>()
 const emit = defineEmits<{ 'update:modelValue': [value: unknown] }>()
 const { t } = useI18n()
 const baseline = shallowRef(unchangedSecret(props.modelValue))

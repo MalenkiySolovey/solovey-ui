@@ -22,6 +22,9 @@ import AnyTls from '@/components/protocols/AnyTls.vue'
 import Snell from '@/components/protocols/Snell.vue'
 import Mieru from '@/components/protocols/Mieru.vue'
 import TrustTunnel from '@/components/protocols/TrustTunnel.vue'
+import SshInbound from '@/components/protocols/SshInbound.vue'
+import MTProxy from '@/components/protocols/MTProxy.vue'
+import { serializeInboundCredentialDraft, inboundCredentialDraftInvalid } from './inboundCredentialDraft'
 import InTls from '@/components/tls/InTLS.vue'
 import TProxy from '@/components/protocols/TProxy.vue'
 import Multiplex from '@/components/fields/Multiplex.vue'
@@ -46,7 +49,7 @@ export default defineComponent({
       snapshot: "",
       side: "s",
       inTypes: InTypes,
-      inboundWithUsers: ['mixed', 'socks', 'http', 'shadowsocks', 'vmess', 'trojan', 'naive', 'hysteria', 'shadowtls', 'tuic', 'hysteria2', 'vless', 'anytls', 'snell', 'mieru', 'trusttunnel'],
+      inboundWithUsers: ['mixed', 'socks', 'http', 'shadowsocks', 'vmess', 'trojan', 'naive', 'hysteria', 'shadowtls', 'tuic', 'hysteria2', 'vless', 'anytls', 'snell', 'mieru', 'trusttunnel', 'ssh', 'mtproxy'],
       initUsers: {
         model: 'none',
         values: <any>[],
@@ -177,7 +180,7 @@ export default defineComponent({
               clientIds = this.initUsers.values
           }
         }
-        const success = await Data().save("inbounds", this.$props.id == 0 ? "new" : "edit", this.inbound, clientIds)
+        const success = await Data().save("inbounds", this.$props.id == 0 ? "new" : "edit", serializeInboundCredentialDraft(this.inbound), clientIds)
         if (success) {
           const draftId = Number(this.$props.draftId ?? 0)
           if (draftId > 0) {
@@ -196,12 +199,12 @@ export default defineComponent({
       return transport !== null && typeof transport === 'object' && !Array.isArray(transport)
     },
     nativeOptionsUnavailable(): boolean {
-      return [this.inTypes.Mieru, this.inTypes.TrustTunnel].includes(this.inbound.type) &&
+      return [this.inTypes.Mieru, this.inTypes.TrustTunnel, this.inTypes.SSH, this.inTypes.MTProxy].includes(this.inbound.type) &&
         runtimeCapability(Data().capabilities, 'inbounds', this.inbound.type)?.available !== true
     },
     saveReasons(): SaveReason[] {
       const rangeOnly = this.inbound.type === this.inTypes.Mieru && (<any>this.inbound).listen_ports?.length > 0 && !this.inbound.listen_port
-      return entitySaveReasons({ identity: this.inbound.tag, port: this.inbound.listen_port, requiresPort: this.inbound.type !== this.inTypes.Tun && !rangeOnly, pending: this.loading, capability: this.capabilityState, missingRequiredTls: this.OnlyTLS.includes(this.inbound.type) && !this.inbound.tls_id })
+      return entitySaveReasons({ identity: this.inbound.tag, port: this.inbound.listen_port, requiresPort: this.inbound.type !== this.inTypes.Tun && !rangeOnly, pending: this.loading, capability: this.capabilityState, missingRequiredTls: this.OnlyTLS.includes(this.inbound.type) && !this.inbound.tls_id, credentialInvalid: inboundCredentialDraftInvalid(this.inbound) })
     },
     capabilityState(): CapabilityEditState {
       return capabilityEditState(Data().capabilities, "inbounds", this.inbound.type, this.storedCapabilityType)
@@ -248,6 +251,6 @@ export default defineComponent({
   components: { InboundGuidance, SaveGuardNotice, CapabilityNotice,
     Listen, InTls, Hysteria2, Naive, Direct, Shadowsocks,
     Users, Hysteria, ShadowTls, TProxy, Multiplex, Tuic, Tun,
-    Trojan, AnyTls, Snell, Mieru, TrustTunnel, Transport, AddrVue, OutJsonVue, Dial, DomainResolver
+    Trojan, AnyTls, Snell, Mieru, TrustTunnel, SshInbound, MTProxy, Transport, AddrVue, OutJsonVue, Dial, DomainResolver
   }
 })

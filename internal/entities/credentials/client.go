@@ -94,6 +94,9 @@ func ApplyClientField(db *gorm.DB, clientID uint, protocol string, current strin
 	if err != nil {
 		return "", err
 	}
+	if err := validateReplacement(protocol, mutation); err != nil {
+		return "", err
+	}
 	return ownerdb.Apply(db, ref, current, mutation)
 }
 

@@ -8,7 +8,7 @@ import (
 
 func TestNativeInboundRejectsAmbiguousOrForeignOwnerInput(t *testing.T) {
 	db := newInboundDB(t)
-	for _, kind := range []string{"mieru", "trusttunnel"} {
+	for _, kind := range []string{"mieru", "trusttunnel", "ssh", "mtproxy"} {
 		for _, fields := range []string{
 			`"listen_port":23456,"listen_port":23457`,
 			`"users":[{"name":"private-name","password":"private-password"}]`,
@@ -21,6 +21,9 @@ func TestNativeInboundRejectsAmbiguousOrForeignOwnerInput(t *testing.T) {
 				t.Fatal("ambiguous or foreign owner input was accepted or disclosed")
 			}
 		}
+	}
+	if _, err := DecodeForSave(db, json.RawMessage(`{"type":"ssh","tag":"native","fallback":{"server":"private-host","server_port":22}}`)); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_INBOUND_OWNED_FIELD") || strings.Contains(err.Error(), "private-host") {
+		t.Fatal("SSH fallback acquired a second authentication owner")
 	}
 }
 

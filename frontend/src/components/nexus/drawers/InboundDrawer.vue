@@ -87,6 +87,8 @@
           <Snell v-if="inbound.type == inTypes.Snell" :data="inbound" direction="in" />
           <Mieru v-if="inbound.type == inTypes.Mieru" :data="inbound" />
           <TrustTunnel v-if="inbound.type == inTypes.TrustTunnel" :data="inbound" />
+          <SshInbound v-if="inbound.type == inTypes.SSH" :data="inbound" />
+          <MTProxy v-if="inbound.type == inTypes.MTProxy" :data="inbound" />
           <TProxy v-if="inbound.type == inTypes.TProxy" :inbound="inbound" />
           <Transport v-if="hasGenericTransport" :data="inbound" />
           <Users v-if="hasUser" :clients="clients" :data="initUsers" />

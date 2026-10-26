@@ -7,6 +7,7 @@ import Inbound from '@/features/useInboundEditor'
 import { createInbound } from '@/types/inbounds'
 import { updateConfigs } from '@/types/clients'
 import { clientCredentialDraftInvalid, initializeClientCredentialDrafts, serializeClientCredentialDrafts, shuffleManagedClientCredentials } from '@/features/clientCredentialDraft'
+import { inboundCredentialDraftInvalid, serializeInboundCredentialDraft } from '@/features/inboundCredentialDraft'
 
 const fixture = vi.hoisted(() => ({ mode: undefined as any, store: undefined as any }))
 vi.mock('@/store/modules/data', () => ({ default: () => fixture.store }))
@@ -27,7 +28,7 @@ function mount(feature: any, id: number) {
 }
 function capabilities(available: boolean) {
   return { schema: 'solovey-ui/entity-capabilities/v1' as const, componentProfile: 'full' as const,
-    facts: ['mieru', 'trusttunnel'].map(type => ({ category: 'inbounds', type, runtimeType: type,
+    facts: ['mieru', 'trusttunnel', 'ssh', 'mtproxy'].map(type => ({ category: 'inbounds', type, runtimeType: type,
       known: true, contextSupported: true, registered: available, compiled: available, available })) }
 }
 const storedView = () => ({ reference: { owner: 'users', id: 'record:7:mieru.password', policy: 'OWNER_USE_AND_PRESENCE' as const, projection: 'MASKED' as const }, present: true, rotationRevision: 'a'.repeat(64), correlation: { owner: 'users', private: 'metadata-only' } })
@@ -74,6 +75,31 @@ describe('native credential drafts in the existing Users editor', () => {
   })
 
   for (const mode of ['classic', 'nexus']) {
+    it(`${mode} retains masked SSH host keys and submits explicit host-key mutations through Inbounds`, async () => {
+      fixture.mode.value = mode
+      const view = { ...storedView(), reference: { ...storedView().reference, owner: 'inbounds', id: 'record:9:host_key' } }
+      fixture.store.loadInbounds = async () => [createInbound('ssh', { id: 9, tag: 'ssh-owned', listen_port: 23456, host_key: view })]
+      const vm = mount(Inbound, 9)
+      await vm.loadData(9)
+      expect(vm.dirty).toBe(false)
+      await vm.saveChanges()
+      expect(fixture.store.save).toHaveBeenCalledWith('inbounds', 'edit', expect.objectContaining({ host_key: { intent: 'unchanged', reference: view.reference, present: true, rotationRevision: 'a'.repeat(64) } }), [])
+      fixture.store.save.mockClear()
+      vm.inbound.host_key = { intent: 'replace', value: '' }
+      expect(vm.saveReasons).toContain('secretCredential.required')
+      await vm.saveChanges()
+      expect(fixture.store.save).not.toHaveBeenCalled()
+      vm.inbound.host_key = { intent: 'replace', value: 'runtime-only-private-key' }
+      await vm.saveChanges()
+      expect(fixture.store.save).toHaveBeenCalledWith('inbounds', 'edit', expect.objectContaining({ host_key: { intent: 'replace', value: 'runtime-only-private-key' } }), [])
+      await vm.loadData(9)
+      expect(vm.dirty).toBe(false)
+      expect(JSON.stringify(vm.inbound)).not.toContain('runtime-only-private-key')
+      fixture.store.capabilities = capabilities(false)
+      expect(vm.nativeOptionsUnavailable).toBe(true)
+      expect(vm.capabilityState.message).toBe('capability.historical')
+    })
+
     it(`${mode} loads references, guards an empty replacement, saves and reloads through the same Users API`, async () => {
       fixture.mode.value = mode
       const vm = mount(Client, 7)
@@ -136,8 +162,25 @@ describe('native credential drafts in the existing Users editor', () => {
       const source = readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8')
       expect(source).toContain('<Mieru v-if="inbound.type == inTypes.Mieru" :data="inbound" />')
       expect(source).toContain('<TrustTunnel v-if="inbound.type == inTypes.TrustTunnel" :data="inbound" />')
+      expect(source).toContain('<SshInbound v-if="inbound.type == inTypes.SSH" :data="inbound" />')
+      expect(source).toContain('<MTProxy v-if="inbound.type == inTypes.MTProxy" :data="inbound" />')
       expect(source).toContain('<Transport v-if="hasGenericTransport"')
       expect(source).toContain(':defaults="{ global: { disabled: nativeOptionsUnavailable } }"')
     }
+  })
+
+  it('guards raw host keys and generates a complete MTProxy fake-TLS credential', () => {
+    for (const host_key of ['private-plaintext', { intent: 'replace', value: '' }, { intent: 'clear', value: 'extra' }]) {
+      expect(inboundCredentialDraftInvalid({ type: 'ssh', host_key })).toBe(true)
+    }
+    const input = { type: 'ssh', host_key: { ...storedView(), reference: { ...storedView().reference, owner: 'inbounds' } } }
+    const before = JSON.stringify(input)
+    expect(serializeInboundCredentialDraft(input).host_key).toEqual(expect.objectContaining({ intent: 'unchanged' }))
+    expect(JSON.stringify(input)).toBe(before)
+    const config: any = {}
+    initializeClientCredentialDrafts(config, capabilities(true), 'alice')
+    shuffleManagedClientCredentials(config, capabilities(true), 'mtproxy')
+    expect(config.mtproxy.secret).toEqual({ intent: 'replace', value: expect.stringMatching(/^ee[0-9a-f]{32}7777772e676f6f676c652e636f6d$/) })
+    expect(config.ssh.password).toBeUndefined()
   })
 })

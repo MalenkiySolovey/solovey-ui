@@ -66,6 +66,10 @@ func nativeInboundPeer(t *testing.T, f *quicFixture, transport string, user uint
 }
 
 func nativeTCPWitness(t *testing.T) net.Listener {
+	return nativeTCPWitnessWithHandler(t, func(conn net.Conn) { _, _ = io.Copy(conn, conn) })
+}
+
+func nativeTCPWitnessWithHandler(t *testing.T, handle func(net.Conn)) net.Listener {
 	t.Helper()
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -88,7 +92,7 @@ func nativeTCPWitness(t *testing.T) net.Listener {
 			conns = append(conns, conn)
 			access.Unlock()
 			workers.Add(1)
-			go func() { defer workers.Done(); defer conn.Close(); _, _ = io.Copy(conn, conn) }()
+			go func() { defer workers.Done(); defer conn.Close(); handle(conn) }()
 		}
 	}()
 	t.Cleanup(func() {

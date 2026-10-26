@@ -40,7 +40,7 @@ func storedManagedPassword(t *testing.T, client model.Client, kind string) strin
 }
 
 func TestNativeClientSaveInitializesOnceAndRetainsOmittedCredential(t *testing.T) {
-	for _, kind := range []string{"mieru", "trusttunnel"} {
+	for _, kind := range []string{"mieru", "trusttunnel", "ssh"} {
 		t.Run(kind, func(t *testing.T) {
 			db := managedClientDB(t)
 			inbound := model.Inbound{Id: 1, Type: kind, Tag: "native", Options: json.RawMessage(`{}`)}
@@ -142,7 +142,7 @@ func TestNativeCredentialSaveRollsBackIdentityKeyAndAuditOnFailedBatch(t *testin
 }
 
 func TestNativeCredentialClearAndReassignmentRejectStaleDraft(t *testing.T) {
-	for _, kind := range []string{"mieru", "trusttunnel"} {
+	for _, kind := range []string{"mieru", "trusttunnel", "ssh"} {
 		t.Run(kind, func(t *testing.T) {
 			db := managedClientDB(t)
 			if err := db.Create(&model.Inbound{Id: 1, Type: kind, Tag: "native", Options: json.RawMessage(`{}`)}).Error; err != nil {
