@@ -31,7 +31,10 @@ jobs:
       - run: npm ci
         working-directory: frontend
       - name: Native tooling regressions
-        run: node --test scripts/frontend-assets.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/core-provider-build.test.mjs scripts/release-providers.test.mjs scripts/release-metadata.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs
+        run: node --test scripts/frontend-assets.test.mjs scripts/frontend-test-runner.test.mjs scripts/windows-build.test.mjs scripts/core-provider-build.test.mjs scripts/core-source-provenance.test.mjs scripts/release-providers.test.mjs scripts/release-metadata.test.mjs scripts/audit/source-hygiene.test.mjs scripts/audit/performance.test.mjs
+      - name: Verify pinned core copies, pristine authority trees and linear Git series
+        if: runner.os == 'Linux'
+        run: node scripts/core-source-provenance.mjs verify-remote
       - name: Source format and owned shell entrypoints
         if: runner.os == 'Linux'
         run: node scripts/audit/source-hygiene.mjs

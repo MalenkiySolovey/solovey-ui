@@ -3,9 +3,10 @@ WORKDIR /app
 COPY frontend/ ./frontend/
 COPY components/ ./components/
 COPY go.mod go.sum ./
-COPY deploy/dependencies/sing-quic-integration.json deploy/dependencies/sing-quic-parent-control.patch ./deploy/dependencies/
-COPY deploy/dependencies/sing-box-ssm-integration.json deploy/dependencies/sing-box-ssm-cache.patch ./deploy/dependencies/
-COPY deploy/dependencies/sing-anytls-integration.json deploy/dependencies/sing-anytls-session-state.patch ./deploy/dependencies/
+COPY deploy/dependencies/sing-quic-integration.json ./deploy/dependencies/
+COPY deploy/dependencies/sing-box-ssm-integration.json ./deploy/dependencies/
+COPY deploy/dependencies/sing-anytls-integration.json ./deploy/dependencies/
+COPY scripts/core-source-provenance.mjs ./scripts/
 COPY scripts/quic-integration-provenance.mjs ./scripts/
 COPY scripts/ssm-integration-provenance.mjs ./scripts/
 COPY scripts/anytls-integration-provenance.mjs ./scripts/

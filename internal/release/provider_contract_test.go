@@ -223,6 +223,23 @@ func TestProviderReleaseBindsEverySourceFieldAndCopiesConcurrentProjections(t *t
 	}
 }
 
+func TestProviderSourceRejectsTheOtherProvidersCopy(t *testing.T) {
+	for _, id := range []string{"sing-box", "shtorm-extended"} {
+		source := providerfixture.Identity(t, id).Source
+		if err := ValidateCoreProviderSource(source); err != nil {
+			t.Fatal(err)
+		}
+		wrongCopy := "github.com/MalenkiySolovey/sing-box-extended"
+		if id == "shtorm-extended" {
+			wrongCopy = "github.com/MalenkiySolovey/sing-box"
+		}
+		source.Module, source.SourceRepository = wrongCopy, "https://"+wrongCopy
+		if err := ValidateCoreProviderSource(source); err == nil {
+			t.Fatal("provider accepted the other core copy")
+		}
+	}
+}
+
 func TestProviderEnvelopeRejectsAmbiguousSchemasAndUnknownCriticalFields(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	private := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))

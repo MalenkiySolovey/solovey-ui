@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url'
 import test from 'node:test'
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-const inputs = ['go.mod', 'go.sum', 'scripts/ssm-integration-provenance.mjs', 'deploy/dependencies/sing-box-ssm-integration.json', 'deploy/dependencies/sing-box-ssm-cache.patch', 'deploy/dependencies/sing-quic-integration.json']
+const inputs = ['go.mod', 'go.sum', 'scripts/ssm-integration-provenance.mjs', 'deploy/dependencies/sing-box-ssm-integration.json', 'scripts/core-source-provenance.mjs', 'deploy/dependencies/sing-quic-integration.json']
 function fixture(t) {
   const scratch = fs.mkdtempSync(path.join(os.tmpdir(), 'solovey-ssm-proof-test-'))
   for (const file of inputs) {
@@ -44,10 +44,15 @@ test('package metadata identifies the actual patched dependency', t => {
   assert.ok(buildInfo.stdout.includes('naive_h3_parent_control=inbound-lifecycle-only'))
 })
 
-for (const scenario of ['patch', 'module pin', 'checksum']) {
+for (const scenario of ['Git series', 'module pin', 'checksum']) {
   test(`source provenance fails closed after ${scenario} tampering`, t => {
     const source = fixture(t)
-    if (scenario === 'patch') fs.appendFileSync(path.join(source, inputs[4]), '\nchanged\n')
+    if (scenario === 'Git series') {
+      const filename=path.join(source, inputs[3])
+      const manifest=JSON.parse(fs.readFileSync(filename,'utf8'))
+      manifest.patchSeries.patchedTree='0'.repeat(40)
+      fs.writeFileSync(filename,JSON.stringify(manifest))
+    }
     if (scenario === 'module pin') {
       const mod = path.join(source, 'go.mod')
       fs.writeFileSync(mod, fs.readFileSync(mod, 'utf8').replace('github.com/MalenkiySolovey/sing-box', 'github.com/other/sing-box'))

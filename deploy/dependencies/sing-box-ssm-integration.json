@@ -1,5 +1,5 @@
 {
-  "schema": "solovey.ssm-integration/v1",
+  "schema": "solovey.ssm-integration/v2",
   "patched": true,
   "officialByteIdentical": false,
   "semanticBaseline": {
@@ -20,23 +20,6 @@
     "repository": "https://github.com/MalenkiySolovey/sing-box",
     "sum": "h1:RkQg7xe/iBA9+PrEgN8oN0p9LNBNsd2OR65KUEmo4K0=",
     "goModSum": "h1:O4q0spxb+xwV/p9HYR+Es1cMjK3bBvYl6k08V9rSpwU="
-  },
-  "patch": {
-    "file": "deploy/dependencies/sing-box-ssm-cache.patch",
-    "sha256": "dad70c774a4f2f2a157254a9982044be082f808ec77f4652fd77eb020d6e72bd",
-    "files": [
-      "SOLOVEY_INTEGRATION.md",
-      "protocol/naive/inbound.go",
-      "protocol/naive/quic/inbound_init.go",
-      "protocol/naive/quic/inbound_lifecycle.go",
-      "service/ssmapi/cache.go",
-      "service/ssmapi/cache_store.go",
-      "service/ssmapi/cache_test.go",
-      "service/ssmapi/server.go",
-      "transport/v2raywebsocket/server.go",
-      "transport/v2raywebsocket/server_path_test.go"
-    ],
-    "description": "Complete cumulative source overlay; legacy filename retained. Official1.14.2 baseline plus accepted SSM, Naive HTTP3 lifecycle and bounded WS literal-path/early-data correction."
   },
   "license": "GPL-3.0-or-later",
   "scopes": [
@@ -74,5 +57,40 @@
         "transport/v2raywebsocket/server_path_test.go"
       ]
     }
+  },
+  "sourceFiles": [
+    "SOLOVEY_INTEGRATION.md",
+    "protocol/naive/inbound.go",
+    "protocol/naive/quic/inbound_init.go",
+    "protocol/naive/quic/inbound_lifecycle.go",
+    "service/ssmapi/cache.go",
+    "service/ssmapi/cache_store.go",
+    "service/ssmapi/cache_test.go",
+    "service/ssmapi/server.go",
+    "transport/v2raywebsocket/server.go",
+    "transport/v2raywebsocket/server_path_test.go"
+  ],
+  "copyRole": "mirror/cache/development",
+  "patchSeries": {
+    "format": "linear-git-commits/v1",
+    "base": "af6e64c3b69e6132ebaee0e1a3d24e93903f6709",
+    "upstreamTree": "d4edc37a0f8ea49f5307aefdbcaf67295c56c45c",
+    "patchedTree": "4ca03e05f360b25c958c2bfb6b4e246569789558",
+    "pristineRef": "refs/heads/mirror/v1.14.2",
+    "branch": "solovey/official-patches",
+    "commits": [
+      "20fdbaa1cf7c7f9fd1c22116c63731d25916290d",
+      "afd12f10473eb4d2d1459897488deb623527782e",
+      "d0feb7cd0e3cfd46a2a90c06be901c6c87aaeed8",
+      "8b914e4be5103d5f343dac94f26c3ebeeb226ffc"
+    ],
+    "patchCommits": [
+      "20fdbaa1cf7c7f9fd1c22116c63731d25916290d",
+      "afd12f10473eb4d2d1459897488deb623527782e",
+      "d0feb7cd0e3cfd46a2a90c06be901c6c87aaeed8",
+      "8b914e4be5103d5f343dac94f26c3ebeeb226ffc"
+    ],
+    "patchCount": 4,
+    "identity": "b1c4c5f9289ddf5d25e8291491cb1e0c682553ea73bdbba249031c5fe8887e17"
   }
 }

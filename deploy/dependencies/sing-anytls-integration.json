@@ -1,5 +1,5 @@
 {
-  "schema": "solovey.anytls-integration/v1",
+  "schema": "solovey.anytls-integration/v2",
   "patched": true,
   "officialByteIdentical": false,
   "semanticBaseline": {
@@ -21,15 +21,28 @@
     "sum": "h1:Lnjw34ch15qhggeavOMiQIJrk3N8rcsCoJOvciNHyaY=",
     "goModSum": "h1:7rjN6IukwysmdusYsrV51Fgu1uW6vsrdd6ctjnEAln8="
   },
-  "patch": {
-    "file": "deploy/dependencies/sing-anytls-session-state.patch",
-    "sha256": "3bec5c9f7772910e2e5a5821a3012a95f460b7328ba7e62282c79acd3f26a64b",
-    "files": [
-      "SOLOVEY_INTEGRATION.md",
-      "session/concurrency_test.go",
-      "session/session.go",
-      "session/stream.go"
-    ]
-  },
-  "license": "GPL-3.0-or-later"
+  "license": "GPL-3.0-or-later",
+  "sourceFiles": [
+    "SOLOVEY_INTEGRATION.md",
+    "session/concurrency_test.go",
+    "session/session.go",
+    "session/stream.go"
+  ],
+  "copyRole": "mirror/cache/development",
+  "patchSeries": {
+    "format": "linear-git-commits/v1",
+    "base": "130d2e61b8895727bfed4942c535e91b246a9603",
+    "upstreamTree": "4e18e8c0f95c4cea2249b4cfacc7a83d91a31f50",
+    "patchedTree": "7097f65cc5f010e513de42115cb42b9ef8b6be6a",
+    "pristineRef": "refs/heads/mirror/v0.0.11",
+    "branch": "solovey/anytls-patches",
+    "commits": [
+      "8f440972b353f7ace3bbfbac9cf291938de5ab19"
+    ],
+    "patchCommits": [
+      "8f440972b353f7ace3bbfbac9cf291938de5ab19"
+    ],
+    "patchCount": 1,
+    "identity": "5915b4e4db9cb73108ab5358132877f16de2b2cc55543d7295d22966141666b5"
+  }
 }

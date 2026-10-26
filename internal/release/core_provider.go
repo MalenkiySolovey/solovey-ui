@@ -20,10 +20,12 @@ var arm64Level = regexp.MustCompile(`^v(?:8\.[0-9]|9\.[0-5])(?:,lse)?(?:,crypto)
 
 func ValidateCoreProviderSource(source CoreProviderSource) error {
 	name, upstream := "Official", "https://github.com/SagerNet/sing-box"
+	copyRepository := "https://github.com/MalenkiySolovey/sing-box"
 	switch source.ID {
 	case "sing-box":
 	case "shtorm-extended":
 		name, upstream = "Shtorm Extended", "https://github.com/shtorm-7/sing-box-extended"
+		copyRepository = "https://github.com/MalenkiySolovey/sing-box-extended"
 	default:
 		return errors.New("release core provider is unsupported")
 	}
@@ -32,7 +34,7 @@ func ValidateCoreProviderSource(source CoreProviderSource) error {
 		!version.MatchString(source.RuntimeSemanticVersion) || !sourceCommit.MatchString(source.SourceRevision) ||
 		!sourceCommit.MatchString(source.UpstreamRevision) ||
 		!oneOf(source.UpstreamRepository, upstream, "https://github.com/SagerNet/sing-box") ||
-		!oneOf(source.SourceRepository, upstream, "https://github.com/MalenkiySolovey/sing-box") ||
+		!oneOf(source.SourceRepository, upstream, copyRepository) ||
 		source.Module != strings.TrimPrefix(source.SourceRepository, "https://") {
 		return errors.New("release core provider source identity is invalid")
 	}
