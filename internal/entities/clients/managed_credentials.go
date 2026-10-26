@@ -73,7 +73,7 @@ func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) 
 		if len(proposed[fact.UserField]) == 0 && assigned[fact.Type] {
 			// Assignment is an existing Users owner mutation. Initialize only
 			// a missing credential, once, on an admitted serving protocol.
-			value, err := common.SecureRandom(32)
+			value, err := credentials.Generate(fact.Type)
 			if err != nil {
 				return credentials.ErrInvalid
 			}
@@ -157,7 +157,7 @@ func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) 
 		}
 		mutation, supplied := next[fact.SecretField]
 		if !supplied && captured == "" && assigned[fact.Type] {
-			value, err := common.SecureRandom(32)
+			value, err := credentials.Generate(fact.Type)
 			if err != nil {
 				return credentials.ErrInvalid
 			}
@@ -195,7 +195,7 @@ func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) 
 				if !keepEmpty {
 					return credentials.ErrInvalid
 				}
-				generated, err := common.SecureRandom(32)
+				generated, err := credentials.Generate(fact.Type)
 				if err != nil {
 					return credentials.ErrInvalid
 				}

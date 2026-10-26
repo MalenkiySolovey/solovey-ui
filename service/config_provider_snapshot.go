@@ -26,8 +26,9 @@ const maxProviderDesiredStateBytes = 64 << 20
 var _ updateservice.CoreConfigurationOwner = (*ConfigService)(nil)
 
 // CaptureProviderConfiguration uses one database view and the established core
-// serializer. It performs no asset preparation, upgrades, writes or transport
-// starts. Inactive rows remain bound to the revision even when the current
+// serializer. It performs no asset preparation, upgrades, desired-state writes
+// or transport starts. Credential borrows retain their required owner audit.
+// Inactive rows remain bound to the revision even when the current
 // runtime projection cannot include them. Raw credentials never enter its JSON.
 func (s *ConfigService) CaptureProviderConfiguration(ctx context.Context) (result updateservice.CoreConfigurationSnapshot, err error) {
 	if ctx == nil || s == nil || s.coreInstance() == nil || s.runtime().restart() == nil {
@@ -48,6 +49,9 @@ func (s *ConfigService) CaptureProviderConfiguration(ctx context.Context) (resul
 			return coreruntime.ErrRuntimeAPIUnavailable
 		}
 		return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if err := dbsqlite.ReserveWrite(tx); err != nil {
+				return ErrProviderConfigurationUnavailable
+			}
 			settings := SettingService{database: tx}
 			held, err := settings.CoreMaintenance()
 			if err != nil {

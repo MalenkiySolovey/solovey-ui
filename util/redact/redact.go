@@ -44,6 +44,7 @@ var sensitiveKeyFragments = []string{
 }
 
 var sensitiveExactKeys = []string{
+	"host_key",
 	"psk",
 	"userkey",
 	"user_key",

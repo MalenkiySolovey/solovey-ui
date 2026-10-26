@@ -48,6 +48,8 @@ func inboundDeclarations() []declaration[*inbound.Registry] {
 		{typeName: C.TypeSnell, compiled: true, authenticatedUsers: true, register: snell.RegisterInbound},
 		{typeName: "mieru", buildTag: "shtorm_extended", compiled: supportsMieruInbound, authenticatedUsers: true, register: registerMieruInbound},
 		{typeName: "trusttunnel", buildTag: "shtorm_extended,with_quic", compiled: supportsTrustTunnelInbound, authenticatedUsers: true, register: registerTrustTunnelInbound},
+		{typeName: "ssh", buildTag: "shtorm_extended", compiled: supportsSSHInbound, authenticatedUsers: true, register: registerSSHInbound},
+		{typeName: "mtproxy", buildTag: "shtorm_extended", compiled: supportsMTProxyInbound, authenticatedUsers: true, register: registerMTProxyInbound},
 		{typeName: C.TypeCloudflared, buildTag: "with_cloudflared", productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
 		{typeName: "hysteria", buildTag: "with_quic", compiled: C.WithQUIC, register: registerHysteriaInbound},
 		{typeName: "tuic", buildTag: "with_quic", compiled: C.WithQUIC, register: registerTUICInbound},

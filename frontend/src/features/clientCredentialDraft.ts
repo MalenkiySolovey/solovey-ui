@@ -38,7 +38,7 @@ export function clientCredentialDraftInvalid(config: Config): boolean {
 export function shuffleManagedClientCredentials(config: Config, snapshot: RuntimeCapabilities | undefined, selected?: string) {
   for (const [kind, field] of Object.entries(managedClientSecretFields)) {
     if (config[kind] && (!selected || selected === kind) && managedCredentialAvailable(snapshot, kind)) {
-      config[kind][field] = { intent: 'replace', value: RandomUtil.randomSeq(32) }
+      config[kind][field] = { intent: 'replace', value: kind === 'mtproxy' ? RandomUtil.randomMTProxySecret() : RandomUtil.randomSeq(32) }
     }
   }
 }

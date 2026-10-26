@@ -79,9 +79,6 @@ func saveEdited(req SaveRequest) (*singboxapply.Change, error) {
 	if err := saveeligibility.Validate(req.Tx, string(ActionEdit), inbound.Id, &model.Inbound{}, "inbounds", inbound.Type); err != nil {
 		return nil, err
 	}
-	if err := preserveUnavailableNativeInbound(req.Tx, &inbound); err != nil {
-		return nil, err
-	}
 	oldTag, err := TagByID(req.Tx, inbound.Id)
 	if err != nil {
 		return nil, err
@@ -110,7 +107,7 @@ func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 	if err := inbound.UnmarshalJSON(data); err != nil {
 		return inbound, err
 	}
-	if inbound.Type == "mieru" || inbound.Type == "trusttunnel" {
+	if managedNativeInbound(inbound.Type) {
 		if jsonvalue.StrictObject(data) != nil {
 			return inbound, common.NewError("NATIVE_INBOUND_INPUT_INVALID")
 		}
@@ -119,6 +116,11 @@ func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 		for _, field := range []string{"users", "tls"} {
 			if raw, present := submitted[field]; present && string(raw) != "null" {
 				return inbound, common.NewError("NATIVE_INBOUND_OWNED_FIELD: use the existing Users assignment and TLS template owners")
+			}
+		}
+		if inbound.Type == "ssh" {
+			if raw, present := submitted["fallback"]; present && string(raw) != "null" {
+				return inbound, common.NewError("NATIVE_INBOUND_OWNED_FIELD: SSH authentication belongs to the existing Users owner")
 			}
 		}
 	}
@@ -159,7 +161,7 @@ func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 }
 
 func preserveUnavailableNativeInbound(tx *gorm.DB, inbound *model.Inbound) error {
-	if inbound.Type != "mieru" && inbound.Type != "trusttunnel" || entitycapabilities.Resolve("inbounds", inbound.Type).Available {
+	if !managedNativeInbound(inbound.Type) || entitycapabilities.Resolve("inbounds", inbound.Type).Available {
 		return nil
 	}
 	var stored model.Inbound
@@ -230,6 +232,14 @@ func ValidateStored(db *gorm.DB) error {
 	return nil
 }
 func FillAndSave(tx *gorm.DB, inbound *model.Inbound, hostname string) error {
+	if err := prepareInboundCredentials(tx, inbound); err != nil {
+		return err
+	}
+	if inbound.Id != 0 {
+		if err := preserveUnavailableNativeInbound(tx, inbound); err != nil {
+			return err
+		}
+	}
 	if err := FillOutboundJSONFromDB(tx, inbound, hostname); err != nil {
 		return err
 	}

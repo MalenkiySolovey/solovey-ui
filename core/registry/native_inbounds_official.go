@@ -5,5 +5,9 @@ package registry
 import "github.com/sagernet/sing-box/adapter/inbound"
 
 const supportsMieruInbound = false
+const supportsSSHInbound = false
+const supportsMTProxyInbound = false
 
-func registerMieruInbound(*inbound.Registry) {}
+func registerMieruInbound(*inbound.Registry)   {}
+func registerSSHInbound(*inbound.Registry)     {}
+func registerMTProxyInbound(*inbound.Registry) {}

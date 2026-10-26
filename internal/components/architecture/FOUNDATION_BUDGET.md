@@ -99,3 +99,16 @@ types unavailable. Existing registry/capability, candidate rollback and real
 authenticated runtime tests qualify this seam. This reviews one changed
 declaration with the same Direct-literal multiplicity; the R1 base identity,
 all other sites and total allowance remain unchanged. SEC-2 stays BOUNDED_DEFERRED.
+
+R7 E3b reviews that same `inboundDeclarations` site from `f08e6d44...` to
+`c936c51f...`. Its only production delta is two authenticated declaration rows
+for SSH and MTProxy. The explicit Direct registration and every route/final/
+detour/fallback decision are unchanged. Existing Inbounds save/apply owns the
+listeners, Users owns authentication credentials and the common SecretRef
+adapter owns sealed SSH host-key material in the existing Inbound row. Scope
+shutdown, final-user revocation, credential rotation, port reuse and runtime
+restart are exercised against the selected canonical Extended engine. Official
+stubs keep these capabilities unavailable and preserve historical fields.
+This updates one exact existing declaration after owner/lifetime review; it adds
+no Direct site, worker, privilege, policy choice or inventory allowance. The R1
+base and unrelated entries stay fixed; no legacy inventory regeneration occurs.

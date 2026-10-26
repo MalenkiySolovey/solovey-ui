@@ -77,5 +77,13 @@ describe('cryptographic random utility bounds', () => {
     vi.stubGlobal('crypto', undefined)
     expect(() => RandomUtil.randomSeq(10)).toThrow()
     expect(() => RandomUtil.randomShadowsocksPassword(24)).toThrow()
+    expect(() => RandomUtil.randomMTProxySecret()).toThrow()
+  })
+  it('generates MTProxy fake-TLS secrets with a full random key and hostname', () => {
+    const draw = source([], 255)
+    expect(RandomUtil.randomMTProxySecret()).toBe('ee' + 'ff'.repeat(16) + '7777772e676f6f676c652e636f6d')
+    expect(draw).toHaveBeenCalledTimes(1)
+    expect(draw.mock.calls[0][0]).toBeInstanceOf(Uint8Array)
+    expect(draw.mock.calls[0][0]).toHaveLength(16)
   })
 })

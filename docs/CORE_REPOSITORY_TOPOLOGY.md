@@ -97,5 +97,6 @@ are separately reproduced engine blockers, documented as temporary exceptions.
 The old Shtorm-derived R7 branches in `MalenkiySolovey/sing-box` remain preserved
 migration evidence. After the dedicated-copy pin passes Panel qualification,
 they are historical refs without build authority. Do not delete or rewrite them
-as part of this correction. The unfinished SSH/MTProxy Panel branch stays frozen
-until the operator resumes R7 feature work.
+as part of this correction. Reconcile unfinished product work with the selected
+dedicated source queue before resuming it; never restore an obsolete mixed-copy
+pin or a duplicate Panel source patch to continue a feature.

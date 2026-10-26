@@ -22,6 +22,8 @@ export const InTypes = {
   Snell: 'snell',
   Mieru: 'mieru',
   TrustTunnel: 'trusttunnel',
+  SSH: 'ssh',
+  MTProxy: 'mtproxy',
   Tun: 'tun',
   Redirect: 'redirect',
   TProxy: 'tproxy',
@@ -236,6 +238,32 @@ export interface TrustTunnel extends InboundBasics {
   disable_path_mtu_discovery?: boolean
 }
 
+export interface SSHInbound extends InboundBasics {
+  server_version?: string
+  max_auth_tries?: number
+  host_key?: unknown
+  host_key_path?: string | string[]
+}
+
+export interface MTProxy extends InboundBasics {
+  prefer_ip?: string
+  concurrency?: number
+  auto_update?: boolean
+  domain_fronting_host?: string
+  domain_fronting_port?: number
+  domain_fronting_proxy_protocol?: boolean
+  idle_timeout?: string
+  handshake_timeout?: string
+  tolerate_time_skewness?: string
+  allow_fallback_on_unknown_dc?: boolean
+  doppelganger_urls?: string | string[]
+  doppelganger_per_raid?: number
+  doppelganger_each?: string
+  doppelganger_drs?: boolean
+  throttle_max_connections?: number
+  throttle_check_interval?: string
+}
+
 // Create interfaces dynamically based on InTypes keys
 type InterfaceMap = {
   direct: Direct
@@ -255,6 +283,8 @@ type InterfaceMap = {
   snell: Snell
   mieru: Mieru
   trusttunnel: TrustTunnel
+  ssh: SSHInbound
+  mtproxy: MTProxy
   tun: Tun
   redirect: Redirect
   tproxy: TProxy
@@ -292,6 +322,8 @@ const defaultValues: Record<InType, Inbound> = {
   snell: <Snell>{ type: InTypes.Snell, version: 6, psk: '' },
   mieru: <Mieru>{ type: InTypes.Mieru, transport: 'TCP' },
   trusttunnel: <TrustTunnel>{ type: InTypes.TrustTunnel, tls_id: 0, network: ['tcp', 'udp'], congestion_controller: 'bbr' },
+  ssh: <SSHInbound>{ type: InTypes.SSH },
+  mtproxy: <MTProxy>{ type: InTypes.MTProxy, prefer_ip: 'prefer-ipv4' },
   tun: <Tun>{ type: InTypes.Tun, mtu: 9000, stack: 'system', udp_timeout: '5m', auto_route: false },
   redirect: <Redirect>{ type: InTypes.Redirect },
   tproxy: <TProxy>{ type: InTypes.TProxy },

@@ -1,12 +1,13 @@
 import type { CapabilityEditState } from '@/types/capabilityEditors'
 
-export type SaveReason = 'form.saveIdentity' | 'form.savePortRequired' | 'form.savePortInvalid' | 'form.saveTls' | 'form.savePending' | NonNullable<CapabilityEditState['message']>
+export type SaveReason = 'form.saveIdentity' | 'form.savePortRequired' | 'form.savePortInvalid' | 'form.saveTls' | 'form.savePending' | 'secretCredential.required' | NonNullable<CapabilityEditState['message']>
 export interface EditorSaveFacts {
   identity: unknown
   port?: unknown
   requiresPort?: boolean
   missingRequiredTls?: boolean
   pending: boolean
+  credentialInvalid?: boolean
   capability?: CapabilityEditState
 }
 
@@ -22,5 +23,6 @@ export function entitySaveReasons(facts: EditorSaveFacts): SaveReason[] {
   if (facts.missingRequiredTls) reasons.push('form.saveTls')
   if (facts.capability && !facts.capability.allowed) reasons.push(facts.capability.message ?? 'capability.waiting')
   if (facts.pending) reasons.push('form.savePending')
+  if (facts.credentialInvalid) reasons.push('secretCredential.required')
   return reasons
 }

@@ -4,7 +4,10 @@ package api
 
 import (
 	"bytes"
+	"crypto/ed25519"
+	"crypto/rand"
 	"encoding/json"
+	"encoding/pem"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -16,13 +19,16 @@ import (
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	"github.com/MalenkiySolovey/solovey-ui/service"
 	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 	"github.com/gin-gonic/gin"
+	"golang.org/x/crypto/ssh"
 )
 
 func TestNativeCredentialHTTPAuthorizationMaskingAndStaleDraft(t *testing.T) {
-	for _, kind := range []string{"mieru", "trusttunnel"} {
+	for _, kind := range []string{"mieru", "trusttunnel", "ssh", "mtproxy"} {
 		t.Run(kind, func(t *testing.T) {
 			settings := initSessionTestDB(t)
 			if _, err := settings.GetAllSetting(); err != nil {
@@ -55,11 +61,24 @@ func TestNativeCredentialHTTPAuthorizationMaskingAndStaleDraft(t *testing.T) {
 				v2 := NewAPIv2Handler(router.Group("/apiv2"), WithRuntime(runtime))
 				NewAPIHandler(router.Group("/api"), v2, WithRuntime(runtime))
 			})
-			const firstSecret, secondSecret = "synthetic-native-api-first", "synthetic-native-api-second"
+			firstSecret, secondSecret := "synthetic-native-api-first", "synthetic-native-api-second"
+			if kind == "mtproxy" {
+				var err error
+				firstSecret, err = credentials.Generate(kind)
+				if err != nil {
+					t.Fatal(err)
+				}
+				secondSecret, err = credentials.Generate(kind)
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			fact, _ := clientfacts.Resolve(kind)
+			canaries := []string{firstSecret, secondSecret, "sbox:v1:"}
 			var captured string
 			checkRedacted := func(raw []byte) {
 				t.Helper()
-				for _, value := range []string{firstSecret, secondSecret, captured, "sbox:v1:"} {
+				for _, value := range append(canaries, captured) {
 					if value != "" && bytes.Contains(raw, []byte(value)) {
 						t.Fatal("ordinary HTTP/audit/change projection exposed a native credential")
 					}
@@ -82,7 +101,7 @@ func TestNativeCredentialHTTPAuthorizationMaskingAndStaleDraft(t *testing.T) {
 			client := model.Client{Name: "native-" + kind, Enable: true, Config: json.RawMessage(`{}`), Inbounds: json.RawMessage(`[]`), Links: json.RawMessage(`[]`)}
 			mutation := func(value any) {
 				t.Helper()
-				client.Config, _ = json.Marshal(map[string]any{kind: map[string]any{"name": client.Name, "password": value}})
+				client.Config, _ = json.Marshal(map[string]any{kind: map[string]any{"name": client.Name, fact.SecretField: value}})
 			}
 			unchanged := func(view secretref.View) map[string]any {
 				return map[string]any{"intent": "unchanged", "reference": view.Reference, "present": view.Present, "rotationRevision": view.RotationRevision}
@@ -112,11 +131,11 @@ func TestNativeCredentialHTTPAuthorizationMaskingAndStaleDraft(t *testing.T) {
 			}
 			password := func(value model.Client) string {
 				t.Helper()
-				var root map[string]struct{ Password string }
+				var root map[string]map[string]string
 				if json.Unmarshal(value.Config, &root) != nil {
 					t.Fatal("stored native credential has invalid shape")
 				}
-				return root[kind].Password
+				return root[kind][fact.SecretField]
 			}
 			read := func() (model.Client, secretref.View) {
 				t.Helper()
@@ -129,11 +148,12 @@ func TestNativeCredentialHTTPAuthorizationMaskingAndStaleDraft(t *testing.T) {
 				if json.Unmarshal(response.Body.Bytes(), &envelope) != nil || len(envelope.Obj.Clients) != 1 {
 					t.Fatal("normal HTTP read omitted the native user")
 				}
-				var root map[string]struct{ Password secretref.View }
-				if json.Unmarshal(envelope.Obj.Clients[0].Config, &root) != nil || root[kind].Password.Reference.Owner != "users" {
+				var root map[string]map[string]json.RawMessage
+				var view secretref.View
+				if json.Unmarshal(envelope.Obj.Clients[0].Config, &root) != nil || json.Unmarshal(root[kind][fact.SecretField], &view) != nil || view.Reference.Owner != "users" {
 					t.Fatal("normal HTTP read omitted the Users-owned secret reference")
 				}
-				return envelope.Obj.Clients[0], root[kind].Password
+				return envelope.Obj.Clients[0], view
 			}
 			mutation(map[string]any{"intent": "replace", "value": firstSecret})
 			if got := request(http.MethodPost, "/apiv2/save", tokens["read"], saveForm("new")); got.Code != http.StatusForbidden {
@@ -193,6 +213,79 @@ func TestNativeCredentialHTTPAuthorizationMaskingAndStaleDraft(t *testing.T) {
 			_, cleared := read()
 			if cleared.Present || password(stored()) != "" {
 				t.Fatal("explicit HTTP clear did not preserve an absent reference")
+			}
+			if kind == "ssh" {
+				_, key, err := ed25519.GenerateKey(rand.Reader)
+				if err != nil {
+					t.Fatal(err)
+				}
+				block, err := ssh.MarshalPrivateKey(key, "runtime-only-api-fixture")
+				if err != nil {
+					t.Fatal(err)
+				}
+				private := string(pem.EncodeToMemory(block))
+				canaries = append(canaries, strings.Split(private, "\n")[1])
+				inbound := map[string]any{"type": "ssh", "tag": "http-ssh-owned", "listen": "127.0.0.1", "listen_port": 23456,
+					"server_version": "SSH-2.0-SoloveyFixture", "max_auth_tries": 3, "host_key": map[string]string{"intent": "replace", "value": private}}
+				form := func(action string) url.Values {
+					raw, _ := json.Marshal(inbound)
+					return url.Values{"object": {"inbounds"}, "action": {action}, "data": {string(raw)}}
+				}
+				if response := request(http.MethodPost, "/apiv2/save", tokens["read"], form("new")); response.Code != http.StatusForbidden {
+					t.Fatal("read token acquired host-key write authority")
+				}
+				assertSuccess(request(http.MethodPost, "/apiv2/save", tokens["write"], form("new")), true)
+				var row model.Inbound
+				if err := dbsqlite.DB().Where("tag = ?", "http-ssh-owned").First(&row).Error; err != nil {
+					t.Fatal(err)
+				}
+				sealed := bytes.Clone(row.Options)
+				readHost := func() secretref.View {
+					response := request(http.MethodGet, "/apiv2/inbounds?id="+strconv.Itoa(int(row.Id)), tokens["read"], nil)
+					assertSuccess(response, true)
+					var envelope struct {
+						Obj struct {
+							Inbounds []struct {
+								HostKey secretref.View `json:"host_key"`
+							}
+						}
+					}
+					if json.Unmarshal(response.Body.Bytes(), &envelope) != nil || len(envelope.Obj.Inbounds) != 1 {
+						t.Fatal("host-key HTTP projection missing")
+					}
+					return envelope.Obj.Inbounds[0].HostKey
+				}
+				view := readHost()
+				if !view.Present || view.Reference.Owner != "inbounds" || len(view.RotationRevision) != 64 {
+					t.Fatal("host-key HTTP read lost its masked reference")
+				}
+				browser := performAuthenticatedTestRequest(router, httptest.NewRequest(http.MethodGet, "/api/inbounds?id="+strconv.Itoa(int(row.Id)), nil), cookies...)
+				checkRedacted(browser.Body.Bytes())
+				assertSuccess(browser, true)
+				if !bytes.Contains(browser.Body.Bytes(), []byte(view.RotationRevision)) {
+					t.Fatal("browser host-key projection diverged")
+				}
+				inbound["id"], inbound["host_key"] = row.Id, unchanged(view)
+				assertSuccess(request(http.MethodPost, "/apiv2/save", tokens["write"], form("edit")), true)
+				if err := dbsqlite.DB().First(&row, row.Id).Error; err != nil || !bytes.Equal(sealed, row.Options) {
+					t.Fatal("HTTP Keep rotated host keys")
+				}
+				inbound["host_key"] = map[string]string{"intent": "replace", "value": private}
+				assertSuccess(request(http.MethodPost, "/apiv2/save", tokens["write"], form("edit")), true)
+				current := readHost()
+				if current.RotationRevision == view.RotationRevision {
+					t.Fatal("HTTP host-key rotation retained its revision")
+				}
+				inbound["host_key"] = unchanged(view)
+				assertSuccess(request(http.MethodPost, "/apiv2/save", tokens["write"], form("edit")), false)
+				if readHost().RotationRevision != current.RotationRevision {
+					t.Fatal("stale host-key edit committed")
+				}
+				inbound["host_key"] = map[string]string{"intent": "clear"}
+				assertSuccess(request(http.MethodPost, "/apiv2/save", tokens["write"], form("edit")), true)
+				if readHost().Present {
+					t.Fatal("HTTP Clear retained host keys")
+				}
 			}
 			stopAPITestRuntimeAudit(t, runtime)
 			var audits []model.AuditEvent

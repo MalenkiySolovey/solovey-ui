@@ -11,6 +11,7 @@ import (
 	"strconv"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/util/jsonfields"
@@ -25,7 +26,7 @@ func CurrentFindings(kind, side, path string, source json.RawMessage) []diagnost
 	if kind == "snell" {
 		return snellFindings(side, path, source)
 	}
-	if kind == "mieru" || kind == "trusttunnel" {
+	if fact, known := clientfacts.Resolve(kind); known && fact.SecretField != "" && side == "inbound" {
 		return nativeInboundFindings(kind, side, path, source)
 	}
 	var consumer any

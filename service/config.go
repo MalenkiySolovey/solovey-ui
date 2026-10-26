@@ -9,6 +9,7 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/core/inboundidentity"
 	coreruntime "github.com/MalenkiySolovey/solovey-ui/core/runtime"
+	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/sessionidentity"
 	runtimeprojection "github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	singboxapply "github.com/MalenkiySolovey/solovey-ui/internal/singbox/apply"
@@ -84,6 +85,9 @@ func (s *ConfigService) coreCandidateContext(ctx context.Context) ([]byte, []inb
 	var config []byte
 	var bindings []inboundidentity.Binding
 	err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := dbsqlite.ReserveWrite(tx); err != nil {
+			return err
+		}
 		var err error
 		config, err = s.singBoxConfigBuilder().BuildFromDB(tx, "")
 		if err != nil {
@@ -271,6 +275,9 @@ func (s *ConfigService) Save(obj string, act string, data json.RawMessage, initU
 		}
 	}()
 
+	if err = dbsqlite.ReserveWrite(tx); err != nil {
+		return nil, err
+	}
 	if err = s.applyConfigSaveMutation(tx, &plan, obj, act, data, initUsers, hostname); err != nil {
 		return nil, err
 	}

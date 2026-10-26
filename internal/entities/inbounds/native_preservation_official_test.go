@@ -14,7 +14,7 @@ import (
 )
 
 func TestOfficialNativeInboundPreservesUnsupportedFieldsAndBlocksChanges(t *testing.T) {
-	for _, kind := range []string{"mieru", "trusttunnel"} {
+	for _, kind := range []string{"mieru", "trusttunnel", "ssh", "mtproxy"} {
 		t.Run(kind, func(t *testing.T) {
 			db := newInboundDB(t)
 			payload := func(id uint, tag, transport string, counter uint64) json.RawMessage {

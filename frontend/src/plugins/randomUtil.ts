@@ -56,6 +56,13 @@ const RandomUtil = {
     for (let offset = 0; offset < bytes.length; offset += 8192) binary += String.fromCharCode(...bytes.subarray(offset, offset + 8192))
     return btoa(binary)
   },
+  randomMTProxySecret(): string {
+    const bytes = new Uint8Array(16)
+    globalThis.crypto.getRandomValues(bytes)
+    const key = Array.from(bytes, byte => byteToHex[byte]).join('')
+    const host = Array.from(new TextEncoder().encode('www.google.com'), byte => byteToHex[byte]).join('')
+    return 'ee' + key + host
+  },
   randomShortId(): string[] {
     const shortIds = Array<string>(24).fill('')
     for (let index = 1; index < shortIds.length; index++) {
