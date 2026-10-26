@@ -66,6 +66,9 @@ func (s *InboundService) RestartInbounds(tx *gorm.DB, ids []uint) error {
 	// Rendering and credential binding share one read view, including callers
 	// that supplied the autocommit DB rather than an existing transaction.
 	return tx.Transaction(func(view *gorm.DB) error {
+		if err := dbsqlite.ReserveWrite(view); err != nil {
+			return err
+		}
 		return entityinbounds.Restart(view, ids, s.inboundCoreFromDB(view), s.userHooks())
 	})
 }

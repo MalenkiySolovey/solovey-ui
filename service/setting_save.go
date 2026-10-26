@@ -26,7 +26,11 @@ func (s *SettingService) Save(tx *gorm.DB, data json.RawMessage) error {
 			return err
 		}
 	}
-	return s.settingsManager().Save(tx, data)
+	// Validation and the secret codec must use the same candidate as the
+	// writes. Creating a settings master through another connection would
+	// wait on this transaction's writer and escape its rollback boundary.
+	local := &SettingService{database: tx}
+	return local.settingsManager().Save(tx, data)
 }
 
 func applySettingSaveSideEffects(tx *gorm.DB, key string, value string) error {

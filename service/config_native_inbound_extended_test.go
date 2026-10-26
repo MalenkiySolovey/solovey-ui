@@ -4,6 +4,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"reflect"
 	"strconv"
@@ -17,6 +18,107 @@ import (
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 )
+
+func TestNativeSSHCredentialOperationsWaitForConcurrentSQLiteWriter(t *testing.T) {
+	for _, operation := range []string{"clear", "render"} {
+		t.Run(operation, func(t *testing.T) {
+			initSettingTestDB(t)
+			seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
+			svc, _, _ := newHotReloadConfigService(t)
+			_, key := makeSelfSignedCertPEM(t, time.Now().Add(time.Hour))
+			draft := map[string]any{"type": "ssh", "tag": "concurrent-owner-ssh", "listen": "127.0.0.1", "listen_port": 23456,
+				"host_key": map[string]string{"intent": "replace", "value": string(key)}}
+			raw, _ := json.Marshal(draft)
+			if _, err := svc.Save("inbounds", "new", raw, "", "admin", "fixture.invalid"); err != nil {
+				t.Fatal(err)
+			}
+			db := dbsqlite.DB()
+			var row model.Inbound
+			if err := db.Where("tag = ?", draft["tag"]).First(&row).Error; err != nil {
+				t.Fatal(err)
+			}
+			storedOptions := bytes.Clone(row.Options)
+			event := "owner_secret_" + map[string]string{"clear": "clear", "render": "use"}[operation]
+			var auditBefore int64
+			if err := db.Model(&model.AuditEvent{}).Where("event = ?", event).Count(&auditBefore).Error; err != nil {
+				t.Fatal(err)
+			}
+			draft["id"], draft["host_key"] = row.Id, map[string]string{"intent": "clear"}
+			raw, _ = json.Marshal(draft)
+			pool, err := db.DB()
+			if err != nil {
+				t.Fatal(err)
+			}
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			writer, err := pool.Conn(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer writer.Close()
+			if _, err := writer.ExecContext(ctx, "BEGIN IMMEDIATE"); err != nil {
+				t.Fatal(err)
+			}
+			defer writer.ExecContext(context.Background(), "ROLLBACK")
+			if _, err := writer.ExecContext(ctx, "INSERT INTO settings(key,value) VALUES(?,?)", "concurrent-owner-fixture", "committed"); err != nil {
+				t.Fatal(err)
+			}
+			done := make(chan error, 1)
+			started := make(chan struct{})
+			go func() {
+				close(started)
+				if operation == "clear" {
+					_, err := svc.Save("inbounds", "edit", raw, "", "admin", "fixture.invalid")
+					done <- err
+				} else {
+					_, _, err := svc.coreCandidateContext(ctx)
+					done <- err
+				}
+			}()
+			<-started
+			// A credential operation must wait for the admitted writer rather
+			// than establish a stale WAL read snapshot and fail its audit write.
+			var early error
+			returned := false
+			select {
+			case early = <-done:
+				returned = true
+			case <-time.After(100 * time.Millisecond):
+			}
+			if _, err := writer.ExecContext(ctx, "COMMIT"); err != nil {
+				t.Fatal(err)
+			}
+			if returned {
+				t.Fatalf("credential operation returned before the concurrent writer committed: %v", early)
+			}
+			select {
+			case err := <-done:
+				if err != nil {
+					t.Fatal("credential operation failed after the concurrent writer committed", err)
+				}
+			case <-ctx.Done():
+				t.Fatal("credential operation did not finish after the writer committed")
+			}
+			if err := db.First(&row, row.Id).Error; err != nil {
+				t.Fatal(err)
+			}
+			var options map[string]json.RawMessage
+			if json.Unmarshal(row.Options, &options) != nil {
+				t.Fatal("credential operation damaged inbound options")
+			}
+			if _, present := options["host_key"]; present != (operation == "render") {
+				t.Fatal("credential operation did not preserve its intended host-key state")
+			}
+			if operation == "render" && !bytes.Equal(row.Options, storedOptions) {
+				t.Fatal("configuration rendering changed the sealed inbound state")
+			}
+			var count int64
+			if err := db.Model(&model.AuditEvent{}).Where("event = ?", event).Count(&count).Error; err != nil || count != auditBefore+1 {
+				t.Fatal("credential operation bypassed the required owner audit", err)
+			}
+		})
+	}
+}
 
 func TestSSHMTProxyCandidateValidationAndRollback(t *testing.T) {
 	for _, kind := range []string{"ssh", "mtproxy"} {
