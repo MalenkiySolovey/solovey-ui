@@ -5,19 +5,21 @@ import test from 'node:test'
 import { targets, legacySchema, providerSchema, linuxBuildTargets, linuxPanelArtifacts, installerProviderPolicy } from './release-providers.mjs'
 import { linuxAssetNames } from './release-verify.mjs'
 
-test('Official targets and names remain stable while Extended is an explicit Linux amd64 flavor', () => {
+test('provider selection covers the existing Linux matrix without changing Official targets or per-architecture capabilities', () => {
   const legacy = linuxBuildTargets(legacySchema)
   assert.equal(legacy.length, 7)
   assert.ok(legacy.every(target => target.provider === 'sing-box' && target.artifact_suffix === ''))
   assert.deepEqual(legacy.map(({ provider, artifact_suffix, ...target }) => target), targets.linux)
   const extended = linuxBuildTargets().filter(target => target.provider !== 'sing-box')
-  assert.deepEqual(extended.map(target => target.platform), ['amd64'])
+  assert.deepEqual(extended.map(target => target.platform), targets.linux.map(target => target.platform))
+  assert.deepEqual(extended.map(({ provider, artifact_suffix, ...target }) => target), targets.linux)
   for (const surface of ['windows', 'docker', 'openwrt']) assert.deepEqual(targets.extended[surface], [])
   assert.equal(linuxAssetNames(legacySchema).length, 15)
-  assert.equal(linuxAssetNames(providerSchema).length, 17)
-  assert.deepEqual(linuxPanelArtifacts().filter(target => target.provider === 'shtorm-extended').map(target => target.name), [
-    'solovey-ui-shtorm-extended-linux-amd64.tar.gz', 'solovey-ui-shtorm-extended-core-linux-amd64.tar.gz',
-  ])
+  assert.equal(linuxAssetNames(providerSchema).length, 29)
+  assert.deepEqual(linuxPanelArtifacts().filter(target => target.provider === 'shtorm-extended').map(target => target.name),
+    targets.linux.flatMap(({ platform }) => [
+      `solovey-ui-shtorm-extended-linux-${platform}.tar.gz`, `solovey-ui-shtorm-extended-core-linux-${platform}.tar.gz`,
+    ]))
   assert.throws(() => linuxBuildTargets('unknown'), /Unsupported release schema/)
 })
 
@@ -34,7 +36,7 @@ test('packager and workflow projection reject unsupported provider, target and p
     const output = execFileSync(process.execPath, [...command, target.provider, `linux-${target.arch}`, target.profile], { encoding: 'utf8' }).trim()
     assert.equal(output, target.name)
   }
-  for (const args of [['shtorm-extended', 'linux-arm64', 'full'], ['unknown', 'linux-amd64', 'core'], ['sing-box', 'linux-amd64', 'unknown']]) {
+  for (const args of [['shtorm-extended', 'linux-mips64', 'full'], ['unknown', 'linux-amd64', 'core'], ['sing-box', 'linux-amd64', 'unknown']]) {
     assert.notEqual(spawnSync(process.execPath, [...command, ...args], { stdio: 'pipe' }).status, 0)
   }
   assert.deepEqual(JSON.parse(execFileSync(process.execPath, ['scripts/release-providers.mjs', 'matrix'], { encoding: 'utf8' })), { include: linuxBuildTargets() })

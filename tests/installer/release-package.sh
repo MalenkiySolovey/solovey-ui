@@ -221,13 +221,16 @@ EOF
 }
 
 assert_extended_package_contract() {
-    local profile metadata artifact
+    local platform arch profile metadata artifact
+    for platform in amd64 arm64 armv7 armv6 armv5 386 s390x; do
+    arch="${platform}"
+    [[ "${platform}" != armv* ]] || arch=arm
     for profile in full core; do
-        metadata="${SRC}/BUILD_INFO.extended-${profile}.txt"
-        cp "${SRC}/BUILD_INFO.${profile}.txt" "${metadata}"
+        metadata="${SRC}/BUILD_INFO.extended-${platform}-${profile}.txt"
+        sed "s@linux/amd64@linux/${arch}@g" "${SRC}/BUILD_INFO.${profile}.txt" > "${metadata}"
         printf 'core_provider=shtorm-extended\n' >> "${metadata}"
         bash "${ROOT}/scripts/release-package-linux.sh" \
-            --target linux-amd64 --profile "${profile}" --core-provider shtorm-extended \
+            --target "linux-${platform}" --profile "${profile}" --core-provider shtorm-extended \
             --binary "${SRC}/solovey-ui" --broker "${SRC}/solovey-privileged-broker" \
             --proof "${SRC}/solovey-ssh-proof" --manifest-writer "${SRC}/solovey-broker-manifest" \
             --owner-manifest-writer "${SRC}/solovey-owner-manifest" --manager "${SRC}/solovey-ui.sh" \
@@ -235,15 +238,16 @@ assert_extended_package_contract() {
             --build-info "${metadata}" --out-dir "${OUT}" >/dev/null
         artifact="${OUT}/solovey-ui-shtorm-extended"
         [[ "${profile}" != core ]] || artifact="${artifact}-core"
-        artifact="${artifact}-linux-amd64.tar.gz"
+        artifact="${artifact}-linux-${platform}.tar.gz"
         assert_file "${artifact}"
         (cd "${OUT}" && sha256sum -c "$(basename "${artifact}").sha256" >/dev/null)
         tar -xOf "${artifact}" solovey-ui/BUILD_INFO.txt | grep -qxF 'core_provider=shtorm-extended' || fail 'Extended package lost provider metadata'
     done
+    done
     # Metadata declarations are packaging inputs; the signed v2 producer also
     # inspects the actual executable source without executing the candidate.
-    if bash "${ROOT}/scripts/release-package-linux.sh" --target linux-arm64 --core-provider shtorm-extended --out-dir "${OUT}/unsupported" >"${TMP}/unsupported.log" 2>&1; then
-        fail 'packager accepted an undeclared Extended platform'
+    if bash "${ROOT}/scripts/release-package-linux.sh" --target linux-mips64 --core-provider shtorm-extended --out-dir "${OUT}/unsupported" >"${TMP}/unsupported.log" 2>&1; then
+        fail 'packager accepted a non-product Extended platform'
     fi
     assert_not_exists "${OUT}/unsupported"
 }

@@ -516,6 +516,18 @@ release_artifact_name() {
         sing-box/s390x/core) printf '%s\n' "${APP_NAME}-core-linux-s390x.tar.gz" ;;
         shtorm-extended/amd64/full) printf '%s\n' "${APP_NAME}-shtorm-extended-linux-amd64.tar.gz" ;;
         shtorm-extended/amd64/core) printf '%s\n' "${APP_NAME}-shtorm-extended-core-linux-amd64.tar.gz" ;;
+        shtorm-extended/arm64/full) printf '%s\n' "${APP_NAME}-shtorm-extended-linux-arm64.tar.gz" ;;
+        shtorm-extended/arm64/core) printf '%s\n' "${APP_NAME}-shtorm-extended-core-linux-arm64.tar.gz" ;;
+        shtorm-extended/armv7/full) printf '%s\n' "${APP_NAME}-shtorm-extended-linux-armv7.tar.gz" ;;
+        shtorm-extended/armv7/core) printf '%s\n' "${APP_NAME}-shtorm-extended-core-linux-armv7.tar.gz" ;;
+        shtorm-extended/armv6/full) printf '%s\n' "${APP_NAME}-shtorm-extended-linux-armv6.tar.gz" ;;
+        shtorm-extended/armv6/core) printf '%s\n' "${APP_NAME}-shtorm-extended-core-linux-armv6.tar.gz" ;;
+        shtorm-extended/armv5/full) printf '%s\n' "${APP_NAME}-shtorm-extended-linux-armv5.tar.gz" ;;
+        shtorm-extended/armv5/core) printf '%s\n' "${APP_NAME}-shtorm-extended-core-linux-armv5.tar.gz" ;;
+        shtorm-extended/386/full) printf '%s\n' "${APP_NAME}-shtorm-extended-linux-386.tar.gz" ;;
+        shtorm-extended/386/core) printf '%s\n' "${APP_NAME}-shtorm-extended-core-linux-386.tar.gz" ;;
+        shtorm-extended/s390x/full) printf '%s\n' "${APP_NAME}-shtorm-extended-linux-s390x.tar.gz" ;;
+        shtorm-extended/s390x/core) printf '%s\n' "${APP_NAME}-shtorm-extended-core-linux-s390x.tar.gz" ;;
         *) fail "unsupported release provider/platform/profile selection" ;;
     esac
 }
