@@ -71,7 +71,12 @@ func ProjectClient(clientID uint, config json.RawMessage) (json.RawMessage, erro
 		raw := credential[fact.SecretField]
 		var captured string
 		if len(raw) > 0 && json.Unmarshal(raw, &captured) != nil {
-			return nil, ErrInvalid
+			if !clientfacts.DeliveryOnly(fact.Type) {
+				return nil, ErrInvalid
+			}
+			// Historical split maps are private too. Mask them without granting
+			// runtime use or silently rewriting the stored representation.
+			captured = string(raw)
 		}
 		_, ref, err := clientField(clientID, fact.Type)
 		if err != nil {
@@ -131,7 +136,15 @@ func UseClient(ctx context.Context, db *gorm.DB, clientID uint, protocol string,
 	}
 	request := secretref.Access{Reference: ref, Actor: secretref.Actor{Component: "users"}, Operation: secretref.UseForOwner, IntentID: intentID}
 	_, err = ownerdb.Access(ctx, db, request, captured, func(value []byte) error {
-		fields[fact.SecretField], _ = json.Marshal(string(value))
+		if clientfacts.DeliveryOnly(protocol) {
+			bag, err := SudokuKeyBag(string(value))
+			if err != nil {
+				return err
+			}
+			fields[fact.SecretField], _ = json.Marshal(bag)
+		} else {
+			fields[fact.SecretField], _ = json.Marshal(string(value))
+		}
 		raw, err := json.Marshal(fields)
 		defer common.WipeBytes(raw)
 		if err != nil {

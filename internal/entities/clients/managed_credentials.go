@@ -64,7 +64,7 @@ func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) 
 	}
 	managed := []clientfacts.Fact{}
 	for _, fact := range clientfacts.Facts() {
-		if fact.SecretField == "" {
+		if fact.SecretField == "" || clientfacts.DeliveryOnly(fact.Type) {
 			continue
 		}
 		if len(proposed[fact.UserField]) == 0 && len(stored[fact.UserField]) > 0 {
@@ -85,7 +85,7 @@ func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) 
 		}
 	}
 	if len(managed) == 0 {
-		return nil
+		return prepareSudokuDelivery(tx, client, editing)
 	}
 	if len(client.Config) > 0 && jsonvalue.StrictObject(client.Config) != nil || len(old.Config) > 0 && jsonvalue.StrictObject(old.Config) != nil {
 		return credentials.ErrInvalid
@@ -211,7 +211,10 @@ func prepareManagedCredentials(tx *gorm.DB, client *model.Client, editing bool) 
 	}
 	var err error
 	client.Config, err = json.Marshal(proposed)
-	return err
+	if err != nil {
+		return err
+	}
+	return prepareSudokuDelivery(tx, client, editing)
 }
 
 // PrepareAssignedCredentials is used by the existing inbound assignment and

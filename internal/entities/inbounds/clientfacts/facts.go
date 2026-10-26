@@ -34,6 +34,8 @@ var declarations = []Fact{
 	{"trusttunnel", "trusttunnel", false, false, true, "password"},
 	{"ssh", "ssh", false, false, false, "password"},
 	{"mtproxy", "mtproxy", false, false, false, "secret"},
+	// Keys are an encrypted delivery bundle, never a serving users array.
+	{"sudoku", "sudoku", false, false, true, "keys"},
 }
 
 // SupportsUDP is a portable protocol fact, narrowed by the selected outbound
@@ -79,6 +81,8 @@ func SupportsUDP(panelType string, outbound map[string]any) bool {
 }
 
 func Facts() []Fact { return append([]Fact(nil), declarations...) }
+
+func DeliveryOnly(panelType string) bool { return panelType == "sudoku" }
 
 func Resolve(panelType string) (Fact, bool) {
 	// This is a client credential variant selected by Shadowsocks options, not

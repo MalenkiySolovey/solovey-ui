@@ -107,11 +107,21 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		{Type: "trusttunnel", Tag: "archive-trusttunnel", TlsId: profile.Id, Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":23457,"network":["tcp","udp"],"congestion_controller":"cubic","cwnd":48,"disable_path_mtu_discovery":true}`)},
 		{Type: "ssh", Tag: "archive-ssh", Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":23460,"server_version":"SSH-2.0-ArchiveFixture","max_auth_tries":4}`)},
 		{Type: "mtproxy", Tag: "archive-mtproxy", Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":23461,"prefer_ip":"only-ipv4","concurrency":4,"auto_update":false,"doppelganger_each":"2h","throttle_check_interval":"45s"}`)},
+		{Type: "sudoku", Tag: "archive-sudoku", Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":23462,"aead_method":"none","padding_min":0,"padding_max":0,"enable_pure_downlink":false,"http_mask_mode":"poll","path_root":"archive"}`)},
 	}
 	var sshOptions map[string]any
 	_ = json.Unmarshal(inbounds[2].Options, &sshOptions)
 	sshOptions["host_key"] = map[string]string{"intent": "replace", "value": string(key)}
 	inbounds[2].Options, _ = json.Marshal(sshOptions)
+	sudokuMaster, err := credentials.GenerateSudokuMaster()
+	if err != nil {
+		t.Fatal(err)
+	}
+	sudokuPublic, _ := credentials.SudokuPublicKey(sudokuMaster)
+	var sudokuOptions map[string]any
+	_ = json.Unmarshal(inbounds[4].Options, &sudokuOptions)
+	sudokuOptions["master_key"] = map[string]string{"intent": "replace", "value": sudokuMaster}
+	inbounds[4].Options, _ = json.Marshal(sudokuOptions)
 	if err := db.Transaction(func(tx *gorm.DB) error {
 		for index := range inbounds {
 			if err := entityinbounds.FillAndSave(tx, &inbounds[index], "fixture.invalid"); err != nil {
@@ -133,7 +143,11 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		config[kind] = map[string]any{fact.SecretField: map[string]string{"intent": "replace", "value": password}}
 	}
 	clientConfig, _ := json.Marshal(config)
-	membership, _ := json.Marshal([]uint{inbounds[0].Id, inbounds[1].Id, inbounds[2].Id, inbounds[3].Id})
+	var inboundIDs []uint
+	for _, inbound := range inbounds {
+		inboundIDs = append(inboundIDs, inbound.Id)
+	}
+	membership, _ := json.Marshal(inboundIDs)
 	client := model.Client{Name: "archive-alice", Enable: true, Config: clientConfig, Inbounds: membership, Links: json.RawMessage(`[]`)}
 	data, _ := json.Marshal(client)
 	_, err = entityclients.Save(entityclients.SaveRequest{Tx: db, Action: "new", Data: data, Hostname: "fixture.invalid"})
@@ -154,6 +168,17 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 			t.Fatal("native credential was not sealed by the Users owner")
 		}
 	}
+	var sudokuSplit string
+	if err := credentials.UseClient(ctx, db, client.Id, "sudoku", stored["sudoku"], "archive-sudoku-canary", func(raw []byte) error {
+		var delivery struct{ Keys map[string]string }
+		if json.Unmarshal(raw, &delivery) != nil || !credentials.SudokuSplitMatches(delivery.Keys[strconv.Itoa(int(inbounds[4].Id))], sudokuMaster) {
+			t.Fatal("archive fixture did not receive a matching split key")
+		}
+		sudokuSplit = delivery.Keys[strconv.Itoa(int(inbounds[4].Id))]
+		return nil
+	}); err != nil {
+		t.Fatal(err)
+	}
 	checkProjection := func(candidate *gorm.DB) {
 		t.Helper()
 		projection, err := NewSingBoxConfigBuilder(nil).BuildCandidateProjectionFromDB(candidate, "", false)
@@ -165,12 +190,22 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 				Type    string
 				Users   []map[string]string
 				HostKey []string `json:"host_key"`
+				Key     string
 			}
 		}
-		if json.Unmarshal(projection.Config, &root) != nil || len(root.Inbounds) != 4 {
+		if json.Unmarshal(projection.Config, &root) != nil || len(root.Inbounds) != len(inbounds) {
 			t.Fatal("native runtime projection lost an inbound")
 		}
+		if bytes.Contains(projection.Config, []byte(sudokuMaster)) || bytes.Contains(projection.Config, []byte(sudokuSplit)) || bytes.Contains(projection.Config, []byte("master_key")) {
+			t.Fatal("Sudoku runtime projection disclosed delivery material")
+		}
 		for _, inbound := range root.Inbounds {
+			if inbound.Type == "sudoku" {
+				if len(inbound.Users) != 0 || inbound.Key != sudokuPublic {
+					t.Fatal("archive invented Sudoku Users or changed the serving identity")
+				}
+				continue
+			}
 			fact, _ := clientfacts.Resolve(inbound.Type)
 			if len(inbound.Users) != 1 || inbound.Users[0]["name"] != client.Name || inbound.Users[0][fact.SecretField] != passwords[inbound.Type] {
 				t.Fatal("native runtime projection lost its owner-bound credential")
@@ -179,12 +214,27 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 				t.Fatal("archived SSH host key lost its owner binding")
 			}
 		}
-		normal, err := entityinbounds.GetByIDs(candidate, strconv.Itoa(int(inbounds[2].Id)))
+		var candidateClient model.Client
+		if err := candidate.First(&candidateClient, client.Id).Error; err != nil {
+			t.Fatal(err)
+		}
+		var candidateFields map[string]json.RawMessage
+		_ = json.Unmarshal(candidateClient.Config, &candidateFields)
+		if err := credentials.UseClient(candidate.Statement.Context, candidate, client.Id, "sudoku", candidateFields["sudoku"], "archive-sudoku-proof", func(raw []byte) error {
+			var delivery struct{ Keys map[string]string }
+			if json.Unmarshal(raw, &delivery) != nil || delivery.Keys[strconv.Itoa(int(inbounds[4].Id))] != sudokuSplit {
+				t.Fatal("restored delivery key changed")
+			}
+			return nil
+		}); err != nil {
+			t.Fatal("restored Sudoku delivery credential lost its owner binding", err)
+		}
+		normal, err := entityinbounds.GetByIDs(candidate, strconv.Itoa(int(inbounds[2].Id))+","+strconv.Itoa(int(inbounds[4].Id)))
 		if err != nil {
 			t.Fatal(err)
 		}
 		encoded, _ := json.Marshal(normal)
-		if bytes.Contains(encoded, []byte("PRIVATE KEY")) || bytes.Contains(encoded, []byte("sbox:v1:")) {
+		if bytes.Contains(encoded, []byte("PRIVATE KEY")) || bytes.Contains(encoded, []byte("sbox:v1:")) || bytes.Contains(encoded, []byte(sudokuMaster)) {
 			t.Fatal("restored normal SSH read disclosed host-key material")
 		}
 	}
@@ -208,8 +258,8 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 			t.Fatal("private archive persisted a transient native password")
 		}
 	}
-	if bytes.Contains(archive, key) {
-		t.Fatal("private archive persisted a transient SSH host key")
+	if bytes.Contains(archive, key) || bytes.Contains(archive, []byte(sudokuMaster)) || bytes.Contains(archive, []byte(sudokuSplit)) {
+		t.Fatal("private archive persisted a transient inbound or delivery key")
 	}
 	var encrypted, decrypted bytes.Buffer
 	passphrase := []byte(rand.Text())
@@ -242,7 +292,7 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 	if master(target) == sourceMaster {
 		t.Fatal("fresh restore target did not receive an independent database master")
 	}
-	for kind := range passwords {
+	for _, kind := range []string{"mieru", "trusttunnel", "ssh", "mtproxy", "sudoku"} {
 		used := false
 		err := credentials.UseClient(ctx, target, client.Id, kind, stored[kind], "wrong-database", func([]byte) error { used = true; return nil })
 		if err == nil || used {

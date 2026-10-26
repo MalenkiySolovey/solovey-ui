@@ -156,13 +156,16 @@
                 </v-col>
                 <v-col>
                   <SecretCredentialField v-if="managedSecretField(key)" :key="String(client.id ?? 0) + ':' + key"
-                    v-model="clientConfig[key][managedSecretField(key)]" :available="credentialAvailable(key)" :label="managedSecretField(key)" />
+                    v-model="clientConfig[key][managedSecretField(key)]" :available="credentialAvailable(key)"
+                    :label="key === 'sudoku' ? $t('nativeInbound.sudokuDeliveryKeys') : managedSecretField(key)" :multiline="key === 'sudoku'"
+                    :clear-label="key === 'sudoku' ? $t('nativeInbound.sudokuClear') : undefined" />
                   <v-text-field
                     v-else-if="clientConfig[key].password != undefined"
                     label="Password"
                     v-model="clientConfig[key].password"
                     hide-details>
                   </v-text-field>
+                  <v-alert v-if="key === 'sudoku'" type="info" variant="tonal" density="compact">{{ $t('nativeInbound.sudokuDeliveryHint') }}</v-alert>
                   <v-text-field v-if="key === 'snell'" v-model="clientConfig[key].userkey" :label="$t('types.snell.userKey')"
                     :type="revealSnell ? 'text' : 'password'" :append-inner-icon="revealSnell ? 'mdi-eye-off' : 'mdi-eye'"
                     @click:append-inner="revealSnell = !revealSnell" />

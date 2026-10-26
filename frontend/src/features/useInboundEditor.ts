@@ -24,6 +24,7 @@ import Mieru from '@/components/protocols/Mieru.vue'
 import TrustTunnel from '@/components/protocols/TrustTunnel.vue'
 import SshInbound from '@/components/protocols/SshInbound.vue'
 import MTProxy from '@/components/protocols/MTProxy.vue'
+import Sudoku from '@/components/protocols/Sudoku.vue'
 import { serializeInboundCredentialDraft, inboundCredentialDraftInvalid } from './inboundCredentialDraft'
 import InTls from '@/components/tls/InTLS.vue'
 import TProxy from '@/components/protocols/TProxy.vue'
@@ -49,7 +50,7 @@ export default defineComponent({
       snapshot: "",
       side: "s",
       inTypes: InTypes,
-      inboundWithUsers: ['mixed', 'socks', 'http', 'shadowsocks', 'vmess', 'trojan', 'naive', 'hysteria', 'shadowtls', 'tuic', 'hysteria2', 'vless', 'anytls', 'snell', 'mieru', 'trusttunnel', 'ssh', 'mtproxy'],
+      inboundWithUsers: ['mixed', 'socks', 'http', 'shadowsocks', 'vmess', 'trojan', 'naive', 'hysteria', 'shadowtls', 'tuic', 'hysteria2', 'vless', 'anytls', 'snell', 'mieru', 'trusttunnel', 'ssh', 'mtproxy', 'sudoku'],
       initUsers: {
         model: 'none',
         values: <any>[],
@@ -199,7 +200,7 @@ export default defineComponent({
       return transport !== null && typeof transport === 'object' && !Array.isArray(transport)
     },
     nativeOptionsUnavailable(): boolean {
-      return [this.inTypes.Mieru, this.inTypes.TrustTunnel, this.inTypes.SSH, this.inTypes.MTProxy].includes(this.inbound.type) &&
+      return [this.inTypes.Mieru, this.inTypes.TrustTunnel, this.inTypes.SSH, this.inTypes.MTProxy, this.inTypes.Sudoku].includes(this.inbound.type) &&
         runtimeCapability(Data().capabilities, 'inbounds', this.inbound.type)?.available !== true
     },
     saveReasons(): SaveReason[] {
@@ -251,6 +252,6 @@ export default defineComponent({
   components: { InboundGuidance, SaveGuardNotice, CapabilityNotice,
     Listen, InTls, Hysteria2, Naive, Direct, Shadowsocks,
     Users, Hysteria, ShadowTls, TProxy, Multiplex, Tuic, Tun,
-    Trojan, AnyTls, Snell, Mieru, TrustTunnel, SshInbound, MTProxy, Transport, AddrVue, OutJsonVue, Dial, DomainResolver
+    Trojan, AnyTls, Snell, Mieru, TrustTunnel, SshInbound, MTProxy, Sudoku, Transport, AddrVue, OutJsonVue, Dial, DomainResolver
   }
 })
