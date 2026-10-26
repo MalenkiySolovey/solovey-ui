@@ -112,3 +112,18 @@ stubs keep these capabilities unavailable and preserve historical fields.
 This updates one exact existing declaration after owner/lifetime review; it adds
 no Direct site, worker, privilege, policy choice or inventory allowance. The R1
 base and unrelated entries stay fixed; no legacy inventory regeneration occurs.
+
+R7 E3c reviews that same `inboundDeclarations` site from `c936c51f...` to
+`56df4379...`. The declaration adds only the Sudoku registration with its
+compile-time capability fact. Its existing explicit Direct registration and
+all route/final/detour/fallback decisions are unchanged. Inbounds retains
+save/apply and serving Scope ownership; the canonical engine queue drains raw
+and detached HTTP sessions. SecretRef owns the master and per-user delivery
+key bag. Sudoku does not declare authenticated Users: KIP is shared key
+material, not a revocable or attributable user principal. The registry tests,
+complete-candidate rollback, real TCP/UDP session drain, credential rotation,
+private Backup/Restore and Classic/Nexus browser cases qualify that boundary.
+Official stubs keep the capability unavailable and preserve historical state.
+This replaces one exact existing declaration digest after owner/lifetime review;
+Direct-literal multiplicity, the R1 base, unrelated sites and total allowance
+stay fixed. SEC-2 remains BOUNDED_DEFERRED.
