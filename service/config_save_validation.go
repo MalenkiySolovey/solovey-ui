@@ -20,7 +20,7 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 			kinds = append(kinds, fact.Type)
 		}
 	}
-	for _, kind := range []string{"bond", "core-failover"} {
+	for _, kind := range []string{"bond", "core-failover", "call"} {
 		if entitycapabilities.Resolve("inbounds", kind).Available {
 			kinds = append(kinds, kind)
 		}

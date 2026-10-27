@@ -122,6 +122,14 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 	_ = json.Unmarshal(inbounds[4].Options, &sudokuOptions)
 	sudokuOptions["master_key"] = map[string]string{"intent": "replace", "value": sudokuMaster}
 	inbounds[4].Options, _ = json.Marshal(sudokuOptions)
+	const callCookie = "synthetic-archive-call-cookie"
+	const callPassword = "synthetic-archive-call-password"
+	const callJoinLink = "https://dion.vc/event/synthetic-archive-private-room"
+	callOptions, _ := json.Marshal(map[string]any{"platform": "dion", "email": "operator@fixture.invalid",
+		"cookies":   map[string]string{"intent": "replace", "value": `[{"name":"session","value":"` + callCookie + `"}]`},
+		"password":  map[string]string{"intent": "replace", "value": callPassword},
+		"join_link": map[string]string{"intent": "replace", "value": callJoinLink}})
+	callInbound := model.Inbound{Type: "call", Tag: "archive-call", Options: callOptions}
 	if err := db.Transaction(func(tx *gorm.DB) error {
 		for index := range inbounds {
 			if err := entityinbounds.FillAndSave(tx, &inbounds[index], "fixture.invalid"); err != nil {
@@ -140,7 +148,7 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 				return err
 			}
 		}
-		return nil
+		return entityinbounds.FillAndSave(tx, &callInbound, "fixture.invalid")
 	}); err != nil {
 		t.Fatal("native Inbounds owner fixture failed", err)
 	}
@@ -203,19 +211,28 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 				Users    []map[string]string
 				HostKey  []string `json:"host_key"`
 				Key      string
+				JoinLink string `json:"join_link"`
+				Password string
+				Cookies  []struct{ Name, Value string }
 				Inbounds []struct {
 					Tag  string
 					Port uint16 `json:"listen_port"`
 				}
 			}
 		}
-		if json.Unmarshal(projection.Config, &root) != nil || len(root.Inbounds) != len(inbounds)+2 {
+		if json.Unmarshal(projection.Config, &root) != nil || len(root.Inbounds) != len(inbounds)+3 {
 			t.Fatal("native runtime projection lost an inbound")
 		}
 		if bytes.Contains(projection.Config, []byte(sudokuMaster)) || bytes.Contains(projection.Config, []byte(sudokuSplit)) || bytes.Contains(projection.Config, []byte("master_key")) {
 			t.Fatal("Sudoku runtime projection disclosed delivery material")
 		}
 		for _, inbound := range root.Inbounds {
+			if inbound.Type == "call" {
+				if len(inbound.Users) != 0 || inbound.JoinLink != callJoinLink || inbound.Password != callPassword || len(inbound.Cookies) != 1 || inbound.Cookies[0].Value != callCookie {
+					t.Fatal("archive changed private Call room/account ownership")
+				}
+				continue
+			}
 			if inbound.Type == "bond" || inbound.Type == "failover" {
 				port := uint16(23466)
 				if inbound.Type == "failover" {
@@ -256,12 +273,12 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		}); err != nil {
 			t.Fatal("restored Sudoku delivery credential lost its owner binding", err)
 		}
-		normal, err := entityinbounds.GetByIDs(candidate, strconv.Itoa(int(inbounds[2].Id))+","+strconv.Itoa(int(inbounds[4].Id)))
+		normal, err := entityinbounds.GetByIDs(candidate, strconv.Itoa(int(inbounds[2].Id))+","+strconv.Itoa(int(inbounds[4].Id))+","+strconv.Itoa(int(callInbound.Id)))
 		if err != nil {
 			t.Fatal(err)
 		}
 		encoded, _ := json.Marshal(normal)
-		if bytes.Contains(encoded, []byte("PRIVATE KEY")) || bytes.Contains(encoded, []byte("sbox:v1:")) || bytes.Contains(encoded, []byte(sudokuMaster)) {
+		if bytes.Contains(encoded, []byte("PRIVATE KEY")) || bytes.Contains(encoded, []byte("sbox:v1:")) || bytes.Contains(encoded, []byte(sudokuMaster)) || bytes.Contains(encoded, []byte(callCookie)) || bytes.Contains(encoded, []byte(callPassword)) || bytes.Contains(encoded, []byte(callJoinLink)) {
 			t.Fatal("restored normal SSH read disclosed host-key material")
 		}
 	}

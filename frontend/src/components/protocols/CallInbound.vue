@@ -6,28 +6,35 @@
         <v-col cols="12" sm="6"><v-select v-model="data.platform" :items="platforms" :label="$t('nativeInbound.callPlatform')" /></v-col>
         <v-col v-if="data.platform === 'wbstream'" cols="12" sm="6"><v-select v-model="data.mode" :items="['dc', 'video']" clearable :label="$t('nativeInbound.callMode')" @click:clear="delete data.mode" /></v-col>
         <v-col v-else-if="data.mode !== undefined" cols="12" sm="6"><v-text-field :model-value="data.mode" readonly clearable :label="$t('nativeInbound.callModeInactive')" @click:clear="delete data.mode" /></v-col>
-        <v-col cols="12"><v-text-field v-model.number="data.read_buffer" type="number" min="1" clearable :label="$t('nativeInbound.callReadBuffer')" @click:clear="delete data.read_buffer" /></v-col>
+        <v-col cols="12"><v-text-field v-model.number="data.read_buffer" type="number" min="0" clearable :label="$t('nativeInbound.callReadBuffer')" @click:clear="delete data.read_buffer" /></v-col>
         <v-col cols="12"><SecretCredentialField v-model="data.join_link" :available="available" :label="$t('nativeInbound.callJoinLink')" /></v-col>
         <v-col cols="12"><div class="text-caption">{{ $t('nativeInbound.callJoinHint') }}</div></v-col>
         <v-col cols="12"><SecretCredentialField v-model="data.cookies" :available="available" :label="$t('nativeInbound.callCookies')" multiline /></v-col>
         <v-col cols="12"><div class="text-caption">{{ $t('nativeInbound.callCookiesHint') }}</div></v-col>
-        <template v-if="data.platform === 'dion'">
+        <template v-if="data.platform === 'dion' || hasDionCredentials">
+          <v-col v-if="data.platform !== 'dion'" cols="12"><v-alert type="info" variant="tonal" density="compact">{{ $t('nativeInbound.callAccountInactive') }}</v-alert></v-col>
           <v-col cols="12"><v-text-field v-model="data.email" :label="$t('nativeInbound.callEmail')" autocomplete="off" clearable @click:clear="delete data.email" /></v-col>
           <v-col cols="12"><SecretCredentialField v-model="data.password" :available="available" :label="$t('nativeInbound.callPassword')" /></v-col>
         </template>
       </v-row>
     </v-card-text>
   </v-card>
+  <Dial :dial="data" />
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { CallInbound } from '@/types/inbounds'
 import SecretCredentialField from '@/components/fields/SecretCredentialField.vue'
+import Dial from '@/components/fields/Dial.vue'
 import { runtimeCapability } from '@/types/runtimeCapabilities'
 import Data from '@/store/modules/data'
 
-defineProps<{ data: CallInbound }>()
+const props = defineProps<{ data: CallInbound }>()
 const platforms = ['dion', 'telemost', 'vk', 'wbstream']
 const available = computed(() => runtimeCapability(Data().capabilities, 'inbounds', 'call')?.available === true)
+const hasDionCredentials = computed(() => {
+  const password = props.data.password as { present?: boolean; intent?: string } | undefined
+  return !!props.data.email || password?.present === true || password?.intent === 'replace'
+})
 </script>
