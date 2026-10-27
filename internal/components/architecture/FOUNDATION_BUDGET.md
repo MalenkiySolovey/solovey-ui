@@ -182,3 +182,14 @@ restore and source retirement checks qualify these boundaries. Official
 retains unavailable capability facts and lossless stored-state preservation.
 The Direct declaration, routing decisions, worker allowance and R1 inventory
 remain unchanged; only this exact reviewed digest is replaced.
+
+R7 native Bond/CoreFailover Outbounds reviews the existing declaration site
+from `ee279e14...` to `f58fba0d...` and the existing tag reference scanner from
+`082a464f...` to `cddcb505...`. The registry adds two native Extended groups;
+the scanner protects canonical member references during rename/delete/reload.
+Outbounds retains row and credential ownership. Anonymous native selectors
+borrow the actual canonical runtime members, including their mutable selection
+and existing Panel health policy; the outer native group owns its wire protocol.
+The scanner also remains the authority for dependency-cycle interpretation.
+Its existing final/Direct policy is unchanged. These replace two exact reviewed
+digests without a new Direct site, worker allowance or R1 inventory regeneration.

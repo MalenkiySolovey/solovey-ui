@@ -1937,7 +1937,7 @@
       "rule": "direct-policy",
       "path": "core/registry/outbound.go",
       "symbol": "outboundDeclarations",
-      "digest": "ee279e1494d1dec735b1be2897eab2f2c3c273b43e496a176d6ccc233a3fadd0"
+      "digest": "f58fba0dc3eb8f533c9934949b4cd0d2f50d71066a0c4676dfa16e74f659e032"
     },
     {
       "rule": "direct-policy",
@@ -2039,7 +2039,7 @@
       "rule": "direct-policy",
       "path": "internal/singbox/tagrefs/rows.go",
       "symbol": "scanOutboundRowsForTag",
-      "digest": "082a464f0651b2ae6d6e30b329be2a45613fb213ea57cceb6b3144031cacde21"
+      "digest": "cddcb505331d22816746083ddcfafe3eb247d99444be88f067576e427f2cb065"
     },
     {
       "rule": "direct-policy",

@@ -52,6 +52,7 @@
       <Ssh v-if="outbound.type == outTypes.SSH" :data="outbound" />
       <CallNative v-if="outbound.type == outTypes.Call" :data="outbound" outbound />
       <NativeClientOutbound v-if="[outTypes.Mieru, outTypes.TrustTunnel].includes(outbound.type)" :data="outbound" />
+      <NativeOutboundGroup v-if="[outTypes.Bond, outTypes.CoreFailover].includes(outbound.type)" :data="outbound" />
       <Selector v-if="outbound.type == outTypes.Selector" :data="outbound" :tags="tags" />
       <UrlTest v-if="outbound.type == outTypes.URLTest" :data="outbound" :tags="tags" />
       <Failover v-if="outbound.type == outTypes.Failover" :data="outbound" :tags="tags" />
