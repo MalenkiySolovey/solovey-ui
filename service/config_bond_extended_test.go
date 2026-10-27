@@ -4,6 +4,7 @@ package service
 
 import (
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -12,6 +13,15 @@ import (
 )
 
 func TestBondCompleteCandidateUsesResolvedMembersWithoutChangingStorage(t *testing.T) {
+	for _, kind := range []string{"bond", "core-failover"} {
+		t.Run(kind, func(t *testing.T) { testInboundGroupCompleteCandidate(t, kind) })
+	}
+}
+
+func testInboundGroupCompleteCandidate(t *testing.T, kind string) {
+	group := func(value string) json.RawMessage {
+		return json.RawMessage(strings.Replace(value, `"type":"bond"`, `"type":"`+kind+`"`, 1))
+	}
 	initSettingTestDB(t)
 	seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
 	db := dbsqlite.DB()
@@ -24,10 +34,13 @@ func TestBondCompleteCandidateUsesResolvedMembersWithoutChangingStorage(t *testi
 		}
 	}
 	svc, _, _ := newHotReloadConfigService(t)
-	if _, err := svc.Save("inbounds", "new", json.RawMessage(`{"type":"bond","tag":"group","inbounds":[{"type":"socks","tag":"copied"}]}`), "", "admin", "fixture.invalid"); err == nil {
+	if kind == "core-failover" {
+		if _, err := svc.Save("inbounds", "new", json.RawMessage(`{"type":"failover","tag":"raw-alias","inbounds":["first","second"]}`), "", "admin", "fixture.invalid"); err == nil { t.Fatal("native alias bypassed canonical group ownership") }
+	}
+	if _, err := svc.Save("inbounds", "new", group(`{"type":"bond","tag":"group","inbounds":[{"type":"socks","tag":"copied"}]}`), "", "admin", "fixture.invalid"); err == nil {
 		t.Fatal("editor accepted a copied runtime member as canonical storage")
 	}
-	if _, err := svc.Save("inbounds", "new", json.RawMessage(`{"type":"bond","tag":"group","inbounds":["first","second"]}`), "", "admin", "fixture.invalid"); err != nil {
+	if _, err := svc.Save("inbounds", "new", group(`{"type":"bond","tag":"group","inbounds":["first","second"]}`), "", "admin", "fixture.invalid"); err != nil {
 		t.Fatal("valid resolved group candidate was rejected", err)
 	}
 	config, err := svc.GetConfig("")

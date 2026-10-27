@@ -17,44 +17,45 @@ async function effective(page: Page) {
 }
 
 for (const mode of ['classic', 'nexus']) {
-  test(`${mode} Bond edits canonical member references through the shared owner`, async ({ page }, testInfo) => {
+ for (const [kind, label] of [['bond', 'Bond'], ['core-failover', 'CoreFailover']]) {
+  test(`${mode} ${label} edits canonical member references through the shared owner`, async ({ page }, testInfo) => {
     test.setTimeout(90_000)
     await page.addInitScript(layout => window.localStorage.setItem('sui:ui:mode', layout), mode)
     await login(page)
     const capabilities = await (await page.request.get('api/capabilities')).json()
     expect(capabilities.success).toBe(true)
     if (process.env.SUI_E2E_EXPECT_PROVIDER) expect(capabilities.obj.provider.id).toBe(process.env.SUI_E2E_EXPECT_PROVIDER)
-    const fact = capabilities.obj.facts.find((row: { category: string; type: string }) => row.category === 'inbounds' && row.type === 'bond')
+    const fact = capabilities.obj.facts.find((row: { category: string; type: string }) => row.category === 'inbounds' && row.type === kind)
     expect(fact?.known).toBe(true)
     await page.goto('hosts/local/inbounds')
     await page.getByRole('button', { name: 'Add', exact: true }).first().click()
     let form = page.getByRole('dialog').filter({ hasText: 'Add Inbound' })
     await form.getByRole('combobox', { name: 'Type', exact: true }).press('Enter')
     if (!fact.available) {
-      await expect(page.getByRole('option', { name: 'Bond', exact: true })).toHaveAttribute('aria-disabled', 'true')
+      await expect(page.getByRole('option', { name: label, exact: true })).toHaveAttribute('aria-disabled', 'true')
       await page.keyboard.press('Escape')
       await form.getByRole('button', { name: 'Close', exact: true }).first().click()
       return
     }
     await page.keyboard.press('Escape')
     await form.getByRole('button', { name: 'Close', exact: true }).first().click()
-    const prefix = `r7-${mode}-bond-${Date.now()}`
+    const prefix = `r7-${mode}-${kind}-${Date.now()}`
     const tags = [`${prefix}-first`, `${prefix}-second`]
-    const port = mode === 'classic' ? 42110 : 42120
+    const port = (mode === 'classic' ? 42110 : 42120) + (kind === 'bond' ? 0 : 100)
     try {
       for (const [index, tag] of tags.entries()) await mutate(page, 'new', { type: 'socks', tag, listen: '127.0.0.1', listen_port: port + index })
       await page.reload()
       await page.getByRole('button', { name: 'Add', exact: true }).first().click()
       form = page.getByRole('dialog').filter({ hasText: 'Add Inbound' })
       await form.getByRole('combobox', { name: 'Type', exact: true }).press('Enter')
-      await page.getByRole('option', { name: 'Bond', exact: true }).click()
+      await page.getByRole('option', { name: label, exact: true }).click()
       await form.getByRole('textbox', { name: 'Tag', exact: true }).fill(prefix)
       await expect(form.getByRole('spinbutton', { name: 'Port', exact: true })).toHaveCount(0)
       await expect(form.getByRole('button', { name: 'Save', exact: true })).toBeDisabled()
       await form.getByRole('combobox', { name: 'Member inbounds', exact: true }).press('Enter')
       for (const tag of tags) await page.getByRole('option', { name: `${tag} (socks)`, exact: true }).click()
       await page.keyboard.press('Escape')
-      await page.screenshot({ path: testInfo.outputPath(`${mode}-bond-members.png`), fullPage: true })
+      await page.screenshot({ path: testInfo.outputPath(`${mode}-${kind}-members.png`), fullPage: true })
       const [response] = await Promise.all([
         page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/api/save')),
         form.getByRole('button', { name: 'Save', exact: true }).click(),
@@ -67,6 +68,7 @@ for (const mode of ['classic', 'nexus']) {
       expect(submitted).not.toHaveProperty('users')
       let config = await effective(page)
       let group = config.inbounds.find((row: { tag: string }) => row.tag === prefix)
+      expect(group.type).toBe(kind === 'core-failover' ? 'failover' : kind)
       expect(group.inbounds.map((row: { tag: string }) => row.tag)).toEqual(tags)
       expect(config.inbounds.some((row: { tag: string }) => tags.includes(row.tag))).toBe(false)
       const rows = (await (await page.request.get('api/inbounds')).json()).obj.inbounds
@@ -85,4 +87,5 @@ for (const mode of ['classic', 'nexus']) {
       for (const tag of [prefix, ...tags]) if (rows.some((row: { tag: string }) => row.tag === tag)) await mutate(page, 'del', tag)
     }
   })
+ }
 }

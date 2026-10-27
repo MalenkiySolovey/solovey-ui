@@ -13,6 +13,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 	"github.com/MalenkiySolovey/solovey-ui/internal/secrets/ownerdb"
 	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 	"golang.org/x/crypto/ssh"
@@ -185,7 +186,9 @@ func projectInboundCredentials(inbound model.Inbound, data *map[string]interface
 }
 
 func marshalRuntimeInbound(db *gorm.DB, inbound model.Inbound) ([]byte, error) {
-	raw, err := inbound.MarshalJSON()
+	runtimeInbound := inbound
+	runtimeInbound.Type = entitytypes.RuntimeType("inbounds", inbound.Type)
+	raw, err := runtimeInbound.MarshalJSON()
 	if err == nil && inbound.Type == "sudoku" {
 		return marshalSudokuRuntime(db, inbound, raw)
 	}

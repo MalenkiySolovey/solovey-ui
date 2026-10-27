@@ -61,15 +61,15 @@
       </template>
 
       <template #col.listen="{ item }">
-        <span class="nexus-mono">{{ item.type === 'bond' ? item.inbounds?.join(', ') : item.listen }}</span>
+        <span class="nexus-mono">{{ isInboundGroup(item.type) ? item.inbounds?.join(', ') : item.listen }}</span>
       </template>
 
       <template #col.listen_port="{ item }">
-        <span class="nexus-mono">{{ item.type === 'bond' ? '—' : item.listen_port }}</span>
+        <span class="nexus-mono">{{ isInboundGroup(item.type) ? '—' : item.listen_port }}</span>
       </template>
 
       <template #col.tls="{ item }">
-        <span v-if="item.type === 'bond'">—</span>
+        <span v-if="isInboundGroup(item.type)">—</span>
         <nexus-badge v-else
           :label="item.tls_id > 0 ? $t('nexus.on') : $t('nexus.off')"
           :variant="item.tls_id > 0 ? 'success' : 'secondary'"
@@ -99,6 +99,7 @@
 
 <script lang="ts" setup>
 import { computed, ref } from 'vue'
+import { isInboundGroup } from '@/types/inbounds'
 import { useI18n } from 'vue-i18n'
 
 import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'

@@ -14,10 +14,10 @@ const (
 	PinnedUTLSModuleSum         = "h1:Cp+yWkNTFkSihETgGWq34hlVFds5HpYWVOR1xovUVTs="
 	PinnedUTLSSourceRevision    = "f7d52c22f3a8d2f510ad1470f75cb6c3fe26aa37"
 
-	CapabilityResolverRevisionV1            = "57a33f3d26c9e755558e45dc76ad4b1e579c6834d6d53bcdca99edc589d4da90"
+	CapabilityResolverRevisionV1            = "329d46f69eab9799082754ca6253d0aba35fd34f6c9e6c95387e358c3b43ccf3"
 	BuildProfileWithUTLSRevision            = "2573ebf675608c4e589ebc062ecf46078f77244489cb5a1578ecb2b649ae0608"
 	BuildProfileWithoutUTLSRevision         = "a55ee5ad8f16d0ab527a612e4a89e2170b2751af200430a90022df99cc33192d"
-	PinnedRuntimeIdentityWithUTLSRevisionV1 = "51ea53eeae9d6dbfa2337bcd2d548595c31aeefacf8d4be5549252c090c2382f"
+	PinnedRuntimeIdentityWithUTLSRevisionV1 = "3d56af6ebd63d2235a1afe7d7b237ca18620eacc28ceb4bef3409e9e70e385de"
 )
 
 type ReasonCode string

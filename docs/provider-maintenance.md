@@ -238,3 +238,24 @@ resetting a User's delivery bundle does not revoke already delivered keys.
 Unassignment preserves stored keys. Official reports the capability unavailable
 and retains historical state. Subscription/import projection remains a separate
 EndpointIR owner requirement; native serving does not establish delivery parity.
+
+## Canonical inbound groups
+
+`bond` and `core-failover` select ordered canonical inbound tags through the
+same Inbounds owner. The group resolves those references into the runtime's
+owned children; it does not own a second listener, TLS configuration or Users
+list. Member edits reapply their owning group, while reference and endpoint
+leases protect membership changes. Group traffic has no per-client identity
+unless the engine can prove one; ordinary member traffic retains its member's
+authenticated identity.
+
+`core-failover` renders as native inbound `failover` only after owner resolution.
+That runtime alias is not a second public save type. The existing outbound
+`failover` mapping to a selector is unchanged. Official retains saved group
+state and reports the Extended capability unavailable.
+
+The reviewed `inboundDeclarations` budget site adds only the native failover
+registration behind the existing Extended adapter. It creates no worker or
+resource itself. Serving Scope owns the resulting group, members and sessions;
+the immutable engine revision owns its implementation and cleanup. The existing
+site count and unrelated foundation-budget entries remain unchanged.

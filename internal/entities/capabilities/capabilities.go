@@ -38,7 +38,7 @@ func Resolve(category, panelType string) Fact {
 func ResolveWithEnvironment(category, panelType string, environment Environment) Fact {
 	runtimeType := entitytypes.RuntimeType(category, panelType)
 	runtimeFact := registry.Resolve(category, runtimeType)
-	contextSupported := runtimeFact.Known
+	contextSupported := runtimeFact.Known && !entitytypes.IsRuntimeOnly(category, panelType)
 	if !contextSupported {
 		for _, fact := range registry.Facts() {
 			if fact.Type == panelType {
@@ -73,6 +73,9 @@ func Current() Snapshot {
 func CurrentWithEnvironment(environment Environment) Snapshot {
 	result := Snapshot{Schema: Schema, ComponentProfile: profile.Binary, Facts: []Fact{}, Provider: coreprovider.Current(), MulticastInterfaces: environment.MulticastNames()}
 	for _, fact := range registry.Facts() {
+		if entitytypes.IsRuntimeOnly(fact.Category, fact.Type) {
+			continue
+		}
 		result.Facts = append(result.Facts, ResolveWithEnvironment(fact.Category, fact.Type, environment))
 	}
 	for _, mapping := range entitytypes.Mappings() {

@@ -25,7 +25,7 @@ func TestCapabilitySemanticIdentityAndRuntimeContext(t *testing.T) {
 	if runtime["type"] != warp.RuntimeType || runtime["tag"] != ep.Tag || ep.Type != "warp" {
 		t.Fatalf("identity/serializer mismatch: %s", data)
 	}
-	for _, entry := range [][2]string{{"outbounds", "wireguard"}, {"inbounds", "warp"}, {"bad-context", "warp"}} {
+	for _, entry := range [][2]string{{"outbounds", "wireguard"}, {"inbounds", "warp"}, {"inbounds", "failover"}, {"bad-context", "warp"}} {
 		if fact := Resolve(entry[0], entry[1]); !fact.Known || fact.ContextSupported || fact.Available || fact.Reason != "KNOWN_BUT_UNSUPPORTED_ENTITY_CONTEXT" {
 			t.Fatalf("known type in wrong context must fail closed: %+v", fact)
 		}
@@ -37,6 +37,9 @@ func TestCapabilitySemanticIdentityAndRuntimeContext(t *testing.T) {
 		t.Fatalf("panel assembly mapping: %+v", fact)
 	}
 	one := Current()
+	for _, fact := range one.Facts {
+		if fact.Category == "inbounds" && fact.Type == "failover" { t.Fatal("native alias exposed a second canonical editor identity") }
+	}
 	one.Facts[0].Type = "changed"
 	if two := Current(); two.Schema != Schema || two.Facts[0].Type == "changed" {
 		t.Fatal("snapshot mutation escaped")

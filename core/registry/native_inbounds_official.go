@@ -10,10 +10,12 @@ const supportsMTProxyInbound = false
 const supportsSudokuInbound = false
 
 const supportsBondInbound = false
+const supportsCoreFailoverInbound = false
 
 func registerMieruInbound(*inbound.Registry)   {}
 func registerSSHInbound(*inbound.Registry)     {}
 func registerMTProxyInbound(*inbound.Registry) {}
 func registerSudokuInbound(*inbound.Registry)  {}
 
-func registerBondInbound(*inbound.Registry) {}
+func registerBondInbound(*inbound.Registry)         {}
+func registerCoreFailoverInbound(*inbound.Registry) {}

@@ -3,7 +3,7 @@ import { runtimeCapability } from '@/types/runtimeCapabilities'
 import { createInboundAddressKey } from './inboundAddressKeys'
 import { inboundGuidanceKeys } from './inboundGuidance'
 import InboundGuidance from '@/components/fields/InboundGuidance.vue'
-import { InTypes, createInbound, Addr, ShadowTLS } from '@/types/inbounds'
+import { InTypes, createInbound, isInboundGroup, Addr, ShadowTLS } from '@/types/inbounds'
 import RandomUtil from '@/plugins/randomUtil'
 import Dial from '@/components/fields/Dial.vue'
 import DomainResolver from '@/components/fields/DomainResolver.vue'
@@ -25,7 +25,7 @@ import TrustTunnel from '@/components/protocols/TrustTunnel.vue'
 import SshInbound from '@/components/protocols/SshInbound.vue'
 import MTProxy from '@/components/protocols/MTProxy.vue'
 import Sudoku from '@/components/protocols/Sudoku.vue'
-import BondInbound from '@/components/protocols/BondInbound.vue'
+import InboundGroup from '@/components/protocols/InboundGroup.vue'
 import { serializeInboundCredentialDraft, inboundCredentialDraftInvalid } from './inboundCredentialDraft'
 import InTls from '@/components/tls/InTLS.vue'
 import TProxy from '@/components/protocols/TProxy.vue'
@@ -142,7 +142,7 @@ export default defineComponent({
       const tag = this.$props.id > 0 ? this.inbound.tag : this.inbound.type + "-" + this.inbound.listen_port
       // Use previous data
       const prevConfig = { id: this.inbound.id, tag: tag, listen: this.inbound.listen?? "::", listen_port: this.inbound.listen_port }
-      this.inbound = createInbound(this.inbound.type, this.inbound.type === this.inTypes.Bond ? { id: this.inbound.id, tag } : this.inbound.type != this.inTypes.Tun ? prevConfig : { tag: tag })
+      this.inbound = createInbound(this.inbound.type, isInboundGroup(this.inbound.type) ? { id: this.inbound.id, tag } : this.inbound.type != this.inTypes.Tun ? prevConfig : { tag: tag })
       if (this.HasInData.includes(this.inbound.type)){
         this.inbound.addrs = []
         this.inbound.out_json = {}
@@ -196,21 +196,24 @@ export default defineComponent({
     },
   },
   computed: {
+    hasGroupMembers(): boolean {
+      return isInboundGroup(this.inbound.type)
+    },
     hasOwnListener(): boolean {
-      return ![this.inTypes.Tun, this.inTypes.Bond].includes(this.inbound.type)
+      return this.inbound.type !== this.inTypes.Tun && !this.hasGroupMembers
     },
     hasGenericTransport(): boolean {
       const transport = (<any>this.inbound).transport
       return transport !== null && typeof transport === 'object' && !Array.isArray(transport)
     },
     nativeOptionsUnavailable(): boolean {
-      return [this.inTypes.Mieru, this.inTypes.TrustTunnel, this.inTypes.SSH, this.inTypes.MTProxy, this.inTypes.Sudoku, this.inTypes.Bond].includes(this.inbound.type) &&
+      return [this.inTypes.Mieru, this.inTypes.TrustTunnel, this.inTypes.SSH, this.inTypes.MTProxy, this.inTypes.Sudoku, this.inTypes.Bond, this.inTypes.CoreFailover].includes(this.inbound.type) &&
         runtimeCapability(Data().capabilities, 'inbounds', this.inbound.type)?.available !== true
     },
     saveReasons(): SaveReason[] {
       const rangeOnly = this.inbound.type === this.inTypes.Mieru && (<any>this.inbound).listen_ports?.length > 0 && !this.inbound.listen_port
       const reasons = entitySaveReasons({ identity: this.inbound.tag, port: this.inbound.listen_port, requiresPort: this.hasOwnListener && !rangeOnly, pending: this.loading, capability: this.capabilityState, missingRequiredTls: this.OnlyTLS.includes(this.inbound.type) && !this.inbound.tls_id, credentialInvalid: inboundCredentialDraftInvalid(this.inbound) })
-      if (this.inbound.type === this.inTypes.Bond && !(<any>this.inbound).inbounds?.length) reasons.push('nativeInbound.bondMembersRequired')
+      if (this.hasGroupMembers && !(<any>this.inbound).inbounds?.length) reasons.push('nativeInbound.bondMembersRequired')
       return reasons
     },
     capabilityState(): CapabilityEditState {
@@ -258,6 +261,6 @@ export default defineComponent({
   components: { InboundGuidance, SaveGuardNotice, CapabilityNotice,
     Listen, InTls, Hysteria2, Naive, Direct, Shadowsocks,
     Users, Hysteria, ShadowTls, TProxy, Multiplex, Tuic, Tun,
-    Trojan, AnyTls, Snell, Mieru, TrustTunnel, SshInbound, MTProxy, Sudoku, BondInbound, Transport, AddrVue, OutJsonVue, Dial, DomainResolver
+    Trojan, AnyTls, Snell, Mieru, TrustTunnel, SshInbound, MTProxy, Sudoku, InboundGroup, Transport, AddrVue, OutJsonVue, Dial, DomainResolver
   }
 })

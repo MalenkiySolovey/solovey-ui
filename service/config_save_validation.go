@@ -20,8 +20,10 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 			kinds = append(kinds, fact.Type)
 		}
 	}
-	if entitycapabilities.Resolve("inbounds", "bond").Available {
-		kinds = append(kinds, "bond")
+	for _, kind := range []string{"bond", "core-failover"} {
+		if entitycapabilities.Resolve("inbounds", kind).Available {
+			kinds = append(kinds, kind)
+		}
 	}
 	if len(kinds) == 0 || !tx.Migrator().HasTable(&model.Inbound{}) {
 		return nil
