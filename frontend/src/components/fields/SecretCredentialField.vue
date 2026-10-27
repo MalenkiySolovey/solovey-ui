@@ -17,7 +17,7 @@ import { computed, shallowRef, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { unchangedSecret } from '@/features/secretCredentialDraft'
 
-const props = defineProps<{ modelValue?: unknown; available: boolean; label: string; multiline?: boolean }>()
+const props = defineProps<{ modelValue?: unknown; available: boolean; label: string; multiline?: boolean; clearLabel?: string }>()
 const emit = defineEmits<{ 'update:modelValue': [value: unknown] }>()
 const { t } = useI18n()
 const baseline = shallowRef(unchangedSecret(props.modelValue))
@@ -33,7 +33,7 @@ const replacement = computed(() => mode.value === 'replace' ? (props.modelValue 
 const choices = computed(() => [
   { title: t('secretCredential.keep'), value: 'unchanged' },
   { title: t('secretCredential.replace'), value: 'replace' },
-  { title: t('secretCredential.clear'), value: 'clear' },
+  { title: props.clearLabel ?? t('secretCredential.clear'), value: 'clear' },
 ])
 function selectMode(value: string) {
   if (!props.available) return

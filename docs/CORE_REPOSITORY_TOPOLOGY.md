@@ -38,12 +38,13 @@ source delta, with the underlying shared/different authority stated explicitly:
 
 | Case | Module / actual authority | Consumers and ownership |
 |---|---|---|
-| D, different authorities (B) | SagerNet/sing-box; shtorm-7/sing-box-extended | Separate engine copies and queues above; four Official and fourteen Extended source commits |
+| D, different authorities (B) | SagerNet/sing-box; shtorm-7/sing-box-extended | Separate engine copies and queues above; four Official and seventeen Extended source commits |
 | D, shared authority (A) | SagerNet/sing-quic | One copy; one accepted Official source commit and two Extended source commits, independently pinned |
 | D, shared authority (A) | anytls/sing-anytls | One copy; one accepted source commit selected by both providers |
 | B | sing, sing-mux, sing-vmess, wireguard-go, tailscale | Official consumes SagerNet directly; Extended consumes the corresponding shtorm-7 repositories directly; no Solovey source delta |
 | C | shtorm-7/dnscrypt/v2 | Extended-only replacement for ameshkov/dnscrypt/v2; no Solovey source delta |
 | C | shtorm-7/mtg-multi | Extended-only replacement for dolonet/mtg-multi; no Solovey source delta |
+| C | gobwas/ws | Extended Sudoku transport dependency; upstream v1.4.0 consumed directly, no Solovey source delta |
 | C | shtorm-7/connect-ip-go | Extended-only replacement for Diniboy1123/connect-ip-go; no Solovey source delta |
 | C | shtorm-7/go-cache/v2, shtorm-7/rmux, shtorm-7/workerpool | Extended-only selected authorities; no Solovey source delta |
 

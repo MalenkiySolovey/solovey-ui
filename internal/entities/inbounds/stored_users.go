@@ -18,6 +18,9 @@ type StoredUsers struct{}
 const clientHasInboundCondition = "? IN (SELECT json_each.value FROM json_each(clients.inbounds))"
 
 func (s StoredUsers) HasUser(inboundType string) bool {
+	if clientfacts.DeliveryOnly(inboundType) {
+		return false
+	}
 	_, ok := clientfacts.UserField(inboundType)
 	return ok
 }

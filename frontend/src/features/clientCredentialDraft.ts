@@ -6,7 +6,7 @@ type Config = Record<string, Record<string, unknown>>
 
 // Fixed Users owner field schemas; availability always comes from the backend.
 export const managedClientSecretFields: Readonly<Record<string, string>> = {
-  mieru: 'password', trusttunnel: 'password', ssh: 'password', mtproxy: 'secret',
+  mieru: 'password', trusttunnel: 'password', ssh: 'password', mtproxy: 'secret', sudoku: 'keys',
 }
 
 export function managedCredentialAvailable(snapshot: RuntimeCapabilities | undefined, kind: string): boolean {
@@ -15,7 +15,7 @@ export function managedCredentialAvailable(snapshot: RuntimeCapabilities | undef
 
 export function initializeClientCredentialDrafts(config: Config, snapshot: RuntimeCapabilities | undefined, name: string) {
   for (const kind of Object.keys(managedClientSecretFields)) {
-    if (!config[kind] && managedCredentialAvailable(snapshot, kind)) config[kind] = { name }
+    if (!config[kind] && managedCredentialAvailable(snapshot, kind)) config[kind] = kind === 'sudoku' ? {} : { name }
   }
 }
 
@@ -38,7 +38,7 @@ export function clientCredentialDraftInvalid(config: Config): boolean {
 export function shuffleManagedClientCredentials(config: Config, snapshot: RuntimeCapabilities | undefined, selected?: string) {
   for (const [kind, field] of Object.entries(managedClientSecretFields)) {
     if (config[kind] && (!selected || selected === kind) && managedCredentialAvailable(snapshot, kind)) {
-      config[kind][field] = { intent: 'replace', value: kind === 'mtproxy' ? RandomUtil.randomMTProxySecret() : RandomUtil.randomSeq(32) }
+      config[kind][field] = { intent: 'replace', value: kind === 'sudoku' ? '{}' : kind === 'mtproxy' ? RandomUtil.randomMTProxySecret() : RandomUtil.randomSeq(32) }
     }
   }
 }

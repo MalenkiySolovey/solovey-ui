@@ -32,6 +32,9 @@ func nativeInboundFindings(kind, side, path string, source json.RawMessage) []di
 	}
 	delete(fields, "type")
 	delete(fields, "tag")
+	if kind == "sudoku" {
+		delete(fields, "master_key")
+	}
 	if kind == "ssh" {
 		// The Inbounds owner validates and seals explicit private-key mutations.
 		// The complete resolved candidate is checked by the actual provider.

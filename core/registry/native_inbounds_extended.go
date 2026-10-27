@@ -7,12 +7,15 @@ import (
 	"github.com/sagernet/sing-box/protocol/mieru"
 	"github.com/sagernet/sing-box/protocol/mtproxy"
 	"github.com/sagernet/sing-box/protocol/ssh"
+	"github.com/sagernet/sing-box/protocol/sudoku"
 )
 
 const supportsMieruInbound = true
 const supportsSSHInbound = true
 const supportsMTProxyInbound = true
+const supportsSudokuInbound = true
 
 func registerMieruInbound(r *inbound.Registry)   { mieru.RegisterInbound(r) }
 func registerSSHInbound(r *inbound.Registry)     { ssh.RegisterInbound(r) }
 func registerMTProxyInbound(r *inbound.Registry) { mtproxy.RegisterInbound(r) }
+func registerSudokuInbound(r *inbound.Registry)  { sudoku.RegisterInbound(r) }

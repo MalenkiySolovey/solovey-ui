@@ -13,6 +13,164 @@ function nativeCredential(kind: string, mode: string, revision: string) {
     : `synthetic-${mode}-${kind}-${revision}`
 }
 
+for (const mode of ['classic', 'nexus']) {
+  test(`${mode} sudoku keeps serving identity and delivery credentials in their canonical owners`, async ({ page }, testInfo) => {
+    test.setTimeout(120_000)
+    await page.addInitScript(layout => window.localStorage.setItem('sui:ui:mode', layout), mode)
+    await login(page)
+    const capabilities = await (await page.request.get('api/capabilities')).json()
+    expect(capabilities.success).toBe(true)
+    if (process.env.SUI_E2E_EXPECT_PROVIDER) expect(capabilities.obj.provider.id).toBe(process.env.SUI_E2E_EXPECT_PROVIDER)
+    const fact = capabilities.obj.facts.find((row: { category: string; type: string }) => row.category === 'inbounds' && row.type === 'sudoku')
+    expect(fact?.known).toBe(true)
+    if (!fact.available) {
+      await page.goto('hosts/local/inbounds')
+      await page.getByRole('button', { name: 'Add', exact: true }).first().click()
+      const form = page.getByRole('dialog').filter({ hasText: 'Add Inbound' })
+      await form.getByRole('combobox', { name: 'Type', exact: true }).press('Enter')
+      await expect(page.getByRole('option', { name: 'Sudoku', exact: true })).toHaveAttribute('aria-disabled', 'true')
+      await page.keyboard.press('Escape')
+      await form.getByRole('button', { name: 'Close', exact: true }).first().click()
+      return
+    }
+    const tag = `r7-${mode}-sudoku-${Date.now()}`
+    const master = () => randomBytes(31).toString('hex') + '00'
+    const firstMaster = master()
+    const port = mode === 'classic' ? 42008 : 42028
+    const editInbound = async () => {
+      await page.goto('hosts/local/inbounds')
+      if (mode === 'nexus') await page.getByRole('row').filter({ hasText: tag }).getByRole('button', { name: 'Edit', exact: true }).click()
+      else await page.locator('.inbounds__card').filter({ hasText: tag }).getByRole('button', { name: 'Edit', exact: true }).click()
+      return page.getByRole('dialog').filter({ hasText: 'Edit Inbound' })
+    }
+    try {
+      await page.goto('hosts/local/clients')
+      await page.getByRole('button', { name: 'Add', exact: true }).first().click()
+      let form = page.getByRole('dialog').filter({ hasText: 'Add Client' })
+      await form.getByRole('textbox', { name: 'Name', exact: true }).fill(`${tag}-user`)
+      await save(page, form)
+
+      await page.goto('hosts/local/inbounds')
+      await page.getByRole('button', { name: 'Add', exact: true }).first().click()
+      form = page.getByRole('dialog').filter({ hasText: 'Add Inbound' })
+      await select(page, form, 'Type', 'Sudoku')
+      await form.getByRole('textbox', { name: 'Tag', exact: true }).fill(tag)
+      await form.getByRole('textbox', { name: 'Address', exact: true }).fill('127.0.0.1')
+      await form.getByRole('spinbutton', { name: 'Port', exact: true }).fill(String(port))
+      await expect(form).toContainText('individual revocation are unavailable')
+      await select(page, form, 'Sudoku private master key', 'Replace credential')
+      await form.getByLabel('New credential', { exact: true }).fill(firstMaster)
+      await select(page, form, 'AEAD method', 'none')
+      await select(page, form, 'Table layout', 'up_ascii_down_entropy')
+      for (const label of ['Minimum padding (%)', 'Maximum padding (%)', 'Handshake timeout (seconds)']) {
+        await form.getByRole('spinbutton', { name: label, exact: true }).fill('0')
+      }
+      await select(page, form, 'Pure downlink', 'Disable')
+      await form.getByRole('textbox', { name: 'Custom table pattern', exact: true }).fill('xpxvvpvv')
+      const tables = form.getByRole('combobox', { name: 'Rotating table patterns', exact: true })
+      await tables.fill('xpxvvpvv')
+      await tables.press('Enter')
+      await form.getByLabel('Disable HTTP masking', { exact: true }).check()
+      await form.getByLabel('Disable HTTP masking', { exact: true }).uncheck()
+      await select(page, form, 'HTTP mask mode', 'ws')
+      await form.getByRole('textbox', { name: 'HTTP path root segment', exact: true }).fill('sudoku-browser')
+      await form.getByRole('textbox', { name: 'Fallback host:port', exact: true }).fill('127.0.0.1:9')
+      const users = form.locator('.v-card').filter({ has: page.locator('.v-card-subtitle').filter({ hasText: /^Clients$/ }) }).last()
+      await users.locator('input[role="combobox"]').first().press('Enter')
+      await page.getByRole('option', { name: 'Clients', exact: true }).click()
+      await select(page, users, 'Clients', `${tag}-user`)
+      await page.keyboard.press('Escape')
+      const created = await save(page, form)
+      expect(created.master_key.intent === 'replace' && created.master_key.value === firstMaster).toBe(true)
+      expect(created).not.toHaveProperty('users')
+      expect(created).not.toHaveProperty('out_json')
+      const listed = await (await page.request.get('api/inbounds')).json()
+      const inboundID = listed.obj.inbounds.find((row: { tag: string }) => row.tag === tag).id
+      const readInbound = async () => (await (await page.request.get(`api/inbounds?id=${inboundID}`)).json()).obj.inbounds[0]
+      const stored = await readInbound()
+      expect(stored.master_key.present).toBe(true)
+      expect(stored.master_key.reference.owner).toBe('inbounds')
+      expect(stored.key).toMatch(/^[a-f0-9]{64}$/)
+      expect(!JSON.stringify(stored).includes(firstMaster)).toBe(true)
+      let client = await readClient(page, `${tag}-user`)
+      let delivery = client.config.sudoku.keys
+      expect(client.inbounds).toEqual([inboundID])
+      expect(client.config.sudoku).not.toHaveProperty('name')
+      expect(delivery.present).toBe(true)
+      expect(delivery.reference.owner).toBe('users')
+      const servingKey = stored.key
+
+      form = await editInbound()
+      await expect(form.getByRole('textbox', { name: 'Serving public key', exact: true })).toHaveValue(servingKey)
+      await expect(form.getByLabel('New credential', { exact: true })).toHaveCount(0)
+      await expect(form.getByRole('spinbutton', { name: 'Handshake timeout (seconds)', exact: true })).toHaveValue('0')
+      await expect(form.getByRole('combobox', { name: 'Pure downlink', exact: true })).toHaveValue('Disable')
+      await form.getByRole('textbox', { name: 'HTTP path root segment', exact: true }).fill('sudoku-edited')
+      const kept = await save(page, form)
+      expect(kept.master_key.intent).toBe('unchanged')
+      expect((await readInbound()).master_key).toEqual(stored.master_key)
+      const effective = await checkEffective(page, tag, 'sudoku')
+      expect(effective).toMatchObject({ key: servingKey, aead_method: 'none', table_type: 'up_ascii_down_entropy',
+        padding_min: 0, padding_max: 0, handshake_timeout: 0, enable_pure_downlink: false, custom_table: 'xpxvvpvv',
+        disable_http_mask: false, http_mask_mode: 'ws', path_root: 'sudoku-edited', fallback: '127.0.0.1:9' })
+      expect([effective.custom_tables].flat()).toEqual(['xpxvvpvv'])
+      expect(effective).not.toHaveProperty('master_key')
+
+      await page.goto('hosts/local/clients')
+      form = await editClient(page, `${tag}-user`)
+      await form.getByRole('textbox', { name: 'Description', exact: true }).fill('keep the delivery bundle')
+      await form.getByRole('tab', { name: 'Config', exact: true }).click()
+      let credential = form.locator('.v-row').filter({ has: page.getByText('sudoku', { exact: true }) })
+      await expect(credential).toContainText('Its value is hidden.')
+      await expect(credential).toContainText('do not revoke previously delivered keys')
+      await credential.scrollIntoViewIfNeeded()
+      await page.screenshot({ path: testInfo.outputPath(`${mode}-sudoku-masked.png`), fullPage: true })
+      expect((await save(page, form)).config.sudoku.keys.intent).toBe('unchanged')
+      expect((await readClient(page, `${tag}-user`)).config.sudoku.keys).toEqual(delivery)
+      for (const enabled of [false, true]) {
+        form = await editClient(page, `${tag}-user`)
+        await form.getByLabel('Enable', { exact: true }).setChecked(enabled)
+        await save(page, form)
+        client = await readClient(page, `${tag}-user`)
+        expect(client.enable).toBe(enabled)
+        expect(client.config.sudoku.keys).toEqual(delivery)
+        expect((await checkEffective(page, tag, 'sudoku')).key).toBe(servingKey)
+      }
+      form = await editClient(page, `${tag}-user`)
+      await form.getByRole('tab', { name: 'Config', exact: true }).click()
+      credential = form.locator('.v-row').filter({ has: page.getByText('sudoku', { exact: true }) })
+      await select(page, credential, 'Sudoku delivery keys by inbound ID (JSON)', 'Clear stored credential')
+      await save(page, form)
+      expect((await readClient(page, `${tag}-user`)).config.sudoku.keys.present).toBe(false)
+      expect((await checkEffective(page, tag, 'sudoku')).key).toBe(servingKey)
+      form = await editClient(page, `${tag}-user`)
+      await form.getByRole('tab', { name: 'Config', exact: true }).click()
+      credential = form.locator('.v-row').filter({ has: page.getByText('sudoku', { exact: true }) })
+      await select(page, credential, 'Sudoku delivery keys by inbound ID (JSON)', 'Replace credential')
+      await credential.getByLabel('New credential', { exact: true }).fill('{}')
+      await save(page, form)
+      delivery = (await readClient(page, `${tag}-user`)).config.sudoku.keys
+      expect(delivery.present).toBe(true)
+
+      form = await editInbound()
+      await select(page, form, 'Sudoku private master key', 'Replace credential')
+      await form.getByLabel('New credential', { exact: true }).fill(master())
+      await save(page, form)
+      const rotated = await readInbound()
+      expect(rotated.key).not.toBe(servingKey)
+      expect((await readClient(page, `${tag}-user`)).config.sudoku.keys.rotationRevision).not.toBe(delivery.rotationRevision)
+      expect((await checkEffective(page, tag, 'sudoku')).key).toBe(rotated.key)
+      form = await editInbound()
+      await select(page, form, 'Sudoku private master key', 'Clear stored credential')
+      await save(page, form)
+      expect((await readInbound()).master_key.present).toBe(false)
+      expect((await checkEffective(page, tag, 'sudoku')).key).toBe(rotated.key)
+    } finally {
+      await removeFixture(page, tag)
+    }
+  })
+}
+
 async function select(page: Page, form: Locator, label: string, value: string) {
   await form.getByRole('combobox', { name: label, exact: true }).press('Enter')
   await page.getByRole('option', { name: value, exact: true }).click()

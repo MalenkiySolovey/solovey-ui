@@ -28,7 +28,7 @@ function mount(feature: any, id: number) {
 }
 function capabilities(available: boolean) {
   return { schema: 'solovey-ui/entity-capabilities/v1' as const, componentProfile: 'full' as const,
-    facts: ['mieru', 'trusttunnel', 'ssh', 'mtproxy'].map(type => ({ category: 'inbounds', type, runtimeType: type,
+    facts: ['mieru', 'trusttunnel', 'ssh', 'mtproxy', 'sudoku'].map(type => ({ category: 'inbounds', type, runtimeType: type,
       known: true, contextSupported: true, registered: available, compiled: available, available })) }
 }
 const storedView = () => ({ reference: { owner: 'users', id: 'record:7:mieru.password', policy: 'OWNER_USE_AND_PRESENCE' as const, projection: 'MASKED' as const }, present: true, rotationRevision: 'a'.repeat(64), correlation: { owner: 'users', private: 'metadata-only' } })
@@ -75,6 +75,58 @@ describe('native credential drafts in the existing Users editor', () => {
   })
 
   for (const mode of ['classic', 'nexus']) {
+    it(`${mode} retains the Sudoku public identity and explicit false/zero fields while submitting only the master mutation`, async () => {
+      fixture.mode.value = mode
+      const view = { ...storedView(), reference: { ...storedView().reference, owner: 'inbounds', id: 'record:9:master_key' } }
+      const shape = { id: 9, tag: 'sudoku-owned', listen: '127.0.0.1', listen_port: 23456, key: 'public-fixture', master_key: view,
+        aead_method: 'aes-128-gcm', padding_min: 0, padding_max: 30, table_type: 'up_ascii_down_entropy', handshake_timeout: 0,
+        enable_pure_downlink: false, custom_table: 'xpxvvpvv', custom_tables: ['xpxvvpvv'], disable_http_mask: false,
+        http_mask_mode: 'poll', path_root: 'owned', fallback: 'fixture.invalid:8080' }
+      fixture.store.loadInbounds = async () => [createInbound('sudoku', shape)]
+      const vm = mount(Inbound, 9)
+      await vm.loadData(9)
+      expect(vm.dirty).toBe(false)
+      expect(vm.HasTls).not.toContain('sudoku')
+      expect(vm.hasGenericTransport).toBe(false)
+      await vm.saveChanges()
+      expect(fixture.store.save).toHaveBeenCalledWith('inbounds', 'edit', expect.objectContaining({ ...shape,
+        master_key: { intent: 'unchanged', reference: view.reference, present: true, rotationRevision: 'a'.repeat(64) } }), [])
+      fixture.store.save.mockClear()
+      vm.inbound.master_key = { intent: 'replace', value: '' }
+      expect(vm.saveReasons).toContain('secretCredential.required')
+      await vm.saveChanges()
+      expect(fixture.store.save).not.toHaveBeenCalled()
+      await vm.loadData(9)
+      fixture.store.capabilities = capabilities(false)
+      expect(vm.nativeOptionsUnavailable).toBe(true)
+      expect(vm.capabilityState.message).toBe('capability.historical')
+    })
+
+    it(`${mode} keeps Sudoku delivery keys in the shared Users editor without inventing a principal`, async () => {
+      fixture.mode.value = mode
+      const view = { ...storedView(), reference: { ...storedView().reference, id: 'record:7:sudoku.keys' } }
+      fixture.store.loadClients = async () => ({ id: 7, name: 'alice', config: { sudoku: { keys: view } }, inbounds: [1], links: [] })
+      const vm = mount(Client, 7)
+      await vm.updateData(7)
+      expect(vm.clientConfig.sudoku.name).toBeUndefined()
+      expect(vm.managedSecretField('sudoku')).toBe('keys')
+      await vm.saveChanges()
+      expect(fixture.store.save).toHaveBeenCalledWith('clients', 'edit', expect.objectContaining({ config: expect.objectContaining({
+        sudoku: { keys: { intent: 'unchanged', reference: view.reference, present: true, rotationRevision: 'a'.repeat(64) } },
+      }) }))
+      fixture.store.save.mockClear()
+      vm.shuffle('sudoku')
+      expect(vm.clientConfig.sudoku.keys).toEqual({ intent: 'replace', value: '{}' })
+      await vm.updateData(7)
+      fixture.store.capabilities = capabilities(false)
+      vm.client.name = 'renamed'
+      vm.shuffle('sudoku')
+      await vm.saveChanges()
+      expect(fixture.store.save).toHaveBeenCalledWith('clients', 'edit', expect.objectContaining({ name: 'renamed', config: expect.objectContaining({
+        sudoku: { keys: { intent: 'unchanged', reference: view.reference, present: true, rotationRevision: 'a'.repeat(64) } },
+      }) }))
+    })
+
     it(`${mode} retains masked SSH host keys and submits explicit host-key mutations through Inbounds`, async () => {
       fixture.mode.value = mode
       const view = { ...storedView(), reference: { ...storedView().reference, owner: 'inbounds', id: 'record:9:host_key' } }
@@ -164,12 +216,16 @@ describe('native credential drafts in the existing Users editor', () => {
       expect(source).toContain('<TrustTunnel v-if="inbound.type == inTypes.TrustTunnel" :data="inbound" />')
       expect(source).toContain('<SshInbound v-if="inbound.type == inTypes.SSH" :data="inbound" />')
       expect(source).toContain('<MTProxy v-if="inbound.type == inTypes.MTProxy" :data="inbound" />')
+      expect(source).toContain('<Sudoku v-if="inbound.type == inTypes.Sudoku" :data="inbound" />')
       expect(source).toContain('<Transport v-if="hasGenericTransport"')
       expect(source).toContain(':defaults="{ global: { disabled: nativeOptionsUnavailable } }"')
     }
   })
 
   it('guards raw host keys and generates a complete MTProxy fake-TLS credential', () => {
+    for (const master_key of ['private-plaintext', { intent: 'replace', value: '' }, { intent: 'clear', value: 'extra' }]) {
+      expect(inboundCredentialDraftInvalid({ type: 'sudoku', master_key })).toBe(true)
+    }
     for (const host_key of ['private-plaintext', { intent: 'replace', value: '' }, { intent: 'clear', value: 'extra' }]) {
       expect(inboundCredentialDraftInvalid({ type: 'ssh', host_key })).toBe(true)
     }
@@ -182,5 +238,8 @@ describe('native credential drafts in the existing Users editor', () => {
     shuffleManagedClientCredentials(config, capabilities(true), 'mtproxy')
     expect(config.mtproxy.secret).toEqual({ intent: 'replace', value: expect.stringMatching(/^ee[0-9a-f]{32}7777772e676f6f676c652e636f6d$/) })
     expect(config.ssh.password).toBeUndefined()
+    expect(config.sudoku).toEqual({})
+    shuffleManagedClientCredentials(config, capabilities(true), 'sudoku')
+    expect(config.sudoku).toEqual({ keys: { intent: 'replace', value: '{}' } })
   })
 })

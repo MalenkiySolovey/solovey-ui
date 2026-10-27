@@ -7,7 +7,9 @@ import "github.com/sagernet/sing-box/adapter/inbound"
 const supportsMieruInbound = false
 const supportsSSHInbound = false
 const supportsMTProxyInbound = false
+const supportsSudokuInbound = false
 
 func registerMieruInbound(*inbound.Registry)   {}
 func registerSSHInbound(*inbound.Registry)     {}
 func registerMTProxyInbound(*inbound.Registry) {}
+func registerSudokuInbound(*inbound.Registry)  {}

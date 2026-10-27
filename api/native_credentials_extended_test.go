@@ -28,7 +28,7 @@ import (
 )
 
 func TestNativeCredentialHTTPAuthorizationMaskingAndStaleDraft(t *testing.T) {
-	for _, kind := range []string{"mieru", "trusttunnel", "ssh", "mtproxy"} {
+	for _, kind := range []string{"mieru", "trusttunnel", "ssh", "mtproxy", "sudoku"} {
 		t.Run(kind, func(t *testing.T) {
 			settings := initSessionTestDB(t)
 			if _, err := settings.GetAllSetting(); err != nil {
@@ -75,6 +75,24 @@ func TestNativeCredentialHTTPAuthorizationMaskingAndStaleDraft(t *testing.T) {
 			}
 			fact, _ := clientfacts.Resolve(kind)
 			canaries := []string{firstSecret, secondSecret, "sbox:v1:"}
+			if kind == "sudoku" {
+				bundle := func() string {
+					t.Helper()
+					master, err := credentials.GenerateSudokuMaster()
+					if err != nil {
+						t.Fatal(err)
+					}
+					split, err := credentials.SplitSudokuMaster(master)
+					if err != nil {
+						t.Fatal(err)
+					}
+					canaries = append(canaries, master, split)
+					raw, _ := json.Marshal(map[string]string{"7": split})
+					return string(raw)
+				}
+				firstSecret, secondSecret = bundle(), bundle()
+				canaries = append(canaries, firstSecret, secondSecret)
+			}
 			var captured string
 			checkRedacted := func(raw []byte) {
 				t.Helper()
@@ -95,13 +113,20 @@ func TestNativeCredentialHTTPAuthorizationMaskingAndStaleDraft(t *testing.T) {
 				}
 				response := httptest.NewRecorder()
 				router.ServeHTTP(response, req)
+				// Observe each request's durable audit before the next expensive
+				// protocol candidate check can occupy the SQLite writer again.
+				stopAPITestRuntimeAudit(t, runtime)
 				checkRedacted(response.Body.Bytes())
 				return response
 			}
 			client := model.Client{Name: "native-" + kind, Enable: true, Config: json.RawMessage(`{}`), Inbounds: json.RawMessage(`[]`), Links: json.RawMessage(`[]`)}
 			mutation := func(value any) {
 				t.Helper()
-				client.Config, _ = json.Marshal(map[string]any{kind: map[string]any{"name": client.Name, fact.SecretField: value}})
+				fields := map[string]any{fact.SecretField: value}
+				if !clientfacts.DeliveryOnly(kind) {
+					fields["name"] = client.Name
+				}
+				client.Config, _ = json.Marshal(map[string]any{kind: fields})
 			}
 			unchanged := func(view secretref.View) map[string]any {
 				return map[string]any{"intent": "unchanged", "reference": view.Reference, "present": view.Present, "rotationRevision": view.RotationRevision}
@@ -214,19 +239,31 @@ func TestNativeCredentialHTTPAuthorizationMaskingAndStaleDraft(t *testing.T) {
 			if cleared.Present || password(stored()) != "" {
 				t.Fatal("explicit HTTP clear did not preserve an absent reference")
 			}
-			if kind == "ssh" {
-				_, key, err := ed25519.GenerateKey(rand.Reader)
-				if err != nil {
-					t.Fatal(err)
+			if kind == "ssh" || kind == "sudoku" {
+				secretField, private := "host_key", ""
+				inbound := map[string]any{"type": kind, "tag": "http-" + kind + "-owned", "listen": "127.0.0.1", "listen_port": 23456}
+				if kind == "ssh" {
+					_, key, err := ed25519.GenerateKey(rand.Reader)
+					if err != nil {
+						t.Fatal(err)
+					}
+					block, err := ssh.MarshalPrivateKey(key, "runtime-only-api-fixture")
+					if err != nil {
+						t.Fatal(err)
+					}
+					private = string(pem.EncodeToMemory(block))
+					canaries = append(canaries, strings.Split(private, "\n")[1])
+					inbound["server_version"], inbound["max_auth_tries"] = "SSH-2.0-SoloveyFixture", 3
+				} else {
+					secretField = "master_key"
+					var err error
+					private, err = credentials.GenerateSudokuMaster()
+					if err != nil {
+						t.Fatal(err)
+					}
+					canaries = append(canaries, private)
 				}
-				block, err := ssh.MarshalPrivateKey(key, "runtime-only-api-fixture")
-				if err != nil {
-					t.Fatal(err)
-				}
-				private := string(pem.EncodeToMemory(block))
-				canaries = append(canaries, strings.Split(private, "\n")[1])
-				inbound := map[string]any{"type": "ssh", "tag": "http-ssh-owned", "listen": "127.0.0.1", "listen_port": 23456,
-					"server_version": "SSH-2.0-SoloveyFixture", "max_auth_tries": 3, "host_key": map[string]string{"intent": "replace", "value": private}}
+				inbound[secretField] = map[string]string{"intent": "replace", "value": private}
 				form := func(action string) url.Values {
 					raw, _ := json.Marshal(inbound)
 					return url.Values{"object": {"inbounds"}, "action": {action}, "data": {string(raw)}}
@@ -236,7 +273,7 @@ func TestNativeCredentialHTTPAuthorizationMaskingAndStaleDraft(t *testing.T) {
 				}
 				assertSuccess(request(http.MethodPost, "/apiv2/save", tokens["write"], form("new")), true)
 				var row model.Inbound
-				if err := dbsqlite.DB().Where("tag = ?", "http-ssh-owned").First(&row).Error; err != nil {
+				if err := dbsqlite.DB().Where("tag = ?", inbound["tag"]).First(&row).Error; err != nil {
 					t.Fatal(err)
 				}
 				sealed := bytes.Clone(row.Options)
@@ -245,15 +282,17 @@ func TestNativeCredentialHTTPAuthorizationMaskingAndStaleDraft(t *testing.T) {
 					assertSuccess(response, true)
 					var envelope struct {
 						Obj struct {
-							Inbounds []struct {
-								HostKey secretref.View `json:"host_key"`
-							}
+							Inbounds []map[string]json.RawMessage
 						}
 					}
 					if json.Unmarshal(response.Body.Bytes(), &envelope) != nil || len(envelope.Obj.Inbounds) != 1 {
 						t.Fatal("host-key HTTP projection missing")
 					}
-					return envelope.Obj.Inbounds[0].HostKey
+					var view secretref.View
+					if json.Unmarshal(envelope.Obj.Inbounds[0][secretField], &view) != nil {
+						t.Fatal("inbound private field omitted its secret reference")
+					}
+					return view
 				}
 				view := readHost()
 				if !view.Present || view.Reference.Owner != "inbounds" || len(view.RotationRevision) != 64 {
@@ -265,23 +304,23 @@ func TestNativeCredentialHTTPAuthorizationMaskingAndStaleDraft(t *testing.T) {
 				if !bytes.Contains(browser.Body.Bytes(), []byte(view.RotationRevision)) {
 					t.Fatal("browser host-key projection diverged")
 				}
-				inbound["id"], inbound["host_key"] = row.Id, unchanged(view)
+				inbound["id"], inbound[secretField] = row.Id, unchanged(view)
 				assertSuccess(request(http.MethodPost, "/apiv2/save", tokens["write"], form("edit")), true)
 				if err := dbsqlite.DB().First(&row, row.Id).Error; err != nil || !bytes.Equal(sealed, row.Options) {
 					t.Fatal("HTTP Keep rotated host keys")
 				}
-				inbound["host_key"] = map[string]string{"intent": "replace", "value": private}
+				inbound[secretField] = map[string]string{"intent": "replace", "value": private}
 				assertSuccess(request(http.MethodPost, "/apiv2/save", tokens["write"], form("edit")), true)
 				current := readHost()
 				if current.RotationRevision == view.RotationRevision {
 					t.Fatal("HTTP host-key rotation retained its revision")
 				}
-				inbound["host_key"] = unchanged(view)
+				inbound[secretField] = unchanged(view)
 				assertSuccess(request(http.MethodPost, "/apiv2/save", tokens["write"], form("edit")), false)
 				if readHost().RotationRevision != current.RotationRevision {
 					t.Fatal("stale host-key edit committed")
 				}
-				inbound["host_key"] = map[string]string{"intent": "clear"}
+				inbound[secretField] = map[string]string{"intent": "clear"}
 				assertSuccess(request(http.MethodPost, "/apiv2/save", tokens["write"], form("edit")), true)
 				if readHost().Present {
 					t.Fatal("HTTP Clear retained host keys")

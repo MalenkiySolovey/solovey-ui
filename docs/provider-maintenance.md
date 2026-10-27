@@ -220,3 +220,20 @@ sites, preserving the existing R1 budget and observations:
 This is source/unit ownership evidence. Actual executable restart, supported
 platform/package qualification, Classic/Nexus workflow coverage and the full R7
 semantic/UI parity matrix remain separate acceptance gates.
+
+## Sudoku credential ownership
+
+The Extended Sudoku inbound has one public serving identity. Inbounds owns its
+encrypted private master through `master_key`; Users owns the encrypted
+`sudoku.keys` delivery bundle mapping inbound IDs to split keys. Normal reads
+expose SecretRef metadata. The runtime receives the derived public key and no
+authenticated Users list. Client assignment and enable/disable therefore do not
+provide per-client accounting or individual revocation.
+
+Rotating the inbound master refreshes assigned delivery keys and revokes all
+previously delivered keys. Clearing the stored master keeps its public serving
+key and existing delivery keys, but prevents deriving new ones. Clearing or
+resetting a User's delivery bundle does not revoke already delivered keys.
+Unassignment preserves stored keys. Official reports the capability unavailable
+and retains historical state. Subscription/import projection remains a separate
+EndpointIR owner requirement; native serving does not establish delivery parity.

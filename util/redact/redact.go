@@ -45,6 +45,7 @@ var sensitiveKeyFragments = []string{
 
 var sensitiveExactKeys = []string{
 	"host_key",
+	"master_key",
 	"psk",
 	"userkey",
 	"user_key",
@@ -89,7 +90,7 @@ var sensitiveValuePatterns = []struct {
 	},
 	{
 		// Keep the key for diagnostics and remove the entire scalar value.
-		pattern:     regexp.MustCompile(`(?i)(\b(?:psk|user[_-]?key|password|passwd|passphrase|proxy_password|csrf(?:[_-]?token)?|recovery[_-]?code|private[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|session[_-]?(?:id|token)|cookie|secret)\b["']?\s*[:=]\s*["']?)[^"'\s,;}\]]+(["']?)`),
+		pattern:     regexp.MustCompile(`(?i)(\b(?:psk|user[_-]?key|master[_-]?key|password|passwd|passphrase|proxy_password|csrf(?:[_-]?token)?|recovery[_-]?code|private[_-]?key|client[_-]?secret|access[_-]?token|refresh[_-]?token|session[_-]?(?:id|token)|cookie|secret)\b["']?\s*[:=]\s*["']?)[^"'\s,;}\]]+(["']?)`),
 		replacement: `${1}` + Marker + `${2}`,
 	},
 	{
@@ -107,21 +108,31 @@ var sensitiveValuePatterns = []struct {
 }
 
 func Value(value any) any {
+	return valueAt(value, "")
+}
+
+// Sudoku's keys member is a private per-inbound delivery bundle. Other owners
+// also use the word keys for public metadata, so redact it within its owner.
+func sensitiveMember(parent, key string) bool {
+	return IsSensitiveKey(key) || strings.EqualFold(parent, "sudoku") && strings.EqualFold(key, "keys")
+}
+
+func valueAt(value any, parent string) any {
 	switch v := value.(type) {
 	case map[string]any:
 		redacted := make(map[string]any, len(v))
 		for key, item := range v {
-			if IsSensitiveKey(key) {
+			if sensitiveMember(parent, key) {
 				redacted[key] = Marker
 				continue
 			}
-			redacted[key] = Value(item)
+			redacted[key] = valueAt(item, key)
 		}
 		return redacted
 	case map[string]string:
 		redacted := make(map[string]string, len(v))
 		for key, item := range v {
-			if IsSensitiveKey(key) {
+			if sensitiveMember(parent, key) {
 				redacted[key] = Marker
 				continue
 			}
@@ -131,7 +142,7 @@ func Value(value any) any {
 	case []any:
 		redacted := make([]any, len(v))
 		for i, item := range v {
-			redacted[i] = Value(item)
+			redacted[i] = valueAt(item, parent)
 		}
 		return redacted
 	case []string:
@@ -143,7 +154,7 @@ func Value(value any) any {
 	case json.RawMessage:
 		var decoded any
 		if err := json.Unmarshal(v, &decoded); err == nil {
-			return Value(decoded)
+			return valueAt(decoded, parent)
 		}
 		return String(string(v))
 	case string:
@@ -157,11 +168,11 @@ func Value(value any) any {
 			if err == nil {
 				var decoded any
 				if json.Unmarshal(encoded, &decoded) == nil {
-					return Value(decoded)
+					return valueAt(decoded, parent)
 				}
 			}
 		}
-		if redacted, ok := reflectValue(reflect.ValueOf(v)); ok {
+		if redacted, ok := reflectValue(reflect.ValueOf(v), parent); ok {
 			return redacted.Interface()
 		}
 		return value
@@ -170,7 +181,7 @@ func Value(value any) any {
 
 var rawMessageType = reflect.TypeOf(json.RawMessage{})
 
-func reflectValue(value reflect.Value) (reflect.Value, bool) {
+func reflectValue(value reflect.Value, parent string) (reflect.Value, bool) {
 	if !value.IsValid() {
 		return value, true
 	}
@@ -179,7 +190,7 @@ func reflectValue(value reflect.Value) (reflect.Value, bool) {
 		if json.Unmarshal(value.Bytes(), &decoded) != nil {
 			return reflect.ValueOf(json.RawMessage(String(string(value.Bytes())))), true
 		}
-		encoded, err := json.Marshal(Value(decoded))
+		encoded, err := json.Marshal(valueAt(decoded, parent))
 		if err != nil {
 			return reflect.Value{}, false
 		}
@@ -190,7 +201,7 @@ func reflectValue(value reflect.Value) (reflect.Value, bool) {
 		if value.IsNil() {
 			return reflect.Zero(value.Type()), true
 		}
-		item, ok := reflectValue(value.Elem())
+		item, ok := reflectValue(value.Elem(), parent)
 		if !ok {
 			return reflect.Value{}, false
 		}
@@ -201,7 +212,7 @@ func reflectValue(value reflect.Value) (reflect.Value, bool) {
 		if value.IsNil() {
 			return reflect.Zero(value.Type()), true
 		}
-		item, ok := reflectValue(value.Elem())
+		item, ok := reflectValue(value.Elem(), parent)
 		if !ok {
 			return reflect.Value{}, false
 		}
@@ -223,11 +234,11 @@ func reflectValue(value reflect.Value) (reflect.Value, bool) {
 			if jsonName == "" {
 				jsonName = fieldType.Name
 			}
-			if IsSensitiveKey(jsonName) {
+			if sensitiveMember(parent, jsonName) {
 				target.Set(redactedMarkerValue(target.Type()))
 				continue
 			}
-			item, ok := reflectValue(value.Field(index))
+			item, ok := reflectValue(value.Field(index), jsonName)
 			if !ok {
 				return reflect.Value{}, false
 			}
@@ -243,11 +254,15 @@ func reflectValue(value reflect.Value) (reflect.Value, bool) {
 		for iterator.Next() {
 			mapKey := iterator.Key()
 			item := iterator.Value()
-			if mapKey.Kind() == reflect.String && IsSensitiveKey(mapKey.String()) {
+			if mapKey.Kind() == reflect.String && sensitiveMember(parent, mapKey.String()) {
 				result.SetMapIndex(mapKey, redactedMarkerValue(item.Type()))
 				continue
 			}
-			redacted, ok := reflectValue(item)
+			childOwner := ""
+			if mapKey.Kind() == reflect.String {
+				childOwner = mapKey.String()
+			}
+			redacted, ok := reflectValue(item, childOwner)
 			if !ok {
 				return reflect.Value{}, false
 			}
@@ -260,7 +275,7 @@ func reflectValue(value reflect.Value) (reflect.Value, bool) {
 		}
 		result := reflect.MakeSlice(value.Type(), value.Len(), value.Len())
 		for index := 0; index < value.Len(); index++ {
-			item, ok := reflectValue(value.Index(index))
+			item, ok := reflectValue(value.Index(index), parent)
 			if !ok {
 				return reflect.Value{}, false
 			}
@@ -270,7 +285,7 @@ func reflectValue(value reflect.Value) (reflect.Value, bool) {
 	case reflect.Array:
 		result := reflect.New(value.Type()).Elem()
 		for index := 0; index < value.Len(); index++ {
-			item, ok := reflectValue(value.Index(index))
+			item, ok := reflectValue(value.Index(index), parent)
 			if !ok {
 				return reflect.Value{}, false
 			}

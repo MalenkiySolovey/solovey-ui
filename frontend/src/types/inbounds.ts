@@ -24,6 +24,7 @@ export const InTypes = {
   TrustTunnel: 'trusttunnel',
   SSH: 'ssh',
   MTProxy: 'mtproxy',
+  Sudoku: 'sudoku',
   Tun: 'tun',
   Redirect: 'redirect',
   TProxy: 'tproxy',
@@ -245,6 +246,23 @@ export interface SSHInbound extends InboundBasics {
   host_key_path?: string | string[]
 }
 
+export interface Sudoku extends InboundBasics {
+  master_key?: unknown
+  key?: string
+  aead_method?: string
+  padding_min?: number
+  padding_max?: number
+  table_type?: string
+  handshake_timeout?: number
+  enable_pure_downlink?: boolean
+  custom_table?: string
+  custom_tables?: string[]
+  disable_http_mask?: boolean
+  http_mask_mode?: string
+  path_root?: string
+  fallback?: string
+}
+
 export interface MTProxy extends InboundBasics {
   prefer_ip?: string
   concurrency?: number
@@ -285,6 +303,7 @@ type InterfaceMap = {
   trusttunnel: TrustTunnel
   ssh: SSHInbound
   mtproxy: MTProxy
+  sudoku: Sudoku
   tun: Tun
   redirect: Redirect
   tproxy: TProxy
@@ -324,6 +343,7 @@ const defaultValues: Record<InType, Inbound> = {
   trusttunnel: <TrustTunnel>{ type: InTypes.TrustTunnel, tls_id: 0, network: ['tcp', 'udp'], congestion_controller: 'bbr' },
   ssh: <SSHInbound>{ type: InTypes.SSH },
   mtproxy: <MTProxy>{ type: InTypes.MTProxy, prefer_ip: 'prefer-ipv4' },
+  sudoku: <Sudoku>{ type: InTypes.Sudoku, aead_method: 'chacha20-poly1305', http_mask_mode: 'legacy' },
   tun: <Tun>{ type: InTypes.Tun, mtu: 9000, stack: 'system', udp_timeout: '5m', auto_route: false },
   redirect: <Redirect>{ type: InTypes.Redirect },
   tproxy: <TProxy>{ type: InTypes.TProxy },
