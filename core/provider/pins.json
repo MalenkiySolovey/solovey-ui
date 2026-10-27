@@ -12,7 +12,7 @@
       "id": "shtorm-extended",
       "modFile": "go.extended.mod",
       "buildTags": ["shtorm_extended"],
-      "sourceRevision": "ed972fda6a1a5f8b739687abe13e14441d667de2"
+      "sourceRevision": "507ef59f934915c4d46ebf4965d250e4e0cb8c1b"
     }
   ],
   "sources": [
@@ -43,12 +43,12 @@
     {
       "id": "shtorm-extended",
       "name": "Shtorm Extended",
-      "providerVersion": "v0.0.0-20261027004710-ed972fda6a1a",
+      "providerVersion": "v0.0.0-20261027021716-507ef59f9349",
       "runtimeSemanticVersion": "1.14.3",
       "module": "github.com/MalenkiySolovey/sing-box-extended",
-      "moduleSum": "h1:Q0PVNWy1auuR+0Ioc/wovYHPz735XhVwVlACGoKAnWY=",
+      "moduleSum": "h1:2JQ8WMx7t4YruPVt7TzW0UH6Ssf1ws7UY7iRmPolMaQ=",
       "sourceRepository": "https://github.com/MalenkiySolovey/sing-box-extended",
-      "sourceRevision": "ed972fda6a1a5f8b739687abe13e14441d667de2",
+      "sourceRevision": "507ef59f934915c4d46ebf4965d250e4e0cb8c1b",
       "upstreamRepository": "https://github.com/shtorm-7/sing-box-extended",
       "upstreamRevision": "d9442d14b19ddd02605bf3ee893a171947038e19"
     }

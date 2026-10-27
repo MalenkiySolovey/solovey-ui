@@ -12,6 +12,12 @@ import (
 )
 
 func TestBondRendersCanonicalMembersAndReappliesOneOwningGroup(t *testing.T) {
+	for _, kind := range []string{"bond", "core-failover"} {
+		t.Run(kind, func(t *testing.T) { testCanonicalInboundGroup(t, kind) })
+	}
+}
+
+func testCanonicalInboundGroup(t *testing.T, kind string) {
 	db := newInboundDB(t)
 	if err := db.AutoMigrate(&model.Client{}); err != nil {
 		t.Fatal(err)
@@ -19,7 +25,7 @@ func TestBondRendersCanonicalMembersAndReappliesOneOwningGroup(t *testing.T) {
 	for _, row := range []model.Inbound{
 		{Id: 1, Type: "socks", Tag: "first", Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":1080}`)},
 		{Id: 2, Type: "socks", Tag: "second", Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":1081}`)},
-		{Id: 3, Type: "bond", Tag: "group", Options: json.RawMessage(`{"inbounds":["second","first"]}`)},
+		{Id: 3, Type: kind, Tag: "group", Options: json.RawMessage(`{"inbounds":["second","first"]}`)},
 	} {
 		if err := db.Create(&row).Error; err != nil {
 			t.Fatal(err)
@@ -64,7 +70,7 @@ func TestBondRendersCanonicalMembersAndReappliesOneOwningGroup(t *testing.T) {
 	if err := db.Create(&model.InboundEndpointLease{LeaseID: "bond-member-lease", InboundID: 2, State: "ACTIVE", ExactReferenceJSON: []byte(`{}`), LeaseJSON: []byte(`{}`)}).Error; err != nil {
 		t.Fatal(err)
 	}
-	_, err = SaveImportedCandidate(db, model.Inbound{Id: 3, Type: "bond", Tag: "group", Options: json.RawMessage(`{"inbounds":["first"]}`)}, false, "")
+	_, err = SaveImportedCandidate(db, model.Inbound{Id: 3, Type: kind, Tag: "group", Options: json.RawMessage(`{"inbounds":["first"]}`)}, false, "")
 	if !errors.Is(err, ErrInboundEndpointLeased) {
 		t.Fatal("import changed an old leased member's serving ownership", err)
 	}

@@ -10,6 +10,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/composition"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	sbjson "github.com/sagernet/sing/common/json"
 )
@@ -21,7 +22,8 @@ func nativeInboundFindings(kind, side, path string, source json.RawMessage) []di
 }
 
 func nativeInboundOptionsFindings(kind, side, path string, source json.RawMessage, resolvedGroup bool) []diagnostics.Finding {
-	if side != "inbound" || !registry.Resolve("inbounds", kind).Available() {
+	runtimeKind := entitytypes.RuntimeType("inbounds", kind)
+	if side != "inbound" || !registry.Resolve("inbounds", runtimeKind).Available() {
 		// Save eligibility and runtime projection preserve unavailable owner
 		// state. A different provider's schema must not normalize its fields.
 		return nil
@@ -58,19 +60,19 @@ func nativeInboundOptionsFindings(kind, side, path string, source json.RawMessag
 			return bad(".server_version", "SSH_SERVER_VERSION_INVALID", "SSH server version must be a bounded SSH-2.0 identification string.")
 		}
 	}
-	consumer, registered := registry.InboundRegistry().CreateOptions(kind)
+	consumer, registered := registry.InboundRegistry().CreateOptions(runtimeKind)
 	raw, _ := json.Marshal(fields)
 	if !registered || sbjson.UnmarshalContextDisallowUnknownFields(registry.Context(context.Background()), raw, consumer) != nil {
 		return bad("", "NATIVE_OPTIONS_INVALID", "Native protocol fields are rejected by the pinned serving schema.")
 	}
 	if composition.IsGroup(kind) && resolvedGroup {
-		members, err := registry.InboundMembers(kind, consumer)
+		members, err := registry.InboundMembers(runtimeKind, consumer)
 		if err != nil {
 			return bad(".inbounds", "INBOUND_GROUP_MEMBERS_INVALID", "The resolved native group must contain its owned members.")
 		}
 		var result []diagnostics.Finding
 		for i, member := range members {
-			if composition.IsGroup(member.Type) {
+			if composition.IsGroup(entitytypes.CanonicalType("inbounds", member.Type)) {
 				return bad(".inbounds", "INBOUND_GROUP_NESTING_INVALID", "Native groups cannot contain another group.")
 			}
 			child, err := member.MarshalJSONContext(registry.Context(context.Background()))

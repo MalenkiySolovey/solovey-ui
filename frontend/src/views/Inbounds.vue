@@ -146,23 +146,23 @@
             </v-row>
           </v-card-subtitle>
           <v-card-text>
-            <v-row v-if="item.type === 'bond'">
+            <v-row v-if="isInboundGroup(item.type)">
               <v-col>{{ $t('nativeInbound.bondMembers') }}</v-col>
               <v-col>{{ item.inbounds?.join(', ') }}</v-col>
             </v-row>
-            <v-row v-if="item.type !== 'bond'">
+            <v-row v-if="!isInboundGroup(item.type)">
               <v-col>{{ $t('in.addr') }}</v-col>
               <v-col>
                 {{ item.listen }}
               </v-col>
             </v-row>
-            <v-row v-if="item.type !== 'bond'">
+            <v-row v-if="!isInboundGroup(item.type)">
               <v-col>{{ $t('in.port') }}</v-col>
               <v-col>
                 {{ item.listen_port }}
               </v-col>
             </v-row>
-            <v-row v-if="item.type !== 'bond'">
+            <v-row v-if="!isInboundGroup(item.type)">
               <v-col>{{ $t('objects.tls') }}</v-col>
               <v-col>
                 {{ item.tls_id > 0 ? $t('enable') : $t('disable') }}
@@ -239,7 +239,7 @@ import { Config } from '@/types/config'
 import { computed, defineAsyncComponent, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { createInbound, Inbound } from '@/types/inbounds'
+import { createInbound, isInboundGroup, Inbound } from '@/types/inbounds'
 import RandomUtil from '@/plugins/randomUtil'
 import { useUiMode } from '@/uiMode/useUiMode'
 import { useManualDrag, type ManualDropPosition } from '@/shared/dnd/manualDrag'

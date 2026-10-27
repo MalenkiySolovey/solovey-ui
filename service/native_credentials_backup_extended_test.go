@@ -132,6 +132,9 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 			{Type: "socks", Tag: "archive-bond-first", Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":23466}`)},
 			{Type: "socks", Tag: "archive-bond-second", Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":23467}`)},
 			{Type: "bond", Tag: "archive-bond", Options: json.RawMessage(`{"inbounds":["archive-bond-second","archive-bond-first"]}`)},
+			{Type: "socks", Tag: "archive-failover-first", Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":23468}`)},
+			{Type: "socks", Tag: "archive-failover-second", Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":23469}`)},
+			{Type: "core-failover", Tag: "archive-failover", Options: json.RawMessage(`{"inbounds":["archive-failover-second","archive-failover-first"]}`)},
 		} {
 			if err := entityinbounds.FillAndSave(tx, &row, "fixture.invalid"); err != nil {
 				return err
@@ -206,15 +209,20 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 				}
 			}
 		}
-		if json.Unmarshal(projection.Config, &root) != nil || len(root.Inbounds) != len(inbounds)+1 {
+		if json.Unmarshal(projection.Config, &root) != nil || len(root.Inbounds) != len(inbounds)+2 {
 			t.Fatal("native runtime projection lost an inbound")
 		}
 		if bytes.Contains(projection.Config, []byte(sudokuMaster)) || bytes.Contains(projection.Config, []byte(sudokuSplit)) || bytes.Contains(projection.Config, []byte("master_key")) {
 			t.Fatal("Sudoku runtime projection disclosed delivery material")
 		}
 		for _, inbound := range root.Inbounds {
-			if inbound.Type == "bond" {
-				if len(inbound.Users) != 0 || len(inbound.Inbounds) != 2 || inbound.Inbounds[0].Tag != "archive-bond-second" || inbound.Inbounds[0].Port != 23467 || inbound.Inbounds[1].Tag != "archive-bond-first" || inbound.Inbounds[1].Port != 23466 {
+			if inbound.Type == "bond" || inbound.Type == "failover" {
+				port := uint16(23466)
+				if inbound.Type == "failover" {
+					port = 23468
+				}
+				prefix := "archive-" + inbound.Type
+				if len(inbound.Users) != 0 || len(inbound.Inbounds) != 2 || inbound.Inbounds[0].Tag != prefix+"-second" || inbound.Inbounds[0].Port != port+1 || inbound.Inbounds[1].Tag != prefix+"-first" || inbound.Inbounds[1].Port != port {
 					t.Fatal("private archive changed canonical group membership, ordering or member options")
 				}
 				continue

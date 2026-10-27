@@ -14,6 +14,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/composition"
 	entitytls "github.com/MalenkiySolovey/solovey-ui/internal/entities/tls"
+	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	"github.com/MalenkiySolovey/solovey-ui/util/jsonfields"
 	"github.com/sagernet/sing-box/option"
@@ -24,7 +25,7 @@ import (
 // CurrentFindings selects the actual protocol/side schema. Inbound user DTOs
 // are resolved by their own owner, so they are not interpreted as core users.
 func CurrentFindings(kind, side, path string, source json.RawMessage) []diagnostics.Finding {
-	if (kind == "sudoku" || kind == "bond") && side == "inbound" {
+	if (kind == "sudoku" || composition.IsGroup(kind)) && side == "inbound" {
 		return nativeInboundFindings(kind, side, path, source)
 	}
 	if kind == "snell" {
@@ -133,10 +134,10 @@ func ConfigFindings(source []byte) []diagnostics.Finding {
 			}
 			if side == "outbound" {
 				result = append(result, StoredOutboundFindings(header.Type, fmt.Sprintf("%s[%d]", section, i), entity)...)
-			} else if composition.IsGroup(header.Type) {
+			} else if composition.IsGroup(entitytypes.CanonicalType("inbounds", header.Type)) {
 				// Runtime configuration contains resolved native member objects;
 				// canonical editor/storage validation still requires tag references.
-				result = append(result, nativeInboundOptionsFindings(header.Type, side, fmt.Sprintf("%s[%d]", section, i), entity, true)...)
+				result = append(result, nativeInboundOptionsFindings(entitytypes.CanonicalType("inbounds", header.Type), side, fmt.Sprintf("%s[%d]", section, i), entity, true)...)
 			} else {
 				result = append(result, CurrentFindings(header.Type, side, fmt.Sprintf("%s[%d]", section, i), entity)...)
 			}

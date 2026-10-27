@@ -12,12 +12,21 @@ import (
 // InboundMembers interprets the actual decoded native schema. Persistence and
 // the member tag references remain with the existing Inbounds owner.
 func InboundMembers(kind string, value any) ([]option.Inbound, error) {
-	if kind != "bond" {
+	var members []option.Inbound
+	switch kind {
+	case "bond":
+		if group, ok := value.(*option.BondInboundOptions); ok {
+			members = group.Inbounds
+		}
+	case "failover":
+		if group, ok := value.(*option.FailoverInboundOptions); ok {
+			members = group.Inbounds
+		}
+	default:
 		return nil, nil
 	}
-	group, ok := value.(*option.BondInboundOptions)
-	if !ok || len(group.Inbounds) == 0 || len(group.Inbounds) > 255 {
+	if len(members) == 0 || len(members) > 255 {
 		return nil, errors.New("inbound group options invalid")
 	}
-	return slices.Clone(group.Inbounds), nil
+	return slices.Clone(members), nil
 }

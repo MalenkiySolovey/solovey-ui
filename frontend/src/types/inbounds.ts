@@ -26,6 +26,7 @@ export const InTypes = {
   MTProxy: 'mtproxy',
   Sudoku: 'sudoku',
   Bond: 'bond',
+  CoreFailover: 'core-failover',
   Tun: 'tun',
   Redirect: 'redirect',
   TProxy: 'tproxy',
@@ -283,7 +284,7 @@ export interface MTProxy extends InboundBasics {
   throttle_check_interval?: string
 }
 
-export interface BondInbound extends InboundBasics {
+export interface InboundGroup extends InboundBasics {
   inbounds: string[]
 }
 
@@ -309,7 +310,8 @@ type InterfaceMap = {
   ssh: SSHInbound
   mtproxy: MTProxy
   sudoku: Sudoku
-  bond: BondInbound
+  bond: InboundGroup
+  'core-failover': InboundGroup
   tun: Tun
   redirect: Redirect
   tproxy: TProxy
@@ -350,7 +352,8 @@ const defaultValues: Record<InType, Inbound> = {
   ssh: <SSHInbound>{ type: InTypes.SSH },
   mtproxy: <MTProxy>{ type: InTypes.MTProxy, prefer_ip: 'prefer-ipv4' },
   sudoku: <Sudoku>{ type: InTypes.Sudoku, aead_method: 'chacha20-poly1305', http_mask_mode: 'legacy' },
-  bond: <BondInbound>{ type: InTypes.Bond, inbounds: [] as string[] },
+  bond: <InboundGroup>{ type: InTypes.Bond, inbounds: [] as string[] },
+  'core-failover': <InboundGroup>{ type: InTypes.CoreFailover, inbounds: [] as string[] },
   tun: <Tun>{ type: InTypes.Tun, mtu: 9000, stack: 'system', udp_timeout: '5m', auto_route: false },
   redirect: <Redirect>{ type: InTypes.Redirect },
   tproxy: <TProxy>{ type: InTypes.TProxy },
@@ -359,4 +362,8 @@ const defaultValues: Record<InType, Inbound> = {
 export function createInbound<T extends Inbound>(type: InType,json?: Partial<T>): Inbound {
   const defaultObject: Inbound = { ...defaultValues[type] ?? {}, ...(json ?? {}) }
   return defaultObject
+}
+
+export function isInboundGroup(type: string): boolean {
+  return type === InTypes.Bond || type === InTypes.CoreFailover
 }

@@ -4,6 +4,7 @@ export default {
     "bondMembersRequired": "Select at least one member inbound.",
     "bondMembersHint": "Select existing inbounds. Edit their listening addresses, TLS and users in the member editors. Each inbound can belong to one group. Membership changes restart the runtime.",
     "bondIdentityHint": "Member authentication stays with each inbound. Bonded connections have a group identity; per-client traffic identity is unavailable.",
+    "coreFailoverHint": "Sessions can resume through another member while the runtime is running. Stopping or restarting the runtime ends them. Resumed traffic has a group identity; per-client traffic identity is unavailable.",
     "sudokuClear": "Clear stored credential",
     "sudokuMaster": "Sudoku private master key",
     "sudokuPublic": "Serving public key",
