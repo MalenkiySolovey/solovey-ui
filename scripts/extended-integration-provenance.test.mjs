@@ -11,7 +11,7 @@ test('Extended source notice binds native baseline, dedicated copy, checksums an
   assert.equal(lock.sources[0].original.commit,'d9442d14b19ddd02605bf3ee893a171947038e19')
   assert.equal(lock.sources[1].original.commit,'75c3ac4fa12b4ded2dc01b392ed7d5eaf3ea6876')
   assert.equal(lock.sources[0].replacement.repository,'https://github.com/MalenkiySolovey/sing-box-extended')
-  assert.equal(lock.sources[0].patchSeries.patchCount,42)
+  assert.equal(lock.sources[0].patchSeries.patchCount,45)
   assert.ok(lock.sources.every(source => !Object.hasOwn(source,'patch')))
 })
 
