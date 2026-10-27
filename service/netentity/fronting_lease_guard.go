@@ -2,7 +2,6 @@ package netentity
 
 import (
 	"encoding/json"
-	"errors"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
@@ -12,14 +11,17 @@ import (
 )
 
 var (
-	ErrInboundEndpointLeased = errors.New("inbound_endpoint_lease_active")
+	ErrInboundEndpointLeased = entityinbounds.ErrInboundEndpointLeased
 	// ErrFrontingEndpointLeased is retained for callers that matched the Slice
 	// 1 symbol. The durable guard now also covers local-proxy leases.
 	ErrFrontingEndpointLeased = ErrInboundEndpointLeased
 )
 
 func guardInboundFrontingLease(tx *gorm.DB, action string, data json.RawMessage) error {
-	if tx == nil || action == string(entityinbounds.ActionNew) {
+	if tx == nil {
+		return nil
+	}
+	if action == string(entityinbounds.ActionNew) {
 		return nil
 	}
 	var inboundID uint

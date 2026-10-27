@@ -112,11 +112,13 @@ func (c *Core) StartWithBindings(sbConfig []byte, bindings []inboundidentity.Bin
 	c.connTracker = instance.ConnTracker()
 	c.effectiveInbounds = make(map[string]InboundRuntimeRecord, len(opt.Inbounds))
 	for _, inboundOptions := range opt.Inbounds {
-		record, recorded := inboundRuntimeRecord(ctx, inboundOptions, generation)
+		records, recorded := inboundRuntimeRecords(ctx, inboundOptions, generation)
 		if !recorded {
 			continue
 		}
-		c.effectiveInbounds[inboundOptions.Tag] = record
+		for _, record := range records {
+			c.effectiveInbounds[record.Tag] = record
+		}
 	}
 	c.access.Unlock()
 	accepted = true

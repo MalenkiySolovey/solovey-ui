@@ -25,11 +25,11 @@ func (c *Core) AddInboundWithBindings(config []byte, bindings []inboundidentity.
 		if inboundConfig.Tag == privateAPITag {
 			return errors.New("reserved runtime tag")
 		}
-		record, recorded := inboundRuntimeRecord(rt.ctx, inboundConfig, 0)
+		records, recorded := inboundRuntimeRecords(rt.ctx, inboundConfig, 0)
 		if !recorded {
 			return errors.New("record effective inbound")
 		}
-		boundRouter, epoch, err := rt.inboundIdentity.Prepare(rt.router, inboundConfig.Tag, bindings)
+		boundRouter, epoch, err := rt.inboundIdentity.PrepareInbound(rt.router, inboundConfig.Tag, inboundConfig.Type, inboundConfig.Options, bindings)
 		if err != nil {
 			return err
 		}
@@ -48,8 +48,10 @@ func (c *Core) AddInboundWithBindings(config []byte, bindings []inboundidentity.
 		if c.effectiveInbounds == nil {
 			c.effectiveInbounds = make(map[string]InboundRuntimeRecord)
 		}
-		record.ManagerGeneration = c.managerGeneration
-		c.effectiveInbounds[inboundConfig.Tag] = record
+		for _, record := range records {
+			record.ManagerGeneration = c.managerGeneration
+			c.effectiveInbounds[record.Tag] = record
+		}
 		c.access.Unlock()
 		return nil
 	})
@@ -57,6 +59,12 @@ func (c *Core) AddInboundWithBindings(config []byte, bindings []inboundidentity.
 
 func (c *Core) RemoveInbound(tag string) error {
 	return c.withMutation(func(rt coreRuntime) error {
+		c.access.RLock()
+		record := c.effectiveInbounds[tag]
+		c.access.RUnlock()
+		if record.ownerTag != "" {
+			return errors.New("inbound member must be reapplied through its owning group")
+		}
 		logger.Info("remove inbound: ", tag)
 		rt.inboundIdentity.Revoke(tag)
 		if err := rt.inboundManager.Remove(tag); err != nil {
@@ -65,6 +73,11 @@ func (c *Core) RemoveInbound(tag string) error {
 		c.access.Lock()
 		if c.effectiveInbounds != nil {
 			delete(c.effectiveInbounds, tag)
+			for child, record := range c.effectiveInbounds {
+				if record.ownerTag == tag {
+					delete(c.effectiveInbounds, child)
+				}
+			}
 		}
 		c.access.Unlock()
 		return nil

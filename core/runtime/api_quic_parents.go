@@ -53,7 +53,7 @@ func (c *Core) quicParents(clientID uint, limit int) ([]RuntimeQUICParent, int, 
 	if c.instance == nil {
 		return result, 0, false
 	}
-	for _, inbound := range c.instance.Inbound().Inbounds() {
+	for _, inbound := range runtimeInbounds(c.instance.Inbound()) {
 		control, ok := inbound.(registry.QUICParentControl)
 		if !ok {
 			continue
@@ -106,7 +106,7 @@ func (c *Core) disconnectQUICParents(ctx context.Context, request DisconnectRequ
 		if !current || epoch != target.Epoch {
 			return ErrStaleInboundEpoch
 		}
-		inbound, found := c.instance.Inbound().Get(target.Inbound)
+		inbound, found := findRuntimeInbound(c.instance.Inbound(), target.Inbound)
 		if !found {
 			return ErrStaleInboundEpoch
 		}

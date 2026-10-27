@@ -127,3 +127,17 @@ Official stubs keep the capability unavailable and preserve historical state.
 This replaces one exact existing declaration digest after owner/lifetime review;
 Direct-literal multiplicity, the R1 base, unrelated sites and total allowance
 stay fixed. SEC-2 remains BOUNDED_DEFERRED.
+
+R7 Bond reviews two existing Direct sites: `core/registry.inboundDeclarations`
+changes from `56df4379...` to `0b430995...`, and `core/box.NewBox` changes from
+`581fe87f...` to `b387c953...`. The registry adds the Bond serving declaration
+with its Extended compile-time fact. NewBox calls the existing inbound identity
+owner with the actual decoded protocol options, allowing that owner to derive
+member namespaces rather than trusting caller-supplied bindings. Each member
+retains its credential identity/epoch; publishing or retiring a group publishes
+or retires those epochs together. Bonded traffic has no invented client binding.
+Native Scope remains the sole owner of child objects; runtime inspection and
+existing parent controls borrow those actual objects through a snapshot.
+The explicit Direct registrations and every route/final/fallback decision keep
+their existing semantics. These are exact reviewed digest replacements with no
+new Direct site, multiplicity or budget allowance. SEC-2 remains BOUNDED_DEFERRED.

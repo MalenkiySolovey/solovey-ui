@@ -19,26 +19,25 @@ import (
 )
 
 type candidate struct {
-	Type   string           `json:"type"`
-	Method string           `json:"method"`
-	Tag    string           `json:"tag"`
-	Users  []map[string]any `json:"users"`
+	Type     string           `json:"type"`
+	Method   string           `json:"method"`
+	Tag      string           `json:"tag"`
+	Users    []map[string]any `json:"users"`
+	Inbounds []candidate      `json:"inbounds"`
 }
 
 // Capture accepts a complete rendered config or one owner-rendered inbound.
 // It never associates a client using its display name, IP or a caller's ID.
 func Capture(db *gorm.DB, config []byte) ([]inboundidentity.Binding, error) {
-	var root struct {
-		Inbounds []candidate `json:"inbounds"`
-		candidate
-	}
+	var root candidate
 	if err := json.Unmarshal(config, &root); err != nil {
 		return nil, errors.New("runtime identity config is invalid")
 	}
 	rows := root.Inbounds
 	if root.Tag != "" {
-		rows = []candidate{root.candidate}
+		rows = []candidate{root}
 	}
+	rows = nestedCandidates(rows)
 	hasUsers := false
 	for _, row := range rows {
 		hasUsers = hasUsers || len(row.Users) > 0
@@ -140,6 +139,17 @@ func Capture(db *gorm.DB, config []byte) ([]inboundidentity.Binding, error) {
 		}
 	}
 	return result, nil
+}
+
+func nestedCandidates(rows []candidate) []candidate {
+	result := make([]candidate, 0, len(rows))
+	for _, row := range rows {
+		result = append(result, row)
+		if row.Type == "bond" || row.Type == "failover" {
+			result = append(result, nestedCandidates(row.Inbounds)...)
+		}
+	}
+	return result
 }
 
 func principal(user map[string]any, kind string) string {

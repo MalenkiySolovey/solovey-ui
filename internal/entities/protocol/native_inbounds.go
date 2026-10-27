@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/composition"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/diagnostics"
 	sbjson "github.com/sagernet/sing/common/json"
@@ -34,6 +35,14 @@ func nativeInboundFindings(kind, side, path string, source json.RawMessage) []di
 	delete(fields, "tag")
 	if kind == "sudoku" {
 		delete(fields, "master_key")
+	}
+	if composition.IsGroup(kind) {
+		if _, err := composition.Members(kind, source); err != nil {
+			return bad(".inbounds", "INBOUND_GROUP_MEMBERS_INVALID", "Select canonical inbound tags for the native group.")
+		}
+		// Storage uses canonical tag references. The owner resolves them into
+		// native option objects only in the final serving projection.
+		delete(fields, "inbounds")
 	}
 	if kind == "ssh" {
 		// The Inbounds owner validates and seals explicit private-key mutations.

@@ -78,6 +78,31 @@ func TestCaptureAmbiguousAndUnavailableRemainUnassociated(t *testing.T) {
 	}
 }
 
+func TestCaptureNestedGroupUsesOnlyCanonicalMemberCredentials(t *testing.T) {
+	db := identityDB(t)
+	for _, row := range []model.Inbound{{Id: 1, Tag: "member", Type: "anytls"}, {Id: 2, Tag: "group", Type: "bond"}} {
+		if err := db.Create(&row).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := db.Create(&model.Client{Id: 7, Enable: true, Name: "display", Inbounds: json.RawMessage(`[1]`), Config: json.RawMessage(`{"anytls":{"name":"authenticated","password":"fixture-only"}}`)}).Error; err != nil {
+		t.Fatal(err)
+	}
+	for _, config := range []string{
+		`{"type":"bond","tag":"group","inbounds":[{"type":"anytls","tag":"member","users":[{"name":"authenticated","password":"fixture-only"}]}]}`,
+		`{"inbounds":[{"type":"bond","tag":"group","inbounds":[{"type":"anytls","tag":"member","users":[{"name":"authenticated","password":"fixture-only"}]}]}]}`,
+	} {
+		bindings, err := Capture(db, []byte(config))
+		if err != nil || len(bindings) != 1 || bindings[0].Inbound != "member" || bindings[0].ClientID != 7 {
+			t.Fatal("nested credential identity did not remain with canonical member")
+		}
+	}
+	bindings, err := Capture(db, []byte(`{"type":"bond","tag":"group","users":[{"name":"authenticated","password":"fixture-only"}],"inbounds":[{"type":"anytls","tag":"member","users":[{"name":"authenticated","password":"wrong"}]}]}`))
+	if err != nil || len(bindings) != 0 {
+		t.Fatal("group or mismatched child gained an unproven client identity")
+	}
+}
+
 func TestCaptureBasicAuthAndVisionRendererVariants(t *testing.T) {
 	for _, kind := range []string{"socks", "vless"} {
 		t.Run(kind, func(t *testing.T) {

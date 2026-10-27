@@ -73,7 +73,7 @@
       <v-window v-model="side" style="margin-top: 10px;">
         <v-window-item value="s">
           <v-defaults-provider :defaults="{ global: { disabled: nativeOptionsUnavailable } }">
-          <Listen :data="inbound" :inTags="inTags" v-if="inbound.type != inTypes.Tun" />
+          <Listen :data="inbound" :inTags="inTags" v-if="hasOwnListener" />
           <Direct v-if="inbound.type == inTypes.Direct" :data="inbound" />
           <Shadowsocks v-if="inbound.type == inTypes.Shadowsocks" direction="in" :data="inbound" />
           <Hysteria v-if="inbound.type == inTypes.Hysteria" direction="in" :data="inbound" />
@@ -90,6 +90,7 @@
           <SshInbound v-if="inbound.type == inTypes.SSH" :data="inbound" />
           <MTProxy v-if="inbound.type == inTypes.MTProxy" :data="inbound" />
           <Sudoku v-if="inbound.type == inTypes.Sudoku" :data="inbound" />
+          <BondInbound v-if="inbound.type == inTypes.Bond" :data="inbound" />
           <TProxy v-if="inbound.type == inTypes.TProxy" :inbound="inbound" />
           <Transport v-if="hasGenericTransport" :data="inbound" />
           <Users v-if="hasUser" :clients="clients" :data="initUsers" />

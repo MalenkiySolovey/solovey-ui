@@ -9,6 +9,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/composition"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
 	"gorm.io/gorm"
 )
@@ -39,6 +40,41 @@ func Included(category, panelType string) bool {
 	return entitycapabilities.Resolve(category, panelType).Available
 }
 
+// InboundEligibility keeps a group and its canonical members in one serving
+// unit. An unavailable provider/capability cannot expose its children as
+// independent listeners, or silently assemble a partial transport bundle.
+func InboundEligibility(rows []model.Inbound) (map[string]entitycapabilities.Fact, error) {
+	index, err := composition.Build(rows)
+	if err != nil {
+		return nil, err
+	}
+	facts := make(map[string]entitycapabilities.Fact, len(rows))
+	for _, row := range rows {
+		facts[row.Tag] = entitycapabilities.Resolve("inbounds", row.Type)
+	}
+	for _, row := range rows {
+		if !composition.IsGroup(row.Type) || !facts[row.Tag].Available {
+			continue
+		}
+		for _, member := range index.Members(row.Tag) {
+			if !facts[member].Available {
+				fact := facts[row.Tag]
+				fact.Available, fact.Reason = false, "INBOUND_GROUP_MEMBER_UNAVAILABLE"
+				facts[row.Tag] = fact
+				break
+			}
+		}
+	}
+	for _, row := range rows {
+		if parent := index.Parent(row.Tag); parent != "" && !facts[parent].Available {
+			fact := facts[row.Tag]
+			fact.Available, fact.Reason = false, "INBOUND_GROUP_UNAVAILABLE"
+			facts[row.Tag] = fact
+		}
+	}
+	return facts, nil
+}
+
 func Stored(db *gorm.DB) ([]Entity, error) {
 	if db == nil {
 		return nil, errors.New("entity persistence is unavailable")
@@ -62,6 +98,21 @@ func Stored(db *gorm.DB) ([]Entity, error) {
 		}
 		for _, row := range rows {
 			result = append(result, Entity{Category: entry.category, ID: row.ID, Type: row.Type, Tag: row.Tag, Capability: entitycapabilities.Resolve(entry.category, row.Type)})
+		}
+	}
+	if db.Migrator().HasTable(&model.Inbound{}) {
+		var inbounds []model.Inbound
+		if err := db.Select("id", "type", "tag", "options").Find(&inbounds).Error; err != nil {
+			return nil, err
+		}
+		facts, err := InboundEligibility(inbounds)
+		if err != nil {
+			return nil, err
+		}
+		for i := range result {
+			if result[i].Category == "inbounds" {
+				result[i].Capability = facts[result[i].Tag]
+			}
 		}
 	}
 	return result, nil

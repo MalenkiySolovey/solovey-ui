@@ -23,7 +23,7 @@ import (
 // CurrentFindings selects the actual protocol/side schema. Inbound user DTOs
 // are resolved by their own owner, so they are not interpreted as core users.
 func CurrentFindings(kind, side, path string, source json.RawMessage) []diagnostics.Finding {
-	if kind == "sudoku" && side == "inbound" {
+	if (kind == "sudoku" || kind == "bond") && side == "inbound" {
 		return nativeInboundFindings(kind, side, path, source)
 	}
 	if kind == "snell" {

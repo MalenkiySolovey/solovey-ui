@@ -51,6 +51,7 @@ func inboundDeclarations() []declaration[*inbound.Registry] {
 		{typeName: "ssh", buildTag: "shtorm_extended", compiled: supportsSSHInbound, authenticatedUsers: true, register: registerSSHInbound},
 		{typeName: "mtproxy", buildTag: "shtorm_extended", compiled: supportsMTProxyInbound, authenticatedUsers: true, register: registerMTProxyInbound},
 		{typeName: "sudoku", buildTag: "shtorm_extended", compiled: supportsSudokuInbound, register: registerSudokuInbound},
+		{typeName: "bond", buildTag: "shtorm_extended", compiled: supportsBondInbound, register: registerBondInbound},
 		{typeName: C.TypeCloudflared, buildTag: "with_cloudflared", productUnavailable: "UNSUPPORTED_BY_PRODUCT"},
 		{typeName: "hysteria", buildTag: "with_quic", compiled: C.WithQUIC, register: registerHysteriaInbound},
 		{typeName: "tuic", buildTag: "with_quic", compiled: C.WithQUIC, register: registerTUICInbound},

@@ -270,7 +270,7 @@ func NewBox(options Options) (_ *Box, err error) {
 	}
 	for i, inboundOptions := range options.Inbounds {
 		tag := indexedOptionTag(i, inboundOptions.Tag)
-		boundRouter, epoch, bindErr := s.inboundIdentity.Prepare(router, tag, options.IdentityBindings)
+		boundRouter, epoch, bindErr := s.inboundIdentity.PrepareInbound(router, tag, inboundOptions.Type, inboundOptions.Options, options.IdentityBindings)
 		if bindErr != nil {
 			return nil, bindErr
 		}

@@ -54,7 +54,19 @@ func Inbound(tx *gorm.DB, tag string) ([]TagReference, error) {
 	if err != nil {
 		return nil, err
 	}
-	return scanServiceRowsForInboundTag(rows, tag), nil
+	refs := scanServiceRowsForInboundTag(rows, tag)
+	if tx.Migrator().HasTable(&model.Inbound{}) {
+		var inbounds []model.Inbound
+		if err := tx.Select("id", "type", "tag", "options").Find(&inbounds).Error; err != nil {
+			return nil, err
+		}
+		groups, err := inboundGroupReferences(inbounds, tag)
+		if err != nil {
+			return nil, err
+		}
+		refs = append(refs, groups...)
+	}
+	return refs, nil
 }
 
 func SSMCascadeServiceIDs(tx *gorm.DB, inboundTag string) ([]uint, error) {

@@ -9,6 +9,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	entityidentity "github.com/MalenkiySolovey/solovey-ui/internal/entities/identity"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/composition"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
 	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
@@ -107,7 +108,7 @@ func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 	if err := inbound.UnmarshalJSON(data); err != nil {
 		return inbound, err
 	}
-	if managedNativeInbound(inbound.Type) {
+	if managedNativeInbound(inbound.Type) || composition.IsGroup(inbound.Type) {
 		if jsonvalue.StrictObject(data) != nil {
 			return inbound, common.NewError("NATIVE_INBOUND_INPUT_INVALID")
 		}
@@ -129,6 +130,9 @@ func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 	}
 	if err := validateJSONShape(inbound); err != nil {
 		return inbound, err
+	}
+	if composition.IsGroup(inbound.Type) && inbound.TlsId != 0 {
+		return inbound, common.NewError("INBOUND_GROUP_OWNED_FIELD: select TLS on the canonical member inbound")
 	}
 	if err := diagnostics.FirstError(LegacyOptionsFindings(inbound.Type, "inbound.options", inbound.Options)); err != nil {
 		return inbound, err
@@ -161,7 +165,7 @@ func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 }
 
 func preserveUnavailableNativeInbound(tx *gorm.DB, inbound *model.Inbound) error {
-	if !managedNativeInbound(inbound.Type) || entitycapabilities.Resolve("inbounds", inbound.Type).Available {
+	if (!managedNativeInbound(inbound.Type) && !composition.IsGroup(inbound.Type)) || entitycapabilities.Resolve("inbounds", inbound.Type).Available {
 		return nil
 	}
 	var stored model.Inbound
@@ -229,9 +233,13 @@ func ValidateStored(db *gorm.DB) error {
 			return common.NewErrorf("stored inbound row %d: %v", row.Id, err)
 		}
 	}
-	return nil
+	_, err := composition.Build(rows)
+	return err
 }
 func FillAndSave(tx *gorm.DB, inbound *model.Inbound, hostname string) error {
+	if err := validateInboundGroupCandidate(tx, *inbound); err != nil {
+		return err
+	}
 	if err := prepareInboundCredentials(tx, inbound); err != nil {
 		return err
 	}
@@ -274,6 +282,13 @@ func saveDeleted(req SaveRequest) (*singboxapply.Change, error) {
 	if err != nil {
 		return nil, err
 	}
+	var previous model.Inbound
+	if err := req.Tx.Select("id", "type", "options").Where("id = ?", id).Find(&previous).Error; err != nil {
+		return nil, err
+	}
+	if err := validateInboundGroupLeases(req.Tx, previous, model.Inbound{}); err != nil {
+		return nil, err
+	}
 	if req.ClientHooks != nil {
 		if err := req.ClientHooks.UpdateClientsOnInboundDelete(req.Tx, id, tag); err != nil {
 			return nil, err
@@ -282,7 +297,13 @@ func saveDeleted(req SaveRequest) (*singboxapply.Change, error) {
 	if err := req.Tx.Where("tag = ?", tag).Delete(model.Inbound{}).Error; err != nil {
 		return nil, err
 	}
-	return &singboxapply.Change{RemoveTags: []string{tag}}, nil
+	change := &singboxapply.Change{RemoveTags: []string{tag}}
+	// Removing a group restores its canonical members as independent inbounds.
+	// The existing complete-candidate restart owns that structural transition.
+	if composition.IsGroup(previous.Type) {
+		change.NeedsRestart, change.RestartReason = true, "inbound group membership changed"
+	}
+	return change, nil
 }
 func IDByTag(tx *gorm.DB, tag string) (uint, error) {
 	var id uint
@@ -291,6 +312,13 @@ func IDByTag(tx *gorm.DB, tag string) (uint, error) {
 }
 func CoreChangeForSavedRow(tx *gorm.DB, id uint, tag string, oldTag string) (*singboxapply.Change, error) {
 	change := &singboxapply.Change{ReloadIDs: []uint{id}}
+	var row model.Inbound
+	if err := tx.Select("id", "type").First(&row, id).Error; err != nil {
+		return nil, err
+	}
+	if composition.IsGroup(row.Type) {
+		change.NeedsRestart, change.RestartReason = true, "inbound group membership changed"
+	}
 	if oldTag != "" && oldTag != tag {
 		change.RemoveTags = []string{oldTag}
 	}
