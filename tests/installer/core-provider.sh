@@ -53,9 +53,11 @@ reject() {
 # Both component footprints retain their existing Official artifact identity.
 accept solovey-ui-linux-amd64.tar.gz fresh amd64
 accept solovey-ui-core-linux-arm64.tar.gz fresh arm64 --profile core
-accept solovey-ui-shtorm-extended-linux-amd64.tar.gz fresh amd64 --core-provider shtorm-extended
-accept solovey-ui-shtorm-extended-core-linux-amd64.tar.gz fresh amd64 --profile core --core-provider shtorm-extended
-reject fresh arm64 --core-provider shtorm-extended
+for platform in amd64 arm64 armv7 armv6 armv5 386 s390x; do
+    accept "solovey-ui-shtorm-extended-linux-${platform}.tar.gz" fresh "$platform" --core-provider shtorm-extended
+    accept "solovey-ui-shtorm-extended-core-linux-${platform}.tar.gz" fresh "$platform" --profile core --core-provider shtorm-extended
+done
+reject fresh mips64 --core-provider shtorm-extended
 reject fresh amd64 --core-provider unknown
 reject fresh amd64 --core-provider shtorm-extended --core-provider sing-box
 

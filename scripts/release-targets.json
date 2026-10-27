@@ -10,7 +10,7 @@
   ],
   "extended": {
     "provider": "shtorm-extended",
-    "linux": ["amd64"],
+    "linux": ["amd64", "arm64", "armv7", "armv6", "armv5", "386", "s390x"],
     "windows": [],
     "docker": [],
     "openwrt": []

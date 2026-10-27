@@ -27,10 +27,11 @@ profiles, including retained OpenWrt-compatible FriendlyWrt ARM64 deployments.
 An OS-specific feature limitation belongs in capability facts; it must not
 disable the entire Provider or introduce an OS-specific provider identity.
 
-Linux amd64 full/core is the currently qualified Extended subset. The current
-release target selections are build availability, not the final R7 platform
-acceptance matrix. Remaining production paths require focused cross-build and
-package proof, then bounded runtime qualification after semantic parity settles.
+Linux amd64 full/core is the currently qualified Extended subset. Linux release
+build selection now covers all seven existing architectures in both profiles,
+retaining each architecture's existing Naive and compiler contract. Build
+selection is not final R7 platform acceptance. Production paths require focused
+cross-build and package proof, then bounded runtime qualification after semantic parity settles.
 Record exact build/dependency/packaging blockers; cross-compilation alone does
 not prove installation, lifecycle or physical hardware. R7 completion requires
 every existing intended target to be accounted for and platform capability gaps
