@@ -330,6 +330,6 @@ const defaultValues: Record<OutType, Outbound> = {
 }
 
 export function createOutbound<T extends Outbound>(type: string,json?: Partial<T>): Outbound {
-  const defaultObject: Outbound = { ...defaultValues[type], ...(json || {}) }
+  const defaultObject: Outbound = { ...JSON.parse(JSON.stringify(defaultValues[type] ?? {})), ...(json || {}) }
   return defaultObject
 }
