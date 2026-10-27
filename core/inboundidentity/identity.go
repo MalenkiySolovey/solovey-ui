@@ -35,6 +35,8 @@ type Epoch struct {
 	active     bool
 	id         string
 	tag        string
+	ownerTag   string
+	members    map[string]*Epoch
 	principals map[string]*principal
 	tokens     map[string]*principal
 }
@@ -51,7 +53,7 @@ func (o *Owner) Prepare(router adapter.Router, tag string, bindings []Binding) (
 	if err != nil {
 		return nil, nil, errors.New("inbound identity generation failed")
 	}
-	epoch := &Epoch{id: id, tag: tag, principals: map[string]*principal{}, tokens: map[string]*principal{}}
+	epoch := &Epoch{id: id, tag: tag, ownerTag: tag, principals: map[string]*principal{}, tokens: map[string]*principal{}}
 	for _, binding := range bindings {
 		if binding.Inbound != tag || binding.Principal == "" || binding.ClientID == 0 {
 			continue
@@ -66,6 +68,50 @@ func (o *Owner) Prepare(router adapter.Router, tag string, bindings []Binding) (
 	return &boundRouter{Router: router, epoch: epoch}, epoch, nil
 }
 
+// PrepareInbound derives group membership from the actual decoded provider
+// options, never from a caller's binding list. Each member keeps its own
+// credential namespace and epoch; the group's admission lifetime retires them.
+func (o *Owner) PrepareInbound(router adapter.Router, tag, kind string, options any, bindings []Binding) (adapter.Router, *Epoch, error) {
+	o.mu.RLock()
+	previous := o.inbounds[tag]
+	conflict := previous != nil && previous.ownerTag != tag
+	o.mu.RUnlock()
+	if conflict {
+		return nil, nil, errors.New("inbound identity belongs to a group")
+	}
+	tags, err := groupMemberTags(kind, options)
+	if err != nil {
+		return nil, nil, err
+	}
+	bound, root, err := o.Prepare(router, tag, bindings)
+	if err != nil {
+		return nil, nil, err
+	}
+	if len(tags) == 0 {
+		return bound, root, nil
+	}
+	root.members = map[string]*Epoch{}
+	for _, member := range tags {
+		if member == "" || member == tag || root.members[member] != nil {
+			return nil, nil, errors.New("ambiguous inbound group identity")
+		}
+		o.mu.RLock()
+		previous := o.inbounds[member]
+		conflict := previous != nil && previous.ownerTag != tag
+		o.mu.RUnlock()
+		if conflict {
+			return nil, nil, errors.New("inbound group identity already owned")
+		}
+		_, epoch, err := o.Prepare(router, member, bindings)
+		if err != nil {
+			return nil, nil, err
+		}
+		epoch.ownerTag = tag
+		root.members[member] = epoch
+	}
+	return bound, root, nil
+}
+
 // Publish follows successful manager construction. An unaccepted candidate
 // cannot admit a flow. Replacement revokes the old parent admission lifetime.
 func (o *Owner) Publish(tag string, epoch *Epoch) {
@@ -73,11 +119,20 @@ func (o *Owner) Publish(tag string, epoch *Epoch) {
 	defer o.mu.Unlock()
 	if previous := o.inbounds[tag]; previous != nil {
 		previous.revoke()
+		for member := range previous.members {
+			delete(o.inbounds, member)
+		}
 	}
 	epoch.mu.Lock()
 	epoch.active = true
 	epoch.mu.Unlock()
 	o.inbounds[tag] = epoch
+	for tag, member := range epoch.members {
+		member.mu.Lock()
+		member.active = true
+		member.mu.Unlock()
+		o.inbounds[tag] = member
+	}
 }
 
 func (e *Epoch) revoke() {
@@ -85,6 +140,9 @@ func (e *Epoch) revoke() {
 	e.active = false
 	e.principals = nil
 	e.tokens = nil
+	for _, member := range e.members {
+		member.revoke()
+	}
 	e.mu.Unlock()
 }
 
@@ -92,8 +150,14 @@ func (o *Owner) Revoke(tag string) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
 	if epoch := o.inbounds[tag]; epoch != nil {
+		if root := o.inbounds[epoch.ownerTag]; root != nil {
+			epoch = root
+		}
 		epoch.revoke()
-		delete(o.inbounds, tag)
+		delete(o.inbounds, epoch.tag)
+		for member := range epoch.members {
+			delete(o.inbounds, member)
+		}
 	}
 }
 
@@ -164,6 +228,9 @@ func (e *Epoch) bind(ctx context.Context, metadata adapter.InboundContext) (cont
 	defer e.mu.RUnlock()
 	if !e.active {
 		return nil, errors.New("inbound_generation_retired")
+	}
+	if member := e.members[metadata.Inbound]; member != nil {
+		return member.bind(ctx, metadata)
 	}
 	// The pinned Snell constructor falls back to PSK-only when users is empty.
 	// Product-managed credentials must never gain that anonymous fallback when

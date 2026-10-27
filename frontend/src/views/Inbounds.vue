@@ -146,19 +146,23 @@
             </v-row>
           </v-card-subtitle>
           <v-card-text>
-            <v-row>
+            <v-row v-if="item.type === 'bond'">
+              <v-col>{{ $t('nativeInbound.bondMembers') }}</v-col>
+              <v-col>{{ item.inbounds?.join(', ') }}</v-col>
+            </v-row>
+            <v-row v-if="item.type !== 'bond'">
               <v-col>{{ $t('in.addr') }}</v-col>
               <v-col>
                 {{ item.listen }}
               </v-col>
             </v-row>
-            <v-row>
+            <v-row v-if="item.type !== 'bond'">
               <v-col>{{ $t('in.port') }}</v-col>
               <v-col>
                 {{ item.listen_port }}
               </v-col>
             </v-row>
-            <v-row>
+            <v-row v-if="item.type !== 'bond'">
               <v-col>{{ $t('objects.tls') }}</v-col>
               <v-col>
                 {{ item.tls_id > 0 ? $t('enable') : $t('disable') }}

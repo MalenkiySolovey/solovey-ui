@@ -1925,13 +1925,13 @@
       "rule": "direct-policy",
       "path": "core/box/box.go",
       "symbol": "NewBox",
-      "digest": "581fe87f8170ef516b8607b727db765ed631cc001ae46e3eceb5e5e04561264a"
+      "digest": "b387c953b855cd080b8bd29f90fbfcc6a6a6344a99d3c7b472438c6a036f5900"
     },
     {
       "rule": "direct-policy",
       "path": "core/registry/inbound.go",
       "symbol": "inboundDeclarations",
-      "digest": "56df4379fd23c92b557fdb79e53d0c615feedd8c41e76e598f905aaf8c19c907"
+      "digest": "0b43099589840363302992f101b84018ef40e44e118e45e18cb545d672c3b4f5"
     },
     {
       "rule": "direct-policy",

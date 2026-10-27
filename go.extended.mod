@@ -47,6 +47,7 @@ require (
 	github.com/pkg/sftp v1.13.10 // indirect
 	github.com/sagernet/gliderssh v0.3.4-0.20260531100337-2194faca5648 // indirect
 	github.com/sagernet/sing-usbip v0.0.0-20260817040617-28bd42667eca // indirect
+	github.com/shtorm-7/go-cache/v2 v2.1.0-extended-1.2.0 // indirect
 	github.com/shtorm-7/rmux v1.0.1 // indirect
 )
 
@@ -217,7 +218,7 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261026194249-125ee84d5e22
+replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261027004710-ed972fda6a1a
 
 replace github.com/anytls/sing-anytls => github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353
 

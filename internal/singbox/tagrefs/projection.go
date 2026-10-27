@@ -30,6 +30,11 @@ func ProjectedReferences(base []byte, rows ProjectionRows, category, tag string)
 		refs = append(refs, baseRefs...)
 	case "inbounds":
 		refs = append(refs, scanServiceRowsForInboundTag(rows.Services, tag)...)
+		groups, err := inboundGroupReferences(rows.Inbounds, tag)
+		if err != nil {
+			return nil, err
+		}
+		refs = append(refs, groups...)
 		for _, row := range rows.Inbounds {
 			if detour, _ := optionsMapOf(row.Options)["detour"].(string); detour == tag {
 				refs = append(refs, TagReference{Kind: "inbound detour", Locator: fmt.Sprintf("inbound %q (detour)", row.Tag)})

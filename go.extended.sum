@@ -37,8 +37,8 @@ github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353 h1:
 github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353/go.mod h1:7rjN6IukwysmdusYsrV51Fgu1uW6vsrdd6ctjnEAln8=
 github.com/MalenkiySolovey/sing-box v1.14.3-0.20261012000247-8b914e4be510 h1:RkQg7xe/iBA9+PrEgN8oN0p9LNBNsd2OR65KUEmo4K0=
 github.com/MalenkiySolovey/sing-box v1.14.3-0.20261012000247-8b914e4be510/go.mod h1:O4q0spxb+xwV/p9HYR+Es1cMjK3bBvYl6k08V9rSpwU=
-github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261026194249-125ee84d5e22 h1:tuwMp849DrtpiSPCOwp/BRV3IDmODSYSKZ2kXoDFe0A=
-github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261026194249-125ee84d5e22/go.mod h1:sg62CEdWhkOVVDDI3fA01dd82eoZuZKSlLY0oKAUHmc=
+github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261027004710-ed972fda6a1a h1:Q0PVNWy1auuR+0Ioc/wovYHPz735XhVwVlACGoKAnWY=
+github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261027004710-ed972fda6a1a/go.mod h1:sg62CEdWhkOVVDDI3fA01dd82eoZuZKSlLY0oKAUHmc=
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762 h1:0x0RTO9IyqRHO9rmEpUhCKRBeISM5LwKLsIiIifFbRY=
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762/go.mod h1:rJFeVxbEej2iuyeCJ3drKW+p5rOgtLIW3XhZ6ty7Fig=
 github.com/MalenkiySolovey/sing-quic v0.7.2-0.20261025183737-9034c2c10c63 h1:kRQoFAgCMnYrjyyejCWtJd7Sc08t40HMHY4x58Es88c=
@@ -657,6 +657,7 @@ github.com/shopspring/decimal v1.4.0/go.mod h1:gawqmDU56v4yIKSwfBSFip1HdCCXN8/+D
 github.com/shtorm-7/connect-ip-go v1.0.0-extended-1.1.1/go.mod h1:mRwx4w32qQxsWB2kThuHpbo7iNjJiq1jYWubgqEPjHA=
 github.com/shtorm-7/dnscrypt/v2 v2.4.0-extended-1.0.0 h1:e5s7RKBd2rIPR0StbvZ2vTVtJ5jDTsTk5wtIIapZTRg=
 github.com/shtorm-7/dnscrypt/v2 v2.4.0-extended-1.0.0/go.mod h1:WpEFV2uhebXb8Jhes/5/fSdpmhGV8TL22RDaeWwV6hI=
+github.com/shtorm-7/go-cache/v2 v2.1.0-extended-1.2.0 h1:aOd9Vy2LGSwgMM+4805AgLBE/MQf8UymbXHxUZjSmoU=
 github.com/shtorm-7/go-cache/v2 v2.1.0-extended-1.2.0/go.mod h1:Ek4yz5OK6stwhLKgLsRRYDI+FA+ZWvRJiWLjsi/vMM4=
 github.com/shtorm-7/mtg-multi v1.12.0-extended-1.0.0 h1:C3z032x0hxf7hVifdX//7p0JcZKhIgLga2thm6/gUu4=
 github.com/shtorm-7/mtg-multi v1.12.0-extended-1.0.0/go.mod h1:3rvdhwdPABkwKBdvgMt3VwMn9uSq8hpoHRezZ5jRJU0=

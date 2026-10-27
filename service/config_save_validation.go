@@ -9,9 +9,9 @@ import (
 	"gorm.io/gorm"
 )
 
-// Credential-backed native inbounds require a complete candidate: the Users
-// assignment and TLS owners supply fields that an isolated inbound draft cannot
-// validate. Construct and close with the serving registry before the existing
+// Native credentials and inbound groups require a complete candidate: their
+// Users, TLS and member owners supply fields that an isolated inbound draft
+// cannot validate. Construct and close with the serving registry before the existing
 // save transaction commits. Dry validation starts no listener or runtime.
 func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 	var kinds []string
@@ -19,6 +19,9 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 		if fact.SecretField != "" && entitycapabilities.Resolve("inbounds", fact.Type).Available {
 			kinds = append(kinds, fact.Type)
 		}
+	}
+	if entitycapabilities.Resolve("inbounds", "bond").Available {
+		kinds = append(kinds, "bond")
 	}
 	if len(kinds) == 0 || !tx.Migrator().HasTable(&model.Inbound{}) {
 		return nil

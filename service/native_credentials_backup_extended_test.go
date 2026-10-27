@@ -128,6 +128,15 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 				return err
 			}
 		}
+		for _, row := range []model.Inbound{
+			{Type: "socks", Tag: "archive-bond-first", Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":23466}`)},
+			{Type: "socks", Tag: "archive-bond-second", Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":23467}`)},
+			{Type: "bond", Tag: "archive-bond", Options: json.RawMessage(`{"inbounds":["archive-bond-second","archive-bond-first"]}`)},
+		} {
+			if err := entityinbounds.FillAndSave(tx, &row, "fixture.invalid"); err != nil {
+				return err
+			}
+		}
 		return nil
 	}); err != nil {
 		t.Fatal("native Inbounds owner fixture failed", err)
@@ -187,19 +196,29 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		}
 		var root struct {
 			Inbounds []struct {
-				Type    string
-				Users   []map[string]string
-				HostKey []string `json:"host_key"`
-				Key     string
+				Type     string
+				Users    []map[string]string
+				HostKey  []string `json:"host_key"`
+				Key      string
+				Inbounds []struct {
+					Tag  string
+					Port uint16 `json:"listen_port"`
+				}
 			}
 		}
-		if json.Unmarshal(projection.Config, &root) != nil || len(root.Inbounds) != len(inbounds) {
+		if json.Unmarshal(projection.Config, &root) != nil || len(root.Inbounds) != len(inbounds)+1 {
 			t.Fatal("native runtime projection lost an inbound")
 		}
 		if bytes.Contains(projection.Config, []byte(sudokuMaster)) || bytes.Contains(projection.Config, []byte(sudokuSplit)) || bytes.Contains(projection.Config, []byte("master_key")) {
 			t.Fatal("Sudoku runtime projection disclosed delivery material")
 		}
 		for _, inbound := range root.Inbounds {
+			if inbound.Type == "bond" {
+				if len(inbound.Users) != 0 || len(inbound.Inbounds) != 2 || inbound.Inbounds[0].Tag != "archive-bond-second" || inbound.Inbounds[0].Port != 23467 || inbound.Inbounds[1].Tag != "archive-bond-first" || inbound.Inbounds[1].Port != 23466 {
+					t.Fatal("private archive changed canonical group membership, ordering or member options")
+				}
+				continue
+			}
 			if inbound.Type == "sudoku" {
 				if len(inbound.Users) != 0 || inbound.Key != sudokuPublic {
 					t.Fatal("archive invented Sudoku Users or changed the serving identity")

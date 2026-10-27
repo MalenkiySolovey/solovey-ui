@@ -9,7 +9,11 @@ const supportsSSHInbound = false
 const supportsMTProxyInbound = false
 const supportsSudokuInbound = false
 
+const supportsBondInbound = false
+
 func registerMieruInbound(*inbound.Registry)   {}
 func registerSSHInbound(*inbound.Registry)     {}
 func registerMTProxyInbound(*inbound.Registry) {}
 func registerSudokuInbound(*inbound.Registry)  {}
+
+func registerBondInbound(*inbound.Registry) {}

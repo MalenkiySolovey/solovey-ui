@@ -61,15 +61,16 @@
       </template>
 
       <template #col.listen="{ item }">
-        <span class="nexus-mono">{{ item.listen }}</span>
+        <span class="nexus-mono">{{ item.type === 'bond' ? item.inbounds?.join(', ') : item.listen }}</span>
       </template>
 
       <template #col.listen_port="{ item }">
-        <span class="nexus-mono">{{ item.listen_port }}</span>
+        <span class="nexus-mono">{{ item.type === 'bond' ? '—' : item.listen_port }}</span>
       </template>
 
       <template #col.tls="{ item }">
-        <nexus-badge
+        <span v-if="item.type === 'bond'">—</span>
+        <nexus-badge v-else
           :label="item.tls_id > 0 ? $t('nexus.on') : $t('nexus.off')"
           :variant="item.tls_id > 0 ? 'success' : 'secondary'"
         />
@@ -124,6 +125,7 @@ interface InboundRow {
   listen_port: number
   tls_id: number
   users?: string[]
+  inbounds?: string[]
   [key: string]: unknown
 }
 

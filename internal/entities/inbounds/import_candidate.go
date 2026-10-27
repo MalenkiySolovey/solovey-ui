@@ -51,6 +51,9 @@ func SaveImportedCandidate(tx *gorm.DB, candidate model.Inbound, recreate bool, 
 			if previous.Tag != prepared.Tag {
 				return errors.New("inbound replacement cannot change its target tag")
 			}
+			if err := validateInboundGroupLeases(view, previous, prepared); err != nil {
+				return err
+			}
 			// A tag reference remains valid through an atomic same-tag replace.
 			// VPN user membership is rebound by its own owner below.
 			if err := saveeligibility.Check("inbounds", prepared.Type, "new", ""); err != nil {
