@@ -48,6 +48,8 @@ func outboundDeclarations() []declaration[*outbound.Registry] {
 		{typeName: "tor", buildTag: "", compiled: true, register: tor.RegisterOutbound},
 		{typeName: "ssh", buildTag: "", compiled: true, register: ssh.RegisterOutbound},
 		{typeName: "call", buildTag: "shtorm_extended", compiled: supportsCallOutbound, register: registerCallOutbound},
+		{typeName: "mieru", buildTag: "shtorm_extended", compiled: supportsMieruOutbound, register: registerMieruOutbound},
+		{typeName: "trusttunnel", buildTag: "shtorm_extended,with_quic", compiled: supportsTrustTunnelOutbound, register: registerTrustTunnelOutbound},
 		{typeName: "shadowtls", buildTag: "", compiled: true, register: shadowtls.RegisterOutbound},
 		{typeName: "vless", buildTag: "", compiled: true, register: vless.RegisterOutbound},
 		{typeName: "anytls", buildTag: "", compiled: true, register: anytls.RegisterOutbound},

@@ -1,4 +1,15 @@
 export default {
+  "nativeOutbound": {
+    "username": "Имя пользователя",
+    "password": "Пароль",
+    "serverPorts": "Диапазоны портов сервера",
+    "multiplexing": "Мультиплексирование",
+    "handshakeMode": "Режим рукопожатия",
+    "healthCheck": "Проверка доступности",
+    "maxConnections": "Максимум соединений",
+    "minStreams": "Минимум потоков на соединение",
+    "maxStreams": "Максимум потоков на соединение",
+  },
   "nativeInbound": {
     "callPlatform": "Платформа звонков",
     "callMode": "Режим туннеля",

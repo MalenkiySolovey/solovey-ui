@@ -170,3 +170,15 @@ worker retirement checks qualify these owners. Remote authenticated traffic
 remains an open R7 gate. The Direct registration and route/final/detour/fallback
 decisions are unchanged. This replaces one exact reviewed declaration digest
 with no new Direct site, worker allowance or R1 inventory regeneration.
+
+R7 native client Outbounds reviews that same `outboundDeclarations` Direct
+site from `39a2d075...` to `ee279e14...`. Mieru and TrustTunnel add native
+Extended registrations; TrustTunnel retains its actual `with_quic` build
+constraint. Outbounds owns rows and candidate save/apply, and the shared
+SecretRef owner seals each remote password with row/field binding. The engine
+owns native clients and retires their admitted request/health workers through
+its serving Scope. Focused candidate rollback, masked edit, private archive
+restore and source retirement checks qualify these boundaries. Official
+retains unavailable capability facts and lossless stored-state preservation.
+The Direct declaration, routing decisions, worker allowance and R1 inventory
+remain unchanged; only this exact reviewed digest is replaced.

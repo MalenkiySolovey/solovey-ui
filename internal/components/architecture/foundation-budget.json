@@ -1937,7 +1937,7 @@
       "rule": "direct-policy",
       "path": "core/registry/outbound.go",
       "symbol": "outboundDeclarations",
-      "digest": "39a2d075645a1e47a135d0b98e80c070f27944ae769dc0456ea4c03ba601283a"
+      "digest": "ee279e1494d1dec735b1be2897eab2f2c3c273b43e496a176d6ccc233a3fadd0"
     },
     {
       "rule": "direct-policy",

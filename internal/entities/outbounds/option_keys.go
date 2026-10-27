@@ -76,7 +76,7 @@ func decodeSaveOutbound(data json.RawMessage) (model.Outbound, error) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return model.Outbound{}, err
 	}
-	if kind, _ := raw["type"].(string); kind == "call" && jsonvalue.StrictObject(data) != nil {
+	if kind, _ := raw["type"].(string); len(managedCredentialFields(kind)) != 0 && jsonvalue.StrictObject(data) != nil {
 		return model.Outbound{}, errOutboundCredentialInvalid
 	}
 	for _, key := range optionStripKeySnapshot() {

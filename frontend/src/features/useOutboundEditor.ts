@@ -21,6 +21,7 @@ import Hysteria2 from '@/components/protocols/Hysteria2.vue'
 import Tor from '@/components/protocols/Tor.vue'
 import Ssh from '@/components/protocols/Ssh.vue'
 import CallNative from '@/components/protocols/CallInbound.vue'
+import NativeClientOutbound from '@/components/protocols/NativeClientOutbound.vue'
 import { secretMutation, unchangedSecret } from './secretCredentialDraft'
 import Selector from '@/components/protocols/Selector.vue'
 import UrlTest from '@/components/protocols/UrlTest.vue'
@@ -71,7 +72,7 @@ export default defineComponent({
       const tag = this.$props.id > 0 ? this.outbound.tag : this.outbound.type + "-" + RandomUtil.randomSeq(3)
       // Use previous data
       const prevConfig = { id: this.outbound.id, tag: tag, listen: this.outbound.listen, listen_port: this.outbound.listen_port }
-      this.outbound = createOutbound(this.outbound.type, this.outbound.type === OutTypes.Call ? { id: this.outbound.id, tag } : prevConfig)
+      this.outbound = createOutbound(this.outbound.type, [OutTypes.Call, OutTypes.Mieru, OutTypes.TrustTunnel].includes(this.outbound.type) ? { id: this.outbound.id, tag } : prevConfig)
     },
     closeModal() {
       this.updateData(0) // reset
@@ -118,7 +119,15 @@ export default defineComponent({
             (cookies?.intent === 'replace' && !cookies.value.trim())
         } catch { credentialInvalid = true }
       }
-      return entitySaveReasons({ identity: this.outbound.tag, port: this.outbound.server_port, requiresPort: !this.NoServer.includes(this.outbound.type), pending: this.loading, capability: this.capabilityState, credentialInvalid })
+      if ([OutTypes.Mieru, OutTypes.TrustTunnel].includes(this.outbound.type)) {
+        try {
+          const password = secretMutation(this.outbound.password)
+          credentialInvalid = !this.outbound.username?.trim() || !(password?.intent === 'replace' || unchangedSecret(password)?.present === true)
+        } catch { credentialInvalid = true }
+      }
+      const rangeOnly = this.outbound.type === OutTypes.Mieru && !this.outbound.server_port &&
+        (typeof this.outbound.server_ports === 'string' ? this.outbound.server_ports.trim().length > 0 : this.outbound.server_ports?.length > 0)
+      return entitySaveReasons({ identity: this.outbound.tag, port: this.outbound.server_port, requiresPort: !this.NoServer.includes(this.outbound.type) && !rangeOnly, pending: this.loading, capability: this.capabilityState, credentialInvalid, missingRequiredTls: this.outbound.type === OutTypes.TrustTunnel && !this.outbound.tls?.enabled })
     },
     capabilityState(): CapabilityEditState {
       return capabilityEditState(Data().capabilities, "outbounds", this.outbound.type, this.storedCapabilityType)
@@ -140,5 +149,5 @@ export default defineComponent({
   components: { SaveGuardNotice, CapabilityNotice, Dial, Multiplex, Transport, OutTLS,
     Direct, Socks, Http, Shadowsocks, Vmess, Trojan,
     Wireguard, Hysteria, Naive, ShadowTls, Vless, Tuic,
-    Hysteria2, AnyTls, Snell, Tor, Ssh, CallNative, Selector, UrlTest, Failover }
+    Hysteria2, AnyTls, Snell, Tor, Ssh, CallNative, NativeClientOutbound, Selector, UrlTest, Failover }
 })

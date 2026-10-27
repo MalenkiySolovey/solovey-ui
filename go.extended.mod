@@ -18,9 +18,9 @@ require (
 	github.com/sagernet/sing-snell v0.0.0-20260904135315-bc5a12ac736f
 	github.com/shirou/gopsutil/v4 v4.26.5
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
-	golang.org/x/crypto v0.57.0
-	golang.org/x/net v0.60.0
-	golang.org/x/term v0.46.0
+	golang.org/x/crypto v0.58.0
+	golang.org/x/net v0.62.0
+	golang.org/x/term v0.47.0
 	golang.zx2c4.com/wireguard/wgctrl v0.0.0-20241231184526-a9ab2273dd10
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/sqlite v1.6.0
@@ -58,7 +58,7 @@ require (
 	github.com/pion/sctp v1.9.4 // indirect
 	github.com/pion/sdp/v3 v3.0.18 // indirect
 	github.com/pion/srtp/v3 v3.0.10 // indirect
-	github.com/pion/stun/v3 v3.1.1 // indirect
+	github.com/pion/stun/v3 v3.1.5 // indirect
 	github.com/pion/transport/v4 v4.1.0 // indirect
 	github.com/pion/turn/v4 v4.1.4 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
@@ -227,11 +227,11 @@ require (
 	golang.org/x/exp v0.0.0-20260410095643-746e56fc9e2f // indirect
 	golang.org/x/mod v0.41.0 // indirect
 	golang.org/x/oauth2 v0.36.0 // indirect
-	golang.org/x/sync v0.23.0
-	golang.org/x/sys v0.48.0
-	golang.org/x/text v0.42.0 // indirect
+	golang.org/x/sync v0.24.0
+	golang.org/x/sys v0.49.0
+	golang.org/x/text v0.43.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
-	golang.org/x/tools v0.49.0 // indirect
+	golang.org/x/tools v0.51.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20260526163538-3dc84a4a5aaa // indirect
@@ -240,7 +240,7 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261027174051-0e365d0fdcf8
+replace github.com/sagernet/sing-box => github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261027184552-1c965b83f04a
 
 replace github.com/anytls/sing-anytls => github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353
 

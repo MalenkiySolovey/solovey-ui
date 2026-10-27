@@ -32,8 +32,14 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 		}
 	}
 	var outboundCount int64
-	if entitycapabilities.Resolve("outbounds", "call").Available && tx.Migrator().HasTable(&model.Outbound{}) {
-		if err := tx.Model(&model.Outbound{}).Where("type = ?", "call").Count(&outboundCount).Error; err != nil {
+	var outboundKinds []string
+	for _, kind := range []string{"call", "mieru", "trusttunnel"} {
+		if entitycapabilities.Resolve("outbounds", kind).Available {
+			outboundKinds = append(outboundKinds, kind)
+		}
+	}
+	if len(outboundKinds) != 0 && tx.Migrator().HasTable(&model.Outbound{}) {
+		if err := tx.Model(&model.Outbound{}).Where("type IN ?", outboundKinds).Count(&outboundCount).Error; err != nil {
 			return err
 		}
 	}

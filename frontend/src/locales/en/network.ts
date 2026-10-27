@@ -1,4 +1,15 @@
 export default {
+  "nativeOutbound": {
+    "username": "Username",
+    "password": "Password",
+    "serverPorts": "Server port ranges",
+    "multiplexing": "Multiplexing",
+    "handshakeMode": "Handshake mode",
+    "healthCheck": "Health check",
+    "maxConnections": "Maximum connections",
+    "minStreams": "Minimum streams per connection",
+    "maxStreams": "Maximum streams per connection",
+  },
   "nativeInbound": {
     "callPlatform": "Call platform",
     "callMode": "Tunnel mode",
