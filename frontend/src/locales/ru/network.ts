@@ -1,5 +1,11 @@
 export default {
   "nativeOutbound": {
+    "sudokuKey": "Клиентский ключ Sudoku",
+    "sudokuKeyHint": "Клиентский ключ удалённого сервера хранится в зашифрованном виде и скрывается после сохранения.",
+    "sudokuMask": "Маскировка HTTP",
+    "sudokuMaskHost": "Хост маскировки HTTP",
+    "sudokuMaskMultiplex": "Мультиплексирование маскировки HTTP",
+    "sudokuMaskTLS": "Включить TLS для маскировки HTTP",
     "username": "Имя пользователя",
     "password": "Пароль",
     "serverPorts": "Диапазоны портов сервера",

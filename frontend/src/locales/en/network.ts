@@ -1,5 +1,11 @@
 export default {
   "nativeOutbound": {
+    "sudokuKey": "Sudoku client key",
+    "sudokuKeyHint": "Use the client key supplied by the remote server. Saved keys remain masked.",
+    "sudokuMask": "HTTP mask",
+    "sudokuMaskHost": "HTTP mask host",
+    "sudokuMaskMultiplex": "HTTP mask multiplexing",
+    "sudokuMaskTLS": "Enable TLS for HTTP mask",
     "username": "Username",
     "password": "Password",
     "serverPorts": "Server port ranges",
