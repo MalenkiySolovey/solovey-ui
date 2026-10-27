@@ -23,6 +23,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
+	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	settingsstore "github.com/MalenkiySolovey/solovey-ui/internal/settings/store"
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
@@ -71,12 +72,13 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 	ownerState := func(db *gorm.DB) []byte {
 		t.Helper()
 		var rows struct {
-			Clients  []model.Client
-			Inbounds []model.Inbound
-			TLS      []model.Tls
-			Settings []model.Setting
+			Clients   []model.Client
+			Inbounds  []model.Inbound
+			Outbounds []model.Outbound
+			TLS       []model.Tls
+			Settings  []model.Setting
 		}
-		for _, table := range []any{&rows.Clients, &rows.Inbounds, &rows.TLS, &rows.Settings} {
+		for _, table := range []any{&rows.Clients, &rows.Inbounds, &rows.Outbounds, &rows.TLS, &rows.Settings} {
 			if err := db.Order("id").Find(table).Error; err != nil {
 				t.Fatal(err)
 			}
@@ -130,6 +132,10 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		"password":  map[string]string{"intent": "replace", "value": callPassword},
 		"join_link": map[string]string{"intent": "replace", "value": callJoinLink}})
 	callInbound := model.Inbound{Type: "call", Tag: "archive-call", Options: callOptions}
+	const outboundRoom = "https://dion.vc/event/synthetic-archive-outbound-room"
+	callOutbound, _ := json.Marshal(map[string]any{"type": "call", "tag": "archive-call-outbound", "platform": "dion",
+		"cookies":   map[string]string{"intent": "replace", "value": `[{"name":"session","value":"` + callCookie + `"}]`},
+		"join_link": map[string]string{"intent": "replace", "value": outboundRoom}})
 	if err := db.Transaction(func(tx *gorm.DB) error {
 		for index := range inbounds {
 			if err := entityinbounds.FillAndSave(tx, &inbounds[index], "fixture.invalid"); err != nil {
@@ -148,7 +154,11 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 				return err
 			}
 		}
-		return entityinbounds.FillAndSave(tx, &callInbound, "fixture.invalid")
+		if err := entityinbounds.FillAndSave(tx, &callInbound, "fixture.invalid"); err != nil {
+			return err
+		}
+		_, err := entityoutbounds.Save(tx, "new", callOutbound)
+		return err
 	}); err != nil {
 		t.Fatal("native Inbounds owner fixture failed", err)
 	}
@@ -206,6 +216,11 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 			t.Fatal("native archived candidate failed the exact provider check", err)
 		}
 		var root struct {
+			Outbounds []struct {
+				Type     string
+				JoinLink string `json:"join_link"`
+				Cookies  []struct{ Name, Value string }
+			}
 			Inbounds []struct {
 				Type     string
 				Users    []map[string]string
@@ -225,6 +240,18 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		}
 		if bytes.Contains(projection.Config, []byte(sudokuMaster)) || bytes.Contains(projection.Config, []byte(sudokuSplit)) || bytes.Contains(projection.Config, []byte("master_key")) {
 			t.Fatal("Sudoku runtime projection disclosed delivery material")
+		}
+		callOutboundFound := false
+		for _, outbound := range root.Outbounds {
+			if outbound.Type == "call" {
+				callOutboundFound = true
+				if outbound.JoinLink != outboundRoom || len(outbound.Cookies) != 1 || outbound.Cookies[0].Value != callCookie {
+					t.Fatal("archive changed private Call outbound room/cookie ownership")
+				}
+			}
+		}
+		if !callOutboundFound {
+			t.Fatal("archive lost the native Call outbound")
 		}
 		for _, inbound := range root.Inbounds {
 			if inbound.Type == "call" {
@@ -281,6 +308,14 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		if bytes.Contains(encoded, []byte("PRIVATE KEY")) || bytes.Contains(encoded, []byte("sbox:v1:")) || bytes.Contains(encoded, []byte(sudokuMaster)) || bytes.Contains(encoded, []byte(callCookie)) || bytes.Contains(encoded, []byte(callPassword)) || bytes.Contains(encoded, []byte(callJoinLink)) {
 			t.Fatal("restored normal SSH read disclosed host-key material")
 		}
+		outboundView, err := entityoutbounds.GetAll(candidate)
+		if err != nil {
+			t.Fatal(err)
+		}
+		encoded, _ = json.Marshal(outboundView)
+		if bytes.Contains(encoded, []byte("sbox:v1:")) || bytes.Contains(encoded, []byte(callCookie)) || bytes.Contains(encoded, []byte(outboundRoom)) {
+			t.Fatal("restored normal Outbounds read disclosed private Call material")
+		}
 	}
 	checkProjection(db)
 	masked, err := entityclients.GetByID(db, strconv.Itoa(int(client.Id)))
@@ -304,6 +339,11 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 	}
 	if bytes.Contains(archive, key) || bytes.Contains(archive, []byte(sudokuMaster)) || bytes.Contains(archive, []byte(sudokuSplit)) {
 		t.Fatal("private archive persisted a transient inbound or delivery key")
+	}
+	for _, value := range []string{callCookie, callPassword, callJoinLink, outboundRoom} {
+		if bytes.Contains(archive, []byte(value)) {
+			t.Fatal("private archive persisted transient Call credentials")
+		}
 	}
 	var encrypted, decrypted bytes.Buffer
 	passphrase := []byte(rand.Text())

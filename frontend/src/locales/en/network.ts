@@ -15,6 +15,8 @@ export default {
     "callEmail": "Dion account email",
     "callPassword": "Dion account password",
     "callIdentityHint": "Call uses a platform room rather than a local listening port. It has no individual Panel protocol users; per-client traffic identity and individual revocation are unavailable.",
+    "callOutboundHint": "Call joins a platform room. The room link grants access and remains hidden after saving. Platform signaling uses the selected Dial settings.",
+    "callOutboundJoinHint": "Replace supplies the required room link. Keep retains the saved link. Clearing it prevents saving until a replacement is supplied.",
     "bondMembers": "Member inbounds",
     "bondMembersRequired": "Select at least one member inbound.",
     "bondMembersHint": "Select existing inbounds. Edit their listening addresses, TLS and users in the member editors. Each inbound can belong to one group. Membership changes restart the runtime.",

@@ -20,6 +20,8 @@ import Tuic from '@/components/protocols/Tuic.vue'
 import Hysteria2 from '@/components/protocols/Hysteria2.vue'
 import Tor from '@/components/protocols/Tor.vue'
 import Ssh from '@/components/protocols/Ssh.vue'
+import CallNative from '@/components/protocols/CallInbound.vue'
+import { secretMutation, unchangedSecret } from './secretCredentialDraft'
 import Selector from '@/components/protocols/Selector.vue'
 import UrlTest from '@/components/protocols/UrlTest.vue'
 import Failover from '@/components/protocols/Failover.vue'
@@ -45,7 +47,7 @@ export default defineComponent({
       snapshot: "",
       outTypes: OutTypes,
       NoDial: [OutTypes.Selector, OutTypes.URLTest, OutTypes.Failover],
-      NoServer: [OutTypes.Direct, OutTypes.Selector, OutTypes.URLTest, OutTypes.Failover, OutTypes.Tor],
+      NoServer: [OutTypes.Direct, OutTypes.Selector, OutTypes.URLTest, OutTypes.Failover, OutTypes.Tor, OutTypes.Call],
     }
   },
   methods: {
@@ -69,7 +71,7 @@ export default defineComponent({
       const tag = this.$props.id > 0 ? this.outbound.tag : this.outbound.type + "-" + RandomUtil.randomSeq(3)
       // Use previous data
       const prevConfig = { id: this.outbound.id, tag: tag, listen: this.outbound.listen, listen_port: this.outbound.listen_port }
-      this.outbound = createOutbound(this.outbound.type, prevConfig)
+      this.outbound = createOutbound(this.outbound.type, this.outbound.type === OutTypes.Call ? { id: this.outbound.id, tag } : prevConfig)
     },
     closeModal() {
       this.updateData(0) // reset
@@ -107,7 +109,16 @@ export default defineComponent({
   },
   computed: {
     saveReasons(): SaveReason[] {
-      return entitySaveReasons({ identity: this.outbound.tag, port: this.outbound.server_port, requiresPort: !this.NoServer.includes(this.outbound.type), pending: this.loading, capability: this.capabilityState })
+      let credentialInvalid = false
+      if (this.outbound.type === OutTypes.Call) {
+        try {
+          const join = secretMutation(this.outbound.join_link)
+          const cookies = secretMutation(this.outbound.cookies)
+          credentialInvalid = !(join?.intent === 'replace' || unchangedSecret(join)?.present === true) ||
+            (cookies?.intent === 'replace' && !cookies.value.trim())
+        } catch { credentialInvalid = true }
+      }
+      return entitySaveReasons({ identity: this.outbound.tag, port: this.outbound.server_port, requiresPort: !this.NoServer.includes(this.outbound.type), pending: this.loading, capability: this.capabilityState, credentialInvalid })
     },
     capabilityState(): CapabilityEditState {
       return capabilityEditState(Data().capabilities, "outbounds", this.outbound.type, this.storedCapabilityType)
@@ -129,5 +140,5 @@ export default defineComponent({
   components: { SaveGuardNotice, CapabilityNotice, Dial, Multiplex, Transport, OutTLS,
     Direct, Socks, Http, Shadowsocks, Vmess, Trojan,
     Wireguard, Hysteria, Naive, ShadowTls, Vless, Tuic,
-    Hysteria2, AnyTls, Snell, Tor, Ssh, Selector, UrlTest, Failover }
+    Hysteria2, AnyTls, Snell, Tor, Ssh, CallNative, Selector, UrlTest, Failover }
 })

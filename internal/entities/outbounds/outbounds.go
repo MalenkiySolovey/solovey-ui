@@ -51,6 +51,11 @@ func GetAll(db *gorm.DB) (*[]map[string]interface{}, error) {
 				}
 			}
 		}
+		if outbound.Type == "call" {
+			if err := projectCallCredentials(*outbound, &outData); err != nil {
+				return nil, err
+			}
+		}
 		data = append(data, outData)
 	}
 	if err := annotateMetadata(db, data); err != nil {
@@ -91,6 +96,12 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 			outboundJSON, err := outbound.MarshalJSON()
 			if err != nil {
 				return nil, err
+			}
+			if outbound.Type == "call" {
+				outboundJSON, err = marshalCallRuntime(db, *outbound, outboundJSON)
+				if err != nil {
+					return nil, err
+				}
 			}
 			outboundsJSON = append(outboundsJSON, outboundJSON)
 		}
@@ -149,6 +160,11 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 	}
 	if err := entityidentity.EnsureOutboundTagAvailable(tx, outbound.Tag, outbound.Id, 0); err != nil {
 		return nil, err
+	}
+	if outbound.Type == "call" {
+		if err := prepareCallCredentials(tx, &outbound); err != nil {
+			return nil, err
+		}
 	}
 	legacy, err := dbschema.LegacyProjection(tx)
 	if err != nil {
@@ -302,6 +318,12 @@ func Restart(tx *gorm.DB, ids []uint, core Core) error {
 			config, err := row.MarshalJSON()
 			if err != nil {
 				return err
+			}
+			if row.Type == "call" {
+				config, err = marshalCallRuntime(tx, *row, config)
+				if err != nil {
+					return err
+				}
 			}
 			configs = []json.RawMessage{config}
 		}
