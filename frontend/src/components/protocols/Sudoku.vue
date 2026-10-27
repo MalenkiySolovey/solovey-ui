@@ -51,10 +51,10 @@ import OutTLS from '@/components/tls/OutTLS.vue'
 import { runtimeCapability } from '@/types/runtimeCapabilities'
 import Data from '@/store/modules/data'
 
-const props = defineProps<{ data: Omit<Partial<SudokuInbound>, 'key'> & Pick<Partial<SudokuOutbound>, 'http_mask' | 'multiplex'> & { key?: unknown }; outbound?: boolean }>()
+const props = defineProps<{ data: Omit<Partial<SudokuInbound>, 'key'> & Pick<Partial<SudokuOutbound>, 'http_mask' | 'multiplex' | 'server' | 'server_port'> & { key?: unknown }; outbound?: boolean }>()
 const { t } = useI18n()
 const available = computed(() => runtimeCapability(Data().capabilities, props.outbound ? 'outbounds' : 'inbounds', 'sudoku')?.available === true)
-const maskTLSOutbound = computed(() => ({ type: 'sudoku', tls: props.data.http_mask?.tls }))
+const maskTLSOutbound = computed(() => ({ type: 'sudoku', server: props.data.server, server_port: props.data.server_port, tls: props.data.http_mask?.tls }))
 function setMask(field: 'enabled' | 'mode' | 'host' | 'path_root' | 'multiplex', value: string | boolean | null | undefined) {
   props.data.http_mask ??= { enabled: true }
   if (value === null || value === undefined || value === '') delete props.data.http_mask[field]
