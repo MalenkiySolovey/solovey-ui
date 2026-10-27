@@ -48,7 +48,10 @@ func TestDatabaseImportNativeTransportSurvivesOrdinaryWriteDeadline(t *testing.T
 				h.ImportDb(c)
 			})
 			s := httptest.NewUnstartedServer(g)
-			const ordinaryWindow = 50 * time.Millisecond
+			// net/http also uses WriteTimeout for the TLS handshake. Leave
+			// scheduling headroom on loaded race-test runners, then cross the
+			// same actual transport deadline after the body barrier below.
+			const ordinaryWindow = time.Second
 			s.Config.WriteTimeout = ordinaryWindow
 			if protocol == "http2" {
 				s.EnableHTTP2 = true
@@ -60,7 +63,7 @@ func TestDatabaseImportNativeTransportSurvivesOrdinaryWriteDeadline(t *testing.T
 			body, sender := io.Pipe()
 			t.Cleanup(func() { _ = body.Close(); _ = sender.Close() })
 			form := multipart.NewWriter(sender)
-			ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
 			request, _ := http.NewRequestWithContext(ctx, http.MethodPost, s.URL+"/importdb", body)
 			request.Header.Set("Content-Type", form.FormDataContentType())
