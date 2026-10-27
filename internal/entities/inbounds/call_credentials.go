@@ -3,11 +3,10 @@ package entityinbounds
 import (
 	"bytes"
 	"encoding/json"
-	"net/http"
-	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/componenthost/secretref"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	calloptions "github.com/MalenkiySolovey/solovey-ui/internal/entities/calloptions"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
@@ -30,34 +29,8 @@ func capturedCallCredential(options map[string]json.RawMessage, field string) (j
 }
 
 func validateCallCredential(field, value string) error {
-	if len(value) == 0 || len(value) > 64<<10 || strings.ContainsRune(value, 0) {
+	if !calloptions.CredentialValid(field, value) {
 		return errInboundCredentialInvalid
-	}
-	if field == "password" {
-		return nil
-	}
-	if field == "join_link" {
-		if len(value) > 4096 || strings.TrimSpace(value) != value || strings.ContainsAny(value, "\r\n") {
-			return errInboundCredentialInvalid
-		}
-		return nil
-	}
-	var cookies []json.RawMessage
-	if json.Unmarshal([]byte(value), &cookies) != nil || len(cookies) == 0 || len(cookies) > 128 {
-		return errInboundCredentialInvalid
-	}
-	seen := make(map[string]bool, len(cookies))
-	for _, raw := range cookies {
-		var cookie struct {
-			Name  string `json:"name"`
-			Value string `json:"value"`
-		}
-		decoder := json.NewDecoder(bytes.NewReader(raw))
-		decoder.DisallowUnknownFields()
-		if jsonvalue.StrictObject(raw) != nil || decoder.Decode(&cookie) != nil || seen[cookie.Name] || (&http.Cookie{Name: cookie.Name, Value: cookie.Value}).Valid() != nil {
-			return errInboundCredentialInvalid
-		}
-		seen[cookie.Name] = true
 	}
 	return nil
 }

@@ -65,6 +65,7 @@
               <Snell v-if="outbound.type == outTypes.Snell" :data="outbound" direction="out" />
               <Tor v-if="outbound.type == outTypes.Tor" :data="outbound" />
               <Ssh v-if="outbound.type == outTypes.SSH" :data="outbound" />
+      <CallNative v-if="outbound.type == outTypes.Call" :data="outbound" outbound />
               <Selector v-if="outbound.type == outTypes.Selector" :data="outbound" :tags="tags" />
               <UrlTest v-if="outbound.type == outTypes.URLTest" :data="outbound" :tags="tags" />
               <Failover v-if="outbound.type == outTypes.Failover" :data="outbound" :tags="tags" />

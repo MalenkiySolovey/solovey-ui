@@ -157,3 +157,16 @@ remains an open R7 gate. Official retains an unavailable capability and its
 existing state-preservation path. This replaces one exact reviewed declaration
 digest with unchanged Direct multiplicity, R1 base and total allowance; it does
 not regenerate the legacy inventory or admit a new worker.
+
+R7 Call Outbound reviews the existing `core/registry.outboundDeclarations`
+Direct site from `7f906ce0...` to `39a2d075...`. The only added declaration is
+Call with its Extended capability fact. Outbounds retains candidate validation,
+save/apply and the existing row; SecretRef seals its room link and optional
+cookie bundle with row/field binding. The selected engine owns joiner,
+signaling, peer and relay lifetimes through the same serving Scope, independently
+of the inbound creator. Official keeps the capability unavailable and preserves
+stored state. Focused candidate rollback, private archive restore and native
+worker retirement checks qualify these owners. Remote authenticated traffic
+remains an open R7 gate. The Direct registration and route/final/detour/fallback
+decisions are unchanged. This replaces one exact reviewed declaration digest
+with no new Direct site, worker allowance or R1 inventory regeneration.

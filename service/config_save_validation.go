@@ -9,7 +9,7 @@ import (
 	"gorm.io/gorm"
 )
 
-// Native credentials and inbound groups require a complete candidate: their
+// Native inbound/outbound credentials and inbound groups require a complete candidate: their
 // Users, TLS and member owners supply fields that an isolated inbound draft
 // cannot validate. Construct and close with the serving registry before the existing
 // save transaction commits. Dry validation starts no listener or runtime.
@@ -25,14 +25,19 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 			kinds = append(kinds, kind)
 		}
 	}
-	if len(kinds) == 0 || !tx.Migrator().HasTable(&model.Inbound{}) {
-		return nil
-	}
 	var count int64
-	if err := tx.Model(&model.Inbound{}).Where("type IN ?", kinds).Count(&count).Error; err != nil {
-		return err
+	if len(kinds) > 0 && tx.Migrator().HasTable(&model.Inbound{}) {
+		if err := tx.Model(&model.Inbound{}).Where("type IN ?", kinds).Count(&count).Error; err != nil {
+			return err
+		}
 	}
-	if count == 0 {
+	var outboundCount int64
+	if entitycapabilities.Resolve("outbounds", "call").Available && tx.Migrator().HasTable(&model.Outbound{}) {
+		if err := tx.Model(&model.Outbound{}).Where("type = ?", "call").Count(&outboundCount).Error; err != nil {
+			return err
+		}
+	}
+	if count == 0 && outboundCount == 0 {
 		return nil
 	}
 	projection, err := s.singBoxConfigBuilder().BuildCandidateProjectionFromDB(tx, "", false)
@@ -42,6 +47,9 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 	if err != nil {
 		// Provider diagnostics may quote configuration values. Return only an
 		// owner code; the rejected candidate and its credential uses roll back.
+		if count == 0 {
+			return common.NewError("NATIVE_OUTBOUND_CANDIDATE_REJECTED: the complete provider configuration is invalid")
+		}
 		return common.NewError("NATIVE_INBOUND_CANDIDATE_REJECTED: the complete provider configuration is invalid")
 	}
 	return nil

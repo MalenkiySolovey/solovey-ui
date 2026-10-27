@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 )
 
 const maxOptionStripKeyOwners = 128
@@ -74,6 +75,9 @@ func decodeSaveOutbound(data json.RawMessage) (model.Outbound, error) {
 	var raw map[string]any
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return model.Outbound{}, err
+	}
+	if kind, _ := raw["type"].(string); kind == "call" && jsonvalue.StrictObject(data) != nil {
+		return model.Outbound{}, errOutboundCredentialInvalid
 	}
 	for _, key := range optionStripKeySnapshot() {
 		delete(raw, key)
