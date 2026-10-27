@@ -9,8 +9,10 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
 	entityendpoints "github.com/MalenkiySolovey/solovey-ui/internal/entities/endpoints"
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/composition"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/runtimeprojection"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveeligibility"
@@ -64,6 +66,20 @@ func TestCapabilityConsumersAgreeForEveryAuthoritativeEntityFact(t *testing.T) {
 		options := json.RawMessage("{\"type\":\"forged-unavailable\",\"tag\":\"forged-tag\"}")
 		if fact.Type == "failover" {
 			options = json.RawMessage("{\"outbounds\":[\"capability-seed\"],\"final\":\"reject\"}")
+		}
+		if fact.Category == "inbounds" && composition.IsGroup(fact.Type) {
+			memberTag := tag + "-member"
+			if err := db.Create(&model.Inbound{Type: "socks", Tag: memberTag, Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":0}`)}).Error; err != nil {
+				t.Fatal(err)
+			}
+			options, _ = json.Marshal(map[string]any{"type": "forged-unavailable", "tag": "forged-tag", "inbounds": []string{memberTag}})
+		}
+		if fact.Category == "inbounds" && fact.Type == "sudoku" {
+			public, err := credentials.SudokuPublicKey("0100000000000000000000000000000000000000000000000000000000000000")
+			if err != nil {
+				t.Fatal(err)
+			}
+			options, _ = json.Marshal(map[string]string{"type": "forged-unavailable", "tag": "forged-tag", "key": public})
 		}
 		var row any
 		switch fact.Category {
