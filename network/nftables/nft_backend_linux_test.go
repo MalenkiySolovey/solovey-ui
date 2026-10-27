@@ -523,7 +523,6 @@ func TestManagedNFTHostEndpointTemporalSemantics(t *testing.T) {
 	membershipB, _ := ManagedTimedMembershipSHA256(candidateB)
 	writeTestManagedFile(t, root, "revisions/endpoint-deadline-a/candidate.nft", candidateA)
 	writeTestManagedFile(t, root, "revisions/endpoint-deadline-b/candidate.nft", candidateB)
-	started := time.Now()
 	applyA := engine.Handle(Request{ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "endpoint-deadline-a", InstanceID: "host-test", LockRevision: 2}, Operation: OperationNFTApply, NFTApply: &NFTApplyRequest{
 		CandidatePath: "revisions/endpoint-deadline-a/candidate.nft", RollbackArtifactPath: "revisions/endpoint-deadline-a/firewall-before.nft", ExpectedTable: managedTable,
 		ExpectedRevision: revisionA, ExpectedSHA256: sha256Hex(candidateA), ExpectedSemanticSHA256: semanticA, ExpectedTimedMembershipSHA256: membershipA,
@@ -531,6 +530,10 @@ func TestManagedNFTHostEndpointTemporalSemantics(t *testing.T) {
 	if !applyA.OK {
 		t.Fatalf("timed candidate A apply failed: %#v", applyA)
 	}
+	// The kernel starts the element TTL during apply, after candidate checks
+	// and journal preparation. Completion bounds that instant conservatively;
+	// the earlier Handle entry could precede it by more than the margin below.
+	started := time.Now()
 	applyB := engine.Handle(Request{ProtocolVersion: ProtocolVersion, Correlation: Correlation{OperationID: "endpoint-deadline-b", InstanceID: "host-test", LockRevision: 3}, Operation: OperationNFTApply, NFTApply: &NFTApplyRequest{
 		CandidatePath: "revisions/endpoint-deadline-b/candidate.nft", RollbackArtifactPath: "revisions/endpoint-deadline-b/firewall-before.nft", ExpectedTable: managedTable,
 		ExpectedRevision: revisionB, ExpectedSHA256: sha256Hex(candidateB), ExpectedSemanticSHA256: semanticB, ExpectedTimedMembershipSHA256: membershipB,
