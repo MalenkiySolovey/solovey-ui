@@ -26,6 +26,7 @@ import SshInbound from '@/components/protocols/SshInbound.vue'
 import MTProxy from '@/components/protocols/MTProxy.vue'
 import Sudoku from '@/components/protocols/Sudoku.vue'
 import InboundGroup from '@/components/protocols/InboundGroup.vue'
+import CallInbound from '@/components/protocols/CallInbound.vue'
 import { serializeInboundCredentialDraft, inboundCredentialDraftInvalid } from './inboundCredentialDraft'
 import InTls from '@/components/tls/InTLS.vue'
 import TProxy from '@/components/protocols/TProxy.vue'
@@ -142,7 +143,7 @@ export default defineComponent({
       const tag = this.$props.id > 0 ? this.inbound.tag : this.inbound.type + "-" + this.inbound.listen_port
       // Use previous data
       const prevConfig = { id: this.inbound.id, tag: tag, listen: this.inbound.listen?? "::", listen_port: this.inbound.listen_port }
-      this.inbound = createInbound(this.inbound.type, isInboundGroup(this.inbound.type) ? { id: this.inbound.id, tag } : this.inbound.type != this.inTypes.Tun ? prevConfig : { tag: tag })
+      this.inbound = createInbound(this.inbound.type, isInboundGroup(this.inbound.type) || this.inbound.type === this.inTypes.Call ? { id: this.inbound.id, tag } : this.inbound.type != this.inTypes.Tun ? prevConfig : { tag: tag })
       if (this.HasInData.includes(this.inbound.type)){
         this.inbound.addrs = []
         this.inbound.out_json = {}
@@ -200,14 +201,14 @@ export default defineComponent({
       return isInboundGroup(this.inbound.type)
     },
     hasOwnListener(): boolean {
-      return this.inbound.type !== this.inTypes.Tun && !this.hasGroupMembers
+      return ![this.inTypes.Tun, this.inTypes.Call].includes(this.inbound.type) && !this.hasGroupMembers
     },
     hasGenericTransport(): boolean {
       const transport = (<any>this.inbound).transport
       return transport !== null && typeof transport === 'object' && !Array.isArray(transport)
     },
     nativeOptionsUnavailable(): boolean {
-      return [this.inTypes.Mieru, this.inTypes.TrustTunnel, this.inTypes.SSH, this.inTypes.MTProxy, this.inTypes.Sudoku, this.inTypes.Bond, this.inTypes.CoreFailover].includes(this.inbound.type) &&
+      return [this.inTypes.Mieru, this.inTypes.TrustTunnel, this.inTypes.SSH, this.inTypes.MTProxy, this.inTypes.Sudoku, this.inTypes.Bond, this.inTypes.CoreFailover, this.inTypes.Call].includes(this.inbound.type) &&
         runtimeCapability(Data().capabilities, 'inbounds', this.inbound.type)?.available !== true
     },
     saveReasons(): SaveReason[] {
@@ -261,6 +262,6 @@ export default defineComponent({
   components: { InboundGuidance, SaveGuardNotice, CapabilityNotice,
     Listen, InTls, Hysteria2, Naive, Direct, Shadowsocks,
     Users, Hysteria, ShadowTls, TProxy, Multiplex, Tuic, Tun,
-    Trojan, AnyTls, Snell, Mieru, TrustTunnel, SshInbound, MTProxy, Sudoku, InboundGroup, Transport, AddrVue, OutJsonVue, Dial, DomainResolver
+    Trojan, AnyTls, Snell, Mieru, TrustTunnel, SshInbound, MTProxy, Sudoku, InboundGroup, CallInbound, Transport, AddrVue, OutJsonVue, Dial, DomainResolver
   }
 })

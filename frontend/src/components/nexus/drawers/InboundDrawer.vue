@@ -91,6 +91,7 @@
           <MTProxy v-if="inbound.type == inTypes.MTProxy" :data="inbound" />
           <Sudoku v-if="inbound.type == inTypes.Sudoku" :data="inbound" />
           <InboundGroup v-if="hasGroupMembers" :data="inbound" />
+          <CallInbound v-if="inbound.type == inTypes.Call" :data="inbound" />
           <TProxy v-if="inbound.type == inTypes.TProxy" :inbound="inbound" />
           <Transport v-if="hasGenericTransport" :data="inbound" />
           <Users v-if="hasUser" :clients="clients" :data="initUsers" />

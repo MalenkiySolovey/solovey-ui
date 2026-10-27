@@ -1,5 +1,15 @@
 export default {
   "nativeInbound": {
+    "callPlatform": "Call platform",
+    "callMode": "Tunnel mode",
+    "callReadBuffer": "Read buffer (bytes)",
+    "callJoinLink": "Private room link or ID",
+    "callJoinHint": "Keep retains the stored room. Replace selects an existing room. Without a stored room, the platform creates one. Room links are credentials and are never returned by the editor.",
+    "callCookies": "Platform cookies (JSON)",
+    "callCookiesHint": "Replace accepts an array of objects with name and value fields. Stored cookie values remain hidden.",
+    "callEmail": "Dion account email",
+    "callPassword": "Dion account password",
+    "callIdentityHint": "Call uses a platform room rather than a local listening port. It has no individual Panel protocol users; per-client traffic identity and individual revocation are unavailable.",
     "bondMembers": "Member inbounds",
     "bondMembersRequired": "Select at least one member inbound.",
     "bondMembersHint": "Select existing inbounds. Edit their listening addresses, TLS and users in the member editors. Each inbound can belong to one group. Membership changes restart the runtime.",

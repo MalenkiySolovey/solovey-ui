@@ -23,7 +23,7 @@ import (
 var errInboundCredentialInvalid = errors.New("INBOUND_CREDENTIAL_INVALID")
 
 func managedNativeInbound(kind string) bool {
-	if kind == "sudoku" {
+	if kind == "sudoku" || kind == "call" {
 		return true
 	}
 	fact, known := clientfacts.Resolve(kind)
@@ -68,6 +68,9 @@ func sshHostKeys(bundle []byte) ([]string, error) {
 }
 
 func prepareInboundCredentials(tx *gorm.DB, inbound *model.Inbound) error {
+	if inbound.Type == "call" {
+		return prepareCallCredentials(tx, inbound)
+	}
 	if inbound.Type == "sudoku" {
 		return prepareSudokuCredentials(tx, inbound)
 	}
@@ -166,6 +169,9 @@ func prepareInboundCredentials(tx *gorm.DB, inbound *model.Inbound) error {
 }
 
 func projectInboundCredentials(inbound model.Inbound, data *map[string]interface{}) error {
+	if inbound.Type == "call" {
+		return projectCallCredentials(inbound, data)
+	}
 	if inbound.Type == "sudoku" {
 		return projectSudokuCredentials(inbound, data)
 	}
@@ -189,6 +195,9 @@ func marshalRuntimeInbound(db *gorm.DB, inbound model.Inbound) ([]byte, error) {
 	runtimeInbound := inbound
 	runtimeInbound.Type = entitytypes.RuntimeType("inbounds", inbound.Type)
 	raw, err := runtimeInbound.MarshalJSON()
+	if err == nil && inbound.Type == "call" {
+		return marshalCallRuntime(db, inbound, raw)
+	}
 	if err == nil && inbound.Type == "sudoku" {
 		return marshalSudokuRuntime(db, inbound, raw)
 	}
