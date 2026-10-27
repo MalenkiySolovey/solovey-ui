@@ -141,3 +141,19 @@ existing parent controls borrow those actual objects through a snapshot.
 The explicit Direct registrations and every route/final/fallback decision keep
 their existing semantics. These are exact reviewed digest replacements with no
 new Direct site, multiplicity or budget allowance. SEC-2 remains BOUNDED_DEFERRED.
+
+R7 Call reviews the existing `core/registry.inboundDeclarations` Direct site
+from `c8bb9d8a...` to `7a9e59ce...`. Its only production delta is the native
+Call registration with the Extended compile-time capability fact. The explicit
+Direct registration and route/final/detour/fallback policy are unchanged.
+Inbounds retains candidate validation and save/apply; the existing SecretRef
+owner seals platform cookies, account passwords and private room links in the
+Inbound row. Call creates no authenticated Users or client principal. The
+selected native engine owns creator workers, reconnect/signaling transports,
+bridges and relay teardown through its serving Scope. Constructor/private
+diagnostic race checks, complete-candidate rollback, private archive restore
+and provider registry checks qualify these boundaries; remote platform traffic
+remains an open R7 gate. Official retains an unavailable capability and its
+existing state-preservation path. This replaces one exact reviewed declaration
+digest with unchanged Direct multiplicity, R1 base and total allowance; it does
+not regenerate the legacy inventory or admit a new worker.
