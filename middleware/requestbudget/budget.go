@@ -271,6 +271,11 @@ func classify(method, route string) Policy {
 	}
 
 	switch {
+	case strings.HasSuffix(lower, "/inbound-call-room"):
+		policy.ActionScope = "admin"
+		policy.MaxBodyBytes = 1024
+		policy.ConcurrencyClass = "config"
+		policy.AuditPolicy = "security"
 	case strings.HasSuffix(lower, "/changepass"), strings.HasSuffix(lower, "/v1/security/password/change"):
 		policy.ActionScope = "credential_change"
 		policy.StepUpOperation = "admin.credential"

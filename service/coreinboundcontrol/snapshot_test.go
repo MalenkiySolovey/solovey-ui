@@ -368,7 +368,7 @@ func TestMalformedIncompleteAndUnknownOptionsRemainUnknown(t *testing.T) {
 	}
 }
 
-func TestServiceExposesOnlyNarrowReadAndFallbackMutationMethods(t *testing.T) {
+func TestServiceExposesOnlyNarrowReadPrivateRoomAndFallbackMutationMethods(t *testing.T) {
 	serviceType := reflect.TypeFor[*Service]()
 	methods := make([]string, 0, serviceType.NumMethod())
 	for index := 0; index < serviceType.NumMethod(); index++ {
@@ -376,7 +376,7 @@ func TestServiceExposesOnlyNarrowReadAndFallbackMutationMethods(t *testing.T) {
 	}
 	if !reflect.DeepEqual(methods, []string{
 		"ApplyFallbackPatch", "FindCheckpoint", "Identity", "InspectCheckpoint", "ListSnapshots", "PrepareCheckpoint", "PreviewFallbackPatch",
-		"ReleaseCheckpoint", "RestoreCheckpoint", "Snapshot", "VerifyEffective",
+		"ReleaseCheckpoint", "RestoreCheckpoint", "Snapshot", "UseCallRoom", "VerifyEffective",
 	}) {
 		t.Fatalf("service methods = %#v", methods)
 	}

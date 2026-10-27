@@ -17,10 +17,10 @@
       },
       "replacement": {
         "module": "github.com/MalenkiySolovey/sing-box-extended",
-        "version": "v0.0.0-20261027021716-507ef59f9349",
-        "commit": "507ef59f934915c4d46ebf4965d250e4e0cb8c1b",
+        "version": "v0.0.0-20261027140956-bf2324b28bbe",
+        "commit": "bf2324b28bbe5e190d7a135f6704304a4d0af59e",
         "repository": "https://github.com/MalenkiySolovey/sing-box-extended",
-        "sum": "h1:2JQ8WMx7t4YruPVt7TzW0UH6Ssf1ws7UY7iRmPolMaQ=",
+        "sum": "h1:blOAoMiI1Id3orI6VPCG5yQRWdDw3GEGyqq1vF3eaac=",
         "goModSum": "h1:sg62CEdWhkOVVDDI3fA01dd82eoZuZKSlLY0oKAUHmc="
       },
       "license": "GPL-3.0-or-later",
@@ -46,14 +46,22 @@
         "bond-serving-scope",
         "bond-member-inspection",
         "native-failover-lifecycle",
-        "completed-dial-session-lifetime"
+        "completed-dial-session-lifetime",
+        "call-serving-scope",
+        "call-selected-resolver",
+        "call-relay-retirement",
+        "call-creator-transports",
+        "call-candidate-validation",
+        "call-private-diagnostics",
+        "call-outbound-serving-scope",
+        "mtproxy-serving-admission"
       ],
       "copyRole": "mirror/cache/development",
       "patchSeries": {
         "format": "linear-git-commits/v1",
         "base": "d9442d14b19ddd02605bf3ee893a171947038e19",
         "upstreamTree": "dae57a05c1392b57f03f03e987ed5807b45e14bc",
-        "patchedTree": "1565c73241faf4dbcb8713410e047b2c1e170b11",
+        "patchedTree": "176b1769b700136a6869b64602676818b8d185e8",
         "pristineRef": "refs/heads/mirror/extended",
         "branch": "solovey/extended-patches",
         "commits": [
@@ -92,7 +100,21 @@
           "7f649cd59915ea3c858797435e35aebbc089186b",
           "11f401d2df9f0fb452c9ba74b3eb3435cad211fe",
           "d9eddf4790086e8c5017c470a5ea41a35f203a07",
-          "507ef59f934915c4d46ebf4965d250e4e0cb8c1b"
+          "507ef59f934915c4d46ebf4965d250e4e0cb8c1b",
+          "6116f4ae009f0b8113edcae94114c8963e5b28f8",
+          "3a1b13e53b927aeeb704584f07ef0737e8067bbf",
+          "f0b4c9fb0d199537d39f0b2cb80294b28bc88c97",
+          "c0552ad4a25ef42732d4d801d009851802e7d163",
+          "cd4573c95618a55cd1868633c29f815466eb2429",
+          "3d580001ef3ca19c6e6f8f04da7a31f6f295f6cc",
+          "08fd18828d315b22f4db0991ba94c2e4095f66da",
+          "db9d1426b27e7c4d282cdbf2294bd6071d22412d",
+          "63aaf757edaffaf77c648a746bd7a8ca1fa01495",
+          "044edc9e17e3aaa2bab7db34084f28be3fd53211",
+          "259fd891356360635226c1ecb4cc2c8ab4800647",
+          "8ebcac5f6e0818fbf113c90a3f6b6a017304a12b",
+          "a3d1e96008780835b788e54fedef85dd8e48e916",
+          "bf2324b28bbe5e190d7a135f6704304a4d0af59e"
         ],
         "patchCommits": [
           "dea779ee301772c439a5b58139ed9e081e5db84a",
@@ -121,10 +143,18 @@
           "6f6f641cac454d22f0811019b8eca23d09040635",
           "c137b177bc180f01490604957a80de2dd5843afd",
           "7f649cd59915ea3c858797435e35aebbc089186b",
-          "d9eddf4790086e8c5017c470a5ea41a35f203a07"
+          "d9eddf4790086e8c5017c470a5ea41a35f203a07",
+          "6116f4ae009f0b8113edcae94114c8963e5b28f8",
+          "f0b4c9fb0d199537d39f0b2cb80294b28bc88c97",
+          "cd4573c95618a55cd1868633c29f815466eb2429",
+          "3d580001ef3ca19c6e6f8f04da7a31f6f295f6cc",
+          "db9d1426b27e7c4d282cdbf2294bd6071d22412d",
+          "63aaf757edaffaf77c648a746bd7a8ca1fa01495",
+          "259fd891356360635226c1ecb4cc2c8ab4800647",
+          "a3d1e96008780835b788e54fedef85dd8e48e916"
         ],
-        "patchCount": 27,
-        "identity": "1a38080ccd8d2959c3d1641177deb784d678e4e43e5456c0dba8b2ad7024d99a"
+        "patchCount": 35,
+        "identity": "a734ac79cc81c63a73b7a6e8a7944dd4d1fd11919e2d3cc242f4bcc8ff29fcb3"
       }
     },
     {

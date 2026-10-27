@@ -27,6 +27,7 @@ export const InTypes = {
   Sudoku: 'sudoku',
   Bond: 'bond',
   CoreFailover: 'core-failover',
+  Call: 'call',
   Tun: 'tun',
   Redirect: 'redirect',
   TProxy: 'tproxy',
@@ -288,6 +289,16 @@ export interface InboundGroup extends InboundBasics {
   inbounds: string[]
 }
 
+export interface CallInbound extends InboundBasics {
+  platform?: string
+  mode?: string
+  read_buffer?: number
+  join_link?: unknown
+  cookies?: unknown
+  email?: string
+  password?: unknown
+}
+
 // Create interfaces dynamically based on InTypes keys
 type InterfaceMap = {
   direct: Direct
@@ -312,6 +323,7 @@ type InterfaceMap = {
   sudoku: Sudoku
   bond: InboundGroup
   'core-failover': InboundGroup
+  call: CallInbound
   tun: Tun
   redirect: Redirect
   tproxy: TProxy
@@ -354,6 +366,7 @@ const defaultValues: Record<InType, Inbound> = {
   sudoku: <Sudoku>{ type: InTypes.Sudoku, aead_method: 'chacha20-poly1305', http_mask_mode: 'legacy' },
   bond: <InboundGroup>{ type: InTypes.Bond, inbounds: [] as string[] },
   'core-failover': <InboundGroup>{ type: InTypes.CoreFailover, inbounds: [] as string[] },
+  call: <CallInbound>{ type: InTypes.Call, platform: 'telemost' },
   tun: <Tun>{ type: InTypes.Tun, mtu: 9000, stack: 'system', udp_timeout: '5m', auto_route: false },
   redirect: <Redirect>{ type: InTypes.Redirect },
   tproxy: <TProxy>{ type: InTypes.TProxy },
