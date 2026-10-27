@@ -218,7 +218,9 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		for _, inbound := range root.Inbounds {
 			if inbound.Type == "bond" || inbound.Type == "failover" {
 				port := uint16(23466)
-				if inbound.Type == "failover" { port = 23468 }
+				if inbound.Type == "failover" {
+					port = 23468
+				}
 				prefix := "archive-" + inbound.Type
 				if len(inbound.Users) != 0 || len(inbound.Inbounds) != 2 || inbound.Inbounds[0].Tag != prefix+"-second" || inbound.Inbounds[0].Port != port+1 || inbound.Inbounds[1].Tag != prefix+"-first" || inbound.Inbounds[1].Port != port {
 					t.Fatal("private archive changed canonical group membership, ordering or member options")

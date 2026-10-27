@@ -38,7 +38,9 @@ func TestCapabilitySemanticIdentityAndRuntimeContext(t *testing.T) {
 	}
 	one := Current()
 	for _, fact := range one.Facts {
-		if fact.Category == "inbounds" && fact.Type == "failover" { t.Fatal("native alias exposed a second canonical editor identity") }
+		if fact.Category == "inbounds" && fact.Type == "failover" {
+			t.Fatal("native alias exposed a second canonical editor identity")
+		}
 	}
 	one.Facts[0].Type = "changed"
 	if two := Current(); two.Schema != Schema || two.Facts[0].Type == "changed" {

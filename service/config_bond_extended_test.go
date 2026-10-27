@@ -35,7 +35,9 @@ func testInboundGroupCompleteCandidate(t *testing.T, kind string) {
 	}
 	svc, _, _ := newHotReloadConfigService(t)
 	if kind == "core-failover" {
-		if _, err := svc.Save("inbounds", "new", json.RawMessage(`{"type":"failover","tag":"raw-alias","inbounds":["first","second"]}`), "", "admin", "fixture.invalid"); err == nil { t.Fatal("native alias bypassed canonical group ownership") }
+		if _, err := svc.Save("inbounds", "new", json.RawMessage(`{"type":"failover","tag":"raw-alias","inbounds":["first","second"]}`), "", "admin", "fixture.invalid"); err == nil {
+			t.Fatal("native alias bypassed canonical group ownership")
+		}
 	}
 	if _, err := svc.Save("inbounds", "new", group(`{"type":"bond","tag":"group","inbounds":[{"type":"socks","tag":"copied"}]}`), "", "admin", "fixture.invalid"); err == nil {
 		t.Fatal("editor accepted a copied runtime member as canonical storage")
