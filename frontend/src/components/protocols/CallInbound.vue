@@ -4,7 +4,8 @@
       <v-alert type="info" variant="tonal" density="compact" class="mb-4">{{ $t('nativeInbound.callIdentityHint') }}</v-alert>
       <v-row>
         <v-col cols="12" sm="6"><v-select v-model="data.platform" :items="platforms" :label="$t('nativeInbound.callPlatform')" /></v-col>
-        <v-col cols="12" sm="6"><v-select v-model="data.mode" :items="['dc', 'video']" clearable :label="$t('nativeInbound.callMode')" @click:clear="delete data.mode" /></v-col>
+        <v-col v-if="data.platform === 'wbstream'" cols="12" sm="6"><v-select v-model="data.mode" :items="['dc', 'video']" clearable :label="$t('nativeInbound.callMode')" @click:clear="delete data.mode" /></v-col>
+        <v-col v-else-if="data.mode !== undefined" cols="12" sm="6"><v-text-field :model-value="data.mode" readonly clearable :label="$t('nativeInbound.callModeInactive')" @click:clear="delete data.mode" /></v-col>
         <v-col cols="12"><v-text-field v-model.number="data.read_buffer" type="number" min="1" clearable :label="$t('nativeInbound.callReadBuffer')" @click:clear="delete data.read_buffer" /></v-col>
         <v-col cols="12"><SecretCredentialField v-model="data.join_link" :available="available" :label="$t('nativeInbound.callJoinLink')" /></v-col>
         <v-col cols="12"><div class="text-caption">{{ $t('nativeInbound.callJoinHint') }}</div></v-col>

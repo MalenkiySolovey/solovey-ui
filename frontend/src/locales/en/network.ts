@@ -2,6 +2,7 @@ export default {
   "nativeInbound": {
     "callPlatform": "Call platform",
     "callMode": "Tunnel mode",
+    "callModeInactive": "Stored mode (applies only to WBStream)",
     "callReadBuffer": "Read buffer (bytes)",
     "callJoinLink": "Private room link or ID",
     "callJoinHint": "Keep retains the stored room. Replace selects an existing room. Without a stored room, the platform creates one. Room links are credentials and are never returned by the editor.",

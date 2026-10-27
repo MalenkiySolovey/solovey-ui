@@ -114,6 +114,16 @@ func DecodeForSave(tx *gorm.DB, data json.RawMessage) (model.Inbound, error) {
 		}
 		var submitted map[string]json.RawMessage
 		_ = json.Unmarshal(data, &submitted)
+		if inbound.Type == "call" {
+			for _, field := range []string{"listen", "listen_port"} {
+				if _, supplied := submitted[field]; supplied {
+					return inbound, common.NewError("CALL_INBOUND_NO_LISTENER: Call uses a platform room")
+				}
+			}
+			if inbound.TlsId != 0 {
+				return inbound, common.NewError("CALL_INBOUND_NO_TLS_TEMPLATE: platform TLS belongs to the Call transport")
+			}
+		}
 		for _, field := range []string{"users", "tls"} {
 			if raw, present := submitted[field]; present && string(raw) != "null" {
 				return inbound, common.NewError("NATIVE_INBOUND_OWNED_FIELD: use the existing Users assignment and TLS template owners")
