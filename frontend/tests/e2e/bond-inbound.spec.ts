@@ -59,7 +59,8 @@ for (const mode of ['classic', 'nexus']) {
         page.waitForResponse(response => response.request().method() === 'POST' && response.url().endsWith('/api/save')),
         form.getByRole('button', { name: 'Save', exact: true }).click(),
       ])
-      expect((await response.json()).success).toBe(true)
+      const saved = await response.json()
+      expect(saved.success, saved.msg).toBe(true)
       const submitted = JSON.parse(new URLSearchParams(response.request().postData() ?? '').get('data') ?? '{}')
       expect(submitted.inbounds).toEqual(tags)
       expect(submitted).not.toHaveProperty('listen_port')

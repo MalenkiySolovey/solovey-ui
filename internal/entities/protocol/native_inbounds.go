@@ -3,6 +3,7 @@ package protocol
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"slices"
 	"strings"
 
@@ -16,6 +17,10 @@ import (
 // The selected registry supplies the actual native schema. No Shtorm option
 // types or implementation imports cross into the common entity owner.
 func nativeInboundFindings(kind, side, path string, source json.RawMessage) []diagnostics.Finding {
+	return nativeInboundOptionsFindings(kind, side, path, source, false)
+}
+
+func nativeInboundOptionsFindings(kind, side, path string, source json.RawMessage, resolvedGroup bool) []diagnostics.Finding {
 	if side != "inbound" || !registry.Resolve("inbounds", kind).Available() {
 		// Save eligibility and runtime projection preserve unavailable owner
 		// state. A different provider's schema must not normalize its fields.
@@ -36,7 +41,7 @@ func nativeInboundFindings(kind, side, path string, source json.RawMessage) []di
 	if kind == "sudoku" {
 		delete(fields, "master_key")
 	}
-	if composition.IsGroup(kind) {
+	if composition.IsGroup(kind) && !resolvedGroup {
 		if _, err := composition.Members(kind, source); err != nil {
 			return bad(".inbounds", "INBOUND_GROUP_MEMBERS_INVALID", "Select canonical inbound tags for the native group.")
 		}
@@ -57,6 +62,24 @@ func nativeInboundFindings(kind, side, path string, source json.RawMessage) []di
 	raw, _ := json.Marshal(fields)
 	if !registered || sbjson.UnmarshalContextDisallowUnknownFields(registry.Context(context.Background()), raw, consumer) != nil {
 		return bad("", "NATIVE_OPTIONS_INVALID", "Native protocol fields are rejected by the pinned serving schema.")
+	}
+	if composition.IsGroup(kind) && resolvedGroup {
+		members, err := registry.InboundMembers(kind, consumer)
+		if err != nil {
+			return bad(".inbounds", "INBOUND_GROUP_MEMBERS_INVALID", "The resolved native group must contain its owned members.")
+		}
+		var result []diagnostics.Finding
+		for i, member := range members {
+			if composition.IsGroup(member.Type) {
+				return bad(".inbounds", "INBOUND_GROUP_NESTING_INVALID", "Native groups cannot contain another group.")
+			}
+			child, err := member.MarshalJSONContext(registry.Context(context.Background()))
+			if err != nil {
+				return bad(".inbounds", "NATIVE_OPTIONS_INVALID", "A resolved group member is invalid.")
+			}
+			result = append(result, CurrentFindings(member.Type, side, fmt.Sprintf("%s.inbounds[%d]", path, i), child)...)
+		}
+		return result
 	}
 	if kind == "mieru" {
 		var transport string
