@@ -39,6 +39,22 @@ func TestQUICRejectedFlowsStayOutsideAdmissionAndAccounting(t *testing.T) {
 			observer := &quicAdmissionObserver{rejected: make(chan struct{}, 1)}
 			f := newQUICFixture(t, kind, observer)
 			peer := f.peer(t, 7)
+			// Authentication includes an accepted echo. Observe its retirement
+			// before draining counters, so its asynchronous final write cannot
+			// be mistaken for traffic from the subsequent rejected flow.
+			deadline := time.NewTimer(2 * time.Second)
+			defer deadline.Stop()
+			tick := time.NewTicker(5 * time.Millisecond)
+			defer tick.Stop()
+			for len(f.parents(t, 7).Connections) != 0 {
+				select {
+				case <-tick.C:
+				case <-deadline.C:
+					t.Fatal("accepted authentication probe did not retire")
+				case <-t.Context().Done():
+					t.Fatal("authentication probe cleanup interrupted")
+				}
+			}
 			_ = f.core.instance.StatsTracker().GetStats()
 			observer.deny.Store(true)
 			if err := peer.echo(t.Context(), f.echo.Addr().String()); err == nil {
