@@ -16,13 +16,22 @@ import (
 	"gorm.io/gorm"
 )
 
-// Room links and optional cookie bundles stay in Outbound.Options. Call uses
-// the common SecretRef lifecycle and introduces no credential store.
+// Native client credentials stay in Outbound.Options and use the common
+// SecretRef lifecycle. Protocol selection creates no credential store.
 var errOutboundCredentialInvalid = errors.New("OUTBOUND_CREDENTIAL_INVALID")
 
-var callCredentialFields = [...]string{"cookies", "join_link"}
+func managedCredentialFields(kind string) []string {
+	switch kind {
+	case "call":
+		return []string{"cookies", "join_link"}
+	case "mieru", "trusttunnel":
+		return []string{"password"}
+	default:
+		return nil
+	}
+}
 
-func capturedCallCredential(options map[string]json.RawMessage, field string) (json.RawMessage, string) {
+func capturedOutboundCredential(options map[string]json.RawMessage, field string) (json.RawMessage, string) {
 	raw := options[field]
 	var captured string
 	if len(raw) != 0 && json.Unmarshal(raw, &captured) != nil {
@@ -31,14 +40,17 @@ func capturedCallCredential(options map[string]json.RawMessage, field string) (j
 	return raw, captured
 }
 
-func validateCallCredential(field, value string) error {
+func validateManagedCredential(kind, field, value string) error {
+	if kind != "call" && field != "password" {
+		return errOutboundCredentialInvalid
+	}
 	if !calloptions.CredentialValid(field, value) {
 		return errOutboundCredentialInvalid
 	}
 	return nil
 }
 
-func prepareCallCredentials(tx *gorm.DB, outbound *model.Outbound) error {
+func prepareManagedCredentials(tx *gorm.DB, outbound *model.Outbound) error {
 	var next, old map[string]json.RawMessage
 	if jsonvalue.StrictObject(outbound.Options) != nil || json.Unmarshal(outbound.Options, &next) != nil || next == nil {
 		return errOutboundCredentialInvalid
@@ -52,9 +64,9 @@ func prepareCallCredentials(tx *gorm.DB, outbound *model.Outbound) error {
 			return errOutboundCredentialInvalid
 		}
 	}
-	available := entitycapabilities.Resolve("outbounds", "call").Available
-	for _, field := range callCredentialFields {
-		oldRaw, captured := capturedCallCredential(old, field)
+	available := entitycapabilities.Resolve("outbounds", outbound.Type).Available
+	for _, field := range managedCredentialFields(outbound.Type) {
+		oldRaw, captured := capturedOutboundCredential(old, field)
 		mutation, supplied := next[field]
 		if !supplied {
 			if len(oldRaw) != 0 {
@@ -70,7 +82,7 @@ func prepareCallCredentials(tx *gorm.DB, outbound *model.Outbound) error {
 			return errOutboundCredentialInvalid
 		}
 		if intent.Intent == "replace" {
-			if err := validateCallCredential(field, intent.Value); err != nil {
+			if err := validateManagedCredential(outbound.Type, field, intent.Value); err != nil {
 				return err
 			}
 		}
@@ -119,13 +131,13 @@ func prepareCallCredentials(tx *gorm.DB, outbound *model.Outbound) error {
 	return err
 }
 
-func projectCallCredentials(outbound model.Outbound, data *map[string]interface{}) error {
+func projectManagedCredentials(outbound model.Outbound, data *map[string]interface{}) error {
 	var options map[string]json.RawMessage
 	if json.Unmarshal(outbound.Options, &options) != nil {
 		return errOutboundCredentialInvalid
 	}
-	for _, field := range callCredentialFields {
-		_, captured := capturedCallCredential(options, field)
+	for _, field := range managedCredentialFields(outbound.Type) {
+		_, captured := capturedOutboundCredential(options, field)
 		ref, err := ownerdb.Reference("outbounds", outbound.Id, field)
 		if err != nil {
 			return err
@@ -135,13 +147,13 @@ func projectCallCredentials(outbound model.Outbound, data *map[string]interface{
 	return nil
 }
 
-func marshalCallRuntime(db *gorm.DB, outbound model.Outbound, raw []byte) ([]byte, error) {
+func marshalManagedRuntime(db *gorm.DB, outbound model.Outbound, raw []byte) ([]byte, error) {
 	var fields map[string]json.RawMessage
 	if json.Unmarshal(raw, &fields) != nil {
 		return nil, errOutboundCredentialInvalid
 	}
-	for _, field := range callCredentialFields {
-		_, captured := capturedCallCredential(fields, field)
+	for _, field := range managedCredentialFields(outbound.Type) {
+		_, captured := capturedOutboundCredential(fields, field)
 		if captured == "" {
 			delete(fields, field)
 			continue
@@ -155,7 +167,7 @@ func marshalCallRuntime(db *gorm.DB, outbound model.Outbound, raw []byte) ([]byt
 		}
 		request := secretref.Access{Reference: ref, Actor: secretref.Actor{Component: "outbounds"}, Operation: secretref.UseForOwner, IntentID: "outbound-config"}
 		_, err = ownerdb.Access(db.Statement.Context, db, request, captured, func(value []byte) error {
-			if err := validateCallCredential(field, string(value)); err != nil {
+			if err := validateManagedCredential(outbound.Type, field, string(value)); err != nil {
 				return err
 			}
 			if field == "cookies" {

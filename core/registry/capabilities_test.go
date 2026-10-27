@@ -37,6 +37,11 @@ func TestCapabilityRegistrationsAndCompiledImplementations(t *testing.T) {
 	if fact := Resolve("outbounds", "call"); !fact.Known || fact.Compiled != supportsCallOutbound || fact.Registered != supportsCallOutbound || fact.AuthenticatedUsers || fact.BuildTag != "shtorm_extended" {
 		t.Fatalf("Call outbound serving capability: %+v", fact)
 	}
+	for kind, compiled := range map[string]bool{"mieru": supportsMieruOutbound, "trusttunnel": supportsTrustTunnelOutbound} {
+		if fact := Resolve("outbounds", kind); !fact.Known || fact.Compiled != compiled || fact.Registered != compiled || fact.AuthenticatedUsers || fact.BuildTag == "" {
+			t.Fatalf("native outbound serving capability: %+v", fact)
+		}
+	}
 	for kind, compiled := range map[string]bool{"mieru": supportsMieruInbound, "trusttunnel": supportsTrustTunnelInbound} {
 		fact := Resolve("inbounds", kind)
 		if !fact.Known || fact.Compiled != compiled || fact.Registered != compiled || !fact.AuthenticatedUsers || fact.BuildTag == "" {

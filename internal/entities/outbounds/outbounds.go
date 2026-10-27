@@ -51,8 +51,8 @@ func GetAll(db *gorm.DB) (*[]map[string]interface{}, error) {
 				}
 			}
 		}
-		if outbound.Type == "call" {
-			if err := projectCallCredentials(*outbound, &outData); err != nil {
+		if len(managedCredentialFields(outbound.Type)) != 0 {
+			if err := projectManagedCredentials(*outbound, &outData); err != nil {
 				return nil, err
 			}
 		}
@@ -97,8 +97,8 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 			if err != nil {
 				return nil, err
 			}
-			if outbound.Type == "call" {
-				outboundJSON, err = marshalCallRuntime(db, *outbound, outboundJSON)
+			if len(managedCredentialFields(outbound.Type)) != 0 {
+				outboundJSON, err = marshalManagedRuntime(db, *outbound, outboundJSON)
 				if err != nil {
 					return nil, err
 				}
@@ -161,8 +161,8 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 	if err := entityidentity.EnsureOutboundTagAvailable(tx, outbound.Tag, outbound.Id, 0); err != nil {
 		return nil, err
 	}
-	if outbound.Type == "call" {
-		if err := prepareCallCredentials(tx, &outbound); err != nil {
+	if len(managedCredentialFields(outbound.Type)) != 0 {
+		if err := prepareManagedCredentials(tx, &outbound); err != nil {
 			return nil, err
 		}
 	}
@@ -319,8 +319,8 @@ func Restart(tx *gorm.DB, ids []uint, core Core) error {
 			if err != nil {
 				return err
 			}
-			if row.Type == "call" {
-				config, err = marshalCallRuntime(tx, *row, config)
+			if len(managedCredentialFields(row.Type)) != 0 {
+				config, err = marshalManagedRuntime(tx, *row, config)
 				if err != nil {
 					return err
 				}

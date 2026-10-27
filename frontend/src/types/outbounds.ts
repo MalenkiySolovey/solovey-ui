@@ -22,6 +22,8 @@ export const OutTypes = {
   Tor: 'tor',
   SSH: 'ssh',
   Call: 'call',
+  Mieru: 'mieru',
+  TrustTunnel: 'trusttunnel',
   Selector: 'selector',
   URLTest: 'urltest',
 	Failover: 'failover',
@@ -52,6 +54,34 @@ export interface Call extends OutboundBasics, Dial {
   read_buffer?: number
   join_link?: unknown
   cookies?: unknown
+}
+
+export interface Mieru extends OutboundBasics, Dial {
+  server: string
+  server_port?: number
+  server_ports?: string | string[]
+  transport?: 'TCP' | 'UDP'
+  username?: string
+  password?: unknown
+  multiplexing?: string
+  traffic_pattern?: string
+  mtu?: number
+  handshake_mode?: string
+}
+
+export interface TrustTunnel extends OutboundBasics, Dial {
+  server: string
+  server_port?: number
+  tls?: oTls
+  username?: string
+  password?: unknown
+  network?: string | string[]
+  health_check?: boolean
+  quic?: boolean
+  congestion_controller?: string
+  cwnd?: number
+  disable_path_mtu_discovery?: boolean
+  multiplex?: { enabled?: boolean; max_connections?: number; min_streams?: number; max_streams?: number }
 }
 
 export interface SOCKS extends OutboundBasics, Dial {
@@ -292,6 +322,8 @@ const defaultValues: Record<OutType, Outbound> = {
   tor: { type: OutTypes.Tor, executable_path: './tor', data_directory: '$HOME/.cache/tor', torrc: { ClientOnly: '1' } },
   ssh: { type: OutTypes.SSH },
   call: { type: OutTypes.Call, platform: 'telemost' },
+  mieru: { type: OutTypes.Mieru, transport: 'TCP' },
+  trusttunnel: { type: OutTypes.TrustTunnel, tls: { enabled: true } },
   selector: { type: OutTypes.Selector },
   urltest: { type: OutTypes.URLTest },
 	failover: { type: OutTypes.Failover, outbounds: [], failover: { enabled: true, probe_target: '', interval: '30s', hysteresis: 2 } },

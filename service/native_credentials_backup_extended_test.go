@@ -136,6 +136,7 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 	callOutbound, _ := json.Marshal(map[string]any{"type": "call", "tag": "archive-call-outbound", "platform": "dion",
 		"cookies":   map[string]string{"intent": "replace", "value": `[{"name":"session","value":"` + callCookie + `"}]`},
 		"join_link": map[string]string{"intent": "replace", "value": outboundRoom}})
+	nativeOutboundPasswords := map[string]string{"mieru": "synthetic-private-mieru-outbound-password", "trusttunnel": "synthetic-private-trusttunnel-outbound-password"}
 	if err := db.Transaction(func(tx *gorm.DB) error {
 		for index := range inbounds {
 			if err := entityinbounds.FillAndSave(tx, &inbounds[index], "fixture.invalid"); err != nil {
@@ -157,8 +158,24 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		if err := entityinbounds.FillAndSave(tx, &callInbound, "fixture.invalid"); err != nil {
 			return err
 		}
-		_, err := entityoutbounds.Save(tx, "new", callOutbound)
-		return err
+		if _, err := entityoutbounds.Save(tx, "new", callOutbound); err != nil {
+			return err
+		}
+		for kind, password := range nativeOutboundPasswords {
+			draft := map[string]any{"type": kind, "tag": "archive-" + kind + "-outbound", "server": "192.0.2.1", "server_port": 443, "username": "archive-user", "password": map[string]string{"intent": "replace", "value": password}}
+			if kind == "mieru" {
+				draft["transport"] = "TCP"
+				draft["handshake_mode"] = "HANDSHAKE_STANDARD"
+			} else {
+				draft["tls"] = map[string]any{"enabled": true}
+				draft["multiplex"] = map[string]any{"enabled": false, "max_streams": 8}
+			}
+			raw, _ := json.Marshal(draft)
+			if _, err := entityoutbounds.Save(tx, "new", raw); err != nil {
+				return err
+			}
+		}
+		return nil
 	}); err != nil {
 		t.Fatal("native Inbounds owner fixture failed", err)
 	}
@@ -218,6 +235,7 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		var root struct {
 			Outbounds []struct {
 				Type     string
+				Password string
 				JoinLink string `json:"join_link"`
 				Cookies  []struct{ Name, Value string }
 			}
@@ -242,7 +260,14 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 			t.Fatal("Sudoku runtime projection disclosed delivery material")
 		}
 		callOutboundFound := false
+		nativeOutboundsFound := 0
 		for _, outbound := range root.Outbounds {
+			if password, native := nativeOutboundPasswords[outbound.Type]; native {
+				nativeOutboundsFound++
+				if outbound.Password != password {
+					t.Fatal("archive changed native outbound password ownership")
+				}
+			}
 			if outbound.Type == "call" {
 				callOutboundFound = true
 				if outbound.JoinLink != outboundRoom || len(outbound.Cookies) != 1 || outbound.Cookies[0].Value != callCookie {
@@ -250,8 +275,8 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 				}
 			}
 		}
-		if !callOutboundFound {
-			t.Fatal("archive lost the native Call outbound")
+		if !callOutboundFound || nativeOutboundsFound != len(nativeOutboundPasswords) {
+			t.Fatal("archive lost a native outbound")
 		}
 		for _, inbound := range root.Inbounds {
 			if inbound.Type == "call" {
@@ -316,6 +341,11 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		if bytes.Contains(encoded, []byte("sbox:v1:")) || bytes.Contains(encoded, []byte(callCookie)) || bytes.Contains(encoded, []byte(outboundRoom)) {
 			t.Fatal("restored normal Outbounds read disclosed private Call material")
 		}
+		for _, password := range nativeOutboundPasswords {
+			if bytes.Contains(encoded, []byte(password)) {
+				t.Fatal("restored normal Outbounds read disclosed a native password")
+			}
+		}
 	}
 	checkProjection(db)
 	masked, err := entityclients.GetByID(db, strconv.Itoa(int(client.Id)))
@@ -343,6 +373,11 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 	for _, value := range []string{callCookie, callPassword, callJoinLink, outboundRoom} {
 		if bytes.Contains(archive, []byte(value)) {
 			t.Fatal("private archive persisted transient Call credentials")
+		}
+	}
+	for _, password := range nativeOutboundPasswords {
+		if bytes.Contains(archive, []byte(password)) {
+			t.Fatal("private archive persisted a transient outbound password")
 		}
 	}
 	var encrypted, decrypted bytes.Buffer
