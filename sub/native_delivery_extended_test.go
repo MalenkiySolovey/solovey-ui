@@ -17,6 +17,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/secrets/ownerdb"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
+	mieruapp "github.com/enfein/mieru/v3/pkg/appctl"
 )
 
 func TestNativeSudokuDeliveryUsesAssignedSplitKey(t *testing.T) {
@@ -152,6 +153,9 @@ func TestNativePrivateLinksAreResponseOnly(t *testing.T) {
 		}
 		switch u.Scheme {
 		case "mierus":
+			if _, err := mieruapp.URLToClientProfile(line); err != nil {
+				t.Fatal("stock native client rejected the share format")
+			}
 			password, _ := u.User.Password()
 			if password != "synthetic-delivery" || u.User.Username() != client.Name || len(u.Query()["port"]) != 2 || u.Query().Get("mtu") != "1400" {
 				t.Fatal("Mieru link changed owner facts")

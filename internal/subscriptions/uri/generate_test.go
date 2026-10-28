@@ -160,6 +160,9 @@ func TestLinkGeneratorProducesParseableLinksForEverySupportedType(t *testing.T) 
 		"tuic":{"uuid":"11111111-1111-4111-8111-111111111111","password":"secret"},
 		"vless":{"uuid":"11111111-1111-4111-8111-111111111111"},
 		"trojan":{"password":"secret"},
+		"mieru":{"name":"user","password":"secret"},
+		"mtproxy":{"secret":"ee121212121212121212121212121212126578616d706c652e636f6d"},
+		"sudoku":{"keys":{"0":"synthetic-split"}},
 		"vmess":{"uuid":"11111111-1111-4111-8111-111111111111"}
 	}`)
 	for _, inboundType := range SupportedInboundTypes {
@@ -171,6 +174,9 @@ func TestLinkGeneratorProducesParseableLinksForEverySupportedType(t *testing.T) 
 				`{}`,
 				`[{"server":"node.example.com","server_port":443,"remark":"-node"}]`,
 			)
+			if inboundType == "mieru" {
+				inbound.Options = json.RawMessage(`{"listen_port":443,"transport":"TCP"}`)
+			}
 			links, err := Generate(clientConfig, inbound, "fallback.example.com")
 			if err != nil {
 				t.Fatal(err)

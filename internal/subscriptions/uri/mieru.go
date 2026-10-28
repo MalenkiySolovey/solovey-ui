@@ -104,6 +104,13 @@ func mieruPort(token string) (normalized string, first int, single bool, err err
 }
 
 func validMieruOptions(raw map[string]any) bool {
+	for _, field := range []string{"multiplexing", "handshake_mode", "traffic_pattern"} {
+		if value, present := raw[field]; present {
+			if _, ok := value.(string); !ok {
+				return false
+			}
+		}
+	}
 	if value := mapString(raw, "multiplexing"); value != "" {
 		switch value {
 		case "MULTIPLEXING_DEFAULT", "MULTIPLEXING_OFF", "MULTIPLEXING_LOW", "MULTIPLEXING_MIDDLE", "MULTIPLEXING_HIGH":
