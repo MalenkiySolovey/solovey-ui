@@ -232,7 +232,7 @@ round-trip and refusal to discard a detour. This replaces one exact digest;
 there is no new Direct decision or worker.
 
 R7 Sudoku delivery reviews the same projection declaration from `8216c1dc...`
-to `2d34c064...`. The compact client adapter admits only its declared fields,
+to `b20fd020...`. The compact client adapter admits only its declared typed fields,
 standard padding and representable HTTP-mask settings; custom padding, TLS,
 host overrides and other critical options require JSON. Users remains the
 split-key owner; private serving master material never enters delivery.
