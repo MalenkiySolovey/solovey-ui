@@ -22,6 +22,9 @@ func parseLink(uri string, i int) (*map[string]interface{}, string, error) {
 	if !utf8.ValidString(uri) {
 		return nil, "", common.NewError("Invalid link encoding")
 	}
+	if scheme, _, found := strings.Cut(uri, "://"); found && strings.EqualFold(scheme, "sudoku") {
+		return parseSudoku(uri, i)
+	}
 	if scheme, payload, found := strings.Cut(uri, "://"); found && strings.EqualFold(scheme, "vmess") {
 		if strings.ContainsAny(payload, "?#") {
 			return nil, "", common.NewError("Invalid vmess payload")

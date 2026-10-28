@@ -43,6 +43,9 @@ func TestCapabilityDeliveryAgreesWithServingEntityForEveryOwnerFact(t *testing.T
 				inbound.OutJson = json.RawMessage(`{"type":"snell","tag":"local","version":6,"psk":"fixture-psk-12","server":"example.invalid","server_port":443}`)
 				clientConfig = json.RawMessage(`{"snell":{"userkey":"fixture-client-key"}}`)
 			}
+			if fact.Type == "sudoku" {
+				clientConfig = json.RawMessage(`{"sudoku":{"keys":{"0":"synthetic-client-split-key"}}}`)
+			}
 			set, err := sublocal.BuildInboundOutbounds(clientConfig, []*model.Inbound{inbound})
 			if err != nil {
 				t.Fatal(err)

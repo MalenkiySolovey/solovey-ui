@@ -38,6 +38,7 @@ var ErrEndpointMapping = errors.New("MANUAL_MAPPING_REQUIRED: endpoint semantics
 var authenticationFields = []string{
 	"uuid", "username", "password", "method", "flow", "alter_id", "security",
 	"auth", "auth_str", "token", "private_key", "private_key_path", "private_key_passphrase",
+	"key",
 }
 
 // NormalizeEndpoint evolves the existing observation model into EndpointIR.
@@ -193,6 +194,42 @@ func semanticEndpoint(raw map[string]any) map[string]any {
 		multiplex = nil
 	}
 	options := semanticOptions(raw)
+	if raw["type"] == "sudoku" {
+		// Native SDK defaults are semantic equivalents, including the omitted
+		// compact-link flags. They do not rewrite the captured source payload.
+		if value := stringValue(options["aead_method"]); value == "" {
+			options["aead_method"] = "chacha20-poly1305"
+		}
+		switch stringValue(options["table_type"]) {
+		case "", "entropy":
+			options["table_type"] = "prefer_entropy"
+		case "ascii":
+			options["table_type"] = "prefer_ascii"
+		}
+		if options["enable_pure_downlink"] == nil {
+			options["enable_pure_downlink"] = true
+		}
+		mask := mapValue(options["http_mask"])
+		if mask == nil {
+			mask = map[string]any{"enabled": true}
+		}
+		if mask["enabled"] == nil {
+			mask["enabled"] = false
+		}
+		if stringValue(mask["mode"]) == "" {
+			mask["mode"] = "legacy"
+		}
+		if stringValue(mask["path_root"]) == "" {
+			delete(mask, "path_root")
+		}
+		options["http_mask"] = mask
+		if options["padding_min"] == nil {
+			options["padding_min"] = 10
+		}
+		if options["padding_max"] == nil {
+			options["padding_max"] = 30
+		}
+	}
 	for _, key := range []string{"type", "server", "server_port", "tls", "transport", "multiplex", "obfs", "plugin", "plugin_opts"} {
 		if (key == "tls" || key == "transport" || key == "multiplex") && raw[key] != nil && mapValue(raw[key]) == nil {
 			continue // Keep malformed critical carriers in semantic identity too.

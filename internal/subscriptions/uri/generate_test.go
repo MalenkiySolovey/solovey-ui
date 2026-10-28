@@ -33,6 +33,35 @@ func TestMieruEndpointSimpleURIRoundTrip(t *testing.T) {
 	}
 }
 
+func TestSudokuEndpointCompactURIRoundTrip(t *testing.T) {
+	for _, extras := range []map[string]any{
+		{},
+		{"aead_method": "aes-128-gcm", "table_type": "prefer_ascii", "enable_pure_downlink": false, "custom_table": "xxxp", "custom_tables": []string{"xxxp", "xxpx"}, "http_mask": map[string]any{"enabled": true, "mode": "ws", "path_root": "/public"}},
+	} {
+		raw := map[string]any{"type": "sudoku", "tag": "public", "server": "edge.example", "server_port": 443, "key": "synthetic-split"}
+		for key, value := range extras {
+			raw[key] = value
+		}
+		before := canonical.ObserveOutbound(canonical.FormatSingBox, raw, 0)
+		links, err := RenderEndpoint(before)
+		if err != nil || len(links) != 1 {
+			t.Fatal("native Sudoku projection failed", err)
+		}
+		parsed, _, err := Parse(links[0], 0)
+		if err != nil {
+			t.Fatal("native Sudoku import failed", err)
+		}
+		after := canonical.ObserveOutbound(canonical.FormatURI, *parsed, 0)
+		if before.EndpointID != after.EndpointID {
+			t.Fatal("native Sudoku endpoint semantics changed")
+		}
+		raw["padding_min"] = 11
+		if _, err := RenderEndpoint(canonical.ObserveOutbound(canonical.FormatSingBox, raw, 0)); err == nil {
+			t.Fatal("compact link stripped custom padding")
+		}
+	}
+}
+
 func TestLinkGeneratorTUICIncludesUDPRelayMode(t *testing.T) {
 	link := generateTUICLinkForTest(t, `{"udp_relay_mode":"native"}`)
 	u, err := url.Parse(link)

@@ -59,6 +59,42 @@ func ValidateEndpointProjection(endpoint EndpointIR, target string) error {
 	if target == FormatSingBox {
 		return nil
 	} // full options survive; existing shape/owner validation follows
+	if protocol == "sudoku" && target == FormatURI {
+		for _, field := range []string{"aead_method", "table_type", "custom_table"} {
+			if value, present := raw[field]; present {
+				if _, ok := value.(string); !ok {
+					return ErrUnsupportedProjection
+				}
+			}
+		}
+		if unknownKeys(raw, "type tag server server_port key aead_method table_type enable_pure_downlink custom_table custom_tables http_mask padding_min padding_max") {
+			return ErrUnsupportedProjection
+		}
+		for field, expected := range map[string]string{"padding_min": "10", "padding_max": "30"} {
+			if value, present := raw[field]; present && portString(value) != expected {
+				return ErrUnsupportedProjection
+			}
+		}
+		if value, present := raw["http_mask"]; present && value != nil {
+			mask, ok := value.(map[string]any)
+			if !ok || unknownKeys(mask, "enabled mode path_root") {
+				return ErrUnsupportedProjection
+			}
+			if value, present := mask["enabled"]; present {
+				if _, ok := value.(bool); !ok {
+					return ErrUnsupportedProjection
+				}
+			}
+			for _, field := range []string{"mode", "path_root"} {
+				if value, present := mask[field]; present {
+					if _, ok := value.(string); !ok {
+						return ErrUnsupportedProjection
+					}
+				}
+			}
+		}
+		return nil
+	}
 	if protocol == "mieru" && target == FormatURI {
 		if unknownKeys(raw, "type tag server server_port server_ports username password transport multiplexing handshake_mode traffic_pattern mtu") {
 			return ErrUnsupportedProjection

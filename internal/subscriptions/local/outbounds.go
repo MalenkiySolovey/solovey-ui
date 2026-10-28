@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -222,6 +223,16 @@ func inboundOutboundConfig(configs map[string]interface{}, inbound *model.Inboun
 			return nil, fmt.Errorf("CLIENT_CREDENTIAL_DELIVERY_UNAVAILABLE")
 		}
 		outbound["username"], outbound["password"] = username, password
+		return outbound, nil
+	}
+	if protocol == "sudoku" {
+		config, _ := configs["sudoku"].(map[string]any)
+		keys, _ := config["keys"].(map[string]any)
+		key, _ := keys[strconv.FormatUint(uint64(inbound.Id), 10)].(string)
+		if key == "" || secretbox.IsEncrypted(key) {
+			return nil, fmt.Errorf("CLIENT_CREDENTIAL_DELIVERY_UNAVAILABLE")
+		}
+		outbound["key"] = key
 		return outbound, nil
 	}
 	mergeClientProtocolConfig(configs, inbound, outbound, protocol)

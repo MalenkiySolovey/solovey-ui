@@ -35,7 +35,7 @@ var declarations = []Fact{
 	{"ssh", "ssh", false, false, false, "password"},
 	{"mtproxy", "mtproxy", false, true, false, "secret"},
 	// Keys are an encrypted delivery bundle, never a serving users array.
-	{"sudoku", "sudoku", false, false, true, "keys"},
+	{"sudoku", "sudoku", true, true, true, "keys"},
 }
 
 // SupportsUDP is a portable protocol fact, narrowed by the selected outbound

@@ -79,8 +79,8 @@ func AddClientInfo(uri string, clientInfo string) string {
 		query.Set("profile", query.Get("profile")+clientInfo)
 		u.RawQuery = query.Encode()
 		return u.String()
-	case "tg":
-		return uri // Telegram's proxy URL has no display-label field.
+	case "tg", "sudoku":
+		return uri // These client encodings have no display-label field.
 	case "vmess":
 		var vmessJSON map[string]interface{}
 		config, err := uricodec.Decode(protocol[1])

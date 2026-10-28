@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -151,6 +152,13 @@ func Generate(clientConfig json.RawMessage, i *model.Inbound, hostname string) (
 	case "mieru":
 		credential := userConfig["mieru"]
 		links, err = generateEndpointLinks("mieru", map[string]any{"username": credential["name"], "password": credential["password"]}, *inbound, Addrs)
+	case "sudoku":
+		keys, _ := userConfig["sudoku"]["keys"].(map[string]any)
+		key, _ := keys[strconv.FormatUint(uint64(i.Id), 10)].(string)
+		if key == "" {
+			return nil, errors.New("CLIENT_CREDENTIAL_DELIVERY_UNAVAILABLE")
+		}
+		links, err = generateEndpointLinks("sudoku", map[string]any{"key": key}, *inbound, Addrs)
 	case "mtproxy":
 		secret := mapString(userConfig["mtproxy"], "secret")
 		if secret == "" {

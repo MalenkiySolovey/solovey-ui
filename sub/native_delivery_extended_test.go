@@ -14,7 +14,96 @@ import (
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
+	"github.com/MalenkiySolovey/solovey-ui/internal/secrets/ownerdb"
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
+	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 )
+
+func TestNativeSudokuDeliveryUsesAssignedSplitKey(t *testing.T) {
+	initSubTestDB(t)
+	db := dbsqlite.DB()
+	master, err := credentials.GenerateSudokuMaster()
+	if err != nil {
+		t.Fatal(err)
+	}
+	public, err := credentials.SudokuPublicKey(master)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ref, _ := ownerdb.Reference("inbounds", 1, "master_key")
+	mutation, _ := json.Marshal(map[string]string{"intent": "replace", "value": master})
+	sealed, err := ownerdb.Apply(db, ref, "", mutation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options, _ := json.Marshal(map[string]any{"key": public, "master_key": sealed, "listen_port": 3443, "table_type": "prefer_ascii", "enable_pure_downlink": false, "http_mask_mode": "ws", "path_root": "/public"})
+	inbound := model.Inbound{Id: 1, Type: "sudoku", Tag: "Sudoku public", Options: options, Addrs: json.RawMessage(`[{"server":"edge.example","server_port":3443}]`), OutJson: json.RawMessage(`{}`)}
+	if err := db.Create(&inbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	client := model.Client{Name: "private-sudoku", Enable: true, Config: json.RawMessage(`{}`), Inbounds: json.RawMessage(`[1]`), Links: json.RawMessage(`[]`)}
+	raw, _ := json.Marshal(client)
+	if _, err := entityclients.Save(entityclients.SaveRequest{Tx: db, Action: "new", Data: raw}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Where("name = ?", client.Name).First(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+	before := bytes.Clone(client.Config)
+	linksBefore := bytes.Clone(client.Links)
+	body, _, err := (&JSONService{}).GetJSON(client.SubSecret)
+	if err != nil || body == nil {
+		t.Fatal("private Sudoku JSON unavailable", err)
+	}
+	var profile struct {
+		Outbounds []map[string]any `json:"outbounds"`
+	}
+	if json.Unmarshal([]byte(*body), &profile) != nil {
+		t.Fatal("invalid private JSON")
+	}
+	var endpoint canonical.EndpointIR
+	found := false
+	for _, outbound := range profile.Outbounds {
+		if outbound["type"] != "sudoku" {
+			continue
+		}
+		found = true
+		key, _ := outbound["key"].(string)
+		if key == master || key == public || !credentials.SudokuSplitMatches(key, master) {
+			t.Fatal("delivery did not use the assigned split key")
+		}
+		if _, leaked := outbound["master_key"]; leaked {
+			t.Fatal("serving master entered client profile")
+		}
+		endpoint = canonical.ObserveOutbound(canonical.FormatSingBox, outbound, 0)
+	}
+	if !found {
+		t.Fatal("native Sudoku endpoint omitted")
+	}
+	links, _, err := (&SubService{}).GetSubs(client.SubSecret)
+	if err != nil || links == nil {
+		t.Fatal("private Sudoku URI unavailable", err)
+	}
+	text := *links
+	if !strings.Contains(text, "://") {
+		decoded, err := base64.StdEncoding.DecodeString(text)
+		if err != nil {
+			t.Fatal(err)
+		}
+		text = string(decoded)
+	}
+	imported, _, err := suburi.Parse(strings.TrimSpace(text), 0)
+	if err != nil || canonical.ObserveOutbound(canonical.FormatURI, *imported, 0).EndpointID != endpoint.EndpointID {
+		t.Fatal("private JSON and compact link disagree", err)
+	}
+	if err := db.First(&client, client.Id).Error; err != nil || !bytes.Equal(before, client.Config) || !bytes.Equal(linksBefore, client.Links) {
+		t.Fatal("delivery changed canonical User state")
+	}
+	var stored model.Inbound
+	if err := db.First(&stored, inbound.Id).Error; err != nil || !bytes.Equal(options, stored.Options) || !bytes.Equal(inbound.OutJson, stored.OutJson) {
+		t.Fatal("delivery changed serving ownership")
+	}
+}
 
 func TestNativePrivateLinksAreResponseOnly(t *testing.T) {
 	initSubTestDB(t)

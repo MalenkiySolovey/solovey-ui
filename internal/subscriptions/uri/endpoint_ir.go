@@ -43,6 +43,9 @@ func generateEndpointLinks(protocol string, credential, inbound map[string]any, 
 		if protocol == "mieru" {
 			keys = []string{"username", "password"}
 		}
+		if protocol == "sudoku" {
+			keys = []string{"key"}
+		}
 		for _, key := range keys {
 			if value, present := credential[key]; present {
 				raw[key] = value
@@ -95,6 +98,8 @@ func RenderEndpoint(endpoint canonical.EndpointIR) ([]string, error) {
 	}
 	var links []string
 	switch endpoint.Protocol {
+	case "sudoku":
+		return renderSudoku(raw)
 	case "mieru":
 		return renderMieru(raw, endpoint.DisplayName)
 	case "vless":
@@ -122,6 +127,9 @@ func RenderEndpoint(endpoint canonical.EndpointIR) ([]string, error) {
 }
 
 func classifyLinkSource(link string) []canonical.ProjectionDiagnostic {
+	if scheme, _, found := strings.Cut(link, "://"); found && strings.EqualFold(scheme, "sudoku") {
+		return classifySudokuSource(link)
+	}
 	block := func(field string) []canonical.ProjectionDiagnostic {
 		return []canonical.ProjectionDiagnostic{{State: canonical.ProjectionManual, Code: "source_fields_unmapped", Field: field}}
 	}

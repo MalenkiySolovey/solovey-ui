@@ -37,7 +37,7 @@ func OutboundDeliveryCopy(db *gorm.DB, inbound *model.Inbound) (*model.Inbound, 
 	if err != nil || copy == nil {
 		return copy, err
 	}
-	if (copy.Type != "mieru" && copy.Type != "trusttunnel") || !clientfacts.CanDeliver(copy.Type, "json") {
+	if (copy.Type != "mieru" && copy.Type != "trusttunnel" && copy.Type != "sudoku") || !clientfacts.CanDeliver(copy.Type, "json") {
 		return copy, nil
 	}
 	var template map[string]any
@@ -115,6 +115,29 @@ func fillOutboundJSON(i *model.Inbound, hostname string, legacy bool) error {
 			}
 			outJson["server_ports"] = normalized
 		}
+	case "sudoku":
+		for _, key := range []string{"aead_method", "padding_min", "padding_max", "table_type", "enable_pure_downlink", "custom_table", "custom_tables"} {
+			if value, present := (*inbound)[key]; present {
+				outJson[key] = value
+			}
+		}
+		// The private master belongs to the serving inbound. Only the assigned
+		// Users-owned split key is supplied later by private delivery.
+		delete(outJson, "key")
+		delete(outJson, "master_key")
+		disabled, _ := (*inbound)["disable_http_mask"].(bool)
+		httpMask, _ := outJson["http_mask"].(map[string]any)
+		if httpMask == nil {
+			httpMask = map[string]any{}
+		}
+		httpMask["enabled"] = !disabled
+		if mode, ok := (*inbound)["http_mask_mode"].(string); ok && mode != "" {
+			httpMask["mode"] = mode
+		}
+		if path, ok := (*inbound)["path_root"].(string); ok && path != "" {
+			httpMask["path_root"] = path
+		}
+		outJson["http_mask"] = httpMask
 	case "trusttunnel":
 		for _, key := range []string{"congestion_controller", "cwnd", "disable_path_mtu_discovery"} {
 			if value, present := (*inbound)[key]; present {
