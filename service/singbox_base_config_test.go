@@ -64,6 +64,29 @@ func TestSingBoxBaseConfigStoreSetValidatesAndNormalizesConfig(t *testing.T) {
 	}
 }
 
+func TestSingBoxBaseConfigDNSRuleFailurePreservesOwnerPreimage(t *testing.T) {
+	store := NewSingBoxBaseConfigStore(initSettingTestDB(t))
+	if err := store.Set(`{"dns":{"servers":[{"type":"hosts","tag":"hosts"}],"rules":[{"domain":"keep.invalid","server":"hosts"}]}}`); err != nil {
+		t.Fatal(err)
+	}
+	before, err := store.Get()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, rule := range []string{
+		`{"domain":"conflict.invalid","server":"hosts","client_subnet":"192.0.2.0/24","remove_client_subnet":true}`,
+		`{"preferred_by":"missing","server":"hosts"}`,
+	} {
+		if err := store.Set(`{"dns":{"servers":[{"type":"hosts","tag":"hosts"}],"rules":[` + rule + `]}}`); err == nil {
+			t.Fatal("invalid DNS rule committed through canonical settings owner")
+		}
+		after, err := store.Get()
+		if err != nil || after != before {
+			t.Fatal("failed DNS candidate changed canonical configuration")
+		}
+	}
+}
+
 func TestSingBoxBaseConfigStoreSaveCreatesMissingConfigSetting(t *testing.T) {
 	settingService := initSettingTestDB(t)
 	tx := dbsqlite.DB().Begin()
