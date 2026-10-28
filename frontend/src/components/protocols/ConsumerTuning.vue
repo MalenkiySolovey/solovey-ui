@@ -1,10 +1,10 @@
 <template>
-  <v-card v-if="fields.length" subtitle="HTTP2 / QUIC tuning">
-    <div class="text-caption" v-if="contract">Sizes accept numeric bytes or {{ Object.keys(contract.memoryUnits).join(', ') }}. KB and MB use binary units. Validation follows this protocol and direction.</div>
+  <v-card v-if="fields.length" :subtitle="$t('types.consumerTuning.title')">
+    <div class="text-caption" v-if="contract">{{ $t('types.consumerTuning.sizes', { units: Object.keys(contract.memoryUnits).join(', ') }) }}</div>
     <v-row>
       <v-col v-for="field in fields" :key="field" cols="12" sm="6">
-        <v-switch v-if="booleans.includes(field)" v-model="data[field]" :label="field" color="primary" hide-details />
-        <v-text-field v-else :model-value="data[field]" @update:model-value="setField(field, $event)" :label="field" :placeholder="sizes.includes(field) ? '1MB' : durations.includes(field) ? '10s' : undefined" clearable @click:clear="delete data[field]" />
+        <v-switch v-if="booleans.includes(field)" v-model="data[field]" :label="$t('types.consumerTuning.' + field)" color="primary" hide-details />
+        <v-text-field v-else :model-value="data[field]" @update:model-value="setField(field, $event)" :label="$t('types.consumerTuning.' + field)" :placeholder="sizes.includes(field) ? '1MB' : durations.includes(field) ? '10s' : undefined" clearable @click:clear="delete data[field]" />
       </v-col>
     </v-row>
   </v-card>
