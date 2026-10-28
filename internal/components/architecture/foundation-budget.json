@@ -2045,7 +2045,7 @@
       "rule": "direct-policy",
       "path": "internal/subscriptions/canonical/projection.go",
       "symbol": "ValidateEndpointProjection",
-      "digest": "816b6bbc44118f4b073c65a9cbb040393c1e11a3cbd51838b60cb1aa84bdf8fb"
+      "digest": "ec5f5b74cab1e51ed5f9102267265061b9852919fd43de8090cc071069cc4f94"
     },
     {
       "rule": "direct-policy",
