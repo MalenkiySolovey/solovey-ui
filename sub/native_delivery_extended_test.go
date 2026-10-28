@@ -14,6 +14,7 @@ import (
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
+	mieruapp "github.com/enfein/mieru/v3/pkg/appctl"
 )
 
 func TestNativePrivateLinksAreResponseOnly(t *testing.T) {
@@ -63,6 +64,9 @@ func TestNativePrivateLinksAreResponseOnly(t *testing.T) {
 		}
 		switch u.Scheme {
 		case "mierus":
+			if _, err := mieruapp.URLToClientProfile(line); err != nil {
+				t.Fatal("stock native client rejected the share format")
+			}
 			password, _ := u.User.Password()
 			if password != "synthetic-delivery" || u.User.Username() != client.Name || len(u.Query()["port"]) != 2 || u.Query().Get("mtu") != "1400" {
 				t.Fatal("Mieru link changed owner facts")

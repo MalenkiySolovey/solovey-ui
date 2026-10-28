@@ -131,6 +131,8 @@ func TestLinkGeneratorProducesParseableLinksForEverySupportedType(t *testing.T) 
 		"tuic":{"uuid":"11111111-1111-4111-8111-111111111111","password":"secret"},
 		"vless":{"uuid":"11111111-1111-4111-8111-111111111111"},
 		"trojan":{"password":"secret"},
+		"mieru":{"name":"user","password":"secret"},
+		"mtproxy":{"secret":"ee121212121212121212121212121212126578616d706c652e636f6d"},
 		"vmess":{"uuid":"11111111-1111-4111-8111-111111111111"}
 	}`)
 	for _, inboundType := range SupportedInboundTypes {
@@ -138,7 +140,7 @@ func TestLinkGeneratorProducesParseableLinksForEverySupportedType(t *testing.T) 
 			inbound := roundTripInbound(
 				inboundType,
 				inboundType+"-in",
-				`{"listen_port":443,"method":"aes-128-gcm"}`,
+				`{"listen_port":443,"method":"aes-128-gcm","transport":"TCP"}`,
 				`{}`,
 				`[{"server":"node.example.com","server_port":443,"remark":"-node"}]`,
 			)
