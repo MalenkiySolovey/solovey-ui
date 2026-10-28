@@ -1,5 +1,5 @@
 import { defineComponent } from 'vue'
-import { OutTypes, createOutbound } from '@/types/outbounds'
+import { OutTypes, createOutbound, nativeOutboundGroupValid } from '@/types/outbounds'
 import RandomUtil from '@/plugins/randomUtil'
 import Dial from '@/components/fields/Dial.vue'
 import Multiplex from '@/components/fields/Multiplex.vue'
@@ -22,6 +22,7 @@ import Tor from '@/components/protocols/Tor.vue'
 import Ssh from '@/components/protocols/Ssh.vue'
 import CallNative from '@/components/protocols/CallInbound.vue'
 import NativeClientOutbound from '@/components/protocols/NativeClientOutbound.vue'
+import NativeOutboundGroup from '@/components/protocols/NativeOutboundGroup.vue'
 import SudokuNative from '@/components/protocols/Sudoku.vue'
 import { secretMutation, unchangedSecret } from './secretCredentialDraft'
 import Selector from '@/components/protocols/Selector.vue'
@@ -48,8 +49,8 @@ export default defineComponent({
       loading: false,
       snapshot: "",
       outTypes: OutTypes,
-      NoDial: [OutTypes.Selector, OutTypes.URLTest, OutTypes.Failover],
-      NoServer: [OutTypes.Direct, OutTypes.Selector, OutTypes.URLTest, OutTypes.Failover, OutTypes.Tor, OutTypes.Call],
+      NoDial: [OutTypes.Selector, OutTypes.URLTest, OutTypes.Failover, OutTypes.Bond, OutTypes.CoreFailover],
+      NoServer: [OutTypes.Direct, OutTypes.Selector, OutTypes.URLTest, OutTypes.Failover, OutTypes.Tor, OutTypes.Call, OutTypes.Bond, OutTypes.CoreFailover],
     }
   },
   methods: {
@@ -73,7 +74,7 @@ export default defineComponent({
       const tag = this.$props.id > 0 ? this.outbound.tag : this.outbound.type + "-" + RandomUtil.randomSeq(3)
       // Use previous data
       const prevConfig = { id: this.outbound.id, tag: tag, listen: this.outbound.listen, listen_port: this.outbound.listen_port }
-      this.outbound = createOutbound(this.outbound.type, [OutTypes.Call, OutTypes.Mieru, OutTypes.TrustTunnel, OutTypes.Sudoku].includes(this.outbound.type) ? { id: this.outbound.id, tag } : prevConfig)
+      this.outbound = createOutbound(this.outbound.type, [OutTypes.Call, OutTypes.Mieru, OutTypes.TrustTunnel, OutTypes.Sudoku, OutTypes.Bond, OutTypes.CoreFailover].includes(this.outbound.type) ? { id: this.outbound.id, tag } : prevConfig)
     },
     closeModal() {
       this.updateData(0) // reset
@@ -134,7 +135,9 @@ export default defineComponent({
       }
       const rangeOnly = this.outbound.type === OutTypes.Mieru && !this.outbound.server_port &&
         (typeof this.outbound.server_ports === 'string' ? this.outbound.server_ports.trim().length > 0 : this.outbound.server_ports?.length > 0)
-      return entitySaveReasons({ identity: this.outbound.tag, port: this.outbound.server_port, requiresPort: !this.NoServer.includes(this.outbound.type) && !rangeOnly, pending: this.loading, capability: this.capabilityState, credentialInvalid, missingRequiredTls: this.outbound.type === OutTypes.TrustTunnel && !this.outbound.tls?.enabled })
+      const reasons = entitySaveReasons({ identity: this.outbound.tag, port: this.outbound.server_port, requiresPort: !this.NoServer.includes(this.outbound.type) && !rangeOnly, pending: this.loading, capability: this.capabilityState, credentialInvalid, missingRequiredTls: this.outbound.type === OutTypes.TrustTunnel && !this.outbound.tls?.enabled })
+      if (!nativeOutboundGroupValid(this.outbound)) reasons.push('nativeOutbound.groupInvalid')
+      return reasons
     },
     capabilityState(): CapabilityEditState {
       return capabilityEditState(Data().capabilities, "outbounds", this.outbound.type, this.storedCapabilityType)
@@ -156,5 +159,5 @@ export default defineComponent({
   components: { SaveGuardNotice, CapabilityNotice, Dial, Multiplex, Transport, OutTLS,
     Direct, Socks, Http, Shadowsocks, Vmess, Trojan,
     Wireguard, Hysteria, Naive, ShadowTls, Vless, Tuic,
-    Hysteria2, AnyTls, Snell, Tor, Ssh, CallNative, NativeClientOutbound, SudokuNative, Selector, UrlTest, Failover }
+    Hysteria2, AnyTls, Snell, Tor, Ssh, CallNative, NativeClientOutbound, SudokuNative, NativeOutboundGroup, Selector, UrlTest, Failover }
 })

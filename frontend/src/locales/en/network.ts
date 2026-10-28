@@ -1,5 +1,13 @@
 export default {
   "nativeOutbound": {
+    "groupInvalid": "Select saved outbound members. Bond requires 1–255 connections and weighted upload and download totals of 100.",
+    "groupHint": "Members use the saved Outbounds settings and credentials. Changes to a member rebuild its groups.",
+    "strategy": "Dial strategy",
+    "delay": "Delay between attempts",
+    "downloadRatio": "Download share (%)",
+    "uploadRatio": "Upload share (%)",
+    "count": "Connections",
+    "ratioHint": "Download and upload shares must each total 100 after multiplying each row by its connection count.",
     "sudokuKey": "Sudoku client key",
     "sudokuKeyHint": "Use the client key supplied by the remote server. Saved keys remain masked.",
     "sudokuMask": "HTTP mask",

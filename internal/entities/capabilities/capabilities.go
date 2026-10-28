@@ -38,7 +38,9 @@ func Resolve(category, panelType string) Fact {
 func ResolveWithEnvironment(category, panelType string, environment Environment) Fact {
 	runtimeType := entitytypes.RuntimeType(category, panelType)
 	runtimeFact := registry.Resolve(category, runtimeType)
-	contextSupported := runtimeFact.Known && !entitytypes.IsRuntimeOnly(category, panelType)
+	// A runtime alias may share a name with an existing, explicitly mapped
+	// Panel identity (the Panel failover policy maps to selector).
+	contextSupported := runtimeFact.Known && (!entitytypes.IsRuntimeOnly(category, panelType) || runtimeType != panelType)
 	if !contextSupported {
 		for _, fact := range registry.Facts() {
 			if fact.Type == panelType {
