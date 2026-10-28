@@ -231,4 +231,14 @@ routing decisions remain unchanged. The existing URI suite proves semantic
 round-trip and refusal to discard a detour. This replaces one exact digest;
 there is no new Direct decision or worker.
 
+R7 Sudoku delivery reviews the same projection declaration from `8216c1dc...`
+to `2d34c064...`. The compact client adapter admits only its declared fields,
+standard padding and representable HTTP-mask settings; custom padding, TLS,
+host overrides and other critical options require JSON. Users remains the
+split-key owner; private serving master material never enters delivery.
+Existing URI and subscription suites prove default equivalence, semantic
+round-trip and actual private delivery without canonical writes. Explicit
+Direct/group treatment and routing policy remain unchanged. Only this existing
+digest is replaced; no Direct site or worker allowance is added.
+
 The accepted Sudoku, native outbound groups and MASQUE consumers compose at the existing outbound registry declaration with reviewed digest 368115e9a46640be0a2505510a26b3e33b63cc6db1021f4eb2446ecbec1f9750. Each selected native constructor keeps its availability gate. This composition adds no Direct routing decision or inventory site.
