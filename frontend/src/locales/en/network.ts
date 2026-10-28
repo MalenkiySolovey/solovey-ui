@@ -25,6 +25,10 @@ export default {
     "cwnd": "Congestion window"
   },
   "nativeOutbound": {
+    "sshCipher": "SSH ciphers",
+    "sshKex": "SSH key exchange algorithms",
+    "sshMac": "SSH MAC algorithms",
+    "sshAlgorithmHint": "Ordered preference list. Leave empty to use provider defaults.",
     "username": "Username",
     "password": "Password",
     "serverPorts": "Server port ranges",
