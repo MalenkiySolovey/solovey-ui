@@ -12,7 +12,7 @@ import (
 )
 
 func TestCurrentMemoryBytesRejectsWrappingNegativeInput(t *testing.T) {
-	for _, consumer := range [][2]string{{"hysteria2", "outbound"}, {"hysteria", "inbound"}, {"naive", "outbound"}} {
+	for _, consumer := range [][2]string{{"hysteria2", "outbound"}, {"hysteria", "inbound"}, {"naive", "outbound"}, {"tuic", "inbound"}, {"tuic", "outbound"}} {
 		if findings := CurrentFindings(consumer[0], consumer[1], "entity", json.RawMessage(`{"stream_receive_window":-1}`)); len(findings) == 0 || findings[0].Code != "PROTOCOL_SIZE_INVALID" {
 			t.Fatal("negative byte quantity wrapped into the current consumer")
 		}

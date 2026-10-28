@@ -536,6 +536,19 @@ export default {
       "overrideAddr": "Переопределить адрес",
       "overridePort": "Переопределить порт"
     },
+    "consumerTuning": {
+      "title": "Настройки HTTP/2 и QUIC",
+      "sizes": "Размеры задаются в байтах или {units}. KB и MB используют двоичные единицы.",
+      "stream_receive_window": "Окно приёма потока",
+      "connection_receive_window": "Окно приёма соединения",
+      "quic_session_receive_window": "Окно приёма QUIC-сессии",
+      "idle_timeout": "Таймаут простоя",
+      "keep_alive_period": "Интервал keepalive",
+      "max_concurrent_streams": "Максимум одновременных потоков",
+      "initial_packet_size": "Начальный размер QUIC-пакета (байты)",
+      "disable_path_mtu_discovery": "Отключить определение MTU пути",
+      "disable_chrome_parrot": "Отключить эмуляцию Chrome QUIC"
+    },
     "hy": {
     "disableMtuDiscovery": "Отключить определение MTU",
     "recvWindow": "Окно приёма",
@@ -553,6 +566,8 @@ export default {
       "auth": "Пароль аутентификации",
       "hyOptions": "Параметры Hysteria",
       "hy2Options": "Параметры Hysteria2",
+      "bbrProfile": "Профиль BBR",
+      "hopIntervalMax": "Максимальный интервал смены порта",
       "ignoreBw": "Игнорировать пропускную способность клиента"
     },
     "shdwTls": {

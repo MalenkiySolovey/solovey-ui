@@ -148,13 +148,14 @@ export interface AnyTls extends InboundBasics {
   padding_scheme: string[]
   tls: iTls
 }
-export interface TUIC extends InboundBasics {
+export interface TUIC extends InboundBasics, QUICTuning {
   congestion_control: ""|"cubic"|"new_reno"|"bbr"
   auth_timeout?: string
   zero_rtt_handshake?: boolean
   heartbeat?: string
 }
 export interface Hysteria2 extends InboundBasics, QUICTuning {
+  bbr_profile?: string
   up_mbps?: number
   down_mbps?: number
   obfs?: {

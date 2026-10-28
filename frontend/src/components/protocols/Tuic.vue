@@ -59,22 +59,22 @@
         </v-text-field>
       </v-col>
     </v-row>
+    <ConsumerTuning :data="data" type="tuic" :direction="direction" />
   </v-card>
 </template>
 
 <script lang="ts">
 import Network from '@/components/fields/Network.vue'
+import ConsumerTuning from './ConsumerTuning.vue'
+import { coreConfigContract } from '@/types/coreConfigContract'
 
 export default {
   props: ['direction', 'data'],
-  data() {
-    return {
-      congestion_controls: [
-        "cubic","new_reno", "bbr"
-      ]
-    }
-  },
   computed: {
+    congestion_controls(): string[] {
+      const side = this.direction === 'out_json' ? 'out' : this.direction
+      return coreConfigContract.value?.protocol?.enums?.[`tuic/${side}`]?.congestion_control ?? []
+    },
     auth_timeout: {
       get() { return this.$props.data.auth_timeout ? parseInt(this.$props.data.auth_timeout.replace('s','')) : '' },
       set(newValue:number) { this.$props.data.auth_timeout = newValue ? newValue + 's' : '' }
@@ -84,6 +84,6 @@ export default {
       set(newValue:number) { this.$props.data.heartbeat = newValue ? newValue + 's' : '' }
     }
   },
-  components: { Network }
+  components: { Network, ConsumerTuning }
 }
 </script>

@@ -128,6 +128,14 @@
         </v-col>
       </v-row>
     </template>
+    <v-row>
+      <v-col v-if="supportedFields.includes('bbr_profile')" cols="12" sm="6">
+        <v-select v-model="data.bbr_profile" :items="bbrProfiles" :label="$t('types.hy.bbrProfile')" clearable @click:clear="delete data.bbr_profile" />
+      </v-col>
+      <v-col v-if="direction !== 'in' && supportedFields.includes('hop_interval_max')" cols="12" sm="6">
+        <v-text-field :model-value="data.hop_interval_max" :label="$t('types.hy.hopIntervalMax')" placeholder="30s" clearable @update:model-value="setHopIntervalMax" />
+      </v-col>
+    </v-row>
     <ConsumerTuning :data="data" type="hysteria2" :direction="direction" />
     <v-card-actions>
       <v-spacer></v-spacer>
@@ -165,6 +173,7 @@ import Network from '@/components/fields/Network.vue'
 import ConsumerTuning from './ConsumerTuning.vue'
 import Headers from '@/components/fields/Headers.vue'
 import { i18n } from '@/locales'
+import { coreConfigContract } from '@/types/coreConfigContract'
 
 export default {
   props: ['direction', 'data'],
@@ -180,6 +189,14 @@ export default {
     }
   },
   computed: {
+    supportedFields(): string[] {
+      const side = this.direction === 'out_json' ? 'out' : this.direction
+      return coreConfigContract.value?.protocol?.fields[`hysteria2/${side}`] ?? []
+    },
+    bbrProfiles(): string[] {
+      const side = this.direction === 'out_json' ? 'out' : this.direction
+      return coreConfigContract.value?.protocol?.enums?.[`hysteria2/${side}`]?.bbr_profile ?? []
+    },
     down_mbps: {
       get() { return this.$props.data.down_mbps?? 0 },
       set(v:number) { this.$props.data.down_mbps = v>0 ? v : undefined }
@@ -228,6 +245,12 @@ export default {
         }
       }
     }
+  },
+  methods: {
+    setHopIntervalMax(value: string | null) {
+      if (value === null || value === '') delete this.$props.data.hop_interval_max
+      else this.$props.data.hop_interval_max = value
+    },
   },
   components: { ConsumerTuning, Network, Headers }
 }
