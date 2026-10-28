@@ -26,6 +26,8 @@ func managedCredentialFields(kind string) []string {
 		return []string{"cookies", "join_link"}
 	case "mieru", "trusttunnel":
 		return []string{"password"}
+	case "sudoku":
+		return []string{"key"}
 	default:
 		return nil
 	}
@@ -41,6 +43,14 @@ func capturedOutboundCredential(options map[string]json.RawMessage, field string
 }
 
 func validateManagedCredential(kind, field, value string) error {
+	if kind == "sudoku" && field == "key" {
+		// The selected native source accepts split/private/public hex keys and
+		// legacy PSK strings. Keep that language; all are private owner values.
+		if !calloptions.CredentialValid("password", value) {
+			return errOutboundCredentialInvalid
+		}
+		return nil
+	}
 	if kind != "call" && field != "password" {
 		return errOutboundCredentialInvalid
 	}

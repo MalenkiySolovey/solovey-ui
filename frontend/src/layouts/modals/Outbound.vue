@@ -67,13 +67,14 @@
               <Ssh v-if="outbound.type == outTypes.SSH" :data="outbound" />
       <CallNative v-if="outbound.type == outTypes.Call" :data="outbound" outbound />
       <NativeClientOutbound v-if="[outTypes.Mieru, outTypes.TrustTunnel].includes(outbound.type)" :data="outbound" />
+              <SudokuNative v-if="outbound.type === outTypes.Sudoku" :data="outbound" outbound />
               <Selector v-if="outbound.type == outTypes.Selector" :data="outbound" :tags="tags" />
               <UrlTest v-if="outbound.type == outTypes.URLTest" :data="outbound" :tags="tags" />
               <Failover v-if="outbound.type == outTypes.Failover" :data="outbound" :tags="tags" />
 
               <Transport v-if="outbound.type !== outTypes.Mieru && Object.hasOwn(outbound,'transport')" :data="outbound" />
               <OutTLS v-if="Object.hasOwn(outbound,'tls')" :outbound="outbound" />
-              <Multiplex v-if="outbound.type !== outTypes.TrustTunnel && Object.hasOwn(outbound,'multiplex')" direction="out" :data="outbound" />
+              <Multiplex v-if="![outTypes.TrustTunnel, outTypes.Sudoku].includes(outbound.type) && Object.hasOwn(outbound,'multiplex')" direction="out" :data="outbound" />
               <Dial v-if="!NoDial.includes(outbound.type)" :dial="outbound" />
             </v-window-item>
             <v-window-item value="t2">

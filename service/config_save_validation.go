@@ -33,7 +33,7 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 	}
 	var outboundCount int64
 	var outboundKinds []string
-	for _, kind := range []string{"call", "mieru", "trusttunnel"} {
+	for _, kind := range []string{"call", "mieru", "trusttunnel", "sudoku"} {
 		if entitycapabilities.Resolve("outbounds", kind).Available {
 			outboundKinds = append(outboundKinds, kind)
 		}
