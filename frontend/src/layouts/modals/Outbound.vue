@@ -6,6 +6,7 @@
       </v-card-title>
       <v-divider></v-divider>
       <v-card-text style="padding: 0 16px; overflow-y: scroll;">
+        <CapabilitySurface :state="capabilityState" :type="outbound.type">
         <v-container style="padding: 0;">
           <v-tabs
             v-model="tab"
@@ -17,7 +18,6 @@
           <v-window v-model="tab">
             <v-window-item value="t1">
               <SaveGuardNotice v-if="!capabilityState.historical" :reasons="saveReasons" />
-      <CapabilitySurface :state="capabilityState" :type="outbound.type">
       <v-row>
                 <v-col cols="12" sm="6" md="4">
                   <v-select
