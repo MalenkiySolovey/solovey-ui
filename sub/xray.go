@@ -34,6 +34,7 @@ func (s *XrayService) GetXray(subID string) (*string, []string, error) {
 	if err != nil {
 		return nil, nil, err
 	}
+	defer common.WipeBytes(client.Config)
 	outboundSet, err := localsub.BuildInboundOutbounds(client.Config, inbounds)
 	if err != nil {
 		return nil, nil, err

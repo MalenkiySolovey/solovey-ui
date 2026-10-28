@@ -52,6 +52,13 @@ func criticalShapeDiagnostics(raw map[string]any) []ProjectionDiagnostic {
 		if !present || value == nil {
 			continue
 		}
+		if key == "transport" && raw["type"] == "mieru" {
+			if value == "TCP" || value == "UDP" {
+				continue
+			}
+			invalid(key)
+			continue
+		}
 		if key == "obfs" && stringValue(raw["type"]) == "hysteria" {
 			if _, ok := value.(string); ok {
 				continue

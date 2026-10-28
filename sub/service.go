@@ -141,10 +141,14 @@ func loadClientData(subID string) (*model.Client, []*model.Inbound, error) {
 		return nil, nil, err
 	}
 	for index, inbound := range inbounds {
-		inbounds[index], err = entityinbounds.TransportDeliveryCopy(db, inbound)
+		inbounds[index], err = entityinbounds.OutboundDeliveryCopy(db, inbound)
 		if err != nil {
 			return nil, nil, err
 		}
+	}
+	client, err = entityclients.DeliveryCopy(db, client, inbounds)
+	if err != nil {
+		return nil, nil, err
 	}
 	return client, inbounds, nil
 }

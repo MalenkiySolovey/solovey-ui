@@ -30,8 +30,8 @@ var declarations = []Fact{
 	{"vless", "vless", true, true, true, ""}, {"anytls", "anytls", true, true, true, ""},
 	{"snell", "snell", true, false, true, ""},
 	// Delivery is admitted separately after the canonical serializers qualify.
-	{"mieru", "mieru", false, false, true, "password"},
-	{"trusttunnel", "trusttunnel", false, false, true, "password"},
+	{"mieru", "mieru", true, false, true, "password"},
+	{"trusttunnel", "trusttunnel", true, false, true, "password"},
 	{"ssh", "ssh", false, false, false, "password"},
 	{"mtproxy", "mtproxy", false, false, false, "secret"},
 	// Keys are an encrypted delivery bundle, never a serving users array.

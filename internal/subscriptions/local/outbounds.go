@@ -14,6 +14,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri/codec"
+	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
 )
 
 type OutboundSet struct {
@@ -212,6 +213,16 @@ func inboundOutboundConfig(configs map[string]interface{}, inbound *model.Inboun
 	}
 	if protocol == "shadowsocks" {
 		return shadowsocksOutboundConfig(configs, inbound, outbound)
+	}
+	if protocol == "mieru" || protocol == "trusttunnel" {
+		config, _ := configs[protocol].(map[string]any)
+		username, _ := config["name"].(string)
+		password, _ := config["password"].(string)
+		if username == "" || password == "" || secretbox.IsEncrypted(password) {
+			return nil, fmt.Errorf("CLIENT_CREDENTIAL_DELIVERY_UNAVAILABLE")
+		}
+		outbound["username"], outbound["password"] = username, password
+		return outbound, nil
 	}
 	mergeClientProtocolConfig(configs, inbound, outbound, protocol)
 	if protocol == "snell" {

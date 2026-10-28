@@ -3,6 +3,7 @@ package entityinbounds
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -25,6 +26,34 @@ func FillOutboundJSONFromDB(db *gorm.DB, i *model.Inbound, hostname string) erro
 		return err
 	}
 	return fillOutboundJSON(i, hostname, legacy)
+}
+
+// OutboundDeliveryCopy also derives templates for native rows created before
+// their serializer was enabled. Published addresses stay the destination owner;
+// an absent historical address is a repair requirement, never a guessed host.
+func OutboundDeliveryCopy(db *gorm.DB, inbound *model.Inbound) (*model.Inbound, error) {
+	copy, err := TransportDeliveryCopy(db, inbound)
+	if err != nil || copy == nil {
+		return copy, err
+	}
+	if (copy.Type != "mieru" && copy.Type != "trusttunnel") || !clientfacts.CanDeliver(copy.Type, "json") {
+		return copy, nil
+	}
+	var template map[string]any
+	if len(bytes.TrimSpace(copy.OutJson)) != 0 && json.Unmarshal(copy.OutJson, &template) != nil {
+		return nil, errors.New("CLIENT_DELIVERY_TEMPLATE_INVALID")
+	}
+	if len(template) != 0 {
+		return copy, nil
+	}
+	var addresses []map[string]any
+	if json.Unmarshal(copy.Addrs, &addresses) != nil || len(addresses) == 0 {
+		return nil, errors.New("CLIENT_PUBLIC_ADDRESS_REQUIRED")
+	}
+	if err := FillOutboundJSONFromDB(db, copy, ""); err != nil {
+		return nil, err
+	}
+	return copy, nil
 }
 
 func fillOutboundJSON(i *model.Inbound, hostname string, legacy bool) error {
@@ -60,6 +89,32 @@ func fillOutboundJSON(i *model.Inbound, hostname string, legacy bool) error {
 		naiveOut(&outJson, *inbound)
 	case "snell":
 		snellOut(outJson, *inbound)
+	case "mieru":
+		for _, key := range []string{"transport", "traffic_pattern", "mtu"} {
+			if value, present := (*inbound)[key]; present {
+				outJson[key] = value
+			}
+		}
+		if ports, present := (*inbound)["listen_ports"]; present {
+			outJson["server_ports"] = ports
+		}
+	case "trusttunnel":
+		for _, key := range []string{"congestion_controller", "cwnd", "disable_path_mtu_discovery"} {
+			if value, present := (*inbound)[key]; present {
+				outJson[key] = value
+			}
+		}
+		// Listener transport is distinct from the outbound destination network.
+		tcp, udp := false, false
+		switch network := (*inbound)["network"].(type) {
+		case string:
+			tcp, udp = network == "tcp", network == "udp"
+		case []any:
+			for _, value := range network {
+				tcp, udp = tcp || value == "tcp", udp || value == "udp"
+			}
+		}
+		outJson["quic"] = udp && !tcp
 	case "shadowsocks":
 		shadowsocksOut(&outJson, *inbound)
 	case "shadowtls":
