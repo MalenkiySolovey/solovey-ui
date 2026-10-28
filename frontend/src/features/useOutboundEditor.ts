@@ -1,4 +1,5 @@
 import { defineComponent } from 'vue'
+import { coreConfigContract } from '@/types/coreConfigContract'
 import { OutTypes, createOutbound, nativeOutboundGroupValid } from '@/types/outbounds'
 import RandomUtil from '@/plugins/randomUtil'
 import Dial from '@/components/fields/Dial.vue'
@@ -34,7 +35,7 @@ import { convertOutboundLink } from '@/shared/composables/useOutboundConversion'
 import AnyTls from '@/components/protocols/AnyTls.vue'
 import Snell from '@/components/protocols/Snell.vue'
 import Data from '@/store/modules/data'
-import CapabilityNotice from '@/components/fields/CapabilityNotice.vue'
+import CapabilitySurface from '@/components/fields/CapabilitySurface.vue'
 import SaveGuardNotice from '@/components/fields/SaveGuardNotice.vue'
 import { entitySaveReasons, type SaveReason } from './entitySaveReview'
 import { capabilityEditState, capabilityTypeChoices, type CapabilityChoice, type CapabilityEditState } from '@/types/capabilityEditors'
@@ -149,10 +150,10 @@ export default defineComponent({
       return reasons
     },
     capabilityState(): CapabilityEditState {
-      return capabilityEditState(Data().capabilities, "outbounds", this.outbound.type, this.storedCapabilityType)
+      return capabilityEditState(Data().capabilities, "outbounds", this.outbound.type, this.storedCapabilityType, (<any>this.outbound).transport, coreConfigContract.value?.protocol?.transports)
     },
     typeChoices(): CapabilityChoice[] {
-      return capabilityTypeChoices(Data().capabilities, "outbounds", this.outTypes, this.storedCapabilityType)
+      return capabilityTypeChoices(Data().capabilities, "outbounds", this.outTypes)
     },
     dirty(): boolean {
       return this.snapshot !== "" && JSON.stringify(this.outbound) !== this.snapshot
@@ -165,7 +166,7 @@ export default defineComponent({
       }
     },
   },
-  components: { SaveGuardNotice, CapabilityNotice, Dial, Multiplex, Transport, OutTLS,
+  components: { SaveGuardNotice, CapabilitySurface, Dial, Multiplex, Transport, OutTLS,
     Direct, Socks, Http, Shadowsocks, Vmess, Trojan,
     Wireguard, Hysteria, Naive, ShadowTls, Vless, Tuic,
     Hysteria2, AnyTls, Snell, Tor, Ssh, CallNative, NativeClientOutbound, SudokuNative, MasqueOutbound, NativeOutboundGroup, Selector, UrlTest, Failover }

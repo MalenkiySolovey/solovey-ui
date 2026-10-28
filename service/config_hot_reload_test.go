@@ -101,7 +101,7 @@ func endpointHotReloadPayload(id uint, tag string, mtu int) json.RawMessage {
 func createHotReloadService(t *testing.T, tag string) model.Service {
 	t.Helper()
 	service := model.Service{
-		Type:    "derp",
+		Type:    "ssm-api",
 		Tag:     tag,
 		Options: json.RawMessage(`{"listen":"127.0.0.1","listen_port":0}`),
 	}
@@ -112,7 +112,7 @@ func createHotReloadService(t *testing.T, tag string) model.Service {
 }
 
 func serviceHotReloadPayload(id uint, tag string, port int) json.RawMessage {
-	return json.RawMessage(fmt.Sprintf(`{"id":%d,"type":"derp","tag":%q,"listen":"127.0.0.1","listen_port":%d}`, id, tag, port))
+	return json.RawMessage(fmt.Sprintf(`{"id":%d,"type":"ssm-api","tag":%q,"listen":"127.0.0.1","listen_port":%d}`, id, tag, port))
 }
 
 func newHotReloadConfigService(t *testing.T) (*ConfigService, *recordingConfigCoreObjectApplier, *recordingConfigCoreLifecycle) {

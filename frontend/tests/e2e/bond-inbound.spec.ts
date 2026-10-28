@@ -32,7 +32,7 @@ for (const mode of ['classic', 'nexus']) {
     let form = page.getByRole('dialog').filter({ hasText: 'Add Inbound' })
     await form.getByRole('combobox', { name: 'Type', exact: true }).press('Enter')
     if (!fact.available) {
-      await expect(page.getByRole('option', { name: label, exact: true })).toHaveAttribute('aria-disabled', 'true')
+      await expect(page.getByRole('option', { name: label, exact: true })).toHaveCount(0)
       await page.keyboard.press('Escape')
       await form.getByRole('button', { name: 'Close', exact: true }).first().click()
       return

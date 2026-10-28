@@ -2,29 +2,37 @@ import { runtimeCapability, type RuntimeCapabilities } from './runtimeCapabiliti
 
 export interface CapabilityEditState {
  allowed: boolean
+ historical?: boolean
  message?: 'capability.waiting' | 'capability.unavailable' | 'capability.historical' | 'capability.unknown' | 'capability.contextUnsupported'
  reason?: string
+ requiredProvider?: string
 }
-export interface CapabilityChoice { title: string; value: string; props: { disabled: boolean; 'aria-disabled': boolean } }
+export interface CapabilityChoice { title: string; value: string }
+type TransportFacts = Record<string, { available: boolean }> | undefined
 
-// Thin projection of backend facts. The submitted historical identity is only
-// a UI hint; the backend separately verifies the real stored row and ID.
-export function capabilityEditState(snapshot: RuntimeCapabilities | undefined, category: string, type: string, storedType = ''): CapabilityEditState {
- if (!snapshot) return { allowed: false, message: 'capability.waiting' }
+// One projection for all Create/Add surfaces. Missing facts fail closed.
+export function availableCreationChoices<T>(choices: readonly T[] | undefined, available: (choice: T) => boolean | undefined): T[] {
+ return choices?.filter(choice => available(choice) === true) ?? []
+}
+
+// History is owned desired state, never an exception to host availability.
+export function capabilityEditState(snapshot: RuntimeCapabilities | undefined, category: string, type: string, storedType = '', transport?: unknown, transports?: TransportFacts): CapabilityEditState {
+ const historical = storedType !== '' && storedType === type
+ if (!snapshot) return { allowed: false, historical, message: 'capability.waiting' }
  const fact = runtimeCapability(snapshot, category, type)
- if (!fact?.known) return { allowed: false, message: 'capability.unknown', reason: fact?.reason }
- if (!fact.contextSupported) return { allowed: false, message: 'capability.contextUnsupported', reason: fact.reason }
- if (fact?.available) return { allowed: true }
- if (fact?.known && fact.contextSupported && storedType === type) return { allowed: true, message: 'capability.historical', reason: fact.reason }
- return { allowed: false, message: 'capability.unavailable', reason: fact?.reason }
+ const unavailable = (message: CapabilityEditState['message'], reason = fact?.reason): CapabilityEditState =>
+  ({ allowed: false, historical, message: historical ? 'capability.historical' : message, reason, requiredProvider: fact?.requiredProvider })
+ if (!fact?.known) return unavailable('capability.unknown')
+ if (!fact.contextSupported) return unavailable('capability.contextUnsupported')
+ if (!fact.available) return unavailable('capability.unavailable')
+ if (['inbounds', 'outbounds'].includes(category) && ['vmess', 'vless', 'trojan'].includes(type) && transport && typeof transport === 'object' && 'type' in transport) {
+  const kind = (transport as { type?: unknown }).type
+  if (typeof kind === 'string' && kind && transports?.[kind]?.available !== true) return unavailable('capability.unavailable', 'TRANSPORT_CAPABILITY_UNAVAILABLE')
+ }
+ return { allowed: true }
 }
 
-export function capabilityTypeChoices(snapshot: RuntimeCapabilities | undefined, category: string, catalog: Record<string, string>, storedType = ''): CapabilityChoice[] {
- const choiceProps = (value: string) => {
-  const disabled = !capabilityEditState(snapshot, category, value, storedType).allowed
-  return { disabled, 'aria-disabled': disabled }
- }
- const choices = Object.entries(catalog).map(([title, value]) => ({ title, value, props: choiceProps(value) }))
- if (storedType && !choices.some(choice => choice.value === storedType)) choices.push({ title: storedType, value: storedType, props: choiceProps(storedType) })
- return choices
+export function capabilityTypeChoices(snapshot: RuntimeCapabilities | undefined, category: string, catalog: Record<string, string>): CapabilityChoice[] {
+ return availableCreationChoices(Object.entries(catalog).map(([title, value]) => ({ title, value })),
+  choice => runtimeCapability(snapshot, category, choice.value)?.available)
 }

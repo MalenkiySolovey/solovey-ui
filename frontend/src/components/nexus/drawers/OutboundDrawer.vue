@@ -2,17 +2,19 @@
   <entity-drawer
     :dirty="dirty"
     :save-disabled="saveReasons.length > 0"
+    :read-only="capabilityState.historical"
     :loading="loading"
     :model-value="visible"
     :saving="loading"
-    :title="$t('actions.' + title) + ' ' + $t('objects.outbound')"
+    :title="$t(capabilityState.historical ? 'capability.inspect' : 'actions.' + title) + ' ' + $t('objects.outbound')"
     :width="720"
     @close="closeModal"
     @save="saveChanges"
   >
+    <CapabilitySurface :state="capabilityState" :type="outbound.type">
     <form-section icon="lucide:sliders-horizontal" :title="$t('form.sections.configuration')">
-      <SaveGuardNotice :reasons="saveReasons" />
-      <CapabilityNotice v-if="capabilityState.allowed" :state="capabilityState" />
+      <SaveGuardNotice v-if="!capabilityState.historical" :reasons="saveReasons" />
+
       <v-row>
         <v-col cols="12" sm="6">
           <v-select
@@ -74,6 +76,7 @@
         </v-col>
       </v-row>
     </form-section>
+    </CapabilitySurface>
   </entity-drawer>
 </template>
 

@@ -8,6 +8,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"runtime/debug"
+	"strings"
 	"sync"
 )
 
@@ -52,11 +53,19 @@ var pins = func() struct {
 	Schema          string   `json:"schema"`
 	DefaultProvider string   `json:"defaultProvider"`
 	Sources         []Source `json:"sources"`
+	BuildFlavors    []struct {
+		ID        string   `json:"id"`
+		BuildTags []string `json:"buildTags"`
+	} `json:"buildFlavors"`
 } {
 	var value struct {
 		Schema          string   `json:"schema"`
 		DefaultProvider string   `json:"defaultProvider"`
 		Sources         []Source `json:"sources"`
+		BuildFlavors    []struct {
+			ID        string   `json:"id"`
+			BuildTags []string `json:"buildTags"`
+		} `json:"buildFlavors"`
 	}
 	if err := json.Unmarshal(pinsJSON, &value); err != nil {
 		panic("invalid embedded provider source pins")
@@ -65,6 +74,29 @@ var pins = func() struct {
 }()
 
 func DefaultID() string { return pins.DefaultProvider }
+
+// RequiredProviderName projects declared flavor requirements for capability
+// explanations. It grants neither install authority nor operational support.
+func RequiredProviderName(buildTags string) string {
+	tags := "," + buildTags + ","
+	for _, flavor := range pins.BuildFlavors {
+		if len(flavor.BuildTags) == 0 {
+			continue
+		}
+		matches := true
+		for _, tag := range flavor.BuildTags {
+			matches = matches && strings.Contains(tags, ","+tag+",")
+		}
+		if matches {
+			for _, source := range pins.Sources {
+				if source.ID == flavor.ID {
+					return source.Name
+				}
+			}
+		}
+	}
+	return ""
+}
 
 // Current never infers Official from a missing dependency, a version prefix,
 // a filename or a user setting. Build metadata must match a complete source pin.

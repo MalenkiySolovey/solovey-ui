@@ -84,7 +84,7 @@
   <template v-else>
     <v-row>
       <v-col cols="12" justify="center" align="center">
-        <v-btn color="primary" @click="showModal(0)">{{ $t('actions.add') }}</v-btn>
+        <v-btn color="primary" v-if="canCreate()" @click="showModal(0)">{{ $t('actions.add') }}</v-btn>
         <ManualOrderControls
           :dirty="inboundOrderDirty"
           :saving="inboundOrderSaving"
@@ -142,7 +142,7 @@
           </div>
           <v-card-subtitle style="margin-top: -15px;">
             <v-row>
-              <v-col>{{ item.type }}</v-col>
+              <v-col>{{ item.type }}<CapabilityBadge :state="resourceAvailability(item)" /></v-col>
             </v-row>
           </v-card-subtitle>
           <v-card-text>
@@ -183,7 +183,7 @@
             <v-row>
               <v-col>{{ $t('online') }}</v-col>
               <v-col>
-                <template v-if="onlines.includes(item.tag)">
+                <template v-if="resourceAvailability(item).allowed && onlines.includes(item.tag)">
                   <v-chip density="comfortable" size="small" color="success" variant="flat">{{ $t('online') }}</v-chip>
                 </template>
                 <template v-else>-</template>
@@ -192,9 +192,9 @@
           </v-card-text>
           <v-divider></v-divider>
           <v-card-actions style="padding: 0;">
-            <v-btn icon="mdi-file-edit" :aria-label="$t('actions.edit')" @click="showModal(item.id)">
+            <v-btn icon="mdi-file-edit" :aria-label="$t(resourceAvailability(item).historical ? 'capability.inspect' : 'actions.edit')" @click="showModal(item.id)">
               <v-icon />
-              <v-tooltip activator="parent" location="top" :text="$t('actions.edit')"></v-tooltip>
+              <v-tooltip activator="parent" location="top" :text="$t(resourceAvailability(item).historical ? 'capability.inspect' : 'actions.edit')"></v-tooltip>
             </v-btn>
             <v-btn icon="mdi-file-remove" style="margin-inline-start:0;" color="warning" @click="delOverlay[index] = true">
               <v-icon />
@@ -214,7 +214,7 @@
                 </v-card-actions>
               </v-card>
             </v-overlay>
-            <v-btn icon="mdi-content-duplicate" :loading="cloneLoading" @click="clone(item.id)">
+            <v-btn v-if="resourceAvailability(item).allowed" icon="mdi-content-duplicate" :loading="cloneLoading" @click="clone(item.id)">
               <v-icon />
               <v-tooltip activator="parent" location="top" :text="$t('actions.clone')"></v-tooltip>
             </v-btn>
@@ -230,6 +230,9 @@
 </template>
 
 <script lang="ts" setup>
+import CapabilityBadge from '@/components/fields/CapabilityBadge.vue'
+import { useResourceAvailability } from '@/features/useResourceAvailability'
+const { resourceAvailability, canCreate } = useResourceAvailability('inbounds')
 import Data from '@/store/modules/data'
 import BulkSelectionControls from '@/shared/ui/BulkSelectionControls.vue'
 import ManualOrderControls from '@/shared/ui/ManualOrderControls.vue'

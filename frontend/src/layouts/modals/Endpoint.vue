@@ -2,12 +2,13 @@
   <form-shell
     :dirty="dirty"
     :save-disabled="!capabilityState.allowed"
+    :read-only="capabilityState.historical"
     :loading="loading"
-    :title="$t('actions.' + title) + ' ' + $t('objects.endpoint')"
+    :title="$t(capabilityState.historical ? 'capability.inspect' : 'actions.' + title) + ' ' + $t('objects.endpoint')"
     @close="closeModal"
     @save="saveChanges"
   >
-        <CapabilityNotice :state="capabilityState" />
+        <CapabilitySurface :state="capabilityState" :type="endpoint.type">
       <v-row>
           <v-col cols="12" sm="6" md="4">
             <v-select
@@ -33,6 +34,7 @@
         <Warp v-if="endpoint.type == epTypes.Warp" :data="endpoint" />
         <TailscaleVue v-if="endpoint.type == epTypes.Tailscale" :data="endpoint" />
         <Dial :dial="endpoint" />
+    </CapabilitySurface>
   </form-shell>
 </template>
 
@@ -47,7 +49,7 @@ import { generateKeypair } from '@/shared/composables/useKeypairs'
 import { push } from 'notivue'
 import { i18n } from '@/locales'
 import Data from '@/store/modules/data'
-import CapabilityNotice from '@/components/fields/CapabilityNotice.vue'
+import CapabilitySurface from '@/components/fields/CapabilitySurface.vue'
 import { capabilityEditState, capabilityTypeChoices, type CapabilityChoice, type CapabilityEditState } from '@/types/capabilityEditors'
 import FormShell from '@/components/nexus/drawers/FormShell.vue'
 export default {
@@ -69,7 +71,7 @@ export default {
       return capabilityEditState(Data().capabilities, "endpoints", this.endpoint.type, this.storedCapabilityType)
     },
     typeChoices(): CapabilityChoice[] {
-      return capabilityTypeChoices(Data().capabilities, "endpoints", this.epTypes, this.storedCapabilityType)
+      return capabilityTypeChoices(Data().capabilities, "endpoints", this.epTypes)
     },
     dirty(): boolean {
       return this.snapshot !== '' && JSON.stringify(this.endpoint) !== this.snapshot
@@ -96,7 +98,7 @@ export default {
     async changeType() {
       // Tag change only in add endpoint
       const tag = this.endpoint.type + "-" + RandomUtil.randomSeq(3)
-      
+
       // Use previous data
       let prevConfig = {}
       switch (this.endpoint.type) {
@@ -132,7 +134,7 @@ export default {
     },
     async saveChanges() {
       if (!this.$props.visible || this.loading || !this.capabilityState.allowed) return
-      
+
       // check duplicate tag
       const isDuplicatedTag = Data().checkTag("endpoint",this.endpoint.id, this.endpoint.tag)
       if (isDuplicatedTag) return
@@ -226,6 +228,6 @@ export default {
       }
     },
   },
-  components: { CapabilityNotice, FormShell, Dial, Wireguard, Warp, TailscaleVue }
+  components: { CapabilitySurface, FormShell, Dial, Wireguard, Warp, TailscaleVue }
 }
 </script>

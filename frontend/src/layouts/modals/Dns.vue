@@ -2,10 +2,12 @@
   <form-shell
     :dirty="dirty"
     :save-disabled="!selectedCapability?.available || missingService"
-    :title="$t('actions.' + title) + ' ' + $t('objects.dnsserver')"
+    :read-only="capabilityState.historical"
+    :title="$t(capabilityState.historical ? 'capability.inspect' : 'actions.' + title) + ' ' + $t('objects.dnsserver')"
     @close="close"
     @save="save"
   >
+    <CapabilitySurface :state="capabilityState" :type="dnsServer.type">
         <v-alert v-if="!selectedCapability?.available" type="warning" variant="tonal" class="mb-3">
           {{ $t('dns.capabilityUnavailable') }} {{ selectedCapability?.reason ?? $t('capability.waiting') }}
         </v-alert>
@@ -107,6 +109,7 @@
             <v-switch v-model="dnsServer.accept_default_resolvers" :label="$t('dns.rule.acceptDefault')" hide-details></v-switch>
           </v-col>
         </v-row>
+    </CapabilitySurface>
   </form-shell>
 </template>
 
@@ -119,6 +122,8 @@ import { DnsTypes, createDnsServer } from '@/types/dns'
 import FormShell from '@/components/nexus/drawers/FormShell.vue'
 import Data from '@/store/modules/data'
 import { runtimeCapability } from '@/types/runtimeCapabilities'
+import { availableCreationChoices, capabilityEditState } from '@/types/capabilityEditors'
+import CapabilitySurface from '@/components/fields/CapabilitySurface.vue'
 export default {
   props: ['visible', 'data', 'index', 'tsTags', 'rslvdTags'],
   emits: ['close', 'save'],
@@ -176,6 +181,7 @@ export default {
     },
   },
   computed:{
+    capabilityState() { return capabilityEditState(Data().capabilities, 'dns', this.dnsServer.type, this.index >= 0 ? this.dnsServer.type : '') },
     selectedCapability() { return runtimeCapability(Data().capabilities, 'dns', this.dnsServer.type) },
     missingService(): boolean { return this.dnsServer.type === 'resolved' && (!this.dnsServer.service || !this.rslvdTags?.includes(this.dnsServer.service)) },
     observedInterfaces(): string[] { return Data().capabilities?.multicastInterfaces ?? [] },
@@ -184,7 +190,7 @@ export default {
       set(value: string) { if (value === '') delete this.dnsServer.interface; else this.dnsServer.interface = value.split(',').map(s => s.trim()) },
     },
     dnsTypes() {
-      return Data().capabilities?.facts.filter(f => f.category === 'dns').map(f => ({ title: f.type + (f.available ? '' : ' (' + f.reason + ')'), value: f.type, props: { disabled: !f.available } })) ?? []
+      return availableCreationChoices(Data().capabilities?.facts.filter(f => f.category === 'dns'), f => f.available).map(f => ({ title: f.type, value: f.type }))
     },
     neighborDomains: {
       get() { const value = this.dnsServer.neighbor_domain; return Array.isArray(value) ? value.join(',') : value ?? '' },
@@ -234,6 +240,6 @@ export default {
       }
     },
   },
-  components: { FormShell, DialVue, oTlsVue, Headers }
+  components: { CapabilitySurface, FormShell, DialVue, oTlsVue, Headers }
 }
 </script>

@@ -2,10 +2,11 @@
   <v-dialog transition="dialog-bottom-transition" width="800">
     <v-card class="rounded-lg">
       <v-card-title>
-        {{ $t('actions.' + title) + " " + $t('objects.outbound') }}
+        {{ $t(capabilityState.historical ? 'capability.inspect' : 'actions.' + title) + " " + $t('objects.outbound') }}
       </v-card-title>
       <v-divider></v-divider>
       <v-card-text style="padding: 0 16px; overflow-y: scroll;">
+        <CapabilitySurface :state="capabilityState" :type="outbound.type">
         <v-container style="padding: 0;">
           <v-tabs
             v-model="tab"
@@ -16,8 +17,7 @@
           </v-tabs>
           <v-window v-model="tab">
             <v-window-item value="t1">
-              <SaveGuardNotice :reasons="saveReasons" />
-      <CapabilityNotice v-if="capabilityState.allowed" :state="capabilityState" />
+              <SaveGuardNotice v-if="!capabilityState.historical" :reasons="saveReasons" />
       <v-row>
                 <v-col cols="12" sm="6" md="4">
                   <v-select
@@ -91,6 +91,7 @@
             </v-window-item>
           </v-window>
         </v-container>
+      </CapabilitySurface>
       </v-card-text>
       <v-card-actions>
         <v-spacer></v-spacer>
@@ -105,6 +106,7 @@
           color="primary"
           variant="tonal"
           :loading="loading"
+          v-if="!capabilityState.historical"
           :disabled="saveReasons.length > 0"
           @click="saveChanges"
         >

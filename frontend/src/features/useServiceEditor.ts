@@ -7,7 +7,7 @@ import OomKiller from '@/components/services/OomKiller.vue'
 import InTLS from '@/components/tls/InTLS.vue'
 import SSMapi from '@/components/services/SSMAPI.vue'
 import Data from '@/store/modules/data'
-import CapabilityNotice from '@/components/fields/CapabilityNotice.vue'
+import CapabilitySurface from '@/components/fields/CapabilitySurface.vue'
 import SaveGuardNotice from '@/components/fields/SaveGuardNotice.vue'
 import { entitySaveReasons, type SaveReason } from './entitySaveReview'
 import { capabilityEditState, capabilityTypeChoices, type CapabilityChoice, type CapabilityEditState } from '@/types/capabilityEditors'
@@ -37,8 +37,9 @@ export default defineComponent({
       }
       else {
         const port = RandomUtil.randomIntRange(10000, 60000)
-        this.srv = createSrv("derp", {
-          tag: "derp-" + RandomUtil.randomSeq(3),
+        const type = this.typeChoices[0]?.value ?? ''
+        this.srv = createSrv(type, {
+          tag: type + "-" + RandomUtil.randomSeq(3),
           listen: '::',
           listen_port: port,
         })
@@ -87,7 +88,7 @@ export default defineComponent({
       return capabilityEditState(Data().capabilities, "services", this.srv.type, this.storedCapabilityType)
     },
     typeChoices(): CapabilityChoice[] {
-      return capabilityTypeChoices(Data().capabilities, "services", this.srvTypes, this.storedCapabilityType)
+      return capabilityTypeChoices(Data().capabilities, "services", this.srvTypes)
     },
     dirty(): boolean {
       return this.snapshot !== "" && JSON.stringify(this.srv) !== this.snapshot
@@ -100,5 +101,5 @@ export default defineComponent({
       }
     },
   },
-  components: { SaveGuardNotice, CapabilityNotice, Listen, InTLS, Derp, OomKiller, SSMapi },
+  components: { SaveGuardNotice, CapabilitySurface, Listen, InTLS, Derp, OomKiller, SSMapi },
 })

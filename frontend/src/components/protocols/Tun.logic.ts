@@ -1,6 +1,7 @@
 import { defineComponent } from 'vue'
 import Data from '@/store/modules/data'
 import { coreConfigContract, loadCoreConfigContract } from '@/types/coreConfigContract'
+import { availableCreationChoices } from '@/types/capabilityEditors'
 
 export default defineComponent({
   props: ['data'],
@@ -10,7 +11,7 @@ export default defineComponent({
     }
   },
   computed: {
-    tunDnsModes() { return (coreConfigContract.value?.tunDnsModes ?? []).map(value => ({ title: value, value, props: { disabled: !!coreConfigContract.value?.tunDnsUnavailableModes?.[value] } })) },
+    tunDnsModes() { return availableCreationChoices(coreConfigContract.value?.tunDnsModes, value => !coreConfigContract.value?.tunDnsUnavailableModes?.[value]).map(value => ({ title: value, value })) },
     dnsAddresses: listText('dns_address'),
     ruleSetTags() { return Data().config.route?.rule_set?.map((rs:any) => rs.tag) ?? [] },
     emptyAppPreset() {

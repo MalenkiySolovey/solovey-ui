@@ -8,7 +8,6 @@ import (
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
-	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/composition"
 	outboundcomposition "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds/composition"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
@@ -51,7 +50,7 @@ func InboundEligibility(rows []model.Inbound) (map[string]entitycapabilities.Fac
 	}
 	facts := make(map[string]entitycapabilities.Fact, len(rows))
 	for _, row := range rows {
-		facts[row.Tag] = entitycapabilities.Resolve("inbounds", row.Type)
+		facts[row.Tag] = entitycapabilities.ResolveResource("inbounds", row.Type, row.Options)
 	}
 	for _, row := range rows {
 		if !composition.IsGroup(row.Type) || !facts[row.Tag].Available {
@@ -146,7 +145,7 @@ func OutboundEligibility(rows []model.Outbound) (map[string]entitycapabilities.F
 	}
 	facts := make(map[string]entitycapabilities.Fact, len(rows))
 	for _, row := range rows {
-		facts[row.Tag] = entitycapabilities.Resolve("outbounds", row.Type)
+		facts[row.Tag] = entitycapabilities.ResolveResource("outbounds", row.Type, row.Options)
 	}
 	done := map[string]bool{}
 	var resolve func(string) entitycapabilities.Fact
@@ -224,15 +223,10 @@ func ValidateReferences(db *gorm.DB, base []byte) (Report, error) {
 		if err != nil {
 			return report, err
 		}
-		if omitted.Category == "inbounds" && db.Migrator().HasTable(&model.Client{}) {
-			clientIDs, err := entityclients.IDsByInbound(db, omitted.ID)
-			if err != nil {
-				return report, err
-			}
-			for _, id := range clientIDs {
-				refs = append(refs, tagrefs.TagReference{Kind: "client inbound", Locator: fmt.Sprintf("client #%d (inbounds)", id)})
-			}
-		}
+		// A Users assignment is owned desired state, not a runtime reference:
+		// credentials are projected only with their included serving inbound.
+		// Preserve that assignment while its inbound is inactive. Actual route,
+		// DNS and runtime entity references below still fail closed.
 		if len(refs) > 0 {
 			report.References = append(report.References, ReferenceIssue{Entity: omitted, References: refs})
 		}

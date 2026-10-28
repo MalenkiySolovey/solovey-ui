@@ -14,7 +14,7 @@
           :disabled="services.length < 2"
           @sort="sortByName"
         />
-        <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" @click="emit('add')">
+        <v-btn color="primary" prepend-icon="lucide:plus" variant="flat" v-if="canCreate()" @click="emit('add')">
           {{ $t('actions.add') }}
         </v-btn>
         <BulkSelectionControls
@@ -40,6 +40,7 @@
     >
       <template #col.tag="{ item }">
         <span class="services-nexus__tag">{{ item.tag }}</span>
+        <CapabilityBadge :state="resourceAvailability(item)" />
       </template>
       <template #col.listen="{ item }">
         <span v-if="item.type !== 'oom-killer' && item.listen" class="nexus-mono">{{ item.listen }}</span>
@@ -73,6 +74,9 @@
 </template>
 
 <script lang="ts" setup>
+import CapabilityBadge from '@/components/fields/CapabilityBadge.vue'
+import { useResourceAvailability } from '@/features/useResourceAvailability'
+const { resourceAvailability, canCreate } = useResourceAvailability('services')
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 
@@ -165,7 +169,7 @@ const deleteSelected = async () => {
 const serviceActions = (item: ServiceRow): RowAction[] => [
   { key: 'up', labelKey: 'table.moveUp', icon: 'lucide:arrow-up', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || props.services.findIndex(row => row.id === item.id) === 0 },
   { key: 'down', labelKey: 'table.moveDown', icon: 'lucide:arrow-down', inline: true, reserveSpace: true, hidden: search.value.trim().length > 0 || props.services.findIndex(row => row.id === item.id) === props.services.length - 1 },
-  { key: 'edit', labelKey: 'actions.edit', icon: 'lucide:pencil', inline: true },
+  { key: 'edit', labelKey: resourceAvailability(item).historical ? 'capability.inspect' : 'actions.edit', icon: 'lucide:pencil', inline: true },
   { key: 'del', labelKey: 'actions.del', icon: 'lucide:trash-2', tone: 'error', divider: true },
 ]
 

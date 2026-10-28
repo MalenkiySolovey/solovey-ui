@@ -130,6 +130,16 @@ func listDataForInbound(inbound model.Inbound, hooks UserHooks) (map[string]inte
 		}
 		inbData["listen"] = restFields["listen"]
 		inbData["listen_port"] = restFields["listen_port"]
+		// Lists need only the transport identity for availability projection,
+		// never its credentials or provider-specific payload.
+		if inbound.Type == "vmess" || inbound.Type == "vless" || inbound.Type == "trojan" {
+			var transport struct {
+				Type string `json:"type"`
+			}
+			if json.Unmarshal(restFields["transport"], &transport) == nil && transport.Type != "" {
+				inbData["transport"] = map[string]string{"type": transport.Type}
+			}
+		}
 		if inbound.Type == "shadowtls" {
 			_ = json.Unmarshal(restFields["version"], &shadowtlsVersion)
 		}

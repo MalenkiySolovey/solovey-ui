@@ -2,7 +2,7 @@
   <v-dialog transition="dialog-bottom-transition" width="800" @after-enter="updateData(id)">
     <v-card class="rounded-lg" :loading="loading">
       <v-card-title>
-        {{ $t('actions.' + title) + " " + $t('objects.inbound') }}
+        {{ $t(capabilityState.historical ? 'capability.inspect' : 'actions.' + title) + " " + $t('objects.inbound') }}
       </v-card-title>
       <v-divider></v-divider>
       <v-skeleton-loader
@@ -13,9 +13,9 @@
         ></v-skeleton-loader>
       <v-card-text style="padding: 0 16px; overflow-y: scroll;">
         <v-container style="padding: 0;" :hidden="loading">
-          <SaveGuardNotice :reasons="saveReasons" />
+          <SaveGuardNotice v-if="!capabilityState.historical" :reasons="saveReasons" />
       <InboundGuidance :hints="guidanceHints" />
-      <CapabilityNotice v-if="capabilityState.allowed" :state="capabilityState" />
+      <CapabilitySurface :state="capabilityState" :type="inbound.type">
       <v-row>
             <v-col cols="12" sm="6" md="4">
               <v-select
@@ -71,7 +71,6 @@
           </v-tabs>
           <v-window v-model="side" style="margin-top: 10px;">
             <v-window-item value="s">
-              <v-defaults-provider :defaults="{ global: { disabled: nativeOptionsUnavailable } }">
               <Listen :data="inbound" :inTags="inTags" v-if="hasOwnListener" />
               <Direct v-if="inbound.type == inTypes.Direct" :data="inbound" />
               <Shadowsocks v-if="inbound.type == inTypes.Shadowsocks" direction="in" :data="inbound" />
@@ -96,7 +95,6 @@
               <Users v-if="hasUser" :clients="clients" :data="initUsers" />
               <InTls v-if="HasTls.includes(inbound.type)"  :inbound="inbound" :tlsConfigs="tlsConfigs" :tls_id="inbound.tls_id" />
               <Multiplex v-if="MuxAvailable.includes(inbound.type)" direction="in" :data="inbound" />
-              </v-defaults-provider>
             </v-window-item>
             <v-window-item value="c">
               <OutJsonVue :inData="inbound" :type="inbound.type" />
@@ -124,6 +122,7 @@
             name="inbound:status-detail"
             :ctx="{ inbound, loading, mode: title === 'add' ? 'add' : 'edit' }"
           />
+        </CapabilitySurface>
         </v-container>
       </v-card-text>
       <v-card-actions>
@@ -139,6 +138,7 @@
           color="primary"
           variant="tonal"
           :loading="loading"
+          v-if="!capabilityState.historical"
           :disabled="saveReasons.length > 0"
           @click="saveChanges"
         >

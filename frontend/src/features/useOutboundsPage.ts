@@ -10,11 +10,13 @@ import { usePendingManualOrder } from '@/shared/composables/usePendingManualOrde
 import { useAsyncTaskQueue } from '@/shared/composables/useAsyncTaskQueue'
 import { useFailoverStatus } from '@/shared/composables/useFailoverStatus'
 import { useConfirm } from '@/components/nexus/primitives/useConfirm'
+import { useResourceAvailability } from './useResourceAvailability'
 
 export const useOutboundsPage = (classicForm: any, nexusForm: any, nexusList: any) => {
 const { mode } = useUiMode()
 const { t } = useI18n()
 const { confirm } = useConfirm()
+const { resourceAvailability } = useResourceAvailability('outbounds')
 
 const EntityForm = computed(() => (mode.value === 'nexus' ? nexusForm : classicForm))
 
@@ -29,6 +31,8 @@ const checkResults = ref<Record<string, CheckResult>>({})
 const outboundCheckQueue = useAsyncTaskQueue(8)
 
 const performOutboundCheck = async (tag: string) => {
+  const row = outbounds.value.find(item => item.tag === tag)
+  if (!row || !resourceAvailability(row).allowed) return
   checkResults.value = { ...checkResults.value, [tag]: { loading: true, success: false } }
   const msg = await checkOutboundConnection(tag)
   const success = msg.success && msg.obj?.OK
@@ -46,7 +50,7 @@ const checkOutbound = async (tag: string) => {
 const testingAll = outboundCheckQueue.runningAll
 
 const checkAllOutbounds = async () => {
-  const list = outbounds.value
+  const list = outbounds.value.filter(item => resourceAvailability(item).allowed)
   if (list.length === 0) return
   await outboundCheckQueue.runMany(list, item => item.tag, item => performOutboundCheck(item.tag))
 }

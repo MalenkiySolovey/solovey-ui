@@ -1,6 +1,6 @@
 <template>
   <div>
-    <v-alert v-if="!available" type="info" variant="tonal" density="compact" class="mb-2">{{ $t('capability.historical') }}</v-alert>
+    <v-alert v-if="!available" type="info" variant="tonal" density="compact" class="mb-2">{{ $t('secretCredential.unavailable') }}</v-alert>
     <v-select :model-value="mode" @update:model-value="selectMode" :disabled="!available" :items="choices" :label="label" />
     <v-textarea v-if="mode === 'replace' && multiline" :model-value="replacement" @update:model-value="replace" rows="4" auto-grow
       autocomplete="off" :disabled="!available" :label="$t('secretCredential.replacement')"

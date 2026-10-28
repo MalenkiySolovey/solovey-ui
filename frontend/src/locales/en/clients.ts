@@ -1,5 +1,6 @@
 export default {
   "secretCredential": {
+    "unavailable": "This credential is preserved and cannot be changed on the current runtime.",
     "keep": "Keep existing credential",
     "replace": "Replace credential",
     "clear": "Clear credential (remove protocol assignments first)",

@@ -66,7 +66,8 @@ describe('shared editor save review', () => {
     it(name + ' both layouts bind the same reasons and guarded Save', () => {
       for (const file of ['../layouts/modals/' + name + '.vue', '../components/nexus/drawers/' + name + 'Drawer.vue']) {
         const source = readFileSync(fileURLToPath(new URL(file, import.meta.url)), 'utf8')
-        expect(source).toContain('<SaveGuardNotice :reasons="saveReasons" />')
+        expect(source).toContain(name === 'Tls' ? '<SaveGuardNotice :reasons="saveReasons" />' : '<SaveGuardNotice v-if="!capabilityState.historical" :reasons="saveReasons" />')
+        if (name !== 'Tls') expect(source).toContain('<CapabilitySurface :state="capabilityState"')
         expect(source).toContain('saveReasons.length > 0')
         expect(source).toMatch(/@(click|save)="saveChanges"/)
       }
@@ -117,7 +118,7 @@ describe('shared editor save review', () => {
     expect(onSave).toHaveBeenCalledOnce()
   })
 
-  it('distinguishes backend unavailable, unknown and context facts and retains historical edit allowance', async () => {
+  it('distinguishes unavailable, unknown and context facts and rejects ordinary historical saves', async () => {
     const vm = mount(Outbound)
     vm.outbound.tag = 'old'
     const fact = store.capabilities.facts.find((f: any) => f.category === 'outbounds' && f.type === 'direct')
@@ -127,7 +128,9 @@ describe('shared editor save review', () => {
     expect(store.save).not.toHaveBeenCalled()
     vm.storedCapabilityType = 'direct'
     expect(vm.capabilityState.message).toBe('capability.historical')
-    expect(vm.saveReasons).toEqual([])
+    expect(vm.saveReasons).toEqual(['capability.historical'])
+    await vm.saveChanges()
+    expect(store.save).not.toHaveBeenCalled()
     vm.outbound.type = 'unrecognized'
     expect(vm.saveReasons).toContain('capability.unknown')
     vm.outbound.type = 'tun'

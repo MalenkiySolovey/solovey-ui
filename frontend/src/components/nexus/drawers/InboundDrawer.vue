@@ -4,16 +4,18 @@
     :loading="loading"
     :model-value="visible"
     :save-disabled="saveReasons.length > 0"
+    :read-only="capabilityState.historical"
     :saving="loading"
-    :title="$t('actions.' + title) + ' ' + $t('objects.inbound')"
+    :title="$t(capabilityState.historical ? 'capability.inspect' : 'actions.' + title) + ' ' + $t('objects.inbound')"
     :width="720"
     @close="closeModal"
     @save="saveChanges"
   >
+    <CapabilitySurface :state="capabilityState" :type="inbound.type">
     <form-section icon="lucide:zap" :title="$t('form.sections.basic')">
-      <SaveGuardNotice :reasons="saveReasons" />
+      <SaveGuardNotice v-if="!capabilityState.historical" :reasons="saveReasons" />
       <InboundGuidance :hints="guidanceHints" />
-      <CapabilityNotice v-if="capabilityState.allowed" :state="capabilityState" />
+
       <v-row>
         <v-col cols="12" sm="6">
           <v-select
@@ -72,7 +74,6 @@
       </v-tabs>
       <v-window v-model="side" style="margin-top: 10px;">
         <v-window-item value="s">
-          <v-defaults-provider :defaults="{ global: { disabled: nativeOptionsUnavailable } }">
           <Listen :data="inbound" :inTags="inTags" v-if="hasOwnListener" />
           <Direct v-if="inbound.type == inTypes.Direct" :data="inbound" />
           <Shadowsocks v-if="inbound.type == inTypes.Shadowsocks" direction="in" :data="inbound" />
@@ -97,7 +98,6 @@
           <Users v-if="hasUser" :clients="clients" :data="initUsers" />
           <InTls v-if="HasTls.includes(inbound.type)"  :inbound="inbound" :tlsConfigs="tlsConfigs" :tls_id="inbound.tls_id" />
           <Multiplex v-if="MuxAvailable.includes(inbound.type)" direction="in" :data="inbound" />
-          </v-defaults-provider>
         </v-window-item>
         <v-window-item value="c">
           <OutJsonVue :inData="inbound" :type="inbound.type" />
@@ -118,6 +118,7 @@
         </v-window-item>
       </v-window>
     </form-section>
+    </CapabilitySurface>
   </entity-drawer>
 </template>
 

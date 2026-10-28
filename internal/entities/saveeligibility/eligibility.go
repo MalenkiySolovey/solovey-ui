@@ -17,12 +17,11 @@ func (e *Rejection) Error() string {
 }
 func (e *Rejection) ReasonCode() string { return e.Capability.Reason }
 
-// Check permits only a known, correctly contextualized same-type historical
-// edit when its implementation is unavailable. The caller supplies storedType
-// from an authoritative row, never from a submitted form.
-func Check(category, panelType, action, storedType string) error {
+// Historical ownership grants read/export/delete authority, not runtime support
+// or admission to the ordinary editor. Availability comes from the active host.
+func Check(category, panelType, _, _ string) error {
 	fact := entitycapabilities.Resolve(category, panelType)
-	if fact.Available || (action == "edit" && fact.Known && fact.ContextSupported && storedType == panelType) {
+	if fact.Available {
 		return nil
 	}
 	return &Rejection{Capability: fact}
@@ -32,11 +31,17 @@ func Validate(tx *gorm.DB, action string, id uint, model any, category, panelTyp
 	if err := saveidentity.Validate(tx, action, id, model); err != nil {
 		return err
 	}
-	var storedType string
 	if action == "edit" {
-		if err := tx.Model(model).Select("type").Where("id = ?", id).Scan(&storedType).Error; err != nil {
+		var stored struct {
+			Type    string
+			Options []byte
+		}
+		if err := tx.Model(model).Select("type", "options").Where("id = ?", id).Scan(&stored).Error; err != nil {
 			return err
 		}
+		if fact := entitycapabilities.ResolveResource(category, stored.Type, stored.Options); !fact.Available {
+			return &Rejection{Capability: fact}
+		}
 	}
-	return Check(category, panelType, action, storedType)
+	return Check(category, panelType, action, "")
 }
