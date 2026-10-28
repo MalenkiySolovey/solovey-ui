@@ -61,8 +61,8 @@ func TestXHTTPNativeTrafficAndRestart(t *testing.T) {
 				"users": []any{map[string]any{"name": "verified", "uuid": "f0aa8764-88a4-4d8e-8ca8-24df4d750382"}}, "tls": serverTLS, "transport": map[string]any{"type": "xhttp", "mode": "auto", "path": "/owned", "x_padding_bytes": "100-1000"}}},
 				"outbounds": []any{map[string]any{"type": "direct", "tag": "direct"}}})
 			clientRaw, _ := json.Marshal(map[string]any{"log": map[string]bool{"disabled": true}, "outbounds": []any{
-				map[string]any{"type": "direct", "tag": "download-owner"},
-				map[string]any{"type": "vless", "tag": "xhttp-out", "server": "127.0.0.1", "server_port": port, "uuid": "f0aa8764-88a4-4d8e-8ca8-24df4d750382", "tls": clientTLS, "transport": transport}}})
+				map[string]any{"type": "vless", "tag": "xhttp-out", "server": "127.0.0.1", "server_port": port, "uuid": "f0aa8764-88a4-4d8e-8ca8-24df4d750382", "tls": clientTLS, "transport": transport},
+				map[string]any{"type": "direct", "tag": "download-owner"}}})
 			for generation := 0; generation < 2; generation++ {
 				if err := server.Start(serverRaw); err != nil {
 					t.Fatal("native XHTTP server start", err)
