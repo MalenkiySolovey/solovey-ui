@@ -223,4 +223,12 @@ unchanged. Existing parser, round-trip and actual activation suites cover this
 boundary. This replaces one exact declaration digest without a new Direct
 site, worker allowance or R1 inventory regeneration.
 
+R7 Mieru share delivery reviews the same existing projection declaration from
+`ec5f5b74...` to `8216c1dc...`. The EndpointIR owner permits the native simple URI
+only for its explicit credential, endpoint, port-binding and carrier fields;
+unknown critical options require JSON. Explicit Direct/group handling and all
+routing decisions remain unchanged. The existing URI suite proves semantic
+round-trip and refusal to discard a detour. This replaces one exact digest;
+there is no new Direct decision or worker.
+
 The accepted Sudoku, native outbound groups and MASQUE consumers compose at the existing outbound registry declaration with reviewed digest 368115e9a46640be0a2505510a26b3e33b63cc6db1021f4eb2446ecbec1f9750. Each selected native constructor keeps its availability gate. This composition adds no Direct routing decision or inventory site.
