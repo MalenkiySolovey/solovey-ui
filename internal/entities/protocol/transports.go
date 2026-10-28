@@ -48,7 +48,7 @@ func transportEditorFacts() map[string]TransportEditorFact {
 			}
 			// New drafts use the stable target's explicit valid padding range.
 			// Existing stored drafts are never rewritten by editor fact loading.
-			item.Defaults = map[string]any{"mode": "auto", "x_padding_bytes": "100-1000"}
+			item.Defaults = map[string]any{"mode": "auto", "x_padding_bytes": XHTTPDefaultPadding}
 			item.Choices = map[string][]string{}
 			for name, values := range map[string][]string{
 				"mode":                  {"auto", "packet-up", "stream-up", "stream-one"},
@@ -61,7 +61,7 @@ func transportEditorFacts() map[string]TransportEditorFact {
 				"uplink_data_placement": {"auto", "body", "cookie", "header"},
 			} {
 				for _, value := range values {
-					probe := map[string]any{"type": "xhttp", "mode": "packet-up", "x_padding_bytes": "100-1000", name: value}
+					probe := map[string]any{"type": "xhttp", "mode": "packet-up", "x_padding_bytes": XHTTPDefaultPadding, name: value}
 					raw, _ := json.Marshal(probe)
 					var native option.V2RayTransportOptions
 					if sbjson.Unmarshal(raw, &native) == nil {

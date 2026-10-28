@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/parser"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
@@ -14,7 +15,7 @@ func TestXHTTPRepresentationsKeepEndpointIdentity(t *testing.T) {
 		t.Run(protocol, func(t *testing.T) {
 			raw := map[string]any{"type": protocol, "tag": "native", "server": "edge.example", "server_port": 443,
 				"tls":       map[string]any{"enabled": true, "server_name": "edge.example"},
-				"transport": map[string]any{"type": "xhttp", "path": "/literal?ed=2048&key=value", "host": "cdn.example", "mode": "stream-up"}}
+				"transport": map[string]any{"type": "xhttp", "path": "/literal?ed=2048&key=value", "host": "cdn.example", "mode": "stream-up", "x_padding_bytes": entityprotocol.XHTTPDefaultPadding}}
 			if protocol == "vless" {
 				raw["uuid"] = "00000000-0000-4000-8000-000000000001"
 			} else {

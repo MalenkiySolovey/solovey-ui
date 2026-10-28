@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 )
 
@@ -204,7 +205,7 @@ func xrayTransport(stream map[string]interface{}, network string) map[string]int
 		if len(settings) == 0 {
 			settings, _ = stream["splithttpSettings"].(map[string]interface{})
 		}
-		transport := map[string]interface{}{"type": "xhttp"}
+		transport := map[string]interface{}{"type": "xhttp", "x_padding_bytes": entityprotocol.XHTTPDefaultPadding}
 		for _, field := range []string{"path", "host", "mode", "headers"} {
 			copyAny(settings, transport, field, field)
 		}
