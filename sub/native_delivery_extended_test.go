@@ -4,13 +4,84 @@ package sub
 
 import (
 	"bytes"
+	"encoding/base64"
 	"encoding/json"
+	"net/url"
+	"strings"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	dbsqlite "github.com/MalenkiySolovey/solovey-ui/database/sqlite"
 	entityclients "github.com/MalenkiySolovey/solovey-ui/internal/entities/clients"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
 )
+
+func TestNativePrivateLinksAreResponseOnly(t *testing.T) {
+	initSubTestDB(t)
+	db := dbsqlite.DB()
+	rows := []model.Inbound{
+		{Id: 1, Type: "mieru", Tag: "Mieru public", Options: json.RawMessage(`{"listen_port":2443,"transport":"TCP","listen_ports":["3443:3445"],"mtu":1400}`), Addrs: json.RawMessage(`[{"server":"edge.example","server_port":2443}]`), OutJson: json.RawMessage(`{}`)},
+		{Id: 2, Type: "mtproxy", Tag: "Telegram", Options: json.RawMessage(`{"listen_port":2444}`), Addrs: json.RawMessage(`[{"server":"edge.example","server_port":2444}]`), OutJson: json.RawMessage(`{}`)},
+	}
+	if err := db.Create(&rows).Error; err != nil {
+		t.Fatal(err)
+	}
+	secret, err := credentials.Generate("mtproxy")
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, _ := json.Marshal(map[string]any{"mieru": map[string]any{"password": map[string]string{"intent": "replace", "value": "synthetic-delivery"}}, "mtproxy": map[string]any{"secret": map[string]string{"intent": "replace", "value": secret}}})
+	client := model.Client{Name: "private-native", Enable: true, Config: config, Inbounds: json.RawMessage(`[1,2]`), Links: json.RawMessage(`[]`)}
+	raw, _ := json.Marshal(client)
+	if _, err := entityclients.Save(entityclients.SaveRequest{Tx: db, Action: "new", Data: raw}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Where("name = ?", client.Name).First(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+	configBefore, linksBefore := bytes.Clone(client.Config), bytes.Clone(client.Links)
+	if bytes.Contains(linksBefore, []byte("synthetic-delivery")) || bytes.Contains(linksBefore, []byte(secret)) {
+		t.Fatal("private link was persisted")
+	}
+	body, _, err := (&SubService{}).GetSubs(client.SubSecret)
+	if err != nil || body == nil {
+		t.Fatal("private native links unavailable", err)
+	}
+	text := *body
+	if !strings.Contains(text, "://") {
+		decoded, err := base64.StdEncoding.DecodeString(text)
+		if err != nil {
+			t.Fatal("invalid encoded subscription")
+		}
+		text = string(decoded)
+	}
+	found := map[string]bool{}
+	for _, line := range strings.Split(text, "\n") {
+		u, err := url.Parse(line)
+		if err != nil {
+			t.Fatal("invalid private share link")
+		}
+		switch u.Scheme {
+		case "mierus":
+			password, _ := u.User.Password()
+			if password != "synthetic-delivery" || u.User.Username() != client.Name || len(u.Query()["port"]) != 2 || u.Query().Get("mtu") != "1400" {
+				t.Fatal("Mieru link changed owner facts")
+			}
+			found["mieru"] = true
+		case "tg":
+			if u.Query().Get("secret") != secret || u.Query().Get("server") != "edge.example" {
+				t.Fatal("Telegram link changed owner facts")
+			}
+			found["mtproxy"] = true
+		}
+	}
+	if len(found) != 2 {
+		t.Fatal("native share link omitted")
+	}
+	if err := db.First(&client, client.Id).Error; err != nil || !bytes.Equal(configBefore, client.Config) || !bytes.Equal(linksBefore, client.Links) {
+		t.Fatal("private delivery changed canonical state")
+	}
+}
 
 func TestNativePrivateJSONUsesAssignedOwnerCredentials(t *testing.T) {
 	initSubTestDB(t)

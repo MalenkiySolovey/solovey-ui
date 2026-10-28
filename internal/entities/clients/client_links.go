@@ -34,6 +34,11 @@ func BuildLinksForInbounds(config json.RawMessage, inbounds []model.Inbound, hos
 		if !clientfacts.CanDeliver(inbounds[i].Type, "uri") {
 			continue
 		}
+		if fact, _ := clientfacts.Resolve(inbounds[i].Type); fact.SecretField != "" {
+			// Managed credentials are borrowed only for private delivery. Never
+			// persist a second plaintext credential inside Client.Links.
+			continue
+		}
 		generated, err := suburi.Generate(config, &inbounds[i], hostname)
 		if err != nil {
 			var unsupported *suburi.UnsupportedProjection

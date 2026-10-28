@@ -59,6 +59,12 @@ func ValidateEndpointProjection(endpoint EndpointIR, target string) error {
 	if target == FormatSingBox {
 		return nil
 	} // full options survive; existing shape/owner validation follows
+	if protocol == "mieru" && target == FormatURI {
+		if unknownKeys(raw, "type tag server server_port server_ports username password transport multiplexing handshake_mode traffic_pattern mtu") {
+			return ErrUnsupportedProjection
+		}
+		return nil
+	}
 	allowed := "type tag name remark remarks ps id sortOrder sort_order server server_port tls transport network"
 	switch target {
 	case FormatClash:

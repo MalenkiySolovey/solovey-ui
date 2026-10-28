@@ -50,6 +50,9 @@ func linkName(link string) (string, error) {
 	if err != nil {
 		return "", errors.New("invalid URI public label")
 	}
+	if u.Scheme == "mierus" {
+		return u.Query().Get("profile"), nil
+	}
 	return u.Fragment, nil
 }
 
@@ -72,5 +75,11 @@ func withLinkName(link, label string) (string, error) {
 		return "", errors.New("invalid URI public label")
 	}
 	u.Fragment, u.RawFragment = label, ""
+	if u.Scheme == "mierus" {
+		query := u.Query()
+		query.Set("profile", label)
+		u.RawQuery = query.Encode()
+		u.Fragment = ""
+	}
 	return u.String(), nil
 }

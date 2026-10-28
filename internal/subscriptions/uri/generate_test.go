@@ -7,7 +7,31 @@ import (
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 )
+
+func TestMieruEndpointSimpleURIRoundTrip(t *testing.T) {
+	raw := map[string]any{"type": "mieru", "tag": "Public node", "server": "2001:db8::1", "server_port": 443, "server_ports": []string{"2443-2445", "3443-3443"}, "transport": "UDP", "username": "synthetic-user", "password": "synthetic-password", "mtu": 1400, "multiplexing": "MULTIPLEXING_LOW", "handshake_mode": "HANDSHAKE_NO_WAIT", "traffic_pattern": "CAE="}
+	before := canonical.ObserveOutbound(canonical.FormatSingBox, raw, 0)
+	links, err := RenderEndpoint(before)
+	if err != nil || len(links) != 1 {
+		t.Fatal("native Mieru projection failed", err)
+	}
+	after, _, err := Parse(links[0], 0)
+	if err != nil {
+		t.Fatal("native Mieru import failed", err)
+	}
+	if canonical.ObserveOutbound(canonical.FormatURI, *after, 0).EndpointID != before.EndpointID {
+		t.Fatal("native Mieru endpoint semantics changed")
+	}
+	if err := canonical.ValidateEndpointProjection(before, canonical.FormatXray); err == nil {
+		t.Fatal("unsupported representation admitted Mieru")
+	}
+	raw["detour"] = "owned-detour"
+	if _, err := RenderEndpoint(canonical.ObserveOutbound(canonical.FormatSingBox, raw, 0)); err == nil {
+		t.Fatal("Mieru URI stripped a critical client option")
+	}
+}
 
 func TestLinkGeneratorTUICIncludesUDPRelayMode(t *testing.T) {
 	link := generateTUICLinkForTest(t, `{"udp_relay_mode":"native"}`)

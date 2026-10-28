@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"errors"
+	"strings"
 
 	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
@@ -96,7 +97,23 @@ func fillOutboundJSON(i *model.Inbound, hostname string, legacy bool) error {
 			}
 		}
 		if ports, present := (*inbound)["listen_ports"]; present {
-			outJson["server_ports"] = ports
+			var normalized []string
+			values, ok := ports.([]any)
+			if !ok {
+				return errors.New("CLIENT_MIERU_PORTS_INVALID")
+			}
+			for _, value := range values {
+				port, ok := value.(string)
+				if !ok {
+					return errors.New("CLIENT_MIERU_PORTS_INVALID")
+				}
+				port = strings.ReplaceAll(port, ":", "-")
+				if !strings.Contains(port, "-") {
+					port += "-" + port
+				}
+				normalized = append(normalized, port)
+			}
+			outJson["server_ports"] = normalized
 		}
 	case "trusttunnel":
 		for _, key := range []string{"congestion_controller", "cwnd", "disable_path_mtu_discovery"} {

@@ -40,6 +40,9 @@ func generateEndpointLinks(protocol string, credential, inbound map[string]any, 
 		if protocol == "vmess" {
 			keys = []string{"uuid", "security", "alter_id"}
 		}
+		if protocol == "mieru" {
+			keys = []string{"username", "password"}
+		}
 		for _, key := range keys {
 			if value, present := credential[key]; present {
 				raw[key] = value
@@ -92,6 +95,8 @@ func RenderEndpoint(endpoint canonical.EndpointIR) ([]string, error) {
 	}
 	var links []string
 	switch endpoint.Protocol {
+	case "mieru":
+		return renderMieru(raw, endpoint.DisplayName)
 	case "vless":
 		transport, _ := raw["transport"].(map[string]any)
 		tls, _ := raw["tls"].(map[string]any)
@@ -133,6 +138,8 @@ func classifyLinkSource(link string) []canonical.ProjectionDiagnostic {
 	tlsFields := "security sni alpn fp insecure allowInsecure disable_sni pinSHA256 pbk sid ech"
 	known := ""
 	switch strings.ToLower(parsed.Scheme) {
+	case "mierus":
+		known = "profile port protocol mtu multiplexing handshake-mode traffic-pattern"
 	case "vless":
 		known = tlsFields + " type host path serviceName headerType encryption flow"
 	case "trojan":
