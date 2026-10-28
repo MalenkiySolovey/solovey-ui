@@ -2,11 +2,14 @@ package services
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 	"testing"
 
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/saveeligibility"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -29,6 +32,9 @@ func TestDNSServiceReferenceGuardsBeforePersistence(t *testing.T) {
 	if err := db.Create(&model.Setting{Key: "config", Value: `{"dns":{"servers":[{"type":"resolved","service":"resolver"}]}}`}).Error; err != nil {
 		t.Fatal(err)
 	}
+	if err := rejectReferencedService(db, "resolver"); err == nil || !strings.Contains(err.Error(), "dns.servers[0].service") {
+		t.Fatal("reference guard lost its DNS locator")
+	}
 	for _, operation := range []func() error{
 		func() error { _, err := saveDelete(db, json.RawMessage(`"resolver"`)); return err },
 		func() error {
@@ -40,8 +46,13 @@ func TestDNSServiceReferenceGuardsBeforePersistence(t *testing.T) {
 			return err
 		},
 	} {
-		if err := operation(); err == nil || !strings.Contains(err.Error(), "dns.servers[0].service") {
-			t.Fatal("referenced service mutation accepted or lost locator")
+		if err := operation(); err == nil {
+			t.Fatal("referenced service mutation accepted")
+		} else if !strings.Contains(err.Error(), "dns.servers[0].service") {
+			var unavailable *saveeligibility.Rejection
+			if !errors.As(err, &unavailable) || unavailable.Capability.Available {
+				t.Fatalf("mutation lost both reference and current capability denial: %v", err)
+			}
 		}
 		var persisted model.Service
 		if err := db.First(&persisted, row.Id).Error; err != nil || persisted.Tag != "resolver" {
@@ -55,8 +66,15 @@ func TestDNSServiceReferenceGuardsBeforePersistence(t *testing.T) {
 		t.Fatal("malformed resolved service persisted")
 	}
 	change, err := saveUpsert(db, "edit", json.RawMessage(fmt.Sprintf(`{"id":%d,"type":"resolved","tag":"resolver","listen_port":5354}`, row.Id)))
-	if err != nil || !change.NeedsRestart {
-		t.Fatal("resolved replacement did not request complete core lifecycle")
+	if capabilities.Resolve("services", "resolved").Available {
+		if err != nil || !change.NeedsRestart {
+			t.Fatal("resolved replacement did not request complete core lifecycle")
+		}
+	} else {
+		var unavailable *saveeligibility.Rejection
+		if !errors.As(err, &unavailable) || change != nil {
+			t.Fatal("unavailable historical service admitted an ordinary edit")
+		}
 	}
 	change, err = saveDelete(db, json.RawMessage(`"resolver"`))
 	if err != nil || !change.NeedsRestart {
