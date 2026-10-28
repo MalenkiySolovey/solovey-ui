@@ -1,9 +1,34 @@
 package protocol
 
 import (
+	"bytes"
+	"encoding/json"
 	"reflect"
 	"testing"
 )
+
+func TestTransportEditorUsesTheSelectedNativeConsumer(t *testing.T) {
+	facts := EditorContract().Transports
+	if !facts["grpc"].Available {
+		t.Fatal("the native lite gRPC implementation was hidden")
+	}
+	source := json.RawMessage(`{"transport":{"type":"xhttp","mode":"packet-up","x_padding_bytes":"100-1000","path":"/private-path?token=fixture"}}`)
+	findings := CurrentFindings("vless", "outbound", "outbound", source)
+	if facts["xhttp"].Available {
+		if len(facts["xhttp"].Fields["root"]) == 0 || len(findings) != 0 {
+			t.Fatal("native XHTTP fields or valid configuration were lost")
+		}
+		invalid := bytes.Replace(source, []byte(`"mode":"packet-up"`), []byte(`"mode":"stream-one","download":{"x_padding_bytes":"100-1000"}`), 1)
+		if len(CurrentFindings("vless", "outbound", "outbound", invalid)) == 0 {
+			t.Fatal("incompatible split download mode was accepted")
+		}
+	} else if len(findings) != 1 || findings[0].Code != "TRANSPORT_UNAVAILABLE" {
+		t.Fatal("unavailable transport did not fail explicitly")
+	}
+	if findings := CurrentFindings("mieru", "outbound", "outbound", json.RawMessage(`{"transport":"TCP"}`)); len(findings) != 0 {
+		t.Fatal("native V2Ray schema captured Mieru's independent transport enum")
+	}
+}
 
 func TestInboundClientTransportPathAndIsolation(t *testing.T) {
 	for _, kind := range []string{"ws", "http", "httpupgrade"} {

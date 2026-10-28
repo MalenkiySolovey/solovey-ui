@@ -86,6 +86,19 @@ for (const [layout, feature] of [['Classic', TlsEditor], ['Nexus', TlsDrawer]] a
 })
 
 describe('outbound TLS and provider presentation', () => {
+  it('keeps a masked download key and explicitly clears it when selecting path credentials', () => {
+    const reference = { owner: 'outbounds', id: 'record:7:transport.download.tls.client_key', policy: 'OWNER_USE_AND_PRESENCE', projection: 'MASKED' }
+    const view = { reference, present: true, rotationRevision: 'a'.repeat(64) }
+    const outbound = reactive({ tls: { enabled: true, client_certificate: ['fixture-cert'], client_key: view, client_certificate_path: 'fixture.crt', client_key_path: 'fixture.key' } })
+    const vm = mount(OutTLS, { outbound, managedClientKey: true })
+    expect(serializeCredentialDraft(outbound).tls.client_key).toEqual({ intent: 'unchanged', ...view })
+    vm.selectClientPairMode(0)
+    expect(serializeCredentialDraft(outbound).tls.client_key).toEqual({ intent: 'clear' })
+    expect(outbound.tls.client_key).toEqual(view)
+    vm.selectClientPairMode(1)
+    expect(serializeCredentialDraft(outbound).tls.client_key).toEqual({ intent: 'unchanged', ...view })
+    expect(serializeCredentialDraft(outbound).tls).not.toHaveProperty('client_key_path')
+  })
   it('disabling/re-enabling TLS and mTLS mode selection keep all stored credentials before commit', () => {
     const outbound = reactive({ tls: { enabled: true, insecure: false, client_certificate_path: 'fixture.crt', client_key_path: 'fixture.key', client_certificate: ['inert-certificate'], client_key: ['inert-key'], certificate_public_key_sha256: ['fixture-pin'] } })
     const vm = mount(OutTLS, { outbound })

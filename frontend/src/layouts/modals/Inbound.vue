@@ -92,7 +92,7 @@
               <InboundGroup v-if="hasGroupMembers" :data="inbound" />
               <CallInbound v-if="inbound.type == inTypes.Call" :data="inbound" />
               <TProxy v-if="inbound.type == inTypes.TProxy" :inbound="inbound" />
-              <Transport v-if="hasGenericTransport" :data="inbound" />
+              <Transport v-if="hasGenericTransport" :data="inbound"  direction="in" />
               <Users v-if="hasUser" :clients="clients" :data="initUsers" />
               <InTls v-if="HasTls.includes(inbound.type)"  :inbound="inbound" :tlsConfigs="tlsConfigs" :tls_id="inbound.tls_id" />
               <Multiplex v-if="MuxAvailable.includes(inbound.type)" direction="in" :data="inbound" />

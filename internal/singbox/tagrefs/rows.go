@@ -76,6 +76,9 @@ func scanOutboundRowsForTag(rows []model.Outbound, tag string, excludeID uint) [
 				Locator: fmt.Sprintf("outbound %q (detour)", row.Tag),
 			})
 		}
+		if transportDownloadDetour(opts) == tag {
+			refs = append(refs, TagReference{Kind: "transport download detour", Locator: fmt.Sprintf("outbound %q (transport.download.detour)", row.Tag)})
+		}
 		if row.Type != "selector" && row.Type != "urltest" && row.Type != entitytypes.Failover {
 			continue
 		}

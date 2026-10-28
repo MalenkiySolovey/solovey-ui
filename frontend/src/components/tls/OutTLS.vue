@@ -160,7 +160,9 @@
             </v-textarea>
           </v-col>
           <v-col cols="12" sm="6" v-if="clientPairUsePath === 1">
+            <SecretCredentialField v-if="managedClientKey" v-model="ownedClientKey" :available="true" :label="$t('tls.clientKey')" multiline />
             <v-textarea
+              v-else
               :label="$t('tls.clientKey')"
               rows="3"
               no-resize

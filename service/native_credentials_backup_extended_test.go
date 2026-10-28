@@ -184,6 +184,13 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		if _, err := entityoutbounds.Save(tx, "new", sudokuOutbound); err != nil {
 			return err
 		}
+		xhttpOutbound, _ := json.Marshal(map[string]any{"type": "vless", "tag": "archive-xhttp-outbound", "server": "192.0.2.1", "server_port": 443,
+			"uuid": "f0aa8764-88a4-4d8e-8ca8-24df4d750382", "transport": map[string]any{"type": "xhttp", "mode": "packet-up", "x_padding_bytes": "100-1000",
+				"download": map[string]any{"server": "192.0.2.2", "server_port": 443, "x_padding_bytes": "100-1000",
+					"tls": map[string]any{"enabled": true, "client_certificate": []string{string(cert)}, "client_key": map[string]string{"intent": "replace", "value": string(key)}}}}})
+		if _, err := entityoutbounds.Save(tx, "new", xhttpOutbound); err != nil {
+			return err
+		}
 		return nil
 	}); err != nil {
 		t.Fatal("native Inbounds owner fixture failed", err)
@@ -243,11 +250,12 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		}
 		var root struct {
 			Outbounds []struct {
-				Type     string
-				Password string
-				Key      string
-				JoinLink string `json:"join_link"`
-				Cookies  []struct{ Name, Value string }
+				Type      string
+				Password  string
+				Key       string
+				JoinLink  string `json:"join_link"`
+				Cookies   []struct{ Name, Value string }
+				Transport json.RawMessage
 			}
 			Inbounds []struct {
 				Type     string
@@ -271,8 +279,19 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		}
 		callOutboundFound := false
 		sudokuOutboundFound := false
+		xhttpOutboundFound := false
 		nativeOutboundsFound := 0
 		for _, outbound := range root.Outbounds {
+			if outbound.Type == "vless" {
+				var transport struct {
+					Download struct {
+						TLS struct {
+							ClientKey string `json:"client_key"`
+						}
+					}
+				}
+				xhttpOutboundFound = json.Unmarshal(outbound.Transport, &transport) == nil && transport.Download.TLS.ClientKey == string(key)
+			}
 			if outbound.Type == "sudoku" {
 				sudokuOutboundFound = true
 				if outbound.Key != outboundSudokuKey {
@@ -292,7 +311,7 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 				}
 			}
 		}
-		if !callOutboundFound || !sudokuOutboundFound || nativeOutboundsFound != len(nativeOutboundPasswords) {
+		if !callOutboundFound || !sudokuOutboundFound || !xhttpOutboundFound || nativeOutboundsFound != len(nativeOutboundPasswords) {
 			t.Fatal("archive lost a native outbound")
 		}
 		for _, inbound := range root.Inbounds {
@@ -355,6 +374,9 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 			t.Fatal(err)
 		}
 		encoded, _ = json.Marshal(outboundView)
+		if bytes.Contains(encoded, []byte("PRIVATE KEY")) {
+			t.Fatal("restored normal Outbounds read disclosed a download TLS private key")
+		}
 		if bytes.Contains(encoded, []byte(outboundSudokuKey)) {
 			t.Fatal("restored normal Outbounds read disclosed a private Sudoku key")
 		}

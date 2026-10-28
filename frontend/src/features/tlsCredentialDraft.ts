@@ -1,4 +1,5 @@
 import { shallowReactive, toRaw } from 'vue'
+import { unchangedSecret } from './secretCredentialDraft'
 
 export type CredentialMode = 'path' | 'text' | 'provider'
 type Choice = { mode: CredentialMode; text: string[]; path: string[]; provider?: boolean }
@@ -24,11 +25,17 @@ export function selectCredentialMode(target: object, group: string, mode: Creden
 export function serializeCredentialDraft<T>(value: T): T {
   if (Array.isArray(value)) return value.map(item => serializeCredentialDraft(item)) as T
   if (!value || typeof value !== 'object' || value instanceof Date) return value
+  const unchanged = unchangedSecret(value)
+  if (unchanged) return unchanged as T
   const source = value as Record<string, unknown>
   const copy: Record<string, unknown> = {}
   for (const [key, child] of Object.entries(source)) copy[key] = serializeCredentialDraft(child)
   for (const selection of choicesFor(source).values()) {
-    for (const key of selection.mode === 'text' ? selection.path : selection.text) delete copy[key]
+    for (const key of selection.mode === 'text' ? selection.path : selection.text) {
+      const field = source[key] as { intent?: string } | undefined
+      if (unchangedSecret(field) || (field && ['replace', 'clear'].includes(field.intent ?? ''))) copy[key] = { intent: 'clear' }
+      else delete copy[key]
+    }
     if (selection.mode === 'provider') for (const key of selection.path) delete copy[key]
     if (selection.provider && selection.mode !== 'provider') { delete copy.certificate_provider; delete copy.acme }
   }

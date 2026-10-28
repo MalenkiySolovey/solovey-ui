@@ -194,3 +194,5 @@ retirement. Focused transactional credential/private archive checks and native
 TCP/UDP/restart qualification cover those seams. Official keeps Sudoku
 unavailable and preserves stored state. This exact declaration digest review
 adds no Direct routing decision, worker allowance or new R1 inventory.
+
+R7 XHTTP reviews scanOutboundRowsForTag at 72cd323d8a9f2da5aa236021c7db06834479d74e9d3ff3754cb16a1077d50ede. The existing reference owner protects transport.download.detour during rename/delete and eager reload. Its existing Direct/final policy is unchanged; no source inventory or new fallback site is introduced.

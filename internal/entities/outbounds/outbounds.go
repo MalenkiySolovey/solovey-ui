@@ -56,6 +56,9 @@ func GetAll(db *gorm.DB) (*[]map[string]interface{}, error) {
 				return nil, err
 			}
 		}
+		if err := projectTransportCredentials(*outbound, &outData); err != nil {
+			return nil, err
+		}
 		data = append(data, outData)
 	}
 	if err := annotateMetadata(db, data); err != nil {
@@ -65,6 +68,9 @@ func GetAll(db *gorm.DB) (*[]map[string]interface{}, error) {
 }
 
 func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
+	if err := validateTransportReferences(db); err != nil {
+		return nil, err
+	}
 	var outboundsJSON []json.RawMessage
 	var rows []*model.Outbound
 	err := db.Model(model.Outbound{}).Order(entityorder.Clause).Scan(&rows).Error
@@ -102,6 +108,10 @@ func GetAllConfig(db *gorm.DB) ([]json.RawMessage, error) {
 				if err != nil {
 					return nil, err
 				}
+			}
+			outboundJSON, err = marshalTransportRuntime(db, *outbound, outboundJSON)
+			if err != nil {
+				return nil, err
 			}
 			outboundsJSON = append(outboundsJSON, outboundJSON)
 		}
@@ -166,6 +176,9 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 			return nil, err
 		}
 	}
+	if err := prepareTransportCredentials(tx, &outbound); err != nil {
+		return nil, err
+	}
 	legacy, err := dbschema.LegacyProjection(tx)
 	if err != nil {
 		return nil, err
@@ -215,6 +228,9 @@ func saveUpsert(tx *gorm.DB, action string, data json.RawMessage) (*singboxapply
 		return nil, err
 	}
 	if err := tx.Save(&outbound).Error; err != nil {
+		return nil, err
+	}
+	if err := validateTransportReferences(tx); err != nil {
 		return nil, err
 	}
 	if outbound.Type == FailoverType {
@@ -324,6 +340,10 @@ func Restart(tx *gorm.DB, ids []uint, core Core) error {
 				if err != nil {
 					return err
 				}
+			}
+			config, err = marshalTransportRuntime(tx, *row, config)
+			if err != nil {
+				return err
 			}
 			configs = []json.RawMessage{config}
 		}

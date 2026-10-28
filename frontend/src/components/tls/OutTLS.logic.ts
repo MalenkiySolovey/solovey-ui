@@ -3,9 +3,12 @@ import { oTls, defaultOutTls } from '@/types/tls'
 import { fetchCertificatePin as requestCertificatePin } from '@/shared/composables/useServerOperations'
 import { selectedCredentialMode, selectCredentialMode } from '@/features/tlsCredentialDraft'
 import { coreConfigContract, loadCoreConfigContract } from '@/types/coreConfigContract'
+import SecretCredentialField from '@/components/fields/SecretCredentialField.vue'
+import { unchangedSecret } from '@/features/secretCredentialDraft'
 
 export default defineComponent({
-  props: ['outbound'],
+  props: ['outbound', 'managedClientKey'],
+  components: { SecretCredentialField },
   data() {
     return {
       menu: false,
@@ -124,14 +127,14 @@ export default defineComponent({
         if (selected !== undefined) return selected === 'text'
         return this.tls.client_certificate != undefined ||
                this.tls.client_certificate_path != undefined ||
-               this.tls.client_key != undefined ||
+               (this.managedClientKey ? (unchangedSecret(this.tls.client_key)?.present || (this.tls.client_key as unknown as { intent?: string })?.intent === 'replace') : this.tls.client_key != undefined) ||
                this.tls.client_key_path != undefined
       },
       set(v:boolean) {
         selectCredentialMode(this.tls, 'client-pair-enabled', v ? 'text' : 'path', ['client_certificate', 'client_certificate_path', 'client_key', 'client_key_path'], [])
         if (v && this.tls.client_certificate === undefined && this.tls.client_certificate_path === undefined) {
           this.tls.client_certificate = []
-          this.tls.client_key = []
+          if (!this.managedClientKey) this.tls.client_key = []
         }
       }
     },
@@ -185,6 +188,10 @@ export default defineComponent({
     clientKeyText: {
       get(): string { return this.tls.client_key ? this.tls.client_key.join('\n') : '' },
       set(v:string) { this.$props.outbound.tls.client_key = v.length > 0 ? v.split('\n') : [] }
+    },
+    ownedClientKey: {
+      get(): unknown { return (this.tls as unknown as Record<string, unknown>).client_key },
+      set(value: unknown) { this.$props.outbound.tls.client_key = value }
     },
     fragmentFallbackDelay: {
       get(): number { return parseInt(this.tls.fragment_fallback_delay?.replace('ms','')?? '500')?? 500 },
