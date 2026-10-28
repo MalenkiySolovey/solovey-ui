@@ -131,6 +131,17 @@ export default {
     "detourText": "Переадресация на исходящий"
   },
   "transport": {
+    "mkcp": {
+      "mtu": "MTU (байты)",
+      "tti": "Интервал передачи (мс)",
+      "uplink_capacity": "Скорость отправки (МБ/с)",
+      "downlink_capacity": "Скорость загрузки (МБ/с)",
+      "read_buffer_size": "Буфер чтения (МБ)",
+      "write_buffer_size": "Буфер записи (МБ)",
+      "header_type": "Заголовок пакетов",
+      "congestion": "Контроль перегрузки",
+      "seed": "Ключ шифрования mKCP"
+    },
     "unavailable": "Выбранный транспорт недоступен в этом runtime. Сохранённые параметры остаются без изменений.",
     "xhttp": {
       "mode": "Режим XHTTP",

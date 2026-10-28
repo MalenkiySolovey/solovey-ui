@@ -131,6 +131,17 @@ export default {
     "detourText": "Forward to outbound"
   },
   "transport": {
+    "mkcp": {
+      "mtu": "MTU (bytes)",
+      "tti": "Transmission interval (ms)",
+      "uplink_capacity": "Upload capacity (MB/s)",
+      "downlink_capacity": "Download capacity (MB/s)",
+      "read_buffer_size": "Read buffer (MB)",
+      "write_buffer_size": "Write buffer (MB)",
+      "header_type": "Packet header",
+      "congestion": "Congestion control",
+      "seed": "mKCP encryption seed"
+    },
     "unavailable": "This runtime cannot apply the selected transport. Its saved options remain intact.",
     "xhttp": {
       "mode": "XHTTP mode",

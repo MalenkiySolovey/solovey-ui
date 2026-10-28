@@ -16,6 +16,7 @@
     <GRPC v-if="Transport.type == trspTypes.gRPC" :transport="Transport" />
     <HttpUpgrade v-if="Transport.type == trspTypes.HTTPUpgrade" :transport="Transport" />
     <Xhttp v-if="Transport.type === trspTypes.XHTTP && facts?.xhttp?.available" :transport="Transport" :direction="direction" :parent-tag="data.tag" />
+    <Mkcp v-if="Transport.type === trspTypes.mKCP && facts?.mkcp?.available" :transport="Transport" />
   </v-card>
 </template>
 
@@ -26,6 +27,7 @@ import WebSocket from '@/components/transports/WebSocket.vue'
 import GRPC from '@/components/transports/gRPC.vue'
 import HttpUpgrade from '@/components/transports/HttpUpgrade.vue'
 import Xhttp from '@/components/transports/Xhttp.vue'
+import Mkcp from '@/components/transports/Mkcp.vue'
 import { coreConfigContract, loadCoreConfigContract } from '@/types/coreConfigContract'
 export default {
   props: ['data', 'direction'],
@@ -59,6 +61,6 @@ export default {
     }
   },
   mounted() { void loadCoreConfigContract() },
-  components: { Http, WebSocket, GRPC, HttpUpgrade, Xhttp }
+  components: { Http, WebSocket, GRPC, HttpUpgrade, Xhttp, Mkcp }
 }
 </script>

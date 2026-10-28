@@ -46,7 +46,7 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 		}
 	}
 	transportCandidate := false
-	if registry.ResolveTransport("xhttp").Available() {
+	if registry.ResolveTransport("xhttp").Available() || registry.ResolveTransport("mkcp").Available() {
 		for _, entity := range []any{&model.Inbound{}, &model.Outbound{}} {
 			if !tx.Migrator().HasTable(entity) {
 				continue
@@ -57,7 +57,7 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 			}
 			for _, row := range rows {
 				var options struct{ Transport struct{ Type string } }
-				if json.Unmarshal(row.Options, &options) == nil && options.Transport.Type == "xhttp" {
+				if json.Unmarshal(row.Options, &options) == nil && (options.Transport.Type == "xhttp" || options.Transport.Type == "mkcp") && registry.ResolveTransport(options.Transport.Type).Available() {
 					transportCandidate = true
 					break
 				}

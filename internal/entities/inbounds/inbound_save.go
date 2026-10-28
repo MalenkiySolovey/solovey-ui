@@ -253,6 +253,9 @@ func FillAndSave(tx *gorm.DB, inbound *model.Inbound, hostname string) error {
 	if err := prepareInboundCredentials(tx, inbound); err != nil {
 		return err
 	}
+	if err := prepareTransportSeed(tx, inbound); err != nil {
+		return err
+	}
 	if inbound.Id != 0 {
 		if err := preserveUnavailableNativeInbound(tx, inbound); err != nil {
 			return err

@@ -63,6 +63,13 @@ func BuildInboundOutbounds(clientConfig json.RawMessage, inbounds []*model.Inbou
 		if err != nil {
 			return nil, err
 		}
+		if transport, ok := outbound["transport"].(map[string]any); ok && transport["type"] == "mkcp" {
+			if seed, present := transport["seed"]; present {
+				if _, resolved := seed.(string); !resolved {
+					return nil, fmt.Errorf("TRANSPORT_CREDENTIAL_DELIVERY_UNAVAILABLE: transport credentials require an owner-authorized delivery path")
+				}
+			}
+		}
 		addrs, err := inboundAddresses(inbound)
 		if err != nil {
 			return nil, err

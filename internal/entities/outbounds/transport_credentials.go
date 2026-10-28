@@ -9,6 +9,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/transportcredentials"
 	"github.com/MalenkiySolovey/solovey-ui/internal/secrets/ownerdb"
 	"github.com/MalenkiySolovey/solovey-ui/internal/singbox/tagrefs"
 	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
@@ -91,6 +92,9 @@ func (o *downloadTLSOptions) marshal() ([]byte, error) {
 }
 
 func prepareTransportCredentials(tx *gorm.DB, row *model.Outbound) error {
+	if transportcredentials.IsMKCP(row.Options) {
+		return prepareTransportSeed(tx, row)
+	}
 	next, err := readDownloadTLS(row.Options)
 	if err != nil || next == nil {
 		return err
@@ -171,6 +175,13 @@ func projectTransportCredentials(row model.Outbound, data *map[string]interface{
 	if err != nil {
 		return err
 	}
+	if transportcredentials.IsMKCP(raw) {
+		masked, err := transportcredentials.Mask("outbounds", row.Id, raw)
+		if err != nil {
+			return err
+		}
+		return json.Unmarshal(masked, data)
+	}
 	options, err := readDownloadTLS(raw)
 	if err != nil || options == nil {
 		return err
@@ -197,6 +208,9 @@ func projectTransportCredentials(row model.Outbound, data *map[string]interface{
 }
 
 func marshalTransportRuntime(db *gorm.DB, row model.Outbound, raw []byte) ([]byte, error) {
+	if transportcredentials.IsMKCP(raw) {
+		return transportcredentials.Runtime(db, "outbounds", row.Id, raw)
+	}
 	options, err := readDownloadTLS(raw)
 	if err != nil || options == nil {
 		return raw, err

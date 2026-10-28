@@ -11,7 +11,7 @@ import (
 
 var transportFacts = sync.OnceValue(func() []Fact {
 	var result []Fact
-	for _, kind := range []string{"http", "ws", "quic", "grpc", "httpupgrade", "xhttp"} {
+	for _, kind := range []string{"http", "ws", "quic", "grpc", "httpupgrade", "xhttp", "mkcp"} {
 		probe := map[string]any{"type": kind}
 		if kind == "xhttp" {
 			probe["x_padding_bytes"] = "100-1000"

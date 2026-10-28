@@ -13,6 +13,7 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/jsonvalue"
 	entityorder "github.com/MalenkiySolovey/solovey-ui/internal/entities/order"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/transportcredentials"
 	entitytypes "github.com/MalenkiySolovey/solovey-ui/internal/entities/types"
 	"github.com/MalenkiySolovey/solovey-ui/internal/secrets/ownerdb"
 	"github.com/MalenkiySolovey/solovey-ui/util/secretbox"
@@ -169,6 +170,19 @@ func prepareInboundCredentials(tx *gorm.DB, inbound *model.Inbound) error {
 }
 
 func projectInboundCredentials(inbound model.Inbound, data *map[string]interface{}) error {
+	if transportcredentials.IsMKCP(inbound.Options) {
+		raw, err := json.Marshal(*data)
+		if err != nil {
+			return err
+		}
+		masked, err := transportcredentials.Mask("inbounds", inbound.Id, raw)
+		if err != nil {
+			return err
+		}
+		if err := json.Unmarshal(masked, data); err != nil {
+			return err
+		}
+	}
 	if inbound.Type == "call" {
 		return projectCallCredentials(inbound, data)
 	}
@@ -195,6 +209,9 @@ func marshalRuntimeInbound(db *gorm.DB, inbound model.Inbound) ([]byte, error) {
 	runtimeInbound := inbound
 	runtimeInbound.Type = entitytypes.RuntimeType("inbounds", inbound.Type)
 	raw, err := runtimeInbound.MarshalJSON()
+	if err == nil {
+		raw, err = transportcredentials.Runtime(db, "inbounds", inbound.Id, raw)
+	}
 	if err == nil && inbound.Type == "call" {
 		return marshalCallRuntime(db, inbound, raw)
 	}
