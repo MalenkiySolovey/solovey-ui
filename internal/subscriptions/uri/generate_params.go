@@ -55,12 +55,17 @@ func getTransportParams(t interface{}) []LinkParam {
 		if serviceName, ok := trasport["service_name"].(string); ok {
 			params = append(params, LinkParam{"serviceName", serviceName})
 		}
-	case "httpupgrade":
+	case "httpupgrade", "xhttp":
 		if host, ok := trasport["host"].(string); ok {
 			params = append(params, LinkParam{"host", host})
 		}
 		if path, ok := trasport["path"].(string); ok {
 			params = append(params, LinkParam{"path", path})
+		}
+		if transportType == "xhttp" {
+			if mode, ok := trasport["mode"].(string); ok {
+				params = append(params, LinkParam{"mode", mode})
+			}
 		}
 	}
 	return params

@@ -115,9 +115,6 @@ func xrayApplyStreamSettings(outbound map[string]interface{}, stream map[string]
 		if transport := xrayTransport(stream, network); len(transport) > 0 {
 			outbound["transport"] = transport
 		}
-		if network == "splithttp" || network == "xhttp" {
-			markXrayTransportAdaptation(outbound, network, "httpupgrade", "Xray XHTTP/SplitHTTP has no native sing-box transport; mapped to httpupgrade for preservation")
-		}
 	default:
 		outbound["transport"] = map[string]any{"type": network}
 	}
@@ -207,11 +204,9 @@ func xrayTransport(stream map[string]interface{}, network string) map[string]int
 		if len(settings) == 0 {
 			settings, _ = stream["splithttpSettings"].(map[string]interface{})
 		}
-		transport := map[string]interface{}{"type": "httpupgrade"}
-		copyString(settings, transport, "path", "path")
-		copyString(settings, transport, "host", "host")
-		if headers, ok := settings["headers"].(map[string]interface{}); ok && len(headers) > 0 {
-			transport["headers"] = headers
+		transport := map[string]interface{}{"type": "xhttp"}
+		for _, field := range []string{"path", "host", "mode", "headers"} {
+			copyAny(settings, transport, field, field)
 		}
 		return transport
 	default:

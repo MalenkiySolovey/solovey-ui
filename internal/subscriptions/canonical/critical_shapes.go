@@ -109,6 +109,15 @@ func criticalShapeDiagnostics(raw map[string]any) []ProjectionDiagnostic {
 			}
 		}
 		if key == "transport" {
+			if object["type"] == "xhttp" {
+				for _, field := range []string{"host", "mode"} {
+					if value, present := object[field]; present {
+						if _, ok := value.(string); !ok {
+							valid = false
+						}
+					}
+				}
+			}
 			if value, present := object["host"]; present && !stringListCarrier(value) {
 				valid = false
 			}
@@ -118,6 +127,11 @@ func criticalShapeDiagnostics(raw map[string]any) []ProjectionDiagnostic {
 					valid = false
 				} else {
 					for _, value := range headers {
+						if object["type"] == "xhttp" {
+							if _, ok := value.(string); !ok {
+								valid = false
+							}
+						}
 						if !stringListCarrier(value) {
 							valid = false
 						}

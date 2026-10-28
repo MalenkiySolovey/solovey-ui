@@ -119,7 +119,10 @@ func classifyXrayEndpoint(protocol string, raw map[string]any) []canonical.Proje
 	case "httpupgrade":
 		key, fields = "httpupgradeSettings", "path host headers"
 	case "xhttp", "splithttp":
-		return []canonical.ProjectionDiagnostic{sourceDiagnostic("source_transport_unsupported", "transport", canonical.ProjectionUnsupported)}
+		key, fields = "xhttpSettings", "path host mode headers"
+		if len(sourceMap(stream[key])) == 0 {
+			key = "splithttpSettings"
+		}
 	default:
 		return blocked("source_transport_unmapped", "transport")
 	}

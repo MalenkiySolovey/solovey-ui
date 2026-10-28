@@ -172,6 +172,14 @@ func ValidateEndpointProjection(endpoint EndpointIR, target string) error {
 			keys += " path host"
 		case "grpc":
 			keys += " service_name"
+		case "xhttp":
+			if target == FormatClash || (target == FormatURI && protocol != "vless" && protocol != "trojan") {
+				return ErrUnsupportedProjection
+			}
+			keys += " path host mode"
+			if target == FormatXray {
+				keys += " headers"
+			}
 		default:
 			return ErrUnsupportedProjection
 		}

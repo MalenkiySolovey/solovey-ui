@@ -10,10 +10,6 @@ func markXrayProfileAdaptation(outbound map[string]interface{}, sourceType strin
 	markSubscriptionAdaptation(outbound, subcanonical.FormatXray, "custom.config", sourceType, targetType, "", "")
 }
 
-func markXrayTransportAdaptation(outbound map[string]interface{}, sourceType string, targetType string, note string) {
-	markSubscriptionAdaptation(outbound, subcanonical.FormatXray, "streamSettings", sourceType, targetType, "", note)
-}
-
 func markClashGroupAdaptation(outbound map[string]interface{}, sourceType string, targetType string, strategy string, note string) {
 	markSubscriptionAdaptation(outbound, subcanonical.FormatClash, "proxy-groups", sourceType, targetType, strategy, note)
 }

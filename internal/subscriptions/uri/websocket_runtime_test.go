@@ -73,7 +73,7 @@ func (h *websocketMuxParent) NewConnectionEx(ctx context.Context, conn net.Conn,
 	h.service.NewConnectionEx(ctx, conn, source, destination, onClose)
 }
 
-// The generated URI is decoded into the pinned official WebSocket transport.
+// The generated URI is decoded into the selected provider's WebSocket transport.
 // Two real sing-mux streams share that parent, including early handshake bytes
 // and later frames. Literal query/percent paths must survive actual URLSetPath.
 func TestWave4WebSocketURIWorksWithPinnedRuntimeAndMux(t *testing.T) {
@@ -100,7 +100,10 @@ func TestWave4WebSocketURIWorksWithPinnedRuntimeAndMux(t *testing.T) {
 			payload := bytes.Repeat([]byte{0, 1, 127, 255}, 64)
 			echo := &websocketMuxEcho{payload: payload, done: make(chan error, 2)}
 			logger := log.NewNOPFactory().Logger()
-			service, err := mux.NewService(mux.ServiceOptions{Logger: logger, HandlerEx: echo, NewStreamContext: func(ctx context.Context, _ net.Conn) context.Context { return ctx }})
+			connectionContext := func(ctx context.Context, _ net.Conn) context.Context { return ctx }
+			serviceOptions := mux.ServiceOptions{Logger: logger, HandlerEx: echo, NewStreamContext: connectionContext}
+			configureWebsocketMuxConnectionContext(&serviceOptions)
+			service, err := mux.NewService(serviceOptions)
 			if err != nil {
 				t.Fatal(err)
 			}

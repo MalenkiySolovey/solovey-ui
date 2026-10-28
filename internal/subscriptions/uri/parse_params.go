@@ -51,6 +51,13 @@ func getTransport(tp_type string, q *url.Values) (map[string]interface{}, error)
 		transport["type"] = "httpupgrade"
 		transport["path"] = tp_path
 		transport["host"] = tp_host
+	case "xhttp", "splithttp":
+		transport["type"] = "xhttp"
+		for _, key := range []string{"path", "host", "mode"} {
+			if q.Has(key) {
+				transport[key] = q.Get(key)
+			}
+		}
 	}
 	if transport["type"] == "http" {
 		transport, _ = entityprotocol.ClientTransportFromInbound(transport).(map[string]any)
