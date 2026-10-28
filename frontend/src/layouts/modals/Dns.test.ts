@@ -57,7 +57,7 @@ describe('shared DNS editor for Classic and Nexus', () => {
       app.use(createI18n({ legacy: false, locale: 'en', messages: { en: {} }, missingWarn: false, fallbackWarn: false }))
       app.config.globalProperties.$t = (key: string) => key
       app.config.warnHandler = () => {}
-      for (const name of ['v-row', 'v-col', 'v-select', 'v-text-field', 'v-alert', 'v-card', 'v-card-title', 'v-card-text', 'v-card-actions', 'v-divider', 'v-spacer', 'v-btn', 'v-dialog', 'v-navigation-drawer', 'v-toolbar', 'v-toolbar-title', 'v-icon']) {
+      for (const name of ['v-row', 'v-col', 'v-select', 'v-text-field', 'v-alert', 'v-card', 'v-card-title', 'v-card-text', 'v-card-actions', 'v-divider', 'v-spacer', 'v-btn', 'v-dialog', 'v-navigation-drawer', 'v-toolbar', 'v-toolbar-title', 'v-icon', 'v-defaults-provider']) {
         app.component(name, defineComponent({ inheritAttrs: false, setup: (_, context) => () => h('div', context.attrs, context.slots.default?.()) }))
       }
       const markup = await renderToString(app)
@@ -68,7 +68,8 @@ describe('shared DNS editor for Classic and Nexus', () => {
     it(`${mode} explains unavailable resolved history and refuses a missing service`, () => {
       const { vm, saved } = mount({ type: 'resolved', tag: 'resolved', service: 'missing', accept_default_resolvers: true }, mode)
       expect(vm.selectedCapability.reason).toBe('DNS_RESOLVED_BUS_NAME_OCCUPIED')
-      expect(vm.dnsTypes.find((item: any) => item.value === 'resolved').props.disabled).toBe(true)
+      expect(vm.dnsTypes.some((item: any) => item.value === 'resolved')).toBe(false)
+      expect(vm.capabilityState).toMatchObject({ allowed: false, historical: true })
       expect(vm.missingService).toBe(true)
       vm.save()
       expect(saved).not.toHaveBeenCalled()
