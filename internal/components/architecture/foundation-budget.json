@@ -2039,7 +2039,7 @@
       "rule": "direct-policy",
       "path": "internal/singbox/tagrefs/rows.go",
       "symbol": "scanOutboundRowsForTag",
-      "digest": "cddcb505331d22816746083ddcfafe3eb247d99444be88f067576e427f2cb065"
+      "digest": "df09e05a1c7b9d2ea00ba85c908370985714bd2a9dba79b17737ad2c3d4914f6"
     },
     {
       "rule": "direct-policy",

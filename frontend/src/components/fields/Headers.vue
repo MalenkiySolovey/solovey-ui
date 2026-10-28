@@ -39,13 +39,13 @@ type Header = {
   value: string
 }
 export default {
-  props: ['data'],
+  props: { data: { type: Object, required: true }, defaultName: { type: String, default: 'Host' } },
   data() {
     return {}
   },
   methods: {
     add_header() {
-      this.hdrs = [...this.hdrs, {name: "Host", value: ""}]
+      this.hdrs = [...this.hdrs, {name: this.defaultName, value: ""}]
     },
     del_header(i:number) {
       let h = this.hdrs

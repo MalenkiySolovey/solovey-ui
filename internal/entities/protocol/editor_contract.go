@@ -13,6 +13,7 @@ type EditorFacts struct {
 	Enums       map[string]map[string][]string      `json:"enums"`
 	MemoryUnits map[string]uint64                   `json:"memoryUnits"`
 	Snell       map[string]registry.SnellCapability `json:"snell"`
+	Transports  map[string]TransportEditorFact      `json:"transports"`
 }
 
 func EditorContract() EditorFacts {
@@ -23,5 +24,6 @@ func EditorContract() EditorFacts {
 		facts.Enums[consumer] = jsonfields.Enums(typ, false)
 	}
 	facts.Snell = map[string]registry.SnellCapability{"in": registry.SnellContract("inbounds"), "out": registry.SnellContract("outbounds")}
+	facts.Transports = transportEditorFacts()
 	return facts
 }

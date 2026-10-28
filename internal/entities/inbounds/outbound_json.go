@@ -9,6 +9,7 @@ import (
 	dbschema "github.com/MalenkiySolovey/solovey-ui/database/schema"
 	clientfacts "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
 	entityprotocol "github.com/MalenkiySolovey/solovey-ui/internal/entities/protocol"
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/transportcredentials"
 	"github.com/MalenkiySolovey/solovey-ui/util/common"
 	"gorm.io/gorm"
 )
@@ -82,6 +83,10 @@ func fillOutboundJSON(i *model.Inbound, hostname string, legacy bool) error {
 	}
 
 	i.OutJson, err = json.MarshalIndent(outJson, "", "  ")
+	if err != nil {
+		return err
+	}
+	i.OutJson, err = transportcredentials.Mask("inbounds", i.Id, i.OutJson)
 	if err != nil {
 		return err
 	}

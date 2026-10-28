@@ -3,12 +3,14 @@ export const TrspTypes = {
   WebSocket: 'ws',
   QUIC: 'quic',
   gRPC: 'grpc',
-  HTTPUpgrade: "httpupgrade"
+  HTTPUpgrade: "httpupgrade",
+  XHTTP: 'xhttp',
+  mKCP: 'mkcp'
 }
 
 export type TrspType = typeof TrspTypes[keyof typeof TrspTypes]
 
-export type Transport = HTTP|WebSocket|QUIC|gRPC|HTTPUpgrade
+export type Transport = HTTP|WebSocket|QUIC|gRPC|HTTPUpgrade|XHTTP|mKCP
 
 interface TransportBasics {
   type: TrspType
@@ -45,4 +47,51 @@ export interface HTTPUpgrade extends TransportBasics {
   host?: string
   path?: string
   headers?: {}
+}
+
+export type XHTTPRange = string | number
+
+export interface mKCP extends TransportBasics {
+  mtu?: number
+  tti?: number
+  uplink_capacity?: number
+  downlink_capacity?: number
+  congestion?: boolean
+  read_buffer_size?: number
+  write_buffer_size?: number
+  header_type?: string
+  seed?: unknown
+}
+export interface XHTTPBase {
+  host?: string
+  path?: string
+  headers?: Record<string, string>
+  domain_strategy?: string
+  x_padding_bytes: XHTTPRange
+  no_grpc_header?: boolean
+  no_sse_header?: boolean
+  sc_max_each_post_bytes?: XHTTPRange
+  sc_min_posts_interval_ms?: XHTTPRange
+  sc_max_buffered_posts?: number
+  sc_stream_up_server_secs?: XHTTPRange
+  server_max_header_bytes?: number
+  trusted_x_forwarded_for?: string[]
+  xmux?: Partial<Record<'max_concurrency' | 'max_connections' | 'c_max_reuse_times' | 'h_max_request_times' | 'h_max_reusable_secs', XHTTPRange>> & { h_keep_alive_period?: number }
+  x_padding_obfs_mode?: boolean
+  x_padding_key?: string
+  x_padding_header?: string
+  x_padding_placement?: string
+  x_padding_method?: string
+  uplink_http_method?: string
+  session_placement?: string
+  session_key?: string
+  seq_placement?: string
+  seq_key?: string
+  uplink_data_placement?: string
+  uplink_data_key?: string
+  uplink_chunk_size?: XHTTPRange
+}
+export interface XHTTP extends TransportBasics, XHTTPBase {
+  mode?: string
+  download?: XHTTPBase & { server?: string; server_port?: number; detour?: string; tls?: import('./tls').oTls }
 }

@@ -211,4 +211,6 @@ TCP/UDP/restart qualification cover those seams. Official keeps Sudoku
 unavailable and preserves stored state. This exact declaration digest review
 adds no Direct routing decision, worker allowance or new R1 inventory.
 
+R7 XHTTP and accepted native outbound groups compose at scanOutboundRowsForTag with reviewed digest df09e05a1c7b9d2ea00ba85c908370985714bd2a9dba79b17737ad2c3d4914f6. The existing reference owner protects transport.download.detour and native group membership during rename/delete and eager reload. Its existing Direct/final policy is unchanged; no source inventory or new fallback site is introduced.
+
 The accepted Sudoku, native outbound groups and MASQUE consumers compose at the existing outbound registry declaration with reviewed digest 368115e9a46640be0a2505510a26b3e33b63cc6db1021f4eb2446ecbec1f9750. Each selected native constructor keeps its availability gate. This composition adds no Direct routing decision or inventory site.

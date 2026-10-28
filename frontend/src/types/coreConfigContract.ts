@@ -20,7 +20,7 @@ export interface CoreConfigContract {
     clientAuthentication: string[]
     engines: string[]
   }
-  protocol?: { fields: Record<string, string[]>; enums?: Record<string, Record<string, string[]>>; memoryUnits: Record<string, number>; snell?: Record<'in' | 'out', SnellCapability> }
+  protocol?: { fields: Record<string, string[]>; enums?: Record<string, Record<string, string[]>>; memoryUnits: Record<string, number>; snell?: Record<'in' | 'out', SnellCapability>; transports?: Record<string, TransportCapability> }
   dnsActions: Record<string, string[]>
   dnsConditions: string[]
   dnsCacheFields?: string[]
@@ -34,6 +34,13 @@ export interface CoreConfigContract {
 	 httpUnavailableEngines?: Record<string, string>
 	 httpUnavailableVersions?: Record<string, string>
 	 directHttpClient?: Record<string, unknown>
+}
+export interface TransportCapability {
+  available: boolean
+  reason?: string
+  fields?: Record<string, string[]>
+  defaults?: Record<string, unknown>
+  choices?: Record<string, string[]>
 }
 export interface CompatibilityFinding {
   kind: string

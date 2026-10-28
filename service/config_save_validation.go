@@ -1,6 +1,9 @@
 package service
 
 import (
+	"encoding/json"
+
+	"github.com/MalenkiySolovey/solovey-ui/core/registry"
 	"github.com/MalenkiySolovey/solovey-ui/database/model"
 	entitycapabilities "github.com/MalenkiySolovey/solovey-ui/internal/entities/capabilities"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds/clientfacts"
@@ -43,7 +46,26 @@ func (s *ConfigService) validateNativeInboundCandidate(tx *gorm.DB) error {
 			return err
 		}
 	}
-	if count == 0 && outboundCount == 0 {
+	transportCandidate := false
+	if registry.ResolveTransport("xhttp").Available() || registry.ResolveTransport("mkcp").Available() || registry.ResolveTransport("quic").Available() {
+		for _, entity := range []any{&model.Inbound{}, &model.Outbound{}} {
+			if !tx.Migrator().HasTable(entity) {
+				continue
+			}
+			var rows []struct{ Options json.RawMessage }
+			if err := tx.Model(entity).Select("options").Find(&rows).Error; err != nil {
+				return err
+			}
+			for _, row := range rows {
+				var options struct{ Transport struct{ Type string } }
+				if json.Unmarshal(row.Options, &options) == nil && (options.Transport.Type == "xhttp" || options.Transport.Type == "mkcp" || options.Transport.Type == "quic") && registry.ResolveTransport(options.Transport.Type).Available() {
+					transportCandidate = true
+					break
+				}
+			}
+		}
+	}
+	if count == 0 && outboundCount == 0 && !transportCandidate {
 		return nil
 	}
 	projection, err := s.singBoxConfigBuilder().BuildCandidateProjectionFromDB(tx, "", false)

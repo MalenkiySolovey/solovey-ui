@@ -74,6 +74,10 @@ func (v runtimeOutboundView) render(db *gorm.DB, row model.Outbound) (json.RawMe
 			return nil, err
 		}
 	}
+	raw, err = marshalTransportRuntime(db, row, raw)
+	if err != nil {
+		return nil, err
+	}
 	if !composition.IsGroup(row.Type) {
 		return raw, nil
 	}

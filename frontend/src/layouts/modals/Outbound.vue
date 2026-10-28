@@ -74,7 +74,7 @@
               <UrlTest v-if="outbound.type == outTypes.URLTest" :data="outbound" :tags="tags" />
               <Failover v-if="outbound.type == outTypes.Failover" :data="outbound" :tags="tags" />
 
-              <Transport v-if="outbound.type !== outTypes.Mieru && Object.hasOwn(outbound,'transport')" :data="outbound" />
+              <Transport v-if="outbound.type !== outTypes.Mieru && Object.hasOwn(outbound,'transport')" :data="outbound"  direction="out" />
               <OutTLS v-if="outbound.type !== outTypes.MASQUE && Object.hasOwn(outbound,'tls')" :outbound="outbound" />
               <Multiplex v-if="![outTypes.TrustTunnel, outTypes.Sudoku].includes(outbound.type) && Object.hasOwn(outbound,'multiplex')" direction="out" :data="outbound" />
               <Dial v-if="!NoDial.includes(outbound.type)" :dial="outbound" />
