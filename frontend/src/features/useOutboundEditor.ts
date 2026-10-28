@@ -23,6 +23,7 @@ import Ssh from '@/components/protocols/Ssh.vue'
 import CallNative from '@/components/protocols/CallInbound.vue'
 import NativeClientOutbound from '@/components/protocols/NativeClientOutbound.vue'
 import NativeOutboundGroup from '@/components/protocols/NativeOutboundGroup.vue'
+import SudokuNative from '@/components/protocols/Sudoku.vue'
 import { secretMutation, unchangedSecret } from './secretCredentialDraft'
 import Selector from '@/components/protocols/Selector.vue'
 import UrlTest from '@/components/protocols/UrlTest.vue'
@@ -73,7 +74,7 @@ export default defineComponent({
       const tag = this.$props.id > 0 ? this.outbound.tag : this.outbound.type + "-" + RandomUtil.randomSeq(3)
       // Use previous data
       const prevConfig = { id: this.outbound.id, tag: tag, listen: this.outbound.listen, listen_port: this.outbound.listen_port }
-      this.outbound = createOutbound(this.outbound.type, [OutTypes.Call, OutTypes.Mieru, OutTypes.TrustTunnel, OutTypes.Bond, OutTypes.CoreFailover].includes(this.outbound.type) ? { id: this.outbound.id, tag } : prevConfig)
+      this.outbound = createOutbound(this.outbound.type, [OutTypes.Call, OutTypes.Mieru, OutTypes.TrustTunnel, OutTypes.Sudoku, OutTypes.Bond, OutTypes.CoreFailover].includes(this.outbound.type) ? { id: this.outbound.id, tag } : prevConfig)
     },
     closeModal() {
       this.updateData(0) // reset
@@ -126,6 +127,12 @@ export default defineComponent({
           credentialInvalid = !this.outbound.username?.trim() || !(password?.intent === 'replace' || unchangedSecret(password)?.present === true)
         } catch { credentialInvalid = true }
       }
+      if (this.outbound.type === OutTypes.Sudoku) {
+        try {
+          const key = secretMutation(this.outbound.key)
+          credentialInvalid = !(key?.intent === 'replace' || unchangedSecret(key)?.present === true)
+        } catch { credentialInvalid = true }
+      }
       const rangeOnly = this.outbound.type === OutTypes.Mieru && !this.outbound.server_port &&
         (typeof this.outbound.server_ports === 'string' ? this.outbound.server_ports.trim().length > 0 : this.outbound.server_ports?.length > 0)
       const reasons = entitySaveReasons({ identity: this.outbound.tag, port: this.outbound.server_port, requiresPort: !this.NoServer.includes(this.outbound.type) && !rangeOnly, pending: this.loading, capability: this.capabilityState, credentialInvalid, missingRequiredTls: this.outbound.type === OutTypes.TrustTunnel && !this.outbound.tls?.enabled })
@@ -152,5 +159,5 @@ export default defineComponent({
   components: { SaveGuardNotice, CapabilityNotice, Dial, Multiplex, Transport, OutTLS,
     Direct, Socks, Http, Shadowsocks, Vmess, Trojan,
     Wireguard, Hysteria, Naive, ShadowTls, Vless, Tuic,
-    Hysteria2, AnyTls, Snell, Tor, Ssh, CallNative, NativeClientOutbound, NativeOutboundGroup, Selector, UrlTest, Failover }
+    Hysteria2, AnyTls, Snell, Tor, Ssh, CallNative, NativeClientOutbound, SudokuNative, NativeOutboundGroup, Selector, UrlTest, Failover }
 })

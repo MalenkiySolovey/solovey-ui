@@ -193,3 +193,16 @@ and existing Panel health policy; the outer native group owns its wire protocol.
 The scanner also remains the authority for dependency-cycle interpretation.
 Its existing final/Direct policy is unchanged. These replace two exact reviewed
 digests without a new Direct site, worker allowance or R1 inventory regeneration.
+R7 Sudoku Outbound reviews the same `outboundDeclarations` Direct site from
+`ee279e14...` to `4d701dbd...`. The added declaration selects the native Extended
+Sudoku client. Outbounds owns its existing row, complete-candidate validation
+and save/apply; SecretRef seals the client key with row/field binding and
+preserves the selected native key language. The shared Classic/Nexus editor
+edits that owner and its nested HTTP-mask/TLS options. The canonical engine
+owns dials, handshakes, multiplex callbacks and connections through client
+retirement. Focused transactional credential/private archive checks and native
+TCP/UDP/restart qualification cover those seams. Official keeps Sudoku
+unavailable and preserves stored state. This exact declaration digest review
+adds no Direct routing decision, worker allowance or new R1 inventory.
+
+The accepted Sudoku declaration and this consumer queue compose at the existing registry site with reviewed digest 389e1e088b11bbf027d8b5b94ccaec9925ca4e0a3c0d18156b1dbc6daf65e8c4. Both native constructors and their original availability gates are retained; this adds no Direct decision or inventory site.

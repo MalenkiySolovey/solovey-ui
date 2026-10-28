@@ -52,6 +52,7 @@ func outboundDeclarations() []declaration[*outbound.Registry] {
 		{typeName: "trusttunnel", buildTag: "shtorm_extended,with_quic", compiled: supportsTrustTunnelOutbound, register: registerTrustTunnelOutbound},
 		{typeName: "bond", buildTag: "shtorm_extended", compiled: supportsNativeOutboundGroups, register: registerBondOutbound},
 		{typeName: "failover", buildTag: "shtorm_extended", compiled: supportsNativeOutboundGroups, register: registerCoreFailoverOutbound},
+		{typeName: "sudoku", buildTag: "shtorm_extended", compiled: supportsSudokuOutbound, register: registerSudokuOutbound},
 		{typeName: "shadowtls", buildTag: "", compiled: true, register: shadowtls.RegisterOutbound},
 		{typeName: "vless", buildTag: "", compiled: true, register: vless.RegisterOutbound},
 		{typeName: "anytls", buildTag: "", compiled: true, register: anytls.RegisterOutbound},
