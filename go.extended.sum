@@ -39,8 +39,8 @@ github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353 h1:
 github.com/MalenkiySolovey/sing-anytls v0.0.12-0.20261011014237-8f440972b353/go.mod h1:7rjN6IukwysmdusYsrV51Fgu1uW6vsrdd6ctjnEAln8=
 github.com/MalenkiySolovey/sing-box v1.14.3-0.20261012000247-8b914e4be510 h1:RkQg7xe/iBA9+PrEgN8oN0p9LNBNsd2OR65KUEmo4K0=
 github.com/MalenkiySolovey/sing-box v1.14.3-0.20261012000247-8b914e4be510/go.mod h1:O4q0spxb+xwV/p9HYR+Es1cMjK3bBvYl6k08V9rSpwU=
-github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261027184552-1c965b83f04a h1:5hqBNfiz9jVjiNyFPmQ5qUHM/smbeRjux65q/EFhpL8=
-github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261027184552-1c965b83f04a/go.mod h1:sg62CEdWhkOVVDDI3fA01dd82eoZuZKSlLY0oKAUHmc=
+github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261028035253-7f0534cbaba9 h1:SJZXJAwM1fW2zJDqYJa/eqdcQIx6N9dEdqoZGdZLbgY=
+github.com/MalenkiySolovey/sing-box-extended v0.0.0-20261028035253-7f0534cbaba9/go.mod h1:sg62CEdWhkOVVDDI3fA01dd82eoZuZKSlLY0oKAUHmc=
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762 h1:0x0RTO9IyqRHO9rmEpUhCKRBeISM5LwKLsIiIifFbRY=
 github.com/MalenkiySolovey/sing-quic v0.7.1-0.20261010045634-b2eea8ca8762/go.mod h1:rJFeVxbEej2iuyeCJ3drKW+p5rOgtLIW3XhZ6ty7Fig=
 github.com/MalenkiySolovey/sing-quic v0.7.2-0.20261025183737-9034c2c10c63 h1:kRQoFAgCMnYrjyyejCWtJd7Sc08t40HMHY4x58Es88c=
