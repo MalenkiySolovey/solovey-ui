@@ -131,6 +131,7 @@ export default {
     "detourText": "Forward to outbound"
   },
   "transport": {
+    "quicNative": "QUIC uses this connection's TLS settings. The selected runtime has no separate QUIC security, key or packet-header fields.",
     "mkcp": {
       "mtu": "MTU (bytes)",
       "tti": "Transmission interval (ms)",
@@ -140,7 +141,9 @@ export default {
       "write_buffer_size": "Write buffer (MB)",
       "header_type": "Packet header",
       "congestion": "Congestion control",
-      "seed": "mKCP encryption seed"
+      "seed": "mKCP encryption seed",
+      "clearSeed": "Clear stored seed",
+      "absentSeed": "No seed is stored. Use Replace credential to set one."
     },
     "unavailable": "This runtime cannot apply the selected transport. Its saved options remain intact.",
     "xhttp": {

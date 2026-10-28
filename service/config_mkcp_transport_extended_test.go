@@ -13,6 +13,7 @@ import (
 	entityinbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/inbounds"
 	entityoutbounds "github.com/MalenkiySolovey/solovey-ui/internal/entities/outbounds"
 	"github.com/MalenkiySolovey/solovey-ui/internal/entities/transportcredentials"
+	sublocal "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/local"
 )
 
 func TestMKCPSeedRetainsItsCanonicalOwner(t *testing.T) {
@@ -25,6 +26,7 @@ func TestMKCPSeedRetainsItsCanonicalOwner(t *testing.T) {
 		draft := map[string]any{"type": "vless", "tag": "mkcp-" + owner, "transport": transport}
 		if owner == "inbounds" {
 			draft["listen"], draft["listen_port"] = "127.0.0.1", 24567
+			draft["addrs"] = []map[string]any{{"server": "127.0.0.1", "server_port": 24567, "remark": "mKCP fixture"}}
 		} else {
 			draft["server"], draft["server_port"], draft["uuid"] = "192.0.2.1", 443, "f0aa8764-88a4-4d8e-8ca8-24df4d750382"
 		}
@@ -99,6 +101,18 @@ func TestMKCPSeedRetainsItsCanonicalOwner(t *testing.T) {
 			delivered, err := entityinbounds.TransportDeliveryCopy(db, &source)
 			if err != nil || !bytes.Contains(delivered.OutJson, []byte(seed)) || !bytes.Equal(source.OutJson, beforeTemplate) {
 				t.Fatal("transport delivery must borrow from the canonical owner without mutating its template", err)
+			}
+			client := json.RawMessage(`{"vless":{"uuid":"11111111-1111-4111-8111-111111111111"}}`)
+			if _, err := sublocal.BuildInboundOutbounds(client, []*model.Inbound{&source}); err == nil {
+				t.Fatal("unresolved transport credentials reached client delivery")
+			}
+			set, err := sublocal.BuildInboundOutbounds(client, []*model.Inbound{delivered})
+			if err != nil || len(set.Outbounds) != 1 {
+				t.Fatal("authorized native client delivery failed", err)
+			}
+			transport, ok := set.Outbounds[0]["transport"].(map[string]any)
+			if !ok || transport["type"] != "mkcp" || transport["seed"] != seed || transport["header_type"] != "srtp" {
+				t.Fatal("client projection lost native transport fields")
 			}
 		}
 		transport["seed"] = seed

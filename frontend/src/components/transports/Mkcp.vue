@@ -5,7 +5,7 @@
     </v-col>
     <v-col cols="12" sm="6" md="4"><StrictSelect v-model="transport.header_type" :items="contract?.choices?.header_type ?? []" :label="$t('transport.mkcp.header_type')" clearable /></v-col>
     <v-col cols="12" sm="6" md="4"><v-switch v-model="transport.congestion" :label="$t('transport.mkcp.congestion')" color="primary" /></v-col>
-    <v-col cols="12"><SecretCredentialField v-model="transport.seed" :available="contract?.available === true" :label="$t('transport.mkcp.seed')" /></v-col>
+    <v-col cols="12"><SecretCredentialField v-model="transport.seed" :available="contract?.available === true" :label="$t('transport.mkcp.seed')" :clear-label="$t('transport.mkcp.clearSeed')" :absent-label="$t('transport.mkcp.absentSeed')" /></v-col>
   </v-row>
 </template>
 

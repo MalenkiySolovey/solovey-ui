@@ -11,6 +11,7 @@
       </v-col>
     </v-row>
     <v-alert v-if="transportType !== 'tcp' && !facts?.[transportType]?.available" type="warning" variant="tonal" class="my-3">{{ $t('transport.unavailable') }}</v-alert>
+    <v-alert v-if="transportType === 'quic' && facts?.quic?.available" type="info" variant="tonal" class="my-3">{{ $t('transport.quicNative') }}</v-alert>
     <Http v-if="Transport.type == trspTypes.HTTP" :transport="Transport" />
     <WebSocket v-if="Transport.type == trspTypes.WebSocket" :transport="Transport" />
     <GRPC v-if="Transport.type == trspTypes.gRPC" :transport="Transport" />
