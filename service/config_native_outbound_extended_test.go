@@ -14,8 +14,8 @@ import (
 	singboxvalidation "github.com/MalenkiySolovey/solovey-ui/internal/singbox/validation"
 )
 
-func TestNativeOutboundCandidateOwnsPasswordsTransactionally(t *testing.T) {
-	for _, kind := range []string{"mieru", "trusttunnel"} {
+func TestNativeOutboundCandidateOwnsCredentialsTransactionally(t *testing.T) {
+	for _, kind := range []string{"mieru", "trusttunnel", "sudoku"} {
 		t.Run(kind, func(t *testing.T) {
 			initSettingTestDB(t)
 			seedConfigBlobForHotReloadTest(t, json.RawMessage(`{"log":{"disabled":true},"outbounds":[{"type":"direct","tag":"direct"}]}`))
@@ -37,8 +37,15 @@ func TestNativeOutboundCandidateOwnsPasswordsTransactionally(t *testing.T) {
 			}
 			const password = "private-native-outbound-password-canary"
 			draft := map[string]any{"type": kind, "tag": "owned-" + kind, "server": "192.0.2.1", "server_port": 443, "username": "fixture-user", "password": map[string]string{"intent": "replace", "value": password}, "detour": "direct"}
+			field := "password"
 			if kind == "mieru" {
 				draft["transport"] = "private-invalid-transport"
+			} else if kind == "sudoku" {
+				field = "key"
+				delete(draft, "password")
+				delete(draft, "username")
+				draft[field] = map[string]string{"intent": "replace", "value": password}
+				draft["multiplex"] = "private-invalid-multiplex"
 			} else {
 				draft["tls"] = map[string]any{"enabled": true}
 				draft["username"] = ""
@@ -55,6 +62,9 @@ func TestNativeOutboundCandidateOwnsPasswordsTransactionally(t *testing.T) {
 				draft["transport"] = "TCP"
 				draft["multiplexing"] = "MULTIPLEXING_LOW"
 				draft["handshake_mode"] = "HANDSHAKE_STANDARD"
+			} else if kind == "sudoku" {
+				draft["multiplex"] = "off"
+				draft["http_mask"] = map[string]any{"enabled": false}
 			} else {
 				draft["username"] = "fixture-user"
 				draft["multiplex"] = map[string]any{"enabled": false, "max_streams": 8}
@@ -83,19 +93,19 @@ func TestNativeOutboundCandidateOwnsPasswordsTransactionally(t *testing.T) {
 			}
 			for _, entry := range normal {
 				if entry["tag"] == draft["tag"] {
-					ref, _ = entry["password"].(map[string]any)
+					ref, _ = entry[field].(map[string]any)
 				}
 			}
 			if ref == nil || ref["present"] != true {
 				t.Fatal("native password has no masked reference")
 			}
-			draft["id"], draft["password"] = row.Id, map[string]any{"intent": "unchanged", "reference": ref["reference"], "present": ref["present"], "rotationRevision": ref["rotationRevision"]}
+			draft["id"], draft[field] = row.Id, map[string]any{"intent": "unchanged", "reference": ref["reference"], "present": ref["present"], "rotationRevision": ref["rotationRevision"]}
 			raw, _ = json.Marshal(draft)
 			if _, err := svc.Save("outbounds", "edit", raw, "", "admin", "fixture.invalid"); err != nil {
 				t.Fatal("masked edit lost password ownership", err)
 			}
 			before = state()
-			draft["password"] = map[string]string{"intent": "clear"}
+			draft[field] = map[string]string{"intent": "clear"}
 			raw, _ = json.Marshal(draft)
 			if _, err := svc.Save("outbounds", "edit", raw, "", "admin", "fixture.invalid"); err == nil || !strings.HasPrefix(err.Error(), "NATIVE_OUTBOUND_CANDIDATE_REJECTED") || state() != before {
 				t.Fatal("clearing the required native password committed a partial candidate", err)

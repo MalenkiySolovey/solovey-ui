@@ -120,6 +120,10 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		t.Fatal(err)
 	}
 	sudokuPublic, _ := credentials.SudokuPublicKey(sudokuMaster)
+	outboundSudokuKey, err := credentials.SplitSudokuMaster(sudokuMaster)
+	if err != nil {
+		t.Fatal(err)
+	}
 	var sudokuOptions map[string]any
 	_ = json.Unmarshal(inbounds[4].Options, &sudokuOptions)
 	sudokuOptions["master_key"] = map[string]string{"intent": "replace", "value": sudokuMaster}
@@ -184,6 +188,11 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 				return err
 			}
 		}
+		sudokuOutbound, _ := json.Marshal(map[string]any{"type": "sudoku", "tag": "archive-sudoku-outbound", "server": "192.0.2.1", "server_port": 443,
+			"key": map[string]string{"intent": "replace", "value": outboundSudokuKey}, "multiplex": "off", "http_mask": map[string]any{"enabled": false}})
+		if _, err := entityoutbounds.Save(tx, "new", sudokuOutbound); err != nil {
+			return err
+		}
 		return nil
 	}); err != nil {
 		t.Fatal("native Inbounds owner fixture failed", err)
@@ -245,6 +254,7 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 			Outbounds []struct {
 				Type     string
 				Password string
+				Key      string
 				JoinLink string `json:"join_link"`
 				Profile  struct {
 					ID         string `json:"id"`
@@ -275,13 +285,19 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 			t.Fatal("Sudoku runtime projection disclosed delivery material")
 		}
 		callOutboundFound := false
-		masqueOutboundFound := false
+		masqueOutboundFound, sudokuOutboundFound := false, false
 		nativeOutboundsFound := 0
 		for _, outbound := range root.Outbounds {
 			if outbound.Type == "masque" {
 				masqueOutboundFound = true
 				if outbound.Profile.ID != "archive-masque-device" || outbound.Profile.AuthToken != masqueSecrets["auth_token"] || outbound.Profile.LicenseKey != masqueSecrets["license_key"] || outbound.Profile.PrivateKey != masqueSecrets["private_key"] {
 					t.Fatal("archive changed nested MASQUE profile ownership")
+				}
+			}
+			if outbound.Type == "sudoku" {
+				sudokuOutboundFound = true
+				if outbound.Key != outboundSudokuKey {
+					t.Fatal("archive changed private Sudoku outbound key ownership")
 				}
 			}
 			if password, native := nativeOutboundPasswords[outbound.Type]; native {
@@ -297,7 +313,7 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 				}
 			}
 		}
-		if !callOutboundFound || !masqueOutboundFound || nativeOutboundsFound != len(nativeOutboundPasswords) {
+		if !callOutboundFound || !masqueOutboundFound || !sudokuOutboundFound || nativeOutboundsFound != len(nativeOutboundPasswords) {
 			t.Fatal("archive lost a native outbound")
 		}
 		for _, inbound := range root.Inbounds {
@@ -365,6 +381,9 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 				t.Fatal("restored normal read disclosed a MASQUE profile credential")
 			}
 		}
+		if bytes.Contains(encoded, []byte(outboundSudokuKey)) {
+			t.Fatal("restored normal Outbounds read disclosed a private Sudoku key")
+		}
 		if bytes.Contains(encoded, []byte("sbox:v1:")) || bytes.Contains(encoded, []byte(callCookie)) || bytes.Contains(encoded, []byte(outboundRoom)) {
 			t.Fatal("restored normal Outbounds read disclosed private Call material")
 		}
@@ -394,7 +413,7 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 			t.Fatal("private archive persisted a transient native password")
 		}
 	}
-	if bytes.Contains(archive, key) || bytes.Contains(archive, []byte(sudokuMaster)) || bytes.Contains(archive, []byte(sudokuSplit)) {
+	if bytes.Contains(archive, key) || bytes.Contains(archive, []byte(sudokuMaster)) || bytes.Contains(archive, []byte(sudokuSplit)) || bytes.Contains(archive, []byte(outboundSudokuKey)) {
 		t.Fatal("private archive persisted a transient inbound or delivery key")
 	}
 	for _, value := range []string{callCookie, callPassword, callJoinLink, outboundRoom} {

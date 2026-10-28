@@ -25,6 +25,12 @@ export default {
     "cwnd": "Congestion window"
   },
   "nativeOutbound": {
+    "sudokuKey": "Sudoku client key",
+    "sudokuKeyHint": "Use the client key supplied by the remote server. Saved keys remain masked.",
+    "sudokuMask": "HTTP mask",
+    "sudokuMaskHost": "HTTP mask host",
+    "sudokuMaskMultiplex": "HTTP mask multiplexing",
+    "sudokuMaskTLS": "Enable TLS for HTTP mask",
     "sshCipher": "SSH ciphers",
     "sshKex": "SSH key exchange algorithms",
     "sshMac": "SSH MAC algorithms",

@@ -23,6 +23,7 @@ import Ssh from '@/components/protocols/Ssh.vue'
 import CallNative from '@/components/protocols/CallInbound.vue'
 import NativeClientOutbound from '@/components/protocols/NativeClientOutbound.vue'
 import MasqueOutbound from '@/components/protocols/MasqueOutbound.vue'
+import SudokuNative from '@/components/protocols/Sudoku.vue'
 import { secretMutation, unchangedSecret } from './secretCredentialDraft'
 import { serializeOutboundCredentialDraft } from './outboundCredentialDraft'
 import Selector from '@/components/protocols/Selector.vue'
@@ -74,7 +75,7 @@ export default defineComponent({
       const tag = this.$props.id > 0 ? this.outbound.tag : this.outbound.type + "-" + RandomUtil.randomSeq(3)
       // Use previous data
       const prevConfig = { id: this.outbound.id, tag: tag, listen: this.outbound.listen, listen_port: this.outbound.listen_port }
-      this.outbound = createOutbound(this.outbound.type, [OutTypes.Call, OutTypes.Mieru, OutTypes.TrustTunnel, OutTypes.MASQUE].includes(this.outbound.type) ? { id: this.outbound.id, tag } : prevConfig)
+      this.outbound = createOutbound(this.outbound.type, [OutTypes.Call, OutTypes.Mieru, OutTypes.TrustTunnel, OutTypes.Sudoku, OutTypes.MASQUE].includes(this.outbound.type) ? { id: this.outbound.id, tag } : prevConfig)
     },
     closeModal() {
       this.updateData(0) // reset
@@ -127,12 +128,17 @@ export default defineComponent({
           credentialInvalid = !this.outbound.username?.trim() || !(password?.intent === 'replace' || unchangedSecret(password)?.present === true)
         } catch { credentialInvalid = true }
       }
-      if (this.outbound.type === OutTypes.MASQUE) {
+      if ([OutTypes.MASQUE, OutTypes.Sudoku].includes(this.outbound.type)) {
         try {
-          const token = secretMutation(this.outbound.profile?.auth_token)
-          const present = token?.intent === 'replace' || unchangedSecret(token)?.present === true
-          credentialInvalid = Boolean(this.outbound.profile?.id?.trim()) !== present
-          for (const field of ['auth_token', 'license_key', 'private_key']) secretMutation(this.outbound.profile?.[field])
+          if (this.outbound.type === OutTypes.MASQUE) {
+            const token = secretMutation(this.outbound.profile?.auth_token)
+            const present = token?.intent === 'replace' || unchangedSecret(token)?.present === true
+            credentialInvalid = Boolean(this.outbound.profile?.id?.trim()) !== present
+            for (const field of ['auth_token', 'license_key', 'private_key']) secretMutation(this.outbound.profile?.[field])
+          } else {
+            const key = secretMutation(this.outbound.key)
+            credentialInvalid = !(key?.intent === 'replace' || unchangedSecret(key)?.present === true)
+          }
         } catch { credentialInvalid = true }
       }
       const rangeOnly = this.outbound.type === OutTypes.Mieru && !this.outbound.server_port &&
@@ -159,5 +165,5 @@ export default defineComponent({
   components: { SaveGuardNotice, CapabilityNotice, Dial, Multiplex, Transport, OutTLS,
     Direct, Socks, Http, Shadowsocks, Vmess, Trojan,
     Wireguard, Hysteria, Naive, ShadowTls, Vless, Tuic,
-    Hysteria2, AnyTls, Snell, Tor, Ssh, CallNative, NativeClientOutbound, MasqueOutbound, Selector, UrlTest, Failover }
+    Hysteria2, AnyTls, Snell, Tor, Ssh, CallNative, NativeClientOutbound, SudokuNative, MasqueOutbound, Selector, UrlTest, Failover }
 })

@@ -29,6 +29,8 @@ func managedCredentialFields(kind string) []string {
 		return []string{"password"}
 	case "masque":
 		return []string{"auth_token", "private_key", "license_key"}
+	case "sudoku":
+		return []string{"key"}
 	default:
 		return nil
 	}
@@ -95,6 +97,12 @@ func validateManagedCredential(kind, field, value string) error {
 			return nil
 		}
 		return errOutboundCredentialInvalid
+	}
+	if kind == "sudoku" && field == "key" {
+		if !calloptions.CredentialValid("password", value) {
+			return errOutboundCredentialInvalid
+		}
+		return nil
 	}
 	if kind != "call" && field != "password" {
 		return errOutboundCredentialInvalid
