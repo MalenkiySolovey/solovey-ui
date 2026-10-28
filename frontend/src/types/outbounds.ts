@@ -24,6 +24,7 @@ export const OutTypes = {
   Call: 'call',
   Mieru: 'mieru',
   TrustTunnel: 'trusttunnel',
+  Sudoku: 'sudoku',
   Selector: 'selector',
   URLTest: 'urltest',
 	Failover: 'failover',
@@ -67,6 +68,21 @@ export interface Mieru extends OutboundBasics, Dial {
   traffic_pattern?: string
   mtu?: number
   handshake_mode?: string
+}
+
+export interface Sudoku extends OutboundBasics, Dial {
+  server: string
+  server_port?: number
+  key?: unknown
+  aead_method?: string
+  padding_min?: number
+  padding_max?: number
+  table_type?: string
+  enable_pure_downlink?: boolean
+  custom_table?: string
+  custom_tables?: string[]
+  multiplex?: string
+  http_mask?: { enabled?: boolean; mode?: string; host?: string; path_root?: string; multiplex?: string; tls?: oTls }
 }
 
 export interface TrustTunnel extends OutboundBasics, Dial {
@@ -329,6 +345,7 @@ const defaultValues: Record<OutType, Outbound> = {
   call: { type: OutTypes.Call, platform: 'telemost' },
   mieru: { type: OutTypes.Mieru, transport: 'TCP' },
   trusttunnel: { type: OutTypes.TrustTunnel, tls: { enabled: true } },
+  sudoku: { type: OutTypes.Sudoku },
   selector: { type: OutTypes.Selector },
   urltest: { type: OutTypes.URLTest },
 	failover: { type: OutTypes.Failover, outbounds: [], failover: { enabled: true, probe_target: '', interval: '30s', hysteresis: 2 } },

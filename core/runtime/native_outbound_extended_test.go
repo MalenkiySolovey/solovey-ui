@@ -5,22 +5,44 @@ package runtime
 import (
 	"encoding/json"
 	"testing"
+
+	"github.com/MalenkiySolovey/solovey-ui/internal/entities/credentials"
 )
 
 // Exercise the production registry and Scope rather than constructing a
 // qualification-only outbound beside the running core.
 func TestNativeOutboundRegisteredTrafficAndRestart(t *testing.T) {
-	for _, fixture := range []struct{ kind, transport string }{{"mieru", "TCP"}, {"trusttunnel", "tcp"}, {"trusttunnel", "udp"}} {
+	for _, fixture := range []struct{ kind, transport string }{{"mieru", "TCP"}, {"trusttunnel", "tcp"}, {"trusttunnel", "udp"}, {"sudoku", "raw"}, {"sudoku", "poll"}} {
 		t.Run(fixture.kind+"/"+fixture.transport, func(t *testing.T) {
 			var remote *quicFixture
+			var sudokuKey string
 			if fixture.kind == "mieru" {
 				remote = newNativeMieruFixture(t, fixture.transport)
+			} else if fixture.kind == "sudoku" {
+				var master string
+				remote, master = newSudokuFixture(t, fixture.transport, "chacha20-poly1305")
+				var err error
+				sudokuKey, err = credentials.SplitSudokuMaster(master)
+				if err != nil {
+					t.Fatal(err)
+				}
 			} else {
 				remote = newQUICFixture(t, fixture.kind)
 			}
 			options := map[string]any{"type": fixture.kind, "tag": "native-client", "server": "127.0.0.1", "server_port": remote.port, "username": "verified-7", "password": quicFixturePassword}
 			if fixture.kind == "mieru" {
 				options["transport"], options["multiplexing"], options["handshake_mode"] = fixture.transport, "MULTIPLEXING_LOW", "HANDSHAKE_STANDARD"
+			} else if fixture.kind == "sudoku" {
+				delete(options, "username")
+				delete(options, "password")
+				options["key"], options["aead_method"] = sudokuKey, remote.inbound["aead_method"]
+				options["padding_min"], options["padding_max"] = 0, 0
+				options["table_type"], options["enable_pure_downlink"] = "up_ascii_down_entropy", false
+				options["multiplex"] = "off"
+				if fixture.transport == "poll" {
+					options["multiplex"] = "on"
+				}
+				options["http_mask"] = map[string]any{"enabled": fixture.transport != "raw", "mode": "poll", "path_root": "owned"}
 			} else {
 				options["quic"] = fixture.transport == "udp"
 				options["health_check"] = true
@@ -44,9 +66,13 @@ func TestNativeOutboundRegisteredTrafficAndRestart(t *testing.T) {
 				}
 				stream := nativeStream(t, peer, remote)
 				nativeUDPWitness(t, peer)
-				for _, flow := range remote.parents(t, 7).Connections {
-					if flow.ClientID != 7 || flow.Identity != "verified" {
-						t.Fatal("native client authentication lost its remote owner")
+				if fixture.kind == "sudoku" {
+					assertSudokuUnassociated(t, remote)
+				} else {
+					for _, flow := range remote.parents(t, 7).Connections {
+						if flow.ClientID != 7 || flow.Identity != "verified" {
+							t.Fatal("native client authentication lost its remote owner")
+						}
 					}
 				}
 				if err := client.Stop(); err != nil {
