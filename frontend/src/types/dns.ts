@@ -71,6 +71,7 @@ interface generalDnsRule {
   disable_cache?: boolean
   rewrite_ttl?: number
   client_subnet?: string
+  remove_client_subnet?: boolean
   method?: string
   no_drop?: boolean
   rcode?: string
@@ -92,6 +93,7 @@ export const actionDnsRuleKeys = [
   'disable_cache',
   'rewrite_ttl',
   'client_subnet',
+  'remove_client_subnet',
   'method',
   'no_drop',
   'rcode',
@@ -114,6 +116,8 @@ export interface dnsRule extends generalDnsRule {
   inbound?: string[]
   ip_version?: 4 | 6
   query_type?: string[]
+  query_client_subnet?: string[]
+  query_dnssec?: boolean
   network?: string[]
   auth_user?: string[]
   protocol?: string[]
@@ -134,6 +138,10 @@ export interface dnsRule extends generalDnsRule {
   process_path?: string[]
   process_path_regex?: string[]
   package_name?: string[]
+  package_name_regex?: string[]
+  source_mac_address?: string[]
+  source_hostname?: string[]
+  preferred_by?: string[]
   user?: string[]
   user_id?: number[]
   clash_mode?: string

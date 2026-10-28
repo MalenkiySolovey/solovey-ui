@@ -15,6 +15,15 @@ import (
 // preconstruction contracts. Its official decoder/construction remain the
 // authority for field types and match behavior; no rule is reordered here.
 func analyzeDNSRules(root dnsObject, rules []dnsObject, historical bool) []diagnostics.Finding {
+	var dns dnsObject
+	_ = json.Unmarshal(root["dns"], &dns)
+	var servers []dnsObject
+	_ = json.Unmarshal(dns["servers"], &servers)
+	serverTypes := map[string][]string{}
+	for _, server := range servers {
+		tag := dnsString(server, "tag")
+		serverTypes[tag] = append(serverTypes[tag], dnsString(server, "type"))
+	}
 	type node struct {
 		fields dnsObject
 		path   string
@@ -50,6 +59,21 @@ func analyzeDNSRules(root dnsObject, rules []dnsObject, historical bool) []diagn
 	}
 	for _, current := range flattened {
 		rule := current.fields
+		// Match the selected router's pre-start action and reference contracts.
+		// Reject the candidate without rewriting its preserved desired state.
+		if dnsBool(rule, "remove_client_subnet") && activeDNSRaw(rule["client_subnet"]) {
+			findings = append(findings, dnsFailure(current.path+".client_subnet", "dns_client_subnet_conflict", "Choose a client subnet override or ECS removal; explicitly clear the conflicting action field.", diagnostics.ManualRequired))
+		}
+		for _, tag := range dnsStringList(rule["preferred_by"]) {
+			kinds := serverTypes[tag]
+			if len(kinds) != 1 {
+				findings = append(findings, dnsFailure(current.path+".preferred_by", "dns_preferred_server_missing", "Select one existing, unambiguous DNS server for preferred-domain matching.", diagnostics.ManualRequired))
+				continue
+			}
+			if !dnsSupportsPreferredDomain(kinds[0]) {
+				findings = append(findings, dnsFailure(current.path+".preferred_by", "dns_preferred_server_incompatible", "The referenced DNS server must support preferred-domain matching.", diagnostics.ManualRequired))
+			}
+		}
 		response := activeDNSRaw(rule["match_response"])
 		if dnsBool(rule, "race") {
 			action := dnsString(rule, "action")
@@ -186,6 +210,19 @@ func analyzeDNSRules(root dnsObject, rules []dnsObject, historical bool) []diagn
 		}
 	}
 	return findings
+}
+
+// These selected registry transports implement DNSTransportWithPreferredDomain.
+// Availability is checked separately; an uncompiled transport's stored identity
+// does not become a different semantic type. Extended OpenVPN/OpenConnect DNS
+// transports are not registered by the Panel and cannot be inferred from names.
+func dnsSupportsPreferredDomain(kind string) bool {
+	switch kind {
+	case "hosts", "local", "mdns", "tailscale":
+		return true
+	default:
+		return false
+	}
 }
 
 func activeDNSCondition(rule dnsObject, key string) bool {

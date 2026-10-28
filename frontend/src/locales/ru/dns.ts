@@ -23,6 +23,16 @@ export default {
       "preferGo": "Предпочитать Go"
     },
     "rule": {
+      "additionalConditions": "Дополнительные условия",
+      "removeCondition": "Удалить условие «{field}»",
+      "preservedCondition": "Условие сохранено, но недоступно в текущем runtime. Его значение здесь не редактируется.",
+      "queryClientSubnet": "Клиентские подсети запроса (ECS)",
+      "queryDnssec": "Запрос требует DNSSEC",
+      "packageNameRegex": "Шаблоны имён пакетов",
+      "sourceMacAddress": "MAC-адреса источника",
+      "sourceHostname": "Имена хостов источника",
+      "preferredBy": "Предпочтительные DNS-серверы",
+      "preferredByHint": "Теги DNS-серверов, по одному в строке. Каждый сервер должен поддерживать сопоставление предпочтительных доменов. Это DNS-ссылка, отдельная от маршрутизации исходящих подключений.",
       "add": "Добавить правило DNS",
       "empty": "Нет правил DNS",
       "title": "Правила DNS",
@@ -40,6 +50,8 @@ export default {
         "predefined": "Предопределенные",
         "rewriteTtl": "Перезаписать TTL",
         "clientSubnet": "Подсеть клиента",
+        "removeClientSubnet": "Удалить клиентскую подсеть (ECS)",
+        "subnetConflict": "Выберите подмену клиентской подсети или удаление ECS. Перед удалением явно очистите значение подмены.",
         "rcode": "Код ответа",
         "rcodes": {
           "noError": "ОК",

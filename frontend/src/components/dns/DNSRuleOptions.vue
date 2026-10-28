@@ -1,5 +1,6 @@
 <template>
   <RuleOptions :rule="rule" :clients="clients" :in-tags="inTags" :rule-sets="ruleSets" />
+  <DNSMatchConditions :rule="rule" />
   <v-row v-if="coreConfigContract?.dnsConditions.includes('match_response')" class="px-3">
     <v-col cols="12" sm="4">
       <v-select v-model="responseMode" :items="['absent', 'disabled', 'anonymous', 'tagged']" label="Response context" hide-details />
@@ -18,6 +19,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import RuleOptions from '@/components/rules/DnsRule.vue'
+import DNSMatchConditions from './DNSMatchConditions.vue'
 import { coreConfigContract } from '@/types/coreConfigContract'
 const props = defineProps<{ rule: Record<string, any>; clients?: any; inTags?: any; ruleSets?: any }>()
 const responseMode = computed({
