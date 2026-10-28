@@ -26,10 +26,10 @@
     </v-card-text>
     <v-divider></v-divider>
     <v-card-actions style="padding: 0;">
-      <v-btn icon="mdi-file-edit" @click="emit('edit')">
+      <v-btn icon="mdi-file-edit" :aria-label="$t('actions.edit')" @click="emit('edit')">
         <v-icon /><v-tooltip activator="parent" location="top" :text="$t('actions.edit')"></v-tooltip>
       </v-btn>
-      <v-btn icon="mdi-file-remove" style="margin-inline-start:0;" color="warning" @click="emit('update:deleteOpen', true)">
+      <v-btn icon="mdi-file-remove" :aria-label="$t('actions.del')" style="margin-inline-start:0;" color="warning" @click="emit('update:deleteOpen', true)">
         <v-icon /><v-tooltip activator="parent" location="top" :text="$t('actions.del')"></v-tooltip>
       </v-btn>
       <v-overlay

@@ -2,6 +2,7 @@
   <form-shell
     :dirty="dirty"
     :loading="loading"
+    :save-disabled="subnetConflict"
     :title="$t('actions.' + title) + ' ' + $t('objects.dnsrule')"
     @close="closeModal"
     @save="saveChanges"
@@ -90,7 +91,11 @@
               <v-text-field v-model.number="ruleData.rewrite_ttl" type="number" min="0" :label="$t('dns.rule.action.rewriteTtl')" hide-details></v-text-field>
             </v-col>
             <v-col cols="12" sm="6" md="4">
-              <v-text-field v-model="ruleData.client_subnet" :label="$t('dns.rule.action.clientSubnet')" hide-details></v-text-field>
+              <v-text-field v-model="ruleData.client_subnet" :label="$t('dns.rule.action.clientSubnet')" clearable
+                @click:clear="delete ruleData.client_subnet" :error-messages="subnetConflict ? [$t('dns.rule.action.subnetConflict')] : []" hide-details="auto"></v-text-field>
+            </v-col>
+            <v-col v-if="supportsActionField('remove_client_subnet')" cols="12" sm="6" md="4">
+              <v-switch v-model="ruleData.remove_client_subnet" :label="$t('dns.rule.action.removeClientSubnet')" hide-details />
             </v-col>
           </v-row>
         </v-card>
@@ -182,6 +187,9 @@ export default {
     }
   },
   methods: {
+    supportsActionField(field: string): boolean {
+      return coreConfigContract.value?.dnsActions[this.ruleData.action ?? 'route']?.includes(field) === true
+    },
     ruleObjectKey(r: any): number {
       if (r == null || typeof r !== 'object') return -1
       let key = dnsRuleObjectKeys.get(r)
@@ -229,6 +237,7 @@ export default {
       this.$emit('close')
     },
     saveChanges() {
+      if (this.subnetConflict) return
       this.loading = true
       const originalAction = this.snapshot ? (JSON.parse(this.snapshot).action ?? 'route') : undefined
       const newRule = serializeDNSRule(this.ruleData, originalAction, coreConfigContract.value)
@@ -240,6 +249,9 @@ export default {
     }
   },
   computed: {
+    subnetConflict(): boolean {
+      return this.ruleData.remove_client_subnet === true && typeof this.ruleData.client_subnet === 'string' && this.ruleData.client_subnet.length > 0
+    },
     actions() {
       const actions = Object.keys(coreConfigContract.value?.dnsActions ?? {})
       const current = this.ruleData.action ?? 'route'

@@ -19,6 +19,19 @@ describe('DNS editor round trips', () => {
   it('does not guess field authority when the contract request fails', () => {
     expect(serializeDNSRule({ action: 'respond', server: 'dns', tag: 'r' }, 'evaluate', undefined)).toEqual({ action: 'respond', server: 'dns', tag: 'r' })
   })
+  it('keeps DNS query/device conditions and ECS removal in their original owners', () => {
+    const modal = DnsRuleModal as any
+    const source = { query_client_subnet: ['192.0.2.0/24'], query_dnssec: false, source_hostname: ['router'], source_mac_address: ['02:00:00:00:00:01'], package_name_regex: ['^example\\.app$'], preferred_by: ['hosts'], action: 'route', server: 'dns', remove_client_subnet: true, preserved_future: { count: 0 } }
+    let saved: any
+    const state = { ...modal.data(), $props: { index: 0, data: JSON.stringify(source), serverTags: ['dns'] }, $emit: (event: string, value: any) => { if (event === 'save') saved = value } }
+    modal.methods.updateData.call(state)
+    expect(state.ruleData.remove_client_subnet).toBe(true)
+    expect(state.ruleData.rules[0].remove_client_subnet).toBeUndefined()
+    modal.methods.saveChanges.call(state)
+    expect(saved).toEqual(source)
+    const currentContract = { ...contract, dnsActions: { ...contract.dnsActions, route: [...contract.dnsActions.route, 'remove_client_subnet'] } }
+    expect(serializeDNSRule({ ...state.ruleData, action: 'respond' }, 'route', currentContract)).toEqual({ ...source, action: 'respond', server: undefined, remove_client_subnet: undefined })
+  })
   it('factory defaults and imported nested TLS state are isolated across reopen', () => {
     const first = createDnsServer('tls')
     first.tls.insecure = true
