@@ -1,9 +1,30 @@
 package jsonfields
 
 import (
+	"maps"
 	"reflect"
 	"strings"
 )
+
+// Enums projects declared choices from the same pinned consumer as Names.
+func Enums(t reflect.Type, includeDeprecated bool) map[string][]string {
+	result := map[string][]string{}
+	for i := 0; i < t.NumField(); i++ {
+		field := t.Field(i)
+		if field.Anonymous && field.Type.Kind() == reflect.Struct {
+			maps.Copy(result, Enums(field.Type, includeDeprecated))
+			continue
+		}
+		if !includeDeprecated && field.Tag.Get("schema") == "omit" {
+			continue
+		}
+		name := strings.Split(field.Tag.Get("json"), ",")[0]
+		if choices := field.Tag.Get("enum"); name != "" && name != "-" && choices != "" {
+			result[name] = strings.Split(choices, ",")
+		}
+	}
+	return result
+}
 
 // Names projects public JSON field names from pinned option structs.
 // Semantic owners choose consumers and whether to expose deprecated fields.

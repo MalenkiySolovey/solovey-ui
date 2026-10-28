@@ -553,6 +553,8 @@ export default {
       "auth": "Authentication Password",
       "hyOptions": "Hysteria Options",
       "hy2Options": "Hysteria2 Options",
+      "bbrProfile": "BBR profile",
+      "hopIntervalMax": "Maximum port hopping interval",
       "ignoreBw": "Ignore Client Bandwidth"
     },
     "shdwTls": {

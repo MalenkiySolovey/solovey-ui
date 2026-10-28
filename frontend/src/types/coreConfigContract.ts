@@ -20,7 +20,7 @@ export interface CoreConfigContract {
     clientAuthentication: string[]
     engines: string[]
   }
-  protocol?: { fields: Record<string, string[]>; memoryUnits: Record<string, number>; snell?: Record<'in' | 'out', SnellCapability> }
+  protocol?: { fields: Record<string, string[]>; enums?: Record<string, Record<string, string[]>>; memoryUnits: Record<string, number>; snell?: Record<'in' | 'out', SnellCapability> }
   dnsActions: Record<string, string[]>
   dnsConditions: string[]
   dnsCacheFields?: string[]

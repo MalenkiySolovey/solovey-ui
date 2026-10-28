@@ -202,7 +202,7 @@ export interface VLESS extends OutboundBasics, Dial {
   transport?: Transport
 }
 
-export interface TUIC extends OutboundBasics, Dial {
+export interface TUIC extends OutboundBasics, Dial, QUICTuning {
   server: string
   server_port: number
   uuid: string
@@ -217,6 +217,8 @@ export interface TUIC extends OutboundBasics, Dial {
 }
 
 export interface Hysteria2 extends OutboundBasics, Dial, QUICTuning {
+  bbr_profile?: string
+  hop_interval_max?: string
   disable_chrome_parrot?: boolean
   server: string
   server_port: number

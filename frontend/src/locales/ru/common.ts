@@ -553,6 +553,8 @@ export default {
       "auth": "Пароль аутентификации",
       "hyOptions": "Параметры Hysteria",
       "hy2Options": "Параметры Hysteria2",
+      "bbrProfile": "Профиль BBR",
+      "hopIntervalMax": "Максимальный интервал смены порта",
       "ignoreBw": "Игнорировать пропускную способность клиента"
     },
     "shdwTls": {
