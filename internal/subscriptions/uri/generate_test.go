@@ -140,10 +140,13 @@ func TestLinkGeneratorProducesParseableLinksForEverySupportedType(t *testing.T) 
 			inbound := roundTripInbound(
 				inboundType,
 				inboundType+"-in",
-				`{"listen_port":443,"method":"aes-128-gcm","transport":"TCP"}`,
+				`{"listen_port":443,"method":"aes-128-gcm"}`,
 				`{}`,
 				`[{"server":"node.example.com","server_port":443,"remark":"-node"}]`,
 			)
+			if inboundType == "mieru" {
+				inbound.Options = json.RawMessage(`{"listen_port":443,"transport":"TCP"}`)
+			}
 			links, err := Generate(clientConfig, inbound, "fallback.example.com")
 			if err != nil {
 				t.Fatal(err)
