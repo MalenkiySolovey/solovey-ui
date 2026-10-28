@@ -1,5 +1,9 @@
 export default {
   "nativeOutbound": {
+    "sshCipher": "Шифры SSH",
+    "sshKex": "Алгоритмы обмена ключами SSH",
+    "sshMac": "Алгоритмы MAC SSH",
+    "sshAlgorithmHint": "Список в порядке предпочтения. Пустой список использует настройки движка по умолчанию.",
     "username": "Имя пользователя",
     "password": "Пароль",
     "serverPorts": "Диапазоны портов сервера",

@@ -1,5 +1,10 @@
 <template>
   <v-card subtitle="SSH">
+    <v-row>
+      <v-col cols="12" sm="6" md="4">
+        <v-text-field v-model="data.user" :label="$t('types.un')" hide-details></v-text-field>
+      </v-col>
+    </v-row>
     <template v-if="optionKey">
         <v-row>
           <v-col cols="auto">
@@ -49,9 +54,6 @@
       <template v-else>
         <v-row>
           <v-col cols="12" sm="6" md="4">
-            <v-text-field v-model="data.user" :label="$t('types.un')" hide-details></v-text-field>
-          </v-col>
-          <v-col cols="12" sm="6" md="4">
             <v-text-field v-model="data.password" :label="$t('types.pw')" hide-details></v-text-field>
           </v-col>
         </v-row>
@@ -64,6 +66,11 @@
           v-model="host_key">
         </v-textarea>
       </v-col>
+    </v-row>
+    <v-row>
+      <v-col cols="12" sm="6"><v-combobox :model-value="data.cipher ?? []" @update:model-value="value => setAlgorithms('cipher', value)" multiple chips clearable :label="$t('nativeOutbound.sshCipher')" :hint="$t('nativeOutbound.sshAlgorithmHint')" persistent-hint /></v-col>
+      <v-col cols="12" sm="6"><v-combobox :model-value="data.kex_algorithm ?? []" @update:model-value="value => setAlgorithms('kex_algorithm', value)" multiple chips clearable :label="$t('nativeOutbound.sshKex')" :hint="$t('nativeOutbound.sshAlgorithmHint')" persistent-hint /></v-col>
+      <v-col cols="12" sm="6"><v-combobox :model-value="data.mac ?? []" @update:model-value="value => setAlgorithms('mac', value)" multiple chips clearable :label="$t('nativeOutbound.sshMac')" :hint="$t('nativeOutbound.sshAlgorithmHint')" persistent-hint /></v-col>
     </v-row>
     <v-row>
       <v-col cols="12" sm="6" md="4" v-if="data.host_key_algorithms != undefined">
@@ -107,7 +114,7 @@ export default {
   data() {
     return {
       menu: false,
-      usePath: 0,
+      usePath: this.$props.data.private_key !== undefined ? 1 : 0,
     }
   },
   computed: {
@@ -117,7 +124,6 @@ export default {
         this.usePath = 0
         if (v) {
           this.$props.data.private_key_path = ""
-          delete this.$props.data.user
           delete this.$props.data.password
         } else {
           delete this.$props.data.private_key_path
@@ -145,6 +151,13 @@ export default {
     algorithms: {
       get() { return this.$props.data.host_key_algorithms ? this.$props.data.host_key_algorithms.join(',') : '' },
       set(v:string) { this.$props.data.host_key_algorithms = v.length > 0 ? v.split(',') : undefined }
+    },
+  },
+  methods: {
+    setAlgorithms(field: 'cipher' | 'kex_algorithm' | 'mac', values: string[]) {
+      const selected = values.map(value => value.trim()).filter(Boolean)
+      if (selected.length) this.$props.data[field] = selected
+      else delete this.$props.data[field]
     },
   },
 }
