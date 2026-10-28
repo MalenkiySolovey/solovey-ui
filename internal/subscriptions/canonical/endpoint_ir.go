@@ -36,7 +36,7 @@ type ProjectionDiagnostic struct {
 var ErrEndpointMapping = errors.New("MANUAL_MAPPING_REQUIRED: endpoint semantics cannot be projected safely")
 
 var authenticationFields = []string{
-	"uuid", "username", "password", "method", "flow", "alter_id", "security",
+	"uuid", "username", "user", "password", "method", "flow", "alter_id", "security",
 	"auth", "auth_str", "token", "private_key", "private_key_path", "private_key_passphrase",
 	"key",
 }

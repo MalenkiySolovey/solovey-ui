@@ -215,14 +215,18 @@ func inboundOutboundConfig(configs map[string]interface{}, inbound *model.Inboun
 	if protocol == "shadowsocks" {
 		return shadowsocksOutboundConfig(configs, inbound, outbound)
 	}
-	if protocol == "mieru" || protocol == "trusttunnel" {
+	if protocol == "mieru" || protocol == "trusttunnel" || protocol == "ssh" {
 		config, _ := configs[protocol].(map[string]any)
 		username, _ := config["name"].(string)
 		password, _ := config["password"].(string)
 		if username == "" || password == "" || secretbox.IsEncrypted(password) {
 			return nil, fmt.Errorf("CLIENT_CREDENTIAL_DELIVERY_UNAVAILABLE")
 		}
-		outbound["username"], outbound["password"] = username, password
+		userField := "username"
+		if protocol == "ssh" {
+			userField = "user"
+		}
+		outbound[userField], outbound["password"] = username, password
 		return outbound, nil
 	}
 	if protocol == "sudoku" {

@@ -68,6 +68,46 @@ func sshHostKeys(bundle []byte) ([]string, error) {
 	return keys, nil
 }
 
+// sshPublicHostKeys projects public trust from the canonical serving key.
+// Filesystem keys and ephemeral identities cannot supply a reproducible pin.
+func sshPublicHostKeys(db *gorm.DB, inbound *model.Inbound) ([]string, error) {
+	if db == nil || inbound == nil {
+		return nil, errInboundCredentialInvalid
+	}
+	var fields map[string]json.RawMessage
+	if json.Unmarshal(inbound.Options, &fields) != nil {
+		return nil, errInboundCredentialInvalid
+	}
+	if raw := bytes.TrimSpace(fields["host_key_path"]); len(raw) > 0 && !bytes.Equal(raw, []byte("null")) && !bytes.Equal(raw, []byte("[]")) && !bytes.Equal(raw, []byte(`""`)) {
+		return nil, errors.New("SSH_CLIENT_PUBLIC_HOST_TRUST_REQUIRED: configure a managed host key for private client delivery")
+	}
+	_, captured := capturedHostKey(fields)
+	if captured == "" || !secretbox.IsEncrypted(captured) {
+		return nil, errors.New("SSH_CLIENT_PUBLIC_HOST_TRUST_REQUIRED: configure a managed host key for private client delivery")
+	}
+	ref, err := ownerdb.Reference("inbounds", inbound.Id, "host_key")
+	if err != nil {
+		return nil, err
+	}
+	request := secretref.Access{Reference: ref, Actor: secretref.Actor{Component: "inbounds"}, Operation: secretref.UseForOwner, IntentID: "ssh-client-public-trust"}
+	var public []string
+	_, err = ownerdb.Access(db.Statement.Context, db, request, captured, func(value []byte) error {
+		keys, err := sshHostKeys(value)
+		if err != nil {
+			return err
+		}
+		for _, key := range keys {
+			signer, err := ssh.ParsePrivateKey([]byte(key))
+			if err != nil {
+				return errInboundCredentialInvalid
+			}
+			public = append(public, strings.TrimSpace(string(ssh.MarshalAuthorizedKey(signer.PublicKey()))))
+		}
+		return nil
+	})
+	return public, err
+}
+
 func prepareInboundCredentials(tx *gorm.DB, inbound *model.Inbound) error {
 	if inbound.Type == "call" {
 		return prepareCallCredentials(tx, inbound)

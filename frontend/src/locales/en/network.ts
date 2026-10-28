@@ -99,6 +99,7 @@ export default {
     "sshServerVersion": "SSH server identification",
     "sshMaxAuthTries": "Maximum authentication attempts",
     "sshHostKeys": "SSH host private-key bundle",
+    "sshClientDeliveryTrust": "Private JSON delivery requires a managed host key without filesystem key paths. Only its public key and the assigned user's password enter the client profile. Ephemeral host keys remain available for the server but cannot supply a stable client trust pin.",
     "sshHostKeyPaths": "SSH host-key file paths on this host",
     "sshKeyDefault": "Keep retains the stored host keys. Replace accepts one or more PEM private keys. Without stored keys or file paths, the core generates a temporary host key each time the listener is recreated.",
     "preferIP": "IP preference",

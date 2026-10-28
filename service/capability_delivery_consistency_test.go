@@ -33,7 +33,7 @@ func TestCapabilityDeliveryAgreesWithServingEntityForEveryOwnerFact(t *testing.T
 			}
 			inbound := &model.Inbound{Type: fact.Type, Tag: "local", Options: json.RawMessage("{}"), Addrs: json.RawMessage("[]"), OutJson: json.RawMessage(fmt.Sprintf(`{"type":%q,"tag":"local","server":"example.invalid","server_port":443}`, fact.Type))}
 			clientConfig := json.RawMessage("{}")
-			if fact.Type == "mieru" || fact.Type == "trusttunnel" {
+			if fact.Type == "mieru" || fact.Type == "trusttunnel" || fact.Type == "ssh" {
 				clientConfig = json.RawMessage(fmt.Sprintf(`{%q:{"name":"fixture","password":"synthetic-private-response"}}`, fact.Type))
 				if fact.Type == "mieru" {
 					inbound.OutJson = json.RawMessage(`{"type":"mieru","tag":"local","server":"example.invalid","server_port":443,"transport":"TCP"}`)

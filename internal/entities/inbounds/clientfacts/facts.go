@@ -32,7 +32,7 @@ var declarations = []Fact{
 	// Delivery is admitted separately after the canonical serializers qualify.
 	{"mieru", "mieru", true, true, true, "password"},
 	{"trusttunnel", "trusttunnel", true, false, true, "password"},
-	{"ssh", "ssh", false, false, false, "password"},
+	{"ssh", "ssh", true, false, false, "password"},
 	{"mtproxy", "mtproxy", false, true, false, "secret"},
 	// Keys are an encrypted delivery bundle, never a serving users array.
 	{"sudoku", "sudoku", true, true, true, "keys"},

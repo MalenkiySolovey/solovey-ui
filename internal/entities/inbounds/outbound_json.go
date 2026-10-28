@@ -37,22 +37,35 @@ func OutboundDeliveryCopy(db *gorm.DB, inbound *model.Inbound) (*model.Inbound, 
 	if err != nil || copy == nil {
 		return copy, err
 	}
-	if (copy.Type != "mieru" && copy.Type != "trusttunnel" && copy.Type != "sudoku") || !clientfacts.CanDeliver(copy.Type, "json") {
+	if (copy.Type != "mieru" && copy.Type != "trusttunnel" && copy.Type != "sudoku" && copy.Type != "ssh") || !clientfacts.CanDeliver(copy.Type, "json") {
 		return copy, nil
 	}
 	var template map[string]any
 	if len(bytes.TrimSpace(copy.OutJson)) != 0 && json.Unmarshal(copy.OutJson, &template) != nil {
 		return nil, errors.New("CLIENT_DELIVERY_TEMPLATE_INVALID")
 	}
-	if len(template) != 0 {
-		return copy, nil
+	if len(template) == 0 {
+		var addresses []map[string]any
+		if json.Unmarshal(copy.Addrs, &addresses) != nil || len(addresses) == 0 {
+			return nil, errors.New("CLIENT_PUBLIC_ADDRESS_REQUIRED")
+		}
+		if err := FillOutboundJSONFromDB(db, copy, ""); err != nil {
+			return nil, err
+		}
 	}
-	var addresses []map[string]any
-	if json.Unmarshal(copy.Addrs, &addresses) != nil || len(addresses) == 0 {
-		return nil, errors.New("CLIENT_PUBLIC_ADDRESS_REQUIRED")
-	}
-	if err := FillOutboundJSONFromDB(db, copy, ""); err != nil {
-		return nil, err
+	if copy.Type == "ssh" {
+		keys, err := sshPublicHostKeys(db, copy)
+		if err != nil {
+			return nil, err
+		}
+		if json.Unmarshal(copy.OutJson, &template) != nil {
+			return nil, errors.New("CLIENT_DELIVERY_TEMPLATE_INVALID")
+		}
+		template["host_key"] = keys
+		copy.OutJson, err = json.Marshal(template)
+		if err != nil {
+			return nil, err
+		}
 	}
 	return copy, nil
 }
@@ -86,6 +99,8 @@ func fillOutboundJSON(i *model.Inbound, hostname string, legacy bool) error {
 
 	switch i.Type {
 	case "http", "socks", "mixed", "anytls":
+	case "ssh":
+		// Password authentication is supplied by the assigned User at delivery.
 	case "naive":
 		naiveOut(&outJson, *inbound)
 	case "snell":

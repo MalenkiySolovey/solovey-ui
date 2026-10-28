@@ -4,8 +4,10 @@ package sub
 
 import (
 	"bytes"
+	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"net/url"
 	"strings"
 	"testing"
@@ -18,7 +20,90 @@ import (
 	"github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/canonical"
 	suburi "github.com/MalenkiySolovey/solovey-ui/internal/subscriptions/uri"
 	mieruapp "github.com/enfein/mieru/v3/pkg/appctl"
+	"golang.org/x/crypto/ssh"
 )
+
+func TestNativeSSHPrivateDeliveryPinsPublicServingIdentity(t *testing.T) {
+	initSubTestDB(t)
+	db := dbsqlite.DB()
+	private := ed25519.NewKeyFromSeed(make([]byte, ed25519.SeedSize))
+	block, err := ssh.MarshalPrivateKey(private, "synthetic-delivery")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle := pem.EncodeToMemory(block)
+	ref, _ := ownerdb.Reference("inbounds", 1, "host_key")
+	mutation, _ := json.Marshal(map[string]string{"intent": "replace", "value": string(bundle)})
+	sealed, err := ownerdb.Apply(db, ref, "", mutation)
+	if err != nil {
+		t.Fatal(err)
+	}
+	options, _ := json.Marshal(map[string]any{"listen_port": 3443, "host_key": sealed})
+	inbound := model.Inbound{Id: 1, Type: "ssh", Tag: "SSH public", Options: options, Addrs: json.RawMessage(`[{"server":"edge.example","server_port":3443}]`), OutJson: json.RawMessage(`{}`)}
+	if err := db.Create(&inbound).Error; err != nil {
+		t.Fatal(err)
+	}
+	client := model.Client{Name: "private-ssh", Enable: true, Config: json.RawMessage(`{"ssh":{"password":{"intent":"replace","value":"synthetic-private-password"}}}`), Inbounds: json.RawMessage(`[1]`), Links: json.RawMessage(`[]`)}
+	raw, _ := json.Marshal(client)
+	if _, err := entityclients.Save(entityclients.SaveRequest{Tx: db, Action: "new", Data: raw}); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Where("name = ?", client.Name).First(&client).Error; err != nil {
+		t.Fatal(err)
+	}
+	before := bytes.Clone(client.Config)
+	body, _, err := (&JSONService{}).GetJSON(client.SubSecret)
+	if err != nil || body == nil {
+		t.Fatal("private SSH JSON unavailable", err)
+	}
+	if strings.Contains(*body, "PRIVATE KEY") || strings.Contains(*body, sealed) {
+		t.Fatal("serving private key entered client delivery")
+	}
+	var profile struct {
+		Outbounds []struct {
+			Type, User, Password string
+			HostKeys             []string `json:"host_key"`
+		}
+	}
+	if json.Unmarshal([]byte(*body), &profile) != nil {
+		t.Fatal("invalid private JSON")
+	}
+	found := false
+	for _, outbound := range profile.Outbounds {
+		if outbound.Type != "ssh" {
+			continue
+		}
+		found = true
+		if outbound.User != client.Name || outbound.Password != "synthetic-private-password" || len(outbound.HostKeys) != 1 {
+			t.Fatal("SSH delivery changed owner authentication")
+		}
+		public, _, _, _, err := ssh.ParseAuthorizedKey([]byte(outbound.HostKeys[0]))
+		if err != nil {
+			t.Fatal("invalid public host pin")
+		}
+		expected, err := ssh.NewSignerFromKey(private)
+		if err != nil || !bytes.Equal(public.Marshal(), expected.PublicKey().Marshal()) {
+			t.Fatal("host pin differs from serving identity")
+		}
+	}
+	if !found {
+		t.Fatal("SSH endpoint omitted")
+	}
+	if err := db.First(&client, client.Id).Error; err != nil || !bytes.Equal(before, client.Config) {
+		t.Fatal("delivery changed canonical User credentials")
+	}
+	var stored model.Inbound
+	if err := db.First(&stored, inbound.Id).Error; err != nil || !bytes.Equal(options, stored.Options) || !bytes.Equal(inbound.OutJson, stored.OutJson) {
+		t.Fatal("delivery changed canonical host identity")
+	}
+	if err := db.Model(&stored).Update("options", json.RawMessage(`{"listen_port":3443}`)).Error; err != nil {
+		t.Fatal(err)
+	}
+	ClearSubscriptionOutputCache()
+	if _, _, err := (&JSONService{}).GetJSON(client.SubSecret); err == nil || !strings.Contains(err.Error(), "SSH_CLIENT_PUBLIC_HOST_TRUST_REQUIRED") {
+		t.Fatal("ephemeral identity silently became trusted")
+	}
+}
 
 func TestNativeSudokuDeliveryUsesAssignedSplitKey(t *testing.T) {
 	initSubTestDB(t)
