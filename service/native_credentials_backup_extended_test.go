@@ -137,6 +137,12 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 		"cookies":   map[string]string{"intent": "replace", "value": `[{"name":"session","value":"` + callCookie + `"}]`},
 		"join_link": map[string]string{"intent": "replace", "value": outboundRoom}})
 	nativeOutboundPasswords := map[string]string{"mieru": "synthetic-private-mieru-outbound-password", "trusttunnel": "synthetic-private-trusttunnel-outbound-password"}
+	masqueSecrets := map[string]string{"auth_token": "synthetic-private-masque-token", "license_key": "synthetic-private-masque-license", "private_key": "synthetic-private-masque-key"}
+	masqueProfile := map[string]any{"id": "archive-masque-device", "recreate": false}
+	for field, value := range masqueSecrets {
+		masqueProfile[field] = map[string]string{"intent": "replace", "value": value}
+	}
+	masqueOutbound, _ := json.Marshal(map[string]any{"type": "masque", "tag": "archive-masque-outbound", "use_l4_proxy": true, "profile": masqueProfile})
 	if err := db.Transaction(func(tx *gorm.DB) error {
 		for index := range inbounds {
 			if err := entityinbounds.FillAndSave(tx, &inbounds[index], "fixture.invalid"); err != nil {
@@ -159,6 +165,9 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 			return err
 		}
 		if _, err := entityoutbounds.Save(tx, "new", callOutbound); err != nil {
+			return err
+		}
+		if _, err := entityoutbounds.Save(tx, "new", masqueOutbound); err != nil {
 			return err
 		}
 		for kind, password := range nativeOutboundPasswords {
@@ -237,7 +246,13 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 				Type     string
 				Password string
 				JoinLink string `json:"join_link"`
-				Cookies  []struct{ Name, Value string }
+				Profile  struct {
+					ID         string `json:"id"`
+					AuthToken  string `json:"auth_token"`
+					LicenseKey string `json:"license_key"`
+					PrivateKey string `json:"private_key"`
+				}
+				Cookies []struct{ Name, Value string }
 			}
 			Inbounds []struct {
 				Type     string
@@ -260,8 +275,15 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 			t.Fatal("Sudoku runtime projection disclosed delivery material")
 		}
 		callOutboundFound := false
+		masqueOutboundFound := false
 		nativeOutboundsFound := 0
 		for _, outbound := range root.Outbounds {
+			if outbound.Type == "masque" {
+				masqueOutboundFound = true
+				if outbound.Profile.ID != "archive-masque-device" || outbound.Profile.AuthToken != masqueSecrets["auth_token"] || outbound.Profile.LicenseKey != masqueSecrets["license_key"] || outbound.Profile.PrivateKey != masqueSecrets["private_key"] {
+					t.Fatal("archive changed nested MASQUE profile ownership")
+				}
+			}
 			if password, native := nativeOutboundPasswords[outbound.Type]; native {
 				nativeOutboundsFound++
 				if outbound.Password != password {
@@ -275,7 +297,7 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 				}
 			}
 		}
-		if !callOutboundFound || nativeOutboundsFound != len(nativeOutboundPasswords) {
+		if !callOutboundFound || !masqueOutboundFound || nativeOutboundsFound != len(nativeOutboundPasswords) {
 			t.Fatal("archive lost a native outbound")
 		}
 		for _, inbound := range root.Inbounds {
@@ -338,6 +360,11 @@ func TestNativeCredentialsPrivateArchiveRehearsalRestoreAndRollback(t *testing.T
 			t.Fatal(err)
 		}
 		encoded, _ = json.Marshal(outboundView)
+		for _, secret := range masqueSecrets {
+			if bytes.Contains(encoded, []byte(secret)) {
+				t.Fatal("restored normal read disclosed a MASQUE profile credential")
+			}
+		}
 		if bytes.Contains(encoded, []byte("sbox:v1:")) || bytes.Contains(encoded, []byte(callCookie)) || bytes.Contains(encoded, []byte(outboundRoom)) {
 			t.Fatal("restored normal Outbounds read disclosed private Call material")
 		}

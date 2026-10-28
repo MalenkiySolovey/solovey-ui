@@ -1,5 +1,11 @@
 # Foundation regression budget
 
+R7 MASQUE Outbound reviews the existing `core/registry.outboundDeclarations`
+site from `ee279e14...` to `aadf4b88...`. The sole declaration adds the native
+Extended/QUIC registration and an Official unavailable fact. Direct fallback
+selection, ownership and budget count remain unchanged; the old exact digest
+is retired without regenerating the legacy inventory.
+
 R1 source: `bb306959fe17f49bfcb201cb69eb39cf7f7e4030`. The external R1 evidence is under workspace `.artifacts/architecture-stabilization-r1/`: final report, ownership map, lifecycle audit and `09-ratchet/legacy-baseline.json` (source inventory digest `3a366e7ae6c1c04d919988807f07ca9e6b01ac564bd083e5b88d23bde6e01301`). R1's 627 lexical candidates remain advisory; they are not imported as 627 exceptions.
 
 Run `go test ./internal/components/architecture` and, after `npm ci --prefix frontend`, `node --test scripts/audit/architecture-policy.test.mjs` plus `node scripts/audit/architecture-policy.mjs`. Existing Backend/profile/race CI runs the Go tests; CI Frontend runs the frontend guard.

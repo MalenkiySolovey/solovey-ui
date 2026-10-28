@@ -22,7 +22,9 @@ import Tor from '@/components/protocols/Tor.vue'
 import Ssh from '@/components/protocols/Ssh.vue'
 import CallNative from '@/components/protocols/CallInbound.vue'
 import NativeClientOutbound from '@/components/protocols/NativeClientOutbound.vue'
+import MasqueOutbound from '@/components/protocols/MasqueOutbound.vue'
 import { secretMutation, unchangedSecret } from './secretCredentialDraft'
+import { serializeOutboundCredentialDraft } from './outboundCredentialDraft'
 import Selector from '@/components/protocols/Selector.vue'
 import UrlTest from '@/components/protocols/UrlTest.vue'
 import Failover from '@/components/protocols/Failover.vue'
@@ -48,7 +50,7 @@ export default defineComponent({
       snapshot: "",
       outTypes: OutTypes,
       NoDial: [OutTypes.Selector, OutTypes.URLTest, OutTypes.Failover],
-      NoServer: [OutTypes.Direct, OutTypes.Selector, OutTypes.URLTest, OutTypes.Failover, OutTypes.Tor, OutTypes.Call],
+      NoServer: [OutTypes.Direct, OutTypes.Selector, OutTypes.URLTest, OutTypes.Failover, OutTypes.Tor, OutTypes.Call, OutTypes.MASQUE],
     }
   },
   methods: {
@@ -72,7 +74,7 @@ export default defineComponent({
       const tag = this.$props.id > 0 ? this.outbound.tag : this.outbound.type + "-" + RandomUtil.randomSeq(3)
       // Use previous data
       const prevConfig = { id: this.outbound.id, tag: tag, listen: this.outbound.listen, listen_port: this.outbound.listen_port }
-      this.outbound = createOutbound(this.outbound.type, [OutTypes.Call, OutTypes.Mieru, OutTypes.TrustTunnel].includes(this.outbound.type) ? { id: this.outbound.id, tag } : prevConfig)
+      this.outbound = createOutbound(this.outbound.type, [OutTypes.Call, OutTypes.Mieru, OutTypes.TrustTunnel, OutTypes.MASQUE].includes(this.outbound.type) ? { id: this.outbound.id, tag } : prevConfig)
     },
     closeModal() {
       this.updateData(0) // reset
@@ -88,7 +90,7 @@ export default defineComponent({
       // save data
       this.loading = true
       try {
-        const success = await Data().save("outbounds", this.$props.id == 0 ? "new" : "edit", this.outbound)
+        const success = await Data().save("outbounds", this.$props.id == 0 ? "new" : "edit", serializeOutboundCredentialDraft(this.outbound))
         if (success) this.closeModal()
       } finally {
         this.loading = false
@@ -125,6 +127,14 @@ export default defineComponent({
           credentialInvalid = !this.outbound.username?.trim() || !(password?.intent === 'replace' || unchangedSecret(password)?.present === true)
         } catch { credentialInvalid = true }
       }
+      if (this.outbound.type === OutTypes.MASQUE) {
+        try {
+          const token = secretMutation(this.outbound.profile?.auth_token)
+          const present = token?.intent === 'replace' || unchangedSecret(token)?.present === true
+          credentialInvalid = Boolean(this.outbound.profile?.id?.trim()) !== present
+          for (const field of ['auth_token', 'license_key', 'private_key']) secretMutation(this.outbound.profile?.[field])
+        } catch { credentialInvalid = true }
+      }
       const rangeOnly = this.outbound.type === OutTypes.Mieru && !this.outbound.server_port &&
         (typeof this.outbound.server_ports === 'string' ? this.outbound.server_ports.trim().length > 0 : this.outbound.server_ports?.length > 0)
       return entitySaveReasons({ identity: this.outbound.tag, port: this.outbound.server_port, requiresPort: !this.NoServer.includes(this.outbound.type) && !rangeOnly, pending: this.loading, capability: this.capabilityState, credentialInvalid, missingRequiredTls: this.outbound.type === OutTypes.TrustTunnel && !this.outbound.tls?.enabled })
@@ -149,5 +159,5 @@ export default defineComponent({
   components: { SaveGuardNotice, CapabilityNotice, Dial, Multiplex, Transport, OutTLS,
     Direct, Socks, Http, Shadowsocks, Vmess, Trojan,
     Wireguard, Hysteria, Naive, ShadowTls, Vless, Tuic,
-    Hysteria2, AnyTls, Snell, Tor, Ssh, CallNative, NativeClientOutbound, Selector, UrlTest, Failover }
+    Hysteria2, AnyTls, Snell, Tor, Ssh, CallNative, NativeClientOutbound, MasqueOutbound, Selector, UrlTest, Failover }
 })
