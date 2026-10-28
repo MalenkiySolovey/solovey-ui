@@ -98,7 +98,7 @@ describe('native credential drafts in the existing Users editor', () => {
       expect(fixture.store.save).not.toHaveBeenCalled()
       await vm.loadData(9)
       fixture.store.capabilities = capabilities(false)
-      expect(vm.nativeOptionsUnavailable).toBe(true)
+      expect(vm.capabilityState.allowed).toBe(false)
       expect(vm.capabilityState.message).toBe('capability.historical')
     })
 
@@ -148,7 +148,7 @@ describe('native credential drafts in the existing Users editor', () => {
       expect(vm.dirty).toBe(false)
       expect(JSON.stringify(vm.inbound)).not.toContain('runtime-only-private-key')
       fixture.store.capabilities = capabilities(false)
-      expect(vm.nativeOptionsUnavailable).toBe(true)
+      expect(vm.capabilityState.allowed).toBe(false)
       expect(vm.capabilityState.message).toBe('capability.historical')
     })
 
@@ -188,7 +188,7 @@ describe('native credential drafts in the existing Users editor', () => {
       vm.inbound = createInbound('mieru', { id: 0, tag: 'native', listen: '127.0.0.1', listen_port: 0, listen_ports: ['23456-23457'] })
       vm.initUsers = { model: 'client', values: [7] }
       expect(vm.hasGenericTransport).toBe(false)
-      expect(vm.nativeOptionsUnavailable).toBe(false)
+      expect(vm.capabilityState.allowed).toBe(true)
       expect(vm.hasUser).toBe(true)
       expect(vm.saveReasons).toEqual([])
       await vm.saveChanges()
@@ -202,7 +202,7 @@ describe('native credential drafts in the existing Users editor', () => {
       vm.inbound.tls_id = 1
       expect(vm.saveReasons).toEqual([])
       fixture.store.capabilities = capabilities(false)
-      expect(vm.nativeOptionsUnavailable).toBe(true)
+      expect(vm.capabilityState.allowed).toBe(false)
       expect(vm.saveReasons).toContain('capability.unavailable')
       await vm.saveChanges()
       expect(fixture.store.save).not.toHaveBeenCalled()
@@ -218,7 +218,7 @@ describe('native credential drafts in the existing Users editor', () => {
       expect(source).toContain('<MTProxy v-if="inbound.type == inTypes.MTProxy" :data="inbound" />')
       expect(source).toContain('<Sudoku v-if="inbound.type == inTypes.Sudoku" :data="inbound" />')
       expect(source).toContain('<Transport v-if="hasGenericTransport"')
-      expect(source).toContain(':defaults="{ global: { disabled: nativeOptionsUnavailable } }"')
+      expect(source).toContain('<CapabilitySurface :state="capabilityState" :type="inbound.type">')
     }
   })
 
