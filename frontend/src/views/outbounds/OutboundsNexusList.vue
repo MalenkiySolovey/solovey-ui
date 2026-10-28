@@ -79,20 +79,22 @@
           <nexus-badge v-if="failoverAllDown(item.tag)" class="ml-1" :label="$t('types.failover.allDown')" variant="secondary" />
           <span v-if="!failoverActive(item.tag) && !failoverAllDown(item.tag)" class="outbounds-nexus__muted">—</span>
         </template>
+        <span v-else-if="item.type === 'masque' && item.address" class="nexus-mono">{{ item.address }}</span>
         <span v-else-if="item.server" class="nexus-mono">{{ item.server }}</span>
         <span v-else class="outbounds-nexus__muted">—</span>
       </template>
 
       <template #col.server_port="{ item }">
-        <span v-if="item.server_port" class="nexus-mono">{{ item.server_port }}</span>
+        <span v-if="item.type === 'masque' && item.port" class="nexus-mono">{{ item.port }}</span>
+        <span v-else-if="item.server_port" class="nexus-mono">{{ item.server_port }}</span>
         <span v-else class="outbounds-nexus__muted">—</span>
       </template>
 
       <template #col.tls="{ item }">
         <nexus-badge
-          v-if="item.tls"
-          :label="item.tls.enabled ? $t('nexus.on') : $t('nexus.off')"
-          :variant="item.tls.enabled ? 'success' : 'secondary'"
+          v-if="item.type === 'masque' || item.tls"
+          :label="item.type === 'masque' || item.tls?.enabled ? $t('nexus.on') : $t('nexus.off')"
+          :variant="item.type === 'masque' || item.tls?.enabled ? 'success' : 'secondary'"
         />
         <span v-else class="outbounds-nexus__muted">—</span>
       </template>
@@ -175,6 +177,8 @@ interface OutboundRow {
   type: string
   server?: string
   server_port?: number
+  address?: string
+  port?: number
   tls?: { enabled?: boolean }
   componentBadges?: Array<{
     label?: string
