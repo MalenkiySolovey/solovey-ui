@@ -80,6 +80,7 @@
       </v-col>
       <v-col cols="auto">
         <v-btn
+          v-if="orderedOutbounds.some(item => resourceAvailability(item).allowed)"
           color="secondary"
           variant="outlined"
           :loading="testingAll"
@@ -175,7 +176,7 @@
                 <template v-else>-</template>
               </v-col>
             </v-row>
-            <v-row>
+            <v-row v-if="resourceAvailability(item).allowed">
               <v-col>{{ $t('out.delay') }}</v-col>
               <v-col>
                 <v-progress-circular

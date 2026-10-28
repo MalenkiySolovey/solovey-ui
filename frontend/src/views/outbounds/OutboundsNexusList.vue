@@ -31,6 +31,7 @@
           @toggle="toggleSelectionMode"
         />
         <v-btn
+          v-if="outbounds.some(item => resourceAvailability(item).allowed)"
           append-icon="lucide:gauge"
           :disabled="testingAll || outbounds.length === 0"
           :loading="testingAll"
@@ -101,7 +102,7 @@
       </template>
 
       <template #col.delay="{ item }">
-        <div class="outbounds-nexus__delay">
+        <div v-if="resourceAvailability(item).allowed" class="outbounds-nexus__delay">
           <v-progress-circular v-if="checkResults[item.tag]?.loading" indeterminate size="18" />
           <template v-else>
             <v-btn

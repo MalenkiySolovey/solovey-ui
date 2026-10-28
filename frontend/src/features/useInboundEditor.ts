@@ -208,10 +208,6 @@ export default defineComponent({
       const transport = (<any>this.inbound).transport
       return transport !== null && typeof transport === 'object' && !Array.isArray(transport)
     },
-    nativeOptionsUnavailable(): boolean {
-      return [this.inTypes.Mieru, this.inTypes.TrustTunnel, this.inTypes.SSH, this.inTypes.MTProxy, this.inTypes.Sudoku, this.inTypes.Bond, this.inTypes.CoreFailover, this.inTypes.Call].includes(this.inbound.type) &&
-        runtimeCapability(Data().capabilities, 'inbounds', this.inbound.type)?.available !== true
-    },
     saveReasons(): SaveReason[] {
       const rangeOnly = this.inbound.type === this.inTypes.Mieru && (<any>this.inbound).listen_ports?.length > 0 && !this.inbound.listen_port
       const reasons = entitySaveReasons({ identity: this.inbound.tag, port: this.inbound.listen_port, requiresPort: this.hasOwnListener && !rangeOnly, pending: this.loading, capability: this.capabilityState, missingRequiredTls: this.OnlyTLS.includes(this.inbound.type) && !this.inbound.tls_id, credentialInvalid: inboundCredentialDraftInvalid(this.inbound) })

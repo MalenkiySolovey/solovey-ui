@@ -40,10 +40,18 @@ func TestCapabilityTransportHistoryFollowsCurrentProvider(t *testing.T) {
 				t.Fatal(err)
 			}
 			available := registry.ResolveTransport(transport).Available()
+			matched := 0
 			for _, row := range rows {
+				if row.Tag != in.Tag && row.Tag != out.Tag {
+					continue
+				}
+				matched++
 				if row.Capability.Available != available {
 					t.Fatalf("nested transport eligibility: %+v", row)
 				}
+			}
+			if matched != 2 {
+				t.Fatal("preserved transport resources missing from eligibility")
 			}
 			if !available {
 				for _, target := range []struct {

@@ -74,7 +74,6 @@
       </v-tabs>
       <v-window v-model="side" style="margin-top: 10px;">
         <v-window-item value="s">
-          <v-defaults-provider :defaults="{ global: { disabled: nativeOptionsUnavailable } }">
           <Listen :data="inbound" :inTags="inTags" v-if="hasOwnListener" />
           <Direct v-if="inbound.type == inTypes.Direct" :data="inbound" />
           <Shadowsocks v-if="inbound.type == inTypes.Shadowsocks" direction="in" :data="inbound" />
@@ -99,7 +98,6 @@
           <Users v-if="hasUser" :clients="clients" :data="initUsers" />
           <InTls v-if="HasTls.includes(inbound.type)"  :inbound="inbound" :tlsConfigs="tlsConfigs" :tls_id="inbound.tls_id" />
           <Multiplex v-if="MuxAvailable.includes(inbound.type)" direction="in" :data="inbound" />
-          </v-defaults-provider>
         </v-window-item>
         <v-window-item value="c">
           <OutJsonVue :inData="inbound" :type="inbound.type" />
