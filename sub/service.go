@@ -132,6 +132,10 @@ func privateLinkDelivery(client *model.Client) (*model.Client, error) {
 		}
 	}
 	copy.Config = nil // Never return a borrowed credential buffer after wiping it.
+	links, err = entityclients.NameLinks(links)
+	if err != nil {
+		return nil, err
+	}
 	copy.Links, err = json.Marshal(links)
 	return copy, err
 }
